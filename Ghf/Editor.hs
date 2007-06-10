@@ -12,20 +12,16 @@ import Data.Maybe ( fromMaybe, isJust, fromJust )
 
 import Ghf.Core
 
-realBufferName :: [GhfBuffer] -> String -> Int -> (Int,String)
-realBufferName bufs bn ind =
-    let ind = foldr (\buf ind -> if bufferName buf == bn
-                    then max ind (addedIndex buf + 1)
-                    else ind) 0 bufs in
-    if ind == 0 then (0,bn) else (ind,bn ++ "(" ++ show ind ++ ")")
-
+instance Show EventMask
+    where   show =  show .fromEnum 
 
 newTextBuffer :: String -> Maybe FileName -> GhfAction
 newTextBuffer bn mbfn = do
     -- create the appropriate language
     nb <- readGhf notebook1
     bufs <- readGhf buffers
-    let (ind,rbn) = realBufferName bufs bn 0
+    stat <- readGhf statusbar
+    let (ind,rbn) = figureOutBufferName bufs bn 0
     buf <- lift $ do
         lm      <-  sourceLanguagesManagerNew
         langM   <-  sourceLanguagesManagerGetLanguageFromMimeType lm "text/x-haskell"
@@ -33,22 +29,36 @@ newTextBuffer bn mbfn = do
                         (Just lang) -> return lang
                         Nothing -> do
                             langDirs <- sourceLanguagesManagerGetLangFilesDirs lm
-                            error ("please copy haskell.lang to one of the following directories:\n"
+                            error ("please copy haskell.lang to one of the following" 
+                                   ++ "directories:\n"
                                 ++ unlines langDirs)
 
         -- create a new SourceBuffer object
         buffer <- sourceBufferNewWithLanguage lang
+        f <- fontDescriptionNew
+        fontDescriptionSetFamily f "Monospace"
 
         -- load up and display a file
         fileContents <- case mbfn of
             Just fn -> readFile fn
             Nothing -> return "\n\n\n\n\n"
+        sourceBufferBeginNotUndoableAction buffer
         textBufferSetText buffer fileContents
         textBufferSetModified buffer False
+        sourceBufferEndNotUndoableAction buffer
+        siter <- textBufferGetStartIter buffer
+        textBufferPlaceCursor buffer siter
         sourceBufferSetHighlight buffer True
 
         -- create a new SourceView Widget
         sv <- sourceViewNewWithBuffer buffer
+        widgetModifyFont sv (Just f)
+        sourceViewSetShowLineNumbers sv True
+        sourceViewSetMargin sv 90
+        sourceViewSetShowMargin sv True
+        sourceViewSetInsertSpacesInsteadOfTabs sv True
+        sourceViewSetTabsWidth sv 4
+        sourceViewSetSmartHomeEnd sv True
 
         -- put it in a scrolled window
         sw <- scrolledWindowNew Nothing Nothing
@@ -56,14 +66,47 @@ newTextBuffer bn mbfn = do
         scrolledWindowSetPolicy sw PolicyAutomatic PolicyAutomatic
         sw `scrolledWindowSetShadowType` ShadowIn
         notebookPrependPage nb sw rbn
-        widgetShowAll nb
-
         mbPn <- notebookPageNum nb sw
+        widgetShowAll nb
+  
         case mbPn of
             Just i -> notebookSetCurrentPage nb i
             Nothing -> putStrLn "Notebook page not found"
+  
+        statusbarPush stat 1 ""
+        writeCursorPositionInStatusbar buffer stat
+        widgetAddEvents sv [ButtonReleaseMask]
+        afterMoveCursor sv (\_ _ _ -> writeCursorPositionInStatusbar buffer stat)
+        afterEndUserAction buffer (writeCursorPositionInStatusbar buffer stat)
+        afterSwitchPage nb (\pn1 -> do  pn2 <- notebookPageNum nb sw;
+                                        if isJust pn2 && pn1 == fromJust pn2 
+                                            then writeCursorPositionInStatusbar buffer stat
+                                            else return ())
+        onButtonRelease sv (\ _ -> do writeCursorPositionInStatusbar buffer stat; return False)
+        afterModifiedChanged buffer (markLabelAsChanged buffer nb sw)        
         return (GhfBuffer mbfn bn ind sv sw)
     modifyGhf_ (\ghf -> return (ghf{buffers = buf : bufs}))
+
+writeCursorPositionInStatusbar buf stat = do
+    modi <- textBufferGetModified buf
+    mark <- textBufferGetInsert buf
+    iter <- textBufferGetIterAtMark buf mark
+    line <- textIterGetLine iter
+    col  <- textIterGetLineOffset iter
+    statusbarPop stat 1
+    statusbarPush stat 1 $"Ln " ++ show (line + 1) ++ ", Col " ++ show (col + 1)
+    return ()
+
+markLabelAsChanged buf nb sw = do
+    modified <- textBufferGetModified buf
+    (Just text) <- notebookGetTabLabelText nb sw
+    label <- labelNew Nothing
+    labelSetUseMarkup label True
+    labelSetMarkup label   
+        (if modified 
+            then "<span foreground=\"red\">" ++ text ++ "</span>" 
+            else text) 
+    notebookSetTabLabel nb sw label  
 
 fileSave :: Bool -> GhfAction
 fileSave query = do
@@ -110,14 +153,14 @@ fileSave query = do
                                     return resp
                             else return ResponseYes
                         case resp of
-                                    ResponseYes -> do
-                                        fileSave' currentBuffer fn
-                                        let bn = takeFileName fn
-                                        let (ind,rbn) = realBufferName bufs bn 0
-                                        label <- labelNew (Just rbn)
-                                        notebookSetTabLabel nb (fromJust mbp) label
-                                        return (Just (map (bufRename currentBuffer fn bn ind) bufs))
-                                    ResponseNo -> return Nothing
+                            ResponseYes -> do
+                                fileSave' currentBuffer fn
+                                let bn = takeFileName fn
+                                let (ind,rbn) = figureOutBufferName bufs bn 0
+                                label <- labelNew (Just rbn)
+                                notebookSetTabLabel nb (fromJust mbp) label
+                                return (Just (map (bufRename currentBuffer fn bn ind) bufs))
+                            ResponseNo -> return Nothing
     case mbnbufs of
         Just nbufs ->modifyGhf_ (\ghf -> return (ghf{buffers = nbufs}))
         Nothing -> return ()
@@ -132,27 +175,53 @@ fileSave query = do
             end     <- textBufferGetEndIter buf
             text    <- textBufferGetText buf start end True
             writeFile fn text
-
-
-quit :: GhfAction
-quit = lift mainQuit
+            textBufferSetModified buf False
 
 fileNew :: GhfAction
 fileNew = newTextBuffer "Unnamed" Nothing
 
-fileClose :: GhfAction
+fileClose :: GhfM Bool
 fileClose = do
+    ghfRef  <- ask
+    window  <- readGhf window
     nb      <- readGhf notebook1
     bufs    <- readGhf buffers 
-    buf <- lift $ do
+    mbbuf <- lift $ do
         i   <- notebookGetCurrentPage nb
         mbp <- notebookGetNthPage nb i
         let currentBuffer = case i of
                 -1 -> error "No page selected"
                 n  -> bufs !! i
-        notebookRemovePage nb i
-        return currentBuffer
-    modifyGhf_ (\ghf -> return (ghf{buffers = filter (/= buf) bufs}))
+        gtkbuf <- textViewGetBuffer $ sourceView currentBuffer
+        modified <- textBufferGetModified gtkbuf
+        if modified
+            then do
+                md <- messageDialogNew (Just window) []
+                                            MessageQuestion
+                                            ButtonsNone
+                                            ("Save changes to document: "
+                                                ++ realBufferName currentBuffer
+                                                ++ "?")
+                dialogAddButton md "_Save" ResponseYes
+                dialogAddButton md "_Don't Save" ResponseNo
+                dialogAddButton md "_Cancel" ResponseCancel
+                resp <- dialogRun md
+                widgetHide md
+                case resp of
+                    ResponseYes -> do   runReaderT (fileSave False) ghfRef 
+                                        notebookRemovePage nb i
+                                        return (Just currentBuffer)
+                    ResponseCancel ->   return Nothing
+                    ResponseNo -> do    notebookRemovePage nb i
+                                        return (Just currentBuffer)
+            else do
+                notebookRemovePage nb i
+                return (Just currentBuffer)
+    case mbbuf of
+        Just buf -> do
+            modifyGhf_ (\ghf -> return (ghf{buffers = filter (/= buf) bufs}))
+            return True
+        Nothing -> return False
 
 fileOpen :: GhfAction
 fileOpen = do

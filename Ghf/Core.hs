@@ -13,19 +13,20 @@ import Data.Maybe ( fromMaybe, isJust, fromJust )
 
 type FileName   =   String
 
-data Ghf    =   Ghf {
-    window :: Window
-,   notebook1 :: Notebook
-,   buffers :: [GhfBuffer]
+data Ghf        =   Ghf {
+    window      :: Window
+,   notebook1   :: Notebook
+,   buffers     :: [GhfBuffer]
+,   statusbar   :: Statusbar
 } 
 
-data GhfBuffer  =   GhfBuffer { 
-    fileName :: Maybe FileName
-,   bufferName :: String
-,   addedIndex :: Int
-,   sourceView :: SourceView 
-,   scrolledWindow :: ScrolledWindow
-} 
+data GhfBuffer  =   GhfBuffer {
+    fileName    :: Maybe FileName
+,   bufferName  :: String
+,   addedIndex  :: Int
+,   sourceView  :: SourceView 
+,   scrolledWindow  :: ScrolledWindow
+}
 
 instance Eq GhfBuffer
     where (==) a b = bufferName a == bufferName b && addedIndex a == addedIndex b
@@ -33,6 +34,19 @@ instance Eq GhfBuffer
 type GhfRef = IORef Ghf
 type GhfM = ReaderT (GhfRef) IO
 type GhfAction = GhfM ()
+
+figureOutBufferName :: [GhfBuffer] -> String -> Int -> (Int,String)
+figureOutBufferName bufs bn ind =
+    let ind = foldr (\buf ind -> if bufferName buf == bn
+                    then max ind (addedIndex buf + 1)
+                    else ind) 0 bufs in
+    if ind == 0 then (0,bn) else (ind,bn ++ "(" ++ show ind ++ ")")
+
+realBufferName :: GhfBuffer -> String
+realBufferName buf =
+    if addedIndex buf == 0
+        then bufferName buf
+        else bufferName buf ++ "(" ++ show (addedIndex buf) ++ ")"
 
 readGhf :: (Ghf -> b) -> GhfM b
 readGhf f = do
