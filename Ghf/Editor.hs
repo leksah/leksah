@@ -1,7 +1,8 @@
 module Ghf.Editor where
 
-import Graphics.UI.Gtk
+import Graphics.UI.Gtk hiding (afterToggleOverwrite)
 import Graphics.UI.Gtk.SourceView
+import Graphics.UI.Gtk.Multiline.TextView
 import Control.Monad.Reader
 import Data.IORef
 import System.FilePath
@@ -9,18 +10,16 @@ import System.Directory
 import System.Console.GetOpt
 import System.Environment
 import Data.Maybe ( fromMaybe, isJust, fromJust )
-
+import Text.Printf
+  
 import Ghf.Core
-
-instance Show EventMask
-    where   show =  show .fromEnum 
 
 newTextBuffer :: String -> Maybe FileName -> GhfAction
 newTextBuffer bn mbfn = do
     -- create the appropriate language
     nb <- readGhf notebook1
     bufs <- readGhf buffers
-    stat <- readGhf statusbar
+    stats<- readGhf statusbars
     let (ind,rbn) = figureOutBufferName bufs bn 0
     buf <- lift $ do
         lm      <-  sourceLanguagesManagerNew
@@ -35,9 +34,7 @@ newTextBuffer bn mbfn = do
 
         -- create a new SourceBuffer object
         buffer <- sourceBufferNewWithLanguage lang
-        f <- fontDescriptionNew
-        fontDescriptionSetFamily f "Monospace"
-
+ 
         -- load up and display a file
         fileContents <- case mbfn of
             Just fn -> readFile fn
@@ -52,6 +49,8 @@ newTextBuffer bn mbfn = do
 
         -- create a new SourceView Widget
         sv <- sourceViewNewWithBuffer buffer
+        f <- fontDescriptionNew
+        fontDescriptionSetFamily f "Monospace"
         widgetModifyFont sv (Just f)
         sourceViewSetShowLineNumbers sv True
         sourceViewSetMargin sv 90
@@ -68,25 +67,31 @@ newTextBuffer bn mbfn = do
         notebookPrependPage nb sw rbn
         mbPn <- notebookPageNum nb sw
         widgetShowAll nb
-  
         case mbPn of
             Just i -> notebookSetCurrentPage nb i
             Nothing -> putStrLn "Notebook page not found"
-  
-        statusbarPush stat 1 ""
-        writeCursorPositionInStatusbar buffer stat
-        widgetAddEvents sv [ButtonReleaseMask]
-        afterMoveCursor sv (\_ _ _ -> writeCursorPositionInStatusbar buffer stat)
-        afterEndUserAction buffer (writeCursorPositionInStatusbar buffer stat)
+
+        -- statusbars  
+        statusbarPush (stats !! 0) 1 ""
+        writeCursorPositionInStatusbar buffer (stats !! 0)
+
+        afterMoveCursor sv (\_ _ _ -> writeCursorPositionInStatusbar buffer (stats !! 0))
+        afterEndUserAction buffer (writeCursorPositionInStatusbar buffer (stats !! 0))
         afterSwitchPage nb (\pn1 -> do  pn2 <- notebookPageNum nb sw;
                                         if isJust pn2 && pn1 == fromJust pn2 
-                                            then writeCursorPositionInStatusbar buffer stat
+                                            then writeCursorPositionInStatusbar buffer (stats !! 0)
                                             else return ())
-        onButtonRelease sv (\ _ -> do writeCursorPositionInStatusbar buffer stat; return False)
+        widgetAddEvents sv [ButtonReleaseMask]
+        onButtonRelease sv (\ _ -> do writeCursorPositionInStatusbar buffer (stats !! 0); return False)
         afterModifiedChanged buffer (markLabelAsChanged buffer nb sw)        
+
+        statusbarPush (stats !! 1) 1 "INS"
+        afterToggleOverwrite sv (writeOverwriteInStatusbar sv nb sw (stats !! 1))
+        afterSwitchPage nb (\ _ -> writeOverwriteInStatusbar sv nb sw (stats !! 1))
         return (GhfBuffer mbfn bn ind sv sw)
     modifyGhf_ (\ghf -> return (ghf{buffers = buf : bufs}))
 
+writeCursorPositionInStatusbar :: SourceBuffer -> Statusbar -> IO()
 writeCursorPositionInStatusbar buf stat = do
     modi <- textBufferGetModified buf
     mark <- textBufferGetInsert buf
@@ -94,8 +99,20 @@ writeCursorPositionInStatusbar buf stat = do
     line <- textIterGetLine iter
     col  <- textIterGetLineOffset iter
     statusbarPop stat 1
-    statusbarPush stat 1 $"Ln " ++ show (line + 1) ++ ", Col " ++ show (col + 1)
+    statusbarPush stat 1 $printf "Ln %4d, Col %3d" (line + 1) (col + 1)
     return ()
+
+writeOverwriteInStatusbar :: SourceView -> Notebook -> ScrolledWindow -> Statusbar -> IO()
+writeOverwriteInStatusbar sv nb sw stat = do
+    i <- notebookGetCurrentPage nb
+    i2 <- notebookPageNum nb sw
+    if isJust i2 && i == fromJust i2
+        then do
+            modi <- textViewGetOverwrite sv
+            statusbarPop stat 1
+            statusbarPush stat 1 $if modi then "OVR" else "INS"
+            return () 
+        else return ()
 
 markLabelAsChanged buf nb sw = do
     modified <- textBufferGetModified buf

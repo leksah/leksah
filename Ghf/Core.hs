@@ -10,14 +10,13 @@ import System.Console.GetOpt
 import System.Environment
 import Data.Maybe ( fromMaybe, isJust, fromJust )
 
-
 type FileName   =   String
 
 data Ghf        =   Ghf {
     window      :: Window
 ,   notebook1   :: Notebook
 ,   buffers     :: [GhfBuffer]
-,   statusbar   :: Statusbar
+,   statusbars  :: [Statusbar]
 } 
 
 data GhfBuffer  =   GhfBuffer {
