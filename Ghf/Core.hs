@@ -17,6 +17,7 @@ data Ghf        =   Ghf {
 ,   notebook1   :: Notebook
 ,   buffers     :: [GhfBuffer]
 ,   statusbars  :: [Statusbar]
+,   find        :: Entry
 } 
 
 data GhfBuffer  =   GhfBuffer {

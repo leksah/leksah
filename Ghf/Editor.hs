@@ -1,4 +1,27 @@
-module Ghf.Editor where
+module Ghf.Editor (
+    newTextBuffer
+
+,   fileNew
+,   fileOpen
+,   fileClose
+,   fileSave
+
+,   editUndo
+,   editRedo
+,   editCut
+,   editCopy
+,   editPaste
+,   editDelete
+,   editSelectAll
+
+,   editFind
+,   editFindNext
+,   editFindInc
+,   editFindKey
+,   editFindPrevious
+,   editReplace
+
+) where
 
 import Graphics.UI.Gtk hiding (afterToggleOverwrite)
 import Graphics.UI.Gtk.SourceView
@@ -32,9 +55,15 @@ newTextBuffer bn mbfn = do
                                    ++ "directories:\n"
                                 ++ unlines langDirs)
 
+
+
         -- create a new SourceBuffer object
         buffer <- sourceBufferNewWithLanguage lang
- 
+        foundTag <- textTagNew (Just "found")
+        set foundTag [textTagBackground := "yellow"]
+        tagTable <- textBufferGetTagTable buffer 
+        textTagTableAdd tagTable foundTag   
+         
         -- load up and display a file
         fileContents <- case mbfn of
             Just fn -> readFile fn
@@ -263,5 +292,206 @@ fileOpen = do
         Nothing -> return ()
         Just fn -> newTextBuffer (takeFileName fn) (Just fn) 
 
+inBufContext :: (TextBuffer -> IO ()) -> GhfAction
+inBufContext f = do
+    ghfRef  <- ask
+    nb      <- readGhf notebook1
+    bufs    <- readGhf buffers 
+    lift $ do
+        i   <- notebookGetCurrentPage nb
+        case i of
+                -1 -> return ()
+                n  -> let currentBuffer = bufs !! i in do
+                        gtkbuf <-  textViewGetBuffer $ sourceView currentBuffer
+                        widgetGrabFocus $ sourceView currentBuffer
+                        f gtkbuf
 
+editUndo :: GhfAction
+editUndo = inBufContext undo
+    where undo gtkbuf =  let sb = castToSourceBuffer gtkbuf in
+                            do  canUndo <- sourceBufferCanUndo sb
+                                if canUndo
+                                    then sourceBufferUndo sb
+                                    else return ()
+    
+editRedo :: GhfAction
+editRedo = inBufContext redo
+    where redo gtkbuf = let sb = castToSourceBuffer gtkbuf in
+                            do  canRedo <- sourceBufferCanUndo sb
+                                if canRedo
+                                    then sourceBufferRedo sb
+                                    else return ()
 
+editDelete :: GhfAction
+editDelete = inBufContext delete
+    where delete gtkbuf =   do  textBufferDeleteSelection gtkbuf True True
+                                return ()    
+
+editSelectAll :: GhfAction
+editSelectAll = inBufContext selectAll
+    where selectAll gtkbuf = do start <- textBufferGetStartIter gtkbuf
+                                end   <- textBufferGetEndIter gtkbuf                       
+                                textBufferSelectRange gtkbuf start end
+
+--Unfortunately the current impossible ones
+editCut :: GhfAction
+editCut = return ()
+editCopy :: GhfAction
+editCopy = return ()
+editPaste :: GhfAction
+editPaste = return ()
+
+--Searching
+editFind :: GhfAction
+editFind = do
+    ghfR    <-  ask  
+    entry   <-  readGhf find
+    lift $ do  
+        widgetShow entry
+        widgetGrabFocus entry 
+        return ()
+    
+
+red = Color 640000 10000 10000
+white = Color 64000 64000 64000
+black = Color 0 0 0
+
+editFindKey :: Event -> GhfAction
+editFindKey k@(Key _ _ _ _ _ _ _ _ _ _) 
+    | eventKeyName k == "Escape" =  
+        let setSelection buffer = do
+                (start,end) <- textBufferGetSelectionBounds buffer 
+                textBufferSelectRange buffer start end in
+        do  entry   <- readGhf find
+            lift $ widgetHide entry
+            inBufContext setSelection 
+    | otherwise = 
+        return ()
+        
+
+editFindInc :: GhfM Int 
+editFindInc = do  
+    entry   <- readGhf find
+    ghfRef  <- ask
+    nb      <- readGhf notebook1
+    bufs    <- readGhf buffers 
+    lift $ do
+        i   <- notebookGetCurrentPage nb
+        case i of
+            -1 -> return (0)
+            n  -> let currentBuffer = bufs !! i in do
+                    gtkbuf <-  textViewGetBuffer $ sourceView currentBuffer
+                    st <- textBufferGetStartIter gtkbuf
+                    en <- textBufferGetEndIter gtkbuf       
+                    textBufferRemoveTagByName gtkbuf "found" st en         
+                    text <- entryGetText entry              
+                    editableSelectRegion entry 1 1                          
+                    if text == ""
+                        then do widgetGrabFocus entry
+                                return (length text) 
+                        else do                         
+                            (start,end) <- textBufferGetSelectionBounds gtkbuf 
+                            mbsr <- textIterForwardSearch start text [] Nothing
+                            case mbsr of
+                                Nothing -> do   
+                                    widgetModifyBase entry StateNormal red
+                                    widgetModifyText entry StateNormal white
+                                    widgetGrabFocus entry
+                                    return (length text)  
+                                Just (start,end) -> do
+                                    widgetModifyBase entry StateNormal white
+                                    widgetModifyText entry StateNormal black
+                                    textBufferSelectRange gtkbuf start end
+                                    textViewScrollToIter (sourceView currentBuffer) 
+                                        start 0.2 Nothing
+                                    textBufferApplyTagByName gtkbuf "found" start end
+                                    widgetGrabFocus entry
+                                    return (length text)                                                                   
+    
+        
+editFindNext :: GhfAction
+editFindNext = do
+    entry   <- readGhf find
+    ghfRef  <- ask
+    nb      <- readGhf notebook1
+    bufs    <- readGhf buffers 
+    lift $ do
+        i   <- notebookGetCurrentPage nb
+        case i of
+            -1 -> return ()
+            n  -> let currentBuffer = bufs !! i in do
+                    gtkbuf <-  textViewGetBuffer $ sourceView currentBuffer
+                    st <- textBufferGetStartIter gtkbuf
+                    en <- textBufferGetEndIter gtkbuf       
+                    textBufferRemoveTagByName gtkbuf "found" st en         
+                    text <- entryGetText entry              
+                    if text == ""
+                        then do widgetGrabFocus entry
+                                return () 
+                        else do                         
+                            (start,end) <- textBufferGetSelectionBounds gtkbuf
+                            textIterForwardChar end
+                            mbsr <- textIterForwardSearch end text [] Nothing
+                            case mbsr of
+                                Nothing -> do   
+                                    widgetModifyBase entry StateNormal red
+                                    widgetModifyText entry StateNormal white
+                                    textIterBackwardChar end
+                                    textBufferSelectRange gtkbuf start end
+                                    textBufferApplyTagByName gtkbuf "found" start end
+                                    widgetGrabFocus entry
+                                    return ()  
+                                Just (start,end) -> do
+                                    widgetModifyBase entry StateNormal white
+                                    widgetModifyText entry StateNormal black
+                                    textBufferSelectRange gtkbuf start end
+                                    textViewScrollToIter (sourceView currentBuffer) 
+                                        start 0.2 Nothing
+                                    textBufferApplyTagByName gtkbuf "found" start end
+                                    widgetGrabFocus entry
+                                    return ()                   
+
+editFindPrevious :: GhfAction
+editFindPrevious = do
+    entry   <- readGhf find
+    ghfRef  <- ask
+    nb      <- readGhf notebook1
+    bufs    <- readGhf buffers 
+    lift $ do
+        i   <- notebookGetCurrentPage nb
+        case i of
+            -1 -> return ()
+            n  -> let currentBuffer = bufs !! i in do
+                    gtkbuf <-  textViewGetBuffer $ sourceView currentBuffer
+                    st <- textBufferGetStartIter gtkbuf
+                    en <- textBufferGetEndIter gtkbuf       
+                    textBufferRemoveTagByName gtkbuf "found" st en         
+                    text <- entryGetText entry              
+                    if text == ""
+                        then do widgetGrabFocus entry
+                                return () 
+                        else do                         
+                            (start,end) <- textBufferGetSelectionBounds gtkbuf
+                            textIterBackwardChar start
+                            mbsr <- textIterBackwardSearch start text [] Nothing
+                            case mbsr of
+                                Nothing -> do   
+                                    widgetModifyBase entry StateNormal red
+                                    widgetModifyText entry StateNormal white
+                                    textIterForwardChar start
+                                    textBufferSelectRange gtkbuf start end
+                                    textBufferApplyTagByName gtkbuf "found" start end
+                                    widgetGrabFocus entry
+                                    return ()  
+                                Just (start,end) -> do
+                                    widgetModifyBase entry StateNormal white
+                                    widgetModifyText entry StateNormal black
+                                    textBufferSelectRange gtkbuf start end
+                                    textViewScrollToIter (sourceView currentBuffer) 
+                                        start 0.2 Nothing
+                                    textBufferApplyTagByName gtkbuf "found" start end
+                                    widgetGrabFocus entry
+                                    return ()          
+
+editReplace :: GhfAction
+editReplace = return ()
