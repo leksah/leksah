@@ -13,11 +13,13 @@ import Data.Maybe ( fromMaybe, isJust, fromJust )
 type FileName   =   String
 
 data Ghf        =   Ghf {
-    window      :: Window
-,   notebook1   :: Notebook
-,   buffers     :: [GhfBuffer]
-,   statusbars  :: [Statusbar]
-,   find        :: Entry
+    window      ::  Window
+,   notebook1   ::  Notebook
+,   buffers     ::  [GhfBuffer]
+,   statusbars  ::  [Statusbar]
+,   find        ::  Entry
+,   findVisible ::  Bool
+,   findIns     ::  Bool
 } 
 
 data GhfBuffer  =   GhfBuffer {

@@ -52,7 +52,7 @@ main = do
     entry <- entryNew
     hbf <- hBoxNew False 1
     
-    let ghf = Ghf win nb [] [sblc,sbio,sb] entry 
+    let ghf = Ghf win nb [] [sblc,sbio,sb] entry False True
     ghfR <- newIORef ghf
     (acc,menus) <- runReaderT (makeMenu actions menuDescription) ghfR
     let mb = fromJust $menus !! 0
@@ -75,10 +75,12 @@ main = do
 
     win `onDelete` (\_ -> do runReaderT quit ghfR; return True)
     win `containerAdd` vb
-    entry `afterInsertText` (\_ _ -> do runReaderT editFindInc ghfR)
-    entry `afterDeleteText` (\_ _ -> do runReaderT editFindInc ghfR; return ())
+    entry `afterInsertText` (\_ _ -> do runReaderT (editFindInc Insert) ghfR; 
+                                        t <- entryGetText entry
+                                        return (length t))
+    entry `afterDeleteText` (\_ _ -> do runReaderT (editFindInc Delete) ghfR; return ())
     entry `afterKeyPress`  (\e -> do runReaderT (editFindKey e) ghfR; return True)
-    entry `onEntryActivate` runReaderT editFindNext ghfR
+    entry `onEntryActivate` runReaderT (editFindInc Forward) ghfR
 
       -- show the widget and run the main loop
     windowSetDefaultSize win 700 1000
@@ -117,8 +119,8 @@ actions =  [("File", "_File", Nothing, Nothing,return (),Nothing)
            ,("EditDelete","_Delete", Nothing, Just "gtk-delete",editDelete,Nothing)
            ,("EditSelectAll","Select_All", Nothing, Just "gtk-select-all",editSelectAll,Just "<control>A")
            ,("EditFind","_Find", Nothing, Just "gtk-find",editFind,Just "<control>F")
-           ,("EditFindNext","Find _Next", Nothing, Just "gtk-find-next",editFindNext,Just "<control>G")
-           ,("EditFindPrevious","Find _Previous", Nothing, Just "gtk-find-previous",editFindPrevious,Just "<shift><control>G")
+           ,("EditFindNext","Find _Next", Nothing, Just "gtk-find-next",editFindInc Forward,Just "<control>G")
+           ,("EditFindPrevious","Find _Previous", Nothing, Just "gtk-find-previous",editFindInc Backward,Just "<shift><control>G")
            ,("EditReplace","_Replace", Nothing, Just "gtk-replace",editReplace,Just "<control>R")
 
 
