@@ -19,7 +19,7 @@ module Ghf.Editor (
 ,   editFindKey
 ,   editReplace
 
-,   SearchCommand(..)
+,   SearchHint(..)
 
 ) where
 
@@ -36,13 +36,16 @@ import Data.Maybe ( fromMaybe, isJust, fromJust )
 import Text.Printf
   
 import Ghf.Core
+import Ghf.CoreGui
+
 
 newTextBuffer :: String -> Maybe FileName -> GhfAction
 newTextBuffer bn mbfn = do
     -- create the appropriate language
-    nb <- readGhf notebook1
+    nb <- getMainBuffersNotebook
     bufs <- readGhf buffers
-    stats<- readGhf statusbars
+    statLC <- getStatusbarLC
+    statIO <- getStatusbarIO
     let (ind,rbn) = figureOutBufferName bufs bn 0
     buf <- lift $ do
         lm      <-  sourceLanguagesManagerNew
@@ -62,7 +65,7 @@ newTextBuffer bn mbfn = do
         tagTable <- textBufferGetTagTable buffer 
         textTagTableAdd tagTable foundTag   
          
-        -- load up and display a file
+        -- load up and display a file  
         fileContents <- case mbfn of
             Just fn -> readFile fn
             Nothing -> return "\n\n\n\n\n"
@@ -99,22 +102,22 @@ newTextBuffer bn mbfn = do
             Nothing -> putStrLn "Notebook page not found"
 
         -- statusbars  
-        statusbarPush (stats !! 0) 1 ""
-        writeCursorPositionInStatusbar buffer (stats !! 0)
+        statusbarPush statLC 1 ""
+        writeCursorPositionInStatusbar buffer statLC
 
-        afterMoveCursor sv (\_ _ _ -> writeCursorPositionInStatusbar buffer (stats !! 0))
-        afterEndUserAction buffer (writeCursorPositionInStatusbar buffer (stats !! 0))
+        afterMoveCursor sv (\_ _ _ -> writeCursorPositionInStatusbar buffer statLC)
+        afterEndUserAction buffer (writeCursorPositionInStatusbar buffer statLC)
         afterSwitchPage nb (\pn1 -> do  pn2 <- notebookPageNum nb sw;
                                         if isJust pn2 && pn1 == fromJust pn2 
-                                            then writeCursorPositionInStatusbar buffer (stats !! 0)
+                                            then writeCursorPositionInStatusbar buffer statLC
                                             else return ())
         widgetAddEvents sv [ButtonReleaseMask]
-        onButtonRelease sv (\ _ -> do writeCursorPositionInStatusbar buffer (stats !! 0); return False)
+        onButtonRelease sv (\ _ -> do writeCursorPositionInStatusbar buffer statLC; return False)
         afterModifiedChanged buffer (markLabelAsChanged buffer nb sw)        
 
-        statusbarPush (stats !! 1) 1 "INS"
-        afterToggleOverwrite sv (writeOverwriteInStatusbar sv nb sw (stats !! 1))
-        afterSwitchPage nb (\ _ -> writeOverwriteInStatusbar sv nb sw (stats !! 1))
+        statusbarPush statIO 1 "INS"
+        afterToggleOverwrite sv (writeOverwriteInStatusbar sv nb sw statIO)
+        afterSwitchPage nb (\ _ -> writeOverwriteInStatusbar sv nb sw statIO)
         return (GhfBuffer mbfn bn ind sv sw)
     modifyGhf_ (\ghf -> return (ghf{buffers = buf : bufs}))
 
@@ -155,7 +158,7 @@ markLabelAsChanged buf nb sw = do
 inBufContext' :: (TextBuffer -> GhfBuffer -> Int -> GhfM a) -> GhfM a
 inBufContext' f = do
     ghfRef  <- ask
-    nb      <- readGhf notebook1
+    nb      <- getMainBuffersNotebook
     bufs    <- readGhf buffers 
     (gtkbuf, currentBuffer, i) <- lift $ do
         i   <- notebookGetCurrentPage nb
@@ -174,7 +177,7 @@ inBufContext f = inBufContext' (\a b c -> lift $ f a b c)
 fileSave :: Bool -> GhfAction
 fileSave query = inBufContext' $ \_ currentBuffer i -> do
     window  <- readGhf window
-    nb      <- readGhf notebook1
+    nb      <- getMainBuffersNotebook
     bufs    <- readGhf buffers 
     mbnbufs <- lift $ do
         let mbfn = fileName currentBuffer
@@ -243,7 +246,7 @@ fileClose :: GhfM Bool
 fileClose = inBufContext' $ \gtkbuf currentBuffer i -> do
     ghfRef  <- ask
     window  <- readGhf window
-    nb      <- readGhf notebook1
+    nb      <- getMainBuffersNotebook
     bufs    <- readGhf buffers 
     mbbuf <- lift $ do
         modified <- textBufferGetModified gtkbuf
@@ -337,15 +340,18 @@ editPaste = return ()
 --Searching
 editFind :: GhfAction
 editFind = inBufContext' $ \gtkbuf currentBuffer _ -> do
-    ghfR    <-  ask
-    entry   <-  readGhf find
-    isV     <-  readGhf findVisible
-    modifyGhf_ $ \e -> return $ e { findVisible = not isV }
-    if not isV  
-        then do lift $widgetShow entry
-                lift $widgetGrabFocus entry 
+    entry   <-  getFindEntry
+    findBar <-  getFindBar
+    uiManager <- readGhf uiManager
+    isV <- lift $ do
+        findAction <- uiManagerGetAction uiManager "ui/menubar/_Edit/_Find"
+        toggleActionGetActive (castToToggleAction (fromJust findAction))
+    if isV  
+        then lift $do 
+            widgetShow findBar
+            widgetGrabFocus entry 
         else lift $do 
-            widgetHide entry
+            widgetHide findBar
             --remove old selection
             i1 <- textBufferGetStartIter gtkbuf
             i2 <- textBufferGetEndIter gtkbuf       
@@ -358,18 +364,33 @@ black = Color 0 0 0
 
 editFindKey :: Event -> GhfAction
 editFindKey k@(Key _ _ _ _ _ _ _ _ _ _) 
-    | eventKeyName k == "Escape" =  
-        editFind
     | eventKeyName k == "Return" && eventModifier k == [Shift] =
         editFindInc Backward        
+    | eventKeyName k == "Escape" = do
+        uiManager <- readGhf uiManager
+        lift $ do
+            findAction <- uiManagerGetAction uiManager "ui/menubar/_Edit/_Find"
+            toggleActionSetActive (castToToggleAction (fromJust findAction)) False
+        editFind    
     | otherwise = return ()
-        
-data SearchCommand = Forward | Backward | Insert | Delete
+
+
+data SearchHint = Forward | Backward | Insert | Delete
     deriving (Eq)
 
-editFindInc :: SearchCommand -> GhfAction
+{-- can't be used currently becuase of an export error
+  toEnum 1 = SourceSearchVisibleOnly
+  toEnum 2 = SourceSearchTextOnly
+  toEnum 4 = SourceSearchCaseInsensitive
+--}
+
+editFindInc :: SearchHint -> GhfAction
 editFindInc comm = inBufContext' $ \gtkbuf currentBuffer _ -> do 
-    entry   <- readGhf find
+    entry   <- getFindEntry
+    caseSensitiveW <- getCaseSensitive
+    isCaseSensitive <- lift $toggleButtonGetActive caseSensitiveW
+    let searchflags = (if isCaseSensitive then [] else [toEnum 4]) 
+                        ++ [toEnum 1,toEnum 2]
     lift $ do
     i1 <- textBufferGetStartIter gtkbuf
     i2 <- textBufferGetEndIter gtkbuf       
@@ -377,8 +398,8 @@ editFindInc comm = inBufContext' $ \gtkbuf currentBuffer _ -> do
     startMark <- textBufferGetInsert gtkbuf 
     endMark <- textBufferGetSelectionBound gtkbuf
     st1 <- textBufferGetIterAtMark gtkbuf startMark
-    en1 <- textBufferGetIterAtMark gtkbuf endMark 
-    text <- entryGetText entry              
+    en1 <- textBufferGetIterAtMark gtkbuf endMark    
+    text <- entryGetText entry        
     if null text 
         then do 
             widgetGrabFocus entry
@@ -387,10 +408,10 @@ editFindInc comm = inBufContext' $ \gtkbuf currentBuffer _ -> do
             mbsr2 <- 
               if comm == Backward 
                 then do
-                    mbsr <- sourceIterBackwardSearch en1 text [] Nothing
+                    mbsr <- sourceIterBackwardSearch en1 text searchflags Nothing
                     case mbsr of
                         Nothing -> do --Wrap around  
-                            sourceIterBackwardSearch i2 text [] Nothing
+                            sourceIterBackwardSearch i2 text searchflags Nothing
                         Just (start,end) -> return (Just (start,end))
               else do
                 if comm == Forward 
@@ -398,10 +419,10 @@ editFindInc comm = inBufContext' $ \gtkbuf currentBuffer _ -> do
                     else do 
                         textIterBackwardChar st1 
                         textIterBackwardChar st1              
-                mbsr <- sourceIterForwardSearch st1 text [] Nothing
+                mbsr <- sourceIterForwardSearch st1 text searchflags Nothing
                 case mbsr of
                     Nothing -> do --Wrap around  
-                                    sourceIterForwardSearch i1 text [] Nothing
+                                    sourceIterForwardSearch i1 text searchflags Nothing
                     Just (start,end) -> return (Just (start,end))
             case mbsr2 of
                 Just (start,end) -> do --found
@@ -410,13 +431,11 @@ editFindInc comm = inBufContext' $ \gtkbuf currentBuffer _ -> do
                     textViewScrollToIter (sourceView currentBuffer) start 0.2 Nothing
                     textBufferApplyTagByName gtkbuf "found" start end
                     textBufferSelectRange gtkbuf start end
-                    widgetGrabFocus entry
-                    return ()              
                 Nothing -> do --not found
                     widgetModifyBase entry StateNormal red
                     widgetModifyText entry StateNormal white
-                    widgetGrabFocus entry
-                    return ()                                                     
-    
+            widgetGrabFocus entry
+            editableSelectRegion entry (length text) (length text)        
+ 
 editReplace :: GhfAction
 editReplace = return ()

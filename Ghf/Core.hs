@@ -1,4 +1,15 @@
-module Ghf.Core where
+module Ghf.Core (
+    Ghf(..)
+,   GhfBuffer(..)
+,   GhfRef
+,   GhfM
+,   GhfAction
+,   FileName
+,   readGhf
+,   modifyGhf
+,   modifyGhf_
+,   withGhf
+) where
 
 import Graphics.UI.Gtk
 import Graphics.UI.Gtk.SourceView
@@ -14,12 +25,8 @@ type FileName   =   String
 
 data Ghf        =   Ghf {
     window      ::  Window
-,   notebook1   ::  Notebook
+,   uiManager   ::  UIManager
 ,   buffers     ::  [GhfBuffer]
-,   statusbars  ::  [Statusbar]
-,   find        ::  Entry
-,   findVisible ::  Bool
-,   findIns     ::  Bool
 } 
 
 data GhfBuffer  =   GhfBuffer {
@@ -36,19 +43,6 @@ instance Eq GhfBuffer
 type GhfRef = IORef Ghf
 type GhfM = ReaderT (GhfRef) IO
 type GhfAction = GhfM ()
-
-figureOutBufferName :: [GhfBuffer] -> String -> Int -> (Int,String)
-figureOutBufferName bufs bn ind =
-    let ind = foldr (\buf ind -> if bufferName buf == bn
-                    then max ind (addedIndex buf + 1)
-                    else ind) 0 bufs in
-    if ind == 0 then (0,bn) else (ind,bn ++ "(" ++ show ind ++ ")")
-
-realBufferName :: GhfBuffer -> String
-realBufferName buf =
-    if addedIndex buf == 0
-        then bufferName buf
-        else bufferName buf ++ "(" ++ show (addedIndex buf) ++ ")"
 
 readGhf :: (Ghf -> b) -> GhfM b
 readGhf f = do
@@ -74,3 +68,5 @@ withGhf :: (Ghf -> IO a) -> GhfM a
 withGhf f = do
     e <- ask
     lift $ f =<< readIORef e  
+
+

@@ -39,30 +39,46 @@ main = do
     --mapM_ putStrLn st
     win <- windowNew
     windowSetIconFromFile win "ghf.gif"
+    uiManager <- uiManagerNew
+    let ghf = Ghf win uiManager [] 
+    ghfR <- newIORef ghf
+    (acc,menus) <- runReaderT (makeMenu uiManager actions menuDescription) ghfR
+    let mb = fromJust $menus !! 0
+    let tb = fromJust $menus !! 1
+    windowAddAccelGroup win acc
+
     nb <- notebookNew
+    widgetSetName nb "mainBuffers"
     sb <- statusbarNew
     statusbarSetHasResizeGrip sb False
     sblc <- statusbarNew
+    widgetSetName sblc "statusBarLineColumn"
     statusbarSetHasResizeGrip sblc False
     widgetSetSizeRequest sblc 140 (-1)
     sbio <- statusbarNew
+    widgetSetName sbio "statusBarInsertOverwrite"
     statusbarSetHasResizeGrip sbio False
     widgetSetSizeRequest sbio 40 (-1)
     --searching
     entry <- entryNew
+    widgetSetName entry "searchEntry"    
+    caseSensitiveButton <- checkButtonNewWithLabel "Case sensitive"
+    widgetSetName caseSensitiveButton "caseSensitiveButton"
     hbf <- hBoxNew False 1
-    
-    let ghf = Ghf win nb [] [sblc,sbio,sb] entry False True
-    ghfR <- newIORef ghf
-    (acc,menus) <- runReaderT (makeMenu actions menuDescription) ghfR
-    let mb = fromJust $menus !! 0
-    let tb = fromJust $menus !! 1
-    windowAddAccelGroup win acc
+    widgetSetName hbf "searchBox"    
+    dummy <- hBoxNew False 1
+    widgetSetName dummy "dummyBox"    
+
     vb <- vBoxNew False 1  -- Top-level vbox
+    widgetSetName vb "topBox"    
     hb <- hBoxNew False 1
+    widgetSetName hb "statusBox"    
+
 
     boxPackStart hbf entry PackGrow 0
+    boxPackStart hbf caseSensitiveButton PackNatural 0    
     
+    boxPackStart hb dummy PackGrow 0
     boxPackStart hb hbf PackGrow 0
     boxPackStart hb sblc PackNatural 0
     boxPackStart hb sbio PackNatural 0
@@ -72,9 +88,9 @@ main = do
     boxPackStart vb nb PackGrow 0
     boxPackStart vb hb PackNatural 0
 
-
     win `onDelete` (\_ -> do runReaderT quit ghfR; return True)
     win `containerAdd` vb
+
     entry `afterInsertText` (\_ _ -> do runReaderT (editFindInc Insert) ghfR; 
                                         t <- entryGetText entry
                                         return (length t))
@@ -88,9 +104,10 @@ main = do
         [] -> newTextBuffer "Unnamed" Nothing
         otherwise  -> mapM_ (\fn -> (newTextBuffer (takeFileName fn) (Just fn))) fl 
     widgetShowAll win
-    widgetHide entry
+    widgetHide hbf
     mainGUI
 
+     
 quit :: GhfAction
 quit = do
     bufs    <- readGhf buffers
@@ -99,34 +116,58 @@ quit = do
         otherwise   ->  do  r <- fileClose
                             if r then quit else return ()
 
-type ActionDescr = (String, String, Maybe String, Maybe String, GhfAction,Maybe String)
+data ActionDescr = AD {
+                name :: String
+            ,   label :: String
+            ,   tooltip ::Maybe String
+            ,   stockID :: Maybe String
+            ,   action :: GhfAction
+            ,   accelerator :: Maybe String
+            ,   isToggle :: Bool}
 
 actions :: [ActionDescr]
-actions =  [("File", "_File", Nothing, Nothing,return (),Nothing)
-           ,("FileNew", "_New", Nothing, Just "gtk-new",fileNew,Just "<control>N")
-           ,("FileOpen","_Open",Nothing, Just "gtk-open",fileOpen,Just "<control>O")    
-           ,("FileSave","_Save",Nothing, Just "gtk-save",fileSave False,Just "<control>S")
-           ,("FileSaveAs","Save_As",Nothing, Just "gtk-save_as",fileSave True,Just "") 
-           ,("FileClose","_Close",Nothing, Just "gtk-close",do fileClose; return (),Just "<control>W")
-           ,("Quit","_Quit",Nothing,Just "gtk-quit",quit,Just "<control>Q")
+actions =   
+    [(AD "File" "_File" Nothing Nothing (return ()) Nothing False)
+    ,(AD "FileNew" "_New" (Just "Opens a new empty buffer") (Just "gtk-new") 
+        fileNew (Just "<control>N") False)
+    ,AD "FileOpen" "_Open" (Just "Opens an existing file") (Just "gtk-open") 
+        fileOpen (Just "<control>O") False    
+    ,AD "FileSave" "_Save" (Just "Saves the current buffer") (Just "gtk-save") 
+        (fileSave False) (Just "<control>S") False
+    ,AD "FileSaveAs" "Save_As" (Just "Saves the current buffer as a new file") (Just "gtk-save_as") 
+        (fileSave True) (Just "") False 
+    ,AD "FileClose" "_Close" (Just "Closes the current buffer") (Just "gtk-close") 
+        (do fileClose; return ()) (Just "<control>W") False
+    ,AD "Quit" "_Quit" (Just "Quits this program") (Just "gtk-quit") 
+        quit (Just "<control>Q") False
 
-           ,("Edit", "_Edit", Nothing, Nothing,return (),Nothing)
-           ,("EditUndo","_Undo", Nothing, Just "gtk-undo",editUndo,Just "<control>Z") 
-           ,("EditRedo","_Redo", Nothing, Just "gtk-redo",editRedo,Just "<shift><control>Z")
-           ,("EditCut","Cu_t", Nothing, Nothing{--Just "gtk-cut"--},editCut,Nothing {--Just "<control>X"--})
-           ,("EditCopy","_Copy", Nothing, Nothing{--Just "gtk-copy"--},editCopy,Nothing {--Just "<control>C"--})
-           ,("EditPaste","_Paste", Nothing, Nothing{--Just "gtk-paste"--},editPaste,Nothing {--Just "<control>V"--})
-           ,("EditDelete","_Delete", Nothing, Just "gtk-delete",editDelete,Nothing)
-           ,("EditSelectAll","Select_All", Nothing, Just "gtk-select-all",editSelectAll,Just "<control>A")
-           ,("EditFind","_Find", Nothing, Just "gtk-find",editFind,Just "<control>F")
-           ,("EditFindNext","Find _Next", Nothing, Just "gtk-find-next",editFindInc Forward,Just "<control>G")
-           ,("EditFindPrevious","Find _Previous", Nothing, Just "gtk-find-previous",editFindInc Backward,Just "<shift><control>G")
-           ,("EditReplace","_Replace", Nothing, Just "gtk-replace",editReplace,Just "<control>R")
+    ,AD "Edit" "_Edit" Nothing Nothing (return ()) Nothing False
+    ,AD "EditUndo" "_Undo" (Just "Undos the last user action") (Just "gtk-undo")
+        editUndo (Just "<control>Z") False 
+    ,AD "EditRedo" "_Redo" (Just "Undos the last user action") (Just "gtk-redo")
+        editRedo (Just "<shift><control>Z") False
+    ,AD "EditCut" "Cu_t" Nothing Nothing{--Just "gtk-cut"--}
+        editCut Nothing {--Just "<control>X"--} False
+    ,AD "EditCopy" "_Copy"  Nothing  Nothing{--Just "gtk-copy"--}
+        editCopy Nothing {--Just "<control>C"--} False
+    ,AD "EditPaste" "_Paste" Nothing Nothing{--Just "gtk-paste"--}
+        editPaste Nothing {--Just "<control>V"--} False
+    ,AD "EditDelete" "_Delete" Nothing (Just "gtk-delete")
+        editDelete Nothing False
+    ,AD "EditSelectAll" "Select_All" (Just "Select the whole text in the current buffer") (Just "gtk-select-all")
+        editSelectAll (Just "<control>A") False
+    ,AD "EditFind" "_Find" (Just "Search for a text string") (Just "gtk-find") 
+        editFind (Just "<control>F") True
+    ,AD "EditFindNext" "Find _Next" (Just "Find the next occurence of the text string") (Just "gtk-find-next")
+        (editFindInc Forward) (Just "<control>G") False
+    ,AD "EditFindPrevious" "Find _Previous" (Just "Find the previous occurence of the text string") (Just "gtk-find-previous")
+        (editFindInc Backward) (Just "<shift><control>G") False
+    ,AD "EditReplace" "_Replace" Nothing (Just "gtk-replace") 
+        editReplace (Just "<control>R") False
 
-
-           ,("Help", "_Help", Nothing, Nothing,return (),Nothing)
-           ,("HelpAbout","About", Nothing, Just "gtk-about",aboutDialog,Nothing)
-           ]  
+    ,AD "Help" "_Help" Nothing Nothing (return ()) Nothing False
+    ,AD "HelpAbout" "About" Nothing (Just "gtk-about") aboutDialog Nothing False]
+ 
 
 menuDescription :: String
 menuDescription = "\n\
@@ -180,23 +221,28 @@ menuDescription = "\n\
    \</toolbar>\n\
  \</ui>"
 
-makeMenu :: [ActionDescr] -> String -> GhfM (AccelGroup, [Maybe Widget])
-makeMenu actions menuDescription = do
+makeMenu :: UIManager -> [ActionDescr] -> String -> GhfM (AccelGroup, [Maybe Widget])
+makeMenu uiManager actions menuDescription = do
     ghfR <- ask 
     lift $ do
         actionGroupGlobal <- actionGroupNew "global"
         mapM_ (actm ghfR actionGroupGlobal) actions
-        uiManager <- uiManagerNew
         uiManagerInsertActionGroup uiManager actionGroupGlobal 1
         uiManagerAddUiFromString uiManager menuDescription 
         accGroup <- uiManagerGetAccelGroup uiManager
         widgets <- mapM (uiManagerGetWidget uiManager) ["ui/menubar","ui/toolbar"]
         return (accGroup,widgets)
     where
-        actm ghfR ag (name,label,tooltip,stockId,ghfAction,acc) = do
-            act <- actionNew name label tooltip stockId
-            onActionActivate act (runReaderT ghfAction ghfR) 
-            actionGroupAddActionWithAccel ag act acc
+        actm ghfR ag (AD name label tooltip stockId ghfAction acc isToggle) = 
+            if isToggle 
+                then do
+                    act <- toggleActionNew name label tooltip stockId
+                    onToggleActionToggled act (runReaderT ghfAction ghfR) 
+                    actionGroupAddActionWithAccel ag act acc
+                else do
+                    act <- actionNew name label tooltip stockId
+                    onActionActivate act (runReaderT ghfAction ghfR) 
+                    actionGroupAddActionWithAccel ag act acc
                     
 aboutDialog :: GhfAction
 aboutDialog = lift $ do
