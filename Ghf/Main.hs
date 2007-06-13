@@ -16,6 +16,7 @@ import Data.Map(Map)
 
 import Ghf.Core
 import Ghf.Editor
+import Ghf.ReplaceDialog
 
 version = "0.1"
 
@@ -67,7 +68,9 @@ main = do
     hbf <- hBoxNew False 1
     widgetSetName hbf "searchBox"    
     dummy <- hBoxNew False 1
-    widgetSetName dummy "dummyBox"    
+    widgetSetName dummy "dummyBox"  
+    spinL <- spinButtonNewWithRange 1.0 100.0 10.0
+    widgetSetName spinL "gotoLineEntry"    
 
     vb <- vBoxNew False 1  -- Top-level vbox
     widgetSetName vb "topBox"    
@@ -79,6 +82,7 @@ main = do
     boxPackStart hbf caseSensitiveButton PackNatural 0    
     
     boxPackStart hb dummy PackGrow 0
+    boxPackStart hb spinL PackGrow 0
     boxPackStart hb hbf PackGrow 0
     boxPackStart hb sblc PackNatural 0
     boxPackStart hb sbio PackNatural 0
@@ -96,17 +100,21 @@ main = do
                                         return (length t))
     entry `afterDeleteText` (\_ _ -> do runReaderT (editFindInc Delete) ghfR; return ())
     entry `afterKeyPress`  (\e -> do runReaderT (editFindKey e) ghfR; return True)
-    entry `onEntryActivate` runReaderT (editFindInc Forward) ghfR
+    entry `onEntryActivate` runReaderT (editFindEnd) ghfR
+    hbf `onFocusOut` (\_ -> do runReaderT (editFindEnd) ghfR; return False)
 
-      -- show the widget and run the main loop
+    spinL `afterKeyPress`  (\e -> do runReaderT (editGotoLineKey e) ghfR; return True)
+    spinL `afterEntryActivate` runReaderT editGotoLineEnd ghfR
+    spinL `afterFocusOut` (\_ -> do runReaderT editGotoLineEnd ghfR; return False)
+
     windowSetDefaultSize win 700 1000
     flip runReaderT ghfR $ case fl of
         [] -> newTextBuffer "Unnamed" Nothing
         otherwise  -> mapM_ (\fn -> (newTextBuffer (takeFileName fn) (Just fn))) fl 
     widgetShowAll win
     widgetHide hbf
+    widgetHide spinL
     mainGUI
-
      
 quit :: GhfAction
 quit = do
@@ -157,13 +165,24 @@ actions =
     ,AD "EditSelectAll" "Select_All" (Just "Select the whole text in the current buffer") (Just "gtk-select-all")
         editSelectAll (Just "<control>A") False
     ,AD "EditFind" "_Find" (Just "Search for a text string") (Just "gtk-find") 
-        editFind (Just "<control>F") True
+        editFind (Just "<control>F") False
     ,AD "EditFindNext" "Find _Next" (Just "Find the next occurence of the text string") (Just "gtk-find-next")
-        (editFindInc Forward) (Just "<control>G") False
+        (editFindInc Forward) (Just "F3") False
     ,AD "EditFindPrevious" "Find _Previous" (Just "Find the previous occurence of the text string") (Just "gtk-find-previous")
-        (editFindInc Backward) (Just "<shift><control>G") False
+        (editFindInc Backward) (Just "<shift>F3") False
     ,AD "EditReplace" "_Replace" Nothing (Just "gtk-replace") 
         editReplace (Just "<control>R") False
+    ,AD "EditGotoLine" "_Goto Line" (Just "Go to line with a known index") (Just "gtk-jump") 
+        editGotoLine (Just "<control>G") False
+
+    ,AD "EditComment" "_Comment" (Just "Add a line style comment to the selected lies") Nothing 
+        editComment (Just "<alt><shift>Right") False
+    ,AD "EditUncomment" "_Uncomment" (Just "Remove a line style comment") Nothing 
+        editUncomment (Just "<alt><shift>Left") False
+    ,AD "EditShiftRight" "Shift _Right" (Just "Shift right") Nothing 
+        editShiftRight (Just "<alt>Right") False
+    ,AD "EditShiftLeft" "Shift _Left" (Just "Shift Left") Nothing 
+        editShiftLeft (Just "<alt>Left") False
 
     ,AD "Help" "_Help" Nothing Nothing (return ()) Nothing False
     ,AD "HelpAbout" "About" Nothing (Just "gtk-about") aboutDialog Nothing False]
@@ -197,7 +216,14 @@ menuDescription = "\n\
        \<menuitem name=\"_Find\" action=\"EditFind\" />\n\
        \<menuitem name=\"Find_Next\" action=\"EditFindNext\" />\n\
        \<menuitem name=\"Find_Previous\" action=\"EditFindPrevious\" />\n\
+       \<menuitem name=\"_Goto Line\" action=\"EditGotoLine\" />\n\
+       \<separator/>\n\
        \<menuitem name=\"Replace\" action=\"EditReplace\" />\n\
+       \<separator/>\n\
+       \<menuitem name=\"Comment\" action=\"EditComment\" />\n\
+       \<menuitem name=\"Uncomment\" action=\"EditUncomment\" />\n\
+       \<menuitem name=\"Shift Left\" action=\"EditShiftLeft\" />\n\
+       \<menuitem name=\"Shift Right\" action=\"EditShiftRight\" />\n\
      \</menu>\n\
     \<menu name=\"_Help\" action=\"Help\">\n\
        \<menuitem name=\"_About\" action=\"HelpAbout\" />\n\

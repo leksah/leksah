@@ -7,11 +7,14 @@ module Ghf.CoreGui (
 ,   getStatusbarIO
 ,   getStatusbarLC
 ,   getCaseSensitive
+,   getGotoLineSpin
+,   getFindAction
 ) where
 import Graphics.UI.Gtk
 import Control.Monad.Reader
 import Data.List
 import Ghf.Core
+import Data.Maybe
 
 figureOutBufferName :: [GhfBuffer] -> String -> Int -> (Int,String)
 figureOutBufferName bufs bn ind =
@@ -41,13 +44,24 @@ widgetGet strL cf = do
     w <- readGhf window
     r <- lift $widgetFromPath (castToWidget w) strL
     return (cf r)
-    
 
+getUIAction :: String -> (Action -> a) -> GhfM(a)    
+getUIAction str f = do
+    uiManager <- readGhf uiManager
+    lift $ do
+        findAction <- uiManagerGetAction uiManager str
+        return (f (fromJust findAction))
+
+-------------------------
+--convinience methods
+
+--widgets
 getMainBuffersNotebook :: GhfM (Notebook)
 getMainBuffersNotebook = widgetGet ["topBox","mainBuffers"] castToNotebook 
 
 getFindEntry :: GhfM (Entry)
 getFindEntry = widgetGet ["topBox","statusBox","searchBox","searchEntry"] castToEntry
+
 getFindBar :: GhfM (HBox)
 getFindBar = widgetGet ["topBox","statusBox","searchBox"] castToHBox
 
@@ -60,3 +74,10 @@ getStatusbarLC = widgetGet ["topBox","statusBox","statusBarLineColumn"] castToSt
 getCaseSensitive :: GhfM (ToggleButton)
 getCaseSensitive = widgetGet ["topBox","statusBox","searchBox","caseSensitiveButton"] 
                         castToToggleButton
+
+getGotoLineSpin :: GhfM (SpinButton)
+getGotoLineSpin = widgetGet ["topBox","statusBox","gotoLineEntry"] castToSpinButton
+
+-------------------
+--actions
+getFindAction = getUIAction "ui/menubar/_Edit/_Find" castToToggleAction

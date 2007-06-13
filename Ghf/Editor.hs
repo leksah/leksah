@@ -15,9 +15,20 @@ module Ghf.Editor (
 ,   editSelectAll
 
 ,   editFind
+,   editFindEnd
 ,   editFindInc
 ,   editFindKey
-,   editReplace
+--,   editReplace
+
+,   editGotoLine
+,   editGotoLineEnd
+,   editGotoLineKey
+
+,   editComment
+,   editUncomment
+,   editShiftRight
+,   editShiftLeft
+
 
 ,   SearchHint(..)
 
@@ -38,6 +49,7 @@ import Text.Printf
 import Ghf.Core
 import Ghf.CoreGui
 
+tabWidth = 4
 
 newTextBuffer :: String -> Maybe FileName -> GhfAction
 newTextBuffer bn mbfn = do
@@ -86,7 +98,7 @@ newTextBuffer bn mbfn = do
         sourceViewSetMargin sv 90
         sourceViewSetShowMargin sv True
         sourceViewSetInsertSpacesInsteadOfTabs sv True
-        sourceViewSetTabsWidth sv 4
+        sourceViewSetTabsWidth sv tabWidth
         sourceViewSetSmartHomeEnd sv True
 
         -- put it in a scrolled window
@@ -155,27 +167,29 @@ markLabelAsChanged buf nb sw = do
             else text) 
     notebookSetTabLabel nb sw label  
 
-inBufContext' :: (TextBuffer -> GhfBuffer -> Int -> GhfM a) -> GhfM a
-inBufContext' f = do
-    ghfRef  <- ask
+inBufContext' :: a -> (TextBuffer -> GhfBuffer -> Int -> GhfM a) -> GhfM a
+inBufContext' def f = do
     nb      <- getMainBuffersNotebook
     bufs    <- readGhf buffers 
-    (gtkbuf, currentBuffer, i) <- lift $ do
+    mbr <- lift $ do
         i   <- notebookGetCurrentPage nb
         case i of
-                -1 -> error "no page"
+                -1 -> return Nothing
                 n  -> let currentBuffer = bufs !! i in do
                         gtkbuf <-  textViewGetBuffer $ sourceView currentBuffer
-                        widgetGrabFocus $ sourceView currentBuffer
-                        return (gtkbuf, currentBuffer, i)
-    f gtkbuf currentBuffer i
+                        return (Just (gtkbuf, currentBuffer, i))
+    case mbr of
+        Just (gtkbuf, currentBuffer, i) -> do
+            r <- f gtkbuf currentBuffer i
+            return r
+        Nothing -> return def
 
-inBufContext :: (TextBuffer -> GhfBuffer -> Int -> IO a) -> GhfM a
-inBufContext f = inBufContext' (\a b c -> lift $ f a b c)
+inBufContext :: a -> (TextBuffer -> GhfBuffer -> Int -> IO a) -> GhfM a
+inBufContext def f = inBufContext' def (\a b c -> lift $ f a b c)
 
 
 fileSave :: Bool -> GhfAction
-fileSave query = inBufContext' $ \_ currentBuffer i -> do
+fileSave query = inBufContext' () $ \_ currentBuffer i -> do
     window  <- readGhf window
     nb      <- getMainBuffersNotebook
     bufs    <- readGhf buffers 
@@ -243,7 +257,7 @@ fileNew :: GhfAction
 fileNew = newTextBuffer "Unnamed" Nothing
 
 fileClose :: GhfM Bool
-fileClose = inBufContext' $ \gtkbuf currentBuffer i -> do
+fileClose = inBufContext' False $ \gtkbuf currentBuffer i -> do
     ghfRef  <- ask
     window  <- readGhf window
     nb      <- getMainBuffersNotebook
@@ -303,7 +317,7 @@ fileOpen = do
         Just fn -> newTextBuffer (takeFileName fn) (Just fn) 
 
 editUndo :: GhfAction
-editUndo = inBufContext $ \ gtkbuf _ _ -> 
+editUndo = inBufContext () $ \ gtkbuf _ _ -> 
     let sb = castToSourceBuffer gtkbuf in
     do  canUndo <- sourceBufferCanUndo sb
         if canUndo
@@ -311,7 +325,7 @@ editUndo = inBufContext $ \ gtkbuf _ _ ->
             else return ()
     
 editRedo :: GhfAction
-editRedo = inBufContext $ \ gtkbuf _ _ -> 
+editRedo = inBufContext () $ \ gtkbuf _ _ -> 
     let sb = castToSourceBuffer gtkbuf in
     do  canRedo <- sourceBufferCanUndo sb
         if canRedo
@@ -319,12 +333,12 @@ editRedo = inBufContext $ \ gtkbuf _ _ ->
             else return ()
 
 editDelete :: GhfAction
-editDelete = inBufContext $ \gtkbuf _ _ ->  do  
+editDelete = inBufContext ()  $ \gtkbuf _ _ ->  do  
     textBufferDeleteSelection gtkbuf True True
     return ()    
 
 editSelectAll :: GhfAction
-editSelectAll = inBufContext $ \gtkbuf _ _ -> do 
+editSelectAll = inBufContext () $ \gtkbuf _ _ -> do 
     start <- textBufferGetStartIter gtkbuf
     end   <- textBufferGetEndIter gtkbuf                       
     textBufferSelectRange gtkbuf start end
@@ -337,43 +351,41 @@ editCopy = return ()
 editPaste :: GhfAction
 editPaste = return ()
 
---Searching
-editFind :: GhfAction
-editFind = inBufContext' $ \gtkbuf currentBuffer _ -> do
-    entry   <-  getFindEntry
-    findBar <-  getFindBar
-    uiManager <- readGhf uiManager
-    isV <- lift $ do
-        findAction <- uiManagerGetAction uiManager "ui/menubar/_Edit/_Find"
-        toggleActionGetActive (castToToggleAction (fromJust findAction))
-    if isV  
-        then lift $do 
-            widgetShow findBar
-            widgetGrabFocus entry 
-        else lift $do 
-            widgetHide findBar
-            --remove old selection
-            i1 <- textBufferGetStartIter gtkbuf
-            i2 <- textBufferGetEndIter gtkbuf       
-            textBufferRemoveTagByName gtkbuf "found" i1 i2  
-            widgetGrabFocus $ sourceView currentBuffer 
             
 red = Color 640000 10000 10000
 white = Color 64000 64000 64000
 black = Color 0 0 0
 
+-- | Begin a search
+editFind :: GhfAction
+editFind = inBufContext' () $ \gtkbuf currentBuffer _ -> do
+    entry   <-  getFindEntry
+    findBar <-  getFindBar
+    lift $do
+        widgetShow findBar
+        widgetGrabFocus entry 
+
+-- | Ends a search
+editFindEnd :: GhfAction
+editFindEnd = inBufContext' () $ \gtkbuf currentBuffer _ -> do
+    findBar <-  getFindBar
+    lift $do
+        widgetHide findBar
+        i1 <- textBufferGetStartIter gtkbuf
+        i2 <- textBufferGetEndIter gtkbuf       
+        textBufferRemoveTagByName gtkbuf "found" i1 i2  
+        widgetGrabFocus $ sourceView currentBuffer 
+
+-- | Special keys for searching
 editFindKey :: Event -> GhfAction
 editFindKey k@(Key _ _ _ _ _ _ _ _ _ _) 
-    | eventKeyName k == "Return" && eventModifier k == [Shift] =
+    | eventKeyName k == "Down" =
+        editFindInc Forward        
+    | eventKeyName k == "Up" =
         editFindInc Backward        
     | eventKeyName k == "Escape" = do
-        uiManager <- readGhf uiManager
-        lift $ do
-            findAction <- uiManagerGetAction uiManager "ui/menubar/_Edit/_Find"
-            toggleActionSetActive (castToToggleAction (fromJust findAction)) False
-        editFind    
+        editFindEnd    
     | otherwise = return ()
-
 
 data SearchHint = Forward | Backward | Insert | Delete
     deriving (Eq)
@@ -385,7 +397,7 @@ data SearchHint = Forward | Backward | Insert | Delete
 --}
 
 editFindInc :: SearchHint -> GhfAction
-editFindInc comm = inBufContext' $ \gtkbuf currentBuffer _ -> do 
+editFindInc comm = inBufContext' () $ \gtkbuf currentBuffer _ -> do 
     entry   <- getFindEntry
     caseSensitiveW <- getCaseSensitive
     isCaseSensitive <- lift $toggleButtonGetActive caseSensitiveW
@@ -437,5 +449,113 @@ editFindInc comm = inBufContext' $ \gtkbuf currentBuffer _ -> do
             widgetGrabFocus entry
             editableSelectRegion entry (length text) (length text)        
  
-editReplace :: GhfAction
-editReplace = return ()
+editGotoLine :: GhfAction
+editGotoLine = inBufContext' () $ \gtkbuf currentBuffer _ -> do
+    spin <- getGotoLineSpin
+    lift $do
+        max <- textBufferGetLineCount gtkbuf
+        spinButtonSetRange spin 1.0 (fromIntegral max) 
+        widgetShow spin
+        widgetGrabFocus spin
+
+editGotoLineKey :: Event -> GhfAction
+editGotoLineKey k@(Key _ _ _ _ _ _ _ _ _ _) 
+    | eventKeyName k == "Escape"  =
+        inBufContext' () $ \gtkbuf currentBuffer _ -> do
+            spin <- getGotoLineSpin
+            lift $ do 
+                widgetHide spin
+                widgetGrabFocus $ sourceView currentBuffer 
+    | otherwise = return ()
+{--editGotoLineKey k@(Focus _ _ ) 
+    | eventInFocus k == False =
+        inBufContext' () $ \gtkbuf currentBuffer _ -> do
+        spin <- getGotoLineSpin
+        lift $ do
+            widgetHide spin
+    | otherwise = return ()--}
+
+editGotoLineEnd :: GhfAction
+editGotoLineEnd = inBufContext' () $ \gtkbuf currentBuffer _ -> do
+    spin <- getGotoLineSpin
+    lift $ do 
+        line <- spinButtonGetValueAsInt spin
+        iter <- textBufferGetStartIter gtkbuf
+        textIterSetLine iter (line - 1) 
+        textBufferPlaceCursor gtkbuf iter
+        textViewScrollToIter (sourceView currentBuffer) iter 0.2 Nothing
+        widgetHide spin
+        widgetGrabFocus $ sourceView currentBuffer 
+
+
+getStartAndEndLineOfSelection :: TextBuffer -> IO (Int,Int)
+getStartAndEndLineOfSelection gtkbuf = do    
+    startMark   <- textBufferGetInsert gtkbuf 
+    endMark     <- textBufferGetSelectionBound gtkbuf
+    startIter   <- textBufferGetIterAtMark gtkbuf startMark
+    endIter     <- textBufferGetIterAtMark gtkbuf endMark     
+    startLine   <- textIterGetLine startIter
+    endLine     <- textIterGetLine endIter
+    let (startLine',endLine',endIter') = if endLine >=  startLine
+            then (startLine,endLine,endIter)
+            else (endLine,startLine,startIter) 
+    b <- textIterStartsLine endIter'
+    let endLineReal = if b then endLine' - 1 else endLine'
+    return (startLine',endLineReal)
+
+doForSelectedLines :: [a] -> (TextBuffer -> TextIter -> Int -> IO a) -> GhfM [a]
+doForSelectedLines d f = inBufContext' d $ \gtkbuf currentBuffer _ -> lift $do
+    (start,end) <- getStartAndEndLineOfSelection gtkbuf
+    iter <- textBufferGetStartIter gtkbuf
+    mapM (f gtkbuf iter) [start .. end]
+
+editComment :: GhfAction
+editComment = do
+    doForSelectedLines [] $ \gtkbuf iter lineNr -> do
+        textIterSetLine iter lineNr
+        textBufferInsert gtkbuf iter "--"    
+    return ()                 
+
+editUncomment :: GhfAction
+editUncomment = do
+    doForSelectedLines [] $ \gtkbuf iter lineNr -> do
+        textIterSetLine iter lineNr
+        iter2 <- textIterCopy iter
+        textIterForwardChars iter 2         
+        str <- textIterGetText iter iter2
+        if str == "--" 
+            then do textBufferDelete gtkbuf iter iter2
+            else return ()  
+    return ()
+
+editShiftLeft :: GhfAction
+editShiftLeft = 
+    let str = map (\_->' ') [1 ..tabWidth] in
+    do  b <- canShiftLeft str 
+        if b
+            then do
+                doForSelectedLines [] $ \gtkbuf iter lineNr -> do
+                    textIterSetLine iter lineNr
+                    iter2 <- textIterCopy iter
+                    textIterForwardChars iter tabWidth         
+                    textBufferDelete gtkbuf iter iter2
+                return ()                
+            else return ()
+        where
+        canShiftLeft str = do 
+            boolList <- doForSelectedLines [] $ \gtkbuf iter lineNr -> do
+                textIterSetLine iter lineNr
+                iter2 <- textIterCopy iter
+                textIterForwardChars iter tabWidth         
+                str1 <- textIterGetText iter iter2
+                return (str1 == str)
+            return (foldl (&&) True boolList)
+            
+            
+editShiftRight :: GhfAction
+editShiftRight = 
+    let str = map (\_->' ') [1 ..tabWidth] in do
+        doForSelectedLines [] $ \gtkbuf iter lineNr -> do
+            textIterSetLine iter lineNr
+            textBufferInsert gtkbuf iter str
+        return ()
