@@ -9,6 +9,8 @@ module Ghf.CoreGui (
 ,   getCaseSensitive
 ,   getGotoLineSpin
 ,   getFindAction
+,   getWrapAround
+,   getEntireWord
 ) where
 import Graphics.UI.Gtk
 import Control.Monad.Reader
@@ -73,6 +75,13 @@ getStatusbarLC = widgetGet ["topBox","statusBox","statusBarLineColumn"] castToSt
 
 getCaseSensitive :: GhfM (ToggleButton)
 getCaseSensitive = widgetGet ["topBox","statusBox","searchBox","caseSensitiveButton"] 
+                        castToToggleButton
+
+getWrapAround :: GhfM (ToggleButton)
+getWrapAround = widgetGet ["topBox","statusBox","searchBox","wrapAroundButton"] 
+                        castToToggleButton
+getEntireWord :: GhfM (ToggleButton)
+getEntireWord = widgetGet ["topBox","statusBox","searchBox","entireWordButton"] 
                         castToToggleButton
 
 getGotoLineSpin :: GhfM (SpinButton)
