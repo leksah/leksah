@@ -54,13 +54,14 @@ import Ghf.CoreGui
 
 tabWidth = 4
 
-newTextBuffer :: String -> Maybe FileName -> GhfAction
-newTextBuffer bn mbfn = do
+newTextBuffer :: Maybe PaneNum -> String -> Maybe FileName -> GhfAction
+newTextBuffer ind bn mbfn = do
     -- create the appropriate language
-    nb <- getMainBuffersNotebook
+    pane <- getActivePane
+    nb <- lift $getNotebook pane
     bufs <- readGhf buffers
-    statLC <- getStatusbarLC
-    statIO <- getStatusbarIO
+    statLC <- lift $getStatusbarLC pane
+    statIO <- lift $getStatusbarIO pane
     let (ind,rbn) = figureOutBufferName bufs bn 0
     buf <- lift $ do
         lm      <-  sourceLanguagesManagerNew
@@ -172,7 +173,8 @@ markLabelAsChanged buf nb sw = do
 
 inBufContext' :: a -> (TextBuffer -> GhfBuffer -> Int -> GhfM a) -> GhfM a
 inBufContext' def f = do
-    nb      <- getMainBuffersNotebook
+    pane    <- getActivePane
+    nb      <- lift $getNotebook pane
     bufs    <- readGhf buffers 
     mbr <- lift $ do
         i   <- notebookGetCurrentPage nb
@@ -194,7 +196,8 @@ inBufContext def f = inBufContext' def (\a b c -> lift $ f a b c)
 fileSave :: Bool -> GhfAction
 fileSave query = inBufContext' () $ \_ currentBuffer i -> do
     window  <- readGhf window
-    nb      <- getMainBuffersNotebook
+    pane    <- getActivePane
+    nb      <- lift $getNotebook pane
     bufs    <- readGhf buffers 
     mbnbufs <- lift $ do
         let mbfn = fileName currentBuffer
@@ -257,13 +260,14 @@ fileSave query = inBufContext' () $ \_ currentBuffer i -> do
             textBufferSetModified buf False
 
 fileNew :: GhfAction
-fileNew = newTextBuffer "Unnamed" Nothing
+fileNew = newTextBuffer Nothing "Unnamed" Nothing
 
 fileClose :: GhfM Bool
 fileClose = inBufContext' False $ \gtkbuf currentBuffer i -> do
     ghfRef  <- ask
     window  <- readGhf window
-    nb      <- getMainBuffersNotebook
+    pane    <- getActivePane
+    nb      <- lift $getNotebook pane  
     bufs    <- readGhf buffers 
     mbbuf <- lift $ do
         modified <- textBufferGetModified gtkbuf
@@ -317,7 +321,7 @@ fileOpen = do
             ResponseDeleteEvent->   return Nothing
     case mbFileName of
         Nothing -> return ()
-        Just fn -> newTextBuffer (takeFileName fn) (Just fn) 
+        Just fn -> newTextBuffer Nothing (takeFileName fn) (Just fn) 
 
 editUndo :: GhfAction
 editUndo = inBufContext () $ \ gtkbuf _ _ -> 
@@ -362,8 +366,9 @@ black = Color 0 0 0
 -- | Show the find bar
 editFindShow :: GhfAction
 editFindShow = inBufContext' () $ \gtkbuf currentBuffer _ -> do
-    entry   <-  getFindEntry
-    findBar <-  getFindBar
+    pane    <-  getActivePane
+    entry   <-  lift $getFindEntry pane
+    findBar <-  lift $getFindBar pane
     lift $do
         widgetShow findBar
         widgetGrabFocus entry 
@@ -371,7 +376,8 @@ editFindShow = inBufContext' () $ \gtkbuf currentBuffer _ -> do
 -- | Hides the find bar
 editFindHide :: GhfAction
 editFindHide = inBufContext' () $ \gtkbuf currentBuffer _ -> do
-    findBar <-  getFindBar
+    pane    <-  getActivePane
+    findBar <-  lift $getFindBar pane
     lift $do
         widgetHide findBar
         i1 <- textBufferGetStartIter gtkbuf
@@ -401,13 +407,14 @@ data SearchHint = Forward | Backward | Insert | Delete
 
 editFindInc :: SearchHint -> GhfAction 
 editFindInc hint = do
-    entry   <- getFindEntry
+    pane <- getActivePane
+    entry   <- lift $getFindEntry pane
     search <- lift $entryGetText entry
-    caseSensitiveW <- getCaseSensitive
+    caseSensitiveW <- lift $getCaseSensitive pane
     caseSensitive <- lift $toggleButtonGetActive caseSensitiveW
-    entireWButton <- getEntireWord
+    entireWButton <- lift $getEntireWord pane
     entireW <- lift $toggleButtonGetActive entireWButton
-    wrapAroundButton <- getWrapAround
+    wrapAroundButton <- lift $getWrapAround pane
     wrapAround <- lift $toggleButtonGetActive wrapAroundButton
     res <- editFind entireW caseSensitive wrapAround search "" hint 
     if res || null search
@@ -525,7 +532,8 @@ editReplaceAll entireWord caseSensitive wrapAround search replace hint = do
 
 editGotoLine :: GhfAction
 editGotoLine = inBufContext' () $ \gtkbuf currentBuffer _ -> do
-    spin <- getGotoLineSpin
+    pane <- getActivePane
+    spin <- lift $getGotoLineSpin pane
     lift $do
         max <- textBufferGetLineCount gtkbuf
         spinButtonSetRange spin 1.0 (fromIntegral max) 
@@ -536,7 +544,8 @@ editGotoLineKey :: Event -> GhfAction
 editGotoLineKey k@(Key _ _ _ _ _ _ _ _ _ _) 
     | eventKeyName k == "Escape"  =
         inBufContext' () $ \gtkbuf currentBuffer _ -> do
-            spin <- getGotoLineSpin
+            pane <- getActivePane
+            spin <- lift $getGotoLineSpin pane
             lift $ do 
                 widgetHide spin
                 widgetGrabFocus $ sourceView currentBuffer 
@@ -551,7 +560,8 @@ editGotoLineKey k@(Key _ _ _ _ _ _ _ _ _ _)
 
 editGotoLineEnd :: GhfAction
 editGotoLineEnd = inBufContext' () $ \gtkbuf currentBuffer _ -> do
-    spin <- getGotoLineSpin
+    pane <- getActivePane
+    spin <- lift $getGotoLineSpin pane
     lift $ do 
         line <- spinButtonGetValueAsInt spin
         iter <- textBufferGetStartIter gtkbuf

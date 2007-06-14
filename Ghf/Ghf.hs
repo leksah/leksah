@@ -33,6 +33,8 @@ ghfOpts argv =
           (_,_,errs) -> ioError (userError (concat errs ++ usageInfo header options))
     where header = "Usage: ghf [OPTION...] files..."
 
+
+-- |Build the main window
 main = do
     args <- getArgs
     (o,fl) <- ghfOpts args
@@ -41,58 +43,93 @@ main = do
     win <- windowNew
     windowSetIconFromFile win "ghf.gif"
     uiManager <- uiManagerNew
-    let ghf = Ghf win uiManager [] 
+    let ghf = Ghf win uiManager Nothing [] 
     ghfR <- newIORef ghf
     (acc,menus) <- runReaderT (makeMenu uiManager actions menuDescription) ghfR
     let mb = fromJust $menus !! 0
     let tb = fromJust $menus !! 1
     windowAddAccelGroup win acc
 
+    panes <- mapM (buildPane ghfR) [1..4]
 
+    vpane1 <- vPanedNew
+    widgetSetName vpane1 "paneLeft"
+    panedAdd1 vpane1 (panes !! 2)
+    panedAdd2 vpane1 (panes !! 3)
+   
+    vpane2 <- vPanedNew    
+    widgetSetName vpane2 "paneRight"
+    panedAdd1 vpane2 (panes !! 0)
+    panedAdd2 vpane2 (panes !! 1)
+
+    hpane <- hPanedNew
+    widgetSetName hpane "paneLeftRight"
+    panedAdd1 hpane vpane1
+    panedAdd2 hpane vpane2
+    
+    vb <- vBoxNew False 1  -- Top-level vbox
+    widgetSetName vb "topBox"
+    boxPackStart vb mb PackNatural 0
+    boxPackStart vb tb PackNatural 0
+    boxPackStart vb hpane PackGrow 0
+
+    win `onDelete` (\_ -> do runReaderT quit ghfR; return True)
+    win `containerAdd` vb
+
+    windowSetDefaultSize win 700 1000
+    flip runReaderT ghfR $ case fl of
+        [] -> newTextBuffer Nothing "Unnamed" Nothing
+        otherwise  -> mapM_ (\fn -> (newTextBuffer Nothing (takeFileName fn) (Just fn))) fl 
+    widgetShowAll win
+    mainGUI
+
+-- |Build a pane with a notebook and a status bar
+buildPane :: GhfRef -> Int -> IO (VBox)
+buildPane ghfR ind = do
     --upper notebook with status bar
     nb <- notebookNew
-    widgetSetName nb "mainBuffers"
+    widgetSetName nb $"notebook" 
 
     sb <- statusbarNew
     statusbarSetHasResizeGrip sb False
 
     sblc <- statusbarNew
-    widgetSetName sblc "statusBarLineColumn"
+    widgetSetName sblc $"statusBarLineColumn" 
     statusbarSetHasResizeGrip sblc False
     widgetSetSizeRequest sblc 140 (-1)
 
     sbio <- statusbarNew
-    widgetSetName sbio "statusBarInsertOverwrite"
+    widgetSetName sbio $"statusBarInsertOverwrite" 
     statusbarSetHasResizeGrip sbio False
     widgetSetSizeRequest sbio 40 (-1)
 
     entry <- entryNew
-    widgetSetName entry "searchEntry"    
+    widgetSetName entry $"searchEntry"
 
     caseSensitiveButton <- checkButtonNewWithLabel "Case sensitive"
-    widgetSetName caseSensitiveButton "caseSensitiveButton"
+    widgetSetName caseSensitiveButton $"caseSensitiveButton" 
 
     entireWordButton <- checkButtonNewWithLabel "Entire word"
-    widgetSetName entireWordButton "entireWordButton"
+    widgetSetName entireWordButton $"entireWordButton" 
 
     wrapAroundButton <- checkButtonNewWithLabel "Warp around"
-    widgetSetName wrapAroundButton "wrapAroundButton"
+    widgetSetName wrapAroundButton $"wrapAroundButton" 
 
     dummy <- hBoxNew False 1
-    widgetSetName dummy "dummyBox"  
+    widgetSetName dummy $"dummyBox" 
 
     spinL <- spinButtonNewWithRange 1.0 100.0 10.0
-    widgetSetName spinL "gotoLineEntry"    
+    widgetSetName spinL $"gotoLineEntry"
 
     hbf <- hBoxNew False 1
-    widgetSetName hbf "searchBox"    
+    widgetSetName hbf $"searchBox" 
     boxPackStart hbf entry PackGrow 0
     boxPackStart hbf caseSensitiveButton PackNatural 0
     boxPackStart hbf entireWordButton PackNatural 0
     boxPackStart hbf wrapAroundButton PackNatural 0
 
     hb <- hBoxNew False 1
-    widgetSetName hb "statusBox"
+    widgetSetName hb $ "statusBox"
     boxPackStart hb dummy PackGrow 0
     boxPackStart hb spinL PackGrow 0
     boxPackStart hb hbf PackGrow 0
@@ -100,75 +137,9 @@ main = do
     boxPackStart hb sbio PackNatural 0
 
     eb <- vBoxNew False 1  
-    widgetSetName eb "upperBox"
+    widgetSetName eb $"notebookBox" ++ show ind
     boxPackStart eb nb PackGrow 0
     boxPackStart eb hb PackNatural 0
-
-{--
-    --lower notebook with status bar
-    nb2 <- notebookNew
-    widgetSetName nb2 "mainBuffers2"
-
-    sb2 <- statusbarNew
-    statusbarSetHasResizeGrip sb2 False
-
-    sblc2 <- statusbarNew
-    widgetSetName sblc2 "statusBarLineColumn2"
-    statusbarSetHasResizeGrip sblc2 False
-    widgetSetSizeRequest sblc2 140 (-1)
-
-    sbio2 <- statusbarNew
-    widgetSetName sbio2 "statusBarInsertOverwrite"
-    statusbarSetHasResizeGrip sbio2 False
-    widgetSetSizeRequest sbio2 40 (-1)
-
-    entry2 <- entryNew
-    widgetSetName entry2 "searchEntry2"    
-
-    caseSensitiveButton2 <- checkButtonNewWithLabel "Case sensitive"
-    widgetSetName caseSensitiveButton2 "caseSensitiveButton2"
-
-    entireWordButton2 <- checkButtonNewWithLabel "Entire word2"
-    widgetSetName entireWordButton2 "entireWordButton"
-
-    wrapAroundButton2 <- checkButtonNewWithLabel "Wrap around"
-    widgetSetName wrapAroundButton2 "wrapAroundButton2"
-
-    dummy2 <- hBoxNew False 1
-    widgetSetName dummy2 "dummyBox2"  
-
-    spinL2 <- spinButtonNewWithRange 1.0 100.0 10.0
-    widgetSetName spinL2 "gotoLineEntry2"    
-
-    hbf2 <- hBoxNew False 1
-    widgetSetName hbf2 "searchBox2"    
-    boxPackStart hbf2 entry PackGrow 0
-    boxPackStart hbf2 caseSensitiveButton PackNatural 0
-    boxPackStart hbf2 entireWordButton PackNatural 0
-    boxPackStart hbf2 wrapAroundButton PackNatural 0
-
-    hb2 <- hBoxNew False 1
-    widgetSetName hb2 "statusBox2"
-    boxPackStart hb2 dummy PackGrow 0
-    boxPackStart hb2 spinL PackGrow 0
-    boxPackStart hb2 hbf PackGrow 0
-    boxPackStart hb2 sblc PackNatural 0
-    boxPackStart hb2 sbio PackNatural 0
-
-    eb2 <- vBoxNew False 1  
-    widgetSetName eb2 "lowerBox"
-    boxPackStart eb2 nb2 PackGrow 0
-    boxPackStart eb2 hb2 PackNatural 0
---}
-    vb <- vBoxNew False 1  -- Top-level vbox
-    widgetSetName vb "topBox"
-    boxPackStart vb mb PackNatural 0
-    boxPackStart vb tb PackNatural 0
-    boxPackStart vb eb PackGrow 0
---    boxPackStart vb eb2 PackGrow 0
-
-    win `onDelete` (\_ -> do runReaderT quit ghfR; return True)
-    win `containerAdd` vb
 
     entry `afterInsertText` (\_ _ -> do runReaderT (editFindInc Insert) ghfR; 
                                         t <- entryGetText entry
@@ -181,14 +152,10 @@ main = do
     spinL `afterEntryActivate` runReaderT editGotoLineEnd ghfR
     spinL `afterFocusOut` (\_ -> do runReaderT editGotoLineEnd ghfR; return False)
 
-    windowSetDefaultSize win 700 1000
-    flip runReaderT ghfR $ case fl of
-        [] -> newTextBuffer "Unnamed" Nothing
-        otherwise  -> mapM_ (\fn -> (newTextBuffer (takeFileName fn) (Just fn))) fl 
-    widgetShowAll win
-    widgetHide hbf
-    widgetHide spinL
-    mainGUI
+--    widgetHide hbf
+--    widgetHide spinL
+
+    return eb
      
 quit :: GhfAction
 quit = do

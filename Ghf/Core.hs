@@ -26,6 +26,7 @@ type FileName   =   String
 data Ghf        =   Ghf {
     window      ::  Window
 ,   uiManager   ::  UIManager
+,   focusedPane ::  Maybe Notebook
 ,   buffers     ::  [GhfBuffer]
 } 
 
