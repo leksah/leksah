@@ -5,6 +5,7 @@ module Ghf.Core (
 ,   GhfM
 ,   GhfAction
 ,   FileName
+,   Pane(..)
 ,   readGhf
 ,   modifyGhf
 ,   modifyGhf_
@@ -20,14 +21,18 @@ import System.Directory
 import System.Console.GetOpt
 import System.Environment
 import Data.Maybe ( fromMaybe, isJust, fromJust )
+import qualified Data.Map as Map
+import Data.Map (Map)
 
 type FileName   =   String
+data Pane       =   RightTop | RightBottom | LeftBottom | LeftTop 
+    deriving (Enum,Show)
 
 data Ghf        =   Ghf {
     window      ::  Window
 ,   uiManager   ::  UIManager
-,   focusedPane ::  Maybe Notebook
-,   buffers     ::  [GhfBuffer]
+,   buffers     ::  Map String GhfBuffer
+,   activePane  ::  Pane 
 } 
 
 data GhfBuffer  =   GhfBuffer {

@@ -15,8 +15,10 @@ import qualified Data.Map as Map
 import Data.Map(Map)
 
 import Ghf.Core
+import Ghf.CoreGui
 import Ghf.Editor
 import Ghf.Dialogs
+import Ghf.View
 
 version = "0.1"
 
@@ -43,19 +45,19 @@ main = do
     win <- windowNew
     windowSetIconFromFile win "ghf.gif"
     uiManager <- uiManagerNew
-    let ghf = Ghf win uiManager Nothing [] 
+    let ghf = Ghf win uiManager Map.empty LeftBottom
     ghfR <- newIORef ghf
     (acc,menus) <- runReaderT (makeMenu uiManager actions menuDescription) ghfR
     let mb = fromJust $menus !! 0
     let tb = fromJust $menus !! 1
     windowAddAccelGroup win acc
 
-    panes <- mapM (buildPane ghfR) [1..4]
+    panes <- mapM (buildPane ghfR) [0..3]
 
     vpane1 <- vPanedNew
     widgetSetName vpane1 "paneLeft"
-    panedAdd1 vpane1 (panes !! 2)
-    panedAdd2 vpane1 (panes !! 3)
+    panedAdd1 vpane1 (panes !! 3)
+    panedAdd2 vpane1 (panes !! 2)
    
     vpane2 <- vPanedNew    
     widgetSetName vpane2 "paneRight"
@@ -66,29 +68,6 @@ main = do
     widgetSetName hpane "paneLeftRight"
     panedAdd1 hpane vpane1
     panedAdd2 hpane vpane2
-    
-    vb <- vBoxNew False 1  -- Top-level vbox
-    widgetSetName vb "topBox"
-    boxPackStart vb mb PackNatural 0
-    boxPackStart vb tb PackNatural 0
-    boxPackStart vb hpane PackGrow 0
-
-    win `onDelete` (\_ -> do runReaderT quit ghfR; return True)
-    win `containerAdd` vb
-
-    windowSetDefaultSize win 700 1000
-    flip runReaderT ghfR $ case fl of
-        [] -> newTextBuffer Nothing "Unnamed" Nothing
-        otherwise  -> mapM_ (\fn -> (newTextBuffer Nothing (takeFileName fn) (Just fn))) fl 
-    widgetShowAll win
-    mainGUI
-
--- |Build a pane with a notebook and a status bar
-buildPane :: GhfRef -> Int -> IO (VBox)
-buildPane ghfR ind = do
-    --upper notebook with status bar
-    nb <- notebookNew
-    widgetSetName nb $"notebook" 
 
     sb <- statusbarNew
     statusbarSetHasResizeGrip sb False
@@ -136,11 +115,6 @@ buildPane ghfR ind = do
     boxPackStart hb sblc PackNatural 0
     boxPackStart hb sbio PackNatural 0
 
-    eb <- vBoxNew False 1  
-    widgetSetName eb $"notebookBox" ++ show ind
-    boxPackStart eb nb PackGrow 0
-    boxPackStart eb hb PackNatural 0
-
     entry `afterInsertText` (\_ _ -> do runReaderT (editFindInc Insert) ghfR; 
                                         t <- entryGetText entry
                                         return (length t))
@@ -151,19 +125,43 @@ buildPane ghfR ind = do
     spinL `afterKeyPress`  (\e -> do runReaderT (editGotoLineKey e) ghfR; return True)
     spinL `afterEntryActivate` runReaderT editGotoLineEnd ghfR
     spinL `afterFocusOut` (\_ -> do runReaderT editGotoLineEnd ghfR; return False)
+    
+    vb <- vBoxNew False 1  -- Top-level vbox
+    widgetSetName vb "topBox"
+    boxPackStart vb mb PackNatural 0
+    boxPackStart vb tb PackNatural 0
+    boxPackStart vb hpane PackGrow 0
+    boxPackStart vb hb PackNatural 0
 
---    widgetHide hbf
---    widgetHide spinL
+    win `onDelete` (\_ -> do runReaderT quit ghfR; return True)
+    win `containerAdd` vb
 
-    return eb
+    windowSetDefaultSize win 700 1000
+    flip runReaderT ghfR $ case fl of
+        [] -> newTextBuffer Nothing "Unnamed" Nothing
+        otherwise  -> mapM_ (\fn -> (newTextBuffer Nothing (takeFileName fn) (Just fn))) fl 
+    widgetShowAll win
+    mainGUI
+    widgetHide hbf
+    widgetHide spinL
+
+-- |Build a pane which consist of a notebook
+buildPane :: GhfRef -> Int -> IO (Notebook)
+buildPane ghfR ind = do
+    --upper notebook with status bar
+    nb <- notebookNew
+    widgetSetName nb $"notebook" ++ show ind
+    nb `onSetFocusChild`  (\_ -> do putStrLn $"on FocusChild " ++ show ((toEnum ind):: Pane) 
+                                    runReaderT (setActivePane (toEnum ind)) ghfR)
+    return nb
      
 quit :: GhfAction
 quit = do
     bufs    <- readGhf buffers
-    case bufs of
-        []          ->  lift mainQuit
-        otherwise   ->  do  r <- fileClose
-                            if r then quit else return ()
+    if Map.null bufs 
+        then    lift mainQuit
+        else    do  r <- fileClose
+                    if r then quit else return ()
 
 data ActionDescr = AD {
                 name :: String
@@ -225,6 +223,16 @@ actions =
     ,AD "EditShiftLeft" "Shift _Left" (Just "Shift Left") Nothing 
         editShiftLeft (Just "<alt>Left") False
 
+    ,AD "View" "_View" Nothing Nothing (return ()) Nothing False
+    ,AD "MoveRight" "Move _Right" (Just "Move the current tab to the right") Nothing 
+        viewMoveRight (Just "<escape>Right") False
+    ,AD "MoveLeft" "Move _Left" (Just "Move the current tab to the left") Nothing 
+        viewMoveLeft (Just "<escape>Left") False
+    ,AD "MoveDown" "Move _Down" (Just "Move the current tab down") Nothing 
+        viewMoveDown (Just "<alt>Down") False
+    ,AD "MoveUp" "Move _Up" (Just "Move the current tab up") Nothing 
+        viewMoveUp (Just "<alt>Up") False
+
     ,AD "Help" "_Help" Nothing Nothing (return ()) Nothing False
     ,AD "HelpAbout" "About" Nothing (Just "gtk-about") aboutDialog Nothing False]
  
@@ -265,6 +273,12 @@ menuDescription = "\n\
        \<menuitem name=\"Uncomment\" action=\"EditUncomment\" />\n\
        \<menuitem name=\"Shift Left\" action=\"EditShiftLeft\" />\n\
        \<menuitem name=\"Shift Right\" action=\"EditShiftRight\" />\n\
+     \</menu>\n\
+    \<menu name=\"_View\" action=\"View\">\n\
+       \<menuitem name=\"Move _Right\" action=\"MoveRight\" />\n\
+       \<menuitem name=\"Move _Left\" action=\"MoveLeft\" />\n\
+       \<menuitem name=\"Move _Down\" action=\"MoveDown\" />\n\
+       \<menuitem name=\"Move _Up\" action=\"MoveUp\" />\n\
      \</menu>\n\
     \<menu name=\"_Help\" action=\"Help\">\n\
        \<menuitem name=\"_About\" action=\"HelpAbout\" />\n\

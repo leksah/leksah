@@ -48,20 +48,21 @@ import System.Environment
 import Data.Maybe ( fromMaybe, isJust, fromJust )
 import Text.Printf
 import Char(toUpper)
+import qualified Data.Map as Map
+import Data.Map (Map)
   
 import Ghf.Core
 import Ghf.CoreGui
 
 tabWidth = 4
 
-newTextBuffer :: Maybe PaneNum -> String -> Maybe FileName -> GhfAction
-newTextBuffer ind bn mbfn = do
+newTextBuffer :: Maybe Pane -> String -> Maybe FileName -> GhfAction
+newTextBuffer mbPane bn mbfn = do
     -- create the appropriate language
-    pane <- getActivePane
-    nb <- lift $getNotebook pane
+    nb <- getActiveNotebook
     bufs <- readGhf buffers
-    statLC <- lift $getStatusbarLC pane
-    statIO <- lift $getStatusbarIO pane
+    statLC <- getStatusbarLC
+    statIO <- getStatusbarIO
     let (ind,rbn) = figureOutBufferName bufs bn 0
     buf <- lift $ do
         lm      <-  sourceLanguagesManagerNew
@@ -110,6 +111,7 @@ newTextBuffer ind bn mbfn = do
         sw `containerAdd` sv
         scrolledWindowSetPolicy sw PolicyAutomatic PolicyAutomatic
         sw `scrolledWindowSetShadowType` ShadowIn
+
         notebookPrependPage nb sw rbn
         mbPn <- notebookPageNum nb sw
         widgetShowAll nb
@@ -121,21 +123,21 @@ newTextBuffer ind bn mbfn = do
         statusbarPush statLC 1 ""
         writeCursorPositionInStatusbar buffer statLC
 
-        afterMoveCursor sv (\_ _ _ -> writeCursorPositionInStatusbar buffer statLC)
-        afterEndUserAction buffer (writeCursorPositionInStatusbar buffer statLC)
-        afterSwitchPage nb (\pn1 -> do  pn2 <- notebookPageNum nb sw;
-                                        if isJust pn2 && pn1 == fromJust pn2 
-                                            then writeCursorPositionInStatusbar buffer statLC
-                                            else return ())
-        widgetAddEvents sv [ButtonReleaseMask]
-        onButtonRelease sv (\ _ -> do writeCursorPositionInStatusbar buffer statLC; return False)
-        afterModifiedChanged buffer (markLabelAsChanged buffer nb sw)        
-
-        statusbarPush statIO 1 "INS"
-        afterToggleOverwrite sv (writeOverwriteInStatusbar sv nb sw statIO)
-        afterSwitchPage nb (\ _ -> writeOverwriteInStatusbar sv nb sw statIO)
+--        afterMoveCursor sv (\_ _ _ -> writeCursorPositionInStatusbar buffer statLC)
+--        afterEndUserAction buffer (writeCursorPositionInStatusbar buffer statLC)
+--        afterSwitchPage nb (\pn1 -> do  pn2 <- notebookPageNum nb sw;
+--                                        if isJust pn2 && pn1 == fromJust pn2 
+--                                            then writeCursorPositionInStatusbar buffer statLC
+--                                            else return ())
+--        widgetAddEvents sv [ButtonReleaseMask]
+--        onButtonRelease sv (\ _ -> do writeCursorPositionInStatusbar buffer statLC; return False)
+--        afterModifiedChanged buffer (markLabelAsChanged buffer nb sw)        
+--
+--        statusbarPush statIO 1 "INS"
+--        afterToggleOverwrite sv (writeOverwriteInStatusbar sv nb sw statIO)
+--        afterSwitchPage nb (\ _ -> writeOverwriteInStatusbar sv nb sw statIO)
         return (GhfBuffer mbfn bn ind sv sw)
-    modifyGhf_ (\ghf -> return (ghf{buffers = buf : bufs}))
+    modifyGhf_ (\ghf -> return (ghf{buffers = Map.insert rbn buf bufs}))
 
 writeCursorPositionInStatusbar :: SourceBuffer -> Statusbar -> IO()
 writeCursorPositionInStatusbar buf stat = do
@@ -173,16 +175,24 @@ markLabelAsChanged buf nb sw = do
 
 inBufContext' :: a -> (TextBuffer -> GhfBuffer -> Int -> GhfM a) -> GhfM a
 inBufContext' def f = do
-    pane    <- getActivePane
-    nb      <- lift $getNotebook pane
+    nb    <- getActiveNotebook
     bufs    <- readGhf buffers 
     mbr <- lift $ do
         i   <- notebookGetCurrentPage nb
-        case i of
-                -1 -> return Nothing
-                n  -> let currentBuffer = bufs !! i in do
-                        gtkbuf <-  textViewGetBuffer $ sourceView currentBuffer
-                        return (Just (gtkbuf, currentBuffer, i))
+        mbWidget <- notebookGetNthPage nb i
+        case mbWidget of
+            Nothing -> return Nothing
+            Just widget -> do
+                mbKey <- notebookGetTabLabelText nb widget
+                case mbKey of
+                    Nothing  -> return Nothing
+                    Just key -> 
+                        let  mbCurrentBuffer = Map.lookup key bufs in
+                        case mbCurrentBuffer of
+                            Nothing -> return Nothing
+                            Just currentBuffer -> do
+                                gtkbuf <-  textViewGetBuffer $ sourceView currentBuffer
+                                return (Just (gtkbuf, currentBuffer, i))
     case mbr of
         Just (gtkbuf, currentBuffer, i) -> do
             r <- f gtkbuf currentBuffer i
@@ -196,8 +206,7 @@ inBufContext def f = inBufContext' def (\a b c -> lift $ f a b c)
 fileSave :: Bool -> GhfAction
 fileSave query = inBufContext' () $ \_ currentBuffer i -> do
     window  <- readGhf window
-    pane    <- getActivePane
-    nb      <- lift $getNotebook pane
+    nb      <- getActiveNotebook
     bufs    <- readGhf buffers 
     mbnbufs <- lift $ do
         let mbfn = fileName currentBuffer
@@ -238,18 +247,19 @@ fileSave query = inBufContext' () $ \_ currentBuffer i -> do
                             ResponseYes -> do
                                 fileSave' currentBuffer fn
                                 let bn = takeFileName fn
-                                let (ind,rbn) = figureOutBufferName bufs bn 0
+                                let bufs1 =  Map.delete (realBufferName currentBuffer) bufs
+                                let (ind,rbn) =  figureOutBufferName bufs1 bn 0
+                                let newBuffer =  currentBuffer {fileName = Just fn, 
+                                                bufferName = bn, addedIndex = ind} 
+                                let newBufs   =  Map.insert rbn newBuffer bufs1  
                                 label <- labelNew (Just rbn)
-                                notebookSetTabLabel nb (fromJust mbp) label
-                                return (Just (map (bufRename currentBuffer fn bn ind) bufs))
+                                notebookSetTabLabel nb (fromJust mbp) label                                 
+                                return (Just newBufs)
                             ResponseNo -> return Nothing
     case mbnbufs of
         Just nbufs ->modifyGhf_ (\ghf -> return (ghf{buffers = nbufs}))
         Nothing -> return ()
     where
-        bufRename cb fn bn ind b  = if b == cb
-                            then b{fileName = Just fn, bufferName = bn, addedIndex = ind}
-                            else b
         fileSave' :: GhfBuffer -> FileName -> IO()
         fileSave' ghfBuf fn = do
             buf     <- textViewGetBuffer $ sourceView ghfBuf
@@ -266,8 +276,7 @@ fileClose :: GhfM Bool
 fileClose = inBufContext' False $ \gtkbuf currentBuffer i -> do
     ghfRef  <- ask
     window  <- readGhf window
-    pane    <- getActivePane
-    nb      <- lift $getNotebook pane  
+    nb      <- getActiveNotebook 
     bufs    <- readGhf buffers 
     mbbuf <- lift $ do
         modified <- textBufferGetModified gtkbuf
@@ -296,7 +305,7 @@ fileClose = inBufContext' False $ \gtkbuf currentBuffer i -> do
                 return (Just currentBuffer)
     case mbbuf of
         Just buf -> do
-            modifyGhf_ (\ghf -> return (ghf{buffers = filter (/= buf) bufs}))
+            modifyGhf_ (\ghf -> return (ghf{buffers = Map.delete (realBufferName currentBuffer) bufs}))
             return True
         Nothing -> return False
 
@@ -366,9 +375,9 @@ black = Color 0 0 0
 -- | Show the find bar
 editFindShow :: GhfAction
 editFindShow = inBufContext' () $ \gtkbuf currentBuffer _ -> do
-    pane    <-  getActivePane
-    entry   <-  lift $getFindEntry pane
-    findBar <-  lift $getFindBar pane
+    notebook    <-  getActiveNotebook
+    entry   <-  getFindEntry
+    findBar <-  getFindBar
     lift $do
         widgetShow findBar
         widgetGrabFocus entry 
@@ -376,8 +385,8 @@ editFindShow = inBufContext' () $ \gtkbuf currentBuffer _ -> do
 -- | Hides the find bar
 editFindHide :: GhfAction
 editFindHide = inBufContext' () $ \gtkbuf currentBuffer _ -> do
-    pane    <-  getActivePane
-    findBar <-  lift $getFindBar pane
+    notebook    <-  getActiveNotebook
+    findBar <-  getFindBar
     lift $do
         widgetHide findBar
         i1 <- textBufferGetStartIter gtkbuf
@@ -407,14 +416,14 @@ data SearchHint = Forward | Backward | Insert | Delete
 
 editFindInc :: SearchHint -> GhfAction 
 editFindInc hint = do
-    pane <- getActivePane
-    entry   <- lift $getFindEntry pane
-    search <- lift $entryGetText entry
-    caseSensitiveW <- lift $getCaseSensitive pane
+    notebook <- getActiveNotebook
+    entry   <- getFindEntry
+    search  <- lift $entryGetText entry
+    caseSensitiveW <- getCaseSensitive
     caseSensitive <- lift $toggleButtonGetActive caseSensitiveW
-    entireWButton <- lift $getEntireWord pane
+    entireWButton <- getEntireWord
     entireW <- lift $toggleButtonGetActive entireWButton
-    wrapAroundButton <- lift $getWrapAround pane
+    wrapAroundButton <- getWrapAround
     wrapAround <- lift $toggleButtonGetActive wrapAroundButton
     res <- editFind entireW caseSensitive wrapAround search "" hint 
     if res || null search
@@ -532,8 +541,7 @@ editReplaceAll entireWord caseSensitive wrapAround search replace hint = do
 
 editGotoLine :: GhfAction
 editGotoLine = inBufContext' () $ \gtkbuf currentBuffer _ -> do
-    pane <- getActivePane
-    spin <- lift $getGotoLineSpin pane
+    spin <- getGotoLineSpin
     lift $do
         max <- textBufferGetLineCount gtkbuf
         spinButtonSetRange spin 1.0 (fromIntegral max) 
@@ -544,8 +552,7 @@ editGotoLineKey :: Event -> GhfAction
 editGotoLineKey k@(Key _ _ _ _ _ _ _ _ _ _) 
     | eventKeyName k == "Escape"  =
         inBufContext' () $ \gtkbuf currentBuffer _ -> do
-            pane <- getActivePane
-            spin <- lift $getGotoLineSpin pane
+            spin <- getGotoLineSpin
             lift $ do 
                 widgetHide spin
                 widgetGrabFocus $ sourceView currentBuffer 
@@ -560,8 +567,7 @@ editGotoLineKey k@(Key _ _ _ _ _ _ _ _ _ _)
 
 editGotoLineEnd :: GhfAction
 editGotoLineEnd = inBufContext' () $ \gtkbuf currentBuffer _ -> do
-    pane <- getActivePane
-    spin <- lift $getGotoLineSpin pane
+    spin <- getGotoLineSpin
     lift $ do 
         line <- spinButtonGetValueAsInt spin
         iter <- textBufferGetStartIter gtkbuf

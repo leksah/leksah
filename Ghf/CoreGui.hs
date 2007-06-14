@@ -1,10 +1,11 @@
 module Ghf.CoreGui (
     figureOutBufferName
 ,   realBufferName
-,   getPane
-,   getActivePane
-
 ,   getNotebook
+,   getActivePane
+,   getActiveNotebook
+,   setActivePane
+
 ,   getFindEntry
 ,   getFindBar
 ,   getStatusbarIO
@@ -15,22 +16,21 @@ module Ghf.CoreGui (
 ,   getWrapAround
 ,   getEntireWord
 
-,   PaneNum
 ) where
 import Graphics.UI.Gtk
 import Control.Monad.Reader
 import Data.List
-import Ghf.Core
 import Data.Maybe
+import qualified Data.Map as Map
+import Data.Map (Map)
+import Ghf.Core
 
--- | 1: right top 2: right botton 3: left bottom 4: left top
-type PaneNum = Int
 
-figureOutBufferName :: [GhfBuffer] -> String -> Int -> (Int,String)
+figureOutBufferName :: Map String GhfBuffer -> String -> Int -> (Int,String)
 figureOutBufferName bufs bn ind =
     let ind = foldr (\buf ind -> if bufferName buf == bn
                     then max ind (addedIndex buf + 1)
-                    else ind) 0 bufs in
+                    else ind) 0 (Map.elems bufs) in
     if ind == 0 then (0,bn) else (ind,bn ++ "(" ++ show ind ++ ")")
 
 realBufferName :: GhfBuffer -> String
@@ -71,44 +71,52 @@ getUIAction str f = do
 --convinience methods
 
 --widgets upper
-getActivePane = getPane 1
+setActivePane :: Pane -> GhfAction
+setActivePane p = do
+    modifyGhf_ (\ghf -> return (ghf{activePane = p}))
 
-getPane :: PaneNum -> GhfM (Widget)
-getPane 1 = widgetGet ["topBox","paneLeftRight","paneRight", "notebookBox1" ] id 
-getPane 2 = widgetGet ["topBox","paneLeftRight","paneRight", "notebookBox2" ] id 
-getPane 3 = widgetGet ["topBox","paneLeftRight","paneLeft", "notebookBox3" ]  id
-getPane 4 = widgetGet ["topBox","paneLeftRight","paneLeft", "notebookBox4" ]  id
+getActiveNotebook :: GhfM(Notebook)
+getActiveNotebook = do
+    pn <- readGhf activePane
+    getNotebook pn
 
-getNotebook :: Widget -> IO (Notebook)
-getNotebook nb =  widgetGetRel nb ["notebook"] castToNotebook
+getActivePane :: GhfM(Pane)
+getActivePane = do
+    readGhf activePane
 
 
-getFindEntry :: Widget -> IO (Entry)
-getFindEntry nb =  widgetGetRel nb ["statusBox","searchBox","searchEntry"] castToEntry
+getNotebook :: Pane -> GhfM (Notebook)
+getNotebook RightTop = widgetGet ["topBox","paneLeftRight","paneRight", "notebook0" ] castToNotebook 
+getNotebook RightBottom = widgetGet ["topBox","paneLeftRight","paneRight", "notebook1" ] castToNotebook 
+getNotebook LeftBottom = widgetGet ["topBox","paneLeftRight","paneLeft", "notebook2" ]  castToNotebook
+getNotebook LeftTop = widgetGet ["topBox","paneLeftRight","paneLeft", "notebook3" ]  castToNotebook
 
-getFindBar :: Widget -> IO (HBox)
-getFindBar nb =  widgetGetRel nb ["statusBox","searchBox"] castToHBox 
+getFindEntry :: GhfM (Entry)
+getFindEntry =  widgetGet ["topBox","statusBox","searchBox","searchEntry"] castToEntry
 
-getStatusbarIO :: Widget -> IO (Statusbar)
-getStatusbarIO nb =  widgetGetRel nb ["statusBox","statusBarInsertOverwrite"] castToStatusbar 
+getFindBar :: GhfM (HBox)
+getFindBar =  widgetGet ["topBox","statusBox","searchBox"] castToHBox 
 
-getStatusbarLC :: Widget -> IO (Statusbar)
-getStatusbarLC nb = widgetGetRel nb ["statusBox","statusBarLineColumn"] castToStatusbar
+getStatusbarIO :: GhfM (Statusbar)
+getStatusbarIO =  widgetGet ["topBox","statusBox","statusBarInsertOverwrite"] castToStatusbar 
 
-getCaseSensitive :: Widget -> IO (ToggleButton)
-getCaseSensitive nb = widgetGetRel nb ["statusBox","searchBox","caseSensitiveButton"] 
+getStatusbarLC :: GhfM (Statusbar)
+getStatusbarLC = widgetGet ["topBox","statusBox","statusBarLineColumn"] castToStatusbar
+
+getCaseSensitive :: GhfM (ToggleButton)
+getCaseSensitive = widgetGet ["topBox","statusBox","searchBox","caseSensitiveButton"] 
                         castToToggleButton
 
-getWrapAround :: Widget -> IO (ToggleButton)
-getWrapAround nb = widgetGetRel nb ["statusBox","searchBox","wrapAroundButton"] 
+getWrapAround :: GhfM (ToggleButton)
+getWrapAround = widgetGet ["topBox","statusBox","searchBox","wrapAroundButton"] 
                         castToToggleButton
 
-getEntireWord :: Widget -> IO (ToggleButton)
-getEntireWord nb = widgetGetRel nb ["statusBox","searchBox","entireWordButton"] 
+getEntireWord :: GhfM (ToggleButton)
+getEntireWord = widgetGet ["topBox","statusBox","searchBox","entireWordButton"] 
                         castToToggleButton
 
-getGotoLineSpin :: Widget -> IO (SpinButton)
-getGotoLineSpin nb = widgetGetRel nb ["statusBox","gotoLineEntry"] castToSpinButton
+getGotoLineSpin :: GhfM (SpinButton)
+getGotoLineSpin = widgetGet ["topBox","statusBox","gotoLineEntry"] castToSpinButton
 
 --actions
 getFindAction = getUIAction "ui/menubar/_Edit/_Find" castToToggleAction
