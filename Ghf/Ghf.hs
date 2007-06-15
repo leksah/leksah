@@ -41,11 +41,12 @@ main = do
     args <- getArgs
     (o,fl) <- ghfOpts args
     st <- initGUI
-    --mapM_ putStrLn st
+    mapM_ putStrLn st
+    
     win <- windowNew
     windowSetIconFromFile win "ghf.gif"
     uiManager <- uiManagerNew
-    let ghf = Ghf win uiManager Map.empty LeftBottom
+    let ghf = Ghf win uiManager Map.empty Nothing
     ghfR <- newIORef ghf
     (acc,menus) <- runReaderT (makeMenu uiManager actions menuDescription) ghfR
     let mb = fromJust $menus !! 0
@@ -134,7 +135,7 @@ main = do
     boxPackStart vb hb PackNatural 0
 
     win `onDelete` (\_ -> do runReaderT quit ghfR; return True)
-    win `containerAdd` vb
+    containerAdd win vb
 
     windowSetDefaultSize win 700 1000
     flip runReaderT ghfR $ case fl of
@@ -151,8 +152,6 @@ buildPane ghfR ind = do
     --upper notebook with status bar
     nb <- notebookNew
     widgetSetName nb $"notebook" ++ show ind
-    nb `onSetFocusChild`  (\_ -> do putStrLn $"on FocusChild " ++ show ((toEnum ind):: Pane) 
-                                    runReaderT (setActivePane (toEnum ind)) ghfR)
     return nb
      
 quit :: GhfAction
@@ -225,13 +224,13 @@ actions =
 
     ,AD "View" "_View" Nothing Nothing (return ()) Nothing False
     ,AD "MoveRight" "Move _Right" (Just "Move the current tab to the right") Nothing 
-        viewMoveRight (Just "<escape>Right") False
+        viewMoveRight (Just "<apple>Right") False
     ,AD "MoveLeft" "Move _Left" (Just "Move the current tab to the left") Nothing 
-        viewMoveLeft (Just "<escape>Left") False
+        viewMoveLeft (Just "<apple>Left") False
     ,AD "MoveDown" "Move _Down" (Just "Move the current tab down") Nothing 
-        viewMoveDown (Just "<alt>Down") False
+        viewMoveDown (Just "<apple>Down") False
     ,AD "MoveUp" "Move _Up" (Just "Move the current tab up") Nothing 
-        viewMoveUp (Just "<alt>Up") False
+        viewMoveUp (Just "<apple>Up") False
 
     ,AD "Help" "_Help" Nothing Nothing (return ()) Nothing False
     ,AD "HelpAbout" "About" Nothing (Just "gtk-about") aboutDialog Nothing False]

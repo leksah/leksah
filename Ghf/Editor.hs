@@ -56,10 +56,10 @@ import Ghf.CoreGui
 
 tabWidth = 4
 
-newTextBuffer :: Maybe Pane -> String -> Maybe FileName -> GhfAction
-newTextBuffer mbPane bn mbfn = do
+newTextBuffer :: String -> Maybe FileName -> GhfAction
+newTextBuffer bn mbfn = do
     -- create the appropriate language
-    nb <- getActiveNotebook
+    (p,nb) <- getActiveOrDefaultPNotebook
     bufs <- readGhf buffers
     statLC <- getStatusbarLC
     statIO <- getStatusbarIO
@@ -81,7 +81,7 @@ newTextBuffer mbPane bn mbfn = do
         set foundTag [textTagBackground := "yellow"]
         tagTable <- textBufferGetTagTable buffer 
         textTagTableAdd tagTable foundTag   
-         
+
         -- load up and display a file  
         fileContents <- case mbfn of
             Just fn -> readFile fn
@@ -121,24 +121,28 @@ newTextBuffer mbPane bn mbfn = do
 
         -- statusbars  
         statusbarPush statLC 1 ""
-        writeCursorPositionInStatusbar buffer statLC
+        
+{--        writeCursorPositionInStatusbar buffer statLC
 
---        afterMoveCursor sv (\_ _ _ -> writeCursorPositionInStatusbar buffer statLC)
---        afterEndUserAction buffer (writeCursorPositionInStatusbar buffer statLC)
---        afterSwitchPage nb (\pn1 -> do  pn2 <- notebookPageNum nb sw;
---                                        if isJust pn2 && pn1 == fromJust pn2 
---                                            then writeCursorPositionInStatusbar buffer statLC
---                                            else return ())
---        widgetAddEvents sv [ButtonReleaseMask]
---        onButtonRelease sv (\ _ -> do writeCursorPositionInStatusbar buffer statLC; return False)
---        afterModifiedChanged buffer (markLabelAsChanged buffer nb sw)        
---
---        statusbarPush statIO 1 "INS"
---        afterToggleOverwrite sv (writeOverwriteInStatusbar sv nb sw statIO)
---        afterSwitchPage nb (\ _ -> writeOverwriteInStatusbar sv nb sw statIO)
-        return (GhfBuffer mbfn bn ind sv sw)
-    modifyGhf_ (\ghf -> return (ghf{buffers = Map.insert rbn buf bufs}))
+        afterMoveCursor sv (\_ _ _ -> writeCursorPositionInStatusbar buffer statLC)
+        afterEndUserAction buffer (writeCursorPositionInStatusbar buffer statLC)
+        afterSwitchPage nb (\pn1 -> do  pn2 <- notebookPageNum nb sw;
+                                        if isJust pn2 && pn1 == fromJust pn2
+                                            then writeCursorPositionInStatusbar buffer statLC
+                                            else return ())
+        widgetAddEvents sv [ButtonReleaseMask]
+        onButtonRelease sv (\ _ -> do  writeCursorPositionInStatusbar buffer statLC;
+                                       return False)
+        afterModifiedChanged buffer (markLabelAsChanged buffer sw)
 
+        statusbarPush statIO 1 "INS"
+        afterToggleOverwrite sv (writeOverwriteInStatusbar sv sw statIO)
+        afterSwitchPage nb (\ _ -> writeOverwriteInStatusbar sv sw statIO)--}
+        return (GhfBuffer mbfn bn ind sv sw p)
+    modifyGhf_ (\ghf -> return (ghf{buffers = Map.insert rbn buf bufs,
+                                    mbActiveBuf = Just buf}))
+
+{--
 writeCursorPositionInStatusbar :: SourceBuffer -> Statusbar -> IO()
 writeCursorPositionInStatusbar buf stat = do
     modi <- textBufferGetModified buf
@@ -162,7 +166,8 @@ writeOverwriteInStatusbar sv nb sw stat = do
             return () 
         else return ()
 
-markLabelAsChanged buf nb sw = do
+markLabelAsChanged buf sw = do
+    
     modified <- textBufferGetModified buf
     (Just text) <- notebookGetTabLabelText nb sw
     label <- labelNew Nothing
@@ -172,90 +177,82 @@ markLabelAsChanged buf nb sw = do
             then "<span foreground=\"red\">" ++ text ++ "</span>" 
             else text) 
     notebookSetTabLabel nb sw label  
+--}
 
-inBufContext' :: a -> (TextBuffer -> GhfBuffer -> Int -> GhfM a) -> GhfM a
+inBufContext' :: a -> (Notebook -> TextBuffer -> GhfBuffer -> Int -> GhfM a) -> GhfM a
 inBufContext' def f = do
-    nb    <- getActiveNotebook
-    bufs    <- readGhf buffers 
-    mbr <- lift $ do
-        i   <- notebookGetCurrentPage nb
-        mbWidget <- notebookGetNthPage nb i
-        case mbWidget of
-            Nothing -> return Nothing
-            Just widget -> do
-                mbKey <- notebookGetTabLabelText nb widget
-                case mbKey of
-                    Nothing  -> return Nothing
-                    Just key -> 
-                        let  mbCurrentBuffer = Map.lookup key bufs in
-                        case mbCurrentBuffer of
-                            Nothing -> return Nothing
-                            Just currentBuffer -> do
-                                gtkbuf <-  textViewGetBuffer $ sourceView currentBuffer
-                                return (Just (gtkbuf, currentBuffer, i))
-    case mbr of
-        Just (gtkbuf, currentBuffer, i) -> do
-            r <- f gtkbuf currentBuffer i
-            return r
+    mbBuf <- readGhf mbActiveBuf
+    case mbBuf of
         Nothing -> return def
+        Just ghfBuf -> do
+            nb <- getNotebook (pane ghfBuf)
+            mbI  <- lift $notebookPageNum nb (scrolledWindow ghfBuf)
+            case mbI of
+                Nothing -> lift $ do
+                        putStrLn "notebook page not found: unexpected"
+                        return def
+                Just i -> do
+                        gtkbuf <- lift $ textViewGetBuffer (sourceView ghfBuf)
+                        f nb gtkbuf ghfBuf i
 
-inBufContext :: a -> (TextBuffer -> GhfBuffer -> Int -> IO a) -> GhfM a
-inBufContext def f = inBufContext' def (\a b c -> lift $ f a b c)
-
+inBufContext :: a -> (Notebook -> TextBuffer -> GhfBuffer -> Int -> IO a) -> GhfM a
+inBufContext def f = inBufContext' def (\a b c d-> lift $ f a b c d)
 
 fileSave :: Bool -> GhfAction
-fileSave query = inBufContext' () $ \_ currentBuffer i -> do
+fileSave query = inBufContext' () $ \nb _ currentBuffer i -> do
     window  <- readGhf window
-    nb      <- getActiveNotebook
-    bufs    <- readGhf buffers 
+    bufs    <- readGhf buffers
     mbnbufs <- lift $ do
         let mbfn = fileName currentBuffer
-        mbp <- notebookGetNthPage nb i
-        if isJust mbfn && query == False
-            then do fileSave' currentBuffer $fromJust mbfn
-                    return Nothing
-            else do
-                dialog <- fileChooserDialogNew
-                                (Just $ "Save File")
-                                (Just window)                   
-                            FileChooserActionSave
-                            [("gtk-cancel"     --buttons to display
-                             ,ResponseCancel)  --you can use stock buttons
-                             ,("gtk-save"
-                             , ResponseAccept)]
-                widgetShow dialog
-                response <- dialogRun dialog
-                widgetHide dialog
-                mbFileName <- case response of
-                        ResponseAccept ->       fileChooserGetFilename dialog
-                        ResponseCancel ->       return Nothing
-                        ResponseDeleteEvent->   return Nothing
-                case mbFileName of
-                    Nothing -> return Nothing
-                    Just fn -> do
-                        dfe <- doesFileExist fn 
-                        resp <- if dfe
-                            then do md <- messageDialogNew (Just window) []
-                                            MessageQuestion
-                                            ButtonsYesNo
-                                            "File already exist. Overwrite?"
-                                    resp <- dialogRun md
-                                    widgetHide md
-                                    return resp
-                            else return ResponseYes
-                        case resp of
-                            ResponseYes -> do
-                                fileSave' currentBuffer fn
-                                let bn = takeFileName fn
-                                let bufs1 =  Map.delete (realBufferName currentBuffer) bufs
-                                let (ind,rbn) =  figureOutBufferName bufs1 bn 0
-                                let newBuffer =  currentBuffer {fileName = Just fn, 
-                                                bufferName = bn, addedIndex = ind} 
-                                let newBufs   =  Map.insert rbn newBuffer bufs1  
-                                label <- labelNew (Just rbn)
-                                notebookSetTabLabel nb (fromJust mbp) label                                 
-                                return (Just newBufs)
-                            ResponseNo -> return Nothing
+        mbpage <- notebookGetNthPage nb i
+        case mbpage of
+            Nothing -> error "fileSave: Page not found"
+            Just page -> 
+                if isJust mbfn && query == False
+                    then do fileSave' currentBuffer $fromJust mbfn
+                            return Nothing
+                    else do
+                        dialog <- fileChooserDialogNew
+                                        (Just $ "Save File")
+                                        (Just window)
+                                    FileChooserActionSave
+                                    [("gtk-cancel"     --buttons to display
+                                    ,ResponseCancel)  --you can use stock buttons
+                                    ,("gtk-save"
+                                    , ResponseAccept)]
+                        widgetShow dialog
+                        response <- dialogRun dialog
+                        widgetHide dialog
+                        mbFileName <- case response of
+                                ResponseAccept ->       fileChooserGetFilename dialog
+                                ResponseCancel ->       return Nothing
+                                ResponseDeleteEvent->   return Nothing
+                        case mbFileName of
+                            Nothing -> return Nothing
+                            Just fn -> do
+                                dfe <- doesFileExist fn
+                                resp <- if dfe
+                                    then do md <- messageDialogNew (Just window) []
+                                                    MessageQuestion
+                                                    ButtonsYesNo
+                                                    "File already exist. Overwrite?"
+                                            resp <- dialogRun md
+                                            widgetHide md
+                                            return resp
+                                    else return ResponseYes
+                                case resp of
+                                    ResponseYes -> do
+                                        fileSave' currentBuffer fn
+                                        let bn = takeFileName fn
+                                        let bufs1 =  Map.delete (realBufferName currentBuffer) bufs
+                                        let (ind,rbn) =  figureOutBufferName bufs1 bn 0
+                                        let newBuffer =  currentBuffer {fileName = Just fn,
+                                                        bufferName = bn, addedIndex = ind}
+                                        let newBufs   =  Map.insert rbn newBuffer bufs1
+                                        label <- labelNew (Just rbn)
+                                        notebookSetTabLabel nb page label
+                                        return (Just newBufs)
+                                    ResponseNo -> return Nothing
     case mbnbufs of
         Just nbufs ->modifyGhf_ (\ghf -> return (ghf{buffers = nbufs}))
         Nothing -> return ()
@@ -270,14 +267,13 @@ fileSave query = inBufContext' () $ \_ currentBuffer i -> do
             textBufferSetModified buf False
 
 fileNew :: GhfAction
-fileNew = newTextBuffer Nothing "Unnamed" Nothing
+fileNew = newTextBuffer "Unnamed" Nothing
 
 fileClose :: GhfM Bool
-fileClose = inBufContext' False $ \gtkbuf currentBuffer i -> do
+fileClose = inBufContext' False $ \nb gtkbuf currentBuffer i -> do
     ghfRef  <- ask
     window  <- readGhf window
-    nb      <- getActiveNotebook 
-    bufs    <- readGhf buffers 
+    bufs    <- readGhf buffers
     mbbuf <- lift $ do
         modified <- textBufferGetModified gtkbuf
         if modified
@@ -306,6 +302,7 @@ fileClose = inBufContext' False $ \gtkbuf currentBuffer i -> do
     case mbbuf of
         Just buf -> do
             modifyGhf_ (\ghf -> return (ghf{buffers = Map.delete (realBufferName currentBuffer) bufs}))
+            setNewActiveBuffer nb
             return True
         Nothing -> return False
 
@@ -330,10 +327,10 @@ fileOpen = do
             ResponseDeleteEvent->   return Nothing
     case mbFileName of
         Nothing -> return ()
-        Just fn -> newTextBuffer Nothing (takeFileName fn) (Just fn) 
+        Just fn -> newTextBuffer (takeFileName fn) (Just fn)
 
 editUndo :: GhfAction
-editUndo = inBufContext () $ \ gtkbuf _ _ -> 
+editUndo = inBufContext () $ \_ gtkbuf _ _ -> 
     let sb = castToSourceBuffer gtkbuf in
     do  canUndo <- sourceBufferCanUndo sb
         if canUndo
@@ -341,7 +338,7 @@ editUndo = inBufContext () $ \ gtkbuf _ _ ->
             else return ()
     
 editRedo :: GhfAction
-editRedo = inBufContext () $ \ gtkbuf _ _ -> 
+editRedo = inBufContext () $ \_ gtkbuf _ _ -> 
     let sb = castToSourceBuffer gtkbuf in
     do  canRedo <- sourceBufferCanUndo sb
         if canRedo
@@ -349,12 +346,12 @@ editRedo = inBufContext () $ \ gtkbuf _ _ ->
             else return ()
 
 editDelete :: GhfAction
-editDelete = inBufContext ()  $ \gtkbuf _ _ ->  do  
+editDelete = inBufContext ()  $ \_ gtkbuf _ _ ->  do  
     textBufferDeleteSelection gtkbuf True True
     return ()    
 
 editSelectAll :: GhfAction
-editSelectAll = inBufContext () $ \gtkbuf _ _ -> do 
+editSelectAll = inBufContext () $ \_ gtkbuf _ _ -> do 
     start <- textBufferGetStartIter gtkbuf
     end   <- textBufferGetEndIter gtkbuf                       
     textBufferSelectRange gtkbuf start end
@@ -374,8 +371,7 @@ black = Color 0 0 0
 
 -- | Show the find bar
 editFindShow :: GhfAction
-editFindShow = inBufContext' () $ \gtkbuf currentBuffer _ -> do
-    notebook    <-  getActiveNotebook
+editFindShow = inBufContext' () $ \_ gtkbuf currentBuffer _ -> do
     entry   <-  getFindEntry
     findBar <-  getFindBar
     lift $do
@@ -384,8 +380,7 @@ editFindShow = inBufContext' () $ \gtkbuf currentBuffer _ -> do
 
 -- | Hides the find bar
 editFindHide :: GhfAction
-editFindHide = inBufContext' () $ \gtkbuf currentBuffer _ -> do
-    notebook    <-  getActiveNotebook
+editFindHide = inBufContext' () $ \nb gtkbuf currentBuffer _ -> do
     findBar <-  getFindBar
     lift $do
         widgetHide findBar
@@ -416,7 +411,6 @@ data SearchHint = Forward | Backward | Insert | Delete
 
 editFindInc :: SearchHint -> GhfAction 
 editFindInc hint = do
-    notebook <- getActiveNotebook
     entry   <- getFindEntry
     search  <- lift $entryGetText entry
     caseSensitiveW <- getCaseSensitive
@@ -443,42 +437,42 @@ editFind entireWord caseSensitive wrapAround search dummy hint =
     let searchflags = (if caseSensitive then [] else [toEnum 4]) ++ [toEnum 1,toEnum 2] in   
     if null search 
         then return False
-        else inBufContext' False $ \gtkbuf currentBuffer _ -> lift $ do
-        i1 <- textBufferGetStartIter gtkbuf
-        i2 <- textBufferGetEndIter gtkbuf       
-        textBufferRemoveTagByName gtkbuf "found" i1 i2  
-        startMark <- textBufferGetInsert gtkbuf 
-        st1 <- textBufferGetIterAtMark gtkbuf startMark 
-        mbsr2 <- 
-            if hint == Backward 
-                then do
-                    mbsr <- backSearch st1 search searchflags entireWord searchflags
+        else inBufContext' False $ \_ gtkbuf currentBuffer _ -> lift $ do
+            i1 <- textBufferGetStartIter gtkbuf
+            i2 <- textBufferGetEndIter gtkbuf
+            textBufferRemoveTagByName gtkbuf "found" i1 i2
+            startMark <- textBufferGetInsert gtkbuf
+            st1 <- textBufferGetIterAtMark gtkbuf startMark
+            mbsr2 <-
+                if hint == Backward
+                    then do
+                        mbsr <- backSearch st1 search searchflags entireWord searchflags
+                        case mbsr of
+                            Nothing ->
+                                if wrapAround
+                                    then do backSearch i2 search searchflags entireWord searchflags
+                                    else return Nothing
+                            Just (start,end) -> return (Just (start,end))
+                else do
+                    if hint == Forward
+                        then textIterForwardChar st1
+                        else do
+                            textIterBackwardChar st1
+                            textIterBackwardChar st1
+                    mbsr <- forwardSearch st1 search searchflags entireWord searchflags
                     case mbsr of
-                        Nothing -> 
-                            if wrapAround 
-                                then do backSearch i2 search searchflags entireWord searchflags
+                        Nothing ->
+                            if wrapAround
+                                then do forwardSearch i1 search searchflags entireWord searchflags
                                 else return Nothing
                         Just (start,end) -> return (Just (start,end))
-            else do
-                if hint == Forward 
-                    then textIterForwardChar st1 
-                    else do 
-                        textIterBackwardChar st1 
-                        textIterBackwardChar st1              
-                mbsr <- forwardSearch st1 search searchflags entireWord searchflags
-                case mbsr of
-                    Nothing -> 
-                        if wrapAround 
-                            then do forwardSearch i1 search searchflags entireWord searchflags
-                            else return Nothing                                    
-                    Just (start,end) -> return (Just (start,end))
-        case mbsr2 of
-            Just (start,end) -> do --found
-                textViewScrollToIter (sourceView currentBuffer) start 0.2 Nothing
-                textBufferApplyTagByName gtkbuf "found" start end
-                textBufferSelectRange gtkbuf start end
-                return True
-            Nothing -> return False
+            case mbsr2 of
+                Just (start,end) -> do --found
+                    textViewScrollToIter (sourceView currentBuffer) start 0.2 Nothing
+                    textBufferApplyTagByName gtkbuf "found" start end
+                    textBufferSelectRange gtkbuf start end
+                    return True
+                Nothing -> return False
     where
         backSearch iter string flags entireWord searchflags = do
             mbsr <- sourceIterBackwardSearch iter search searchflags Nothing
@@ -510,7 +504,7 @@ editReplace entireWord caseSensitive wrapAround search replace hint =
 
 editReplace' :: Bool -> Bool -> Bool -> String -> String -> SearchHint -> Bool -> GhfM Bool
 editReplace' entireWord caseSensitive wrapAround search replace hint mayRepeat = 
-    inBufContext' False $ \gtkbuf currentBuffer _ -> do 
+    inBufContext' False $ \_ gtkbuf currentBuffer _ -> do 
         startMark <- lift $textBufferGetInsert gtkbuf 
         iter <- lift $textBufferGetIterAtMark gtkbuf startMark 
         iter2 <- lift $textIterCopy iter
@@ -540,7 +534,7 @@ editReplaceAll entireWord caseSensitive wrapAround search replace hint = do
     
 
 editGotoLine :: GhfAction
-editGotoLine = inBufContext' () $ \gtkbuf currentBuffer _ -> do
+editGotoLine = inBufContext' () $ \_ gtkbuf currentBuffer _ -> do
     spin <- getGotoLineSpin
     lift $do
         max <- textBufferGetLineCount gtkbuf
@@ -551,7 +545,7 @@ editGotoLine = inBufContext' () $ \gtkbuf currentBuffer _ -> do
 editGotoLineKey :: Event -> GhfAction
 editGotoLineKey k@(Key _ _ _ _ _ _ _ _ _ _) 
     | eventKeyName k == "Escape"  =
-        inBufContext' () $ \gtkbuf currentBuffer _ -> do
+        inBufContext' () $ \_ gtkbuf currentBuffer _ -> do
             spin <- getGotoLineSpin
             lift $ do 
                 widgetHide spin
@@ -566,7 +560,7 @@ editGotoLineKey k@(Key _ _ _ _ _ _ _ _ _ _)
     | otherwise = return ()--}
 
 editGotoLineEnd :: GhfAction
-editGotoLineEnd = inBufContext' () $ \gtkbuf currentBuffer _ -> do
+editGotoLineEnd = inBufContext' () $ \_ gtkbuf currentBuffer _ -> do
     spin <- getGotoLineSpin
     lift $ do 
         line <- spinButtonGetValueAsInt spin
@@ -594,7 +588,7 @@ getStartAndEndLineOfSelection gtkbuf = do
     return (startLine',endLineReal)
 
 doForSelectedLines :: [a] -> (TextBuffer -> TextIter -> Int -> IO a) -> GhfM [a]
-doForSelectedLines d f = inBufContext' d $ \gtkbuf currentBuffer _ -> lift $do
+doForSelectedLines d f = inBufContext' d $ \_ gtkbuf currentBuffer _ -> lift $do
     (start,end) <- getStartAndEndLineOfSelection gtkbuf
     iter <- textBufferGetStartIter gtkbuf
     mapM (f gtkbuf iter) [start .. end]

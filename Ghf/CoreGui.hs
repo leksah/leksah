@@ -2,9 +2,9 @@ module Ghf.CoreGui (
     figureOutBufferName
 ,   realBufferName
 ,   getNotebook
-,   getActivePane
-,   getActiveNotebook
-,   setActivePane
+,   getActiveOrDefaultPNotebook
+,   getActivePNotebook
+,   setNewActiveBuffer
 
 ,   getFindEntry
 ,   getFindBar
@@ -70,26 +70,53 @@ getUIAction str f = do
 -------------------------
 --convinience methods
 
---widgets upper
-setActivePane :: Pane -> GhfAction
-setActivePane p = do
-    modifyGhf_ (\ghf -> return (ghf{activePane = p}))
+getActivePNotebook :: GhfM (Maybe (Pane,Notebook))
+getActivePNotebook = do
+    mbBuf <- readGhf mbActiveBuf
+    case mbBuf of
+        Nothing -> return Nothing
+        Just buf -> do
+            nb <- getNotebook (pane buf)
+            return (Just (pane buf,nb))
 
-getActiveNotebook :: GhfM(Notebook)
-getActiveNotebook = do
-    pn <- readGhf activePane
-    getNotebook pn
+getActiveOrDefaultPNotebook :: GhfM (Pane,Notebook)
+getActiveOrDefaultPNotebook = do
+    mbNotebook <- getActivePNotebook
+    case mbNotebook of
+        Nothing -> do
+            nb <- getNotebook RightTop
+            return (RightTop,nb)
+        Just p  -> return p
 
-getActivePane :: GhfM(Pane)
-getActivePane = do
-    readGhf activePane
-
+setNewActiveBuffer :: Notebook -> GhfAction
+setNewActiveBuffer nb = do
+    bufs <- readGhf buffers
+    mbBuf  <- lift $do
+        mbI <- notebookGetCurrentPage nb
+        case mbI of
+            -1 -> return Nothing
+            i  -> do
+                mbPage <- notebookGetNthPage nb i
+                case mbPage of
+                    Nothing -> return Nothing
+                    Just page -> do
+                        mbKey <- notebookGetMenuLabelText nb page
+                        case mbKey of
+                            Nothing -> return Nothing
+                            Just key -> return (Map.lookup key bufs)
+    modifyGhf_ $ \ghf -> return (ghf{mbActiveBuf =
+        case mbBuf of
+            Just _  -> mbBuf
+            Nothing -> if Map.null bufs
+                            then Nothing
+                            else (Just (head (Map.elems bufs)))})
 
 getNotebook :: Pane -> GhfM (Notebook)
-getNotebook RightTop = widgetGet ["topBox","paneLeftRight","paneRight", "notebook0" ] castToNotebook 
+getNotebook RightTop = widgetGet ["topBox","paneLeftRight","paneRight", "notebook0" ] castToNotebook
 getNotebook RightBottom = widgetGet ["topBox","paneLeftRight","paneRight", "notebook1" ] castToNotebook 
 getNotebook LeftBottom = widgetGet ["topBox","paneLeftRight","paneLeft", "notebook2" ]  castToNotebook
 getNotebook LeftTop = widgetGet ["topBox","paneLeftRight","paneLeft", "notebook3" ]  castToNotebook
+
 
 getFindEntry :: GhfM (Entry)
 getFindEntry =  widgetGet ["topBox","statusBox","searchBox","searchEntry"] castToEntry

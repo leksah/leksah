@@ -32,15 +32,16 @@ data Ghf        =   Ghf {
     window      ::  Window
 ,   uiManager   ::  UIManager
 ,   buffers     ::  Map String GhfBuffer
-,   activePane  ::  Pane 
+,   mbActiveBuf ::  Maybe GhfBuffer
 } 
 
 data GhfBuffer  =   GhfBuffer {
-    fileName    :: Maybe FileName
-,   bufferName  :: String
-,   addedIndex  :: Int
-,   sourceView  :: SourceView 
+    fileName    ::  Maybe FileName
+,   bufferName  ::  String
+,   addedIndex  ::  Int
+,   sourceView  ::  SourceView 
 ,   scrolledWindow  :: ScrolledWindow
+,   pane        ::  Pane
 }
 
 instance Eq GhfBuffer
