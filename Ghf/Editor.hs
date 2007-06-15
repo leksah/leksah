@@ -14,6 +14,7 @@ module Ghf.Editor (
 ,   editDelete
 ,   editSelectAll
 
+,   SearchHint(..)
 ,   editFindShow
 ,   editFindHide
 ,   editFindInc
@@ -30,10 +31,6 @@ module Ghf.Editor (
 ,   editUncomment
 ,   editShiftRight
 ,   editShiftLeft
-
-
-,   SearchHint(..)
-
 ) where
 
 import Graphics.UI.Gtk hiding (afterToggleOverwrite)
@@ -49,7 +46,7 @@ import Data.Maybe ( fromMaybe, isJust, fromJust )
 import Text.Printf
 import Char(toUpper)
 import qualified Data.Map as Map
-import Data.Map (Map)
+import Data.Map (Map,(!))
   
 import Ghf.Core
 import Ghf.CoreGui
@@ -59,12 +56,12 @@ tabWidth = 4
 newTextBuffer :: String -> Maybe FileName -> GhfAction
 newTextBuffer bn mbfn = do
     -- create the appropriate language
-    (p,nb) <- getActiveOrDefaultPNotebook
+    ghfR <- ask
+    (pane,nb) <- getActiveBufferPNotebookOrDefault
     bufs <- readGhf buffers
-    statLC <- getStatusbarLC
-    statIO <- getStatusbarIO
+    paneMap <- readGhf paneMap
     let (ind,rbn) = figureOutBufferName bufs bn 0
-    buf <- lift $ do
+    (buf,cid) <- lift $ do
         lm      <-  sourceLanguagesManagerNew
         langM   <-  sourceLanguagesManagerGetLanguageFromMimeType lm "text/x-haskell"
         lang    <-  case langM of
@@ -108,10 +105,11 @@ newTextBuffer bn mbfn = do
 
         -- put it in a scrolled window
         sw <- scrolledWindowNew Nothing Nothing
-        sw `containerAdd` sv
+        containerAdd sw sv
         scrolledWindowSetPolicy sw PolicyAutomatic PolicyAutomatic
-        sw `scrolledWindowSetShadowType` ShadowIn
+        scrolledWindowSetShadowType sw ShadowIn
 
+        let buf = GhfBuffer mbfn bn ind sv sw
         notebookPrependPage nb sw rbn
         mbPn <- notebookPageNum nb sw
         widgetShowAll nb
@@ -119,39 +117,40 @@ newTextBuffer bn mbfn = do
             Just i -> notebookSetCurrentPage nb i
             Nothing -> putStrLn "Notebook page not found"
 
-        -- statusbars  
-        statusbarPush statLC 1 ""
-        
-{--        writeCursorPositionInStatusbar buffer statLC
+        -- events
+        cid <- (castToWidget sv) `afterFocusIn`
+            (\_ -> do runReaderT (makeBufferActive buf) ghfR; return True)
 
-        afterMoveCursor sv (\_ _ _ -> writeCursorPositionInStatusbar buffer statLC)
-        afterEndUserAction buffer (writeCursorPositionInStatusbar buffer statLC)
-        afterSwitchPage nb (\pn1 -> do  pn2 <- notebookPageNum nb sw;
-                                        if isJust pn2 && pn1 == fromJust pn2
-                                            then writeCursorPositionInStatusbar buffer statLC
-                                            else return ())
-        widgetAddEvents sv [ButtonReleaseMask]
-        onButtonRelease sv (\ _ -> do  writeCursorPositionInStatusbar buffer statLC;
-                                       return False)
-        afterModifiedChanged buffer (markLabelAsChanged buffer sw)
+        sv `afterMoveCursor` (\_ _ _ -> writeCursorPositionInStatusbar buf)
+        buffer `afterEndUserAction`  writeCursorPositionInStatusbar buf
+        nb `afterSwitchPage` (\_ -> writeCursorPositionInStatusbar buf)
+        sv `widgetAddEvents` [ButtonReleaseMask]
+        sv `onButtonRelease` (\ _ -> writeCursorPositionInStatusbar buf)
+
+        buffer `afterModifiedChanged` markLabelAsChanged buf
 
         statusbarPush statIO 1 "INS"
-        afterToggleOverwrite sv (writeOverwriteInStatusbar sv sw statIO)
-        afterSwitchPage nb (\ _ -> writeOverwriteInStatusbar sv sw statIO)--}
-        return (GhfBuffer mbfn bn ind sv sw p)
-    modifyGhf_ (\ghf -> return (ghf{buffers = Map.insert rbn buf bufs,
-                                    mbActiveBuf = Just buf}))
+        sv `afterToggleOverwrite`  writeOverwriteInStatusbar buf
+        nb `afterSwitchPage`  (\ _ -> writeOverwriteInStatusbar buf)
+        return (buf,cid)
 
-{--
-writeCursorPositionInStatusbar :: SourceBuffer -> Statusbar -> IO()
-writeCursorPositionInStatusbar buf stat = do
-    modi <- textBufferGetModified buf
-    mark <- textBufferGetInsert buf
+    let newPaneMap  =  Map.insert (WindowBuf buf) (pane,cid) paneMap
+    let newBufferMap = Map.insert rbn buf bufs
+    modifyGhf_ (\ghf -> return (ghf{buffers = newBufferMap,
+                                    mbActiveBuf = Just buf,
+                                    paneMap = newPaneMap}))
+
+
+writeCursorPositionInStatusbar :: GhfBuffer -> IO()
+writeCursorPositionInStatusbar buf = do
+    sv   <- sourceView buf
+    buf  <- textViewGetBuffer (castToTextView sourceView)
     iter <- textBufferGetIterAtMark buf mark
     line <- textIterGetLine iter
     col  <- textIterGetLineOffset iter
-    statusbarPop stat 1
-    statusbarPush stat 1 $printf "Ln %4d, Col %3d" (line + 1) (col + 1)
+    sb   <- getStatusbarLC
+    statusbarPop sb 1
+    statusbarPush sb 1 $printf "Ln %4d, Col %3d" (line + 1) (col + 1)
     return ()
 
 writeOverwriteInStatusbar :: SourceView -> Notebook -> ScrolledWindow -> Statusbar -> IO()
@@ -166,8 +165,8 @@ writeOverwriteInStatusbar sv nb sw stat = do
             return () 
         else return ()
 
+{--
 markLabelAsChanged buf sw = do
-    
     modified <- textBufferGetModified buf
     (Just text) <- notebookGetTabLabelText nb sw
     label <- labelNew Nothing
@@ -179,13 +178,16 @@ markLabelAsChanged buf sw = do
     notebookSetTabLabel nb sw label  
 --}
 
+
 inBufContext' :: a -> (Notebook -> TextBuffer -> GhfBuffer -> Int -> GhfM a) -> GhfM a
 inBufContext' def f = do
     mbBuf <- readGhf mbActiveBuf
+    paneMap <- readGhf paneMap
     case mbBuf of
         Nothing -> return def
         Just ghfBuf -> do
-            nb <- getNotebook (pane ghfBuf)
+            let (pane,_) = paneMap ! WindowBuf ghfBuf
+            nb <- getNotebook pane
             mbI  <- lift $notebookPageNum nb (scrolledWindow ghfBuf)
             case mbI of
                 Nothing -> lift $ do
@@ -200,9 +202,11 @@ inBufContext def f = inBufContext' def (\a b c d-> lift $ f a b c d)
 
 fileSave :: Bool -> GhfAction
 fileSave query = inBufContext' () $ \nb _ currentBuffer i -> do
+    ghfR    <- ask
     window  <- readGhf window
     bufs    <- readGhf buffers
-    mbnbufs <- lift $ do
+    paneMap <- readGhf paneMap
+    mbnbufsPm <- lift $ do
         let mbfn = fileName currentBuffer
         mbpage <- notebookGetNthPage nb i
         case mbpage of
@@ -249,12 +253,19 @@ fileSave query = inBufContext' () $ \nb _ currentBuffer i -> do
                                         let newBuffer =  currentBuffer {fileName = Just fn,
                                                         bufferName = bn, addedIndex = ind}
                                         let newBufs   =  Map.insert rbn newBuffer bufs1
+                                        let (pane,cid)=  paneMap ! (WindowBuf currentBuffer)
+                                        signalDisconnect cid
+                                        ncid <- (castToWidget (sourceView newBuffer)) `afterFocusIn` (\_ -> do
+                                            runReaderT (makeBufferActive newBuffer) ghfR; return True)
+                                        let paneMap1  =  Map.delete (WindowBuf currentBuffer) paneMap
+                                        let newPaneMap =  Map.insert (WindowBuf newBuffer) (pane,ncid)  paneMap
                                         label <- labelNew (Just rbn)
                                         notebookSetTabLabel nb page label
-                                        return (Just newBufs)
+                                        return (Just (newBufs,newPaneMap))
                                     ResponseNo -> return Nothing
-    case mbnbufs of
-        Just nbufs ->modifyGhf_ (\ghf -> return (ghf{buffers = nbufs}))
+    case mbnbufsPm of
+        Just (nbufs,pm) ->modifyGhf_
+            (\ghf -> return (ghf{buffers = nbufs, paneMap = pm}))
         Nothing -> return ()
     where
         fileSave' :: GhfBuffer -> FileName -> IO()
@@ -274,6 +285,7 @@ fileClose = inBufContext' False $ \nb gtkbuf currentBuffer i -> do
     ghfRef  <- ask
     window  <- readGhf window
     bufs    <- readGhf buffers
+    paneMap <- readGhf paneMap
     mbbuf <- lift $ do
         modified <- textBufferGetModified gtkbuf
         if modified
@@ -301,8 +313,10 @@ fileClose = inBufContext' False $ \nb gtkbuf currentBuffer i -> do
                 return (Just currentBuffer)
     case mbbuf of
         Just buf -> do
-            modifyGhf_ (\ghf -> return (ghf{buffers = Map.delete (realBufferName currentBuffer) bufs}))
-            setNewActiveBuffer nb
+            let newBuffers = Map.delete (realBufferName currentBuffer) bufs
+            let newPaneMap = Map.delete (WindowBuf currentBuffer) paneMap
+            modifyGhf_ (\ghf -> return (ghf{buffers = newBuffers, paneMap = newPaneMap}))
+            guessNewActiveBuffer nb
             return True
         Nothing -> return False
 

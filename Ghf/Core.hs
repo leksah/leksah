@@ -4,6 +4,7 @@ module Ghf.Core (
 ,   GhfRef
 ,   GhfM
 ,   GhfAction
+,   GhfWindow(..)
 ,   FileName
 ,   Pane(..)
 ,   readGhf
@@ -33,7 +34,11 @@ data Ghf        =   Ghf {
 ,   uiManager   ::  UIManager
 ,   buffers     ::  Map String GhfBuffer
 ,   mbActiveBuf ::  Maybe GhfBuffer
+,   paneMap     ::  Map GhfWindow (Pane, ConnectId Widget)
 } 
+
+data GhfWindow  =   WindowBuf GhfBuffer
+    deriving (Eq,Ord)
 
 data GhfBuffer  =   GhfBuffer {
     fileName    ::  Maybe FileName
@@ -41,11 +46,16 @@ data GhfBuffer  =   GhfBuffer {
 ,   addedIndex  ::  Int
 ,   sourceView  ::  SourceView 
 ,   scrolledWindow  :: ScrolledWindow
-,   pane        ::  Pane
 }
 
 instance Eq GhfBuffer
     where (==) a b = bufferName a == bufferName b && addedIndex a == addedIndex b
+instance Ord GhfBuffer
+    where (<=) a b = if bufferName a < bufferName b 
+                        then True
+                        else if bufferName a == bufferName b 
+                            then addedIndex a <= addedIndex b
+                            else False
 
 type GhfRef = IORef Ghf
 type GhfM = ReaderT (GhfRef) IO

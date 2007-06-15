@@ -2,9 +2,10 @@ module Ghf.CoreGui (
     figureOutBufferName
 ,   realBufferName
 ,   getNotebook
-,   getActiveOrDefaultPNotebook
-,   getActivePNotebook
-,   setNewActiveBuffer
+,   getActiveBufferPNotebookOrDefault
+,   getActiveBufferPNotebook
+,   guessNewActiveBuffer
+,   makeBufferActive
 
 ,   getFindEntry
 ,   getFindBar
@@ -67,29 +68,28 @@ getUIAction str f = do
         findAction <- uiManagerGetAction uiManager str
         return (f (fromJust findAction))
 
--------------------------
---convinience methods
-
-getActivePNotebook :: GhfM (Maybe (Pane,Notebook))
-getActivePNotebook = do
+getActiveBufferPNotebook :: GhfM (Maybe (Pane,Notebook))
+getActiveBufferPNotebook = do
     mbBuf <- readGhf mbActiveBuf
     case mbBuf of
         Nothing -> return Nothing
         Just buf -> do
-            nb <- getNotebook (pane buf)
-            return (Just (pane buf,nb))
+            paneMap <- readGhf paneMap
+            let (pane,_) = paneMap Map.! WindowBuf buf
+            nb <- getNotebook pane
+            return (Just (pane,nb))
 
-getActiveOrDefaultPNotebook :: GhfM (Pane,Notebook)
-getActiveOrDefaultPNotebook = do
-    mbNotebook <- getActivePNotebook
+getActiveBufferPNotebookOrDefault :: GhfM (Pane,Notebook)
+getActiveBufferPNotebookOrDefault = do
+    mbNotebook <- getActiveBufferPNotebook
     case mbNotebook of
         Nothing -> do
             nb <- getNotebook RightTop
             return (RightTop,nb)
         Just p  -> return p
 
-setNewActiveBuffer :: Notebook -> GhfAction
-setNewActiveBuffer nb = do
+guessNewActiveBuffer :: Notebook -> GhfAction
+guessNewActiveBuffer nb = do
     bufs <- readGhf buffers
     mbBuf  <- lift $do
         mbI <- notebookGetCurrentPage nb
@@ -110,6 +110,9 @@ setNewActiveBuffer nb = do
             Nothing -> if Map.null bufs
                             then Nothing
                             else (Just (head (Map.elems bufs)))})
+
+makeBufferActive :: GhfBuffer -> GhfAction
+makeBufferActive buf = modifyGhf_ $ \ghf -> return (ghf{mbActiveBuf = Just buf})
 
 getNotebook :: Pane -> GhfM (Notebook)
 getNotebook RightTop = widgetGet ["topBox","paneLeftRight","paneRight", "notebook0" ] castToNotebook

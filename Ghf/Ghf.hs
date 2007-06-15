@@ -46,7 +46,12 @@ main = do
     win <- windowNew
     windowSetIconFromFile win "ghf.gif"
     uiManager <- uiManagerNew
-    let ghf = Ghf win uiManager Map.empty Nothing
+    let ghf = Ghf
+                  {   window = win
+                  ,   uiManager = uiManager
+                  ,   buffers = Map.empty
+                  ,   mbActiveBuf = Nothing
+                  ,   paneMap = Map.empty}
     ghfR <- newIORef ghf
     (acc,menus) <- runReaderT (makeMenu uiManager actions menuDescription) ghfR
     let mb = fromJust $menus !! 0
@@ -139,8 +144,8 @@ main = do
 
     windowSetDefaultSize win 700 1000
     flip runReaderT ghfR $ case fl of
-        [] -> newTextBuffer Nothing "Unnamed" Nothing
-        otherwise  -> mapM_ (\fn -> (newTextBuffer Nothing (takeFileName fn) (Just fn))) fl 
+        [] -> newTextBuffer "Unnamed" Nothing
+        otherwise  -> mapM_ (\fn -> (newTextBuffer (takeFileName fn) (Just fn))) fl
     widgetShowAll win
     mainGUI
     widgetHide hbf
