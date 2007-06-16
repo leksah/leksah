@@ -1,12 +1,19 @@
 module Ghf.Core (
+
     Ghf(..)
-,   GhfBuffer(..)
 ,   GhfRef
 ,   GhfM
 ,   GhfAction
-,   GhfWindow(..)
+,   GhfPane(..)
+,   GhfBuffer(..)
+
+,   Connections(..)
 ,   FileName
-,   Pane(..)
+,   Direction(..)
+,   PaneDirection(..)
+,   PanePath
+,   PaneLayout(..)
+
 ,   readGhf
 ,   modifyGhf
 ,   modifyGhf_
@@ -25,42 +32,35 @@ import Data.Maybe ( fromMaybe, isJust, fromJust )
 import qualified Data.Map as Map
 import Data.Map (Map)
 
-type FileName   =   String
-data Pane       =   RightTop | RightBottom | LeftBottom | LeftTop 
-    deriving (Enum,Show)
-
+--
+-- | The IDE state
+--
 data Ghf        =   Ghf {
     window      ::  Window
 ,   uiManager   ::  UIManager
-,   buffers     ::  Map String GhfBuffer
-,   mbActiveBuf ::  Maybe (GhfBuffer, [ConnectId SourceView],[ConnectId TextBuffer])
-,   paneMap     ::  Map GhfWindow (Pane, [ConnectId Widget])
+,   panes       ::  Map String GhfPane
+,   activePane  ::  (GhfPane,PanePath,Connections)
+,   paneMap     ::  Map GhfPane (PanePath, [ConnectId Widget])
+,   layout      ::  PaneLayout
 } 
 
-data GhfWindow  =   WindowBuf GhfBuffer
-    deriving (Eq,Ord)
-
-data GhfBuffer  =   GhfBuffer {
-    fileName    ::  Maybe FileName
-,   bufferName  ::  String
-,   addedIndex  ::  Int
-,   sourceView  ::  SourceView 
-,   scrolledWindow :: ScrolledWindow
-}
-
-instance Eq GhfBuffer
-    where (==) a b = bufferName a == bufferName b && addedIndex a == addedIndex b
-instance Ord GhfBuffer
-    where (<=) a b = if bufferName a < bufferName b 
-                        then True
-                        else if bufferName a == bufferName b 
-                            then addedIndex a <= addedIndex b
-                            else False
-
+--
+-- | A mutable reference to the IDE state
+--
 type GhfRef = IORef Ghf
+
+--
+-- | A reader monad for a mutable reference to the IDE state
+--
 type GhfM = ReaderT (GhfRef) IO
+
+--
+-- | A shorthand for a reader monad for a mutable reference to the IDE state
+-- | which does not return a value
+--
 type GhfAction = GhfM ()
 
+-- | Read an attribute of the contents
 readGhf :: (Ghf -> b) -> GhfM b
 readGhf f = do
     e <- ask
@@ -85,5 +85,62 @@ withGhf :: (Ghf -> IO a) -> GhfM a
 withGhf f = do
     e <- ask
     lift $ f =<< readIORef e  
+
+--
+-- | Description of the different pane types
+--
+data GhfPane    =   PaneBuf GhfBuffer
+    deriving (Eq,Ord)
+
+--
+-- | Signal handlers for the different pane types
+--
+data Connections =  BufConnections ([ConnectId SourceView],[ConnectId TextBuffer])
+
+--
+-- | A text editor pane description
+--
+data GhfBuffer  =   GhfBuffer {
+    fileName    ::  Maybe FileName
+,   bufferName  ::  String
+,   addedIndex  ::  Int
+,   sourceView  ::  SourceView 
+,   scrolledWindow :: ScrolledWindow
+}
+instance Eq GhfBuffer
+    where (==) a b = bufferName a == bufferName b && addedIndex a == addedIndex b
+instance Ord GhfBuffer
+    where (<=) a b = if bufferName a < bufferName b 
+                        then True
+                        else if bufferName a == bufferName b 
+                            then addedIndex a <= addedIndex b
+                            else False
+
+--
+-- | The direction of a split
+--
+data Direction      =   Horizontal | Vertical
+
+--
+-- | The relative direction to a pane from the parent
+--
+data PaneDirection  =   TopP | BottomP | LeftP | RightP
+    deriving (Eq,Ord,Show)
+
+--
+-- | A path to a pane
+--
+type PanePath       =   [PaneDirection]
+
+--
+-- | Logic description of a window layout
+--
+data PaneLayout =       HorizontalP PaneLayout PaneLayout
+                    |   VerticalP PaneLayout PaneLayout
+                    |   TerminalP
+
+type FileName       =   String
+
+
 
 

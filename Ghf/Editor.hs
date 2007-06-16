@@ -49,7 +49,7 @@ import qualified Data.Map as Map
 import Data.Map (Map,(!))
   
 import Ghf.Core
-import Ghf.CoreGui
+import Ghf.View
 
 tabWidth = 4
 
@@ -58,9 +58,9 @@ newTextBuffer bn mbfn = do
     -- create the appropriate language
     ghfR <- ask
     (pane,nb) <- getActiveBufferPNotebookOrDefault
-    bufs <- readGhf buffers
+    panes <- readGhf panes
     paneMap <- readGhf paneMap
-    let (ind,rbn) = figureOutBufferName bufs bn 0
+    let (ind,rbn) = figureOutPaneName panes bn 0
     (buf,cids) <- lift $ do
         lm      <-  sourceLanguagesManagerNew
         langM   <-  sourceLanguagesManagerGetLanguageFromMimeType lm "text/x-haskell"

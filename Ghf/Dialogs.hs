@@ -14,7 +14,7 @@ import Data.Maybe ( fromMaybe, isJust, fromJust )
 import Text.Printf
   
 import Ghf.Core
-import Ghf.CoreGui
+import Ghf.View
 import Ghf.Editor
 
 replaceDialog :: GhfAction
