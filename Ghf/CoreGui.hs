@@ -5,7 +5,6 @@ module Ghf.CoreGui (
 ,   getActiveBufferPNotebookOrDefault
 ,   getActiveBufferPNotebook
 ,   guessNewActiveBuffer
-,   makeBufferActive
 
 ,   getFindEntry
 ,   getFindBar
@@ -73,7 +72,7 @@ getActiveBufferPNotebook = do
     mbBuf <- readGhf mbActiveBuf
     case mbBuf of
         Nothing -> return Nothing
-        Just buf -> do
+        Just (buf,_,_) -> do
             paneMap <- readGhf paneMap
             let (pane,_) = paneMap Map.! WindowBuf buf
             nb <- getNotebook pane
@@ -104,15 +103,13 @@ guessNewActiveBuffer nb = do
                         case mbKey of
                             Nothing -> return Nothing
                             Just key -> return (Map.lookup key bufs)
-    modifyGhf_ $ \ghf -> return (ghf{mbActiveBuf =
-        case mbBuf of
-            Just _  -> mbBuf
-            Nothing -> if Map.null bufs
-                            then Nothing
-                            else (Just (head (Map.elems bufs)))})
-
-makeBufferActive :: GhfBuffer -> GhfAction
-makeBufferActive buf = modifyGhf_ $ \ghf -> return (ghf{mbActiveBuf = Just buf})
+    modifyGhf_ $ \ghf -> 
+        let newActiveBuf =  case mbBuf of
+                              Just b  ->  Just (b,[],[])
+                              Nothing ->  if Map.null bufs
+                                              then Nothing
+                                              else (Just (head (Map.elems bufs),[],[]))
+        in return (ghf{mbActiveBuf = newActiveBuf})
 
 getNotebook :: Pane -> GhfM (Notebook)
 getNotebook RightTop = widgetGet ["topBox","paneLeftRight","paneRight", "notebook0" ] castToNotebook

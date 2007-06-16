@@ -33,8 +33,8 @@ data Ghf        =   Ghf {
     window      ::  Window
 ,   uiManager   ::  UIManager
 ,   buffers     ::  Map String GhfBuffer
-,   mbActiveBuf ::  Maybe GhfBuffer
-,   paneMap     ::  Map GhfWindow (Pane, ConnectId Widget)
+,   mbActiveBuf ::  Maybe (GhfBuffer, [ConnectId SourceView],[ConnectId TextBuffer])
+,   paneMap     ::  Map GhfWindow (Pane, [ConnectId Widget])
 } 
 
 data GhfWindow  =   WindowBuf GhfBuffer
@@ -45,7 +45,7 @@ data GhfBuffer  =   GhfBuffer {
 ,   bufferName  ::  String
 ,   addedIndex  ::  Int
 ,   sourceView  ::  SourceView 
-,   scrolledWindow  :: ScrolledWindow
+,   scrolledWindow :: ScrolledWindow
 }
 
 instance Eq GhfBuffer
