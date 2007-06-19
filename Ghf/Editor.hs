@@ -130,7 +130,7 @@ newTextBuffer bn mbfn = do
     let newPanes = Map.insert rbn (PaneBuf buf) panes
     modifyGhf_ (\ghf -> return (ghf{panes = newPanes,
                                     paneMap = newPaneMap}))
-    lift $widgetShow (sourceView buf)
+    lift $widgetShowAll (sourceView buf)
 
 
 makeBufferActive :: GhfBuffer -> GhfAction
@@ -146,7 +146,7 @@ makeBufferActive buf = do
       id1 <- gtkBuf `afterModifiedChanged` runReaderT (markLabelAsChanged) ghfR
       id2 <- sv `afterMoveCursor`
           (\_ _ _ -> writeCursorPositionInStatusbar sv sbLC)
-  --    id3 <- buf `afterEndUserAction`  writeCursorPositionInStatusbar sv sbLC
+      --id3 <- gtkBuf `afterEndUserAction`  writeCursorPositionInStatusbar sv sbLC
       id4 <- sv `onButtonRelease`(\ _ -> do writeCursorPositionInStatusbar sv sbLC; return False)
       id5 <- sv `afterToggleOverwrite`  writeOverwriteInStatusbar sv sbIO
       return (ghf{activePane = (PaneBuf buf,BufConnections[id2,id4,id5] [id1])})

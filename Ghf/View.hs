@@ -61,17 +61,19 @@ viewSplit dir = do
     activeNotebook  <- getNotebook panePath
     mbPD <- lift $ do
         mbParent  <- widgetGetParent activeNotebook
+        putStrLn "1"
         case mbParent of
             Nothing -> return Nothing
             Just parent -> do
+                putStrLn $"Pane path " ++ show panePath
                 newpane <- case dir of
                                 Horizontal  ->  do  h <- hPanedNew
                                                     return (castToPaned h)
-                                Vertical ->     do  v <- hPanedNew
+                                Vertical ->     do  v <- vPanedNew
                                                     return (castToPaned v)
-                let (name,nbname,altnbname,paneDir,dir) = case dir of
-                            Horizontal  ->  ("hpane","nb-top","nb-bottom",TopP,Horizontal)
-                            Vertical    ->  ("vpane","nb-left","nb-right",LeftP,Vertical)
+                let (name,nbname,altnbname,paneDir) = case dir of
+                            Horizontal  ->  ("hpane","nb-top","nb-bottom",TopP)
+                            Vertical    ->  ("vpane","nb-left","nb-right",LeftP)
                 widgetSetName newpane name
                 nb <- notebookNew
                 widgetSetName nb nbname
@@ -84,6 +86,8 @@ viewSplit dir = do
                     else do
                         boxPackStart (castToVBox parent) newpane PackGrow 0
                         boxReorderChild (castToVBox parent) newpane 2
+                widgetShowAll newpane
+                widgetGrabFocus activeNotebook
                 return (Just (paneDir,dir))
     case mbPD of
         Just (paneDir,dir) -> do
@@ -190,7 +194,7 @@ moveTarget panePath layout =
             Just (target ++ chooseRightmostTopmost (layoutFromPath panePath layout))
     where
     chooseRightmostTopmost          ::  PaneLayout -> PanePath
-    chooseRightmostTopmost  TerminalP  = []
+    chooseRightmostTopmost  TerminalP           =   []
     chooseRightmostTopmost  (HorizontalP t _)   =   TopP :  chooseRightmostTopmost t
     chooseRightmostTopmost  (VerticalP _ r)     =   RightP :  chooseRightmostTopmost r
 
@@ -208,9 +212,9 @@ otherSide :: PanePath -> Maybe PanePath
 otherSide []    =   Nothing
 otherSide p     =   let rp = reverse p
                         ae = case head rp of
-                                LeftP -> RightP
-                                RightP -> LeftP
-                                TopP -> BottomP
+                                LeftP   -> RightP
+                                RightP  -> LeftP
+                                TopP    -> BottomP
                                 BottomP -> TopP
                     in Just (reverse $ae : tail rp)
 
@@ -315,6 +319,7 @@ maybeActiveBuf = do
 
 getTopWidget :: GhfPane -> Widget
 getTopWidget (PaneBuf buf) = castToWidget(scrolledWindow buf)
+getTopWidget NoPane        = error "getTopWidget on no widget"
 
 getBufferName :: GhfPane -> String
 getBufferName (PaneBuf buf) = bufferName buf
