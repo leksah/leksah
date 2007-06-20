@@ -18,6 +18,8 @@ module Ghf.Core (
 ,   modifyGhf
 ,   modifyGhf_
 ,   withGhf
+
+,   debugState
 ) where
 
 import Graphics.UI.Gtk
@@ -30,7 +32,7 @@ import System.Console.GetOpt
 import System.Environment
 import Data.Maybe ( fromMaybe, isJust, fromJust )
 import qualified Data.Map as Map
-import Data.Map (Map)
+import Data.Map (Map,(!))
 
 --
 -- | The IDE state
@@ -42,14 +44,22 @@ data Ghf        =   Ghf {
 ,   activePane  ::  (GhfPane,Connections)
 ,   paneMap     ::  Map GhfPane (PanePath, [ConnectId Widget])
 ,   layout      ::  PaneLayout
-} 
+}
+
+debugState :: GhfAction
+debugState = do
+    ref <- ask
+    Ghf _ _ panes (pane,_) pm layout <- lift $readIORef ref
+    lift $putStrLn $"layout " ++ show layout
+    lift $putStrLn $"panes " ++ show (Map.keys panes)
+    lift $putStrLn $"active pane path " ++ (show (fst (pm ! pane)))
 
 
 --
 -- | Description of the different pane types
 --
 data GhfPane    =   PaneBuf GhfBuffer
-                |   NoPane 
+                |   NoPane
     deriving (Eq,Ord)
 
 --

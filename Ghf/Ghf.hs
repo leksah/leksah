@@ -77,7 +77,7 @@ main = do
     windowAddAccelGroup win acc
 
     nb <- notebookNew
-    widgetSetName nb $"nb"
+    widgetSetName nb $"root"
     hb <- buildStatusbar ghfR
     vb <- vBoxNew False 1  -- Top-level vbox
     widgetSetName vb "topBox"
@@ -192,7 +192,7 @@ actions =
         viewMove Nothing False
     ,AD "MoveUp" "Move _Up" (Just "Move the current pane up in the hierarchy") Nothing
         viewMoveUp Nothing False
-    ,AD "SplitHorizontal" "Split H-orizontal" (Just "Split the current pane in horizontal direction") Nothing
+    ,AD "SplitHorizontal" "Split H_orizontal" (Just "Split the current pane in horizontal direction") Nothing
         viewSplitHorizontal (Just "<Ctrl>2") False
     ,AD "SplitVertical" "Split _Vertical" (Just "Split the current pane in vertical direction") Nothing
         viewSplitVertical (Just "<Ctrl>3") False

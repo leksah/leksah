@@ -59,6 +59,7 @@ newTextBuffer bn mbfn = do
     ghfR <- ask
     (pane,_) <- readGhf activePane
     panePath <- getActivePanePath
+    lift $putStrLn $show panePath
     nb <- getNotebook panePath
     panes <- readGhf panes
     paneMap <- readGhf paneMap
@@ -113,13 +114,12 @@ newTextBuffer bn mbfn = do
 
         let buf = GhfBuffer mbfn bn ind sv sw
         notebookPrependPage nb sw rbn
+        widgetShowAll (scrolledWindow buf)
         mbPn <- notebookPageNum nb sw
         case mbPn of
             Just i -> notebookSetCurrentPage nb i
             Nothing -> putStrLn "Notebook page not found"
-
         -- events
-        sv `widgetAddEvents` [ButtonReleaseMask]
         cid <- (castToWidget sv) `afterFocusIn`
             (\_ -> do runReaderT (makeBufferActive buf) ghfR; return True)
         cid2 <- (castToWidget sv) `afterFocusOut`
@@ -130,7 +130,7 @@ newTextBuffer bn mbfn = do
     let newPanes = Map.insert rbn (PaneBuf buf) panes
     modifyGhf_ (\ghf -> return (ghf{panes = newPanes,
                                     paneMap = newPaneMap}))
-    lift $widgetShowAll (sourceView buf)
+    lift $widgetGrabFocus (sourceView buf)
 
 
 makeBufferActive :: GhfBuffer -> GhfAction
@@ -146,10 +146,11 @@ makeBufferActive buf = do
       id1 <- gtkBuf `afterModifiedChanged` runReaderT (markLabelAsChanged) ghfR
       id2 <- sv `afterMoveCursor`
           (\_ _ _ -> writeCursorPositionInStatusbar sv sbLC)
-      --id3 <- gtkBuf `afterEndUserAction`  writeCursorPositionInStatusbar sv sbLC
+      id3 <- gtkBuf `afterEndUserAction`  writeCursorPositionInStatusbar sv sbLC
+      sv `widgetAddEvents` [ButtonReleaseMask]
       id4 <- sv `onButtonRelease`(\ _ -> do writeCursorPositionInStatusbar sv sbLC; return False)
       id5 <- sv `afterToggleOverwrite`  writeOverwriteInStatusbar sv sbIO
-      return (ghf{activePane = (PaneBuf buf,BufConnections[id2,id4,id5] [id1])})
+      return (ghf{activePane = (PaneBuf buf,BufConnections[id2,id4,id5] [id1,id3])})
 
 makeBufferInactive :: GhfAction
 makeBufferInactive = do

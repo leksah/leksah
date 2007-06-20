@@ -53,7 +53,7 @@ viewSplitVertical :: GhfAction
 viewSplitVertical = viewSplit Vertical
 
 --
--- | The main view can be split in to (horizontal or vertical)
+-- | The main view can be split in two (horizontal or vertical)
 --
 viewSplit :: Direction -> GhfAction
 viewSplit dir = do
@@ -61,30 +61,33 @@ viewSplit dir = do
     activeNotebook  <- getNotebook panePath
     mbPD <- lift $ do
         mbParent  <- widgetGetParent activeNotebook
-        putStrLn "1"
         case mbParent of
             Nothing -> return Nothing
             Just parent -> do
                 putStrLn $"Pane path " ++ show panePath
                 newpane <- case dir of
-                                Horizontal  ->  do  h <- hPanedNew
+                                Horizontal  ->  do  h <- vPanedNew
                                                     return (castToPaned h)
-                                Vertical ->     do  v <- vPanedNew
+                                Vertical ->     do  v <- hPanedNew
                                                     return (castToPaned v)
-                let (name,nbname,altnbname,paneDir) = case dir of
-                            Horizontal  ->  ("hpane","nb-top","nb-bottom",TopP)
-                            Vertical    ->  ("vpane","nb-left","nb-right",LeftP)
-                widgetSetName newpane name
+                let (name,altname,paneDir) = case dir of
+                            Horizontal  ->  ("top","bottom",TopP)
+                            Vertical    ->  ("left","right",LeftP)
+                rName <- widgetGetName activeNotebook
+                widgetSetName newpane rName
                 nb <- notebookNew
-                widgetSetName nb nbname
-                panedPack1 newpane nb True True
+                widgetSetName nb altname
+                panedPack2 newpane nb True True
                 containerRemove (castToContainer parent) activeNotebook
-                widgetSetName activeNotebook altnbname
-                panedPack2 newpane activeNotebook True True
+                widgetSetName activeNotebook name
+                panedPack1 newpane activeNotebook True True
                 if not (null panePath)
-                    then panedPack2 newpane parent True True
+                    then
+                        if (last panePath == TopP || last panePath == LeftP)
+                            then  panedPack1 (castToPaned parent) newpane True True
+                            else  panedPack2 (castToPaned parent) newpane True True
                     else do
-                        boxPackStart (castToVBox parent) newpane PackGrow 0
+                        boxPackStart (castToBox parent) newpane PackGrow 0
                         boxReorderChild (castToVBox parent) newpane 2
                 widgetShowAll newpane
                 widgetGrabFocus activeNotebook
@@ -94,6 +97,7 @@ viewSplit dir = do
             let toPane = panePath ++ [paneDir]
             adjustPane panePath toPane
             adjustLayoutForSplit dir panePath
+            debugState
         Nothing -> return () 
 
 --
@@ -101,46 +105,49 @@ viewSplit dir = do
 --
 viewCollapse :: GhfAction
 viewCollapse = do
-    paneMap <- readGhf paneMap
+    paneMap         <- readGhf paneMap
     panePath        <- getActivePanePath
-    activeNotebook <- getNotebook panePath
-    layout <- readGhf layout
-    let otherSidePath = otherSide panePath
-    let newPanePath = reverse $tail $reverse panePath
-    b <- if isJust otherSidePath
-            && (layoutFromPath panePath layout /= TerminalP
-            || layoutFromPath (fromJust otherSidePath) layout /= TerminalP)
-            then return False
-            else do
-                adjustPane panePath newPanePath
-                adjustPane (fromJust otherSidePath) newPanePath
-                lift $ do
-                  mbParent <- widgetGetParent activeNotebook
-                  case mbParent of
-                      Nothing -> return False
-                      Just parent -> do
-                          mbGrandparent <- widgetGetParent parent
-                          case mbGrandparent of
-                              Nothing -> return False
-                              Just grandparent -> do
-                                  containerRemove (castToContainer grandparent) parent
-                                  if length panePath > 1
-                                    then do
-                                        panedPack2 (castToPaned grandparent) activeNotebook True True
-                                        return True
-                                    else do
-                                        boxPackStart (castToVBox grandparent) activeNotebook PackGrow 0
-                                        boxReorderChild (castToVBox grandparent) activeNotebook 2 {--###--}
-                                        return True
-    if b
-        then let windowsToMove =
-                    map (\(w,(p,_)) -> w)
-                        $ filter (\(w,(p,_)) -> p == (fromJust otherSidePath))
-                            $ Map.toList paneMap
-             in do
-                adjustLayoutForCollapse newPanePath
-                mapM_ (move newPanePath) windowsToMove
-        else return ()
+    activeNotebook  <- getNotebook panePath
+    layout          <- readGhf layout
+    let newPanePath   = reverse $tail $reverse panePath
+    let mbOtherSidePath = otherSide panePath
+    case mbOtherSidePath of
+        Nothing -> lift $putStrLn "Can't collapse top level"
+        Just otherSidePath ->
+            if layoutFromPath panePath layout /= TerminalP
+            || layoutFromPath otherSidePath layout /= TerminalP
+            then lift $putStrLn "Can't collapse nonterminal windows"
+            else let windowsToMove = map (\(w,(p,_)) -> w)
+                                        $filter (\(w,(p,_)) -> p == otherSidePath)
+                                            $Map.toList paneMap
+                 in do
+                    mapM_ (move panePath) windowsToMove
+                    lift $ do
+                        mbParent <- widgetGetParent activeNotebook
+                        case mbParent of
+                            Nothing -> error "collapse: no parent"
+                            Just parent -> do
+                                mbGrandparent <- widgetGetParent parent
+                                case mbGrandparent of
+                                    Nothing -> error "collapse: no grandparent"
+                                    Just grandparent -> do
+                                        containerRemove (castToContainer grandparent) parent
+                                        containerRemove (castToContainer parent) activeNotebook
+                                        if length panePath > 1
+                                            then do
+                                                let dir = last panePath
+                                                if (dir == TopP || dir == LeftP)
+                                                    then panedPack1 (castToPaned grandparent) activeNotebook True True
+                                                    else panedPack2 (castToPaned grandparent) activeNotebook True True
+                                                widgetSetName activeNotebook $paneDirectionToWidgetName dir
+                                            else do
+                                                boxPackStart (castToVBox grandparent) activeNotebook PackGrow 0
+                                                boxReorderChild (castToVBox grandparent) activeNotebook 2
+                                                widgetSetName activeNotebook "root"
+                    adjustLayoutForCollapse newPanePath
+                    adjustPane panePath newPanePath
+                    adjustPane otherSidePath newPanePath
+
 
 --
 -- | Moves the given Pane to the given path
@@ -247,15 +254,14 @@ widgetFromPath w (h:t) = do
 -- | Get the concrete notebook widget from a logical path
 --
 getNotebook :: PanePath -> GhfM Notebook
-getNotebook [] = widgetGet ["topBox","nb"] castToNotebook
-getNotebook p = widgetGet (["topBox"] ++ (concatMap paneDirectionToWidgetName p))
-                    castToNotebook
-    where
-    paneDirectionToWidgetName           :: PaneDirection -> [String]
-    paneDirectionToWidgetName TopP      = ["hpane","nb-top"]
-    paneDirectionToWidgetName BottomP   = ["hpane","nb-bottom"]
-    paneDirectionToWidgetName LeftP     = ["vpane","nb-left"]
-    paneDirectionToWidgetName RightP    = ["vpane","nb-right"]
+getNotebook [] = (widgetGet ["topBox","root"]) castToNotebook
+getNotebook p = (widgetGet $["topBox","root"] ++ map paneDirectionToWidgetName p) castToNotebook
+
+paneDirectionToWidgetName           :: PaneDirection -> String
+paneDirectionToWidgetName TopP      =  "top"
+paneDirectionToWidgetName BottomP   =  "bottom"
+paneDirectionToWidgetName LeftP     =  "left"
+paneDirectionToWidgetName RightP    =  "right"
 
 --
 -- | Changes a pane path in the pane map
@@ -336,7 +342,7 @@ figureOutPaneName bufs bn ind =
                 0 (Map.elems bufs)
     in  if ind == 0
             then (0,bn)
-            else (ind,bn ++ "<" ++ show ind ++ ">")
+            else (ind,bn ++ "(" ++ show ind ++ ")")
 
 realBufferName :: GhfBuffer -> String
 realBufferName buf =
