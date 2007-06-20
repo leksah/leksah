@@ -41,7 +41,7 @@ data Ghf        =   Ghf {
     window      ::  Window
 ,   uiManager   ::  UIManager
 ,   panes       ::  Map String GhfPane
-,   activePane  ::  (GhfPane,Connections)
+,   activePane  ::  Maybe (GhfPane,Connections)
 ,   paneMap     ::  Map GhfPane (PanePath, [ConnectId Widget])
 ,   layout      ::  PaneLayout
 }
@@ -49,17 +49,19 @@ data Ghf        =   Ghf {
 debugState :: GhfAction
 debugState = do
     ref <- ask
-    Ghf _ _ panes (pane,_) pm layout <- lift $readIORef ref
+    Ghf _ _ panes mbPane pm layout <- lift $readIORef ref
     lift $putStrLn $"layout " ++ show layout
     lift $putStrLn $"panes " ++ show (Map.keys panes)
-    lift $putStrLn $"active pane path " ++ (show (fst (pm ! pane)))
+    case mbPane of
+        Nothing -> return ()
+        Just (pane,_) ->
+            lift $putStrLn $"active pane path " ++ (show (fst (pm ! pane)))
 
 
 --
 -- | Description of the different pane types
 --
 data GhfPane    =   PaneBuf GhfBuffer
-                |   NoPane
     deriving (Eq,Ord)
 
 --

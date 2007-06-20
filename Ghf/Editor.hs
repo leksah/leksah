@@ -57,10 +57,9 @@ newTextBuffer :: String -> Maybe FileName -> GhfAction
 newTextBuffer bn mbfn = do
     -- create the appropriate language
     ghfR <- ask
-    (pane,_) <- readGhf activePane
-    panePath <- getActivePanePath
-    lift $putStrLn $show panePath
-    nb <- getNotebook panePath
+    panePath <- getActivePanePathOrTop
+--    lift $putStrLn $show panePath
+    nb <- getActiveOrTopNotebook
     panes <- readGhf panes
     paneMap <- readGhf paneMap
     let (ind,rbn) = figureOutPaneName panes bn 0
@@ -71,18 +70,18 @@ newTextBuffer bn mbfn = do
                         (Just lang) -> return lang
                         Nothing -> do
                             langDirs <- sourceLanguagesManagerGetLangFilesDirs lm
-                            error ("please copy haskell.lang to one of the following" 
-                                   ++ "directories:\n"
+                            error ("please copy haskell.lang to one of the following"
+                                  ++ "directories:\n"
                                 ++ unlines langDirs)
 
         -- create a new SourceBuffer object
         buffer <- sourceBufferNewWithLanguage lang
         foundTag <- textTagNew (Just "found")
         set foundTag [textTagBackground := "yellow"]
-        tagTable <- textBufferGetTagTable buffer 
-        textTagTableAdd tagTable foundTag   
+        tagTable <- textBufferGetTagTable buffer
+        textTagTableAdd tagTable foundTag
 
-        -- load up and display a file  
+        -- load up and display a file
         fileContents <- case mbfn of
             Just fn -> readFile fn
             Nothing -> return "\n\n\n\n\n"
@@ -150,7 +149,7 @@ makeBufferActive buf = do
       sv `widgetAddEvents` [ButtonReleaseMask]
       id4 <- sv `onButtonRelease`(\ _ -> do writeCursorPositionInStatusbar sv sbLC; return False)
       id5 <- sv `afterToggleOverwrite`  writeOverwriteInStatusbar sv sbIO
-      return (ghf{activePane = (PaneBuf buf,BufConnections[id2,id4,id5] [id1,id3])})
+      return (ghf{activePane = Just (PaneBuf buf,BufConnections[id2,id4,id5] [id1,id3])})
 
 makeBufferInactive :: GhfAction
 makeBufferInactive = do
@@ -160,7 +159,7 @@ makeBufferInactive = do
           Just (buf,BufConnections signals signals2) -> do
               mapM_ signalDisconnect signals
               mapM_ signalDisconnect signals2
-              return ghf{activePane = (PaneBuf buf,BufConnections[][])}
+              return ghf{activePane = Just (PaneBuf buf,BufConnections[][])}
           Nothing -> return ghf
 
 writeCursorPositionInStatusbar :: SourceView -> Statusbar -> IO()
@@ -183,23 +182,25 @@ writeOverwriteInStatusbar sv sb = do
 
 markLabelAsChanged :: GhfAction
 markLabelAsChanged = do
-    (pane,_) <- readGhf activePane
-    path <- getActivePanePath
-    nb <- getNotebook path
-    mbBS <- maybeActiveBuf
-    case mbBS of
+    mbPath <- getActivePanePath
+    case mbPath of
         Nothing -> return ()
-        Just (buf,_) -> lift $do
-            gtkbuf  <- textViewGetBuffer (sourceView buf)
-            modified <- textBufferGetModified gtkbuf
-            (Just text) <- notebookGetTabLabelText nb (scrolledWindow buf)
-            label <- labelNew Nothing
-            labelSetUseMarkup label True
-            labelSetMarkup label
-                (if modified
-                    then "<span foreground=\"red\">" ++ text ++ "</span>"
-                    else text)
-            notebookSetTabLabel nb (scrolledWindow buf) label
+        Just path -> do
+          nb <- getNotebook path
+          mbBS <- maybeActiveBuf
+          case mbBS of
+              Nothing -> return ()
+              Just (buf,_) -> lift $do
+                  gtkbuf  <- textViewGetBuffer (sourceView buf)
+                  modified <- textBufferGetModified gtkbuf
+                  (Just text) <- notebookGetTabLabelText nb (scrolledWindow buf)
+                  label <- labelNew Nothing
+                  labelSetUseMarkup label True
+                  labelSetMarkup label
+                      (if modified
+                          then "<span foreground=\"red\">" ++ text ++ "</span>"
+                          else text)
+                  notebookSetTabLabel nb (scrolledWindow buf) label
 
 inBufContext' :: a -> (Notebook -> TextBuffer -> GhfBuffer -> Int -> GhfM a) -> GhfM a
 inBufContext' def f = do

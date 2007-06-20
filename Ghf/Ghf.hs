@@ -67,8 +67,8 @@ main = do
                   {   window = win
                   ,   uiManager = uiManager
                   ,   panes = Map.empty
-                  ,   activePane = (NoPane,NoConnections)
-                  ,   paneMap = Map.insert NoPane ([],[]) Map.empty
+                  ,   activePane = Nothing
+                  ,   paneMap = Map.empty
                   ,   layout = TerminalP}
     ghfR <- newIORef ghf
     (acc,menus) <- runReaderT (makeMenu uiManager actions menuDescription) ghfR
