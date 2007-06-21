@@ -271,7 +271,7 @@ fileSave query = inBufContext' () $ \nb _ currentBuffer i -> do
                                     ResponseYes -> do
                                         fileSave' currentBuffer fn
                                         let bn = takeFileName fn
-                                        let bufs1 =  Map.delete (realBufferName currentBuffer) bufs
+                                        let bufs1 =  Map.delete (realPaneName (PaneBuf currentBuffer)) bufs
                                         let (ind,rbn) =  figureOutPaneName bufs1 bn 0
                                         let newBuffer =  currentBuffer {fileName = Just fn,
                                                         bufferName = bn, addedIndex = ind}
@@ -322,7 +322,7 @@ fileClose = inBufContext' False $ \nb gtkbuf currentBuffer i -> do
                                             MessageQuestion
                                             ButtonsNone
                                             ("Save changes to document: "
-                                                ++ realBufferName currentBuffer
+                                                ++ realPaneName (PaneBuf currentBuffer)
                                                 ++ "?")
                 dialogAddButton md "_Save" ResponseYes
                 dialogAddButton md "_Don't Save" ResponseNo
@@ -341,7 +341,7 @@ fileClose = inBufContext' False $ \nb gtkbuf currentBuffer i -> do
                 return (Just currentBuffer)
     case mbbuf of
         Just buf -> do
-            let newBuffers = Map.delete (realBufferName currentBuffer) bufs
+            let newBuffers = Map.delete (realPaneName (PaneBuf currentBuffer)) bufs
             let newPaneMap = Map.delete (PaneBuf currentBuffer) paneMap
             modifyGhf_ (\ghf -> return (ghf{panes = newBuffers, paneMap = newPaneMap}))
             guessNewActiveBuffer nb

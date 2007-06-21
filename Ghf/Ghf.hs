@@ -1,5 +1,5 @@
 --
--- Copyright (c) 2007 JÃ¼rgen Nicklisch - 
+-- Copyright (c) 2007 Jürgen Nicklisch - 
 --
 -- This program is free software; you can redistribute it and/or
 -- modify it under the terms of the GNU General Public License as
@@ -188,10 +188,14 @@ actions =
         editShiftLeft (Just "<alt>Left") False
 
     ,AD "View" "_View" Nothing Nothing (return ()) Nothing False
-    ,AD "Move" "Move" (Just "Move the current pane") Nothing
-        viewMove Nothing False
-    ,AD "MoveUp" "Move _Up" (Just "Move the current pane up in the hierarchy") Nothing
-        viewMoveUp Nothing False
+    ,AD "MoveLeft" "Move _Left" (Just "Move the current pane left") Nothing
+        (viewMove LeftP) (Just "<Ctrl><alt><shift>Left") False
+    ,AD "MoveRight" "Move _Right" (Just "Move the current pane right") Nothing
+        (viewMove RightP) (Just "<Ctrl><alt><shift>Right") False
+    ,AD "MoveUp" "Move _Up" (Just "Move the current pane up") Nothing
+        (viewMove TopP) (Just "<Ctrl><alt><shift>Up") False
+    ,AD "MoveDown" "Move _Down" (Just "Move the current pane down") Nothing
+        (viewMove BottomP) (Just "<Ctrl><alt><shift>Down") False
     ,AD "SplitHorizontal" "Split H_orizontal" (Just "Split the current pane in horizontal direction") Nothing
         viewSplitHorizontal (Just "<Ctrl>2") False
     ,AD "SplitVertical" "Split _Vertical" (Just "Split the current pane in vertical direction") Nothing
@@ -200,6 +204,7 @@ actions =
         viewCollapse (Just "<Ctrl>1") False
 
     ,AD "Help" "_Help" Nothing Nothing (return ()) Nothing False
+    ,AD "HelpDebug" "Debug" (Just "<Ctrl>d") Nothing helpDebug Nothing False
     ,AD "HelpAbout" "About" Nothing (Just "gtk-about") aboutDialog Nothing False]
  
 
@@ -241,13 +246,16 @@ menuDescription = "\n\
        \<menuitem name=\"Shift Right\" action=\"EditShiftRight\" />\n\
      \</menu>\n\
     \<menu name=\"_View\" action=\"View\">\n\
-       \<menuitem name=\"Move\" action=\"Move\" />\n\
+       \<menuitem name=\"Move _Left\" action=\"MoveLeft\" />\n\
+       \<menuitem name=\"Move _Right\" action=\"MoveRight\" />\n\
        \<menuitem name=\"Move _Up\" action=\"MoveUp\" />\n\
+       \<menuitem name=\"Move _Down\" action=\"MoveDown\" />\n\
        \<menuitem name=\"Split H_orizontal\" action=\"SplitHorizontal\" />\n\
        \<menuitem name=\"Split V_ertical\" action=\"SplitVertical\" />\n\
        \<menuitem name=\"_Collapse\" action=\"Collapse\" />\n\
      \</menu>\n\
     \<menu name=\"_Help\" action=\"Help\">\n\
+       \<menuitem name=\"_Debug\" action=\"HelpDebug\" />\n\
        \<menuitem name=\"_About\" action=\"HelpAbout\" />\n\
      \</menu>\n\
    \</menubar>\n\

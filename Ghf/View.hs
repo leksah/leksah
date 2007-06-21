@@ -1,6 +1,5 @@
 module Ghf.View (
     viewMove
-,   viewMoveUp
 ,   viewSplitHorizontal
 ,   viewSplitVertical
 ,   viewCollapse
@@ -10,7 +9,6 @@ module Ghf.View (
 ,   getActivePanePath
 ,   getActivePanePathOrTop
 ,   maybeActiveBuf
-,   realBufferName
 ,   guessNewActiveBuffer
 
 ,   getFindEntry
@@ -70,7 +68,7 @@ viewSplit dir = do
               case mbParent of
                   Nothing -> return Nothing
                   Just parent -> do
-                      trace ("Pane path " ++ show panePath) return ()
+                      --trace ("Pane path " ++ show panePath) return ()
                       newpane <- case dir of
                                       Horizontal  ->  do  h <- vPanedNew
                                                           return (castToPaned h)
@@ -103,7 +101,6 @@ viewSplit dir = do
                   let toPane = panePath ++ [paneDir]
                   adjustPane panePath toPane
                   adjustLayoutForSplit dir panePath
-                  debugState
               Nothing -> return ()
 
 --
@@ -111,52 +108,62 @@ viewSplit dir = do
 --
 viewCollapse :: GhfAction
 viewCollapse = do
-  paneMap         <- readGhf paneMap
-  mbPanePath        <- getActivePanePath
-  case mbPanePath of
-    Nothing -> return ()
-    Just panePath -> do
-      activeNotebook  <- getNotebook panePath
-      layout          <- readGhf layout
-      let newPanePath   = reverse $tail $reverse panePath
-      let mbOtherSidePath = otherSide panePath
-      case mbOtherSidePath of
+    mbPanePath        <- getActivePanePath
+    case mbPanePath of
+        Nothing -> return ()
+        Just panePath -> do
+            viewCollapse' panePath
+
+viewCollapse' :: PanePath -> GhfAction
+viewCollapse' panePath = do
+    layout1           <- readGhf layout
+    let newPanePath   = reverse $tail $reverse panePath
+    let mbOtherSidePath = otherSide panePath
+    case mbOtherSidePath of
         Nothing -> lift $putStrLn "Can't collapse top level"
-        Just otherSidePath ->
-          if layoutFromPath panePath layout /= TerminalP
-          || layoutFromPath otherSidePath layout /= TerminalP
-            then lift $putStrLn "Can't collapse nonterminal windows"
-            else let windowsToMove = map (\(w,(p,_)) -> w)
-                                        $filter (\(w,(p,_)) -> p == otherSidePath)
-                                            $Map.toList paneMap
-              in do
-                lift $trace ("other side path: " ++ show otherSidePath) return ()
-                mapM_ (move panePath) windowsToMove
-                lift $ do
-                  mbParent <- widgetGetParent activeNotebook
-                  case mbParent of
+        Just otherSidePath -> 
+            let sp1 = getSubpath panePath layout1
+                sp2 = getSubpath otherSidePath layout1
+            in do
+            case sp1 of
+                Nothing -> return ()
+                Just sp -> viewCollapse' sp
+            case  sp2 of
+                Nothing -> return () 
+                Just sp -> viewCollapse' sp
+            paneMap         <- readGhf paneMap
+            activeNotebook  <- getNotebook panePath
+            let windowsToMove = map (\(w,(p,_)) -> w)
+                                    $filter (\(w,(p,_)) -> p == otherSidePath)
+                                        $Map.toList paneMap
+            mapM_ (move panePath) windowsToMove
+            lift $ do
+                mbParent <- widgetGetParent activeNotebook
+                case mbParent of
                     Nothing -> error "collapse: no parent"
                     Just parent -> do
-                      mbGrandparent <- widgetGetParent parent
-                      case mbGrandparent of
-                        Nothing -> error "collapse: no grandparent"
-                        Just grandparent -> do
-                          containerRemove (castToContainer grandparent) parent
-                          containerRemove (castToContainer parent) activeNotebook
-                          if length panePath > 1
-                            then do
-                              let dir = last newPanePath
-                              if (dir == TopP || dir == LeftP)
-                                then panedPack1 (castToPaned grandparent) activeNotebook True True
-                                else panedPack2 (castToPaned grandparent) activeNotebook True True
-                              widgetSetName activeNotebook $paneDirectionToWidgetName dir
-                            else do
-                              boxPackStart (castToVBox grandparent) activeNotebook PackGrow 0
-                              boxReorderChild (castToVBox grandparent) activeNotebook 2
-                              widgetSetName activeNotebook "root"
-                adjustLayoutForCollapse newPanePath
-                adjustPane panePath newPanePath
-                adjustPane otherSidePath newPanePath
+                        mbGrandparent <- widgetGetParent parent
+                        case mbGrandparent of
+                            Nothing -> error "collapse: no grandparent"
+                            Just grandparent -> do
+                                containerRemove (castToContainer grandparent) parent
+                                containerRemove (castToContainer parent) activeNotebook
+                                if length panePath > 1
+                                    then do
+                                        let dir = last newPanePath
+                                        if (dir == TopP || dir == LeftP)
+                                            then panedPack1 (castToPaned grandparent) 
+                                                    activeNotebook True True
+                                            else panedPack2 (castToPaned grandparent) 
+                                                    activeNotebook True True
+                                        widgetSetName activeNotebook $paneDirectionToWidgetName dir
+                                    else do
+                                        boxPackStart (castToVBox grandparent) activeNotebook PackGrow 0
+                                        boxReorderChild (castToVBox grandparent) activeNotebook 2
+                                        widgetSetName activeNotebook "root"
+            adjustLayoutForCollapse newPanePath
+            adjustPane panePath newPanePath
+                --adjustPane otherSidePath newPanePath
 
 
 --
@@ -186,11 +193,11 @@ move toPane ghfw  = do
     modifyGhf_ (\ghf -> return (ghf{paneMap = newPaneMap}))
 
 --
--- | Moves the activePane to the other side, if their are many solutions
---   choose the rightmost and topmost
+-- | Moves the activePane in the given direction, if possible 
+--   If their are many possibilities choose the leftmost and topmost
 --
-viewMove :: GhfAction
-viewMove = do
+viewMove :: PaneDirection -> GhfAction
+viewMove direction = do
     paneMap <- readGhf paneMap
     mbPane <- readGhf activePane
     case mbPane of
@@ -201,32 +208,32 @@ viewMove = do
                 Nothing -> return ()
                 Just panePath -> do 
                   layout <- readGhf layout
-                  case moveTarget panePath layout of
+                  case findMoveTarget panePath layout direction of
                       Nothing -> return ()
-                      Just moveTo -> move moveTo pane
+                      Just moveTo -> trace ("move target: " ++ show moveTo)
+                                        move moveTo pane
 
---
--- | Find the target Path, choose the rightmost and topmost
---
-moveTarget :: PanePath -> PaneLayout -> Maybe PanePath
-moveTarget panePath layout =
-    let mbTarget = otherSide panePath in
-    case mbTarget of
-        Nothing -> Nothing
-        Just target ->
-            Just (target ++ chooseRightmostTopmost (layoutFromPath panePath layout))
-    where
-    chooseRightmostTopmost          ::  PaneLayout -> PanePath
-    chooseRightmostTopmost  TerminalP           =   []
-    chooseRightmostTopmost  (HorizontalP t _)   =   TopP :  chooseRightmostTopmost t
-    chooseRightmostTopmost  (VerticalP _ r)     =   RightP :  chooseRightmostTopmost r
+findMoveTarget :: PanePath -> PaneLayout -> PaneDirection -> Maybe PanePath
+findMoveTarget panePath layout direction=
+    let reversedPath    = reverse panePath
+        oppositeDir     = otherDirection direction
+        cutPath         = dropWhile (\d -> d /= oppositeDir) reversedPath
+    in if null cutPath
+        then Nothing
+        else let basePath = reverse (direction : tail cutPath)
+                 layoutP  = layoutFromPath basePath layout
+             in  Just $basePath ++ findAppropriate layoutP oppositeDir
 
---
--- | Moves the activePaneone level up
---
-viewMoveUp :: GhfAction
-viewMoveUp = return ()
-
+findAppropriate :: PaneLayout -> PaneDirection -> PanePath 
+findAppropriate  TerminalP _ =   []
+findAppropriate  (HorizontalP t b) LeftP     =   TopP    :  findAppropriate t LeftP
+findAppropriate  (HorizontalP t b) RightP    =   TopP    :  findAppropriate t RightP
+findAppropriate  (HorizontalP t b) BottomP   =   BottomP :  findAppropriate b BottomP
+findAppropriate  (HorizontalP t b) TopP      =   TopP    :  findAppropriate b TopP
+findAppropriate  (VerticalP l r) LeftP       =   LeftP   :  findAppropriate l LeftP
+findAppropriate  (VerticalP l r) RightP      =   RightP  :  findAppropriate r RightP
+findAppropriate  (VerticalP l r) BottomP     =   LeftP   :  findAppropriate l BottomP
+findAppropriate  (VerticalP l r) TopP        =   LeftP   :  findAppropriate l TopP
 
 --
 -- | Get another pane path which points to the other side at the same level
@@ -234,12 +241,17 @@ viewMoveUp = return ()
 otherSide :: PanePath -> Maybe PanePath
 otherSide []    =   Nothing
 otherSide p     =   let rp = reverse p
-                        ae = case head rp of
-                                LeftP   -> RightP
-                                RightP  -> LeftP
-                                TopP    -> BottomP
-                                BottomP -> TopP
+                        ae = otherDirection $head rp
                     in Just (reverse $ae : tail rp)
+
+--
+-- | Get the opposite direction of a pane direction
+--
+otherDirection :: PaneDirection -> PaneDirection
+otherDirection LeftP    = RightP
+otherDirection RightP   = LeftP
+otherDirection TopP     = BottomP
+otherDirection BottomP  = TopP
 
 --
 -- | Get the layout at the given pane path
@@ -267,19 +279,30 @@ widgetFromPath w (h:t) = do
         Just ind    -> widgetFromPath (children !! ind) t
 
 --
--- | Get the concrete notebook widget from a logical path
+-- | Get the concrete notebook widget for the active pane
 --
 getNotebook :: PanePath -> GhfM Notebook
-getNotebook [] = (widgetGet ["topBox","root"]) castToNotebook
 getNotebook p = (widgetGet $["topBox","root"] ++ map paneDirectionToWidgetName p) castToNotebook
+
+--
+-- | Get the concrete notebook widget for the active pane
+--   If their is no active pane assume that their is just one pane
+-- (HorizontalP TerminalP (VerticalP (HorizontalP TerminalP TerminalP) TerminalP))
 
 getActiveOrTopNotebook :: GhfM Notebook
 getActiveOrTopNotebook = do
     mbPanePath <- getActivePanePath
     case mbPanePath of
         Just panePath -> getNotebook panePath
-        Nothing -> getNotebook []
+        Nothing -> do
+            layout <- readGhf layout
+            if layout == TerminalP     
+                then getNotebook []
+                else error "getActiveOrTopNotebook: No active notebook and not collapsed"
 
+--
+-- | Translates a pane direction to the widget name
+--
 paneDirectionToWidgetName           :: PaneDirection -> String
 paneDirectionToWidgetName TopP      =  "top"
 paneDirectionToWidgetName BottomP   =  "bottom"
@@ -312,13 +335,21 @@ adjustLayoutForSplit  dir path  = do
     modifyGhf_ $ \ghf -> return (ghf{layout = newLayout})
 
 --
--- | Changes the layout for a collapse
+-- | Changes the layout for a collapse (HorizontalP TerminalP (VerticalP (HorizontalP TerminalP TerminalP) TerminalP))
+
 --
 adjustLayoutForCollapse :: PanePath -> GhfAction
 adjustLayoutForCollapse path = do
     layout          <- readGhf layout
     let newLayout   = adjust path layout TerminalP  
     modifyGhf_ $ \ghf -> return (ghf{layout = newLayout})
+
+getSubpath :: PanePath -> PaneLayout -> Maybe PanePath
+getSubpath path layout = 
+    case layoutFromPath path layout of
+        TerminalP -> Nothing
+        HorizontalP _ _ -> Just (path ++ [TopP])
+        VerticalP _ _ -> Just (path ++ [LeftP])
 
 --
 -- | Changes the layout by replacing element at pane path with replace
@@ -328,7 +359,7 @@ adjust pp layout replace    = adjust' pp layout
     where
     adjust' [] _                                = replace
     adjust' (TopP:r)  (HorizontalP tp bp)       = HorizontalP (adjust' r tp) bp
-    adjust' (BottomP:r)  (HorizontalP tp bp)    = HorizontalP bp (adjust' r bp)
+    adjust' (BottomP:r)  (HorizontalP tp bp)    = HorizontalP tp (adjust' r bp)
     adjust' (LeftP:r)  (VerticalP lp rp)        = VerticalP (adjust' r lp) rp
     adjust' (RightP:r)  (VerticalP lp rp)       = VerticalP lp (adjust' r rp)
     adjust' p l = error $"inconsistent layout " ++ show p ++ " " ++ show l
@@ -347,7 +378,11 @@ getActivePanePathOrTop = do
     mbPP <- getActivePanePath
     case mbPP of
         Just pp -> return pp
-        Nothing -> return []
+        Nothing -> do            
+            layout <- readGhf layout
+            if layout == TerminalP     
+                then return []
+                else error "getActivePanePathOrTop: No active notebook and not collapsed"
 
 maybeActiveBuf :: GhfM (Maybe (GhfBuffer,Connections))
 maybeActiveBuf = do
@@ -360,14 +395,7 @@ maybeActiveBuf = do
               --  otherwise   -> return Nothing
     
 
-getTopWidget :: GhfPane -> Widget
-getTopWidget (PaneBuf buf) = castToWidget(scrolledWindow buf)
 
-getBufferName :: GhfPane -> String
-getBufferName (PaneBuf buf) = bufferName buf
-
-getAddedIndex :: GhfPane -> Int
-getAddedIndex (PaneBuf buf) = addedIndex buf
 
 figureOutPaneName :: Map String GhfPane -> String -> Int -> (Int,String)
 figureOutPaneName bufs bn ind =
@@ -380,11 +408,6 @@ figureOutPaneName bufs bn ind =
             then (0,bn)
             else (ind,bn ++ "(" ++ show ind ++ ")")
 
-realBufferName :: GhfBuffer -> String
-realBufferName buf =
-    if addedIndex buf == 0
-        then bufferName buf
-        else bufferName buf ++ "(" ++ show (addedIndex buf) ++ ")"
 
 widgetGet :: [String] -> (Widget -> b) -> GhfM (b)
 widgetGet strL cf = do

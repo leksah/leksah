@@ -19,11 +19,17 @@ module Ghf.Core (
 ,   modifyGhf_
 ,   withGhf
 
-,   debugState
+,   getTopWidget
+,   getBufferName
+,   getAddedIndex
+,   realPaneName
+
+,   helpDebug
 ) where
 
 import Graphics.UI.Gtk
 import Graphics.UI.Gtk.SourceView
+import System.Glib.Signals(ConnectId)
 import Control.Monad.Reader
 import Data.IORef
 import System.FilePath
@@ -46,17 +52,18 @@ data Ghf        =   Ghf {
 ,   layout      ::  PaneLayout
 }
 
-debugState :: GhfAction
-debugState = do
+helpDebug :: GhfAction
+helpDebug = do
     ref <- ask
     Ghf _ _ panes mbPane pm layout <- lift $readIORef ref
-    lift $putStrLn $"layout " ++ show layout
-    lift $putStrLn $"panes " ++ show (Map.keys panes)
-    case mbPane of
-        Nothing -> return ()
-        Just (pane,_) ->
-            lift $putStrLn $"active pane path " ++ (show (fst (pm ! pane)))
-
+    lift $do
+        putStrLn $"------------------ "
+        putStrLn $"Ghf "
+        putStrLn $"panes: " ++ show panes
+        putStrLn $"activePane: " ++ show mbPane
+        putStrLn $"paneMap: " ++ show pm
+        putStrLn $"layout: " ++ show layout
+        putStrLn $"------------------ "
 
 --
 -- | Description of the different pane types
@@ -64,11 +71,36 @@ debugState = do
 data GhfPane    =   PaneBuf GhfBuffer
     deriving (Eq,Ord)
 
+instance Show GhfPane where
+    show pane = realPaneName pane
+
+getTopWidget :: GhfPane -> Widget
+getTopWidget (PaneBuf buf) = castToWidget(scrolledWindow buf)
+
+getBufferName :: GhfPane -> String
+getBufferName (PaneBuf buf) = bufferName buf
+
+getAddedIndex :: GhfPane -> Int
+getAddedIndex (PaneBuf buf) = addedIndex buf
+
+realPaneName :: GhfPane -> String
+realPaneName pane =
+    if getAddedIndex pane == 0
+        then getBufferName pane
+        else getBufferName pane ++ "(" ++ show (getAddedIndex pane) ++ ")"
+
 --
 -- | Signal handlers for the different pane types
 --
 data Connections =  BufConnections [ConnectId SourceView] [ConnectId TextBuffer]
-                |   NoConnections
+    deriving (Eq,Ord,Show)
+
+instance Eq (ConnectId a)
+instance Ord (ConnectId a)
+instance Show (ConnectId a)
+    where show cid = "*"
+
+
 
 --
 -- | A text editor pane description
