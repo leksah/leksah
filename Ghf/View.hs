@@ -10,6 +10,10 @@ module Ghf.View (
 ,   getActivePanePathOrTop
 ,   maybeActiveBuf
 ,   guessNewActiveBuffer
+,   newNotebook
+,   viewTabsPos
+,   viewSwitchTabs
+
 
 ,   getFindEntry
 ,   getFindBar
@@ -40,7 +44,27 @@ import Debug.Trace
 
 import Ghf.Core
 
+newNotebook :: IO Notebook
+newNotebook = do
+    nb <- notebookNew
+    notebookSetTabPos nb PosTop
+    notebookSetShowTabs nb True
+    notebookSetScrollable nb True
+    notebookSetPopup nb True
+    return nb 
 
+viewSwitchTabs :: GhfAction
+viewSwitchTabs = do
+    nb <- getActiveOrTopNotebook
+    lift $do
+        b <- notebookGetShowTabs nb
+        notebookSetShowTabs nb (not b)
+
+viewTabsPos :: PositionType -> GhfAction
+viewTabsPos pos = do
+    nb <- getActiveOrTopNotebook
+    lift $notebookSetTabPos nb pos
+        
 --
 -- | Split the currently active pane in horizontal direction
 --
@@ -79,7 +103,7 @@ viewSplit dir = do
                                   Vertical    ->  ("left","right",LeftP)
                       rName <- widgetGetName activeNotebook
                       widgetSetName newpane rName
-                      nb <- notebookNew
+                      nb <- newNotebook
                       widgetSetName nb altname
                       panedPack2 newpane nb True True
                       containerRemove (castToContainer parent) activeNotebook

@@ -76,7 +76,7 @@ main = do
     let tb = fromJust $menus !! 1
     windowAddAccelGroup win acc
 
-    nb <- notebookNew
+    nb <- newNotebook
     widgetSetName nb $"root"
     hb <- buildStatusbar ghfR
     vb <- vBoxNew False 1  -- Top-level vbox
@@ -107,8 +107,6 @@ quit = do
         then    lift mainQuit
         else    do  r <- fileClose
                     if r then quit else return ()
-
-
                     
 aboutDialog :: GhfAction
 aboutDialog = lift $ do
@@ -203,6 +201,18 @@ actions =
     ,AD "Collapse" "_Collapse" (Just "Collapse the panes around the currentla selected pane into one") Nothing
         viewCollapse (Just "<Ctrl>1") False
 
+    ,AD "TabsLeft" "Tabs Left" (Just "Shows the tabs of the current notebook on the left") Nothing
+        (viewTabsPos PosLeft) Nothing False
+    ,AD "TabsRight" "Tabs Right" (Just "Shows the tabs of the current notebook on the right") Nothing
+        (viewTabsPos PosRight) Nothing False
+    ,AD "TabsUp" "Tabs Up" (Just "Shows the tabs of the current notebook on the top") Nothing
+        (viewTabsPos PosTop) Nothing False
+    ,AD "TabsDown" "Tabs Down" (Just "Shows the tabs of the current notebook on the bottom") Nothing
+        (viewTabsPos PosBottom) Nothing False
+    ,AD "SwitchTabs" "Tabs On/Off" (Just "Switches if tabs for the current notebook are visible") Nothing
+        viewSwitchTabs Nothing False
+
+
     ,AD "Help" "_Help" Nothing Nothing (return ()) Nothing False
     ,AD "HelpDebug" "Debug" (Just "<Ctrl>d") Nothing helpDebug Nothing False
     ,AD "HelpAbout" "About" Nothing (Just "gtk-about") aboutDialog Nothing False]
@@ -250,9 +260,16 @@ menuDescription = "\n\
        \<menuitem name=\"Move _Right\" action=\"MoveRight\" />\n\
        \<menuitem name=\"Move _Up\" action=\"MoveUp\" />\n\
        \<menuitem name=\"Move _Down\" action=\"MoveDown\" />\n\
+       \<separator/>\n\
        \<menuitem name=\"Split H_orizontal\" action=\"SplitHorizontal\" />\n\
        \<menuitem name=\"Split V_ertical\" action=\"SplitVertical\" />\n\
        \<menuitem name=\"_Collapse\" action=\"Collapse\" />\n\
+       \<separator/>\n\
+       \<menuitem name=\"Tabs _Left\" action=\"TabsLeft\" />\n\
+       \<menuitem name=\"Tabs _Right\" action=\"TabsRight\" />\n\
+       \<menuitem name=\"Tabs _Up\" action=\"TabsUp\" />\n\
+       \<menuitem name=\"Tabs _Down\" action=\"TabsDown\" />\n\
+       \<menuitem name=\"Switch Tabs\" action=\"SwitchTabs\" />\n\
      \</menu>\n\
     \<menu name=\"_Help\" action=\"Help\">\n\
        \<menuitem name=\"_Debug\" action=\"HelpDebug\" />\n\
