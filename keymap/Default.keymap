@@ -1,0 +1,48 @@
+--Default Keymap file for Genuine Haskell Face
+
+--File
+<control>N              ->          FileNew 
+<control>O              ->          FileOpen 
+<control>S              ->          FileSave 
+                        ->          FileSaveAs
+<control>W              ->          FileClose 
+<control>Q              ->          Quit 
+
+--Edit
+<control>Z              ->          EditUndo 
+<shift><control>Z       ->          EditRedo 
+--Just "<control>X"     ->          EditCut 
+--Just "<control>C"     ->          EditCopy 
+--Just "<control>V"     ->          EditPaste 
+                        ->          EditDelete
+<control>A              ->          EditSelectAll
+
+<control>F              ->          EditFind
+F3                      ->          EditFindNext
+<shift>F3               ->          EditFindPrevious
+<control>R              ->          EditReplace
+
+<control>G              ->          EditGotoLine
+
+<alt><shift>Right       ->          EditComment
+<alt><shift>Left        ->          EditUncomment
+<alt>Right              ->          EditShiftRight
+<alt>Left               ->          EditShiftLeft
+
+--View
+<Ctrl><alt><shift>Left  ->          MoveLeft
+<Ctrl><alt><shift>Right ->          ViewMoveRight
+<Ctrl><alt><shift>Up    ->          ViewMoveUp
+<Ctrl><alt><shift>Down  ->          ViewMoveDown
+
+<Ctrl>2                 ->          ViewSplitHorizontal
+<Ctrl>3                 ->          ViewSplitVertical
+<Ctrl>1                 ->          ViewCollapse
+
+                        ->          ViewTabsLeft
+                        ->          ViewTabsRight
+                        ->          ViewTabsUp
+                        ->          ViewTabsDown
+                        ->          ViewSwitchTabs
+
+

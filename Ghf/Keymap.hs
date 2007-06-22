@@ -59,30 +59,26 @@ lineparser = do
     <?> "lineparser"    
 
 complexkey :: GenParser Char () (Maybe (ActionString, (Either KeyString (KeyString,KeyString))))    
-complexkey = trace "complex" (do  
+complexkey = do  
     keyDescr <- identifier
-    trace "after key1" (return ())
     symbol "/"
     keyDescr2 <- identifier
     symbol "->"
     action <- identifier
     return (Just (action,(Right (keyDescr,keyDescr2))))
-    <?> "complexkey")
+    <?> "complexkey"
 
 simplekey :: GenParser Char () (Maybe (ActionString, (Either KeyString (KeyString,KeyString))))    
-simplekey = trace "simple" (do  
+simplekey = do  
     keyDescr <- identifier
-    trace "after key2" (return ())
     symbol "->"
-    trace "after symbol2" (return ())
     action <- identifier
-    trace "after action2" (return ())
     return (Just (action,(Left keyDescr)))
-    <?> "simplekey")
+    <?> "simplekey"
 
 meaningless :: GenParser Char () (Maybe (ActionString, (Either KeyString (KeyString,KeyString))))    
-meaningless = trace "meaningless" (do
+meaningless = do
     symbol "->"
     identifier
     return Nothing
-    <?> "meaningless")  
+    <?> "meaningless"
