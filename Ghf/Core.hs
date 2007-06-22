@@ -50,6 +50,8 @@ data Ghf        =   Ghf {
 ,   activePane  ::  Maybe (GhfPane,Connections)
 ,   paneMap     ::  Map GhfPane (PanePath, [ConnectId Widget])
 ,   layout      ::  PaneLayout
+,   specialKey  ::  Maybe 
+,   specialKeys ::  Map   
 }
 
 helpDebug :: GhfAction

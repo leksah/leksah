@@ -1,5 +1,5 @@
 --
--- Copyright (c) 2007 Jürgen Nicklisch - 
+-- Copyright (c) 2007 Jürgen Nicklisch - Jutaro
 --
 -- This program is free software; you can redistribute it and/or
 -- modify it under the terms of the GNU General Public License as
@@ -92,6 +92,9 @@ main = do
     boxPackStart vb hb PackNatural 0
 
     win `onDelete` (\_ -> do runReaderT quit ghfR; return True)
+
+    win `onKeyPress` (\e -> runReaderT (handleSpecialKeystrokes e) ghfR)
+    
     containerAdd win vb
 
     windowSetDefaultSize win 700 1000
@@ -143,30 +146,32 @@ setKeymap :: [ActionDescr] -> Keymap -> [ActionDescr]
 setKeymap actions keymap = map setAccel actions
     where setAccel act = case Map.lookup (name act) keymap of
                             Nothing -> act
-                            Just keys -> case keys of
-                                Left acc -> act{accelerator = Just acc}
-                                Right (a1,a2) -> act 
+                            Just(mbkeys,mbexpl) -> 
+                                case mbkeys of
+                                    Nothing     -> act{tooltip=mbexpl}
+                                    Just (Right (a1,a2)) -> act{tooltip=mbexpl}
+                                    Just (Left acc) -> act{accelerator=Just acc, tooltip=mbexpl}
  
 actions :: [ActionDescr]
 actions =   
     [(AD "File" "_File" Nothing Nothing (return ()) Nothing False)
-    ,(AD "FileNew" "_New" (Just "Opens a new empty buffer") (Just "gtk-new") 
+    ,(AD "FileNew" "_New" Nothing (Just "gtk-new") 
         fileNew Nothing False)
-    ,AD "FileOpen" "_Open" (Just "Opens an existing file") (Just "gtk-open") 
+    ,AD "FileOpen" "_Open" Nothing (Just "gtk-open") 
         fileOpen Nothing False    
-    ,AD "FileSave" "_Save" (Just "Saves the current buffer") (Just "gtk-save") 
+    ,AD "FileSave" "_Save" Nothing (Just "gtk-save") 
         (fileSave False) Nothing False
-    ,AD "FileSaveAs" "Save_As" (Just "Saves the current buffer as a new file") (Just "gtk-save_as") 
+    ,AD "FileSaveAs" "Save_As" Nothing (Just "gtk-save_as") 
         (fileSave True) Nothing False 
-    ,AD "FileClose" "_Close" (Just "Closes the current buffer") (Just "gtk-close") 
+    ,AD "FileClose" "_Close" Nothing (Just "gtk-close") 
         (do fileClose; return ()) Nothing False
-    ,AD "Quit" "_Quit" (Just "Quits this program") (Just "gtk-quit") 
+    ,AD "Quit" "_Quit" Nothing (Just "gtk-quit") 
         quit Nothing False
 
     ,AD "Edit" "_Edit" Nothing Nothing (return ()) Nothing False
-    ,AD "EditUndo" "_Undo" (Just "Undos the last user action") (Just "gtk-undo")
+    ,AD "EditUndo" "_Undo" Nothing (Just "gtk-undo")
         editUndo Nothing False 
-    ,AD "EditRedo" "_Redo" (Just "Undos the last user action") (Just "gtk-redo")
+    ,AD "EditRedo" "_Redo" Nothing (Just "gtk-redo")
         editRedo Nothing False
     ,AD "EditCut" "Cu_t" Nothing Nothing{--Just "gtk-cut"--}
         editCut Nothing {--Just "<control>X"--} False
@@ -176,53 +181,53 @@ actions =
         editPaste Nothing {--Just "<control>V"--} False
     ,AD "EditDelete" "_Delete" Nothing (Just "gtk-delete")
         editDelete Nothing False
-    ,AD "EditSelectAll" "Select_All" (Just "Select the whole text in the current buffer") (Just "gtk-select-all")
+    ,AD "EditSelectAll" "Select_All" Nothing (Just "gtk-select-all")
         editSelectAll Nothing False
-    ,AD "EditFind" "_Find" (Just "Search for a text string") (Just "gtk-find") 
+    ,AD "EditFind" "_Find" Nothing (Just "gtk-find") 
         editFindShow Nothing False
-    ,AD "EditFindNext" "Find _Next" (Just "Find the next occurence of the text string") (Just "gtk-find-next")
+    ,AD "EditFindNext" "Find _Next" Nothing (Just "gtk-find-next")
         (editFindInc Forward) Nothing False
-    ,AD "EditFindPrevious" "Find _Previous" (Just "Find the previous occurence of the text string") (Just "gtk-find-previous")
+    ,AD "EditFindPrevious" "Find _Previous" Nothing (Just "gtk-find-previous")
         (editFindInc Backward) Nothing False
     ,AD "EditReplace" "_Replace" Nothing (Just "gtk-replace") 
         replaceDialog Nothing False
-    ,AD "EditGotoLine" "_Goto Line" (Just "Go to line with a known index") (Just "gtk-jump") 
+    ,AD "EditGotoLine" "_Goto Line" Nothing (Just "gtk-jump") 
         editGotoLine Nothing False
 
-    ,AD "EditComment" "_Comment" (Just "Add a line style comment to the selected lies") Nothing 
+    ,AD "EditComment" "_Comment" Nothing Nothing 
         editComment Nothing False
-    ,AD "EditUncomment" "_Uncomment" (Just "Remove a line style comment") Nothing 
+    ,AD "EditUncomment" "_Uncomment" Nothing Nothing 
         editUncomment Nothing False
-    ,AD "EditShiftRight" "Shift _Right" (Just "Shift right") Nothing 
+    ,AD "EditShiftRight" "Shift _Right" Nothing Nothing 
         editShiftRight Nothing False
-    ,AD "EditShiftLeft" "Shift _Left" (Just "Shift Left") Nothing 
+    ,AD "EditShiftLeft" "Shift _Left" Nothing Nothing 
         editShiftLeft Nothing False
 
     ,AD "View" "_View" Nothing Nothing (return ()) Nothing False
-    ,AD "ViewMoveLeft" "Move _Left" (Just "Move the current pane left") Nothing
+    ,AD "ViewMoveLeft" "Move _Left" Nothing Nothing
         (viewMove LeftP) Nothing False
-    ,AD "ViewMoveRight" "Move _Right" (Just "Move the current pane right") Nothing
+    ,AD "ViewMoveRight" "Move _Right" Nothing Nothing
         (viewMove RightP) Nothing False
-    ,AD "ViewMoveUp" "Move _Up" (Just "Move the current pane up") Nothing
+    ,AD "ViewMoveUp" "Move _Up" Nothing Nothing
         (viewMove TopP) Nothing False
-    ,AD "ViewMoveDown" "Move _Down" (Just "Move the current pane down") Nothing
+    ,AD "ViewMoveDown" "Move _Down" Nothing Nothing
         (viewMove BottomP) Nothing False
-    ,AD "ViewSplitHorizontal" "Split H_orizontal" (Just "Split the current pane in horizontal direction") Nothing
+    ,AD "ViewSplitHorizontal" "Split H_orizontal" Nothing Nothing
         viewSplitHorizontal Nothing False
-    ,AD "ViewSplitVertical" "Split _Vertical" (Just "Split the current pane in vertical direction") Nothing
+    ,AD "ViewSplitVertical" "Split _Vertical" Nothing Nothing
         viewSplitVertical Nothing False
-    ,AD "ViewCollapse" "_Collapse" (Just "Collapse the panes around the currentla selected pane into one") Nothing
+    ,AD "ViewCollapse" "_Collapse" Nothing Nothing
         viewCollapse Nothing False
 
-    ,AD "ViewTabsLeft" "Tabs Left" (Just "Shows the tabs of the current notebook on the left") Nothing
+    ,AD "ViewTabsLeft" "Tabs Left" Nothing Nothing
         (viewTabsPos PosLeft) Nothing False
-    ,AD "ViewTabsRight" "Tabs Right" (Just "Shows the tabs of the current notebook on the right") Nothing
+    ,AD "ViewTabsRight" "Tabs Right" Nothing Nothing
         (viewTabsPos PosRight) Nothing False
-    ,AD "ViewTabsUp" "Tabs Up" (Just "Shows the tabs of the current notebook on the top") Nothing
+    ,AD "ViewTabsUp" "Tabs Up" Nothing Nothing
         (viewTabsPos PosTop) Nothing False
-    ,AD "ViewTabsDown" "Tabs Down" (Just "Shows the tabs of the current notebook on the bottom") Nothing
+    ,AD "ViewTabsDown" "Tabs Down" Nothing Nothing
         (viewTabsPos PosBottom) Nothing False
-    ,AD "ViewSwitchTabs" "Tabs On/Off" (Just "Switches if tabs for the current notebook are visible") Nothing
+    ,AD "ViewSwitchTabs" "Tabs On/Off" Nothing Nothing
         viewSwitchTabs Nothing False
 
 
