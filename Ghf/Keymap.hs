@@ -20,7 +20,8 @@ import Ghf.Core
 
 type ActionString = String
 type KeyString = String
-type Keymap = Map ActionString (Either KeyString (KeyString,KeyString))
+type Keymap = Map ActionString (Maybe ((Either KeyString (KeyString,KeyString)),
+        MaybeString), Maybe String)
  
 keymapStyle :: P.LanguageDef st
 keymapStyle= emptyDef                      
@@ -34,51 +35,39 @@ lexer = P.makeTokenParser keymapStyle
 lexeme = P.lexeme lexer
 identifier = P.identifier lexer
 symbol =  P.symbol lexer
-charLiteral = P.charLiteral lexer
 whiteSpace = P.whiteSpace lexer
 
-parseKeymap :: FileName -> IO (Map ActionString (Either KeyString (KeyString,KeyString)))
+parseKeymap :: FileName -> IO Keymap
 parseKeymap fn = do
     res <- parseFromFile keymapParser fn
     case res of
         Left pe -> error $"Error reading keymap file " ++ show fn ++ " " ++ show pe
         Right r -> return r  
 
-keymapParser :: GenParser Char () (Map String (Either String (String,String)))
+keymapParser :: GenParser Char () (ActionString, (Maybe (Either KeyString (KeyString,KeyString)), 
+                                        Maybe String)
 keymapParser = do
     whiteSpace
-    ls <- many (lexeme lineparser) 
+    ls <- many lineparser 
     eof
-    return (Map.fromList $map fromJust $filter isJust ls)
+    return (Map.fromList ls)
 
-lineparser :: GenParser Char () (Maybe (ActionString, (Either KeyString (KeyString,KeyString)))) 
-lineparser = do
-    try complexkey 
-    <|> try simplekey 
-    <|> meaningless 
-    <?> "lineparser"    
-
-complexkey :: GenParser Char () (Maybe (ActionString, (Either KeyString (KeyString,KeyString))))    
+lineparser :: GenParser Char () (ActionString, (Maybe Either KeyString (KeyString,KeyString)))   
 complexkey = do  
-    keyDescr <- identifier
-    symbol "/"
-    keyDescr2 <- identifier
+    mb1 <- option (do 
+        keyDescr <- identifier
+            mb2 <- option (do
+            symbol "/"
+            key <- identifier
+            return (Just key) Nothing)
+        return (Just (keyDescr,mb2)) Nothing)
     symbol "->"
     action <- identifier
-    return (Just (action,(Right (keyDescr,keyDescr2))))
-    <?> "complexkey"
+    return (case mb1 of
+        Nothing -> Nothing
+        Just keyDescr -> 
+            case mb2 of 
+                Just keyDescr2 -> Just (action,(Right (keyDescr,keyDescr2)))
+                Nothing -> Just (action,(Left keyDescr))
+    <?> "lineparser"
 
-simplekey :: GenParser Char () (Maybe (ActionString, (Either KeyString (KeyString,KeyString))))    
-simplekey = do  
-    keyDescr <- identifier
-    symbol "->"
-    action <- identifier
-    return (Just (action,(Left keyDescr)))
-    <?> "simplekey"
-
-meaningless :: GenParser Char () (Maybe (ActionString, (Either KeyString (KeyString,KeyString))))    
-meaningless = do
-    symbol "->"
-    identifier
-    return Nothing
-    <?> "meaningless"

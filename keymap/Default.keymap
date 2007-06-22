@@ -1,48 +1,51 @@
 --Default Keymap file for Genuine Haskell Face
 
 --File
-<control>N              ->          FileNew 
-<control>O              ->          FileOpen 
-<control>S              ->          FileSave 
-                        ->          FileSaveAs
-<control>W              ->          FileClose 
-<control>Q              ->          Quit 
+<control>N              ->          FileNew         "Opens a new empty buffer"
+<control>O              ->          FileOpen        "Opens an existing file"
+<control>S              ->          FileSave        "Saves the current buffer"
+                        ->          FileSaveAs      "Saves the current buffer as a new file"
+<control>W              ->          FileClose       "Closes the current buffer"
+<control>Q              ->          Quit            "Quits this program"
 
 --Edit
-<control>Z              ->          EditUndo 
-<shift><control>Z       ->          EditRedo 
+<control>Z              ->          EditUndo        "Undos the last user action"
+<shift><control>Z       ->          EditRedo        "Redos the last user action"
 --Just "<control>X"     ->          EditCut 
 --Just "<control>C"     ->          EditCopy 
 --Just "<control>V"     ->          EditPaste 
                         ->          EditDelete
-<control>A              ->          EditSelectAll
+<control>A              ->          EditSelectAll   "Select the whole text in the current buffer"
 
-<control>F              ->          EditFind
-F3                      ->          EditFindNext
-<shift>F3               ->          EditFindPrevious
+<control>F              ->          EditFind        "Search for a text string"
+F3                      ->          EditFindNext    "Find the next occurence of the text string"
+<shift>F3               ->          EditFindPrevious 
+                                                    "Find the previous occurence of the text string"
 <control>R              ->          EditReplace
 
-<control>G              ->          EditGotoLine
+<control>G              ->          EditGotoLine    "Go to line with a known index"
 
-<alt><shift>Right       ->          EditComment
-<alt><shift>Left        ->          EditUncomment
-<alt>Right              ->          EditShiftRight
-<alt>Left               ->          EditShiftLeft
+<alt><shift>Right       ->          EditComment     "Add a line style comment to the selected lies"
+<alt><shift>Left        ->          EditUncomment   "Remove a line style comment"
+<alt>Right              ->          EditShiftRight  "Shift right"
+<alt>Left               ->          EditShiftLeft   "Shift Left"
 
 --View
-<Ctrl><alt><shift>Left  ->          MoveLeft
-<Ctrl><alt><shift>Right ->          ViewMoveRight
-<Ctrl><alt><shift>Up    ->          ViewMoveUp
-<Ctrl><alt><shift>Down  ->          ViewMoveDown
+<Ctrl><alt><shift>Left  ->          MoveLeft        "Move the current pane left"
+<Ctrl><alt><shift>Right ->          ViewMoveRight   "Move the current pane right"
+<Ctrl><alt><shift>Up    ->          ViewMoveUp      "Move the current pane up"
+<Ctrl><alt><shift>Down  ->          ViewMoveDown    "Move the current pane down"
 
-<Ctrl>2                 ->          ViewSplitHorizontal
+<Ctrl>2                 ->          ViewSplitHorizontal 
+                                                    "Split the current pane in horizontal direction"
 <Ctrl>3                 ->          ViewSplitVertical
-<Ctrl>1                 ->          ViewCollapse
+                                                    "Split the current pane in vertical direction"
+<Ctrl>1                 ->          ViewCollapse    "Collapse the panes around the currentla selected pane into one"
 
-                        ->          ViewTabsLeft
-                        ->          ViewTabsRight
-                        ->          ViewTabsUp
-                        ->          ViewTabsDown
-                        ->          ViewSwitchTabs
-
-
+                        ->          ViewTabsLeft    "Shows the tabs of the current notebook on the left"
+                        ->          ViewTabsRight   "Shows the tabs of the current notebook on the right"
+                        ->          ViewTabsUp      "Shows the tabs of the current notebook on the top"
+                        ->          ViewTabsDown    "Shows the tabs of the current notebook on the bottom"
+                        ->          ViewSwitchTabs  "Switches if tabs for the current notebook are visible"
+                        ->          HelpDebug
+                        ->          HelpAbout
