@@ -60,6 +60,11 @@ main = do
     (o,fl) <- ghfOpts args
     st <- initGUI
     mapM_ putStrLn st
+
+    keyMap <- parseKeymap "keymap/Default.keymap"
+    putStrLn $show keyMap
+    let accelActions = setKeymap actions keyMap
+    specialKeys <- buildSpecialKeys keyMap accelActions
     
     win <- windowNew
     windowSetIconFromFile win "ghf.gif"
@@ -70,17 +75,17 @@ main = do
                   ,   panes = Map.empty
                   ,   activePane = Nothing
                   ,   paneMap = Map.empty
-                  ,   layout = TerminalP}
+                  ,   layout = TerminalP
+                  ,   specialKeys = specialKeys
+                  ,   specialKey = Nothing
+                  }
     ghfR <- newIORef ghf
 
-    keyMap <- parseKeymap "keymap/Default.keymap"
-    putStrLn $show keyMap
-    let accelActions = setKeymap actions keyMap
+
     (acc,menus) <- runReaderT (makeMenu uiManager accelActions menuDescription) ghfR
     let mb = fromJust $menus !! 0
     let tb = fromJust $menus !! 1
     windowAddAccelGroup win acc
-
     nb <- newNotebook
     widgetSetName nb $"root"
     hb <- buildStatusbar ghfR
@@ -102,11 +107,11 @@ main = do
         [] -> newTextBuffer "Unnamed" Nothing
         otherwise  -> mapM_ (\fn -> (newTextBuffer (takeFileName fn) (Just fn))) fl
     widgetShowAll win
-    mainGUI
     hbf <- runReaderT getFindBar ghfR
     widgetHide hbf
     spinL <- runReaderT getGotoLineSpin ghfR
     widgetHide spinL
+    mainGUI
      
 quit :: GhfAction
 quit = do
@@ -132,26 +137,6 @@ aboutDialog = lift $ do
     widgetDestroy d
     return ()
 
-
-data ActionDescr = AD {
-                name :: ActionString
-            ,   label :: String
-            ,   tooltip ::Maybe String
-            ,   stockID :: Maybe String
-            ,   action :: GhfAction
-            ,   accelerator :: Maybe KeyString
-            ,   isToggle :: Bool}
-
-setKeymap :: [ActionDescr] -> Keymap -> [ActionDescr]
-setKeymap actions keymap = map setAccel actions
-    where setAccel act = case Map.lookup (name act) keymap of
-                            Nothing -> act
-                            Just(mbkeys,mbexpl) -> 
-                                case mbkeys of
-                                    Nothing     -> act{tooltip=mbexpl}
-                                    Just (Right (a1,a2)) -> act{tooltip=mbexpl}
-                                    Just (Left acc) -> act{accelerator=Just acc, tooltip=mbexpl}
- 
 actions :: [ActionDescr]
 actions =   
     [(AD "File" "_File" Nothing Nothing (return ()) Nothing False)

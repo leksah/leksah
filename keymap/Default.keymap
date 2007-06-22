@@ -1,8 +1,12 @@
 --Default Keymap file for Genuine Haskell Face
+--Allowed Modifiers are <shift>	<control> <alt>	<apple> <compose>
+--Apple is the Windows key on PC keyboards
+--Compose is often labelled Alt Gr.
+
 
 --File
 <control>N              ->          FileNew         "Opens a new empty buffer"
-<control>O              ->          FileOpen        "Opens an existing file"
+<control>X/F            ->          FileOpen        "Opens an existing file"
 <control>S              ->          FileSave        "Saves the current buffer"
                         ->          FileSaveAs      "Saves the current buffer as a new file"
 <control>W              ->          FileClose       "Closes the current buffer"

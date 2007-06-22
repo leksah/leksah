@@ -50,14 +50,14 @@ data Ghf        =   Ghf {
 ,   activePane  ::  Maybe (GhfPane,Connections)
 ,   paneMap     ::  Map GhfPane (PanePath, [ConnectId Widget])
 ,   layout      ::  PaneLayout
-,   specialKey  ::  Maybe 
-,   specialKeys ::  Map   
+,   specialKeys ::  Map (KeyVal,[Modifier]) (Map (KeyVal,[Modifier]) GhfAction)   
+,   specialKey  ::  Maybe (Map (KeyVal,[Modifier]) GhfAction)
 }
 
 helpDebug :: GhfAction
 helpDebug = do
     ref <- ask
-    Ghf _ _ panes mbPane pm layout <- lift $readIORef ref
+    Ghf _ _ panes mbPane pm layout _ _ <- lift $readIORef ref
     lift $do
         putStrLn $"------------------ "
         putStrLn $"Ghf "
