@@ -36,6 +36,7 @@ import Ghf.Core
 import Ghf.Editor
 import Ghf.Dialogs
 import Ghf.View
+import Ghf.Keymap
 
 version = "0.1"
 
@@ -71,7 +72,11 @@ main = do
                   ,   paneMap = Map.empty
                   ,   layout = TerminalP}
     ghfR <- newIORef ghf
-    (acc,menus) <- runReaderT (makeMenu uiManager actions menuDescription) ghfR
+
+    keyMap <- parseKeymap "keymap/Default.keymap"
+    putStrLn $show keyMap
+    let accelActions = setKeymap actions keyMap
+    (acc,menus) <- runReaderT (makeMenu uiManager accelActions menuDescription) ghfR
     let mb = fromJust $menus !! 0
     let tb = fromJust $menus !! 1
     windowAddAccelGroup win acc
@@ -126,35 +131,43 @@ aboutDialog = lift $ do
 
 
 data ActionDescr = AD {
-                name :: String
+                name :: ActionString
             ,   label :: String
             ,   tooltip ::Maybe String
             ,   stockID :: Maybe String
             ,   action :: GhfAction
-            ,   accelerator :: Maybe String
+            ,   accelerator :: Maybe KeyString
             ,   isToggle :: Bool}
 
+setKeymap :: [ActionDescr] -> Keymap -> [ActionDescr]
+setKeymap actions keymap = map setAccel actions
+    where setAccel act = case Map.lookup (name act) keymap of
+                            Nothing -> act
+                            Just keys -> case keys of
+                                Left acc -> act{accelerator = Just acc}
+                                Right (a1,a2) -> act 
+ 
 actions :: [ActionDescr]
 actions =   
     [(AD "File" "_File" Nothing Nothing (return ()) Nothing False)
     ,(AD "FileNew" "_New" (Just "Opens a new empty buffer") (Just "gtk-new") 
-        fileNew (Just "<control>N") False)
+        fileNew Nothing False)
     ,AD "FileOpen" "_Open" (Just "Opens an existing file") (Just "gtk-open") 
-        fileOpen (Just "<control>O") False    
+        fileOpen Nothing False    
     ,AD "FileSave" "_Save" (Just "Saves the current buffer") (Just "gtk-save") 
-        (fileSave False) (Just "<control>S") False
+        (fileSave False) Nothing False
     ,AD "FileSaveAs" "Save_As" (Just "Saves the current buffer as a new file") (Just "gtk-save_as") 
-        (fileSave True) (Just "") False 
+        (fileSave True) Nothing False 
     ,AD "FileClose" "_Close" (Just "Closes the current buffer") (Just "gtk-close") 
-        (do fileClose; return ()) (Just "<control>W") False
+        (do fileClose; return ()) Nothing False
     ,AD "Quit" "_Quit" (Just "Quits this program") (Just "gtk-quit") 
-        quit (Just "<control>Q") False
+        quit Nothing False
 
     ,AD "Edit" "_Edit" Nothing Nothing (return ()) Nothing False
     ,AD "EditUndo" "_Undo" (Just "Undos the last user action") (Just "gtk-undo")
-        editUndo (Just "<control>Z") False 
+        editUndo Nothing False 
     ,AD "EditRedo" "_Redo" (Just "Undos the last user action") (Just "gtk-redo")
-        editRedo (Just "<shift><control>Z") False
+        editRedo Nothing False
     ,AD "EditCut" "Cu_t" Nothing Nothing{--Just "gtk-cut"--}
         editCut Nothing {--Just "<control>X"--} False
     ,AD "EditCopy" "_Copy"  Nothing  Nothing{--Just "gtk-copy"--}
@@ -164,52 +177,52 @@ actions =
     ,AD "EditDelete" "_Delete" Nothing (Just "gtk-delete")
         editDelete Nothing False
     ,AD "EditSelectAll" "Select_All" (Just "Select the whole text in the current buffer") (Just "gtk-select-all")
-        editSelectAll (Just "<control>A") False
+        editSelectAll Nothing False
     ,AD "EditFind" "_Find" (Just "Search for a text string") (Just "gtk-find") 
-        editFindShow (Just "<control>F") False
+        editFindShow Nothing False
     ,AD "EditFindNext" "Find _Next" (Just "Find the next occurence of the text string") (Just "gtk-find-next")
-        (editFindInc Forward) (Just "F3") False
+        (editFindInc Forward) Nothing False
     ,AD "EditFindPrevious" "Find _Previous" (Just "Find the previous occurence of the text string") (Just "gtk-find-previous")
-        (editFindInc Backward) (Just "<shift>F3") False
+        (editFindInc Backward) Nothing False
     ,AD "EditReplace" "_Replace" Nothing (Just "gtk-replace") 
-        replaceDialog (Just "<control>R") False
+        replaceDialog Nothing False
     ,AD "EditGotoLine" "_Goto Line" (Just "Go to line with a known index") (Just "gtk-jump") 
-        editGotoLine (Just "<control>G") False
+        editGotoLine Nothing False
 
     ,AD "EditComment" "_Comment" (Just "Add a line style comment to the selected lies") Nothing 
-        editComment (Just "<alt><shift>Right") False
+        editComment Nothing False
     ,AD "EditUncomment" "_Uncomment" (Just "Remove a line style comment") Nothing 
-        editUncomment (Just "<alt><shift>Left") False
+        editUncomment Nothing False
     ,AD "EditShiftRight" "Shift _Right" (Just "Shift right") Nothing 
-        editShiftRight (Just "<alt>Right") False
+        editShiftRight Nothing False
     ,AD "EditShiftLeft" "Shift _Left" (Just "Shift Left") Nothing 
-        editShiftLeft (Just "<alt>Left") False
+        editShiftLeft Nothing False
 
     ,AD "View" "_View" Nothing Nothing (return ()) Nothing False
-    ,AD "MoveLeft" "Move _Left" (Just "Move the current pane left") Nothing
-        (viewMove LeftP) (Just "<Ctrl><alt><shift>Left") False
-    ,AD "MoveRight" "Move _Right" (Just "Move the current pane right") Nothing
-        (viewMove RightP) (Just "<Ctrl><alt><shift>Right") False
-    ,AD "MoveUp" "Move _Up" (Just "Move the current pane up") Nothing
-        (viewMove TopP) (Just "<Ctrl><alt><shift>Up") False
-    ,AD "MoveDown" "Move _Down" (Just "Move the current pane down") Nothing
-        (viewMove BottomP) (Just "<Ctrl><alt><shift>Down") False
-    ,AD "SplitHorizontal" "Split H_orizontal" (Just "Split the current pane in horizontal direction") Nothing
-        viewSplitHorizontal (Just "<Ctrl>2") False
-    ,AD "SplitVertical" "Split _Vertical" (Just "Split the current pane in vertical direction") Nothing
-        viewSplitVertical (Just "<Ctrl>3") False
-    ,AD "Collapse" "_Collapse" (Just "Collapse the panes around the currentla selected pane into one") Nothing
-        viewCollapse (Just "<Ctrl>1") False
+    ,AD "ViewMoveLeft" "Move _Left" (Just "Move the current pane left") Nothing
+        (viewMove LeftP) Nothing False
+    ,AD "ViewMoveRight" "Move _Right" (Just "Move the current pane right") Nothing
+        (viewMove RightP) Nothing False
+    ,AD "ViewMoveUp" "Move _Up" (Just "Move the current pane up") Nothing
+        (viewMove TopP) Nothing False
+    ,AD "ViewMoveDown" "Move _Down" (Just "Move the current pane down") Nothing
+        (viewMove BottomP) Nothing False
+    ,AD "ViewSplitHorizontal" "Split H_orizontal" (Just "Split the current pane in horizontal direction") Nothing
+        viewSplitHorizontal Nothing False
+    ,AD "ViewSplitVertical" "Split _Vertical" (Just "Split the current pane in vertical direction") Nothing
+        viewSplitVertical Nothing False
+    ,AD "ViewCollapse" "_Collapse" (Just "Collapse the panes around the currentla selected pane into one") Nothing
+        viewCollapse Nothing False
 
-    ,AD "TabsLeft" "Tabs Left" (Just "Shows the tabs of the current notebook on the left") Nothing
+    ,AD "ViewTabsLeft" "Tabs Left" (Just "Shows the tabs of the current notebook on the left") Nothing
         (viewTabsPos PosLeft) Nothing False
-    ,AD "TabsRight" "Tabs Right" (Just "Shows the tabs of the current notebook on the right") Nothing
+    ,AD "ViewTabsRight" "Tabs Right" (Just "Shows the tabs of the current notebook on the right") Nothing
         (viewTabsPos PosRight) Nothing False
-    ,AD "TabsUp" "Tabs Up" (Just "Shows the tabs of the current notebook on the top") Nothing
+    ,AD "ViewTabsUp" "Tabs Up" (Just "Shows the tabs of the current notebook on the top") Nothing
         (viewTabsPos PosTop) Nothing False
-    ,AD "TabsDown" "Tabs Down" (Just "Shows the tabs of the current notebook on the bottom") Nothing
+    ,AD "ViewTabsDown" "Tabs Down" (Just "Shows the tabs of the current notebook on the bottom") Nothing
         (viewTabsPos PosBottom) Nothing False
-    ,AD "SwitchTabs" "Tabs On/Off" (Just "Switches if tabs for the current notebook are visible") Nothing
+    ,AD "ViewSwitchTabs" "Tabs On/Off" (Just "Switches if tabs for the current notebook are visible") Nothing
         viewSwitchTabs Nothing False
 
 
@@ -256,20 +269,20 @@ menuDescription = "\n\
        \<menuitem name=\"Shift Right\" action=\"EditShiftRight\" />\n\
      \</menu>\n\
     \<menu name=\"_View\" action=\"View\">\n\
-       \<menuitem name=\"Move _Left\" action=\"MoveLeft\" />\n\
-       \<menuitem name=\"Move _Right\" action=\"MoveRight\" />\n\
-       \<menuitem name=\"Move _Up\" action=\"MoveUp\" />\n\
-       \<menuitem name=\"Move _Down\" action=\"MoveDown\" />\n\
+       \<menuitem name=\"Move _Left\" action=\"ViewMoveLeft\" />\n\
+       \<menuitem name=\"Move _Right\" action=\"ViewMoveRight\" />\n\
+       \<menuitem name=\"Move _Up\" action=\"ViewMoveUp\" />\n\
+       \<menuitem name=\"Move _Down\" action=\"ViewMoveDown\" />\n\
        \<separator/>\n\
-       \<menuitem name=\"Split H_orizontal\" action=\"SplitHorizontal\" />\n\
-       \<menuitem name=\"Split V_ertical\" action=\"SplitVertical\" />\n\
-       \<menuitem name=\"_Collapse\" action=\"Collapse\" />\n\
+       \<menuitem name=\"Split H_orizontal\" action=\"ViewSplitHorizontal\" />\n\
+       \<menuitem name=\"Split V_ertical\" action=\"ViewSplitVertical\" />\n\
+       \<menuitem name=\"_Collapse\" action=\"ViewCollapse\" />\n\
        \<separator/>\n\
-       \<menuitem name=\"Tabs _Left\" action=\"TabsLeft\" />\n\
-       \<menuitem name=\"Tabs _Right\" action=\"TabsRight\" />\n\
-       \<menuitem name=\"Tabs _Up\" action=\"TabsUp\" />\n\
-       \<menuitem name=\"Tabs _Down\" action=\"TabsDown\" />\n\
-       \<menuitem name=\"Switch Tabs\" action=\"SwitchTabs\" />\n\
+       \<menuitem name=\"Tabs _Left\" action=\"ViewTabsLeft\" />\n\
+       \<menuitem name=\"Tabs _Right\" action=\"ViewTabsRight\" />\n\
+       \<menuitem name=\"Tabs _Up\" action=\"ViewTabsUp\" />\n\
+       \<menuitem name=\"Tabs _Down\" action=\"ViewTabsDown\" />\n\
+       \<menuitem name=\"Switch Tabs\" action=\"ViewSwitchTabs\" />\n\
      \</menu>\n\
     \<menu name=\"_Help\" action=\"Help\">\n\
        \<menuitem name=\"_Debug\" action=\"HelpDebug\" />\n\
