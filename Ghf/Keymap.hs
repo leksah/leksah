@@ -21,6 +21,8 @@ import Text.ParserCombinators.Parsec.Language(emptyDef)
 import Data.Maybe
 import Debug.Trace
 import Data.List(sort)
+import Data.Char(toLower)
+import Control.Monad(foldM)
 
 
 import Ghf.Core
@@ -31,22 +33,25 @@ data ActionDescr = AD {
             ,   tooltip ::Maybe String
             ,   stockID :: Maybe String
             ,   action :: GhfAction
-            ,   accelerator :: Maybe KeyString
-            ,   isToggle :: Bool}
+            ,   accelerator :: [KeyString]
+            ,   isToggle :: Bool
+} deriving (Show)
 
 type ActionString = String
 type KeyString = String
-type Keymap = Map ActionString (Maybe (Either KeyString (KeyString,KeyString)), Maybe String)
+type Keymap = Map ActionString [(Maybe (Either KeyString (KeyString,KeyString)), Maybe String)]
 
 setKeymap :: [ActionDescr] -> Keymap -> [ActionDescr]
 setKeymap actions keymap = map setAccel actions
     where setAccel act = case Map.lookup (name act) keymap of
                             Nothing -> act
-                            Just(mbkeys,mbexpl) -> 
-                                case mbkeys of
-                                    Nothing     -> act{tooltip=mbexpl}
-                                    Just (Right (a1,a2)) -> act{tooltip=mbexpl}
-                                    Just (Left acc) -> act{accelerator=Just acc, tooltip=mbexpl}
+                            Just [] -> act
+                            Just keyList -> foldl setAccelerator act keyList
+          setAccelerator act (Just (Left acc),Nothing)      = act{accelerator= acc : accelerator act}
+          setAccelerator act (Just (Left acc),Just expl)    = act{accelerator= acc : accelerator act, 
+                                                                tooltip= Just expl}
+          setAccelerator act (_, Just expl)                 = act{tooltip= Just expl} 
+          setAccelerator act (_,_)                          = act   
  
 keymapStyle :: P.LanguageDef st
 keymapStyle= emptyDef                      
@@ -75,10 +80,10 @@ keymapParser = do
     whiteSpace
     ls <- many lineparser 
     eof
-    return (Map.fromList ls)
+    return (Map.fromListWith (++) ls)
 
-lineparser :: GenParser Char () (ActionString, (Maybe (Either KeyString (KeyString,KeyString)), 
-                                Maybe String))   
+lineparser :: GenParser Char () (ActionString, [(Maybe (Either KeyString (KeyString,KeyString)), 
+                                Maybe String)])   
 lineparser = do  
     mb1 <- option Nothing (do 
         keyDescr <- identifier
@@ -86,27 +91,19 @@ lineparser = do
             symbol "/"
             key <- identifier
             return (Just key)) 
-        return (Just (keyDescr,mb2))) 
+        return (Just (keyDescr, mb2))) 
     symbol "->"
     action <- identifier
     mbs <- option Nothing (do
         str <- stringLiteral
         return (Just str)) 
     return (case mb1 of
-        Nothing -> (action,(Nothing,mbs))
+        Nothing -> (action,[(Nothing,mbs)])
         Just (keyDescr,mb2) -> 
             case mb2 of 
-                Just keyDescr2 -> (action,(Just (Right (keyDescr,keyDescr2)),mbs))
-                Nothing -> (action,(Just (Left keyDescr),mbs)))
+                Just keyDescr2 -> (action,[(Just (Right (keyDescr,keyDescr2)),mbs)])
+                Nothing -> (action,[(Just (Left keyDescr),mbs)]))
     <?> "lineparser"
-
-instance Show Modifier
-    where show Shift    = "Shift"	
-          show Control  = "Control"	
-          show Alt      = "Alt"	
-          show Apple    = "Apple"	
-          show Compose  = "Compose"
-
 
 --
 -- | Unfortunately in the IO Monad because of keyvalFromName
@@ -115,21 +112,19 @@ buildSpecialKeys :: Keymap -> [ActionDescr] ->
                     IO (Map (KeyVal,[Modifier]) (Map (KeyVal,[Modifier]) GhfAction))
 buildSpecialKeys keymap actions = do
     pseudoTriples <- mapM build actions
-    let map1 = Map.fromListWith (++) (map fromJust $filter isJust pseudoTriples)
+    let map1 = Map.fromListWith (++) $concat pseudoTriples
     return (Map.map Map.fromList map1)    
     where
-    build :: ActionDescr -> IO (Maybe ((KeyVal,[Modifier]),[((KeyVal,[Modifier]),GhfAction)]))
+    build :: ActionDescr -> IO [((KeyVal,[Modifier]),[((KeyVal,[Modifier]),GhfAction)])]
     build act = 
         case Map.lookup (name act) keymap of
-            Nothing -> return Nothing
-            Just(mbkeys,mbexpl) -> 
-                case mbkeys of
-                    Nothing     -> return Nothing
-                    Just (Right (a1,a2)) -> do
-                        a1p <- accParse a1
-                        a2p <- accParse a2
-                        return (Just (a1p,[(a2p,action act)]))
-                    Just (Left acc) -> return Nothing 
+            Nothing             ->  return []  
+            Just l              ->  foldM (build' act) [] l
+    build' act list (Just (Right (a1,a2)),_) 
+                                =   do  a1p <- accParse a1
+                                        a2p <- accParse a2
+                                        return ((a1p,[(a2p,action act)]): list)
+    build' act list _           =   return list   
 
 --
 -- |Have to write this until gtk_accelerator_parse gets bound in gtk2hs                
@@ -137,9 +132,9 @@ buildSpecialKeys keymap actions = do
 accParse :: String -> IO (KeyVal,[Modifier])
 accParse str = case parse accparser "accelerator" str of
     Right (ks,mods) -> do  
-        key <- keyvalFromName ks
+        key <- keyvalFromName (map toLower ks)
         trace (show (key,mods)) return ()
-        return (key,mods)
+        return (key,sort mods)
     Left e -> error $show e     
                   
 accStyle :: P.LanguageDef st
@@ -180,17 +175,18 @@ handleSpecialKeystrokes :: Event -> GhfM Bool
 handleSpecialKeystrokes (Key _ _ _ mods _ _ _ keyVal _ _) = do
     sk  <- readGhf specialKey    
     sks <- readGhf specialKeys    
-    trace "handle" (return ())
+--    trace ("key: " ++ show (keyVal,mods)) $return ()
     case sk of
         Nothing -> do
-            case Map.lookup (keyVal,mods) sks of
+            case Map.lookup (keyVal,sort mods) sks of
                 Nothing -> return False
                 Just map -> do
-                    trace "go to special" (return ())
+--                    trace "found " (return ())
                     modifyGhf_ (\ghf -> return (ghf{specialKey = Just map}))
                     return True
         Just map -> do
-            case Map.lookup (keyVal,mods) map of
+--            trace ("sk: " ++ show map) $return ()
+            case Map.lookup (keyVal,sort mods) map of
                 Nothing -> return ()                    
                 Just act -> act
             modifyGhf_ (\ghf -> return (ghf{specialKey = Nothing}))

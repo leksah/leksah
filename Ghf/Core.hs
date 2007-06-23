@@ -52,29 +52,38 @@ data Ghf        =   Ghf {
 ,   layout      ::  PaneLayout
 ,   specialKeys ::  Map (KeyVal,[Modifier]) (Map (KeyVal,[Modifier]) GhfAction)   
 ,   specialKey  ::  Maybe (Map (KeyVal,[Modifier]) GhfAction)
-}
+} deriving Show
+
+instance Show Window
+    where show _ = "Window *"
+
+instance Show Modifier
+    where show Shift    = "Shift"	
+          show Control  = "Control"	
+          show Alt      = "Alt"	
+          show Apple    = "Apple"	
+          show Compose  = "Compose"
+
+instance Show UIManager
+    where show _ = "UIManager *"
+
+instance Show (ReaderT a b c)
+    where show _ = "ReaderT *"
 
 helpDebug :: GhfAction
 helpDebug = do
     ref <- ask
-    Ghf _ _ panes mbPane pm layout _ _ <- lift $readIORef ref
-    lift $do
+    ghf <- lift $readIORef ref
+    lift $do    
         putStrLn $"------------------ "
-        putStrLn $"Ghf "
-        putStrLn $"panes: " ++ show panes
-        putStrLn $"activePane: " ++ show mbPane
-        putStrLn $"paneMap: " ++ show pm
-        putStrLn $"layout: " ++ show layout
+        putStrLn $show ghf
         putStrLn $"------------------ "
 
 --
 -- | Description of the different pane types
 --
 data GhfPane    =   PaneBuf GhfBuffer
-    deriving (Eq,Ord)
-
-instance Show GhfPane where
-    show pane = realPaneName pane
+    deriving (Eq,Ord,Show)
 
 getTopWidget :: GhfPane -> Widget
 getTopWidget (PaneBuf buf) = castToWidget(scrolledWindow buf)
@@ -95,14 +104,10 @@ realPaneName pane =
 -- | Signal handlers for the different pane types
 --
 data Connections =  BufConnections [ConnectId SourceView] [ConnectId TextBuffer]
-    deriving (Eq,Ord,Show)
+    deriving (Show)
 
-instance Eq (ConnectId a)
-instance Ord (ConnectId a)
 instance Show (ConnectId a)
-    where show cid = "*"
-
-
+    where show cid = "ConnectId *"
 
 --
 -- | A text editor pane description
@@ -113,15 +118,24 @@ data GhfBuffer  =   GhfBuffer {
 ,   addedIndex  ::  Int
 ,   sourceView  ::  SourceView 
 ,   scrolledWindow :: ScrolledWindow
-}
+} deriving Show
+
+instance Show SourceView
+    where show _ = "SourceView *"
+
+instance Show ScrolledWindow
+    where show _ = "ScrolledWindow *"
+
 instance Eq GhfBuffer
     where (==) a b = bufferName a == bufferName b && addedIndex a == addedIndex b
+
 instance Ord GhfBuffer
     where (<=) a b = if bufferName a < bufferName b 
                         then True
                         else if bufferName a == bufferName b 
                             then addedIndex a <= addedIndex b
                             else False
+
 
 --
 -- | The direction of a split

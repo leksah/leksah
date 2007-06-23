@@ -139,86 +139,86 @@ aboutDialog = lift $ do
 
 actions :: [ActionDescr]
 actions =   
-    [(AD "File" "_File" Nothing Nothing (return ()) Nothing False)
+    [(AD "File" "_File" Nothing Nothing (return ()) [] False)
     ,(AD "FileNew" "_New" Nothing (Just "gtk-new") 
-        fileNew Nothing False)
+        fileNew [] False)
     ,AD "FileOpen" "_Open" Nothing (Just "gtk-open") 
-        fileOpen Nothing False    
+        fileOpen [] False    
     ,AD "FileSave" "_Save" Nothing (Just "gtk-save") 
-        (fileSave False) Nothing False
+        (fileSave False) [] False
     ,AD "FileSaveAs" "Save_As" Nothing (Just "gtk-save_as") 
-        (fileSave True) Nothing False 
+        (fileSave True) [] False 
     ,AD "FileClose" "_Close" Nothing (Just "gtk-close") 
-        (do fileClose; return ()) Nothing False
+        (do fileClose; return ()) [] False
     ,AD "Quit" "_Quit" Nothing (Just "gtk-quit") 
-        quit Nothing False
+        quit [] False
 
-    ,AD "Edit" "_Edit" Nothing Nothing (return ()) Nothing False
+    ,AD "Edit" "_Edit" Nothing Nothing (return ()) [] False
     ,AD "EditUndo" "_Undo" Nothing (Just "gtk-undo")
-        editUndo Nothing False 
+        editUndo [] False 
     ,AD "EditRedo" "_Redo" Nothing (Just "gtk-redo")
-        editRedo Nothing False
+        editRedo [] False
     ,AD "EditCut" "Cu_t" Nothing Nothing{--Just "gtk-cut"--}
-        editCut Nothing {--Just "<control>X"--} False
+        editCut [] {--Just "<control>X"--} False
     ,AD "EditCopy" "_Copy"  Nothing  Nothing{--Just "gtk-copy"--}
-        editCopy Nothing {--Just "<control>C"--} False
+        editCopy [] {--Just "<control>C"--} False
     ,AD "EditPaste" "_Paste" Nothing Nothing{--Just "gtk-paste"--}
-        editPaste Nothing {--Just "<control>V"--} False
+        editPaste [] {--Just "<control>V"--} False
     ,AD "EditDelete" "_Delete" Nothing (Just "gtk-delete")
-        editDelete Nothing False
+        editDelete [] False
     ,AD "EditSelectAll" "Select_All" Nothing (Just "gtk-select-all")
-        editSelectAll Nothing False
+        editSelectAll [] False
     ,AD "EditFind" "_Find" Nothing (Just "gtk-find") 
-        editFindShow Nothing False
+        editFindShow [] False
     ,AD "EditFindNext" "Find _Next" Nothing (Just "gtk-find-next")
-        (editFindInc Forward) Nothing False
+        (editFindInc Forward) [] False
     ,AD "EditFindPrevious" "Find _Previous" Nothing (Just "gtk-find-previous")
-        (editFindInc Backward) Nothing False
+        (editFindInc Backward) [] False
     ,AD "EditReplace" "_Replace" Nothing (Just "gtk-replace") 
-        replaceDialog Nothing False
+        replaceDialog [] False
     ,AD "EditGotoLine" "_Goto Line" Nothing (Just "gtk-jump") 
-        editGotoLine Nothing False
+        editGotoLine [] False
 
     ,AD "EditComment" "_Comment" Nothing Nothing 
-        editComment Nothing False
+        editComment [] False
     ,AD "EditUncomment" "_Uncomment" Nothing Nothing 
-        editUncomment Nothing False
+        editUncomment [] False
     ,AD "EditShiftRight" "Shift _Right" Nothing Nothing 
-        editShiftRight Nothing False
+        editShiftRight [] False
     ,AD "EditShiftLeft" "Shift _Left" Nothing Nothing 
-        editShiftLeft Nothing False
+        editShiftLeft [] False
 
-    ,AD "View" "_View" Nothing Nothing (return ()) Nothing False
+    ,AD "View" "_View" Nothing Nothing (return ()) [] False
     ,AD "ViewMoveLeft" "Move _Left" Nothing Nothing
-        (viewMove LeftP) Nothing False
+        (viewMove LeftP) [] False
     ,AD "ViewMoveRight" "Move _Right" Nothing Nothing
-        (viewMove RightP) Nothing False
+        (viewMove RightP) [] False
     ,AD "ViewMoveUp" "Move _Up" Nothing Nothing
-        (viewMove TopP) Nothing False
+        (viewMove TopP) [] False
     ,AD "ViewMoveDown" "Move _Down" Nothing Nothing
-        (viewMove BottomP) Nothing False
+        (viewMove BottomP) [] False
     ,AD "ViewSplitHorizontal" "Split H_orizontal" Nothing Nothing
-        viewSplitHorizontal Nothing False
+        viewSplitHorizontal [] False
     ,AD "ViewSplitVertical" "Split _Vertical" Nothing Nothing
-        viewSplitVertical Nothing False
+        viewSplitVertical [] False
     ,AD "ViewCollapse" "_Collapse" Nothing Nothing
-        viewCollapse Nothing False
+        viewCollapse [] False
 
     ,AD "ViewTabsLeft" "Tabs Left" Nothing Nothing
-        (viewTabsPos PosLeft) Nothing False
+        (viewTabsPos PosLeft) [] False
     ,AD "ViewTabsRight" "Tabs Right" Nothing Nothing
-        (viewTabsPos PosRight) Nothing False
+        (viewTabsPos PosRight) [] False
     ,AD "ViewTabsUp" "Tabs Up" Nothing Nothing
-        (viewTabsPos PosTop) Nothing False
+        (viewTabsPos PosTop) [] False
     ,AD "ViewTabsDown" "Tabs Down" Nothing Nothing
-        (viewTabsPos PosBottom) Nothing False
+        (viewTabsPos PosBottom) [] False
     ,AD "ViewSwitchTabs" "Tabs On/Off" Nothing Nothing
-        viewSwitchTabs Nothing False
+        viewSwitchTabs [] False
 
 
-    ,AD "Help" "_Help" Nothing Nothing (return ()) Nothing False
-    ,AD "HelpDebug" "Debug" (Just "<Ctrl>d") Nothing helpDebug Nothing False
-    ,AD "HelpAbout" "About" Nothing (Just "gtk-about") aboutDialog Nothing False]
+    ,AD "Help" "_Help" Nothing Nothing (return ()) [] False
+    ,AD "HelpDebug" "Debug" (Just "<Ctrl>d") Nothing helpDebug [] False
+    ,AD "HelpAbout" "About" Nothing (Just "gtk-about") aboutDialog [] False]
  
 
 menuDescription :: String
@@ -309,16 +309,18 @@ makeMenu uiManager actions menuDescription = do
         widgets <- mapM (uiManagerGetWidget uiManager) ["ui/menubar","ui/toolbar"]
         return (accGroup,widgets)
     where
-        actm ghfR ag (AD name label tooltip stockId ghfAction acc isToggle) = 
+        actm ghfR ag (AD name label tooltip stockId ghfAction accs isToggle) = 
             if isToggle 
                 then do
                     act <- toggleActionNew name label tooltip stockId
                     onToggleActionToggled act (runReaderT ghfAction ghfR) 
-                    actionGroupAddActionWithAccel ag act acc
+                    actionGroupAddActionWithAccel ag act 
+                        (if null accs then Nothing else Just (head accs))
                 else do
                     act <- actionNew name label tooltip stockId
                     onActionActivate act (runReaderT ghfAction ghfR) 
-                    actionGroupAddActionWithAccel ag act acc
+                    actionGroupAddActionWithAccel ag act 
+                        (if null accs then Nothing else Just (head accs))         
 
 buildStatusbar :: GhfRef -> IO (HBox)
 buildStatusbar ghfR = do

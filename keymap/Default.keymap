@@ -6,15 +6,15 @@
 
 --File
 <control>N              ->          FileNew         "Opens a new empty buffer"
-<control>X/F            ->          FileOpen        "Opens an existing file"
+<control>F              ->          FileOpen        "Opens an existing file"
 <control>S              ->          FileSave        "Saves the current buffer"
-                        ->          FileSaveAs      "Saves the current buffer as a new file"
+<control><shift>S       ->          FileSaveAs      "Saves the current buffer as a new file"
 <control>W              ->          FileClose       "Closes the current buffer"
-<control>Q              ->          Quit            "Quits this program"
+<alt>F4                 ->          Quit            "Quits this program"
 
 --Edit
 <control>Z              ->          EditUndo        "Undos the last user action"
-<shift><control>Z       ->          EditRedo        "Redos the last user action"
+<shift><control>Y       ->          EditRedo        "Redos the last user action"
 --Just "<control>X"     ->          EditCut 
 --Just "<control>C"     ->          EditCopy 
 --Just "<control>V"     ->          EditPaste 
@@ -23,14 +23,16 @@
 
 <control>F              ->          EditFind        "Search for a text string"
 F3                      ->          EditFindNext    "Find the next occurence of the text string"
-<shift>F3               ->          EditFindPrevious 
+<control>K              ->          EditFind        "Search for a text string"
+
+<control><shift>K       ->          EditFindPrevious 
                                                     "Find the previous occurence of the text string"
 <control>R              ->          EditReplace
 
-<control>G              ->          EditGotoLine    "Go to line with a known index"
+<control>L              ->          EditGotoLine    "Go to line with a known index"
 
-<alt><shift>Right       ->          EditComment     "Add a line style comment to the selected lies"
-<alt><shift>Left        ->          EditUncomment   "Remove a line style comment"
+<ctrl><shift>7          ->          EditComment     "Add a line style comment to the selected lies"
+<ctrl>7                 ->          EditUncomment   "Remove a line style comment"
 <alt>Right              ->          EditShiftRight  "Shift right"
 <alt>Left               ->          EditShiftLeft   "Shift Left"
 
