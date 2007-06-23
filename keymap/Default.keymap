@@ -1,52 +1,52 @@
 --Default Keymap file for Genuine Haskell Face
---Allowed Modifiers are <shift>	<control> <alt>	<apple> <compose>
+--Allowed Modifiers are <shift>	<ctrl> <alt> <apple> <compose>
+--<ctrl> can alternatively be called <ctrl> 
 --Apple is the Windows key on PC keyboards
 --Compose is often labelled Alt Gr.
 
 
 --File
-<control>N              ->          FileNew         "Opens a new empty buffer"
-<control>F              ->          FileOpen        "Opens an existing file"
-<control>S              ->          FileSave        "Saves the current buffer"
-<control><shift>S       ->          FileSaveAs      "Saves the current buffer as a new file"
-<control>W              ->          FileClose       "Closes the current buffer"
+<ctrl>n                 ->          FileNew         "Opens a new empty buffer"
+<ctrl>f                 ->          FileOpen        "Opens an existing file"
+<ctrl>s                 ->          FileSave        "Saves the current buffer"
+<ctrl><shift>s          ->          FileSaveAs      "Saves the current buffer as a new file"
+<ctrl>w                 ->          FileClose       "Closes the current buffer"
 <alt>F4                 ->          Quit            "Quits this program"
 
 --Edit
-<control>Z              ->          EditUndo        "Undos the last user action"
-<shift><control>Y       ->          EditRedo        "Redos the last user action"
---Just "<control>X"     ->          EditCut 
---Just "<control>C"     ->          EditCopy 
---Just "<control>V"     ->          EditPaste 
+<ctrl>z                 ->          EditUndo        "Undos the last user action"
+<shift><ctrl>y          ->          EditRedo        "Redos the last user action"
+--Just "<ctrl>X"     ->          EditCut 
+--Just "<ctrl>C"     ->          EditCopy 
+--Just "<ctrl>V"     ->          EditPaste 
                         ->          EditDelete
-<control>A              ->          EditSelectAll   "Select the whole text in the current buffer"
+<ctrl>a                 ->          EditSelectAll   "Select the whole text in the current buffer"
 
-<control>F              ->          EditFind        "Search for a text string"
+<ctrl>f                 ->          EditFind        "Search for a text string"
 F3                      ->          EditFindNext    "Find the next occurence of the text string"
-<control>K              ->          EditFind        "Search for a text string"
 
-<control><shift>K       ->          EditFindPrevious 
+<ctrl><shift>k          ->          EditFindPrevious 
                                                     "Find the previous occurence of the text string"
-<control>R              ->          EditReplace
+<ctrl>r                 ->          EditReplace
 
-<control>L              ->          EditGotoLine    "Go to line with a known index"
+<ctrl>l                 ->          EditGotoLine    "Go to line with a known index"
 
-<ctrl><shift>7          ->          EditComment     "Add a line style comment to the selected lies"
-<ctrl>7                 ->          EditUncomment   "Remove a line style comment"
+<ctrl><alt>Right        ->          EditComment     "Add a line style comment to the selected lies"
+<ctrl><alt>Left         ->          EditUncomment   "Remove a line style comment"
 <alt>Right              ->          EditShiftRight  "Shift right"
 <alt>Left               ->          EditShiftLeft   "Shift Left"
 
 --View
-<Ctrl><alt><shift>Left  ->          MoveLeft        "Move the current pane left"
-<Ctrl><alt><shift>Right ->          ViewMoveRight   "Move the current pane right"
-<Ctrl><alt><shift>Up    ->          ViewMoveUp      "Move the current pane up"
-<Ctrl><alt><shift>Down  ->          ViewMoveDown    "Move the current pane down"
+<ctrl><alt><shift>Left  ->          MoveLeft        "Move the current pane left"
+<ctrl><alt><shift>Right ->          ViewMoveRight   "Move the current pane right"
+<ctrl><alt><shift>Up    ->          ViewMoveUp      "Move the current pane up"
+<ctrl><alt><shift>Down  ->          ViewMoveDown    "Move the current pane down"
 
-<Ctrl>2                 ->          ViewSplitHorizontal 
+<ctrl>2                 ->          ViewSplitHorizontal 
                                                     "Split the current pane in horizontal direction"
-<Ctrl>3                 ->          ViewSplitVertical
+<ctrl>3                 ->          ViewSplitVertical
                                                     "Split the current pane in vertical direction"
-<Ctrl>1                 ->          ViewCollapse    "Collapse the panes around the currentla selected pane into one"
+<ctrl>1                 ->          ViewCollapse    "Collapse the panes around the currentla selected pane into one"
 
                         ->          ViewTabsLeft    "Shows the tabs of the current notebook on the left"
                         ->          ViewTabsRight   "Shows the tabs of the current notebook on the right"

@@ -61,7 +61,7 @@ main = do
     st <- initGUI
     mapM_ putStrLn st
 
-    keyMap <- parseKeymap "keymap/Default.keymap"
+    keyMap <- parseKeymap "keymap/Emacs.keymap"
     putStrLn $show keyMap
     let accelActions = setKeymap actions keyMap
     specialKeys <- buildSpecialKeys keyMap accelActions
@@ -315,17 +315,22 @@ makeMenu uiManager actions menuDescription = do
                     act <- toggleActionNew name label tooltip stockId
                     onToggleActionToggled act (runReaderT ghfAction ghfR) 
                     actionGroupAddActionWithAccel ag act 
-                        (if null accs then Nothing else Just (head accs))
+                        (if null accs then (Just "") else Just (head accs))
                 else do
                     act <- actionNew name label tooltip stockId
                     onActionActivate act (runReaderT ghfAction ghfR) 
                     actionGroupAddActionWithAccel ag act 
-                        (if null accs then Nothing else Just (head accs))         
+                        (if null accs then (Just "") else Just (head accs))         
 
 buildStatusbar :: GhfRef -> IO (HBox)
 buildStatusbar ghfR = do
     sb <- statusbarNew
     statusbarSetHasResizeGrip sb False
+
+    sblk <- statusbarNew
+    widgetSetName sblk $"statusBarSpecialKeys" 
+    statusbarSetHasResizeGrip sblk False
+    widgetSetSizeRequest sblk 70 (-1)
 
     sblc <- statusbarNew
     widgetSetName sblc $"statusBarLineColumn" 
@@ -365,6 +370,7 @@ buildStatusbar ghfR = do
     hb <- hBoxNew False 1
     widgetSetName hb $ "statusBox"
     boxPackStart hb dummy PackGrow 0
+    boxPackStart hb sblk PackNatural 0
     boxPackStart hb spinL PackGrow 0
     boxPackStart hb hbf PackGrow 0
     boxPackStart hb sblc PackNatural 0
@@ -381,3 +387,5 @@ buildStatusbar ghfR = do
     spinL `afterEntryActivate` runReaderT editGotoLineEnd ghfR
     spinL `afterFocusOut` (\_ -> do runReaderT editGotoLineEnd ghfR; return False)
     return hb
+
+

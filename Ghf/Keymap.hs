@@ -23,9 +23,11 @@ import Debug.Trace
 import Data.List(sort)
 import Data.Char(toLower)
 import Control.Monad(foldM)
+import Control.Monad.Reader
 
 
 import Ghf.Core
+import Ghf.View
 
 data ActionDescr = AD {
                 name :: ActionString
@@ -58,8 +60,8 @@ keymapStyle= emptyDef
                 { P.commentStart   = "{-"
                 , P.commentEnd     = "-}"
                 , P.commentLine    = "--"
-                , P.identStart     = alphaNum <|> oneOf "<>"
-                , P.identLetter    = alphaNum <|> oneOf "<>"
+                , P.identStart     = alphaNum <|> oneOf "<>_"
+                , P.identLetter    = alphaNum <|> oneOf "<>_"
                 }      
 lexer = P.makeTokenParser keymapStyle
 lexeme = P.lexeme lexer
@@ -161,6 +163,9 @@ modparser = do
     try $symbol2 "<control>" 
     return Control    
     <|> do
+    try $symbol2 "<ctrl>" 
+    return Control    
+    <|> do
     try $symbol2 "<alt>"
     return Alt
     <|> do
@@ -172,7 +177,7 @@ modparser = do
     <?>"modparser"
 
 handleSpecialKeystrokes :: Event -> GhfM Bool
-handleSpecialKeystrokes (Key _ _ _ mods _ _ _ keyVal _ _) = do
+handleSpecialKeystrokes (Key _ _ _ mods _ _ _ keyVal name _) = do
     sk  <- readGhf specialKey    
     sks <- readGhf specialKeys    
 --    trace ("key: " ++ show (keyVal,mods)) $return ()
@@ -181,14 +186,25 @@ handleSpecialKeystrokes (Key _ _ _ mods _ _ _ keyVal _ _) = do
             case Map.lookup (keyVal,sort mods) sks of
                 Nothing -> return False
                 Just map -> do
+                    sb <- getSpecialKeys
+                    lift $statusbarPop sb 1
+                    lift $statusbarPush sb 1 $name
 --                    trace "found " (return ())
                     modifyGhf_ (\ghf -> return (ghf{specialKey = Just map}))
                     return True
         Just map -> do
 --            trace ("sk: " ++ show map) $return ()
             case Map.lookup (keyVal,sort mods) map of
-                Nothing -> return ()                    
-                Just act -> act
+                Nothing -> do
+                    sb <- getSpecialKeys
+                    lift $statusbarPop sb 1
+                    lift $statusbarPush sb 1 $"? : "++ name
+                    return ()                    
+                Just act -> do
+                    sb <- getSpecialKeys
+                    lift $statusbarPop sb 1
+                    lift $statusbarPush sb 1 $name
+                    act
             modifyGhf_ (\ghf -> return (ghf{specialKey = Nothing}))
             return True
                       

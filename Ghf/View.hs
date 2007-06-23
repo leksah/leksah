@@ -14,7 +14,6 @@ module Ghf.View (
 ,   viewTabsPos
 ,   viewSwitchTabs
 
-
 ,   getFindEntry
 ,   getFindBar
 ,   getStatusbarIO
@@ -24,6 +23,7 @@ module Ghf.View (
 ,   getFindAction
 ,   getWrapAround
 ,   getEntireWord
+,   getSpecialKeys
 ) where
 
 import Graphics.UI.Gtk hiding (afterToggleOverwrite)
@@ -476,7 +476,8 @@ guessNewActiveBuffer nb = do
                                                             BufConnections [][])
         in return (ghf{activePane = newActiveBuf})
 
---actions
+--get widget elements
+
 getFindAction = getUIAction "ui/menubar/_Edit/_Find" castToToggleAction
 
 
@@ -506,3 +507,6 @@ getEntireWord = widgetGet ["topBox","statusBox","searchBox","entireWordButton"]
 
 getGotoLineSpin :: GhfM (SpinButton)
 getGotoLineSpin = widgetGet ["topBox","statusBox","gotoLineEntry"] castToSpinButton
+
+getSpecialKeys :: GhfM (Statusbar)
+getSpecialKeys = widgetGet ["topBox","statusBox","statusBarSpecialKeys"] castToStatusbar
