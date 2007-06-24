@@ -7,15 +7,29 @@
 
 --File
 <ctrl>n                 ->          FileNew         "Opens a new empty buffer"
-<ctrl>f                 ->          FileOpen        "Opens an existing file"
+
+<ctrl>o                 ->          FileOpen        "Opens an existing file"
+<ctrl>x/<ctrl>f         ->          FileOpen        "Opens an existing file"
+
 <ctrl>s                 ->          FileSave        "Saves the current buffer"
+<ctrl>x/<ctrl>s         ->          FileSave        "Saves the current buffer"
+
 <ctrl><shift>s          ->          FileSaveAs      "Saves the current buffer as a new file"
+<ctrl>x/<ctrl>w         ->          FileSaveAs      "Saves the current buffer as a new file" 
+
 <ctrl>w                 ->          FileClose       "Closes the current buffer"
+<ctrl>x/k               ->          FileClose       "Closes the current buffer"
+
 <alt>F4                 ->          Quit            "Quits this program"
+<ctrl>x/<ctrl>c         ->          Quit            "Quits this program"
 
 --Edit
 <ctrl>z                 ->          EditUndo        "Undos the last user action"
+<ctrl>x/u               ->          EditUndo        "Undos the last user action"
+
 <shift><ctrl>y          ->          EditRedo        "Redos the last user action"
+<ctrl>x/r               ->          EditRedo        "Redos the last user action"
+
 --Just "<ctrl>X"     ->          EditCut 
 --Just "<ctrl>C"     ->          EditCopy 
 --Just "<ctrl>V"     ->          EditPaste 

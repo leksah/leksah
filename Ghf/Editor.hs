@@ -31,6 +31,9 @@ module Ghf.Editor (
 ,   editUncomment
 ,   editShiftRight
 ,   editShiftLeft
+
+,   inBufContext'
+,   inBufContext
 ) where
 
 import Graphics.UI.Gtk hiding (afterToggleOverwrite)
@@ -128,7 +131,7 @@ newTextBuffer bn mbfn = do
     let newPaneMap  =  Map.insert (PaneBuf buf) (panePath,cids) paneMap
     let newPanes = Map.insert rbn (PaneBuf buf) panes
     modifyGhf_ (\ghf -> return (ghf{panes = newPanes,
-                                    paneMap = newPaneMap}))
+                                    paneMap = newPaneMap}))    
     lift $widgetGrabFocus (sourceView buf)
 
 

@@ -17,6 +17,7 @@
 -- 02111-1307, USA.
 --
 
+  
 
 import Graphics.UI.Gtk
 import Graphics.UI.Gtk.SourceView
@@ -37,6 +38,7 @@ import Ghf.Editor
 import Ghf.Dialogs
 import Ghf.View
 import Ghf.Keymap
+import Ghf.SourceBeauty
 
 version = "0.1"
 
@@ -61,7 +63,7 @@ main = do
     st <- initGUI
     mapM_ putStrLn st
 
-    keyMap <- parseKeymap "keymap/Emacs.keymap"
+    keyMap <- parseKeymap "keymap/Default.keymap"
     putStrLn $show keyMap
     let accelActions = setKeymap actions keyMap
     specialKeys <- buildSpecialKeys keyMap accelActions
@@ -188,6 +190,9 @@ actions =
     ,AD "EditShiftLeft" "Shift _Left" Nothing Nothing 
         editShiftLeft [] False
 
+    ,AD "EditBeauty" "Beauty" Nothing Nothing 
+        transformToBeauty [] False
+
     ,AD "View" "_View" Nothing Nothing (return ()) [] False
     ,AD "ViewMoveLeft" "Move _Left" Nothing Nothing
         (viewMove LeftP) [] False
@@ -257,6 +262,8 @@ menuDescription = "\n\
        \<menuitem name=\"Uncomment\" action=\"EditUncomment\" />\n\
        \<menuitem name=\"Shift Left\" action=\"EditShiftLeft\" />\n\
        \<menuitem name=\"Shift Right\" action=\"EditShiftRight\" />\n\
+       \<separator/>\n\
+       \<menuitem name=\"Beauty\" action=\"EditBeauty\" />\n\
      \</menu>\n\
     \<menu name=\"_View\" action=\"View\">\n\
        \<menuitem name=\"Move _Left\" action=\"ViewMoveLeft\" />\n\
@@ -309,18 +316,26 @@ makeMenu uiManager actions menuDescription = do
         widgets <- mapM (uiManagerGetWidget uiManager) ["ui/menubar","ui/toolbar"]
         return (accGroup,widgets)
     where
-        actm ghfR ag (AD name label tooltip stockId ghfAction accs isToggle) = 
+        actm ghfR ag (AD name label tooltip stockId ghfAction accs isToggle) = do
+            let (acc,accString) = if null accs 
+                                    then (Nothing,"=" ++ name) 
+                                    else (Just (head accs),(head accs) ++ "=" ++ name)
             if isToggle 
-                then do
+                then do      
                     act <- toggleActionNew name label tooltip stockId
-                    onToggleActionToggled act (runReaderT ghfAction ghfR) 
-                    actionGroupAddActionWithAccel ag act 
-                        (if null accs then (Just "") else Just (head accs))
+                    onToggleActionToggled act (doAction ghfAction ghfR accString)  
+                    actionGroupAddActionWithAccel ag act acc
                 else do
                     act <- actionNew name label tooltip stockId
-                    onActionActivate act (runReaderT ghfAction ghfR) 
-                    actionGroupAddActionWithAccel ag act 
-                        (if null accs then (Just "") else Just (head accs))         
+                    onActionActivate act (doAction ghfAction ghfR accString) 
+                    actionGroupAddActionWithAccel ag act acc      
+        doAction ghfAction ghfR accStr = 
+            runReaderT (do
+                ghfAction
+                sb <- getSpecialKeys
+                lift $statusbarPop sb 1
+                lift $statusbarPush sb 1 $accStr
+                return ()) ghfR
 
 buildStatusbar :: GhfRef -> IO (HBox)
 buildStatusbar ghfR = do
@@ -330,7 +345,7 @@ buildStatusbar ghfR = do
     sblk <- statusbarNew
     widgetSetName sblk $"statusBarSpecialKeys" 
     statusbarSetHasResizeGrip sblk False
-    widgetSetSizeRequest sblk 70 (-1)
+    widgetSetSizeRequest sblk 210 (-1)
 
     sblc <- statusbarNew
     widgetSetName sblc $"statusBarLineColumn" 
@@ -369,8 +384,8 @@ buildStatusbar ghfR = do
 
     hb <- hBoxNew False 1
     widgetSetName hb $ "statusBox"
-    boxPackStart hb dummy PackGrow 0
     boxPackStart hb sblk PackNatural 0
+    boxPackStart hb dummy PackGrow 0
     boxPackStart hb spinL PackGrow 0
     boxPackStart hb hbf PackGrow 0
     boxPackStart hb sblc PackNatural 0

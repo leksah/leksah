@@ -1,10 +1,5 @@
 module Ghf.Keymap (
     parseKeymap
-,   ActionString
-,   KeyString
-,   Keymap
-
-,   ActionDescr(..)
 ,   setKeymap
 ,   buildSpecialKeys
 ,   handleSpecialKeystrokes
@@ -29,18 +24,6 @@ import Control.Monad.Reader
 import Ghf.Core
 import Ghf.View
 
-data ActionDescr = AD {
-                name :: ActionString
-            ,   label :: String
-            ,   tooltip ::Maybe String
-            ,   stockID :: Maybe String
-            ,   action :: GhfAction
-            ,   accelerator :: [KeyString]
-            ,   isToggle :: Bool
-} deriving (Show)
-
-type ActionString = String
-type KeyString = String
 type Keymap = Map ActionString [(Maybe (Either KeyString (KeyString,KeyString)), Maybe String)]
 
 setKeymap :: [ActionDescr] -> Keymap -> [ActionDescr]
@@ -111,13 +94,13 @@ lineparser = do
 -- | Unfortunately in the IO Monad because of keyvalFromName
 -- 
 buildSpecialKeys :: Keymap -> [ActionDescr] ->
-                    IO (Map (KeyVal,[Modifier]) (Map (KeyVal,[Modifier]) GhfAction))
+                    IO (Map (KeyVal,[Modifier]) (Map (KeyVal,[Modifier]) ActionDescr))
 buildSpecialKeys keymap actions = do
     pseudoTriples <- mapM build actions
     let map1 = Map.fromListWith (++) $concat pseudoTriples
     return (Map.map Map.fromList map1)    
     where
-    build :: ActionDescr -> IO [((KeyVal,[Modifier]),[((KeyVal,[Modifier]),GhfAction)])]
+    build :: ActionDescr -> IO [((KeyVal,[Modifier]),[((KeyVal,[Modifier]),ActionDescr)])]
     build act = 
         case Map.lookup (name act) keymap of
             Nothing             ->  return []  
@@ -125,7 +108,7 @@ buildSpecialKeys keymap actions = do
     build' act list (Just (Right (a1,a2)),_) 
                                 =   do  a1p <- accParse a1
                                         a2p <- accParse a2
-                                        return ((a1p,[(a2p,action act)]): list)
+                                        return ((a1p,[(a2p,act)]): list)
     build' act list _           =   return list   
 
 --
@@ -176,37 +159,47 @@ modparser = do
     return Compose
     <?>"modparser"
 
+printMods :: [Modifier] -> String
+printMods []    = ""
+printMods (m:r) = show m ++ printMods r
+
 handleSpecialKeystrokes :: Event -> GhfM Bool
-handleSpecialKeystrokes (Key _ _ _ mods _ _ _ keyVal name _) = do
-    sk  <- readGhf specialKey    
-    sks <- readGhf specialKeys    
---    trace ("key: " ++ show (keyVal,mods)) $return ()
-    case sk of
-        Nothing -> do
-            case Map.lookup (keyVal,sort mods) sks of
-                Nothing -> return False
-                Just map -> do
-                    sb <- getSpecialKeys
-                    lift $statusbarPop sb 1
-                    lift $statusbarPush sb 1 $name
---                    trace "found " (return ())
-                    modifyGhf_ (\ghf -> return (ghf{specialKey = Just map}))
-                    return True
-        Just map -> do
---            trace ("sk: " ++ show map) $return ()
-            case Map.lookup (keyVal,sort mods) map of
+handleSpecialKeystrokes (Key _ _ _ mods _ _ _ keyVal name char) = 
+    case char of 
+        Nothing -> return False
+        Just _ -> do
+            sk  <- readGhf specialKey    
+            sks <- readGhf specialKeys 
+            sb <- getSpecialKeys   
+            case sk of
                 Nothing -> do
-                    sb <- getSpecialKeys
-                    lift $statusbarPop sb 1
-                    lift $statusbarPush sb 1 $"? : "++ name
-                    return ()                    
-                Just act -> do
-                    sb <- getSpecialKeys
-                    lift $statusbarPop sb 1
-                    lift $statusbarPush sb 1 $name
-                    act
-            modifyGhf_ (\ghf -> return (ghf{specialKey = Nothing}))
-            return True
+                    case Map.lookup (keyVal,sort mods) sks of
+                        Nothing -> do 
+                            lift $statusbarPop sb 1
+                            lift $statusbarPush sb 1 ""
+                            return False
+                        Just map -> do
+                            sb <- getSpecialKeys
+                            let sym = printMods mods ++ name
+                            lift $statusbarPop sb 1
+                            lift $statusbarPush sb 1 sym
+                            modifyGhf_ (\ghf -> return (ghf{specialKey = Just (map,sym)}))
+                            return True
+                Just (map,sym) -> do
+                    case Map.lookup (keyVal,sort mods) map of
+                        Nothing -> do
+                            sb <- getSpecialKeys
+                            lift $statusbarPop sb 1
+                            lift $statusbarPush sb 1 $sym ++ printMods mods ++ name ++ "?"
+                            return ()                    
+                        Just (AD actname _ _ _ ghfAction _ _) -> do
+                            sb <- getSpecialKeys
+                            lift $statusbarPop sb 1
+                            lift $statusbarPush sb 1 
+                                $sym ++ " " ++ printMods mods ++ name ++ "=" ++ actname
+                            ghfAction
+                    modifyGhf_ (\ghf -> return (ghf{specialKey = Nothing}))
+                    return True
                       
         
     

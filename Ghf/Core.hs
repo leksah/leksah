@@ -1,6 +1,9 @@
 module Ghf.Core (
+    ActionDescr(..)
+,   ActionString
+,   KeyString
 
-    Ghf(..)
+,   Ghf(..)
 ,   GhfRef
 ,   GhfM
 ,   GhfAction
@@ -40,6 +43,20 @@ import Data.Maybe ( fromMaybe, isJust, fromJust )
 import qualified Data.Map as Map
 import Data.Map (Map,(!))
 
+data ActionDescr = AD {
+                name :: ActionString
+            ,   label :: String
+            ,   tooltip ::Maybe String
+            ,   stockID :: Maybe String
+            ,   action :: GhfAction
+            ,   accelerator :: [KeyString]
+            ,   isToggle :: Bool
+} deriving (Show)
+
+type ActionString = String
+type KeyString = String
+
+
 --
 -- | The IDE state
 --
@@ -50,19 +67,19 @@ data Ghf        =   Ghf {
 ,   activePane  ::  Maybe (GhfPane,Connections)
 ,   paneMap     ::  Map GhfPane (PanePath, [ConnectId Widget])
 ,   layout      ::  PaneLayout
-,   specialKeys ::  Map (KeyVal,[Modifier]) (Map (KeyVal,[Modifier]) GhfAction)   
-,   specialKey  ::  Maybe (Map (KeyVal,[Modifier]) GhfAction)
+,   specialKeys ::  Map (KeyVal,[Modifier]) (Map (KeyVal,[Modifier]) ActionDescr)   
+,   specialKey  ::  Maybe ((Map (KeyVal,[Modifier]) ActionDescr),String)
 } deriving Show
 
 instance Show Window
     where show _ = "Window *"
 
 instance Show Modifier
-    where show Shift    = "Shift"	
-          show Control  = "Control"	
-          show Alt      = "Alt"	
-          show Apple    = "Apple"	
-          show Compose  = "Compose"
+    where show Shift    = "<shift>"	
+          show Control  = "<ctrl>"	
+          show Alt      = "<alt>"	
+          show Apple    = "<apple>"	
+          show Compose  = "<compose>"
 
 instance Show UIManager
     where show _ = "UIManager *"
