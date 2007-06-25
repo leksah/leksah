@@ -35,6 +35,7 @@ module Ghf.Editor (
 ,   editToBeauty
 ,   editFromBeauty
 ,   editMayBeautify
+,   editBeautify
 
 ) where
 
@@ -95,7 +96,7 @@ newTextBuffer bn mbfn = do
         sourceBufferBeginNotUndoableAction buffer
         textBufferSetText buffer fileContents
         if bs
-            then editToBeauty
+            then transformToBeauty (castToTextBuffer buffer)
             else return ()
         textBufferSetModified buffer False
         sourceBufferEndNotUndoableAction buffer
@@ -134,7 +135,6 @@ newTextBuffer bn mbfn = do
         cid2 <- (castToWidget sv) `afterFocusOut`
             (\_ -> do runReaderT (makeBufferInactive) ghfR; return True)
         return (buf,[cid,cid2])
-
     let newPaneMap  =  Map.insert (PaneBuf buf) (panePath,cids) paneMap
     let newPanes = Map.insert rbn (PaneBuf buf) panes
     modifyGhf_ (\ghf -> return (ghf{panes = newPanes,
@@ -239,6 +239,7 @@ fileSave query = inBufContext' () $ \nb _ currentBuffer i -> do
     window  <- readGhf window
     bufs    <- readGhf panes
     paneMap <- readGhf paneMap
+    bs <- getBeautyState
     mbnbufsPm <- lift $ do
         let mbfn = fileName currentBuffer
         mbpage <- notebookGetNthPage nb i
@@ -246,7 +247,7 @@ fileSave query = inBufContext' () $ \nb _ currentBuffer i -> do
             Nothing -> error "fileSave: Page not found"
             Just page -> 
                 if isJust mbfn && query == False
-                    then do fileSave' currentBuffer $fromJust mbfn
+                    then do fileSave' currentBuffer bs $fromJust mbfn
                             return Nothing
                     else do
                         dialog <- fileChooserDialogNew
@@ -279,7 +280,7 @@ fileSave query = inBufContext' () $ \nb _ currentBuffer i -> do
                                     else return ResponseYes
                                 case resp of
                                     ResponseYes -> do
-                                        fileSave' currentBuffer fn
+                                        fileSave' currentBuffer bs fn
                                         let bn = takeFileName fn
                                         let bufs1 =  Map.delete (realPaneName (PaneBuf currentBuffer)) bufs
                                         let (ind,rbn) =  figureOutPaneName bufs1 bn 0
@@ -306,18 +307,17 @@ fileSave query = inBufContext' () $ \nb _ currentBuffer i -> do
             (\ghf -> return (ghf{panes = nbufs, paneMap = pm}))
         Nothing -> return ()
     where
-        fileSave' :: GhfBuffer -> FileName -> IO()
-        fileSave' ghfBuf fn = do
+        fileSave' :: GhfBuffer -> Bool -> FileName -> IO()
+        fileSave' ghfBuf bs fn = do
             buf     <- textViewGetBuffer $ sourceView ghfBuf
-            bs <- getBeautyState
-            if bs
-                then editFromBeauty
+            if bs 
+                then transformFromBeauty buf
                 else return ()
             start   <- textBufferGetStartIter buf
             end     <- textBufferGetEndIter buf
             text    <- textBufferGetText buf start end True
-            if bs
-                then editToBeauty
+            if bs 
+                then transformToBeauty buf
                 else return ()
             writeFile fn text
             textBufferSetModified buf False
@@ -719,16 +719,16 @@ editMayBeautify =
 
 editBeautify = do
     panesST <- readGhf panes
-    let buffers = filter isBuffer (Map.elems panesST)
+    let buffers = map (\ (PaneBuf buf) -> buf) $filter isBuffer $Map.elems panesST
     gtkbufs <- lift $mapM (\b -> textViewGetBuffer (sourceView b)) buffers
     bs <- getBeautyState
     if bs
-        then mapM_ transformToBeauty gtkbufs
-        else mapM_ transformFromBeauty gtkbufs
+        then lift $mapM_ transformToBeauty gtkbufs
+        else lift $mapM_ transformFromBeauty gtkbufs
     where
     isBuffer :: GhfPane -> Bool
-    isBuffer PaneBuf _  = True
-    isBuffer _ _        = False
+    isBuffer (PaneBuf _) = True
+--    isBuffer _           = False
 
     
 

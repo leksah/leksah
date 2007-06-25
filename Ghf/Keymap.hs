@@ -173,7 +173,7 @@ handleSpecialKeystrokes (Key _ _ _ mods _ _ _ keyVal name char) =
         Just ' ' -> do
             bs <- getBeautyState
             if bs
-                then editMayBeauty
+                then editMayBeautify
                 else return ()
             return False
         Just _ -> do

@@ -40,7 +40,7 @@ import Ghf.View
 import Ghf.Keymap
 import Ghf.SourceBeauty
 
-version = "0.1"
+version = "0.1" 
 
 data Flag =  OpenFile
        deriving Show
@@ -55,16 +55,15 @@ ghfOpts argv =
           (_,_,errs) -> ioError (userError (concat errs ++ usageInfo header options))
     where header = "Usage: ghf [OPTION...] files..."
 
-
 -- |Build the main window
 main = do
     args <- getArgs
     (o,fl) <- ghfOpts args
     st <- initGUI
-    mapM_ putStrLn st
+    mapM_ putStrLn st 
 
     keyMap <- parseKeymap "keymap/Default.keymap"
-    putStrLn $show keyMap
+--    putStrLn $show keyMap
     let accelActions = setKeymap actions keyMap
     specialKeys <- buildSpecialKeys keyMap accelActions
     
@@ -98,16 +97,16 @@ main = do
     boxPackStart vb nb PackGrow 0
     boxPackStart vb hb PackNatural 0
 
-    win `onDelete` (\_ -> do runReaderT quit ghfR; return True)
+    win `onDelete` (\ _ -> do runReaderT quit ghfR; return True)
 
-    win `onKeyPress` (\e -> runReaderT (handleSpecialKeystrokes e) ghfR)
+    win `onKeyPress` (\ e -> runReaderT (handleSpecialKeystrokes e) ghfR)
     
     containerAdd win vb
 
     windowSetDefaultSize win 700 1000
     flip runReaderT ghfR $ case fl of
         [] -> newTextBuffer "Unnamed" Nothing
-        otherwise  -> mapM_ (\fn -> (newTextBuffer (takeFileName fn) (Just fn))) fl
+        otherwise  -> mapM_ (\ fn -> (newTextBuffer (takeFileName fn) (Just fn))) fl
     widgetShowAll win
     hbf <- runReaderT getFindBar ghfR
     widgetHide hbf
@@ -391,16 +390,17 @@ buildStatusbar ghfR = do
     boxPackStart hb sblc PackNatural 0
     boxPackStart hb sbio PackNatural 0
 
-    entry `afterInsertText` (\_ _ -> do runReaderT (editFindInc Insert) ghfR; 
-                                        t <- entryGetText entry
-                                        return (length t))
-    entry `afterDeleteText` (\_ _ -> do runReaderT (editFindInc Delete) ghfR; return ())
-    entry `afterKeyPress`  (\e -> do runReaderT (editFindKey e) ghfR; return True)
+    entry `afterInsertText` (\ _ _ -> do 
+        runReaderT (editFindInc Insert) ghfR
+        t <- entryGetText entry
+        return (length t))
+    entry `afterDeleteText` (\ _ _ -> do runReaderT (editFindInc Delete) ghfR; return ())
+    entry `afterKeyPress`  (\ e -> do runReaderT (editFindKey e) ghfR; return True)
     entry `onEntryActivate` runReaderT (editFindHide) ghfR
 
-    spinL `afterKeyPress`  (\e -> do runReaderT (editGotoLineKey e) ghfR; return True)
+    spinL `afterKeyPress`  (\ e -> do runReaderT (editGotoLineKey e) ghfR; return True)
     spinL `afterEntryActivate` runReaderT editGotoLineEnd ghfR
-    spinL `afterFocusOut` (\_ -> do runReaderT editGotoLineEnd ghfR; return False)
+    spinL `afterFocusOut` (\ _ -> do runReaderT editGotoLineEnd ghfR; return False)
     return hb
 
 

@@ -7,6 +7,7 @@ module Ghf.SourceBeauty (
 import Data.Char(chr)
 import Data.List(isSuffixOf)
 import Graphics.UI.Gtk
+import Graphics.UI.Gtk.SourceView.SourceBuffer
 import Control.Monad.Reader
 
 import Ghf.Core
@@ -21,23 +22,29 @@ mayBeautify gtkbuf = do
         else do
             startIter <- textBufferGetIterAtOffset gtkbuf (offset - 7)
             slice <- textIterGetSlice startIter endIter
-            mapM_ (replace cursorMark slice offset) transformTable
+            replace cursorMark slice offset transformTable
     where 
-    replace :: TextMark -> String -> Int -> (String,String) -> IO ()
-    replace cursorMark match offset (from,to) = do
+    replace :: TextMark -> String -> Int -> [(String,String)] -> IO ()
+    replace cursorMark match offset [] = return ()
+    replace cursorMark match offset ((from,to):rest) = do
     if isSuffixOf from match 
         then do
+            sourceBufferBeginNotUndoableAction (castToSourceBuffer gtkbuf)
             start <- textBufferGetIterAtOffset gtkbuf (offset - (length from))
             end <- textBufferGetIterAtOffset gtkbuf offset
             textBufferDelete gtkbuf start end
             ins <- textBufferGetIterAtMark gtkbuf cursorMark
             textBufferInsert gtkbuf ins to
-        else return ()        
-
+            sourceBufferEndNotUndoableAction (castToSourceBuffer gtkbuf)
+        else replace cursorMark match offset rest        
 
 transformToBeauty :: TextBuffer -> IO () 
 transformToBeauty gtkbuf = do
+    modified <- textBufferGetModified gtkbuf
+    sourceBufferBeginNotUndoableAction (castToSourceBuffer gtkbuf)
     mapM_ (replace 0) transformTable
+    sourceBufferEndNotUndoableAction (castToSourceBuffer gtkbuf)
+    textBufferSetModified gtkbuf modified
     where
     replace :: Int -> (String,String) -> IO ()
     replace offset (from,to) = do
@@ -54,7 +61,11 @@ transformToBeauty gtkbuf = do
 
 transformFromBeauty :: TextBuffer -> IO () 
 transformFromBeauty gtkbuf = do
+    modified <- textBufferGetModified gtkbuf
+    sourceBufferBeginNotUndoableAction (castToSourceBuffer gtkbuf)
     mapM_ (replace 0) transformTableBack
+    sourceBufferEndNotUndoableAction (castToSourceBuffer gtkbuf)
+    textBufferSetModified gtkbuf modified
     where
     replace :: Int -> (String,String,Int) -> IO ()
     replace offset (to,from,spaces) = do
@@ -99,7 +110,7 @@ transformTable = [
     
     ,(" ^" , [' ',chr 0x2191]) --UPWARDS ARROW
     ,(" ." , [' ',chr 0x2218]) --RING OPERATOR
-    ,("\\" , [' ',chr 0x03bb]) --GREEK SMALL LETTER LAMDA
+    ,("\\" , [chr 0x03bb]) --GREEK SMALL LETTER LAMDA
     ,(" forall",[' ',chr 0x2200]) --FOR ALL
     ,(" exist", [' ',chr 0x2203]) --THERE EXISTS
     ,(" not",[' ',chr 0x00ac,' ',' '])]  --NOT SIGN
@@ -118,12 +129,12 @@ transformTableBack = [
     ,("::", [chr 0x2237],1) --PROPORTION
     ,("..", [chr 0x2025],1) --TWO DOT LEADER
     
-    ,(" ^ " , [chr 0x2191],0) --UPWARDS ARROW
-    ,(" . " , [chr 0x2218],0) --RING OPERATOR
+    ,("^" , [chr 0x2191],0) --UPWARDS ARROW
+    ,("." , [chr 0x2218],0) --RING OPERATOR
     ,("\\"  , [chr 0x03bb],0) --GREEK SMALL LETTER LAMDA
-    ,(" forall ",[chr 0x2200],0) --FOR ALL
-    ,(" exist ", [chr 0x2203],0) --THERE EXISTS
-    ,(" not ",[chr 0x00ac],2)]  --NOT SIGN
+    ,("forall",[chr 0x2200],0) --FOR ALL
+    ,("exist", [chr 0x2203],0) --THERE EXISTS
+    ,("not",[chr 0x00ac],2)]  --NOT SIGN
 
 
 {--
