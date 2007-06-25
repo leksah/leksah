@@ -23,6 +23,9 @@ import Control.Monad.Reader
 
 import Ghf.Core
 import Ghf.View
+import Ghf.Editor
+
+
 
 type Keymap = Map ActionString [(Maybe (Either KeyString (KeyString,KeyString)), Maybe String)]
 
@@ -167,6 +170,12 @@ handleSpecialKeystrokes :: Event -> GhfM Bool
 handleSpecialKeystrokes (Key _ _ _ mods _ _ _ keyVal name char) = 
     case char of 
         Nothing -> return False
+        Just ' ' -> do
+            bs <- getBeautyState
+            if bs
+                then editMayBeauty
+                else return ()
+            return False
         Just _ -> do
             sk  <- readGhf specialKey    
             sks <- readGhf specialKeys 

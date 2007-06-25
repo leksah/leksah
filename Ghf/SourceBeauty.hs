@@ -1,36 +1,132 @@
 module Ghf.SourceBeauty (
-    transformTable
-,   transformToBeauty
+    transformToBeauty
+,   transformFromBeauty
+,   mayBeautify
 ) where
 
 import Data.Char(chr)
+import Data.List(isSuffixOf)
 import Graphics.UI.Gtk
 import Control.Monad.Reader
 
 import Ghf.Core
-import Ghf.Editor
 
-transformToBeauty :: GhfAction
-transformToBeauty = do
-    inBufContext' () $ \_ gtkbuf currentBuffer _ -> lift $ do
-        mapM_ (replace gtkbuf) transformTable
+mayBeautify :: TextBuffer -> IO () 
+mayBeautify gtkbuf = do
+    cursorMark  <- textBufferGetInsert gtkbuf
+    endIter <- textBufferGetIterAtMark gtkbuf cursorMark
+    offset <- textIterGetOffset endIter
+    if offset < 7 
+        then return ()
+        else do
+            startIter <- textBufferGetIterAtOffset gtkbuf (offset - 7)
+            slice <- textIterGetSlice startIter endIter
+            mapM_ (replace cursorMark slice offset) transformTable
+    where 
+    replace :: TextMark -> String -> Int -> (String,String) -> IO ()
+    replace cursorMark match offset (from,to) = do
+    if isSuffixOf from match 
+        then do
+            start <- textBufferGetIterAtOffset gtkbuf (offset - (length from))
+            end <- textBufferGetIterAtOffset gtkbuf offset
+            textBufferDelete gtkbuf start end
+            ins <- textBufferGetIterAtMark gtkbuf cursorMark
+            textBufferInsert gtkbuf ins to
+        else return ()        
+
+
+transformToBeauty :: TextBuffer -> IO () 
+transformToBeauty gtkbuf = do
+    mapM_ (replace 0) transformTable
     where
-    replace :: TextBuffer -> (String,String,String) -> IO ()
-    replace gtkbuf (from,to,_) = replace' 0
-        where
-        replace' offset = do
-            iter <- textBufferGetIterAtOffset gtkbuf offset 
-            mbStartEnd <- textIterForwardSearch iter from [] Nothing 
-            case mbStartEnd of 
-                Nothing -> return ()
-                Just (st,end) -> do
-                    offset <- textIterGetOffset st
-                    textBufferDelete gtkbuf st end
-                    iter <- textBufferGetIterAtOffset gtkbuf offset
-                    textBufferInsert gtkbuf st to
-                    replace' offset 
+    replace :: Int -> (String,String) -> IO ()
+    replace offset (from,to) = do
+        iter <- textBufferGetIterAtOffset gtkbuf offset 
+        mbStartEnd <- textIterForwardSearch iter (from ++ " ") [] Nothing 
+        case mbStartEnd of 
+            Nothing -> return ()
+            Just (st,end) -> do
+                offset <- textIterGetOffset st
+                textBufferDelete gtkbuf st end
+                iter <- textBufferGetIterAtOffset gtkbuf offset
+                textBufferInsert gtkbuf st (to ++ " ")
+                replace offset (from,to)
+
+transformFromBeauty :: TextBuffer -> IO () 
+transformFromBeauty gtkbuf = do
+    mapM_ (replace 0) transformTableBack
+    where
+    replace :: Int -> (String,String,Int) -> IO ()
+    replace offset (to,from,spaces) = do
+        iter <- textBufferGetIterAtOffset gtkbuf offset 
+        mbStartEnd <- textIterForwardSearch iter from [] Nothing 
+        case mbStartEnd of 
+            Nothing -> return ()
+            Just (st,end) -> do
+                offset <- textIterGetOffset st
+                textBufferDelete gtkbuf st end
+                if spaces > 0
+                    then do
+                        iter2 <- textBufferGetIterAtOffset gtkbuf offset
+                        iter3 <- textBufferGetIterAtOffset gtkbuf (offset + spaces + 1)
+                        slice <- textIterGetSlice iter2 iter3 
+                        let l = length (takeWhile (== ' ') slice)
+                        if l > 1 
+                            then do
+                                textIterSetOffset iter3 (offset + l - 1)
+                                textBufferDelete gtkbuf iter2 iter3
+                            else return () 
+                    else return ()
+                iter <- textBufferGetIterAtOffset gtkbuf offset
+                textBufferInsert gtkbuf iter to
+                replace offset (to,from,spaces)
 
 
+
+transformTable :: [(String,String)]
+transformTable = [
+     (" ->", [ ' ',chr 0x2192,' ']) -- RIGHTWARDS ARROW
+    ,(" <-", [ ' ',chr 0x2190,' ']) --LEFTWARDS ARROW
+    ,(" =>", [ ' ',chr 0x21d2,' ']) --RIGHTWARDS DOUBLE ARROW
+    ,(" >=", [ ' ',chr 0x2265,' ']) --GREATER-THAN OR EQUAL TO
+    ,(" <=", [ ' ',chr 0x2264,' ']) --LESS-THAN OR EQUAL TO
+    ,(" /=", [ ' ',chr 0x2260,' ']) --NOT EQUAL TO
+    ,(" &&", [ ' ',chr 0x2227,' ']) --LOGICAL AND
+    ,(" ||", [ ' ',chr 0x2228,' ']) --LOGICAL OR
+    ,(" ++", [ ' ',chr 0x2295,' ']) --CIRCLED PLUS
+    ,(" ::", [ ' ',chr 0x2237,' ']) --PROPORTION
+    ,(" ..", [ ' ',chr 0x2025,' ']) --TWO DOT LEADER
+    
+    ,(" ^" , [' ',chr 0x2191]) --UPWARDS ARROW
+    ,(" ." , [' ',chr 0x2218]) --RING OPERATOR
+    ,("\\" , [' ',chr 0x03bb]) --GREEK SMALL LETTER LAMDA
+    ,(" forall",[' ',chr 0x2200]) --FOR ALL
+    ,(" exist", [' ',chr 0x2203]) --THERE EXISTS
+    ,(" not",[' ',chr 0x00ac,' ',' '])]  --NOT SIGN
+
+transformTableBack :: [(String,String,Int)]
+transformTableBack = [
+     ("->", [chr 0x2192],1) -- RIGHTWARDS ARROW
+    ,("<-", [chr 0x2190],1) --LEFTWARDS ARROW
+    ,("=>", [chr 0x21d2],1) --RIGHTWARDS DOUBLE ARROW
+    ,(">=", [chr 0x2265],1) --GREATER-THAN OR EQUAL TO
+    ,("<=", [chr 0x2264],1) --LESS-THAN OR EQUAL TO
+    ,("/=", [chr 0x2260],1) --NOT EQUAL TO
+    ,("&&", [chr 0x2227],1) --LOGICAL AND
+    ,("||", [chr 0x2228],1) --LOGICAL OR
+    ,("++", [chr 0x2295],1) --CIRCLED PLUS
+    ,("::", [chr 0x2237],1) --PROPORTION
+    ,("..", [chr 0x2025],1) --TWO DOT LEADER
+    
+    ,(" ^ " , [chr 0x2191],0) --UPWARDS ARROW
+    ,(" . " , [chr 0x2218],0) --RING OPERATOR
+    ,("\\"  , [chr 0x03bb],0) --GREEK SMALL LETTER LAMDA
+    ,(" forall ",[chr 0x2200],0) --FOR ALL
+    ,(" exist ", [chr 0x2203],0) --THERE EXISTS
+    ,(" not ",[chr 0x00ac],2)]  --NOT SIGN
+
+
+{--
 transformTable :: [(String,String,String)]
 transformTable = [
      (" -> ", [ ' ',chr 0x2192,' ',' '], [ ' ',chr 0xe2,chr 0x86,chr 0x92,' ',' ']) -- RIGHTWARDS ARROW
@@ -51,7 +147,7 @@ transformTable = [
     ,(" forall ",[' ',chr 0x2200],[' ',chr 0xe2,chr 0x88,chr 0x80,' ']) --FOR ALL
     ,(" exist ", [' ',chr 0x2203],[' ',chr 0xe2,chr 0x88,chr 0x83,' ']) --THERE EXISTS
     ,(" not ",[' ',chr 0x00ac,' ',' ',' '], [' ',chr 0xc2,chr 0xac,' ',' ',' '])]  --NOT SIGN
-
+--}
 
 
 

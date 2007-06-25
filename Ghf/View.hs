@@ -20,10 +20,12 @@ module Ghf.View (
 ,   getStatusbarLC
 ,   getCaseSensitive
 ,   getGotoLineSpin
-,   getFindAction
+--,   getFindAction
 ,   getWrapAround
 ,   getEntireWord
 ,   getSpecialKeys
+
+,   getBeautyState
 ) where
 
 import Graphics.UI.Gtk hiding (afterToggleOverwrite)
@@ -478,8 +480,15 @@ guessNewActiveBuffer nb = do
 
 --get widget elements
 
-getFindAction = getUIAction "ui/menubar/_Edit/_Find" castToToggleAction
+--getFindState = toggleActionGetActive
+--    $getUIAction "ui/menubar/_Edit/_Find" castToToggleAction
 
+getBeautyState :: GhfM (Bool)
+getBeautyState = do 
+    ui <- getUIAction "ui/menubar/_Edit/Source Beauty" castToToggleAction
+    lift $toggleActionGetActive ui 
+
+--
 
 getFindEntry :: GhfM (Entry)
 getFindEntry =  widgetGet ["topBox","statusBox","searchBox","searchEntry"] castToEntry

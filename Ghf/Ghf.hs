@@ -190,8 +190,8 @@ actions =
     ,AD "EditShiftLeft" "Shift _Left" Nothing Nothing 
         editShiftLeft [] False
 
-    ,AD "EditBeauty" "Beauty" Nothing Nothing 
-        transformToBeauty [] False
+    ,AD "EditBeautify" "_To Beauty" Nothing Nothing 
+        editBeautify [] True
 
     ,AD "View" "_View" Nothing Nothing (return ()) [] False
     ,AD "ViewMoveLeft" "Move _Left" Nothing Nothing
@@ -263,7 +263,7 @@ menuDescription = "\n\
        \<menuitem name=\"Shift Left\" action=\"EditShiftLeft\" />\n\
        \<menuitem name=\"Shift Right\" action=\"EditShiftRight\" />\n\
        \<separator/>\n\
-       \<menuitem name=\"Beauty\" action=\"EditBeauty\" />\n\
+       \<menuitem name=\"Source Beauty\" action=\"EditBeautify\" />\n\
      \</menu>\n\
     \<menu name=\"_View\" action=\"View\">\n\
        \<menuitem name=\"Move _Left\" action=\"ViewMoveLeft\" />\n\

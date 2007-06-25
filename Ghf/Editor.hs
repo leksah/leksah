@@ -32,8 +32,10 @@ module Ghf.Editor (
 ,   editShiftRight
 ,   editShiftLeft
 
-,   inBufContext'
-,   inBufContext
+,   editToBeauty
+,   editFromBeauty
+,   editMayBeautify
+
 ) where
 
 import Graphics.UI.Gtk hiding (afterToggleOverwrite)
@@ -53,6 +55,7 @@ import Data.Map (Map,(!))
   
 import Ghf.Core
 import Ghf.View
+import Ghf.SourceBeauty
 
 tabWidth = 4
 
@@ -65,6 +68,7 @@ newTextBuffer bn mbfn = do
     nb <- getActiveOrTopNotebook
     panes <- readGhf panes
     paneMap <- readGhf paneMap
+    bs <- getBeautyState
     let (ind,rbn) = figureOutPaneName panes bn 0
     (buf,cids) <- lift $ do
         lm      <-  sourceLanguagesManagerNew
@@ -90,6 +94,9 @@ newTextBuffer bn mbfn = do
             Nothing -> return "\n\n\n\n\n"
         sourceBufferBeginNotUndoableAction buffer
         textBufferSetText buffer fileContents
+        if bs
+            then editToBeauty
+            else return ()
         textBufferSetModified buffer False
         sourceBufferEndNotUndoableAction buffer
         siter <- textBufferGetStartIter buffer
@@ -302,9 +309,16 @@ fileSave query = inBufContext' () $ \nb _ currentBuffer i -> do
         fileSave' :: GhfBuffer -> FileName -> IO()
         fileSave' ghfBuf fn = do
             buf     <- textViewGetBuffer $ sourceView ghfBuf
+            bs <- getBeautyState
+            if bs
+                then editFromBeauty
+                else return ()
             start   <- textBufferGetStartIter buf
             end     <- textBufferGetEndIter buf
             text    <- textBufferGetText buf start end True
+            if bs
+                then editToBeauty
+                else return ()
             writeFile fn text
             textBufferSetModified buf False
 
@@ -688,3 +702,33 @@ editShiftRight =
             textIterSetLine iter lineNr
             textBufferInsert gtkbuf iter str
         return ()
+
+editToBeauty :: GhfAction
+editToBeauty = 
+    inBufContext () $ \_ gtkbuf _ _ -> do
+        transformToBeauty gtkbuf
+
+editFromBeauty :: GhfAction
+editFromBeauty = 
+    inBufContext () $ \_ gtkbuf _ _ -> do
+        transformFromBeauty gtkbuf
+
+editMayBeautify =
+    inBufContext () $ \_ gtkbuf _ _ -> do
+        mayBeautify gtkbuf
+
+editBeautify = do
+    panesST <- readGhf panes
+    let buffers = filter isBuffer (Map.elems panesST)
+    gtkbufs <- lift $mapM (\b -> textViewGetBuffer (sourceView b)) buffers
+    bs <- getBeautyState
+    if bs
+        then mapM_ transformToBeauty gtkbufs
+        else mapM_ transformFromBeauty gtkbufs
+    where
+    isBuffer :: GhfPane -> Bool
+    isBuffer PaneBuf _  = True
+    isBuffer _ _        = False
+
+    
+
