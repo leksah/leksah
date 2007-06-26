@@ -1,0 +1,11 @@
+ToDo List
+
+- Active Buffer switching korrigieren
+- Changed on disk 
+- Deactivate Undo-Manager for EyeCandy --OK
+- Find as Toggle
+-  
+
+
+
+
