@@ -213,7 +213,7 @@ markLabelAsChanged = do
                           else text)
                   notebookSetTabLabel nb (scrolledWindow buf) label
 
-inBufContext' :: a -> (Notebook -> TextBuffer -> GhfBuffer -> Int -> GhfM alpha ) -> GhfM alpha 
+inBufContext' :: alpha -> (Notebook -> TextBuffer -> GhfBuffer -> Int -> GhfM alpha ) -> GhfM alpha 
 inBufContext' def f = do
     mbBuf <- maybeActiveBuf
     paneMap <- readGhf paneMap
@@ -225,17 +225,17 @@ inBufContext' def f = do
             mbI  <- lift $notebookPageNum nb (scrolledWindow ghfBuf)
             case mbI of
                 Nothing -> lift $ do
-                        putStrLn "notebook page not found: unexpected"
+                        putStrLn "notebook page not found: unexpected" 
                         return def
                 Just i -> do
                         gtkbuf <- lift $ textViewGetBuffer (sourceView ghfBuf)
                         f nb gtkbuf ghfBuf i
 
-inBufContext :: a -> (Notebook -> TextBuffer -> GhfBuffer -> Int -> IO alpha ) -> GhfM alpha 
+inBufContext :: alpha -> (Notebook -> TextBuffer -> GhfBuffer -> Int -> IO alpha ) -> GhfM alpha 
 inBufContext def f = inBufContext' def (\ a b c d -> lift $ f a b c d)
 
 fileSave :: Bool -> GhfAction
-fileSave query = inBufContext' () $\ nb _ currentBuffer i -> do
+fileSave query = inBufContext' () $ \ nb _ currentBuffer i -> do
     ghfR    <- ask
     window  <- readGhf window
     bufs    <- readGhf panes

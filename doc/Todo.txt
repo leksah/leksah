@@ -1,11 +1,20 @@
 ToDo List
 
+Views
 - Active Buffer switching korrigieren
-- Changed on disk 
-- Deactivate Undo-Manager for EyeCandy --OK
-- Find as Toggle
--  
 
+Editor
+- Changed on disk 
+- Clipboard binding
+- Find as Toggle
+- Candy with '(' '\n' .. before and ')' \n .. after
+
+Preferences
+- 
+
+
+Projects 
+- 
 
 
 
