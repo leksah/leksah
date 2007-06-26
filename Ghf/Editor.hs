@@ -213,7 +213,7 @@ markLabelAsChanged = do
                           else text)
                   notebookSetTabLabel nb (scrolledWindow buf) label
 
-inBufContext' :: a -> (Notebook -> TextBuffer -> GhfBuffer -> Int -> GhfM a) -> GhfM a
+inBufContext' :: a -> (Notebook -> TextBuffer -> GhfBuffer -> Int -> GhfM alpha ) -> GhfM alpha 
 inBufContext' def f = do
     mbBuf <- maybeActiveBuf
     paneMap <- readGhf paneMap
@@ -231,23 +231,23 @@ inBufContext' def f = do
                         gtkbuf <- lift $ textViewGetBuffer (sourceView ghfBuf)
                         f nb gtkbuf ghfBuf i
 
-inBufContext :: a -> (Notebook -> TextBuffer -> GhfBuffer -> Int -> IO a) -> GhfM a
-inBufContext def f = inBufContext' def (\a b c d-> lift $ f a b c d)
+inBufContext :: a -> (Notebook -> TextBuffer -> GhfBuffer -> Int -> IO alpha ) -> GhfM alpha 
+inBufContext def f = inBufContext' def (\ a b c d -> lift $ f a b c d)
 
 fileSave :: Bool -> GhfAction
-fileSave query = inBufContext' () $ \nb _ currentBuffer i -> do
+fileSave query = inBufContext' () $\ nb _ currentBuffer i -> do
     ghfR    <- ask
     window  <- readGhf window
     bufs    <- readGhf panes
     paneMap <- readGhf paneMap
-    bs <- getCandyState
-    candy <- readGhf candy
+    bs      <- getCandyState
+    candy   <- readGhf candy
     mbnbufsPm <- lift $ do
         let mbfn = fileName currentBuffer
         mbpage <- notebookGetNthPage nb i
         case mbpage of
-            Nothing -> error "fileSave: Page not found"
-            Just page -> 
+            Nothing     -> error "fileSave: Page not found"
+            Just page   -> 
                 if isJust mbfn && query == False
                     then do fileSave' currentBuffer bs candy $fromJust mbfn
                             return Nothing

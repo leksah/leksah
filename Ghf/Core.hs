@@ -90,7 +90,7 @@ instance Show Modifier
 instance Show UIManager
     where show _ = "UIManager *"
 
-instance Show (ReaderT a b c)
+instance Show (ReaderT alpha beta gamma )
     where show _ = "ReaderT *"
 
 helpDebug :: GhfAction
@@ -101,6 +101,10 @@ helpDebug = do
         putStrLn $"------------------ "
         putStrLn $show ghf
         putStrLn $"------------------ "
+
+type CandyTableForth =  [(String,String)]
+type CandyTableBack  =  [(String,String,Int)] 
+type CandyTables     =  (CandyTableForth,CandyTableBack) 
 
 
 --
@@ -134,7 +138,7 @@ realPaneName pane =
 data Connections =  BufConnections [ConnectId SourceView] [ConnectId TextBuffer]
     deriving (Show)
 
-instance Show (ConnectId a)
+instance Show (ConnectId alpha )
     where show cid = "ConnectId *"
 
 --
@@ -193,10 +197,6 @@ data PaneLayout =       HorizontalP PaneLayout PaneLayout
 
 type FileName       =   String
 
-type CandyTableForth =  [(String,String)]
-type CandyTableBack  =  [(String,String,Int)] 
-type CandyTables     =  (CandyTableForth,CandyTableBack) 
-
 --
 -- | A mutable reference to the IDE state
 --
@@ -214,7 +214,7 @@ type GhfM = ReaderT (GhfRef) IO
 type GhfAction = GhfM ()
 
 -- | Read an attribute of the contents
-readGhf :: (Ghf -> b) -> GhfM b
+readGhf :: (Ghf -> alpha ) -> GhfM alpha
 readGhf f = do
     e <- ask
     lift $ liftM f (readIORef e)
@@ -227,14 +227,14 @@ modifyGhf_ f = do
     lift $ writeIORef e e'  
 
 -- | Variation on modifyGhf_ that lets you return a value
-modifyGhf :: (Ghf -> IO (Ghf,b)) -> GhfM b
+modifyGhf :: (Ghf -> IO (Ghf, alpha )) -> GhfM alpha 
 modifyGhf f = do
     e <- ask
     (e',result) <- lift (f =<< readIORef e)
     lift $ writeIORef e e'
     return result
 
-withGhf :: (Ghf -> IO a) -> GhfM a
+withGhf :: (Ghf -> IO alpha ) -> GhfM alpha 
 withGhf f = do
     e <- ask
     lift $ f =<< readIORef e  

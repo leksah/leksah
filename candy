@@ -1,6 +1,6 @@
 -- Candy file
 
-"->"        0x2192                  -- RIGHTWARDS ARROW
+"->"        0x2192                  --RIGHTWARDS ARROW
 "<-"        0x2190                  --LEFTWARDS ARROW
 "=>"        0x21d2                  --RIGHTWARDS DOUBLE ARROW
 ">="        0x2265                  --GREATER-THAN OR EQUAL TO
@@ -17,4 +17,9 @@
 "forall"    0x2200 NoTrimming       --FOR ALL
 "exist"     0x2203 NoTrimming       --THERE EXISTS
 "not"       0x00ac                  --NOT SIGN
+"alpha"     0x03b1 NoTrimming                 
+"beta"      0x03b2 NoTrimming
+"gamma"     0x03b3 NoTrimming
+"delta"     0x03b4 NoTrimming
+"epsilon"   0x03b5 NoTrimming
 
