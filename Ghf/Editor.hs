@@ -32,10 +32,10 @@ module Ghf.Editor (
 ,   editShiftRight
 ,   editShiftLeft
 
-,   editToBeauty
-,   editFromBeauty
-,   editMayBeautify
-,   editBeautify
+,   editToCandy
+,   editFromCandy
+,   editKeystrokeCandy
+,   editCandy
 
 ) where
 
@@ -56,7 +56,7 @@ import Data.Map (Map,(!))
   
 import Ghf.Core
 import Ghf.View
-import Ghf.SourceBeauty
+import Ghf.SourceCandy
 
 tabWidth = 4
 
@@ -69,7 +69,8 @@ newTextBuffer bn mbfn = do
     nb <- getActiveOrTopNotebook
     panes <- readGhf panes
     paneMap <- readGhf paneMap
-    bs <- getBeautyState
+    bs <- getCandyState
+    (from,_) <- readGhf candy
     let (ind,rbn) = figureOutPaneName panes bn 0
     (buf,cids) <- lift $ do
         lm      <-  sourceLanguagesManagerNew
@@ -96,7 +97,7 @@ newTextBuffer bn mbfn = do
         sourceBufferBeginNotUndoableAction buffer
         textBufferSetText buffer fileContents
         if bs
-            then transformToBeauty (castToTextBuffer buffer)
+            then transformToCandy from (castToTextBuffer buffer)
             else return ()
         textBufferSetModified buffer False
         sourceBufferEndNotUndoableAction buffer
@@ -239,7 +240,8 @@ fileSave query = inBufContext' () $ \nb _ currentBuffer i -> do
     window  <- readGhf window
     bufs    <- readGhf panes
     paneMap <- readGhf paneMap
-    bs <- getBeautyState
+    bs <- getCandyState
+    candy <- readGhf candy
     mbnbufsPm <- lift $ do
         let mbfn = fileName currentBuffer
         mbpage <- notebookGetNthPage nb i
@@ -247,7 +249,7 @@ fileSave query = inBufContext' () $ \nb _ currentBuffer i -> do
             Nothing -> error "fileSave: Page not found"
             Just page -> 
                 if isJust mbfn && query == False
-                    then do fileSave' currentBuffer bs $fromJust mbfn
+                    then do fileSave' currentBuffer bs candy $fromJust mbfn
                             return Nothing
                     else do
                         dialog <- fileChooserDialogNew
@@ -280,7 +282,7 @@ fileSave query = inBufContext' () $ \nb _ currentBuffer i -> do
                                     else return ResponseYes
                                 case resp of
                                     ResponseYes -> do
-                                        fileSave' currentBuffer bs fn
+                                        fileSave' currentBuffer bs candy fn
                                         let bn = takeFileName fn
                                         let bufs1 =  Map.delete (realPaneName (PaneBuf currentBuffer)) bufs
                                         let (ind,rbn) =  figureOutPaneName bufs1 bn 0
@@ -307,17 +309,17 @@ fileSave query = inBufContext' () $ \nb _ currentBuffer i -> do
             (\ghf -> return (ghf{panes = nbufs, paneMap = pm}))
         Nothing -> return ()
     where
-        fileSave' :: GhfBuffer -> Bool -> FileName -> IO()
-        fileSave' ghfBuf bs fn = do
+        fileSave' :: GhfBuffer -> Bool -> CandyTables -> FileName -> IO()
+        fileSave' ghfBuf bs (to,from) fn = do
             buf     <- textViewGetBuffer $ sourceView ghfBuf
             if bs 
-                then transformFromBeauty buf
+                then transformFromCandy from buf
                 else return ()
             start   <- textBufferGetStartIter buf
             end     <- textBufferGetEndIter buf
             text    <- textBufferGetText buf start end True
             if bs 
-                then transformToBeauty buf
+                then transformToCandy to buf
                 else return ()
             writeFile fn text
             textBufferSetModified buf False
@@ -703,32 +705,33 @@ editShiftRight =
             textBufferInsert gtkbuf iter str
         return ()
 
-editToBeauty :: GhfAction
-editToBeauty = 
+editToCandy :: GhfAction
+editToCandy = do
+    (to,_) <- readGhf candy
     inBufContext () $ \_ gtkbuf _ _ -> do
-        transformToBeauty gtkbuf
+        transformToCandy to gtkbuf
 
-editFromBeauty :: GhfAction
-editFromBeauty = 
+editFromCandy :: GhfAction
+editFromCandy = do
+    (_,from) <- readGhf candy
     inBufContext () $ \_ gtkbuf _ _ -> do
-        transformFromBeauty gtkbuf
+        transformFromCandy from gtkbuf
 
-editMayBeautify =
+editKeystrokeCandy = do
+    (to,_) <- readGhf candy
     inBufContext () $ \_ gtkbuf _ _ -> do
-        mayBeautify gtkbuf
+        keystrokeCandy to gtkbuf
 
-editBeautify = do
+editCandy = do
     panesST <- readGhf panes
+    (to,from) <- readGhf candy
     let buffers = map (\ (PaneBuf buf) -> buf) $filter isBuffer $Map.elems panesST
-    gtkbufs <- lift $mapM (\b -> textViewGetBuffer (sourceView b)) buffers
-    bs <- getBeautyState
+    gtkbufs <- lift $mapM (\ b -> textViewGetBuffer (sourceView b)) buffers
+    bs <- getCandyState
     if bs
-        then lift $mapM_ transformToBeauty gtkbufs
-        else lift $mapM_ transformFromBeauty gtkbufs
-    where
-    isBuffer :: GhfPane -> Bool
-    isBuffer (PaneBuf _) = True
---    isBuffer _           = False
+        then lift $mapM_ (transformToCandy to) gtkbufs
+        else lift $mapM_ (transformFromCandy from) gtkbufs
+
 
     
 

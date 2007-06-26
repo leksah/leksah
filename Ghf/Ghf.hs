@@ -38,7 +38,7 @@ import Ghf.Editor
 import Ghf.Dialogs
 import Ghf.View
 import Ghf.Keymap
-import Ghf.SourceBeauty
+import Ghf.SourceCandy
 
 version = "0.1" 
 
@@ -66,6 +66,9 @@ main = do
 --    putStrLn $show keyMap
     let accelActions = setKeymap actions keyMap
     specialKeys <- buildSpecialKeys keyMap accelActions
+
+    candy <- parseCandy "candy"
+    putStrLn $show candy
     
     win <- windowNew
     windowSetIconFromFile win "ghf.gif"
@@ -79,6 +82,7 @@ main = do
                   ,   layout = TerminalP
                   ,   specialKeys = specialKeys
                   ,   specialKey = Nothing
+                  ,   candy = candy
                   }
     ghfR <- newIORef ghf
 
@@ -189,8 +193,8 @@ actions =
     ,AD "EditShiftLeft" "Shift _Left" Nothing Nothing 
         editShiftLeft [] False
 
-    ,AD "EditBeautify" "_To Beauty" Nothing Nothing 
-        editBeautify [] True
+    ,AD "EditCandy" "_To Candy" Nothing Nothing 
+        editCandy [] True
 
     ,AD "View" "_View" Nothing Nothing (return ()) [] False
     ,AD "ViewMoveLeft" "Move _Left" Nothing Nothing
@@ -262,7 +266,7 @@ menuDescription = "\n\
        \<menuitem name=\"Shift Left\" action=\"EditShiftLeft\" />\n\
        \<menuitem name=\"Shift Right\" action=\"EditShiftRight\" />\n\
        \<separator/>\n\
-       \<menuitem name=\"Source Beauty\" action=\"EditBeautify\" />\n\
+       \<menuitem name=\"Source Candy\" action=\"EditCandy\" />\n\
      \</menu>\n\
     \<menu name=\"_View\" action=\"View\">\n\
        \<menuitem name=\"Move _Left\" action=\"ViewMoveLeft\" />\n\

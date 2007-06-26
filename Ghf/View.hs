@@ -25,7 +25,7 @@ module Ghf.View (
 ,   getEntireWord
 ,   getSpecialKeys
 
-,   getBeautyState
+,   getCandyState
 ) where
 
 import Graphics.UI.Gtk hiding (afterToggleOverwrite)
@@ -483,9 +483,9 @@ guessNewActiveBuffer nb = do
 --getFindState = toggleActionGetActive
 --    $getUIAction "ui/menubar/_Edit/_Find" castToToggleAction
 
-getBeautyState :: GhfM (Bool)
-getBeautyState = do 
-    ui <- getUIAction "ui/menubar/_Edit/Source Beauty" castToToggleAction
+getCandyState :: GhfM (Bool)
+getCandyState = do 
+    ui <- getUIAction "ui/menubar/_Edit/Source Candy" castToToggleAction
     lift $toggleActionGetActive ui 
 
 --

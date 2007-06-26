@@ -171,9 +171,9 @@ handleSpecialKeystrokes (Key _ _ _ mods _ _ _ keyVal name char) =
     case char of 
         Nothing -> return False
         Just ' ' -> do
-            bs <- getBeautyState
+            bs <- getCandyState
             if bs
-                then editMayBeautify
+                then editKeystrokeCandy
                 else return ()
             return False
         Just _ -> do

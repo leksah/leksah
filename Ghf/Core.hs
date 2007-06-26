@@ -16,6 +16,11 @@ module Ghf.Core (
 ,   PaneDirection(..)
 ,   PanePath
 ,   PaneLayout(..)
+,   CandyTables
+,   CandyTableForth
+,   CandyTableBack
+
+,   isBuffer
 
 ,   readGhf
 ,   modifyGhf
@@ -69,6 +74,7 @@ data Ghf        =   Ghf {
 ,   layout      ::  PaneLayout
 ,   specialKeys ::  Map (KeyVal,[Modifier]) (Map (KeyVal,[Modifier]) ActionDescr)   
 ,   specialKey  ::  Maybe ((Map (KeyVal,[Modifier]) ActionDescr),String)
+,   candy       ::  CandyTables
 } deriving Show
 
 instance Show Window
@@ -96,11 +102,16 @@ helpDebug = do
         putStrLn $show ghf
         putStrLn $"------------------ "
 
+
 --
 -- | Description of the different pane types
 --
 data GhfPane    =   PaneBuf GhfBuffer
     deriving (Eq,Ord,Show)
+
+isBuffer :: GhfPane -> Bool
+isBuffer (PaneBuf _) = True
+--    isBuffer _           = False
 
 getTopWidget :: GhfPane -> Widget
 getTopWidget (PaneBuf buf) = castToWidget(scrolledWindow buf)
@@ -181,6 +192,10 @@ data PaneLayout =       HorizontalP PaneLayout PaneLayout
 
 
 type FileName       =   String
+
+type CandyTableForth =  [(String,String)]
+type CandyTableBack  =  [(String,String,Int)] 
+type CandyTables     =  (CandyTableForth,CandyTableBack) 
 
 --
 -- | A mutable reference to the IDE state
