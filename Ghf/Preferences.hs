@@ -8,7 +8,7 @@ module Ghf.Preferences (
 import Text.ParserCombinators.Parsec
 import qualified Text.ParserCombinators.Parsec.Token as P
 import Text.ParserCombinators.Parsec.Language(emptyDef)
-import Text.PrettyPrint.HughesPJ hiding (char)
+import qualified Text.PrettyPrint.HughesPJ as PP
 import Control.Monad(foldM)
 
 import Ghf.Core
@@ -33,66 +33,75 @@ defaultPrefs = Prefs {
     ,   keymapName          =  "Default" 
     ,   defaultSize         =  (1024,800)}
 
-data FieldDescription alpha = FD {
+data FieldDescription alpha =  FD {
         name                ::  String
     ,   comment             ::  String
-    ,   fieldPrinter        ::  alpha -> String 
-    ,   fieldParser         ::  CharParser () (alpha  -> alpha)
+    ,   fieldPrinter        ::  alpha -> PP.Doc
+    ,   fieldParser         ::  alpha -> CharParser () (alpha)
 }
 
-field ::  String -> 
-                String -> 
-                (alpha -> String) -> 
-                (CharParser () alpha) ->
-                ((FieldDescription beta) -> alpha -> (FieldDescription beta) )
-                (alpha -> FieldDescription beta ) 
-                FieldDescription beta     
+field ::      String ->                   --name
+              String ->                   --comment
+              (beta -> PP.Doc) ->         --printer
+              (CharParser () beta ) ->     --parser
+              (alpha -> beta ) ->  --getter
+              (beta -> alpha -> alpha ) -> --setter
+              FieldDescription alpha 
 field name comment printer parser getter setter =
     FD  name 
         comment
         (printer . getter)
-        (\a -> do
-            try (symbol name)
-            colon 
+        (\a -> try (do
+            symbol name
+            colon
             value <- parser   
-            return (setter a value)) 
+            return (setter value a)))
 
 prefsDescription :: [FieldDescription Prefs] 
 prefsDescription = [
-        field 
-            "Show line numbers" "(True/False)" 
-            (text . show) boolParser
-            showLineNumbers (\ a b -> (a{showLineNumbers = b}))
-    ,   field "Right margin" "Size or 0 for no right margin"
-            (\a -> (text . show) (case a of Nothing -> 0; Just i -> i)) 
+        field "Show line numbers"
+            "(True/False)" 
+            (PP.text . show)
+            boolParser
+            showLineNumbers
+            (\ b a -> (a{showLineNumbers = b}))
+    ,   field "Right margin"
+            "Size or 0 for no right margin"
+            (\a -> (PP.text . show) (case a of Nothing -> 0; Just i -> i))
             (do i <- integer
                 return (if i == 0 then Nothing else Just (fromIntegral i)))
-            rightMargin (\a b -> a{rightMargin = b}) 
+            rightMargin
+            (\b a -> a{rightMargin = b})
     ,   field "Tab width" ""
-            (text . show) integer
-            tabWidth (\a b -> a{tabWidth = b}) 
+            (PP.text . show) integer
+            (fromIntegral . tabWidth) (\b a -> a{tabWidth = (fromIntegral b)})
     ,   field "Source candy" "Empty for do not use or the name of a candy file in a config dir)" 
-            (\a -> text (case a of Nothing -> ""; Just s -> s)) 
+            (\a -> PP.text (case a of Nothing -> ""; Just s -> s)) 
             (do id <- identifier
                 return (if null id then Nothing else Just (id)))
-            sourceCandy (\a b -> a{sourceCandy = b}) 
+            sourceCandy (\b a -> a{sourceCandy = b})
     ,   field "Name of the keymap"  "The name of a keymap file in a config dir" 
-            text identifier
-            keymapName (\a b -> a{keymapName = b}) 
+            PP.text identifier
+            keymapName (\b a -> a{keymapName = b})
     ,   field "Window default size"
             "Default size of the main ghf window specified as pair (int,int)" 
-            (text.show) 
-            (do char "("
+            (PP.text.show) 
+            (do char '('
                 i1 <- integer
-                char ","
+                char ','
                 i2 <- integer
-                char ")"
-                return (i1,i2))
-            defaultSize (\a b -> a{defaultSize = b})] 
+                char ')'
+                return ((fromIntegral i1),(fromIntegral i2)))
+            defaultSize (\(c,d) a -> a{defaultSize = (fromIntegral c,fromIntegral d)})]
+
+
+-- ------------------------------------------------------------
+-- * Parsing
+-- ------------------------------------------------------------
 
 readPrefs :: FileName -> IO Prefs
 readPrefs fn = do
-    res <- parseFromFile prefsParser defaultPrefs fn
+    res <- parseFromFile (prefsParser defaultPrefs prefsDescription) fn
     case res of
         Left pe -> error $"Error reading prefs file " ++ show fn ++ " " ++ show pe
         Right r -> return r  
@@ -109,16 +118,29 @@ lexeme = P.lexeme lexer
 whiteSpace = P.whiteSpace lexer
 hexadecimal = P.hexadecimal lexer
 symbol = P.symbol lexer
-identifier = P.symbol identifier
+identifier = P.identifier lexer
+colon = P.colon lexer
+integer = P.integer lexer
 
 prefsParser :: Prefs -> [FieldDescription Prefs] -> CharParser () Prefs
 prefsParser def descriptions = 
-    let parsers = map (\ a -> try a) fieldParser descriptions in do
+    let parsersF = map fieldParser descriptions in do     
         whiteSpace
-        ls <- (many parsers <?> "pref parser")
-        eof
-        foldM (\pref f -> f pref) def ls
+        res <- applyFieldParsers def parsersF
+        return res
         <?> "prefs parser" 
+
+applyFieldParsers :: Prefs -> [Prefs -> CharParser () (Prefs)] -> CharParser () Prefs
+applyFieldParsers prefs parseF = do
+    let parsers = map (\a -> a prefs) parseF
+    newprefs <- choice parsers
+    whiteSpace
+    applyFieldParsers newprefs parseF
+    <|> do
+    eof
+    return (prefs)
+    <?> "field parser"
+
 
 boolParser :: CharParser () Bool
 boolParser = do

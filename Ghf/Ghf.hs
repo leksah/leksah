@@ -64,6 +64,7 @@ main = do
     mapM_ putStrLn st 
     
     prefs <- readPrefs "config/Default.prefs"
+    putStrLn $show prefs
 
     keyMap <- parseKeymap "config/Default.keymap"
 --    putStrLn $show keyMap
@@ -71,7 +72,7 @@ main = do
     specialKeys <- buildSpecialKeys keyMap accelActions
 
     candy <- parseCandy "config/Default.candy"
-    putStrLn $show candy
+--    putStrLn $show candy
     
     win <- windowNew
     windowSetIconFromFile win "bin/ghf.gif"
