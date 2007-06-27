@@ -37,7 +37,7 @@ module Ghf.Editor (
 ,   editKeystrokeCandy
 ,   editCandy
 
-) where
+) where 
 
 import Graphics.UI.Gtk hiding (afterToggleOverwrite)
 import Graphics.UI.Gtk.SourceView
@@ -58,7 +58,7 @@ import Ghf.Core
 import Ghf.View
 import Ghf.SourceCandy
 
-tabWidth = 4
+tabWidthP = 4
 
 newTextBuffer :: String -> Maybe FileName -> GhfAction
 newTextBuffer bn mbfn = do
@@ -114,7 +114,7 @@ newTextBuffer bn mbfn = do
         sourceViewSetMargin sv 90
         sourceViewSetShowMargin sv True
         sourceViewSetInsertSpacesInsteadOfTabs sv True
-        sourceViewSetTabsWidth sv tabWidth
+        sourceViewSetTabsWidth sv tabWidthP
         sourceViewSetSmartHomeEnd sv True
 
         -- put it in a scrolled window
@@ -675,14 +675,14 @@ editUncomment = do
 
 editShiftLeft :: GhfAction
 editShiftLeft = 
-    let str = map (\_->' ') [1 ..tabWidth] in
+    let str = map (\_->' ') [1 ..tabWidthP] in
     do  b <- canShiftLeft str 
         if b
             then do
                 doForSelectedLines [] $ \gtkbuf iter lineNr -> do
                     textIterSetLine iter lineNr
                     iter2 <- textIterCopy iter
-                    textIterForwardChars iter tabWidth         
+                    textIterForwardChars iter tabWidthP         
                     textBufferDelete gtkbuf iter iter2
                 return ()                
             else return ()
@@ -691,7 +691,7 @@ editShiftLeft =
             boolList <- doForSelectedLines [] $ \gtkbuf iter lineNr -> do
                 textIterSetLine iter lineNr
                 iter2 <- textIterCopy iter
-                textIterForwardChars iter tabWidth         
+                textIterForwardChars iter tabWidthP         
                 str1 <- textIterGetText iter iter2
                 return (str1 == str)
             return (foldl (&&) True boolList)
@@ -699,7 +699,7 @@ editShiftLeft =
             
 editShiftRight :: GhfAction
 editShiftRight = 
-    let str = map (\_->' ') [1 ..tabWidth] in do
+    let str = map (\_->' ') [1 ..tabWidthP] in do
         doForSelectedLines [] $ \gtkbuf iter lineNr -> do
             textIterSetLine iter lineNr
             textBufferInsert gtkbuf iter str

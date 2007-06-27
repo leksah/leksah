@@ -3,6 +3,8 @@ module Ghf.Core (
 ,   ActionString
 ,   KeyString
 
+,   Prefs(..)
+
 ,   Ghf(..)
 ,   GhfRef
 ,   GhfM
@@ -61,6 +63,14 @@ data ActionDescr = AD {
 type ActionString = String
 type KeyString = String
 
+data Prefs = Prefs {
+        showLineNumbers     ::  Bool
+    ,   rightMargin         ::  Maybe Int
+    ,   tabWidth            ::  Int
+    ,   sourceCandy         ::  Maybe String
+    ,   keymapName          ::  String 
+    ,   defaultSize         ::  (Int,Int)
+} deriving(Eq,Ord,Show)
 
 --
 -- | The IDE state
@@ -75,6 +85,7 @@ data Ghf        =   Ghf {
 ,   specialKeys ::  Map (KeyVal,[Modifier]) (Map (KeyVal,[Modifier]) ActionDescr)   
 ,   specialKey  ::  Maybe ((Map (KeyVal,[Modifier]) ActionDescr),String)
 ,   candy       ::  CandyTables
+,   prefs       ::  Prefs
 } deriving Show
 
 instance Show Window

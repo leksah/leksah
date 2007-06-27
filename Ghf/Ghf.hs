@@ -39,6 +39,7 @@ import Ghf.Dialogs
 import Ghf.View
 import Ghf.Keymap
 import Ghf.SourceCandy
+import Ghf.Preferences
 
 version = "0.1" 
 
@@ -61,17 +62,19 @@ main = do
     (o,fl) <- ghfOpts args
     st <- initGUI
     mapM_ putStrLn st 
+    
+    prefs <- readPrefs "config/Default.prefs"
 
-    keyMap <- parseKeymap "keymap/Default.keymap"
+    keyMap <- parseKeymap "config/Default.keymap"
 --    putStrLn $show keyMap
     let accelActions = setKeymap actions keyMap
     specialKeys <- buildSpecialKeys keyMap accelActions
 
-    candy <- parseCandy "candy"
+    candy <- parseCandy "config/Default.candy"
     putStrLn $show candy
     
     win <- windowNew
-    windowSetIconFromFile win "ghf.gif"
+    windowSetIconFromFile win "bin/ghf.gif"
     uiManager <- uiManagerNew
     let ghf = Ghf
           {   window = win
@@ -83,6 +86,7 @@ main = do
           ,   specialKeys = specialKeys
           ,   specialKey = Nothing
           ,   candy = candy
+          ,   prefs = prefs
           }
     ghfR <- newIORef ghf
 

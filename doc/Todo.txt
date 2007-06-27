@@ -5,9 +5,10 @@ Views
 
 Editor
 - Changed on disk 
-- Clipboard binding
+- Clipboard binding Huuuu
 - Find as Toggle
 - Candy with '(' '\n' .. before and ')' \n .. after
+- 
 
 Preferences
 - 

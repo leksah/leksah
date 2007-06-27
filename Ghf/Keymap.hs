@@ -21,10 +21,10 @@ import Control.Monad(foldM)
 import Control.Monad.Reader
 
 
+
 import Ghf.Core
 import Ghf.View
 import Ghf.Editor
-
 
 
 type Keymap = Map ActionString [(Maybe (Either KeyString (KeyString,KeyString)), Maybe String)]
@@ -63,14 +63,14 @@ parseKeymap fn = do
         Left pe -> error $"Error reading keymap file " ++ show fn ++ " " ++ show pe
         Right r -> return r  
 
-keymapParser :: GenParser Char () Keymap
+keymapParser :: CharParser () Keymap
 keymapParser = do
     whiteSpace
     ls <- many lineparser 
     eof
     return (Map.fromListWith (++) ls)
 
-lineparser :: GenParser Char () (ActionString, [(Maybe (Either KeyString (KeyString,KeyString)), 
+lineparser :: CharParser () (ActionString, [(Maybe (Either KeyString (KeyString,KeyString)), 
                                 Maybe String)])   
 lineparser = do  
     mb1 <- option Nothing (do 
