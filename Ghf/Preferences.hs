@@ -141,7 +141,6 @@ applyFieldParsers prefs parseF = do
     return (prefs)
     <?> "field parser"
 
-
 boolParser :: CharParser () Bool
 boolParser = do
     (symbol "True" <|> symbol "true")
@@ -150,15 +149,3 @@ boolParser = do
     (symbol "False"<|> symbol "false")
     return False
     <?> "bool parser"
--- ------------------------------------------------------------
--- * Testing
--- ------------------------------------------------------------
-
-testEditorPrefs :: String
-testEditorPrefs = unlines [
-        "-- Required",
-        "showLineNumbers: True",
-        "rightMargin: 80",
-        "tabWidth: 4",
-        "sourceCandy: True",
-        "keymapName: Default"]
