@@ -12,6 +12,7 @@ Editor
 
 Preferences
 - Editing
+- Applying
 
 
 

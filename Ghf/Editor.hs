@@ -99,8 +99,8 @@ newTextBuffer bn mbfn = do
         if bs
             then transformToCandy from (castToTextBuffer buffer)
             else return ()
-        textBufferSetModified buffer False
         sourceBufferEndNotUndoableAction buffer
+        textBufferSetModified buffer False
         siter <- textBufferGetStartIter buffer
         textBufferPlaceCursor buffer siter
         sourceBufferSetHighlight buffer True
@@ -312,6 +312,7 @@ fileSave query = inBufContext' () $ \ nb _ currentBuffer i -> do
         fileSave' :: GhfBuffer -> Bool -> CandyTables -> FileName -> IO()
         fileSave' ghfBuf bs (to,from) fn = do
             buf     <- textViewGetBuffer $ sourceView ghfBuf
+            sourceBufferBeginNotUndoableAction (castToSourceBuffer buf)
             if bs 
                 then transformFromCandy from buf
                 else return ()
@@ -322,6 +323,7 @@ fileSave query = inBufContext' () $ \ nb _ currentBuffer i -> do
                 then transformToCandy to buf
                 else return ()
             writeFile fn text
+            sourceBufferEndNotUndoableAction (castToSourceBuffer buf)
             textBufferSetModified buf False
 
 fileNew :: GhfAction

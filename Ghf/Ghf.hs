@@ -229,6 +229,10 @@ actions =
     ,AD "ViewSwitchTabs" "Tabs On/Off" Nothing Nothing
         viewSwitchTabs [] False
 
+    ,AD "Preferences" "_Preferences" Nothing Nothing (return ()) [] False
+    ,AD "PrefsEdit" "_Edit Prefs" Nothing Nothing
+        editPrefs [] False
+
 
     ,AD "Help" "_Help" Nothing Nothing (return ()) [] False
     ,AD "HelpDebug" "Debug" (Just "<Ctrl>d") Nothing helpDebug [] False
@@ -289,6 +293,9 @@ menuDescription = "\n\
        \<menuitem name=\"Tabs _Up\" action=\"ViewTabsUp\" />\n\
        \<menuitem name=\"Tabs _Down\" action=\"ViewTabsDown\" />\n\
        \<menuitem name=\"Switch Tabs\" action=\"ViewSwitchTabs\" />\n\
+     \</menu>\n\
+    \<menu name=\"_Preferences\" action=\"Preferences\">\n\
+       \<menuitem name=\"Edit Preferences\" action=\"PrefsEdit\" />\n\
      \</menu>\n\
     \<menu name=\"_Help\" action=\"Help\">\n\
        \<menuitem name=\"_Debug\" action=\"HelpDebug\" />\n\
