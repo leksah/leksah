@@ -1,3 +1,6 @@
+--
+-- | ...
+-- 
 module Ghf.SourceCandy (
     transformToCandy
 ,   transformFromCandy

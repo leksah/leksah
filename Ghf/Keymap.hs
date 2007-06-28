@@ -1,10 +1,13 @@
+--
+-- | Module for handling keymaps,
+--   deals with gtk accelerators and double (emacs-like) keystrokes
+-- 
+
 module Ghf.Keymap (
     parseKeymap
 ,   setKeymap
 ,   buildSpecialKeys
 ,   handleSpecialKeystrokes
-
-
 ) where
 
 import Graphics.UI.Gtk
@@ -20,15 +23,26 @@ import Data.Char(toLower)
 import Control.Monad(foldM)
 import Control.Monad.Reader
 
-
-
 import Ghf.Core
 import Ghf.View
 import Ghf.Editor
 
-
 type Keymap = Map ActionString [(Maybe (Either KeyString (KeyString,KeyString)), Maybe String)]
 
+--
+-- | Loads and parses a keymap file
+-- 
+
+parseKeymap :: FileName -> IO Keymap
+parseKeymap fn = do
+    res <- parseFromFile keymapParser fn
+    case res of
+        Left pe -> error $"Error reading keymap file " ++ show fn ++ " " ++ show pe
+        Right r -> return r  
+
+--
+-- | Sets the accelerators is the action descriptions from the keymap
+-- 
 setKeymap :: [ActionDescr] -> Keymap -> [ActionDescr]
 setKeymap actions keymap = map setAccel actions
     where setAccel act = case Map.lookup (name act) keymap of
@@ -41,6 +55,79 @@ setKeymap actions keymap = map setAccel actions
           setAccelerator act (_, Just expl)                 = act{tooltip= Just expl} 
           setAccelerator act (_,_)                          = act   
  
+--
+-- | Builds a special keymap for handling double keystroke accelerators 
+--   Unfortunately in the IO Monad because of keyvalFromName
+-- 
+buildSpecialKeys :: Keymap -> [ActionDescr] -> IO (SpecialKeyTable)
+buildSpecialKeys keymap actions = do
+    pseudoTriples <- mapM build actions
+    let map1 = Map.fromListWith (++) $concat pseudoTriples
+    return (Map.map Map.fromList map1)    
+    where
+    build :: ActionDescr -> IO [((KeyVal,[Modifier]),[((KeyVal,[Modifier]),ActionDescr)])]
+    build act = 
+        case Map.lookup (name act) keymap of
+            Nothing             ->  return []  
+            Just l              ->  foldM (build' act) [] l
+    build' act list (Just (Right (a1,a2)),_) 
+                                =   do  a1p <- accParse a1
+                                        a2p <- accParse a2
+                                        return ((a1p,[(a2p,act)]): list)
+    build' act list _           =   return list   
+
+--
+-- | Callback function for onKeyPress of the main window, so preprocess any key
+-- 
+
+handleSpecialKeystrokes :: Event -> GhfM Bool
+handleSpecialKeystrokes (Key _ _ _ mods _ _ _ keyVal name char) = 
+    case char of 
+        Nothing -> return False
+        Just ' ' -> do
+            bs <- getCandyState
+            if bs
+                then editKeystrokeCandy
+                else return ()
+            return False
+        Just _ -> do
+            sk  <- readGhf specialKey    
+            sks <- readGhf specialKeys 
+            sb <- getSpecialKeys   
+            case sk of
+                Nothing -> do
+                    case Map.lookup (keyVal,sort mods) sks of
+                        Nothing -> do 
+                            lift $statusbarPop sb 1
+                            lift $statusbarPush sb 1 ""
+                            return False
+                        Just map -> do
+                            sb <- getSpecialKeys
+                            let sym = printMods mods ++ name
+                            lift $statusbarPop sb 1
+                            lift $statusbarPush sb 1 sym
+                            modifyGhf_ (\ghf -> return (ghf{specialKey = Just (map,sym)}))
+                            return True
+                Just (map,sym) -> do
+                    case Map.lookup (keyVal,sort mods) map of
+                        Nothing -> do
+                            sb <- getSpecialKeys
+                            lift $statusbarPop sb 1
+                            lift $statusbarPush sb 1 $sym ++ printMods mods ++ name ++ "?"
+                            return ()                    
+                        Just (AD actname _ _ _ ghfAction _ _) -> do
+                            sb <- getSpecialKeys
+                            lift $statusbarPop sb 1
+                            lift $statusbarPush sb 1 
+                                $sym ++ " " ++ printMods mods ++ name ++ "=" ++ actname
+                            ghfAction
+                    modifyGhf_ (\ghf -> return (ghf{specialKey = Nothing}))
+                    return True
+
+-- ---------------------------------------------------------------------
+-- Parsing
+--
+
 keymapStyle :: P.LanguageDef st
 keymapStyle= emptyDef                      
                 { P.commentStart   = "{-"
@@ -56,13 +143,6 @@ symbol =  P.symbol lexer
 whiteSpace = P.whiteSpace lexer
 stringLiteral = P.stringLiteral lexer
 
-parseKeymap :: FileName -> IO Keymap
-parseKeymap fn = do
-    res <- parseFromFile keymapParser fn
-    case res of
-        Left pe -> error $"Error reading keymap file " ++ show fn ++ " " ++ show pe
-        Right r -> return r  
-
 keymapParser :: CharParser () Keymap
 keymapParser = do
     whiteSpace
@@ -70,8 +150,8 @@ keymapParser = do
     eof
     return (Map.fromListWith (++) ls)
 
-lineparser :: CharParser () (ActionString, [(Maybe (Either KeyString (KeyString,KeyString)), 
-                                Maybe String)])   
+lineparser :: CharParser () (ActionString, [(Maybe (Either KeyString
+                                (KeyString,KeyString)), Maybe String)])
 lineparser = do  
     mb1 <- option Nothing (do 
         keyDescr <- identifier
@@ -93,29 +173,8 @@ lineparser = do
                 Nothing -> (action,[(Just (Left keyDescr),mbs)]))
     <?> "lineparser"
 
---
--- | Unfortunately in the IO Monad because of keyvalFromName
--- 
-buildSpecialKeys :: Keymap -> [ActionDescr] ->
-                    IO (Map (KeyVal,[Modifier]) (Map (KeyVal,[Modifier]) ActionDescr))
-buildSpecialKeys keymap actions = do
-    pseudoTriples <- mapM build actions
-    let map1 = Map.fromListWith (++) $concat pseudoTriples
-    return (Map.map Map.fromList map1)    
-    where
-    build :: ActionDescr -> IO [((KeyVal,[Modifier]),[((KeyVal,[Modifier]),ActionDescr)])]
-    build act = 
-        case Map.lookup (name act) keymap of
-            Nothing             ->  return []  
-            Just l              ->  foldM (build' act) [] l
-    build' act list (Just (Right (a1,a2)),_) 
-                                =   do  a1p <- accParse a1
-                                        a2p <- accParse a2
-                                        return ((a1p,[(a2p,act)]): list)
-    build' act list _           =   return list   
-
---
--- |Have to write this until gtk_accelerator_parse gets bound in gtk2hs                
+--------------------------------------------------
+-- Have to write this until gtk_accelerator_parse gets bound in gtk2hs
 --
 accParse :: String -> IO (KeyVal,[Modifier])
 accParse str = case parse accparser "accelerator" str of
@@ -162,53 +221,11 @@ modparser = do
     return Compose
     <?>"modparser"
 
+-- ---------------------------------------------------------------------
+-- Printing
+--
+
 printMods :: [Modifier] -> String
 printMods []    = ""
 printMods (m:r) = show m ++ printMods r
 
-handleSpecialKeystrokes :: Event -> GhfM Bool
-handleSpecialKeystrokes (Key _ _ _ mods _ _ _ keyVal name char) = 
-    case char of 
-        Nothing -> return False
-        Just ' ' -> do
-            bs <- getCandyState
-            if bs
-                then editKeystrokeCandy
-                else return ()
-            return False
-        Just _ -> do
-            sk  <- readGhf specialKey    
-            sks <- readGhf specialKeys 
-            sb <- getSpecialKeys   
-            case sk of
-                Nothing -> do
-                    case Map.lookup (keyVal,sort mods) sks of
-                        Nothing -> do 
-                            lift $statusbarPop sb 1
-                            lift $statusbarPush sb 1 ""
-                            return False
-                        Just map -> do
-                            sb <- getSpecialKeys
-                            let sym = printMods mods ++ name
-                            lift $statusbarPop sb 1
-                            lift $statusbarPush sb 1 sym
-                            modifyGhf_ (\ghf -> return (ghf{specialKey = Just (map,sym)}))
-                            return True
-                Just (map,sym) -> do
-                    case Map.lookup (keyVal,sort mods) map of
-                        Nothing -> do
-                            sb <- getSpecialKeys
-                            lift $statusbarPop sb 1
-                            lift $statusbarPush sb 1 $sym ++ printMods mods ++ name ++ "?"
-                            return ()                    
-                        Just (AD actname _ _ _ ghfAction _ _) -> do
-                            sb <- getSpecialKeys
-                            lift $statusbarPop sb 1
-                            lift $statusbarPush sb 1 
-                                $sym ++ " " ++ printMods mods ++ name ++ "=" ++ actname
-                            ghfAction
-                    modifyGhf_ (\ghf -> return (ghf{specialKey = Nothing}))
-                    return True
-                      
-        
-    

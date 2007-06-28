@@ -1,39 +1,55 @@
+--
+-- | The core state of ghf. This module is imported from every other module,
+-- | and all data structures of the state are declared here, to avoid circular
+-- | module dependencies.
+-- 
+
 module Ghf.Core (
+-- * IDE State
+,   Ghf(..)
+,   GhfRef
+,   GhfM
+,   GhfAction
+
+-- * Convenience methods for accesing the IDE State
+,   readGhf
+,   modifyGhf
+,   modifyGhf_
+,   withGhf
+
+-- * Panes and pane layout
+,   GhfPane(..)
+,   Direction(..)
+,   PaneDirection(..)
+,   PanePath
+,   PaneLayout(..)
+,   Connections(..)
+
+-- * Convenience methods for accesing Pane state
+,   isBuffer
+,   getTopWidget
+,   getBufferName
+,   getAddedIndex
+,   realPaneName
+
+-- * The Buffer pane
+,   GhfBuffer(..)
+
+-- * Other state structures
     ActionDescr(..)
 ,   ActionString
 ,   KeyString
 
 ,   Prefs(..)
 
-,   Ghf(..)
-,   GhfRef
-,   GhfM
-,   GhfAction
-,   GhfPane(..)
-,   GhfBuffer(..)
-
-,   Connections(..)
 ,   FileName
-,   Direction(..)
-,   PaneDirection(..)
-,   PanePath
-,   PaneLayout(..)
 ,   CandyTables
 ,   CandyTableForth
 ,   CandyTableBack
+,   SpecialKeyTable
+,   SpecialKeyCons
 
-,   isBuffer
-
-,   readGhf
-,   modifyGhf
-,   modifyGhf_
-,   withGhf
-
-,   getTopWidget
-,   getBufferName
-,   getAddedIndex
-,   realPaneName
-
+-- * debugging
 ,   helpDebug
 ) where
 
@@ -50,135 +66,82 @@ import Data.Maybe ( fromMaybe, isJust, fromJust )
 import qualified Data.Map as Map
 import Data.Map (Map,(!))
 
-data ActionDescr = AD {
-                name :: ActionString
-            ,   label :: String
-            ,   tooltip ::Maybe String
-            ,   stockID :: Maybe String
-            ,   action :: GhfAction
-            ,   accelerator :: [KeyString]
-            ,   isToggle :: Bool
-} deriving (Show)
-
-type ActionString = String
-type KeyString = String
-
-data Prefs = Prefs {
-        showLineNumbers     ::  Bool
-    ,   rightMargin         ::  Maybe Int
-    ,   tabWidth            ::  Int
-    ,   sourceCandy         ::  Maybe String
-    ,   keymapName          ::  String 
-    ,   defaultSize         ::  (Int,Int)
-} deriving(Eq,Ord,Show)
+-- ---------------------------------------------------------------------
+-- IDE State
+--
 
 --
 -- | The IDE state
 --
 data Ghf        =   Ghf {
-    window      ::  Window
-,   uiManager   ::  UIManager
-,   panes       ::  Map String GhfPane
-,   activePane  ::  Maybe (GhfPane,Connections)
+    window      ::  Window                  -- ^ the gtk window
+,   uiManager   ::  UIManager               -- ^ the gtk uiManager
+,   panes       ::  Map String GhfPane      -- ^ a map with all panes (subwindows)
+,   activePane  ::  Maybe (GhfPane,Connections) 
 ,   paneMap     ::  Map GhfPane (PanePath, [ConnectId Widget])
-,   layout      ::  PaneLayout
-,   specialKeys ::  Map (KeyVal,[Modifier]) (Map (KeyVal,[Modifier]) ActionDescr)   
-,   specialKey  ::  Maybe ((Map (KeyVal,[Modifier]) ActionDescr),String)
-,   candy       ::  CandyTables
-,   prefs       ::  Prefs
+                    -- ^ a map from the pane to its gui path and signal connections
+,   layout      ::  PaneLayout              -- ^ a description of the general gui layout
+,   specialKeys ::  SpecialKeyTable         -- ^ a structure for emacs like keystrokes
+,   specialKey  ::  SpecialKeyCons          -- ^ the first of a double keystroke
+,   candy       ::  CandyTables             -- ^ table for source candy
+,   prefs       ::  Prefs                   -- ^ configuration preferences
 } deriving Show
 
-instance Show Window
-    where show _ = "Window *"
+--
+-- | A mutable reference to the IDE state
+--
+type GhfRef = IORef Ghf
 
-instance Show Modifier
-    where show Shift    = "<shift>"	
-          show Control  = "<ctrl>"	
-          show Alt      = "<alt>"	
-          show Apple    = "<apple>"	
-          show Compose  = "<compose>"
+--
+-- | A reader monad for a mutable reference to the IDE state
+--
+type GhfM = ReaderT (GhfRef) IO
 
-instance Show UIManager
-    where show _ = "UIManager *"
+--
+-- | A shorthand for a reader monad for a mutable reference to the IDE state
+-- | which does not return a value
+--
+type GhfAction = GhfM ()
 
-instance Show (ReaderT alpha beta gamma )
-    where show _ = "ReaderT *"
+-- ---------------------------------------------------------------------
+-- Convenience methods for accesing the IDE State
+--
 
-helpDebug :: GhfAction
-helpDebug = do
-    ref <- ask
-    ghf <- lift $readIORef ref
-    lift $do    
-        putStrLn $"------------------ "
-        putStrLn $show ghf
-        putStrLn $"------------------ "
+-- | Read an attribute of the contents
+readGhf :: (Ghf -> b) -> GhfM b
+readGhf f = do
+    e <- ask
+    lift $ liftM f (readIORef e)
 
-type CandyTableForth =  [(String,String)]
-type CandyTableBack  =  [(String,String,Int)] 
-type CandyTables     =  (CandyTableForth,CandyTableBack) 
+-- | Modify the contents, using an IO action.
+modifyGhf_ :: (Ghf -> IO Ghf) -> GhfM ()
+modifyGhf_ f = do
+    e <- ask
+    e' <- lift $ (f =<< readIORef e)
+    lift $ writeIORef e e'  
 
+-- | Variation on modifyGhf_ that lets you return a value
+modifyGhf :: (Ghf -> IO (Ghf,b)) -> GhfM b
+modifyGhf f = do
+    e <- ask
+    (e',result) <- lift (f =<< readIORef e)
+    lift $ writeIORef e e'
+    return result
+
+withGhf :: (Ghf -> IO a) -> GhfM a
+withGhf f = do
+    e <- ask
+    lift $ f =<< readIORef e  
+
+-- ---------------------------------------------------------------------
+-- Panes and pane layout
+--
 
 --
 -- | Description of the different pane types
 --
 data GhfPane    =   PaneBuf GhfBuffer
     deriving (Eq,Ord,Show)
-
-isBuffer :: GhfPane -> Bool
-isBuffer (PaneBuf _) = True
---    isBuffer _           = False
-
-getTopWidget :: GhfPane -> Widget
-getTopWidget (PaneBuf buf) = castToWidget(scrolledWindow buf)
-
-getBufferName :: GhfPane -> String
-getBufferName (PaneBuf buf) = bufferName buf
-
-getAddedIndex :: GhfPane -> Int
-getAddedIndex (PaneBuf buf) = addedIndex buf
-
-realPaneName :: GhfPane -> String
-realPaneName pane =
-    if getAddedIndex pane == 0
-        then getBufferName pane
-        else getBufferName pane ++ "(" ++ show (getAddedIndex pane) ++ ")"
-
---
--- | Signal handlers for the different pane types
---
-data Connections =  BufConnections [ConnectId SourceView] [ConnectId TextBuffer]
-    deriving (Show)
-
-instance Show (ConnectId alpha )
-    where show cid = "ConnectId *"
-
---
--- | A text editor pane description
---
-data GhfBuffer  =   GhfBuffer {
-    fileName    ::  Maybe FileName
-,   bufferName  ::  String
-,   addedIndex  ::  Int
-,   sourceView  ::  SourceView 
-,   scrolledWindow :: ScrolledWindow
-} deriving Show
-
-instance Show SourceView
-    where show _ = "SourceView *"
-
-instance Show ScrolledWindow
-    where show _ = "ScrolledWindow *"
-
-instance Eq GhfBuffer
-    where (==) a b = bufferName a == bufferName b && addedIndex a == addedIndex b
-
-instance Ord GhfBuffer
-    where (<=) a b = if bufferName a < bufferName b 
-                        then True
-                        else if bufferName a == bufferName b 
-                            then addedIndex a <= addedIndex b
-                            else False
-
 
 --
 -- | The direction of a split
@@ -205,50 +168,138 @@ data PaneLayout =       HorizontalP PaneLayout PaneLayout
                     |   TerminalP
     deriving (Eq,Ord,Show)
 
+--
+-- | Signal handlers for the different pane types
+--
+data Connections =  BufConnections [ConnectId SourceView] [ConnectId TextBuffer]
+    deriving (Show)
+
+-- ---------------------------------------------------------------------
+-- Convenience methods for panes 
+-- ### currently ugly
+
+isBuffer :: GhfPane -> Bool
+isBuffer (PaneBuf _) = True
+--    isBuffer _           = False
+
+getTopWidget :: GhfPane -> Widget
+getTopWidget (PaneBuf buf) = castToWidget(scrolledWindow buf)
+
+getBufferName :: GhfPane -> String
+getBufferName (PaneBuf buf) = bufferName buf
+
+getAddedIndex :: GhfPane -> Int
+getAddedIndex (PaneBuf buf) = addedIndex buf
+
+realPaneName :: GhfPane -> String
+realPaneName pane =
+    if getAddedIndex pane == 0
+        then getBufferName pane
+        else getBufferName pane ++ "(" ++ show (getAddedIndex pane) ++ ")"
+
+-- ---------------------------------------------------------------------
+-- Buffers - The text editor panes
+--
+
+--
+-- | A text editor pane description
+--
+data GhfBuffer  =   GhfBuffer {
+    fileName    ::  Maybe FileName
+,   bufferName  ::  String
+,   addedIndex  ::  Int
+,   sourceView  ::  SourceView 
+,   scrolledWindow :: ScrolledWindow
+} deriving Show
+
+instance Eq GhfBuffer
+    where (==) a b = bufferName a == bufferName b && addedIndex a == addedIndex b
+
+instance Ord GhfBuffer
+    where (<=) a b = if bufferName a < bufferName b 
+                        then True
+                        else if bufferName a == bufferName b 
+                            then addedIndex a <= addedIndex b
+                            else False
+
+-- ---------------------------------------------------------------------
+-- Other data structures which are used in the state
+--
+
+--
+-- | ActionDescr is a data structure from which GtkActions are build, which are used for
+--   menus, toolbars, and accelerator keystrokes
+--
+data ActionDescr = AD {
+                name :: ActionString
+            ,   label :: String
+            ,   tooltip ::Maybe String
+            ,   stockID :: Maybe String
+            ,   action :: GhfAction
+            ,   accelerator :: [KeyString]
+            ,   isToggle :: Bool
+} deriving (Show)
+
+type ActionString = String
+type KeyString = String
+
+--
+-- | Preferences is a data structure to hold configuration data
+--
+data Prefs = Prefs {
+        showLineNumbers     ::  Bool
+    ,   rightMargin         ::  Maybe Int
+    ,   tabWidth            ::  Int
+    ,   sourceCandy         ::  Maybe String
+    ,   keymapName          ::  String 
+    ,   defaultSize         ::  (Int,Int)
+} deriving(Eq,Ord,Show)
+
+
+type CandyTableForth =  [(String,String)]
+type CandyTableBack  =  [(String,String,Int)] 
+type CandyTables     =  (CandyTableForth,CandyTableBack)
+
+type SpecialKeyTable = Map (KeyVal,[Modifier]) (Map (KeyVal,[Modifier]) ActionDescr)
+type SpecialKeyCons  = Maybe ((Map (KeyVal,[Modifier]) ActionDescr),String)
 
 type FileName       =   String
 
+-- ---------------------------------------------------------------------
+-- Debugging
 --
--- | A mutable reference to the IDE state
---
-type GhfRef = IORef Ghf
 
---
--- | A reader monad for a mutable reference to the IDE state
---
-type GhfM = ReaderT (GhfRef) IO
+instance Show Window
+    where show _ = "Window *"
 
---
--- | A shorthand for a reader monad for a mutable reference to the IDE state
--- | which does not return a value
---
-type GhfAction = GhfM ()
+instance Show Modifier
+    where show Shift    = "<shift>"     
+          show Control  = "<ctrl>"      
+          show Alt      = "<alt>"       
+          show Apple    = "<apple>"     
+          show Compose  = "<compose>"
 
--- | Read an attribute of the contents
-readGhf :: (Ghf -> alpha ) -> GhfM alpha
-readGhf f = do
-    e <- ask
-    lift $ liftM f (readIORef e)
+instance Show UIManager
+    where show _ = "UIManager *"
 
--- | Modify the contents, using an IO action.
-modifyGhf_ :: (Ghf -> IO Ghf) -> GhfM ()
-modifyGhf_ f = do
-    e <- ask
-    e' <- lift $ (f =<< readIORef e)
-    lift $ writeIORef e e'  
+instance Show (ReaderT alpha beta gamma )
+    where show _ = "ReaderT *"
 
--- | Variation on modifyGhf_ that lets you return a value
-modifyGhf :: (Ghf -> IO (Ghf, alpha )) -> GhfM alpha 
-modifyGhf f = do
-    e <- ask
-    (e',result) <- lift (f =<< readIORef e)
-    lift $ writeIORef e e'
-    return result
+instance Show (ConnectId alpha )
+    where show cid = "ConnectId *"
 
-withGhf :: (Ghf -> IO alpha ) -> GhfM alpha 
-withGhf f = do
-    e <- ask
-    lift $ f =<< readIORef e  
+instance Show SourceView
+    where show _ = "SourceView *"
 
+instance Show ScrolledWindow
+    where show _ = "ScrolledWindow *"
 
+helpDebug :: GhfAction
+helpDebug = do
+    ref <- ask
+    ghf <- lift $readIORef ref
+    lift $do    
+        putStrLn $"------------------ "
+        putStrLn $show ghf
+        putStrLn $"------------------ "
 
