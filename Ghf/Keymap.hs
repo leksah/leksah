@@ -1,6 +1,6 @@
 --
 -- | Module for handling keymaps,
---   deals with gtk accelerators and double (emacs-like) keystrokes
+-- | deals with gtk accelerators and double (emacs-like) keystrokes
 -- 
 
 module Ghf.Keymap (

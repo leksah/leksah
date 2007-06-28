@@ -1,6 +1,11 @@
+--
+-- | Module for saving, restoring and editing preferences
+-- 
+
+
 module Ghf.Preferences (
     readPrefs
---,   writePrefs
+,   writePrefs
 --,   applyPrefs
 --, editPrefs
 ) where
@@ -13,17 +18,6 @@ import Control.Monad(foldM)
 
 import Ghf.Core
 
-
-{-- Part of Core
-data Prefs = Prefs {
-        showLineNumbers     ::  Bool
-    ,   rightMargin         ::  Maybe Int
-    ,   tabWidth            ::  Int
-    ,   sourceCandy         ::  Maybe String
-    ,   keymapName          ::  String 
-    ,   defaultSize         ::  (Int,Int)
-} deriving(Eq,Ord,Show)
---}
 
 defaultPrefs = Prefs {
         showLineNumbers     =   True
@@ -50,8 +44,12 @@ field ::      String ->                   --name
 field name comment printer parser getter setter =
     FD  name 
         comment
-        (printer . getter)
-        (\a -> try (do
+        (\ a -> (PP.text name PP.<> PP.colon) 
+                PP.$$ (PP.nest 15 (printer (getter a)))        
+                PP.$$ (PP.nest 5 (if null comment 
+                                        then PP.empty 
+                                        else PP.text $"--" ++ comment)))
+        (\ a -> try (do
             symbol name
             colon
             value <- parser   
@@ -149,3 +147,16 @@ boolParser = do
     (symbol "False"<|> symbol "false")
     return False
     <?> "bool parser"
+
+-- ------------------------------------------------------------
+-- * Printing
+-- ------------------------------------------------------------
+
+writePrefs :: FilePath -> Prefs -> IO ()
+writePrefs fpath prefs = writeFile fpath (showPrefs prefs)
+
+showPrefs :: Prefs -> String
+showPrefs prefs = PP.render $
+    foldl (\ doc (FD _ _ printer _) -> doc PP.$+$ printer prefs) PP.empty prefsDescription 
+
+

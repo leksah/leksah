@@ -63,8 +63,9 @@ main = do
     st <- initGUI
     mapM_ putStrLn st 
     
-    prefs <- readPrefs "config/Default.prefs"
+    prefs <- readPrefs "config/Default2.prefs"
     putStrLn $show prefs
+    writePrefs "config/Default.prefs" prefs
 
     keyMap <- parseKeymap "config/Default.keymap"
 --    putStrLn $show keyMap

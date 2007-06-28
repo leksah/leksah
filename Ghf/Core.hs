@@ -6,7 +6,7 @@
 
 module Ghf.Core (
 -- * IDE State
-,   Ghf(..)
+    Ghf(..)
 ,   GhfRef
 ,   GhfM
 ,   GhfAction
@@ -36,7 +36,7 @@ module Ghf.Core (
 ,   GhfBuffer(..)
 
 -- * Other state structures
-    ActionDescr(..)
+,   ActionDescr(..)
 ,   ActionString
 ,   KeyString
 

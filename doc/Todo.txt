@@ -11,7 +11,8 @@ Editor
 - 
 
 Preferences
-- 
+- Editing
+
 
 
 Projects 
