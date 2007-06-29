@@ -37,18 +37,27 @@ data FieldDescription alpha =  FD {
     ,   comment             ::  String
     ,   fieldPrinter        ::  alpha -> PP.Doc
     ,   fieldParser         ::  alpha -> CharParser () alpha 
-    ,   fieldEditor         ::  alpha -> IO Frame
+    ,   fieldEditor         ::  IORef alpha -> IO Frame
+    ,   fieldApplicator     ::  GhfAction
 }
 
-field ::      String ->                     --name
-              String ->                     --comment
-              (beta -> PP.Doc) ->           --printer
-              (CharParser () beta ) ->      --parser
-              (alpha -> beta ) ->           --getter
-              (beta -> alpha -> alpha ) ->  --setter
-              (String -> (alpha -> beta ) -> (alpha -> IO (Frame))) -> 
+type Getter alpha beta  =   alpha -> beta
+type Setter alpha beta  =   beta -> alpha -> alpha
+type Printer beta       =   beta -> PP.Doc
+type Editor alpha beta  =   String -> (Getter alpha beta) -> (Setter alpha beta) 
+                                -> (IORef alpha -> IO (Frame))
+type Applicator beta    =   beta -> GhfAction 
+
+field ::      String ->                         --name
+              String ->                         --comment
+              (Printer beta) ->                 --printer
+              (CharParser () beta ) ->          
+              (Getter alpha beta) ->            
+              (Setter alpha beta) ->            
+              (Editor alpha beta) -> 
+              (Applicator alpha) ->
               FieldDescription alpha 
-field name comment printer parser getter setter widgetFunction =
+field name comment printer parser getter setter widgetFunction applicator =
     FD  name 
         comment
         (\ a -> (PP.text name PP.<> PP.colon) 
@@ -61,11 +70,12 @@ field name comment printer parser getter setter widgetFunction =
             colon
             value <- parser   
             return (setter value a)))
-        (\ a -> widgetFunction name getter a)   
+        (\ a -> widgetFunction name getter setter a)
+        (\ a ->    
         
 prefsDescription :: [FieldDescription Prefs] 
 prefsDescription = [
-        field "Show line numbers"
+{--        field "Show line numbers"
             "(True/False)" 
             (PP.text . show)
             boolParser
@@ -89,17 +99,18 @@ prefsDescription = [
             (do id <- identifier
                 return (if null id then Nothing else Just (id)))
             sourceCandy (\b a -> a{sourceCandy = b})
-            (maybeWidget stringEditWidget)
-    ,   field "Name of the keymap"  "The name of a keymap file in a config dir" 
+            (maybeWidget stringEditWidget)--}
+        field "Name of the keymap"  "The name of a keymap file in a config dir" 
             PP.text identifier
             keymapName (\b a -> a{keymapName = b})
             stringEditWidget
-    ,   field "Window default size"
+{--    ,   field "Window default size"
             "Default size of the main ghf window specified as pair (int,int)" 
             (PP.text.show) 
             (pairParser intParser)
             defaultSize (\(c,d) a -> a{defaultSize = (c,d)})
-            (pairWidget (intEditWidget 0.0 3000.0 25.0))]
+            (pairWidget (intEditWidget 0.0 3000.0 25.0))--}
+]
 
 
 -- ------------------------------------------------------------
@@ -189,12 +200,14 @@ showPrefs prefs prefsDesc = PP.render $
 
 editPrefs :: GhfAction
 editPrefs = do
+    ghfR <- ask
     p <- readGhf prefs
-    res <- lift $editPrefs' p prefsDescription
+    res <- lift $editPrefs' p prefsDescription ghfR
     lift $putStrLn $show res
 
-editPrefs' :: a -> [FieldDescription a] -> IO ()
-editPrefs' prefs prefsDesc = do
+editPrefs' :: a -> [FieldDescription a] -> GhfRef -> IO ()
+editPrefs' prefs prefsDesc ghfR = do
+    state   <- newIORef prefs
     dialog  <- windowNew
     vb      <- vBoxNew False 12
     bb      <- hButtonBoxNew
@@ -205,9 +218,18 @@ editPrefs' prefs prefsDesc = do
     boxPackStart bb ok PackNatural 0
     boxPackStart bb cancel PackNatural 0
    
-    sbl <- mapM (\ (FD _ _ _ _ widgetF) -> widgetF prefs) prefsDesc 
+    sbl <- mapM (\ (FD _ _ _ _ widgetF _) -> widgetF state) prefsDesc 
     trace (show (length sbl)) return ()    
     mapM_ (\ sb -> boxPackStart vb sb PackNatural 0) sbl
+    
+    ok `onClicked` (do
+        newState <- readIORef state
+        mapM_ (\ (FD _ _ _ _ _ applyF) -> runReaderT (applyF newState) ghfR) prefsDesc 
+        widgetDestroy dialog)     
+    
+    cancel `onClicked` (do
+        widgetDestroy dialog)
+
 
     boxPackStart vb bb PackNatural 0
     containerAdd dialog vb
@@ -216,27 +238,24 @@ editPrefs' prefs prefsDesc = do
     
 
 
-genericEditWidget :: Show beta => String -> (alpha -> beta) -> alpha -> IO (Frame)
-genericEditWidget str getter dat = do
-    frame   <-  frameNew
-    frameSetShadowType frame ShadowNone
-    frameSetLabel frame str
-    entry   <-  entryNew
-    entrySetText entry (show $getter dat)  
-    containerAdd frame entry
-    return frame            
-
-stringEditWidget :: String -> (alpha -> String) -> alpha -> IO (Frame)
-stringEditWidget str getter dat = do
+stringEditWidget :: Editor alpha String
+stringEditWidget str getter setter refDat = do
+    dat <- readIORef refDat
     frame   <-  frameNew
     frameSetShadowType frame ShadowNone
     frameSetLabel frame str
     entry   <-  entryNew
     entrySetText entry (getter dat)  
     containerAdd frame entry
+    entry `onFocusOut` (\_ -> do
+        dat2 <- readIORef refDat
+        newString <- entryGetText entry
+        let newdat = setter newString dat2
+        writeIORef refDat newdat)         
     return frame
 
-intEditWidget :: Double -> Double -> Double -> String -> (alpha -> Int) -> alpha -> IO (Frame)
+{--
+intEditWidget :: Double -> Double -> Double -> Editor alpha Int
 intEditWidget min max step str getter dat = do
     frame   <-  frameNew
     frameSetShadowType frame ShadowNone
@@ -246,18 +265,18 @@ intEditWidget min max step str getter dat = do
     containerAdd frame spin
     return frame
     
-boolEditWidget :: String -> (alpha -> Bool) -> alpha -> IO (Frame)
+boolEditWidget :: Editor alpha Bool
 boolEditWidget str getter dat = do
     frame   <-  frameNew
     frameSetShadowType frame ShadowNone
 --    frameSetLabel frame str
     button   <-  checkButtonNewWithLabel str
+
     toggleButtonSetActive button (getter dat)  
     containerAdd frame button
     return frame            
 
-maybeWidget :: (String -> (alpha -> beta) -> alpha -> IO (Frame)) -> 
-        String -> (alpha -> Maybe beta) -> alpha -> IO (Frame)
+maybeWidget :: Editor alpha beta -> Editor alpha (Maybe beta)
 maybeWidget justwidget str getter dat = do
     frame   <-  frameNew
     frameSetLabel frame str
@@ -271,8 +290,7 @@ maybeWidget justwidget str getter dat = do
     containerAdd frame vBox
     return frame    
 
-pairWidget :: (String -> (alpha -> beta) -> alpha -> IO (Frame)) -> 
-        String -> (alpha -> (beta,beta)) -> alpha -> IO (Frame)
+pairWidget :: Editor alpha beta -> Editor alpha (beta,beta)
 pairWidget subwidget str getter dat = do
     frame   <-  frameNew
     frameSetLabel frame str
@@ -284,3 +302,13 @@ pairWidget subwidget str getter dat = do
     containerAdd frame vBox
     return frame 
 
+genericEditWidget :: Show beta => Editor alpha beta
+genericEditWidget str getter dat = do
+    frame   <-  frameNew
+    frameSetShadowType frame ShadowNone
+    frameSetLabel frame str
+    entry   <-  entryNew
+    entrySetText entry (show $getter dat)  
+    containerAdd frame entry
+    return frame            
+--}

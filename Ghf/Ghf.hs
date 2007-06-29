@@ -1,5 +1,5 @@
 --
--- Copyright (c) 2007 Jürgen Nicklisch - Jutaro
+-- Copyright (c) 2007 Jï¿½rgen Nicklisch - Jutaro
 --
 -- This program is free software; you can redistribute it and/or
 -- modify it under the terms of the GNU General Public License as
@@ -63,9 +63,9 @@ main = do
     st <- initGUI
     mapM_ putStrLn st 
     
-    prefs <- readPrefs "config/Default2.prefs"
+    prefs <- readPrefs "config/Default.prefs"
     putStrLn $show prefs
-    writePrefs "config/Default.prefs" prefs
+    writePrefs "config/Default2.prefs" prefs
 
     keyMap <- parseKeymap "config/Default.keymap"
 --    putStrLn $show keyMap
