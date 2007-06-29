@@ -41,7 +41,7 @@ data FieldDescription alpha =  FD {
     ,   fieldPrinter        ::  alpha -> PP.Doc
     ,   fieldParser         ::  alpha -> CharParser () alpha 
     ,   fieldEditor         ::  IORef alpha -> IO Frame
-    ,   fieldApplicator     ::  GhfAction
+    ,   fieldApplicator     ::  alpha -> GhfAction
 }
 
 type Getter alpha beta  =   alpha -> beta
@@ -49,7 +49,7 @@ type Setter alpha beta  =   beta -> alpha -> alpha
 type Printer beta       =   beta -> PP.Doc
 type Editor alpha beta  =   String -> (Getter alpha beta) -> (Setter alpha beta) 
                                 -> (IORef alpha -> IO (Frame))
-type Applicator alpha   =   alpha -> GhfAction 
+type Applicator beta    =   beta -> GhfAction 
 
 field ::      String ->                         --name
               String ->                         --comment
@@ -58,7 +58,7 @@ field ::      String ->                         --name
               (Getter alpha beta) ->            
               (Setter alpha beta) ->            
               (Editor alpha beta) -> 
-              (Applicator alpha) ->
+              (Applicator beta) ->
               FieldDescription alpha 
 field name comment printer parser getter setter widgetFunction applicator =
     FD  name 
@@ -109,7 +109,8 @@ prefsDescription = [
             stringEditWidget
             (\ fn -> do
                 win <- readGhf window
-                keyMap <- lift $parseKeymap $"config/" ++ fn
+                uiManager <- readGhf uiManager
+                keyMap <- lift $parseKeymap $"config/" ++ fn ++ ".keymap"
                 let accelActions = setKeymap actions keyMap
                 specialKeys <- lift $buildSpecialKeys keyMap accelActions
                 modifyGhf_ (\ghf -> return (ghf{specialKeys = specialKeys}))
@@ -118,7 +119,7 @@ prefsDescription = [
                 let mb = fromJust $menus !! 0
                 let tb = fromJust $menus !! 1
                 return ()
-                )]
+                )] 
 
 {--    ,   field "Window default size"
             "Default size of the main ghf window specified as pair (int,int)" 
@@ -208,7 +209,7 @@ writePrefs fpath prefs = writeFile fpath (showPrefs prefs prefsDescription)
 
 showPrefs :: a -> [FieldDescription a] -> String
 showPrefs prefs prefsDesc = PP.render $
-    foldl (\ doc (FD _ _ printer _ _) -> doc PP.$+$ printer prefs) PP.empty prefsDesc 
+    foldl (\ doc (FD _ _ printer _ _ _) -> doc PP.$+$ printer prefs) PP.empty prefsDesc 
 
 -- ------------------------------------------------------------
 -- * Editing
@@ -267,7 +268,8 @@ stringEditWidget str getter setter refDat = do
         dat2 <- readIORef refDat
         newString <- entryGetText entry
         let newdat = setter newString dat2
-        writeIORef refDat newdat)         
+        writeIORef refDat newdat
+        return True)         
     return frame
 
 {--
