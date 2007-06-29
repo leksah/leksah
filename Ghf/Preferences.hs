@@ -20,9 +20,12 @@ import Control.Monad(foldM)
 import Graphics.UI.Gtk hiding (afterToggleOverwrite)
 import Control.Monad.Reader
 import Data.Maybe(fromJust,isJust)
+import Data.IORef
 import Debug.Trace
 
 import Ghf.Core
+import Ghf.Keymap
+import Ghf.Menu(actions,makeMenu,menuDescription)
 
 defaultPrefs = Prefs {
         showLineNumbers     =   True
@@ -46,7 +49,7 @@ type Setter alpha beta  =   beta -> alpha -> alpha
 type Printer beta       =   beta -> PP.Doc
 type Editor alpha beta  =   String -> (Getter alpha beta) -> (Setter alpha beta) 
                                 -> (IORef alpha -> IO (Frame))
-type Applicator beta    =   beta -> GhfAction 
+type Applicator alpha   =   alpha -> GhfAction 
 
 field ::      String ->                         --name
               String ->                         --comment
@@ -71,7 +74,7 @@ field name comment printer parser getter setter widgetFunction applicator =
             value <- parser   
             return (setter value a)))
         (\ a -> widgetFunction name getter setter a)
-        (\ a ->    
+        (\ a -> applicator (getter a))   
         
 prefsDescription :: [FieldDescription Prefs] 
 prefsDescription = [
@@ -104,13 +107,26 @@ prefsDescription = [
             PP.text identifier
             keymapName (\b a -> a{keymapName = b})
             stringEditWidget
+            (\ fn -> do
+                win <- readGhf window
+                keyMap <- lift $parseKeymap $"config/" ++ fn
+                let accelActions = setKeymap actions keyMap
+                specialKeys <- lift $buildSpecialKeys keyMap accelActions
+                modifyGhf_ (\ghf -> return (ghf{specialKeys = specialKeys}))
+                (acc,menus) <- makeMenu uiManager accelActions menuDescription
+                lift $windowAddAccelGroup win acc
+                let mb = fromJust $menus !! 0
+                let tb = fromJust $menus !! 1
+                return ()
+                )]
+
 {--    ,   field "Window default size"
             "Default size of the main ghf window specified as pair (int,int)" 
             (PP.text.show) 
             (pairParser intParser)
             defaultSize (\(c,d) a -> a{defaultSize = (c,d)})
             (pairWidget (intEditWidget 0.0 3000.0 25.0))--}
-]
+
 
 
 -- ------------------------------------------------------------
