@@ -272,28 +272,42 @@ stringEditWidget str getter setter refDat = do
         return True)         
     return frame
 
-{--
+
 intEditWidget :: Double -> Double -> Double -> Editor alpha Int
-intEditWidget min max step str getter dat = do
+intEditWidget min max step str getter setter refDat = do
+    dat <- readIORef refDat
     frame   <-  frameNew
     frameSetShadowType frame ShadowNone
     frameSetLabel frame str
     spin <- spinButtonNewWithRange min max step
     spinButtonSetValue spin (fromIntegral $getter dat) 
     containerAdd frame spin
+    spin `onFocusOut` (\_ -> do
+        dat2 <- readIORef refDat
+        newInt <- spinButtonGetValue entry
+        let newdat = setter newInt dat2
+        writeIORef refDat newdat
+        return True)  
     return frame
     
 boolEditWidget :: Editor alpha Bool
-boolEditWidget str getter dat = do
+boolEditWidget str getter setter refDat = do
+    dat <- readIORef refDat
     frame   <-  frameNew
     frameSetShadowType frame ShadowNone
 --    frameSetLabel frame str
     button   <-  checkButtonNewWithLabel str
-
     toggleButtonSetActive button (getter dat)  
     containerAdd frame button
+    spin `onFocusOut` (\_ -> do
+        dat2 <- readIORef refDat
+        newBool <- toggleButtonSetActive button
+        let newdat = setter newInt dat2
+        writeIORef refDat newdat
+        return True)  
     return frame            
 
+{--
 maybeWidget :: Editor alpha beta -> Editor alpha (Maybe beta)
 maybeWidget justwidget str getter dat = do
     frame   <-  frameNew
@@ -319,14 +333,21 @@ pairWidget subwidget str getter dat = do
     boxPackStart vBox secondFrame PackNatural 0
     containerAdd frame vBox
     return frame 
+--}
 
-genericEditWidget :: Show beta => Editor alpha beta
-genericEditWidget str getter dat = do
+genericEditWidget :: Show beta Read beta => Editor alpha beta
+genericEditWidget str getter setter refDat = do
+    dat <- readIORef refDat
     frame   <-  frameNew
     frameSetShadowType frame ShadowNone
     frameSetLabel frame str
     entry   <-  entryNew
     entrySetText entry (show $getter dat)  
     containerAdd frame entry
+    entry `onFocusOut` (\_ -> do
+        dat2 <- readIORef refDat
+        newString <- entryGetText entry
+        let newdat = setter (read newString) dat2
+        writeIORef refDat newdat
+        return True) 
     return frame            
---}
