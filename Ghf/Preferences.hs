@@ -88,10 +88,11 @@ field name comment printer parser getter setter editor applicator =
             dat <- readIORef refDat
             (widget, inj,ext,n1,n2) <- editor name
             n1 (do
-                trace "CHANGED" return ()
+--                putStrLn "changed"
                 oldDat <- readIORef refDat
                 newState <- ext
                 let newDat = setter newState oldDat
+                inj (getter newDat)
                 writeIORef refDat newDat
                 return ())
             inj (getter dat)
@@ -124,13 +125,13 @@ prefsDescription = [
             (\b a -> a{tabWidth = b})
             (intEditor 0.0 20.0 1.0)
             (\a -> return ())
-{--    ,   field "Source candy" "Empty for do not use or the name of a candy file in a config dir)" 
+    ,   field "Source candy" "Empty for do not use or the name of a candy file in a config dir)"
             (\a -> PP.text (case a of Nothing -> ""; Just s -> s)) 
             (do id <- identifier
                 return (if null id then Nothing else Just (id)))
-            sourceCandy (\b a -> return  (a{sourceCandy = b}))
-            (maybeWidget stringEditWidget)
-            (return ()) --}
+            sourceCandy (\b a -> a{sourceCandy = b})
+            (maybeEditor stringEditor)
+            (\a -> return ()) 
     ,   field "Name of the keymap"  "The name of a keymap file in a config dir"
             PP.text
             identifier
@@ -151,13 +152,13 @@ prefsDescription = [
                 return ()
                 )--}
             (\a -> return ())
-{--     ,   field "Window default size"
+    ,   field "Window default size"
             "Default size of the main ghf window specified as pair (int,int)" 
             (PP.text.show) 
             (pairParser intParser)
             defaultSize (\(c,d) a -> a{defaultSize = (c,d)})
-            (pairWidget (intEditWidget 0.0 3000.0 25.0))
-      --} ]
+            (pairEditor (intEditor 0.0 3000.0 25.0)(intEditor 0.0 3000.0 25.0))
+             (\a -> return ())]
 
 
 -- ------------------------------------------------------------
@@ -321,7 +322,7 @@ intEditor min max step label = do
         newNum <- spinButtonGetValue spin
         return (truncate newNum))
     let changeNotifier f =  do
-        spin `onFocusOut` (\ _ -> do f; return False)
+        spin `onFocusOut` (\ e -> do f; return False)
         return ()
     let focusNotifier f = do
         spin `onFocusIn` (\ _ -> do f; return False)
@@ -360,36 +361,38 @@ maybeEditor childEditor label = do
     return ((castToWidget) frame, injector, extractor, changeNotifier, focusNotifier)
 
 
-{--
-pairWidget :: Editor alpha beta -> Editor alpha (beta,beta)
-pairWidget subwidget str getter setter refDat = do
-    dat <- readIORef refDat
+pairEditor :: Editor alpha -> Editor beta -> Editor (alpha,beta)
+pairEditor fstEd sndEd label = do
     frame   <-  frameNew
-    frameSetLabel frame str
-    firstFrame <- subwidget "" (fst . getter) 
---        (\a -> setter (a,b) dat
-    secondFrame <- subwidget "" (snd . getter) dat
+    frameSetLabel frame label
+    (fstFrame,inj1,ext1,cn1,fn1) <- fstEd ""
+    (sndFrame,inj2,ext2,cn2,fn2) <- sndEd ""
     vBox <- vBoxNew False 1
-    boxPackStart vBox firstFrame PackNatural 0
-    boxPackStart vBox secondFrame PackNatural 0
+    boxPackStart vBox fstFrame PackNatural 0
+    boxPackStart vBox sndFrame PackNatural 0
     containerAdd frame vBox
-    return frame 
+    let injector = (\(f,s) -> do inj1 f; inj2 s)
+    let extractor = do
+        f <- ext1
+        s <- ext2
+        return (f,s)
+    let changeNotifier f = do cn1 f; cn2 f
+    let focusNotifier f = do fn1 f; fn2 f
+    return ((castToWidget) frame, injector, extractor, changeNotifier, focusNotifier)
 
-
-genericEditWidget :: (Show beta, Read beta) => Editor alpha beta
-genericEditWidget str getter setter refDat = do
-    dat <- readIORef refDat
+genericEditor :: (Show beta, Read beta) => Editor beta
+genericEditor label = do
     frame   <-  frameNew
     frameSetShadowType frame ShadowNone
-    frameSetLabel frame str
+    frameSetLabel frame label
     entry   <-  entryNew
-    entrySetText entry (show $getter dat)  
     containerAdd frame entry
-    entry `onFocusOut` (\_ -> do
-        dat2 <- readIORef refDat
-        newString <- entryGetText entry
-        let newdat = setter (read newString) dat2
-        writeIORef refDat newdat
-        return True) 
-    return frame            
---}
+    let injector = (\t -> entrySetText entry (show t))
+    let extractor = do r <- entryGetText entry; return (read r)
+    let changeNotifier f =  do
+        entry `onFocusOut` (\ _ -> do f; return False)
+        return ()
+    let focusNotifier f = do
+        entry `onFocusIn` (\ _ -> do f; return False)
+        return ()
+    return ((castToWidget) frame, injector, extractor, changeNotifier, focusNotifier)

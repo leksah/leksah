@@ -4,6 +4,7 @@ Views
 - Active Buffer switching korrigieren
 
 Editor
+- undo_manager warning!
 - Changed on disk 
 - Clipboard binding Huuuu
 - Find as Toggle
@@ -13,6 +14,7 @@ Editor
 Preferences
 - Editing
 - Applying
+- Make basic usable 
 
 
 
