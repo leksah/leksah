@@ -12,7 +12,7 @@ module Ghf.Preferences (
 ,   prefsDescription
 ) where
 
-import Text.ParserCombinators.Parsec
+import Text.ParserCombinators.Parsec hiding (Parser)
 import qualified Text.ParserCombinators.Parsec.Token as P
 import Text.ParserCombinators.Parsec.Language(emptyDef)
 import qualified Text.PrettyPrint.HughesPJ as PP
@@ -35,56 +35,79 @@ defaultPrefs = Prefs {
     ,   keymapName          =  "Default" 
     ,   defaultSize         =  (1024,800)}
 
+type Comment            =   String
+type Name               =   String
+
 data FieldDescription alpha =  FD {
-        name                ::  String
-    ,   comment             ::  String
+        name                ::  Name
+    ,   comment             ::  Comment
     ,   fieldPrinter        ::  alpha -> PP.Doc
-    ,   fieldParser         ::  alpha -> CharParser () alpha 
-    ,   fieldEditor         ::  IORef alpha -> IO Frame
+    ,   fieldParser         ::  alpha -> CharParser () alpha
+    ,   fieldEditor         ::  IORef alpha -> IO (Widget)
     ,   fieldApplicator     ::  alpha -> GhfAction
 }
 
 type Getter alpha beta  =   alpha -> beta
 type Setter alpha beta  =   beta -> alpha -> alpha
 type Printer beta       =   beta -> PP.Doc
-type Editor alpha beta  =   String -> (Getter alpha beta) -> (Setter alpha beta) 
-                                -> (IORef alpha -> IO (Frame))
-type Applicator beta    =   beta -> GhfAction 
+type Parser beta        =   (CharParser () beta)
 
-field ::      String ->                         --name
+type Injector beta      =   beta -> IO()
+type Extractor beta     =   IO(beta)
+type Notifier beta      =   IO () -> IO ()
+type Editor beta        =   Name -> IO(Widget, Injector beta, Extractor beta,
+                                       Notifier beta, Notifier beta)
+type Applicator beta    =   beta -> GhfAction
+
+type MkFieldDescription alpha beta =
+              String ->                         --name
               String ->                         --comment
-              (Printer beta) ->                 --printer
-              (CharParser () beta ) ->          
+              (Printer beta) ->                
+              (Parser beta) ->
               (Getter alpha beta) ->            
               (Setter alpha beta) ->            
-              (Editor alpha beta) -> 
+              (Editor beta) ->
               (Applicator beta) ->
-              FieldDescription alpha 
-field name comment printer parser getter setter widgetFunction applicator =
+              FieldDescription alpha
+
+field :: MkFieldDescription alpha beta
+field name comment printer parser getter setter editor applicator =
     FD  name 
         comment
-        (\ a -> (PP.text name PP.<> PP.colon) 
-                PP.$$ (PP.nest 15 (printer (getter a)))        
+        (\ dat -> (PP.text name PP.<> PP.colon)
+                PP.$$ (PP.nest 15 (printer (getter dat)))
                 PP.$$ (PP.nest 5 (if null comment 
                                         then PP.empty 
                                         else PP.text $"--" ++ comment)))
-        (\ a -> try (do
+        (\ dat -> try (do
             symbol name
             colon
-            value <- parser   
-            return (setter value a)))
-        (\ a -> widgetFunction name getter setter a)
-        (\ a -> applicator (getter a))   
-        
-prefsDescription :: [FieldDescription Prefs] 
+            val <- parser
+            return (setter val dat)))
+        (\ refDat -> do
+            dat <- readIORef refDat
+            (widget, inj,ext,n1,n2) <- editor name
+            n1 (do
+                trace "CHANGED" return ()
+                oldDat <- readIORef refDat
+                newState <- ext
+                let newDat = setter newState oldDat
+                writeIORef refDat newDat
+                return ())
+            inj (getter dat)
+            return widget)
+        (\ dat -> applicator (getter dat)) 
+
+prefsDescription :: [FieldDescription Prefs]
 prefsDescription = [
-{--        field "Show line numbers"
+        field "Show line numbers"
             "(True/False)" 
             (PP.text . show)
             boolParser
             showLineNumbers
-            (\ b a -> (a{showLineNumbers = b}))
-            boolEditWidget
+            (\ b a -> a{showLineNumbers = b})
+            boolEditor
+            (\a -> return ())
     ,   field "Right margin"
             "Size or 0 for no right margin"
             (\a -> (PP.text . show) (case a of Nothing -> 0; Just i -> i))
@@ -92,22 +115,29 @@ prefsDescription = [
                 return (if i == 0 then Nothing else Just i))
             rightMargin
             (\b a -> a{rightMargin = b})
-            (maybeWidget (intEditWidget 0.0 200.0 5.0))
+            (maybeEditor (intEditor 0.0 200.0 5.0))
+            (\a -> return ())
     ,   field "Tab width" ""
-            (PP.text . show) intParser
-            tabWidth (\b a -> a{tabWidth = b})
-            (intEditWidget 0.0 20.0 1.0)
-    ,   field "Source candy" "Empty for do not use or the name of a candy file in a config dir)" 
+            (PP.text . show)
+            intParser
+            tabWidth
+            (\b a -> a{tabWidth = b})
+            (intEditor 0.0 20.0 1.0)
+            (\a -> return ())
+{--    ,   field "Source candy" "Empty for do not use or the name of a candy file in a config dir)" 
             (\a -> PP.text (case a of Nothing -> ""; Just s -> s)) 
             (do id <- identifier
                 return (if null id then Nothing else Just (id)))
-            sourceCandy (\b a -> a{sourceCandy = b})
-            (maybeWidget stringEditWidget)--}
-        field "Name of the keymap"  "The name of a keymap file in a config dir" 
-            PP.text identifier
-            keymapName (\b a -> a{keymapName = b})
-            stringEditWidget
-            (\ fn -> do
+            sourceCandy (\b a -> return  (a{sourceCandy = b}))
+            (maybeWidget stringEditWidget)
+            (return ()) --}
+    ,   field "Name of the keymap"  "The name of a keymap file in a config dir"
+            PP.text
+            identifier
+            keymapName
+            (\b a -> a{keymapName = b})
+            stringEditor
+         {--   (\ fn -> do
                 win <- readGhf window
                 uiManager <- readGhf uiManager
                 keyMap <- lift $parseKeymap $"config/" ++ fn ++ ".keymap"
@@ -119,15 +149,15 @@ prefsDescription = [
                 let mb = fromJust $menus !! 0
                 let tb = fromJust $menus !! 1
                 return ()
-                )] 
-
-{--    ,   field "Window default size"
+                )--}
+            (\a -> return ())
+{--     ,   field "Window default size"
             "Default size of the main ghf window specified as pair (int,int)" 
             (PP.text.show) 
             (pairParser intParser)
             defaultSize (\(c,d) a -> a{defaultSize = (c,d)})
-            (pairWidget (intEditWidget 0.0 3000.0 25.0))--}
-
+            (pairWidget (intEditWidget 0.0 3000.0 25.0))
+      --} ]
 
 
 -- ------------------------------------------------------------
@@ -234,108 +264,119 @@ editPrefs' prefs prefsDesc ghfR = do
     boxPackStart bb apply PackNatural 0
     boxPackStart bb ok PackNatural 0
     boxPackStart bb cancel PackNatural 0
-   
     sbl <- mapM (\ (FD _ _ _ _ widgetF _) -> widgetF state) prefsDesc 
     trace (show (length sbl)) return ()    
     mapM_ (\ sb -> boxPackStart vb sb PackNatural 0) sbl
-    
     ok `onClicked` (do
         newState <- readIORef state
         mapM_ (\ (FD _ _ _ _ _ applyF) -> runReaderT (applyF newState) ghfR) prefsDesc 
         widgetDestroy dialog)     
-    
     cancel `onClicked` (do
         widgetDestroy dialog)
-
-
     boxPackStart vb bb PackNatural 0
     containerAdd dialog vb
     widgetShowAll dialog    
     return ()
-    
 
-
-stringEditWidget :: Editor alpha String
-stringEditWidget str getter setter refDat = do
-    dat <- readIORef refDat
+boolEditor :: Editor Bool
+boolEditor label = do
     frame   <-  frameNew
     frameSetShadowType frame ShadowNone
-    frameSetLabel frame str
-    entry   <-  entryNew
-    entrySetText entry (getter dat)  
-    containerAdd frame entry
-    entry `onFocusOut` (\_ -> do
-        dat2 <- readIORef refDat
-        newString <- entryGetText entry
-        let newdat = setter newString dat2
-        writeIORef refDat newdat
-        return True)         
-    return frame
-
-
-intEditWidget :: Double -> Double -> Double -> Editor alpha Int
-intEditWidget min max step str getter setter refDat = do
-    dat <- readIORef refDat
-    frame   <-  frameNew
-    frameSetShadowType frame ShadowNone
-    frameSetLabel frame str
-    spin <- spinButtonNewWithRange min max step
-    spinButtonSetValue spin (fromIntegral $getter dat) 
-    containerAdd frame spin
-    spin `onFocusOut` (\_ -> do
-        dat2 <- readIORef refDat
-        newInt <- spinButtonGetValue entry
-        let newdat = setter newInt dat2
-        writeIORef refDat newdat
-        return True)  
-    return frame
-    
-boolEditWidget :: Editor alpha Bool
-boolEditWidget str getter setter refDat = do
-    dat <- readIORef refDat
-    frame   <-  frameNew
-    frameSetShadowType frame ShadowNone
---    frameSetLabel frame str
-    button   <-  checkButtonNewWithLabel str
-    toggleButtonSetActive button (getter dat)  
+    button   <-  checkButtonNewWithLabel label
     containerAdd frame button
-    spin `onFocusOut` (\_ -> do
-        dat2 <- readIORef refDat
-        newBool <- toggleButtonSetActive button
-        let newdat = setter newInt dat2
-        writeIORef refDat newdat
-        return True)  
-    return frame            
+    let injector = toggleButtonSetActive button
+    let extractor = toggleButtonGetActive button
+    let changeNotifier f = do button `onClicked` f; return ()
+    let focusNotifier f = do
+        button `onFocusIn` (\ _ -> do f; return False)
+        return ()
+    return ((castToWidget) frame, injector, extractor, changeNotifier, focusNotifier)
 
-{--
-maybeWidget :: Editor alpha beta -> Editor alpha (Maybe beta)
-maybeWidget justwidget str getter dat = do
+stringEditor :: Editor String
+stringEditor label = do
     frame   <-  frameNew
-    frameSetLabel frame str
-    boolFrame <- boolEditWidget "" (isJust . getter) dat
-    justFrame <- (if (isJust $getter dat) 
-                    then justwidget "" (fromJust . getter) dat
-                    else frameNew)
+    frameSetShadowType frame ShadowNone
+    frameSetLabel frame label
+    entry   <-  entryNew
+    containerAdd frame entry
+    let injector = entrySetText entry
+    let extractor = entryGetText entry
+    let changeNotifier f =  do
+        entry `onFocusOut` (\ _ -> do f; return False)
+        return ()
+    let focusNotifier f = do
+        entry `onFocusIn` (\ _ -> do f; return False)
+        return ()
+    return ((castToWidget) frame, injector, extractor, changeNotifier, focusNotifier)
+
+intEditor :: Double -> Double -> Double -> Editor Int
+intEditor min max step label = do
+    frame   <-  frameNew
+    frameSetShadowType frame ShadowNone
+    frameSetLabel frame label
+    spin <- spinButtonNewWithRange min max step
+    containerAdd frame spin
+    let injector = (\v -> spinButtonSetValue spin (fromIntegral v)) 
+    let extractor = (do
+        newNum <- spinButtonGetValue spin
+        return (truncate newNum))
+    let changeNotifier f =  do
+        spin `onFocusOut` (\ _ -> do f; return False)
+        return ()
+    let focusNotifier f = do
+        spin `onFocusIn` (\ _ -> do f; return False)
+        return ()
+    return ((castToWidget) frame, injector, extractor, changeNotifier, focusNotifier)
+
+
+maybeEditor :: Editor beta -> Editor (Maybe beta)
+maybeEditor childEditor label = do
+    frame   <-  frameNew
+    frameSetLabel frame label
+    (boolFrame,inj1,ext1,cn1,fn1) <- boolEditor  ""
+    (justFrame,inj2,ext2,cn2,fn2) <- childEditor ""
+    let injector = (\v -> case v of
+                            Nothing -> do
+                              widgetSetSensitivity justFrame False
+                              inj1 False
+                            Just v  -> do
+                              widgetSetSensitivity justFrame True
+                              inj1 True 
+                              inj2 v)
+    let extractor = do
+        bool <- ext1
+        if bool
+            then do
+                value <- ext2
+                return (Just value)
+            else 
+                return Nothing
+    let changeNotifier f = do cn1 f; cn2 f
+    let focusNotifier f = do fn1 f; fn2 f
     vBox <- vBoxNew False 1
     boxPackStart vBox boolFrame PackNatural 0
     boxPackStart vBox justFrame PackNatural 0
     containerAdd frame vBox
-    return frame    
+    return ((castToWidget) frame, injector, extractor, changeNotifier, focusNotifier)
 
+
+{--
 pairWidget :: Editor alpha beta -> Editor alpha (beta,beta)
-pairWidget subwidget str getter dat = do
+pairWidget subwidget str getter setter refDat = do
+    dat <- readIORef refDat
     frame   <-  frameNew
     frameSetLabel frame str
-    firstFrame <- subwidget "" (fst . getter) dat
-    secondFrame <- subwidget "" (fst . getter) dat
+    firstFrame <- subwidget "" (fst . getter) 
+--        (\a -> setter (a,b) dat
+    secondFrame <- subwidget "" (snd . getter) dat
     vBox <- vBoxNew False 1
     boxPackStart vBox firstFrame PackNatural 0
     boxPackStart vBox secondFrame PackNatural 0
     containerAdd frame vBox
     return frame 
---}
 
-genericEditWidget :: Show beta Read beta => Editor alpha beta
+
+genericEditWidget :: (Show beta, Read beta) => Editor alpha beta
 genericEditWidget str getter setter refDat = do
     dat <- readIORef refDat
     frame   <-  frameNew
@@ -351,3 +392,4 @@ genericEditWidget str getter setter refDat = do
         writeIORef refDat newdat
         return True) 
     return frame            
+--}
