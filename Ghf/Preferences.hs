@@ -367,10 +367,10 @@ pairEditor fstEd sndEd label = do
     frameSetLabel frame label
     (fstFrame,inj1,ext1,cn1,fn1) <- fstEd ""
     (sndFrame,inj2,ext2,cn2,fn2) <- sndEd ""
-    vBox <- vBoxNew False 1
-    boxPackStart vBox fstFrame PackNatural 0
-    boxPackStart vBox sndFrame PackNatural 0
-    containerAdd frame vBox
+    hBox <- hBoxNew False 1
+    boxPackStart hBox fstFrame PackGrow 0
+    boxPackStart hBox sndFrame PackGrow 0
+    containerAdd frame hBox
     let injector = (\(f,s) -> do inj1 f; inj2 s)
     let extractor = do
         f <- ext1
