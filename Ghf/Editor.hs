@@ -48,17 +48,17 @@ import System.FilePath
 import System.Directory
 import System.Console.GetOpt
 import System.Environment
-import Data.Maybe ( fromMaybe, isJust, fromJust )
+import Data.Maybe ( fromMaybe, isJust, fromJust)
 import Text.Printf
 import Char(toUpper)
 import qualified Data.Map as Map
 import Data.Map (Map,(!))
+
+
   
 import Ghf.Core
 import Ghf.View
 import Ghf.SourceCandy
-
-tabWidthP = 4
 
 newTextBuffer :: String -> Maybe FileName -> GhfAction
 newTextBuffer bn mbfn = do
@@ -69,6 +69,7 @@ newTextBuffer bn mbfn = do
     nb <- getActiveOrTopNotebook
     panes <- readGhf panes
     paneMap <- readGhf paneMap
+    prefs <- readGhf prefs
     bs <- getCandyState
     (from,_) <- readGhf candy
     let (ind,rbn) = figureOutPaneName panes bn 0
@@ -110,11 +111,14 @@ newTextBuffer bn mbfn = do
         f <- fontDescriptionNew
         fontDescriptionSetFamily f "Monospace"
         widgetModifyFont sv (Just f)
-        sourceViewSetShowLineNumbers sv True
-        sourceViewSetMargin sv 90
-        sourceViewSetShowMargin sv True
+        sourceViewSetShowLineNumbers sv (showLineNumbers prefs)
+        case rightMargin prefs of
+            Just n -> do
+                sourceViewSetMargin sv n
+                sourceViewSetShowMargin sv True
+            Nothing -> sourceViewSetShowMargin sv True
         sourceViewSetInsertSpacesInsteadOfTabs sv True
-        sourceViewSetTabsWidth sv tabWidthP
+        sourceViewSetTabsWidth sv (tabWidth prefs)
         sourceViewSetSmartHomeEnd sv True
 
         -- put it in a scrolled window
@@ -676,36 +680,38 @@ editUncomment = do
     return ()
 
 editShiftLeft :: GhfAction
-editShiftLeft = 
-    let str = map (\_->' ') [1 ..tabWidthP] in
-    do  b <- canShiftLeft str 
-        if b
-            then do
-                doForSelectedLines [] $ \gtkbuf iter lineNr -> do
-                    textIterSetLine iter lineNr
-                    iter2 <- textIterCopy iter
-                    textIterForwardChars iter tabWidthP         
-                    textBufferDelete gtkbuf iter iter2
-                return ()                
-            else return ()
-        where
-        canShiftLeft str = do 
-            boolList <- doForSelectedLines [] $ \gtkbuf iter lineNr -> do
+editShiftLeft = do
+    prefs <- readGhf prefs
+    let str = map (\_->' ') [1 .. (tabWidth prefs)] 
+    b <- canShiftLeft str prefs
+    if b
+        then do
+            doForSelectedLines [] $ \gtkbuf iter lineNr -> do
                 textIterSetLine iter lineNr
                 iter2 <- textIterCopy iter
-                textIterForwardChars iter tabWidthP         
-                str1 <- textIterGetText iter iter2
-                return (str1 == str)
-            return (foldl (&&) True boolList)
+                textIterForwardChars iter (tabWidth prefs)
+                textBufferDelete gtkbuf iter iter2
+            return ()
+        else return ()
+    where
+    canShiftLeft str prefs = do
+        boolList <- doForSelectedLines [] $ \gtkbuf iter lineNr -> do
+            textIterSetLine iter lineNr
+            iter2 <- textIterCopy iter
+            textIterForwardChars iter (tabWidth prefs)
+            str1 <- textIterGetText iter iter2
+            return (str1 == str)
+        return (foldl (&&) True boolList)
             
             
 editShiftRight :: GhfAction
-editShiftRight = 
-    let str = map (\_->' ') [1 ..tabWidthP] in do
-        doForSelectedLines [] $ \gtkbuf iter lineNr -> do
-            textIterSetLine iter lineNr
-            textBufferInsert gtkbuf iter str
-        return ()
+editShiftRight = do
+    prefs <- readGhf prefs
+    let str = map (\_->' ') [1 .. (tabWidth prefs)] 
+    doForSelectedLines [] $ \gtkbuf iter lineNr -> do
+        textIterSetLine iter lineNr
+        textBufferInsert gtkbuf iter str
+    return ()
 
 editToCandy :: GhfAction
 editToCandy = do
@@ -725,9 +731,8 @@ editKeystrokeCandy = do
         keystrokeCandy to gtkbuf
 
 editCandy = do
-    panesST <- readGhf panes
     (to,from) <- readGhf candy
-    let buffers = map (\ (PaneBuf buf) -> buf) $filter isBuffer $Map.elems panesST
+    buffers <- allBuffers
     gtkbufs <- lift $mapM (\ b -> textViewGetBuffer (sourceView b)) buffers
     bs <- getCandyState
     if bs

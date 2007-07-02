@@ -26,6 +26,7 @@ module Ghf.View (
 ,   getSpecialKeys
 
 ,   getCandyState
+,   setCandyState
 ) where
 
 import Graphics.UI.Gtk hiding (afterToggleOverwrite)
@@ -37,7 +38,7 @@ import Control.Monad.Reader
 import Data.IORef
 import System.FilePath
 import System.Directory
-import Data.Maybe ( fromMaybe, isJust, fromJust )
+import Data.Maybe ( fromMaybe, isJust)
 import Text.Printf
 import qualified Data.Map as Map
 import Data.Map (Map,(!))
@@ -451,7 +452,9 @@ getUIAction str f = do
     uiManager <- readGhf uiManager
     lift $ do
         findAction <- uiManagerGetAction uiManager str
-        return (f (fromJust findAction))
+        case findAction of
+            Just act -> return (f act)
+            Nothing  -> error $"getUIAction can't find action " ++ str
 
 guessNewActiveBuffer :: Notebook -> GhfAction
 guessNewActiveBuffer nb = do
@@ -488,6 +491,10 @@ getCandyState = do
     ui <- getUIAction "ui/menubar/_Edit/Source Candy" castToToggleAction
     lift $toggleActionGetActive ui 
 
+setCandyState :: Bool -> GhfAction
+setCandyState b = do
+    ui <- getUIAction "ui/menubar/_Edit/Source Candy" castToToggleAction
+    lift $toggleActionSetActive ui b
 --
 
 getFindEntry :: GhfM (Entry)

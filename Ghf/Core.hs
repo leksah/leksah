@@ -34,6 +34,7 @@ module Ghf.Core (
 
 -- * The Buffer pane
 ,   GhfBuffer(..)
+,   allBuffers
 
 -- * Other state structures
 ,   ActionDescr(..)
@@ -62,7 +63,7 @@ import System.FilePath
 import System.Directory
 import System.Console.GetOpt
 import System.Environment
-import Data.Maybe ( fromMaybe, isJust, fromJust )
+import Data.Maybe ( fromMaybe, isJust)
 import qualified Data.Map as Map
 import Data.Map (Map,(!))
 
@@ -221,6 +222,11 @@ instance Ord GhfBuffer
                         else if bufferName a == bufferName b 
                             then addedIndex a <= addedIndex b
                             else False
+
+allBuffers :: GhfM [GhfBuffer]
+allBuffers = do
+    panesST <- readGhf panes
+    return (map (\ (PaneBuf buf) -> buf) $filter isBuffer $Map.elems panesST)
 
 -- ---------------------------------------------------------------------
 -- Other data structures which are used in the state

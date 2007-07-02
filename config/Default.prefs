@@ -1,14 +1,14 @@
 Show line numbers:
-               False
+               True
      --(True/False)
-Right margin:  80
-     --Size or 0 for no right margin 
+Right margin:  100
+     --Size or 0 for no right margin
 Tab width:     4
 Source candy:  Default
      --Empty for do not use or the name of a candy file in a config dir)
 Name of the keymap:
-               Default
+               Emacsqq
      --The name of a keymap file in a config dir
 Window default size:
-               (1024,800)
+               (801,800)
      --Default size of the main ghf window specified as pair (int,int)

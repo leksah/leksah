@@ -2,7 +2,6 @@
 -- | Module for saving, restoring and editing preferences
 -- 
 
-
 module Ghf.Preferences (
     readPrefs
 ,   writePrefs
@@ -17,15 +16,22 @@ import qualified Text.ParserCombinators.Parsec.Token as P
 import Text.ParserCombinators.Parsec.Language(emptyDef)
 import qualified Text.PrettyPrint.HughesPJ as PP
 import Control.Monad(foldM)
-import Graphics.UI.Gtk hiding (afterToggleOverwrite)
+import Graphics.UI.Gtk hiding (afterToggleOverwrite,Focus)
+import Graphics.UI.Gtk.SourceView
 import Control.Monad.Reader
-import Data.Maybe(fromJust,isJust)
+import Data.Maybe(isJust)
+import qualified Data.Map as Map
+import Data.Map(Map,(!))
 import Data.IORef
+
 import Debug.Trace
 
 import Ghf.Core
+import Ghf.Editor
+import Ghf.View
 import Ghf.Keymap
 import Ghf.Menu(actions,makeMenu,menuDescription)
+
 
 defaultPrefs = Prefs {
         showLineNumbers     =   True
@@ -43,20 +49,24 @@ data FieldDescription alpha =  FD {
     ,   comment             ::  Comment
     ,   fieldPrinter        ::  alpha -> PP.Doc
     ,   fieldParser         ::  alpha -> CharParser () alpha
-    ,   fieldEditor         ::  IORef alpha -> IO (Widget)
-    ,   fieldApplicator     ::  alpha -> GhfAction
+    ,   fieldEditor         ::  IORef alpha -> IO (Widget, alpha -> IO(), alpha -> IO(alpha))
+    ,   fieldApplicator     ::  alpha -> alpha -> GhfAction
 }
 
 type Getter alpha beta  =   alpha -> beta
 type Setter alpha beta  =   beta -> alpha -> alpha
 type Printer beta       =   beta -> PP.Doc
-type Parser beta        =   (CharParser () beta)
+type Parser beta        =   CharParser () beta
+
+data EditorEvent        =   Changed | Focus
+    deriving (Eq,Ord,Show,Enum)
 
 type Injector beta      =   beta -> IO()
 type Extractor beta     =   IO(beta)
 type Notifier beta      =   IO () -> IO ()
-type Editor beta        =   Name -> IO(Widget, Injector beta, Extractor beta,
-                                       Notifier beta, Notifier beta)
+type EditorRes beta     =   (Widget, Injector beta, Extractor beta,
+                                Map EditorEvent (Notifier beta))
+type Editor beta        =   Name -> IO(EditorRes beta)
 type Applicator beta    =   beta -> GhfAction
 
 type MkFieldDescription alpha beta =
@@ -70,7 +80,7 @@ type MkFieldDescription alpha beta =
               (Applicator beta) ->
               FieldDescription alpha
 
-field :: MkFieldDescription alpha beta
+field :: Eq beta => MkFieldDescription alpha beta
 field name comment printer parser getter setter editor applicator =
     FD  name 
         comment
@@ -86,18 +96,25 @@ field name comment printer parser getter setter editor applicator =
             return (setter val dat)))
         (\ refDat -> do
             dat <- readIORef refDat
-            (widget, inj,ext,n1,n2) <- editor name
-            n1 (do
---                putStrLn "changed"
-                oldDat <- readIORef refDat
-                newState <- ext
-                let newDat = setter newState oldDat
-                inj (getter newDat)
-                writeIORef refDat newDat
-                return ())
+            (widget, inj,ext,noti) <- editor name
             inj (getter dat)
-            return widget)
-        (\ dat -> applicator (getter dat)) 
+            (noti ! Changed) (do
+                 putStrLn "changed"
+                 oldDat <- readIORef refDat
+                 newState <- ext
+                 let newDat = setter newState oldDat
+                 --inj (getter newDat)
+                 writeIORef refDat newDat
+                 return ())
+            return (widget,
+                    (\a -> inj (getter a)), 
+                    (\a -> do {b <- ext; return (setter b a)})))
+        (\ newDat oldDat -> do
+            let newField = getter newDat
+            let oldField = getter oldDat
+            if newField == oldField
+                then return ()
+                else applicator newField)
 
 prefsDescription :: [FieldDescription Prefs]
 prefsDescription = [
@@ -108,7 +125,9 @@ prefsDescription = [
             showLineNumbers
             (\ b a -> a{showLineNumbers = b})
             boolEditor
-            (\a -> return ())
+            (\b -> do
+                buffers <- allBuffers
+                mapM_ (\buf -> lift$sourceViewSetShowLineNumbers (sourceView buf) b) buffers)
     ,   field "Right margin"
             "Size or 0 for no right margin"
             (\a -> (PP.text . show) (case a of Nothing -> 0; Just i -> i))
@@ -117,48 +136,51 @@ prefsDescription = [
             rightMargin
             (\b a -> a{rightMargin = b})
             (maybeEditor (intEditor 0.0 200.0 5.0))
-            (\a -> return ())
+            (\b -> do
+                buffers <- allBuffers
+                mapM_ (\buf -> case b of
+                                Just n -> do
+                                    lift $sourceViewSetMargin (sourceView buf) n
+                                    lift $sourceViewSetShowMargin (sourceView buf) True
+                                Nothing -> lift $sourceViewSetShowMargin (sourceView buf) False)
+                                                buffers)
     ,   field "Tab width" ""
             (PP.text . show)
             intParser
             tabWidth
             (\b a -> a{tabWidth = b})
             (intEditor 0.0 20.0 1.0)
-            (\a -> return ())
-    ,   field "Source candy" "Empty for do not use or the name of a candy file in a config dir)"
+            (\i -> do
+                buffers <- allBuffers
+                mapM_ (\buf -> lift $sourceViewSetTabsWidth (sourceView buf) i) buffers)
+    ,   field "Source candy"
+                "Empty for do not use or the name of a candy file in a config dir)"
             (\a -> PP.text (case a of Nothing -> ""; Just s -> s)) 
             (do id <- identifier
                 return (if null id then Nothing else Just (id)))
             sourceCandy (\b a -> a{sourceCandy = b})
             (maybeEditor stringEditor)
-            (\a -> return ()) 
+            (\cs -> case cs of
+                        Nothing -> do 
+                            setCandyState False
+                            editCandy
+                        Just name -> do
+                            setCandyState True
+                            editCandy)
     ,   field "Name of the keymap"  "The name of a keymap file in a config dir"
             PP.text
             identifier
             keymapName
             (\b a -> a{keymapName = b})
             stringEditor
-         {--   (\ fn -> do
-                win <- readGhf window
-                uiManager <- readGhf uiManager
-                keyMap <- lift $parseKeymap $"config/" ++ fn ++ ".keymap"
-                let accelActions = setKeymap actions keyMap
-                specialKeys <- lift $buildSpecialKeys keyMap accelActions
-                modifyGhf_ (\ghf -> return (ghf{specialKeys = specialKeys}))
-                (acc,menus) <- makeMenu uiManager accelActions menuDescription
-                lift $windowAddAccelGroup win acc
-                let mb = fromJust $menus !! 0
-                let tb = fromJust $menus !! 1
-                return ()
-                )--}
-            (\a -> return ())
+            (\ a -> return ())
     ,   field "Window default size"
             "Default size of the main ghf window specified as pair (int,int)" 
             (PP.text.show) 
             (pairParser intParser)
             defaultSize (\(c,d) a -> a{defaultSize = (c,d)})
             (pairEditor (intEditor 0.0 3000.0 25.0)(intEditor 0.0 3000.0 25.0))
-             (\a -> return ())]
+            (\a -> return ()) ]
 
 
 -- ------------------------------------------------------------
@@ -253,26 +275,46 @@ editPrefs = do
     res <- lift $editPrefs' p prefsDescription ghfR
     lift $putStrLn $show res
 
-editPrefs' :: a -> [FieldDescription a] -> GhfRef -> IO ()
+editPrefs' :: Prefs -> [FieldDescription Prefs] -> GhfRef -> IO ()
 editPrefs' prefs prefsDesc ghfR = do
-    state   <- newIORef prefs
+    prefsRef   <- newIORef prefs
+    lastAppliedPrefsRef <- newIORef prefs
     dialog  <- windowNew
     vb      <- vBoxNew False 12
     bb      <- hButtonBoxNew
     apply   <- buttonNewFromStock "gtk-apply"
+    restore <- buttonNewFromStock "gtk-restore"
     ok      <- buttonNewFromStock "gtk-ok"
     cancel  <- buttonNewFromStock "gtk-cancel"
     boxPackStart bb apply PackNatural 0
+    boxPackStart bb restore PackNatural 0
     boxPackStart bb ok PackNatural 0
     boxPackStart bb cancel PackNatural 0
-    sbl <- mapM (\ (FD _ _ _ _ widgetF _) -> widgetF state) prefsDesc 
-    trace (show (length sbl)) return ()    
-    mapM_ (\ sb -> boxPackStart vb sb PackNatural 0) sbl
+    resList <- mapM (\ (FD _ _ _ _ editorF _) -> editorF prefsRef) prefsDesc
+    let widgets =   map (\ (widget,_,_) -> widget) resList
+    let setInjs =   map (\ (_,setInj,_) -> setInj) resList 
+    let getExts =   map (\ (_,_,getExt) -> getExt) resList 
+    mapM_ (\ sb -> boxPackStart vb sb PackNatural 12) widgets
     ok `onClicked` (do
-        newState <- readIORef state
-        mapM_ (\ (FD _ _ _ _ _ applyF) -> runReaderT (applyF newState) ghfR) prefsDesc 
-        widgetDestroy dialog)     
+        newPrefs <- readIORef prefsRef
+        lastAppliedPrefs <- readIORef lastAppliedPrefsRef
+        mapM_ (\ (FD _ _ _ _ _ applyF) -> runReaderT (applyF newPrefs lastAppliedPrefs) ghfR) prefsDesc
+        writePrefs "config/Default.prefs" newPrefs
+        runReaderT (modifyGhf_ (\ghf -> return (ghf{prefs = newPrefs}))) ghfR
+        widgetDestroy dialog)
+    apply `onClicked` (do
+        newPrefs <- readIORef prefsRef
+        lastAppliedPrefs <- readIORef lastAppliedPrefsRef
+        mapM_ (\ (FD _ _ _ _ _ applyF) -> runReaderT (applyF newPrefs lastAppliedPrefs) ghfR) prefsDesc
+        writeIORef lastAppliedPrefsRef newPrefs)
+    restore `onClicked` (do
+        lastAppliedPrefs <- readIORef lastAppliedPrefsRef
+        mapM_ (\ (FD _ _ _ _ _ applyF) -> runReaderT (applyF prefs lastAppliedPrefs) ghfR) prefsDesc
+        mapM_ (\ setInj -> setInj prefs) setInjs
+        writeIORef lastAppliedPrefsRef prefs)
     cancel `onClicked` (do
+        lastAppliedPrefs <- readIORef lastAppliedPrefsRef
+        mapM_ (\ (FD _ _ _ _ _ applyF) -> runReaderT (applyF prefs lastAppliedPrefs) ghfR) prefsDesc
         widgetDestroy dialog)
     boxPackStart vb bb PackNatural 0
     containerAdd dialog vb
@@ -291,7 +333,8 @@ boolEditor label = do
     let focusNotifier f = do
         button `onFocusIn` (\ _ -> do f; return False)
         return ()
-    return ((castToWidget) frame, injector, extractor, changeNotifier, focusNotifier)
+    let notifiers = Map.fromList [(Changed,changeNotifier),(Focus,focusNotifier)]
+    return ((castToWidget) frame, injector, extractor, notifiers)
 
 stringEditor :: Editor String
 stringEditor label = do
@@ -308,7 +351,8 @@ stringEditor label = do
     let focusNotifier f = do
         entry `onFocusIn` (\ _ -> do f; return False)
         return ()
-    return ((castToWidget) frame, injector, extractor, changeNotifier, focusNotifier)
+    let notifiers = Map.fromList [(Changed,changeNotifier),(Focus,focusNotifier)]
+    return ((castToWidget) frame, injector, extractor, notifiers)
 
 intEditor :: Double -> Double -> Double -> Editor Int
 intEditor min max step label = do
@@ -317,7 +361,7 @@ intEditor min max step label = do
     frameSetLabel frame label
     spin <- spinButtonNewWithRange min max step
     containerAdd frame spin
-    let injector = (\v -> spinButtonSetValue spin (fromIntegral v)) 
+    let injector = (\v -> spinButtonSetValue spin (fromIntegral v))
     let extractor = (do
         newNum <- spinButtonGetValue spin
         return (truncate newNum))
@@ -327,15 +371,15 @@ intEditor min max step label = do
     let focusNotifier f = do
         spin `onFocusIn` (\ _ -> do f; return False)
         return ()
-    return ((castToWidget) frame, injector, extractor, changeNotifier, focusNotifier)
-
+    let notifiers = Map.fromList [(Changed,changeNotifier),(Focus,focusNotifier)]
+    return ((castToWidget) frame, injector, extractor, notifiers)
 
 maybeEditor :: Editor beta -> Editor (Maybe beta)
 maybeEditor childEditor label = do
     frame   <-  frameNew
     frameSetLabel frame label
-    (boolFrame,inj1,ext1,cn1,fn1) <- boolEditor  ""
-    (justFrame,inj2,ext2,cn2,fn2) <- childEditor ""
+    (boolFrame,inj1,ext1,not1) <- boolEditor  ""
+    (justFrame,inj2,ext2,not2) <- childEditor ""
     let injector = (\v -> case v of
                             Nothing -> do
                               widgetSetSensitivity justFrame False
@@ -352,21 +396,24 @@ maybeEditor childEditor label = do
                 return (Just value)
             else 
                 return Nothing
-    let changeNotifier f = do cn1 f; cn2 f
-    let focusNotifier f = do fn1 f; fn2 f
     vBox <- vBoxNew False 1
     boxPackStart vBox boolFrame PackNatural 0
     boxPackStart vBox justFrame PackNatural 0
-    containerAdd frame vBox
-    return ((castToWidget) frame, injector, extractor, changeNotifier, focusNotifier)
-
+    containerAdd frame vBox    
+    let changeNotifier f = do (not1 ! Changed)  f; (not2 ! Changed) f
+    let focusNotifier f = do (not1 ! Focus) f; (not2 ! Focus) f
+    (not1 ! Changed)
+        (do bool <- ext1
+            widgetSetSensitivity justFrame bool)
+    let notifiers = Map.fromList [(Changed,changeNotifier),(Focus,focusNotifier)]
+    return ((castToWidget) frame, injector, extractor, notifiers)
 
 pairEditor :: Editor alpha -> Editor beta -> Editor (alpha,beta)
 pairEditor fstEd sndEd label = do
     frame   <-  frameNew
     frameSetLabel frame label
-    (fstFrame,inj1,ext1,cn1,fn1) <- fstEd ""
-    (sndFrame,inj2,ext2,cn2,fn2) <- sndEd ""
+    (fstFrame,inj1,ext1,not1) <- fstEd ""
+    (sndFrame,inj2,ext2,not2) <- sndEd ""
     hBox <- hBoxNew False 1
     boxPackStart hBox fstFrame PackGrow 0
     boxPackStart hBox sndFrame PackGrow 0
@@ -376,9 +423,10 @@ pairEditor fstEd sndEd label = do
         f <- ext1
         s <- ext2
         return (f,s)
-    let changeNotifier f = do cn1 f; cn2 f
-    let focusNotifier f = do fn1 f; fn2 f
-    return ((castToWidget) frame, injector, extractor, changeNotifier, focusNotifier)
+    let changeNotifier f = do (not1 ! Changed)  f; (not2 ! Changed) f
+    let focusNotifier f = do (not1 ! Focus) f; (not2 ! Focus) f
+    let notifiers = Map.fromList [(Changed,changeNotifier),(Focus,focusNotifier)]
+    return ((castToWidget) frame, injector, extractor, notifiers)
 
 genericEditor :: (Show beta, Read beta) => Editor beta
 genericEditor label = do
@@ -395,4 +443,5 @@ genericEditor label = do
     let focusNotifier f = do
         entry `onFocusIn` (\ _ -> do f; return False)
         return ()
-    return ((castToWidget) frame, injector, extractor, changeNotifier, focusNotifier)
+    let notifiers = Map.fromList [(Changed,changeNotifier),(Focus,focusNotifier)]
+    return ((castToWidget) frame, injector, extractor, notifiers)

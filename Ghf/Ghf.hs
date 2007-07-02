@@ -29,7 +29,7 @@ import System.FilePath
 import System.Directory
 import System.Console.GetOpt
 import System.Environment
-import Data.Maybe ( fromMaybe, isJust, fromJust )
+import Data.Maybe ( fromMaybe, isJust)
 import qualified Data.Map as Map
 import Data.Map(Map)
 
@@ -64,15 +64,15 @@ main = do
     mapM_ putStrLn st 
     
     prefs <- readPrefs "config/Default.prefs"
-    putStrLn $show prefs
-    writePrefs "config/Default2.prefs" prefs
+--    putStrLn $show prefs
 
     keyMap <- parseKeymap "config/Default.keymap"
 --    putStrLn $show keyMap
     let accelActions = setKeymap actions keyMap
     specialKeys <- buildSpecialKeys keyMap accelActions
-
-    candy <- parseCandy "config/Default.candy"
+    candySt     <- parseCandy (case sourceCandy prefs of
+                                    Nothing   -> "config/Default.candy"
+                                    Just name -> "config/" ++ name ++ ".candy")
 --    putStrLn $show candy
     
     win <- windowNew
@@ -87,15 +87,18 @@ main = do
           ,   layout = TerminalP
           ,   specialKeys = specialKeys
           ,   specialKey = Nothing
-          ,   candy = candy
+          ,   candy = candySt
           ,   prefs = prefs
           }
     ghfR <- newIORef ghf
 
-
     (acc,menus) <- runReaderT (makeMenu uiManager accelActions menuDescription) ghfR
-    let mb = fromJust $menus !! 0
-    let tb = fromJust $menus !! 1
+    let mb = case menus !! 0 of
+                Just m -> m
+                Nothing -> error "Failed to build menu"
+    let tb = case menus !! 1 of
+                Just m -> m
+                Nothing -> error "Failed to build toolbar"
     windowAddAccelGroup win acc
     nb <- newNotebook
     widgetSetName nb $"root"
@@ -112,8 +115,10 @@ main = do
     win `onKeyPress` (\ e -> runReaderT (handleSpecialKeystrokes e) ghfR)
     
     containerAdd win vb
+    runReaderT (setCandyState (isJust (sourceCandy prefs))) ghfR
 
-    windowSetDefaultSize win 700 1000
+    let (x,y) = defaultSize prefs
+    windowSetDefaultSize win x y
     flip runReaderT ghfR $ case fl of
         [] -> newTextBuffer "Unnamed" Nothing
         otherwise  -> mapM_ (\ fn -> (newTextBuffer (takeFileName fn) (Just fn))) fl

@@ -10,7 +10,7 @@ import Control.Monad.Reader
 import Data.IORef
 import System.FilePath
 import System.Directory
-import Data.Maybe ( fromMaybe, isJust, fromJust )
+import Data.Maybe ( fromMaybe, isJust)
 import Text.Printf
   
 import Ghf.Core

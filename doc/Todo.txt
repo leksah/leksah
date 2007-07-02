@@ -9,14 +9,17 @@ Editor
 - Clipboard binding Huuuu
 - Find as Toggle
 - Candy with '(' '\n' .. before and ')' \n .. after
-- 
 
+- highlight of c
+- no hihglight of other files (candy,prefs,keymaps, except comments)
+
+- options to add:
+        highlight buffer (single buffer,no general preference)
+ 
 Preferences
 - Editing
 - Applying
-- Make basic usable 
-
-
+- Make basic usable
 
 Projects 
 - 
