@@ -23,6 +23,7 @@ import Ghf.Editor
 import Ghf.View
 import Ghf.Dialogs
 import {-# SOURCE #-} Ghf.Preferences(editPrefs)
+import Ghf.Project
 
 version = "0.1" 
 
@@ -79,6 +80,10 @@ actions =
 
     ,AD "EditCandy" "_To Candy" Nothing Nothing 
         editCandy [] True
+
+    ,AD "Project" "Pr_oject" Nothing Nothing (return ()) [] False
+    ,AD "NewProject" "_New Project" Nothing Nothing
+        projectNew [] False
 
     ,AD "View" "_View" Nothing Nothing (return ()) [] False
     ,AD "ViewMoveLeft" "Move _Left" Nothing Nothing
@@ -155,6 +160,9 @@ menuDescription = "\n\
        \<menuitem name=\"Shift Right\" action=\"EditShiftRight\" />\n\
        \<separator/>\n\
        \<menuitem name=\"Source Candy\" action=\"EditCandy\" />\n\
+     \</menu>\n\
+    \<menu name=\"Pr_oject\" action=\"Project\">\n\
+       \<menuitem name=\"_New Project\" action=\"NewProject\" />\n\
      \</menu>\n\
     \<menu name=\"_View\" action=\"View\">\n\
        \<menuitem name=\"Move _Left\" action=\"ViewMoveLeft\" />\n\

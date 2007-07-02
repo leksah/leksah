@@ -2,6 +2,7 @@ ToDo List
 
 Views
 - Active Buffer switching korrigieren
+    Save as geht nicht?!
 
 Editor
 - undo_manager warning!
@@ -17,9 +18,7 @@ Editor
         highlight buffer (single buffer,no general preference)
  
 Preferences
-- Editing
-- Applying
-- Make basic usable
+
 
 Projects 
 - 

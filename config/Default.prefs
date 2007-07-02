@@ -7,8 +7,8 @@ Tab width:     4
 Source candy:  Default
      --Empty for do not use or the name of a candy file in a config dir)
 Name of the keymap:
-               Emacsqq
+               Default
      --The name of a keymap file in a config dir
 Window default size:
-               (801,800)
+               (800,800)
      --Default size of the main ghf window specified as pair (int,int)

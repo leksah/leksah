@@ -266,11 +266,11 @@ fileSave query = inBufContext' () $ \ nb _ currentBuffer i -> do
                                     , ResponseAccept)]
                         widgetShow dialog
                         response <- dialogRun dialog
-                        widgetHide dialog
                         mbFileName <- case response of
                                 ResponseAccept ->       fileChooserGetFilename dialog
                                 ResponseCancel ->       return Nothing
                                 ResponseDeleteEvent->   return Nothing
+                        widgetDestroy dialog    
                         case mbFileName of
                             Nothing -> return Nothing
                             Just fn -> do
@@ -387,11 +387,17 @@ fileOpen = do
                     ,ResponseAccept)]
         widgetShow dialog
         response <- dialogRun dialog
-        widgetHide dialog
         case response of
-            ResponseAccept ->       fileChooserGetFilename dialog
-            ResponseCancel ->       return Nothing
-            ResponseDeleteEvent->   return Nothing
+            ResponseAccept -> do
+                f <- fileChooserGetFilename dialog
+                widgetDestroy dialog               
+                return f
+            ResponseCancel -> do
+                widgetDestroy dialog       
+                return Nothing
+            ResponseDeleteEvent-> do  
+                widgetDestroy dialog                
+                return Nothing
     case mbFileName of
         Nothing -> return ()
         Just fn -> newTextBuffer (takeFileName fn) (Just fn)
