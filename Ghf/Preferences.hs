@@ -22,6 +22,8 @@ import Control.Monad.Reader
 import Data.Maybe(isJust)
 import qualified Data.Map as Map
 import Data.Map(Map,(!))
+import Data.IORef
+import Data.List(unzip4)
 
 import Debug.Trace
 
@@ -134,7 +136,49 @@ editPrefs :: GhfAction
 editPrefs = do
     ghfR <- ask
     p <- readGhf prefs
-    res <- lift $editPrefs' p prefsDescription ghfR (writePrefs "config/Default.prefs")
-                    (\ghf -> return (ghf{prefs = newPrefs}))
+    res <- lift $editPrefs' p prefsDescription ghfR
+                    
     lift $putStrLn $show res
 
+editPrefs' :: Prefs -> [FieldDescription Prefs] -> GhfRef -> IO ()
+editPrefs' prefs prefsDesc ghfR  = do
+    lastAppliedPrefsRef <- newIORef prefs
+    dialog  <- windowNew
+    vb      <- vBoxNew False 12
+    bb      <- hButtonBoxNew
+    apply   <- buttonNewFromStock "gtk-apply"
+    restore <- buttonNewFromStock "gtk-restore"
+    ok      <- buttonNewFromStock "gtk-ok"
+    cancel  <- buttonNewFromStock "gtk-cancel"
+    boxPackStart bb apply PackNatural 0
+    boxPackStart bb restore PackNatural 0
+    boxPackStart bb ok PackNatural 0
+    boxPackStart bb cancel PackNatural 0
+    resList <- mapM (\ (FD _ _ _ _ editorF _) -> editorF prefs) prefsDesc
+    let (widgets, setInjs, getExts,_) = unzip4 resList 
+    mapM_ (\ sb -> boxPackStart vb sb PackNatural 12) widgets
+    ok `onClicked` (do
+        newPrefs <- foldM (\ a b -> b a) prefs getExts
+        lastAppliedPrefs <- readIORef lastAppliedPrefsRef
+        mapM_ (\ (FD _ _ _ _ _ applyF) -> runReaderT (applyF newPrefs lastAppliedPrefs) ghfR) prefsDesc
+        writePrefs "config/Default.prefs" newPrefs
+        runReaderT (modifyGhf_ (\ghf -> return (ghf{prefs = newPrefs}))) ghfR
+        widgetDestroy dialog)
+    apply `onClicked` (do
+        newPrefs <- foldM (\ prf getEx -> getEx prf) prefs getExts
+        lastAppliedPrefs <- readIORef lastAppliedPrefsRef
+        mapM_ (\ (FD _ _ _ _ _ applyF) -> runReaderT (applyF newPrefs lastAppliedPrefs) ghfR) prefsDesc
+        writeIORef lastAppliedPrefsRef newPrefs)
+    restore `onClicked` (do
+        lastAppliedPrefs <- readIORef lastAppliedPrefsRef
+        mapM_ (\ (FD _ _ _ _ _ applyF) -> runReaderT (applyF prefs lastAppliedPrefs) ghfR) prefsDesc
+        mapM_ (\ setInj -> setInj prefs) setInjs
+        writeIORef lastAppliedPrefsRef prefs)
+    cancel `onClicked` (do
+        lastAppliedPrefs <- readIORef lastAppliedPrefsRef
+        mapM_ (\ (FD _ _ _ _ _ applyF) -> runReaderT (applyF prefs lastAppliedPrefs) ghfR) prefsDesc
+        widgetDestroy dialog)
+    boxPackStart vb bb PackNatural 0
+    containerAdd dialog vb
+    widgetShowAll dialog    
+    return ()

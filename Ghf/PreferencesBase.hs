@@ -29,7 +29,6 @@ module Ghf.PreferencesBase (
 ,   showPrefs
 ,   emptyPrinter
 
-,   editPrefs'
 ,   boolEditor
 ,   stringEditor
 ,   intEditor
@@ -49,7 +48,7 @@ import Graphics.UI.Gtk.SourceView
 import Control.Monad.Reader
 import qualified Data.Map as Map
 import Data.Map(Map,(!))
-import Data.IORef
+
 import Data.List(unzip4,elemIndex)
 
 
@@ -200,50 +199,6 @@ emptyPrinter _ = PP.empty
 -- ------------------------------------------------------------
 -- * Editing
 -- ------------------------------------------------------------
-
-editPrefs' :: a -> [FieldDescription a] -> GhfRef -> (a -> IO ()) -> (Ghf -> IO Ghf) -> IO ()
-editPrefs' prefs prefsDesc ghfR writeF modifyF = do
-    lastAppliedPrefsRef <- newIORef prefs
-    dialog  <- windowNew
-    vb      <- vBoxNew False 12
-    bb      <- hButtonBoxNew
-    apply   <- buttonNewFromStock "gtk-apply"
-    restore <- buttonNewFromStock "gtk-restore"
-    ok      <- buttonNewFromStock "gtk-ok"
-    cancel  <- buttonNewFromStock "gtk-cancel"
-    boxPackStart bb apply PackNatural 0
-    boxPackStart bb restore PackNatural 0
-    boxPackStart bb ok PackNatural 0
-    boxPackStart bb cancel PackNatural 0
-    resList <- mapM (\ (FD _ _ _ _ editorF _) -> editorF prefs) prefsDesc
-    let (widgets, setInjs, getExts,_) = unzip4 resList 
-    mapM_ (\ sb -> boxPackStart vb sb PackNatural 12) widgets
-    ok `onClicked` (do
-        newPrefs <- foldM (\ a b -> b a) prefs getExts
-        lastAppliedPrefs <- readIORef lastAppliedPrefsRef
-        mapM_ (\ (FD _ _ _ _ _ applyF) -> runReaderT (applyF newPrefs lastAppliedPrefs) ghfR) prefsDesc
-        writeF newPrefs
-        runReaderT (modifyGhf_ modifyF) ghfR
-        widgetDestroy dialog)
-    apply `onClicked` (do
-        newPrefs <- foldM (\ prf getEx -> getEx prf) prefs getExts
-        lastAppliedPrefs <- readIORef lastAppliedPrefsRef
-        mapM_ (\ (FD _ _ _ _ _ applyF) -> runReaderT (applyF newPrefs lastAppliedPrefs) ghfR) prefsDesc
-        writeIORef lastAppliedPrefsRef newPrefs)
-    restore `onClicked` (do
-        lastAppliedPrefs <- readIORef lastAppliedPrefsRef
-        mapM_ (\ (FD _ _ _ _ _ applyF) -> runReaderT (applyF prefs lastAppliedPrefs) ghfR) prefsDesc
-        mapM_ (\ setInj -> setInj prefs) setInjs
-        writeIORef lastAppliedPrefsRef prefs)
-    cancel `onClicked` (do
-        lastAppliedPrefs <- readIORef lastAppliedPrefsRef
-        mapM_ (\ (FD _ _ _ _ _ applyF) -> runReaderT (applyF prefs lastAppliedPrefs) ghfR) prefsDesc
-        widgetDestroy dialog)
-    boxPackStart vb bb PackNatural 0
-    containerAdd dialog vb
-    widgetShowAll dialog    
-    return ()
-
 
 boolEditor :: Editor Bool
 boolEditor label = do

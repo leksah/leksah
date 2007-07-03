@@ -12,6 +12,9 @@ import Control.Monad.Reader
 import Distribution.PackageDescription
 import Distribution.Package
 import Distribution.License
+import Data.IORef
+import Data.List(unzip4)
+
 
 import Ghf.Core
 import Ghf.PreferencesBase
@@ -50,13 +53,15 @@ projectNew = do
                 return Nothing
     case mbDirName of
         Nothing -> return ()
-        Just dirName -> lift $do
-            putStrLn dirName
-            b1 <- doesFileExist (dirName ++ "Setup.hs")
-            b2 <- doesFileExist (dirName ++ "Setup.lhs")   
-            if  b1 || b2  
-                then putStrLn "Setup.(l)hs already exist"
-                else writeFile (dirName ++ "/Setup.lhs") standardSetup         
+        Just dirName -> do
+            lift $do
+                putStrLn dirName
+                b1 <- doesFileExist (dirName ++ "Setup.hs")
+                b2 <- doesFileExist (dirName ++ "Setup.lhs")   
+                if  b1 || b2  
+                    then putStrLn "Setup.(l)hs already exist"
+                    else writeFile (dirName ++ "/Setup.lhs") standardSetup  
+            editPackage emptyPackageDescription dirName      
             return ()
                                          
 {--
@@ -84,12 +89,6 @@ extraTmpFiles :: [FilePath]
 }
 --}
 
-editPackage :: PackageDescription -> String -> IO ()
-editPackage package packageDir = do
-    ghfR <- ask
-    res <- editPrefs' package packageDescription ghfR (writePackageDescription (packageDir ++ "cabal.cabal"))
-    lift $putStrLn $show res
-
 
 packageDescription :: [FieldDescription PackageDescription]
 packageDescription = [
@@ -97,14 +96,72 @@ packageDescription = [
             emptyPrinter
             emptyParser
             package
-            (\ (n,v) b -> b{package = PackageIdentifier n v})
-            (\ (PackageIdentifier n v) -> (pairEditor (stringEditor "Name") 
-                                            (genericEditor "Version") "Package Identifier") (n,v))
+            (\ a b -> b{package = a})
+            packageEditor
             (\a -> return ())
-    ,   field "License"
+    ,   field "License" ""
             emptyPrinter
             emptyParser
             license
             (\ a b -> b{license = a})
-            selectionEditor [GPL, LGPL, BSD3, BSD4, PublicDomain, AllRightsReserved, OtherLicense]    
+            (selectionEditor [GPL, LGPL, BSD3, BSD4, PublicDomain, AllRightsReserved, OtherLicense])   
             (\a -> return ()) ]
+
+editPackage :: PackageDescription -> String -> GhfAction
+editPackage package packageDir = do
+    ghfR <- ask
+    res <- lift $editPackage' packageDir package packageDescription ghfR 
+    lift $putStrLn $show res
+
+editPackage' :: String -> PackageDescription -> [FieldDescription PackageDescription] -> GhfRef -> IO ()
+editPackage' packageDir prefs prefsDesc ghfR   = do
+    lastAppliedPrefsRef <- newIORef prefs
+    dialog  <- windowNew
+    vb      <- vBoxNew False 12
+    bb      <- hButtonBoxNew
+    apply   <- buttonNewFromStock "gtk-apply"
+    restore <- buttonNewFromStock "gtk-restore"
+    ok      <- buttonNewFromStock "gtk-ok"
+    cancel  <- buttonNewFromStock "gtk-cancel"
+    boxPackStart bb apply PackNatural 0
+    boxPackStart bb restore PackNatural 0
+    boxPackStart bb ok PackNatural 0
+    boxPackStart bb cancel PackNatural 0
+    resList <- mapM (\ (FD _ _ _ _ editorF _) -> editorF prefs) prefsDesc
+    let (widgets, setInjs, getExts,_) = unzip4 resList 
+    mapM_ (\ sb -> boxPackStart vb sb PackNatural 12) widgets
+    ok `onClicked` (do
+        newPrefs <- foldM (\ a b -> b a) prefs getExts
+        lastAppliedPrefs <- readIORef lastAppliedPrefsRef
+        mapM_ (\ (FD _ _ _ _ _ applyF) -> runReaderT (applyF newPrefs lastAppliedPrefs) ghfR) prefsDesc
+        let PackageIdentifier n v =  package newPrefs
+        writePackageDescription (packageDir ++ "/" ++ n ++ ".cabal") newPrefs
+        --runReaderT (modifyGhf_ (\ghf -> return (ghf{prefs = newPrefs}))) ghfR
+        widgetDestroy dialog)
+    apply `onClicked` (do
+        newPrefs <- foldM (\ prf getEx -> getEx prf) prefs getExts
+        lastAppliedPrefs <- readIORef lastAppliedPrefsRef
+        mapM_ (\ (FD _ _ _ _ _ applyF) -> runReaderT (applyF newPrefs lastAppliedPrefs) ghfR) prefsDesc
+        writeIORef lastAppliedPrefsRef newPrefs)
+    restore `onClicked` (do
+        lastAppliedPrefs <- readIORef lastAppliedPrefsRef
+        mapM_ (\ (FD _ _ _ _ _ applyF) -> runReaderT (applyF prefs lastAppliedPrefs) ghfR) prefsDesc
+        mapM_ (\ setInj -> setInj prefs) setInjs
+        writeIORef lastAppliedPrefsRef prefs)
+    cancel `onClicked` (do
+        lastAppliedPrefs <- readIORef lastAppliedPrefsRef
+        mapM_ (\ (FD _ _ _ _ _ applyF) -> runReaderT (applyF prefs lastAppliedPrefs) ghfR) prefsDesc
+        widgetDestroy dialog)
+    boxPackStart vb bb PackNatural 0
+    containerAdd dialog vb
+    widgetShowAll dialog    
+    return ()
+
+packageEditor :: Editor PackageIdentifier
+packageEditor name = do
+    (wid,inj,ext,notif) <- (pairEditor (stringEditor) (genericEditor) "Package Identifier")
+    let pinj (PackageIdentifier n v) = inj (n,v)
+    let pext = do
+        (n,v) <- ext
+        return (PackageIdentifier n v)
+    return (wid,pinj,pext,notif)   
