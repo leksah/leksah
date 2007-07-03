@@ -9,9 +9,12 @@ module Ghf.Project (
 import Graphics.UI.Gtk
 import System.Directory
 import Control.Monad.Reader
+import Distribution.PackageDescription
+import Distribution.Package
+import Distribution.License
 
 import Ghf.Core
-import Distribution.PackageDescription
+import Ghf.PreferencesBase
 
 standardSetup = "#!/usr/bin/runhaskell \n\
 \> module Main where\n\
@@ -56,4 +59,52 @@ projectNew = do
                 else writeFile (dirName ++ "/Setup.lhs") standardSetup         
             return ()
                                          
+{--
+   data PackageDescription = PackageDescription {
+   package :: PackageIdentifier
+   license :: License
+licenseFile :: FilePath
+copyright :: String
+maintainer :: String
+author :: String
+stability :: String
+testedWith :: [(CompilerFlavor, VersionRange)]
+homepage :: String
+pkgUrl :: String
+synopsis :: String
+description :: String
+category :: String
+buildDepends :: [Dependency]
+descCabalVersion :: VersionRange
+library :: (Maybe Library)
+executables :: [Executable]
+dataFiles :: [FilePath]
+extraSrcFiles :: [FilePath]
+extraTmpFiles :: [FilePath]
+}
+--}
 
+editPackage :: PackageDescription -> String -> IO ()
+editPackage package packageDir = do
+    ghfR <- ask
+    res <- editPrefs' package packageDescription ghfR (writePackageDescription (packageDir ++ "cabal.cabal"))
+    lift $putStrLn $show res
+
+
+packageDescription :: [FieldDescription PackageDescription]
+packageDescription = [
+        field "Package Identifier" "" 
+            emptyPrinter
+            emptyParser
+            package
+            (\ (n,v) b -> b{package = PackageIdentifier n v})
+            (\ (PackageIdentifier n v) -> (pairEditor (stringEditor "Name") 
+                                            (genericEditor "Version") "Package Identifier") (n,v))
+            (\a -> return ())
+    ,   field "License"
+            emptyPrinter
+            emptyParser
+            license
+            (\ a b -> b{license = a})
+            selectionEditor [GPL, LGPL, BSD3, BSD4, PublicDomain, AllRightsReserved, OtherLicense]    
+            (\a -> return ()) ]

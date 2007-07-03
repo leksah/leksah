@@ -24,6 +24,10 @@ module Ghf.PreferencesBase (
 ,   intParser
 ,   pairParser
 ,   identifier
+,   emptyParser
+
+,   showPrefs
+,   emptyPrinter
 
 ,   editPrefs'
 ,   boolEditor
@@ -32,6 +36,7 @@ module Ghf.PreferencesBase (
 ,   maybeEditor
 ,   pairEditor
 ,   genericEditor
+,   selectionEditor
 ) where
 
 import Text.ParserCombinators.Parsec hiding (Parser)
@@ -45,7 +50,7 @@ import Control.Monad.Reader
 import qualified Data.Map as Map
 import Data.Map(Map,(!))
 import Data.IORef
-import Data.List(unzip4)
+import Data.List(unzip4,elemIndex)
 
 
 import Ghf.Core
@@ -178,12 +183,26 @@ intParser = do
     i <- integer
     return (fromIntegral i)
 
+emptyParser :: CharParser () a
+emptyParser = pzero
+
+-- ------------------------------------------------------------
+-- * Printing
+-- ------------------------------------------------------------
+
+showPrefs :: a -> [FieldDescription a] -> String
+showPrefs prefs prefsDesc = PP.render $
+    foldl (\ doc (FD _ _ printer _ _ _) -> doc PP.$+$ printer prefs) PP.empty prefsDesc 
+
+emptyPrinter :: alpha -> PP.Doc
+emptyPrinter _ = PP.empty
+
 -- ------------------------------------------------------------
 -- * Editing
 -- ------------------------------------------------------------
 
-editPrefs' :: Prefs -> [FieldDescription Prefs] -> GhfRef -> (FilePath -> Prefs -> IO ()) -> IO ()
-editPrefs' prefs prefsDesc ghfR writeF = do
+editPrefs' :: a -> [FieldDescription a] -> GhfRef -> (a -> IO ()) -> (Ghf -> IO Ghf) -> IO ()
+editPrefs' prefs prefsDesc ghfR writeF modifyF = do
     lastAppliedPrefsRef <- newIORef prefs
     dialog  <- windowNew
     vb      <- vBoxNew False 12
@@ -203,8 +222,8 @@ editPrefs' prefs prefsDesc ghfR writeF = do
         newPrefs <- foldM (\ a b -> b a) prefs getExts
         lastAppliedPrefs <- readIORef lastAppliedPrefsRef
         mapM_ (\ (FD _ _ _ _ _ applyF) -> runReaderT (applyF newPrefs lastAppliedPrefs) ghfR) prefsDesc
-        writeF "config/Default.prefs" newPrefs
-        runReaderT (modifyGhf_ (\ghf -> return (ghf{prefs = newPrefs}))) ghfR
+        writeF newPrefs
+        runReaderT (modifyGhf_ modifyF) ghfR
         widgetDestroy dialog)
     apply `onClicked` (do
         newPrefs <- foldM (\ prf getEx -> getEx prf) prefs getExts
@@ -224,6 +243,7 @@ editPrefs' prefs prefsDesc ghfR writeF = do
     containerAdd dialog vb
     widgetShowAll dialog    
     return ()
+
 
 boolEditor :: Editor Bool
 boolEditor label = do
@@ -350,3 +370,27 @@ genericEditor label = do
     let notifiers = Map.fromList [(Changed,changeNotifier),(Focus,focusNotifier)]
     return ((castToWidget) frame, injector, extractor, notifiers)
 
+selectionEditor :: (Show beta, Read beta, Eq beta) => [beta] -> Editor beta
+selectionEditor list label = do
+    frame   <-  frameNew
+    frameSetShadowType frame ShadowNone
+    frameSetLabel frame label
+    combo   <-  comboBoxNewText
+    mapM_ (\v -> comboBoxAppendText combo (show v)) list
+    containerAdd frame combo
+    let injector = (\t -> let mbInd = elemIndex t list in
+                            case mbInd of
+                                Just ind -> comboBoxSetActive combo ind
+                                Nothing -> return ())
+    let extractor = do  mbInd <- comboBoxGetActive combo; 
+                        case mbInd of 
+                            Just ind -> return (list !! ind)
+                            Nothing -> error "nothing selected"
+    let changeNotifier f =  do
+        combo `onFocusOut` (\ _ -> do f; return False)
+        return ()
+    let focusNotifier f = do
+        combo `onFocusIn` (\ _ -> do f; return False)
+        return ()
+    let notifiers = Map.fromList [(Changed,changeNotifier),(Focus,focusNotifier)]
+    return ((castToWidget) frame, injector, extractor, notifiers)

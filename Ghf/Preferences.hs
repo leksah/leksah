@@ -126,10 +126,6 @@ readPrefs fn = do
 writePrefs :: FilePath -> Prefs -> IO ()
 writePrefs fpath prefs = writeFile fpath (showPrefs prefs prefsDescription)
 
-showPrefs :: a -> [FieldDescription a] -> String
-showPrefs prefs prefsDesc = PP.render $
-    foldl (\ doc (FD _ _ printer _ _ _) -> doc PP.$+$ printer prefs) PP.empty prefsDesc 
-
 -- ------------------------------------------------------------
 -- * Editing
 -- ------------------------------------------------------------
@@ -138,7 +134,7 @@ editPrefs :: GhfAction
 editPrefs = do
     ghfR <- ask
     p <- readGhf prefs
-    res <- lift $editPrefs' p prefsDescription ghfR writePrefs
+    res <- lift $editPrefs' p prefsDescription ghfR (writePrefs "config/Default.prefs")
+                    (\ghf -> return (ghf{prefs = newPrefs}))
     lift $putStrLn $show res
-
 
