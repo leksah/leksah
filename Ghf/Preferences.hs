@@ -147,7 +147,7 @@ editPrefs' prefs prefsDesc ghfR  = do
     vb      <- vBoxNew False 12
     bb      <- hButtonBoxNew
     apply   <- buttonNewFromStock "gtk-apply"
-    restore <- buttonNewFromStock "gtk-restore"
+    restore <- buttonNewFromStock "Restore"
     ok      <- buttonNewFromStock "gtk-ok"
     cancel  <- buttonNewFromStock "gtk-cancel"
     boxPackStart bb apply PackNatural 0

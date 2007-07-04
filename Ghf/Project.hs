@@ -14,6 +14,7 @@ import Distribution.Package
 import Distribution.License
 import Data.IORef
 import Data.List(unzip4)
+import Data.Version
 
 
 import Ghf.Core
@@ -68,17 +69,17 @@ projectNew = do
    data PackageDescription = PackageDescription {
    package :: PackageIdentifier
    license :: License
-licenseFile :: FilePath
-copyright :: String
-maintainer :: String
-author :: String
-stability :: String
+    licenseFile :: FilePath
+    copyright :: String
+    maintainer :: String
+    author :: String
+    stability :: String
 testedWith :: [(CompilerFlavor, VersionRange)]
-homepage :: String
-pkgUrl :: String
-synopsis :: String
-description :: String
-category :: String
+    homepage :: String
+    pkgUrl :: String
+    synopsis :: String
+    description :: String
+    category :: String
 buildDepends :: [Dependency]
 descCabalVersion :: VersionRange
 library :: (Maybe Library)
@@ -105,7 +106,79 @@ packageDescription = [
             license
             (\ a b -> b{license = a})
             (selectionEditor [GPL, LGPL, BSD3, BSD4, PublicDomain, AllRightsReserved, OtherLicense])   
-            (\a -> return ()) ]
+            (\a -> return ())
+    ,   field "License File" ""
+            emptyPrinter
+            emptyParser
+            licenseFile
+            (\ a b -> b{licenseFile = a})
+            (fileEditor)   
+            (\a -> return ())
+    ,   field "Copyright" "" 
+            emptyPrinter
+            emptyParser
+            copyright
+            (\ a b -> b{copyright = a})
+            stringEditor
+            (\a -> return ())
+    ,   field "Maintainer" "" 
+            emptyPrinter
+            emptyParser
+            maintainer
+            (\ a b -> b{maintainer = a})
+            stringEditor
+            (\a -> return ())
+    ,   field "Author" "" 
+            emptyPrinter
+            emptyParser
+            author
+            (\ a b -> b{author = a})
+            stringEditor
+            (\a -> return ())
+    ,   field "Stability" "" 
+            emptyPrinter
+            emptyParser
+            stability
+            (\ a b -> b{stability = a})
+            stringEditor
+            (\a -> return ())
+
+    ,   field "Homepage" "" 
+            emptyPrinter
+            emptyParser
+            homepage
+            (\ a b -> b{homepage = a})
+            stringEditor
+            (\a -> return ())
+    ,   field "Package Url" "" 
+            emptyPrinter
+            emptyParser
+            pkgUrl
+            (\ a b -> b{pkgUrl = a})
+            stringEditor
+            (\a -> return ())
+    ,   field "Synopsis" "A one-line summary of this package" 
+            emptyPrinter
+            emptyParser
+            synopsis
+            (\ a b -> b{synopsis = a})
+            stringEditor
+            (\a -> return ())
+    ,   field "Description" "A more verbose description of this package" 
+            emptyPrinter
+            emptyParser
+            description
+            (\ a b -> b{description = a})
+            multilineStringEditor
+            (\a -> return ())
+    ,   field "Category" "" 
+            emptyPrinter
+            emptyParser
+            category
+            (\ a b -> b{category = a})
+            stringEditor
+            (\a -> return ())
+  ]
 
 editPackage :: PackageDescription -> String -> GhfAction
 editPackage package packageDir = do
@@ -119,11 +192,9 @@ editPackage' packageDir prefs prefsDesc ghfR   = do
     dialog  <- windowNew
     vb      <- vBoxNew False 12
     bb      <- hButtonBoxNew
-    apply   <- buttonNewFromStock "gtk-apply"
-    restore <- buttonNewFromStock "gtk-restore"
+    restore <- buttonNewFromStock "Restore"
     ok      <- buttonNewFromStock "gtk-ok"
     cancel  <- buttonNewFromStock "gtk-cancel"
-    boxPackStart bb apply PackNatural 0
     boxPackStart bb restore PackNatural 0
     boxPackStart bb ok PackNatural 0
     boxPackStart bb cancel PackNatural 0
@@ -138,11 +209,6 @@ editPackage' packageDir prefs prefsDesc ghfR   = do
         writePackageDescription (packageDir ++ "/" ++ n ++ ".cabal") newPrefs
         --runReaderT (modifyGhf_ (\ghf -> return (ghf{prefs = newPrefs}))) ghfR
         widgetDestroy dialog)
-    apply `onClicked` (do
-        newPrefs <- foldM (\ prf getEx -> getEx prf) prefs getExts
-        lastAppliedPrefs <- readIORef lastAppliedPrefsRef
-        mapM_ (\ (FD _ _ _ _ _ applyF) -> runReaderT (applyF newPrefs lastAppliedPrefs) ghfR) prefsDesc
-        writeIORef lastAppliedPrefsRef newPrefs)
     restore `onClicked` (do
         lastAppliedPrefs <- readIORef lastAppliedPrefsRef
         mapM_ (\ (FD _ _ _ _ _ applyF) -> runReaderT (applyF prefs lastAppliedPrefs) ghfR) prefsDesc
@@ -159,9 +225,12 @@ editPackage' packageDir prefs prefsDesc ghfR   = do
 
 packageEditor :: Editor PackageIdentifier
 packageEditor name = do
-    (wid,inj,ext,notif) <- (pairEditor (stringEditor) (genericEditor) "Package Identifier")
+    (wid,inj,ext,notif) <- (pairEditor (stringEditor) (versionEditor) "Package Identifier")
     let pinj (PackageIdentifier n v) = inj (n,v)
     let pext = do
-        (n,v) <- ext
-        return (PackageIdentifier n v)
+        mbp <- ext
+        case mbp of
+            Nothing -> return Nothing
+            Just (n,v) -> return (Just $PackageIdentifier n v)
     return (wid,pinj,pext,notif)   
+
