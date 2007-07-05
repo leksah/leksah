@@ -2,8 +2,8 @@
 -- | Module for menus and toolbars
 -- 
 
-module Ghf.Project (
-    projectNew
+module Ghf.Package (
+    packageNew
 ) where
 
 import Graphics.UI.Gtk
@@ -15,10 +15,15 @@ import Distribution.License
 import Data.IORef
 import Data.List(unzip4)
 import Data.Version
-
+import Distribution.Compiler
+import Distribution.Version
+import qualified Data.Map as Map
+import Data.Map (Map,(!))
+import Text.ParserCombinators.ReadP(readP_to_S)
 
 import Ghf.Core
 import Ghf.PreferencesBase
+import Ghf.View
 
 standardSetup = "#!/usr/bin/runhaskell \n\
 \> module Main where\n\
@@ -26,9 +31,8 @@ standardSetup = "#!/usr/bin/runhaskell \n\
 \> main :: IO ()\n\
 \> main = defaultMain\n\n"
 
-
-projectNew :: GhfAction
-projectNew = do
+packageNew :: GhfAction
+packageNew = do
     window  <- readGhf window  
     mbDirName <- lift $ do     
         dialog <- fileChooserDialogNew
@@ -74,7 +78,7 @@ projectNew = do
     maintainer :: String
     author :: String
     stability :: String
-testedWith :: [(CompilerFlavor, VersionRange)]
+    testedWith :: [(CompilerFlavor, VersionRange)]
     homepage :: String
     pkgUrl :: String
     synopsis :: String
@@ -142,7 +146,15 @@ packageDescription = [
             (\ a b -> b{stability = a})
             stringEditor
             (\a -> return ())
-
+    ,   field "Tested with" "" 
+            emptyPrinter
+            emptyParser
+            (\a -> case testedWith a of
+                        []          -> (GHC,AnyVersion)
+                        (p:r)       -> p)  
+            (\ a b -> b{testedWith = [a]})
+            testedWidthEditor
+            (\a -> return ())
     ,   field "Homepage" "" 
             emptyPrinter
             emptyParser
@@ -225,7 +237,7 @@ editPackage' packageDir prefs prefsDesc ghfR   = do
 
 packageEditor :: Editor PackageIdentifier
 packageEditor name = do
-    (wid,inj,ext,notif) <- (pairEditor (stringEditor) (versionEditor) "Package Identifier")
+    (wid,inj,ext,notif) <- pairEditor (stringEditor) (versionEditor) "Package Identifier"
     let pinj (PackageIdentifier n v) = inj (n,v)
     let pext = do
         mbp <- ext
@@ -233,4 +245,66 @@ packageEditor name = do
             Nothing -> return Nothing
             Just (n,v) -> return (Just $PackageIdentifier n v)
     return (wid,pinj,pext,notif)   
+
+compilerFlavorEditor :: Editor CompilerFlavor
+compilerFlavorEditor name = do
+    (wid,inj,ext,notif) <- eitherOrEditor (selectionEditor flavors) (stringEditor) name
+    let cfinj (OtherCompiler str) = inj (Right "")
+    let cfinj other = inj (Left other)    
+    let cfext = do
+        mbp <- ext
+        case mbp of
+            Nothing -> return Nothing
+            Just (Right s) -> return (Just $OtherCompiler s)
+            Just (Left other) -> return (Just other)
+    return (wid,cfinj,cfext,notif)
+        where 
+        flavors = [GHC, NHC, Hugs, HBC, Helium, JHC]
+
+testedWidthEditor :: Editor (CompilerFlavor, VersionRange)
+testedWidthEditor name = do
+    pairEditor (compilerFlavorEditor) (versionRangeEditor) "Package Identifier"
+
+versionRangeEditor :: Editor VersionRange
+versionRangeEditor name = do
+    (wid,inj,ext,notif) <- 
+        maybeEditor (eitherOrEditor 
+            (pairEditor (selectionEditor v1) 
+                        (versionEditor) ) 
+            (pairEditor (selectionEditor v2)
+                        (pairEditor versionRangeEditor versionRangeEditor))) ""
+    let vrinj AnyVersion                =   inj Nothing
+    let vrinj (ThisVersion v)           =   inj (Just (Left (ThisVersionS,v))) 
+    let vrinj (LaterVersion v)          =   inj (Just (Left (LaterVersionS,v)))
+    let vrinj (EarlierVersion v)        =   inj (Just (Left (EarlierVersionS,v)))
+    let vrinj (UnionVersionRanges v1 v2)=  inj (Just (Right (UnionVersionRangesS,(v1,v2))))    
+    let vrinj (IntersectVersionRanges v1 v2) 
+                                        =    inj (Just (Right (IntersectVersionRangesS,(v1,v2))))
+    let vrext = do  mvr <- ext
+                    case mvr of
+                        Just Nothing -> return (Just AnyVersion)
+                        Just (Just (Left (ThisVersionS,v)))     -> return (Just (ThisVersion v))
+                        Just (Just (Left (LaterVersionS,v)))    -> return (Just (LaterVersion v))
+                        Just (Just (Left (EarlierVersionS,v)))   -> return (Just (EarlierVersion v))
+                        Just (Just (Right (UnionVersionRangesS,(v1,v2)))) 
+                                                        -> return (Just (UnionVersionRanges v1 v2))    
+                        Just (Just (Right (IntersectVersionRangesS,(v1,v2)))) 
+                                                        -> return (Just (IntersectVersionRanges v1 v2))    
+    return (wid,vrinj,vrext,notif)
+        where
+            v1 = [ThisVersionS,LaterVersionS,EarlierVersionS]
+            v2 = [UnionVersionRangesS,IntersectVersionRangesS]
+
+data Version1 = ThisVersionS | LaterVersionS | EarlierVersionS
+    deriving (Eq)
+instance Show Version1 where
+    show ThisVersionS   =  "ThisVersion"
+    show LaterVersionS  =  "LaterVersion"
+    show EarlierVersionS =  "EarlierVersion"
+
+data Version2 = UnionVersionRangesS | IntersectVersionRangesS 
+    deriving (Eq)
+instance Show Version2 where
+    show UnionVersionRangesS =  "UnionVersionRanges"
+    show IntersectVersionRangesS =  "IntersectVersionRanges"
 

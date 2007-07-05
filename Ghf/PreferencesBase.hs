@@ -34,6 +34,7 @@ module Ghf.PreferencesBase (
 ,   intEditor
 ,   maybeEditor
 ,   pairEditor
+,   eitherOrEditor
 ,   genericEditor
 ,   selectionEditor
 ,   fileEditor
@@ -292,7 +293,7 @@ genericEditor label = do
     let notifiers = standardNotifiers (castToWidget entry)
     return ((castToWidget) frame, injector, extractor, notifiers)
 
-selectionEditor :: (Show beta, Read beta, Eq beta) => [beta] -> Editor beta
+selectionEditor :: (Show beta, Eq beta) => [beta] -> Editor beta
 selectionEditor list label = do
     frame   <-  frameNew
     frameSetShadowType frame ShadowNone
@@ -308,7 +309,8 @@ selectionEditor list label = do
                         case mbInd of 
                             Just ind -> return (Just (list !! ind))
                             Nothing -> return Nothing
-    let notifiers = standardNotifiers (castToWidget combo)
+    let changedNotifier f = do combo `onChanged` f; return ()
+    let notifiers = Map.insert "onChanged" changedNotifier (standardNotifiers (castToWidget combo))
     return ((castToWidget) frame, injector, extractor, notifiers)
 
 fileEditor :: Editor FilePath
@@ -411,17 +413,71 @@ maybeEditor childEditor label = do
     let notifiers = Map.unionWith (>>) not1 not2
     return ((castToWidget) frame, injector, extractor, notifiers)
 
+eitherOrEditor :: Editor alpha -> Editor beta -> Editor (Either alpha beta)
+eitherOrEditor leftEditor rightEditor label = do
+    frame   <-  frameNew
+    frameSetLabel frame label
+    (boolFrame,inj1,ext1,not1) <- boolEditor  ""
+    (leftFrame,inj2,ext2,not2) <- leftEditor ""
+    (rightFrame,inj3,ext3,not3) <- rightEditor ""
+    let injector =  \ v -> case v of
+                            Left vl -> do
+                              widgetShow leftFrame
+                              widgetHide rightFrame  
+                              inj2 vl
+                              inj1 True
+                            Right vr  -> do
+                              widgetHide leftFrame
+                              widgetShow rightFrame  
+                              inj3 vr
+                              inj1 False
+    let extractor = do
+        mbbool <- ext1
+        case mbbool of
+            Nothing -> return Nothing 
+            Just True   ->  do
+                value <- ext2
+                case value of
+                    Nothing -> return Nothing
+                    Just value -> return (Just (Left value))  
+            Just False -> do
+                value <- ext3
+                case value of
+                    Nothing -> return Nothing
+                    Just value -> return (Just (Right value))      
+    vBox <- vBoxNew False 1
+    boxPackStart vBox boolFrame PackNatural 0
+    boxPackStart vBox leftFrame PackNatural 0
+    boxPackStart vBox rightFrame PackNatural 0
+    widgetHide leftFrame
+    containerAdd frame vBox    
+    (not1 ! "onClicked")
+        (do bool <- ext1
+            case bool of
+                Just True -> do
+                    widgetShow leftFrame
+                    widgetHide rightFrame
+                Just False -> do
+                    widgetShow rightFrame
+                    widgetHide leftFrame
+                Nothing -> return ())
+    let notifiers = Map.unionWith (>>) not1 (Map.unionWith (>>) not2 not3)
+    return ((castToWidget) frame, injector, extractor, notifiers)
+
 pairEditor :: Editor alpha -> Editor beta -> Editor (alpha,beta)
 pairEditor fstEd sndEd label = do
     frame   <-  frameNew
     frameSetLabel frame label
     (fstFrame,inj1,ext1,not1) <- fstEd ""
+    widgetSetName fstFrame "first"
     (sndFrame,inj2,ext2,not2) <- sndEd ""
+    widgetSetName sndFrame "snd"
     hBox <- hBoxNew False 1
+    widgetSetName hBox "box"    
     boxPackStart hBox fstFrame PackGrow 0
     boxPackStart hBox sndFrame PackGrow 0
     containerAdd frame hBox
-    let injector = (\(f,s) -> do inj1 f; inj2 s)
+    let injector = (\(f,s) -> inj1 f >> inj2 s)
     let extractor = do
         f <- ext1
         s <- ext2

@@ -13,6 +13,7 @@ module Ghf.View (
 ,   newNotebook
 ,   viewTabsPos
 ,   viewSwitchTabs
+,   widgetFromPath
 
 ,   getFindEntry
 ,   getFindBar
