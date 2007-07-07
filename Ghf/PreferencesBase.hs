@@ -544,15 +544,14 @@ listStoreGetValues :: New.ListStore a -> IO [a]
 listStoreGetValues listStore = do
     mbi <- New.treeModelGetIterFirst listStore
     getTail mbi 
-    where getTail mbi = do
-        case mbi of
-            Nothing -> return []
-            Just iter -> do
-                [i] <- New.treeModelGetPath listStore iter
-                v <- New.listStoreGetValue listStore i
-                mbi2 <- New.treeModelIterNext listStore iter
-                rest <- getTail mbi2
-                return (v : rest)
+    where getTail mbi = case mbi of
+                            Nothing -> return []
+                            Just iter -> do
+                                [i] <- New.treeModelGetPath listStore iter
+                                v <- New.listStoreGetValue listStore i
+                                mbi2 <- New.treeModelIterNext listStore iter
+                                rest <- getTail mbi2
+                                return (v : rest)
         
 versionEditor :: Editor Version
 versionEditor label = do

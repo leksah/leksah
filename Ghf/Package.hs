@@ -94,10 +94,12 @@ extraTmpFiles :: [FilePath]
 }
 --}
 
+type PDescr = [(String,[FieldDescription PackageDescription])]
 
-packageDescription :: [FieldDescription PackageDescription]
+packageDescription :: PDescr
 packageDescription = [
-{--        field "Package Identifier" "" 
+    ("Basic", [
+        field "Package Identifier" "" 
             emptyPrinter
             emptyParser
             package
@@ -111,7 +113,32 @@ packageDescription = [
             (\ a b -> b{license = a})
             (selectionEditor [GPL, LGPL, BSD3, BSD4, PublicDomain, AllRightsReserved, OtherLicense])   
             (\a -> return ())
-    ,   field "License File" ""
+    ,   field "Author" "" 
+            emptyPrinter
+            emptyParser
+            author
+            (\ a b -> b{author = a})
+            stringEditor
+            (\a -> return ())
+    ,   field "Synopsis" "A one-line summary of this package" 
+            emptyPrinter
+            emptyParser
+            synopsis
+            (\ a b -> b{synopsis = a})
+            stringEditor
+            (\a -> return ())
+    ]),
+    ("Specification",[
+        field "Build Dependencies" "" 
+            emptyPrinter
+            emptyParser
+            buildDepends
+            (\ a b -> b{buildDepends = a})
+            (multisetEditor dependencyEditor "Dependency")
+            (\a -> return ())
+    ]),        
+    ("Additional",[
+        field "License File" ""
             emptyPrinter
             emptyParser
             licenseFile
@@ -130,13 +157,6 @@ packageDescription = [
             emptyParser
             maintainer
             (\ a b -> b{maintainer = a})
-            stringEditor
-            (\a -> return ())
-    ,   field "Author" "" 
-            emptyPrinter
-            emptyParser
-            author
-            (\ a b -> b{author = a})
             stringEditor
             (\a -> return ())
     ,   field "Stability" "" 
@@ -169,13 +189,6 @@ packageDescription = [
             (\ a b -> b{pkgUrl = a})
             stringEditor
             (\a -> return ())
-    ,   field "Synopsis" "A one-line summary of this package" 
-            emptyPrinter
-            emptyParser
-            synopsis
-            (\ a b -> b{synopsis = a})
-            stringEditor
-            (\a -> return ())
     ,   field "Description" "A more verbose description of this package" 
             emptyPrinter
             emptyParser
@@ -183,22 +196,14 @@ packageDescription = [
             (\ a b -> b{description = a})
             multilineStringEditor
             (\a -> return ())
-    ,--}   field "Category" "" 
+    ,   field "Category" "" 
             emptyPrinter
             emptyParser
             category
             (\ a b -> b{category = a})
             stringEditor
             (\a -> return ())
-    ,   field "Build Dependencies" "" 
-            emptyPrinter
-            emptyParser
-            buildDepends
-            (\ a b -> b{buildDepends = a})
-            (multisetEditor dependencyEditor "Dependency")
-            (\a -> return ())
-
-  ]
+    ])]
 
 editPackage :: PackageDescription -> String -> GhfAction
 editPackage package packageDir = do
@@ -206,42 +211,51 @@ editPackage package packageDir = do
     res <- lift $editPackage' packageDir package packageDescription ghfR 
     lift $putStrLn $show res
 
-editPackage' :: String -> PackageDescription -> [FieldDescription PackageDescription] -> GhfRef -> IO ()
-editPackage' packageDir prefs prefsDesc ghfR   = do
-    lastAppliedPrefsRef <- newIORef prefs
-    dialog  <- windowNew
-    vb      <- vBoxNew False 0
-    bb      <- hButtonBoxNew
-    restore <- buttonNewFromStock "Restore"
-    ok      <- buttonNewFromStock "gtk-ok"
-    cancel  <- buttonNewFromStock "gtk-cancel"
-    boxPackStart bb restore PackNatural 0
-    boxPackStart bb ok PackNatural 0
-    boxPackStart bb cancel PackNatural 0
-    resList <- mapM (\ (FD _ _ _ _ editorF _) -> editorF prefs) prefsDesc
-    let (widgets, setInjs, getExts,_) = unzip4 resList 
-    mapM_ (\ sb -> boxPackStart vb sb PackNatural 12) widgets
-    ok `onClicked` (do
-        newPrefs <- foldM (\ a b -> b a) prefs getExts
-        lastAppliedPrefs <- readIORef lastAppliedPrefsRef
-        mapM_ (\ (FD _ _ _ _ _ applyF) -> runReaderT (applyF newPrefs lastAppliedPrefs) ghfR) prefsDesc
-        let PackageIdentifier n v =  package newPrefs
-        writePackageDescription (packageDir ++ "/" ++ n ++ ".cabal") newPrefs
-        --runReaderT (modifyGhf_ (\ghf -> return (ghf{prefs = newPrefs}))) ghfR
-        widgetDestroy dialog)
-    restore `onClicked` (do
-        lastAppliedPrefs <- readIORef lastAppliedPrefsRef
-        mapM_ (\ (FD _ _ _ _ _ applyF) -> runReaderT (applyF prefs lastAppliedPrefs) ghfR) prefsDesc
-        mapM_ (\ setInj -> setInj prefs) setInjs
-        writeIORef lastAppliedPrefsRef prefs)
-    cancel `onClicked` (do
-        lastAppliedPrefs <- readIORef lastAppliedPrefsRef
-        mapM_ (\ (FD _ _ _ _ _ applyF) -> runReaderT (applyF prefs lastAppliedPrefs) ghfR) prefsDesc
-        widgetDestroy dialog)
-    boxPackStart vb bb PackNatural 0
-    containerAdd dialog vb
-    widgetShowAll dialog    
-    return ()
+editPackage' :: String -> PackageDescription -> PDescr -> GhfRef -> IO ()
+editPackage' packageDir prefs prefsDesc ghfR   = 
+    let flatPrefsDescr = concatMap snd prefsDesc in do
+        lastAppliedPrefsRef <- newIORef prefs
+        dialog  <- windowNew
+        vb      <- vBoxNew False 0
+        bb      <- hButtonBoxNew
+        restore <- buttonNewFromStock "Restore"
+        ok      <- buttonNewFromStock "gtk-ok"
+        cancel  <- buttonNewFromStock "gtk-cancel"
+        boxPackStart bb restore PackNatural 0
+        boxPackStart bb ok PackNatural 0
+        boxPackStart bb cancel PackNatural 0
+        nb <- newNotebook
+        res <- mapM (\ (tabLabel, partPrefsDescr) -> do
+            resList <- mapM (\ (FD _ _ _ _ editorF _) -> editorF prefs) partPrefsDescr
+            let (widgetsP, setInjsP, getExtsP,notifiersP) = unzip4 resList
+            nbbox <- vBoxNew False 0
+            mapM_ (\ w -> boxPackStart nbbox w PackNatural 0) widgetsP
+            notebookAppendPage nb nbbox tabLabel
+            return (widgetsP, setInjsP, getExtsP, notifiersP)) prefsDesc
+        let (widgets, setInjs, getExts, notifiers) = 
+                foldl (\ (w,i,e,n) (w2,i2,e2,n2) -> (w ++ w2, i ++ i2, e ++ e2, n ++ n2)) ([],[],[],[]) res
+        ok `onClicked` (do
+            newPrefs <- foldM (\ a b -> b a) prefs getExts
+            lastAppliedPrefs <- readIORef lastAppliedPrefsRef
+            mapM_ (\ (FD _ _ _ _ _ applyF) -> runReaderT (applyF newPrefs lastAppliedPrefs) ghfR) flatPrefsDescr
+            let PackageIdentifier n v =  package newPrefs
+            writePackageDescription (packageDir ++ "/" ++ n ++ ".cabal") newPrefs
+            --runReaderT (modifyGhf_ (\ghf -> return (ghf{prefs = newPrefs}))) ghfR
+            widgetDestroy dialog)
+        restore `onClicked` (do
+            lastAppliedPrefs <- readIORef lastAppliedPrefsRef
+            mapM_ (\ (FD _ _ _ _ _ applyF) -> runReaderT (applyF prefs lastAppliedPrefs) ghfR) flatPrefsDescr
+            mapM_ (\ setInj -> setInj prefs) setInjs
+            writeIORef lastAppliedPrefsRef prefs)
+        cancel `onClicked` (do
+            lastAppliedPrefs <- readIORef lastAppliedPrefsRef
+            mapM_ (\ (FD _ _ _ _ _ applyF) -> runReaderT (applyF prefs lastAppliedPrefs) ghfR) flatPrefsDescr
+            widgetDestroy dialog)
+        boxPackStart vb nb PackNatural 0
+        boxPackStart vb bb PackNatural 0
+        containerAdd dialog vb
+        widgetShowAll dialog    
+        return ()
 
 packageEditor :: Editor PackageIdentifier
 packageEditor name = do
