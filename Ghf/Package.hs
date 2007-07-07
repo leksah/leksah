@@ -84,7 +84,7 @@ packageNew = do
     synopsis :: String
     description :: String
     category :: String
-buildDepends :: [Dependency]
+    buildDepends :: [Dependency]
 descCabalVersion :: VersionRange
 library :: (Maybe Library)
 executables :: [Executable]
@@ -97,7 +97,7 @@ extraTmpFiles :: [FilePath]
 
 packageDescription :: [FieldDescription PackageDescription]
 packageDescription = [
-        field "Package Identifier" "" 
+{--        field "Package Identifier" "" 
             emptyPrinter
             emptyParser
             package
@@ -183,13 +183,21 @@ packageDescription = [
             (\ a b -> b{description = a})
             multilineStringEditor
             (\a -> return ())
-    ,   field "Category" "" 
+    ,--}   field "Category" "" 
             emptyPrinter
             emptyParser
             category
             (\ a b -> b{category = a})
             stringEditor
             (\a -> return ())
+    ,   field "Build Dependencies" "" 
+            emptyPrinter
+            emptyParser
+            buildDepends
+            (\ a b -> b{buildDepends = a})
+            (multisetEditor dependencyEditor "Dependency")
+            (\a -> return ())
+
   ]
 
 editPackage :: PackageDescription -> String -> GhfAction
@@ -327,3 +335,14 @@ versionRangeStringEditor name = do
                     return Nothing
                     else return (Just (fst $head l))
     return (wid,pinj,pext,notif) 
+
+dependencyEditor :: Editor Dependency
+dependencyEditor name = do
+    (wid,inj,ext,notif) <- stringEditor name
+    let pinj (Dependency s _) = inj s
+    let pext = do
+        mbp <- ext
+        case mbp of
+            Nothing -> return Nothing
+            Just s -> return (Just $Dependency s AnyVersion)
+    return (wid,pinj,pext,notif)   

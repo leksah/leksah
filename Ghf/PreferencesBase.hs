@@ -39,6 +39,7 @@ module Ghf.PreferencesBase (
 ,   selectionEditor
 ,   fileEditor
 ,   versionEditor
+,   multisetEditor
 ) where
 
 import Text.ParserCombinators.Parsec hiding (Parser)
@@ -48,6 +49,7 @@ import qualified Text.PrettyPrint.HughesPJ as PP
 import Control.Monad(foldM)
 import Graphics.UI.Gtk hiding (afterToggleOverwrite,Focus)
 import Graphics.UI.Gtk.SourceView
+import Graphics.UI.Gtk.ModelView as New
 import Control.Monad.Reader
 import qualified Data.Map as Map
 import Data.Map(Map,(!))
@@ -298,20 +300,20 @@ selectionEditor list label = do
     frame   <-  frameNew
     frameSetShadowType frame ShadowNone
     frameSetLabel frame label
-    combo   <-  comboBoxNewText
-    mapM_ (\v -> comboBoxAppendText combo (show v)) list
+    combo   <-  New.comboBoxNewText
+    mapM_ (\v -> New.comboBoxAppendText combo (show v)) list
     containerAdd frame combo
     let injector = (\t -> let mbInd = elemIndex t list in
                             case mbInd of
-                                Just ind -> comboBoxSetActive combo ind
+                                Just ind -> New.comboBoxSetActive combo ind
                                 Nothing -> return ())
-    let extractor = do  mbInd <- comboBoxGetActive combo; 
+    let extractor = do  mbInd <- New.comboBoxGetActive combo; 
                         case mbInd of 
                             Just ind -> return (Just (list !! ind))
                             Nothing -> return Nothing
-    let changedNotifier f = do combo `onChanged` f; return ()
+    let changedNotifier f = do combo `New.onChanged` f; return ()
     let notifiers = Map.insert "onChanged" changedNotifier (standardNotifiers (castToWidget combo))
-    comboBoxSetActive combo 1
+    New.comboBoxSetActive combo 1
     return ((castToWidget) frame, injector, extractor, notifiers)
 
 fileEditor :: Editor FilePath
@@ -488,6 +490,70 @@ pairEditor fstEd sndEd fstLabel sndLabel label   = do
     let notifiers = Map.unionWith (>>) not1 not2
     return ((castToWidget) frame, injector, extractor, notifiers)
 
+multisetEditor :: Show alpha => Editor alpha -> String -> Editor [alpha]
+multisetEditor singleEditor labelS label =  do
+    
+    frame   <-  frameNew
+    frameSetLabel frame label
+    hBox <- hBoxNew False 1
+    (frameS,injS,extS,notS) <- singleEditor labelS     
+    buttonBox <- vButtonBoxNew
+    addButton <- buttonNewWithLabel "Add"
+    removeButton <- buttonNewWithLabel "Remove"
+    containerAdd buttonBox addButton
+    containerAdd buttonBox removeButton
+
+    listStore <- New.listStoreNew ([]:: [alpha])
+    list <- New.treeViewNewWithModel listStore
+    sel <- New.treeViewGetSelection list
+    New.treeSelectionSetMode sel SelectionSingle
+    renderer <- New.cellRendererTextNew
+    col <- New.treeViewColumnNew
+    New.treeViewAppendColumn list col    
+    New.cellLayoutPackStart col renderer True
+    New.cellLayoutSetAttributes col renderer listStore $ \row -> [ New.cellText := show row ]
+    New.treeViewSetHeadersVisible list False
+
+    boxPackStart hBox list PackNatural 0
+    boxPackStart hBox buttonBox PackNatural 0
+    boxPackStart hBox frameS PackNatural 0
+    containerAdd frame hBox
+    
+    addButton `onClicked` do
+        mbv <- extS
+        case mbv of
+            Just v -> New.listStoreAppend listStore v
+            Nothing -> return ()
+    removeButton `onClicked` do
+        mbi <- New.treeSelectionGetSelected sel
+        case mbi of
+            Nothing -> return ()
+            Just iter -> do
+                [i] <- New.treeModelGetPath listStore iter 
+                New.listStoreRemove listStore i
+    let injector = \ la -> do
+        New.listStoreClear listStore
+        mapM_ (New.listStoreAppend listStore) la
+    let extractor = do
+        v <- listStoreGetValues listStore
+        return (Just v)
+    let notifiers = Map.empty
+    return ((castToWidget) frame, injector, extractor, notifiers)
+        
+listStoreGetValues :: New.ListStore a -> IO [a]
+listStoreGetValues listStore = do
+    mbi <- New.treeModelGetIterFirst listStore
+    getTail mbi 
+    where getTail mbi = do
+        case mbi of
+            Nothing -> return []
+            Just iter -> do
+                [i] <- New.treeModelGetPath listStore iter
+                v <- New.listStoreGetValue listStore i
+                mbi2 <- New.treeModelIterNext listStore iter
+                rest <- getTail mbi2
+                return (v : rest)
+        
 versionEditor :: Editor Version
 versionEditor label = do
     (wid,inj,ext,notif) <- stringEditor label
