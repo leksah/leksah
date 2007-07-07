@@ -202,7 +202,7 @@ editPackage' :: String -> PackageDescription -> [FieldDescription PackageDescrip
 editPackage' packageDir prefs prefsDesc ghfR   = do
     lastAppliedPrefsRef <- newIORef prefs
     dialog  <- windowNew
-    vb      <- vBoxNew False 12
+    vb      <- vBoxNew False 0
     bb      <- hButtonBoxNew
     restore <- buttonNewFromStock "Restore"
     ok      <- buttonNewFromStock "gtk-ok"
@@ -237,7 +237,7 @@ editPackage' packageDir prefs prefsDesc ghfR   = do
 
 packageEditor :: Editor PackageIdentifier
 packageEditor name = do
-    (wid,inj,ext,notif) <- pairEditor (stringEditor) (versionEditor) "Package Identifier"
+    (wid,inj,ext,notif) <- pairEditor (stringEditor) (versionEditor) "Name" "Version" name
     let pinj (PackageIdentifier n v) = inj (n,v)
     let pext = do
         mbp <- ext
@@ -248,7 +248,8 @@ packageEditor name = do
 
 compilerFlavorEditor :: Editor CompilerFlavor
 compilerFlavorEditor name = do
-    (wid,inj,ext,notif) <- eitherOrEditor (selectionEditor flavors) (stringEditor) name
+    (wid,inj,ext,notif) <- eitherOrEditor (selectionEditor flavors) (stringEditor) 
+                                "Known compilers" "" "Other" name
     let cfinj (OtherCompiler str) = inj (Right "")
     let cfinj other = inj (Left other)    
     let cfext = do
@@ -263,25 +264,28 @@ compilerFlavorEditor name = do
 
 testedWidthEditor :: Editor (CompilerFlavor, VersionRange)
 testedWidthEditor name = do
-    pairEditor (compilerFlavorEditor) (versionRangeEditor) "Package Identifier"
+    pairEditor (compilerFlavorEditor) (versionRangeEditor) "Compiler Flavor" "Version Range" name
 
 versionRangeEditor :: Editor VersionRange
 versionRangeEditor name = do
     (wid,inj,ext,notif) <- 
         maybeEditor (eitherOrEditor 
             (pairEditor (selectionEditor v1) 
-                        (versionEditor) ) 
+                        (versionEditor) "" "") 
             (pairEditor (selectionEditor v2)
-                        (pairEditor versionRangeEditor versionRangeEditor))) ""
+                        (pairEditor versionRangeStringEditor versionRangeStringEditor "" "") "" "")
+            "Simple" "Simple Version Range" "Complex Version Range") 
+                "Any Version" "" name
     let vrinj AnyVersion                =   inj Nothing
-    let vrinj (ThisVersion v)           =   inj (Just (Left (ThisVersionS,v))) 
-    let vrinj (LaterVersion v)          =   inj (Just (Left (LaterVersionS,v)))
-    let vrinj (EarlierVersion v)        =   inj (Just (Left (EarlierVersionS,v)))
-    let vrinj (UnionVersionRanges v1 v2)=  inj (Just (Right (UnionVersionRangesS,(v1,v2))))    
-    let vrinj (IntersectVersionRanges v1 v2) 
+        vrinj (ThisVersion v)           =   inj (Just (Left (ThisVersionS,v))) 
+        vrinj (LaterVersion v)          =   inj (Just (Left (LaterVersionS,v)))
+        vrinj (EarlierVersion v)        =   inj (Just (Left (EarlierVersionS,v)))
+        vrinj (UnionVersionRanges v1 v2)=  inj (Just (Right (UnionVersionRangesS,(v1,v2))))    
+        vrinj (IntersectVersionRanges v1 v2) 
                                         =    inj (Just (Right (IntersectVersionRangesS,(v1,v2))))
     let vrext = do  mvr <- ext
                     case mvr of
+                        Nothing -> return (Just AnyVersion)
                         Just Nothing -> return (Just AnyVersion)
                         Just (Just (Left (ThisVersionS,v)))     -> return (Just (ThisVersion v))
                         Just (Just (Left (LaterVersionS,v)))    -> return (Just (LaterVersion v))
@@ -308,3 +312,18 @@ instance Show Version2 where
     show UnionVersionRangesS =  "UnionVersionRanges"
     show IntersectVersionRangesS =  "IntersectVersionRanges"
 
+
+versionRangeStringEditor :: Editor VersionRange
+versionRangeStringEditor name = do
+    (wid,inj,ext,notif) <- stringEditor name
+    let pinj v = inj (showVersionRange v)
+    let pext = do
+        s <- ext
+        case s of
+            Nothing -> return Nothing
+            Just s -> do
+                let l = (readP_to_S parseVersionRange) s
+                if null l then
+                    return Nothing
+                    else return (Just (fst $head l))
+    return (wid,pinj,pext,notif) 

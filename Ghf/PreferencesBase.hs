@@ -311,6 +311,7 @@ selectionEditor list label = do
                             Nothing -> return Nothing
     let changedNotifier f = do combo `onChanged` f; return ()
     let notifiers = Map.insert "onChanged" changedNotifier (standardNotifiers (castToWidget combo))
+    comboBoxSetActive combo 1
     return ((castToWidget) frame, injector, extractor, notifiers)
 
 fileEditor :: Editor FilePath
@@ -377,12 +378,12 @@ fileEditor label = do
     return ((castToWidget) frame, injector, extractor, notifiers)    
 
 
-maybeEditor :: Editor beta -> Editor (Maybe beta)
-maybeEditor childEditor label = do
+maybeEditor :: Editor beta -> String -> String -> Editor (Maybe beta)
+maybeEditor childEditor boolLabel childLabel label = do
     frame   <-  frameNew
     frameSetLabel frame label
-    (boolFrame,inj1,ext1,not1) <- boolEditor  ""
-    (justFrame,inj2,ext2,not2) <- childEditor ""
+    (boolFrame,inj1,ext1,not1) <- boolEditor  boolLabel
+    (justFrame,inj2,ext2,not2) <- childEditor childLabel
     let injector =  \ v -> case v of
                             Nothing -> do
                               widgetSetSensitivity justFrame False
@@ -413,13 +414,13 @@ maybeEditor childEditor label = do
     let notifiers = Map.unionWith (>>) not1 not2
     return ((castToWidget) frame, injector, extractor, notifiers)
 
-eitherOrEditor :: Editor alpha -> Editor beta -> Editor (Either alpha beta)
-eitherOrEditor leftEditor rightEditor label = do
+eitherOrEditor :: Editor alpha -> Editor beta -> String -> String ->  String -> Editor (Either alpha beta)
+eitherOrEditor leftEditor rightEditor boolLabel leftLabel rightLabel label = do
     frame   <-  frameNew
     frameSetLabel frame label
-    (boolFrame,inj1,ext1,not1) <- boolEditor  ""
-    (leftFrame,inj2,ext2,not2) <- leftEditor ""
-    (rightFrame,inj3,ext3,not3) <- rightEditor ""
+    (boolFrame,inj1,ext1,not1) <- boolEditor  boolLabel
+    (leftFrame,inj2,ext2,not2) <- leftEditor leftLabel
+    (rightFrame,inj3,ext3,not3) <- rightEditor rightLabel
     let injector =  \ v -> case v of
                             Left vl -> do
                               widgetShow leftFrame
@@ -464,13 +465,13 @@ eitherOrEditor leftEditor rightEditor label = do
     let notifiers = Map.unionWith (>>) not1 (Map.unionWith (>>) not2 not3)
     return ((castToWidget) frame, injector, extractor, notifiers)
 
-pairEditor :: Editor alpha -> Editor beta -> Editor (alpha,beta)
-pairEditor fstEd sndEd label = do
+pairEditor :: Editor alpha -> Editor beta -> String -> String -> Editor (alpha,beta)
+pairEditor fstEd sndEd fstLabel sndLabel label   = do
     frame   <-  frameNew
     frameSetLabel frame label
-    (fstFrame,inj1,ext1,not1) <- fstEd ""
+    (fstFrame,inj1,ext1,not1) <- fstEd fstLabel
     widgetSetName fstFrame "first"
-    (sndFrame,inj2,ext2,not2) <- sndEd ""
+    (sndFrame,inj2,ext2,not2) <- sndEd sndLabel
     widgetSetName sndFrame "snd"
     hBox <- hBoxNew False 1
     widgetSetName hBox "box"    
@@ -488,8 +489,8 @@ pairEditor fstEd sndEd label = do
     return ((castToWidget) frame, injector, extractor, notifiers)
 
 versionEditor :: Editor Version
-versionEditor name = do
-    (wid,inj,ext,notif) <- stringEditor name
+versionEditor label = do
+    (wid,inj,ext,notif) <- stringEditor label
     let pinj v = inj (showVersion v)
     let pext = do
         s <- ext
