@@ -63,7 +63,7 @@ prefsDescription = [
                 return (if i == 0 then Nothing else Just i))
             rightMargin
             (\b a -> a{rightMargin = b})
-            (maybeEditor (intEditor 0.0 200.0 5.0) "" "On or Off")
+            (maybeEditor (intEditor 0.0 200.0 5.0) True "" "On or Off")
             (\b -> do
                 buffers <- allBuffers
                 mapM_ (\buf -> case b of
@@ -87,7 +87,7 @@ prefsDescription = [
             (do id <- identifier
                 return (if null id then Nothing else Just (id)))
             sourceCandy (\b a -> a{sourceCandy = b})
-            (maybeEditor stringEditor "Use Source Candy?" "candy specification")
+            (maybeEditor stringEditor True "Use Source Candy?" "candy specification")
             (\cs -> case cs of
                         Nothing -> do 
                             setCandyState False

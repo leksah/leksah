@@ -85,8 +85,8 @@ packageNew = do
     description :: String
     category :: String
     buildDepends :: [Dependency]
-descCabalVersion :: VersionRange
-library :: (Maybe Library)
+    descCabalVersion :: VersionRange
+    library :: (Maybe Library)
 executables :: [Executable]
 dataFiles :: [FilePath]
 extraSrcFiles :: [FilePath]
@@ -129,14 +129,32 @@ packageDescription = [
             (\a -> return ())
     ]),
     ("Specification",[
-        field "Build Dependencies" "" 
+        field "Build Dependencies" 
+            "If this package depends on a specific version of Cabal, give that here. components" 
+            emptyPrinter
+            emptyParser
+            descCabalVersion
+            (\ a b -> b{descCabalVersion = a})
+            (multisetEditor dependencyEditor "Dependency")
+            (\a -> return ())
+    ,   field "Cabal version" "" 
             emptyPrinter
             emptyParser
             buildDepends
             (\ a b -> b{buildDepends = a})
-            (multisetEditor dependencyEditor "Dependency")
+            versionRangeEditor
             (\a -> return ())
     ]),        
+    ("Library",
+       field "Library" "" 
+            emptyPrinter
+            emptyParser
+            library
+            (\ a b -> b{library = a})
+            (maybeEditor libraryEditor True "Is this package a library?" "")
+            (\a -> return ())
+    ]),        
+    
     ("Additional",[
         field "License File" ""
             emptyPrinter
@@ -225,6 +243,7 @@ editPackage' packageDir prefs prefsDesc ghfR   =
         boxPackStart bb ok PackNatural 0
         boxPackStart bb cancel PackNatural 0
         nb <- newNotebook
+        notebookSetTabPos nb PosLeft
         res <- mapM (\ (tabLabel, partPrefsDescr) -> do
             resList <- mapM (\ (FD _ _ _ _ editorF _) -> editorF prefs) partPrefsDescr
             let (widgetsP, setInjsP, getExtsP,notifiersP) = unzip4 resList
@@ -291,13 +310,14 @@ testedWidthEditor name = do
 versionRangeEditor :: Editor VersionRange
 versionRangeEditor name = do
     (wid,inj,ext,notif) <- 
-        maybeEditor (eitherOrEditor 
+        maybeEditor (eitherOrEditor             
             (pairEditor (selectionEditor v1) 
-                        (versionEditor) "" "") 
+                        versionEditor "" "")
             (pairEditor (selectionEditor v2)
-                        (pairEditor versionRangeStringEditor versionRangeStringEditor "" "") "" "")
-            "Simple" "Simple Version Range" "Complex Version Range") 
-                "Any Version" "" name
+                        (pairEditor versionRangeStringEditor versionRangeStringEditor "" "")
+                "" "")
+                    "Simple" "Simple Version Range" "Complex Version Range") 
+                        False "Any Version" "" name
     let vrinj AnyVersion                =   inj Nothing
         vrinj (ThisVersion v)           =   inj (Just (Left (ThisVersionS,v))) 
         vrinj (LaterVersion v)          =   inj (Just (Left (LaterVersionS,v)))
@@ -334,7 +354,6 @@ instance Show Version2 where
     show UnionVersionRangesS =  "UnionVersionRanges"
     show IntersectVersionRangesS =  "IntersectVersionRanges"
 
-
 versionRangeStringEditor :: Editor VersionRange
 versionRangeStringEditor name = do
     (wid,inj,ext,notif) <- stringEditor name
@@ -352,11 +371,78 @@ versionRangeStringEditor name = do
 
 dependencyEditor :: Editor Dependency
 dependencyEditor name = do
-    (wid,inj,ext,notif) <- stringEditor name
-    let pinj (Dependency s _) = inj s
+    (wid,inj,ext,notif) <- pairEditor (stringEditor versionRangeEditor) "Package" "Version" name
+    let pinj (Dependency s v) = inj (s,v)
     let pext = do
         mbp <- ext
         case mbp of
             Nothing -> return Nothing
-            Just s -> return (Just $Dependency s AnyVersion)
+            Just ("",v) -> return Nothing
+            Just (s,v) -> return (Just $Dependency s v)
     return (wid,pinj,pext,notif)   
+
+libraryEditor :: Editor Library
+libraryEditor name = do
+    (wid,inj,ext,notif) <- (pairEditor (multisetEditor fileEditor) buildInfoEditor) 
+        "Exposed Modules" "BuildInfo" name
+    let pinj (Library em bi) = inj (em,bi)
+    let pext = do
+        mbp <- ext
+        case mbp of
+            Nothing -> return Nothing
+            Just (em,bi) -> return (Just $Library em bi)
+    return (wid,pinj,pext,notif)   
+
+buildInfoEditor :: Editor Library
+buildInfoEditor name = do
+    (wid,inj,ext,notif) <- pairEditor (booleanEditor, "Buildable?") 
+                           (pairEditor ((multisetEditor stringEditor), "Options for C compiler")
+                           (pairEditor ((multisetEditor stringEditor), "Options for Linker")      
+                           (pairEditor ((multisetEditor stringEditor), "support frameworks for Mac OS X")
+                           (pairEditor ((multisetEditor fileEditor),   "C Sources")
+                           (pairEditor ((multisetEditor fileEditor),   
+                                "where to look for the haskell module hierarchy")
+                           (pairEditor ((multisetEditor fileEditor),   
+                                "Other modules: non-exposed or non-main modules")
+                           (pairEditor ((multisetEditor extensionEditor),
+                                "Haskell extensions the source needs for compilation")
+                           (pairEditor ((multisetEditor stringEditor),
+                                "Extra Libraries: what libraries to link with when compiling a program that uses your package")
+                           (pairEditor ((multisetEditor fileEditor),
+                                "Extra Library directories")
+                           (pairEditor ((multisetEditor fileEditor),
+                                "Include directories: Directories to find the .h files")
+                           (pairEditor ((multisetEditor fileEditor),
+                                "Includes: The .h files to be found in includeDirs")
+                           (pairEditor ((multisetEditor fileEditor),
+                                "Install Includes:.h files to install with the package")
+                           (pairEditor ((multisetEditor (pairEditor (compilerFlavorEditor, "Compiler Flavor") 
+                                                                    ((multisetEditor stringEditor), "Options")))
+                                        "Options")
+                           ((multisetEditor stringEditor), "Ghc profiler options"))))))))))))))
+    let pinj BI = inj (buildable bi,(ccptions bi,(ldOptions bi,(frameworks bi,(cSources bi,(hsSourceDirs bi,
+                        (otherModules bi,(extensions bi,(extraLibs bi,(extraLibDirs bi,(includeDirs bi,
+                            (includes bi,(installIncludes bi, (options bi,ghcProfOptions bi))))))))))))))
+    let pext = do
+        mbp <- ext
+        case mbp of
+            Nothing -> return Nothing
+            Just (buildablebi,(ccptionsbi,(ldOptionsbi,(frameworksbi,(cSourcesbi,(hsSourceDirsbi,
+                        (otherModulesbi,(extensionsbi,(extraLibsbi,(extraLibDirsbi,(includeDirsbi,
+                            (includesbi,(installIncludesbi, (optionsbi, ghcProfOptionsbi)))))))))))))) 
+                    -> return (Just $BuildInfo buildablebi ccptionsbi ldOptionsbi frameworksbi cSourcesbi
+                                hsSourceDirsbi otherModulesbi extensionsbi extraLibsbi extraLibDirsbi
+                                    includeDirsbi includesbi installIncludesbi optionsbi ghcProfOptionsbi)
+    return (wid,pinj,pext,notif)   
+
+
+
+
+T
+                               
+                            
+                              
+
+
+
+

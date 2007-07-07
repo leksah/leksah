@@ -316,6 +316,28 @@ selectionEditor list label = do
     New.comboBoxSetActive combo 1
     return ((castToWidget) frame, injector, extractor, notifiers)
 
+multiselectionEditor :: (Show beta, Eq beta) => [beta] -> Editor [beta]
+multiselectionEditor list label = do
+    frame   <-  frameNew
+    frameSetShadowType frame ShadowNone
+    frameSetLabel frame label
+    combo   <-  New.comboBoxNewText
+    mapM_ (\v -> New.comboBoxAppendText combo (show v)) list
+    containerAdd frame combo
+    let injector = (\t -> let mbInd = elemIndex t list in
+                            case mbInd of
+                                Just ind -> New.comboBoxSetActive combo ind
+                                Nothing -> return ())
+    let extractor = do  mbInd <- New.comboBoxGetActive combo; 
+                        case mbInd of 
+                            Just ind -> return (Just (list !! ind))
+                            Nothing -> return Nothing
+    let changedNotifier f = do combo `New.onChanged` f; return ()
+    let notifiers = Map.insert "onChanged" changedNotifier (standardNotifiers (castToWidget combo))
+    New.comboBoxSetActive combo 1
+    return ((castToWidget) frame, injector, extractor, notifiers)
+
+
 fileEditor :: Editor FilePath
 fileEditor label = do
     frame   <-  frameNew
@@ -380,30 +402,35 @@ fileEditor label = do
     return ((castToWidget) frame, injector, extractor, notifiers)    
 
 
-maybeEditor :: Editor beta -> String -> String -> Editor (Maybe beta)
-maybeEditor childEditor boolLabel childLabel label = do
+--
+-- | An editor with a subeditor which gets active, when a checkbox is selected
+-- | or deselected (if the positive Argument is False)
+--
+
+maybeEditor :: Editor beta -> Bool -> String -> String -> Editor (Maybe beta)
+maybeEditor childEditor positive boolLabel childLabel label = do
     frame   <-  frameNew
     frameSetLabel frame label
     (boolFrame,inj1,ext1,not1) <- boolEditor  boolLabel
     (justFrame,inj2,ext2,not2) <- childEditor childLabel
     let injector =  \ v -> case v of
                             Nothing -> do
-                              widgetSetSensitivity justFrame False
-                              inj1 False
+                              widgetSetSensitivity justFrame (not positive)
+                              inj1 positive
                             Just v  -> do
-                              widgetSetSensitivity justFrame True
-                              inj1 True 
+                              widgetSetSensitivity justFrame positive
+                              inj1 (not positive) 
                               inj2 v
     let extractor = do
         bool <- ext1
         case bool of
             Nothing -> return Nothing
-            Just True -> do
+            Just bv | bv == positive -> do
                 value <- ext2
                 case value of
                     Nothing -> return Nothing
                     Just value -> return (Just (Just value))
-            Just False -> return (Just Nothing)
+            oterwise -> return (Just Nothing)
     vBox <- vBoxNew False 1
     boxPackStart vBox boolFrame PackNatural 0
     boxPackStart vBox justFrame PackNatural 0
@@ -411,7 +438,7 @@ maybeEditor childEditor boolLabel childLabel label = do
     (not1 ! "onClicked")
         (do bool <- ext1
             case bool of
-                Just bool -> widgetSetSensitivity justFrame bool
+                Just bool -> widgetSetSensitivity justFrame (if positive then bool else not bool)
                 Nothing -> return ())
     let notifiers = Map.unionWith (>>) not1 not2
     return ((castToWidget) frame, injector, extractor, notifiers)
@@ -452,8 +479,9 @@ eitherOrEditor leftEditor rightEditor boolLabel leftLabel rightLabel label = do
     boxPackStart vBox boolFrame PackNatural 0
     boxPackStart vBox leftFrame PackNatural 0
     boxPackStart vBox rightFrame PackNatural 0
-    widgetHide leftFrame
     containerAdd frame vBox    
+    widgetHide leftFrame
+    widgetShow rightFrame  
     (not1 ! "onClicked")
         (do bool <- ext1
             case bool of
@@ -467,8 +495,8 @@ eitherOrEditor leftEditor rightEditor boolLabel leftLabel rightLabel label = do
     let notifiers = Map.unionWith (>>) not1 (Map.unionWith (>>) not2 not3)
     return ((castToWidget) frame, injector, extractor, notifiers)
 
-pairEditor :: Editor alpha -> Editor beta -> String -> String -> Editor (alpha,beta)
-pairEditor fstEd sndEd fstLabel sndLabel label   = do
+pairEditor :: (Editor alpha, String) -> (Editor beta, String) Editor (alpha,beta)
+pairEditor (fstEd, fstLabel) (sndEd, sndLabel) label = do
     frame   <-  frameNew
     frameSetLabel frame label
     (fstFrame,inj1,ext1,not1) <- fstEd fstLabel
