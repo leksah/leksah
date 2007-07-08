@@ -38,10 +38,10 @@ import Ghf.Editor.SourceEditor
 import GUI.ViewFrame
 import Ghf.GUI.Keymap
 import Ghf.GUI.SourceCandy
-import Ghf.Editor.PreferenceEditor
+import Ghf.Editor.PreferencesEditor
 import Ghf.GUI.Menu
 import Ghf.GUI.Statusbar
-
+ 
 
 
 data Flag =  OpenFile

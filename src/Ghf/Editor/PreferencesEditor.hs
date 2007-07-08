@@ -32,7 +32,7 @@ import Ghf.Editor.SourceEditor
 import GUI.ViewFrame
 import Ghf.GUI.Keymap
 import Ghf.GUI.Menu(actions,makeMenu,menuDescription)
-import GUI.ProbertyEditor
+import GUI.PropertyEditor
 
 
 defaultPrefs = Prefs {

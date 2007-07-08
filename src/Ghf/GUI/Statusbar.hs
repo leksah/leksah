@@ -12,9 +12,7 @@ import Control.Monad.Reader
 import Ghf.Core
 import Ghf.Editor.SourceEditor
 import GUI.ViewFrame
-import Ghf.Dialogs
-import {-# SOURCE #-} Ghf.Preferences(editPrefs)
-import Ghf.Package
+import Ghf.Editor.PackageEditor
 
 buildStatusbar ghfR = do
     sb <- statusbarNew

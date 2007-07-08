@@ -2,7 +2,7 @@
 -- | Module for menus and toolbars
 -- 
 
-module Ghf.Menu (
+module Ghf.GUI.Menu (
     actions    
 ,   menuDescription
 ,   makeMenu

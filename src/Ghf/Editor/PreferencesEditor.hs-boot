@@ -3,7 +3,7 @@
 -- 
 
 
-module Ghf.Preferences (
+module Ghf.Editor.PreferencesEditor (
     editPrefs
 
 ) where
