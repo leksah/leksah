@@ -316,6 +316,7 @@ selectionEditor list label = do
     New.comboBoxSetActive combo 1
     return ((castToWidget) frame, injector, extractor, notifiers)
 
+{--
 multiselectionEditor :: (Show beta, Eq beta) => [beta] -> Editor [beta]
 multiselectionEditor list label = do
     frame   <-  frameNew
@@ -336,7 +337,7 @@ multiselectionEditor list label = do
     let notifiers = Map.insert "onChanged" changedNotifier (standardNotifiers (castToWidget combo))
     New.comboBoxSetActive combo 1
     return ((castToWidget) frame, injector, extractor, notifiers)
-
+--}
 
 fileEditor :: Editor FilePath
 fileEditor label = do
@@ -443,11 +444,11 @@ maybeEditor childEditor positive boolLabel childLabel label = do
     let notifiers = Map.unionWith (>>) not1 not2
     return ((castToWidget) frame, injector, extractor, notifiers)
 
-eitherOrEditor :: Editor alpha -> Editor beta -> String -> String ->  String -> Editor (Either alpha beta)
-eitherOrEditor leftEditor rightEditor boolLabel leftLabel rightLabel label = do
+eitherOrEditor :: (Editor alpha,String) -> (Editor beta,String) -> Editor (Either alpha beta)
+eitherOrEditor (leftEditor,leftLabel) (rightEditor,rightLabel) label = do
     frame   <-  frameNew
-    frameSetLabel frame label
-    (boolFrame,inj1,ext1,not1) <- boolEditor  boolLabel
+    frameSetLabel frame ""
+    (boolFrame,inj1,ext1,not1) <- boolEditor  label
     (leftFrame,inj2,ext2,not2) <- leftEditor leftLabel
     (rightFrame,inj3,ext3,not3) <- rightEditor rightLabel
     let injector =  \ v -> case v of
@@ -495,7 +496,7 @@ eitherOrEditor leftEditor rightEditor boolLabel leftLabel rightLabel label = do
     let notifiers = Map.unionWith (>>) not1 (Map.unionWith (>>) not2 not3)
     return ((castToWidget) frame, injector, extractor, notifiers)
 
-pairEditor :: (Editor alpha, String) -> (Editor beta, String) Editor (alpha,beta)
+pairEditor :: (Editor alpha, String) -> (Editor beta, String) -> Editor (alpha,beta)
 pairEditor (fstEd, fstLabel) (sndEd, sndLabel) label = do
     frame   <-  frameNew
     frameSetLabel frame label

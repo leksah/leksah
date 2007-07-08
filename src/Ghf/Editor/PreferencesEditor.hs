@@ -107,7 +107,7 @@ prefsDescription = [
             (PP.text.show) 
             (pairParser intParser)
             defaultSize (\(c,d) a -> a{defaultSize = (c,d)})
-            (pairEditor (intEditor 0.0 3000.0 25.0)(intEditor 0.0 3000.0 25.0) "X" "Y")
+            (pairEditor ((intEditor 0.0 3000.0 25.0),"X")((intEditor 0.0 3000.0 25.0),"Y"))
             (\a -> return ()) ]
 
 -- ------------------------------------------------------------

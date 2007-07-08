@@ -135,17 +135,17 @@ packageDescription = [
             emptyParser
             descCabalVersion
             (\ a b -> b{descCabalVersion = a})
-            (multisetEditor dependencyEditor "Dependency")
+            versionRangeEditor
             (\a -> return ())
     ,   field "Cabal version" "" 
             emptyPrinter
             emptyParser
             buildDepends
             (\ a b -> b{buildDepends = a})
-            versionRangeEditor
+            (multisetEditor dependencyEditor "Dependency")
             (\a -> return ())
     ]),        
-    ("Library",
+ {--   ("Library",[
        field "Library" "" 
             emptyPrinter
             emptyParser
@@ -153,7 +153,7 @@ packageDescription = [
             (\ a b -> b{library = a})
             (maybeEditor libraryEditor True "Is this package a library?" "")
             (\a -> return ())
-    ]),        
+    ]),--}        
     
     ("Additional",[
         field "License File" ""
@@ -278,7 +278,7 @@ editPackage' packageDir prefs prefsDesc ghfR   =
 
 packageEditor :: Editor PackageIdentifier
 packageEditor name = do
-    (wid,inj,ext,notif) <- pairEditor (stringEditor) (versionEditor) "Name" "Version" name
+    (wid,inj,ext,notif) <- pairEditor (stringEditor, "Name") (versionEditor, "Version") name
     let pinj (PackageIdentifier n v) = inj (n,v)
     let pext = do
         mbp <- ext
@@ -289,8 +289,8 @@ packageEditor name = do
 
 compilerFlavorEditor :: Editor CompilerFlavor
 compilerFlavorEditor name = do
-    (wid,inj,ext,notif) <- eitherOrEditor (selectionEditor flavors) (stringEditor) 
-                                "Known compilers" "" "Other" name
+    (wid,inj,ext,notif) <- eitherOrEditor (selectionEditor flavors,"Known compilers") 
+                            (stringEditor, "Other compilers") name
     let cfinj (OtherCompiler str) = inj (Right "")
     let cfinj other = inj (Left other)    
     let cfext = do
@@ -305,19 +305,17 @@ compilerFlavorEditor name = do
 
 testedWidthEditor :: Editor (CompilerFlavor, VersionRange)
 testedWidthEditor name = do
-    pairEditor (compilerFlavorEditor) (versionRangeEditor) "Compiler Flavor" "Version Range" name
+    pairEditor (compilerFlavorEditor, "Compiler Flavor") (versionRangeEditor, "Version Range") name
 
 versionRangeEditor :: Editor VersionRange
 versionRangeEditor name = do
     (wid,inj,ext,notif) <- 
         maybeEditor (eitherOrEditor             
-            (pairEditor (selectionEditor v1) 
-                        versionEditor "" "")
-            (pairEditor (selectionEditor v2)
-                        (pairEditor versionRangeStringEditor versionRangeStringEditor "" "")
-                "" "")
-                    "Simple" "Simple Version Range" "Complex Version Range") 
-                        False "Any Version" "" name
+            ((pairEditor (selectionEditor v1, "") 
+                        (versionEditor,"")),"Simple Version Range")
+            ((pairEditor (selectionEditor v2, " ")
+                        ((pairEditor (versionRangeStringEditor,"") (versionRangeStringEditor, "")),
+                            "")), "Complex Version Range")) False "Any Version" "" name
     let vrinj AnyVersion                =   inj Nothing
         vrinj (ThisVersion v)           =   inj (Just (Left (ThisVersionS,v))) 
         vrinj (LaterVersion v)          =   inj (Just (Left (LaterVersionS,v)))
@@ -371,7 +369,7 @@ versionRangeStringEditor name = do
 
 dependencyEditor :: Editor Dependency
 dependencyEditor name = do
-    (wid,inj,ext,notif) <- pairEditor (stringEditor versionRangeEditor) "Package" "Version" name
+    (wid,inj,ext,notif) <- pairEditor (stringEditor,"Package Name") (versionRangeEditor,"Version") name
     let pinj (Dependency s v) = inj (s,v)
     let pext = do
         mbp <- ext
@@ -381,9 +379,10 @@ dependencyEditor name = do
             Just (s,v) -> return (Just $Dependency s v)
     return (wid,pinj,pext,notif)   
 
+{--
 libraryEditor :: Editor Library
 libraryEditor name = do
-    (wid,inj,ext,notif) <- (pairEditor (multisetEditor fileEditor) buildInfoEditor) 
+    (wid,inj,ext,notif) <- (pairEditor (multisetEditor fileEditor) buildInfoEditor ) 
         "Exposed Modules" "BuildInfo" name
     let pinj (Library em bi) = inj (em,bi)
     let pext = do
@@ -392,6 +391,7 @@ libraryEditor name = do
             Nothing -> return Nothing
             Just (em,bi) -> return (Just $Library em bi)
     return (wid,pinj,pext,notif)   
+
 
 buildInfoEditor :: Editor Library
 buildInfoEditor name = do
@@ -434,11 +434,11 @@ buildInfoEditor name = do
                                 hsSourceDirsbi otherModulesbi extensionsbi extraLibsbi extraLibDirsbi
                                     includeDirsbi includesbi installIncludesbi optionsbi ghcProfOptionsbi)
     return (wid,pinj,pext,notif)   
+--}
 
 
 
 
-T
                                
                             
                               

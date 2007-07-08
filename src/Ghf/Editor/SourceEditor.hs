@@ -37,11 +37,14 @@ module Ghf.Editor.SourceEditor (
 ,   editKeystrokeCandy
 ,   editCandy
 
+,   replaceDialog
+
 ) where 
 
 import Graphics.UI.Gtk hiding (afterToggleOverwrite)
 import Graphics.UI.Gtk.SourceView
 import Graphics.UI.Gtk.Multiline.TextView
+import Graphics.UI.Gtk.Glade
 import Control.Monad.Reader
 import Data.IORef
 import System.FilePath
