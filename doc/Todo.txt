@@ -25,3 +25,5 @@ Projects
 
 
 
+* Lazy editors mit IOrefs
+* Editor with a list of editors as argument (class solution?, extension solution (forall?))
