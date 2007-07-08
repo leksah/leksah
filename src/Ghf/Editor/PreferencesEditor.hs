@@ -2,7 +2,7 @@
 -- | Module for saving, restoring and editing preferences
 -- 
 
-module Ghf.Preferences (
+module Ghf.Editor.PreferencesEditor (
     readPrefs
 ,   writePrefs
 --,   applyPrefs
@@ -28,11 +28,11 @@ import Data.List(unzip4)
 import Debug.Trace
 
 import Ghf.Core
-import Ghf.Editor
-import Ghf.View
-import Ghf.Keymap
-import Ghf.Menu(actions,makeMenu,menuDescription)
-import Ghf.PreferencesBase
+import Ghf.Editor.SourceEditor
+import GUI.ViewFrame
+import Ghf.GUI.Keymap
+import Ghf.GUI.Menu(actions,makeMenu,menuDescription)
+import GUI.ProbertyEditor
 
 
 defaultPrefs = Prefs {

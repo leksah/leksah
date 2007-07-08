@@ -34,13 +34,14 @@ import qualified Data.Map as Map
 import Data.Map(Map)
 
 import Ghf.Core
-import Ghf.Editor
-import Ghf.Dialogs
-import Ghf.View
-import Ghf.Keymap
-import Ghf.SourceCandy
-import Ghf.Preferences
-import Ghf.Menu
+import Ghf.Editor.SourceEditor
+import GUI.ViewFrame
+import Ghf.GUI.Keymap
+import Ghf.GUI.SourceCandy
+import Ghf.Editor.PreferenceEditor
+import Ghf.GUI.Menu
+import Ghf.GUI.Statusbar
+
 
 
 data Flag =  OpenFile

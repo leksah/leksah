@@ -1,8 +1,8 @@
 --
--- | Module for menus and toolbars
+-- | Module for editing of cabal packages
 -- 
 
-module Ghf.Package (
+module Ghf.Editor.PackageEditor (
     packageNew
 ) where
 
@@ -22,8 +22,8 @@ import Data.Map (Map,(!))
 import Text.ParserCombinators.ReadP(readP_to_S)
 
 import Ghf.Core
-import Ghf.PreferencesBase
-import Ghf.View
+import GUI.PropertyEditor
+import GUI.ViewFrame
 
 standardSetup = "#!/usr/bin/runhaskell \n\
 \> module Main where\n\
