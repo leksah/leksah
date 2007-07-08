@@ -314,8 +314,8 @@ versionRangeEditor name = do
             ((pairEditor (selectionEditor v1, "") 
                         (versionEditor,"")),"Simple Version Range")
             ((pairEditor (selectionEditor v2, " ")
-                        ((pairEditor (versionRangeStringEditor,"") (versionRangeStringEditor, "")),
-                            "")), "Complex Version Range")) False "Any Version" "" name
+                        ((pairEditor (versionRangeEditor,"") (versionRangeEditor, "")),
+                            "")), "Complex Version Range")) True "Any Version" "" name
     let vrinj AnyVersion                =   inj Nothing
         vrinj (ThisVersion v)           =   inj (Just (Left (ThisVersionS,v))) 
         vrinj (LaterVersion v)          =   inj (Just (Left (LaterVersionS,v)))

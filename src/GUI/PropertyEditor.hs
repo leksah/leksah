@@ -55,9 +55,13 @@ import qualified Data.Map as Map
 import Data.Map(Map,(!))
 import Data.Maybe(isNothing,fromJust)
 import Data.Version
+import Data.IORef
+import Data.Maybe(isJust)
 import System.Directory
 import Data.List(unzip4,elemIndex)
 import Text.ParserCombinators.ReadP(readP_to_S)
+
+import Debug.Trace
 
 
 
@@ -410,39 +414,94 @@ fileEditor label = do
 
 maybeEditor :: Editor beta -> Bool -> String -> String -> Editor (Maybe beta)
 maybeEditor childEditor positive boolLabel childLabel label = do
+    childRef <- trace "newChildRef" $newIORef Nothing
     frame   <-  frameNew
     frameSetLabel frame label
     (boolFrame,inj1,ext1,not1) <- boolEditor  boolLabel
-    (justFrame,inj2,ext2,not2) <- childEditor childLabel
-    let injector =  \ v -> case v of
-                            Nothing -> do
-                              widgetSetSensitivity justFrame (not positive)
-                              inj1 positive
-                            Just v  -> do
-                              widgetSetSensitivity justFrame positive
-                              inj1 (not positive) 
-                              inj2 v
-    let extractor = do
+    vBox <- vBoxNew False 1
+    boxPackStart vBox boolFrame PackNatural 0
+--    boxPackStart vBox justFrame PackNatural 0
+    containerAdd frame vBox    
+    let injector =  \ v -> trace "injecting" $case v of
+                            Nothing ->  do
+                                inj1 (if positive then False else True)
+                                hasChild <- hasChildEditor childRef
+                                if hasChild 
+                                    then do
+                                        (justFrame,_,_,_) <- getChildEditor childRef childEditor childLabel
+                                        widgetHide justFrame
+                                    else return ()                                 
+                            Just val -> do
+                                hasChild <- hasChildEditor childRef
+                                (justFrame,inj2,_,_) <- getChildEditor childRef childEditor childLabel
+                                inj1 (if positive then True else False)
+                                if hasChild 
+                                    then do
+                                        boxPackStart vBox justFrame PackNatural 0
+                                        widgetShowAll justFrame
+                                    else do
+                                        boxPackStart vBox justFrame PackNatural 0
+                                        widgetShowAll justFrame
+                                inj2 val
+    let extractor = trace "extracting" $do
         bool <- ext1
         case bool of
             Nothing -> return Nothing
             Just bv | bv == positive -> do
+                (_,_,ext2,_) <- getChildEditor childRef childEditor childLabel
                 value <- ext2
                 case value of
                     Nothing -> return Nothing
                     Just value -> return (Just (Just value))
-            oterwise -> return (Just Nothing)
-    vBox <- vBoxNew False 1
-    boxPackStart vBox boolFrame PackNatural 0
-    boxPackStart vBox justFrame PackNatural 0
-    containerAdd frame vBox    
+            otherwise -> return (Just Nothing)
     (not1 ! "onClicked")
-        (do bool <- ext1
-            case bool of
-                Just bool -> widgetSetSensitivity justFrame (if positive then bool else not bool)
-                Nothing -> return ())
-    let notifiers = Map.unionWith (>>) not1 not2
+        (trace "clicked" $ do 
+            mbBool <- ext1
+            case mbBool of
+                Just bool ->  
+                    if bool == positive 
+                        then do
+                            hasChild <- hasChildEditor childRef
+                            (justFrame,inj2,_,_) <- getChildEditor childRef childEditor childLabel
+                            if hasChild 
+                                then do
+                                    boxPackStart vBox justFrame PackNatural 0
+                                    widgetShowAll justFrame
+                                else do
+                                    widgetShowAll justFrame                     
+                        else do
+                            hasChild <- hasChildEditor childRef
+                            if hasChild 
+                                then do
+                                    (justFrame,_,_,_) <- getChildEditor childRef childEditor childLabel
+                                    widgetHide justFrame
+                                else return ()        
+                Nothing -> return ())  
+    notifiers <-  trace "notifiers" $do
+        hasChild <- hasChildEditor childRef
+        if hasChild 
+            then do
+                (_,_,_,not2) <- getChildEditor childRef childEditor childLabel
+                return (Map.unionWith (>>) not1 not2)
+            else do
+                return (Map.empty)
     return ((castToWidget) frame, injector, extractor, notifiers)
+
+getChildEditor :: IORef (Maybe (Editor alpha )) -> (Editor alpha ) -> String -> 
+                    IO (Widget, Injector alpha , Extractor alpha , Map String Notifier)
+getChildEditor childRef childEditor childLabel =  do
+    mb <- trace "getChildEditor" $readIORef childRef
+    case mb of
+        Just editor -> editor childLabel
+        Nothing -> do
+            let val = childEditor 
+            writeIORef childRef (Just childEditor)
+            childEditor childLabel
+
+hasChildEditor :: IORef (Maybe b) -> IO (Bool)
+hasChildEditor childRef =  do
+    mb <- readIORef childRef
+    return (isJust mb) 
 
 eitherOrEditor :: (Editor alpha,String) -> (Editor beta,String) -> Editor (Either alpha beta)
 eitherOrEditor (leftEditor,leftLabel) (rightEditor,rightLabel) label = do
@@ -453,13 +512,13 @@ eitherOrEditor (leftEditor,leftLabel) (rightEditor,rightLabel) label = do
     (rightFrame,inj3,ext3,not3) <- rightEditor rightLabel
     let injector =  \ v -> case v of
                             Left vl -> do
-                              widgetShow leftFrame
-                              widgetHide rightFrame  
+                              widgetShowAll leftFrame
+                              widgetHideAll rightFrame  
                               inj2 vl
                               inj1 True
                             Right vr  -> do
-                              widgetHide leftFrame
-                              widgetShow rightFrame  
+                              widgetHideAll leftFrame
+                              widgetShowAll rightFrame  
                               inj3 vr
                               inj1 False
     let extractor = do
@@ -487,11 +546,11 @@ eitherOrEditor (leftEditor,leftLabel) (rightEditor,rightLabel) label = do
         (do bool <- ext1
             case bool of
                 Just True -> do
-                    widgetShow leftFrame
-                    widgetHide rightFrame
+                    widgetShowAll leftFrame
+                    widgetHideAll rightFrame
                 Just False -> do
-                    widgetShow rightFrame
-                    widgetHide leftFrame
+                    widgetShowAll rightFrame
+                    widgetHideAll leftFrame
                 Nothing -> return ())
     let notifiers = Map.unionWith (>>) not1 (Map.unionWith (>>) not2 not3)
     return ((castToWidget) frame, injector, extractor, notifiers)
