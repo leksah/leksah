@@ -60,7 +60,7 @@ import Data.Map (Map,(!))
 
   
 import Ghf.Core
-import GUI.ViewFrame
+import Ghf.GUI.ViewFrame
 import Ghf.GUI.SourceCandy
 
 newTextBuffer :: String -> Maybe FileName -> GhfAction

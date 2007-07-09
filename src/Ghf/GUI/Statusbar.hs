@@ -11,7 +11,7 @@ import Control.Monad.Reader
 
 import Ghf.Core
 import Ghf.Editor.SourceEditor
-import GUI.ViewFrame
+import Ghf.GUI.ViewFrame
 import Ghf.Editor.PackageEditor
 
 buildStatusbar ghfR = do

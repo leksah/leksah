@@ -1,4 +1,4 @@
-module GUI.ViewFrame (
+module Ghf.GUI.ViewFrame (
     viewMove
 ,   viewSplitHorizontal
 ,   viewSplitVertical

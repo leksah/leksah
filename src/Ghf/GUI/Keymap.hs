@@ -24,7 +24,7 @@ import Control.Monad(foldM)
 import Control.Monad.Reader
 
 import Ghf.Core
-import GUI.ViewFrame
+import Ghf.GUI.ViewFrame
 import Ghf.Editor.SourceEditor
 
 type Keymap = Map ActionString [(Maybe (Either KeyString (KeyString,KeyString)), Maybe String)]

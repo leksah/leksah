@@ -22,8 +22,8 @@ import Data.Map (Map,(!))
 import Text.ParserCombinators.ReadP(readP_to_S)
 
 import Ghf.Core
-import GUI.PropertyEditor
-import GUI.ViewFrame
+import Ghf.Editor.PropertyEditor
+import Ghf.GUI.ViewFrame
 
 standardSetup = "#!/usr/bin/runhaskell \n\
 \> module Main where\n\

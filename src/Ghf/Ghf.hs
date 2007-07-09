@@ -35,7 +35,7 @@ import Data.Map(Map)
 
 import Ghf.Core
 import Ghf.Editor.SourceEditor
-import GUI.ViewFrame
+import Ghf.GUI.ViewFrame
 import Ghf.GUI.Keymap
 import Ghf.GUI.SourceCandy
 import Ghf.Editor.PreferencesEditor

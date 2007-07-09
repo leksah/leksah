@@ -2,7 +2,7 @@
 -- | Module for saving, restoring and editing preferences
 -- 
 
-module GUI.PropertyEditor (
+module Ghf.Editor.PropertyEditor (
     field
 ,   Comment
 ,   Name

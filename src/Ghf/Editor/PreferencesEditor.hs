@@ -29,10 +29,10 @@ import Debug.Trace
 
 import Ghf.Core
 import Ghf.Editor.SourceEditor
-import GUI.ViewFrame
+import Ghf.GUI.ViewFrame
 import Ghf.GUI.Keymap
 import Ghf.GUI.Menu(actions,makeMenu,menuDescription)
-import GUI.PropertyEditor
+import Ghf.Editor.PropertyEditor
 
 
 defaultPrefs = Prefs {

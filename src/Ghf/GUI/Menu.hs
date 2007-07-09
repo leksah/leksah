@@ -19,7 +19,7 @@ import Control.Monad.Reader
 
 import Ghf.Core
 import Ghf.Editor.SourceEditor
-import GUI.ViewFrame
+import Ghf.GUI.ViewFrame
 import {-# SOURCE #-} Ghf.Editor.PreferencesEditor(editPrefs)
 import Ghf.Editor.PackageEditor
 
