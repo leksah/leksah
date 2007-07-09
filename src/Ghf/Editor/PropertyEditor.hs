@@ -47,7 +47,7 @@ import qualified Text.ParserCombinators.Parsec.Token as P
 import Text.ParserCombinators.Parsec.Language(emptyDef)
 import qualified Text.PrettyPrint.HughesPJ as PP
 import Control.Monad(foldM)
-import Graphics.UI.Gtk hiding (afterToggleOverwrite,Focus)
+import Graphics.UI.Gtk hiding (afterToggleOverwrite,Focus,onChanged)
 import Graphics.UI.Gtk.SourceView
 import Graphics.UI.Gtk.ModelView as New
 import Control.Monad.Reader
@@ -75,7 +75,7 @@ data FieldDescription alpha =  FD {
     ,   comment             ::  Comment
     ,   fieldPrinter        ::  alpha -> PP.Doc
     ,   fieldParser         ::  alpha -> CharParser () alpha
-    ,   fieldEditor         ::  alpha -> IO (Widget, alpha -> IO(), alpha -> IO(alpha), Map String Notifier)
+    ,   fieldEditor         ::  alpha -> IO (Widget, alpha -> IO(), alpha -> IO(alpha), IORef (Map String Notifier))
     ,   fieldApplicator     ::  alpha -> alpha -> GhfAction
 }
 
@@ -86,8 +86,8 @@ type Parser beta        =   CharParser () beta
 
 type Injector beta      =   beta -> IO()
 type Extractor beta     =   IO(Maybe (beta))
-type Notifier        =   IO () -> IO ()  
-type Editor beta        =   Name -> IO(Widget, Injector beta, Extractor beta, Map String Notifier)
+type Notifier        =   IO ()  
+type Editor beta        =   Name -> IO(Widget, Injector beta, Extractor beta, IORef (Map String Notifier))
 type Applicator beta    =   beta -> GhfAction
 
 type MkFieldDescription alpha beta =
@@ -116,20 +116,19 @@ field name comment printer parser getter setter editor applicator =
             val <- parser
             return (setter val dat)))
         (\ dat -> do
-            (widget, inj,ext,noti) <- editor name
+            (widget, inj,ext,notiRef) <- editor name
             inj (getter dat)
-            case Map.lookup "onFocusOut" noti of
-                Nothing -> return () 
-                Just event -> event (do
-                    v <- ext
-                    case v of
-                        Just _ -> return ()
-                        Nothing -> do
-                            md <- messageDialogNew Nothing [] MessageWarning ButtonsClose
-                                    $"Field " ++ name ++ " has invalid value. Please correct"
-                            dialogRun md
-                            widgetDestroy md
-                            return ())              	 	       
+            let handler = (do 
+                v <- ext
+                case v of
+                    Just _ -> return ()
+                    Nothing -> do
+                        md <- messageDialogNew Nothing [] MessageWarning ButtonsClose
+                                $"Field " ++ name ++ " has invalid value. Please correct"
+                        dialogRun md
+                        widgetDestroy md
+                        return ())
+            registerHandler notiRef handler "onFocusOut"
             return (widget,
                     (\a -> inj (getter a)), 
                     (\a -> do 
@@ -137,7 +136,7 @@ field name comment printer parser getter setter editor applicator =
                         case b of
                             Just b -> return (setter b a)
                             Nothing -> return a),
-                    noti))
+                    notiRef))
         (\ newDat oldDat -> do
             let newField = getter newDat
             let oldField = getter oldDat
@@ -237,8 +236,9 @@ boolEditor label = do
         r <- toggleButtonGetActive button
         return (Just r)
     let clickedNotifier f = do button `onClicked` f; return ()
-    let notifiers = Map.insert "onClicked" clickedNotifier (standardNotifiers (castToWidget button))
-    return ((castToWidget) frame, injector, extractor, notifiers)
+    notiRef <- standardNotifiers button
+    registerEvent button notiRef onClicked "onClicked"
+    return ((castToWidget) frame, injector, extractor, notiRef)
 
 stringEditor :: Editor String
 stringEditor label = do
@@ -251,8 +251,8 @@ stringEditor label = do
     let extractor = do
         r <- entryGetText entry
         return (Just r)
-    let notifiers = standardNotifiers (castToWidget entry)
-    return ((castToWidget) frame, injector, extractor, notifiers)
+    notiRef <- standardNotifiers entry
+    return ((castToWidget) frame, injector, extractor, notiRef)
 
 multilineStringEditor :: Editor String
 multilineStringEditor label = do
@@ -270,8 +270,8 @@ multilineStringEditor label = do
         end <- textBufferGetEndIter buffer
         r <- textBufferGetText buffer start end False
         return (Just r)
-    let notifiers = standardNotifiers (castToWidget textView)
-    return ((castToWidget) frame, injector, extractor, notifiers)
+    notiRef <- standardNotifiers textView
+    return ((castToWidget) frame, injector, extractor, notiRef)
 
 intEditor :: Double -> Double -> Double -> Editor Int
 intEditor min max step label = do
@@ -284,8 +284,8 @@ intEditor min max step label = do
     let extractor = (do
         newNum <- spinButtonGetValue spin
         return (Just (truncate newNum)))
-    let notifiers = standardNotifiers (castToWidget spin)
-    return ((castToWidget) frame, injector, extractor, notifiers)
+    notiRef <- standardNotifiers spin
+    return ((castToWidget) frame, injector, extractor, notiRef)
 
 genericEditor :: (Show beta, Read beta) => Editor beta
 genericEditor label = do
@@ -296,8 +296,8 @@ genericEditor label = do
     containerAdd frame entry
     let injector = (\t -> entrySetText entry (show t))
     let extractor = do r <- entryGetText entry; return (Just (read r))
-    let notifiers = standardNotifiers (castToWidget entry)
-    return ((castToWidget) frame, injector, extractor, notifiers)
+    notiRef <- standardNotifiers entry
+    return ((castToWidget) frame, injector, extractor, notiRef)
 
 selectionEditor :: (Show beta, Eq beta) => [beta] -> Editor beta
 selectionEditor list label = do
@@ -305,6 +305,7 @@ selectionEditor list label = do
     frameSetShadowType frame ShadowNone
     frameSetLabel frame label
     combo   <-  New.comboBoxNewText
+    New.comboBoxSetActive combo 1
     mapM_ (\v -> New.comboBoxAppendText combo (show v)) list
     containerAdd frame combo
     let injector = (\t -> let mbInd = elemIndex t list in
@@ -316,9 +317,9 @@ selectionEditor list label = do
                             Just ind -> return (Just (list !! ind))
                             Nothing -> return Nothing
     let changedNotifier f = do combo `New.onChanged` f; return ()
-    let notifiers = Map.insert "onChanged" changedNotifier (standardNotifiers (castToWidget combo))
-    New.comboBoxSetActive combo 1
-    return ((castToWidget) frame, injector, extractor, notifiers)
+    notiRef <- standardNotifiers combo
+    registerEvent combo notiRef onChanged "onChanged"
+    return ((castToWidget) frame, injector, extractor, notiRef)
 
 {--
 multiselectionEditor :: (Show beta, Eq beta) => [beta] -> Editor [beta]
@@ -384,10 +385,8 @@ fileEditor label = do
         case mbFileName of
             Nothing -> return ()
             Just fn -> entrySetText entry fn 
-    let notifiers = standardNotifiers (castToWidget entry)
-    case Map.lookup "onFocusOut" notifiers of
-        Nothing -> return () 
-        Just event -> event (do
+    notiRef <- standardNotifiers entry
+    let handler = (do
             v <- extractor
             case v of
                 Just str -> 
@@ -403,9 +402,9 @@ fileEditor label = do
                                     dialogRun md
                                     widgetDestroy md
                                     return ()  
-                Nothing -> return ())        
-    return ((castToWidget) frame, injector, extractor, notifiers)    
-
+                Nothing -> return ())  
+    registerHandler notiRef handler "onFocusOut"      
+    return ((castToWidget) frame, injector, extractor, notiRef)    
 
 --
 -- | An editor with a subeditor which gets active, when a checkbox is selected
@@ -417,32 +416,32 @@ maybeEditor childEditor positive boolLabel childLabel label = do
     childRef <- trace "newChildRef" $newIORef Nothing
     frame   <-  frameNew
     frameSetLabel frame label
-    (boolFrame,inj1,ext1,not1) <- boolEditor  boolLabel
+    (boolFrame,inj1,ext1,notiRef1) <- boolEditor  boolLabel
     vBox <- vBoxNew False 1
     boxPackStart vBox boolFrame PackNatural 0
 --    boxPackStart vBox justFrame PackNatural 0
     containerAdd frame vBox    
     let injector =  \ v -> trace "injecting" $case v of
-                            Nothing ->  do
-                                inj1 (if positive then False else True)
-                                hasChild <- hasChildEditor childRef
-                                if hasChild 
-                                    then do
-                                        (justFrame,_,_,_) <- getChildEditor childRef childEditor childLabel
-                                        widgetHide justFrame
-                                    else return ()                                 
-                            Just val -> do
-                                hasChild <- hasChildEditor childRef
-                                (justFrame,inj2,_,_) <- getChildEditor childRef childEditor childLabel
-                                inj1 (if positive then True else False)
-                                if hasChild 
-                                    then do
-                                        boxPackStart vBox justFrame PackNatural 0
-                                        widgetShowAll justFrame
-                                    else do
-                                        boxPackStart vBox justFrame PackNatural 0
-                                        widgetShowAll justFrame
-                                inj2 val
+            Nothing ->  do
+                inj1 (if positive then False else True)
+                hasChild <- hasChildEditor childRef
+                if hasChild 
+                    then do
+                        (justFrame,_,_,_) <- getChildEditor childRef childEditor childLabel
+                        widgetHide justFrame
+                    else return ()                                 
+            Just val -> do
+                hasChild <- hasChildEditor childRef
+                (justFrame,inj2,_,_) <- getChildEditor childRef childEditor childLabel
+                inj1 (if positive then True else False)
+                if hasChild 
+                    then do
+                        boxPackStart vBox justFrame PackNatural 0
+                        widgetShowAll justFrame
+                    else do
+                        boxPackStart vBox justFrame PackNatural 0
+                        widgetShowAll justFrame
+                inj2 val
     let extractor = trace "extracting" $do
         bool <- ext1
         case bool of
@@ -454,8 +453,7 @@ maybeEditor childEditor positive boolLabel childLabel label = do
                     Nothing -> return Nothing
                     Just value -> return (Just (Just value))
             otherwise -> return (Just Nothing)
-    (not1 ! "onClicked")
-        (trace "clicked" $ do 
+    let onClickedHandler = (do 
             mbBool <- ext1
             case mbBool of
                 Just bool ->  
@@ -476,19 +474,24 @@ maybeEditor childEditor positive boolLabel childLabel label = do
                                     (justFrame,_,_,_) <- getChildEditor childRef childEditor childLabel
                                     widgetHide justFrame
                                 else return ()        
-                Nothing -> return ())  
+                Nothing -> return ()) 
     notifiers <-  trace "notifiers" $do
         hasChild <- hasChildEditor childRef
         if hasChild 
             then do
-                (_,_,_,not2) <- getChildEditor childRef childEditor childLabel
-                return (Map.unionWith (>>) not1 not2)
+                (_,_,_,notiRef2) <- getChildEditor childRef childEditor childLabel
+                noti1 <- readIORef notiRef1
+                noti2 <- readIORef notiRef2
+                return (Map.unionWith (>>) noti1 noti2)
             else do
-                return (Map.empty)
-    return ((castToWidget) frame, injector, extractor, notifiers)
+                noti1 <- readIORef notiRef1
+                return noti1
+    notiRef <- newIORef notifiers
+    registerHandler notiRef onClickedHandler "onClicked"
+    return ((castToWidget) frame, injector, extractor, notiRef)
 
 getChildEditor :: IORef (Maybe (Editor alpha )) -> (Editor alpha ) -> String -> 
-                    IO (Widget, Injector alpha , Extractor alpha , Map String Notifier)
+                    IO (Widget, Injector alpha , Extractor alpha , IORef (Map String Notifier))
 getChildEditor childRef childEditor childLabel =  do
     mb <- trace "getChildEditor" $readIORef childRef
     case mb of
@@ -507,9 +510,9 @@ eitherOrEditor :: (Editor alpha,String) -> (Editor beta,String) -> Editor (Eithe
 eitherOrEditor (leftEditor,leftLabel) (rightEditor,rightLabel) label = do
     frame   <-  frameNew
     frameSetLabel frame ""
-    (boolFrame,inj1,ext1,not1) <- boolEditor  label
-    (leftFrame,inj2,ext2,not2) <- leftEditor leftLabel
-    (rightFrame,inj3,ext3,not3) <- rightEditor rightLabel
+    (boolFrame,inj1,ext1,notiRef1) <- boolEditor  label
+    (leftFrame,inj2,ext2,notiRef2) <- leftEditor leftLabel
+    (rightFrame,inj3,ext3,notiRef3) <- rightEditor rightLabel
     let injector =  \ v -> case v of
                             Left vl -> do
                               widgetShowAll leftFrame
@@ -542,8 +545,8 @@ eitherOrEditor (leftEditor,leftLabel) (rightEditor,rightLabel) label = do
     containerAdd frame vBox    
     widgetHide leftFrame
     widgetShow rightFrame  
-    (not1 ! "onClicked")
-        (do bool <- ext1
+    let onClickedHandler = (do 
+            bool <- ext1
             case bool of
                 Just True -> do
                     widgetShowAll leftFrame
@@ -552,16 +555,22 @@ eitherOrEditor (leftEditor,leftLabel) (rightEditor,rightLabel) label = do
                     widgetShowAll rightFrame
                     widgetHideAll leftFrame
                 Nothing -> return ())
-    let notifiers = Map.unionWith (>>) not1 (Map.unionWith (>>) not2 not3)
-    return ((castToWidget) frame, injector, extractor, notifiers)
+    notifiers <- do
+        noti1 <- readIORef notiRef1
+        noti2 <- readIORef notiRef2
+        noti3 <- readIORef notiRef2
+        return (Map.unionWith (>>) noti1 (Map.unionWith (>>) noti2 noti3))
+    notiRef <- newIORef notifiers
+    registerHandler notiRef onClickedHandler "onClicked"
+    return ((castToWidget) frame, injector, extractor, notiRef)
 
 pairEditor :: (Editor alpha, String) -> (Editor beta, String) -> Editor (alpha,beta)
 pairEditor (fstEd, fstLabel) (sndEd, sndLabel) label = do
     frame   <-  frameNew
     frameSetLabel frame label
-    (fstFrame,inj1,ext1,not1) <- fstEd fstLabel
+    (fstFrame,inj1,ext1,notiRef1) <- fstEd fstLabel
     widgetSetName fstFrame "first"
-    (sndFrame,inj2,ext2,not2) <- sndEd sndLabel
+    (sndFrame,inj2,ext2,notiRef2) <- sndEd sndLabel
     widgetSetName sndFrame "snd"
     hBox <- hBoxNew False 1
     widgetSetName hBox "box"    
@@ -575,8 +584,12 @@ pairEditor (fstEd, fstLabel) (sndEd, sndLabel) label = do
         if isNothing f || isNothing s 
             then return Nothing 
             else return (Just (fromJust f, fromJust s))
-    let notifiers = Map.unionWith (>>) not1 not2
-    return ((castToWidget) frame, injector, extractor, notifiers)
+    notifiers <- do
+        noti1 <- readIORef notiRef1
+        noti2 <- readIORef notiRef2
+        return (Map.unionWith (>>) noti1 noti2)
+    notiRef <- newIORef notifiers
+    return ((castToWidget) frame, injector, extractor, notiRef)
 
 multisetEditor :: Show alpha => Editor alpha -> String -> Editor [alpha]
 multisetEditor singleEditor labelS label =  do
@@ -625,8 +638,8 @@ multisetEditor singleEditor labelS label =  do
     let extractor = do
         v <- listStoreGetValues listStore
         return (Just v)
-    let notifiers = Map.empty
-    return ((castToWidget) frame, injector, extractor, notifiers)
+    notiRef <- standardNotifiers list
+    return ((castToWidget) frame, injector, extractor, notiRef)
         
 listStoreGetValues :: New.ListStore a -> IO [a]
 listStoreGetValues listStore = do
@@ -656,12 +669,33 @@ versionEditor label = do
                     else return (Just (fst $head l))
     return (wid,pinj,pext,notif)   
 
-standardNotifiers :: Widget -> Map String Notifier
-standardNotifiers w = 
-    let focusIn f = do
-            w `onFocusIn` (\ _ -> do f; return False)
-            return ()
-        focusOut f =  do
-            w `onFocusOut` (\ _ -> do f; return False)
-            return ()
-    in Map.fromList [("onFocusOut",focusOut),("onFocusIn",focusIn)]
+standardNotifiers :: WidgetClass w => w -> IO (IORef (Map String Notifier))
+standardNotifiers w = do
+    notiRef <- newIORef Map.empty
+    registerEvent  w notiRef (\ w f -> onFocusIn w (\e -> do f; return False)) "onFocusIn"
+    registerEvent  w notiRef (\ w f -> onFocusOut w (\e -> do f; return False)) "onFocusOut"
+    return notiRef
+ 
+registerEvent :: WidgetClass w =>  w -> IORef (Map String Notifier) -> (w -> IO () -> IO (ConnectId w)) 
+                        -> String -> IO ()
+registerEvent w notiRef registerFunc str = do
+    registerFunc w (do
+        noti <- readIORef notiRef
+        case Map.lookup str noti of
+            Nothing -> return ()
+            Just handler -> do
+                handler)
+    return ()
+
+registerHandler :: IORef (Map String Notifier) -> Notifier -> String -> IO ()
+registerHandler notiRef handler string = do
+    noti <- readIORef notiRef           
+    case Map.lookup string noti of
+        Nothing -> do
+            let noti2 = Map.insert string handler noti
+            writeIORef notiRef noti2 
+        Just otherHandler -> do
+            let noti2 = Map.insert string (handler >> otherHandler) noti
+            writeIORef notiRef noti2 
+       
+         
