@@ -63,7 +63,7 @@ prefsDescription = [
                 return (if i == 0 then Nothing else Just i))
             rightMargin
             (\b a -> a{rightMargin = b})
-            (maybeEditor (intEditor 0.0 200.0 5.0) True "" "On or Off")
+            (maybeEditor (intEditor 0.0 200.0 5.0) True "Show right margin?" "Position")
             (\b -> do
                 buffers <- allBuffers
                 mapM_ (\buf -> case b of
@@ -144,7 +144,7 @@ editPrefs' :: Prefs -> [FieldDescription Prefs] -> GhfRef -> IO ()
 editPrefs' prefs prefsDesc ghfR  = do
     lastAppliedPrefsRef <- newIORef prefs
     dialog  <- windowNew
-    vb      <- vBoxNew False 12
+    vb      <- vBoxNew False 4
     bb      <- hButtonBoxNew
     apply   <- buttonNewFromStock "gtk-apply"
     restore <- buttonNewFromStock "Restore"

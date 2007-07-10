@@ -127,6 +127,13 @@ packageDescription = [
             (\ a b -> b{synopsis = a})
             stringEditor
             (\a -> return ())
+    ,   field "Description" "A more verbose description of this package" 
+            emptyPrinter
+            emptyParser
+            description
+            (\ a b -> b{description = a})
+            multilineStringEditor
+            (\a -> return ())
     ]),
     ("Specification",[
         field "Build Dependencies" 
@@ -206,13 +213,6 @@ packageDescription = [
             pkgUrl
             (\ a b -> b{pkgUrl = a})
             stringEditor
-            (\a -> return ())
-    ,   field "Description" "A more verbose description of this package" 
-            emptyPrinter
-            emptyParser
-            description
-            (\ a b -> b{description = a})
-            multilineStringEditor
             (\a -> return ())
     ,   field "Category" "" 
             emptyPrinter
@@ -315,7 +315,7 @@ versionRangeEditor name = do
                         (versionEditor,"")),"Simple Version Range")
             ((pairEditor (selectionEditor v2, " ")
                         ((pairEditor (versionRangeEditor,"") (versionRangeEditor, "")),
-                            "")), "Complex Version Range")) True "Any Version" "" name
+                            "")), "Complex Version Range")) False "Any Version" "" name
     let vrinj AnyVersion                =   inj Nothing
         vrinj (ThisVersion v)           =   inj (Just (Left (ThisVersionS,v))) 
         vrinj (LaterVersion v)          =   inj (Just (Left (LaterVersionS,v)))
