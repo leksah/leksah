@@ -3,30 +3,13 @@
 -- 
 
 module Ghf.Editor.PropertyEditor (
-    field
-,   Comment
-,   Name
-,   FieldDescription (..)
 
-,   Getter
+    Getter
 ,   Setter
-,   Printer
-,   Parser
 ,   Injector
 ,   Extractor
-,   Notifier
 ,   Editor
 ,   Applicator
-
-,   prefsParser
-,   boolParser
-,   intParser
-,   pairParser
-,   identifier
-,   emptyParser
-
-,   showPrefs
-,   emptyPrinter
 
 ,   boolEditor
 ,   stringEditor
@@ -44,14 +27,11 @@ module Ghf.Editor.PropertyEditor (
 ,   Default(..)
 ) where
 
-import Text.ParserCombinators.Parsec hiding (Parser)
-import qualified Text.ParserCombinators.Parsec.Token as P
-import Text.ParserCombinators.Parsec.Language(emptyDef)
-import qualified Text.PrettyPrint.HughesPJ as PP
 import Control.Monad(foldM)
 import Graphics.UI.Gtk hiding (afterToggleOverwrite,Focus,onChanged)
 import Graphics.UI.Gtk.SourceView
 import Graphics.UI.Gtk.ModelView as New
+import Text.ParserCombinators.Parsec hiding (Parser,label)
 import Control.Monad.Reader
 import qualified Data.Map as Map
 import Data.Map(Map,(!))
@@ -62,76 +42,75 @@ import Data.Maybe(isJust)
 import System.Directory
 import Data.List(unzip4,elemIndex)
 import Text.ParserCombinators.ReadP(readP_to_S)
-
 import Debug.Trace
 
+import Ghf.Core hiding(label,name)
+import Ghf.PrinterParser
+import qualified Text.PrettyPrint.HughesPJ as PP
 
-
-import Ghf.Core
-
-type Comment            =   String
-type Name               =   String
-
-data FieldDescription alpha =  FD {
-        name                ::  Name
-    ,   comment             ::  Comment
-    ,   fieldPrinter        ::  alpha -> PP.Doc
-    ,   fieldParser         ::  alpha -> CharParser () alpha
-    ,   fieldEditor         ::  alpha -> IO (Widget, alpha -> IO(), alpha -> IO(alpha), IORef (Map String Notifier))
-    ,   fieldApplicator     ::  alpha -> alpha -> GhfAction
-}
-
-class Default a 
-    where getDefault :: a 
-
-type Getter alpha beta  =   alpha -> beta
-type Setter alpha beta  =   beta -> alpha -> alpha
-type Printer beta       =   beta -> PP.Doc
-type Parser beta        =   CharParser () beta
+class Default a where 
+    getDefault       ::  a 
 
 type Injector beta      =   beta -> IO()
 type Extractor beta     =   IO(Maybe (beta))
-type Notifier        =   IO ()  
-type Editor beta        =   Name -> IO(Widget, Injector beta, Extractor beta, IORef (Map String Notifier))
+  
+type Notifier        =   IORef (Map String (Event ->IO Bool))
+
+emptyNotifier        ::  IO (IORef (Map String (Event -> IO Bool)))
+emptyNotifier        =   newIORef(Map.empty)
+
+type Editor beta        =   Parameters -> IO(Widget, Injector beta, Extractor beta,Notifier)
 type Applicator beta    =   beta -> GhfAction
 
-{--
-class EditorC where
-    get :: IO(Widget, Injector beta, Extractor beta, IORef (Map String Notifier))
-    
-instance (Editor a) EditorC where
-    get = 
---}
+data Parameters      =   Parameters {   
+                         label      :: Maybe String
+                     ,   direction  :: Maybe Direction
+                     ,   showFrame  :: Maybe ShadowType
+                     ,   outerAlignment  :: Maybe (Float,Float,Float,Float)
+                                                -- | xalign yalign xscale yscale
+                     ,   outerPadding    :: Maybe (Int,Int,Int,Int)
+                                                --  | paddingTop paddingBottom paddingLeft paddingRight
+                     ,   innerAlignment  :: Maybe (Float,Float,Float,Float)
+                                                -- | xalign yalign xscale yscale
+                     ,   innerPadding    :: Maybe (Int,Int,Int,Int)
+                                                --  | paddingTop paddingBottom paddingLeft paddingRight
+                     ,   spinRange       :: Maybe (Float,Float,Float) 
+                                                --  | min max step
+    }
+                    
+emptyParameters      =   Parameters Nothing Nothing Nothing Nothing Nothing Nothing Nothing Nothing
 
-type MkFieldDescription alpha beta =
+instance Default Parameters where
+    getDefault       =   Parameters (Just "") (Just Horizontal) (Just ShadowNone) 
+                            (Just (0.5, 0.5, 0.95, 0.95)) (Just (2, 5, 3, 3)) 
+                            (Just (0.5, 0.5, 0.95, 0.95)) (Just (2, 5, 3, 3)) Nothing
+
+type MkFieldDescriptionE alpha beta =
               String ->                         --name
-              String ->                         --comment
-              (Printer beta) ->                
+              Maybe String ->                         --synopsis  
+              (Printer beta) ->                 
               (Parser beta) ->
               (Getter alpha beta) ->            
               (Setter alpha beta) ->            
               (Editor beta) ->
               (Applicator beta) ->
-              FieldDescription alpha
+              FieldDescriptionE alpha
 
-field :: Eq beta => MkFieldDescription alpha beta
-field name comment printer parser getter setter editor applicator =
-    FD  name 
-        comment
-        (\ dat -> (PP.text name PP.<> PP.colon)
-                PP.$$ (PP.nest 15 (printer (getter dat)))
-                PP.$$ (PP.nest 5 (if null comment 
-                                        then PP.empty 
-                                        else PP.text $"--" ++ comment)))
-        (\ dat -> try (do
-            symbol name
-            colon
-            val <- parser
-            return (setter val dat)))
+data FieldDescriptionE alpha =  FDE {
+        name                ::  String
+    ,   synopsis            ::  Maybe String
+    ,   fieldEditor         ::  alpha -> IO (Widget, alpha -> IO(), alpha -> IO(alpha), Notifier)
+    ,   fieldApplicator     ::  alpha -> alpha -> GhfAction
+    }
+
+mkFieldDescriptionE :: Eq beta => MkFieldDescriptionE alpha beta
+mkFieldDescriptionE name synopsis printer parser getter setter editor applicator =
+    FDE name 
+        synopsis
         (\ dat -> do
-            (widget, inj,ext,notiRef) <- editor name
+            (widget, inj,ext,notiRef) <- editor (emptyParameters{label = (Just name)})
             inj (getter dat)
-            let handler = (do 
+{--            let handler = (do 
                 v <- ext
                 case v of
                     Just _ -> return ()
@@ -141,7 +120,7 @@ field name comment printer parser getter setter editor applicator =
                         dialogRun md
                         widgetDestroy md
                         return ())
-            registerHandler notiRef handler "onFocusOut"
+            registerHandler notiRef handler "onFocusOut"--}
             return (widget,
                     (\a -> inj (getter a)), 
                     (\a -> do 
@@ -158,212 +137,165 @@ field name comment printer parser getter setter editor applicator =
                 else applicator newField)
 
 -- ------------------------------------------------------------
--- * Parsing
--- ------------------------------------------------------------
-
-prefsStyle  :: P.LanguageDef st
-prefsStyle  = emptyDef                      
-                { P.commentStart   = "{-"
-                , P.commentEnd     = "-}"
-                , P.commentLine    = "--"
-                }      
-
-lexer = P.makeTokenParser prefsStyle
-lexeme = P.lexeme lexer
-whiteSpace = P.whiteSpace lexer
-hexadecimal = P.hexadecimal lexer
-symbol = P.symbol lexer
-identifier = P.identifier lexer
-colon = P.colon lexer
-integer = P.integer lexer
-
-prefsParser :: a -> [FieldDescription a] -> CharParser () a
-prefsParser def descriptions = 
-    let parsersF = map fieldParser descriptions in do     
-        whiteSpace
-        res <- applyFieldParsers def parsersF
-        return res
-        <?> "prefs parser" 
-
-applyFieldParsers :: a -> [a -> CharParser () a] -> CharParser () a
-applyFieldParsers prefs parseF = do
-    let parsers = map (\a -> a prefs) parseF
-    newprefs <- choice parsers
-    whiteSpace
-    applyFieldParsers newprefs parseF
-    <|> do
-    eof
-    return (prefs)
-    <?> "field parser"
-
-boolParser :: CharParser () Bool
-boolParser = do
-    (symbol "True" <|> symbol "true")
-    return True
-    <|> do
-    (symbol "False"<|> symbol "false")
-    return False
-    <?> "bool parser"
-
-pairParser :: CharParser () alpha -> CharParser () (alpha,alpha) 
-pairParser p2 = do
-    char '('    
-    v1 <- p2
-    char ','
-    v2 <- p2
-    char ')'
-    return (v1,v2)
-    <?> "pair parser"
-
-intParser :: CharParser () Int
-intParser = do
-    i <- integer
-    return (fromIntegral i)
-
-emptyParser :: CharParser () a
-emptyParser = pzero
-
--- ------------------------------------------------------------
--- * Printing
--- ------------------------------------------------------------
-
-showPrefs :: a -> [FieldDescription a] -> String
-showPrefs prefs prefsDesc = PP.render $
-    foldl (\ doc (FD _ _ printer _ _ _) -> doc PP.$+$ printer prefs) PP.empty prefsDesc 
-
-emptyPrinter :: alpha -> PP.Doc
-emptyPrinter _ = PP.empty
-
--- ------------------------------------------------------------
 -- * Editing
 -- ------------------------------------------------------------
-xalign = 0.5
-yalign = 0.5
-xscale = 0.95
-yscale = 0.95
-paddingTop = 2
-paddingBottom = 5
-paddingLeft = 3
-paddingRight = 3
 
+mkEditor :: Parameters -> (Widget -> Injector alpha ) -> Extractor alpha  -> Notifier -> Editor alpha       
+mkEditor parameters injectorC extractor notifier = do
+    let (xalign, yalign, xscale, yscale) = getParameter outerAlignment parameters
+    outerAlignment <- alignmentNew xalign yalign xscale yscale
+    let (paddingTop, paddingBottom, paddingLeft, paddingRight) = getParameter outerPadding parameters
+    alignmentSetPadding outerAlignment paddingTop paddingBottom paddingLeft paddingRight
+    frame   <-  frameNew
+    frameSetShadowType frame (getParameter showFrame) 
+    containerAdd outerAlignment frame
+    let (xalign, yalign, xscale, yscale) =  getParameter innerAlignment parameters
+    innerAlignment <- alignmentNew xalign yalign xscale yscale
+    let (paddingTop, paddingBottom, paddingLeft, paddingRight) = getParameter innerPadding parameters
+    alignmentSetPadding innerAlignment paddingTop paddingBottom paddingLeft paddingRight
+    containerAdd frame innerAlignment
+    return ((castToWidget) outerAlignment, injectorC innerAlignment, extractor, notifier)  where 
+
+getParameter selector parameters =  
+    let individual = selector parameters in
+        case individual of
+            Just it -> it
+            Nothing -> selector getDefault     
+    
 boolEditor :: Editor Bool
-boolEditor label = do
---    frame   <-  frameNew
---    frameSetShadowType frame ShadowNone
-    alignment <- alignmentNew xalign yalign xscale yscale
---    alignmentSetPadding alignment paddingTop paddingBottom paddingLeft paddingRight
-    button   <-  checkButtonNewWithLabel label
---    buttonSetRelief button ReliefNone
---    toggleButtonSetMode button False
-    containerAdd alignment button
-    let injector = toggleButtonSetActive button
-    let extractor = do
-        r <- toggleButtonGetActive button
-        return (Just r)
-    let clickedNotifier f = do button `onClicked` f; return ()
-    notiRef <- standardNotifiers button extractor label
-    registerEvent button notiRef onClicked "onClicked"
-    return ((castToWidget) alignment, injector, extractor, notiRef)
+boolEditor parameters = do
+    coreRef <- newIORef Nothing
+    notifier <- newIORef emptyNotifier
+    mkEditor parameters  
+        (\widget bool -> do 
+            core <- readIORef coreRef
+            case core of 
+                Nothing  -> do
+                    button <- checkButtonNewWithLabel label
+                    containerAdd widget button
+                    toggleButtonSetActive button bool
+                    registerEvent button notifier onChanged "onChanged"
+                    writeIORef coreRef (Just button)  
+                Just button -> toggleButtonSetActive button bool)
+        (do core <- readIORef coreRef
+            case core of 
+                Nothing -> return Nothing  
+                Just button -> do
+                    r <- toggleButtonGetActive button        
+                    return (Just r))
+        notifier
 
 stringEditor :: Editor String
-stringEditor label = do
-    frame   <-  frameNew
-    frameSetShadowType frame ShadowNone
-    frameSetLabel frame label
-    alignment <- alignmentNew xalign yalign xscale yscale
-    alignmentSetPadding alignment paddingTop paddingBottom paddingLeft paddingRight
-    entry   <-  entryNew
-    containerAdd frame alignment
-    containerAdd alignment entry
-    let injector = entrySetText entry
-    let extractor = do
-        r <- entryGetText entry
-        return (Just r)
-    notiRef <- standardNotifiers entry extractor label
-    return ((castToWidget) frame, injector, extractor, notiRef)
+stringEditor parameters = do
+    coreRef <- newIORef Nothing
+    notifier <- newIORef emptyNotifier
+    mkEditor parameters  
+        (\widget string -> do 
+            core <- readIORef coreRef
+            case core of 
+                Nothing  -> do
+                    entry   <-  entryNew
+                    containerAdd widget entry
+                    entrySetText entry string
+                    writeIORef coreRef (Just entry) 
+                Just entry -> entrySetText entry string)
+        (do core <- readIORef coreRef
+            case core of 
+                Nothing -> return Nothing  
+                Just entry -> do
+                    r <- entryGetText entry       
+                    return (Just r))
+        notifier
 
 multilineStringEditor :: Editor String
-multilineStringEditor label = do
-    frame   <-  frameNew
-    frameSetShadowType frame ShadowNone
-    frameSetLabel frame label
-    alignment <- alignmentNew xalign yalign xscale yscale
-    alignmentSetPadding alignment paddingTop paddingBottom paddingLeft paddingRight
-    textView   <-  textViewNew
-    vBox <- vBoxNew False 0
-    boxPackStart vBox textView PackGrow 0
-    containerAdd frame alignment
-    containerAdd alignment vBox
-    let injector = (\s -> do
-        buffer <- textViewGetBuffer textView
-        textBufferSetText buffer s)
-    let extractor = do
-        buffer <- textViewGetBuffer textView
-        start <- textBufferGetStartIter buffer
-        end <- textBufferGetEndIter buffer
-        r <- textBufferGetText buffer start end False
-        return (Just r)
-    notiRef <- standardNotifiers textView extractor label
-    return ((castToWidget) frame, injector, extractor, notiRef)
+multilineStringEditor parameters = do
+    coreRef <- newIORef Nothing
+    notifier <- newIORef emptyNotifier
+    mkEditor parameters  
+        (\widget string -> do 
+            core <- readIORef coreRef
+            case core of 
+                Nothing  -> do
+                    textView   <-  textViewNew
+                    containerAdd widget textView
+                    buffer <- textViewGetBuffer textView
+                    textBufferSetText buffer string
+                    writeIORef coreRef (Just textView) 
+                Just textView -> do
+                    buffer <- textViewGetBuffer textView
+                    textBufferSetText buffer string)
+        (do core <- readIORef coreRef
+            case core of 
+                Nothing -> return Nothing  
+                Just textView -> do
+                    buffer <- textViewGetBuffer textView
+                    start <- textBufferGetStartIter buffer
+                    end <- textBufferGetEndIter buffer
+                    r <- textBufferGetText buffer start end False
+                    return (Just r))
+        notifier
 
-intEditor :: Double -> Double -> Double -> Editor Int
-intEditor min max step label = do
-    frame   <-  frameNew
-    frameSetShadowType frame ShadowNone
-    frameSetLabel frame label
-    alignment <- alignmentNew xalign yalign xscale yscale
-    alignmentSetPadding alignment paddingTop paddingBottom paddingLeft paddingRight
-    spin <- spinButtonNewWithRange min max step
-    containerAdd frame alignment
-    containerAdd alignment spin
-    let injector = (\v -> spinButtonSetValue spin (fromIntegral v))
-    let extractor = (do
-        newNum <- spinButtonGetValue spin
-        return (Just (truncate newNum)))
-    notiRef <- standardNotifiers spin extractor label
-    return ((castToWidget) frame, injector, extractor, notiRef)
+intEditor :: Editor Int
+intEditor parameters = do
+    coreRef <- newIORef Nothing
+    notifier <- newIORef emptyNotifier
+    mkEditor parameters  
+        (\widget v -> do 
+            core <- readIORef coreRef
+            case core of 
+                Nothing  -> do
+                    let (min, max, step) = getParameter spinRange parameters 
+                    spin <- spinButtonNewWithRange min max step
+                    containerAdd widget spin
+                    spinButtonSetValue spin (fromIntegral v)
+                    writeIORef coreRef (Just spin) 
+                Just spin -> spinButtonSetValue spin (fromIntegral v))
+        (do core <- readIORef coreRef
+            case core of 
+                Nothing -> return Nothing  
+                Just spin -> do
+                    newNum <- spinButtonGetValue spin
+                    return (Just (truncate newNum)))
+        notifier
 
 genericEditor :: (Show beta, Read beta) => Editor beta
-genericEditor label = do
-    frame   <-  frameNew
-    frameSetShadowType frame ShadowNone
-    frameSetLabel frame label
-    alignment <- alignmentNew xalign yalign xscale yscale
-    alignmentSetPadding alignment paddingTop paddingBottom paddingLeft paddingRight
-    entry   <-  entryNew
-    containerAdd frame alignment
-    containerAdd alignment entry
-    let injector = (\t -> entrySetText entry (show t))
-    let extractor = do r <- entryGetText entry; return (Just (read r))
-    notiRef <- standardNotifiers entry extractor label
-    return ((castToWidget) frame, injector, extractor, notiRef)
+genericEditor parameters = do
+    (wid,inj,ext,notif) <- stringEditor name
+    let ginj v = inj (show v)
+    let gext = do
+        s <- ext
+        case s of
+            Nothing -> return Nothing
+            Just s -> 
+                let l = read s in
+                if null l then
+                    return Nothing
+                    else return (Just l)
+    return (wid,ginj,gext,notif) 
 
-selectionEditor :: (Show beta, Eq beta) => [beta] -> Editor beta
-selectionEditor list label = do
-    frame   <-  frameNew
-    frameSetShadowType frame ShadowNone
-    frameSetLabel frame label
-    alignment <- alignmentNew xalign yalign xscale yscale
-    alignmentSetPadding alignment paddingTop paddingBottom paddingLeft paddingRight
-    combo   <-  New.comboBoxNewText
-    vBox <- vBoxNew False 0
-    boxPackStart vBox combo PackNatural 0
-    New.comboBoxSetActive combo 1
-    mapM_ (\v -> New.comboBoxAppendText combo (show v)) list
-    containerAdd frame alignment 
-    containerAdd alignment vBox
-    let injector = (\t -> let mbInd = elemIndex t list in
-                            case mbInd of
-                                Just ind -> New.comboBoxSetActive combo ind
-                                Nothing -> return ())
-    let extractor = do  mbInd <- New.comboBoxGetActive combo; 
-                        case mbInd of 
-                            Just ind -> return (Just (list !! ind))
-                            Nothing -> return Nothing
-    let changedNotifier f = do combo `New.onChanged` f; return ()
-    notiRef <- standardNotifiers combo extractor label
-    registerEvent combo notiRef onChanged "onChanged"
-    return ((castToWidget) frame, injector, extractor, notiRef)
+staticSelectionEditor :: (Show beta, Eq beta) => [beta] -> Editor beta
+staticSelectionEditor list parameters = do
+    coreRef <- newIORef Nothing
+    notifier <- newIORef emptyNotifier
+    mkEditor parameters  
+        (\widget ind -> do 
+            core <- readIORef coreRef
+            case core of 
+                Nothing  -> do
+                    combo   <-  New.comboBoxNewText
+                    New.comboBoxSetActive combo 1
+                    mapM_ (\v -> New.comboBoxAppendText combo (show v)) list
+                    containerAdd widget combo
+                    New.comboBoxSetActive combo ind
+                    writeIORef coreRef (Just combo)
+                Just entry -> entrySetText entry string)
+        (do core <- readIORef coreRef
+            case core of 
+                Nothing -> return Nothing  
+                Just combo -> do
+                    ind <- New.comboBoxGetActive combo
+                    return (Just (list !! ind)))
+        notifier
 
 {--
 multiselectionEditor :: (Show beta, Eq beta) => [beta] -> Editor [beta]
@@ -389,27 +321,37 @@ multiselectionEditor list label = do
 --}
 
 fileEditor :: Editor FilePath
-fileEditor label = do
-    frame   <-  frameNew
-    frameSetShadowType frame ShadowNone
-    frameSetLabel frame label
-    alignment <- alignmentNew xalign yalign xscale yscale
-    alignmentSetPadding alignment paddingTop paddingBottom paddingLeft paddingRight
-    button <- buttonNewWithLabel "Select file"    
-    entry   <-  entryNew
-    hBox <- hBoxNew False 1
-    boxPackStart hBox entry PackGrow 0
-    boxPackStart hBox button PackGrow 0
-    containerAdd frame alignment
-    containerAdd alignment hBox
-    let injector = entrySetText entry
-    let extractor = do
-        str <- entryGetText entry
-        dfe <- doesFileExist str
-        if dfe 
-            then return (Just str) 
-            else return Nothing 
-    button `onClicked` do
+fileEditor parameters = do
+    coreRef <- newIORef Nothing
+    notifier <- newIORef emptyNotifier
+    mkEditor parameters  
+        (\widget filePath -> do 
+            core <- readIORef coreRef
+            case core of 
+                Nothing  -> do
+                    button <- buttonNewWithLabel "Select file"
+                    entry   <-  entryNew
+                    button `onClicked` (buttonHandler entry)   
+                    box <- case getParameter direction of 
+                                Horizontal  -> (castToBox) hBoxNew False 1
+                                Vertical    -> (castToBox) vBoxNew False 1
+                    boxPackStart box entry PackGrow 0
+                    boxPackEnd box button PackNatural 0
+                    containerAdd widget box
+                    entrySetText entry filePath
+                    writeIORef coreRef (Just entry) 
+                Just entry -> entrySetText entry filePath)
+        (do core <- readIORef coreRef
+            case core of 
+                Nothing -> return Nothing  
+                Just entry -> do
+                    str <- entryGetText entry
+                    dfe <- doesFileExist str
+                    if dfe 
+                        then return (Just str) 
+                        else return Nothing )
+        notifier where
+    buttonHandler entry = do
         mbFileName <- do     
             dialog <- fileChooserDialogNew
                             (Just $ "Select File")             
@@ -435,105 +377,120 @@ fileEditor label = do
         case mbFileName of
             Nothing -> return ()
             Just fn -> entrySetText entry fn 
-    notiRef <- standardNotifiers entry extractor label
-    return ((castToWidget) alignment, injector, extractor, notiRef)    
+
+
+-- ------------------------------------------------------------
+-- * Composition editors
+-- ------------------------------------------------------------
 
 --
 -- | An editor with a subeditor which gets active, when a checkbox is selected
 -- | or deselected (if the positive Argument is False)
 --
 
-maybeEditor :: Default beta => Editor beta -> Bool -> String -> String -> Editor (Maybe beta)
-maybeEditor childEditor positive boolLabel childLabel label = do
-    childRef <- trace "newChildRef" $newIORef Nothing
-    frame   <-  frameNew
-    frameSetLabel frame label
-    (boolFrame,inj1,ext1,notiRef1) <- boolEditor  boolLabel
-    alignment <- alignmentNew xalign yalign xscale yscale
-    alignmentSetPadding alignment paddingTop paddingBottom paddingLeft paddingRight
-    vBox <- vBoxNew False 0
-    boxPackStart vBox boolFrame PackNatural 0
---    boxPackStart vBox justFrame PackNatural 0
-    containerAdd alignment frame
-    containerAdd frame vBox    
-    let injector =  \ v -> trace "injecting" $case v of
-            Nothing ->  do
-                inj1 (if positive then False else True)
-                hasChild <- hasChildEditor childRef
-                if hasChild 
-                    then do
-                        (justFrame,_,_,_) <- getChildEditor childRef childEditor childLabel
-                        widgetHideAll justFrame
-                    else return ()                                 
-            Just val -> do
-                hasChild <- hasChildEditor childRef
-                (justFrame,inj2,_,_) <- getChildEditor childRef childEditor childLabel
-                inj1 (if positive then True else False)
-                if hasChild 
-                    then do
-                        widgetShowAll justFrame
-                    else do
-                        boxPackStart vBox justFrame PackNatural 0
-                        widgetShowAll justFrame
-                inj2 val
-    let extractor = trace "extracting" $do
-        bool <- ext1
-        case bool of
-            Nothing -> return Nothing
-            Just bv | bv == positive -> do
-                (_,_,ext2,_) <- getChildEditor childRef childEditor childLabel
-                value <- ext2
-                case value of
-                    Nothing -> return Nothing
-                    Just value -> return (Just (Just value))
-            otherwise -> return (Just Nothing)
-    let onClickedHandler = (do 
-            mbBool <- ext1
-            case mbBool of
-                Just bool ->  
-                    if bool == positive 
-                        then do
-                            hasChild <- hasChildEditor childRef
-                            (justFrame,inj2,_,_) <- getChildEditor childRef childEditor childLabel
-                            if hasChild 
+maybeEditor :: Default beta => (Editor beta, Parameters) -> Bool -> String -> Editor (Maybe beta)
+maybeEditor (childEdit, childParams) positive boolLabel parameters = do  
+    coreRef <- newIORef Nothing
+    childRef  <- newIORef Nothing
+    notifier <- newIORef emptyNotifier
+    mkEditor parameters  
+        (\widget mbVal -> do 
+            core <- readIORef coreRef
+            case core of 
+                Nothing  -> do
+                    be@(boolFrame,inj1,ext1,notifierBool) <- boolEditor emptyParameters
+                    vBox <- vBoxNew False 0
+                    boxPackStart vBox boolFrame PackNatural 0
+                    containerAdd widget vBox
+                    registerHandler notifierBool (onClickedHandler widget) "onClicked"
+                    case mbVal of 
+                        Nothing -> do
+                            inj1 (if positive then False else True)
+                        Just val -> do
+                            (childWidget,inj2,_,_) <- getChildEditor childRef childEdit childParams
+                            boxPackEnd vBox childWidget PackNatural 0
+                            widgetShowAll childWidget
+                            inj1 (if positive then True else False)
+                            inj2 val
+                    writeIORef coreRef (Just (be,vBox)) 
+                Just (be@(boolFrame,inj1,ext1,notiRef1),vBox) -> 
+                    case mbVal of 
+                        Nothing -> do
+                            if hasChildEditor childRef 
                                 then do
-                                    widgetShowAll justFrame
+                                    (childWidget,_,_,_) <- getChildEditor childRef childEdit childParams
+                                    inj1 (if positive then False else True)
+                                    widgetHideAll childWidget
+                                else inj1 (if positive then False else True)
+                        Just val -> do
+                            if hasChildEditor childRef 
+                                then do
+                                    (childWidget,inj2,_,_) <- getChildEditor childRef childEdit childParams
+                                    widgetShowAll childWidget
+                                    inj2 val
                                 else do
-                                    boxPackStart vBox justFrame PackNatural 0
-                                    widgetShowAll justFrame
-                                    inj2 getDefault                     
-                        else do
-                            hasChild <- hasChildEditor childRef
-                            if hasChild 
-                                then do
-                                    (justFrame,_,_,_) <- getChildEditor childRef childEditor childLabel
-                                    widgetHideAll justFrame
-                                else return ()        
-                Nothing -> return ()) 
-    registerHandler notiRef1 onClickedHandler "onClicked"
-    notiRef <- standardNotifiers frame extractor label
-    return ((castToWidget) alignment, injector, extractor, notiRef)    
+                                    (childWidget,inj2,_,_) <- getChildEditor childRef childEdit childParams
+                                    boxPackEnd vBox childWidget PackNatural 0
+                                    widgetShowAll childWidget
+                                    inj2 val)
+        (do
+            core <- readIORef coreRef
+            case core of 
+                Nothing  -> return Nothing
+                Just be@(boolFrame,inj1,ext1,notiRef1) -> do
+                    bool <- ext1
+                    case bool of
+                        Nothing -> return Nothing
+                        Just bv | bv == positive -> do
+                            (_,_,ext2,_) <- getChildEditor childRef childEdit childParams
+                            value <- ext2
+                            case value of
+                                Nothing -> return Nothing
+                                Just value -> return (Just (Just value))
+                        otherwise -> return (Just Nothing))
+        notifier  where
+    onClickedHandler widget coreRef childRef = (do 
+        core <- readIORef coreRef
+        case core of 
+            Nothing  -> error "Impossible"
+            Just (be@(boolFrame,inj1,ext1,notiRef1),vBox) -> do
+                mbBool <- ext1
+                case mbBool of
+                    Just bool ->  
+                        if not (bool == positive) 
+                            then do
+                                hasChild <- hasChildEditor childRef
+                                if hasChild 
+                                    then do
+                                        (childWidget,_,_,_) <- getChildEditor childRef childEdit childParams
+                                        widgetHideAll childWidget
+                                    else return () 
+                            else do     
+                                hasChild <- hasChildEditor childRef
+                                if hasChild 
+                                    then do
+                                        (childWidget,_,_,_) <- getChildEditor childRef childEdit childParams
+                                        widgetShowAll childWidget  
+                                    else do
+                                        (childWidget,inj2,_,_) <- getChildEditor childRef childEdit childParams
+                                        boxPackEnd vBox childWidget PackNatural 0
+                                        widgetShowAll childWidget
+                                        inj2 getDefault        
+                    Nothing -> return ()) 
+    getChildEditor childRef childEditor childLabel =  do
+        mb <- trace "getChildEditor" $readIORef childRef
+        case mb of
+            Just editor -> return editor
+            Nothing -> do
+                let val = childEditor 
+                editor <- childEditor childLabel
+                writeIORef childRef (Just editor)
+                return editor
+    hasChildEditor childRef =  do
+        mb <- readIORef childRef
+        return (isJust mb)
 
-getChildEditor :: IORef (Maybe (Widget, Injector alpha , Extractor alpha , IORef (Map String Notifier))) -> 
-                    (Editor alpha ) -> String -> 
-                        IO (Widget, Injector alpha , Extractor alpha , IORef (Map String Notifier))
-getChildEditor childRef childEditor childLabel =  do
-    mb <- trace "getChildEditor" $readIORef childRef
-    case mb of
-        Just editor -> return editor
-        Nothing -> do
-            let val = childEditor 
-            editor <- childEditor childLabel
-            writeIORef childRef (Just editor)
-            return editor
-            
-            
-
-hasChildEditor :: IORef (Maybe b) -> IO (Bool)
-hasChildEditor childRef =  do
-    mb <- readIORef childRef
-    return (isJust mb) 
-
+{--
 eitherOrEditor :: (Default alpha, Default beta) => (Editor alpha,String) -> (Editor beta,String) -> Editor (Either alpha beta)
 eitherOrEditor (leftEditor,leftLabel) (rightEditor,rightLabel) label = do
     frame   <-  frameNew
@@ -692,33 +649,8 @@ listStoreGetValues listStore = do
                                 mbi2 <- New.treeModelIterNext listStore iter
                                 rest <- getTail mbi2
                                 return (v : rest)
-        
-versionEditor :: Editor Version
-versionEditor label = do
-    (wid,inj,ext,notiRef) <- stringEditor label
-    let pinj v = inj (showVersion v)
-    let pext = do
-        s <- ext
-        case s of
-            Nothing -> return Nothing
-            Just s -> do
-                let l = (readP_to_S parseVersion) s
-                if null l then
-                    return Nothing
-                    else return (Just (fst $head l))
-    let handler = (do 
-        v <- ext
-        case v of
-            Just _ -> return ()
-            Nothing -> do
-                md <- messageDialogNew Nothing [] MessageWarning ButtonsClose
-                        $"Field " ++ label ++ " has invalid value. Please correct"
-                dialogRun md
-                widgetDestroy md
-                return ())
-    registerHandler notiRef handler "onFocusOut"
-    return (wid, pinj, pext, notiRef)
 
+--}
 standardNotifiers :: WidgetClass w => w -> Extractor beta -> String -> IO (IORef (Map String Notifier))
 standardNotifiers w ext label = do
     notiRef <- newIORef Map.empty

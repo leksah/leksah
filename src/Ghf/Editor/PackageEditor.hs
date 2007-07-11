@@ -422,6 +422,34 @@ libraryEditor name = do
             Just (em) -> return (Just $Library em emptyBuildInfo)
     return (wid,pinj,pext,notif)   
 
+        
+versionEditor :: Editor Version
+versionEditor label = do
+    (wid,inj,ext,notiRef) <- stringEditor label
+    let pinj v = inj (showVersion v)
+    let pext = do
+        s <- ext
+        case s of
+            Nothing -> return Nothing
+            Just s -> do
+                let l = (readP_to_S parseVersion) s
+                if null l then
+                    return Nothing
+                    else return (Just (fst $head l))
+    let handler = (do 
+        v <- ext
+        case v of
+            Just _ -> return ()
+            Nothing -> do
+                md <- messageDialogNew Nothing [] MessageWarning ButtonsClose
+                        $"Field " ++ label ++ " has invalid value. Please correct"
+                dialogRun md
+                widgetDestroy md
+                return ())
+    registerHandler notiRef handler "onFocusOut"
+    return (wid, pinj, pext, notiRef)
+
+
 {--
 buildInfoEditor :: Editor Library
 buildInfoEditor name = do
