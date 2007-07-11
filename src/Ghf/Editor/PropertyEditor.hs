@@ -40,6 +40,8 @@ module Ghf.Editor.PropertyEditor (
 ,   fileEditor
 ,   versionEditor
 ,   multisetEditor
+
+,   Default(..)
 ) where
 
 import Text.ParserCombinators.Parsec hiding (Parser)
@@ -79,6 +81,9 @@ data FieldDescription alpha =  FD {
     ,   fieldApplicator     ::  alpha -> alpha -> GhfAction
 }
 
+class Default a 
+    where getDefault :: a 
+
 type Getter alpha beta  =   alpha -> beta
 type Setter alpha beta  =   beta -> alpha -> alpha
 type Printer beta       =   beta -> PP.Doc
@@ -89,6 +94,14 @@ type Extractor beta     =   IO(Maybe (beta))
 type Notifier        =   IO ()  
 type Editor beta        =   Name -> IO(Widget, Injector beta, Extractor beta, IORef (Map String Notifier))
 type Applicator beta    =   beta -> GhfAction
+
+{--
+class EditorC where
+    get :: IO(Widget, Injector beta, Extractor beta, IORef (Map String Notifier))
+    
+instance (Editor a) EditorC where
+    get = 
+--}
 
 type MkFieldDescription alpha beta =
               String ->                         --name
@@ -224,13 +237,25 @@ emptyPrinter _ = PP.empty
 -- ------------------------------------------------------------
 -- * Editing
 -- ------------------------------------------------------------
+xalign = 0.5
+yalign = 0.5
+xscale = 0.95
+yscale = 0.95
+paddingTop = 2
+paddingBottom = 5
+paddingLeft = 3
+paddingRight = 3
 
 boolEditor :: Editor Bool
 boolEditor label = do
-    frame   <-  frameNew
-    frameSetShadowType frame ShadowNone
+--    frame   <-  frameNew
+--    frameSetShadowType frame ShadowNone
+    alignment <- alignmentNew xalign yalign xscale yscale
+--    alignmentSetPadding alignment paddingTop paddingBottom paddingLeft paddingRight
     button   <-  checkButtonNewWithLabel label
-    containerAdd frame button
+--    buttonSetRelief button ReliefNone
+--    toggleButtonSetMode button False
+    containerAdd alignment button
     let injector = toggleButtonSetActive button
     let extractor = do
         r <- toggleButtonGetActive button
@@ -238,15 +263,18 @@ boolEditor label = do
     let clickedNotifier f = do button `onClicked` f; return ()
     notiRef <- standardNotifiers button extractor label
     registerEvent button notiRef onClicked "onClicked"
-    return ((castToWidget) frame, injector, extractor, notiRef)
+    return ((castToWidget) alignment, injector, extractor, notiRef)
 
 stringEditor :: Editor String
 stringEditor label = do
     frame   <-  frameNew
     frameSetShadowType frame ShadowNone
     frameSetLabel frame label
+    alignment <- alignmentNew xalign yalign xscale yscale
+    alignmentSetPadding alignment paddingTop paddingBottom paddingLeft paddingRight
     entry   <-  entryNew
-    containerAdd frame entry
+    containerAdd frame alignment
+    containerAdd alignment entry
     let injector = entrySetText entry
     let extractor = do
         r <- entryGetText entry
@@ -257,10 +285,15 @@ stringEditor label = do
 multilineStringEditor :: Editor String
 multilineStringEditor label = do
     frame   <-  frameNew
---    frameSetShadowType frame ShadowNone
+    frameSetShadowType frame ShadowNone
     frameSetLabel frame label
+    alignment <- alignmentNew xalign yalign xscale yscale
+    alignmentSetPadding alignment paddingTop paddingBottom paddingLeft paddingRight
     textView   <-  textViewNew
-    containerAdd frame textView
+    vBox <- vBoxNew False 0
+    boxPackStart vBox textView PackGrow 0
+    containerAdd frame alignment
+    containerAdd alignment vBox
     let injector = (\s -> do
         buffer <- textViewGetBuffer textView
         textBufferSetText buffer s)
@@ -278,8 +311,11 @@ intEditor min max step label = do
     frame   <-  frameNew
     frameSetShadowType frame ShadowNone
     frameSetLabel frame label
+    alignment <- alignmentNew xalign yalign xscale yscale
+    alignmentSetPadding alignment paddingTop paddingBottom paddingLeft paddingRight
     spin <- spinButtonNewWithRange min max step
-    containerAdd frame spin
+    containerAdd frame alignment
+    containerAdd alignment spin
     let injector = (\v -> spinButtonSetValue spin (fromIntegral v))
     let extractor = (do
         newNum <- spinButtonGetValue spin
@@ -292,8 +328,11 @@ genericEditor label = do
     frame   <-  frameNew
     frameSetShadowType frame ShadowNone
     frameSetLabel frame label
+    alignment <- alignmentNew xalign yalign xscale yscale
+    alignmentSetPadding alignment paddingTop paddingBottom paddingLeft paddingRight
     entry   <-  entryNew
-    containerAdd frame entry
+    containerAdd frame alignment
+    containerAdd alignment entry
     let injector = (\t -> entrySetText entry (show t))
     let extractor = do r <- entryGetText entry; return (Just (read r))
     notiRef <- standardNotifiers entry extractor label
@@ -304,10 +343,15 @@ selectionEditor list label = do
     frame   <-  frameNew
     frameSetShadowType frame ShadowNone
     frameSetLabel frame label
+    alignment <- alignmentNew xalign yalign xscale yscale
+    alignmentSetPadding alignment paddingTop paddingBottom paddingLeft paddingRight
     combo   <-  New.comboBoxNewText
+    vBox <- vBoxNew False 0
+    boxPackStart vBox combo PackNatural 0
     New.comboBoxSetActive combo 1
     mapM_ (\v -> New.comboBoxAppendText combo (show v)) list
-    containerAdd frame combo
+    containerAdd frame alignment 
+    containerAdd alignment vBox
     let injector = (\t -> let mbInd = elemIndex t list in
                             case mbInd of
                                 Just ind -> New.comboBoxSetActive combo ind
@@ -349,12 +393,15 @@ fileEditor label = do
     frame   <-  frameNew
     frameSetShadowType frame ShadowNone
     frameSetLabel frame label
+    alignment <- alignmentNew xalign yalign xscale yscale
+    alignmentSetPadding alignment paddingTop paddingBottom paddingLeft paddingRight
     button <- buttonNewWithLabel "Select file"    
     entry   <-  entryNew
     hBox <- hBoxNew False 1
     boxPackStart hBox entry PackGrow 0
     boxPackStart hBox button PackGrow 0
-    containerAdd frame hBox
+    containerAdd frame alignment
+    containerAdd alignment hBox
     let injector = entrySetText entry
     let extractor = do
         str <- entryGetText entry
@@ -389,22 +436,25 @@ fileEditor label = do
             Nothing -> return ()
             Just fn -> entrySetText entry fn 
     notiRef <- standardNotifiers entry extractor label
-    return ((castToWidget) frame, injector, extractor, notiRef)    
+    return ((castToWidget) alignment, injector, extractor, notiRef)    
 
 --
 -- | An editor with a subeditor which gets active, when a checkbox is selected
 -- | or deselected (if the positive Argument is False)
 --
 
-maybeEditor :: Editor beta -> Bool -> String -> String -> Editor (Maybe beta)
+maybeEditor :: Default beta => Editor beta -> Bool -> String -> String -> Editor (Maybe beta)
 maybeEditor childEditor positive boolLabel childLabel label = do
     childRef <- trace "newChildRef" $newIORef Nothing
     frame   <-  frameNew
     frameSetLabel frame label
     (boolFrame,inj1,ext1,notiRef1) <- boolEditor  boolLabel
-    vBox <- vBoxNew False 1
+    alignment <- alignmentNew xalign yalign xscale yscale
+    alignmentSetPadding alignment paddingTop paddingBottom paddingLeft paddingRight
+    vBox <- vBoxNew False 0
     boxPackStart vBox boolFrame PackNatural 0
 --    boxPackStart vBox justFrame PackNatural 0
+    containerAdd alignment frame
     containerAdd frame vBox    
     let injector =  \ v -> trace "injecting" $case v of
             Nothing ->  do
@@ -450,7 +500,8 @@ maybeEditor childEditor positive boolLabel childLabel label = do
                                     widgetShowAll justFrame
                                 else do
                                     boxPackStart vBox justFrame PackNatural 0
-                                    widgetShowAll justFrame                     
+                                    widgetShowAll justFrame
+                                    inj2 getDefault                     
                         else do
                             hasChild <- hasChildEditor childRef
                             if hasChild 
@@ -461,7 +512,7 @@ maybeEditor childEditor positive boolLabel childLabel label = do
                 Nothing -> return ()) 
     registerHandler notiRef1 onClickedHandler "onClicked"
     notiRef <- standardNotifiers frame extractor label
-    return ((castToWidget) frame, injector, extractor, notiRef)    
+    return ((castToWidget) alignment, injector, extractor, notiRef)    
 
 getChildEditor :: IORef (Maybe (Widget, Injector alpha , Extractor alpha , IORef (Map String Notifier))) -> 
                     (Editor alpha ) -> String -> 
@@ -483,10 +534,12 @@ hasChildEditor childRef =  do
     mb <- readIORef childRef
     return (isJust mb) 
 
-eitherOrEditor :: (Editor alpha,String) -> (Editor beta,String) -> Editor (Either alpha beta)
+eitherOrEditor :: (Default alpha, Default beta) => (Editor alpha,String) -> (Editor beta,String) -> Editor (Either alpha beta)
 eitherOrEditor (leftEditor,leftLabel) (rightEditor,rightLabel) label = do
     frame   <-  frameNew
     frameSetLabel frame ""
+    alignment <- alignmentNew xalign yalign xscale yscale
+    alignmentSetPadding alignment paddingTop paddingBottom paddingLeft paddingRight
     (boolFrame,inj1,ext1,notiRef1) <- boolEditor  label
     (leftFrame,inj2,ext2,notiRef2) <- leftEditor leftLabel
     (rightFrame,inj3,ext3,notiRef3) <- rightEditor rightLabel
@@ -495,11 +548,13 @@ eitherOrEditor (leftEditor,leftLabel) (rightEditor,rightLabel) label = do
                               widgetShowAll leftFrame
                               widgetHideAll rightFrame  
                               inj2 vl
+                              inj3 getDefault
                               inj1 True
                             Right vr  -> do
-                              widgetHideAll leftFrame
+                              widgetHideAll leftFrame 
                               widgetShowAll rightFrame  
                               inj3 vr
+                              inj2 getDefault
                               inj1 False
     let extractor = do
         mbbool <- ext1
@@ -519,36 +574,48 @@ eitherOrEditor (leftEditor,leftLabel) (rightEditor,rightLabel) label = do
     boxPackStart vBox boolFrame PackNatural 0
     boxPackStart vBox leftFrame PackNatural 0
     boxPackStart vBox rightFrame PackNatural 0
-    containerAdd frame vBox    
-    widgetHide leftFrame
-    widgetShow rightFrame  
+    containerAdd alignment frame
+    containerAdd frame vBox      
     let onClickedHandler = (do 
             bool <- ext1
             case bool of
                 Just True -> do
-                    widgetShowAll leftFrame
-                    widgetHideAll rightFrame
+                    widgetShowAll leftFrame 
+                    widgetHideAll rightFrame 
                 Just False -> do
-                    widgetShowAll rightFrame
-                    widgetHideAll leftFrame
+                    widgetShowAll rightFrame 
+                    widgetHideAll leftFrame 
                 Nothing -> return ())
     registerHandler notiRef1 onClickedHandler "onClicked"
     notiRef <- standardNotifiers frame extractor label
-    return ((castToWidget) frame, injector, extractor, notiRef)    
+    return ((castToWidget) alignment, injector, extractor, notiRef)    
 
-pairEditor :: (Editor alpha, String) -> (Editor beta, String) -> Editor (alpha,beta)
-pairEditor (fstEd, fstLabel) (sndEd, sndLabel) label = do
+pairEditor :: (Editor alpha, String) -> (Editor beta, String) -> Direction -> Editor (alpha,beta)
+pairEditor (fstEd, fstLabel) (sndEd, sndLabel) dir label = do
     frame   <-  frameNew
     frameSetLabel frame label
+    alignment <- alignmentNew xalign yalign xscale yscale
+    alignmentSetPadding alignment paddingTop paddingBottom paddingLeft paddingRight
     (fstFrame,inj1,ext1,notiRef1) <- fstEd fstLabel
     widgetSetName fstFrame "first"
     (sndFrame,inj2,ext2,notiRef2) <- sndEd sndLabel
     widgetSetName sndFrame "snd"
-    hBox <- hBoxNew False 1
-    widgetSetName hBox "box"    
-    boxPackStart hBox fstFrame PackGrow 0
-    boxPackStart hBox sndFrame PackGrow 0
-    containerAdd frame hBox
+    box <- case dir of
+        Horizontal -> do 
+            b <- hBoxNew False 1
+            return (castToBox b)
+        Vertical -> do
+            b <- vBoxNew False 1
+            return (castToBox b)
+    widgetSetName box "box"    
+    boxPackStart box fstFrame PackGrow 0
+    boxPackStart box sndFrame PackGrow 0
+    if null label 
+        then do
+            containerAdd alignment frame
+            containerAdd frame box
+        else do
+            containerAdd alignment box
     let injector = (\(f,s) -> inj1 f >> inj2 s)
     let extractor = do
         f <- ext1
@@ -556,16 +623,19 @@ pairEditor (fstEd, fstLabel) (sndEd, sndLabel) label = do
         if isNothing f || isNothing s 
             then return Nothing 
             else return (Just (fromJust f, fromJust s))
-    return ((castToWidget) frame, injector, extractor, notiRef2)    
+    return ((castToWidget) alignment, injector, extractor, notiRef2) 
 
 multisetEditor :: Show alpha => Editor alpha -> String -> Editor [alpha]
 multisetEditor singleEditor labelS label =  do
     
     frame   <-  frameNew
     frameSetLabel frame label
-    hBox <- hBoxNew False 1
+    alignment <- alignmentNew xalign yalign xscale yscale
+    alignmentSetPadding alignment paddingTop paddingBottom paddingLeft paddingRight
+    vBox <- vBoxNew True 3
+    vBox2 <- vBoxNew False 3
     (frameS,injS,extS,notS) <- singleEditor labelS     
-    buttonBox <- vButtonBoxNew
+    buttonBox <- hButtonBoxNew
     addButton <- buttonNewWithLabel "Add"
     removeButton <- buttonNewWithLabel "Remove"
     containerAdd buttonBox addButton
@@ -580,12 +650,14 @@ multisetEditor singleEditor labelS label =  do
     New.treeViewAppendColumn list col    
     New.cellLayoutPackStart col renderer True
     New.cellLayoutSetAttributes col renderer listStore $ \row -> [ New.cellText := show row ]
-    New.treeViewSetHeadersVisible list False
+    New.treeViewSetHeadersVisible list True
 
-    boxPackStart hBox list PackNatural 0
-    boxPackStart hBox buttonBox PackNatural 0
-    boxPackStart hBox frameS PackNatural 0
-    containerAdd frame hBox
+    boxPackStart vBox2 list PackGrow 0
+    boxPackStart vBox buttonBox PackNatural 0
+    boxPackEnd vBox frameS PackNatural 0
+    boxPackEnd vBox2 vBox PackNatural 0
+    containerAdd alignment frame
+    containerAdd frame vBox2
     
     addButton `onClicked` do
         mbv <- extS
@@ -606,7 +678,7 @@ multisetEditor singleEditor labelS label =  do
         v <- listStoreGetValues listStore
         return (Just v)
     notiRef <- standardNotifiers list extractor label
-    return ((castToWidget) frame, injector, extractor, notiRef)
+    return ((castToWidget) alignment, injector, extractor, notiRef)
         
 listStoreGetValues :: New.ListStore a -> IO [a]
 listStoreGetValues listStore = do

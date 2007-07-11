@@ -107,7 +107,7 @@ prefsDescription = [
             (PP.text.show) 
             (pairParser intParser)
             defaultSize (\(c,d) a -> a{defaultSize = (c,d)})
-            (pairEditor ((intEditor 0.0 3000.0 25.0),"X")((intEditor 0.0 3000.0 25.0),"Y"))
+            (pairEditor ((intEditor 0.0 3000.0 25.0),"X")((intEditor 0.0 3000.0 25.0),"Y") Horizontal)
             (\a -> return ()) ]
 
 -- ------------------------------------------------------------
@@ -144,7 +144,7 @@ editPrefs' :: Prefs -> [FieldDescription Prefs] -> GhfRef -> IO ()
 editPrefs' prefs prefsDesc ghfR  = do
     lastAppliedPrefsRef <- newIORef prefs
     dialog  <- windowNew
-    vb      <- vBoxNew False 4
+    vb      <- vBoxNew False 0
     bb      <- hButtonBoxNew
     apply   <- buttonNewFromStock "gtk-apply"
     restore <- buttonNewFromStock "Restore"
@@ -156,7 +156,7 @@ editPrefs' prefs prefsDesc ghfR  = do
     boxPackStart bb cancel PackNatural 0
     resList <- mapM (\ (FD _ _ _ _ editorF _) -> editorF prefs) prefsDesc
     let (widgets, setInjs, getExts,_) = unzip4 resList 
-    mapM_ (\ sb -> boxPackStart vb sb PackNatural 12) widgets
+    mapM_ (\ sb -> boxPackStart vb sb PackGrow 0) widgets
     ok `onClicked` (do
         newPrefs <- foldM (\ a b -> b a) prefs getExts
         lastAppliedPrefs <- readIORef lastAppliedPrefsRef
@@ -178,7 +178,7 @@ editPrefs' prefs prefsDesc ghfR  = do
         lastAppliedPrefs <- readIORef lastAppliedPrefsRef
         mapM_ (\ (FD _ _ _ _ _ applyF) -> runReaderT (applyF prefs lastAppliedPrefs) ghfR) prefsDesc
         widgetDestroy dialog)
-    boxPackStart vb bb PackNatural 0
+    boxPackEnd vb bb PackNatural 7
     containerAdd dialog vb
     widgetShowAll dialog    
     return ()

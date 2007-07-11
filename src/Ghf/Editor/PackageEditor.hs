@@ -106,20 +106,6 @@ packageDescription = [
             (\ a b -> b{package = a})
             packageEditor
             (\a -> return ())
-    ,   field "License" ""
-            emptyPrinter
-            emptyParser
-            license
-            (\ a b -> b{license = a})
-            (selectionEditor [GPL, LGPL, BSD3, BSD4, PublicDomain, AllRightsReserved, OtherLicense])   
-            (\a -> return ())
-    ,   field "Author" "" 
-            emptyPrinter
-            emptyParser
-            author
-            (\ a b -> b{author = a})
-            stringEditor
-            (\a -> return ())
     ,   field "Synopsis" "A one-line summary of this package" 
             emptyPrinter
             emptyParser
@@ -131,9 +117,24 @@ packageDescription = [
             emptyPrinter
             emptyParser
             description
-            (\ a b -> b{description = a})
+            (\ a b -> if null a then b{description = " \n\n\n\n\n"} else  b{description = a})
             multilineStringEditor
             (\a -> return ())
+    ,   field "Author" "" 
+            emptyPrinter
+            emptyParser
+            author
+            (\ a b -> b{author = a})
+            stringEditor
+            (\a -> return ())
+    ,   field "Copyright" "" 
+            emptyPrinter
+            emptyParser
+            copyright
+            (\ a b -> b{copyright = a})
+            stringEditor
+            (\a -> return ())
+
     ]),
     ("Specification",[
         field "Build Dependencies" 
@@ -163,19 +164,19 @@ packageDescription = [
     ]),--}        
     
     ("Additional",[
-        field "License File" ""
+        field "License" ""
+            emptyPrinter
+            emptyParser
+            license
+            (\ a b -> b{license = a})
+            (selectionEditor [GPL, LGPL, BSD3, BSD4, PublicDomain, AllRightsReserved, OtherLicense])   
+            (\a -> return ())
+    ,   field "License File" ""
             emptyPrinter
             emptyParser
             licenseFile
             (\ a b -> b{licenseFile = a})
             (fileEditor)   
-            (\a -> return ())
-    ,   field "Copyright" "" 
-            emptyPrinter
-            emptyParser
-            copyright
-            (\ a b -> b{copyright = a})
-            stringEditor
             (\a -> return ())
     ,   field "Maintainer" "" 
             emptyPrinter
@@ -234,7 +235,7 @@ editPackage' packageDir prefs prefsDesc ghfR   =
     let flatPrefsDescr = concatMap snd prefsDesc in do
         lastAppliedPrefsRef <- newIORef prefs
         dialog  <- windowNew
-        vb      <- vBoxNew False 0
+        vb      <- vBoxNew False 7
         bb      <- hButtonBoxNew
         restore <- buttonNewFromStock "Restore"
         ok      <- buttonNewFromStock "gtk-ok"
@@ -243,7 +244,7 @@ editPackage' packageDir prefs prefsDesc ghfR   =
         boxPackStart bb ok PackNatural 0
         boxPackStart bb cancel PackNatural 0
         nb <- newNotebook
-        notebookSetTabPos nb PosLeft
+        notebookSetTabPos nb PosTop
         res <- mapM (\ (tabLabel, partPrefsDescr) -> do
             resList <- mapM (\ (FD _ _ _ _ editorF _) -> editorF prefs) partPrefsDescr
             let (widgetsP, setInjsP, getExtsP,notifiersP) = unzip4 resList
@@ -270,15 +271,15 @@ editPackage' packageDir prefs prefsDesc ghfR   =
             lastAppliedPrefs <- readIORef lastAppliedPrefsRef
             mapM_ (\ (FD _ _ _ _ _ applyF) -> runReaderT (applyF prefs lastAppliedPrefs) ghfR) flatPrefsDescr
             widgetDestroy dialog)
-        boxPackStart vb nb PackNatural 0
-        boxPackStart vb bb PackNatural 0
+        boxPackStart vb nb PackGrow 7
+        boxPackEnd vb bb PackNatural 7
         containerAdd dialog vb
         widgetShowAll dialog    
         return ()
 
 packageEditor :: Editor PackageIdentifier
 packageEditor name = do
-    (wid,inj,ext,notif) <- pairEditor (stringEditor, "Name") (versionEditor, "Version") name
+    (wid,inj,ext,notif) <- pairEditor (stringEditor, "Name") (versionEditor, "Version") Horizontal name
     let pinj (PackageIdentifier n v) = inj (n,v)
     let pext = do
         mbp <- ext
@@ -289,8 +290,8 @@ packageEditor name = do
 
 compilerFlavorEditor :: Editor CompilerFlavor
 compilerFlavorEditor name = do
-    (wid,inj,ext,notif) <- eitherOrEditor (selectionEditor flavors,"Known compilers") 
-                            (stringEditor, "Other compilers") name
+    (wid,inj,ext,notif) <- eitherOrEditor (selectionEditor flavors,"Select compiler") 
+                            (stringEditor, "Specify compiler") name
     let cfinj (OtherCompiler str) = inj (Right "")
     let cfinj other = inj (Left other)    
     let cfext = do
@@ -305,17 +306,18 @@ compilerFlavorEditor name = do
 
 testedWidthEditor :: Editor (CompilerFlavor, VersionRange)
 testedWidthEditor name = do
-    pairEditor (compilerFlavorEditor, "Compiler Flavor") (versionRangeEditor, "Version Range") name
+    pairEditor (compilerFlavorEditor, "Known Compiler?") (versionRangeEditor, "Version Range") Horizontal name
 
 versionRangeEditor :: Editor VersionRange
 versionRangeEditor name = do
     (wid,inj,ext,notif) <- 
         maybeEditor (eitherOrEditor             
             ((pairEditor (selectionEditor v1, "") 
-                        (versionEditor,"")),"Simple Version Range")
-            ((pairEditor (selectionEditor v2, " ")
-                        ((pairEditor (versionRangeEditor,"") (versionRangeEditor, "")),
-                            "")), "Complex Version Range")) False "Any Version" "" name
+                        (versionEditor,"") Horizontal),"Simple Version Range")
+            ((pairEditor (selectionEditor v2, "")
+                        ((pairEditor (versionRangeEditor,"") (versionRangeEditor, "") Vertical),
+                            "") Vertical), "Complex Version Range")) 
+                False "Any Version" "Simple Version Specification" name
     let vrinj AnyVersion                =   inj Nothing
         vrinj (ThisVersion v)           =   inj (Just (Left (ThisVersionS,v))) 
         vrinj (LaterVersion v)          =   inj (Just (Left (LaterVersionS,v)))
@@ -352,6 +354,35 @@ instance Show Version2 where
     show UnionVersionRangesS =  "UnionVersionRanges"
     show IntersectVersionRangesS =  "IntersectVersionRanges"
 
+instance Default (Either (Version1,Version) (Version2, (VersionRange, VersionRange))) 
+    where 
+        getDefault =  Left(getDefault) 
+
+instance Default (Version1,Version)
+    where getDefault = let version = (let l = (readP_to_S parseVersion) "0" 
+                                        in if null l 
+                                            then error "verion parser failed"
+                                            else fst $head l)
+                        in (ThisVersionS, version) 
+
+instance Default VersionRange
+    where getDefault = AnyVersion
+
+instance Default (Version2, (VersionRange, VersionRange))
+    where getDefault = (UnionVersionRangesS, (AnyVersion, AnyVersion))
+ 
+instance Default String
+    where 
+        getDefault =    ""
+
+instance Default Int
+    where 
+        getDefault =    1
+
+instance Default CompilerFlavor
+    where 
+        getDefault =    GHC
+
 versionRangeStringEditor :: Editor VersionRange
 versionRangeStringEditor name = do
     (wid,inj,ext,notif) <- stringEditor name
@@ -369,7 +400,7 @@ versionRangeStringEditor name = do
 
 dependencyEditor :: Editor Dependency
 dependencyEditor name = do
-    (wid,inj,ext,notif) <- pairEditor (stringEditor,"Package Name") (versionRangeEditor,"Version") name
+    (wid,inj,ext,notif) <- pairEditor (stringEditor,"Package Name") (versionRangeEditor,"Version") Horizontal name
     let pinj (Dependency s v) = inj (s,v)
     let pext = do
         mbp <- ext
@@ -379,20 +410,19 @@ dependencyEditor name = do
             Just (s,v) -> return (Just $Dependency s v)
     return (wid,pinj,pext,notif)   
 
-{--
+
 libraryEditor :: Editor Library
 libraryEditor name = do
-    (wid,inj,ext,notif) <- (pairEditor (multisetEditor fileEditor) buildInfoEditor ) 
-        "Exposed Modules" "BuildInfo" name
-    let pinj (Library em bi) = inj (em,bi)
+    (wid,inj,ext,notif) <- multisetEditor fileEditor "" name 
+    let pinj (Library em _) = inj (em)
     let pext = do
         mbp <- ext
         case mbp of
             Nothing -> return Nothing
-            Just (em,bi) -> return (Just $Library em bi)
+            Just (em) -> return (Just $Library em emptyBuildInfo)
     return (wid,pinj,pext,notif)   
 
-
+{--
 buildInfoEditor :: Editor Library
 buildInfoEditor name = do
     (wid,inj,ext,notif) <- pairEditor (booleanEditor, "Buildable?") 

@@ -1,5 +1,9 @@
 ToDo List
 
+1. Ungleiche Verteilung
+2. Buttons sind so ulkig
+
+
 Views
 - Active Buffer switching korrigieren
     Save as geht nicht?!
