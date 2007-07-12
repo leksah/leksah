@@ -69,23 +69,35 @@ data EventSelector  =   OnClicked
 type Notifier        =   EventSelector -> Unique -> Maybe (Event -> IO Bool) -> IO ()   
 type RegFunc         =   (w -> (Event -> IO (Bool)) -> IO (ConnectId w))
 type NotifierSt     =   (IORef (Map EventSelector 
-                            (Widget,RegFunc,Maybe (ConnectId Widget),[(Unique, Event -> IO Bool)])))
+                            (Maybe Widget,RegFunc,Maybe (ConnectId Widget),[(Unique, Event -> IO Bool)])))
 
-declareEvent :: EventSelector -> IORef Widget -> RegFunc -> NotifierSt -> IO() 
-declareEvent eventSel widget regFunc notifier = do
+declareEvent :: Maybe Widget -> EventSelector -> RegFunc -> NotifierSt -> IO() 
+declareEvent mbWidget eventSel regFunc notifierState = do
     noti <- readIORef notifierState     
     case Map.lookup eventSel noti of
-        Nothing ->
-            let noti2 = Map.insert eventSel (widget, Just id,(uni,handler):l) noti
+        Nothing -> do
+            let noti2 = Map.insert eventSel (mbWidget, Just id,[]) noti
+             writeIORef notifierState noti2
+        Just _ -> error "editor has already declared event " ++ show eventSel  
 
+activateEvent :: Widget -> EventSelector -> NotifierSt -> IO()
+activateEvent w eventSel notifierState = do
+    noti <- readIORef notifierState     
+    case Map.lookup eventSel noti of
+        Nothing -> error "editor has not declared event before activating it " ++ show eventSel   
+        Just (Nothing,f,mbci,l) ->
+            let noti2 = Map.insert eventSel (w,f,mbci,l) noti
+             writeIORef notifierState noti2
+        Just _ -> error "editor has already been activated " ++ show eventSel  
+ 
 mkNotifier :: NotifierSt alpha -> Notifier
 mkNotifier notifierState = notFunc where
     notFunc eventSel uni (Just handler) = do
         noti <- readIORef notifierState           
         case Map.lookup eventSel noti of
             Nothing -> error "editor does not support event " ++ show eventSel   
-            Just (Just id,l) -> do
-                let noti2 = Map.insert eventSel (Just id,(uni,handler):l) noti
+            Just (w,f,Just id,l) -> do
+                let noti2 = Map.insert eventSel (w,f,Just id,(uni,handler):l) noti
                 writeIORef notifierState noti2
             Just (Nothing,l) -> do
                 registerFunc widget (\ e -> do
