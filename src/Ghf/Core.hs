@@ -50,6 +50,9 @@ module Ghf.Core (
 ,   SpecialKeyTable
 ,   SpecialKeyCons
 
+,   Getter
+,   Setter
+
 -- * debugging
 ,   helpDebug
 ) where
@@ -270,6 +273,13 @@ type SpecialKeyTable = Map (KeyVal,[Modifier]) (Map (KeyVal,[Modifier]) ActionDe
 type SpecialKeyCons  = Maybe ((Map (KeyVal,[Modifier]) ActionDescr),String)
 
 type FileName       =   String
+
+--
+-- | Other types
+--
+
+type Getter alpha beta      =   alpha -> beta
+type Setter alpha beta      =   beta -> alpha -> alpha
 
 -- ---------------------------------------------------------------------
 -- Debugging

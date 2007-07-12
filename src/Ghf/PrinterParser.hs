@@ -41,9 +41,6 @@ import Ghf.Core
 type Printer beta       =   beta -> PP.Doc
 type Parser beta        =   CharParser () beta
 
-type Getter alpha beta      =   alpha -> beta
-type Setter alpha beta      =   beta -> alpha -> alpha
-
 type MkFieldDescriptionPP alpha beta =
               String ->                         --name
               Maybe String ->                   --synopsis
