@@ -1,5 +1,5 @@
 --
--- | Module for saving, restoring and editing preferences
+-- | Module for editing options
 -- 
 
 module Ghf.Editor.PropertyEditor (
@@ -37,7 +37,7 @@ import Control.Monad(foldM)
 import Graphics.UI.Gtk hiding (afterToggleOverwrite,Focus,onChanged)
 import Graphics.UI.Gtk.SourceView
 import Graphics.UI.Gtk.ModelView as New
-import Text.ParserCombinators.Parsec hiding (Parser,label)
+import Text.ParserCombinators.Parsec hiding (Parser)
 import Control.Monad.Reader
 import qualified Data.Map as Map
 import Data.Map(Map,(!))
@@ -50,56 +50,124 @@ import Data.List(unzip4,elemIndex,filter)
 import Data.Unique
 import Text.ParserCombinators.ReadP(readP_to_S)
 import Debug.Trace
-
-import Ghf.Core hiding(label,name)
 import qualified Text.PrettyPrint.HughesPJ as PP
 
-class Default a where 
-    getDefault      ::  a 
+type Getter alpha beta     =   alpha -> beta
+type Setter alpha beta     =   beta -> alpha -> alpha
 
 type Injector beta     =   beta -> IO()
 type Extractor beta    =   IO(Maybe (beta))
 
-data EventSelector  =   OnClicked
-                    |   FocusOut
-    deriving (Eq,Ord,Show)
-                     
 -- Returning True: The event has been handles
 -- Returning False: Usual handling should proceed  
-type Notifier        =   EventSelector -> Unique -> Maybe (Event -> IO Bool) -> IO ()   
-type RegFunc         =   (w -> (Event -> IO (Bool)) -> IO (ConnectId w))
-type NotifierSt     =   (IORef (Map EventSelector 
-                            (Maybe Widget,RegFunc,Maybe (ConnectId Widget),[(Unique, Event -> IO Bool)])))
+type Handler        =   Event -> IO Bool
+
+type Notifier       =   EventSelector -> Either Handler Unique -> IO (Unique)   
+
+data FieldDescriptionE alpha =  FDE {
+        parameters  ::  Parameters
+    ,   fieldEditor ::  alpha -> IO (Widget, Injector alpha , alpha -> Extractor alpha , Notifier)
+    }
+
+type Editor beta       =   Parameters -> IO(Widget, Injector beta, Extractor beta, Notifier)
+
+type MkFieldDescriptionE alpha beta =
+    String ->                               --name
+    Maybe String ->                         --synopsis  
+    (Getter alpha beta) ->            
+    (Setter alpha beta) ->            
+    (Editor beta) ->
+    FieldDescriptionE alpha
+
+data EventSelector  =   Clicked
+                    |   FocusOut -- |...
+    deriving (Eq,Ord,Show)
+
+class Default a where 
+    getDefault      ::  a 
+
+--type Applicator beta =   beta -> GhfAction ()
+
+-- ------------------------------------------------------------
+-- * Parameters
+-- ------------------------------------------------------------
+
+data Parameters     =   Parameters  {   
+                        paraName        :: Maybe String
+                    ,   synopsis        :: Maybe String
+                    ,   direction       :: Maybe Direction
+                    ,   shadow          :: Maybe ShadowType
+                    ,   outerAlignment  :: Maybe (Float,Float,Float,Float)
+                                               -- | xalign yalign xscale yscale
+                    ,   outerPadding    :: Maybe (Int,Int,Int,Int)
+                                                --  | paddingTop paddingBottom paddingLeft paddingRight
+                    ,   innerAlignment  :: Maybe (Float,Float,Float,Float)
+                                                -- | xalign yalign xscale yscale
+                    ,   innerPadding    :: Maybe (Int,Int,Int,Int)
+                                                --  | paddingTop paddingBottom paddingLeft paddingRight
+                    ,   spinRange       :: Maybe (Double,Double,Double) 
+                                                --  | min max step
+    }
+
+data Direction      =   Horizontal | Vertical
+    deriving (Eq,Ord,Show)
+                    
+emptyParameters     =   Parameters Nothing Nothing Nothing Nothing Nothing Nothing Nothing Nothing Nothing
+
+getParameter :: (Parameters -> (Maybe beta)) -> Parameters -> beta    
+getParameter selector parameters =  
+    let individual = selector parameters in
+        case individual of
+            Just it ->  it
+            Nothing ->  case selector getDefault of
+                            Just it -> it
+                            Nothing -> error "default parameter should not be Nothing"       
+
+instance Default Parameters where
+    getDefault      =   Parameters (Just "") (Just "") (Just Horizontal) (Just ShadowNone) 
+                            (Just (0.5, 0.5, 0.95, 0.95)) (Just (2, 5, 3, 3)) 
+                            (Just (0.5, 0.5, 0.95, 0.95)) (Just (2, 5, 3, 3)) (Just (0.0,10.0,1.0))
+
+-- ------------------------------------------------------------
+-- * Implementation of notifications
+-- ------------------------------------------------------------
+
+type RegFunc        =   Widget -> Handler -> IO (ConnectId Widget)
+type NotifierSt     =   IORef (Map EventSelector 
+                            (Maybe Widget,RegFunc,Maybe (ConnectId Widget),[(Unique, Handler)]))
+
+emptyNotifier        ::  IO NotifierSt
+emptyNotifier        =   newIORef(Map.empty)
+
 
 declareEvent :: Maybe Widget -> EventSelector -> RegFunc -> NotifierSt -> IO() 
 declareEvent mbWidget eventSel regFunc notifierState = do
     noti <- readIORef notifierState     
     case Map.lookup eventSel noti of
         Nothing -> do
-            let noti2 = Map.insert eventSel (mbWidget, Just id,[]) noti
+             let noti2 = Map.insert eventSel (mbWidget, regFunc, Just id,[]) noti
              writeIORef notifierState noti2
-        Just _ -> error "editor has already declared event " ++ show eventSel  
+        Just _ -> error $"editor has already declared event " ++ show eventSel  
 
 activateEvent :: Widget -> EventSelector -> NotifierSt -> IO()
 activateEvent w eventSel notifierState = do
     noti <- readIORef notifierState     
     case Map.lookup eventSel noti of
-        Nothing -> error "editor has not declared event before activating it " ++ show eventSel   
-        Just (Nothing,f,mbci,l) ->
+        Nothing -> error $"editor has not declared event before activating it " ++ show eventSel   
+        Just (Nothing,f,mbci,l) -> do
             let noti2 = Map.insert eventSel (w,f,mbci,l) noti
-             writeIORef notifierState noti2
-        Just _ -> error "editor has already been activated " ++ show eventSel  
+            writeIORef notifierState noti2
+        Just _ -> error $"editor has already been activated " ++ show eventSel  
  
-mkNotifier :: NotifierSt alpha -> Notifier
+mkNotifier :: NotifierSt -> Notifier
 mkNotifier notifierState = notFunc where
-    notFunc eventSel uni (Just handler) = do
-        noti <- readIORef notifierState           
+    notFunc :: EventSelector -> Either Handler Unique -> IO (Unique)   
+    notFunc eventSel (Left handler) = do
+        noti <- readIORef notifierState
+        uni <- newUnique           
         case Map.lookup eventSel noti of
             Nothing -> error "editor does not support event " ++ show eventSel   
-            Just (w,f,Just id,l) -> do
-                let noti2 = Map.insert eventSel (w,f,Just id,(uni,handler):l) noti
-                writeIORef notifierState noti2
-            Just (Nothing,l) -> do
+            Just (Just widget,registerFunc,Nothing,handlers) -> do
                 registerFunc widget (\ e -> do
                     noti <- readIORef notifierState
                     case Map.lookup eventSel noti of
@@ -108,9 +176,13 @@ mkNotifier notifierState = notFunc where
                         Just (_,handlers) -> do
                             boolList <- mapM (\f -> f e) (map snd handlers)
                             return (map foldl (&&) True boolList))    
-                let noti2 = Map.insert eventSel (Just id,handler:l) noti
+                let noti2 = Map.insert eventSel (Just id,handler:handlers) noti
                 writeIORef notifierState noti2
-    notFunc eventSel uni Nothing = do
+            Just (mbWidget, registerFunc, mbUnique, handlers) -> do
+                let noti2 = Map.insert eventSel (mbWidget,registerFunc,mbUnique,(uni,handler):handlers) noti
+                writeIORef notifierState noti2
+        return uni
+    notFunc eventSel (Right uni) = do
         noti <- readIORef notifierState           
         case Map.lookup eventSel noti of
             Nothing -> error "editor does not support event " ++ show eventSel   
@@ -124,58 +196,17 @@ mkNotifier notifierState = notFunc where
                     else do
                         let noti2 = Map.insert eventSel (Just id,l2) noti
                         writeIORef notifierState noti2
+        return uni
 
-emptyNotifier        ::  IO (IORef (Map String (Event -> IO Bool)))
-emptyNotifier        =   newIORef(Map.empty)
-
-type Editor beta        =   Parameters -> IO(Widget, Injector beta, Extractor beta,Notifier)
-type Applicator beta    =   beta -> GhfAction
-
-data Parameters      =   Parameters {   
-                         label      :: Maybe String
-                     ,   direction  :: Maybe Direction
-                     ,   showFrame  :: Maybe ShadowType
-                     ,   outerAlignment  :: Maybe (Float,Float,Float,Float)
-                                                -- | xalign yalign xscale yscale
-                     ,   outerPadding    :: Maybe (Int,Int,Int,Int)
-                                                --  | paddingTop paddingBottom paddingLeft paddingRight
-                     ,   innerAlignment  :: Maybe (Float,Float,Float,Float)
-                                                -- | xalign yalign xscale yscale
-                     ,   innerPadding    :: Maybe (Int,Int,Int,Int)
-                                                --  | paddingTop paddingBottom paddingLeft paddingRight
-                     ,   spinRange       :: Maybe (Double,Double,Double) 
-                                                --  | min max step
-    }
-                    
-emptyParameters      =   Parameters Nothing Nothing Nothing Nothing Nothing Nothing Nothing Nothing
-
-instance Default Parameters where
-    getDefault       =   Parameters (Just "") (Just Horizontal) (Just ShadowNone) 
-                            (Just (0.5, 0.5, 0.95, 0.95)) (Just (2, 5, 3, 3)) 
-                            (Just (0.5, 0.5, 0.95, 0.95)) (Just (2, 5, 3, 3)) (Just (0.0,10.0,1.0))
-
-type MkFieldDescriptionE alpha beta =
-              String ->                         --name
-              Maybe String ->                         --synopsis  
-              (Getter alpha beta) ->            
-              (Setter alpha beta) ->            
-              (Editor beta) ->
-              (Applicator beta) ->
-              FieldDescriptionE alpha
-
-data FieldDescriptionE alpha =  FDE {
-        name                ::  String
-    ,   synopsis            ::  Maybe String
-    ,   fieldEditor         ::  alpha -> IO (Widget, alpha -> IO(), alpha -> IO(alpha), Notifier)
-    ,   fieldApplicator     ::  alpha -> alpha -> GhfAction
-    }
+-- ------------------------------------------------------------
+-- * Implementation of editing
+-- ------------------------------------------------------------
 
 mkFieldDescriptionE :: Eq beta => MkFieldDescriptionE alpha beta
-mkFieldDescriptionE name synopsis getter setter editor applicator =
-    FDE name 
-        synopsis
+mkFieldDescriptionE parameters getter setter editor applicator =
+    FDE parameters
         (\ dat -> do
-            (widget, inj,ext,notiRef) <- editor (emptyParameters{label = (Just name)})
+            (widget, inj,ext,notiRef) <- editor parameters
             inj (getter dat)
             return (widget,
                     (\a -> inj (getter a)), 
@@ -192,10 +223,6 @@ mkFieldDescriptionE name synopsis getter setter editor applicator =
                 then return ()
                 else applicator newField)
 
--- ------------------------------------------------------------
--- * Editing
--- ------------------------------------------------------------
-
 mkEditor :: (Container -> Injector alpha) -> Extractor alpha -> Notifier -> Editor alpha       
 mkEditor injectorC extractor notifier parameters = do
     let (xalign, yalign, xscale, yscale) = getParameter outerAlignment parameters
@@ -203,8 +230,8 @@ mkEditor injectorC extractor notifier parameters = do
     let (paddingTop, paddingBottom, paddingLeft, paddingRight) = getParameter outerPadding parameters
     alignmentSetPadding outerAlig paddingTop paddingBottom paddingLeft paddingRight
     frame   <-  frameNew
-    frameSetShadowType frame (getParameter showFrame parameters) 
-    case getParameter label parameters of
+    frameSetShadowType frame (getParameter shadow parameters) 
+    case getParameter paraName parameters of
         "" -> return ()
         str -> frameSetLabel frame str 
     containerAdd outerAlig frame
@@ -215,15 +242,6 @@ mkEditor injectorC extractor notifier parameters = do
     containerAdd frame innerAlig
     return ((castToWidget) outerAlig, injectorC (castToContainer innerAlig), extractor, notifier)
 
-getParameter :: (Parameters -> (Maybe beta)) -> Parameters -> beta    
-getParameter selector parameters =  
-    let individual = selector parameters in
-        case individual of
-            Just it ->  it
-            Nothing ->  case selector getDefault of
-                            Just it -> it
-                            Nothing -> error "default parameter should not be Nothing"       
-
 -- ------------------------------------------------------------
 -- * Simple Editors
 -- ------------------------------------------------------------
@@ -232,16 +250,16 @@ boolEditor :: Editor Bool
 boolEditor parameters = do
     coreRef <- newIORef Nothing
     notifier <- emptyNotifier
+    declareEvent Nothing Clicked (\w h -> w `onClicked` do h (Event True); return ()) notifier 
     mkEditor  
         (\widget bool -> do 
             core <- readIORef coreRef
             case core of 
                 Nothing  -> do
-                    button <- checkButtonNewWithLabel (getParameter label parameters)
+                    button <- checkButtonNewWithLabel (getParameter paraName parameters)
                     containerAdd widget button
                     toggleButtonSetActive button bool
-                    registerEvent button notifier 
-                        (\w h -> onClicked w (do h (Event True); return ())) "onClicked"
+                    activateEvent button Clicked notifier
                     writeIORef coreRef (Just button)  
                 Just button -> toggleButtonSetActive button bool)
         (do core <- readIORef coreRef
@@ -251,7 +269,7 @@ boolEditor parameters = do
                     r <- toggleButtonGetActive button        
                     return (Just r))
         notifier
-        parameters{label = (Just "")}
+        parameters{paraName = (Just "")}
 
 stringEditor :: Editor String
 stringEditor parameters = do
@@ -382,6 +400,10 @@ fileEditor :: Editor FilePath
 fileEditor parameters = do
     coreRef <- newIORef Nothing
     notifier <- emptyNotifier
+    declareEvent Nothing Clicked 
+        (\widget handler -> widget `onClicked` do   
+            handler (Event True)
+            return ()) notifier 
     mkEditor  
         (\widget filePath -> do 
             core <- readIORef coreRef
@@ -389,9 +411,10 @@ fileEditor parameters = do
                 Nothing  -> do
                     button <- buttonNewWithLabel "Select file"
                     entry   <-  entryNew
-                    registerEvent button notifier 
-                        (\w h -> onClicked w (do h (Event True); return ())) "onClicked"
-                    registerHandler notifier (buttonHandler entry) "onClicked"
+                    activateEvent button Clicked notifier
+                    uni <- newUnique 
+                    (mkNotifier notifier) Clicked (Just (buttonHandler entry)) uni 
+                   -- registerHandler notifier (buttonHandler entry) "onClicked"
                     box <- case getParameter direction parameters of 
                                 Horizontal  -> do
                                     r <- hBoxNew False 1
@@ -514,7 +537,7 @@ maybeEditor (childEdit, childParams) positive boolLabel parameters = do
                             return (castToBox b)
                     boxPackStart box boolFrame PackNatural 0
                     containerAdd widget box
-                    registerHandler notifierBool (onClickedHandler widget coreRef childRef) "onClicked"
+                    (mkNotifier notifierBool) Clicked (Just (onClickedHandler widget coreRef childRef))
                     case mbVal of 
                         Nothing -> do
                             inj1 (if positive then False else True)
@@ -695,7 +718,7 @@ multisetEditor (singleEditor,parameters) = do
                             b  <- vBoxNew False 1
                             bb <- hButtonBoxNew
                             return (castToBox b,castToButtonBox bb)    
-                    (frameS,injS,extS,notS) <- singleEditor $getParameter label parameters  
+                    (frameS,injS,extS,notS) <- singleEditor $getParameter paraName parameters  
                     addButton <- buttonNewWithLabel "Add"
                     removeButton <- buttonNewWithLabel "Remove"
 {--    addButton `onClicked` do
@@ -813,3 +836,5 @@ multiselectionEditor list label = do
                         widgetDestroy md
                         return ())
             registerHandler notiRef handler "onFocusOut"--}
+
+--    ,   fieldApplicator     ::  alpha -> alpha -> GhfAction

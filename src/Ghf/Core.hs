@@ -278,8 +278,6 @@ type FileName       =   String
 -- | Other types
 --
 
-type Getter alpha beta      =   alpha -> beta
-type Setter alpha beta      =   beta -> alpha -> alpha
 
 -- ---------------------------------------------------------------------
 -- Debugging
