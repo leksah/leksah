@@ -50,9 +50,6 @@ module Ghf.Core (
 ,   SpecialKeyTable
 ,   SpecialKeyCons
 
-,   Getter
-,   Setter
-
 -- * debugging
 ,   helpDebug
 ) where

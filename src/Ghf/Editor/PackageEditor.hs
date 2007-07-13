@@ -22,7 +22,8 @@ import Data.Map (Map,(!))
 import Text.ParserCombinators.ReadP(readP_to_S)
 
 import Ghf.Core
-import Ghf.Editor.PropertyEditor
+import Ghf.Editor.PropertyEditor hiding(synopsis)
+import qualified Ghf.Editor.PropertyEditor as PE (synopsis)
 import Ghf.GUI.ViewFrame
 
 standardSetup = "#!/usr/bin/runhaskell \n\
@@ -94,135 +95,89 @@ extraTmpFiles :: [FilePath]
 }
 --}
 
-type PDescr = [(String,[FieldDescription PackageDescription])]
+type PDescr = [(String,[FieldDescriptionE PackageDescription])]
 
 packageDescription :: PDescr
 packageDescription = [
     ("Basic", [
-        field "Package Identifier" "" 
-            emptyPrinter
-            emptyParser
+        mkFieldE (emptyParams{paraName=Just "Package Identifier"}) 
             package
             (\ a b -> b{package = a})
             packageEditor
-            (\a -> return ())
-    ,   field "Synopsis" "A one-line summary of this package" 
-            emptyPrinter
-            emptyParser
+    ,   mkFieldE (emptyParams{paraName=Just "Synopsis",PE.synopsis= Just"A one-line summary of this package"}) 
             synopsis
             (\ a b -> b{synopsis = a})
             stringEditor
-            (\a -> return ())
-    ,   field "Description" "A more verbose description of this package" 
-            emptyPrinter
-            emptyParser
+    ,   mkFieldE (emptyParams{paraName=Just "Description",PE.synopsis=Just "A more verbose description of this package"}) 
             description
             (\ a b -> if null a then b{description = " \n\n\n\n\n"} else  b{description = a})
             multilineStringEditor
-            (\a -> return ())
-    ,   field "Author" "" 
-            emptyPrinter
-            emptyParser
+    ,   mkFieldE (emptyParams{paraName=Just "Author"}) 
             author
             (\ a b -> b{author = a})
             stringEditor
-            (\a -> return ())
-    ,   field "Copyright" "" 
-            emptyPrinter
-            emptyParser
+    ,   mkFieldE (emptyParams{paraName=Just "Copyright"}) 
             copyright
             (\ a b -> b{copyright = a})
             stringEditor
-            (\a -> return ())
-
-    ]),
+    ]){--,
     ("Specification",[
-        field "Build Dependencies" 
+        mkFieldE "Build Dependencies" 
             "If this package depends on a specific version of Cabal, give that here. components" 
-            emptyPrinter
-            emptyParser
             descCabalVersion
             (\ a b -> b{descCabalVersion = a})
             versionRangeEditor
-            (\a -> return ())
-    ,   field "Cabal version" "" 
-            emptyPrinter
-            emptyParser
+    ,   mkFieldE "Cabal version" "" 
             buildDepends
             (\ a b -> b{buildDepends = a})
             (multisetEditor dependencyEditor "Dependency")
-            (\a -> return ())
     ]),        
- {--   ("Library",[
-       field "Library" "" 
+    ("Library",[
+       mkFieldE "Library" "" 
             emptyPrinter
             emptyParser
             library
             (\ a b -> b{library = a})
             (maybeEditor libraryEditor True "Is this package a library?" "")
             (\a -> return ())
-    ]),--}        
+    ]),       
     
     ("Additional",[
-        field "License" ""
-            emptyPrinter
-            emptyParser
+        mkFieldE "License" ""
             license
             (\ a b -> b{license = a})
-            (selectionEditor [GPL, LGPL, BSD3, BSD4, PublicDomain, AllRightsReserved, OtherLicense])   
-            (\a -> return ())
-    ,   field "License File" ""
-            emptyPrinter
-            emptyParser
+            (staticSelectionEditor [GPL, LGPL, BSD3, BSD4, PublicDomain, AllRightsReserved, OtherLicense])   
+    ,   mkFieldE "License File" ""
             licenseFile
             (\ a b -> b{licenseFile = a})
             (fileEditor)   
-            (\a -> return ())
-    ,   field "Maintainer" "" 
-            emptyPrinter
-            emptyParser
+    ,   mkFieldE "Maintainer" "" 
             maintainer
             (\ a b -> b{maintainer = a})
             stringEditor
-            (\a -> return ())
-    ,   field "Stability" "" 
-            emptyPrinter
-            emptyParser
+    ,   mkFieldE "Stability" "" 
             stability
             (\ a b -> b{stability = a})
             stringEditor
-            (\a -> return ())
-    ,   field "Tested with" "" 
-            emptyPrinter
-            emptyParser
+    ,   mkFieldE "Tested with" "" 
             (\a -> case testedWith a of
                         []          -> (GHC,AnyVersion)
                         (p:r)       -> p)  
             (\ a b -> b{testedWith = [a]})
             testedWidthEditor
-            (\a -> return ())
-    ,   field "Homepage" "" 
-            emptyPrinter
-            emptyParser
+    ,   mkFieldE "Homepage" "" 
             homepage
             (\ a b -> b{homepage = a})
             stringEditor
-            (\a -> return ())
-    ,   field "Package Url" "" 
-            emptyPrinter
-            emptyParser
+    ,   mkFieldE "Package Url" "" 
             pkgUrl
             (\ a b -> b{pkgUrl = a})
             stringEditor
-            (\a -> return ())
-    ,   field "Category" "" 
-            emptyPrinter
-            emptyParser
+    ,   mkFieldE "Category" "" 
             category
             (\ a b -> b{category = a})
             stringEditor
-            (\a -> return ())
-    ])]
+    ])--}]
 
 editPackage :: PackageDescription -> String -> GhfAction
 editPackage package packageDir = do
@@ -246,7 +201,7 @@ editPackage' packageDir prefs prefsDesc ghfR   =
         nb <- newNotebook
         notebookSetTabPos nb PosTop
         res <- mapM (\ (tabLabel, partPrefsDescr) -> do
-            resList <- mapM (\ (FD _ _ _ _ editorF _) -> editorF prefs) partPrefsDescr
+            resList <- mapM (\ (FDE _ editorF) -> editorF prefs) partPrefsDescr
             let (widgetsP, setInjsP, getExtsP,notifiersP) = unzip4 resList
             nbbox <- vBoxNew False 0
             mapM_ (\ w -> boxPackStart nbbox w PackNatural 0) widgetsP
@@ -257,20 +212,15 @@ editPackage' packageDir prefs prefsDesc ghfR   =
         ok `onClicked` (do
             newPrefs <- foldM (\ a b -> b a) prefs getExts
             lastAppliedPrefs <- readIORef lastAppliedPrefsRef
-            mapM_ (\ (FD _ _ _ _ _ applyF) -> runReaderT (applyF newPrefs lastAppliedPrefs) ghfR) flatPrefsDescr
+--            mapM_ (\ (FD _ _ _ _ _ applyF) -> runReaderT (applyF newPrefs lastAppliedPrefs) ghfR) flatPrefsDescr
             let PackageIdentifier n v =  package newPrefs
             writePackageDescription (packageDir ++ "/" ++ n ++ ".cabal") newPrefs
             --runReaderT (modifyGhf_ (\ghf -> return (ghf{prefs = newPrefs}))) ghfR
             widgetDestroy dialog)
-        restore `onClicked` (do
+{--        cancel `onClicked` (do
             lastAppliedPrefs <- readIORef lastAppliedPrefsRef
             mapM_ (\ (FD _ _ _ _ _ applyF) -> runReaderT (applyF prefs lastAppliedPrefs) ghfR) flatPrefsDescr
-            mapM_ (\ setInj -> setInj prefs) setInjs
-            writeIORef lastAppliedPrefsRef prefs)
-        cancel `onClicked` (do
-            lastAppliedPrefs <- readIORef lastAppliedPrefsRef
-            mapM_ (\ (FD _ _ _ _ _ applyF) -> runReaderT (applyF prefs lastAppliedPrefs) ghfR) flatPrefsDescr
-            widgetDestroy dialog)
+            widgetDestroy dialog)--}
         boxPackStart vb nb PackGrow 7
         boxPackEnd vb bb PackNatural 7
         containerAdd dialog vb
@@ -290,7 +240,7 @@ packageEditor name = do
 
 compilerFlavorEditor :: Editor CompilerFlavor
 compilerFlavorEditor name = do
-    (wid,inj,ext,notif) <- eitherOrEditor (selectionEditor flavors,"Select compiler") 
+    (wid,inj,ext,notif) <- eitherOrEditor (staticSelectionEditor flavors,"Select compiler") 
                             (stringEditor, "Specify compiler") name
     let cfinj (OtherCompiler str) = inj (Right "")
     let cfinj other = inj (Left other)    
@@ -312,9 +262,9 @@ versionRangeEditor :: Editor VersionRange
 versionRangeEditor name = do
     (wid,inj,ext,notif) <- 
         maybeEditor (eitherOrEditor             
-            ((pairEditor (selectionEditor v1, "") 
+            ((pairEditor (staticSelectionEditor v1, "") 
                         (versionEditor,"") Horizontal),"Simple Version Range")
-            ((pairEditor (selectionEditor v2, "")
+            ((pairEditor (staticSelectionEditor v2, "")
                         ((pairEditor (versionRangeEditor,"") (versionRangeEditor, "") Vertical),
                             "") Vertical), "Complex Version Range")) 
                 False "Any Version" "Simple Version Specification" name
@@ -446,7 +396,7 @@ versionEditor label = do
                 dialogRun md
                 widgetDestroy md
                 return ())
-    registerHandler notiRef handler "onFocusOut"
+--    registerHandler notiRef handler "onFocusOut"
     return (wid, pinj, pext, notiRef)
 
 
