@@ -34,6 +34,8 @@ standardSetup = "#!/usr/bin/runhaskell \n\
 
 packageNew :: GhfAction
 packageNew = do
+        return ()
+{--
     window  <- readGhf window  
     mbDirName <- lift $ do     
         dialog <- fileChooserDialogNew
@@ -92,8 +94,8 @@ executables :: [Executable]
 dataFiles :: [FilePath]
 extraSrcFiles :: [FilePath]
 extraTmpFiles :: [FilePath]
-}
 --}
+
 
 type PDescr = [(String,[FieldDescriptionE PackageDescription])]
 
@@ -131,7 +133,7 @@ packageDescription = [
             buildDepends
             (\ a b -> b{buildDepends = a})
             (multisetEditor dependencyEditor "Dependency")
-    ]),        
+    ])--},        
     ("Library",[
        mkFieldE "Library" "" 
             emptyPrinter
@@ -141,7 +143,6 @@ packageDescription = [
             (maybeEditor libraryEditor True "Is this package a library?" "")
             (\a -> return ())
     ]),       
-    
     ("Additional",[
         mkFieldE "License" ""
             license
@@ -177,7 +178,7 @@ packageDescription = [
             category
             (\ a b -> b{category = a})
             stringEditor
-    ])--}]
+    ])]
 
 editPackage :: PackageDescription -> String -> GhfAction
 editPackage package packageDir = do
@@ -217,10 +218,10 @@ editPackage' packageDir prefs prefsDesc ghfR   =
             writePackageDescription (packageDir ++ "/" ++ n ++ ".cabal") newPrefs
             --runReaderT (modifyGhf_ (\ghf -> return (ghf{prefs = newPrefs}))) ghfR
             widgetDestroy dialog)
-{--        cancel `onClicked` (do
+            cancel `onClicked` (do
             lastAppliedPrefs <- readIORef lastAppliedPrefsRef
             mapM_ (\ (FD _ _ _ _ _ applyF) -> runReaderT (applyF prefs lastAppliedPrefs) ghfR) flatPrefsDescr
-            widgetDestroy dialog)--}
+            widgetDestroy dialog)
         boxPackStart vb nb PackGrow 7
         boxPackEnd vb bb PackNatural 7
         containerAdd dialog vb
@@ -400,7 +401,6 @@ versionEditor label = do
     return (wid, pinj, pext, notiRef)
 
 
-{--
 buildInfoEditor :: Editor Library
 buildInfoEditor name = do
     (wid,inj,ext,notif) <- pairEditor (booleanEditor, "Buildable?") 
@@ -442,10 +442,9 @@ buildInfoEditor name = do
                                 hsSourceDirsbi otherModulesbi extensionsbi extraLibsbi extraLibDirsbi
                                     includeDirsbi includesbi installIncludesbi optionsbi ghcProfOptionsbi)
     return (wid,pinj,pext,notif)   
+
+
 --}
-
-
-
 
                                
                             

@@ -53,6 +53,8 @@ import Text.ParserCombinators.ReadP(readP_to_S)
 import Debug.Trace
 import qualified Text.PrettyPrint.HughesPJ as PP
 
+import Ghf.Core
+
 type Getter alpha beta     =   alpha -> beta
 type Setter alpha beta     =   beta -> alpha -> alpha
 
@@ -108,9 +110,6 @@ data Parameters     =   Parameters  {
                     ,   spinRange       :: Maybe (Double,Double,Double) 
                                                 --  | min max step
     }
-
-data Direction      =   Horizontal | Vertical
-    deriving (Eq,Ord,Show)
                     
 emptyParams     =   Parameters Nothing Nothing Nothing Nothing Nothing Nothing Nothing Nothing Nothing
 

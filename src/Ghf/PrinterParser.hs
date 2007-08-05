@@ -6,19 +6,20 @@ module Ghf.PrinterParser (
 
     Printer
 ,   Parser
-,   Getter
-,   Setter
-,   FieldDescriptionPP
-
-,   prefsParser
+--,   FieldDescriptionPP
+,   applyFieldParsers
 ,   boolParser
 ,   intParser
 ,   pairParser
 ,   identifier
 ,   emptyParser
+,   whiteSpace
 
-,   showPrefs
 ,   emptyPrinter
+,   symbol
+,   colon
+
+
 ) where
 
 import Text.ParserCombinators.Parsec hiding (Parser)
@@ -41,6 +42,7 @@ import Ghf.Core
 type Printer beta       =   beta -> PP.Doc
 type Parser beta        =   CharParser () beta
 
+{--
 type MkFieldDescriptionPP alpha beta =
               String ->                         --name
               Maybe String ->                   --synopsis
@@ -73,18 +75,10 @@ mkFieldDescriptionPP name synopsis printer parser getter setter =
             colon
             val <- parser
             return (setter val dat)))
-        
+--}        
 -- ------------------------------------------------------------
 -- * Parsing with Parsec
 -- ------------------------------------------------------------
-
-prefsParser ::  a ->  [FieldDescriptionPP a] ->  CharParser () a
-prefsParser def descriptions =
-    let parsersF = map fieldParser descriptions in do
-        whiteSpace
-        res <-  applyFieldParsers def parsersF
-        return res
-        <?> "prefs parser"
 
 applyFieldParsers ::  a ->  [a ->  CharParser () a] ->  CharParser () a
 applyFieldParsers prefs parseF = do
@@ -144,9 +138,6 @@ integer = P.integer lexer
 -- * Printing
 -- ------------------------------------------------------------
 
-showPrefs ::  a ->  [FieldDescriptionPP a] ->  String
-showPrefs prefs prefsDesc = PP.render $
-    foldl (\ doc (FDPP _ _ printer _ ) ->  doc PP.$+$ printer prefs) PP.empty prefsDesc
 
 emptyPrinter ::  () ->  PP.Doc
 emptyPrinter _ = PP.empty
