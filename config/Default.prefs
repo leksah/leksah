@@ -1,11 +1,11 @@
 Show line numbers:
                True
      --(True/False)
-Right margin:  100
+Right margin:  106
      --Size or 0 for no right margin
 Tab width:     4
 Source candy:  Default
-     --Empty for do not use or the name of a candy file in a config dir)
+     --Empty for do not use or the name of a candy file in a config dir
 Name of the keymap:
                Default
      --The name of a keymap file in a config dir

@@ -33,10 +33,8 @@ standardSetup = "#!/usr/bin/runhaskell \n\
 \> main = defaultMain\n\n"
 
 packageNew :: GhfAction
-packageNew = do
-        return ()
-{--
-    window  <- readGhf window  
+packageNew = do return()
+{--    window  <- readGhf window  
     mbDirName <- lift $ do     
         dialog <- fileChooserDialogNew
                         (Just $ "Select root folder for project")             

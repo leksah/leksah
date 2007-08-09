@@ -122,6 +122,12 @@ data EventSelector  =   Clicked
 class Default a where 
     getDefault      ::  a 
 
+instance Default Int where 
+    getDefault = 0
+
+instance Default [a] where 
+    getDefault = []
+
 --type Applicator beta =   beta -> GhfAction ()
 
 --
@@ -197,45 +203,46 @@ declareEvent mbWidget eventSel regFunc notifierState = do
         Just _ -> error $"editor has already declared event " ++ show eventSel  
 
 --
--- | 
+-- | Activate the event after the widget has been constructed
 --        
 activateEvent :: Widget -> EventSelector -> NotifierSt -> IO()
-activateEvent w eventSel notifierState = do
+activateEvent widget eventSel notifierState = do
     noti <- readIORef notifierState     
     case Map.lookup eventSel noti of
         Nothing -> error $"editor has not declared event before activating it " ++ show eventSel   
-        Just (Nothing,f,mbci,l) -> do
-            let noti2 = Map.insert eventSel (Just w,f,mbci,l) noti
+        Just (Nothing,registerFunc,Nothing,handlers) -> do
+            cid <- registerFunc widget (\ e -> do
+                noti <- readIORef notifierState
+                case Map.lookup eventSel noti of
+                    Nothing -> return True
+                    Just (_,_,_,[]) -> return True
+                    Just (_,_,_,handlers2) -> do
+                        boolList <- mapM (\f -> f e) (map snd handlers2)
+                        return (foldl (&&) True boolList))              
+            let noti2 = Map.insert eventSel (Just widget,registerFunc,Just cid,handlers) noti
             writeIORef notifierState noti2
-        Just _ -> error $"editor has already been activated " ++ show eventSel  
+        Just _ -> error $"editor has already been activated " ++ show eventSel
+
 --
 -- | Constructor for a notifier
 --  
 mkNotifier :: NotifierSt -> Notifier
-mkNotifier notifierState = notFunc where
+mkNotifier notifierState = notFunc 
+    where
     notFunc :: EventSelector -> Either Handler Unique -> IO (Unique)   
     notFunc eventSel (Left handler) = do
         noti <- readIORef notifierState
         uni <- newUnique           
         case Map.lookup eventSel noti of
             Nothing -> error $"editor does not support event " ++ show eventSel   
-            Just (Just widget,registerFunc,Nothing,handlers) -> do
-                cid <- registerFunc widget (\ e -> do
-                    noti <- readIORef notifierState
-                    case Map.lookup eventSel noti of
-                        Nothing -> return True
-                        Just (_,_,_,[]) -> return True
-                        Just (_,_,_,handlers) -> do
-                            boolList <- mapM (\f -> f e) (map snd handlers)
-                            return (foldl (&&) True boolList))  
-                unique <- newUnique  
-                let noti2 = Map.insert eventSel (Just widget,registerFunc,Just cid,
-                                                        (unique,handler):handlers) noti
-                writeIORef notifierState noti2
-            Just (mbWidget, registerFunc, mbUnique, handlers) -> do
-                let noti2 = Map.insert eventSel (mbWidget,registerFunc,mbUnique,(uni,handler):handlers) noti
-                writeIORef notifierState noti2
-        return uni
+            Just (Just widget,registerFunc,Nothing,handlers) 
+                    -> error $"mkNotifier for activated event" ++ show eventSel
+            Just (mbWidget, registerFunc, mbUnique, handlers) 
+                    -> do   unique <- newUnique
+                            let noti2 = Map.insert eventSel 
+                                    (mbWidget,registerFunc,mbUnique,(uni,handler):handlers) noti
+                            writeIORef notifierState noti2
+                            return unique
     notFunc eventSel (Right uni) = do
         noti <- readIORef notifierState           
         case Map.lookup eventSel noti of
@@ -273,13 +280,7 @@ mkFieldE parameters getter setter editor =
                             Just b -> return (Just (setter b a))
                             Nothing -> return Nothing),
                     notiRef))
-        {--(\ newDat oldDat -> do --appicator
-            let newField = getter newDat
-            let oldField = getter oldDat
-            if newField == oldField
-                then return ()
-                else applicator newField)--}
---
+
 -- | Function to construct an editor
 --  
 mkEditor :: (Container -> Injector alpha) -> Extractor alpha -> Notifier -> Editor alpha       
@@ -316,14 +317,14 @@ boolEditor :: Editor Bool
 boolEditor parameters = do
     coreRef <- newIORef Nothing
     notifier <- emptyNotifier
-    declareEvent Nothing Clicked (\w h -> w `onClicked` do h (Event True); return ()) 
+    declareEvent Nothing Clicked (\w h -> w `onClicked` do  h (Event True); return ()) 
         notifier 
     mkEditor  
         (\widget bool -> do 
             core <- readIORef coreRef
             case core of 
                 Nothing  -> do
-                    button <- checkButtonNewWithLabel (getParameter paraName parameters)
+                    button <- checkButtonNewWithLabel (getParameter paraName parameters) 
                     containerAdd widget button
                     toggleButtonSetActive button bool
                     activateEvent (castToWidget button) Clicked notifier
@@ -336,8 +337,7 @@ boolEditor parameters = do
                     r <- toggleButtonGetActive button        
                     return (Just r))
         (mkNotifier notifier)
-        parameters{paraName = (Just "")}
-
+        parameters {paraName = Just " "} 
 --
 -- | Editor for a string in the form of a text entry
 --  
@@ -598,7 +598,7 @@ pairEditor (fstEd,fstPara) (sndEd,sndPara) parameters = do
                         then return (Just (fromJust r1,fromJust r2))
                         else return Nothing)    
         (mkNotifier notifier)
-        parameters
+        parameters {shadow = Just ShadowOut}
 
 --
 -- | An editor with a subeditor which gets active, when a checkbox is selected
@@ -614,7 +614,8 @@ maybeEditor (childEdit, childParams) positive boolLabel parameters = do
             core <- readIORef coreRef
             case core of 
                 Nothing  -> do
-                    be@(boolFrame,inj1,ext1,notifierBool) <- boolEditor emptyParams
+                    be@(boolFrame,inj1,ext1,notifierBool) <- boolEditor 
+                            emptyParams {paraName = Just boolLabel} 
                     box <- case getParameter direction parameters of
                         Horizontal -> do 
                             b <- hBoxNew False 1
@@ -672,7 +673,8 @@ maybeEditor (childEdit, childParams) positive boolLabel parameters = do
                                 Just value -> return (Just (Just value))
                         otherwise -> return (Just Nothing))
         (mkNotifier notifier)  
-        parameters                                          where
+        parameters {shadow = Just ShadowOut}
+    where
     onClickedHandler widget coreRef childRef = (\ event -> do 
         core <- readIORef coreRef
         case core of 
@@ -698,12 +700,12 @@ maybeEditor (childEdit, childParams) positive boolLabel parameters = do
                                     else do
                                         (childWidget,inj2,_,_) <- getChildEditor childRef childEdit childParams
                                         boxPackEnd vBox childWidget PackNatural 0
+                                        inj2 getDefault 
                                         widgetShowAll childWidget
-                                        inj2 getDefault        
                     Nothing -> return ()
                 return True) 
     getChildEditor childRef childEditor childLabel =  do
-        mb <- trace "getChildEditor" $readIORef childRef
+        mb <- readIORef childRef
         case mb of
             Just editor -> return editor
             Nothing -> do
@@ -789,7 +791,7 @@ eitherOrEditor (leftEditor,leftParams) (rightEditor,rightParams)  parameters = d
                                 Nothing -> return Nothing
                                 Just value -> return (Just (Right value))) 
         (mkNotifier notifier)
-        parameters
+        parameters {shadow = Just ShadowOut}
 
 multisetEditor :: Show alpha => (Editor alpha,Parameters) -> Editor [alpha]
 multisetEditor (singleEditor,sParams) parameters = do

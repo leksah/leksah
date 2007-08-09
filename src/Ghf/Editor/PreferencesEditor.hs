@@ -23,8 +23,8 @@ import Data.Maybe(isJust)
 import qualified Data.Map as Map
 import Data.Map(Map,(!))
 import Data.IORef
-import Data.List(unzip4)
-import Data.Maybe(fromJust)
+import Data.List(unzip4,any)
+import Data.Maybe(fromJust,isNothing)
 
 import Debug.Trace
 
@@ -99,11 +99,10 @@ defaultPrefs = Prefs {
     ,   keymapName          =  "Default" 
     ,   defaultSize         =  (1024,800)}
 
-
 prefsDescription :: [FieldDescription Prefs]
 prefsDescription = [
-        mkField (emptyParams{   paraName = Just "Show line numbers", 
-                                synopsis = Just"(True/False)"}) 
+        mkField (emptyParams{   paraName = Just "Show line numbers"
+                            ,   synopsis = Just"(True/False)"}) 
             (PP.text . show)
             boolParser
             showLineNumbers
@@ -112,16 +111,17 @@ prefsDescription = [
             (\b -> do
                 buffers <- allBuffers
                 mapM_ (\buf -> lift$sourceViewSetShowLineNumbers (sourceView buf) b) buffers)
-    ,   mkField (emptyParams {paraName = Just "Right margin", 
-                              synopsis = Just"Size or 0 for no right margin"})
+    ,   mkField (emptyParams {  paraName = Just "Right margin" 
+                             ,  synopsis = Just "Size or 0 for no right margin"
+                             ,  shadow   = Just ShadowNone})
             (\a -> (PP.text . show) (case a of Nothing -> 0; Just i -> i))
             (do i <- intParser
                 return (if i == 0 then Nothing else Just i))
             rightMargin
             (\b a -> a{rightMargin = b})
-            (maybeEditor (intEditor, emptyParams {spinRange= Just (0.0, 200.0, 5.0), 
+            (maybeEditor (intEditor, emptyParams {spinRange= Just (1.0, 200.0, 5.0), 
                                                   paraName = Just "Position"}) 
-                    True "Show right margin?")
+                    True "Show it ?")
             (\b -> do
                 buffers <- allBuffers
                 mapM_ (\buf -> case b of
@@ -130,7 +130,7 @@ prefsDescription = [
                                     lift $sourceViewSetShowMargin (sourceView buf) True
                                 Nothing -> lift $sourceViewSetShowMargin (sourceView buf) False)
                                                 buffers)
-    ,   mkField (emptyParams{paraName = Just "Tab width", spinRange= Just (0.0, 20.0, 1.0)})
+    ,   mkField (emptyParams{paraName = Just "Tab width", spinRange= Just (1.0, 20.0, 1.0)})
             (PP.text . show)
             intParser
             tabWidth
@@ -145,8 +145,8 @@ prefsDescription = [
             (do id <- identifier
                 return (if null id then Nothing else Just (id)))
             sourceCandy (\b a -> a{sourceCandy = b})
-            (maybeEditor (stringEditor, emptyParams{paraName = Just "candy specification"}) 
-                    True "Use Source Candy?")
+            (maybeEditor (stringEditor, emptyParams{paraName = Just "Candy specification"}) 
+                    True "Use it ?")
             (\cs -> case cs of
                         Nothing -> do 
                             setCandyState False
@@ -213,13 +213,26 @@ editPrefs :: GhfAction
 editPrefs = do
     ghfR <- ask
     p <- readGhf prefs
-    res <- lift $editPrefs' p prefsDescription ghfR
-                    
+    res <- lift $editPrefs' p prefsDescription ghfR       
     lift $putStrLn $show res
+
+validatePrefs :: Prefs -> [Prefs -> Extractor Prefs] -> IO (Maybe Prefs) 
+validatePrefs prefs getExts = do
+    newPrefs <- foldM (\ a b -> case a of 
+                                    Just a -> b a
+                                    Nothing -> return Nothing) (Just prefs) getExts
+    if isNothing newPrefs 
+        then do
+            md <- messageDialogNew Nothing [] MessageWarning ButtonsClose
+                        $ "Fields have invalid value. Please correct"
+            dialogRun md
+            widgetDestroy md
+            return Nothing
+        else return newPrefs 
 
 editPrefs' :: Prefs -> [FieldDescription Prefs] -> GhfRef -> IO ()
 editPrefs' prefs prefsDesc ghfR  = do
-{--    lastAppliedPrefsRef <- newIORef prefs
+    lastAppliedPrefsRef <- newIORef prefs
     dialog  <- windowNew
     vb      <- vBoxNew False 0
     bb      <- hButtonBoxNew
@@ -235,27 +248,33 @@ editPrefs' prefs prefsDesc ghfR  = do
     let (widgets, setInjs, getExts,_) = unzip4 resList 
     mapM_ (\ sb -> boxPackStart vb sb PackGrow 0) widgets
     ok `onClicked` (do
-        newPrefs <- foldM (\ a b -> b a) prefs getExts
-        lastAppliedPrefs <- readIORef lastAppliedPrefsRef
-        mapM_ (\ (FD _ _ _ _ _ applyF) -> runReaderT (applyF newPrefs lastAppliedPrefs) ghfR) prefsDesc
-        writePrefs "config/Default.prefs" newPrefs
-        runReaderT (modifyGhf_ (\ghf -> return (ghf{prefs = newPrefs}))) ghfR
-        widgetDestroy dialog)
+        mbNewPrefs <- validatePrefs prefs getExts
+        case mbNewPrefs of 
+            Nothing -> return ()
+            Just newPrefs -> do
+                lastAppliedPrefs <- readIORef lastAppliedPrefsRef
+                mapM_ (\ (FD _ _ _ _ applyF) -> runReaderT (applyF newPrefs lastAppliedPrefs) ghfR) prefsDesc
+                writePrefs "config/Default.prefs" newPrefs
+                runReaderT (modifyGhf_ (\ghf -> return (ghf{prefs = newPrefs}))) ghfR
+                widgetDestroy dialog)
     apply `onClicked` (do
-        newPrefs <- foldM (\ prf getEx -> getEx prf) prefs (map fromJust getExts)
-        lastAppliedPrefs <- readIORef lastAppliedPrefsRef
-        mapM_ (\ (FD _ _ _ _ _ applyF) -> runReaderT (applyF newPrefs lastAppliedPrefs) ghfR) prefsDesc
-        writeIORef lastAppliedPrefsRef newPrefs)
+        mbNewPrefs <- validatePrefs prefs getExts
+        case mbNewPrefs of 
+            Nothing -> return ()
+            Just newPrefs -> do
+                lastAppliedPrefs <- readIORef lastAppliedPrefsRef
+                mapM_ (\ (FD _ _ _ _ applyF) -> runReaderT (applyF newPrefs lastAppliedPrefs) ghfR) prefsDesc
+                writeIORef lastAppliedPrefsRef newPrefs)
     restore `onClicked` (do
         lastAppliedPrefs <- readIORef lastAppliedPrefsRef
-        mapM_ (\ (FD _ _ _ _ _ applyF) -> runReaderT (applyF prefs lastAppliedPrefs) ghfR) prefsDesc
+        mapM_ (\ (FD _ _ _ _ applyF) -> runReaderT (applyF prefs lastAppliedPrefs) ghfR) prefsDesc
         mapM_ (\ setInj -> setInj prefs) setInjs
         writeIORef lastAppliedPrefsRef prefs)
     cancel `onClicked` (do
         lastAppliedPrefs <- readIORef lastAppliedPrefsRef
-        mapM_ (\ (FD _ _ _ _ _ applyF) -> runReaderT (applyF prefs lastAppliedPrefs) ghfR) prefsDesc
+        mapM_ (\ (FD _ _ _ _ applyF) -> runReaderT (applyF prefs lastAppliedPrefs) ghfR) prefsDesc
         widgetDestroy dialog)
     boxPackEnd vb bb PackNatural 7
     containerAdd dialog vb
-    widgetShowAll dialog  --}
+    widgetShowAll dialog  
     return ()
