@@ -1,9 +1,9 @@
 --
--- | Module for editing options
+-- | Module for editing options in a GUI dialog
 -- 
 
 module Ghf.Editor.PropertyEditor (
-
+-- * Types
     Getter
 ,   Setter
 ,   Injector
@@ -55,25 +55,49 @@ import qualified Text.PrettyPrint.HughesPJ as PP
 
 import Ghf.Core
 
+-- ---------------------------------------------------------------------
+-- * Basic Types
+--
+
+--
+-- | A type for getting a field of a record
+--
 type Getter alpha beta     =   alpha -> beta
+--
+-- | A type for setting the field of a record
+--
 type Setter alpha beta     =   beta -> alpha -> alpha
 
+--
+-- | A type for injecting a value into an editor
+--
 type Injector beta     =   beta -> IO()
+--
+-- | A type for extracting a value from an editor
+--
 type Extractor beta    =   IO(Maybe (beta))
 
--- Returning True: The event has been handles
--- Returning False: Usual handling should proceed  
+--
+-- | A type for handling a gtk event
+-- | Returning True: The event has been handles
+-- | Returning False: Usual handling should proceed  
 type Handler        =   Event -> IO Bool
 
+--
+-- | A type to register or unregister a handler
+-- | If the second argument is Left Handler the handler gets registered
+-- | If the second argument is Right Unique the handler will be removed
+-- | The returned unique value can be used for unregistering an event
 type Notifier       =   EventSelector -> Either Handler Unique -> IO (Unique)   
 
-data FieldDescriptionE alpha =  FDE {
-        parameters  ::  Parameters
-    ,   fieldEditor ::  alpha -> IO (Widget, Injector alpha , alpha -> Extractor alpha , Notifier)
-    }
-
+--
+-- | A type to describe an editor. 
+-- | beta is the type of the individual field of the record
 type Editor beta       =   Parameters -> IO(Widget, Injector beta, Extractor beta, Notifier)
 
+--
+-- | A constructor type for a field desciption 
+--
 type MkFieldDescriptionE alpha beta =
     Parameters ->                         
     (Getter alpha beta) ->            
@@ -81,19 +105,28 @@ type MkFieldDescriptionE alpha beta =
     (Editor beta) ->
     FieldDescriptionE alpha
 
+--
+-- | A type to describe a field of a record, which can be edited
+-- | alpha is the type of the individual field of the record
+data FieldDescriptionE alpha =  FDE {
+        parameters  ::  Parameters
+    ,   fieldEditor ::  alpha -> IO (Widget, Injector alpha , alpha -> Extractor alpha , Notifier)
+    }
+
 data EventSelector  =   Clicked
                     |   FocusOut -- |...
     deriving (Eq,Ord,Show)
-
+--
+-- | A class for providing default values for certain types of editors
+--
 class Default a where 
     getDefault      ::  a 
 
 --type Applicator beta =   beta -> GhfAction ()
 
--- ------------------------------------------------------------
--- * Parameters
--- ------------------------------------------------------------
-
+--
+-- | A type for parameters for editors
+--
 data Parameters     =   Parameters  {   
                         paraName        :: Maybe String
                     ,   synopsis        :: Maybe String
@@ -113,6 +146,9 @@ data Parameters     =   Parameters  {
                     
 emptyParams     =   Parameters Nothing Nothing Nothing Nothing Nothing Nothing Nothing Nothing Nothing
 
+--
+-- | Convenience method to get a parameter, or if not set the default parameter
+--
 getParameter :: (Parameters -> (Maybe beta)) -> Parameters -> beta    
 getParameter selector parameters =  
     let individual = selector parameters in
@@ -131,14 +167,26 @@ instance Default Parameters where
 -- * Implementation of notifications
 -- ------------------------------------------------------------
 
+--
+-- | A type for a function to register an event
+--
 type RegFunc        =   Widget -> Handler -> IO (ConnectId Widget)
+
+--
+-- | A type for the state of the notification system
+--
 type NotifierSt     =   IORef (Map EventSelector 
                             (Maybe Widget,RegFunc,Maybe (ConnectId Widget),[(Unique, Handler)]))
 
+--
+-- | Initial state of the notification system
+--
 emptyNotifier        ::  IO (NotifierSt)
 emptyNotifier        =   newIORef(Map.empty)
 
-
+--
+-- | Declare that the event can be thrown from this editor
+--
 declareEvent :: Maybe Widget -> EventSelector -> RegFunc -> NotifierSt -> IO() 
 declareEvent mbWidget eventSel regFunc notifierState = do
     noti <- readIORef notifierState     
@@ -148,6 +196,9 @@ declareEvent mbWidget eventSel regFunc notifierState = do
              writeIORef notifierState noti2
         Just _ -> error $"editor has already declared event " ++ show eventSel  
 
+--
+-- | 
+--        
 activateEvent :: Widget -> EventSelector -> NotifierSt -> IO()
 activateEvent w eventSel notifierState = do
     noti <- readIORef notifierState     
@@ -157,7 +208,9 @@ activateEvent w eventSel notifierState = do
             let noti2 = Map.insert eventSel (Just w,f,mbci,l) noti
             writeIORef notifierState noti2
         Just _ -> error $"editor has already been activated " ++ show eventSel  
- 
+--
+-- | Constructor for a notifier
+--  
 mkNotifier :: NotifierSt -> Notifier
 mkNotifier notifierState = notFunc where
     notFunc :: EventSelector -> Either Handler Unique -> IO (Unique)   
@@ -203,6 +256,9 @@ mkNotifier notifierState = notFunc where
 -- * Implementation of editing
 -- ------------------------------------------------------------
 
+--
+-- | Function to construct a field description 
+--  
 mkFieldE :: Eq beta => MkFieldDescriptionE alpha beta
 mkFieldE parameters getter setter editor =
     FDE parameters
@@ -223,7 +279,9 @@ mkFieldE parameters getter setter editor =
             if newField == oldField
                 then return ()
                 else applicator newField)--}
-
+--
+-- | Function to construct an editor
+--  
 mkEditor :: (Container -> Injector alpha) -> Extractor alpha -> Notifier -> Editor alpha       
 mkEditor injectorC extractor notifier parameters = do
     let (xalign, yalign, xscale, yscale) = getParameter outerAlignment parameters
@@ -251,6 +309,9 @@ instance ContainerClass Widget
 instance BinClass Widget
 instance ButtonClass Widget
 
+--
+-- | Editor for a boolean value in the form of a check button
+--  
 boolEditor :: Editor Bool
 boolEditor parameters = do
     coreRef <- newIORef Nothing
@@ -277,6 +338,9 @@ boolEditor parameters = do
         (mkNotifier notifier)
         parameters{paraName = (Just "")}
 
+--
+-- | Editor for a string in the form of a text entry
+--  
 stringEditor :: Editor String
 stringEditor parameters = do
     coreRef <- newIORef Nothing
@@ -300,6 +364,9 @@ stringEditor parameters = do
         (mkNotifier notifier)
         parameters 
 
+--
+-- | Editor for a multiline string in the form of a multiline text entry
+--  
 multilineStringEditor :: Editor String
 multilineStringEditor parameters = do
     coreRef <- newIORef Nothing
@@ -329,6 +396,9 @@ multilineStringEditor parameters = do
         (mkNotifier notifier)
         parameters
 
+--
+-- | Editor for an integer in the form of a spin entry
+--  
 intEditor :: Editor Int
 intEditor parameters = do
     coreRef <- newIORef Nothing
@@ -353,6 +423,9 @@ intEditor parameters = do
         (mkNotifier notifier)
         parameters
 
+--
+-- | Editor for for any value which is an instance of Read and Show in the form of a 
+-- | text entry
 genericEditor :: (Show beta, Read beta) => Editor beta
 genericEditor parameters = do
     (wid,inj,ext,notif) <- stringEditor parameters
@@ -368,6 +441,9 @@ genericEditor parameters = do
                     else return (Just (head l))
     return (wid,ginj,gext,notif) 
 
+--
+-- | Editor for the selection of an element from a static list of element in the
+-- | form of a combo box
 staticSelectionEditor :: (Show beta, Eq beta) => [beta] -> Editor beta
 staticSelectionEditor list parameters = do
     coreRef <- newIORef Nothing
@@ -402,6 +478,9 @@ staticSelectionEditor list parameters = do
         (mkNotifier notifier)
         parameters
 
+--
+-- | Editor for the selection of a file path in the form of a text entry and a button,
+-- | which opens a gtk file chooser
 fileEditor :: Editor FilePath
 fileEditor parameters = do
     coreRef <- newIORef Nothing
@@ -479,6 +558,9 @@ fileEditor parameters = do
 -- * Composition editors
 -- ------------------------------------------------------------
 
+--
+-- | An editor which composes two subeditors
+-- 
 pairEditor :: (Editor alpha, Parameters) -> (Editor beta, Parameters) -> Editor (alpha,beta)
 pairEditor (fstEd,fstPara) (sndEd,sndPara) parameters = do
     coreRef <- newIORef Nothing
@@ -522,7 +604,6 @@ pairEditor (fstEd,fstPara) (sndEd,sndPara) parameters = do
 -- | An editor with a subeditor which gets active, when a checkbox is selected
 -- | or deselected (if the positive Argument is False)
 --
-
 maybeEditor :: Default beta => (Editor beta, Parameters) -> Bool -> String -> Editor (Maybe beta)
 maybeEditor (childEdit, childParams) positive boolLabel parameters = do  
     coreRef <- newIORef Nothing
@@ -634,6 +715,10 @@ maybeEditor (childEdit, childParams) positive boolLabel parameters = do
         mb <- readIORef childRef
         return (isJust mb)
 
+--
+-- | An editor with a subeditor which gets active, when a checkbox is selected
+-- | or deselected (if the positive Argument is False)
+--
 eitherOrEditor :: (Default alpha, Default beta) => (Editor alpha, Parameters) -> 
                         (Editor beta, Parameters) -> Editor (Either alpha beta)
 eitherOrEditor (leftEditor,leftParams) (rightEditor,rightParams)  parameters = do

@@ -24,6 +24,7 @@ import qualified Data.Map as Map
 import Data.Map(Map,(!))
 import Data.IORef
 import Data.List(unzip4)
+import Data.Maybe(fromJust)
 
 import Debug.Trace
 
@@ -111,15 +112,15 @@ prefsDescription = [
             (\b -> do
                 buffers <- allBuffers
                 mapM_ (\buf -> lift$sourceViewSetShowLineNumbers (sourceView buf) b) buffers)
-    ,   mkField (emptyParams{   paraName = Just "Right margin", 
-                                synopsis = Just"Size or 0 for no right margin"})
+    ,   mkField (emptyParams {paraName = Just "Right margin", 
+                              synopsis = Just"Size or 0 for no right margin"})
             (\a -> (PP.text . show) (case a of Nothing -> 0; Just i -> i))
             (do i <- intParser
                 return (if i == 0 then Nothing else Just i))
             rightMargin
             (\b a -> a{rightMargin = b})
-            (maybeEditor ((intEditor ), emptyParams {   spinRange= Just (0.0, 200.0, 5.0), 
-                                                        paraName = Just "Position"}) 
+            (maybeEditor (intEditor, emptyParams {spinRange= Just (0.0, 200.0, 5.0), 
+                                                  paraName = Just "Position"}) 
                     True "Show right margin?")
             (\b -> do
                 buffers <- allBuffers
@@ -218,7 +219,7 @@ editPrefs = do
 
 editPrefs' :: Prefs -> [FieldDescription Prefs] -> GhfRef -> IO ()
 editPrefs' prefs prefsDesc ghfR  = do
-    lastAppliedPrefsRef <- newIORef prefs
+{--    lastAppliedPrefsRef <- newIORef prefs
     dialog  <- windowNew
     vb      <- vBoxNew False 0
     bb      <- hButtonBoxNew
@@ -241,7 +242,7 @@ editPrefs' prefs prefsDesc ghfR  = do
         runReaderT (modifyGhf_ (\ghf -> return (ghf{prefs = newPrefs}))) ghfR
         widgetDestroy dialog)
     apply `onClicked` (do
-        newPrefs <- foldM (\ prf getEx -> getEx prf) prefs getExts
+        newPrefs <- foldM (\ prf getEx -> getEx prf) prefs (map fromJust getExts)
         lastAppliedPrefs <- readIORef lastAppliedPrefsRef
         mapM_ (\ (FD _ _ _ _ _ applyF) -> runReaderT (applyF newPrefs lastAppliedPrefs) ghfR) prefsDesc
         writeIORef lastAppliedPrefsRef newPrefs)
@@ -256,5 +257,5 @@ editPrefs' prefs prefsDesc ghfR  = do
         widgetDestroy dialog)
     boxPackEnd vb bb PackNatural 7
     containerAdd dialog vb
-    widgetShowAll dialog    
+    widgetShowAll dialog  --}
     return ()
