@@ -216,19 +216,6 @@ editPrefs = do
     res <- lift $editPrefs' p prefsDescription ghfR       
     lift $putStrLn $show res
 
-validatePrefs :: Prefs -> [Prefs -> Extractor Prefs] -> IO (Maybe Prefs) 
-validatePrefs prefs getExts = do
-    newPrefs <- foldM (\ a b -> case a of 
-                                    Just a -> b a
-                                    Nothing -> return Nothing) (Just prefs) getExts
-    if isNothing newPrefs 
-        then do
-            md <- messageDialogNew Nothing [] MessageWarning ButtonsClose
-                        $ "Fields have invalid value. Please correct"
-            dialogRun md
-            widgetDestroy md
-            return Nothing
-        else return newPrefs 
 
 editPrefs' :: Prefs -> [FieldDescription Prefs] -> GhfRef -> IO ()
 editPrefs' prefs prefsDesc ghfR  = do
@@ -248,7 +235,7 @@ editPrefs' prefs prefsDesc ghfR  = do
     let (widgets, setInjs, getExts,_) = unzip4 resList 
     mapM_ (\ sb -> boxPackStart vb sb PackGrow 0) widgets
     ok `onClicked` (do
-        mbNewPrefs <- validatePrefs prefs getExts
+        mbNewPrefs <- validate prefs getExts
         case mbNewPrefs of 
             Nothing -> return ()
             Just newPrefs -> do
@@ -258,7 +245,7 @@ editPrefs' prefs prefsDesc ghfR  = do
                 runReaderT (modifyGhf_ (\ghf -> return (ghf{prefs = newPrefs}))) ghfR
                 widgetDestroy dialog)
     apply `onClicked` (do
-        mbNewPrefs <- validatePrefs prefs getExts
+        mbNewPrefs <- validate prefs getExts
         case mbNewPrefs of 
             Nothing -> return ()
             Just newPrefs -> do
@@ -278,3 +265,5 @@ editPrefs' prefs prefsDesc ghfR  = do
     containerAdd dialog vb
     widgetShowAll dialog  
     return ()
+
+

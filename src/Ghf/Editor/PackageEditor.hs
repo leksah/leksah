@@ -33,8 +33,8 @@ standardSetup = "#!/usr/bin/runhaskell \n\
 \> main = defaultMain\n\n"
 
 packageNew :: GhfAction
-packageNew = do return()
-{--    window  <- readGhf window  
+packageNew = do
+    window  <- readGhf window  
     mbDirName <- lift $ do     
         dialog <- fileChooserDialogNew
                         (Just $ "Select root folder for project")             
@@ -97,8 +97,8 @@ extraTmpFiles :: [FilePath]
 
 type PDescr = [(String,[FieldDescriptionE PackageDescription])]
 
-packageDescription :: PDescr
-packageDescription = [
+packageDD :: PDescr
+packageDD = [
     ("Basic", [
         mkFieldE (emptyParams{paraName=Just "Package Identifier"}) 
             package
@@ -133,61 +133,60 @@ packageDescription = [
             (multisetEditor dependencyEditor "Dependency")
     ])--},        
     ("Library",[
-       mkFieldE "Library" "" 
-            emptyPrinter
-            emptyParser
+       mkFieldE (emptyParams{paraName=Just "Library"})
             library
             (\ a b -> b{library = a})
-            (maybeEditor libraryEditor True "Is this package a library?" "")
-            (\a -> return ())
+            (maybeEditor (libraryEditor, emptyParams{paraName=Just "Specify library"}) 
+                True "Is this package a library?")
     ]),       
     ("Additional",[
-        mkFieldE "License" ""
+        mkFieldE (emptyParams{paraName=Just "License"}) 
             license
             (\ a b -> b{license = a})
             (staticSelectionEditor [GPL, LGPL, BSD3, BSD4, PublicDomain, AllRightsReserved, OtherLicense])   
-    ,   mkFieldE "License File" ""
+    ,   mkFieldE (emptyParams{paraName=Just "License File"})  
             licenseFile
             (\ a b -> b{licenseFile = a})
             (fileEditor)   
-    ,   mkFieldE "Maintainer" "" 
+    ,   mkFieldE (emptyParams{paraName=Just "Maintainer"})
             maintainer
             (\ a b -> b{maintainer = a})
             stringEditor
-    ,   mkFieldE "Stability" "" 
+    ,   mkFieldE (emptyParams{paraName=Just "Stability"}) 
             stability
             (\ a b -> b{stability = a})
             stringEditor
-    ,   mkFieldE "Tested with" "" 
+    ,   mkFieldE (emptyParams{paraName=Just "Tested with"})  
             (\a -> case testedWith a of
                         []          -> (GHC,AnyVersion)
                         (p:r)       -> p)  
             (\ a b -> b{testedWith = [a]})
             testedWidthEditor
-    ,   mkFieldE "Homepage" "" 
+    ,   mkFieldE (emptyParams{paraName=Just "Homepage"})  
             homepage
             (\ a b -> b{homepage = a})
             stringEditor
-    ,   mkFieldE "Package Url" "" 
+    ,   mkFieldE (emptyParams{paraName=Just "Package Url"})  
             pkgUrl
             (\ a b -> b{pkgUrl = a})
             stringEditor
-    ,   mkFieldE "Category" "" 
+    ,   mkFieldE (emptyParams{paraName=Just "Category"})   
             category
             (\ a b -> b{category = a})
             stringEditor
     ])]
 
 editPackage :: PackageDescription -> String -> GhfAction
-editPackage package packageDir = do
+editPackage packageD packageDir = do
     ghfR <- ask
-    res <- lift $editPackage' packageDir package packageDescription ghfR 
+    res <- lift $editPackage' packageDir packageD packageDD ghfR 
     lift $putStrLn $show res
 
 editPackage' :: String -> PackageDescription -> PDescr -> GhfRef -> IO ()
-editPackage' packageDir prefs prefsDesc ghfR   = 
-    let flatPrefsDescr = concatMap snd prefsDesc in do
-        lastAppliedPrefsRef <- newIORef prefs
+editPackage' packageDir packageD packageDD ghfR   = 
+    let flatPackageDesc = concatMap snd packageDD 
+    in do
+        lastAppliedPackageRef <- newIORef packageD
         dialog  <- windowNew
         vb      <- vBoxNew False 7
         bb      <- hButtonBoxNew
@@ -199,26 +198,31 @@ editPackage' packageDir prefs prefsDesc ghfR   =
         boxPackStart bb cancel PackNatural 0
         nb <- newNotebook
         notebookSetTabPos nb PosTop
-        res <- mapM (\ (tabLabel, partPrefsDescr) -> do
-            resList <- mapM (\ (FDE _ editorF) -> editorF prefs) partPrefsDescr
-            let (widgetsP, setInjsP, getExtsP,notifiersP) = unzip4 resList
-            nbbox <- vBoxNew False 0
-            mapM_ (\ w -> boxPackStart nbbox w PackNatural 0) widgetsP
-            notebookAppendPage nb nbbox tabLabel
-            return (widgetsP, setInjsP, getExtsP, notifiersP)) prefsDesc
+        res <- mapM 
+            (\ (tabLabel, partPackageDesc) -> do
+                resList <- mapM (\ (FDE _ editorF) -> editorF packageD) partPackageDesc
+                let (widgetsP, setInjsP, getExtsP,notifiersP) = unzip4 resList
+                nbbox <- vBoxNew False 0
+                mapM_ (\ w -> boxPackStart nbbox w PackNatural 0) widgetsP
+                notebookAppendPage nb nbbox tabLabel
+                return (widgetsP, setInjsP, getExtsP, notifiersP)) 
+                    packageDD
         let (widgets, setInjs, getExts, notifiers) = 
                 foldl (\ (w,i,e,n) (w2,i2,e2,n2) -> (w ++ w2, i ++ i2, e ++ e2, n ++ n2)) ([],[],[],[]) res
         ok `onClicked` (do
-            newPrefs <- foldM (\ a b -> b a) prefs getExts
-            lastAppliedPrefs <- readIORef lastAppliedPrefsRef
---            mapM_ (\ (FD _ _ _ _ _ applyF) -> runReaderT (applyF newPrefs lastAppliedPrefs) ghfR) flatPrefsDescr
-            let PackageIdentifier n v =  package newPrefs
-            writePackageDescription (packageDir ++ "/" ++ n ++ ".cabal") newPrefs
-            --runReaderT (modifyGhf_ (\ghf -> return (ghf{prefs = newPrefs}))) ghfR
-            widgetDestroy dialog)
-            cancel `onClicked` (do
-            lastAppliedPrefs <- readIORef lastAppliedPrefsRef
-            mapM_ (\ (FD _ _ _ _ _ applyF) -> runReaderT (applyF prefs lastAppliedPrefs) ghfR) flatPrefsDescr
+            mbNewPackage <- validate packageD getExts
+            case mbNewPackage of 
+                Nothing -> return ()
+                Just newPackage -> do
+                    lastAppliedPackage <- readIORef lastAppliedPackageRef
+        --            mapM_ (\ (FD _ _ _ _ _ applyF) -> runReaderT (applyF newPrefs lastAppliedPrefs) ghfR) flatPrefsDescr
+                    let PackageIdentifier n v =  package newPackage
+                    writePackageDescription (packageDir ++ "/" ++ n ++ ".cabal") newPackage
+                    --runReaderT (modifyGhf_ (\ghf -> return (ghf{prefs = newPrefs}))) ghfR
+                    widgetDestroy dialog)
+        cancel `onClicked` (do
+--            lastAppliedPackage <- readIORef lastAppliedPackageRef
+--            mapM_ (\ (FDE _ applyF) -> runReaderT (applyF prefs lastAppliedPackage) ghfR) flatPackageDesc
             widgetDestroy dialog)
         boxPackStart vb nb PackGrow 7
         boxPackEnd vb bb PackNatural 7
@@ -226,9 +230,16 @@ editPackage' packageDir prefs prefsDesc ghfR   =
         widgetShowAll dialog    
         return ()
 
+-- ------------------------------------------------------------
+-- * Special Editors
+-- ------------------------------------------------------------
+
 packageEditor :: Editor PackageIdentifier
-packageEditor name = do
-    (wid,inj,ext,notif) <- pairEditor (stringEditor, "Name") (versionEditor, "Version") Horizontal name
+packageEditor para = do
+    (wid,inj,ext,notif) <- pairEditor
+        (stringEditor, emptyParams{paraName=Just "Name"}) 
+        (versionEditor, emptyParams{paraName=Just "Version"}) 
+        (para{direction = Just Horizontal})
     let pinj (PackageIdentifier n v) = inj (n,v)
     let pext = do
         mbp <- ext
@@ -238,9 +249,10 @@ packageEditor name = do
     return (wid,pinj,pext,notif)   
 
 compilerFlavorEditor :: Editor CompilerFlavor
-compilerFlavorEditor name = do
-    (wid,inj,ext,notif) <- eitherOrEditor (staticSelectionEditor flavors,"Select compiler") 
-                            (stringEditor, "Specify compiler") name
+compilerFlavorEditor para = do
+    (wid,inj,ext,notif) <- eitherOrEditor 
+        (staticSelectionEditor flavors, emptyParams{paraName=Just"Select compiler"}) 
+        (stringEditor, emptyParams{paraName=Just "Specify compiler"}) para
     let cfinj (OtherCompiler str) = inj (Right "")
     let cfinj other = inj (Left other)    
     let cfext = do
@@ -254,19 +266,28 @@ compilerFlavorEditor name = do
         flavors = [GHC, NHC, Hugs, HBC, Helium, JHC]
 
 testedWidthEditor :: Editor (CompilerFlavor, VersionRange)
-testedWidthEditor name = do
-    pairEditor (compilerFlavorEditor, "Known Compiler?") (versionRangeEditor, "Version Range") Horizontal name
+testedWidthEditor para = do
+    pairEditor 
+        (compilerFlavorEditor, emptyParams{paraName=Just "Known Compiler?"}) 
+        (versionRangeEditor,emptyParams{paraName=Just "Version Range"}) 
+        (para{direction = Just Horizontal})
 
 versionRangeEditor :: Editor VersionRange
-versionRangeEditor name = do
+versionRangeEditor para = do
     (wid,inj,ext,notif) <- 
         maybeEditor (eitherOrEditor             
-            ((pairEditor (staticSelectionEditor v1, "") 
-                        (versionEditor,"") Horizontal),"Simple Version Range")
-            ((pairEditor (staticSelectionEditor v2, "")
-                        ((pairEditor (versionRangeEditor,"") (versionRangeEditor, "") Vertical),
-                            "") Vertical), "Complex Version Range")) 
-                False "Any Version" "Simple Version Specification" name
+            ((pairEditor 
+                (staticSelectionEditor v1, emptyParams) 
+                (versionEditor,emptyParams)),
+                    emptyParams{direction = Just Horizontal,paraName= Just "Simple Version Range"})
+             (pairEditor 
+                (staticSelectionEditor v2, emptyParams)
+                (pairEditor 
+                    (versionRangeEditor, emptyParams) 
+                    (versionRangeEditor, emptyParams), 
+                    (emptyParams{direction = Just Vertical})), 
+                        (emptyParams{direction = Just Vertical})), 
+                    emptyParams{paraName= Just "Complex Version Range"}) False "Any Version" para
     let vrinj AnyVersion                =   inj Nothing
         vrinj (ThisVersion v)           =   inj (Just (Left (ThisVersionS,v))) 
         vrinj (LaterVersion v)          =   inj (Just (Left (LaterVersionS,v)))
@@ -319,19 +340,16 @@ instance Default VersionRange
 
 instance Default (Version2, (VersionRange, VersionRange))
     where getDefault = (UnionVersionRangesS, (AnyVersion, AnyVersion))
- 
-instance Default String
-    where 
-        getDefault =    ""
-
-instance Default Int
-    where 
-        getDefault =    1
 
 instance Default CompilerFlavor
-    where 
-        getDefault =    GHC
+    where getDefault =  GHC
 
+instance Default BuildInfo
+    where getDefault =  emptyBuildInfo
+
+instance Default Library 
+    where getDefault =  Library [] getDefault
+    
 versionRangeStringEditor :: Editor VersionRange
 versionRangeStringEditor name = do
     (wid,inj,ext,notif) <- stringEditor name
@@ -348,8 +366,11 @@ versionRangeStringEditor name = do
     return (wid,pinj,pext,notif) 
 
 dependencyEditor :: Editor Dependency
-dependencyEditor name = do
-    (wid,inj,ext,notif) <- pairEditor (stringEditor,"Package Name") (versionRangeEditor,"Version") Horizontal name
+dependencyEditor para = do
+    (wid,inj,ext,notif) <- pairEditor 
+        (stringEditor,emptyParams {paraName = Just "Package Name"}) 
+        (versionRangeEditor,emptyParams {paraName = Just "Version"}) 
+        (para{direction = Just Horizontal})
     let pinj (Dependency s v) = inj (s,v)
     let pext = do
         mbp <- ext
@@ -361,8 +382,8 @@ dependencyEditor name = do
 
 
 libraryEditor :: Editor Library
-libraryEditor name = do
-    (wid,inj,ext,notif) <- multisetEditor fileEditor "" name 
+libraryEditor para = do
+    (wid,inj,ext,notif) <- multisetEditor (fileEditor,emptyParams) para 
     let pinj (Library em _) = inj (em)
     let pext = do
         mbp <- ext
@@ -373,8 +394,8 @@ libraryEditor name = do
 
         
 versionEditor :: Editor Version
-versionEditor label = do
-    (wid,inj,ext,notiRef) <- stringEditor label
+versionEditor para = do
+    (wid,inj,ext,notiRef) <- stringEditor para
     let pinj v = inj (showVersion v)
     let pext = do
         s <- ext
@@ -391,14 +412,14 @@ versionEditor label = do
             Just _ -> return ()
             Nothing -> do
                 md <- messageDialogNew Nothing [] MessageWarning ButtonsClose
-                        $"Field " ++ label ++ " has invalid value. Please correct"
+                        $"Field " ++ (getParameter paraName para) ++ " has invalid value. Please correct"
                 dialogRun md
                 widgetDestroy md
                 return ())
 --    registerHandler notiRef handler "onFocusOut"
     return (wid, pinj, pext, notiRef)
 
-
+{--
 buildInfoEditor :: Editor Library
 buildInfoEditor name = do
     (wid,inj,ext,notif) <- pairEditor (booleanEditor, "Buildable?") 
@@ -440,9 +461,9 @@ buildInfoEditor name = do
                                 hsSourceDirsbi otherModulesbi extensionsbi extraLibsbi extraLibDirsbi
                                     includeDirsbi includesbi installIncludesbi optionsbi ghcProfOptionsbi)
     return (wid,pinj,pext,notif)   
-
-
 --}
+
+
 
                                
                             

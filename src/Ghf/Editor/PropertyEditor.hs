@@ -19,6 +19,9 @@ module Ghf.Editor.PropertyEditor (
 
 ,   Parameters(..)
 ,   emptyParams
+,   getParameter
+
+,   validate
 
 ,   boolEditor
 ,   stringEditor
@@ -123,10 +126,10 @@ class Default a where
     getDefault      ::  a 
 
 instance Default Int where 
-    getDefault = 0
+    getDefault = 1
 
-instance Default [a] where 
-    getDefault = []
+instance Default String where 
+    getDefault = " "
 
 --type Applicator beta =   beta -> GhfAction ()
 
@@ -168,6 +171,23 @@ instance Default Parameters where
     getDefault      =   Parameters (Just "") (Just "") (Just Horizontal) (Just ShadowNone) 
                             (Just (0.5, 0.5, 0.95, 0.95)) (Just (2, 5, 3, 3)) 
                             (Just (0.5, 0.5, 0.95, 0.95)) (Just (2, 5, 3, 3)) (Just (0.0,10.0,1.0))
+
+--
+-- | Convenience method to validate and extract fields
+--
+validate :: alpha -> [alpha -> Extractor alpha] -> IO (Maybe alpha) 
+validate val getExts = do
+    newVal <- foldM (\ a b -> case a of 
+                                Just a -> b a
+                                Nothing -> return Nothing) (Just val) getExts
+    if isNothing newVal 
+        then do
+            md <- messageDialogNew Nothing [] MessageWarning ButtonsClose
+                        $ "Fields have invalid value. Please correct"
+            dialogRun md
+            widgetDestroy md
+            return Nothing
+        else return newVal 
 
 -- ------------------------------------------------------------
 -- * Implementation of notifications
