@@ -99,28 +99,68 @@ type PDescr = [(String,[FieldDescriptionE PackageDescription])]
 
 packageDD :: PDescr
 packageDD = [
-    ("Basic", [
-        mkFieldE (emptyParams{paraName=Just "Package Identifier"}) 
+    ("Description", [
+        mkFieldE (emptyParams
+            {   paraName = Just "Package Identifier"}) 
             package
             (\ a b -> b{package = a})
             packageEditor
-    ,   mkFieldE (emptyParams{paraName=Just "Synopsis",PE.synopsis= Just"A one-line summary of this package"}) 
+    ,   mkFieldE (emptyParams
+            {   paraName    = Just "Synopsis"
+            ,   PE.synopsis = Just"A one-line summary of this package"}) 
             synopsis
             (\ a b -> b{synopsis = a})
             stringEditor
-    ,   mkFieldE (emptyParams{paraName=Just "Description",PE.synopsis=Just "A more verbose description of this package"}) 
+    ,   mkFieldE (emptyParams
+            {   paraName    = Just "Homepage"})  
+            homepage
+            (\ a b -> b{homepage = a})
+            stringEditor
+    ,   mkFieldE (emptyParams
+            {   paraName    = Just "Category"})   
+            category
+            (\ a b -> b{category = a})
+            stringEditor
+    ,   mkFieldE (emptyParams
+            {   paraName    = Just "Description"
+            ,   PE.synopsis = Just "A more verbose description of this package"
+            ,   shadow      = Just ShadowOut
+            ,   minSize     = Just (-1,250)}) 
             description
             (\ a b -> if null a then b{description = " \n\n\n\n\n"} else  b{description = a})
             multilineStringEditor
-    ,   mkFieldE (emptyParams{paraName=Just "Author"}) 
+    ]),
+    ("Description -2-",[
+        mkFieldE (emptyParams{paraName=Just "Author"}) 
             author
             (\ a b -> b{author = a})
+            stringEditor
+    ,   mkFieldE (emptyParams{paraName=Just "Maintainer"})
+            maintainer
+            (\ a b -> b{maintainer = a})
+            stringEditor
+    ,   mkFieldE (emptyParams{paraName=Just "Stability"}) 
+            stability
+            (\ a b -> b{stability = a})
             stringEditor
     ,   mkFieldE (emptyParams{paraName=Just "Copyright"}) 
             copyright
             (\ a b -> b{copyright = a})
             stringEditor
-    ]){--,
+    ,   mkFieldE (emptyParams{paraName=Just "License"}) 
+            license
+            (\ a b -> b{license = a})
+            (staticSelectionEditor [GPL, LGPL, BSD3, BSD4, PublicDomain, AllRightsReserved, OtherLicense])   
+    ,   mkFieldE (emptyParams{paraName=Just "License File"})  
+            licenseFile
+            (\ a b -> b{licenseFile = a})
+            (fileEditor)   
+    ,   mkFieldE (emptyParams{paraName=Just "Package Url"})  
+            pkgUrl
+            (\ a b -> b{pkgUrl = a})
+            stringEditor
+    ]),
+{--,
     ("Specification",[
         mkFieldE "Build Dependencies" 
             "If this package depends on a specific version of Cabal, give that here. components" 
@@ -131,50 +171,37 @@ packageDD = [
             buildDepends
             (\ a b -> b{buildDepends = a})
             (multisetEditor dependencyEditor "Dependency")
-    ])--},        
-    ("Library",[
-       mkFieldE (emptyParams{paraName=Just "Library"})
-            library
-            (\ a b -> b{library = a})
-            (maybeEditor (libraryEditor, emptyParams{paraName=Just "Specify library"}) 
-                True "Is this package a library?")
-    ]),       
-    ("Additional",[
-        mkFieldE (emptyParams{paraName=Just "License"}) 
-            license
-            (\ a b -> b{license = a})
-            (staticSelectionEditor [GPL, LGPL, BSD3, BSD4, PublicDomain, AllRightsReserved, OtherLicense])   
-    ,   mkFieldE (emptyParams{paraName=Just "License File"})  
-            licenseFile
-            (\ a b -> b{licenseFile = a})
-            (fileEditor)   
-    ,   mkFieldE (emptyParams{paraName=Just "Maintainer"})
-            maintainer
-            (\ a b -> b{maintainer = a})
-            stringEditor
-    ,   mkFieldE (emptyParams{paraName=Just "Stability"}) 
-            stability
-            (\ a b -> b{stability = a})
-            stringEditor
     ,   mkFieldE (emptyParams{paraName=Just "Tested with"})  
             (\a -> case testedWith a of
                         []          -> (GHC,AnyVersion)
                         (p:r)       -> p)  
             (\ a b -> b{testedWith = [a]})
             testedWidthEditor
-    ,   mkFieldE (emptyParams{paraName=Just "Homepage"})  
-            homepage
-            (\ a b -> b{homepage = a})
-            stringEditor
-    ,   mkFieldE (emptyParams{paraName=Just "Package Url"})  
-            pkgUrl
-            (\ a b -> b{pkgUrl = a})
-            stringEditor
-    ,   mkFieldE (emptyParams{paraName=Just "Category"})   
-            category
-            (\ a b -> b{category = a})
-            stringEditor
-    ])]
+    ])--}
+    ("Special",[
+        mkFieldE (emptyParams
+        {   paraName    = Just "Tested with compiler"
+        ,   shadow      = Just ShadowIn})  
+        (\a -> case testedWith a of
+            []          -> [(GHC,AnyVersion)]
+            l           -> l)  
+        (\ a b -> b{testedWith = a})
+        testedWidthEditor
+    ,   mkFieldE (emptyParams
+        {   paraName    = Just "Cabal version"
+        ,   PE.synopsis = Just "Does this package depends on a specific version of Cabal?"
+        ,   shadow      = Just ShadowIn}) 
+        descCabalVersion
+        (\ a b -> b{descCabalVersion = a})
+        versionRangeEditor
+    ]),  
+    ("Library",[
+       mkFieldE (emptyParams{paraName=Just "Library"})
+            library
+            (\ a b -> b{library = a})
+            (maybeEditor (libraryEditor, emptyParams{paraName=Just "Specify library"}) 
+                True "Is this package a library?")
+    ])]       
 
 editPackage :: PackageDescription -> String -> GhfAction
 editPackage packageD packageDir = do
@@ -239,7 +266,7 @@ packageEditor para = do
     (wid,inj,ext,notif) <- pairEditor
         (stringEditor, emptyParams{paraName=Just "Name"}) 
         (versionEditor, emptyParams{paraName=Just "Version"}) 
-        (para{direction = Just Horizontal})
+        (para{direction = Just Horizontal,shadow   = Just ShadowIn})
     let pinj (PackageIdentifier n v) = inj (n,v)
     let pext = do
         mbp <- ext
@@ -248,11 +275,22 @@ packageEditor para = do
             Just (n,v) -> return (Just $PackageIdentifier n v)
     return (wid,pinj,pext,notif)   
 
+testedWidthEditor :: Editor [(CompilerFlavor, VersionRange)]
+testedWidthEditor para = do
+    multisetEditor    
+       (pairEditor 
+            (compilerFlavorEditor, emptyParams{shadow = Just ShadowNone}) 
+            (versionRangeEditor, emptyParams{shadow = Just ShadowNone}), 
+            emptyParams{direction = Just Vertical}) 
+       para
+
 compilerFlavorEditor :: Editor CompilerFlavor
 compilerFlavorEditor para = do
     (wid,inj,ext,notif) <- eitherOrEditor 
         (staticSelectionEditor flavors, emptyParams{paraName=Just"Select compiler"}) 
-        (stringEditor, emptyParams{paraName=Just "Specify compiler"}) para
+        (stringEditor, emptyParams{paraName=Just "Specify compiler"}) 
+        "Other" 
+        para{paraName = Just "Select"}
     let cfinj (OtherCompiler str) = inj (Right "")
     let cfinj other = inj (Left other)    
     let cfext = do
@@ -265,29 +303,23 @@ compilerFlavorEditor para = do
         where 
         flavors = [GHC, NHC, Hugs, HBC, Helium, JHC]
 
-testedWidthEditor :: Editor (CompilerFlavor, VersionRange)
-testedWidthEditor para = do
-    pairEditor 
-        (compilerFlavorEditor, emptyParams{paraName=Just "Known Compiler?"}) 
-        (versionRangeEditor,emptyParams{paraName=Just "Version Range"}) 
-        (para{direction = Just Horizontal})
-
 versionRangeEditor :: Editor VersionRange
 versionRangeEditor para = do
     (wid,inj,ext,notif) <- 
-        maybeEditor (eitherOrEditor             
-            ((pairEditor 
-                (staticSelectionEditor v1, emptyParams) 
-                (versionEditor,emptyParams)),
-                    emptyParams{direction = Just Horizontal,paraName= Just "Simple Version Range"})
-             (pairEditor 
-                (staticSelectionEditor v2, emptyParams)
+        maybeEditor 
+            (eitherOrEditor             
                 (pairEditor 
-                    (versionRangeEditor, emptyParams) 
-                    (versionRangeEditor, emptyParams), 
-                    (emptyParams{direction = Just Vertical})), 
-                        (emptyParams{direction = Just Vertical})), 
-                    emptyParams{paraName= Just "Complex Version Range"}) False "Any Version" para
+                    (staticSelectionEditor v1, emptyParams) 
+                    (versionEditor,emptyParams),
+                    emptyParams{direction = Just Horizontal,paraName= Just "Simple Version Range"})
+                (pairEditor 
+                    (staticSelectionEditor v2, emptyParams)
+                    (pairEditor 
+                        (versionRangeEditor, emptyParams) 
+                        (versionRangeEditor, emptyParams), 
+                        emptyParams{direction = Just Vertical}),
+                            emptyParams{paraName= Just "Complex Version Range"})              
+                "Simple",emptyParams) False "Any Version" para           
     let vrinj AnyVersion                =   inj Nothing
         vrinj (ThisVersion v)           =   inj (Just (Left (ThisVersionS,v))) 
         vrinj (LaterVersion v)          =   inj (Just (Left (LaterVersionS,v)))
@@ -378,8 +410,7 @@ dependencyEditor para = do
             Nothing -> return Nothing
             Just ("",v) -> return Nothing
             Just (s,v) -> return (Just $Dependency s v)
-    return (wid,pinj,pext,notif)   
-
+    return (wid,pinj,pext,notif)     
 
 libraryEditor :: Editor Library
 libraryEditor para = do

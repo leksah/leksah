@@ -149,8 +149,9 @@ data Parameters     =   Parameters  {
                                                 -- | xalign yalign xscale yscale
                     ,   innerPadding    :: Maybe (Int,Int,Int,Int)
                                                 --  | paddingTop paddingBottom paddingLeft paddingRight
-                    ,   spinRange       :: Maybe (Double,Double,Double) 
-                                                --  | min max step
+                    ,   minSize         :: Maybe (Int, Int)      
+--                    ,   spinRange       :: Maybe (Double,Double,Double) 
+--                                                --  | min max step
     }
                     
 emptyParams     =   Parameters Nothing Nothing Nothing Nothing Nothing Nothing Nothing Nothing Nothing
@@ -170,7 +171,7 @@ getParameter selector parameters =
 instance Default Parameters where
     getDefault      =   Parameters (Just "") (Just "") (Just Horizontal) (Just ShadowNone) 
                             (Just (0.5, 0.5, 0.95, 0.95)) (Just (2, 5, 3, 3)) 
-                            (Just (0.5, 0.5, 0.95, 0.95)) (Just (2, 5, 3, 3)) (Just (0.0,10.0,1.0))
+                            (Just (0.5, 0.5, 0.95, 0.95)) (Just (2, 5, 3, 3)) (Just (-1,-1))
 
 --
 -- | Convenience method to validate and extract fields
@@ -320,6 +321,8 @@ mkEditor injectorC extractor notifier parameters = do
     let (paddingTop, paddingBottom, paddingLeft, paddingRight) = getParameter innerPadding parameters
     alignmentSetPadding innerAlig paddingTop paddingBottom paddingLeft paddingRight
     containerAdd frame innerAlig
+    let (x,y) = getParameter minSize parameters
+    widgetSetSizeRequest outerAlig x y
     return ((castToWidget) outerAlig, injectorC (castToContainer innerAlig), extractor, notifier)
 
 -- ------------------------------------------------------------
@@ -358,6 +361,49 @@ boolEditor parameters = do
                     return (Just r))
         (mkNotifier notifier)
         parameters {paraName = Just " "} 
+
+--
+-- | Editor for a boolean value in the form of two radio buttons
+--  
+boolEditor2 :: String -> Editor Bool
+boolEditor2 label2 parameters = do
+    coreRef <- newIORef Nothing
+    notifier <- emptyNotifier
+    declareEvent Nothing Clicked (\w h -> w `onClicked` do  h (Event True); return ()) 
+        notifier 
+    mkEditor  
+        (\widget bool -> do 
+            core <- readIORef coreRef
+            case core of 
+                Nothing  -> do
+                    box <- vBoxNew True 2
+                    radio1 <- radioButtonNewWithLabel (getParameter paraName parameters) 
+                    radio2 <- radioButtonNewWithLabelFromWidget radio1 label2
+                    boxPackStart box radio1 PackGrow 2
+                    boxPackStart box radio2 PackGrow 2
+                    containerAdd widget box
+                    if bool
+                        then do
+                            toggleButtonSetActive radio1 True
+                        else do
+                            toggleButtonSetActive radio2 True
+                    activateEvent (castToWidget radio1) Clicked notifier
+                    writeIORef coreRef (Just (radio1,radio2))  
+                Just (radio1,radio2) -> 
+                    if bool
+                        then do
+                            toggleButtonSetActive radio1 True
+                        else do
+                            toggleButtonSetActive radio2 True)
+        (do core <- readIORef coreRef
+            case core of 
+                Nothing -> return Nothing  
+                Just (radio1,radio2) -> do
+                    r <- toggleButtonGetActive radio1        
+                    return (Just r))
+        (mkNotifier notifier)
+        parameters {paraName = Just " "} 
+
 --
 -- | Editor for a string in the form of a text entry
 --  
@@ -419,8 +465,8 @@ multilineStringEditor parameters = do
 --
 -- | Editor for an integer in the form of a spin entry
 --  
-intEditor :: Editor Int
-intEditor parameters = do
+intEditor :: (Double,Double,Double) -> Editor Int
+intEditor (min, max, step) parameters = do
     coreRef <- newIORef Nothing
     notifier <- emptyNotifier
     mkEditor  
@@ -428,7 +474,6 @@ intEditor parameters = do
             core <- readIORef coreRef
             case core of 
                 Nothing  -> do
-                    let (min, max, step) = getParameter spinRange parameters 
                     spin <- spinButtonNewWithRange min max step
                     containerAdd widget spin
                     spinButtonSetValue spin (fromIntegral v)
@@ -618,7 +663,7 @@ pairEditor (fstEd,fstPara) (sndEd,sndPara) parameters = do
                         then return (Just (fromJust r1,fromJust r2))
                         else return Nothing)    
         (mkNotifier notifier)
-        parameters {shadow = Just ShadowOut}
+        parameters
 
 --
 -- | An editor with a subeditor which gets active, when a checkbox is selected
@@ -693,7 +738,7 @@ maybeEditor (childEdit, childParams) positive boolLabel parameters = do
                                 Just value -> return (Just (Just value))
                         otherwise -> return (Just Nothing))
         (mkNotifier notifier)  
-        parameters {shadow = Just ShadowOut}
+        parameters 
     where
     onClickedHandler widget coreRef childRef = (\ event -> do 
         core <- readIORef coreRef
@@ -740,10 +785,9 @@ maybeEditor (childEdit, childParams) positive boolLabel parameters = do
 --
 -- | An editor with a subeditor which gets active, when a checkbox is selected
 -- | or deselected (if the positive Argument is False)
---
 eitherOrEditor :: (Default alpha, Default beta) => (Editor alpha, Parameters) -> 
-                        (Editor beta, Parameters) -> Editor (Either alpha beta)
-eitherOrEditor (leftEditor,leftParams) (rightEditor,rightParams)  parameters = do
+                        (Editor beta, Parameters) -> String -> Editor (Either alpha beta)
+eitherOrEditor (leftEditor,leftParams) (rightEditor,rightParams) label2 parameters = do
     coreRef <- newIORef Nothing
     notifier <- emptyNotifier
     mkEditor  
@@ -751,9 +795,10 @@ eitherOrEditor (leftEditor,leftParams) (rightEditor,rightParams)  parameters = d
             core <- readIORef coreRef
             case core of 
                 Nothing  -> do
-                    be@(boolFrame,inj1,ext1,notiRef1) <- boolEditor  parameters
+                    be@(boolFrame,inj1,ext1,notiRef1) <- boolEditor2  label2 parameters
                     le@(leftFrame,inj2,ext2,notiRef2) <- leftEditor leftParams
                     re@(rightFrame,inj3,ext3,notiRef3) <- rightEditor rightParams
+                    notiRef1 Clicked (Left (onClickedHandler widget coreRef))
                     box <- case getParameter direction parameters of
                         Horizontal -> do 
                             b <- hBoxNew False 1
@@ -762,41 +807,37 @@ eitherOrEditor (leftEditor,leftParams) (rightEditor,rightParams)  parameters = d
                             b <- vBoxNew False 1
                             return (castToBox b)                    
                     boxPackStart box boolFrame PackNatural 0
-                    boxPackStart box leftFrame PackNatural 0
-                    boxPackStart box rightFrame PackNatural 0
                     containerAdd widget box
                     case v of
                         Left vl -> do
-                          widgetShowAll leftFrame
-                          widgetHideAll rightFrame  
+                          boxPackStart box leftFrame PackNatural 0
                           inj2 vl
                           inj3 getDefault
                           inj1 True
                         Right vr  -> do
-                          widgetHideAll leftFrame 
-                          widgetShowAll rightFrame  
+                          boxPackStart box rightFrame PackNatural 0
                           inj3 vr
                           inj2 getDefault
                           inj1 False
-                    writeIORef coreRef (Just (be,le,re))  
-                Just ((_,inj1,_,_),(leftFrame,inj2,_,_),(rightFrame,inj3,_,_)) -> do
+                    writeIORef coreRef (Just (be,le,re,box))  
+                Just ((_,inj1,_,_),(leftFrame,inj2,_,_),(rightFrame,inj3,_,_),box) -> do
                     case v of
                             Left vl -> do
-                              widgetShowAll leftFrame
-                              widgetHideAll rightFrame  
+                              containerRemove box rightFrame
+                              boxPackStart box leftFrame PackNatural 0 
                               inj2 vl
                               inj3 getDefault
                               inj1 True
                             Right vr  -> do
-                              widgetHideAll leftFrame 
-                              widgetShowAll rightFrame  
+                              containerRemove box leftFrame  
+                              boxPackStart box rightFrame PackNatural 0
                               inj3 vr
                               inj2 getDefault
                               inj1 False)
         (do core <- readIORef coreRef
             case core of 
                 Nothing -> return Nothing  
-                Just ((_,_,ext1,_),(_,_,ext2,_),(_,_,ext3,_)) -> do
+                Just ((_,_,ext1,_),(_,_,ext2,_),(_,_,ext3,_),_) -> do
                     mbbool <- ext1
                     case mbbool of
                         Nothing -> return Nothing 
@@ -811,8 +852,30 @@ eitherOrEditor (leftEditor,leftParams) (rightEditor,rightParams)  parameters = d
                                 Nothing -> return Nothing
                                 Just value -> return (Just (Right value))) 
         (mkNotifier notifier)
-        parameters {shadow = Just ShadowOut}
+        parameters {paraName = Just " "}
+    where
+    onClickedHandler widget coreRef = (\ event -> do 
+        core <- readIORef coreRef
+        case core of 
+            Nothing  -> error "Impossible"
+            Just (be@(_,_,ext1,_),(leftFrame,_,_,_),(rightFrame,_,_,_),box) -> do
+                mbBool <- ext1
+                case mbBool of
+                    Just bool ->
+                            if bool then do
+                              containerRemove box rightFrame
+                              boxPackStart box leftFrame PackNatural 0 
+                              widgetShowAll box 
+                            else do     
+                              containerRemove box leftFrame  
+                              boxPackStart box rightFrame PackNatural 0
+                              widgetShowAll box
+                    Nothing -> return ()
+                return True) 
 
+--
+-- | An editor with a subeditor which gets active, when a checkbox is selected
+-- | or deselected (if the positive Argument is False)
 multisetEditor :: Show alpha => (Editor alpha,Parameters) -> Editor [alpha]
 multisetEditor (singleEditor,sParams) parameters = do
     coreRef <- newIORef Nothing
@@ -834,18 +897,6 @@ multisetEditor (singleEditor,sParams) parameters = do
                     (frameS,injS,extS,notS) <- singleEditor sParams 
                     addButton <- buttonNewWithLabel "Add"
                     removeButton <- buttonNewWithLabel "Remove"
-{--    addButton `onClicked` do
-        mbv <- extS
-        case mbv of
-            Just v -> New.listStoreAppend listStore v
-            Nothing -> return ()
-    removeButton `onClicked` do
-        mbi <- New.treeSelectionGetSelected sel
-        case mbi of
-            Nothing -> return ()
-            Just iter -> do 
-                [i] <- New.treeModelGetPath listStore iter 
-                New.listStoreRemove listStore i--}
                     containerAdd buttonBox addButton
                     containerAdd buttonBox removeButton
                     listStore <- New.listStoreNew ([]:: [alpha])
@@ -858,12 +909,24 @@ multisetEditor (singleEditor,sParams) parameters = do
                     New.cellLayoutPackStart col renderer True
                     New.cellLayoutSetAttributes col renderer listStore $ \row -> [ New.cellText := show row ]
                     New.treeViewSetHeadersVisible list True
-                    boxPackStart box list PackGrow 0
+                    boxPackStart box list PackNatural 0
                     boxPackStart box buttonBox PackNatural 0
-                    boxPackEnd box frameS PackNatural 0
+                    boxPackStart box frameS PackNatural 0
                     containerAdd widget box
                     New.listStoreClear listStore
                     mapM_ (New.listStoreAppend listStore) v
+                    addButton `onClicked` do
+                        mbv <- extS
+                        case mbv of
+                            Just v -> New.listStoreAppend listStore v
+                            Nothing -> return ()
+                    removeButton `onClicked` do
+                        mbi <- New.treeSelectionGetSelected sel
+                        case mbi of
+                            Nothing -> return ()
+                            Just iter -> do 
+                                [i] <- New.treeModelGetPath listStore iter 
+                                New.listStoreRemove listStore i
                     writeIORef coreRef (Just listStore) 
                 Just listStore -> do
                     New.listStoreClear listStore
@@ -876,7 +939,7 @@ multisetEditor (singleEditor,sParams) parameters = do
                     return (Just v))
         (mkNotifier notifier)
         parameters
-                            where
+    where
     listStoreGetValues :: New.ListStore a -> IO [a]
     listStoreGetValues listStore = do
         mbi <- New.treeModelGetIterFirst listStore

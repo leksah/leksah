@@ -101,8 +101,9 @@ defaultPrefs = Prefs {
 
 prefsDescription :: [FieldDescription Prefs]
 prefsDescription = [
-        mkField (emptyParams{   paraName = Just "Show line numbers"
-                            ,   synopsis = Just"(True/False)"}) 
+        mkField (emptyParams
+            {   paraName = Just "Show line numbers"
+            ,   synopsis = Just"(True/False)"}) 
             (PP.text . show)
             boolParser
             showLineNumbers
@@ -111,16 +112,16 @@ prefsDescription = [
             (\b -> do
                 buffers <- allBuffers
                 mapM_ (\buf -> lift$sourceViewSetShowLineNumbers (sourceView buf) b) buffers)
-    ,   mkField (emptyParams {  paraName = Just "Right margin" 
-                             ,  synopsis = Just "Size or 0 for no right margin"
-                             ,  shadow   = Just ShadowNone})
+    ,   mkField (emptyParams 
+            {  paraName = Just "Right margin" 
+            ,  synopsis = Just "Size or 0 for no right margin"
+            ,  shadow   = Just ShadowIn})
             (\a -> (PP.text . show) (case a of Nothing -> 0; Just i -> i))
             (do i <- intParser
                 return (if i == 0 then Nothing else Just i))
             rightMargin
             (\b a -> a{rightMargin = b})
-            (maybeEditor (intEditor, emptyParams {spinRange= Just (1.0, 200.0, 5.0), 
-                                                  paraName = Just "Position"}) 
+            (maybeEditor (intEditor (1.0, 200.0, 5.0), emptyParams {paraName = Just "Position"}) 
                     True "Show it ?")
             (\b -> do
                 buffers <- allBuffers
@@ -130,17 +131,19 @@ prefsDescription = [
                                     lift $sourceViewSetShowMargin (sourceView buf) True
                                 Nothing -> lift $sourceViewSetShowMargin (sourceView buf) False)
                                                 buffers)
-    ,   mkField (emptyParams{paraName = Just "Tab width", spinRange= Just (1.0, 20.0, 1.0)})
+    ,   mkField (emptyParams{paraName = Just "Tab width"})
             (PP.text . show)
             intParser
             tabWidth
             (\b a -> a{tabWidth = b})
-            intEditor
+            (intEditor (1.0, 20.0, 1.0))
             (\i -> do
                 buffers <- allBuffers
                 mapM_ (\buf -> lift $sourceViewSetTabsWidth (sourceView buf) i) buffers)
-    ,   mkField (emptyParams{   paraName = Just "Source candy", 
-                                synopsis = Just"Empty for do not use or the name of a candy file in a config dir"})
+    ,   mkField (emptyParams
+            {   paraName = Just "Source candy" 
+            ,   synopsis = Just"Empty for do not use or the name of a candy file in a config dir"
+            ,   shadow   = Just ShadowIn})
             (\a -> PP.text (case a of Nothing -> ""; Just s -> s)) 
             (do id <- identifier
                 return (if null id then Nothing else Just (id)))
@@ -163,15 +166,15 @@ prefsDescription = [
             (\b a -> a{keymapName = b})
             stringEditor
             (\ a -> return ())
-    ,   mkField (emptyParams{   paraName = Just "Window default size", 
-                                synopsis = Just "Default size of the main ghf window specified as pair (int,int)" })            
+    ,   mkField (emptyParams
+            {   paraName = Just "Window default size" 
+            ,   synopsis = Just "Default size of the main ghf window specified as pair (int,int)" 
+            ,   shadow   = Just ShadowIn})            
             (PP.text.show) 
             (pairParser intParser)
             defaultSize (\(c,d) a -> a{defaultSize = (c,d)})
-            (pairEditor ((intEditor ), emptyParams {    spinRange= Just (0.0, 3000.0, 25.0), 
-                                                        paraName = Just "X"})
-                        ((intEditor ), emptyParams {    spinRange= Just (0.0, 3000.0, 25.0), 
-                                                        paraName = Just "Y"}))
+            (pairEditor ((intEditor (0.0, 3000.0, 25.0)), emptyParams {paraName = Just "X"})
+                        ((intEditor (0.0, 3000.0, 25.0)), emptyParams {paraName = Just "Y"}))
             (\a -> return ()) ]
 
 -- ------------------------------------------------------------
