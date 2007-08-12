@@ -181,7 +181,8 @@ packageDD = [
     ("Special",[
         mkFieldE (emptyParams
         {   paraName    = Just "Tested with compiler"
-        ,   shadow      = Just ShadowIn})  
+        ,   shadow      = Just ShadowIn
+        ,   direction   = Just Vertical})  
         (\a -> case testedWith a of
             []          -> [(GHC,AnyVersion)]
             l           -> l)  
@@ -346,32 +347,32 @@ versionRangeEditor para = do
 data Version1 = ThisVersionS | LaterVersionS | EarlierVersionS
     deriving (Eq)
 instance Show Version1 where
-    show ThisVersionS   =  "ThisVersion"
-    show LaterVersionS  =  "LaterVersion"
-    show EarlierVersionS =  "EarlierVersion"
+    show ThisVersionS   =  "This Version"
+    show LaterVersionS  =  "Later Version"
+    show EarlierVersionS =  "Earlier Version"
+
+instance Default Version1
+    where getDefault = ThisVersionS
+
 
 data Version2 = UnionVersionRangesS | IntersectVersionRangesS 
     deriving (Eq)
 instance Show Version2 where
-    show UnionVersionRangesS =  "UnionVersionRanges"
-    show IntersectVersionRangesS =  "IntersectVersionRanges"
+    show UnionVersionRangesS =  "Union Version Ranges"
+    show IntersectVersionRangesS =  "Intersect Version Ranges"
 
-instance Default (Either (Version1,Version) (Version2, (VersionRange, VersionRange))) 
-    where 
-        getDefault =  Left(getDefault) 
+instance Default Version2
+    where getDefault = UnionVersionRangesS
 
-instance Default (Version1,Version)
+instance Default Version
     where getDefault = let version = (let l = (readP_to_S parseVersion) "0" 
                                         in if null l 
                                             then error "verion parser failed"
                                             else fst $head l)
-                        in (ThisVersionS, version) 
+                        in version
 
 instance Default VersionRange
     where getDefault = AnyVersion
-
-instance Default (Version2, (VersionRange, VersionRange))
-    where getDefault = (UnionVersionRangesS, (AnyVersion, AnyVersion))
 
 instance Default CompilerFlavor
     where getDefault =  GHC
@@ -381,7 +382,7 @@ instance Default BuildInfo
 
 instance Default Library 
     where getDefault =  Library [] getDefault
-    
+
 versionRangeStringEditor :: Editor VersionRange
 versionRangeStringEditor name = do
     (wid,inj,ext,notif) <- stringEditor name

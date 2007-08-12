@@ -129,7 +129,15 @@ instance Default Int where
     getDefault = 1
 
 instance Default String where 
-    getDefault = " "
+    getDefault = ""
+
+instance Default a => Default (Either a b) 
+    where 
+        getDefault =  Left(getDefault) 
+
+instance (Default alpha, Default beta) => Default (alpha,beta) 
+    where getDefault = (getDefault,getDefault)
+
 
 --type Applicator beta =   beta -> GhfAction ()
 
@@ -150,8 +158,6 @@ data Parameters     =   Parameters  {
                     ,   innerPadding    :: Maybe (Int,Int,Int,Int)
                                                 --  | paddingTop paddingBottom paddingLeft paddingRight
                     ,   minSize         :: Maybe (Int, Int)      
---                    ,   spinRange       :: Maybe (Double,Double,Double) 
---                                                --  | min max step
     }
                     
 emptyParams     =   Parameters Nothing Nothing Nothing Nothing Nothing Nothing Nothing Nothing Nothing
@@ -874,10 +880,9 @@ eitherOrEditor (leftEditor,leftParams) (rightEditor,rightParams) label2 paramete
                 return True) 
 
 --
--- | An editor with a subeditor which gets active, when a checkbox is selected
--- | or deselected (if the positive Argument is False)
-multisetEditor :: Show alpha => (Editor alpha,Parameters) -> Editor [alpha]
-multisetEditor (singleEditor,sParams) parameters = do
+-- | An editor with a subeditor, of which a list of items can be selected 
+multisetEditor :: (Show alpha, Default alpha)  => (Editor alpha,Parameters) -> Editor [alpha]
+multisetEditor (singleEditor, sParams) parameters = do
     coreRef <- newIORef Nothing
     notifier <- emptyNotifier
     mkEditor  
@@ -898,7 +903,7 @@ multisetEditor (singleEditor,sParams) parameters = do
                     addButton <- buttonNewWithLabel "Add"
                     removeButton <- buttonNewWithLabel "Remove"
                     containerAdd buttonBox addButton
-                    containerAdd buttonBox removeButton
+                    containerAdd buttonBox removeButton                    
                     listStore <- New.listStoreNew ([]:: [alpha])
                     list <- New.treeViewNewWithModel listStore
                     sel <- New.treeViewGetSelection list
@@ -911,7 +916,7 @@ multisetEditor (singleEditor,sParams) parameters = do
                     New.treeViewSetHeadersVisible list True
                     boxPackStart box list PackNatural 0
                     boxPackStart box buttonBox PackNatural 0
-                    boxPackStart box frameS PackNatural 0
+                    boxPackEnd box frameS PackGrow 0
                     containerAdd widget box
                     New.listStoreClear listStore
                     mapM_ (New.listStoreAppend listStore) v
@@ -928,6 +933,7 @@ multisetEditor (singleEditor,sParams) parameters = do
                                 [i] <- New.treeModelGetPath listStore iter 
                                 New.listStoreRemove listStore i
                     writeIORef coreRef (Just listStore) 
+                    injS getDefault
                 Just listStore -> do
                     New.listStoreClear listStore
                     mapM_ (New.listStoreAppend listStore) v)
