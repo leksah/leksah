@@ -13,7 +13,7 @@ import Distribution.PackageDescription
 import Distribution.Package
 import Distribution.License
 import Data.IORef
-import Data.List(unzip4)
+import Data.List(unzip4,filter)
 import Data.Version
 import Distribution.Compiler
 import Distribution.Version
@@ -305,22 +305,22 @@ compilerFlavorEditor para = do
         flavors = [GHC, NHC, Hugs, HBC, Helium, JHC]
 
 versionRangeEditor :: Editor VersionRange
-versionRangeEditor para = do
+versionRangeEditor para = do      
     (wid,inj,ext,notif) <- 
         maybeEditor 
             (eitherOrEditor             
                 (pairEditor 
                     (staticSelectionEditor v1, emptyParams) 
-                    (versionEditor,emptyParams),
-                    emptyParams{direction = Just Horizontal,paraName= Just "Simple Version Range"})
+                    (versionEditor,emptyParams{paraName = Just "Enter Version"}),
+                    emptyParams{direction = Just Vertical,paraName= Just "Simple Version Range"})
                 (pairEditor 
                     (staticSelectionEditor v2, emptyParams)
                     (pairEditor 
-                        (versionRangeEditor, emptyParams) 
-                        (versionRangeEditor, emptyParams), 
+                        (versionRangeEditor, emptyParams{shadow = Just ShadowIn}) 
+                        (versionRangeEditor, emptyParams{shadow = Just ShadowIn}), 
                         emptyParams{direction = Just Vertical}),
-                            emptyParams{paraName= Just "Complex Version Range"})              
-                "Simple",emptyParams) False "Any Version" para           
+                            emptyParams{direction = Just Vertical, paraName= Just "Complex Version Range"})              
+                "Complex",emptyParams{paraName= Just "Simple"}) False "Any Version" para           
     let vrinj AnyVersion                =   inj Nothing
         vrinj (ThisVersion v)           =   inj (Just (Left (ThisVersionS,v))) 
         vrinj (LaterVersion v)          =   inj (Just (Left (LaterVersionS,v)))
@@ -338,7 +338,7 @@ versionRangeEditor para = do
                         Just (Just (Right (UnionVersionRangesS,(v1,v2)))) 
                                                         -> return (Just (UnionVersionRanges v1 v2))    
                         Just (Just (Right (IntersectVersionRangesS,(v1,v2)))) 
-                                                        -> return (Just (IntersectVersionRanges v1 v2))    
+                                                        -> return (Just (IntersectVersionRanges v1 v2))
     return (wid,vrinj,vrext,notif)
         where
             v1 = [ThisVersionS,LaterVersionS,EarlierVersionS]
@@ -392,10 +392,10 @@ versionRangeStringEditor name = do
         case s of
             Nothing -> return Nothing
             Just s -> do
-                let l = (readP_to_S parseVersionRange) s
+                let l = filter (\(h,t) -> null t) (readP_to_S parseVersionRange s)
                 if null l then
                     return Nothing
-                    else return (Just (fst $head l))
+                    else return (Just (fst $head  l))
     return (wid,pinj,pext,notif) 
 
 dependencyEditor :: Editor Dependency
@@ -434,7 +434,7 @@ versionEditor para = do
         case s of
             Nothing -> return Nothing
             Just s -> do
-                let l = (readP_to_S parseVersion) s
+                let l = filter (\(h,t) -> null t) (readP_to_S parseVersion s)
                 if null l then
                     return Nothing
                     else return (Just (fst $head l))
