@@ -32,6 +32,7 @@ module Ghf.Editor.PropertyEditor (
 ,   eitherOrEditor
 ,   genericEditor
 ,   staticSelectionEditor
+--,   staticMultiselectionEditor
 ,   fileEditor
 ,   multisetEditor
 
@@ -513,7 +514,7 @@ genericEditor parameters = do
     return (wid,ginj,gext,notif) 
 
 --
--- | Editor for the selection of an element from a static list of element in the
+-- | Editor for the selection of an element from a static list of elements in the
 -- | form of a combo box
 staticSelectionEditor :: (Show beta, Eq beta) => [beta] -> Editor beta
 staticSelectionEditor list parameters = do
@@ -548,6 +549,47 @@ staticSelectionEditor list parameters = do
                         Nothing -> return Nothing)
         (mkNotifier notifier)
         parameters
+
+
+--
+-- | Editor for the selection of some elements from a static list of elements in the
+-- | form of a list box
+{--
+staticMultiselectionEditor :: (Show beta, Eq beta) => [beta] -> Editor [beta]
+staticMultiselectionEditor list parameters = do
+    coreRef <- newIORef Nothing
+    notifier <- emptyNotifier
+    mkEditor  
+        (\widget obj -> do 
+            core <- readIORef coreRef
+            case core of 
+                Nothing  -> do
+                    combo   <-  New.comboBoxNewText
+                    New.comboBoxSetActive combo 1
+                    mapM_ (\v -> New.comboBoxAppendText combo (show v)) list
+                    containerAdd widget combo
+                    let ind = elemIndex obj list
+                    case ind of
+                        Just i -> New.comboBoxSetActive combo i
+                        Nothing -> return ()
+                    writeIORef coreRef (Just combo)
+                Just combo -> do
+                    let ind = elemIndex obj list
+                    case ind of
+                        Just i -> New.comboBoxSetActive combo i
+                        Nothing -> return ())
+        (do core <- readIORef coreRef
+            case core of 
+                Nothing -> return Nothing  
+                Just combo -> do
+                    ind <- New.comboBoxGetActive combo
+                    case ind of
+                        Just i -> return (Just [(list !! i)])
+                        Nothing -> return Nothing)
+        (mkNotifier notifier)
+        parameters
+--}
+
 
 --
 -- | Editor for the selection of a file path in the form of a text entry and a button,

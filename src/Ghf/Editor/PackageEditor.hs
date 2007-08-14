@@ -20,6 +20,7 @@ import Distribution.Version
 import qualified Data.Map as Map
 import Data.Map (Map,(!))
 import Text.ParserCombinators.ReadP(readP_to_S)
+import Language.Haskell.Extension
 
 import Ghf.Core
 import Ghf.Editor.PropertyEditor hiding(synopsis)
@@ -69,31 +70,10 @@ packageNew = do
                     else writeFile (dirName ++ "/Setup.lhs") standardSetup  
             editPackage emptyPackageDescription dirName      
             return ()
-                                         
 {--
-   data PackageDescription = PackageDescription {
-   package :: PackageIdentifier
-   license :: License
-    licenseFile :: FilePath
-    copyright :: String
-    maintainer :: String
-    author :: String
-    stability :: String
-    testedWith :: [(CompilerFlavor, VersionRange)]
-    homepage :: String
-    pkgUrl :: String
-    synopsis :: String
-    description :: String
-    category :: String
-    buildDepends :: [Dependency]
-    descCabalVersion :: VersionRange
-    library :: (Maybe Library)
-executables :: [Executable]
-dataFiles :: [FilePath]
-extraSrcFiles :: [FilePath]
-extraTmpFiles :: [FilePath]
---}
+                                         
 
+--}
 
 type PDescr = [(String,[FieldDescriptionE PackageDescription])]
 
@@ -160,49 +140,145 @@ packageDD = [
             (\ a b -> b{pkgUrl = a})
             stringEditor
     ]),
-{--,
     ("Specification",[
-        mkFieldE "Build Dependencies" 
-            "If this package depends on a specific version of Cabal, give that here. components" 
-            descCabalVersion
-            (\ a b -> b{descCabalVersion = a})
-            versionRangeEditor
-    ,   mkFieldE "Cabal version" "" 
+        mkFieldE (emptyParams
+        {   paraName    = Just "Build Dependencies"
+        ,   PE.synopsis = Just "Does this package depends on other packages?"
+        ,   direction   = Just Vertical}) 
             buildDepends
             (\ a b -> b{buildDepends = a})
-            (multisetEditor dependencyEditor "Dependency")
-    ,   mkFieldE (emptyParams{paraName=Just "Tested with"})  
-            (\a -> case testedWith a of
-                        []          -> (GHC,AnyVersion)
-                        (p:r)       -> p)  
-            (\ a b -> b{testedWith = [a]})
-            testedWidthEditor
-    ])--}
-    ("Special",[
+            dependenciesEditor
+    ,   mkFieldE (emptyParams
+        {   paraName    = Just "Library"
+        ,   PE.synopsis = Just "If the package contains a library, specify the exported modules here"
+        ,   shadow      = Just ShadowIn}) 
+            library 
+            (\ a b -> b{library  = a})
+            (maybeEditor (libraryEditor,emptyParams{paraName = Just "Specify exported modules"}) True
+                "Does this package contain a library?") 
+    ,   mkFieldE (emptyParams
+        {   paraName    = Just "Executables"
+        ,   PE.synopsis = Just "Describe executable programs contained in the package"
+        ,   direction   = Just Vertical}) 
+            executables 
+            (\ a b -> b{executables = a})
+            executablesEditor
+    ]),
+    ("Specification -2-",[
+        mkFieldE (emptyParams
+        {   paraName    = Just "Data Files"
+        ,   PE.synopsis = Just "A list of files to be installed for run-time use by the package."
+        ,   direction   = Just Vertical}) 
+            dataFiles
+            (\ a b -> b{dataFiles = a})
+            filesEditor
+    ,   mkFieldE (emptyParams
+        {   paraName    = Just "Extra Source Files"
+        ,   PE.synopsis = Just "A list of additional files to be included in source distributions."
+        ,   direction   = Just Vertical}) 
+            extraSrcFiles
+            (\ a b -> b{extraSrcFiles = a})
+            filesEditor
+    ,   mkFieldE (emptyParams
+        {   paraName    = Just "Extra Tmp Files"
+        ,   PE.synopsis = Just "A list of additional files or directories to be removed by setup clean."
+        ,   direction   = Just Vertical}) 
+            extraTmpFiles
+            (\ a b -> b{extraTmpFiles = a})
+            filesEditor
+    ]),
+    ("Other",[
         mkFieldE (emptyParams
         {   paraName    = Just "Tested with compiler"
         ,   shadow      = Just ShadowIn
         ,   direction   = Just Vertical})  
-        (\a -> case testedWith a of
-            []          -> [(GHC,AnyVersion)]
-            l           -> l)  
-        (\ a b -> b{testedWith = a})
-        testedWidthEditor
+            (\a -> case testedWith a of
+                []          -> [(GHC,AnyVersion)]
+                l           -> l)  
+            (\ a b -> b{testedWith = a})
+            testedWidthEditor
     ,   mkFieldE (emptyParams
         {   paraName    = Just "Cabal version"
         ,   PE.synopsis = Just "Does this package depends on a specific version of Cabal?"
         ,   shadow      = Just ShadowIn}) 
-        descCabalVersion
-        (\ a b -> b{descCabalVersion = a})
-        versionRangeEditor
-    ]),  
-    ("Library",[
-       mkFieldE (emptyParams{paraName=Just "Library"})
-            library
-            (\ a b -> b{library = a})
-            (maybeEditor (libraryEditor, emptyParams{paraName=Just "Specify library"}) 
-                True "Is this package a library?")
-    ])]       
+            descCabalVersion
+            (\ a b -> b{descCabalVersion = a})
+            versionRangeEditor
+    ])]     
+
+{--
+BuildInfo	
+    buildable :: Bool	component is buildable here
+    ccOptions :: [String]	options for C compiler
+    ldOptions :: [String]	options for linker
+    frameworks :: [String]	support frameworks for Mac OS X
+cSources :: [FilePath]	
+    hsSourceDirs :: [FilePath]	where to look for the haskell module hierarchy
+    otherModules :: [String]	non-exposed or non-main modules
+    extensions :: [Extension]	
+extraLibs :: [String]	what libraries to link with when compiling a program that uses your package
+extraLibDirs :: [String]	
+includeDirs :: [FilePath]	directories to find .h files
+includes :: [FilePath]	The .h files to be found in includeDirs
+installIncludes :: [FilePath]	.h files to install with the package
+options :: [(CompilerFlavor, [String])]	
+ghcProfOptions :: [String]
+--}
+
+{--
+buildInfoD = [
+        mkFieldE (emptyParams
+        {   paraName    = Just "Component is buildable here"
+        ,   PE.synopsis = Nothing})  
+            buildable 
+            (\ a b -> b{buildable = a})
+            boolEditor
+    ,   mkFieldE (emptyParams
+        {   paraName    = Just "Non-exposed or non-main modules"
+        ,   PE.synopsis = Just "A list of modules used by the component but not exposed to users."})  
+            otherModules 
+            (\ a b -> b{otherModules = a})
+            multisetEditor (fileEditor,emptyParams) p{shadow = Just ShadowIn}    
+    ,   mkFieldE (emptyParams
+        {   paraName    = Just "Where to look for the haskell module hierarchy"
+        ,   PE.synopsis = Just "Root directories for the module hierarchy."})  
+            hsSourceDirs 
+            (\ a b -> b{hsSourceDirs = a})
+            multisetEditor (fileEditor,emptyParams) p{shadow = Just ShadowIn}  
+    ,   mkFieldE (emptyParams
+        {   paraName    = Just "Extensions"
+        ,   PE.synopsis = Just "A list of Haskell extensions used by every module."})  
+            extensions 
+            (\ a b -> b{extensions = a})
+            extensionEditor
+  
+  
+
+    
+
+    ,   mkFieldE (emptyParams
+        {   paraName    = Just "Options for C compiler"})  
+            ccOptions 
+            (\ a b -> b{ccOptions = a})
+            multisetEditor (stringEditor,emptyParams) p{shadow = Just ShadowIn}    
+    ,   mkFieldE (emptyParams
+        {   paraName    = Just "Options for linker"})  
+            ldOptions 
+            (\ a b -> b{ldOptions = a})
+            multisetEditor (stringEditor,emptyParams) p{shadow = Just ShadowIn}    
+    ,   mkFieldE (emptyParams
+        {   paraName    = Just "Support frameworks for Mac OS X"})  
+            frameworks 
+            (\ a b -> b{frameworks = a})
+            multisetEditor (stringEditor,emptyParams) p{shadow = Just ShadowIn}
+    ,   mkFieldE (emptyParams
+        {   paraName    = Just "Support frameworks for Mac OS X"})  
+            cSources 
+            (\ a b -> b{cSources = a})
+            multisetEditor (fileEditor,emptyParams) p{shadow = Just ShadowIn}    
+--}
+
+      
 
 editPackage :: PackageDescription -> String -> GhfAction
 editPackage packageD packageDir = do
@@ -351,59 +427,18 @@ instance Show Version1 where
     show LaterVersionS  =  "Later Version"
     show EarlierVersionS =  "Earlier Version"
 
-instance Default Version1
-    where getDefault = ThisVersionS
-
-
 data Version2 = UnionVersionRangesS | IntersectVersionRangesS 
     deriving (Eq)
 instance Show Version2 where
     show UnionVersionRangesS =  "Union Version Ranges"
     show IntersectVersionRangesS =  "Intersect Version Ranges"
 
-instance Default Version2
-    where getDefault = UnionVersionRangesS
-
-instance Default Version
-    where getDefault = let version = (let l = (readP_to_S parseVersion) "0" 
-                                        in if null l 
-                                            then error "verion parser failed"
-                                            else fst $head l)
-                        in version
-
-instance Default VersionRange
-    where getDefault = AnyVersion
-
-instance Default CompilerFlavor
-    where getDefault =  GHC
-
-instance Default BuildInfo
-    where getDefault =  emptyBuildInfo
-
-instance Default Library 
-    where getDefault =  Library [] getDefault
-
-versionRangeStringEditor :: Editor VersionRange
-versionRangeStringEditor name = do
-    (wid,inj,ext,notif) <- stringEditor name
-    let pinj v = inj (showVersionRange v)
-    let pext = do
-        s <- ext
-        case s of
-            Nothing -> return Nothing
-            Just s -> do
-                let l = filter (\(h,t) -> null t) (readP_to_S parseVersionRange s)
-                if null l then
-                    return Nothing
-                    else return (Just (fst $head  l))
-    return (wid,pinj,pext,notif) 
-
 dependencyEditor :: Editor Dependency
 dependencyEditor para = do
     (wid,inj,ext,notif) <- pairEditor 
         (stringEditor,emptyParams {paraName = Just "Package Name"}) 
         (versionRangeEditor,emptyParams {paraName = Just "Version"}) 
-        (para{direction = Just Horizontal})
+        (para{direction = Just Vertical})
     let pinj (Dependency s v) = inj (s,v)
     let pext = do
         mbp <- ext
@@ -411,11 +446,17 @@ dependencyEditor para = do
             Nothing -> return Nothing
             Just ("",v) -> return Nothing
             Just (s,v) -> return (Just $Dependency s v)
-    return (wid,pinj,pext,notif)     
+    return (wid,pinj,pext,notif) 
+
+dependenciesEditor :: Editor [Dependency]
+dependenciesEditor p =  multisetEditor (dependencyEditor,emptyParams) p{shadow = Just ShadowIn}    
+
+filesEditor :: Editor [FilePath]
+filesEditor p =  multisetEditor (fileEditor,emptyParams) p{shadow = Just ShadowIn}    
 
 libraryEditor :: Editor Library
 libraryEditor para = do
-    (wid,inj,ext,notif) <- multisetEditor (fileEditor,emptyParams) para 
+    (wid,inj,ext,notif) <- multisetEditor (fileEditor,emptyParams) para{direction = Just Vertical} 
     let pinj (Library em _) = inj (em)
     let pext = do
         mbp <- ext
@@ -450,6 +491,98 @@ versionEditor para = do
                 return ())
 --    registerHandler notiRef handler "onFocusOut"
     return (wid, pinj, pext, notiRef)
+
+executableEditor :: Editor Executable
+executableEditor para = do
+    (wid,inj,ext,notif) <- pairEditor 
+        (stringEditor,emptyParams {paraName = Just "Executable Name"}) 
+        (fileEditor,emptyParams {paraName = Just "Main module"}) 
+        (para{direction = Just Vertical})
+    let pinj (Executable s f bi) = inj (s,f)
+    let pext = do
+        mbp <- ext
+        case mbp of
+            Nothing -> return Nothing
+            Just (s,f) -> return (Just $Executable s f emptyBuildInfo)
+    return (wid,pinj,pext,notif) 
+
+executablesEditor :: Editor [Executable]
+executablesEditor p = multisetEditor (executableEditor,emptyParams) p{shadow = Just ShadowIn}    
+
+extensionsL :: [Extension]
+extensionsL = [
+        OverlappingInstances	
+   ,    UndecidableInstances	
+   ,    IncoherentInstances	
+   ,    RecursiveDo	
+   ,    ParallelListComp	
+   ,    MultiParamTypeClasses	
+   ,    NoMonomorphismRestriction	
+   ,    FunctionalDependencies	
+   ,    Rank2Types	
+   ,    RankNTypes	
+   ,    PolymorphicComponents	
+   ,    ExistentialQuantification	
+   ,    ScopedTypeVariables	
+   ,    ImplicitParams	
+   ,    FlexibleContexts	
+   ,    FlexibleInstances	
+   ,    EmptyDataDecls	
+   ,    CPP	
+   ,    BangPatterns	
+   ,    TypeSynonymInstances	
+   ,    TemplateHaskell	
+   ,    ForeignFunctionInterface	
+   ,    InlinePhase	
+   ,    ContextStack	
+   ,    Arrows	
+   ,    Generics	
+   ,    NoImplicitPrelude	
+   ,    NamedFieldPuns	
+   ,    PatternGuards	
+   ,    GeneralizedNewtypeDeriving	
+   ,    ExtensibleRecords	
+   ,    RestrictedTypeSynonyms	
+   ,    HereDocuments]
+
+{--
+extensionsEditor :: Editor [Extension]
+extensionsEditor para = staticMultiselectionEditor extensionsL para 
+--}
+-- ------------------------------------------------------------
+-- * (Boring) default values
+-- ------------------------------------------------------------
+
+instance Default Version1
+    where getDefault = ThisVersionS
+
+instance Default Version2
+    where getDefault = UnionVersionRangesS
+
+instance Default Version
+    where getDefault = let version = (let l = (readP_to_S parseVersion) "0" 
+                                        in if null l 
+                                            then error "verion parser failed"
+                                            else fst $head l)
+                        in version
+
+instance Default VersionRange
+    where getDefault = AnyVersion
+
+instance Default CompilerFlavor
+    where getDefault =  GHC
+
+instance Default BuildInfo
+    where getDefault =  emptyBuildInfo
+
+instance Default Library 
+    where getDefault =  Library [] getDefault
+
+instance Default Dependency 
+    where getDefault = Dependency getDefault getDefault
+
+instance Default Executable 
+    where getDefault = Executable getDefault getDefault getDefault
 
 {--
 buildInfoEditor :: Editor Library
@@ -493,6 +626,24 @@ buildInfoEditor name = do
                                 hsSourceDirsbi otherModulesbi extensionsbi extraLibsbi extraLibDirsbi
                                     includeDirsbi includesbi installIncludesbi optionsbi ghcProfOptionsbi)
     return (wid,pinj,pext,notif)   
+
+
+
+versionRangeStringEditor :: Editor VersionRange
+versionRangeStringEditor name = do
+    (wid,inj,ext,notif) <- stringEditor name
+    let pinj v = inj (showVersionRange v)
+    let pext = do
+        s <- ext
+        case s of
+            Nothing -> return Nothing
+            Just s -> do
+                let l = filter (\(h,t) -> null t) (readP_to_S parseVersionRange s)
+                if null l then
+                    return Nothing
+                    else return (Just (fst $head  l))
+    return (wid,pinj,pext,notif) 
+
 --}
 
 
