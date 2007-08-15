@@ -554,20 +554,29 @@ staticSelectionEditor list parameters = do
 --
 -- | Editor for the selection of some elements from a static list of elements in the
 -- | form of a list box
-{--
+
 staticMultiselectionEditor :: (Show beta, Eq beta) => [beta] -> Editor [beta]
 staticMultiselectionEditor list parameters = do
     coreRef <- newIORef Nothing
     notifier <- emptyNotifier
     mkEditor  
-        (\widget obj -> do 
+        (\widget objs -> do 
             core <- readIORef coreRef
             case core of 
                 Nothing  -> do
-                    combo   <-  New.comboBoxNewText
-                    New.comboBoxSetActive combo 1
-                    mapM_ (\v -> New.comboBoxAppendText combo (show v)) list
-                    containerAdd widget combo
+                    listStore <- New.listStoreNew ([]:: [alpha])
+                    listView <- New.treeViewNewWithModel listStore
+                    sel <- New.treeViewGetSelection listView
+                    New.treeSelectionSetMode sel SelectionMultiple
+                    renderer <- New.cellRendererTextNew
+                    col <- New.treeViewColumnNew
+                    New.treeViewAppendColumn listView col    
+                    New.cellLayoutPackStart col renderer True
+                    New.cellLayoutSetAttributes col renderer listStore $ \row -> [ New.cellText := show row ]
+                    New.treeViewSetHeadersVisible list False
+                    New.listStoreClear listStore
+                    mapM_ (New.listStoreAppend listStore) list
+                    containerAdd widget listView
                     let ind = elemIndex obj list
                     case ind of
                         Just i -> New.comboBoxSetActive combo i
@@ -588,7 +597,6 @@ staticMultiselectionEditor list parameters = do
                         Nothing -> return Nothing)
         (mkNotifier notifier)
         parameters
---}
 
 
 --
