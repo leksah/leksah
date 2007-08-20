@@ -32,7 +32,7 @@ module Ghf.Editor.PropertyEditor (
 ,   eitherOrEditor
 ,   genericEditor
 ,   staticSelectionEditor
---,   staticMultiselectionEditor
+,   staticMultiselectionEditor
 ,   fileEditor
 ,   multisetEditor
 
@@ -46,7 +46,7 @@ import Text.ParserCombinators.Parsec hiding (Parser)
 import Control.Monad.Reader
 import qualified Data.Map as Map
 import Data.Map(Map,(!))
-import Data.Maybe(isNothing,fromJust)
+import Data.Maybe(isNothing,fromJust,catMaybes)
 import Data.Version
 import Data.IORef
 import Data.Maybe(isJust)
@@ -577,24 +577,22 @@ staticMultiselectionEditor list parameters = do
                     New.listStoreClear listStore
                     mapM_ (New.listStoreAppend listStore) list
                     containerAdd widget listView
-                    let ind = elemIndex obj list
-                    case ind of
-                        Just i -> New.comboBoxSetActive combo i
-                        Nothing -> return ()
-                    writeIORef coreRef (Just combo)
-                Just combo -> do
-                    let ind = elemIndex obj list
-                    case ind of
-                        Just i -> New.comboBoxSetActive combo i
-                        Nothing -> return ())
+                    treeSelectionUnselectAll sel
+                    let inds = catMaybes $map (\obj -> elemIndex obj list) objs
+                    map (\i -> treeSelectionSelectPath [i] sel) inds 
+                    writeIORef coreRef (Just listView)
+                Just listView -> do
+                    sel <- New.treeViewGetSelection listView
+                    treeSelectionUnselectAll sel
+                    let inds = catMaybes $map (\obj -> elemIndex obj list) objs
+                    map (\i -> treeSelectionSelectPath [i] sel) inds 
         (do core <- readIORef coreRef
             case core of 
                 Nothing -> return Nothing  
-                Just combo -> do
-                    ind <- New.comboBoxGetActive combo
-                    case ind of
-                        Just i -> return (Just [(list !! i)])
-                        Nothing -> return Nothing)
+                Just listView -> do
+                    sel <- New.treeViewGetSelection listView
+                    treePath <- treeSelectionGetSelectedRows sel
+                    return (map (\[i] -> list !! i) treePath)  
         (mkNotifier notifier)
         parameters
 

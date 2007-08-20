@@ -26,6 +26,7 @@ import Ghf.Core
 import Ghf.Editor.PropertyEditor hiding(synopsis)
 import qualified Ghf.Editor.PropertyEditor as PE (synopsis)
 import Ghf.GUI.ViewFrame
+import Ghf.Editor.BuildInfo
 
 standardSetup = "#!/usr/bin/runhaskell \n\
 \> module Main where\n\
@@ -70,12 +71,10 @@ packageNew = do
                     else writeFile (dirName ++ "/Setup.lhs") standardSetup  
             editPackage emptyPackageDescription dirName      
             return ()
-{--
-                                         
-
---}
 
 type PDescr = [(String,[FieldDescriptionE PackageDescription])]
+
+dialogD 
 
 packageDD :: PDescr
 packageDD = [
@@ -206,79 +205,6 @@ packageDD = [
             versionRangeEditor
     ])]     
 
-{--
-BuildInfo	
-    buildable :: Bool	component is buildable here
-    ccOptions :: [String]	options for C compiler
-    ldOptions :: [String]	options for linker
-    frameworks :: [String]	support frameworks for Mac OS X
-cSources :: [FilePath]	
-    hsSourceDirs :: [FilePath]	where to look for the haskell module hierarchy
-    otherModules :: [String]	non-exposed or non-main modules
-    extensions :: [Extension]	
-extraLibs :: [String]	what libraries to link with when compiling a program that uses your package
-extraLibDirs :: [String]	
-includeDirs :: [FilePath]	directories to find .h files
-includes :: [FilePath]	The .h files to be found in includeDirs
-installIncludes :: [FilePath]	.h files to install with the package
-options :: [(CompilerFlavor, [String])]	
-ghcProfOptions :: [String]
---}
-
-{--
-buildInfoD = [
-        mkFieldE (emptyParams
-        {   paraName    = Just "Component is buildable here"
-        ,   PE.synopsis = Nothing})  
-            buildable 
-            (\ a b -> b{buildable = a})
-            boolEditor
-    ,   mkFieldE (emptyParams
-        {   paraName    = Just "Non-exposed or non-main modules"
-        ,   PE.synopsis = Just "A list of modules used by the component but not exposed to users."})  
-            otherModules 
-            (\ a b -> b{otherModules = a})
-            multisetEditor (fileEditor,emptyParams) p{shadow = Just ShadowIn}    
-    ,   mkFieldE (emptyParams
-        {   paraName    = Just "Where to look for the haskell module hierarchy"
-        ,   PE.synopsis = Just "Root directories for the module hierarchy."})  
-            hsSourceDirs 
-            (\ a b -> b{hsSourceDirs = a})
-            multisetEditor (fileEditor,emptyParams) p{shadow = Just ShadowIn}  
-    ,   mkFieldE (emptyParams
-        {   paraName    = Just "Extensions"
-        ,   PE.synopsis = Just "A list of Haskell extensions used by every module."})  
-            extensions 
-            (\ a b -> b{extensions = a})
-            extensionEditor
-  
-  
-
-    
-
-    ,   mkFieldE (emptyParams
-        {   paraName    = Just "Options for C compiler"})  
-            ccOptions 
-            (\ a b -> b{ccOptions = a})
-            multisetEditor (stringEditor,emptyParams) p{shadow = Just ShadowIn}    
-    ,   mkFieldE (emptyParams
-        {   paraName    = Just "Options for linker"})  
-            ldOptions 
-            (\ a b -> b{ldOptions = a})
-            multisetEditor (stringEditor,emptyParams) p{shadow = Just ShadowIn}    
-    ,   mkFieldE (emptyParams
-        {   paraName    = Just "Support frameworks for Mac OS X"})  
-            frameworks 
-            (\ a b -> b{frameworks = a})
-            multisetEditor (stringEditor,emptyParams) p{shadow = Just ShadowIn}
-    ,   mkFieldE (emptyParams
-        {   paraName    = Just "Support frameworks for Mac OS X"})  
-            cSources 
-            (\ a b -> b{cSources = a})
-            multisetEditor (fileEditor,emptyParams) p{shadow = Just ShadowIn}    
---}
-
-      
 
 editPackage :: PackageDescription -> String -> GhfAction
 editPackage packageD packageDir = do
@@ -509,46 +435,9 @@ executableEditor para = do
 executablesEditor :: Editor [Executable]
 executablesEditor p = multisetEditor (executableEditor,emptyParams) p{shadow = Just ShadowIn}    
 
-extensionsL :: [Extension]
-extensionsL = [
-        OverlappingInstances	
-   ,    UndecidableInstances	
-   ,    IncoherentInstances	
-   ,    RecursiveDo	
-   ,    ParallelListComp	
-   ,    MultiParamTypeClasses	
-   ,    NoMonomorphismRestriction	
-   ,    FunctionalDependencies	
-   ,    Rank2Types	
-   ,    RankNTypes	
-   ,    PolymorphicComponents	
-   ,    ExistentialQuantification	
-   ,    ScopedTypeVariables	
-   ,    ImplicitParams	
-   ,    FlexibleContexts	
-   ,    FlexibleInstances	
-   ,    EmptyDataDecls	
-   ,    CPP	
-   ,    BangPatterns	
-   ,    TypeSynonymInstances	
-   ,    TemplateHaskell	
-   ,    ForeignFunctionInterface	
-   ,    InlinePhase	
-   ,    ContextStack	
-   ,    Arrows	
-   ,    Generics	
-   ,    NoImplicitPrelude	
-   ,    NamedFieldPuns	
-   ,    PatternGuards	
-   ,    GeneralizedNewtypeDeriving	
-   ,    ExtensibleRecords	
-   ,    RestrictedTypeSynonyms	
-   ,    HereDocuments]
+buildInfoEditor :: Editor BuildInfo
+buildInfoEditor p = 
 
-{--
-extensionsEditor :: Editor [Extension]
-extensionsEditor para = staticMultiselectionEditor extensionsL para 
---}
 -- ------------------------------------------------------------
 -- * (Boring) default values
 -- ------------------------------------------------------------
@@ -583,75 +472,4 @@ instance Default Dependency
 
 instance Default Executable 
     where getDefault = Executable getDefault getDefault getDefault
-
-{--
-buildInfoEditor :: Editor Library
-buildInfoEditor name = do
-    (wid,inj,ext,notif) <- pairEditor (booleanEditor, "Buildable?") 
-                           (pairEditor ((multisetEditor stringEditor), "Options for C compiler")
-                           (pairEditor ((multisetEditor stringEditor), "Options for Linker")      
-                           (pairEditor ((multisetEditor stringEditor), "support frameworks for Mac OS X")
-                           (pairEditor ((multisetEditor fileEditor),   "C Sources")
-                           (pairEditor ((multisetEditor fileEditor),   
-                                "where to look for the haskell module hierarchy")
-                           (pairEditor ((multisetEditor fileEditor),   
-                                "Other modules: non-exposed or non-main modules")
-                           (pairEditor ((multisetEditor extensionEditor),
-                                "Haskell extensions the source needs for compilation")
-                           (pairEditor ((multisetEditor stringEditor),
-                                "Extra Libraries: what libraries to link with when compiling a program that uses your package")
-                           (pairEditor ((multisetEditor fileEditor),
-                                "Extra Library directories")
-                           (pairEditor ((multisetEditor fileEditor),
-                                "Include directories: Directories to find the .h files")
-                           (pairEditor ((multisetEditor fileEditor),
-                                "Includes: The .h files to be found in includeDirs")
-                           (pairEditor ((multisetEditor fileEditor),
-                                "Install Includes:.h files to install with the package")
-                           (pairEditor ((multisetEditor (pairEditor (compilerFlavorEditor, "Compiler Flavor") 
-                                                                    ((multisetEditor stringEditor), "Options")))
-                                        "Options")
-                           ((multisetEditor stringEditor), "Ghc profiler options"))))))))))))))
-    let pinj BI = inj (buildable bi,(ccptions bi,(ldOptions bi,(frameworks bi,(cSources bi,(hsSourceDirs bi,
-                        (otherModules bi,(extensions bi,(extraLibs bi,(extraLibDirs bi,(includeDirs bi,
-                            (includes bi,(installIncludes bi, (options bi,ghcProfOptions bi))))))))))))))
-    let pext = do
-        mbp <- ext
-        case mbp of
-            Nothing -> return Nothing
-            Just (buildablebi,(ccptionsbi,(ldOptionsbi,(frameworksbi,(cSourcesbi,(hsSourceDirsbi,
-                        (otherModulesbi,(extensionsbi,(extraLibsbi,(extraLibDirsbi,(includeDirsbi,
-                            (includesbi,(installIncludesbi, (optionsbi, ghcProfOptionsbi)))))))))))))) 
-                    -> return (Just $BuildInfo buildablebi ccptionsbi ldOptionsbi frameworksbi cSourcesbi
-                                hsSourceDirsbi otherModulesbi extensionsbi extraLibsbi extraLibDirsbi
-                                    includeDirsbi includesbi installIncludesbi optionsbi ghcProfOptionsbi)
-    return (wid,pinj,pext,notif)   
-
-
-
-versionRangeStringEditor :: Editor VersionRange
-versionRangeStringEditor name = do
-    (wid,inj,ext,notif) <- stringEditor name
-    let pinj v = inj (showVersionRange v)
-    let pext = do
-        s <- ext
-        case s of
-            Nothing -> return Nothing
-            Just s -> do
-                let l = filter (\(h,t) -> null t) (readP_to_S parseVersionRange s)
-                if null l then
-                    return Nothing
-                    else return (Just (fst $head  l))
-    return (wid,pinj,pext,notif) 
-
---}
-
-
-
-                               
-                            
-                              
-
-
-
 
