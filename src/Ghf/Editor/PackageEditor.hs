@@ -26,7 +26,7 @@ import Ghf.Core
 import Ghf.Editor.PropertyEditor hiding(synopsis)
 import qualified Ghf.Editor.PropertyEditor as PE (synopsis)
 import Ghf.GUI.ViewFrame
-import Ghf.Editor.BuildInfo
+import Ghf.Editor.BuildInfoEditor
 
 standardSetup = "#!/usr/bin/runhaskell \n\
 \> module Main where\n\
@@ -73,8 +73,6 @@ packageNew = do
             return ()
 
 type PDescr = [(String,[FieldDescriptionE PackageDescription])]
-
-dialogD 
 
 packageDD :: PDescr
 packageDD = [
@@ -382,13 +380,17 @@ filesEditor p =  multisetEditor (fileEditor,emptyParams) p{shadow = Just ShadowI
 
 libraryEditor :: Editor Library
 libraryEditor para = do
-    (wid,inj,ext,notif) <- multisetEditor (fileEditor,emptyParams) para{direction = Just Vertical} 
-    let pinj (Library em _) = inj (em)
+    (wid,inj,ext,notif) <- 
+        pairEditor
+            (multisetEditor (fileEditor,emptyParams), para{direction = Just Vertical})
+            (buildInfoEditor, para{paraName = Just "Build Info"})
+            para
+    let pinj (Library em bi) = inj (em,bi)
     let pext = do
         mbp <- ext
         case mbp of
             Nothing -> return Nothing
-            Just (em) -> return (Just $Library em emptyBuildInfo)
+            Just (em,bi) -> return (Just $Library em bi)
     return (wid,pinj,pext,notif)   
 
         
@@ -436,7 +438,7 @@ executablesEditor :: Editor [Executable]
 executablesEditor p = multisetEditor (executableEditor,emptyParams) p{shadow = Just ShadowIn}    
 
 buildInfoEditor :: Editor BuildInfo
-buildInfoEditor p = 
+buildInfoEditor p = otherEditor editBuildInfo p 
 
 -- ------------------------------------------------------------
 -- * (Boring) default values

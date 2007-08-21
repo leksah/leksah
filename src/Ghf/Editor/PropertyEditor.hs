@@ -27,15 +27,18 @@ module Ghf.Editor.PropertyEditor (
 ,   stringEditor
 ,   multilineStringEditor
 ,   intEditor
+,   genericEditor
+
 ,   maybeEditor
 ,   pairEditor
 ,   eitherOrEditor
-,   genericEditor
-,   staticSelectionEditor
-,   staticMultiselectionEditor
-,   fileEditor
 ,   multisetEditor
 
+,   staticSelectionEditor
+,   staticMultiselectionEditor
+
+,   fileEditor
+,   otherEditor
 ) where
 
 import Control.Monad(foldM)
@@ -573,26 +576,26 @@ staticMultiselectionEditor list parameters = do
                     New.treeViewAppendColumn listView col    
                     New.cellLayoutPackStart col renderer True
                     New.cellLayoutSetAttributes col renderer listStore $ \row -> [ New.cellText := show row ]
-                    New.treeViewSetHeadersVisible list False
+                    New.treeViewSetHeadersVisible listView False
                     New.listStoreClear listStore
                     mapM_ (New.listStoreAppend listStore) list
                     containerAdd widget listView
-                    treeSelectionUnselectAll sel
+                    New.treeSelectionUnselectAll sel
                     let inds = catMaybes $map (\obj -> elemIndex obj list) objs
-                    map (\i -> treeSelectionSelectPath [i] sel) inds 
+                    mapM_ (\i -> New.treeSelectionSelectPath sel [i]) inds 
                     writeIORef coreRef (Just listView)
                 Just listView -> do
                     sel <- New.treeViewGetSelection listView
-                    treeSelectionUnselectAll sel
+                    New.treeSelectionUnselectAll sel
                     let inds = catMaybes $map (\obj -> elemIndex obj list) objs
-                    map (\i -> treeSelectionSelectPath [i] sel) inds 
+                    mapM_ (\i -> New.treeSelectionSelectPath sel [i]) inds) 
         (do core <- readIORef coreRef
             case core of 
                 Nothing -> return Nothing  
                 Just listView -> do
                     sel <- New.treeViewGetSelection listView
-                    treePath <- treeSelectionGetSelectedRows sel
-                    return (map (\[i] -> list !! i) treePath)  
+                    treePath <- New.treeSelectionGetSelectedRows sel
+                    return (Just (map (\[i] -> list !! i) treePath)))  
         (mkNotifier notifier)
         parameters
 
@@ -615,8 +618,7 @@ fileEditor parameters = do
                 Nothing  -> do
                     button <- buttonNewWithLabel "Select file"
                     entry   <-  entryNew
-                    activateEvent (castToWidget button) Clicked notifier
-                    uni <- newUnique 
+                    activateEvent (castToWidget button) Clicked notifier 
                     (mkNotifier notifier) Clicked (Left (buttonHandler entry)) 
                    -- registerHandler notifier (buttonHandler entry) "onClicked"
                     box <- case getParameter direction parameters of 
@@ -672,7 +674,46 @@ fileEditor parameters = do
                 entrySetText entry fn
                 return True) 
 
-
+--
+-- | An editor, which opens another editor 
+--   You have to inject a value before the button can be clicked.
+-- 
+otherEditor :: (alpha  -> String -> IO(Maybe alpha)) -> Editor alpha 
+otherEditor func parameters = do
+    coreRef <- newIORef Nothing
+    notifier <- emptyNotifier
+    declareEvent Nothing Clicked (\w h -> w `onClicked` do  h (Event True); return ()) 
+        notifier 
+    mkEditor  
+        (\widget val -> do 
+            core <- readIORef coreRef
+            case core of 
+                Nothing  -> do
+                    button <- buttonNewWithLabel (getParameter paraName parameters) 
+                    containerAdd widget button
+                    activateEvent (castToWidget button) Clicked notifier
+                    (mkNotifier notifier) Clicked (Left (buttonHandler coreRef))
+                    writeIORef coreRef (Just (button,val))  
+                Just (button, oldval) -> writeIORef coreRef (Just (button, val)))
+        (do core <- readIORef coreRef
+            case core of 
+                Nothing -> return Nothing  
+                Just (_,val) -> return (Just val))
+        (mkNotifier notifier)
+        parameters {paraName = Just " "}
+    where   
+    buttonHandler coreRef = (\ e -> do
+        core <- readIORef coreRef
+        case core of 
+            Nothing -> error "You have to inject a value before the button can be clicked"
+            Just (b,val) -> do
+                res <- func val (getParameter paraName parameters)
+                case res of 
+                    Nothing     -> return True  
+                    Just nval   -> do
+                        writeIORef coreRef (Just (b, nval))
+                        return True)
+            
 -- ------------------------------------------------------------
 -- * Composition editors
 -- ------------------------------------------------------------
@@ -1007,64 +1048,3 @@ multisetEditor (singleEditor, sParams) parameters = do
                                     rest <- getTail mbi2
                                     return (v : rest)
     
-
-
-        
-
-
-{--
-standardNotifiers :: WidgetClass w => w -> Extractor beta -> String -> IO (IORef (Map String Notifier))
-standardNotifiers w ext label = do
-    notiRef <- newIORef Map.empty
-    registerEvent  w notiRef (\ w f -> onFocusIn w (\e -> do f; return False)) "onFocusIn"
-    registerEvent  w notiRef (\ w f -> onFocusOut w (\e -> do f; return False)) "onFocusOut"
---    let handler = (do 
---        v <- ext
---        case v of
---            Just _ -> return ()
---            Nothing -> do
---                md <- messageDialogNew Nothing [] MessageWarning ButtonsClose
---                        $"Field " ++ label ++ " has invalid value. Please correct"
---                dialogRun md
---                widgetDestroy md
---                return ())
---    registerHandler notiRef handler "onFocusOut"
-    return notiRef
---} 
-       
-{--
-multiselectionEditor :: (Show beta, Eq beta) => [beta] -> Editor [beta]
-multiselectionEditor list label = do
-    frame   <-  frameNew
-    frameSetShadowType frame ShadowNone
-    frameSetLabel frame label
-    combo   <-  New.comboBoxNewText
-    mapM_ (\v -> New.comboBoxAppendText combo (show v)) list
-    containerAdd frame combo
-    let injector = (\t -> let mbInd = elemIndex t list in
-                            case mbInd of
-                                Just ind -> New.comboBoxSetActive combo ind
-                                Nothing -> return ())
-    let extractor = do  mbInd <- New.comboBoxGetActive combo; 
-                        case mbInd of 
-                            Just ind -> return (Just (list !! ind))
-                            Nothing -> return Nothing
-    let changedNotifier f = do combo `New.onChanged` f; return ()
-    let notifiers = Map.insert "onChanged" changedNotifier (standardNotifiers (castToWidget combo))
-    New.comboBoxSetActive combo 1
-    return ((castToWidget) frame, injector, extractor, notifiers)
---}         
-
-{--            let handler = (do 
-                v <- ext
-                case v of
-                    Just _ -> return ()
-                    Nothing -> do
-                        md <- messageDialogNew Nothing [] MessageWarning ButtonsClose
-                                $"Field " ++ name ++ " has invalid value. Please correct"
-                        dialogRun md
-                        widgetDestroy md
-                        return ())
-            registerHandler notiRef handler "onFocusOut"--}
-
---    ,   fieldApplicator     ::  alpha -> alpha -> GhfAction

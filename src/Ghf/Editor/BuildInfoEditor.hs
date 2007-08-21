@@ -2,7 +2,7 @@
 -- | Module for editing of cabal build infos
 -- 
 
-module Ghf.Editor.BuildInfo (
+module Ghf.Editor.BuildInfoEditor (
     editBuildInfo
 ) where
 
@@ -61,22 +61,24 @@ buildInfoD = [
             boolEditor
     ,   mkFieldE (emptyParams
         {   paraName    = Just "Non-exposed or non-main modules"
-        ,   PE.synopsis = Just "A list of modules used by the component but not exposed to users."})  
+        ,   PE.synopsis = Just "A list of modules used by the component but not exposed to users."
+        ,   shadow = Just ShadowIn})  
             otherModules 
             (\ a b -> b{otherModules = a})
-            multisetEditor (fileEditor,emptyParams) p{shadow = Just ShadowIn}    
+            (multisetEditor (fileEditor,emptyParams))    
     ,   mkFieldE (emptyParams
         {   paraName    = Just "Where to look for the haskell module hierarchy"
-        ,   PE.synopsis = Just "Root directories for the module hierarchy."})  
+        ,   PE.synopsis = Just "Root directories for the module hierarchy."
+        ,   shadow = Just ShadowIn})  
             hsSourceDirs 
             (\ a b -> b{hsSourceDirs = a})
-            multisetEditor (fileEditor,emptyParams) p{shadow = Just ShadowIn}  
+            (multisetEditor (fileEditor,emptyParams))  
     ,   mkFieldE (emptyParams
         {   paraName    = Just "Extensions"
         ,   PE.synopsis = Just "A list of Haskell extensions used by every module."})  
             extensions 
             (\ a b -> b{extensions = a})
-            extensionEditor
+            extensionsEditor
     ])]
   
 {--    
@@ -103,15 +105,15 @@ buildInfoD = [
             multisetEditor (fileEditor,emptyParams) p{shadow = Just ShadowIn}    
 --}
 
-editBuildInfo :: BuildInfo -> String -> Ghf (Maybe BuildInfo)
+editBuildInfo :: BuildInfo -> String -> IO (Maybe BuildInfo)
 editBuildInfo buildInfo contextStr = do
-    ghfR <- ask
-    res <- lift $editBuildInfo' contextStr buildInfo buildInfoD ghfR 
+    res <- editBuildInfo' buildInfo contextStr buildInfoD 
     return res
 
-editBuildInfo' :: String -> BuildInfo -> [FieldDescriptionE BuildInfo] -> GhfRef -> IO (Maybe BuildInfo)
-editBuildInfo' contextStr buildInfo buildInfoD ghfR = do
-    flatBuildInfoD = concatMap snd buildInfoD
+editBuildInfo' :: BuildInfo -> String -> [(String,[FieldDescriptionE BuildInfo])] -> IO (Maybe BuildInfo)
+editBuildInfo' buildInfo contextStr buildInfoD = do
+    resRef  <- newIORef Nothing
+    let flatBuildInfoD = concatMap snd buildInfoD
     dialog  <- windowNew
     vb      <- vBoxNew False 7
     bb      <- hButtonBoxNew
@@ -134,19 +136,21 @@ editBuildInfo' contextStr buildInfo buildInfoD ghfR = do
             foldl (\ (w,i,e,n) (w2,i2,e2,n2) -> (w ++ w2, i ++ i2, e ++ e2, n ++ n2)) ([],[],[],[]) res
     ok `onClicked` (do
         mbNewBuildInfo <- validate buildInfo getExts
-        case mbNewPackage of 
+        case mbNewBuildInfo of 
             Nothing -> return ()
             Just newBuildInfo -> do
+                    writeIORef resRef (Just newBuildInfo)
                     widgetDestroy dialog
-                    return (Just newBuildInfo))
+                    return ())
     cancel `onClicked` (do
         widgetDestroy dialog
-        return Nothing)
+        return ())
     boxPackStart vb nb PackGrow 7
     boxPackEnd vb bb PackNatural 7
     containerAdd dialog vb
     widgetShowAll dialog    
-    return ()
+    res <- readIORef resRef
+    return (res)
 
 extensionsL :: [Extension]
 extensionsL = [
