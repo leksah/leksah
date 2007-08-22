@@ -62,18 +62,22 @@ buildInfoD = [
     ,   mkFieldE (emptyParams
         {   paraName    = Just "Non-exposed or non-main modules"
         ,   PE.synopsis = Just "A list of modules used by the component but not exposed to users."
-        ,   shadow = Just ShadowIn})  
+        ,   shadow = Just ShadowIn
+        ,   direction = Just Vertical})  
             otherModules 
             (\ a b -> b{otherModules = a})
-            (multisetEditor (fileEditor,emptyParams))    
+            (multisetEditor (fileEditor FileChooserActionOpen,emptyParams))    
     ,   mkFieldE (emptyParams
         {   paraName    = Just "Where to look for the haskell module hierarchy"
         ,   PE.synopsis = Just "Root directories for the module hierarchy."
-        ,   shadow = Just ShadowIn})  
+        ,   shadow = Just ShadowIn
+        ,   direction = Just Vertical})  
             hsSourceDirs 
             (\ a b -> b{hsSourceDirs = a})
-            (multisetEditor (fileEditor,emptyParams))  
-    ,   mkFieldE (emptyParams
+            (multisetEditor (fileEditor FileChooserActionSelectFolder,emptyParams)) 
+    ]),
+    ("Extensions",[ 
+        mkFieldE (emptyParams
         {   paraName    = Just "Extensions"
         ,   PE.synopsis = Just "A list of Haskell extensions used by every module."})  
             extensions 
@@ -129,7 +133,10 @@ editBuildInfo' buildInfo contextStr buildInfoD = do
             let (widgetsP, setInjsP, getExtsP,notifiersP) = unzip4 resList
             nbbox <- vBoxNew False 0
             mapM_ (\ w -> boxPackStart nbbox w PackNatural 0) widgetsP
-            notebookAppendPage nb nbbox tabLabel
+            sw <- scrolledWindowNew Nothing Nothing
+            scrolledWindowAddWithViewport sw nbbox
+            scrolledWindowSetPolicy sw PolicyAutomatic PolicyAutomatic
+            notebookAppendPage nb sw tabLabel
             return (widgetsP, setInjsP, getExtsP, notifiersP)) 
                 buildInfoD
     let (widgets, setInjs, getExts, notifiers) = 
@@ -148,6 +155,7 @@ editBuildInfo' buildInfo contextStr buildInfoD = do
     boxPackStart vb nb PackGrow 7
     boxPackEnd vb bb PackNatural 7
     containerAdd dialog vb
+    widgetSetSizeRequest dialog 500 700
     widgetShowAll dialog    
     res <- readIORef resRef
     return (res)

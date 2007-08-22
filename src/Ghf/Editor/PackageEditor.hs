@@ -131,13 +131,13 @@ packageDD = [
     ,   mkFieldE (emptyParams{paraName=Just "License File"})  
             licenseFile
             (\ a b -> b{licenseFile = a})
-            (fileEditor)   
+            (fileEditor FileChooserActionOpen)   
     ,   mkFieldE (emptyParams{paraName=Just "Package Url"})  
             pkgUrl
             (\ a b -> b{pkgUrl = a})
             stringEditor
     ]),
-    ("Specification",[
+    ("Dependencies",[
         mkFieldE (emptyParams
         {   paraName    = Just "Build Dependencies"
         ,   PE.synopsis = Just "Does this package depends on other packages?"
@@ -145,15 +145,20 @@ packageDD = [
             buildDepends
             (\ a b -> b{buildDepends = a})
             dependenciesEditor
-    ,   mkFieldE (emptyParams
+    ]),
+    ("Library",[
+        mkFieldE (emptyParams
         {   paraName    = Just "Library"
         ,   PE.synopsis = Just "If the package contains a library, specify the exported modules here"
-        ,   shadow      = Just ShadowIn}) 
+        ,   shadow      = Just ShadowIn
+        ,   direction   = Just Vertical}) 
             library 
             (\ a b -> b{library  = a})
             (maybeEditor (libraryEditor,emptyParams{paraName = Just "Specify exported modules"}) True
                 "Does this package contain a library?") 
-    ,   mkFieldE (emptyParams
+    ]),
+    ("Executables",[
+        mkFieldE (emptyParams
         {   paraName    = Just "Executables"
         ,   PE.synopsis = Just "Describe executable programs contained in the package"
         ,   direction   = Just Vertical}) 
@@ -161,7 +166,7 @@ packageDD = [
             (\ a b -> b{executables = a})
             executablesEditor
     ]),
-    ("Specification -2-",[
+    ("Other Files",[
         mkFieldE (emptyParams
         {   paraName    = Just "Data Files"
         ,   PE.synopsis = Just "A list of files to be installed for run-time use by the package."
@@ -184,7 +189,7 @@ packageDD = [
             (\ a b -> b{extraTmpFiles = a})
             filesEditor
     ]),
-    ("Other",[
+    ("Rest",[
         mkFieldE (emptyParams
         {   paraName    = Just "Tested with compiler"
         ,   shadow      = Just ShadowIn
@@ -232,7 +237,10 @@ editPackage' packageDir packageD packageDD ghfR   =
                 let (widgetsP, setInjsP, getExtsP,notifiersP) = unzip4 resList
                 nbbox <- vBoxNew False 0
                 mapM_ (\ w -> boxPackStart nbbox w PackNatural 0) widgetsP
-                notebookAppendPage nb nbbox tabLabel
+                sw <- scrolledWindowNew Nothing Nothing
+                scrolledWindowAddWithViewport sw nbbox
+                scrolledWindowSetPolicy sw PolicyAutomatic PolicyAutomatic
+                notebookAppendPage nb sw tabLabel
                 return (widgetsP, setInjsP, getExtsP, notifiersP)) 
                     packageDD
         let (widgets, setInjs, getExts, notifiers) = 
@@ -243,18 +251,15 @@ editPackage' packageDir packageD packageDD ghfR   =
                 Nothing -> return ()
                 Just newPackage -> do
                     lastAppliedPackage <- readIORef lastAppliedPackageRef
-        --            mapM_ (\ (FD _ _ _ _ _ applyF) -> runReaderT (applyF newPrefs lastAppliedPrefs) ghfR) flatPrefsDescr
                     let PackageIdentifier n v =  package newPackage
                     writePackageDescription (packageDir ++ "/" ++ n ++ ".cabal") newPackage
-                    --runReaderT (modifyGhf_ (\ghf -> return (ghf{prefs = newPrefs}))) ghfR
                     widgetDestroy dialog)
         cancel `onClicked` (do
---            lastAppliedPackage <- readIORef lastAppliedPackageRef
---            mapM_ (\ (FDE _ applyF) -> runReaderT (applyF prefs lastAppliedPackage) ghfR) flatPackageDesc
             widgetDestroy dialog)
         boxPackStart vb nb PackGrow 7
         boxPackEnd vb bb PackNatural 7
         containerAdd dialog vb
+        widgetSetSizeRequest dialog 500 700
         widgetShowAll dialog    
         return ()
 
@@ -320,7 +325,8 @@ versionRangeEditor para = do
                         (versionRangeEditor, emptyParams{shadow = Just ShadowIn}), 
                         emptyParams{direction = Just Vertical}),
                             emptyParams{direction = Just Vertical, paraName= Just "Complex Version Range"})              
-                "Complex",emptyParams{paraName= Just "Simple"}) False "Any Version" para           
+                "Complex",emptyParams{paraName= Just "Simple"}) False "Any Version" 
+                    para{direction = Just Vertical}           
     let vrinj AnyVersion                =   inj Nothing
         vrinj (ThisVersion v)           =   inj (Just (Left (ThisVersionS,v))) 
         vrinj (LaterVersion v)          =   inj (Just (Left (LaterVersionS,v)))
@@ -376,15 +382,15 @@ dependenciesEditor :: Editor [Dependency]
 dependenciesEditor p =  multisetEditor (dependencyEditor,emptyParams) p{shadow = Just ShadowIn}    
 
 filesEditor :: Editor [FilePath]
-filesEditor p =  multisetEditor (fileEditor,emptyParams) p{shadow = Just ShadowIn}    
+filesEditor p =  multisetEditor (fileEditor FileChooserActionOpen,emptyParams) p{shadow = Just ShadowIn}    
 
 libraryEditor :: Editor Library
 libraryEditor para = do
     (wid,inj,ext,notif) <- 
         pairEditor
-            (multisetEditor (fileEditor,emptyParams), para{direction = Just Vertical})
+            (multisetEditor (fileEditor FileChooserActionOpen,emptyParams), para{direction = Just Vertical})
             (buildInfoEditor, para{paraName = Just "Build Info"})
-            para
+            para{direction = Just Vertical}
     let pinj (Library em bi) = inj (em,bi)
     let pext = do
         mbp <- ext
@@ -423,15 +429,18 @@ versionEditor para = do
 executableEditor :: Editor Executable
 executableEditor para = do
     (wid,inj,ext,notif) <- pairEditor 
-        (stringEditor,emptyParams {paraName = Just "Executable Name"}) 
-        (fileEditor,emptyParams {paraName = Just "Main module"}) 
-        (para{direction = Just Vertical})
-    let pinj (Executable s f bi) = inj (s,f)
+        (pairEditor 
+            (stringEditor,emptyParams {paraName = Just "Executable Name"}) 
+            (fileEditor FileChooserActionOpen,emptyParams {paraName = Just "Main module"}), 
+            (emptyParams{direction = Just Vertical}))
+        (buildInfoEditor, emptyParams{paraName = Just "Build Info"})
+        para
+    let pinj (Executable s f bi) = inj ((s,f),bi)
     let pext = do
         mbp <- ext
         case mbp of
             Nothing -> return Nothing
-            Just (s,f) -> return (Just $Executable s f emptyBuildInfo)
+            Just ((s,f),bi) -> return (Just $Executable s f bi)
     return (wid,pinj,pext,notif) 
 
 executablesEditor :: Editor [Executable]

@@ -603,8 +603,8 @@ staticMultiselectionEditor list parameters = do
 --
 -- | Editor for the selection of a file path in the form of a text entry and a button,
 -- | which opens a gtk file chooser
-fileEditor :: Editor FilePath
-fileEditor parameters = do
+fileEditor :: FileChooserAction -> Editor FilePath
+fileEditor action parameters = do
     coreRef <- newIORef Nothing
     notifier <- emptyNotifier
     declareEvent Nothing Clicked 
@@ -650,7 +650,7 @@ fileEditor parameters = do
             dialog <- fileChooserDialogNew
                             (Just $ "Select File")             
                             Nothing                   
-                        FileChooserActionOpen              
+                        action              
                         [("gtk-cancel"                       
                         ,ResponseCancel)
                         ,("gtk-open"                                  
