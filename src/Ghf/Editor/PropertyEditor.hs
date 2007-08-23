@@ -58,6 +58,8 @@ import Data.List(unzip4,elemIndex,filter)
 import Data.Unique
 import Text.ParserCombinators.ReadP(readP_to_S)
 import Debug.Trace
+import System.FilePath
+
 import qualified Text.PrettyPrint.HughesPJ as PP
 
 import Ghf.Core
@@ -603,8 +605,8 @@ staticMultiselectionEditor list parameters = do
 --
 -- | Editor for the selection of a file path in the form of a text entry and a button,
 -- | which opens a gtk file chooser
-fileEditor :: FileChooserAction -> Editor FilePath
-fileEditor action parameters = do
+fileEditor :: Maybe FilePath -> FileChooserAction -> Editor FilePath
+fileEditor mbFilePath action parameters = do
     coreRef <- newIORef Nothing
     notifier <- emptyNotifier
     declareEvent Nothing Clicked 
@@ -618,6 +620,7 @@ fileEditor action parameters = do
                 Nothing  -> do
                     button <- buttonNewWithLabel "Select file"
                     entry   <-  entryNew
+                    set entry [ entryEditable := False ]
                     activateEvent (castToWidget button) Clicked notifier 
                     (mkNotifier notifier) Clicked (Left (buttonHandler entry)) 
                    -- registerHandler notifier (buttonHandler entry) "onClicked"
@@ -671,7 +674,10 @@ fileEditor action parameters = do
         case mbFileName of
             Nothing -> return True
             Just fn -> do
-                entrySetText entry fn
+                let relative = case mbFilePath of
+                                Nothing -> fn
+                                Just rel -> makeRelative rel fn 
+                entrySetText entry relative
                 return True) 
 
 --

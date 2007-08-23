@@ -64,6 +64,7 @@ packageNew = do
         Just dirName -> do
             lift $do
                 putStrLn dirName
+                setCurrentDirectory dirName
                 b1 <- doesFileExist (dirName ++ "Setup.hs")
                 b2 <- doesFileExist (dirName ++ "Setup.lhs")   
                 if  b1 || b2  
@@ -74,8 +75,8 @@ packageNew = do
 
 type PDescr = [(String,[FieldDescriptionE PackageDescription])]
 
-packageDD :: PDescr
-packageDD = [
+packageDD :: FilePath -> PDescr
+packageDD fp = [
     ("Description", [
         mkFieldE (emptyParams
             {   paraName = Just "Package Identifier"}) 
@@ -131,7 +132,7 @@ packageDD = [
     ,   mkFieldE (emptyParams{paraName=Just "License File"})  
             licenseFile
             (\ a b -> b{licenseFile = a})
-            (fileEditor FileChooserActionOpen)   
+            (fileEditor (Just fp) FileChooserActionOpen)   
     ,   mkFieldE (emptyParams{paraName=Just "Package Url"})  
             pkgUrl
             (\ a b -> b{pkgUrl = a})
@@ -154,7 +155,7 @@ packageDD = [
         ,   direction   = Just Vertical}) 
             library 
             (\ a b -> b{library  = a})
-            (maybeEditor (libraryEditor,emptyParams{paraName = Just "Specify exported modules"}) True
+            (maybeEditor (libraryEditor (Just fp),emptyParams{paraName = Just "Specify exported modules"}) True
                 "Does this package contain a library?") 
     ]),
     ("Executables",[
@@ -164,7 +165,7 @@ packageDD = [
         ,   direction   = Just Vertical}) 
             executables 
             (\ a b -> b{executables = a})
-            executablesEditor
+            (executablesEditor (Just fp))
     ]),
     ("Other Files",[
         mkFieldE (emptyParams
@@ -173,21 +174,21 @@ packageDD = [
         ,   direction   = Just Vertical}) 
             dataFiles
             (\ a b -> b{dataFiles = a})
-            filesEditor
+            (filesEditor (Just fp))
     ,   mkFieldE (emptyParams
         {   paraName    = Just "Extra Source Files"
         ,   PE.synopsis = Just "A list of additional files to be included in source distributions."
         ,   direction   = Just Vertical}) 
             extraSrcFiles
             (\ a b -> b{extraSrcFiles = a})
-            filesEditor
+            (filesEditor (Just fp))
     ,   mkFieldE (emptyParams
         {   paraName    = Just "Extra Tmp Files"
         ,   PE.synopsis = Just "A list of additional files or directories to be removed by setup clean."
         ,   direction   = Just Vertical}) 
             extraTmpFiles
             (\ a b -> b{extraTmpFiles = a})
-            filesEditor
+            (filesEditor (Just fp))
     ]),
     ("Rest",[
         mkFieldE (emptyParams
@@ -209,10 +210,10 @@ packageDD = [
     ])]     
 
 
-editPackage :: PackageDescription -> String -> GhfAction
+editPackage :: PackageDescription -> FilePath -> GhfAction
 editPackage packageD packageDir = do
     ghfR <- ask
-    res <- lift $editPackage' packageDir packageD packageDD ghfR 
+    res <- lift $editPackage' packageDir packageD (packageDD packageDir) ghfR 
     lift $putStrLn $show res
 
 editPackage' :: String -> PackageDescription -> PDescr -> GhfRef -> IO ()
@@ -381,15 +382,15 @@ dependencyEditor para = do
 dependenciesEditor :: Editor [Dependency]
 dependenciesEditor p =  multisetEditor (dependencyEditor,emptyParams) p{shadow = Just ShadowIn}    
 
-filesEditor :: Editor [FilePath]
-filesEditor p =  multisetEditor (fileEditor FileChooserActionOpen,emptyParams) p{shadow = Just ShadowIn}    
+filesEditor :: Maybe FilePath -> Editor [FilePath]
+filesEditor fp p =  multisetEditor (fileEditor fp FileChooserActionOpen,emptyParams) p{shadow = Just ShadowIn}    
 
-libraryEditor :: Editor Library
-libraryEditor para = do
+libraryEditor :: Maybe FilePath -> Editor Library
+libraryEditor fp para = do
     (wid,inj,ext,notif) <- 
         pairEditor
-            (multisetEditor (fileEditor FileChooserActionOpen,emptyParams), para{direction = Just Vertical})
-            (buildInfoEditor, para{paraName = Just "Build Info"})
+            (multisetEditor (fileEditor fp  FileChooserActionOpen,emptyParams), para{direction = Just Vertical})
+            (buildInfoEditor fp, para{paraName = Just "Build Info"})
             para{direction = Just Vertical}
     let pinj (Library em bi) = inj (em,bi)
     let pext = do
@@ -426,14 +427,14 @@ versionEditor para = do
 --    registerHandler notiRef handler "onFocusOut"
     return (wid, pinj, pext, notiRef)
 
-executableEditor :: Editor Executable
-executableEditor para = do
+executableEditor :: Maybe FilePath -> Editor Executable
+executableEditor fp para = do
     (wid,inj,ext,notif) <- pairEditor 
         (pairEditor 
             (stringEditor,emptyParams {paraName = Just "Executable Name"}) 
-            (fileEditor FileChooserActionOpen,emptyParams {paraName = Just "Main module"}), 
+            (fileEditor fp FileChooserActionOpen,emptyParams {paraName = Just "Main module"}), 
             (emptyParams{direction = Just Vertical}))
-        (buildInfoEditor, emptyParams{paraName = Just "Build Info"})
+        (buildInfoEditor fp, emptyParams{paraName = Just "Build Info"})
         para
     let pinj (Executable s f bi) = inj ((s,f),bi)
     let pext = do
@@ -443,11 +444,11 @@ executableEditor para = do
             Just ((s,f),bi) -> return (Just $Executable s f bi)
     return (wid,pinj,pext,notif) 
 
-executablesEditor :: Editor [Executable]
-executablesEditor p = multisetEditor (executableEditor,emptyParams) p{shadow = Just ShadowIn}    
+executablesEditor :: Maybe FilePath -> Editor [Executable]
+executablesEditor fp p = multisetEditor (executableEditor fp,emptyParams) p{shadow = Just ShadowIn}    
 
-buildInfoEditor :: Editor BuildInfo
-buildInfoEditor p = otherEditor editBuildInfo p 
+buildInfoEditor :: Maybe FilePath -> Editor BuildInfo
+buildInfoEditor fp p = otherEditor (editBuildInfo fp) p 
 
 -- ------------------------------------------------------------
 -- * (Boring) default values

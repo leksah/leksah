@@ -50,8 +50,8 @@ options :: [(CompilerFlavor, [String])]
 ghcProfOptions :: [String]
 --}
 
-buildInfoD :: [(String,[FieldDescriptionE BuildInfo])]
-buildInfoD = [
+buildInfoD :: Maybe FilePath -> [(String,[FieldDescriptionE BuildInfo])]
+buildInfoD fp = [
     ("Description", [
         mkFieldE (emptyParams
         {   paraName    = Just "Component is buildable here"
@@ -66,7 +66,7 @@ buildInfoD = [
         ,   direction = Just Vertical})  
             otherModules 
             (\ a b -> b{otherModules = a})
-            (multisetEditor (fileEditor FileChooserActionOpen,emptyParams))    
+            (multisetEditor (fileEditor fp FileChooserActionOpen,emptyParams))    
     ,   mkFieldE (emptyParams
         {   paraName    = Just "Where to look for the haskell module hierarchy"
         ,   PE.synopsis = Just "Root directories for the module hierarchy."
@@ -74,7 +74,7 @@ buildInfoD = [
         ,   direction = Just Vertical})  
             hsSourceDirs 
             (\ a b -> b{hsSourceDirs = a})
-            (multisetEditor (fileEditor FileChooserActionSelectFolder,emptyParams)) 
+            (multisetEditor (fileEditor fp FileChooserActionSelectFolder,emptyParams)) 
     ]),
     ("Extensions",[ 
         mkFieldE (emptyParams
@@ -109,9 +109,9 @@ buildInfoD = [
             multisetEditor (fileEditor,emptyParams) p{shadow = Just ShadowIn}    
 --}
 
-editBuildInfo :: BuildInfo -> String -> IO (Maybe BuildInfo)
-editBuildInfo buildInfo contextStr = do
-    res <- editBuildInfo' buildInfo contextStr buildInfoD 
+editBuildInfo :: Maybe FilePath -> BuildInfo -> String -> IO (Maybe BuildInfo)
+editBuildInfo fp buildInfo contextStr = do
+    res <- editBuildInfo' buildInfo contextStr (buildInfoD fp)
     return res
 
 editBuildInfo' :: BuildInfo -> String -> [(String,[FieldDescriptionE BuildInfo])] -> IO (Maybe BuildInfo)
