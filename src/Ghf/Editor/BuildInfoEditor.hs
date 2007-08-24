@@ -7,6 +7,7 @@ module Ghf.Editor.BuildInfoEditor (
 ) where
 
 import Graphics.UI.Gtk
+import Graphics.UI.Gtk.ModelView as New
 import System.Directory
 import Control.Monad.Reader
 import Distribution.PackageDescription
@@ -66,7 +67,9 @@ buildInfoD fp = [
         ,   direction = Just Vertical})  
             otherModules 
             (\ a b -> b{otherModules = a})
-            (multisetEditor (fileEditor fp FileChooserActionOpen,emptyParams))    
+            (multisetEditor 
+                (ColumnDescr False [("",(\row -> [New.cellText := show row]))])
+                (fileEditor fp FileChooserActionOpen,emptyParams))  
     ,   mkFieldE (emptyParams
         {   paraName    = Just "Where to look for the haskell module hierarchy"
         ,   PE.synopsis = Just "Root directories for the module hierarchy."
@@ -74,7 +77,9 @@ buildInfoD fp = [
         ,   direction = Just Vertical})  
             hsSourceDirs 
             (\ a b -> b{hsSourceDirs = a})
-            (multisetEditor (fileEditor fp FileChooserActionSelectFolder,emptyParams)) 
+            (multisetEditor 
+                (ColumnDescr False [("",(\row -> [New.cellText := show row]))])
+                (fileEditor fp FileChooserActionSelectFolder,emptyParams)) 
     ]),
     ("Extensions",[ 
         mkFieldE (emptyParams

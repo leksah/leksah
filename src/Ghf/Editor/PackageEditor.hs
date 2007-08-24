@@ -7,6 +7,7 @@ module Ghf.Editor.PackageEditor (
 ) where
 
 import Graphics.UI.Gtk
+import Graphics.UI.Gtk.ModelView as New
 import System.Directory
 import Control.Monad.Reader
 import Distribution.PackageDescription
@@ -284,7 +285,8 @@ packageEditor para = do
 
 testedWidthEditor :: Editor [(CompilerFlavor, VersionRange)]
 testedWidthEditor para = do
-    multisetEditor    
+    multisetEditor   
+       (ColumnDescr False [("",(\row -> [New.cellText := show row]))])  
        (pairEditor 
             (compilerFlavorEditor, emptyParams{shadow = Just ShadowNone}) 
             (versionRangeEditor, emptyParams{shadow = Just ShadowNone}), 
@@ -380,16 +382,25 @@ dependencyEditor para = do
     return (wid,pinj,pext,notif) 
 
 dependenciesEditor :: Editor [Dependency]
-dependenciesEditor p =  multisetEditor (dependencyEditor,emptyParams) p{shadow = Just ShadowIn}    
+dependenciesEditor p =  
+    multisetEditor 
+        (ColumnDescr True [("Package",\(Dependency str _) -> [New.cellText := str])
+                           ,("Version",\(Dependency _ vers) -> [New.cellText := showVersionRange vers])])            
+        (dependencyEditor,emptyParams) p{shadow = Just ShadowIn}    
 
 filesEditor :: Maybe FilePath -> Editor [FilePath]
-filesEditor fp p =  multisetEditor (fileEditor fp FileChooserActionOpen,emptyParams) p{shadow = Just ShadowIn}    
+filesEditor fp p =  
+    multisetEditor 
+        (ColumnDescr False [("",(\row -> [New.cellText := show row]))]) 
+        (fileEditor fp FileChooserActionOpen,emptyParams) p{shadow = Just ShadowIn}    
 
 libraryEditor :: Maybe FilePath -> Editor Library
 libraryEditor fp para = do
     (wid,inj,ext,notif) <- 
         pairEditor
-            (multisetEditor (fileEditor fp  FileChooserActionOpen,emptyParams), para{direction = Just Vertical})
+            (multisetEditor 
+                (ColumnDescr False [("",(\row -> [New.cellText := show row]))])                 
+                (fileEditor fp  FileChooserActionOpen,emptyParams), para{direction = Just Vertical})
             (buildInfoEditor fp, para{paraName = Just "Build Info"})
             para{direction = Just Vertical}
     let pinj (Library em bi) = inj (em,bi)
@@ -445,7 +456,10 @@ executableEditor fp para = do
     return (wid,pinj,pext,notif) 
 
 executablesEditor :: Maybe FilePath -> Editor [Executable]
-executablesEditor fp p = multisetEditor (executableEditor fp,emptyParams) p{shadow = Just ShadowIn}    
+executablesEditor fp p = 
+    multisetEditor
+        (ColumnDescr False [("",(\row -> [New.cellText := show row]))])  
+        (executableEditor fp,emptyParams) p{shadow = Just ShadowIn}    
 
 buildInfoEditor :: Maybe FilePath -> Editor BuildInfo
 buildInfoEditor fp p = otherEditor (editBuildInfo fp) p 

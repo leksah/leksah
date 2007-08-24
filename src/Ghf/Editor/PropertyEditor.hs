@@ -33,6 +33,7 @@ module Ghf.Editor.PropertyEditor (
 ,   pairEditor
 ,   eitherOrEditor
 ,   multisetEditor
+,   ColumnDescr(..)
 
 ,   staticSelectionEditor
 ,   staticMultiselectionEditor
@@ -974,10 +975,18 @@ eitherOrEditor (leftEditor,leftParams) (rightEditor,rightParams) label2 paramete
                     Nothing -> return ()
                 return True) 
 
+
+-- a trivial example: (ColumnDescr False [("",(\row -> [New.cellText := show row]))])
+-- and a nontrivial:
+--  [("Package",\(Dependency str _) -> [New.cellText := str])
+--  ,("Version",\(Dependency _ vers) -> [New.cellText := showVersionRange vers])])
+data ColumnDescr row = ColumnDescr Bool [(String,(row -> [AttrOp CellRendererText]))]
+
 --
 -- | An editor with a subeditor, of which a list of items can be selected 
-multisetEditor :: (Show alpha, Default alpha)  => (Editor alpha,Parameters) -> Editor [alpha]
-multisetEditor (singleEditor, sParams) parameters = do
+multisetEditor :: (Show alpha, Default alpha) => 
+                    ColumnDescr alpha -> (Editor alpha, Parameters) -> Editor [alpha]
+multisetEditor (ColumnDescr showHeaders columnsDD) (singleEditor, sParams) parameters = do
     coreRef <- newIORef Nothing
     notifier <- emptyNotifier
     mkEditor  
@@ -1003,12 +1012,16 @@ multisetEditor (singleEditor, sParams) parameters = do
                     list <- New.treeViewNewWithModel listStore
                     sel <- New.treeViewGetSelection list
                     New.treeSelectionSetMode sel SelectionSingle
-                    renderer <- New.cellRendererTextNew
-                    col <- New.treeViewColumnNew
-                    New.treeViewAppendColumn list col    
-                    New.cellLayoutPackStart col renderer True
-                    New.cellLayoutSetAttributes col renderer listStore $ \row -> [ New.cellText := show row ]
-                    New.treeViewSetHeadersVisible list True
+                    mapM_ (\(str,func) -> do
+                            col <- New.treeViewColumnNew
+                            New.treeViewColumnSetTitle col str
+                            New.treeViewColumnSetResizable col True 
+                            New.treeViewAppendColumn list col    
+                            renderer <- New.cellRendererTextNew
+                            New.cellLayoutPackStart col renderer True
+                            New.cellLayoutSetAttributes col renderer listStore func
+                        ) columnsDD
+                    New.treeViewSetHeadersVisible list showHeaders
                     boxPackStart box list PackNatural 0
                     boxPackStart box buttonBox PackNatural 0
                     boxPackEnd box frameS PackGrow 0
