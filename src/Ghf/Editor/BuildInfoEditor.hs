@@ -68,7 +68,7 @@ buildInfoD fp = [
             otherModules 
             (\ a b -> b{otherModules = a})
             (multisetEditor 
-                (ColumnDescr False [("",(\row -> [New.cellText := show row]))])
+                (ColumnDescr False [("",(\row -> [New.cellText := row]))])
                 (fileEditor fp FileChooserActionOpen "Select file" ,emptyParams))  
     ,   mkFieldE (emptyParams
         {   paraName    = Just "Where to look for the haskell module hierarchy"
@@ -78,7 +78,7 @@ buildInfoD fp = [
             hsSourceDirs 
             (\ a b -> b{hsSourceDirs = a})
             (multisetEditor 
-                (ColumnDescr False [("",(\row -> [New.cellText := show row]))])
+                (ColumnDescr False [("",(\row -> [New.cellText := row]))])
                 (fileEditor fp FileChooserActionSelectFolder "Select folder" ,emptyParams)) 
     ]),
     ("Extensions",[ 
@@ -88,20 +88,26 @@ buildInfoD fp = [
             extensions 
             (\ a b -> b{extensions = a})
             extensionsEditor
-    ])]
-  
-{--    
-
+{--    ]),
+    ("Options",[ 
+        mkFieldE (emptyParams
+        {   paraName    = Just "Additional options for GHC when built with profiling"})  
+            ghcProfOptions 
+            (\ a b -> b{ghcProfOptions = a})
+            stringEditor    
     ,   mkFieldE (emptyParams
         {   paraName    = Just "Options for C compiler"})  
             ccOptions 
             (\ a b -> b{ccOptions = a})
-            multisetEditor (stringEditor,emptyParams) p{shadow = Just ShadowIn}    
+            stringEditor    
     ,   mkFieldE (emptyParams
         {   paraName    = Just "Options for linker"})  
             ldOptions 
             (\ a b -> b{ldOptions = a})
-            multisetEditor (stringEditor,emptyParams) p{shadow = Just ShadowIn}    
+            stringEditor    --}
+
+    ])]
+{--    ("C-Options",[ 
     ,   mkFieldE (emptyParams
         {   paraName    = Just "Support frameworks for Mac OS X"})  
             frameworks 
@@ -112,7 +118,8 @@ buildInfoD fp = [
             cSources 
             (\ a b -> b{cSources = a})
             multisetEditor (fileEditor,emptyParams) p{shadow = Just ShadowIn}    
---}
+    ])]]--}
+
 
 editBuildInfo :: Maybe FilePath -> BuildInfo -> String -> IO (Maybe BuildInfo)
 editBuildInfo fp buildInfo contextStr = do

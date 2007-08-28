@@ -628,7 +628,6 @@ fileEditor mbFilePath action buttonName parameters = do
                     set entry [ entryEditable := False ]
                     activateEvent (castToWidget button) Clicked notifier 
                     (mkNotifier notifier) Clicked (Left (buttonHandler entry)) 
-                   -- registerHandler notifier (buttonHandler entry) "onClicked"
                     box <- case getParameter direction parameters of 
                                 Horizontal  -> do
                                     r <- hBoxNew False 1
@@ -647,10 +646,7 @@ fileEditor mbFilePath action buttonName parameters = do
                 Nothing -> return Nothing  
                 Just entry -> do
                     str <- entryGetText entry
-                    dfe <- doesFileExist str
-                    if dfe 
-                        then return (Just str) 
-                        else return Nothing )
+                    return (Just str)) 
         (mkNotifier notifier) 
         parameters                                              
     where

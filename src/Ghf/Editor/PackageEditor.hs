@@ -78,27 +78,59 @@ type PDescr = [(String,[FieldDescriptionE PackageDescription])]
 
 packageDD :: FilePath -> PDescr
 packageDD fp = [
-    ("Description", [
+    ("Description -1-", [
         mkFieldE (emptyParams
             {   paraName = Just "Package Identifier"}) 
             package
             (\ a b -> b{package = a})
             packageEditor
     ,   mkFieldE (emptyParams
-            {   paraName    = Just "Synopsis"
-            ,   PE.synopsis = Just"A one-line summary of this package"}) 
-            synopsis
-            (\ a b -> b{synopsis = a})
+            {   paraName    = Just "Cabal version"
+            ,   PE.synopsis = Just "Does this package depends on a specific version of Cabal?"
+            ,   shadow      = Just ShadowIn}) 
+            descCabalVersion
+            (\ a b -> b{descCabalVersion = a})
+            versionRangeEditor
+    ,   mkFieldE (emptyParams{paraName=Just "License"}) 
+            license
+            (\ a b -> b{license = a})
+            (staticSelectionEditor [GPL, LGPL, BSD3, BSD4, PublicDomain, AllRightsReserved, OtherLicense])   
+    ,   mkFieldE (emptyParams{paraName=Just "License File"})  
+            licenseFile
+            (\ a b -> b{licenseFile = a})
+            (fileEditor (Just fp) FileChooserActionOpen "Select file")   
+    ,   mkFieldE (emptyParams{paraName=Just "Copyright"}) 
+            copyright
+            (\ a b -> b{copyright = a})
+            stringEditor
+    ,   mkFieldE (emptyParams{paraName=Just "Author"}) 
+            author
+            (\ a b -> b{author = a})
+            stringEditor
+    ,   mkFieldE (emptyParams{paraName=Just "Maintainer"})
+            maintainer
+            (\ a b -> b{maintainer = a})
+            stringEditor
+    ]),
+    ("Description -2-",[
+        mkFieldE (emptyParams{paraName=Just "Stability"}) 
+            stability
+            (\ a b -> b{stability = a})
             stringEditor
     ,   mkFieldE (emptyParams
             {   paraName    = Just "Homepage"})  
             homepage
             (\ a b -> b{homepage = a})
             stringEditor
+    ,   mkFieldE (emptyParams{paraName=Just "Package Url"})  
+            pkgUrl
+            (\ a b -> b{pkgUrl = a})
+            stringEditor
     ,   mkFieldE (emptyParams
-            {   paraName    = Just "Category"})   
-            category
-            (\ a b -> b{category = a})
+            {   paraName    = Just "Synopsis"
+            ,   PE.synopsis = Just"A one-line summary of this package"}) 
+            synopsis
+            (\ a b -> b{synopsis = a})
             stringEditor
     ,   mkFieldE (emptyParams
             {   paraName    = Just "Description"
@@ -108,36 +140,22 @@ packageDD fp = [
             description
             (\ a b -> if null a then b{description = " \n\n\n\n\n"} else  b{description = a})
             multilineStringEditor
+    ,   mkFieldE (emptyParams
+            {   paraName    = Just "Category"})   
+            category
+            (\ a b -> b{category = a})
+            stringEditor
     ]),
-    ("Description -2-",[
-        mkFieldE (emptyParams{paraName=Just "Author"}) 
-            author
-            (\ a b -> b{author = a})
-            stringEditor
-    ,   mkFieldE (emptyParams{paraName=Just "Maintainer"})
-            maintainer
-            (\ a b -> b{maintainer = a})
-            stringEditor
-    ,   mkFieldE (emptyParams{paraName=Just "Stability"}) 
-            stability
-            (\ a b -> b{stability = a})
-            stringEditor
-    ,   mkFieldE (emptyParams{paraName=Just "Copyright"}) 
-            copyright
-            (\ a b -> b{copyright = a})
-            stringEditor
-    ,   mkFieldE (emptyParams{paraName=Just "License"}) 
-            license
-            (\ a b -> b{license = a})
-            (staticSelectionEditor [GPL, LGPL, BSD3, BSD4, PublicDomain, AllRightsReserved, OtherLicense])   
-    ,   mkFieldE (emptyParams{paraName=Just "License File"})  
-            licenseFile
-            (\ a b -> b{licenseFile = a})
-            (fileEditor (Just fp) FileChooserActionOpen "Select file")   
-    ,   mkFieldE (emptyParams{paraName=Just "Package Url"})  
-            pkgUrl
-            (\ a b -> b{pkgUrl = a})
-            stringEditor
+    ("Tested With",[
+        mkFieldE (emptyParams
+        {   paraName    = Just "Tested with compiler"
+        ,   shadow      = Just ShadowIn
+        ,   direction   = Just Vertical})  
+            (\a -> case testedWith a of
+                []          -> [(GHC,AnyVersion)]
+                l           -> l)  
+            (\ a b -> b{testedWith = a})
+            testedWidthEditor
     ]),
     ("Dependencies",[
         mkFieldE (emptyParams
@@ -147,26 +165,6 @@ packageDD fp = [
             buildDepends
             (\ a b -> b{buildDepends = a})
             dependenciesEditor
-    ]),
-    ("Library",[
-        mkFieldE (emptyParams
-        {   paraName    = Just "Library"
-        ,   PE.synopsis = Just "If the package contains a library, specify the exported modules here"
-        ,   shadow      = Just ShadowIn
-        ,   direction   = Just Vertical}) 
-            library 
-            (\ a b -> b{library  = a})
-            (maybeEditor (libraryEditor (Just fp),emptyParams{paraName = Just "Specify exported modules"}) True
-                "Does this package contain a library?") 
-    ]),
-    ("Executables",[
-        mkFieldE (emptyParams
-        {   paraName    = Just "Executables"
-        ,   PE.synopsis = Just "Describe executable programs contained in the package"
-        ,   direction   = Just Vertical}) 
-            executables 
-            (\ a b -> b{executables = a})
-            (executablesEditor (Just fp))
     ]),
     ("Other Files",[
         mkFieldE (emptyParams
@@ -191,23 +189,25 @@ packageDD fp = [
             (\ a b -> b{extraTmpFiles = a})
             (filesEditor (Just fp))
     ]),
-    ("Rest",[
+    ("Library",[
         mkFieldE (emptyParams
-        {   paraName    = Just "Tested with compiler"
+        {   paraName    = Just "Library"
+        ,   PE.synopsis = Just "If the package contains a library, specify the exported modules here"
         ,   shadow      = Just ShadowIn
-        ,   direction   = Just Vertical})  
-            (\a -> case testedWith a of
-                []          -> [(GHC,AnyVersion)]
-                l           -> l)  
-            (\ a b -> b{testedWith = a})
-            testedWidthEditor
-    ,   mkFieldE (emptyParams
-        {   paraName    = Just "Cabal version"
-        ,   PE.synopsis = Just "Does this package depends on a specific version of Cabal?"
-        ,   shadow      = Just ShadowIn}) 
-            descCabalVersion
-            (\ a b -> b{descCabalVersion = a})
-            versionRangeEditor
+        ,   direction   = Just Vertical}) 
+            library 
+            (\ a b -> b{library  = a})
+            (maybeEditor (libraryEditor (Just fp),emptyParams{paraName = Just "Specify exported modules"}) True
+                "Does this package contain a library?") 
+    ]),
+    ("Executables",[
+        mkFieldE (emptyParams
+        {   paraName    = Just "Executables"
+        ,   PE.synopsis = Just "Describe executable programs contained in the package"
+        ,   direction   = Just Vertical}) 
+            executables 
+            (\ a b -> b{executables = a})
+            (executablesEditor (Just fp))
     ])]     
 
 
@@ -286,7 +286,8 @@ packageEditor para = do
 testedWidthEditor :: Editor [(CompilerFlavor, VersionRange)]
 testedWidthEditor para = do
     multisetEditor   
-       (ColumnDescr False [("",(\row -> [New.cellText := show row]))])  
+       (ColumnDescr False [("Compiler Flavor",\(cv,_) -> [New.cellText := show cv])
+                           ,("Version Range",\(_,vr) -> [New.cellText := showVersionRange vr])])  
        (pairEditor 
             (compilerFlavorEditor, emptyParams{shadow = Just ShadowNone}) 
             (versionRangeEditor, emptyParams{shadow = Just ShadowNone}), 
@@ -417,8 +418,8 @@ dependenciesEditor p =
 filesEditor :: Maybe FilePath -> Editor [FilePath]
 filesEditor fp p =  
     multisetEditor 
-        (ColumnDescr False [("",(\row -> [New.cellText := show row]))]) 
-        (fileEditor fp FileChooserActionOpen "Select file",emptyParams) p{shadow = Just ShadowIn}    
+        (ColumnDescr False [("",(\row -> [New.cellText := row]))]) 
+        (fileEditor fp FileChooserActionOpen "Select file", emptyParams) p{shadow = Just ShadowIn}    
 
 libraryEditor :: Maybe FilePath -> Editor Library
 libraryEditor fp para = do
