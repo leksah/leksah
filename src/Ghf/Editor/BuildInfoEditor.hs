@@ -69,7 +69,7 @@ buildInfoD fp = [
             (\ a b -> b{otherModules = a})
             (multisetEditor 
                 (ColumnDescr False [("",(\row -> [New.cellText := show row]))])
-                (fileEditor fp FileChooserActionOpen,emptyParams))  
+                (fileEditor fp FileChooserActionOpen "Select file" ,emptyParams))  
     ,   mkFieldE (emptyParams
         {   paraName    = Just "Where to look for the haskell module hierarchy"
         ,   PE.synopsis = Just "Root directories for the module hierarchy."
@@ -79,7 +79,7 @@ buildInfoD fp = [
             (\ a b -> b{hsSourceDirs = a})
             (multisetEditor 
                 (ColumnDescr False [("",(\row -> [New.cellText := show row]))])
-                (fileEditor fp FileChooserActionSelectFolder,emptyParams)) 
+                (fileEditor fp FileChooserActionSelectFolder "Select folder" ,emptyParams)) 
     ]),
     ("Extensions",[ 
         mkFieldE (emptyParams
@@ -124,6 +124,7 @@ editBuildInfo' buildInfo contextStr buildInfoD = do
     resRef  <- newIORef Nothing
     let flatBuildInfoD = concatMap snd buildInfoD
     dialog  <- windowNew
+    windowSetModal dialog True
     vb      <- vBoxNew False 7
     bb      <- hButtonBoxNew
     ok      <- buttonNewFromStock "gtk-ok"
@@ -149,20 +150,25 @@ editBuildInfo' buildInfo contextStr buildInfoD = do
     ok `onClicked` (do
         mbNewBuildInfo <- validate buildInfo getExts
         case mbNewBuildInfo of 
-            Nothing -> return ()
+            Nothing -> do
+                putStrLn "Cant't validate build info" 
+                return ()
             Just newBuildInfo -> do
                     writeIORef resRef (Just newBuildInfo)
                     widgetDestroy dialog
+                    mainQuit
                     return ())
     cancel `onClicked` (do
         widgetDestroy dialog
+        mainQuit
         return ())
     boxPackStart vb nb PackGrow 7
     boxPackEnd vb bb PackNatural 7
     containerAdd dialog vb
     widgetSetSizeRequest dialog 500 700
-    widgetShowAll dialog    
-    res <- readIORef resRef
+    widgetShowAll dialog   
+    mainGUI
+    res <- readIORef resRef 
     return (res)
 
 extensionsL :: [Extension]

@@ -16,6 +16,7 @@ module Ghf.Editor.PropertyEditor (
 ,   mkFieldE
 ,   Default(..)
 ,   emptyNotifier
+,   EventSelector(..)
 
 ,   Parameters(..)
 ,   emptyParams
@@ -124,7 +125,10 @@ data FieldDescriptionE alpha =  FDE {
     }
 
 data EventSelector  =   Clicked
-                    |   FocusOut -- |...
+                    |   FocusOut
+                    |   FocusIn 
+                    |   SelectionChanged
+                    -- |...
     deriving (Eq,Ord,Show)
 --
 -- | A class for providing default values for certain types of editors
@@ -274,7 +278,7 @@ mkNotifier notifierState = notFunc
             Just (mbWidget, registerFunc, mbUnique, handlers) 
                     -> do   unique <- newUnique
                             let noti2 = Map.insert eventSel 
-                                    (mbWidget,registerFunc,mbUnique,(uni,handler):handlers) noti
+                                    (mbWidget,registerFunc,mbUnique,handlers++[(uni,handler)]) noti
                             writeIORef notifierState noti2
                             return unique
     notFunc eventSel (Right uni) = do
@@ -606,8 +610,8 @@ staticMultiselectionEditor list parameters = do
 --
 -- | Editor for the selection of a file path in the form of a text entry and a button,
 -- | which opens a gtk file chooser
-fileEditor :: Maybe FilePath -> FileChooserAction -> Editor FilePath
-fileEditor mbFilePath action parameters = do
+fileEditor :: Maybe FilePath -> FileChooserAction -> String -> Editor FilePath
+fileEditor mbFilePath action buttonName parameters = do
     coreRef <- newIORef Nothing
     notifier <- emptyNotifier
     declareEvent Nothing Clicked 
@@ -619,7 +623,7 @@ fileEditor mbFilePath action parameters = do
             core <- readIORef coreRef
             case core of 
                 Nothing  -> do
-                    button <- buttonNewWithLabel "Select file"
+                    button <- buttonNewWithLabel buttonName
                     entry   <-  entryNew
                     set entry [ entryEditable := False ]
                     activateEvent (castToWidget button) Clicked notifier 
@@ -648,7 +652,8 @@ fileEditor mbFilePath action parameters = do
                         then return (Just str) 
                         else return Nothing )
         (mkNotifier notifier) 
-        parameters                                              where
+        parameters                                              
+    where
     buttonHandler entry = (\ e -> do
         mbFileName <- do     
             dialog <- fileChooserDialogNew
@@ -685,12 +690,12 @@ fileEditor mbFilePath action parameters = do
 -- | An editor, which opens another editor 
 --   You have to inject a value before the button can be clicked.
 -- 
-otherEditor :: (alpha  -> String -> IO(Maybe alpha)) -> Editor alpha 
+otherEditor :: (alpha  -> String -> IO (Maybe alpha)) -> Editor alpha 
 otherEditor func parameters = do
     coreRef <- newIORef Nothing
     notifier <- emptyNotifier
-    declareEvent Nothing Clicked (\w h -> w `onClicked` do  h (Event True); return ()) 
-        notifier 
+    declareEvent Nothing Clicked (\w h -> w `onClicked` do  h (Event True); return ()) notifier 
+    declareEvent Nothing FocusIn (\w h -> w `onFocusIn` do  h) notifier 
     mkEditor  
         (\widget val -> do 
             core <- readIORef coreRef
@@ -699,6 +704,7 @@ otherEditor func parameters = do
                     button <- buttonNewWithLabel (getParameter paraName parameters) 
                     containerAdd widget button
                     activateEvent (castToWidget button) Clicked notifier
+                    activateEvent (castToWidget button) FocusIn notifier    
                     (mkNotifier notifier) Clicked (Left (buttonHandler coreRef))
                     writeIORef coreRef (Just (button,val))  
                 Just (button, oldval) -> writeIORef coreRef (Just (button, val)))
@@ -1022,6 +1028,7 @@ multisetEditor (ColumnDescr showHeaders columnsDD) (singleEditor, sParams) param
                             New.cellLayoutSetAttributes col renderer listStore func
                         ) columnsDD
                     New.treeViewSetHeadersVisible list showHeaders
+                    sel  `New.onSelectionChanged` (selectionHandler sel listStore injS)
                     boxPackStart box list PackNatural 0
                     boxPackStart box buttonBox PackNatural 0
                     boxPackEnd box frameS PackGrow 0
@@ -1066,4 +1073,14 @@ multisetEditor (ColumnDescr showHeaders columnsDD) (singleEditor, sParams) param
                                     mbi2 <- New.treeModelIterNext listStore iter
                                     rest <- getTail mbi2
                                     return (v : rest)
-    
+    selectionHandler :: New.TreeSelection -> New.ListStore a -> Injector a -> IO ()
+    selectionHandler sel listStore inj = do 
+        ts <- New.treeSelectionGetSelected sel 
+        case ts of
+            Nothing -> return ()
+            Just iter -> do
+                [i] <- New.treeModelGetPath listStore iter
+                v <- New.listStoreGetValue listStore i 
+                inj v
+                return ()       
+            

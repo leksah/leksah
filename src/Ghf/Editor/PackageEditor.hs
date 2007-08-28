@@ -133,7 +133,7 @@ packageDD fp = [
     ,   mkFieldE (emptyParams{paraName=Just "License File"})  
             licenseFile
             (\ a b -> b{licenseFile = a})
-            (fileEditor (Just fp) FileChooserActionOpen)   
+            (fileEditor (Just fp) FileChooserActionOpen "Select file")   
     ,   mkFieldE (emptyParams{paraName=Just "Package Url"})  
             pkgUrl
             (\ a b -> b{pkgUrl = a})
@@ -366,52 +366,6 @@ instance Show Version2 where
     show UnionVersionRangesS =  "Union Version Ranges"
     show IntersectVersionRangesS =  "Intersect Version Ranges"
 
-dependencyEditor :: Editor Dependency
-dependencyEditor para = do
-    (wid,inj,ext,notif) <- pairEditor 
-        (stringEditor,emptyParams {paraName = Just "Package Name"}) 
-        (versionRangeEditor,emptyParams {paraName = Just "Version"}) 
-        (para{direction = Just Vertical})
-    let pinj (Dependency s v) = inj (s,v)
-    let pext = do
-        mbp <- ext
-        case mbp of
-            Nothing -> return Nothing
-            Just ("",v) -> return Nothing
-            Just (s,v) -> return (Just $Dependency s v)
-    return (wid,pinj,pext,notif) 
-
-dependenciesEditor :: Editor [Dependency]
-dependenciesEditor p =  
-    multisetEditor 
-        (ColumnDescr True [("Package",\(Dependency str _) -> [New.cellText := str])
-                           ,("Version",\(Dependency _ vers) -> [New.cellText := showVersionRange vers])])            
-        (dependencyEditor,emptyParams) p{shadow = Just ShadowIn}    
-
-filesEditor :: Maybe FilePath -> Editor [FilePath]
-filesEditor fp p =  
-    multisetEditor 
-        (ColumnDescr False [("",(\row -> [New.cellText := show row]))]) 
-        (fileEditor fp FileChooserActionOpen,emptyParams) p{shadow = Just ShadowIn}    
-
-libraryEditor :: Maybe FilePath -> Editor Library
-libraryEditor fp para = do
-    (wid,inj,ext,notif) <- 
-        pairEditor
-            (multisetEditor 
-                (ColumnDescr False [("",(\row -> [New.cellText := show row]))])                 
-                (fileEditor fp  FileChooserActionOpen,emptyParams), para{direction = Just Vertical})
-            (buildInfoEditor fp, para{paraName = Just "Build Info"})
-            para{direction = Just Vertical}
-    let pinj (Library em bi) = inj (em,bi)
-    let pext = do
-        mbp <- ext
-        case mbp of
-            Nothing -> return Nothing
-            Just (em,bi) -> return (Just $Library em bi)
-    return (wid,pinj,pext,notif)   
-
-        
 versionEditor :: Editor Version
 versionEditor para = do
     (wid,inj,ext,notiRef) <- stringEditor para
@@ -438,15 +392,61 @@ versionEditor para = do
 --    registerHandler notiRef handler "onFocusOut"
     return (wid, pinj, pext, notiRef)
 
+dependencyEditor :: Editor Dependency
+dependencyEditor para = do
+    (wid,inj,ext,notif) <- pairEditor 
+        (stringEditor,emptyParams {paraName = Just "Package Name"}) 
+        (versionRangeEditor,emptyParams {paraName = Just "Version"}) 
+        (para{direction = Just Vertical})
+    let pinj (Dependency s v) = inj (s,v)
+    let pext = do
+        mbp <- ext
+        case mbp of
+            Nothing -> return Nothing
+            Just ("",v) -> return Nothing
+            Just (s,v) -> return (Just $Dependency s v)
+    return (wid,pinj,pext,notif) 
+
+dependenciesEditor :: Editor [Dependency]
+dependenciesEditor p =  
+    multisetEditor 
+        (ColumnDescr True [("Package",\(Dependency str _) -> [New.cellText := str])
+                           ,("Version",\(Dependency _ vers) -> [New.cellText := showVersionRange vers])])            
+        (dependencyEditor,emptyParams) p{shadow = Just ShadowIn}    
+
+filesEditor :: Maybe FilePath -> Editor [FilePath]
+filesEditor fp p =  
+    multisetEditor 
+        (ColumnDescr False [("",(\row -> [New.cellText := show row]))]) 
+        (fileEditor fp FileChooserActionOpen "Select file",emptyParams) p{shadow = Just ShadowIn}    
+
+libraryEditor :: Maybe FilePath -> Editor Library
+libraryEditor fp para = do
+    (wid,inj,ext,notif) <- 
+        pairEditor
+            (multisetEditor 
+                (ColumnDescr False [("",(\row -> [New.cellText := show row]))])                 
+                (fileEditor fp  FileChooserActionOpen "Select File",emptyParams), 
+                    emptyParams{direction = Just Vertical})
+            (buildInfoEditor fp, para {paraName = Just "Build Info"})
+            para{direction = Just Vertical}
+    let pinj (Library em bi) = inj (em,bi)
+    let pext = do
+        mbp <- ext
+        case mbp of
+            Nothing -> return Nothing
+            Just (em,bi) -> return (Just $Library em bi)
+    return (wid,pinj,pext,notif)   
+
 executableEditor :: Maybe FilePath -> Editor Executable
 executableEditor fp para = do
     (wid,inj,ext,notif) <- pairEditor 
         (pairEditor 
             (stringEditor,emptyParams {paraName = Just "Executable Name"}) 
-            (fileEditor fp FileChooserActionOpen,emptyParams {paraName = Just "Main module"}), 
+            (fileEditor fp FileChooserActionOpen "Select File",emptyParams {paraName = Just "Main module"}), 
             (emptyParams{direction = Just Vertical}))
         (buildInfoEditor fp, emptyParams{paraName = Just "Build Info"})
-        para
+        para{direction = Just Vertical}
     let pinj (Executable s f bi) = inj ((s,f),bi)
     let pext = do
         mbp <- ext
@@ -458,11 +458,33 @@ executableEditor fp para = do
 executablesEditor :: Maybe FilePath -> Editor [Executable]
 executablesEditor fp p = 
     multisetEditor
-        (ColumnDescr False [("",(\row -> [New.cellText := show row]))])  
+        (ColumnDescr False [("Executable Name",\(Executable exeName _ _) -> [New.cellText := exeName])
+                           ,("Module Path",\(Executable  _ mp _) -> [New.cellText := mp])])  
         (executableEditor fp,emptyParams) p{shadow = Just ShadowIn}    
 
 buildInfoEditor :: Maybe FilePath -> Editor BuildInfo
-buildInfoEditor fp p = otherEditor (editBuildInfo fp) p 
+buildInfoEditor fp p = do
+    (wid,inj,ext,notif) <- otherEditor (editBuildInfo fp) p
+    box      <-  vBoxNew False 1
+    textView <-  textViewNew
+    widgetSetSizeRequest textView (-1) 300
+    containerAdd box wid
+    containerAdd box textView
+    buffer <- textViewGetBuffer textView
+    let binj bi = do
+        inj bi
+        textBufferSetText buffer $showHookedBuildInfo (Just bi,[])
+    notif FocusIn $Left (changedHandler buffer ext)
+    return (castToWidget box,binj,ext,notif)
+    where 
+    changedHandler buffer ext _ = do
+        putStrLn "FocusIn"
+        mbv <- ext
+        putStrLn (show mbv)        
+        case mbv of
+            Just v -> textBufferSetText buffer $showHookedBuildInfo (Just v,[])
+            Nothing -> return ()
+        return True        
 
 -- ------------------------------------------------------------
 -- * (Boring) default values
