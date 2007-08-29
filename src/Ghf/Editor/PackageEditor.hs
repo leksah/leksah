@@ -28,6 +28,7 @@ import Ghf.Editor.PropertyEditor hiding(synopsis)
 import qualified Ghf.Editor.PropertyEditor as PE (synopsis)
 import Ghf.GUI.ViewFrame
 import Ghf.Editor.BuildInfoEditor
+import Ghf.Editor.SpecialEditors
 
 standardSetup = "#!/usr/bin/runhaskell \n\
 \> module Main where\n\
@@ -173,21 +174,21 @@ packageDD fp = [
         ,   direction   = Just Vertical}) 
             dataFiles
             (\ a b -> b{dataFiles = a})
-            (filesEditor (Just fp))
+            (filesEditor (Just fp) FileChooserActionOpen "Select File")
     ,   mkFieldE (emptyParams
         {   paraName    = Just "Extra Source Files"
         ,   PE.synopsis = Just "A list of additional files to be included in source distributions."
         ,   direction   = Just Vertical}) 
             extraSrcFiles
             (\ a b -> b{extraSrcFiles = a})
-            (filesEditor (Just fp))
+            (filesEditor (Just fp) FileChooserActionOpen "Select File")
     ,   mkFieldE (emptyParams
         {   paraName    = Just "Extra Tmp Files"
         ,   PE.synopsis = Just "A list of additional files or directories to be removed by setup clean."
         ,   direction   = Just Vertical}) 
             extraTmpFiles
             (\ a b -> b{extraTmpFiles = a})
-            (filesEditor (Just fp))
+            (filesEditor (Just fp) FileChooserActionOpen "Select File")
     ]),
     ("Library",[
         mkFieldE (emptyParams
@@ -236,7 +237,7 @@ editPackage' packageDir packageD packageDD ghfR   =
         res <- mapM 
             (\ (tabLabel, partPackageDesc) -> do
                 resList <- mapM (\ (FDE _ editorF) -> editorF packageD) partPackageDesc
-                let (widgetsP, setInjsP, getExtsP,notifiersP) = unzip4 resList
+                let (widgetsP, setInjsP, getExtsP, notifiersP) = unzip4 resList
                 nbbox <- vBoxNew False 0
                 mapM_ (\ w -> boxPackStart nbbox w PackNatural 0) widgetsP
                 sw <- scrolledWindowNew Nothing Nothing
@@ -264,261 +265,4 @@ editPackage' packageDir packageD packageDD ghfR   =
         widgetSetSizeRequest dialog 500 700
         widgetShowAll dialog    
         return ()
-
--- ------------------------------------------------------------
--- * Special Editors
--- ------------------------------------------------------------
-
-packageEditor :: Editor PackageIdentifier
-packageEditor para = do
-    (wid,inj,ext,notif) <- pairEditor
-        (stringEditor, emptyParams{paraName=Just "Name"}) 
-        (versionEditor, emptyParams{paraName=Just "Version"}) 
-        (para{direction = Just Horizontal,shadow   = Just ShadowIn})
-    let pinj (PackageIdentifier n v) = inj (n,v)
-    let pext = do
-        mbp <- ext
-        case mbp of
-            Nothing -> return Nothing
-            Just (n,v) -> return (Just $PackageIdentifier n v)
-    return (wid,pinj,pext,notif)   
-
-testedWidthEditor :: Editor [(CompilerFlavor, VersionRange)]
-testedWidthEditor para = do
-    multisetEditor   
-       (ColumnDescr False [("Compiler Flavor",\(cv,_) -> [New.cellText := show cv])
-                           ,("Version Range",\(_,vr) -> [New.cellText := showVersionRange vr])])  
-       (pairEditor 
-            (compilerFlavorEditor, emptyParams{shadow = Just ShadowNone}) 
-            (versionRangeEditor, emptyParams{shadow = Just ShadowNone}), 
-            emptyParams{direction = Just Vertical}) 
-       para
-
-compilerFlavorEditor :: Editor CompilerFlavor
-compilerFlavorEditor para = do
-    (wid,inj,ext,notif) <- eitherOrEditor 
-        (staticSelectionEditor flavors, emptyParams{paraName=Just"Select compiler"}) 
-        (stringEditor, emptyParams{paraName=Just "Specify compiler"}) 
-        "Other" 
-        para{paraName = Just "Select"}
-    let cfinj (OtherCompiler str) = inj (Right "")
-    let cfinj other = inj (Left other)    
-    let cfext = do
-        mbp <- ext
-        case mbp of
-            Nothing -> return Nothing
-            Just (Right s) -> return (Just $OtherCompiler s)
-            Just (Left other) -> return (Just other)
-    return (wid,cfinj,cfext,notif)
-        where 
-        flavors = [GHC, NHC, Hugs, HBC, Helium, JHC]
-
-versionRangeEditor :: Editor VersionRange
-versionRangeEditor para = do      
-    (wid,inj,ext,notif) <- 
-        maybeEditor 
-            (eitherOrEditor             
-                (pairEditor 
-                    (staticSelectionEditor v1, emptyParams) 
-                    (versionEditor,emptyParams{paraName = Just "Enter Version"}),
-                    emptyParams{direction = Just Vertical,paraName= Just "Simple Version Range"})
-                (pairEditor 
-                    (staticSelectionEditor v2, emptyParams)
-                    (pairEditor 
-                        (versionRangeEditor, emptyParams{shadow = Just ShadowIn}) 
-                        (versionRangeEditor, emptyParams{shadow = Just ShadowIn}), 
-                        emptyParams{direction = Just Vertical}),
-                            emptyParams{direction = Just Vertical, paraName= Just "Complex Version Range"})              
-                "Complex",emptyParams{paraName= Just "Simple"}) False "Any Version" 
-                    para{direction = Just Vertical}           
-    let vrinj AnyVersion                =   inj Nothing
-        vrinj (ThisVersion v)           =   inj (Just (Left (ThisVersionS,v))) 
-        vrinj (LaterVersion v)          =   inj (Just (Left (LaterVersionS,v)))
-        vrinj (EarlierVersion v)        =   inj (Just (Left (EarlierVersionS,v)))
-        vrinj (UnionVersionRanges v1 v2)=  inj (Just (Right (UnionVersionRangesS,(v1,v2))))    
-        vrinj (IntersectVersionRanges v1 v2) 
-                                        =    inj (Just (Right (IntersectVersionRangesS,(v1,v2))))
-    let vrext = do  mvr <- ext
-                    case mvr of
-                        Nothing -> return (Just AnyVersion)
-                        Just Nothing -> return (Just AnyVersion)
-                        Just (Just (Left (ThisVersionS,v)))     -> return (Just (ThisVersion v))
-                        Just (Just (Left (LaterVersionS,v)))    -> return (Just (LaterVersion v))
-                        Just (Just (Left (EarlierVersionS,v)))   -> return (Just (EarlierVersion v))
-                        Just (Just (Right (UnionVersionRangesS,(v1,v2)))) 
-                                                        -> return (Just (UnionVersionRanges v1 v2))    
-                        Just (Just (Right (IntersectVersionRangesS,(v1,v2)))) 
-                                                        -> return (Just (IntersectVersionRanges v1 v2))
-    return (wid,vrinj,vrext,notif)
-        where
-            v1 = [ThisVersionS,LaterVersionS,EarlierVersionS]
-            v2 = [UnionVersionRangesS,IntersectVersionRangesS]
-
-data Version1 = ThisVersionS | LaterVersionS | EarlierVersionS
-    deriving (Eq)
-instance Show Version1 where
-    show ThisVersionS   =  "This Version"
-    show LaterVersionS  =  "Later Version"
-    show EarlierVersionS =  "Earlier Version"
-
-data Version2 = UnionVersionRangesS | IntersectVersionRangesS 
-    deriving (Eq)
-instance Show Version2 where
-    show UnionVersionRangesS =  "Union Version Ranges"
-    show IntersectVersionRangesS =  "Intersect Version Ranges"
-
-versionEditor :: Editor Version
-versionEditor para = do
-    (wid,inj,ext,notiRef) <- stringEditor para
-    let pinj v = inj (showVersion v)
-    let pext = do
-        s <- ext
-        case s of
-            Nothing -> return Nothing
-            Just s -> do
-                let l = filter (\(h,t) -> null t) (readP_to_S parseVersion s)
-                if null l then
-                    return Nothing
-                    else return (Just (fst $head l))
-    let handler = (do 
-        v <- ext
-        case v of
-            Just _ -> return ()
-            Nothing -> do
-                md <- messageDialogNew Nothing [] MessageWarning ButtonsClose
-                        $"Field " ++ (getParameter paraName para) ++ " has invalid value. Please correct"
-                dialogRun md
-                widgetDestroy md
-                return ())
---    registerHandler notiRef handler "onFocusOut"
-    return (wid, pinj, pext, notiRef)
-
-dependencyEditor :: Editor Dependency
-dependencyEditor para = do
-    (wid,inj,ext,notif) <- pairEditor 
-        (stringEditor,emptyParams {paraName = Just "Package Name"}) 
-        (versionRangeEditor,emptyParams {paraName = Just "Version"}) 
-        (para{direction = Just Vertical})
-    let pinj (Dependency s v) = inj (s,v)
-    let pext = do
-        mbp <- ext
-        case mbp of
-            Nothing -> return Nothing
-            Just ("",v) -> return Nothing
-            Just (s,v) -> return (Just $Dependency s v)
-    return (wid,pinj,pext,notif) 
-
-dependenciesEditor :: Editor [Dependency]
-dependenciesEditor p =  
-    multisetEditor 
-        (ColumnDescr True [("Package",\(Dependency str _) -> [New.cellText := str])
-                           ,("Version",\(Dependency _ vers) -> [New.cellText := showVersionRange vers])])            
-        (dependencyEditor,emptyParams) p{shadow = Just ShadowIn}    
-
-filesEditor :: Maybe FilePath -> Editor [FilePath]
-filesEditor fp p =  
-    multisetEditor 
-        (ColumnDescr False [("",(\row -> [New.cellText := row]))]) 
-        (fileEditor fp FileChooserActionOpen "Select file", emptyParams) p{shadow = Just ShadowIn}    
-
-libraryEditor :: Maybe FilePath -> Editor Library
-libraryEditor fp para = do
-    (wid,inj,ext,notif) <- 
-        pairEditor
-            (multisetEditor 
-                (ColumnDescr False [("",(\row -> [New.cellText := show row]))])                 
-                (fileEditor fp  FileChooserActionOpen "Select File",emptyParams), 
-                    emptyParams{direction = Just Vertical})
-            (buildInfoEditor fp, para {paraName = Just "Build Info"})
-            para{direction = Just Vertical}
-    let pinj (Library em bi) = inj (em,bi)
-    let pext = do
-        mbp <- ext
-        case mbp of
-            Nothing -> return Nothing
-            Just (em,bi) -> return (Just $Library em bi)
-    return (wid,pinj,pext,notif)   
-
-executableEditor :: Maybe FilePath -> Editor Executable
-executableEditor fp para = do
-    (wid,inj,ext,notif) <- pairEditor 
-        (pairEditor 
-            (stringEditor,emptyParams {paraName = Just "Executable Name"}) 
-            (fileEditor fp FileChooserActionOpen "Select File",emptyParams {paraName = Just "Main module"}), 
-            (emptyParams{direction = Just Vertical}))
-        (buildInfoEditor fp, emptyParams{paraName = Just "Build Info"})
-        para{direction = Just Vertical}
-    let pinj (Executable s f bi) = inj ((s,f),bi)
-    let pext = do
-        mbp <- ext
-        case mbp of
-            Nothing -> return Nothing
-            Just ((s,f),bi) -> return (Just $Executable s f bi)
-    return (wid,pinj,pext,notif) 
-
-executablesEditor :: Maybe FilePath -> Editor [Executable]
-executablesEditor fp p = 
-    multisetEditor
-        (ColumnDescr False [("Executable Name",\(Executable exeName _ _) -> [New.cellText := exeName])
-                           ,("Module Path",\(Executable  _ mp _) -> [New.cellText := mp])])  
-        (executableEditor fp,emptyParams) p{shadow = Just ShadowIn}    
-
-buildInfoEditor :: Maybe FilePath -> Editor BuildInfo
-buildInfoEditor fp p = do
-    (wid,inj,ext,notif) <- otherEditor (editBuildInfo fp) p
-    box      <-  vBoxNew False 1
-    textView <-  textViewNew
-    widgetSetSizeRequest textView (-1) 300
-    containerAdd box wid
-    containerAdd box textView
-    buffer <- textViewGetBuffer textView
-    let binj bi = do
-        inj bi
-        textBufferSetText buffer $showHookedBuildInfo (Just bi,[])
-    notif FocusIn $Left (changedHandler buffer ext)
-    return (castToWidget box,binj,ext,notif)
-    where 
-    changedHandler buffer ext _ = do
-        putStrLn "FocusIn"
-        mbv <- ext
-        putStrLn (show mbv)        
-        case mbv of
-            Just v -> textBufferSetText buffer $showHookedBuildInfo (Just v,[])
-            Nothing -> return ()
-        return True        
-
--- ------------------------------------------------------------
--- * (Boring) default values
--- ------------------------------------------------------------
-
-instance Default Version1
-    where getDefault = ThisVersionS
-
-instance Default Version2
-    where getDefault = UnionVersionRangesS
-
-instance Default Version
-    where getDefault = let version = (let l = (readP_to_S parseVersion) "0" 
-                                        in if null l 
-                                            then error "verion parser failed"
-                                            else fst $head l)
-                        in version
-
-instance Default VersionRange
-    where getDefault = AnyVersion
-
-instance Default CompilerFlavor
-    where getDefault =  GHC
-
-instance Default BuildInfo
-    where getDefault =  emptyBuildInfo
-
-instance Default Library 
-    where getDefault =  Library [] getDefault
-
-instance Default Dependency 
-    where getDefault = Dependency getDefault getDefault
-
-instance Default Executable 
-    where getDefault = Executable getDefault getDefault getDefault
 

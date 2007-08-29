@@ -139,15 +139,15 @@ class Default a where
 instance Default Int where 
     getDefault = 1
 
-instance Default String where 
-    getDefault = ""
-
 instance Default a => Default (Either a b) 
     where 
         getDefault =  Left(getDefault) 
 
 instance (Default alpha, Default beta) => Default (alpha,beta) 
     where getDefault = (getDefault,getDefault)
+
+instance Default [a] where 
+    getDefault = []
 
 
 --type Applicator beta =   beta -> GhfAction ()
@@ -308,8 +308,18 @@ mkFieldE :: Eq beta => MkFieldDescriptionE alpha beta
 mkFieldE parameters getter setter editor =
     FDE parameters
         (\ dat -> do
-            (widget, inj,ext,notiRef) <- editor parameters
+            (widget, inj,ext,noti) <- editor parameters
             inj (getter dat)
+            noti FocusOut (Left (\e -> do
+                putStrLn "Handling Focus out"
+                v <- ext
+                case v of
+                    Just _ -> do
+                        widgetModifyFg widget StateNormal (Color 0 0 0)
+                        return False
+                    Nothing -> do
+                        widgetModifyFg widget StateNormal (Color 65535 65535 0)
+                        return False))              
             return (widget,
                     (\a -> inj (getter a)), 
                     (\a -> do 
@@ -317,7 +327,7 @@ mkFieldE parameters getter setter editor =
                         case b of
                             Just b -> return (Just (setter b a))
                             Nothing -> return Nothing),
-                    notiRef))
+                    noti))
 
 -- | Function to construct an editor
 --  
@@ -357,8 +367,8 @@ boolEditor :: Editor Bool
 boolEditor parameters = do
     coreRef <- newIORef Nothing
     notifier <- emptyNotifier
-    declareEvent Nothing Clicked (\w h -> w `onClicked` do  h (Event True); return ()) 
-        notifier 
+    declareEvent Nothing Clicked (\w h -> w `onClicked` do  h (Event True); return ()) notifier 
+    declareEvent Nothing FocusOut (\w h -> w `onFocusOut` h) notifier 
     mkEditor  
         (\widget bool -> do 
             core <- readIORef coreRef
@@ -368,6 +378,7 @@ boolEditor parameters = do
                     containerAdd widget button
                     toggleButtonSetActive button bool
                     activateEvent (castToWidget button) Clicked notifier
+                    activateEvent (castToWidget button) FocusOut notifier
                     writeIORef coreRef (Just button)  
                 Just button -> toggleButtonSetActive button bool)
         (do core <- readIORef coreRef
@@ -386,8 +397,8 @@ boolEditor2 :: String -> Editor Bool
 boolEditor2 label2 parameters = do
     coreRef <- newIORef Nothing
     notifier <- emptyNotifier
-    declareEvent Nothing Clicked (\w h -> w `onClicked` do  h (Event True); return ()) 
-        notifier 
+    declareEvent Nothing Clicked (\w h -> w `onClicked` do  h (Event True); return ()) notifier 
+    declareEvent Nothing FocusOut (\w h -> w `onFocusOut` h) notifier 
     mkEditor  
         (\widget bool -> do 
             core <- readIORef coreRef
@@ -405,6 +416,7 @@ boolEditor2 label2 parameters = do
                         else do
                             toggleButtonSetActive radio2 True
                     activateEvent (castToWidget radio1) Clicked notifier
+                    activateEvent (castToWidget radio1) FocusOut notifier
                     writeIORef coreRef (Just (radio1,radio2))  
                 Just (radio1,radio2) -> 
                     if bool
@@ -428,12 +440,14 @@ stringEditor :: Editor String
 stringEditor parameters = do
     coreRef <- newIORef Nothing
     notifier <- emptyNotifier
+    declareEvent Nothing FocusOut (\w h -> w `onFocusOut` h) notifier 
     mkEditor
         (\widget string -> do 
             core <- readIORef coreRef
             case core of 
                 Nothing  -> do
                     entry   <-  entryNew
+                    activateEvent (castToWidget entry) FocusOut notifier
                     containerAdd widget entry
                     entrySetText entry string
                     writeIORef coreRef (Just entry) 
@@ -454,6 +468,7 @@ multilineStringEditor :: Editor String
 multilineStringEditor parameters = do
     coreRef <- newIORef Nothing
     notifier <- emptyNotifier
+    declareEvent Nothing FocusOut (\w h -> w `onFocusOut` h) notifier 
     mkEditor 
         (\widget string -> do 
             core <- readIORef coreRef
@@ -461,6 +476,7 @@ multilineStringEditor parameters = do
                 Nothing  -> do
                     textView   <-  textViewNew
                     containerAdd widget textView
+                    activateEvent (castToWidget textView) FocusOut notifier
                     buffer <- textViewGetBuffer textView
                     textBufferSetText buffer string
                     writeIORef coreRef (Just textView) 
@@ -486,12 +502,14 @@ intEditor :: (Double,Double,Double) -> Editor Int
 intEditor (min, max, step) parameters = do
     coreRef <- newIORef Nothing
     notifier <- emptyNotifier
+    declareEvent Nothing FocusOut (\w h -> w `onFocusOut` h) notifier 
     mkEditor  
         (\widget v -> do 
             core <- readIORef coreRef
             case core of 
                 Nothing  -> do
                     spin <- spinButtonNewWithRange min max step
+                    activateEvent (castToWidget spin) FocusOut notifier
                     containerAdd widget spin
                     spinButtonSetValue spin (fromIntegral v)
                     writeIORef coreRef (Just spin) 
@@ -530,12 +548,14 @@ staticSelectionEditor :: (Show beta, Eq beta) => [beta] -> Editor beta
 staticSelectionEditor list parameters = do
     coreRef <- newIORef Nothing
     notifier <- emptyNotifier
+    declareEvent Nothing FocusOut (\w h -> w `onFocusOut` h) notifier 
     mkEditor  
         (\widget obj -> do 
             core <- readIORef coreRef
             case core of 
                 Nothing  -> do
                     combo   <-  New.comboBoxNewText
+                    activateEvent (castToWidget combo) FocusOut notifier
                     New.comboBoxSetActive combo 1
                     mapM_ (\v -> New.comboBoxAppendText combo (show v)) list
                     containerAdd widget combo
@@ -569,6 +589,7 @@ staticMultiselectionEditor :: (Show beta, Eq beta) => [beta] -> Editor [beta]
 staticMultiselectionEditor list parameters = do
     coreRef <- newIORef Nothing
     notifier <- emptyNotifier
+    declareEvent Nothing FocusOut (\w h -> w `onFocusOut` h) notifier 
     mkEditor  
         (\widget objs -> do 
             core <- readIORef coreRef
@@ -576,6 +597,7 @@ staticMultiselectionEditor list parameters = do
                 Nothing  -> do
                     listStore <- New.listStoreNew ([]:: [alpha])
                     listView <- New.treeViewNewWithModel listStore
+                    activateEvent (castToWidget listView) FocusOut notifier
                     sel <- New.treeViewGetSelection listView
                     New.treeSelectionSetMode sel SelectionMultiple
                     renderer <- New.cellRendererTextNew
@@ -618,6 +640,7 @@ fileEditor mbFilePath action buttonName parameters = do
         (\widget handler -> do  widget `onClicked` do   
                                     handler (Event True)
                                     return ()) notifier 
+    declareEvent Nothing FocusOut (\w h -> w `onFocusOut` h) notifier 
     mkEditor  
         (\widget filePath -> do 
             core <- readIORef coreRef
@@ -635,6 +658,7 @@ fileEditor mbFilePath action buttonName parameters = do
                                 Vertical    -> do
                                     r <- vBoxNew False 1
                                     return (castToBox r)
+                    activateEvent (castToWidget box) FocusOut notifier 
                     boxPackStart box entry PackGrow 0
                     boxPackEnd box button PackNatural 0
                     containerAdd widget box
@@ -682,6 +706,8 @@ fileEditor mbFilePath action buttonName parameters = do
                 entrySetText entry relative
                 return True) 
 
+
+
 --
 -- | An editor, which opens another editor 
 --   You have to inject a value before the button can be clicked.
@@ -692,6 +718,7 @@ otherEditor func parameters = do
     notifier <- emptyNotifier
     declareEvent Nothing Clicked (\w h -> w `onClicked` do  h (Event True); return ()) notifier 
     declareEvent Nothing FocusIn (\w h -> w `onFocusIn` do  h) notifier 
+    declareEvent Nothing FocusOut (\w h -> w `onFocusOut` do  h) notifier     
     mkEditor  
         (\widget val -> do 
             core <- readIORef coreRef
@@ -700,7 +727,8 @@ otherEditor func parameters = do
                     button <- buttonNewWithLabel (getParameter paraName parameters) 
                     containerAdd widget button
                     activateEvent (castToWidget button) Clicked notifier
-                    activateEvent (castToWidget button) FocusIn notifier    
+                    activateEvent (castToWidget button) FocusIn notifier
+                    activateEvent (castToWidget button) FocusOut notifier     
                     (mkNotifier notifier) Clicked (Left (buttonHandler coreRef))
                     writeIORef coreRef (Just (button,val))  
                 Just (button, oldval) -> writeIORef coreRef (Just (button, val)))
@@ -734,6 +762,7 @@ pairEditor :: (Editor alpha, Parameters) -> (Editor beta, Parameters) -> Editor 
 pairEditor (fstEd,fstPara) (sndEd,sndPara) parameters = do
     coreRef <- newIORef Nothing
     notifier <- emptyNotifier
+    declareEvent Nothing FocusOut (\w h -> w `onFocusOut` do  h) notifier     
     mkEditor  
         (\widget (v1,v2) -> do 
             core <- readIORef coreRef
@@ -750,6 +779,7 @@ pairEditor (fstEd,fstPara) (sndEd,sndPara) parameters = do
                             return (castToBox b)
                     boxPackStart box fstFrame PackGrow 0
                     boxPackStart box sndFrame PackGrow 0
+                    activateEvent (castToWidget box) FocusOut notifier     
                     containerAdd widget box
                     inj1 v1
                     inj2 v2
@@ -778,6 +808,7 @@ maybeEditor (childEdit, childParams) positive boolLabel parameters = do
     coreRef <- newIORef Nothing
     childRef  <- newIORef Nothing
     notifier <- emptyNotifier
+    declareEvent Nothing FocusOut (\w h -> w `onFocusOut` do  h) notifier     
     mkEditor   
         (\widget mbVal -> do 
             core <- readIORef coreRef
@@ -793,6 +824,7 @@ maybeEditor (childEdit, childParams) positive boolLabel parameters = do
                             b <- vBoxNew False 1
                             return (castToBox b)
                     boxPackStart box boolFrame PackNatural 0
+                    activateEvent (castToWidget box) FocusOut notifier     
                     containerAdd widget box
                     notifierBool Clicked (Left (onClickedHandler widget coreRef childRef))
                     case mbVal of 
@@ -894,6 +926,7 @@ eitherOrEditor :: (Default alpha, Default beta) => (Editor alpha, Parameters) ->
 eitherOrEditor (leftEditor,leftParams) (rightEditor,rightParams) label2 parameters = do
     coreRef <- newIORef Nothing
     notifier <- emptyNotifier
+    declareEvent Nothing FocusOut (\w h -> w `onFocusOut` do  h) notifier     
     mkEditor  
         (\widget v -> do 
             core <- readIORef coreRef
@@ -911,6 +944,7 @@ eitherOrEditor (leftEditor,leftParams) (rightEditor,rightParams) label2 paramete
                             b <- vBoxNew False 1
                             return (castToBox b)                    
                     boxPackStart box boolFrame PackNatural 0
+                    activateEvent (castToWidget box) FocusOut notifier     
                     containerAdd widget box
                     case v of
                         Left vl -> do
@@ -991,6 +1025,7 @@ multisetEditor :: (Show alpha, Default alpha) =>
 multisetEditor (ColumnDescr showHeaders columnsDD) (singleEditor, sParams) parameters = do
     coreRef <- newIORef Nothing
     notifier <- emptyNotifier
+    declareEvent Nothing FocusOut (\w h -> w `onFocusOut` do  h) notifier     
     mkEditor  
         (\widget v -> do 
             core <- readIORef coreRef
@@ -1028,6 +1063,7 @@ multisetEditor (ColumnDescr showHeaders columnsDD) (singleEditor, sParams) param
                     boxPackStart box list PackNatural 0
                     boxPackStart box buttonBox PackNatural 0
                     boxPackEnd box frameS PackGrow 0
+                    activateEvent (castToWidget box) FocusOut notifier     
                     containerAdd widget box
                     New.listStoreClear listStore
                     mapM_ (New.listStoreAppend listStore) v

@@ -4,6 +4,10 @@
 
 module Ghf.Editor.BuildInfoEditor (
     editBuildInfo
+,   buildInfoEditor
+,   libraryEditor
+,   executableEditor
+,   executablesEditor
 ) where
 
 import Graphics.UI.Gtk
@@ -27,29 +31,77 @@ import Ghf.Core
 import Ghf.Editor.PropertyEditor hiding(synopsis)
 import qualified Ghf.Editor.PropertyEditor as PE (synopsis)
 import Ghf.GUI.ViewFrame
+import Ghf.Editor.SpecialEditors
 
 -- ------------------------------------------------------------
 -- * Build Infos
 -- ------------------------------------------------------------
 
-{--
-BuildInfo	
-    buildable :: Bool	component is buildable here
-    ccOptions :: [String]	options for C compiler
-    ldOptions :: [String]	options for linker
-    frameworks :: [String]	support frameworks for Mac OS X
-cSources :: [FilePath]	
-    hsSourceDirs :: [FilePath]	where to look for the haskell module hierarchy
-    otherModules :: [String]	non-exposed or non-main modules
-    extensions :: [Extension]	
-extraLibs :: [String]	what libraries to link with when compiling a program that uses your package
-extraLibDirs :: [String]	
-includeDirs :: [FilePath]	directories to find .h files
-includes :: [FilePath]	The .h files to be found in includeDirs
-installIncludes :: [FilePath]	.h files to install with the package
-options :: [(CompilerFlavor, [String])]	
-ghcProfOptions :: [String]
---}
+buildInfoEditor :: Maybe FilePath -> Editor BuildInfo
+buildInfoEditor fp p = do
+    (wid,inj,ext,notif) <- otherEditor (editBuildInfo fp) p
+    box      <-  vBoxNew False 1
+    textView <-  textViewNew
+    widgetSetSizeRequest textView (-1) 300
+    containerAdd box wid
+    containerAdd box textView
+    buffer <- textViewGetBuffer textView
+    let binj bi = do
+        inj bi
+        textBufferSetText buffer $showHookedBuildInfo (Just bi,[])
+    notif FocusIn $Left (changedHandler buffer ext)
+    return (castToWidget box,binj,ext,notif)
+    where 
+    changedHandler buffer ext _ = do
+        putStrLn "FocusIn"
+        mbv <- ext
+        putStrLn (show mbv)        
+        case mbv of
+            Just v -> textBufferSetText buffer $showHookedBuildInfo (Just v,[])
+            Nothing -> return ()
+        return True  
+
+libraryEditor :: Maybe FilePath -> Editor Library
+libraryEditor fp para = do
+    (wid,inj,ext,notif) <- 
+        pairEditor
+            (multisetEditor 
+                (ColumnDescr False [("",(\row -> [New.cellText := show row]))])                 
+                (fileEditor fp  FileChooserActionOpen "Select File",emptyParams), 
+                    emptyParams{direction = Just Vertical})
+            (buildInfoEditor fp, para {paraName = Just "Build Info"})
+            para{direction = Just Vertical}
+    let pinj (Library em bi) = inj (em,bi)
+    let pext = do
+        mbp <- ext
+        case mbp of
+            Nothing -> return Nothing
+            Just (em,bi) -> return (Just $Library em bi)
+    return (wid,pinj,pext,notif)   
+
+executableEditor :: Maybe FilePath -> Editor Executable
+executableEditor fp para = do
+    (wid,inj,ext,notif) <- pairEditor 
+        (pairEditor 
+            (stringEditor,emptyParams {paraName = Just "Executable Name"}) 
+            (fileEditor fp FileChooserActionOpen "Select File",emptyParams {paraName = Just "Main module"}), 
+            (emptyParams{direction = Just Vertical}))
+        (buildInfoEditor fp, emptyParams{paraName = Just "Build Info"})
+        para{direction = Just Vertical}
+    let pinj (Executable s f bi) = inj ((s,f),bi)
+    let pext = do
+        mbp <- ext
+        case mbp of
+            Nothing -> return Nothing
+            Just ((s,f),bi) -> return (Just $Executable s f bi)
+    return (wid,pinj,pext,notif)
+
+executablesEditor :: Maybe FilePath -> Editor [Executable]
+executablesEditor fp p = 
+    multisetEditor
+        (ColumnDescr False [("Executable Name",\(Executable exeName _ _) -> [New.cellText := exeName])
+                           ,("Module Path",\(Executable  _ mp _) -> [New.cellText := mp])])  
+        (executableEditor fp,emptyParams) p{shadow = Just ShadowIn}    
 
 buildInfoD :: Maybe FilePath -> [(String,[FieldDescriptionE BuildInfo])]
 buildInfoD fp = [
@@ -67,9 +119,7 @@ buildInfoD fp = [
         ,   direction = Just Vertical})  
             otherModules 
             (\ a b -> b{otherModules = a})
-            (multisetEditor 
-                (ColumnDescr False [("",(\row -> [New.cellText := row]))])
-                (fileEditor fp FileChooserActionOpen "Select file" ,emptyParams))  
+            (filesEditor fp FileChooserActionOpen "Select file")  
     ,   mkFieldE (emptyParams
         {   paraName    = Just "Where to look for the haskell module hierarchy"
         ,   PE.synopsis = Just "Root directories for the module hierarchy."
@@ -77,9 +127,7 @@ buildInfoD fp = [
         ,   direction = Just Vertical})  
             hsSourceDirs 
             (\ a b -> b{hsSourceDirs = a})
-            (multisetEditor 
-                (ColumnDescr False [("",(\row -> [New.cellText := row]))])
-                (fileEditor fp FileChooserActionSelectFolder "Select folder" ,emptyParams)) 
+            (filesEditor fp FileChooserActionSelectFolder "Select folder")
     ]),
     ("Extensions",[ 
         mkFieldE (emptyParams
@@ -88,37 +136,86 @@ buildInfoD fp = [
             extensions 
             (\ a b -> b{extensions = a})
             extensionsEditor
-{--    ]),
+    ]),
     ("Options",[ 
         mkFieldE (emptyParams
-        {   paraName    = Just "Additional options for GHC when built with profiling"})  
+        {   paraName    = Just "Options for haskell compilers"
+        ,   direction = Just Vertical})  
+            options 
+            (\ a b -> b{options = a})
+            (multisetEditor 
+                (ColumnDescr True [("Compiler Flavor",\(cv,_) -> [New.cellText := show cv])
+                                   ,("Options",\(_,op) -> [New.cellText := show op])])  
+                ((pairEditor
+                    (compilerFlavorEditor,emptyParams)
+                    (stringsEditor,emptyParams)),emptyParams
+                        {   direction = Just Vertical
+                        ,   shadow   = Just ShadowIn}))
+     ,  mkFieldE (emptyParams
+        {   paraName    = Just "Additional options for GHC when built with profiling"
+        ,   direction = Just Vertical})  
             ghcProfOptions 
             (\ a b -> b{ghcProfOptions = a})
-            stringEditor    
+            stringsEditor    
     ,   mkFieldE (emptyParams
-        {   paraName    = Just "Options for C compiler"})  
+        {   paraName    = Just "Options for C compiler"
+        ,   direction = Just Vertical})  
             ccOptions 
             (\ a b -> b{ccOptions = a})
-            stringEditor    
+            stringsEditor 
     ,   mkFieldE (emptyParams
-        {   paraName    = Just "Options for linker"})  
+        {   paraName    = Just "Options for linker"
+        ,   direction = Just Vertical})  
             ldOptions 
             (\ a b -> b{ldOptions = a})
-            stringEditor    --}
-
-    ])]
-{--    ("C-Options",[ 
-    ,   mkFieldE (emptyParams
-        {   paraName    = Just "Support frameworks for Mac OS X"})  
-            frameworks 
-            (\ a b -> b{frameworks = a})
-            multisetEditor (stringEditor,emptyParams) p{shadow = Just ShadowIn}
-    ,   mkFieldE (emptyParams
-        {   paraName    = Just "Support frameworks for Mac OS X"})  
+            stringsEditor
+    ]),
+    ("C",[ 
+         mkFieldE (emptyParams
+        {   paraName    = Just "A list of header files already installed on the system"
+        ,   direction = Just Vertical})  
+            includes 
+            (\ a b -> b{includes = a})
+            stringsEditor  
+     ,   mkFieldE (emptyParams
+        {   paraName    = Just "A list of header files from this package"
+        ,   direction = Just Vertical})  
+            installIncludes 
+            (\ a b -> b{installIncludes = a})
+            (filesEditor fp FileChooserActionOpen "Select File")
+     ,   mkFieldE (emptyParams
+        {   paraName    = Just "A list of directories to search for header files"  
+        ,   direction = Just Vertical})  
+            includeDirs 
+            (\ a b -> b{includeDirs = a})
+            (filesEditor fp FileChooserActionSelectFolder "Select Folder")
+     ,   mkFieldE (emptyParams
+        {   paraName    = Just "A list of C source files to be compiled,linked with the Haskell files."  
+        ,   direction = Just Vertical})  
             cSources 
             (\ a b -> b{cSources = a})
-            multisetEditor (fileEditor,emptyParams) p{shadow = Just ShadowIn}    
-    ])]]--}
+            (filesEditor fp FileChooserActionOpen "Select file")
+     ,   mkFieldE (emptyParams
+        {   paraName    = Just "A list of extra libraries to link with"
+        ,   direction = Just Vertical})  
+            extraLibs 
+            (\ a b -> b{extraLibs = a})
+            stringsEditor 
+     ,   mkFieldE (emptyParams
+        {   paraName    = Just "A list of directories to search for libraries."  
+        ,   direction = Just Vertical})  
+            extraLibDirs
+            (\ a b -> b{extraLibDirs = a})
+            (filesEditor fp FileChooserActionSelectFolder "Select Folder")
+   ]),
+    ("Mac OS X",[ 
+        mkFieldE (emptyParams
+        {   paraName    = Just "Support frameworks for Mac OS X"
+        ,   direction = Just Vertical})  
+            cSources 
+            (\ a b -> b{cSources = a})
+            stringsEditor  
+    ])]
 
 
 editBuildInfo :: Maybe FilePath -> BuildInfo -> String -> IO (Maybe BuildInfo)
@@ -178,45 +275,7 @@ editBuildInfo' buildInfo contextStr buildInfoD = do
     res <- readIORef resRef 
     return (res)
 
-extensionsL :: [Extension]
-extensionsL = [
-        OverlappingInstances
-   ,    UndecidableInstances
-   ,    IncoherentInstances
-   ,    RecursiveDo
-   ,    ParallelListComp
-   ,    MultiParamTypeClasses
-   ,    NoMonomorphismRestriction
-   ,    FunctionalDependencies
-   ,    Rank2Types
-   ,    RankNTypes
-   ,    PolymorphicComponents
-   ,    ExistentialQuantification
-   ,    ScopedTypeVariables
-   ,    ImplicitParams
-   ,    FlexibleContexts
-   ,    FlexibleInstances
-   ,    EmptyDataDecls
-   ,    CPP
-   ,    BangPatterns
-   ,    TypeSynonymInstances
-   ,    TemplateHaskell
-   ,    ForeignFunctionInterface
-   ,    InlinePhase
-   ,    ContextStack
-   ,    Arrows
-   ,    Generics
-   ,    NoImplicitPrelude
-   ,    NamedFieldPuns
-   ,    PatternGuards
-   ,    GeneralizedNewtypeDeriving
-   ,    ExtensibleRecords
-   ,    RestrictedTypeSynonyms
-   ,    HereDocuments]
 
-
-extensionsEditor :: Editor [Extension]
-extensionsEditor = staticMultiselectionEditor extensionsL
 
 
 
