@@ -248,8 +248,13 @@ editPackage' packageDir packageD packageDD ghfR   =
                     packageDD
         let (widgets, setInjs, getExts, notifiers) = 
                 foldl (\ (w,i,e,n) (w2,i2,e2,n2) -> (w ++ w2, i ++ i2, e ++ e2, n ++ n2)) ([],[],[],[]) res
+        let fieldNames = map (\fd -> case paraName (parameters fd) of
+                                            Just s -> s
+                                            Nothing -> "Unnamed")
+                            $concat
+                                $map snd packageDD    
         ok `onClicked` (do
-            mbNewPackage <- validate packageD getExts
+            mbNewPackage <- extractAndValidate packageD getExts fieldNames
             case mbNewPackage of 
                 Nothing -> return ()
                 Just newPackage -> do

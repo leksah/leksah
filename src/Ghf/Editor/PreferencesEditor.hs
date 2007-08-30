@@ -33,7 +33,7 @@ import Ghf.Editor.SourceEditor
 import Ghf.GUI.ViewFrame
 import Ghf.GUI.Keymap
 import Ghf.GUI.Menu(actions,makeMenu,menuDescription)
-import Ghf.Editor.PropertyEditor
+import Ghf.Editor.PropertyEditor hiding(parameters)
 import Ghf.PrinterParser
 
 type Applicator alpha = alpha -> GhfAction
@@ -74,8 +74,18 @@ mkField parameters printer parser getter setter editor applicator =
             val <- parser
             return (setter val dat)))
         (\ dat -> do
-            (widget, inj,ext,notiRef) <- editor parameters
+            (widget, inj,ext,noti) <- editor parameters
             inj (getter dat)
+            noti FocusOut (Left (\e -> do
+                putStrLn "Handling Focus out"
+                v <- ext
+                case v of
+                    Just _ -> do
+                        widgetModifyFg widget StateNormal (Color 0 0 0)
+                        return False
+                    Nothing -> do
+                        widgetModifyFg widget StateNormal (Color 65535 65535 0)
+                        return False))              
             return (widget,
                     (\a -> inj (getter a)), 
                     (\a -> do 
@@ -83,7 +93,7 @@ mkField parameters printer parser getter setter editor applicator =
                         case b of
                             Just b -> return (Just (setter b a))
                             Nothing -> return Nothing),
-                    notiRef))
+                    noti))
         (\ newDat oldDat -> do --appicator
             let newField = getter newDat
             let oldField = getter oldDat
@@ -236,9 +246,13 @@ editPrefs' prefs prefsDesc ghfR  = do
     boxPackStart bb cancel PackNatural 0
     resList <- mapM (\ (FD _ _ _ editorF _) -> editorF prefs) prefsDesc
     let (widgets, setInjs, getExts,_) = unzip4 resList 
+    let fieldNames = map (\fd -> case paraName (parameters fd) of
+                                        Just s -> s
+                                        Nothing -> "Unnamed")
+                            prefsDesc    
     mapM_ (\ sb -> boxPackStart vb sb PackGrow 0) widgets
     ok `onClicked` (do
-        mbNewPrefs <- validate prefs getExts
+        mbNewPrefs <- extractAndValidate prefs getExts fieldNames
         case mbNewPrefs of 
             Nothing -> return ()
             Just newPrefs -> do
@@ -248,7 +262,7 @@ editPrefs' prefs prefsDesc ghfR  = do
                 runReaderT (modifyGhf_ (\ghf -> return (ghf{prefs = newPrefs}))) ghfR
                 widgetDestroy dialog)
     apply `onClicked` (do
-        mbNewPrefs <- validate prefs getExts
+        mbNewPrefs <- extractAndValidate prefs getExts fieldNames
         case mbNewPrefs of 
             Nothing -> return ()
             Just newPrefs -> do

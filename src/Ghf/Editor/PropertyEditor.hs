@@ -22,7 +22,7 @@ module Ghf.Editor.PropertyEditor (
 ,   emptyParams
 ,   getParameter
 
-,   validate
+,   extractAndValidate
 
 ,   boolEditor
 ,   stringEditor
@@ -193,19 +193,22 @@ instance Default Parameters where
 --
 -- | Convenience method to validate and extract fields
 --
-validate :: alpha -> [alpha -> Extractor alpha] -> IO (Maybe alpha) 
-validate val getExts = do
-    newVal <- foldM (\ a b -> case a of 
-                                Just a -> b a
-                                Nothing -> return Nothing) (Just val) getExts
-    if isNothing newVal 
-        then do
+extractAndValidate :: alpha -> [alpha -> Extractor alpha] -> [String] -> IO (Maybe alpha) 
+extractAndValidate val getExts fieldNames = do
+    (newVal,errors) <- foldM (\ (val,errs) (ext,fn) -> do
+        extVal <- ext val
+        case extVal of
+            Just nval -> return (nval,errs)
+            Nothing -> return (val, (' ' : fn) : errs)) 
+                (val,[]) (zip getExts fieldNames)
+    if null errors 
+        then return (Just newVal)
+        else do
             md <- messageDialogNew Nothing [] MessageWarning ButtonsClose
-                        $ "Fields have invalid value. Please correct"
+                        $ "The follwoing fields have invalid values." ++ concat (reverse errors)
             dialogRun md
             widgetDestroy md
             return Nothing
-        else return newVal 
 
 -- ------------------------------------------------------------
 -- * Implementation of notifications
@@ -231,12 +234,12 @@ emptyNotifier        =   newIORef(Map.empty)
 --
 -- | Declare that the event can be thrown from this editor
 --
-declareEvent :: Maybe Widget -> EventSelector -> RegFunc -> NotifierSt -> IO() 
-declareEvent mbWidget eventSel regFunc notifierState = do
+declareEvent :: EventSelector -> RegFunc -> NotifierSt -> IO() 
+declareEvent eventSel regFunc notifierState = do
     noti <- readIORef notifierState     
     case Map.lookup eventSel noti of
         Nothing -> do
-             let noti2 = Map.insert eventSel (mbWidget, regFunc, Nothing,[]) noti
+             let noti2 = Map.insert eventSel (Nothing, regFunc, Nothing,[]) noti
              writeIORef notifierState noti2
         Just _ -> error $"editor has already declared event " ++ show eventSel  
 
@@ -252,12 +255,33 @@ activateEvent widget eventSel notifierState = do
             cid <- registerFunc widget (\ e -> do
                 noti <- readIORef notifierState
                 case Map.lookup eventSel noti of
-                    Nothing -> return True
-                    Just (_,_,_,[]) -> return True
+                    Nothing -> return False
+                    Just (_,_,_,[]) -> return False
                     Just (_,_,_,handlers2) -> do
                         boolList <- mapM (\f -> f e) (map snd handlers2)
                         return (foldl (&&) True boolList))              
             let noti2 = Map.insert eventSel (Just widget,registerFunc,Just cid,handlers) noti
+            writeIORef notifierState noti2
+        Just _ -> error $"editor has already been activated " ++ show eventSel
+
+--
+-- | Propagate the event with the selector from notifier to notifierst
+--        
+propagateEvent :: EventSelector -> Notifier -> NotifierSt -> IO()
+propagateEvent eventSel notiFrom notifierState = do
+    noti <- readIORef notifierState     
+    case Map.lookup eventSel noti of
+        Nothing -> error $"can't propagte event which is not activated " ++ show eventSel   
+        Just (mbWidget,registerFunc,Nothing,handlers) -> do
+            cid <- notiFrom eventSel (Left (\ e -> do
+                noti <- readIORef notifierState
+                case Map.lookup eventSel noti of
+                    Nothing -> return False
+                    Just (_,_,_,[]) -> return False
+                    Just (_,_,_,handlers2) -> do
+                        boolList <- mapM (\f -> f e) (map snd handlers2)
+                        return (foldl (&&) True boolList)))              
+            let noti2 = Map.insert eventSel (mbWidget,registerFunc,Nothing,handlers) noti
             writeIORef notifierState noti2
         Just _ -> error $"editor has already been activated " ++ show eventSel
 
@@ -311,15 +335,20 @@ mkFieldE parameters getter setter editor =
             (widget, inj,ext,noti) <- editor parameters
             inj (getter dat)
             noti FocusOut (Left (\e -> do
-                putStrLn "Handling Focus out"
                 v <- ext
                 case v of
                     Just _ -> do
-                        widgetModifyFg widget StateNormal (Color 0 0 0)
                         return False
                     Nothing -> do
-                        widgetModifyFg widget StateNormal (Color 65535 65535 0)
-                        return False))              
+                        putStrLn "Validation Failure"
+                        let message = case paraName parameters of
+                                        Just s -> "in field " ++ s
+                                        Nothing -> "in unnamed field" 
+                        dia <- messageDialogNew Nothing [] MessageWarning ButtonsClose 
+                            ("Validation Failure " ++ message) 
+                        dialogRun dia 
+                        widgetDestroy dia
+                        return False))          
             return (widget,
                     (\a -> inj (getter a)), 
                     (\a -> do 
@@ -367,8 +396,8 @@ boolEditor :: Editor Bool
 boolEditor parameters = do
     coreRef <- newIORef Nothing
     notifier <- emptyNotifier
-    declareEvent Nothing Clicked (\w h -> w `onClicked` do  h (Event True); return ()) notifier 
-    declareEvent Nothing FocusOut (\w h -> w `onFocusOut` h) notifier 
+    declareEvent Clicked (\w h -> w `onClicked` do  h (Event True); return ()) notifier 
+    declareEvent FocusOut (\w h -> w `onFocusOut` h) notifier 
     mkEditor  
         (\widget bool -> do 
             core <- readIORef coreRef
@@ -397,8 +426,8 @@ boolEditor2 :: String -> Editor Bool
 boolEditor2 label2 parameters = do
     coreRef <- newIORef Nothing
     notifier <- emptyNotifier
-    declareEvent Nothing Clicked (\w h -> w `onClicked` do  h (Event True); return ()) notifier 
-    declareEvent Nothing FocusOut (\w h -> w `onFocusOut` h) notifier 
+    declareEvent Clicked (\w h -> w `onClicked` do  h (Event True); return ()) notifier 
+    declareEvent FocusOut (\w h -> w `onFocusOut` h) notifier 
     mkEditor  
         (\widget bool -> do 
             core <- readIORef coreRef
@@ -440,7 +469,7 @@ stringEditor :: Editor String
 stringEditor parameters = do
     coreRef <- newIORef Nothing
     notifier <- emptyNotifier
-    declareEvent Nothing FocusOut (\w h -> w `onFocusOut` h) notifier 
+    declareEvent FocusOut (\w h -> w `onFocusOut` h) notifier 
     mkEditor
         (\widget string -> do 
             core <- readIORef coreRef
@@ -468,7 +497,7 @@ multilineStringEditor :: Editor String
 multilineStringEditor parameters = do
     coreRef <- newIORef Nothing
     notifier <- emptyNotifier
-    declareEvent Nothing FocusOut (\w h -> w `onFocusOut` h) notifier 
+    declareEvent FocusOut (\w h -> w `onFocusOut` h) notifier 
     mkEditor 
         (\widget string -> do 
             core <- readIORef coreRef
@@ -502,7 +531,7 @@ intEditor :: (Double,Double,Double) -> Editor Int
 intEditor (min, max, step) parameters = do
     coreRef <- newIORef Nothing
     notifier <- emptyNotifier
-    declareEvent Nothing FocusOut (\w h -> w `onFocusOut` h) notifier 
+    declareEvent FocusOut (\w h -> w `onFocusOut` h) notifier 
     mkEditor  
         (\widget v -> do 
             core <- readIORef coreRef
@@ -548,7 +577,7 @@ staticSelectionEditor :: (Show beta, Eq beta) => [beta] -> Editor beta
 staticSelectionEditor list parameters = do
     coreRef <- newIORef Nothing
     notifier <- emptyNotifier
-    declareEvent Nothing FocusOut (\w h -> w `onFocusOut` h) notifier 
+    declareEvent FocusOut (\w h -> w `onFocusOut` h) notifier 
     mkEditor  
         (\widget obj -> do 
             core <- readIORef coreRef
@@ -589,7 +618,7 @@ staticMultiselectionEditor :: (Show beta, Eq beta) => [beta] -> Editor [beta]
 staticMultiselectionEditor list parameters = do
     coreRef <- newIORef Nothing
     notifier <- emptyNotifier
-    declareEvent Nothing FocusOut (\w h -> w `onFocusOut` h) notifier 
+    declareEvent FocusOut (\w h -> w `onFocusOut` h) notifier 
     mkEditor  
         (\widget objs -> do 
             core <- readIORef coreRef
@@ -636,11 +665,11 @@ fileEditor :: Maybe FilePath -> FileChooserAction -> String -> Editor FilePath
 fileEditor mbFilePath action buttonName parameters = do
     coreRef <- newIORef Nothing
     notifier <- emptyNotifier
-    declareEvent Nothing Clicked 
+    declareEvent Clicked 
         (\widget handler -> do  widget `onClicked` do   
                                     handler (Event True)
                                     return ()) notifier 
-    declareEvent Nothing FocusOut (\w h -> w `onFocusOut` h) notifier 
+    declareEvent FocusOut (\w h -> w `onFocusOut` h) notifier 
     mkEditor  
         (\widget filePath -> do 
             core <- readIORef coreRef
@@ -658,7 +687,7 @@ fileEditor mbFilePath action buttonName parameters = do
                                 Vertical    -> do
                                     r <- vBoxNew False 1
                                     return (castToBox r)
-                    activateEvent (castToWidget box) FocusOut notifier 
+                    activateEvent (castToWidget button) FocusOut notifier 
                     boxPackStart box entry PackGrow 0
                     boxPackEnd box button PackNatural 0
                     containerAdd widget box
@@ -716,9 +745,9 @@ otherEditor :: (alpha  -> String -> IO (Maybe alpha)) -> Editor alpha
 otherEditor func parameters = do
     coreRef <- newIORef Nothing
     notifier <- emptyNotifier
-    declareEvent Nothing Clicked (\w h -> w `onClicked` do  h (Event True); return ()) notifier 
-    declareEvent Nothing FocusIn (\w h -> w `onFocusIn` do  h) notifier 
-    declareEvent Nothing FocusOut (\w h -> w `onFocusOut` do  h) notifier     
+    declareEvent Clicked (\w h -> w `onClicked` do  h (Event True); return ()) notifier 
+    declareEvent FocusIn (\w h -> w `onFocusIn` do  h) notifier 
+    declareEvent FocusOut (\w h -> w `onFocusOut` do  h) notifier     
     mkEditor  
         (\widget val -> do 
             core <- readIORef coreRef
@@ -762,14 +791,14 @@ pairEditor :: (Editor alpha, Parameters) -> (Editor beta, Parameters) -> Editor 
 pairEditor (fstEd,fstPara) (sndEd,sndPara) parameters = do
     coreRef <- newIORef Nothing
     notifier <- emptyNotifier
-    declareEvent Nothing FocusOut (\w h -> w `onFocusOut` do  h) notifier     
+    declareEvent FocusOut (\w h -> w `onFocusOut` do  h) notifier     
     mkEditor  
         (\widget (v1,v2) -> do 
             core <- readIORef coreRef
             case core of 
                 Nothing  -> do
-                    fst@(fstFrame,inj1,ext1,notiRef1) <- fstEd fstPara
-                    snd@(sndFrame,inj2,ext2,notiRef2) <- sndEd sndPara
+                    fst@(fstFrame,inj1,ext1,noti1) <- fstEd fstPara
+                    snd@(sndFrame,inj2,ext2,noti2) <- sndEd sndPara
                     box <- case getParameter direction parameters of
                         Horizontal -> do 
                             b <- hBoxNew False 1
@@ -779,8 +808,8 @@ pairEditor (fstEd,fstPara) (sndEd,sndPara) parameters = do
                             return (castToBox b)
                     boxPackStart box fstFrame PackGrow 0
                     boxPackStart box sndFrame PackGrow 0
-                    activateEvent (castToWidget box) FocusOut notifier     
                     containerAdd widget box
+                    propagateEvent FocusOut noti2 notifier
                     inj1 v1
                     inj2 v2
                     writeIORef coreRef (Just (fst,snd)) 
@@ -808,7 +837,7 @@ maybeEditor (childEdit, childParams) positive boolLabel parameters = do
     coreRef <- newIORef Nothing
     childRef  <- newIORef Nothing
     notifier <- emptyNotifier
-    declareEvent Nothing FocusOut (\w h -> w `onFocusOut` do  h) notifier     
+    declareEvent FocusOut (\w h -> w `onFocusOut` do  h) notifier     
     mkEditor   
         (\widget mbVal -> do 
             core <- readIORef coreRef
@@ -816,6 +845,7 @@ maybeEditor (childEdit, childParams) positive boolLabel parameters = do
                 Nothing  -> do
                     be@(boolFrame,inj1,ext1,notifierBool) <- boolEditor 
                             emptyParams {paraName = Just boolLabel} 
+                    propagateEvent FocusOut notifierBool notifier
                     box <- case getParameter direction parameters of
                         Horizontal -> do 
                             b <- hBoxNew False 1
@@ -824,14 +854,13 @@ maybeEditor (childEdit, childParams) positive boolLabel parameters = do
                             b <- vBoxNew False 1
                             return (castToBox b)
                     boxPackStart box boolFrame PackNatural 0
-                    activateEvent (castToWidget box) FocusOut notifier     
                     containerAdd widget box
-                    notifierBool Clicked (Left (onClickedHandler widget coreRef childRef))
+                    notifierBool Clicked (Left (onClickedHandler widget coreRef childRef notifier))
                     case mbVal of 
                         Nothing -> do
                             inj1 (if positive then False else True)
                         Just val -> do
-                            (childWidget,inj2,_,_) <- getChildEditor childRef childEdit childParams
+                            (childWidget,inj2,ext2,noti2) <- getChildEditor childRef childEdit childParams notifier
                             boxPackEnd box childWidget PackNatural 0
                             widgetShowAll childWidget
                             inj1 (if positive then True else False)
@@ -843,18 +872,18 @@ maybeEditor (childEdit, childParams) positive boolLabel parameters = do
                         Nothing -> do
                             if hasChild
                                 then do
-                                    (childWidget,_,_,_) <- getChildEditor childRef childEdit childParams
+                                    (childWidget,_,_,_) <- getChildEditor childRef childEdit childParams notifier
                                     inj1 (if positive then False else True)
                                     widgetHideAll childWidget
                                 else inj1 (if positive then False else True)
                         Just val -> do
                             if hasChild
                                 then do
-                                    (childWidget,inj2,_,_) <- getChildEditor childRef childEdit childParams
+                                    (childWidget,inj2,_,_) <- getChildEditor childRef childEdit childParams notifier
                                     widgetShowAll childWidget
                                     inj2 val
                                 else do
-                                    (childWidget,inj2,_,_) <- getChildEditor childRef childEdit childParams
+                                    (childWidget,inj2,_,_) <- getChildEditor childRef childEdit childParams notifier
                                     boxPackEnd box childWidget PackNatural 0
                                     widgetShowAll childWidget
                                     inj2 val)
@@ -867,16 +896,16 @@ maybeEditor (childEdit, childParams) positive boolLabel parameters = do
                     case bool of
                         Nothing -> return Nothing
                         Just bv | bv == positive -> do
-                            (_,_,ext2,_) <- getChildEditor childRef childEdit childParams
+                            (_,_,ext2,_) <- getChildEditor childRef childEdit childParams notifier
                             value <- ext2
                             case value of
                                 Nothing -> return Nothing
                                 Just value -> return (Just (Just value))
                         otherwise -> return (Just Nothing))
-        (mkNotifier notifier)  
+        (mkNotifier notifier)
         parameters 
     where
-    onClickedHandler widget coreRef childRef = (\ event -> do 
+    onClickedHandler widget coreRef childRef notifier = (\ event -> do 
         core <- readIORef coreRef
         case core of 
             Nothing  -> error "Impossible"
@@ -889,29 +918,30 @@ maybeEditor (childEdit, childParams) positive boolLabel parameters = do
                                 hasChild <- hasChildEditor childRef
                                 if hasChild 
                                     then do
-                                        (childWidget,_,_,_) <- getChildEditor childRef childEdit childParams
+                                        (childWidget,_,_,_) <- getChildEditor childRef childEdit childParams notifier
                                         widgetHideAll childWidget
                                     else return () 
                             else do     
                                 hasChild <- hasChildEditor childRef
                                 if hasChild 
                                     then do
-                                        (childWidget,_,_,_) <- getChildEditor childRef childEdit childParams
+                                        (childWidget,_,_,_) <- getChildEditor childRef childEdit childParams notifier 
                                         widgetShowAll childWidget  
                                     else do
-                                        (childWidget,inj2,_,_) <- getChildEditor childRef childEdit childParams
+                                        (childWidget,inj2,_,_) <- getChildEditor childRef childEdit childParams notifier
                                         boxPackEnd vBox childWidget PackNatural 0
                                         inj2 getDefault 
                                         widgetShowAll childWidget
                     Nothing -> return ()
                 return True) 
-    getChildEditor childRef childEditor childLabel =  do
+    getChildEditor childRef childEditor childParams notifier =  do
         mb <- readIORef childRef
         case mb of
             Just editor -> return editor
             Nothing -> do
                 let val = childEditor 
-                editor <- childEditor childLabel
+                editor@(_,_,_,cnoti) <- childEditor childParams
+                propagateEvent FocusOut cnoti notifier
                 writeIORef childRef (Just editor)
                 return editor
     hasChildEditor childRef =  do
@@ -926,16 +956,18 @@ eitherOrEditor :: (Default alpha, Default beta) => (Editor alpha, Parameters) ->
 eitherOrEditor (leftEditor,leftParams) (rightEditor,rightParams) label2 parameters = do
     coreRef <- newIORef Nothing
     notifier <- emptyNotifier
-    declareEvent Nothing FocusOut (\w h -> w `onFocusOut` do  h) notifier     
+    declareEvent FocusOut (\w h -> w `onFocusOut` do  h) notifier     
     mkEditor  
         (\widget v -> do 
             core <- readIORef coreRef
             case core of 
                 Nothing  -> do
-                    be@(boolFrame,inj1,ext1,notiRef1) <- boolEditor2  label2 parameters
-                    le@(leftFrame,inj2,ext2,notiRef2) <- leftEditor leftParams
-                    re@(rightFrame,inj3,ext3,notiRef3) <- rightEditor rightParams
-                    notiRef1 Clicked (Left (onClickedHandler widget coreRef))
+                    be@(boolFrame,inj1,ext1,noti1) <- boolEditor2  label2 parameters
+                    le@(leftFrame,inj2,ext2,noti2) <- leftEditor leftParams
+                    re@(rightFrame,inj3,ext3,noti3) <- rightEditor rightParams
+                    noti1 Clicked (Left (onClickedHandler widget coreRef))
+                    propagateEvent FocusOut noti2 notifier
+                    propagateEvent FocusOut noti3 notifier
                     box <- case getParameter direction parameters of
                         Horizontal -> do 
                             b <- hBoxNew False 1
@@ -1025,7 +1057,7 @@ multisetEditor :: (Show alpha, Default alpha) =>
 multisetEditor (ColumnDescr showHeaders columnsDD) (singleEditor, sParams) parameters = do
     coreRef <- newIORef Nothing
     notifier <- emptyNotifier
-    declareEvent Nothing FocusOut (\w h -> w `onFocusOut` do  h) notifier     
+    declareEvent FocusOut (\w h -> w `onFocusOut` do  h) notifier     
     mkEditor  
         (\widget v -> do 
             core <- readIORef coreRef
@@ -1063,7 +1095,7 @@ multisetEditor (ColumnDescr showHeaders columnsDD) (singleEditor, sParams) param
                     boxPackStart box list PackNatural 0
                     boxPackStart box buttonBox PackNatural 0
                     boxPackEnd box frameS PackGrow 0
-                    activateEvent (castToWidget box) FocusOut notifier     
+                    activateEvent (castToWidget list) FocusOut notifier     
                     containerAdd widget box
                     New.listStoreClear listStore
                     mapM_ (New.listStoreAppend listStore) v

@@ -48,7 +48,10 @@ packageEditor para = do
         mbp <- ext
         case mbp of
             Nothing -> return Nothing
-            Just (n,v) -> return (Just $PackageIdentifier n v)
+            Just (n,v) -> do
+                if null n 
+                    then return Nothing
+                    else return (Just $PackageIdentifier n v)
     return (wid,pinj,pext,notif)   
 
 testedWidthEditor :: Editor [(CompilerFlavor, VersionRange)]

@@ -251,8 +251,13 @@ editBuildInfo' buildInfo contextStr buildInfoD = do
                 buildInfoD
     let (widgets, setInjs, getExts, notifiers) = 
             foldl (\ (w,i,e,n) (w2,i2,e2,n2) -> (w ++ w2, i ++ i2, e ++ e2, n ++ n2)) ([],[],[],[]) res
+    let fieldNames = map (\fd -> case paraName (parameters fd) of
+                                        Just s -> s
+                                        Nothing -> "Unnamed")
+                        $concat
+                            $map snd buildInfoD    
     ok `onClicked` (do
-        mbNewBuildInfo <- validate buildInfo getExts
+        mbNewBuildInfo <- extractAndValidate buildInfo getExts fieldNames
         case mbNewBuildInfo of 
             Nothing -> do
                 putStrLn "Cant't validate build info" 
