@@ -29,6 +29,7 @@ import qualified Ghf.Editor.PropertyEditor as PE (synopsis)
 import Ghf.GUI.ViewFrame
 import Ghf.Editor.BuildInfoEditor
 import Ghf.Editor.SpecialEditors
+import Ghf.Utilities.File
 
 standardSetup = "#!/usr/bin/runhaskell \n\
 \> module Main where\n\
@@ -64,21 +65,22 @@ packageNew = do
     case mbDirName of
         Nothing -> return ()
         Just dirName -> do
-            lift $do
+            modules <- lift $do
                 putStrLn dirName
-                setCurrentDirectory dirName
+                --setCurrentDirectory dirName
                 b1 <- doesFileExist (dirName ++ "Setup.hs")
                 b2 <- doesFileExist (dirName ++ "Setup.lhs")   
                 if  b1 || b2  
                     then putStrLn "Setup.(l)hs already exist"
-                    else writeFile (dirName ++ "/Setup.lhs") standardSetup  
-            editPackage emptyPackageDescription dirName      
+                    else writeFile (dirName ++ "/Setup.lhs") standardSetup 
+                allModules dirName 
+            editPackage emptyPackageDescription dirName modules      
             return ()
 
 type PDescr = [(String,[FieldDescriptionE PackageDescription])]
 
-packageDD :: FilePath -> PDescr
-packageDD fp = [
+packageDD :: FilePath -> [String] -> PDescr
+packageDD fp modules = [
     ("Description -1-", [
         mkFieldE (emptyParams
             {   paraName = Just "Package Identifier"}) 
@@ -198,7 +200,7 @@ packageDD fp = [
         ,   direction   = Just Vertical}) 
             library 
             (\ a b -> b{library  = a})
-            (maybeEditor (libraryEditor (Just fp),emptyParams{paraName = Just "Specify exported modules"}) True
+            (maybeEditor (libraryEditor (Just fp) modules,emptyParams{paraName = Just "Specify exported modules"}) True
                 "Does this package contain a library?") 
     ]),
     ("Executables",[
@@ -208,14 +210,14 @@ packageDD fp = [
         ,   direction   = Just Vertical}) 
             executables 
             (\ a b -> b{executables = a})
-            (executablesEditor (Just fp))
+            (executablesEditor (Just fp) modules)
     ])]     
 
 
-editPackage :: PackageDescription -> FilePath -> GhfAction
-editPackage packageD packageDir = do
+editPackage :: PackageDescription -> FilePath -> [String] -> GhfAction
+editPackage packageD packageDir modules = do
     ghfR <- ask
-    res <- lift $editPackage' packageDir packageD (packageDD packageDir) ghfR 
+    res <- lift $editPackage' packageDir packageD (packageDD packageDir modules) ghfR 
     lift $putStrLn $show res
 
 editPackage' :: String -> PackageDescription -> PDescr -> GhfRef -> IO ()

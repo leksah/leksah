@@ -37,9 +37,9 @@ import Ghf.Editor.SpecialEditors
 -- * Build Infos
 -- ------------------------------------------------------------
 
-buildInfoEditor :: Maybe FilePath -> Editor BuildInfo
-buildInfoEditor fp p = do
-    (wid,inj,ext,notif) <- otherEditor (editBuildInfo fp) p
+buildInfoEditor :: Maybe FilePath -> [String] -> Editor BuildInfo
+buildInfoEditor fp modules p = do
+    (wid,inj,ext,notif) <- otherEditor (editBuildInfo fp modules) p
     box      <-  vBoxNew False 1
     textView <-  textViewNew
     widgetSetSizeRequest textView (-1) 300
@@ -61,15 +61,12 @@ buildInfoEditor fp p = do
             Nothing -> return ()
         return True  
 
-libraryEditor :: Maybe FilePath -> Editor Library
-libraryEditor fp para = do
+libraryEditor :: Maybe FilePath -> [String] -> Editor Library
+libraryEditor fp modules para = do
     (wid,inj,ext,notif) <- 
         pairEditor
-            (multisetEditor 
-                (ColumnDescr False [("",(\row -> [New.cellText := show row]))])                 
-                (fileEditor fp  FileChooserActionOpen "Select File",emptyParams), 
-                    emptyParams{direction = Just Vertical})
-            (buildInfoEditor fp, para {paraName = Just "Build Info"})
+            (modulesEditor modules, para {paraName = Just "Exposed Modules"})           
+            (buildInfoEditor fp modules, para {paraName = Just "Build Info"})
             para{direction = Just Vertical}
     let pinj (Library em bi) = inj (em,bi)
     let pext = do
@@ -79,14 +76,21 @@ libraryEditor fp para = do
             Just (em,bi) -> return (Just $Library em bi)
     return (wid,pinj,pext,notif)   
 
-executableEditor :: Maybe FilePath -> Editor Executable
-executableEditor fp para = do
+modulesEditor :: [String] -> Editor [String]
+modulesEditor modules = staticMultiselectionEditor modules
+
+moduleEditor :: [String] -> Editor String
+moduleEditor modules = staticSelectionEditor modules
+
+
+executableEditor :: Maybe FilePath -> [String] -> Editor Executable
+executableEditor fp modules para = do
     (wid,inj,ext,notif) <- pairEditor 
         (pairEditor 
             (stringEditor,emptyParams {paraName = Just "Executable Name"}) 
             (fileEditor fp FileChooserActionOpen "Select File",emptyParams {paraName = Just "Main module"}), 
             (emptyParams{direction = Just Vertical}))
-        (buildInfoEditor fp, emptyParams{paraName = Just "Build Info"})
+        (buildInfoEditor fp modules, emptyParams{paraName = Just "Build Info"})
         para{direction = Just Vertical}
     let pinj (Executable s f bi) = inj ((s,f),bi)
     let pext = do
@@ -96,15 +100,15 @@ executableEditor fp para = do
             Just ((s,f),bi) -> return (Just $Executable s f bi)
     return (wid,pinj,pext,notif)
 
-executablesEditor :: Maybe FilePath -> Editor [Executable]
-executablesEditor fp p = 
+executablesEditor :: Maybe FilePath -> [String] -> Editor [Executable]
+executablesEditor fp modules p = 
     multisetEditor
         (ColumnDescr False [("Executable Name",\(Executable exeName _ _) -> [New.cellText := exeName])
                            ,("Module Path",\(Executable  _ mp _) -> [New.cellText := mp])])  
-        (executableEditor fp,emptyParams) p{shadow = Just ShadowIn}    
+        (executableEditor fp modules ,emptyParams) p{shadow = Just ShadowIn}    
 
-buildInfoD :: Maybe FilePath -> [(String,[FieldDescriptionE BuildInfo])]
-buildInfoD fp = [
+buildInfoD :: Maybe FilePath -> [String] -> [(String,[FieldDescriptionE BuildInfo])]
+buildInfoD fp modules = [
     ("Description", [
         mkFieldE (emptyParams
         {   paraName    = Just "Component is buildable here"
@@ -119,7 +123,7 @@ buildInfoD fp = [
         ,   direction = Just Vertical})  
             otherModules 
             (\ a b -> b{otherModules = a})
-            (filesEditor fp FileChooserActionOpen "Select file")  
+            (modulesEditor modules)  
     ,   mkFieldE (emptyParams
         {   paraName    = Just "Where to look for the haskell module hierarchy"
         ,   PE.synopsis = Just "Root directories for the module hierarchy."
@@ -218,9 +222,9 @@ buildInfoD fp = [
     ])]
 
 
-editBuildInfo :: Maybe FilePath -> BuildInfo -> String -> IO (Maybe BuildInfo)
-editBuildInfo fp buildInfo contextStr = do
-    res <- editBuildInfo' buildInfo contextStr (buildInfoD fp)
+editBuildInfo :: Maybe FilePath -> [String] -> BuildInfo -> String -> IO (Maybe BuildInfo)
+editBuildInfo fp modules buildInfo contextStr = do
+    res <- editBuildInfo' buildInfo contextStr (buildInfoD fp modules)
     return res
 
 editBuildInfo' :: BuildInfo -> String -> [(String,[FieldDescriptionE BuildInfo])] -> IO (Maybe BuildInfo)
