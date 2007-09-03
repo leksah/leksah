@@ -22,6 +22,7 @@ import qualified Data.Map as Map
 import Data.Map (Map,(!))
 import Text.ParserCombinators.ReadP(readP_to_S)
 import Language.Haskell.Extension
+import Data.Maybe (isJust)
 
 import Ghf.Core
 import Ghf.Editor.PropertyEditor hiding(synopsis)
@@ -30,6 +31,7 @@ import Ghf.GUI.ViewFrame
 import Ghf.Editor.BuildInfoEditor
 import Ghf.Editor.SpecialEditors
 import Ghf.Utilities.File
+
 
 standardSetup = "#!/usr/bin/runhaskell \n\
 \> module Main where\n\
@@ -53,7 +55,7 @@ packageNew = do
         response <- dialogRun dialog
         case response of
             ResponseAccept -> do                
-                fn <- fileChooserGetFilename dialog
+                fn <- fileChooserGetFilename dialogdos
                 widgetDestroy dialog
                 return fn
             ResponseCancel -> do        
@@ -65,17 +67,76 @@ packageNew = do
     case mbDirName of
         Nothing -> return ()
         Just dirName -> do
-            modules <- lift $do
-                putStrLn dirName
-                --setCurrentDirectory dirName
-                b1 <- doesFileExist (dirName ++ "Setup.hs")
-                b2 <- doesFileExist (dirName ++ "Setup.lhs")   
-                if  b1 || b2  
-                    then putStrLn "Setup.(l)hs already exist"
-                    else writeFile (dirName ++ "/Setup.lhs") standardSetup 
-                allModules dirName 
-            editPackage emptyPackageDescription dirName modules      
-            return ()
+                cfn <- lift $cabalFileName dirName
+                if isNothing cfn 
+                    then lift $do 
+                        md <- messageDialogNew Nothing [] MessageWarning ButtonsClose
+                            $ "There is no .cabal file in this directory."
+                        dialogRun md
+                        widgetDestroy md
+                        return ()
+                    else do
+                        modules <- lift $do
+                            b1 <- doesFileExist (combine dirName "Setup.hs")
+                            b2 <- doesFileExist (combine dirName "Setup.lhs")   
+                            if  not (b1 || b2)  
+                                then do
+                                    putStrLn "Setup.(l)hs does not exist. Writing Standard"
+                                    writeFile (combine dirName "Setup.lhs") standardSetup
+                                else return () 
+                            allModules dirName
+                        package <- readPackageDescription (combine dirName "Setup.hs") 
+                        editPackage package dirName modules      
+                        return ()
+
+packageEdit :: Maybe Filepath -> GhfAction
+packageEdit mbPath = do
+    window  <- readGhf window  
+    mbDirName <- case mbPath of
+                    Just _ -> return mbPath
+                    Nothing -> lift $do
+                        dialog <- fileChooserDialogNew
+                                        (Just $ "Select root folder for project")             
+                                        (Just window)                   
+                                    FileChooserActionSelectFolder              
+                                    [("gtk-cancel"                       
+                                    ,ResponseCancel)
+                                    ,("gtk-open"                                  
+                                    ,ResponseAccept)]
+                        widgetShow dialog
+                        response <- dialogRun dialog
+                        case response of
+                            ResponseAccept -> do                
+                                fn <- fileChooserGetFilename dialog
+                                widgetDestroy dialog
+                                return fn
+                            ResponseCancel -> do        
+                                widgetDestroy dialog
+                                return Nothing
+                            ResponseDeleteEvent -> do   
+                                widgetDestroy dialog                
+                                return Nothing
+    case mbDirName of
+        Nothing -> return ()
+        Just dirName -> do
+                cfn <- lift $cabalFileName dirName
+                if isJust cfn 
+                    then lift $do 
+                        md <- messageDialogNew Nothing [] MessageWarning ButtonsClose
+                            $ "There is already a .cabal file in this directory."
+                        dialogRun md
+                        widgetDestroy md
+                        return ()
+                    else do
+                        modules <- lift $do
+                            b1 <- doesFileExist (combine dirName "Setup.hs")
+                            b2 <- doesFileExist (combine dirName "Setup.lhs")   
+                            if  b1 || b2  
+                                then putStrLn "Setup.(l)hs already exist"
+                                else writeFile (combine dirName "Setup.lhs") standardSetup 
+                            allModules dirName 
+                        editPackage emptyPackageDescription dirName modules      
+                        return ()
 
 type PDescr = [(String,[FieldDescriptionE PackageDescription])]
 

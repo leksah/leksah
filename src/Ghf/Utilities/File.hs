@@ -1,5 +1,6 @@
 module Ghf.Utilities.File (
     allModules
+,   cabalFileName
 ) where
 
 import System.FilePath
@@ -14,7 +15,6 @@ import Debug.Trace
 
 allModules :: FilePath -> IO [String]
 allModules filePath = do 
-    putStrLn $"Find modules for " ++ filePath
     exists <- doesDirectoryExist filePath
     if exists
         then do
@@ -33,7 +33,6 @@ allModules filePath = do
 
 moduleNameFromFilePath :: FilePath -> IO (Maybe String)
 moduleNameFromFilePath fp = do
-    putStrLn $"Find module name for " ++ fp
     exists <- doesFileExist fp
     if exists
         then do
@@ -47,7 +46,6 @@ moduleNameFromFilePath fp = do
                     putStrLn $show err
                     return Nothing
                 Right str -> do
-                    putStrLn $show "Found " ++ str                    
                     return (Just str)
         else return Nothing    
 
@@ -74,7 +72,22 @@ mident
             }
         <?> "midentifier"
     
-    
+cabalFileName :: FilePath -> IO (Maybe String)
+cabalFileName filePath = do
+    exists <- doesDirectoryExist filePath
+    if exists
+        then do
+            filesAndDirs <- getDirectoryContents filePath
+            files <-  filterM (\f -> doesFileExist f) filesAndDirs
+            let cabalFiles =   filter (\f -> let ext = takeExtension f in ext == ".cabal") files        
+            if null cabalFiles
+                then return Nothing
+                else if length cabalFiles == 1 
+                    then return (Just $head cabalFiles)
+                    else do 
+                        putStrLn "Multiple cabal files"
+                        return Nothing
+        else return Nothing       
                 
     
 
