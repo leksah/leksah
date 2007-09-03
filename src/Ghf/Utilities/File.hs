@@ -18,12 +18,12 @@ allModules filePath = do
     exists <- doesDirectoryExist filePath
     if exists
         then do
-            filesAndDirs' <- getDirectoryContents filePath
-            let filesAndDirs = map (\s -> combine filePath s)
+            filesAndDirs <- getDirectoryContents filePath
+            let filesAndDirs' = map (\s -> combine filePath s)
                                     $filter (\s -> s /= "." && s /= ".." && s /= "_darcs"
                                         {--&& s /= "Setup.lhs"--}) filesAndDirs'  
-            dirs <-  filterM (\f -> doesDirectoryExist f) filesAndDirs
-            files <-  filterM (\f -> doesFileExist f) filesAndDirs
+            dirs <-  filterM (\f -> doesDirectoryExist f) filesAndDirs'
+            files <-  filterM (\f -> doesFileExist f) filesAndDirs'
             let hsFiles =   filter (\f -> let ext = takeExtension f in
                                             ext == ".hs" || ext == ".lhs") files
             mbModuleNames <- mapM moduleNameFromFilePath hsFiles              
@@ -57,7 +57,6 @@ whiteSpace = P.whiteSpace lexer
 hexadecimal = P.hexadecimal lexer
 symbol = P.symbol lexer
 
-    
 moduleNameParser :: CharParser () String 
 moduleNameParser = do 
     whiteSpace
