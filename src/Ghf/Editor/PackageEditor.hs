@@ -4,6 +4,8 @@
 
 module Ghf.Editor.PackageEditor (
     packageNew
+,   packageEdit
+,   choosePackageDir
 ) where
 
 import Graphics.UI.Gtk
@@ -22,7 +24,8 @@ import qualified Data.Map as Map
 import Data.Map (Map,(!))
 import Text.ParserCombinators.ReadP(readP_to_S)
 import Language.Haskell.Extension
-import Data.Maybe (isJust)
+import Data.Maybe
+import System.FilePath
 
 import Ghf.Core
 import Ghf.Editor.PropertyEditor hiding(synopsis)
@@ -40,103 +43,76 @@ standardSetup = "#!/usr/bin/runhaskell \n\
 \> main = defaultMain\n\n"
 
 packageNew :: GhfAction
-packageNew = do
-    window  <- readGhf window  
-    mbDirName <- lift $ do     
-        dialog <- fileChooserDialogNew
-                        (Just $ "Select root folder for project")             
-                        (Just window)                   
-                    FileChooserActionSelectFolder              
-                    [("gtk-cancel"                       
-                    ,ResponseCancel)
-                    ,("gtk-open"                                  
-                    ,ResponseAccept)]
-        widgetShow dialog
-        response <- dialogRun dialog
-        case response of
-            ResponseAccept -> do                
-                fn <- fileChooserGetFilename dialogdos
-                widgetDestroy dialog
-                return fn
-            ResponseCancel -> do        
-                widgetDestroy dialog
-                return Nothing
-            ResponseDeleteEvent -> do   
-                widgetDestroy dialog                
-                return Nothing
-    case mbDirName of
-        Nothing -> return ()
-        Just dirName -> do
-                cfn <- lift $cabalFileName dirName
-                if isNothing cfn 
-                    then lift $do 
-                        md <- messageDialogNew Nothing [] MessageWarning ButtonsClose
-                            $ "There is no .cabal file in this directory."
-                        dialogRun md
-                        widgetDestroy md
-                        return ()
-                    else do
-                        modules <- lift $do
-                            b1 <- doesFileExist (combine dirName "Setup.hs")
-                            b2 <- doesFileExist (combine dirName "Setup.lhs")   
-                            if  not (b1 || b2)  
-                                then do
-                                    putStrLn "Setup.(l)hs does not exist. Writing Standard"
-                                    writeFile (combine dirName "Setup.lhs") standardSetup
-                                else return () 
-                            allModules dirName
-                        package <- readPackageDescription (combine dirName "Setup.hs") 
-                        editPackage package dirName modules      
-                        return ()
+packageNew = packageNewOrEdit True Nothing
 
-packageEdit :: Maybe Filepath -> GhfAction
-packageEdit mbPath = do
+packageEdit :: Maybe FilePath -> GhfAction
+packageEdit = packageNewOrEdit False
+
+choosePackageDir :: Window -> IO (MaybFilePath)    
+choosePackageDir window = do
+    case mbPath of
+        Just _ -> return mbPath
+        Nothing -> lift $do
+            dialog <- fileChooserDialogNew
+                            (Just $ "Select root folder for project")             
+                            (Just window)                   
+                        FileChooserActionSelectFolder              
+                        [("gtk-cancel"                       
+                        ,ResponseCancel)
+                        ,("gtk-open"                                  
+                        ,ResponseAccept)]
+            widgetShow dialog
+            response <- dialogRun dialog
+            case response of
+                ResponseAccept -> do                
+                    fn <- fileChooserGetFilename dialog
+                    widgetDestroy dialog
+                    return fn
+                ResponseCancel -> do        
+                    widgetDestroy dialog
+                    return Nothing
+                ResponseDeleteEvent -> do   
+                    widgetDestroy dialog                
+                            return Nothing
+
+packageNewOrEdit :: Bool -> Maybe FilePath -> GhfAction 
+packageNewOrEdit isNew mbPath = do
     window  <- readGhf window  
-    mbDirName <- case mbPath of
-                    Just _ -> return mbPath
-                    Nothing -> lift $do
-                        dialog <- fileChooserDialogNew
-                                        (Just $ "Select root folder for project")             
-                                        (Just window)                   
-                                    FileChooserActionSelectFolder              
-                                    [("gtk-cancel"                       
-                                    ,ResponseCancel)
-                                    ,("gtk-open"                                  
-                                    ,ResponseAccept)]
-                        widgetShow dialog
-                        response <- dialogRun dialog
-                        case response of
-                            ResponseAccept -> do                
-                                fn <- fileChooserGetFilename dialog
-                                widgetDestroy dialog
-                                return fn
-                            ResponseCancel -> do        
-                                widgetDestroy dialog
-                                return Nothing
-                            ResponseDeleteEvent -> do   
-                                widgetDestroy dialog                
-                                return Nothing
+    mbDirName <- lift $choosePackageDir window
     case mbDirName of
         Nothing -> return ()
         Just dirName -> do
                 cfn <- lift $cabalFileName dirName
-                if isJust cfn 
+                if (not isNew) && isNothing cfn 
                     then lift $do 
                         md <- messageDialogNew Nothing [] MessageWarning ButtonsClose
-                            $ "There is already a .cabal file in this directory."
+                            $ "There is no unique .cabal file in this directory."
                         dialogRun md
                         widgetDestroy md
-                        return ()
-                    else do
-                        modules <- lift $do
-                            b1 <- doesFileExist (combine dirName "Setup.hs")
-                            b2 <- doesFileExist (combine dirName "Setup.lhs")   
-                            if  b1 || b2  
-                                then putStrLn "Setup.(l)hs already exist"
-                                else writeFile (combine dirName "Setup.lhs") standardSetup 
-                            allModules dirName 
-                        editPackage emptyPackageDescription dirName modules      
-                        return ()
+                    else if isNew && isJust cfn
+                            then lift $do 
+                                md <- messageDialogNew Nothing [] MessageWarning ButtonsClose
+                                    $ "There is already a .cabal file in this directory."
+                                dialogRun md
+                                widgetDestroy md 
+                            else do                        
+                                modules <- lift $do
+                                    b1 <- doesFileExist (dirName </> "Setup.hs")
+                                    b2 <- doesFileExist (dirName </> "Setup.lhs")   
+                                    if  not (b1 || b2)  
+                                        then do
+                                            putStrLn "Setup.(l)hs does not exist. Writing Standard"
+                                            writeFile (dirName </> "Setup.lhs") standardSetup
+                                        else putStrLn "Setup.(l)hs already exist"
+                                    allModules dirName
+                                lift $putStrLn "after finding modules" 
+                                package <- lift $if isNew
+                                    then return emptyPackageDescription
+                                    else readPackageDescription (dirName </> fromJust cfn) 
+                                editPackage package dirName modules              
+                return ()
+
+packageConfig :: Maybe FilePath -> GhfAction 
 
 type PDescr = [(String,[FieldDescriptionE PackageDescription])]
 

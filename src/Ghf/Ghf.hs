@@ -80,16 +80,18 @@ main = do
     windowSetIconFromFile win "bin/ghf.gif"
     uiManager <- uiManagerNew
     let ghf = Ghf
-          {   window = win
-          ,   uiManager = uiManager
-          ,   panes = Map.empty
-          ,   activePane = Nothing
-          ,   paneMap = Map.empty
-          ,   layout = TerminalP
-          ,   specialKeys = specialKeys
-          ,   specialKey = Nothing
-          ,   candy = candySt
-          ,   prefs = prefs
+          {   window        = win
+          ,   uiManager     = uiManager
+          ,   panes         = Map.empty
+          ,   activePane    = Nothing
+          ,   paneMap       = Map.empty
+          ,   layout        = TerminalP
+          ,   specialKeys   = specialKeys
+          ,   specialKey    = Nothing
+          ,   candy         = candySt
+          ,   prefs         = prefs
+          ,   packages      = []
+          ,   activePack    = Nothing   
           }
     ghfR <- newIORef ghf
 

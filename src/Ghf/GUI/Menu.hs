@@ -82,6 +82,10 @@ actions =
     ,AD "Package" "Package" Nothing Nothing (return ()) [] False
     ,AD "NewPackage" "_New Package" Nothing Nothing
         packageNew [] False
+    ,AD "EditPackage" "_Edit Package" Nothing Nothing
+        (packageEdit Nothing) [] False
+    ,AD "ConfigPackage" "_Configure Package" Nothing Nothing
+        (packageConfig Nothing) [] False
 
     ,AD "View" "_View" Nothing Nothing (return ()) [] False
     ,AD "ViewMoveLeft" "Move _Left" Nothing Nothing
@@ -161,6 +165,8 @@ menuDescription = "\n\
      \</menu>\n\
     \<menu name=\"_Package\" action=\"Package\">\n\
        \<menuitem name=\"_New Package\" action=\"NewPackage\" />\n\
+       \<menuitem name=\"_Edit Package\" action=\"EditPackage\" />\n\
+       \<menuitem name=\"_Configure Package\" action=\"ConfigPackage\" />\n\
      \</menu>\n\
     \<menu name=\"_View\" action=\"View\">\n\
        \<menuitem name=\"Move _Left\" action=\"ViewMoveLeft\" />\n\

@@ -63,6 +63,7 @@ import System.FilePath
 import System.Directory
 import System.Console.GetOpt
 import System.Environment
+import Distribution.Package
 import Data.Maybe ( fromMaybe, isJust)
 import qualified Data.Map as Map
 import Data.Map (Map,(!))
@@ -86,6 +87,8 @@ data Ghf        =   Ghf {
 ,   specialKey  ::  SpecialKeyCons          -- ^ the first of a double keystroke
 ,   candy       ::  CandyTables             -- ^ table for source candy
 ,   prefs       ::  Prefs                   -- ^ configuration preferences
+,   packages    ::  [GhfPackage]            -- ^ the packages known to ghf
+,   activePack  ::  Maybe GhfPackage            
 } deriving Show
 
 --
@@ -135,13 +138,22 @@ withGhf f = do
     lift $ f =<< readIORef e  
 
 -- ---------------------------------------------------------------------
+-- GhfPackages
+--
+
+data GhfPackage     =   GhfPackage {
+    identifier      ::  PackageIdentifier 
+    cabalFile       ::  FilePath
+,   configFlags     ::  ConfigFlags} 
+
+-- ---------------------------------------------------------------------
 -- Panes and pane layout
 --
 
 --
 -- | Description of the different pane types
 --
-data GhfPane    =   PaneBuf GhfBuffer
+data GhfPane        =   PaneBuf GhfBuffer
     deriving (Eq,Ord,Show)
 
 --

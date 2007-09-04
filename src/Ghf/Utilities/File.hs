@@ -19,9 +19,11 @@ allModules filePath = do
     if exists
         then do
             filesAndDirs <- getDirectoryContents filePath
+            putStrLn $show filesAndDirs
             let filesAndDirs' = map (\s -> combine filePath s)
                                     $filter (\s -> s /= "." && s /= ".." && s /= "_darcs"
-                                        {--&& s /= "Setup.lhs"--}) filesAndDirs'  
+                                        && s /= "Setup.lhs") filesAndDirs  
+            putStrLn $show filesAndDirs'
             dirs <-  filterM (\f -> doesDirectoryExist f) filesAndDirs'
             files <-  filterM (\f -> doesFileExist f) filesAndDirs'
             let hsFiles =   filter (\f -> let ext = takeExtension f in
