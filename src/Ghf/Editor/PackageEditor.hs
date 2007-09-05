@@ -6,6 +6,7 @@ module Ghf.Editor.PackageEditor (
     packageNew
 ,   packageEdit
 ,   choosePackageDir
+,   choosePackageFile
 ) where
 
 import Graphics.UI.Gtk
@@ -48,32 +49,53 @@ packageNew = packageNewOrEdit True Nothing
 packageEdit :: Maybe FilePath -> GhfAction
 packageEdit = packageNewOrEdit False
 
-choosePackageDir :: Window -> IO (MaybFilePath)    
+choosePackageDir :: Window -> IO (Maybe FilePath)    
 choosePackageDir window = do
-    case mbPath of
-        Just _ -> return mbPath
-        Nothing -> lift $do
-            dialog <- fileChooserDialogNew
-                            (Just $ "Select root folder for project")             
-                            (Just window)                   
-                        FileChooserActionSelectFolder              
-                        [("gtk-cancel"                       
-                        ,ResponseCancel)
-                        ,("gtk-open"                                  
-                        ,ResponseAccept)]
-            widgetShow dialog
-            response <- dialogRun dialog
-            case response of
-                ResponseAccept -> do                
-                    fn <- fileChooserGetFilename dialog
-                    widgetDestroy dialog
-                    return fn
-                ResponseCancel -> do        
-                    widgetDestroy dialog
-                    return Nothing
-                ResponseDeleteEvent -> do   
-                    widgetDestroy dialog                
-                            return Nothing
+    dialog <- fileChooserDialogNew
+                    (Just $ "Select root folder for project")             
+                    (Just window)                   
+                FileChooserActionSelectFolder              
+                [("gtk-cancel"                       
+                ,ResponseCancel)
+                ,("gtk-open"                                  
+                ,ResponseAccept)]
+    widgetShow dialog
+    response <- dialogRun dialog
+    case response of
+        ResponseAccept -> do                
+            fn <- fileChooserGetFilename dialog
+            widgetDestroy dialog
+            return fn
+        ResponseCancel -> do        
+            widgetDestroy dialog
+            return Nothing
+        ResponseDeleteEvent -> do   
+            widgetDestroy dialog                
+            return Nothing
+
+choosePackageFile :: Window -> IO (Maybe FilePath)    
+choosePackageFile window = do
+    dialog <- fileChooserDialogNew
+                    (Just $ "Select file of project")             
+                    (Just window)                   
+                FileChooserActionOpen              
+                [("gtk-cancel"                       
+                ,ResponseCancel)
+                ,("gtk-open"                                  
+                ,ResponseAccept)]
+    widgetShow dialog
+    response <- dialogRun dialog
+    case response of
+        ResponseAccept -> do                
+            fn <- fileChooserGetFilename dialog
+            widgetDestroy dialog
+            return fn
+        ResponseCancel -> do        
+            widgetDestroy dialog
+            return Nothing
+        ResponseDeleteEvent -> do   
+            widgetDestroy dialog                
+            return Nothing
 
 packageNewOrEdit :: Bool -> Maybe FilePath -> GhfAction 
 packageNewOrEdit isNew mbPath = do
@@ -110,9 +132,7 @@ packageNewOrEdit isNew mbPath = do
                                     then return emptyPackageDescription
                                     else readPackageDescription (dirName </> fromJust cfn) 
                                 editPackage package dirName modules              
-                return ()
-
-packageConfig :: Maybe FilePath -> GhfAction 
+                return () 
 
 type PDescr = [(String,[FieldDescriptionE PackageDescription])]
 

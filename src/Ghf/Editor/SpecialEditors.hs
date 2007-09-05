@@ -106,6 +106,14 @@ versionRangeEditor para = do
         vrinj (ThisVersion v)           =   inj (Just (Left (ThisVersionS,v))) 
         vrinj (LaterVersion v)          =   inj (Just (Left (LaterVersionS,v)))
         vrinj (EarlierVersion v)        =   inj (Just (Left (EarlierVersionS,v)))
+        vrinj (UnionVersionRanges (ThisVersion v1) (LaterVersion v2)) | v1 == v2
+                                        =  inj (Just (Left (ThisOrLaterVersionS,v1)))   
+        vrinj (UnionVersionRanges (LaterVersion v1) (ThisVersion v2)) | v1 == v2
+                                        =  inj (Just (Left (ThisOrLaterVersionS,v1))) 
+        vrinj (UnionVersionRanges (ThisVersion v1) (EarlierVersion v2)) | v1 == v2
+                                        =  inj (Just (Left (ThisOrEarlierVersionS,v1)))   
+        vrinj (UnionVersionRanges (EarlierVersion v1) (ThisVersion v2)) | v1 == v2
+                                        =  inj (Just (Left (ThisOrEarlierVersionS,v1))) 
         vrinj (UnionVersionRanges v1 v2)=  inj (Just (Right (UnionVersionRangesS,(v1,v2))))    
         vrinj (IntersectVersionRanges v1 v2) 
                                         =    inj (Just (Right (IntersectVersionRangesS,(v1,v2))))
@@ -116,21 +124,26 @@ versionRangeEditor para = do
                         Just (Just (Left (ThisVersionS,v)))     -> return (Just (ThisVersion v))
                         Just (Just (Left (LaterVersionS,v)))    -> return (Just (LaterVersion v))
                         Just (Just (Left (EarlierVersionS,v)))   -> return (Just (EarlierVersion v))
+
+                        Just (Just (Left (ThisOrLaterVersionS,v)))   -> return (Just (orLaterVersion  v))
+                        Just (Just (Left (ThisOrEarlierVersionS,v)))   -> return (Just (orEarlierVersion  v))
                         Just (Just (Right (UnionVersionRangesS,(v1,v2)))) 
                                                         -> return (Just (UnionVersionRanges v1 v2))    
                         Just (Just (Right (IntersectVersionRangesS,(v1,v2)))) 
                                                         -> return (Just (IntersectVersionRanges v1 v2))
     return (wid,vrinj,vrext,notif)
         where
-            v1 = [ThisVersionS,LaterVersionS,EarlierVersionS]
+            v1 = [ThisVersionS,LaterVersionS,ThisOrLaterVersionS,EarlierVersionS,ThisOrEarlierVersionS]
             v2 = [UnionVersionRangesS,IntersectVersionRangesS]
 
-data Version1 = ThisVersionS | LaterVersionS | EarlierVersionS
+data Version1 = ThisVersionS | LaterVersionS | ThisOrLaterVersionS | EarlierVersionS | ThisOrEarlierVersionS
     deriving (Eq)
 instance Show Version1 where
     show ThisVersionS   =  "This Version"
     show LaterVersionS  =  "Later Version"
+    show ThisOrLaterVersionS = "This or later Version"
     show EarlierVersionS =  "Earlier Version"
+    show ThisOrEarlierVersionS = "This or earlier Version"
 
 data Version2 = UnionVersionRangesS | IntersectVersionRangesS 
     deriving (Eq)

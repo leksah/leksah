@@ -22,6 +22,7 @@ import Ghf.Editor.SourceEditor
 import Ghf.GUI.ViewFrame
 import {-# SOURCE #-} Ghf.Editor.PreferencesEditor(editPrefs)
 import Ghf.Editor.PackageEditor
+import Ghf.Package
 
 version = "0.1" 
 
@@ -85,7 +86,9 @@ actions =
     ,AD "EditPackage" "_Edit Package" Nothing Nothing
         (packageEdit Nothing) [] False
     ,AD "ConfigPackage" "_Configure Package" Nothing Nothing
-        (packageConfig Nothing) [] False
+        (packageConfig True) [] False
+    ,AD "BuildPackage" "_Build Package" Nothing Nothing
+        (packageBuild False) [] False
 
     ,AD "View" "_View" Nothing Nothing (return ()) [] False
     ,AD "ViewMoveLeft" "Move _Left" Nothing Nothing
@@ -167,6 +170,7 @@ menuDescription = "\n\
        \<menuitem name=\"_New Package\" action=\"NewPackage\" />\n\
        \<menuitem name=\"_Edit Package\" action=\"EditPackage\" />\n\
        \<menuitem name=\"_Configure Package\" action=\"ConfigPackage\" />\n\
+       \<menuitem name=\"_Build Package\" action=\"BuildPackage\" />\n\
      \</menu>\n\
     \<menu name=\"_View\" action=\"View\">\n\
        \<menuitem name=\"Move _Left\" action=\"ViewMoveLeft\" />\n\

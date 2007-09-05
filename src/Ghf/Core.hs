@@ -17,6 +17,9 @@ module Ghf.Core (
 ,   modifyGhf_
 ,   withGhf
 
+-- * Packages
+,   GhfPackage(..)
+
 -- * Panes and pane layout
 ,   GhfPane(..)
 ,   Direction(..)
@@ -64,9 +67,14 @@ import System.Directory
 import System.Console.GetOpt
 import System.Environment
 import Distribution.Package
+import Distribution.PackageDescription
+import Distribution.Simple.LocalBuildInfo
+import Distribution.Setup
+import Distribution.Setup(ConfigFlags)
 import Data.Maybe ( fromMaybe, isJust)
 import qualified Data.Map as Map
 import Data.Map (Map,(!))
+
 
 -- ---------------------------------------------------------------------
 -- IDE State
@@ -142,9 +150,24 @@ withGhf f = do
 --
 
 data GhfPackage     =   GhfPackage {
-    identifier      ::  PackageIdentifier 
-    cabalFile       ::  FilePath
-,   configFlags     ::  ConfigFlags} 
+    packageId       ::  PackageIdentifier 
+,   cabalFile       ::  FilePath
+,   packageDescr    ::  Maybe PackageDescription
+,   configFlags     ::  Maybe ConfigFlags
+,   localBuildInfo  ::  Maybe LocalBuildInfo
+,   buildFlags      ::  Maybe BuildFlags 
+    } 
+    deriving (Eq,Show)
+
+instance Eq ConfigFlags
+instance Show ConfigFlags
+
+instance Eq LocalBuildInfo
+instance Eq BuildFlags
+instance Show BuildFlags
+
+
+
 
 -- ---------------------------------------------------------------------
 -- Panes and pane layout
