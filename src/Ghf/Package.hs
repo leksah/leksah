@@ -13,6 +13,7 @@ import Control.Monad.Reader
 import Data.IORef
 import System.FilePath
 import System.Environment
+import System.Directory
 import Distribution.Package
 import Distribution.PackageDescription
 import Distribution.Simple.Configure
@@ -22,6 +23,8 @@ import Distribution.Simple.LocalBuildInfo
 import Distribution.PreProcess
 import Distribution.Simple.Build
 import Data.Maybe
+import Prelude hiding (catch)
+import Control.Exception
 
 {--
 data GhfPackage     =   GhfPackage {
@@ -37,7 +40,7 @@ data GhfPackage     =   GhfPackage {
 
 getActivePackage :: GhfM (Maybe GhfPackage)
 getActivePackage = do
-    active <- readGhf activePack
+    active <- readGhf activePack 
     case active of
         Just p -> return (Just p)
         Nothing -> selectActivePackage
@@ -45,14 +48,16 @@ getActivePackage = do
 selectActivePackage :: GhfM (Maybe GhfPackage)
 selectActivePackage = do
     window  <- readGhf window  
-    mbDirName <- lift $choosePackageFile window
-    case mbDirName of
+    mbFilePath <- lift $choosePackageFile window
+    case mbFilePath of
         Nothing -> return Nothing
-        Just dir -> do
+        Just filePath -> do
             let flags = emptyConfigFlags defaultProgramConfiguration
-            packageD <- lift $readPackageDescription dir
-            let pack = GhfPackage (package packageD) dir (Just packageD) Nothing Nothing Nothing
+            packageD <- lift $readPackageDescription filePath
+            let pack = GhfPackage (package packageD) filePath (Just packageD) Nothing Nothing Nothing
             modifyGhf_ (\ghf -> return (ghf{activePack = (Just pack)})) 
+            lift $putStrLn $"Set current directory " ++ dropFileName filePath
+            lift $setCurrentDirectory $dropFileName filePath
             return (Just pack)
 
 getPackageDescription :: GhfPackage -> GhfM (PackageDescription,GhfPackage)

@@ -6,7 +6,8 @@ license-file: gpl.txt
 copyright: 2007 Jürgen Nicklisch-Franken
 maintainer: Jürgen Nicklisch-Franken
 build-depends: base >=2.1.1, filepath >=1.0, gtk >=0.9.12,
-               sourceview >=0.9.12, Cabal >=1.1.6.2
+               sourceview >=0.9.12, Cabal >=1.1.6.2, parsec >=2.0, mtl >=1.0.1,
+               glib >=0.9.12, glade >=0.9.12
 stability: provisional
 homepage:
 package-url:
@@ -21,7 +22,7 @@ extra-source-files: Setup.lhs
 extra-tmp-files:
  
 executable: ghf
-main-is: src\Ghf\Ghf.hs
+main-is: Ghf\Ghf.hs
 buildable: True
 cc-options:
 ld-options:

@@ -8,7 +8,7 @@ import System.Directory
 import Text.ParserCombinators.Parsec hiding (Parser)
 import qualified Text.ParserCombinators.Parsec.Token as P
 import Text.ParserCombinators.Parsec.Language(haskell,haskellDef)
-import Maybe (catMaybes)
+import Data.Maybe (catMaybes)
 import Control.Monad(filterM)
 import Distribution.PreProcess.Unlit
 import Debug.Trace

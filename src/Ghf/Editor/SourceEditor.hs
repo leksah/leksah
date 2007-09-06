@@ -53,7 +53,7 @@ import System.Console.GetOpt
 import System.Environment
 import Data.Maybe ( fromMaybe, isJust, fromJust)
 import Text.Printf
-import Char(toUpper)
+import Data.Char(toUpper)
 import qualified Data.Map as Map
 import Data.Map (Map,(!))
 

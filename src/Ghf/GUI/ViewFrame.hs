@@ -33,7 +33,7 @@ module Ghf.GUI.ViewFrame (
 import Graphics.UI.Gtk hiding (afterToggleOverwrite)
 import Graphics.UI.Gtk.SourceView
 import Graphics.UI.Gtk.Multiline.TextView
-import Graphics.UI.Gtk.Glade
+--import Graphics.UI.Gtk.Glade
 import System.Glib.GObject
 import Control.Monad.Reader
 import Data.IORef
