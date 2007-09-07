@@ -64,15 +64,6 @@ main = do
     (o,fl) <- ghfOpts args
     st <- initGUI
     mapM_ putStrLn st 
-
-    logFile <- openFile "tmp/log.txt" WriteMode
-    errorFile <- openFile "tmp/error.txt" WriteMode
-    hSetBuffering logFile LineBuffering
-    hSetBuffering errorFile LineBuffering
-    let stdout = logFile
-    let stderr = errorFile
-
-    putStrLn "test"
    
     prefs <- readPrefs "config/Default.prefs"
 --    putStrLn $show prefs

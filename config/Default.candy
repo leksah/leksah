@@ -13,13 +13,13 @@
 ".."        0x2025                  --TWO DOT LEADER
 "^"         0x2191                  --UPWARDS ARROW
 "."         0x2218                  --RING OPERATOR
-"\"         0x03bb NoLeadingBlank   --GREEK SMALL LETTER LAMBDA
-"forall"    0x2200 NoTrimming       --FOR ALL
-"exist"     0x2203 NoTrimming       --THERE EXISTS
+"\"         0x03bb NoLeadingBlank   --GREEK SMALL LETTER LAMBDA 
+"forall"    0x2200                  --FOR ALL
+"exist"     0x2203                  --THERE EXISTS
 "not"       0x00ac                  --NOT SIGN
-"alpha"     0x03b1 NoTrimming                 
-"beta"      0x03b2 NoTrimming
-"gamma"     0x03b3 NoTrimming
-"delta"     0x03b4 NoTrimming
-"epsilon"   0x03b5 NoTrimming
+"alpha"     0x03b1                  
+"beta"      0x03b2 
+"gamma"     0x03b3 
+"delta"     0x03b4 
+"epsilon"   0x03b5 
 

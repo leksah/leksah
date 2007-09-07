@@ -19,6 +19,13 @@ import Text.ParserCombinators.Parsec.Language(emptyDef)
 
 import Ghf.Core
 
+notBeforeId     =   Set.fromList $['a'..'z'] ++ ['A'..'Z'] 
+notAfterId      =   Set.fromList $['a'..'z'] ++ ['A'..'Z'] ++ ['0'..'9']
+notBeforeOp     =   Set.fromList $['!','#','$','%','&','*','+','.','/','<','=','>','?','@','\\',
+                                    '^','|','-','~']
+notAfterOp      =   notBeforeOp
+
+
 keystrokeCandy :: CandyTableForth -> TextBuffer -> IO ()    
 keystrokeCandy transformTable gtkbuf = do
     cursorMark  <- textBufferGetInsert gtkbuf
@@ -48,56 +55,71 @@ keystrokeCandy transformTable gtkbuf = do
 transformToCandy :: CandyTableForth -> TextBuffer -> IO () 
 transformToCandy transformTable gtkbuf = do
     modified <- textBufferGetModified gtkbuf
-    sourceBufferBeginNotUndoableAction (castToSourceBuffer gtkbuf)
-    mapM_ (replace 0) transformTable
-    sourceBufferEndNotUndoableAction (castToSourceBuffer gtkbuf)
+    workBuffer <- textBufferNew Nothing
+    i1 <- textBufferGetStartIter gtkbuf
+    i2 <- textBufferGetEndIter gtkbuf
+    text <- textBufferGetText gtkbuf i1 i2 True
+    textBufferSetText workBuffer text    
+    mapM_ (replaceTo workBuffer 0) transformTable
+    i1 <- textBufferGetStartIter workBuffer
+    i2 <- textBufferGetEndIter workBuffer
+    text <- textBufferGetText workBuffer i1 i2 True
+    textBufferSetText gtkbuf text    
     textBufferSetModified gtkbuf modified
-    where
-    replace :: Int -> (String,String) -> IO ()
-    replace offset (from,to) = do
-        iter <- textBufferGetIterAtOffset gtkbuf offset 
-        mbStartEnd <- textIterForwardSearch iter (from ++ " ") [] Nothing 
-        case mbStartEnd of 
-            Nothing -> return ()
-            Just (st,end) -> do
-                offset <- textIterGetOffset st
-                textBufferDelete gtkbuf st end
-                iter <- textBufferGetIterAtOffset gtkbuf offset
-                textBufferInsert gtkbuf st (to ++ " ")
-                replace offset (from,to)
+
+
+replaceTo :: TextBuffer -> Int -> (String,String) -> IO ()
+replaceTo buf offset (from,to) = do
+    iter <- textBufferGetIterAtOffset buf offset 
+    mbStartEnd <- textIterForwardSearch iter from [] Nothing 
+    case mbStartEnd of 
+        Nothing -> return ()
+        Just (st,end) -> do
+            offset <- textIterGetOffset st
+            textBufferDelete buf st end
+            iter <- textBufferGetIterAtOffset buf offset
+            textBufferInsert buf st (to ++ " ")
+            replaceTo buf offset (from,to)
 
 transformFromCandy :: CandyTableBack -> TextBuffer -> IO () 
 transformFromCandy transformTableBack gtkbuf = do
     modified <- textBufferGetModified gtkbuf
-    sourceBufferBeginNotUndoableAction (castToSourceBuffer gtkbuf)
-    mapM_ (replace 0) transformTableBack
-    sourceBufferEndNotUndoableAction (castToSourceBuffer gtkbuf)
+    workBuffer <- textBufferNew Nothing
+    i1 <- textBufferGetStartIter gtkbuf
+    i2 <- textBufferGetEndIter gtkbuf
+    text <- textBufferGetText gtkbuf i1 i2 True
+    textBufferSetText workBuffer text    
+    mapM_ (replaceFrom workBuffer 0) transformTableBack
+    i1 <- textBufferGetStartIter workBuffer
+    i2 <- textBufferGetEndIter workBuffer
+    text <- textBufferGetText workBuffer i1 i2 True
+    textBufferSetText gtkbuf text    
     textBufferSetModified gtkbuf modified
-    where
-    replace :: Int -> (String,String,Int) -> IO ()
-    replace offset (to,from,spaces) = do
-        iter <- textBufferGetIterAtOffset gtkbuf offset 
-        mbStartEnd <- textIterForwardSearch iter from [] Nothing 
-        case mbStartEnd of 
-            Nothing -> return ()
-            Just (st,end) -> do
-                offset <- textIterGetOffset st
-                textBufferDelete gtkbuf st end
-                if spaces > 0
-                    then do
-                        iter2 <- textBufferGetIterAtOffset gtkbuf offset
-                        iter3 <- textBufferGetIterAtOffset gtkbuf (offset + spaces + 1)
-                        slice <- textIterGetSlice iter2 iter3 
-                        let l = length (takeWhile (== ' ') slice)
-                        if l > 1 
-                            then do
-                                textIterSetOffset iter3 (offset + l - 1)
-                                textBufferDelete gtkbuf iter2 iter3
-                            else return () 
-                    else return ()
-                iter <- textBufferGetIterAtOffset gtkbuf offset
-                textBufferInsert gtkbuf iter to
-                replace offset (to,from,spaces)
+
+replaceFrom :: TextBuffer -> Int -> (String,String,Int) -> IO ()
+replaceFrom buf offset (to,from,spaces) = do
+    iter <- textBufferGetIterAtOffset buf offset 
+    mbStartEnd <- textIterForwardSearch iter from [] Nothing 
+    case mbStartEnd of 
+        Nothing -> return ()
+        Just (st,end) -> do
+            offset <- textIterGetOffset st
+            textBufferDelete buf st end
+            if spaces > 0
+                then do
+                    iter2 <- textBufferGetIterAtOffset buf offset
+                    iter3 <- textBufferGetIterAtOffset buf (offset + spaces + 1)
+                    slice <- textIterGetSlice iter2 iter3 
+                    let l = length (takeWhile (== ' ') slice)
+                    if l > 1 
+                        then do
+                            textIterSetOffset iter3 (offset + l - 1)
+                            textBufferDelete buf iter2 iter3
+                        else return () 
+                else return ()
+            iter <- textBufferGetIterAtOffset buf offset
+            textBufferInsert buf iter to
+            replaceFrom buf offset (to,from,spaces)
 
 type CandyTable = [(String,Char,Bool,Bool)]
 
@@ -105,10 +127,11 @@ forthFromTable :: CandyTable -> CandyTableForth
 forthFromTable table = map forthFrom table
     where
     forthFrom (str,chr,noLeadingBlanks,noTrimming) = 
-        let from = if noLeadingBlanks then str else ' ' : str
+        let isOp = not (Set.member (head str) notBeforeId)
+            from = if noLeadingBlanks then str else ' ' : str
             trailingBlanks = replicate (if noTrimming then 0 else length str - 1) ' '
             to = (if noLeadingBlanks then [chr] else ' ' : [chr]) ++ trailingBlanks
-        in (from,to) 
+        in (isOp,from,to) 
 
 backFromTable ::  CandyTable -> CandyTableBack
 backFromTable table = map backFrom table
@@ -153,9 +176,9 @@ oneCandyParser = do
     nlb <- option False (try $do
         symbol "NoLeadingBlank"
         return True) 
-    nt <- option False (try $do
-        symbol "NoTrimming"
-        return True)
+    nt <- option True (try $do
+        symbol "Trimming"
+        return False)
     return (toReplace,replaceWith,nlb,nt) 
 
 toReplaceParser :: CharParser () String

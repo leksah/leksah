@@ -297,7 +297,7 @@ data Prefs = Prefs {
 } deriving(Eq,Ord,Show)
 
 
-type CandyTableForth =  [(String,String)]
+type CandyTableForth =  [(Bool,String,String)]
 type CandyTableBack  =  [(String,String,Int)] 
 type CandyTables     =  (CandyTableForth,CandyTableBack)
 
