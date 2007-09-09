@@ -2,7 +2,7 @@
 -- | The core state of ghf. This module is imported from every other module,
 -- | and all data structures of the state are declared here, to avoid circular
 -- | module dependencies.
--- 
+--
 
 module Ghf.Core (
 -- * IDE State
@@ -87,7 +87,7 @@ data Ghf        =   Ghf {
     window      ::  Window                  -- ^ the gtk window
 ,   uiManager   ::  UIManager               -- ^ the gtk uiManager
 ,   panes       ::  Map String GhfPane      -- ^ a map with all panes (subwindows)
-,   activePane  ::  Maybe (GhfPane,Connections) 
+,   activePane  ::  Maybe (GhfPane,Connections)
 ,   paneMap     ::  Map GhfPane (PanePath, [ConnectId Widget])
                     -- ^ a map from the pane to its gui path and signal connections
 ,   layout      ::  PaneLayout              -- ^ a description of the general gui layout
@@ -96,7 +96,7 @@ data Ghf        =   Ghf {
 ,   candy       ::  CandyTables             -- ^ table for source candy
 ,   prefs       ::  Prefs                   -- ^ configuration preferences
 ,   packages    ::  [GhfPackage]            -- ^ the packages known to ghf
-,   activePack  ::  Maybe GhfPackage            
+,   activePack  ::  Maybe GhfPackage
 } deriving Show
 
 --
@@ -130,7 +130,7 @@ modifyGhf_ :: (Ghf -> IO Ghf) -> GhfM ()
 modifyGhf_ f = do
     e <- ask
     e' <- lift $ (f =<< readIORef e)
-    lift $ writeIORef e e'  
+    lift $ writeIORef e e'
 
 -- | Variation on modifyGhf_ that lets you return a value
 modifyGhf :: (Ghf -> IO (Ghf,b)) -> GhfM b
@@ -143,20 +143,20 @@ modifyGhf f = do
 withGhf :: (Ghf -> IO a) -> GhfM a
 withGhf f = do
     e <- ask
-    lift $ f =<< readIORef e  
+    lift $ f =<< readIORef e
 
 -- ---------------------------------------------------------------------
 -- GhfPackages
 --
 
 data GhfPackage     =   GhfPackage {
-    packageId       ::  PackageIdentifier 
+    packageId       ::  PackageIdentifier
 ,   cabalFile       ::  FilePath
 ,   packageDescr    ::  Maybe PackageDescription
 ,   configFlags     ::  Maybe ConfigFlags
 ,   localBuildInfo  ::  Maybe LocalBuildInfo
-,   buildFlags      ::  Maybe BuildFlags 
-    } 
+,   buildFlags      ::  Maybe BuildFlags
+    }
     deriving (Eq,Show)
 
 instance Eq ConfigFlags
@@ -211,7 +211,7 @@ data Connections =  BufConnections [ConnectId SourceView] [ConnectId TextBuffer]
     deriving (Show)
 
 -- ---------------------------------------------------------------------
--- Convenience methods for panes 
+-- Convenience methods for panes
 -- ### currently ugly
 
 isBuffer :: GhfPane -> Bool
@@ -244,7 +244,7 @@ data GhfBuffer  =   GhfBuffer {
     fileName    ::  Maybe FileName
 ,   bufferName  ::  String
 ,   addedIndex  ::  Int
-,   sourceView  ::  SourceView 
+,   sourceView  ::  SourceView
 ,   scrolledWindow :: ScrolledWindow
 } deriving Show
 
@@ -252,9 +252,9 @@ instance Eq GhfBuffer
     where (==) a b = bufferName a == bufferName b && addedIndex a == addedIndex b
 
 instance Ord GhfBuffer
-    where (<=) a b = if bufferName a < bufferName b 
+    where (<=) a b = if bufferName a < bufferName b
                         then True
-                        else if bufferName a == bufferName b 
+                        else if bufferName a == bufferName b
                             then addedIndex a <= addedIndex b
                             else False
 
@@ -292,19 +292,19 @@ data Prefs = Prefs {
     ,   rightMargin         ::  Maybe Int
     ,   tabWidth            ::  Int
     ,   sourceCandy         ::  Maybe String
-    ,   keymapName          ::  String 
+    ,   keymapName          ::  String
     ,   defaultSize         ::  (Int,Int)
 } deriving(Eq,Ord,Show)
 
 
 type CandyTableForth =  [(Bool,String,String)]
-type CandyTableBack  =  [(String,String,Int)] 
+type CandyTableBack  =  [(String,String,Int)]
 type CandyTables     =  (CandyTableForth,CandyTableBack)
 
-type SpecialKeyTable = Map (KeyVal,[Modifier]) (Map (KeyVal,[Modifier]) ActionDescr)
-type SpecialKeyCons  = Maybe ((Map (KeyVal,[Modifier]) ActionDescr),String)
+type SpecialKeyTable =  Map (KeyVal,[Modifier]) (Map (KeyVal,[Modifier]) ActionDescr)
+type SpecialKeyCons  =  Maybe ((Map (KeyVal,[Modifier]) ActionDescr),String)
 
-type FileName       =   String
+type FileName        =  String
 
 --
 -- | Other types
@@ -319,10 +319,10 @@ instance Show Window
     where show _ = "Window *"
 
 instance Show Modifier
-    where show Shift    = "<shift>"     
-          show Control  = "<ctrl>"      
-          show Alt      = "<alt>"       
-          show Apple    = "<apple>"     
+    where show Shift    = "<shift>"
+          show Control  = "<ctrl>"
+          show Alt      = "<alt>"
+          show Apple    = "<apple>"
           show Compose  = "<compose>"
 
 instance Show UIManager
@@ -344,7 +344,7 @@ helpDebug :: GhfAction
 helpDebug = do
     ref <- ask
     ghf <- lift $readIORef ref
-    lift $do    
+    lift $do
         putStrLn $"------------------ "
         putStrLn $show ghf
         putStrLn $"------------------ "

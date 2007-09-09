@@ -22,12 +22,10 @@ Editor
         highlight buffer (single buffer,no general preference)
  
 Preferences
-
+-
 
 Projects 
 - 
 
 
 
-* Lazy editors mit IOrefs
-* Editor with a list of editors as argument (class solution?, extension solution (forall?))

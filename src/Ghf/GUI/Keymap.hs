@@ -84,13 +84,11 @@ handleSpecialKeystrokes :: Event -> GhfM Bool
 handleSpecialKeystrokes (Key _ _ _ mods _ _ _ keyVal name char) = 
     case char of 
         Nothing -> return False
-        Just ' ' -> do
+        Just c -> do
             bs <- getCandyState
             if bs
-                then editKeystrokeCandy
+                then editKeystrokeCandy c
                 else return ()
-            return False
-        Just _ -> do
             sk  <- readGhf specialKey    
             sks <- readGhf specialKeys 
             sb <- getSpecialKeys   
