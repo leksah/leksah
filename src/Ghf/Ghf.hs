@@ -17,8 +17,6 @@
 -- 02111-1307, USA.
 --
 
-  
-
 import Graphics.UI.Gtk
 import Graphics.UI.Gtk.SourceView
 import Graphics.UI.Gtk.Types
@@ -42,8 +40,6 @@ import Ghf.GUI.SourceCandy
 import Ghf.Editor.PreferencesEditor
 import Ghf.GUI.Menu
 import Ghf.GUI.Statusbar
- 
-
 
 data Flag =  OpenFile
        deriving Show
@@ -55,7 +51,7 @@ ghfOpts :: [String] -> IO ([Flag], [String])
 ghfOpts argv =
     case getOpt Permute options argv of
           (o,n,[]  ) -> return (o,n)
-          (_,_,errs) -> ioError (userError (concat errs ++ usageInfo header options))
+          (_,_,errs) -> ioError $userError $concat errs ++ usageInfo header options
     where header = "Usage: ghf [OPTION...] files..."
 
 -- |Build the main window
@@ -63,20 +59,15 @@ main = do
     args <- getArgs
     (o,fl) <- ghfOpts args
     st <- initGUI
-    mapM_ putStrLn st 
-   
-    prefs <- readPrefs "config/Default.prefs"
---    putStrLn $show prefs
+    mapM_ putStrLn st
 
+    prefs <- readPrefs "config/Default.prefs"
     keyMap <- parseKeymap "config/Default.keymap"
---    putStrLn $show keyMap
     let accelActions = setKeymap actions keyMap
     specialKeys <- buildSpecialKeys keyMap accelActions
     candySt     <- parseCandy (case sourceCandy prefs of
                                     Nothing   -> "config/Default.candy"
                                     Just name -> "config/" ++ name ++ ".candy")
---    putStrLn $show candy
-    
     win <- windowNew
     windowSetIconFromFile win "bin/ghf.gif"
     uiManager <- uiManagerNew
@@ -92,10 +83,8 @@ main = do
           ,   candy         = candySt
           ,   prefs         = prefs
           ,   packages      = []
-          ,   activePack    = Nothing   
-          }
+          ,   activePack    = Nothing}
     ghfR <- newIORef ghf
-
     (acc,menus) <- runReaderT (makeMenu uiManager accelActions menuDescription) ghfR
     let mb = case menus !! 0 of
                 Just m -> m
@@ -113,14 +102,10 @@ main = do
     boxPackStart vb tb PackNatural 0
     boxPackStart vb nb PackGrow 0
     boxPackStart vb hb PackNatural 0
-
     win `onDelete` (\ _ -> do runReaderT quit ghfR; return True)
-
     win `onKeyPress` (\ e -> runReaderT (handleSpecialKeystrokes e) ghfR)
-    
     containerAdd win vb
     runReaderT (setCandyState (isJust (sourceCandy prefs))) ghfR
-
     let (x,y) = defaultSize prefs
     windowSetDefaultSize win x y
     flip runReaderT ghfR $ case fl of
@@ -132,6 +117,3 @@ main = do
     spinL <- runReaderT getGotoLineSpin ghfR
     widgetHide spinL
     mainGUI
-     
-
-

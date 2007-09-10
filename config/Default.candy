@@ -15,7 +15,7 @@
 "=="        0x2261   Trimming       --IDENTICAL TO
 --"."         0x2218                  --RING OPERATOR
 "\"         0x03bb                  --GREEK SMALL LETTER LAMBDA
-"=<<"       0x291e                  --
+--"=<<"       0x291e                  --
 ">>="       0x21a0
 
 "forall"    0x2200                  --FOR ALL

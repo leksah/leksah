@@ -152,10 +152,8 @@ withGhf f = do
 data GhfPackage     =   GhfPackage {
     packageId       ::  PackageIdentifier
 ,   cabalFile       ::  FilePath
-,   packageDescr    ::  Maybe PackageDescription
-,   configFlags     ::  Maybe ConfigFlags
-,   localBuildInfo  ::  Maybe LocalBuildInfo
-,   buildFlags      ::  Maybe BuildFlags
+,   configFlags     ::  [String]
+,   buildFlags      ::  String
     }
     deriving (Eq,Show)
 
