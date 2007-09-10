@@ -4,6 +4,8 @@ Show line numbers:
 Right margin:  106
      --Size or 0 for no right margin
 Tab width:     4
+Use standard line ends even on windows:
+               True
 Source candy:  Default
      --Empty for do not use or the name of a candy file in a config dir
 Name of the keymap:

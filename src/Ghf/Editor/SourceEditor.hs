@@ -47,6 +47,7 @@ import Graphics.UI.Gtk.Multiline.TextView
 import Graphics.UI.Gtk.Glade
 import Control.Monad.Reader
 import Data.IORef
+import System.IO
 import System.FilePath
 import System.Directory
 import System.Console.GetOpt
@@ -246,6 +247,7 @@ fileSave query = inBufContext' () $ \ nb _ currentBuffer i -> do
     ghfR    <- ask
     window  <- readGhf window
     bufs    <- readGhf panes
+    prefs   <- readGhf prefs
     paneMap <- readGhf paneMap
     bs      <- getCandyState
     candy   <- readGhf candy
@@ -256,7 +258,7 @@ fileSave query = inBufContext' () $ \ nb _ currentBuffer i -> do
             Nothing     -> error "fileSave: Page not found"
             Just page   ->
                 if isJust mbfn && query == False
-                    then do fileSave' currentBuffer bs candy $fromJust mbfn
+                    then do fileSave' (forceLineEnds prefs) currentBuffer bs candy $fromJust mbfn
                             return Nothing
                     else do
                         dialog <- fileChooserDialogNew
@@ -289,7 +291,7 @@ fileSave query = inBufContext' () $ \ nb _ currentBuffer i -> do
                                     else return ResponseYes
                                 case resp of
                                     ResponseYes -> do
-                                        fileSave' currentBuffer bs candy fn
+                                        fileSave' (forceLineEnds prefs) currentBuffer bs candy fn
                                         let bn = takeFileName fn
                                         let bufs1 =  Map.delete (realPaneName (PaneBuf currentBuffer)) bufs
                                         let (ind,rbn) =  figureOutPaneName bufs1 bn 0
@@ -316,15 +318,21 @@ fileSave query = inBufContext' () $ \ nb _ currentBuffer i -> do
             (\ghf -> return (ghf{panes = nbufs, paneMap = pm}))
         Nothing -> return ()
     where
-        fileSave' :: GhfBuffer -> Bool -> CandyTables -> FileName -> IO()
-        fileSave' ghfBuf bs (to,from) fn = do
+        fileSave' :: Bool -> GhfBuffer -> Bool -> CandyTables -> FileName -> IO()
+        fileSave' forceLineEnds ghfBuf bs (to,from) fn = do
             buf     <-   textViewGetBuffer $ sourceView ghfBuf
             text    <-   getCandylessText from buf
             let text' = unlines $map removeTrailingBlanks $lines text
-            writeFile fn text'
+            if forceLineEnds
+                then do
+                    file <- openBinaryFile fn WriteMode
+                    hPutStr file text'
+                    hClose file
+                else
+                    writeFile fn text'
             textBufferSetModified buf False
         removeTrailingBlanks :: String -> String
-        removeTrailingBlanks = reverse . dropWhile (\c -> c == ' ' || c == '\r') . reverse
+        removeTrailingBlanks = reverse . dropWhile (\c -> c == ' ') . reverse
 
 fileNew :: GhfAction
 fileNew = newTextBuffer "Unnamed" Nothing

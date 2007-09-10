@@ -272,13 +272,13 @@ allBuffers = do
 --   menus, toolbars, and accelerator keystrokes
 --
 data ActionDescr = AD {
-                name :: ActionString
-            ,   label :: String
-            ,   tooltip ::Maybe String
-            ,   stockID :: Maybe String
-            ,   action :: GhfAction
-            ,   accelerator :: [KeyString]
-            ,   isToggle :: Bool
+                name        ::   ActionString
+            ,   label       ::   String
+            ,   tooltip     ::   Maybe String
+            ,   stockID     ::   Maybe String
+            ,   action      ::   GhfAction
+            ,   accelerator ::   [KeyString]
+            ,   isToggle    ::   Bool
 } deriving (Show)
 
 type ActionString = String
@@ -288,12 +288,13 @@ type KeyString = String
 -- | Preferences is a data structure to hold configuration data
 --
 data Prefs = Prefs {
-        showLineNumbers     ::  Bool
-    ,   rightMargin         ::  Maybe Int
-    ,   tabWidth            ::  Int
-    ,   sourceCandy         ::  Maybe String
-    ,   keymapName          ::  String
-    ,   defaultSize         ::  (Int,Int)
+        showLineNumbers     ::   Bool
+    ,   rightMargin         ::   Maybe Int
+    ,   tabWidth            ::   Int
+    ,   sourceCandy         ::   Maybe String
+    ,   keymapName          ::   String
+    ,   forceLineEnds       ::  Bool
+    ,   defaultSize         ::   (Int,Int)
 } deriving(Eq,Ord,Show)
 
 
