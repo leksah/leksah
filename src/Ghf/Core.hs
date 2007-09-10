@@ -120,7 +120,7 @@ type GhfAction = GhfM ()
 --
 
 -- | Read an attribute of the contents
-readGhf :: (Ghf -> b) -> GhfM b
+readGhf :: (Ghf -> beta) -> GhfM beta
 readGhf f = do
     e <- ask
     lift $ liftM f (readIORef e)
@@ -133,14 +133,14 @@ modifyGhf_ f = do
     lift $ writeIORef e e'
 
 -- | Variation on modifyGhf_ that lets you return a value
-modifyGhf :: (Ghf -> IO (Ghf,b)) -> GhfM b
+modifyGhf :: (Ghf -> IO (Ghf,beta)) -> GhfM beta
 modifyGhf f = do
     e <- ask
     (e',result) <- lift (f =<< readIORef e)
     lift $ writeIORef e e'
     return result
 
-withGhf :: (Ghf -> IO a) -> GhfM a
+withGhf :: (Ghf -> IO alpha) -> GhfM alpha
 withGhf f = do
     e <- ask
     lift $ f =<< readIORef e
@@ -250,7 +250,6 @@ data GhfBuffer  =   GhfBuffer {
 
 instance Eq GhfBuffer
     where (==) a b = bufferName a == bufferName b && addedIndex a == addedIndex b
-
 instance Ord GhfBuffer
     where (<=) a b = if bufferName a < bufferName b
                         then True
@@ -293,7 +292,8 @@ data Prefs = Prefs {
     ,   tabWidth            ::   Int
     ,   sourceCandy         ::   Maybe String
     ,   keymapName          ::   String
-    ,   forceLineEnds       ::  Bool
+    ,   forceLineEnds       ::   Bool
+    ,   textviewFont        ::   Maybe String
     ,   defaultSize         ::   (Int,Int)
 } deriving(Eq,Ord,Show)
 

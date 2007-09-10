@@ -1,6 +1,6 @@
 --
 -- | Module for saving and restoring preferences
--- 
+--
 
 module Ghf.PrinterParser (
 
@@ -14,6 +14,7 @@ module Ghf.PrinterParser (
 ,   identifier
 ,   emptyParser
 ,   whiteSpace
+,   stringParser
 
 ,   emptyPrinter
 ,   symbol
@@ -42,40 +43,6 @@ import Ghf.Core
 type Printer beta       =   beta -> PP.Doc
 type Parser beta        =   CharParser () beta
 
-{--
-type MkFieldDescriptionPP alpha beta =
-              String ->                         --name
-              Maybe String ->                   --synopsis
-              (Printer beta) ->                 
-              (Parser beta) ->
-              (Getter alpha beta) ->            
-              (Setter alpha beta) ->            
-              FieldDescriptionPP alpha
-
-data FieldDescriptionPP alpha =  FDPP {
-        name                ::  String
-    ,   synopsis            ::  Maybe String
-    ,   fieldPrinter        ::  alpha -> PP.Doc
-    ,   fieldParser         ::  alpha -> CharParser () alpha
-    }
-
-
-mkFieldDescriptionPP :: Eq beta => MkFieldDescriptionPP alpha beta 
-mkFieldDescriptionPP name synopsis printer parser getter setter =
-    FDPP  
-        name 
-        synopsis
-        (\ dat -> (PP.text name PP.<> PP.colon)
-                PP.$$ (PP.nest 15 (printer (getter dat)))
-                PP.$$ (PP.nest 5 (case synopsis of 
-                                    Nothing -> PP.empty 
-                                    Just str -> PP.text $"--" ++ str)))
-        (\ dat -> try (do
-            symbol name
-            colon
-            val <- parser
-            return (setter val dat)))
---}        
 -- ------------------------------------------------------------
 -- * Parsing with Parsec
 -- ------------------------------------------------------------
@@ -110,6 +77,14 @@ pairParser p2 = do
     return (v1,v2)
     <?> "pair parser"
 
+stringParser ::  CharParser () String
+stringParser = do
+    char '"'
+    str <- many (noneOf ['"'])
+    char '"'
+    return (str)
+    <?> "string parser"
+
 intParser ::  CharParser () Int
 intParser = do
     i <-  integer
@@ -119,7 +94,7 @@ emptyParser ::  CharParser () ()
 emptyParser = pzero
 
 prefsStyle  ::  P.LanguageDef st
-prefsStyle  = emptyDef  { 
+prefsStyle  = emptyDef  {
         P.commentStart   = "{-"
     ,   P.commentEnd     = "-}"
     ,   P.commentLine    = "--"

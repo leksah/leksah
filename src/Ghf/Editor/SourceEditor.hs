@@ -112,9 +112,14 @@ newTextBuffer bn mbfn = do
 
         -- create a new SourceView Widget
         sv <- sourceViewNewWithBuffer buffer
-        f <- fontDescriptionNew
-        fontDescriptionSetFamily f "Monospace"
-        widgetModifyFont sv (Just f)
+        fd <- case textviewFont prefs of
+            Just str -> do
+                fontDescriptionFromString str
+            Nothing -> do
+                f <- fontDescriptionNew
+                fontDescriptionSetFamily f "Monospace"
+                return f
+        widgetModifyFont sv (Just fd)
         sourceViewSetShowLineNumbers sv (showLineNumbers prefs)
         case rightMargin prefs of
             Just n -> do
@@ -735,6 +740,7 @@ editFromCandy = do
     inBufContext () $ \_ gtkbuf _ _ -> do
         transformFromCandy from gtkbuf
 
+editKeystrokeCandy :: Maybe Char -> GhfAction
 editKeystrokeCandy c = do
     (to,_) <- readGhf candy
     inBufContext () $ \_ gtkbuf _ _ -> do

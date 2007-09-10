@@ -28,18 +28,18 @@ notBeforeOp     =   Set.fromList $['!','#','$','%','&','*','+','.','/','<','=','
 notAfterOp      =   notBeforeOp
 
 
-keystrokeCandy :: Char -> CandyTableForth -> TextBuffer -> IO ()
-keystrokeCandy c transformTable gtkbuf = do
+keystrokeCandy :: Maybe Char -> CandyTableForth -> TextBuffer -> IO ()
+keystrokeCandy mbc transformTable gtkbuf = do
     cursorMark  <-  textBufferGetInsert gtkbuf
     endIter     <-  textBufferGetIterAtMark gtkbuf cursorMark
     offset      <-  textIterGetOffset endIter
     let sliceStart = if offset < 8 then 0 else offset - 8
     startIter   <-  textBufferGetIterAtOffset gtkbuf sliceStart
     slice       <-  textIterGetSlice startIter endIter
-    replace c cursorMark slice offset transformTable
+    replace mbc cursorMark slice offset transformTable
     where
-    replace ::  Char -> TextMark -> String ->   Int -> [(Bool,String,String)] -> IO ()
-    replace afterChar cursorMark match offset list = replace' list
+    replace ::  Maybe Char -> TextMark -> String ->   Int -> [(Bool,String,String)] -> IO ()
+    replace mbAfterChar cursorMark match offset list = replace' list
         where
         replace' [] = return ()
         replace' ((isOp,from,to):rest) =
@@ -47,9 +47,12 @@ keystrokeCandy c transformTable gtkbuf = do
                 beforeOk    =  not $if isOp
                                     then Set.member beforeChar notBeforeOp
                                     else Set.member beforeChar notBeforeId
-                afterOk     =  not $if isOp
-                                    then Set.member afterChar notAfterOp
-                                    else Set.member afterChar notAfterId
+                afterOk     =  case mbAfterChar of
+                                Nothing -> True
+                                Just afterChar ->
+                                    not $if isOp
+                                        then Set.member afterChar notAfterOp
+                                        else Set.member afterChar notAfterId
             in if isSuffixOf from match && beforeOk && afterOk
                 then do
                     sourceBufferBeginNotUndoableAction (castToSourceBuffer gtkbuf)
@@ -59,7 +62,7 @@ keystrokeCandy c transformTable gtkbuf = do
                     ins     <-   textBufferGetIterAtMark gtkbuf cursorMark
                     textBufferInsert gtkbuf ins to
                     sourceBufferEndNotUndoableAction (castToSourceBuffer gtkbuf)
-                else replace afterChar cursorMark match offset rest
+                else replace mbAfterChar cursorMark match offset rest
 
 transformToCandy :: CandyTableForth -> TextBuffer -> IO ()
 transformToCandy transformTable gtkbuf = do

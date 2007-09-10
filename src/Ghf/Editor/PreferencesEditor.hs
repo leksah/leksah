@@ -108,6 +108,7 @@ defaultPrefs = Prefs {
     ,   sourceCandy         =   Just("Default")
     ,   keymapName          =   "Default"
     ,   forceLineEnds       =   True
+    ,   textviewFont        =   Nothing
     ,   defaultSize         =   (1024,800)}
 
 prefsDescription :: [(String,[FieldDescription Prefs])]
@@ -124,6 +125,18 @@ prefsDescription = [
             (\b -> do
                 buffers <- allBuffers
                 mapM_ (\buf -> lift$sourceViewSetShowLineNumbers (sourceView buf) b) buffers)
+    ,   mkField (emptyParams
+            {   paraName = Just "TextView Font"})
+            (\a -> PP.text (case a of Nothing -> show ""; Just s -> show s))
+            (do str <- stringParser
+                return (if null str then Nothing else Just (str)))
+            textviewFont
+            (\ b a -> a{textviewFont = b})
+            fontEditor
+            (\mbs -> do
+                buffers <- allBuffers
+                fdesc <- lift $fontDescriptionFromString (case mbs of Just str -> str; Nothing -> "")
+                lift $mapM_ (\buf -> widgetModifyFont (castToWidget $sourceView buf) (Just fdesc)) buffers)
     ,   mkField (emptyParams
             {  paraName = Just "Right margin"
             ,  synopsis = Just "Size or 0 for no right margin"
