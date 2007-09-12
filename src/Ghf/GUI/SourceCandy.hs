@@ -24,7 +24,7 @@ import Ghf.Core
 notBeforeId     =   Set.fromList $['a'..'z'] ++ ['A'..'Z'] ++ ['_']
 notAfterId      =   Set.fromList $['a'..'z'] ++ ['A'..'Z'] ++ ['0'..'9'] ++ ['_']
 notBeforeOp     =   Set.fromList $['!','#','$','%','&','*','+','.','/','<','=','>','?','@','\\',
-                                    '^','|','-','~','\'']
+                                    '^','|','-','~','\'','"']
 notAfterOp      =   notBeforeOp
 
 

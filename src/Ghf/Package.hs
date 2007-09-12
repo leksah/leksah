@@ -54,12 +54,6 @@ selectActivePackage = do
             lift $setCurrentDirectory $dropFileName filePath
             return (Just pack)
 
-{--
-packageConfig :: Bool -> GhfAction
-packageConfig force = return ()
---}
-
-
 packageBuild :: Bool -> GhfM ()
 packageBuild forceReconfig = return ()
 
@@ -73,18 +67,33 @@ packageConfig force = do
             (inp,out,err,pid) <- runExternal "runhaskell" (["Setup","configure"] ++ (configFlags package))
             oid <- forkIO (readOut log out)
             eid <- forkIO (readErr log err)
-            yield
             return ()
 
 readOut :: GhfLog -> Handle -> IO ()
-readOut log hndl = do
-    c <- hGetContents hndl
-    appendLog log c
+readOut log hndl =
+     catch (readAndShow)
+       (\e -> do
+        putStrLn $"Catching exception " ++ show e
+        hClose hndl
+        return ())
+    where
+    readAndShow = do
+        line <- hGetLine hndl
+        appendLog log (line ++ "\n") False
+        readAndShow
 
 readErr :: GhfLog -> Handle -> IO ()
-readErr log hndl = do
-    c <- hGetContents hndl
-    appendLog log c
+readErr log hndl =
+     catch (readAndShow)
+       (\e -> do
+        putStrLn $"Catching error exception " ++ show e
+        hClose hndl
+        return ())
+    where
+    readAndShow = do
+        line <- hGetLine hndl
+        appendLog log (line ++ "\n") True
+        readAndShow
 
 runExternal :: FilePath -> [String] -> IO (Handle, Handle, Handle, ProcessHandle)
 runExternal path args = do

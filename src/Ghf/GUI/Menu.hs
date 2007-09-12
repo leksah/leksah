@@ -253,8 +253,9 @@ quit = do
     bufs    <- allBuffers
     if null bufs
         then    lift mainQuit
-        else    do  r <- fileClose
-                    if r then quit else return ()
+        else    do  r <- mapM (\ b -> do    makeBufferActive b
+                                            fileClose) bufs
+                    if foldl (&&) True r then lift mainQuit else return ()
 
 aboutDialog :: GhfAction
 aboutDialog = lift $ do

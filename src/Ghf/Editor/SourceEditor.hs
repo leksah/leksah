@@ -41,6 +41,7 @@ module Ghf.Editor.SourceEditor (
 ,   editCandy
 
 ,   replaceDialog
+,   makeBufferActive
 
 ) where
 
@@ -354,7 +355,7 @@ fileNew :: GhfAction
 fileNew = newTextBuffer "Unnamed" Nothing
 
 fileClose :: GhfM Bool
-fileClose = inBufContext' False $ \nb gtkbuf currentBuffer i -> do
+fileClose = inBufContext' True $ \nb gtkbuf currentBuffer i -> do
     ghfRef  <- ask
     window  <- readGhf window
     bufs    <- readGhf panes

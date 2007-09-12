@@ -20,9 +20,9 @@ data-files: config\Default.candy config\Default.keymap
             config\Default.prefs config\Emacs.keymap bin\ghf.gif
 extra-source-files: Setup.lhs
 extra-tmp-files:
- 
+
 executable: ghf
-main-is: Ghf\Ghf.hs
+main-is: Ghf/Ghf.hs
 buildable: True
 cc-options:
 ld-options:

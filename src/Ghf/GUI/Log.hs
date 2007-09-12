@@ -36,6 +36,13 @@ initLog = do
     prefs <- readGhf prefs
     (buf,cids) <- lift $ do
         tv <- textViewNew
+        buf <- textViewGetBuffer tv
+        iter <- textBufferGetEndIter buf
+        textBufferCreateMark buf (Just "end") iter True
+        tags <- textBufferGetTagTable buf
+        errtag <- textTagNew (Just "err")
+        set errtag[textTagForeground := "red"]
+        textTagTableAdd tags errtag
         textViewSetEditable tv False
         fd <- case logviewFont prefs of
             Just str -> do
@@ -76,13 +83,23 @@ isLog :: GhfPane -> Bool
 isLog (LogBuf _)    = True
 isLog _             = False
 
-appendLog :: GhfLog -> String -> IO ()
-appendLog (GhfLog tv _) string = do
+appendLog :: GhfLog -> String -> Bool -> IO ()
+appendLog (GhfLog tv _) string isError = do
     buf <- textViewGetBuffer tv
     iter <- textBufferGetEndIter buf
     textBufferInsert buf iter string
-    iter <- textBufferGetEndIter buf
-    textViewScrollToIter tv iter 0.25 Nothing
+    iter2 <- textBufferGetEndIter buf
+    if isError
+        then do
+        len <- textBufferGetCharCount buf
+        strti <- textBufferGetIterAtOffset buf (len - length string)
+        textBufferApplyTagByName buf "err" iter2 strti
+        else return ()
+    textBufferMoveMarkByName buf "end" iter2
+    mbMark <- textBufferGetMark buf "end"
+    case mbMark of
+        Nothing -> return ()
+        Just mark -> textViewScrollMarkOnscreen tv mark
     return ()
 
 

@@ -63,7 +63,7 @@ main = do
     st <- initGUI
     if rtsSupportsBoundThreads
         then error "Don't link with -theaded, Gtk won't work"
-        else timeoutAddFull (yield >> return True) priorityDefaultIdle 50
+        else timeoutAddFull (yield >> return True) priorityHigh 50
     mapM_ putStrLn st
 
     prefs <- readPrefs "config/Default.prefs"
