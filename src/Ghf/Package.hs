@@ -54,17 +54,26 @@ selectActivePackage = do
             lift $setCurrentDirectory $dropFileName filePath
             return (Just pack)
 
-packageBuild :: Bool -> GhfM ()
-packageBuild forceReconfig = return ()
-
 packageConfig :: Bool -> GhfAction
 packageConfig force = do
-    mbPackage   <-   getActivePackage
-    log         <-   getLog
+    mbPackage   <- getActivePackage
+    log         <- getLog
     case mbPackage of
-        Nothing         ->   return ()
-        Just package    ->   lift $do
+        Nothing         -> return ()
+        Just package    -> lift $do
             (inp,out,err,pid) <- runExternal "runhaskell" (["Setup","configure"] ++ (configFlags package))
+            oid <- forkIO (readOut log out)
+            eid <- forkIO (readErr log err)
+            return ()
+
+packageBuild :: Bool -> GhfAction
+packageBuild force = do
+    mbPackage   <- getActivePackage
+    log         <- getLog
+    case mbPackage of
+        Nothing         -> return ()
+        Just package    -> lift $do
+            (inp,out,err,pid) <- runExternal "runhaskell" (["Setup","build"] ++ (buildFlags package))
             oid <- forkIO (readOut log out)
             eid <- forkIO (readErr log err)
             return ()

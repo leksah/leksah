@@ -153,7 +153,7 @@ data GhfPackage     =   GhfPackage {
     packageId       ::  PackageIdentifier
 ,   cabalFile       ::  FilePath
 ,   configFlags     ::  [String]
-,   buildFlags      ::  String
+,   buildFlags      ::  [String]
     }
     deriving (Eq,Show)
 
