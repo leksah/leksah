@@ -20,7 +20,7 @@ data-files: config\Default.candy config\Default.keymap
             config\Default.prefs config\Emacs.keymap bin\ghf.gif
 extra-source-files: Setup.lhs
 extra-tmp-files:
-
+ 
 executable: ghf
 main-is: Ghf/Ghf.hs
 buildable: True
@@ -35,7 +35,12 @@ includes:
 install-includes:
 include-dirs:
 hs-source-dirs: src
-other-modules:
+other-modules: Ghf.Core Ghf.PrinterParser Ghf.Package
+               Ghf.Editor.PreferencesEditor Ghf.Editor.PackageEditor
+               Ghf.Editor.SourceEditor Ghf.Editor.PropertyEditor
+               Ghf.Editor.BuildInfoEditor Ghf.Editor.SpecialEditors Ghf.GUI.Menu
+               Ghf.GUI.Statusbar Ghf.GUI.ViewFrame Ghf.GUI.SourceCandy
+               Ghf.GUI.Keymap Ghf.GUI.Log Ghf.Utilities.File
 ghc-prof-options:
 ghc-options:
 hugs-options:

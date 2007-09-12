@@ -91,9 +91,9 @@ appendLog (GhfLog tv _) string isError = do
     iter2 <- textBufferGetEndIter buf
     if isError
         then do
-        len <- textBufferGetCharCount buf
-        strti <- textBufferGetIterAtOffset buf (len - length string)
-        textBufferApplyTagByName buf "err" iter2 strti
+            len <- textBufferGetCharCount buf
+            strti <- textBufferGetIterAtOffset buf (len - length string)
+            textBufferApplyTagByName buf "err" iter2 strti
         else return ()
     textBufferMoveMarkByName buf "end" iter2
     mbMark <- textBufferGetMark buf "end"
