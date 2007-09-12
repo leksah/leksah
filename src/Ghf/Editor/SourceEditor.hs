@@ -1,5 +1,8 @@
 module Ghf.Editor.SourceEditor (
-    newTextBuffer
+    isBuffer
+,   allBuffers
+
+,   newTextBuffer
 
 ,   fileNew
 ,   fileOpen
@@ -58,11 +61,19 @@ import Data.Char(toUpper)
 import qualified Data.Map as Map
 import Data.Map (Map,(!))
 
-
-
 import Ghf.Core
 import Ghf.GUI.ViewFrame
 import Ghf.GUI.SourceCandy
+
+
+isBuffer :: GhfPane -> Bool
+isBuffer (PaneBuf _) = True
+isBuffer _           = False
+
+allBuffers :: GhfM [GhfBuffer]
+allBuffers = do
+    panesST <- readGhf panes
+    return (map (\ (PaneBuf b) -> b) $filter isBuffer $Map.elems panesST)
 
 newTextBuffer :: String -> Maybe FileName -> GhfAction
 newTextBuffer bn mbfn = do

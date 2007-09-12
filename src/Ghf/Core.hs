@@ -29,7 +29,6 @@ module Ghf.Core (
 ,   Connections(..)
 
 -- * Convenience methods for accesing Pane state
-,   isBuffer
 ,   getTopWidget
 ,   getBufferName
 ,   getAddedIndex
@@ -37,7 +36,8 @@ module Ghf.Core (
 
 -- * The Buffer pane
 ,   GhfBuffer(..)
-,   allBuffers
+
+,   GhfLog(..)
 
 -- * Other state structures
 ,   ActionDescr(..)
@@ -175,6 +175,7 @@ instance Show BuildFlags
 -- | Description of the different pane types
 --
 data GhfPane        =   PaneBuf GhfBuffer
+                    |   LogBuf  GhfLog
     deriving (Eq,Ord,Show)
 
 --
@@ -212,24 +213,26 @@ data Connections =  BufConnections [ConnectId SourceView] [ConnectId TextBuffer]
 -- Convenience methods for panes
 -- ### currently ugly
 
-isBuffer :: GhfPane -> Bool
-isBuffer (PaneBuf _) = True
---    isBuffer _           = False
+
 
 getTopWidget :: GhfPane -> Widget
 getTopWidget (PaneBuf buf) = castToWidget(scrolledWindow buf)
 
 getBufferName :: GhfPane -> String
 getBufferName (PaneBuf buf) = bufferName buf
+getBufferName (LogBuf _) = "Log"
 
 getAddedIndex :: GhfPane -> Int
 getAddedIndex (PaneBuf buf) = addedIndex buf
+getAddedIndex _ = 0
 
 realPaneName :: GhfPane -> String
-realPaneName pane =
+realPaneName pane@(PaneBuf _) =
     if getAddedIndex pane == 0
         then getBufferName pane
         else getBufferName pane ++ "(" ++ show (getAddedIndex pane) ++ ")"
+realPaneName other = getBufferName other
+
 
 -- ---------------------------------------------------------------------
 -- Buffers - The text editor panes
@@ -255,10 +258,22 @@ instance Ord GhfBuffer
                             then addedIndex a <= addedIndex b
                             else False
 
-allBuffers :: GhfM [GhfBuffer]
-allBuffers = do
-    panesST <- readGhf panes
-    return (map (\ (PaneBuf buf) -> buf) $filter isBuffer $Map.elems panesST)
+--
+-- | A log view pane description
+--
+data GhfLog  =   GhfLog {
+    textView  ::  TextView
+,   scrolledWindowL :: ScrolledWindow
+}
+
+instance Eq GhfLog
+    where (==) a b = True
+
+instance Ord GhfLog
+    where (<=) a b = True
+
+instance Show GhfLog
+    where show _ = "GhfLog *"
 
 -- ---------------------------------------------------------------------
 -- Other data structures which are used in the state
@@ -292,6 +307,7 @@ data Prefs = Prefs {
     ,   keymapName          ::   String
     ,   forceLineEnds       ::   Bool
     ,   textviewFont        ::   Maybe String
+    ,   logviewFont         ::   Maybe String
     ,   defaultSize         ::   (Int,Int)
 } deriving(Eq,Ord,Show)
 
@@ -335,6 +351,9 @@ instance Show (ConnectId alpha )
 
 instance Show SourceView
     where show _ = "SourceView *"
+
+instance Show TextView
+    where show _ = "TextView *"
 
 instance Show ScrolledWindow
     where show _ = "ScrolledWindow *"

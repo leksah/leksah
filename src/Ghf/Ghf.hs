@@ -31,6 +31,7 @@ import Data.Maybe ( fromMaybe, isJust)
 import qualified Data.Map as Map
 import Data.Map(Map)
 import System.IO
+import Control.Concurrent
 
 import Ghf.Core
 import Ghf.Editor.SourceEditor
@@ -40,6 +41,7 @@ import Ghf.GUI.SourceCandy
 import Ghf.Editor.PreferencesEditor
 import Ghf.GUI.Menu
 import Ghf.GUI.Statusbar
+import Ghf.GUI.Log
 
 data Flag =  OpenFile
        deriving Show
@@ -59,6 +61,9 @@ main = do
     args <- getArgs
     (o,fl) <- ghfOpts args
     st <- initGUI
+    if rtsSupportsBoundThreads
+        then error "Don't link with -theaded, Gtk won't work"
+        else timeoutAddFull (yield >> return True) priorityDefaultIdle 50
     mapM_ putStrLn st
 
     prefs <- readPrefs "config/Default.prefs"
@@ -111,6 +116,7 @@ main = do
     flip runReaderT ghfR $ case fl of
         [] -> newTextBuffer "Unnamed" Nothing
         otherwise  -> mapM_ (\ fn -> (newTextBuffer (takeFileName fn) (Just fn))) fl
+    runReaderT initLog ghfR
     widgetShowAll win
     hbf <- runReaderT getFindBar ghfR
     widgetHide hbf

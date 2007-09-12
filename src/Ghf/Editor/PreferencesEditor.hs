@@ -32,9 +32,11 @@ import Ghf.Core
 import Ghf.Editor.SourceEditor
 import Ghf.GUI.ViewFrame
 import Ghf.GUI.Keymap
+import Ghf.GUI.Log
 import Ghf.GUI.Menu(actions,makeMenu,menuDescription)
 import Ghf.Editor.PropertyEditor hiding(parameters,fieldEditor)
 import Ghf.PrinterParser
+
 
 type Applicator alpha = alpha -> GhfAction
 
@@ -109,6 +111,7 @@ defaultPrefs = Prefs {
     ,   keymapName          =   "Default"
     ,   forceLineEnds       =   True
     ,   textviewFont        =   Nothing
+    ,   logviewFont         =   Nothing
     ,   defaultSize         =   (1024,800)}
 
 prefsDescription :: [(String,[FieldDescription Prefs])]
@@ -201,6 +204,18 @@ prefsDescription = [
     ]),
     ("Other", [
         mkField (emptyParams
+            {   paraName = Just "LogView Font"})
+            (\a -> PP.text (case a of Nothing -> show ""; Just s -> show s))
+            (do str <- stringParser
+                return (if null str then Nothing else Just (str)))
+            logviewFont
+            (\ b a -> a{logviewFont = b})
+            fontEditor
+            (\mbs -> do
+                buffer <- getLog
+                fdesc <- lift $fontDescriptionFromString (case mbs of Just str -> str; Nothing -> "")
+                lift $widgetModifyFont (castToWidget $textView buffer) (Just fdesc))
+    ,   mkField (emptyParams
             {   paraName = Just "Window default size"
             ,   synopsis = Just "Default size of the main ghf window specified as pair (int,int)"
             ,   shadow   = Just ShadowIn})

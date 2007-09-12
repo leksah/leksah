@@ -7,13 +7,14 @@ module Ghf.Package (
 ,   packageBuild
 ) where
 
-import Ghf.Core
-import Ghf.Editor.PackageEditor
+
 import Control.Monad.Reader
 import Data.IORef
+import System.IO
 import System.FilePath
 import System.Environment
 import System.Directory
+import System.Process
 import Distribution.Package
 import Distribution.PackageDescription
 import Distribution.Simple.Configure
@@ -25,16 +26,11 @@ import Distribution.Simple.Build
 import Data.Maybe
 import Prelude hiding (catch)
 import Control.Exception
+import Control.Concurrent
 
-{--
-data GhfPackage     =   GhfPackage {
-    packageId       ::  PackageIdentifier
-,   cabalFile       ::  FilePath
-,   configFlags     ::  Maybe ConfigFlags
-,   buildFlags      ::  Maybe BuildFlags
-    }
-    deriving (Eq,Show)
---}
+import Ghf.Core
+import Ghf.Editor.PackageEditor
+import Ghf.GUI.Log
 
 getActivePackage :: GhfM (Maybe GhfPackage)
 getActivePackage = do
@@ -58,38 +54,37 @@ selectActivePackage = do
             lift $setCurrentDirectory $dropFileName filePath
             return (Just pack)
 
-
+{--
 packageConfig :: Bool -> GhfAction
 packageConfig force = return ()
-
+--}
 
 
 packageBuild :: Bool -> GhfM ()
 packageBuild forceReconfig = return ()
 
-{--
-
-getLogBuffer :: GfhM (TextView)
-
-
 packageConfig :: Bool -> GhfAction
 packageConfig force = do
-    mbPackage <- getActivePackage
+    mbPackage   <-   getActivePackage
+    log         <-   getLog
     case mbPackage of
-        Nothing -> return ()
-        Just package -> do
-            logBuffer <- getLogBuffer
-            (inp,out,err,pid) <- runExternal "runhaskell"
-                                        $["Setup","config"] ++ (configFlags package))
-	        oid <- forkIO (readOut name out)
-	        eid <- forkIO (readErr name err)
+        Nothing         ->   return ()
+        Just package    ->   lift $do
+            (inp,out,err,pid) <- runExternal "runhaskell" (["Setup","configure"] ++ (configFlags package))
+            oid <- forkIO (readOut log out)
+            eid <- forkIO (readErr log err)
+            yield
+            return ()
 
+readOut :: GhfLog -> Handle -> IO ()
+readOut log hndl = do
+    c <- hGetContents hndl
+    appendLog log c
 
-
-        (configFlags,p2) <- configFlags p1
-            buildInfo <- lift $configure packageDescription configFlags
-            let pack = p2{localBuildInfo = Just buildInfo}
-            return (buildInfo,pack)
+readErr :: GhfLog -> Handle -> IO ()
+readErr log hndl = do
+    c <- hGetContents hndl
+    appendLog log c
 
 runExternal :: FilePath -> [String] -> IO (Handle, Handle, Handle, ProcessHandle)
 runExternal path args = do
@@ -102,26 +97,7 @@ runExternal path args = do
     hSetBinaryMode err True
     return hndls
 
-readOut :: Handle -> IO ()
-readOut hndl = do
-    c <- hGetContents hndl
-    let c2 = filter (/= '\r') $ tail $ dropWhile (/= '\01') c
-    mapM_ app $ parseEscapeCodes c2
-
-readErr :: Evaluator -> Handle -> IO ()
-readErr Hugs _ = return ()
-    readErr GHCi hndl = do
-        c <- hGetContents hndl
-        let c2 = filter (/= '\r') c
-        mapM_ (\x -> appendRed dat [x]) c2
-
-app (Left c) = appendText dat [c]
-app (Right (FormatUnknown 50)) = running dat -< False
-app (Right e) = applyEscape dat e
-
-
-
-
+{--
 getPackageDescription :: GhfPackage -> GhfM (PackageDescription,GhfPackage)
 getPackageDescription package =
     case packageDescr package of

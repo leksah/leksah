@@ -1,9 +1,9 @@
 --
 -- | Module for menus and toolbars
--- 
+--
 
 module Ghf.GUI.Menu (
-    actions    
+    actions
 ,   menuDescription
 ,   makeMenu
 ,   quit
@@ -24,27 +24,27 @@ import {-# SOURCE #-} Ghf.Editor.PreferencesEditor(editPrefs)
 import Ghf.Editor.PackageEditor
 import Ghf.Package
 
-version = "0.1" 
+version = "0.1"
 
 actions :: [ActionDescr]
-actions =   
+actions =
     [(AD "File" "_File" Nothing Nothing (return ()) [] False)
-    ,(AD "FileNew" "_New" Nothing (Just "gtk-new") 
+    ,(AD "FileNew" "_New" Nothing (Just "gtk-new")
         fileNew [] False)
-    ,AD "FileOpen" "_Open" Nothing (Just "gtk-open") 
-        fileOpen [] False    
-    ,AD "FileSave" "_Save" Nothing (Just "gtk-save") 
+    ,AD "FileOpen" "_Open" Nothing (Just "gtk-open")
+        fileOpen [] False
+    ,AD "FileSave" "_Save" Nothing (Just "gtk-save")
         (fileSave False) [] False
-    ,AD "FileSaveAs" "Save_As" Nothing (Just "gtk-save_as") 
-        (fileSave True) [] False 
-    ,AD "FileClose" "_Close" Nothing (Just "gtk-close") 
+    ,AD "FileSaveAs" "Save_As" Nothing (Just "gtk-save_as")
+        (fileSave True) [] False
+    ,AD "FileClose" "_Close" Nothing (Just "gtk-close")
         (do fileClose; return ()) [] False
-    ,AD "Quit" "_Quit" Nothing (Just "gtk-quit") 
+    ,AD "Quit" "_Quit" Nothing (Just "gtk-quit")
         quit [] False
 
     ,AD "Edit" "_Edit" Nothing Nothing (return ()) [] False
     ,AD "EditUndo" "_Undo" Nothing (Just "gtk-undo")
-        editUndo [] False 
+        editUndo [] False
     ,AD "EditRedo" "_Redo" Nothing (Just "gtk-redo")
         editRedo [] False
     ,AD "EditCut" "Cu_t" Nothing Nothing{--Just "gtk-cut"--}
@@ -57,27 +57,27 @@ actions =
         editDelete [] False
     ,AD "EditSelectAll" "Select_All" Nothing (Just "gtk-select-all")
         editSelectAll [] False
-    ,AD "EditFind" "_Find" Nothing (Just "gtk-find") 
+    ,AD "EditFind" "_Find" Nothing (Just "gtk-find")
         editFindShow [] False
     ,AD "EditFindNext" "Find _Next" Nothing (Just "gtk-find-next")
         (editFindInc Forward) [] False
     ,AD "EditFindPrevious" "Find _Previous" Nothing (Just "gtk-find-previous")
         (editFindInc Backward) [] False
-    ,AD "EditReplace" "_Replace" Nothing (Just "gtk-replace") 
+    ,AD "EditReplace" "_Replace" Nothing (Just "gtk-replace")
         replaceDialog [] False
-    ,AD "EditGotoLine" "_Goto Line" Nothing (Just "gtk-jump") 
+    ,AD "EditGotoLine" "_Goto Line" Nothing (Just "gtk-jump")
         editGotoLine [] False
 
-    ,AD "EditComment" "_Comment" Nothing Nothing 
+    ,AD "EditComment" "_Comment" Nothing Nothing
         editComment [] False
-    ,AD "EditUncomment" "_Uncomment" Nothing Nothing 
+    ,AD "EditUncomment" "_Uncomment" Nothing Nothing
         editUncomment [] False
-    ,AD "EditShiftRight" "Shift _Right" Nothing Nothing 
+    ,AD "EditShiftRight" "Shift _Right" Nothing Nothing
         editShiftRight [] False
-    ,AD "EditShiftLeft" "Shift _Left" Nothing Nothing 
+    ,AD "EditShiftLeft" "Shift _Left" Nothing Nothing
         editShiftLeft [] False
 
-    ,AD "EditCandy" "_To Candy" Nothing Nothing 
+    ,AD "EditCandy" "_To Candy" Nothing Nothing
         editCandy [] True
 
     ,AD "Package" "Package" Nothing Nothing (return ()) [] False
@@ -125,7 +125,7 @@ actions =
     ,AD "Help" "_Help" Nothing Nothing (return ()) [] False
     ,AD "HelpDebug" "Debug" (Just "<Ctrl>d") Nothing helpDebug [] False
     ,AD "HelpAbout" "About" Nothing (Just "gtk-about") aboutDialog [] False]
- 
+
 
 menuDescription :: String
 menuDescription = "\n\
@@ -216,30 +216,30 @@ menuDescription = "\n\
 
 makeMenu :: UIManager -> [ActionDescr] -> String -> GhfM (AccelGroup, [Maybe Widget])
 makeMenu uiManager actions menuDescription = do
-    ghfR <- ask 
+    ghfR <- ask
     lift $ do
         actionGroupGlobal <- actionGroupNew "global"
         mapM_ (actm ghfR actionGroupGlobal) actions
         uiManagerInsertActionGroup uiManager actionGroupGlobal 1
-        uiManagerAddUiFromString uiManager menuDescription 
+        uiManagerAddUiFromString uiManager menuDescription
         accGroup <- uiManagerGetAccelGroup uiManager
         widgets <- mapM (uiManagerGetWidget uiManager) ["ui/menubar","ui/toolbar"]
         return (accGroup,widgets)
     where
         actm ghfR ag (AD name label tooltip stockId ghfAction accs isToggle) = do
-            let (acc,accString) = if null accs 
-                                    then (Nothing,"=" ++ name) 
+            let (acc,accString) = if null accs
+                                    then (Nothing,"=" ++ name)
                                     else (Just (head accs),(head accs) ++ "=" ++ name)
-            if isToggle 
-                then do      
+            if isToggle
+                then do
                     act <- toggleActionNew name label tooltip stockId
-                    onToggleActionToggled act (doAction ghfAction ghfR accString)  
+                    onToggleActionToggled act (doAction ghfAction ghfR accString)
                     actionGroupAddActionWithAccel ag act acc
                 else do
                     act <- actionNew name label tooltip stockId
-                    onActionActivate act (doAction ghfAction ghfR accString) 
-                    actionGroupAddActionWithAccel ag act acc      
-        doAction ghfAction ghfR accStr = 
+                    onActionActivate act (doAction ghfAction ghfR accString)
+                    actionGroupAddActionWithAccel ag act acc
+        doAction ghfAction ghfR accStr =
             runReaderT (do
                 ghfAction
                 sb <- getSpecialKeys
@@ -250,12 +250,12 @@ makeMenu uiManager actions menuDescription = do
 
 quit :: GhfAction
 quit = do
-    bufs    <- readGhf panes
-    if Map.null bufs 
+    bufs    <- allBuffers
+    if null bufs
         then    lift mainQuit
         else    do  r <- fileClose
                     if r then quit else return ()
-                    
+
 aboutDialog :: GhfAction
 aboutDialog = lift $ do
     d <- aboutDialogNew
@@ -264,7 +264,7 @@ aboutDialog = lift $ do
     aboutDialogSetCopyright d "Copyright 2007 Juergen Nicklisch-Franken aka Jutaro"
     aboutDialogSetComments d $ "An integrated development environement (IDE) for the " ++
                                "programming language haskell and the Glasgow Haskell compiler"
-    license <- readFile "gpl.txt"     
+    license <- readFile "gpl.txt"
     aboutDialogSetLicense d $ Just license
     aboutDialogSetWebsite d "www.haskell.org/ghf"
     aboutDialogSetAuthors d ["Juergen Nicklisch-Franken aka Jutaro"]

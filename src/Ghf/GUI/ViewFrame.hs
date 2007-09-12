@@ -55,7 +55,7 @@ newNotebook = do
     notebookSetShowTabs nb True
     notebookSetScrollable nb True
     notebookSetPopup nb True
-    return nb 
+    return nb
 
 viewSwitchTabs :: GhfAction
 viewSwitchTabs = do
@@ -68,7 +68,7 @@ viewTabsPos :: PositionType -> GhfAction
 viewTabsPos pos = do
     nb <- getActiveOrTopNotebook
     lift $notebookSetTabPos nb pos
-        
+
 --
 -- | Split the currently active pane in horizontal direction
 --
@@ -89,7 +89,7 @@ viewSplit dir = do
     mbPanePath        <- getActivePanePath
     case mbPanePath of
         Nothing -> return ()
-        Just panePath -> do 
+        Just panePath -> do
           activeNotebook  <- getNotebook panePath
           mbPD <- lift $ do
               mbParent  <- widgetGetParent activeNotebook
@@ -149,7 +149,7 @@ viewCollapse' panePath = do
     let mbOtherSidePath = otherSide panePath
     case mbOtherSidePath of
         Nothing -> lift $putStrLn "Can't collapse top level"
-        Just otherSidePath -> 
+        Just otherSidePath ->
             let sp1 = getSubpath panePath layout1
                 sp2 = getSubpath otherSidePath layout1
             in do
@@ -157,7 +157,7 @@ viewCollapse' panePath = do
                 Nothing -> return ()
                 Just sp -> viewCollapse' sp
             case  sp2 of
-                Nothing -> return () 
+                Nothing -> return ()
                 Just sp -> viewCollapse' sp
             paneMap         <- readGhf paneMap
             activeNotebook  <- getNotebook panePath
@@ -180,9 +180,9 @@ viewCollapse' panePath = do
                                     then do
                                         let dir = last newPanePath
                                         if (dir == TopP || dir == LeftP)
-                                            then panedPack1 (castToPaned grandparent) 
+                                            then panedPack1 (castToPaned grandparent)
                                                     activeNotebook True True
-                                            else panedPack2 (castToPaned grandparent) 
+                                            else panedPack2 (castToPaned grandparent)
                                                     activeNotebook True True
                                         widgetSetName activeNotebook $paneDirectionToWidgetName dir
                                     else do
@@ -221,7 +221,7 @@ move toPane ghfw  = do
     modifyGhf_ (\ghf -> return (ghf{paneMap = newPaneMap}))
 
 --
--- | Moves the activePane in the given direction, if possible 
+-- | Moves the activePane in the given direction, if possible
 --   If their are many possibilities choose the leftmost and topmost
 --
 viewMove :: PaneDirection -> GhfAction
@@ -234,7 +234,7 @@ viewMove direction = do
             mbPanePath <- getActivePanePath
             case mbPanePath of
                 Nothing -> return ()
-                Just panePath -> do 
+                Just panePath -> do
                   layout <- readGhf layout
                   case findMoveTarget panePath layout direction of
                       Nothing -> return ()
@@ -252,7 +252,7 @@ findMoveTarget panePath layout direction=
                  layoutP  = layoutFromPath basePath layout
              in  Just $basePath ++ findAppropriate layoutP oppositeDir
 
-findAppropriate :: PaneLayout -> PaneDirection -> PanePath 
+findAppropriate :: PaneLayout -> PaneDirection -> PanePath
 findAppropriate  TerminalP _ =   []
 findAppropriate  (HorizontalP t b) LeftP     =   TopP    :  findAppropriate t LeftP
 findAppropriate  (HorizontalP t b) RightP    =   TopP    :  findAppropriate t RightP
@@ -324,7 +324,7 @@ getActiveOrTopNotebook = do
         Just panePath -> getNotebook panePath
         Nothing -> do
             layout <- readGhf layout
-            if layout == TerminalP     
+            if layout == TerminalP
                 then getNotebook []
                 else error "getActiveOrTopNotebook: No active notebook and not collapsed"
 
@@ -342,7 +342,7 @@ paneDirectionToWidgetName RightP    =  "right"
 --
 adjustPane :: PanePath -> PanePath -> GhfAction
 adjustPane fromPane toPane  = do
-    trace ("adjust pane from: " ++ show fromPane ++ " to: " ++ show toPane) return () 
+    trace ("adjust pane from: " ++ show fromPane ++ " to: " ++ show toPane) return ()
     paneMap     <- readGhf paneMap
     let newMap  = Map.map (\(pane,other) -> do
         if pane == fromPane
@@ -369,11 +369,11 @@ adjustLayoutForSplit  dir path  = do
 adjustLayoutForCollapse :: PanePath -> GhfAction
 adjustLayoutForCollapse path = do
     layout          <- readGhf layout
-    let newLayout   = adjust path layout TerminalP  
+    let newLayout   = adjust path layout TerminalP
     modifyGhf_ $ \ghf -> return (ghf{layout = newLayout})
 
 getSubpath :: PanePath -> PaneLayout -> Maybe PanePath
-getSubpath path layout = 
+getSubpath path layout =
     case layoutFromPath path layout of
         TerminalP -> Nothing
         HorizontalP _ _ -> Just (path ++ [TopP])
@@ -406,9 +406,9 @@ getActivePanePathOrTop = do
     mbPP <- getActivePanePath
     case mbPP of
         Just pp -> return pp
-        Nothing -> do            
+        Nothing -> do
             layout <- readGhf layout
-            if layout == TerminalP     
+            if layout == TerminalP
                 then return []
                 else error "getActivePanePathOrTop: No active notebook and not collapsed"
 
@@ -420,8 +420,8 @@ maybeActiveBuf = do
         Just (pane,signals) -> do
             case pane of
                 PaneBuf buf -> return (Just (buf,signals))
-              --  otherwise   -> return Nothing
-    
+                otherwise   -> return Nothing
+
 
 
 
@@ -446,9 +446,9 @@ widgetGet strL cf = do
 widgetGetRel :: Widget -> [String] -> (Widget -> b) -> IO (b)
 widgetGetRel w sl cf = do
     r <- widgetFromPath w sl
-    return (cf r) 
+    return (cf r)
 
-getUIAction :: String -> (Action -> a) -> GhfM(a)    
+getUIAction :: String -> (Action -> a) -> GhfM(a)
 getUIAction str f = do
     uiManager <- readGhf uiManager
     lift $ do
@@ -473,7 +473,7 @@ guessNewActiveBuffer nb = do
                         case mbKey of
                             Nothing -> return Nothing
                             Just key -> return (Map.lookup key panes)
-    modifyGhf_ $ \ghf -> 
+    modifyGhf_ $ \ghf ->
         let newActiveBuf =  case mbBuf of
                               Just b  ->  Just (b,BufConnections [][])
                               Nothing ->  if Map.null panes
@@ -488,9 +488,9 @@ guessNewActiveBuffer nb = do
 --    $getUIAction "ui/menubar/_Edit/_Find" castToToggleAction
 
 getCandyState :: GhfM (Bool)
-getCandyState = do 
+getCandyState = do
     ui <- getUIAction "ui/menubar/_Edit/Source Candy" castToToggleAction
-    lift $toggleActionGetActive ui 
+    lift $toggleActionGetActive ui
 
 setCandyState :: Bool -> GhfAction
 setCandyState b = do
@@ -502,24 +502,24 @@ getFindEntry :: GhfM (Entry)
 getFindEntry =  widgetGet ["topBox","statusBox","searchBox","searchEntry"] castToEntry
 
 getFindBar :: GhfM (HBox)
-getFindBar =  widgetGet ["topBox","statusBox","searchBox"] castToHBox 
+getFindBar =  widgetGet ["topBox","statusBox","searchBox"] castToHBox
 
 getStatusbarIO :: GhfM (Statusbar)
-getStatusbarIO =  widgetGet ["topBox","statusBox","statusBarInsertOverwrite"] castToStatusbar 
+getStatusbarIO =  widgetGet ["topBox","statusBox","statusBarInsertOverwrite"] castToStatusbar
 
 getStatusbarLC :: GhfM (Statusbar)
 getStatusbarLC = widgetGet ["topBox","statusBox","statusBarLineColumn"] castToStatusbar
 
 getCaseSensitive :: GhfM (ToggleButton)
-getCaseSensitive = widgetGet ["topBox","statusBox","searchBox","caseSensitiveButton"] 
+getCaseSensitive = widgetGet ["topBox","statusBox","searchBox","caseSensitiveButton"]
                         castToToggleButton
 
 getWrapAround :: GhfM (ToggleButton)
-getWrapAround = widgetGet ["topBox","statusBox","searchBox","wrapAroundButton"] 
+getWrapAround = widgetGet ["topBox","statusBox","searchBox","wrapAroundButton"]
                         castToToggleButton
 
 getEntireWord :: GhfM (ToggleButton)
-getEntireWord = widgetGet ["topBox","statusBox","searchBox","entireWordButton"] 
+getEntireWord = widgetGet ["topBox","statusBox","searchBox","entireWordButton"]
                         castToToggleButton
 
 getGotoLineSpin :: GhfM (SpinButton)
