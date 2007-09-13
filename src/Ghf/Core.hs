@@ -150,11 +150,17 @@ withGhf f = do
 --
 
 data GhfPackage     =   GhfPackage {
-    packageId       ::  PackageIdentifier
-,   cabalFile       ::  FilePath
-,   configFlags     ::  [String]
-,   buildFlags      ::  [String]
-    }
+    packageId       ::   PackageIdentifier
+,   cabalFile       ::   FilePath
+,   configFlags     ::   [String]
+,   buildFlags      ::   [String]
+,   haddockFlags    ::   [String]
+,   exeFlags        ::   [String]
+,   installFlags    ::   [String]
+,   registerFlags   ::   [String]
+,   unregisterFlags ::   [String]
+,   sdistFlags      ::   [String]
+}
     deriving (Eq,Show)
 
 instance Eq ConfigFlags
@@ -198,8 +204,8 @@ type PanePath       =   [PaneDirection]
 --
 -- | Logic description of a window layout
 --
-data PaneLayout =       HorizontalP PaneLayout PaneLayout
-                    |   VerticalP PaneLayout PaneLayout
+data PaneLayout =       HorizontalP PaneLayout PaneLayout Int
+                    |   VerticalP PaneLayout PaneLayout Int
                     |   TerminalP
     deriving (Eq,Ord,Show)
 
@@ -211,7 +217,7 @@ data Connections =  BufConnections [ConnectId SourceView] [ConnectId TextBuffer]
 
 -- ---------------------------------------------------------------------
 -- Convenience methods for panes
--- ### currently ugly
+--  currently ugly
 
 
 
@@ -311,6 +317,7 @@ data Prefs = Prefs {
     ,   textviewFont        ::   Maybe String
     ,   logviewFont         ::   Maybe String
     ,   defaultSize         ::   (Int,Int)
+    ,   browser             ::   String
 } deriving(Eq,Ord,Show)
 
 

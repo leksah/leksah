@@ -22,7 +22,7 @@ extra-source-files: Setup.lhs
 extra-tmp-files:
  
 executable: ghf
-main-is: Ghf/Ghf.hs
+main-is: Ghf\Ghf.hs
 buildable: True
 cc-options:
 ld-options:

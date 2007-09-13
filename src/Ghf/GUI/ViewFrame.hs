@@ -47,6 +47,13 @@ import Debug.Trace
 
 import Ghf.Core
 
+{--
+saveLayout :: GhfM(String)
+saveLayout =
+    ghf <- readGhf
+    layout ghf
+--}
+
 newNotebook :: IO Notebook
 newNotebook = do
     nb <- notebookNew
@@ -259,14 +266,14 @@ findMoveTarget panePath layout direction=
 
 findAppropriate :: PaneLayout -> PaneDirection -> PanePath
 findAppropriate  TerminalP _ =   []
-findAppropriate  (HorizontalP t b) LeftP     =   TopP    :  findAppropriate t LeftP
-findAppropriate  (HorizontalP t b) RightP    =   TopP    :  findAppropriate t RightP
-findAppropriate  (HorizontalP t b) BottomP   =   BottomP :  findAppropriate b BottomP
-findAppropriate  (HorizontalP t b) TopP      =   TopP    :  findAppropriate b TopP
-findAppropriate  (VerticalP l r) LeftP       =   LeftP   :  findAppropriate l LeftP
-findAppropriate  (VerticalP l r) RightP      =   RightP  :  findAppropriate r RightP
-findAppropriate  (VerticalP l r) BottomP     =   LeftP   :  findAppropriate l BottomP
-findAppropriate  (VerticalP l r) TopP        =   LeftP   :  findAppropriate l TopP
+findAppropriate  (HorizontalP t b _) LeftP     =   TopP    :  findAppropriate t LeftP
+findAppropriate  (HorizontalP t b _) RightP    =   TopP    :  findAppropriate t RightP
+findAppropriate  (HorizontalP t b _) BottomP   =   BottomP :  findAppropriate b BottomP
+findAppropriate  (HorizontalP t b _) TopP      =   TopP    :  findAppropriate b TopP
+findAppropriate  (VerticalP l r _) LeftP       =   LeftP   :  findAppropriate l LeftP
+findAppropriate  (VerticalP l r _) RightP      =   RightP  :  findAppropriate r RightP
+findAppropriate  (VerticalP l r _) BottomP     =   LeftP   :  findAppropriate l BottomP
+findAppropriate  (VerticalP l r _) TopP        =   LeftP   :  findAppropriate l TopP
 
 --
 -- | Get another pane path which points to the other side at the same level
@@ -291,10 +298,10 @@ otherDirection BottomP  = TopP
 --
 layoutFromPath :: PanePath -> PaneLayout -> PaneLayout
 layoutFromPath [] l                             = l
-layoutFromPath (TopP:r) (HorizontalP t _)       = layoutFromPath r t
-layoutFromPath (BottomP:r) (HorizontalP _ b)    = layoutFromPath r b
-layoutFromPath (LeftP:r) (VerticalP l _)        = layoutFromPath r l
-layoutFromPath (RightP:r) (VerticalP _ ri)      = layoutFromPath r ri
+layoutFromPath (TopP:r) (HorizontalP t _ _)     = layoutFromPath r t
+layoutFromPath (BottomP:r) (HorizontalP _ b _)  = layoutFromPath r b
+layoutFromPath (LeftP:r) (VerticalP l _ _)      = layoutFromPath r l
+layoutFromPath (RightP:r) (VerticalP _ ri _)    = layoutFromPath r ri
 layoutFromPath pp l                             = error
     $"inconsistent layout " ++ show pp ++ " " ++ show l
 
@@ -362,8 +369,8 @@ adjustLayoutForSplit            :: Direction -> PanePath -> GhfAction
 adjustLayoutForSplit  dir path  = do
     layout          <- readGhf layout
     let newTerm     = case dir of
-                        Horizontal -> HorizontalP TerminalP TerminalP
-                        Vertical -> VerticalP TerminalP TerminalP
+                        Horizontal -> HorizontalP TerminalP TerminalP 0
+                        Vertical -> VerticalP TerminalP TerminalP 0
     let newLayout   = adjust path layout newTerm
     modifyGhf_ $ \ghf -> return (ghf{layout = newLayout})
 
@@ -381,8 +388,8 @@ getSubpath :: PanePath -> PaneLayout -> Maybe PanePath
 getSubpath path layout =
     case layoutFromPath path layout of
         TerminalP -> Nothing
-        HorizontalP _ _ -> Just (path ++ [TopP])
-        VerticalP _ _ -> Just (path ++ [LeftP])
+        HorizontalP _ _ _   -> Just (path ++ [TopP])
+        VerticalP _ _ _     -> Just (path ++ [LeftP])
 
 --
 -- | Changes the layout by replacing element at pane path with replace
@@ -391,10 +398,10 @@ adjust :: PanePath -> PaneLayout -> PaneLayout -> PaneLayout
 adjust pp layout replace    = adjust' pp layout
     where
     adjust' [] _                                = replace
-    adjust' (TopP:r)  (HorizontalP tp bp)       = HorizontalP (adjust' r tp) bp
-    adjust' (BottomP:r)  (HorizontalP tp bp)    = HorizontalP tp (adjust' r bp)
-    adjust' (LeftP:r)  (VerticalP lp rp)        = VerticalP (adjust' r lp) rp
-    adjust' (RightP:r)  (VerticalP lp rp)       = VerticalP lp (adjust' r rp)
+    adjust' (TopP:r)  (HorizontalP tp bp _)     = HorizontalP (adjust' r tp) bp 0
+    adjust' (BottomP:r)  (HorizontalP tp bp _)  = HorizontalP tp (adjust' r bp) 0
+    adjust' (LeftP:r)  (VerticalP lp rp _)      = VerticalP (adjust' r lp) rp 0
+    adjust' (RightP:r)  (VerticalP lp rp _)     = VerticalP lp (adjust' r rp) 0
     adjust' p l = error $"inconsistent layout " ++ show p ++ " " ++ show l
 
 getActivePanePath :: GhfM (Maybe PanePath)

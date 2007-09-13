@@ -1,6 +1,6 @@
 --Default Keymap file for Genuine Haskell Face
 --Allowed Modifiers are <shift>	<ctrl> <alt> <apple> <compose>
---<ctrl> can alternatively be called <ctrl> 
+--<ctrl> can alternatively be called <ctrl>
 --Apple is the Windows key on PC keyboards
 --Compose is often labelled Alt Gr.
 
@@ -15,7 +15,7 @@
 --<ctrl>x/<ctrl>s         ->          FileSave        "Saves the current buffer"
 
 <ctrl><shift>s          ->          FileSaveAs      "Saves the current buffer as a new file"
---<ctrl>x/<ctrl>w         ->          FileSaveAs      "Saves the current buffer as a new file" 
+--<ctrl>x/<ctrl>w         ->          FileSaveAs      "Saves the current buffer as a new file"
 
 <ctrl>w                 ->          FileClose       "Closes the current buffer"
 --<ctrl>x/k               ->          FileClose       "Closes the current buffer"
@@ -30,16 +30,16 @@
 <shift><ctrl>y          ->          EditRedo        "Redos the last user action"
 --<ctrl>x/r               ->          EditRedo        "Redos the last user action"
 
---Just "<ctrl>X"     ->          EditCut 
---Just "<ctrl>C"     ->          EditCopy 
---Just "<ctrl>V"     ->          EditPaste 
+--Just "<ctrl>X"     ->          EditCut
+--Just "<ctrl>C"     ->          EditCopy
+--Just "<ctrl>V"     ->          EditPaste
                         ->          EditDelete
 <ctrl>a                 ->          EditSelectAll   "Select the whole text in the current buffer"
 
 <ctrl>f                 ->          EditFind        "Search for a text string"
 F3                      ->          EditFindNext    "Find the next occurence of the text string"
 
-<ctrl><shift>k          ->          EditFindPrevious 
+<ctrl><shift>k          ->          EditFindPrevious
                                                     "Find the previous occurence of the text string"
 <ctrl>r                 ->          EditReplace
 
@@ -56,7 +56,7 @@ F3                      ->          EditFindNext    "Find the next occurence of 
 <ctrl><alt><shift>Up    ->          ViewMoveUp      "Move the current pane up"
 <ctrl><alt><shift>Down  ->          ViewMoveDown    "Move the current pane down"
 
-<ctrl>2                 ->          ViewSplitHorizontal 
+<ctrl>2                 ->          ViewSplitHorizontal
                                                     "Split the current pane in horizontal direction"
 <ctrl>3                 ->          ViewSplitVertical
                                                     "Split the current pane in vertical direction"
@@ -69,3 +69,6 @@ F3                      ->          EditFindNext    "Find the next occurence of 
                         ->          ViewSwitchTabs  "Switches if tabs for the current notebook are visible"
                         ->          HelpDebug
                         ->          HelpAbout
+
+<ctrl>b                 ->          BuildPackage    "Opens an existing file"
+--<ctrl>x/<ctrl>f         ->          FileOpen        "Opens an existing file"

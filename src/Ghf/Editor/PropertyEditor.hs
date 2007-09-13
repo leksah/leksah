@@ -129,7 +129,6 @@ data EventSelector  =   Clicked
                     |   FocusOut
                     |   FocusIn
                     |   SelectionChanged
-                    -- |...
     deriving (Eq,Ord,Show)
 --
 -- | A class for providing default values for certain types of editors

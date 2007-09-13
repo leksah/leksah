@@ -1,4 +1,10 @@
+
+
 ToDo List
+
+1. Save and recover pane Layout
+2. Parse error messages
+3.
 
 1. Ungleiche Verteilung
 2. Buttons sind so ulkig
@@ -9,8 +15,7 @@ Views
     Save as geht nicht?!
 
 Editor
-- undo_manager warning!
-- Changed on disk 
+- Changed on disk
 - Clipboard binding Huuuu
 - Find as Toggle
 - Candy with '(' '\n' .. before and ')' \n .. after
@@ -20,12 +25,12 @@ Editor
 
 - options to add:
         highlight buffer (single buffer,no general preference)
- 
+
 Preferences
 -
 
-Projects 
-- 
+Projects
+-
 
 
 

@@ -112,7 +112,8 @@ defaultPrefs = Prefs {
     ,   forceLineEnds       =   True
     ,   textviewFont        =   Nothing
     ,   logviewFont         =   Nothing
-    ,   defaultSize         =   (1024,800)}
+    ,   defaultSize         =   (1024,800)
+    ,   browser             =   "firefox"}
 
 prefsDescription :: [(String,[FieldDescription Prefs])]
 prefsDescription = [
@@ -224,7 +225,15 @@ prefsDescription = [
             defaultSize (\(c,d) a -> a{defaultSize = (c,d)})
             (pairEditor ((intEditor (0.0, 3000.0, 25.0)), emptyParams {paraName = Just "X"})
                         ((intEditor (0.0, 3000.0, 25.0)), emptyParams {paraName = Just "Y"}))
-            (\a -> return ())])]
+            (\a -> return ())
+    ,   mkField (emptyParams{paraName = Just "Browser"})
+            (PP.text . show)
+            stringParser
+            browser
+            (\b a -> a{browser = b})
+            stringEditor
+            (\i -> return ())
+    ])]
 
 -- ------------------------------------------------------------
 -- * Parsing

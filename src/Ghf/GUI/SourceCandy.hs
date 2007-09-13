@@ -43,7 +43,7 @@ keystrokeCandy mbc transformTable gtkbuf = do
         where
         replace' [] = return ()
         replace' ((isOp,from,to):rest) =
-            let beforeChar  =  match !! (max 0 (length match - (length from + 1))) -- ##index check
+            let beforeChar  =  match !! (max 0 (length match - (length from + 1)))
                 beforeOk    =  not $if isOp
                                     then Set.member beforeChar notBeforeOp
                                     else Set.member beforeChar notBeforeId

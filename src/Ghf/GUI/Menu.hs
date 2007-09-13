@@ -89,6 +89,29 @@ actions =
         (packageConfig True) [] False
     ,AD "BuildPackage" "_Build Package" Nothing Nothing
         (packageBuild False) [] False
+    ,AD "DocPackage" "_Build Documentation" Nothing Nothing
+        packageDoc [] False
+    ,AD "CleanPackage" "Cl_ean Package" Nothing Nothing
+        packageClean [] False
+    ,AD "CopyPackage" "_Build Package" Nothing Nothing
+        packageCopy [] False
+    ,AD "RunPackage" "_Run" Nothing Nothing
+        packageRun [] False
+
+    ,AD "InstallPackage" "_Install Package" Nothing Nothing
+        packageInstall [] False
+    ,AD "RegisterPackage" "_Register Package" Nothing Nothing
+        packageRegister [] False
+    ,AD "UnregisterPackage" "_Unregister" Nothing Nothing
+        packageUnregister [] False
+    ,AD "TestPackage" "Test Package" Nothing Nothing
+        packageTest [] False
+    ,AD "SdistPackage" "Source Dist" Nothing Nothing
+        packageSdist [] False
+    ,AD "OpenDocPackage" "_Open Doc" Nothing Nothing
+        packageOpenDoc [] False
+
+
 
     ,AD "View" "_View" Nothing Nothing (return ()) [] False
     ,AD "ViewMoveLeft" "Move _Left" Nothing Nothing
@@ -169,8 +192,21 @@ menuDescription = "\n\
     \<menu name=\"_Package\" action=\"Package\">\n\
        \<menuitem name=\"_New Package\" action=\"NewPackage\" />\n\
        \<menuitem name=\"_Edit Package\" action=\"EditPackage\" />\n\
+       \<separator/>\n\
        \<menuitem name=\"_Configure Package\" action=\"ConfigPackage\" />\n\
        \<menuitem name=\"_Build Package\" action=\"BuildPackage\" />\n\
+       \<menuitem name=\"_Run\" action=\"RunPackage\" />\n\
+       \<separator/>\n\
+       \<menuitem name=\"Clea_n Package\" action=\"CleanPackage\" />\n\
+       \<menuitem name=\"C_opy Package\" action=\"CopyPackage\" />\n\
+       \<menuitem name=\"_Install Package\" action=\"InstallPackage\" />\n\
+       \<menuitem name=\"Re_gister Package\" action=\"RegisterPackage\" />\n\
+       \<menuitem name=\"_Unregister Package\" action=\"UnregisterPackage\" />\n\
+       \<menuitem name=\"Test Package\" action=\"TestPackage\" />\n\
+       \<menuitem name=\"SDist Package\" action=\"SdistPackage\" />\n\
+       \<separator/>\n\
+       \<menuitem name=\"_Build Documentation\" action=\"DocPackage\" />\n\
+       \<menuitem name=\"Open Documentation\" action=\"OpenDocPackage\" />\n\
      \</menu>\n\
     \<menu name=\"_View\" action=\"View\">\n\
        \<menuitem name=\"Move _Left\" action=\"ViewMoveLeft\" />\n\

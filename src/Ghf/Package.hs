@@ -5,9 +5,21 @@
 module Ghf.Package (
     packageConfig
 ,   packageBuild
+,   packageDoc
+,   packageClean
+,   packageCopy
+,   packageRun
+
+,   packageInstall
+,   packageRegister
+,   packageUnregister
+,   packageTest
+,   packageSdist
+,   packageOpenDoc
 ) where
 
-
+import Graphics.UI.Gtk
+import Graphics.UI.Gtk.ModelView as New
 import Control.Monad.Reader
 import Data.IORef
 import System.IO
@@ -48,7 +60,7 @@ selectActivePackage = do
         Just filePath -> do
             let flags = emptyConfigFlags defaultProgramConfiguration
             packageD <- lift $readPackageDescription filePath
-            let pack = GhfPackage (package packageD) filePath [] []
+            let pack = GhfPackage (package packageD) filePath [] [] [] [] [] [] [] []
             modifyGhf_ (\ghf -> return (ghf{activePack = (Just pack)}))
             lift $putStrLn $"Set current directory " ++ dropFileName filePath
             lift $setCurrentDirectory $dropFileName filePath
@@ -77,6 +89,165 @@ packageBuild force = do
             oid <- forkIO (readOut log out)
             eid <- forkIO (readErr log err)
             return ()
+
+packageDoc :: GhfAction
+packageDoc = do
+    mbPackage   <- getActivePackage
+    log         <- getLog
+    case mbPackage of
+        Nothing         -> return ()
+        Just package    -> lift $do
+            (inp,out,err,pid) <- runExternal "runhaskell" (["Setup","haddock"] ++ (haddockFlags package))
+            oid <- forkIO (readOut log out)
+            eid <- forkIO (readErr log err)
+            return ()
+
+packageClean :: GhfAction
+packageClean = do
+    mbPackage   <- getActivePackage
+    log         <- getLog
+    case mbPackage of
+        Nothing         -> return ()
+        Just package    -> lift $do
+            (inp,out,err,pid) <- runExternal "runhaskell" (["Setup","clean"] ++ (haddockFlags package))
+            oid <- forkIO (readOut log out)
+            eid <- forkIO (readErr log err)
+            return ()
+
+packageCopy :: GhfAction
+packageCopy = do
+    mbPackage   <- getActivePackage
+    log         <- getLog
+    mbDir       <- chooseDir "Select the target directory"
+    case mbDir of
+        Nothing -> return ()
+        Just fp ->
+            case mbPackage of
+                Nothing         -> return ()
+                Just package    -> lift $do
+                    (inp,out,err,pid) <- runExternal "runhaskell" (["Setup","copy"] ++ ["--destdir=" ++ fp])
+                    oid <- forkIO (readOut log out)
+                    eid <- forkIO (readErr log err)
+                    return ()
+
+packageRun :: GhfAction
+packageRun = do
+    mbPackage   <- getActivePackage
+    log         <- getLog
+    case mbPackage of
+        Nothing         -> return ()
+        Just package    -> lift $do
+            pd <- readPackageDescription (cabalFile package)
+            case executables pd of
+                [(Executable name _ _)] -> do
+                    let path = "dist/build" </> pkgName (packageId package) </> name
+                    (inp,out,err,pid) <- runExternal path (exeFlags package)
+                    oid <- forkIO (readOut log out)
+                    eid <- forkIO (readErr log err)
+                    return ()
+                otherwise -> do
+                    putStrLn "no single executable in selected package"
+                    return ()
+
+packageInstall :: GhfAction
+packageInstall = do
+    mbPackage   <- getActivePackage
+    log         <- getLog
+    case mbPackage of
+        Nothing         -> return ()
+        Just package    -> lift $do
+            (inp,out,err,pid) <- runExternal "runhaskell" (["Setup","install"] ++ (installFlags package))
+            oid <- forkIO (readOut log out)
+            eid <- forkIO (readErr log err)
+            return ()
+
+packageRegister :: GhfAction
+packageRegister = do
+    mbPackage   <- getActivePackage
+    log         <- getLog
+    case mbPackage of
+        Nothing         -> return ()
+        Just package    -> lift $do
+            (inp,out,err,pid) <- runExternal "runhaskell" (["Setup","register"] ++ (registerFlags package))
+            oid <- forkIO (readOut log out)
+            eid <- forkIO (readErr log err)
+            return ()
+
+packageUnregister :: GhfAction
+packageUnregister = do
+    mbPackage   <- getActivePackage
+    log         <- getLog
+    case mbPackage of
+        Nothing         -> return ()
+        Just package    -> lift $do
+            (inp,out,err,pid) <- runExternal "runhaskell" (["Setup","unregister"] ++ (unregisterFlags package))
+            oid <- forkIO (readOut log out)
+            eid <- forkIO (readErr log err)
+            return ()
+
+packageTest :: GhfAction
+packageTest = do
+    mbPackage   <- getActivePackage
+    log         <- getLog
+    case mbPackage of
+        Nothing         -> return ()
+        Just package    -> lift $do
+            (inp,out,err,pid) <- runExternal "runhaskell" (["Setup","test"])
+            oid <- forkIO (readOut log out)
+            eid <- forkIO (readErr log err)
+            return ()
+
+packageSdist :: GhfAction
+packageSdist = do
+    mbPackage   <- getActivePackage
+    log         <- getLog
+    case mbPackage of
+        Nothing         -> return ()
+        Just package    -> lift $do
+            (inp,out,err,pid) <- runExternal "runhaskell" (["Setup","sdist"] ++ (sdistFlags package))
+            oid <- forkIO (readOut log out)
+            eid <- forkIO (readErr log err)
+            return ()
+
+packageOpenDoc :: GhfAction
+packageOpenDoc = do
+    mbPackage   <- getActivePackage
+    prefs       <- readGhf prefs
+    log         <- getLog
+    case mbPackage of
+        Nothing         -> return ()
+        Just package    -> lift $do
+            let path = "dist/doc/html" </> pkgName (packageId package) </> "index.html"
+            (inp,out,err,pid) <- runExternal (browser prefs) [path]
+            oid <- forkIO (readOut log out)
+            eid <- forkIO (readErr log err)
+            return ()
+
+chooseDir :: String -> GhfM (Maybe FilePath)
+chooseDir str = do
+    win <- readGhf window
+    lift $do
+        dialog <- fileChooserDialogNew
+                        (Just $ str)
+                        (Just win)
+                    FileChooserActionSelectFolder
+                    [("gtk-cancel"
+                    ,ResponseCancel)
+                    ,("gtk-open"
+                    ,ResponseAccept)]
+        widgetShow dialog
+        response <- dialogRun dialog
+        case response of
+            ResponseAccept -> do
+                fn <- fileChooserGetFilename dialog
+                widgetDestroy dialog
+                return fn
+            ResponseCancel -> do
+                widgetDestroy dialog
+                return Nothing
+            ResponseDeleteEvent -> do
+                widgetDestroy dialog
+                return Nothing
 
 readOut :: GhfLog -> Handle -> IO ()
 readOut log hndl =
@@ -114,54 +285,6 @@ runExternal path args = do
     hSetBinaryMode err True
     return hndls
 
-{--
-getPackageDescription :: GhfPackage -> GhfM (PackageDescription,GhfPackage)
-getPackageDescription package =
-    case packageDescr package of
-        Nothing -> do
-            pd <- lift $readPackageDescription (cabalFile package)
-            return (pd,package{packageDescr = Just pd})
-        Just pd -> return (pd,package)
-
-getConfigFlags :: GhfPackage -> GhfM (ConfigFlags,GhfPackage)
-getConfigFlags package =
-    case configFlags package of
-        Nothing -> do
-            let flags = emptyConfigFlags defaultProgramConfiguration
-            return (flags,package{configFlags = Just flags})
-        Just flags -> return (flags,package)
 
 
-getBuildFlags :: GhfPackage -> GhfM (BuildFlags,GhfPackage)
-getBuildFlags package =
-    case buildFlags package of
-        Nothing -> do
-            let flags = BuildFlags 2
-            return (flags,package{buildFlags = Just flags})
-        Just flags -> return (flags,package)
 
-
-packageConfig :: Bool -> GhfAction
-packageConfig force = do
-    mbPackage <- getActivePackage
-    case mbPackage of
-        Nothing -> return ()
-        Just package -> do
-            (_,pack) <- getLocalBuildInfo package force
-            modifyGhf_ (\ghf -> return (ghf{activePack = (Just pack)}))
-            return ()
-
-packageBuild :: Bool -> GhfM ()
-packageBuild forceReconfig = do
-    mbPackage <- getActivePackage
-    case mbPackage of
-        Nothing -> return ()
-        Just package -> do
-            (packageDescription,p1) <- getPackageDescription package
-            (buildInfo,p2) <- getLocalBuildInfo p1 forceReconfig
-            (buildFlags,p3) <- getBuildFlags p2
-            lift $build packageDescription buildInfo buildFlags knownSuffixHandlers
-            modifyGhf_ (\ghf -> return (ghf{activePack = (Just p3)}))
-
-
---}
