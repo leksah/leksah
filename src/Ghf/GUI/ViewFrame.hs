@@ -8,7 +8,6 @@ module Ghf.GUI.ViewFrame (
 ,   getActiveOrTopNotebook
 ,   getActivePanePath
 ,   getActivePanePathOrTop
-,   maybeActiveBuf
 ,   guessNewActiveBuffer
 ,   newNotebook
 ,   viewTabsPos
@@ -98,13 +97,13 @@ viewSplit dir = do
                   Just parent -> do
                       --trace ("Pane path " ++ show panePath) return ()
                       newpane <- case dir of
-                                      Horizontal  ->  do  h <- vPanedNew
-                                                          return (castToPaned h)
-                                      Vertical ->     do  v <- hPanedNew
-                                                          return (castToPaned v)
+                                      Horizontal  -> do  h <- vPanedNew
+                                                         return (castToPaned h)
+                                      Vertical    -> do  v <- hPanedNew
+                                                         return (castToPaned v)
                       let (name,altname,paneDir) = case dir of
-                                  Horizontal  ->  ("top","bottom",TopP)
-                                  Vertical    ->  ("left","right",LeftP)
+                                  Horizontal  -> ("top","bottom",TopP)
+                                  Vertical    -> ("left","right",LeftP)
                       rName <- widgetGetName activeNotebook
                       widgetSetName newpane rName
                       nb <- newNotebook
@@ -229,15 +228,21 @@ viewMove direction = do
     paneMap <- readGhf paneMap
     mbPane <- readGhf activePane
     case mbPane of
-        Nothing -> return ()
+        Nothing -> do
+            lift $putStrLn "no active pane"
+            return ()
         Just (pane,_) -> do
             mbPanePath <- getActivePanePath
             case mbPanePath of
-                Nothing -> return ()
+                Nothing -> do
+                    lift $putStrLn "no active pane path"
+                    return ()
                 Just panePath -> do
                   layout <- readGhf layout
                   case findMoveTarget panePath layout direction of
-                      Nothing -> return ()
+                      Nothing -> do
+                        lift $putStrLn "no target found"
+                        return ()
                       Just moveTo -> trace ("move target: " ++ show moveTo)
                                         move moveTo pane
 
@@ -412,19 +417,6 @@ getActivePanePathOrTop = do
                 then return []
                 else error "getActivePanePathOrTop: No active notebook and not collapsed"
 
-maybeActiveBuf :: GhfM (Maybe (GhfBuffer,Connections))
-maybeActiveBuf = do
-    mbPane   <- readGhf activePane
-    case mbPane of
-        Nothing -> return Nothing
-        Just (pane,signals) -> do
-            case pane of
-                PaneBuf buf -> return (Just (buf,signals))
-                otherwise   -> return Nothing
-
-
-
-
 figureOutPaneName :: Map String GhfPane -> String -> Int -> (Int,String)
 figureOutPaneName bufs bn ind =
     let ind = foldr (\buf ind ->
@@ -459,7 +451,13 @@ getUIAction str f = do
 
 guessNewActiveBuffer :: Notebook -> GhfAction
 guessNewActiveBuffer nb = do
-    panes <- readGhf panes
+    panes   <-  readGhf panes
+    mbAP    <-  readGhf activePane
+    case mbAP of
+        Just (_,BufConnections signals signals2) -> lift $do
+            mapM_ signalDisconnect signals
+            mapM_ signalDisconnect signals2
+        Nothing -> return ()
     mbBuf  <- lift $do
         mbI <- notebookGetCurrentPage nb
         case mbI of
@@ -475,8 +473,8 @@ guessNewActiveBuffer nb = do
                             Just key -> return (Map.lookup key panes)
     modifyGhf_ $ \ghf ->
         let newActiveBuf =  case mbBuf of
-                              Just b  ->  Just (b,BufConnections [][])
-                              Nothing ->  if Map.null panes
+                              Just b  -> Just (b,BufConnections [][])
+                              Nothing -> if Map.null panes
                                               then Nothing
                                               else Just (head (Map.elems panes),
                                                             BufConnections [][])

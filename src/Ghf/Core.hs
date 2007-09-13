@@ -174,8 +174,8 @@ instance Show BuildFlags
 --
 -- | Description of the different pane types
 --
-data GhfPane        =   PaneBuf GhfBuffer
-                    |   LogBuf  GhfLog
+data GhfPane        =   BufPane GhfBuffer
+                    |   LogPane  GhfLog
     deriving (Eq,Ord,Show)
 
 --
@@ -216,18 +216,20 @@ data Connections =  BufConnections [ConnectId SourceView] [ConnectId TextBuffer]
 
 
 getTopWidget :: GhfPane -> Widget
-getTopWidget (PaneBuf buf) = castToWidget(scrolledWindow buf)
+getTopWidget (BufPane buf) = castToWidget(scrolledWindow buf)
+getTopWidget (LogPane buf) = castToWidget(scrolledWindowL buf)
+
 
 getBufferName :: GhfPane -> String
-getBufferName (PaneBuf buf) = bufferName buf
-getBufferName (LogBuf _) = "Log"
+getBufferName (BufPane buf) = bufferName buf
+getBufferName (LogPane _) = "Log"
 
 getAddedIndex :: GhfPane -> Int
-getAddedIndex (PaneBuf buf) = addedIndex buf
+getAddedIndex (BufPane buf) = addedIndex buf
 getAddedIndex _ = 0
 
 realPaneName :: GhfPane -> String
-realPaneName pane@(PaneBuf _) =
+realPaneName pane@(BufPane _) =
     if getAddedIndex pane == 0
         then getBufferName pane
         else getBufferName pane ++ "(" ++ show (getAddedIndex pane) ++ ")"
@@ -250,7 +252,7 @@ data GhfBuffer  =   GhfBuffer {
 } deriving Show
 
 instance Eq GhfBuffer
-    where (==) a b = bufferName a == bufferName b && addedIndex a == addedIndex b
+    where (== ) a b = bufferName a == bufferName b && addedIndex a == addedIndex b
 instance Ord GhfBuffer
     where (<=) a b = if bufferName a < bufferName b
                         then True
@@ -267,7 +269,7 @@ data GhfLog  =   GhfLog {
 }
 
 instance Eq GhfLog
-    where (==) a b = True
+    where (== ) a b = True
 
 instance Ord GhfLog
     where (<=) a b = True

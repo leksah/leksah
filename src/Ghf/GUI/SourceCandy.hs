@@ -173,7 +173,7 @@ forthFromTable table = map forthFrom table
         let isOp = not (Set.member (head str) notBeforeId)
             from = str
             trailingBlanks = replicate (if noTrimming then 0 else length str - 1) ' '
-            to = [chr]
+            to = [chr] ++ trailingBlanks
         in (isOp,from,to)
 
 backFromTable :: CandyTable -> CandyTableBack

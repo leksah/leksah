@@ -7,6 +7,7 @@ module Ghf.GUI.Log (
 ,   getLog
 ,   isLog
 ,   appendLog
+,   LogTag(..)
 ) where
 
 import Graphics.UI.Gtk hiding (afterToggleOverwrite)
@@ -24,7 +25,9 @@ import Ghf.GUI.SourceCandy
 
 import Ghf.Core
 
-logBufferName = "Log"
+logPaneName = "Log"
+
+data LogTag = LogTag | ErrorTag | FrameTag
 
 initLog :: GhfAction
 initLog = do
@@ -43,6 +46,9 @@ initLog = do
         errtag <- textTagNew (Just "err")
         set errtag[textTagForeground := "red"]
         textTagTableAdd tags errtag
+        frametag <- textTagNew (Just "frame")
+        set frametag[textTagForeground := "green"]
+        textTagTableAdd tags frametag
         textViewSetEditable tv False
         fd <- case logviewFont prefs of
             Just str -> do
@@ -58,43 +64,61 @@ initLog = do
         scrolledWindowSetShadowType sw ShadowIn
 
         let buf = GhfLog tv sw
-        notebookPrependPage nb sw logBufferName
+        notebookPrependPage nb sw logPaneName
         widgetShowAll (scrolledWindowL buf)
         mbPn <- notebookPageNum nb sw
         case mbPn of
             Just i -> notebookSetCurrentPage nb i
             Nothing -> putStrLn "Notebook page not found"
-        return (buf,[])
-    let newPaneMap  =  Map.insert (LogBuf buf) (panePath,cids) paneMap
-    let newPanes = Map.insert logBufferName (LogBuf buf) panes
+        cid1 <- (castToWidget tv) `afterFocusIn`
+            (\_ -> do runReaderT (makeLogActive buf) ghfR; return True)
+        return (buf,[cid1])
+    let newPaneMap  =  Map.insert (LogPane buf) (panePath,cids) paneMap
+    let newPanes = Map.insert logPaneName (LogPane buf) panes
     modifyGhf_ (\ghf -> return (ghf{panes = newPanes,
                                     paneMap = newPaneMap}))
     lift $widgetGrabFocus (textView buf)
 
+makeLogActive :: GhfLog -> GhfAction
+makeLogActive log = do
+    ghfR    <-  ask
+    mbAP    <-  readGhf activePane
+    case mbAP of
+        Just (_,BufConnections signals signals2) -> lift $do
+            mapM_ signalDisconnect signals
+            mapM_ signalDisconnect signals2
+        Nothing -> return ()
+    modifyGhf_ $ \ghf -> do
+        return (ghf{activePane = Just (LogPane log,BufConnections[] [])})
+
 getLog :: GhfM GhfLog
 getLog = do
     panesST <- readGhf panes
-    let logs = map (\ (LogBuf b) -> b) $filter isLog $Map.elems panesST
+    let logs = map (\ (LogPane b) -> b) $filter isLog $Map.elems panesST
     if null logs || length logs > 1
         then error "no log buf or more then one log buf"
         else return (head logs)
 
 isLog :: GhfPane -> Bool
-isLog (LogBuf _)    = True
+isLog (LogPane _)    = True
 isLog _             = False
 
-appendLog :: GhfLog -> String -> Bool -> IO ()
-appendLog (GhfLog tv _) string isError = do
+appendLog :: GhfLog -> String -> LogTag -> IO ()
+appendLog (GhfLog tv _) string tag = do
     buf <- textViewGetBuffer tv
     iter <- textBufferGetEndIter buf
     textBufferInsert buf iter string
     iter2 <- textBufferGetEndIter buf
-    if isError
-        then do
+    case tag of
+        LogTag -> return ()
+        ErrorTag -> do
             len <- textBufferGetCharCount buf
             strti <- textBufferGetIterAtOffset buf (len - length string)
             textBufferApplyTagByName buf "err" iter2 strti
-        else return ()
+        FrameTag -> do
+            len <- textBufferGetCharCount buf
+            strti <- textBufferGetIterAtOffset buf (len - length string)
+            textBufferApplyTagByName buf "frame" iter2 strti
     textBufferMoveMarkByName buf "end" iter2
     mbMark <- textBufferGetMark buf "end"
     case mbMark of

@@ -82,26 +82,25 @@ readOut :: GhfLog -> Handle -> IO ()
 readOut log hndl =
      catch (readAndShow)
        (\e -> do
-        putStrLn $"Catching exception " ++ show e
+        appendLog log ("----------------------------------------\n") FrameTag
         hClose hndl
         return ())
     where
     readAndShow = do
         line <- hGetLine hndl
-        appendLog log (line ++ "\n") False
+        appendLog log (line ++ "\n") LogTag
         readAndShow
 
 readErr :: GhfLog -> Handle -> IO ()
 readErr log hndl =
      catch (readAndShow)
        (\e -> do
-        putStrLn $"Catching error exception " ++ show e
         hClose hndl
         return ())
     where
     readAndShow = do
         line <- hGetLine hndl
-        appendLog log (line ++ "\n") True
+        appendLog log (line ++ "\n") ErrorTag
         readAndShow
 
 runExternal :: FilePath -> [String] -> IO (Handle, Handle, Handle, ProcessHandle)
