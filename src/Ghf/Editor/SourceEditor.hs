@@ -86,13 +86,12 @@ maybeActiveBuf = do
                 BufPane buf -> return (Just (buf,signals))
                 otherwise   -> return Nothing
 
-newTextBuffer :: String -> Maybe FileName -> GhfAction
-newTextBuffer bn mbfn = do
+newTextBuffer :: PanePath -> String -> Maybe FileName -> GhfAction
+newTextBuffer panePath bn mbfn = do
     -- create the appropriate language
     ghfR <- ask
-    panePath <- getActivePanePathOrTop
 --    lift $putStrLn $show panePath
-    nb <- getActiveOrTopNotebook
+    nb <- getNotebook panePath
     panes <- readGhf panes
     paneMap <- readGhf paneMap
     prefs <- readGhf prefs
@@ -354,7 +353,9 @@ fileSave query = inBufContext' () $ \ nb _ currentBuffer i -> do
         removeTrailingBlanks = reverse . dropWhile (\c -> c == ' ') . reverse
 
 fileNew :: GhfAction
-fileNew = newTextBuffer "Unnamed" Nothing
+fileNew = do
+    pp <- getActivePanePathOrTop
+    newTextBuffer pp "Unnamed" Nothing
 
 fileClose :: GhfM Bool
 fileClose = inBufContext' True $ \nb gtkbuf currentBuffer i -> do
@@ -423,7 +424,9 @@ fileOpen = do
                 return Nothing
     case mbFileName of
         Nothing -> return ()
-        Just fn -> newTextBuffer (takeFileName fn) (Just fn)
+        Just fn -> do
+            pp <- getActivePanePathOrTop
+            newTextBuffer pp (takeFileName fn) (Just fn)
 
 editUndo :: GhfAction
 editUndo = inBufContext () $ \_ gtkbuf _ _ ->

@@ -1,7 +1,7 @@
 Show line numbers:
                True
      --(True/False)
-TextView Font: ""
+TextView Font: "Nimbus Mono L Bold 11"
 Right margin:  96
      --Size or 0 for no right margin
 Tab width:     4
@@ -16,3 +16,4 @@ LogView Font:  "FreeSerif 11"
 Window default size:
                (800,800)
      --Default size of the main ghf window specified as pair (int,int)
+Browser:       "firefox"

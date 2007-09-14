@@ -82,7 +82,7 @@ main = do
           ,   panes         = Map.empty
           ,   activePane    = Nothing
           ,   paneMap       = Map.empty
-          ,   layout        = TerminalP
+          ,   layout        = (TerminalP Nothing)
           ,   specialKeys   = specialKeys
           ,   specialKey    = Nothing
           ,   candy         = candySt
@@ -113,13 +113,15 @@ main = do
     runReaderT (setCandyState (isJust (sourceCandy prefs))) ghfR
     let (x,y) = defaultSize prefs
     windowSetDefaultSize win x y
-    flip runReaderT ghfR $ case fl of
-        [] -> newTextBuffer "Unnamed" Nothing
-        otherwise  -> mapM_ (\ fn -> (newTextBuffer (takeFileName fn) (Just fn))) fl
-    runReaderT initLog ghfR
+    runReaderT recoverLayout ghfR
+--    runReaderT flip runReaderT ghfR $ case fl of
+--        [] -> newTextBuffer "Unnamed" Nothing
+--        otherwise  -> mapM_ (\ fn -> (newTextBuffer (takeFileName fn) (Just fn))) fl
     widgetShowAll win
     hbf <- runReaderT getFindBar ghfR
     widgetHide hbf
     spinL <- runReaderT getGotoLineSpin ghfR
     widgetHide spinL
     mainGUI
+
+

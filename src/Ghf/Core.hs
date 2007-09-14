@@ -31,8 +31,11 @@ module Ghf.Core (
 -- * Convenience methods for accesing Pane state
 ,   getTopWidget
 ,   getBufferName
+,   getBufferDescription
 ,   getAddedIndex
 ,   realPaneName
+,   posTypeToPaneDirection
+,   paneDirectionToPosType
 
 -- * The Buffer pane
 ,   GhfBuffer(..)
@@ -194,8 +197,17 @@ data Direction      =   Horizontal | Vertical
 -- | The relative direction to a pane from the parent
 --
 data PaneDirection  =   TopP | BottomP | LeftP | RightP
-    deriving (Eq,Ord,Show)
+    deriving (Eq,Ord,Show,Read)
 
+posTypeToPaneDirection PosLeft      =   LeftP
+posTypeToPaneDirection PosRight     =   RightP	
+posTypeToPaneDirection PosTop       =   TopP
+posTypeToPaneDirection PosBottom    =   BottomP	
+
+paneDirectionToPosType LeftP        =   PosLeft
+paneDirectionToPosType RightP       =   PosRight   	
+paneDirectionToPosType TopP         =   PosTop
+paneDirectionToPosType BottomP      =   PosBottom    	
 --
 -- | A path to a pane
 --
@@ -206,8 +218,8 @@ type PanePath       =   [PaneDirection]
 --
 data PaneLayout =       HorizontalP PaneLayout PaneLayout Int
                     |   VerticalP PaneLayout PaneLayout Int
-                    |   TerminalP
-    deriving (Eq,Ord,Show)
+                    |   TerminalP (Maybe PaneDirection)
+    deriving (Eq,Ord,Show,Read)
 
 --
 -- | Signal handlers for the different pane types
@@ -225,10 +237,16 @@ getTopWidget :: GhfPane -> Widget
 getTopWidget (BufPane buf) = castToWidget(scrolledWindow buf)
 getTopWidget (LogPane buf) = castToWidget(scrolledWindowL buf)
 
-
 getBufferName :: GhfPane -> String
 getBufferName (BufPane buf) = bufferName buf
 getBufferName (LogPane _) = "Log"
+
+getBufferDescription :: GhfPane -> String
+getBufferDescription (BufPane buf)  =
+    case fileName buf of
+        Just s  -> s
+        Nothing -> "?" ++ bufferName buf
+getBufferDescription (LogPane _)    = "*Log"
 
 getAddedIndex :: GhfPane -> Int
 getAddedIndex (BufPane buf) = addedIndex buf

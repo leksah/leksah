@@ -3,26 +3,26 @@ version: 0.1
 cabal-version: -any
 license: GPL
 license-file: gpl.txt
-copyright: 2007 Jürgen Nicklisch-Franken
-maintainer: Jürgen Nicklisch-Franken
+copyright: 2007 Juergen Nicklisch-Franken
+maintainer: Juergen Nicklisch-Franken
 build-depends: base >=2.1.1, filepath >=1.0, gtk >=0.9.12,
                sourceview >=0.9.12, Cabal >=1.1.6.2, parsec >=2.0, mtl >=1.0.1,
                glib >=0.9.12, glade >=0.9.12
 stability: provisional
 homepage:
 package-url:
-synopsis: Genuine Haske:l Face
+synopsis: Genuine Haskell Face
 description: An Integrated Development Environment (IDE) for Haskell GHC written in Haskell.
 category: Tools
-author: Jürgen Nicklisch-Franken
+author: Juergen Nicklisch-Franken
 tested-with: GHC ==6.6.1
-data-files: config\Default.candy config\Default.keymap
-            config\Default.prefs config\Emacs.keymap bin\ghf.gif
+data-files: config/Default.candy config/Default.keymap
+            config/Default.prefs config/Emacs.keymap bin/ghf.gif
 extra-source-files: Setup.lhs
 extra-tmp-files:
  
 executable: ghf
-main-is: Ghf\Ghf.hs
+main-is: Ghf/Ghf.hs
 buildable: True
 cc-options:
 ld-options:

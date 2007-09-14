@@ -20,7 +20,7 @@ import qualified Data.Map as Map
 import Data.Map (Map,(!))
 
 import Ghf.Core
-import Ghf.GUI.ViewFrame
+--import Ghf.GUI.ViewFrame
 import Ghf.GUI.SourceCandy
 
 import Ghf.Core
@@ -29,11 +29,9 @@ logPaneName = "Log"
 
 data LogTag = LogTag | ErrorTag | FrameTag
 
-initLog :: GhfAction
-initLog = do
+initLog :: PanePath -> Notebook -> GhfAction
+initLog panePath nb = do
     ghfR <- ask
-    panePath <- getActivePanePathOrTop
-    nb <- getActiveOrTopNotebook
     panes <- readGhf panes
     paneMap <- readGhf paneMap
     prefs <- readGhf prefs

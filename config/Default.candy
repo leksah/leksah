@@ -1,6 +1,6 @@
 -- Candy file
 
-"->"        0x2192   Trimming       --RIGHTWARDS ARROW
+"->"        0x2192                  --RIGHTWARDS ARROW
 "<-"        0x2190   Trimming       --LEFTWARDS ARROW
 "=>"        0x21d2                  --RIGHTWARDS DOUBLE ARROW
 ">="        0x2265                  --GREATER-THAN OR EQUAL TO

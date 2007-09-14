@@ -70,5 +70,6 @@ F3                      ->          EditFindNext    "Find the next occurence of 
                         ->          HelpDebug
                         ->          HelpAbout
 
-<ctrl>b                 ->          BuildPackage    "Opens an existing file"
---<ctrl>x/<ctrl>f         ->          FileOpen        "Opens an existing file"
+<ctrl>b                 ->          BuildPackage
+
+<ctrl><alt>r            ->          RunPackage
