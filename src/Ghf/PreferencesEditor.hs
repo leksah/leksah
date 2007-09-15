@@ -2,40 +2,52 @@
 -- | Module for saving, restoring and editing preferences
 --
 
-module Ghf.Editor.PreferencesEditor (
+module Ghf.PreferencesEditor (
     readPrefs
 ,   writePrefs
---,   applyPrefs
 ,   editPrefs
 
 ,   prefsDescription
 ) where
 
-import Text.ParserCombinators.Parsec hiding (Parser)
-import qualified Text.ParserCombinators.Parsec.Token as P
-import Text.ParserCombinators.Parsec.Language(emptyDef)
-import qualified Text.PrettyPrint.HughesPJ as PP
-import Control.Monad(foldM)
-import Graphics.UI.Gtk hiding (afterToggleOverwrite,Focus)
-import Graphics.UI.Gtk.SourceView
-import Control.Monad.Reader
-import Data.Maybe(isJust)
-import qualified Data.Map as Map
-import Data.Map(Map,(!))
-import Data.IORef
-import Data.List(unzip4,any)
-import Data.Maybe(fromJust,isNothing)
-
-import Debug.Trace
-
-import Ghf.Core
-import Ghf.Editor.SourceEditor
-import Ghf.GUI.ViewFrame
-import Ghf.GUI.Keymap
-import Ghf.GUI.Log
-import Ghf.GUI.Menu(actions,makeMenu,menuDescription)
-import Ghf.Editor.PropertyEditor hiding(parameters,fieldEditor)
-import Ghf.PrinterParser
+import Graphics.UI.Gtk.SourceView(sourceViewSetMargin, sourceViewSetShowMargin,
+				  sourceViewSetTabsWidth, sourceViewSetShowLineNumbers)
+import Graphics.UI.Gtk(fontDescriptionFromString, castToWidget, Widget,
+		       widgetModifyFont, widgetModifyFg, widgetSetSizeRequest, widgetDestroy,
+		       widgetShowAll, containerAdd, boxPackEnd, boxPackStart,
+		       scrolledWindowAddWithViewport, scrolledWindowSetPolicy, scrolledWindowNew,
+		       notebookSetTabPos, notebookAppendPage, hButtonBoxNew, vBoxNew, onClicked,
+		       buttonNewFromStock, windowNew, StateType(StateNormal),
+		       Packing(PackNatural, PackGrow), PositionType(PosTop), ShadowType(ShadowIn),
+		       PolicyType(PolicyAutomatic), Color(..))
+import Control.Monad.Reader(Monad(return), ReaderT(runReaderT),
+			    MonadReader(ask), MonadTrans(..), mapM_, mapM)
+import Text.ParserCombinators.Parsec.Language()    -- Instances only
+import Text.ParserCombinators.Parsec.Token()    -- Instances only
+import Text.ParserCombinators.Parsec(CharParser, try, parseFromFile, (<?>))
+import Control.Monad()    -- Instances only
+import Data.IORef(writeIORef, readIORef, newIORef)
+import Data.List(unzip4)
+import Data.Maybe()    -- Instances only
+import Data.Map()    -- Instances only
+import Debug.Trace()    -- Instances only
+import qualified Text.PrettyPrint.HughesPJ as PP(PP.Doc, PP.colon, PP.empty, PP.text, PP.nest,
+				 (PP.$$), (PP.$+$), (PP.<>), PP.render)
+import Ghf.Log(getLog)
+import Ghf.Core(FileName, Prefs(..), GhfLog(textView), GhfBuffer(sourceView),
+		Direction(Horizontal), GhfAction, GhfRef, Ghf(prefs), readGhf, modifyGhf_)
+import Ghf.ViewFrame(newNotebook, setCandyState)
+import Ghf.PropertyEditor(Parameters(shadow, paraName, direction,
+					    synopsisP),
+				 EventSelector(FocusOut), Editor, Notifier, Extractor, Injector, Setter, Getter,
+				 emptyParams, extractAndValidate, boolEditor, stringEditor, intEditor,
+				 fontEditor, pairEditor, maybeEditor)
+import Ghf.SourceEditor(allBuffers, editCandy)
+import Ghf.Menu()    -- Instances only
+import Ghf.PrinterParser(Parser, Printer, applyFieldParsers, boolParser,
+			 pairParser, stringParser, intParser, whiteSpace, symbol, identifier, colon)
+import Ghf.Keymap()    -- Instances only
+import Ghf.File(getConfigFilePathForSave)
 
 
 type Applicator alpha = alpha -> GhfAction
@@ -65,7 +77,7 @@ mkField parameters printer parser getter setter editor applicator =
                                     Nothing -> ""
                                     Just str -> str) PP.<> PP.colon)
                 PP.$$ (PP.nest 15 (printer (getter dat)))
-                PP.$$ (PP.nest 5 (case synopsis parameters of
+                PP.$$ (PP.nest 5 (case synopsisP parameters of
                                     Nothing -> PP.empty
                                     Just str -> PP.text $"--" ++ str)))
         (\ dat -> try (do
@@ -120,7 +132,7 @@ prefsDescription = [
     ("Editor", [
         mkField (emptyParams
             {   paraName = Just "Show line numbers"
-            ,   synopsis = Just"(True/False)"})
+            ,   synopsisP = Just"(True/False)"})
             (PP.text . show)
             boolParser
             showLineNumbers
@@ -143,7 +155,7 @@ prefsDescription = [
                 lift $mapM_ (\buf -> widgetModifyFont (castToWidget $sourceView buf) (Just fdesc)) buffers)
     ,   mkField (emptyParams
             {  paraName = Just "Right margin"
-            ,  synopsis = Just "Size or 0 for no right margin"
+            ,  synopsisP = Just "Size or 0 for no right margin"
             ,  shadow   = Just ShadowIn})
             (\a -> (PP.text . show) (case a of Nothing -> 0; Just i -> i))
             (do i <- intParser
@@ -178,7 +190,7 @@ prefsDescription = [
             (\i -> return ())
     ,   mkField (emptyParams
             {   paraName = Just "Source candy"
-            ,   synopsis = Just"Empty for do not use or the name of a candy file in a config dir"
+            ,   synopsisP = Just"Empty for do not use or the name of a candy file in a config dir"
             ,   shadow   = Just ShadowIn})
             (\a -> PP.text (case a of Nothing -> ""; Just s -> s))
             (do id <- identifier
@@ -194,7 +206,7 @@ prefsDescription = [
                             setCandyState True
                             editCandy)
     ,   mkField (emptyParams{   paraName = Just "Name of the keymap"
-                            ,   synopsis = Just "The name of a keymap file in a config dir"
+                            ,   synopsisP = Just "The name of a keymap file in a config dir"
                             ,   direction = Just Horizontal})
             PP.text
             identifier
@@ -218,7 +230,7 @@ prefsDescription = [
                 lift $widgetModifyFont (castToWidget $textView buffer) (Just fdesc))
     ,   mkField (emptyParams
             {   paraName = Just "Window default size"
-            ,   synopsis = Just "Default size of the main ghf window specified as pair (int,int)"
+            ,   synopsisP = Just "Default size of the main ghf window specified as pair (int,int)"
             ,   shadow   = Just ShadowIn})
             (PP.text.show)
             (pairParser intParser)
@@ -319,7 +331,8 @@ editPrefs' prefs prefsDesc ghfR  = do
             Just newPrefs -> do
                 lastAppliedPrefs <- readIORef lastAppliedPrefsRef
                 mapM_ (\ (FD _ _ _ _ applyF) -> runReaderT (applyF newPrefs lastAppliedPrefs) ghfR) flatPrefsDesc
-                writePrefs "config/Default.prefs" newPrefs
+                fp <- getConfigFilePathForSave "Default.prefs"
+                writePrefs fp newPrefs
                 runReaderT (modifyGhf_ (\ghf -> return (ghf{prefs = newPrefs}))) ghfR
                 widgetDestroy dialog)
     apply `onClicked` (do

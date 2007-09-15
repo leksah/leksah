@@ -2,7 +2,7 @@
 -- | Module for editing of cabal build infos
 --
 
-module Ghf.Editor.BuildInfoEditor (
+module Ghf.BuildInfoEditor (
     editBuildInfo
 ,   buildInfoEditor
 ,   libraryEditor
@@ -10,28 +10,42 @@ module Ghf.Editor.BuildInfoEditor (
 ,   executablesEditor
 ) where
 
-import Graphics.UI.Gtk
-import Graphics.UI.Gtk.ModelView as New
-import System.Directory
-import Control.Monad.Reader
-import Distribution.PackageDescription
-import Distribution.Package
-import Distribution.License
-import Data.IORef
-import Data.List(unzip4,filter)
-import Data.Version
-import Distribution.Compiler
-import Distribution.Version
-import qualified Data.Map as Map
-import Data.Map (Map,(!))
-import Text.ParserCombinators.ReadP(readP_to_S)
-import Language.Haskell.Extension
-
-import Ghf.Core
-import Ghf.Editor.PropertyEditor hiding(synopsis)
-import qualified Ghf.Editor.PropertyEditor as PE (synopsis)
-import Ghf.GUI.ViewFrame
-import Ghf.Editor.SpecialEditors
+import Data.Version()    -- Instances only
+import Graphics.UI.Gtk(castToWidget, widgetSetSizeRequest, widgetDestroy,
+		       widgetShowAll, containerAdd, boxPackEnd, boxPackStart,
+		       scrolledWindowAddWithViewport, scrolledWindowSetPolicy, scrolledWindowNew,
+		       notebookSetTabPos, notebookAppendPage, hButtonBoxNew, vBoxNew,
+		       FileChooserAction(FileChooserActionSelectFolder, FileChooserActionOpen),
+		       textViewGetBuffer, textViewNew, textBufferSetText, onClicked,
+		       buttonNewFromStock, windowSetModal, windowNew, mainQuit, mainGUI, AttrOp((:=)),
+		       Packing(PackNatural, PackGrow), PositionType(PosTop), ShadowType(ShadowIn),
+		       PolicyType(PolicyAutomatic))
+import qualified Graphics.UI.Gtk.ModelView as New(cellText)
+import Control.Monad.Reader(Monad(return), mapM_, mapM)
+import Distribution.Compiler()    -- Instances only
+import Distribution.License()    -- Instances only
+import Distribution.Package()    -- Instances only
+import Distribution.PackageDescription(Executable(Executable),
+				       BuildInfo(otherModules, options, installIncludes, hsSourceDirs, ghcProfOptions,
+						 extraLibs, extraLibDirs, extensions, cSources, buildable, ldOptions,
+						 ccOptions, includes, includeDirs),
+				       Library(Library), showHookedBuildInfo)
+import Distribution.Version()    -- Instances only
+import Language.Haskell.Extension()    -- Instances only
+import Data.IORef(writeIORef, readIORef, newIORef)
+import Data.List(unzip4)
+import Data.Map()    -- Instances only
+import System.Directory()    -- Instances only
+import Text.ParserCombinators.ReadP()    -- Instances only
+import Ghf.Core(Direction(Vertical))
+import Ghf.SpecialEditors(compilerFlavorEditor, filesEditor,
+				 stringsEditor, extensionsEditor)
+import Ghf.ViewFrame(newNotebook)
+import Ghf.PropertyEditor(ColumnDescr(..),
+				 Parameters(shadow, paraName, direction, synopsisP), EventSelector(FocusIn),
+				 FieldDescriptionE(parameters, FDE), Editor, emptyParams, extractAndValidate,
+				 mkFieldE, boolEditor, stringEditor, staticMultiselectionEditor, fileEditor,
+				 otherEditor, pairEditor, multisetEditor,staticSelectionEditor)
 
 -- ------------------------------------------------------------
 -- * Build Infos
@@ -112,13 +126,13 @@ buildInfoD fp modules = [
     ("Description", [
         mkFieldE (emptyParams
         {   paraName    = Just "Component is buildable here"
-        ,   PE.synopsis = Nothing})
+        ,   synopsisP = Nothing})
             buildable
             (\ a b -> b{buildable = a})
             boolEditor
     ,   mkFieldE (emptyParams
         {   paraName    = Just "Non-exposed or non-main modules"
-        ,   PE.synopsis = Just "A list of modules used by the component but not exposed to users."
+        ,   synopsisP = Just "A list of modules used by the component but not exposed to users."
         ,   shadow = Just ShadowIn
         ,   direction = Just Vertical})
             otherModules
@@ -126,7 +140,7 @@ buildInfoD fp modules = [
             (modulesEditor modules)
     ,   mkFieldE (emptyParams
         {   paraName    = Just "Where to look for the haskell module hierarchy"
-        ,   PE.synopsis = Just "Root directories for the module hierarchy."
+        ,   synopsisP = Just "Root directories for the module hierarchy."
         ,   shadow = Just ShadowIn
         ,   direction = Just Vertical})
             hsSourceDirs
@@ -136,7 +150,7 @@ buildInfoD fp modules = [
     ("Extensions",[
         mkFieldE (emptyParams
         {   paraName    = Just "Extensions"
-        ,   PE.synopsis = Just "A list of Haskell extensions used by every module."})
+        ,   synopsisP = Just "A list of Haskell extensions used by every module."})
             extensions
             (\ a b -> b{extensions = a})
             extensionsEditor

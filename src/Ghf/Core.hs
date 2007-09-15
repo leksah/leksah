@@ -60,25 +60,25 @@ module Ghf.Core (
 ,   helpDebug
 ) where
 
-import Graphics.UI.Gtk
-import Graphics.UI.Gtk.SourceView
+import Graphics.UI.Gtk.SourceView(SourceView)
+import Graphics.UI.Gtk(castToWidget, Widget, ScrolledWindow, UIManager,
+		       TextView, TextBuffer, Window, KeyVal, Modifier(..), PositionType(..))
 import System.Glib.Signals(ConnectId)
-import Control.Monad.Reader
-import Data.IORef
-import System.FilePath
-import System.Directory
-import System.Console.GetOpt
-import System.Environment
-import Distribution.Package
-import Distribution.PackageDescription
-import Distribution.Simple.LocalBuildInfo
-import Distribution.Setup
-import Distribution.Setup(ConfigFlags)
-import Data.Maybe ( fromMaybe, isJust)
+import Control.Monad.Reader(Monad(return), ReaderT, MonadReader(ask),
+			    MonadTrans(..), liftM, (=<<))
+import Distribution.Package(PackageIdentifier)
+import Distribution.PackageDescription()    -- Instances only
+import Distribution.Setup(BuildFlags, ConfigFlags)
+import Distribution.Simple.LocalBuildInfo(LocalBuildInfo)
+import System.FilePath(FilePath)
+import Data.IORef(IORef, writeIORef, readIORef)
+import Data.Maybe()    -- Instances only
+import Data.Map(Map)
+import System.Console.GetOpt()    -- Instances only
+import System.Directory()    -- Instances only
+import System.Environment()    -- Instances only
+
 import qualified Data.Map as Map
-import Data.Map (Map,(!))
-
-
 -- ---------------------------------------------------------------------
 -- IDE State
 --
@@ -230,8 +230,6 @@ data Connections =  BufConnections [ConnectId SourceView] [ConnectId TextBuffer]
 -- ---------------------------------------------------------------------
 -- Convenience methods for panes
 --  currently ugly
-
-
 
 getTopWidget :: GhfPane -> Widget
 getTopWidget (BufPane buf) = castToWidget(scrolledWindow buf)

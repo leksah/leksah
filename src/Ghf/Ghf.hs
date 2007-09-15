@@ -1,47 +1,40 @@
 --
--- Copyright (c) 2007 Jürgen Nicklisch - Jutaro
---
--- This program is free software; you can redistribute it and/or
--- modify it under the terms of the GNU General Public License as
--- published by the Free Software Foundation; either version 2 of
--- the License, or (at your option) any later version.
---
--- This program is distributed in the hope that it will be useful,
--- but WITHOUT ANY WARRANTY; without even the implied warranty of
--- MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the GNU
--- General Public License for more details.
---
--- You should have received a copy of the GNU General Public License
--- along with this program; if not, write to the Free Software
--- Foundation, Inc., 59 Temple Place - Suite 330, Boston, MA
--- 02111-1307, USA.
+-- | Main module of Genuine Haskell Face, an Haskell IDE written in Haskell
 --
 
-import Graphics.UI.Gtk
-import Graphics.UI.Gtk.SourceView
-import Graphics.UI.Gtk.Types
+import Paths_ghf(getDataDir)
+import Graphics.UI.Gtk.SourceView()    -- Instances only
+import Graphics.UI.Gtk(onKeyPress, onDelete, widgetSetName, widgetShowAll,
+		       widgetHide, containerAdd, boxPackStart, vBoxNew, uiManagerNew,
+		       windowSetIconFromFile, windowAddAccelGroup, windowSetDefaultSize, windowNew,
+		       mainGUI, initGUI, timeoutAddFull, priorityHigh, Packing(PackNatural, PackGrow))
+import Graphics.UI.Gtk.Types()    -- Instances only
+import Control.Monad.Reader(Monad((>>), return), ReaderT(runReaderT), mapM_)
+import System.FilePath((</>))
+import Control.Concurrent(rtsSupportsBoundThreads, yield)
+import Data.IORef(newIORef)
+import Data.Maybe(isJust)
+import Data.Map(Map.empty)
+import System.Console.GetOpt(OptDescr, ArgOrder(Permute), usageInfo, getOpt)
+import System.Directory()    -- Instances only
+import System.Environment(getArgs)
+import System.IO(IO, putStrLn)
 
-import Control.Monad.Reader
-import Data.IORef
-import System.FilePath
-import System.Directory
-import System.Console.GetOpt
-import System.Environment
-import Data.Maybe ( fromMaybe, isJust)
+import Ghf.SaveLayout(recoverLayout)
+import Ghf.Log()    -- Instances only
+import Ghf.Core(Prefs(sourceCandy, defaultSize), PaneLayout(TerminalP), Ghf(..))
+import Ghf.SourceCandy(parseCandy)
+import Ghf.File(getConfigFilePathForLoad)
+import Ghf.ViewFrame(newNotebook, setCandyState, getFindBar,
+			 getGotoLineSpin)
+import Ghf.SourceEditor()    -- Instances only
+import Ghf.Statusbar(buildStatusbar)
+import Ghf.Menu(actions, menuDescription, makeMenu, quit)
+import Ghf.PreferencesEditor(readPrefs)
+import Ghf.Keymap(parseKeymap, setKeymap, buildSpecialKeys,
+		      handleSpecialKeystrokes)
+
 import qualified Data.Map as Map
-import Data.Map(Map)
-import System.IO
-import Control.Concurrent
-
-import Ghf.Core
-import Ghf.Editor.SourceEditor
-import Ghf.GUI.ViewFrame
-import Ghf.GUI.Keymap
-import Ghf.GUI.SourceCandy
-import Ghf.Editor.PreferencesEditor
-import Ghf.GUI.Menu
-import Ghf.GUI.Statusbar
-import Ghf.GUI.Log
 
 data Flag =  OpenFile
        deriving Show
@@ -58,24 +51,28 @@ ghfOpts argv =
 
 -- |Build the main window
 main = do
-    args <- getArgs
-    (o,fl) <- ghfOpts args
-    st <- initGUI
+    args        <-  getArgs
+    (o,fl)      <-  ghfOpts args
+    st          <-  initGUI
     if rtsSupportsBoundThreads
         then error "Don't link with -theaded, Gtk won't work"
         else timeoutAddFull (yield >> return True) priorityHigh 50
     mapM_ putStrLn st
-
-    prefs <- readPrefs "config/Default.prefs"
-    keyMap <- parseKeymap "config/Default.keymap"
+    uiManager   <-  uiManagerNew
+    prefsPath   <-  getConfigFilePathForLoad "Default.prefs"
+    prefs       <-  readPrefs prefsPath
+    keysPath    <-  getConfigFilePathForLoad "Default.keymap"
+    keyMap      <-  parseKeymap keysPath
     let accelActions = setKeymap actions keyMap
-    specialKeys <- buildSpecialKeys keyMap accelActions
-    candySt     <- parseCandy (case sourceCandy prefs of
-                                    Nothing   -> "config/Default.candy"
-                                    Just name -> "config/" ++ name ++ ".candy")
-    win <- windowNew
-    windowSetIconFromFile win "bin/ghf.gif"
-    uiManager <- uiManagerNew
+    specialKeys <-  buildSpecialKeys keyMap accelActions
+    candyPath   <-  getConfigFilePathForLoad
+                        (case sourceCandy prefs of
+                                    Nothing     ->   "Default.candy"
+                                    Just name   ->   name ++ ".candy")
+    candySt     <-  parseCandy candyPath
+    win         <-  windowNew
+    dataDir     <-  getDataDir
+    windowSetIconFromFile win $dataDir </> "ghf.gif"
     let ghf = Ghf
           {   window        = win
           ,   uiManager     = uiManager

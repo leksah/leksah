@@ -1,7 +1,7 @@
 --
 -- | ..       .
 --
-module Ghf.GUI.SourceCandy (
+module Ghf.SourceCandy (
     transformToCandy
 ,   transformFromCandy
 ,   keystrokeCandy

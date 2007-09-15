@@ -1,11 +1,10 @@
 --
 -- | Module for saving, restoring and editing preferences
--- 
+--
 
 
-module Ghf.Editor.PreferencesEditor (
+module Ghf.PreferencesEditor (
     editPrefs
-
 ) where
 
 import Ghf.Core

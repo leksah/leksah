@@ -3,7 +3,7 @@
 -- | deals with gtk accelerators and double (emacs-like) keystrokes
 --
 
-module Ghf.GUI.Keymap (
+module Ghf.Keymap (
     parseKeymap
 ,   setKeymap
 ,   buildSpecialKeys
@@ -24,8 +24,8 @@ import Control.Monad(foldM)
 import Control.Monad.Reader
 
 import Ghf.Core
-import Ghf.GUI.ViewFrame
-import Ghf.Editor.SourceEditor
+import Ghf.ViewFrame
+import Ghf.SourceEditor
 
 type Keymap = Map ActionString [(Maybe (Either KeyString (KeyString,KeyString)), Maybe String)]
 

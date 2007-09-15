@@ -1,4 +1,4 @@
-module Ghf.GUI.ViewFrame (
+module Ghf.ViewFrame (
     viewMove
 ,   viewSplitHorizontal
 ,   viewSplitVertical
@@ -49,7 +49,7 @@ import Data.List(findIndex)
 import Debug.Trace
 
 import Ghf.Core
-import Ghf.GUI.Log
+import Ghf.Log
 
 
 newNotebook :: IO Notebook

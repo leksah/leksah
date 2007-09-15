@@ -2,7 +2,7 @@
 -- | The log pane og ghf
 --
 
-module Ghf.GUI.Log (
+module Ghf.Log (
     initLog
 ,   getLog
 ,   isLog
@@ -20,10 +20,7 @@ import qualified Data.Map as Map
 import Data.Map (Map,(!))
 
 import Ghf.Core
---import Ghf.GUI.ViewFrame
-import Ghf.GUI.SourceCandy
-
-import Ghf.Core
+import Ghf.SourceCandy
 
 logPaneName = "Log"
 

@@ -1,7 +1,7 @@
 Show line numbers:
                True
      --(True/False)
-TextView Font: "Nimbus Mono L Bold 11"
+TextView Font: "Monospace 10"
 Right margin:  96
      --Size or 0 for no right margin
 Tab width:     4

@@ -18,31 +18,35 @@ module Ghf.Package (
 ,   packageOpenDoc
 ) where
 
-import Graphics.UI.Gtk
-import Graphics.UI.Gtk.ModelView as New
-import Control.Monad.Reader
-import Data.IORef
-import System.IO
-import System.FilePath
-import System.Environment
-import System.Directory
-import System.Process
-import Distribution.Package
-import Distribution.PackageDescription
-import Distribution.Simple.Configure
-import Distribution.Setup
-import Distribution.Program
-import Distribution.Simple.LocalBuildInfo
-import Distribution.PreProcess
-import Distribution.Simple.Build
-import Data.Maybe
+import Graphics.UI.Gtk(fileChooserDialogNew, widgetDestroy, widgetShow,
+		       FileChooserAction(FileChooserActionSelectFolder), fileChooserGetFilename,
+		       dialogRun, ResponseId(ResponseDeleteEvent, ResponseCancel, ResponseAccept))
+import Graphics.UI.Gtk.ModelView()    -- Instances only
+import Control.Monad.Reader(MonadTrans(..))
+import Distribution.Package(PackageIdentifier(pkgName))
+import Distribution.PackageDescription(Executable(Executable),
+				       PackageDescription(executables, package), readPackageDescription)
+import Distribution.PreProcess()    -- Instances only
+import Distribution.Program(defaultProgramConfiguration)
+import Distribution.Setup(emptyConfigFlags)
+import Distribution.Simple.Build()    -- Instances only
+import Distribution.Simple.Configure()    -- Instances only
+import Distribution.Simple.LocalBuildInfo()    -- Instances only
+import System.FilePath((</>), dropFileName)
+import Control.Concurrent(forkIO)
+import Control.Exception(catch)
+import Data.IORef()    -- Instances only
+import Data.Maybe()    -- Instances only
+import System.Directory(setCurrentDirectory)
+import System.Environment()    -- Instances only
+import System.IO(Handle, BufferMode(NoBuffering), hGetLine, hSetBinaryMode,
+		 hSetBuffering, hClose)
+import System.Process(runInteractiveProcess, ProcessHandle)
+import Ghf.Log(LogTag(..), getLog, appendLog)
+import Ghf.Core(Prefs(browser), GhfLog, GhfPackage(..), GhfAction, GhfM,
+		Ghf(window, prefs, activePack), readGhf, modifyGhf_)
+import Ghf.PackageEditor(choosePackageFile)
 import Prelude hiding (catch)
-import Control.Exception
-import Control.Concurrent
-
-import Ghf.Core
-import Ghf.Editor.PackageEditor
-import Ghf.GUI.Log
 
 getActivePackage :: GhfM (Maybe GhfPackage)
 getActivePackage = do

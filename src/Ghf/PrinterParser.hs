@@ -23,22 +23,24 @@ module Ghf.PrinterParser (
 
 ) where
 
-import Text.ParserCombinators.Parsec hiding (Parser)
-import qualified Text.ParserCombinators.Parsec.Token as P
+import Graphics.UI.Gtk()    -- Instances only
 import Text.ParserCombinators.Parsec.Language(emptyDef)
-import qualified Text.PrettyPrint.HughesPJ as PP
+import qualified Text.ParserCombinators.Parsec.Token as P (P.TokenParser(P.integer, P.colon,
+							 P.symbol, P.whiteSpace, P.identifier, P.lexeme, P.hexadecimal),
+					   P.LanguageDef(P.commentLine, P.commentEnd, P.commentStart),
+					   P.makeTokenParser)
+import Text.ParserCombinators.Parsec(CharParser, noneOf, char, eof, choice,
+				     many, pzero, (<|>), (<?>))
+import Data.IORef()    -- Instances only
+import Data.List()    -- Instances only
+import Data.Maybe()    -- Instances only
+import Data.Map()    -- Instances only
+import Debug.Trace()    -- Instances only
+import System.Directory()    -- Instances only
+import Text.ParserCombinators.ReadP()    -- Instances only
+import qualified Text.PrettyPrint.HughesPJ as PP(PP.Doc, PP.empty)
+import Ghf.Core()    -- Instances only
 
-import Graphics.UI.Gtk hiding (afterToggleOverwrite,Focus,onChanged)
-import qualified Data.Map as Map
-import Data.Map(Map,(!))
-import Data.IORef
-import Data.Maybe(isJust)
-import System.Directory
-import Data.List(unzip4,elemIndex)
-import Text.ParserCombinators.ReadP(readP_to_S)
-import Debug.Trace
-
-import Ghf.Core
 
 type Printer beta       =   beta -> PP.Doc
 type Parser beta        =   CharParser () beta

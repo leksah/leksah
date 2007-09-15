@@ -1,4 +1,4 @@
-module Ghf.GUI.Statusbar (
+module Ghf.Statusbar (
     buildStatusbar
 
 ) where
@@ -10,26 +10,26 @@ import Data.Map (Map,(!))
 import Control.Monad.Reader
 
 import Ghf.Core
-import Ghf.Editor.SourceEditor
-import Ghf.GUI.ViewFrame
-import Ghf.Editor.PackageEditor
+import Ghf.SourceEditor
+import Ghf.ViewFrame
+import Ghf.PackageEditor
 
 buildStatusbar ghfR = do
     sb <- statusbarNew
     statusbarSetHasResizeGrip sb False
 
     sblk <- statusbarNew
-    widgetSetName sblk "statusBarSpecialKeys" 
+    widgetSetName sblk "statusBarSpecialKeys"
     statusbarSetHasResizeGrip sblk False
     widgetSetSizeRequest sblk 210 (-1)
 
     sblc <- statusbarNew
-    widgetSetName sblc "statusBarLineColumn" 
+    widgetSetName sblc "statusBarLineColumn"
     statusbarSetHasResizeGrip sblc False
     widgetSetSizeRequest sblc 140 (-1)
 
     sbio <- statusbarNew
-    widgetSetName sbio "statusBarInsertOverwrite" 
+    widgetSetName sbio "statusBarInsertOverwrite"
     statusbarSetHasResizeGrip sbio False
     widgetSetSizeRequest sbio 40 (-1)
 
@@ -37,22 +37,22 @@ buildStatusbar ghfR = do
     widgetSetName entry "searchEntry"
 
     caseSensitiveButton <- checkButtonNewWithLabel "Case sensitive"
-    widgetSetName caseSensitiveButton "caseSensitiveButton" 
+    widgetSetName caseSensitiveButton "caseSensitiveButton"
 
     entireWordButton <- checkButtonNewWithLabel "Entire word"
-    widgetSetName entireWordButton "entireWordButton" 
+    widgetSetName entireWordButton "entireWordButton"
 
     wrapAroundButton <- checkButtonNewWithLabel "Warp around"
-    widgetSetName wrapAroundButton "wrapAroundButton" 
+    widgetSetName wrapAroundButton "wrapAroundButton"
 
     dummy <- hBoxNew False 1
-    widgetSetName dummy "dummyBox" 
+    widgetSetName dummy "dummyBox"
 
     spinL <- spinButtonNewWithRange 1.0 100.0 10.0
     widgetSetName spinL "gotoLineEntry"
 
     hbf <- hBoxNew False 1
-    widgetSetName hbf "searchBox" 
+    widgetSetName hbf "searchBox"
     boxPackStart hbf entry PackGrow 0
     boxPackStart hbf caseSensitiveButton PackNatural 0
     boxPackStart hbf entireWordButton PackNatural 0
@@ -67,7 +67,7 @@ buildStatusbar ghfR = do
     boxPackStart hb sblc PackNatural 0
     boxPackStart hb sbio PackNatural 0
 
-    entry `afterInsertText` (\ _ _ -> do 
+    entry `afterInsertText` (\ _ _ -> do
         runReaderT (editFindInc Insert) ghfR
         t <- entryGetText entry
         return (length t))

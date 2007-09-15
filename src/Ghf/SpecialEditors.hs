@@ -1,8 +1,8 @@
 --
 -- | Special Editors
--- 
+--
 
-module Ghf.Editor.SpecialEditors (
+module Ghf.SpecialEditors (
     packageEditor
 ,   testedWidthEditor
 ,   compilerFlavorEditor
@@ -33,15 +33,14 @@ import Text.ParserCombinators.ReadP(readP_to_S)
 import Language.Haskell.Extension
 
 import Ghf.Core
-import Ghf.Editor.PropertyEditor hiding(synopsis)
-import qualified Ghf.Editor.PropertyEditor as PE (synopsis)
-import Ghf.GUI.ViewFrame
+import Ghf.PropertyEditor
+import Ghf.ViewFrame
 
 packageEditor :: Editor PackageIdentifier
 packageEditor para = do
     (wid,inj,ext,notif) <- pairEditor
-        (stringEditor, emptyParams{paraName=Just "Name"}) 
-        (versionEditor, emptyParams{paraName=Just "Version"}) 
+        (stringEditor, emptyParams{paraName=Just "Name"})
+        (versionEditor, emptyParams{paraName=Just "Version"})
         (para{direction = Just Horizontal,shadow   = Just ShadowIn})
     let pinj (PackageIdentifier n v) = inj (n,v)
     let pext = do
@@ -49,31 +48,31 @@ packageEditor para = do
         case mbp of
             Nothing -> return Nothing
             Just (n,v) -> do
-                if null n 
+                if null n
                     then return Nothing
                     else return (Just $PackageIdentifier n v)
-    return (wid,pinj,pext,notif)   
+    return (wid,pinj,pext,notif)
 
 testedWidthEditor :: Editor [(CompilerFlavor, VersionRange)]
 testedWidthEditor para = do
-    multisetEditor   
+    multisetEditor
        (ColumnDescr False [("Compiler Flavor",\(cv,_) -> [New.cellText := show cv])
-                           ,("Version Range",\(_,vr) -> [New.cellText := showVersionRange vr])])  
-       (pairEditor 
-            (compilerFlavorEditor, emptyParams{shadow = Just ShadowNone}) 
-            (versionRangeEditor, emptyParams{shadow = Just ShadowNone}), 
-            emptyParams{direction = Just Vertical}) 
+                           ,("Version Range",\(_,vr) -> [New.cellText := showVersionRange vr])])
+       (pairEditor
+            (compilerFlavorEditor, emptyParams{shadow = Just ShadowNone})
+            (versionRangeEditor, emptyParams{shadow = Just ShadowNone}),
+            emptyParams{direction = Just Vertical})
        para
 
 compilerFlavorEditor :: Editor CompilerFlavor
 compilerFlavorEditor para = do
-    (wid,inj,ext,notif) <- eitherOrEditor 
-        (staticSelectionEditor flavors, emptyParams{paraName=Just"Select compiler"}) 
-        (stringEditor, emptyParams{paraName=Just "Specify compiler"}) 
-        "Other" 
+    (wid,inj,ext,notif) <- eitherOrEditor
+        (staticSelectionEditor flavors, emptyParams{paraName=Just"Select compiler"})
+        (stringEditor, emptyParams{paraName=Just "Specify compiler"})
+        "Other"
         para{paraName = Just "Select"}
     let cfinj (OtherCompiler str) = inj (Right "")
-    let cfinj other = inj (Left other)    
+    let cfinj other = inj (Left other)
     let cfext = do
         mbp <- ext
         case mbp of
@@ -81,41 +80,41 @@ compilerFlavorEditor para = do
             Just (Right s) -> return (Just $OtherCompiler s)
             Just (Left other) -> return (Just other)
     return (wid,cfinj,cfext,notif)
-        where 
+        where
         flavors = [GHC, NHC, Hugs, HBC, Helium, JHC]
 
 versionRangeEditor :: Editor VersionRange
-versionRangeEditor para = do      
-    (wid,inj,ext,notif) <- 
-        maybeEditor 
-            (eitherOrEditor             
-                (pairEditor 
-                    (staticSelectionEditor v1, emptyParams) 
+versionRangeEditor para = do
+    (wid,inj,ext,notif) <-
+        maybeEditor
+            (eitherOrEditor
+                (pairEditor
+                    (staticSelectionEditor v1, emptyParams)
                     (versionEditor,emptyParams{paraName = Just "Enter Version"}),
                     emptyParams{direction = Just Vertical,paraName= Just "Simple Version Range"})
-                (pairEditor 
+                (pairEditor
                     (staticSelectionEditor v2, emptyParams)
-                    (pairEditor 
-                        (versionRangeEditor, emptyParams{shadow = Just ShadowIn}) 
-                        (versionRangeEditor, emptyParams{shadow = Just ShadowIn}), 
+                    (pairEditor
+                        (versionRangeEditor, emptyParams{shadow = Just ShadowIn})
+                        (versionRangeEditor, emptyParams{shadow = Just ShadowIn}),
                         emptyParams{direction = Just Vertical}),
-                            emptyParams{direction = Just Vertical, paraName= Just "Complex Version Range"})              
-                "Complex",emptyParams{paraName= Just "Simple"}) False "Any Version" 
-                    para{direction = Just Vertical}           
+                            emptyParams{direction = Just Vertical, paraName= Just "Complex Version Range"})
+                "Complex",emptyParams{paraName= Just "Simple"}) False "Any Version"
+                    para{direction = Just Vertical}
     let vrinj AnyVersion                =   inj Nothing
-        vrinj (ThisVersion v)           =   inj (Just (Left (ThisVersionS,v))) 
+        vrinj (ThisVersion v)           =   inj (Just (Left (ThisVersionS,v)))
         vrinj (LaterVersion v)          =   inj (Just (Left (LaterVersionS,v)))
         vrinj (EarlierVersion v)        =   inj (Just (Left (EarlierVersionS,v)))
         vrinj (UnionVersionRanges (ThisVersion v1) (LaterVersion v2)) | v1 == v2
-                                        =  inj (Just (Left (ThisOrLaterVersionS,v1)))   
+                                        =  inj (Just (Left (ThisOrLaterVersionS,v1)))
         vrinj (UnionVersionRanges (LaterVersion v1) (ThisVersion v2)) | v1 == v2
-                                        =  inj (Just (Left (ThisOrLaterVersionS,v1))) 
+                                        =  inj (Just (Left (ThisOrLaterVersionS,v1)))
         vrinj (UnionVersionRanges (ThisVersion v1) (EarlierVersion v2)) | v1 == v2
-                                        =  inj (Just (Left (ThisOrEarlierVersionS,v1)))   
+                                        =  inj (Just (Left (ThisOrEarlierVersionS,v1)))
         vrinj (UnionVersionRanges (EarlierVersion v1) (ThisVersion v2)) | v1 == v2
-                                        =  inj (Just (Left (ThisOrEarlierVersionS,v1))) 
-        vrinj (UnionVersionRanges v1 v2)=  inj (Just (Right (UnionVersionRangesS,(v1,v2))))    
-        vrinj (IntersectVersionRanges v1 v2) 
+                                        =  inj (Just (Left (ThisOrEarlierVersionS,v1)))
+        vrinj (UnionVersionRanges v1 v2)=  inj (Just (Right (UnionVersionRangesS,(v1,v2))))
+        vrinj (IntersectVersionRanges v1 v2)
                                         =    inj (Just (Right (IntersectVersionRangesS,(v1,v2))))
     let vrext = do  mvr <- ext
                     case mvr of
@@ -127,9 +126,9 @@ versionRangeEditor para = do
 
                         Just (Just (Left (ThisOrLaterVersionS,v)))   -> return (Just (orLaterVersion  v))
                         Just (Just (Left (ThisOrEarlierVersionS,v)))   -> return (Just (orEarlierVersion  v))
-                        Just (Just (Right (UnionVersionRangesS,(v1,v2)))) 
-                                                        -> return (Just (UnionVersionRanges v1 v2))    
-                        Just (Just (Right (IntersectVersionRangesS,(v1,v2)))) 
+                        Just (Just (Right (UnionVersionRangesS,(v1,v2))))
+                                                        -> return (Just (UnionVersionRanges v1 v2))
+                        Just (Just (Right (IntersectVersionRangesS,(v1,v2))))
                                                         -> return (Just (IntersectVersionRanges v1 v2))
     return (wid,vrinj,vrext,notif)
         where
@@ -145,7 +144,7 @@ instance Show Version1 where
     show EarlierVersionS =  "Earlier Version"
     show ThisOrEarlierVersionS = "This or earlier Version"
 
-data Version2 = UnionVersionRangesS | IntersectVersionRangesS 
+data Version2 = UnionVersionRangesS | IntersectVersionRangesS
     deriving (Eq)
 instance Show Version2 where
     show UnionVersionRangesS =  "Union Version Ranges"
@@ -164,7 +163,7 @@ versionEditor para = do
                 if null l then
                     return Nothing
                     else return (Just (fst $head l))
-    let handler = (do 
+    let handler = (do
         v <- ext
         case v of
             Just _ -> return ()
@@ -178,9 +177,9 @@ versionEditor para = do
 
 dependencyEditor :: Editor Dependency
 dependencyEditor para = do
-    (wid,inj,ext,notif) <- pairEditor 
-        (stringEditor,emptyParams {paraName = Just "Package Name"}) 
-        (versionRangeEditor,emptyParams {paraName = Just "Version"}) 
+    (wid,inj,ext,notif) <- pairEditor
+        (stringEditor,emptyParams {paraName = Just "Package Name"})
+        (versionRangeEditor,emptyParams {paraName = Just "Version"})
         (para{direction = Just Vertical})
     let pinj (Dependency s v) = inj (s,v)
     let pext = do
@@ -189,26 +188,26 @@ dependencyEditor para = do
             Nothing -> return Nothing
             Just ("",v) -> return Nothing
             Just (s,v) -> return (Just $Dependency s v)
-    return (wid,pinj,pext,notif) 
+    return (wid,pinj,pext,notif)
 
 dependenciesEditor :: Editor [Dependency]
-dependenciesEditor p =  
-    multisetEditor 
+dependenciesEditor p =
+    multisetEditor
         (ColumnDescr True [("Package",\(Dependency str _) -> [New.cellText := str])
-                           ,("Version",\(Dependency _ vers) -> [New.cellText := showVersionRange vers])])            
-        (dependencyEditor,emptyParams) p{shadow = Just ShadowIn}    
+                           ,("Version",\(Dependency _ vers) -> [New.cellText := showVersionRange vers])])
+        (dependencyEditor,emptyParams) p{shadow = Just ShadowIn}
 
 filesEditor :: Maybe FilePath -> FileChooserAction -> String -> Editor [FilePath]
-filesEditor fp act label p =  
-    multisetEditor 
-        (ColumnDescr False [("",(\row -> [New.cellText := row]))]) 
-        (fileEditor fp act label, emptyParams) p{shadow = Just ShadowIn}    
+filesEditor fp act label p =
+    multisetEditor
+        (ColumnDescr False [("",(\row -> [New.cellText := row]))])
+        (fileEditor fp act label, emptyParams) p{shadow = Just ShadowIn}
 
 stringsEditor :: Editor [String]
-stringsEditor p =  
-    multisetEditor 
-        (ColumnDescr False [("",(\row -> [New.cellText := row]))]) 
-        (stringEditor, emptyParams) p{shadow = Just ShadowIn}    
+stringsEditor p =
+    multisetEditor
+        (ColumnDescr False [("",(\row -> [New.cellText := row]))])
+        (stringEditor, emptyParams) p{shadow = Just ShadowIn}
 
 extensionsEditor :: Editor [Extension]
 extensionsEditor = staticMultiselectionEditor extensionsL
@@ -260,8 +259,8 @@ instance Default Version2
     where getDefault = UnionVersionRangesS
 
 instance Default Version
-    where getDefault = let version = (let l = (readP_to_S parseVersion) "0" 
-                                        in if null l 
+    where getDefault = let version = (let l = (readP_to_S parseVersion) "0"
+                                        in if null l
                                             then error "verion parser failed"
                                             else fst $head l)
                         in version
@@ -275,13 +274,13 @@ instance Default CompilerFlavor
 instance Default BuildInfo
     where getDefault =  emptyBuildInfo
 
-instance Default Library 
+instance Default Library
     where getDefault =  Library [] getDefault
 
-instance Default Dependency 
+instance Default Dependency
     where getDefault = Dependency getDefault getDefault
 
-instance Default Executable 
+instance Default Executable
     where getDefault = Executable getDefault getDefault getDefault
 
 

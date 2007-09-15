@@ -1,4 +1,4 @@
-module Ghf.Editor.SourceEditor (
+module Ghf.SourceEditor (
     isBuffer
 ,   allBuffers
 
@@ -63,8 +63,8 @@ import qualified Data.Map as Map
 import Data.Map (Map,(!))
 
 import Ghf.Core
-import Ghf.GUI.ViewFrame
-import Ghf.GUI.SourceCandy
+import Ghf.ViewFrame
+import Ghf.SourceCandy
 
 
 isBuffer :: GhfPane -> Bool

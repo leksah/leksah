@@ -2,7 +2,7 @@
 -- | Module for editing options in a GUI dialog
 --
 
-module Ghf.Editor.PropertyEditor (
+module Ghf.PropertyEditor (
 -- * Types
     Getter
 ,   Setter
@@ -157,7 +157,7 @@ instance Default [a] where
 --
 data Parameters     =   Parameters  {
                         paraName        :: Maybe String
-                    ,   synopsis        :: Maybe String
+                    ,   synopsisP       :: Maybe String
                     ,   direction       :: Maybe Direction
                     ,   shadow          :: Maybe ShadowType
                     ,   outerAlignment  :: Maybe (Float,Float,Float,Float)
