@@ -17,6 +17,9 @@ module Ghf.ViewFrame (
 ,   viewSwitchTabs
 ,   widgetFromPath
 
+,   getCandyState
+,   setCandyState
+
 ,   getFindEntry
 ,   getFindBar
 ,   getStatusbarIO
@@ -27,9 +30,6 @@ module Ghf.ViewFrame (
 ,   getWrapAround
 ,   getEntireWord
 ,   getSpecialKeys
-
-,   getCandyState
-,   setCandyState
 ) where
 
 import Graphics.UI.Gtk hiding (afterToggleOverwrite)
@@ -49,7 +49,6 @@ import Data.List(findIndex)
 import Debug.Trace
 
 import Ghf.Core
-import Ghf.Log
 
 
 newNotebook :: IO Notebook
@@ -511,6 +510,7 @@ setCandyState b = do
     lift $toggleActionSetActive ui b
 --
 
+
 getFindEntry :: GhfM (Entry)
 getFindEntry =  widgetGet ["topBox","statusBox","searchBox","searchEntry"] castToEntry
 
@@ -540,3 +540,5 @@ getGotoLineSpin = widgetGet ["topBox","statusBox","gotoLineEntry"] castToSpinBut
 
 getSpecialKeys :: GhfM (Statusbar)
 getSpecialKeys = widgetGet ["topBox","statusBox","statusBarSpecialKeys"] castToStatusbar
+
+

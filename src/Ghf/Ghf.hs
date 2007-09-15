@@ -2,39 +2,30 @@
 -- | Main module of Genuine Haskell Face, an Haskell IDE written in Haskell
 --
 
-import Paths_ghf(getDataDir)
-import Graphics.UI.Gtk.SourceView()    -- Instances only
-import Graphics.UI.Gtk(onKeyPress, onDelete, widgetSetName, widgetShowAll,
-		       widgetHide, containerAdd, boxPackStart, vBoxNew, uiManagerNew,
-		       windowSetIconFromFile, windowAddAccelGroup, windowSetDefaultSize, windowNew,
-		       mainGUI, initGUI, timeoutAddFull, priorityHigh, Packing(PackNatural, PackGrow))
-import Graphics.UI.Gtk.Types()    -- Instances only
+import Paths_ghf
+import Graphics.UI.Gtk
 import Control.Monad.Reader(Monad((>>), return), ReaderT(runReaderT), mapM_)
 import System.FilePath((</>))
 import Control.Concurrent(rtsSupportsBoundThreads, yield)
 import Data.IORef(newIORef)
 import Data.Maybe(isJust)
 import Data.Map(Map.empty)
+import qualified Data.Map as Map
 import System.Console.GetOpt(OptDescr, ArgOrder(Permute), usageInfo, getOpt)
-import System.Directory()    -- Instances only
 import System.Environment(getArgs)
 import System.IO(IO, putStrLn)
 
 import Ghf.SaveLayout(recoverLayout)
-import Ghf.Log()    -- Instances only
 import Ghf.Core(Prefs(sourceCandy, defaultSize), PaneLayout(TerminalP), Ghf(..))
 import Ghf.SourceCandy(parseCandy)
 import Ghf.File(getConfigFilePathForLoad)
 import Ghf.ViewFrame(newNotebook, setCandyState, getFindBar,
 			 getGotoLineSpin)
-import Ghf.SourceEditor()    -- Instances only
 import Ghf.Statusbar(buildStatusbar)
 import Ghf.Menu(actions, menuDescription, makeMenu, quit)
 import Ghf.PreferencesEditor(readPrefs)
 import Ghf.Keymap(parseKeymap, setKeymap, buildSpecialKeys,
 		      handleSpecialKeystrokes)
-
-import qualified Data.Map as Map
 
 data Flag =  OpenFile
        deriving Show
@@ -111,9 +102,6 @@ main = do
     let (x,y) = defaultSize prefs
     windowSetDefaultSize win x y
     runReaderT recoverLayout ghfR
---    runReaderT flip runReaderT ghfR $ case fl of
---        [] -> newTextBuffer "Unnamed" Nothing
---        otherwise  -> mapM_ (\ fn -> (newTextBuffer (takeFileName fn) (Just fn))) fl
     widgetShowAll win
     hbf <- runReaderT getFindBar ghfR
     widgetHide hbf

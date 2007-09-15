@@ -21,6 +21,7 @@ import Data.Map (Map,(!))
 
 import Ghf.Core
 import Ghf.SourceCandy
+import Ghf.ViewFrame
 
 logPaneName = "Log"
 
@@ -91,7 +92,15 @@ getLog = do
     panesST <- readGhf panes
     let logs = map (\ (LogPane b) -> b) $filter isLog $Map.elems panesST
     if null logs || length logs > 1
-        then error "no log buf or more then one log buf"
+        then do
+            pp <- getActivePanePathOrTop
+            nb <- getActiveOrTopNotebook
+            initLog pp nb
+            panesST <- readGhf panes
+            let logs = map (\ (LogPane b) -> b) $filter isLog $Map.elems panesST
+            if null logs || length logs > 1
+                then error "Can't init log"
+                else return (head logs)
         else return (head logs)
 
 isLog :: GhfPane -> Bool

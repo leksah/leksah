@@ -6,7 +6,10 @@ module Ghf.PrinterParser (
 
     Printer
 ,   Parser
---,   FieldDescriptionPP
+,   FieldDescriptionS(..)
+,   MkFieldDescriptionS
+,   mkFieldS
+
 ,   applyFieldParsers
 ,   boolParser
 ,   intParser
@@ -15,6 +18,7 @@ module Ghf.PrinterParser (
 ,   emptyParser
 ,   whiteSpace
 ,   stringParser
+,   readParser
 
 ,   emptyPrinter
 ,   symbol
@@ -24,22 +28,11 @@ module Ghf.PrinterParser (
 ) where
 
 import Graphics.UI.Gtk()    -- Instances only
-import Text.ParserCombinators.Parsec.Language(emptyDef)
-import qualified Text.ParserCombinators.Parsec.Token as P (P.TokenParser(P.integer, P.colon,
-							 P.symbol, P.whiteSpace, P.identifier, P.lexeme, P.hexadecimal),
-					   P.LanguageDef(P.commentLine, P.commentEnd, P.commentStart),
-					   P.makeTokenParser)
-import Text.ParserCombinators.Parsec(CharParser, noneOf, char, eof, choice,
-				     many, pzero, (<|>), (<?>))
-import Data.IORef()    -- Instances only
-import Data.List()    -- Instances only
-import Data.Maybe()    -- Instances only
-import Data.Map()    -- Instances only
-import Debug.Trace()    -- Instances only
-import System.Directory()    -- Instances only
-import Text.ParserCombinators.ReadP()    -- Instances only
-import qualified Text.PrettyPrint.HughesPJ as PP(PP.Doc, PP.empty)
-import Ghf.Core()    -- Instances only
+import Text.ParserCombinators.Parsec.Language
+import qualified Text.ParserCombinators.Parsec.Token as P
+import Text.ParserCombinators.Parsec hiding(Parser)
+import qualified Text.PrettyPrint.HughesPJ as PP
+import Ghf.PropertyEditor
 
 
 type Printer beta       =   beta -> PP.Doc
@@ -48,6 +41,38 @@ type Parser beta        =   CharParser () beta
 -- ------------------------------------------------------------
 -- * Parsing with Parsec
 -- ------------------------------------------------------------
+
+data FieldDescriptionS alpha =  FDS {
+        parameters      ::  Parameters
+    ,   fieldPrinter    ::  alpha -> PP.Doc
+    ,   fieldParser     ::  alpha -> CharParser () alpha
+    }
+
+type MkFieldDescriptionS alpha beta =
+    Parameters ->
+    (Printer beta) ->
+    (Parser beta) ->
+    (Getter alpha beta) ->
+    (Setter alpha beta) ->
+    FieldDescriptionS alpha
+
+mkFieldS :: Eq beta => MkFieldDescriptionS alpha beta
+mkFieldS parameters printer parser getter setter =
+    FDS parameters
+        (\ dat -> (PP.text (case paraName parameters of
+                                    Nothing -> ""
+                                    Just str -> str) PP.<> PP.colon)
+                PP.$$ (PP.nest 15 (printer (getter dat)))
+                PP.$$ (PP.nest 5 (case synopsisP parameters of
+                                    Nothing -> PP.empty
+                                    Just str -> PP.text $"--" ++ str)))
+        (\ dat -> try (do
+            symbol (case paraName parameters of
+                                    Nothing -> ""
+                                    Just str -> str)
+            colon
+            val <- parser
+            return (setter val dat)))
 
 applyFieldParsers ::  a ->  [a ->  CharParser () a] ->  CharParser () a
 applyFieldParsers prefs parseF = do
@@ -67,6 +92,12 @@ boolParser = do
     <|> do
     (symbol "False"<|> symbol "false")
     return False
+    <?> "bool parser"
+
+readParser ::  Read a =>  CharParser () a
+readParser = do
+    str <- many (noneOf ['\n'])
+    return (read str)
     <?> "bool parser"
 
 pairParser ::  CharParser () alpha ->  CharParser () (alpha,alpha)

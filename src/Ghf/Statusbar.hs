@@ -1,6 +1,5 @@
 module Ghf.Statusbar (
     buildStatusbar
-
 ) where
 
 import Graphics.UI.Gtk

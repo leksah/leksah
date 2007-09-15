@@ -39,10 +39,11 @@ getConfigFilePathForLoad fn = do
         then return (cd </> fn)
         else do
             dd <- getDataDir
-            ex <- doesFileExist (dd </> fn)
-            if ex
-                then return (dd </> fn)
-                else error $"Config file not found: " ++ fn
+            return (dd </> fn)
+--            ex <- doesFileExist (dd </> fn)
+--            if ex
+--                then return (dd </> fn)
+--                else error $"Config file not found: " ++ fn
 
 getConfigFilePathForSave :: String -> IO FilePath
 getConfigFilePathForSave fn = do

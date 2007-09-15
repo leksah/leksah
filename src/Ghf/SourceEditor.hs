@@ -66,7 +66,6 @@ import Ghf.Core
 import Ghf.ViewFrame
 import Ghf.SourceCandy
 
-
 isBuffer :: GhfPane -> Bool
 isBuffer (BufPane _) = True
 isBuffer _           = False

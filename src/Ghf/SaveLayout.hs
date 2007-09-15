@@ -7,31 +7,72 @@ module Ghf.SaveLayout (
 ,   recoverLayout
 ) where
 
-import Graphics.UI.Gtk(panedGetPosition, panedSetPosition, notebookGetShowTabs,
-		       notebookSetShowTabs, notebookGetTabPos, notebookSetTabPos)
-import Graphics.UI.Gtk.Types()    -- Instances only
-import Control.Monad.Reader(Monad(return), MonadTrans(..), mapM_)
-import System.FilePath(takeFileName)
+import Graphics.UI.Gtk hiding (showLayout)
+import Text.ParserCombinators.Parsec.Language
+import qualified Text.ParserCombinators.Parsec.Token as P
+import Text.ParserCombinators.Parsec hiding(Parser)
+import Control.Monad.Reader
+import System.FilePath
 import qualified Data.Map as Map(Map.toList)
-import Ghf.Log(initLog)
-import Ghf.Core(PaneLayout(..), PanePath, PaneDirection(..), Direction(..),
-		GhfAction, GhfM, Ghf(paneMap, layout), readGhf, posTypeToPaneDirection,
-		paneDirectionToPosType, getBufferDescription)
-import Ghf.Package()    -- Instances only
-import Ghf.PackageEditor()    -- Instances only
-import Ghf.ViewFrame(viewSplit', getNotebook, getPaned)
-import Ghf.SourceEditor(newTextBuffer)
-import Ghf.File(getConfigFilePathForLoad,getConfigFilePathForSave)
+import Ghf.Log
+import Ghf.Core
+import Ghf.ViewFrame
+import Ghf.SourceEditor
+import Ghf.File
+import Ghf.PrinterParser
+import qualified Text.PrettyPrint.HughesPJ as PP
+import Ghf.PropertyEditor
+
+data LayoutState = LayoutState {
+        layoutS             ::   PaneLayout
+    ,   population          ::   [(String,PanePath)]
+    ,   windowSize          ::   (Int,Int)
+} deriving()
+
+defaultLayout = LayoutState {
+        layoutS             =   TerminalP (Just TopP)
+    ,   population          =   [("*Log",[])]
+    ,   windowSize          =   (1024,768)}
+
+layoutDescr :: [FieldDescriptionS LayoutState]
+layoutDescr = [
+        mkFieldS (emptyParams
+            {   paraName = Just "Layout"})
+            (PP.text . show)
+            readParser
+            layoutS
+            (\ b a -> a{layoutS = b})
+    ,   mkFieldS (emptyParams
+            {   paraName = Just "Population"})
+            (PP.text . show)
+            readParser
+            population
+            (\ b a -> a{population = b})
+    ,   mkFieldS (emptyParams
+            {   paraName = Just "Window size"})
+            (PP.text . show)
+            (pairParser intParser)
+            windowSize
+            (\(c,d) a -> a{windowSize = (c,d)})]
 
 --
 -- | Get and save the current layout
 --
 saveLayout :: GhfAction
 saveLayout = do
+    wdw         <-  readGhf window
     layout      <-  getLayout
     population  <-  getPopulation
     layoutPath  <-  lift $getConfigFilePathForSave "Current.layout"
-    lift $writeFile layoutPath (show (layout,population))
+    size        <-  lift $windowGetSize wdw
+    lift $writeLayout layoutPath $LayoutState layout population size
+
+writeLayout :: FilePath -> LayoutState -> IO ()
+writeLayout fpath ls = writeFile fpath (showLayout ls layoutDescr)
+
+showLayout ::  a ->  [FieldDescriptionS a] ->  String
+showLayout prefs prefsDesc = PP.render $
+    foldl (\ doc (FDS _ printer _) ->  doc PP.$+$ printer prefs) PP.empty prefsDesc
 
 getLayout :: GhfM(PaneLayout)
 getLayout = do
@@ -63,21 +104,40 @@ getPopulation = do
     paneMap' <- readGhf paneMap
     return (map (\ (k,v) -> (getBufferDescription k, fst v)) $Map.toList paneMap')
 
+
+-- ------------------------------------------------------------
+-- * Parsing
+-- ------------------------------------------------------------
+
 --
 -- | Read and apply the saved layout
 --
 
 recoverLayout :: GhfAction
 recoverLayout = do
-    (layout,population) <- lift$ readLayout
-    applyLayout layout
-    populate population
+    wdw         <-  readGhf window
+    layoutSt <- lift$ readLayout
+    lift $windowSetDefaultSize wdw (fst (windowSize layoutSt))(snd (windowSize layoutSt))
+    applyLayout (layoutS layoutSt)
+    populate (population layoutSt)
 
-readLayout :: IO (PaneLayout,[(String,PanePath)])
+
+readLayout :: IO LayoutState
 readLayout = do
     layoutPath  <-  getConfigFilePathForLoad "Current.layout"
-    str         <-  readFile layoutPath
-    return (read str)
+    res <- parseFromFile (prefsParser defaultLayout layoutDescr) layoutPath
+    case res of
+        Left pe -> error $"Error reading prefs file " ++ show layoutPath ++ " " ++ show pe
+        Right r -> return r
+
+prefsParser ::  a ->  [FieldDescriptionS a] ->  CharParser () a
+prefsParser def descriptions =
+    let parsersF = map fieldParser descriptions in do
+        whiteSpace
+        res <-  applyFieldParsers def parsersF
+        return res
+        <?> "layout parser"
+
 
 applyLayout :: PaneLayout -> GhfAction
 applyLayout layoutS = do
