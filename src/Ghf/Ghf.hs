@@ -4,28 +4,26 @@
 
 import Paths_ghf
 import Graphics.UI.Gtk
-import Control.Monad.Reader(Monad((>>), return), ReaderT(runReaderT), mapM_)
-import System.FilePath((</>))
-import Control.Concurrent(rtsSupportsBoundThreads, yield)
-import Data.IORef(newIORef)
-import Data.Maybe(isJust)
-import Data.Map(Map.empty)
+import Control.Monad.Reader
+import System.FilePath
+import Control.Concurrent
+import Data.IORef
+import Data.Maybe
+import Data.Map(Map)
 import qualified Data.Map as Map
-import System.Console.GetOpt(OptDescr, ArgOrder(Permute), usageInfo, getOpt)
-import System.Environment(getArgs)
-import System.IO(IO, putStrLn)
+import System.Console.GetOpt
+import System.Environment
+import System.IO
 
-import Ghf.SaveLayout(recoverLayout)
-import Ghf.Core(Prefs(sourceCandy, defaultSize), PaneLayout(TerminalP), Ghf(..))
-import Ghf.SourceCandy(parseCandy)
-import Ghf.File(getConfigFilePathForLoad)
-import Ghf.ViewFrame(newNotebook, setCandyState, getFindBar,
-			 getGotoLineSpin)
-import Ghf.Statusbar(buildStatusbar)
-import Ghf.Menu(actions, menuDescription, makeMenu, quit)
-import Ghf.PreferencesEditor(readPrefs)
-import Ghf.Keymap(parseKeymap, setKeymap, buildSpecialKeys,
-		      handleSpecialKeystrokes)
+import Ghf.SaveLayout
+import Ghf.Core
+import Ghf.SourceCandy
+import Ghf.File
+import Ghf.ViewFrame
+import Ghf.Statusbar
+import Ghf.Menu
+import Ghf.PreferencesEditor
+import Ghf.Keymap
 
 data Flag =  OpenFile
        deriving Show

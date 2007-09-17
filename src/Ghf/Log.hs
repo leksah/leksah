@@ -107,7 +107,7 @@ isLog :: GhfPane -> Bool
 isLog (LogPane _)    = True
 isLog _             = False
 
-appendLog :: GhfLog -> String -> LogTag -> IO ()
+appendLog :: GhfLog -> String -> LogTag -> IO Int
 appendLog (GhfLog tv _) string tag = do
     buf <- textViewGetBuffer tv
     iter <- textBufferGetEndIter buf
@@ -125,10 +125,11 @@ appendLog (GhfLog tv _) string tag = do
             textBufferApplyTagByName buf "frame" iter2 strti
     textBufferMoveMarkByName buf "end" iter2
     mbMark <- textBufferGetMark buf "end"
+    line <- textIterGetLine iter2
     case mbMark of
         Nothing -> return ()
         Just mark -> textViewScrollMarkOnscreen tv mark
-    return ()
+    return line
 
 
 

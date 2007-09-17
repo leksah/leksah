@@ -56,6 +56,8 @@ module Ghf.Core (
 ,   SpecialKeyTable
 ,   SpecialKeyCons
 
+,   ErrorSpec(..)
+
 -- * debugging
 ,   helpDebug
 ) where
@@ -352,10 +354,11 @@ type FileName        =  String
 --
 
 data ErrorSpec = ErrorSpec {
-        filePath            ::   Maybe FilePath
-    ,   line                ::   Maybe Int
-    ,   column              ::   Maybe Int
+        filePath            ::   FilePath
+    ,   line                ::   Int
+    ,   column              ::   Int
     ,   description         ::   String
+    ,   logLines            ::   (Int,Int)
 }   deriving Show
 
 -- ---------------------------------------------------------------------

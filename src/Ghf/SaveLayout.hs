@@ -13,7 +13,8 @@ import qualified Text.ParserCombinators.Parsec.Token as P
 import Text.ParserCombinators.Parsec hiding(Parser)
 import Control.Monad.Reader
 import System.FilePath
-import qualified Data.Map as Map(Map.toList)
+import qualified Data.Map as Map
+
 import Ghf.Log
 import Ghf.Core
 import Ghf.ViewFrame

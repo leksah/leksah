@@ -18,35 +18,29 @@ module Ghf.Package (
 ,   packageOpenDoc
 ) where
 
-import Graphics.UI.Gtk(fileChooserDialogNew, widgetDestroy, widgetShow,
-		       FileChooserAction(FileChooserActionSelectFolder), fileChooserGetFilename,
-		       dialogRun, ResponseId(ResponseDeleteEvent, ResponseCancel, ResponseAccept))
-import Graphics.UI.Gtk.ModelView()    -- Instances only
-import Control.Monad.Reader(MonadTrans(..))
-import Distribution.Package(PackageIdentifier(pkgName))
-import Distribution.PackageDescription(Executable(Executable),
-				       PackageDescription(executables, package), readPackageDescription)
-import Distribution.PreProcess()    -- Instances only
-import Distribution.Program(defaultProgramConfiguration)
-import Distribution.Setup(emptyConfigFlags)
-import Distribution.Simple.Build()    -- Instances only
-import Distribution.Simple.Configure()    -- Instances only
-import Distribution.Simple.LocalBuildInfo()    -- Instances only
-import System.FilePath((</>), dropFileName)
-import Control.Concurrent(forkIO)
-import Control.Exception(catch)
-import Data.IORef()    -- Instances only
-import Data.Maybe()    -- Instances only
-import System.Directory(setCurrentDirectory)
-import System.Environment()    -- Instances only
-import System.IO(Handle, BufferMode(NoBuffering), hGetLine, hSetBinaryMode,
-		 hSetBuffering, hClose)
-import System.Process(runInteractiveProcess, ProcessHandle)
-import Ghf.Log(LogTag(..), getLog, appendLog)
-import Ghf.Core(Prefs(browser), GhfLog, GhfPackage(..), GhfAction, GhfM,
-		Ghf(window, prefs, activePack), readGhf, modifyGhf_)
-import Ghf.PackageEditor(choosePackageFile)
+import Graphics.UI.Gtk
+import Control.Monad.Reader
+import Distribution.Package
+import Distribution.PackageDescription
+import Distribution.Program
+import Distribution.Setup
+import System.FilePath
+import Control.Concurrent
+import Control.Exception hiding(try)
+import System.Directory
+import System.IO
+import System.Process
 import Prelude hiding (catch)
+import Text.ParserCombinators.Parsec.Language
+import qualified Text.ParserCombinators.Parsec.Token as P
+import Text.ParserCombinators.Parsec hiding(Parser)
+import Control.Monad.Reader
+
+
+import Ghf.Log
+import Ghf.Core
+import Ghf.PackageEditor
+
 
 getActivePackage :: GhfM (Maybe GhfPackage)
 getActivePackage = do
@@ -86,12 +80,13 @@ packageBuild :: Bool -> GhfAction
 packageBuild force = do
     mbPackage   <- getActivePackage
     log         <- getLog
+    ghfR        <- ask
     case mbPackage of
         Nothing         -> return ()
         Just package    -> lift $do
             (inp,out,err,pid) <- runExternal "runhaskell" (["Setup","build"] ++ (buildFlags package))
             oid <- forkIO (readOut log out)
-            eid <- forkIO (readErr log err)
+            eid <- forkIO (runReaderT (readErrForBuild log err) ghfR)
             return ()
 
 packageDoc :: GhfAction
@@ -278,6 +273,36 @@ readErr log hndl =
         appendLog log (line ++ "\n") ErrorTag
         readAndShow
 
+readErrForBuild :: GhfLog -> Handle -> GhfAction
+readErrForBuild log hndl = do
+    errs <- lift $readAndShow False []
+    lift $putStrLn $"Errors " ++ (show errs)
+    modifyGhf_ (\ghf -> return (ghf{errors = reverse errs}))
+    where
+    readAndShow inError errs = do
+        isEnd <- hIsEOF hndl
+        if isEnd
+            then return errs
+            else do
+                line    <-  hGetLine hndl
+                let parsed  = parse buildLineParser "" line
+                lineNr  <-  appendLog log (line ++ "\n") ErrorTag
+                case (parsed, errs) of
+                    (Left e,_) -> do
+                        putStrLn (show e)
+                        readAndShow False errs
+                    (Right ne@(ErrorLine fp l c str),_) ->
+                        readAndShow True ((ErrorSpec fp l c str (lineNr,lineNr)):errs)
+                    (Right (OtherLine str1),(ErrorSpec fp i1 i2 str (l1,l2)):tl) ->
+                        if inError
+                            then readAndShow True ((ErrorSpec fp i1 i2
+                                                    (if null str
+                                                        then line
+                                                        else str ++ "\n" ++ line)
+                                                    (l1,lineNr)) : tl)
+                            else readAndShow False errs
+                    otherwise -> readAndShow False errs
+
 runExternal :: FilePath -> [String] -> IO (Handle, Handle, Handle, ProcessHandle)
 runExternal path args = do
     hndls@(inp, out, err, _) <- runInteractiveProcess path args Nothing Nothing
@@ -289,6 +314,49 @@ runExternal path args = do
     hSetBinaryMode err True
     return hndls
 
+data BuildError =   BuildLine
+                |   EmptyLine
+                |   ErrorLine FilePath Int Int String
+                |   OtherLine String
 
 
+
+buildLineParser :: CharParser () BuildError
+buildLineParser = try (do
+        char '['
+        integer
+        symbol "of"
+        integer
+        char '['
+        many (anyChar)
+        return BuildLine)
+    <|> try (do
+        filePath <- many (noneOf ":")
+        char ':'
+        line <- integer
+        char ':'
+        column <- integer
+        char ':'
+        whiteSpace
+        text <- many anyChar
+        return (ErrorLine filePath (fromIntegral line) (fromIntegral column) text))
+    <|> try (do
+        whiteSpace
+        eof
+        return EmptyLine)
+    <|> try (do
+        text <- many anyChar
+        eof
+        return (OtherLine text))
+    <?> "buildLineParser"
+
+
+lexer = P.makeTokenParser emptyDef
+lexeme = P.lexeme lexer
+whiteSpace = P.whiteSpace lexer
+hexadecimal = P.hexadecimal lexer
+symbol = P.symbol lexer
+identifier = P.identifier lexer
+colon = P.colon lexer
+integer = P.integer lexer
 
