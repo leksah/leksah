@@ -76,7 +76,8 @@ main = do
           ,   candy         = candySt
           ,   prefs         = prefs
           ,   packages      = []
-          ,   activePack    = Nothing}
+          ,   activePack    = Nothing
+          ,   errors        = []}
     ghfR <- newIORef ghf
     (acc,menus) <- runReaderT (makeMenu uiManager accelActions menuDescription) ghfR
     let mb = case menus !! 0 of

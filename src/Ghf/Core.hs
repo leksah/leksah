@@ -100,6 +100,7 @@ data Ghf        =   Ghf {
 ,   prefs       ::  Prefs                   -- ^ configuration preferences
 ,   packages    ::  [GhfPackage]            -- ^ the packages known to ghf
 ,   activePack  ::  Maybe GhfPackage
+,   errors      ::  [ErrorSpec]
 } deriving Show
 
 --
@@ -350,6 +351,12 @@ type FileName        =  String
 -- | Other types
 --
 
+data ErrorSpec = ErrorSpec {
+        filePath            ::   Maybe FilePath
+    ,   line                ::   Maybe Int
+    ,   column              ::   Maybe Int
+    ,   description         ::   String
+}   deriving Show
 
 -- ---------------------------------------------------------------------
 -- Debugging
