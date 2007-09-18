@@ -142,13 +142,14 @@ markErrorInLog (l1,l2) = do
     (GhfLog tv _) <- getLog
     lift $ do
         buf <- textViewGetBuffer tv
-        iter <- textBufferGetIterAtLineOffset buf l1 0
-        iter2 <- textBufferGetIterAtLineOffset buf (l2+1) 0
-        textBufferApplyTagByName buf "activeErr" iter iter2
+        iter <- textBufferGetIterAtLineOffset buf (l1-1) 0
+        iter2 <- textBufferGetIterAtLineOffset buf l2 0
+        textBufferSelectRange buf iter iter2
+--        textBufferApplyTagByName buf "activeErr" iter iter2
         textBufferMoveMarkByName buf "end" iter
         mbMark <- textBufferGetMark buf "end"
         case mbMark of
             Nothing -> return ()
-            Just mark -> textViewScrollMarkOnscreen tv mark
+            Just mark ->  textViewScrollToMark tv  mark 0.0 (Just (0.3,0.3))
 
 

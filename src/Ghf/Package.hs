@@ -36,8 +36,6 @@ import Prelude hiding (catch)
 import Text.ParserCombinators.Parsec.Language
 import qualified Text.ParserCombinators.Parsec.Token as P
 import Text.ParserCombinators.Parsec hiding(Parser)
-import Control.Monad.Reader
-import Data.List
 
 import Ghf.Log
 import Ghf.Core
@@ -351,7 +349,7 @@ selectSourceBuf fp = do
             if fe
                 then do
                     path <- standardSourcePanePath
-                    newTextBuffer path (takeFileName fpc) (Just fp)
+                    newTextBuffer path (takeFileName fpc) (Just fpc)
                     return True
                 else return False
 
@@ -362,6 +360,9 @@ markErrorInSourceBuf line column string = do
         Nothing -> return ()
         Just (buf,_) -> lift $do
             gtkbuf <- textViewGetBuffer (sourceView buf)
+            i1 <- textBufferGetStartIter gtkbuf
+            i2 <- textBufferGetEndIter gtkbuf
+            textBufferRemoveTagByName gtkbuf "activeErr" i1 i2
             iter <- textBufferGetIterAtLineOffset gtkbuf (line-1) (column-1)
             iter2 <- textBufferGetIterAtLineOffset gtkbuf line 0
             textBufferApplyTagByName gtkbuf "activeErr" iter iter2
@@ -369,7 +370,7 @@ markErrorInSourceBuf line column string = do
             mbMark <- textBufferGetMark gtkbuf "end"
             case mbMark of
                 Nothing -> return ()
-                Just mark -> textViewScrollMarkOnscreen (sourceView buf) mark
+                Just mark -> textViewScrollToMark (sourceView buf) mark 0.0 (Just (0.3,0.3))
 
 nextError :: GhfAction
 nextError = do
@@ -385,7 +386,7 @@ nextError = do
                 Just n | (n + 1) < length errs -> do
                     modifyGhf_ (\ghf -> return (ghf{currentErr = Just (n + 1)}))
                     selectErr (n + 1)
-                otherwise -> return ()
+                Just n  -> selectErr n
 
 previousError :: GhfAction
 previousError = do
@@ -401,7 +402,7 @@ previousError = do
                 Just n | n > 0 -> do
                     modifyGhf_ (\ghf -> return (ghf{currentErr = Just (n - 1)}))
                     selectErr (n - 1)
-                otherwise -> return ()
+                otherwise -> selectErr 0
 
 data BuildError =   BuildLine
                 |   EmptyLine
