@@ -73,3 +73,6 @@ F3                      ->          EditFindNext    "Find the next occurence of 
 <ctrl>b                 ->          BuildPackage
 
 <ctrl><alt>r            ->          RunPackage
+
+<ctrl>j                 ->          NextError
+<ctrl><shift>j          ->          PreviousError

@@ -1,6 +1,8 @@
 module Ghf.SourceEditor (
     isBuffer
 ,   allBuffers
+,   maybeActiveBuf
+,   standardSourcePanePath
 
 ,   newTextBuffer
 
@@ -85,6 +87,13 @@ maybeActiveBuf = do
                 BufPane buf -> return (Just (buf,signals))
                 otherwise   -> return Nothing
 
+standardSourcePanePath :: GhfM PanePath
+standardSourcePanePath = do
+    layout  <-  readGhf layout
+    prefs   <-  readGhf prefs
+    return (getStandard (sourcePanePath prefs) layout)
+
+
 newTextBuffer :: PanePath -> String -> Maybe FileName -> GhfAction
 newTextBuffer panePath bn mbfn = do
     -- create the appropriate language
@@ -110,10 +119,13 @@ newTextBuffer panePath bn mbfn = do
 
         -- create a new SourceBuffer object
         buffer <- sourceBufferNewWithLanguage lang
+        tagTable <- textBufferGetTagTable buffer
         foundTag <- textTagNew (Just "found")
         set foundTag [textTagBackground := "yellow"]
-        tagTable <- textBufferGetTagTable buffer
         textTagTableAdd tagTable foundTag
+        activeErrtag <- textTagNew (Just "activeErr")
+        set activeErrtag[textTagBackground := "yellow"]
+        textTagTableAdd tagTable activeErrtag
 
         -- load up and display a file
         fileContents <- case mbfn of
@@ -129,6 +141,8 @@ newTextBuffer panePath bn mbfn = do
         siter <- textBufferGetStartIter buffer
         textBufferPlaceCursor buffer siter
         sourceBufferSetHighlight buffer True
+        iter <- textBufferGetEndIter buffer
+        textBufferCreateMark buffer (Just "end") iter True
 
         -- create a new SourceView Widget
         sv <- sourceViewNewWithBuffer buffer
@@ -315,7 +329,8 @@ fileSave query = inBufContext' () $ \ nb _ currentBuffer i -> do
                                         let bn = takeFileName fn
                                         let bufs1 =  Map.delete (realPaneName (BufPane currentBuffer)) bufs
                                         let (ind,rbn) =  figureOutPaneName bufs1 bn 0
-                                        let newBuffer =  currentBuffer {fileName = Just fn,
+                                        cfn <- canonicalizePath fn
+                                        let newBuffer =  currentBuffer {fileName = Just cfn,
                                                         bufferName = bn, addedIndex = ind}
                                         let newBufs   =  Map.insert rbn (BufPane newBuffer) bufs1
                                         let (pane,cids)=  paneMap ! (BufPane currentBuffer)
@@ -425,7 +440,8 @@ fileOpen = do
         Nothing -> return ()
         Just fn -> do
             pp <- getActivePanePathOrTop
-            newTextBuffer pp (takeFileName fn) (Just fn)
+            cfn <- lift $canonicalizePath fn
+            newTextBuffer pp (takeFileName fn) (Just cfn)
 
 editUndo :: GhfAction
 editUndo = inBufContext () $ \_ gtkbuf _ _ ->

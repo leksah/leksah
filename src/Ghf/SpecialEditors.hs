@@ -13,6 +13,7 @@ module Ghf.SpecialEditors (
 ,   filesEditor
 ,   stringsEditor
 ,   extensionsEditor
+,   panePathEditor
 ) where
 
 import Graphics.UI.Gtk
@@ -208,6 +209,9 @@ stringsEditor p =
     multisetEditor
         (ColumnDescr False [("",(\row -> [New.cellText := row]))])
         (stringEditor, emptyParams) p{shadow = Just ShadowIn}
+
+panePathEditor :: Editor StandardPath
+panePathEditor = staticSelectionEditor [LeftTop,LeftBottom,RightTop,RightBottom]
 
 extensionsEditor :: Editor [Extension]
 extensionsEditor = staticMultiselectionEditor extensionsL

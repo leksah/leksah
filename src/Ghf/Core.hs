@@ -26,6 +26,8 @@ module Ghf.Core (
 ,   PaneDirection(..)
 ,   PanePath
 ,   PaneLayout(..)
+,   StandardPath(..)
+
 ,   Connections(..)
 
 -- * Convenience methods for accesing Pane state
@@ -103,6 +105,7 @@ data Ghf        =   Ghf {
 ,   packages    ::  [GhfPackage]            -- ^ the packages known to ghf
 ,   activePack  ::  Maybe GhfPackage
 ,   errors      ::  [ErrorSpec]
+,   currentErr  ::  Maybe Int
 } deriving Show
 
 --
@@ -224,6 +227,10 @@ data PaneLayout =       HorizontalP PaneLayout PaneLayout Int
                     |   TerminalP (Maybe PaneDirection)
     deriving (Eq,Ord,Show,Read)
 
+
+data StandardPath = LeftTop | LeftBottom | RightTop | RightBottom
+    deriving(Read,Show,Eq,Ord,Enum)
+
 --
 -- | Signal handlers for the different pane types
 --
@@ -337,6 +344,7 @@ data Prefs = Prefs {
     ,   logviewFont         ::   Maybe String
     ,   defaultSize         ::   (Int,Int)
     ,   browser             ::   String
+    ,   sourcePanePath      ::   StandardPath
 } deriving(Eq,Ord,Show)
 
 
@@ -357,7 +365,7 @@ data ErrorSpec = ErrorSpec {
         filePath            ::   FilePath
     ,   line                ::   Int
     ,   column              ::   Int
-    ,   description         ::   String
+    ,   errDescription      ::   String
     ,   logLines            ::   (Int,Int)
 }   deriving Show
 

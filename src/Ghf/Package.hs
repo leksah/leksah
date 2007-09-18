@@ -9,6 +9,8 @@ module Ghf.Package (
 ,   packageClean
 ,   packageCopy
 ,   packageRun
+,   nextError
+,   previousError
 
 ,   packageInstall
 ,   packageRegister
@@ -35,11 +37,12 @@ import Text.ParserCombinators.Parsec.Language
 import qualified Text.ParserCombinators.Parsec.Token as P
 import Text.ParserCombinators.Parsec hiding(Parser)
 import Control.Monad.Reader
-
+import Data.List
 
 import Ghf.Log
 import Ghf.Core
 import Ghf.PackageEditor
+import Ghf.SourceEditor
 
 
 getActivePackage :: GhfM (Maybe GhfPackage)
@@ -273,11 +276,26 @@ readErr log hndl =
         appendLog log (line ++ "\n") ErrorTag
         readAndShow
 
+runExternal :: FilePath -> [String] -> IO (Handle, Handle, Handle, ProcessHandle)
+runExternal path args = do
+    hndls@(inp, out, err, _) <- runInteractiveProcess path args Nothing Nothing
+    putStrLn $ "Starting external tool: " ++ path
+    hSetBuffering out NoBuffering
+    hSetBuffering err NoBuffering
+    hSetBuffering inp NoBuffering
+    hSetBinaryMode out True
+    hSetBinaryMode err True
+    return hndls
+
+-- ---------------------------------------------------------------------
+-- Handling of Compiler errors
+--
+
 readErrForBuild :: GhfLog -> Handle -> GhfAction
 readErrForBuild log hndl = do
     errs <- lift $readAndShow False []
     lift $putStrLn $"Errors " ++ (show errs)
-    modifyGhf_ (\ghf -> return (ghf{errors = reverse errs}))
+    modifyGhf_ (\ghf -> return (ghf{errors = reverse errs, currentErr = Nothing}))
     where
     readAndShow inError errs = do
         isEnd <- hIsEOF hndl
@@ -303,23 +321,92 @@ readErrForBuild log hndl = do
                             else readAndShow False errs
                     otherwise -> readAndShow False errs
 
-runExternal :: FilePath -> [String] -> IO (Handle, Handle, Handle, ProcessHandle)
-runExternal path args = do
-    hndls@(inp, out, err, _) <- runInteractiveProcess path args Nothing Nothing
-    putStrLn $ "Starting external tool: " ++ path
-    hSetBuffering out NoBuffering
-    hSetBuffering err NoBuffering
-    hSetBuffering inp NoBuffering
-    hSetBinaryMode out True
-    hSetBinaryMode err True
-    return hndls
+selectErr :: Int -> GhfAction
+selectErr index = do
+    errors <- readGhf errors
+    if length errors < index + 1
+        then return ()
+        else do
+            let thisErr = errors !! index
+            succ <- selectSourceBuf (filePath thisErr)
+            if succ
+                then markErrorInSourceBuf (line thisErr) (column thisErr)
+                        (errDescription thisErr)
+                else return ()
+            markErrorInLog (logLines thisErr)
+
+selectSourceBuf :: FilePath -> GhfM Bool
+selectSourceBuf fp = do
+    fpc <-  lift $canonicalizePath fp
+    buffers <- allBuffers
+    let buf = filter (\b -> case fileName b of
+                                Just fn -> equalFilePath fn fpc
+                                Nothing -> False) buffers
+    case buf of
+        hdb:tl -> do
+            makeBufferActive hdb
+            return True
+        otherwise -> do
+            fe <- lift $doesFileExist fpc
+            if fe
+                then do
+                    path <- standardSourcePanePath
+                    newTextBuffer path (takeFileName fpc) (Just fp)
+                    return True
+                else return False
+
+markErrorInSourceBuf ::  Int -> Int -> String -> GhfAction
+markErrorInSourceBuf line column string = do
+    mbbuf <- maybeActiveBuf
+    case mbbuf of
+        Nothing -> return ()
+        Just (buf,_) -> lift $do
+            gtkbuf <- textViewGetBuffer (sourceView buf)
+            iter <- textBufferGetIterAtLineOffset gtkbuf (line-1) (column-1)
+            iter2 <- textBufferGetIterAtLineOffset gtkbuf line 0
+            textBufferApplyTagByName gtkbuf "activeErr" iter iter2
+            textBufferMoveMarkByName gtkbuf "end" iter
+            mbMark <- textBufferGetMark gtkbuf "end"
+            case mbMark of
+                Nothing -> return ()
+                Just mark -> textViewScrollMarkOnscreen (sourceView buf) mark
+
+nextError :: GhfAction
+nextError = do
+    errs <- readGhf errors
+    currentErr <- readGhf currentErr
+    if null errs
+        then return ()
+        else do
+            case currentErr of
+                Nothing -> do
+                    modifyGhf_ (\ghf -> return (ghf{currentErr = Just 0}))
+                    selectErr 0
+                Just n | (n + 1) < length errs -> do
+                    modifyGhf_ (\ghf -> return (ghf{currentErr = Just (n + 1)}))
+                    selectErr (n + 1)
+                otherwise -> return ()
+
+previousError :: GhfAction
+previousError = do
+    errs <- readGhf errors
+    currentErr <- readGhf currentErr
+    if null errs
+        then return ()
+        else do
+            case currentErr of
+                Nothing -> do
+                    modifyGhf_ (\ghf -> return (ghf{currentErr = Just (length errs - 1)}))
+                    selectErr (length errs - 1)
+                Just n | n > 0 -> do
+                    modifyGhf_ (\ghf -> return (ghf{currentErr = Just (n - 1)}))
+                    selectErr (n - 1)
+                otherwise -> return ()
 
 data BuildError =   BuildLine
                 |   EmptyLine
                 |   ErrorLine FilePath Int Int String
                 |   OtherLine String
-
-
 
 buildLineParser :: CharParser () BuildError
 buildLineParser = try (do

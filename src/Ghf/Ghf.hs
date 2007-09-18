@@ -63,19 +63,20 @@ main = do
     dataDir     <-  getDataDir
     windowSetIconFromFile win $dataDir </> "ghf.gif"
     let ghf = Ghf
-          {   window        = win
-          ,   uiManager     = uiManager
-          ,   panes         = Map.empty
-          ,   activePane    = Nothing
-          ,   paneMap       = Map.empty
-          ,   layout        = (TerminalP Nothing)
-          ,   specialKeys   = specialKeys
-          ,   specialKey    = Nothing
-          ,   candy         = candySt
-          ,   prefs         = prefs
-          ,   packages      = []
-          ,   activePack    = Nothing
-          ,   errors        = []}
+          {   window        =   win
+          ,   uiManager     =   uiManager
+          ,   panes         =   Map.empty
+          ,   activePane    =   Nothing
+          ,   paneMap       =   Map.empty
+          ,   layout        =   (TerminalP Nothing)
+          ,   specialKeys   =   specialKeys
+          ,   specialKey    =   Nothing
+          ,   candy         =   candySt
+          ,   prefs         =   prefs
+          ,   packages      =   []
+          ,   activePack    =   Nothing
+          ,   errors        =   []
+          ,   currentErr    =   Nothing}
     ghfR <- newIORef ghf
     (acc,menus) <- runReaderT (makeMenu uiManager accelActions menuDescription) ghfR
     let mb = case menus !! 0 of

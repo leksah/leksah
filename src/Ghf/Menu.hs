@@ -21,7 +21,7 @@ import System.FilePath
 import Ghf.Core
 import Ghf.SourceEditor
 import Ghf.ViewFrame
-import {-# SOURCE #-} Ghf.PreferencesEditor(editPrefs)
+import Ghf.PreferencesEditor(editPrefs)
 import Ghf.PackageEditor
 import Ghf.Package
 import Ghf.Log
@@ -100,6 +100,11 @@ actions =
         packageCopy [] False
     ,AD "RunPackage" "_Run" Nothing Nothing
         packageRun [] False
+    ,AD "NextError" "_Next Error" Nothing Nothing
+        nextError [] False
+    ,AD "PreviousError" "_Previous Error" Nothing Nothing
+        previousError [] False
+
 
     ,AD "InstallPackage" "_Install Package" Nothing Nothing
         packageInstall [] False
@@ -199,6 +204,8 @@ menuDescription = "\n\
        \<menuitem name=\"_Configure Package\" action=\"ConfigPackage\" />\n\
        \<menuitem name=\"_Build Package\" action=\"BuildPackage\" />\n\
        \<menuitem name=\"_Run\" action=\"RunPackage\" />\n\
+       \<menuitem name=\"_Next Error\" action=\"NextError\" />\n\
+       \<menuitem name=\"_Previous Error\" action=\"PreviousError\" />\n\
        \<separator/>\n\
        \<menuitem name=\"Clea_n Package\" action=\"CleanPackage\" />\n\
        \<menuitem name=\"C_opy Package\" action=\"CopyPackage\" />\n\

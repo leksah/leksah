@@ -8,6 +8,7 @@ module Ghf.Log (
 ,   isLog
 ,   appendLog
 ,   LogTag(..)
+,   markErrorInLog
 ) where
 
 import Graphics.UI.Gtk hiding (afterToggleOverwrite)
@@ -38,6 +39,7 @@ initLog panePath nb = do
         buf <- textViewGetBuffer tv
         iter <- textBufferGetEndIter buf
         textBufferCreateMark buf (Just "end") iter True
+
         tags <- textBufferGetTagTable buf
         errtag <- textTagNew (Just "err")
         set errtag[textTagForeground := "red"]
@@ -45,6 +47,10 @@ initLog panePath nb = do
         frametag <- textTagNew (Just "frame")
         set frametag[textTagForeground := "green"]
         textTagTableAdd tags frametag
+        activeErrtag <- textTagNew (Just "activeErr")
+        set activeErrtag[textTagBackground := "yellow"]
+        textTagTableAdd tags activeErrtag
+
         textViewSetEditable tv False
         fd <- case logviewFont prefs of
             Just str -> do
@@ -131,5 +137,18 @@ appendLog (GhfLog tv _) string tag = do
         Just mark -> textViewScrollMarkOnscreen tv mark
     return line
 
+markErrorInLog :: (Int,Int) -> GhfAction
+markErrorInLog (l1,l2) = do
+    (GhfLog tv _) <- getLog
+    lift $ do
+        buf <- textViewGetBuffer tv
+        iter <- textBufferGetIterAtLineOffset buf l1 0
+        iter2 <- textBufferGetIterAtLineOffset buf (l2+1) 0
+        textBufferApplyTagByName buf "activeErr" iter iter2
+        textBufferMoveMarkByName buf "end" iter
+        mbMark <- textBufferGetMark buf "end"
+        case mbMark of
+            Nothing -> return ()
+            Just mark -> textViewScrollMarkOnscreen tv mark
 
 

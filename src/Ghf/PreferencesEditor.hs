@@ -10,52 +10,29 @@ module Ghf.PreferencesEditor (
 ,   prefsDescription
 ) where
 
-import Graphics.UI.Gtk.SourceView(sourceViewSetMargin, sourceViewSetShowMargin,
-				  sourceViewSetTabsWidth, sourceViewSetShowLineNumbers)
-import Graphics.UI.Gtk(fontDescriptionFromString, castToWidget, Widget,
-		       widgetModifyFont, widgetModifyFg, widgetSetSizeRequest, widgetDestroy,
-		       widgetShowAll, containerAdd, boxPackEnd, boxPackStart,
-		       scrolledWindowAddWithViewport, scrolledWindowSetPolicy, scrolledWindowNew,
-		       notebookSetTabPos, notebookAppendPage, hButtonBoxNew, vBoxNew, onClicked,
-		       buttonNewFromStock, windowNew, StateType(StateNormal),
-		       Packing(PackNatural, PackGrow), PositionType(PosTop), ShadowType(ShadowIn),
-		       PolicyType(PolicyAutomatic), Color(..))
-import Control.Monad.Reader(Monad(return), ReaderT(runReaderT),
-			    MonadReader(ask), MonadTrans(..), mapM_, mapM)
-import Text.ParserCombinators.Parsec.Language()    -- Instances only
-import Text.ParserCombinators.Parsec.Token()    -- Instances only
-import Text.ParserCombinators.Parsec(CharParser, try, parseFromFile, (<?>))
-import Control.Monad()    -- Instances only
-import Data.IORef(writeIORef, readIORef, newIORef)
-import Data.List(unzip4)
-import Data.Maybe()    -- Instances only
-import Data.Map()    -- Instances only
-import Debug.Trace()    -- Instances only
-import qualified Text.PrettyPrint.HughesPJ as PP(PP.Doc, PP.colon, PP.empty, PP.text, PP.nest,
-				 (PP.$$), (PP.$+$), (PP.<>), PP.render)
-import Ghf.Log(getLog)
-import Ghf.Core(FileName, Prefs(..), GhfLog(textView), GhfBuffer(sourceView),
-		Direction(Horizontal), GhfAction, GhfRef, Ghf(prefs), readGhf, modifyGhf_)
-import Ghf.ViewFrame(newNotebook, setCandyState)
-import Ghf.PropertyEditor(Parameters(shadow, paraName, direction,
-					    synopsisP),
-				 EventSelector(FocusOut), Editor, Notifier, Extractor, Injector, Setter, Getter,
-				 emptyParams, extractAndValidate, boolEditor, stringEditor, intEditor,
-				 fontEditor, pairEditor, maybeEditor)
-import Ghf.SourceEditor(allBuffers, editCandy)
-import Ghf.Menu()    -- Instances only
-import Ghf.PrinterParser(Parser, Printer, applyFieldParsers, boolParser,
-			 pairParser, stringParser, intParser, whiteSpace, symbol, identifier, colon)
-import Ghf.Keymap()    -- Instances only
-import Ghf.File(getConfigFilePathForSave)
+import Graphics.UI.Gtk.SourceView
+import Graphics.UI.Gtk
+import Control.Monad.Reader
+import qualified Text.ParserCombinators.Parsec as P
+import Data.IORef
+import Data.List
+import qualified Text.PrettyPrint.HughesPJ as PP
 
+import Ghf.Log
+import Ghf.Core
+import Ghf.ViewFrame
+import Ghf.PropertyEditor hiding(parameters,fieldEditor)
+import Ghf.SourceEditor
+import Ghf.PrinterParser hiding (fieldParser,parameters)
+import Ghf.File
+import Ghf.SpecialEditors
 
 type Applicator alpha = alpha -> GhfAction
 
 data FieldDescription alpha =  FD {
         parameters      ::  Parameters
     ,   fieldPrinter    ::  alpha -> PP.Doc
-    ,   fieldParser     ::  alpha -> CharParser () alpha
+    ,   fieldParser     ::  alpha -> P.CharParser () alpha
     ,   fieldEditor     ::  alpha -> IO (Widget, Injector alpha , alpha -> Extractor alpha , Notifier)
     ,   applicator      ::  alpha -> alpha -> GhfAction
     }
@@ -80,7 +57,7 @@ mkField parameters printer parser getter setter editor applicator =
                 PP.$$ (PP.nest 5 (case synopsisP parameters of
                                     Nothing -> PP.empty
                                     Just str -> PP.text $"--" ++ str)))
-        (\ dat -> try (do
+        (\ dat -> P.try (do
             symbol (case paraName parameters of
                                     Nothing -> ""
                                     Just str -> str)
@@ -125,7 +102,8 @@ defaultPrefs = Prefs {
     ,   textviewFont        =   Nothing
     ,   logviewFont         =   Nothing
     ,   defaultSize         =   (1024,800)
-    ,   browser             =   "firefox"}
+    ,   browser             =   "firefox"
+    ,   sourcePanePath      =   LeftTop}
 
 prefsDescription :: [(String,[FieldDescription Prefs])]
 prefsDescription = [
@@ -245,6 +223,13 @@ prefsDescription = [
             (\b a -> a{browser = b})
             stringEditor
             (\i -> return ())
+    ,   mkField (emptyParams{paraName = Just "Standard source editor path"})
+            (PP.text . show)
+            readParser
+            sourcePanePath
+            (\b a -> a{sourcePanePath = b})
+            panePathEditor
+            (\i -> return ())
     ])]
 
 -- ------------------------------------------------------------
@@ -253,18 +238,18 @@ prefsDescription = [
 
 readPrefs :: FileName -> IO Prefs
 readPrefs fn = do
-    res <- parseFromFile (prefsParser defaultPrefs (concatMap snd prefsDescription)) fn
+    res <- P.parseFromFile (prefsParser defaultPrefs (concatMap snd prefsDescription)) fn
     case res of
         Left pe -> error $"Error reading prefs file " ++ show fn ++ " " ++ show pe
         Right r -> return r
 
-prefsParser ::  a ->  [FieldDescription a] ->  CharParser () a
+prefsParser ::  a ->  [FieldDescription a] ->  P.CharParser () a
 prefsParser def descriptions =
     let parsersF = map fieldParser descriptions in do
         whiteSpace
         res <-  applyFieldParsers def parsersF
         return res
-        <?> "prefs parser"
+        P.<?> "prefs parser"
 
 -- ------------------------------------------------------------
 -- * Printing

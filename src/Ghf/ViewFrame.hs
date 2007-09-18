@@ -1,5 +1,7 @@
 module Ghf.ViewFrame (
-    viewMove
+    getStandard
+
+,   viewMove
 ,   viewSplitHorizontal
 ,   viewSplitVertical
 ,   viewSplit
@@ -33,10 +35,7 @@ module Ghf.ViewFrame (
 ) where
 
 import Graphics.UI.Gtk hiding (afterToggleOverwrite)
-import Graphics.UI.Gtk.SourceView
 import Graphics.UI.Gtk.Multiline.TextView
---import Graphics.UI.Gtk.Glade
-import System.Glib.GObject
 import Control.Monad.Reader
 import Data.IORef
 import System.FilePath
@@ -50,6 +49,18 @@ import Debug.Trace
 
 import Ghf.Core
 
+getStandard :: StandardPath -> PaneLayout -> PanePath
+getStandard sp pl = getStandard' sp pl []
+    where
+    getStandard' _ (TerminalP _) p                  =   p
+    getStandard' LeftTop (VerticalP l r _) p        =   getStandard' LeftTop l (LeftP:p)
+    getStandard' LeftBottom (VerticalP l r _) p     =   getStandard' LeftBottom l (LeftP:p)
+    getStandard' RightTop (VerticalP l r _) p       =   getStandard' RightTop r (RightP:p)
+    getStandard' RightBottom (VerticalP l r _) p    =   getStandard' RightBottom r (RightP:p)
+    getStandard' LeftTop (HorizontalP t b _) p      =   getStandard' LeftTop t (TopP:p)
+    getStandard' LeftBottom (HorizontalP t b _) p   =   getStandard' LeftBottom b (BottomP:p)
+    getStandard' RightTop (HorizontalP t b _) p     =   getStandard' RightTop t (TopP:p)
+    getStandard' RightBottom (HorizontalP t b _) p  =   getStandard' RightBottom b (BottomP:p)
 
 newNotebook :: IO Notebook
 newNotebook = do
