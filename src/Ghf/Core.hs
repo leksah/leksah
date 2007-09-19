@@ -1,8 +1,18 @@
+-----------------------------------------------------------------------------
+--
+-- Module      :  Ghf.Core
+-- Copyright   :  (c) Juergen Nicklisch-Franken (aka Jutaro)
+-- License     :  GNU-GPL
+--
+-- Maintainer  :  Juergen Nicklisch-Franken <andy@galconn.com>
+-- Stability   :  experimental
+-- Portability :  portable
 --
 -- | The core state of ghf. This module is imported from every other module,
 -- | and all data structures of the state are declared here, to avoid circular
 -- | module dependencies.
 --
+-------------------------------------------------------------------------------
 
 module Ghf.Core (
 -- * IDE State

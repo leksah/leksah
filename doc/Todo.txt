@@ -2,10 +2,6 @@
 
 ToDo List
 
-1. Save and recover pane Layout
-2. Parse error messages
-3.
-
 1. Ungleiche Verteilung
 2. Buttons sind so ulkig
 
@@ -13,6 +9,7 @@ ToDo List
 Views
 - Active Buffer switching korrigieren
     Save as geht nicht?!
+    Close geht nicht richtig!
 
 Editor
 - Changed on disk

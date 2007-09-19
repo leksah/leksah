@@ -2,9 +2,9 @@
 -- | Module for saving and recovering the layout
 --
 
-module Ghf.SaveLayout (
-    saveLayout
-,   recoverLayout
+module Ghf.SaveSession (
+    saveSession
+,   recoverSession
 ) where
 
 import Graphics.UI.Gtk hiding (showLayout)
@@ -23,19 +23,24 @@ import Ghf.File
 import Ghf.PrinterParser
 import qualified Text.PrettyPrint.HughesPJ as PP
 import Ghf.PropertyEditor
+import Ghf.Package
 
-data LayoutState = LayoutState {
+sessionFilename = "Current.session"
+
+data SessionState = SessionState {
         layoutS             ::   PaneLayout
     ,   population          ::   [(String,PanePath)]
     ,   windowSize          ::   (Int,Int)
+    ,   activePackage        ::   Maybe FilePath
 } deriving()
 
-defaultLayout = LayoutState {
+defaultLayout = SessionState {
         layoutS             =   TerminalP (Just TopP)
     ,   population          =   [("*Log",[])]
-    ,   windowSize          =   (1024,768)}
+    ,   windowSize          =   (1024,768)
+    ,   activePackage       =   Nothing}
 
-layoutDescr :: [FieldDescriptionS LayoutState]
+layoutDescr :: [FieldDescriptionS SessionState]
 layoutDescr = [
         mkFieldS (emptyParams
             {   paraName = Just "Layout"})
@@ -54,21 +59,28 @@ layoutDescr = [
             (PP.text . show)
             (pairParser intParser)
             windowSize
-            (\(c,d) a -> a{windowSize = (c,d)})]
+            (\(c,d) a -> a{windowSize = (c,d)})
+    ,   mkFieldS (emptyParams
+            {   paraName = Just "Active package"})
+            (PP.text . show)
+            readParser
+            activePackage
+            (\fp a -> a{activePackage = fp})]
 
 --
 -- | Get and save the current layout
 --
-saveLayout :: GhfAction
-saveLayout = do
+saveSession :: GhfAction
+saveSession = do
     wdw         <-  readGhf window
     layout      <-  getLayout
     population  <-  getPopulation
-    layoutPath  <-  lift $getConfigFilePathForSave "Current.layout"
+    layoutPath  <-  lift $getConfigFilePathForSave sessionFilename
     size        <-  lift $windowGetSize wdw
-    lift $writeLayout layoutPath $LayoutState layout population size
+    active      <-  getActive
+    lift $writeLayout layoutPath $SessionState layout population size active
 
-writeLayout :: FilePath -> LayoutState -> IO ()
+writeLayout :: FilePath -> SessionState -> IO ()
 writeLayout fpath ls = writeFile fpath (showLayout ls layoutDescr)
 
 showLayout ::  a ->  [FieldDescriptionS a] ->  String
@@ -105,6 +117,12 @@ getPopulation = do
     paneMap' <- readGhf paneMap
     return (map (\ (k,v) -> (getBufferDescription k, fst v)) $Map.toList paneMap')
 
+getActive :: GhfM(Maybe String)
+getActive = do
+    active <- readGhf activePack
+    case active of
+        Nothing -> return Nothing
+        Just p -> return (Just (cabalFile p))
 
 -- ------------------------------------------------------------
 -- * Parsing
@@ -114,18 +132,23 @@ getPopulation = do
 -- | Read and apply the saved layout
 --
 
-recoverLayout :: GhfAction
-recoverLayout = do
+recoverSession :: GhfAction
+recoverSession = do
     wdw         <-  readGhf window
     layoutSt <- lift$ readLayout
     lift $windowSetDefaultSize wdw (fst (windowSize layoutSt))(snd (windowSize layoutSt))
     applyLayout (layoutS layoutSt)
     populate (population layoutSt)
+    case activePackage layoutSt of
+        Just fp ->  do
+            activatePackage fp
+            return ()
+        Nothing -> return ()
 
 
-readLayout :: IO LayoutState
+readLayout :: IO SessionState
 readLayout = do
-    layoutPath  <-  getConfigFilePathForLoad "Current.layout"
+    layoutPath  <-  getConfigFilePathForLoad sessionFilename
     res <- parseFromFile (prefsParser defaultLayout layoutDescr) layoutPath
     case res of
         Left pe -> error $"Error reading prefs file " ++ show layoutPath ++ " " ++ show pe
@@ -138,7 +161,6 @@ prefsParser def descriptions =
         res <-  applyFieldParsers def parsersF
         return res
         <?> "layout parser"
-
 
 applyLayout :: PaneLayout -> GhfAction
 applyLayout layoutS = do

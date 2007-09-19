@@ -9,6 +9,7 @@ module Ghf.Log (
 ,   appendLog
 ,   LogTag(..)
 ,   markErrorInLog
+,   clearLog
 ) where
 
 import Graphics.UI.Gtk hiding (afterToggleOverwrite)
@@ -27,6 +28,7 @@ import Ghf.ViewFrame
 logPaneName = "Log"
 
 data LogTag = LogTag | ErrorTag | FrameTag
+
 
 initLog :: PanePath -> Notebook -> GhfAction
 initLog panePath nb = do
@@ -114,8 +116,9 @@ isLog (LogPane _)    = True
 isLog _             = False
 
 appendLog :: GhfLog -> String -> LogTag -> IO Int
-appendLog (GhfLog tv _) string tag = do
+appendLog l@(GhfLog tv _) string tag = do
     buf <- textViewGetBuffer tv
+    textBufferDeleteSelection buf False False
     iter <- textBufferGetEndIter buf
     textBufferInsert buf iter string
     iter2 <- textBufferGetEndIter buf
@@ -135,6 +138,7 @@ appendLog (GhfLog tv _) string tag = do
     case mbMark of
         Nothing -> return ()
         Just mark -> textViewScrollMarkOnscreen tv mark
+    bringPaneToFront (LogPane l)
     return line
 
 markErrorInLog :: (Int,Int) -> GhfAction
@@ -152,4 +156,9 @@ markErrorInLog (l1,l2) = do
             Nothing -> return ()
             Just mark ->  textViewScrollToMark tv  mark 0.0 (Just (0.3,0.3))
 
-
+clearLog :: GhfAction
+clearLog = do
+    log <- getLog
+    buf <- lift$ textViewGetBuffer $textView log
+    lift $textBufferSetText buf ""
+    modifyGhf_ (\ghf -> return (ghf{errors = [], currentErr = Nothing}))

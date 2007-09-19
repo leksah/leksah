@@ -25,7 +25,7 @@ import Ghf.PreferencesEditor(editPrefs)
 import Ghf.PackageEditor
 import Ghf.Package
 import Ghf.Log
-import Ghf.SaveLayout
+import Ghf.SaveSession
 
 version = "0.1"
 
@@ -89,9 +89,9 @@ actions =
     ,AD "EditPackage" "_Edit Package" Nothing Nothing
         (packageEdit Nothing) [] False
     ,AD "ConfigPackage" "_Configure Package" Nothing Nothing
-        (packageConfig True) [] False
+        packageConfig [] False
     ,AD "BuildPackage" "_Build Package" Nothing Nothing
-        (packageBuild False) [] False
+        packageBuild [] False
     ,AD "DocPackage" "_Build Documentation" Nothing Nothing
         packageDoc [] False
     ,AD "CleanPackage" "Cl_ean Package" Nothing Nothing
@@ -104,6 +104,8 @@ actions =
         nextError [] False
     ,AD "PreviousError" "_Previous Error" Nothing Nothing
         previousError [] False
+    ,AD "ClearLog" "_Clear Log" Nothing Nothing
+        clearLog [] False
 
 
     ,AD "InstallPackage" "_Install Package" Nothing Nothing
@@ -217,6 +219,8 @@ menuDescription = "\n\
        \<separator/>\n\
        \<menuitem name=\"_Build Documentation\" action=\"DocPackage\" />\n\
        \<menuitem name=\"Open Documentation\" action=\"OpenDocPackage\" />\n\
+       \<separator/>\n\
+       \<menuitem name=\"Clear Log\" action=\"ClearLog\" />\n\
      \</menu>\n\
     \<menu name=\"_View\" action=\"View\">\n\
        \<menuitem name=\"Move _Left\" action=\"ViewMoveLeft\" />\n\
@@ -297,7 +301,7 @@ makeMenu uiManager actions menuDescription = do
 quit :: GhfAction
 quit = do
     bufs    <- allBuffers
-    saveLayout
+    saveSession
     if null bufs
         then    lift mainQuit
         else    do  r <- mapM (\ b -> do    makeBufferActive b

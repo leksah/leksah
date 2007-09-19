@@ -1,5 +1,6 @@
 module Ghf.ViewFrame (
     getStandard
+,   bringPaneToFront
 
 ,   viewMove
 ,   viewSplitHorizontal
@@ -40,14 +41,36 @@ import Control.Monad.Reader
 import Data.IORef
 import System.FilePath
 import System.Directory
-import Data.Maybe ( fromMaybe, isJust)
+import Data.Maybe
 import Text.Printf
 import qualified Data.Map as Map
 import Data.Map (Map,(!))
-import Data.List(findIndex)
+import Data.List
 import Debug.Trace
 
 import Ghf.Core
+
+bringPaneToFront :: GhfPane -> IO ()
+bringPaneToFront pane = do
+    let tv = getTopWidget pane
+    mbParent <- widgetGetParent tv
+    case mbParent of
+        Just parent -> do
+        let nb = castToNotebook parent
+        n <- notebookGetNPages nb
+        r <- filterM (\i -> do
+                    mbp <-  notebookGetNthPage nb i
+                    case mbp of
+                        Nothing -> return False
+                        Just p -> do
+                            mbs <- notebookGetTabLabelText nb p
+                            case mbs of
+                                Nothing -> return False
+                                Just s -> return (s == realPaneName pane))
+                                [0..(n-1)]
+        case r of
+            [i] -> notebookSetCurrentPage nb i
+            otherwise -> return ()
 
 getStandard :: StandardPath -> PaneLayout -> PanePath
 getStandard sp pl = getStandard' sp pl []

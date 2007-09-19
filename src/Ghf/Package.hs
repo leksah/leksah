@@ -11,6 +11,7 @@ module Ghf.Package (
 ,   packageRun
 ,   nextError
 ,   previousError
+,   activatePackage
 
 ,   packageInstall
 ,   packageRegister
@@ -50,23 +51,27 @@ getActivePackage = do
         Just p -> return (Just p)
         Nothing -> selectActivePackage
 
+activatePackage :: FilePath -> GhfM (Maybe GhfPackage)
+activatePackage filePath = do
+    let flags = emptyConfigFlags defaultProgramConfiguration
+    packageD <- lift $readPackageDescription filePath
+    let pack = GhfPackage (package packageD) filePath [] [] [] [] [] [] [] []
+    modifyGhf_ (\ghf -> return (ghf{activePack = (Just pack)}))
+    lift $putStrLn $"Set current directory " ++ dropFileName filePath
+    lift $setCurrentDirectory $dropFileName filePath
+    return (Just pack)
+
 selectActivePackage :: GhfM (Maybe GhfPackage)
 selectActivePackage = do
     window  <- readGhf window
     mbFilePath <- lift $choosePackageFile window
     case mbFilePath of
         Nothing -> return Nothing
-        Just filePath -> do
-            let flags = emptyConfigFlags defaultProgramConfiguration
-            packageD <- lift $readPackageDescription filePath
-            let pack = GhfPackage (package packageD) filePath [] [] [] [] [] [] [] []
-            modifyGhf_ (\ghf -> return (ghf{activePack = (Just pack)}))
-            lift $putStrLn $"Set current directory " ++ dropFileName filePath
-            lift $setCurrentDirectory $dropFileName filePath
-            return (Just pack)
+        Just filePath -> activatePackage filePath
 
-packageConfig :: Bool -> GhfAction
-packageConfig force = do
+
+packageConfig :: GhfAction
+packageConfig = do
     mbPackage   <- getActivePackage
     log         <- getLog
     case mbPackage of
@@ -77,8 +82,8 @@ packageConfig force = do
             eid <- forkIO (readErr log err)
             return ()
 
-packageBuild :: Bool -> GhfAction
-packageBuild force = do
+packageBuild :: GhfAction
+packageBuild = do
     mbPackage   <- getActivePackage
     log         <- getLog
     ghfR        <- ask
@@ -294,6 +299,9 @@ readErrForBuild log hndl = do
     errs <- lift $readAndShow False []
     lift $putStrLn $"Errors " ++ (show errs)
     modifyGhf_ (\ghf -> return (ghf{errors = reverse errs, currentErr = Nothing}))
+    if not (null errs)
+        then nextError
+        else return ()
     where
     readAndShow inError errs = do
         isEnd <- hIsEOF hndl
@@ -305,7 +313,7 @@ readErrForBuild log hndl = do
                 lineNr  <-  appendLog log (line ++ "\n") ErrorTag
                 case (parsed, errs) of
                     (Left e,_) -> do
-                        putStrLn (show e)
+                        --putStrLn (show e)
                         readAndShow False errs
                     (Right ne@(ErrorLine fp l c str),_) ->
                         readAndShow True ((ErrorSpec fp l c str (lineNr,lineNr)):errs)
@@ -368,6 +376,7 @@ markErrorInSourceBuf line column string = do
             textBufferApplyTagByName gtkbuf "activeErr" iter iter2
             textBufferMoveMarkByName gtkbuf "end" iter
             mbMark <- textBufferGetMark gtkbuf "end"
+            textBufferPlaceCursor gtkbuf iter
             case mbMark of
                 Nothing -> return ()
                 Just mark -> textViewScrollToMark (sourceView buf) mark 0.0 (Just (0.3,0.3))

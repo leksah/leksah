@@ -15,14 +15,14 @@ synopsis: Genuine Haskell Face
 description: An Integrated Development Environment (IDE) for Haskell GHC written in Haskell.
 category: Tools
 author: Juergen Nicklisch-Franken
-tested-with: GHC ==6.6.1
-data-files: config/Default.candy config/Default.keymap
-            config/Default.prefs config/Emacs.keymap bin/ghf.gif
+tested-with: GHC == 6.6.1
+data-files: config\Default.candy config\Default.keymap
+            config\Default.prefs config\Emacs.keymap bin\ghf.gif
 extra-source-files: Setup.lhs
 extra-tmp-files:
- 
+
 executable: ghf
-main-is: Ghf/Ghf.hs
+main-is: Ghf\Ghf.hs
 buildable: True
 cc-options:
 ld-options:
@@ -35,11 +35,11 @@ includes:
 install-includes:
 include-dirs:
 hs-source-dirs: src
-other-modules: Ghf.Core Ghf.BuildInfoEditor Ghf.PackageEditor
-               Ghf.PrinterParser Ghf.PreferencesEditor Ghf.SaveLayout
-               Ghf.SourceEditor Ghf.Keymap Ghf.Package Ghf.PropertyEditor
-               Ghf.SpecialEditors Ghf.Log Ghf.Menu Ghf.SourceCandy Ghf.Statusbar
-               Ghf.ViewFrame Ghf.File
+other-modules: Ghf.BuildInfoEditor Ghf.Core Ghf.File Ghf.Keymap
+               Ghf.Log Ghf.Menu Ghf.Package Ghf.PackageEditor
+               Ghf.PreferencesEditor Ghf.PrinterParser Ghf.PropertyEditor
+               Ghf.SaveSession Ghf.SourceCandy Ghf.SourceEditor Ghf.SpecialEditors
+               Ghf.Statusbar Ghf.ViewFrame
 ghc-prof-options:
 ghc-options:
 hugs-options:

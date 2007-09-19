@@ -15,7 +15,7 @@ import System.Console.GetOpt
 import System.Environment
 import System.IO
 
-import Ghf.SaveLayout
+import Ghf.SaveSession
 import Ghf.Core
 import Ghf.SourceCandy
 import Ghf.File
@@ -101,7 +101,7 @@ main = do
     runReaderT (setCandyState (isJust (sourceCandy prefs))) ghfR
     let (x,y) = defaultSize prefs
     windowSetDefaultSize win x y
-    runReaderT recoverLayout ghfR
+    runReaderT recoverSession ghfR
     widgetShowAll win
     hbf <- runReaderT getFindBar ghfR
     widgetHide hbf

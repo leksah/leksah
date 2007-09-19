@@ -204,24 +204,7 @@ makeBufferActive buf = do
     modifyGhf_ $ \ghf -> do
         let sv = sourceView buf
         gtkBuf  <- textViewGetBuffer sv
-        mbParent <- widgetGetParent (scrolledWindow buf)
-        case mbParent of
-            Just parent -> do
-            let nb = castToNotebook parent
-            n <- notebookGetNPages nb
-            r <- filterM (\i -> do
-                        mbp <-  notebookGetNthPage nb i
-                        case mbp of
-                            Nothing -> return False
-                            Just p -> do
-                                mbs <- notebookGetTabLabelText nb p
-                                case mbs of
-                                    Nothing -> return False
-                                    Just s -> return (s == realPaneName (BufPane buf)))
-                                    [0..(n-1)]
-            case r of
-                [i] -> notebookSetCurrentPage nb i
-                otherwise -> return ()
+        bringPaneToFront (BufPane buf)
         writeCursorPositionInStatusbar sv sbLC
         writeOverwriteInStatusbar sv sbIO
         id1 <- gtkBuf `afterModifiedChanged` runReaderT (markLabelAsChanged) ghfR
