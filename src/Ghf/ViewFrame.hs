@@ -1,35 +1,53 @@
-module Ghf.ViewFrame (
-    getStandard
-,   bringPaneToFront
+-----------------------------------------------------------------------------
+--
+-- Module      :  Ghf.ViewFrame
+-- Copyright   :  (c) Juergen Nicklisch-Franken (aka Jutaro)
+-- License     :  GNU-GPL
+--
+-- Maintainer  :  Juergen Nicklisch-Franken <jnf at arcor.de>
+-- Stability   :  experimental
+-- Portability :  portable
+--
+--
+-- | Splittable panes containing notebooks with any widgets
+--
+---------------------------------------------------------------------------------
 
-,   viewMove
+module Ghf.ViewFrame (
+-- * View Actions
+    viewMove
 ,   viewSplitHorizontal
 ,   viewSplitVertical
 ,   viewSplit
 ,   viewSplit'
 ,   viewCollapse
+,   viewTabsPos
+,   viewSwitchTabs
+
+-- * View Queries
+,   getStandardPanePath
+,   getActivePanePath
+,   getActivePanePathOrStandard
 ,   figureOutPaneName
 ,   getNotebook
 ,   getPaned
-,   getActiveOrTopNotebook
-,   getActivePanePath
-,   getActivePanePathOrTop
-,   guessNewActiveBuffer
-,   newNotebook
-,   viewTabsPos
-,   viewSwitchTabs
-,   widgetFromPath
+,   getActiveNotebook
 
+-- * View Actions
+,   bringPaneToFront
+,   newNotebook
+,   makePaneActive
+
+-- * Accessing GUI elements
+,   widgetFromPath
 ,   getCandyState
 ,   setCandyState
-
 ,   getFindEntry
 ,   getFindBar
 ,   getStatusbarIO
 ,   getStatusbarLC
 ,   getCaseSensitive
 ,   getGotoLineSpin
---,   getFindAction
 ,   getWrapAround
 ,   getEntireWord
 ,   getSpecialKeys
@@ -50,61 +68,42 @@ import Debug.Trace
 
 import Ghf.Core
 
-bringPaneToFront :: GhfPane -> IO ()
-bringPaneToFront pane = do
-    let tv = getTopWidget pane
-    mbParent <- widgetGetParent tv
-    case mbParent of
-        Just parent -> do
-        let nb = castToNotebook parent
-        n <- notebookGetNPages nb
-        r <- filterM (\i -> do
-                    mbp <-  notebookGetNthPage nb i
-                    case mbp of
-                        Nothing -> return False
-                        Just p -> do
-                            mbs <- notebookGetTabLabelText nb p
-                            case mbs of
-                                Nothing -> return False
-                                Just s -> return (s == realPaneName pane))
-                                [0..(n-1)]
-        case r of
-            [i] -> notebookSetCurrentPage nb i
-            otherwise -> return ()
 
-getStandard :: StandardPath -> PaneLayout -> PanePath
-getStandard sp pl = getStandard' sp pl []
-    where
-    getStandard' _ (TerminalP _) p                  =   p
-    getStandard' LeftTop (VerticalP l r _) p        =   getStandard' LeftTop l (LeftP:p)
-    getStandard' LeftBottom (VerticalP l r _) p     =   getStandard' LeftBottom l (LeftP:p)
-    getStandard' RightTop (VerticalP l r _) p       =   getStandard' RightTop r (RightP:p)
-    getStandard' RightBottom (VerticalP l r _) p    =   getStandard' RightBottom r (RightP:p)
-    getStandard' LeftTop (HorizontalP t b _) p      =   getStandard' LeftTop t (TopP:p)
-    getStandard' LeftBottom (HorizontalP t b _) p   =   getStandard' LeftBottom b (BottomP:p)
-    getStandard' RightTop (HorizontalP t b _) p     =   getStandard' RightTop t (TopP:p)
-    getStandard' RightBottom (HorizontalP t b _) p  =   getStandard' RightBottom b (BottomP:p)
+makePaneActive :: GhfPane -> Connections -> GhfAction
+makePaneActive pane conn = do
+    ghfR    <-  ask
+    mbAP    <-  readGhf activePane
+    case mbAP of
+        Just (_,BufConnections signals signals2) -> lift $do
+            mapM_ signalDisconnect signals
+            mapM_ signalDisconnect signals2
+        Nothing -> return ()
+    modifyGhf_ $ \ghf -> do
+        bringPaneToFront pane
+        return (ghf{activePane = Just (pane,conn)})
 
-newNotebook :: IO Notebook
-newNotebook = do
-    nb <- notebookNew
-    notebookSetTabPos nb PosTop
-    notebookSetShowTabs nb True
-    notebookSetScrollable nb True
-    notebookSetPopup nb True
-    return nb
 
+--
+-- | Toggle the tabs of the current notebook
+--
 viewSwitchTabs :: GhfAction
 viewSwitchTabs = do
-    nb <- getActiveOrTopNotebook
-    lift $do
-        b <- notebookGetShowTabs nb
-        notebookSetShowTabs nb (not b)
+    mbNb <- getActiveNotebook
+    case mbNb of
+        Nothing -> return ()
+        Just nb -> lift $do
+            b <- notebookGetShowTabs nb
+            notebookSetShowTabs nb (not b)
 
+--
+-- | Sets the tab position in the current notebook
+--
 viewTabsPos :: PositionType -> GhfAction
 viewTabsPos pos = do
-    nb <- getActiveOrTopNotebook
-    lift $notebookSetTabPos nb pos
+    mbNb <- getActiveNotebook
+    case mbNb of
+        Nothing -> return ()
+        Just nb -> lift $notebookSetTabPos nb pos
 
 --
 -- | Split the currently active pane in horizontal direction
@@ -119,7 +118,7 @@ viewSplitVertical :: GhfAction
 viewSplitVertical = viewSplit Vertical
 
 --
--- | The main view can be split in two (horizontal or vertical)
+-- | The active view can be split in two (horizontal or vertical)
 --
 viewSplit :: Direction -> GhfAction
 viewSplit dir = do
@@ -233,7 +232,6 @@ viewCollapse' panePath = do
             adjustPane panePath newPanePath
                 --adjustPane otherSidePath newPanePath
 
-
 --
 -- | Moves the given Pane to the given path
 --
@@ -262,7 +260,7 @@ move toPane ghfw  = do
 
 --
 -- | Moves the activePane in the given direction, if possible
---   If their are many possibilities choose the leftmost and topmost
+-- | If their are many possibilities choose the leftmost and topmost
 --
 viewMove :: PaneDirection -> GhfAction
 viewMove direction = do
@@ -287,6 +285,9 @@ viewMove direction = do
                       Just moveTo -> trace ("move target: " ++ show moveTo)
                                         move moveTo pane
 
+--
+-- | Find the target for a move
+--
 findMoveTarget :: PanePath -> PaneLayout -> PaneDirection -> Maybe PanePath
 findMoveTarget panePath layout direction=
     let reversedPath    = reverse panePath
@@ -308,6 +309,61 @@ findAppropriate  (VerticalP l r _) LeftP       =   LeftP   :  findAppropriate l 
 findAppropriate  (VerticalP l r _) RightP      =   RightP  :  findAppropriate r RightP
 findAppropriate  (VerticalP l r _) BottomP     =   LeftP   :  findAppropriate l BottomP
 findAppropriate  (VerticalP l r _) TopP        =   LeftP   :  findAppropriate l TopP
+
+--
+-- | Bring the pane to the front position in its notebook
+--
+bringPaneToFront :: GhfPane -> IO ()
+bringPaneToFront pane = do
+    let tv = getTopWidget pane
+    mbParent <- widgetGetParent tv
+    case mbParent of
+        Just parent -> do
+        let nb = castToNotebook parent
+        n <- notebookGetNPages nb
+        r <- filterM (\i -> do
+                    mbp <-  notebookGetNthPage nb i
+                    case mbp of
+                        Nothing -> return False
+                        Just p -> do
+                            mbs <- notebookGetTabLabelText nb p
+                            case mbs of
+                                Nothing -> return False
+                                Just s -> return (s == realPaneName pane))
+                                [0..(n-1)]
+        case r of
+            [i] -> notebookSetCurrentPage nb i
+            otherwise -> return ()
+
+--
+-- | Get a concrete panePath from a standard path.
+-- | Standard path is for example left top.
+--
+getStandardPanePath :: StandardPath -> PaneLayout -> PanePath
+getStandardPanePath sp pl = getStandard' sp pl []
+    where
+    getStandard' _ (TerminalP _) p                  =   p
+    getStandard' LeftTop (VerticalP l r _) p        =   getStandard' LeftTop l (LeftP:p)
+    getStandard' LeftBottom (VerticalP l r _) p     =   getStandard' LeftBottom l (LeftP:p)
+    getStandard' RightTop (VerticalP l r _) p       =   getStandard' RightTop r (RightP:p)
+    getStandard' RightBottom (VerticalP l r _) p    =   getStandard' RightBottom r (RightP:p)
+    getStandard' LeftTop (HorizontalP t b _) p      =   getStandard' LeftTop t (TopP:p)
+    getStandard' LeftBottom (HorizontalP t b _) p   =   getStandard' LeftBottom b (BottomP:p)
+    getStandard' RightTop (HorizontalP t b _) p     =   getStandard' RightTop t (TopP:p)
+    getStandard' RightBottom (HorizontalP t b _) p  =   getStandard' RightBottom b (BottomP:p)
+
+--
+-- | Construct a new notebook
+--
+newNotebook :: IO Notebook
+newNotebook = do
+    nb <- notebookNew
+    notebookSetTabPos nb PosTop
+    notebookSetShowTabs nb True
+    notebookSetScrollable nb True
+    notebookSetPopup nb True
+    return nb
+
 
 --
 -- | Get another pane path which points to the other side at the same level
@@ -339,47 +395,57 @@ layoutFromPath (RightP:r) (VerticalP _ ri _)    = layoutFromPath r ri
 layoutFromPath pp l                             = error
     $"inconsistent layout " ++ show pp ++ " " ++ show l
 
---
--- | Get the widget from a list of strings
---
-widgetFromPath :: Widget -> [String] -> IO (Widget)
-widgetFromPath w [] = return w
-widgetFromPath w (h:t) = do
-    children    <- containerGetChildren (castToContainer w)
-    names       <- mapM widgetGetName children
-    let mbiInd  =  findIndex (== h) names
-    case mbiInd of
-        Nothing     -> error $"Cant't find widget path " ++ show (h:t)
-        Just ind    -> widgetFromPath (children !! ind) t
 
---
--- | Get the concrete notebook widget for the active pane
---
 getNotebookOrPaned :: PanePath -> (Widget -> beta) -> GhfM beta
 getNotebookOrPaned p cf = (widgetGet $["topBox","root"] ++ map paneDirectionToWidgetName p)
                             cf
 
+--
+-- | Get the notebook widget for the given pane path
+--
 getNotebook :: PanePath -> GhfM Notebook
 getNotebook p = getNotebookOrPaned p castToNotebook
 
+--
+-- | Get the (gtk) Paned widget for a given path
+--
 getPaned :: PanePath -> GhfM Paned
 getPaned p = getNotebookOrPaned p castToPaned
 
 --
--- | Get the concrete notebook widget for the active pane
---   If their is no active pane assume that their is just one pane
--- (HorizontalP TerminalP (VerticalP (HorizontalP TerminalP TerminalP) TerminalP))
+-- | Get the path to the active pane
+--
+getActivePanePath :: GhfM (Maybe PanePath)
+getActivePanePath = do
+    mbPane   <- readGhf activePane
+    case mbPane of
+        Nothing -> return Nothing
+        Just (pane,_) -> do
+            paneMap  <- readGhf paneMap
+            return (Just (fst $paneMap ! pane))
 
-getActiveOrTopNotebook :: GhfM Notebook
-getActiveOrTopNotebook = do
-    mbPanePath <- getActivePanePath
-    case mbPanePath of
-        Just panePath -> getNotebook panePath
+getActivePanePathOrStandard :: StandardPath -> GhfM (PanePath)
+getActivePanePathOrStandard sp = do
+    mbApp <- getActivePanePath
+    case mbApp of
+        Just app -> return app
         Nothing -> do
             layout <- readGhf layout
-            case layout of
-                (TerminalP _) -> getNotebook []
-                otherwise -> error "getActiveOrTopNotebook: No active notebook and not collapsed"
+            return (getStandardPanePath sp layout)
+
+
+--
+-- | Get the active notebook
+--
+getActiveNotebook :: GhfM (Maybe Notebook)
+getActiveNotebook = do
+    mbPanePath <- getActivePanePath
+    case mbPanePath of
+        Just panePath -> do
+            nb <- getNotebook panePath
+            return (Just nb)
+        Nothing -> return Nothing
+
 
 --
 -- | Translates a pane direction to the widget name
@@ -445,26 +511,6 @@ adjust pp layout replace    = adjust' pp layout
     adjust' (RightP:r)  (VerticalP lp rp _)     = VerticalP lp (adjust' r rp) 0
     adjust' p l = error $"inconsistent layout " ++ show p ++ " " ++ show l
 
-getActivePanePath :: GhfM (Maybe PanePath)
-getActivePanePath = do
-    mbPane   <- readGhf activePane
-    case mbPane of
-        Nothing -> return Nothing
-        Just (pane,_) -> do
-            paneMap  <- readGhf paneMap
-            return (Just (fst $paneMap ! pane))
-
-getActivePanePathOrTop :: GhfM PanePath
-getActivePanePathOrTop = do
-    mbPP <- getActivePanePath
-    case mbPP of
-        Just pp -> return pp
-        Nothing -> do
-            layout <- readGhf layout
-            case layout of
-                TerminalP _ ->  return []
-                otherwise   ->  error "getActivePanePathOrTop: No active notebook and not collapsed"
-
 figureOutPaneName :: Map String GhfPane -> String -> Int -> (Int,String)
 figureOutPaneName bufs bn ind =
     let ind = foldr (\buf ind ->
@@ -475,6 +521,19 @@ figureOutPaneName bufs bn ind =
     in  if ind == 0
             then (0,bn)
             else (ind,bn ++ "(" ++ show ind ++ ")")
+
+--
+-- | Get the widget from a list of strings
+--
+widgetFromPath :: Widget -> [String] -> IO (Widget)
+widgetFromPath w [] = return w
+widgetFromPath w (h:t) = do
+    children    <- containerGetChildren (castToContainer w)
+    names       <- mapM widgetGetName children
+    let mbiInd  =  findIndex (== h) names
+    case mbiInd of
+        Nothing     -> error $"Cant't find widget path " ++ show (h:t)
+        Just ind    -> widgetFromPath (children !! ind) t
 
 
 widgetGet :: [String] -> (Widget -> b) -> GhfM (b)
@@ -497,41 +556,7 @@ getUIAction str f = do
             Just act -> return (f act)
             Nothing  -> error $"getUIAction can't find action " ++ str
 
-guessNewActiveBuffer :: Notebook -> GhfAction
-guessNewActiveBuffer nb = do
-    panes   <-  readGhf panes
-    mbAP    <-  readGhf activePane
-    case mbAP of
-        Just (_,BufConnections signals signals2) -> lift $do
-            mapM_ signalDisconnect signals
-            mapM_ signalDisconnect signals2
-        Nothing -> return ()
-    mbBuf  <- lift $do
-        mbI <- notebookGetCurrentPage nb
-        case mbI of
-            -1 -> return Nothing
-            i  -> do
-                mbPage <- notebookGetNthPage nb i
-                case mbPage of
-                    Nothing -> return Nothing
-                    Just page -> do
-                        mbKey <- notebookGetMenuLabelText nb page
-                        case mbKey of
-                            Nothing -> return Nothing
-                            Just key -> return (Map.lookup key panes)
-    modifyGhf_ $ \ghf ->
-        let newActiveBuf =  case mbBuf of
-                              Just b  -> Just (b,BufConnections [][])
-                              Nothing -> if Map.null panes
-                                              then Nothing
-                                              else Just (head (Map.elems panes),
-                                                            BufConnections [][])
-        in return (ghf{activePane = newActiveBuf})
-
 --get widget elements
-
---getFindState = toggleActionGetActive
---    $getUIAction "ui/menubar/_Edit/_Find" castToToggleAction
 
 getCandyState :: GhfM (Bool)
 getCandyState = do
@@ -543,7 +568,6 @@ setCandyState b = do
     ui <- getUIAction "ui/menubar/_Edit/Source Candy" castToToggleAction
     lift $toggleActionSetActive ui b
 --
-
 
 getFindEntry :: GhfM (Entry)
 getFindEntry =  widgetGet ["topBox","statusBox","searchBox","searchEntry"] castToEntry

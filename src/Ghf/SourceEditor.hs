@@ -91,7 +91,7 @@ standardSourcePanePath :: GhfM PanePath
 standardSourcePanePath = do
     layout  <-  readGhf layout
     prefs   <-  readGhf prefs
-    return (getStandard (sourcePanePath prefs) layout)
+    return (getStandardPanePath (sourcePanePath prefs) layout)
 
 
 newTextBuffer :: PanePath -> String -> Maybe FileName -> GhfAction
@@ -195,14 +195,8 @@ makeBufferActive buf = do
     ghfR    <-  ask
     sbLC    <-  getStatusbarLC
     sbIO    <-  getStatusbarIO
-    mbAP    <-  readGhf activePane
-    case mbAP of
-        Just (_,BufConnections signals signals2) -> lift $do
-            mapM_ signalDisconnect signals
-            mapM_ signalDisconnect signals2
-        Nothing -> return ()
-    modifyGhf_ $ \ghf -> do
-        let sv = sourceView buf
+    let sv = sourceView buf
+    (id1,id2,id3,id4,id5) <- lift $do
         gtkBuf  <- textViewGetBuffer sv
         bringPaneToFront (BufPane buf)
         writeCursorPositionInStatusbar sv sbLC
@@ -214,7 +208,8 @@ makeBufferActive buf = do
         sv `widgetAddEvents` [ButtonReleaseMask]
         id4 <- sv `onButtonRelease`(\ _ -> do writeCursorPositionInStatusbar sv sbLC; return False)
         id5 <- sv `afterToggleOverwrite`  writeOverwriteInStatusbar sv sbIO
-        return (ghf{activePane = Just (BufPane buf,BufConnections[id2,id4,id5] [id1,id3])})
+        return (id1,id2,id3,id4,id5)
+    makePaneActive (BufPane buf) (BufConnections[id2,id4,id5][id1,id3])
 
 writeCursorPositionInStatusbar :: SourceView -> Statusbar -> IO()
 writeCursorPositionInStatusbar sv sb = do
@@ -369,7 +364,8 @@ fileSave query = inBufContext' () $ \ nb _ currentBuffer i -> do
 
 fileNew :: GhfAction
 fileNew = do
-    pp <- getActivePanePathOrTop
+    prefs   <- readGhf prefs
+    pp      <- getActivePanePathOrStandard (sourcePanePath prefs)
     newTextBuffer pp "Unnamed" Nothing
 
 fileClose :: GhfM Bool
@@ -378,7 +374,7 @@ fileClose = inBufContext' True $ \nb gtkbuf currentBuffer i -> do
     window  <- readGhf window
     bufs    <- readGhf panes
     paneMap <- readGhf paneMap
-    mbbuf <- lift $ do
+    cancel <- lift $ do
         modified <- textBufferGetModified gtkbuf
         if modified
             then do
@@ -394,27 +390,31 @@ fileClose = inBufContext' True $ \nb gtkbuf currentBuffer i -> do
                 resp <- dialogRun md
                 widgetHide md
                 case resp of
-                    ResponseYes -> do   runReaderT (fileSave False) ghfRef
-                                        notebookRemovePage nb i
-                                        return (Just currentBuffer)
-                    ResponseCancel ->   return Nothing
-                    ResponseNo -> do    notebookRemovePage nb i
-                                        return (Just currentBuffer)
-            else do
-                notebookRemovePage nb i
-                return (Just currentBuffer)
-    case mbbuf of
-        Just buf -> do
+                    ResponseYes ->   do
+                        runReaderT (fileSave False) ghfRef
+                        return False
+                    ResponseCancel  ->   return True
+                    ResponseNo      ->   return False
+            else return False
+    if cancel
+        then return False
+        else do
+            mbAP <- readGhf activePane
+            case mbAP of
+                Just (_,BufConnections signals signals2) -> lift $do
+                    mapM_ signalDisconnect signals
+                    mapM_ signalDisconnect signals2
+                Nothing -> return ()
+            lift $notebookRemovePage nb i
             let newBuffers = Map.delete (realPaneName (BufPane currentBuffer)) bufs
             let newPaneMap = Map.delete (BufPane currentBuffer) paneMap
             modifyGhf_ (\ghf -> return (ghf{panes = newBuffers, paneMap = newPaneMap}))
-            guessNewActiveBuffer nb
             return True
-        Nothing -> return False
 
 fileOpen :: GhfAction
 fileOpen = do
     window <- readGhf window
+    prefs <- readGhf prefs
     mbFileName <- lift $ do
         dialog <- fileChooserDialogNew
                         (Just $ "Open File")
@@ -440,7 +440,7 @@ fileOpen = do
     case mbFileName of
         Nothing -> return ()
         Just fn -> do
-            pp <- getActivePanePathOrTop
+            pp <-  getActivePanePathOrStandard (sourcePanePath prefs)
             cfn <- lift $canonicalizePath fn
             newTextBuffer pp (takeFileName fn) (Just cfn)
 

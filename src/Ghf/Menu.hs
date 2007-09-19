@@ -1,6 +1,18 @@
+-----------------------------------------------------------------------------
 --
--- | Module for menus and toolbars
+-- Module      :  Ghf.Menu
+-- Copyright   :  (c) Juergen Nicklisch-Franken (aka Jutaro)
+-- License     :  GNU-GPL
 --
+-- Maintainer  :  Juergen Nicklisch-Franken <jnf at arcor.de>
+-- Stability   :  experimental
+-- Portability :  portable
+--
+--
+-- | Module for actions, menus and toolbars and the rest ...
+--
+-------------------------------------------------------------------------------
+
 
 module Ghf.Menu (
     actions
@@ -29,6 +41,9 @@ import Ghf.SaveSession
 
 version = "0.1"
 
+--
+-- | The Actions known to the system (they can be activated by keystrokes or menus)
+--
 actions :: [ActionDescr]
 actions =
     [(AD "File" "_File" Nothing Nothing (return ()) [] False)
@@ -159,7 +174,9 @@ actions =
     ,AD "HelpDebug" "Debug" (Just "<Ctrl>d") Nothing helpDebug [] False
     ,AD "HelpAbout" "About" Nothing (Just "gtk-about") aboutDialog [] False]
 
-
+--
+-- | The menu description in XML Syntax as defined by GTK
+--
 menuDescription :: String
 menuDescription = "\n\
  \<ui>\n\
@@ -264,6 +281,10 @@ menuDescription = "\n\
    \</toolbar>\n\
  \</ui>"
 
+
+--
+-- | Building the Menu
+--
 makeMenu :: UIManager -> [ActionDescr] -> String -> GhfM (AccelGroup, [Maybe Widget])
 makeMenu uiManager actions menuDescription = do
     ghfR <- ask
@@ -297,7 +318,10 @@ makeMenu uiManager actions menuDescription = do
                 lift $statusbarPush sb 1 $accStr
                 return ()) ghfR
 
-
+--
+-- | Quit ghf
+--  ### make reasonable
+--
 quit :: GhfAction
 quit = do
     bufs    <- allBuffers
@@ -310,6 +334,9 @@ quit = do
                         then lift mainQuit
                         else return ()
 
+--
+-- | Show the about dialog
+--
 aboutDialog :: GhfAction
 aboutDialog = lift $ do
     d <- aboutDialogNew

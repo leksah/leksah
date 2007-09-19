@@ -1,5 +1,7 @@
 module Ghf.Statusbar (
     buildStatusbar
+
+
 ) where
 
 import Graphics.UI.Gtk
@@ -78,3 +80,5 @@ buildStatusbar ghfR = do
     spinL `afterEntryActivate` runReaderT editGotoLineEnd ghfR
     spinL `afterFocusOut` (\ _ -> do runReaderT editGotoLineEnd ghfR; return False)
     return hb
+
+

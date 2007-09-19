@@ -10,42 +10,17 @@ module Ghf.BuildInfoEditor (
 ,   executablesEditor
 ) where
 
-import Data.Version()    -- Instances only
-import Graphics.UI.Gtk(castToWidget, widgetSetSizeRequest, widgetDestroy,
-		       widgetShowAll, containerAdd, boxPackEnd, boxPackStart,
-		       scrolledWindowAddWithViewport, scrolledWindowSetPolicy, scrolledWindowNew,
-		       notebookSetTabPos, notebookAppendPage, hButtonBoxNew, vBoxNew,
-		       FileChooserAction(FileChooserActionSelectFolder, FileChooserActionOpen),
-		       textViewGetBuffer, textViewNew, textBufferSetText, onClicked,
-		       buttonNewFromStock, windowSetModal, windowNew, mainQuit, mainGUI, AttrOp((:=)),
-		       Packing(PackNatural, PackGrow), PositionType(PosTop), ShadowType(ShadowIn),
-		       PolicyType(PolicyAutomatic))
+import Graphics.UI.Gtk
 import qualified Graphics.UI.Gtk.ModelView as New(cellText)
-import Control.Monad.Reader(Monad(return), mapM_, mapM)
-import Distribution.Compiler()    -- Instances only
-import Distribution.License()    -- Instances only
-import Distribution.Package()    -- Instances only
-import Distribution.PackageDescription(Executable(Executable),
-				       BuildInfo(otherModules, options, installIncludes, hsSourceDirs, ghcProfOptions,
-						 extraLibs, extraLibDirs, extensions, cSources, buildable, ldOptions,
-						 ccOptions, includes, includeDirs),
-				       Library(Library), showHookedBuildInfo)
-import Distribution.Version()    -- Instances only
-import Language.Haskell.Extension()    -- Instances only
-import Data.IORef(writeIORef, readIORef, newIORef)
-import Data.List(unzip4)
-import Data.Map()    -- Instances only
-import System.Directory()    -- Instances only
-import Text.ParserCombinators.ReadP()    -- Instances only
-import Ghf.Core(Direction(Vertical))
-import Ghf.SpecialEditors(compilerFlavorEditor, filesEditor,
-				 stringsEditor, extensionsEditor)
-import Ghf.ViewFrame(newNotebook)
-import Ghf.PropertyEditor(ColumnDescr(..),
-				 Parameters(shadow, paraName, direction, synopsisP), EventSelector(FocusIn),
-				 FieldDescriptionE(parameters, FDE), Editor, emptyParams, extractAndValidate,
-				 mkFieldE, boolEditor, stringEditor, staticMultiselectionEditor, fileEditor,
-				 otherEditor, pairEditor, multisetEditor,staticSelectionEditor)
+import Control.Monad.Reader
+import Distribution.PackageDescription
+import Data.IORef
+import Data.List
+
+import Ghf.Core
+import Ghf.SpecialEditors
+import Ghf.ViewFrame
+import Ghf.PropertyEditor
 
 -- ------------------------------------------------------------
 -- * Build Infos

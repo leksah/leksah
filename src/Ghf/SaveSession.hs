@@ -1,6 +1,18 @@
+-----------------------------------------------------------------------------
+--
+-- Module      :  Ghf.SaveSession
+-- Copyright   :  (c) Juergen Nicklisch-Franken (aka Jutaro)
+-- License     :  GNU-GPL
+--
+-- Maintainer  :  Juergen Nicklisch-Franken <jnf at arcor.de>
+-- Stability   :  experimental
+-- Portability :  portable
+--
 --
 -- | Module for saving and recovering the layout
 --
+---------------------------------------------------------------------------------
+
 
 module Ghf.SaveSession (
     saveSession

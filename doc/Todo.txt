@@ -1,18 +1,21 @@
+- Candy without char (notebook)
+- Active Buffer switching korrigieren
+    Save as geht nicht?!
+    Close geht nicht richtig!
+- Changed on disk
+
 
 
 ToDo List
 
-1. Ungleiche Verteilung
-2. Buttons sind so ulkig
+1. Ungleiche Verteilung ???
+2. Buttons sind so ulkig ???
+
 
 
 Views
-- Active Buffer switching korrigieren
-    Save as geht nicht?!
-    Close geht nicht richtig!
 
 Editor
-- Changed on disk
 - Clipboard binding Huuuu
 - Find as Toggle
 - Candy with '(' '\n' .. before and ')' \n .. after

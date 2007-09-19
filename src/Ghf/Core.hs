@@ -4,7 +4,7 @@
 -- Copyright   :  (c) Juergen Nicklisch-Franken (aka Jutaro)
 -- License     :  GNU-GPL
 --
--- Maintainer  :  Juergen Nicklisch-Franken <andy@galconn.com>
+-- Maintainer  :  Juergen Nicklisch-Franken <jnf at arcor.de>
 -- Stability   :  experimental
 -- Portability :  portable
 --
@@ -74,25 +74,18 @@ module Ghf.Core (
 ,   helpDebug
 ) where
 
-import Graphics.UI.Gtk.SourceView(SourceView)
-import Graphics.UI.Gtk(castToWidget, Widget, ScrolledWindow, UIManager,
-		       TextView, TextBuffer, Window, KeyVal, Modifier(..), PositionType(..))
-import System.Glib.Signals(ConnectId)
-import Control.Monad.Reader(Monad(return), ReaderT, MonadReader(ask),
-			    MonadTrans(..), liftM, (=<<))
-import Distribution.Package(PackageIdentifier)
-import Distribution.PackageDescription()    -- Instances only
-import Distribution.Setup(BuildFlags, ConfigFlags)
-import Distribution.Simple.LocalBuildInfo(LocalBuildInfo)
-import System.FilePath(FilePath)
-import Data.IORef(IORef, writeIORef, readIORef)
-import Data.Maybe()    -- Instances only
-import Data.Map(Map)
-import System.Console.GetOpt()    -- Instances only
-import System.Directory()    -- Instances only
-import System.Environment()    -- Instances only
-
+import Graphics.UI.Gtk.SourceView
+import Graphics.UI.Gtk
+import System.Glib.Signals
+import Control.Monad.Reader
+import Distribution.Package
+import Distribution.Setup
+import Distribution.Simple.LocalBuildInfo
+import System.FilePath
+import Data.IORef
+import Data.Map
 import qualified Data.Map as Map
+
 -- ---------------------------------------------------------------------
 -- IDE State
 --
@@ -355,6 +348,7 @@ data Prefs = Prefs {
     ,   defaultSize         ::   (Int,Int)
     ,   browser             ::   String
     ,   sourcePanePath      ::   StandardPath
+    ,   logPanePath         ::   StandardPath
 } deriving(Eq,Ord,Show)
 
 

@@ -85,24 +85,18 @@ initLog panePath nb = do
 
 makeLogActive :: GhfLog -> GhfAction
 makeLogActive log = do
-    ghfR    <-  ask
-    mbAP    <-  readGhf activePane
-    case mbAP of
-        Just (_,BufConnections signals signals2) -> lift $do
-            mapM_ signalDisconnect signals
-            mapM_ signalDisconnect signals2
-        Nothing -> return ()
-    modifyGhf_ $ \ghf -> do
-        return (ghf{activePane = Just (LogPane log,BufConnections[] [])})
+    makePaneActive (LogPane log) (BufConnections[][])
 
 getLog :: GhfM GhfLog
 getLog = do
     panesST <- readGhf panes
+    prefs   <- readGhf prefs
+    layout  <- readGhf layout
     let logs = map (\ (LogPane b) -> b) $filter isLog $Map.elems panesST
     if null logs || length logs > 1
         then do
-            pp <- getActivePanePathOrTop
-            nb <- getActiveOrTopNotebook
+            let pp  =  getStandardPanePath (logPanePath prefs) layout
+            nb      <- getNotebook pp
             initLog pp nb
             panesST <- readGhf panes
             let logs = map (\ (LogPane b) -> b) $filter isLog $Map.elems panesST

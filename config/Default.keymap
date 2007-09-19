@@ -51,7 +51,7 @@ F3                      ->          EditFindNext    "Find the next occurence of 
 <alt>Left               ->          EditShiftLeft   "Shift Left"
 
 --View
-<ctrl><alt><shift>Left  ->          MoveLeft        "Move the current pane left"
+<ctrl><alt><shift>Left  ->          ViewMoveLeft    "Move the current pane left"
 <ctrl><alt><shift>Right ->          ViewMoveRight   "Move the current pane right"
 <ctrl><alt><shift>Up    ->          ViewMoveUp      "Move the current pane up"
 <ctrl><alt><shift>Down  ->          ViewMoveDown    "Move the current pane down"

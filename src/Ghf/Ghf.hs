@@ -1,6 +1,17 @@
+-----------------------------------------------------------------------------
+--
+-- Module      :  Ghf
+-- Copyright   :  (c) Juergen Nicklisch-Franken (aka Jutaro)
+-- License     :  GNU-GPL
+--
+-- Maintainer  :  Juergen Nicklisch-Franken <jnf at arcor.de>
+-- Stability   :  experimental
+-- Portability :  portable
+--
 --
 -- | Main module of Genuine Haskell Face, an Haskell IDE written in Haskell
 --
+---------------------------------------------------------------------------------
 
 import Paths_ghf
 import Graphics.UI.Gtk

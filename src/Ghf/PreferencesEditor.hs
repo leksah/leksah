@@ -103,7 +103,9 @@ defaultPrefs = Prefs {
     ,   logviewFont         =   Nothing
     ,   defaultSize         =   (1024,800)
     ,   browser             =   "firefox"
-    ,   sourcePanePath      =   LeftTop}
+    ,   sourcePanePath      =   LeftTop
+    ,   logPanePath         =   RightBottom
+    }
 
 prefsDescription :: [(String,[FieldDescription Prefs])]
 prefsDescription = [
