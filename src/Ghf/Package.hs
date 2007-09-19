@@ -91,7 +91,7 @@ packageBuild = do
         Nothing         -> return ()
         Just package    -> lift $do
             (inp,out,err,pid) <- runExternal "runhaskell" (["Setup","build"] ++ (buildFlags package))
-            oid <- forkIO (readOut log out)
+           -- oid <- forkIO (readOut log out)
             eid <- forkIO (runReaderT (readErrForBuild log err) ghfR)
             return ()
 

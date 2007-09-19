@@ -56,10 +56,6 @@ module Ghf.ViewFrame (
 import Graphics.UI.Gtk hiding (afterToggleOverwrite)
 import Graphics.UI.Gtk.Multiline.TextView
 import Control.Monad.Reader
-import Data.IORef
-import System.FilePath
-import System.Directory
-import Data.Maybe
 import Text.Printf
 import qualified Data.Map as Map
 import Data.Map (Map,(!))
@@ -397,8 +393,7 @@ layoutFromPath pp l                             = error
 
 
 getNotebookOrPaned :: PanePath -> (Widget -> beta) -> GhfM beta
-getNotebookOrPaned p cf = (widgetGet $["topBox","root"] ++ map paneDirectionToWidgetName p)
-                            cf
+getNotebookOrPaned p cf = (widgetGet $["topBox","root"] ++ map paneDirectionToWidgetName p) cf
 
 --
 -- | Get the notebook widget for the given pane path
