@@ -1,36 +1,54 @@
-- Candy without char (notebook)
-- Active Buffer switching korrigieren
-    Save as geht nicht?!
-    Close geht nicht richtig!
-- Changed on disk
+Version 0.1
 
+    -   Candy bug --Candy without char (notebook)
+    -   Project Flags
+    -   Cabal Editor "Change"
+    -   Dual Log Bug
+    -   Activate Pane switching Bug
+            Save as geht nicht?!
+            Close geht nicht richtig!
+        Save as/Close
+    -   GTK Warnings
+    -   Revert / Filechage detection
+    -   Map.! exception
+    -   Other Bugs
+    -   Replace ohne Glade
+    -   Replace ohne warp
+    -   Find verbessern
 
+    -   1 page Documentation
 
-ToDo List
-
-1. Ungleiche Verteilung ???
-2. Buttons sind so ulkig ???
-
-
-
-Views
-
+Open problems:
 Editor
-- Clipboard binding Huuuu
-- Find as Toggle
-- Candy with '(' '\n' .. before and ')' \n .. after
+    -   Clipboard binding (gtk)
 
-- highlight of c
-- no hihglight of other files (candy,prefs,keymaps, except comments)
+Version 0.2
 
-- options to add:
-        highlight buffer (single buffer,no general preference)
 
-Preferences
--
 
-Projects
--
+Version 0.3
+    -   Project Tree Window
+    -   Types
+    -   Completion
+    -   Find implementor
+    -   Find callers
+    -   Editor; Highliting according to file type
+    -   Editor Templates for new files
+    -   Properties of single editor (no highlight, no candy,...)
+
+
+Version 0.4
+
+Version 0.5
+    -   darcs
+    -   Interpreter / Debugger
+
+Version 0.6
+
+
+
+
+
 
 
 
