@@ -27,7 +27,6 @@ notBeforeOp     =   Set.fromList $['!','#','$','%','&','*','+','.','/','<','=','
                                     '^','|','-','~','\'','"']
 notAfterOp      =   notBeforeOp
 
-
 keystrokeCandy :: Maybe Char -> CandyTableForth -> TextBuffer -> IO ()
 keystrokeCandy mbc transformTable gtkbuf = do
     cursorMark  <-  textBufferGetInsert gtkbuf
@@ -36,7 +35,16 @@ keystrokeCandy mbc transformTable gtkbuf = do
     let sliceStart = if offset < 8 then 0 else offset - 8
     startIter   <-  textBufferGetIterAtOffset gtkbuf sliceStart
     slice       <-  textIterGetSlice startIter endIter
-    replace mbc cursorMark slice offset transformTable
+    mbc2        <-  case mbc of
+                        Just c -> return (Just c)
+                        Nothing -> do
+                            isEnd <- textIterIsEnd endIter
+                            if isEnd
+                                then (return Nothing)
+                                else do
+                                    textIterForwardChar endIter
+                                    textIterGetChar endIter
+    replace mbc2 cursorMark slice offset transformTable
     where
     replace ::  Maybe Char -> TextMark -> String ->   Int -> [(Bool,String,String)] -> IO ()
     replace mbAfterChar cursorMark match offset list = replace' list

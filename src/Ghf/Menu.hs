@@ -121,7 +121,8 @@ actions =
         previousError [] False
     ,AD "ClearLog" "_Clear Log" Nothing Nothing
         clearLog [] False
-
+    ,AD "PackageFlags" "Edit Flags" Nothing Nothing
+        packageFlags [] False
 
     ,AD "InstallPackage" "_Install Package" Nothing Nothing
         packageInstall [] False
@@ -219,6 +220,7 @@ menuDescription = "\n\
     \<menu name=\"_Package\" action=\"Package\">\n\
        \<menuitem name=\"_New Package\" action=\"NewPackage\" />\n\
        \<menuitem name=\"_Edit Package\" action=\"EditPackage\" />\n\
+       \<menuitem name=\"Edit _Flags\" action=\"PackageFlags\" />\n\
        \<separator/>\n\
        \<menuitem name=\"_Configure Package\" action=\"ConfigPackage\" />\n\
        \<menuitem name=\"_Build Package\" action=\"BuildPackage\" />\n\

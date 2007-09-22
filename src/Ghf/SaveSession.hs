@@ -207,7 +207,11 @@ populate = mapM_ populate'
     populate' ("*Log",pp) =  do nb <- getNotebook pp
                                 initLog pp nb
     populate' ('?':n,pp)  =  newTextBuffer pp n Nothing
-    populate' (n,pp)      =  newTextBuffer pp (takeFileName n) (Just n)
+    populate' (n,pp)      =  do
+        exist <- doesFileExist n 
+        if exist 
+                then newTextBuffer pp (takeFileName n) (Just n)
+                else return ()
 
 
 

@@ -1,6 +1,6 @@
 Version 0.1
 
-    -   Candy bug --Candy without char (notebook)
+ok    -   Candy bug --Candy without char (notebook)
     -   Project Flags
     -   Cabal Editor "Change"
     -   Dual Log Bug
@@ -9,12 +9,15 @@ Version 0.1
             Close geht nicht richtig!
         Save as/Close
     -   GTK Warnings
+        GTK-Errors:
+            Gtk-CRITICAL **: _gtk_text_line_char_locate: assertion `char_offset >= 0' failed
     -   Revert / Filechage detection
     -   Map.! exception
     -   Other Bugs
     -   Replace ohne Glade
     -   Replace ohne warp
     -   Find verbessern
+    -   Populate Statusbar
 
     -   1 page Documentation
 

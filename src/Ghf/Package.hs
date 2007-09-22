@@ -1,6 +1,18 @@
+-----------------------------------------------------------------------------
+--
+-- Module      :  Ghf.Package
+-- Copyright   :  (c) Juergen Nicklisch-Franken (aka Jutaro)
+-- License     :  GNU-GPL
+--
+-- Maintainer  :  Juergen Nicklisch-Franken <jnf at arcor.de>
+-- Stability   :  experimental
+-- Portability :  portable
+--
 --
 -- | The packages methods of ghf.
 --
+---------------------------------------------------------------------------------
+
 
 module Ghf.Package (
     packageConfig
@@ -12,6 +24,7 @@ module Ghf.Package (
 ,   nextError
 ,   previousError
 ,   activatePackage
+,   packageFlags
 
 ,   packageInstall
 ,   packageRegister
@@ -42,6 +55,8 @@ import Ghf.Log
 import Ghf.Core
 import Ghf.PackageEditor
 import Ghf.SourceEditor
+import Ghf.PackageFlags
+import Ghf.ViewFrame
 
 
 getActivePackage :: GhfM (Maybe GhfPackage)
@@ -53,13 +68,30 @@ getActivePackage = do
 
 activatePackage :: FilePath -> GhfM (Maybe GhfPackage)
 activatePackage filePath = do
-    let flags = emptyConfigFlags defaultProgramConfiguration
+    let ppath = dropFileName filePath
+    lift $setCurrentDirectory ppath
     packageD <- lift $readPackageDescription filePath
-    let pack = GhfPackage (package packageD) filePath [] [] [] [] [] [] [] []
+    let packp = GhfPackage (package packageD) filePath [] [] [] [] [] [] [] []
+    pack <- (do
+        flagFileExists <- lift $doesFileExist (ppath </> "Ghf.flags")
+        if flagFileExists
+            then lift $readFlags (ppath </> "Ghf.flags") packp
+            else return packp)
     modifyGhf_ (\ghf -> return (ghf{activePack = (Just pack)}))
-    lift $putStrLn $"Set current directory " ++ dropFileName filePath
-    lift $setCurrentDirectory $dropFileName filePath
     return (Just pack)
+
+packageFlags :: GhfAction
+packageFlags = do
+    active <- getActivePackage
+    case active of
+        Nothing ->   return ()
+        Just p  ->   do
+            editFlags
+            active2 <- getActivePackage
+            case active2 of
+                Nothing ->   return ()
+                Just p  ->
+                    lift $writeFlags ((dropFileName (cabalFile p)) </> "Ghf.flags") p
 
 selectActivePackage :: GhfM (Maybe GhfPackage)
 selectActivePackage = do
@@ -371,7 +403,7 @@ markErrorInSourceBuf line column string = do
             i1 <- textBufferGetStartIter gtkbuf
             i2 <- textBufferGetEndIter gtkbuf
             textBufferRemoveTagByName gtkbuf "activeErr" i1 i2
-            iter <- textBufferGetIterAtLineOffset gtkbuf (line-1) (column-1)
+            iter <- textBufferGetIterAtLineOffset gtkbuf (min 0 (line-1)) (min 0 (column-1))
             iter2 <- textBufferGetIterAtLineOffset gtkbuf line 0
             textBufferApplyTagByName gtkbuf "activeErr" iter iter2
             textBufferMoveMarkByName gtkbuf "end" iter

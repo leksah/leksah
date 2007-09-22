@@ -51,10 +51,10 @@ F3                      ->          EditFindNext    "Find the next occurence of 
 <alt>Left               ->          EditShiftLeft   "Shift Left"
 
 --View
-<ctrl><shift>Left           ->          ViewMoveLeft    "Move the current pane left"
-<ctrl><shift>Right          ->          ViewMoveRight   "Move the current pane right"
-<ctrl><shift>Up             ->          ViewMoveUp      "Move the current pane up"
-<ctrl><shift>Down           ->          ViewMoveDown    "Move the current pane down"
+<alt><shift>Left           ->          ViewMoveLeft    "Move the current pane left"
+<alt><shift>Right          ->          ViewMoveRight   "Move the current pane right"
+<alt><shift>Up             ->          ViewMoveUp      "Move the current pane up"
+<alt><shift>Down           ->          ViewMoveDown    "Move the current pane down"
 
 <ctrl>2                 ->          ViewSplitHorizontal
                                                     "Split the current pane in horizontal direction"
