@@ -1,7 +1,7 @@
 Version 0.1
 
 ok    -   Candy bug --Candy without char (notebook)
-    -   Project Flags
+~~    -   Project Flags
     -   Cabal Editor "Change"
     -   Dual Log Bug
     -   Activate Pane switching Bug
@@ -29,7 +29,7 @@ Version 0.2
 
 
 
-Version 0.3
+Version 0.x
     -   Project Tree Window
     -   Types
     -   Completion
@@ -39,16 +39,12 @@ Version 0.3
     -   Editor Templates for new files
     -   Properties of single editor (no highlight, no candy,...)
 
-
-Version 0.4
-
-Version 0.5
     -   darcs
     -   Interpreter / Debugger
+...
 
-Version 0.6
-
-
+Version 0.9
+    -   Plugins
 
 
 

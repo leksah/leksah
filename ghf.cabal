@@ -36,11 +36,11 @@ includes:
 install-includes:
 include-dirs:
 hs-source-dirs: src
-other-modules: Ghf.BuildInfoEditor Ghf.Core Ghf.File Ghf.Keymap
-               Ghf.Log Ghf.Menu Ghf.Package Ghf.PackageEditor
-               Ghf.PreferencesEditor Ghf.PrinterParser Ghf.PropertyEditor
-               Ghf.SaveSession Ghf.SourceCandy Ghf.SourceEditor Ghf.SpecialEditors
-               Ghf.Statusbar Ghf.ViewFrame
+other-modules: Ghf.SaveSession Ghf.Core Ghf.BuildInfoEditor
+               Ghf.PackageEditor Ghf.PrinterParser Ghf.PreferencesEditor
+               Ghf.PackageFlags Ghf.SourceEditor Ghf.Keymap Ghf.Package
+               Ghf.PropertyEditor Ghf.SpecialEditors Ghf.Log Ghf.Menu
+               Ghf.SourceCandy Ghf.Statusbar Ghf.ViewFrame Ghf.File
 ghc-prof-options:
 ghc-options:
 hugs-options:

@@ -25,6 +25,7 @@ import qualified Text.ParserCombinators.Parsec.Token as P
 import Text.ParserCombinators.Parsec hiding(Parser)
 import Control.Monad.Reader
 import System.FilePath
+import System.Directory
 import qualified Data.Map as Map
 
 import Ghf.Log
@@ -208,10 +209,10 @@ populate = mapM_ populate'
                                 initLog pp nb
     populate' ('?':n,pp)  =  newTextBuffer pp n Nothing
     populate' (n,pp)      =  do
-        exist <- doesFileExist n 
+        exist <- lift $doesFileExist n
         if exist 
-                then newTextBuffer pp (takeFileName n) (Just n)
-                else return ()
+            then newTextBuffer pp (takeFileName n) (Just n)
+            else return ()
 
 
 

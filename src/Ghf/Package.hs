@@ -314,7 +314,7 @@ readErr log hndl =
 runExternal :: FilePath -> [String] -> IO (Handle, Handle, Handle, ProcessHandle)
 runExternal path args = do
     hndls@(inp, out, err, _) <- runInteractiveProcess path args Nothing Nothing
-    putStrLn $ "Starting external tool: " ++ path
+    putStrLn $ "Starting external tool: " ++ path ++ " with args " ++ (show args)
     hSetBuffering out NoBuffering
     hSetBuffering err NoBuffering
     hSetBuffering inp NoBuffering
