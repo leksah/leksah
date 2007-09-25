@@ -1,9 +1,10 @@
 Version 0.1
 
 ok    -   Candy bug --Candy without char (notebook)
-~~    -   Project Flags
+ok    -   Project Flags
+
     -   Cabal Editor "Change"
-    -   Dual Log Bug
+??    -   Dual Log Bug
     -   Activate Pane switching Bug
             Save as geht nicht?!
             Close geht nicht richtig!
@@ -16,8 +17,10 @@ ok    -   Candy bug --Candy without char (notebook)
     -   Other Bugs
     -   Replace ohne Glade
     -   Replace ohne warp
-    -   Find verbessern
-    -   Populate Statusbar
+ok    -   Find verbessern
+ok    -   Populate Statusbar
+
+    -   Remove Error mark
 
     -   1 page Documentation
 

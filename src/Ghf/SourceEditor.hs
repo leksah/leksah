@@ -10,7 +10,6 @@ module Ghf.SourceEditor (
 ,   fileOpen
 ,   fileClose
 ,   fileSave
-
 ,   editUndo
 ,   editRedo
 ,   editCut
@@ -20,10 +19,7 @@ module Ghf.SourceEditor (
 ,   editSelectAll
 
 ,   SearchHint(..)
-,   editFindShow
-,   editFindHide
 ,   editFindInc
-,   editFind
 ,   editFindKey
 ,   editReplace
 ,   editReplaceAll
@@ -484,26 +480,6 @@ red = Color 640000 10000 10000
 white = Color 64000 64000 64000
 black = Color 0 0 0
 
--- | Show the find bar
-editFindShow :: GhfAction
-editFindShow = inBufContext' () $ \_ gtkbuf currentBuffer _ -> do
-    entry   <-  getFindEntry
-    findBar <-  getFindBar
-    lift $do
-        widgetShow findBar
-        widgetGrabFocus entry
-
--- | Hides the find bar
-editFindHide :: GhfAction
-editFindHide = inBufContext' () $ \nb gtkbuf currentBuffer _ -> do
-    findBar <-  getFindBar
-    lift $do
-        widgetHide findBar
-        i1 <- textBufferGetStartIter gtkbuf
-        i2 <- textBufferGetEndIter gtkbuf
-        textBufferRemoveTagByName gtkbuf "found" i1 i2
-        widgetGrabFocus $ sourceView currentBuffer
-
 -- | Keys for searching
 editFindKey :: Event -> GhfAction
 editFindKey k@(Key _ _ _ _ _ _ _ _ _ _)
@@ -512,7 +488,16 @@ editFindKey k@(Key _ _ _ _ _ _ _ _ _ _)
     | eventKeyName k == "Up" =
         editFindInc Backward
     | eventKeyName k == "Escape" = do
-        editFindHide
+        entry   <- getFindEntry
+        inBufContext' () $ \_ gtkbuf currentBuffer _ -> lift $ do
+            entrySetText entry ""
+            i1 <- textBufferGetStartIter gtkbuf
+            i2 <- textBufferGetEndIter gtkbuf
+            textBufferRemoveTagByName gtkbuf "found" i1 i2
+            startMark <- textBufferGetInsert gtkbuf
+            st1 <- textBufferGetIterAtMark gtkbuf startMark
+            textBufferPlaceCursor gtkbuf st1
+            widgetGrabFocus $ sourceView currentBuffer
     | otherwise = return ()
 
 data SearchHint = Forward | Backward | Insert | Delete
@@ -527,24 +512,28 @@ data SearchHint = Forward | Backward | Insert | Delete
 editFindInc :: SearchHint -> GhfAction
 editFindInc hint = do
     entry   <- getFindEntry
+    lift $widgetGrabFocus entry
     search  <- lift $entryGetText entry
-    caseSensitiveW <- getCaseSensitive
-    caseSensitive <- lift $toggleButtonGetActive caseSensitiveW
-    entireWButton <- getEntireWord
-    entireW <- lift $toggleButtonGetActive entireWButton
-    wrapAroundButton <- getWrapAround
-    wrapAround <- lift $toggleButtonGetActive wrapAroundButton
-    res <- editFind entireW caseSensitive wrapAround search "" hint
-    if res || null search
-        then lift $do
-            widgetModifyBase entry StateNormal white
-            widgetModifyText entry StateNormal black
-        else lift $do
-            widgetModifyBase entry StateNormal red
-            widgetModifyText entry StateNormal white
-    lift $do
-        widgetGrabFocus entry
-        editableSelectRegion entry (length search) (length search)
+    if null search
+        then return ()
+        else do
+            caseSensitiveW <- getCaseSensitive
+            caseSensitive <- lift $toggleToolButtonGetActive caseSensitiveW
+            entireWButton <- getEntireWord
+            entireW <- lift $toggleToolButtonGetActive entireWButton
+            wrapAroundButton <- getWrapAround
+            wrapAround <- lift $toggleToolButtonGetActive wrapAroundButton
+            res <- editFind entireW caseSensitive wrapAround search "" hint
+            if res || null search
+                then lift $do
+                    widgetModifyBase entry StateNormal white
+                    widgetModifyText entry StateNormal black
+                else lift $do
+                    widgetModifyBase entry StateNormal red
+                    widgetModifyText entry StateNormal white
+            lift $do
+                widgetGrabFocus entry
+                editableSelectRegion entry (length search) (length search)
 
 
 editFind :: Bool -> Bool -> Bool -> String -> String -> SearchHint -> GhfM Bool
@@ -654,7 +643,6 @@ editGotoLine = inBufContext' () $ \_ gtkbuf currentBuffer _ -> do
     lift $do
         max <- textBufferGetLineCount gtkbuf
         spinButtonSetRange spin 1.0 (fromIntegral max)
-        widgetShow spin
         widgetGrabFocus spin
 
 editGotoLineKey :: Event -> GhfAction
@@ -663,16 +651,8 @@ editGotoLineKey k@(Key _ _ _ _ _ _ _ _ _ _)
         inBufContext' () $ \_ gtkbuf currentBuffer _ -> do
             spin <- getGotoLineSpin
             lift $ do
-                widgetHide spin
                 widgetGrabFocus $ sourceView currentBuffer
     | otherwise = return ()
-{--editGotoLineKey k@(Focus _ _ )
-    | eventInFocus k == False =
-        inBufContext' () $ \gtkbuf currentBuffer _ -> do
-        spin <- getGotoLineSpin
-        lift $ do
-            widgetHide spin
-    | otherwise = return ()--}
 
 editGotoLineEnd :: GhfAction
 editGotoLineEnd = inBufContext' () $ \_ gtkbuf currentBuffer _ -> do
@@ -683,7 +663,6 @@ editGotoLineEnd = inBufContext' () $ \_ gtkbuf currentBuffer _ -> do
         textIterSetLine iter (line - 1)
         textBufferPlaceCursor gtkbuf iter
         textViewScrollToIter (sourceView currentBuffer) iter 0.2 Nothing
-        widgetHide spin
         widgetGrabFocus $ sourceView currentBuffer
 
 

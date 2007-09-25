@@ -89,7 +89,9 @@ packageFlags = do
             editFlags
             active2 <- getActivePackage
             case active2 of
-                Nothing ->   return ()
+                Nothing -> do
+                    lift $putStrLn "no more active package"
+                    return ()
                 Just p  ->
                     lift $writeFlags ((dropFileName (cabalFile p)) </> "Ghf.flags") p
 
@@ -123,7 +125,7 @@ packageBuild = do
         Nothing         -> return ()
         Just package    -> lift $do
             (inp,out,err,pid) <- runExternal "runhaskell" (["Setup","build"] ++ (buildFlags package))
-           -- oid <- forkIO (readOut log out)
+            oid <- forkIO (readOut log out)
             eid <- forkIO (runReaderT (readErrForBuild log err) ghfR)
             return ()
 
@@ -403,7 +405,7 @@ markErrorInSourceBuf line column string = do
             i1 <- textBufferGetStartIter gtkbuf
             i2 <- textBufferGetEndIter gtkbuf
             textBufferRemoveTagByName gtkbuf "activeErr" i1 i2
-            iter <- textBufferGetIterAtLineOffset gtkbuf (min 0 (line-1)) (min 0 (column-1))
+            iter <- textBufferGetIterAtLineOffset gtkbuf (max 0 (line-1)) (max 0 column)
             iter2 <- textBufferGetIterAtLineOffset gtkbuf line 0
             textBufferApplyTagByName gtkbuf "activeErr" iter iter2
             textBufferMoveMarkByName gtkbuf "end" iter

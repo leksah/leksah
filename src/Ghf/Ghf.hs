@@ -31,7 +31,6 @@ import Ghf.Core
 import Ghf.SourceCandy
 import Ghf.File
 import Ghf.ViewFrame
-import Ghf.Statusbar
 import Ghf.Menu
 import Ghf.PreferencesEditor
 import Ghf.Keymap
@@ -73,7 +72,7 @@ main = do
     candySt     <-  parseCandy candyPath
     win         <-  windowNew
     dataDir     <-  getDataDir
-    windowSetIconFromFile win $dataDir </> "ghf.gif"
+    windowSetIconFromFile win $dataDir </> "data" </> "ghf.gif"
     let ghf = Ghf
           {   window        =   win
           ,   uiManager     =   uiManager
@@ -115,10 +114,10 @@ main = do
     windowSetDefaultSize win x y
     runReaderT recoverSession ghfR
     widgetShowAll win
-    hbf <- runReaderT getFindBar ghfR
-    widgetHide hbf
-    spinL <- runReaderT getGotoLineSpin ghfR
-    widgetHide spinL
+--    hbf <- runReaderT getFindBar ghfR
+--    widgetHide hbf
+--    spinL <- runReaderT getGotoLineSpin ghfR
+--    widgetHide spinL
     mainGUI
 
 

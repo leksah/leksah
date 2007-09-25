@@ -1,6 +1,17 @@
+-----------------------------------------------------------------------------
+--
+-- Module      :  Ghf.PackageEditor
+-- Copyright   :  (c) Juergen Nicklisch-Franken (aka Jutaro)
+-- License     :  GNU-GPL
+--
+-- Maintainer  :  Juergen Nicklisch-Franken <jnf at arcor.de>
+-- Stability   :  experimental
+-- Portability :  portable
 --
 -- | Module for editing of cabal packages
 --
+-----------------------------------------------------------------------------------
+
 
 module Ghf.PackageEditor (
     packageNew
@@ -9,51 +20,25 @@ module Ghf.PackageEditor (
 ,   choosePackageFile
 ) where
 
-import Data.Version()    -- Instances only
-import Graphics.UI.Gtk(fileChooserDialogNew, Window, widgetSetSizeRequest,
-		       widgetDestroy, widgetShowAll, widgetShow, containerAdd, boxPackEnd,
-		       boxPackStart, scrolledWindowAddWithViewport, scrolledWindowSetPolicy,
-		       scrolledWindowNew, notebookSetTabPos, notebookAppendPage, hButtonBoxNew,
-		       vBoxNew,
-		       FileChooserAction(FileChooserActionSelectFolder, FileChooserActionOpen),
-		       fileChooserGetFilename, onClicked, buttonNewFromStock, messageDialogNew,
-		       windowNew, dialogRun, MessageType(MessageWarning), ButtonsType(ButtonsClose),
-		       Packing(PackNatural, PackGrow), PositionType(PosTop),
-		       ShadowType(ShadowOut, ShadowIn), PolicyType(PolicyAutomatic),
-		       ResponseId(ResponseDeleteEvent, ResponseCancel, ResponseAccept))
-import Graphics.UI.Gtk.ModelView()    -- Instances only
-import Control.Monad.Reader(Monad(return), MonadReader(ask), MonadTrans(..),
-			    mapM_, mapM)
-import Distribution.Compiler(CompilerFlavor(GHC))
-import Distribution.License(License(..))
-import Distribution.Package(PackageIdentifier(PackageIdentifier))
-import Distribution.PackageDescription(PackageDescription(testedWith,
-							  licenseFile, library, extraTmpFiles, extraSrcFiles,
-							  executables, descCabalVersion, dataFiles, buildDepends,
-							  synopsis, category, description, pkgUrl, homepage, stability,
-							  author, maintainer, copyright, license, package),
-				       emptyPackageDescription, readPackageDescription, writePackageDescription)
-import Distribution.Version(VersionRange(AnyVersion))
-import Language.Haskell.Extension()    -- Instances only
-import System.FilePath((</>), FilePath)
-import Data.IORef(readIORef, newIORef)
-import Data.List(unzip4)
-import Data.Maybe(Maybe(..), isJust, isNothing, fromJust)
-import Data.Map()    -- Instances only
-import System.Directory(doesFileExist)
-import Text.ParserCombinators.ReadP()    -- Instances only
-import Ghf.Core(Direction(Vertical), GhfAction, GhfRef, Ghf(window), readGhf)
-import Ghf.File(allModules, cabalFileName)
-import Ghf.SpecialEditors(packageEditor, testedWidthEditor,
-				 versionRangeEditor, dependenciesEditor, filesEditor)
-import Ghf.ViewFrame(newNotebook)
-import Ghf.PropertyEditor(Parameters(shadow, paraName, synopsisP, minSize,
-					    direction),
-				 FieldDescriptionE(parameters, FDE), emptyParams, extractAndValidate, mkFieldE,
-				 stringEditor, multilineStringEditor, staticSelectionEditor, fileEditor,
-				 maybeEditor)
-import Ghf.BuildInfoEditor(libraryEditor, executablesEditor)
+import Graphics.UI.Gtk
+import Control.Monad.Reader
+import Distribution.Compiler
+import Distribution.License
+import Distribution.Package
+import Distribution.PackageDescription
+import Distribution.Version
+import System.FilePath
+import Data.IORef
+import Data.List
+import Data.Maybe
+import System.Directory
 
+import Ghf.Core
+import Ghf.File
+import Ghf.SpecialEditors
+import Ghf.ViewFrame
+import Ghf.PropertyEditor
+import Ghf.BuildInfoEditor
 
 standardSetup = "#!/usr/bin/runhaskell \n\
 \> module Main where\n\
@@ -338,13 +323,16 @@ editPackage' packageDir packageD packageDD ghfR   =
                     lastAppliedPackage <- readIORef lastAppliedPackageRef
                     let PackageIdentifier n v =  package newPackage
                     writePackageDescription (packageDir ++ "/" ++ n ++ ".cabal") newPackage
-                    widgetDestroy dialog)
+                    widgetDestroy dialog
+                    mainQuit)
         cancel `onClicked` (do
-            widgetDestroy dialog)
+            widgetDestroy dialog
+            mainQuit)
         boxPackStart vb nb PackGrow 7
         boxPackEnd vb bb PackNatural 7
         containerAdd dialog vb
         widgetSetSizeRequest dialog 500 700
         widgetShowAll dialog
+        mainGUI
         return ()
 

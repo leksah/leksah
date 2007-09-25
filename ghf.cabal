@@ -16,9 +16,9 @@ description: An Integrated Development Environment (IDE) for Haskell GHC written
 category: Tools
 author: Juergen Nicklisch-Franken
 tested-with: GHC ==6.6.1
-data-files: config\Default.candy config\Default.keymap
-            config\Default.prefs config\Emacs.keymap bin\ghf.gif
-            config/Current.session
+data-files: data/Default.candy data/Default.keymap
+            data/Default.prefs data/Emacs.keymap data/ghf.gif
+            data/Current.session
 extra-source-files: Setup.lhs
 extra-tmp-files:
  
@@ -40,7 +40,7 @@ other-modules: Ghf.SaveSession Ghf.Core Ghf.BuildInfoEditor
                Ghf.PackageEditor Ghf.PrinterParser Ghf.PreferencesEditor
                Ghf.PackageFlags Ghf.SourceEditor Ghf.Keymap Ghf.Package
                Ghf.PropertyEditor Ghf.SpecialEditors Ghf.Log Ghf.Menu
-               Ghf.SourceCandy Ghf.Statusbar Ghf.ViewFrame Ghf.File
+               Ghf.SourceCandy Ghf.ViewFrame Ghf.File
 ghc-prof-options:
 ghc-options:
 hugs-options:

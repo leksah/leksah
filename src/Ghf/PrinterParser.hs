@@ -13,6 +13,7 @@ module Ghf.PrinterParser (
 ,   applyFieldParsers
 ,   boolParser
 ,   intParser
+,   lineParser
 ,   pairParser
 ,   identifier
 ,   emptyParser
@@ -117,6 +118,13 @@ stringParser = do
     char '"'
     return (str)
     <?> "string parser"
+
+lineParser ::  CharParser () String
+lineParser = do
+    str <- many (noneOf ['\n'])
+    return (str)
+    <?> "line parser"
+
 
 intParser ::  CharParser () Int
 intParser = do

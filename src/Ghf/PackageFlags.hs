@@ -26,6 +26,7 @@ import Control.Monad.Reader
 import qualified Text.ParserCombinators.Parsec as P
 import Data.IORef
 import Data.List
+import System.IO
 import qualified Text.PrettyPrint.HughesPJ as PP
 
 import Ghf.Core
@@ -57,7 +58,7 @@ mkField parameters printer parser getter setter editor =
         (\ dat -> (PP.text (case paraName parameters of
                                     Nothing -> ""
                                     Just str -> str) PP.<> PP.colon)
-                PP.$$ (PP.nest 15 (printer (getter dat)))
+                PP.$$ (PP.nest 25 (printer (getter dat)))
                 PP.$$ (PP.nest 5 (case synopsisP parameters of
                                     Nothing -> PP.empty
                                     Just str -> PP.text $"--" ++ str)))
@@ -81,63 +82,63 @@ mkField parameters printer parser getter setter editor =
                     noti))
 
 concatString :: [String] -> String
-concatString l = foldl (\r s -> r ++ " " ++ s) "" l
+concatString l = foldl (\r s -> if null r then s else r ++ " " ++ s) "" l
 
 flagsDescription :: [(String,[FieldDescription GhfPackage])]
 flagsDescription = [
     ("Flags", [
         mkField (emptyParams
             {paraName = Just "Config flags"})
-            PP.text
+            (PP.text . show)
             stringParser
             (\p -> concatString (configFlags p))
             (\ b a -> a{configFlags = [b]})
             stringEditor
     ,   mkField (emptyParams
             {paraName = Just "Build flags"})
-            PP.text
+            (PP.text . show)
             stringParser
             (\p -> concatString (buildFlags p))
             (\ b a -> a{buildFlags = [b]})
             stringEditor
     ,   mkField (emptyParams
             {paraName = Just "Haddock flags"})
-            PP.text
+            (PP.text . show)
             stringParser
             (\p -> concatString (haddockFlags p))
             (\ b a -> a{haddockFlags = [b]})
             stringEditor
     ,   mkField (emptyParams
             {paraName = Just "Executable flags"})
-            PP.text
+            (PP.text . show)
             stringParser
             (\p -> concatString (exeFlags p))
             (\ b a -> a{exeFlags = [b]})
             stringEditor
     ,   mkField (emptyParams
             {paraName = Just "Install flags"})
-            PP.text
+            (PP.text . show)
             stringParser
             (\p -> concatString (installFlags p))
             (\ b a -> a{installFlags = [b]})
             stringEditor
     ,   mkField (emptyParams
             {paraName = Just "Register flags"})
-            PP.text
+            (PP.text . show)
             stringParser
             (\p -> concatString (registerFlags p))
             (\ b a -> a{registerFlags = [b]})
             stringEditor
     ,   mkField (emptyParams
             {paraName = Just "Unregister flags"})
-            PP.text
+            (PP.text . show)
             stringParser
             (\p -> concatString (unregisterFlags p))
             (\ b a -> a{unregisterFlags = [b]})
             stringEditor
     ,   mkField (emptyParams
             {paraName = Just "Source Distribution flags"})
-            PP.text
+            (PP.text . show)
             stringParser
             (\p -> concatString (sdistFlags p))
             (\ b a -> a{sdistFlags = [b]})
@@ -168,12 +169,12 @@ flagsParser def descriptions =
 -- ------------------------------------------------------------
 
 writeFlags :: FilePath -> GhfPackage -> IO ()
-writeFlags fpath flags = writeFile fpath (showFlags flags (concatMap snd flagsDescription))
+writeFlags fpath flags =
+    writeFile fpath (showFlags flags (concatMap snd flagsDescription))
 
 showFlags ::  a ->  [FieldDescription a] ->  String
 showFlags flags flagsDesc = PP.render $
     foldl (\ doc (FD _ printer _ _ ) ->  doc PP.$+$ printer flags) PP.empty flagsDesc
-
 
 -- ------------------------------------------------------------
 -- * Editing
@@ -185,9 +186,7 @@ editFlags = do
     mbP <- readGhf activePack
     case mbP of
         Nothing -> return ()
-        Just p -> do
-            res <- lift $editFlags' p flagsDescription ghfR
-            lift $putStrLn $show res
+        Just p -> lift $editFlags' p flagsDescription ghfR
 
 
 editFlags' :: GhfPackage -> [(String,[FieldDescription GhfPackage])] -> GhfRef -> IO ()
@@ -196,8 +195,6 @@ editFlags' flags flagsDesc ghfR  = do
     dialog  <- windowNew
     vb      <- vBoxNew False 0
     bb      <- hButtonBoxNew
-    apply   <- buttonNewFromStock "gtk-apply"
-    restore <- buttonNewFromStock "Restore"
     ok      <- buttonNewFromStock "gtk-ok"
     cancel  <- buttonNewFromStock "gtk-cancel"
     boxPackStart bb ok PackNatural 0
@@ -227,14 +224,17 @@ editFlags' flags flagsDesc ghfR  = do
             Nothing -> return ()
             Just newflags -> do
                 runReaderT (modifyGhf_ (\ghf -> return (ghf{activePack = Just newflags}))) ghfR
-                widgetDestroy dialog)
+                widgetDestroy dialog
+                mainQuit)
     cancel `onClicked` (do
-        widgetDestroy dialog)
+        widgetDestroy dialog
+        mainQuit)
     boxPackStart vb nb PackGrow 7
     boxPackEnd vb bb PackNatural 7
     containerAdd dialog vb
     widgetSetSizeRequest dialog 500 700
     widgetShowAll dialog
+    mainGUI
     return ()
 
 

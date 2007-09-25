@@ -38,8 +38,8 @@ getConfigFilePathForLoad fn = do
     if ex
         then return (cd </> fn)
         else do
-            dd <- getDataDir
-            return (dd </> fn)
+            dd <- getDataDir 
+            return (dd </> "data" </> fn)
 --            ex <- doesFileExist (dd </> fn)
 --            if ex
 --                then return (dd </> fn)
@@ -58,7 +58,7 @@ allModules filePath = do
             filesAndDirs <- getDirectoryContents filePath
             putStrLn $show filesAndDirs
             let filesAndDirs' = map (\s -> combine filePath s)
-                                    $filter (\s -> s /= "." && s /= ".." && s /= "_darcs"
+                                    $filter (\s -> s /= "." && s /= ".." && s /= "_darcs" && s /= "dist"
                                         && s /= "Setup.lhs") filesAndDirs
             putStrLn $show filesAndDirs'
             dirs <-  filterM (\f -> doesDirectoryExist f) filesAndDirs'

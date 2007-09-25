@@ -43,7 +43,6 @@ module Ghf.ViewFrame (
 ,   getCandyState
 ,   setCandyState
 ,   getFindEntry
-,   getFindBar
 ,   getStatusbarIO
 ,   getStatusbarLC
 ,   getCaseSensitive
@@ -565,10 +564,7 @@ setCandyState b = do
 --
 
 getFindEntry :: GhfM (Entry)
-getFindEntry =  widgetGet ["topBox","statusBox","searchBox","searchEntry"] castToEntry
-
-getFindBar :: GhfM (HBox)
-getFindBar =  widgetGet ["topBox","statusBox","searchBox"] castToHBox
+getFindEntry =  widgetGet ["topBox","toolbar","searchEntryItem","searchEntry"] castToEntry
 
 getStatusbarIO :: GhfM (Statusbar)
 getStatusbarIO =  widgetGet ["topBox","statusBox","statusBarInsertOverwrite"] castToStatusbar
@@ -576,20 +572,20 @@ getStatusbarIO =  widgetGet ["topBox","statusBox","statusBarInsertOverwrite"] ca
 getStatusbarLC :: GhfM (Statusbar)
 getStatusbarLC = widgetGet ["topBox","statusBox","statusBarLineColumn"] castToStatusbar
 
-getCaseSensitive :: GhfM (ToggleButton)
-getCaseSensitive = widgetGet ["topBox","statusBox","searchBox","caseSensitiveButton"]
-                        castToToggleButton
+getCaseSensitive :: GhfM (ToggleToolButton)
+getCaseSensitive = widgetGet ["topBox","toolbar","caseSensitiveButton"]
+                        castToToggleToolButton
 
-getWrapAround :: GhfM (ToggleButton)
-getWrapAround = widgetGet ["topBox","statusBox","searchBox","wrapAroundButton"]
-                        castToToggleButton
+getWrapAround :: GhfM (ToggleToolButton)
+getWrapAround = widgetGet ["topBox","toolbar","wrapAroundButton"]
+                        castToToggleToolButton
 
-getEntireWord :: GhfM (ToggleButton)
-getEntireWord = widgetGet ["topBox","statusBox","searchBox","entireWordButton"]
-                        castToToggleButton
+getEntireWord :: GhfM (ToggleToolButton)
+getEntireWord = widgetGet ["topBox","toolbar","entireWordButton"]
+                        castToToggleToolButton
 
 getGotoLineSpin :: GhfM (SpinButton)
-getGotoLineSpin = widgetGet ["topBox","statusBox","gotoLineEntry"] castToSpinButton
+getGotoLineSpin = widgetGet ["topBox","toolbar","gotoLineEntryItem","gotoLineEntry"] castToSpinButton
 
 getSpecialKeys :: GhfM (Statusbar)
 getSpecialKeys = widgetGet ["topBox","statusBox","statusBarSpecialKeys"] castToStatusbar

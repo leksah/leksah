@@ -21,6 +21,7 @@ module Ghf.Menu (
 ,   quit
 ,   aboutDialog
 ,   version
+,   buildStatusbar
 ) where
 
 import Graphics.UI.Gtk
@@ -75,9 +76,7 @@ actions =
         editDelete [] False
     ,AD "EditSelectAll" "Select_All" Nothing (Just "gtk-select-all")
         editSelectAll [] False
-    ,AD "EditFind" "_Find" Nothing (Just "gtk-find")
-        editFindShow [] False
-    ,AD "EditFindNext" "Find _Next" Nothing (Just "gtk-find-next")
+    ,AD "EditFindNext" "Find" Nothing (Just "gtk-find")
         (editFindInc Forward) [] False
     ,AD "EditFindPrevious" "Find _Previous" Nothing (Just "gtk-find-previous")
         (editFindInc Backward) [] False
@@ -203,7 +202,6 @@ menuDescription = "\n\
        \<separator/>\n\
        \<menuitem name=\"Select _All\" action=\"EditSelectAll\" />\n\
        \<separator/>\n\
-       \<menuitem name=\"_Find\" action=\"EditFind\" />\n\
        \<menuitem name=\"Find_Next\" action=\"EditFindNext\" />\n\
        \<menuitem name=\"Find_Previous\" action=\"EditFindPrevious\" />\n\
        \<menuitem name=\"_Goto Line\" action=\"EditGotoLine\" />\n\
@@ -279,6 +277,7 @@ menuDescription = "\n\
        \<toolitem name=\"Undo\" action=\"EditUndo\"/>\n\
        \<toolitem name=\"Redo\" action=\"EditRedo\"/>\n\
        \<separator/>\n\
+       \<toolitem name=\"Find\" action=\"EditFindNext\"/>\n\
      \</placeholder>\n\
    \</toolbar>\n\
  \</ui>"
@@ -296,7 +295,10 @@ makeMenu uiManager actions menuDescription = do
         uiManagerInsertActionGroup uiManager actionGroupGlobal 1
         uiManagerAddUiFromString uiManager menuDescription
         accGroup <- uiManagerGetAccelGroup uiManager
-        widgets <- mapM (uiManagerGetWidget uiManager) ["ui/menubar","ui/toolbar"]
+        widgets@[_,mbTb] <- mapM (uiManagerGetWidget uiManager) ["ui/menubar","ui/toolbar"]
+        case mbTb of
+            Nothing -> return ()
+            Just tb -> addToToolbar (castToToolbar tb) ghfR
         return (accGroup,widgets)
     where
         actm ghfR ag (AD name label tooltip stockId ghfAction accs isToggle) = do
@@ -320,7 +322,56 @@ makeMenu uiManager actions menuDescription = do
                 lift $statusbarPush sb 1 $accStr
                 return ()) ghfR
 
---
+addToToolbar :: Toolbar -> GhfRef -> IO ()
+addToToolbar toolbar ghfR = do
+
+    entry <- entryNew
+    widgetSetName entry "searchEntry"
+    entryItem <- toolItemNew
+    widgetSetName entryItem "searchEntryItem"
+    containerAdd entryItem entry
+
+    caseSensitiveButton <- toggleToolButtonNew
+    toolButtonSetLabel caseSensitiveButton (Just "Case sensitive")
+    widgetSetName caseSensitiveButton "caseSensitiveButton"
+
+    entireWordButton <- toggleToolButtonNew
+    toolButtonSetLabel entireWordButton(Just "Entire word")
+    widgetSetName entireWordButton "entireWordButton"
+
+    wrapAroundButton <- toggleToolButtonNew
+    toolButtonSetLabel wrapAroundButton (Just "Wrap around")
+    widgetSetName wrapAroundButton "wrapAroundButton"
+
+    sep2 <- separatorToolItemNew
+    spinL <- spinButtonNewWithRange 1.0 100.0 10.0
+    widgetSetName spinL "gotoLineEntry"
+    spinLItem <- toolItemNew
+    widgetSetName spinLItem "gotoLineEntryItem"
+    containerAdd spinLItem spinL
+
+    toolbarInsert  toolbar entryItem (-1)
+    toolbarInsert  toolbar caseSensitiveButton (-1)
+    toolbarInsert  toolbar entireWordButton (-1)
+    toolbarInsert  toolbar wrapAroundButton (-1)
+
+    toolbarInsert  toolbar sep2 (-1)
+
+    toolbarInsert  toolbar spinLItem (-1)
+
+    entry `afterInsertText` (\ _ _ -> do
+        runReaderT (editFindInc Insert) ghfR
+        t <- entryGetText entry
+        return (length t))
+    entry `afterDeleteText` (\ _ _ -> do runReaderT (editFindInc Delete) ghfR; return ())
+    entry `afterKeyPress`  (\ e -> do runReaderT (editFindKey e) ghfR; return True)
+
+    spinL `afterKeyPress`  (\ e -> do runReaderT (editGotoLineKey e) ghfR; return True)
+    spinL `afterEntryActivate` runReaderT editGotoLineEnd ghfR
+    spinL `afterFocusOut` (\ _ -> do runReaderT editGotoLineEnd ghfR; return False)
+    return ()
+
+
 -- | Quit ghf
 --  ### make reasonable
 --
@@ -355,5 +406,36 @@ aboutDialog = lift $ do
     widgetDestroy d
     return ()
 
+buildStatusbar ghfR = do
+    sb <- statusbarNew
+    statusbarSetHasResizeGrip sb False
+
+    sblk <- statusbarNew
+    widgetSetName sblk "statusBarSpecialKeys"
+    statusbarSetHasResizeGrip sblk False
+    widgetSetSizeRequest sblk 210 (-1)
+
+    sblc <- statusbarNew
+    widgetSetName sblc "statusBarLineColumn"
+    statusbarSetHasResizeGrip sblc False
+    widgetSetSizeRequest sblc 140 (-1)
+
+    sbio <- statusbarNew
+    widgetSetName sbio "statusBarInsertOverwrite"
+    statusbarSetHasResizeGrip sbio False
+    widgetSetSizeRequest sbio 40 (-1)
+
+    dummy <- hBoxNew False 1
+    widgetSetName dummy "dummyBox"
+
+
+    hb <- hBoxNew False 1
+    widgetSetName hb "statusBox"
+    boxPackStart hb sblk PackNatural 0
+    boxPackStart hb dummy PackGrow 0
+    boxPackStart hb sblc PackNatural 0
+    boxPackStart hb sbio PackNatural 0
+
+    return hb
 
 
