@@ -1,6 +1,6 @@
 -----------------------------------------------------------------------------
 --
--- Module      :  Ghf.Menu
+-- Module       :  Ghf.Menu
 -- Copyright   :  (c) Juergen Nicklisch-Franken (aka Jutaro)
 -- License     :  GNU-GPL
 --
@@ -58,6 +58,8 @@ actions =
         (fileSave True) [] False
     ,AD "FileClose" "_Close" Nothing (Just "gtk-close")
         (do fileClose; return ()) [] False
+    ,AD "FileCloseAll" "Close All" Nothing (Just "gtk-close")
+        (do fileCloseAll; return ()) [] False
     ,AD "Quit" "_Quit" Nothing (Just "gtk-quit")
         quit [] False
 
@@ -189,7 +191,8 @@ menuDescription = "\n\
        \<menuitem name=\"Save_As\" action=\"FileSaveAs\" />\n\
        \<separator/>\n\
        \<menuitem name=\"_Close\" action=\"FileClose\" />\n\
-       \<menuitem name=\"_Quit\" action=\"Quit\" />\n\
+       \<menuitem name=\"Close All\" action=\"FileCloseAll\" />\n\
+      \<menuitem name=\"_Quit\" action=\"Quit\" />\n\
      \</menu>\n\
      \<menu name=\"_Edit\" action=\"Edit\">\n\
        \<menuitem name=\"_Undo\" action=\"EditUndo\" />\n\
@@ -317,7 +320,7 @@ makeMenu uiManager actions menuDescription = do
         doAction ghfAction ghfR accStr =
             runReaderT (do
                 ghfAction
-                sb <- getSpecialKeys
+                sb <- getSBSpecialKeys
                 lift $statusbarPop sb 1
                 lift $statusbarPush sb 1 $accStr
                 return ()) ghfR
@@ -377,15 +380,11 @@ addToToolbar toolbar ghfR = do
 --
 quit :: GhfAction
 quit = do
-    bufs    <- allBuffers
     saveSession
-    if null bufs
-        then    lift mainQuit
-        else    do  r <- mapM (\ b -> do    makeBufferActive b
-                                            fileClose) bufs
-                    if foldl (&&) True r
-                        then lift mainQuit
-                        else return ()
+    b <- fileCloseAll
+    if b
+        then lift mainQuit
+        else return ()
 
 --
 -- | Show the about dialog
@@ -413,12 +412,27 @@ buildStatusbar ghfR = do
     sblk <- statusbarNew
     widgetSetName sblk "statusBarSpecialKeys"
     statusbarSetHasResizeGrip sblk False
-    widgetSetSizeRequest sblk 210 (-1)
+    widgetSetSizeRequest sblk 150 (-1)
+
+    sbap <- statusbarNew
+    widgetSetName sbap "statusBarActivePane"
+    statusbarSetHasResizeGrip sbap False
+    widgetSetSizeRequest sbap 150 (-1)
+
+    sbapr <- statusbarNew
+    widgetSetName sbapr "statusBarActiveProject"
+    statusbarSetHasResizeGrip sbapr False
+    widgetSetSizeRequest sbapr 150 (-1)
+
+    sbe <- statusbarNew
+    widgetSetName sbe "statusBarErrors"
+    statusbarSetHasResizeGrip sbe False
+    widgetSetSizeRequest sbe 50 (-1)
 
     sblc <- statusbarNew
     widgetSetName sblc "statusBarLineColumn"
     statusbarSetHasResizeGrip sblc False
-    widgetSetSizeRequest sblc 140 (-1)
+    widgetSetSizeRequest sblc 110 (-1)
 
     sbio <- statusbarNew
     widgetSetName sbio "statusBarInsertOverwrite"
@@ -432,6 +446,9 @@ buildStatusbar ghfR = do
     hb <- hBoxNew False 1
     widgetSetName hb "statusBox"
     boxPackStart hb sblk PackNatural 0
+    boxPackStart hb sbap PackNatural 0
+    boxPackStart hb sbapr PackNatural 0
+    boxPackStart hb sbe PackNatural 0
     boxPackStart hb dummy PackGrow 0
     boxPackStart hb sblc PackNatural 0
     boxPackStart hb sbio PackNatural 0

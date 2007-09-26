@@ -24,6 +24,7 @@ module Ghf.Package (
 ,   nextError
 ,   previousError
 ,   activatePackage
+,   deactivatePackage
 ,   packageFlags
 
 ,   packageInstall
@@ -78,7 +79,18 @@ activatePackage filePath = do
             then lift $readFlags (ppath </> "Ghf.flags") packp
             else return packp)
     modifyGhf_ (\ghf -> return (ghf{activePack = (Just pack)}))
+    sb <- getSBActivePackage
+    lift $statusbarPop sb 1
+    lift $statusbarPush sb 1 (showPackageId $packageId pack)
     return (Just pack)
+
+deactivatePackage :: GhfAction
+deactivatePackage = do
+    modifyGhf_ (\ghf -> return (ghf{activePack = Nothing}))
+    sb <- getSBActivePackage
+    lift $statusbarPop sb 1
+    lift $statusbarPush sb 1 ""
+    return ()
 
 packageFlags :: GhfAction
 packageFlags = do
@@ -121,6 +133,9 @@ packageBuild = do
     mbPackage   <- getActivePackage
     log         <- getLog
     ghfR        <- ask
+    sb <- getSBErrors
+    lift $statusbarPop sb 1
+    lift $statusbarPush sb 1 ""
     case mbPackage of
         Nothing         -> return ()
         Just package    -> lift $do
@@ -316,7 +331,7 @@ readErr log hndl =
 runExternal :: FilePath -> [String] -> IO (Handle, Handle, Handle, ProcessHandle)
 runExternal path args = do
     hndls@(inp, out, err, _) <- runInteractiveProcess path args Nothing Nothing
-    putStrLn $ "Starting external tool: " ++ path ++ " with args " ++ (show args)
+    message $ "Starting external tool: " ++ path ++ " with args " ++ (show args)
     hSetBuffering out NoBuffering
     hSetBuffering err NoBuffering
     hSetBuffering inp NoBuffering
@@ -331,8 +346,11 @@ runExternal path args = do
 readErrForBuild :: GhfLog -> Handle -> GhfAction
 readErrForBuild log hndl = do
     errs <- lift $readAndShow False []
-    lift $putStrLn $"Errors " ++ (show errs)
+    lift $message $"Errors " ++ (show errs)
     modifyGhf_ (\ghf -> return (ghf{errors = reverse errs, currentErr = Nothing}))
+    sb <- getSBErrors
+    lift $statusbarPop sb 1
+    lift $statusbarPush sb 1 (show (length errs))
     if not (null errs)
         then nextError
         else return ()
@@ -405,7 +423,9 @@ markErrorInSourceBuf line column string = do
             i1 <- textBufferGetStartIter gtkbuf
             i2 <- textBufferGetEndIter gtkbuf
             textBufferRemoveTagByName gtkbuf "activeErr" i1 i2
-            iter <- textBufferGetIterAtLineOffset gtkbuf (max 0 (line-1)) (max 0 column)
+            iter <- textBufferGetIterAtLine gtkbuf (max 0 (line-1))
+            chars <- textIterGetCharsInLine iter
+            textIterSetLineOffset iter (min (chars-1) (max 0 column))
             iter2 <- textBufferGetIterAtLineOffset gtkbuf line 0
             textBufferApplyTagByName gtkbuf "activeErr" iter iter2
             textBufferMoveMarkByName gtkbuf "end" iter

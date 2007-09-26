@@ -36,20 +36,27 @@ module Ghf.ViewFrame (
 -- * View Actions
 ,   bringPaneToFront
 ,   newNotebook
-,   makePaneActive
+,   activatePane
+,   deactivatePane
 
 -- * Accessing GUI elements
 ,   widgetFromPath
 ,   getCandyState
 ,   setCandyState
-,   getFindEntry
+
+,   getTBFindEntry
+,   getTBCaseSensitive
+,   getTBGotoLineSpin
+,   getTBWrapAround
+,   getTBEntireWord
+
+,   getSBSpecialKeys
+,   getSBActivePane
+,   getSBActivePackage
+,   getSBErrors
 ,   getStatusbarIO
 ,   getStatusbarLC
-,   getCaseSensitive
-,   getGotoLineSpin
-,   getWrapAround
-,   getEntireWord
-,   getSpecialKeys
+
 ) where
 
 import Graphics.UI.Gtk hiding (afterToggleOverwrite)
@@ -59,14 +66,25 @@ import Text.Printf
 import qualified Data.Map as Map
 import Data.Map (Map,(!))
 import Data.List
-import Debug.Trace
 
 import Ghf.Core
 
 
-makePaneActive :: GhfPane -> Connections -> GhfAction
-makePaneActive pane conn = do
-    ghfR    <-  ask
+activatePane :: GhfPane -> Connections -> GhfAction
+activatePane pane conn = do
+    deactivatePane
+    sb <- getSBActivePane
+    lift $statusbarPop sb 1
+    lift $statusbarPush sb 1 (getPaneName pane)
+    modifyGhf_ $ \ghf -> do
+        bringPaneToFront pane
+        return (ghf{activePane = Just (pane,conn)})
+
+deactivatePane :: GhfAction
+deactivatePane = do
+    sb <- getSBActivePane
+    lift $statusbarPop sb 1
+    lift $statusbarPush sb 1 ""
     mbAP    <-  readGhf activePane
     case mbAP of
         Just (_,BufConnections signals signals2) -> lift $do
@@ -74,9 +92,7 @@ makePaneActive pane conn = do
             mapM_ signalDisconnect signals2
         Nothing -> return ()
     modifyGhf_ $ \ghf -> do
-        bringPaneToFront pane
-        return (ghf{activePane = Just (pane,conn)})
-
+        return (ghf{activePane = Nothing})
 
 --
 -- | Toggle the tabs of the current notebook
@@ -508,7 +524,7 @@ adjust pp layout replace    = adjust' pp layout
 figureOutPaneName :: Map String GhfPane -> String -> Int -> (Int,String)
 figureOutPaneName bufs bn ind =
     let ind = foldr (\buf ind ->
-                if getBufferName buf == bn
+                if getPaneName buf == bn
                     then max ind ((getAddedIndex buf) + 1)
                     else ind)
                 0 (Map.elems bufs)
@@ -563,31 +579,40 @@ setCandyState b = do
     lift $toggleActionSetActive ui b
 --
 
-getFindEntry :: GhfM (Entry)
-getFindEntry =  widgetGet ["topBox","toolbar","searchEntryItem","searchEntry"] castToEntry
+getTBCaseSensitive :: GhfM (ToggleToolButton)
+getTBCaseSensitive = widgetGet ["topBox","toolbar","caseSensitiveButton"]
+                        castToToggleToolButton
+
+getTBWrapAround :: GhfM (ToggleToolButton)
+getTBWrapAround = widgetGet ["topBox","toolbar","wrapAroundButton"]
+                        castToToggleToolButton
+
+getTBEntireWord :: GhfM (ToggleToolButton)
+getTBEntireWord = widgetGet ["topBox","toolbar","entireWordButton"]
+                        castToToggleToolButton
+
+getTBGotoLineSpin :: GhfM (SpinButton)
+getTBGotoLineSpin = widgetGet ["topBox","toolbar","gotoLineEntryItem","gotoLineEntry"] castToSpinButton
+
+getTBFindEntry :: GhfM (Entry)
+getTBFindEntry =  widgetGet ["topBox","toolbar","searchEntryItem","searchEntry"] castToEntry
+
+getSBSpecialKeys :: GhfM (Statusbar)
+getSBSpecialKeys = widgetGet ["topBox","statusBox","statusBarSpecialKeys"] castToStatusbar
+
+getSBActivePane :: GhfM (Statusbar)
+getSBActivePane = widgetGet ["topBox","statusBox","statusBarActivePane"] castToStatusbar
+
+getSBActivePackage :: GhfM (Statusbar)
+getSBActivePackage = widgetGet ["topBox","statusBox","statusBarActiveProject"] castToStatusbar
+
+getSBErrors :: GhfM (Statusbar)
+getSBErrors = widgetGet ["topBox","statusBox","statusBarErrors"] castToStatusbar
 
 getStatusbarIO :: GhfM (Statusbar)
 getStatusbarIO =  widgetGet ["topBox","statusBox","statusBarInsertOverwrite"] castToStatusbar
 
 getStatusbarLC :: GhfM (Statusbar)
 getStatusbarLC = widgetGet ["topBox","statusBox","statusBarLineColumn"] castToStatusbar
-
-getCaseSensitive :: GhfM (ToggleToolButton)
-getCaseSensitive = widgetGet ["topBox","toolbar","caseSensitiveButton"]
-                        castToToggleToolButton
-
-getWrapAround :: GhfM (ToggleToolButton)
-getWrapAround = widgetGet ["topBox","toolbar","wrapAroundButton"]
-                        castToToggleToolButton
-
-getEntireWord :: GhfM (ToggleToolButton)
-getEntireWord = widgetGet ["topBox","toolbar","entireWordButton"]
-                        castToToggleToolButton
-
-getGotoLineSpin :: GhfM (SpinButton)
-getGotoLineSpin = widgetGet ["topBox","toolbar","gotoLineEntryItem","gotoLineEntry"] castToSpinButton
-
-getSpecialKeys :: GhfM (Statusbar)
-getSpecialKeys = widgetGet ["topBox","statusBox","statusBarSpecialKeys"] castToStatusbar
 
 

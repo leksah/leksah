@@ -42,8 +42,8 @@ module Ghf.Core (
 
 -- * Convenience methods for accesing Pane state
 ,   getTopWidget
-,   getBufferName
-,   getBufferDescription
+,   getPaneName
+,   getPaneDescription
 ,   getAddedIndex
 ,   realPaneName
 ,   posTypeToPaneDirection
@@ -72,6 +72,8 @@ module Ghf.Core (
 
 -- * debugging
 ,   helpDebug
+,   message
+,   trace
 ) where
 
 import Graphics.UI.Gtk.SourceView
@@ -85,6 +87,16 @@ import System.FilePath
 import Data.IORef
 import Data.Map
 import qualified Data.Map as Map
+import System.Time
+
+{--
+import Debug.Trace
+message m = trace m (return ())
+--}
+
+message m = return ()
+trace a b = b
+
 
 -- ---------------------------------------------------------------------
 -- IDE State
@@ -248,16 +260,16 @@ getTopWidget :: GhfPane -> Widget
 getTopWidget (BufPane buf) = castToWidget(scrolledWindow buf)
 getTopWidget (LogPane buf) = castToWidget(scrolledWindowL buf)
 
-getBufferName :: GhfPane -> String
-getBufferName (BufPane buf) = bufferName buf
-getBufferName (LogPane _) = "Log"
+getPaneName :: GhfPane -> String
+getPaneName (BufPane buf) = bufferName buf
+getPaneName (LogPane _) = "Log"
 
-getBufferDescription :: GhfPane -> String
-getBufferDescription (BufPane buf)  =
+getPaneDescription :: GhfPane -> String
+getPaneDescription (BufPane buf)  =
     case fileName buf of
         Just s  -> s
         Nothing -> "?" ++ bufferName buf
-getBufferDescription (LogPane _)    = "*Log"
+getPaneDescription (LogPane _)    = "*Log"
 
 getAddedIndex :: GhfPane -> Int
 getAddedIndex (BufPane buf) = addedIndex buf
@@ -266,9 +278,9 @@ getAddedIndex _ = 0
 realPaneName :: GhfPane -> String
 realPaneName pane@(BufPane _) =
     if getAddedIndex pane == 0
-        then getBufferName pane
-        else getBufferName pane ++ "(" ++ show (getAddedIndex pane) ++ ")"
-realPaneName other = getBufferName other
+        then getPaneName pane
+        else getPaneName pane ++ "(" ++ show (getAddedIndex pane) ++ ")"
+realPaneName other = getPaneName other
 
 
 -- ---------------------------------------------------------------------
@@ -284,6 +296,7 @@ data GhfBuffer  =   GhfBuffer {
 ,   addedIndex  ::  Int
 ,   sourceView  ::  SourceView
 ,   scrolledWindow :: ScrolledWindow
+,   modTime     ::  Maybe (ClockTime)
 } deriving Show
 
 instance Eq GhfBuffer

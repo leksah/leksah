@@ -9,6 +9,7 @@ module Ghf.SourceEditor (
 ,   fileNew
 ,   fileOpen
 ,   fileClose
+,   fileCloseAll
 ,   fileSave
 ,   editUndo
 ,   editRedo
@@ -94,7 +95,6 @@ newTextBuffer :: PanePath -> String -> Maybe FileName -> GhfAction
 newTextBuffer panePath bn mbfn = do
     -- create the appropriate language
     ghfR <- ask
---    lift $putStrLn $show panePath
     nb <- getNotebook panePath
     panes <- readGhf panes
     paneMap <- readGhf paneMap
@@ -124,9 +124,12 @@ newTextBuffer panePath bn mbfn = do
         textTagTableAdd tagTable activeErrtag
 
         -- load up and display a file
-        fileContents <- case mbfn of
-            Just fn -> readFile fn
-            Nothing -> return "\n\n\n\n\n"
+        (fileContents,modTime) <- case mbfn of
+            Just fn -> do
+                fc <- readFile fn
+                mt <- getModificationTime fn
+                return (fc,Just mt)
+            Nothing -> return ("\n\n\n\n\n",Nothing)
         sourceBufferBeginNotUndoableAction buffer
         textBufferSetText buffer fileContents
         if bs
@@ -166,9 +169,8 @@ newTextBuffer panePath bn mbfn = do
         scrolledWindowSetPolicy sw PolicyAutomatic PolicyAutomatic
         scrolledWindowSetShadowType sw ShadowIn
 
-        let buf = GhfBuffer mbfn bn ind sv sw
+        let buf = GhfBuffer mbfn bn ind sv sw modTime
         notebookPrependPage nb sw rbn
-        widgetShowAll (scrolledWindow buf)
         mbPn <- notebookPageNum nb sw
         case mbPn of
             Just i -> notebookSetCurrentPage nb i
@@ -176,14 +178,14 @@ newTextBuffer panePath bn mbfn = do
         -- events
         cid <- (castToWidget sv) `afterFocusIn`
             (\_ -> do runReaderT (makeBufferActive buf) ghfR; return True)
---        cid2 <- (castToWidget sv) `afterFocusOut`
---            (\_ -> do runReaderT (makeBufferInactive) ghfR; return True)
         return (buf,[cid])
     let newPaneMap  =  Map.insert (BufPane buf) (panePath,cids) paneMap
     let newPanes = Map.insert rbn (BufPane buf) panes
     modifyGhf_ (\ghf -> return (ghf{panes = newPanes,
                                     paneMap = newPaneMap}))
+    lift $widgetShowAll (scrolledWindow buf)
     lift $widgetGrabFocus (sourceView buf)
+    makeBufferActive buf
 
 
 makeBufferActive :: GhfBuffer -> GhfAction
@@ -205,7 +207,7 @@ makeBufferActive buf = do
         id4 <- sv `onButtonRelease`(\ _ -> do writeCursorPositionInStatusbar sv sbLC; return False)
         id5 <- sv `afterToggleOverwrite`  writeOverwriteInStatusbar sv sbIO
         return (id1,id2,id3,id4,id5)
-    makePaneActive (BufPane buf) (BufConnections[id2,id4,id5][id1,id3])
+    activatePane (BufPane buf) (BufConnections[id2,id4,id5][id1,id3])
 
 writeCursorPositionInStatusbar :: SourceView -> Statusbar -> IO()
 writeCursorPositionInStatusbar sv sb = do
@@ -285,6 +287,7 @@ fileSave query = inBufContext' () $ \ nb _ currentBuffer i -> do
             Just page   ->
                 if isJust mbfn && query == False
                     then do fileSave' (forceLineEnds prefs) currentBuffer bs candy $fromJust mbfn
+                            --setModTime currentBuffer
                             return Nothing
                     else do
                         dialog <- fileChooserDialogNew
@@ -358,6 +361,13 @@ fileSave query = inBufContext' () $ \ nb _ currentBuffer i -> do
         removeTrailingBlanks :: String -> String
         removeTrailingBlanks = reverse . dropWhile (\c -> c == ' ') . reverse
 
+{--
+setModTime :: GhfBuffer -> GhfAction
+setModTime buf = do
+    mt <- lift $getModificationTime (fileName buf)
+    modifyGhf_ (\ghf -> return (ghf{}))
+--}
+
 fileNew :: GhfAction
 fileNew = do
     prefs   <- readGhf prefs
@@ -395,17 +405,24 @@ fileClose = inBufContext' True $ \nb gtkbuf currentBuffer i -> do
     if cancel
         then return False
         else do
-            mbAP <- readGhf activePane
-            case mbAP of
-                Just (_,BufConnections signals signals2) -> lift $do
-                    mapM_ signalDisconnect signals
-                    mapM_ signalDisconnect signals2
-                Nothing -> return ()
+            deactivatePane
             lift $notebookRemovePage nb i
             let newBuffers = Map.delete (realPaneName (BufPane currentBuffer)) bufs
             let newPaneMap = Map.delete (BufPane currentBuffer) paneMap
             modifyGhf_ (\ghf -> return (ghf{panes = newBuffers, paneMap = newPaneMap}))
             return True
+
+fileCloseAll :: GhfM Bool
+fileCloseAll = do
+    bufs    <- allBuffers
+    if null bufs
+        then return True
+        else do
+            makeBufferActive (head bufs)
+            r <- fileClose
+            if r
+                then fileCloseAll
+                else return False
 
 fileOpen :: GhfAction
 fileOpen = do
@@ -488,7 +505,7 @@ editFindKey k@(Key _ _ _ _ _ _ _ _ _ _)
     | eventKeyName k == "Up" =
         editFindInc Backward
     | eventKeyName k == "Escape" = do
-        entry   <- getFindEntry
+        entry   <- getTBFindEntry
         inBufContext' () $ \_ gtkbuf currentBuffer _ -> lift $ do
             entrySetText entry ""
             i1 <- textBufferGetStartIter gtkbuf
@@ -511,17 +528,17 @@ data SearchHint = Forward | Backward | Insert | Delete
 
 editFindInc :: SearchHint -> GhfAction
 editFindInc hint = do
-    entry   <- getFindEntry
+    entry   <- getTBFindEntry
     lift $widgetGrabFocus entry
     search  <- lift $entryGetText entry
     if null search
         then return ()
         else do
-            caseSensitiveW <- getCaseSensitive
+            caseSensitiveW <- getTBCaseSensitive
             caseSensitive <- lift $toggleToolButtonGetActive caseSensitiveW
-            entireWButton <- getEntireWord
+            entireWButton <- getTBEntireWord
             entireW <- lift $toggleToolButtonGetActive entireWButton
-            wrapAroundButton <- getWrapAround
+            wrapAroundButton <- getTBWrapAround
             wrapAround <- lift $toggleToolButtonGetActive wrapAroundButton
             res <- editFind entireW caseSensitive wrapAround search "" hint
             if res || null search
@@ -639,7 +656,7 @@ editReplaceAll entireWord caseSensitive wrapAround search replace hint = do
 
 editGotoLine :: GhfAction
 editGotoLine = inBufContext' () $ \_ gtkbuf currentBuffer _ -> do
-    spin <- getGotoLineSpin
+    spin <- getTBGotoLineSpin
     lift $do
         max <- textBufferGetLineCount gtkbuf
         spinButtonSetRange spin 1.0 (fromIntegral max)
@@ -649,14 +666,14 @@ editGotoLineKey :: Event -> GhfAction
 editGotoLineKey k@(Key _ _ _ _ _ _ _ _ _ _)
     | eventKeyName k == "Escape"  =
         inBufContext' () $ \_ gtkbuf currentBuffer _ -> do
-            spin <- getGotoLineSpin
+            spin <- getTBGotoLineSpin
             lift $ do
                 widgetGrabFocus $ sourceView currentBuffer
     | otherwise = return ()
 
 editGotoLineEnd :: GhfAction
 editGotoLineEnd = inBufContext' () $ \_ gtkbuf currentBuffer _ -> do
-    spin <- getGotoLineSpin
+    spin <- getTBGotoLineSpin
     lift $ do
         line <- spinButtonGetValueAsInt spin
         iter <- textBufferGetStartIter gtkbuf

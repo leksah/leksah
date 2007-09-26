@@ -85,7 +85,7 @@ initLog panePath nb = do
 
 makeLogActive :: GhfLog -> GhfAction
 makeLogActive log = do
-    makePaneActive (LogPane log) (BufConnections[][])
+    activatePane (LogPane log) (BufConnections[][])
 
 getLog :: GhfM GhfLog
 getLog = do

@@ -128,7 +128,7 @@ getLayout = do
 getPopulation :: GhfM[(String,PanePath)]
 getPopulation = do
     paneMap' <- readGhf paneMap
-    return (map (\ (k,v) -> (getBufferDescription k, fst v)) $Map.toList paneMap')
+    return (map (\ (k,v) -> (getPaneDescription k, fst v)) $Map.toList paneMap')
 
 getActive :: GhfM(Maybe String)
 getActive = do
@@ -210,7 +210,7 @@ populate = mapM_ populate'
     populate' ('?':n,pp)  =  newTextBuffer pp n Nothing
     populate' (n,pp)      =  do
         exist <- lift $doesFileExist n
-        if exist 
+        if exist
             then newTextBuffer pp (takeFileName n) (Just n)
             else return ()
 

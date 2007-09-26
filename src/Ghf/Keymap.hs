@@ -17,7 +17,6 @@ import Text.ParserCombinators.Parsec
 import qualified Text.ParserCombinators.Parsec.Token as P
 import Text.ParserCombinators.Parsec.Language(emptyDef)
 import Data.Maybe
-import Debug.Trace
 import Data.List(sort)
 import Data.Char(toLower)
 import Control.Monad(foldM)
@@ -88,7 +87,7 @@ handleSpecialKeystrokes (Key _ _ _ mods _ _ _ keyVal name mbChar) = do
             else return ()
     sk  <- readGhf specialKey
     sks <- readGhf specialKeys
-    sb <- getSpecialKeys
+    sb <- getSBSpecialKeys
     case sk of
         Nothing -> do
             case Map.lookup (keyVal,sort mods) sks of
@@ -97,7 +96,7 @@ handleSpecialKeystrokes (Key _ _ _ mods _ _ _ keyVal name mbChar) = do
                     lift $statusbarPush sb 1 ""
                     return False
                 Just map -> do
-                    sb <- getSpecialKeys
+                    sb <- getSBSpecialKeys
                     let sym = printMods mods ++ name
                     lift $statusbarPop sb 1
                     lift $statusbarPush sb 1 sym
@@ -106,12 +105,12 @@ handleSpecialKeystrokes (Key _ _ _ mods _ _ _ keyVal name mbChar) = do
         Just (map,sym) -> do
             case Map.lookup (keyVal,sort mods) map of
                 Nothing -> do
-                    sb <- getSpecialKeys
+                    sb <- getSBSpecialKeys
                     lift $statusbarPop sb 1
                     lift $statusbarPush sb 1 $sym ++ printMods mods ++ name ++ "?"
                     return ()
                 Just (AD actname _ _ _ ghfAction _ _) -> do
-                    sb <- getSpecialKeys
+                    sb <- getSBSpecialKeys
                     lift $statusbarPop sb 1
                     lift $statusbarPush sb 1
                         $sym ++ " " ++ printMods mods ++ name ++ "=" ++ actname
