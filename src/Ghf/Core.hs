@@ -97,7 +97,6 @@ message m = trace m (return ())
 message m = return ()
 trace a b = b
 
-
 -- ---------------------------------------------------------------------
 -- IDE State
 --
@@ -205,7 +204,7 @@ instance Show BuildFlags
 -- | Description of the different pane types
 --
 data GhfPane        =   BufPane GhfBuffer
-                    |   LogPane  GhfLog
+                    |   LogPane GhfLog
     deriving (Eq,Ord,Show)
 
 --

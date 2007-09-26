@@ -114,10 +114,6 @@ main = do
     windowSetDefaultSize win x y
     runReaderT recoverSession ghfR
     widgetShowAll win
---    hbf <- runReaderT getFindBar ghfR
---    widgetHide hbf
---    spinL <- runReaderT getGotoLineSpin ghfR
---    widgetHide spinL
     mainGUI
 
 

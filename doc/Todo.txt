@@ -3,7 +3,7 @@ Version 0.1
 ok    -   Candy bug --Candy without char (notebook)
 ok    -   Project Flags
 
-uuuuu -   Cabal Editor "Change"
+!!    -   Cabal Editor "Change"
 ??    -   Dual Log Bug
 ~~    -   Activate Pane switching Bug
 ~~          Save as geht nicht?!
@@ -12,20 +12,19 @@ uuuuu -   Cabal Editor "Change"
 >>    -   GTK Warnings
 >>        GTK-Errors:
 >>            Gtk-CRITICAL **: _gtk_text_line_char_locate: assertion `char_offset >= 0' failed
-    -   Revert / Filechage detection
-    -   Map.! exception
-    -   Other Bugs
-    -   Replace ohne Glade
-    -   Replace ohne warp
+!!    -   Revert / Filechage detection
+??    -   Map.! exception
+??    -   Other Bugs
+!!    -   Replace ohne Glade
+!!    -   Replace ohne warp
 ok    -   Find verbessern
 ok    -   Populate Statusbar, Toolbar
 
-        change types of activePane from
+???     change types of activePane from
             Maybe (GhfPane,Connections) to Maybe (String,Connections)
         change types of paneMap from
             Map GhfPane (PanePath, [ConnectId Widget]) to
             Map String (PanePath, Connections)
-
 
 >>  -   putStrLn in message ...
 

@@ -112,7 +112,6 @@ isLog _             = False
 appendLog :: GhfLog -> String -> LogTag -> IO Int
 appendLog l@(GhfLog tv _) string tag = do
     buf <- textViewGetBuffer tv
-    textBufferDeleteSelection buf False False
     iter <- textBufferGetEndIter buf
     textBufferInsert buf iter string
     iter2 <- textBufferGetEndIter buf

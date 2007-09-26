@@ -365,7 +365,7 @@ readErrForBuild log hndl = do
                 lineNr  <-  appendLog log (line ++ "\n") ErrorTag
                 case (parsed, errs) of
                     (Left e,_) -> do
-                        --putStrLn (show e)
+                        putStrLn (show e)
                         readAndShow False errs
                     (Right ne@(ErrorLine fp l c str),_) ->
                         readAndShow True ((ErrorSpec fp l c str (lineNr,lineNr)):errs)
