@@ -6,7 +6,6 @@ module Ghf.PreferencesEditor (
     readPrefs
 ,   writePrefs
 ,   editPrefs
-
 ,   prefsDescription
 ) where
 
@@ -68,7 +67,7 @@ mkField parameters printer parser getter setter editor applicator =
             (widget, inj,ext,noti) <- editor parameters
             inj (getter dat)
             noti FocusOut (Left (\e -> do
-                putStrLn "Handling Focus out"
+--                putStrLn "Handling Focus out"
                 v <- ext
                 case v of
                     Just _ -> do

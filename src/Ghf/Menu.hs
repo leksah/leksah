@@ -362,6 +362,10 @@ addToToolbar toolbar ghfR = do
 
     toolbarInsert  toolbar spinLItem (-1)
 
+    children <- containerGetChildren toolbar
+    mapM_ (\c -> set toolbar [toolbarChildHomogeneous c := False])
+        children
+
     entry `afterInsertText` (\ _ _ -> do
         runReaderT (editFindInc Insert) ghfR
         t <- entryGetText entry
@@ -432,7 +436,7 @@ buildStatusbar ghfR = do
     sblc <- statusbarNew
     widgetSetName sblc "statusBarLineColumn"
     statusbarSetHasResizeGrip sblc False
-    widgetSetSizeRequest sblc 110 (-1)
+    widgetSetSizeRequest sblc 130 (-1)
 
     sbio <- statusbarNew
     widgetSetName sbio "statusBarInsertOverwrite"
@@ -445,13 +449,13 @@ buildStatusbar ghfR = do
 
     hb <- hBoxNew False 1
     widgetSetName hb "statusBox"
-    boxPackStart hb sblk PackNatural 0
-    boxPackStart hb sbap PackNatural 0
-    boxPackStart hb sbapr PackNatural 0
-    boxPackStart hb sbe PackNatural 0
-    boxPackStart hb dummy PackGrow 0
-    boxPackStart hb sblc PackNatural 0
-    boxPackStart hb sbio PackNatural 0
+    boxPackStart hb sblk PackGrow 0
+    boxPackStart hb sbap PackGrow 0
+    boxPackStart hb sbapr PackGrow 0
+    --boxPackStart hb dummy PackGrow 0
+    boxPackEnd hb sblc PackNatural 0
+    boxPackEnd hb sbio PackNatural 0
+    boxPackEnd hb sbe PackNatural 0
 
     return hb
 

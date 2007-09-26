@@ -89,13 +89,13 @@ import Data.Map
 import qualified Data.Map as Map
 import System.Time
 
-{--
+
 import Debug.Trace
 message m = trace m (return ())
---}
 
-message m = return ()
-trace a b = b
+
+--message m = return ()
+--trace a b = b
 
 -- ---------------------------------------------------------------------
 -- IDE State

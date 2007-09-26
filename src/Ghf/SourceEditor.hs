@@ -185,7 +185,7 @@ newTextBuffer panePath bn mbfn = do
                                     paneMap = newPaneMap}))
     lift $widgetShowAll (scrolledWindow buf)
     lift $widgetGrabFocus (sourceView buf)
-    makeBufferActive buf
+    --makeBufferActive buf
 
 
 makeBufferActive :: GhfBuffer -> GhfAction

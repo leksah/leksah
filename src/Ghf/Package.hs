@@ -410,6 +410,7 @@ selectSourceBuf fp = do
                 then do
                     path <- standardSourcePanePath
                     newTextBuffer path (takeFileName fpc) (Just fpc)
+                    message "opened new buffer"
                     return True
                 else return False
 
@@ -417,7 +418,8 @@ markErrorInSourceBuf ::  Int -> Int -> String -> GhfAction
 markErrorInSourceBuf line column string = do
     mbbuf <- maybeActiveBuf
     case mbbuf of
-        Nothing -> return ()
+        Nothing -> do
+            return ()
         Just (buf,_) -> lift $do
             gtkbuf <- textViewGetBuffer (sourceView buf)
             i1 <- textBufferGetStartIter gtkbuf
@@ -433,7 +435,8 @@ markErrorInSourceBuf line column string = do
             textBufferPlaceCursor gtkbuf iter
             case mbMark of
                 Nothing -> return ()
-                Just mark -> textViewScrollToMark (sourceView buf) mark 0.0 (Just (0.3,0.3))
+                Just mark -> do
+                    textViewScrollToMark (sourceView buf) mark 0.0 (Just (0.3,0.3))
 
 nextError :: GhfAction
 nextError = do
