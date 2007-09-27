@@ -52,13 +52,15 @@ actions =
         fileNew [] False)
     ,AD "FileOpen" "_Open" Nothing (Just "gtk-open")
         fileOpen [] False
+    ,AD "FileRevert" "_Revert" Nothing Nothing
+        fileRevert [] False
     ,AD "FileSave" "_Save" Nothing (Just "gtk-save")
         (fileSave False) [] False
     ,AD "FileSaveAs" "Save_As" Nothing (Just "gtk-save_as")
         (fileSave True) [] False
     ,AD "FileClose" "_Close" Nothing (Just "gtk-close")
         (do fileClose; return ()) [] False
-    ,AD "FileCloseAll" "Close All" Nothing (Just "gtk-close")
+    ,AD "FileCloseAll" "Close All" Nothing Nothing
         (do fileCloseAll; return ()) [] False
     ,AD "Quit" "_Quit" Nothing (Just "gtk-quit")
         quit [] False
@@ -112,7 +114,7 @@ actions =
         packageDoc [] False
     ,AD "CleanPackage" "Cl_ean Package" Nothing Nothing
         packageClean [] False
-    ,AD "CopyPackage" "_Build Package" Nothing Nothing
+    ,AD "CopyPackage" "_Copy Package" Nothing Nothing
         packageCopy [] False
     ,AD "RunPackage" "_Run" Nothing Nothing
         packageRun [] False
@@ -186,6 +188,7 @@ menuDescription = "\n\
      \<menu name=\"_File\" action=\"File\">\n\
        \<menuitem name=\"_New\" action=\"FileNew\" />\n\
        \<menuitem name=\"_Open\" action=\"FileOpen\" />\n\
+       \<menuitem name=\"_Revert\" action=\"FileRevert\" />\n\
        \<separator/>\n\
        \<menuitem name=\"_Save\" action=\"FileSave\" />\n\
        \<menuitem name=\"Save_As\" action=\"FileSaveAs\" />\n\
@@ -431,7 +434,7 @@ buildStatusbar ghfR = do
     sbe <- statusbarNew
     widgetSetName sbe "statusBarErrors"
     statusbarSetHasResizeGrip sbe False
-    widgetSetSizeRequest sbe 50 (-1)
+    widgetSetSizeRequest sbe 80 (-1)
 
     sblc <- statusbarNew
     widgetSetName sblc "statusBarLineColumn"

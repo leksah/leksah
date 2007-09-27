@@ -14,8 +14,18 @@
 ---------------------------------------------------------------------------------
 
 module Ghf.ViewFrame (
+-- * Convenience methods for accesing Pane state
+    getTopWidget
+,   getPaneDescription
+,   getAddedIndex
+,   uniquePaneName
+,   posTypeToPaneDirection
+,   paneDirectionToPosType
+,   paneFromUniqueName
+,   guiPropertiesFromName
+
 -- * View Actions
-    viewMove
+,   viewMove
 ,   viewSplitHorizontal
 ,   viewSplitVertical
 ,   viewSplit
@@ -69,16 +79,88 @@ import Data.List
 
 import Ghf.Core
 
+-- ---------------------------------------------------------------------
+-- Convenience methods for panes
+--  currently ugly
+
+-- | Get the top gtk widget for the pane
+getTopWidget :: GhfPane -> Widget
+getTopWidget (BufPane buf) = castToWidget(scrolledWindow buf)
+getTopWidget (LogPane buf) = castToWidget(scrolledWindowL buf)
+
+-- | Get the top gtk widget for the pane
+getPaneDescription :: GhfPane -> String
+getPaneDescription (BufPane buf)  =
+    case fileName buf of
+        Just s  -> s
+        Nothing -> "?" ++ bufferName buf
+getPaneDescription (LogPane _)    = "*Log"
+
+-- | Get the added index of the pane name
+getAddedIndex :: GhfPane -> Int
+getAddedIndex (BufPane buf) = addedIndex buf
+getAddedIndex _ = 0
+
+-- | Get the unique pane name, which may have an added index
+uniquePaneName :: GhfPane -> PaneName
+uniquePaneName pane@(BufPane _) =
+    if getAddedIndex pane == 0
+        then getPaneName pane
+        else getPaneName pane ++ "(" ++ show (getAddedIndex pane) ++ ")"
+uniquePaneName other = getPaneName other
+
+-- | Constructs a unique pane name, which is an index and a string
+figureOutPaneName :: Map String GhfPane -> String -> Int -> (Int,String)
+figureOutPaneName bufs bn ind =
+    let ind = foldr (\buf ind ->
+                if getPaneName buf == bn
+                    then max ind ((getAddedIndex buf) + 1)
+                    else ind)
+                0 (Map.elems bufs)
+    in  if ind == 0
+            then (0,bn)
+            else (ind,bn ++ "(" ++ show ind ++ ")")
+
+-- | Pane name without added index - not exported
+getPaneName :: GhfPane -> String
+getPaneName (BufPane buf) = bufferName buf
+getPaneName (LogPane _) = "Log"
+
+paneFromUniqueName :: PaneName -> GhfM GhfPane
+paneFromUniqueName pn = do
+    panes <- readGhf panes
+    case Map.lookup pn panes of
+        Just p -> return p
+        Nothing -> error $"Cant't find pane from unique name " ++ pn
+
+-- |
+guiPropertiesFromName :: PaneName -> GhfM (PanePath, Connections)
+guiPropertiesFromName pn = do
+    paneMap <- readGhf paneMap
+    case Map.lookup pn paneMap of
+            Just it -> return it
+            otherwise  -> error $"Cant't find guiProperties from unique name " ++ pn
+
+
+posTypeToPaneDirection PosLeft      =   LeftP
+posTypeToPaneDirection PosRight     =   RightP	
+posTypeToPaneDirection PosTop       =   TopP
+posTypeToPaneDirection PosBottom    =   BottomP	
+
+paneDirectionToPosType LeftP        =   PosLeft
+paneDirectionToPosType RightP       =   PosRight   	
+paneDirectionToPosType TopP         =   PosTop
+paneDirectionToPosType BottomP      =   PosBottom
 
 activatePane :: GhfPane -> Connections -> GhfAction
 activatePane pane conn = do
     deactivatePane
     sb <- getSBActivePane
     lift $statusbarPop sb 1
-    lift $statusbarPush sb 1 (getPaneName pane)
+    lift $statusbarPush sb 1 (uniquePaneName pane)
     modifyGhf_ $ \ghf -> do
         bringPaneToFront pane
-        return (ghf{activePane = Just (pane,conn)})
+        return (ghf{activePane = Just (uniquePaneName pane,conn)})
 
 deactivatePane :: GhfAction
 deactivatePane = do
@@ -87,9 +169,10 @@ deactivatePane = do
     lift $statusbarPush sb 1 ""
     mbAP    <-  readGhf activePane
     case mbAP of
-        Just (_,BufConnections signals signals2) -> lift $do
+        Just (_,BufConnections signals signals2 signals3) -> lift $do
             mapM_ signalDisconnect signals
             mapM_ signalDisconnect signals2
+            mapM_ signalDisconnect signals3
         Nothing -> return ()
     modifyGhf_ $ \ghf -> do
         return (ghf{activePane = Nothing})
@@ -211,10 +294,11 @@ viewCollapse' panePath = do
                 Just sp -> viewCollapse' sp
             paneMap         <- readGhf paneMap
             activeNotebook  <- getNotebook panePath
-            let windowsToMove = map (\(w,(p,_)) -> w)
+            let paneNamesToMove = map (\(w,(p,_)) -> w)
                                     $filter (\(w,(p,_)) -> p == otherSidePath)
                                         $Map.toList paneMap
-            mapM_ (move panePath) windowsToMove
+            panesToMove <- mapM paneFromUniqueName paneNamesToMove
+            mapM_ (move panePath) panesToMove
             lift $ do
                 mbParent <- widgetGetParent activeNotebook
                 case mbParent of
@@ -248,11 +332,11 @@ viewCollapse' panePath = do
 --
 move ::  PanePath -> GhfPane -> GhfAction
 move toPane ghfw  = do
-    paneMap <- readGhf paneMap
-    let child = getTopWidget ghfw
-    let (fromPane,cid) =  paneMap ! ghfw
-    fromNB  <- getNotebook fromPane
-    toNB    <- getNotebook toPane
+    paneMap         <-  readGhf paneMap
+    let child       =   getTopWidget ghfw
+    (fromPane,cid)  <-  guiPropertiesFromName (uniquePaneName ghfw)
+    fromNB          <-  getNotebook fromPane
+    toNB            <-  getNotebook toPane
     lift $ do
         mbNum <- notebookPageNum fromNB child
         case mbNum of
@@ -265,8 +349,8 @@ move toPane ghfw  = do
                         notebookRemovePage fromNB pn
                         pn2 <- notebookPrependPage toNB child text
                         notebookSetCurrentPage toNB pn2
-    let paneMap1    =  Map.delete ghfw paneMap
-    let newPaneMap  =  Map.insert ghfw (toPane,cid) paneMap1
+    let paneMap1    =  Map.delete (uniquePaneName ghfw) paneMap
+    let newPaneMap  =  Map.insert (uniquePaneName ghfw) (toPane,cid) paneMap1
     modifyGhf_ (\ghf -> return (ghf{paneMap = newPaneMap}))
 
 --
@@ -275,13 +359,14 @@ move toPane ghfw  = do
 --
 viewMove :: PaneDirection -> GhfAction
 viewMove direction = do
-    paneMap <- readGhf paneMap
+    panes <- readGhf panes
     mbPane <- readGhf activePane
     case mbPane of
         Nothing -> do
             lift $putStrLn "no active pane"
             return ()
-        Just (pane,_) -> do
+        Just (paneName,_) -> do
+            let pane = panes ! paneName
             mbPanePath <- getActivePanePath
             case mbPanePath of
                 Nothing -> do
@@ -340,7 +425,7 @@ bringPaneToFront pane = do
                             mbs <- notebookGetTabLabelText nb p
                             case mbs of
                                 Nothing -> return False
-                                Just s -> return (s == realPaneName pane))
+                                Just s -> return (s == uniquePaneName pane))
                                 [0..(n-1)]
         case r of
             [i] -> notebookSetCurrentPage nb i
@@ -430,9 +515,9 @@ getActivePanePath = do
     mbPane   <- readGhf activePane
     case mbPane of
         Nothing -> return Nothing
-        Just (pane,_) -> do
-            paneMap  <- readGhf paneMap
-            return (Just (fst $paneMap ! pane))
+        Just (paneName,_) -> do
+            (pp,_)  <- guiPropertiesFromName paneName
+            return (Just (pp))
 
 getActivePanePathOrStandard :: StandardPath -> GhfM (PanePath)
 getActivePanePathOrStandard sp = do
@@ -473,10 +558,10 @@ adjustPane :: PanePath -> PanePath -> GhfAction
 adjustPane fromPane toPane  = do
     trace ("adjust pane from: " ++ show fromPane ++ " to: " ++ show toPane) return ()
     paneMap     <- readGhf paneMap
-    let newMap  = Map.map (\(pane,other) -> do
-        if pane == fromPane
+    let newMap  = Map.map (\(pp,other) -> do
+        if pp == fromPane
             then (toPane,other)
-            else (pane,other)) paneMap
+            else (pp,other)) paneMap
     modifyGhf_ $ \ghf -> return (ghf{paneMap = newMap})
 
 --
@@ -521,16 +606,7 @@ adjust pp layout replace    = adjust' pp layout
     adjust' (RightP:r)  (VerticalP lp rp _)     = VerticalP lp (adjust' r rp) 0
     adjust' p l = error $"inconsistent layout " ++ show p ++ " " ++ show l
 
-figureOutPaneName :: Map String GhfPane -> String -> Int -> (Int,String)
-figureOutPaneName bufs bn ind =
-    let ind = foldr (\buf ind ->
-                if getPaneName buf == bn
-                    then max ind ((getAddedIndex buf) + 1)
-                    else ind)
-                0 (Map.elems bufs)
-    in  if ind == 0
-            then (0,bn)
-            else (ind,bn ++ "(" ++ show ind ++ ")")
+
 
 --
 -- | Get the widget from a list of strings

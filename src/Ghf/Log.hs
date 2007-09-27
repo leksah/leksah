@@ -74,10 +74,11 @@ initLog panePath nb = do
         case mbPn of
             Just i -> notebookSetCurrentPage nb i
             Nothing -> putStrLn "Notebook page not found"
-        cid1 <- (castToWidget tv) `afterFocusIn`
+        cid1 <- tv `afterFocusIn`
             (\_ -> do runReaderT (makeLogActive buf) ghfR; return True)
         return (buf,[cid1])
-    let newPaneMap  =  Map.insert (LogPane buf) (panePath,cids) paneMap
+    let newPaneMap  =  Map.insert (uniquePaneName (LogPane buf))
+                            (panePath, BufConnections [] [] cids) paneMap
     let newPanes = Map.insert logPaneName (LogPane buf) panes
     modifyGhf_ (\ghf -> return (ghf{panes = newPanes,
                                     paneMap = newPaneMap}))
@@ -85,7 +86,7 @@ initLog panePath nb = do
 
 makeLogActive :: GhfLog -> GhfAction
 makeLogActive log = do
-    activatePane (LogPane log) (BufConnections[][])
+    activatePane (LogPane log) (BufConnections[][] [])
 
 getLog :: GhfM GhfLog
 getLog = do

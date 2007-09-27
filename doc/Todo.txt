@@ -4,29 +4,28 @@ ok    -   Candy bug --Candy without char (notebook)
 ok    -   Project Flags
 
 !!    -   Cabal Editor "Change"
-??    -   Dual Log Bug
-~~    -   Activate Pane switching Bug
-~~          Save as geht nicht?!
-~~          Close geht nicht richtig!
-~~      Save as/Close
->>    -   GTK Warnings
->>        GTK-Errors:
->>            Gtk-CRITICAL **: _gtk_text_line_char_locate: assertion `char_offset >= 0' failed
-!!    -   Revert / Filechage detection
-??    -   Map.! exception
-??    -   Other Bugs
+!!    -   Log waits every line for timeout (windows)
+
+ok    -   Activate Pane switching Bug
+ok          Save as geht nicht?!
+ok          Close geht nicht richtig!
+
+~~    -   GTK Warnings
+!!        GTK-Errors:
+ok    -   Revert / Filechage detection
+~~    -   Map.! exception
 !!    -   Replace ohne Glade
 !!    -   Replace ohne warp
 ok    -   Find verbessern
 ok    -   Populate Statusbar, Toolbar
 
-???     change types of activePane from
+ok     change types of activePane from
             Maybe (GhfPane,Connections) to Maybe (String,Connections)
-        change types of paneMap from
+ok      change types of paneMap from
             Map GhfPane (PanePath, [ConnectId Widget]) to
             Map String (PanePath, Connections)
 
->>  -   putStrLn in message ...
+~~  -   putStrLn in message ...
 
     -   1 page Documentation
 
@@ -35,7 +34,7 @@ Editor
     -   Clipboard binding (gtk)
 ()  -   Remove Error mark
 
-Version 0.2
+Version 0.2 ++
 
 
 

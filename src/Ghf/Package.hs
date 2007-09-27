@@ -350,7 +350,7 @@ readErrForBuild log hndl = do
     modifyGhf_ (\ghf -> return (ghf{errors = reverse errs, currentErr = Nothing}))
     sb <- getSBErrors
     lift $statusbarPop sb 1
-    lift $statusbarPush sb 1 (show (length errs))
+    lift $statusbarPush sb 1 $show (length errs) ++ " Errors"
     if not (null errs)
         then nextError
         else return ()
@@ -402,7 +402,7 @@ selectSourceBuf fp = do
                                 Nothing -> False) buffers
     case buf of
         hdb:tl -> do
-            makeBufferActive hdb
+            makeBufferActive (uniquePaneName (BufPane hdb))
             return True
         otherwise -> do
             fe <- lift $doesFileExist fpc

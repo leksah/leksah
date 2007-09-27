@@ -37,21 +37,11 @@ module Ghf.Core (
 ,   PanePath
 ,   PaneLayout(..)
 ,   StandardPath(..)
-
+,   PaneName
 ,   Connections(..)
 
--- * Convenience methods for accesing Pane state
-,   getTopWidget
-,   getPaneName
-,   getPaneDescription
-,   getAddedIndex
-,   realPaneName
-,   posTypeToPaneDirection
-,   paneDirectionToPosType
-
--- * The Buffer pane
+-- * The pane types
 ,   GhfBuffer(..)
-
 ,   GhfLog(..)
 
 -- * Other state structures
@@ -90,12 +80,12 @@ import qualified Data.Map as Map
 import System.Time
 
 
-import Debug.Trace
-message m = trace m (return ())
+--import Debug.Trace
+--message m = trace m (return ())
 
 
---message m = return ()
---trace a b = b
+message m = return ()
+trace a b = b
 
 -- ---------------------------------------------------------------------
 -- IDE State
@@ -107,9 +97,9 @@ message m = trace m (return ())
 data Ghf        =   Ghf {
     window      ::  Window                  -- ^ the gtk window
 ,   uiManager   ::  UIManager               -- ^ the gtk uiManager
-,   panes       ::  Map String GhfPane      -- ^ a map with all panes (subwindows)
-,   activePane  ::  Maybe (GhfPane,Connections)
-,   paneMap     ::  Map GhfPane (PanePath, [ConnectId Widget])
+,   panes       ::  Map PaneName GhfPane      -- ^ a map with all panes (subwindows)
+,   activePane  ::  Maybe (PaneName,Connections)
+,   paneMap     ::  Map PaneName (PanePath, Connections)
                     -- ^ a map from the pane to its gui path and signal connections
 ,   layout      ::  PaneLayout              -- ^ a description of the general gui layout
 ,   specialKeys ::  SpecialKeyTable         -- ^ a structure for emacs like keystrokes
@@ -193,9 +183,6 @@ instance Eq LocalBuildInfo
 instance Eq BuildFlags
 instance Show BuildFlags
 
-
-
-
 -- ---------------------------------------------------------------------
 -- Panes and pane layout
 --
@@ -219,15 +206,7 @@ data Direction      =   Horizontal | Vertical
 data PaneDirection  =   TopP | BottomP | LeftP | RightP
     deriving (Eq,Ord,Show,Read)
 
-posTypeToPaneDirection PosLeft      =   LeftP
-posTypeToPaneDirection PosRight     =   RightP	
-posTypeToPaneDirection PosTop       =   TopP
-posTypeToPaneDirection PosBottom    =   BottomP	
-
-paneDirectionToPosType LeftP        =   PosLeft
-paneDirectionToPosType RightP       =   PosRight   	
-paneDirectionToPosType TopP         =   PosTop
-paneDirectionToPosType BottomP      =   PosBottom    	
+  	
 --
 -- | A path to a pane
 --
@@ -248,39 +227,13 @@ data StandardPath = LeftTop | LeftBottom | RightTop | RightBottom
 --
 -- | Signal handlers for the different pane types
 --
-data Connections =  BufConnections [ConnectId SourceView] [ConnectId TextBuffer]
+data Connections =  BufConnections
+                        [ConnectId SourceView]
+                        [ConnectId TextBuffer]
+                        [ConnectId TextView]
     deriving (Show)
 
--- ---------------------------------------------------------------------
--- Convenience methods for panes
---  currently ugly
-
-getTopWidget :: GhfPane -> Widget
-getTopWidget (BufPane buf) = castToWidget(scrolledWindow buf)
-getTopWidget (LogPane buf) = castToWidget(scrolledWindowL buf)
-
-getPaneName :: GhfPane -> String
-getPaneName (BufPane buf) = bufferName buf
-getPaneName (LogPane _) = "Log"
-
-getPaneDescription :: GhfPane -> String
-getPaneDescription (BufPane buf)  =
-    case fileName buf of
-        Just s  -> s
-        Nothing -> "?" ++ bufferName buf
-getPaneDescription (LogPane _)    = "*Log"
-
-getAddedIndex :: GhfPane -> Int
-getAddedIndex (BufPane buf) = addedIndex buf
-getAddedIndex _ = 0
-
-realPaneName :: GhfPane -> String
-realPaneName pane@(BufPane _) =
-    if getAddedIndex pane == 0
-        then getPaneName pane
-        else getPaneName pane ++ "(" ++ show (getAddedIndex pane) ++ ")"
-realPaneName other = getPaneName other
-
+type PaneName = String
 
 -- ---------------------------------------------------------------------
 -- Buffers - The text editor panes
@@ -376,7 +329,6 @@ type FileName        =  String
 --
 -- | Other types
 --
-
 data ErrorSpec = ErrorSpec {
         filePath            ::   FilePath
     ,   line                ::   Int

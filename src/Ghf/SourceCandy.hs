@@ -1,6 +1,18 @@
+-----------------------------------------------------------------------------
 --
--- | ..       .
+-- Module      :  Ghf.SourceCandy
+-- Copyright   :  (c) Juergen Nicklisch-Franken (aka Jutaro)
+-- License     :  GNU-GPL
 --
+-- Maintainer  :  Juergen Nicklisch-Franken <jnf at arcor.de>
+-- Stability   :  experimental
+-- Portability :  portable
+--
+--
+-- |
+--
+---------------------------------------------------------------------------------
+
 module Ghf.SourceCandy (
     transformToCandy
 ,   transformFromCandy
