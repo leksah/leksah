@@ -27,6 +27,8 @@ ok      change types of paneMap from
 
 ~~  -   putStrLn in message ...
 
+      -   Source markers for error messages
+      -   Double click for error messages
     -   1 page Documentation
 
 Open problems:

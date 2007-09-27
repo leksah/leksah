@@ -178,6 +178,7 @@ newTextBuffer panePath bn mbfn = do
         sourceViewSetInsertSpacesInsteadOfTabs sv True
         sourceViewSetTabsWidth sv (tabWidth prefs)
         sourceViewSetSmartHomeEnd sv True
+        sourceViewSetShowLineMarkers sv True
 
         -- put it in a scrolled window
         sw <- scrolledWindowNew Nothing Nothing
@@ -250,14 +251,16 @@ checkModTime buf = do
                                     ButtonsYesNo
                                     ("File has changed on disk " ++ name ++ " Revert?")
                             resp <- lift $dialogRun md
-                            lift $widgetHide md
                             case resp of
-                                ResponseYes ->  revert buf
+                                ResponseYes ->  do
+                                    revert buf
+                                    lift $widgetHide md
                                 ResponseNo  ->  do
                                     let newPanes = Map.adjust (\b -> case b of
                                                                         BufPane  b -> BufPane (b{modTime = (Just nmt)})
                                                                         it         -> it) name panes
                                     modifyGhf_ (\ghf -> return (ghf{panes = newPanes}))
+                                    lift $widgetHide md
                         else return ()
 
 

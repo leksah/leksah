@@ -438,13 +438,13 @@ buildStatusbar ghfR = do
 
     sblc <- statusbarNew
     widgetSetName sblc "statusBarLineColumn"
-    statusbarSetHasResizeGrip sblc False
-    widgetSetSizeRequest sblc 130 (-1)
+    statusbarSetHasResizeGrip sblc True
+    widgetSetSizeRequest sblc 150 (-1)
 
     sbio <- statusbarNew
     widgetSetName sbio "statusBarInsertOverwrite"
     statusbarSetHasResizeGrip sbio False
-    widgetSetSizeRequest sbio 40 (-1)
+    widgetSetSizeRequest sbio 60 (-1)
 
     dummy <- hBoxNew False 1
     widgetSetName dummy "dummyBox"

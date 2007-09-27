@@ -9,7 +9,7 @@
 -- Portability :  portable
 --
 --
--- | Main module of Genuine Haskell Face, an Haskell IDE written in Haskell
+--  Main module of Genuine Haskell Face, an Haskell IDE written in Haskell
 --
 ---------------------------------------------------------------------------------
 
@@ -20,7 +20,6 @@ import System.FilePath
 import Control.Concurrent
 import Data.IORef
 import Data.Maybe
-import Data.Map(Map)
 import qualified Data.Map as Map
 import System.Console.GetOpt
 import System.Environment

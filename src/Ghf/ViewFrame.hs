@@ -72,9 +72,8 @@ module Ghf.ViewFrame (
 import Graphics.UI.Gtk hiding (afterToggleOverwrite)
 import Graphics.UI.Gtk.Multiline.TextView
 import Control.Monad.Reader
-import Text.Printf
 import qualified Data.Map as Map
-import Data.Map (Map,(!))
+import Data.Map (Map)
 import Data.List
 
 import Ghf.Core
@@ -359,14 +358,13 @@ move toPane ghfw  = do
 --
 viewMove :: PaneDirection -> GhfAction
 viewMove direction = do
-    panes <- readGhf panes
     mbPane <- readGhf activePane
     case mbPane of
         Nothing -> do
             lift $putStrLn "no active pane"
             return ()
         Just (paneName,_) -> do
-            let pane = panes ! paneName
+            pane <- paneFromUniqueName paneName
             mbPanePath <- getActivePanePath
             case mbPanePath of
                 Nothing -> do

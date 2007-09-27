@@ -36,6 +36,7 @@ module Ghf.Package (
 ) where
 
 import Graphics.UI.Gtk
+import Graphics.UI.Gtk.SourceView.SourceBuffer
 import Control.Monad.Reader
 import Distribution.Package
 import Distribution.PackageDescription
@@ -346,7 +347,7 @@ runExternal path args = do
 readErrForBuild :: GhfLog -> Handle -> GhfAction
 readErrForBuild log hndl = do
     errs <- lift $readAndShow False []
-    lift $message $"Errors " ++ (show errs)
+    lift $message $"Err " ++ (show errs)
     modifyGhf_ (\ghf -> return (ghf{errors = reverse errs, currentErr = Nothing}))
     sb <- getSBErrors
     lift $statusbarPop sb 1
