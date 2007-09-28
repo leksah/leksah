@@ -79,7 +79,7 @@ import Data.Map (Map,(!))
 import Ghf.Core
 import Ghf.ViewFrame
 import Ghf.SourceCandy
-
+import Ghf.PropertyEditor
 
 isBuffer :: GhfPane -> Bool
 isBuffer (BufPane _) = True
@@ -881,9 +881,97 @@ editCandy = do
         then lift $mapM_ (transformToCandy to) gtkbufs
         else lift $mapM_ (transformFromCandy from) gtkbufs
 
+
+
 --Properties of a replace (get rid and do everythink in the statusbar)
+data ReplaceState = ReplaceState{
+    searchFor       ::   String
+,   replaceWith     ::   String
+,   matchCase       ::   Bool
+,   matchEntire     ::   Bool
+,   searchBackwards ::   Bool}
+
+emptyReplaceState = ReplaceState "" "" False False False
+
+replaceDescription :: [FieldDescription ReplaceState]
+replaceDescription = [
+        mkField (emptyParams
+            {   paraName = Just "Search for"})
+            searchFor
+            (\ b a -> a{searchFor = b})
+            stringEditor
+    ,   mkField (emptyParams
+            {   paraName = Just "Replace with"})
+            replaceWith
+            (\ b a -> a{replaceWith = b})
+            stringEditor
+    ,   mkField (emptyParams
+            {   paraName = Just "Match case"})
+            matchCase
+            (\ b a -> a{matchCase = b})
+            boolEditor
+    ,   mkField (emptyParams
+            {   paraName = Just "Match case"})
+            matchEntire
+            (\ b a -> a{matchEntire = b})
+            boolEditor
+    ,   mkField (emptyParams
+            {   paraName = Just "Match case"})
+            searchBackwards
+            (\ b a -> a{searchBackwards = b})
+            boolEditor]
 
 replaceDialog :: GhfAction
+replaceDialog = do
+    ghfR <- ask
+    res <- lift $replaceDialog' emptyReplaceState replaceDescription ghfR
+
+
+replaceDialog' :: ReplaceState -> [FieldDescription ReplaceState] -> GhfRef -> IO ()
+replaceDialog' replace replaceDesc ghfR  = do
+    dialog  <- windowNew
+    vb      <- vBoxNew False 0
+    bb      <- hButtonBoxNew
+    close   <- buttonNewFromStock "gtk-close"
+    replAll <- buttonNewFromStock "gtk-replace-all"
+    replace <- buttonNewFromStock "gtk-replace"
+    find    <- buttonNewFromStock "gtk-find"
+    boxPackStart bb close PackNatural 0
+    boxPackStart bb replAll PackNatural 0
+    boxPackStart bb replace PackNatural 0
+    boxPackStart bb find PackNatural 0
+    resList <- mapM (\ fd -> (fieldEditor fd) replace) replaceDesc
+    let (widgetsP, setInjsP, getExtsP, notifiersP) = unzip4 resList
+    mapM_ (\ w -> boxPackStart vb w PackNatural 0) widgetsP
+    find `onClicked` do
+        findOrSearch editFind
+    replace `onClicked` do
+        findOrSearch editReplace
+    replAll `onClicked` do
+        findOrSearch editReplaceAll
+        closeButton `onClicked` (widgetDestroy window)
+    boxPackEnd vb bb PackNatural 7
+    containerAdd dialog vb
+    widgetSetSizeRequest dialog 300 500
+    widgetShowAll dialog
+    return ()
+    where
+        findOrSearch = \f -> do
+            wrapAround <- toggleButtonGetActive wrapAroundCheckbutton
+            entireWord <- toggleButtonGetActive entireWordCheckbutton
+            matchCase  <- toggleButtonGetActive matchCaseCheckbutton
+            backwards  <- toggleButtonGetActive searchBackwardsCheckbutton
+            let hint = if backwards then Backward else Forward
+            searchString <- entryGetText searchForEntry
+            replaceString <- entryGetText replaceWithEntry
+            found <- runReaderT (f entireWord matchCase wrapAround searchString replaceString hint) ghfR
+            widgetSetSensitivity replaceButton found
+            widgetSetSensitivity replaceAllButton found
+            return ()
+
+
+
+{--
 replaceDialog = do
     ghfR <- ask
     lift $ do
@@ -928,7 +1016,7 @@ replaceDialog = do
         closeButton `onClicked` (widgetDestroy window)
 
         widgetShowAll window
-
+--}
 
 
 
