@@ -192,19 +192,19 @@ instance Show BuildFlags
 --
 data GhfPane        =   BufPane GhfBuffer
                     |   LogPane GhfLog
-    deriving (Eq,Ord,Show)
+    deriving (Eq,Show)
 
 --
 -- | The direction of a split
 --
 data Direction      =   Horizontal | Vertical
-    deriving (Eq,Ord,Show)
+    deriving (Eq,Show)
 
 --
 -- | The relative direction to a pane from the parent
 --
 data PaneDirection  =   TopP | BottomP | LeftP | RightP
-    deriving (Eq,Ord,Show,Read)
+    deriving (Eq,Show,Read)
 
   	
 --
@@ -218,11 +218,11 @@ type PanePath       =   [PaneDirection]
 data PaneLayout =       HorizontalP PaneLayout PaneLayout Int
                     |   VerticalP PaneLayout PaneLayout Int
                     |   TerminalP (Maybe PaneDirection)
-    deriving (Eq,Ord,Show,Read)
+    deriving (Eq,Show,Read)
 
 
 data StandardPath = LeftTop | LeftBottom | RightTop | RightBottom
-    deriving(Read,Show,Eq,Ord,Enum)
+    deriving(Read,Show,Eq,Enum)
 
 --
 -- | Signal handlers for the different pane types
@@ -314,7 +314,7 @@ data Prefs = Prefs {
     ,   browser             ::   String
     ,   sourcePanePath      ::   StandardPath
     ,   logPanePath         ::   StandardPath
-} deriving(Eq,Ord,Show)
+} deriving(Eq,Show)
 
 
 type CandyTableForth =  [(Bool,String,String)]
