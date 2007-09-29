@@ -179,7 +179,7 @@ newTextBuffer panePath bn mbfn = do
         sourceViewSetInsertSpacesInsteadOfTabs sv True
         sourceViewSetTabsWidth sv (tabWidth prefs)
         sourceViewSetSmartHomeEnd sv True
-        sourceViewSetShowLineMarkers sv True
+        --sourceViewSetShowLineMarkers sv True
 
         -- put it in a scrolled window
         sw <- scrolledWindowNew Nothing Nothing
@@ -615,7 +615,7 @@ editFindKey k@(Key _ _ _ _ _ _ _ _ _ _)
             widgetGrabFocus $ sourceView currentBuffer
     | otherwise = return ()
 
-data SearchHint = Forward | Backward | Insert | Delete
+data SearchHint = Forward | Backward | Insert | Delete | Initial
     deriving (Eq)
 
 {-- can't be used currently becuase of an export error
@@ -628,6 +628,10 @@ editFindInc :: SearchHint -> GhfAction
 editFindInc hint = do
     entry   <- getTBFindEntry
     lift $widgetGrabFocus entry
+    if hint == Initial
+        then do
+            lift $entrySetText entry ""
+        else return ()
     search  <- lift $entryGetText entry
     if null search
         then return ()
@@ -665,6 +669,8 @@ editFind entireWord caseSensitive wrapAround search dummy hint =
             mbsr2 <-
                 if hint == Backward
                     then do
+                        textIterBackwardChar st1
+                        textIterBackwardChar st1
                         mbsr <- backSearch st1 search searchflags entireWord searchflags
                         case mbsr of
                             Nothing ->
@@ -672,24 +678,23 @@ editFind entireWord caseSensitive wrapAround search dummy hint =
                                     then do backSearch i2 search searchflags entireWord searchflags
                                     else return Nothing
                             Just (start,end) -> return (Just (start,end))
-                else do
-                    if hint == Forward
-                        then textIterForwardChar st1
-                        else do
-                            textIterBackwardChar st1
-                            textIterBackwardChar st1
-                    mbsr <- forwardSearch st1 search searchflags entireWord searchflags
-                    case mbsr of
-                        Nothing ->
-                            if wrapAround
-                                then do forwardSearch i1 search searchflags entireWord searchflags
-                                else return Nothing
-                        Just (start,end) -> return (Just (start,end))
+                    else do
+                        if hint == Forward
+                            then textIterForwardChar st1
+                            else return True
+                        mbsr <- forwardSearch st1 search searchflags entireWord searchflags
+                        case mbsr of
+                            Nothing ->
+                                if wrapAround
+                                    then do forwardSearch i1 search searchflags entireWord searchflags
+                                    else return Nothing
+                            Just (start,end) -> return (Just (start,end))
             case mbsr2 of
                 Just (start,end) -> do --found
+                    --widgetGrabFocus sourceView
                     textViewScrollToIter (sourceView currentBuffer) start 0.2 Nothing
                     textBufferApplyTagByName gtkbuf "found" start end
-                    textBufferSelectRange gtkbuf start end
+                    textBufferPlaceCursor gtkbuf start
                     return True
                 Nothing -> return False
     where
@@ -934,9 +939,9 @@ replaceDialog' replace replaceDesc ghfR  = do
     vb      <- vBoxNew False 0
     bb      <- hButtonBoxNew
     close   <- buttonNewFromStock "gtk-close"
-    replAll <- buttonNewFromStock "Replace all"
-    replB   <- buttonNewFromStock "Replace"
-    find    <- buttonNewFromStock "Find"
+    replAll <- buttonNewWithMnemonic "Replace _all"
+    replB   <- buttonNewWithMnemonic "_Replace"
+    find    <- buttonNewWithMnemonic "_Find"
     boxPackStart bb close PackNatural 0
     boxPackStart bb replAll PackNatural 0
     boxPackStart bb replB PackNatural 0

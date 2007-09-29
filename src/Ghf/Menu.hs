@@ -80,7 +80,9 @@ actions =
         editDelete [] False
     ,AD "EditSelectAll" "Select_All" Nothing (Just "gtk-select-all")
         editSelectAll [] False
-    ,AD "EditFindNext" "Find" Nothing (Just "gtk-find")
+    ,AD "EditFind" "Find" Nothing (Just "gtk-find")
+        (editFindInc Initial) [] False
+    ,AD "EditFindNext" "Find _Next" Nothing (Just "gtk-find-next")
         (editFindInc Forward) [] False
     ,AD "EditFindPrevious" "Find _Previous" Nothing (Just "gtk-find-previous")
         (editFindInc Backward) [] False
@@ -208,6 +210,7 @@ menuDescription = "\n\
        \<separator/>\n\
        \<menuitem name=\"Select _All\" action=\"EditSelectAll\" />\n\
        \<separator/>\n\
+       \<menuitem name=\"_Find\" action=\"EditFind\" />\n\
        \<menuitem name=\"Find_Next\" action=\"EditFindNext\" />\n\
        \<menuitem name=\"Find_Previous\" action=\"EditFindPrevious\" />\n\
        \<menuitem name=\"_Goto Line\" action=\"EditGotoLine\" />\n\
@@ -347,6 +350,7 @@ addToToolbar toolbar ghfR = do
 
     wrapAroundButton <- toggleToolButtonNew
     toolButtonSetLabel wrapAroundButton (Just "Wrap around")
+    toggleToolButtonSetActive wrapAroundButton True
     widgetSetName wrapAroundButton "wrapAroundButton"
 
     sep2 <- separatorToolItemNew

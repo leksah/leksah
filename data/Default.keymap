@@ -36,8 +36,8 @@
                         ->          EditDelete
 <ctrl>a                 ->          EditSelectAll   "Select the whole text in the current buffer"
 
+F3                      ->          EditFind            "Quits this program"
 <ctrl>f                 ->          EditFindNext        "Search for a text string"
---F3                      ->          EditFindNext        "Find the next occurence of the text string"
 
 <ctrl><shift>f          ->          EditFindPrevious
                                                     "Find the previous occurence of the text string"
