@@ -34,7 +34,7 @@ import System.FilePath
 import Ghf.Core
 import Ghf.SourceEditor
 import Ghf.ViewFrame
-import Ghf.PreferencesEditor(editPrefs)
+import Ghf.Preferences
 import Ghf.PackageEditor
 import Ghf.Package
 import Ghf.Log

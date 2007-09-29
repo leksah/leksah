@@ -31,7 +31,7 @@ import Ghf.SourceCandy
 import Ghf.File
 import Ghf.ViewFrame
 import Ghf.Menu
-import Ghf.PreferencesEditor
+import Ghf.Preferences
 import Ghf.Keymap
 
 data Flag =  OpenFile
