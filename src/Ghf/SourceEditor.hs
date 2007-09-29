@@ -62,7 +62,6 @@ module Ghf.SourceEditor (
 import Graphics.UI.Gtk hiding (afterToggleOverwrite)
 import Graphics.UI.Gtk.SourceView
 import Graphics.UI.Gtk.Multiline.TextView
-import Graphics.UI.Gtk.Glade
 import Control.Monad.Reader
 import Data.IORef
 import System.IO
@@ -74,7 +73,9 @@ import Data.Maybe ( fromMaybe, isJust, fromJust)
 import Text.Printf
 import Data.Char(toUpper)
 import qualified Data.Map as Map
-import Data.Map (Map,(!))
+import Data.Map (Map)
+import Data.List
+
 
 import Ghf.Core
 import Ghf.ViewFrame
@@ -893,30 +894,30 @@ data ReplaceState = ReplaceState{
 
 emptyReplaceState = ReplaceState "" "" False False False
 
-replaceDescription :: [FieldDescription ReplaceState]
+replaceDescription :: [FieldDescriptionE ReplaceState]
 replaceDescription = [
-        mkField (emptyParams
+        mkFieldE (emptyParams
             {   paraName = Just "Search for"})
             searchFor
             (\ b a -> a{searchFor = b})
             stringEditor
-    ,   mkField (emptyParams
+    ,   mkFieldE (emptyParams
             {   paraName = Just "Replace with"})
             replaceWith
             (\ b a -> a{replaceWith = b})
             stringEditor
-    ,   mkField (emptyParams
+    ,   mkFieldE (emptyParams
             {   paraName = Just "Match case"})
             matchCase
             (\ b a -> a{matchCase = b})
             boolEditor
-    ,   mkField (emptyParams
-            {   paraName = Just "Match case"})
+    ,   mkFieldE (emptyParams
+            {   paraName = Just "Entire word"})
             matchEntire
             (\ b a -> a{matchEntire = b})
             boolEditor
-    ,   mkField (emptyParams
-            {   paraName = Just "Match case"})
+    ,   mkFieldE (emptyParams
+            {   paraName = Just "Search backwards"})
             searchBackwards
             (\ b a -> a{searchBackwards = b})
             boolEditor]
@@ -924,99 +925,55 @@ replaceDescription = [
 replaceDialog :: GhfAction
 replaceDialog = do
     ghfR <- ask
-    res <- lift $replaceDialog' emptyReplaceState replaceDescription ghfR
+    lift $replaceDialog' emptyReplaceState replaceDescription ghfR
 
 
-replaceDialog' :: ReplaceState -> [FieldDescription ReplaceState] -> GhfRef -> IO ()
+replaceDialog' :: ReplaceState -> [FieldDescriptionE ReplaceState] -> GhfRef -> IO ()
 replaceDialog' replace replaceDesc ghfR  = do
     dialog  <- windowNew
     vb      <- vBoxNew False 0
     bb      <- hButtonBoxNew
     close   <- buttonNewFromStock "gtk-close"
-    replAll <- buttonNewFromStock "gtk-replace-all"
-    replace <- buttonNewFromStock "gtk-replace"
-    find    <- buttonNewFromStock "gtk-find"
+    replAll <- buttonNewFromStock "Replace all"
+    replB   <- buttonNewFromStock "Replace"
+    find    <- buttonNewFromStock "Find"
     boxPackStart bb close PackNatural 0
     boxPackStart bb replAll PackNatural 0
-    boxPackStart bb replace PackNatural 0
+    boxPackStart bb replB PackNatural 0
     boxPackStart bb find PackNatural 0
     resList <- mapM (\ fd -> (fieldEditor fd) replace) replaceDesc
     let (widgetsP, setInjsP, getExtsP, notifiersP) = unzip4 resList
     mapM_ (\ w -> boxPackStart vb w PackNatural 0) widgetsP
+    let fieldNames = map (\fd -> case paraName (parameters fd) of
+                                        Just s -> s
+                                        Nothing -> "Unnamed") replaceDesc
     find `onClicked` do
-        findOrSearch editFind
-    replace `onClicked` do
-        findOrSearch editReplace
+        findOrSearch editFind getExtsP fieldNames replB replAll
+    replB `onClicked` do
+        findOrSearch editReplace getExtsP fieldNames replB replAll
     replAll `onClicked` do
-        findOrSearch editReplaceAll
-        closeButton `onClicked` (widgetDestroy window)
+        findOrSearch editReplaceAll getExtsP fieldNames replB replAll
+    close `onClicked` do
+        widgetDestroy dialog
+        mainQuit
     boxPackEnd vb bb PackNatural 7
     containerAdd dialog vb
-    widgetSetSizeRequest dialog 300 500
     widgetShowAll dialog
-    return ()
+    mainGUI
     where
-        findOrSearch = \f -> do
-            wrapAround <- toggleButtonGetActive wrapAroundCheckbutton
-            entireWord <- toggleButtonGetActive entireWordCheckbutton
-            matchCase  <- toggleButtonGetActive matchCaseCheckbutton
-            backwards  <- toggleButtonGetActive searchBackwardsCheckbutton
-            let hint = if backwards then Backward else Forward
-            searchString <- entryGetText searchForEntry
-            replaceString <- entryGetText replaceWithEntry
-            found <- runReaderT (f entireWord matchCase wrapAround searchString replaceString hint) ghfR
-            widgetSetSensitivity replaceButton found
-            widgetSetSensitivity replaceAllButton found
-            return ()
-
-
-
-{--
-replaceDialog = do
-    ghfR <- ask
-    lift $ do
-        dialogXmlM <- xmlNew "dialogs/ghf-replace-dialog.glade"
-        let dialogXml = case dialogXmlM of
-                            (Just dialogXml) -> dialogXml	
-                            Nothing -> error "can't find the glade file \"ghf-replace-dialog.glade\""
-        window <- xmlGetWidget dialogXml castToWindow "dialog"
-        closeButton <- xmlGetWidget dialogXml castToButton "close_button"
-        replaceAllButton <- xmlGetWidget dialogXml castToButton "replace_all_button"
-        replaceButton <- xmlGetWidget dialogXml castToButton "replace_button"
-        findButton <- xmlGetWidget dialogXml castToButton "find_button"
-        matchCaseCheckbutton <- xmlGetWidget dialogXml castToCheckButton "match_case_checkbutton"
-        entireWordCheckbutton <- xmlGetWidget dialogXml castToCheckButton "entire_word_checkbutton"
-        searchBackwardsCheckbutton <- xmlGetWidget dialogXml castToCheckButton "search_backwards_checkbutton"
-        wrapAroundCheckbutton <- xmlGetWidget dialogXml castToCheckButton "wrap_around_checkbutton"
-        searchForEntry <- xmlGetWidget dialogXml castToEntry "search_for_entry"
-        replaceWithEntry <- xmlGetWidget dialogXml castToEntry "replace_with_entry"
-
-        let findOrSearch = \f -> do
-            wrapAround <- toggleButtonGetActive wrapAroundCheckbutton
-            entireWord <- toggleButtonGetActive entireWordCheckbutton
-            matchCase  <- toggleButtonGetActive matchCaseCheckbutton
-            backwards  <- toggleButtonGetActive searchBackwardsCheckbutton
-            let hint = if backwards then Backward else Forward
-            searchString <- entryGetText searchForEntry
-            replaceString <- entryGetText replaceWithEntry
-            found <- runReaderT (f entireWord matchCase wrapAround searchString replaceString hint) ghfR
-            widgetSetSensitivity replaceButton found
-            widgetSetSensitivity replaceAllButton found
-            return ()
-
-        findButton `onClicked` do
-            putStrLn "find"
-            findOrSearch editFind
-        replaceButton `onClicked` do
-            putStrLn "replace"
-            findOrSearch editReplace
-        replaceAllButton `onClicked` do
-            putStrLn "replaceAll"
-            findOrSearch editReplaceAll
-        closeButton `onClicked` (widgetDestroy window)
-
-        widgetShowAll window
---}
+        findOrSearch :: (Bool -> Bool -> Bool -> String -> String -> SearchHint -> GhfM Bool)
+            -> [ReplaceState -> Extractor ReplaceState] -> [String] -> Button -> Button -> IO()
+        findOrSearch f getExtsP fieldNames replB replAll =  do
+            mbReplaceState <- extractAndValidate replace getExtsP fieldNames
+            case mbReplaceState of
+                Nothing -> return ()
+                Just rs -> do
+                    let hint = if searchBackwards rs then Backward else Forward
+                    found <- runReaderT (f (matchEntire rs) (matchCase rs) False
+                                            (searchFor rs) (replaceWith rs) hint) ghfR
+                    widgetSetSensitivity replB found
+                    widgetSetSensitivity replAll found
+                    return ()
 
 
 

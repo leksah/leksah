@@ -14,8 +14,8 @@ ok          Close geht nicht richtig!
 !!        GTK-Errors:
 ok    -   Revert / Filechage detection
 ~~    -   Map.! exception
-!!    -   Replace ohne Glade
-!!    -   Replace ohne warp
+~    -   Replace ohne Glade
+~    -   Replace ohne warp
 ok    -   Find verbessern
 ok    -   Populate Statusbar, Toolbar
 
