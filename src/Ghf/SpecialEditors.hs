@@ -164,16 +164,6 @@ versionEditor para = do
                 if null l then
                     return Nothing
                     else return (Just (fst $head l))
-    let handler = (do
-        v <- ext
-        case v of
-            Just _ -> return ()
-            Nothing -> do
-                md <- messageDialogNew Nothing [] MessageWarning ButtonsClose
-                        $"Field " ++ (getParameter paraName para) ++ " has invalid value. Please correct"
-                dialogRun md
-                widgetDestroy md
-                return ())
     return (wid, pinj, pext, notiRef)
 
 dependencyEditor :: Editor Dependency

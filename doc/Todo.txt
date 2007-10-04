@@ -67,6 +67,8 @@ done 03  -   Delete Text on Find(Next?) in the Box for new searchessrc/Ghf/Sourc
 06  -   Closing cloeses all windows (exept of log) but then stops
         Sporadically
 07  -   (Windows only) Log waits every line for timeout before displaying
+08  -   Dialogs closing with X dont run mainQuit and next Dialog won't open
+
 
 
 

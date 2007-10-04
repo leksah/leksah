@@ -71,8 +71,6 @@ import Graphics.UI.Gtk
 import System.Glib.Signals
 import Control.Monad.Reader
 import Distribution.Package
-import Distribution.Setup
-import Distribution.Simple.LocalBuildInfo
 import System.FilePath
 import Data.IORef
 import Data.Map
@@ -175,13 +173,6 @@ data GhfPackage     =   GhfPackage {
 ,   sdistFlags      ::   [String]
 }
     deriving (Eq,Show)
-
-instance Eq ConfigFlags
-instance Show ConfigFlags
-
-instance Eq LocalBuildInfo
-instance Eq BuildFlags
-instance Show BuildFlags
 
 -- ---------------------------------------------------------------------
 -- Panes and pane layout

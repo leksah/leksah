@@ -78,7 +78,6 @@ buildSpecialKeys keymap actions = do
 --
 -- | Callback function for onKeyPress of the main window, so preprocess any key
 --
-
 handleSpecialKeystrokes :: Event -> GhfM Bool
 handleSpecialKeystrokes (Key _ _ _ mods _ _ _ keyVal name mbChar) = do
     bs <- getCandyState

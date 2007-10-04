@@ -107,35 +107,35 @@ packageNewOrEdit isNew mbPath = do
     case mbDirName of
         Nothing -> return ()
         Just dirName -> do
-                cfn <- lift $cabalFileName dirName
-                if (not isNew) && isNothing cfn
-                    then lift $do
-                        md <- messageDialogNew Nothing [] MessageWarning ButtonsClose
-                            $ "There is no unique .cabal file in this directory."
-                        dialogRun md
-                        widgetDestroy md
-                    else if isNew && isJust cfn
-                            then lift $do
-                                md <- messageDialogNew Nothing [] MessageWarning ButtonsClose
-                                    $ "There is already a .cabal file in this directory."
-                                dialogRun md
-                                widgetDestroy md
-                            else do
-                                modules <- lift $do
-                                    b1 <- doesFileExist (dirName </> "Setup.hs")
-                                    b2 <- doesFileExist (dirName </> "Setup.lhs")
-                                    if  not (b1 || b2)
-                                        then do
-                                            putStrLn "Setup.(l)hs does not exist. Writing Standard"
-                                            writeFile (dirName </> "Setup.lhs") standardSetup
-                                        else putStrLn "Setup.(l)hs already exist"
-                                    allModules dirName
-                                lift $putStrLn "after finding modules"
-                                package <- lift $if isNew
-                                    then return emptyPackageDescription
-                                    else readPackageDescription (dirName </> fromJust cfn)
-                                editPackage package dirName modules
-                return ()
+            cfn <- lift $cabalFileName dirName
+            if (not isNew) && isNothing cfn
+                then lift $do
+                    md <- messageDialogNew Nothing [] MessageWarning ButtonsClose
+                        $ "There is no unique .cabal file in this directory."
+                    dialogRun md
+                    widgetDestroy md
+                else if isNew && isJust cfn
+                        then lift $do
+                            md <- messageDialogNew Nothing [] MessageWarning ButtonsClose
+                                $ "There is already a .cabal file in this directory."
+                            dialogRun md
+                            widgetDestroy md
+                        else do
+                            modules <- lift $do
+                                b1 <- doesFileExist (dirName </> "Setup.hs")
+                                b2 <- doesFileExist (dirName </> "Setup.lhs")
+                                if  not (b1 || b2)
+                                    then do
+                                        putStrLn "Setup.(l)hs does not exist. Writing Standard"
+                                        writeFile (dirName </> "Setup.lhs") standardSetup
+                                    else putStrLn "Setup.(l)hs already exist"
+                                allModules dirName
+                            lift $putStrLn "after finding modules"
+                            package <- lift $if isNew
+                                then return emptyPackageDescription
+                                else readPackageDescription (dirName </> fromJust cfn)
+                            editPackage package dirName modules
+            return ()
 
 type PDescr = [(String,[FieldDescriptionE PackageDescription])]
 

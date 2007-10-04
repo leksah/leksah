@@ -227,14 +227,12 @@ editFlags' flags flagsDesc ghfR  = do
                 widgetDestroy dialog
                 mainQuit)
     cancel `onClicked` (do
-        widgetDestroy dialog
-        mainQuit)
+        widgetDestroy dialog)
     boxPackStart vb nb PackGrow 7
     boxPackEnd vb bb PackNatural 7
     containerAdd dialog vb
     widgetSetSizeRequest dialog 500 700
     widgetShowAll dialog
-    mainGUI
     return ()
 
 
