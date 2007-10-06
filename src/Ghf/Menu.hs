@@ -39,6 +39,8 @@ import Ghf.PackageEditor
 import Ghf.Package
 import Ghf.Log
 import Ghf.SaveSession
+import Ghf.GhcAPI
+
 
 version = "0.1"
 
@@ -178,6 +180,7 @@ actions =
 
     ,AD "Help" "_Help" Nothing Nothing (return ()) [] False
     ,AD "HelpDebug" "Debug" (Just "<Ctrl>d") Nothing helpDebug [] False
+    ,AD "HelpDebug2" "Debug2" (Just "<Ctrl>d") Nothing dbgInstalledPackageInfo [] False
     ,AD "HelpAbout" "About" Nothing (Just "gtk-about") aboutDialog [] False]
 
 --
@@ -269,6 +272,7 @@ menuDescription = "\n\
      \</menu>\n\
     \<menu name=\"_Help\" action=\"Help\">\n\
        \<menuitem name=\"_Debug\" action=\"HelpDebug\" />\n\
+       \<menuitem name=\"Debug2\" action=\"HelpDebug2\" />\n\
        \<menuitem name=\"_About\" action=\"HelpAbout\" />\n\
      \</menu>\n\
    \</menubar>\n\
@@ -312,7 +316,7 @@ makeMenu uiManager actions menuDescription = do
     where
         actm ghfR ag (AD name label tooltip stockId ghfAction accs isToggle) = do
             let (acc,accString) = if null accs
-                                    then (Nothing,"=" ++ name)
+                                    then (Just "","=" ++ name)
                                     else (Just (head accs),(head accs) ++ "=" ++ name)
             if isToggle
                 then do

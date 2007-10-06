@@ -8,18 +8,18 @@
 <ctrl>n                 ->          FileNew         "Opens a new empty buffer"
 <ctrl>x/<ctrl>f         ->          FileOpen        "Opens an existing file"
 <ctrl>x/<ctrl>s         ->          FileSave        "Saves the current buffer"
-<ctrl>x/<ctrl>w         ->          FileSaveAs      "Saves the current buffer as a new file" 
+<ctrl>x/<ctrl>w         ->          FileSaveAs      "Saves the current buffer as a new file"
 <ctrl>x/k               ->          FileClose       "Closes the current buffer"
-<ctrl>x/<ctrl>c         ->          Quit            "Quits this program"
+<ctrl>x/<ctrl>c         ->          Quit            "Quits kthis program"
 
 
 --Edit
 <ctrl>x/u               ->          EditUndo        "Undos the last user action"
---<ctrl>_                 ->          EditUndo        "Undos the last user action"
+--<ctrl><shift>_          ->          EditUndo        "Undos the last user action"
 <ctrl>x/r               ->          EditRedo        "Redos the last user action"
---Just "<ctrl>x"     ->          EditCut 
---Just "<ctrl>c"     ->          EditCopy 
---Just "<ctrl>v"     ->          EditPaste 
+<ctrl>w                 ->          EditCut
+<alt>w                  ->          EditCopy
+<ctrl>y                 ->          EditPaste
                         ->          EditDelete
 <ctrl>a                 ->          EditSelectAll   "Select the whole text in the current buffer"
 
@@ -27,7 +27,7 @@
 F3                      ->          EditFindNext    "Find the next occurence of the text string"
 --<ctrl>k                 ->          EditFind        "Search for a text string"
 
-<ctrl>r                 ->          EditFindPrevious 
+<ctrl>r                 ->          EditFindPrevious
                                                     "Find the previous occurence of the text string"
 <alt>r                  ->          EditReplace
 
@@ -39,12 +39,12 @@ F3                      ->          EditFindNext    "Find the next occurence of 
 <alt>Left               ->          EditShiftLeft   "Shift Left"
 
 --View
-<Ctrl><alt><shift>Left  ->          MoveLeft        "Move the current pane left"
-<Ctrl><alt><shift>Right ->          ViewMoveRight   "Move the current pane right"
-<Ctrl><alt><shift>Up    ->          ViewMoveUp      "Move the current pane up"
-<Ctrl><alt><shift>Down  ->          ViewMoveDown    "Move the current pane down"
+<alt><shift>Left        ->          ViewMoveLeft        "Move the current pane left"
+<alt><shift>Right       ->          ViewMoveRight   "Move the current pane right"
+<alt><shift>Up          ->          ViewMoveUp      "Move the current pane up"
+<alt><shift>Down        ->          ViewMoveDown    "Move the current pane down"
 
-<Ctrl>2                 ->          ViewSplitHorizontal 
+<Ctrl>2                 ->          ViewSplitHorizontal
                                                     "Split the current pane in horizontal direction"
 <Ctrl>3                 ->          ViewSplitVertical
                                                     "Split the current pane in vertical direction"
@@ -57,3 +57,10 @@ F3                      ->          EditFindNext    "Find the next occurence of 
                         ->          ViewSwitchTabs  "Switches if tabs for the current notebook are visible"
                         ->          HelpDebug
                         ->          HelpAbout
+
+<ctrl>b                 ->          BuildPackage
+
+<ctrl><shift>r          ->          RunPackage
+
+<ctrl>j                 ->          NextError
+<ctrl><shift>j          ->          PreviousError

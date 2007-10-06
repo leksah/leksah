@@ -62,6 +62,7 @@ module Ghf.SourceEditor (
 import Graphics.UI.Gtk hiding (afterToggleOverwrite)
 import Graphics.UI.Gtk.SourceView
 import Graphics.UI.Gtk.Multiline.TextView
+import Graphics.UI.Gtk.General.Clipboard
 import Control.Monad.Reader
 import Data.IORef
 import System.IO
@@ -239,31 +240,34 @@ checkModTime buf = do
     case fileName buf of
         Nothing -> return ()
         Just fn -> do
-            nmt <- lift $getModificationTime fn
-            case modTime buf of
-                Nothing ->  error $"checkModTime: time not set " ++ show (fileName buf)
-                Just mt -> do
-                    message $"checkModTime " ++ name ++ " " ++ show mt ++ " " ++ show nmt
-                    if nmt /= mt
-                        then do
-                            md <- lift $messageDialogNew
-                                    Nothing []
-                                    MessageQuestion
-                                    ButtonsYesNo
-                                    ("File has changed on disk " ++ name ++ " Revert?")
-                            resp <- lift $dialogRun md
-                            case resp of
-                                ResponseYes ->  do
-                                    revert buf
-                                    lift $widgetHide md
-                                ResponseNo  ->  do
-                                    let newPanes = Map.adjust (\b -> case b of
-                                                                        BufPane  b -> BufPane (b{modTime = (Just nmt)})
-                                                                        it         -> it) name panes
-                                    modifyGhf_ (\ghf -> return (ghf{panes = newPanes}))
-                                    lift $widgetHide md
-                        else return ()
-
+            exists <- lift $doesFileExist fn
+            if exists
+                then do
+                    nmt <- lift $getModificationTime fn
+                    case modTime buf of
+                        Nothing ->  error $"checkModTime: time not set " ++ show (fileName buf)
+                        Just mt -> do
+                            message $"checkModTime " ++ name ++ " " ++ show mt ++ " " ++ show nmt
+                            if nmt /= mt
+                                then do
+                                    md <- lift $messageDialogNew
+                                            Nothing []
+                                            MessageQuestion
+                                            ButtonsYesNo
+                                            ("File has changed on disk " ++ name ++ " Revert?")
+                                    resp <- lift $dialogRun md
+                                    case resp of
+                                        ResponseYes ->  do
+                                            revert buf
+                                            lift $widgetHide md
+                                        ResponseNo  ->  do
+                                            let newPanes = Map.adjust (\b -> case b of
+                                                                                BufPane  b -> BufPane (b{modTime = (Just nmt)})
+                                                                                it         -> it) name panes
+                                            modifyGhf_ (\ghf -> return (ghf{panes = newPanes}))
+                                            lift $widgetHide md
+                                else return ()
+                else return ()
 
 setModTime :: GhfBuffer -> GhfAction
 setModTime buf = do
@@ -582,14 +586,22 @@ editSelectAll = inBufContext () $ \_ gtkbuf _ _ -> do
     end   <- textBufferGetEndIter gtkbuf
     textBufferSelectRange gtkbuf start end
 
---Unfortunately the current impossible ones
 editCut :: GhfAction
-editCut = return ()
-editCopy :: GhfAction
-editCopy = return ()
-editPaste :: GhfAction
-editPaste = return ()
+editCut = inBufContext () $ \_ gtkbuf _ _ -> do
+  clip <- clipboardGet ClipClipboard
+  textBufferCutClipboard gtkbuf clip True
 
+editCopy :: GhfAction
+editCopy = inBufContext () $ \_ gtkbuf _ _ -> do
+  clip <- clipboardGet ClipClipboard
+  textBufferCopyClipboard gtkbuf clip
+
+editPaste :: GhfAction
+editPaste = inBufContext () $ \_ gtkbuf _ _ -> do
+  mark <- textBufferGetInsert gtkbuf
+  iter <- textBufferGetIterAtMark gtkbuf mark
+  clip <- clipboardGet ClipClipboard
+  textBufferPasteClipboard gtkbuf clip iter True
 
 red = Color 640000 10000 10000
 white = Color 64000 64000 64000
@@ -961,6 +973,10 @@ replaceDialog' replace replaceDesc ghfR  = do
     close `onClicked` do
         widgetDestroy dialog
         mainQuit
+    dialog `onDelete` (\_ -> do
+        widgetDestroy dialog
+        mainQuit
+        return True)
     boxPackEnd vb bb PackNatural 7
     containerAdd dialog vb
     widgetShowAll dialog

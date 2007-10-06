@@ -593,10 +593,9 @@ staticSelectionEditor list parameters = do
             core <- readIORef coreRef
             case core of
                 Nothing  -> do
-                    combo   <-  New.comboBoxNewText
+                    (combo,_)   <-  New.comboBoxNewText show list
                     activateEvent (castToWidget combo) FocusOut notifier
                     New.comboBoxSetActive combo 1
-                    mapM_ (\v -> New.comboBoxAppendText combo (show v)) list
                     containerAdd widget combo
                     let ind = elemIndex obj list
                     case ind of
@@ -614,8 +613,8 @@ staticSelectionEditor list parameters = do
                 Just combo -> do
                     ind <- New.comboBoxGetActive combo
                     case ind of
-                        Just i -> return (Just (list !! i))
-                        Nothing -> return Nothing)
+                        i | i >= 0  -> return (Just (list !! i))
+                        otherwise   -> return Nothing)
         (mkNotifier notifier)
         parameters
 
@@ -1146,7 +1145,9 @@ multisetEditor (ColumnDescr showHeaders columnsDD) (singleEditor, sParams) param
                     addButton `onClicked` do
                         mbv <- extS
                         case mbv of
-                            Just v -> New.listStoreAppend listStore v
+                            Just v -> do
+                              New.listStoreAppend listStore v
+                              return ()
                             Nothing -> return ()
                     removeButton `onClicked` do
                         mbi <- New.treeSelectionGetSelected sel

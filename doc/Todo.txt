@@ -32,7 +32,7 @@ ok      change types of paneMap from
 
 Open problems:
 Editor
-    -   Clipboard binding (gtk)
+ok  -   Clipboard binding (gtk)
 ()  -   Remove Error mark
 
 Version 0.2 ++
@@ -67,8 +67,9 @@ done 03  -   Delete Text on Find(Next?) in the Box for new searchessrc/Ghf/Sourc
 06  -   Closing cloeses all windows (exept of log) but then stops
         Sporadically
 07  -   (Windows only) Log waits every line for timeout before displaying
-08  -   Dialogs closing with X dont run mainQuit and next Dialog won't open
-
+done 08  -   Dialogs closing with X dont run mainQuit and next Dialog won't open
+09  -   Error message positioning
+10  -   Changed red color not preserved when moving panes
 
 
 

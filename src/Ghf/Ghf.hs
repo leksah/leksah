@@ -60,7 +60,7 @@ main = do
     uiManager   <-  uiManagerNew
     prefsPath   <-  getConfigFilePathForLoad "Default.prefs"
     prefs       <-  readPrefs prefsPath
-    keysPath    <-  getConfigFilePathForLoad "Default.keymap"
+    keysPath    <-  getConfigFilePathForLoad $keymapName prefs ++ ".keymap"
     keyMap      <-  parseKeymap keysPath
     let accelActions = setKeymap actions keyMap
     specialKeys <-  buildSpecialKeys keyMap accelActions

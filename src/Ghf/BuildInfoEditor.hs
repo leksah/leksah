@@ -262,6 +262,10 @@ editBuildInfo' buildInfo contextStr buildInfoD = do
         widgetDestroy dialog
         mainQuit
         return ())
+    dialog `onDelete` (\e -> do
+        widgetDestroy dialog
+        mainQuit
+        return True)
     boxPackStart vb nb PackGrow 7
     boxPackEnd vb bb PackNatural 7
     containerAdd dialog vb

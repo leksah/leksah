@@ -11,7 +11,7 @@ Use standard line ends even on windows:
 Source candy:  Default
      --Empty for do not use or the name of a candy file in a config dir
 Name of the keymap:
-               Default
+               Emacs
      --The name of a keymap file in a config dir
 LogView Font:  "FreeSerif 11"
 Window default size:

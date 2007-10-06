@@ -333,7 +333,8 @@ editPrefs' prefs prefsDesc ghfR  = do
                 fp <- getConfigFilePathForSave "Default.prefs"
                 writePrefs fp newPrefs
                 runReaderT (modifyGhf_ (\ghf -> return (ghf{prefs = newPrefs}))) ghfR
-                widgetDestroy dialog)
+                widgetDestroy dialog
+                mainQuit)
     apply `onClicked` (do
         mbNewPrefs <- extractAndValidate prefs getExts fieldNames
         case mbNewPrefs of
@@ -350,12 +351,18 @@ editPrefs' prefs prefsDesc ghfR  = do
     cancel `onClicked` (do
         lastAppliedPrefs <- readIORef lastAppliedPrefsRef
         mapM_ (\ (FD _ _ _ _ applyF) -> runReaderT (applyF prefs lastAppliedPrefs) ghfR) flatPrefsDesc
-        widgetDestroy dialog)
+        widgetDestroy dialog
+        mainQuit)
+    dialog `onDelete` (\_ -> do
+        widgetDestroy dialog
+        mainQuit
+        return True)
     boxPackStart vb nb PackGrow 7
     boxPackEnd vb bb PackNatural 7
     containerAdd dialog vb
     widgetSetSizeRequest dialog 500 700
     widgetShowAll dialog
+    mainGUI
     return ()
 
 
