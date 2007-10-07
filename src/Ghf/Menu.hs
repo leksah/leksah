@@ -39,7 +39,7 @@ import Ghf.PackageEditor
 import Ghf.Package
 import Ghf.Log
 import Ghf.SaveSession
-import Ghf.GhcAPI
+--import Ghf.GhcAPI
 
 
 version = "0.1"
@@ -108,8 +108,15 @@ actions =
     ,AD "Package" "Package" Nothing Nothing (return ()) [] False
     ,AD "NewPackage" "_New Package" Nothing Nothing
         packageNew [] False
+    ,AD "OpenPackage" "_Open Package" Nothing Nothing
+        packageOpen [] False
     ,AD "EditPackage" "_Edit Package" Nothing Nothing
-        (packageEdit Nothing) [] False
+        packageEdit [] False
+    ,AD "ClosePackage" "_Close Package" Nothing Nothing
+        deactivatePackage [] False
+
+    ,AD "PackageFlags" "Edit Flags" Nothing Nothing
+        packageFlags [] False
     ,AD "ConfigPackage" "_Configure Package" Nothing Nothing
         packageConfig [] False
     ,AD "BuildPackage" "_Build Package" Nothing Nothing
@@ -126,10 +133,6 @@ actions =
         nextError [] False
     ,AD "PreviousError" "_Previous Error" Nothing Nothing
         previousError [] False
-    ,AD "ClearLog" "_Clear Log" Nothing Nothing
-        clearLog [] False
-    ,AD "PackageFlags" "Edit Flags" Nothing Nothing
-        packageFlags [] False
 
     ,AD "InstallPackage" "_Install Package" Nothing Nothing
         packageInstall [] False
@@ -173,6 +176,10 @@ actions =
     ,AD "ViewSwitchTabs" "Tabs On/Off" Nothing Nothing
         viewSwitchTabs [] False
 
+    ,AD "ClearLog" "_Clear Log" Nothing Nothing
+        clearLog [] False
+
+
     ,AD "Preferences" "_Preferences" Nothing Nothing (return ()) [] False
     ,AD "PrefsEdit" "_Edit Prefs" Nothing Nothing
         editPrefs [] False
@@ -180,7 +187,7 @@ actions =
 
     ,AD "Help" "_Help" Nothing Nothing (return ()) [] False
     ,AD "HelpDebug" "Debug" (Just "<Ctrl>d") Nothing helpDebug [] False
-    ,AD "HelpDebug2" "Debug2" (Just "<Ctrl>d") Nothing dbgInstalledPackageInfo [] False
+--    ,AD "HelpDebug2" "Debug2" (Just "<Ctrl>d") Nothing dbgInstalledPackageInfo [] False
     ,AD "HelpAbout" "About" Nothing (Just "gtk-about") aboutDialog [] False]
 
 --
@@ -229,9 +236,11 @@ menuDescription = "\n\
      \</menu>\n\
     \<menu name=\"_Package\" action=\"Package\">\n\
        \<menuitem name=\"_New Package\" action=\"NewPackage\" />\n\
+       \<menuitem name=\"_Open Package\" action=\"OpenPackage\" />\n\
        \<menuitem name=\"_Edit Package\" action=\"EditPackage\" />\n\
-       \<menuitem name=\"Edit _Flags\" action=\"PackageFlags\" />\n\
+       \<menuitem name=\"_Close Package\" action=\"ClosePackage\" />\n\
        \<separator/>\n\
+       \<menuitem name=\"Edit _Flags\" action=\"PackageFlags\" />\n\
        \<menuitem name=\"_Configure Package\" action=\"ConfigPackage\" />\n\
        \<menuitem name=\"_Build Package\" action=\"BuildPackage\" />\n\
        \<menuitem name=\"_Run\" action=\"RunPackage\" />\n\
@@ -248,8 +257,6 @@ menuDescription = "\n\
        \<separator/>\n\
        \<menuitem name=\"_Build Documentation\" action=\"DocPackage\" />\n\
        \<menuitem name=\"Open Documentation\" action=\"OpenDocPackage\" />\n\
-       \<separator/>\n\
-       \<menuitem name=\"Clear Log\" action=\"ClearLog\" />\n\
      \</menu>\n\
     \<menu name=\"_View\" action=\"View\">\n\
        \<menuitem name=\"Move _Left\" action=\"ViewMoveLeft\" />\n\
@@ -266,6 +273,8 @@ menuDescription = "\n\
        \<menuitem name=\"Tabs _Up\" action=\"ViewTabsUp\" />\n\
        \<menuitem name=\"Tabs _Down\" action=\"ViewTabsDown\" />\n\
        \<menuitem name=\"Switch Tabs\" action=\"ViewSwitchTabs\" />\n\
+       \<separator/>\n\
+       \<menuitem name=\"Clear Log\" action=\"ClearLog\" />\n\
      \</menu>\n\
     \<menu name=\"_Preferences\" action=\"Preferences\">\n\
        \<menuitem name=\"Edit Preferences\" action=\"PrefsEdit\" />\n\

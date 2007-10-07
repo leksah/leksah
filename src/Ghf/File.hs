@@ -14,6 +14,7 @@ import Data.Maybe (catMaybes)
 import Control.Monad(filterM)
 import Distribution.PreProcess.Unlit
 import Debug.Trace
+import Control.Monad
 import Paths_ghf
 
 
@@ -38,7 +39,7 @@ getConfigFilePathForLoad fn = do
     if ex
         then return (cd </> fn)
         else do
-            dd <- getDataDir 
+            dd <- getDataDir
             return (dd </> "data" </> fn)
 --            ex <- doesFileExist (dd </> fn)
 --            if ex

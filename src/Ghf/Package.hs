@@ -15,7 +15,8 @@
 
 
 module Ghf.Package (
-    packageConfig
+    packageOpen
+,   packageConfig
 ,   packageBuild
 ,   packageDoc
 ,   packageClean
@@ -60,6 +61,14 @@ import Ghf.SourceEditor
 import Ghf.PackageFlags
 import Ghf.ViewFrame
 
+packageOpen :: GhfAction
+packageOpen = do
+    active <- readGhf activePack
+    case active of
+        Just p -> deactivatePackage
+        Nothing -> return ()
+    selectActivePackage
+    return ()
 
 getActivePackage :: GhfM (Maybe GhfPackage)
 getActivePackage = do

@@ -46,12 +46,6 @@ standardSetup = "#!/usr/bin/runhaskell \n\
 \> main :: IO ()\n\
 \> main = defaultMain\n\n"
 
-packageNew :: GhfAction
-packageNew = packageNewOrEdit True Nothing
-
-packageEdit :: Maybe FilePath -> GhfAction
-packageEdit = packageNewOrEdit False
-
 choosePackageDir :: Window -> IO (Maybe FilePath)
 choosePackageDir window = do
     dialog <- fileChooserDialogNew
@@ -100,42 +94,51 @@ choosePackageFile window = do
             widgetDestroy dialog
             return Nothing
 
-packageNewOrEdit :: Bool -> Maybe FilePath -> GhfAction
-packageNewOrEdit isNew mbPath = do
+packageEdit :: GhfAction
+packageEdit = do
+    window  <- readGhf window
+    mbFileName <- lift $choosePackageFile window
+    case mbFileName of
+        Nothing -> return ()
+        Just fileName -> do
+            let dirName = dropFileName fileName
+            modules <- lift $allModules dirName
+            package <- lift $readPackageDescription fileName
+            editPackage package dirName modules
+            return ()
+
+packageNew ::  GhfAction
+packageNew = do
     window  <- readGhf window
     mbDirName <- lift $choosePackageDir window
     case mbDirName of
         Nothing -> return ()
         Just dirName -> do
-            cfn <- lift $cabalFileName dirName
-            if (not isNew) && isNothing cfn
-                then lift $do
-                    md <- messageDialogNew Nothing [] MessageWarning ButtonsClose
-                        $ "There is no unique .cabal file in this directory."
-                    dialogRun md
-                    widgetDestroy md
-                else if isNew && isJust cfn
-                        then lift $do
-                            md <- messageDialogNew Nothing [] MessageWarning ButtonsClose
-                                $ "There is already a .cabal file in this directory."
-                            dialogRun md
-                            widgetDestroy md
-                        else do
-                            modules <- lift $do
-                                b1 <- doesFileExist (dirName </> "Setup.hs")
-                                b2 <- doesFileExist (dirName </> "Setup.lhs")
-                                if  not (b1 || b2)
-                                    then do
-                                        putStrLn "Setup.(l)hs does not exist. Writing Standard"
-                                        writeFile (dirName </> "Setup.lhs") standardSetup
-                                    else putStrLn "Setup.(l)hs already exist"
-                                allModules dirName
-                            lift $putStrLn "after finding modules"
-                            package <- lift $if isNew
-                                then return emptyPackageDescription
-                                else readPackageDescription (dirName </> fromJust cfn)
-                            editPackage package dirName modules
-            return ()
+            cfn <-  lift $cabalFileName dirName
+            continue <- do
+                if isJust cfn
+                    then lift $do
+                        md <- messageDialogNew Nothing [] MessageQuestion ButtonsYesNo
+                                    $ "There is already a .cabal file in this directory."
+                                    ++  " Continue anyway?"
+                        rid <- dialogRun md
+                        widgetDestroy md
+                        case rid of
+                            ResponseYes ->  return True
+                            otherwise   ->  return False
+                    else return False
+            when continue $do
+                    modules <- lift $do
+                        b1 <- doesFileExist (dirName </> "Setup.hs")
+                        b2 <- doesFileExist (dirName </> "Setup.lhs")
+                        if  not (b1 || b2)
+                            then do
+                                putStrLn "Setup.(l)hs does not exist. Writing Standard"
+                                writeFile (dirName </> "Setup.lhs") standardSetup
+                            else message "Setup.(l)hs already exist"
+                        allModules dirName
+                    editPackage emptyPackageDescription dirName modules
+                    return ()
 
 type PDescr = [(String,[FieldDescriptionE PackageDescription])]
 
