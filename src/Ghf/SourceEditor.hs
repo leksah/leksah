@@ -62,7 +62,7 @@ module Ghf.SourceEditor (
 import Graphics.UI.Gtk hiding (afterToggleOverwrite)
 import Graphics.UI.Gtk.SourceView
 import Graphics.UI.Gtk.Multiline.TextView
-import Graphics.UI.Gtk.General.Clipboard
+--import Graphics.UI.Gtk.General.Clipboard
 import Control.Monad.Reader
 import Data.IORef
 import System.IO
@@ -609,22 +609,30 @@ editSelectAll = inBufContext () $ \_ gtkbuf _ _ -> do
     textBufferSelectRange gtkbuf start end
 
 editCut :: GhfAction
+editCut = return ()
+{--
 editCut = inBufContext () $ \_ gtkbuf _ _ -> do
   clip <- clipboardGet ClipClipboard
   textBufferCutClipboard gtkbuf clip True
-
+--}
 editCopy :: GhfAction
+editCopy = return ()
+{--
 editCopy = inBufContext () $ \_ gtkbuf _ _ -> do
   clip <- clipboardGet ClipClipboard
   textBufferCopyClipboard gtkbuf clip
+--}
 
 editPaste :: GhfAction
+editPaste = return ()
+{--
 editPaste = inBufContext () $ \_ gtkbuf _ _ -> do
   mark <- textBufferGetInsert gtkbuf
   iter <- textBufferGetIterAtMark gtkbuf mark
   clip <- clipboardGet ClipClipboard
   textBufferPasteClipboard gtkbuf clip iter True
-
+--}
+  
 red = Color 640000 10000 10000
 white = Color 64000 64000 64000
 black = Color 0 0 0

@@ -593,10 +593,11 @@ staticSelectionEditor list parameters = do
             core <- readIORef coreRef
             case core of
                 Nothing  -> do
-                    (combo,_)   <-  New.comboBoxNewText show list
+                    combo   <-  New.comboBoxNewText
                     activateEvent (castToWidget combo) FocusOut notifier
                     New.comboBoxSetActive combo 1
                     containerAdd widget combo
+                    mapM_ (\t -> New.comboBoxAppendText combo (show t)) list
                     let ind = elemIndex obj list
                     case ind of
                         Just i -> New.comboBoxSetActive combo i
@@ -611,9 +612,9 @@ staticSelectionEditor list parameters = do
             case core of
                 Nothing -> return Nothing
                 Just combo -> do
-                    ind <- New.comboBoxGetActive combo
-                    case ind of
-                        i | i >= 0  -> return (Just (list !! i))
+                    mbInd <- New.comboBoxGetActive combo
+                    case mbInd of
+                        Just i  -> return (Just (list !! i))
                         otherwise   -> return Nothing)
         (mkNotifier notifier)
         parameters
