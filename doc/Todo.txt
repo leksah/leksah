@@ -72,6 +72,20 @@ done 06  -   Closing closes all windows (exept of log) but then stops Sporadical
 done 08  -   Dialogs closing with X dont run mainQuit and next Dialog won't open
 09  -   Error message positioning
 10  -   Changed red color not preserved when moving panes
+11  -   Crashes when error is at the end of the file
+
+
+----------------------
+Collector
+.hi
+- Instances
+- Imported ...
+
+- Using Type var bindings in data, type and class
+- Functional dependencies in class
+- Strictness in data
+- Re from classOp to class
+- support for GADTS
 
 
 

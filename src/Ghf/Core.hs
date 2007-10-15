@@ -204,7 +204,7 @@ data PaneDirection  =   TopP | BottomP | LeftP | RightP
 type PanePath       =   [PaneDirection]
 
 --
--- | Logic description of a window layout
+-- | Description of a window layout
 --
 data PaneLayout =       HorizontalP PaneLayout PaneLayout Int
                     |   VerticalP PaneLayout PaneLayout Int
