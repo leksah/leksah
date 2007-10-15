@@ -7,7 +7,7 @@ copyright: 2007 Juergen Nicklisch-Franken
 maintainer: Juergen Nicklisch-Franken
 build-depends: base >=2.1.1, filepath >=1.0, gtk >=0.9.12,
                sourceview >=0.9.12, Cabal >=1.1.6.2, parsec >=2.0, mtl >=1.0.1,
-               glib >=0.9.12, ghc
+               glib >=0.9.12, ghc -any
 stability: provisional
 homepage:
 package-url:
@@ -23,7 +23,7 @@ extra-source-files: Setup.lhs
 extra-tmp-files:
 
 executable: ghf
-main-is: Ghf/Ghf.hs
+main-is: Ghf\Ghf.hs
 buildable: True
 cc-options:
 ld-options:
@@ -41,6 +41,27 @@ other-modules: Ghf.BuildInfoEditor Ghf.Core Ghf.File Ghf.Keymap
                Ghf.Preferences Ghf.PrinterParser Ghf.PropertyEditor
                Ghf.SaveSession Ghf.SourceCandy Ghf.SourceEditor Ghf.SpecialEditors
                Ghf.ViewFrame
+ghc-prof-options:
+ghc-options:
+hugs-options:
+nhc-options:
+jhc-options:
+
+executable: ghf-collector
+main-is: Ghf\Collector.hs
+buildable: True
+cc-options:
+ld-options:
+frameworks:
+c-sources:
+extensions:
+extra-libraries:
+extra-lib-dirs:
+includes:
+install-includes:
+include-dirs:
+hs-source-dirs: src
+other-modules: Ghf.Core Ghf.Extractor
 ghc-prof-options:
 ghc-options:
 hugs-options:

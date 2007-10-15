@@ -60,6 +60,17 @@ module Ghf.Core (
 
 ,   ErrorSpec(..)
 
+,   PackageDescr(..)
+,   ModuleDescr(..)
+,   IdentifierDescr(..)
+,   Symbol
+,   ClassId
+,   DataId
+,   TypeInfo
+,   ModuleIdentifier
+,   IdType(..)
+,   SymbolTable
+
 -- * debugging
 ,   helpDebug
 ,   message
@@ -73,9 +84,12 @@ import Control.Monad.Reader
 import Distribution.Package
 import System.FilePath
 import Data.IORef
-import Data.Map
+import Data.Map (Map)
 import qualified Data.Map as Map
+import Data.Set(Set)
+import qualified Data.Set as Set
 import System.Time
+import GHC
 
 
 --import Debug.Trace
@@ -108,6 +122,8 @@ data Ghf        =   Ghf {
 ,   activePack  ::  Maybe GhfPackage
 ,   errors      ::  [ErrorSpec]
 ,   currentErr  ::  Maybe Int
+,   packWorld   ::  Maybe ([PackageDescr],SymbolTable)
+,   session     ::  Session                 -- ^ the bridge to ghc
 } deriving Show
 
 --
@@ -329,6 +345,47 @@ data ErrorSpec = ErrorSpec {
 }   deriving Show
 
 -- ---------------------------------------------------------------------
+--  | Information about the world, extraced from .hi and maybe source files
+--
+
+data PackageDescr   =   PackageDescr {
+    packageIdW      ::   PackageIdentifier
+,   exposedModulesD ::   [ModuleDescr]
+,   buildDependsW   ::   [PackageIdentifier]
+,   mbSourcePathP   ::   Maybe FilePath
+,   idDescriptions  ::   SymbolTable
+} deriving (Read, Show,Eq,Ord)
+
+data ModuleDescr    =   ModuleDescr {
+    moduleId        ::   ModuleIdentifier
+,   exportedNames   ::   Set Symbol              --unqualified
+,   packageIdM      ::   PackageIdentifier
+,   mbSourcePathM   ::   Maybe FilePath
+,   instances       ::   [(ClassId,DataId)]
+,   usages          ::   Map ModuleIdentifier (Set Symbol) -- imports
+} deriving (Read,Show,Eq,Ord)
+
+type SymbolTable    =   Map Symbol [IdentifierDescr]
+
+data IdentifierDescr =  IdentifierDescr {
+    identifierW     ::   Symbol
+,   identifierType  ::   IdType
+,   typeInfo        ::   TypeInfo
+,   moduleIdI       ::   [ModuleIdentifier]
+,   packageIdI      ::   PackageIdentifier
+} deriving (Read, Show,Eq,Ord)
+
+data IdType = TypeFunction | TypeData | TypeNewtype | TypeSyn | TypeAbstractData |
+                TypeConstructor | TypeField | TypeClass | TypeClassOp | TypeForeign
+  deriving (Read, Show, Eq, Ord)
+
+type Symbol             =   String  -- Qualified or unqualified
+type ClassId        =   String  -- Qualified or unqualified
+type DataId         =   String  -- Qualified or unqualified
+type TypeInfo       =   String
+type ModuleIdentifier   =   String --always quelified
+
+-- ---------------------------------------------------------------------
 -- Debugging
 --
 
@@ -359,6 +416,9 @@ instance Show TextView
 
 instance Show ScrolledWindow
     where show _ = "ScrolledWindow *"
+
+instance Show Session
+    where show _ = "Session *"
 
 helpDebug :: GhfAction
 helpDebug = do

@@ -24,6 +24,7 @@ import qualified Data.Map as Map
 import System.Console.GetOpt
 import System.Environment
 import System.IO
+import GHC
 
 import Ghf.SaveSession
 import Ghf.Core
@@ -72,6 +73,10 @@ main = do
     win         <-  windowNew
     dataDir     <-  getDataDir
     windowSetIconFromFile win $dataDir </> "data" </> "ghf.gif"
+    libDir      <-  getSysLibDir
+    session     <-  newSession JustTypecheck (Just libDir)
+    dflags0     <-  getSessionDynFlags session
+    setSessionDynFlags session dflags0
     let ghf = Ghf
           {   window        =   win
           ,   uiManager     =   uiManager
@@ -86,7 +91,9 @@ main = do
           ,   packages      =   []
           ,   activePack    =   Nothing
           ,   errors        =   []
-          ,   currentErr    =   Nothing}
+          ,   currentErr    =   Nothing
+          ,   packWorld     =   Nothing
+          ,   session       =   session}
     ghfR <- newIORef ghf
     (acc,menus) <- runReaderT (makeMenu uiManager accelActions menuDescription) ghfR
     let mb = case menus !! 0 of

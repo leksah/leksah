@@ -3,10 +3,15 @@ module Ghf.File (
 ,   cabalFileName
 ,   getConfigFilePathForLoad
 ,   getConfigFilePathForSave
+,   getCollectorPath
+,   getSysLibDir
 ) where
 
 import System.FilePath
 import System.Directory
+import System.IO
+import Data.Char
+import System.Process
 import Text.ParserCombinators.Parsec hiding (Parser)
 import qualified Text.ParserCombinators.Parsec.Token as P
 import Text.ParserCombinators.Parsec.Language(haskell,haskellDef)
@@ -129,7 +134,26 @@ cabalFileName filePath = do
                         return Nothing
         else return Nothing
 
+getCollectorPath :: String -> IO FilePath
+getCollectorPath version = do
+    configDir <- getConfigDir
+    let filePath = configDir </> "ghc-" ++ version
+    exists <- doesDirectoryExist filePath
+    if exists
+        then return filePath
+        else do
+            createDirectory filePath
+            return filePath
 
+getSysLibDir :: IO FilePath
+getSysLibDir = do
+    (_, out, _, pid) <- runInteractiveProcess "ghc" ["--print-libdir"] Nothing Nothing
+    libDir <- hGetLine out
+    let libDir2 = if ord (last libDir) == 13
+                    then take (length libDir - 1) libDir
+                    else libDir
+    waitForProcess pid
+    return (normalise libDir2)
 
 
 

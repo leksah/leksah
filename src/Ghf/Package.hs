@@ -60,6 +60,7 @@ import Ghf.PackageEditor
 import Ghf.SourceEditor
 import Ghf.PackageFlags
 import Ghf.ViewFrame
+import Ghf.Provider
 
 packageOpen :: GhfAction
 packageOpen = do
@@ -79,6 +80,7 @@ getActivePackage = do
 
 activatePackage :: FilePath -> GhfM (Maybe GhfPackage)
 activatePackage filePath = do
+    session <- readGhf session
     let ppath = dropFileName filePath
     lift $setCurrentDirectory ppath
     packageD <- lift $readPackageDescription filePath
@@ -89,6 +91,10 @@ activatePackage filePath = do
             then lift $readFlags (ppath </> "Ghf.flags") packp
             else return packp)
     modifyGhf_ (\ghf -> return (ghf{activePack = (Just pack)}))
+    packageDescription <- lift $readPackageDescription filePath
+    let depends = buildDepends packageDescription
+    packages <- lift $ findFittingPackages session depends
+    loadInfosForPackages packages
     sb <- getSBActivePackage
     lift $statusbarPop sb 1
     lift $statusbarPush sb 1 (showPackageId $packageId pack)

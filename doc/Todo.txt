@@ -89,6 +89,12 @@ Collector
 
 
 
+---------------------------------------------------------------------------
+Collector:
+
+01  -   Problem with reexported declarations. Hidden modules are not correct.
+        For example time
+
 
 
 
