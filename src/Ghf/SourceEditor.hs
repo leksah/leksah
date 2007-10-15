@@ -82,6 +82,8 @@ import Ghf.Core
 import Ghf.ViewFrame
 import Ghf.SourceCandy
 import Ghf.PropertyEditor
+import Ghf.Log
+import Ghf.Provider
 
 isBuffer :: GhfPane -> Bool
 isBuffer (BufPane _) = True
@@ -214,8 +216,13 @@ makeBufferActive pn = do
             ghfR    <-  ask
             sbLC    <-  getStatusbarLC
             sbIO    <-  getStatusbarIO
+            infos   <-  readGhf packWorld
+            log <- getLog
+            let symbolTable = case infos of
+                                Just (_,st) -> st
+                                Nothing -> Map.empty
             let sv = sourceView buf
-            (id1,id2,id3,id4,id5) <- lift $do
+            (tl,tm,tr) <- lift $do
                 gtkBuf  <- textViewGetBuffer sv
                 bringPaneToFront (BufPane buf)
                 writeCursorPositionInStatusbar sv sbLC
@@ -225,10 +232,15 @@ makeBufferActive pn = do
                     (\_ _ _ -> writeCursorPositionInStatusbar sv sbLC)
                 id3 <- gtkBuf `afterEndUserAction`  writeCursorPositionInStatusbar sv sbLC
                 sv `widgetAddEvents` [ButtonReleaseMask]
-                id4 <- sv `onButtonRelease`(\ _ -> do writeCursorPositionInStatusbar sv sbLC; return False)
-                id5 <- sv `afterToggleOverwrite`  writeOverwriteInStatusbar sv sbIO
-                return (id1,id2,id3,id4,id5)
-            activatePane (BufPane buf) (BufConnections[id2,id4,id5][id1,id3][])
+                id4 <- sv `onButtonRelease` (\ _ -> do
+                                                writeCursorPositionInStatusbar sv sbLC
+                                                return False)
+                id5 <- sv `onButtonRelease` (\ _ -> do
+                                                showType sv symbolTable log
+                                                return False)
+                id6 <- sv `afterToggleOverwrite`  writeOverwriteInStatusbar sv sbIO
+                return ([id2,id4,id6],[id1,id3],[])
+            activatePane (BufPane buf) (BufConnections tl tm tr)
             checkModTime buf
         otherwise -> return ()
 
@@ -329,7 +341,17 @@ writeOverwriteInStatusbar :: SourceView -> Statusbar -> IO()
 writeOverwriteInStatusbar sv sb = do
     modi <- textViewGetOverwrite sv
     statusbarPop sb 1
-    statusbarPush sb 1 $if modi then "OVR" else "INS"
+    statusbarPush sb 1 $ if modi then "OVR" else "INS"
+    return ()
+
+
+showType :: SourceView -> SymbolTable -> GhfLog -> IO()
+showType sv st log = do
+    buf  <-  textViewGetBuffer sv
+    (l,r) <- textBufferGetSelectionBounds buf
+    symbol <- textBufferGetText buf l r True
+    let answer = typeDescription symbol st
+    appendLog log answer LogTag
     return ()
 
 markLabelAsChanged :: GhfAction

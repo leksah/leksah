@@ -16,6 +16,7 @@ module Ghf.Provider (
     loadInfosForPackages
 ,   clearInfosForPackages
 ,   findFittingPackages
+,   typeDescription
 ) where
 
 import Distribution.Package
@@ -81,6 +82,31 @@ findFittingPackages session dependencyList = do
         in  if length filtered > 1
                 then [maximumBy (\a b -> compare (pkgVersion a) (pkgVersion b)) filtered]
                 else filtered
+
+typeDescription :: String -> SymbolTable -> String
+typeDescription "" _ = "No selection"
+typeDescription str st =
+    case str `Map.lookup` st of
+        Nothing -> "No info found -- Testing for scoped symbols missing"
+        Just list -> concatMap generateText list
+    where
+        ttString TypeFunction   =   "identifies a function of type "
+        ttString TypeData       =   "identifies data definition"
+        ttString TypeNewtype    =   "identifies a Newtype"
+        ttString TypeSyn        =   "identifies a synonym type for"
+        ttString TypeAbstractData = "identifies an abstract data type"
+        ttString TypeConstructor =  "identifies a constructor of data type"
+        ttString TypeField      =   "identifies a field in a record with type"
+        ttString TypeClass      =   "identifies a class"
+        ttString TypeClassOp    =   "identifies a class operation with type "
+        ttString TypeForeign    =   "identifies something strange"
+        generateText (IdentifierDescr _ tt ti m p) =
+            str ++ " "  ++   (ttString tt) ++ "\n   "
+                ++   ti ++  "\n   "
+                ++   "exported by modules "  ++   show m ++ " in package " ++ show p ++ "\n   "
+
+
+
 
 
 

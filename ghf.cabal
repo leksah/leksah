@@ -16,14 +16,14 @@ description: An Integrated Development Environment (IDE) for Haskell GHC written
 category: Tools
 author: Juergen Nicklisch-Franken
 tested-with: GHC == 6.6.1
-data-files: data\Default.candy data\Default.keymap
-            data\Default.prefs data\Emacs.keymap data\ghf.gif
-            data\Current.session
+data-files: data/Default.candy data/Default.keymap
+            data/Default.prefs data/Emacs.keymap data/ghf.gif
+            data/Current.session
 extra-source-files: Setup.lhs
 extra-tmp-files:
 
 executable: ghf
-main-is: Ghf\Ghf.hs
+main-is: Ghf/Ghf.hs
 buildable: True
 cc-options:
 ld-options:
@@ -48,7 +48,7 @@ nhc-options:
 jhc-options:
 
 executable: ghf-collector
-main-is: Ghf\Collector.hs
+main-is: Ghf/Collector.hs
 buildable: True
 cc-options:
 ld-options:
