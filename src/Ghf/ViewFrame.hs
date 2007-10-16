@@ -17,12 +17,13 @@ module Ghf.ViewFrame (
 -- * Convenience methods for accesing Pane state
     getTopWidget
 ,   getPaneDescription
-,   getAddedIndex
-,   uniquePaneName
 ,   posTypeToPaneDirection
 ,   paneDirectionToPosType
 ,   paneFromUniqueName
 ,   guiPropertiesFromName
+,   getAddedIndex
+,   uniquePaneName
+
 
 -- * View Actions
 ,   viewMove
@@ -82,23 +83,6 @@ import Ghf.Core
 -- Convenience methods for panes
 --  currently ugly
 
--- | Get the top gtk widget for the pane
-getTopWidget :: GhfPane -> Widget
-getTopWidget (BufPane buf) = castToWidget(scrolledWindow buf)
-getTopWidget (LogPane buf) = castToWidget(scrolledWindowL buf)
-
--- | Get the top gtk widget for the pane
-getPaneDescription :: GhfPane -> String
-getPaneDescription (BufPane buf)  =
-    case fileName buf of
-        Just s  -> s
-        Nothing -> "?" ++ bufferName buf
-getPaneDescription (LogPane _)    = "*Log"
-
--- | Get the added index of the pane name
-getAddedIndex :: GhfPane -> Int
-getAddedIndex (BufPane buf) = addedIndex buf
-getAddedIndex _ = 0
 
 -- | Get the unique pane name, which may have an added index
 uniquePaneName :: GhfPane -> PaneName
@@ -107,6 +91,32 @@ uniquePaneName pane@(BufPane _) =
         then getPaneName pane
         else getPaneName pane ++ "(" ++ show (getAddedIndex pane) ++ ")"
 uniquePaneName other = getPaneName other
+
+-- | Pane name without added index - not exported
+getPaneName :: GhfPane -> String
+getPaneName (BufPane buf) = bufferName buf
+getPaneName (LogPane _) = "Log"
+getPaneName (InfoPane _) = "Info"
+
+-- | Get the added index of the pane name
+getAddedIndex :: GhfPane -> Int
+getAddedIndex (BufPane buf) = addedIndex buf
+getAddedIndex _ = 0
+
+-- | Get the top gtk widget for the pane
+getTopWidget :: GhfPane -> Widget
+getTopWidget (BufPane pane) = castToWidget (scrolledWindow pane)
+getTopWidget (LogPane pane) = castToWidget (scrolledWindowL pane)
+getTopWidget (InfoPane pane) = castToWidget (box pane)
+
+-- | Get the top gtk widget for the pane
+getPaneDescription :: GhfPane -> String
+getPaneDescription (BufPane buf)  =
+    case fileName buf of
+        Just s  -> s
+        Nothing -> "?" ++ bufferName buf
+getPaneDescription (LogPane _)    = "*Log"
+getPaneDescription (InfoPane _)   = "*Info"
 
 -- | Constructs a unique pane name, which is an index and a string
 figureOutPaneName :: Map String GhfPane -> String -> Int -> (Int,String)
@@ -119,11 +129,6 @@ figureOutPaneName bufs bn ind =
     in  if ind == 0
             then (0,bn)
             else (ind,bn ++ "(" ++ show ind ++ ")")
-
--- | Pane name without added index - not exported
-getPaneName :: GhfPane -> String
-getPaneName (BufPane buf) = bufferName buf
-getPaneName (LogPane _) = "Log"
 
 paneFromUniqueName :: PaneName -> GhfM GhfPane
 paneFromUniqueName pn = do

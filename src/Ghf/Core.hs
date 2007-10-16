@@ -43,6 +43,7 @@ module Ghf.Core (
 -- * The pane types
 ,   GhfBuffer(..)
 ,   GhfLog(..)
+,   GhfInfo(..)
 
 -- * Other state structures
 ,   ActionDescr(..)
@@ -199,7 +200,11 @@ data GhfPackage     =   GhfPackage {
 --
 data GhfPane        =   BufPane GhfBuffer
                     |   LogPane GhfLog
+                    |   InfoPane GhfInfo
     deriving (Eq,Show)
+
+
+
 
 --
 -- | The direction of a split
@@ -283,6 +288,23 @@ instance Ord GhfLog
 
 instance Show GhfLog
     where show _ = "GhfLog *"
+
+--
+-- | An info pane description
+--
+data GhfInfo  =   GhfInfo {
+    box             ::   ButtonBox
+,   injectors       ::   [IdentifierDescr -> IO() ]
+}
+
+instance Eq GhfInfo
+    where (== ) a b = True
+
+instance Ord GhfInfo
+    where (<=) a b = True
+
+instance Show GhfInfo
+    where show _ = "GhfInfo *"
 
 -- ---------------------------------------------------------------------
 -- Other data structures which are used in the state
@@ -375,8 +397,8 @@ data IdentifierDescr =  IdentifierDescr {
 ,   packageIdI      ::   PackageIdentifier
 } deriving (Read, Show,Eq,Ord)
 
-data IdType = TypeFunction | TypeData | TypeNewtype | TypeSyn | TypeAbstractData |
-                TypeConstructor | TypeField | TypeClass | TypeClassOp | TypeForeign
+data IdType = Function | Data | Newtype | Synonym | AbstractData |
+                Constructor | Field | Class | ClassOp | Foreign
   deriving (Read, Show, Eq, Ord)
 
 type Symbol             =   String  -- Qualified or unqualified

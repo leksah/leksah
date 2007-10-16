@@ -84,22 +84,22 @@ findFittingPackages session dependencyList = do
                 else filtered
 
 typeDescription :: String -> SymbolTable -> String
-typeDescription "" _ = "No selection"
+typeDescription "" _ = ""
 typeDescription str st =
     case str `Map.lookup` st of
         Nothing -> "No info found -- Testing for scoped symbols missing"
         Just list -> concatMap generateText list
     where
-        ttString TypeFunction   =   "identifies a function of type "
-        ttString TypeData       =   "identifies data definition"
-        ttString TypeNewtype    =   "identifies a Newtype"
-        ttString TypeSyn        =   "identifies a synonym type for"
-        ttString TypeAbstractData = "identifies an abstract data type"
-        ttString TypeConstructor =  "identifies a constructor of data type"
-        ttString TypeField      =   "identifies a field in a record with type"
-        ttString TypeClass      =   "identifies a class"
-        ttString TypeClassOp    =   "identifies a class operation with type "
-        ttString TypeForeign    =   "identifies something strange"
+        ttString Function   =   "identifies a function of type "
+        ttString Data       =   "identifies data definition"
+        ttString Newtype    =   "identifies a Newtype"
+        ttString Synonym    =   "identifies a synonym type for"
+        ttString AbstractData = "identifies an abstract data type"
+        ttString Constructor =  "identifies a constructor of data type"
+        ttString Field      =   "identifies a field in a record with type"
+        ttString Class      =   "identifies a class"
+        ttString ClassOp    =   "identifies a class operation with type "
+        ttString Foreign    =   "identifies something strange"
         generateText (IdentifierDescr _ tt ti m p) =
             str ++ " "  ++   (ttString tt) ++ "\n   "
                 ++   ti ++  "\n   "

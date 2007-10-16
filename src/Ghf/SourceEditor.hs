@@ -84,6 +84,7 @@ import Ghf.SourceCandy
 import Ghf.PropertyEditor
 import Ghf.Log
 import Ghf.Provider
+import Ghf.TypeInfo
 
 isBuffer :: GhfPane -> Bool
 isBuffer (BufPane _) = True
@@ -235,7 +236,7 @@ makeBufferActive pn = do
                 id4 <- sv `onButtonRelease` (\ _ -> do
                                                 writeCursorPositionInStatusbar sv sbLC
                                                 return False)
-                id5 <- sv `onButtonRelease` (\ _ -> do
+                id5 <- sv `onButtonRelease` (\ e -> do
                                                 showType sv symbolTable log
                                                 return False)
                 id6 <- sv `afterToggleOverwrite`  writeOverwriteInStatusbar sv sbIO
@@ -632,7 +633,7 @@ editPaste = inBufContext () $ \_ gtkbuf _ _ -> do
   clip <- clipboardGet ClipClipboard
   textBufferPasteClipboard gtkbuf clip iter True
 --}
-  
+
 red = Color 640000 10000 10000
 white = Color 64000 64000 64000
 black = Color 0 0 0

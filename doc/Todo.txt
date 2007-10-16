@@ -92,8 +92,24 @@ Collector
 ---------------------------------------------------------------------------
 Collector:
 
+
+
 01  -   Problem with reexported declarations. Hidden modules are not correct.
         For example time
+
+Current work plan
+
+- Optimize storing and reading (binary, byteString)
+- Scanning non installed packages
+- Selecting the right from a multitude of possibilities
+- Many modules, just one package problem
+- New Pane for info
+- Administration of package infos and symbol tables
+- Implementing event concept from Thorsten
+- Scanning of source directories
+-
+
+
 
 
 

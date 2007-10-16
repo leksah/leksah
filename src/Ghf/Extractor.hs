@@ -133,7 +133,7 @@ extractIdentifierDescr (IfaceId ifName ifType ifIdInfo) modul package
        = [IdentifierDescr{
     identifierW      =   unpackFS $occNameFS ifName
 ,   typeInfo        =   showSDocUnqual $ppr ifType
-,   identifierType  =   TypeFunction
+,   identifierType  =   Function
 ,   moduleIdI       =   modul
 ,   packageIdI      =   package}]
 
@@ -142,9 +142,9 @@ extractIdentifierDescr (IfaceData ifName ifTyVars ifCtxt ifCons _ ifVrcs _) modu
     identifierW      =   unpackFS $occNameFS ifName
 ,   typeInfo        =   "" --showSDocUnqual $pprIfaceForAllPart ifTyVars ifCtxt empty
 ,   identifierType  =   case ifCons of
-                            IfDataTyCon _ -> TypeData
-                            IfNewTyCon _  -> TypeNewtype
-                            IfAbstractTyCon -> TypeAbstractData
+                            IfDataTyCon _ -> Data
+                            IfNewTyCon _  -> Newtype
+                            IfAbstractTyCon -> AbstractData
 ,   moduleIdI       =   modul
 ,   packageIdI      =   package} :
         concatMap (extractIdentifierDescrConst modul package (LocalTop ifName))
@@ -154,7 +154,7 @@ extractIdentifierDescr (IfaceSyn ifName ifTyVars ifVrcs ifSynRhs) modul package
         = [IdentifierDescr{
     identifierW     =   unpackFS $occNameFS ifName
 ,   typeInfo        =   showSDocUnqual $ppr ifSynRhs
-,   identifierType  =   TypeSyn
+,   identifierType  =   Synonym
 ,   moduleIdI       =   modul
 ,   packageIdI      =   package}]
 
@@ -162,7 +162,7 @@ extractIdentifierDescr (IfaceClass ifCtxt ifName ifTyVars ifFDs ifSigs ifRec ifV
         =  IdentifierDescr{
     identifierW     =   unpackFS $occNameFS ifName
 ,   typeInfo        =   "" --showSDocUnqual $pprIfaceForAllPart ifTyVars ifCtxt empty
-,   identifierType  =   TypeClass
+,   identifierType  =   Class
 ,   moduleIdI       =   modul
 ,   packageIdI      =   package} :
         map (extractIdentifierDescrClassOp modul package) ifSigs
@@ -171,7 +171,7 @@ extractIdentifierDescr (IfaceForeign ifName _) modul package
         = [IdentifierDescr{
     identifierW     =   unpackFS $occNameFS ifName
 ,   typeInfo        =   ""
-,   identifierType  =   TypeForeign
+,   identifierType  =   Foreign
 ,   moduleIdI       =   modul
 ,   packageIdI      =   package}]
 
@@ -183,7 +183,7 @@ extractIdentifierDescrConst modul package extName
     identifierW     =   unpackFS $occNameFS ifConOcc
 ,   typeInfo        =   showSDocUnqual $ppr
                             (foldr IfaceFunTy (IfaceTyConApp (IfaceTc extName)[]) ifConArgTys)
-,   identifierType  =   TypeConstructor
+,   identifierType  =   Constructor
 ,   moduleIdI       =   modul
 ,   packageIdI      =   package} : map (extractIdentifierDescrField modul package extName)
                                         (zip ifConFields ifConArgTys)
@@ -199,7 +199,7 @@ extractIdentifierDescrField modul package extName (fieldName, atype) =
                             $ occNameFS fieldName
 ,   typeInfo        =   showSDocUnqual
                             $ ppr (IfaceFunTy (IfaceTyConApp (IfaceTc extName)[]) atype)
-,   identifierType  =   TypeField
+,   identifierType  =   Field
 ,   moduleIdI       =   modul
 ,   packageIdI      =   package}
 
@@ -208,7 +208,7 @@ extractIdentifierDescrClassOp modul package (IfaceClassOp name _ atype) =
     IdentifierDescr{
     identifierW     =   unpackFS $ occNameFS name
 ,   typeInfo        =   showSDocUnqual $ ppr atype
-,   identifierType  =   TypeClassOp
+,   identifierType  =   ClassOp
 ,   moduleIdI       =   modul
 ,   packageIdI      =   package}
 
