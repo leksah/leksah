@@ -194,116 +194,116 @@ actions =
 -- | The menu description in XML Syntax as defined by GTK
 --
 menuDescription :: String
-menuDescription = "\n\
- \<ui>\n\
-   \<menubar>\n\
-     \<menu name=\"_File\" action=\"File\">\n\
-       \<menuitem name=\"_New\" action=\"FileNew\" />\n\
-       \<menuitem name=\"_Open\" action=\"FileOpen\" />\n\
-       \<menuitem name=\"_Revert\" action=\"FileRevert\" />\n\
-       \<separator/>\n\
-       \<menuitem name=\"_Save\" action=\"FileSave\" />\n\
-       \<menuitem name=\"Save_As\" action=\"FileSaveAs\" />\n\
-       \<separator/>\n\
-       \<menuitem name=\"_Close\" action=\"FileClose\" />\n\
-       \<menuitem name=\"Close All\" action=\"FileCloseAll\" />\n\
-      \<menuitem name=\"_Quit\" action=\"Quit\" />\n\
-     \</menu>\n\
-     \<menu name=\"_Edit\" action=\"Edit\">\n\
-       \<menuitem name=\"_Undo\" action=\"EditUndo\" />\n\
-       \<menuitem name=\"_Redo\" action=\"EditRedo\" />\n\
-       \<separator/>\n\
-       \<menuitem name=\"Cu_t\" action=\"EditCut\" />\n\
-       \<menuitem name=\"_Copy\" action=\"EditCopy\" />\n\
-       \<menuitem name=\"_Paste\" action=\"EditPaste\" />\n\
-       \<menuitem name=\"_Delete\" action=\"EditDelete\" />\n\
-       \<separator/>\n\
-       \<menuitem name=\"Select _All\" action=\"EditSelectAll\" />\n\
-       \<separator/>\n\
-       \<menuitem name=\"_Find\" action=\"EditFind\" />\n\
-       \<menuitem name=\"Find_Next\" action=\"EditFindNext\" />\n\
-       \<menuitem name=\"Find_Previous\" action=\"EditFindPrevious\" />\n\
-       \<menuitem name=\"_Goto Line\" action=\"EditGotoLine\" />\n\
-       \<separator/>\n\
-       \<menuitem name=\"Replace\" action=\"EditReplace\" />\n\
-       \<separator/>\n\
-       \<menuitem name=\"Comment\" action=\"EditComment\" />\n\
-       \<menuitem name=\"Uncomment\" action=\"EditUncomment\" />\n\
-       \<menuitem name=\"Shift Left\" action=\"EditShiftLeft\" />\n\
-       \<menuitem name=\"Shift Right\" action=\"EditShiftRight\" />\n\
-       \<separator/>\n\
-       \<menuitem name=\"Source Candy\" action=\"EditCandy\" />\n\
-     \</menu>\n\
-    \<menu name=\"_Package\" action=\"Package\">\n\
-       \<menuitem name=\"_New Package\" action=\"NewPackage\" />\n\
-       \<menuitem name=\"_Open Package\" action=\"OpenPackage\" />\n\
-       \<menuitem name=\"_Edit Package\" action=\"EditPackage\" />\n\
-       \<menuitem name=\"_Close Package\" action=\"ClosePackage\" />\n\
-       \<separator/>\n\
-       \<menuitem name=\"Edit _Flags\" action=\"PackageFlags\" />\n\
-       \<menuitem name=\"_Configure Package\" action=\"ConfigPackage\" />\n\
-       \<menuitem name=\"_Build Package\" action=\"BuildPackage\" />\n\
-       \<menuitem name=\"_Run\" action=\"RunPackage\" />\n\
-       \<menuitem name=\"_Next Error\" action=\"NextError\" />\n\
-       \<menuitem name=\"_Previous Error\" action=\"PreviousError\" />\n\
-       \<separator/>\n\
-       \<menuitem name=\"Clea_n Package\" action=\"CleanPackage\" />\n\
-       \<menuitem name=\"C_opy Package\" action=\"CopyPackage\" />\n\
-       \<menuitem name=\"_Install Package\" action=\"InstallPackage\" />\n\
-       \<menuitem name=\"Re_gister Package\" action=\"RegisterPackage\" />\n\
-       \<menuitem name=\"_Unregister Package\" action=\"UnregisterPackage\" />\n\
-       \<menuitem name=\"Test Package\" action=\"TestPackage\" />\n\
-       \<menuitem name=\"SDist Package\" action=\"SdistPackage\" />\n\
-       \<separator/>\n\
-       \<menuitem name=\"_Build Documentation\" action=\"DocPackage\" />\n\
-       \<menuitem name=\"Open Documentation\" action=\"OpenDocPackage\" />\n\
-     \</menu>\n\
-    \<menu name=\"_View\" action=\"View\">\n\
-       \<menuitem name=\"Move _Left\" action=\"ViewMoveLeft\" />\n\
-       \<menuitem name=\"Move _Right\" action=\"ViewMoveRight\" />\n\
-       \<menuitem name=\"Move _Up\" action=\"ViewMoveUp\" />\n\
-       \<menuitem name=\"Move _Down\" action=\"ViewMoveDown\" />\n\
-       \<separator/>\n\
-       \<menuitem name=\"Split H_orizontal\" action=\"ViewSplitHorizontal\" />\n\
-       \<menuitem name=\"Split V_ertical\" action=\"ViewSplitVertical\" />\n\
-       \<menuitem name=\"_Collapse\" action=\"ViewCollapse\" />\n\
-       \<separator/>\n\
-       \<menuitem name=\"Tabs _Left\" action=\"ViewTabsLeft\" />\n\
-       \<menuitem name=\"Tabs _Right\" action=\"ViewTabsRight\" />\n\
-       \<menuitem name=\"Tabs _Up\" action=\"ViewTabsUp\" />\n\
-       \<menuitem name=\"Tabs _Down\" action=\"ViewTabsDown\" />\n\
-       \<menuitem name=\"Switch Tabs\" action=\"ViewSwitchTabs\" />\n\
-       \<separator/>\n\
-       \<menuitem name=\"Clear Log\" action=\"ClearLog\" />\n\
-     \</menu>\n\
-    \<menu name=\"_Preferences\" action=\"Preferences\">\n\
-       \<menuitem name=\"Edit Preferences\" action=\"PrefsEdit\" />\n\
-     \</menu>\n\
-    \<menu name=\"_Help\" action=\"Help\">\n\
-       \<menuitem name=\"_Debug\" action=\"HelpDebug\" />\n\
-       \<menuitem name=\"Debug2\" action=\"HelpDebug2\" />\n\
-       \<menuitem name=\"_About\" action=\"HelpAbout\" />\n\
-     \</menu>\n\
-   \</menubar>\n\
-    \<toolbar>\n\
-     \<placeholder name=\"FileToolItems\">\n\
-       \<separator/>\n\
-       \<toolitem name=\"New\" action=\"FileNew\"/>\n\
-       \<toolitem name=\"Open\" action=\"FileOpen\"/>\n\
-       \<toolitem name=\"Save\" action=\"FileSave\"/>\n\
-       \<toolitem name=\"Close\" action=\"FileClose\"/>\n\
-       \<separator/>\n\
-     \</placeholder>\n\
-     \<placeholder name=\"FileEditItems\">\n\
-       \<separator/>\n\
-       \<toolitem name=\"Undo\" action=\"EditUndo\"/>\n\
-       \<toolitem name=\"Redo\" action=\"EditRedo\"/>\n\
-       \<separator/>\n\
-       \<toolitem name=\"Find\" action=\"EditFindNext\"/>\n\
-     \</placeholder>\n\
-   \</toolbar>\n\
- \</ui>"
-
+menuDescription =
+    "" ++ "\n" ++
+    "  <ui>" ++ "\n" ++
+    "    <menubar>" ++ "\n" ++
+    "      <menu name=\"_File\" action=\"File\">" ++ "\n" ++
+    "       <menuitem name=\"_New\" action=\"FileNew\" />" ++ "\n" ++
+    "       <menuitem name=\"_Open\" action=\"FileOpen\" />" ++ "\n" ++
+    "       <menuitem name=\"_Revert\" action=\"FileRevert\" />" ++ "\n" ++
+    "       <separator/>" ++ "\n" ++
+    "       <menuitem name=\"_Save\" action=\"FileSave\" />" ++ "\n" ++
+    "       <menuitem name=\"Save_As\" action=\"FileSaveAs\" />" ++ "\n" ++
+    "       <separator/> " ++ "\n" ++
+    "       <menuitem name=\"_Close\" action=\"FileClose\" /> " ++ "\n" ++
+    "       <menuitem name=\"Close All\" action=\"FileCloseAll\" /> " ++ "\n" ++
+    "      <menuitem name=\"_Quit\" action=\"Quit\" /> " ++ "\n" ++
+    "     </menu> " ++ "\n" ++
+    "     <menu name=\"_Edit\" action=\"Edit\"> " ++ "\n" ++
+    "       <menuitem name=\"_Undo\" action=\"EditUndo\" /> " ++ "\n" ++
+    "       <menuitem name=\"_Redo\" action=\"EditRedo\" /> " ++ "\n" ++
+    "       <separator/> " ++ "\n" ++
+    "       <menuitem name=\"Cu_t\" action=\"EditCut\" /> " ++ "\n" ++
+    "       <menuitem name=\"_Copy\" action=\"EditCopy\" /> " ++ "\n" ++
+    "       <menuitem name=\"_Paste\" action=\"EditPaste\" /> " ++ "\n" ++
+    "       <menuitem name=\"_Delete\" action=\"EditDelete\" /> " ++ "\n" ++
+    "       <separator/> " ++ "\n" ++
+    "       <menuitem name=\"Select _All\" action=\"EditSelectAll\" /> " ++ "\n" ++
+    "       <separator/> " ++ "\n" ++
+    "       <menuitem name=\"_Find\" action=\"EditFind\" /> " ++ "\n" ++
+    "       <menuitem name=\"Find_Next\" action=\"EditFindNext\" /> " ++ "\n" ++
+    "       <menuitem name=\"Find_Previous\" action=\"EditFindPrevious\" /> " ++ "\n" ++
+    "       <menuitem name=\"_Goto Line\" action=\"EditGotoLine\" /> " ++ "\n" ++
+    "       <separator/> " ++ "\n" ++
+    "       <menuitem name=\"Replace\" action=\"EditReplace\" /> " ++ "\n" ++
+    "       <separator/> " ++ "\n" ++
+    "       <menuitem name=\"Comment\" action=\"EditComment\" /> " ++ "\n" ++
+    "       <menuitem name=\"Uncomment\" action=\"EditUncomment\" /> " ++ "\n" ++
+    "       <menuitem name=\"Shift Left\" action=\"EditShiftLeft\" /> " ++ "\n" ++
+    "       <menuitem name=\"Shift Right\" action=\"EditShiftRight\" /> " ++ "\n" ++
+    "       <separator/> " ++ "\n" ++
+    "       <menuitem name=\"Source Candy\" action=\"EditCandy\" /> " ++ "\n" ++
+    "     </menu> " ++ "\n" ++
+    "    <menu name=\"_Package\" action=\"Package\"> " ++ "\n" ++
+    "       <menuitem name=\"_New Package\" action=\"NewPackage\" /> " ++ "\n" ++
+    "       <menuitem name=\"_Open Package\" action=\"OpenPackage\" /> " ++ "\n" ++
+    "       <menuitem name=\"_Edit Package\" action=\"EditPackage\" /> " ++ "\n" ++
+    "       <menuitem name=\"_Close Package\" action=\"ClosePackage\" /> " ++ "\n" ++
+    "       <separator/> " ++ "\n" ++
+    "       <menuitem name=\"Edit _Flags\" action=\"PackageFlags\" /> " ++ "\n" ++
+    "       <menuitem name=\"_Configure Package\" action=\"ConfigPackage\" /> " ++ "\n" ++
+    "       <menuitem name=\"_Build Package\" action=\"BuildPackage\" /> " ++ "\n" ++
+    "       <menuitem name=\"_Run\" action=\"RunPackage\" /> " ++ "\n" ++
+    "       <menuitem name=\"_Next Error\" action=\"NextError\" /> " ++ "\n" ++
+    "       <menuitem name=\"_Previous Error\" action=\"PreviousError\" /> " ++ "\n" ++
+    "       <separator/> " ++ "\n" ++
+    "       <menuitem name=\"Clea_n Package\" action=\"CleanPackage\" /> " ++ "\n" ++
+    "       <menuitem name=\"C_opy Package\" action=\"CopyPackage\" /> " ++ "\n" ++
+    "       <menuitem name=\"_Install Package\" action=\"InstallPackage\" /> " ++ "\n" ++
+    "       <menuitem name=\"Re_gister Package\" action=\"RegisterPackage\" /> " ++ "\n" ++
+    "       <menuitem name=\"_Unregister Package\" action=\"UnregisterPackage\" /> " ++ "\n" ++
+    "       <menuitem name=\"Test Package\" action=\"TestPackage\" /> " ++ "\n" ++
+    "       <menuitem name=\"SDist Package\" action=\"SdistPackage\" /> " ++ "\n" ++
+    "       <separator/> " ++ "\n" ++
+    "       <menuitem name=\"_Build Documentation\" action=\"DocPackage\" /> " ++ "\n" ++
+    "       <menuitem name=\"Open Documentation\" action=\"OpenDocPackage\" /> " ++ "\n" ++
+    "     </menu> " ++ "\n" ++
+    "    <menu name=\"_View\" action=\"View\"> " ++ "\n" ++
+    "       <menuitem name=\"Move _Left\" action=\"ViewMoveLeft\" /> " ++ "\n" ++
+    "       <menuitem name=\"Move _Right\" action=\"ViewMoveRight\" /> " ++ "\n" ++
+    "       <menuitem name=\"Move _Up\" action=\"ViewMoveUp\" /> " ++ "\n" ++
+    "       <menuitem name=\"Move _Down\" action=\"ViewMoveDown\" /> " ++ "\n" ++
+    "       <separator/> " ++ "\n" ++
+    "       <menuitem name=\"Split H_orizontal\" action=\"ViewSplitHorizontal\" /> " ++ "\n" ++
+    "       <menuitem name=\"Split V_ertical\" action=\"ViewSplitVertical\" /> " ++ "\n" ++
+    "       <menuitem name=\"_Collapse\" action=\"ViewCollapse\" /> " ++ "\n" ++
+    "       <separator/> " ++ "\n" ++
+    "       <menuitem name=\"Tabs _Left\" action=\"ViewTabsLeft\" /> " ++ "\n" ++
+    "       <menuitem name=\"Tabs _Right\" action=\"ViewTabsRight\" /> " ++ "\n" ++
+    "       <menuitem name=\"Tabs _Up\" action=\"ViewTabsUp\" /> " ++ "\n" ++
+    "       <menuitem name=\"Tabs _Down\" action=\"ViewTabsDown\" /> " ++ "\n" ++
+    "       <menuitem name=\"Switch Tabs\" action=\"ViewSwitchTabs\" /> " ++ "\n" ++
+    "       <separator/> " ++ "\n" ++
+    "       <menuitem name=\"Clear Log\" action=\"ClearLog\" /> " ++ "\n" ++
+    "     </menu> " ++ "\n" ++
+    "    <menu name=\"_Preferences\" action=\"Preferences\"> " ++ "\n" ++
+    "       <menuitem name=\"Edit Preferences\" action=\"PrefsEdit\" /> " ++ "\n" ++
+    "     </menu> " ++ "\n" ++
+    "    <menu name=\"_Help\" action=\"Help\"> " ++ "\n" ++
+    "       <menuitem name=\"_Debug\" action=\"HelpDebug\" /> " ++ "\n" ++
+    "       <menuitem name=\"Debug2\" action=\"HelpDebug2\" /> " ++ "\n" ++
+    "       <menuitem name=\"_About\" action=\"HelpAbout\" /> " ++ "\n" ++
+    "     </menu> " ++ "\n" ++
+    "   </menubar> " ++ "\n" ++
+    "    <toolbar> " ++ "\n" ++
+    "     <placeholder name=\"FileToolItems\"> " ++ "\n" ++
+    "       <separator/> " ++ "\n" ++
+    "       <toolitem name=\"New\" action=\"FileNew\"/> " ++ "\n" ++
+    "       <toolitem name=\"Open\" action=\"FileOpen\"/> " ++ "\n" ++
+    "       <toolitem name=\"Save\" action=\"FileSave\"/> " ++ "\n" ++
+    "       <toolitem name=\"Close\" action=\"FileClose\"/> " ++ "\n" ++
+    "       <separator/> " ++ "\n" ++
+    "     </placeholder> " ++ "\n" ++
+    "     <placeholder name=\"FileEditItems\"> " ++ "\n" ++
+    "       <separator/> " ++ "\n" ++
+    "       <toolitem name=\"Undo\" action=\"EditUndo\"/> " ++ "\n" ++
+    "       <toolitem name=\"Redo\" action=\"EditRedo\"/> " ++ "\n" ++
+    "       <separator/> " ++ "\n" ++
+    "       <toolitem name=\"Find\" action=\"EditFindNext\"/> " ++ "\n" ++
+    "     </placeholder> " ++ "\n" ++
+    "   </toolbar> " ++ "\n" ++
+    " </ui>"
 
 --
 -- | Building the Menu

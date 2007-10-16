@@ -293,7 +293,7 @@ instance Show GhfLog
 -- | An info pane description
 --
 data GhfInfo  =   GhfInfo {
-    box             ::   ButtonBox
+    box             ::   VBox
 ,   injectors       ::   [IdentifierDescr -> IO() ]
 }
 
@@ -343,6 +343,7 @@ data Prefs = Prefs {
     ,   browser             ::   String
     ,   sourcePanePath      ::   StandardPath
     ,   logPanePath         ::   StandardPath
+    ,   infoPanePath        ::   StandardPath
 } deriving(Eq,Show)
 
 
@@ -371,31 +372,33 @@ data ErrorSpec = ErrorSpec {
 --
 
 data PackageDescr   =   PackageDescr {
-    packageIdW      ::   PackageIdentifier
-,   exposedModulesD ::   [ModuleDescr]
-,   buildDependsW   ::   [PackageIdentifier]
-,   mbSourcePathP   ::   Maybe FilePath
-,   idDescriptions  ::   SymbolTable
+    packageIdW      ::   ! PackageIdentifier
+,   exposedModulesD ::   ! [ModuleDescr]
+,   buildDependsW   ::   ! [PackageIdentifier]
+,   mbSourcePathP   ::   ! (Maybe FilePath)
+,   idDescriptions  ::   ! SymbolTable
 } deriving (Read, Show,Eq,Ord)
 
 data ModuleDescr    =   ModuleDescr {
-    moduleId        ::   ModuleIdentifier
-,   exportedNames   ::   Set Symbol              --unqualified
-,   packageIdM      ::   PackageIdentifier
-,   mbSourcePathM   ::   Maybe FilePath
-,   instances       ::   [(ClassId,DataId)]
-,   usages          ::   Map ModuleIdentifier (Set Symbol) -- imports
+    moduleId        ::   ! ModuleIdentifier
+,   exportedNames   ::   ! (Set Symbol)              --unqualified
+,   packageIdM      ::   ! PackageIdentifier
+,   mbSourcePathM   ::   ! (Maybe FilePath)
+,   instances       ::   ! [(ClassId,DataId)]
+,   usages          ::   ! (Map ModuleIdentifier (Set Symbol)) -- imports
 } deriving (Read,Show,Eq,Ord)
 
 type SymbolTable    =   Map Symbol [IdentifierDescr]
 
 data IdentifierDescr =  IdentifierDescr {
-    identifierW     ::   Symbol
-,   identifierType  ::   IdType
-,   typeInfo        ::   TypeInfo
-,   moduleIdI       ::   [ModuleIdentifier]
-,   packageIdI      ::   PackageIdentifier
+    identifierW     ::   ! Symbol
+,   identifierType  ::   ! IdType
+,   typeInfo        ::   ! TypeInfo
+,   moduleIdI       ::   ! [ModuleIdentifier]
+,   packageIdI      ::   ! PackageIdentifier
 } deriving (Read, Show,Eq,Ord)
+
+emptyIdentifierDescr = IdentifierDescr ""
 
 data IdType = Function | Data | Newtype | Synonym | AbstractData |
                 Constructor | Field | Class | ClassOp | Foreign

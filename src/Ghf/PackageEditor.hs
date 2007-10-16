@@ -40,11 +40,11 @@ import Ghf.ViewFrame
 import Ghf.PropertyEditor
 import Ghf.BuildInfoEditor
 
-standardSetup = "#!/usr/bin/runhaskell \n\
-\> module Main where\n\
-\> import Distribution.Simple\n\
-\> main :: IO ()\n\
-\> main = defaultMain\n\n"
+standardSetup = "#!/usr/bin/runhaskell \n"
+                    ++ "> module Main where\n"
+                    ++ "> import Distribution.Simple\n"
+                    ++ "> main :: IO ()\n"
+                    ++ "> main = defaultMain\n\n"
 
 choosePackageDir :: Window -> IO (Maybe FilePath)
 choosePackageDir window = do

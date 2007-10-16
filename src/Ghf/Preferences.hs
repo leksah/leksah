@@ -117,6 +117,7 @@ defaultPrefs = Prefs {
     ,   browser             =   "firefox"
     ,   sourcePanePath      =   LeftTop
     ,   logPanePath         =   RightBottom
+    ,   infoPanePath        =   RightBottom
     }
 
 prefsDescription :: [(String,[FieldDescription Prefs])]

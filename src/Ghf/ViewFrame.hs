@@ -439,7 +439,7 @@ bringPaneToFront pane = do
 -- | Standard path is for example left top.
 --
 getStandardPanePath :: StandardPath -> PaneLayout -> PanePath
-getStandardPanePath sp pl = getStandard' sp pl []
+getStandardPanePath sp pl = reverse $ getStandard' sp pl []
     where
     getStandard' _ (TerminalP _) p                  =   p
     getStandard' LeftTop (VerticalP l r _) p        =   getStandard' LeftTop l (LeftP:p)

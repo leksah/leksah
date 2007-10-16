@@ -84,7 +84,7 @@ import Ghf.SourceCandy
 import Ghf.PropertyEditor
 import Ghf.Log
 import Ghf.Provider
-import Ghf.TypeInfo
+import Ghf.Info
 
 isBuffer :: GhfPane -> Bool
 isBuffer (BufPane _) = True
@@ -218,10 +218,6 @@ makeBufferActive pn = do
             sbLC    <-  getStatusbarLC
             sbIO    <-  getStatusbarIO
             infos   <-  readGhf packWorld
-            log <- getLog
-            let symbolTable = case infos of
-                                Just (_,st) -> st
-                                Nothing -> Map.empty
             let sv = sourceView buf
             (tl,tm,tr) <- lift $do
                 gtkBuf  <- textViewGetBuffer sv
@@ -237,7 +233,7 @@ makeBufferActive pn = do
                                                 writeCursorPositionInStatusbar sv sbLC
                                                 return False)
                 id5 <- sv `onButtonRelease` (\ e -> do
-                                                showType sv symbolTable log
+                                                showType sv ghfR
                                                 return False)
                 id6 <- sv `afterToggleOverwrite`  writeOverwriteInStatusbar sv sbIO
                 return ([id2,id4,id6],[id1,id3],[])
@@ -346,14 +342,17 @@ writeOverwriteInStatusbar sv sb = do
     return ()
 
 
-showType :: SourceView -> SymbolTable -> GhfLog -> IO()
-showType sv st log = do
+showType :: SourceView -> GhfRef -> IO ()
+showType sv ghfR = do
     buf  <-  textViewGetBuffer sv
     (l,r) <- textBufferGetSelectionBounds buf
     symbol <- textBufferGetText buf l r True
-    let answer = typeDescription symbol st
-    appendLog log answer LogTag
-    return ()
+    ghf <- readIORef ghfR
+    case packWorld ghf of
+        Nothing -> return ()
+        Just (_,symbolTable) -> case getIdentifierDescr symbol symbolTable of
+                                        [] -> return ()
+                                        a -> runReaderT (setInfo (head a)) ghfR
 
 markLabelAsChanged :: GhfAction
 markLabelAsChanged = do

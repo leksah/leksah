@@ -580,9 +580,46 @@ genericEditor parameters = do
                     else return (Just (head l))
     return (wid,ginj,gext,notif)
 
+#if _Newgtk== True
 --
 -- | Editor for the selection of an element from a static list of elements in the
 -- | form of a combo box
+staticSelectionEditor :: (Show beta, Eq beta) => [beta] -> Editor beta
+staticSelectionEditor list parameters = do
+    coreRef <- newIORef Nothing
+    notifier <- emptyNotifier
+    declareEvent FocusOut (\w h -> w `onFocusOut` h) notifier
+    mkEditor
+        (\widget obj -> do
+            core <- readIORef coreRef
+            case core of
+                Nothing  -> do
+                    (combo,_)   <-  New.comboBoxNewText show list
+                    activateEvent (castToWidget combo) FocusOut notifier
+                    New.comboBoxSetActive combo 1
+                    containerAdd widget combo
+                    let ind = elemIndex obj list
+                    case ind of
+                        Just i -> New.comboBoxSetActive combo i
+                        Nothing -> return ()
+                    writeIORef coreRef (Just combo)
+                Just combo -> do
+                    let ind = elemIndex obj list
+                    case ind of
+                        Just i -> New.comboBoxSetActive combo i
+                        Nothing -> return ())
+        (do core <- readIORef coreRef
+            case core of
+                Nothing -> return Nothing
+                Just combo -> do
+                    ind <- New.comboBoxGetActive combo
+                    case ind of
+                        i | i >= 0  -> return (Just (list !! i))
+                        otherwise   -> return Nothing)
+        (mkNotifier notifier)
+        parameters
+
+#else
 staticSelectionEditor :: (Show beta, Eq beta) => [beta] -> Editor beta
 staticSelectionEditor list parameters = do
     coreRef <- newIORef Nothing
@@ -618,6 +655,7 @@ staticSelectionEditor list parameters = do
                         otherwise   -> return Nothing)
         (mkNotifier notifier)
         parameters
+#endif
 
 
 --
