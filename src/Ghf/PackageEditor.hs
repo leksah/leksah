@@ -27,6 +27,7 @@ import Distribution.License
 import Distribution.Package
 import Distribution.PackageDescription
 import Distribution.Version
+import Distribution.Verbosity
 import System.FilePath
 import Data.IORef
 import Data.List
@@ -103,8 +104,8 @@ packageEdit = do
         Just fileName -> do
             let dirName = dropFileName fileName
             modules <- lift $allModules dirName
-            package <- lift $readPackageDescription fileName
-            editPackage package dirName modules
+            package <- lift $readPackageDescription normal fileName
+            editPackage (flattenPackageDescription package) dirName modules
             return ()
 
 packageNew ::  GhfAction

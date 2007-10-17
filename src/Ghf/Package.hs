@@ -41,8 +41,9 @@ import Graphics.UI.Gtk.SourceView.SourceBuffer
 import Control.Monad.Reader
 import Distribution.Package
 import Distribution.PackageDescription
-import Distribution.Program
-import Distribution.Setup
+import Distribution.Simple.Program
+import Distribution.Simple.Setup
+import Distribution.Verbosity
 import System.FilePath
 import Control.Concurrent
 import Control.Exception hiding(try)
@@ -60,7 +61,7 @@ import Ghf.PackageEditor
 import Ghf.SourceEditor
 import Ghf.PackageFlags
 import Ghf.ViewFrame
---import Ghf.Provider
+import Ghf.Extractor
 import Ghf.Info
 
 packageOpen :: GhfAction
@@ -84,7 +85,7 @@ activatePackage filePath = do
     session <- readGhf session
     let ppath = dropFileName filePath
     lift $setCurrentDirectory ppath
-    packageD <- lift $readPackageDescription filePath
+    packageD <- lift $readPackageDescription normal filePath >>= return . flattenPackageDescription
     let packp = GhfPackage (package packageD) filePath [] [] [] [] [] [] [] []
     pack <- (do
         flagFileExists <- lift $doesFileExist (ppath </> "Ghf.flags")
@@ -92,7 +93,7 @@ activatePackage filePath = do
             then lift $readFlags (ppath </> "Ghf.flags") packp
             else return packp)
     modifyGhf_ (\ghf -> return (ghf{activePack = (Just pack)}))
-    packageDescription <- lift $readPackageDescription filePath
+    packageDescription <- lift $readPackageDescription normal filePath >>= return . flattenPackageDescription
     let depends = buildDepends packageDescription
     packages <- lift $ findFittingPackages session depends
     loadInfosForPackages packages
@@ -208,7 +209,7 @@ packageRun = do
     case mbPackage of
         Nothing         -> return ()
         Just package    -> lift $do
-            pd <- readPackageDescription (cabalFile package)
+            pd <- readPackageDescription normal (cabalFile package) >>= return . flattenPackageDescription
             case executables pd of
                 [(Executable name _ _)] -> do
                     let path = "dist/build" </> pkgName (packageId package) </> name

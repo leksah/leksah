@@ -74,7 +74,7 @@ main = do
     dataDir     <-  getDataDir
     windowSetIconFromFile win $dataDir </> "data" </> "ghf.gif"
     libDir      <-  getSysLibDir
-    session     <-  newSession JustTypecheck (Just libDir)
+    session     <-  newSession (Just libDir)
     dflags0     <-  getSessionDynFlags session
     setSessionDynFlags session dflags0
     let ghf = Ghf

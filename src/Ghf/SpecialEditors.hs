@@ -230,8 +230,6 @@ extensionsL = [
    ,    TypeSynonymInstances
    ,    TemplateHaskell
    ,    ForeignFunctionInterface
-   ,    InlinePhase
-   ,    ContextStack
    ,    Arrows
    ,    Generics
    ,    NoImplicitPrelude

@@ -16,7 +16,6 @@
 module Ghf.Info (
     loadInfosForPackages
 ,   clearInfosForPackages
-,   findFittingPackages
 ,   typeDescription
 ,   getIdentifierDescr
 
@@ -50,12 +49,13 @@ import Distribution.Version
 import Data.List
 
 import Ghf.File
-import Ghf.Extractor
+--import Ghf.Extractor
 import Ghf.Core
 import Ghf.SourceCandy
 import Ghf.ViewFrame
 import Ghf.PropertyEditor
 import Ghf.SpecialEditors
+import Ghf.Extractor
 
 loadInfosForPackages :: [PackageIdentifier] -> GhfAction
 loadInfosForPackages packages = do
@@ -85,21 +85,6 @@ loadInfosForPackage dirPath (packageList, symbolTable) pid = do
         else do
             message $"packaeInfo not found for " ++ showPackageId pid
             return (packageList, symbolTable)
-
-
-findFittingPackages :: Session -> [Dependency] -> IO  [PackageIdentifier]
-findFittingPackages session dependencyList = do
-    knownPackages   <-  getInstalledPackageInfos session
-    let packages    =   map package knownPackages
-    return (concatMap (fittingKnown packages) dependencyList)
-    where
-    fittingKnown packages (Dependency dname versionRange) =
-        let filtered =  filter (\ (PackageIdentifier name version) ->
-                                    name == dname && withinRange version versionRange)
-                        packages
-        in  if length filtered > 1
-                then [maximumBy (\a b -> compare (pkgVersion a) (pkgVersion b)) filtered]
-                else filtered
 
 getIdentifierDescr :: String -> SymbolTable -> [IdentifierDescr]
 getIdentifierDescr str st =

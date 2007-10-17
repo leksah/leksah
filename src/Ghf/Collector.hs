@@ -25,15 +25,18 @@ import Outputable hiding(trace)
 import qualified Pretty as P
 import MkIface
 import Config
-import DynFlags
+import DynFlags hiding(Option)
 import PrelNames
 
 import qualified Distribution.InstalledPackageInfo as IPI
 import Distribution.Simple.Configure
-import qualified Distribution.PackageDescription as PD
+import Distribution.PackageDescription hiding(options)
 import Distribution.Simple.LocalBuildInfo
+import Distribution.Verbosity
 import Control.Monad.Reader
 import UniqFM
+import BinIface
+import Panic
 import Packages hiding (package,exposedModules)
 import System.IO
 import System.Process
@@ -48,17 +51,21 @@ import System.FilePath
 import System.Directory
 import Data.Char
 import Data.List(isSuffixOf,zip4)
+import Debug.Trace
 
-import Ghf.Core
+import Ghf.Core hiding(trace)
 import Ghf.Extractor
 import Ghf.File
 
 
-data Flag =  SrcProject | ForceRebuild
+data Flag =  UninstalledProject String | Rebuild
        deriving (Show,Eq)
 
 options :: [OptDescr Flag]
-options = [ ]
+options =   [Option ['r'] ["Rebuild"] (NoArg Rebuild)
+                "Cleans all .pack files and rebuild everything"
+         ,   Option ['u'] ["Uninstalled"] (ReqArg UninstalledProject "FILE")
+                "Gather info about an uninstalled package"]
 
 ghfOpts :: [String] -> IO ([Flag], [String])
 ghfOpts argv =
@@ -73,13 +80,16 @@ main = defaultErrorHandler defaultDynFlags $do
     (o,fl)          <-  ghfOpts args
     libDir          <-  getSysLibDir
 --    putStrLn $"libdir '" ++ normalise libDir ++ "'"
-    session         <-  newSession JustTypecheck (Just libDir)
+    session         <-  newSession (Just libDir)
     dflags0         <-  getSessionDynFlags session
     setSessionDynFlags session dflags0
     let version     =   cProjectVersion
-    if elem SrcProject o
-        then collectUninstalled session version ""
-        else collectInstalled session version (elem SrcProject o)
+    let uninstalled =   filter (\x -> case x of UninstalledProject _ -> True
+                                                otherwise -> False) o
+    if length uninstalled > 0
+        then mapM_ (collectUninstalled session version)
+                $ map (\ (UninstalledProject x) -> x) uninstalled
+        else collectInstalled session version (elem Rebuild o)
 
 collectInstalled :: Session -> String -> Bool -> IO()
 collectInstalled session version forceRebuild = do
@@ -109,20 +119,21 @@ collectInstalled session version forceRebuild = do
     mapM_ (writeExtracted collectorPath) extracted
 
 
-collectUninstalled :: Session -> String -> FilePath -> IO()
+collectUninstalled :: Session -> String -> FilePath -> IO ()
 collectUninstalled session version cabalPath = do
+    allHiFiles      <-  allHiFiles (dropFileName cabalPath)
+    putStrLn $ "\nallModules " ++ show allHiFiles
+    pd              <-  readPackageDescription normal cabalPath >>= return . flattenPackageDescription
+    allIfaceInfos   <-  getIFaceInfos2 allHiFiles session
+    deps            <-  findFittingPackages session (buildDepends pd)
+    let extracted   =   extractInfo (allIfaceInfos,[],package pd, deps)
     collectorPath   <-  getCollectorPath version
-    buildInfo <- getPersistBuildConfig
-    allModules <- allModules cabalPath
-    pd <- PD.readPackageDescription cabalPath
-    allIfaceInfos <-  getIFaceInfos (PD.package pd) allModules session
-    let extracted = extractInfo (allIfaceInfos,[],PD.package pd, packageDeps buildInfo)
     writeExtracted collectorPath extracted
 
 getIFaceInfos :: PackageIdentifier -> [String] -> Session -> IO [(ModIface, FilePath)]
 getIFaceInfos pckg modules session = do
     let isBase =    pkgName pckg == "base"
-    let ifaces =    mapM (\mn -> findAndReadIface empty
+    let ifaces =    mapM (\ mn -> findAndReadIface empty
                           (if isBase
                                 then mkBaseModule_ (mkModuleName mn)
                                 else mkModule (mkPackageId pckg) (mkModuleName mn))
@@ -135,6 +146,11 @@ getIFaceInfos pckg modules session = do
     where
         handleErr (M.Succeeded val)   =   Just val
         handleErr (M.Failed mess)     =   trace (P.render (mess defaultErrStyle)) Nothing
+
+getIFaceInfos2 :: [String] -> Session -> IO [(ModIface, FilePath)]
+getIFaceInfos2 filePaths session = do
+    ifaces      <-   mapM readBinIface filePaths
+    return (zip ifaces filePaths)
 
 findKnownPackages :: FilePath -> IO (Set String)
 findKnownPackages filePath = do

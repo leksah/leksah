@@ -17,6 +17,7 @@
 module Ghf.Extractor (
     extractInfo
 ,   getInstalledPackageInfos
+,   findFittingPackages
 ) where
 
 import GHC hiding(Id)
@@ -39,21 +40,17 @@ import UniqFM
 
 import Distribution.Package
 import Distribution.InstalledPackageInfo
+import Distribution.Version
 import qualified Data.Map as Map
 import Data.Map (Map)
 import Data.Maybe
 import qualified Data.Set as Set
 import Data.Set (Set)
+import Data.Foldable (maximumBy)
 
 import Ghf.Core
 
-getInstalledPackageInfos :: Session -> IO [InstalledPackageInfo]
-getInstalledPackageInfos session = do
-    dflags1         <-  getSessionDynFlags session
-    pkgInfos        <-  case pkgDatabase dflags1 of
-                            Nothing -> return []
-                            Just fm -> return (eltsUFM fm)
-    return pkgInfos
+
 
 extractInfo :: ([(ModIface, FilePath)],[(ModIface, FilePath)],PackageIdentifier,
                     [PackageIdentifier]) -> PackageDescr
@@ -81,7 +78,8 @@ extractExportedDescrH pid iface amap =
                                                             (map snd (mi_decls iface))
     in  foldr (extractIdentifierDescr' pid []) amap exportedDecls
 
-extractIdentifierDescr' :: PackageIdentifier -> [ModuleIdentifier] -> IfaceDecl -> SymbolTable -> SymbolTable
+extractIdentifierDescr' :: PackageIdentifier -> [ModuleIdentifier] -> IfaceDecl ->
+                                SymbolTable -> SymbolTable
 extractIdentifierDescr' pid mods ifDecl amap =
     let descrs =  extractIdentifierDescr ifDecl mods pid
     in foldr addToMap amap descrs
@@ -93,7 +91,8 @@ extractIdentifierDescr' pid mods ifDecl amap =
                         Nothing -> Map.insert id [descr] amap
                         Just v  -> Map.adjust (\v -> descr:v) id amap
 
-extractExportedDescrR :: PackageIdentifier -> SymbolTable -> ModIface -> (SymbolTable,[ModuleDescr]) -> (SymbolTable,[ModuleDescr])
+extractExportedDescrR :: PackageIdentifier -> SymbolTable -> ModIface ->
+                            (SymbolTable,[ModuleDescr]) -> (SymbolTable,[ModuleDescr])
 extractExportedDescrR pid hidden iface (imap,mdList) =
     let mid             =   moduleNameString $moduleName (mi_module iface)
         exportedNames   =   Set.fromList
@@ -106,7 +105,8 @@ extractExportedDescrR pid hidden iface (imap,mdList) =
         mapWithOwnDecls =   foldr (extractIdentifierDescr' pid [mid]) imap exportedDecls
         otherDecls      =   exportedNames `Set.difference` (Map.keysSet mapWithOwnDecls)
         reexported      =   Map.map (\v -> map (\id -> id{moduleIdI = mid : moduleIdI id}) v)
-                                $Map.filterWithKey (\k v -> k `Set.member` otherDecls) hidden
+                                $Map.filterWithKey (\k v -> k `Set.member` otherDecls)
+                                    hidden
         inst            =   concatMap extractInstances (mi_insts iface)
         uses            =   Map.fromList $ map extractUsages (mi_usages iface)
         mdescr          =   ModuleDescr {
@@ -126,7 +126,8 @@ extractExportedDescrR pid hidden iface (imap,mdList) =
         --            ++ "\n reexported " ++ show (Map.keysSet reexported))
                     (newids, mdescr : mdList)
 
-extractIdentifierDescr :: IfaceDecl -> [ModuleIdentifier] -> PackageIdentifier -> [IdentifierDescr]
+extractIdentifierDescr :: IfaceDecl -> [ModuleIdentifier] -> PackageIdentifier
+                            -> [IdentifierDescr]
 extractIdentifierDescr (IfaceId ifName ifType ifIdInfo) modul package
        = [IdentifierDescr{
     identifierW      =   unpackFS $occNameFS ifName
@@ -134,7 +135,7 @@ extractIdentifierDescr (IfaceId ifName ifType ifIdInfo) modul package
 ,   identifierType  =   Function
 ,   moduleIdI       =   modul
 ,   packageIdI      =   package}]
-
+{--
 extractIdentifierDescr (IfaceData ifName ifTyVars ifCtxt ifCons _ ifVrcs _) modul package
         = IdentifierDescr{
     identifierW      =   unpackFS $occNameFS ifName
@@ -210,6 +211,8 @@ extractIdentifierDescrClassOp modul package (IfaceClassOp name _ atype) =
 ,   moduleIdI       =   modul
 ,   packageIdI      =   package}
 
+--}
+
 extractInstances :: IfaceInst -> [(ClassId,DataId)]
 extractInstances ifaceInst  =
     let className   =   showSDocUnqual $ ppr $ ifInstCls ifaceInst
@@ -224,3 +227,26 @@ extractUsages usage =
     let name    =   (showSDoc . ppr) $  usg_name usage
         ids     =   map (showSDocUnqual . ppr . fst) $ usg_entities usage
     in (name, Set.fromList ids)
+
+
+getInstalledPackageInfos :: Session -> IO [InstalledPackageInfo]
+getInstalledPackageInfos session = do
+    dflags1         <-  getSessionDynFlags session
+    pkgInfos        <-  case pkgDatabase dflags1 of
+                            Nothing -> return []
+                            Just fm -> return (eltsUFM fm)
+    return pkgInfos
+
+findFittingPackages :: Session -> [Dependency] -> IO  [PackageIdentifier]
+findFittingPackages session dependencyList = do
+    knownPackages   <-  getInstalledPackageInfos session
+    let packages    =   map package knownPackages
+    return (concatMap (fittingKnown packages) dependencyList)
+    where
+    fittingKnown packages (Dependency dname versionRange) =
+        let filtered =  filter (\ (PackageIdentifier name version) ->
+                                    name == dname && withinRange version versionRange)
+                        packages
+        in  if length filtered > 1
+                then [maximumBy (\a b -> compare (pkgVersion a) (pkgVersion b)) filtered]
+                else filtered

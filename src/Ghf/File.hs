@@ -1,5 +1,6 @@
 module Ghf.File (
     allModules
+,   allHiFiles
 ,   cabalFileName
 ,   getConfigFilePathForLoad
 ,   getConfigFilePathForSave
@@ -17,7 +18,7 @@ import qualified Text.ParserCombinators.Parsec.Token as P
 import Text.ParserCombinators.Parsec.Language(haskell,haskellDef)
 import Data.Maybe (catMaybes)
 import Control.Monad(filterM)
-import Distribution.PreProcess.Unlit
+import Distribution.Simple.PreProcess.Unlit
 import Debug.Trace
 import Control.Monad
 import Paths_ghf
@@ -74,6 +75,24 @@ allModules filePath = do
             mbModuleNames <- mapM moduleNameFromFilePath hsFiles
             otherModules <- mapM allModules dirs
             return (catMaybes mbModuleNames ++ concat otherModules)
+        else return []
+
+allHiFiles :: FilePath -> IO [FilePath]
+allHiFiles filePath = do
+    exists <- doesDirectoryExist filePath
+    if exists
+        then do
+            filesAndDirs <- getDirectoryContents filePath
+            putStrLn $show filesAndDirs
+            let filesAndDirs' = map (\s -> combine filePath s)
+                                    $filter (\s -> s /= "." && s /= ".." && s /= "_darcs") filesAndDirs
+            putStrLn $show filesAndDirs'
+            dirs    <-  filterM (\f -> doesDirectoryExist f) filesAndDirs'
+            files   <-  filterM (\f -> doesFileExist f) filesAndDirs'
+            let hsFiles =   filter (\f -> let ext = takeExtension f in
+                                            ext == ".hi") files
+            otherHiFiles <- mapM allHiFiles dirs
+            return (hsFiles ++ concat otherHiFiles)
         else return []
 
 moduleNameFromFilePath :: FilePath -> IO (Maybe String)
