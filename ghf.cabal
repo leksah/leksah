@@ -42,7 +42,7 @@ other-modules: Ghf.BuildInfoEditor Ghf.Core Ghf.File Ghf.Keymap
                Ghf.SaveSession Ghf.SourceCandy Ghf.SourceEditor Ghf.SpecialEditors
                Ghf.ViewFrame
 ghc-prof-options:
-ghc-options:-cpp -D_Newgtk=True
+ghc-options:-cpp
 hugs-options:
 nhc-options:
 jhc-options:

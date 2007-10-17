@@ -55,12 +55,10 @@ getInstalledPackageInfos session = do
                             Just fm -> return (eltsUFM fm)
     return pkgInfos
 
-extractInfo :: ([(ModIface, FilePath)],[(ModIface, FilePath)],InstalledPackageInfo)
-                    -> PackageDescr
-extractInfo (ifacesExp,ifacesHid,ipi) =
-    let pi = trace ("now extracting " ++ showPackageId (package ipi))
-                $package ipi
-        hiddenDescrs    =   foldr (extractExportedDescrH pi) Map.empty
+extractInfo :: ([(ModIface, FilePath)],[(ModIface, FilePath)],PackageIdentifier,
+                    [PackageIdentifier]) -> PackageDescr
+extractInfo (ifacesExp,ifacesHid,pi,depends) =
+    let hiddenDescrs    =   foldr (extractExportedDescrH pi) Map.empty
                                         (map fst ifacesHid)
         (ids,mods)      =   --trace  ("\nhidden: " ++ show (Map.keysSet hiddenDescrs))
                                 foldr (extractExportedDescrR pi hiddenDescrs)
@@ -68,7 +66,7 @@ extractInfo (ifacesExp,ifacesHid,ipi) =
     in PackageDescr {
         packageIdW      =   pi
     ,   exposedModulesD =   mods
-    ,   buildDependsW   =   depends ipi
+    ,   buildDependsW   =   depends
     ,   mbSourcePathP   =   Nothing
     ,   idDescriptions  =   ids}
 

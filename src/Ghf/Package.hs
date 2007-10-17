@@ -60,7 +60,7 @@ import Ghf.PackageEditor
 import Ghf.SourceEditor
 import Ghf.PackageFlags
 import Ghf.ViewFrame
-import Ghf.Provider
+--import Ghf.Provider
 import Ghf.Info
 
 packageOpen :: GhfAction

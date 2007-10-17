@@ -103,7 +103,7 @@ Current work plan
 - Scanning non installed packages
 - Selecting the right from a multitude of possibilities
 - Many modules, just one package problem
-- New Pane for info
+~- New Pane for info
 - Administration of package infos and symbol tables
 - Implementing event concept from Thorsten
 - Scanning of source directories

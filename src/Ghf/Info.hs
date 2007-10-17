@@ -228,8 +228,4 @@ isInfo :: GhfPane -> Bool
 isInfo (InfoPane _) = True
 isInfo _            = False
 
-{--
-openType :: IdentifierDescription -> IO ()
-openType
-    mapM_ (\ setInj -> setInj prefs) setInjs
---}
+

@@ -83,7 +83,7 @@ import Ghf.ViewFrame
 import Ghf.SourceCandy
 import Ghf.PropertyEditor
 import Ghf.Log
-import Ghf.Provider
+--import Ghf.Provider
 import Ghf.Info
 
 isBuffer :: GhfPane -> Bool
