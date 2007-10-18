@@ -56,13 +56,16 @@ import qualified Text.ParserCombinators.Parsec.Token as P
 import Text.ParserCombinators.Parsec hiding(Parser)
 
 import Ghf.Log
-import Ghf.Core
+import Ghf.Core hiding (message,trace)
 import Ghf.PackageEditor
 import Ghf.SourceEditor
 import Ghf.PackageFlags
 import Ghf.ViewFrame
 import Ghf.Extractor
 import Ghf.Info
+
+import Debug.Trace
+message m = trace m (return ())
 
 
 packageOpen :: GhfAction
@@ -142,7 +145,8 @@ packageConfig = do
     case mbPackage of
         Nothing         -> return ()
         Just package    -> lift $do
-            (inp,out,err,pid) <- runExternal "runhaskell" (["Setup","configure"] ++ (configFlags package))
+            (inp,out,err,pid) <- runExternal "runhaskell" (["Setup","configure"]
+                                            ++ (configFlags package))
             oid <- forkIO (readOut log out)
             eid <- forkIO (readErr log err)
             return ()
@@ -158,7 +162,8 @@ packageBuild = do
     case mbPackage of
         Nothing         -> return ()
         Just package    -> lift $do
-            (inp,out,err,pid) <- runExternal "runhaskell" (["Setup","build"] ++ (buildFlags package))
+            (inp,out,err,pid) <- runExternal "runhaskell" (["Setup","build"]
+                                            ++ buildFlags package)
             oid <- forkIO (readOut log out)
             eid <- forkIO (runReaderT (readErrForBuild log err) ghfR)
             return ()
@@ -170,7 +175,8 @@ packageDoc = do
     case mbPackage of
         Nothing         -> return ()
         Just package    -> lift $do
-            (inp,out,err,pid) <- runExternal "runhaskell" (["Setup","haddock"] ++ (haddockFlags package))
+            (inp,out,err,pid) <- runExternal "runhaskell" (["Setup","haddock"]
+                                            ++ (haddockFlags package))
             oid <- forkIO (readOut log out)
             eid <- forkIO (readErr log err)
             return ()
@@ -182,7 +188,8 @@ packageClean = do
     case mbPackage of
         Nothing         -> return ()
         Just package    -> lift $do
-            (inp,out,err,pid) <- runExternal "runhaskell" (["Setup","clean"] ++ (haddockFlags package))
+            (inp,out,err,pid) <- runExternal "runhaskell" (["Setup","clean"]
+                                            ++ (haddockFlags package))
             oid <- forkIO (readOut log out)
             eid <- forkIO (readErr log err)
             return ()
@@ -198,7 +205,8 @@ packageCopy = do
             case mbPackage of
                 Nothing         -> return ()
                 Just package    -> lift $do
-                    (inp,out,err,pid) <- runExternal "runhaskell" (["Setup","copy"] ++ ["--destdir=" ++ fp])
+                    (inp,out,err,pid) <- runExternal "runhaskell" (["Setup","copy"]
+                                            ++ ["--destdir=" ++ fp])
                     oid <- forkIO (readOut log out)
                     eid <- forkIO (readErr log err)
                     return ()
@@ -229,7 +237,8 @@ packageInstall = do
     case mbPackage of
         Nothing         -> return ()
         Just package    -> lift $do
-            (inp,out,err,pid) <- runExternal "runhaskell" (["Setup","install"] ++ (installFlags package))
+            (inp,out,err,pid) <- runExternal "runhaskell" (["Setup","install"]
+                                            ++ (installFlags package))
             oid <- forkIO (readOut log out)
             eid <- forkIO (readErr log err)
             return ()
@@ -241,7 +250,8 @@ packageRegister = do
     case mbPackage of
         Nothing         -> return ()
         Just package    -> lift $do
-            (inp,out,err,pid) <- runExternal "runhaskell" (["Setup","register"] ++ (registerFlags package))
+            (inp,out,err,pid) <- runExternal "runhaskell" (["Setup","register"]
+                                            ++ (registerFlags package))
             oid <- forkIO (readOut log out)
             eid <- forkIO (readErr log err)
             return ()
@@ -253,7 +263,8 @@ packageUnregister = do
     case mbPackage of
         Nothing         -> return ()
         Just package    -> lift $do
-            (inp,out,err,pid) <- runExternal "runhaskell" (["Setup","unregister"] ++ (unregisterFlags package))
+            (inp,out,err,pid) <- runExternal "runhaskell" (["Setup","unregister"]
+                                            ++ (unregisterFlags package))
             oid <- forkIO (readOut log out)
             eid <- forkIO (readErr log err)
             return ()
@@ -277,7 +288,8 @@ packageSdist = do
     case mbPackage of
         Nothing         -> return ()
         Just package    -> lift $do
-            (inp,out,err,pid) <- runExternal "runhaskell" (["Setup","sdist"] ++ (sdistFlags package))
+            (inp,out,err,pid) <- runExternal "runhaskell" (["Setup","sdist"]
+                                            ++ (sdistFlags package))
             oid <- forkIO (readOut log out)
             eid <- forkIO (readErr log err)
             return ()

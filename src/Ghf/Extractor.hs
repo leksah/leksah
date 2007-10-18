@@ -34,13 +34,13 @@ import LoadIface
 import Outputable hiding(trace)
 import qualified Pretty as P
 import MkIface
-import Config 
+import Config
 import IfaceSyn
 import OccName
 import FastString
 import Outputable hiding(trace)
 import UniqFM
-import PackageConfig 
+import PackageConfig
 
 import qualified Distribution.Package as DP
 --import Distribution.InstalledPackageInfo
@@ -144,7 +144,8 @@ extractIdentifierDescr (IfaceId ifName ifType ifIdInfo) modul package
 ,   identifierType  =   Function
 ,   moduleIdI       =   modul
 ,   packageIdI      =   asDPid package}]
-{--
+#if __GLASGOW_HASKELL__ > 670
+#else
 extractIdentifierDescr (IfaceData ifName ifTyVars ifCtxt ifCons _ ifVrcs _) modul package
         = IdentifierDescr{
     identifierW      =   unpackFS $occNameFS ifName
@@ -154,7 +155,7 @@ extractIdentifierDescr (IfaceData ifName ifTyVars ifCtxt ifCons _ ifVrcs _) modu
                             IfNewTyCon _  -> Newtype
                             IfAbstractTyCon -> AbstractData
 ,   moduleIdI       =   modul
-,   packageIdI      =   package} :
+,   packageIdI      =   asDPid package} :
         concatMap (extractIdentifierDescrConst modul package (LocalTop ifName))
                 (visibleIfConDecls ifCons)
 
@@ -164,7 +165,7 @@ extractIdentifierDescr (IfaceSyn ifName ifTyVars ifVrcs ifSynRhs) modul package
 ,   typeInfo        =   showSDocUnqual $ppr ifSynRhs
 ,   identifierType  =   Synonym
 ,   moduleIdI       =   modul
-,   packageIdI      =   package}]
+,   packageIdI      =   asDPid package}]
 
 extractIdentifierDescr (IfaceClass ifCtxt ifName ifTyVars ifFDs ifSigs ifRec ifVrcs) modul package
         =  IdentifierDescr{
@@ -172,7 +173,7 @@ extractIdentifierDescr (IfaceClass ifCtxt ifName ifTyVars ifFDs ifSigs ifRec ifV
 ,   typeInfo        =   "" --showSDocUnqual $pprIfaceForAllPart ifTyVars ifCtxt empty
 ,   identifierType  =   Class
 ,   moduleIdI       =   modul
-,   packageIdI      =   package} :
+,   packageIdI      =   asDPid package} :
         map (extractIdentifierDescrClassOp modul package) ifSigs
 
 extractIdentifierDescr (IfaceForeign ifName _) modul package
@@ -181,7 +182,7 @@ extractIdentifierDescr (IfaceForeign ifName _) modul package
 ,   typeInfo        =   ""
 ,   identifierType  =   Foreign
 ,   moduleIdI       =   modul
-,   packageIdI      =   package}]
+,   packageIdI      =   asDPid package}]
 
 extractIdentifierDescrConst :: [ModuleIdentifier] -> PackageIdentifier -> IfaceExtName -> IfaceConDecl
                                     -> [IdentifierDescr]
@@ -193,7 +194,7 @@ extractIdentifierDescrConst modul package extName
                             (foldr IfaceFunTy (IfaceTyConApp (IfaceTc extName)[]) ifConArgTys)
 ,   identifierType  =   Constructor
 ,   moduleIdI       =   modul
-,   packageIdI      =   package} : map (extractIdentifierDescrField modul package extName)
+,   packageIdI      =   asDPid package} : map (extractIdentifierDescrField modul package extName)
                                         (zip ifConFields ifConArgTys)
 
 -- ##TODO: GADTs not yet analysed
@@ -209,7 +210,7 @@ extractIdentifierDescrField modul package extName (fieldName, atype) =
                             $ ppr (IfaceFunTy (IfaceTyConApp (IfaceTc extName)[]) atype)
 ,   identifierType  =   Field
 ,   moduleIdI       =   modul
-,   packageIdI      =   package}
+,   packageIdI      =   asDPid package}
 
 extractIdentifierDescrClassOp :: [ModuleIdentifier] -> PackageIdentifier -> IfaceClassOp -> IdentifierDescr
 extractIdentifierDescrClassOp modul package (IfaceClassOp name _ atype) =
@@ -218,9 +219,9 @@ extractIdentifierDescrClassOp modul package (IfaceClassOp name _ atype) =
 ,   typeInfo        =   showSDocUnqual $ ppr atype
 ,   identifierType  =   ClassOp
 ,   moduleIdI       =   modul
-,   packageIdI      =   package}
+,   packageIdI      =   asDPid package}
 
---}
+#endif
 
 extractInstances :: IfaceInst -> [(ClassId,DataId)]
 extractInstances ifaceInst  =
@@ -260,7 +261,7 @@ findFittingPackages session dependencyList = do
                 then [maximumBy (\a b -> compare (pkgVersion a) (pkgVersion b)) filtered]
                 else filtered
 
-findFittingPackages' :: Session -> [Dependency] -> IO  [DP.PackageIdentifier]                
+findFittingPackages' :: Session -> [Dependency] -> IO  [DP.PackageIdentifier]
 findFittingPackages' session dependencyList =  do
-        fp <- (findFittingPackages session dependencyList)                
+        fp <- (findFittingPackages session dependencyList)
         return (map asDPid fp)

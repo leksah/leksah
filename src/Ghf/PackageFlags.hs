@@ -92,56 +92,56 @@ flagsDescription = [
             (PP.text . show)
             stringParser
             (\p -> concatString (configFlags p))
-            (\ b a -> a{configFlags = [b]})
+            (\ b a -> a{configFlags = if null b then [] else [b]})
             stringEditor
     ,   mkField (emptyParams
             {paraName = Just "Build flags"})
             (PP.text . show)
             stringParser
             (\p -> concatString (buildFlags p))
-            (\ b a -> a{buildFlags = [b]})
+            (\ b a -> a{buildFlags = if null b then [] else [b]})
             stringEditor
     ,   mkField (emptyParams
             {paraName = Just "Haddock flags"})
             (PP.text . show)
             stringParser
             (\p -> concatString (haddockFlags p))
-            (\ b a -> a{haddockFlags = [b]})
+            (\ b a -> a{haddockFlags = if null b then [] else [b]})
             stringEditor
     ,   mkField (emptyParams
             {paraName = Just "Executable flags"})
             (PP.text . show)
             stringParser
             (\p -> concatString (exeFlags p))
-            (\ b a -> a{exeFlags = [b]})
+            (\ b a -> a{exeFlags = if null b then [] else [b]})
             stringEditor
     ,   mkField (emptyParams
             {paraName = Just "Install flags"})
             (PP.text . show)
             stringParser
             (\p -> concatString (installFlags p))
-            (\ b a -> a{installFlags = [b]})
+            (\ b a -> a{installFlags = if null b then [] else [b]})
             stringEditor
     ,   mkField (emptyParams
             {paraName = Just "Register flags"})
             (PP.text . show)
             stringParser
             (\p -> concatString (registerFlags p))
-            (\ b a -> a{registerFlags = [b]})
+            (\ b a -> a{registerFlags = if null b then [] else [b]})
             stringEditor
     ,   mkField (emptyParams
             {paraName = Just "Unregister flags"})
             (PP.text . show)
             stringParser
             (\p -> concatString (unregisterFlags p))
-            (\ b a -> a{unregisterFlags = [b]})
+            (\ b a -> a{unregisterFlags = if null b then [] else [b]})
             stringEditor
     ,   mkField (emptyParams
             {paraName = Just "Source Distribution flags"})
             (PP.text . show)
             stringParser
             (\p -> concatString (sdistFlags p))
-            (\ b a -> a{sdistFlags = [b]})
+            (\ b a -> a{sdistFlags = if null b then [] else [b]})
             stringEditor
     ])]
 

@@ -609,29 +609,33 @@ editSelectAll = inBufContext () $ \_ gtkbuf _ _ -> do
     textBufferSelectRange gtkbuf start end
 
 editCut :: GhfAction
-editCut = return ()
-{--
+#ifdef _Newgtk
 editCut = inBufContext () $ \_ gtkbuf _ _ -> do
   clip <- clipboardGet ClipClipboard
   textBufferCutClipboard gtkbuf clip True
---}
+#else
+editCut = return ()
+#endif
+
 editCopy :: GhfAction
-editCopy = return ()
-{--
+#ifdef _Newgtk
 editCopy = inBufContext () $ \_ gtkbuf _ _ -> do
   clip <- clipboardGet ClipClipboard
   textBufferCopyClipboard gtkbuf clip
---}
+#else
+editCopy = return ()
+#endif
 
 editPaste :: GhfAction
-editPaste = return ()
-{--
+#ifdef _Newgtk
 editPaste = inBufContext () $ \_ gtkbuf _ _ -> do
   mark <- textBufferGetInsert gtkbuf
   iter <- textBufferGetIterAtMark gtkbuf mark
   clip <- clipboardGet ClipClipboard
   textBufferPasteClipboard gtkbuf clip iter True
---}
+#else
+editPaste = return ()
+#endif
 
 red = Color 640000 10000 10000
 white = Color 64000 64000 64000
