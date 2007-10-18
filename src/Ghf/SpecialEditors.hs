@@ -20,7 +20,7 @@ import Graphics.UI.Gtk
 import Graphics.UI.Gtk.ModelView as New
 import System.Directory
 import Control.Monad.Reader
-import Distribution.PackageDescription
+import Distribution.PackageDescription 
 import Distribution.Package
 import Distribution.License
 import Data.IORef

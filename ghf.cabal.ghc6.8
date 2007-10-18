@@ -5,9 +5,10 @@ license: GPL
 license-file: gpl.txt
 copyright: 2007 Juergen Nicklisch-Franken
 maintainer: Juergen Nicklisch-Franken
-build-depends: base >=2.1, filepath >=1.0,Cabal >=1.2.0, parsec >=2.0,
-               mtl >=1.0.1, gtk >=0.9.12, glib >=0.9.12,
-               sourceview >=0.9.12, ghc
+build-depends: base >=2.1, filepath >=1.0,Cabal >=1.1.6.2, parsec >=2.0,
+               mtl >=1.0.1, process >= 1.0,old-time >= 1.0, containers >= 0.1,
+               pretty >= 1.0, directory >= 1.0,gtk >=0.9.12.2, glib >=0.9.12.2,
+               sourceview >=0.9.12.2, ghc
 stability: provisional
 homepage:
 package-url:
@@ -42,7 +43,7 @@ other-modules: Ghf.BuildInfoEditor Ghf.Core Ghf.File Ghf.Keymap
                Ghf.SaveSession Ghf.SourceCandy Ghf.SourceEditor Ghf.SpecialEditors
                Ghf.ViewFrame
 ghc-prof-options:
-ghc-options:-cpp 
+ghc-options:-cpp -D_Newgtk
 hugs-options:
 nhc-options:
 jhc-options:

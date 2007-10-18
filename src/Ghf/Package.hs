@@ -64,6 +64,7 @@ import Ghf.ViewFrame
 import Ghf.Extractor
 import Ghf.Info
 
+
 packageOpen :: GhfAction
 packageOpen = do
     active <- readGhf activePack
@@ -95,7 +96,7 @@ activatePackage filePath = do
     modifyGhf_ (\ghf -> return (ghf{activePack = (Just pack)}))
     packageDescription <- lift $readPackageDescription normal filePath >>= return . flattenPackageDescription
     let depends = buildDepends packageDescription
-    packages <- lift $ findFittingPackages session depends
+    packages <- lift $ findFittingPackages' session depends
     loadInfosForPackages packages
     sb <- getSBActivePackage
     lift $statusbarPop sb 1

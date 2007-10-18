@@ -28,16 +28,18 @@ import Config
 import DynFlags hiding(Option)
 import PrelNames
 
-import qualified Distribution.InstalledPackageInfo as IPI
+--import qualified Distribution.InstalledPackageInfo as IPI
+import PackageConfig as IPI
 import Distribution.Simple.Configure
-import Distribution.PackageDescription hiding(options)
+import qualified Distribution.PackageDescription as PD
 import Distribution.Simple.LocalBuildInfo
 import Distribution.Verbosity
+
 import Control.Monad.Reader
 import UniqFM
 import BinIface
 import Panic
-import Packages hiding (package,exposedModules)
+--import Packages hiding (package,exposedModules)
 import System.IO
 import System.Process
 import Data.Maybe
@@ -80,7 +82,11 @@ main = defaultErrorHandler defaultDynFlags $do
     (o,fl)          <-  ghfOpts args
     libDir          <-  getSysLibDir
 --    putStrLn $"libdir '" ++ normalise libDir ++ "'"
-    session         <-  newSession (Just libDir)
+#if __GLASGOW_HASKELL__ > 670
+    session     <-  newSession (Just libDir)
+#else
+    session     <-  newSession JustTypecheck (Just libDir)
+#endif
     dflags0         <-  getSessionDynFlags session
     setSessionDynFlags session dflags0
     let version     =   cProjectVersion
@@ -123,10 +129,10 @@ collectUninstalled :: Session -> String -> FilePath -> IO ()
 collectUninstalled session version cabalPath = do
     allHiFiles      <-  allHiFiles (dropFileName cabalPath)
     putStrLn $ "\nallModules " ++ show allHiFiles
-    pd              <-  readPackageDescription normal cabalPath >>= return . flattenPackageDescription
+    pd              <-  PD.readPackageDescription normal cabalPath >>= return . PD.flattenPackageDescription
     allIfaceInfos   <-  getIFaceInfos2 allHiFiles session
-    deps            <-  findFittingPackages session (buildDepends pd)
-    let extracted   =   extractInfo (allIfaceInfos,[],package pd, deps)
+    deps            <-  findFittingPackages session (PD.buildDepends pd)
+    let extracted   =   extractInfo (allIfaceInfos,[], fromDPid (PD.package pd), deps)
     collectorPath   <-  getCollectorPath version
     writeExtracted collectorPath extracted
 
@@ -160,7 +166,7 @@ findKnownPackages filePath = do
 
 writeExtracted :: FilePath -> PackageDescr -> IO ()
 writeExtracted dirPath pd = do
-    let filePath = dirPath </> showPackageId (packageIdW pd) ++ ".pack"
+    let filePath = dirPath </> showPackageId (fromDPid $ packageIdW pd) ++ ".pack"
     hdl <- openFile filePath WriteMode
     hPutStr hdl (show pd)
     hClose hdl

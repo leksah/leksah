@@ -18,6 +18,9 @@ module Ghf.Extractor (
     extractInfo
 ,   getInstalledPackageInfos
 ,   findFittingPackages
+,   findFittingPackages'
+,   fromDPid
+,   asDPid
 ) where
 
 import GHC hiding(Id)
@@ -31,15 +34,16 @@ import LoadIface
 import Outputable hiding(trace)
 import qualified Pretty as P
 import MkIface
-import Config
+import Config 
 import IfaceSyn
 import OccName
 import FastString
 import Outputable hiding(trace)
 import UniqFM
+import PackageConfig 
 
-import Distribution.Package
-import Distribution.InstalledPackageInfo
+import qualified Distribution.Package as DP
+--import Distribution.InstalledPackageInfo
 import Distribution.Version
 import qualified Data.Map as Map
 import Data.Map (Map)
@@ -51,6 +55,11 @@ import Data.Foldable (maximumBy)
 import Ghf.Core
 
 
+asDPid :: PackageIdentifier -> DP.PackageIdentifier
+asDPid (PackageIdentifier name version) = DP.PackageIdentifier name version
+
+fromDPid :: DP.PackageIdentifier -> PackageIdentifier
+fromDPid (DP.PackageIdentifier name version) = PackageIdentifier name version
 
 extractInfo :: ([(ModIface, FilePath)],[(ModIface, FilePath)],PackageIdentifier,
                     [PackageIdentifier]) -> PackageDescr
@@ -61,9 +70,9 @@ extractInfo (ifacesExp,ifacesHid,pi,depends) =
                                 foldr (extractExportedDescrR pi hiddenDescrs)
                                         (Map.empty,[]) (map fst ifacesExp)
     in PackageDescr {
-        packageIdW      =   pi
+        packageIdW      =   asDPid pi
     ,   exposedModulesD =   mods
-    ,   buildDependsW   =   depends
+    ,   buildDependsW   =   map asDPid depends
     ,   mbSourcePathP   =   Nothing
     ,   idDescriptions  =   ids}
 
@@ -112,7 +121,7 @@ extractExportedDescrR pid hidden iface (imap,mdList) =
         mdescr          =   ModuleDescr {
                     moduleId        =   mid
                 ,   exportedNames   =   exportedNames
-                ,   packageIdM      =   pid
+                ,   packageIdM      =   asDPid pid
                 ,   mbSourcePathM   =   Nothing
                 ,   instances       =   inst
                 ,   usages          =   uses}
@@ -134,7 +143,7 @@ extractIdentifierDescr (IfaceId ifName ifType ifIdInfo) modul package
 ,   typeInfo        =   showSDocUnqual $ppr ifType
 ,   identifierType  =   Function
 ,   moduleIdI       =   modul
-,   packageIdI      =   package}]
+,   packageIdI      =   asDPid package}]
 {--
 extractIdentifierDescr (IfaceData ifName ifTyVars ifCtxt ifCons _ ifVrcs _) modul package
         = IdentifierDescr{
@@ -250,3 +259,8 @@ findFittingPackages session dependencyList = do
         in  if length filtered > 1
                 then [maximumBy (\a b -> compare (pkgVersion a) (pkgVersion b)) filtered]
                 else filtered
+
+findFittingPackages' :: Session -> [Dependency] -> IO  [DP.PackageIdentifier]                
+findFittingPackages' session dependencyList =  do
+        fp <- (findFittingPackages session dependencyList)                
+        return (map asDPid fp)
