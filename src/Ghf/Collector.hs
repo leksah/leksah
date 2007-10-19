@@ -82,7 +82,7 @@ main = defaultErrorHandler defaultDynFlags $do
     (o,fl)          <-  ghfOpts args
     libDir          <-  getSysLibDir
 --    putStrLn $"libdir '" ++ normalise libDir ++ "'"
-#if __GLASGOW_HASKELL__ > 670
+#if __GHC__ > 670
     session     <-  newSession (Just libDir)
 #else
     session     <-  newSession JustTypecheck (Just libDir)
@@ -93,8 +93,9 @@ main = defaultErrorHandler defaultDynFlags $do
     let uninstalled =   filter (\x -> case x of UninstalledProject _ -> True
                                                 otherwise -> False) o
     if length uninstalled > 0
-        then mapM_ (collectUninstalled session version)
-                $ map (\ (UninstalledProject x) -> x) uninstalled
+        then return ()
+             {--mapM_ (collectUninstalled session version)
+                $ map (\ (UninstalledProject x) -> x) uninstalled--}
         else collectInstalled session version (elem Rebuild o)
 
 collectInstalled :: Session -> String -> Bool -> IO()
@@ -124,7 +125,7 @@ collectInstalled session version forceRebuild = do
 --    putStrLn $ "extracted " ++ concatMap (\ pi -> packageId pi) extracted
     mapM_ (writeExtracted collectorPath) extracted
 
-
+{--
 collectUninstalled :: Session -> String -> FilePath -> IO ()
 collectUninstalled session version cabalPath = do
     allHiFiles      <-  allHiFiles (dropFileName cabalPath)
@@ -135,7 +136,7 @@ collectUninstalled session version cabalPath = do
     let extracted   =   extractInfo (allIfaceInfos,[], fromDPid (PD.package pd), deps)
     collectorPath   <-  getCollectorPath version
     writeExtracted collectorPath extracted
-
+--}
 getIFaceInfos :: PackageIdentifier -> [String] -> Session -> IO [(ModIface, FilePath)]
 getIFaceInfos pckg modules session = do
     let isBase =    pkgName pckg == "base"
@@ -152,12 +153,12 @@ getIFaceInfos pckg modules session = do
     where
         handleErr (M.Succeeded val)   =   Just val
         handleErr (M.Failed mess)     =   trace (P.render (mess defaultErrStyle)) Nothing
-
+{--
 getIFaceInfos2 :: [String] -> Session -> IO [(ModIface, FilePath)]
 getIFaceInfos2 filePaths session = do
     ifaces      <-   mapM readBinIface filePaths
     return (zip ifaces filePaths)
-
+--}
 findKnownPackages :: FilePath -> IO (Set String)
 findKnownPackages filePath = do
     paths <- getDirectoryContents filePath

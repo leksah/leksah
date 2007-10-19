@@ -144,8 +144,8 @@ extractIdentifierDescr (IfaceId ifName ifType ifIdInfo) modul package
 ,   identifierType  =   Function
 ,   moduleIdI       =   modul
 ,   packageIdI      =   asDPid package}]
-#if __GLASGOW_HASKELL__ > 670
-#else
+
+#if __GHC__ < 670
 extractIdentifierDescr (IfaceData ifName ifTyVars ifCtxt ifCons _ ifVrcs _) modul package
         = IdentifierDescr{
     identifierW      =   unpackFS $occNameFS ifName

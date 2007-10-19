@@ -74,7 +74,7 @@ main = do
     dataDir     <-  getDataDir
     windowSetIconFromFile win $dataDir </> "data" </> "ghf.gif"
     libDir      <-  getSysLibDir
-#if __GLASGOW_HASKELL__ > 670
+#if __GHC__ > 670
     session     <-  newSession (Just libDir)
 #else
     session     <-  newSession JustTypecheck (Just libDir)
