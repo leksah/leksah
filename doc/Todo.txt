@@ -99,14 +99,20 @@ Collector:
 
 Current work plan
 
-- Optimize storing and reading (binary, byteString)
-- Scanning non installed packages
-- Selecting the right from a multitude of possibilities
-- Many modules, just one package problem
-~- New Pane for info
-- Administration of package infos and symbol tables
-- Implementing event concept from Thorsten
-- Scanning of source directories
+!!! - Scanning for 6.8!!
+!!! - Optimize storing and reading (binary, byteString)
+        Problem with version 3 or 4 of binary
+ok  - Scanning non installed packages
+
+!!! - Selecting the right from a multitude of possibilities
+!!! - Many modules, just one package problem
+    ~- New Pane for info
+Sta - Administration of package infos and symbol tables
+!!! - Scanning of source directories
+    - Tree Views
+
+    - Implementing event concept from Thorsten
+
 -
 
 

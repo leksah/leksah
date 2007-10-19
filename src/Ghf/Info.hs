@@ -14,14 +14,19 @@
 ---------------------------------------------------------------------------------
 
 module Ghf.Info (
-    loadInfosForPackages
-,   clearInfosForPackages
+    loadInfos
+,   clearInfos
 ,   typeDescription
 ,   getIdentifierDescr
 
 ,   initInfo
 ,   setInfo
 ,   isInfo
+
+,   findFittingPackages
+,   findFittingPackagesDP
+,   fromDPid
+,   asDPid
 --,   clearInfo
 ) where
 
@@ -34,7 +39,6 @@ import Data.IORef
 import System.IO
 import qualified Data.Map as Map
 import Data.Map (Map,(!))
-import Distribution.Package
 import Config
 import Control.Monad
 import Control.Monad.Trans
@@ -43,34 +47,72 @@ import System.Directory
 import Data.Map (Map)
 import qualified Data.Map as Map
 import GHC
+import qualified Distribution.Package as DP
 import Distribution.PackageDescription hiding (package)
-import Distribution.InstalledPackageInfo
+--import Distribution.InstalledPackageInfo
 import Distribution.Version
 import Data.List
+import UniqFM
+import PackageConfig
 
 import Ghf.File
---import Ghf.Extractor
 import Ghf.Core
 import Ghf.SourceCandy
 import Ghf.ViewFrame
 import Ghf.PropertyEditor
 import Ghf.SpecialEditors
-import Ghf.Extractor
 
-loadInfosForPackages :: [PackageIdentifier] -> GhfAction
-loadInfosForPackages packages = do
+--
+-- | Load all infos for all installed and exposed packages (see shell command: ghc-pkg list)
+--
+loadInfos :: GhfAction
+loadInfos = do
+    session         <-  readGhf session
     let version     =   cProjectVersion
-    collectorPath   <-  lift $getCollectorPath version
-    (packageList,symbolTable) <-  lift $foldM (loadInfosForPackage collectorPath)
-                                                ([],Map.empty) packages
-    modifyGhf_ (\ghf -> return (ghf{packWorld = (Just (packageList,symbolTable))}))
+    collectorPath   <-  lift $ getCollectorPath version
+    packageInfos    <-  lift $ getInstalledPackageInfos session
+    packageList     <-  lift $mapM (loadInfosForPackage collectorPath)
+                                                (map package packageInfos)
+    scope           <-  foldr buildScope (Map.empty,Map.empty) packageList
+    modifyGhf_ (\ghf -> return (ghf{worldInfo = (Just scope)}))
 
-clearInfosForPackages :: GhfAction
-clearInfosForPackages = do
-    modifyGhf_ (\ghf -> return (ghf{packWorld = Nothing}))
+--
+-- | Clears the current info, not the world infos
+--
+clearInfos :: GhfAction
+clearInfos = do
+    modifyGhf_ (\ghf -> return (ghf{currentInfo = Nothing}))
 
-loadInfosForPackage :: FilePath -> ([PackageDescr],SymbolTable) -> PackageIdentifier ->
-                            IO ([PackageDescr],SymbolTable)
+--
+-- | Updates the world info and rebuilds or clears the current info
+--
+updateInfos :: GhfAction
+updateInfos = do
+    wi <- readGhf worldInfo
+    case wi of
+        Nothing -> loadInfos
+        Just (psmap,psst) -> do
+            packageInfos    <-  lift $ getInstalledPackageInfos session
+            let packageIds  =   map package packageInfos
+            newPackages     <-  filter (\pi -> Map.member pi psmap)
+            trashPackages   <-  filter (\e -> not List.elem e packageIds)(Map.keys psmap)
+            if null newPackages && null trashPackages
+                then return ()
+                else do
+                    newPackageInfos <- lift $mapM (loadInfosForPackage collectorPath)
+                                                (map package newPackages)
+                    let psamp2 = foldr (\e m -> Map.insert (packageIdW e) e m) psmap psmap
+                    let psamp3 = foldr (\e m -> Map.delete e m) psmap psmap
+
+                    return (psamp3,
+
+
+
+
+--
+-- | Loads the infos for the given packages (has an collecting argument)
+--
+loadInfosForPackage :: FilePath -> PackageIdentifier -> IO (Maybe PackageDescr)
 loadInfosForPackage dirPath (packageList, symbolTable) pid = do
     let filePath = dirPath </> showPackageId pid ++ ".pack"
     exists <- doesFileExist filePath
@@ -80,18 +122,37 @@ loadInfosForPackage dirPath (packageList, symbolTable) pid = do
             str <- hGetContents hdl
             packageInfo <- readIO str
             hClose hdl
-            let newSymbols = Map.unionWith (++) symbolTable (idDescriptions packageInfo)
-            return (packageInfo:packageList, newSymbols)
+            return packageInfo
         else do
             message $"packaeInfo not found for " ++ showPackageId pid
-            return (packageList, symbolTable)
+            return Nothing
 
+--
+-- | Loads the infos for the given packages (has an collecting argument)
+--
+buildScope :: PackageDescr -> PackageScope -> PackageScope
+buildScope packageD (packageMap, symbolTable) =
+    let pid = packageIdW packageD
+    in if pid `Map.member` packageMap
+        then trace  ("package already in world " ++ showPackageId (packageIdW packageD))
+                    (packageMap, symbolTable)
+        else (Map.insert pid packageD packageMap,
+              Map.unionWith (++) symbolTable (idDescriptions packageD))
+
+
+
+
+
+--
+-- | Lookup of the identifier description
+--
 getIdentifierDescr :: String -> SymbolTable -> [IdentifierDescr]
 getIdentifierDescr str st =
     case str `Map.lookup` st of
         Nothing -> []
         Just list -> list
 
+{--
 typeDescription :: String -> SymbolTable -> String
 typeDescription str st =
     case str `Map.lookup` st of
@@ -112,6 +173,50 @@ typeDescription str st =
             str ++ " "  ++   (ttString tt) ++ "\n   "
                 ++   ti ++  "\n   "
                 ++   "exported by modules "  ++   show m ++ " in package " ++ show p ++ "\n   "
+--}
+
+-- ---------------------------------------------------------------------
+-- The little helpers
+--
+
+getInstalledPackageInfos :: Session -> IO [InstalledPackageInfo]
+getInstalledPackageInfos session = do
+    dflags1         <-  getSessionDynFlags session
+    pkgInfos        <-  case pkgDatabase dflags1 of
+                            Nothing -> return []
+                            Just fm -> return (eltsUFM fm)
+    return pkgInfos
+
+findFittingPackages :: Session -> [Dependency] -> IO  [PackageIdentifier]
+findFittingPackages session dependencyList = do
+    knownPackages   <-  getInstalledPackageInfos session
+    let packages    =   map package knownPackages
+    return (concatMap (fittingKnown packages) dependencyList)
+    where
+    fittingKnown packages (Dependency dname versionRange) =
+        let filtered =  filter (\ (PackageIdentifier name version) ->
+                                    name == dname && withinRange version versionRange)
+                        packages
+        in  if length filtered > 1
+                then [maximumBy (\a b -> compare (pkgVersion a) (pkgVersion b)) filtered]
+                else filtered
+
+findFittingPackagesDP :: Session -> [Dependency] -> IO  [DP.PackageIdentifier]
+findFittingPackagesDP session dependencyList =  do
+        fp <- (findFittingPackages session dependencyList)
+        return (map asDPid fp)
+
+asDPid :: PackageIdentifier -> DP.PackageIdentifier
+asDPid (PackageIdentifier name version) = DP.PackageIdentifier name version
+
+fromDPid :: DP.PackageIdentifier -> PackageIdentifier
+fromDPid (DP.PackageIdentifier name version) = PackageIdentifier name version
+
+
+
+-- ---------------------------------------------------------------------
+-- The GUI stuff for infos
+--
 
 
 infoPaneName = "Info"

@@ -123,7 +123,8 @@ data Ghf        =   Ghf {
 ,   activePack  ::  Maybe GhfPackage
 ,   errors      ::  [ErrorSpec]
 ,   currentErr  ::  Maybe Int
-,   packWorld   ::  Maybe ([PackageDescr],SymbolTable)
+,   worldInfo   ::  Maybe (PackageScope)
+,   currentInfo ::  Maybe (PackageScope,PackageScope)
 ,   session     ::  Session                 -- ^ the bridge to ghc
 } deriving Show
 
@@ -371,6 +372,9 @@ data ErrorSpec = ErrorSpec {
 --  | Information about the world, extraced from .hi and maybe source files
 --
 
+type PackageScope   =   (Map PackageIdentifier PackageDescr,SymbolTable)
+type SymbolTable    =   Map Symbol [IdentifierDescr]
+
 data PackageDescr   =   PackageDescr {
     packageIdW      ::   ! PackageIdentifier
 ,   exposedModulesD ::   ! [ModuleDescr]
@@ -387,8 +391,6 @@ data ModuleDescr    =   ModuleDescr {
 ,   instances       ::   ! [(ClassId,DataId)]
 ,   usages          ::   ! (Map ModuleIdentifier (Set Symbol)) -- imports
 } deriving (Read,Show,Eq,Ord)
-
-type SymbolTable    =   Map Symbol [IdentifierDescr]
 
 data IdentifierDescr =  IdentifierDescr {
     identifierW     ::   ! Symbol

@@ -16,11 +16,6 @@
 
 module Ghf.Extractor (
     extractInfo
-,   getInstalledPackageInfos
-,   findFittingPackages
-,   findFittingPackages'
-,   fromDPid
-,   asDPid
 ) where
 
 import GHC hiding(Id)
@@ -56,13 +51,9 @@ import Data.Set (Set)
 import Data.Foldable (maximumBy)
 
 import Ghf.Core
+import Ghf.Info
 
 
-asDPid :: PackageIdentifier -> DP.PackageIdentifier
-asDPid (PackageIdentifier name version) = DP.PackageIdentifier name version
-
-fromDPid :: DP.PackageIdentifier -> PackageIdentifier
-fromDPid (DP.PackageIdentifier name version) = PackageIdentifier name version
 
 extractInfo :: ([(ModIface, FilePath)],[(ModIface, FilePath)],PackageIdentifier,
                     [PackageIdentifier]) -> PackageDescr
@@ -321,29 +312,3 @@ extractUsages usage =
     in (name, Set.fromList ids)
 
 
-getInstalledPackageInfos :: Session -> IO [InstalledPackageInfo]
-getInstalledPackageInfos session = do
-    dflags1         <-  getSessionDynFlags session
-    pkgInfos        <-  case pkgDatabase dflags1 of
-                            Nothing -> return []
-                            Just fm -> return (eltsUFM fm)
-    return pkgInfos
-
-findFittingPackages :: Session -> [Dependency] -> IO  [PackageIdentifier]
-findFittingPackages session dependencyList = do
-    knownPackages   <-  getInstalledPackageInfos session
-    let packages    =   map package knownPackages
-    return (concatMap (fittingKnown packages) dependencyList)
-    where
-    fittingKnown packages (Dependency dname versionRange) =
-        let filtered =  filter (\ (PackageIdentifier name version) ->
-                                    name == dname && withinRange version versionRange)
-                        packages
-        in  if length filtered > 1
-                then [maximumBy (\a b -> compare (pkgVersion a) (pkgVersion b)) filtered]
-                else filtered
-
-findFittingPackages' :: Session -> [Dependency] -> IO  [DP.PackageIdentifier]
-findFittingPackages' session dependencyList =  do
-        fp <- (findFittingPackages session dependencyList)
-        return (map asDPid fp)
