@@ -34,6 +34,7 @@ import Ghf.ViewFrame
 import Ghf.Menu
 import Ghf.Preferences
 import Ghf.Keymap
+import Ghf.Info
 
 data Flag =  OpenFile
        deriving Show
@@ -78,7 +79,7 @@ main = do
     session     <-  newSession (Just libDir)
 #else
     session     <-  newSession JustTypecheck (Just libDir)
-#endif        
+#endif
     dflags0     <-  getSessionDynFlags session
     setSessionDynFlags session dflags0
     let ghf = Ghf
@@ -92,13 +93,15 @@ main = do
           ,   specialKey    =   Nothing
           ,   candy         =   candySt
           ,   prefs         =   prefs
-          ,   packages      =   []
+--          ,   packages      =   []
           ,   activePack    =   Nothing
           ,   errors        =   []
           ,   currentErr    =   Nothing
-          ,   packWorld     =   Nothing
+          ,   accessibleInfo     =   Nothing
+          ,   currentInfo   =   Nothing
           ,   session       =   session}
     ghfR <- newIORef ghf
+    runReaderT loadAccessibleInfo ghfR
     (acc,menus) <- runReaderT (makeMenu uiManager accelActions menuDescription) ghfR
     let mb = case menus !! 0 of
                 Just m -> m

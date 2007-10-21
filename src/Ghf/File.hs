@@ -6,6 +6,10 @@ module Ghf.File (
 ,   getConfigFilePathForSave
 ,   getCollectorPath
 ,   getSysLibDir
+
+,   readOut
+,   readErr
+,   runExternal
 ) where
 
 import System.FilePath
@@ -19,9 +23,12 @@ import Text.ParserCombinators.Parsec.Language(haskell,haskellDef)
 import Data.Maybe (catMaybes)
 import Control.Monad(filterM)
 import Distribution.Simple.PreProcess.Unlit
-import Debug.Trace
+--import Debug.Trace
 import Control.Monad
 import Paths_ghf
+
+import Ghf.Core
+import Ghf.Log
 
 
 --
@@ -174,6 +181,40 @@ getSysLibDir = do
     waitForProcess pid
     return (normalise libDir2)
 
+readOut :: GhfLog -> Handle -> IO ()
+readOut log hndl =
+     catch (readAndShow)
+       (\e -> do
+        appendLog log ("----------------------------------------\n") FrameTag
+        hClose hndl
+        return ())
+    where
+    readAndShow = do
+        line <- hGetLine hndl
+        appendLog log (line ++ "\n") LogTag
+        readAndShow
 
+readErr :: GhfLog -> Handle -> IO ()
+readErr log hndl =
+     catch (readAndShow)
+       (\e -> do
+        hClose hndl
+        return ())
+    where
+    readAndShow = do
+        line <- hGetLine hndl
+        appendLog log (line ++ "\n") ErrorTag
+        readAndShow
+
+runExternal :: FilePath -> [String] -> IO (Handle, Handle, Handle, ProcessHandle)
+runExternal path args = do
+    hndls@(inp, out, err, _) <- runInteractiveProcess path args Nothing Nothing
+    message $ "Starting external tool: " ++ path ++ " with args " ++ (show args)
+    hSetBuffering out NoBuffering
+    hSetBuffering err NoBuffering
+    hSetBuffering inp NoBuffering
+    hSetBinaryMode out True
+    hSetBinaryMode err True
+    return hndls
 
 

@@ -38,16 +38,19 @@ ok  -   Clipboard binding (gtk)
     -   Opening more then one editor of the same file does not use the same model
 
 
-Version 0.2 ++
-
-
-
-Version 0.x
     -   Project Tree Window
     -   Types
     -   Completion
     -   Find implementor
     -   Find callers
+
+
+Version 0.2 ++
+
+
+
+Version 0.x
+
     -   Editor; Highliting according to file type
     -   Editor Templates for new files
     -   Properties of single editor (no highlight, no candy,...)
@@ -99,17 +102,18 @@ Collector:
 
 Current work plan
 
-!!! - Scanning for 6.8!!
+ok  - Scanning non installed packages
+ok  - Scanning for 6.8!!
+ok  - Administration of package infos and symbol tables
+
 !!! - Optimize storing and reading (binary, byteString)
         Problem with version 3 or 4 of binary
-ok  - Scanning non installed packages
-
 !!! - Selecting the right from a multitude of possibilities
-!!! - Many modules, just one package problem
-    ~- New Pane for info
-Sta - Administration of package infos and symbol tables
+!!! - Many modules, just one package problem (Rework PackageDescr ...)
+!!! - New Pane for info
+
 !!! - Scanning of source directories
-    - Tree Views
+!!! - Tree Views
 
     - Implementing event concept from Thorsten
 

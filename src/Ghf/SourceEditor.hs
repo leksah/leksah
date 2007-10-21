@@ -217,7 +217,7 @@ makeBufferActive pn = do
             ghfR    <-  ask
             sbLC    <-  getStatusbarLC
             sbIO    <-  getStatusbarIO
-            infos   <-  readGhf packWorld
+            infos   <-  readGhf accessibleInfo
             let sv = sourceView buf
             (tl,tm,tr) <- lift $do
                 gtkBuf  <- textViewGetBuffer sv
@@ -348,7 +348,7 @@ showType sv ghfR = do
     (l,r) <- textBufferGetSelectionBounds buf
     symbol <- textBufferGetText buf l r True
     ghf <- readIORef ghfR
-    case packWorld ghf of
+    case accessibleInfo ghf of
         Nothing -> return ()
         Just (_,symbolTable) -> case getIdentifierDescr symbol symbolTable of
                                         [] -> return ()

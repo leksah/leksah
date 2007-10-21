@@ -63,6 +63,7 @@ import Ghf.PackageFlags
 import Ghf.ViewFrame
 import Ghf.Extractor
 import Ghf.Info
+import Ghf.Extractor
 
 import Debug.Trace
 message m = trace m (return ())
@@ -97,10 +98,7 @@ activatePackage filePath = do
             then lift $readFlags (ppath </> "Ghf.flags") packp
             else return packp)
     modifyGhf_ (\ghf -> return (ghf{activePack = (Just pack)}))
-    packageDescription <- lift $readPackageDescription normal filePath >>= return . flattenPackageDescription
-    let depends = buildDepends packageDescription
-    packages <- lift $ findFittingPackages' session depends
-    loadInfosForPackages packages
+    buildActiveInfo
     sb <- getSBActivePackage
     lift $statusbarPop sb 1
     lift $statusbarPush sb 1 (showPackageId $packageId pack)

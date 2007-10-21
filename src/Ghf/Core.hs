@@ -71,6 +71,7 @@ module Ghf.Core (
 ,   ModuleIdentifier
 ,   IdType(..)
 ,   SymbolTable
+,   PackageScope
 
 -- * debugging
 ,   helpDebug
@@ -108,24 +109,24 @@ trace a b = b
 -- | The IDE state
 --
 data Ghf        =   Ghf {
-    window      ::  Window                  -- ^ the gtk window
-,   uiManager   ::  UIManager               -- ^ the gtk uiManager
-,   panes       ::  Map PaneName GhfPane      -- ^ a map with all panes (subwindows)
-,   activePane  ::  Maybe (PaneName,Connections)
-,   paneMap     ::  Map PaneName (PanePath, Connections)
+    window          ::  Window                  -- ^ the gtk window
+,   uiManager       ::  UIManager               -- ^ the gtk uiManager
+,   panes           ::  Map PaneName GhfPane      -- ^ a map with all panes (subwindows)
+,   activePane      ::  Maybe (PaneName,Connections)
+,   paneMap         ::  Map PaneName (PanePath, Connections)
                     -- ^ a map from the pane to its gui path and signal connections
-,   layout      ::  PaneLayout              -- ^ a description of the general gui layout
-,   specialKeys ::  SpecialKeyTable         -- ^ a structure for emacs like keystrokes
-,   specialKey  ::  SpecialKeyCons          -- ^ the first of a double keystroke
-,   candy       ::  CandyTables             -- ^ table for source candy
-,   prefs       ::  Prefs                   -- ^ configuration preferences
-,   packages    ::  [GhfPackage]            -- ^ the packages known to ghf
-,   activePack  ::  Maybe GhfPackage
-,   errors      ::  [ErrorSpec]
-,   currentErr  ::  Maybe Int
-,   worldInfo   ::  Maybe (PackageScope)
-,   currentInfo ::  Maybe (PackageScope,PackageScope)
-,   session     ::  Session                 -- ^ the bridge to ghc
+,   layout          ::  PaneLayout              -- ^ a description of the general gui layout
+,   specialKeys     ::  SpecialKeyTable         -- ^ a structure for emacs like keystrokes
+,   specialKey      ::  SpecialKeyCons          -- ^ the first of a double keystroke
+,   candy           ::  CandyTables             -- ^ table for source candy
+,   prefs           ::  Prefs                   -- ^ configuration preferences
+--,   packages        ::  [GhfPackage]            -- ^ the packages known to ghf
+,   activePack      ::  Maybe GhfPackage
+,   errors          ::  [ErrorSpec]
+,   currentErr      ::  Maybe Int
+,   accessibleInfo  ::  Maybe (PackageScope)
+,   currentInfo     ::  Maybe (PackageScope,PackageScope)
+,   session         ::  Session                 -- ^ the bridge to ghc
 } deriving Show
 
 --

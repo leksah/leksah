@@ -14,20 +14,23 @@
 ---------------------------------------------------------------------------------
 
 module Ghf.Info (
-    loadInfos
-,   clearInfos
-,   typeDescription
-,   getIdentifierDescr
+    loadAccessibleInfo
+,   updateAccessibleInfo
 
+,   clearCurrentInfo
+,   buildCurrentInfo
+,   buildActiveInfo
+
+,   getIdentifierDescr
 ,   initInfo
 ,   setInfo
 ,   isInfo
 
+,   getInstalledPackageInfos
 ,   findFittingPackages
 ,   findFittingPackagesDP
 ,   fromDPid
 ,   asDPid
---,   clearInfo
 ) where
 
 import Graphics.UI.Gtk hiding (afterToggleOverwrite)
@@ -47,6 +50,8 @@ import System.Directory
 import Data.Map (Map)
 import qualified Data.Map as Map
 import GHC
+import System.IO
+import Control.Concurrent
 import qualified Distribution.Package as DP
 import Distribution.PackageDescription hiding (package)
 --import Distribution.InstalledPackageInfo
@@ -54,6 +59,7 @@ import Distribution.Version
 import Data.List
 import UniqFM
 import PackageConfig
+import Data.Maybe
 
 import Ghf.File
 import Ghf.Core
@@ -61,68 +67,124 @@ import Ghf.SourceCandy
 import Ghf.ViewFrame
 import Ghf.PropertyEditor
 import Ghf.SpecialEditors
+import Ghf.Log
 
 --
--- | Load all infos for all installed and exposed packages (see shell command: ghc-pkg list)
+-- | Load all infos for all installed and exposed packages
+--   (see shell command: ghc-pkg list)
 --
-loadInfos :: GhfAction
-loadInfos = do
-    session         <-  readGhf session
-    let version     =   cProjectVersion
-    collectorPath   <-  lift $ getCollectorPath version
-    packageInfos    <-  lift $ getInstalledPackageInfos session
-    packageList     <-  lift $mapM (loadInfosForPackage collectorPath)
-                                                (map package packageInfos)
-    scope           <-  foldr buildScope (Map.empty,Map.empty) packageList
-    modifyGhf_ (\ghf -> return (ghf{worldInfo = (Just scope)}))
+loadAccessibleInfo :: GhfAction
+loadAccessibleInfo =
+    let version     =   cProjectVersion in do
+        session         <-  readGhf session
+
+        collectorPath   <-  lift $ getCollectorPath version
+        packageInfos    <-  lift $ getInstalledPackageInfos session
+        packageList     <-  lift $ mapM (loadInfosForPackage collectorPath)
+                                                    (map package packageInfos)
+        let scope       =   foldr buildScope (Map.empty,Map.empty)
+                                $ map fromJust
+                                    $ filter isJust packageList
+        modifyGhf_ (\ghf -> return (ghf{accessibleInfo = (Just scope)}))
 
 --
 -- | Clears the current info, not the world infos
 --
-clearInfos :: GhfAction
-clearInfos = do
-    modifyGhf_ (\ghf -> return (ghf{currentInfo = Nothing}))
+clearCurrentInfo :: GhfAction
+clearCurrentInfo = do
+    modifyGhf_ (\ghf    ->  return (ghf{currentInfo = Nothing}))
 
 --
--- | Updates the world info and rebuilds or clears the current info
+-- | Builds the current info for a package
 --
-updateInfos :: GhfAction
-updateInfos = do
-    wi <- readGhf worldInfo
+buildCurrentInfo :: PackageDescr -> GhfAction
+buildCurrentInfo pd@(PackageDescr _ _ depends _ _) = do
+    active              <-  buildActiveInfo
+    case active of
+        Nothing -> modifyGhf_ (\ghf -> return (ghf{currentInfo = Nothing}))
+        Just active -> do
+            accessibleInfo      <-  readGhf accessibleInfo
+            case accessibleInfo of
+                Nothing         ->  modifyGhf_ (\ghf -> return (ghf{currentInfo = Nothing}))
+                Just (pdmap,_)  ->  do
+                    let packageList =   map (\ pi -> pi `Map.lookup` pdmap) depends
+                    let scope       =   foldr buildScope (Map.empty,Map.empty)
+                                            $ map fromJust
+                                                $ filter isJust packageList
+                    modifyGhf_ (\ghf -> return (ghf{currentInfo = Just (active, scope)}))
+
+--
+-- | Builds the current info for the activePackage
+--
+buildActiveInfo :: GhfM (Maybe PackageScope)
+buildActiveInfo =
+    let version         =   cProjectVersion in do
+    activePack          <-  readGhf activePack
+    log                 <-  getLog
+    case activePack of
+        Nothing         ->  return Nothing
+        Just ghfPackage ->  do
+            (inp,out,err,pid) <- lift $ runExternal "ghf-collector"
+                                        (["--Uninstalled=" ++ cabalFile ghfPackage])
+            oid         <-  lift $ forkIO (readOut log out)
+            eid         <-  lift $ forkIO (readErr log err)
+            lift $ threadDelay 3000
+            collectorPath   <-  lift $ getCollectorPath version
+            packageDescr    <-  lift $ loadInfosForPackage collectorPath (packageId ghfPackage)
+            case packageDescr of
+                Nothing     -> return Nothing
+                Just pd     -> do
+                    let scope       =   buildScope pd (Map.empty,Map.empty)
+                    return (Just scope)
+
+--
+-- | Updates the world info (it is the responsibility of the caller to rebuild
+--   the current info
+--
+updateAccessibleInfo :: GhfAction
+updateAccessibleInfo = do
+    wi              <-  readGhf accessibleInfo
+    session         <-  readGhf session
+    let version     =   cProjectVersion
     case wi of
-        Nothing -> loadInfos
+        Nothing -> loadAccessibleInfo
         Just (psmap,psst) -> do
-            packageInfos    <-  lift $ getInstalledPackageInfos session
-            let packageIds  =   map package packageInfos
-            newPackages     <-  filter (\pi -> Map.member pi psmap)
-            trashPackages   <-  filter (\e -> not List.elem e packageIds)(Map.keys psmap)
+            packageInfos        <-  lift $ getInstalledPackageInfos session
+            let packageIds      =   map package packageInfos
+            let newPackages     =   filter (\ pi -> Map.member pi psmap) packageIds
+            let trashPackages   =   filter (\ e  -> not (elem e packageIds))(Map.keys psmap)
             if null newPackages && null trashPackages
                 then return ()
                 else do
-                    newPackageInfos <- lift $mapM (loadInfosForPackage collectorPath)
-                                                (map package newPackages)
-                    let psamp2 = foldr (\e m -> Map.insert (packageIdW e) e m) psmap psmap
-                    let psamp3 = foldr (\e m -> Map.delete e m) psmap psmap
-
-                    return (psamp3,
-
-
+                    collectorPath   <-  lift $ getCollectorPath version
+                    newPackageInfos <-  lift $ mapM (loadInfosForPackage collectorPath)
+                                                newPackages
+                    let psamp2      =   foldr (\e m -> Map.insert (packageIdW e) e m)
+                                                psmap
+                                                (map fromJust
+                                                    $ filter isJust newPackageInfos)
+                    let psamp3      =   foldr (\e m -> Map.delete e m) psmap trashPackages
+                    let scope       =   foldr buildScope (Map.empty,Map.empty)
+                                            (Map.elems psamp3)
+                    modifyGhf_ (\ghf -> return (ghf{accessibleInfo = Just scope}))
 
 
 --
--- | Loads the infos for the given packages (has an collecting argument)
+-- | Loads the infos for the given packages
 --
 loadInfosForPackage :: FilePath -> PackageIdentifier -> IO (Maybe PackageDescr)
-loadInfosForPackage dirPath (packageList, symbolTable) pid = do
+loadInfosForPackage dirPath pid = do
     let filePath = dirPath </> showPackageId pid ++ ".pack"
     exists <- doesFileExist filePath
     if exists
-        then do
+        then catch (do
             hdl <- openFile filePath ReadMode
+            putStrLn $ "Now reading iface " ++ showPackageId pid
             str <- hGetContents hdl
             packageInfo <- readIO str
             hClose hdl
-            return packageInfo
+            return (Just packageInfo))
+            (\e -> do putStrLn (show e); return Nothing)
         else do
             message $"packaeInfo not found for " ++ showPackageId pid
             return Nothing
@@ -138,10 +200,6 @@ buildScope packageD (packageMap, symbolTable) =
                     (packageMap, symbolTable)
         else (Map.insert pid packageD packageMap,
               Map.unionWith (++) symbolTable (idDescriptions packageD))
-
-
-
-
 
 --
 -- | Lookup of the identifier description

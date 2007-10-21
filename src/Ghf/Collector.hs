@@ -58,6 +58,7 @@ import Debug.Trace
 import Ghf.Core hiding(trace)
 import Ghf.Extractor
 import Ghf.File
+import Ghf.Info
 
 
 data Flag =  UninstalledProject String | Rebuild
@@ -93,9 +94,8 @@ main = defaultErrorHandler defaultDynFlags $do
     let uninstalled =   filter (\x -> case x of UninstalledProject _ -> True
                                                 otherwise -> False) o
     if length uninstalled > 0
-        then return ()
-             {--mapM_ (collectUninstalled session version)
-                $ map (\ (UninstalledProject x) -> x) uninstalled--}
+        then mapM_ (collectUninstalled session version)
+                $ map (\ (UninstalledProject x) -> x) uninstalled
         else collectInstalled session version (elem Rebuild o)
 
 collectInstalled :: Session -> String -> Bool -> IO()
@@ -125,7 +125,7 @@ collectInstalled session version forceRebuild = do
 --    putStrLn $ "extracted " ++ concatMap (\ pi -> packageId pi) extracted
     mapM_ (writeExtracted collectorPath) extracted
 
-{--
+
 collectUninstalled :: Session -> String -> FilePath -> IO ()
 collectUninstalled session version cabalPath = do
     allHiFiles      <-  allHiFiles (dropFileName cabalPath)
@@ -136,29 +136,33 @@ collectUninstalled session version cabalPath = do
     let extracted   =   extractInfo (allIfaceInfos,[], fromDPid (PD.package pd), deps)
     collectorPath   <-  getCollectorPath version
     writeExtracted collectorPath extracted
---}
+
 getIFaceInfos :: PackageIdentifier -> [String] -> Session -> IO [(ModIface, FilePath)]
 getIFaceInfos pckg modules session = do
-    let isBase =    pkgName pckg == "base"
-    let ifaces =    mapM (\ mn -> findAndReadIface empty
-                          (if isBase
-                                then mkBaseModule_ (mkModuleName mn)
-                                else mkModule (mkPackageId pckg) (mkModuleName mn))
-                          False) modules
-    hscEnv <- sessionHscEnv session
-    let gblEnv = IfGblEnv { if_rec_types = Nothing }
-    maybes <- initTcRnIf  'i' hscEnv gblEnv () ifaces
-    let res = catMaybes (map handleErr maybes)
+    let isBase          =   pkgName pckg == "base"
+    let ifaces          =   mapM (\ mn -> findAndReadIface empty
+                                          (if isBase
+                                                then mkBaseModule_ (mkModuleName mn)
+                                                else mkModule (mkPackageId pckg)
+                                                              (mkModuleName mn))
+                                          False) modules
+    hscEnv              <-  sessionHscEnv session
+    let gblEnv          =   IfGblEnv { if_rec_types = Nothing }
+    maybes              <-  initTcRnIf  'i' hscEnv gblEnv () ifaces
+    let res             =   catMaybes (map handleErr maybes)
     return res
     where
         handleErr (M.Succeeded val)   =   Just val
         handleErr (M.Failed mess)     =   trace (P.render (mess defaultErrStyle)) Nothing
-{--
+
 getIFaceInfos2 :: [String] -> Session -> IO [(ModIface, FilePath)]
 getIFaceInfos2 filePaths session = do
-    ifaces      <-   mapM readBinIface filePaths
-    return (zip ifaces filePaths)
---}
+    let ifaces          =   mapM readBinIface filePaths
+    hscEnv              <-  sessionHscEnv session
+    let gblEnv          =   IfGblEnv { if_rec_types = Nothing }
+    res                 <-  initTcRnIf  'i' hscEnv gblEnv () ifaces
+    return (zip res filePaths)
+
 findKnownPackages :: FilePath -> IO (Set String)
 findKnownPackages filePath = do
     paths <- getDirectoryContents filePath

@@ -137,8 +137,8 @@ extractIdentifierDescr (IfaceId ifName ifType ifIdInfo) modul package
 ,   identifierType  =   Function
 ,   moduleIdI       =   modul
 ,   packageIdI      =   asDPid package}]
-{--
--- #if __GHC__ < 670
+
+#if __GHC__ < 670
 extractIdentifierDescr (IfaceData ifName ifTyVars ifCtxt ifCons _ ifVrcs _) modul package
         = IdentifierDescr{
     identifierW     =   unpackFS $occNameFS ifName
@@ -214,8 +214,8 @@ extractIdentifierDescrClassOp modul package (IfaceClassOp name _ atype) =
 ,   moduleIdI       =   modul
 ,   packageIdI      =   asDPid package}
 
--- #endif
---}
+#else
+
 extractIdentifierDescr (IfaceData ifName ifTyVars ifCtxt ifCons _ _ _ _ ) modul package
         = IdentifierDescr{
     identifierW     =   unpackFS $occNameFS ifName
@@ -293,7 +293,7 @@ extractIdentifierDescrClassOp modul package (IfaceClassOp name _ atype) =
 ,   moduleIdI       =   modul
 ,   packageIdI      =   asDPid package}
 
--- #endif
+#endif
 
 
 extractInstances :: IfaceInst -> [(ClassId,DataId)]
