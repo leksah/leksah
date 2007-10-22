@@ -73,6 +73,7 @@ module Ghf.Core (
 ,   IdType(..)
 ,   SymbolTable
 ,   PackageScope
+,   PackIdentifier
 
 -- * debugging
 ,   helpDebug
@@ -81,7 +82,7 @@ module Ghf.Core (
 ) where
 
 import Graphics.UI.Gtk.SourceView
-import Graphics.UI.Gtk
+import Graphics.UI.Gtk hiding (get)
 import System.Glib.Signals
 import Control.Monad.Reader
 import Distribution.Package
@@ -94,7 +95,7 @@ import qualified Data.Set as Set
 import System.Time
 import GHC (Session)
 import Data.Generics.Basics
-import BinaryDerive
+import Data.Binary
 
 --import Debug.Trace
 --message m = trace m (return ())
@@ -375,46 +376,91 @@ data ErrorSpec = ErrorSpec {
 --  | Information about the world, extraced from .hi and maybe source files
 --
 
-type PackageScope   =   (Map PackageIdentifier PackageDescr,SymbolTable)
-type SymbolTable    =   Map Symbol [IdentifierDescr]
+type PackageScope       =   (Map PackIdentifier PackageDescr,SymbolTable)
+type SymbolTable        =   Map Symbol [IdentifierDescr]
 
-data PackageDescr   =   PackageDescr {
-    packageIdW      ::   ! PackIdentifier
-,   exposedModulesD ::   ! [ModuleDescr]
-,   buildDependsW   ::   ! [PackIdentifier]
-,   mbSourcePathP   ::   ! (Maybe FilePath)
-,   idDescriptions  ::   ! SymbolTable
-} deriving (Read, Show,Eq,Ord,Data,Typeable)
+data PackageDescr       =   PackageDescr {
+    packagePD           ::   ! PackIdentifier
+,   exposedModulesPD    ::   ! [ModuleDescr]
+,   buildDependsPD      ::   ! [PackIdentifier]
+,   mbSourcePathPD      ::   ! (Maybe FilePath)
+,   idDescriptionsPD    ::   ! SymbolTable
+} deriving (Read,Show,Eq,Ord)
 
-data ModuleDescr    =   ModuleDescr {
-    moduleId        ::   ! ModuleIdentifier
-,   exportedNames   ::   ! (Set Symbol)              --unqualified
-,   packageIdM      ::   ! PackIdentifier
-,   mbSourcePathM   ::   ! (Maybe FilePath)
-,   instances       ::   ! [(ClassId,DataId)]
-,   usages          ::   ! (Map ModuleIdentifier (Set Symbol)) -- imports
-} deriving (Read,Show,Eq,Ord,Data,Typeable)
+instance Binary PackageDescr where
+    put (PackageDescr packagePD exposedModulesPD buildDependsPD mbSourcePathPD idDescriptionsPD)
+        =   do  put packagePD
+                put exposedModulesPD
+                put buildDependsPD
+                put mbSourcePathPD
+                put idDescriptionsPD
+    get =   do  packagePD           <- get
+                exposedModulesPD    <- get
+                buildDependsPD      <- get
+                mbSourcePathPD      <- get
+                idDescriptionsPD    <- get
+                return (PackageDescr packagePD exposedModulesPD buildDependsPD mbSourcePathPD
+                                        idDescriptionsPD)
+
+data ModuleDescr        =   ModuleDescr {
+    moduleIdMD          ::   ! ModuleIdentifier
+,   exportedNamesMD     ::   ! (Set Symbol)              --unqualified
+,   mbSourcePathMD      ::   ! (Maybe FilePath)
+,   instancesMD         ::   ! [(ClassId,DataId)]
+,   usagesMD            ::   ! (Map ModuleIdentifier (Set Symbol)) -- imports
+} deriving (Read,Show,Eq,Ord)
+
+instance Binary ModuleDescr where
+    put (ModuleDescr moduleIdMD exportedNamesMD mbSourcePathMD instancesMD usagesMD)
+        = do    put moduleIdMD
+                put exportedNamesMD
+                put mbSourcePathMD
+                put instancesMD
+                put usagesMD
+    get = do    moduleIdMD          <- get
+                exportedNamesMD     <- get
+                mbSourcePathMD      <- get
+                instancesMD         <- get
+                usagesMD            <- get
+                return (ModuleDescr moduleIdMD exportedNamesMD mbSourcePathMD instancesMD
+                                    usagesMD)
 
 data IdentifierDescr =  IdentifierDescr {
-    identifierW     ::   ! Symbol
-,   identifierType  ::   ! IdType
-,   typeInfo        ::   ! TypeInfo
-,   moduleIdI       ::   ! [ModuleIdentifier]
-,   packageIdI      ::   ! PackIdentifier
-} deriving (Read, Show,Eq,Ord,Data,Typeable)
+    identifierID     ::   ! Symbol
+,   identifierTypeID ::   ! IdType
+,   typeInfoID       ::   ! TypeInfo
+,   moduleIdID       ::   ! [ModuleIdentifier]
+} deriving (Read, Show,Eq,Ord)
 
-emptyIdentifierDescr = IdentifierDescr ""
+instance Binary IdentifierDescr where
+    put (IdentifierDescr identifierID identifierTypeID typeInfoID moduleIdID)
+        = do    put identifierID
+                put identifierTypeID
+                put typeInfoID
+                put moduleIdID
+    get = do    identifierID        <- get
+                identifierTypeID    <- get
+                typeInfoID          <- get
+                moduleIdID          <- get
+                return (IdentifierDescr identifierID identifierTypeID typeInfoID moduleIdID)
 
 data IdType = Function | Data | Newtype | Synonym | AbstractData |
                 Constructor | Field | Class | ClassOp | Foreign
-  deriving (Read, Show, Eq, Ord, Data, Typeable)
+  deriving (Read, Show, Eq, Ord, Enum)
+
+instance Binary IdType where
+    put it  =   do  put (fromEnum it)
+    get     =   do  code         <- get
+                    return (toEnum code)
+
+emptyIdentifierDescr = IdentifierDescr ""
 
 type Symbol             =   String  -- Qualified or unqualified
-type ClassId        =   String  -- Qualified or unqualified
-type DataId         =   String  -- Qualified or unqualified
-type TypeInfo       =   String
+type ClassId            =   String  -- Qualified or unqualified
+type DataId             =   String  -- Qualified or unqualified
+type TypeInfo           =   String
 type ModuleIdentifier   =   String --always quelified
-type PackIdentifier   =   String
+type PackIdentifier     =   String
 
 -- ---------------------------------------------------------------------
 -- Debugging

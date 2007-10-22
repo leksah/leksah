@@ -26,8 +26,8 @@ module Ghf.Info (
 ,   getInstalledPackageInfos
 ,   findFittingPackages
 ,   findFittingPackagesDP
-,   fromDPid
-,   asDPid
+,   fromPackageIdentifier
+,   toPackageIdentifier
 ) where
 
 import Graphics.UI.Gtk hiding (afterToggleOverwrite)
@@ -57,6 +57,8 @@ import Data.List
 import UniqFM
 import PackageConfig
 import Data.Maybe
+import Text.ParserCombinators.ReadP
+import Distribution.Package
 
 import Ghf.File
 import Ghf.Core
@@ -106,7 +108,8 @@ buildCurrentInfo depends = do
             case accessibleInfo of
                 Nothing         ->  modifyGhf_ (\ghf -> return (ghf{currentInfo = Nothing}))
                 Just (pdmap,_)  ->  do
-                    let packageList =   map (\ pi -> pi `Map.lookup` pdmap) (map asDPid fp)
+                    let packageList =   map (\ pi -> pi `Map.lookup` pdmap)
+                                            $ map fromPackageIdentifier fp
                     let scope       =   foldr buildScope (Map.empty,Map.empty)
                                             $ map fromJust
                                                 $ filter isJust packageList
@@ -145,7 +148,7 @@ buildActiveInfo' =
             eid         <-  lift $ forkIO (readErr log err)
             lift $ threadDelay 3000
             collectorPath   <-  lift $ getCollectorPath version
-            packageDescr    <-  lift $ loadInfosForPackage collectorPath (fromDPid(packageId ghfPackage))
+            packageDescr    <-  lift $ loadInfosForPackage collectorPath (packageId ghfPackage)
             case packageDescr of
                 Nothing     -> return Nothing
                 Just pd     -> do
@@ -165,16 +168,16 @@ updateAccessibleInfo = do
         Nothing -> loadAccessibleInfo
         Just (psmap,psst) -> do
             packageInfos        <-  lift $ getInstalledPackageInfos session
-            let packageIds      =   map asDPid $ map package packageInfos
+            let packageIds      =   map (fromPackageIdentifier . package) packageInfos
             let newPackages     =   filter (\ pi -> Map.member pi psmap) packageIds
             let trashPackages   =   filter (\ e  -> not (elem e packageIds))(Map.keys psmap)
             if null newPackages && null trashPackages
                 then return ()
                 else do
                     collectorPath   <-  lift $ getCollectorPath version
-                    newPackageInfos <-  lift $ mapM (\pid -> loadInfosForPackage collectorPath (fromDPid pid))
-                                                newPackages
-                    let psamp2      =   foldr (\e m -> Map.insert (packageIdW e) e m)
+                    newPackageInfos <-  lift $ mapM (\pid -> loadInfosForPackage collectorPath pid)
+                                                $ map toPackageIdentifier newPackages
+                    let psamp2      =   foldr (\e m -> Map.insert (packagePD e) e m)
                                                 psmap
                                                 (map fromJust
                                                     $ filter isJust newPackageInfos)
@@ -209,12 +212,12 @@ loadInfosForPackage dirPath pid = do
 --
 buildScope :: PackageDescr -> PackageScope -> PackageScope
 buildScope packageD (packageMap, symbolTable) =
-    let pid = packageIdW packageD
+    let pid = packagePD packageD
     in if pid `Map.member` packageMap
-        then trace  ("package already in world " ++ showPackageId (fromDPid (packageIdW packageD)))
+        then trace  ("package already in world " ++ packagePD packageD)
                     (packageMap, symbolTable)
         else (Map.insert pid packageD packageMap,
-              Map.unionWith (++) symbolTable (idDescriptions packageD))
+              Map.unionWith (++) symbolTable (idDescriptionsPD packageD))
 
 --
 -- | Lookup of the identifier description
@@ -281,13 +284,20 @@ findFittingPackages session dependencyList = do
 findFittingPackagesDP :: Session -> [Dependency] -> IO  [DP.PackageIdentifier]
 findFittingPackagesDP session dependencyList =  do
         fp <- (findFittingPackages session dependencyList)
-        return (map asDPid fp)
+        return fp
 
-asDPid :: PackageIdentifier -> DP.PackageIdentifier
-asDPid (PackageIdentifier name version) = DP.PackageIdentifier name version
+--asDPid :: PackageIdentifier -> DP.PackageIdentifier
+--asDPid (PackageIdentifier name version) = DP.PackageIdentifier name version
 
-fromDPid :: DP.PackageIdentifier -> PackageIdentifier
-fromDPid (DP.PackageIdentifier name version) = PackageIdentifier name version
+--fromDPid :: DP.PackageIdentifier -> PackageIdentifier
+--fromDPid (DP.PackageIdentifier name version) = PackageIdentifier name version
 
+fromPackageIdentifier :: PackageIdentifier -> PackIdentifier
+fromPackageIdentifier   =   showPackageId
+
+toPackageIdentifier :: PackIdentifier -> PackageIdentifier
+toPackageIdentifier pd    =   case readP_to_S parsePackageId pd of
+                                [(ps,_)]  -> ps
+                                _         -> error "cannot parse package identifier"
 
 

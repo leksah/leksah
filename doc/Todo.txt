@@ -106,18 +106,19 @@ ok  - Scanning non installed packages
 ok  - Scanning for 6.8!!
 ok  - Administration of package infos and symbol tables
 
-!!! - Optimize storing and reading (binary, byteString)
-        Problem with version 3 or 4 of binary
+started - Optimize storing and reading (binary, byteString)
 !!! - Selecting the right from a multitude of possibilities
-!!! - Many modules, just one package problem (Rework PackageDescr ...)
+
 !!! - New Pane for info
 
 !!! - Scanning of source directories
+
 !!! - Tree Views
+
+!!! - Haddock
 
     - Implementing event concept from Thorsten
 
--
 
 
 

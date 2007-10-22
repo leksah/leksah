@@ -60,29 +60,24 @@ idDescrDescr :: [FieldDescriptionE IdentifierDescr]
 idDescrDescr = [
         mkFieldE (emptyParams
             {   paraName = Just "Symbol"})
-            identifierW
-            (\ b a -> a{identifierW = b})
+            identifierID
+            (\ b a -> a{identifierID = b})
             stringEditor
     ,   mkFieldE (emptyParams
             {   paraName = Just "Modules exporting"})
-            moduleIdI
-            (\ b a -> a{moduleIdI = b})
+            moduleIdID
+            (\ b a -> a{moduleIdID = b})
             (multisetEditor (ColumnDescr False [("",(\row -> [New.cellText := row]))])
                 (stringEditor, emptyParams))
     ,   mkFieldE (emptyParams
-            {  paraName = Just "From Package"})
-            packageIdI
-            (\b a -> a{packageIdI = b})
-            packageEditor
-    ,   mkFieldE (emptyParams
             {paraName = Just "Sort of symbol"})
-            identifierType
-            (\b a -> a{identifierType = b})
+            identifierTypeID
+            (\b a -> a{identifierTypeID = b})
             (staticSelectionEditor allIdTypes)
     ,   mkFieldE (emptyParams
             {paraName = Just "Type Info"})
-            typeInfo
-            (\b a -> a{typeInfo = b})
+            typeInfoID
+            (\b a -> a{typeInfoID = b})
             multilineStringEditor
 {--    ,   mkField (emptyParams
             {paraName = Just "Documentation"})
