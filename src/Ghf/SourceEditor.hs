@@ -85,6 +85,8 @@ import Ghf.PropertyEditor
 import Ghf.Log
 --import Ghf.Provider
 import Ghf.Info
+import Ghf.InfoPane
+
 
 isBuffer :: GhfPane -> Bool
 isBuffer (BufPane _) = True
@@ -348,11 +350,12 @@ showType sv ghfR = do
     (l,r) <- textBufferGetSelectionBounds buf
     symbol <- textBufferGetText buf l r True
     ghf <- readIORef ghfR
-    case accessibleInfo ghf of
+    case currentInfo ghf of
         Nothing -> return ()
-        Just (_,symbolTable) -> case getIdentifierDescr symbol symbolTable of
-                                        [] -> return ()
-                                        a -> runReaderT (setInfo (head a)) ghfR
+        Just ((_,symbolTable1),(_,symbolTable2)) ->
+            case getIdentifierDescr symbol symbolTable1 symbolTable2 of
+                [] -> return ()
+                a -> runReaderT (setInfo (head a)) ghfR
 
 markLabelAsChanged :: GhfAction
 markLabelAsChanged = do

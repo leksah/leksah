@@ -157,12 +157,17 @@ getIFaceInfos pckg modules session = do
 
 getIFaceInfos2 :: [String] -> Session -> IO [(ModIface, FilePath)]
 getIFaceInfos2 filePaths session = do
+#if __GHC__ > 670
     let ifaces          =   mapM readBinIface filePaths
     hscEnv              <-  sessionHscEnv session
     let gblEnv          =   IfGblEnv { if_rec_types = Nothing }
     res                 <-  initTcRnIf  'i' hscEnv gblEnv () ifaces
+#else
+    res                 <-   mapM readBinIface filePaths
+#endif
     return (zip res filePaths)
 
+    
 findKnownPackages :: FilePath -> IO (Set String)
 findKnownPackages filePath = do
     paths <- getDirectoryContents filePath

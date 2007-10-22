@@ -22,9 +22,6 @@ module Ghf.Info (
 ,   buildActiveInfo
 
 ,   getIdentifierDescr
-,   initInfo
-,   setInfo
-,   isInfo
 
 ,   getInstalledPackageInfos
 ,   findFittingPackages
@@ -97,17 +94,19 @@ clearCurrentInfo = do
 --
 -- | Builds the current info for a package
 --
-buildCurrentInfo :: PackageDescr -> GhfAction
-buildCurrentInfo pd@(PackageDescr _ _ depends _ _) = do
-    active              <-  buildActiveInfo
+buildCurrentInfo :: [Dependency] -> GhfAction
+buildCurrentInfo depends = do
+    session             <-  readGhf session
+    fp                  <-  lift $findFittingPackages session depends
+    active              <-  buildActiveInfo'
     case active of
-        Nothing -> modifyGhf_ (\ghf -> return (ghf{currentInfo = Nothing}))
-        Just active -> do
+        Nothing         -> modifyGhf_ (\ghf -> return (ghf{currentInfo = Nothing}))
+        Just active     -> do
             accessibleInfo      <-  readGhf accessibleInfo
             case accessibleInfo of
                 Nothing         ->  modifyGhf_ (\ghf -> return (ghf{currentInfo = Nothing}))
                 Just (pdmap,_)  ->  do
-                    let packageList =   map (\ pi -> pi `Map.lookup` pdmap) depends
+                    let packageList =   map (\ pi -> pi `Map.lookup` pdmap) (map asDPid fp)
                     let scope       =   foldr buildScope (Map.empty,Map.empty)
                                             $ map fromJust
                                                 $ filter isJust packageList
@@ -116,21 +115,37 @@ buildCurrentInfo pd@(PackageDescr _ _ depends _ _) = do
 --
 -- | Builds the current info for the activePackage
 --
-buildActiveInfo :: GhfM (Maybe PackageScope)
-buildActiveInfo =
+buildActiveInfo :: GhfAction
+buildActiveInfo = do
+    currentInfo         <-  readGhf currentInfo
+    case currentInfo of
+        Nothing                 -> return ()
+        Just (active, scope)    -> do
+            newActive   <-  buildActiveInfo'
+            case newActive of
+                Nothing         -> return ()
+                Just newActive  ->
+                    modifyGhf_ (\ghf -> return (ghf{currentInfo = Just (newActive, scope)}))
+
+
+--
+-- | Builds the current info for the activePackage
+--
+buildActiveInfo' :: GhfM (Maybe PackageScope)
+buildActiveInfo' =
     let version         =   cProjectVersion in do
     activePack          <-  readGhf activePack
     log                 <-  getLog
     case activePack of
         Nothing         ->  return Nothing
         Just ghfPackage ->  do
-            (inp,out,err,pid) <- lift $ runExternal "ghf-collector"
+            (inp,out,err,pid) <- lift $ runExternal "dist/build/ghf-collector/ghf-collector"
                                         (["--Uninstalled=" ++ cabalFile ghfPackage])
             oid         <-  lift $ forkIO (readOut log out)
             eid         <-  lift $ forkIO (readErr log err)
             lift $ threadDelay 3000
             collectorPath   <-  lift $ getCollectorPath version
-            packageDescr    <-  lift $ loadInfosForPackage collectorPath (packageId ghfPackage)
+            packageDescr    <-  lift $ loadInfosForPackage collectorPath (fromDPid(packageId ghfPackage))
             case packageDescr of
                 Nothing     -> return Nothing
                 Just pd     -> do
@@ -150,14 +165,14 @@ updateAccessibleInfo = do
         Nothing -> loadAccessibleInfo
         Just (psmap,psst) -> do
             packageInfos        <-  lift $ getInstalledPackageInfos session
-            let packageIds      =   map package packageInfos
+            let packageIds      =   map asDPid $ map package packageInfos
             let newPackages     =   filter (\ pi -> Map.member pi psmap) packageIds
             let trashPackages   =   filter (\ e  -> not (elem e packageIds))(Map.keys psmap)
             if null newPackages && null trashPackages
                 then return ()
                 else do
                     collectorPath   <-  lift $ getCollectorPath version
-                    newPackageInfos <-  lift $ mapM (loadInfosForPackage collectorPath)
+                    newPackageInfos <-  lift $ mapM (\pid -> loadInfosForPackage collectorPath (fromDPid pid))
                                                 newPackages
                     let psamp2      =   foldr (\e m -> Map.insert (packageIdW e) e m)
                                                 psmap
@@ -196,7 +211,7 @@ buildScope :: PackageDescr -> PackageScope -> PackageScope
 buildScope packageD (packageMap, symbolTable) =
     let pid = packageIdW packageD
     in if pid `Map.member` packageMap
-        then trace  ("package already in world " ++ showPackageId (packageIdW packageD))
+        then trace  ("package already in world " ++ showPackageId (fromDPid (packageIdW packageD)))
                     (packageMap, symbolTable)
         else (Map.insert pid packageD packageMap,
               Map.unionWith (++) symbolTable (idDescriptions packageD))
@@ -204,11 +219,15 @@ buildScope packageD (packageMap, symbolTable) =
 --
 -- | Lookup of the identifier description
 --
-getIdentifierDescr :: String -> SymbolTable -> [IdentifierDescr]
-getIdentifierDescr str st =
-    case str `Map.lookup` st of
-        Nothing -> []
-        Just list -> list
+getIdentifierDescr :: String -> SymbolTable -> SymbolTable -> [IdentifierDescr]
+getIdentifierDescr str st1 st2 =
+    case str `Map.lookup` st1 of
+        Nothing -> case str `Map.lookup` st2 of
+                        Nothing -> []
+                        Just list -> list
+        Just list -> case str `Map.lookup` st2 of
+                        Nothing -> list
+                        Just list2 -> list ++ list2
 
 {--
 typeDescription :: String -> SymbolTable -> String
@@ -270,110 +289,5 @@ asDPid (PackageIdentifier name version) = DP.PackageIdentifier name version
 fromDPid :: DP.PackageIdentifier -> PackageIdentifier
 fromDPid (DP.PackageIdentifier name version) = PackageIdentifier name version
 
-
-
--- ---------------------------------------------------------------------
--- The GUI stuff for infos
---
-
-
-infoPaneName = "Info"
-
-idDescrDescr :: [FieldDescriptionE IdentifierDescr]
-idDescrDescr = [
-        mkFieldE (emptyParams
-            {   paraName = Just "Symbol"})
-            identifierW
-            (\ b a -> a{identifierW = b})
-            stringEditor
-    ,   mkFieldE (emptyParams
-            {   paraName = Just "Modules exporting"})
-            moduleIdI
-            (\ b a -> a{moduleIdI = b})
-            (multisetEditor (ColumnDescr False [("",(\row -> [New.cellText := row]))])
-                (stringEditor, emptyParams))
-    ,   mkFieldE (emptyParams
-            {  paraName = Just "From Package"})
-            packageIdI
-            (\b a -> a{packageIdI = b})
-            packageEditor
-    ,   mkFieldE (emptyParams
-            {paraName = Just "Sort of symbol"})
-            identifierType
-            (\b a -> a{identifierType = b})
-            (staticSelectionEditor allIdTypes)
-    ,   mkFieldE (emptyParams
-            {paraName = Just "Type Info"})
-            typeInfo
-            (\b a -> a{typeInfo = b})
-            multilineStringEditor
-{--    ,   mkField (emptyParams
-            {paraName = Just "Documentation"})
-            typeInfo
-            (\b a -> a{typeInfo = b})
-            multilineStringEditor--}]
-
-allIdTypes = [Function,Data,Newtype,Synonym,AbstractData,Constructor,Field,Class,ClassOp,Foreign]
-
-initInfo :: PanePath -> Notebook -> IdentifierDescr -> GhfAction
-initInfo panePath nb idDescr = do
-    ghfR <- ask
-    panes <- readGhf panes
-    paneMap <- readGhf paneMap
-    prefs <- readGhf prefs
-    (pane,cids) <- lift $ do
-            nbbox       <- vBoxNew False 0
-            bb          <- hButtonBoxNew
-            definitionB <- buttonNewWithLabel "Definition"
-            docuB       <- buttonNewWithLabel "Docu"
-            usesB       <- buttonNewWithLabel "Uses"
-            boxPackStart bb definitionB PackNatural 0
-            boxPackStart bb docuB PackNatural 0
-            boxPackStart bb usesB PackNatural 0
-            resList <- mapM (\ fd -> (fieldEditor fd) idDescr) idDescrDescr
-            let (widgets, setInjs, getExts, notifiers) = unzip4 resList
-            mapM_ (\ w -> boxPackStart nbbox w PackNatural 0) widgets
-            boxPackEnd nbbox bb PackNatural 0
-            --openType
-            let info = GhfInfo nbbox setInjs
-            notebookPrependPage nb nbbox infoPaneName
-            widgetShowAll (box info)
-            return (info,[])
-    let newPaneMap  =  Map.insert (uniquePaneName (InfoPane pane))
-                            (panePath, BufConnections [] [] cids) paneMap
-    let newPanes = Map.insert infoPaneName (InfoPane pane) panes
-    modifyGhf_ (\ghf -> return (ghf{panes = newPanes,
-                                    paneMap = newPaneMap}))
-    lift $widgetGrabFocus (box pane)
-
-makeInfoActive :: GhfInfo -> GhfAction
-makeInfoActive info = do
-    activatePane (InfoPane info) (BufConnections[][][])
-
-setInfo :: IdentifierDescr -> GhfM ()
-setInfo identifierDescr = do
-    panesST <- readGhf panes
-    prefs   <- readGhf prefs
-    layout  <- readGhf layout
-    let infos = map (\ (InfoPane b) -> b) $filter isInfo $Map.elems panesST
-    if null infos || length infos > 1
-        then do
-            let pp  =  getStandardPanePath (infoPanePath prefs) layout
-            lift $ message $ "panePath " ++ show pp
-            nb      <- getNotebook pp
-            initInfo pp nb identifierDescr
-            panesST <- readGhf panes
-            let logs = map (\ (InfoPane b) -> b) $filter isInfo $Map.elems panesST
-            if null logs || length logs > 1
-                then error "Can't init info"
-                else return ()
-        else do
-            let inj = injectors (head infos)
-            mapM_ (\ a -> lift $ a identifierDescr)  inj
-            return ()
-
-isInfo :: GhfPane -> Bool
-isInfo (InfoPane _) = True
-isInfo _            = False
 
 

@@ -1,3 +1,4 @@
+{-# OPTIONS_GHC -fglasgow-exts #-}
 -----------------------------------------------------------------------------
 --
 -- Module      :  Ghf.Core
@@ -92,7 +93,8 @@ import Data.Set(Set)
 import qualified Data.Set as Set
 import System.Time
 import GHC (Session)
-
+import Data.Generics.Basics
+import BinaryDerive
 
 --import Debug.Trace
 --message m = trace m (return ())
@@ -377,45 +379,47 @@ type PackageScope   =   (Map PackageIdentifier PackageDescr,SymbolTable)
 type SymbolTable    =   Map Symbol [IdentifierDescr]
 
 data PackageDescr   =   PackageDescr {
-    packageIdW      ::   ! PackageIdentifier
+    packageIdW      ::   ! PackIdentifier
 ,   exposedModulesD ::   ! [ModuleDescr]
-,   buildDependsW   ::   ! [PackageIdentifier]
+,   buildDependsW   ::   ! [PackIdentifier]
 ,   mbSourcePathP   ::   ! (Maybe FilePath)
 ,   idDescriptions  ::   ! SymbolTable
-} deriving (Read, Show,Eq,Ord)
+} deriving (Read, Show,Eq,Ord,Data,Typeable)
 
 data ModuleDescr    =   ModuleDescr {
     moduleId        ::   ! ModuleIdentifier
 ,   exportedNames   ::   ! (Set Symbol)              --unqualified
-,   packageIdM      ::   ! PackageIdentifier
+,   packageIdM      ::   ! PackIdentifier
 ,   mbSourcePathM   ::   ! (Maybe FilePath)
 ,   instances       ::   ! [(ClassId,DataId)]
 ,   usages          ::   ! (Map ModuleIdentifier (Set Symbol)) -- imports
-} deriving (Read,Show,Eq,Ord)
+} deriving (Read,Show,Eq,Ord,Data,Typeable)
 
 data IdentifierDescr =  IdentifierDescr {
     identifierW     ::   ! Symbol
 ,   identifierType  ::   ! IdType
 ,   typeInfo        ::   ! TypeInfo
 ,   moduleIdI       ::   ! [ModuleIdentifier]
-,   packageIdI      ::   ! PackageIdentifier
-} deriving (Read, Show,Eq,Ord)
+,   packageIdI      ::   ! PackIdentifier
+} deriving (Read, Show,Eq,Ord,Data,Typeable)
 
 emptyIdentifierDescr = IdentifierDescr ""
 
 data IdType = Function | Data | Newtype | Synonym | AbstractData |
                 Constructor | Field | Class | ClassOp | Foreign
-  deriving (Read, Show, Eq, Ord)
+  deriving (Read, Show, Eq, Ord, Data, Typeable)
 
 type Symbol             =   String  -- Qualified or unqualified
 type ClassId        =   String  -- Qualified or unqualified
 type DataId         =   String  -- Qualified or unqualified
 type TypeInfo       =   String
 type ModuleIdentifier   =   String --always quelified
+type PackIdentifier   =   String
 
 -- ---------------------------------------------------------------------
 -- Debugging
 --
+
 
 instance Show Window
     where show _ = "Window *"

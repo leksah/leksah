@@ -98,7 +98,7 @@ activatePackage filePath = do
             then lift $readFlags (ppath </> "Ghf.flags") packp
             else return packp)
     modifyGhf_ (\ghf -> return (ghf{activePack = (Just pack)}))
-    buildActiveInfo
+    buildCurrentInfo (buildDepends packageD)
     sb <- getSBActivePackage
     lift $statusbarPop sb 1
     lift $statusbarPush sb 1 (showPackageId $packageId pack)
@@ -159,12 +159,14 @@ packageBuild = do
     lift $statusbarPush sb 1 ""
     case mbPackage of
         Nothing         -> return ()
-        Just package    -> lift $do
-            (inp,out,err,pid) <- runExternal "runhaskell" (["Setup","build"]
-                                            ++ buildFlags package)
-            oid <- forkIO (readOut log out)
-            eid <- forkIO (runReaderT (readErrForBuild log err) ghfR)
-            return ()
+        Just package    -> do
+            lift $do
+                (inp,out,err,pid) <- runExternal "runhaskell" (["Setup","build"]
+                                                ++ buildFlags package)
+                oid <- forkIO (readOut log out)
+                eid <- forkIO (runReaderT (readErrForBuild log err) ghfR)
+                return ()
+            buildActiveInfo
 
 packageDoc :: GhfAction
 packageDoc = do
