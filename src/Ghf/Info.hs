@@ -157,7 +157,7 @@ buildActiveInfo' =
         Just ghfPackage ->  do
             pid <- lift $ runProcess "dist/build/ghf-collector/ghf-collector"
                                         ["--Uninstalled=" ++ cabalFile ghfPackage]
-                                        Nothing Nothing Nothing Nothing Nothing 
+                                        Nothing Nothing Nothing Nothing Nothing
             lift $ waitForProcess pid
             collectorPath   <-  lift $ getCollectorPath version
             packageDescr    <-  lift $ loadInfosForPackage collectorPath
@@ -259,10 +259,10 @@ typeDescription str st =
         ttString Class      =   "identifies a class"
         ttString ClassOp    =   "identifies a class operation with type "
         ttString Foreign    =   "identifies something strange"
-        generateText (IdentifierDescr _ tt ti m p) =
+        generateText (IdentifierDescr _ tt ti m) =
             str ++ " "  ++   (ttString tt) ++ "\n   "
                 ++   ti ++  "\n   "
-                ++   "exported by modules "  ++   show m ++ " in package " ++ show p ++ "\n   "
+                ++   "exported by modules "  ++   show m ++ "\n"
 --}
 
 -- ---------------------------------------------------------------------

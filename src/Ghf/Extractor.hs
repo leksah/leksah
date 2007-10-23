@@ -199,7 +199,7 @@ extractIdentifierDescrConst modul package extName
 ,   typeInfoID          =   showSDocUnqual $ppr
                                 (foldr IfaceFunTy (IfaceTyConApp (IfaceTc name)[]) ifConArgTys)
 ,   identifierTypeID    =   Constructor
-,   moduleIdID          =   fromPackageIdentifier package ++ ":" ++ modul}
+,   moduleIdID          =   modul}
                                 : map (extractIdentifierDescrField modul package extName)
                                         (zip ifConFields ifConArgTys)
 #else

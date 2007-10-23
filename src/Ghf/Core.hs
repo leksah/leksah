@@ -207,9 +207,6 @@ data GhfPane        =   BufPane GhfBuffer
                     |   InfoPane GhfInfo
     deriving (Eq,Show)
 
-
-
-
 --
 -- | The direction of a split
 --
@@ -221,7 +218,6 @@ data Direction      =   Horizontal | Vertical
 --
 data PaneDirection  =   TopP | BottomP | LeftP | RightP
     deriving (Eq,Show,Read)
-
   	
 --
 -- | A path to a pane
@@ -235,7 +231,6 @@ data PaneLayout =       HorizontalP PaneLayout PaneLayout Int
                     |   VerticalP PaneLayout PaneLayout Int
                     |   TerminalP (Maybe PaneDirection)
     deriving (Eq,Show,Read)
-
 
 data StandardPath = LeftTop | LeftBottom | RightTop | RightBottom
     deriving(Read,Show,Eq,Enum)
@@ -275,7 +270,6 @@ instance Ord GhfBuffer
                         else if bufferName a == bufferName b
                             then addedIndex a <= addedIndex b
                             else False
-
 --
 -- | A log view pane description
 --
@@ -386,6 +380,38 @@ data PackageDescr       =   PackageDescr {
 ,   idDescriptionsPD    ::   ! SymbolTable
 } deriving (Read,Show,Eq,Ord)
 
+data ModuleDescr        =   ModuleDescr {
+    moduleIdMD          ::   ! ModuleIdentifier
+,   exportedNamesMD     ::   ! (Set Symbol)              --unqualified
+,   mbSourcePathMD      ::   ! (Maybe FilePath)
+,   instancesMD         ::   ! [(ClassId,DataId)]
+,   usagesMD            ::   ! (Map ModuleIdentifier (Set Symbol)) -- imports
+} deriving (Read,Show,Eq,Ord)
+
+data IdentifierDescr =  IdentifierDescr {
+    identifierID     ::   ! Symbol
+,   identifierTypeID ::   ! IdType
+,   typeInfoID       ::   ! TypeInfo
+,   moduleIdID       ::   ! [ModuleIdentifier]
+} deriving (Read, Show,Eq,Ord)
+
+data IdType = Function | Data | Newtype | Synonym | AbstractData |
+                Constructor | Field | Class | ClassOp | Foreign
+  deriving (Read, Show, Eq, Ord, Enum)
+
+emptyIdentifierDescr = IdentifierDescr ""
+
+type Symbol             =   String  -- Qualified or unqualified
+type ClassId            =   String  -- Qualified or unqualified
+type DataId             =   String  -- Qualified or unqualified
+type TypeInfo           =   String
+type ModuleIdentifier   =   String --always quelified
+type PackIdentifier     =   String
+
+-- ---------------------------------------------------------------------
+-- Binary Instances
+--
+
 instance Binary PackageDescr where
     put (PackageDescr packagePD exposedModulesPD buildDependsPD mbSourcePathPD idDescriptionsPD)
         =   do  put packagePD
@@ -400,14 +426,6 @@ instance Binary PackageDescr where
                 idDescriptionsPD    <- get
                 return (PackageDescr packagePD exposedModulesPD buildDependsPD mbSourcePathPD
                                         idDescriptionsPD)
-
-data ModuleDescr        =   ModuleDescr {
-    moduleIdMD          ::   ! ModuleIdentifier
-,   exportedNamesMD     ::   ! (Set Symbol)              --unqualified
-,   mbSourcePathMD      ::   ! (Maybe FilePath)
-,   instancesMD         ::   ! [(ClassId,DataId)]
-,   usagesMD            ::   ! (Map ModuleIdentifier (Set Symbol)) -- imports
-} deriving (Read,Show,Eq,Ord)
 
 instance Binary ModuleDescr where
     put (ModuleDescr moduleIdMD exportedNamesMD mbSourcePathMD instancesMD usagesMD)
@@ -424,13 +442,6 @@ instance Binary ModuleDescr where
                 return (ModuleDescr moduleIdMD exportedNamesMD mbSourcePathMD instancesMD
                                     usagesMD)
 
-data IdentifierDescr =  IdentifierDescr {
-    identifierID     ::   ! Symbol
-,   identifierTypeID ::   ! IdType
-,   typeInfoID       ::   ! TypeInfo
-,   moduleIdID       ::   ! [ModuleIdentifier]
-} deriving (Read, Show,Eq,Ord)
-
 instance Binary IdentifierDescr where
     put (IdentifierDescr identifierID identifierTypeID typeInfoID moduleIdID)
         = do    put identifierID
@@ -443,23 +454,10 @@ instance Binary IdentifierDescr where
                 moduleIdID          <- get
                 return (IdentifierDescr identifierID identifierTypeID typeInfoID moduleIdID)
 
-data IdType = Function | Data | Newtype | Synonym | AbstractData |
-                Constructor | Field | Class | ClassOp | Foreign
-  deriving (Read, Show, Eq, Ord, Enum)
-
 instance Binary IdType where
     put it  =   do  put (fromEnum it)
     get     =   do  code         <- get
                     return (toEnum code)
-
-emptyIdentifierDescr = IdentifierDescr ""
-
-type Symbol             =   String  -- Qualified or unqualified
-type ClassId            =   String  -- Qualified or unqualified
-type DataId             =   String  -- Qualified or unqualified
-type TypeInfo           =   String
-type ModuleIdentifier   =   String --always quelified
-type PackIdentifier     =   String
 
 -- ---------------------------------------------------------------------
 -- Debugging

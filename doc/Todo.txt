@@ -114,7 +114,6 @@ ok  - make something after an external process finishes
 
 !!! - New Pane for info
 !!! - Selecting the right from a multitude of possibilities
-
 !!! - Scanning of source directories
 !!! - Scanning for Haddock Documentation
 
