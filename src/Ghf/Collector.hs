@@ -54,6 +54,7 @@ import System.Directory
 import Data.Char
 import Data.List(isSuffixOf,zip4)
 import Debug.Trace
+import Data.Binary
 
 import Ghf.Core hiding(trace)
 import Ghf.Extractor
@@ -129,13 +130,14 @@ collectInstalled session version forceRebuild = do
 collectUninstalled :: Session -> String -> FilePath -> IO ()
 collectUninstalled session version cabalPath = do
     allHiFiles      <-  allHiFiles (dropFileName cabalPath)
-    putStrLn $ "\nallModules " ++ show allHiFiles
+--    putStrLn $ "\nallModules " ++ show allHiFiles
     pd              <-  PD.readPackageDescription normal cabalPath >>= return . PD.flattenPackageDescription
     allIfaceInfos   <-  getIFaceInfos2 allHiFiles session
     deps            <-  findFittingPackages session (PD.buildDepends pd)
     let extracted   =   extractInfo (allIfaceInfos,[], fromDPid (PD.package pd), deps)
     collectorPath   <-  getCollectorPath version
     writeExtracted collectorPath extracted
+    putStrLn $ "\nExtracted infos for " ++ cabalPath
 
 getIFaceInfos :: PackageIdentifier -> [String] -> Session -> IO [(ModIface, FilePath)]
 getIFaceInfos pckg modules session = do
@@ -167,18 +169,27 @@ getIFaceInfos2 filePaths session = do
 #endif
     return (zip res filePaths)
 
-    
+
 findKnownPackages :: FilePath -> IO (Set String)
 findKnownPackages filePath = do
     paths <- getDirectoryContents filePath
     let nameList = map dropExtension  $filter (\s -> ".pack" `isSuffixOf` s) paths
     return (Set.fromList nameList)
 
+{--
 writeExtracted :: FilePath -> PackageDescr -> IO ()
 writeExtracted dirPath pd = do
-    let filePath = dirPath </> showPackageId (fromDPid $ packageIdW pd) ++ ".pack"
+    let filePath = dirPath </> packagePD pd ++ ".packs"
     hdl <- openFile filePath WriteMode
     hPutStr hdl (show pd)
     hClose hdl
+--}
+
+writeExtracted :: FilePath -> PackageDescr -> IO ()
+writeExtracted dirPath pd = do
+    let filePath = dirPath </> packagePD pd ++ ".pack"
+    encodeFile filePath pd
+
+
 
 

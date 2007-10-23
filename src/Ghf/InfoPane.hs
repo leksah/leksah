@@ -142,6 +142,7 @@ setInfo identifierDescr = do
         else do
             let inj = injectors (head infos)
             mapM_ (\ a -> lift $ a identifierDescr)  inj
+            lift $ bringPaneToFront (InfoPane (head infos))
             return ()
 
 isInfo :: GhfPane -> Bool

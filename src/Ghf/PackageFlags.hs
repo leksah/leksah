@@ -32,7 +32,7 @@ import qualified Text.PrettyPrint.HughesPJ as PP
 import Ghf.Core
 import Ghf.PropertyEditor hiding(parameters,fieldEditor)
 import Ghf.SourceEditor
-import Ghf.PrinterParser hiding (fieldParser,parameters)
+import Ghf.PrinterParser hiding (fieldParser, parameters)
 import Ghf.File
 import Ghf.ViewFrame
 

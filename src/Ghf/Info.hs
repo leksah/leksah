@@ -14,7 +14,8 @@
 ---------------------------------------------------------------------------------
 
 module Ghf.Info (
-    loadAccessibleInfo
+    initInfo
+,   loadAccessibleInfo
 ,   updateAccessibleInfo
 
 ,   clearCurrentInfo
@@ -28,6 +29,9 @@ module Ghf.Info (
 ,   findFittingPackagesDP
 ,   fromPackageIdentifier
 ,   toPackageIdentifier
+
+,   asDPid
+,   fromDPid
 ) where
 
 import Graphics.UI.Gtk hiding (afterToggleOverwrite)
@@ -51,14 +55,15 @@ import System.IO
 import Control.Concurrent
 import qualified Distribution.Package as DP
 import Distribution.PackageDescription hiding (package)
---import Distribution.InstalledPackageInfo
+import Distribution.InstalledPackageInfo hiding (package,InstalledPackageInfo)
 import Distribution.Version
 import Data.List
 import UniqFM
 import PackageConfig
 import Data.Maybe
 import Text.ParserCombinators.ReadP
-import Distribution.Package
+import Data.Binary
+import System.Process
 
 import Ghf.File
 import Ghf.Core
@@ -67,6 +72,14 @@ import Ghf.ViewFrame
 import Ghf.PropertyEditor
 import Ghf.SpecialEditors
 import Ghf.Log
+
+initInfo :: GhfAction
+initInfo = do
+    lift $ putStrLn "Before running collector"
+    pid <- lift $ runProcess "dist/build/ghf-collector/ghf-collector"  [] Nothing Nothing Nothing Nothing Nothing
+    lift $ waitForProcess pid
+    lift $ putStrLn "After running collector"
+    loadAccessibleInfo
 
 --
 -- | Load all infos for all installed and exposed packages
@@ -142,13 +155,13 @@ buildActiveInfo' =
     case activePack of
         Nothing         ->  return Nothing
         Just ghfPackage ->  do
-            (inp,out,err,pid) <- lift $ runExternal "dist/build/ghf-collector/ghf-collector"
-                                        (["--Uninstalled=" ++ cabalFile ghfPackage])
-            oid         <-  lift $ forkIO (readOut log out)
-            eid         <-  lift $ forkIO (readErr log err)
-            lift $ threadDelay 3000
+            pid <- lift $ runProcess "dist/build/ghf-collector/ghf-collector"
+                                        ["--Uninstalled=" ++ cabalFile ghfPackage]
+                                        Nothing Nothing Nothing Nothing Nothing 
+            lift $ waitForProcess pid
             collectorPath   <-  lift $ getCollectorPath version
-            packageDescr    <-  lift $ loadInfosForPackage collectorPath (packageId ghfPackage)
+            packageDescr    <-  lift $ loadInfosForPackage collectorPath
+                                            (fromDPid $ packageId ghfPackage)
             case packageDescr of
                 Nothing     -> return Nothing
                 Just pd     -> do
@@ -196,11 +209,8 @@ loadInfosForPackage dirPath pid = do
     exists <- doesFileExist filePath
     if exists
         then catch (do
-            hdl <- openFile filePath ReadMode
             putStrLn $ "Now reading iface " ++ showPackageId pid
-            str <- hGetContents hdl
-            packageInfo <- readIO str
-            hClose hdl
+            packageInfo <- decodeFile filePath
             return (Just packageInfo))
             (\e -> do putStrLn (show e); return Nothing)
         else do
@@ -281,23 +291,23 @@ findFittingPackages session dependencyList = do
                 then [maximumBy (\a b -> compare (pkgVersion a) (pkgVersion b)) filtered]
                 else filtered
 
-findFittingPackagesDP :: Session -> [Dependency] -> IO  [DP.PackageIdentifier]
+findFittingPackagesDP :: Session -> [Dependency] -> IO  [PackageIdentifier]
 findFittingPackagesDP session dependencyList =  do
         fp <- (findFittingPackages session dependencyList)
         return fp
 
---asDPid :: PackageIdentifier -> DP.PackageIdentifier
---asDPid (PackageIdentifier name version) = DP.PackageIdentifier name version
+asDPid :: PackageIdentifier -> DP.PackageIdentifier
+asDPid (PackageIdentifier name version) = DP.PackageIdentifier name version
 
---fromDPid :: DP.PackageIdentifier -> PackageIdentifier
---fromDPid (DP.PackageIdentifier name version) = PackageIdentifier name version
+fromDPid :: DP.PackageIdentifier -> PackageIdentifier
+fromDPid (DP.PackageIdentifier name version) = PackageIdentifier name version
 
 fromPackageIdentifier :: PackageIdentifier -> PackIdentifier
 fromPackageIdentifier   =   showPackageId
 
 toPackageIdentifier :: PackIdentifier -> PackageIdentifier
-toPackageIdentifier pd    =   case readP_to_S parsePackageId pd of
-                                [(ps,_)]  -> ps
+toPackageIdentifier pd    =   case readP_to_S DP.parsePackageId pd of
+                                [(ps,_)]  -> fromDPid ps
                                 _         -> error "cannot parse package identifier"
 
 

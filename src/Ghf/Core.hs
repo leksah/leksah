@@ -94,7 +94,6 @@ import Data.Set(Set)
 import qualified Data.Set as Set
 import System.Time
 import GHC (Session)
-import Data.Generics.Basics
 import Data.Binary
 
 --import Debug.Trace

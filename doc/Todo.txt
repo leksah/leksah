@@ -106,12 +106,17 @@ ok  - Scanning non installed packages
 ok  - Scanning for 6.8!!
 ok  - Administration of package infos and symbol tables
 
-started - Optimize storing and reading (binary, byteString)
-!!! - Selecting the right from a multitude of possibilities
+ok  - Optimize storing and reading (binary, byteString)
+
+
+ok  - make something after an external process finishes
+
 
 !!! - New Pane for info
+!!! - Selecting the right from a multitude of possibilities
 
 !!! - Scanning of source directories
+!!! - Scanning for Haddock Documentation
 
 !!! - Tree Views
 

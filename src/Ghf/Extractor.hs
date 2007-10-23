@@ -106,7 +106,7 @@ extractExportedDescrR pid hidden iface (imap,mdList) =
                                                             (map snd (mi_decls iface))
         mapWithOwnDecls =   foldr (extractIdentifierDescr' pid [mid]) imap exportedDecls
         otherDecls      =   exportedNames `Set.difference` (Map.keysSet mapWithOwnDecls)
-        reexported      =   Map.map (\v -> map (\id -> id{moduleIdMD = mid : moduleIdMD id}) v)
+        reexported      =   Map.map (\v -> map (\id -> id{moduleIdID = mid : moduleIdID id}) v)
                                 $Map.filterWithKey (\k v -> k `Set.member` otherDecls)
                                     hidden
         inst            =   concatMap extractInstances (mi_insts iface)
@@ -134,10 +134,13 @@ extractIdentifierDescr (IfaceId ifName ifType ifIdInfo) modul package
     identifierID        =   unpackFS $occNameFS ifName
 ,   typeInfoID          =   showSDocUnqual $ppr ifType
 ,   identifierTypeID    =   Function
-,   moduleIdID          =   fromPackageIdentifier package ++ ":" ++ modul}]
+,   moduleIdID          =   modul}]
 
-#if __GHC__ < 670
+#if __GHC__ >= 670
+extractIdentifierDescr (IfaceData ifName ifTyVars ifCtxt ifCons _ _ _ _ ) modul package
+#else
 extractIdentifierDescr (IfaceData ifName ifTyVars ifCtxt ifCons _ ifVrcs _) modul package
+#endif
         = IdentifierDescr{
     identifierID        =   unpackFS $occNameFS ifName
 ,   typeInfoID          =   "" --showSDocUnqual $pprIfaceForAllPart ifTyVars ifCtxt empty
@@ -145,146 +148,114 @@ extractIdentifierDescr (IfaceData ifName ifTyVars ifCtxt ifCons _ ifVrcs _) modu
                                 IfDataTyCon _ -> Data
                                 IfNewTyCon _  -> Newtype
                                 IfAbstractTyCon -> AbstractData
-,   moduleIdID          =   fromPackageIdentifier package ++ ":" ++ modul} :
-                                concatMap (extractIdentifierDescrConst modul package
-                                                                       (LocalTop ifName))
-                                    $ visibleIfConDecls ifCons
+,   moduleIdID          =   modul} :
+#if __GHC__ >= 670
+        concatMap (extractIdentifierDescrConst modul package ifName)
+                (visibleIfConDecls ifCons)
+#else
+        (concatMap (extractIdentifierDescrConst modul package (LocalTop ifName))
+                                    $ visibleIfConDecls ifCons)
+#endif
 
+#if __GHC__ >= 670
+extractIdentifierDescr (IfaceSyn ifName _ _ ifSynRhs _) modul package
+#else
 extractIdentifierDescr (IfaceSyn ifName ifTyVars ifVrcs ifSynRhs) modul package
+#endif
         = [IdentifierDescr{
     identifierID        =   unpackFS $occNameFS ifName
 ,   typeInfoID          =   showSDocUnqual $ppr ifSynRhs
 ,   identifierTypeID    =   Synonym
-,   moduleIdID          =   fromPackageIdentifier package ++ ":" ++ modul}]
+,   moduleIdID          =   modul}]
 
+#if __GHC__ >= 670
+extractIdentifierDescr (IfaceClass ifCtxt ifName ifTyVars ifFDs ifATs ifSigs ifRec) modul package
+#else
 extractIdentifierDescr (IfaceClass ifCtxt ifName ifTyVars ifFDs ifSigs ifRec ifVrcs) modul package
+#endif
         =  IdentifierDescr{
-    identifierID     =   unpackFS $occNameFS ifName
-,   typeInfoID        =   "" --showSDocUnqual $pprIfaceForAllPart ifTyVars ifCtxt empty
-,   identifierType  =   Class
-,   moduleIdI       =   fromPackageIdentifier package ++ ":" ++ modul} :
-        map (extractIdentifierDescrClassOp modul package) ifSigs
+    identifierID        =   unpackFS $occNameFS ifName
+,   typeInfoID          =   "" --showSDocUnqual $pprIfaceForAllPart ifTyVars ifCtxt empty
+,   identifierTypeID    =   Class
+,   moduleIdID          =   modul} :
+                                map (extractIdentifierDescrClassOp modul package) ifSigs
 
 extractIdentifierDescr (IfaceForeign ifName _) modul package
         = [IdentifierDescr{
-    identifierW     =   unpackFS $occNameFS ifName
-,   typeInfo        =   ""
-,   identifierType  =   Foreign
-,   moduleIdI       =   fromPackageIdentifier package ++ ":" ++ modul}]
+    identifierID        =   unpackFS $occNameFS ifName
+,   typeInfoID          =   ""
+,   identifierTypeID    =   Foreign
+,   moduleIdID          =   modul}]
 
+
+#if __GHC__ >= 670
+extractIdentifierDescrConst :: [ModuleIdentifier] -> PackageIdentifier -> OccName -> IfaceConDecl
+                                    -> [IdentifierDescr]
+extractIdentifierDescrConst modul package extName
+                                    (IfCon ifConOcc _ _ _ _ _ ifConArgTys ifConFields _) =
+    let name            =   mkInternalName (getUnique extName) extName noSrcSpan
+    in IdentifierDescr{
+    identifierID        =   unpackFS $occNameFS ifConOcc
+,   typeInfoID          =   showSDocUnqual $ppr
+                                (foldr IfaceFunTy (IfaceTyConApp (IfaceTc name)[]) ifConArgTys)
+,   identifierTypeID    =   Constructor
+,   moduleIdID          =   fromPackageIdentifier package ++ ":" ++ modul}
+                                : map (extractIdentifierDescrField modul package extName)
+                                        (zip ifConFields ifConArgTys)
+#else
 extractIdentifierDescrConst :: [ModuleIdentifier] -> PackageIdentifier -> IfaceExtName -> IfaceConDecl
                                     -> [IdentifierDescr]
 extractIdentifierDescrConst modul package extName
         (IfVanillaCon ifConOcc _ ifConArgTys _ ifConFields) =
     IdentifierDescr{
-    identifierW     =   unpackFS $occNameFS ifConOcc
-,   typeInfo        =   showSDocUnqual $ppr
-                            (foldr IfaceFunTy (IfaceTyConApp (IfaceTc extName)[]) ifConArgTys)
-,   identifierType  =   Constructor
-,   moduleIdI       =   fromPackageIdentifier package ++ ":" ++ modul}
-                            : map (extractIdentifierDescrField modul package extName)
-                                $ zip ifConFields ifConArgTys
+    identifierID        =   unpackFS $occNameFS ifConOcc
+,   typeInfoID          =   showSDocUnqual $ppr
+                                (foldr IfaceFunTy (IfaceTyConApp (IfaceTc extName)[]) ifConArgTys)
+,   identifierTypeID    =   Constructor
+,   moduleIdID          =   modul}
+                                : (map (extractIdentifierDescrField modul package extName)
+                                    $ zip ifConFields ifConArgTys)
+#endif
+
 
 -- ##TODO: GADTs not yet analysed
 extractIdentifierDescrConst modul package extName _ = []
 
+#if __GHC__ >= 670
+extractIdentifierDescrField :: [ModuleIdentifier] -> PackageIdentifier -> OccName ->
+                                (OccName,IfaceType) -> IdentifierDescr
+extractIdentifierDescrField modul package extName (fieldName, atype) =
+    let name            =   mkInternalName (getUnique extName) extName noSrcSpan
+    in IdentifierDescr{
+    identifierID        =   unpackFS
+                                $ occNameFS fieldName
+,   typeInfoID          =   showSDocUnqual
+                                $ ppr (IfaceFunTy (IfaceTyConApp (IfaceTc name)[]) atype)--}
+,   identifierTypeID    =   Field
+,   moduleIdID          =   modul}
+#else
 extractIdentifierDescrField :: [ModuleIdentifier] -> PackageIdentifier -> IfaceExtName -> (OccName,IfaceType)
                                     -> IdentifierDescr
 extractIdentifierDescrField modul package extName (fieldName, atype) =
     IdentifierDescr{
-    identifierW     =   unpackFS
-                            $ occNameFS fieldName
-,   typeInfo        =   showSDocUnqual
-                            $ ppr (IfaceFunTy (IfaceTyConApp (IfaceTc extName)[]) atype)
-,   identifierType  =   Field
-,   moduleIdI       =   fromPackageIdentifier package ++ ":" ++ modul}
-
-extractIdentifierDescrClassOp :: [ModuleIdentifier] -> PackageIdentifier -> IfaceClassOp -> IdentifierDescr
-extractIdentifierDescrClassOp modul package (IfaceClassOp name _ atype) =
-    IdentifierDescr{
-    identifierW     =   unpackFS $ occNameFS name
-,   typeInfo        =   showSDocUnqual $ ppr atype
-,   identifierType  =   ClassOp
-,   moduleIdI       =   fromPackageIdentifier package ++ ":" ++ modul}
-
-#else
-
-extractIdentifierDescr (IfaceData ifName ifTyVars ifCtxt ifCons _ _ _ _ ) modul package
-        = IdentifierDescr{
-    identifierID        =   unpackFS $occNameFS ifName
-,   identifierTypeID    =   "" --showSDocUnqual $pprIfaceForAllPart ifTyVars ifCtxt empty
-,   identifierTypeID      =   case ifCons of
-                            IfDataTyCon _ -> Data
-                            IfNewTyCon _  -> Newtype
-                            IfAbstractTyCon -> AbstractData
-,   moduleIdID       =   fromPackageIdentifier package ++ ":" ++ modul} :
-        concatMap (extractIdentifierDescrConst modul package ifName)
-                (visibleIfConDecls ifCons)
-
-extractIdentifierDescr (IfaceSyn ifName _ _ ifSynRhs _) modul package
-        = [IdentifierDescr{
-    identifierID    =   unpackFS $occNameFS ifName
-,   typeInfo        =   showSDocUnqual $ppr ifSynRhs
-,   identifierType  =   Synonym
-,   moduleIdI       =   fromPackageIdentifier package ++ ":" ++ modul}]
-
-extractIdentifierDescr (IfaceClass ifCtxt ifName ifTyVars ifFDs ifATs ifSigs ifRec) modul package
-        =  IdentifierDescr{
-    identifierID    =   unpackFS $occNameFS ifName
-,   typeInfo        =   "" --showSDocUnqual $pprIfaceForAllPart ifTyVars ifCtxt empty
-,   identifierType  =   Class
-,   moduleIdI       =   fromPackageIdentifier package ++ ":" ++ modul} :
-        map (extractIdentifierDescrClassOp modul package) ifSigs
-
-extractIdentifierDescr (IfaceForeign ifName _) modul package
-        = [IdentifierDescr{
-    identifierID    =   unpackFS $occNameFS ifName
-,   typeInfo        =   ""
-,   identifierType  =   Foreign
-,   moduleIdI       =   fromPackageIdentifier package ++ ":" ++ modul}]
-
-extractIdentifierDescrConst :: [ModuleIdentifier] -> PackageIdentifier -> OccName -> IfaceConDecl
-                                    -> [IdentifierDescr]
-extractIdentifierDescrConst modul package extName (IfCon ifConOcc _ _ _ _ _ ifConArgTys
-                                                                         ifConFields _) =
-    let name        =   mkInternalName (getUnique extName) extName noSrcSpan
-    in IdentifierDescr{
-    identifierW     =   unpackFS $occNameFS ifConOcc
-,   typeInfo        =   showSDocUnqual $ppr
-                            (foldr IfaceFunTy (IfaceTyConApp (IfaceTc name)[]) ifConArgTys)
-,   identifierType  =   Constructor
-,   moduleIdI       =   fromPackageIdentifier package ++ ":" ++ modul} : map (extractIdentifierDescrField modul package extName)
-                                                (zip ifConFields ifConArgTys)
-
--- ##TODO: GADTs not yet analysed
-extractIdentifierDescrConst modul package extName _ = []
-
-extractIdentifierDescrField :: [ModuleIdentifier] -> PackageIdentifier -> OccName -> (OccName,IfaceType)
-                                    -> IdentifierDescr
-extractIdentifierDescrField modul package extName (fieldName, atype) =
-    let name        =   mkInternalName (getUnique extName) extName noSrcSpan
-    in IdentifierDescr{
-    identifierW     =   unpackFS
-                            $ occNameFS fieldName
-,   typeInfo        =   showSDocUnqual
-                            $ ppr (IfaceFunTy (IfaceTyConApp (IfaceTc name)[]) atype)--}
-,   identifierType  =   Field
-,   moduleIdI       =   modul
-,   packageIdI      =   asDPid package}
-
-extractIdentifierDescrClassOp :: [ModuleIdentifier] -> PackageIdentifier -> IfaceClassOp -> IdentifierDescr
-extractIdentifierDescrClassOp modul package (IfaceClassOp name _ atype) =
-    IdentifierDescr{
-    identifierW     =   unpackFS $ occNameFS name
-,   typeInfo        =   showSDocUnqual $ ppr atype
-,   identifierType  =   ClassOp
-,   moduleIdI       =   modul
-,   packageIdI      =   asDPid package}
-
+    identifierID        =   unpackFS
+                                $ occNameFS fieldName
+,   typeInfoID           =   showSDocUnqual
+                                $ ppr (IfaceFunTy (IfaceTyConApp (IfaceTc extName)[]) atype)
+,   identifierTypeID    =   Field
+,   moduleIdID          =   modul}
 #endif
 
+extractIdentifierDescrClassOp :: [ModuleIdentifier] -> PackageIdentifier -> IfaceClassOp -> IdentifierDescr
+extractIdentifierDescrClassOp modul package (IfaceClassOp name _ atype) =
+    IdentifierDescr{
+    identifierID        =   unpackFS $ occNameFS name
+,   typeInfoID          =   showSDocUnqual $ ppr atype
+,   identifierTypeID    =   ClassOp
+,   moduleIdID          =   modul}
 
-extractInstances :: IfaceInst -> [(ClassId,DataId)]
+
+extractInstances :: IfaceInst -> [(ClassId, DataId)]
 extractInstances ifaceInst  =
     let className   =   showSDocUnqual $ ppr $ ifInstCls ifaceInst
         dataNames   =   map (\iftc -> showSDocUnqual $ ppr iftc)
@@ -293,7 +264,7 @@ extractInstances ifaceInst  =
                                     $ ifInstTys ifaceInst
     in map (\dn -> (className, dn)) dataNames
 
-extractUsages :: Usage -> (ModuleIdentifier,Set Symbol)
+extractUsages :: Usage -> (ModuleIdentifier, Set Symbol)
 extractUsages usage =
     let name    =   (showSDoc . ppr) $  usg_name usage
         ids     =   map (showSDocUnqual . ppr . fst) $ usg_entities usage

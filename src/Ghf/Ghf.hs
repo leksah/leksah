@@ -101,7 +101,7 @@ main = do
           ,   currentInfo   =   Nothing
           ,   session       =   session}
     ghfR <- newIORef ghf
-    runReaderT loadAccessibleInfo ghfR
+    runReaderT initInfo ghfR
     (acc,menus) <- runReaderT (makeMenu uiManager accelActions menuDescription) ghfR
     let mb = case menus !! 0 of
                 Just m -> m

@@ -165,6 +165,7 @@ packageBuild = do
                                                 ++ buildFlags package)
                 oid <- forkIO (readOut log out)
                 eid <- forkIO (runReaderT (readErrForBuild log err) ghfR)
+                waitForProcess pid
                 return ()
             buildActiveInfo
 
