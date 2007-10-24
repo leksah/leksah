@@ -38,9 +38,10 @@ buildSourceForPackageDB = do
     prefs           <-  readPrefs prefsPath
     let dirs        =   sourceDirectories prefs
     cabalFiles      <-  mapM allCabalFiles dirs
-    packages        <-  mapM (\fp -> parseCabal fp) (concat cabalFiles)
-    let pdToFiles   =   Map.fromListWith (++) (zip packages cabalFiles)
-    filePath        <-  getConfigFilePathForSave "source_packages.ghfsp"
+    let fCabalFiles =   concat cabalFiles
+    packages        <-  mapM (\fp -> parseCabal fp) fCabalFiles
+    let pdToFiles   =   Map.fromListWith (++) (zip packages (map (\a -> [a]) fCabalFiles))
+    filePath        <-  getConfigFilePathForSave "source_packages.txt"
     writeFile filePath  (PP.render (showSourceForPackageDB pdToFiles))
 
 showSourceForPackageDB  :: Map String [FilePath] -> PP.Doc
@@ -59,14 +60,10 @@ showSourceForPackageDB aMap = PP.vcat (map showIt (Map.toList aMap))
 
 ---Cabal PackageIdentifier parser
 
-candyStyle  :: P.LanguageDef st
-candyStyle  = emptyDef
-                { P.commentStart   = "{-"
-                , P.commentEnd     = "-}"
-                , P.commentLine    = "--"
-                }
+cabalStyle  :: P.LanguageDef st
+cabalStyle  = emptyDef
 
-lexer       =   P.makeTokenParser candyStyle
+lexer       =   P.makeTokenParser cabalStyle
 lexeme      =   P.lexeme lexer
 whiteSpace  =   P.whiteSpace lexer
 hexadecimal =   P.hexadecimal lexer
@@ -77,18 +74,43 @@ parseCabal fn = do
     res     <-  parseFromFile cabalMinimalParser fn
     case res of
         Left pe ->  error $"Error reading cabal file " ++ show fn ++ " " ++ show pe
-        Right r ->  return r
+        Right r ->  do
+            putStrLn r
+            return r
+
 
 cabalMinimalParser :: CharParser () String
 cabalMinimalParser = do
-    whiteSpace
-    (symbol "name:" <|> symbol "Name:")
-    name       <-  (many $noneOf " \n")
-    char '\n'
-    (symbol "version:" <|> symbol "Version:")
-    version    <-  (many $noneOf " \n")
-    return (name ++ "-" ++ version)
-    <|> do
+    r1 <- cabalMinimalP
+    r2 <- cabalMinimalP
+    case r1 of
+        Left v -> do
+            case r2 of
+                Right n -> return (n ++ "-" ++ v)
+                Left v -> error "Illegal cabal"
+        Right n -> do
+            case r2 of
+                Left v -> return (n ++ "-" ++ v)
+                Right n -> error "Illegal cabal"
+
+
+cabalMinimalP :: CharParser () (Either String String)
+cabalMinimalP =
+    do  try $(symbol "name:" <|> symbol "Name:")
+        whiteSpace
+        name       <-  (many $noneOf " \n")
         (many $noneOf "\n")
         char '\n'
-        cabalMinimalParser
+        return (Right name)
+    <|> do
+            try $(symbol "version:" <|> symbol "Version:")
+            whiteSpace
+            version    <-  (many $noneOf " \n")
+            (many $noneOf "\n")
+            char '\n'
+            return (Left version)
+    <|> do
+            many $noneOf "\n"
+            char '\n'
+            cabalMinimalP
+    <?> "cabal minimal"
