@@ -60,16 +60,19 @@ import Ghf.Core hiding(trace)
 import Ghf.Extractor
 import Ghf.File
 import Ghf.Info
+import Ghf.SourceCollector
 
 
-data Flag =  UninstalledProject String | Rebuild
+data Flag =  UninstalledProject String | Rebuild | Sources
        deriving (Show,Eq)
 
 options :: [OptDescr Flag]
 options =   [Option ['r'] ["Rebuild"] (NoArg Rebuild)
                 "Cleans all .pack files and rebuild everything"
          ,   Option ['u'] ["Uninstalled"] (ReqArg UninstalledProject "FILE")
-                "Gather info about an uninstalled package"]
+                "Gather info about an uninstalled package"
+         ,   Option ['s'] ["Sources"] (NoArg Sources)
+                "Gather info about pathes to sources"]
 
 ghfOpts :: [String] -> IO ([Flag], [String])
 ghfOpts argv =
@@ -80,24 +83,30 @@ ghfOpts argv =
 
 -- |Build the main window
 main = defaultErrorHandler defaultDynFlags $do
+
     args            <-  getArgs
     (o,fl)          <-  ghfOpts args
-    libDir          <-  getSysLibDir
---    putStrLn $"libdir '" ++ normalise libDir ++ "'"
+    if elem Sources o
+        then do
+            buildSourceForPackageDB
+            putStrLn "rebuild SourceForPackageDB"
+        else do
+        libDir          <-  getSysLibDir
+    --    putStrLn $"libdir '" ++ normalise libDir ++ "'"
 #if __GHC__ > 670
-    session     <-  newSession (Just libDir)
+        session     <-  newSession (Just libDir)
 #else
-    session     <-  newSession JustTypecheck (Just libDir)
+        session     <-  newSession JustTypecheck (Just libDir)
 #endif
-    dflags0         <-  getSessionDynFlags session
-    setSessionDynFlags session dflags0
-    let version     =   cProjectVersion
-    let uninstalled =   filter (\x -> case x of UninstalledProject _ -> True
-                                                otherwise -> False) o
-    if length uninstalled > 0
-        then mapM_ (collectUninstalled session version)
-                $ map (\ (UninstalledProject x) -> x) uninstalled
-        else collectInstalled session version (elem Rebuild o)
+        dflags0         <-  getSessionDynFlags session
+        setSessionDynFlags session dflags0
+        let version     =   cProjectVersion
+        let uninstalled =   filter (\x -> case x of UninstalledProject _ -> True
+                                                    otherwise -> False) o
+        if length uninstalled > 0
+            then mapM_ (collectUninstalled session version)
+                    $ map (\ (UninstalledProject x) -> x) uninstalled
+            else collectInstalled session version (elem Rebuild o)
 
 collectInstalled :: Session -> String -> Bool -> IO()
 collectInstalled session version forceRebuild = do

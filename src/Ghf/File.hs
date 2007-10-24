@@ -2,6 +2,7 @@ module Ghf.File (
     allModules
 ,   allHiFiles
 ,   cabalFileName
+,   allCabalFiles
 ,   getConfigFilePathForLoad
 ,   getConfigFilePathForSave
 ,   getCollectorPath
@@ -90,16 +91,37 @@ allHiFiles filePath = do
     if exists
         then do
             filesAndDirs <- getDirectoryContents filePath
-            putStrLn $show filesAndDirs
+            --putStrLn $show filesAndDirs
             let filesAndDirs' = map (\s -> combine filePath s)
                                     $filter (\s -> s /= "." && s /= ".." && s /= "_darcs") filesAndDirs
-            putStrLn $show filesAndDirs'
+            --putStrLn $show filesAndDirs'
             dirs    <-  filterM (\f -> doesDirectoryExist f) filesAndDirs'
             files   <-  filterM (\f -> doesFileExist f) filesAndDirs'
             let hsFiles =   filter (\f -> let ext = takeExtension f in
                                             ext == ".hi") files
             otherHiFiles <- mapM allHiFiles dirs
             return (hsFiles ++ concat otherHiFiles)
+        else return []
+
+allCabalFiles :: FilePath -> IO [FilePath]
+allCabalFiles filePath = do
+    exists <- doesDirectoryExist filePath
+    if exists
+        then do
+            filesAndDirs <- getDirectoryContents filePath
+            --putStrLn $show filesAndDirs
+            let filesAndDirs' = map (\s -> combine filePath s)
+                                    $filter (\s -> s /= "." && s /= ".." && s /= "_darcs") filesAndDirs
+            --putStrLn $show filesAndDirs'
+            dirs    <-  filterM (\f -> doesDirectoryExist f) filesAndDirs'
+            files   <-  filterM (\f -> doesFileExist f) filesAndDirs'
+            let cabalFiles =   filter (\f -> let ext = takeExtension f in
+                                            ext == ".cabal") files
+            if null cabalFiles
+                then do
+                    allFiles <- mapM allCabalFiles dirs
+                    return (concat allFiles)
+                else return (cabalFiles)
         else return []
 
 moduleNameFromFilePath :: FilePath -> IO (Maybe String)

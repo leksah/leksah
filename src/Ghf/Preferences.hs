@@ -118,6 +118,7 @@ defaultPrefs = Prefs {
     ,   sourcePanePath      =   LeftTop
     ,   logPanePath         =   RightBottom
     ,   infoPanePath        =   RightBottom
+    ,   sourceDirectories   =   ["C:/ghc","C:/cygwin/home/Nicklisch-Franken/collect"]
     }
 
 prefsDescription :: [(String,[FieldDescription Prefs])]
@@ -244,6 +245,14 @@ prefsDescription = [
             sourcePanePath
             (\b a -> a{sourcePanePath = b})
             panePathEditor
+            (\i -> return ())
+    ,   mkField (emptyParams{paraName = Just
+                    "Paths under which haskell sources for packages may be found"})
+            (PP.text . show)
+            readParser
+            sourceDirectories
+            (\b a -> a{sourceDirectories = b})
+            (filesEditor Nothing FileChooserActionSelectFolder "Select folder")
             (\i -> return ())
     ])]
 

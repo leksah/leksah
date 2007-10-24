@@ -1,4 +1,3 @@
-{-# OPTIONS_GHC -fglasgow-exts #-}
 -----------------------------------------------------------------------------
 --
 -- Module      :  Ghf.Core
@@ -342,6 +341,7 @@ data Prefs = Prefs {
     ,   sourcePanePath      ::   StandardPath
     ,   logPanePath         ::   StandardPath
     ,   infoPanePath        ::   StandardPath
+    ,   sourceDirectories   ::   [FilePath]
 } deriving(Eq,Show)
 
 
