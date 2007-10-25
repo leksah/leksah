@@ -14,6 +14,8 @@
 
 module Ghf.SourceCollector (
     buildSourceForPackageDB
+,   sourceForPackage
+,   parseSourceForPackageDB
 ) where
 
 import qualified Text.PrettyPrint.HughesPJ as PP
@@ -27,6 +29,7 @@ import Text.ParserCombinators.Parsec
 import qualified Text.ParserCombinators.Parsec.Token as P
 import Text.ParserCombinators.Parsec.Language(emptyDef)
 import Data.Version
+import System.Directory
 
 import Ghf.Core
 import Ghf.File
@@ -52,16 +55,73 @@ showSourceForPackageDB aMap = PP.vcat (map showIt (Map.toList aMap))
                              PP.<>  PP.char '\n'
         where label  =  PP.text pd PP.<> PP.colon
 
---parseSourceForPackageDB :: String -> Maybe (Map PackageDescription [FilePath])
 
+parseSourceForPackageDB :: IO (Maybe (Map PackIdentifier [FilePath]))
+parseSourceForPackageDB = do
+    filePath        <-  getConfigFilePathForLoad "source_packages.txt"
+    exists          <-  doesFileExist filePath
+    if exists
+        then do
+            res             <-  parseFromFile sourceForPackageParser filePath
+            case res of
+                Left pe ->  do
+                    putStrLn $"Error reading source packages file "
+                            ++ filePath ++ " " ++ show pe
+                    return Nothing
+                Right r ->  return (Just r)
+        else do
+            putStrLn $"No source packages file found: " ++ filePath
+            return Nothing
 
---sourceForPackage :: PackageIdentifier -> Maybe Filepath
---sourceForPackage =
+sourceForPackageParser :: CharParser () (Map PackIdentifier [FilePath])
+sourceForPackageParser = do
+    whiteSpace
+    ls  <-  many onePackageParser
+    whiteSpace
+    eof
+    return (Map.fromList ls)
+    <?> "sourceForPackageParser"
+
+onePackageParser :: CharParser () (PackIdentifier,[FilePath])
+onePackageParser = do
+    pd          <-  packageDescriptionParser
+    filePaths   <-  many filePathParser
+    return (pd,filePaths)
+    <?> "onePackageParser"
+
+packageDescriptionParser :: CharParser () PackIdentifier
+packageDescriptionParser = try (do
+    whiteSpace
+    str <- many (noneOf ":")
+    char ':'
+    return (str))
+    <?> "packageDescriptionParser"
+
+filePathParser :: CharParser () FilePath
+filePathParser = try (do
+    whiteSpace
+    char '"'
+    str <- many (noneOf ['"'])
+    char '"'
+    return (str))
+    <?> "filePathParser"
+
+sourceForPackage :: PackageIdentifier
+    -> (Map PackIdentifier [FilePath])
+    -> Maybe Filepath
+sourceForPackage id map =
+    case id `Map.lookup` map of
+        Nothing -> Nothing
+        Just (h:_) -> Just h
 
 ---Cabal PackageIdentifier parser
 
 cabalStyle  :: P.LanguageDef st
 cabalStyle  = emptyDef
+                { P.commentStart   = "{-"
+                , P.commentEnd     = "-}"
+                , P.commentLine    = "--"
+                }
 
 lexer       =   P.makeTokenParser cabalStyle
 lexeme      =   P.lexeme lexer
@@ -78,7 +138,6 @@ parseCabal fn = do
             putStrLn r
             return r
 
-
 cabalMinimalParser :: CharParser () String
 cabalMinimalParser = do
     r1 <- cabalMinimalP
@@ -92,7 +151,6 @@ cabalMinimalParser = do
             case r2 of
                 Left v -> return (n ++ "-" ++ v)
                 Right n -> error "Illegal cabal"
-
 
 cabalMinimalP :: CharParser () (Either String String)
 cabalMinimalP =

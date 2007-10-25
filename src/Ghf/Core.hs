@@ -127,6 +127,7 @@ data Ghf        =   Ghf {
 ,   currentErr      ::  Maybe Int
 ,   accessibleInfo  ::  Maybe (PackageScope)
 ,   currentInfo     ::  Maybe (PackageScope,PackageScope)
+--,   sourceLocations ::  Maybe (Map PackIdentifier [FilePath])
 ,   session         ::  Session                 -- ^ the bridge to ghc
 } deriving Show
 

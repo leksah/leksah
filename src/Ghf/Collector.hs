@@ -34,6 +34,7 @@ import Distribution.Simple.Configure
 import qualified Distribution.PackageDescription as PD
 import Distribution.Simple.LocalBuildInfo
 import Distribution.Verbosity
+import qualified Text.PrettyPrint.HughesPJ as PP
 
 import Control.Monad.Reader
 import UniqFM
