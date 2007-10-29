@@ -27,11 +27,7 @@ module Ghf.Info (
 ,   getInstalledPackageInfos
 ,   findFittingPackages
 ,   findFittingPackagesDP
-,   fromPackageIdentifier
-,   toPackageIdentifier
 
-,   asDPid
-,   fromDPid
 ) where
 
 import Graphics.UI.Gtk hiding (afterToggleOverwrite)
@@ -64,6 +60,7 @@ import Data.Maybe
 import Text.ParserCombinators.ReadP
 import Data.Binary
 import System.Process
+import qualified Data.ByteString.Lazy as BS
 
 import Ghf.File
 import Ghf.Core
@@ -72,6 +69,8 @@ import Ghf.ViewFrame
 import Ghf.PropertyEditor
 import Ghf.SpecialEditors
 import Ghf.Log
+import {-# SOURCE #-} Ghf.Collector
+import Ghf.Extractor
 
 initInfo :: GhfAction
 initInfo = do
@@ -152,14 +151,13 @@ buildActiveInfo' =
     let version         =   cProjectVersion in do
     activePack          <-  readGhf activePack
     log                 <-  getLog
+    session             <-  readGhf session
     case activePack of
         Nothing         ->  return Nothing
         Just ghfPackage ->  do
-            pid <- lift $ runProcess "dist/build/ghf-collector/ghf-collector"
-                                        ["--Uninstalled=" ++ cabalFile ghfPackage]
-                                        Nothing Nothing Nothing Nothing Nothing
-            lift $ waitForProcess pid
-            collectorPath   <-  lift $ getCollectorPath version
+            lift $ collectUninstalled session cProjectVersion (cabalFile ghfPackage)
+            lift $ putStrLn "uninstalled collected"
+            collectorPath   <-  lift $ getCollectorPath cProjectVersion
             packageDescr    <-  lift $ loadInfosForPackage collectorPath
                                             (fromDPid $ packageId ghfPackage)
             case packageDescr of
@@ -170,7 +168,7 @@ buildActiveInfo' =
 
 --
 -- | Updates the world info (it is the responsibility of the caller to rebuild
---   the current info
+--   the current info)
 --
 updateAccessibleInfo :: GhfAction
 updateAccessibleInfo = do
@@ -209,8 +207,11 @@ loadInfosForPackage dirPath pid = do
     exists <- doesFileExist filePath
     if exists
         then catch (do
+            file            <-  openBinaryFile filePath ReadMode
+            bs              <-  BS.hGetContents file
             putStrLn $ "Now reading iface " ++ showPackageId pid
-            packageInfo <- decodeFile filePath
+            let ! packageInfo = decode bs
+            hClose file
             return (Just packageInfo))
             (\e -> do putStrLn (show e); return Nothing)
         else do
@@ -296,18 +297,6 @@ findFittingPackagesDP session dependencyList =  do
         fp <- (findFittingPackages session dependencyList)
         return fp
 
-asDPid :: PackageIdentifier -> DP.PackageIdentifier
-asDPid (PackageIdentifier name version) = DP.PackageIdentifier name version
 
-fromDPid :: DP.PackageIdentifier -> PackageIdentifier
-fromDPid (DP.PackageIdentifier name version) = PackageIdentifier name version
-
-fromPackageIdentifier :: PackageIdentifier -> PackIdentifier
-fromPackageIdentifier   =   showPackageId
-
-toPackageIdentifier :: PackIdentifier -> PackageIdentifier
-toPackageIdentifier pd    =   case readP_to_S DP.parsePackageId pd of
-                                [(ps,_)]  -> fromDPid ps
-                                _         -> error "cannot parse package identifier"
 
 

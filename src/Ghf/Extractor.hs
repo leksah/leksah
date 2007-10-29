@@ -16,6 +16,12 @@
 
 module Ghf.Extractor (
     extractInfo
+
+,   fromPackageIdentifier
+,   toPackageIdentifier
+
+,   asDPid
+,   fromDPid
 ) where
 
 import GHC hiding(Id)
@@ -49,9 +55,10 @@ import Data.Maybe
 import qualified Data.Set as Set
 import Data.Set (Set)
 import Data.Foldable (maximumBy)
+import Text.ParserCombinators.ReadP
 
 import Ghf.Core
-import Ghf.Info
+--import Ghf.Info
 
 
 
@@ -270,4 +277,16 @@ extractUsages usage =
         ids     =   map (showSDocUnqual . ppr . fst) $ usg_entities usage
     in (name, Set.fromList ids)
 
+asDPid :: PackageIdentifier -> DP.PackageIdentifier
+asDPid (PackageIdentifier name version) = DP.PackageIdentifier name version
 
+fromDPid :: DP.PackageIdentifier -> PackageIdentifier
+fromDPid (DP.PackageIdentifier name version) = PackageIdentifier name version
+
+fromPackageIdentifier :: PackageIdentifier -> PackIdentifier
+fromPackageIdentifier   =   showPackageId
+
+toPackageIdentifier :: PackIdentifier -> PackageIdentifier
+toPackageIdentifier pd    =   case readP_to_S DP.parsePackageId pd of
+                                [(ps,_)]  -> fromDPid ps
+                                _         -> error "cannot parse package identifier"

@@ -165,9 +165,25 @@ packageBuild = do
                                                 ++ buildFlags package)
                 oid <- forkIO (readOut log out)
                 eid <- forkIO (runReaderT (readErrForBuild log err) ghfR)
-                waitForProcess pid
+                forkIO (rebuild pid ghfR)
                 return ()
-            buildActiveInfo
+    where
+        rebuild pid ghfR     =   do
+            res <- do   threadDelay 50
+                        tryRebuild pid ghfR
+            if not res
+                then rebuild pid ghfR
+                else return ()
+        tryRebuild pid ghfR = do
+            res <- getProcessExitCode pid
+            case res of
+                Nothing -> return False
+                Just _ -> do
+                    putStrLn "About to build Active Info"
+                    runReaderT buildActiveInfo ghfR
+                    putStrLn "After building Active Info"
+                    return True
+
 
 packageDoc :: GhfAction
 packageDoc = do

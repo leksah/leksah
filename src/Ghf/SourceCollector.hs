@@ -106,9 +106,9 @@ filePathParser = try (do
     return (str))
     <?> "filePathParser"
 
-sourceForPackage :: PackageIdentifier
+sourceForPackage :: PackIdentifier
     -> (Map PackIdentifier [FilePath])
-    -> Maybe Filepath
+    -> Maybe FilePath
 sourceForPackage id map =
     case id `Map.lookup` map of
         Nothing -> Nothing

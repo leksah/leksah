@@ -83,7 +83,6 @@ import Ghf.ViewFrame
 import Ghf.SourceCandy
 import Ghf.PropertyEditor
 import Ghf.Log
---import Ghf.Provider
 import Ghf.Info
 import Ghf.InfoPane
 
@@ -654,7 +653,6 @@ editFindKey k@(Key _ _ _ _ _ _ _ _ _ _)
     | eventKeyName k == "Escape" = do
         entry   <- getTBFindEntry
         inBufContext' () $ \_ gtkbuf currentBuffer _ -> lift $ do
-            entrySetText entry ""
             i1 <- textBufferGetStartIter gtkbuf
             i2 <- textBufferGetEndIter gtkbuf
             textBufferRemoveTagByName gtkbuf "found" i1 i2
@@ -677,10 +675,8 @@ editFindInc :: SearchHint -> GhfAction
 editFindInc hint = do
     entry   <- getTBFindEntry
     lift $widgetGrabFocus entry
-    if hint == Initial
-        then do
-            lift $entrySetText entry ""
-        else return ()
+    when (hint == Initial)
+        (lift $ editableSelectRegion entry 0 (-1))
     search  <- lift $entryGetText entry
     if null search
         then return ()
@@ -701,7 +697,7 @@ editFindInc hint = do
                     widgetModifyText entry StateNormal white
             lift $do
                 widgetGrabFocus entry
-                editableSelectRegion entry (length search) (length search)
+                editableSelectRegion entry 0 (-1)
 
 
 editFind :: Bool -> Bool -> Bool -> String -> String -> SearchHint -> GhfM Bool

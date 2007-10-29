@@ -54,9 +54,8 @@ main = do
     args        <-  getArgs
     (o,fl)      <-  ghfOpts args
     st          <-  initGUI
---    if rtsSupportsBoundThreads
---        then error "Don't link with -theaded, Gtk won't work"
---        else
+    when rtsSupportsBoundThreads
+        (putStrLn "Linked with -threaded (Will Gtk work?)")
     timeoutAddFull (yield >> return True) priorityHigh 50
     mapM_ putStrLn st
     uiManager   <-  uiManagerNew
