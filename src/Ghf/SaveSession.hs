@@ -128,8 +128,8 @@ getLayout = do
 getPopulation :: GhfM[(String,PanePath)]
 getPopulation = do
     paneMap <- readGhf paneMap
-    mapM (\ (pn,v) -> do    p <- paneFromUniqueName pn
-                            return (getPaneDescription p, fst v))
+    mapM (\ (pn,v) -> do    p <- paneFromName pn
+                            return (paneId p, fst v))
                                 $Map.toList paneMap
 
 getActive :: GhfM(Maybe String)

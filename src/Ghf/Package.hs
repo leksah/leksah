@@ -450,7 +450,7 @@ selectSourceBuf fp = do
                                 Nothing -> False) buffers
     case buf of
         hdb:tl -> do
-            makeBufferActive (uniquePaneName (BufPane hdb))
+            makeBufferActive (paneName hdb)
             return True
         otherwise -> do
             fe <- lift $doesFileExist fpc

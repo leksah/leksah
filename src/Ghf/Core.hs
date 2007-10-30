@@ -1,3 +1,4 @@
+{-# OPTIONS_GHC -fglasgow-exts #-}
 -----------------------------------------------------------------------------
 --
 -- Module      :  Ghf.Core
@@ -31,6 +32,8 @@ module Ghf.Core (
 ,   GhfPackage(..)
 
 -- * Panes and pane layout
+,   Pane(..)
+,   Castable(..)
 ,   GhfPane(..)
 ,   Direction(..)
 ,   PaneDirection(..)
@@ -75,7 +78,7 @@ module Ghf.Core (
 ,   PackIdentifier
 
 -- * debugging
-,   helpDebug
+--,   helpDebug
 ,   message
 ,   trace
 ) where
@@ -94,6 +97,7 @@ import qualified Data.Set as Set
 import System.Time
 import GHC (Session)
 import Data.Binary
+import Data.Maybe
 
 --import Debug.Trace
 --message m = trace m (return ())
@@ -109,10 +113,10 @@ trace a b = b
 --
 -- | The IDE state
 --
-data Ghf        =   Ghf {
+data Ghf            =  Ghf {
     window          ::  Window                  -- ^ the gtk window
 ,   uiManager       ::  UIManager               -- ^ the gtk uiManager
-,   panes           ::  Map PaneName GhfPane      -- ^ a map with all panes (subwindows)
+,   panes           ::  Map PaneName GhfPane    -- ^ a map with all panes (subwindows)
 ,   activePane      ::  Maybe (PaneName,Connections)
 ,   paneMap         ::  Map PaneName (PanePath, Connections)
                     -- ^ a map from the pane to its gui path and signal connections
@@ -129,7 +133,7 @@ data Ghf        =   Ghf {
 ,   currentInfo     ::  Maybe (PackageScope,PackageScope)
 --,   sourceLocations ::  Maybe (Map PackIdentifier [FilePath])
 ,   session         ::  Session                 -- ^ the bridge to ghc
-} deriving Show
+} --deriving Show
 
 --
 -- | A mutable reference to the IDE state
@@ -200,18 +204,15 @@ data GhfPackage     =   GhfPackage {
 --
 
 --
--- | Description of the different pane types
---
-data GhfPane        =   BufPane GhfBuffer
-                    |   LogPane GhfLog
-                    |   InfoPane GhfInfo
-    deriving (Eq,Show)
-
---
 -- | The direction of a split
 --
 data Direction      =   Horizontal | Vertical
     deriving (Eq,Show)
+
+--
+-- | A path to a pane
+--
+type PanePath       =   [PaneDirection]
 
 --
 -- | The relative direction to a pane from the parent
@@ -219,11 +220,6 @@ data Direction      =   Horizontal | Vertical
 data PaneDirection  =   TopP | BottomP | LeftP | RightP
     deriving (Eq,Show,Read)
   	
---
--- | A path to a pane
---
-type PanePath       =   [PaneDirection]
-
 --
 -- | Description of a window layout
 --
@@ -246,8 +242,43 @@ data Connections =  BufConnections
 
 type PaneName = String
 
+--
+-- | Description of the different pane types
+--
+
+class Pane alpha  where
+    paneName        ::   alpha -> PaneName
+    paneName b      =   if getAddedIndex b == 0
+                            then primPaneName b
+                            else primPaneName b ++ "(" ++ show (getAddedIndex b) ++ ")"
+    primPaneName    ::   alpha -> String
+    getAddedIndex   ::   alpha -> Int
+    getAddedIndex _ =   0
+    getTopWidget    ::   alpha -> Widget
+    paneId          ::   alpha -> String
+
+data Casting alpha  where
+    LogCasting      ::   Casting GhfLog
+    InfoCasting     ::   Casting GhfInfo
+    BufferCasting   ::   Casting GhfBuffer
+
+class Castable alpha where
+    casting         ::   alpha -> Casting alpha
+    downCast        ::   alpha -> GhfPane -> Maybe alpha
+    isIt            ::   alpha -> GhfPane -> Bool
+    isIt t i        =   isJust (downCast t i)
+
+data GhfPane        =   forall alpha . (Pane alpha, Castable alpha) => PaneC alpha
+
+instance Pane GhfPane where
+    paneName (PaneC a)      =   paneName a
+    primPaneName (PaneC a)  =   primPaneName a
+    getAddedIndex (PaneC a) =   getAddedIndex a
+    getTopWidget (PaneC a)  =   getTopWidget a
+    paneId (PaneC a)        =   paneId a
+
 -- ---------------------------------------------------------------------
--- Buffers - The text editor panes
+-- Panes - The data structures for the panes
 --
 
 --
@@ -262,14 +293,22 @@ data GhfBuffer  =   GhfBuffer {
 ,   modTime     ::  Maybe (ClockTime)
 } deriving Show
 
-instance Eq GhfBuffer
-    where (== ) a b = bufferName a == bufferName b && addedIndex a == addedIndex b
-instance Ord GhfBuffer
-    where (<=) a b = if bufferName a < bufferName b
-                        then True
-                        else if bufferName a == bufferName b
-                            then addedIndex a <= addedIndex b
-                            else False
+instance Pane GhfBuffer
+    where
+    primPaneName    =   bufferName
+    getAddedIndex   =   addedIndex
+    getTopWidget    =   castToWidget . scrolledWindow
+    paneId b        =   case fileName b of
+                            Just s  -> s
+                            Nothing -> "?" ++ bufferName b
+
+instance Castable GhfBuffer where
+    casting _       =   BufferCasting
+    downCast _ (PaneC a)
+                    =   case casting a of
+                            BufferCasting -> Just a
+                            _          -> Nothing
+
 --
 -- | A log view pane description
 --
@@ -278,14 +317,18 @@ data GhfLog  =   GhfLog {
 ,   scrolledWindowL :: ScrolledWindow
 }
 
-instance Eq GhfLog
-    where (== ) a b = True
+instance Pane GhfLog
+    where
+    primPaneName _  =   "Log"
+    getAddedIndex _ =   0
+    getTopWidget    =   castToWidget . scrolledWindowL
+    paneId b        =   "*Log"
 
-instance Ord GhfLog
-    where (<=) a b = True
-
-instance Show GhfLog
-    where show _ = "GhfLog *"
+instance Castable GhfLog where
+    casting _               =   LogCasting
+    downCast _ (PaneC a)    =   case casting a of
+                                    LogCasting -> Just a
+                                    _          -> Nothing
 
 --
 -- | An info pane description
@@ -295,14 +338,26 @@ data GhfInfo  =   GhfInfo {
 ,   injectors       ::   [IdentifierDescr -> IO() ]
 }
 
-instance Eq GhfInfo
-    where (== ) a b = True
+instance Pane GhfInfo
+    where
+    primPaneName _  =   "Info"
+    getAddedIndex _ =   0
+    getTopWidget    =   castToWidget . box
+    paneId b        =   "*Info"
 
-instance Ord GhfInfo
-    where (<=) a b = True
+instance Castable GhfInfo where
+    casting _               =   InfoCasting
+    downCast _ (PaneC a)    =   case casting a of
+                                    InfoCasting -> Just a
+                                    _          -> Nothing
 
-instance Show GhfInfo
-    where show _ = "GhfInfo *"
+-- | An modules pane description
+--
+
+--data GhfLog  =   GhfLog {
+--    textView  ::  TextView
+--,   scrolledWindowL :: ScrolledWindow
+--}
 
 -- ---------------------------------------------------------------------
 -- Other data structures which are used in the state
@@ -496,12 +551,12 @@ instance Show ScrolledWindow
 instance Show Session
     where show _ = "Session *"
 
-helpDebug :: GhfAction
-helpDebug = do
-    ref <- ask
-    ghf <- lift $readIORef ref
-    lift $do
-        putStrLn $"------------------ "
-        putStrLn $show ghf
-        putStrLn $"------------------ "
+--helpDebug :: GhfAction
+--helpDebug = do
+--    ref <- ask
+--    ghf <- lift $readIORef ref
+--    lift $do
+--        putStrLn $"------------------ "
+--        putStrLn $show ghf
+--        putStrLn $"------------------ "
 

@@ -186,7 +186,7 @@ actions =
 
 
     ,AD "Help" "_Help" Nothing Nothing (return ()) [] False
-    ,AD "HelpDebug" "Debug" (Just "<Ctrl>d") Nothing helpDebug [] False
+--    ,AD "HelpDebug" "Debug" (Just "<Ctrl>d") Nothing helpDebug [] False
 --    ,AD "HelpDebug2" "Debug2" (Just "<Ctrl>d") Nothing dbgInstalledPackageInfo [] False
     ,AD "HelpAbout" "About" Nothing (Just "gtk-about") aboutDialog [] False]
 
@@ -281,8 +281,6 @@ menuDescription =
     "       <menuitem name=\"Edit Preferences\" action=\"PrefsEdit\" /> " ++ "\n" ++
     "     </menu> " ++ "\n" ++
     "    <menu name=\"_Help\" action=\"Help\"> " ++ "\n" ++
-    "       <menuitem name=\"_Debug\" action=\"HelpDebug\" /> " ++ "\n" ++
-    "       <menuitem name=\"Debug2\" action=\"HelpDebug2\" /> " ++ "\n" ++
     "       <menuitem name=\"_About\" action=\"HelpAbout\" /> " ++ "\n" ++
     "     </menu> " ++ "\n" ++
     "   </menubar> " ++ "\n" ++

@@ -15,7 +15,6 @@
 module Ghf.InfoPane (
     initInfo
 ,   setInfo
-,   isInfo
 ) where
 
 import Graphics.UI.Gtk hiding (afterToggleOverwrite)
@@ -111,23 +110,23 @@ initInfo panePath nb idDescr = do
             notebookPrependPage nb nbbox infoPaneName
             widgetShowAll (box info)
             return (info,[])
-    let newPaneMap  =  Map.insert (uniquePaneName (InfoPane pane))
+    let newPaneMap  =  Map.insert (paneName pane)
                             (panePath, BufConnections [] [] cids) paneMap
-    let newPanes = Map.insert infoPaneName (InfoPane pane) panes
+    let newPanes = Map.insert infoPaneName (PaneC pane) panes
     modifyGhf_ (\ghf -> return (ghf{panes = newPanes,
                                     paneMap = newPaneMap}))
     lift $widgetGrabFocus (box pane)
 
 makeInfoActive :: GhfInfo -> GhfAction
 makeInfoActive info = do
-    activatePane (InfoPane info) (BufConnections[][][])
+    activatePane info (BufConnections[][][])
 
 setInfo :: IdentifierDescr -> GhfM ()
 setInfo identifierDescr = do
     panesST <- readGhf panes
     prefs   <- readGhf prefs
     layout  <- readGhf layout
-    let infos = map (\ (InfoPane b) -> b) $filter isInfo $Map.elems panesST
+    let infos = catMaybes $ map (downCast (undefined:: GhfInfo)) $ Map.elems panesST
     if null infos || length infos > 1
         then do
             let pp  =  getStandardPanePath (infoPanePath prefs) layout
@@ -135,18 +134,16 @@ setInfo identifierDescr = do
             nb      <- getNotebook pp
             initInfo pp nb identifierDescr
             panesST <- readGhf panes
-            let logs = map (\ (InfoPane b) -> b) $filter isInfo $Map.elems panesST
+            let logs = catMaybes $ map (downCast (undefined:: GhfInfo)) $ Map.elems panesST
             if null logs || length logs > 1
                 then error "Can't init info"
                 else return ()
         else do
             let inj = injectors (head infos)
             mapM_ (\ a -> lift $ a identifierDescr)  inj
-            lift $ bringPaneToFront (InfoPane (head infos))
+            lift $ bringPaneToFront (head infos)
             return ()
 
-isInfo :: GhfPane -> Bool
-isInfo (InfoPane _) = True
-isInfo _            = False
+
 
 

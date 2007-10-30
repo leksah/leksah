@@ -13,8 +13,7 @@
 -----------------------------------------------------------------------------------
 
 module Ghf.SourceEditor (
-    isBuffer
-,   allBuffers
+    allBuffers
 ,   maybeActiveBuf
 ,   standardSourcePanePath
 
@@ -76,6 +75,7 @@ import Data.Char(toUpper)
 import qualified Data.Map as Map
 import Data.Map (Map)
 import Data.List
+import Data.Maybe
 
 
 import Ghf.Core
@@ -87,14 +87,10 @@ import Ghf.Info
 import Ghf.InfoPane
 
 
-isBuffer :: GhfPane -> Bool
-isBuffer (BufPane _) = True
-isBuffer _           = False
-
 allBuffers :: GhfM [GhfBuffer]
 allBuffers = do
     panesST <- readGhf panes
-    return (map (\ (BufPane b) -> b) $filter isBuffer $Map.elems panesST)
+    return (catMaybes $ map (downCast (undefined:: GhfBuffer)) $ Map.elems panesST)
 
 maybeActiveBuf :: GhfM (Maybe (GhfBuffer,Connections))
 maybeActiveBuf = do
@@ -102,10 +98,10 @@ maybeActiveBuf = do
     case mbPane of
         Nothing -> return Nothing
         Just (paneName,signals) -> do
-            pane <- paneFromUniqueName paneName
-            case pane of
-                BufPane buf -> return (Just (buf,signals))
-                otherwise   -> return Nothing
+            pane <- paneFromName paneName
+            if isIt (undefined :: GhfBuffer) pane
+                then return (Just (fromJust $ downCast (undefined :: GhfBuffer) pane,signals))
+                else return Nothing
 
 standardSourcePanePath :: GhfM PanePath
 standardSourcePanePath = do
@@ -203,7 +199,7 @@ newTextBuffer panePath bn mbfn = do
             (\_ -> do runReaderT (makeBufferActive rbn) ghfR; return True)
         return (buf,[cid])
     let newPaneMap  =   Map.insert rbn (panePath,BufConnections cids [] []) paneMap
-    let newPanes    =   Map.insert rbn (BufPane buf) panes
+    let newPanes    =   Map.insert rbn (PaneC buf) panes
     modifyGhf_ (\ghf -> return (ghf{panes = newPanes,
                                     paneMap = newPaneMap}))
     lift $widgetShowAll (scrolledWindow buf)
@@ -212,9 +208,10 @@ newTextBuffer panePath bn mbfn = do
 
 makeBufferActive :: PaneName -> GhfAction
 makeBufferActive pn = do
-    pane    <-  paneFromUniqueName pn
-    case pane of
-        BufPane buf -> do
+    pane    <-  paneFromName pn
+    if isIt (undefined :: GhfBuffer) pane
+        then do
+            let buf =   fromJust $ downCast (undefined :: GhfBuffer) pane
             ghfR    <-  ask
             sbLC    <-  getStatusbarLC
             sbIO    <-  getStatusbarIO
@@ -222,7 +219,7 @@ makeBufferActive pn = do
             let sv = sourceView buf
             (tl,tm,tr) <- lift $do
                 gtkBuf  <- textViewGetBuffer sv
-                bringPaneToFront (BufPane buf)
+                bringPaneToFront pane
                 writeCursorPositionInStatusbar sv sbLC
                 writeOverwriteInStatusbar sv sbIO
                 id1 <- gtkBuf `afterModifiedChanged` runReaderT (markLabelAsChanged) ghfR
@@ -238,17 +235,16 @@ makeBufferActive pn = do
                                                 return False)
                 id6 <- sv `afterToggleOverwrite`  writeOverwriteInStatusbar sv sbIO
                 return ([id2,id4,id6],[id1,id3],[])
-            activatePane (BufPane buf) (BufConnections tl tm tr)
+            activatePane pane (BufConnections tl tm tr)
             checkModTime buf
-        otherwise -> return ()
+        else return ()
 
 
 checkModTime :: GhfBuffer -> GhfAction
 checkModTime buf = do
     panes <- readGhf panes
-    let name = uniquePaneName (BufPane buf)
+    let name = paneName buf
     case fileName buf of
-        Nothing -> return ()
         Just fn -> do
             exists <- lift $doesFileExist fn
             if exists
@@ -271,27 +267,33 @@ checkModTime buf = do
                                             revert buf
                                             lift $widgetHide md
                                         ResponseNo  ->  do
-                                            let newPanes = Map.adjust (\b -> case b of
-                                                                                BufPane  b -> BufPane (b{modTime = (Just nmt)})
-                                                                                it         -> it) name panes
+                                            let newPanes = Map.adjust (\b ->
+                                                                if isIt (undefined :: GhfBuffer) b
+                                                                    then PaneC ((fromJust $
+                                                                            downCast (undefined :: GhfBuffer) b)
+                                                                                    {modTime = (Just nmt)})
+                                                                    else b) name panes
                                             modifyGhf_ (\ghf -> return (ghf{panes = newPanes}))
                                             lift $widgetHide md
                                 else return ()
                 else return ()
+        Nothing -> return ()
 
 setModTime :: GhfBuffer -> GhfAction
 setModTime buf = do
     panes <- readGhf panes
-    let name = uniquePaneName (BufPane buf)
+    let name = paneName buf
     case fileName buf of
         Nothing -> return ()
         Just fn -> do
             nmt <- lift $getModificationTime fn
-            let newPanes = Map.adjust (\b -> case b of
-                                                BufPane  b -> BufPane (b{modTime = (Just nmt)})
-                                                it         -> it) name panes
+            let newPanes = Map.adjust (
+                                \b -> if isIt (undefined :: GhfBuffer) b
+                                        then
+                                            PaneC ((fromJust $ downCast (undefined :: GhfBuffer) b)
+                                                    {modTime = (Just nmt)})
+                                        else b) name panes
             modifyGhf_ (\ghf -> return (ghf{panes = newPanes}))
-
 
 fileRevert :: GhfAction
 fileRevert = inBufContext' () $ \ _ _ currentBuffer _ -> do
@@ -302,7 +304,7 @@ revert buf = do
     useCandy <- getCandyState
     (fromCandy,_) <- readGhf candy
     panes <- readGhf panes
-    let name = uniquePaneName (BufPane buf)
+    let name = paneName buf
     case fileName buf of
         Nothing -> return ()
         Just fn -> do
@@ -319,9 +321,11 @@ revert buf = do
                 sourceBufferEndNotUndoableAction buffer
                 textBufferSetModified buffer False
                 return mt
-            let newPanes = Map.adjust (\b -> case b of
-                                                    BufPane  b -> BufPane (b{modTime = (Just mt)})
-                                                    it         -> it) name panes
+            let newPanes = Map.adjust (\b -> if isIt (undefined :: GhfBuffer) b
+                                                then
+                                                    PaneC ((fromJust $ downCast (undefined :: GhfBuffer) b)
+                                                                {modTime = (Just mt)})
+                                                else b) name panes
             modifyGhf_ (\ghf -> return (ghf{panes = newPanes}))
 
 writeCursorPositionInStatusbar :: SourceView -> Statusbar -> IO()
@@ -384,7 +388,7 @@ inBufContext' def f = do
     case mbBuf of
         Nothing -> return def
         Just (ghfBuf,_) -> do
-            (pane,_)    <-  guiPropertiesFromName (uniquePaneName (BufPane ghfBuf))
+            (pane,_)    <-  guiPropertiesFromName (paneName ghfBuf)
             nb          <-  getNotebook pane
             mbI         <-  lift $notebookPageNum nb (scrolledWindow ghfBuf)
             case mbI of
@@ -408,7 +412,7 @@ fileSave query = inBufContext' () $ \ nb _ currentBuffer i -> do
     bs      <- getCandyState
     candy   <- readGhf candy
     (panePath,BufConnections s1 s2 s3)
-            <- guiPropertiesFromName (uniquePaneName (BufPane currentBuffer))
+            <- guiPropertiesFromName (paneName currentBuffer)
     mbnbufsPm <- do
         let mbfn = fileName currentBuffer
         mbpage <- lift $notebookGetNthPage nb i
@@ -454,12 +458,12 @@ fileSave query = inBufContext' () $ \ nb _ currentBuffer i -> do
                                         fileSave' (forceLineEnds prefs) currentBuffer bs candy fn
                                         modT <- getModificationTime fn
                                         let bn = takeFileName fn
-                                        let bufs1 =  Map.delete (uniquePaneName (BufPane currentBuffer)) bufs
+                                        let bufs1 =  Map.delete (paneName currentBuffer) bufs
                                         let (ind,rbn) =  figureOutPaneName bufs1 bn 0
                                         cfn <- canonicalizePath fn
                                         let newBuffer =  currentBuffer {fileName = Just cfn,
                                                         bufferName = bn, addedIndex = ind, modTime = Just modT}
-                                        let newBufs   =  Map.insert rbn (BufPane newBuffer) bufs1
+                                        let newBufs   =  Map.insert rbn (PaneC newBuffer) bufs1
                                         mapM_ signalDisconnect s1
                                         mapM_ signalDisconnect s2
                                         mapM_ signalDisconnect s3
@@ -514,7 +518,7 @@ fileClose = inBufContext' True $ \nb gtkbuf currentBuffer i -> do
                                             MessageQuestion
                                             ButtonsNone
                                             ("Save changes to document: "
-                                                ++ uniquePaneName (BufPane currentBuffer)
+                                                ++ paneName currentBuffer
                                                 ++ "?")
                 dialogAddButton md "_Save" ResponseYes
                 dialogAddButton md "_Don't Save" ResponseNo
@@ -533,8 +537,8 @@ fileClose = inBufContext' True $ \nb gtkbuf currentBuffer i -> do
         else do
             deactivatePane
             lift $notebookRemovePage nb i
-            let newPanes = Map.delete (uniquePaneName (BufPane currentBuffer)) bufs
-            let newPaneMap = Map.delete (uniquePaneName (BufPane currentBuffer)) paneMap
+            let newPanes = Map.delete (paneName currentBuffer) bufs
+            let newPaneMap = Map.delete (paneName currentBuffer) paneMap
             modifyGhf_ (\ghf -> return (ghf{panes = newPanes, paneMap = newPaneMap}))
             return True
 
@@ -544,7 +548,7 @@ fileCloseAll = do
     if null bufs
         then return True
         else do
-            makeBufferActive (uniquePaneName (BufPane (head bufs)))
+            makeBufferActive (paneName (head bufs))
             r <- fileClose
             if r
                 then fileCloseAll

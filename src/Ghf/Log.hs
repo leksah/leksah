@@ -1,3 +1,4 @@
+{-# OPTIONS_GHC -fglasgow-exts #-}
 --
 -- | The log pane og ghf
 --
@@ -5,7 +6,6 @@
 module Ghf.Log (
     initLog
 ,   getLog
-,   isLog
 ,   appendLog
 ,   LogTag(..)
 ,   markErrorInLog
@@ -20,6 +20,7 @@ import Data.IORef
 import System.IO
 import qualified Data.Map as Map
 import Data.Map (Map,(!))
+import Data.Maybe
 
 import Ghf.Core
 import Ghf.SourceCandy
@@ -77,38 +78,36 @@ initLog panePath nb = do
         cid1 <- tv `afterFocusIn`
             (\_ -> do runReaderT (makeLogActive buf) ghfR; return True)
         return (buf,[cid1])
-    let newPaneMap  =  Map.insert (uniquePaneName (LogPane buf))
+    let newPaneMap  =  Map.insert (paneName buf)
                             (panePath, BufConnections [] [] cids) paneMap
-    let newPanes = Map.insert logPaneName (LogPane buf) panes
+    let newPanes = Map.insert logPaneName (PaneC buf) panes
     modifyGhf_ (\ghf -> return (ghf{panes = newPanes,
                                     paneMap = newPaneMap}))
     lift $widgetGrabFocus (textView buf)
 
 makeLogActive :: GhfLog -> GhfAction
 makeLogActive log = do
-    activatePane (LogPane log) (BufConnections[][] [])
+    activatePane log (BufConnections[][] [])
 
 getLog :: GhfM GhfLog
 getLog = do
     panesST <- readGhf panes
     prefs   <- readGhf prefs
     layout  <- readGhf layout
-    let logs = map (\ (LogPane b) -> b) $filter isLog $Map.elems panesST
+    let logs =  catMaybes $ map (downCast (undefined:: GhfLog)) $ Map.elems panesST
     if null logs || length logs > 1
         then do
             let pp  =  getStandardPanePath (logPanePath prefs) layout
             nb      <- getNotebook pp
             initLog pp nb
             panesST <- readGhf panes
-            let logs = map (\ (LogPane b) -> b) $filter isLog $Map.elems panesST
+            let logs = catMaybes $ map (downCast (undefined:: GhfLog)) $ Map.elems panesST
             if null logs || length logs > 1
                 then error "Can't init log"
                 else return (head logs)
         else return (head logs)
 
-isLog :: GhfPane -> Bool
-isLog (LogPane _)    = True
-isLog _             = False
+
 
 appendLog :: GhfLog -> String -> LogTag -> IO Int
 appendLog l@(GhfLog tv _) string tag = do
@@ -132,7 +131,7 @@ appendLog l@(GhfLog tv _) string tag = do
     case mbMark of
         Nothing -> return ()
         Just mark -> textViewScrollMarkOnscreen tv mark
-    bringPaneToFront (LogPane l)
+    bringPaneToFront l
     return line
 
 markErrorInLog :: (Int,Int) -> GhfAction
