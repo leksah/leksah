@@ -133,7 +133,6 @@ data Ghf            =  Ghf {
 ,   currentErr      ::  Maybe Int
 ,   accessibleInfo  ::  Maybe (PackageScope)
 ,   currentInfo     ::  Maybe (PackageScope,PackageScope)
---,   sourceLocations ::  Maybe (Map PackIdentifier [FilePath])
 ,   session         ::  Session                 -- ^ the bridge to ghc
 } --deriving Show
 
@@ -318,7 +317,7 @@ data GhfInfo  =   GhfInfo {
 
 data GhfModules     =   GhfModules {
     boxM            ::   HBox
-,   treeStore       ::   New.TreeStore String
+,   treeStore       ::   New.TreeStore (String, [(ModuleDescr,PackageDescr)])
 ,   facetStore      ::   New.ListStore String
 }
 
@@ -409,7 +408,7 @@ data PackageDescr       =   PackageDescr {
 
 data ModuleDescr        =   ModuleDescr {
     moduleIdMD          ::   ! ModuleIdentifier
-,   exportedNamesMD     ::   ! (Set Symbol)              --unqualified
+,   exportedNamesMD     ::   ! (Set Symbol)                        -- unqualified
 ,   mbSourcePathMD      ::   ! (Maybe FilePath)
 ,   instancesMD         ::   ! [(ClassId,DataId)]
 ,   usagesMD            ::   ! (Map ModuleIdentifier (Set Symbol)) -- imports
@@ -432,7 +431,7 @@ type Symbol             =   String  -- Qualified or unqualified
 type ClassId            =   String  -- Qualified or unqualified
 type DataId             =   String  -- Qualified or unqualified
 type TypeInfo           =   String
-type ModuleIdentifier   =   String --always quelified
+type ModuleIdentifier   =   String  -- always quelified
 type PackIdentifier     =   String
 
 

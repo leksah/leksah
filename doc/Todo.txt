@@ -105,16 +105,12 @@ Current work plan
 ok  - Scanning non installed packages
 ok  - Scanning for 6.8!!
 ok  - Administration of package infos and symbol tables
-
 ok  - Optimize storing and reading (binary, byteString)
-
-
 ok  - make something after an external process finishes
 
 
 !!! - New Pane for info
 !!! - Selecting the right from a multitude of possibilities
-!!! - Scanning of source directories
 !!! - Scanning for Haddock Documentation
 
 !!! - Tree Views
@@ -123,61 +119,10 @@ ok  - make something after an external process finishes
 
     - Implementing event concept from Thorsten
 
+later - Parsing of source packages
+now - Simple version which finds the files and finds then the definition in the files
+      without Parsing
 
+    - get rid of second executable and make collector accesssable from ghf command line
 
-
-parseModule
-parseModule in Parser aufrufen
-
-Beispielcode
-
-parseType :: GHC.Session -> String -> IO ParseResult
-parseType = runParser GHC.P.parseType
-
-runParser :: GHC.L.P a -> GHC.Session -> String -> IO ParseResult
-runParser parser ghc_session expr =
-    do
-        dyn_fl <- GHC.getSessionDynFlags ghc_session
-        --
-        buf <- GHC.SB.stringToStringBuffer expr
-        --
-        let parse_res = GHC.L.unP parser (GHC.L.mkPState buf GHC.S.noSrcLoc dyn_fl)
-        --
-        case parse_res of
-            GHC.L.POk{}            -> return ParseOk
-            --
-            GHC.L.PFailed span err -> return (ParseError span err)
-
-Typ: Lexer.P (SrcLoc.Located (HsSyn.HsModule RdrName.RdrName))
-Ergebniss in HsSyn HsModule of RdrName
-
-data HsModule name
-  = HsModule
-	(Maybe (Located ModuleName))-- Nothing => "module X where" is omitted
-				--	(in which case the next field is Nothing too)
-	(Maybe [LIE name])	-- Export list; Nothing => export list omitted, so export everything
-				-- Just [] => export *nothing*
-				-- Just [...] => as you would expect...
-	[LImportDecl name]	-- We snaffle interesting stuff out of the
-				-- imported interfaces early on, adding that
-				-- info to TyDecls/etc; so this list is
-				-- often empty, downstream.
-	[LHsDecl name]		-- Type, class, value, and interface signature decls
-	(Maybe DeprecTxt)	-- reason/explanation for deprecation of this module
-
-
-important: [LHsDecl name]
-
-type LHsDecl id = Located (HsDecl id)
-
-data HsDecl id
-  = TyClD	(TyClDecl id)
-  | InstD	(InstDecl  id)
-  | ValD	(HsBind id)
-  | SigD	(Sig id)
-  | DefD	(DefaultDecl id)
-  | ForD        (ForeignDecl id)
-  | DeprecD	(DeprecDecl id)
-  | RuleD	(RuleDecl id)
-  | SpliceD	(SpliceDecl id)
 
