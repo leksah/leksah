@@ -30,7 +30,7 @@ module Ghf.Info (
 
 ) where
 
-import Graphics.UI.Gtk hiding (afterToggleOverwrite)
+import Graphics.UI.Gtk hiding (afterToggleOverwrite,get)
 import Graphics.UI.Gtk.SourceView
 import Graphics.UI.Gtk.ModelView as New
 import Graphics.UI.Gtk.Multiline.TextView
@@ -57,7 +57,7 @@ import Data.List
 import UniqFM
 import PackageConfig
 import Data.Maybe
-import Text.ParserCombinators.ReadP
+import Text.ParserCombinators.ReadP hiding(get)
 import Data.Binary
 import System.Process
 import qualified Data.ByteString.Lazy as BS
@@ -71,6 +71,57 @@ import Ghf.SpecialEditors
 import Ghf.Log
 import {-# SOURCE #-} Ghf.Collector
 import Ghf.Extractor
+
+-- ---------------------------------------------------------------------
+-- Binary Instances
+--
+
+instance Binary PackageDescr where
+    put (PackageDescr packagePD exposedModulesPD buildDependsPD mbSourcePathPD idDescriptionsPD)
+        =   do  put packagePD
+                put exposedModulesPD
+                put buildDependsPD
+                put mbSourcePathPD
+                put idDescriptionsPD
+    get =   do  packagePD           <- get
+                exposedModulesPD    <- get
+                buildDependsPD      <- get
+                mbSourcePathPD      <- get
+                idDescriptionsPD    <- get
+                return (PackageDescr packagePD exposedModulesPD buildDependsPD mbSourcePathPD
+                                        idDescriptionsPD)
+
+instance Binary ModuleDescr where
+    put (ModuleDescr moduleIdMD exportedNamesMD mbSourcePathMD instancesMD usagesMD)
+        = do    put moduleIdMD
+                put exportedNamesMD
+                put mbSourcePathMD
+                put instancesMD
+                put usagesMD
+    get = do    moduleIdMD          <- get
+                exportedNamesMD     <- get
+                mbSourcePathMD      <- get
+                instancesMD         <- get
+                usagesMD            <- get
+                return (ModuleDescr moduleIdMD exportedNamesMD mbSourcePathMD instancesMD
+                                    usagesMD)
+
+instance Binary IdentifierDescr where
+    put (IdentifierDescr identifierID identifierTypeID typeInfoID moduleIdID)
+        = do    put identifierID
+                put identifierTypeID
+                put typeInfoID
+                put moduleIdID
+    get = do    identifierID        <- get
+                identifierTypeID    <- get
+                typeInfoID          <- get
+                moduleIdID          <- get
+                return (IdentifierDescr identifierID identifierTypeID typeInfoID moduleIdID)
+
+instance Binary IdType where
+    put it  =   do  put (fromEnum it)
+    get     =   do  code         <- get
+                    return (toEnum code)
 
 initInfo :: GhfAction
 initInfo = do

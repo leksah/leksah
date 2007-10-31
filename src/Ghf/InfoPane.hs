@@ -1,3 +1,4 @@
+{-# OPTIONS_GHC -fglasgow-exts #-}
 -----------------------------------------------------------------------------
 --
 -- Module      :  Ghf.InfoPane
@@ -53,7 +54,19 @@ import Ghf.PropertyEditor
 import Ghf.SpecialEditors
 import Ghf.Log
 
-infoPaneName = "Info"
+instance Pane GhfInfo
+    where
+    primPaneName _  =   "Info"
+    getAddedIndex _ =   0
+    getTopWidget    =   castToWidget . box
+    paneId b        =   "*Info"
+
+instance Castable GhfInfo where
+    casting _               =   InfoCasting
+    downCast _ (PaneC a)    =   case casting a of
+                                    InfoCasting -> Just a
+                                    _           -> Nothing
+
 
 idDescrDescr :: [FieldDescriptionE IdentifierDescr]
 idDescrDescr = [
@@ -107,12 +120,12 @@ initInfo panePath nb idDescr = do
             boxPackEnd nbbox bb PackNatural 0
             --openType
             let info = GhfInfo nbbox setInjs
-            notebookPrependPage nb nbbox infoPaneName
+            notebookPrependPage nb nbbox (paneName info)
             widgetShowAll (box info)
             return (info,[])
     let newPaneMap  =  Map.insert (paneName pane)
                             (panePath, BufConnections [] [] cids) paneMap
-    let newPanes = Map.insert infoPaneName (PaneC pane) panes
+    let newPanes = Map.insert (paneName pane) (PaneC pane) panes
     modifyGhf_ (\ghf -> return (ghf{panes = newPanes,
                                     paneMap = newPaneMap}))
     lift $widgetGrabFocus (box pane)
@@ -126,7 +139,7 @@ setInfo identifierDescr = do
     panesST <- readGhf panes
     prefs   <- readGhf prefs
     layout  <- readGhf layout
-    let infos = catMaybes $ map (downCast (undefined:: GhfInfo)) $ Map.elems panesST
+    let infos = catMaybes $ map (downCast InfoCasting) $ Map.elems panesST
     if null infos || length infos > 1
         then do
             let pp  =  getStandardPanePath (infoPanePath prefs) layout
@@ -134,7 +147,7 @@ setInfo identifierDescr = do
             nb      <- getNotebook pp
             initInfo pp nb identifierDescr
             panesST <- readGhf panes
-            let logs = catMaybes $ map (downCast (undefined:: GhfInfo)) $ Map.elems panesST
+            let logs = catMaybes $ map (downCast InfoCasting) $ Map.elems panesST
             if null logs || length logs > 1
                 then error "Can't init info"
                 else return ()

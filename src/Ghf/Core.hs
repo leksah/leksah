@@ -34,6 +34,7 @@ module Ghf.Core (
 -- * Panes and pane layout
 ,   Pane(..)
 ,   Castable(..)
+,   Casting(..)
 ,   GhfPane(..)
 ,   Direction(..)
 ,   PaneDirection(..)
@@ -47,6 +48,7 @@ module Ghf.Core (
 ,   GhfBuffer(..)
 ,   GhfLog(..)
 ,   GhfInfo(..)
+,   GhfModules(..)
 
 -- * Other state structures
 ,   ActionDescr(..)
@@ -55,7 +57,6 @@ module Ghf.Core (
 
 ,   Prefs(..)
 
-,   FileName
 ,   CandyTables
 ,   CandyTableForth
 ,   CandyTableBack
@@ -85,6 +86,7 @@ module Ghf.Core (
 
 import Graphics.UI.Gtk.SourceView
 import Graphics.UI.Gtk hiding (get)
+import Graphics.UI.Gtk.ModelView as New
 import System.Glib.Signals
 import Control.Monad.Reader
 import Distribution.Package
@@ -238,7 +240,8 @@ data Connections =  BufConnections
                         [ConnectId SourceView]
                         [ConnectId TextBuffer]
                         [ConnectId TextView]
-    deriving (Show)
+--                        [ConnectId New.TreeView]
+
 
 type PaneName = String
 
@@ -257,18 +260,19 @@ class Pane alpha  where
     getTopWidget    ::   alpha -> Widget
     paneId          ::   alpha -> String
 
+data GhfPane        =   forall alpha . (Pane alpha, Castable alpha) => PaneC alpha
+
 data Casting alpha  where
     LogCasting      ::   Casting GhfLog
     InfoCasting     ::   Casting GhfInfo
     BufferCasting   ::   Casting GhfBuffer
+    ModulesCasting  ::   Casting GhfModules
 
 class Castable alpha where
     casting         ::   alpha -> Casting alpha
-    downCast        ::   alpha -> GhfPane -> Maybe alpha
-    isIt            ::   alpha -> GhfPane -> Bool
+    downCast        ::   Casting alpha -> GhfPane -> Maybe alpha
+    isIt            ::   Casting alpha -> GhfPane -> Bool
     isIt t i        =   isJust (downCast t i)
-
-data GhfPane        =   forall alpha . (Pane alpha, Castable alpha) => PaneC alpha
 
 instance Pane GhfPane where
     paneName (PaneC a)      =   paneName a
@@ -291,23 +295,7 @@ data GhfBuffer  =   GhfBuffer {
 ,   sourceView  ::  SourceView
 ,   scrolledWindow :: ScrolledWindow
 ,   modTime     ::  Maybe (ClockTime)
-} deriving Show
-
-instance Pane GhfBuffer
-    where
-    primPaneName    =   bufferName
-    getAddedIndex   =   addedIndex
-    getTopWidget    =   castToWidget . scrolledWindow
-    paneId b        =   case fileName b of
-                            Just s  -> s
-                            Nothing -> "?" ++ bufferName b
-
-instance Castable GhfBuffer where
-    casting _       =   BufferCasting
-    downCast _ (PaneC a)
-                    =   case casting a of
-                            BufferCasting -> Just a
-                            _          -> Nothing
+}
 
 --
 -- | A log view pane description
@@ -317,19 +305,6 @@ data GhfLog  =   GhfLog {
 ,   scrolledWindowL :: ScrolledWindow
 }
 
-instance Pane GhfLog
-    where
-    primPaneName _  =   "Log"
-    getAddedIndex _ =   0
-    getTopWidget    =   castToWidget . scrolledWindowL
-    paneId b        =   "*Log"
-
-instance Castable GhfLog where
-    casting _               =   LogCasting
-    downCast _ (PaneC a)    =   case casting a of
-                                    LogCasting -> Just a
-                                    _          -> Nothing
-
 --
 -- | An info pane description
 --
@@ -338,26 +313,14 @@ data GhfInfo  =   GhfInfo {
 ,   injectors       ::   [IdentifierDescr -> IO() ]
 }
 
-instance Pane GhfInfo
-    where
-    primPaneName _  =   "Info"
-    getAddedIndex _ =   0
-    getTopWidget    =   castToWidget . box
-    paneId b        =   "*Info"
-
-instance Castable GhfInfo where
-    casting _               =   InfoCasting
-    downCast _ (PaneC a)    =   case casting a of
-                                    InfoCasting -> Just a
-                                    _          -> Nothing
-
--- | An modules pane description
+-- | A modules pane description
 --
 
---data GhfLog  =   GhfLog {
---    textView  ::  TextView
---,   scrolledWindowL :: ScrolledWindow
---}
+data GhfModules     =   GhfModules {
+    boxM            ::   HBox
+,   treeStore       ::   New.TreeStore String
+,   facetStore      ::   New.ListStore String
+}
 
 -- ---------------------------------------------------------------------
 -- Other data structures which are used in the state
@@ -375,7 +338,7 @@ data ActionDescr = AD {
             ,   action      ::   GhfAction
             ,   accelerator ::   [KeyString]
             ,   isToggle    ::   Bool
-} deriving (Show)
+}
 
 type ActionString = String
 type KeyString = String
@@ -397,6 +360,7 @@ data Prefs = Prefs {
     ,   sourcePanePath      ::   StandardPath
     ,   logPanePath         ::   StandardPath
     ,   infoPanePath        ::   StandardPath
+    ,   modulesPanePath     ::   StandardPath
     ,   sourceDirectories   ::   [FilePath]
 } deriving(Eq,Show)
 
@@ -407,6 +371,13 @@ type CandyTables     =  (CandyTableForth,CandyTableBack)
 
 type SpecialKeyTable =  Map (KeyVal,[Modifier]) (Map (KeyVal,[Modifier]) ActionDescr)
 type SpecialKeyCons  =  Maybe ((Map (KeyVal,[Modifier]) ActionDescr),String)
+
+instance Show Modifier
+    where show Shift    = "<shift>"
+          show Control  = "<ctrl>"
+          show Alt      = "<alt>"
+          show Apple    = "<apple>"
+          show Compose  = "<compose>"
 
 type FileName        =  String
 
@@ -464,71 +435,16 @@ type TypeInfo           =   String
 type ModuleIdentifier   =   String --always quelified
 type PackIdentifier     =   String
 
--- ---------------------------------------------------------------------
--- Binary Instances
---
-
-instance Binary PackageDescr where
-    put (PackageDescr packagePD exposedModulesPD buildDependsPD mbSourcePathPD idDescriptionsPD)
-        =   do  put packagePD
-                put exposedModulesPD
-                put buildDependsPD
-                put mbSourcePathPD
-                put idDescriptionsPD
-    get =   do  packagePD           <- get
-                exposedModulesPD    <- get
-                buildDependsPD      <- get
-                mbSourcePathPD      <- get
-                idDescriptionsPD    <- get
-                return (PackageDescr packagePD exposedModulesPD buildDependsPD mbSourcePathPD
-                                        idDescriptionsPD)
-
-instance Binary ModuleDescr where
-    put (ModuleDescr moduleIdMD exportedNamesMD mbSourcePathMD instancesMD usagesMD)
-        = do    put moduleIdMD
-                put exportedNamesMD
-                put mbSourcePathMD
-                put instancesMD
-                put usagesMD
-    get = do    moduleIdMD          <- get
-                exportedNamesMD     <- get
-                mbSourcePathMD      <- get
-                instancesMD         <- get
-                usagesMD            <- get
-                return (ModuleDescr moduleIdMD exportedNamesMD mbSourcePathMD instancesMD
-                                    usagesMD)
-
-instance Binary IdentifierDescr where
-    put (IdentifierDescr identifierID identifierTypeID typeInfoID moduleIdID)
-        = do    put identifierID
-                put identifierTypeID
-                put typeInfoID
-                put moduleIdID
-    get = do    identifierID        <- get
-                identifierTypeID    <- get
-                typeInfoID          <- get
-                moduleIdID          <- get
-                return (IdentifierDescr identifierID identifierTypeID typeInfoID moduleIdID)
-
-instance Binary IdType where
-    put it  =   do  put (fromEnum it)
-    get     =   do  code         <- get
-                    return (toEnum code)
 
 -- ---------------------------------------------------------------------
 -- Debugging
 --
 
-
+{--
 instance Show Window
     where show _ = "Window *"
 
-instance Show Modifier
-    where show Shift    = "<shift>"
-          show Control  = "<ctrl>"
-          show Alt      = "<alt>"
-          show Apple    = "<apple>"
-          show Compose  = "<compose>"
+
 
 instance Show UIManager
     where show _ = "UIManager *"
@@ -550,7 +466,7 @@ instance Show ScrolledWindow
 
 instance Show Session
     where show _ = "Session *"
-
+--}
 --helpDebug :: GhfAction
 --helpDebug = do
 --    ref <- ask

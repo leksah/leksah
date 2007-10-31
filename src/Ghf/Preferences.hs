@@ -50,13 +50,13 @@ data FieldDescription alpha =  FD {
     }
 
 type MkFieldDescription alpha beta =
-    Parameters ->
-    (Printer beta) ->
-    (Parser beta) ->
-    (Getter alpha beta) ->
-    (Setter alpha beta) ->
-    (Editor beta) ->
-    (Applicator beta) ->
+    Parameters      ->
+    (Printer beta)     ->
+    (Parser beta)      ->
+    (Getter alpha beta)    ->
+    (Setter alpha beta)    ->
+    (Editor beta)      ->
+    (Applicator beta)  ->
     FieldDescription alpha
 
 mkField :: Eq beta => MkFieldDescription alpha beta
@@ -118,6 +118,7 @@ defaultPrefs = Prefs {
     ,   sourcePanePath      =   LeftTop
     ,   logPanePath         =   RightBottom
     ,   infoPanePath        =   RightBottom
+    ,   modulesPanePath     =   RightBottom
     ,   sourceDirectories   =   ["C:/ghc","C:/cygwin/home/Nicklisch-Franken/collect"]
     }
 
@@ -260,7 +261,7 @@ prefsDescription = [
 -- * Parsing
 -- ------------------------------------------------------------
 
-readPrefs :: FileName -> IO Prefs
+readPrefs :: FilePath -> IO Prefs
 readPrefs fn = do
     res <- P.parseFromFile (prefsParser defaultPrefs (concatMap snd prefsDescription)) fn
     case res of

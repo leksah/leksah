@@ -1,3 +1,4 @@
+{-# OPTIONS_GHC -fglasgow-exts #-}
 -----------------------------------------------------------------------------
 --
 -- Module      :  Ghf.SourceEditor
@@ -86,11 +87,26 @@ import Ghf.Log
 import Ghf.Info
 import Ghf.InfoPane
 
+instance Pane GhfBuffer
+    where
+    primPaneName    =   bufferName
+    getAddedIndex   =   addedIndex
+    getTopWidget    =   castToWidget . scrolledWindow
+    paneId b        =   case fileName b of
+                            Just s  -> s
+                            Nothing -> "?" ++ bufferName b
+
+instance Castable GhfBuffer where
+    casting _       =   BufferCasting
+    downCast _ (PaneC a)
+                    =   case casting a of
+                            BufferCasting   -> Just a
+                            _               -> Nothing
 
 allBuffers :: GhfM [GhfBuffer]
 allBuffers = do
     panesST <- readGhf panes
-    return (catMaybes $ map (downCast (undefined:: GhfBuffer)) $ Map.elems panesST)
+    return (catMaybes $ map (downCast BufferCasting) $ Map.elems panesST)
 
 maybeActiveBuf :: GhfM (Maybe (GhfBuffer,Connections))
 maybeActiveBuf = do
@@ -99,8 +115,8 @@ maybeActiveBuf = do
         Nothing -> return Nothing
         Just (paneName,signals) -> do
             pane <- paneFromName paneName
-            if isIt (undefined :: GhfBuffer) pane
-                then return (Just (fromJust $ downCast (undefined :: GhfBuffer) pane,signals))
+            if isIt BufferCasting pane
+                then return (Just (fromJust $ downCast BufferCasting pane,signals))
                 else return Nothing
 
 standardSourcePanePath :: GhfM PanePath
@@ -109,7 +125,7 @@ standardSourcePanePath = do
     prefs   <-  readGhf prefs
     return (getStandardPanePath (sourcePanePath prefs) layout)
 
-newTextBuffer :: PanePath -> String -> Maybe FileName -> GhfAction
+newTextBuffer :: PanePath -> String -> Maybe FilePath -> GhfAction
 newTextBuffer panePath bn mbfn = do
     -- create the appropriate language
     ghfR <- ask
@@ -209,9 +225,9 @@ newTextBuffer panePath bn mbfn = do
 makeBufferActive :: PaneName -> GhfAction
 makeBufferActive pn = do
     pane    <-  paneFromName pn
-    if isIt (undefined :: GhfBuffer) pane
+    if isIt BufferCasting pane
         then do
-            let buf =   fromJust $ downCast (undefined :: GhfBuffer) pane
+            let buf =   fromJust $ downCast BufferCasting pane
             ghfR    <-  ask
             sbLC    <-  getStatusbarLC
             sbIO    <-  getStatusbarIO
@@ -268,9 +284,9 @@ checkModTime buf = do
                                             lift $widgetHide md
                                         ResponseNo  ->  do
                                             let newPanes = Map.adjust (\b ->
-                                                                if isIt (undefined :: GhfBuffer) b
+                                                                if isIt BufferCasting b
                                                                     then PaneC ((fromJust $
-                                                                            downCast (undefined :: GhfBuffer) b)
+                                                                            downCast BufferCasting b)
                                                                                     {modTime = (Just nmt)})
                                                                     else b) name panes
                                             modifyGhf_ (\ghf -> return (ghf{panes = newPanes}))
@@ -288,9 +304,9 @@ setModTime buf = do
         Just fn -> do
             nmt <- lift $getModificationTime fn
             let newPanes = Map.adjust (
-                                \b -> if isIt (undefined :: GhfBuffer) b
+                                \b -> if isIt BufferCasting b
                                         then
-                                            PaneC ((fromJust $ downCast (undefined :: GhfBuffer) b)
+                                            PaneC ((fromJust $ downCast BufferCasting b)
                                                     {modTime = (Just nmt)})
                                         else b) name panes
             modifyGhf_ (\ghf -> return (ghf{panes = newPanes}))
@@ -321,9 +337,9 @@ revert buf = do
                 sourceBufferEndNotUndoableAction buffer
                 textBufferSetModified buffer False
                 return mt
-            let newPanes = Map.adjust (\b -> if isIt (undefined :: GhfBuffer) b
+            let newPanes = Map.adjust (\b -> if isIt BufferCasting b
                                                 then
-                                                    PaneC ((fromJust $ downCast (undefined :: GhfBuffer) b)
+                                                    PaneC ((fromJust $ downCast BufferCasting b)
                                                                 {modTime = (Just mt)})
                                                 else b) name panes
             modifyGhf_ (\ghf -> return (ghf{panes = newPanes}))
@@ -482,7 +498,7 @@ fileSave query = inBufContext' () $ \ nb _ currentBuffer i -> do
             (\ghf -> return (ghf{panes = nbufs, paneMap = pm}))
         Nothing -> return ()
     where
-        fileSave' :: Bool -> GhfBuffer -> Bool -> CandyTables -> FileName -> IO()
+        fileSave' :: Bool -> GhfBuffer -> Bool -> CandyTables -> FilePath -> IO()
         fileSave' forceLineEnds ghfBuf bs (to,from) fn = do
             buf     <-   textViewGetBuffer $ sourceView ghfBuf
             text    <-   getCandylessText from buf

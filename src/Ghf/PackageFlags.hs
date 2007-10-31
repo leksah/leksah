@@ -149,7 +149,7 @@ flagsDescription = [
 -- * Parsing
 -- ------------------------------------------------------------
 
-readFlags :: FileName -> GhfPackage -> IO GhfPackage
+readFlags :: FilePath -> GhfPackage -> IO GhfPackage
 readFlags fn pack = do
     res <- P.parseFromFile (flagsParser pack (concatMap snd flagsDescription)) fn
     case res of

@@ -26,10 +26,22 @@ import Ghf.Core
 import Ghf.SourceCandy
 import Ghf.ViewFrame
 
-logPaneName = "Log"
+
+instance Pane GhfLog
+    where
+    primPaneName _  =   "Log"
+    getAddedIndex _ =   0
+    getTopWidget    =   castToWidget . scrolledWindowL
+    paneId b        =   "*Log"
+
+instance Castable GhfLog where
+    casting _               =   LogCasting
+    downCast _ (PaneC a)    =   case casting a of
+                                    LogCasting -> Just a
+                                    _          -> Nothing
+
 
 data LogTag = LogTag | ErrorTag | FrameTag
-
 
 initLog :: PanePath -> Notebook -> GhfAction
 initLog panePath nb = do
@@ -69,7 +81,7 @@ initLog panePath nb = do
         scrolledWindowSetShadowType sw ShadowIn
 
         let buf = GhfLog tv sw
-        notebookPrependPage nb sw logPaneName
+        notebookPrependPage nb sw (paneName buf)
         widgetShowAll (scrolledWindowL buf)
         mbPn <- notebookPageNum nb sw
         case mbPn of
@@ -80,7 +92,7 @@ initLog panePath nb = do
         return (buf,[cid1])
     let newPaneMap  =  Map.insert (paneName buf)
                             (panePath, BufConnections [] [] cids) paneMap
-    let newPanes = Map.insert logPaneName (PaneC buf) panes
+    let newPanes = Map.insert (paneName buf) (PaneC buf) panes
     modifyGhf_ (\ghf -> return (ghf{panes = newPanes,
                                     paneMap = newPaneMap}))
     lift $widgetGrabFocus (textView buf)
@@ -94,20 +106,18 @@ getLog = do
     panesST <- readGhf panes
     prefs   <- readGhf prefs
     layout  <- readGhf layout
-    let logs =  catMaybes $ map (downCast (undefined:: GhfLog)) $ Map.elems panesST
+    let logs =  catMaybes $ map (downCast LogCasting) $ Map.elems panesST
     if null logs || length logs > 1
         then do
             let pp  =  getStandardPanePath (logPanePath prefs) layout
             nb      <- getNotebook pp
             initLog pp nb
             panesST <- readGhf panes
-            let logs = catMaybes $ map (downCast (undefined:: GhfLog)) $ Map.elems panesST
+            let logs = catMaybes $ map (downCast LogCasting) $ Map.elems panesST
             if null logs || length logs > 1
                 then error "Can't init log"
                 else return (head logs)
         else return (head logs)
-
-
 
 appendLog :: GhfLog -> String -> LogTag -> IO Int
 appendLog l@(GhfLog tv _) string tag = do

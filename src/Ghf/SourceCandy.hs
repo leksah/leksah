@@ -218,7 +218,7 @@ whiteSpace  =   P.whiteSpace lexer
 hexadecimal =   P.hexadecimal lexer
 symbol      =   P.symbol lexer
 
-parseCandy :: FileName -> IO CandyTables
+parseCandy :: FilePath -> IO CandyTables
 parseCandy fn = do
     res     <-  parseFromFile candyParser fn
     case res of

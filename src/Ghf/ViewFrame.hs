@@ -15,12 +15,10 @@
 
 module Ghf.ViewFrame (
 -- * Convenience methods for accesing Pane state
-    getTopWidget
-,   posTypeToPaneDirection
+    posTypeToPaneDirection
 ,   paneDirectionToPosType
 ,   paneFromName
 ,   guiPropertiesFromName
-,   getAddedIndex
 
 -- * View Actions
 ,   viewMove

@@ -129,7 +129,7 @@ whiteSpace  =   P.whiteSpace lexer
 hexadecimal =   P.hexadecimal lexer
 symbol      =   P.symbol lexer
 
-parseCabal :: FileName -> IO String
+parseCabal :: FilePath -> IO String
 parseCabal fn = do
     res     <-  parseFromFile cabalMinimalParser fn
     case res of

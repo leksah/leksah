@@ -39,6 +39,7 @@ import Ghf.PackageEditor
 import Ghf.Package
 import Ghf.Log
 import Ghf.SaveSession
+import Ghf.ModulesPane
 --import Ghf.GhcAPI
 
 
@@ -147,7 +148,9 @@ actions =
     ,AD "OpenDocPackage" "_Open Doc" Nothing Nothing
         packageOpenDoc [] False
 
-
+    ,AD "Modules" "_Modules" Nothing Nothing (return ()) [] False
+    ,AD "ShowModules" "_Show Modules" Nothing Nothing
+        showModules [] False
 
     ,AD "View" "_View" Nothing Nothing (return ()) [] False
     ,AD "ViewMoveLeft" "Move _Left" Nothing Nothing
@@ -259,6 +262,9 @@ menuDescription =
     "       <menuitem name=\"_Build Documentation\" action=\"DocPackage\" /> " ++ "\n" ++
     "       <menuitem name=\"Open Documentation\" action=\"OpenDocPackage\" /> " ++ "\n" ++
     "     </menu> " ++ "\n" ++
+    "    <menu name=\"_Modules\" action=\"Modules\"> " ++ "\n" ++
+    "       <menuitem name=\"_Show Modules\" action=\"ShowModules\" /> " ++ "\n" ++
+    "    </menu> " ++ "\n" ++
     "    <menu name=\"_View\" action=\"View\"> " ++ "\n" ++
     "       <menuitem name=\"Move _Left\" action=\"ViewMoveLeft\" /> " ++ "\n" ++
     "       <menuitem name=\"Move _Right\" action=\"ViewMoveRight\" /> " ++ "\n" ++

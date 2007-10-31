@@ -32,7 +32,7 @@ type Keymap = Map ActionString [(Maybe (Either KeyString (KeyString,KeyString)),
 -- | Loads and parses a keymap file
 --
 
-parseKeymap :: FileName -> IO Keymap
+parseKeymap :: FilePath -> IO Keymap
 parseKeymap fn = do
     res <- parseFromFile keymapParser fn
     case res of

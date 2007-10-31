@@ -67,6 +67,7 @@ import Ghf.Extractor
 import Ghf.File
 import Ghf.Info
 
+
 collectInstalled :: Session -> String -> Bool -> IO()
 collectInstalled session version forceRebuild = do
     when forceRebuild $ do

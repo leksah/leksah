@@ -222,11 +222,11 @@ extractIdentifierDescrConst modul package extName
 ,   moduleIdID          =   modul}
                                 : (map (extractIdentifierDescrField modul package extName)
                                     $ zip ifConFields ifConArgTys)
+
+extractIdentifierDescrConst modul package extName _ = []
 #endif
 
-
 -- ##TODO: GADTs not yet analysed
-extractIdentifierDescrConst modul package extName _ = []
 
 #if __GHC__ >= 670
 extractIdentifierDescrField :: [ModuleIdentifier] -> PackageIdentifier -> OccName ->
