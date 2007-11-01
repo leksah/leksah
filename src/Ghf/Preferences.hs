@@ -118,7 +118,7 @@ defaultPrefs = Prefs {
     ,   sourcePanePath      =   LeftTop
     ,   logPanePath         =   RightBottom
     ,   infoPanePath        =   RightBottom
-    ,   modulesPanePath     =   RightBottom
+    ,   modulesPanePath     =   RightTop
     ,   sourceDirectories   =   ["C:/ghc","C:/cygwin/home/Nicklisch-Franken/collect"]
     }
 

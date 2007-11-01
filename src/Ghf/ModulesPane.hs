@@ -125,16 +125,16 @@ fillModulesList = do
     (GhfModules _ treeStore _)  <-  getModules
     currentInfo                 <-  readGhf currentInfo
     case currentInfo of
-        Nothing -> lift $ do
-            New.treeStoreClear treeStore
-            return ()
-        Just pair -> let (Node _ li) = buildModulesTree pair
-                     in lift $ do   New.treeStoreClear treeStore
+        Nothing             ->  lift $ do
+                                    New.treeStoreClear treeStore
+        Just pair           ->  let (Node _ li) = buildModulesTree pair
+                                in lift $ do
+                                    New.treeStoreClear treeStore
                                     mapM_ (\(e,i) -> New.treeStoreInsertTree treeStore [] i e)
                                         $ zip li [0 .. length li]
 
 makeModulesActive :: GhfModules -> GhfAction
-makeModulesActive mods = do
+makeModulesActive mods      =   do
     activatePane mods (BufConnections[][][])
 
 type ModTree = Tree (String, [(ModuleDescr,PackageDescr)])
@@ -145,36 +145,18 @@ type ModTree = Tree (String, [(ModuleDescr,PackageDescr)])
 --
 buildModulesTree :: (PackageScope,PackageScope) -> ModTree
 buildModulesTree ((localMap,_),(otherMap,_)) =
-    let flatPairs   =   concatMap (\e -> map (\f -> (f,e)) (exposedModulesPD e))
-                        (Map.elems localMap ++ Map.elems otherMap)
-        tree        =   (Node ("",[]) [])
-        res         =   foldl insertPairsInTree tree flatPairs
-        in sortTree res
-    where
-        insertPairsInTree :: ModTree -> (ModuleDescr,PackageDescr) -> ModTree
-        insertPairsInTree tree pair =
-            let nameArray   =   breakAtDots [] $ tail $ dropWhile (\c -> c /= ':')
-                                                           $ moduleIdMD (fst pair)
-                pairedWith  =   map (\n -> (n,pair)) nameArray
-            in  insertNodesInTree pairedWith tree
-        insertNodesInTree :: [(String,(ModuleDescr,PackageDescr))] -> ModTree -> ModTree
-        insertNodesInTree list@[(str2,pair)] (Node (str1,pairs) forest) =
-            case partition (\ (Node (s,_) _) -> s == str2) forest of
-                ([],_)  -> (Node (str1,pairs) (makeNodes list : forest))
-                ([(Node (_,pairsf) l)],rest)
-                        -> (Node (str1,pairs)
-                                ((Node (str2,pair : pairsf) l) : rest))
-                (_,_)   -> error "buildModulesTree: impossible1"
-        insertNodesInTree  list@((str2,pair):tl) (Node (str1,pairs) forest) =
-            case partition (\ (Node (s,_) _) -> s == str2) forest of
-                ([],_)      -> (Node (str1,pairs)  (makeNodes list : forest))
-                ([found],rest)
-                            -> (Node (str1,pairs) (insertNodesInTree tl found : rest))
-                (_,_)   -> error "buildModulesTree: impossible2"
-        insertNodesInTree [] t =   t
-        makeNodes :: [(String,(ModuleDescr,PackageDescr))] -> ModTree
-        makeNodes [(str,pair)]  =    Node (str,[pair]) []
-        makeNodes ((str,_):tl)  =    Node (str,[]) [makeNodes tl]
+    let flatPairs           =   concatMap (\e -> map (\f -> (f,e)) (exposedModulesPD e))
+                                    (Map.elems localMap ++ Map.elems otherMap)
+        emptyTree           =   (Node ("",[]) [])
+        resultTree          =   foldl insertPairsInTree emptyTree flatPairs
+        in sortTree resultTree
+
+insertPairsInTree :: ModTree -> (ModuleDescr,PackageDescr) -> ModTree
+insertPairsInTree tree pair =
+    let nameArray           =   breakAtDots [] $ tail $ dropWhile (\c -> c /= ':')
+                                                   $ moduleIdMD (fst pair)
+        pairedWith          =   map (\n -> (n,pair)) nameArray
+    in  insertNodesInTree pairedWith tree
 
 breakAtDots :: [String] -> String -> [String]
 breakAtDots res []          =   reverse res
@@ -183,9 +165,27 @@ breakAtDots res toBreak     =   let (newRes,newToBreak) = span (\c -> c /= '.') 
                                         then reverse (newRes : res)
                                         else breakAtDots (newRes : res) (tail newToBreak)
 
+insertNodesInTree :: [(String,(ModuleDescr,PackageDescr))] -> ModTree -> ModTree
+insertNodesInTree list@[(str2,pair)] (Node (str1,pairs) forest) =
+    case partition (\ (Node (s,_) _) -> s == str2) forest of
+        ([],_)              ->  (Node (str1,pairs) (makeNodes list : forest))
+        ([(Node (_,pairsf) l)],rest)
+                            ->  (Node (str1,pairs) ((Node (str2,pair : pairsf) l) : rest))
+        (_,_)               ->  error "insertNodesInTree: impossible1"
+insertNodesInTree  list@((str2,pair):tl) (Node (str1,pairs) forest) =
+    case partition (\ (Node (s,_) _) -> s == str2) forest of
+        ([],_)              ->  (Node (str1,pairs)  (makeNodes list : forest))
+        ([found],rest)      ->  (Node (str1,pairs) (insertNodesInTree tl found : rest))
+        (_,_)               ->  error "insertNodesInTree: impossible2"
+insertNodesInTree [] t      =   t
+
+makeNodes :: [(String,(ModuleDescr,PackageDescr))] -> ModTree
+makeNodes [(str,pair)]      =   Node (str,[pair]) []
+makeNodes ((str,_):tl)      =   Node (str,[]) [makeNodes tl]
+
 instance Ord a => Ord (Tree a) where
     compare (Node l1 _) (Node l2 _) =  compare l1 l2
 
 sortTree :: Ord a => Tree a -> Tree a
-sortTree (Node l forest) = Node l (sort (map sortTree forest))
+sortTree (Node l forest)    =   Node l (sort (map sortTree forest))
 
