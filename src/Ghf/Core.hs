@@ -101,13 +101,13 @@ import GHC (Session)
 import Data.Binary
 import Data.Maybe
 
---import Debug.Trace
---message m = trace m (return ())
+import Debug.Trace
+message m = trace m (return ())
 
-
+{--
 message m = return ()
 trace a b = b
-
+--}
 -- ---------------------------------------------------------------------
 -- IDE State
 --
@@ -404,7 +404,7 @@ data PackageDescr       =   PackageDescr {
 ,   buildDependsPD      ::   ! [PackIdentifier]
 ,   mbSourcePathPD      ::   ! (Maybe FilePath)
 ,   idDescriptionsPD    ::   ! SymbolTable
-} deriving (Read,Show,Eq,Ord)
+} deriving (Eq,Ord)
 
 data ModuleDescr        =   ModuleDescr {
     moduleIdMD          ::   ! ModuleIdentifier
@@ -412,18 +412,24 @@ data ModuleDescr        =   ModuleDescr {
 ,   mbSourcePathMD      ::   ! (Maybe FilePath)
 ,   instancesMD         ::   ! [(ClassId,DataId)]
 ,   usagesMD            ::   ! (Map ModuleIdentifier (Set Symbol)) -- imports
-} deriving (Read,Show,Eq,Ord)
+} deriving (Eq,Ord)
+
+instance Show  ModuleDescr where
+    show md    =   moduleIdMD md
+
+instance Show  PackageDescr where
+    show pd    =   packagePD pd
 
 data IdentifierDescr =  IdentifierDescr {
     identifierID     ::   ! Symbol
 ,   identifierTypeID ::   ! IdType
 ,   typeInfoID       ::   ! TypeInfo
 ,   moduleIdID       ::   ! [ModuleIdentifier]
-} deriving (Read, Show,Eq,Ord)
+} deriving (Show,Eq,Ord)
 
 data IdType = Function | Data | Newtype | Synonym | AbstractData |
                 Constructor | Field | Class | ClassOp | Foreign
-  deriving (Read, Show, Eq, Ord, Enum)
+  deriving (Show, Eq, Ord, Enum)
 
 emptyIdentifierDescr = IdentifierDescr ""
 

@@ -79,9 +79,11 @@ initModules panePath nb = do
     currentInfo <-  readGhf currentInfo
     (buf,cids)  <-  lift $ do
         treeView    <-  New.treeViewNew
+        putStrLn "now building forest"
         let forest  = case currentInfo of
                         Nothing     ->  []
                         Just pair   ->  subForest (buildModulesTree pair)
+        putStrLn "after building forest"
         treeStore   <-  New.treeStoreNew forest
         New.treeViewSetModel treeView treeStore
         facetView   <-  New.treeViewNew
@@ -139,35 +141,37 @@ type ModTree = Tree (String, [(ModuleDescr,PackageDescr)])
 
 --
 -- | Make a Tree with a module desription, package description pairs tree to display.
---   Their are nodes with a label but without a module (like currently Data).
+--   Their are nodes with a label but without a module (like e.g. Data).
 --
 buildModulesTree :: (PackageScope,PackageScope) -> ModTree
 buildModulesTree ((localMap,_),(otherMap,_)) =
-    let flatPairs = concatMap (\e -> map (\f -> (f,e)) (exposedModulesPD e))
-                        $ Map.elems localMap ++ Map.elems otherMap
-    in  foldr insertPairsInTree (Node ("",[]) []) flatPairs
+    let flatPairs   =   concatMap (\e -> map (\f -> (f,e)) (exposedModulesPD e))
+                        (Map.elems localMap ++ Map.elems otherMap)
+        tree        =   (Node ("",[]) [])
+        res         =   foldl insertPairsInTree tree flatPairs
+        in sortTree res
     where
-        insertPairsInTree :: (ModuleDescr,PackageDescr) -> ModTree -> ModTree
-        insertPairsInTree pair tree =
-            let nameArray   =   breakAtDots []
-                                    $ tail (dropWhile (\c -> c /= ':') (moduleIdMD (fst pair)))
+        insertPairsInTree :: ModTree -> (ModuleDescr,PackageDescr) -> ModTree
+        insertPairsInTree tree pair =
+            let nameArray   =   breakAtDots [] $ tail $ dropWhile (\c -> c /= ':')
+                                                           $ moduleIdMD (fst pair)
                 pairedWith  =   map (\n -> (n,pair)) nameArray
             in  insertNodesInTree pairedWith tree
-
         insertNodesInTree :: [(String,(ModuleDescr,PackageDescr))] -> ModTree -> ModTree
-        insertNodesInTree [(str2,pair)] (Node (str1,pairs) forest) =
-            case find (\ (Node (s,_) _) -> s == str2) forest of
-                Nothing -> (Node (str1,pairs) ((Node (str2,[pair]) []) : forest))
-                Just found@(Node (_,pairsf) l)
-                        -> (Node (str1,pairs) (Node (str2,pair:pairsf) l : delete found forest))
-        insertNodesInTree  list@((str2,pair):tl) (Node (str1,pairs) forest) =
-            case find (\ (Node (s,_) _) -> s == str2) forest of
-                Nothing -> (Node (str1,pairs)  (makeNodes list : forest))
-                Just found@(Node (_,pairsf) l)
+        insertNodesInTree list@[(str2,pair)] (Node (str1,pairs) forest) =
+            case partition (\ (Node (s,_) _) -> s == str2) forest of
+                ([],_)  -> (Node (str1,pairs) (makeNodes list : forest))
+                ([(Node (_,pairsf) l)],rest)
                         -> (Node (str1,pairs)
-                                (insertNodesInTree tl found : delete found forest))
+                                ((Node (str2,pair : pairsf) l) : rest))
+                (_,_)   -> error "buildModulesTree: impossible1"
+        insertNodesInTree  list@((str2,pair):tl) (Node (str1,pairs) forest) =
+            case partition (\ (Node (s,_) _) -> s == str2) forest of
+                ([],_)      -> (Node (str1,pairs)  (makeNodes list : forest))
+                ([found],rest)
+                            -> (Node (str1,pairs) (insertNodesInTree tl found : rest))
+                (_,_)   -> error "buildModulesTree: impossible2"
         insertNodesInTree [] t =   t
-
         makeNodes :: [(String,(ModuleDescr,PackageDescr))] -> ModTree
         makeNodes [(str,pair)]  =    Node (str,[pair]) []
         makeNodes ((str,_):tl)  =    Node (str,[]) [makeNodes tl]
@@ -176,7 +180,12 @@ breakAtDots :: [String] -> String -> [String]
 breakAtDots res []          =   reverse res
 breakAtDots res toBreak     =   let (newRes,newToBreak) = span (\c -> c /= '.') toBreak
                                 in  if null newToBreak
-                                        then reverse res
+                                        then reverse (newRes : res)
                                         else breakAtDots (newRes : res) (tail newToBreak)
 
+instance Ord a => Ord (Tree a) where
+    compare (Node l1 _) (Node l2 _) =  compare l1 l2
+
+sortTree :: Ord a => Tree a -> Tree a
+sortTree (Node l forest) = Node l (sort (map sortTree forest))
 
