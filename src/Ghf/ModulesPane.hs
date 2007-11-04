@@ -16,7 +16,6 @@
 
 module Ghf.ModulesPane (
     showModules
-,   breakAtDots
 ) where
 
 import Graphics.UI.Gtk hiding (get)
@@ -150,38 +149,38 @@ buildModulesTree ((localMap,_),(otherMap,_)) =
         emptyTree           =   (Node ("",[]) [])
         resultTree          =   foldl insertPairsInTree emptyTree flatPairs
         in sortTree resultTree
+    where
+    insertPairsInTree :: ModTree -> (ModuleDescr,PackageDescr) -> ModTree
+    insertPairsInTree tree pair =
+        let nameArray           =   breakAtDots [] $ tail $ dropWhile (\c -> c /= ':')
+                                                       $ moduleIdMD (fst pair)
+            pairedWith          =   map (\n -> (n,pair)) nameArray
+        in  insertNodesInTree pairedWith tree
 
-insertPairsInTree :: ModTree -> (ModuleDescr,PackageDescr) -> ModTree
-insertPairsInTree tree pair =
-    let nameArray           =   breakAtDots [] $ tail $ dropWhile (\c -> c /= ':')
-                                                   $ moduleIdMD (fst pair)
-        pairedWith          =   map (\n -> (n,pair)) nameArray
-    in  insertNodesInTree pairedWith tree
+    breakAtDots :: [String] -> String -> [String]
+    breakAtDots res []          =   reverse res
+    breakAtDots res toBreak     =   let (newRes,newToBreak) = span (\c -> c /= '.') toBreak
+                                    in  if null newToBreak
+                                            then reverse (newRes : res)
+                                            else breakAtDots (newRes : res) (tail newToBreak)
 
-breakAtDots :: [String] -> String -> [String]
-breakAtDots res []          =   reverse res
-breakAtDots res toBreak     =   let (newRes,newToBreak) = span (\c -> c /= '.') toBreak
-                                in  if null newToBreak
-                                        then reverse (newRes : res)
-                                        else breakAtDots (newRes : res) (tail newToBreak)
+    insertNodesInTree :: [(String,(ModuleDescr,PackageDescr))] -> ModTree -> ModTree
+    insertNodesInTree list@[(str2,pair)] (Node (str1,pairs) forest) =
+        case partition (\ (Node (s,_) _) -> s == str2) forest of
+            ([],_)              ->  (Node (str1,pairs) (makeNodes list : forest))
+            ([(Node (_,pairsf) l)],rest)
+                                ->  (Node (str1,pairs) ((Node (str2,pair : pairsf) l) : rest))
+            (_,_)               ->  error "insertNodesInTree: impossible1"
+    insertNodesInTree  list@((str2,pair):tl) (Node (str1,pairs) forest) =
+        case partition (\ (Node (s,_) _) -> s == str2) forest of
+            ([],_)              ->  (Node (str1,pairs)  (makeNodes list : forest))
+            ([found],rest)      ->  (Node (str1,pairs) (insertNodesInTree tl found : rest))
+            (_,_)               ->  error "insertNodesInTree: impossible2"
+    insertNodesInTree [] t      =   t
 
-insertNodesInTree :: [(String,(ModuleDescr,PackageDescr))] -> ModTree -> ModTree
-insertNodesInTree list@[(str2,pair)] (Node (str1,pairs) forest) =
-    case partition (\ (Node (s,_) _) -> s == str2) forest of
-        ([],_)              ->  (Node (str1,pairs) (makeNodes list : forest))
-        ([(Node (_,pairsf) l)],rest)
-                            ->  (Node (str1,pairs) ((Node (str2,pair : pairsf) l) : rest))
-        (_,_)               ->  error "insertNodesInTree: impossible1"
-insertNodesInTree  list@((str2,pair):tl) (Node (str1,pairs) forest) =
-    case partition (\ (Node (s,_) _) -> s == str2) forest of
-        ([],_)              ->  (Node (str1,pairs)  (makeNodes list : forest))
-        ([found],rest)      ->  (Node (str1,pairs) (insertNodesInTree tl found : rest))
-        (_,_)               ->  error "insertNodesInTree: impossible2"
-insertNodesInTree [] t      =   t
-
-makeNodes :: [(String,(ModuleDescr,PackageDescr))] -> ModTree
-makeNodes [(str,pair)]      =   Node (str,[pair]) []
-makeNodes ((str,_):tl)      =   Node (str,[]) [makeNodes tl]
+    makeNodes :: [(String,(ModuleDescr,PackageDescr))] -> ModTree
+    makeNodes [(str,pair)]      =   Node (str,[pair]) []
+    makeNodes ((str,_):tl)      =   Node (str,[]) [makeNodes tl]
 
 instance Ord a => Ord (Tree a) where
     compare (Node l1 _) (Node l2 _) =  compare l1 l2
