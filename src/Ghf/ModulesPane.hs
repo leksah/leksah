@@ -25,8 +25,13 @@ import Data.Maybe
 import Control.Monad.Reader
 import Data.Map (Map)
 import qualified Data.Map as Map
+import Data.Set (Set)
+import qualified Data.Set as Set
 import Data.Tree
 import Data.List
+import Distribution.Package
+import Distribution.PackageDescription
+import System.Glib.GObject
 
 
 import Ghf.Core
@@ -77,24 +82,55 @@ initModules panePath nb = do
     prefs       <-  readGhf prefs
     currentInfo <-  readGhf currentInfo
     (buf,cids)  <-  lift $ do
-        treeView    <-  New.treeViewNew
-        putStrLn "now building forest"
         let forest  = case currentInfo of
                         Nothing     ->  []
                         Just pair   ->  subForest (buildModulesTree pair)
-        putStrLn "after building forest"
         treeStore   <-  New.treeStoreNew forest
+        treeView    <-  New.treeViewNew
         New.treeViewSetModel treeView treeStore
-        facetView   <-  New.treeViewNew
-        facetStore  <-  New.listStoreNew []
-        New.treeViewSetModel facetView facetStore
-        renderer <- New.cellRendererTextNew
-        col <- New.treeViewColumnNew
+        New.treeViewSetEnableSearch treeView True
+        New.treeViewSetRulesHint treeView True
+
+        renderer    <- New.cellRendererTextNew
+        col         <- New.treeViewColumnNew
+        New.treeViewColumnSetTitle col "Modules"
+        New.treeViewColumnSetSizing col TreeViewColumnAutosize
+        New.treeViewColumnSetReorderable col True
         New.treeViewAppendColumn treeView col
         New.cellLayoutPackStart col renderer True
         New.cellLayoutSetAttributes col renderer treeStore
             $ \row -> [ New.cellText := fst row]
-        New.treeViewSetHeadersVisible treeView False
+
+        renderer2   <- New.cellRendererTextNew
+        col2        <- New.treeViewColumnNew
+        New.treeViewColumnSetTitle col2 "Packages"
+        New.treeViewColumnSetSizing col2 TreeViewColumnAutosize
+        New.treeViewColumnSetReorderable col2 True
+        New.treeViewAppendColumn treeView col2
+        New.cellLayoutPackStart col2 renderer2 True
+        New.cellLayoutSetAttributes col2 renderer2 treeStore
+            $ \row -> [ New.cellText :=
+                concat
+                    $ intersperse  ", "
+                        $ map (packagePD . snd) (snd row)]
+
+        facetView   <-  New.treeViewNew
+        facetStore  <-  New.listStoreNew []
+        New.treeViewSetModel facetView facetStore
+
+        renderer3   <- New.cellRendererTextNew
+        col         <- New.treeViewColumnNew
+        New.treeViewColumnSetTitle col "Identifiers"
+        New.treeViewColumnSetSizing col TreeViewColumnAutosize
+        New.treeViewColumnSetReorderable col True
+        New.treeViewAppendColumn facetView col
+        New.cellLayoutPackStart col renderer True
+        New.cellLayoutSetAttributes col renderer facetStore
+            $ \row -> [ New.cellText := fst row]
+
+        New.treeViewSetHeadersVisible treeView True
+        sel         <-  New.treeViewGetSelection treeView
+        sel `New.onSelectionChanged` (fillFacets sel treeStore facetStore)
 
         box <- hBoxNew False 0
         sw <- scrolledWindowNew Nothing Nothing
@@ -118,6 +154,38 @@ initModules panePath nb = do
     modifyGhf_ (\ghf -> return (ghf{panes = newPanes,
                                     paneMap = newPaneMap}))
     lift $widgetGrabFocus (boxM buf)
+
+fillFacets :: New.TreeSelection
+    -> New.TreeStore (String, [(ModuleDescr,PackageDescr)])
+    -> New.ListStore (String, IdentifierDescr)
+    -> IO ()
+fillFacets ts tst lst = do
+    paths  <-  New.treeSelectionGetSelectedRows ts
+    case paths of
+        []  ->  return ()
+        [a] ->  do
+            val     <-  New.treeStoreGetValue tst a
+            case snd val of
+                []  -> return ()
+                ((mod,package):_)   ->  do
+                    let exportedDescr = exportedNamesMD mod
+                    let pairs = map fromJust
+                                        $ filter isJust
+                                            $ map (findDescription
+                                                    (moduleIdMD mod)
+                                                    (idDescriptionsPD package))
+                                                (Set.toList exportedDescr)
+                    New.listStoreClear lst
+                    putStrLn $ "Now fill " ++ show (length pairs)
+                    mapM_ (New.listStoreAppend lst) pairs
+
+findDescription :: ModuleIdentifier -> SymbolTable -> Symbol -> Maybe (Symbol,IdentifierDescr)
+findDescription md st s     =
+    case Map.lookup s st  of
+        Nothing ->  Nothing
+        Just l  ->  case filter (\id -> elem md (moduleIdID id)) l of
+                         [] -> Nothing
+                         l  -> Just (s,head l)
 
 fillModulesList :: GhfAction
 fillModulesList = do

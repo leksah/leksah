@@ -106,6 +106,7 @@ filePathParser = try (do
     return (str))
     <?> "filePathParser"
 
+
 sourceForPackage :: PackIdentifier
     -> (Map PackIdentifier [FilePath])
     -> Maybe FilePath

@@ -318,7 +318,7 @@ data GhfInfo  =   GhfInfo {
 data GhfModules     =   GhfModules {
     boxM            ::   HBox
 ,   treeStore       ::   New.TreeStore (String, [(ModuleDescr,PackageDescr)])
-,   facetStore      ::   New.ListStore String
+,   facetStore      ::   New.ListStore (String, IdentifierDescr)
 }
 
 -- ---------------------------------------------------------------------
