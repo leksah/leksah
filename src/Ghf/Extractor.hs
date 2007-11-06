@@ -157,7 +157,7 @@ extractIdentifierDescr (IfaceData ifName ifTyVars ifCtxt ifCons _ ifVrcs _) modu
                                 IfAbstractTyCon -> AbstractData
 ,   moduleIdID          =   map (\m -> (package,m)) modules} :
 #if __GHC__ >= 670
-        concatMap (extractIdentifierDescrConst modul package ifName)
+        concatMap (extractIdentifierDescrConst modules package ifName)
                 (visibleIfConDecls ifCons)
 #else
         (concatMap (extractIdentifierDescrConst modules package (LocalTop ifName))
@@ -165,7 +165,7 @@ extractIdentifierDescr (IfaceData ifName ifTyVars ifCtxt ifCons _ ifVrcs _) modu
 #endif
 
 #if __GHC__ >= 670
-extractIdentifierDescr (IfaceSyn ifName _ _ ifSynRhs _) modul package
+extractIdentifierDescr (IfaceSyn ifName _ _ ifSynRhs _) modules package
 #else
 extractIdentifierDescr (IfaceSyn ifName ifTyVars ifVrcs ifSynRhs) modules package
 #endif
@@ -206,7 +206,7 @@ extractIdentifierDescrConst modules package extName
 ,   typeInfoID          =   showSDocUnqual $ppr
                                 (foldr IfaceFunTy (IfaceTyConApp (IfaceTc name)[]) ifConArgTys)
 ,   identifierTypeID    =   Constructor
-,   moduleIdID          =   map (\m -> (asDPid package,m)) modules}
+,   moduleIdID          =   map (\m -> (package,m)) modules}
                                 : map (extractIdentifierDescrField modules package extName)
                                         (zip ifConFields ifConArgTys)
 #else
@@ -239,7 +239,7 @@ extractIdentifierDescrField modules package extName (fieldName, atype) =
 ,   typeInfoID          =   showSDocUnqual
                                 $ ppr (IfaceFunTy (IfaceTyConApp (IfaceTc name)[]) atype)--}
 ,   identifierTypeID    =   Field
-,   moduleIdID          =   map (\m -> (asDPid package,m)) modules}
+,   moduleIdID          =   map (\m -> (package,m)) modules}
 #else
 extractIdentifierDescrField :: [ModuleIdentifier] -> PackageIdentifier -> IfaceExtName -> (OccName,IfaceType)
                                     -> IdentifierDescr

@@ -87,13 +87,13 @@ instance Binary PackageIdentifier where
                 version             <- get
                 return (PackageIdentifier name version)
 
-instance Binary DP.PackageIdentifier where
-    put (DP.PackageIdentifier name version)
-        =   do  put name
-                put version
-    get =   do  name                <- get
-                version             <- get
-                return (DP.PackageIdentifier name version)
+-- instance Binary DP.PackageIdentifier where
+--     put (DP.PackageIdentifier name version)
+--         =   do  put name
+--                 put version
+--     get =   do  name                <- get
+--                 version             <- get
+--                 return (DP.PackageIdentifier name version)
 
 instance Binary Version where
     put (Version branch tags)
