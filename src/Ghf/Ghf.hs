@@ -25,6 +25,8 @@ import System.Console.GetOpt
 import System.Environment
 import System.IO
 import GHC
+import DynFlags hiding(Option)
+import Config
 
 import Ghf.SaveSession
 import Ghf.Core
@@ -35,12 +37,21 @@ import Ghf.Menu
 import Ghf.Preferences
 import Ghf.Keymap
 import Ghf.Info
+import Ghf.SourceCollector
+import Ghf.Collector
 
-data Flag =  OpenFile
-       deriving Show
+data Flag =  UninstalledProject String | Collect | Rebuild | Sources
+       deriving (Show,Eq)
 
 options :: [OptDescr Flag]
-options = [ ]
+options =   [Option ['r'] ["Rebuild"] (NoArg Rebuild)
+                "Cleans all .pack files and rebuild everything"
+         ,   Option ['c'] ["Collect"] (NoArg Collect)
+                "Collects new information in .pack files"
+         ,   Option ['u'] ["Uninstalled"] (ReqArg UninstalledProject "FILE")
+                "Gather info about an uninstalled package"
+         ,   Option ['s'] ["Sources"] (NoArg Sources)
+                "Gather info about pathes to sources"]
 
 ghfOpts :: [String] -> IO ([Flag], [String])
 ghfOpts argv =
@@ -50,7 +61,40 @@ ghfOpts argv =
     where header = "Usage: ghf [OPTION...] files..."
 
 -- |Build the main window
-main = do
+main = defaultErrorHandler defaultDynFlags $do
+    args            <-  getArgs
+    (o,fl)          <-  ghfOpts args
+    let uninstalled =   filter (\x -> case x of
+                                        UninstalledProject _ -> True
+                                        otherwise -> False) o
+    if elem Sources o
+        then do
+            buildSourceForPackageDB
+            putStrLn "rebuild SourceForPackageDB"
+        else if elem Rebuild o
+                || elem Collect o
+                || not (null uninstalled)
+            then do
+                libDir          <-  getSysLibDir
+            --    putStrLn $"libdir '" ++ normalise libDir ++ "'"
+#if __GHC__ > 670
+                session     <-  newSession (Just libDir)
+#else
+                session     <-  newSession JustTypecheck (Just libDir)
+#endif
+                dflags0         <-  getSessionDynFlags session
+                setSessionDynFlags session dflags0
+                let version     =   cProjectVersion
+                let uninstalled =   filter (\x -> case x of UninstalledProject _ -> True
+                                                            otherwise -> False) o
+                if length uninstalled > 0
+                    then mapM_ (collectUninstalled session version)
+                            $ map (\ (UninstalledProject x) -> x) uninstalled
+                    else collectInstalled session version (elem Rebuild o)
+            else startGUI
+
+startGUI :: IO ()
+startGUI = do
     args        <-  getArgs
     (o,fl)      <-  ghfOpts args
     st          <-  initGUI

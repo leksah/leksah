@@ -247,7 +247,7 @@ makeBufferActive pn = do
                                                 writeCursorPositionInStatusbar sv sbLC
                                                 return False)
                 id5 <- sv `onButtonRelease` (\ e -> do
-                                                showType sv ghfR
+                                                showInfo sv ghfR
                                                 return False)
                 id6 <- sv `afterToggleOverwrite`  writeOverwriteInStatusbar sv sbIO
                 return ([id2,id4,id6],[id1,id3],[])
@@ -363,8 +363,8 @@ writeOverwriteInStatusbar sv sb = do
     return ()
 
 
-showType :: SourceView -> GhfRef -> IO ()
-showType sv ghfR = do
+showInfo :: SourceView -> GhfRef -> IO ()
+showInfo sv ghfR = do
     buf  <-  textViewGetBuffer sv
     (l,r) <- textBufferGetSelectionBounds buf
     symbol <- textBufferGetText buf l r True

@@ -34,6 +34,7 @@ import System.Directory
 import Ghf.Core
 import Ghf.File
 import Ghf.Preferences
+import Ghf.Extractor
 
 buildSourceForPackageDB :: IO ()
 buildSourceForPackageDB = do
@@ -56,7 +57,7 @@ showSourceForPackageDB aMap = PP.vcat (map showIt (Map.toList aMap))
         where label  =  PP.text pd PP.<> PP.colon
 
 
-parseSourceForPackageDB :: IO (Maybe (Map PackIdentifier [FilePath]))
+parseSourceForPackageDB :: IO (Maybe (Map PackageIdentifier [FilePath]))
 parseSourceForPackageDB = do
     filePath        <-  getConfigFilePathForLoad "source_packages.txt"
     exists          <-  doesFileExist filePath
@@ -73,7 +74,7 @@ parseSourceForPackageDB = do
             putStrLn $"No source packages file found: " ++ filePath
             return Nothing
 
-sourceForPackageParser :: CharParser () (Map PackIdentifier [FilePath])
+sourceForPackageParser :: CharParser () (Map PackageIdentifier [FilePath])
 sourceForPackageParser = do
     whiteSpace
     ls  <-  many onePackageParser
@@ -82,19 +83,19 @@ sourceForPackageParser = do
     return (Map.fromList ls)
     <?> "sourceForPackageParser"
 
-onePackageParser :: CharParser () (PackIdentifier,[FilePath])
+onePackageParser :: CharParser () (PackageIdentifier,[FilePath])
 onePackageParser = do
     pd          <-  packageDescriptionParser
     filePaths   <-  many filePathParser
     return (pd,filePaths)
     <?> "onePackageParser"
 
-packageDescriptionParser :: CharParser () PackIdentifier
+packageDescriptionParser :: CharParser () PackageIdentifier
 packageDescriptionParser = try (do
     whiteSpace
     str <- many (noneOf ":")
     char ':'
-    return (str))
+    return (toPackageIdentifier str))
     <?> "packageDescriptionParser"
 
 filePathParser :: CharParser () FilePath
@@ -107,8 +108,8 @@ filePathParser = try (do
     <?> "filePathParser"
 
 
-sourceForPackage :: PackIdentifier
-    -> (Map PackIdentifier [FilePath])
+sourceForPackage :: PackageIdentifier
+    -> (Map PackageIdentifier [FilePath])
     -> Maybe FilePath
 sourceForPackage id map =
     case id `Map.lookup` map of

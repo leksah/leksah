@@ -34,9 +34,11 @@ import DynFlags hiding(Option)
 import PrelNames
 
 --import qualified Distribution.InstalledPackageInfo as IPI
-import PackageConfig as IPI
+import qualified PackageConfig as DP
 import Distribution.Simple.Configure
-import qualified Distribution.PackageDescription as PD
+import Distribution.PackageDescription
+import Distribution.InstalledPackageInfo hiding (package)
+import Distribution.Package
 import Distribution.Simple.LocalBuildInfo
 import Distribution.Verbosity
 import qualified Text.PrettyPrint.HughesPJ as PP
@@ -79,19 +81,21 @@ collectInstalled session version forceRebuild = do
     packageInfos    <-  getInstalledPackageInfos session
 --    putStrLn $ "get installed package infos" ++ " " ++ concatMap (\pi -> show (pkgName (package pi)))
 --                                                            packageInfos
-    let newPackages =   filter (\pi -> not $Set.member (showPackageId $ IPI.package pi) knownPackages)
+    let newPackages =   filter (\pi -> not $Set.member (showPackageId $ fromDPid $ DP.package pi)
+                                                        knownPackages)
                                     packageInfos
 --    putStrLn $ "after new Package"
     let newPackages2 =  filter (\pi -> True {--pkgName (package pi) == "base"--}) newPackages
 --    putStrLn $ "after new Package2, Remaining " ++ concatMap (\ pi -> show (pkgName (package pi)))
 --                                                            newPackages2
-    exportedIfaceInfos <-  mapM (\ info -> getIFaceInfos (IPI.package info)  (IPI.exposedModules info)
-                                        session) newPackages2
-    hiddenIfaceInfos   <-  mapM (\ info -> getIFaceInfos (IPI.package info)  (IPI.hiddenModules info)
-                                        session) newPackages2
+    exportedIfaceInfos <-  mapM (\ info -> getIFaceInfos (fromDPid $ DP.package info)
+                                            (DP.exposedModules info) session) newPackages2
+    hiddenIfaceInfos   <-  mapM (\ info -> getIFaceInfos (fromDPid $DP.package info)
+                                        (DP.hiddenModules info) session) newPackages2
 --    putStrLn $ "getIfaceInfos completed hidden lengtgh: " ++ show (map length hiddenIfaceInfos)
     let extracted   =   map extractInfo (zip4 exportedIfaceInfos hiddenIfaceInfos
-                                            (map IPI.package newPackages2) (map depends newPackages2))
+                                            (map (fromDPid . DP.package) newPackages2)
+                                                (map (\p -> map fromDPid (DP.depends p)) newPackages2))
 --    putStrLn $ "extracted " ++ concatMap (\ pi -> packageId pi) extracted
     mapM_ (writeExtracted collectorPath) extracted
 
@@ -100,11 +104,11 @@ collectUninstalled :: Session -> String -> FilePath -> IO ()
 collectUninstalled session version cabalPath = do
     allHiFiles      <-  allHiFiles (dropFileName cabalPath)
 --    putStrLn $ "\nallModules " ++ show allHiFiles
-    pd              <-  PD.readPackageDescription normal cabalPath
-                            >>= return . PD.flattenPackageDescription
+    pd              <-  readPackageDescription normal cabalPath
+                            >>= return . flattenPackageDescription
     allIfaceInfos   <-  getIFaceInfos2 allHiFiles session
-    deps            <-  findFittingPackages session (PD.buildDepends pd)
-    let extracted   =   extractInfo (allIfaceInfos,[], fromDPid (PD.package pd), deps)
+    deps            <-  findFittingPackages session (buildDepends pd)
+    let extracted   =   extractInfo (allIfaceInfos,[], package pd, deps)
     collectorPath   <-  getCollectorPath version
     writeExtracted collectorPath extracted
     putStrLn $ "\nExtracted infos for " ++ cabalPath
@@ -115,7 +119,7 @@ getIFaceInfos pckg modules session = do
     let ifaces          =   mapM (\ mn -> findAndReadIface empty
                                           (if isBase
                                                 then mkBaseModule_ (mkModuleName mn)
-                                                else mkModule (mkPackageId pckg)
+                                                else mkModule (DP.mkPackageId (asDPid pckg))
                                                               (mkModuleName mn))
                                           False) modules
     hscEnv              <-  sessionHscEnv session
@@ -148,5 +152,5 @@ findKnownPackages filePath = do
 
 writeExtracted :: FilePath -> PackageDescr -> IO ()
 writeExtracted dirPath pd = do
-    let filePath = dirPath </> packagePD pd ++ ".pack"
+    let filePath = dirPath </> showPackageId (packagePD pd) ++ ".pack"
     encodeFile filePath pd

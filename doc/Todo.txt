@@ -123,6 +123,6 @@ later - Parsing of source packages
 now - Simple version which finds the files and finds then the definition in the files
       without Parsing
 
-    - get rid of second executable and make collector accesssable from ghf command line
+ok  - get rid of second executable and make collector accessible from ghf command line
 
 

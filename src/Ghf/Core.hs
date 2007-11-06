@@ -76,7 +76,9 @@ module Ghf.Core (
 ,   IdType(..)
 ,   SymbolTable
 ,   PackageScope
-,   PackIdentifier
+,   ModuleWithPack
+,   showModuleWith
+,   parseModuleWith
 
 -- * debugging
 --,   helpDebug
@@ -100,6 +102,7 @@ import System.Time
 import GHC (Session)
 import Data.Binary
 import Data.Maybe
+import Text.ParserCombinators.ReadP
 
 import Debug.Trace
 message m = trace m (return ())
@@ -316,7 +319,7 @@ data GhfInfo  =   GhfInfo {
 --
 
 data GhfModules     =   GhfModules {
-    boxM            ::   HBox
+    boxM            ::   HPaned
 ,   treeStore       ::   New.TreeStore (String, [(ModuleDescr,PackageDescr)])
 ,   facetStore      ::   New.ListStore (String, IdentifierDescr)
 }
@@ -395,36 +398,30 @@ data ErrorSpec = ErrorSpec {
 --  | Information about the world, extraced from .hi and maybe source files
 --
 
-type PackageScope       =   (Map PackIdentifier PackageDescr,SymbolTable)
+type PackageScope       =   (Map PackageIdentifier PackageDescr,SymbolTable)
 type SymbolTable        =   Map Symbol [IdentifierDescr]
 
 data PackageDescr       =   PackageDescr {
-    packagePD           ::   ! PackIdentifier
+    packagePD           ::   ! PackageIdentifier
 ,   exposedModulesPD    ::   ! [ModuleDescr]
-,   buildDependsPD      ::   ! [PackIdentifier]
+,   buildDependsPD      ::   ! [PackageIdentifier]
 ,   mbSourcePathPD      ::   ! (Maybe FilePath)
 ,   idDescriptionsPD    ::   ! SymbolTable
 } deriving (Eq,Ord)
 
 data ModuleDescr        =   ModuleDescr {
-    moduleIdMD          ::   ! ModuleIdentifier
+    moduleIdMD          ::   ! ModuleWithPack
 ,   exportedNamesMD     ::   ! (Set Symbol)                        -- unqualified
 ,   mbSourcePathMD      ::   ! (Maybe FilePath)
 ,   instancesMD         ::   ! [(ClassId,DataId)]
 ,   usagesMD            ::   ! (Map ModuleIdentifier (Set Symbol)) -- imports
 } deriving (Eq,Ord)
 
-instance Show  ModuleDescr where
-    show md    =   moduleIdMD md
-
-instance Show  PackageDescr where
-    show pd    =   packagePD pd
-
-data IdentifierDescr =  IdentifierDescr {
-    identifierID     ::   ! Symbol
-,   identifierTypeID ::   ! IdType
-,   typeInfoID       ::   ! TypeInfo
-,   moduleIdID       ::   ! [ModuleIdentifier]
+data IdentifierDescr    =  IdentifierDescr {
+    identifierID        ::   ! Symbol
+,   identifierTypeID    ::   ! IdType
+,   typeInfoID          ::   ! TypeInfo
+,   moduleIdID          ::   ! [ModuleWithPack]
 } deriving (Show,Eq,Ord)
 
 data IdType = Function | Data | Newtype | Synonym | AbstractData |
@@ -437,8 +434,30 @@ type Symbol             =   String  -- Qualified or unqualified
 type ClassId            =   String  -- Qualified or unqualified
 type DataId             =   String  -- Qualified or unqualified
 type TypeInfo           =   String
-type ModuleIdentifier   =   String  -- always quelified
-type PackIdentifier     =   String
+type ModuleIdentifier   =   String  -- always qualified
+
+type ModuleWithPack     =   (PackageIdentifier,ModuleIdentifier)  -- always qualified
+
+showModuleWith          ::   ModuleWithPack -> String
+showModuleWith (p,m)    =   showPackageId p ++ ":" ++ m
+
+parseModuleWith         ::   String -> ModuleWithPack
+parseModuleWith str     =   let (pack,mod) = span (\c -> c /= ':') str
+                            in  case readP_to_S parsePackageId pack of
+                                [(ps,_)]  -> if null mod
+                                                then perror str
+                                                else (ps, tail mod)
+                                _         -> perror str
+    where perror s      =   error $ "cannot parse moduleWith " ++ s
+
+instance Show  ModuleDescr where
+    show md    =   showModuleWith $ moduleIdMD md
+
+instance Show  PackageDescr where
+    show pd    =   showPackageId $ packagePD pd
+
+
+--type PackIdentifier     =   String
 
 
 -- ---------------------------------------------------------------------

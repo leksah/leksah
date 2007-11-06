@@ -36,6 +36,7 @@ import System.Glib.GObject
 
 import Ghf.Core
 import Ghf.ViewFrame
+import Ghf.InfoPane
 
 instance Pane GhfModules
     where
@@ -112,7 +113,7 @@ initModules panePath nb = do
             $ \row -> [ New.cellText :=
                 concat
                     $ intersperse  ", "
-                        $ map (packagePD . snd) (snd row)]
+                        $ map (showPackageId . packagePD . snd) (snd row)]
 
         facetView   <-  New.treeViewNew
         facetStore  <-  New.listStoreNew []
@@ -132,20 +133,26 @@ initModules panePath nb = do
         sel         <-  New.treeViewGetSelection treeView
         sel `New.onSelectionChanged` (fillFacets sel treeStore facetStore)
 
-        box <- hBoxNew False 0
+        sel2        <-  New.treeViewGetSelection facetView
+        sel2 `New.onSelectionChanged` (fillInfo sel2 facetStore ghfR)
+
+        pane <- hPanedNew
         sw <- scrolledWindowNew Nothing Nothing
         scrolledWindowAddWithViewport sw treeView
         scrolledWindowSetPolicy sw PolicyAutomatic PolicyAutomatic
-        boxPackStart box sw PackGrow 2
-        boxPackStart box facetView PackGrow 2
-        let modules = GhfModules box treeStore facetStore
-        notebookPrependPage nb box (paneName modules)
-        widgetShowAll box
-        mbPn <- notebookPageNum nb box
+        sw2 <- scrolledWindowNew Nothing Nothing
+        scrolledWindowAddWithViewport sw2 facetView
+        scrolledWindowSetPolicy sw2 PolicyAutomatic PolicyAutomatic
+        panedAdd1 pane sw
+        panedAdd2 pane sw2
+        let modules = GhfModules pane treeStore facetStore
+        notebookPrependPage nb pane (paneName modules)
+        widgetShowAll pane
+        mbPn <- notebookPageNum nb pane
         case mbPn of
             Just i -> notebookSetCurrentPage nb i
             Nothing -> putStrLn "Notebook page not found"
-        cid1 <- box `afterFocusIn`
+        cid1 <- pane `afterFocusIn`
             (\_ -> do runReaderT (makeModulesActive modules) ghfR; return True)
         return (modules,[cid1])
     let newPaneMap  =  Map.insert (paneName buf)
@@ -178,8 +185,22 @@ fillFacets ts tst lst = do
                     New.listStoreClear lst
                     putStrLn $ "Now fill " ++ show (length pairs)
                     mapM_ (New.listStoreAppend lst) pairs
+        _   -> return ()
 
-findDescription :: ModuleIdentifier -> SymbolTable -> Symbol -> Maybe (Symbol,IdentifierDescr)
+fillInfo :: New.TreeSelection
+    -> New.ListStore (String, IdentifierDescr)
+    -> GhfRef
+    -> IO ()
+fillInfo ts lst ghfR = do
+    paths  <-  New.treeSelectionGetSelectedRows ts
+    case paths of
+        []      ->  return ()
+        [[a]]   ->  do
+            (_,id)     <-  New.listStoreGetValue lst a
+            runReaderT (setInfo id) ghfR
+        _       ->  return ()
+
+findDescription :: ModuleWithPack -> SymbolTable -> Symbol -> Maybe (Symbol,IdentifierDescr)
 findDescription md st s     =
     case Map.lookup s st  of
         Nothing ->  Nothing
@@ -220,8 +241,7 @@ buildModulesTree ((localMap,_),(otherMap,_)) =
     where
     insertPairsInTree :: ModTree -> (ModuleDescr,PackageDescr) -> ModTree
     insertPairsInTree tree pair =
-        let nameArray           =   breakAtDots [] $ tail $ dropWhile (\c -> c /= ':')
-                                                       $ moduleIdMD (fst pair)
+        let nameArray           =   breakAtDots [] $ snd $ moduleIdMD $ fst pair
             pairedWith          =   map (\n -> (n,pair)) nameArray
         in  insertNodesInTree pairedWith tree
 

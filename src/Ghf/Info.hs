@@ -28,6 +28,9 @@ module Ghf.Info (
 ,   findFittingPackages
 ,   findFittingPackagesDP
 
+,   asDPid
+,   fromDPid
+
 ) where
 
 import Graphics.UI.Gtk hiding (afterToggleOverwrite,get)
@@ -49,13 +52,13 @@ import qualified Data.Map as Map
 import GHC
 import System.IO
 import Control.Concurrent
-import qualified Distribution.Package as DP
+import Distribution.Package
 import Distribution.PackageDescription hiding (package)
 import Distribution.InstalledPackageInfo hiding (package,InstalledPackageInfo)
 import Distribution.Version
 import Data.List
 import UniqFM
-import PackageConfig
+import qualified PackageConfig as DP
 import Data.Maybe
 import Text.ParserCombinators.ReadP hiding(get)
 import Data.Binary
@@ -75,6 +78,31 @@ import Ghf.Extractor
 -- ---------------------------------------------------------------------
 -- Binary Instances
 --
+
+instance Binary PackageIdentifier where
+    put (PackageIdentifier name version)
+        =   do  put name
+                put version
+    get =   do  name                <- get
+                version             <- get
+                return (PackageIdentifier name version)
+
+instance Binary DP.PackageIdentifier where
+    put (DP.PackageIdentifier name version)
+        =   do  put name
+                put version
+    get =   do  name                <- get
+                version             <- get
+                return (DP.PackageIdentifier name version)
+
+instance Binary Version where
+    put (Version branch tags)
+        =   do  put branch
+                put tags
+    get =   do  branch              <- get
+                tags                <- get
+                return (Version branch tags)
+
 
 instance Binary PackageDescr where
     put (PackageDescr packagePD exposedModulesPD buildDependsPD mbSourcePathPD idDescriptionsPD)
@@ -125,9 +153,12 @@ instance Binary IdType where
 
 initInfo :: GhfAction
 initInfo = do
+    session <- readGhf session
+    let version     =   cProjectVersion
     lift $ putStrLn "Before running collector"
-    pid <- lift $ runProcess "dist/build/ghf-collector/ghf-collector"  [] Nothing Nothing Nothing Nothing Nothing
-    lift $ waitForProcess pid
+    lift $ collectInstalled session version False
+--    pid <- lift $ runProcess "dist/build/ghf-collector/ghf-collector"  [] Nothing Nothing Nothing Nothing Nothing
+--    lift $ waitForProcess pid
     lift $ putStrLn "After running collector"
     loadAccessibleInfo
 
@@ -143,7 +174,7 @@ loadAccessibleInfo =
         collectorPath   <-  lift $ getCollectorPath version
         packageInfos    <-  lift $ getInstalledPackageInfos session
         packageList     <-  lift $ mapM (loadInfosForPackage collectorPath)
-                                                    (map package packageInfos)
+                                                    (map (fromDPid . DP.package) packageInfos)
         let scope       =   foldr buildScope (Map.empty,Map.empty)
                                 $ map fromJust
                                     $ filter isJust packageList
@@ -171,8 +202,7 @@ buildCurrentInfo depends = do
             case accessibleInfo of
                 Nothing         ->  modifyGhf_ (\ghf -> return (ghf{currentInfo = Nothing}))
                 Just (pdmap,_)  ->  do
-                    let packageList =   map (\ pi -> pi `Map.lookup` pdmap)
-                                            $ map fromPackageIdentifier fp
+                    let packageList =   map (\ pi -> pi `Map.lookup` pdmap) fp
                     let scope       =   foldr buildScope (Map.empty,Map.empty)
                                             $ map fromJust
                                                 $ filter isJust packageList
@@ -210,7 +240,7 @@ buildActiveInfo' =
             lift $ putStrLn "uninstalled collected"
             collectorPath   <-  lift $ getCollectorPath cProjectVersion
             packageDescr    <-  lift $ loadInfosForPackage collectorPath
-                                            (fromDPid $ packageId ghfPackage)
+                                            (packageId ghfPackage)
             case packageDescr of
                 Nothing     -> return Nothing
                 Just pd     -> do
@@ -230,7 +260,7 @@ updateAccessibleInfo = do
         Nothing -> loadAccessibleInfo
         Just (psmap,psst) -> do
             packageInfos        <-  lift $ getInstalledPackageInfos session
-            let packageIds      =   map (fromPackageIdentifier . package) packageInfos
+            let packageIds      =   map (fromDPid . DP.package) packageInfos
             let newPackages     =   filter (\ pi -> Map.member pi psmap) packageIds
             let trashPackages   =   filter (\ e  -> not (elem e packageIds))(Map.keys psmap)
             if null newPackages && null trashPackages
@@ -238,7 +268,7 @@ updateAccessibleInfo = do
                 else do
                     collectorPath   <-  lift $ getCollectorPath version
                     newPackageInfos <-  lift $ mapM (\pid -> loadInfosForPackage collectorPath pid)
-                                                $ map toPackageIdentifier newPackages
+                                                        newPackages
                     let psamp2      =   foldr (\e m -> Map.insert (packagePD e) e m)
                                                 psmap
                                                 (map fromJust
@@ -276,7 +306,7 @@ buildScope :: PackageDescr -> PackageScope -> PackageScope
 buildScope packageD (packageMap, symbolTable) =
     let pid = packagePD packageD
     in if pid `Map.member` packageMap
-        then trace  ("package already in world " ++ packagePD packageD)
+        then trace  ("package already in world " ++ (showPackageId $ packagePD packageD))
                     (packageMap, symbolTable)
         else (Map.insert pid packageD packageMap,
               Map.unionWith (++) symbolTable (idDescriptionsPD packageD))
@@ -321,7 +351,7 @@ typeDescription str st =
 -- The little helpers
 --
 
-getInstalledPackageInfos :: Session -> IO [InstalledPackageInfo]
+getInstalledPackageInfos :: Session -> IO [DP.InstalledPackageInfo]
 getInstalledPackageInfos session = do
     dflags1         <-  getSessionDynFlags session
     pkgInfos        <-  case pkgDatabase dflags1 of
@@ -332,7 +362,7 @@ getInstalledPackageInfos session = do
 findFittingPackages :: Session -> [Dependency] -> IO  [PackageIdentifier]
 findFittingPackages session dependencyList = do
     knownPackages   <-  getInstalledPackageInfos session
-    let packages    =   map package knownPackages
+    let packages    =   map (fromDPid . DP.package) knownPackages
     return (concatMap (fittingKnown packages) dependencyList)
     where
     fittingKnown packages (Dependency dname versionRange) =
@@ -348,6 +378,10 @@ findFittingPackagesDP session dependencyList =  do
         fp <- (findFittingPackages session dependencyList)
         return fp
 
+asDPid :: PackageIdentifier -> DP.PackageIdentifier
+asDPid (PackageIdentifier name version) = DP.PackageIdentifier name version
 
+fromDPid :: DP.PackageIdentifier -> PackageIdentifier
+fromDPid (DP.PackageIdentifier name version) = PackageIdentifier name version
 
 

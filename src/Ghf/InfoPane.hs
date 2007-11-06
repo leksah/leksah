@@ -77,8 +77,8 @@ idDescrDescr = [
             stringEditor
     ,   mkFieldE (emptyParams
             {   paraName = Just "Modules exporting"})
-            moduleIdID
-            (\ b a -> a{moduleIdID = b})
+            (\l -> map showModuleWith (moduleIdID l))
+            (\ b a -> a{moduleIdID = (map parseModuleWith b)})
             (multisetEditor (ColumnDescr False [("",(\row -> [New.cellText := row]))])
                 (stringEditor, emptyParams))
     ,   mkFieldE (emptyParams
