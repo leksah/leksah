@@ -1,0 +1,251 @@
+#LyX 1.3 created this file. For more info see http://www.lyx.org/
+\lyxformat 221
+\textclass scrartcl
+\language english
+\inputencoding auto
+\fontscheme default
+\graphics default
+\paperfontsize default
+\spacing single 
+\papersize Default
+\paperpackage a4
+\use_geometry 0
+\use_amsmath 0
+\use_natbib 0
+\use_numerical_citations 0
+\paperorientation portrait
+\secnumdepth 3
+\tocdepth 3
+\paragraph_separation indent
+\defskip medskip
+\quotes_language english
+\quotes_times 2
+\papercolumns 1
+\papersides 1
+\paperpagestyle default
+
+\layout Title
+
+Ghf: An Integrated Development Environment for Haskell
+\series medium 
+
+\newline 
+Version 0.1
+\layout Author
+
+Jürgen Nicklisch-Franken
+\layout Standard
+
+
+\begin_inset LatexCommand \tableofcontents{}
+
+\end_inset 
+
+
+\layout Section*
+
+License
+\layout Standard
+
+Ghf has been put under the GNU GENERAL PUBLIC LICENSE Version 2.
+ The full licence text can be found in the file data/gpl.txt in the distribution.
+\layout Section
+
+Introduction
+\layout Standard
+
+Ghf is an IDE (Integrated Development Environment) for the programming language
+ Haskell.
+ It is written in Haskell.
+ Ghf is intended as a practical tool to support the Haskell development
+ process.
+ The development has been started because no such tools were available at
+ this time.
+ The development of an IDE is a big issue, so Ghf is intended to become
+ a community project and everyone is invited to contribute.
+ If you are a user or just test Ghf, we would appreciate to here from you
+ and problems and wishes for Ghf.
+\layout Standard
+
+Ghf uses GTK+ as GUI Toolkit with the gtk2hs binding.
+ It is plattform independend and should run on any plattform where GTK+,
+ gtk2hs and ghc can be installed.
+ (It is currently been tested on Windows and Linux).
+ It uses the Cabal package management and build system for Package Management.
+ It uses Haddock for source code documentation.
+ It currently only supports the Glasgow Haskell Compiler (ghc).
+ It would be possible to integrated with other compilers, but their are
+ no plans to do this.
+\layout Subsection
+
+Further Information
+\layout Standard
+
+For further informatin about Ghf use the URL 
+\begin_inset LatexCommand \htmlurl[www.haskell.org/ghf]{www.haskell.org/ghf}
+
+\end_inset 
+
+For the Programming language Haskell go to 
+\begin_inset LatexCommand \htmlurl[www.haskell.org]{www.haskell.org}
+
+\end_inset 
+
+.
+ For information about GTK+ go to 
+\begin_inset LatexCommand \htmlurl[www.gtk.org]{www.gtk.org}
+
+\end_inset 
+
+.
+ For information about Ghc go to 
+\begin_inset LatexCommand \htmlurl[www.haskell.org/ghc]{www.haskell.org/ghc}
+
+\end_inset 
+
+.
+ For reporting bugs go to ###.
+\layout Subsection
+
+Version numbering
+\layout Standard
+
+We have adopted the following policy for numbering Ghf versions: Stable
+ Releases are numbered x.y, where y is even.
+ Releases on the stable branch x.y are numbered x.y.z, where z (>= 1) is the
+ patchlevel number.
+ Patchlevels are bug-fix releases only, and never change the user interface
+ in a substantial way.
+\layout Standard
+
+Development releases are numbered x.y.z, where y is uneven.
+ 
+\layout Standard
+
+The version number of your copy of Ghf can be found by invoking ghf with
+ the --version flag or by looking in the Help/About box.
+\layout Subsection
+
+Release Notes
+\layout Subsubsection
+
+Version 0.2
+\layout Standard
+
+This is a first release of Ghf and incomplete.
+ It has been tested with GHC 6.6.1 and 6.8 under Linux and Windows.
+\layout Section
+
+Installing Ghf
+\layout Enumerate
+
+Install GHC in a version compatible with the version of Ghf you want to
+ use.
+ 
+\newline 
+###
+\layout Enumerate
+
+Install GTK+ and gtk2hs in a version compatible with the version of GHC
+ you just installed.
+\newline 
+###
+\layout Enumerate
+
+Download, configure, build and install the binary package with typical Cabal
+ procedure.
+\newline 
+###
+\layout Enumerate
+
+Download, configure, build and install Ghf with typical Cabal procedure.
+ 
+\newline 
+Source paths ###.
+ If you want to run Ghf without installing, see 
+\begin_inset LatexCommand \ref{sub:Installing-Ghf-for}
+
+\end_inset 
+
+.
+ 
+\layout Section
+
+Quickstart
+\layout Section
+
+The Editor
+\layout Subsection
+
+Keymaps
+\layout Subsection
+
+Source Candy
+\layout Section
+
+The View Frame
+\layout Section
+
+Preferences
+\layout Subsection
+
+Session
+\layout Section
+
+Packages (Cabal)
+\layout Section
+
+Navigation
+\layout Subsection
+
+The Collector
+\layout Section
+
+Interpreter
+\layout Section
+
+Debugger
+\layout Section
+
+Documentation (Haddock)
+\layout Section
+
+Versioning (Darcs)
+\layout Section
+
+Tests (Quick Check)
+\layout Section
+
+Program Coverage (HPC)
+\layout Section
+
+Profiling
+\layout Section
+
+Refactoring (HaRe)
+\layout Section
+
+Analysis & Design (FAD)
+\layout Section
+
+Internals for Developers
+\layout Subsection
+
+
+\begin_inset LatexCommand \label{sub:Installing-Ghf-for}
+
+\end_inset 
+
+Installing Ghf for Development
+\layout Section
+
+Known Bugs
+\layout Standard
+
+
+\begin_inset LatexCommand \printindex{}
+
+\end_inset 
+
+
+\the_end

@@ -76,9 +76,7 @@ module Ghf.Core (
 ,   IdType(..)
 ,   SymbolTable
 ,   PackageScope
-,   ModuleWithPack
-,   showModuleWith
-,   parseModuleWith
+,   PackModule(..)
 
 -- * debugging
 --,   helpDebug
@@ -311,7 +309,7 @@ data GhfLog  =   GhfLog {
 -- | An info pane description
 --
 data GhfInfo  =   GhfInfo {
-    box             ::   VBox
+    box             ::   HBox
 ,   injectors       ::   [IdentifierDescr -> IO() ]
 }
 
@@ -410,7 +408,7 @@ data PackageDescr       =   PackageDescr {
 } deriving (Eq,Ord)
 
 data ModuleDescr        =   ModuleDescr {
-    moduleIdMD          ::   ! ModuleWithPack
+    moduleIdMD          ::   ! PackModule
 ,   exportedNamesMD     ::   ! (Set Symbol)                        -- unqualified
 ,   mbSourcePathMD      ::   ! (Maybe FilePath)
 ,   instancesMD         ::   ! [(ClassId,DataId)]
@@ -421,7 +419,7 @@ data IdentifierDescr    =  IdentifierDescr {
     identifierID        ::   ! Symbol
 ,   identifierTypeID    ::   ! IdType
 ,   typeInfoID          ::   ! TypeInfo
-,   moduleIdID          ::   ! [ModuleWithPack]
+,   moduleIdID          ::   ! [PackModule]
 } deriving (Show,Eq,Ord)
 
 data IdType = Function | Data | Newtype | Synonym | AbstractData |
@@ -436,22 +434,23 @@ type DataId             =   String  -- Qualified or unqualified
 type TypeInfo           =   String
 type ModuleIdentifier   =   String  -- always qualified
 
-type ModuleWithPack     =   (PackageIdentifier,ModuleIdentifier)  -- always qualified
+data PackModule         =   PM {pack :: PackageIdentifier, modu :: ModuleIdentifier}
+     deriving (Eq, Ord)
 
-showModuleWith          ::   ModuleWithPack -> String
-showModuleWith (p,m)    =   showPackageId p ++ ":" ++ m
+instance Show  PackModule where
+    show (PM p m)       =   showPackageId p ++ ":" ++ m
 
-parseModuleWith         ::   String -> ModuleWithPack
-parseModuleWith str     =   let (pack,mod) = span (\c -> c /= ':') str
+instance Read  PackModule where
+    readsPrec i str     =   let (pack,mod) = span (\c -> c /= ':') str
                             in  case readP_to_S parsePackageId pack of
                                 [(ps,_)]  -> if null mod
                                                 then perror str
-                                                else (ps, tail mod)
+                                                else [(PM ps (tail mod),"")]
                                 _         -> perror str
-    where perror s      =   error $ "cannot parse moduleWith " ++ s
+        where perror s      =   error $ "cannot parse moduleWith " ++ s
 
 instance Show  ModuleDescr where
-    show md    =   showModuleWith $ moduleIdMD md
+    show md    =   show $ moduleIdMD md
 
 instance Show  PackageDescr where
     show pd    =   showPackageId $ packagePD pd

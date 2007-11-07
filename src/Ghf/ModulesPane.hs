@@ -200,7 +200,7 @@ fillInfo ts lst ghfR = do
             runReaderT (setInfo id) ghfR
         _       ->  return ()
 
-findDescription :: ModuleWithPack -> SymbolTable -> Symbol -> Maybe (Symbol,IdentifierDescr)
+findDescription :: PackModule -> SymbolTable -> Symbol -> Maybe (Symbol,IdentifierDescr)
 findDescription md st s     =
     case Map.lookup s st  of
         Nothing ->  Nothing
@@ -241,7 +241,7 @@ buildModulesTree ((localMap,_),(otherMap,_)) =
     where
     insertPairsInTree :: ModTree -> (ModuleDescr,PackageDescr) -> ModTree
     insertPairsInTree tree pair =
-        let nameArray           =   breakAtDots [] $ snd $ moduleIdMD $ fst pair
+        let nameArray           =   breakAtDots [] $ modu $ moduleIdMD $ fst pair
             pairedWith          =   map (\n -> (n,pair)) nameArray
         in  insertNodesInTree pairedWith tree
 

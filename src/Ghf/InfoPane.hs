@@ -70,32 +70,31 @@ instance Castable GhfInfo where
 
 idDescrDescr :: [FieldDescriptionE IdentifierDescr]
 idDescrDescr = [
-        mkFieldE (emptyParams
-            {   paraName = Just "Symbol"})
+            mkFieldE (emptyParams
+            {   paraName = Just "Symbol", horizontal = Just True})
             identifierID
             (\ b a -> a{identifierID = b})
             stringEditor
-    ,   mkFieldE (emptyParams
-            {   paraName = Just "Modules exporting"})
-            (\l -> map showModuleWith (moduleIdID l))
-            (\ b a -> a{moduleIdID = (map parseModuleWith b)})
-            (multisetEditor (ColumnDescr False [("",(\row -> [New.cellText := row]))])
-                (stringEditor, emptyParams))
-    ,   mkFieldE (emptyParams
-            {paraName = Just "Sort of symbol"})
+    ,    mkFieldE (emptyParams
+            {paraName = Just "Sort", horizontal = Just False})
             identifierTypeID
             (\b a -> a{identifierTypeID = b})
             (staticSelectionEditor allIdTypes)
     ,   mkFieldE (emptyParams
-            {paraName = Just "Type Info"})
+            {   paraName = Just "Exported by"})
+            (\l -> moduleIdID l)
+            (\ b a -> a{moduleIdID = b})
+            multiselectionEditor
+    ,   mkFieldE (emptyParams
+            {paraName = Just "Type"})
             typeInfoID
             (\b a -> a{typeInfoID = b})
-            multilineStringEditor
+            multilineStringEditor]
 {--    ,   mkField (emptyParams
             {paraName = Just "Documentation"})
             typeInfo
             (\b a -> a{typeInfo = b})
-            multilineStringEditor--}]
+            multilineStringEditor--}
 
 allIdTypes = [Function,Data,Newtype,Synonym,AbstractData,Constructor,Field,Class,ClassOp,Foreign]
 
@@ -106,17 +105,37 @@ initInfo panePath nb idDescr = do
     paneMap <- readGhf paneMap
     prefs <- readGhf prefs
     (pane,cids) <- lift $ do
-            nbbox       <- vBoxNew False 0
-            bb          <- hButtonBoxNew
+            nbbox       <- hBoxNew False 0
+            ibox        <- vBoxNew False 0
+            bb          <- vButtonBoxNew
+            buttonBoxSetLayout bb ButtonboxStart
             definitionB <- buttonNewWithLabel "Definition"
-            docuB       <- buttonNewWithLabel "Docu"
+            moduB       <- buttonNewWithLabel "Module"
             usesB       <- buttonNewWithLabel "Uses"
+            docuB       <- buttonNewWithLabel "Docu"
             boxPackStart bb definitionB PackNatural 0
+            boxPackStart bb moduB PackNatural 0
+            boxPackStart bb usesB PackNatural 0
             boxPackStart bb docuB PackNatural 0
             boxPackStart bb usesB PackNatural 0
             resList <- mapM (\ fd -> (fieldEditor fd) idDescr) idDescrDescr
             let (widgets, setInjs, getExts, notifiers) = unzip4 resList
-            mapM_ (\ w -> boxPackStart nbbox w PackNatural 0) widgets
+            foldM_ (\ box (w,mbh)  ->
+                case mbh of
+                    Nothing     ->  do  boxPackStart box w PackNatural 0
+                                        return box
+                    Just True   ->  do  newBox  <- hBoxNew False 0
+                                        boxPackStart box newBox PackNatural 0
+                                        boxPackStart newBox w PackNatural 0
+                                        return (castToBox newBox)
+                    Just False  ->  do  boxPackStart box w PackNatural 0
+                                        par <- widgetGetParent box
+                                        case par of
+                                            Nothing -> error "initInfo - no parent"
+                                            Just p -> return (castToBox p))
+                (castToBox ibox)
+                (zip widgets (map (horizontal . parameters) idDescrDescr))
+            boxPackStart nbbox ibox PackGrow 0
             boxPackEnd nbbox bb PackNatural 0
             --openType
             let info = GhfInfo nbbox setInjs
@@ -129,6 +148,7 @@ initInfo panePath nb idDescr = do
     modifyGhf_ (\ghf -> return (ghf{panes = newPanes,
                                     paneMap = newPaneMap}))
     lift $widgetGrabFocus (box pane)
+    lift $bringPaneToFront pane
 
 makeInfoActive :: GhfInfo -> GhfAction
 makeInfoActive info = do

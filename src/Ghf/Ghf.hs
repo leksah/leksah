@@ -27,7 +27,9 @@ import System.IO
 import GHC
 import DynFlags hiding(Option)
 import Config
+import Data.Version
 
+import Paths_ghf
 import Ghf.SaveSession
 import Ghf.Core
 import Ghf.SourceCandy
@@ -40,7 +42,7 @@ import Ghf.Info
 import Ghf.SourceCollector
 import Ghf.Collector
 
-data Flag =  UninstalledProject String | Collect | Rebuild | Sources
+data Flag =  UninstalledProject String | Collect | Rebuild | Sources | VersionF
        deriving (Show,Eq)
 
 options :: [OptDescr Flag]
@@ -51,7 +53,9 @@ options =   [Option ['r'] ["Rebuild"] (NoArg Rebuild)
          ,   Option ['u'] ["Uninstalled"] (ReqArg UninstalledProject "FILE")
                 "Gather info about an uninstalled package"
          ,   Option ['s'] ["Sources"] (NoArg Sources)
-                "Gather info about pathes to sources"]
+                "Gather info about pathes to sources"
+         ,   Option ['v'] ["Version"] (NoArg VersionF)
+                "Show the version number of ghf"]
 
 ghfOpts :: [String] -> IO ([Flag], [String])
 ghfOpts argv =
@@ -67,31 +71,34 @@ main = defaultErrorHandler defaultDynFlags $do
     let uninstalled =   filter (\x -> case x of
                                         UninstalledProject _ -> True
                                         otherwise -> False) o
-    if elem Sources o
-        then do
-            buildSourceForPackageDB
-            putStrLn "rebuild SourceForPackageDB"
-        else if elem Rebuild o
-                || elem Collect o
-                || not (null uninstalled)
-            then do
-                libDir          <-  getSysLibDir
-            --    putStrLn $"libdir '" ++ normalise libDir ++ "'"
+    if elem VersionF o
+        then do putStrLn $ "Ghf an IDE for Haskell, version " ++ showVersion version
+        else
+            if elem Sources o
+                then do
+                    buildSourceForPackageDB
+                    putStrLn "rebuild SourceForPackageDB"
+                else if elem Rebuild o
+                        || elem Collect o
+                        || not (null uninstalled)
+                    then do
+                        libDir          <-  getSysLibDir
+                    --    putStrLn $"libdir '" ++ normalise libDir ++ "'"
 #if __GHC__ > 670
-                session     <-  newSession (Just libDir)
+                        session     <-  newSession (Just libDir)
 #else
-                session     <-  newSession JustTypecheck (Just libDir)
+                        session     <-  newSession JustTypecheck (Just libDir)
 #endif
-                dflags0         <-  getSessionDynFlags session
-                setSessionDynFlags session dflags0
-                let version     =   cProjectVersion
-                let uninstalled =   filter (\x -> case x of UninstalledProject _ -> True
-                                                            otherwise -> False) o
-                if length uninstalled > 0
-                    then mapM_ (collectUninstalled session version)
-                            $ map (\ (UninstalledProject x) -> x) uninstalled
-                    else collectInstalled session version (elem Rebuild o)
-            else startGUI
+                        dflags0         <-  getSessionDynFlags session
+                        setSessionDynFlags session dflags0
+                        let version     =   cProjectVersion
+                        let uninstalled =   filter (\x -> case x of UninstalledProject _ -> True
+                                                                    otherwise -> False) o
+                        if length uninstalled > 0
+                            then mapM_ (collectUninstalled session version)
+                                    $ map (\ (UninstalledProject x) -> x) uninstalled
+                            else collectInstalled session version (elem Rebuild o)
+                    else startGUI
 
 startGUI :: IO ()
 startGUI = do

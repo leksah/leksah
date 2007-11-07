@@ -20,7 +20,6 @@ module Ghf.Menu (
 ,   makeMenu
 ,   quit
 ,   aboutDialog
-,   version
 ,   buildStatusbar
 ) where
 
@@ -30,6 +29,7 @@ import qualified Data.Map as Map
 import Data.Map (Map,(!))
 import Control.Monad.Reader
 import System.FilePath
+import Data.Version
 
 import Ghf.Core
 import Ghf.SourceEditor
@@ -40,10 +40,8 @@ import Ghf.Package
 import Ghf.Log
 import Ghf.SaveSession
 import Ghf.ModulesPane
+import Paths_ghf
 --import Ghf.GhcAPI
-
-
-version = "0.1"
 
 --
 -- | The Actions known to the system (they can be activated by keystrokes or menus)
@@ -420,12 +418,13 @@ quit = do
 aboutDialog :: GhfAction
 aboutDialog = lift $ do
     d <- aboutDialogNew
-    aboutDialogSetName d "Genuine Haskell Face"
-    aboutDialogSetVersion d version
+    aboutDialogSetName d "Ghf Haskell IDE"
+    aboutDialogSetVersion d (showVersion version)
     aboutDialogSetCopyright d "Copyright 2007 Juergen Nicklisch-Franken aka Jutaro"
-    aboutDialogSetComments d $ "An integrated development environement (IDE) for the " ++
-                               "programming language haskell and the Glasgow Haskell compiler"
-    license <- readFile "gpl.txt"
+    aboutDialogSetComments d $ "An integrated development environement for the " ++
+                               "programming language Haskell and the Glasgow Haskell compiler"
+    dd <- getDataDir
+    license <- readFile $ dd </> "data" </> "gpl.txt"
     aboutDialogSetLicense d $ Just license
     aboutDialogSetWebsite d "www.haskell.org/ghf"
     aboutDialogSetAuthors d ["Juergen Nicklisch-Franken aka Jutaro"]

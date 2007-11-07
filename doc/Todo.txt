@@ -110,8 +110,8 @@ ok  - make something after an external process finishes
 
 
 !!! - New Pane for info
+
 !!! - Selecting the right from a multitude of possibilities
-!!! - Scanning for Haddock Documentation
 
 !!! - Tree Views
 
@@ -125,4 +125,11 @@ now - Simple version which finds the files and finds then the definition in the 
 
 ok  - get rid of second executable and make collector accessible from ghf command line
 
+
+
+
+---------------------------------------------------------------------------
+Haddock:
+
+!!! - Scanning for Haddock Documentation
 

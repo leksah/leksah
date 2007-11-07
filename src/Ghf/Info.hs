@@ -79,6 +79,14 @@ import Ghf.Extractor
 -- Binary Instances
 --
 
+instance Binary PackModule where
+    put (PM pack modu)
+        =   do  put pack
+                put modu
+    get =   do  pack                <- get
+                modu                <- get
+                return (PM pack modu)
+
 instance Binary PackageIdentifier where
     put (PackageIdentifier name version)
         =   do  put name

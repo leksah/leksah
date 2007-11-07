@@ -49,6 +49,7 @@ module Ghf.PropertyEditor (
 
 ,   staticSelectionEditor
 ,   staticMultiselectionEditor
+,   multiselectionEditor
 
 ,   fileEditor
 ,   otherEditor
@@ -179,9 +180,11 @@ data Parameters     =   Parameters  {
                     ,   innerPadding    :: Maybe (Int,Int,Int,Int)
                                                 --  | paddingTop paddingBottom paddingLeft paddingRight
                     ,   minSize         :: Maybe (Int, Int)
+                    ,   horizontal      :: Maybe Bool
     }
 
-emptyParams     =   Parameters Nothing Nothing Nothing Nothing Nothing Nothing Nothing Nothing Nothing
+emptyParams     =   Parameters Nothing Nothing Nothing Nothing Nothing Nothing Nothing Nothing
+                        Nothing Nothing
 
 --
 -- | Convenience method to get a parameter, or if not set the default parameter
@@ -198,7 +201,8 @@ getParameter selector parameters =
 instance Default Parameters where
     getDefault      =   Parameters (Just "") (Just "") (Just Horizontal) (Just ShadowNone)
                             (Just (0.5, 0.5, 0.95, 0.95)) (Just (2, 5, 3, 3))
-                            (Just (0.5, 0.5, 0.95, 0.95)) (Just (2, 5, 3, 3)) (Just (-1,-1))
+                            (Just (0.5, 0.5, 0.95, 0.95)) (Just (2, 5, 3, 3))
+                            (Just (-1,-1)) Nothing
 
 --
 -- | Convenience method to validate and extract fields
@@ -662,6 +666,52 @@ staticSelectionEditor list parameters = do
 -- | Editor for the selection of some elements from a static list of elements in the
 -- | form of a list box
 
+multiselectionEditor :: (Show beta, Eq beta) => Editor [beta]
+multiselectionEditor parameters = do
+    coreRef <- newIORef Nothing
+    notifier <- emptyNotifier
+    declareEvent FocusOut (\w h -> w `onFocusOut` h) notifier
+    mkEditor
+        (\widget objs -> do
+            core <- readIORef coreRef
+            case core of
+                Nothing  -> do
+                    listStore   <- New.listStoreNew ([]:: [alpha])
+                    listView    <- New.treeViewNewWithModel listStore
+                    activateEvent (castToWidget listView) FocusOut notifier
+                    sel         <- New.treeViewGetSelection listView
+                    New.treeSelectionSetMode sel SelectionMultiple
+                    renderer    <- New.cellRendererTextNew
+                    col         <- New.treeViewColumnNew
+                    New.treeViewAppendColumn listView col
+                    New.cellLayoutPackStart col renderer True
+                    New.cellLayoutSetAttributes col renderer listStore $ \row -> [ New.cellText := show row ]
+                    New.treeViewSetHeadersVisible listView False
+                    New.listStoreClear listStore
+                    mapM_ (New.listStoreAppend listStore) objs
+                    containerAdd widget listView
+                    New.treeSelectionUnselectAll sel
+                    --let inds = catMaybes $map (\obj -> elemIndex obj list) objs
+                    --mapM_ (\i -> New.treeSelectionSelectPath sel [i]) inds
+                    writeIORef coreRef (Just (listView,listStore))
+                Just (listView,listStore) -> do
+                    New.listStoreClear listStore
+                    mapM_ (New.listStoreAppend listStore) objs)
+        (do core <- readIORef coreRef
+            case core of
+                Nothing -> return Nothing
+                Just (listView,listStore) -> do
+                    sel         <- New.treeViewGetSelection listView
+                    treePath    <- New.treeSelectionGetSelectedRows sel
+                    values      <- mapM (\[i] -> listStoreGetValue listStore i) treePath
+                    return (Just values))
+        (mkNotifier notifier)
+        parameters
+
+--
+-- | Editor for the selection of some elements from a static list of elements in the
+-- | form of a list box
+
 staticMultiselectionEditor :: (Show beta, Eq beta) => [beta] -> Editor [beta]
 staticMultiselectionEditor list parameters = do
     coreRef <- newIORef Nothing
@@ -704,7 +754,6 @@ staticMultiselectionEditor list parameters = do
                     return (Just (map (\[i] -> list !! i) treePath)))
         (mkNotifier notifier)
         parameters
-
 
 --
 -- | Editor for the selection of a file path in the form of a text entry and a button,
