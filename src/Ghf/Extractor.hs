@@ -206,7 +206,7 @@ extractIdentifierDescrConst modules package extName
 ,   typeInfoID          =   showSDocUnqual $ppr
                                 (foldr IfaceFunTy (IfaceTyConApp (IfaceTc name)[]) ifConArgTys)
 ,   identifierTypeID    =   Constructor
-,   moduleIdID          =   map (\m -> (package,m)) modules}
+,   moduleIdID          =   map (PM package) modules}
                                 : map (extractIdentifierDescrField modules package extName)
                                         (zip ifConFields ifConArgTys)
 #else
@@ -239,7 +239,7 @@ extractIdentifierDescrField modules package extName (fieldName, atype) =
 ,   typeInfoID          =   showSDocUnqual
                                 $ ppr (IfaceFunTy (IfaceTyConApp (IfaceTc name)[]) atype)--}
 ,   identifierTypeID    =   Field
-,   moduleIdID          =   map (\m -> (package,m)) modules}
+,   moduleIdID          =   map (PM package) modules}
 #else
 extractIdentifierDescrField :: [ModuleIdentifier] -> PackageIdentifier -> IfaceExtName -> (OccName,IfaceType)
                                     -> IdentifierDescr
