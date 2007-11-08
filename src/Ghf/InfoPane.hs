@@ -144,11 +144,14 @@ initInfo panePath nb idDescr = do
                                                 Just p -> return (castToBox p))
                 (castToBox ibox)
                 (zip widgets (map (getParameter paraHorizontal . parameters) idDescrDescr))
-            boxPackStart nbbox ibox PackGrow 0
+            boxPackStart nbbox ibox PackNatural 0
             boxPackEnd nbbox bb PackNatural 0
             --openType
-            let info = GhfInfo nbbox setInjs
-            notebookPrependPage nb nbbox (paneName info)
+            sw <- scrolledWindowNew Nothing Nothing
+            scrolledWindowAddWithViewport sw nbbox
+            scrolledWindowSetPolicy sw PolicyAutomatic PolicyAutomatic
+            let info = GhfInfo sw setInjs
+            notebookPrependPage nb sw (paneName info)
             widgetShowAll (box info)
             return (info,[])
     let newPaneMap  =  Map.insert (paneName pane)
