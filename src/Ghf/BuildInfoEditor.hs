@@ -20,7 +20,11 @@ import Data.List
 import Ghf.Core
 import Ghf.SpecialEditors
 import Ghf.ViewFrame
-import Ghf.PropertyEditor
+import GUI.Ghf.EditorBasics
+import GUI.Ghf.MakeEditor
+import GUI.Ghf.SimpleEditors
+import GUI.Ghf.CompositeEditors
+import GUI.Ghf.Parameters
 
 -- ------------------------------------------------------------
 -- * Build Infos
@@ -54,9 +58,9 @@ libraryEditor :: Maybe FilePath -> [String] -> Editor Library
 libraryEditor fp modules para = do
     (wid,inj,ext,notif) <-
         pairEditor
-            (modulesEditor modules, para {paraName = Just "Exposed Modules"})
-            (buildInfoEditor fp modules, para {paraName = Just "Build Info"})
-            para{direction = Just Vertical}
+            (modulesEditor modules, paraName <<<- ParaName "Exposed Modules" $para)
+            (buildInfoEditor fp modules, paraName <<<- ParaName "Build Info" $ para)
+            (paraDirection <<<- ParaDirection Vertical $ emptyParams)
     let pinj (Library em bi) = inj (em,bi)
     let pext = do
         mbp <- ext
@@ -76,11 +80,12 @@ executableEditor :: Maybe FilePath -> [String] -> Editor Executable
 executableEditor fp modules para = do
     (wid,inj,ext,notif) <- pairEditor
         (pairEditor
-            (stringEditor,emptyParams {paraName = Just "Executable Name"})
-            (fileEditor fp FileChooserActionOpen "Select File",emptyParams {paraName = Just "Main module"}),
-            (emptyParams{direction = Just Vertical}))
-        (buildInfoEditor fp modules, emptyParams{paraName = Just "Build Info"})
-        para{direction = Just Vertical}
+            (stringEditor, paraName <<<- ParaName "Executable Name" $ emptyParams)
+            (fileEditor fp FileChooserActionOpen "Select File",
+                paraName <<<- ParaName "Main Module" $ emptyParams),
+            (paraDirection <<<- ParaDirection Vertical $ emptyParams))
+        (buildInfoEditor fp modules, paraName <<<- ParaName "Build Info" $ emptyParams)
+        (paraDirection  <<<- ParaDirection Vertical $ para)
     let pinj (Executable s f bi) = inj ((s,f),bi)
     let pext = do
         mbp <- ext
@@ -94,46 +99,54 @@ executablesEditor fp modules p =
     multisetEditor
         (ColumnDescr False [("Executable Name",\(Executable exeName _ _) -> [New.cellText := exeName])
                            ,("Module Path",\(Executable  _ mp _) -> [New.cellText := mp])])
-        (executableEditor fp modules ,emptyParams) p{shadow = Just ShadowIn}
+        (executableEditor fp modules ,emptyParams)
+            (paraShadow  <<<- ParaShadow ShadowIn $ p)
 
-buildInfoD :: Maybe FilePath -> [String] -> [(String,[FieldDescriptionE BuildInfo])]
+buildInfoD :: Maybe FilePath -> [String] -> [(String,[FieldDescription BuildInfo])]
 buildInfoD fp modules = [
     ("Description", [
-        mkFieldE (emptyParams
-        {   paraName    = Just "Component is buildable here"
-        ,   synopsisP = Nothing})
+        mkField
+            (paraName <<<- ParaName "Component is buildable here" $ emptyParams)
             buildable
             (\ a b -> b{buildable = a})
             boolEditor
-    ,   mkFieldE (emptyParams
-        {   paraName    = Just "Non-exposed or non-main modules"
-        ,   synopsisP = Just "A list of modules used by the component but not exposed to users."
-        ,   shadow = Just ShadowIn
-        ,   direction = Just Vertical})
+    ,   mkField
+            (paraName <<<- ParaName "Non-exposed or non-main modules"
+                $ paraSynopsis <<<- ParaSynopsis
+                    "A list of modules used by the component but not exposed to users."
+                    $ paraShadow <<<- ParaShadow ShadowIn
+                        $ paraDirection <<<- ParaDirection Vertical
+                            $ emptyParams)
             otherModules
             (\ a b -> b{otherModules = a})
             (modulesEditor modules)
-    ,   mkFieldE (emptyParams
-        {   paraName    = Just "Where to look for the haskell module hierarchy"
-        ,   synopsisP = Just "Root directories for the module hierarchy."
-        ,   shadow = Just ShadowIn
-        ,   direction = Just Vertical})
+    ,   mkField
+            (paraName  <<<- ParaName
+                "Where to look for the haskell module hierarchy"
+                $ paraSynopsis <<<- ParaSynopsis
+                    "Root directories for the module hierarchy."
+                    $ paraShadow  <<<- ParaShadow ShadowIn
+                        $ paraDirection  <<<- ParaDirection Vertical
+                            $ emptyParams)
             hsSourceDirs
             (\ a b -> b{hsSourceDirs = a})
             (filesEditor fp FileChooserActionSelectFolder "Select folder")
     ]),
     ("Extensions",[
-        mkFieldE (emptyParams
-        {   paraName    = Just "Extensions"
-        ,   synopsisP = Just "A list of Haskell extensions used by every module."})
+        mkField
+            (paraName  <<<- ParaName "Extensions"
+                $ paraSynopsis  <<<- ParaSynopsis
+                    "A list of Haskell extensions used by every module."
+                    $ emptyParams)
             extensions
             (\ a b -> b{extensions = a})
             extensionsEditor
     ]),
     ("Options",[
-        mkFieldE (emptyParams
-        {   paraName    = Just "Options for haskell compilers"
-        ,   direction = Just Vertical})
+        mkField
+            (paraName  <<<- ParaName "Options for haskell compilers"
+                $ paraDirection <<<- ParaDirection Vertical
+                    $ emptyParams)
             options
             (\ a b -> b{options = a})
             (multisetEditor
@@ -141,70 +154,74 @@ buildInfoD fp modules = [
                                    ,("Options",\(_,op) -> [New.cellText := show op])])
                 ((pairEditor
                     (compilerFlavorEditor,emptyParams)
-                    (stringsEditor,emptyParams)),emptyParams
-                        {   direction = Just Vertical
-                        ,   shadow   = Just ShadowIn}))
-     ,  mkFieldE (emptyParams
-        {   paraName    = Just "Additional options for GHC when built with profiling"
-        ,   direction = Just Vertical})
+                    (stringsEditor,emptyParams)),
+                        (paraDirection <<<- ParaDirection Vertical
+                            $ paraShadow  <<<- ParaShadow ShadowIn $ emptyParams)))
+     ,  mkField
+            (paraName <<<- ParaName "Additional options for GHC when built with profiling"
+                $ paraDirection <<<- ParaDirection Vertical
+                    $ emptyParams)
             ghcProfOptions
             (\ a b -> b{ghcProfOptions = a})
             stringsEditor
-    ,   mkFieldE (emptyParams
-        {   paraName    = Just "Options for C compiler"
-        ,   direction = Just Vertical})
+    ,   mkField
+            (paraName <<<- ParaName "Options for C compiler"
+                $ paraDirection <<<- ParaDirection Vertical
+                    $ emptyParams)
             ccOptions
             (\ a b -> b{ccOptions = a})
             stringsEditor
-    ,   mkFieldE (emptyParams
-        {   paraName    = Just "Options for linker"
-        ,   direction = Just Vertical})
+    ,   mkField
+            (paraName <<<- ParaName "Options for linker"
+                $ paraDirection <<<- ParaDirection Vertical
+                    $ emptyParams)
             ldOptions
             (\ a b -> b{ldOptions = a})
             stringsEditor
     ]),
     ("C",[
-         mkFieldE (emptyParams
-        {   paraName    = Just "A list of header files already installed on the system"
-        ,   direction = Just Vertical})
+         mkField
+            (paraName <<<- ParaName "A list of header files already installed on the system"
+                $ paraDirection <<<- ParaDirection Vertical $ emptyParams)
             includes
             (\ a b -> b{includes = a})
             stringsEditor
-     ,   mkFieldE (emptyParams
-        {   paraName    = Just "A list of header files from this package"
-        ,   direction = Just Vertical})
+     ,   mkField
+            (paraName <<<- ParaName "A list of header files from this package"
+                $ paraDirection <<<- ParaDirection Vertical $ emptyParams)
             installIncludes
             (\ a b -> b{installIncludes = a})
             (filesEditor fp FileChooserActionOpen "Select File")
-     ,   mkFieldE (emptyParams
-        {   paraName    = Just "A list of directories to search for header files"
-        ,   direction = Just Vertical})
+     ,   mkField
+            (paraName <<<- ParaName "A list of directories to search for header files"
+                $ paraDirection <<<- ParaDirection Vertical $ emptyParams)
             includeDirs
             (\ a b -> b{includeDirs = a})
             (filesEditor fp FileChooserActionSelectFolder "Select Folder")
-     ,   mkFieldE (emptyParams
-        {   paraName    = Just "A list of C source files to be compiled,linked with the Haskell files."
-        ,   direction = Just Vertical})
+     ,   mkField
+            (paraName <<<- ParaName
+                "A list of C source files to be compiled,linked with the Haskell files."
+                $ paraDirection <<<- ParaDirection Vertical $ emptyParams)
             cSources
             (\ a b -> b{cSources = a})
             (filesEditor fp FileChooserActionOpen "Select file")
-     ,   mkFieldE (emptyParams
-        {   paraName    = Just "A list of extra libraries to link with"
-        ,   direction = Just Vertical})
+     ,   mkField
+            (paraName <<<- ParaName "A list of extra libraries to link with"
+                $ paraDirection <<<- ParaDirection Vertical $ emptyParams)
             extraLibs
             (\ a b -> b{extraLibs = a})
             stringsEditor
-     ,   mkFieldE (emptyParams
-        {   paraName    = Just "A list of directories to search for libraries."
-        ,   direction = Just Vertical})
+     ,   mkField
+            (paraName <<<- ParaName "A list of directories to search for libraries."
+                $ paraDirection <<<- ParaDirection Vertical $ emptyParams)
             extraLibDirs
             (\ a b -> b{extraLibDirs = a})
             (filesEditor fp FileChooserActionSelectFolder "Select Folder")
    ]),
     ("Mac OS X",[
-        mkFieldE (emptyParams
-        {   paraName    = Just "Support frameworks for Mac OS X"
-        ,   direction = Just Vertical})
+        mkField
+            (paraName <<<- ParaName "Support frameworks for Mac OS X"
+                $ paraDirection <<<- ParaDirection Vertical $ emptyParams)
             cSources
             (\ a b -> b{cSources = a})
             stringsEditor
@@ -216,7 +233,7 @@ editBuildInfo fp modules buildInfo contextStr = do
     res <- editBuildInfo' buildInfo contextStr (buildInfoD fp modules)
     return res
 
-editBuildInfo' :: BuildInfo -> String -> [(String,[FieldDescriptionE BuildInfo])] -> IO (Maybe BuildInfo)
+editBuildInfo' :: BuildInfo -> String -> [(String,[FieldDescription BuildInfo])] -> IO (Maybe BuildInfo)
 editBuildInfo' buildInfo contextStr buildInfoD = do
     resRef  <- newIORef Nothing
     dialog  <- windowNew
@@ -231,7 +248,7 @@ editBuildInfo' buildInfo contextStr buildInfoD = do
     notebookSetTabPos nb PosTop
     res <- mapM
         (\ (tabLabel, partBuildInfoD) -> do
-            resList <- mapM (\ (FDE _ editorF) -> editorF buildInfo) partBuildInfoD
+            resList <- mapM (\ (FD _ editorF) -> editorF buildInfo) partBuildInfoD
             let (widgetsP, setInjsP, getExtsP,notifiersP) = unzip4 resList
             nbbox <- vBoxNew False 0
             mapM_ (\ w -> boxPackStart nbbox w PackNatural 0) widgetsP
@@ -243,7 +260,7 @@ editBuildInfo' buildInfo contextStr buildInfoD = do
                 buildInfoD
     let (widgets, setInjs, getExts, notifiers) =
             foldl (\ (w,i,e,n) (w2,i2,e2,n2) -> (w ++ w2, i ++ i2, e ++ e2, n ++ n2)) ([],[],[],[]) res
-    let fieldNames = map (\fd -> case paraName (parameters fd) of
+    let fieldNames = map (\fd -> case getParameterPrim paraName (parameters fd) of
                                         Just s -> s
                                         Nothing -> "Unnamed")
                         $concatMap snd buildInfoD

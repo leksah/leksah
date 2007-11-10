@@ -20,7 +20,7 @@ import Graphics.UI.Gtk
 import Graphics.UI.Gtk.ModelView as New
 import System.Directory
 import Control.Monad.Reader
-import Distribution.PackageDescription 
+import Distribution.PackageDescription
 import Distribution.Package
 import Distribution.License
 import Data.IORef
@@ -34,15 +34,23 @@ import Text.ParserCombinators.ReadP(readP_to_S)
 import Language.Haskell.Extension
 
 import Ghf.Core
-import Ghf.PropertyEditor
+--import Ghf.PropertyEditor
 import Ghf.ViewFrame
+import GUI.Ghf.EditorBasics
+import GUI.Ghf.MakeEditor
+import GUI.Ghf.SimpleEditors
+import GUI.Ghf.CompositeEditors
+import GUI.Ghf.Parameters
+import Data.Ghf.Default
 
 packageEditor :: Editor PackageIdentifier
 packageEditor para = do
     (wid,inj,ext,notif) <- pairEditor
-        (stringEditor, emptyParams{paraName=Just "Name"})
-        (versionEditor, emptyParams{paraName=Just "Version"})
-        (para{direction = Just Horizontal,shadow   = Just ShadowIn})
+        (stringEditor, paraName <<<- ParaName "Name" $ emptyParams)
+        (versionEditor, paraName <<<- ParaName "Version" $ emptyParams)
+        (paraDirection <<<- ParaDirection Horizontal
+            $ paraShadow <<<- ParaShadow ShadowIn
+                $ para)
     let pinj (PackageIdentifier n v) = inj (n,v)
     let pext = do
         mbp <- ext
@@ -60,18 +68,18 @@ testedWidthEditor para = do
        (ColumnDescr False [("Compiler Flavor",\(cv,_) -> [New.cellText := show cv])
                            ,("Version Range",\(_,vr) -> [New.cellText := showVersionRange vr])])
        (pairEditor
-            (compilerFlavorEditor, emptyParams{shadow = Just ShadowNone})
-            (versionRangeEditor, emptyParams{shadow = Just ShadowNone}),
-            emptyParams{direction = Just Vertical})
+            (compilerFlavorEditor, paraShadow <<<- (ParaShadow ShadowNone) $ emptyParams)
+            (versionRangeEditor, paraShadow <<<- (ParaShadow ShadowNone) $ emptyParams),
+            (paraDirection <<<- (ParaDirection Vertical) $ emptyParams))
        para
 
 compilerFlavorEditor :: Editor CompilerFlavor
 compilerFlavorEditor para = do
     (wid,inj,ext,notif) <- eitherOrEditor
-        (staticSelectionEditor flavors, emptyParams{paraName=Just"Select compiler"})
-        (stringEditor, emptyParams{paraName=Just "Specify compiler"})
+        (staticSelectionEditor flavors, paraName <<<- (ParaName "Select compiler") $ emptyParams)
+        (stringEditor, paraName <<<- (ParaName "Specify compiler") $ emptyParams)
         "Other"
-        para{paraName = Just "Select"}
+        (paraName <<<- ParaName "Select" $ para)
     let cfinj (OtherCompiler str) = inj (Right "")
     let cfinj other = inj (Left other)
     let cfext = do
@@ -91,17 +99,22 @@ versionRangeEditor para = do
             (eitherOrEditor
                 (pairEditor
                     (staticSelectionEditor v1, emptyParams)
-                    (versionEditor,emptyParams{paraName = Just "Enter Version"}),
-                    emptyParams{direction = Just Vertical,paraName= Just "Simple Version Range"})
+                    (versionEditor, paraName <<<- ParaName "Enter Version" $ emptyParams),
+                    (paraDirection <<<- ParaDirection Vertical)
+                        $ paraName <<<- ParaName "Simple Version Range"
+                            $ emptyParams)
                 (pairEditor
                     (staticSelectionEditor v2, emptyParams)
                     (pairEditor
-                        (versionRangeEditor, emptyParams{shadow = Just ShadowIn})
-                        (versionRangeEditor, emptyParams{shadow = Just ShadowIn}),
-                        emptyParams{direction = Just Vertical}),
-                            emptyParams{direction = Just Vertical, paraName= Just "Complex Version Range"})
-                "Complex",emptyParams{paraName= Just "Simple"}) False "Any Version"
-                    para{direction = Just Vertical}
+                        (versionRangeEditor, paraShadow <<<- ParaShadow ShadowIn $ emptyParams)
+                        (versionRangeEditor, paraShadow <<<- ParaShadow ShadowIn $ emptyParams),
+                        paraDirection <<<- ParaDirection Vertical $ emptyParams),
+                            paraDirection <<<- ParaDirection Vertical
+                                $ paraName <<<- ParaName "Complex Version Range"
+                                    $ emptyParams)
+                        "Complex",paraName <<<- ParaName "Simple"
+                                    $ emptyParams) False "Any Version"
+                        (paraDirection <<<- ParaDirection Vertical $ para)
     let vrinj AnyVersion                =   inj Nothing
         vrinj (ThisVersion v)           =   inj (Just (Left (ThisVersionS,v)))
         vrinj (LaterVersion v)          =   inj (Just (Left (LaterVersionS,v)))
@@ -169,9 +182,9 @@ versionEditor para = do
 dependencyEditor :: Editor Dependency
 dependencyEditor para = do
     (wid,inj,ext,notif) <- pairEditor
-        (stringEditor,emptyParams {paraName = Just "Package Name"})
-        (versionRangeEditor,emptyParams {paraName = Just "Version"})
-        (para{direction = Just Vertical})
+        (stringEditor,paraName <<<- ParaName "Package Name" $ emptyParams)
+        (versionRangeEditor,paraName <<<- ParaName "Version" $ emptyParams)
+        (paraDirection <<<- ParaDirection Vertical $ para)
     let pinj (Dependency s v) = inj (s,v)
     let pext = do
         mbp <- ext
@@ -186,19 +199,22 @@ dependenciesEditor p =
     multisetEditor
         (ColumnDescr True [("Package",\(Dependency str _) -> [New.cellText := str])
                            ,("Version",\(Dependency _ vers) -> [New.cellText := showVersionRange vers])])
-        (dependencyEditor,emptyParams) p{shadow = Just ShadowIn}
+        (dependencyEditor,emptyParams)
+            (paraShadow <<<- ParaShadow ShadowIn $ p)
 
 filesEditor :: Maybe FilePath -> FileChooserAction -> String -> Editor [FilePath]
 filesEditor fp act label p =
     multisetEditor
         (ColumnDescr False [("",(\row -> [New.cellText := row]))])
-        (fileEditor fp act label, emptyParams) p{shadow = Just ShadowIn}
+        (fileEditor fp act label, emptyParams)
+            (paraShadow <<<- ParaShadow ShadowIn $ p)
 
 stringsEditor :: Editor [String]
 stringsEditor p =
     multisetEditor
         (ColumnDescr False [("",(\row -> [New.cellText := row]))])
-        (stringEditor, emptyParams) p{shadow = Just ShadowIn}
+        (stringEditor, emptyParams)
+            (paraShadow <<<- ParaShadow ShadowIn $ p)
 
 panePathEditor :: Editor StandardPath
 panePathEditor = staticSelectionEditor [LeftTop,LeftBottom,RightTop,RightBottom]

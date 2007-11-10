@@ -33,76 +33,17 @@ import qualified Text.PrettyPrint.HughesPJ as PP
 import Ghf.Log
 import Ghf.Core
 import Ghf.ViewFrame
-import Ghf.PropertyEditor hiding(parameters,fieldEditor)
+import Ghf.BuildInfoEditor
+import GUI.Ghf.EditorBasics
+import GUI.Ghf.MakeEditor hiding (fieldEditor, parameters)
+import GUI.Ghf.SimpleEditors
+import GUI.Ghf.CompositeEditors
+import GUI.Ghf.Parameters
 import Ghf.SourceEditor
 import Ghf.PrinterParser hiding (fieldParser,parameters)
 import Ghf.File
 import Ghf.SpecialEditors
-
-type Applicator alpha = alpha -> GhfAction
-
-data FieldDescription alpha =  FD {
-        parameters      ::  Parameters
-    ,   fieldPrinter    ::  alpha -> PP.Doc
-    ,   fieldParser     ::  alpha -> P.CharParser () alpha
-    ,   fieldEditor     ::  alpha -> IO (Widget, Injector alpha , alpha -> Extractor alpha , Notifier)
-    ,   applicator      ::  alpha -> alpha -> GhfAction
-    }
-
-type MkFieldDescription alpha beta =
-    Parameters      ->
-    (Printer beta)     ->
-    (Parser beta)      ->
-    (Getter alpha beta)    ->
-    (Setter alpha beta)    ->
-    (Editor beta)      ->
-    (Applicator beta)  ->
-    FieldDescription alpha
-
-mkField :: Eq beta => MkFieldDescription alpha beta
-mkField parameters printer parser getter setter editor applicator =
-    FD parameters
-        (\ dat -> (PP.text (case paraName parameters of
-                                    Nothing -> ""
-                                    Just str -> str) PP.<> PP.colon)
-                PP.$$ (PP.nest 15 (printer (getter dat)))
-                PP.$$ (PP.nest 5 (case synopsisP parameters of
-                                    Nothing -> PP.empty
-                                    Just str -> PP.text $"--" ++ str)))
-        (\ dat -> P.try (do
-            symbol (case paraName parameters of
-                                    Nothing -> ""
-                                    Just str -> str)
-            colon
-            val <- parser
-            return (setter val dat)))
-        (\ dat -> do
-            (widget, inj,ext,noti) <- editor parameters
-            inj (getter dat)
-            noti FocusOut (Left (\e -> do
-                putStrLn "Handling Focus out"
-                v <- ext
-                case v of
-                    Just _ -> do
-                        widgetModifyFg widget StateNormal (Color 0 0 0)
-                        return False
-                    Nothing -> do
-                        widgetModifyFg widget StateNormal (Color 65535 65535 0)
-                        return False))
-            return (widget,
-                    (\a -> inj (getter a)),
-                    (\a -> do
-                        b <- ext
-                        case b of
-                            Just b -> return (Just (setter b a))
-                            Nothing -> return Nothing),
-                    noti))
-        (\ newDat oldDat -> do --appicator
-            let newField = getter newDat
-            let oldField = getter oldDat
-            if newField == oldField
-                then return ()
-                else applicator newField)
+import Ghf.DescriptionPP
 
 defaultPrefs = Prefs {
         showLineNumbers     =   True
@@ -122,12 +63,12 @@ defaultPrefs = Prefs {
     ,   sourceDirectories   =   ["C:/ghc","C:/cygwin/home/Nicklisch-Franken/collect"]
     }
 
-prefsDescription :: [(String,[FieldDescription Prefs])]
+prefsDescription :: [(String,[FieldDescriptionPP Prefs])]
 prefsDescription = [
     ("Editor", [
-        mkField (emptyParams
-            {   paraName = Just "Show line numbers"
-            ,   synopsisP = Just"(True/False)"})
+        mkFieldPP
+            (paraName <<<- ParaName "Show line numbers"
+                $ paraSynopsis <<<- ParaSynopsis "(True/False)" $ emptyParams)
             (PP.text . show)
             boolParser
             showLineNumbers
@@ -136,8 +77,8 @@ prefsDescription = [
             (\b -> do
                 buffers <- allBuffers
                 mapM_ (\buf -> lift$sourceViewSetShowLineNumbers (sourceView buf) b) buffers)
-    ,   mkField (emptyParams
-            {   paraName = Just "TextView Font"})
+    ,   mkFieldPP
+            (paraName <<<- ParaName "TextView Font" $ emptyParams)
             (\a -> PP.text (case a of Nothing -> show ""; Just s -> show s))
             (do str <- stringParser
                 return (if null str then Nothing else Just (str)))
@@ -148,16 +89,17 @@ prefsDescription = [
                 buffers <- allBuffers
                 fdesc <- lift $fontDescriptionFromString (case mbs of Just str -> str; Nothing -> "")
                 lift $mapM_ (\buf -> widgetModifyFont (castToWidget $sourceView buf) (Just fdesc)) buffers)
-    ,   mkField (emptyParams
-            {  paraName = Just "Right margin"
-            ,  synopsisP = Just "Size or 0 for no right margin"
-            ,  shadow   = Just ShadowIn})
+    ,   mkFieldPP
+            (paraName <<<- ParaName "Right margin"
+                $ paraSynopsis <<<- ParaSynopsis "Size or 0 for no right margin"
+                    $ paraShadow <<<- ParaShadow ShadowIn $ emptyParams)
             (\a -> (PP.text . show) (case a of Nothing -> 0; Just i -> i))
             (do i <- intParser
                 return (if i == 0 then Nothing else Just i))
             rightMargin
             (\b a -> a{rightMargin = b})
-            (maybeEditor (intEditor (1.0, 200.0, 5.0), emptyParams {paraName = Just "Position"})
+            (maybeEditor (intEditor (1.0, 200.0, 5.0), paraName <<<- ParaName "Position"
+                    $ emptyParams)
                     True "Show it ?")
             (\b -> do
                 buffers <- allBuffers
@@ -167,7 +109,8 @@ prefsDescription = [
                                     lift $sourceViewSetShowMargin (sourceView buf) True
                                 Nothing -> lift $sourceViewSetShowMargin (sourceView buf) False)
                                                 buffers)
-    ,   mkField (emptyParams{paraName = Just "Tab width"})
+    ,   mkFieldPP
+            (paraName <<<- ParaName "Tab width" $ emptyParams)
             (PP.text . show)
             intParser
             tabWidth
@@ -176,22 +119,25 @@ prefsDescription = [
             (\i -> do
                 buffers <- allBuffers
                 mapM_ (\buf -> lift $sourceViewSetTabsWidth (sourceView buf) i) buffers)
-    ,   mkField (emptyParams{paraName = Just "Use standard line ends even on windows"})
+    ,   mkFieldPP
+            (paraName <<<- ParaName "Use standard line ends even on windows" $ emptyParams)
             (PP.text . show)
             boolParser
             forceLineEnds
             (\b a -> a{forceLineEnds = b})
             boolEditor
             (\i -> return ())
-    ,   mkField (emptyParams
-            {   paraName = Just "Source candy"
-            ,   synopsisP = Just"Empty for do not use or the name of a candy file in a config dir"
-            ,   shadow   = Just ShadowIn})
+    ,   mkFieldPP
+            (paraName <<<- ParaName "Source candy"
+                $ paraSynopsis <<<- ParaSynopsis
+                    "Empty for do not use or the name of a candy file in a config dir"
+                    $ paraShadow <<<- ParaShadow ShadowIn $ emptyParams)
             (\a -> PP.text (case a of Nothing -> ""; Just s -> s))
             (do id <- identifier
                 return (if null id then Nothing else Just (id)))
             sourceCandy (\b a -> a{sourceCandy = b})
-            (maybeEditor (stringEditor, emptyParams{paraName = Just "Candy specification"})
+            (maybeEditor (stringEditor, paraName <<<- ParaName "Candy specification"
+                                    $ emptyParams)
                     True "Use it ?")
             (\cs -> case cs of
                         Nothing -> do
@@ -200,9 +146,11 @@ prefsDescription = [
                         Just name -> do
                             setCandyState True
                             editCandy)
-    ,   mkField (emptyParams{   paraName = Just "Name of the keymap"
-                            ,   synopsisP = Just "The name of a keymap file in a config dir"
-                            ,   direction = Just Horizontal})
+    ,   mkFieldPP
+            (paraName <<<- ParaName "Name of the keymap"
+                $ paraSynopsis <<<- ParaSynopsis
+                    "The name of a keymap file in a config dir"
+                    $ paraDirection <<<- ParaDirection Horizontal $ emptyParams)
             PP.text
             identifier
             keymapName
@@ -211,8 +159,8 @@ prefsDescription = [
             (\ a -> return ())
     ]),
     ("Other", [
-        mkField (emptyParams
-            {   paraName = Just "LogView Font"})
+        mkFieldPP
+            (paraName <<<- ParaName "LogView Font" $ emptyParams)
             (\a -> PP.text (case a of Nothing -> show ""; Just s -> show s))
             (do str <- stringParser
                 return (if null str then Nothing else Just (str)))
@@ -223,32 +171,38 @@ prefsDescription = [
                 buffer <- getLog
                 fdesc <- lift $fontDescriptionFromString (case mbs of Just str -> str; Nothing -> "")
                 lift $widgetModifyFont (castToWidget $textView buffer) (Just fdesc))
-    ,   mkField (emptyParams
-            {   paraName = Just "Window default size"
-            ,   synopsisP = Just "Default size of the main ghf window specified as pair (int,int)"
-            ,   shadow   = Just ShadowIn})
+    ,   mkFieldPP
+            (paraName <<<- ParaName "Window default size"
+                $ paraSynopsis <<<- ParaSynopsis
+                    "Default size of the main ghf window specified as pair (int,int)"
+                    $ paraShadow <<<- ParaShadow ShadowIn $ emptyParams)
             (PP.text.show)
             (pairParser intParser)
             defaultSize (\(c,d) a -> a{defaultSize = (c,d)})
-            (pairEditor ((intEditor (0.0, 3000.0, 25.0)), emptyParams {paraName = Just "X"})
-                        ((intEditor (0.0, 3000.0, 25.0)), emptyParams {paraName = Just "Y"}))
+            (pairEditor ((intEditor (0.0, 3000.0, 25.0)),
+                            paraName <<<- ParaName "X" $ emptyParams)
+                        ((intEditor (0.0, 3000.0, 25.0)),
+                            paraName <<<- ParaName "Y" $ emptyParams))
             (\a -> return ())
-    ,   mkField (emptyParams{paraName = Just "Browser"})
+    ,   mkFieldPP
+            (paraName <<<- ParaName "Browser" $ emptyParams)
             (PP.text . show)
             stringParser
             browser
             (\b a -> a{browser = b})
             stringEditor
             (\i -> return ())
-    ,   mkField (emptyParams{paraName = Just "Standard source editor path"})
+    ,   mkFieldPP
+            (paraName <<<- ParaName "Standard source editor path" $ emptyParams)
             (PP.text . show)
             readParser
             sourcePanePath
             (\b a -> a{sourcePanePath = b})
             panePathEditor
             (\i -> return ())
-    ,   mkField (emptyParams{paraName = Just
-                    "Paths under which haskell sources for packages may be found"})
+    ,   mkFieldPP
+            (paraName <<<- ParaName
+                "Paths under which haskell sources for packages may be found" $ emptyParams)
             (PP.text . show)
             readParser
             sourceDirectories
@@ -268,7 +222,7 @@ readPrefs fn = do
         Left pe -> error $"Error reading prefs file " ++ show fn ++ " " ++ show pe
         Right r -> return r
 
-prefsParser ::  a ->  [FieldDescription a] ->  P.CharParser () a
+prefsParser ::  a ->  [FieldDescriptionPP a] ->  P.CharParser () a
 prefsParser def descriptions =
     let parsersF = map fieldParser descriptions in do
         whiteSpace
@@ -283,9 +237,9 @@ prefsParser def descriptions =
 writePrefs :: FilePath -> Prefs -> IO ()
 writePrefs fpath prefs = writeFile fpath (showPrefs prefs (concatMap snd prefsDescription))
 
-showPrefs ::  a ->  [FieldDescription a] ->  String
+showPrefs ::  a ->  [FieldDescriptionPP a] ->  String
 showPrefs prefs prefsDesc = PP.render $
-    foldl (\ doc (FD _ printer _ _ _) ->  doc PP.$+$ printer prefs) PP.empty prefsDesc
+    foldl (\ doc (FDPP _ printer _ _ _) ->  doc PP.$+$ printer prefs) PP.empty prefsDesc
 
 
 -- ------------------------------------------------------------
@@ -300,7 +254,7 @@ editPrefs = do
     lift $putStrLn $show res
 
 
-editPrefs' :: Prefs -> [(String,[FieldDescription Prefs])] -> GhfRef -> IO ()
+editPrefs' :: Prefs -> [(String,[FieldDescriptionPP Prefs])] -> GhfRef -> IO ()
 editPrefs' prefs prefsDesc ghfR  = do
     let flatPrefsDesc = concatMap snd prefsDesc
     lastAppliedPrefsRef <- newIORef prefs
@@ -331,7 +285,7 @@ editPrefs' prefs prefsDesc ghfR  = do
                 prefsDesc
     let (widgets, setInjs, getExts, notifiers) =
             foldl (\ (w,i,e,n) (w2,i2,e2,n2) -> (w ++ w2, i ++ i2, e ++ e2, n ++ n2)) ([],[],[],[]) res
-    let fieldNames = map (\fd -> case paraName (parameters fd) of
+    let fieldNames = map (\fd -> case getParameterPrim paraName (parameters fd) of
                                         Just s -> s
                                         Nothing -> "Unnamed") flatPrefsDesc
     ok `onClicked` (do
@@ -340,7 +294,7 @@ editPrefs' prefs prefsDesc ghfR  = do
             Nothing -> return ()
             Just newPrefs -> do
                 lastAppliedPrefs <- readIORef lastAppliedPrefsRef
-                mapM_ (\ (FD _ _ _ _ applyF) -> runReaderT (applyF newPrefs lastAppliedPrefs) ghfR) flatPrefsDesc
+                mapM_ (\ (FDPP _ _ _ _ applyF) -> runReaderT (applyF newPrefs lastAppliedPrefs) ghfR) flatPrefsDesc
                 fp <- getConfigFilePathForSave "Default.prefs"
                 writePrefs fp newPrefs
                 runReaderT (modifyGhf_ (\ghf -> return (ghf{prefs = newPrefs}))) ghfR
@@ -352,16 +306,16 @@ editPrefs' prefs prefsDesc ghfR  = do
             Nothing -> return ()
             Just newPrefs -> do
                 lastAppliedPrefs <- readIORef lastAppliedPrefsRef
-                mapM_ (\ (FD _ _ _ _ applyF) -> runReaderT (applyF newPrefs lastAppliedPrefs) ghfR) flatPrefsDesc
+                mapM_ (\ (FDPP _ _ _ _ applyF) -> runReaderT (applyF newPrefs lastAppliedPrefs) ghfR) flatPrefsDesc
                 writeIORef lastAppliedPrefsRef newPrefs)
     restore `onClicked` (do
         lastAppliedPrefs <- readIORef lastAppliedPrefsRef
-        mapM_ (\ (FD _ _ _ _ applyF) -> runReaderT (applyF prefs lastAppliedPrefs) ghfR) flatPrefsDesc
+        mapM_ (\ (FDPP _ _ _ _ applyF) -> runReaderT (applyF prefs lastAppliedPrefs) ghfR) flatPrefsDesc
         mapM_ (\ setInj -> setInj prefs) setInjs
         writeIORef lastAppliedPrefsRef prefs)
     cancel `onClicked` (do
         lastAppliedPrefs <- readIORef lastAppliedPrefsRef
-        mapM_ (\ (FD _ _ _ _ applyF) -> runReaderT (applyF prefs lastAppliedPrefs) ghfR) flatPrefsDesc
+        mapM_ (\ (FDPP _ _ _ _ applyF) -> runReaderT (applyF prefs lastAppliedPrefs) ghfR) flatPrefsDesc
         widgetDestroy dialog
         mainQuit)
     dialog `onDelete` (\_ -> do

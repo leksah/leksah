@@ -35,7 +35,7 @@ import Ghf.SourceEditor
 import Ghf.File
 import Ghf.PrinterParser
 import qualified Text.PrettyPrint.HughesPJ as PP
-import Ghf.PropertyEditor
+import GUI.Ghf.Parameters
 import Ghf.Package
 
 sessionFilename = "Current.session"
@@ -55,26 +55,26 @@ defaultLayout = SessionState {
 
 layoutDescr :: [FieldDescriptionS SessionState]
 layoutDescr = [
-        mkFieldS (emptyParams
-            {   paraName = Just "Layout"})
+        mkFieldS
+            (paraName <<<- ParaName "Layout" $ emptyParams)
             (PP.text . show)
             readParser
             layoutS
             (\ b a -> a{layoutS = b})
-    ,   mkFieldS (emptyParams
-            {   paraName = Just "Population"})
+    ,   mkFieldS
+            (paraName <<<- ParaName "Population" $ emptyParams)
             (PP.text . show)
             readParser
             population
             (\ b a -> a{population = b})
-    ,   mkFieldS (emptyParams
-            {   paraName = Just "Window size"})
+    ,   mkFieldS
+            (paraName <<<- ParaName "Window size" $ emptyParams)
             (PP.text . show)
             (pairParser intParser)
             windowSize
             (\(c,d) a -> a{windowSize = (c,d)})
-    ,   mkFieldS (emptyParams
-            {   paraName = Just "Active package"})
+    ,   mkFieldS
+            (paraName <<<- ParaName "Active package" $ emptyParams)
             (PP.text . show)
             readParser
             activePackage

@@ -33,7 +33,9 @@ import Text.ParserCombinators.Parsec.Language
 import qualified Text.ParserCombinators.Parsec.Token as P
 import Text.ParserCombinators.Parsec hiding(Parser)
 import qualified Text.PrettyPrint.HughesPJ as PP
-import Ghf.PropertyEditor
+
+import GUI.Ghf.Parameters
+import GUI.Ghf.EditorBasics
 
 
 type Printer beta       =   beta -> PP.Doc
@@ -60,15 +62,15 @@ type MkFieldDescriptionS alpha beta =
 mkFieldS :: Eq beta => MkFieldDescriptionS alpha beta
 mkFieldS parameters printer parser getter setter =
     FDS parameters
-        (\ dat -> (PP.text (case paraName parameters of
+        (\ dat -> (PP.text (case getParameterPrim paraName parameters of
                                     Nothing -> ""
                                     Just str -> str) PP.<> PP.colon)
                 PP.$$ (PP.nest 15 (printer (getter dat)))
-                PP.$$ (PP.nest 5 (case synopsisP parameters of
+                PP.$$ (PP.nest 5 (case getParameterPrim paraSynopsis parameters of
                                     Nothing -> PP.empty
                                     Just str -> PP.text $"--" ++ str)))
         (\ dat -> try (do
-            symbol (case paraName parameters of
+            symbol (case getParameterPrim paraName parameters of
                                     Nothing -> ""
                                     Just str -> str)
             colon

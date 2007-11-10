@@ -69,7 +69,7 @@ import Ghf.File
 import Ghf.Core
 import Ghf.SourceCandy
 import Ghf.ViewFrame
-import Ghf.PropertyEditor
+--import Ghf.PropertyEditor
 import Ghf.SpecialEditors
 import Ghf.Log
 import {-# SOURCE #-} Ghf.Collector

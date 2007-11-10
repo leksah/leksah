@@ -38,8 +38,12 @@ import Ghf.Core
 import Ghf.File
 import Ghf.SpecialEditors
 import Ghf.ViewFrame
-import Ghf.PropertyEditor
 import Ghf.BuildInfoEditor
+import GUI.Ghf.EditorBasics
+import GUI.Ghf.MakeEditor
+import GUI.Ghf.SimpleEditors
+import GUI.Ghf.CompositeEditors
+import GUI.Ghf.Parameters
 
 standardSetup = "#!/usr/bin/runhaskell \n"
                     ++ "> module Main where\n"
@@ -141,83 +145,94 @@ packageNew = do
                     editPackage emptyPackageDescription dirName modules
                     return ()
 
-type PDescr = [(String,[FieldDescriptionE PackageDescription])]
+type PDescr = [(String,[FieldDescription PackageDescription])]
 
 packageDD :: FilePath -> [String] -> PDescr
 packageDD fp modules = [
     ("Description -1-", [
-        mkFieldE (emptyParams
-            {   paraName = Just "Package Identifier"})
+        mkField
+            (paraName <<<- ParaName "Package Identifier" $ emptyParams)
             package
             (\ a b -> b{package = a})
             packageEditor
-    ,   mkFieldE (emptyParams
-            {   paraName    = Just "Cabal version"
-            ,   synopsisP = Just "Does this package depends on a specific version of Cabal?"
-            ,   shadow      = Just ShadowIn})
+    ,   mkField
+            (paraName <<<- ParaName "Cabal version"
+                $ paraSynopsis <<<- ParaSynopsis
+                    "Does this package depends on a specific version of Cabal?"
+                    $ paraShadow <<<- ParaShadow ShadowIn $ emptyParams)
             descCabalVersion
             (\ a b -> b{descCabalVersion = a})
             versionRangeEditor
-    ,   mkFieldE (emptyParams{paraName=Just "License"})
+    ,   mkField
+            (paraName <<<- ParaName "License" $ emptyParams)
             license
             (\ a b -> b{license = a})
             (staticSelectionEditor [GPL, LGPL, BSD3, BSD4, PublicDomain, AllRightsReserved, OtherLicense])
-    ,   mkFieldE (emptyParams{paraName=Just "License File"})
+    ,   mkField
+            (paraName <<<- ParaName "License File" $ emptyParams)
             licenseFile
             (\ a b -> b{licenseFile = a})
             (fileEditor (Just fp) FileChooserActionOpen "Select file")
-    ,   mkFieldE (emptyParams{paraName=Just "Copyright"})
+    ,   mkField
+            (paraName <<<- ParaName "Copyright" $ emptyParams)
             copyright
             (\ a b -> b{copyright = a})
             stringEditor
-    ,   mkFieldE (emptyParams{paraName=Just "Author"})
+    ,   mkField
+            (paraName <<<- ParaName "Author" $ emptyParams)
             author
             (\ a b -> b{author = a})
             stringEditor
-    ,   mkFieldE (emptyParams{paraName=Just "Maintainer"})
+    ,   mkField
+            (paraName <<<- ParaName "Maintainer" $ emptyParams)
             maintainer
             (\ a b -> b{maintainer = a})
             stringEditor
     ]),
     ("Description -2-",[
-        mkFieldE (emptyParams{paraName=Just "Stability"})
+        mkField
+            (paraName <<<- ParaName "Stability" $ emptyParams)
             stability
             (\ a b -> b{stability = a})
             stringEditor
-    ,   mkFieldE (emptyParams
-            {   paraName    = Just "Homepage"})
+    ,   mkField
+            (paraName <<<- ParaName "Homepage" $ emptyParams)
             homepage
             (\ a b -> b{homepage = a})
             stringEditor
-    ,   mkFieldE (emptyParams{paraName=Just "Package Url"})
+    ,   mkField
+            (paraName <<<- ParaName "Package URL" $ emptyParams)
             pkgUrl
             (\ a b -> b{pkgUrl = a})
             stringEditor
-    ,   mkFieldE (emptyParams
-            {   paraName    = Just "Synopsis"
-            ,   synopsisP   = Just"A one-line summary of this package"})
+    ,   mkField
+            (paraName <<<- ParaName "Synopsis"
+                $ paraSynopsis <<<- ParaSynopsis "A one-line summary of this package"
+                    $ emptyParams)
             synopsis
             (\ a b -> b{synopsis = a})
             stringEditor
-    ,   mkFieldE (emptyParams
-            {   paraName    = Just "Description"
-            ,   synopsisP   = Just "A more verbose description of this package"
-            ,   shadow      = Just ShadowOut
-            ,   minSize     = Just (-1,250)})
+    ,   mkField
+            (paraName <<<- ParaName "Description"
+                $ paraSynopsis <<<- ParaSynopsis "A more verbose description of this package"
+                    $ paraShadow <<<- ParaShadow ShadowOut
+                        $ paraMinSize <<<- ParaMinSize (-1,250)
+                            $ emptyParams)
             description
             (\ a b -> if null a then b{description = " \n\n\n\n\n"} else  b{description = a})
             multilineStringEditor
-    ,   mkFieldE (emptyParams
-            {   paraName    = Just "Category"})
+    ,   mkField
+            (paraName <<<- ParaName "Category" $ emptyParams)
             category
             (\ a b -> b{category = a})
             stringEditor
     ]),
     ("Tested With",[
-        mkFieldE (emptyParams
-        {   paraName    = Just "Tested with compiler"
-        ,   shadow      = Just ShadowIn
-        ,   direction   = Just Vertical})
+        mkField
+            (paraName <<<- ParaName "Tested with compiler"
+                $ paraShadow <<<- ParaShadow ShadowIn
+                    $ paraDirection <<<- ParaDirection Vertical
+                        $ emptyParams)
             (\a -> case testedWith a of
                 []          -> [(GHC,AnyVersion)]
                 l           -> l)
@@ -225,53 +240,59 @@ packageDD fp modules = [
             testedWidthEditor
     ]),
     ("Dependencies",[
-        mkFieldE (emptyParams
-        {   paraName    = Just "Build Dependencies"
-        ,   synopsisP   = Just "Does this package depends on other packages?"
-        ,   direction   = Just Vertical})
+        mkField
+            (paraName <<<- ParaName "Build Dependencies"
+                $ paraSynopsis <<<- ParaSynopsis "Does this package depends on other packages?"
+                    $ paraDirection <<<- ParaDirection Vertical $ emptyParams)
             buildDepends
             (\ a b -> b{buildDepends = a})
             dependenciesEditor
     ]),
     ("Other Files",[
-        mkFieldE (emptyParams
-        {   paraName    = Just "Data Files"
-        ,   synopsisP   = Just "A list of files to be installed for run-time use by the package."
-        ,   direction   = Just Vertical})
+        mkField
+            (paraName <<<- ParaName "Data Files"
+                $ paraSynopsis <<<- ParaSynopsis
+                    "A list of files to be installed for run-time use by the package."
+                    $ paraDirection <<<- ParaDirection Vertical $ emptyParams)
             dataFiles
             (\ a b -> b{dataFiles = a})
             (filesEditor (Just fp) FileChooserActionOpen "Select File")
-    ,   mkFieldE (emptyParams
-        {   paraName    = Just "Extra Source Files"
-        ,   synopsisP   = Just "A list of additional files to be included in source distributions."
-        ,   direction   = Just Vertical})
+    ,   mkField
+            (paraName <<<- ParaName "Extra Source Files"
+                $ paraSynopsis <<<- ParaSynopsis
+                    "A list of additional files to be included in source distributions."
+                    $ paraDirection <<<- ParaDirection Vertical $ emptyParams)
             extraSrcFiles
             (\ a b -> b{extraSrcFiles = a})
             (filesEditor (Just fp) FileChooserActionOpen "Select File")
-    ,   mkFieldE (emptyParams
-        {   paraName    = Just "Extra Tmp Files"
-        ,   synopsisP   = Just "A list of additional files or directories to be removed by setup clean."
-        ,   direction   = Just Vertical})
+    ,   mkField
+            (paraName <<<- ParaName "Extra Tmp Files"
+                $ paraSynopsis <<<- ParaSynopsis
+                    "A list of additional files or directories to be removed by setup clean."
+                    $ paraDirection <<<- ParaDirection Vertical $ emptyParams)
             extraTmpFiles
             (\ a b -> b{extraTmpFiles = a})
             (filesEditor (Just fp) FileChooserActionOpen "Select File")
     ]),
     ("Library",[
-        mkFieldE (emptyParams
-        {   paraName    = Just "Library"
-        ,   synopsisP   = Just "If the package contains a library, specify the exported modules here"
-        ,   shadow      = Just ShadowIn
-        ,   direction   = Just Vertical})
+        mkField
+            (paraName <<<- ParaName "Library"
+                $ paraSynopsis <<<- ParaSynopsis
+                    "If the package contains a library, specify the exported modules here"
+                    $ paraDirection <<<- ParaDirection Vertical
+                        $ paraShadow <<<- ParaShadow ShadowIn $ emptyParams)
             library
             (\ a b -> b{library  = a})
-            (maybeEditor (libraryEditor (Just fp) modules,emptyParams{paraName = Just "Specify exported modules"}) True
+            (maybeEditor (libraryEditor (Just fp) modules,
+                paraName <<<- ParaName "Specify exported modules" $ emptyParams) True
                 "Does this package contain a library?")
     ]),
     ("Executables",[
-        mkFieldE (emptyParams
-        {   paraName    = Just "Executables"
-        ,   synopsisP   = Just "Describe executable programs contained in the package"
-        ,   direction   = Just Vertical})
+        mkField
+            (paraName <<<- ParaName "Executables"
+                $ paraSynopsis <<<- ParaSynopsis
+                "Describe executable programs contained in the package"
+                    $ paraDirection <<<- ParaDirection Vertical $ emptyParams)
             executables
             (\ a b -> b{executables = a})
             (executablesEditor (Just fp) modules)
@@ -302,7 +323,7 @@ editPackage' packageDir packageD packageDD ghfR   =
         notebookSetTabPos nb PosTop
         res <- mapM
             (\ (tabLabel, partPackageDesc) -> do
-                resList <- mapM (\ (FDE _ editorF) -> editorF packageD) partPackageDesc
+                resList <- mapM (\ (FD _ editorF) -> editorF packageD) partPackageDesc
                 let (widgetsP, setInjsP, getExtsP, notifiersP) = unzip4 resList
                 nbbox <- vBoxNew False 0
                 mapM_ (\ w -> boxPackStart nbbox w PackNatural 0) widgetsP
@@ -314,7 +335,7 @@ editPackage' packageDir packageD packageDD ghfR   =
                     packageDD
         let (widgets, setInjs, getExts, notifiers) =
                 foldl (\ (w,i,e,n) (w2,i2,e2,n2) -> (w ++ w2, i ++ i2, e ++ e2, n ++ n2)) ([],[],[],[]) res
-        let fieldNames = map (\fd -> case paraName (parameters fd) of
+        let fieldNames = map (\fd -> case getParameterPrim paraName (parameters fd) of
                                             Just s -> s
                                             Nothing -> "Unnamed")
                             $concat

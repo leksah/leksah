@@ -82,7 +82,12 @@ import Data.Maybe
 import Ghf.Core
 import Ghf.ViewFrame
 import Ghf.SourceCandy
-import Ghf.PropertyEditor
+import Ghf.BuildInfoEditor
+import GUI.Ghf.EditorBasics
+import GUI.Ghf.MakeEditor
+import GUI.Ghf.SimpleEditors
+import GUI.Ghf.CompositeEditors
+import GUI.Ghf.Parameters
 import Ghf.Log
 import Ghf.Info
 import Ghf.InfoPane
@@ -964,30 +969,30 @@ data ReplaceState = ReplaceState{
 
 emptyReplaceState = ReplaceState "" "" False False False
 
-replaceDescription :: [FieldDescriptionE ReplaceState]
+replaceDescription :: [FieldDescription ReplaceState]
 replaceDescription = [
-        mkFieldE (emptyParams
-            {   paraName = Just "Search for"})
+        mkField
+            (paraName <<<- ParaName "Search for" $ emptyParams)
             searchFor
             (\ b a -> a{searchFor = b})
             stringEditor
-    ,   mkFieldE (emptyParams
-            {   paraName = Just "Replace with"})
+    ,   mkField
+            (paraName <<<- ParaName "Replace with" $ emptyParams)
             replaceWith
             (\ b a -> a{replaceWith = b})
             stringEditor
-    ,   mkFieldE (emptyParams
-            {   paraName = Just "Match case"})
+    ,   mkField
+            (paraName <<<- ParaName "Match case" $ emptyParams)
             matchCase
             (\ b a -> a{matchCase = b})
             boolEditor
-    ,   mkFieldE (emptyParams
-            {   paraName = Just "Entire word"})
+    ,   mkField
+            (paraName <<<- ParaName "Entire word" $ emptyParams)
             matchEntire
             (\ b a -> a{matchEntire = b})
             boolEditor
-    ,   mkFieldE (emptyParams
-            {   paraName = Just "Search backwards"})
+    ,   mkField
+            (paraName <<<- ParaName "Search backwards" $ emptyParams)
             searchBackwards
             (\ b a -> a{searchBackwards = b})
             boolEditor]
@@ -998,7 +1003,7 @@ replaceDialog = do
     lift $replaceDialog' emptyReplaceState replaceDescription ghfR
 
 
-replaceDialog' :: ReplaceState -> [FieldDescriptionE ReplaceState] -> GhfRef -> IO ()
+replaceDialog' :: ReplaceState -> [FieldDescription ReplaceState] -> GhfRef -> IO ()
 replaceDialog' replace replaceDesc ghfR  = do
     dialog  <- windowNew
     vb      <- vBoxNew False 0
@@ -1014,7 +1019,7 @@ replaceDialog' replace replaceDesc ghfR  = do
     resList <- mapM (\ fd -> (fieldEditor fd) replace) replaceDesc
     let (widgetsP, setInjsP, getExtsP, notifiersP) = unzip4 resList
     mapM_ (\ w -> boxPackStart vb w PackNatural 0) widgetsP
-    let fieldNames = map (\fd -> case paraName (parameters fd) of
+    let fieldNames = map (\fd -> case getParameterPrim paraName (parameters fd) of
                                         Just s -> s
                                         Nothing -> "Unnamed") replaceDesc
     find `onClicked` do

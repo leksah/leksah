@@ -36,7 +36,6 @@ module Ghf.Core (
 ,   Castable(..)
 ,   Casting(..)
 ,   GhfPane(..)
-,   Direction(..)
 ,   PaneDirection(..)
 ,   PanePath
 ,   PaneLayout(..)
@@ -103,6 +102,11 @@ import Data.Maybe
 import Text.ParserCombinators.ReadP
 
 import Debug.Trace
+import GUI.Ghf.EditorBasics
+import GUI.Ghf.MakeEditor
+import GUI.Ghf.SimpleEditors
+import GUI.Ghf.CompositeEditors
+
 message m = trace m (return ())
 
 {--
@@ -205,11 +209,7 @@ data GhfPackage     =   GhfPackage {
 -- Panes and pane layout
 --
 
---
--- | The direction of a split
---
-data Direction      =   Horizontal | Vertical
-    deriving (Eq,Show)
+
 
 --
 -- | A path to a pane

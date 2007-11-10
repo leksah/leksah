@@ -73,7 +73,7 @@ import Data.Map (Map)
 import Data.List
 
 import Ghf.Core
-
+import GUI.Ghf.Parameters
 
 -- | Constructs a unique pane name, which is an index and a string
 figureOutPaneName :: Pane alpha => Map String alpha -> String -> Int -> (Int,String)

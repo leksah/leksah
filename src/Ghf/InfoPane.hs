@@ -50,9 +50,13 @@ import Ghf.File
 import Ghf.Core
 import Ghf.SourceCandy
 import Ghf.ViewFrame
-import Ghf.PropertyEditor
 import Ghf.SpecialEditors
 import Ghf.Log
+import GUI.Ghf.EditorBasics
+import GUI.Ghf.MakeEditor
+import GUI.Ghf.SimpleEditors
+import GUI.Ghf.CompositeEditors
+import GUI.Ghf.Parameters
 
 instance Pane GhfInfo
     where
@@ -68,28 +72,33 @@ instance Castable GhfInfo where
                                     _           -> Nothing
 
 
-idDescrDescr :: [FieldDescriptionE IdentifierDescr]
+idDescrDescr :: [FieldDescription IdentifierDescr]
 idDescrDescr = [
-            mkFieldE (emptyParams
-            {   paraName = Just "Symbol", horizontal = Just True})
+            mkField
+            (paraName <<<- ParaName "Symbol"
+                $ paraHorizontal <<<- ParaHorizontal StartHorizontal
+                    $ emptyParams)
             identifierID
             (\ b a -> a{identifierID = b})
             stringEditor
-    ,    mkFieldE (emptyParams
-            {paraName = Just "Sort", horizontal = Just False})
+    ,    mkField
+            (paraName <<<- ParaName "Sort"
+                $ paraHorizontal <<<- ParaHorizontal StopHorizontal
+                    $ emptyParams)
             identifierTypeID
             (\b a -> a{identifierTypeID = b})
             (staticSelectionEditor allIdTypes)
-    ,   mkFieldE (emptyParams
-            {   paraName = Just "Exported by"})
+    ,   mkField
+            (paraName <<<- ParaName "Exported by" $ emptyParams)
             (\l -> moduleIdID l)
             (\ b a -> a{moduleIdID = b})
             multiselectionEditor
-    ,   mkFieldE (emptyParams
-            {paraName = Just "Type"})
+    ,   mkField
+            (paraName  <<<- ParaName "Type" $ emptyParams)
             typeInfoID
             (\b a -> a{typeInfoID = b})
             multilineStringEditor]
+
 {--    ,   mkField (emptyParams
             {paraName = Just "Documentation"})
             typeInfo
@@ -122,19 +131,19 @@ initInfo panePath nb idDescr = do
             let (widgets, setInjs, getExts, notifiers) = unzip4 resList
             foldM_ (\ box (w,mbh)  ->
                 case mbh of
-                    Nothing     ->  do  boxPackStart box w PackNatural 0
-                                        return box
-                    Just True   ->  do  newBox  <- hBoxNew False 0
-                                        boxPackStart box newBox PackNatural 0
-                                        boxPackStart newBox w PackNatural 0
-                                        return (castToBox newBox)
-                    Just False  ->  do  boxPackStart box w PackNatural 0
-                                        par <- widgetGetParent box
-                                        case par of
-                                            Nothing -> error "initInfo - no parent"
-                                            Just p -> return (castToBox p))
+                    Keep            ->  do  boxPackStart box w PackNatural 0
+                                            return box
+                    StartHorizontal ->  do  newBox  <- hBoxNew False 0
+                                            boxPackStart box newBox PackNatural 0
+                                            boxPackStart newBox w PackNatural 0
+                                            return (castToBox newBox)
+                    StopHorizontal  ->  do  boxPackStart box w PackNatural 0
+                                            par <- widgetGetParent box
+                                            case par of
+                                                Nothing -> error "initInfo - no parent"
+                                                Just p -> return (castToBox p))
                 (castToBox ibox)
-                (zip widgets (map (horizontal . parameters) idDescrDescr))
+                (zip widgets (map (getParameter paraHorizontal . parameters) idDescrDescr))
             boxPackStart nbbox ibox PackGrow 0
             boxPackEnd nbbox bb PackNatural 0
             --openType

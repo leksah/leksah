@@ -30,119 +30,88 @@ import System.IO
 import qualified Text.PrettyPrint.HughesPJ as PP
 
 import Ghf.Core
-import Ghf.PropertyEditor hiding(parameters,fieldEditor)
+import GUI.Ghf.EditorBasics
+import GUI.Ghf.MakeEditor hiding (fieldEditor, parameters)
+import GUI.Ghf.SimpleEditors
+import GUI.Ghf.CompositeEditors
+import GUI.Ghf.Parameters
+
 import Ghf.SourceEditor
 import Ghf.PrinterParser hiding (fieldParser, parameters)
 import Ghf.File
 import Ghf.ViewFrame
-
-data FieldDescription alpha =  FD {
-        parameters      ::  Parameters
-    ,   fieldPrinter    ::  alpha -> PP.Doc
-    ,   fieldParser     ::  alpha -> P.CharParser () alpha
-    ,   fieldEditor     ::  alpha -> IO (Widget, Injector alpha , alpha -> Extractor alpha , Notifier)
-    }
-
-type MkFieldDescription alpha beta =
-    Parameters ->
-    (Printer beta) ->
-    (Parser beta) ->
-    (Getter alpha beta) ->
-    (Setter alpha beta) ->
-    (Editor beta) ->
-    FieldDescription alpha
-
-mkField :: Eq beta => MkFieldDescription alpha beta
-mkField parameters printer parser getter setter editor =
-    FD parameters
-        (\ dat -> (PP.text (case paraName parameters of
-                                    Nothing -> ""
-                                    Just str -> str) PP.<> PP.colon)
-                PP.$$ (PP.nest 25 (printer (getter dat)))
-                PP.$$ (PP.nest 5 (case synopsisP parameters of
-                                    Nothing -> PP.empty
-                                    Just str -> PP.text $"--" ++ str)))
-        (\ dat -> P.try (do
-            symbol (case paraName parameters of
-                                    Nothing -> ""
-                                    Just str -> str)
-            colon
-            val <- parser
-            return (setter val dat)))
-        (\ dat -> do
-            (widget, inj,ext,noti) <- editor parameters
-            inj (getter dat)
-            return (widget,
-                    (\a -> inj (getter a)),
-                    (\a -> do
-                        b <- ext
-                        case b of
-                            Just b -> return (Just (setter b a))
-                            Nothing -> return Nothing),
-                    noti))
+import Ghf.DescriptionPP
 
 concatString :: [String] -> String
 concatString l = foldl (\r s -> if null r then s else r ++ " " ++ s) "" l
 
-flagsDescription :: [(String,[FieldDescription GhfPackage])]
+flagsDescription :: [(String,[FieldDescriptionPP GhfPackage])]
 flagsDescription = [
     ("Flags", [
-        mkField (emptyParams
-            {paraName = Just "Config flags"})
+        mkFieldPP
+            (paraName <<<- ParaName "Config flags" $ emptyParams)
             (PP.text . show)
             stringParser
             (\p -> concatString (configFlags p))
             (\ b a -> a{configFlags = if null b then [] else [b]})
             stringEditor
-    ,   mkField (emptyParams
-            {paraName = Just "Build flags"})
+            (\ _ -> return ())
+    ,   mkFieldPP
+            (paraName <<<- ParaName "Build flags" $ emptyParams)
             (PP.text . show)
             stringParser
             (\p -> concatString (buildFlags p))
             (\ b a -> a{buildFlags = if null b then [] else [b]})
             stringEditor
-    ,   mkField (emptyParams
-            {paraName = Just "Haddock flags"})
+            (\ _ ->  return ())
+    ,   mkFieldPP
+            (paraName <<<- ParaName "Haddock flags" $ emptyParams)
             (PP.text . show)
             stringParser
             (\p -> concatString (haddockFlags p))
             (\ b a -> a{haddockFlags = if null b then [] else [b]})
             stringEditor
-    ,   mkField (emptyParams
-            {paraName = Just "Executable flags"})
+            (\ _ ->   return ())
+    ,   mkFieldPP
+            (paraName <<<- ParaName "Executable flags" $ emptyParams)
             (PP.text . show)
             stringParser
             (\p -> concatString (exeFlags p))
             (\ b a -> a{exeFlags = if null b then [] else [b]})
             stringEditor
-    ,   mkField (emptyParams
-            {paraName = Just "Install flags"})
+            (\ _ ->   return ())
+    ,   mkFieldPP
+            (paraName <<<- ParaName "Install flags" $ emptyParams)
             (PP.text . show)
             stringParser
             (\p -> concatString (installFlags p))
             (\ b a -> a{installFlags = if null b then [] else [b]})
             stringEditor
-    ,   mkField (emptyParams
-            {paraName = Just "Register flags"})
+            (\ _ ->   return ())
+    ,   mkFieldPP
+            (paraName <<<- ParaName "Register flags" $ emptyParams)
             (PP.text . show)
             stringParser
             (\p -> concatString (registerFlags p))
             (\ b a -> a{registerFlags = if null b then [] else [b]})
             stringEditor
-    ,   mkField (emptyParams
-            {paraName = Just "Unregister flags"})
+            (\ _ ->   return ())
+    ,   mkFieldPP
+            (paraName <<<- ParaName "Unregister flags" $ emptyParams)
             (PP.text . show)
             stringParser
             (\p -> concatString (unregisterFlags p))
             (\ b a -> a{unregisterFlags = if null b then [] else [b]})
             stringEditor
-    ,   mkField (emptyParams
-            {paraName = Just "Source Distribution flags"})
+            (\ _ ->   return ())
+    ,   mkFieldPP
+            (paraName <<<- ParaName "Source Distribution flags" $ emptyParams)
             (PP.text . show)
             stringParser
             (\p -> concatString (sdistFlags p))
             (\ b a -> a{sdistFlags = if null b then [] else [b]})
             stringEditor
+            (\ _ -> return ())
     ])]
 
 -- ------------------------------------------------------------
@@ -156,7 +125,7 @@ readFlags fn pack = do
         Left pe -> error $"Error reading flags file " ++ show fn ++ " " ++ show pe
         Right r -> return r
 
-flagsParser ::  a ->  [FieldDescription a] ->  P.CharParser () a
+flagsParser ::  a ->  [FieldDescriptionPP a] ->  P.CharParser () a
 flagsParser def descriptions =
     let parsersF = map fieldParser descriptions in do
         whiteSpace
@@ -172,9 +141,9 @@ writeFlags :: FilePath -> GhfPackage -> IO ()
 writeFlags fpath flags =
     writeFile fpath (showFlags flags (concatMap snd flagsDescription))
 
-showFlags ::  a ->  [FieldDescription a] ->  String
+showFlags ::  a ->  [FieldDescriptionPP a] ->  String
 showFlags flags flagsDesc = PP.render $
-    foldl (\ doc (FD _ printer _ _ ) ->  doc PP.$+$ printer flags) PP.empty flagsDesc
+    foldl (\ doc (FDPP _ printer _ _ _ ) ->  doc PP.$+$ printer flags) PP.empty flagsDesc
 
 -- ------------------------------------------------------------
 -- * Editing
@@ -189,7 +158,7 @@ editFlags = do
         Just p -> lift $editFlags' p flagsDescription ghfR
 
 
-editFlags' :: GhfPackage -> [(String,[FieldDescription GhfPackage])] -> GhfRef -> IO ()
+editFlags' :: GhfPackage -> [(String,[FieldDescriptionPP GhfPackage])] -> GhfRef -> IO ()
 editFlags' flags flagsDesc ghfR  = do
     let flatflagsDesc = concatMap snd flagsDesc
     dialog  <- windowNew
@@ -215,7 +184,7 @@ editFlags' flags flagsDesc ghfR  = do
                 flagsDesc
     let (widgets, setInjs, getExts, notifiers) =
             foldl (\ (w,i,e,n) (w2,i2,e2,n2) -> (w ++ w2, i ++ i2, e ++ e2, n ++ n2)) ([],[],[],[]) res
-    let fieldNames = map (\fd -> case paraName (parameters fd) of
+    let fieldNames = map (\fd -> case getParameterPrim paraName (parameters fd) of
                                         Just s -> s
                                         Nothing -> "Unnamed") flatflagsDesc
     ok `onClicked` (do
