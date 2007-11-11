@@ -22,7 +22,7 @@ import qualified Data.Map as Map
 import Data.Map (Map,(!))
 import Data.Maybe
 
-import Ghf.Core
+import Ghf.Core.State
 import Ghf.SourceCandy
 import Ghf.ViewFrame
 

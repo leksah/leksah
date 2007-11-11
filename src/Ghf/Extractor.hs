@@ -56,7 +56,7 @@ import Data.Set (Set)
 import Data.Foldable (maximumBy)
 import Text.ParserCombinators.ReadP
 
-import Ghf.Core
+import Ghf.Core.State
 --import Ghf.Info
 
 

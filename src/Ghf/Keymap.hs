@@ -22,7 +22,7 @@ import Data.Char(toLower)
 import Control.Monad(foldM)
 import Control.Monad.Reader
 
-import Ghf.Core
+import Ghf.Core.State
 import Ghf.ViewFrame
 import Ghf.SourceEditor
 
@@ -42,7 +42,7 @@ parseKeymap fn = do
 --
 -- | Sets the accelerators is the action descriptions from the keymap
 --
-setKeymap :: [ActionDescr] -> Keymap -> [ActionDescr]
+setKeymap :: [ActionDescr GhfRef] -> Keymap -> [ActionDescr GhfRef]
 setKeymap actions keymap = map setAccel actions
     where setAccel act = case Map.lookup (name act) keymap of
                             Nothing -> act
@@ -58,13 +58,14 @@ setKeymap actions keymap = map setAccel actions
 -- | Builds a special keymap for handling double keystroke accelerators
 --   Unfortunately in the IO Monad because of keyvalFromName
 --
-buildSpecialKeys :: Keymap -> [ActionDescr] -> IO (SpecialKeyTable)
+buildSpecialKeys :: Keymap -> [ActionDescr GhfRef] -> IO (SpecialKeyTable GhfRef)
 buildSpecialKeys keymap actions = do
     pseudoTriples <- mapM build actions
     let map1 = Map.fromListWith (++) $concat pseudoTriples
     return (Map.map Map.fromList map1)
     where
-    build :: ActionDescr -> IO [((KeyVal,[Modifier]),[((KeyVal,[Modifier]),ActionDescr)])]
+    build :: ActionDescr GhfRef -> IO [((KeyVal,[Modifier]),[((KeyVal,[Modifier]),
+                (ActionDescr GhfRef))])]
     build act =
         case Map.lookup (name act) keymap of
             Nothing             ->  return []

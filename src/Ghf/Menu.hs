@@ -31,7 +31,7 @@ import Control.Monad.Reader
 import System.FilePath
 import Data.Version
 
-import Ghf.Core
+import Ghf.Core.State
 import Ghf.SourceEditor
 import Ghf.ViewFrame
 import Ghf.Preferences
@@ -46,7 +46,7 @@ import Paths_ghf
 --
 -- | The Actions known to the system (they can be activated by keystrokes or menus)
 --
-actions :: [ActionDescr]
+actions :: [ActionDescr GhfRef]
 actions =
     [(AD "File" "_File" Nothing Nothing (return ()) [] False)
     ,(AD "FileNew" "_New" Nothing (Just "gtk-new")
@@ -310,7 +310,7 @@ menuDescription =
 --
 -- | Building the Menu
 --
-makeMenu :: UIManager -> [ActionDescr] -> String -> GhfM (AccelGroup, [Maybe Widget])
+makeMenu :: UIManager -> [ActionDescr GhfRef] -> String -> GhfM (AccelGroup, [Maybe Widget])
 makeMenu uiManager actions menuDescription = do
     ghfR <- ask
     lift $ do

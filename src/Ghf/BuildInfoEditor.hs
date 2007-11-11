@@ -17,7 +17,7 @@ import Distribution.PackageDescription
 import Data.IORef
 import Data.List
 
-import Ghf.Core
+import Ghf.Core.State
 import Ghf.SpecialEditors
 import Ghf.ViewFrame
 import GUI.Ghf.EditorBasics

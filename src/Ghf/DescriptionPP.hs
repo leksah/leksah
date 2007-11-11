@@ -31,7 +31,7 @@ import qualified Text.ParserCombinators.Parsec as P
 import Ghf.PrinterParser hiding (fieldParser,parameters)
 import GUI.Ghf.Parameters
 import GUI.Ghf.EditorBasics
-import Ghf.Core
+import Ghf.Core.State
 
 type Applicator alpha = alpha -> GhfAction
 

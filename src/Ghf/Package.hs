@@ -56,7 +56,7 @@ import qualified Text.ParserCombinators.Parsec.Token as P
 import Text.ParserCombinators.Parsec hiding(Parser)
 
 import Ghf.Log
-import Ghf.Core hiding (message,trace)
+import Ghf.Core.State
 import Ghf.PackageEditor
 import Ghf.SourceEditor
 import Ghf.PackageFlags
@@ -65,8 +65,6 @@ import Ghf.Extractor
 import Ghf.Info
 import Ghf.Extractor
 
-import Debug.Trace
-message m = trace m (return ())
 
 
 packageOpen :: GhfAction

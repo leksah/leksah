@@ -31,7 +31,7 @@ import Data.Version
 
 import Paths_ghf
 import Ghf.SaveSession
-import Ghf.Core
+import Ghf.Core.State
 import Ghf.SourceCandy
 import Ghf.File
 import Ghf.ViewFrame

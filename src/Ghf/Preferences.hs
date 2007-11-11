@@ -31,7 +31,7 @@ import Data.List
 import qualified Text.PrettyPrint.HughesPJ as PP
 
 import Ghf.Log
-import Ghf.Core
+import Ghf.Core.State
 import Ghf.ViewFrame
 import Ghf.BuildInfoEditor
 import GUI.Ghf.EditorBasics

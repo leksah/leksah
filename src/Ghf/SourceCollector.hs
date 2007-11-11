@@ -31,7 +31,7 @@ import Text.ParserCombinators.Parsec.Language(emptyDef)
 import Data.Version
 import System.Directory
 
-import Ghf.Core
+import Ghf.Core.State
 import Ghf.File
 import Ghf.Preferences
 import Ghf.Extractor

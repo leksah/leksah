@@ -28,7 +28,7 @@ import Distribution.Simple.PreProcess.Unlit
 import Control.Monad
 import Paths_ghf
 
-import Ghf.Core
+import Ghf.Core.State
 import Ghf.Log
 
 

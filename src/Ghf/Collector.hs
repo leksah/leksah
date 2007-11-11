@@ -64,7 +64,7 @@ import Data.List(isSuffixOf,zip4)
 import Debug.Trace
 import Data.Binary
 
-import Ghf.Core hiding(trace)
+import Ghf.Core.State
 import Ghf.Extractor
 import Ghf.File
 import Ghf.Info

@@ -34,7 +34,7 @@ import Distribution.PackageDescription
 import System.Glib.GObject
 
 
-import Ghf.Core
+import Ghf.Core.State
 import Ghf.ViewFrame
 import Ghf.InfoPane
 

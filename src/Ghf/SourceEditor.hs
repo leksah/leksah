@@ -79,7 +79,7 @@ import Data.List
 import Data.Maybe
 
 
-import Ghf.Core
+import Ghf.Core.State
 import Ghf.ViewFrame
 import Ghf.SourceCandy
 import Ghf.BuildInfoEditor

@@ -47,7 +47,7 @@ import PackageConfig
 import Data.Maybe
 
 import Ghf.File
-import Ghf.Core
+import Ghf.Core.State
 import Ghf.SourceCandy
 import Ghf.ViewFrame
 import Ghf.SpecialEditors

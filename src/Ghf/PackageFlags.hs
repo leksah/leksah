@@ -29,7 +29,7 @@ import Data.List
 import System.IO
 import qualified Text.PrettyPrint.HughesPJ as PP
 
-import Ghf.Core
+import Ghf.Core.State
 import GUI.Ghf.EditorBasics
 import GUI.Ghf.MakeEditor hiding (fieldEditor, parameters)
 import GUI.Ghf.SimpleEditors

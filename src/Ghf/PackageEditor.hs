@@ -34,7 +34,7 @@ import Data.List
 import Data.Maybe
 import System.Directory
 
-import Ghf.Core
+import Ghf.Core.State
 import Ghf.File
 import Ghf.SpecialEditors
 import Ghf.ViewFrame

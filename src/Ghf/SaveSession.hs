@@ -29,7 +29,7 @@ import System.Directory
 import qualified Data.Map as Map
 
 import Ghf.Log
-import Ghf.Core
+import Ghf.Core.State
 import Ghf.ViewFrame
 import Ghf.SourceEditor
 import Ghf.File
