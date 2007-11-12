@@ -62,7 +62,7 @@ instance Pane GhfInfo
     where
     primPaneName _  =   "Info"
     getAddedIndex _ =   0
-    getTopWidget    =   castToWidget . box
+    getTopWidget    =   castToWidget . sw
     paneId b        =   "*Info"
 
 instance Castable GhfInfo where
@@ -152,14 +152,14 @@ initInfo panePath nb idDescr = do
             scrolledWindowSetPolicy sw PolicyAutomatic PolicyAutomatic
             let info = GhfInfo sw setInjs
             notebookPrependPage nb sw (paneName info)
-            widgetShowAll (box info)
+            widgetShowAll sw
             return (info,[])
     let newPaneMap  =  Map.insert (paneName pane)
                             (panePath, BufConnections [] [] cids) paneMap
     let newPanes = Map.insert (paneName pane) (PaneC pane) panes
     modifyGhf_ (\ghf -> return (ghf{panes = newPanes,
                                     paneMap = newPaneMap}))
-    lift $widgetGrabFocus (box pane)
+    lift $widgetGrabFocus (sw pane)
     lift $bringPaneToFront pane
 
 makeInfoActive :: GhfInfo -> GhfAction

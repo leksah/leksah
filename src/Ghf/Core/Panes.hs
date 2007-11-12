@@ -145,7 +145,7 @@ data GhfLog  =   GhfLog {
 -- | An info pane description
 --
 data GhfInfo  =   GhfInfo {
-    box             ::   HBox
+    sw              ::   ScrolledWindow
 ,   injectors       ::   [IdentifierDescr -> IO() ]
 }
 
