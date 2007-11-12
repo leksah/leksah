@@ -130,7 +130,8 @@ extractAndValidate val getExts fieldNames = do
         then return (Just newVal)
         else do
             md <- messageDialogNew Nothing [] MessageWarning ButtonsClose
-                        $ "The follwoing fields have invalid values." ++ concat (reverse errors)
+                        $ "The following fields have invalid values." ++
+                            concat (reverse errors)
             dialogRun md
             widgetDestroy md
             return Nothing
