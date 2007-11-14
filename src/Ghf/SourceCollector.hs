@@ -13,9 +13,11 @@
 -------------------------------------------------------------------------------
 
 module Ghf.SourceCollector (
-    buildSourceForPackageDB
+    collectSources
+,   buildSourceForPackageDB
 ,   sourceForPackage
 ,   parseSourceForPackageDB
+,   getSourcesMap
 ) where
 
 import qualified Text.PrettyPrint.HughesPJ as PP
@@ -30,11 +32,59 @@ import qualified Text.ParserCombinators.Parsec.Token as P
 import Text.ParserCombinators.Parsec.Language(emptyDef)
 import Data.Version
 import System.Directory
+import Data.Maybe(catMaybes)
+import Distribution.Simple.Utils(breaks)
+import System.FilePath(takeBaseName,dropFileName)
 
 import Ghf.Core.State
 import Ghf.File
 import Ghf.Preferences
 import Ghf.Extractor
+
+getSourcesMap :: IO (Map PackageIdentifier [FilePath])
+getSourcesMap = do
+        mbSources <- parseSourceForPackageDB
+        case mbSources of
+            Just map -> do
+                putStrLn $ "sourceDB: " ++ show map
+                return map
+            Nothing -> do
+                buildSourceForPackageDB
+                mbSources <- parseSourceForPackageDB
+                case mbSources of
+                    Just map -> do
+                        putStrLn $ "sourceDB: " ++ show map
+                        return map
+                    Nothing ->  error "can't build/open source for package file"
+
+collectSources :: Map PackageIdentifier [FilePath] -> PackageDescr -> IO PackageDescr
+collectSources sourceMap pdescr =
+    case sourceForPackage (packagePD pdescr) sourceMap of
+        Nothing -> return pdescr
+        Just fp -> do
+            let path = dropFileName fp
+            sf          <- allHaskellSourceFiles path
+            newModDescr <- mapM (collectSourcesForModules path sf) (exposedModulesPD pdescr)
+            return (pdescr{mbSourcePathPD = Just fp,exposedModulesPD = newModDescr})
+
+collectSourcesForModules :: FilePath -> [FilePath] -> ModuleDescr -> IO (ModuleDescr)
+collectSourcesForModules filePath sourceFiles moduleDescr = do
+    mbFile <-   findSourceForModule (modu $ moduleIdMD moduleDescr) filePath sourceFiles
+    return (moduleDescr{mbSourcePathMD = mbFile})
+
+findSourceForModule :: ModuleIdentifier -> FilePath -> [FilePath] -> IO (Maybe FilePath)
+findSourceForModule mod filePath sourceFiles = do
+    let moduleBaseName      =   last (breaks (== '.') mod)
+    let filesWithRightName  =   filter (\fp -> moduleBaseName == takeBaseName fp) sourceFiles
+    possibleFiles           <-  filterM (\ fn -> do
+                                    mn <- moduleNameFromFilePath fn
+                                    case mn of
+                                        Nothing -> return False
+                                        Just m  -> return (m == mod))
+                                    filesWithRightName
+    if null possibleFiles
+        then return Nothing
+        else return (Just $ head possibleFiles)
 
 buildSourceForPackageDB :: IO ()
 buildSourceForPackageDB = do
@@ -42,7 +92,7 @@ buildSourceForPackageDB = do
     prefs           <-  readPrefs prefsPath
     let dirs        =   sourceDirectories prefs
     cabalFiles      <-  mapM allCabalFiles dirs
-    let fCabalFiles =   concat cabalFiles
+    fCabalFiles     <-  mapM canonicalizePath $ concat cabalFiles
     packages        <-  mapM (\fp -> parseCabal fp) fCabalFiles
     let pdToFiles   =   Map.fromListWith (++) (zip packages (map (\a -> [a]) fCabalFiles))
     filePath        <-  getConfigFilePathForSave "source_packages.txt"
@@ -80,17 +130,19 @@ sourceForPackageParser = do
     ls  <-  many onePackageParser
     whiteSpace
     eof
-    return (Map.fromList ls)
+    return (Map.fromList (catMaybes ls))
     <?> "sourceForPackageParser"
 
-onePackageParser :: CharParser () (PackageIdentifier,[FilePath])
+onePackageParser :: CharParser () (Maybe (PackageIdentifier,[FilePath]))
 onePackageParser = do
-    pd          <-  packageDescriptionParser
+    mbPd        <-  packageDescriptionParser
     filePaths   <-  many filePathParser
-    return (pd,filePaths)
+    case mbPd of
+        Nothing -> return Nothing
+        Just pd -> return (Just (pd,filePaths))
     <?> "onePackageParser"
 
-packageDescriptionParser :: CharParser () PackageIdentifier
+packageDescriptionParser :: CharParser () (Maybe PackageIdentifier)
 packageDescriptionParser = try (do
     whiteSpace
     str <- many (noneOf ":")

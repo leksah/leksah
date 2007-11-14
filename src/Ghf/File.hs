@@ -1,12 +1,14 @@
 module Ghf.File (
     allModules
 ,   allHiFiles
+,   allHaskellSourceFiles
 ,   cabalFileName
 ,   allCabalFiles
 ,   getConfigFilePathForLoad
 ,   getConfigFilePathForSave
 ,   getCollectorPath
 ,   getSysLibDir
+,   moduleNameFromFilePath
 
 ,   readOut
 ,   readErr
@@ -26,6 +28,7 @@ import Control.Monad(filterM)
 import Distribution.Simple.PreProcess.Unlit
 --import Debug.Trace
 import Control.Monad
+import qualified Data.List as List
 import Paths_ghf
 
 import Ghf.Core.State
@@ -86,25 +89,16 @@ allModules filePath = do
         else return []
 
 allHiFiles :: FilePath -> IO [FilePath]
-allHiFiles filePath = do
-    exists <- doesDirectoryExist filePath
-    if exists
-        then do
-            filesAndDirs <- getDirectoryContents filePath
-            --putStrLn $show filesAndDirs
-            let filesAndDirs' = map (\s -> combine filePath s)
-                                    $filter (\s -> s /= "." && s /= ".." && s /= "_darcs") filesAndDirs
-            --putStrLn $show filesAndDirs'
-            dirs    <-  filterM (\f -> doesDirectoryExist f) filesAndDirs'
-            files   <-  filterM (\f -> doesFileExist f) filesAndDirs'
-            let hsFiles =   filter (\f -> let ext = takeExtension f in
-                                            ext == ".hi") files
-            otherHiFiles <- mapM allHiFiles dirs
-            return (hsFiles ++ concat otherHiFiles)
-        else return []
+allHiFiles = allFilesWithExtensions [".hi"] True
 
 allCabalFiles :: FilePath -> IO [FilePath]
-allCabalFiles filePath = do
+allCabalFiles = allFilesWithExtensions [".cabal"] False
+
+allHaskellSourceFiles :: FilePath -> IO [FilePath]
+allHaskellSourceFiles = allFilesWithExtensions [".hs",".lhs"] True
+
+allFilesWithExtensions :: [String] -> Bool -> FilePath -> IO [FilePath]
+allFilesWithExtensions extensions recurseFurther filePath = do
     exists <- doesDirectoryExist filePath
     if exists
         then do
@@ -115,13 +109,13 @@ allCabalFiles filePath = do
             --putStrLn $show filesAndDirs'
             dirs    <-  filterM (\f -> doesDirectoryExist f) filesAndDirs'
             files   <-  filterM (\f -> doesFileExist f) filesAndDirs'
-            let cabalFiles =   filter (\f -> let ext = takeExtension f in
-                                            ext == ".cabal") files
-            if null cabalFiles
-                then do
-                    allFiles <- mapM allCabalFiles dirs
-                    return (concat allFiles)
-                else return (cabalFiles)
+            let choosenFiles =   filter (\f -> let ext = takeExtension f in
+                                                    List.elem ext extensions) files
+            otherFiles <-
+                if recurseFurther || (not recurseFurther && null choosenFiles)
+                    then mapM (allFilesWithExtensions extensions recurseFurther) dirs
+                    else return []
+            return (choosenFiles ++ concat otherFiles)
         else return []
 
 moduleNameFromFilePath :: FilePath -> IO (Maybe String)
@@ -151,12 +145,23 @@ symbol = P.symbol lexer
 moduleNameParser :: CharParser () String
 moduleNameParser = do
     whiteSpace
+    many skipPreproc
+    whiteSpace
     symbol "module"
     str <- lexeme mident
-    skipMany anyChar
-    eof
+--    skipMany anyChar
+--    eof
     return str
     <?> "module identifier"
+
+skipPreproc :: CharParser () ()
+skipPreproc = do
+    try (do
+        whiteSpace
+        char '#'
+        many (noneOf "\n")
+        return ())
+    <?> "preproc"
 
 mident
         = do{ c <- P.identStart haskellDef

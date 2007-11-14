@@ -161,19 +161,19 @@ type SymbolTable        =   Map Symbol [IdentifierDescr]
 
 data PackageDescr       =   PackageDescr {
     packagePD           ::   ! PackageIdentifier
+,   mbSourcePathPD      ::   ! (Maybe FilePath)
 ,   exposedModulesPD    ::   ! [ModuleDescr]
 ,   buildDependsPD      ::   ! [PackageIdentifier]
-,   mbSourcePathPD      ::   ! (Maybe FilePath)
 ,   idDescriptionsPD    ::   ! SymbolTable
-} deriving (Eq,Ord)
+} deriving (Eq,Ord,Show)
 
 data ModuleDescr        =   ModuleDescr {
     moduleIdMD          ::   ! PackModule
-,   exportedNamesMD     ::   ! (Set Symbol)                        -- unqualified
 ,   mbSourcePathMD      ::   ! (Maybe FilePath)
+,   exportedNamesMD     ::   ! (Set Symbol)                        -- unqualified
 ,   instancesMD         ::   ! [(ClassId,DataId)]
 ,   usagesMD            ::   ! (Map ModuleIdentifier (Set Symbol)) -- imports
-} deriving (Eq,Ord)
+} deriving (Eq,Ord,Show)
 
 data IdentifierDescr    =  IdentifierDescr {
     identifierID        ::   ! Symbol
@@ -209,11 +209,11 @@ instance Read  PackModule where
                                 _         -> perror str
         where perror s      =   error $ "cannot parse moduleWith " ++ s
 
-instance Show  ModuleDescr where
-    show md    =   show $ moduleIdMD md
+--instance Show  ModuleDescr where
+--    show md    =   show $ moduleIdMD md
 
-instance Show  PackageDescr where
-    show pd    =   showPackageId $ packagePD pd
+--instance Show  PackageDescr where
+--    show pd    =   showPackageId $ packagePD pd
 
 
 

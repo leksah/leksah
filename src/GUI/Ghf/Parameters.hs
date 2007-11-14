@@ -44,7 +44,7 @@ data Direction      =   Horizontal | Vertical
     deriving (Eq,Show)
 
 data HorizontalAlign =   StartHorizontal | StopHorizontal | Keep
-
+    deriving (Eq,Show)
 --
 -- | A type for parameters for editors
 --
@@ -64,6 +64,10 @@ data Parameter      =   ParaName String
                                                 --  | paddingTop paddingBottom paddingLeft paddingRight
                     |   ParaMinSize         (Int, Int)
                     |   ParaHorizontal      HorizontalAlign
+    deriving (Eq,Show)
+
+instance Show ShadowType
+    where show _    =   "Any Shadow"
 
 emptyParams         =   []
 
@@ -125,7 +129,7 @@ getParameterPrim selector parameters =
         _              -> Nothing
 
 (<<<-) :: (Parameter -> (Maybe beta)) -> Parameter -> Parameters -> Parameters
-(<<<-) selector para  = \params -> para : filter (isJust . selector) params
+(<<<-) selector para  = \params -> para : filter (isNothing . selector) params
 
 
 defaultParameters =

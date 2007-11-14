@@ -20,5 +20,5 @@ module Ghf.Collector (
 
 import HscTypes
 
-collectInstalled :: Session -> String -> Bool -> IO()
-collectUninstalled :: Session -> String -> FilePath -> IO ()
+collectInstalled :: Bool -> Session -> String -> Bool -> IO()
+collectUninstalled :: Bool -> Session -> String -> FilePath -> IO ()

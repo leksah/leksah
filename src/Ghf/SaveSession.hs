@@ -209,6 +209,8 @@ populate = mapM_ populate'
     where
     populate' ("*Log",pp) =  do nb <- getNotebook pp
                                 initLog pp nb
+--    populate' ("*Info",pp)=  do nb <- getNotebook pp
+--                                initInfo pp nb
     populate' ('?':n,pp)  =  newTextBuffer pp n Nothing
     populate' (n,pp)      =  do
         exist <- lift $doesFileExist n

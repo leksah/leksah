@@ -143,7 +143,8 @@ initInfo panePath nb idDescr = do
                                                 Nothing -> error "initInfo - no parent"
                                                 Just p -> return (castToBox p))
                 (castToBox ibox)
-                (zip widgets (map (getParameter paraHorizontal . parameters) idDescrDescr))
+                (zip widgets (map (getParameter paraHorizontal . parameters)
+                    idDescrDescr))
             boxPackStart nbbox ibox PackNatural 0
             boxPackEnd nbbox bb PackNatural 0
             --openType

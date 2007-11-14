@@ -68,13 +68,16 @@ import Ghf.Core.State
 import Ghf.Extractor
 import Ghf.File
 import Ghf.Info
+import Ghf.SourceCollector
 
 
-collectInstalled :: Session -> String -> Bool -> IO()
-collectInstalled session version forceRebuild = do
+
+collectInstalled :: Bool -> Session -> String -> Bool -> IO()
+collectInstalled writeAscii session version forceRebuild = do
     when forceRebuild $ do
             collectorPath   <-  getCollectorPath version
             removeDirectoryRecursive collectorPath
+    sources <- getSourcesMap
     collectorPath   <-  getCollectorPath version
     knownPackages   <-  findKnownPackages collectorPath
     putStrLn $ "found known packages" ++ " " ++ show knownPackages
@@ -96,12 +99,13 @@ collectInstalled session version forceRebuild = do
     let extracted   =   map extractInfo (zip4 exportedIfaceInfos hiddenIfaceInfos
                                             (map (fromDPid . DP.package) newPackages2)
                                                 (map (\p -> map fromDPid (DP.depends p)) newPackages2))
+    extractedWithSources    <-  mapM (collectSources sources) extracted
 --    putStrLn $ "extracted " ++ concatMap (\ pi -> packageId pi) extracted
-    mapM_ (writeExtracted collectorPath) extracted
+    mapM_ (writeExtracted collectorPath writeAscii) extractedWithSources
 
 
-collectUninstalled :: Session -> String -> FilePath -> IO ()
-collectUninstalled session version cabalPath = do
+collectUninstalled :: Bool -> Session -> String -> FilePath -> IO ()
+collectUninstalled writeAscii session version cabalPath = do
     allHiFiles      <-  allHiFiles (dropFileName cabalPath)
 --    putStrLn $ "\nallModules " ++ show allHiFiles
     pd              <-  readPackageDescription normal cabalPath
@@ -109,8 +113,10 @@ collectUninstalled session version cabalPath = do
     allIfaceInfos   <-  getIFaceInfos2 allHiFiles session
     deps            <-  findFittingPackages session (buildDepends pd)
     let extracted   =   extractInfo (allIfaceInfos,[], package pd, deps)
+    sources <- getSourcesMap
+    extractedWithSources    <-  collectSources sources extracted
     collectorPath   <-  getCollectorPath version
-    writeExtracted collectorPath extracted
+    writeExtracted collectorPath writeAscii extractedWithSources
     putStrLn $ "\nExtracted infos for " ++ cabalPath
 
 getIFaceInfos :: PackageIdentifier -> [String] -> Session -> IO [(ModIface, FilePath)]
@@ -150,7 +156,9 @@ findKnownPackages filePath = do
     let nameList = map dropExtension  $filter (\s -> ".pack" `isSuffixOf` s) paths
     return (Set.fromList nameList)
 
-writeExtracted :: FilePath -> PackageDescr -> IO ()
-writeExtracted dirPath pd = do
+writeExtracted :: FilePath -> Bool -> PackageDescr -> IO ()
+writeExtracted dirPath writeAscii pd = do
     let filePath = dirPath </> showPackageId (packagePD pd) ++ ".pack"
-    encodeFile filePath pd
+    if writeAscii
+        then writeFile (filePath ++ "dpg") (show pd)
+        else encodeFile filePath pd

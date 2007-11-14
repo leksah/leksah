@@ -42,7 +42,7 @@ import Ghf.Info
 import Ghf.SourceCollector
 import Ghf.Collector
 
-data Flag =  UninstalledProject String | Collect | Rebuild | Sources | VersionF
+data Flag =  UninstalledProject String | Collect | Rebuild | Sources | VersionF | DebugF
        deriving (Show,Eq)
 
 options :: [OptDescr Flag]
@@ -55,7 +55,9 @@ options =   [Option ['r'] ["Rebuild"] (NoArg Rebuild)
          ,   Option ['s'] ["Sources"] (NoArg Sources)
                 "Gather info about pathes to sources"
          ,   Option ['v'] ["Version"] (NoArg VersionF)
-                "Show the version number of ghf"]
+                "Show the version number of ghf"
+         ,   Option ['d'] ["Debug"] (NoArg DebugF)
+                "Write ascii pack files"]
 
 ghfOpts :: [String] -> IO ([Flag], [String])
 ghfOpts argv =
@@ -94,17 +96,18 @@ main = defaultErrorHandler defaultDynFlags $do
                         let version     =   cProjectVersion
                         let uninstalled =   filter (\x -> case x of UninstalledProject _ -> True
                                                                     otherwise -> False) o
+                        let writeAscii = elem DebugF o
                         if length uninstalled > 0
-                            then mapM_ (collectUninstalled session version)
+                            then mapM_ (collectUninstalled writeAscii session version)
                                     $ map (\ (UninstalledProject x) -> x) uninstalled
-                            else collectInstalled session version (elem Rebuild o)
+                            else collectInstalled writeAscii session version (elem Rebuild o)
                     else startGUI
 
 startGUI :: IO ()
 startGUI = do
     args        <-  getArgs
     (o,fl)      <-  ghfOpts args
-    st          <-  initGUI
+    st          <-  unsafeInitGUIForThreadedRTS
     when rtsSupportsBoundThreads
         (putStrLn "Linked with -threaded (Will Gtk work?)")
     timeoutAddFull (yield >> return True) priorityHigh 50

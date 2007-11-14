@@ -163,7 +163,7 @@ initInfo = do
     session <- readGhf session
     let version     =   cProjectVersion
     lift $ putStrLn "Before running collector"
-    lift $ collectInstalled session version False
+    lift $ collectInstalled False session version False
 --    pid <- lift $ runProcess "dist/build/ghf-collector/ghf-collector"  [] Nothing Nothing Nothing Nothing Nothing
 --    lift $ waitForProcess pid
     lift $ putStrLn "After running collector"
@@ -243,7 +243,7 @@ buildActiveInfo' =
     case activePack of
         Nothing         ->  return Nothing
         Just ghfPackage ->  do
-            lift $ collectUninstalled session cProjectVersion (cabalFile ghfPackage)
+            lift $ collectUninstalled False session cProjectVersion (cabalFile ghfPackage)
             lift $ putStrLn "uninstalled collected"
             collectorPath   <-  lift $ getCollectorPath cProjectVersion
             packageDescr    <-  lift $ loadInfosForPackage collectorPath

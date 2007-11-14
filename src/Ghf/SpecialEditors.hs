@@ -34,7 +34,6 @@ import Text.ParserCombinators.ReadP(readP_to_S)
 import Language.Haskell.Extension
 
 import Ghf.Core.State
---import Ghf.PropertyEditor
 import Ghf.ViewFrame
 import GUI.Ghf.EditorBasics
 import GUI.Ghf.MakeEditor

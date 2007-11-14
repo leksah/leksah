@@ -172,6 +172,26 @@ Source paths ###.
 \layout Section
 
 Quickstart
+\layout Standard
+
+### Specify source locations.
+ (coomand line option for the first start.
+\layout Standard
+
+When you start ghf it collects information about all installed packages
+ on your system.
+ So the first start of ghf will take longer as usual, because at further
+ starts it will only collect information, if their are newly installed packages.
+ Their are command line options about this feature, which is explained in
+ detail in Chapter 
+\begin_inset LatexCommand \ref{sub:The-Collector}
+
+\end_inset 
+
+.
+\layout Standard
+
+After starting up the Ghf will open its Main window in a standard configuration.
 \layout Section
 
 The Editor
@@ -197,6 +217,11 @@ Packages (Cabal)
 
 Navigation
 \layout Subsection
+
+
+\begin_inset LatexCommand \label{sub:The-Collector}
+
+\end_inset 
 
 The Collector
 \layout Section
@@ -229,6 +254,8 @@ Analysis & Design (FAD)
 \layout Section
 
 Internals for Developers
+\layout Standard
+
 \layout Subsection
 
 

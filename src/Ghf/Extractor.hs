@@ -32,7 +32,7 @@ import Finder
 import LoadIface
 import Outputable hiding(trace)
 import qualified Pretty as P
-import MkIface
+--import MkIfac
 import Config
 import IfaceSyn
 import OccName
@@ -280,7 +280,9 @@ extractUsages usage =
 fromPackageIdentifier :: PackageIdentifier -> String
 fromPackageIdentifier   =   showPackageId
 
-toPackageIdentifier :: String -> PackageIdentifier
-toPackageIdentifier pd    =   case readP_to_S parsePackageId pd of
-                                [(ps,_)]  -> ps
-                                _         -> error "cannot parse package identifier"
+toPackageIdentifier :: String -> Maybe PackageIdentifier
+toPackageIdentifier pd      =   let l = filter (\ (_,s) -> null s)
+                                            $ readP_to_S parsePackageId pd
+                                in  if null l
+                                    then Nothing
+                                    else Just (fst $ head l)
