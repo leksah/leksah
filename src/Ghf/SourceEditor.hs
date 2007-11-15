@@ -9,7 +9,7 @@
 -- Stability   :  experimental
 -- Portability :  portable
 --
--- | The editor part of GHF
+-- | The source editor part of GHF
 --
 -----------------------------------------------------------------------------------
 

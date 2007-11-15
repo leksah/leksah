@@ -37,6 +37,7 @@ import System.Glib.GObject
 import Ghf.Core.State
 import Ghf.ViewFrame
 import Ghf.InfoPane
+import Ghf.SourceModel
 
 instance Pane GhfModules
     where
@@ -132,6 +133,7 @@ initModules panePath nb = do
         New.treeViewSetHeadersVisible treeView True
         sel         <-  New.treeViewGetSelection treeView
         sel `New.onSelectionChanged` (fillFacets sel treeStore facetStore)
+        treeView `onButtonPress` (treeViewPopup ghfR treeStore treeView)
 
         sel2        <-  New.treeViewGetSelection facetView
         sel2 `New.onSelectionChanged` (fillInfo sel2 facetStore ghfR)
@@ -167,25 +169,34 @@ fillFacets :: New.TreeSelection
     -> New.ListStore (String, IdentifierDescr)
     -> IO ()
 fillFacets ts tst lst = do
-    paths  <-  New.treeSelectionGetSelectedRows ts
+    sel <- getSelection ts tst
+    case sel of
+        Just val -> case snd val of
+                        ((mod,package):_)   ->  do
+                            let exportedDescr = exportedNamesMD mod
+                            let pairs = map fromJust
+                                                $ filter isJust
+                                                    $ map (findDescription
+                                                            (moduleIdMD mod)
+                                                            (idDescriptionsPD package))
+                                                        (Set.toList exportedDescr)
+                            New.listStoreClear lst
+                            putStrLn $ "Now fill " ++ show (length pairs)
+                            mapM_ (New.listStoreAppend lst) pairs
+                        []  -> return ()
+        Nothing -> return ()
+
+getSelection :: New.TreeSelection
+    -> New.TreeStore (String, [(ModuleDescr,PackageDescr)])
+    -> IO (Maybe (String, [(ModuleDescr,PackageDescr)]))
+getSelection treeSelection treeStore = do
+    paths  <-  New.treeSelectionGetSelectedRows treeSelection
     case paths of
-        []  ->  return ()
+        []  ->  return Nothing
         [a] ->  do
-            val     <-  New.treeStoreGetValue tst a
-            case snd val of
-                []  -> return ()
-                ((mod,package):_)   ->  do
-                    let exportedDescr = exportedNamesMD mod
-                    let pairs = map fromJust
-                                        $ filter isJust
-                                            $ map (findDescription
-                                                    (moduleIdMD mod)
-                                                    (idDescriptionsPD package))
-                                                (Set.toList exportedDescr)
-                    New.listStoreClear lst
-                    putStrLn $ "Now fill " ++ show (length pairs)
-                    mapM_ (New.listStoreAppend lst) pairs
-        _   -> return ()
+            val     <-  New.treeStoreGetValue treeStore a
+            return (Just val)
+        _   -> return Nothing
 
 fillInfo :: New.TreeSelection
     -> New.ListStore (String, IdentifierDescr)
@@ -275,4 +286,33 @@ instance Ord a => Ord (Tree a) where
 
 sortTree :: Ord a => Tree a -> Tree a
 sortTree (Node l forest)    =   Node l (sort (map sortTree forest))
+
+treeViewPopup :: GhfRef
+    -> New.TreeStore (String, [(ModuleDescr,PackageDescr)])
+    -> New.TreeView
+    -> Event
+    -> IO (Bool)
+treeViewPopup ghfR store treeView (Button _ _ _ _ _ _ button _ _) = do
+    putStrLn "enter treeViewPopup"
+    if button == RightButton
+        then do
+            theMenu         <-  menuNew
+            item1           <-  menuItemNewWithLabel "Edit"
+            item1 `onActivateLeaf` do
+                putStrLn "enter on activate edit"
+                selection   <-  New.treeViewGetSelection treeView
+                sel         <-  getSelection selection store
+                case sel of
+                    Just (_,[(m,_)]) -> case mbSourcePathMD m of
+                                            Nothing     ->  return ()
+                                            Just fp     ->  do
+                                                runReaderT (selectSourceBuf fp) ghfR
+                                                return ()
+                    otherwise       ->  return ()
+            menuShellAppend theMenu item1
+            menuPopup theMenu Nothing
+            widgetShowAll theMenu
+            return True
+        else return False
+treeViewPopup _ _ _ _ = error "treeViewPopup wrong event type"
 

@@ -77,30 +77,24 @@ collectInstalled writeAscii session version forceRebuild = do
     when forceRebuild $ do
             collectorPath   <-  getCollectorPath version
             removeDirectoryRecursive collectorPath
-    sources <- getSourcesMap
     collectorPath   <-  getCollectorPath version
     knownPackages   <-  findKnownPackages collectorPath
     putStrLn $ "found known packages" ++ " " ++ show knownPackages
     packageInfos    <-  getInstalledPackageInfos session
---    putStrLn $ "get installed package infos" ++ " " ++ concatMap (\pi -> show (pkgName (package pi)))
---                                                            packageInfos
     let newPackages =   filter (\pi -> not $Set.member (showPackageId $ fromDPid $ DP.package pi)
                                                         knownPackages)
                                     packageInfos
---    putStrLn $ "after new Package"
-    let newPackages2 =  filter (\pi -> True {--pkgName (package pi) == "base"--}) newPackages
---    putStrLn $ "after new Package2, Remaining " ++ concatMap (\ pi -> show (pkgName (package pi)))
---                                                            newPackages2
     exportedIfaceInfos <-  mapM (\ info -> getIFaceInfos (fromDPid $ DP.package info)
-                                            (DP.exposedModules info) session) newPackages2
+                                            (DP.exposedModules info) session) newPackages
     hiddenIfaceInfos   <-  mapM (\ info -> getIFaceInfos (fromDPid $DP.package info)
-                                        (DP.hiddenModules info) session) newPackages2
---    putStrLn $ "getIfaceInfos completed hidden lengtgh: " ++ show (map length hiddenIfaceInfos)
-    let extracted   =   map extractInfo (zip4 exportedIfaceInfos hiddenIfaceInfos
-                                            (map (fromDPid . DP.package) newPackages2)
-                                                (map (\p -> map fromDPid (DP.depends p)) newPackages2))
+                                        (DP.hiddenModules info) session) newPackages
+    let extracted   =   map extractInfo $ zip4 exportedIfaceInfos
+                                                hiddenIfaceInfos
+                                                (map (fromDPid . DP.package) newPackages)
+                                                ((map (\p -> map fromDPid (DP.depends p)))
+                                                   newPackages)
+    sources         <-  getSourcesMap
     extractedWithSources    <-  mapM (collectSources sources) extracted
---    putStrLn $ "extracted " ++ concatMap (\ pi -> packageId pi) extracted
     mapM_ (writeExtracted collectorPath writeAscii) extractedWithSources
 
 
@@ -113,10 +107,11 @@ collectUninstalled writeAscii session version cabalPath = do
     allIfaceInfos   <-  getIFaceInfos2 allHiFiles session
     deps            <-  findFittingPackages session (buildDepends pd)
     let extracted   =   extractInfo (allIfaceInfos,[], package pd, deps)
-    sources <- getSourcesMap
+    let sources     =   Map.fromList [(package pd,[cabalPath])]
     extractedWithSources    <-  collectSources sources extracted
     collectorPath   <-  getCollectorPath version
     writeExtracted collectorPath writeAscii extractedWithSources
+    writeExtracted collectorPath True extractedWithSources
     putStrLn $ "\nExtracted infos for " ++ cabalPath
 
 getIFaceInfos :: PackageIdentifier -> [String] -> Session -> IO [(ModIface, FilePath)]

@@ -64,8 +64,7 @@ import Ghf.ViewFrame
 import Ghf.Extractor
 import Ghf.Info
 import Ghf.Extractor
-
-
+import Ghf.SourceModel
 
 packageOpen :: GhfAction
 packageOpen = do
@@ -438,27 +437,6 @@ selectErr index = do
                         (errDescription thisErr)
                 else return ()
             markErrorInLog (logLines thisErr)
-
-selectSourceBuf :: FilePath -> GhfM Bool
-selectSourceBuf fp = do
-    fpc <-  lift $canonicalizePath fp
-    buffers <- allBuffers
-    let buf = filter (\b -> case fileName b of
-                                Just fn -> equalFilePath fn fpc
-                                Nothing -> False) buffers
-    case buf of
-        hdb:tl -> do
-            makeBufferActive (paneName hdb)
-            return True
-        otherwise -> do
-            fe <- lift $doesFileExist fpc
-            if fe
-                then do
-                    path <- standardSourcePanePath
-                    newTextBuffer path (takeFileName fpc) (Just fpc)
-                    message "opened new buffer"
-                    return True
-                else return False
 
 markErrorInSourceBuf ::  Int -> Int -> String -> GhfAction
 markErrorInSourceBuf line column string = do
