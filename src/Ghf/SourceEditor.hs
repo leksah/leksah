@@ -55,7 +55,6 @@ module Ghf.SourceEditor (
 ,   editCandy
 
 ,   replaceDialog
-,   makeBufferActive
 
 ) where
 
@@ -101,13 +100,56 @@ instance Pane GhfBuffer
                             Just s  -> s
                             Nothing -> "?" ++ bufferName b
 
+instance SpecialPane GhfBuffer where
+    saveState p     =   case fileName p of
+                            Nothing ->  return Nothing
+                            Just fn ->  return (Just (BufferState fn 0))
+    recoverState pp (BufferState n i) _ =   do
+       exists <- lift $doesFileExist n
+       if exists
+          then newTextBuffer pp (takeFileName n) (Just n)
+          else return ()
+    makeActive buf = do
+        pane    <-  paneFromName (paneName buf)
+        if isIt BufferCasting pane
+            then do
+              let actbuf =   fromJust $ downCast BufferCasting pane
+              ghfR    <-  ask
+              sbLC    <-  getStatusbarLC
+              sbIO    <-  getStatusbarIO
+              infos   <-  readGhf accessibleInfo
+              let sv = sourceView actbuf
+              (tl,tm,tr) <- lift $do
+                  gtkBuf  <- textViewGetBuffer sv
+                  bringPaneToFront actbuf
+                  writeCursorPositionInStatusbar sv sbLC
+                  writeOverwriteInStatusbar sv sbIO
+                  id1 <- gtkBuf `afterModifiedChanged` runReaderT (markLabelAsChanged) ghfR
+                  id2 <- sv `afterMoveCursor`
+                      (\_ _ _ -> writeCursorPositionInStatusbar sv sbLC)
+                  id3 <- gtkBuf `afterEndUserAction`  writeCursorPositionInStatusbar sv sbLC
+                  sv `widgetAddEvents` [ButtonReleaseMask]
+                  id4 <- sv `onButtonRelease` (\ _ -> do
+                                                  writeCursorPositionInStatusbar sv sbLC
+                                                  return False)
+                  id5 <- sv `onButtonRelease` (\ e -> do
+                                                  showInfo sv ghfR
+                                                  return False)
+                  id6 <- sv `afterToggleOverwrite`  writeOverwriteInStatusbar sv sbIO
+                  return ([id2,id4,id6],[id1,id3],[])
+              activatePane actbuf (BufConnections tl tm tr)
+              checkModTime actbuf
+            else return ()
+    close pane = do makeActive pane
+                    fileClose
+                    return ()
+
 instance Castable GhfBuffer where
     casting _       =   BufferCasting
     downCast _ (PaneC a)
                     =   case casting a of
                             BufferCasting   -> Just a
                             _               -> Nothing
-
 allBuffers :: GhfM [GhfBuffer]
 allBuffers = do
     panesST <- readGhf panes
@@ -217,49 +259,11 @@ newTextBuffer panePath bn mbfn = do
             Nothing -> putStrLn "Notebook page not found"
         -- events
         cid <- sv `afterFocusIn`
-            (\_ -> do runReaderT (makeBufferActive rbn) ghfR; return True)
+            (\_ -> do runReaderT (makeActive buf) ghfR; return True)
         return (buf,[cid])
-    let newPaneMap  =   Map.insert rbn (panePath,BufConnections cids [] []) paneMap
-    let newPanes    =   Map.insert rbn (PaneC buf) panes
-    modifyGhf_ (\ghf -> return (ghf{panes = newPanes,
-                                    paneMap = newPaneMap}))
+    addPaneAdmin buf (BufConnections cids [] []) panePath
     lift $widgetShowAll (scrolledWindow buf)
     lift $widgetGrabFocus (sourceView buf)
-
-
-makeBufferActive :: PaneName -> GhfAction
-makeBufferActive pn = do
-    pane    <-  paneFromName pn
-    if isIt BufferCasting pane
-        then do
-            let buf =   fromJust $ downCast BufferCasting pane
-            ghfR    <-  ask
-            sbLC    <-  getStatusbarLC
-            sbIO    <-  getStatusbarIO
-            infos   <-  readGhf accessibleInfo
-            let sv = sourceView buf
-            (tl,tm,tr) <- lift $do
-                gtkBuf  <- textViewGetBuffer sv
-                bringPaneToFront pane
-                writeCursorPositionInStatusbar sv sbLC
-                writeOverwriteInStatusbar sv sbIO
-                id1 <- gtkBuf `afterModifiedChanged` runReaderT (markLabelAsChanged) ghfR
-                id2 <- sv `afterMoveCursor`
-                    (\_ _ _ -> writeCursorPositionInStatusbar sv sbLC)
-                id3 <- gtkBuf `afterEndUserAction`  writeCursorPositionInStatusbar sv sbLC
-                sv `widgetAddEvents` [ButtonReleaseMask]
-                id4 <- sv `onButtonRelease` (\ _ -> do
-                                                writeCursorPositionInStatusbar sv sbLC
-                                                return False)
-                id5 <- sv `onButtonRelease` (\ e -> do
-                                                showInfo sv ghfR
-                                                return False)
-                id6 <- sv `afterToggleOverwrite`  writeOverwriteInStatusbar sv sbIO
-                return ([id2,id4,id6],[id1,id3],[])
-            activatePane pane (BufConnections tl tm tr)
-            checkModTime buf
-        else return ()
-
 
 checkModTime :: GhfBuffer -> GhfAction
 checkModTime buf = do
@@ -274,7 +278,7 @@ checkModTime buf = do
                     case modTime buf of
                         Nothing ->  error $"checkModTime: time not set " ++ show (fileName buf)
                         Just mt -> do
-                            message $"checkModTime " ++ name ++ " " ++ show mt ++ " " ++ show nmt
+                            --message $"checkModTime " ++ name ++ " " ++ show mt ++ " " ++ show nmt
                             if nmt /= mt
                                 then do
                                     md <- lift $messageDialogNew
@@ -289,11 +293,11 @@ checkModTime buf = do
                                             lift $widgetHide md
                                         ResponseNo  ->  do
                                             let newPanes = Map.adjust (\b ->
-                                                                if isIt BufferCasting b
-                                                                    then PaneC ((fromJust $
-                                                                            downCast BufferCasting b)
-                                                                                    {modTime = (Just nmt)})
-                                                                    else b) name panes
+                                                    if isIt BufferCasting b
+                                                        then PaneC ((fromJust $
+                                                                downCast BufferCasting b)
+                                                                        {modTime = (Just nmt)})
+                                                        else b) name panes
                                             modifyGhf_ (\ghf -> return (ghf{panes = newPanes}))
                                             lift $widgetHide md
                                 else return ()
@@ -489,7 +493,7 @@ fileSave query = inBufContext' () $ \ nb _ currentBuffer i -> do
                                         mapM_ signalDisconnect s2
                                         mapM_ signalDisconnect s3
                                         cid1 <- (sourceView currentBuffer) `afterFocusIn`
-                                            (\_ -> do runReaderT (makeBufferActive rbn) ghfR
+                                            (\_ -> do runReaderT (makeActive newBuffer) ghfR
                                                       return True)
                                         let paneMap1  =  Map.delete rbn paneMap
                                         let newPaneMap =  Map.insert rbn
@@ -558,9 +562,7 @@ fileClose = inBufContext' True $ \nb gtkbuf currentBuffer i -> do
         else do
             deactivatePane
             lift $notebookRemovePage nb i
-            let newPanes = Map.delete (paneName currentBuffer) bufs
-            let newPaneMap = Map.delete (paneName currentBuffer) paneMap
-            modifyGhf_ (\ghf -> return (ghf{panes = newPanes, paneMap = newPaneMap}))
+            removePaneAdmin currentBuffer
             return True
 
 fileCloseAll :: GhfM Bool
@@ -569,7 +571,7 @@ fileCloseAll = do
     if null bufs
         then return True
         else do
-            makeBufferActive (paneName (head bufs))
+            makeActive (head bufs)
             r <- fileClose
             if r
                 then fileCloseAll

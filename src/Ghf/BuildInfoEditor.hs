@@ -70,10 +70,10 @@ libraryEditor fp modules para = do
     return (wid,pinj,pext,notif)
 
 modulesEditor :: [String] -> Editor [String]
-modulesEditor modules = staticMultiselectionEditor modules
+modulesEditor modules   =   staticMultiselectionEditor modules
 
 moduleEditor :: [String] -> Editor String
-moduleEditor modules = staticSelectionEditor modules
+moduleEditor modules    =   staticSelectionEditor modules
 
 
 executableEditor :: Maybe FilePath -> [String] -> Editor Executable

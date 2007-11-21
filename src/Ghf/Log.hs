@@ -34,6 +34,26 @@ instance Pane GhfLog
     getTopWidget    =   castToWidget . scrolledWindowL
     paneId b        =   "*Log"
 
+instance SpecialPane GhfLog where
+    saveState p     =   return (Just (LogState ()))
+    recoverState pp ps _ = do
+        nb <- getNotebook pp
+        initLog pp nb
+    makeActive log  =   do
+        activatePane log (BufConnections[][] [])
+    close pane     =   do
+        (panePath,_)    <-  guiPropertiesFromName (paneName pane)
+        nb              <-  getNotebook panePath
+        mbI             <-  lift $notebookPageNum nb (getTopWidget pane)
+        case mbI of
+            Nothing ->  lift $ do
+                putStrLn "notebook page not found: unexpected"
+                return ()
+            Just i  ->  do
+                deactivatePaneIfActive pane
+                lift $notebookRemovePage nb i
+                removePaneAdmin pane
+
 instance Castable GhfLog where
     casting _               =   LogCasting
     downCast _ (PaneC a)    =   case casting a of
@@ -88,18 +108,10 @@ initLog panePath nb = do
             Just i -> notebookSetCurrentPage nb i
             Nothing -> putStrLn "Notebook page not found"
         cid1 <- tv `afterFocusIn`
-            (\_ -> do runReaderT (makeLogActive buf) ghfR; return True)
+            (\_ -> do runReaderT (makeActive buf) ghfR; return True)
         return (buf,[cid1])
-    let newPaneMap  =  Map.insert (paneName buf)
-                            (panePath, BufConnections [] [] cids) paneMap
-    let newPanes = Map.insert (paneName buf) (PaneC buf) panes
-    modifyGhf_ (\ghf -> return (ghf{panes = newPanes,
-                                    paneMap = newPaneMap}))
+    addPaneAdmin buf (BufConnections [] [] cids) panePath
     lift $widgetGrabFocus (textView buf)
-
-makeLogActive :: GhfLog -> GhfAction
-makeLogActive log = do
-    activatePane log (BufConnections[][] [])
 
 getLog :: GhfM GhfLog
 getLog = do

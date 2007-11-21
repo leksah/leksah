@@ -177,6 +177,9 @@ actions =
     ,AD "ViewSwitchTabs" "Tabs On/Off" Nothing Nothing
         viewSwitchTabs [] False
 
+    ,AD "ViewClosePane" "Close pane" Nothing (Just "gtk-close")
+        sessionClosePane [] False
+
     ,AD "ClearLog" "_Clear Log" Nothing Nothing
         clearLog [] False
 
@@ -279,6 +282,8 @@ menuDescription =
     "       <menuitem name=\"Tabs _Down\" action=\"ViewTabsDown\" /> " ++ "\n" ++
     "       <menuitem name=\"Switch Tabs\" action=\"ViewSwitchTabs\" /> " ++ "\n" ++
     "       <separator/> " ++ "\n" ++
+    "       <menuitem name=\"Close Pane\" action=\"ViewClosePane\" /> " ++ "\n" ++
+    "       <separator/> " ++ "\n" ++
     "       <menuitem name=\"Clear Log\" action=\"ClearLog\" /> " ++ "\n" ++
     "     </menu> " ++ "\n" ++
     "    <menu name=\"_Preferences\" action=\"Preferences\"> " ++ "\n" ++
@@ -294,7 +299,7 @@ menuDescription =
     "       <toolitem name=\"New\" action=\"FileNew\"/> " ++ "\n" ++
     "       <toolitem name=\"Open\" action=\"FileOpen\"/> " ++ "\n" ++
     "       <toolitem name=\"Save\" action=\"FileSave\"/> " ++ "\n" ++
-    "       <toolitem name=\"Close\" action=\"FileClose\"/> " ++ "\n" ++
+    "       <toolitem name=\"Close\" action=\"ViewClosePane\"/> " ++ "\n" ++
     "       <separator/> " ++ "\n" ++
     "     </placeholder> " ++ "\n" ++
     "     <placeholder name=\"FileEditItems\"> " ++ "\n" ++

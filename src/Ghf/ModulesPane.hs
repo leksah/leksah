@@ -46,6 +46,24 @@ instance Pane GhfModules
     getTopWidget    =   castToWidget . boxM
     paneId b        =   "*Modules"
 
+instance SpecialPane GhfModules where
+    saveState p     =   return Nothing
+    recoverState _ _ _ =   return ()
+    makeActive p    = do
+        activatePane p (BufConnections[][] [])
+    close pane     =   do
+        (panePath,_)    <-  guiPropertiesFromName (paneName pane)
+        nb              <-  getNotebook panePath
+        mbI             <-  lift $notebookPageNum nb (getTopWidget pane)
+        case mbI of
+            Nothing ->  lift $ do
+                putStrLn "notebook page not found: unexpected"
+                return ()
+            Just i  ->  do
+                deactivatePaneIfActive pane
+                lift $notebookRemovePage nb i
+                removePaneAdmin pane
+
 instance Castable GhfModules where
     casting _               =   ModulesCasting
     downCast _ (PaneC a)    =   case casting a of
@@ -147,6 +165,8 @@ initModules panePath nb = do
         scrolledWindowSetPolicy sw2 PolicyAutomatic PolicyAutomatic
         panedAdd1 pane sw
         panedAdd2 pane sw2
+        (x,y) <- widgetGetSize nb
+        panedSetPosition pane (x `quot` 2)
         let modules = GhfModules pane treeStore facetStore
         notebookPrependPage nb pane (paneName modules)
         widgetShowAll pane
@@ -154,14 +174,12 @@ initModules panePath nb = do
         case mbPn of
             Just i -> notebookSetCurrentPage nb i
             Nothing -> putStrLn "Notebook page not found"
-        cid1 <- pane `afterFocusIn`
-            (\_ -> do runReaderT (makeModulesActive modules) ghfR; return True)
-        return (modules,[cid1])
-    let newPaneMap  =  Map.insert (paneName buf)
-                            (panePath, BufConnections [] [] []) paneMap
-    let newPanes = Map.insert (paneName buf) (PaneC buf) panes
-    modifyGhf_ (\ghf -> return (ghf{panes = newPanes,
-                                    paneMap = newPaneMap}))
+        cid1 <- treeView `afterFocusIn`
+            (\_ -> do runReaderT (makeActive modules) ghfR; return True)
+        cid2 <- facetView `afterFocusIn`
+            (\_ -> do runReaderT (makeActive modules) ghfR; return True)
+        return (modules,[cid1,cid2])
+    addPaneAdmin buf (BufConnections [] [] []) panePath
     lift $widgetGrabFocus (boxM buf)
 
 fillFacets :: New.TreeSelection
@@ -231,10 +249,6 @@ fillModulesList = do
                                     New.treeStoreClear treeStore
                                     mapM_ (\(e,i) -> New.treeStoreInsertTree treeStore [] i e)
                                         $ zip li [0 .. length li]
-
-makeModulesActive :: GhfModules -> GhfAction
-makeModulesActive mods      =   do
-    activatePane mods (BufConnections[][][])
 
 type ModTree = Tree (String, [(ModuleDescr,PackageDescr)])
 

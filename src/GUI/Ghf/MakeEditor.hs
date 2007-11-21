@@ -19,6 +19,7 @@ module GUI.Ghf.MakeEditor (
 ,   emptyNotifier
 ,   EventSelector(..)
 ,   extractAndValidate
+,   extract
 ,   mkEditor
 
 ,   declareEvent
@@ -135,6 +136,16 @@ extractAndValidate val getExts fieldNames = do
             dialogRun md
             widgetDestroy md
             return Nothing
+
+extract :: alpha -> [alpha -> Extractor alpha] -> IO (Maybe alpha)
+extract val getExts =
+    foldM (\ mbVal ext -> do
+        case mbVal of
+            Nothing -> return Nothing
+            Just val -> do
+                newVal <- ext val
+                return newVal)
+            (Just val) getExts
 
 -- ------------------------------------------------------------
 -- * Implementation of notifications

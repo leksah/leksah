@@ -34,7 +34,7 @@ import System.FilePath
 import System.Directory
 import Data.Map (Map)
 import qualified Data.Map as Map
-import GHC
+import GHC hiding (getInfo)
 import System.IO
 import Control.Concurrent
 import qualified Distribution.Package as DP
@@ -57,6 +57,7 @@ import GUI.Ghf.MakeEditor
 import GUI.Ghf.SimpleEditors
 import GUI.Ghf.CompositeEditors
 import GUI.Ghf.Parameters
+import Data.Ghf.Default
 
 instance Pane GhfInfo
     where
@@ -65,12 +66,36 @@ instance Pane GhfInfo
     getTopWidget    =   castToWidget . sw
     paneId b        =   "*Info"
 
+instance SpecialPane GhfInfo where
+    saveState p     =   do
+        mbIdDescr <- getInfo
+        lift $ putStrLn $ "nowRecovering " ++ show  mbIdDescr
+        case mbIdDescr of
+            Nothing -> return Nothing
+            Just idDescr -> return (Just (InfoState idDescr))
+    recoverState pp (InfoState iddescr) _  =   do
+        nb <- getNotebook pp
+        initInfo pp nb iddescr
+        return ()
+    makeActive pane = activatePane pane (BufConnections[][][])
+    close pane     =   do
+        (panePath,_)    <-  guiPropertiesFromName (paneName pane)
+        nb              <-  getNotebook panePath
+        mbI             <-  lift $notebookPageNum nb (getTopWidget pane)
+        case mbI of
+            Nothing ->  lift $ do
+                putStrLn "notebook page not found: unexpected"
+                return ()
+            Just i  ->  do
+                deactivatePaneIfActive pane
+                lift $notebookRemovePage nb i
+                removePaneAdmin pane
+
 instance Castable GhfInfo where
     casting _               =   InfoCasting
     downCast _ (PaneC a)    =   case casting a of
                                     InfoCasting -> Just a
                                     _           -> Nothing
-
 
 idDescrDescr :: [FieldDescription IdentifierDescr]
 idDescrDescr = [
@@ -90,8 +115,8 @@ idDescrDescr = [
             (staticSelectionEditor allIdTypes)
     ,   mkField
             (paraName <<<- ParaName "Exported by" $ emptyParams)
-            (\l -> moduleIdID l)
-            (\ b a -> a{moduleIdID = b})
+            (\l -> map showPackModule (moduleIdID l))
+            (\ b a -> a{moduleIdID = (map parsePackModule b)})
             multiselectionEditor
     ,   mkField
             (paraName  <<<- ParaName "Type" $ emptyParams)
@@ -151,15 +176,17 @@ initInfo panePath nb idDescr = do
             sw <- scrolledWindowNew Nothing Nothing
             scrolledWindowAddWithViewport sw nbbox
             scrolledWindowSetPolicy sw PolicyAutomatic PolicyAutomatic
-            let info = GhfInfo sw setInjs
+            let info = GhfInfo sw setInjs getExts
+            --mapM_ (\w -> widgetSetExtensionEvents w [ExtensionEventsAll]) widgets
+            cids <- mapM
+                (\w -> w `onFocus` --onFocusIn doesn't work here - why?
+                    (\_ -> do   runReaderT (makeActive info) ghfR
+                                return False))
+                        widgets
             notebookPrependPage nb sw (paneName info)
             widgetShowAll sw
-            return (info,[])
-    let newPaneMap  =  Map.insert (paneName pane)
-                            (panePath, BufConnections [] [] cids) paneMap
-    let newPanes = Map.insert (paneName pane) (PaneC pane) panes
-    modifyGhf_ (\ghf -> return (ghf{panes = newPanes,
-                                    paneMap = newPaneMap}))
+            return (info,cids)
+    addPaneAdmin pane (BufConnections [] [] []) panePath
     lift $widgetGrabFocus (sw pane)
     lift $bringPaneToFront pane
 
@@ -190,6 +217,14 @@ setInfo identifierDescr = do
             lift $ bringPaneToFront (head infos)
             return ()
 
-
-
+getInfo ::  GhfM (Maybe (IdentifierDescr))
+getInfo = do
+    panesST <- readGhf panes
+    let infos = catMaybes $ map (downCast InfoCasting) $ Map.elems panesST
+    if null infos || length infos > 1
+        then return Nothing
+        else do
+            let ext = extractors (head infos)
+            v <- lift $ extract getDefault ext
+            return v
 

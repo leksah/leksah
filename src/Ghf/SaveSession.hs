@@ -17,6 +17,7 @@
 module Ghf.SaveSession (
     saveSession
 ,   recoverSession
+,   sessionClosePane
 ) where
 
 import Graphics.UI.Gtk hiding (showLayout)
@@ -34,22 +35,43 @@ import Ghf.ViewFrame
 import Ghf.SourceEditor
 import Ghf.File
 import Ghf.PrinterParser
+import Ghf.ModulesPane
 import qualified Text.PrettyPrint.HughesPJ as PP
 import GUI.Ghf.Parameters
 import Ghf.Package
+
+sessionClosePane :: GhfAction
+sessionClosePane = do
+    activePane'     <-  readGhf activePane
+    case activePane' of
+        Nothing     ->  return ()
+        Just (pn,_) ->  do
+            p <- paneFromName pn
+            case downCast LogCasting p of
+                Just pp -> close pp
+                Nothing ->
+                    case downCast InfoCasting p of
+                        Just pp -> close pp
+                        Nothing ->
+                            case downCast BufferCasting p of
+                                Just pp -> close pp
+                                Nothing ->
+                                    case downCast ModulesCasting p of
+                                        Just pp -> close pp
+                                        Nothing -> error "viewClosePane has incomplete cases"
 
 sessionFilename = "Current.session"
 
 data SessionState = SessionState {
         layoutS             ::   PaneLayout
-    ,   population          ::   [(String,PanePath)]
+    ,   population          ::   [(Maybe PaneState,PanePath)]
     ,   windowSize          ::   (Int,Int)
     ,   activePackage        ::   Maybe FilePath
 } deriving()
 
 defaultLayout = SessionState {
         layoutS             =   TerminalP (Just TopP)
-    ,   population          =   [("*Log",[])]
+    ,   population          =   []
     ,   windowSize          =   (1024,768)
     ,   activePackage       =   Nothing}
 
@@ -85,6 +107,7 @@ layoutDescr = [
 --
 saveSession :: GhfAction
 saveSession = do
+    lift $ putStrLn "Now saving session"
     wdw         <-  readGhf window
     layout      <-  getLayout
     population  <-  getPopulation
@@ -125,12 +148,25 @@ getLayout = do
                                 then Just (posTypeToPaneDirection pos)
                                 else Nothing))
 
-getPopulation :: GhfM[(String,PanePath)]
+getPopulation :: GhfM[(Maybe PaneState,PanePath)]
 getPopulation = do
     paneMap <- readGhf paneMap
-    mapM (\ (pn,v) -> do    p <- paneFromName pn
-                            return (paneId p, fst v))
-                                $Map.toList paneMap
+    mapM (\ (pn,v) -> do
+        p <- paneFromName pn
+        st <- case downCast LogCasting p of
+                Just pp -> saveState pp
+                Nothing ->
+                    case downCast InfoCasting p of
+                        Just pp -> saveState pp
+                        Nothing ->
+                            case downCast BufferCasting p of
+                                Just pp -> saveState pp
+                                Nothing ->
+                                    case downCast ModulesCasting p of
+                                        Just pp -> saveState pp
+                                        Nothing -> return Nothing
+        return (st, fst v))
+                $Map.toList paneMap
 
 getActive :: GhfM(Maybe String)
 getActive = do
@@ -182,7 +218,7 @@ applyLayout layoutS = do
     old <- readGhf layout
     case old of
         TerminalP _ ->   applyLayout' layoutS []
-        otherwise   ->   error "applyLayout can only be allied to empty Layout"
+        otherwise   ->   error "apply Layout can only be allied to empty Layout"
     where
     applyLayout' (TerminalP Nothing) pp  = do
         nb          <-  getNotebook pp
@@ -204,21 +240,14 @@ applyLayout layoutS = do
         applyLayout' t (pp ++ [TopP])
         applyLayout' b (pp ++ [BottomP])
 
-populate :: [(String,PanePath)] -> GhfAction
-populate = mapM_ populate'
-    where
-    populate' ("*Log",pp) =  do nb <- getNotebook pp
-                                initLog pp nb
---    populate' ("*Info",pp)=  do nb <- getNotebook pp
---                                initInfo pp nb
-    populate' ('?':n,pp)  =  newTextBuffer pp n Nothing
-    populate' (n,pp)      =  do
-        exist <- lift $doesFileExist n
-        if exist
-            then newTextBuffer pp (takeFileName n) (Just n)
-            else return ()
+populate :: [(Maybe PaneState,PanePath)] -> GhfAction
+populate = mapM_ (\ (mbPs,pp) ->
+            case mbPs of
+                Nothing -> return ()
+                Just s -> recoverForState pp s)
 
-
-
-
+recoverForState pp s@(LogState _)       =   recoverState pp s LogCasting
+recoverForState pp s@(InfoState _)      =   recoverState pp s InfoCasting
+recoverForState pp s@(BufferState _ _)  =   recoverState pp s BufferCasting
+recoverForState pp s@(ModulesState _)   =   recoverState pp s ModulesCasting
 

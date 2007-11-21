@@ -21,11 +21,13 @@ module Ghf.Core.Panes (
 ,   Castable(..)
 ,   Casting(..)
 ,   GhfPane(..)
+,   SpecialPane(..)
 ,   PaneDirection(..)
 ,   PanePath
 ,   PaneLayout(..)
 ,   PaneName
 ,   Connections(..)
+,   PaneState(..)
 
 -- * The pane types
 ,   GhfBuffer(..)
@@ -41,9 +43,12 @@ import Graphics.UI.Gtk.ModelView as New
 import System.Glib.Signals
 import Data.Maybe
 import System.Time
+import Control.Monad.Reader
+import GHC.IOBase
 
 import Ghf.Core.Data
-
+import {-# SOURCE #-}  Ghf.Core.State
+import GUI.Ghf.EditorBasics
 -- ---------------------------------------------------------------------
 -- Panes and pane layout
 --
@@ -67,8 +72,6 @@ data PaneLayout =       HorizontalP PaneLayout PaneLayout Int
                     |   TerminalP (Maybe PaneDirection)
     deriving (Eq,Show,Read)
 
-
-
 --
 -- | Signal handlers for the different pane types
 --
@@ -77,7 +80,6 @@ data Connections =  BufConnections
                         [ConnectId TextBuffer]
                         [ConnectId TextView]
 --                        [ConnectId New.TreeView]
-
 
 type PaneName = String
 
@@ -96,6 +98,12 @@ class Pane alpha  where
     getTopWidget    ::   alpha -> Widget
     paneId          ::   alpha -> String
 
+class Pane alpha => SpecialPane alpha where
+    saveState       ::   alpha -> GhfM (Maybe (PaneState))
+    recoverState    ::   PanePath -> PaneState -> Casting alpha -> GhfAction
+    makeActive      ::   alpha -> GhfAction
+    close           ::   alpha -> GhfAction
+
 data GhfPane        =   forall alpha . (Pane alpha, Castable alpha) => PaneC alpha
 
 data Casting alpha  where
@@ -103,6 +111,12 @@ data Casting alpha  where
     InfoCasting     ::   Casting GhfInfo
     BufferCasting   ::   Casting GhfBuffer
     ModulesCasting  ::   Casting GhfModules
+
+data PaneState      =   LogState   ()
+                    |   InfoState IdentifierDescr
+                    |   BufferState FilePath Int
+                    |   ModulesState ()
+    deriving(Eq,Ord,Read,Show)
 
 class Castable alpha where
     casting         ::   alpha -> Casting alpha
@@ -117,36 +131,38 @@ instance Pane GhfPane where
     getTopWidget (PaneC a)  =   getTopWidget a
     paneId (PaneC a)        =   paneId a
 
+
 -- ---------------------------------------------------------------------
--- Panes - The data structures for the panes
+-- Special Panes - The data structures for the panes
 --
 
 --
 -- | A text editor pane description
 --
-data GhfBuffer  =   GhfBuffer {
-    fileName    ::  Maybe FilePath
-,   bufferName  ::  String
-,   addedIndex  ::  Int
-,   sourceView  ::  SourceView
-,   scrolledWindow :: ScrolledWindow
-,   modTime     ::  Maybe (ClockTime)
+data GhfBuffer      =   GhfBuffer {
+    fileName        ::  Maybe FilePath
+,   bufferName      ::  String
+,   addedIndex      ::  Int
+,   sourceView      ::  SourceView
+,   scrolledWindow  ::  ScrolledWindow
+,   modTime         ::  Maybe (ClockTime)
 }
 
 --
 -- | A log view pane description
 --
-data GhfLog  =   GhfLog {
-    textView  ::  TextView
+data GhfLog         =   GhfLog {
+    textView        ::  TextView
 ,   scrolledWindowL :: ScrolledWindow
 }
 
 --
 -- | An info pane description
 --
-data GhfInfo  =   GhfInfo {
+data GhfInfo        =   GhfInfo {
     sw              ::   ScrolledWindow
-,   injectors       ::   [IdentifierDescr -> IO() ]
+,   injectors       ::   [IdentifierDescr -> IO()]
+,   extractors      ::   [IdentifierDescr -> Extractor IdentifierDescr]
 }
 
 -- | A modules pane description
@@ -157,3 +173,5 @@ data GhfModules     =   GhfModules {
 ,   treeStore       ::   New.TreeStore (String, [(ModuleDescr,PackageDescr)])
 ,   facetStore      ::   New.ListStore (String, IdentifierDescr)
 }
+
+

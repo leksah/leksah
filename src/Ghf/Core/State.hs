@@ -27,12 +27,15 @@ module Ghf.Core.State (
 ,   modifyGhf_
 ,   withGhf
 
+,   removePaneAdmin
+,   addPaneAdmin
 -- * debugging
 --,   helpDebug
 ,   message
 ,   trace
 ,   module Ghf.Core.Data
 ,   module Ghf.Core.Panes
+
 ) where
 
 import Debug.Trace
@@ -53,10 +56,6 @@ import Ghf.Core.Panes
 
 message m = trace m (return ())
 
-{--
-message m = return ()
-trace a b = b
---}
 -- ---------------------------------------------------------------------
 -- IDE State
 --
@@ -131,4 +130,21 @@ withGhf f = do
     e <- ask
     lift $ f =<< readIORef e
 
+
+removePaneAdmin :: (SpecialPane alpha, Castable alpha) => alpha -> GhfAction
+removePaneAdmin pane = do
+    panes'          <-  readGhf panes
+    paneMap'        <-  readGhf paneMap
+    let newPanes    =   Map.delete (paneName pane) panes'
+    let newPaneMap  =   Map.delete (paneName pane) paneMap'
+    modifyGhf_ (\ghf -> return (ghf{panes = newPanes, paneMap = newPaneMap}))
+
+addPaneAdmin :: (SpecialPane alpha, Castable alpha) => alpha -> Connections -> PanePath ->  GhfAction
+addPaneAdmin pane conn pp = do
+    panes'          <-  readGhf panes
+    paneMap'        <-  readGhf paneMap
+    let newPaneMap  =   Map.insert (paneName pane) (pp, conn) paneMap'
+    let newPanes    =   Map.insert (paneName pane) (PaneC pane) panes'
+    modifyGhf_ (\ghf -> return (ghf{panes = newPanes,
+                                    paneMap = newPaneMap}))
 

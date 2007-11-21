@@ -46,6 +46,8 @@ module Ghf.Core.Data (
 ,   SymbolTable
 ,   PackageScope
 ,   PackModule(..)
+,   showPackModule
+,   parsePackModule
 
 ) where
 
@@ -54,12 +56,13 @@ import Graphics.UI.Gtk.SourceView
 import Graphics.UI.Gtk hiding (get)
 import Graphics.UI.Gtk.ModelView as New
 import Distribution.Package
---import Ghf.Core.Panes
 import Data.Map (Map)
 import qualified Data.Map as Map
 import Data.Set(Set)
 import qualified Data.Set as Set
 import Text.ParserCombinators.ReadP
+
+import Data.Ghf.Default
 
 data StandardPath = LeftTop | LeftBottom | RightTop | RightBottom
     deriving(Read,Show,Eq,Enum)
@@ -180,11 +183,17 @@ data IdentifierDescr    =  IdentifierDescr {
 ,   identifierTypeID    ::   ! IdType
 ,   typeInfoID          ::   ! TypeInfo
 ,   moduleIdID          ::   ! [PackModule]
-} deriving (Show,Eq,Ord)
+} deriving (Show,Eq,Ord,Read)
+
+instance Default IdentifierDescr where
+    getDefault = IdentifierDescr getDefault getDefault getDefault getDefault
 
 data IdType = Function | Data | Newtype | Synonym | AbstractData |
                 Constructor | Field | Class | ClassOp | Foreign
-  deriving (Show, Eq, Ord, Enum)
+  deriving (Show, Eq, Ord, Enum,Read)
+
+instance Default IdType where
+    getDefault = Function
 
 emptyIdentifierDescr = IdentifierDescr ""
 
@@ -194,26 +203,22 @@ type DataId             =   String  -- Qualified or unqualified
 type TypeInfo           =   String
 type ModuleIdentifier   =   String  -- always qualified
 
-data PackModule         =   PM {pack :: PackageIdentifier, modu :: ModuleIdentifier}
-     deriving (Eq, Ord)
+data PackModule         =   PM {    pack :: PackageIdentifier
+                                ,   modu :: ModuleIdentifier}
+                                deriving (Eq, Ord,Read,Show)
 
-instance Show  PackModule where
-    show (PM p m)       =   showPackageId p ++ ":" ++ m
+showPackModule ::  PackModule -> String
+showPackModule (PM p m) =   showPackageId p ++ ":" ++ m
 
-instance Read  PackModule where
-    readsPrec i str     =   let (pack,mod) = span (\c -> c /= ':') str
+parsePackModule         ::   String -> PackModule
+parsePackModule str     =   let (pack,mod) = span (\c -> c /= ':') str
                             in  case readP_to_S parsePackageId pack of
                                 [(ps,_)]  -> if null mod
                                                 then perror str
-                                                else [(PM ps (tail mod),"")]
+                                                else (PM ps (tail mod))
                                 _         -> perror str
-        where perror s      =   error $ "cannot parse moduleWith " ++ s
+    where perror s      =   error $ "cannot parse PackModule from " ++ s
 
---instance Show  ModuleDescr where
---    show md    =   show $ moduleIdMD md
-
---instance Show  PackageDescr where
---    show pd    =   showPackageId $ packagePD pd
 
 
 

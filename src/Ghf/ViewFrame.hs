@@ -44,6 +44,7 @@ module Ghf.ViewFrame (
 ,   newNotebook
 ,   activatePane
 ,   deactivatePane
+,   deactivatePaneIfActive
 
 -- * Accessing GUI elements
 ,   widgetFromPath
@@ -102,7 +103,6 @@ guiPropertiesFromName pn = do
             Just it -> return it
             otherwise  -> error $"Cant't find guiProperties from unique name " ++ pn
 
-
 posTypeToPaneDirection PosLeft      =   LeftP
 posTypeToPaneDirection PosRight     =   RightP	
 posTypeToPaneDirection PosTop       =   TopP
@@ -138,6 +138,14 @@ deactivatePane = do
     modifyGhf_ $ \ghf -> do
         return (ghf{activePane = Nothing})
 
+deactivatePaneIfActive :: (SpecialPane alpha, Castable alpha) => alpha -> GhfAction
+deactivatePaneIfActive pane = do
+    mbActive <- readGhf activePane
+    case mbActive of
+        Nothing -> return ()
+        Just (n,_) -> if n == paneName pane
+                        then deactivatePane
+                        else return ()
 --
 -- | Toggle the tabs of the current notebook
 --
@@ -565,8 +573,6 @@ adjust pp layout replace    = adjust' pp layout
     adjust' (LeftP:r)  (VerticalP lp rp _)      = VerticalP (adjust' r lp) rp 0
     adjust' (RightP:r)  (VerticalP lp rp _)     = VerticalP lp (adjust' r rp) 0
     adjust' p l = error $"inconsistent layout " ++ show p ++ " " ++ show l
-
-
 
 --
 -- | Get the widget from a list of strings
