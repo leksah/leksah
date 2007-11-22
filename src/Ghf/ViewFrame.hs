@@ -38,6 +38,8 @@ module Ghf.ViewFrame (
 ,   getNotebook
 ,   getPaned
 ,   getActiveNotebook
+,   getPane
+,   getPanes
 
 -- * View Actions
 ,   bringPaneToFront
@@ -72,9 +74,23 @@ import Control.Monad.Reader
 import qualified Data.Map as Map
 import Data.Map (Map)
 import Data.List
+import Data.Maybe
 
 import Ghf.Core.State
 import GUI.Ghf.Parameters
+
+getPane ::  (Pane alpha, Castable alpha) => Casting alpha -> GhfM (Maybe alpha)
+getPane casting = do
+    selectedPanes <- getPanes casting
+    if null selectedPanes || length selectedPanes > 1
+        then return Nothing
+        else (return (Just $head selectedPanes))
+
+getPanes ::  (Pane alpha, Castable alpha) => Casting alpha -> GhfM ([alpha])
+getPanes casting = do
+    panes' <- readGhf panes
+    let selectedPanes = catMaybes $ map (downCast casting) $ Map.elems panes'
+    return selectedPanes
 
 -- | Constructs a unique pane name, which is an index and a string
 figureOutPaneName :: Pane alpha => Map String alpha -> String -> Int -> (Int,String)

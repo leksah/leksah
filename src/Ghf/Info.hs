@@ -164,10 +164,10 @@ initInfo = do
     let version     =   cProjectVersion
     lift $ putStrLn "Before running collector"
     lift $ collectInstalled False session version False
---    pid <- lift $ runProcess "dist/build/ghf-collector/ghf-collector"  [] Nothing Nothing Nothing Nothing Nothing
---    lift $ waitForProcess pid
     lift $ putStrLn "After running collector"
+    lift $ putStrLn "Before loading infos"
     loadAccessibleInfo
+    lift $ putStrLn "After loading infos"
 
 --
 -- | Load all infos for all installed and exposed packages
@@ -238,7 +238,6 @@ buildActiveInfo' :: GhfM (Maybe PackageScope)
 buildActiveInfo' =
     let version         =   cProjectVersion in do
     activePack          <-  readGhf activePack
-    log                 <-  getLog
     session             <-  readGhf session
     case activePack of
         Nothing         ->  return Nothing
@@ -297,7 +296,7 @@ loadInfosForPackage dirPath pid = do
         then catch (do
             file            <-  openBinaryFile filePath ReadMode
             bs              <-  BS.hGetContents file
-            putStrLn $ "Now reading iface " ++ showPackageId pid
+--            putStrLn $ "Now reading iface " ++ showPackageId pid
             let ! packageInfo = decode bs
             hClose file
             return (Just packageInfo))

@@ -104,11 +104,11 @@ instance SpecialPane GhfBuffer where
     saveState p     =   case fileName p of
                             Nothing ->  return Nothing
                             Just fn ->  return (Just (BufferState fn 0))
-    recoverState pp (BufferState n i) _ =   do
-       exists <- lift $doesFileExist n
-       if exists
-          then newTextBuffer pp (takeFileName n) (Just n)
-          else return ()
+    recoverState pp (BufferState n i) =   do
+        exists <- lift $doesFileExist n
+        if exists
+            then newTextBuffer pp (takeFileName n) (Just n) >>= return . Just
+            else (return Nothing)
     makeActive buf = do
         pane    <-  paneFromName (paneName buf)
         if isIt BufferCasting pane
@@ -172,7 +172,7 @@ standardSourcePanePath = do
     prefs   <-  readGhf prefs
     return (getStandardPanePath (sourcePanePath prefs) layout)
 
-newTextBuffer :: PanePath -> String -> Maybe FilePath -> GhfAction
+newTextBuffer :: PanePath -> String -> Maybe FilePath -> GhfM GhfBuffer
 newTextBuffer panePath bn mbfn = do
     -- create the appropriate language
     ghfR <- ask
@@ -264,6 +264,7 @@ newTextBuffer panePath bn mbfn = do
     addPaneAdmin buf (BufConnections cids [] []) panePath
     lift $widgetShowAll (scrolledWindow buf)
     lift $widgetGrabFocus (sourceView buf)
+    return buf
 
 checkModTime :: GhfBuffer -> GhfAction
 checkModTime buf = do
@@ -528,6 +529,7 @@ fileNew = do
     prefs   <- readGhf prefs
     pp      <- getActivePanePathOrStandard (sourcePanePath prefs)
     newTextBuffer pp "Unnamed" Nothing
+    return ()
 
 fileClose :: GhfM Bool
 fileClose = inBufContext' True $ \nb gtkbuf currentBuffer i -> do
@@ -609,6 +611,7 @@ fileOpen = do
             pp <-  getActivePanePathOrStandard (sourcePanePath prefs)
             cfn <- lift $canonicalizePath fn
             newTextBuffer pp (takeFileName fn) (Just cfn)
+            return ()
 
 editUndo :: GhfAction
 editUndo = inBufContext () $ \_ gtkbuf _ _ ->

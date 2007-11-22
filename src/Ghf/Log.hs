@@ -4,8 +4,7 @@
 --
 
 module Ghf.Log (
-    initLog
-,   getLog
+    getLog
 ,   appendLog
 ,   LogTag(..)
 ,   markErrorInLog
@@ -35,10 +34,12 @@ instance Pane GhfLog
     paneId b        =   "*Log"
 
 instance SpecialPane GhfLog where
-    saveState p     =   return (Just (LogState ()))
-    recoverState pp ps _ = do
+    saveState p     =   return (Just LogState)
+    recoverState pp LogState = do
         nb <- getNotebook pp
         initLog pp nb
+        log <- getLog
+        return (Just log)
     makeActive log  =   do
         activatePane log (BufConnections[][] [])
     close pane     =   do
@@ -115,21 +116,19 @@ initLog panePath nb = do
 
 getLog :: GhfM GhfLog
 getLog = do
-    panesST <- readGhf panes
-    prefs   <- readGhf prefs
-    layout  <- readGhf layout
-    let logs =  catMaybes $ map (downCast LogCasting) $ Map.elems panesST
-    if null logs || length logs > 1
-        then do
+    mbPane <- getPane LogCasting
+    case mbPane of
+        Nothing -> do
+            prefs   <- readGhf prefs
+            layout  <- readGhf layout
             let pp  =  getStandardPanePath (logPanePath prefs) layout
             nb      <- getNotebook pp
             initLog pp nb
-            panesST <- readGhf panes
-            let logs = catMaybes $ map (downCast LogCasting) $ Map.elems panesST
-            if null logs || length logs > 1
-                then error "Can't init log"
-                else return (head logs)
-        else return (head logs)
+            mbPane <- getPane LogCasting
+            case mbPane of
+                Nothing ->  error "Can't init log"
+                Just l  ->  return l
+        Just p -> return p
 
 appendLog :: GhfLog -> String -> LogTag -> IO Int
 appendLog l@(GhfLog tv _) string tag = do

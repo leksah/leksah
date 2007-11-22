@@ -46,14 +46,14 @@ getSourcesMap = do
         mbSources <- parseSourceForPackageDB
         case mbSources of
             Just map -> do
-                putStrLn $ "sourceDB: " ++ show map
+                --putStrLn $ "sourceDB: " ++ show map
                 return map
             Nothing -> do
                 buildSourceForPackageDB
                 mbSources <- parseSourceForPackageDB
                 case mbSources of
                     Just map -> do
-                        putStrLn $ "sourceDB: " ++ show map
+                        --putStrLn $ "sourceDB: " ++ show map
                         return map
                     Nothing ->  error "can't build/open source for package file"
 

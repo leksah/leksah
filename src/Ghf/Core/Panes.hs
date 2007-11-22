@@ -100,7 +100,7 @@ class Pane alpha  where
 
 class Pane alpha => SpecialPane alpha where
     saveState       ::   alpha -> GhfM (Maybe (PaneState))
-    recoverState    ::   PanePath -> PaneState -> Casting alpha -> GhfAction
+    recoverState    ::   PanePath -> PaneState -> GhfM (Maybe alpha)
     makeActive      ::   alpha -> GhfAction
     close           ::   alpha -> GhfAction
 
@@ -112,10 +112,10 @@ data Casting alpha  where
     BufferCasting   ::   Casting GhfBuffer
     ModulesCasting  ::   Casting GhfModules
 
-data PaneState      =   LogState   ()
+data PaneState      =   LogState
                     |   InfoState IdentifierDescr
                     |   BufferState FilePath Int
-                    |   ModulesState ()
+                    |   ModulesState Int
     deriving(Eq,Ord,Read,Show)
 
 class Castable alpha where
@@ -169,9 +169,10 @@ data GhfInfo        =   GhfInfo {
 --
 
 data GhfModules     =   GhfModules {
-    boxM            ::   HPaned
+    paned           ::   HPaned
 ,   treeStore       ::   New.TreeStore (String, [(ModuleDescr,PackageDescr)])
 ,   facetStore      ::   New.ListStore (String, IdentifierDescr)
 }
+
 
 

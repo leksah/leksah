@@ -189,12 +189,10 @@ recoverSession = do
     layoutSt <- lift$ readLayout
     lift $windowSetDefaultSize wdw (fst (windowSize layoutSt))(snd (windowSize layoutSt))
     applyLayout (layoutS layoutSt)
-    populate (population layoutSt)
     case activePackage layoutSt of
-        Just fp ->  do
-            activatePackage fp
-            return ()
+        Just fp -> activatePackage fp >> return ()
         Nothing -> return ()
+    populate (population layoutSt)
 
 
 readLayout :: IO SessionState
@@ -209,8 +207,7 @@ prefsParser ::  a ->  [FieldDescriptionS a] ->  CharParser () a
 prefsParser def descriptions =
     let parsersF = map fieldParser descriptions in do
         whiteSpace
-        res <-  applyFieldParsers def parsersF
-        return res
+        applyFieldParsers def parsersF
         <?> "layout parser"
 
 applyLayout :: PaneLayout -> GhfAction
@@ -244,10 +241,10 @@ populate :: [(Maybe PaneState,PanePath)] -> GhfAction
 populate = mapM_ (\ (mbPs,pp) ->
             case mbPs of
                 Nothing -> return ()
-                Just s -> recoverForState pp s)
+                Just s ->  recoverForState pp s)
 
-recoverForState pp s@(LogState _)       =   recoverState pp s LogCasting
-recoverForState pp s@(InfoState _)      =   recoverState pp s InfoCasting
-recoverForState pp s@(BufferState _ _)  =   recoverState pp s BufferCasting
-recoverForState pp s@(ModulesState _)   =   recoverState pp s ModulesCasting
+recoverForState pp s@LogState           =   (recoverState pp s :: GhfM (Maybe GhfLog)) >> return ()
+recoverForState pp s@(InfoState _)      =   (recoverState pp s :: GhfM (Maybe GhfInfo)) >> return ()
+recoverForState pp s@(BufferState _ _)  =   (recoverState pp s :: GhfM (Maybe GhfBuffer)) >> return ()
+recoverForState pp s@(ModulesState _)   =   (recoverState pp s :: GhfM (Maybe GhfModules)) >> return ()
 

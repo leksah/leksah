@@ -14,8 +14,7 @@
 -------------------------------------------------------------------------------
 
 module Ghf.InfoPane (
-    initInfo
-,   setInfo
+    setInfo
 ) where
 
 import Graphics.UI.Gtk hiding (afterToggleOverwrite)
@@ -68,15 +67,14 @@ instance Pane GhfInfo
 
 instance SpecialPane GhfInfo where
     saveState p     =   do
-        mbIdDescr <- getInfo
-        lift $ putStrLn $ "nowRecovering " ++ show  mbIdDescr
+        mbIdDescr <- getInfoCont
         case mbIdDescr of
             Nothing -> return Nothing
             Just idDescr -> return (Just (InfoState idDescr))
-    recoverState pp (InfoState iddescr) _  =   do
+    recoverState pp (InfoState iddescr) =   do
         nb <- getNotebook pp
         initInfo pp nb iddescr
-        return ()
+        getPane InfoCasting
     makeActive pane = activatePane pane (BufConnections[][][])
     close pane     =   do
         (panePath,_)    <-  guiPropertiesFromName (paneName pane)
@@ -102,7 +100,8 @@ idDescrDescr = [
             mkField
             (paraName <<<- ParaName "Symbol"
                 $ paraHorizontal <<<- ParaHorizontal StartHorizontal
-                    $ emptyParams)
+                    $ paraMinSize <<<- ParaMinSize (200,-1)
+                        $ emptyParams)
             identifierID
             (\ b a -> a{identifierID = b})
             stringEditor
@@ -170,7 +169,7 @@ initInfo panePath nb idDescr = do
                 (castToBox ibox)
                 (zip widgets (map (getParameter paraHorizontal . parameters)
                     idDescrDescr))
-            boxPackStart nbbox ibox PackNatural 0
+            boxPackStart nbbox ibox PackGrow 0
             boxPackEnd nbbox bb PackNatural 0
             --openType
             sw <- scrolledWindowNew Nothing Nothing
@@ -190,41 +189,29 @@ initInfo panePath nb idDescr = do
     lift $widgetGrabFocus (sw pane)
     lift $bringPaneToFront pane
 
-makeInfoActive :: GhfInfo -> GhfAction
-makeInfoActive info = do
-    activatePane info (BufConnections[][][])
-
 setInfo :: IdentifierDescr -> GhfM ()
 setInfo identifierDescr = do
-    panesST <- readGhf panes
-    prefs   <- readGhf prefs
-    layout  <- readGhf layout
-    let infos = catMaybes $ map (downCast InfoCasting) $ Map.elems panesST
-    if null infos || length infos > 1
-        then do
+    mbPane <-  getPane InfoCasting
+    case mbPane of
+        Nothing -> do
+            prefs   <- readGhf prefs
+            layout  <- readGhf layout
             let pp  =  getStandardPanePath (infoPanePath prefs) layout
-            lift $ message $ "panePath " ++ show pp
             nb      <- getNotebook pp
             initInfo pp nb identifierDescr
-            panesST <- readGhf panes
-            let logs = catMaybes $ map (downCast InfoCasting) $ Map.elems panesST
-            if null logs || length logs > 1
+            mbInfo <- getPane InfoCasting
+            if isNothing mbInfo
                 then error "Can't init info"
                 else return ()
-        else do
-            let inj = injectors (head infos)
-            mapM_ (\ a -> lift $ a identifierDescr)  inj
-            lift $ bringPaneToFront (head infos)
-            return ()
+        Just info -> lift $ do
+            mapM_ (\ a -> a identifierDescr)  (injectors info)
+            bringPaneToFront info
 
-getInfo ::  GhfM (Maybe (IdentifierDescr))
-getInfo = do
-    panesST <- readGhf panes
-    let infos = catMaybes $ map (downCast InfoCasting) $ Map.elems panesST
-    if null infos || length infos > 1
-        then return Nothing
-        else do
-            let ext = extractors (head infos)
-            v <- lift $ extract getDefault ext
-            return v
+getInfoCont ::  GhfM (Maybe (IdentifierDescr))
+getInfoCont = do
+    mbPane <- getPane InfoCasting
+    case mbPane of
+        Nothing ->  return Nothing
+        Just p  ->  lift $ extract getDefault (extractors p)
+
 

@@ -43,12 +43,26 @@ instance Pane GhfModules
     where
     primPaneName _  =   "Mod"
     getAddedIndex _ =   0
-    getTopWidget    =   castToWidget . boxM
+    getTopWidget    =   castToWidget . paned
     paneId b        =   "*Modules"
 
 instance SpecialPane GhfModules where
-    saveState p     =   return Nothing
-    recoverState _ _ _ =   return ()
+    saveState p     =   do
+        mbModules <- getPane ModulesCasting
+        case mbModules of
+            Nothing ->  return Nothing
+            Just p  ->  lift $ do
+                i <- panedGetPosition (paned p)
+                return (Just (ModulesState i))
+    recoverState pp (ModulesState i)  =  do
+            nb          <-  getNotebook pp
+            initModules pp nb
+            mbMod <- getPane ModulesCasting
+            case mbMod of
+                Nothing -> return Nothing
+                Just p  -> do   lift $ panedSetPosition (paned p) i
+                                fillModulesList
+                                return (Just p)
     makeActive p    = do
         activatePane p (BufConnections[][] [])
     close pane     =   do
@@ -72,26 +86,25 @@ instance Castable GhfModules where
 
 showModules :: GhfAction
 showModules = do
+    fillModulesList
     m <- getModules
     lift $ bringPaneToFront m
 
 getModules :: GhfM GhfModules
 getModules = do
-    panesST     <-  readGhf panes
-    prefs       <-  readGhf prefs
-    layout      <-  readGhf layout
-    let mods    =   catMaybes $ map (downCast ModulesCasting) $ Map.elems panesST
-    if null mods || length mods > 1
-        then do
+    mbMod <- getPane ModulesCasting
+    case mbMod of
+        Nothing -> do
+            prefs       <-  readGhf prefs
+            layout      <-  readGhf layout
             let pp      =   getStandardPanePath (modulesPanePath prefs) layout
             nb          <-  getNotebook pp
             initModules pp nb
-            panesST     <- readGhf panes
-            let mods    =   catMaybes $ map (downCast ModulesCasting) $ Map.elems panesST
-            if null mods || length mods > 1
-                then error "Can't init modules"
-                else return (head mods)
-        else return (head mods)
+            mbMod <- getPane ModulesCasting
+            case mbMod of
+                Nothing ->  error "Can't init modules"
+                Just m  ->  return m
+        Just m ->   return m
 
 initModules :: PanePath -> Notebook -> GhfAction
 initModules panePath nb = do
@@ -108,8 +121,8 @@ initModules panePath nb = do
         treeStore   <-  New.treeStoreNew forest
         treeView    <-  New.treeViewNew
         New.treeViewSetModel treeView treeStore
-        New.treeViewSetEnableSearch treeView True
-        New.treeViewSetRulesHint treeView True
+        --New.treeViewSetEnableSearch treeView True
+        --New.treeViewSetRulesHint treeView True
 
         renderer    <- New.cellRendererTextNew
         col         <- New.treeViewColumnNew
@@ -142,7 +155,7 @@ initModules panePath nb = do
         col         <- New.treeViewColumnNew
         New.treeViewColumnSetTitle col "Identifiers"
         New.treeViewColumnSetSizing col TreeViewColumnAutosize
-        New.treeViewColumnSetReorderable col True
+        -- New.treeViewColumnSetReorderable col True
         New.treeViewAppendColumn facetView col
         New.cellLayoutPackStart col renderer True
         New.cellLayoutSetAttributes col renderer facetStore
@@ -150,11 +163,11 @@ initModules panePath nb = do
 
         New.treeViewSetHeadersVisible treeView True
         sel         <-  New.treeViewGetSelection treeView
-        sel `New.onSelectionChanged` (fillFacets sel treeStore facetStore)
+        sel `New.onSelectionChanged` (fillFacets treeView treeStore facetStore)
         treeView `onButtonPress` (treeViewPopup ghfR treeStore treeView)
 
         sel2        <-  New.treeViewGetSelection facetView
-        sel2 `New.onSelectionChanged` (fillInfo sel2 facetStore ghfR)
+        sel2 `New.onSelectionChanged` (fillInfo facetView facetStore ghfR)
 
         pane <- hPanedNew
         sw <- scrolledWindowNew Nothing Nothing
@@ -180,14 +193,14 @@ initModules panePath nb = do
             (\_ -> do runReaderT (makeActive modules) ghfR; return True)
         return (modules,[cid1,cid2])
     addPaneAdmin buf (BufConnections [] [] []) panePath
-    lift $widgetGrabFocus (boxM buf)
+    lift $widgetGrabFocus (paned buf)
 
-fillFacets :: New.TreeSelection
+fillFacets :: New.TreeView
     -> New.TreeStore (String, [(ModuleDescr,PackageDescr)])
     -> New.ListStore (String, IdentifierDescr)
     -> IO ()
-fillFacets ts tst lst = do
-    sel <- getSelection ts tst
+fillFacets treeView tst lst = do
+    sel             <-  getSelection treeView tst
     case sel of
         Just val -> case snd val of
                         ((mod,package):_)   ->  do
@@ -196,7 +209,7 @@ fillFacets ts tst lst = do
                                                 $ filter isJust
                                                     $ map (findDescription
                                                             (moduleIdMD mod)
-                                                            (idDescriptionsPD package))
+           	                                                 (idDescriptionsPD package))
                                                         (Set.toList exportedDescr)
                             New.listStoreClear lst
                             putStrLn $ "Now fill " ++ show (length pairs)
@@ -204,11 +217,12 @@ fillFacets ts tst lst = do
                         []  -> return ()
         Nothing -> return ()
 
-getSelection :: New.TreeSelection
-    -> New.TreeStore (String, [(ModuleDescr,PackageDescr)])
+getSelection ::  New.TreeView
+    ->  New.TreeStore (String, [(ModuleDescr,PackageDescr)])
     -> IO (Maybe (String, [(ModuleDescr,PackageDescr)]))
-getSelection treeSelection treeStore = do
-    paths  <-  New.treeSelectionGetSelectedRows treeSelection
+getSelection treeView treeStore = do
+    treeSelection   <-  New.treeViewGetSelection treeView
+    paths           <-  New.treeSelectionGetSelectedRows treeSelection
     case paths of
         []  ->  return Nothing
         [a] ->  do
@@ -216,17 +230,19 @@ getSelection treeSelection treeStore = do
             return (Just val)
         _   -> return Nothing
 
-fillInfo :: New.TreeSelection
+fillInfo :: New.TreeView
     -> New.ListStore (String, IdentifierDescr)
     -> GhfRef
     -> IO ()
-fillInfo ts lst ghfR = do
-    paths  <-  New.treeSelectionGetSelectedRows ts
+fillInfo treeView lst ghfR = do
+    treeSelection   <-  New.treeViewGetSelection treeView
+    paths           <-  New.treeSelectionGetSelectedRows treeSelection
     case paths of
         []      ->  return ()
         [[a]]   ->  do
             (_,id)     <-  New.listStoreGetValue lst a
-            runReaderT (setInfo id) ghfR
+            --runReaderT (setInfo id) ghfR
+            return ()
         _       ->  return ()
 
 findDescription :: PackModule -> SymbolTable -> Symbol -> Maybe (Symbol,IdentifierDescr)
@@ -307,15 +323,13 @@ treeViewPopup :: GhfRef
     -> Event
     -> IO (Bool)
 treeViewPopup ghfR store treeView (Button _ _ _ _ _ _ button _ _) = do
-    putStrLn "enter treeViewPopup"
     if button == RightButton
         then do
             theMenu         <-  menuNew
             item1           <-  menuItemNewWithLabel "Edit"
             item1 `onActivateLeaf` do
                 putStrLn "enter on activate edit"
-                selection   <-  New.treeViewGetSelection treeView
-                sel         <-  getSelection selection store
+                sel         <-  getSelection treeView store
                 case sel of
                     Just (_,[(m,_)]) -> case mbSourcePathMD m of
                                             Nothing     ->  return ()

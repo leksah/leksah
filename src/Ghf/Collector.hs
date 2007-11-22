@@ -79,7 +79,7 @@ collectInstalled writeAscii session version forceRebuild = do
             removeDirectoryRecursive collectorPath
     collectorPath   <-  getCollectorPath version
     knownPackages   <-  findKnownPackages collectorPath
-    putStrLn $ "found known packages" ++ " " ++ show knownPackages
+--    putStrLn $ "found known packages" ++ " " ++ show knownPackages
     packageInfos    <-  getInstalledPackageInfos session
     let newPackages =   filter (\pi -> not $Set.member (showPackageId $ fromDPid $ DP.package pi)
                                                         knownPackages)
