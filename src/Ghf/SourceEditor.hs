@@ -144,12 +144,10 @@ instance CastablePane GhfBuffer where
 instance RecoverablePane GhfBuffer BufferState where
     saveState p     =   case fileName p of
                             Nothing ->  return Nothing
-                            Just fn ->  return (Just (BufferState fn 0))
+                            Just fn ->  return (Just (StateC (BufferState fn 0)))
     recoverState pp (BufferState n i) =   do
         exists <- lift $doesFileExist n
-        if exists
-            then newTextBuffer pp (takeFileName n) (Just n) >>= return . Just
-            else (return Nothing)
+        when exists  (newTextBuffer pp (takeFileName n) (Just n) >> return ())
 
 allBuffers :: GhfM [GhfBuffer]
 allBuffers = do

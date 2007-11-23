@@ -59,7 +59,7 @@ type MkFieldDescriptionS alpha beta =
     (Setter alpha beta) ->
     FieldDescriptionS alpha
 
-mkFieldS :: Eq beta => MkFieldDescriptionS alpha beta
+mkFieldS :: {--Eq beta =>--} MkFieldDescriptionS alpha beta
 mkFieldS parameters printer parser getter setter =
     FDS parameters
         (\ dat -> (PP.text (case getParameterPrim paraName parameters of

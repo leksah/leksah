@@ -89,12 +89,10 @@ instance RecoverablePane GhfInfo InfoState where
         mbIdDescr <- getInfoCont
         case mbIdDescr of
             Nothing -> return Nothing
-            Just idDescr -> return (Just (InfoState idDescr))
+            Just idDescr -> return (Just (StateC (InfoState idDescr)))
     recoverState pp (InfoState iddescr) =   do
         nb <- getNotebook pp
         initInfo pp nb iddescr
-        getPane InfoCasting
-
 
 idDescrDescr :: [FieldDescription IdentifierDescr]
 idDescrDescr = [

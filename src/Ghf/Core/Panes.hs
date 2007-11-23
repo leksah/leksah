@@ -38,8 +38,9 @@ module Ghf.Core.Panes (
 ,   GhfModules(..)
 ,   ModulesState(..)
 
-,   PaneState(..)
-
+,   GhfState(..)
+--,   paneStateToGhfState
+--,   ghfStateToPaneState
 ) where
 
 import Graphics.UI.Gtk.SourceView
@@ -50,6 +51,7 @@ import Data.Maybe
 import System.Time
 import Control.Monad.Reader
 import GHC.IOBase hiding (BufferState)
+import Text.ParserCombinators.ReadP
 
 import Ghf.Core.Data
 import {-# SOURCE #-}  Ghf.Core.State
@@ -105,17 +107,17 @@ class Pane alpha  where
     makeActive      ::   alpha -> GhfAction
     close           ::   alpha -> GhfAction
 
-class Pane alpha =>  CastablePane alpha where
+class Pane alpha =>   CastablePane alpha where
     casting         ::   alpha -> Casting alpha
     downCast        ::   Casting alpha -> GhfPane -> Maybe alpha
     isIt            ::   Casting alpha -> GhfPane -> Bool
     isIt t i        =   isJust (downCast t i)
 
-class Pane alpha => RecoverablePane alpha beta | alpha -> beta where
-    saveState               ::   alpha -> GhfM (Maybe beta)
-    recoverState            ::   PanePath -> beta -> GhfM (Maybe alpha)
+class (Pane alpha, Recoverable beta) => RecoverablePane alpha beta | beta -> alpha, alpha -> beta  where
+    saveState               ::   alpha -> GhfM (Maybe GhfState)
+    recoverState            ::   PanePath -> beta -> GhfAction
 
-data GhfPane        =   forall alpha . CastablePane alpha => PaneC alpha
+data GhfPane        =   forall alpha beta . (CastablePane alpha, RecoverablePane alpha beta) => PaneC alpha
 
 instance Pane GhfPane where
     paneName (PaneC a)      =   paneName a
@@ -126,6 +128,14 @@ instance Pane GhfPane where
     makeActive (PaneC a)    =   makeActive a
     close (PaneC a)         =   close a
 
+data GhfState       =   forall alpha beta . (RecoverablePane alpha beta, Recoverable beta) => StateC beta
+instance Recoverable GhfState
+
+instance RecoverablePane GhfPane GhfState where
+    saveState (PaneC p)             =   saveState p
+    recoverState pp (StateC s)      =   recoverState pp s
+
+class Recoverable alpha
 -- ---------------------------------------------------------------------
 -- Special Panes - The data structures for the panes
 --
@@ -150,6 +160,7 @@ data GhfBuffer      =   GhfBuffer {
 
 data BufferState            =   BufferState FilePath Int
     deriving(Eq,Ord,Read,Show)
+instance Recoverable BufferState
 
 --
 -- | A log view pane description
@@ -161,6 +172,7 @@ data GhfLog         =   GhfLog {
 
 data LogState               =   LogState
     deriving(Eq,Ord,Read,Show)
+instance Recoverable LogState
 
 --
 -- | An info pane description
@@ -173,6 +185,7 @@ data GhfInfo        =   GhfInfo {
 
 data InfoState              =   InfoState IdentifierDescr
     deriving(Eq,Ord,Read,Show)
+instance Recoverable InfoState
 
 -- | A modules pane description
 --
@@ -185,12 +198,27 @@ data GhfModules     =   GhfModules {
 
 data ModulesState           =   ModulesState Int
     deriving(Eq,Ord,Read,Show)
+instance Recoverable ModulesState
 
 data PaneState      =   BufferSt BufferState
                     |   LogSt LogState
                     |   InfoSt InfoState
                     |   ModulesSt ModulesState
     deriving(Eq,Ord,Read,Show)
+
+--paneStateToGhfState :: PaneState -> GhfState
+--paneStateToGhfState (BufferSt st)                       =   StateC st
+--paneStateToGhfState (LogSt st)                          =   StateC st
+--paneStateToGhfState (InfoSt st)                         =   StateC st
+--paneStateToGhfState (ModulesSt st)                      =   StateC st
+
+--ghfStateToPaneState :: GhfState -> PaneState
+--ghfStateToPaneState (StateC st@(BufferState _ _ ))      =   BufferSt st
+--ghfStateToPaneState (StateC st@(LogState))              =   LogSt st
+--ghfStateToPaneState (StateC st@(InfoState _))           =   InfoSt st
+--ghfStateToPaneState (StateC st@(ModulesState _ ))       =   ModulesSt st
+
+
 
 
 

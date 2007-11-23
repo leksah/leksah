@@ -73,16 +73,16 @@ instance RecoverablePane GhfModules ModulesState where
             Nothing ->  return Nothing
             Just p  ->  lift $ do
                 i <- panedGetPosition (paned p)
-                return (Just (ModulesState i))
+                return (Just (StateC (ModulesState i)))
     recoverState pp (ModulesState i)  =  do
             nb          <-  getNotebook pp
             initModules pp nb
             mbMod <- getPane ModulesCasting
             case mbMod of
-                Nothing -> return Nothing
+                Nothing -> return ()
                 Just p  -> do   lift $ panedSetPosition (paned p) i
                                 fillModulesList
-                                return (Just p)
+                                return ()
 
 
 showModules :: GhfAction

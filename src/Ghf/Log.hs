@@ -55,12 +55,12 @@ instance CastablePane GhfLog where
 
 
 instance RecoverablePane GhfLog LogState where
-    saveState p     =   return (Just LogState)
+    saveState p     =   return (Just (StateC LogState))
+
     recoverState pp LogState = do
         nb <- getNotebook pp
         initLog pp nb
-        log <- getLog
-        return (Just log)
+
 
 
 
