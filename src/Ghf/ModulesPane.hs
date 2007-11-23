@@ -7,7 +7,7 @@
 --
 -- Maintainer  :  Juergen Nicklisch-Franken <jnf at arcor.de>
 -- Stability   :  experimental
--- Portability :  portable
+-- Portability  :  portable
 --
 -- | The pane of ghf where modules are presented in tree form with their
 --   packages and exports
@@ -154,7 +154,7 @@ initModules panePath nb = do
         renderer3   <- New.cellRendererTextNew
         col         <- New.treeViewColumnNew
         New.treeViewColumnSetTitle col "Identifiers"
-        New.treeViewColumnSetSizing col TreeViewColumnAutosize
+        --New.treeViewColumnSetSizing col TreeViewColumnAutosize
         -- New.treeViewColumnSetReorderable col True
         New.treeViewAppendColumn facetView col
         New.cellLayoutPackStart col renderer True
@@ -241,7 +241,7 @@ fillInfo treeView lst ghfR = do
         []      ->  return ()
         [[a]]   ->  do
             (_,id)     <-  New.listStoreGetValue lst a
-            --runReaderT (setInfo id) ghfR
+            runReaderT (setInfo id) ghfR
             return ()
         _       ->  return ()
 
