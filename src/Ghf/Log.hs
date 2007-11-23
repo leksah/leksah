@@ -32,14 +32,6 @@ instance Pane GhfLog
     getAddedIndex _ =   0
     getTopWidget    =   castToWidget . scrolledWindowL
     paneId b        =   "*Log"
-
-instance SpecialPane GhfLog where
-    saveState p     =   return (Just LogState)
-    recoverState pp LogState = do
-        nb <- getNotebook pp
-        initLog pp nb
-        log <- getLog
-        return (Just log)
     makeActive log  =   do
         activatePane log (BufConnections[][] [])
     close pane     =   do
@@ -55,11 +47,21 @@ instance SpecialPane GhfLog where
                 lift $notebookRemovePage nb i
                 removePaneAdmin pane
 
-instance Castable GhfLog where
+instance CastablePane GhfLog where
     casting _               =   LogCasting
     downCast _ (PaneC a)    =   case casting a of
                                     LogCasting -> Just a
                                     _          -> Nothing
+
+
+instance RecoverablePane GhfLog LogState where
+    saveState p     =   return (Just LogState)
+    recoverState pp LogState = do
+        nb <- getNotebook pp
+        initLog pp nb
+        log <- getLog
+        return (Just log)
+
 
 
 data LogTag = LogTag | ErrorTag | FrameTag

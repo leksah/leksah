@@ -45,8 +45,28 @@ instance Pane GhfModules
     getAddedIndex _ =   0
     getTopWidget    =   castToWidget . paned
     paneId b        =   "*Modules"
+    makeActive p    = do
+        activatePane p (BufConnections[][] [])
+    close pane     =   do
+        (panePath,_)    <-  guiPropertiesFromName (paneName pane)
+        nb              <-  getNotebook panePath
+        mbI             <-  lift $notebookPageNum nb (getTopWidget pane)
+        case mbI of
+            Nothing ->  lift $ do
+                putStrLn "notebook page not found: unexpected"
+                return ()
+            Just i  ->  do
+                deactivatePaneIfActive pane
+                lift $notebookRemovePage nb i
+                removePaneAdmin pane
 
-instance SpecialPane GhfModules where
+instance CastablePane GhfModules where
+    casting _               =   ModulesCasting
+    downCast _ (PaneC a)    =   case casting a of
+                                    ModulesCasting  -> Just a
+                                    _               -> Nothing
+
+instance RecoverablePane GhfModules ModulesState where
     saveState p     =   do
         mbModules <- getPane ModulesCasting
         case mbModules of
@@ -63,26 +83,7 @@ instance SpecialPane GhfModules where
                 Just p  -> do   lift $ panedSetPosition (paned p) i
                                 fillModulesList
                                 return (Just p)
-    makeActive p    = do
-        activatePane p (BufConnections[][] [])
-    close pane     =   do
-        (panePath,_)    <-  guiPropertiesFromName (paneName pane)
-        nb              <-  getNotebook panePath
-        mbI             <-  lift $notebookPageNum nb (getTopWidget pane)
-        case mbI of
-            Nothing ->  lift $ do
-                putStrLn "notebook page not found: unexpected"
-                return ()
-            Just i  ->  do
-                deactivatePaneIfActive pane
-                lift $notebookRemovePage nb i
-                removePaneAdmin pane
 
-instance Castable GhfModules where
-    casting _               =   ModulesCasting
-    downCast _ (PaneC a)    =   case casting a of
-                                    ModulesCasting  -> Just a
-                                    _               -> Nothing
 
 showModules :: GhfAction
 showModules = do

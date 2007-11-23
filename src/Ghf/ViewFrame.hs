@@ -79,14 +79,14 @@ import Data.Maybe
 import Ghf.Core.State
 import GUI.Ghf.Parameters
 
-getPane ::  (Pane alpha, Castable alpha) => Casting alpha -> GhfM (Maybe alpha)
+getPane ::  CastablePane alpha => Casting alpha -> GhfM (Maybe alpha)
 getPane casting = do
     selectedPanes <- getPanes casting
     if null selectedPanes || length selectedPanes > 1
         then return Nothing
         else (return (Just $head selectedPanes))
 
-getPanes ::  (Pane alpha, Castable alpha) => Casting alpha -> GhfM ([alpha])
+getPanes ::  CastablePane alpha => Casting alpha -> GhfM ([alpha])
 getPanes casting = do
     panes' <- readGhf panes
     let selectedPanes = catMaybes $ map (downCast casting) $ Map.elems panes'
@@ -154,7 +154,7 @@ deactivatePane = do
     modifyGhf_ $ \ghf -> do
         return (ghf{activePane = Nothing})
 
-deactivatePaneIfActive :: (SpecialPane alpha, Castable alpha) => alpha -> GhfAction
+deactivatePaneIfActive :: CastablePane alpha => alpha -> GhfAction
 deactivatePaneIfActive pane = do
     mbActive <- readGhf activePane
     case mbActive of

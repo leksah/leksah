@@ -1,3 +1,4 @@
+{-# OPTIONS_GHC -fglasgow-exts #-}
 -----------------------------------------------------------------------------
 --
 -- Module      :  Ghf.SaveSession
@@ -28,6 +29,7 @@ import Control.Monad.Reader
 import System.FilePath
 import System.Directory
 import qualified Data.Map as Map
+import Data.Maybe
 
 import Ghf.Log
 import Ghf.Core.State
@@ -39,6 +41,7 @@ import Ghf.ModulesPane
 import qualified Text.PrettyPrint.HughesPJ as PP
 import GUI.Ghf.Parameters
 import Ghf.Package
+import Ghf.RecoverPanes
 
 sessionClosePane :: GhfAction
 sessionClosePane = do
@@ -47,18 +50,7 @@ sessionClosePane = do
         Nothing     ->  return ()
         Just (pn,_) ->  do
             p <- paneFromName pn
-            case downCast LogCasting p of
-                Just pp -> close pp
-                Nothing ->
-                    case downCast InfoCasting p of
-                        Just pp -> close pp
-                        Nothing ->
-                            case downCast BufferCasting p of
-                                Just pp -> close pp
-                                Nothing ->
-                                    case downCast ModulesCasting p of
-                                        Just pp -> close pp
-                                        Nothing -> error "viewClosePane has incomplete cases"
+            close p
 
 sessionFilename = "Current.session"
 
@@ -153,18 +145,7 @@ getPopulation = do
     paneMap <- readGhf paneMap
     mapM (\ (pn,v) -> do
         p <- paneFromName pn
-        st <- case downCast LogCasting p of
-                Just pp -> saveState pp
-                Nothing ->
-                    case downCast InfoCasting p of
-                        Just pp -> saveState pp
-                        Nothing ->
-                            case downCast BufferCasting p of
-                                Just pp -> saveState pp
-                                Nothing ->
-                                    case downCast ModulesCasting p of
-                                        Just pp -> saveState pp
-                                        Nothing -> return Nothing
+        st <- saveState p
         return (st, fst v))
                 $Map.toList paneMap
 
@@ -241,10 +222,7 @@ populate :: [(Maybe PaneState,PanePath)] -> GhfAction
 populate = mapM_ (\ (mbPs,pp) ->
             case mbPs of
                 Nothing -> return ()
-                Just s ->  recoverForState pp s)
+                Just s ->  do   (mpb :: Maybe GhfPane) <- recoverState pp s
+                                return ())
 
-recoverForState pp s@LogState           =   (recoverState pp s :: GhfM (Maybe GhfLog)) >> return ()
-recoverForState pp s@(InfoState _)      =   (recoverState pp s :: GhfM (Maybe GhfInfo)) >> return ()
-recoverForState pp s@(BufferState _ _)  =   (recoverState pp s :: GhfM (Maybe GhfBuffer)) >> return ()
-recoverForState pp s@(ModulesState _)   =   (recoverState pp s :: GhfM (Maybe GhfModules)) >> return ()
 

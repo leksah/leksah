@@ -64,17 +64,6 @@ instance Pane GhfInfo
     getAddedIndex _ =   0
     getTopWidget    =   castToWidget . sw
     paneId b        =   "*Info"
-
-instance SpecialPane GhfInfo where
-    saveState p     =   do
-        mbIdDescr <- getInfoCont
-        case mbIdDescr of
-            Nothing -> return Nothing
-            Just idDescr -> return (Just (InfoState idDescr))
-    recoverState pp (InfoState iddescr) =   do
-        nb <- getNotebook pp
-        initInfo pp nb iddescr
-        getPane InfoCasting
     makeActive pane = activatePane pane (BufConnections[][][])
     close pane     =   do
         (panePath,_)    <-  guiPropertiesFromName (paneName pane)
@@ -89,11 +78,23 @@ instance SpecialPane GhfInfo where
                 lift $notebookRemovePage nb i
                 removePaneAdmin pane
 
-instance Castable GhfInfo where
+instance CastablePane GhfInfo where
     casting _               =   InfoCasting
     downCast _ (PaneC a)    =   case casting a of
                                     InfoCasting -> Just a
                                     _           -> Nothing
+
+instance RecoverablePane GhfInfo InfoState where
+    saveState p     =   do
+        mbIdDescr <- getInfoCont
+        case mbIdDescr of
+            Nothing -> return Nothing
+            Just idDescr -> return (Just (InfoState idDescr))
+    recoverState pp (InfoState iddescr) =   do
+        nb <- getNotebook pp
+        initInfo pp nb iddescr
+        getPane InfoCasting
+
 
 idDescrDescr :: [FieldDescription IdentifierDescr]
 idDescrDescr = [

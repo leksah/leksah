@@ -18,22 +18,27 @@
 module Ghf.Core.Panes (
 -- * Panes and pane layout
     Pane(..)
-,   Castable(..)
+,   CastablePane(..)
 ,   Casting(..)
 ,   GhfPane(..)
-,   SpecialPane(..)
+,   RecoverablePane(..)
 ,   PaneDirection(..)
 ,   PanePath
 ,   PaneLayout(..)
 ,   PaneName
 ,   Connections(..)
-,   PaneState(..)
 
 -- * The pane types
 ,   GhfBuffer(..)
+,   BufferState(..)
 ,   GhfLog(..)
+,   LogState(..)
 ,   GhfInfo(..)
+,   InfoState(..)
 ,   GhfModules(..)
+,   ModulesState(..)
+
+,   PaneState(..)
 
 ) where
 
@@ -44,7 +49,7 @@ import System.Glib.Signals
 import Data.Maybe
 import System.Time
 import Control.Monad.Reader
-import GHC.IOBase
+import GHC.IOBase hiding (BufferState)
 
 import Ghf.Core.Data
 import {-# SOURCE #-}  Ghf.Core.State
@@ -97,32 +102,20 @@ class Pane alpha  where
     getAddedIndex _ =   0
     getTopWidget    ::   alpha -> Widget
     paneId          ::   alpha -> String
-
-class Pane alpha => SpecialPane alpha where
-    saveState       ::   alpha -> GhfM (Maybe (PaneState))
-    recoverState    ::   PanePath -> PaneState -> GhfM (Maybe alpha)
     makeActive      ::   alpha -> GhfAction
     close           ::   alpha -> GhfAction
 
-data GhfPane        =   forall alpha . (Pane alpha, Castable alpha) => PaneC alpha
-
-data Casting alpha  where
-    LogCasting      ::   Casting GhfLog
-    InfoCasting     ::   Casting GhfInfo
-    BufferCasting   ::   Casting GhfBuffer
-    ModulesCasting  ::   Casting GhfModules
-
-data PaneState      =   LogState
-                    |   InfoState IdentifierDescr
-                    |   BufferState FilePath Int
-                    |   ModulesState Int
-    deriving(Eq,Ord,Read,Show)
-
-class Castable alpha where
+class Pane alpha =>  CastablePane alpha where
     casting         ::   alpha -> Casting alpha
     downCast        ::   Casting alpha -> GhfPane -> Maybe alpha
     isIt            ::   Casting alpha -> GhfPane -> Bool
     isIt t i        =   isJust (downCast t i)
+
+class Pane alpha => RecoverablePane alpha beta | alpha -> beta where
+    saveState               ::   alpha -> GhfM (Maybe beta)
+    recoverState            ::   PanePath -> beta -> GhfM (Maybe alpha)
+
+data GhfPane        =   forall alpha . CastablePane alpha => PaneC alpha
 
 instance Pane GhfPane where
     paneName (PaneC a)      =   paneName a
@@ -130,11 +123,18 @@ instance Pane GhfPane where
     getAddedIndex (PaneC a) =   getAddedIndex a
     getTopWidget (PaneC a)  =   getTopWidget a
     paneId (PaneC a)        =   paneId a
-
+    makeActive (PaneC a)    =   makeActive a
+    close (PaneC a)         =   close a
 
 -- ---------------------------------------------------------------------
 -- Special Panes - The data structures for the panes
 --
+
+data Casting alpha  where
+    LogCasting      ::   Casting GhfLog
+    InfoCasting     ::   Casting GhfInfo
+    BufferCasting   ::   Casting GhfBuffer
+    ModulesCasting  ::   Casting GhfModules
 
 --
 -- | A text editor pane description
@@ -148,6 +148,9 @@ data GhfBuffer      =   GhfBuffer {
 ,   modTime         ::  Maybe (ClockTime)
 }
 
+data BufferState            =   BufferState FilePath Int
+    deriving(Eq,Ord,Read,Show)
+
 --
 -- | A log view pane description
 --
@@ -155,6 +158,9 @@ data GhfLog         =   GhfLog {
     textView        ::  TextView
 ,   scrolledWindowL :: ScrolledWindow
 }
+
+data LogState               =   LogState
+    deriving(Eq,Ord,Read,Show)
 
 --
 -- | An info pane description
@@ -165,6 +171,9 @@ data GhfInfo        =   GhfInfo {
 ,   extractors      ::   [IdentifierDescr -> Extractor IdentifierDescr]
 }
 
+data InfoState              =   InfoState IdentifierDescr
+    deriving(Eq,Ord,Read,Show)
+
 -- | A modules pane description
 --
 
@@ -173,6 +182,17 @@ data GhfModules     =   GhfModules {
 ,   treeStore       ::   New.TreeStore (String, [(ModuleDescr,PackageDescr)])
 ,   facetStore      ::   New.ListStore (String, IdentifierDescr)
 }
+
+data ModulesState           =   ModulesState Int
+    deriving(Eq,Ord,Read,Show)
+
+data PaneState      =   BufferSt BufferState
+                    |   LogSt LogState
+                    |   InfoSt InfoState
+                    |   ModulesSt ModulesState
+    deriving(Eq,Ord,Read,Show)
+
+
 
 
 

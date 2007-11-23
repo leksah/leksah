@@ -99,16 +99,6 @@ instance Pane GhfBuffer
     paneId b        =   case fileName b of
                             Just s  -> s
                             Nothing -> "?" ++ bufferName b
-
-instance SpecialPane GhfBuffer where
-    saveState p     =   case fileName p of
-                            Nothing ->  return Nothing
-                            Just fn ->  return (Just (BufferState fn 0))
-    recoverState pp (BufferState n i) =   do
-        exists <- lift $doesFileExist n
-        if exists
-            then newTextBuffer pp (takeFileName n) (Just n) >>= return . Just
-            else (return Nothing)
     makeActive buf = do
         pane    <-  paneFromName (paneName buf)
         if isIt BufferCasting pane
@@ -144,12 +134,23 @@ instance SpecialPane GhfBuffer where
                     fileClose
                     return ()
 
-instance Castable GhfBuffer where
+instance CastablePane GhfBuffer where
     casting _       =   BufferCasting
     downCast _ (PaneC a)
                     =   case casting a of
                             BufferCasting   -> Just a
                             _               -> Nothing
+
+instance RecoverablePane GhfBuffer BufferState where
+    saveState p     =   case fileName p of
+                            Nothing ->  return Nothing
+                            Just fn ->  return (Just (BufferState fn 0))
+    recoverState pp (BufferState n i) =   do
+        exists <- lift $doesFileExist n
+        if exists
+            then newTextBuffer pp (takeFileName n) (Just n) >>= return . Just
+            else (return Nothing)
+
 allBuffers :: GhfM [GhfBuffer]
 allBuffers = do
     panesST <- readGhf panes
