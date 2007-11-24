@@ -56,7 +56,7 @@ sessionFilename = "Current.session"
 
 data SessionState = SessionState {
         layoutS             ::   PaneLayout
-    ,   population          ::   [(Maybe GhfState,PanePath)]
+    ,   population          ::   [(Maybe PaneState,PanePath)]
     ,   windowSize          ::   (Int,Int)
     ,   activePackage        ::   Maybe FilePath
 } deriving()
@@ -140,12 +140,15 @@ getLayout = do
                                 then Just (posTypeToPaneDirection pos)
                                 else Nothing))
 
-getPopulation :: GhfM[(Maybe GhfState,PanePath)]
+getPopulation :: GhfM[(Maybe PaneState,PanePath)]
 getPopulation = do
     paneMap <- readGhf paneMap
     mapM (\ (pn,v) -> do
         p <- paneFromName pn
-        st <- saveState p
+        mbSt <- saveState p
+        let st = case mbSt of
+                    Nothing -> Nothing
+                    Just s  -> Just (toPaneState s)
         return (st, fst v))
                 $Map.toList paneMap
 
@@ -218,11 +221,10 @@ applyLayout layoutS = do
         applyLayout' t (pp ++ [TopP])
         applyLayout' b (pp ++ [BottomP])
 
-populate :: [(Maybe GhfState,PanePath)] -> GhfAction
+populate :: [(Maybe PaneState,PanePath)] -> GhfAction
 populate = mapM_ (\ (mbPs,pp) ->
             case mbPs of
                 Nothing -> return ()
-                Just s ->  do   (mpb :: Maybe GhfPane) <- recoverState pp s
-                                return ())
+                Just s ->  recoverState pp (paneStateToGhfState s))
 
 

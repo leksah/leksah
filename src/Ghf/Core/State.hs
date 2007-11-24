@@ -130,8 +130,7 @@ withGhf f = do
     e <- ask
     lift $ f =<< readIORef e
 
-
-removePaneAdmin :: (CastablePane alpha,RecoverablePane alpha beta) => alpha -> GhfAction
+removePaneAdmin :: (CastablePane alpha,ModelPane alpha beta) => alpha -> GhfAction
 removePaneAdmin pane = do
     panes'          <-  readGhf panes
     paneMap'        <-  readGhf paneMap
@@ -139,7 +138,7 @@ removePaneAdmin pane = do
     let newPaneMap  =   Map.delete (paneName pane) paneMap'
     modifyGhf_ (\ghf -> return (ghf{panes = newPanes, paneMap = newPaneMap}))
 
-addPaneAdmin :: (CastablePane alpha,RecoverablePane alpha beta) => alpha -> Connections -> PanePath ->  GhfAction
+addPaneAdmin :: (CastablePane alpha,ModelPane alpha beta) => alpha -> Connections -> PanePath ->  GhfAction
 addPaneAdmin pane conn pp = do
     panes'          <-  readGhf panes
     paneMap'        <-  readGhf paneMap

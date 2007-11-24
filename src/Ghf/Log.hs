@@ -47,22 +47,12 @@ instance Pane GhfLog
                 lift $notebookRemovePage nb i
                 removePaneAdmin pane
 
-instance CastablePane GhfLog where
-    casting _               =   LogCasting
-    downCast _ (PaneC a)    =   case casting a of
-                                    LogCasting -> Just a
-                                    _          -> Nothing
-
-
-instance RecoverablePane GhfLog LogState where
+instance ModelPane GhfLog LogState where
     saveState p     =   return (Just (StateC LogState))
 
     recoverState pp LogState = do
         nb <- getNotebook pp
         initLog pp nb
-
-
-
 
 data LogTag = LogTag | ErrorTag | FrameTag
 

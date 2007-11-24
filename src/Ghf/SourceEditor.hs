@@ -134,14 +134,7 @@ instance Pane GhfBuffer
                     fileClose
                     return ()
 
-instance CastablePane GhfBuffer where
-    casting _       =   BufferCasting
-    downCast _ (PaneC a)
-                    =   case casting a of
-                            BufferCasting   -> Just a
-                            _               -> Nothing
-
-instance RecoverablePane GhfBuffer BufferState where
+instance ModelPane GhfBuffer BufferState where
     saveState p     =   case fileName p of
                             Nothing ->  return Nothing
                             Just fn ->  return (Just (StateC (BufferState fn 0)))

@@ -89,8 +89,7 @@ getPane casting = do
 getPanes ::  CastablePane alpha => Casting alpha -> GhfM ([alpha])
 getPanes casting = do
     panes' <- readGhf panes
-    let selectedPanes = catMaybes $ map (downCast casting) $ Map.elems panes'
-    return selectedPanes
+    return (catMaybes $ map (downCast casting) $ Map.elems panes')
 
 -- | Constructs a unique pane name, which is an index and a string
 figureOutPaneName :: Pane alpha => Map String alpha -> String -> Int -> (Int,String)
@@ -154,7 +153,7 @@ deactivatePane = do
     modifyGhf_ $ \ghf -> do
         return (ghf{activePane = Nothing})
 
-deactivatePaneIfActive :: CastablePane alpha => alpha -> GhfAction
+deactivatePaneIfActive :: Pane alpha => alpha -> GhfAction
 deactivatePaneIfActive pane = do
     mbActive <- readGhf activePane
     case mbActive of

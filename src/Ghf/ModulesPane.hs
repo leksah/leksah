@@ -60,13 +60,7 @@ instance Pane GhfModules
                 lift $notebookRemovePage nb i
                 removePaneAdmin pane
 
-instance CastablePane GhfModules where
-    casting _               =   ModulesCasting
-    downCast _ (PaneC a)    =   case casting a of
-                                    ModulesCasting  -> Just a
-                                    _               -> Nothing
-
-instance RecoverablePane GhfModules ModulesState where
+instance ModelPane GhfModules ModulesState where
     saveState p     =   do
         mbModules <- getPane ModulesCasting
         case mbModules of

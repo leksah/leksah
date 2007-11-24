@@ -78,13 +78,7 @@ instance Pane GhfInfo
                 lift $notebookRemovePage nb i
                 removePaneAdmin pane
 
-instance CastablePane GhfInfo where
-    casting _               =   InfoCasting
-    downCast _ (PaneC a)    =   case casting a of
-                                    InfoCasting -> Just a
-                                    _           -> Nothing
-
-instance RecoverablePane GhfInfo InfoState where
+instance ModelPane GhfInfo InfoState where
     saveState p     =   do
         mbIdDescr <- getInfoCont
         case mbIdDescr of

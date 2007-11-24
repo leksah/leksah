@@ -13,6 +13,7 @@
 --
 -------------------------------------------------------------------------------
 module Ghf.RecoverPanes (
+    paneStateToGhfState
 ) where
 
 import Data.Maybe
@@ -23,9 +24,10 @@ import Ghf.SourceEditor
 import Ghf.ModulesPane
 import Ghf.InfoPane
 
---instance RecoverablePane GhfPane PaneState where
---    saveState (PaneC p)             =   saveState p
---    recoverState pp (BufferSt s)    =   do recoverState pp s; return Nothing
---    recoverState pp (LogSt s)       =   do recoverState pp s; return Nothing
---    recoverState pp (InfoSt s)      =   do recoverState pp s; return Nothing
---    recoverState pp (ModulesSt s)   =   do recoverState pp s; return Nothing
+
+paneStateToGhfState :: PaneState -> GhfState
+paneStateToGhfState (BufferSt st)                       =   StateC st
+paneStateToGhfState (LogSt st)                          =   StateC st
+paneStateToGhfState (InfoSt st)                         =   StateC st
+paneStateToGhfState (ModulesSt st)                      =   StateC st
+

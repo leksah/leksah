@@ -21,7 +21,7 @@ module Ghf.Core.Panes (
 ,   CastablePane(..)
 ,   Casting(..)
 ,   GhfPane(..)
-,   RecoverablePane(..)
+,   ModelPane(..)
 ,   PaneDirection(..)
 ,   PanePath
 ,   PaneLayout(..)
@@ -39,8 +39,9 @@ module Ghf.Core.Panes (
 ,   ModulesState(..)
 
 ,   GhfState(..)
---,   paneStateToGhfState
---,   ghfStateToPaneState
+,   PaneState(..)
+,   Model(..)
+,   CastableModel(..)
 ) where
 
 import Graphics.UI.Gtk.SourceView
@@ -107,17 +108,17 @@ class Pane alpha  where
     makeActive      ::   alpha -> GhfAction
     close           ::   alpha -> GhfAction
 
-class Pane alpha =>   CastablePane alpha where
+class CastablePane alpha where
     casting         ::   alpha -> Casting alpha
     downCast        ::   Casting alpha -> GhfPane -> Maybe alpha
     isIt            ::   Casting alpha -> GhfPane -> Bool
     isIt t i        =   isJust (downCast t i)
 
-class (Pane alpha, Recoverable beta) => RecoverablePane alpha beta | beta -> alpha, alpha -> beta  where
+class (Pane alpha, Model beta) => ModelPane alpha beta | beta -> alpha, alpha -> beta  where
     saveState               ::   alpha -> GhfM (Maybe GhfState)
     recoverState            ::   PanePath -> beta -> GhfAction
 
-data GhfPane        =   forall alpha beta . (CastablePane alpha, RecoverablePane alpha beta) => PaneC alpha
+data GhfPane        =   forall alpha beta . (CastablePane alpha, ModelPane alpha beta) => PaneC alpha
 
 instance Pane GhfPane where
     paneName (PaneC a)      =   paneName a
@@ -128,14 +129,24 @@ instance Pane GhfPane where
     makeActive (PaneC a)    =   makeActive a
     close (PaneC a)         =   close a
 
-data GhfState       =   forall alpha beta . (RecoverablePane alpha beta, Recoverable beta) => StateC beta
-instance Recoverable GhfState
+class Model alpha where
+    toPaneState      ::   alpha -> PaneState
 
-instance RecoverablePane GhfPane GhfState where
+class Model alpha =>   CastableModel alpha where
+    castingS         ::   alpha -> CastingS alpha
+    downCastS        ::   CastingS alpha -> GhfState -> Maybe alpha
+    isItS            ::   CastingS alpha -> GhfState -> Bool
+    isItS t i        =   isJust (downCastS t i)
+
+data GhfState       =   forall alpha beta . (ModelPane alpha beta, CastableModel beta) => StateC beta
+
+instance Model GhfState where
+    toPaneState (StateC a)  =   toPaneState a
+
+instance ModelPane GhfPane GhfState where
     saveState (PaneC p)             =   saveState p
     recoverState pp (StateC s)      =   recoverState pp s
 
-class Recoverable alpha
 -- ---------------------------------------------------------------------
 -- Special Panes - The data structures for the panes
 --
@@ -145,6 +156,12 @@ data Casting alpha  where
     InfoCasting     ::   Casting GhfInfo
     BufferCasting   ::   Casting GhfBuffer
     ModulesCasting  ::   Casting GhfModules
+
+data CastingS alpha  where
+    LogCastingS      ::   CastingS LogState
+    InfoCastingS     ::   CastingS InfoState
+    BufferCastingS   ::   CastingS BufferState
+    ModulesCastingS  ::   CastingS ModulesState
 
 --
 -- | A text editor pane description
@@ -158,9 +175,24 @@ data GhfBuffer      =   GhfBuffer {
 ,   modTime         ::  Maybe (ClockTime)
 }
 
+instance CastablePane GhfBuffer where
+    casting _       =   BufferCasting
+    downCast _ (PaneC a)
+                    =   case casting a of
+                            BufferCasting   -> Just a
+                            _               -> Nothing
+
 data BufferState            =   BufferState FilePath Int
     deriving(Eq,Ord,Read,Show)
-instance Recoverable BufferState
+
+instance Model BufferState where
+    toPaneState a           =   BufferSt a
+
+instance CastableModel BufferState where
+    castingS _              =   BufferCastingS
+    downCastS _ (StateC a)  =   case castingS a of
+                                    BufferCastingS -> Just a
+                                    _          -> Nothing
 
 --
 -- | A log view pane description
@@ -170,10 +202,23 @@ data GhfLog         =   GhfLog {
 ,   scrolledWindowL :: ScrolledWindow
 }
 
+instance CastablePane GhfLog where
+    casting _               =   LogCasting
+    downCast _ (PaneC a)    =   case casting a of
+                                    LogCasting -> Just a
+                                    _          -> Nothing
+
 data LogState               =   LogState
     deriving(Eq,Ord,Read,Show)
-instance Recoverable LogState
 
+instance Model LogState where
+    toPaneState a           =   LogSt a
+
+instance CastableModel LogState where
+    castingS _               =   LogCastingS
+    downCastS _ (StateC a)    =   case castingS a of
+                                    LogCastingS -> Just a
+                                    _          -> Nothing
 --
 -- | An info pane description
 --
@@ -183,9 +228,23 @@ data GhfInfo        =   GhfInfo {
 ,   extractors      ::   [IdentifierDescr -> Extractor IdentifierDescr]
 }
 
+instance CastablePane GhfInfo where
+    casting _               =   InfoCasting
+    downCast _ (PaneC a)    =   case casting a of
+                                    InfoCasting -> Just a
+                                    _           -> Nothing
+
 data InfoState              =   InfoState IdentifierDescr
     deriving(Eq,Ord,Read,Show)
-instance Recoverable InfoState
+
+instance Model InfoState where
+    toPaneState a           =   InfoSt a
+
+instance CastableModel InfoState where
+    castingS _               =   InfoCastingS
+    downCastS _ (StateC a)    =   case castingS a of
+                                    InfoCastingS -> Just a
+                                    _           -> Nothing
 
 -- | A modules pane description
 --
@@ -196,31 +255,27 @@ data GhfModules     =   GhfModules {
 ,   facetStore      ::   New.ListStore (String, IdentifierDescr)
 }
 
+instance CastablePane GhfModules where
+    casting _               =   ModulesCasting
+    downCast _ (PaneC a)    =   case casting a of
+                                    ModulesCasting  -> Just a
+                                    _               -> Nothing
+
 data ModulesState           =   ModulesState Int
     deriving(Eq,Ord,Read,Show)
-instance Recoverable ModulesState
+
+instance Model ModulesState where
+    toPaneState a           =   ModulesSt a
+
+instance CastableModel ModulesState where
+    castingS _               =   ModulesCastingS
+    downCastS _ (StateC a)    =   case castingS a of
+                                    ModulesCastingS -> Just a
+                                    _               -> Nothing
 
 data PaneState      =   BufferSt BufferState
                     |   LogSt LogState
                     |   InfoSt InfoState
                     |   ModulesSt ModulesState
     deriving(Eq,Ord,Read,Show)
-
---paneStateToGhfState :: PaneState -> GhfState
---paneStateToGhfState (BufferSt st)                       =   StateC st
---paneStateToGhfState (LogSt st)                          =   StateC st
---paneStateToGhfState (InfoSt st)                         =   StateC st
---paneStateToGhfState (ModulesSt st)                      =   StateC st
-
---ghfStateToPaneState :: GhfState -> PaneState
---ghfStateToPaneState (StateC st@(BufferState _ _ ))      =   BufferSt st
---ghfStateToPaneState (StateC st@(LogState))              =   LogSt st
---ghfStateToPaneState (StateC st@(InfoState _))           =   InfoSt st
---ghfStateToPaneState (StateC st@(ModulesState _ ))       =   ModulesSt st
-
-
-
-
-
-
 
