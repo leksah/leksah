@@ -31,6 +31,9 @@ ok      change types of paneMap from
       -   Double click for error messages
     -   1 page Documentation
 
+    -   Exception handling !!! (Ghc errors, Ghf errors) see haddock
+
+
 Open problems:
 Editor
 ok  -   Clipboard binding (gtk)

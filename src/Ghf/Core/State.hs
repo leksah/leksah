@@ -35,6 +35,7 @@ module Ghf.Core.State (
 ,   trace
 ,   module Ghf.Core.Data
 ,   module Ghf.Core.Panes
+,   module Ghf.Core.Exception
 
 ) where
 
@@ -52,6 +53,7 @@ import GHC (Session)
 
 import Ghf.Core.Data
 import Ghf.Core.Panes
+import Ghf.Core.Exception
 
 
 message m = trace m (return ())

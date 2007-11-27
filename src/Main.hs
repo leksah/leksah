@@ -1,6 +1,7 @@
+{-# OPTIONS_GHC -fglasgow-exts #-}
 -----------------------------------------------------------------------------
 --
--- Module      :  Ghf
+-- Module      :
 -- Copyright   :  (c) Juergen Nicklisch-Franken (aka Jutaro)
 -- License     :  GNU-GPL
 --
@@ -9,7 +10,7 @@
 -- Portability :  portable
 --
 --
---  Main module of Genuine Haskell Face, an Haskell IDE written in Haskell
+--  Main function of Genuine Haskell Face, an Haskell IDE written in Haskell
 --
 ---------------------------------------------------------------------------------
 
@@ -26,8 +27,14 @@ import System.Environment
 import System.IO
 import GHC
 import DynFlags hiding(Option)
+import Util (handleDyn)
+import Bag
+import ErrUtils
 import Config
 import Data.Version
+import Control.Exception
+import System.Exit
+import Prelude hiding(catch)
 
 import Paths_ghf
 import Ghf.SaveSession
@@ -41,6 +48,10 @@ import Ghf.Keymap
 import Ghf.Info
 import Ghf.SourceCollector
 import Ghf.Collector
+
+-- ---------------------------------------------------------------------
+-- Command line options
+--
 
 data Flag =  UninstalledProject String | Collect | Rebuild | Sources | VersionF | DebugF
        deriving (Show,Eq)
@@ -66,8 +77,12 @@ ghfOpts argv =
           (_,_,errs) -> ioError $userError $concat errs ++ usageInfo header options
     where header = "Usage: ghf [OPTION...] files..."
 
--- |Build the main window
-main = defaultErrorHandler defaultDynFlags $do
+
+-- ---------------------------------------------------------------------
+-- | Main function
+--
+
+main = handleTopExceptions $do
     args            <-  getArgs
     (o,fl)          <-  ghfOpts args
     let uninstalled =   filter (\x -> case x of
@@ -102,6 +117,9 @@ main = defaultErrorHandler defaultDynFlags $do
                                     $ map (\ (UninstalledProject x) -> x) uninstalled
                             else collectInstalled writeAscii session version (elem Rebuild o)
                     else startGUI
+
+-- ---------------------------------------------------------------------
+-- | Start the GUI
 
 startGUI :: IO ()
 startGUI = do
@@ -181,5 +199,52 @@ startGUI = do
     runReaderT recoverSession ghfR
     widgetShowAll win
     mainGUI
+
+
+-- ---------------------------------------------------------------------
+-- Exception handling
+--
+
+handleTopExceptions =
+  handleNormalExceptions . handleGhfExceptions . handleGhcExceptions
+
+handleNormalExceptions inner =
+  catch inner (\exception -> do
+    hFlush stdout
+    case exception of
+      AsyncException StackOverflow -> do
+        putStrLn "stack overflow: use -g +RTS -K<size> to increase it"
+        exitFailure
+      ExitException code -> exitWith code
+      _other -> do
+        putStrLn ("ghf: internal Ghf error: " ++ show exception)
+        exitFailure
+  )
+
+
+handleGhfExceptions inner =
+  catchDyn inner (\(e::GhfException) -> do
+    putStrLn $ "ghf: " ++ (show e)
+    exitFailure
+  )
+
+
+handleGhcExceptions inner =
+  -- error messages propagated as exceptions
+  let inner2 = catchDyn inner (\dyn -> do
+        hFlush stdout
+        case dyn of
+          PhaseFailed _ code -> exitWith code
+          Interrupted -> exitFailure
+          _ -> do
+            print (dyn :: GhcException)
+            exitFailure)
+  in
+  -- compilation errors: messages with locations attached
+  catchDyn inner2 (\dyn -> do
+    putStrLn "ghf: Compilation error(s):"
+    printBagOfErrors defaultDynFlags (unitBag dyn)
+    exitFailure
+  )
 
 

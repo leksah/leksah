@@ -220,10 +220,9 @@ getSelection treeView treeStore = do
     paths           <-  New.treeSelectionGetSelectedRows treeSelection
     case paths of
         []  ->  return Nothing
-        [a] ->  do
+        a:r ->  do
             val     <-  New.treeStoreGetValue treeStore a
             return (Just val)
-        _   -> return Nothing
 
 fillInfo :: New.TreeView
     -> New.ListStore (String, IdentifierDescr)
@@ -323,7 +322,6 @@ treeViewPopup ghfR store treeView (Button _ _ _ _ _ _ button _ _) = do
             theMenu         <-  menuNew
             item1           <-  menuItemNewWithLabel "Edit"
             item1 `onActivateLeaf` do
-                putStrLn "enter on activate edit"
                 sel         <-  getSelection treeView store
                 case sel of
                     Just (_,[(m,_)]) -> case mbSourcePathMD m of
