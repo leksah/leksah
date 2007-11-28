@@ -32,9 +32,24 @@ import qualified Text.ParserCombinators.Parsec.Token as P
 import Text.ParserCombinators.Parsec.Language(emptyDef)
 import Data.Version
 import System.Directory
-import Data.Maybe(catMaybes)
+import Data.Maybe(catMaybes,mapMaybe)
 import Distribution.Simple.Utils(breaks)
 import System.FilePath(takeBaseName,dropFileName)
+import System.Exit
+import Control.Monad.State
+
+import Digraph
+import HscTypes
+import GHC
+import BasicTypes
+import StringBuffer
+import ErrUtils
+import SrcLoc
+import FastString
+import Lexer hiding (lexer)
+import Parser
+import Outputable hiding (char)
+import HscStats
 
 import Ghf.Core.State
 import Ghf.File
@@ -57,15 +72,18 @@ getSourcesMap = do
                         return map
                     Nothing ->  error "can't build/open source for package file"
 
-collectSources :: Map PackageIdentifier [FilePath] -> PackageDescr -> IO PackageDescr
-collectSources sourceMap pdescr =
+collectSources :: Session -> Map PackageIdentifier [FilePath] -> PackageDescr -> IO PackageDescr
+collectSources session sourceMap pdescr =
     case sourceForPackage (packagePD pdescr) sourceMap of
         Nothing -> return pdescr
         Just fp -> do
             let path = dropFileName fp
-            sf          <- allHaskellSourceFiles path
-            newModDescr <- mapM (collectSourcesForModules path sf) (exposedModulesPD pdescr)
-            return (pdescr{mbSourcePathPD = Just fp,exposedModulesPD = newModDescr})
+            sf              <-  allHaskellSourceFiles path
+            newModDescr     <-  mapM (collectSourcesForModules path sf)
+                                    (exposedModulesPD pdescr)
+            let nPackDescr  =   pdescr{mbSourcePathPD = Just fp,exposedModulesPD = newModDescr}
+            nPackDescr2     <-  collectParseInfo session nPackDescr
+            return nPackDescr
 
 collectSourcesForModules :: FilePath -> [FilePath] -> ModuleDescr -> IO (ModuleDescr)
 collectSourcesForModules filePath sourceFiles moduleDescr = do
@@ -86,6 +104,122 @@ findSourceForModule mod filePath sourceFiles = do
         then return Nothing
         else return (Just $ head possibleFiles)
 
+-- ---------------------------------------------------------------------
+--  | Adding information from parsing via GHC-API
+--
+collectParseInfo :: Session -> PackageDescr -> IO PackageDescr
+collectParseInfo session packDescr =
+    foldM (collectParseInfoForModule session) packDescr (exposedModulesPD packDescr)
+
+collectParseInfoForModule :: Session -> PackageDescr -> ModuleDescr -> IO PackageDescr
+collectParseInfoForModule session packDescr modDescr = do
+    case mbSourcePathMD modDescr of
+        Nothing -> do
+            putStrLn $ "No source for module " ++ showPackModule (moduleIdMD modDescr)
+            return packDescr
+        Just fp -> do
+            dynFlags    <- getSessionDynFlags session
+            parseResult <- myParseModule dynFlags fp Nothing
+            case parseResult of
+                Left errMsg -> do
+                    putStrLn $ "Failed to parse " ++ fp
+                    return packDescr
+                Right (L _ (HsModule _ _ _ decls _ _ _ _)) -> do
+                    putStrLn $ "Succeeded to parse " ++ fp
+                    newPackDescr <- foldl (collectParseInfoForDecl modDescr) packDescr decls
+                    return newPackDescr
+
+collectParseInfoForDecls :: ModuleDescr -> PackageDescr -> LHsDecl -> PackageDescr
+collectParseInfoForDecls modDescr packDescr (L (UnhelpfulSpan _) decl) = packDescr
+collectParseInfoForDecls modDescr packDescr (L srcDecl (ValD (FunBind lid _ _ _ _ _)))
+    =   let id          =   unLoc lid
+            occ         =   rdrNameOcc id
+            name        =   occNameString occ
+            candidates  =   name `Map.lookup` idDescriptionsPD packDescr
+        in case candidates of
+            Nothing     ->  packDescr
+            Just list   ->  let betterCandidates    =   filter filterCandidates list
+                            map
+
+
+
+
+collectParseInfoForDecls modDescr packDescr _ = packDescr
+
+
+
+LHsDecl
+
+--    let allFiles =  mapMaybe mbSourcePathMD (exposedModulesPD packDescr)
+--    if null allFiles
+--        then return packDescr
+--        else do
+--            targets <- mapM (\f -> guessTarget f Nothing) allFiles
+--            setTargets session targets
+--            flag <- load session LoadAllTargets
+--            if failed flag
+--                then do
+--                    putStrLn $ "Failed to load " ++ showPackageId (packagePD packDescr)
+--                    return packDescr
+--                else do
+--                    modgraph <- getModuleGraph session
+--                    let mods = concatMap flattenSCC $ topSortModuleGraph False modgraph Nothing
+--                        --getModFile = fromJust . ml_hs_file . ms_location
+--                        mods'= [ ms_mod modsum | modsum <- mods ]
+--                    foldM (collectParseInfoForModule session) packDescr (map moduleName mods')
+--
+--
+--collectParseInfoForModule :: Session -> PackageDescr -> ModuleName -> IO PackageDescr
+--collectParseInfoForModule session packDescr modName = do
+--    mbMod <- checkModule session modName False
+--    case mbMod of
+--        Just (CheckedModule a (Just b) (Just c) (Just d) _)
+--            ->  do  putStrLn $ "Parsed module: " ++ moduleNameString modName
+--                    return packDescr
+--        _   ->  do  putStrLn $ "Failed to check module: " ++ moduleNameString modName
+--                    return packDescr
+
+-- ---------------------------------------------------------------------
+--  | Parser function copied here, because it is not exported
+--
+myParseModule :: DynFlags -> FilePath -> Maybe StringBuffer
+              -> IO (Either ErrMsg (Located (HsModule RdrName)))
+myParseModule dflags src_filename maybe_src_buf
+ =    --------------------------  Parser  ----------------
+      showPass dflags "Parser" >>
+      {-# SCC "Parser" #-} do
+
+	-- sometimes we already have the buffer in memory, perhaps
+	-- because we needed to parse the imports out of it, or get the
+	-- module name.
+      buf <- case maybe_src_buf of
+		Just b  -> return b
+		Nothing -> hGetStringBuffer src_filename
+
+      let loc  = mkSrcLoc (mkFastString src_filename) 1 0
+
+      case unP parseModule (mkPState buf loc dflags) of {
+
+	PFailed span err -> return (Left (mkPlainErrMsg span err));
+
+	POk pst rdr_module -> do {
+
+      let {ms = getMessages pst};
+      printErrorsAndWarnings dflags ms;
+      when (errorsFound dflags ms) $ exitWith (ExitFailure 1);
+
+      dumpIfSet_dyn dflags Opt_D_dump_parsed "Parser" (ppr rdr_module) ;
+
+      dumpIfSet_dyn dflags Opt_D_source_stats "Source Statistics"
+			   (ppSourceStats False rdr_module) ;
+
+      return (Right rdr_module)
+	-- ToDo: free the string buffer later.
+      }}
+
+-- ---------------------------------------------------------------------
+--  | Source for package DB
+--
 buildSourceForPackageDB :: IO ()
 buildSourceForPackageDB = do
     prefsPath       <-  getConfigFilePathForLoad "Default.prefs"

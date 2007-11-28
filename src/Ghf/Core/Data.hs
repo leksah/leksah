@@ -49,6 +49,8 @@ module Ghf.Core.Data (
 ,   showPackModule
 ,   parsePackModule
 
+,   Location(..)
+
 ) where
 
 import Control.Monad.Reader
@@ -182,11 +184,12 @@ data IdentifierDescr    =  IdentifierDescr {
     identifierID        ::   ! Symbol
 ,   identifierTypeID    ::   ! IdType
 ,   typeInfoID          ::   ! TypeInfo
-,   moduleIdID          ::   ! [PackModule]
+,   moduleIdID          ::   ! PackModule
+,   mbLocation          ::   ! (Maybe Location)
 } deriving (Show,Eq,Ord,Read)
 
 instance Default IdentifierDescr where
-    getDefault = IdentifierDescr getDefault getDefault getDefault getDefault
+    getDefault = IdentifierDescr getDefault getDefault getDefault getDefault getDefault
 
 data IdType = Function | Data | Newtype | Synonym | AbstractData |
                 Constructor | Field | Class | ClassOp | Foreign
@@ -219,6 +222,15 @@ parsePackModule str     =   let (pack,mod) = span (\c -> c /= ':') str
                                 _         -> perror str
     where perror s      =   error $ "cannot parse PackModule from " ++ s
 
+instance Default PackModule where
+    getDefault = parsePackModule "unknow-0.0:undefined"
 
+data Location           =   Location
+	{ locationSLine     ::   !Int,
+	  locationSCol	    ::   !Int,
+	  locationELine     ::   !Int,
+	  locationECol      ::   !Int
+	}
+    deriving (Show,Eq,Ord,Read)
 
 

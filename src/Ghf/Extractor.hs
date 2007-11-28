@@ -112,8 +112,8 @@ extractExportedDescrR pid hidden iface (imap,mdList) =
                                                             (map snd (mi_decls iface))
         mapWithOwnDecls =   foldr (extractIdentifierDescr' pid [mid]) imap exportedDecls
         otherDecls      =   exportedNames `Set.difference` (Map.keysSet mapWithOwnDecls)
-        reexported      =   Map.map (\v -> map (\id -> id{moduleIdID = (PM pid mid)
-                                                                    : moduleIdID id}) v)
+        reexported      =   Map.map (\v -> map (\id -> id{moduleIdID = (PM pid mid)}) v)
+                                                                    {--: [moduleIdID id]--}
                                 $Map.filterWithKey (\k v -> k `Set.member` otherDecls)
                                     hidden
         inst            =   concatMap extractInstances (mi_insts iface)
@@ -141,7 +141,8 @@ extractIdentifierDescr (IfaceId ifName ifType ifIdInfo) modules package
     identifierID        =   unpackFS $occNameFS ifName
 ,   typeInfoID          =   showSDocUnqual $ppr ifType
 ,   identifierTypeID    =   Function
-,   moduleIdID          =   map (PM package) modules}]
+,   moduleIdID          =   PM package (last modules)
+,   mbLocation          =   Nothing}]
 
 #if __GHC__ >= 670
 extractIdentifierDescr (IfaceData ifName ifTyVars ifCtxt ifCons _ _ _ _ ) modules package
@@ -155,7 +156,8 @@ extractIdentifierDescr (IfaceData ifName ifTyVars ifCtxt ifCons _ ifVrcs _) modu
                                 IfDataTyCon _ -> Data
                                 IfNewTyCon _  -> Newtype
                                 IfAbstractTyCon -> AbstractData
-,   moduleIdID          =   map (PM package) modules} :
+,   moduleIdID          =   PM package (last modules)
+,   mbLocation          =   Nothing} :
 #if __GHC__ >= 670
         concatMap (extractIdentifierDescrConst modules package ifName)
                 (visibleIfConDecls ifCons)
@@ -173,7 +175,8 @@ extractIdentifierDescr (IfaceSyn ifName ifTyVars ifVrcs ifSynRhs) modules packag
     identifierID        =   unpackFS $occNameFS ifName
 ,   typeInfoID          =   showSDocUnqual $ppr ifSynRhs
 ,   identifierTypeID    =   Synonym
-,   moduleIdID          =   map (PM package) modules}]
+,   moduleIdID          =   PM package (last modules)
+,   mbLocation          =   Nothing}]
 
 #if __GHC__ >= 670
 extractIdentifierDescr (IfaceClass ifCtxt ifName ifTyVars ifFDs ifATs ifSigs ifRec) modules package
@@ -184,7 +187,8 @@ extractIdentifierDescr (IfaceClass ifCtxt ifName ifTyVars ifFDs ifSigs ifRec ifV
     identifierID        =   unpackFS $occNameFS ifName
 ,   typeInfoID          =   "" --showSDocUnqual $pprIfaceForAllPart ifTyVars ifCtxt empty
 ,   identifierTypeID    =   Class
-,   moduleIdID          =   map (PM package) modules} :
+,   moduleIdID          =   PM package (last modules)
+,   mbLocation          =   Nothing} :
                                 map (extractIdentifierDescrClassOp modules package) ifSigs
 
 extractIdentifierDescr (IfaceForeign ifName _) modules package
@@ -192,7 +196,8 @@ extractIdentifierDescr (IfaceForeign ifName _) modules package
     identifierID        =   unpackFS $occNameFS ifName
 ,   typeInfoID          =   ""
 ,   identifierTypeID    =   Foreign
-,   moduleIdID          =   map (PM package) modules}]
+,   moduleIdID          =   PM package (last modules)
+,   mbLocation          =   Nothing}]
 
 
 #if __GHC__ >= 670
@@ -206,7 +211,8 @@ extractIdentifierDescrConst modules package extName
 ,   typeInfoID          =   showSDocUnqual $ppr
                                 (foldr IfaceFunTy (IfaceTyConApp (IfaceTc name)[]) ifConArgTys)
 ,   identifierTypeID    =   Constructor
-,   moduleIdID          =   map (PM package) modules}
+,   moduleIdID          =   PM package (last modules)
+,   mbLocation          =   Nothing}
                                 : map (extractIdentifierDescrField modules package extName)
                                         (zip ifConFields ifConArgTys)
 #else
@@ -219,7 +225,8 @@ extractIdentifierDescrConst modules package extName
 ,   typeInfoID          =   showSDocUnqual $ppr
                                 (foldr IfaceFunTy (IfaceTyConApp (IfaceTc extName)[]) ifConArgTys)
 ,   identifierTypeID    =   Constructor
-,   moduleIdID          =   map (PM package) modules}
+,   moduleIdID          =   PM package (last modules)
+,   mbLocation          =   Nothing}
                                 : (map (extractIdentifierDescrField modules package extName)
                                     $ zip ifConFields ifConArgTys)
 
@@ -239,7 +246,8 @@ extractIdentifierDescrField modules package extName (fieldName, atype) =
 ,   typeInfoID          =   showSDocUnqual
                                 $ ppr (IfaceFunTy (IfaceTyConApp (IfaceTc name)[]) atype)--}
 ,   identifierTypeID    =   Field
-,   moduleIdID          =   map (PM package) modules}
+,   moduleIdID          =   PM package (last modules)
+,   mbLocation          =   Nothing}
 #else
 extractIdentifierDescrField :: [ModuleIdentifier] -> PackageIdentifier -> IfaceExtName -> (OccName,IfaceType)
                                     -> IdentifierDescr
@@ -250,7 +258,8 @@ extractIdentifierDescrField modules package extName (fieldName, atype) =
 ,   typeInfoID           =   showSDocUnqual
                                 $ ppr (IfaceFunTy (IfaceTyConApp (IfaceTc extName)[]) atype)
 ,   identifierTypeID    =   Field
-,   moduleIdID          =   map (PM package) modules}
+,   moduleIdID          =   PM package (last modules)
+,   mbLocation          =   Nothing}
 #endif
 
 extractIdentifierDescrClassOp :: [ModuleIdentifier] -> PackageIdentifier -> IfaceClassOp -> IdentifierDescr
@@ -259,7 +268,8 @@ extractIdentifierDescrClassOp modules package (IfaceClassOp name _ atype) =
     identifierID        =   unpackFS $ occNameFS name
 ,   typeInfoID          =   showSDocUnqual $ ppr atype
 ,   identifierTypeID    =   ClassOp
-,   moduleIdID          =   map (PM package) modules}
+,   moduleIdID          =   PM package (last modules)
+,   mbLocation          =   Nothing}
 
 
 extractInstances :: IfaceInst -> [(ClassId, DataId)]

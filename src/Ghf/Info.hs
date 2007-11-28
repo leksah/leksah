@@ -142,21 +142,36 @@ instance Binary ModuleDescr where
                                     usagesMD)
 
 instance Binary IdentifierDescr where
-    put (IdentifierDescr identifierID identifierTypeID typeInfoID moduleIdID)
+    put (IdentifierDescr identifierID identifierTypeID typeInfoID moduleIdID mbLocation)
         = do    put identifierID
                 put identifierTypeID
                 put typeInfoID
                 put moduleIdID
+                put mbLocation
     get = do    identifierID        <- get
                 identifierTypeID    <- get
                 typeInfoID          <- get
                 moduleIdID          <- get
-                return (IdentifierDescr identifierID identifierTypeID typeInfoID moduleIdID)
+                mbLocation          <- get
+                return (IdentifierDescr identifierID identifierTypeID
+                            typeInfoID moduleIdID mbLocation)
 
 instance Binary IdType where
     put it  =   do  put (fromEnum it)
     get     =   do  code         <- get
                     return (toEnum code)
+
+instance Binary Location where
+    put (Location locationSLine locationSCol locationELine locationECol)
+        = do    put locationSLine
+                put locationSCol
+                put locationELine
+                put locationECol
+    get = do    locationSLine       <-  get
+                locationSCol        <-  get
+                locationELine       <-  get
+                locationECol        <-  get
+                return (Location locationSLine locationSCol locationELine locationECol)
 
 initInfo :: GhfAction
 initInfo = do

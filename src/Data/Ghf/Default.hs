@@ -33,5 +33,9 @@ instance Default a => Default (Either a b)
 instance (Default alpha, Default beta) => Default (alpha,beta)
     where getDefault = (getDefault,getDefault)
 
-instance Default [a] where
+instance Default [alpha] where
     getDefault = []
+
+instance Default (Maybe alpha) where
+    getDefault = Nothing
+

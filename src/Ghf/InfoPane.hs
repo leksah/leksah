@@ -107,9 +107,9 @@ idDescrDescr = [
             (staticSelectionEditor allIdTypes)
     ,   mkField
             (paraName <<<- ParaName "Exported by" $ emptyParams)
-            (\l -> map showPackModule (moduleIdID l))
-            (\ b a -> a{moduleIdID = (map parsePackModule b)})
-            multiselectionEditor
+            (\l -> showPackModule (moduleIdID l))
+            (\ b a -> a{moduleIdID = parsePackModule b})
+            stringEditor
     ,   mkField
             (paraName  <<<- ParaName "Type" $ emptyParams)
             typeInfoID

@@ -94,7 +94,7 @@ collectInstalled writeAscii session version forceRebuild = do
                                                 ((map (\p -> map fromDPid (DP.depends p)))
                                                    newPackages)
     sources         <-  getSourcesMap
-    extractedWithSources    <-  mapM (collectSources sources) extracted
+    extractedWithSources    <-  mapM (collectSources session sources) extracted
     mapM_ (writeExtracted collectorPath writeAscii) extractedWithSources
 
 
@@ -108,7 +108,7 @@ collectUninstalled writeAscii session version cabalPath = do
     deps            <-  findFittingPackages session (buildDepends pd)
     let extracted   =   extractInfo (allIfaceInfos,[], package pd, deps)
     let sources     =   Map.fromList [(package pd,[cabalPath])]
-    extractedWithSources    <-  collectSources sources extracted
+    extractedWithSources    <-  collectSources session sources extracted
     collectorPath   <-  getCollectorPath version
     writeExtracted collectorPath writeAscii extractedWithSources
     writeExtracted collectorPath True extractedWithSources
