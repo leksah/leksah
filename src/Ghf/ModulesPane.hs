@@ -243,7 +243,7 @@ findDescription :: PackModule -> SymbolTable -> Symbol -> Maybe (Symbol,Identifi
 findDescription md st s     =
     case Map.lookup s st  of
         Nothing ->  Nothing
-        Just l  ->  case filter (\id -> elem md $ moduleIdID id) l of
+        Just l  ->  case filter (\id -> md == moduleIdID id) l of
                          [] -> Nothing
                          l  -> Just (s,head l)
 

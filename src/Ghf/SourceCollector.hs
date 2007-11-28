@@ -50,6 +50,8 @@ import Lexer hiding (lexer)
 import Parser
 import Outputable hiding (char)
 import HscStats
+import RdrName
+import OccName
 
 import Ghf.Core.State
 import Ghf.File
@@ -126,29 +128,62 @@ collectParseInfoForModule session packDescr modDescr = do
                     return packDescr
                 Right (L _ (HsModule _ _ _ decls _ _ _ _)) -> do
                     putStrLn $ "Succeeded to parse " ++ fp
-                    newPackDescr <- foldl (collectParseInfoForDecl modDescr) packDescr decls
+                    let newPackDescr =  foldl (collectParseInfoForDecl modDescr) packDescr decls
                     return newPackDescr
 
-collectParseInfoForDecls :: ModuleDescr -> PackageDescr -> LHsDecl -> PackageDescr
-collectParseInfoForDecls modDescr packDescr (L (UnhelpfulSpan _) decl) = packDescr
-collectParseInfoForDecls modDescr packDescr (L srcDecl (ValD (FunBind lid _ _ _ _ _)))
+collectParseInfoForDecl :: ModuleDescr -> PackageDescr -> (LHsDecl RdrName)  -> PackageDescr
+collectParseInfoForDecl modDescr packDescr (L loc decl) | not (isGoodSrcSpan loc) = packDescr
+collectParseInfoForDecl modDescr packDescr (L srcDecl (ValD (FunBind lid _ _ _ _ _)))
     =   let id          =   unLoc lid
             occ         =   rdrNameOcc id
             name        =   occNameString occ
-            candidates  =   name `Map.lookup` idDescriptionsPD packDescr
-        in case candidates of
-            Nothing     ->  packDescr
-            Just list   ->  let betterCandidates    =   filter filterCandidates list
-                            map
+        in  packDescr{idDescriptionsPD  =   Map.adjust (map (addLocation (occNameSpace occ)))
+                                                            name (idDescriptionsPD packDescr)}
+        where
+        addLocation  ::  NameSpace -> IdentifierDescr -> IdentifierDescr
+        addLocation  occNameSpace identDescr
+            =  if moduleIdID identDescr == moduleIdMD modDescr
+                        &&  identifierTypeID identDescr `matchesOccType` occNameSpace
+                    then identDescr{mbLocation = Just (srcSpanToLocation srcDecl)}
+                    else identDescr
+
+srcSpanToLocation :: SrcSpan -> Location
+srcSpanToLocation span | not (isGoodSrcSpan span)
+    =   throwGhf "srcSpanToLocation: unhelpful span"
+srcSpanToLocation span
+    =   Location (srcSpanStartLine span) (srcSpanStartCol span)
+                 (srcSpanEndLine span) (srcSpanEndCol span)
+
+matchesOccType :: IdType -> NameSpace -> Bool
+matchesOccType Function varName                 =   True
+matchesOccType Data     tcName                  =   True
+matchesOccType Newtype  _                       =   True
+matchesOccType Synonym  _                       =   True
+matchesOccType AbstractData _                   =   True
+matchesOccType Constructor tcName               =   True
+matchesOccType Field _                          =   True
+matchesOccType Class clsName                    =   True
+matchesOccType ClassOp _                        =   True
+matchesOccType Foreign _                        =   True
+otherwise                                       =   trace "occType mismatch " False
 
 
 
+
+
+
+{--
+Function | Data | Newtype | Synonym | AbstractData |
+                Constructor | Field | Class | ClassOp | Foreign
+
+VarName	-- Variables, including "real" data constructors
+	       | DataName	-- "Source" data constructors
+	       | TvName		-- Type variables
+	       | TcClsName
 
 collectParseInfoForDecls modDescr packDescr _ = packDescr
+--}
 
-
-
-LHsDecl
 
 --    let allFiles =  mapMaybe mbSourcePathMD (exposedModulesPD packDescr)
 --    if null allFiles

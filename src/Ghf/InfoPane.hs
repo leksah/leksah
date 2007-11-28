@@ -114,7 +114,12 @@ idDescrDescr = [
             (paraName  <<<- ParaName "Type" $ emptyParams)
             typeInfoID
             (\b a -> a{typeInfoID = b})
-            multilineStringEditor]
+            multilineStringEditor
+    ,   mkField
+            (paraName <<<- ParaName "Location" $ emptyParams)
+            (\l -> show (mbLocation l))
+            (\ b a -> a{mbLocation = read b})
+            stringEditor]
 
 {--    ,   mkField (emptyParams
             {paraName = Just "Documentation"})
