@@ -225,12 +225,10 @@ parsePackModule str     =   let (pack,mod) = span (\c -> c /= ':') str
 instance Default PackModule where
     getDefault = parsePackModule "unknow-0.0:undefined"
 
-data Location           =   Location
-	{ locationSLine     ::   !Int,
-	  locationSCol	    ::   !Int,
-	  locationELine     ::   !Int,
-	  locationECol      ::   !Int
-	}
-    deriving (Show,Eq,Ord,Read)
-
+data Location           =   Location {
+    locationSLine       ::   !Int
+,   locationSCol	    ::   !Int
+,   locationELine       ::   !Int
+,   locationECol        ::   !Int
+}   deriving (Show,Eq,Ord,Read)
 

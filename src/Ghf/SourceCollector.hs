@@ -77,7 +77,9 @@ getSourcesMap = do
 collectSources :: Session -> Map PackageIdentifier [FilePath] -> PackageDescr -> IO PackageDescr
 collectSources session sourceMap pdescr =
     case sourceForPackage (packagePD pdescr) sourceMap of
-        Nothing -> return pdescr
+        Nothing -> do
+            putStrLn $ "No source for package " ++ showPackageId (packagePD pdescr)
+            return pdescr
         Just fp -> do
             let path = dropFileName fp
             sf              <-  allHaskellSourceFiles path
@@ -85,7 +87,7 @@ collectSources session sourceMap pdescr =
                                     (exposedModulesPD pdescr)
             let nPackDescr  =   pdescr{mbSourcePathPD = Just fp,exposedModulesPD = newModDescr}
             nPackDescr2     <-  collectParseInfo session nPackDescr
-            return nPackDescr
+            return nPackDescr2
 
 collectSourcesForModules :: FilePath -> [FilePath] -> ModuleDescr -> IO (ModuleDescr)
 collectSourcesForModules filePath sourceFiles moduleDescr = do
@@ -146,6 +148,8 @@ collectParseInfoForDecl modDescr packDescr (L srcDecl (ValD (FunBind lid _ _ _ _
                         &&  identifierTypeID identDescr `matchesOccType` occNameSpace
                     then identDescr{mbLocation = Just (srcSpanToLocation srcDecl)}
                     else identDescr
+collectParseInfoForDecl modDescr packDescr _
+    =   packDescr
 
 srcSpanToLocation :: SrcSpan -> Location
 srcSpanToLocation span | not (isGoodSrcSpan span)
