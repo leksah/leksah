@@ -16,10 +16,6 @@
 
 module Ghf.Extractor (
     extractInfo
-
-,   fromPackageIdentifier
-,   toPackageIdentifier
-
 ) where
 
 import GHC hiding(Id)
@@ -287,12 +283,4 @@ extractUsages usage =
         ids     =   map (showSDocUnqual . ppr . fst) $ usg_entities usage
     in (name, Set.fromList ids)
 
-fromPackageIdentifier :: PackageIdentifier -> String
-fromPackageIdentifier   =   showPackageId
 
-toPackageIdentifier :: String -> Maybe PackageIdentifier
-toPackageIdentifier pd      =   let l = filter (\ (_,s) -> null s)
-                                            $ readP_to_S parsePackageId pd
-                                in  if null l
-                                    then Nothing
-                                    else Just (fst $ head l)

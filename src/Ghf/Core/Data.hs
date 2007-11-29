@@ -48,6 +48,8 @@ module Ghf.Core.Data (
 ,   PackModule(..)
 ,   showPackModule
 ,   parsePackModule
+,   fromPackageIdentifier
+,   toPackageIdentifier
 
 ,   Location(..)
 
@@ -215,19 +217,29 @@ showPackModule (PM p m) =   showPackageId p ++ ":" ++ m
 
 parsePackModule         ::   String -> PackModule
 parsePackModule str     =   let (pack,mod) = span (\c -> c /= ':') str
-                            in  case readP_to_S parsePackageId pack of
-                                [(ps,_)]  -> if null mod
-                                                then perror str
-                                                else (PM ps (tail mod))
-                                _         -> perror str
+                            in  if null (tail mod)
+                                 then perror str
+                                 else case toPackageIdentifier pack of
+                                        Nothing -> perror str
+                                        Just pi -> (PM pi (tail mod))
     where perror s      =   error $ "cannot parse PackModule from " ++ s
+    
+fromPackageIdentifier :: PackageIdentifier -> String
+fromPackageIdentifier   =   showPackageId
+
+toPackageIdentifier :: String -> Maybe PackageIdentifier
+toPackageIdentifier pd      =   let l = filter (\ (_,s) -> null s)
+                                            $ readP_to_S parsePackageId pd
+                                in  if null l
+                                    then Nothing
+                                    else Just (fst $ head l)    
 
 instance Default PackModule where
-    getDefault = parsePackModule "unknow-0.0:undefined"
+    getDefault = parsePackModule "unknow-0:Undefined"
 
 data Location           =   Location {
     locationSLine       ::   !Int
-,   locationSCol	    ::   !Int
+,   locationSCol	::   !Int
 ,   locationELine       ::   !Int
 ,   locationECol        ::   !Int
 }   deriving (Show,Eq,Ord,Read)
