@@ -125,7 +125,7 @@ moduleNameFromFilePath fp = do
         then do
             str <- readFile fp
             let str' = if takeExtension fp == ".lhs"
-                            then trace "unlit" (unlit fp str)
+                            then unlit fp str
                             else str
             let parseRes = parse moduleNameParser fp str'
             case parseRes of

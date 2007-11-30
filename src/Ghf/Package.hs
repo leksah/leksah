@@ -65,6 +65,7 @@ import Ghf.Extractor
 import Ghf.Info
 import Ghf.Extractor
 import Ghf.SourceModel
+import Ghf.File
 
 packageOpen :: GhfAction
 packageOpen = do
@@ -348,41 +349,41 @@ chooseDir str = do
                 widgetDestroy dialog
                 return Nothing
 
-readOut :: GhfLog -> Handle -> IO ()
-readOut log hndl =
-     catch (readAndShow)
-       (\e -> do
-        appendLog log ("----------------------------------------\n") FrameTag
-        hClose hndl
-        return ())
-    where
-    readAndShow = do
-        line <- hGetLine hndl
-        appendLog log (line ++ "\n") LogTag
-        readAndShow
-
-readErr :: GhfLog -> Handle -> IO ()
-readErr log hndl =
-     catch (readAndShow)
-       (\e -> do
-        hClose hndl
-        return ())
-    where
-    readAndShow = do
-        line <- hGetLine hndl
-        appendLog log (line ++ "\n") ErrorTag
-        readAndShow
-
-runExternal :: FilePath -> [String] -> IO (Handle, Handle, Handle, ProcessHandle)
-runExternal path args = do
-    hndls@(inp, out, err, _) <- runInteractiveProcess path args Nothing Nothing
-    message $ "Starting external tool: " ++ path ++ " with args " ++ (show args)
-    hSetBuffering out NoBuffering
-    hSetBuffering err NoBuffering
-    hSetBuffering inp NoBuffering
-    hSetBinaryMode out True
-    hSetBinaryMode err True
-    return hndls
+--readOut :: GhfLog -> Handle -> IO ()
+--readOut log hndl =
+--     catch (readAndShow)
+--       (\e -> do
+--        appendLog log ("----------------------------------------\n") FrameTag
+--        hClose hndl
+--        return ())
+--    where
+--    readAndShow = do
+--        line <- hGetLine hndl
+--        appendLog log (line ++ "\n") LogTag
+--        readAndShow
+--
+--readErr :: GhfLog -> Handle -> IO ()
+--readErr log hndl =
+--     catch (readAndShow)
+--       (\e -> do
+--        hClose hndl
+--        return ())
+--    where
+--    readAndShow = do
+--        line <- hGetLine hndl
+--        appendLog log (line ++ "\n") ErrorTag
+--        readAndShow
+--
+--runExternal :: FilePath -> [String] -> IO (Handle, Handle, Handle, ProcessHandle)
+--runExternal path args = do
+--    hndls@(inp, out, err, _) <- runInteractiveProcess path args Nothing Nothing
+--    message $ "Starting external tool: " ++ path ++ " with args " ++ (show args)
+--    hSetBuffering out NoBuffering
+--    hSetBuffering err NoBuffering
+--    hSetBuffering inp NoBuffering
+--    hSetBinaryMode out True
+--    hSetBinaryMode err True
+--    return hndls
 
 -- ---------------------------------------------------------------------
 -- Handling of Compiler errors

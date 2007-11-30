@@ -70,32 +70,53 @@ import Ghf.File
 import Ghf.Info
 import Ghf.SourceCollector
 
+data CollectStatistics = CollectStatistics {
+    packagesTotal       ::   Int
+,   packagesWithSource  ::   Int
+,   modulesTotal        ::   Int
+,   modulesWithSource   ::   Int
+,   parseFailures       ::   Int
+} deriving Show
 
+emptyCollectStatistics = CollectStatistics 0 0 0 0 0
 
 collectInstalled :: Bool -> Session -> String -> Bool -> IO()
 collectInstalled writeAscii session version forceRebuild = do
+    collectorPath       <-  getCollectorPath version
     when forceRebuild $ do
-            collectorPath   <-  getCollectorPath version
-            removeDirectoryRecursive collectorPath
-    collectorPath   <-  getCollectorPath version
-    knownPackages   <-  findKnownPackages collectorPath
+        removeDirectoryRecursive collectorPath
+        getCollectorPath version
+        return ()
+    knownPackages       <-  findKnownPackages collectorPath
 --    putStrLn $ "found known packages" ++ " " ++ show knownPackages
-    packageInfos    <-  getInstalledPackageInfos session
-    let newPackages =   filter (\pi -> not $Set.member (showPackageId $ fromDPid $ DP.package pi)
+    packageInfos        <-  getInstalledPackageInfos session
+    let newPackages     =   filter (\pi -> not $Set.member (showPackageId $ fromDPid $ DP.package pi)
                                                         knownPackages)
                                     packageInfos
-    exportedIfaceInfos <-  mapM (\ info -> getIFaceInfos (fromDPid $ DP.package info)
+    exportedIfaceInfos  <-  mapM (\ info -> getIFaceInfos (fromDPid $ DP.package info)
                                             (DP.exposedModules info) session) newPackages
-    hiddenIfaceInfos   <-  mapM (\ info -> getIFaceInfos (fromDPid $DP.package info)
+    hiddenIfaceInfos    <-  mapM (\ info -> getIFaceInfos (fromDPid $DP.package info)
                                         (DP.hiddenModules info) session) newPackages
-    let extracted   =   map extractInfo $ zip4 exportedIfaceInfos
+    let extracted       =   map extractInfo $ zip4 exportedIfaceInfos
                                                 hiddenIfaceInfos
                                                 (map (fromDPid . DP.package) newPackages)
                                                 ((map (\p -> map fromDPid (DP.depends p)))
                                                    newPackages)
-    sources         <-  getSourcesMap
-    extractedWithSources    <-  mapM (collectSources session sources) extracted
-    mapM_ (writeExtracted collectorPath writeAscii) extractedWithSources
+    sources             <-  getSourcesMap
+    (extracted',failedToParse) <- collectAllSources session sources extracted
+    let statistic       =   CollectStatistics {
+        packagesTotal       =   length newPackages
+    ,   packagesWithSource  =   length $ filter (\p -> isJust (mbSourcePathPD p)) extracted'
+    ,   modulesTotal        =   foldl (\n p -> n + length (exposedModulesPD p)) 0 extracted'
+    ,   modulesWithSource   =   foldl (\n p -> n + length (
+                                    filter (\p -> isJust (mbSourcePathMD p)) (exposedModulesPD p)))
+                                        0 extracted'
+    ,   parseFailures       =   failedToParse}
+    putStrLn $ show statistic
+    when (modulesWithSource statistic > 0) $
+        putStrLn $ "failure percentage " ++ show (round ((fromIntegral   (parseFailures statistic)) /
+                                (fromIntegral   (modulesWithSource statistic)) * 100.0))
+    mapM_ (writeExtracted collectorPath writeAscii) extracted'
 
 
 collectUninstalled :: Bool -> Session -> String -> FilePath -> IO ()
@@ -108,7 +129,7 @@ collectUninstalled writeAscii session version cabalPath = do
     deps            <-  findFittingPackages session (buildDepends pd)
     let extracted   =   extractInfo (allIfaceInfos,[], package pd, deps)
     let sources     =   Map.fromList [(package pd,[cabalPath])]
-    extractedWithSources    <-  collectSources session sources extracted
+    (extractedWithSources,_)    <-  collectSources session sources extracted
     collectorPath   <-  getCollectorPath version
     writeExtracted collectorPath writeAscii extractedWithSources
     writeExtracted collectorPath True extractedWithSources

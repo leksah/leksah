@@ -13,7 +13,8 @@
 -------------------------------------------------------------------------------
 
 module Ghf.SourceCollector (
-    collectSources
+    collectAllSources
+,   collectSources
 ,   buildSourceForPackageDB
 ,   sourceForPackage
 ,   parseSourceForPackageDB
@@ -37,6 +38,11 @@ import Distribution.Simple.Utils(breaks)
 import System.FilePath(takeBaseName,dropFileName)
 import System.Exit
 import Control.Monad.State
+import System.FilePath
+import Distribution.Simple.PreProcess.Unlit
+import System.Process
+import System.IO
+import Control.Concurrent
 
 import Digraph
 import HscTypes
@@ -52,6 +58,8 @@ import Outputable hiding (char)
 import HscStats
 import RdrName
 import OccName
+import DynFlags
+import Bag
 
 import Ghf.Core.State
 import Ghf.File
@@ -74,20 +82,32 @@ getSourcesMap = do
                         return map
                     Nothing ->  error "can't build/open source for package file"
 
-collectSources :: Session -> Map PackageIdentifier [FilePath] -> PackageDescr -> IO PackageDescr
+collectAllSources :: Session
+    -> Map PackageIdentifier [FilePath]
+    -> [PackageDescr]
+    -> IO ([PackageDescr],Int)
+collectAllSources session sourceMap pdescrs =
+    foldM (\ (pdescrs, failureNum) pdescr   ->  do
+        (pdescr, num) <- collectSources session sourceMap pdescr
+        return (pdescr:pdescrs,failureNum + num))
+            ([],0) pdescrs
+
+collectSources :: Session
+    -> Map PackageIdentifier [FilePath]
+    -> PackageDescr
+    -> IO (PackageDescr,Int)
 collectSources session sourceMap pdescr =
     case sourceForPackage (packagePD pdescr) sourceMap of
         Nothing -> do
-            putStrLn $ "No source for package " ++ showPackageId (packagePD pdescr)
-            return pdescr
+            --putStrLn $ "No source for package " ++ showPackageId (packagePD pdescr)
+            return (pdescr,0)
         Just fp -> do
             let path = dropFileName fp
             sf              <-  allHaskellSourceFiles path
             newModDescr     <-  mapM (collectSourcesForModules path sf)
                                     (exposedModulesPD pdescr)
             let nPackDescr  =   pdescr{mbSourcePathPD = Just fp,exposedModulesPD = newModDescr}
-            nPackDescr2     <-  collectParseInfo session nPackDescr
-            return nPackDescr2
+            collectParseInfo session nPackDescr
 
 collectSourcesForModules :: FilePath -> [FilePath] -> ModuleDescr -> IO (ModuleDescr)
 collectSourcesForModules filePath sourceFiles moduleDescr = do
@@ -111,27 +131,75 @@ findSourceForModule mod filePath sourceFiles = do
 -- ---------------------------------------------------------------------
 --  | Adding information from parsing via GHC-API
 --
-collectParseInfo :: Session -> PackageDescr -> IO PackageDescr
+collectParseInfo :: Session -> PackageDescr -> IO (PackageDescr,Int)
 collectParseInfo session packDescr =
-    foldM (collectParseInfoForModule session) packDescr (exposedModulesPD packDescr)
+    foldM (collectParseInfoForModule session) (packDescr,0) (exposedModulesPD packDescr)
 
-collectParseInfoForModule :: Session -> PackageDescr -> ModuleDescr -> IO PackageDescr
-collectParseInfoForModule session packDescr modDescr = do
+collectParseInfoForModule :: Session
+    -> (PackageDescr,Int)
+    -> ModuleDescr
+    -> IO (PackageDescr,Int)
+collectParseInfoForModule session (packDescr,failureNum) modDescr = do
     case mbSourcePathMD modDescr of
         Nothing -> do
-            putStrLn $ "No source for module " ++ showPackModule (moduleIdMD modDescr)
-            return packDescr
+            --putStrLn $ "No source for module " ++ showPackModule (moduleIdMD modDescr)
+            return (packDescr,failureNum)
         Just fp -> do
             dynFlags    <- getSessionDynFlags session
-            parseResult <- myParseModule dynFlags fp Nothing
+            let tempFileName =  "C:/Temp/temp.hspp"
+            -- pid <- runCommand $ "ghc -cpp -E -o "++ tempFileName ++ " " ++ fp
+            --waitForProcess pid
+            exist <- doesFileExist tempFileName
+            str <- if exist
+                then do
+                    tempFile <- openFile tempFileName ReadMode
+                    str' <- hGetContents tempFile
+                    hClose tempFile
+                    removeFile tempFileName
+                    return str'
+                else do
+                    str' <- readFile fp
+                    return str'
+            str' <- readFile fp
+            let str' = if takeExtension fp == ".lhs"
+                            then unlit fp str
+                            else str
+            stringBuffer <- stringToStringBuffer str'
+            parseResult <- myParseModule dynFlags fp (Just stringBuffer)
             case parseResult of
                 Left errMsg -> do
-                    putStrLn $ "Failed to parse " ++ fp
-                    return packDescr
+                            --may need to preprocess
+                    let tempFileName =  "C:/Temp/temp.hspp"
+                    pid <- runCommand $ "ghc -cpp -E -o "++ tempFileName ++ " " ++ fp
+                    waitForProcess pid
+                    exist <- doesFileExist tempFileName
+                    if exist
+                        then do
+                            tempFile <- openFile tempFileName ReadMode
+                            str <- hGetContents tempFile
+                            hClose tempFile
+                            removeFile tempFileName
+                            let str' = if takeExtension fp == ".lhs"
+                                        then unlit fp str
+                                        else str
+                            stringBuffer <- stringToStringBuffer str
+                            parseResult <- myParseModule dynFlags fp (Just stringBuffer)
+                            case parseResult of
+                                Left errMsg -> do
+                                    putStrLn $ "Failed to parse " ++ fp
+                                    printBagOfErrors defaultDynFlags (unitBag errMsg)
+                                    return (packDescr,failureNum + 1)
+                                Right (L _ (HsModule _ _ _ decls _ _ _ _)) -> do
+                                --putStrLn $ "Succeeded to parse " ++ fp
+                                let newPackDescr =  foldl (collectParseInfoForDecl modDescr) packDescr decls
+                                return (newPackDescr,failureNum)
+                        else do
+                               putStrLn $ "Failed to preprocess " ++ fp
+                               return (packDescr,failureNum + 1)
                 Right (L _ (HsModule _ _ _ decls _ _ _ _)) -> do
-                    putStrLn $ "Succeeded to parse " ++ fp
+                    --putStrLn $ "Succeeded to parse " ++ fp
                     let newPackDescr =  foldl (collectParseInfoForDecl modDescr) packDescr decls
-                    return newPackDescr
+                    return (newPackDescr,failureNum)
 
 collectParseInfoForDecl :: ModuleDescr -> PackageDescr -> (LHsDecl RdrName)  -> PackageDescr
 collectParseInfoForDecl modDescr packDescr (L loc decl) | not (isGoodSrcSpan loc) = packDescr

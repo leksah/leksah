@@ -223,7 +223,7 @@ parsePackModule str     =   let (pack,mod) = span (\c -> c /= ':') str
                                         Nothing -> perror str
                                         Just pi -> (PM pi (tail mod))
     where perror s      =   error $ "cannot parse PackModule from " ++ s
-    
+
 fromPackageIdentifier :: PackageIdentifier -> String
 fromPackageIdentifier   =   showPackageId
 
@@ -232,14 +232,14 @@ toPackageIdentifier pd      =   let l = filter (\ (_,s) -> null s)
                                             $ readP_to_S parsePackageId pd
                                 in  if null l
                                     then Nothing
-                                    else Just (fst $ head l)    
+                                    else Just (fst $ head l)
 
 instance Default PackModule where
     getDefault = parsePackModule "unknow-0:Undefined"
 
 data Location           =   Location {
     locationSLine       ::   !Int
-,   locationSCol	::   !Int
+,   locationSCol	    ::   !Int
 ,   locationELine       ::   !Int
 ,   locationECol        ::   !Int
 }   deriving (Show,Eq,Ord,Read)
