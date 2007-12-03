@@ -181,7 +181,8 @@ collectParseInfoForModule session (packDescr,failureNum) modDescr = do
                                     return (packDescr,failureNum + 1)
                                 Right (L _ (HsModule _ _ _ decls _ _ _ _)) -> do
                                 --putStrLn $ "Succeeded to parse " ++ fp
-                                let newPackDescr =  foldl (collectParseInfoForDecl modDescr) packDescr decls
+                                let newPackDescr =  foldl (collectParseInfoForDecl modDescr)
+                                                        packDescr decls
                                 return (newPackDescr,failureNum)
                         else do
                                putStrLn $ "Failed to preprocess " ++ fp
