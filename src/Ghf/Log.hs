@@ -102,9 +102,18 @@ initLog panePath nb = do
             Nothing -> putStrLn "Notebook page not found"
         cid1 <- tv `afterFocusIn`
             (\_ -> do runReaderT (makeActive buf) ghfR; return True)
+                tv `onButtonPress`
+            (\ b -> do runReaderT (clicked b buf) ghfR; return True)
         return (buf,[cid1])
     addPaneAdmin buf (BufConnections [] [] cids) panePath
     lift $widgetGrabFocus (textView buf)
+
+clicked :: Event -> GhfLog -> GhfAction
+clicked (Button _ DoubleClick _ _ _ _ LeftButton _ _) ghfLog = do
+    mark <- textBufferGetInsert gtkbuf
+    textBufferGetIterAtMark
+clicked _ _ = return ()
+
 
 getLog :: GhfM GhfLog
 getLog = do

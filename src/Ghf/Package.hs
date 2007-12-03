@@ -54,6 +54,7 @@ import Prelude hiding (catch)
 import Text.ParserCombinators.Parsec.Language
 import qualified Text.ParserCombinators.Parsec.Token as P
 import Text.ParserCombinators.Parsec hiding(Parser)
+import Data.Maybe(isJust,fromJust)
 
 import Ghf.Log
 import Ghf.Core.State
@@ -152,12 +153,13 @@ packageBuild = do
     mbPackage   <- getActivePackage
     log         <- getLog
     ghfR        <- ask
-    sb <- getSBErrors
-    lift $statusbarPop sb 1
-    lift $statusbarPush sb 1 ""
     case mbPackage of
         Nothing         -> return ()
         Just package    -> do
+            sb <- getSBErrors
+            lift $statusbarPop sb 1
+            lift $statusbarPush sb 1 "Building"
+            unmarkCurrentError
             lift $do
                 (inp,out,err,pid) <- runExternal "runhaskell" (["Setup","build"]
                                                 ++ buildFlags package)
@@ -349,42 +351,6 @@ chooseDir str = do
                 widgetDestroy dialog
                 return Nothing
 
---readOut :: GhfLog -> Handle -> IO ()
---readOut log hndl =
---     catch (readAndShow)
---       (\e -> do
---        appendLog log ("----------------------------------------\n") FrameTag
---        hClose hndl
---        return ())
---    where
---    readAndShow = do
---        line <- hGetLine hndl
---        appendLog log (line ++ "\n") LogTag
---        readAndShow
---
---readErr :: GhfLog -> Handle -> IO ()
---readErr log hndl =
---     catch (readAndShow)
---       (\e -> do
---        hClose hndl
---        return ())
---    where
---    readAndShow = do
---        line <- hGetLine hndl
---        appendLog log (line ++ "\n") ErrorTag
---        readAndShow
---
---runExternal :: FilePath -> [String] -> IO (Handle, Handle, Handle, ProcessHandle)
---runExternal path args = do
---    hndls@(inp, out, err, _) <- runInteractiveProcess path args Nothing Nothing
---    message $ "Starting external tool: " ++ path ++ " with args " ++ (show args)
---    hSetBuffering out NoBuffering
---    hSetBuffering err NoBuffering
---    hSetBuffering inp NoBuffering
---    hSetBinaryMode out True
---    hSetBinaryMode err True
---    return hndls
-
 -- ---------------------------------------------------------------------
 -- Handling of Compiler errors
 --
@@ -439,6 +405,25 @@ selectErr index = do
                 else return ()
             markErrorInLog (logLines thisErr)
 
+unmarkCurrentError :: GhfAction
+unmarkCurrentError = do
+    currentErr'     <-  readGhf currentErr
+    errors'         <-  readGhf errors
+    when (isJust currentErr') $ do
+        let theError =  errors' !! fromJust currentErr'
+        allBufs     <-  allBuffers
+        fpc         <-  lift $ canonicalizePath $ filePath theError
+        let theBufs =   filter (\ buf -> isJust (fileName buf) &&
+                                            equalFilePath fpc (fromJust (fileName buf)))
+                            allBufs
+        mapM_ removeMark theBufs
+        where
+        removeMark buf = lift $ do
+            gtkbuf  <-  textViewGetBuffer (sourceView buf)
+            i1      <-  textBufferGetStartIter gtkbuf
+            i2      <-  textBufferGetEndIter gtkbuf
+            textBufferRemoveTagByName gtkbuf "activeErr" i1 i2
+
 markErrorInSourceBuf ::  Int -> Int -> String -> GhfAction
 markErrorInSourceBuf line column string = do
     mbbuf <- maybeActiveBuf
@@ -450,18 +435,17 @@ markErrorInSourceBuf line column string = do
             i1 <- textBufferGetStartIter gtkbuf
             i2 <- textBufferGetEndIter gtkbuf
             textBufferRemoveTagByName gtkbuf "activeErr" i1 i2
-            iter <- textBufferGetIterAtLine gtkbuf (max 0 (line-1))
-            chars <- textIterGetCharsInLine iter
-            textIterSetLineOffset iter (min (chars-1) (max 0 column))
-            iter2 <- textBufferGetIterAtLineOffset gtkbuf line 0
+
+            lines   <-  textBufferGetLineCount gtkbuf
+            iter    <-  textBufferGetIterAtLine gtkbuf (max 0 (min (lines-1) (line-1)))
+            chars   <-  textIterGetCharsInLine iter
+            textIterSetLineOffset iter (max 0 (min (chars-1) column))
+            iter2 <- textIterCopy iter
+            textIterForwardWordEnd iter2
             textBufferApplyTagByName gtkbuf "activeErr" iter iter2
-            textBufferMoveMarkByName gtkbuf "end" iter
-            mbMark <- textBufferGetMark gtkbuf "end"
             textBufferPlaceCursor gtkbuf iter
-            case mbMark of
-                Nothing -> return ()
-                Just mark -> do
-                    textViewScrollToMark (sourceView buf) mark 0.0 (Just (0.3,0.3))
+            mark <- textBufferGetInsert gtkbuf
+            textViewScrollToMark (sourceView buf) mark 0.0 (Just (0.3,0.3))
 
 nextError :: GhfAction
 nextError = do
@@ -538,4 +522,3 @@ symbol = P.symbol lexer
 identifier = P.identifier lexer
 colon = P.colon lexer
 integer = P.integer lexer
-

@@ -193,7 +193,7 @@ newTextBuffer panePath bn mbfn = do
         set foundTag [textTagBackground := "yellow"]
         textTagTableAdd tagTable foundTag
         activeErrtag <- textTagNew (Just "activeErr")
-        set activeErrtag[textTagBackground := "yellow"]
+        set activeErrtag[textTagUnderline := UnderlineError]
         textTagTableAdd tagTable activeErrtag
 
         -- load up and display a file
