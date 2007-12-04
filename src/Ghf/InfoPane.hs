@@ -50,7 +50,7 @@ import Ghf.Core.State
 import Ghf.SourceCandy
 import Ghf.ViewFrame
 import Ghf.SpecialEditors
-import Ghf.Log
+import {-# SOURCE #-} Ghf.Log
 import GUI.Ghf.EditorBasics
 import GUI.Ghf.MakeEditor
 import GUI.Ghf.SimpleEditors

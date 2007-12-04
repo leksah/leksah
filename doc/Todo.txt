@@ -13,7 +13,7 @@ ok          Close geht nicht richtig!
 ~~    -   GTK Warnings
 ~        GTK-Errors:
 ok    -   Revert / Filechage detection
-~~    -   Map.! exception
+ok    -   Map.! exception
 ok   -   Replace ohne Glade
 ok   -   Replace ohne warp
 ok    -   Find verbessern
@@ -27,17 +27,17 @@ ok      change types of paneMap from
 
 ~~  -   putStrLn in message ...
 
-      -   Source markers for error messages
-      -   Double click for error messages
-    -   1 page Documentation
+ok    -   Source markers for error messages
+ok    -   Double click for error messages
+      -   1 page Documentation
 
-    -   Exception handling !!! (Ghc errors, Ghf errors) see haddock
+ok    -   Exception handling !!! (Ghc errors, Ghf errors) see haddock
 
 
 Open problems:
 Editor
 ok  -   Clipboard binding (gtk)
-()  -   Remove Error mark
+ok  -   Remove Error mark
     -   Opening more then one editor of the same file does not use the same model
 
 
@@ -122,7 +122,7 @@ ok  - make something after an external process finishes
 
     - Implementing event concept from Thorsten
 
-later - Parsing of source packages
+~~  - Parsing of source packages
 now - Simple version which finds the files and finds then the definition in the files
       without Parsing
 

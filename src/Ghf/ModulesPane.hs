@@ -37,7 +37,7 @@ import System.Glib.GObject
 import Ghf.Core.State
 import Ghf.ViewFrame
 import Ghf.InfoPane
-import Ghf.SourceModel
+import Ghf.SourceEditor
 
 instance Pane GhfModules
     where
@@ -119,15 +119,27 @@ initModules panePath nb = do
         --New.treeViewSetEnableSearch treeView True
         --New.treeViewSetRulesHint treeView True
 
+        renderer0    <- New.cellRendererPixbufNew
+        set renderer0 [ cellPixbufStockId  := stockYes ]
+
         renderer    <- New.cellRendererTextNew
         col         <- New.treeViewColumnNew
         New.treeViewColumnSetTitle col "Modules"
         New.treeViewColumnSetSizing col TreeViewColumnAutosize
         New.treeViewColumnSetReorderable col True
         New.treeViewAppendColumn treeView col
+        New.cellLayoutPackStart col renderer0 True
         New.cellLayoutPackStart col renderer True
         New.cellLayoutSetAttributes col renderer treeStore
             $ \row -> [ New.cellText := fst row]
+        New.cellLayoutSetAttributes col renderer0 treeStore
+            $ \row -> [
+            cellPixbufStockId  :=
+                if null (snd row)
+                    then stockNo
+                    else if isJust (mbSourcePathMD (fst (head (snd row))))
+                            then stockJumpTo
+                            else stockYes]
 
         renderer2   <- New.cellRendererTextNew
         col2        <- New.treeViewColumnNew

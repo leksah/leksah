@@ -59,7 +59,6 @@ import qualified Data.Set as Set
 import Data.Set (Set)
 import System.FilePath
 import System.Directory
-import Data.Char
 import Data.List(isSuffixOf,zip4)
 import Debug.Trace
 import Data.Binary

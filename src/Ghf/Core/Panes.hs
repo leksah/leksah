@@ -198,8 +198,8 @@ instance CastableModel BufferState where
 -- | A log view pane description
 --
 data GhfLog         =   GhfLog {
-    textView        ::  TextView
-,   scrolledWindowL :: ScrolledWindow
+    textView        ::   TextView
+,   scrolledWindowL ::   ScrolledWindow
 }
 
 instance CastablePane GhfLog where

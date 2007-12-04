@@ -238,9 +238,9 @@ instance Default PackModule where
     getDefault = parsePackModule "unknow-0:Undefined"
 
 data Location           =   Location {
-    locationSLine       ::   !Int
-,   locationSCol	    ::   !Int
-,   locationELine       ::   !Int
-,   locationECol        ::   !Int
+    locationSLine       ::   ! Int
+,   locationSCol	    ::   ! Int
+,   locationELine       ::   ! Int
+,   locationECol        ::   ! Int
 }   deriving (Show,Eq,Ord,Read)
 

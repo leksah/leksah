@@ -9,22 +9,19 @@ module Ghf.Log (
 ,   LogTag(..)
 ,   markErrorInLog
 ,   clearLog
+
 ) where
 
 import Graphics.UI.Gtk hiding (afterToggleOverwrite)
 import Graphics.UI.Gtk.SourceView
 import Graphics.UI.Gtk.Multiline.TextView
 import Control.Monad.Reader
-import Data.IORef
-import System.IO
-import qualified Data.Map as Map
-import Data.Map (Map,(!))
 import Data.Maybe
 
 import Ghf.Core.State
 import Ghf.SourceCandy
+import Ghf.SourceEditor
 import Ghf.ViewFrame
-
 
 instance Pane GhfLog
     where
@@ -102,16 +99,33 @@ initLog panePath nb = do
             Nothing -> putStrLn "Notebook page not found"
         cid1 <- tv `afterFocusIn`
             (\_ -> do runReaderT (makeActive buf) ghfR; return True)
-                tv `onButtonPress`
+        cid2 <- tv `onButtonPress`
             (\ b -> do runReaderT (clicked b buf) ghfR; return True)
         return (buf,[cid1])
     addPaneAdmin buf (BufConnections [] [] cids) panePath
     lift $widgetGrabFocus (textView buf)
 
 clicked :: Event -> GhfLog -> GhfAction
-clicked (Button _ DoubleClick _ _ _ _ LeftButton _ _) ghfLog = do
-    mark <- textBufferGetInsert gtkbuf
-    textBufferGetIterAtMark
+clicked (Button _ SingleClick _ _ _ _ LeftButton x y) ghfLog = do
+    lift $ putStrLn "double clicked"
+    errors'     <-  readGhf errors
+    line' <- lift $ do
+        (x,y)       <-  widgetGetPointer (textView ghfLog)
+        (_,y')      <-  textViewWindowToBufferCoords (textView ghfLog) TextWindowWidget (x,y)
+        (iter,_)    <-  textViewGetLineAtY (textView ghfLog) y'
+        textIterGetLine iter
+    case filter (\(es,_) -> fst (logLines es) <= (line'+1) && snd (logLines es) >= (line'+1))
+            (zip errors' [0..(length errors')]) of
+        [(thisErr,n)] -> do
+            lift $ putStrLn "error found"
+            succ <- selectSourceBuf (filePath thisErr)
+            if succ
+                then markErrorInSourceBuf (line thisErr) (column thisErr)
+                        (errDescription thisErr)
+                else return ()
+            markErrorInLog (logLines thisErr)
+            modifyGhf_ (\ghf -> return (ghf{currentErr = Just n}))
+        otherwise   -> return ()
 clicked _ _ = return ()
 
 
@@ -135,6 +149,7 @@ appendLog :: GhfLog -> String -> LogTag -> IO Int
 appendLog l@(GhfLog tv _) string tag = do
     buf <- textViewGetBuffer tv
     iter <- textBufferGetEndIter buf
+    textBufferSelectRange buf iter iter
     textBufferInsert buf iter string
     iter2 <- textBufferGetEndIter buf
     case tag of
@@ -177,3 +192,4 @@ clearLog = do
     buf <- lift$ textViewGetBuffer $textView log
     lift $textBufferSetText buf ""
     modifyGhf_ (\ghf -> return (ghf{errors = [], currentErr = Nothing}))
+

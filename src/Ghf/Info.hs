@@ -70,7 +70,7 @@ import Ghf.Core.State
 import Ghf.SourceCandy
 import Ghf.ViewFrame
 import Ghf.SpecialEditors
-import Ghf.Log
+import {-# SOURCE #-} Ghf.Log
 import {-# SOURCE #-} Ghf.Collector
 import Ghf.Extractor
 

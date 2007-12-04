@@ -13,6 +13,7 @@ module Ghf.File (
 ,   readOut
 ,   readErr
 ,   runExternal
+
 ) where
 
 import System.FilePath
@@ -32,7 +33,7 @@ import qualified Data.List as List
 import Paths_ghf
 
 import Ghf.Core.State
-import Ghf.Log
+import {-# SOURCE #-} Ghf.Log
 
 
 --
@@ -243,5 +244,8 @@ runExternal path args = do
     hSetBinaryMode out True
     hSetBinaryMode err True
     return hndls
+
+
+
 
 

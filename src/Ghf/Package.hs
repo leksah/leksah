@@ -65,7 +65,6 @@ import Ghf.ViewFrame
 import Ghf.Extractor
 import Ghf.Info
 import Ghf.Extractor
-import Ghf.SourceModel
 import Ghf.File
 
 packageOpen :: GhfAction
@@ -423,29 +422,6 @@ unmarkCurrentError = do
             i1      <-  textBufferGetStartIter gtkbuf
             i2      <-  textBufferGetEndIter gtkbuf
             textBufferRemoveTagByName gtkbuf "activeErr" i1 i2
-
-markErrorInSourceBuf ::  Int -> Int -> String -> GhfAction
-markErrorInSourceBuf line column string = do
-    mbbuf <- maybeActiveBuf
-    case mbbuf of
-        Nothing -> do
-            return ()
-        Just (buf,_) -> lift $do
-            gtkbuf <- textViewGetBuffer (sourceView buf)
-            i1 <- textBufferGetStartIter gtkbuf
-            i2 <- textBufferGetEndIter gtkbuf
-            textBufferRemoveTagByName gtkbuf "activeErr" i1 i2
-
-            lines   <-  textBufferGetLineCount gtkbuf
-            iter    <-  textBufferGetIterAtLine gtkbuf (max 0 (min (lines-1) (line-1)))
-            chars   <-  textIterGetCharsInLine iter
-            textIterSetLineOffset iter (max 0 (min (chars-1) column))
-            iter2 <- textIterCopy iter
-            textIterForwardWordEnd iter2
-            textBufferApplyTagByName gtkbuf "activeErr" iter iter2
-            textBufferPlaceCursor gtkbuf iter
-            mark <- textBufferGetInsert gtkbuf
-            textViewScrollToMark (sourceView buf) mark 0.0 (Just (0.3,0.3))
 
 nextError :: GhfAction
 nextError = do
