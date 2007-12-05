@@ -18,6 +18,8 @@ module Ghf.SourceEditor (
 ,   maybeActiveBuf
 ,   standardSourcePanePath
 ,   selectSourceBuf
+,   goToSourceDefinition
+,   goToDefinition
 
 ,   newTextBuffer
 
@@ -165,6 +167,72 @@ selectSourceBuf fp = do
                     message "opened new buffer"
                     return True
                 else return False
+
+goToDefinition :: IdentifierDescr -> GhfAction
+goToDefinition idDescr = do
+    mbAccesibleInfo      <-  readGhf accessibleInfo
+    mbCurrentInfo        <-  readGhf currentInfo
+    if isJust mbAccesibleInfo && isJust mbCurrentInfo
+        then do
+            let packageId       =   pack $ moduleIdID idDescr
+            let mbPack          =   case packageId `Map.lookup` fst (fromJust mbAccesibleInfo) of
+                                        Just it ->  Just it
+                                        Nothing ->  packageId `Map.lookup` fst (fst
+                                                                 (fromJust mbCurrentInfo))
+            case mbPack of
+                Just pack       ->  case filter (\md -> moduleIdMD md == moduleIdID idDescr)
+                                                    (exposedModulesPD pack) of
+                                        [mod]   ->  if isJust (mbSourcePathMD mod)
+                                                        then goToSourceDefinition
+                                                                (fromJust $ mbSourcePathMD mod)
+                                                                (mbLocation idDescr)
+                                                        else return ()
+                                        _       ->  trace "not just one module" $ return ()
+                Nothing         ->  trace "no package" $ return ()
+        else trace "no infos" $ return ()
+
+goToSourceDefinition :: FilePath -> Maybe Location -> GhfAction
+goToSourceDefinition fp mbLocation = do
+    success     <- selectSourceBuf fp
+    when (success && isJust mbLocation) $
+        inBufContext () $ \_ gtkbuf buf _ -> do
+        let location    =   fromJust mbLocation
+        lines           <-  textBufferGetLineCount gtkbuf
+        iter            <-  textBufferGetIterAtLine gtkbuf (max 0 (min (lines-1)
+                                ((locationSLine location) -1)))
+        chars           <-  textIterGetCharsInLine iter
+        textIterSetLineOffset iter (max 0 (min (chars-1) (locationSCol location)))
+        iter2           <-  textBufferGetIterAtLine gtkbuf (max 0 (min (lines-1)
+                                ((locationELine location) -1)))
+        chars2          <-  textIterGetCharsInLine iter2
+        textIterSetLineOffset iter2 (max 0 (min (chars2-1) (locationECol location)))
+        textBufferPlaceCursor gtkbuf iter
+        smark           <-  textBufferGetSelectionBound gtkbuf
+        textBufferMoveMark gtkbuf smark iter2
+
+        imark           <-  textBufferGetInsert gtkbuf
+        -- we have a problem here that this does not work the first time
+        textViewScrollToMark (sourceView buf) imark 0.0 (Just (0.3,0.3))
+
+
+markErrorInSourceBuf ::  Int -> Int -> String -> GhfAction
+markErrorInSourceBuf line column string =
+    inBufContext () $ \_ gtkbuf buf _ -> do
+        i1 <- textBufferGetStartIter gtkbuf
+        i2 <- textBufferGetEndIter gtkbuf
+        textBufferRemoveTagByName gtkbuf "activeErr" i1 i2
+
+        lines   <-  textBufferGetLineCount gtkbuf
+        iter    <-  textBufferGetIterAtLine gtkbuf (max 0 (min (lines-1) (line-1)))
+        chars   <-  textIterGetCharsInLine iter
+        textIterSetLineOffset iter (max 0 (min (chars-1) column))
+        iter2 <- textIterCopy iter
+        textIterForwardWordEnd iter2
+        textBufferApplyTagByName gtkbuf "activeErr" iter iter2
+        textBufferPlaceCursor gtkbuf iter
+        mark <- textBufferGetInsert gtkbuf
+        textViewScrollToMark (sourceView buf) mark 0.0 (Just (0.3,0.3))
+
 
 allBuffers :: GhfM [GhfBuffer]
 allBuffers = do
@@ -977,29 +1045,6 @@ editCandy = do
     if bs
         then lift $mapM_ (transformToCandy to) gtkbufs
         else lift $mapM_ (transformFromCandy from) gtkbufs
-
-markErrorInSourceBuf ::  Int -> Int -> String -> GhfAction
-markErrorInSourceBuf line column string = do
-    mbbuf <- maybeActiveBuf
-    case mbbuf of
-        Nothing -> do
-            return ()
-        Just (buf,_) -> lift $do
-            gtkbuf <- textViewGetBuffer (sourceView buf)
-            i1 <- textBufferGetStartIter gtkbuf
-            i2 <- textBufferGetEndIter gtkbuf
-            textBufferRemoveTagByName gtkbuf "activeErr" i1 i2
-
-            lines   <-  textBufferGetLineCount gtkbuf
-            iter    <-  textBufferGetIterAtLine gtkbuf (max 0 (min (lines-1) (line-1)))
-            chars   <-  textIterGetCharsInLine iter
-            textIterSetLineOffset iter (max 0 (min (chars-1) column))
-            iter2 <- textIterCopy iter
-            textIterForwardWordEnd iter2
-            textBufferApplyTagByName gtkbuf "activeErr" iter iter2
-            textBufferPlaceCursor gtkbuf iter
-            mark <- textBufferGetInsert gtkbuf
-            textViewScrollToMark (sourceView buf) mark 0.0 (Just (0.3,0.3))
 
 --Properties of a replace (get rid and do everythink in the statusbar)
 data ReplaceState = ReplaceState{

@@ -81,9 +81,11 @@ data Ghf            =  Ghf {
 ,   activePack      ::  Maybe GhfPackage
 ,   errors          ::  [ErrorSpec]
 ,   currentErr      ::  Maybe Int
-,   accessibleInfo  ::  Maybe (PackageScope)
+,   accessibleInfo  ::  Maybe (PackageScope)     -- ^  the world scope
 ,   currentInfo     ::  Maybe (PackageScope,PackageScope)
-,   session         ::  Session                 -- ^ the bridge to ghc
+                                      -- | ^ the first is for the current package,
+                                      --  the second is the scope in the current package
+,   session         ::  Session                  -- ^ the bridge to ghc
 } --deriving Show
 
 --

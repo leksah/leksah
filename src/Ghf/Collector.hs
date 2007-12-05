@@ -167,13 +167,13 @@ getIFaceInfos2 filePaths session = do
 
 findKnownPackages :: FilePath -> IO (Set String)
 findKnownPackages filePath = do
-    paths <- getDirectoryContents filePath
-    let nameList = map dropExtension  $filter (\s -> ".pack" `isSuffixOf` s) paths
+    paths           <-  getDirectoryContents filePath
+    let nameList    =   map dropExtension  $filter (\s -> ".pack" `isSuffixOf` s) paths
     return (Set.fromList nameList)
 
 writeExtracted :: FilePath -> Bool -> PackageDescr -> IO ()
 writeExtracted dirPath writeAscii pd = do
-    let filePath = dirPath </> showPackageId (packagePD pd) ++ ".pack"
+    let filePath    = dirPath </> showPackageId (packagePD pd) ++ ".pack"
     if writeAscii
         then writeFile (filePath ++ "dpg") (show pd)
         else encodeFile filePath pd

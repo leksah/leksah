@@ -128,7 +128,7 @@ initModules panePath nb = do
         New.treeViewColumnSetSizing col TreeViewColumnAutosize
         New.treeViewColumnSetReorderable col True
         New.treeViewAppendColumn treeView col
-        New.cellLayoutPackStart col renderer0 True
+        New.cellLayoutPackStart col renderer0 False
         New.cellLayoutPackStart col renderer True
         New.cellLayoutSetAttributes col renderer treeStore
             $ \row -> [ New.cellText := fst row]
@@ -136,7 +136,7 @@ initModules panePath nb = do
             $ \row -> [
             cellPixbufStockId  :=
                 if null (snd row)
-                    then stockNo
+                    then ""
                     else if isJust (mbSourcePathMD (fst (head (snd row))))
                             then stockJumpTo
                             else stockYes]
@@ -158,20 +158,32 @@ initModules panePath nb = do
         facetStore  <-  New.listStoreNew []
         New.treeViewSetModel facetView facetStore
 
+        renderer30    <- New.cellRendererPixbufNew
+        renderer31    <- New.cellRendererPixbufNew
         renderer3   <- New.cellRendererTextNew
         col         <- New.treeViewColumnNew
         New.treeViewColumnSetTitle col "Identifiers"
         --New.treeViewColumnSetSizing col TreeViewColumnAutosize
         -- New.treeViewColumnSetReorderable col True
         New.treeViewAppendColumn facetView col
-        New.cellLayoutPackStart col renderer True
-        New.cellLayoutSetAttributes col renderer facetStore
+        New.cellLayoutPackStart col renderer30 False
+        New.cellLayoutPackStart col renderer31 False
+        New.cellLayoutPackStart col renderer3 True
+        New.cellLayoutSetAttributes col renderer3 facetStore
             $ \row -> [ New.cellText := fst row]
-
+        New.cellLayoutSetAttributes col renderer30 facetStore
+            $ \row -> [
+            cellPixbufStockId  := stockIdFromType (identifierTypeID(snd row))]
+        New.cellLayoutSetAttributes col renderer31 facetStore
+            $ \row -> [
+            cellPixbufStockId  := if isJust (mbLocation(snd row))
+                                    then stockJumpTo
+                                    else ""]
         New.treeViewSetHeadersVisible treeView True
         sel         <-  New.treeViewGetSelection treeView
         sel `New.onSelectionChanged` (fillFacets treeView treeStore facetStore)
         treeView `onButtonPress` (treeViewPopup ghfR treeStore treeView)
+        facetView `onButtonPress` (facetViewPopup ghfR facetStore facetView)
 
         sel2        <-  New.treeViewGetSelection facetView
         sel2 `New.onSelectionChanged` (fillInfo facetView facetStore ghfR)
@@ -202,12 +214,17 @@ initModules panePath nb = do
     addPaneAdmin buf (BufConnections [] [] []) panePath
     lift $widgetGrabFocus (paned buf)
 
+stockIdFromType :: IdType -> StockId
+stockIdFromType Function    =   stockGoForward
+stockIdFromType _           =   ""
+
+
 fillFacets :: New.TreeView
     -> New.TreeStore (String, [(ModuleDescr,PackageDescr)])
     -> New.ListStore (String, IdentifierDescr)
     -> IO ()
 fillFacets treeView tst lst = do
-    sel             <-  getSelection treeView tst
+    sel             <-  getSelectionTree treeView tst
     case sel of
         Just val -> case snd val of
                         ((mod,package):_)   ->  do
@@ -224,16 +241,28 @@ fillFacets treeView tst lst = do
                         []  -> return ()
         Nothing -> return ()
 
-getSelection ::  New.TreeView
+getSelectionTree ::  New.TreeView
     ->  New.TreeStore (String, [(ModuleDescr,PackageDescr)])
     -> IO (Maybe (String, [(ModuleDescr,PackageDescr)]))
-getSelection treeView treeStore = do
+getSelectionTree treeView treeStore = do
     treeSelection   <-  New.treeViewGetSelection treeView
     paths           <-  New.treeSelectionGetSelectedRows treeSelection
     case paths of
         []  ->  return Nothing
         a:r ->  do
             val     <-  New.treeStoreGetValue treeStore a
+            return (Just val)
+
+getSelectionFacet ::  New.TreeView
+    ->  New.ListStore (String, IdentifierDescr)
+    -> IO (Maybe (String, IdentifierDescr))
+getSelectionFacet treeView listStore = do
+    treeSelection   <-  New.treeViewGetSelection treeView
+    paths           <-  New.treeSelectionGetSelectedRows treeSelection
+    case paths of
+        []  ->  return Nothing
+        [a]:r ->  do
+            val     <-  New.listStoreGetValue listStore a
             return (Just val)
 
 fillInfo :: New.TreeView
@@ -334,7 +363,7 @@ treeViewPopup ghfR store treeView (Button _ _ _ _ _ _ button _ _) = do
             theMenu         <-  menuNew
             item1           <-  menuItemNewWithLabel "Edit"
             item1 `onActivateLeaf` do
-                sel         <-  getSelection treeView store
+                sel         <-  getSelectionTree treeView store
                 case sel of
                     Just (_,[(m,_)]) -> case mbSourcePathMD m of
                                             Nothing     ->  return ()
@@ -348,4 +377,29 @@ treeViewPopup ghfR store treeView (Button _ _ _ _ _ _ button _ _) = do
             return True
         else return False
 treeViewPopup _ _ _ _ = error "treeViewPopup wrong event type"
+
+facetViewPopup :: GhfRef
+    -> New.ListStore (String, IdentifierDescr)
+    -> New.TreeView
+    -> Event
+    -> IO (Bool)
+facetViewPopup ghfR store facetView (Button _ _ _ _ _ _ button _ _) = do
+    if button == RightButton
+        then do
+            theMenu         <-  menuNew
+            item1           <-  menuItemNewWithLabel "Go to definition"
+            item1 `onActivateLeaf` do
+                sel         <-  getSelectionFacet facetView store
+                case sel of
+                    Just (_,descr)  -> runReaderT (goToDefinition descr) ghfR
+                    otherwise       ->  trace "no selection" $ return ()
+            menuShellAppend theMenu item1
+            menuPopup theMenu Nothing
+            widgetShowAll theMenu
+            return True
+        else return False
+facetViewPopup _ _ _ _ = error "facetViewPopup wrong event type"
+
+
+
 
