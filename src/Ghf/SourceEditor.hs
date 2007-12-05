@@ -82,7 +82,6 @@ import Data.Map (Map)
 import Data.List
 import Data.Maybe
 
-
 import Ghf.Core.State
 import Ghf.ViewFrame
 import Ghf.SourceCandy
@@ -211,7 +210,7 @@ goToSourceDefinition fp mbLocation = do
         textBufferMoveMark gtkbuf smark iter2
 
         imark           <-  textBufferGetInsert gtkbuf
-        -- we have a problem here that this does not work the first time
+        -- ### we have a problem here that this does not work for a frsh opened buffer
         textViewScrollToMark (sourceView buf) imark 0.0 (Just (0.3,0.3))
 
 

@@ -228,7 +228,7 @@ genericEditor parameters = do
                     else return (Just (head l))
     return (wid,ginj,gext,notif)
 
-#ifdef _Newgtk
+#ifdef False
 --
 -- | Editor for the selection of an element from a static list of elements in the
 -- | form of a combo box

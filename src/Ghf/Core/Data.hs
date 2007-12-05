@@ -98,13 +98,13 @@ data GhfPackage     =   GhfPackage {
 --   menus, toolbars, and accelerator keystrokes
 --
 data ActionDescr alpha = AD {
-                name        ::   ActionString
-            ,   label       ::   String
-            ,   tooltip     ::   Maybe String
-            ,   stockID     ::   Maybe String
-            ,   action      ::   ReaderT alpha IO ()
-            ,   accelerator ::   [KeyString]
-            ,   isToggle    ::   Bool
+    name        ::   ActionString
+,   label       ::   String
+,   tooltip     ::   Maybe String
+,   stockID     ::   Maybe String
+,   action      ::   ReaderT alpha IO ()
+,   accelerator ::   [KeyString]
+,   isToggle    ::   Bool
 }
 
 type ActionString = String
@@ -114,49 +114,49 @@ type KeyString = String
 -- | Preferences is a data structure to hold configuration data
 --
 data Prefs = Prefs {
-        showLineNumbers     ::   Bool
-    ,   rightMargin         ::   Maybe Int
-    ,   tabWidth            ::   Int
-    ,   sourceCandy         ::   Maybe String
-    ,   keymapName          ::   String
-    ,   forceLineEnds       ::   Bool
-    ,   textviewFont        ::   Maybe String
-    ,   logviewFont         ::   Maybe String
-    ,   defaultSize         ::   (Int,Int)
-    ,   browser             ::   String
-    ,   sourcePanePath      ::   StandardPath
-    ,   logPanePath         ::   StandardPath
-    ,   infoPanePath        ::   StandardPath
-    ,   modulesPanePath     ::   StandardPath
-    ,   sourceDirectories   ::   [FilePath]
+    showLineNumbers     ::   Bool
+,   rightMargin         ::   Maybe Int
+,   tabWidth            ::   Int
+,   sourceCandy         ::   Maybe String
+,   keymapName          ::   String
+,   forceLineEnds       ::   Bool
+,   textviewFont        ::   Maybe String
+,   logviewFont         ::   Maybe String
+,   defaultSize         ::   (Int,Int)
+,   browser             ::   String
+,   sourcePanePath      ::   StandardPath
+,   logPanePath         ::   StandardPath
+,   infoPanePath        ::   StandardPath
+,   modulesPanePath     ::   StandardPath
+,   sourceDirectories   ::   [FilePath]
 } deriving(Eq,Show)
 
 
-type CandyTableForth =  [(Bool,String,String)]
-type CandyTableBack  =  [(String,String,Int)]
-type CandyTables     =  (CandyTableForth,CandyTableBack)
+type CandyTableForth    =   [(Bool,String,String)]
+type CandyTableBack     =   [(String,String,Int)]
+type CandyTables        =   (CandyTableForth,CandyTableBack)
 
-type SpecialKeyTable alpha =  Map (KeyVal,[Modifier]) (Map (KeyVal,[Modifier]) (ActionDescr alpha))
-type SpecialKeyCons  alpha =  Maybe ((Map (KeyVal,[Modifier]) (ActionDescr alpha)),String)
+type SpecialKeyTable alpha  =   Map (KeyVal,[Modifier]) (Map (KeyVal,[Modifier]) (ActionDescr alpha))
+type SpecialKeyCons  alpha  =   Maybe ((Map (KeyVal,[Modifier]) (ActionDescr alpha)),String)
 
 instance Show Modifier
-    where show Shift    = "<shift>"
-          show Control  = "<ctrl>"
-          show Alt      = "<alt>"
-          show Apple    = "<apple>"
-          show Compose  = "<compose>"
+    where show Shift    =   "<shift>"
+          show Control  =   "<ctrl>"
+          show Alt      =   "<alt>"
+          show Apple    =   "<apple>"
+          show Compose  =   "<compose>"
 
-type FileName        =  String
+type FileName           =   String
 
 --
 -- | Other types
 --
 data ErrorSpec = ErrorSpec {
-        filePath            ::   FilePath
-    ,   line                ::   Int
-    ,   column              ::   Int
-    ,   errDescription      ::   String
-    ,   logLines            ::   (Int,Int)
+    filePath            ::   FilePath
+,   line                ::   Int
+,   column              ::   Int
+,   errDescription      ::   String
+,   logLines            ::   (Int,Int)
 }   deriving Show
 
 -- ---------------------------------------------------------------------
