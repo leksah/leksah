@@ -37,6 +37,8 @@ module Ghf.Core.Panes (
 ,   InfoState(..)
 ,   GhfModules(..)
 ,   ModulesState(..)
+,   GhfCallers(..)
+,   CallersState(..)
 
 ,   GhfState(..)
 ,   PaneState(..)
@@ -156,12 +158,14 @@ data Casting alpha  where
     InfoCasting     ::   Casting GhfInfo
     BufferCasting   ::   Casting GhfBuffer
     ModulesCasting  ::   Casting GhfModules
+    CallersCasting  ::   Casting GhfCallers
 
 data CastingS alpha  where
     LogCastingS      ::   CastingS LogState
     InfoCastingS     ::   CastingS InfoState
     BufferCastingS   ::   CastingS BufferState
     ModulesCastingS  ::   CastingS ModulesState
+    CallersCastingS  ::   CastingS CallersState
 
 --
 -- | A text editor pane description
@@ -251,6 +255,7 @@ instance CastableModel InfoState where
 
 data GhfModules     =   GhfModules {
     paned           ::   HPaned
+,   treeView        ::   New.TreeView
 ,   treeStore       ::   New.TreeStore (String, [(ModuleDescr,PackageDescr)])
 ,   facetStore      ::   New.ListStore (String, IdentifierDescr)
 }
@@ -273,9 +278,36 @@ instance CastableModel ModulesState where
                                     ModulesCastingS -> Just a
                                     _               -> Nothing
 
+-- | A callers pane description
+--
+
+data GhfCallers     =   GhfCallers {
+    scrolledView    ::   ScrolledWindow
+,   treeViewC       ::   New.TreeView
+,   callersStore    ::   New.ListStore (String, [(ModuleDescr,PackageDescr)])
+}
+
+instance CastablePane GhfCallers where
+    casting _               =   CallersCasting
+    downCast _ (PaneC a)    =   case casting a of
+                                    CallersCasting  -> Just a
+                                    _               -> Nothing
+
+data CallersState           =   CallersState
+    deriving(Eq,Ord,Read,Show)
+
+instance Model CallersState where
+    toPaneState a           =   CallersSt a
+
+instance CastableModel CallersState where
+    castingS _               =   CallersCastingS
+    downCastS _ (StateC a)    =   case castingS a of
+                                    CallersCastingS -> Just a
+                                    _               -> Nothing
 data PaneState      =   BufferSt BufferState
                     |   LogSt LogState
                     |   InfoSt InfoState
                     |   ModulesSt ModulesState
+                    |   CallersSt CallersState
     deriving(Eq,Ord,Read,Show)
 

@@ -93,7 +93,7 @@ import GUI.Ghf.CompositeEditors
 import GUI.Ghf.Parameters
 import {-# SOURCE #-} Ghf.Log
 import Ghf.Info
-import Ghf.InfoPane
+import {-# SOURCE #-} Ghf.InfoPane
 
 instance Pane GhfBuffer
     where

@@ -50,13 +50,16 @@ import Ghf.Core.State
 import Ghf.SourceCandy
 import Ghf.ViewFrame
 import Ghf.SpecialEditors
-import {-# SOURCE #-} Ghf.Log
+import Ghf.Log
 import GUI.Ghf.EditorBasics
 import GUI.Ghf.MakeEditor
 import GUI.Ghf.SimpleEditors
 import GUI.Ghf.CompositeEditors
 import GUI.Ghf.Parameters
 import Data.Ghf.Default
+import Ghf.SourceEditor
+import {-# SOURCE #-} Ghf.ModulesPane
+import Ghf.CallersPane
 
 instance Pane GhfInfo
     where
@@ -174,18 +177,47 @@ initInfo panePath nb idDescr = do
             scrolledWindowAddWithViewport sw nbbox
             scrolledWindowSetPolicy sw PolicyAutomatic PolicyAutomatic
             let info = GhfInfo sw setInjs getExts
+
             --mapM_ (\w -> widgetSetExtensionEvents w [ExtensionEventsAll]) widgets
             cids <- mapM
                 (\w -> w `onFocus` --onFocusIn doesn't work here - why?
-                    (\_ -> do   runReaderT (makeActive info) ghfR
+                    (\_ ->  do  runReaderT (makeActive info) ghfR
                                 return False))
                         widgets
+            definitionB `onClicked` (runReaderT gotoSource ghfR)
+            moduB `onClicked` (runReaderT gotoModule' ghfR)
+            usesB `onClicked` (runReaderT calledBy' ghfR)
             notebookPrependPage nb sw (paneName info)
             widgetShowAll sw
             return (info,cids)
     addPaneAdmin pane (BufConnections [] [] []) panePath
     lift $widgetGrabFocus (sw pane)
     lift $bringPaneToFront pane
+
+gotoSource :: GhfAction
+gotoSource = do
+    mbInfo <- getInfoCont
+    case mbInfo of
+        Nothing     ->  return ()
+        Just info   ->  do  goToDefinition info
+                            return ()
+
+gotoModule' :: GhfAction
+gotoModule' = do
+    mbInfo <- getInfoCont
+    case mbInfo of
+        Nothing     ->  return ()
+        Just info   ->  do  gotoModule info
+                            return ()
+
+calledBy' :: GhfAction
+calledBy' = do
+    mbInfo <- getInfoCont
+    case mbInfo of
+        Nothing     ->  return ()
+        Just info   ->  do  calledBy info
+                            return ()
+
 
 setInfo :: IdentifierDescr -> GhfM ()
 setInfo identifierDescr = do

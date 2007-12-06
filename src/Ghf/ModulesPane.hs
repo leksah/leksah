@@ -16,6 +16,7 @@
 
 module Ghf.ModulesPane (
     showModules
+,   gotoModule
 ) where
 
 import Graphics.UI.Gtk hiding (get)
@@ -41,7 +42,7 @@ import Ghf.SourceEditor
 
 instance Pane GhfModules
     where
-    primPaneName _  =   "Mod"
+    primPaneName _  =   "Modules"
     getAddedIndex _ =   0
     getTopWidget    =   castToWidget . paned
     paneId b        =   "*Modules"
@@ -78,6 +79,33 @@ instance ModelPane GhfModules ModulesState where
                                 fillModulesList
                                 return ()
 
+gotoModule :: IdentifierDescr -> GhfAction
+gotoModule idDescr =
+    let moduleName = modu $ moduleIdID idDescr
+        nameArray = breakAtDots [] moduleName
+    in do
+        message "goto Module called"
+        (GhfModules _ treeView treeStore _) <- getModules
+        tree            <-  lift $ New.treeStoreGetTree treeStore []
+        let mbTreePath  =   treePathFromNameArray tree nameArray []
+        lift $ putStrLn (show mbTreePath)
+        case mbTreePath of
+            Just treePath   ->  lift $ do
+                New.treeViewExpandToPath treeView treePath
+                sel         <-  New.treeViewGetSelection treeView
+                New.treeSelectionSelectPath sel treePath
+                col         <- New.treeViewGetColumn treeView 0
+                New.treeViewScrollToCell treeView treePath (fromJust col) (Just (0.3,0.3))
+            Nothing         ->  return ()
+
+treePathFromNameArray :: ModTree -> [String] -> [Int] -> Maybe [Int]
+treePathFromNameArray tree [] accu      =   Just (reverse accu)
+treePathFromNameArray tree (h:t) accu   =
+    let names   =   map (\t -> fst $ rootLabel t) (subForest tree)
+        mbIdx   =   elemIndex h names
+    in case mbIdx of
+            Nothing ->  Nothing
+            Just i  ->  treePathFromNameArray (subForest tree !! i) t (i:accu)
 
 showModules :: GhfAction
 showModules = do
@@ -180,36 +208,37 @@ initModules panePath nb = do
                                     then stockJumpTo
                                     else ""]
         New.treeViewSetHeadersVisible treeView True
-        sel         <-  New.treeViewGetSelection treeView
-        sel `New.onSelectionChanged` (fillFacets treeView treeStore facetStore)
-        treeView `onButtonPress` (treeViewPopup ghfR treeStore treeView)
-        facetView `onButtonPress` (facetViewPopup ghfR facetStore facetView)
-
-        sel2        <-  New.treeViewGetSelection facetView
-        sel2 `New.onSelectionChanged` (fillInfo facetView facetStore ghfR)
 
         pane <- hPanedNew
         sw <- scrolledWindowNew Nothing Nothing
-        scrolledWindowAddWithViewport sw treeView
+        containerAdd sw treeView
         scrolledWindowSetPolicy sw PolicyAutomatic PolicyAutomatic
         sw2 <- scrolledWindowNew Nothing Nothing
-        scrolledWindowAddWithViewport sw2 facetView
+        containerAdd sw2 facetView
         scrolledWindowSetPolicy sw2 PolicyAutomatic PolicyAutomatic
         panedAdd1 pane sw
         panedAdd2 pane sw2
         (x,y) <- widgetGetSize nb
         panedSetPosition pane (x `quot` 2)
-        let modules = GhfModules pane treeStore facetStore
+        let modules = GhfModules pane treeView treeStore facetStore
         notebookPrependPage nb pane (paneName modules)
         widgetShowAll pane
         mbPn <- notebookPageNum nb pane
         case mbPn of
             Just i -> notebookSetCurrentPage nb i
             Nothing -> putStrLn "Notebook page not found"
+
         cid1 <- treeView `afterFocusIn`
             (\_ -> do runReaderT (makeActive modules) ghfR; return True)
         cid2 <- facetView `afterFocusIn`
             (\_ -> do runReaderT (makeActive modules) ghfR; return True)
+        treeView `onButtonPress` (treeViewPopup ghfR treeStore treeView)
+        facetView `onButtonPress` (facetViewPopup ghfR facetStore facetView)
+        sel         <-  New.treeViewGetSelection treeView
+        sel `New.onSelectionChanged` (fillFacets treeView treeStore facetStore)
+        sel2        <-  New.treeViewGetSelection facetView
+        sel2 `New.onSelectionChanged` (fillInfo facetView facetStore ghfR)
+
         return (modules,[cid1,cid2])
     addPaneAdmin buf (BufConnections [] [] []) panePath
     lift $widgetGrabFocus (paned buf)
@@ -290,7 +319,7 @@ findDescription md st s     =
 
 fillModulesList :: GhfAction
 fillModulesList = do
-    (GhfModules _ treeStore _)  <-  getModules
+    (GhfModules _ _ treeStore _)  <-  getModules
     currentInfo                 <-  readGhf currentInfo
     case currentInfo of
         Nothing             ->  lift $ do
@@ -314,37 +343,37 @@ buildModulesTree ((localMap,_),(otherMap,_)) =
         emptyTree           =   (Node ("",[]) [])
         resultTree          =   foldl insertPairsInTree emptyTree flatPairs
         in sortTree resultTree
-    where
-    insertPairsInTree :: ModTree -> (ModuleDescr,PackageDescr) -> ModTree
-    insertPairsInTree tree pair =
-        let nameArray           =   breakAtDots [] $ modu $ moduleIdMD $ fst pair
-            pairedWith          =   map (\n -> (n,pair)) nameArray
-        in  insertNodesInTree pairedWith tree
 
-    breakAtDots :: [String] -> String -> [String]
-    breakAtDots res []          =   reverse res
-    breakAtDots res toBreak     =   let (newRes,newToBreak) = span (\c -> c /= '.') toBreak
-                                    in  if null newToBreak
-                                            then reverse (newRes : res)
-                                            else breakAtDots (newRes : res) (tail newToBreak)
+insertPairsInTree :: ModTree -> (ModuleDescr,PackageDescr) -> ModTree
+insertPairsInTree tree pair =
+    let nameArray           =   breakAtDots [] $ modu $ moduleIdMD $ fst pair
+        pairedWith          =   map (\n -> (n,pair)) nameArray
+    in  insertNodesInTree pairedWith tree
 
-    insertNodesInTree :: [(String,(ModuleDescr,PackageDescr))] -> ModTree -> ModTree
-    insertNodesInTree list@[(str2,pair)] (Node (str1,pairs) forest) =
-        case partition (\ (Node (s,_) _) -> s == str2) forest of
-            ([],_)              ->  (Node (str1,pairs) (makeNodes list : forest))
-            ([(Node (_,pairsf) l)],rest)
-                                ->  (Node (str1,pairs) ((Node (str2,pair : pairsf) l) : rest))
-            (_,_)               ->  error "insertNodesInTree: impossible1"
-    insertNodesInTree  list@((str2,pair):tl) (Node (str1,pairs) forest) =
-        case partition (\ (Node (s,_) _) -> s == str2) forest of
-            ([],_)              ->  (Node (str1,pairs)  (makeNodes list : forest))
-            ([found],rest)      ->  (Node (str1,pairs) (insertNodesInTree tl found : rest))
-            (_,_)               ->  error "insertNodesInTree: impossible2"
-    insertNodesInTree [] t      =   t
+breakAtDots :: [String] -> String -> [String]
+breakAtDots res []          =   reverse res
+breakAtDots res toBreak     =   let (newRes,newToBreak) = span (\c -> c /= '.') toBreak
+                                in  if null newToBreak
+                                        then reverse (newRes : res)
+                                        else breakAtDots (newRes : res) (tail newToBreak)
 
-    makeNodes :: [(String,(ModuleDescr,PackageDescr))] -> ModTree
-    makeNodes [(str,pair)]      =   Node (str,[pair]) []
-    makeNodes ((str,_):tl)      =   Node (str,[]) [makeNodes tl]
+insertNodesInTree :: [(String,(ModuleDescr,PackageDescr))] -> ModTree -> ModTree
+insertNodesInTree list@[(str2,pair)] (Node (str1,pairs) forest) =
+    case partition (\ (Node (s,_) _) -> s == str2) forest of
+        ([],_)              ->  (Node (str1,pairs) (makeNodes list : forest))
+        ([(Node (_,pairsf) l)],rest)
+                            ->  (Node (str1,pairs) ((Node (str2,pair : pairsf) l) : rest))
+        (_,_)               ->  error "insertNodesInTree: impossible1"
+insertNodesInTree  list@((str2,pair):tl) (Node (str1,pairs) forest) =
+    case partition (\ (Node (s,_) _) -> s == str2) forest of
+        ([],_)              ->  (Node (str1,pairs)  (makeNodes list : forest))
+        ([found],rest)      ->  (Node (str1,pairs) (insertNodesInTree tl found : rest))
+        (_,_)               ->  error "insertNodesInTree: impossible2"
+insertNodesInTree [] t      =   t
+
+makeNodes :: [(String,(ModuleDescr,PackageDescr))] -> ModTree
+makeNodes [(str,pair)]      =   Node (str,[pair]) []
+makeNodes ((str,_):tl)      =   Node (str,[]) [makeNodes tl]
 
 instance Ord a => Ord (Tree a) where
     compare (Node l1 _) (Node l2 _) =  compare l1 l2
@@ -357,7 +386,7 @@ treeViewPopup :: GhfRef
     -> New.TreeView
     -> Event
     -> IO (Bool)
-treeViewPopup ghfR store treeView (Button _ _ _ _ _ _ button _ _) = do
+treeViewPopup ghfR store treeView (Button _ click _ _ _ _ button _ _) = do
     if button == RightButton
         then do
             theMenu         <-  menuNew
@@ -375,7 +404,17 @@ treeViewPopup ghfR store treeView (Button _ _ _ _ _ _ button _ _) = do
             menuPopup theMenu Nothing
             widgetShowAll theMenu
             return True
-        else return False
+        else if button == LeftButton && click == DoubleClick
+                then do sel         <-  getSelectionTree treeView store
+                        case sel of
+                            Just (_,[(m,_)]) -> case mbSourcePathMD m of
+                                                    Nothing     ->  return ()
+                                                    Just fp     ->  do
+                                                        runReaderT (selectSourceBuf fp) ghfR
+                                                        return ()
+                            otherwise       ->  return ()
+                        return True
+                else return False
 treeViewPopup _ _ _ _ = error "treeViewPopup wrong event type"
 
 facetViewPopup :: GhfRef
@@ -383,7 +422,7 @@ facetViewPopup :: GhfRef
     -> New.TreeView
     -> Event
     -> IO (Bool)
-facetViewPopup ghfR store facetView (Button _ _ _ _ _ _ button _ _) = do
+facetViewPopup ghfR store facetView (Button _ click _ _ _ _ button _ _) = do
     if button == RightButton
         then do
             theMenu         <-  menuNew
@@ -397,7 +436,13 @@ facetViewPopup ghfR store facetView (Button _ _ _ _ _ _ button _ _) = do
             menuPopup theMenu Nothing
             widgetShowAll theMenu
             return True
-        else return False
+        else if button == LeftButton && click == DoubleClick
+                then do sel         <-  getSelectionFacet facetView store
+                        case sel of
+                            Just (_,descr)  -> runReaderT (goToDefinition descr) ghfR
+                            otherwise       ->  trace "no selection" $ return ()
+                        return True
+                else return False
 facetViewPopup _ _ _ _ = error "facetViewPopup wrong event type"
 
 

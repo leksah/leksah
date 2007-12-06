@@ -1,7 +1,7 @@
 Version 0.1
 
 ok    -   Candy bug      --Candy without char (notebook)
-      -   Reappeared  exists
+!!      -   Reappeared  exists
 ok    -   Project Flags
 
 !!    -   Cabal Editor    "Change"
@@ -43,7 +43,7 @@ ok  -   Remove Error mark
 
     -   Project Tree Window
     -   Types
-    -   Completion
+defer  -   Completion
     -   Find implementor
     -   Find callers
 

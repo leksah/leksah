@@ -30,4 +30,4 @@ paneStateToGhfState (BufferSt st)                       =   StateC st
 paneStateToGhfState (LogSt st)                          =   StateC st
 paneStateToGhfState (InfoSt st)                         =   StateC st
 paneStateToGhfState (ModulesSt st)                      =   StateC st
-
+paneStateToGhfState (CallersSt st)                      =   StateC st
