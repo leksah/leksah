@@ -85,7 +85,7 @@ gotoModule idDescr =
         nameArray = breakAtDots [] moduleName
     in do
         message "goto Module called"
-        (GhfModules _ treeView treeStore _) <- getModules
+        mods@(GhfModules _ treeView treeStore _) <- getModules
         tree            <-  lift $ New.treeStoreGetTree treeStore []
         let mbTreePath  =   treePathFromNameArray tree nameArray []
         lift $ putStrLn (show mbTreePath)
@@ -96,6 +96,7 @@ gotoModule idDescr =
                 New.treeSelectionSelectPath sel treePath
                 col         <- New.treeViewGetColumn treeView 0
                 New.treeViewScrollToCell treeView treePath (fromJust col) (Just (0.3,0.3))
+                bringPaneToFront mods
             Nothing         ->  return ()
 
 treePathFromNameArray :: ModTree -> [String] -> [Int] -> Maybe [Int]

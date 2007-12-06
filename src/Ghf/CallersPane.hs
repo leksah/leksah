@@ -63,13 +63,32 @@ instance ModelPane GhfCallers CallersState where
     saveState p     =   return Nothing
     recoverState pp _  =  return ()
 
---showCallers :: GhfAction
---showCallers = do
---    m <- getCallers
---    lift $ bringPaneToFront m
-
 calledBy :: IdentifierDescr -> GhfAction
-calledBy idDescr = return ()
+calledBy idDescr = do
+    mbCurrentInfo   <- readGhf currentInfo
+    case mbCurrentInfo of
+        Nothing             ->  return ()
+        Just currentInfo'   ->
+            let symModPair      =   (identifierID idDescr, modu $ moduleIdID idDescr)
+                modulesList1    =   modulesForCallerFromPackages
+                                        (Map.elems $ fst $ fst currentInfo') symModPair
+                modulesList2    =   modulesForCallerFromPackages
+                                        (Map.elems $ fst $ snd currentInfo') symModPair
+                modulesList     =   nub $ modulesList1 ++ modulesList2
+                finalList       =   zip modulesList (repeat (identifierID idDescr))
+            in do   callers             <-  getCallers
+                    lift $ do
+                    New.listStoreClear (callersStore callers)
+                    mapM_ (New.listStoreAppend (callersStore callers)) finalList
+                    bringPaneToFront callers
+
+modulesForCallerFromPackages :: [PackageDescr] -> (Symbol,ModuleIdentifier) -> [ModuleDescr]
+modulesForCallerFromPackages []        _            =  []
+modulesForCallerFromPackages (p :rest) (sym,mod)    =
+    (filter (\ md -> case mod `Map.lookup` (usagesMD md) of
+                        Nothing     -> False
+                        Just syms   -> sym `Set.member` syms) (exposedModulesPD p))
+        ++ modulesForCallerFromPackages rest (sym,mod)
 
 getCallers :: GhfM GhfCallers
 getCallers = do
@@ -111,13 +130,10 @@ initCallers panePath nb = do
         New.cellLayoutPackStart col renderer0 False
         New.cellLayoutPackStart col renderer True
         New.cellLayoutSetAttributes col renderer treeStore
-            $ \row -> [ New.cellText := fst row]
+            $ \row -> [ New.cellText := modu $ moduleIdMD $ fst row]
         New.cellLayoutSetAttributes col renderer0 treeStore
-            $ \row -> [
-            cellPixbufStockId  :=
-                if null (snd row)
-                    then ""
-                    else if isJust (mbSourcePathMD (fst (head (snd row))))
+            $ \row -> [cellPixbufStockId  :=
+                        if isJust (mbSourcePathMD $ fst row)
                             then stockJumpTo
                             else stockYes]
 
@@ -129,10 +145,7 @@ initCallers panePath nb = do
         New.treeViewAppendColumn treeView col2
         New.cellLayoutPackStart col2 renderer2 True
         New.cellLayoutSetAttributes col2 renderer2 treeStore
-            $ \row -> [ New.cellText :=
-                concat
-                    $ intersperse  ", "
-                        $ map (showPackageId . packagePD . snd) (snd row)]
+            $ \row -> [ New.cellText := showPackageId $ pack $ moduleIdMD $ fst row]
 
         New.treeViewSetHeadersVisible treeView True
 

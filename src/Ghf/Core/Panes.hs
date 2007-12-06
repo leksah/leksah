@@ -284,7 +284,7 @@ instance CastableModel ModulesState where
 data GhfCallers     =   GhfCallers {
     scrolledView    ::   ScrolledWindow
 ,   treeViewC       ::   New.TreeView
-,   callersStore    ::   New.ListStore (String, [(ModuleDescr,PackageDescr)])
+,   callersStore    ::   New.ListStore (ModuleDescr,Symbol)
 }
 
 instance CastablePane GhfCallers where
