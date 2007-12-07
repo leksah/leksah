@@ -56,7 +56,7 @@ import Control.Monad.Reader
 import GHC.IOBase hiding (BufferState)
 import Text.ParserCombinators.ReadP
 
-import Ghf.Core.Data
+import Ghf.Core.Types
 import {-# SOURCE #-} Ghf.Core.State
 import GUI.Ghf.EditorBasics
 -- ---------------------------------------------------------------------

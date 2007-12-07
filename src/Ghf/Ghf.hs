@@ -1,7 +1,7 @@
 {-# OPTIONS_GHC -fglasgow-exts #-}
 -----------------------------------------------------------------------------
 --
--- Module      :
+-- Module      :  Ghf.Ghf
 -- Copyright   :  (c) Juergen Nicklisch-Franken (aka Jutaro)
 -- License     :  GNU-GPL
 --
@@ -13,6 +13,10 @@
 --  Main function of Genuine Haskell Face, an Haskell IDE written in Haskell
 --
 ---------------------------------------------------------------------------------
+
+module Ghf.Ghf (
+    runMain
+) where
 
 import Paths_ghf
 import Graphics.UI.Gtk
@@ -82,7 +86,7 @@ ghfOpts argv =
 -- | Main function
 --
 
-main = handleTopExceptions $do
+runMain = handleTopExceptions $do
     args            <-  getArgs
     (o,fl)          <-  ghfOpts args
     let uninstalled =   filter (\x -> case x of
@@ -187,7 +191,7 @@ startGUI = do
     vb <- vBoxNew False 1  -- Top-level vbox
     widgetSetName vb "topBox"
     boxPackStart vb mb PackNatural 0
-    boxPackStart vb tb PackNatural 0
+    --boxPackStart vb tb PackNatural 0
     boxPackStart vb nb PackGrow 0
     boxPackStart vb hb PackNatural 0
     win `onDelete` (\ _ -> do runReaderT quit ghfR; return True)

@@ -80,6 +80,10 @@ done 08  -   Dialogs closing with X dont run mainQuit and next Dialog won't open
 10  -   Changed red color not preserved when moving panes
 11  -   Crashes when error is at the end of the file
 
+        Can't find pane from unique name
+
+
+
 
 ----------------------
 Collector

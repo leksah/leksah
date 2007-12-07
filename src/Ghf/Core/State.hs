@@ -33,7 +33,7 @@ module Ghf.Core.State (
 --,   helpDebug
 ,   message
 ,   trace
-,   module Ghf.Core.Data
+,   module Ghf.Core.Types
 ,   module Ghf.Core.Panes
 ,   module Ghf.Core.Exception
 
@@ -51,7 +51,7 @@ import Data.IORef
 import Control.Monad.Reader
 import GHC (Session)
 
-import Ghf.Core.Data
+import Ghf.Core.Types
 import Ghf.Core.Panes
 import Ghf.Core.Exception
 
