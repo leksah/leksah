@@ -57,7 +57,7 @@ import GHC.IOBase hiding (BufferState)
 import Text.ParserCombinators.ReadP
 
 import Ghf.Core.Data
-import {-# SOURCE #-}  Ghf.Core.State
+import {-# SOURCE #-} Ghf.Core.State
 import GUI.Ghf.EditorBasics
 -- ---------------------------------------------------------------------
 -- Panes and pane layout

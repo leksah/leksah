@@ -33,7 +33,7 @@ import Data.List
 import Distribution.Package
 import Distribution.PackageDescription
 import System.Glib.GObject
-
+import Data.Char (toLower)
 
 import Ghf.Core.State
 import Ghf.ViewFrame
@@ -145,7 +145,10 @@ initModules panePath nb = do
         treeStore   <-  New.treeStoreNew forest
         treeView    <-  New.treeViewNew
         New.treeViewSetModel treeView treeStore
-        --New.treeViewSetEnableSearch treeView True
+        New.treeViewSetEnableSearch treeView True
+        New.treeViewSetSearchColumn treeView 0
+        New.treeViewSetSearchEqualFunc treeView (treeViewSearch treeView treeStore)
+
         --New.treeViewSetRulesHint treeView True
 
         renderer0    <- New.cellRendererPixbufNew
@@ -186,6 +189,13 @@ initModules panePath nb = do
         facetView   <-  New.treeViewNew
         facetStore  <-  New.listStoreNew []
         New.treeViewSetModel facetView facetStore
+        New.treeViewSetEnableSearch facetView True
+        New.treeViewSetSearchColumn facetView 0
+        New.treeViewSetSearchEqualFunc facetView
+            (\ _ string iter -> do
+                [ind]   <- New.treeModelGetPath facetStore iter
+                val     <- New.listStoreGetValue facetStore ind
+                return (isInfixOf (map toLower string) (map toLower (fst val))))
 
         renderer30    <- New.cellRendererPixbufNew
         renderer31    <- New.cellRendererPixbufNew
@@ -226,18 +236,24 @@ initModules panePath nb = do
         widgetShowAll pane
         mbPn <- notebookPageNum nb pane
         case mbPn of
-            Just i -> notebookSetCurrentPage nb i
+            Just i  -> notebookSetCurrentPage nb i
             Nothing -> putStrLn "Notebook page not found"
-
+        cid0 <- treeView `New.onStartInteractiveSearch`
+            (do putStrLn "onStartInteractiveSearchNew"
+                New.treeViewExpandAll treeView)
+        cid3 <- treeView `New.onRowActivated`
+            (\ treePath _ -> do
+                New.treeViewExpandRow treeView treePath False
+                return ())
         cid1 <- treeView `afterFocusIn`
             (\_ -> do runReaderT (makeActive modules) ghfR; return True)
         cid2 <- facetView `afterFocusIn`
             (\_ -> do runReaderT (makeActive modules) ghfR; return True)
-        treeView `onButtonPress` (treeViewPopup ghfR treeStore treeView)
+        treeView  `onButtonPress` (treeViewPopup ghfR treeStore treeView)
         facetView `onButtonPress` (facetViewPopup ghfR facetStore facetView)
-        sel         <-  New.treeViewGetSelection treeView
+        sel     <-  New.treeViewGetSelection treeView
         sel `New.onSelectionChanged` (fillFacets treeView treeStore facetStore)
-        sel2        <-  New.treeViewGetSelection facetView
+        sel2    <-  New.treeViewGetSelection facetView
         sel2 `New.onSelectionChanged` (fillInfo facetView facetStore ghfR)
 
         return (modules,[cid1,cid2])
@@ -248,6 +264,36 @@ stockIdFromType :: IdType -> StockId
 stockIdFromType Function    =   stockGoForward
 stockIdFromType _           =   ""
 
+treeViewSearch :: TreeView
+    -> New.TreeStore (String, [(ModuleDescr,PackageDescr)])
+    -> Int
+    -> String
+    -> TreeIter
+    -> IO Bool
+treeViewSearch treeView treeStore _ string iter =  do
+    path <- New.treeModelGetPath treeStore iter
+    val  <- New.treeStoreGetValue treeStore path
+    tree <- New.treeStoreGetTree treeStore path
+    exp  <- New.treeViewRowExpanded treeView path
+    when (not (null (subForest tree)) && not exp) $
+        let found = searchInSubnodes tree string
+        in when found $ do
+            New.treeViewExpandRow treeView path False
+            return ()
+    let str2 = case snd val of
+                    [] -> fst val
+                    (m,_):_ -> showPackModule (moduleIdMD m)
+    return (isInfixOf (map toLower string) (map toLower str2))
+
+searchInSubnodes :: ModTree -> String -> Bool
+searchInSubnodes tree str =
+    not $ null
+        $ filter (\ val ->
+            let cstr = case snd val of
+                    [] -> fst val
+                    (m,_):_ -> showPackModule (moduleIdMD m)
+            in  isInfixOf (map toLower str) (map toLower cstr))
+                $ concatMap flatten (subForest tree)
 
 fillFacets :: New.TreeView
     -> New.TreeStore (String, [(ModuleDescr,PackageDescr)])
@@ -266,7 +312,7 @@ fillFacets treeView tst lst = do
            	                                                 (idDescriptionsPD package))
                                                         (Set.toList exportedDescr)
                             New.listStoreClear lst
-                            putStrLn $ "Now fill " ++ show (length pairs)
+                            --putStrLn $ "Now fill " ++ show (length pairs)
                             mapM_ (New.listStoreAppend lst) pairs
                         []  -> return ()
         Nothing -> return ()
@@ -320,7 +366,7 @@ findDescription md st s     =
 
 fillModulesList :: GhfAction
 fillModulesList = do
-    (GhfModules _ _ treeStore _)  <-  getModules
+    (GhfModules _ treeView treeStore _)  <-  getModules
     currentInfo                 <-  readGhf currentInfo
     case currentInfo of
         Nothing             ->  lift $ do
@@ -330,6 +376,7 @@ fillModulesList = do
                                     New.treeStoreClear treeStore
                                     mapM_ (\(e,i) -> New.treeStoreInsertTree treeStore [] i e)
                                         $ zip li [0 .. length li]
+                                    --New.treeViewExpandAll treeView
 
 type ModTree = Tree (String, [(ModuleDescr,PackageDescr)])
 
@@ -401,7 +448,11 @@ treeViewPopup ghfR store treeView (Button _ click _ _ _ _ button _ _) = do
                                                 runReaderT (selectSourceBuf fp) ghfR
                                                 return ()
                     otherwise       ->  return ()
-            menuShellAppend theMenu item1
+            item2           <-  menuItemNewWithLabel "ExpandAll"
+            item2 `onActivateLeaf` (New.treeViewExpandAll treeView)
+            item3           <-  menuItemNewWithLabel "CollapseAll"
+            item3 `onActivateLeaf` (New.treeViewCollapseAll treeView)
+            mapM_ (menuShellAppend theMenu) [item1,item2,item3]
             menuPopup theMenu Nothing
             widgetShowAll theMenu
             return True
