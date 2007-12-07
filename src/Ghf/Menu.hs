@@ -40,6 +40,7 @@ import Ghf.Package
 import Ghf.Log
 import Ghf.SaveSession
 import Ghf.ModulesPane
+import Ghf.ToolbarPane
 import Paths_ghf
 --import Ghf.GhcAPI
 
@@ -182,7 +183,8 @@ actions =
 
     ,AD "ClearLog" "_Clear Log" Nothing Nothing
         clearLog [] False
-
+    ,AD "ShowToolbar" "_Show Toolbar" Nothing Nothing
+        (do getToolbar; return ()) [] False
 
     ,AD "Preferences" "_Preferences" Nothing Nothing (return ()) [] False
     ,AD "PrefsEdit" "_Edit Prefs" Nothing Nothing
@@ -285,6 +287,7 @@ menuDescription =
     "       <menuitem name=\"Close Pane\" action=\"ViewClosePane\" /> " ++ "\n" ++
     "       <separator/> " ++ "\n" ++
     "       <menuitem name=\"Clear Log\" action=\"ClearLog\" /> " ++ "\n" ++
+    "       <menuitem name=\"Show Toolbar\" action=\"ShowToolbar\" /> " ++ "\n" ++
     "     </menu> " ++ "\n" ++
     "    <menu name=\"_Preferences\" action=\"Preferences\"> " ++ "\n" ++
     "       <menuitem name=\"Edit Preferences\" action=\"PrefsEdit\" /> " ++ "\n" ++

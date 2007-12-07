@@ -181,19 +181,16 @@ startGUI = do
     let mb = case menus !! 0 of
                 Just m -> m
                 Nothing -> error "Failed to build menu"
-    let tb = case menus !! 1 of
-                Just m -> m
-                Nothing -> error "Failed to build toolbar"
     windowAddAccelGroup win acc
     nb <- newNotebook
     widgetSetName nb $"root"
-    hb <- buildStatusbar ghfR
+    statusBar <- buildStatusbar ghfR
     vb <- vBoxNew False 1  -- Top-level vbox
     widgetSetName vb "topBox"
     boxPackStart vb mb PackNatural 0
     --boxPackStart vb tb PackNatural 0
     boxPackStart vb nb PackGrow 0
-    boxPackStart vb hb PackNatural 0
+    boxPackEnd vb statusBar PackNatural 0
     win `onDelete` (\ _ -> do runReaderT quit ghfR; return True)
     win `onKeyPress` (\ e -> runReaderT (handleSpecialKeystrokes e) ghfR)
     containerAdd win vb

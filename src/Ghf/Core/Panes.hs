@@ -39,6 +39,8 @@ module Ghf.Core.Panes (
 ,   ModulesState(..)
 ,   GhfCallers(..)
 ,   CallersState(..)
+,   GhfToolbar(..)
+,   ToolbarState(..)
 
 ,   GhfState(..)
 ,   PaneState(..)
@@ -159,6 +161,8 @@ data Casting alpha  where
     BufferCasting   ::   Casting GhfBuffer
     ModulesCasting  ::   Casting GhfModules
     CallersCasting  ::   Casting GhfCallers
+    ToolbarCasting  ::   Casting GhfToolbar
+
 
 data CastingS alpha  where
     LogCastingS      ::   CastingS LogState
@@ -166,6 +170,7 @@ data CastingS alpha  where
     BufferCastingS   ::   CastingS BufferState
     ModulesCastingS  ::   CastingS ModulesState
     CallersCastingS  ::   CastingS CallersState
+    ToolbarCastingS  ::   CastingS ToolbarState
 
 --
 -- | A text editor pane description
@@ -304,10 +309,36 @@ instance CastableModel CallersState where
     downCastS _ (StateC a)    =   case castingS a of
                                     CallersCastingS -> Just a
                                     _               -> Nothing
+
+-- | A Toolbar pane description
+--
+data GhfToolbar     =   GhfToolbar {
+    toolbar         ::   Toolbar
+}
+
+instance CastablePane GhfToolbar where
+    casting _               =   ToolbarCasting
+    downCast _ (PaneC a)    =   case casting a of
+                                    ToolbarCasting  -> Just a
+                                    _               -> Nothing
+
+data ToolbarState           =   ToolbarState
+    deriving(Eq,Ord,Read,Show)
+
+instance Model ToolbarState where
+    toPaneState a           =   ToolbarSt a
+
+instance CastableModel ToolbarState where
+    castingS _               =   ToolbarCastingS
+    downCastS _ (StateC a)    =   case castingS a of
+                                    ToolbarCastingS -> Just a
+                                    _               -> Nothing
+
 data PaneState      =   BufferSt BufferState
                     |   LogSt LogState
                     |   InfoSt InfoState
                     |   ModulesSt ModulesState
                     |   CallersSt CallersState
+                    |   ToolbarSt ToolbarState
     deriving(Eq,Ord,Read,Show)
 

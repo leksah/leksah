@@ -128,6 +128,7 @@ data Prefs = Prefs {
 ,   logPanePath         ::   StandardPath
 ,   infoPanePath        ::   StandardPath
 ,   modulesPanePath     ::   StandardPath
+,   controlPanePath     ::   StandardPath
 ,   sourceDirectories   ::   [FilePath]
 } deriving(Eq,Show)
 

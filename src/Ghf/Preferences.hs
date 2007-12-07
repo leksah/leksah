@@ -60,6 +60,7 @@ defaultPrefs = Prefs {
     ,   logPanePath         =   RightBottom
     ,   infoPanePath        =   RightBottom
     ,   modulesPanePath     =   RightTop
+    ,   controlPanePath     =   RightTop
     ,   sourceDirectories   =   ["C:/ghc","C:/cygwin/home/Nicklisch-Franken/collect"]
     }
 
