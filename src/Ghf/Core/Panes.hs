@@ -28,6 +28,11 @@ module Ghf.Core.Panes (
 ,   PaneName
 ,   Connections(..)
 
+,   GhfState(..)
+,   PaneState(..)
+,   Model(..)
+,   CastableModel(..)
+
 -- * The pane types
 ,   GhfBuffer(..)
 ,   BufferState(..)
@@ -41,11 +46,9 @@ module Ghf.Core.Panes (
 ,   CallersState(..)
 ,   GhfToolbar(..)
 ,   ToolbarState(..)
+,   GhfFind(..)
+,   FindState(..)
 
-,   GhfState(..)
-,   PaneState(..)
-,   Model(..)
-,   CastableModel(..)
 ) where
 
 import Graphics.UI.Gtk.SourceView
@@ -162,7 +165,7 @@ data Casting alpha  where
     ModulesCasting  ::   Casting GhfModules
     CallersCasting  ::   Casting GhfCallers
     ToolbarCasting  ::   Casting GhfToolbar
-
+    FindCasting     ::   Casting GhfFind
 
 data CastingS alpha  where
     LogCastingS      ::   CastingS LogState
@@ -171,6 +174,18 @@ data CastingS alpha  where
     ModulesCastingS  ::   CastingS ModulesState
     CallersCastingS  ::   CastingS CallersState
     ToolbarCastingS  ::   CastingS ToolbarState
+    FindCastingS     ::   CastingS FindState
+
+
+data PaneState      =   BufferSt BufferState
+                    |   LogSt LogState
+                    |   InfoSt InfoState
+                    |   ModulesSt ModulesState
+                    |   CallersSt CallersState
+                    |   ToolbarSt ToolbarState
+                    |   FindSt FindState
+    deriving(Eq,Ord,Read,Show)
+
 
 --
 -- | A text editor pane description
@@ -329,16 +344,36 @@ instance Model ToolbarState where
     toPaneState a           =   ToolbarSt a
 
 instance CastableModel ToolbarState where
-    castingS _               =   ToolbarCastingS
-    downCastS _ (StateC a)    =   case castingS a of
+    castingS _              =   ToolbarCastingS
+    downCastS _ (StateC a)  =   case castingS a of
                                     ToolbarCastingS -> Just a
                                     _               -> Nothing
 
-data PaneState      =   BufferSt BufferState
-                    |   LogSt LogState
-                    |   InfoSt InfoState
-                    |   ModulesSt ModulesState
-                    |   CallersSt CallersState
-                    |   ToolbarSt ToolbarState
+-- | A Find pane description
+--
+data GhfFind                =   GhfFind {
+    findBox                 ::   HBox
+,   caseSensitive           ::   ToggleButton
+,   wrapAround              ::   ToggleButton
+,   entireWord              ::   ToggleButton
+,   gotoLine                ::   SpinButton
+,   findEntry               ::   Entry
+}
+
+instance CastablePane GhfFind where
+    casting _               =   FindCasting
+    downCast _ (PaneC a)    =   case casting a of
+                                    FindCasting  -> Just a
+                                    _               -> Nothing
+
+data FindState              =   FindState
     deriving(Eq,Ord,Read,Show)
 
+instance Model FindState where
+    toPaneState a           =   FindSt a
+
+instance CastableModel FindState where
+    castingS _              =   FindCastingS
+    downCastS _ (StateC a)  =   case castingS a of
+                                    FindCastingS -> Just a
+                                    _               -> Nothing

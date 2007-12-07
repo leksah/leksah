@@ -94,6 +94,7 @@ import GUI.Ghf.Parameters
 import {-# SOURCE #-} Ghf.Log
 import Ghf.Info
 import {-# SOURCE #-} Ghf.InfoPane
+import {-# SOURCE #-} Ghf.FindPane
 
 instance Pane GhfBuffer
     where
@@ -764,7 +765,7 @@ editFindKey k@(Key _ _ _ _ _ _ _ _ _ _)
     | eventKeyName k == "Up" =
         editFindInc Backward
     | eventKeyName k == "Escape" = do
-        entry   <- getTBFindEntry
+        entry   <- getFindEntry
         inBufContext' () $ \_ gtkbuf currentBuffer _ -> lift $ do
             i1 <- textBufferGetStartIter gtkbuf
             i2 <- textBufferGetEndIter gtkbuf
@@ -786,7 +787,7 @@ data SearchHint = Forward | Backward | Insert | Delete | Initial
 
 editFindInc :: SearchHint -> GhfAction
 editFindInc hint = do
-    entry   <- getTBFindEntry
+    entry   <- getFindEntry
     lift $widgetGrabFocus entry
     when (hint == Initial)
         (lift $ editableSelectRegion entry 0 (-1))
@@ -794,12 +795,12 @@ editFindInc hint = do
     if null search
         then return ()
         else do
-            caseSensitiveW <- getTBCaseSensitive
-            caseSensitive <- lift $toggleToolButtonGetActive caseSensitiveW
-            entireWButton <- getTBEntireWord
-            entireW <- lift $toggleToolButtonGetActive entireWButton
-            wrapAroundButton <- getTBWrapAround
-            wrapAround <- lift $toggleToolButtonGetActive wrapAroundButton
+            caseSensitiveW <- getCaseSensitive
+            caseSensitive <- lift $toggleButtonGetActive caseSensitiveW
+            entireWButton <- getEntireWord
+            entireW <- lift $toggleButtonGetActive entireWButton
+            wrapAroundButton <- getWrapAround
+            wrapAround <- lift $toggleButtonGetActive wrapAroundButton
             res <- editFind entireW caseSensitive wrapAround search "" hint
             if res || null search
                 then lift $do
@@ -917,7 +918,7 @@ editReplaceAll entireWord caseSensitive wrapAround search replace hint = do
 
 editGotoLine :: GhfAction
 editGotoLine = inBufContext' () $ \_ gtkbuf currentBuffer _ -> do
-    spin <- getTBGotoLineSpin
+    spin <- getGotoLineSpin
     lift $do
         max <- textBufferGetLineCount gtkbuf
         spinButtonSetRange spin 1.0 (fromIntegral max)
@@ -927,14 +928,14 @@ editGotoLineKey :: Event -> GhfAction
 editGotoLineKey k@(Key _ _ _ _ _ _ _ _ _ _)
     | eventKeyName k == "Escape"  =
         inBufContext' () $ \_ gtkbuf currentBuffer _ -> do
-            spin <- getTBGotoLineSpin
+            spin <- getGotoLineSpin
             lift $ do
                 widgetGrabFocus $ sourceView currentBuffer
     | otherwise = return ()
 
 editGotoLineEnd :: GhfAction
 editGotoLineEnd = inBufContext' () $ \_ gtkbuf currentBuffer _ -> do
-    spin <- getTBGotoLineSpin
+    spin <- getGotoLineSpin
     lift $ do
         line <- spinButtonGetValueAsInt spin
         iter <- textBufferGetStartIter gtkbuf

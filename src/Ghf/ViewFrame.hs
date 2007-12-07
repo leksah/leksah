@@ -53,12 +53,6 @@ module Ghf.ViewFrame (
 ,   getCandyState
 ,   setCandyState
 
-,   getTBFindEntry
-,   getTBCaseSensitive
-,   getTBGotoLineSpin
-,   getTBWrapAround
-,   getTBEntireWord
-
 ,   getSBSpecialKeys
 ,   getSBActivePane
 ,   getSBActivePackage
@@ -635,24 +629,6 @@ setCandyState b = do
     ui <- getUIAction "ui/menubar/_Edit/Source Candy" castToToggleAction
     lift $toggleActionSetActive ui b
 --
-
-getTBCaseSensitive :: GhfM (ToggleToolButton)
-getTBCaseSensitive = widgetGet ["topBox","toolbar","caseSensitiveButton"]
-                        castToToggleToolButton
-
-getTBWrapAround :: GhfM (ToggleToolButton)
-getTBWrapAround = widgetGet ["topBox","toolbar","wrapAroundButton"]
-                        castToToggleToolButton
-
-getTBEntireWord :: GhfM (ToggleToolButton)
-getTBEntireWord = widgetGet ["topBox","toolbar","entireWordButton"]
-                        castToToggleToolButton
-
-getTBGotoLineSpin :: GhfM (SpinButton)
-getTBGotoLineSpin = widgetGet ["topBox","toolbar","gotoLineEntryItem","gotoLineEntry"] castToSpinButton
-
-getTBFindEntry :: GhfM (Entry)
-getTBFindEntry =  widgetGet ["topBox","toolbar","searchEntryItem","searchEntry"] castToEntry
 
 getSBSpecialKeys :: GhfM (Statusbar)
 getSBSpecialKeys = widgetGet ["topBox","statusBox","statusBarSpecialKeys"] castToStatusbar

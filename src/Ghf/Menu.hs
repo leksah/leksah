@@ -41,6 +41,7 @@ import Ghf.Log
 import Ghf.SaveSession
 import Ghf.ModulesPane
 import Ghf.ToolbarPane
+import Ghf.FindPane
 import Paths_ghf
 --import Ghf.GhcAPI
 
@@ -185,6 +186,8 @@ actions =
         clearLog [] False
     ,AD "ShowToolbar" "_Show Toolbar" Nothing Nothing
         (do getToolbar; return ()) [] False
+    ,AD "ShowFind" "_Show Find" Nothing Nothing
+        (do getFind; return ()) [] False
 
     ,AD "Preferences" "_Preferences" Nothing Nothing (return ()) [] False
     ,AD "PrefsEdit" "_Edit Prefs" Nothing Nothing
@@ -288,6 +291,7 @@ menuDescription =
     "       <separator/> " ++ "\n" ++
     "       <menuitem name=\"Clear Log\" action=\"ClearLog\" /> " ++ "\n" ++
     "       <menuitem name=\"Show Toolbar\" action=\"ShowToolbar\" /> " ++ "\n" ++
+    "       <menuitem name=\"Show Find\" action=\"ShowFind\" /> " ++ "\n" ++
     "     </menu> " ++ "\n" ++
     "    <menu name=\"_Preferences\" action=\"Preferences\"> " ++ "\n" ++
     "       <menuitem name=\"Edit Preferences\" action=\"PrefsEdit\" /> " ++ "\n" ++
@@ -310,7 +314,7 @@ menuDescription =
     "       <toolitem name=\"Undo\" action=\"EditUndo\"/> " ++ "\n" ++
     "       <toolitem name=\"Redo\" action=\"EditRedo\"/> " ++ "\n" ++
     "       <separator/> " ++ "\n" ++
-    "       <toolitem name=\"Find\" action=\"EditFindNext\"/> " ++ "\n" ++
+    "       <toolitem name=\"Find\" action=\"EditFind\"/> " ++ "\n" ++
     "     </placeholder> " ++ "\n" ++
     "   </toolbar> " ++ "\n" ++
     " </ui>"
@@ -328,9 +332,6 @@ makeMenu uiManager actions menuDescription = do
         uiManagerAddUiFromString uiManager menuDescription
         accGroup <- uiManagerGetAccelGroup uiManager
         widgets@[_,mbTb] <- mapM (uiManagerGetWidget uiManager) ["ui/menubar","ui/toolbar"]
-        case mbTb of
-            Nothing -> return ()
-            Just tb -> addToToolbar (castToToolbar tb) ghfR
         return (accGroup,widgets)
     where
         actm ghfR ag (AD name label tooltip stockId ghfAction accs isToggle) = do
@@ -353,61 +354,6 @@ makeMenu uiManager actions menuDescription = do
                 lift $statusbarPop sb 1
                 lift $statusbarPush sb 1 $accStr
                 return ()) ghfR
-
-addToToolbar :: Toolbar -> GhfRef -> IO ()
-addToToolbar toolbar ghfR = do
-
-    entry <- entryNew
-    widgetSetName entry "searchEntry"
-    entryItem <- toolItemNew
-    widgetSetName entryItem "searchEntryItem"
-    containerAdd entryItem entry
-
-    caseSensitiveButton <- toggleToolButtonNew
-    toolButtonSetLabel caseSensitiveButton (Just "Case sensitive")
-    widgetSetName caseSensitiveButton "caseSensitiveButton"
-
-    entireWordButton <- toggleToolButtonNew
-    toolButtonSetLabel entireWordButton(Just "Entire word")
-    widgetSetName entireWordButton "entireWordButton"
-
-    wrapAroundButton <- toggleToolButtonNew
-    toolButtonSetLabel wrapAroundButton (Just "Wrap around")
-    toggleToolButtonSetActive wrapAroundButton True
-    widgetSetName wrapAroundButton "wrapAroundButton"
-
-    sep2 <- separatorToolItemNew
-    spinL <- spinButtonNewWithRange 1.0 100.0 10.0
-    widgetSetName spinL "gotoLineEntry"
-    spinLItem <- toolItemNew
-    widgetSetName spinLItem "gotoLineEntryItem"
-    containerAdd spinLItem spinL
-
-    toolbarInsert  toolbar entryItem (-1)
-    toolbarInsert  toolbar caseSensitiveButton (-1)
-    toolbarInsert  toolbar entireWordButton (-1)
-    toolbarInsert  toolbar wrapAroundButton (-1)
-
-    toolbarInsert  toolbar sep2 (-1)
-
-    toolbarInsert  toolbar spinLItem (-1)
-
-    children <- containerGetChildren toolbar
-    mapM_ (\c -> set toolbar [toolbarChildHomogeneous c := False])
-        children
-
-    entry `afterInsertText` (\ _ _ -> do
-        runReaderT (editFindInc Insert) ghfR
-        t <- entryGetText entry
-        return (length t))
-    entry `afterDeleteText` (\ _ _ -> do runReaderT (editFindInc Delete) ghfR; return ())
-    entry `afterKeyPress`  (\ e -> do runReaderT (editFindKey e) ghfR; return True)
-
-    spinL `afterKeyPress`  (\ e -> do runReaderT (editGotoLineKey e) ghfR; return True)
-    spinL `afterEntryActivate` runReaderT editGotoLineEnd ghfR
-    spinL `afterFocusOut` (\ _ -> do runReaderT editGotoLineEnd ghfR; return False)
-    return ()
-
 
 -- | Quit ghf
 --  ### make reasonable
@@ -489,5 +435,4 @@ buildStatusbar ghfR = do
     boxPackEnd hb sbe PackNatural 0
 
     return hb
-
 

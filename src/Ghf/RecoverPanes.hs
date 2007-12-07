@@ -24,6 +24,7 @@ import Ghf.SourceEditor
 import Ghf.ModulesPane
 import Ghf.InfoPane
 import Ghf.ToolbarPane
+import Ghf.FindPane
 
 
 
@@ -34,3 +35,4 @@ paneStateToGhfState (InfoSt st)                         =   StateC st
 paneStateToGhfState (ModulesSt st)                      =   StateC st
 paneStateToGhfState (CallersSt st)                      =   StateC st
 paneStateToGhfState (ToolbarSt st)                      =   StateC st
+paneStateToGhfState (FindSt st)                         =   StateC st
