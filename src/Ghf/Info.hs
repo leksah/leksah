@@ -1,4 +1,4 @@
-{-- Language FBangPatterns --}
+{-# OPTIONS_GHC -fglasgow-exts #-}
 -----------------------------------------------------------------------------
 --
 -- Module      :  Ghf.Info
@@ -35,44 +35,29 @@ module Ghf.Info (
 
 ) where
 
-import Graphics.UI.Gtk hiding (afterToggleOverwrite,get)
-import Graphics.UI.Gtk.SourceView
-import Graphics.UI.Gtk.ModelView as New
-import Graphics.UI.Gtk.Multiline.TextView
-import Control.Monad.Reader
-import Data.IORef
 import System.IO
 import qualified Data.Map as Map
-import Data.Map (Map,(!))
 import Config
 import Control.Monad
 import Control.Monad.Trans
 import System.FilePath
 import System.Directory
-import Data.Map (Map)
 import qualified Data.Map as Map
 import GHC
 import System.IO
-import Control.Concurrent
-import Distribution.Package
-import Distribution.PackageDescription hiding (package)
-import Distribution.InstalledPackageInfo hiding (package,InstalledPackageInfo)
 import Distribution.Version
 import Data.List
 import UniqFM
 import qualified PackageConfig as DP
 import Data.Maybe
-import Text.ParserCombinators.ReadP hiding(get)
 import Data.Binary
-import System.Process
 import qualified Data.ByteString.Lazy as BS
+import Distribution.Package
 
+
+import Ghf.Utils.DeepSeq
 import Ghf.File
 import Ghf.Core.State
-import Ghf.SourceCandy
-import Ghf.ViewFrame
-import Ghf.SpecialEditors
-import {-# SOURCE #-} Ghf.Log
 import {-# SOURCE #-} Ghf.InterfaceCollector
 --import Ghf.Extractor
 
@@ -81,89 +66,82 @@ import {-# SOURCE #-} Ghf.InterfaceCollector
 --
 
 instance Binary PackModule where
-    put (PM pack modu)
-        =   do  put pack
-                put modu
-    get =   do  ! pack                <- get
-                ! modu                <- get
-                return (PM pack modu)
+    put (PM pack' modu')
+        =   do  put pack'
+                put modu'
+    get =   do  pack'                <- get
+                modu'                <- get
+                return (PM pack' modu')
 
 instance Binary PackageIdentifier where
-    put (PackageIdentifier name version)
-        =   do  put name
-                put version
-    get =   do  ! name                <- get
-                ! version             <- get
-                return (PackageIdentifier name version)
-
--- instance Binary DP.PackageIdentifier where
---     put (DP.PackageIdentifier name version)
---         =   do  put name
---                 put version
---     get =   do  name                <- get
---                 version             <- get
---                 return (DP.PackageIdentifier name version)
+    put (PackageIdentifier name' version')
+        =   do  put name'
+                put version'
+    get =   do  name'                <- get
+                version'             <- get
+                return (PackageIdentifier name' version')
 
 instance Binary Version where
-    put (Version branch tags)
-        =   do  put branch
-                put tags
-    get =   do  ! branch              <- get
-                ! tags                <- get
-                return (Version branch tags)
+    put (Version branch' tags')
+        =   do  put branch'
+                put tags'
+    get =   do  branch'              <- get
+                tags'                <- get
+                return (Version branch' tags')
 
 
 instance Binary PackageDescr where
-    put (PackageDescr packagePD exposedModulesPD buildDependsPD mbSourcePathPD idDescriptionsPD)
-        =   do  put packagePD
-                put exposedModulesPD
-                put buildDependsPD
-                put mbSourcePathPD
-                put idDescriptionsPD
-    get =   do  ! packagePD           <- get
-                ! exposedModulesPD    <- get
-                ! buildDependsPD      <- get
-                ! mbSourcePathPD      <- get
-                ! idDescriptionsPD    <- get
-                return (PackageDescr packagePD exposedModulesPD buildDependsPD mbSourcePathPD
-                                        idDescriptionsPD)
+    put (PackageDescr packagePD' exposedModulesPD' buildDependsPD' mbSourcePathPD'
+            idDescriptionsPD')
+        =   do  put packagePD'
+                put exposedModulesPD'
+                put buildDependsPD'
+                put mbSourcePathPD'
+                put idDescriptionsPD'
+    get =   do  packagePD'           <- get
+                exposedModulesPD'    <- get
+                buildDependsPD'      <- get
+                mbSourcePathPD'      <- get
+                idDescriptionsPD'    <- get
+                return (PackageDescr packagePD' exposedModulesPD' buildDependsPD'
+                                        mbSourcePathPD' idDescriptionsPD')
 
 instance Binary ModuleDescr where
-    put (ModuleDescr moduleIdMD exportedNamesMD mbSourcePathMD instancesMD usagesMD)
-        = do    put moduleIdMD
-                put exportedNamesMD
-                put mbSourcePathMD
-                put instancesMD
-                put usagesMD
-    get = do    ! moduleIdMD          <- get
-                ! exportedNamesMD     <- get
-                ! mbSourcePathMD      <- get
-                ! instancesMD         <- get
-                ! usagesMD            <- get
-                return (ModuleDescr moduleIdMD exportedNamesMD mbSourcePathMD instancesMD
-                                    usagesMD)
+    put (ModuleDescr moduleIdMD' exportedNamesMD' mbSourcePathMD' instancesMD' usagesMD')
+        = do    put moduleIdMD'
+                put exportedNamesMD'
+                put mbSourcePathMD'
+                put instancesMD'
+                put usagesMD'
+    get = do    moduleIdMD'          <- get
+                exportedNamesMD'     <- get
+                mbSourcePathMD'      <- get
+                instancesMD'         <- get
+                usagesMD'            <- get
+                return (ModuleDescr moduleIdMD' exportedNamesMD' mbSourcePathMD'
+                                    instancesMD' usagesMD')
 
 instance Binary IdentifierDescr where
-    put (IdentifierDescr identifierID identifierTypeID typeInfoID moduleIdID
-                            constructorsID fieldsID classOpsID mbLocation)
-        = do    put identifierID
-                put identifierTypeID
-                put typeInfoID
-                put moduleIdID
-                put constructorsID
-                put fieldsID
-                put classOpsID
-                put mbLocation
-    get = do    ! identifierID        <- get
-                ! identifierTypeID    <- get
-                ! typeInfoID          <- get
-                ! moduleIdID          <- get
-                ! constructorsID      <- get
-                ! fieldsID            <- get
-                ! classOpsID          <- get
-                ! mbLocation          <- get
-                return (IdentifierDescr identifierID identifierTypeID typeInfoID moduleIdID
-                                            constructorsID fieldsID classOpsID mbLocation)
+    put (IdentifierDescr identifierID' identifierTypeID' typeInfoID' moduleIdID'
+                            constructorsID' fieldsID' classOpsID' mbLocation')
+        = do    put identifierID'
+                put identifierTypeID'
+                put typeInfoID'
+                put moduleIdID'
+                put constructorsID'
+                put fieldsID'
+                put classOpsID'
+                put mbLocation'
+    get = do    identifierID'        <- get
+                identifierTypeID'    <- get
+                typeInfoID'          <- get
+                moduleIdID'          <- get
+                constructorsID'      <- get
+                fieldsID'            <- get
+                classOpsID'          <- get
+                mbLocation'          <- get
+                return (IdentifierDescr identifierID' identifierTypeID' typeInfoID'
+                           moduleIdID' constructorsID' fieldsID' classOpsID' mbLocation')
 
 instance Binary IdType where
     put it  =   do  put (fromEnum it)
@@ -171,23 +149,23 @@ instance Binary IdType where
                     return (toEnum code)
 
 instance Binary Location where
-    put (Location locationSLine locationSCol locationELine locationECol)
-        = do    put locationSLine
-                put locationSCol
-                put locationELine
-                put locationECol
-    get = do    ! locationSLine       <-  get
-                ! locationSCol        <-  get
-                ! locationELine       <-  get
-                ! locationECol        <-  get
-                return (Location locationSLine locationSCol locationELine locationECol)
+    put (Location locationSLine' locationSCol' locationELine' locationECol')
+        = do    put locationSLine'
+                put locationSCol'
+                put locationELine'
+                put locationECol'
+    get = do    locationSLine'       <-  get
+                locationSCol'        <-  get
+                locationELine'       <-  get
+                locationECol'        <-  get
+                return (Location locationSLine' locationSCol' locationELine' locationECol')
 
 initInfo :: GhfAction
 initInfo = do
-    session <- readGhf session
+    session' <- readGhf session
     let version     =   cProjectVersion
     lift $ putStrLn "Before running collector"
-    lift $ collectInstalled False session version False
+    lift $ collectInstalled False session' version False
     lift $ putStrLn "After running collector"
     lift $ putStrLn "Before loading infos"
     loadAccessibleInfo
@@ -200,10 +178,10 @@ initInfo = do
 loadAccessibleInfo :: GhfAction
 loadAccessibleInfo =
     let version     =   cProjectVersion in do
-        session         <-  readGhf session
+        session'        <-  readGhf session
 
         collectorPath   <-  lift $ getCollectorPath version
-        packageInfos    <-  lift $ getInstalledPackageInfos session
+        packageInfos    <-  lift $ getInstalledPackageInfos session'
         packageList     <-  lift $ mapM (loadInfosForPackage collectorPath)
                                                     (map (fromDPid . DP.package) packageInfos)
         let scope       =   foldr buildScope (Map.empty,Map.empty)
@@ -223,17 +201,17 @@ clearCurrentInfo = do
 --
 buildCurrentInfo :: [Dependency] -> GhfAction
 buildCurrentInfo depends = do
-    session             <-  readGhf session
-    fp                  <-  lift $findFittingPackages session depends
-    active              <-  buildActiveInfo'
-    case active of
+    session'            <-  readGhf session
+    fp                  <-  lift $findFittingPackages session' depends
+    mbActive            <-  buildActiveInfo'
+    case mbActive of
         Nothing         -> modifyGhf_ (\ghf -> return (ghf{currentInfo = Nothing}))
         Just active     -> do
-            accessibleInfo      <-  readGhf accessibleInfo
-            case accessibleInfo of
+            accessibleInfo'     <-  readGhf accessibleInfo
+            case accessibleInfo' of
                 Nothing         ->  modifyGhf_ (\ghf -> return (ghf{currentInfo = Nothing}))
                 Just (pdmap,_)  ->  do
-                    let packageList =   map (\ pi -> pi `Map.lookup` pdmap) fp
+                    let packageList =   map (\ pin -> pin `Map.lookup` pdmap) fp
                     let scope       =   foldr buildScope (Map.empty,Map.empty)
                                             $ map fromJust
                                                 $ filter isJust packageList
@@ -321,12 +299,12 @@ loadInfosForPackage dirPath pid = do
             file            <-  openBinaryFile filePath ReadMode
             bs              <-  BS.hGetContents file
 --            putStrLn $ "Now reading iface " ++ showPackageId pid
-            let ! packageInfo = decode bs
-            --hClose file
+            let packageInfo = decode bs
+            packageInfo `deepSeq` (hClose file)
             return (Just packageInfo))
             (\e -> do putStrLn (show e); return Nothing)
         else do
-            message $"packaeInfo not found for " ++ showPackageId pid
+            message $"packageInfo not found for " ++ showPackageId pid
             return Nothing
 
 --

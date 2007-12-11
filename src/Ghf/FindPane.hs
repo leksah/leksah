@@ -119,7 +119,7 @@ initFind panePath nb = do
             toggleButtonSetActive wrapAroundButton True
             widgetSetName wrapAroundButton "wrapAroundButton"
 
-            spinL <- spinButtonNewWithRange 1.0 100.0 10.0
+            spinL <- spinButtonNewWithRange 1.0 1000.0 10.0
             widgetSetName spinL "gotoLineEntry"
 
             boxPackStart hBox entry PackNatural 10

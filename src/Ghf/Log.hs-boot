@@ -12,14 +12,10 @@ module Ghf.Log (
 
 ) where
 
-
-import Graphics.UI.Gtk
-
 import Ghf.Core.State
 
 data LogTag = LogTag | ErrorTag | FrameTag
 
-initLog :: PanePath -> Notebook -> GhfAction
 getLog :: GhfM GhfLog
 appendLog :: GhfLog -> String -> LogTag -> IO Int
 markErrorInLog :: (Int,Int) -> GhfAction

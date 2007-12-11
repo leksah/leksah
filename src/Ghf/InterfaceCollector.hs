@@ -224,7 +224,9 @@ extractIdentifierDescr' pid mods ifDecl amap =
 extractIdentifierDescr :: IfaceDecl -> [ModuleIdentifier] -> PackageIdentifier
                             -> [IdentifierDescr]
 extractIdentifierDescr decl modules package
-       = [IdentifierDescr{
+       = if null modules
+          then []
+          else [IdentifierDescr{
     identifierID        =   unpackFS $occNameFS (ifName decl)
 ,   typeInfoID          =   BS.pack $ filterExtras $ showSDocUnqual $ppr decl
 ,   identifierTypeID    =   case decl of

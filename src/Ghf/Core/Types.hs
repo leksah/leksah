@@ -56,9 +56,7 @@ module Ghf.Core.Types (
 ) where
 
 import Control.Monad.Reader
-import Graphics.UI.Gtk.SourceView
 import Graphics.UI.Gtk hiding (get)
-import Graphics.UI.Gtk.ModelView as New
 import Distribution.Package
 import Data.Map (Map)
 import qualified Data.Map as Map
@@ -67,6 +65,8 @@ import qualified Data.Set as Set
 import Text.ParserCombinators.ReadP
 import qualified Data.ByteString.Char8 as BS
 import Data.ByteString.Char8 (ByteString)
+import Ghf.Utils.DeepSeq
+import Data.Version
 
 import Data.Ghf.Default
 
@@ -150,8 +150,6 @@ instance Show Modifier
           show Apple    =   "<apple>"
           show Compose  =   "<compose>"
 
-type FileName           =   String
-
 --
 -- | Other types
 --
@@ -171,31 +169,32 @@ type PackageScope       =   (Map PackageIdentifier PackageDescr,SymbolTable)
 type SymbolTable        =   Map Symbol [IdentifierDescr]
 
 data PackageDescr       =   PackageDescr {
-    packagePD           ::   ! PackageIdentifier
-,   mbSourcePathPD      ::   ! (Maybe FilePath)
-,   exposedModulesPD    ::   ! [ModuleDescr]
-,   buildDependsPD      ::   ! [PackageIdentifier]
-,   idDescriptionsPD    ::   ! [IdentifierDescr]
+    packagePD           ::   PackageIdentifier
+,   mbSourcePathPD      ::   (Maybe FilePath)
+,   exposedModulesPD    ::   [ModuleDescr]
+,   buildDependsPD      ::   [PackageIdentifier]
+,   idDescriptionsPD    ::   [IdentifierDescr]
 } deriving (Eq,Ord,Show)
 
 data ModuleDescr        =   ModuleDescr {
-    moduleIdMD          ::   ! PackModule
-,   mbSourcePathMD      ::   ! (Maybe FilePath)
-,   exportedNamesMD     ::   ! (Set Symbol)                        -- unqualified
-,   instancesMD         ::   ! [(ClassId,DataId)]
-,   usagesMD            ::   ! (Map ModuleIdentifier (Set Symbol)) -- imports
+    moduleIdMD          ::   PackModule
+,   mbSourcePathMD      ::   (Maybe FilePath)
+,   exportedNamesMD     ::   (Set Symbol)                        -- unqualified
+,   instancesMD         ::   [(ClassId,DataId)]
+,   usagesMD            ::   (Map ModuleIdentifier (Set Symbol)) -- imports
 } deriving (Eq,Ord,Show)
 
 data IdentifierDescr    =  IdentifierDescr {
-    identifierID        ::   ! Symbol
-,   identifierTypeID    ::   ! IdType
-,   typeInfoID          ::   ! TypeInfo
-,   moduleIdID          ::   ! PackModule
-,   constructorsID      ::   ! [Symbol]
-,   fieldsID            ::   ! [Symbol]
-,   classOpsID          ::   ! [Symbol]
-,   mbLocation          ::   ! (Maybe Location)
+    identifierID        ::   Symbol
+,   identifierTypeID    ::   IdType
+,   typeInfoID          ::   TypeInfo
+,   moduleIdID          ::   PackModule
+,   constructorsID      ::   [Symbol]
+,   fieldsID            ::   [Symbol]
+,   classOpsID          ::   [Symbol]
+,   mbLocation          ::   (Maybe Location)
 } deriving (Show,Eq,Ord,Read)
+
 
 instance Default IdentifierDescr where
     getDefault = IdentifierDescr getDefault getDefault getDefault getDefault getDefault
@@ -207,8 +206,6 @@ data IdType = Function | Data | Newtype | Synonym | AbstractData | Class | Forei
 instance Default IdType where
     getDefault = Function
 
-emptyIdentifierDescr = getDefault :: IdentifierDescr
-
 type Symbol             =   String  -- Qualified or unqualified
 type ClassId            =   String  -- Qualified or unqualified
 type DataId             =   String  -- Qualified or unqualified
@@ -219,16 +216,18 @@ data PackModule         =   PM {    pack :: PackageIdentifier
                                 ,   modu :: ModuleIdentifier}
                                 deriving (Eq, Ord,Read,Show)
 
+
+
 showPackModule ::  PackModule -> String
 showPackModule (PM p m) =   showPackageId p ++ ":" ++ m
 
 parsePackModule         ::   String -> PackModule
-parsePackModule str     =   let (pack,mod) = span (\c -> c /= ':') str
-                            in  if null (tail mod)
+parsePackModule str     =   let (pack',mod') = span (\c -> c /= ':') str
+                            in  if null (tail mod')
                                  then perror str
-                                 else case toPackageIdentifier $ pack of
+                                 else case toPackageIdentifier $ pack' of
                                         Nothing -> perror str
-                                        Just pi -> (PM pi (tail mod))
+                                        Just pi'-> (PM pi' (tail mod'))
     where perror s      =   error $ "cannot parse PackModule from " ++ s
 
 fromPackageIdentifier :: PackageIdentifier -> String
@@ -245,11 +244,61 @@ instance Default PackModule where
     getDefault = parsePackModule "unknow-0:Undefined"
 
 data Location           =   Location {
-    locationSLine       ::   ! Int
-,   locationSCol	    ::   ! Int
-,   locationELine       ::   ! Int
-,   locationECol        ::   ! Int
+    locationSLine       ::   Int
+,   locationSCol	    ::   Int
+,   locationELine       ::   Int
+,   locationECol        ::   Int
 }   deriving (Show,Eq,Ord,Read)
 
 instance Default ByteString
     where getDefault = BS.empty
+
+instance DeepSeq Location where
+    deepSeq pd =  deepSeq (locationSLine pd)
+                    $   deepSeq (locationSCol pd)
+                    $   deepSeq (locationELine pd)
+                    $   deepSeq (locationECol pd)
+
+instance DeepSeq PackageDescr where
+    deepSeq pd =  deepSeq (packagePD pd)
+                    $   deepSeq (mbSourcePathPD pd)
+                    $   deepSeq (exposedModulesPD pd)
+                    $   deepSeq (buildDependsPD pd)
+                    $   deepSeq (idDescriptionsPD pd)
+
+instance DeepSeq ModuleDescr where
+    deepSeq pd =  deepSeq (moduleIdMD pd)
+                    $   deepSeq (mbSourcePathMD pd)
+                    $   deepSeq (exportedNamesMD pd)
+                    $   deepSeq (instancesMD pd)
+                    $   deepSeq (usagesMD pd)
+
+instance DeepSeq IdentifierDescr where
+    deepSeq pd =  deepSeq (identifierID pd)
+                    $   deepSeq (identifierTypeID pd)
+                    $   deepSeq (typeInfoID pd)
+                    $   deepSeq (moduleIdID pd)
+                    $   deepSeq (constructorsID pd)
+                    $   deepSeq (fieldsID pd)
+                    $   deepSeq (classOpsID pd)
+                    $   deepSeq (mbLocation pd)
+
+instance DeepSeq PackageIdentifier where
+    deepSeq pd =  deepSeq (pkgName pd)
+                    $   deepSeq (pkgVersion pd)
+
+instance DeepSeq alpha  => DeepSeq (Set alpha) where
+    deepSeq s =  deepSeq (Set.elems s)
+
+instance (DeepSeq alpha, DeepSeq beta) => DeepSeq (Map alpha beta) where
+    deepSeq s =  deepSeq (Map.toList s)
+
+instance DeepSeq IdType where  deepSeq = seq
+
+instance DeepSeq ByteString where  deepSeq = seq
+
+instance DeepSeq Version where  deepSeq = seq
+
+instance DeepSeq PackModule where
+    deepSeq pd =  deepSeq (pack pd)
+                    $   deepSeq (modu pd)

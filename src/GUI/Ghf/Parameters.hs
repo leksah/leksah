@@ -69,6 +69,7 @@ data Parameter      =   ParaName String
 instance Show ShadowType
     where show _    =   "Any Shadow"
 
+emptyParams         ::   [Parameter]
 emptyParams         =   []
 
 paraName                        ::   (Parameter -> (Maybe String))
@@ -115,23 +116,23 @@ paraHorizontal _                =   Nothing
 -- | Convenience method to get a parameter, or if not set the default parameter
 --
 getParameter :: (Parameter -> (Maybe beta)) -> Parameters -> beta
-getParameter selector parameters =
-    case getParameterPrim selector parameters of
+getParameter selector parameter =
+    case getParameterPrim selector parameter of
         Just ele       -> ele
         _              -> case getParameterPrim selector defaultParameters of
                             Just ele       -> ele
                             _              -> error "default parameter not defined"
 
 getParameterPrim :: (Parameter -> (Maybe beta)) -> Parameters -> Maybe beta
-getParameterPrim selector parameters =
-    case filter isJust $ map selector parameters of
+getParameterPrim selector parameter =
+    case filter isJust $ map selector parameter of
         (Just ele) : _ -> Just ele
         _              -> Nothing
 
 (<<<-) :: (Parameter -> (Maybe beta)) -> Parameter -> Parameters -> Parameters
 (<<<-) selector para  = \params -> para : filter (isNothing . selector) params
 
-
+defaultParameters :: Parameters
 defaultParameters =
     [   ParaName ""
     ,   ParaSynopsis ""

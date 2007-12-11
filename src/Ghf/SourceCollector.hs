@@ -115,18 +115,21 @@ collectSourcesForModules filePath sourceFiles moduleDescr = do
     return (moduleDescr{mbSourcePathMD = mbFile})
 
 findSourceForModule :: ModuleIdentifier -> FilePath -> [FilePath] -> IO (Maybe FilePath)
-findSourceForModule mod filePath sourceFiles = do
-    let moduleBaseName      =   last (breaks (== '.') mod)
-    let filesWithRightName  =   filter (\fp -> moduleBaseName == takeBaseName fp) sourceFiles
-    possibleFiles           <-  filterM (\ fn -> do
-                                    mn <- moduleNameFromFilePath fn
-                                    case mn of
-                                        Nothing -> return False
-                                        Just m  -> return (m == mod))
-                                    filesWithRightName
-    if null possibleFiles
-        then return Nothing
-        else return (Just $ head possibleFiles)
+findSourceForModule mod filePath sourceFiles =
+  if null mod
+    then return Nothing
+    else do
+        let moduleBaseName      =   last (breaks (== '.') mod)
+        let filesWithRightName  =   filter (\fp -> moduleBaseName == takeBaseName fp) sourceFiles
+        possibleFiles           <-  filterM (\ fn -> do
+                                        mn <- moduleNameFromFilePath fn
+                                        case mn of
+                                            Nothing -> return False
+                                            Just m  -> return (m == mod))
+                                       filesWithRightName
+        if null possibleFiles
+            then return Nothing
+            else return (Just $ head possibleFiles)
 
 -- ---------------------------------------------------------------------
 --  | Adding information from parsing via GHC-API

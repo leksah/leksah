@@ -60,17 +60,17 @@ type MkFieldDescriptionS alpha beta =
     FieldDescriptionS alpha
 
 mkFieldS :: {--Eq beta =>--} MkFieldDescriptionS alpha beta
-mkFieldS parameters printer parser getter setter =
-    FDS parameters
-        (\ dat -> (PP.text (case getParameterPrim paraName parameters of
+mkFieldS parameter printer parser getter setter =
+    FDS parameter
+        (\ dat -> (PP.text (case getParameterPrim paraName parameter of
                                     Nothing -> ""
                                     Just str -> str) PP.<> PP.colon)
                 PP.$$ (PP.nest 15 (printer (getter dat)))
-                PP.$$ (PP.nest 5 (case getParameterPrim paraSynopsis parameters of
+                PP.$$ (PP.nest 5 (case getParameterPrim paraSynopsis parameter of
                                     Nothing -> PP.empty
                                     Just str -> PP.text $"--" ++ str)))
         (\ dat -> try (do
-            symbol (case getParameterPrim paraName parameters of
+            symbol (case getParameterPrim paraName parameter of
                                     Nothing -> ""
                                     Just str -> str)
             colon
@@ -143,13 +143,19 @@ prefsStyle  = emptyDef  {
     ,   P.commentLine    = "--"
     }
 
+lexer :: P.TokenParser st
 lexer = P.makeTokenParser prefsStyle
-lexeme = P.lexeme lexer
+
+whiteSpace :: CharParser st ()
 whiteSpace = P.whiteSpace lexer
-hexadecimal = P.hexadecimal lexer
+
+symbol :: String -> CharParser st String
 symbol = P.symbol lexer
+
+identifier, colon :: CharParser st String
 identifier = P.identifier lexer
 colon = P.colon lexer
+
 integer = P.integer lexer
 
 -- ------------------------------------------------------------

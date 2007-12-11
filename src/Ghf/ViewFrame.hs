@@ -194,7 +194,7 @@ viewSplitVertical = viewSplit Vertical
 --
 viewSplit :: Direction -> GhfAction
 viewSplit dir = do
-    mbPanePath        <- getActivePanePath
+    mbPanePath <- getActivePanePath
     case mbPanePath of
         Nothing -> return ()
         Just panePath -> viewSplit' panePath dir
