@@ -150,21 +150,22 @@ collectParseInfoForModule session (packDescr,failureNum) modDescr = do
         Just fp -> do
             --ADDING simple PREPROCESSING (unlit .lhs, apply cpp)
 
-            dynFlags    <- getSessionDynFlags session
-            str <- readFile fp
-            let str' = if takeExtension fp == ".lhs"
-                            then unlit fp str
-                            else str
+            dynFlags    <-  getSessionDynFlags session
+            str         <-  readFile fp
+            let str'    =   if takeExtension fp == ".lhs"
+                                then unlit fp str
+                                else str
             stringBuffer <- stringToStringBuffer str'
-            parseResult <- myParseModule dynFlags fp (Just stringBuffer)
+            parseResult <-  myParseModule dynFlags fp (Just stringBuffer)
             case parseResult of
                 Left errMsg -> do
                             --may need to preprocess
-                    tempFileName <- getConfigFilePathForSave "Temp.hspp"
-                    isItTheir <- doesFileExist tempFileName
-                    when isItTheir $
+                    tempFileName    <-  getConfigFilePathForSave "Temp.hspp"
+                    isItTheir       <-  doesFileExist tempFileName
+                    when isItTheir  $
                         removeFile tempFileName
-                    pid <- runCommand $ "ghc -cpp -E -o \""++ tempFileName ++ "\" " ++ fp
+                    pid             <-  runCommand $ "ghc -cpp -E -o \""
+                                           ++ tempFileName ++ "\" " ++ fp
                     waitForProcess pid
                     isItTheir <- doesFileExist tempFileName
                     if isItTheir

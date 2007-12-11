@@ -200,7 +200,8 @@ instance Default IdentifierDescr where
     getDefault = IdentifierDescr getDefault getDefault getDefault getDefault getDefault
                                     getDefault getDefault getDefault
 
-data IdType = Function | Data | Newtype | Synonym | AbstractData | Class | Foreign
+data IdType = Function | Data | Newtype | Synonym | AbstractData | OpenData |
+                Class | Foreign
   deriving (Show, Eq, Ord, Enum, Read)
 
 instance Default IdType where

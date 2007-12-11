@@ -22,61 +22,40 @@ import GHC hiding(Id)
 import Module
 import TcRnMonad
 import qualified Maybes as M
-import ErrUtils
 import HscTypes
-import Finder
 import LoadIface
 import Outputable hiding(trace)
 import qualified Pretty as P
-import Config
 import IfaceSyn
-import OccName
 import FastString
 import Outputable hiding(trace)
-import UniqFM
 import qualified PackageConfig as DP
 import Name
-import Unique
-import SrcLoc
-import MkIface
-import DynFlags hiding(Option)
 import PrelNames
-import UniqFM
 import BinIface
-import Panic
 
 import Data.Char (isSpace)
-import Distribution.Version
 import qualified Data.Map as Map
-import Data.Map (Map)
 import Data.Maybe
 import qualified Data.Set as Set
 import Data.Set (Set)
-import Data.Foldable (maximumBy)
-import Text.ParserCombinators.ReadP
-import Control.Monad
 import System.Directory
 import qualified PackageConfig as DP
-import Distribution.Simple.Configure
 import Distribution.PackageDescription
 import Distribution.InstalledPackageInfo hiding (package)
 import Distribution.Package
-import Distribution.Simple.LocalBuildInfo
 import Distribution.Verbosity
-import qualified Text.PrettyPrint.HughesPJ as PP
 import Control.Monad.Reader
 import System.IO
-import System.Process
 import Data.Maybe
 import System.FilePath
 import System.Directory
 import Data.List(isSuffixOf,zip4,nub)
-import Debug.Trace
 import Data.Binary
 import qualified Data.ByteString.Char8 as BS
-import Data.ByteString.Char8 (ByteString)
 
 
+import Data.Ghf.Default
 import Ghf.Core.State
 import Ghf.File
 import Ghf.Info
@@ -93,7 +72,9 @@ data CollectStatistics = CollectStatistics {
 ,   parseFailures       ::   Int
 } deriving Show
 
-emptyCollectStatistics = CollectStatistics 0 0 0 0 0
+instance Default CollectStatistics where
+    getDefault          =   CollectStatistics getDefault getDefault getDefault getDefault
+                                getDefault
 
 collectInstalled :: Bool -> Session -> String -> Bool -> IO()
 collectInstalled writeAscii session version forceRebuild = do
@@ -129,8 +110,9 @@ collectInstalled writeAscii session version forceRebuild = do
     ,   parseFailures       =   failedToParse}
     putStrLn $ show statistic
     when (modulesWithSource statistic > 0) $
-        putStrLn $ "failure percentage " ++ show (round ((fromIntegral   (parseFailures statistic)) /
-                                (fromIntegral   (modulesWithSource statistic)) * 100.0))
+        putStrLn $ "failure percentage "
+            ++ show ((round (((fromIntegral   (parseFailures statistic)) :: Double) /
+                       (fromIntegral   (modulesWithSource statistic)) * 100.0)):: Integer)
     mapM_ (writeExtracted collectorPath writeAscii) extracted'
 
 
@@ -193,7 +175,7 @@ extractExportedDescrR pid hidden iface (imap,mdList) =
         otherDecls      =   exportedNames `Set.difference` (Map.keysSet mapWithOwnDecls)
         reexported      =   Map.map (\v -> map (\id -> id{moduleIdID = (PM pid mid)}) v)
                                                                     {--: [moduleIdID id]--}
-                                $Map.filterWithKey (\k v -> k `Set.member` otherDecls)
+                                $Map.filterWithKey (\k _ -> k `Set.member` otherDecls)
                                     hidden
         inst            =   concatMap extractInstances (mi_insts iface)
         uses            =   Map.fromList $ map extractUsages (mi_usages iface)
@@ -203,7 +185,7 @@ extractExportedDescrR pid hidden iface (imap,mdList) =
                 ,   mbSourcePathMD    =   Nothing
                 ,   instancesMD       =   inst
                 ,   usagesMD          =   uses}
-        newids          =   Map.unionWith (\ v1 v2 -> error "impossible: extractExported")
+        newids          =   Map.unionWith (\ _ _ -> error "impossible: extractExported")
                                 mapWithOwnDecls reexported
 
     in  (newids, mdescr : mdList)
@@ -236,6 +218,7 @@ extractIdentifierDescr decl modules package
                                         IfDataTyCon _       ->  Data
                                         IfNewTyCon _        ->  Newtype
                                         IfAbstractTyCon     ->  AbstractData
+                                        IfOpenDataTyCon     ->  OpenData
                                 (IfaceSyn _ _ _ _ _ )       ->  Synonym
                                 (IfaceClass _ _ _ _ _ _ _ ) ->  Class
                                 (IfaceForeign _ _)          ->  Foreign
@@ -244,16 +227,16 @@ extractIdentifierDescr decl modules package
                                 (IfaceData _ _ _ ifCons _ _ _ _)
                                     -> map extractConstructorName
                                         (visibleIfConDecls ifCons)
-                                otherwise -> []
+                                _   -> []
 ,   fieldsID            =   case decl of
                                 (IfaceData _ _ _ ifCons _ _ _ _)
                                     -> concatMap extractFieldNames
                                         (visibleIfConDecls ifCons)
-                                otherwise -> []
+                                _   -> []
 ,   classOpsID          =   case decl of
                                 (IfaceClass _ _ _ _ _ ifSigs _ )
                                     -> map (extractClassOpName) ifSigs
-                                otherwise -> []
+                                _   -> []
 ,   mbLocation          =   Nothing}]
 
 extractConstructorName ::  IfaceConDecl -> Symbol
@@ -283,7 +266,7 @@ extractUsages usage =
         ids     =   map (showSDocUnqual . ppr . fst) $ usg_entities usage
     in (name, Set.fromList ids)
 
-filterExtras :: String -> String
+filterExtras, filterExtras' :: String -> String
 filterExtras ('{':'-':r)                =   filterExtras' r
 filterExtras ('R':'e':'c':'F':'l':'a':'g':r)
                                         =   filterExtras (skipNextWord r)
@@ -295,9 +278,10 @@ filterExtras (c:r)                      =   c : filterExtras r
 filterExtras []                         =   []
 
 filterExtras' ('-':'}':r)   =   filterExtras r
-filterExtras' (c:r)         =   filterExtras' r
+filterExtras' (_:r)         =   filterExtras' r
 filterExtras' []            =   []
 
+skipNextWord, skipNextWord' :: String -> String
 skipNextWord (a:r)
     | isSpace a             =   skipNextWord r
     | otherwise             =   skipNextWord' r
