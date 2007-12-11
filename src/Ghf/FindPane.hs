@@ -50,8 +50,7 @@ instance Pane GhfFind
     getAddedIndex _ =   0
     getTopWidget    =   castToWidget . findBox
     paneId b        =   "*Find"
-    makeActive p    =   do
-        activatePane p (BufConnections[][] [])
+    makeActive p    =   error "don't activate find bar"
     close pane      =   do
         (panePath,_)    <-  guiPropertiesFromName (paneName pane)
         nb              <-  getNotebook panePath

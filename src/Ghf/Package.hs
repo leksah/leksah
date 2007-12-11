@@ -62,9 +62,9 @@ import Ghf.PackageEditor
 import Ghf.SourceEditor
 import Ghf.PackageFlags
 import Ghf.ViewFrame
-import Ghf.Extractor
+--import Ghf.Extractor
 import Ghf.Info
-import Ghf.Extractor
+--import Ghf.Extractor
 import Ghf.File
 
 packageOpen :: GhfAction

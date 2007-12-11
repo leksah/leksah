@@ -1,3 +1,4 @@
+{-- Language FBangPatterns --}
 -----------------------------------------------------------------------------
 --
 -- Module      :  Ghf.Info
@@ -21,6 +22,7 @@ module Ghf.Info (
 ,   clearCurrentInfo
 ,   buildCurrentInfo
 ,   buildActiveInfo
+,   buildSymbolTable
 
 ,   getIdentifierDescr
 
@@ -71,8 +73,8 @@ import Ghf.SourceCandy
 import Ghf.ViewFrame
 import Ghf.SpecialEditors
 import {-# SOURCE #-} Ghf.Log
-import {-# SOURCE #-} Ghf.Collector
-import Ghf.Extractor
+import {-# SOURCE #-} Ghf.InterfaceCollector
+--import Ghf.Extractor
 
 -- ---------------------------------------------------------------------
 -- Binary Instances
@@ -82,16 +84,16 @@ instance Binary PackModule where
     put (PM pack modu)
         =   do  put pack
                 put modu
-    get =   do  pack                <- get
-                modu                <- get
+    get =   do  ! pack                <- get
+                ! modu                <- get
                 return (PM pack modu)
 
 instance Binary PackageIdentifier where
     put (PackageIdentifier name version)
         =   do  put name
                 put version
-    get =   do  name                <- get
-                version             <- get
+    get =   do  ! name                <- get
+                ! version             <- get
                 return (PackageIdentifier name version)
 
 -- instance Binary DP.PackageIdentifier where
@@ -106,8 +108,8 @@ instance Binary Version where
     put (Version branch tags)
         =   do  put branch
                 put tags
-    get =   do  branch              <- get
-                tags                <- get
+    get =   do  ! branch              <- get
+                ! tags                <- get
                 return (Version branch tags)
 
 
@@ -118,11 +120,11 @@ instance Binary PackageDescr where
                 put buildDependsPD
                 put mbSourcePathPD
                 put idDescriptionsPD
-    get =   do  packagePD           <- get
-                exposedModulesPD    <- get
-                buildDependsPD      <- get
-                mbSourcePathPD      <- get
-                idDescriptionsPD    <- get
+    get =   do  ! packagePD           <- get
+                ! exposedModulesPD    <- get
+                ! buildDependsPD      <- get
+                ! mbSourcePathPD      <- get
+                ! idDescriptionsPD    <- get
                 return (PackageDescr packagePD exposedModulesPD buildDependsPD mbSourcePathPD
                                         idDescriptionsPD)
 
@@ -133,28 +135,35 @@ instance Binary ModuleDescr where
                 put mbSourcePathMD
                 put instancesMD
                 put usagesMD
-    get = do    moduleIdMD          <- get
-                exportedNamesMD     <- get
-                mbSourcePathMD      <- get
-                instancesMD         <- get
-                usagesMD            <- get
+    get = do    ! moduleIdMD          <- get
+                ! exportedNamesMD     <- get
+                ! mbSourcePathMD      <- get
+                ! instancesMD         <- get
+                ! usagesMD            <- get
                 return (ModuleDescr moduleIdMD exportedNamesMD mbSourcePathMD instancesMD
                                     usagesMD)
 
 instance Binary IdentifierDescr where
-    put (IdentifierDescr identifierID identifierTypeID typeInfoID moduleIdID mbLocation)
+    put (IdentifierDescr identifierID identifierTypeID typeInfoID moduleIdID
+                            constructorsID fieldsID classOpsID mbLocation)
         = do    put identifierID
                 put identifierTypeID
                 put typeInfoID
                 put moduleIdID
+                put constructorsID
+                put fieldsID
+                put classOpsID
                 put mbLocation
-    get = do    identifierID        <- get
-                identifierTypeID    <- get
-                typeInfoID          <- get
-                moduleIdID          <- get
-                mbLocation          <- get
-                return (IdentifierDescr identifierID identifierTypeID
-                            typeInfoID moduleIdID mbLocation)
+    get = do    ! identifierID        <- get
+                ! identifierTypeID    <- get
+                ! typeInfoID          <- get
+                ! moduleIdID          <- get
+                ! constructorsID      <- get
+                ! fieldsID            <- get
+                ! classOpsID          <- get
+                ! mbLocation          <- get
+                return (IdentifierDescr identifierID identifierTypeID typeInfoID moduleIdID
+                                            constructorsID fieldsID classOpsID mbLocation)
 
 instance Binary IdType where
     put it  =   do  put (fromEnum it)
@@ -167,10 +176,10 @@ instance Binary Location where
                 put locationSCol
                 put locationELine
                 put locationECol
-    get = do    locationSLine       <-  get
-                locationSCol        <-  get
-                locationELine       <-  get
-                locationECol        <-  get
+    get = do    ! locationSLine       <-  get
+                ! locationSCol        <-  get
+                ! locationELine       <-  get
+                ! locationECol        <-  get
                 return (Location locationSLine locationSCol locationELine locationECol)
 
 initInfo :: GhfAction
@@ -313,7 +322,7 @@ loadInfosForPackage dirPath pid = do
             bs              <-  BS.hGetContents file
 --            putStrLn $ "Now reading iface " ++ showPackageId pid
             let ! packageInfo = decode bs
-            hClose file
+            --hClose file
             return (Just packageInfo))
             (\e -> do putStrLn (show e); return Nothing)
         else do
@@ -330,7 +339,14 @@ buildScope packageD (packageMap, symbolTable) =
         then trace  ("package already in world " ++ (showPackageId $ packagePD packageD))
                     (packageMap, symbolTable)
         else (Map.insert pid packageD packageMap,
-              Map.unionWith (++) symbolTable (idDescriptionsPD packageD))
+              buildSymbolTable packageD symbolTable)
+
+buildSymbolTable :: PackageDescr -> SymbolTable -> SymbolTable
+buildSymbolTable pDescr symbolTable =
+     foldl (\ st idDescr ->  let allIds = identifierID idDescr : (constructorsID idDescr
+                                                        ++ fieldsID idDescr ++ classOpsID idDescr)
+                        in foldl (\ st2 id -> Map.insertWith (++) id [idDescr] st2) st allIds)
+        symbolTable (idDescriptionsPD pDescr)
 
 --
 -- | Lookup of the identifier description

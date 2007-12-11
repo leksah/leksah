@@ -39,6 +39,7 @@ import Ghf.Core.State
 import Ghf.ViewFrame
 import Ghf.InfoPane
 import Ghf.SourceEditor
+import Ghf.Info
 
 instance Pane GhfModules
     where
@@ -309,7 +310,7 @@ fillFacets treeView tst lst = do
                                                 $ filter isJust
                                                     $ map (findDescription
                                                             (moduleIdMD mod)
-           	                                                 (idDescriptionsPD package))
+           	                                                 (buildSymbolTable package Map.empty))
                                                         (Set.toList exportedDescr)
                             New.listStoreClear lst
                             --putStrLn $ "Now fill " ++ show (length pairs)

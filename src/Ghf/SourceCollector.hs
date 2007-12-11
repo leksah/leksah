@@ -64,7 +64,7 @@ import Bag
 import Ghf.Core.State
 import Ghf.File
 import Ghf.Preferences
-import Ghf.Extractor
+import {-# SOURCE #-} Ghf.InterfaceCollector
 
 getSourcesMap :: IO (Map PackageIdentifier [FilePath])
 getSourcesMap = do
@@ -199,8 +199,8 @@ collectParseInfoForDecl modDescr packDescr (L srcDecl (ValD (FunBind lid _ _ _ _
     =   let id          =   unLoc lid
             occ         =   rdrNameOcc id
             name        =   occNameString occ
-        in  packDescr{idDescriptionsPD  =   Map.adjust (map (addLocation (occNameSpace occ)))
-                                                            name (idDescriptionsPD packDescr)}
+        in  packDescr{idDescriptionsPD  =  map (addLocation (occNameSpace occ))
+                                                (idDescriptionsPD packDescr)}
         where
         addLocation  ::  NameSpace -> IdentifierDescr -> IdentifierDescr
         addLocation  occNameSpace identDescr
@@ -224,10 +224,7 @@ matchesOccType Data     tcName                  =   True
 matchesOccType Newtype  _                       =   True
 matchesOccType Synonym  _                       =   True
 matchesOccType AbstractData _                   =   True
-matchesOccType Constructor tcName               =   True
-matchesOccType Field _                          =   True
 matchesOccType Class clsName                    =   True
-matchesOccType ClassOp _                        =   True
 matchesOccType Foreign _                        =   True
 otherwise                                       =   trace "occType mismatch " False
 

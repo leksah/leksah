@@ -65,8 +65,11 @@ import qualified Data.Map as Map
 import Data.Set(Set)
 import qualified Data.Set as Set
 import Text.ParserCombinators.ReadP
+import qualified Data.ByteString.Char8 as BS
+import Data.ByteString.Char8 (ByteString)
 
 import Data.Ghf.Default
+
 
 data StandardPath = LeftTop | LeftBottom | RightTop | RightBottom
     deriving(Read,Show,Eq,Enum)
@@ -172,7 +175,7 @@ data PackageDescr       =   PackageDescr {
 ,   mbSourcePathPD      ::   ! (Maybe FilePath)
 ,   exposedModulesPD    ::   ! [ModuleDescr]
 ,   buildDependsPD      ::   ! [PackageIdentifier]
-,   idDescriptionsPD    ::   ! SymbolTable
+,   idDescriptionsPD    ::   ! [IdentifierDescr]
 } deriving (Eq,Ord,Show)
 
 data ModuleDescr        =   ModuleDescr {
@@ -188,25 +191,28 @@ data IdentifierDescr    =  IdentifierDescr {
 ,   identifierTypeID    ::   ! IdType
 ,   typeInfoID          ::   ! TypeInfo
 ,   moduleIdID          ::   ! PackModule
+,   constructorsID      ::   ! [Symbol]
+,   fieldsID            ::   ! [Symbol]
+,   classOpsID          ::   ! [Symbol]
 ,   mbLocation          ::   ! (Maybe Location)
 } deriving (Show,Eq,Ord,Read)
 
 instance Default IdentifierDescr where
     getDefault = IdentifierDescr getDefault getDefault getDefault getDefault getDefault
+                                    getDefault getDefault getDefault
 
-data IdType = Function | Data | Newtype | Synonym | AbstractData |
-                Constructor | Field | Class | ClassOp | Foreign
-  deriving (Show, Eq, Ord, Enum,Read)
+data IdType = Function | Data | Newtype | Synonym | AbstractData | Class | Foreign
+  deriving (Show, Eq, Ord, Enum, Read)
 
 instance Default IdType where
     getDefault = Function
 
-emptyIdentifierDescr = IdentifierDescr ""
+emptyIdentifierDescr = getDefault :: IdentifierDescr
 
 type Symbol             =   String  -- Qualified or unqualified
 type ClassId            =   String  -- Qualified or unqualified
 type DataId             =   String  -- Qualified or unqualified
-type TypeInfo           =   String
+type TypeInfo           =   ByteString
 type ModuleIdentifier   =   String  -- always qualified
 
 data PackModule         =   PM {    pack :: PackageIdentifier
@@ -220,7 +226,7 @@ parsePackModule         ::   String -> PackModule
 parsePackModule str     =   let (pack,mod) = span (\c -> c /= ':') str
                             in  if null (tail mod)
                                  then perror str
-                                 else case toPackageIdentifier pack of
+                                 else case toPackageIdentifier $ pack of
                                         Nothing -> perror str
                                         Just pi -> (PM pi (tail mod))
     where perror s      =   error $ "cannot parse PackModule from " ++ s
@@ -245,3 +251,5 @@ data Location           =   Location {
 ,   locationECol        ::   ! Int
 }   deriving (Show,Eq,Ord,Read)
 
+instance Default ByteString
+    where getDefault = BS.empty

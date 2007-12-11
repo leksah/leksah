@@ -45,8 +45,7 @@ instance Pane GhfToolbar
     getAddedIndex _ =   0
     getTopWidget    =   castToWidget . toolbar
     paneId b        =   "*Toolbar"
-    makeActive p    =   do
-        activatePane p (BufConnections[][] [])
+    makeActive p    =   error "don't activate toolbar"
     close pane      =   do
         (panePath,_)    <-  guiPropertiesFromName (paneName pane)
         nb              <-  getNotebook panePath
@@ -91,8 +90,6 @@ getToolbar = do
 initToolbar :: PanePath -> Notebook -> GhfAction
 initToolbar panePath nb = do
     ghfR        <-  ask
-    panes       <-  readGhf panes
-    paneMap     <-  readGhf paneMap
     prefs       <-  readGhf prefs
     currentInfo <-  readGhf currentInfo
     uiManager   <-  readGhf uiManager
@@ -104,14 +101,14 @@ initToolbar panePath nb = do
                 Just m -> m
                 Nothing -> error "Failed to build toolbar"
     (buf,cids)  <-  lift $ do
-        let toolbar = GhfToolbar (castToToolbar tb)
-        notebookPrependPage nb tb (paneName toolbar)
+        let toolbar' = GhfToolbar (castToToolbar tb)
+        notebookPrependPage nb tb (paneName toolbar')
         widgetShowAll tb
         mbPn <- notebookPageNum nb tb
         case mbPn of
             Just i -> notebookSetCurrentPage nb i
             Nothing -> putStrLn "Notebook page not found"
-        return (toolbar,[])
+        return (toolbar',[])
     addPaneAdmin buf (BufConnections [] [] []) panePath
     lift $widgetGrabFocus (toolbar buf)
 

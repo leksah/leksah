@@ -44,6 +44,8 @@ import Data.List
 import UniqFM
 import PackageConfig
 import Data.Maybe
+import qualified Data.ByteString.Char8 as BS
+import Data.ByteString.Char8 (ByteString)
 
 import Ghf.File
 import Ghf.Core.State
@@ -115,8 +117,8 @@ idDescrDescr = [
             stringEditor
     ,   mkField
             (paraName  <<<- ParaName "Type" $ emptyParams)
-            typeInfoID
-            (\b a -> a{typeInfoID = b})
+            (BS.unpack . typeInfoID)
+            (\b a -> a{typeInfoID = BS.pack b})
             multilineStringEditor
     ,   mkField
             (paraName <<<- ParaName "Location" $ emptyParams)
@@ -130,7 +132,7 @@ idDescrDescr = [
             (\b a -> a{typeInfo = b})
             multilineStringEditor--}
 
-allIdTypes = [Function,Data,Newtype,Synonym,AbstractData,Constructor,Field,Class,ClassOp,Foreign]
+allIdTypes = [Function,Data,Newtype,Synonym,AbstractData,Class,Foreign]
 
 initInfo :: PanePath -> Notebook -> IdentifierDescr -> GhfAction
 initInfo panePath nb idDescr = do

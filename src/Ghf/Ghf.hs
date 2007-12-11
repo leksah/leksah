@@ -51,7 +51,7 @@ import Ghf.Preferences
 import Ghf.Keymap
 import Ghf.Info
 import Ghf.SourceCollector
-import Ghf.Collector
+import Ghf.InterfaceCollector
 
 -- ---------------------------------------------------------------------
 -- Command line options
