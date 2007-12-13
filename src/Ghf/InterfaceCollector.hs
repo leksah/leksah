@@ -32,7 +32,7 @@ import Outputable hiding(trace)
 import qualified PackageConfig as DP
 import Name
 import PrelNames
-import BinIface
+import PackageConfig(mainPackageId,unpackPackageId,mkPackageId)
 
 import Data.Char (isSpace)
 import qualified Data.Map as Map
@@ -50,7 +50,7 @@ import System.IO
 import Data.Maybe
 import System.FilePath
 import System.Directory
-import Data.List(isSuffixOf,zip4,nub)
+import Data.List(zip4,nub)
 import Data.Binary
 import qualified Data.ByteString.Char8 as BS
 
@@ -89,9 +89,9 @@ collectInstalled writeAscii session version forceRebuild = do
     let newPackages     =   filter (\pi -> not $Set.member (showPackageId $ fromDPid $ DP.package pi)
                                                         knownPackages)
                                     packageInfos
-    exportedIfaceInfos  <-  mapM (\ info -> getIFaceInfos (fromDPid $ DP.package info)
+    exportedIfaceInfos  <-  mapM (\ info -> getIFaceInfos (DP.mkPackageId $ DP.package info)
                                             (DP.exposedModules info) session) newPackages
-    hiddenIfaceInfos    <-  mapM (\ info -> getIFaceInfos (fromDPid $DP.package info)
+    hiddenIfaceInfos    <-  mapM (\ info -> getIFaceInfos (DP.mkPackageId $ DP.package info)
                                         (DP.hiddenModules info) session) newPackages
     let extracted       =   map extractInfo $ zip4 exportedIfaceInfos
                                                 hiddenIfaceInfos
@@ -119,13 +119,23 @@ collectInstalled writeAscii session version forceRebuild = do
 
 collectUninstalled :: Bool -> Session -> String -> FilePath -> IO ()
 collectUninstalled writeAscii session version cabalPath = do
-    pd              <-  readPackageDescription normal cabalPath
-                              >>= return . flattenPackageDescription
-    let modulePaths =   map modulePath (executables pd, hsSourceDirs $ buildInfo pd)
-    let exposedModules = case library pd of
-                            Just (Library em bi) -> (em, hsSourceDirs bi)
-                            Nothing -> []
-    allIfaceInfos   <-  getIFaceInfos2 modulePaths exposedModules session
+    pd                  <-  readPackageDescription normal cabalPath
+                                        >>= return . flattenPackageDescription
+    let modules         =   nub $ exeModules pd ++ libModules pd
+    let basePath        =   takeDirectory cabalPath
+    let srcPaths        =   concatMap (\ exe -> hsSourceDirs $ buildInfo exe)
+                                                    $ executables pd
+    let srcPath         =   case library pd of
+                                Just (Library _ bi)    -> hsSourceDirs bi
+                                Nothing                -> []
+    dflags0         <-  getSessionDynFlags session
+    setSessionDynFlags session dflags0
+        {   topDir      =   basePath
+        ,   importPaths =   srcPath ++ srcPaths
+        --,   thisPackage =   mkPackageId (package pd)
+        --,   ghcMode    =   OneShot
+        }
+    allIfaceInfos   <-  getIFaceInfos mainPackageId modules session
     deps            <-  findFittingPackages session (buildDepends pd)
     let extracted   =   extractInfo (allIfaceInfos,[], package pd, deps)
     let sources     =   Map.fromList [(package pd,[cabalPath])]
@@ -135,25 +145,20 @@ collectUninstalled writeAscii session version cabalPath = do
     writeExtracted collectorPath True extractedWithSources
     putStrLn $ "\nExtracted infos for " ++ cabalPath
 
-getIFaceInfos2 :: [(String,[String])] -> [(String,[String])] -> Session -> IO [(ModIface, FilePath)]
-getIFaceInfos2 filePaths modules session = do
-    setTargets session $ map (\fp -> Target (TargetFile fp Nothing) Nothing) filePaths
-    mbModuleGraph   <-    depanal session (map mkModuleName modules) True
-    case mbModuleGraph of
-        Just moduleGraph -> do
-            let ifaces          =    mapM (\ m -> findAndReadIface empty m False)
-                                        $ map ms_mod moduleGraph
-            hscEnv              <-  sessionHscEnv session
-            let gblEnv          =   IfGblEnv { if_rec_types = Nothing }
-            maybes              <-  initTcRnIf  'i' hscEnv gblEnv () ifaces
-            let res             =   catMaybes (map handleErr maybes)
-            return res
-        Nothing -> do
-            putStrLn "Module Graph can't be build"
-            return []
-    where
-        handleErr (M.Succeeded val)   =   Just val
-        handleErr (M.Failed mess)     =   trace (P.render (mess defaultErrStyle)) Nothing
+--getIFaceInfos2 :: PackageIdentifier -> [String] -> Session -> IO [(ModIface, FilePath)]
+--getIFaceInfos2 modules session = do
+--    let ifaces          =    mapM (\ m -> findAndReadIface empty
+--                                            (mkModule (DP.mkPackageId (asDPid pckg))
+--                                                              (mkModuleName mn)) False)
+--                                                modules
+--    hscEnv              <-  sessionHscEnv session
+--    let gblEnv          =   IfGblEnv { if_rec_types = Nothing }
+--    maybes              <-  initTcRnIf  'i' hscEnv gblEnv () ifaces
+--    let res             =   catMaybes (map handleErr maybes)
+--    return res
+--    where
+--        handleErr (M.Succeeded val)   =   Just val
+--        handleErr (M.Failed mess)     =   trace (P.render (mess defaultErrStyle)) Nothing
 
 --findAndReadIface :: SDoc -> Module
 --		 -> IsBootInterface	-- True  <=> Look for a .hi-boot file
@@ -174,23 +179,26 @@ getIFaceInfos2 filePaths modules session = do
 --}
 -------------------------------------------------------------------------
 
-getIFaceInfos :: PackageIdentifier -> [String] -> Session -> IO [(ModIface, FilePath)]
-getIFaceInfos pckg modules session = do
-    let isBase          =   pkgName pckg == "base"
-    let ifaces          =   mapM (\ mn -> findAndReadIface empty
-                                          (if isBase
-                                                then mkBaseModule_ (mkModuleName mn)
-                                                else mkModule (DP.mkPackageId (asDPid pckg))
-                                                              (mkModuleName mn))
-                                          False) modules
-    hscEnv              <-  sessionHscEnv session
-    let gblEnv          =   IfGblEnv { if_rec_types = Nothing }
-    maybes              <-  initTcRnIf  'i' hscEnv gblEnv () ifaces
-    let res             =   catMaybes (map handleErr maybes)
-    return res
-    where
-        handleErr (M.Succeeded val)   =   Just val
-        handleErr (M.Failed mess)     =   trace (P.render (mess defaultErrStyle)) Nothing
+getIFaceInfos :: PackageId -> [String] -> Session -> IO [(ModIface, FilePath)]
+getIFaceInfos pckg modules session =
+    case unpackPackageId pckg of
+        Nothing -> return []
+        Just pid -> do
+            let isBase          =   pkgName pid == "base"
+            let ifaces          =   mapM (\ mn -> findAndReadIface empty
+                                                  (if isBase
+                                                        then mkBaseModule_ (mkModuleName mn)
+                                                        else mkModule pckg
+                                                                      (mkModuleName mn))
+                                                  False) modules
+            hscEnv              <-  sessionHscEnv session
+            let gblEnv          =   IfGblEnv { if_rec_types = Nothing }
+            maybes              <-  initTcRnIf  'i' hscEnv gblEnv () ifaces
+            let res             =   catMaybes (map handleErr maybes)
+            return res
+            where
+                handleErr (M.Succeeded val)   =   Just val
+                handleErr (M.Failed mess)     =   trace (P.render (mess defaultErrStyle)) Nothing
 
 
 extractInfo :: ([(ModIface, FilePath)],[(ModIface, FilePath)],PackageIdentifier,

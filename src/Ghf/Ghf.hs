@@ -31,7 +31,6 @@ import System.Environment
 import System.IO
 import GHC
 import DynFlags hiding(Option)
-import Util (handleDyn)
 import Bag
 import ErrUtils
 import Config
@@ -88,10 +87,10 @@ ghfOpts argv =
 
 runMain = handleTopExceptions $do
     args            <-  getArgs
-    (o,fl)          <-  ghfOpts args
+    (o,_)          <-  ghfOpts args
     let uninstalled =   filter (\x -> case x of
                                         UninstalledProject _ -> True
-                                        otherwise -> False) o
+                                        _                    -> False) o
     if elem VersionF o
         then do putStrLn $ "Ghf an IDE for Haskell, version " ++ showVersion version
         else
@@ -114,7 +113,7 @@ runMain = handleTopExceptions $do
                         setSessionDynFlags session dflags0
                         let version     =   cProjectVersion
                         let uninstalled =   filter (\x -> case x of UninstalledProject _ -> True
-                                                                    otherwise -> False) o
+                                                                    _                    -> False) o
                         let writeAscii = elem DebugF o
                         if length uninstalled > 0
                             then mapM_ (collectUninstalled writeAscii session version)
@@ -127,8 +126,6 @@ runMain = handleTopExceptions $do
 
 startGUI :: IO ()
 startGUI = do
-    args        <-  getArgs
-    (o,fl)      <-  ghfOpts args
     st          <-  unsafeInitGUIForThreadedRTS
     when rtsSupportsBoundThreads
         (putStrLn "Linked with -threaded (Will Gtk work?)")
