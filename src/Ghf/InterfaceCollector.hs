@@ -115,6 +115,64 @@ collectInstalled writeAscii session version forceRebuild = do
                        (fromIntegral   (modulesWithSource statistic)) * 100.0)):: Integer)
     mapM_ (writeExtracted collectorPath writeAscii) extracted'
 
+-------------------------------------------------------------------------
+
+collectUninstalled :: Bool -> Session -> String -> FilePath -> IO ()
+collectUninstalled writeAscii session version cabalPath = do
+    pd              <-  readPackageDescription normal cabalPath
+                              >>= return . flattenPackageDescription
+    let modulePaths =   map modulePath (executables pd, hsSourceDirs $ buildInfo pd)
+    let exposedModules = case library pd of
+                            Just (Library em bi) -> (em, hsSourceDirs bi)
+                            Nothing -> []
+    allIfaceInfos   <-  getIFaceInfos2 modulePaths exposedModules session
+    deps            <-  findFittingPackages session (buildDepends pd)
+    let extracted   =   extractInfo (allIfaceInfos,[], package pd, deps)
+    let sources     =   Map.fromList [(package pd,[cabalPath])]
+    (extractedWithSources,_)    <-  collectSources session sources extracted
+    collectorPath   <-  getCollectorPath version
+    writeExtracted collectorPath writeAscii extractedWithSources
+    writeExtracted collectorPath True extractedWithSources
+    putStrLn $ "\nExtracted infos for " ++ cabalPath
+
+getIFaceInfos2 :: [(String,[String])] -> [(String,[String])] -> Session -> IO [(ModIface, FilePath)]
+getIFaceInfos2 filePaths modules session = do
+    setTargets session $ map (\fp -> Target (TargetFile fp Nothing) Nothing) filePaths
+    mbModuleGraph   <-    depanal session (map mkModuleName modules) True
+    case mbModuleGraph of
+        Just moduleGraph -> do
+            let ifaces          =    mapM (\ m -> findAndReadIface empty m False)
+                                        $ map ms_mod moduleGraph
+            hscEnv              <-  sessionHscEnv session
+            let gblEnv          =   IfGblEnv { if_rec_types = Nothing }
+            maybes              <-  initTcRnIf  'i' hscEnv gblEnv () ifaces
+            let res             =   catMaybes (map handleErr maybes)
+            return res
+        Nothing -> do
+            putStrLn "Module Graph can't be build"
+            return []
+    where
+        handleErr (M.Succeeded val)   =   Just val
+        handleErr (M.Failed mess)     =   trace (P.render (mess defaultErrStyle)) Nothing
+
+--findAndReadIface :: SDoc -> Module
+--		 -> IsBootInterface	-- True  <=> Look for a .hi-boot file
+--					-- False <=> Look for .hi file
+--		 -> TcRnIf gbl lcl (MaybeErr Message (ModIface, FilePath))
+
+
+{--
+#if __GHC__ > 670
+    let ifaces          =   mapM readBinIface filePaths
+    hscEnv              <-  sessionHscEnv session
+    let gblEnv          =   IfGblEnv { if_rec_types = Nothing }
+    res                 <-  initTcRnIf  'i' hscEnv gblEnv () ifaces
+#else
+    res                 <-   mapM readBinIface filePaths
+#endif
+    return (zip res filePaths)
+--}
+-------------------------------------------------------------------------
 
 getIFaceInfos :: PackageIdentifier -> [String] -> Session -> IO [(ModIface, FilePath)]
 getIFaceInfos pckg modules session = do
@@ -299,43 +357,6 @@ writeExtracted dirPath writeAscii pd = do
     if writeAscii
         then writeFile (filePath ++ "dpg") (show pd)
         else encodeFile filePath pd
-
--------------------------------------------------------------------------
-
-collectUninstalled :: Bool -> Session -> String -> FilePath -> IO ()
-collectUninstalled writeAscii session version cabalPath = do
-    allHiFiles      <-  allHiFiles (dropFileName cabalPath)
---    putStrLn $ "\nallModules " ++ show allHiFiles
-    pd              <-  readPackageDescription normal cabalPath
-                            >>= return . flattenPackageDescription
-    allIfaceInfos   <-  getIFaceInfos2 allHiFiles session
-    deps            <-  findFittingPackages session (buildDepends pd)
-    let extracted   =   extractInfo (allIfaceInfos,[], package pd, deps)
-    let sources     =   Map.fromList [(package pd,[cabalPath])]
-    (extractedWithSources,_)    <-  collectSources session sources extracted
-    collectorPath   <-  getCollectorPath version
-    writeExtracted collectorPath writeAscii extractedWithSources
-    writeExtracted collectorPath True extractedWithSources
-    putStrLn $ "\nExtracted infos for " ++ cabalPath
-
-getIFaceInfos2 :: [String] -> Session -> IO [(ModIface, FilePath)]
-getIFaceInfos2 filePaths session = do
-#if __GHC__ > 670
-    let ifaces          =   mapM readBinIface filePaths
-    hscEnv              <-  sessionHscEnv session
-    let gblEnv          =   IfGblEnv { if_rec_types = Nothing }
-    res                 <-  initTcRnIf  'i' hscEnv gblEnv () ifaces
-#else
-    res                 <-   mapM readBinIface filePaths
-#endif
-    return (zip res filePaths)
-
-
-findKnownPackages :: FilePath -> IO (Set String)
-findKnownPackages filePath = do
-    paths           <-  getDirectoryContents filePath
-    let nameList    =   map dropExtension  $filter (\s -> ".pack" `isSuffixOf` s) paths
-    return (Set.fromList nameList)
 
 
 

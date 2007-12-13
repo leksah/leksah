@@ -9,6 +9,7 @@ module Ghf.File (
 ,   getCollectorPath
 ,   getSysLibDir
 ,   moduleNameFromFilePath
+,   findKnownPackages
 
 ,   readOut
 ,   readErr
@@ -31,6 +32,11 @@ import Distribution.Simple.PreProcess.Unlit
 import Control.Monad
 import qualified Data.List as List
 import Paths_ghf
+import qualified Data.Set as Set
+import Data.Set (Set)
+import Data.List(isSuffixOf)
+
+
 
 import Ghf.Core.State
 import {-# SOURCE #-} Ghf.Log
@@ -170,6 +176,12 @@ mident
             ; return (c:cs)
             }
         <?> "midentifier"
+
+findKnownPackages :: FilePath -> IO (Set String)
+findKnownPackages filePath = do
+    paths           <-  getDirectoryContents filePath
+    let nameList    =   map dropExtension  $filter (\s -> ".pack" `isSuffixOf` s) paths
+    return (Set.fromList nameList)
 
 cabalFileName :: FilePath -> IO (Maybe String)
 cabalFileName filePath = do

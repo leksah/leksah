@@ -53,6 +53,12 @@ import Data.Maybe
 import Data.Binary
 import qualified Data.ByteString.Lazy as BS
 import Distribution.Package
+import Data.Set (Set)
+import qualified Data.Set as Set
+import Data.Map (Map)
+import Data.ByteString.Char8 (ByteString)
+
+
 
 
 import Ghf.Utils.DeepSeq
@@ -399,4 +405,56 @@ asDPid (PackageIdentifier name version) = DP.PackageIdentifier name version
 fromDPid :: DP.PackageIdentifier -> PackageIdentifier
 fromDPid (DP.PackageIdentifier name version) = PackageIdentifier name version
 
+-- ---------------------------------------------------------------------
+-- Forcing Evaluation
+--
 
+instance DeepSeq Location where
+    deepSeq pd =  deepSeq (locationSLine pd)
+                    $   deepSeq (locationSCol pd)
+                    $   deepSeq (locationELine pd)
+                    $   deepSeq (locationECol pd)
+
+instance DeepSeq PackageDescr where
+    deepSeq pd =  deepSeq (packagePD pd)
+                    $   deepSeq (mbSourcePathPD pd)
+                    $   deepSeq (exposedModulesPD pd)
+                    $   deepSeq (buildDependsPD pd)
+                    $   deepSeq (idDescriptionsPD pd)
+
+instance DeepSeq ModuleDescr where
+    deepSeq pd =  deepSeq (moduleIdMD pd)
+                    $   deepSeq (mbSourcePathMD pd)
+                    $   deepSeq (exportedNamesMD pd)
+                    $   deepSeq (instancesMD pd)
+                    $   deepSeq (usagesMD pd)
+
+instance DeepSeq IdentifierDescr where
+    deepSeq pd =  deepSeq (identifierID pd)
+                    $   deepSeq (identifierTypeID pd)
+                    $   deepSeq (typeInfoID pd)
+                    $   deepSeq (moduleIdID pd)
+                    $   deepSeq (constructorsID pd)
+                    $   deepSeq (fieldsID pd)
+                    $   deepSeq (classOpsID pd)
+                    $   deepSeq (mbLocation pd)
+
+instance DeepSeq PackageIdentifier where
+    deepSeq pd =  deepSeq (pkgName pd)
+                    $   deepSeq (pkgVersion pd)
+
+instance DeepSeq alpha  => DeepSeq (Set alpha) where
+    deepSeq s =  deepSeq (Set.elems s)
+
+instance (DeepSeq alpha, DeepSeq beta) => DeepSeq (Map alpha beta) where
+    deepSeq s =  deepSeq (Map.toList s)
+
+instance DeepSeq IdType where  deepSeq = seq
+
+instance DeepSeq ByteString where  deepSeq = seq
+
+instance DeepSeq Version where  deepSeq = seq
+
+instance DeepSeq PackModule where
+    deepSeq pd =  deepSeq (pack pd)
+                    $   deepSeq (modu pd)
