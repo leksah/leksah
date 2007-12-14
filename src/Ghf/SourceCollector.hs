@@ -293,7 +293,6 @@ showSourceForPackageDB aMap = PP.vcat (map showIt (Map.toList aMap))
                              PP.<>  PP.char '\n'
         where label  =  PP.text pd PP.<> PP.colon
 
-
 parseSourceForPackageDB :: IO (Maybe (Map PackageIdentifier [FilePath]))
 parseSourceForPackageDB = do
     filePath        <-  getConfigFilePathForLoad "source_packages.txt"

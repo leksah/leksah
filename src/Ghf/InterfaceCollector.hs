@@ -18,7 +18,7 @@ module Ghf.InterfaceCollector (
 ) where
 
 
-import GHC hiding(Id)
+import GHC hiding(Id,Failed,Succeeded)
 import Module
 import TcRnMonad
 import qualified Maybes as M
@@ -33,6 +33,11 @@ import qualified PackageConfig as DP
 import Name
 import PrelNames
 import PackageConfig(mainPackageId,unpackPackageId,mkPackageId)
+import Maybes
+import TcRnTypes
+import Finder
+import qualified FastString as FS
+import ErrUtils
 
 import Data.Char (isSpace)
 import qualified Data.Map as Map
@@ -59,10 +64,7 @@ import Data.Ghf.Default
 import Ghf.Core.State
 import Ghf.File
 import Ghf.Info
-
-
 import Ghf.SourceCollector
-
 
 data CollectStatistics = CollectStatistics {
     packagesTotal       ::   Int
@@ -135,7 +137,7 @@ collectUninstalled writeAscii session version cabalPath = do
         --,   thisPackage =   mkPackageId (package pd)
         --,   ghcMode    =   OneShot
         }
-    allIfaceInfos   <-  getIFaceInfos mainPackageId modules session
+    allIfaceInfos   <-  getIFaceInfos2 modules session
     deps            <-  findFittingPackages session (buildDepends pd)
     let extracted   =   extractInfo (allIfaceInfos,[], package pd, deps)
     let sources     =   Map.fromList [(package pd,[cabalPath])]
@@ -198,7 +200,73 @@ getIFaceInfos pckg modules session =
             return res
             where
                 handleErr (M.Succeeded val)   =   Just val
-                handleErr (M.Failed mess)     =   trace (P.render (mess defaultErrStyle)) Nothing
+                handleErr (M.Failed mess)     =   trace (P.render (mess defaultErrStyle))
+                                                    Nothing
+
+getIFaceInfos2 :: [String] -> Session -> IO [(ModIface, FilePath)]
+getIFaceInfos2 modules session = do
+    let ifaces          =   mapM (\ mn -> findAndReadIface2 mn
+                                          (mkModule mainPackageId (mkModuleName mn))) modules
+    hscEnv              <-  sessionHscEnv session
+    let gblEnv          =   IfGblEnv { if_rec_types = Nothing }
+    maybes              <-  initTcRnIf  'i' hscEnv gblEnv () ifaces
+    let res             =   catMaybes (map handleErr maybes)
+    return res
+    where
+        handleErr (M.Succeeded val)   =   Just val
+        handleErr (M.Failed mess)     =   trace (P.render (mess defaultErrStyle))
+                                                    Nothing
+
+
+findAndReadIface2 :: String -> Module -> TcRnIf gbl lcl (MaybeErr Message (ModIface, FilePath))
+findAndReadIface2  doc mod =   do
+    hsc_env     <-  getTopEnv
+    mb_found    <-  ioToIOEnv (findExactModule hsc_env mod)
+    case mb_found of
+        Found loc mod   ->  do
+            let file_path   =   ml_hi_file loc
+            read_result     <-  readIface mod file_path False
+            case read_result of
+	            Failed err  ->  returnM (Failed (text $ "can't read iface " ++
+                                                    doc ++ " at " ++ file_path))
+	            Succeeded iface
+		            | mi_module iface /= mod
+                        ->  return (Failed (text $ "read but not equal" ++ doc))
+		            | otherwise
+                        ->  returnM (Succeeded (iface, file_path))
+        err             ->  return (Failed (text $ "can't locate " ++ doc))
+--                    dflags  <-  getDOpts
+--                    returnM (Failed (text ""))
+	
+--badIfaceFile file err
+--  = vcat [ptext (FS.mkFastString ("Bad interface file:")) <+> text file,
+--	  nest 4 err]
+--
+--wrongIfaceModErr iface mod_name file_path
+--  = sep [ptext (FS.mkFastString("Interface file")) <+> iface_file,
+--         ptext (FS.mkFastString("contains module")) <+> quotes (ppr (mi_module iface)) <> comma,
+--         ptext ("but we were expecting module") <+> quotes (ppr mod_name),
+--	 sep [ptext ("Probable cause: the source code which generated"),
+--	     nest 2 iface_file,
+--	     ptext ("has an incompatible module name")
+--	    ]
+--	]
+--  where iface_file = doubleQuotes (text file_path)
+
+
+--getIFaceInfos2 :: [String] -> Session -> IO [ModIface]
+--getIFaceInfos2 modules session = do
+--    let ifaces          =   mapM (\ mn -> loadSrcInterface empty (mkModuleName mn) False)
+--                                    modules
+--    return (map (\ a -> runIOEnv a) ifaces)
+--    let gblEnv          =   TcGblEnv { if_rec_types = Nothing }
+--    maybes              <-  initTcRnIf  'i' hscEnv gblEnv () ifaces
+--    let res             =   catMaybes (map handleErr maybes) RnM TcRn
+--    return res
+--    where
+--        handleErr (M.Succeeded val)   =   Just val
+--        handleErr (M.Failed mess)     =   trace (P.render (mess defaultErrStyle))
+--                                                    Nothing
 
 
 extractInfo :: ([(ModIface, FilePath)],[(ModIface, FilePath)],PackageIdentifier,
@@ -365,7 +433,6 @@ writeExtracted dirPath writeAscii pd = do
     if writeAscii
         then writeFile (filePath ++ "dpg") (show pd)
         else encodeFile filePath pd
-
 
 
 
