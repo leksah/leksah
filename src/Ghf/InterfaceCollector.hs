@@ -117,25 +117,21 @@ collectInstalled writeAscii session version forceRebuild = do
                        (fromIntegral   (modulesWithSource statistic)) * 100.0)):: Integer)
     mapM_ (writeExtracted collectorPath writeAscii) extracted'
 
--------------------------------------------------------------------------
-
 collectUninstalled :: Bool -> Session -> String -> FilePath -> IO ()
 collectUninstalled writeAscii session version cabalPath = do
     pd                  <-  readPackageDescription normal cabalPath
                                         >>= return . flattenPackageDescription
     let modules         =   nub $ exeModules pd ++ libModules pd
     let basePath        =   takeDirectory cabalPath
-    let srcPaths        =   concatMap (\ exe -> hsSourceDirs $ buildInfo exe)
-                                                    $ executables pd
-    let srcPath         =   case library pd of
-                                Just (Library _ bi)    -> hsSourceDirs bi
-                                Nothing                -> []
+    let buildPath       =   "dist" </> "build" </> pkgName (package pd) </>
+                                (pkgName (package pd) ++ "-tmp/")
     dflags0         <-  getSessionDynFlags session
+    putStrLn $ "topDir = " ++ (basePath </> buildPath)
     setSessionDynFlags session dflags0
         {   topDir      =   basePath
-        ,   importPaths =   srcPath ++ srcPaths
+        ,   importPaths =   [buildPath]
         --,   thisPackage =   mkPackageId (package pd)
-        --,   ghcMode    =   OneShot
+        ,   ghcMode    =   OneShot
         }
     allIfaceInfos   <-  getIFaceInfos2 modules session
     deps            <-  findFittingPackages session (buildDepends pd)
@@ -147,39 +143,8 @@ collectUninstalled writeAscii session version cabalPath = do
     writeExtracted collectorPath True extractedWithSources
     putStrLn $ "\nExtracted infos for " ++ cabalPath
 
---getIFaceInfos2 :: PackageIdentifier -> [String] -> Session -> IO [(ModIface, FilePath)]
---getIFaceInfos2 modules session = do
---    let ifaces          =    mapM (\ m -> findAndReadIface empty
---                                            (mkModule (DP.mkPackageId (asDPid pckg))
---                                                              (mkModuleName mn)) False)
---                                                modules
---    hscEnv              <-  sessionHscEnv session
---    let gblEnv          =   IfGblEnv { if_rec_types = Nothing }
---    maybes              <-  initTcRnIf  'i' hscEnv gblEnv () ifaces
---    let res             =   catMaybes (map handleErr maybes)
---    return res
---    where
---        handleErr (M.Succeeded val)   =   Just val
---        handleErr (M.Failed mess)     =   trace (P.render (mess defaultErrStyle)) Nothing
-
---findAndReadIface :: SDoc -> Module
---		 -> IsBootInterface	-- True  <=> Look for a .hi-boot file
---					-- False <=> Look for .hi file
---		 -> TcRnIf gbl lcl (MaybeErr Message (ModIface, FilePath))
-
-
-{--
-#if __GHC__ > 670
-    let ifaces          =   mapM readBinIface filePaths
-    hscEnv              <-  sessionHscEnv session
-    let gblEnv          =   IfGblEnv { if_rec_types = Nothing }
-    res                 <-  initTcRnIf  'i' hscEnv gblEnv () ifaces
-#else
-    res                 <-   mapM readBinIface filePaths
-#endif
-    return (zip res filePaths)
---}
 -------------------------------------------------------------------------
+
 
 getIFaceInfos :: PackageId -> [String] -> Session -> IO [(ModIface, FilePath)]
 getIFaceInfos pckg modules session =
@@ -217,7 +182,6 @@ getIFaceInfos2 modules session = do
         handleErr (M.Failed mess)     =   trace (P.render (mess defaultErrStyle))
                                                     Nothing
 
-
 findAndReadIface2 :: String -> Module -> TcRnIf gbl lcl (MaybeErr Message (ModIface, FilePath))
 findAndReadIface2  doc mod =   do
     hsc_env     <-  getTopEnv
@@ -227,47 +191,16 @@ findAndReadIface2  doc mod =   do
             let file_path   =   ml_hi_file loc
             read_result     <-  readIface mod file_path False
             case read_result of
-	            Failed err  ->  returnM (Failed (text $ "can't read iface " ++
+	            Failed _  ->  returnM (Failed (text $ "can't read iface " ++
                                                     doc ++ " at " ++ file_path))
 	            Succeeded iface
 		            | mi_module iface /= mod
                         ->  return (Failed (text $ "read but not equal" ++ doc))
 		            | otherwise
                         ->  returnM (Succeeded (iface, file_path))
-        err             ->  return (Failed (text $ "can't locate " ++ doc))
---                    dflags  <-  getDOpts
---                    returnM (Failed (text ""))
-	
---badIfaceFile file err
---  = vcat [ptext (FS.mkFastString ("Bad interface file:")) <+> text file,
---	  nest 4 err]
---
---wrongIfaceModErr iface mod_name file_path
---  = sep [ptext (FS.mkFastString("Interface file")) <+> iface_file,
---         ptext (FS.mkFastString("contains module")) <+> quotes (ppr (mi_module iface)) <> comma,
---         ptext ("but we were expecting module") <+> quotes (ppr mod_name),
---	 sep [ptext ("Probable cause: the source code which generated"),
---	     nest 2 iface_file,
---	     ptext ("has an incompatible module name")
---	    ]
---	]
---  where iface_file = doubleQuotes (text file_path)
+        _               ->  return (Failed (text $ "can't locate " ++ doc))
 
-
---getIFaceInfos2 :: [String] -> Session -> IO [ModIface]
---getIFaceInfos2 modules session = do
---    let ifaces          =   mapM (\ mn -> loadSrcInterface empty (mkModuleName mn) False)
---                                    modules
---    return (map (\ a -> runIOEnv a) ifaces)
---    let gblEnv          =   TcGblEnv { if_rec_types = Nothing }
---    maybes              <-  initTcRnIf  'i' hscEnv gblEnv () ifaces
---    let res             =   catMaybes (map handleErr maybes) RnM TcRn
---    return res
---    where
---        handleErr (M.Succeeded val)   =   Just val
---        handleErr (M.Failed mess)     =   trace (P.render (mess defaultErrStyle))
---                                                    Nothing
-
+-------------------------------------------------------------------------
 
 extractInfo :: ([(ModIface, FilePath)],[(ModIface, FilePath)],PackageIdentifier,
                     [PackageIdentifier]) -> PackageDescr
