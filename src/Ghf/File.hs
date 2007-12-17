@@ -41,7 +41,6 @@ import Data.List(isSuffixOf)
 import Ghf.Core.State
 import {-# SOURCE #-} Ghf.Log
 
-
 --
 -- The directory where config files reside
 --
