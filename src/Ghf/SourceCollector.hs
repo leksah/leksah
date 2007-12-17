@@ -24,51 +24,31 @@ module Ghf.SourceCollector (
 import qualified Text.PrettyPrint.HughesPJ as PP
 import qualified Data.Map as Map
 import Data.Map (Map)
-import Control.Monad.Reader
 import Distribution.PackageDescription
 import Distribution.Verbosity
-import Distribution.Package
 import Text.ParserCombinators.Parsec
 import qualified Text.ParserCombinators.Parsec.Token as P
 import Text.ParserCombinators.Parsec.Language(emptyDef)
-import Data.Version
 import System.Directory
-import Data.Maybe(catMaybes,mapMaybe)
-import Distribution.Simple.Utils(breaks)
-import System.FilePath(takeBaseName,dropFileName)
-import System.Exit
+import Data.Maybe(catMaybes)
 import Control.Monad.State
 import System.FilePath
-import Distribution.Simple.PreProcess.Unlit
-import System.Process
 import System.IO
-import Control.Concurrent
-import Data.Maybe (fromJust)
 import Data.List(nub)
 
-import Digraph
-import HscTypes
 import GHC
 import BasicTypes
-import StringBuffer
-import ErrUtils
 import SrcLoc
-import FastString
-import Lexer hiding (lexer)
-import Parser
-import Outputable hiding (char)
-import HscStats
 import RdrName
 import OccName
 import DynFlags
-import Bag
 import Finder
 import PackageConfig hiding (exposedModules)
+import Module
 
 import Ghf.Core.State
 import Ghf.File
 import Ghf.Preferences
-import {-# SOURCE #-} Ghf.InterfaceCollector
 
 -- ---------------------------------------------------------------------
 -- Function to map packages to file paths
@@ -95,8 +75,8 @@ sourceForPackage :: PackageIdentifier
     -> Maybe FilePath
 sourceForPackage id map =
     case id `Map.lookup` map of
-        Nothing -> Nothing
-        Just (h:_) -> Just h
+        Just (h:_)  ->  Just h
+        _           ->  Nothing
 
 buildSourceForPackageDB :: IO ()
 buildSourceForPackageDB = do
@@ -186,9 +166,7 @@ cabalStyle  = emptyDef
                 }
 
 lexer       =   P.makeTokenParser cabalStyle
-lexeme      =   P.lexeme lexer
 whiteSpace  =   P.whiteSpace lexer
-hexadecimal =   P.hexadecimal lexer
 symbol      =   P.symbol lexer
 
 parseCabal :: FilePath -> IO String
@@ -208,11 +186,11 @@ cabalMinimalParser = do
         Left v -> do
             case r2 of
                 Right n -> return (n ++ "-" ++ v)
-                Left v -> error "Illegal cabal"
+                Left _ -> error "Illegal cabal"
         Right n -> do
             case r2 of
                 Left v -> return (n ++ "-" ++ v)
-                Right n -> error "Illegal cabal"
+                Right _ -> error "Illegal cabal"
 
 cabalMinimalP :: CharParser () (Either String String)
 cabalMinimalP =
@@ -272,8 +250,9 @@ collectSources _ sourceMap pdescr = do
             pd              <-  readPackageDescription silent cabalPath >>=
                                     (\gpd -> return (flattenPackageDescription gpd))
             let allModules  =   libModules pd ++ exeModules pd
-            let buildPaths  =   nub $ concatMap hsSourceDirs $ allBuildInfos pd
-            let basePath    =   normalise $ (takeDirectory cabalPath </> "")
+            let buildPaths  =   nub $ ("dist" </> "build" </> "autogen") :
+                                    (concatMap hsSourceDirs $ allBuildInfos pd)
+            let basePath    =   normalise $ (takeDirectory cabalPath)
 
             putStrLn $ "Base paths " ++ show basePath
             putStrLn $ "Build paths " ++ show buildPaths
@@ -285,8 +264,8 @@ collectSources _ sourceMap pdescr = do
                                                                         (packagePD pdescr)
                                                 ,   hscTarget  =    HscNothing
                                                 }
-            targets <- mapM (\f -> guessTarget f Nothing) fs
-            setTargets session (allTargetsFor pd)
+            targets <- mapM (\mod -> guessTarget mod Nothing) allModules
+            setTargets session targets --(allTargetsFor pd)
             succ            <-  load session LoadAllTargets
             when (not (succeeded succ)) $
                             putStrLn $ "Load for package " ++  showPackageId (packagePD pdescr)
@@ -295,7 +274,7 @@ collectSources _ sourceMap pdescr = do
                             <-  foldM (collectSourcesForModule session)
                                                 (pdescr,[],0)
                                                 (exposedModulesPD pdescr)
-            let nPackDescr  =   pdescr{mbSourcePathPD = Just cabalPath,
+            let nPackDescr  =   newPackDescr{mbSourcePathPD = Just cabalPath,
                                             exposedModulesPD = newModDescrs}
             return (nPackDescr,succCount)
 
@@ -309,33 +288,34 @@ collectSourcesForModule :: Session
 collectSourcesForModule session  (packDescr,moduleDescrs,succCount) moduleDescr =
     let moduleName          =   mkModuleName $ modu $ moduleIdMD moduleDescr
     in do
-        mbCheckedModule         <-  checkModule session moduleName False
+        env             <-  sessionHscEnv session
+        findResult      <-  findHomeModule env moduleName
+        mbFile          <-  case findResult of
+                                Found modLocation _ ->  do
+                                    return (ml_hs_file modLocation)
+                                _                   ->  do
+                                putStrLn $ "Can't find module "
+                                                        ++  (modu $ moduleIdMD moduleDescr)
+                                return Nothing
+        let newModD     =   moduleDescr{mbSourcePathMD = mbFile}
+        mbCheckedModule         <-  getModuleInfo session (mkModule
+                                        (mkPackageId (packagePD packDescr)) moduleName)
         case mbCheckedModule of
             Nothing             ->  do
                 putStrLn $ "Can't load module " ++  (modu $ moduleIdMD moduleDescr)
-                return (packDescr,moduleDescr:moduleDescrs,succCount)
+                return (packDescr,newModD:moduleDescrs,succCount)
             Just checkedModule  ->  do
                 putStrLn $ "Succeeded to parse " ++ (modu $ moduleIdMD moduleDescr)
                 let (L _ (HsModule _ _ _ decls _ _ _ _)) = parsedSource checkedModule
-                env             <-  sessionHscEnv session
-                findResult      <-  findHomeModule env moduleName
-                mbFile          <-    case findResult of
-                                        Found modLocation _ ->  do
-                                            return (ml_hs_file modLocation)
-                                        _                   ->  do
-                                        putStrLn $ "Can't find module "
-                                                                ++  (modu $ moduleIdMD moduleDescr)
-                                        return Nothing
-                let newModD     =   moduleDescr{mbSourcePathMD = mbFile}
-                let newPackDescr =  foldl (collectParseInfoForDecl moduleDescr) packDescr decls
+                let newPackDescr =  foldl (collectParseInfoForDecl newModD) packDescr decls
                 return(newPackDescr,newModD:moduleDescrs,succCount+1)
 
 collectParseInfoForDecl :: ModuleDescr -> PackageDescr -> (LHsDecl RdrName)  -> PackageDescr
-collectParseInfoForDecl modDescr packDescr (L loc decl) | not (isGoodSrcSpan loc) = packDescr
+collectParseInfoForDecl _ packDescr (L loc _) | not (isGoodSrcSpan loc) = packDescr
 collectParseInfoForDecl modDescr packDescr (L srcDecl (ValD (FunBind lid _ _ _ _ _)))
     =   let id          =   unLoc lid
             occ         =   rdrNameOcc id
-            name        =   occNameString occ
+            -- name        =   occNameString occ
         in  packDescr{idDescriptionsPD  =  map (addLocation (occNameSpace occ))
                                                 (idDescriptionsPD packDescr)}
         where
@@ -345,7 +325,7 @@ collectParseInfoForDecl modDescr packDescr (L srcDecl (ValD (FunBind lid _ _ _ _
                         &&  identifierTypeID identDescr `matchesOccType` occNameSpace
                     then identDescr{mbLocation = Just (srcSpanToLocation srcDecl)}
                     else identDescr
-collectParseInfoForDecl modDescr packDescr _
+collectParseInfoForDecl _ packDescr _
     =   packDescr
 
 srcSpanToLocation :: SrcSpan -> Location
@@ -363,7 +343,7 @@ matchesOccType Synonym  _                       =   True
 matchesOccType AbstractData _                   =   True
 matchesOccType Class clsName                    =   True
 matchesOccType Foreign _                        =   True
-otherwise                                       =   trace "occType mismatch " False
+matchesOccType _ _                              =   trace "occType mismatch " False
 
 
 allBuildInfos :: PackageDescription -> [BuildInfo]
