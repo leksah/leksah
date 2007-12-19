@@ -14,6 +14,7 @@ module Ghf.File (
 ,   readOut
 ,   readErr
 ,   runExternal
+,   findSourceFile
 
 ) where
 
@@ -36,12 +37,30 @@ import qualified Data.Set as Set
 import Data.Set (Set)
 import Data.List(isSuffixOf)
 
-
-
 import Ghf.Core.State
 import {-# SOURCE #-} Ghf.Log
 
---
+findSourceFile :: [FilePath]
+    -> [String]
+    -> ModuleIdentifier
+    -> IO (Maybe FilePath)
+findSourceFile directories exts modId  =
+    let modulePath      =   dots_to_slashes modId
+        allPathes       =   map (\ d -> d </> modulePath) directories
+        allPossibles    =   concatMap (\ p -> map (addExtension p) exts)
+                                allPathes
+    in  find' allPossibles
+
+find' :: [FilePath] -> IO (Maybe FilePath)
+find' []            =   return Nothing
+find' (h:t)         =   do
+    exists <- doesFileExist h
+    if exists
+        then return (Just h)
+        else find' t
+
+dots_to_slashes = map (\c -> if c == '.' then pathSeparator else c)
+
 -- The directory where config files reside
 --
 getConfigDir :: IO FilePath
@@ -123,6 +142,8 @@ allFilesWithExtensions extensions recurseFurther filePath = do
                     else return []
             return (choosenFiles ++ concat otherFiles)
         else return []
+
+
 
 moduleNameFromFilePath :: FilePath -> IO (Maybe String)
 moduleNameFromFilePath fp = do
