@@ -127,12 +127,16 @@ collectUninstalled writeAscii session version cabalPath = do
                                 (pkgName (package pd) ++ "-tmp/")
     dflags0         <-  getSessionDynFlags session
     putStrLn $ "topDir = " ++ (basePath </> buildPath)
-    setSessionDynFlags session dflags0
+    setSessionDynFlags session
+        dflags0
         {   topDir      =   basePath
         ,   importPaths =   [buildPath]
         --,   thisPackage =   mkPackageId (package pd)
         ,   ghcMode    =   OneShot
         }
+    dflags1         <-  getSessionDynFlags session
+    (dflags2,_)     <-  parseDynamicFlags dflags1 ["-fglasgow-exts","-haddock"]
+    setSessionDynFlags session dflags2
     allIfaceInfos   <-  getIFaceInfos2 modules session
     deps            <-  findFittingPackages session (buildDepends pd)
     let extracted   =   extractInfo (allIfaceInfos,[], package pd, deps)
@@ -206,15 +210,13 @@ extractInfo :: ([(ModIface, FilePath)],[(ModIface, FilePath)],PackageIdentifier,
                     [PackageIdentifier]) -> PackageDescr
 extractInfo (ifacesExp,ifacesHid,pi,depends) =
     let hiddenDescrs        =   foldr (extractExportedDescrH pi) Map.empty (map fst ifacesHid)
-        (ids,mods)          =   --trace  ("\nhidden: " ++ show (Map.keysSet hiddenDescrs))
-                                foldr (extractExportedDescrR pi hiddenDescrs)
-                                        (Map.empty,[]) (map fst ifacesExp)
+        mods                =   --trace  ("\nhidden: " ++ show (Map.keysSet hiddenDescrs))
+                                map (extractExportedDescrR pi hiddenDescrs) (map fst ifacesExp)
     in PackageDescr {
         packagePD           =   pi
     ,   exposedModulesPD    =   mods
     ,   buildDependsPD      =   depends
-    ,   mbSourcePathPD      =   Nothing
-    ,   idDescriptionsPD    =   nub $ concat $ Map.elems ids}
+    ,   mbSourcePathPD      =   Nothing}
 
 extractExportedDescrH :: PackageIdentifier -> ModIface -> SymbolTable -> SymbolTable
 extractExportedDescrH pid iface amap =
@@ -227,9 +229,11 @@ extractExportedDescrH pid iface amap =
                                                             (map snd (mi_decls iface))
     in  foldr (extractIdentifierDescr' pid []) amap exportedDecls
 
-extractExportedDescrR :: PackageIdentifier -> SymbolTable -> ModIface ->
-                            (SymbolTable,[ModuleDescr]) -> (SymbolTable,[ModuleDescr])
-extractExportedDescrR pid hidden iface (imap,mdList) =
+extractExportedDescrR :: PackageIdentifier
+    -> SymbolTable
+    -> ModIface
+    -> ModuleDescr
+extractExportedDescrR pid hidden iface =
     let mid             =   moduleNameString $moduleName (mi_module iface)
         exportedNames   =   Set.fromList
                                 $map occNameString
@@ -238,29 +242,26 @@ extractExportedDescrR pid hidden iface (imap,mdList) =
         exportedDecls   =   filter (\ ifdecl -> (occNameString $ifName ifdecl)
                                                     `Set.member` exportedNames)
                                                             (map snd (mi_decls iface))
-        mapWithOwnDecls =   foldr (extractIdentifierDescr' pid [mid]) imap exportedDecls
-        otherDecls      =   exportedNames `Set.difference` (Map.keysSet mapWithOwnDecls)
-        reexported      =   Map.map (\v -> map (\id -> id{moduleIdID = (PM pid mid)}) v)
-                                                                    {--: [moduleIdID id]--}
-                                $Map.filterWithKey (\k _ -> k `Set.member` otherDecls)
-                                    hidden
+        ownDecls        =   concatMap (extractIdentifierDescr pid [mid]) exportedDecls
+--        otherDecls      =   exportedNames `Set.difference` (Map.keysSet mapWithOwnDecls)
+--        reexported      =   Map.map (\v -> map (\id -> id{moduleIdID = (PM pid mid)}) v)
+--                                                                    {--: [moduleIdID id]--}
+--                                $Map.filterWithKey (\k _ -> k `Set.member` otherDecls)
+--                                    hidden
         inst            =   concatMap extractInstances (mi_insts iface)
         uses            =   Map.fromList $ map extractUsages (mi_usages iface)
-        mdescr          =   ModuleDescr {
-                    moduleIdMD        =   PM pid mid
-                ,   exportedNamesMD   =   exportedNames
-                ,   mbSourcePathMD    =   Nothing
-                ,   instancesMD       =   inst
-                ,   usagesMD          =   uses}
-        newids          =   Map.unionWith (\ _ _ -> error "impossible: extractExported")
-                                mapWithOwnDecls reexported
-
-    in  (newids, mdescr : mdList)
+    in  ModuleDescr {
+                    moduleIdMD          =   PM pid mid
+                ,   exportedNamesMD     =   exportedNames
+                ,   mbSourcePathMD      =   Nothing
+                ,   instancesMD         =   inst
+                ,   usagesMD            =   uses
+                ,   idDescriptionsMD    =   ownDecls}
 
 extractIdentifierDescr' :: PackageIdentifier -> [ModuleIdentifier] -> IfaceDecl ->
                                 SymbolTable -> SymbolTable
 extractIdentifierDescr' pid mods ifDecl amap =
-    let descrs =  extractIdentifierDescr ifDecl mods pid
+    let descrs =  extractIdentifierDescr pid  mods ifDecl
     in foldr addToMap amap descrs
         where
             addToMap :: IdentifierDescr -> SymbolTable -> SymbolTable
@@ -270,9 +271,9 @@ extractIdentifierDescr' pid mods ifDecl amap =
                                 ++ classOpsID iddescr)
                 in foldl (\ st id -> Map.insertWith (++) id [iddescr] st) amap allIds
 
-extractIdentifierDescr :: IfaceDecl -> [ModuleIdentifier] -> PackageIdentifier
+extractIdentifierDescr :: PackageIdentifier -> [ModuleIdentifier] -> IfaceDecl
                             -> [IdentifierDescr]
-extractIdentifierDescr decl modules package
+extractIdentifierDescr package modules decl
        = if null modules
           then []
           else [IdentifierDescr{
@@ -304,7 +305,9 @@ extractIdentifierDescr decl modules package
                                 (IfaceClass _ _ _ _ _ ifSigs _ )
                                     -> map (extractClassOpName) ifSigs
                                 _   -> []
-,   mbLocation          =   Nothing}]
+,   mbLocation          =   Nothing
+,   mbComment           =   Nothing
+}]
 
 extractConstructorName ::  IfaceConDecl -> Symbol
 extractConstructorName  decl    =   unpackFS $occNameFS (ifConOcc decl)

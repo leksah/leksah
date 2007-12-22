@@ -50,6 +50,7 @@ module Ghf.Core.Types (
 ,   parsePackModule
 ,   fromPackageIdentifier
 ,   toPackageIdentifier
+,   idDescriptionsPD
 
 ,   Location(..)
 
@@ -173,7 +174,6 @@ data PackageDescr       =   PackageDescr {
 ,   mbSourcePathPD      ::   (Maybe FilePath)
 ,   exposedModulesPD    ::   [ModuleDescr]
 ,   buildDependsPD      ::   [PackageIdentifier]
-,   idDescriptionsPD    ::   [IdentifierDescr]
 } deriving (Eq,Ord,Show)
 
 data ModuleDescr        =   ModuleDescr {
@@ -182,6 +182,7 @@ data ModuleDescr        =   ModuleDescr {
 ,   exportedNamesMD     ::   (Set Symbol)                        -- unqualified
 ,   instancesMD         ::   [(ClassId,DataId)]
 ,   usagesMD            ::   (Map ModuleIdentifier (Set Symbol)) -- imports
+,   idDescriptionsMD    ::   [IdentifierDescr]
 } deriving (Eq,Ord,Show)
 
 data IdentifierDescr    =  IdentifierDescr {
@@ -193,12 +194,15 @@ data IdentifierDescr    =  IdentifierDescr {
 ,   fieldsID            ::   [Symbol]
 ,   classOpsID          ::   [Symbol]
 ,   mbLocation          ::   (Maybe Location)
+,   mbComment             ::   (Maybe String)
 } deriving (Show,Eq,Ord,Read)
 
+idDescriptionsPD :: PackageDescr -> [IdentifierDescr]
+idDescriptionsPD pd =  concatMap idDescriptionsMD (exposedModulesPD pd)
 
 instance Default IdentifierDescr where
     getDefault = IdentifierDescr getDefault getDefault getDefault getDefault getDefault
-                                    getDefault getDefault getDefault
+                                    getDefault getDefault getDefault getDefault
 
 data IdType = Function | Data | Newtype | Synonym | AbstractData | OpenData |
                 Class | Foreign

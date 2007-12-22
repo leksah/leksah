@@ -97,39 +97,39 @@ instance Binary Version where
 
 
 instance Binary PackageDescr where
-    put (PackageDescr packagePD' exposedModulesPD' buildDependsPD' mbSourcePathPD'
-            idDescriptionsPD')
+    put (PackageDescr packagePD' exposedModulesPD' buildDependsPD' mbSourcePathPD')
         =   do  put packagePD'
                 put exposedModulesPD'
                 put buildDependsPD'
                 put mbSourcePathPD'
-                put idDescriptionsPD'
     get =   do  packagePD'           <- get
                 exposedModulesPD'    <- get
                 buildDependsPD'      <- get
                 mbSourcePathPD'      <- get
-                idDescriptionsPD'    <- get
                 return (PackageDescr packagePD' exposedModulesPD' buildDependsPD'
-                                        mbSourcePathPD' idDescriptionsPD')
+                                        mbSourcePathPD')
 
 instance Binary ModuleDescr where
-    put (ModuleDescr moduleIdMD' exportedNamesMD' mbSourcePathMD' instancesMD' usagesMD')
+    put (ModuleDescr moduleIdMD' exportedNamesMD' mbSourcePathMD' instancesMD' usagesMD'
+                idDescriptionsMD')
         = do    put moduleIdMD'
                 put exportedNamesMD'
                 put mbSourcePathMD'
                 put instancesMD'
                 put usagesMD'
+                put idDescriptionsMD'
     get = do    moduleIdMD'          <- get
                 exportedNamesMD'     <- get
                 mbSourcePathMD'      <- get
                 instancesMD'         <- get
                 usagesMD'            <- get
+                idDescriptionsMD'    <- get
                 return (ModuleDescr moduleIdMD' exportedNamesMD' mbSourcePathMD'
-                                    instancesMD' usagesMD')
+                                    instancesMD' usagesMD' idDescriptionsMD')
 
 instance Binary IdentifierDescr where
     put (IdentifierDescr identifierID' identifierTypeID' typeInfoID' moduleIdID'
-                            constructorsID' fieldsID' classOpsID' mbLocation')
+                            constructorsID' fieldsID' classOpsID' mbLocation' mbComment')
         = do    put identifierID'
                 put identifierTypeID'
                 put typeInfoID'
@@ -138,6 +138,7 @@ instance Binary IdentifierDescr where
                 put fieldsID'
                 put classOpsID'
                 put mbLocation'
+                put mbComment'
     get = do    identifierID'        <- get
                 identifierTypeID'    <- get
                 typeInfoID'          <- get
@@ -146,8 +147,9 @@ instance Binary IdentifierDescr where
                 fieldsID'            <- get
                 classOpsID'          <- get
                 mbLocation'          <- get
+                mbComment'           <- get
                 return (IdentifierDescr identifierID' identifierTypeID' typeInfoID'
-                           moduleIdID' constructorsID' fieldsID' classOpsID' mbLocation')
+                           moduleIdID' constructorsID' fieldsID' classOpsID' mbLocation' mbComment')
 
 instance Binary IdType where
     put it  =   do  put (fromEnum it)

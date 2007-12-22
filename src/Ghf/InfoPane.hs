@@ -121,9 +121,9 @@ idDescrDescr = [
             (\b a -> a{typeInfoID = BS.pack b})
             multilineStringEditor
     ,   mkField
-            (paraName <<<- ParaName "Location" $ emptyParams)
-            (\l -> show (mbLocation l))
-            (\ b a -> a{mbLocation = read b})
+            (paraName <<<- ParaName "Comment" $ emptyParams)
+            (\l -> show (mbComment l))
+            (\ b a -> a{mbComment = read b})
             stringEditor]
 
 {--    ,   mkField (emptyParams

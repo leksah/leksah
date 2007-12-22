@@ -47,7 +47,7 @@ import Distribution.Simple.Compiler(Compiler(..))
 import Distribution.Simple.LocalBuildInfo(LocalBuildInfo(..))
 import System.Process(runCommand,waitForProcess)
 import System.Info (os, arch)
-import Data.Maybe(fromJust)
+import Data.Maybe(fromJust,mapMaybe)
 import Distribution.Version(readVersion,orLaterVersion)
 import qualified Control.Exception as C
 
@@ -282,11 +282,10 @@ collectSources session  sourceMap pdescr = do
                                         (map (\p -> basePath </> p) buildPaths)
                                         ["hs","lhs"])
                                         (map (modu . moduleIdMD) exposedMods)
-            (newPackDescr,newModDescrs,failureCount)
-                            <-  foldM (collectSourcesForModule session pkgDescr)
-                                                (pdescr,[],0)
+            (newModDescrs,failureCount)
+                            <-  foldM (collectSourcesForModule session pkgDescr) ([],0)
                                                 (zip (exposedModulesPD pdescr) sourceFiles)
-            let nPackDescr  =   newPackDescr{mbSourcePathPD = Just cabalPath,
+            let nPackDescr  =   pdescr{mbSourcePathPD = Just cabalPath,
                                             exposedModulesPD = newModDescrs}
             return (nPackDescr,failureCount)
 
@@ -295,14 +294,14 @@ collectSources session  sourceMap pdescr = do
 --
 collectSourcesForModule :: Session
     -> PackageDescription
-    ->  (PackageDescr,[ModuleDescr],Int)
+    ->  ([ModuleDescr],Int)
     -> (ModuleDescr, Maybe FilePath)
-    -> IO (PackageDescr,[ModuleDescr],Int)
-collectSourcesForModule session pkgDescr (packDescr,moduleDescrs,failureCount) (moduleDescr,mbfp) =
+    -> IO ([ModuleDescr],Int)
+collectSourcesForModule session pkgDescr (moduleDescrs,failureCount) (moduleDescr,mbfp) =
     case mbfp of
         Nothing ->  do
             putStrLn $ "No source for module " ++ (modu $ moduleIdMD moduleDescr)
-            return(packDescr, moduleDescr : moduleDescrs, failureCount+1)
+            return(moduleDescr : moduleDescrs, failureCount+1)
         Just fp ->  do
             str             <-  preprocess fp pkgDescr
             stringBuffer    <-  stringToStringBuffer str
@@ -312,30 +311,100 @@ collectSourcesForModule session pkgDescr (packDescr,moduleDescrs,failureCount) (
             case parseResult of
                 Right (L _ (HsModule _ _ _ decls _ _ _ _)) -> do
                     putStrLn $ "Succeeded to parse " ++ fp ++ " " ++ show (length decls)
-                    let symbolTable = buildSymbolTable packDescr Map.empty
-                    let newSymbolTable =  foldl (collectParseInfoForDecl newModD)
-                                                symbolTable decls
-                    return(packDescr, -- {idDescriptionsPD=concat (Map.elems newSymbolTable)},
-                            newModD : moduleDescrs, failureCount)
+                    let map'    =   convertToMap (idDescriptionsMD newModD)
+                    let commentedDecls = addComments decls
+                    let descrs  =   mapMaybe (collectParseInfoForDecl map') commentedDecls
+                    let newModD' =  newModD{idDescriptionsMD = descrs}
+                    return(newModD' : moduleDescrs, failureCount)
                 Left errMsg -> do
                     putStrLn $ "Failed to parse " ++ fp
                     printBagOfErrors defaultDynFlags (unitBag errMsg)
-                    return (packDescr, newModD : moduleDescrs, failureCount+1)
+                    return (newModD : moduleDescrs, failureCount+1)
+    where
+    convertToMap :: [IdentifierDescr] -> Map Symbol [IdentifierDescr]
+    convertToMap  list  =
+     foldl (\ st idDescr -> Map.insertWith (++) (identifierID idDescr) [idDescr] st)
+        Map.empty list
+    convertFromMap :: Map Symbol [IdentifierDescr]  -> [IdentifierDescr]
+    convertFromMap      =   concat . Map.elems
 
-collectParseInfoForDecl :: ModuleDescr -> SymbolTable -> (LHsDecl RdrName)  -> SymbolTable
-collectParseInfoForDecl modDescr st (L loc _) | not (isGoodSrcSpan loc) = st
-collectParseInfoForDecl modDescr st (L srcDecl (ValD (FunBind lid _ _ _ _ _)))
-    =   let id          =   unLoc lid
-            occ         =   rdrNameOcc id
+addComments :: [LHsDecl RdrName] -> [(Maybe (LHsDecl RdrName), Maybe String)]
+addComments declList = reverse $ snd $ foldl addComment (Nothing,[]) declList
+    where
+    addComment :: (Maybe String,[(Maybe (LHsDecl RdrName),Maybe String)])
+        ->  LHsDecl RdrName
+        -> (Maybe String,[(Maybe (LHsDecl RdrName),Maybe String)])
+    addComment (maybeComment,((Just decl,Nothing):r)) (L srcDecl (DocD (DocCommentPrev doc))) =
+        (Nothing,((Just decl,Just (printHsDoc doc)):r))
+    addComment other (L srcDecl (DocD (DocCommentPrev doc))) =
+        other
+    addComment (maybeComment,resultList) (L srcDecl (DocD (DocCommentNext doc))) =
+        (Just (printHsDoc doc),resultList)
+    addComment (maybeComment,resultList) (L srcDecl (DocD (DocGroup i doc))) =
+        (Nothing,(((Nothing,Just (printHsDoc doc)): resultList)))
+    addComment (maybeComment,resultList) (L srcDecl (DocD (DocCommentNamed str doc))) =
+        trace ("docCommentNamed " ++ str ++ printHsDoc doc)
+        (Nothing,resultList)
+    addComment (Nothing,resultList) decl =
+        (Nothing,(Just decl,Nothing):resultList)
+    addComment (Just comment,resultList) decl =
+        (Nothing,(Just decl,Just comment):resultList)
+
+collectParseInfoForDecl ::  SymbolTable ->
+    (Maybe (LHsDecl RdrName),Maybe String) ->
+     Maybe IdentifierDescr
+collectParseInfoForDecl st (Just (L loc _),_) | not (isGoodSrcSpan loc) = Nothing
+collectParseInfoForDecl st ((Just (L srcDecl (ValD (FunBind lid _ _ _ _ _)))), mbComment')
+    =   let occ         =   rdrNameOcc (unLoc lid)
             name        =   unpackFS (occNameFS occ)
-            updatef identDescr
-                        =   if moduleIdID identDescr == moduleIdMD modDescr
-                                    &&   identifierTypeID identDescr `matchesOccType`
-                                        occNameSpace occ
-                                then identDescr{mbLocation = Just (srcSpanToLocation srcDecl)}
-                                else identDescr
-        in  Map.adjust (map updatef) name st
-collectParseInfoForDecl modDescr st _    =   st
+            mbItems     =   Map.lookup name st
+            mbItem      =   case mbItems of
+                                Nothing -> Nothing
+                                Just [item] -> Just item
+                                Just items
+                                    -> case filter (\i -> matchesOccType (identifierTypeID i)
+                                                    (occNameSpace occ)) items of
+                                            []  ->  Nothing
+                                            l   ->  Just (head l)
+        in case mbItem of
+            Nothing         -> Nothing
+            Just identDescr -> Just (identDescr{mbLocation = Just (srcSpanToLocation srcDecl),
+                                                mbComment = mbComment'})
+collectParseInfoForDecl st ((Just (L srcDecl (TyClD (TyData _ _ lid _ _ _ _ _)))), mbComment')
+    =   let occ         =   rdrNameOcc (unLoc lid)
+            name        =   unpackFS (occNameFS occ)
+            mbItems     =   Map.lookup name st
+            mbItem      =   case mbItems of
+                                Nothing -> Nothing
+                                Just [item] -> Just item
+                                Just items
+                                    -> case filter (\i -> matchesOccType (identifierTypeID i)
+                                                    (occNameSpace occ)) items of
+                                            []  ->  Nothing
+                                            l   ->  Just (head l)
+        in case mbItem of
+            Nothing         -> Nothing
+            Just identDescr -> Just (identDescr{mbLocation = Just (srcSpanToLocation srcDecl),
+                                                mbComment = mbComment'})
+collectParseInfoForDecl st (Just decl,mbComment')    =
+    trace (declTypeToString (unLoc decl) ++ "--" ++ (showSDocUnqual $ppr decl)) Nothing
+collectParseInfoForDecl st (Nothing, mbComment')    =
+    trace ("Found comment " ++ show mbComment') Nothing
+
+    
+declTypeToString :: Show alpha => HsDecl alpha -> String
+declTypeToString  (TyClD	_)  =   "TyClD"
+declTypeToString  (InstD _) =   "InstD"
+declTypeToString  (DerivD _)=   "DerivD"
+declTypeToString  (ValD	_)  =   "ValD"
+declTypeToString  (SigD _)  =   "SigD"
+declTypeToString  (DefD _)  =   "DefD"
+declTypeToString  (ForD _)  =   "ForD"
+declTypeToString  (DeprecD _)=  "DeprecD"
+declTypeToString  (RuleD _) =   "RuleD"
+declTypeToString  (SpliceD _) = "SpliceD"
+declTypeToString  (DocD v)  =   "DocD " ++ show v
+
 
 srcSpanToLocation :: SrcSpan -> Location
 srcSpanToLocation span | not (isGoodSrcSpan span)
@@ -355,6 +424,36 @@ matchesOccType Foreign _                        =   True
 matchesOccType _ _                              =   trace "occType mismatch " False
 
 
+
+printHsDoc :: Show alpha => HsDoc alpha  -> String
+printHsDoc DocEmpty                     =   ""
+printHsDoc (DocAppend l r)              =   printHsDoc l ++ " " ++ printHsDoc r
+printHsDoc (DocString str)              =   str
+printHsDoc (DocParagraph d)             =   "\n" ++ printHsDoc d
+printHsDoc (DocIdentifier l)            =   concatMap show l
+printHsDoc (DocModule str)              =   "Module " ++ str
+printHsDoc (DocEmphasis doc)            =   printHsDoc doc
+printHsDoc (DocMonospaced doc)          =   printHsDoc doc
+printHsDoc (DocUnorderedList l)         =   concatMap printHsDoc l
+printHsDoc (DocOrderedList l)           =   concatMap printHsDoc l
+printHsDoc (DocDefList li)              =   concatMap (\(l,r) -> printHsDoc l ++ " " ++ printHsDoc r) li
+printHsDoc (DocCodeBlock doc)           =   printHsDoc doc
+printHsDoc (DocURL str)                 =   str
+printHsDoc (DocAName str)               =   str
+
+instance Show RdrName where
+    show                                =   unpackFS . occNameFS . rdrNameOcc
+
+instance Show alpha => Show (DocDecl alpha) where
+        show  (DocCommentNext doc)      =       "DocCommentNext " ++ show doc
+        show  (DocCommentPrev doc)      =       "DocCommentPrev " ++ show doc
+        show  (DocCommentNamed str doc) =       "DocCommentNamed" ++ " " ++ str ++ " " ++ show doc
+        show  (DocGroup i doc)          =       "DocGroup" ++ " " ++ show i ++ " " ++ show doc
+
+--instance Show alpha => Show (HsDoc alpha) where
+--    show d = printHsDoc d
+
+
  ---------------------------------------------------------------------
 --  | Simple preprocessing
 
@@ -362,7 +461,7 @@ preprocess :: FilePath -> PackageDescription -> IO String
 preprocess fp pkgDescr =
     let aBuildInfo      =   head (allBuildInfo pkgDescr)
         needCpp         =   elem "-cpp" (hcOptions GHC (options aBuildInfo))
-    in do
+    in C.catch (do
         str' <-  if True
                     then do
                         tempFileName    <-  getConfigFilePathForSave "Temp.hspp"
@@ -372,18 +471,18 @@ preprocess fp pkgDescr =
                         (_, conf') <- requireProgram normal ghcProgram
                                         (orLaterVersion (Version [6,2] []))
                                         defaultProgramConfiguration
-                        C.catch (runSimplePreProcessor (ppCpp aBuildInfo
+                        runSimplePreProcessor (ppCpp aBuildInfo
                             LocalBuildInfo
                                 {   compiler=comp
-                                ,   withPrograms=conf'})
-                            fp tempFileName normal) (\e -> putStrLn $ show e)
+                                ,   withPrograms=conf'}) fp tempFileName normal
                         isItTheir <- doesFileExist tempFileName
                         if isItTheir
                             then do
+                                putStrLn $ "Succeeded to preprocess " ++ fp
                                 str <- readFile tempFileName
                                 return str
                             else do
-                                putStrLn "Failed to preprocess " ++ fp
+                                putStrLn $ "Failed to preprocess " ++ fp
                                 str <- readFile fp
                                 return str
                     else do
@@ -392,7 +491,10 @@ preprocess fp pkgDescr =
         let str2    =   if takeExtension fp == ".lhs"
                                 then unlit fp str'
                                 else str'
-        return str2
+        return str2)
+        (\e -> do   putStrLn $ "unlit error " ++ show e ++ " in " ++ fp
+                    str <- readFile fp
+                    return str)
     where
     comp = Compiler {
         compilerFlavor         = GHC,
@@ -428,7 +530,7 @@ myParseModule dflags src_filename maybe_src_buf
 
       let {ms = getMessages pst};
       printErrorsAndWarnings dflags ms;
-      when (errorsFound dflags ms) $ exitWith (ExitFailure 1);
+      -- when (errorsFound dflags ms) $ exitWith (ExitFailure 1);
 
       dumpIfSet_dyn dflags Opt_D_dump_parsed "Parser" (ppr rdr_module) ;
 
