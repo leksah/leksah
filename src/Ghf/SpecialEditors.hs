@@ -18,25 +18,17 @@ module Ghf.SpecialEditors (
 
 import Graphics.UI.Gtk
 import Graphics.UI.Gtk.ModelView as New
-import System.Directory
 import Control.Monad.Reader
 import Distribution.PackageDescription
 import Distribution.Package
-import Distribution.License
-import Data.IORef
-import Data.List(unzip4,filter)
-import Data.Version
+import Data.List(filter)
 import Distribution.Compiler
 import Distribution.Version
-import qualified Data.Map as Map
-import Data.Map (Map,(!))
 import Text.ParserCombinators.ReadP(readP_to_S)
 import Language.Haskell.Extension
 
 import Ghf.Core.State
-import Ghf.ViewFrame
 import GUI.Ghf.EditorBasics
-import GUI.Ghf.MakeEditor
 import GUI.Ghf.SimpleEditors
 import GUI.Ghf.CompositeEditors
 import GUI.Ghf.Parameters
@@ -79,8 +71,9 @@ compilerFlavorEditor para = do
         (stringEditor, paraName <<<- (ParaName "Specify compiler") $ emptyParams)
         "Other"
         (paraName <<<- ParaName "Select" $ para)
-    let cfinj (OtherCompiler str) = inj (Right "")
-    let cfinj other = inj (Left other)
+    let cfinj comp  = case comp of
+                        (OtherCompiler str) -> inj (Right "")
+                        other               -> inj (Left other)
     let cfext = do
         mbp <- ext
         case mbp of

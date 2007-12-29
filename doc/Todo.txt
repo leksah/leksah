@@ -116,17 +116,18 @@ ok  - Optimize storing and reading (binary, byteString)
 ok  - make something after an external process finishes
 
 
-!!! - New Pane for info
+ok  - New Pane for info
 
 !!! - Selecting the right from a multitude of possibilities
 
-!!! - Tree Views
+ok  - Tree Views
 
-!!! - Haddock
+~   - Haddock deferr to Haddock 2.0
 
     - Implementing event concept from Thorsten
 
-~~  - Parsing of source packages
+ok  - Parsing of source packages
+
 now - Simple version which finds the files and finds then the definition in the files
       without Parsing
 
@@ -139,4 +140,10 @@ ok  - get rid of second executable and make collector accessible from ghf comman
 Haddock:
 
 !!! - Scanning for Haddock Documentation
+
+---------------------------------------------------------------------------
+Make find usable again
+Info pane for multiple finds fold
+Reverse order source bug???
+
 

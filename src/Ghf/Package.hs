@@ -37,16 +37,12 @@ module Ghf.Package (
 ) where
 
 import Graphics.UI.Gtk
-import Graphics.UI.Gtk.SourceView.SourceBuffer
 import Control.Monad.Reader
 import Distribution.Package
 import Distribution.PackageDescription
-import Distribution.Simple.Program
-import Distribution.Simple.Setup
 import Distribution.Verbosity
 import System.FilePath
 import Control.Concurrent
-import Control.Exception hiding(try)
 import System.Directory
 import System.IO
 import System.Process
@@ -349,6 +345,7 @@ chooseDir str = do
             ResponseDeleteEvent -> do
                 widgetDestroy dialog
                 return Nothing
+            _ -> return Nothing
 
 -- ---------------------------------------------------------------------
 -- Handling of Compiler errors

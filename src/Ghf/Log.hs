@@ -13,13 +13,11 @@ module Ghf.Log (
 ) where
 
 import Graphics.UI.Gtk hiding (afterToggleOverwrite)
-import Graphics.UI.Gtk.SourceView
 import Graphics.UI.Gtk.Multiline.TextView
 import Control.Monad.Reader
 import Data.Maybe
 
 import Ghf.Core.State
-import Ghf.SourceCandy
 import Ghf.SourceEditor
 import Ghf.ViewFrame
 
@@ -46,7 +44,6 @@ instance Pane GhfLog
 
 instance ModelPane GhfLog LogState where
     saveState p     =   return (Just (StateC LogState))
-
     recoverState pp LogState = do
         nb <- getNotebook pp
         initLog pp nb

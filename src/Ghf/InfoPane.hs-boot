@@ -14,10 +14,10 @@
 -------------------------------------------------------------------------------
 
 module Ghf.InfoPane (
-    setInfo
+    setInfos
 ) where
 
 import Ghf.Core.State
 
-setInfo :: IdentifierDescr -> GhfM ()
+setInfos :: [IdentifierDescr] -> GhfM ()
 

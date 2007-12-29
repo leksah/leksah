@@ -25,8 +25,6 @@ module Ghf.Menu (
 
 import Graphics.UI.Gtk
 import Graphics.UI.Gtk.Types
-import qualified Data.Map as Map
-import Data.Map (Map,(!))
 import Control.Monad.Reader
 import System.FilePath
 import Data.Version

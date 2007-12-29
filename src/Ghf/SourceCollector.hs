@@ -30,37 +30,28 @@ import Text.ParserCombinators.Parsec
 import qualified Text.ParserCombinators.Parsec.Token as P
 import Text.ParserCombinators.Parsec.Language(emptyDef)
 import System.Directory
-import Data.Maybe(catMaybes)
 import Control.Monad.State
 import System.FilePath
 import System.IO
-import Data.List(nub)
+import Data.List(nub,delete,sort)
 import Distribution.Simple.PreProcess.Unlit
-import System.Exit
+import Distribution.Simple.PreProcess(runSimplePreProcessor,ppCpp)
+import Distribution.Simple.Program(defaultProgramConfiguration)
+import Distribution.Compiler(CompilerFlavor(..))
+import Distribution.Simple.LocalBuildInfo(LocalBuildInfo(..))
 import Distribution.Simple.Configure(configure)
 import Distribution.Simple.Setup(emptyConfigFlags)
-import Distribution.Simple.PreProcess(runSimplePreProcessor,ppCpp)
-import Distribution.Simple.Program(defaultProgramConfiguration,requireProgram,ghcProgram)
-import Distribution.Verbosity(normal)
-import Distribution.Compiler(CompilerFlavor(..))
-import Distribution.Simple.Compiler(Compiler(..))
-import Distribution.Simple.LocalBuildInfo(LocalBuildInfo(..))
-import System.Process(runCommand,waitForProcess)
-import System.Info (os, arch)
-import Data.Maybe(fromJust,mapMaybe)
-import Distribution.Version(readVersion,orLaterVersion)
+import Data.Maybe(catMaybes)
 import qualified Control.Exception as C
+import qualified Data.ByteString.Char8 as BS
 
 
-import GHC
-import BasicTypes
+import GHC hiding (idType)
 import SrcLoc
 import RdrName
 import OccName
 import DynFlags
-import Finder
 import PackageConfig hiding (exposedModules)
-import Module
 import StringBuffer
 import Bag
 import ErrUtils
@@ -69,12 +60,10 @@ import Lexer hiding (lexer)
 import Parser
 import Outputable hiding (char)
 import HscStats
-import Config(cProjectVersion)
 
 import Ghf.Core.State hiding(trace)
 import Ghf.File
 import Ghf.Preferences
-import Ghf.Info
 
 import Debug.Trace
 
@@ -270,9 +259,24 @@ collectSources session  sourceMap pdescr = do
         Nothing -> do
             putStrLn $ "No source for package " ++ showPackageId (packagePD pdescr)
             return (pdescr,0)
-        Just cabalPath -> do
-            pkgDescr        <-  readPackageDescription silent cabalPath >>=
-                                    (\gpd -> return (flattenPackageDescription gpd))
+        Just cabalPath -> C.catch (do
+            let basePath        =   takeDirectory cabalPath
+            dflags0             <-  getSessionDynFlags session
+            setSessionDynFlags session dflags0
+                {   topDir      =   basePath
+                ,   ghcMode     =   CompManager
+                }
+            dflags1         <-  getSessionDynFlags session
+            let flags       =   ["-fglasgow-exts",("-I" ++ basePath </> "include"),"-haddock"]
+            (dflags2,_)     <-  parseDynamicFlags dflags1 flags
+            putStrLn $ "flags = " ++ show flags
+
+            setSessionDynFlags session dflags2
+
+            genPkgDescr     <-  readPackageDescription silent cabalPath
+            let pkgDescr    =   flattenPackageDescription genPkgDescr
+            localBuildInfo  <-  configure (Left genPkgDescr, emptyHookedBuildInfo)
+                                    (emptyConfigFlags defaultProgramConfiguration)
             --let allModules  =   libModules pd ++ exeModules pd
             let exposedMods =   exposedModulesPD pdescr
             let buildPaths  =   nub $ ("dist" </> "build" </> "autogen") :
@@ -283,38 +287,46 @@ collectSources session  sourceMap pdescr = do
                                         ["hs","lhs"])
                                         (map (modu . moduleIdMD) exposedMods)
             (newModDescrs,failureCount)
-                            <-  foldM (collectSourcesForModule session pkgDescr) ([],0)
+                            <-  foldM (collectSourcesForModule session genPkgDescr
+                                            localBuildInfo) ([],0)
                                                 (zip (exposedModulesPD pdescr) sourceFiles)
             let nPackDescr  =   pdescr{mbSourcePathPD = Just cabalPath,
                                             exposedModulesPD = newModDescrs}
-            return (nPackDescr,failureCount)
+            return (nPackDescr,failureCount))
+            (\e -> do   putStrLn $ "source collector error " ++ show e ++ " in " ++
+                            showPackageId (packagePD pdescr)
+                        return (pdescr,length $ exposedModulesPD pdescr))
 
 -- ---------------------------------------------------------------------
 -- | Collect infos from sources for one module
 --
 collectSourcesForModule :: Session
-    -> PackageDescription
+    -> GenericPackageDescription
+    -> LocalBuildInfo
     ->  ([ModuleDescr],Int)
     -> (ModuleDescr, Maybe FilePath)
     -> IO ([ModuleDescr],Int)
-collectSourcesForModule session pkgDescr (moduleDescrs,failureCount) (moduleDescr,mbfp) =
+collectSourcesForModule session pkgDescr localBuildInfo (moduleDescrs,failureCount)
+    (moduleDescr,mbfp) =
     case mbfp of
         Nothing ->  do
             putStrLn $ "No source for module " ++ (modu $ moduleIdMD moduleDescr)
             return(moduleDescr : moduleDescrs, failureCount+1)
         Just fp ->  do
-            str             <-  preprocess fp pkgDescr
+            str             <-  preprocess fp pkgDescr localBuildInfo
             stringBuffer    <-  stringToStringBuffer str
             dynFlags        <-  getSessionDynFlags session
             parseResult     <-  myParseModule dynFlags fp (Just stringBuffer)
             let newModD     =   moduleDescr{mbSourcePathMD = mbfp}
             case parseResult of
                 Right (L _ (HsModule _ _ _ decls _ _ _ _)) -> do
-                    putStrLn $ "Succeeded to parse " ++ fp ++ " " ++ show (length decls)
-                    let map'    =   convertToMap (idDescriptionsMD newModD)
-                    let commentedDecls = addComments decls
-                    let descrs  =   mapMaybe (collectParseInfoForDecl map') commentedDecls
-                    let newModD' =  newModD{idDescriptionsMD = descrs}
+                    --putStrLn $ "Succeeded to parse " ++ fp ++ " " ++ show (length decls)
+                    let map'                =   convertToMap (idDescriptionsMD newModD)
+                    let commentedDecls      =   addComments (filterSignatures decls)
+                    let (descrs,restMap)    =   foldl collectParseInfoForDecl ([],map')
+                                                    commentedDecls
+                    let newModD'            =   newModD{
+                        idDescriptionsMD    =   reverse descrs ++ concat (Map.elems restMap)}
                     return(newModD' : moduleDescrs, failureCount)
                 Left errMsg -> do
                     putStrLn $ "Failed to parse " ++ fp
@@ -327,6 +339,12 @@ collectSourcesForModule session pkgDescr (moduleDescrs,failureCount) (moduleDesc
         Map.empty list
     convertFromMap :: Map Symbol [IdentifierDescr]  -> [IdentifierDescr]
     convertFromMap      =   concat . Map.elems
+
+filterSignatures :: [LHsDecl RdrName] -> [LHsDecl RdrName]
+filterSignatures declList = filter filterSignature declList
+    where
+    filterSignature (L srcDecl (SigD _)) = False
+    filterSignature _ = True
 
 addComments :: [LHsDecl RdrName] -> [(Maybe (LHsDecl RdrName), Maybe String)]
 addComments declList = reverse $ snd $ foldl addComment (Nothing,[]) declList
@@ -350,48 +368,85 @@ addComments declList = reverse $ snd $ foldl addComment (Nothing,[]) declList
     addComment (Just comment,resultList) decl =
         (Nothing,(Just decl,Just comment):resultList)
 
-collectParseInfoForDecl ::  SymbolTable ->
-    (Maybe (LHsDecl RdrName),Maybe String) ->
-     Maybe IdentifierDescr
-collectParseInfoForDecl st (Just (L loc _),_) | not (isGoodSrcSpan loc) = Nothing
-collectParseInfoForDecl st ((Just (L srcDecl (ValD (FunBind lid _ _ _ _ _)))), mbComment')
-    =   let occ         =   rdrNameOcc (unLoc lid)
-            name        =   unpackFS (occNameFS occ)
-            mbItems     =   Map.lookup name st
-            mbItem      =   case mbItems of
-                                Nothing -> Nothing
-                                Just [item] -> Just item
-                                Just items
-                                    -> case filter (\i -> matchesOccType (identifierTypeID i)
-                                                    (occNameSpace occ)) items of
-                                            []  ->  Nothing
-                                            l   ->  Just (head l)
-        in case mbItem of
-            Nothing         -> Nothing
-            Just identDescr -> Just (identDescr{mbLocation = Just (srcSpanToLocation srcDecl),
-                                                mbComment = mbComment'})
-collectParseInfoForDecl st ((Just (L srcDecl (TyClD (TyData _ _ lid _ _ _ _ _)))), mbComment')
-    =   let occ         =   rdrNameOcc (unLoc lid)
-            name        =   unpackFS (occNameFS occ)
-            mbItems     =   Map.lookup name st
-            mbItem      =   case mbItems of
-                                Nothing -> Nothing
-                                Just [item] -> Just item
-                                Just items
-                                    -> case filter (\i -> matchesOccType (identifierTypeID i)
-                                                    (occNameSpace occ)) items of
-                                            []  ->  Nothing
-                                            l   ->  Just (head l)
-        in case mbItem of
-            Nothing         -> Nothing
-            Just identDescr -> Just (identDescr{mbLocation = Just (srcSpanToLocation srcDecl),
-                                                mbComment = mbComment'})
-collectParseInfoForDecl st (Just decl,mbComment')    =
-    trace (declTypeToString (unLoc decl) ++ "--" ++ (showSDocUnqual $ppr decl)) Nothing
-collectParseInfoForDecl st (Nothing, mbComment')    =
-    trace ("Found comment " ++ show mbComment') Nothing
+collectParseInfoForDecl ::  ([IdentifierDescr],SymbolTable)
+    -> (Maybe (LHsDecl RdrName),Maybe String)
+    -> ([IdentifierDescr],SymbolTable)
+collectParseInfoForDecl (l,st) (Just (L loc _),_) | not (isGoodSrcSpan loc) = (l,st)
+collectParseInfoForDecl (l,st) ((Just (L loc (ValD (FunBind lid _ _ _ _ _)))), mbComment')
+    =   addLocationAndComment (l,st) (unLoc lid) loc mbComment' [Function] []
+collectParseInfoForDecl (l,st) ((Just (L loc (TyClD (TyData _ _ lid _ _ _ _ _)))), mbComment')
+    =   addLocationAndComment (l,st) (unLoc lid) loc mbComment' [Data] []
+collectParseInfoForDecl (l,st) ((Just (L loc (TyClD (TyFamily _ lid _ _)))), mbComment')
+    =   addLocationAndComment (l,st) (unLoc lid) loc mbComment' [] []
+collectParseInfoForDecl (l,st) ((Just (L loc (TyClD (TySynonym lid _ _ _)))), mbComment')
+    =   addLocationAndComment (l,st) (unLoc lid) loc mbComment' [Synonym] []
+collectParseInfoForDecl (l,st) ((Just (L loc (TyClD (ClassDecl _ lid _ _ _ _ _ _ )))), mbComment')
+    =   addLocationAndComment (l,st) (unLoc lid) loc mbComment' [Class] []
+collectParseInfoForDecl (l,st) ((Just (L loc (InstD (InstDecl lid binds sigs cldecl)))), mbComment')
+    =   case unLoc lid of
+            HsForAllTy	_ _ _ e ->
+                case unLoc e of
+                    HsPredTy p       ->
+                        case p of
+                            HsClassP n types
+                                -> --trace ("name: " ++ unpackFS (occNameFS (rdrNameOcc n)) ++ "\n" ++
+                                          --"binds : " ++ showSDocUnqual (ppr binds) ++ "\n" ++
+                                          --"sigs : " ++ showSDocUnqual (ppr sigs) ++ "\n" ++
+                                          --"cldecl : " ++ showSDocUnqual (ppr cldecl) ++ "\n" ++
+                                   --       "types : " ++ showSDocUnqual (ppr types)) $
+                                   addLocationAndComment (l,st) n loc mbComment' [Instance]
+                                            (map (\t -> analyse (unLoc t)) types)
+                            _   -> trace ("lid3:Other") (l,st)
+                    _                   -> trace "lid2:Other"    (l,st)
+            _                   -> trace "lid:Other"    (l,st)
+    where
+    analyse (HsTyVar n)             =   unpackFS (occNameFS (rdrNameOcc n))
+    analyse (HsForAllTy n _ _ _)    =   trace "lid5:For all" ""
+    analyse _                       =   trace "lid5:Other" ""
+collectParseInfoForDecl (l,st) (Just decl,mbComment')
+    =   trace (declTypeToString (unLoc decl) ++ "--" ++ (showSDocUnqual $ppr decl)) (l,st)
+collectParseInfoForDecl (l,st) (Nothing, mbComment')    =
+    trace ("Found comment " ++ show mbComment') (l,st)
 
-    
+
+addLocationAndComment :: ([IdentifierDescr],SymbolTable)
+    -> RdrName
+    -> SrcSpan
+    -> Maybe String
+    -> [IdType]
+    -> [String]
+    -> ([IdentifierDescr],SymbolTable)
+addLocationAndComment (l,st) lid srcSpan mbComment' types insts =
+    let occ         =   rdrNameOcc lid
+        name        =   unpackFS (occNameFS occ)
+        mbItems     =   Map.lookup name st
+        (mbItem,nst)=   case mbItems of
+                            Nothing     -> (Nothing,st)
+                            Just [i]    ->  (Just i, Map.delete name st)
+                            Just list   ->
+                                case filter (\i -> matches i types insts) list of
+                                    []  ->  (Nothing,st)
+                                    l'  ->  (Just (head l'),
+                                                Map.adjust (\li -> delete (head l') li)
+                                                    name st)
+    in case mbItem of
+        Nothing             ->  (l,st)
+        Just identDescr     ->  (identDescr{
+                mbLocation  =   Just (srcSpanToLocation srcSpan),
+                mbComment   =   case mbComment' of
+                                    Nothing -> Nothing
+                                    Just s -> Just (BS.pack s)}
+                                     : l, nst)
+
+    where
+    matches :: IdentifierDescr -> [IdType] -> [String] -> Bool
+    matches idDescr idTypes inst =
+        case idType idDescr of
+            Instance ->
+                --trace ("instances " ++ show (sort (binds idDescr)) ++ " -- ?= -- " ++ show (sort inst)) $
+                elem Instance idTypes && sort (binds idDescr) == sort inst
+            other   -> elem other idTypes
+
 declTypeToString :: Show alpha => HsDecl alpha -> String
 declTypeToString  (TyClD	_)  =   "TyClD"
 declTypeToString  (InstD _) =   "InstD"
@@ -413,30 +468,19 @@ srcSpanToLocation span
     =   Location (srcSpanStartLine span) (srcSpanStartCol span)
                  (srcSpanEndLine span) (srcSpanEndCol span)
 
-matchesOccType :: IdType -> NameSpace -> Bool
-matchesOccType Function varName                 =   True
-matchesOccType Data     tcName                  =   True
-matchesOccType Newtype  _                       =   True
-matchesOccType Synonym  _                       =   True
-matchesOccType AbstractData _                   =   True
-matchesOccType Class clsName                    =   True
-matchesOccType Foreign _                        =   True
-matchesOccType _ _                              =   trace "occType mismatch " False
-
-
-
 printHsDoc :: Show alpha => HsDoc alpha  -> String
 printHsDoc DocEmpty                     =   ""
 printHsDoc (DocAppend l r)              =   printHsDoc l ++ " " ++ printHsDoc r
 printHsDoc (DocString str)              =   str
-printHsDoc (DocParagraph d)             =   "\n" ++ printHsDoc d
+printHsDoc (DocParagraph d)             =   printHsDoc d ++ "\n"
 printHsDoc (DocIdentifier l)            =   concatMap show l
 printHsDoc (DocModule str)              =   "Module " ++ str
 printHsDoc (DocEmphasis doc)            =   printHsDoc doc
 printHsDoc (DocMonospaced doc)          =   printHsDoc doc
 printHsDoc (DocUnorderedList l)         =   concatMap printHsDoc l
 printHsDoc (DocOrderedList l)           =   concatMap printHsDoc l
-printHsDoc (DocDefList li)              =   concatMap (\(l,r) -> printHsDoc l ++ " " ++ printHsDoc r) li
+printHsDoc (DocDefList li)              =   concatMap (\(l,r) -> printHsDoc l ++ " " ++
+                                                printHsDoc r) li
 printHsDoc (DocCodeBlock doc)           =   printHsDoc doc
 printHsDoc (DocURL str)                 =   str
 printHsDoc (DocAName str)               =   str
@@ -457,9 +501,9 @@ instance Show alpha => Show (DocDecl alpha) where
  ---------------------------------------------------------------------
 --  | Simple preprocessing
 
-preprocess :: FilePath -> PackageDescription -> IO String
-preprocess fp pkgDescr =
-    let aBuildInfo      =   head (allBuildInfo pkgDescr)
+preprocess :: FilePath -> GenericPackageDescription -> LocalBuildInfo -> IO String
+preprocess fp pkgDescr localBuildInfo =
+    let aBuildInfo      =   head (allBuildInfo (flattenPackageDescription pkgDescr))
         needCpp         =   elem "-cpp" (hcOptions GHC (options aBuildInfo))
     in C.catch (do
         str' <-  if True
@@ -468,17 +512,18 @@ preprocess fp pkgDescr =
                         isItTheir       <-  doesFileExist tempFileName
                         when isItTheir  $
                             removeFile tempFileName
-                        (_, conf') <- requireProgram normal ghcProgram
-                                        (orLaterVersion (Version [6,2] []))
-                                        defaultProgramConfiguration
-                        runSimplePreProcessor (ppCpp aBuildInfo
-                            LocalBuildInfo
-                                {   compiler=comp
-                                ,   withPrograms=conf'}) fp tempFileName normal
+--                        (_, conf') <- requireProgram normal ghcProgram
+--                                        (orLaterVersion (Version [6,2] []))
+--                                        defaultProgramConfiguration
+
+--                        localBuildInfo' <- localBuildInfo pkgDescr conf'
+
+                        runSimplePreProcessor (ppCpp aBuildInfo localBuildInfo)
+                                                fp tempFileName normal
                         isItTheir <- doesFileExist tempFileName
                         if isItTheir
                             then do
-                                putStrLn $ "Succeeded to preprocess " ++ fp
+                                -- putStrLn $ "Succeeded to preprocess " ++ fp
                                 str <- readFile tempFileName
                                 return str
                             else do
@@ -492,16 +537,35 @@ preprocess fp pkgDescr =
                                 then unlit fp str'
                                 else str'
         return str2)
-        (\e -> do   putStrLn $ "unlit error " ++ show e ++ " in " ++ fp
+        (\e -> do   putStrLn $ "preprocess error " ++ show e ++ " in " ++ fp
                     str <- readFile fp
                     return str)
     where
-    comp = Compiler {
-        compilerFlavor         = GHC,
-        compilerId             = PackageIdentifier "ghc"
-                                        (fromJust $ readVersion cProjectVersion),
-        compilerExtensions     = []
-      }
+--    comp = Compiler {
+--        compilerFlavor         = GHC,
+--        compilerId             = PackageIdentifier "ghc"
+--                                        (fromJust $ readVersion cProjectVersion),
+--        compilerExtensions     = []
+--      }
+--    localBuildInfo pd conf = do
+--        installDirs <-  defaultInstallDirs GHC False
+--        return LocalBuildInfo
+--                {   installDirTemplates =   installDirs
+--        	    ,   compiler            =   comp
+--        	    ,   buildDir            =   ""
+--        	    ,   scratchDir          =   ""
+--        	    ,   packageDeps         =   []
+--                ,   pkgDescrFile        =   Nothing
+--                ,   localPkgDescr       =   pd
+--                ,   withPrograms        =   conf
+--                ,   withPackageDB       =   GlobalPackageDB
+--                ,   withVanillaLib      =   False
+--                ,   withProfLib         =   False
+--                ,   withSharedLib       =   False
+--                ,   withProfExe         =   False
+--                ,   withOptimization    =   False
+--                ,   withGHCiLib         =   False
+--        	    ,   splitObjs           =   False}
 
  ---------------------------------------------------------------------
 --  | Parser function copied here, because it is not exported
@@ -541,3 +605,48 @@ myParseModule dflags src_filename maybe_src_buf
 	-- ToDo: free the string buffer later.
       }}
 
+
+ ---------------------------------------------------------------------
+--  | Parser function copied here, because it is not exported
+
+--constructGHCCmdLine
+--        :: LocalBuildInfo
+--        -> BuildInfo
+--        -> FilePath
+--        -> Verbosity
+--        -> [String]
+--constructGHCCmdLine lbi bi odir verbosity =
+--        ["--make"]
+--     ++ ghcVerbosityOptions verbosity
+--        -- Unsupported extensions have already been checked by configure
+--     ++ ghcOptions lbi bi odir
+--
+--ghcVerbosityOptions :: Verbosity -> [String]
+--ghcVerbosityOptions verbosity
+--     | verbosity >= deafening = ["-v"]
+--     | verbosity >= normal    = []
+--     | otherwise              = ["-w", "-v0"]
+--
+--ghcOptions :: LocalBuildInfo -> BuildInfo -> FilePath -> [String]
+--ghcOptions lbi bi odir
+--     =  (if compilerVersion c > Version [6,4] []
+--            then ["-hide-all-packages"]
+--            else [])
+--     ++ (if splitObjs lbi then ["-split-objs"] else [])
+--     ++ ["-i"]
+--     ++ ["-i" ++ autogenModulesDir lbi]
+--     ++ ["-i" ++ odir]
+--     ++ ["-i" ++ l | l <- nub (hsSourceDirs bi)]
+--     ++ ["-I" ++ odir]
+--     ++ ["-I" ++ dir | dir <- includeDirs bi]
+--     ++ ["-optP" ++ opt | opt <- cppOptions bi]
+--     ++ ["-optc" ++ opt | opt <- ccOptions bi]
+--     ++ [ "-#include \"" ++ inc ++ "\"" | inc <- includes bi ]
+--     ++ [ "-odir",  odir, "-hidir", odir ]
+--     ++ (if compilerVersion c >= Version [6,8] []
+--           then ["-stubdir", odir] else [])
+--     ++ (concat [ ["-package", showPackageId pkg] | pkg <- packageDeps lbi ])
+--     ++ (if withOptimization lbi then ["-O"] else [])
+--     ++ hcOptions GHC (options bi)
+--     ++ extensionsToFlags c (extensions bi)
+--    where c = compiler lbi

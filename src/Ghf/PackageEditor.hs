@@ -39,7 +39,6 @@ import Ghf.File
 import Ghf.SpecialEditors
 import Ghf.ViewFrame
 import Ghf.BuildInfoEditor
-import GUI.Ghf.EditorBasics
 import GUI.Ghf.MakeEditor
 import GUI.Ghf.SimpleEditors
 import GUI.Ghf.CompositeEditors
@@ -74,6 +73,7 @@ choosePackageDir window = do
         ResponseDeleteEvent -> do
             widgetDestroy dialog
             return Nothing
+        _                   -> return Nothing
 
 choosePackageFile :: Window -> IO (Maybe FilePath)
 choosePackageFile window = do
@@ -98,6 +98,7 @@ choosePackageFile window = do
         ResponseDeleteEvent -> do
             widgetDestroy dialog
             return Nothing
+        _                   -> return Nothing
 
 packageEdit :: GhfAction
 packageEdit = do

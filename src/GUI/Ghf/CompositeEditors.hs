@@ -24,7 +24,6 @@ import Graphics.UI.Gtk
 import Graphics.UI.Gtk.ModelView as New
 import Control.Monad
 import Data.IORef
-import Data.List
 import Data.Maybe
 
 import Data.Ghf.Default
@@ -79,7 +78,7 @@ pairEditor (fstEd,fstPara) (sndEd,sndPara) parameters = do
 
 --
 -- | An editor with a subeditor which gets active, when a checkbox is selected
--- | or deselected (if the positive Argument is False)
+-- or deselected (if the positive Argument is False)
 --
 maybeEditor :: Default beta => (Editor beta, Parameters) -> Bool -> String -> Editor (Maybe beta)
 maybeEditor (childEdit, childParams) positive boolLabel parameters = do
@@ -199,7 +198,7 @@ maybeEditor (childEdit, childParams) positive boolLabel parameters = do
 
 --
 -- | An editor with a subeditor which gets active, when a checkbox is selected
--- | or deselected (if the positive Argument is False)
+-- or deselected (if the positive Argument is False)
 eitherOrEditor :: (Default alpha, Default beta) => (Editor alpha, Parameters) ->
                         (Editor beta, Parameters) -> String -> Editor (Either alpha beta)
 eitherOrEditor (leftEditor,leftParams) (rightEditor,rightParams) label2 parameters = do

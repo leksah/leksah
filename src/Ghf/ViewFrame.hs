@@ -63,7 +63,6 @@ module Ghf.ViewFrame (
 ) where
 
 import Graphics.UI.Gtk hiding (afterToggleOverwrite)
-import Graphics.UI.Gtk.Multiline.TextView
 import Control.Monad.Reader
 import qualified Data.Map as Map
 import Data.Map (Map)
@@ -392,21 +391,22 @@ bringPaneToFront pane = do
     mbParent <- widgetGetParent tv
     case mbParent of
         Just parent -> do
-        let nb = castToNotebook parent
-        n <- notebookGetNPages nb
-        r <- filterM (\i -> do
-                    mbp <-  notebookGetNthPage nb i
-                    case mbp of
-                        Nothing -> return False
-                        Just p -> do
-                            mbs <- notebookGetTabLabelText nb p
-                            case mbs of
-                                Nothing -> return False
-                                Just s -> return (s == paneName pane))
-                                [0..(n-1)]
-        case r of
-            [i] -> notebookSetCurrentPage nb i
-            otherwise -> return ()
+            let nb = castToNotebook parent
+            n <- notebookGetNPages nb
+            r <- filterM (\i -> do
+                        mbp <-  notebookGetNthPage nb i
+                        case mbp of
+                            Nothing -> return False
+                            Just p -> do
+                                mbs <- notebookGetTabLabelText nb p
+                                case mbs of
+                                    Nothing -> return False
+                                    Just s -> return (s == paneName pane))
+                                    [0..(n-1)]
+            case r of
+                [i] -> notebookSetCurrentPage nb i
+                otherwise -> return ()
+        Nothing -> return ()
 
 --
 -- | Get a concrete panePath from a standard path.

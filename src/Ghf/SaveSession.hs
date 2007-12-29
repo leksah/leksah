@@ -22,22 +22,16 @@ module Ghf.SaveSession (
 ) where
 
 import Graphics.UI.Gtk hiding (showLayout)
-import Text.ParserCombinators.Parsec.Language
-import qualified Text.ParserCombinators.Parsec.Token as P
 import Text.ParserCombinators.Parsec hiding(Parser)
 import Control.Monad.Reader
 import System.FilePath
-import System.Directory
 import qualified Data.Map as Map
 import Data.Maybe
 
-import Ghf.Log
 import Ghf.Core.State
 import Ghf.ViewFrame
-import Ghf.SourceEditor
 import Ghf.File
 import Ghf.PrinterParser
-import Ghf.ModulesPane
 import qualified Text.PrettyPrint.HughesPJ as PP
 import GUI.Ghf.Parameters
 import Ghf.Package

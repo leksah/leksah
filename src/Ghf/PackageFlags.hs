@@ -20,25 +20,19 @@ module Ghf.PackageFlags (
 ,   editFlags
 ) where
 
-import Graphics.UI.Gtk.SourceView
 import Graphics.UI.Gtk
 import Control.Monad.Reader
 import qualified Text.ParserCombinators.Parsec as P
-import Data.IORef
 import Data.List
 import System.IO
 import qualified Text.PrettyPrint.HughesPJ as PP
 
 import Ghf.Core.State
-import GUI.Ghf.EditorBasics
 import GUI.Ghf.MakeEditor hiding (fieldEditor, parameters)
 import GUI.Ghf.SimpleEditors
-import GUI.Ghf.CompositeEditors
 import GUI.Ghf.Parameters
 
-import Ghf.SourceEditor
 import Ghf.PrinterParser hiding (fieldParser, parameters)
-import Ghf.File
 import Ghf.ViewFrame
 import Ghf.DescriptionPP
 

@@ -16,15 +16,14 @@ module Ghf.RecoverPanes (
     paneStateToGhfState
 ) where
 
-import Data.Maybe
 
 import Ghf.Core.State
-import Ghf.Log
-import Ghf.SourceEditor
-import Ghf.ModulesPane
-import Ghf.InfoPane
-import Ghf.ToolbarPane
-import Ghf.FindPane
+import Ghf.Log()
+import Ghf.SourceEditor()
+import Ghf.ModulesPane()
+import Ghf.InfoPane()
+import Ghf.ToolbarPane()
+import Ghf.FindPane()
 
 
 

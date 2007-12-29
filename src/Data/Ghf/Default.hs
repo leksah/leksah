@@ -20,22 +20,21 @@ module Data.Ghf.Default (
 --
 -- | A class for providing default values for certain types of editors
 --
-class Default a where
-    getDefault      ::  a
+class Default alpha where
+    getDefault      ::   alpha
 
 instance Default Int where
-    getDefault = 1
+    getDefault      =   1
 
-instance Default a => Default (Either a b)
-    where
-        getDefault =  Left(getDefault)
+instance Default alpha  => Default (Either alpha beta) where
+        getDefault  =   Left(getDefault)
 
-instance (Default alpha, Default beta) => Default (alpha,beta)
-    where getDefault = (getDefault,getDefault)
+instance (Default alpha, Default beta) => Default (alpha, beta) where
+        getDefault  =   (getDefault,getDefault)
 
 instance Default [alpha] where
-    getDefault = []
+        getDefault  =   []
 
 instance Default (Maybe alpha) where
-    getDefault = Nothing
+    getDefault      =   Nothing
 

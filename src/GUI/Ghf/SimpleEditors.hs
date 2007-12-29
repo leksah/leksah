@@ -467,6 +467,7 @@ fileEditor mbFilePath action buttonName parameters = do
                 ResponseDeleteEvent-> do
                     widgetDestroy dialog
                     return Nothing
+                _   -> return Nothing
         case mbFileName of
             Nothing -> return True
             Just fn -> do

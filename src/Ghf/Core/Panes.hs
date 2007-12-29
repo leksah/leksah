@@ -40,6 +40,7 @@ module Ghf.Core.Panes (
 ,   LogState(..)
 ,   GhfInfo(..)
 ,   InfoState(..)
+,   FacetWrapper(..)
 ,   GhfModules(..)
 ,   ModulesState(..)
 ,   GhfCallers(..)
@@ -57,9 +58,7 @@ import Graphics.UI.Gtk.ModelView as New
 import System.Glib.Signals
 import Data.Maybe
 import System.Time
-import Control.Monad.Reader
 import GHC.IOBase hiding (BufferState)
-import Text.ParserCombinators.ReadP
 
 import Ghf.Core.Types
 import {-# SOURCE #-} Ghf.Core.State
@@ -199,6 +198,7 @@ data GhfBuffer      =   GhfBuffer {
 ,   modTime         ::  Maybe (ClockTime)
 }
 
+
 instance CastablePane GhfBuffer where
     casting _       =   BufferCasting
     downCast _ (PaneC a)
@@ -248,8 +248,13 @@ instance CastableModel LogState where
 --
 data GhfInfo        =   GhfInfo {
     sw              ::   ScrolledWindow
+,   currentIDs      ::   IORef [IdentifierDescr]
+,   currentInd      ::   IORef Int
 ,   injectors       ::   [IdentifierDescr -> IO()]
 ,   extractors      ::   [IdentifierDescr -> Extractor IdentifierDescr]
+,   nextB           ::   Button
+,   prevB           ::   Button
+,   numLabel        ::   Label
 }
 
 instance CastablePane GhfInfo where
@@ -258,7 +263,7 @@ instance CastablePane GhfInfo where
                                     InfoCasting -> Just a
                                     _           -> Nothing
 
-data InfoState              =   InfoState IdentifierDescr
+data InfoState              =   InfoState [IdentifierDescr] Int
     deriving(Eq,Ord,Read,Show)
 
 instance Model InfoState where
@@ -273,11 +278,18 @@ instance CastableModel InfoState where
 -- | A modules pane description
 --
 
+data FacetWrapper =
+        Itself IdentifierDescr
+    |   ConstructorW Symbol IdentifierDescr
+    |   FieldW Symbol IdentifierDescr
+    |   ClassOpsW Symbol IdentifierDescr
+    |   OrphanedData IdentifierDescr
+
 data GhfModules     =   GhfModules {
     paned           ::   HPaned
 ,   treeView        ::   New.TreeView
 ,   treeStore       ::   New.TreeStore (String, [(ModuleDescr,PackageDescr)])
-,   facetStore      ::   New.ListStore (String, IdentifierDescr)
+,   facetStore      ::   New.TreeStore FacetWrapper
 }
 
 instance CastablePane GhfModules where

@@ -72,26 +72,19 @@ import Data.IORef
 import System.IO
 import System.FilePath
 import System.Directory
-import System.Console.GetOpt
-import System.Environment
-import Data.Maybe ( fromMaybe, isJust, fromJust)
 import Text.Printf
 import Data.Char(toUpper)
 import qualified Data.Map as Map
-import Data.Map (Map)
 import Data.List
 import Data.Maybe
 
 import Ghf.Core.State
 import Ghf.ViewFrame
 import Ghf.SourceCandy
-import Ghf.BuildInfoEditor
 import GUI.Ghf.EditorBasics
 import GUI.Ghf.MakeEditor
 import GUI.Ghf.SimpleEditors
-import GUI.Ghf.CompositeEditors
 import GUI.Ghf.Parameters
-import {-# SOURCE #-} Ghf.Log
 import Ghf.Info
 import {-# SOURCE #-} Ghf.InfoPane
 import {-# SOURCE #-} Ghf.FindPane
@@ -385,6 +378,7 @@ checkModTime buf = do
                                                         else b) name panes
                                             modifyGhf_ (\ghf -> return (ghf{panes = newPanes}))
                                             lift $widgetHide md
+                                        _           ->  do return ()
                                 else return ()
                 else return ()
         Nothing -> return ()
@@ -468,7 +462,7 @@ showInfo sv ghfR = do
         Just ((_,symbolTable1),(_,symbolTable2)) ->
             case getIdentifierDescr symbol symbolTable1 symbolTable2 of
                 [] -> return ()
-                a -> runReaderT (setInfo (head a)) ghfR
+                a -> runReaderT (setInfos a) ghfR
 
 markLabelAsChanged :: GhfAction
 markLabelAsChanged = do
@@ -549,6 +543,7 @@ fileSave query = inBufContext' () $ \ nb _ currentBuffer i -> do
                                 ResponseAccept ->       fileChooserGetFilename dialog
                                 ResponseCancel ->       return Nothing
                                 ResponseDeleteEvent->   return Nothing
+                                _               ->      return Nothing
                         widgetDestroy dialog
                         case mbFileName of
                             Nothing -> return Nothing
@@ -587,6 +582,7 @@ fileSave query = inBufContext' () $ \ nb _ currentBuffer i -> do
                                         notebookSetTabLabel nb page label
                                         return (Just (newBufs,newPaneMap))
                                     ResponseNo -> return Nothing
+                                    _           -> return Nothing
     case mbnbufsPm of
         Just (nbufs,pm) -> modifyGhf_
             (\ghf -> return (ghf{panes = nbufs, paneMap = pm}))
@@ -642,6 +638,7 @@ fileClose = inBufContext' True $ \nb gtkbuf currentBuffer i -> do
                         return False
                     ResponseCancel  ->   return True
                     ResponseNo      ->   return False
+                    _               ->   return False
             else return False
     if cancel
         then return False
@@ -689,6 +686,7 @@ fileOpen = do
             ResponseDeleteEvent-> do
                 widgetDestroy dialog
                 return Nothing
+            _ -> return Nothing
     case mbFileName of
         Nothing -> return ()
         Just fn -> do
@@ -775,6 +773,7 @@ editFindKey k@(Key _ _ _ _ _ _ _ _ _ _)
             textBufferPlaceCursor gtkbuf st1
             widgetGrabFocus $ sourceView currentBuffer
     | otherwise = return ()
+editFindKey _ = return ()
 
 data SearchHint = Forward | Backward | Insert | Delete | Initial
     deriving (Eq)
@@ -932,6 +931,9 @@ editGotoLineKey k@(Key _ _ _ _ _ _ _ _ _ _)
             lift $ do
                 widgetGrabFocus $ sourceView currentBuffer
     | otherwise = return ()
+editGotoLineKey _ = return ()
+
+
 
 editGotoLineEnd :: GhfAction
 editGotoLineEnd = inBufContext' () $ \_ gtkbuf currentBuffer _ -> do

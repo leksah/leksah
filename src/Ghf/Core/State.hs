@@ -40,13 +40,9 @@ module Ghf.Core.State (
 ) where
 
 import Debug.Trace
-import Graphics.UI.Gtk.SourceView
 import Graphics.UI.Gtk hiding (get)
-import Graphics.UI.Gtk.ModelView as New
 import Data.Map (Map)
 import qualified Data.Map as Map
-import Data.Set(Set)
-import qualified Data.Set as Set
 import Data.IORef
 import Control.Monad.Reader
 import GHC (Session)
@@ -100,7 +96,7 @@ type GhfM = ReaderT (GhfRef) IO
 
 --
 -- | A shorthand for a reader monad for a mutable reference to the IDE state
--- | which does not return a value
+--   which does not return a value
 --
 type GhfAction = GhfM ()
 

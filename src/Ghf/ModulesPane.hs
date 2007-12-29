@@ -21,25 +21,18 @@ module Ghf.ModulesPane (
 
 import Graphics.UI.Gtk hiding (get)
 import Graphics.UI.Gtk.ModelView as New
-import System.Glib.Signals
 import Data.Maybe
 import Control.Monad.Reader
-import Data.Map (Map)
 import qualified Data.Map as Map
-import Data.Set (Set)
-import qualified Data.Set as Set
 import Data.Tree
 import Data.List
 import Distribution.Package
-import Distribution.PackageDescription
-import System.Glib.GObject
 import Data.Char (toLower)
 
 import Ghf.Core.State
 import Ghf.ViewFrame
 import Ghf.InfoPane
 import Ghf.SourceEditor
-import Ghf.Info
 
 instance Pane GhfModules
     where
@@ -140,6 +133,9 @@ initModules panePath nb = do
     prefs       <-  readGhf prefs
     currentInfo <-  readGhf currentInfo
     (buf,cids)  <-  lift $ do
+
+-- Modules List
+
         let forest  = case currentInfo of
                         Nothing     ->  []
                         Just pair   ->  subForest (buildModulesTree pair)
@@ -187,16 +183,18 @@ initModules panePath nb = do
                     $ intersperse  ", "
                         $ map (showPackageId . packagePD . snd) (snd row)]
 
+-- Facet view
+
         facetView   <-  New.treeViewNew
-        facetStore  <-  New.listStoreNew []
+        facetStore  <-  New.treeStoreNew []
         New.treeViewSetModel facetView facetStore
         New.treeViewSetEnableSearch facetView True
-        New.treeViewSetSearchColumn facetView 0
-        New.treeViewSetSearchEqualFunc facetView
-            (\ _ string iter -> do
-                [ind]   <- New.treeModelGetPath facetStore iter
-                val     <- New.listStoreGetValue facetStore ind
-                return (isInfixOf (map toLower string) (map toLower (fst val))))
+--        New.treeViewSetSearchColumn facetView 0
+--        New.treeViewSetSearchEqualFunc facetView
+--            (\ _ string iter -> do
+--                [ind]   <- New.treeModelGetPath facetStore iter
+--                val     <- New.listStoreGetValue facetStore ind
+--                return (isInfixOf (map toLower string) (map toLower (fst val))))
 
         renderer30    <- New.cellRendererPixbufNew
         renderer31    <- New.cellRendererPixbufNew
@@ -204,19 +202,18 @@ initModules panePath nb = do
         col         <- New.treeViewColumnNew
         New.treeViewColumnSetTitle col "Identifiers"
         --New.treeViewColumnSetSizing col TreeViewColumnAutosize
-        -- New.treeViewColumnSetReorderable col True
         New.treeViewAppendColumn facetView col
         New.cellLayoutPackStart col renderer30 False
         New.cellLayoutPackStart col renderer31 False
         New.cellLayoutPackStart col renderer3 True
         New.cellLayoutSetAttributes col renderer3 facetStore
-            $ \row -> [ New.cellText := fst row]
+            $ \row -> [ New.cellText := facetTreeText row]
         New.cellLayoutSetAttributes col renderer30 facetStore
             $ \row -> [
-            cellPixbufStockId  := stockIdFromType (identifierTypeID(snd row))]
+            cellPixbufStockId  := stockIdFromType (facetIdType row)]
         New.cellLayoutSetAttributes col renderer31 facetStore
             $ \row -> [
-            cellPixbufStockId  := if isJust (mbLocation(snd row))
+            cellPixbufStockId  := if isJust (mbLocation(facetIdDescr row))
                                     then stockJumpTo
                                     else ""]
         New.treeViewSetHeadersVisible treeView True
@@ -298,25 +295,20 @@ searchInSubnodes tree str =
 
 fillFacets :: New.TreeView
     -> New.TreeStore (String, [(ModuleDescr,PackageDescr)])
-    -> New.ListStore (String, IdentifierDescr)
+    -> New.TreeStore FacetWrapper
     -> IO ()
-fillFacets treeView tst lst = do
+fillFacets treeView tst treeStore = do
     sel             <-  getSelectionTree treeView tst
     case sel of
         Just val -> case snd val of
                         ((mod,package):_)   ->  do
-                            let exportedDescr = exportedNamesMD mod
-                            let pairs = map fromJust
-                                                $ filter isJust
-                                                    $ map (findDescription
-                                                            (moduleIdMD mod)
-           	                                                 (buildSymbolTable package Map.empty))
-                                                        (Set.toList exportedDescr)
-                            New.listStoreClear lst
+                            let forest = buildFacetForrest mod
+                            New.treeStoreClear treeStore
                             --putStrLn $ "Now fill " ++ show (length pairs)
-                            mapM_ (New.listStoreAppend lst) pairs
+                            mapM_ (\(e,i) -> New.treeStoreInsertTree treeStore [] i e)
+                                        $ zip forest [0 .. length forest]
                         []  -> return ()
-        Nothing -> return ()
+        Nothing -> New.treeStoreClear treeStore
 
 getSelectionTree ::  New.TreeView
     ->  New.TreeStore (String, [(ModuleDescr,PackageDescr)])
@@ -331,19 +323,20 @@ getSelectionTree treeView treeStore = do
             return (Just val)
 
 getSelectionFacet ::  New.TreeView
-    ->  New.ListStore (String, IdentifierDescr)
-    -> IO (Maybe (String, IdentifierDescr))
-getSelectionFacet treeView listStore = do
+    ->  New.TreeStore FacetWrapper
+    -> IO (Maybe FacetWrapper)
+getSelectionFacet treeView treeStore = do
     treeSelection   <-  New.treeViewGetSelection treeView
     paths           <-  New.treeSelectionGetSelectedRows treeSelection
     case paths of
-        []  ->  return Nothing
-        [a]:r ->  do
-            val     <-  New.listStoreGetValue listStore a
+        a:r ->  do
+            val     <-  New.treeStoreGetValue treeStore a
             return (Just val)
+        _  ->  return Nothing
+
 
 fillInfo :: New.TreeView
-    -> New.ListStore (String, IdentifierDescr)
+    -> New.TreeStore FacetWrapper
     -> GhfRef
     -> IO ()
 fillInfo treeView lst ghfR = do
@@ -351,9 +344,9 @@ fillInfo treeView lst ghfR = do
     paths           <-  New.treeSelectionGetSelectedRows treeSelection
     case paths of
         []      ->  return ()
-        [[a]]   ->  do
-            (_,id)     <-  New.listStoreGetValue lst a
-            runReaderT (setInfo id) ghfR
+        [a]     ->  do
+            wrapper     <-  New.treeStoreGetValue lst a
+            runReaderT (setInfos [facetIdDescr wrapper]) ghfR
             return ()
         _       ->  return ()
 
@@ -379,8 +372,88 @@ fillModulesList = do
                                         $ zip li [0 .. length li]
                                     --New.treeViewExpandAll treeView
 
-type ModTree = Tree (String, [(ModuleDescr,PackageDescr)])
+type FacetForest = Forest FacetWrapper
+type FacetTree = Tree FacetWrapper
 
+
+facetTreeText :: FacetWrapper -> String
+facetTreeText (Itself (SimpleDescr id FunctionS _ _ _ _))   =  "function " ++ id
+facetTreeText (Itself (SimpleDescr id NewtypeS _ _ _ _))    =  "newtype " ++ id
+facetTreeText (Itself (SimpleDescr id SynonymS _ _ _ _))    =  "type " ++ id
+facetTreeText (Itself (SimpleDescr id _ _ _ _ _))           =  id
+facetTreeText (Itself (DataDescr id _ _ _ _ _ _))           =  "data " ++ id
+facetTreeText (Itself (ClassDescr id _ _ _ _ _))            =  "class " ++ id
+facetTreeText (Itself (InstanceDescr cl _ _ _ _ ))          =  "instance " ++ cl
+facetTreeText (ConstructorW s _)                            =  "constructor " ++ s
+facetTreeText (FieldW s _)                                  =  "field " ++ s
+facetTreeText (ClassOpsW s _)                               =  "class op " ++ s
+facetTreeText (OrphanedData (InstanceDescr cl binds _ _ _)) =  "instance " ++ cl
+                                                                    ++ " " ++ printBinds binds
+    where
+        printBinds []       =   ""
+        printBinds (a:[])   =   a
+        printBinds (a:b)    =   a ++ " " ++ printBinds b
+facetTreeText _                      =  throwGhf "impossible in facetTreeText"
+
+facetIdType :: FacetWrapper -> IdType
+facetIdType (Itself descr)                                  =  idType descr
+facetIdType (ConstructorW _ _)                              =  Constructor
+facetIdType (FieldW _ _)                                    =  Field
+facetIdType (ClassOpsW _ _)                                 =  ClassOP
+facetIdType (OrphanedData _)                                =  OrphanedInstance
+
+facetIdDescr :: FacetWrapper -> IdentifierDescr
+facetIdDescr (Itself descr)                                 =  descr
+facetIdDescr (ConstructorW _ descr)                         =  descr
+facetIdDescr (FieldW _ descr)                               =  descr
+facetIdDescr (ClassOpsW _ descr)                            =  descr
+facetIdDescr (OrphanedData descr)                           =  descr
+
+buildFacetForrest ::  ModuleDescr -> FacetForest
+buildFacetForrest modDescr =
+    let (instances,other)       =   partition (\id -> case id of
+                                                        InstanceDescr _ _ _ _ _ -> True
+                                                        _   -> False)
+                                            $ idDescriptionsMD modDescr
+        forestWithoutInstances  =   map buildFacet other
+        (forest2,orphaned)      =   foldl addInstances (forestWithoutInstances,[])
+                                        instances
+        orphanedNodes           =   map (\ inst -> Node (OrphanedData inst) []) orphaned
+        in forest2 ++ reverse orphanedNodes
+    where
+    buildFacet :: IdentifierDescr -> FacetTree
+    buildFacet d@(SimpleDescr _ _ _ _ _ _)
+        =   Node (Itself d) []
+    buildFacet d@(DataDescr _ _ _ constID fieldsID _ _)
+        =   (Node (Itself d) ((map (\ s -> Node (ConstructorW s d) [])  constID)
+                ++  (map (\ s -> Node (FieldW s d) [])  fieldsID)))
+    buildFacet d@(ClassDescr _  _ _ classOpsID _ _)
+        =   Node (Itself d) (map (\ s -> Node (ClassOpsW s d) []) classOpsID)
+    buildFacet d@(InstanceDescr _ _ _ _ _)
+        =   throwGhf "Impossible in buildFacet"
+
+    addInstances :: (FacetForest,[IdentifierDescr])
+        -> IdentifierDescr
+        -> (FacetForest,[IdentifierDescr])
+    addInstances (forest,orphaned) instDescr =
+        case foldl (matches instDescr) ([],False) forest of
+            (f,True)    -> (f,orphaned)
+            (f,False)   -> (forest, instDescr:orphaned)
+
+    matches :: IdentifierDescr
+        -> (FacetForest,Bool)
+        -> FacetTree
+        -> (FacetForest,Bool)
+    matches instDescr (forest,False) (Node (Itself dd@(DataDescr id _ _ _ _ _ _)) sub)
+        | [id] == binds instDescr
+            =   ((Node (Itself dd) (sub ++ [Node (Itself instDescr) []])):forest,True)
+    matches instDescr (forest,False) (Node (Itself dd@(SimpleDescr id ty _ _ _ _ )) sub)
+        | [id] == binds instDescr &&  ty == NewtypeS
+            =   ((Node (Itself dd) (sub ++ [Node (Itself instDescr) []])):forest,True)
+    matches _ (forest,b) node = (node:forest,b)
+
+
+type ModTree = Tree (String, [(ModuleDescr,PackageDescr)])
 --
 -- | Make a Tree with a module desription, package description pairs tree to display.
 --   Their are nodes with a label but without a module (like e.g. Data).
@@ -423,6 +496,8 @@ insertNodesInTree [] t      =   t
 makeNodes :: [(String,(ModuleDescr,PackageDescr))] -> ModTree
 makeNodes [(str,pair)]      =   Node (str,[pair]) []
 makeNodes ((str,_):tl)      =   Node (str,[]) [makeNodes tl]
+makeNodes _                 =   throwGhf "Impossible in makeNodes"
+
 
 instance Ord a => Ord (Tree a) where
     compare (Node l1 _) (Node l2 _) =  compare l1 l2
@@ -471,7 +546,7 @@ treeViewPopup ghfR store treeView (Button _ click _ _ _ _ button _ _) = do
 treeViewPopup _ _ _ _ = error "treeViewPopup wrong event type"
 
 facetViewPopup :: GhfRef
-    -> New.ListStore (String, IdentifierDescr)
+    -> New.TreeStore FacetWrapper
     -> New.TreeView
     -> Event
     -> IO (Bool)
@@ -483,7 +558,8 @@ facetViewPopup ghfR store facetView (Button _ click _ _ _ _ button _ _) = do
             item1 `onActivateLeaf` do
                 sel         <-  getSelectionFacet facetView store
                 case sel of
-                    Just (_,descr)  -> runReaderT (goToDefinition descr) ghfR
+                    Just wrapper    ->  runReaderT
+                                            (goToDefinition (facetIdDescr wrapper)) ghfR
                     otherwise       ->  trace "no selection" $ return ()
             menuShellAppend theMenu item1
             menuPopup theMenu Nothing
@@ -492,7 +568,8 @@ facetViewPopup ghfR store facetView (Button _ click _ _ _ _ button _ _) = do
         else if button == LeftButton && click == DoubleClick
                 then do sel         <-  getSelectionFacet facetView store
                         case sel of
-                            Just (_,descr)  -> runReaderT (goToDefinition descr) ghfR
+                            Just wrapper  -> runReaderT (goToDefinition
+                                                (facetIdDescr wrapper)) ghfR
                             otherwise       ->  trace "no selection" $ return ()
                         return True
                 else return False

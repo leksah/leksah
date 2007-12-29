@@ -27,7 +27,6 @@ import Text.ParserCombinators.Parsec hiding (Parser)
 import qualified Text.ParserCombinators.Parsec.Token as P
 import Text.ParserCombinators.Parsec.Language(haskell,haskellDef)
 import Data.Maybe (catMaybes)
-import Control.Monad(filterM)
 import Distribution.Simple.PreProcess.Unlit
 --import Debug.Trace
 import Control.Monad

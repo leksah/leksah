@@ -256,6 +256,7 @@ mkNotifier notifierState = notFunc
                     else do
                         let noti2 = Map.insert eventSel (mbWidget,regFunc,Just cid,l2) noti
                         writeIORef notifierState noti2
+            _   -> return ()
         return uni
 
 

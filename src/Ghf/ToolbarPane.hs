@@ -19,19 +19,9 @@ module Ghf.ToolbarPane (
 ) where
 
 import Graphics.UI.Gtk hiding (get)
-import Graphics.UI.Gtk.ModelView as New
-import System.Glib.Signals
 import Data.Maybe
 import Control.Monad.Reader
-import Data.Map (Map)
-import qualified Data.Map as Map
-import Data.Set (Set)
-import qualified Data.Set as Set
-import Data.Tree
 import Data.List
-import Distribution.Package
-import Distribution.PackageDescription
-import System.Glib.GObject
 
 import Ghf.Core.State
 import Ghf.ViewFrame

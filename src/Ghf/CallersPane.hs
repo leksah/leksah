@@ -20,22 +20,15 @@ module Ghf.CallersPane (
 
 import Graphics.UI.Gtk hiding (get)
 import Graphics.UI.Gtk.ModelView as New
-import System.Glib.Signals
 import Data.Maybe
 import Control.Monad.Reader
-import Data.Map (Map)
 import qualified Data.Map as Map
-import Data.Set (Set)
 import qualified Data.Set as Set
-import Data.Tree
 import Data.List
 import Distribution.Package
-import Distribution.PackageDescription
-import System.Glib.GObject
 
 import Ghf.Core.State
 import Ghf.ViewFrame
-import Ghf.SourceEditor
 
 instance Pane GhfCallers
     where
@@ -63,7 +56,10 @@ instance ModelPane GhfCallers CallersState where
     saveState p     =   return Nothing
     recoverState pp _  =  return ()
 
-calledBy :: IdentifierDescr -> GhfAction
+
+-- | Open a pane with the callers of this identifier
+calledBy :: IdentifierDescr
+    -> GhfAction
 calledBy idDescr = do
     mbCurrentInfo   <- readGhf currentInfo
     case mbCurrentInfo of

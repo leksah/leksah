@@ -18,13 +18,8 @@ module Ghf.DescriptionPP (
 
 ) where
 
---import GUI.Ghf.MakeEditor
 import Graphics.UI.Gtk hiding (Event)
 import Control.Monad
-import Data.IORef
-import Data.Map (Map)
-import qualified Data.Map as Map
-import Data.Unique
 import qualified Text.PrettyPrint.HughesPJ as PP
 import qualified Text.ParserCombinators.Parsec as P
 

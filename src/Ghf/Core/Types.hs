@@ -43,6 +43,7 @@ module Ghf.Core.Types (
 ,   TypeInfo
 ,   ModuleIdentifier
 ,   IdType(..)
+,   IdTypeS(..)
 ,   SymbolTable
 ,   PackageScope
 ,   PackModule(..)
@@ -51,6 +52,12 @@ module Ghf.Core.Types (
 ,   fromPackageIdentifier
 ,   toPackageIdentifier
 ,   idDescriptionsPD
+,   allFieldsID
+,   allConstructorsID
+,   allClassOpsID
+,   typeInfo
+,   idType
+
 
 ,   Location(..)
 
@@ -66,8 +73,6 @@ import qualified Data.Set as Set
 import Text.ParserCombinators.ReadP
 import qualified Data.ByteString.Char8 as BS
 import Data.ByteString.Char8 (ByteString)
-import Ghf.Utils.DeepSeq
-import Data.Version
 
 import Data.Ghf.Default
 
@@ -180,36 +185,90 @@ data ModuleDescr        =   ModuleDescr {
     moduleIdMD          ::   PackModule
 ,   mbSourcePathMD      ::   (Maybe FilePath)
 ,   exportedNamesMD     ::   (Set Symbol)                        -- unqualified
-,   instancesMD         ::   [(ClassId,DataId)]
 ,   usagesMD            ::   (Map ModuleIdentifier (Set Symbol)) -- imports
 ,   idDescriptionsMD    ::   [IdentifierDescr]
 } deriving (Eq,Ord,Show)
 
-data IdentifierDescr    =  IdentifierDescr {
-    identifierID        ::   Symbol
-,   identifierTypeID    ::   IdType
-,   typeInfoID          ::   TypeInfo
-,   moduleIdID          ::   PackModule
-,   constructorsID      ::   [Symbol]
-,   fieldsID            ::   [Symbol]
-,   classOpsID          ::   [Symbol]
-,   mbLocation          ::   (Maybe Location)
-,   mbComment             ::   (Maybe String)
-} deriving (Show,Eq,Ord,Read)
+data IdentifierDescr    =
+    SimpleDescr {
+            identifierID        ::   Symbol
+        ,   identifierTypeID    ::   IdTypeS
+        ,   typeInfoID          ::   TypeInfo
+        ,   moduleIdID          ::   PackModule
+        ,   mbLocation          ::   (Maybe Location)
+        ,   mbComment           ::   (Maybe ByteString)}
+    |    DataDescr {
+            identifierID        ::   Symbol
+        ,   typeInfoID          ::   TypeInfo
+        ,   moduleIdID          ::   PackModule
+        ,   constructorsID      ::   [Symbol]
+        ,   fieldsID            ::   [Symbol]
+        ,   mbLocation          ::   (Maybe Location)
+        ,   mbComment           ::   (Maybe ByteString)}
+    |    ClassDescr {
+            identifierID        ::   Symbol
+        ,   typeInfoID          ::   TypeInfo
+        ,   moduleIdID          ::   PackModule
+        ,   classOpsID          ::   [Symbol]
+        ,   mbLocation          ::   (Maybe Location)
+        ,   mbComment           ::   (Maybe ByteString)}
+    |    InstanceDescr {
+            identifierID        ::   Symbol --the class
+        ,   binds               ::   [Symbol]
+        ,   moduleIdID          ::   PackModule
+        ,   mbLocation          ::   (Maybe Location)
+        ,   mbComment           ::   (Maybe ByteString)}
+    deriving (Show,Eq,Ord,Read)
+
+allFieldsID :: IdentifierDescr -> [Symbol]
+allFieldsID (DataDescr _ _ _ _ fieldsId _ _)              =   fieldsId
+allFieldsID _                                             =   []
+
+allConstructorsID :: IdentifierDescr -> [Symbol]
+allConstructorsID (DataDescr _ _ _ constructorsID _ _ _)  =   constructorsID
+allConstructorsID _                                       =   []
+
+allClassOpsID :: IdentifierDescr -> [Symbol]
+allClassOpsID (ClassDescr _ _ _ classOpsID _ _)           =   classOpsID
+allClassOpsID _                                           =   []
+
+typeInfo :: IdentifierDescr -> TypeInfo
+typeInfo (SimpleDescr _ _ ti _ _ _)     =   ti
+typeInfo (DataDescr _ ti _ _ _ _ _)     =   ti
+typeInfo (ClassDescr _ ti _ _ _ _)      =   ti
+typeInfo (InstanceDescr _ _ _ _ _)      =   BS.pack ""
 
 idDescriptionsPD :: PackageDescr -> [IdentifierDescr]
 idDescriptionsPD pd =  concatMap idDescriptionsMD (exposedModulesPD pd)
 
 instance Default IdentifierDescr where
-    getDefault = IdentifierDescr getDefault getDefault getDefault getDefault getDefault
-                                    getDefault getDefault getDefault getDefault
+    getDefault = SimpleDescr getDefault getDefault getDefault getDefault getDefault
+                                    getDefault
 
-data IdType = Function | Data | Newtype | Synonym | AbstractData | OpenData |
-                Class | Foreign
+data IdType = Function | Newtype | Synonym | AbstractData | OpenData | Foreign
+    | Data | Class | Instance | Constructor | Field | ClassOP | OrphanedInstance
   deriving (Show, Eq, Ord, Enum, Read)
 
 instance Default IdType where
     getDefault = Function
+
+data IdTypeS = FunctionS | NewtypeS | SynonymS | AbstractDataS | OpenDataS | ForeignS
+  deriving (Show, Eq, Ord, Enum, Read)
+
+instance Default IdTypeS where
+    getDefault = FunctionS
+
+idType :: IdentifierDescr -> IdType
+idType (SimpleDescr _ stype _ _ _ _)    =   case stype of
+                                                FunctionS   ->  Function
+                                                NewtypeS    ->  Newtype
+                                                SynonymS    ->  Synonym
+                                                AbstractDataS -> AbstractData
+                                                OpenDataS   ->  OpenData
+                                                ForeignS    ->  Foreign
+idType (DataDescr _ _ _ _ _ _ _)        =   Data
+idType (ClassDescr _ _ _ _ _ _)         =   Class
+idType (InstanceDescr _ _ _ _ _)        =   Instance
 
 type Symbol             =   String  -- Qualified or unqualified
 type ClassId            =   String  -- Qualified or unqualified

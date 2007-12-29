@@ -125,7 +125,7 @@ collectUninstalled writeAscii session version cabalPath = do
     let basePath        =   takeDirectory cabalPath
     let buildPath       =   "dist" </> "build" </> pkgName (package pd) </>
                                 (pkgName (package pd) ++ "-tmp/")
-    dflags0         <-  getSessionDynFlags session
+    dflags0             <-  getSessionDynFlags session
     putStrLn $ "topDir = " ++ (basePath </> buildPath)
     setSessionDynFlags session
         dflags0
@@ -248,15 +248,14 @@ extractExportedDescrR pid hidden iface =
 --                                                                    {--: [moduleIdID id]--}
 --                                $Map.filterWithKey (\k _ -> k `Set.member` otherDecls)
 --                                    hidden
-        inst            =   concatMap extractInstances (mi_insts iface)
+        inst            =   concatMap (extractInstances (PM pid mid)) (mi_insts iface)
         uses            =   Map.fromList $ map extractUsages (mi_usages iface)
     in  ModuleDescr {
                     moduleIdMD          =   PM pid mid
                 ,   exportedNamesMD     =   exportedNames
                 ,   mbSourcePathMD      =   Nothing
-                ,   instancesMD         =   inst
                 ,   usagesMD            =   uses
-                ,   idDescriptionsMD    =   ownDecls}
+                ,   idDescriptionsMD    =   ownDecls ++ inst}
 
 extractIdentifierDescr' :: PackageIdentifier -> [ModuleIdentifier] -> IfaceDecl ->
                                 SymbolTable -> SymbolTable
@@ -276,38 +275,75 @@ extractIdentifierDescr :: PackageIdentifier -> [ModuleIdentifier] -> IfaceDecl
 extractIdentifierDescr package modules decl
        = if null modules
           then []
-          else [IdentifierDescr{
-    identifierID        =   unpackFS $occNameFS (ifName decl)
-,   typeInfoID          =   BS.pack $ filterExtras $ showSDocUnqual $ppr decl
-,   identifierTypeID    =   case decl of
-                                (IfaceId _ _ _ )            ->  Function
-                                (IfaceData _ _ _ ifCons _ _ _ _)
-                                    -> case ifCons of
-                                        IfDataTyCon _       ->  Data
-                                        IfNewTyCon _        ->  Newtype
-                                        IfAbstractTyCon     ->  AbstractData
-                                        IfOpenDataTyCon     ->  OpenData
-                                (IfaceSyn _ _ _ _ _ )       ->  Synonym
-                                (IfaceClass _ _ _ _ _ _ _ ) ->  Class
-                                (IfaceForeign _ _)          ->  Foreign
-,   moduleIdID          =   PM package (last modules)
-,   constructorsID      =   case decl of
-                                (IfaceData _ _ _ ifCons _ _ _ _)
-                                    -> map extractConstructorName
-                                        (visibleIfConDecls ifCons)
-                                _   -> []
-,   fieldsID            =   case decl of
-                                (IfaceData _ _ _ ifCons _ _ _ _)
-                                    -> concatMap extractFieldNames
-                                        (visibleIfConDecls ifCons)
-                                _   -> []
-,   classOpsID          =   case decl of
-                                (IfaceClass _ _ _ _ _ ifSigs _ )
-                                    -> map (extractClassOpName) ifSigs
-                                _   -> []
-,   mbLocation          =   Nothing
-,   mbComment           =   Nothing
-}]
+          else case decl of
+            (IfaceId _ _ _ )
+                -> [SimpleDescr{
+                        identifierID        =   unpackFS $occNameFS (ifName decl)
+                    ,   typeInfoID          =   BS.pack $ filterExtras $ showSDocUnqual $ppr decl
+                    ,   identifierTypeID    =   FunctionS
+                    ,   moduleIdID          =   PM package (last modules)
+                    ,   mbLocation          =   Nothing
+                    ,   mbComment           =   Nothing
+                    }]
+            (IfaceData _ _ _ ifCons _ _ _ _)
+                -> case ifCons of
+                    IfDataTyCon _
+                        ->  [DataDescr{
+                                identifierID        =   unpackFS $occNameFS (ifName decl)
+                            ,   typeInfoID          =   BS.pack $ filterExtras
+                                                                $ showSDocUnqual $ppr decl
+                            ,   moduleIdID          =   PM package (last modules)
+                            ,   constructorsID      =   map extractConstructorName
+                                                            (visibleIfConDecls ifCons)
+                            ,   fieldsID            =   concatMap extractFieldNames
+                                                            (visibleIfConDecls ifCons)
+                            ,   mbLocation          =   Nothing
+                            ,   mbComment           =   Nothing
+                            }]
+                    other -> [SimpleDescr{
+                                identifierID        =   unpackFS $occNameFS (ifName decl)
+                            ,   typeInfoID          =   BS.pack $ filterExtras
+                                                                $ showSDocUnqual $ppr decl
+                            ,   identifierTypeID    =   case other of
+                                                            IfNewTyCon _    ->  NewtypeS
+                                                            IfAbstractTyCon ->  AbstractDataS
+                                                            IfOpenDataTyCon ->  OpenDataS
+                                                            _               ->  throwGhf
+                                                                "Impossible"
+                            ,   moduleIdID          =   PM package (last modules)
+                            ,   mbLocation          =   Nothing
+                            ,   mbComment           =   Nothing
+                            }]
+            (IfaceClass _ _ _ _ _ ifSigs _ )
+                        ->  [ClassDescr{
+                                identifierID        =   unpackFS $occNameFS (ifName decl)
+                            ,   typeInfoID          =   BS.pack $ filterExtras
+                                                                $ showSDocUnqual $ppr decl
+                            ,   moduleIdID          =   PM package (last modules)
+                            ,   classOpsID          =   map (extractClassOpName) ifSigs
+                            ,   mbLocation          =   Nothing
+                            ,   mbComment           =   Nothing
+                            }]
+            (IfaceSyn _ _ _ _ _ )
+                        ->  [SimpleDescr{
+                                identifierID        =   unpackFS $occNameFS (ifName decl)
+                            ,   typeInfoID          =   BS.pack $ filterExtras
+                                                                $ showSDocUnqual $ppr decl
+                            ,   identifierTypeID    =   SynonymS
+                            ,   moduleIdID          =   PM package (last modules)
+                            ,   mbLocation          =   Nothing
+                            ,   mbComment           =   Nothing
+                            }]
+            (IfaceForeign _ _)
+                        ->  [SimpleDescr{
+                                identifierID        =   unpackFS $occNameFS (ifName decl)
+                            ,   typeInfoID          =   BS.pack $ filterExtras
+                                                                $ showSDocUnqual $ppr decl
+                            ,   identifierTypeID    =   ForeignS
+                            ,   moduleIdID          =   PM package (last modules)
+                            ,   mbLocation          =   Nothing
+                            ,   mbComment           =   Nothing
+                            }]
 
 extractConstructorName ::  IfaceConDecl -> Symbol
 extractConstructorName  decl    =   unpackFS $occNameFS (ifConOcc decl)
@@ -321,14 +357,19 @@ extractFieldNames' occName = unpackFS $occNameFS occName
 extractClassOpName :: IfaceClassOp -> Symbol
 extractClassOpName (IfaceClassOp occName _ _) = unpackFS $occNameFS occName
 
-extractInstances :: IfaceInst -> [(ClassId, DataId)]
-extractInstances ifaceInst  =
+extractInstances :: PackModule -> IfaceInst -> [IdentifierDescr]
+extractInstances pm ifaceInst  =
     let className   =   showSDocUnqual $ ppr $ ifInstCls ifaceInst
         dataNames   =   map (\iftc -> showSDocUnqual $ ppr iftc)
                             $ map fromJust
                                 $ filter isJust
                                     $ ifInstTys ifaceInst
-    in map (\dn -> (className, dn)) dataNames
+    in [InstanceDescr
+                    {   identifierID    =   className
+                    ,   binds           =   dataNames
+                    ,   moduleIdID      =   pm
+                    ,   mbLocation      =   Nothing
+                    ,   mbComment       =   Nothing}]
 
 extractUsages :: Usage -> (ModuleIdentifier, Set Symbol)
 extractUsages usage =

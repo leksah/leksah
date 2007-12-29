@@ -14,54 +14,30 @@
 -------------------------------------------------------------------------------
 
 module Ghf.InfoPane (
-    setInfo
+    setInfos
 ) where
 
 import Graphics.UI.Gtk hiding (afterToggleOverwrite)
-import Graphics.UI.Gtk.SourceView
-import Graphics.UI.Gtk.ModelView as New
-import Graphics.UI.Gtk.Multiline.TextView
 import Control.Monad.Reader
-import Data.IORef
 import System.IO
-import qualified Data.Map as Map
-import Data.Map (Map,(!))
-import Config
 import Control.Monad
 import Control.Monad.Trans
-import System.FilePath
-import System.Directory
-import Data.Map (Map)
-import qualified Data.Map as Map
-import GHC hiding (getInfo)
 import System.IO
-import Control.Concurrent
-import qualified Distribution.Package as DP
-import Distribution.PackageDescription hiding (package)
---import Distribution.InstalledPackageInfo
-import Distribution.Version
 import Data.List
-import UniqFM
-import PackageConfig
 import Data.Maybe
 import qualified Data.ByteString.Char8 as BS
-import Data.ByteString.Char8 (ByteString)
+import Data.IORef(newIORef,readIORef,writeIORef)
 
-import Ghf.File
 import Ghf.Core.State
-import Ghf.SourceCandy
 import Ghf.ViewFrame
-import Ghf.SpecialEditors
-import Ghf.Log
-import GUI.Ghf.EditorBasics
 import GUI.Ghf.MakeEditor
 import GUI.Ghf.SimpleEditors
-import GUI.Ghf.CompositeEditors
 import GUI.Ghf.Parameters
 import Data.Ghf.Default
 import Ghf.SourceEditor
 import {-# SOURCE #-} Ghf.ModulesPane
 import Ghf.CallersPane
+
 
 instance Pane GhfInfo
     where
@@ -85,46 +61,50 @@ instance Pane GhfInfo
 
 instance ModelPane GhfInfo InfoState where
     saveState p     =   do
-        mbIdDescr <- getInfoCont
-        case mbIdDescr of
-            Nothing -> return Nothing
-            Just idDescr -> return (Just (StateC (InfoState idDescr)))
-    recoverState pp (InfoState iddescr) =   do
+        currentIDsU <- lift $ readIORef (currentIDs p)
+        currentIndU <- lift $ readIORef (currentInd p)
+        return (Just (StateC (InfoState currentIDsU currentIndU)))
+    recoverState pp (InfoState currentIDsU currentIndu) =   do
         nb <- getNotebook pp
-        initInfo pp nb iddescr
+        initInfo pp nb currentIDsU currentIndu
 
 idDescrDescr :: [FieldDescription IdentifierDescr]
 idDescrDescr = [
             mkField
             (paraName <<<- ParaName "Symbol"
                 $ paraHorizontal <<<- ParaHorizontal StartHorizontal
-                    $ paraMinSize <<<- ParaMinSize (200,-1)
-                        $ emptyParams)
+                    $ emptyParams)
             identifierID
             (\ b a -> a{identifierID = b})
             stringEditor
     ,    mkField
             (paraName <<<- ParaName "Sort"
-                $ paraHorizontal <<<- ParaHorizontal StopHorizontal
                     $ emptyParams)
-            identifierTypeID
-            (\b a -> a{identifierTypeID = b})
+            idType
+            (\b a -> a)
             (staticSelectionEditor allIdTypes)
     ,   mkField
-            (paraName <<<- ParaName "Exported by" $ emptyParams)
+            (paraName <<<- ParaName "Exported by"
+                $ paraHorizontal <<<- ParaHorizontal StopHorizontal
+                    $ paraMinSize <<<- ParaMinSize (150,-1)
+                        $ emptyParams)
             (\l -> showPackModule (moduleIdID l))
             (\ b a -> a{moduleIdID = parsePackModule b})
             stringEditor
     ,   mkField
             (paraName  <<<- ParaName "Type" $ emptyParams)
-            (BS.unpack . typeInfoID)
-            (\b a -> a{typeInfoID = BS.pack b})
+            (BS.unpack . typeInfo)
+            (\b a -> a)
             multilineStringEditor
     ,   mkField
             (paraName <<<- ParaName "Comment" $ emptyParams)
-            (\l -> show (mbComment l))
-            (\ b a -> a{mbComment = read b})
-            stringEditor]
+            (\l -> case mbComment l of
+                    Nothing -> ""
+                    Just s -> BS.unpack s)
+            (\ b a -> case b of
+                        "" -> a{mbComment = Nothing}
+                        s  -> a{mbComment = Just (BS.pack s)})
+            multilineStringEditor]
 
 {--    ,   mkField (emptyParams
             {paraName = Just "Documentation"})
@@ -132,10 +112,11 @@ idDescrDescr = [
             (\b a -> a{typeInfo = b})
             multilineStringEditor--}
 
-allIdTypes = [Function,Data,Newtype,Synonym,AbstractData,Class,Foreign]
+allIdTypes = [Function,Newtype,Synonym,AbstractData,Foreign]
 
-initInfo :: PanePath -> Notebook -> IdentifierDescr -> GhfAction
-initInfo panePath nb idDescr = do
+initInfo :: PanePath -> Notebook -> [IdentifierDescr] -> Int -> GhfAction
+initInfo panePath nb idDescrs index = do
+    when (length idDescrs > index) $ do
     ghfR <- ask
     panes <- readGhf panes
     paneMap <- readGhf paneMap
@@ -149,22 +130,32 @@ initInfo panePath nb idDescr = do
             moduB       <- buttonNewWithLabel "Module"
             usesB       <- buttonNewWithLabel "Uses"
             docuB       <- buttonNewWithLabel "Docu"
+            widgetSetSensitivity docuB False
+            nextB       <- buttonNewWithLabel "Next"
+            prevB       <- buttonNewWithLabel "Prev"
+            when (length idDescrs < 2) $ widgetSetSensitivity nextB False
+            widgetSetSensitivity prevB False
+            label       <- labelNew (Just ("1" ++ "/" ++ show (length idDescrs)))
             boxPackStart bb definitionB PackNatural 0
             boxPackStart bb moduB PackNatural 0
             boxPackStart bb usesB PackNatural 0
             boxPackStart bb docuB PackNatural 0
             boxPackStart bb usesB PackNatural 0
-            resList <- mapM (\ fd -> (fieldEditor fd) idDescr) idDescrDescr
+            boxPackStart bb label PackNatural 0
+            boxPackStart bb nextB PackNatural 0
+            boxPackStart bb prevB PackNatural 0
+
+            resList <- mapM (\ fd -> (fieldEditor fd) (head idDescrs)) idDescrDescr
             let (widgets, setInjs, getExts, notifiers) = unzip4 resList
             foldM_ (\ box (w,mbh)  ->
                 case mbh of
-                    Keep            ->  do  boxPackStart box w PackNatural 0
+                    Keep            ->  do  boxPackStart box w PackGrow 0
                                             return box
-                    StartHorizontal ->  do  newBox  <- hBoxNew False 0
+                    StartHorizontal ->  do  newBox  <- hBoxNew True 0
                                             boxPackStart box newBox PackNatural 0
-                                            boxPackStart newBox w PackNatural 0
+                                            boxPackStart newBox w PackGrow 0
                                             return (castToBox newBox)
-                    StopHorizontal  ->  do  boxPackStart box w PackNatural 0
+                    StopHorizontal  ->  do  boxPackStart box w PackGrow 0
                                             par <- widgetGetParent box
                                             case par of
                                                 Nothing -> error "initInfo - no parent"
@@ -178,7 +169,9 @@ initInfo panePath nb idDescr = do
             sw <- scrolledWindowNew Nothing Nothing
             scrolledWindowAddWithViewport sw nbbox
             scrolledWindowSetPolicy sw PolicyAutomatic PolicyAutomatic
-            let info = GhfInfo sw setInjs getExts
+            currentIDs' <-  newIORef idDescrs
+            currentInd  <-  newIORef 0
+            let info = GhfInfo sw currentIDs' currentInd setInjs getExts nextB prevB label
 
             --mapM_ (\w -> widgetSetExtensionEvents w [ExtensionEventsAll]) widgets
             cids <- mapM
@@ -189,12 +182,37 @@ initInfo panePath nb idDescr = do
             definitionB `onClicked` (runReaderT gotoSource ghfR)
             moduB `onClicked` (runReaderT gotoModule' ghfR)
             usesB `onClicked` (runReaderT calledBy' ghfR)
+            nextB `onClicked` (next info)
+            prevB `onClicked` (prev info)
             notebookPrependPage nb sw (paneName info)
             widgetShowAll sw
             return (info,cids)
     addPaneAdmin pane (BufConnections [] [] []) panePath
     lift $widgetGrabFocus (sw pane)
     lift $bringPaneToFront pane
+
+next :: GhfInfo -> IO ()
+next (GhfInfo _ currentIDs' currentInd' injectors' _ nextB prevB label)  = do
+    currentIdsU <-  readIORef currentIDs'
+    currentIndU <-  readIORef currentInd'
+    when (length currentIdsU > currentIndU + 1) $ do
+        writeIORef currentInd' (currentIndU + 1)
+        mapM_ (\ a -> a (currentIdsU !! (currentIndU + 1)))  injectors'
+        when (length currentIdsU == currentIndU + 1) $ widgetSetSensitivity nextB False
+        widgetSetSensitivity prevB True
+        labelSetText label (show (currentIndU + 2) ++ "/" ++ show (length currentIdsU))
+
+
+prev :: GhfInfo -> IO ()
+prev (GhfInfo _ currentIDs' currentInd' injectors' _ nextB prevB label) = do
+    currentIdsU <-  readIORef currentIDs'
+    currentIndU <-  readIORef currentInd'
+    when (currentIndU >= 1) $ do
+        writeIORef currentInd' (currentIndU - 1)
+        mapM_ (\ a -> a (currentIdsU !! (currentIndU - 1)))  injectors'
+        when (currentIndU - 1 == 0) $ widgetSetSensitivity prevB False
+        widgetSetSensitivity nextB True
+        labelSetText label (show currentIndU ++ "/" ++ show (length currentIdsU))
 
 gotoSource :: GhfAction
 gotoSource = do
@@ -220,9 +238,8 @@ calledBy' = do
         Just info   ->  do  calledBy info
                             return ()
 
-
-setInfo :: IdentifierDescr -> GhfM ()
-setInfo identifierDescr = do
+setInfos :: [IdentifierDescr] -> GhfM ()
+setInfos identifierDescrs = do
     mbPane <-  getPane InfoCasting
     case mbPane of
         Nothing -> do
@@ -230,14 +247,17 @@ setInfo identifierDescr = do
             layout  <- readGhf layout
             let pp  =  getStandardPanePath (infoPanePath prefs) layout
             nb      <- getNotebook pp
-            initInfo pp nb identifierDescr
-            mbInfo <- getPane InfoCasting
-            if isNothing mbInfo
-                then error "Can't init info"
-                else return ()
+            initInfo pp nb identifierDescrs 0
         Just info -> lift $ do
-            mapM_ (\ a -> a identifierDescr)  (injectors info)
+            writeIORef (currentInd info) 0
+            writeIORef (currentIDs info) identifierDescrs
+            mapM_ (\ a -> a (head identifierDescrs))  (injectors info)
+            labelSetText (numLabel info) ("1/" ++ show (length identifierDescrs))
+            widgetSetSensitivity (prevB info) False
+            widgetSetSensitivity (nextB info)
+                (if length identifierDescrs > 1 then True else False)
             bringPaneToFront info
+
 
 getInfoCont ::  GhfM (Maybe (IdentifierDescr))
 getInfoCont = do

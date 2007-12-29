@@ -12,14 +12,13 @@ module Ghf.Keymap (
 
 import Graphics.UI.Gtk
 import qualified Data.Map as Map
-import Data.Map (Map,(!))
+import Data.Map (Map)
 import Text.ParserCombinators.Parsec
 import qualified Text.ParserCombinators.Parsec.Token as P
 import Text.ParserCombinators.Parsec.Language(emptyDef)
 import Data.Maybe
 import Data.List(sort)
 import Data.Char(toLower)
-import Control.Monad(foldM)
 import Control.Monad.Reader
 
 import Ghf.Core.State
@@ -117,6 +116,7 @@ handleSpecialKeystrokes (Key _ _ _ mods _ _ _ keyVal name mbChar) = do
                     ghfAction
             modifyGhf_ (\ghf -> return (ghf{specialKey = Nothing}))
             return True
+handleSpecialKeystrokes _ = return True
 
 -- ---------------------------------------------------------------------
 -- Parsing

@@ -33,8 +33,6 @@ import qualified Text.PrettyPrint.HughesPJ as PP
 import Ghf.Log
 import Ghf.Core.State
 import Ghf.ViewFrame
-import Ghf.BuildInfoEditor
-import GUI.Ghf.EditorBasics
 import GUI.Ghf.MakeEditor hiding (fieldEditor, parameters)
 import GUI.Ghf.SimpleEditors
 import GUI.Ghf.CompositeEditors

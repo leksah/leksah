@@ -110,48 +110,99 @@ instance Binary PackageDescr where
                                         mbSourcePathPD')
 
 instance Binary ModuleDescr where
-    put (ModuleDescr moduleIdMD' exportedNamesMD' mbSourcePathMD' instancesMD' usagesMD'
+    put (ModuleDescr moduleIdMD' exportedNamesMD' mbSourcePathMD' usagesMD'
                 idDescriptionsMD')
         = do    put moduleIdMD'
                 put exportedNamesMD'
                 put mbSourcePathMD'
-                put instancesMD'
                 put usagesMD'
                 put idDescriptionsMD'
     get = do    moduleIdMD'          <- get
                 exportedNamesMD'     <- get
                 mbSourcePathMD'      <- get
-                instancesMD'         <- get
                 usagesMD'            <- get
                 idDescriptionsMD'    <- get
                 return (ModuleDescr moduleIdMD' exportedNamesMD' mbSourcePathMD'
-                                    instancesMD' usagesMD' idDescriptionsMD')
+                                    usagesMD' idDescriptionsMD')
 
 instance Binary IdentifierDescr where
-    put (IdentifierDescr identifierID' identifierTypeID' typeInfoID' moduleIdID'
-                            constructorsID' fieldsID' classOpsID' mbLocation' mbComment')
-        = do    put identifierID'
+    put (SimpleDescr identifierID' identifierTypeID' typeInfoID' moduleIdID'
+                            mbLocation' mbComment')
+        = do    put (1::Int)
+                put identifierID'
                 put identifierTypeID'
+                put typeInfoID'
+                put moduleIdID'
+                put mbLocation'
+                put mbComment'
+    put (DataDescr identifierID' typeInfoID' moduleIdID'
+                            constructorsID' fieldsID' mbLocation' mbComment')
+        = do    put (2::Int)
+                put identifierID'
                 put typeInfoID'
                 put moduleIdID'
                 put constructorsID'
                 put fieldsID'
+                put mbLocation'
+                put mbComment'
+    put (ClassDescr identifierID' typeInfoID' moduleIdID'
+                            classOpsID' mbLocation' mbComment')
+        = do    put (3::Int)
+                put identifierID'
+                put typeInfoID'
+                put moduleIdID'
                 put classOpsID'
                 put mbLocation'
                 put mbComment'
-    get = do    identifierID'        <- get
-                identifierTypeID'    <- get
-                typeInfoID'          <- get
-                moduleIdID'          <- get
-                constructorsID'      <- get
-                fieldsID'            <- get
-                classOpsID'          <- get
-                mbLocation'          <- get
-                mbComment'           <- get
-                return (IdentifierDescr identifierID' identifierTypeID' typeInfoID'
-                           moduleIdID' constructorsID' fieldsID' classOpsID' mbLocation' mbComment')
+    put (InstanceDescr identifierID' classID' moduleIdID' mbLocation' mbComment')
+        = do    put (4::Int)
+                put identifierID'
+                put classID'
+                put moduleIdID'
+                put mbLocation'
+                put mbComment'
+    get = do    (typeHint :: Int)           <- get
+                case typeHint of
+                    1 -> do
+                            identifierID'        <- get
+                            identifierTypeID'    <- get
+                            typeInfoID'          <- get
+                            moduleIdID'          <- get
+                            mbLocation'          <- get
+                            mbComment'           <- get
+                            return (SimpleDescr identifierID' identifierTypeID' typeInfoID'
+                                       moduleIdID' mbLocation' mbComment')
+                    2 -> do
+                            identifierID'        <- get
+                            typeInfoID'          <- get
+                            moduleIdID'          <- get
+                            constructorsID'      <- get
+                            fieldsID'            <- get
+                            mbLocation'          <- get
+                            mbComment'           <- get
+                            return (DataDescr identifierID' typeInfoID' moduleIdID'
+                                        constructorsID' fieldsID' mbLocation' mbComment')
+                    3 -> do
+                            identifierID'        <- get
+                            typeInfoID'          <- get
+                            moduleIdID'          <- get
+                            classOpsID'          <- get
+                            mbLocation'          <- get
+                            mbComment'           <- get
+                            return (ClassDescr identifierID' typeInfoID' moduleIdID'
+                                        classOpsID' mbLocation' mbComment')
+                    4 -> do
+                            identifierID'        <- get
+                            classID'             <- get
+                            moduleIdID'          <- get
+                            mbLocation'          <- get
+                            mbComment'           <- get
+                            return (InstanceDescr identifierID' classID' moduleIdID'
+                                        mbLocation' mbComment')
+                    _ -> error "Impossible in Binary IdentifierDescr get"
 
-instance Binary IdType where
+
+instance Binary IdTypeS where
     put it  =   do  put (fromEnum it)
     get     =   do  code         <- get
                     return (toEnum code)
@@ -329,8 +380,8 @@ buildScope packageD (packageMap, symbolTable) =
 
 buildSymbolTable :: PackageDescr -> SymbolTable -> SymbolTable
 buildSymbolTable pDescr symbolTable =
-     foldl (\ st idDescr ->  let allIds = identifierID idDescr : (constructorsID idDescr
-                                                        ++ fieldsID idDescr ++ classOpsID idDescr)
+     foldl (\ st idDescr ->  let allIds = identifierID idDescr : (allConstructorsID idDescr
+                                                        ++ allFieldsID idDescr ++ allClassOpsID idDescr)
                         in foldl (\ st2 id -> Map.insertWith (++) id [idDescr] st2) st allIds)
         symbolTable (idDescriptionsPD pDescr)
 
@@ -346,29 +397,6 @@ getIdentifierDescr str st1 st2 =
         Just list -> case str `Map.lookup` st2 of
                         Nothing -> list
                         Just list2 -> list ++ list2
-
-{--
-typeDescription :: String -> SymbolTable -> String
-typeDescription str st =
-    case str `Map.lookup` st of
-        Nothing -> "No info found -- Testing for scoped symbols missing \n"
-        Just list -> concatMap generateText list
-    where
-        ttString Function   =   "identifies a function of type "
-        ttString Data       =   "identifies data definition"
-        ttString Newtype    =   "identifies a Newtype"
-        ttString Synonym    =   "identifies a synonym type for"
-        ttString AbstractData = "identifies an abstract data type"
-        ttString Constructor =  "identifies a constructor of data type"
-        ttString Field      =   "identifies a field in a record with type"
-        ttString Class      =   "identifies a class"
-        ttString ClassOp    =   "identifies a class operation with type "
-        ttString Foreign    =   "identifies something strange"
-        generateText (IdentifierDescr _ tt ti m) =
-            str ++ " "  ++   (ttString tt) ++ "\n   "
-                ++   ti ++  "\n   "
-                ++   "exported by modules "  ++   show m ++ "\n"
---}
 
 -- ---------------------------------------------------------------------
 -- The little helpers
@@ -428,18 +456,37 @@ instance DeepSeq ModuleDescr where
     deepSeq pd =  deepSeq (moduleIdMD pd)
                     $   deepSeq (mbSourcePathMD pd)
                     $   deepSeq (exportedNamesMD pd)
-                    $   deepSeq (instancesMD pd)
                     $   deepSeq (usagesMD pd)
 
 instance DeepSeq IdentifierDescr where
-    deepSeq pd =  deepSeq (identifierID pd)
-                    $   deepSeq (identifierTypeID pd)
-                    $   deepSeq (typeInfoID pd)
-                    $   deepSeq (moduleIdID pd)
-                    $   deepSeq (constructorsID pd)
-                    $   deepSeq (fieldsID pd)
-                    $   deepSeq (classOpsID pd)
-                    $   deepSeq (mbLocation pd)
+    deepSeq (SimpleDescr identifierID' identifierTypeID' typeInfoID' moduleIdID'
+        mbLocation' mbComment')  =  deepSeq identifierID'
+                    $   deepSeq identifierTypeID'
+                    $   deepSeq typeInfoID'
+                    $   deepSeq moduleIdID'
+                    $   deepSeq mbLocation'
+                    $   deepSeq mbComment'
+    deepSeq (DataDescr identifierID' typeInfoID' moduleIdID' constructorsID' fieldsID'
+        mbLocation' mbComment')  =  deepSeq identifierID'
+                    $   deepSeq typeInfoID'
+                    $   deepSeq moduleIdID'
+                    $   deepSeq constructorsID'
+                    $   deepSeq fieldsID'
+                    $   deepSeq mbLocation'
+                    $   deepSeq mbComment'
+    deepSeq (ClassDescr identifierID'  typeInfoID' classOpsID' moduleIdID'
+        mbLocation' mbComment')  =  deepSeq identifierID'
+                    $   deepSeq typeInfoID'
+                    $   deepSeq moduleIdID'
+                    $   deepSeq classOpsID'
+                    $   deepSeq mbLocation'
+                    $   deepSeq mbComment'
+    deepSeq (InstanceDescr identifierID' classID' moduleIdID'
+        mbLocation' mbComment')  =  deepSeq identifierID'
+                    $   deepSeq classID'
+                    $   deepSeq moduleIdID'
+                    $   deepSeq mbLocation'
+                    $   deepSeq mbComment'
 
 instance DeepSeq PackageIdentifier where
     deepSeq pd =  deepSeq (pkgName pd)
@@ -452,6 +499,8 @@ instance (DeepSeq alpha, DeepSeq beta) => DeepSeq (Map alpha beta) where
     deepSeq s =  deepSeq (Map.toList s)
 
 instance DeepSeq IdType where  deepSeq = seq
+
+instance DeepSeq IdTypeS where  deepSeq = seq
 
 instance DeepSeq ByteString where  deepSeq = seq
 
