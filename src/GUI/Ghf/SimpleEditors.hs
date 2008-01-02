@@ -161,23 +161,26 @@ multilineStringEditor parameters = do
             core <- readIORef coreRef
             case core of
                 Nothing  -> do
-                    textView   <-  textViewNew
-                    containerAdd widget textView
-                    activateEvent (castToWidget textView) FocusOut notifier
-                    buffer <- textViewGetBuffer textView
+                    aTextView       <-  textViewNew
+                    aScrolledWindow <-  scrolledWindowNew Nothing Nothing
+                    scrolledWindowSetPolicy aScrolledWindow PolicyAutomatic PolicyAutomatic
+                    containerAdd aScrolledWindow aTextView
+                    containerAdd widget aScrolledWindow
+                    activateEvent (castToWidget aTextView) FocusOut notifier
+                    buffer          <-  textViewGetBuffer aTextView
                     textBufferSetText buffer string
-                    writeIORef coreRef (Just textView)
-                Just textView -> do
-                    buffer <- textViewGetBuffer textView
+                    writeIORef coreRef (Just (aScrolledWindow,aTextView))
+                Just (aScrolledWindow,aTextView) -> do
+                    buffer          <-  textViewGetBuffer aTextView
                     textBufferSetText buffer string)
         (do core <- readIORef coreRef
             case core of
                 Nothing -> return Nothing
-                Just textView -> do
-                    buffer <- textViewGetBuffer textView
-                    start <- textBufferGetStartIter buffer
-                    end <- textBufferGetEndIter buffer
-                    r <- textBufferGetText buffer start end False
+                Just (aScrolledWindow, aTextView) -> do
+                    buffer          <-  textViewGetBuffer aTextView
+                    start           <-  textBufferGetStartIter buffer
+                    end             <-  textBufferGetEndIter buffer
+                    r               <-  textBufferGetText buffer start end False
                     return (Just r))
         (mkNotifier notifier)
         parameters

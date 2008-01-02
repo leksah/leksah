@@ -73,7 +73,7 @@ getToolbar = do
             initToolbar pp nb
             mbToolbar <- getPane ToolbarCasting
             case mbToolbar of
-                Nothing ->  error "Can't init control pane"
+                Nothing ->  throwGhf "Can't init control pane"
                 Just m  ->  return m
         Just m ->   return m
 

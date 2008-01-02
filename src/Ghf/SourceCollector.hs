@@ -540,32 +540,6 @@ preprocess fp pkgDescr localBuildInfo =
         (\e -> do   putStrLn $ "preprocess error " ++ show e ++ " in " ++ fp
                     str <- readFile fp
                     return str)
-    where
---    comp = Compiler {
---        compilerFlavor         = GHC,
---        compilerId             = PackageIdentifier "ghc"
---                                        (fromJust $ readVersion cProjectVersion),
---        compilerExtensions     = []
---      }
---    localBuildInfo pd conf = do
---        installDirs <-  defaultInstallDirs GHC False
---        return LocalBuildInfo
---                {   installDirTemplates =   installDirs
---        	    ,   compiler            =   comp
---        	    ,   buildDir            =   ""
---        	    ,   scratchDir          =   ""
---        	    ,   packageDeps         =   []
---                ,   pkgDescrFile        =   Nothing
---                ,   localPkgDescr       =   pd
---                ,   withPrograms        =   conf
---                ,   withPackageDB       =   GlobalPackageDB
---                ,   withVanillaLib      =   False
---                ,   withProfLib         =   False
---                ,   withSharedLib       =   False
---                ,   withProfExe         =   False
---                ,   withOptimization    =   False
---                ,   withGHCiLib         =   False
---        	    ,   splitObjs           =   False}
 
  ---------------------------------------------------------------------
 --  | Parser function copied here, because it is not exported
@@ -606,47 +580,3 @@ myParseModule dflags src_filename maybe_src_buf
       }}
 
 
- ---------------------------------------------------------------------
---  | Parser function copied here, because it is not exported
-
---constructGHCCmdLine
---        :: LocalBuildInfo
---        -> BuildInfo
---        -> FilePath
---        -> Verbosity
---        -> [String]
---constructGHCCmdLine lbi bi odir verbosity =
---        ["--make"]
---     ++ ghcVerbosityOptions verbosity
---        -- Unsupported extensions have already been checked by configure
---     ++ ghcOptions lbi bi odir
---
---ghcVerbosityOptions :: Verbosity -> [String]
---ghcVerbosityOptions verbosity
---     | verbosity >= deafening = ["-v"]
---     | verbosity >= normal    = []
---     | otherwise              = ["-w", "-v0"]
---
---ghcOptions :: LocalBuildInfo -> BuildInfo -> FilePath -> [String]
---ghcOptions lbi bi odir
---     =  (if compilerVersion c > Version [6,4] []
---            then ["-hide-all-packages"]
---            else [])
---     ++ (if splitObjs lbi then ["-split-objs"] else [])
---     ++ ["-i"]
---     ++ ["-i" ++ autogenModulesDir lbi]
---     ++ ["-i" ++ odir]
---     ++ ["-i" ++ l | l <- nub (hsSourceDirs bi)]
---     ++ ["-I" ++ odir]
---     ++ ["-I" ++ dir | dir <- includeDirs bi]
---     ++ ["-optP" ++ opt | opt <- cppOptions bi]
---     ++ ["-optc" ++ opt | opt <- ccOptions bi]
---     ++ [ "-#include \"" ++ inc ++ "\"" | inc <- includes bi ]
---     ++ [ "-odir",  odir, "-hidir", odir ]
---     ++ (if compilerVersion c >= Version [6,8] []
---           then ["-stubdir", odir] else [])
---     ++ (concat [ ["-package", showPackageId pkg] | pkg <- packageDeps lbi ])
---     ++ (if withOptimization lbi then ["-O"] else [])
---     ++ hcOptions GHC (options bi)
---     ++ extensionsToFlags c (extensions bi)
---    where c = compiler lbi

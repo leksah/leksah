@@ -67,168 +67,18 @@ import Ghf.Core.State
 import {-# SOURCE #-} Ghf.InterfaceCollector
 --import Ghf.Extractor
 
--- ---------------------------------------------------------------------
--- Binary Instances
 --
-
-instance Binary PackModule where
-    put (PM pack' modu')
-        =   do  put pack'
-                put modu'
-    get =   do  pack'                <- get
-                modu'                <- get
-                return (PM pack' modu')
-
-instance Binary PackageIdentifier where
-    put (PackageIdentifier name' version')
-        =   do  put name'
-                put version'
-    get =   do  name'                <- get
-                version'             <- get
-                return (PackageIdentifier name' version')
-
-instance Binary Version where
-    put (Version branch' tags')
-        =   do  put branch'
-                put tags'
-    get =   do  branch'              <- get
-                tags'                <- get
-                return (Version branch' tags')
-
-
-instance Binary PackageDescr where
-    put (PackageDescr packagePD' exposedModulesPD' buildDependsPD' mbSourcePathPD')
-        =   do  put packagePD'
-                put exposedModulesPD'
-                put buildDependsPD'
-                put mbSourcePathPD'
-    get =   do  packagePD'           <- get
-                exposedModulesPD'    <- get
-                buildDependsPD'      <- get
-                mbSourcePathPD'      <- get
-                return (PackageDescr packagePD' exposedModulesPD' buildDependsPD'
-                                        mbSourcePathPD')
-
-instance Binary ModuleDescr where
-    put (ModuleDescr moduleIdMD' exportedNamesMD' mbSourcePathMD' usagesMD'
-                idDescriptionsMD')
-        = do    put moduleIdMD'
-                put exportedNamesMD'
-                put mbSourcePathMD'
-                put usagesMD'
-                put idDescriptionsMD'
-    get = do    moduleIdMD'          <- get
-                exportedNamesMD'     <- get
-                mbSourcePathMD'      <- get
-                usagesMD'            <- get
-                idDescriptionsMD'    <- get
-                return (ModuleDescr moduleIdMD' exportedNamesMD' mbSourcePathMD'
-                                    usagesMD' idDescriptionsMD')
-
-instance Binary IdentifierDescr where
-    put (SimpleDescr identifierID' identifierTypeID' typeInfoID' moduleIdID'
-                            mbLocation' mbComment')
-        = do    put (1::Int)
-                put identifierID'
-                put identifierTypeID'
-                put typeInfoID'
-                put moduleIdID'
-                put mbLocation'
-                put mbComment'
-    put (DataDescr identifierID' typeInfoID' moduleIdID'
-                            constructorsID' fieldsID' mbLocation' mbComment')
-        = do    put (2::Int)
-                put identifierID'
-                put typeInfoID'
-                put moduleIdID'
-                put constructorsID'
-                put fieldsID'
-                put mbLocation'
-                put mbComment'
-    put (ClassDescr identifierID' typeInfoID' moduleIdID'
-                            classOpsID' mbLocation' mbComment')
-        = do    put (3::Int)
-                put identifierID'
-                put typeInfoID'
-                put moduleIdID'
-                put classOpsID'
-                put mbLocation'
-                put mbComment'
-    put (InstanceDescr identifierID' classID' moduleIdID' mbLocation' mbComment')
-        = do    put (4::Int)
-                put identifierID'
-                put classID'
-                put moduleIdID'
-                put mbLocation'
-                put mbComment'
-    get = do    (typeHint :: Int)           <- get
-                case typeHint of
-                    1 -> do
-                            identifierID'        <- get
-                            identifierTypeID'    <- get
-                            typeInfoID'          <- get
-                            moduleIdID'          <- get
-                            mbLocation'          <- get
-                            mbComment'           <- get
-                            return (SimpleDescr identifierID' identifierTypeID' typeInfoID'
-                                       moduleIdID' mbLocation' mbComment')
-                    2 -> do
-                            identifierID'        <- get
-                            typeInfoID'          <- get
-                            moduleIdID'          <- get
-                            constructorsID'      <- get
-                            fieldsID'            <- get
-                            mbLocation'          <- get
-                            mbComment'           <- get
-                            return (DataDescr identifierID' typeInfoID' moduleIdID'
-                                        constructorsID' fieldsID' mbLocation' mbComment')
-                    3 -> do
-                            identifierID'        <- get
-                            typeInfoID'          <- get
-                            moduleIdID'          <- get
-                            classOpsID'          <- get
-                            mbLocation'          <- get
-                            mbComment'           <- get
-                            return (ClassDescr identifierID' typeInfoID' moduleIdID'
-                                        classOpsID' mbLocation' mbComment')
-                    4 -> do
-                            identifierID'        <- get
-                            classID'             <- get
-                            moduleIdID'          <- get
-                            mbLocation'          <- get
-                            mbComment'           <- get
-                            return (InstanceDescr identifierID' classID' moduleIdID'
-                                        mbLocation' mbComment')
-                    _ -> error "Impossible in Binary IdentifierDescr get"
-
-
-instance Binary IdTypeS where
-    put it  =   do  put (fromEnum it)
-    get     =   do  code         <- get
-                    return (toEnum code)
-
-instance Binary Location where
-    put (Location locationSLine' locationSCol' locationELine' locationECol')
-        = do    put locationSLine'
-                put locationSCol'
-                put locationELine'
-                put locationECol'
-    get = do    locationSLine'       <-  get
-                locationSCol'        <-  get
-                locationELine'       <-  get
-                locationECol'        <-  get
-                return (Location locationSLine' locationSCol' locationELine' locationECol')
-
+-- | Update and initialize metadata
+--
 initInfo :: GhfAction
 initInfo = do
     session' <- readGhf session
     let version     =   cProjectVersion
-    lift $ putStrLn "Before running collector"
+    lift $ putStrLn "Now updating metadata ..."
     lift $ collectInstalled False session' version False
-    lift $ putStrLn "After running collector"
-    lift $ putStrLn "Before loading infos"
+    lift $ putStrLn "Now loading metadata ..."
     loadAccessibleInfo
-    lift $ putStrLn "After loading infos"
+    lift $ putStrLn "Finished loding ..."
 
 --
 -- | Load all infos for all installed and exposed packages
@@ -436,7 +286,159 @@ fromDPid :: DP.PackageIdentifier -> PackageIdentifier
 fromDPid (DP.PackageIdentifier name version) = PackageIdentifier name version
 
 -- ---------------------------------------------------------------------
--- Forcing Evaluation
+-- Binary Instances for linear storage
+--
+
+instance Binary PackModule where
+    put (PM pack' modu')
+        =   do  put pack'
+                put modu'
+    get =   do  pack'                <- get
+                modu'                <- get
+                return (PM pack' modu')
+
+instance Binary PackageIdentifier where
+    put (PackageIdentifier name' version')
+        =   do  put name'
+                put version'
+    get =   do  name'                <- get
+                version'             <- get
+                return (PackageIdentifier name' version')
+
+instance Binary Version where
+    put (Version branch' tags')
+        =   do  put branch'
+                put tags'
+    get =   do  branch'              <- get
+                tags'                <- get
+                return (Version branch' tags')
+
+
+instance Binary PackageDescr where
+    put (PackageDescr packagePD' exposedModulesPD' buildDependsPD' mbSourcePathPD')
+        =   do  put packagePD'
+                put exposedModulesPD'
+                put buildDependsPD'
+                put mbSourcePathPD'
+    get =   do  packagePD'           <- get
+                exposedModulesPD'    <- get
+                buildDependsPD'      <- get
+                mbSourcePathPD'      <- get
+                return (PackageDescr packagePD' exposedModulesPD' buildDependsPD'
+                                        mbSourcePathPD')
+
+instance Binary ModuleDescr where
+    put (ModuleDescr moduleIdMD' exportedNamesMD' mbSourcePathMD' usagesMD'
+                idDescriptionsMD')
+        = do    put moduleIdMD'
+                put exportedNamesMD'
+                put mbSourcePathMD'
+                put usagesMD'
+                put idDescriptionsMD'
+    get = do    moduleIdMD'          <- get
+                exportedNamesMD'     <- get
+                mbSourcePathMD'      <- get
+                usagesMD'            <- get
+                idDescriptionsMD'    <- get
+                return (ModuleDescr moduleIdMD' exportedNamesMD' mbSourcePathMD'
+                                    usagesMD' idDescriptionsMD')
+
+instance Binary IdentifierDescr where
+    put (SimpleDescr identifierID' identifierTypeID' typeInfoID' moduleIdID'
+                            mbLocation' mbComment')
+        = do    put (1::Int)
+                put identifierID'
+                put identifierTypeID'
+                put typeInfoID'
+                put moduleIdID'
+                put mbLocation'
+                put mbComment'
+    put (DataDescr identifierID' typeInfoID' moduleIdID'
+                            constructorsID' fieldsID' mbLocation' mbComment')
+        = do    put (2::Int)
+                put identifierID'
+                put typeInfoID'
+                put moduleIdID'
+                put constructorsID'
+                put fieldsID'
+                put mbLocation'
+                put mbComment'
+    put (ClassDescr identifierID' typeInfoID' moduleIdID'
+                            classOpsID' mbLocation' mbComment')
+        = do    put (3::Int)
+                put identifierID'
+                put typeInfoID'
+                put moduleIdID'
+                put classOpsID'
+                put mbLocation'
+                put mbComment'
+    put (InstanceDescr identifierID' classID' moduleIdID' mbLocation' mbComment')
+        = do    put (4::Int)
+                put identifierID'
+                put classID'
+                put moduleIdID'
+                put mbLocation'
+                put mbComment'
+    get = do    (typeHint :: Int)           <- get
+                case typeHint of
+                    1 -> do
+                            identifierID'        <- get
+                            identifierTypeID'    <- get
+                            typeInfoID'          <- get
+                            moduleIdID'          <- get
+                            mbLocation'          <- get
+                            mbComment'           <- get
+                            return (SimpleDescr identifierID' identifierTypeID' typeInfoID'
+                                       moduleIdID' mbLocation' mbComment')
+                    2 -> do
+                            identifierID'        <- get
+                            typeInfoID'          <- get
+                            moduleIdID'          <- get
+                            constructorsID'      <- get
+                            fieldsID'            <- get
+                            mbLocation'          <- get
+                            mbComment'           <- get
+                            return (DataDescr identifierID' typeInfoID' moduleIdID'
+                                        constructorsID' fieldsID' mbLocation' mbComment')
+                    3 -> do
+                            identifierID'        <- get
+                            typeInfoID'          <- get
+                            moduleIdID'          <- get
+                            classOpsID'          <- get
+                            mbLocation'          <- get
+                            mbComment'           <- get
+                            return (ClassDescr identifierID' typeInfoID' moduleIdID'
+                                        classOpsID' mbLocation' mbComment')
+                    4 -> do
+                            identifierID'        <- get
+                            classID'             <- get
+                            moduleIdID'          <- get
+                            mbLocation'          <- get
+                            mbComment'           <- get
+                            return (InstanceDescr identifierID' classID' moduleIdID'
+                                        mbLocation' mbComment')
+                    _ -> error "Impossible in Binary IdentifierDescr get"
+
+
+instance Binary IdTypeS where
+    put it  =   do  put (fromEnum it)
+    get     =   do  code         <- get
+                    return (toEnum code)
+
+instance Binary Location where
+    put (Location locationSLine' locationSCol' locationELine' locationECol')
+        = do    put locationSLine'
+                put locationSCol'
+                put locationELine'
+                put locationECol'
+    get = do    locationSLine'       <-  get
+                locationSCol'        <-  get
+                locationELine'       <-  get
+                locationECol'        <-  get
+                return (Location locationSLine' locationSCol' locationELine' locationECol')
+
+-- ---------------------------------------------------------------------
+-- DeepSeq instances for forcing evaluation
 --
 
 instance DeepSeq Location where
@@ -509,3 +511,4 @@ instance DeepSeq Version where  deepSeq = seq
 instance DeepSeq PackModule where
     deepSeq pd =  deepSeq (pack pd)
                     $   deepSeq (modu pd)
+

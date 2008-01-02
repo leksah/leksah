@@ -111,11 +111,11 @@ buildInfoD fp modules = [
             boolEditor
     ,   mkField
             (paraName <<<- ParaName "Non-exposed or non-main modules"
-                $ paraSynopsis <<<- ParaSynopsis
-                    "A list of modules used by the component but not exposed to users."
-                    $ paraShadow <<<- ParaShadow ShadowIn
-                        $ paraDirection <<<- ParaDirection Vertical
-                            $ emptyParams)
+            $ paraSynopsis <<<- ParaSynopsis ("A list of modules used by the component but "
+                                             ++ "not exposed to users.")
+            $ paraShadow <<<- ParaShadow ShadowIn
+            $ paraDirection <<<- ParaDirection Vertical
+            $ emptyParams)
             otherModules
             (\ a b -> b{otherModules = a})
             (modulesEditor modules)

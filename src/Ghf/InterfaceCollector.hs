@@ -14,6 +14,7 @@
 
 module Ghf.InterfaceCollector (
     collectInstalled
+,   collectInstalled'
 ,   collectUninstalled
 ) where
 
@@ -38,6 +39,7 @@ import TcRnTypes
 import Finder
 import qualified FastString as FS
 import ErrUtils
+import Config(cProjectVersion)
 
 import Data.Char (isSpace)
 import qualified Data.Map as Map
@@ -78,6 +80,11 @@ instance Default CollectStatistics where
     getDefault          =   CollectStatistics getDefault getDefault getDefault getDefault
                                 getDefault
 
+collectInstalled' :: Bool -> GhfAction
+collectInstalled' b     =   do
+    session'            <-  readGhf session
+    lift $ collectInstalled False session' cProjectVersion b
+
 collectInstalled :: Bool -> Session -> String -> Bool -> IO()
 collectInstalled writeAscii session version forceRebuild = do
     collectorPath       <-  getCollectorPath version
@@ -116,6 +123,8 @@ collectInstalled writeAscii session version forceRebuild = do
             ++ show ((round (((fromIntegral   (parseFailures statistic)) :: Double) /
                        (fromIntegral   (modulesWithSource statistic)) * 100.0)):: Integer)
     mapM_ (writeExtracted collectorPath writeAscii) extracted'
+
+
 
 collectUninstalled :: Bool -> Session -> String -> FilePath -> IO ()
 collectUninstalled writeAscii session version cabalPath = do

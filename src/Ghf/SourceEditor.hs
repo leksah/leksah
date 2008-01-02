@@ -163,12 +163,13 @@ selectSourceBuf fp = do
 
 goToDefinition :: IdentifierDescr -> GhfAction
 goToDefinition idDescr = do
-    mbAccesibleInfo      <-  readGhf accessibleInfo
+    mbAccesibleInfo      <-  trace "goToDefinition called" $ readGhf accessibleInfo
     mbCurrentInfo        <-  readGhf currentInfo
     if isJust mbAccesibleInfo && isJust mbCurrentInfo
         then do
             let packageId       =   pack $ moduleIdID idDescr
-            let mbPack          =   case packageId `Map.lookup` fst (fromJust mbAccesibleInfo) of
+            let mbPack          =   case packageId `Map.lookup` fst
+                                            (fromJust mbAccesibleInfo) of
                                         Just it ->  Just it
                                         Nothing ->  packageId `Map.lookup` fst (fst
                                                                  (fromJust mbCurrentInfo))
@@ -186,7 +187,8 @@ goToDefinition idDescr = do
 
 goToSourceDefinition :: FilePath -> Maybe Location -> GhfAction
 goToSourceDefinition fp mbLocation = do
-    success     <- selectSourceBuf fp
+    success     <- trace ("goToDefinition called with " ++ fp ++ " " ++ show mbLocation)
+                    $ selectSourceBuf fp
     when (success && isJust mbLocation) $
         inBufContext () $ \_ gtkbuf buf _ -> do
         let location    =   fromJust mbLocation

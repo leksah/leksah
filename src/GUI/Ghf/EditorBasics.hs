@@ -62,8 +62,8 @@ type Extractor beta    =   IO(Maybe (beta))
 
 --
 -- | A type for handling an event
---   Returning True: The event has been handles
---   Returning False: Usual handling should proceed
+-- Returning True: The event has been handles
+-- Returning False: Handling should proceed
 type Handler        =   Event  -> IO Bool
 
 data EventSelector  =   Clicked
@@ -74,14 +74,14 @@ data EventSelector  =   Clicked
 
 --
 -- | A type to register or unregister a handler
---   If the second argument is Left Handler the handler gets registered
---   If the second argument is Right Unique the handler will be removed
---   The returned unique value can be used for unregistering an event
+-- If the second argument is Left Handler the handler gets registered
+-- If the second argument is Right Unique the handler will be removed
+-- The returned unique value can be used for unregistering an event
 type Notifier       =   EventSelector -> Either Handler Unique -> IO (Unique)
 
 --
 -- | A type to describe an editor.
---   beta is the type of the individual field of the record
+-- alpha is the type of the individual field of the record
 type Editor alpha       =   Parameters -> IO(Widget, Injector alpha , Extractor alpha , Notifier)
 
 

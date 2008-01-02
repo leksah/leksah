@@ -16,7 +16,7 @@
 
 module Ghf.ModulesPane (
     showModules
-,   gotoModule
+,   selectIdentifier
 ) where
 
 import Graphics.UI.Gtk hiding (get)
@@ -38,18 +38,15 @@ instance Pane GhfModules
     where
     primPaneName _  =   "Modules"
     getAddedIndex _ =   0
-    getTopWidget    =   castToWidget . paned
+    getTopWidget    =   castToWidget . outer
     paneId b        =   "*Modules"
-    makeActive p    = do
-        activatePane p (BufConnections[][] [])
-    close pane     =   do
+    makeActive p    =   activatePane p (BufConnections[][] [])
+    close pane      =   do
         (panePath,_)    <-  guiPropertiesFromName (paneName pane)
         nb              <-  getNotebook panePath
         mbI             <-  lift $notebookPageNum nb (getTopWidget pane)
         case mbI of
-            Nothing ->  lift $ do
-                putStrLn "notebook page not found: unexpected"
-                return ()
+            Nothing ->  throwGhf "Pane>GhfModules: notebook page not found: unexpected"
             Just i  ->  do
                 deactivatePaneIfActive pane
                 lift $notebookRemovePage nb i
@@ -73,25 +70,46 @@ instance ModelPane GhfModules ModulesState where
                                 fillModulesList
                                 return ()
 
-gotoModule :: IdentifierDescr -> GhfAction
-gotoModule idDescr =
+selectIdentifier :: IdentifierDescr -> GhfAction
+selectIdentifier idDescr =
     let moduleName = modu $ moduleIdID idDescr
         nameArray = breakAtDots [] moduleName
     in do
-        message "goto Module called"
-        mods@(GhfModules _ treeView treeStore _) <- getModules
+        mods@(GhfModules _ _ treeView treeStore facetView facetStore) <- getModules
         tree            <-  lift $ New.treeStoreGetTree treeStore []
-        let mbTreePath  =   treePathFromNameArray tree nameArray []
-        lift $ putStrLn (show mbTreePath)
-        case mbTreePath of
+        case treePathFromNameArray tree nameArray [] of
             Just treePath   ->  lift $ do
                 New.treeViewExpandToPath treeView treePath
                 sel         <-  New.treeViewGetSelection treeView
                 New.treeSelectionSelectPath sel treePath
-                col         <- New.treeViewGetColumn treeView 0
+                col         <-  New.treeViewGetColumn treeView 0
                 New.treeViewScrollToCell treeView treePath (fromJust col) (Just (0.3,0.3))
+                facetTree   <-  New.treeStoreGetTree facetStore []
+                selF        <-  New.treeViewGetSelection facetView
+                case  findPathFor idDescr facetTree of
+                    Nothing     ->  trace "no path found" $ return ()
+                    Just path   ->  do
+                        New.treeSelectionSelectPath selF path
+                        col     <-  New.treeViewGetColumn facetView 0
+                        New.treeViewScrollToCell facetView path (fromJust col) (Just (0.3,0.3))
                 bringPaneToFront mods
             Nothing         ->  return ()
+
+findPathFor :: IdentifierDescr -> Tree FacetWrapper -> Maybe TreePath
+findPathFor iddescr (Node _ forest) =
+    foldr ( \i mbTreePath -> findPathFor' [i] (forest !! i) mbTreePath)
+                            Nothing  [0 .. ((length forest) - 1)]
+    where
+    findPathFor' :: TreePath -> Tree FacetWrapper -> Maybe TreePath -> Maybe TreePath
+    findPathFor' _ node (Just p)                  =   Just p
+    findPathFor' path (Node wrap sub) Nothing     =
+        if identifierID (facetIdDescr wrap) == identifierID iddescr
+            then Just (reverse path)
+            else
+                foldr ( \i mbTreePath -> findPathFor' (i:path) (sub !! i) mbTreePath)
+                            Nothing     [0 .. ((length sub) - 1)]
+
+
 
 treePathFromNameArray :: ModTree -> [String] -> [Int] -> Maybe [Int]
 treePathFromNameArray tree [] accu      =   Just (reverse accu)
@@ -218,21 +236,36 @@ initModules panePath nb = do
                                     else ""]
         New.treeViewSetHeadersVisible treeView True
 
-        pane <- hPanedNew
-        sw <- scrolledWindowNew Nothing Nothing
+        pane'           <-  hPanedNew
+        sw              <-  scrolledWindowNew Nothing Nothing
         containerAdd sw treeView
         scrolledWindowSetPolicy sw PolicyAutomatic PolicyAutomatic
-        sw2 <- scrolledWindowNew Nothing Nothing
+        sw2             <-  scrolledWindowNew Nothing Nothing
         containerAdd sw2 facetView
         scrolledWindowSetPolicy sw2 PolicyAutomatic PolicyAutomatic
-        panedAdd1 pane sw
-        panedAdd2 pane sw2
+        panedAdd1 pane' sw
+        panedAdd2 pane' sw2
         (x,y) <- widgetGetSize nb
-        panedSetPosition pane (x `quot` 2)
-        let modules = GhfModules pane treeView treeStore facetStore
-        notebookPrependPage nb pane (paneName modules)
-        widgetShowAll pane
-        mbPn <- notebookPageNum nb pane
+        panedSetPosition pane' (x `quot` 2)
+        box             <-  hBoxNew True 2
+        rb1             <-  radioButtonNewWithLabel "Local"
+        rb2             <-  radioButtonNewWithLabelFromWidget rb1 "Package"
+        rb3             <-  radioButtonNewWithLabelFromWidget rb1 "World"
+        cb              <-  checkButtonNewWithLabel "Blacklist"
+
+        boxPackStart box rb1 PackGrow 2
+        boxPackStart box rb2 PackGrow 2
+        boxPackStart box rb3 PackGrow 2
+        boxPackEnd box cb PackNatural 2
+
+        boxOuter        <-  vBoxNew False 2
+        boxPackStart boxOuter box PackNatural 2
+        boxPackStart boxOuter pane' PackGrow 2
+
+        let modules = GhfModules boxOuter pane' treeView treeStore facetView facetStore
+        notebookPrependPage nb boxOuter (paneName modules)
+        widgetShowAll boxOuter
+        mbPn <- notebookPageNum nb boxOuter
         case mbPn of
             Just i  -> notebookSetCurrentPage nb i
             Nothing -> putStrLn "Notebook page not found"
@@ -360,7 +393,7 @@ findDescription md st s     =
 
 fillModulesList :: GhfAction
 fillModulesList = do
-    (GhfModules _ treeView treeStore _)  <-  getModules
+    (GhfModules _ _ treeView treeStore _ _)  <-  getModules
     currentInfo                 <-  readGhf currentInfo
     case currentInfo of
         Nothing             ->  lift $ do
@@ -460,7 +493,7 @@ type ModTree = Tree (String, [(ModuleDescr,PackageDescr)])
 --
 buildModulesTree :: (PackageScope,PackageScope) -> ModTree
 buildModulesTree ((localMap,_),(otherMap,_)) =
-    let flatPairs           =   concatMap (\e -> map (\f -> (f,e)) (exposedModulesPD e))
+    let flatPairs           =   concatMap (\p -> map (\m -> (m,p)) (exposedModulesPD p))
                                     (Map.elems localMap ++ Map.elems otherMap)
         emptyTree           =   (Node ("",[]) [])
         resultTree          =   foldl insertPairsInTree emptyTree flatPairs
@@ -485,12 +518,12 @@ insertNodesInTree list@[(str2,pair)] (Node (str1,pairs) forest) =
         ([],_)              ->  (Node (str1,pairs) (makeNodes list : forest))
         ([(Node (_,pairsf) l)],rest)
                             ->  (Node (str1,pairs) ((Node (str2,pair : pairsf) l) : rest))
-        (_,_)               ->  error "insertNodesInTree: impossible1"
+        (_,_)               ->  throwGhf "insertNodesInTree: impossible1"
 insertNodesInTree  list@((str2,pair):tl) (Node (str1,pairs) forest) =
     case partition (\ (Node (s,_) _) -> s == str2) forest of
         ([],_)              ->  (Node (str1,pairs)  (makeNodes list : forest))
         ([found],rest)      ->  (Node (str1,pairs) (insertNodesInTree tl found : rest))
-        (_,_)               ->  error "insertNodesInTree: impossible2"
+        (_,_)               ->  throwGhf "insertNodesInTree: impossible2"
 insertNodesInTree [] t      =   t
 
 makeNodes :: [(String,(ModuleDescr,PackageDescr))] -> ModTree

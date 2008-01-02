@@ -33,7 +33,6 @@ import Ghf.ViewFrame
 import GUI.Ghf.MakeEditor
 import GUI.Ghf.SimpleEditors
 import GUI.Ghf.Parameters
-import Data.Ghf.Default
 import Ghf.SourceEditor
 import {-# SOURCE #-} Ghf.ModulesPane
 import Ghf.CallersPane
@@ -86,7 +85,6 @@ idDescrDescr = [
     ,   mkField
             (paraName <<<- ParaName "Exported by"
                 $ paraHorizontal <<<- ParaHorizontal StopHorizontal
-                    $ paraMinSize <<<- ParaMinSize (150,-1)
                         $ emptyParams)
             (\l -> showPackModule (moduleIdID l))
             (\ b a -> a{moduleIdID = parsePackModule b})
@@ -126,8 +124,8 @@ initInfo panePath nb idDescrs index = do
             ibox        <- vBoxNew False 0
             bb          <- vButtonBoxNew
             buttonBoxSetLayout bb ButtonboxStart
-            definitionB <- buttonNewWithLabel "Definition"
-            moduB       <- buttonNewWithLabel "Module"
+            definitionB <- buttonNewWithLabel "Source"
+            moduB       <- buttonNewWithLabel "Selection"
             usesB       <- buttonNewWithLabel "Uses"
             docuB       <- buttonNewWithLabel "Docu"
             widgetSetSensitivity docuB False
@@ -218,7 +216,8 @@ gotoSource :: GhfAction
 gotoSource = do
     mbInfo <- getInfoCont
     case mbInfo of
-        Nothing     ->  return ()
+        Nothing     ->  do  lift $ putStrLn "gotoSource:noDefition"
+                            return ()
         Just info   ->  do  goToDefinition info
                             return ()
 
@@ -227,7 +226,7 @@ gotoModule' = do
     mbInfo <- getInfoCont
     case mbInfo of
         Nothing     ->  return ()
-        Just info   ->  do  gotoModule info
+        Just info   ->  do  selectIdentifier info
                             return ()
 
 calledBy' :: GhfAction
@@ -264,6 +263,10 @@ getInfoCont = do
     mbPane <- getPane InfoCasting
     case mbPane of
         Nothing ->  return Nothing
-        Just p  ->  lift $ extract getDefault (extractors p)
-
+        Just p  ->  lift $ do
+            currentIndU     <-  readIORef (currentInd p)
+            currentIDsU     <-  readIORef (currentIDs p)
+            if length currentIDsU > currentIndU
+                then return (Just (currentIDsU !! currentIndU))
+                else return Nothing
 

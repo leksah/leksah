@@ -36,10 +36,13 @@ import Ghf.Preferences
 import Ghf.PackageEditor
 import Ghf.Package
 import Ghf.Log
+import Ghf.Info
 import Ghf.SaveSession
 import Ghf.ModulesPane
 import Ghf.ToolbarPane
 import Ghf.FindPane
+import Ghf.SourceCollector
+import Ghf.InterfaceCollector
 import Paths_ghf
 --import Ghf.GhcAPI
 
@@ -149,6 +152,15 @@ actions =
     ,AD "Modules" "_Modules" Nothing Nothing (return ()) [] False
     ,AD "ShowModules" "_Show Modules" Nothing Nothing
         showModules [] False
+
+    ,AD "RebuildSourceLocs" "_Rebuild source locations" Nothing Nothing
+        (lift buildSourceForPackageDB) [] False
+    ,AD "UpdateMetadata" "_Update metadata" Nothing Nothing
+        (collectInstalled' False) [] False
+    ,AD "RebuildMetadata" "Re_build metadata" Nothing Nothing
+        (collectInstalled' True) [] False
+    ,AD "UpdateProjectMetadata" "Update _current package metadata" Nothing Nothing
+        buildActiveInfo [] False
 
     ,AD "View" "_View" Nothing Nothing (return ()) [] False
     ,AD "ViewMoveLeft" "Move _Left" Nothing Nothing
@@ -268,6 +280,11 @@ menuDescription =
     "     </menu> " ++ "\n" ++
     "    <menu name=\"_Modules\" action=\"Modules\"> " ++ "\n" ++
     "       <menuitem name=\"_Show Modules\" action=\"ShowModules\" /> " ++ "\n" ++
+    "       <separator/> " ++ "\n" ++
+    "       <menuitem name=\"_Rebuild source locations metadata\" action=\"RebuildSourceLocs\" /> " ++ "\n" ++
+    "       <menuitem name=\"_Update metadata for changes to installed packages\" action=\"UpdateMetadata\" /> " ++ "\n" ++
+    "       <menuitem name=\"_Rebuild metadata for all installed packages\" action=\"RebuildMetadata\" /> " ++ "\n" ++
+    "       <menuitem name=\"_Update metadata for current package\" action=\"UpdateProjectMetadata\" /> " ++ "\n" ++
     "    </menu> " ++ "\n" ++
     "    <menu name=\"_View\" action=\"View\"> " ++ "\n" ++
     "       <menuitem name=\"Move _Left\" action=\"ViewMoveLeft\" /> " ++ "\n" ++

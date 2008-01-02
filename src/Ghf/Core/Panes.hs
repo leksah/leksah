@@ -278,17 +278,12 @@ instance CastableModel InfoState where
 -- | A modules pane description
 --
 
-data FacetWrapper =
-        Itself IdentifierDescr
-    |   ConstructorW Symbol IdentifierDescr
-    |   FieldW Symbol IdentifierDescr
-    |   ClassOpsW Symbol IdentifierDescr
-    |   OrphanedData IdentifierDescr
-
 data GhfModules     =   GhfModules {
-    paned           ::   HPaned
+    outer           ::   VBox
+,   paned           ::   HPaned
 ,   treeView        ::   New.TreeView
 ,   treeStore       ::   New.TreeStore (String, [(ModuleDescr,PackageDescr)])
+,   facetView       ::   New.TreeView
 ,   facetStore      ::   New.TreeStore FacetWrapper
 }
 
@@ -297,6 +292,13 @@ instance CastablePane GhfModules where
     downCast _ (PaneC a)    =   case casting a of
                                     ModulesCasting  -> Just a
                                     _               -> Nothing
+
+data FacetWrapper =
+        Itself IdentifierDescr
+    |   ConstructorW Symbol IdentifierDescr
+    |   FieldW Symbol IdentifierDescr
+    |   ClassOpsW Symbol IdentifierDescr
+    |   OrphanedData IdentifierDescr
 
 data ModulesState           =   ModulesState Int
     deriving(Eq,Ord,Read,Show)

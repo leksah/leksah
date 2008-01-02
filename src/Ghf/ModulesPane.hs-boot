@@ -1,10 +1,10 @@
 module Ghf.ModulesPane (
     showModules
-,   gotoModule
+,   selectIdentifier
 ) where
 
 import Ghf.Core.State
 
-gotoModule :: IdentifierDescr -> GhfAction
+selectIdentifier :: IdentifierDescr -> GhfAction
 
 showModules :: GhfAction
