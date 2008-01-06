@@ -67,21 +67,21 @@ data Ghf            =  Ghf {
 ,   panes           ::  Map PaneName GhfPane    -- ^ a map with all panes (subwindows)
 ,   activePane      ::  Maybe (PaneName,Connections)
 ,   paneMap         ::  Map PaneName (PanePath, Connections)
-                    -- ^ a map from the pane to its gui path and signal connections
+                    -- ^ a map from the pane name to its gui path and signal connections
 ,   layout          ::  PaneLayout              -- ^ a description of the general gui layout
 ,   specialKeys     ::  SpecialKeyTable GhfRef  -- ^ a structure for emacs like keystrokes
 ,   specialKey      ::  SpecialKeyCons GhfRef   -- ^ the first of a double keystroke
 ,   candy           ::  CandyTables             -- ^ table for source candy
 ,   prefs           ::  Prefs                   -- ^ configuration preferences
---,   packages        ::  [GhfPackage]            -- ^ the packages known to ghf
 ,   activePack      ::  Maybe GhfPackage
 ,   errors          ::  [ErrorSpec]
 ,   currentErr      ::  Maybe Int
-,   accessibleInfo  ::  ! (Maybe (PackageScope))     -- ^  the world scope
-,   currentInfo     ::  ! (Maybe (PackageScope,PackageScope))
-                                      -- | ^ the first is for the current package,
-                                      --  the second is the scope in the current package
-,   session         ::  Session                  -- ^ the bridge to ghc
+,   accessibleInfo  ::  (Maybe (PackageScope))     -- ^  the world scope
+,   currentInfo     ::  (Maybe (PackageScope,PackageScope))
+                                                -- ^ the first is for the current package,
+                                                --the second is the scope in the current package
+,   session         ::  Session                  -- ^ a ghc session object, side effects
+                                                -- reusing with sessions?
 } --deriving Show
 
 --

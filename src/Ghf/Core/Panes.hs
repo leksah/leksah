@@ -154,9 +154,8 @@ instance ModelPane GhfPane GhfState where
     recoverState pp (StateC s)      =   recoverState pp s
 
 -- ---------------------------------------------------------------------
--- Special Panes - The data structures for the panes
+-- All pane types must be in here !
 --
-
 data Casting alpha  where
     LogCasting      ::   Casting GhfLog
     InfoCasting     ::   Casting GhfInfo
@@ -185,6 +184,9 @@ data PaneState      =   BufferSt BufferState
                     |   FindSt FindState
     deriving(Eq,Ord,Read,Show)
 
+-- ---------------------------------------------------------------------
+-- Special Panes - The data structures for the panes
+--
 
 --
 -- | A text editor pane description
