@@ -17,13 +17,13 @@ category: Tools
 author: Juergen Nicklisch-Franken
 tested-with: GHC == 6.6.1
 data-files: data/Default.candy data/Default.keymap
-            data/Default.prefs data/Emacs.keymap data/ghf.gif
+            data/Default.prefs data/Emacs.keymap data/IDE.gif
             data/Current.session
 extra-source-files: Setup.lhs
 extra-tmp-files:
 
-executable: ghf
-main-is: Ghf/Ghf.hs
+executable: leksah
+main-is: IDE/Leksah.hs
 buildable: True
 cc-options:
 ld-options:
@@ -36,34 +36,15 @@ includes:
 install-includes:
 include-dirs:
 hs-source-dirs: src
-other-modules: Ghf.BuildInfoEditor Ghf.Core Ghf.File Ghf.Keymap
-               Ghf.Log Ghf.Menu Ghf.Package Ghf.PackageEditor Ghf.PackageFlags
-               Ghf.Preferences Ghf.PrinterParser Ghf.PropertyEditor
-               Ghf.SaveSession Ghf.SourceCandy Ghf.SourceEditor Ghf.SpecialEditors
-               Ghf.ViewFrame
+other-modules: IDE.BuildInfoEditor IDE.Core IDE.File IDE.Keymap
+               IDE.Log IDE.Menu IDE.Package IDE.PackageEditor IDE.PackageFlags
+               IDE.Preferences IDE.PrinterParser IDE.PropertyEditor
+               IDE.SaveSession IDE.SourceCandy IDE.SourceEditor IDE.SpecialEditors
+               IDE.ViewFrame
 ghc-prof-options:
 ghc-options:-cpp -D__GLASGOW_HASKELL__= 661
 hugs-options:
 nhc-options:
 jhc-options:
 
-executable: ghf-collector
-main-is: Ghf/Collector.hs
-buildable: True
-cc-options:
-ld-options:
-frameworks:
-c-sources:
-extensions:
-extra-libraries:
-extra-lib-dirs:
-includes:
-install-includes:
-include-dirs:
-hs-source-dirs: src
-other-modules: Ghf.Core Ghf.Extractor
-ghc-prof-options:
-ghc-options:-cpp -D__GLASGOW_HASKELL__= 661
-hugs-options:
-nhc-options:
-jhc-options:
+
