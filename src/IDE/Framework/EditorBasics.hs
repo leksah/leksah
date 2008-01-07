@@ -1,7 +1,7 @@
 {-# OPTIONS_GHC -fglasgow-exts #-}
 -----------------------------------------------------------------------------
 --
--- Module      :  GUI.Ghf.EditorBasics
+-- Module      :  IDE.Framework.EditorBasics
 -- Copyright   :  (c) Juergen Nicklisch-Franken (aka Jutaro)
 -- License     :  GNU-GPL
 --
@@ -13,7 +13,7 @@
 --
 -----------------------------------------------------------------------------------
 
-module GUI.Ghf.EditorBasics (
+module IDE.Framework.EditorBasics (
 -- * Types
     Getter
 ,   Setter
@@ -29,7 +29,7 @@ module GUI.Ghf.EditorBasics (
 import Graphics.UI.Gtk --hiding (Event)
 import Data.Unique
 
-import GUI.Ghf.Parameters
+import IDE.Framework.Parameters
 
 -- ---------------------------------------------------------------------
 -- * Basic Types
@@ -53,7 +53,7 @@ type Injector beta     =   beta -> IO()
 --
 type Extractor beta    =   IO(Maybe (beta))
 
---type Applicator beta =   beta -> GhfAction ()
+--type Applicator beta =   beta -> IDEAction ()
 
 --class EventSource alpha where
 

@@ -1,6 +1,6 @@
 -----------------------------------------------------------------------------
 --
--- Module      :  GUI.Ghf.MakeEditor
+-- Module      :  IDE.Framework.MakeEditor
 -- Copyright   :  (c) Juergen Nicklisch-Franken (aka Jutaro)
 -- License     :  GNU-GPL
 --
@@ -12,7 +12,7 @@
 --
 -----------------------------------------------------------------------------------
 
-module GUI.Ghf.MakeEditor (
+module IDE.Framework.MakeEditor (
 
     FieldDescription(..)
 ,   mkField
@@ -36,8 +36,8 @@ import Data.Map (Map)
 import qualified Data.Map as Map
 import Data.Unique
 
-import GUI.Ghf.Parameters
-import GUI.Ghf.EditorBasics
+import IDE.Framework.Parameters
+import IDE.Framework.EditorBasics
 
 --
 -- | A constructor type for a field desciption

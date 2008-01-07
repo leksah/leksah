@@ -1,6 +1,6 @@
 -----------------------------------------------------------------------------
 --
--- Module      :  Ghf.ViewFrame
+-- Module      :  IDE.Framework.ViewFrame
 -- Copyright   :  (c) Juergen Nicklisch-Franken (aka Jutaro)
 -- License     :  GNU-GPL
 --
@@ -13,7 +13,7 @@
 --
 ---------------------------------------------------------------------------------
 
-module Ghf.ViewFrame (
+module IDE.Framework.ViewFrame (
 -- * Convenience methods for accesing Pane state
     posTypeToPaneDirection
 ,   paneDirectionToPosType
@@ -69,19 +69,19 @@ import Data.Map (Map)
 import Data.List
 import Data.Maybe
 
-import Ghf.Core.State
-import GUI.Ghf.Parameters
+import IDE.Core.State
+import IDE.Framework.Parameters
 
-getPane ::  CastablePane alpha => Casting alpha -> GhfM (Maybe alpha)
+getPane ::  CastablePane alpha => Casting alpha -> IDEM (Maybe alpha)
 getPane casting = do
     selectedPanes <- getPanes casting
     if null selectedPanes || length selectedPanes > 1
         then return Nothing
         else (return (Just $head selectedPanes))
 
-getPanes ::  CastablePane alpha => Casting alpha -> GhfM ([alpha])
+getPanes ::  CastablePane alpha => Casting alpha -> IDEM ([alpha])
 getPanes casting = do
-    panes' <- readGhf panes
+    panes' <- readIDE panes
     return (catMaybes $ map (downCast casting) $ Map.elems panes')
 
 -- | Constructs a unique pane name, which is an index and a string
@@ -96,17 +96,17 @@ figureOutPaneName bufs bn ind =
             then (0,bn)
             else (ind,bn ++ "(" ++ show ind ++ ")")
 
-paneFromName :: PaneName -> GhfM GhfPane
+paneFromName :: PaneName -> IDEM IDEPane
 paneFromName pn = do
-    panes  <- readGhf panes
+    panes  <- readIDE panes
     case Map.lookup pn panes of
         Just p -> return p
         Nothing -> error $"Cant't find pane from unique name " ++ pn
 
 -- |
-guiPropertiesFromName :: PaneName -> GhfM (PanePath, Connections)
+guiPropertiesFromName :: PaneName -> IDEM (PanePath, Connections)
 guiPropertiesFromName pn = do
-    paneMap <- readGhf paneMap
+    paneMap <- readIDE paneMap
     case Map.lookup pn paneMap of
             Just it -> return it
             otherwise  -> error $"Cant't find guiProperties from unique name " ++ pn
@@ -121,34 +121,34 @@ paneDirectionToPosType RightP       =   PosRight
 paneDirectionToPosType TopP         =   PosTop
 paneDirectionToPosType BottomP      =   PosBottom
 
-activatePane :: Pane alpha => alpha -> Connections -> GhfAction
+activatePane :: Pane alpha => alpha -> Connections -> IDEAction
 activatePane pane conn = do
     deactivatePane
     sb <- getSBActivePane
     lift $statusbarPop sb 1
     lift $statusbarPush sb 1 (paneName pane)
-    modifyGhf_ $ \ghf -> do
+    modifyIDE_ $ \ide -> do
         bringPaneToFront pane
-        return (ghf{activePane = Just (paneName pane,conn)})
+        return (ide{activePane = Just (paneName pane,conn)})
 
-deactivatePane :: GhfAction
+deactivatePane :: IDEAction
 deactivatePane = do
     sb <- getSBActivePane
     lift $statusbarPop sb 1
     lift $statusbarPush sb 1 ""
-    mbAP    <-  readGhf activePane
+    mbAP    <-  readIDE activePane
     case mbAP of
         Just (_,BufConnections signals signals2 signals3) -> lift $do
             mapM_ signalDisconnect signals
             mapM_ signalDisconnect signals2
             mapM_ signalDisconnect signals3
         Nothing -> return ()
-    modifyGhf_ $ \ghf -> do
-        return (ghf{activePane = Nothing})
+    modifyIDE_ $ \ide -> do
+        return (ide{activePane = Nothing})
 
-deactivatePaneIfActive :: Pane alpha => alpha -> GhfAction
+deactivatePaneIfActive :: Pane alpha => alpha -> IDEAction
 deactivatePaneIfActive pane = do
-    mbActive <- readGhf activePane
+    mbActive <- readIDE activePane
     case mbActive of
         Nothing -> return ()
         Just (n,_) -> if n == paneName pane
@@ -157,7 +157,7 @@ deactivatePaneIfActive pane = do
 --
 -- | Toggle the tabs of the current notebook
 --
-viewSwitchTabs :: GhfAction
+viewSwitchTabs :: IDEAction
 viewSwitchTabs = do
     mbNb <- getActiveNotebook
     case mbNb of
@@ -169,7 +169,7 @@ viewSwitchTabs = do
 --
 -- | Sets the tab position in the current notebook
 --
-viewTabsPos :: PositionType -> GhfAction
+viewTabsPos :: PositionType -> IDEAction
 viewTabsPos pos = do
     mbNb <- getActiveNotebook
     case mbNb of
@@ -179,26 +179,26 @@ viewTabsPos pos = do
 --
 -- | Split the currently active pane in horizontal direction
 --
-viewSplitHorizontal     :: GhfAction
+viewSplitHorizontal     :: IDEAction
 viewSplitHorizontal     = viewSplit Horizontal
 
 --
 -- | Split the currently active pane in vertical direction
 --
-viewSplitVertical :: GhfAction
+viewSplitVertical :: IDEAction
 viewSplitVertical = viewSplit Vertical
 
 --
 -- | The active view can be split in two (horizontal or vertical)
 --
-viewSplit :: Direction -> GhfAction
+viewSplit :: Direction -> IDEAction
 viewSplit dir = do
     mbPanePath <- getActivePanePath
     case mbPanePath of
         Nothing -> return ()
         Just panePath -> viewSplit' panePath dir
 
-viewSplit' :: PanePath -> Direction -> GhfAction
+viewSplit' :: PanePath -> Direction -> IDEAction
 viewSplit' panePath dir = do
   activeNotebook  <- getNotebook panePath
   mbPD <- lift $ do
@@ -244,7 +244,7 @@ viewSplit' panePath dir = do
 --
 -- | Two notebooks can be collapsed to one
 --
-viewCollapse :: GhfAction
+viewCollapse :: IDEAction
 viewCollapse = do
     mbPanePath        <- getActivePanePath
     case mbPanePath of
@@ -252,9 +252,9 @@ viewCollapse = do
         Just panePath -> do
             viewCollapse' panePath
 
-viewCollapse' :: PanePath -> GhfAction
+viewCollapse' :: PanePath -> IDEAction
 viewCollapse' panePath = do
-    layout1           <- readGhf layout
+    layout1           <- readIDE layout
     let newPanePath   = reverse $tail $reverse panePath
     let mbOtherSidePath = otherSide panePath
     case mbOtherSidePath of
@@ -269,7 +269,7 @@ viewCollapse' panePath = do
             case  sp2 of
                 Nothing -> return ()
                 Just sp -> viewCollapse' sp
-            paneMap         <- readGhf paneMap
+            paneMap         <- readIDE paneMap
             activeNotebook  <- getNotebook panePath
             let paneNamesToMove = map (\(w,(p,_)) -> w)
                                     $filter (\(w,(p,_)) -> p == otherSidePath)
@@ -307,11 +307,11 @@ viewCollapse' panePath = do
 --
 -- | Moves the given Pane to the given path
 --
-move ::  PanePath -> GhfPane -> GhfAction
-move toPane ghfw  = do
-    paneMap         <-  readGhf paneMap
-    let child       =   getTopWidget ghfw
-    (fromPane,cid)  <-  guiPropertiesFromName (paneName ghfw)
+move ::  PanePath -> IDEPane -> IDEAction
+move toPane idew  = do
+    paneMap         <-  readIDE paneMap
+    let child       =   getTopWidget idew
+    (fromPane,cid)  <-  guiPropertiesFromName (paneName idew)
     fromNB          <-  getNotebook fromPane
     toNB            <-  getNotebook toPane
     lift $ do
@@ -326,17 +326,17 @@ move toPane ghfw  = do
                         notebookRemovePage fromNB pn
                         pn2 <- notebookPrependPage toNB child text
                         notebookSetCurrentPage toNB pn2
-    let paneMap1    =  Map.delete (paneName ghfw) paneMap
-    let newPaneMap  =  Map.insert (paneName ghfw) (toPane,cid) paneMap1
-    modifyGhf_ (\ghf -> return (ghf{paneMap = newPaneMap}))
+    let paneMap1    =  Map.delete (paneName idew) paneMap
+    let newPaneMap  =  Map.insert (paneName idew) (toPane,cid) paneMap1
+    modifyIDE_ (\ide -> return (ide{paneMap = newPaneMap}))
 
 --
 -- | Moves the activePane in the given direction, if possible
 -- | If their are many possibilities choose the leftmost and topmost
 --
-viewMove :: PaneDirection -> GhfAction
+viewMove :: PaneDirection -> IDEAction
 viewMove direction = do
-    mbPane <- readGhf activePane
+    mbPane <- readIDE activePane
     case mbPane of
         Nothing -> do
             lift $putStrLn "no active pane"
@@ -349,7 +349,7 @@ viewMove direction = do
                     lift $putStrLn "no active pane path"
                     return ()
                 Just panePath -> do
-                  layout <- readGhf layout
+                  layout <- readIDE layout
                   case findMoveTarget panePath layout direction of
                       Nothing -> do
                         lift $putStrLn "no target found"
@@ -469,47 +469,47 @@ layoutFromPath pp l                             = error
     $"inconsistent layout " ++ show pp ++ " " ++ show l
 
 
-getNotebookOrPaned :: PanePath -> (Widget -> beta) -> GhfM beta
+getNotebookOrPaned :: PanePath -> (Widget -> beta) -> IDEM beta
 getNotebookOrPaned p cf = (widgetGet $["topBox","root"] ++ map paneDirectionToWidgetName p) cf
 
 --
 -- | Get the notebook widget for the given pane path
 --
-getNotebook :: PanePath -> GhfM Notebook
+getNotebook :: PanePath -> IDEM Notebook
 getNotebook p = getNotebookOrPaned p castToNotebook
 
 --
 -- | Get the (gtk) Paned widget for a given path
 --
-getPaned :: PanePath -> GhfM Paned
+getPaned :: PanePath -> IDEM Paned
 getPaned p = getNotebookOrPaned p castToPaned
 
 --
 -- | Get the path to the active pane
 --
-getActivePanePath :: GhfM (Maybe PanePath)
+getActivePanePath :: IDEM (Maybe PanePath)
 getActivePanePath = do
-    mbPane   <- readGhf activePane
+    mbPane   <- readIDE activePane
     case mbPane of
         Nothing -> return Nothing
         Just (paneName,_) -> do
             (pp,_)  <- guiPropertiesFromName paneName
             return (Just (pp))
 
-getActivePanePathOrStandard :: StandardPath -> GhfM (PanePath)
+getActivePanePathOrStandard :: StandardPath -> IDEM (PanePath)
 getActivePanePathOrStandard sp = do
     mbApp <- getActivePanePath
     case mbApp of
         Just app -> return app
         Nothing -> do
-            layout <- readGhf layout
+            layout <- readIDE layout
             return (getStandardPanePath sp layout)
 
 
 --
 -- | Get the active notebook
 --
-getActiveNotebook :: GhfM (Maybe Notebook)
+getActiveNotebook :: IDEM (Maybe Notebook)
 getActiveNotebook = do
     mbPanePath <- getActivePanePath
     case mbPanePath of
@@ -531,37 +531,37 @@ paneDirectionToWidgetName RightP    =  "right"
 --
 -- | Changes a pane path in the pane map
 --
-adjustPane :: PanePath -> PanePath -> GhfAction
+adjustPane :: PanePath -> PanePath -> IDEAction
 adjustPane fromPane toPane  = do
     trace ("adjust pane from: " ++ show fromPane ++ " to: " ++ show toPane) return ()
-    paneMap     <- readGhf paneMap
+    paneMap     <- readIDE paneMap
     let newMap  = Map.map (\(pp,other) -> do
         if pp == fromPane
             then (toPane,other)
             else (pp,other)) paneMap
-    modifyGhf_ $ \ghf -> return (ghf{paneMap = newMap})
+    modifyIDE_ $ \ide -> return (ide{paneMap = newMap})
 
 --
 -- | Changes the layout for a split
 --
-adjustLayoutForSplit            :: Direction -> PanePath -> GhfAction
+adjustLayoutForSplit            :: Direction -> PanePath -> IDEAction
 adjustLayoutForSplit  dir path  = do
-    layout          <- readGhf layout
+    layout          <- readIDE layout
     let newTerm     = case dir of
                         Horizontal -> HorizontalP (TerminalP Nothing) (TerminalP Nothing) 0
                         Vertical   -> VerticalP (TerminalP Nothing) (TerminalP Nothing) 0
     let newLayout   = adjust path layout newTerm
-    modifyGhf_ $ \ghf -> return (ghf{layout = newLayout})
+    modifyIDE_ $ \ide -> return (ide{layout = newLayout})
 
 --
 -- | Changes the layout for a collapse (HorizontalP TerminalP (VerticalP (HorizontalP TerminalP TerminalP) TerminalP))
 
 --
-adjustLayoutForCollapse :: PanePath -> GhfAction
+adjustLayoutForCollapse :: PanePath -> IDEAction
 adjustLayoutForCollapse path = do
-    layout          <- readGhf layout
+    layout          <- readIDE layout
     let newLayout   = adjust path layout (TerminalP Nothing)
-    modifyGhf_ $ \ghf -> return (ghf{layout = newLayout})
+    modifyIDE_ $ \ide -> return (ide{layout = newLayout})
 
 getSubpath :: PanePath -> PaneLayout -> Maybe PanePath
 getSubpath path layout =
@@ -597,9 +597,9 @@ widgetFromPath w (h:t) = do
         Just ind    -> widgetFromPath (children !! ind) t
 
 
-widgetGet :: [String] -> (Widget -> b) -> GhfM (b)
+widgetGet :: [String] -> (Widget -> b) -> IDEM (b)
 widgetGet strL cf = do
-    w <- readGhf window
+    w <- readIDE window
     r <- lift $widgetFromPath (castToWidget w) strL
     return (cf r)
 
@@ -608,9 +608,9 @@ widgetGetRel w sl cf = do
     r <- widgetFromPath w sl
     return (cf r)
 
-getUIAction :: String -> (Action -> a) -> GhfM(a)
+getUIAction :: String -> (Action -> a) -> IDEM(a)
 getUIAction str f = do
-    uiManager <- readGhf uiManager
+    uiManager <- readIDE uiManager
     lift $ do
         findAction <- uiManagerGetAction uiManager str
         case findAction of
@@ -619,33 +619,33 @@ getUIAction str f = do
 
 --get widget elements
 
-getCandyState :: GhfM (Bool)
+getCandyState :: IDEM (Bool)
 getCandyState = do
     ui <- getUIAction "ui/menubar/_Edit/Source Candy" castToToggleAction
     lift $toggleActionGetActive ui
 
-setCandyState :: Bool -> GhfAction
+setCandyState :: Bool -> IDEAction
 setCandyState b = do
     ui <- getUIAction "ui/menubar/_Edit/Source Candy" castToToggleAction
     lift $toggleActionSetActive ui b
 --
 
-getSBSpecialKeys :: GhfM (Statusbar)
+getSBSpecialKeys :: IDEM (Statusbar)
 getSBSpecialKeys = widgetGet ["topBox","statusBox","statusBarSpecialKeys"] castToStatusbar
 
-getSBActivePane :: GhfM (Statusbar)
+getSBActivePane :: IDEM (Statusbar)
 getSBActivePane = widgetGet ["topBox","statusBox","statusBarActivePane"] castToStatusbar
 
-getSBActivePackage :: GhfM (Statusbar)
+getSBActivePackage :: IDEM (Statusbar)
 getSBActivePackage = widgetGet ["topBox","statusBox","statusBarActiveProject"] castToStatusbar
 
-getSBErrors :: GhfM (Statusbar)
+getSBErrors :: IDEM (Statusbar)
 getSBErrors = widgetGet ["topBox","statusBox","statusBarErrors"] castToStatusbar
 
-getStatusbarIO :: GhfM (Statusbar)
+getStatusbarIO :: IDEM (Statusbar)
 getStatusbarIO =  widgetGet ["topBox","statusBox","statusBarInsertOverwrite"] castToStatusbar
 
-getStatusbarLC :: GhfM (Statusbar)
+getStatusbarLC :: IDEM (Statusbar)
 getStatusbarLC = widgetGet ["topBox","statusBox","statusBarLineColumn"] castToStatusbar
 
 

@@ -1,6 +1,6 @@
 -----------------------------------------------------------------------------
 --
--- Module      :  Ghf.InterfaceCollector
+-- Module      :  IDE.Metainfo.InterfaceCollector
 -- Copyright   :  (c) Juergen Nicklisch-Franken (aka Jutaro)
 -- License     :  GNU-GPL
 --
@@ -12,7 +12,7 @@
 --
 -------------------------------------------------------------------------------
 
-module Ghf.InterfaceCollector (
+module IDE.Metainfo.InterfaceCollector (
     collectInstalled
 ,   collectInstalled'
 ,   collectUninstalled
@@ -62,11 +62,11 @@ import Data.Binary
 import qualified Data.ByteString.Char8 as BS
 
 
-import Data.Ghf.Default
-import Ghf.Core.State
-import Ghf.File
-import Ghf.Info
-import Ghf.SourceCollector
+import IDE.Utils.Default
+import IDE.Core.State
+import IDE.Utils.File
+import IDE.Metainfo.Info
+import IDE.MetaInfo.SourceCollector
 
 data CollectStatistics = CollectStatistics {
     packagesTotal       ::   Int
@@ -80,9 +80,9 @@ instance Default CollectStatistics where
     getDefault          =   CollectStatistics getDefault getDefault getDefault getDefault
                                 getDefault
 
-collectInstalled' :: Bool -> GhfAction
+collectInstalled' :: Bool -> IDEAction
 collectInstalled' b     =   do
-    session'            <-  readGhf session
+    session'            <-  readIDE session
     lift $ collectInstalled False session' cProjectVersion b
 
 collectInstalled :: Bool -> Session -> String -> Bool -> IO()
@@ -317,7 +317,7 @@ extractIdentifierDescr package modules decl
                                                             IfNewTyCon _    ->  NewtypeS
                                                             IfAbstractTyCon ->  AbstractDataS
                                                             IfOpenDataTyCon ->  OpenDataS
-                                                            _               ->  throwGhf
+                                                            _               ->  throwIDE
                                                                 "Impossible"
                             ,   moduleIdID          =   PM package (last modules)
                             ,   mbLocation          =   Nothing

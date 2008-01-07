@@ -1,7 +1,7 @@
 {-# OPTIONS_GHC -fglasgow-exts #-}
 -----------------------------------------------------------------------------
 --
--- Module      :  Ghf.Info
+-- Module      :  IDE.Metainfo.Info
 -- Copyright   :  (c) Juergen Nicklisch-Franken (aka Jutaro)
 -- License     :  GNU-GPL
 --
@@ -14,7 +14,7 @@
 --
 ---------------------------------------------------------------------------------
 
-module Ghf.Info (
+module IDE.Metainfo.Info (
     initInfo
 ,   loadAccessibleInfo
 ,   updateAccessibleInfo
@@ -61,18 +61,18 @@ import Data.ByteString.Char8 (ByteString)
 
 
 
-import Ghf.Utils.DeepSeq
-import Ghf.File
-import Ghf.Core.State
-import {-# SOURCE #-} Ghf.InterfaceCollector
---import Ghf.Extractor
+import IDE.Utils.DeepSeq
+import IDE.Utils.File
+import IDE.Core.State
+import {-# SOURCE #-} IDE.Metainfo.InterfaceCollector
+--import IDE.Extractor
 
 --
 -- | Update and initialize metadata
 --
-initInfo :: GhfAction
+initInfo :: IDEAction
 initInfo = do
-    session' <- readGhf session
+    session' <- readIDE session
     let version     =   cProjectVersion
     lift $ putStrLn "Now updating metadata ..."
     lift $ collectInstalled False session' version False
@@ -84,10 +84,10 @@ initInfo = do
 -- | Load all infos for all installed and exposed packages
 --   (see shell command: ghc-pkg list)
 --
-loadAccessibleInfo :: GhfAction
+loadAccessibleInfo :: IDEAction
 loadAccessibleInfo =
     let version     =   cProjectVersion in do
-        session'        <-  readGhf session
+        session'        <-  readIDE session
 
         collectorPath   <-  lift $ getCollectorPath version
         packageInfos    <-  lift $ getInstalledPackageInfos session'
@@ -96,42 +96,42 @@ loadAccessibleInfo =
         let scope       =   foldr buildScope (Map.empty,Map.empty)
                                 $ map fromJust
                                     $ filter isJust packageList
-        modifyGhf_ (\ghf -> return (ghf{accessibleInfo = (Just scope)}))
+        modifyIDE_ (\ide -> return (ide{accessibleInfo = (Just scope)}))
 
 --
 -- | Clears the current info, not the world infos
 --
-clearCurrentInfo :: GhfAction
+clearCurrentInfo :: IDEAction
 clearCurrentInfo = do
-    modifyGhf_ (\ghf    ->  return (ghf{currentInfo = Nothing}))
+    modifyIDE_ (\ide    ->  return (ide{currentInfo = Nothing}))
 
 --
 -- | Builds the current info for a package
 --
-buildCurrentInfo :: [Dependency] -> GhfAction
+buildCurrentInfo :: [Dependency] -> IDEAction
 buildCurrentInfo depends = do
-    session'            <-  readGhf session
+    session'            <-  readIDE session
     fp                  <-  lift $findFittingPackages session' depends
     mbActive            <-  buildActiveInfo'
     case mbActive of
-        Nothing         -> modifyGhf_ (\ghf -> return (ghf{currentInfo = Nothing}))
+        Nothing         -> modifyIDE_ (\ide -> return (ide{currentInfo = Nothing}))
         Just active     -> do
-            accessibleInfo'     <-  readGhf accessibleInfo
+            accessibleInfo'     <-  readIDE accessibleInfo
             case accessibleInfo' of
-                Nothing         ->  modifyGhf_ (\ghf -> return (ghf{currentInfo = Nothing}))
+                Nothing         ->  modifyIDE_ (\ide -> return (ide{currentInfo = Nothing}))
                 Just (pdmap,_)  ->  do
                     let packageList =   map (\ pin -> pin `Map.lookup` pdmap) fp
                     let scope       =   foldr buildScope (Map.empty,Map.empty)
                                             $ map fromJust
                                                 $ filter isJust packageList
-                    modifyGhf_ (\ghf -> return (ghf{currentInfo = Just (active, scope)}))
+                    modifyIDE_ (\ide -> return (ide{currentInfo = Just (active, scope)}))
 
 --
 -- | Builds the current info for the activePackage
 --
-buildActiveInfo :: GhfAction
+buildActiveInfo :: IDEAction
 buildActiveInfo = do
-    currentInfo         <-  readGhf currentInfo
+    currentInfo         <-  readIDE currentInfo
     case currentInfo of
         Nothing                 -> return ()
         Just (active, scope)    -> do
@@ -139,25 +139,25 @@ buildActiveInfo = do
             case newActive of
                 Nothing         -> return ()
                 Just newActive  ->
-                    modifyGhf_ (\ghf -> return (ghf{currentInfo = Just (newActive, scope)}))
+                    modifyIDE_ (\ide -> return (ide{currentInfo = Just (newActive, scope)}))
 
 
 --
 -- | Builds the current info for the activePackage
 --
-buildActiveInfo' :: GhfM (Maybe PackageScope)
+buildActiveInfo' :: IDEM (Maybe PackageScope)
 buildActiveInfo' =
     let version         =   cProjectVersion in do
-    activePack          <-  readGhf activePack
-    session             <-  readGhf session
+    activePack          <-  readIDE activePack
+    session             <-  readIDE session
     case activePack of
         Nothing         ->  return Nothing
-        Just ghfPackage ->  do
-            lift $ collectUninstalled False session cProjectVersion (cabalFile ghfPackage)
+        Just idePackage ->  do
+            lift $ collectUninstalled False session cProjectVersion (cabalFile idePackage)
             lift $ putStrLn "uninstalled collected"
             collectorPath   <-  lift $ getCollectorPath cProjectVersion
             packageDescr    <-  lift $ loadInfosForPackage collectorPath
-                                            (packageId ghfPackage)
+                                            (packageId idePackage)
             case packageDescr of
                 Nothing     -> return Nothing
                 Just pd     -> do
@@ -168,10 +168,10 @@ buildActiveInfo' =
 -- | Updates the world info (it is the responsibility of the caller to rebuild
 --   the current info)
 --
-updateAccessibleInfo :: GhfAction
+updateAccessibleInfo :: IDEAction
 updateAccessibleInfo = do
-    wi              <-  readGhf accessibleInfo
-    session         <-  readGhf session
+    wi              <-  readIDE accessibleInfo
+    session         <-  readIDE session
     let version     =   cProjectVersion
     case wi of
         Nothing -> loadAccessibleInfo
@@ -193,7 +193,7 @@ updateAccessibleInfo = do
                     let psamp3      =   foldr (\e m -> Map.delete e m) psmap trashPackages
                     let scope       =   foldr buildScope (Map.empty,Map.empty)
                                             (Map.elems psamp3)
-                    modifyGhf_ (\ghf -> return (ghf{accessibleInfo = Just scope}))
+                    modifyIDE_ (\ide -> return (ide{accessibleInfo = Just scope}))
 
 
 --

@@ -1,7 +1,7 @@
 
 -----------------------------------------------------------------------------
 --
--- Module      :  Data.Ghf.Default
+-- Module      :  IDE.Utils.Default
 -- Copyright   :  (c) Juergen Nicklisch-Franken (aka Jutaro)
 -- License     :  GNU-GPL
 --
@@ -13,7 +13,7 @@
 --
 ------------------------------------------------------------------------------
 
-module Data.Ghf.Default (
+module IDE.Utils.Default (
     Default(..)
 ) where
 

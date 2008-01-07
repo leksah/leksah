@@ -1,6 +1,6 @@
 -----------------------------------------------------------------------------
 --
--- Module      :  GUI.Ghf.Parameters
+-- Module      :  IDE.Framework.Parameters
 -- Copyright   :  (c) Juergen Nicklisch-Franken (aka Jutaro)
 -- License     :  GNU-GPL
 --
@@ -12,7 +12,7 @@
 --
 -----------------------------------------------------------------------------------
 
-module GUI.Ghf.Parameters (
+module IDE.Framework.Parameters (
     Parameters
 ,   Parameter(..)
 ,   paraName

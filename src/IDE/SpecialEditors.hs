@@ -2,7 +2,7 @@
 -- | Special Editors
 --
 
-module Ghf.SpecialEditors (
+module IDE.SpecialEditors (
     packageEditor
 ,   testedWidthEditor
 ,   compilerFlavorEditor
@@ -27,12 +27,12 @@ import Distribution.Version
 import Text.ParserCombinators.ReadP(readP_to_S)
 import Language.Haskell.Extension
 
-import Ghf.Core.State
-import GUI.Ghf.EditorBasics
-import GUI.Ghf.SimpleEditors
-import GUI.Ghf.CompositeEditors
-import GUI.Ghf.Parameters
-import Data.Ghf.Default
+import IDE.Core.State
+import IDE.Framework.EditorBasics
+import IDE.Framework.SimpleEditors
+import IDE.Framework.CompositeEditors
+import IDE.Framework.Parameters
+import IDE.Utils.Default
 
 packageEditor :: Editor PackageIdentifier
 packageEditor para = do

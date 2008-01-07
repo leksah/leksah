@@ -1,7 +1,7 @@
 {-# OPTIONS_GHC -fglasgow-exts #-}
 -----------------------------------------------------------------------------
 --
--- Module      :  Ghf.Ghf
+-- Module      :  IDE.Leksah
 -- Copyright   :  (c) Juergen Nicklisch-Franken (aka Jutaro)
 -- License     :  GNU-GPL
 --
@@ -14,14 +14,14 @@
 --
 ---------------------------------------------------------------------------------
 
-module Ghf.Ghf (
+module IDE.Leksah (
     runMain
 ) where
 
-import Paths_ghf
 import Graphics.UI.Gtk
 import Control.Monad.Reader
 import System.FilePath
+import System.Directory(doesFileExist)
 import Control.Concurrent
 import Data.IORef
 import Data.Maybe
@@ -39,18 +39,18 @@ import Control.Exception
 import System.Exit
 import Prelude hiding(catch)
 
-import Paths_ghf
-import Ghf.SaveSession
-import Ghf.Core.State
-import Ghf.SourceCandy
-import Ghf.File
-import Ghf.ViewFrame
-import Ghf.Menu
-import Ghf.Preferences
-import Ghf.Keymap
-import Ghf.Info
-import Ghf.SourceCollector
-import Ghf.InterfaceCollector
+import Paths_leksah
+import IDE.SaveSession
+import IDE.Core.State
+import IDE.SourceCandy
+import IDE.Utils.File
+import IDE.Framework.ViewFrame
+import IDE.Menu
+import IDE.Preferences
+import IDE.Keymap
+import IDE.Metainfo.Info
+import IDE.MetaInfo.SourceCollector
+import IDE.Metainfo.InterfaceCollector
 
 -- ---------------------------------------------------------------------
 -- Command line options
@@ -69,16 +69,16 @@ options =   [Option ['r'] ["Rebuild"] (NoArg Rebuild)
          ,   Option ['s'] ["Sources"] (NoArg Sources)
                 "Gather info about pathes to sources"
          ,   Option ['v'] ["Version"] (NoArg VersionF)
-                "Show the version number of ghf"
+                "Show the version number of ide"
          ,   Option ['d'] ["Debug"] (NoArg DebugF)
                 "Write ascii pack files"]
 
-ghfOpts :: [String] -> IO ([Flag], [String])
-ghfOpts argv =
+ideOpts :: [String] -> IO ([Flag], [String])
+ideOpts argv =
     case getOpt Permute options argv of
           (o,n,[]  ) -> return (o,n)
           (_,_,errs) -> ioError $userError $concat errs ++ usageInfo header options
-    where header = "Usage: ghf [OPTION...] files..."
+    where header = "Usage: ide [OPTION...] files..."
 
 
 -- ---------------------------------------------------------------------
@@ -87,12 +87,12 @@ ghfOpts argv =
 
 runMain = handleTopExceptions $do
     args            <-  getArgs
-    (o,_)          <-  ghfOpts args
+    (o,_)          <-  ideOpts args
     let uninstalled =   filter (\x -> case x of
                                         UninstalledProject _ -> True
                                         _                    -> False) o
     if elem VersionF o
-        then do putStrLn $ "Ghf an IDE for Haskell, version " ++ showVersion version
+        then do putStrLn $ "IDE an IDE for Haskell, version " ++ showVersion version
         else
             if elem Sources o
                 then do
@@ -145,7 +145,10 @@ startGUI = do
     candySt     <-  parseCandy candyPath
     win         <-  windowNew
     dataDir     <-  getDataDir
-    windowSetIconFromFile win $dataDir </> "data" </> "ghf.gif"
+    let iconPath = dataDir </> "data" </> "leksah.gif"
+    iconExists  <-  doesFileExist iconPath
+    when iconExists $
+        windowSetIconFromFile win iconPath
     libDir      <-  getSysLibDir
 #if __GHC__ > 670
     session     <-  newSession (Just libDir)
@@ -154,7 +157,7 @@ startGUI = do
 #endif
     dflags0     <-  getSessionDynFlags session
     setSessionDynFlags session dflags0
-    let ghf = Ghf
+    let ide = IDE
           {   window        =   win
           ,   uiManager     =   uiManager
           ,   panes         =   Map.empty
@@ -172,29 +175,29 @@ startGUI = do
           ,   accessibleInfo     =   Nothing
           ,   currentInfo   =   Nothing
           ,   session       =   session}
-    ghfR <- newIORef ghf
-    runReaderT initInfo ghfR
-    (acc,menus) <- runReaderT (makeMenu uiManager accelActions menuDescription) ghfR
+    ideR <- newIORef ide
+    runReaderT initInfo ideR
+    (acc,menus) <- runReaderT (makeMenu uiManager accelActions menuDescription) ideR
     let mb = case menus !! 0 of
                 Just m -> m
                 Nothing -> error "Failed to build menu"
     windowAddAccelGroup win acc
     nb <- newNotebook
     widgetSetName nb $"root"
-    statusBar <- buildStatusbar ghfR
+    statusBar <- buildStatusbar ideR
     vb <- vBoxNew False 1  -- Top-level vbox
     widgetSetName vb "topBox"
     boxPackStart vb mb PackNatural 0
     --boxPackStart vb tb PackNatural 0
     boxPackStart vb nb PackGrow 0
     boxPackEnd vb statusBar PackNatural 0
-    win `onDelete` (\ _ -> do runReaderT quit ghfR; return True)
-    win `onKeyPress` (\ e -> runReaderT (handleSpecialKeystrokes e) ghfR)
+    win `onDelete` (\ _ -> do runReaderT quit ideR; return True)
+    win `onKeyPress` (\ e -> runReaderT (handleSpecialKeystrokes e) ideR)
     containerAdd win vb
-    runReaderT (setCandyState (isJust (sourceCandy prefs))) ghfR
+    runReaderT (setCandyState (isJust (sourceCandy prefs))) ideR
     let (x,y) = defaultSize prefs
     windowSetDefaultSize win x y
-    runReaderT recoverSession ghfR
+    runReaderT recoverSession ideR
     widgetShowAll win
     mainGUI
 
@@ -204,7 +207,7 @@ startGUI = do
 --
 
 handleTopExceptions =
-  handleNormalExceptions . handleGhfExceptions . handleGhcExceptions
+  handleNormalExceptions . handleIDEExceptions . handleGhcExceptions
 
 handleNormalExceptions inner =
   catch inner (\exception -> do
@@ -215,14 +218,14 @@ handleNormalExceptions inner =
         exitFailure
       ExitException code -> exitWith code
       _other -> do
-        putStrLn ("ghf: internal Ghf error: " ++ show exception)
+        putStrLn ("ide: internal IDE error: " ++ show exception)
         exitFailure
   )
 
 
-handleGhfExceptions inner =
-  catchDyn inner (\(e::GhfException) -> do
-    putStrLn $ "ghf: " ++ (show e)
+handleIDEExceptions inner =
+  catchDyn inner (\(e::IDEException) -> do
+    putStrLn $ "ide: " ++ (show e)
     exitFailure
   )
 
@@ -240,7 +243,7 @@ handleGhcExceptions inner =
   in
   -- compilation errors: messages with locations attached
   catchDyn inner2 (\dyn -> do
-    putStrLn "ghf: Compilation error(s):"
+    putStrLn "ide: Compilation error(s):"
     printBagOfErrors defaultDynFlags (unitBag dyn)
     exitFailure
   )

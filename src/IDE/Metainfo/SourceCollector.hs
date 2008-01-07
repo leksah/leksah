@@ -1,6 +1,6 @@
 -----------------------------------------------------------------------------
 --
--- Module      :  Ghf.SourceCollector
+-- Module      :  IDE.MetaInfo.SourceCollector
 -- Copyright   :  (c) Juergen Nicklisch-Franken (aka Jutaro)
 -- License     :  GNU-GPL
 --
@@ -12,7 +12,7 @@
 --
 -------------------------------------------------------------------------------
 
-module Ghf.SourceCollector (
+module IDE.MetaInfo.SourceCollector (
     collectAllSources
 ,   collectSources
 ,   buildSourceForPackageDB
@@ -61,9 +61,9 @@ import Parser
 import Outputable hiding (char)
 import HscStats
 
-import Ghf.Core.State hiding(trace)
-import Ghf.File
-import Ghf.Preferences
+import IDE.Core.State hiding(trace)
+import IDE.Utils.File
+import IDE.Preferences
 
 import Debug.Trace
 
@@ -463,7 +463,7 @@ declTypeToString  (DocD v)  =   "DocD " ++ show v
 
 srcSpanToLocation :: SrcSpan -> Location
 srcSpanToLocation span | not (isGoodSrcSpan span)
-    =   throwGhf "srcSpanToLocation: unhelpful span"
+    =   throwIDE "srcSpanToLocation: unhelpful span"
 srcSpanToLocation span
     =   Location (srcSpanStartLine span) (srcSpanStartCol span)
                  (srcSpanEndLine span) (srcSpanEndCol span)

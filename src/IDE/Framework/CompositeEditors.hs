@@ -1,6 +1,6 @@
 -----------------------------------------------------------------------------
 --
--- Module      :  GUI.Ghf.CompositeEditors
+-- Module      :  IDE.Framework.CompositeEditors
 -- Copyright   :  (c) Juergen Nicklisch-Franken (aka Jutaro)
 -- License     :  GNU-GPL
 --
@@ -12,7 +12,7 @@
 --
 -----------------------------------------------------------------------------------
 
-module GUI.Ghf.CompositeEditors (
+module IDE.Framework.CompositeEditors (
     maybeEditor
 ,   pairEditor
 ,   eitherOrEditor
@@ -26,11 +26,11 @@ import Control.Monad
 import Data.IORef
 import Data.Maybe
 
-import Data.Ghf.Default
-import GUI.Ghf.Parameters
-import GUI.Ghf.EditorBasics
-import GUI.Ghf.MakeEditor
-import GUI.Ghf.SimpleEditors
+import IDE.Utils.Default
+import IDE.Framework.Parameters
+import IDE.Framework.EditorBasics
+import IDE.Framework.MakeEditor
+import IDE.Framework.SimpleEditors
 
 --
 -- | An editor which composes two subeditors

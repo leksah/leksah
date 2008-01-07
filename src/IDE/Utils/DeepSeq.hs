@@ -1,4 +1,4 @@
-module Ghf.Utils.DeepSeq where
+module IDE.Utils.DeepSeq where
 
 class DeepSeq a where
     deepSeq :: a -> b -> b

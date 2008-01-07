@@ -1,6 +1,6 @@
 -----------------------------------------------------------------------------
 --
--- Module      :  GUI.Ghf.SimpleEditors
+-- Module      :  IDE.Framework.SimpleEditors
 -- Copyright   :  (c) Juergen Nicklisch-Franken (aka Jutaro)
 -- License     :  GNU-GPL
 --
@@ -12,7 +12,7 @@
 --
 -----------------------------------------------------------------------------------
 
-module GUI.Ghf.SimpleEditors (
+module IDE.Framework.SimpleEditors (
     boolEditor
 ,   boolEditor2
 ,   stringEditor
@@ -35,9 +35,9 @@ import Data.List
 import Data.Maybe
 import System.FilePath.Posix
 
-import GUI.Ghf.Parameters
-import GUI.Ghf.EditorBasics
-import GUI.Ghf.MakeEditor
+import IDE.Framework.Parameters
+import IDE.Framework.EditorBasics
+import IDE.Framework.MakeEditor
 
 -- ------------------------------------------------------------
 -- * Simple Editors

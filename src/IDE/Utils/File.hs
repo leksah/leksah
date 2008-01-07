@@ -1,4 +1,4 @@
-module Ghf.File (
+module IDE.Utils.File (
     allModules
 ,   allHiFiles
 ,   allHaskellSourceFiles
@@ -31,13 +31,13 @@ import Distribution.Simple.PreProcess.Unlit
 --import Debug.Trace
 import Control.Monad
 import qualified Data.List as List
-import Paths_ghf
+import Paths_leksah
 import qualified Data.Set as Set
 import Data.Set (Set)
 import Data.List(isSuffixOf)
 
-import Ghf.Core.State
-import {-# SOURCE #-} Ghf.Log
+import IDE.Core.State
+import {-# SOURCE #-} IDE.Log
 
 findSourceFile :: [FilePath]
     -> [String]
@@ -65,7 +65,7 @@ dots_to_slashes = map (\c -> if c == '.' then pathSeparator else c)
 getConfigDir :: IO FilePath
 getConfigDir = do
     d <- getHomeDirectory
-    let filePath = d </> ".ghf"
+    let filePath = d </> ".leksah"
     exists <- doesDirectoryExist filePath
     if exists
         then return filePath
@@ -240,7 +240,7 @@ getSysLibDir = do
     waitForProcess pid
     return (normalise libDir2)
 
-readOut :: GhfLog -> Handle -> IO ()
+readOut :: IDELog -> Handle -> IO ()
 readOut log hndl =
      catch (readAndShow)
        (\e -> do
@@ -253,7 +253,7 @@ readOut log hndl =
         appendLog log (line ++ "\n") LogTag
         readAndShow
 
-readErr :: GhfLog -> Handle -> IO ()
+readErr :: IDELog -> Handle -> IO ()
 readErr log hndl =
      catch (readAndShow)
        (\e -> do

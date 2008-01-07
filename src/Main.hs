@@ -1,6 +1,4 @@
-import Ghf.Ghf
+import IDE.Leksah
 
 main = runMain
-
-
 
