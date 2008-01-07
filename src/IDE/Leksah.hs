@@ -49,7 +49,7 @@ import IDE.Menu
 import IDE.Preferences
 import IDE.Keymap
 import IDE.Metainfo.Info
-import IDE.MetaInfo.SourceCollector
+import IDE.Metainfo.SourceCollector
 import IDE.Metainfo.InterfaceCollector
 
 -- ---------------------------------------------------------------------

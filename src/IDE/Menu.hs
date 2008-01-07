@@ -41,9 +41,9 @@ import IDE.SaveSession
 import IDE.ModulesPane
 import IDE.ToolbarPane
 import IDE.FindPane
-import IDE.MetaInfo.SourceCollector
+import IDE.Metainfo.SourceCollector
 import IDE.Metainfo.InterfaceCollector
-import Paths_ide
+import Paths_leksah
 --import IDE.GhcAPI
 
 --
@@ -387,15 +387,15 @@ quit = do
 aboutDialog :: IDEAction
 aboutDialog = lift $ do
     d <- aboutDialogNew
-    aboutDialogSetName d "IDE Haskell IDE"
+    aboutDialogSetName d "Leksah"
     aboutDialogSetVersion d (showVersion version)
     aboutDialogSetCopyright d "Copyright 2007 Juergen Nicklisch-Franken aka Jutaro"
-    aboutDialogSetComments d $ "An integrated development environement for the " ++
+    aboutDialogSetComments d $ "An integrated development environement (IDE) for the " ++
                                "programming language Haskell and the Glasgow Haskell compiler"
     dd <- getDataDir
     license <- readFile $ dd </> "data" </> "gpl.txt"
     aboutDialogSetLicense d $ Just license
-    aboutDialogSetWebsite d "www.haskell.org/ide"
+    aboutDialogSetWebsite d "code.haskell.org/leksah"
     aboutDialogSetAuthors d ["Juergen Nicklisch-Franken aka Jutaro"]
     dialogRun d
     widgetDestroy d

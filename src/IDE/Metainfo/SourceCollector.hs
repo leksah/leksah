@@ -1,6 +1,6 @@
 -----------------------------------------------------------------------------
 --
--- Module      :  IDE.MetaInfo.SourceCollector
+-- Module      :  IDE.Metainfo.SourceCollector
 -- Copyright   :  (c) Juergen Nicklisch-Franken (aka Jutaro)
 -- License     :  GNU-GPL
 --
@@ -12,7 +12,7 @@
 --
 -------------------------------------------------------------------------------
 
-module IDE.MetaInfo.SourceCollector (
+module IDE.Metainfo.SourceCollector (
     collectAllSources
 ,   collectSources
 ,   buildSourceForPackageDB

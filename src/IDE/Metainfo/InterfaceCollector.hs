@@ -66,7 +66,7 @@ import IDE.Utils.Default
 import IDE.Core.State
 import IDE.Utils.File
 import IDE.Metainfo.Info
-import IDE.MetaInfo.SourceCollector
+import IDE.Metainfo.SourceCollector
 
 data CollectStatistics = CollectStatistics {
     packagesTotal       ::   Int
