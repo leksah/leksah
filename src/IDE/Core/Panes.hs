@@ -287,6 +287,10 @@ data IDEModules     =   IDEModules {
 ,   treeStore       ::   New.TreeStore (String, [(ModuleDescr,PackageDescr)])
 ,   facetView       ::   New.TreeView
 ,   facetStore      ::   New.TreeStore FacetWrapper
+,   localScopeB     ::   RadioButton
+,   packageScopeB   ::   RadioButton
+,   worldScopeB     ::   RadioButton
+,   blacklistB      ::   CheckButton
 }
 
 instance CastablePane IDEModules where
@@ -302,7 +306,8 @@ data FacetWrapper =
     |   ClassOpsW Symbol IdentifierDescr
     |   OrphanedData IdentifierDescr
 
-data ModulesState           =   ModulesState Int
+data ModulesState           =   ModulesState Int (Scope,Bool)
+                                    (Maybe String, Maybe String)
     deriving(Eq,Ord,Read,Show)
 
 instance Model ModulesState where

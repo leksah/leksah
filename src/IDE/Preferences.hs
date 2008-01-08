@@ -24,11 +24,13 @@ module IDE.Preferences (
 
 import Graphics.UI.Gtk.SourceView
 import Graphics.UI.Gtk
+import Graphics.UI.Gtk.ModelView as New
 import Control.Monad.Reader
 import qualified Text.ParserCombinators.Parsec as P
 import Data.IORef
 import Data.List
 import qualified Text.PrettyPrint.HughesPJ as PP
+import Distribution.Package
 
 import IDE.Log
 import IDE.Core.State
@@ -42,6 +44,8 @@ import IDE.PrinterParser hiding (fieldParser,parameters)
 import IDE.Utils.File
 import IDE.SpecialEditors
 import IDE.DescriptionPP
+import IDE.Utils.Default
+
 
 defaultPrefs = Prefs {
         showLineNumbers     =   True
@@ -60,6 +64,7 @@ defaultPrefs = Prefs {
     ,   modulesPanePath     =   RightTop
     ,   controlPanePath     =   RightTop
     ,   sourceDirectories   =   ["C:/ghc","C:/cygwin/home/Nicklisch-Franken/collect"]
+    ,   packageBlacklist    =   []
     }
 
 prefsDescription :: [(String,[FieldDescriptionPP Prefs])]
@@ -208,7 +213,21 @@ prefsDescription = [
             (\b a -> a{sourceDirectories = b})
             (filesEditor Nothing FileChooserActionSelectFolder "Select folder")
             (\i -> return ())
+    ,   mkFieldPP
+            (paraName <<<- ParaName
+                "Packages which are excluded from the modules pane" $ emptyParams)
+            (PP.text . show)
+            readParser
+            packageBlacklist
+            (\b a -> a{packageBlacklist = b})
+            dependenciesEditor
+            (\i -> return ())
     ])]
+
+instance Default PackageIdentifier where
+    getDefault = case toPackageIdentifier "unknown-0" of
+                    Nothing -> throwIDE "Preferences.getDefault: Can't parse Package Identifier"
+                    Just it -> it
 
 -- ------------------------------------------------------------
 -- * Parsing

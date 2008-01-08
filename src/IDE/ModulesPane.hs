@@ -27,6 +27,7 @@ import qualified Data.Map as Map
 import Data.Tree
 import Data.List
 import Distribution.Package
+import Distribution.Version
 import Data.Char (toLower)
 
 import IDE.Core.State
@@ -54,28 +55,45 @@ instance Pane IDEModules
 
 instance ModelPane IDEModules ModulesState where
     saveState p     =   do
-        mbModules <- getPane ModulesCasting
+        (IDEModules _ _ treeView treeStore facetView facetStore _ _ _ _) <- getModules
+        sc          <-  getScope
+        mbModules   <-  getPane ModulesCasting
         case mbModules of
             Nothing ->  return Nothing
             Just p  ->  lift $ do
-                i <- panedGetPosition (paned p)
-                return (Just (StateC (ModulesState i)))
-    recoverState pp (ModulesState i)  =  do
+                i   <-  panedGetPosition (paned p)
+                mbTreeSelection     <-  getSelectionTree treeView treeStore
+                mbFacetSelection    <-  getSelectionFacet facetView facetStore
+                let mbs = (case mbTreeSelection of
+                            Nothing -> Nothing
+                            Just (moduleName,_) -> Just moduleName,
+                                 case mbFacetSelection of
+                                    Nothing -> Nothing
+                                    Just fw -> Just (symbolFromFacetWrapper fw))
+                return (Just (StateC (ModulesState i sc mbs)))
+    recoverState pp (ModulesState i sc@(scope,useBlacklist) se)  =  do
             nb          <-  getNotebook pp
             initModules pp nb
-            mbMod <- getPane ModulesCasting
-            case mbMod of
-                Nothing -> return ()
-                Just p  -> do   lift $ panedSetPosition (paned p) i
-                                fillModulesList
-                                return ()
+            mod@(IDEModules _ _ treeView treeStore facetView facetStore lb pb wb blb)
+                        <-  getModules
+            case scope of
+                Local   -> lift $ toggleButtonSetActive lb True
+                Package -> lift $ toggleButtonSetActive pb True
+                World   -> lift $ toggleButtonSetActive wb True
+            lift $ toggleButtonSetActive blb useBlacklist
+            lift $ panedSetPosition (paned mod) i
+            --fillModulesList sc
+            --selectNames se
 
 selectIdentifier :: IdentifierDescr -> IDEAction
-selectIdentifier idDescr =
-    let moduleName = modu $ moduleIdID idDescr
-        nameArray = breakAtDots [] moduleName
+selectIdentifier idDescr = selectIdentifier' (modu $ moduleIdID idDescr) (identifierID idDescr)
+
+
+selectIdentifier' :: ModuleIdentifier -> Symbol -> IDEAction
+selectIdentifier'  moduleName symbol =
+    let nameArray = breakAtDots [] moduleName
     in do
-        mods@(IDEModules _ _ treeView treeStore facetView facetStore) <- getModules
+        mods@(IDEModules _ _ treeView treeStore facetView facetStore _ _ _ _) <- getModules
         tree            <-  lift $ New.treeStoreGetTree treeStore []
         case treePathFromNameArray tree nameArray [] of
             Just treePath   ->  lift $ do
@@ -86,7 +104,7 @@ selectIdentifier idDescr =
                 New.treeViewScrollToCell treeView treePath (fromJust col) (Just (0.3,0.3))
                 facetTree   <-  New.treeStoreGetTree facetStore []
                 selF        <-  New.treeViewGetSelection facetView
-                case  findPathFor idDescr facetTree of
+                case  findPathFor symbol facetTree of
                     Nothing     ->  trace "no path found" $ return ()
                     Just path   ->  do
                         New.treeSelectionSelectPath selF path
@@ -95,15 +113,15 @@ selectIdentifier idDescr =
                 bringPaneToFront mods
             Nothing         ->  return ()
 
-findPathFor :: IdentifierDescr -> Tree FacetWrapper -> Maybe TreePath
-findPathFor iddescr (Node _ forest) =
+findPathFor :: Symbol -> Tree FacetWrapper -> Maybe TreePath
+findPathFor symbol (Node _ forest) =
     foldr ( \i mbTreePath -> findPathFor' [i] (forest !! i) mbTreePath)
                             Nothing  [0 .. ((length forest) - 1)]
     where
     findPathFor' :: TreePath -> Tree FacetWrapper -> Maybe TreePath -> Maybe TreePath
     findPathFor' _ node (Just p)                  =   Just p
     findPathFor' path (Node wrap sub) Nothing     =
-        if identifierID (facetIdDescr wrap) == identifierID iddescr
+        if identifierID (facetIdDescr wrap) == symbol
             then Just (reverse path)
             else
                 foldr ( \i mbTreePath -> findPathFor' (i:path) (sub !! i) mbTreePath)
@@ -122,7 +140,8 @@ treePathFromNameArray tree (h:t) accu   =
 
 showModules :: IDEAction
 showModules = do
-    fillModulesList
+    sc <- getScope
+    fillModulesList sc
     m <- getModules
     lift $ bringPaneToFront m
 
@@ -263,6 +282,7 @@ initModules panePath nb = do
         boxPackStart boxOuter pane' PackGrow 2
 
         let modules = IDEModules boxOuter pane' treeView treeStore facetView facetStore
+                                rb1 rb2 rb3 cb
         notebookPrependPage nb boxOuter (paneName modules)
         widgetShowAll boxOuter
         mbPn <- notebookPageNum nb boxOuter
@@ -282,6 +302,10 @@ initModules panePath nb = do
             (\_ -> do runReaderT (makeActive modules) ideR; return True)
         treeView  `onButtonPress` (treeViewPopup ideR treeStore treeView)
         facetView `onButtonPress` (facetViewPopup ideR facetStore facetView)
+        rb1 `onToggled` (runReaderT scopeSelection ideR)
+        rb2 `onToggled` (runReaderT scopeSelection ideR)
+        rb3 `onToggled` (runReaderT scopeSelection ideR)
+        cb  `onToggled` (runReaderT scopeSelection ideR)
         sel     <-  New.treeViewGetSelection treeView
         sel `New.onSelectionChanged` (fillFacets treeView treeStore facetStore)
         sel2    <-  New.treeViewGetSelection facetView
@@ -391,19 +415,40 @@ findDescription md st s     =
                          [] -> Nothing
                          l  -> Just (s,head l)
 
-fillModulesList :: IDEAction
-fillModulesList = do
-    (IDEModules _ _ treeView treeStore _ _)  <-  getModules
-    currentInfo                 <-  readIDE currentInfo
-    case currentInfo of
+fillModulesList :: (Scope,Bool) -> IDEAction
+fillModulesList (scope,useBlacklist) = do
+    (IDEModules _ _ treeView treeStore _ _ _ _ _ _)  <-  getModules
+    prefs                       <-  readIDE prefs
+    currentInfo'                <-  readIDE currentInfo
+    accessibleInfo'             <-  readIDE accessibleInfo
+    case currentInfo' of
         Nothing             ->  lift $ do
                                     New.treeStoreClear treeStore
-        Just pair           ->  let (Node _ li) = buildModulesTree pair
+        Just (l,p)          ->  let (l',p'@(pm,ps)) =   case scope of
+                                                    Local   -> (l,(Map.empty,Map.empty))
+                                                    Package -> (l,p)
+                                                    World   -> case accessibleInfo' of
+                                                                Just ai ->  (l,ai)
+                                                                Nothing ->  (l,p)
+                                    p2      =   if useBlacklist
+                                                    then (Map.filter (filterBlacklist
+                                                            (packageBlacklist prefs)) pm, ps)
+                                                    else p'
+                                    (Node _ li) = buildModulesTree (l',p2)
                                 in lift $ do
                                     New.treeStoreClear treeStore
                                     mapM_ (\(e,i) -> New.treeStoreInsertTree treeStore [] i e)
                                         $ zip li [0 .. length li]
                                     --New.treeViewExpandAll treeView
+    where
+    filterBlacklist :: [Dependency] -> PackageDescr -> Bool
+    filterBlacklist dependencies packageDescr =
+        let packageId   =   packagePD packageDescr
+            name        =   pkgName packageId
+            version     =   pkgVersion packageId
+        in  isNothing $ find (\ (Dependency str vr) -> str == name && withinRange version vr)
+                        dependencies
+
 
 type FacetForest = Forest FacetWrapper
 type FacetTree = Tree FacetWrapper
@@ -607,6 +652,81 @@ facetViewPopup ideR store facetView (Button _ click _ _ _ _ button _ _) = do
                         return True
                 else return False
 facetViewPopup _ _ _ _ = error "facetViewPopup wrong event type"
+
+getScope :: IDEM (Scope,Bool)
+getScope = do
+    (IDEModules _ _ treeView treeStore facetView facetStore localScopeB
+        packageScopeB worldScopeB blacklistB)  <-  getModules
+    rb1s                <-  lift $ toggleButtonGetActive localScopeB
+    rb2s                <-  lift $ toggleButtonGetActive packageScopeB
+    rb3s                <-  lift $ toggleButtonGetActive worldScopeB
+    cbs                 <-  lift $ toggleButtonGetActive blacklistB
+    let scope           =   if rb1s
+                                then Local
+                                else if rb2s
+                                    then Package
+                                    else if rb3s
+                                        then World
+                                        else throwIDE
+                                    "ModulesPane.scopeSelection: No check button selected"
+    return (scope,cbs)
+
+scopeSelection :: IDEAction
+scopeSelection = do
+    mods@(IDEModules _ _ treeView treeStore facetView facetStore _ _ _ _)
+                        <-  getModules
+    mbTreeSelection     <-  lift $ getSelectionTree treeView treeStore
+    mbFacetSelection    <-  lift $ getSelectionFacet facetView facetStore
+    sc                  <-  getScope
+    fillModulesList sc
+    let mbs = (case mbTreeSelection of
+                            Nothing -> Nothing
+                            Just (moduleName,_) -> Just moduleName,
+                                 case mbFacetSelection of
+                                    Nothing -> Nothing
+                                    Just fw -> Just (symbolFromFacetWrapper fw))
+    selectNames mbs
+    lift $ bringPaneToFront mods
+
+selectNames :: (Maybe String, Maybe Symbol) -> IDEAction
+selectNames (mbModuleName, mbIdName) = do
+    (IDEModules _ _ treeView treeStore facetView facetStore _ _ _ _)
+                        <-  getModules
+    case mbModuleName of
+        Nothing -> return ()
+        Just moduleName ->
+            let nameArray = breakAtDots [] moduleName
+            in do
+                tree            <-  lift $ New.treeStoreGetTree treeStore []
+                case treePathFromNameArray tree nameArray [] of
+                    Nothing         ->  return ()
+                    Just treePath   ->  lift $ do
+                        New.treeViewExpandToPath treeView treePath
+                        sel         <-  New.treeViewGetSelection treeView
+                        New.treeSelectionSelectPath sel treePath
+                        col         <-  New.treeViewGetColumn treeView 0
+                        New.treeViewScrollToCell treeView treePath (fromJust col) (Just (0.3,0.3))
+                        case mbIdName of
+                            Nothing -> return ()
+                            Just symbol -> do
+                                facetTree   <-  New.treeStoreGetTree facetStore []
+                                selF        <-  New.treeViewGetSelection facetView
+                                case  findPathFor symbol facetTree of
+                                    Nothing     ->  trace "no path found" $ return ()
+                                    Just path   ->  do
+                                        New.treeSelectionSelectPath selF path
+                                        col     <-  New.treeViewGetColumn facetView 0
+                                        New.treeViewScrollToCell facetView path (fromJust col)
+                                            (Just (0.3,0.3))
+
+
+symbolFromFacetWrapper :: FacetWrapper -> Symbol
+symbolFromFacetWrapper  (Itself idDescr)            =   identifierID idDescr
+symbolFromFacetWrapper  (ConstructorW _ idDescr)    =   identifierID idDescr
+symbolFromFacetWrapper  (FieldW _ idDescr)          =   identifierID idDescr
+symbolFromFacetWrapper  (ClassOpsW _ idDescr)       =   identifierID idDescr
+symbolFromFacetWrapper  (OrphanedData idDescr)      =   identifierID idDescr
+
 
 
 

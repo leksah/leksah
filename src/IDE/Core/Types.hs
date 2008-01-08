@@ -58,14 +58,15 @@ module IDE.Core.Types (
 ,   typeInfo
 ,   idType
 
-
 ,   Location(..)
+,   Scope(..)
 
 ) where
 
 import Control.Monad.Reader
 import Graphics.UI.Gtk hiding (get)
 import Distribution.Package
+import Distribution.Version
 import Data.Map (Map)
 import qualified Data.Map as Map
 import Data.Set(Set)
@@ -139,6 +140,7 @@ data Prefs = Prefs {
 ,   modulesPanePath     ::   StandardPath
 ,   controlPanePath     ::   StandardPath
 ,   sourceDirectories   ::   [FilePath]
+,   packageBlacklist    ::   [Dependency]
 } deriving(Eq,Show)
 
 
@@ -316,5 +318,8 @@ data Location           =   Location {
 
 instance Default ByteString
     where getDefault = BS.empty
+
+data Scope = World | Package | Local
+  deriving (Show, Eq, Ord, Enum, Read)
 
 
