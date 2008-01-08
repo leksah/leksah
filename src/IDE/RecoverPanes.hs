@@ -16,7 +16,6 @@ module IDE.RecoverPanes (
     paneStateToIDEState
 ) where
 
-
 import IDE.Core.State
 import IDE.Log()
 import IDE.SourceEditor()
@@ -24,8 +23,6 @@ import IDE.ModulesPane()
 import IDE.InfoPane()
 import IDE.ToolbarPane()
 import IDE.FindPane()
-
-
 
 paneStateToIDEState :: PaneState -> IDEState
 paneStateToIDEState (BufferSt st)                       =   StateC st

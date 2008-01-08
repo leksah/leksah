@@ -24,7 +24,6 @@ module IDE.Preferences (
 
 import Graphics.UI.Gtk.SourceView
 import Graphics.UI.Gtk
-import Graphics.UI.Gtk.ModelView as New
 import Control.Monad.Reader
 import qualified Text.ParserCombinators.Parsec as P
 import Data.IORef

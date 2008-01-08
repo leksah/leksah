@@ -101,7 +101,7 @@ readParser ::  Read a =>  CharParser () a
 readParser = do
     str <- many (noneOf ['\n'])
     return (read str)
-    <?> "bool parser"
+    <?> "read parser"
 
 pairParser ::  CharParser () alpha ->  CharParser () (alpha,alpha)
 pairParser p2 = do
