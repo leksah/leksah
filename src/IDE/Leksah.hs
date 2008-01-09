@@ -92,7 +92,7 @@ runMain = handleTopExceptions $do
                                         UninstalledProject _ -> True
                                         _                    -> False) o
     if elem VersionF o
-        then do putStrLn $ "IDE an IDE for Haskell, version " ++ showVersion version
+        then do putStrLn $ "Leksah an IDE for Haskell, version " ++ showVersion version
         else
             if elem Sources o
                 then do
@@ -175,17 +175,17 @@ startGUI = do
           ,   accessibleInfo     =   Nothing
           ,   currentInfo   =   Nothing
           ,   session       =   session}
-    ideR <- newIORef ide
+    ideR        <-  newIORef ide
     runReaderT initInfo ideR
-    (acc,menus) <- runReaderT (makeMenu uiManager accelActions menuDescription) ideR
-    let mb = case menus !! 0 of
-                Just m -> m
-                Nothing -> error "Failed to build menu"
+    (acc,menus) <-  runReaderT (makeMenu uiManager accelActions menuDescription) ideR
+    let mb      =   case menus !! 0 of
+                        Just m  ->  m
+                        Nothing ->  throwIDE "Failed to build menu"
     windowAddAccelGroup win acc
-    nb <- newNotebook
+    nb          <-  newNotebook
     widgetSetName nb $"root"
-    statusBar <- buildStatusbar ideR
-    vb <- vBoxNew False 1  -- Top-level vbox
+    statusBar   <-  buildStatusbar ideR
+    vb          <-  vBoxNew False 1  -- Top-level vbox
     widgetSetName vb "topBox"
     boxPackStart vb mb PackNatural 0
     --boxPackStart vb tb PackNatural 0
@@ -195,7 +195,7 @@ startGUI = do
     win `onKeyPress` (\ e -> runReaderT (handleSpecialKeystrokes e) ideR)
     containerAdd win vb
     runReaderT (setCandyState (isJust (sourceCandy prefs))) ideR
-    let (x,y) = defaultSize prefs
+    let (x,y)   =   defaultSize prefs
     windowSetDefaultSize win x y
     runReaderT recoverSession ideR
     widgetShowAll win

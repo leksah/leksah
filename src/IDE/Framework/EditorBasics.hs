@@ -76,7 +76,7 @@ data EventSelector  =   Clicked
 -- | A type to register or unregister a handler
 -- If the second argument is Left Handler the handler gets registered
 -- If the second argument is Right Unique the handler will be removed
--- The returned unique value can be used for unregistering an event
+-- The returned unique value must be used for unregistering an event
 type Notifier       =   EventSelector -> Either Handler Unique -> IO (Unique)
 
 --

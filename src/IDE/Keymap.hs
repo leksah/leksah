@@ -55,7 +55,7 @@ setKeymap actions keymap = map setAccel actions
 
 --
 -- | Builds a special keymap for handling double keystroke accelerators
---   Unfortunately in the IO Monad because of keyvalFromName
+-- Unfortunately in the IO Monad because of keyvalFromName
 --
 buildSpecialKeys :: Keymap -> [ActionDescr IDERef] -> IO (SpecialKeyTable IDERef)
 buildSpecialKeys keymap actions = do
@@ -81,9 +81,7 @@ buildSpecialKeys keymap actions = do
 handleSpecialKeystrokes :: Event -> IDEM Bool
 handleSpecialKeystrokes (Key _ _ _ mods _ _ _ keyVal name mbChar) = do
     bs <- getCandyState
-    if bs
-        then editKeystrokeCandy mbChar
-            else return ()
+    when bs $ editKeystrokeCandy mbChar
     sk  <- readIDE specialKey
     sks <- readIDE specialKeys
     sb <- getSBSpecialKeys
