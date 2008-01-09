@@ -66,7 +66,8 @@ instance ModelPane IDEModules ModulesState where
                 mbFacetSelection    <-  getSelectionFacet facetView facetStore
                 let mbs = (case mbTreeSelection of
                             Nothing -> Nothing
-                            Just (moduleName,_) -> Just moduleName,
+                            Just (_,[]) -> Nothing
+                            Just (_,((md,_):_)) -> Just (modu $ moduleIdMD md),
                                  case mbFacetSelection of
                                     Nothing -> Nothing
                                     Just fw -> Just (symbolFromFacetWrapper fw))
@@ -82,8 +83,8 @@ instance ModelPane IDEModules ModulesState where
                 World   -> lift $ toggleButtonSetActive wb True
             lift $ toggleButtonSetActive blb useBlacklist
             lift $ panedSetPosition (paned mod) i
-            --fillModulesList sc
-            --selectNames se
+            fillModulesList sc
+            selectNames se
 
 selectIdentifier :: IdentifierDescr -> IDEAction
 selectIdentifier idDescr = selectIdentifier' (modu $ moduleIdID idDescr) (identifierID idDescr)
@@ -94,7 +95,7 @@ selectIdentifier'  moduleName symbol =
     let nameArray = breakAtDots [] moduleName
     in do
         mods@(IDEModules _ _ treeView treeStore facetView facetStore _ _ _ _) <- getModules
-        tree            <-  lift $ New.treeStoreGetTree treeStore []
+        tree            <-  trace "1" $ lift $ New.treeStoreGetTree treeStore []
         case treePathFromNameArray tree nameArray [] of
             Just treePath   ->  lift $ do
                 New.treeViewExpandToPath treeView treePath
@@ -102,7 +103,7 @@ selectIdentifier'  moduleName symbol =
                 New.treeSelectionSelectPath sel treePath
                 col         <-  New.treeViewGetColumn treeView 0
                 New.treeViewScrollToCell treeView treePath (fromJust col) (Just (0.3,0.3))
-                facetTree   <-  New.treeStoreGetTree facetStore []
+                facetTree   <-  trace "2" $ New.treeStoreGetTree facetStore []
                 selF        <-  New.treeViewGetSelection facetView
                 case  findPathFor symbol facetTree of
                     Nothing     ->  trace "no path found" $ return ()
@@ -237,7 +238,7 @@ initModules panePath nb = do
         renderer31    <- New.cellRendererPixbufNew
         renderer3   <- New.cellRendererTextNew
         col         <- New.treeViewColumnNew
-        New.treeViewColumnSetTitle col "Identifiers"
+        New.treeViewColumnSetTitle col "Interface"
         --New.treeViewColumnSetSizing col TreeViewColumnAutosize
         New.treeViewAppendColumn facetView col
         New.cellLayoutPackStart col renderer30 False
@@ -328,7 +329,7 @@ treeViewSearch :: TreeView
 treeViewSearch treeView treeStore _ string iter =  do
     path <- New.treeModelGetPath treeStore iter
     val  <- New.treeStoreGetValue treeStore path
-    tree <- New.treeStoreGetTree treeStore path
+    tree <- trace "3" $ New.treeStoreGetTree treeStore path
     exp  <- New.treeViewRowExpanded treeView path
     when (not (null (subForest tree)) && not exp) $
         let found = searchInSubnodes tree string
@@ -365,7 +366,9 @@ fillFacets treeView tst treeStore = do
                             mapM_ (\(e,i) -> New.treeStoreInsertTree treeStore [] i e)
                                         $ zip forest [0 .. length forest]
                         []  -> return ()
-        Nothing -> New.treeStoreClear treeStore
+        Nothing -> do
+            New.treeStoreClear treeStore
+
 
 getSelectionTree ::  New.TreeView
     ->  New.TreeStore (String, [(ModuleDescr,PackageDescr)])
@@ -422,8 +425,22 @@ fillModulesList (scope,useBlacklist) = do
     currentInfo'                <-  readIDE currentInfo
     accessibleInfo'             <-  readIDE accessibleInfo
     case currentInfo' of
-        Nothing             ->  lift $ do
-                                    New.treeStoreClear treeStore
+        Nothing             ->  case (scope,accessibleInfo') of
+                                    (World,Just ai@(pm,ps))   ->
+                                        let p2  =   if useBlacklist
+                                                        then (Map.filter (filterBlacklist
+                                                                (packageBlacklist prefs)) pm, ps)
+                                                        else ai
+                                            (Node _ li) = buildModulesTree
+                                                                    ((Map.empty,Map.empty),p2)
+                                        in lift $ do
+                                            New.treeStoreClear treeStore
+                                            mapM_ (\(e,i) -> New.treeStoreInsertTree treeStore [] i e)
+                                                $ zip li [0 .. length li]
+                                            New.treeViewExpandAll treeView
+                                    _       -> lift $ do
+                                        New.treeStoreClear treeStore
+                                        New.treeStoreInsertTree treeStore [] 0 (Node ("",[]) [])
         Just (l,p)          ->  let (l',p'@(pm,ps)) =   case scope of
                                                     Local   -> (l,(Map.empty,Map.empty))
                                                     Package -> (l,p)
@@ -439,7 +456,7 @@ fillModulesList (scope,useBlacklist) = do
                                     New.treeStoreClear treeStore
                                     mapM_ (\(e,i) -> New.treeStoreInsertTree treeStore [] i e)
                                         $ zip li [0 .. length li]
-                                    --New.treeViewExpandAll treeView
+                                    New.treeViewExpandAll treeView
     where
     filterBlacklist :: [Dependency] -> PackageDescr -> Bool
     filterBlacklist dependencies packageDescr =
@@ -681,7 +698,8 @@ scopeSelection = do
     fillModulesList sc
     let mbs = (case mbTreeSelection of
                             Nothing -> Nothing
-                            Just (moduleName,_) -> Just moduleName,
+                            Just (_,[]) -> Nothing
+                            Just (_,((md,_):_)) -> Just (modu $ moduleIdMD md),
                                  case mbFacetSelection of
                                     Nothing -> Nothing
                                     Just fw -> Just (symbolFromFacetWrapper fw))
@@ -697,7 +715,7 @@ selectNames (mbModuleName, mbIdName) = do
         Just moduleName ->
             let nameArray = breakAtDots [] moduleName
             in do
-                tree            <-  lift $ New.treeStoreGetTree treeStore []
+                tree            <-  trace "4" $ lift $ New.treeStoreGetTree treeStore []
                 case treePathFromNameArray tree nameArray [] of
                     Nothing         ->  return ()
                     Just treePath   ->  lift $ do
@@ -709,7 +727,7 @@ selectNames (mbModuleName, mbIdName) = do
                         case mbIdName of
                             Nothing -> return ()
                             Just symbol -> do
-                                facetTree   <-  New.treeStoreGetTree facetStore []
+                                facetTree   <-  trace "5" $ New.treeStoreGetTree facetStore []
                                 selF        <-  New.treeViewGetSelection facetView
                                 case  findPathFor symbol facetTree of
                                     Nothing     ->  trace "no path found" $ return ()

@@ -41,11 +41,11 @@ ok  -   Remove Error mark
     -   Opening more then one editor of the same file does not use the same model
 
 
-    -   Project Tree Window
-    -   Types
+ok  -   Project Tree Window
+ok  -   Types
 defer  -   Completion
-    -   Find implementor
-    -   Find callers
+ok  -   Find implementor
+ok  -   Find callers
 
 
 Version 0.2 ++
@@ -143,7 +143,7 @@ Haddock:
 
 ---------------------------------------------------------------------------
 Make find usable again
-Info pane for multiple finds fold
+ok - Info pane for multiple finds fold
 Reverse order source bug???
 
 
