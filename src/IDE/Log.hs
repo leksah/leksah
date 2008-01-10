@@ -88,12 +88,8 @@ initLog panePath nb = do
         scrolledWindowSetShadowType sw ShadowIn
 
         let buf = IDELog tv sw
-        notebookPrependPage nb sw (paneName buf)
+        notebookInsertOrdered nb sw (paneName buf)
         widgetShowAll (scrolledWindowL buf)
-        mbPn <- notebookPageNum nb sw
-        case mbPn of
-            Just i -> notebookSetCurrentPage nb i
-            Nothing -> putStrLn "Notebook page not found"
         cid1 <- tv `afterFocusIn`
             (\_ -> do runReaderT (makeActive buf) ideR; return True)
         cid2 <- tv `onButtonPress`

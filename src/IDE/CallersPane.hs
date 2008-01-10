@@ -149,12 +149,8 @@ initCallers panePath nb = do
         containerAdd sw treeView
         scrolledWindowSetPolicy sw PolicyAutomatic PolicyAutomatic
         let modules = IDECallers sw treeView treeStore
-        notebookPrependPage nb sw (paneName modules)
+        notebookInsertOrdered nb sw (paneName modules)
         widgetShowAll sw
-        mbPn <- notebookPageNum nb sw
-        case mbPn of
-            Just i -> notebookSetCurrentPage nb i
-            Nothing -> putStrLn "Notebook page not found"
 
 --        cid1 <- treeView `afterFocusIn`
 --            (\_ -> do runReaderT (makeActive modules) ideR; return True)

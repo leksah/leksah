@@ -83,7 +83,7 @@ data PaneDirection  =   TopP | BottomP | LeftP | RightP
 --
 data PaneLayout =       HorizontalP PaneLayout PaneLayout Int
                     |   VerticalP PaneLayout PaneLayout Int
-                    |   TerminalP (Maybe PaneDirection)
+                    |   TerminalP (Maybe PaneDirection) Int
     deriving (Eq,Show,Read)
 
 --

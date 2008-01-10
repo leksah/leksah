@@ -129,12 +129,8 @@ initFind panePath nb = do
             spinL `afterFocusOut` (\ _ -> do runReaderT editGotoLineEnd ideR; return False)
             let find = IDEFind hBox caseSensitiveButton wrapAroundButton entireWordButton
                                     spinL entry
-            notebookPrependPage nb hBox (paneName find)
+            notebookInsertOrdered nb hBox (paneName find)
             widgetShowAll hBox
-            mbPn <- notebookPageNum nb hBox
-            case mbPn of
-                Just i -> notebookSetCurrentPage nb i
-                Nothing -> putStrLn "Notebook page not found"
             return (find,[])
     addPaneAdmin buf (BufConnections [] [] []) panePath
     lift $widgetGrabFocus (findBox buf)

@@ -27,6 +27,7 @@ import Control.Monad.Reader
 import System.FilePath
 import qualified Data.Map as Map
 import Data.Maybe
+import GHC.Exception (catch)
 
 import IDE.Core.State
 import IDE.Framework.ViewFrame
@@ -52,14 +53,16 @@ data SessionState = SessionState {
         layoutS             ::   PaneLayout
     ,   population          ::   [(Maybe PaneState,PanePath)]
     ,   windowSize          ::   (Int,Int)
-    ,   activePackage        ::   Maybe FilePath
+    ,   activePackage       ::   Maybe FilePath
+    ,   activePaneN         ::   Maybe String
 } deriving()
 
 defaultLayout = SessionState {
-        layoutS             =   TerminalP (Just TopP)
+        layoutS             =   TerminalP (Just TopP) (-1)
     ,   population          =   []
     ,   windowSize          =   (1024,768)
-    ,   activePackage       =   Nothing}
+    ,   activePackage       =   Nothing
+    ,   activePaneN         =   Nothing}
 
 layoutDescr :: [FieldDescriptionS SessionState]
 layoutDescr = [
@@ -86,7 +89,13 @@ layoutDescr = [
             (PP.text . show)
             readParser
             activePackage
-            (\fp a -> a{activePackage = fp})]
+            (\fp a -> a{activePackage = fp})
+    ,   mkFieldS
+            (paraName <<<- ParaName "Active pane" $ emptyParams)
+            (PP.text . show)
+            readParser
+            activePaneN
+            (\fp a -> a{activePaneN = fp})]
 
 --
 -- | Get and save the current layout
@@ -100,7 +109,11 @@ saveSession = do
     layoutPath  <-  lift $getConfigFilePathForSave sessionFilename
     size        <-  lift $windowGetSize wdw
     active      <-  getActive
-    lift $writeLayout layoutPath $SessionState layout population size active
+    activePane' <-  readIDE activePane
+    let activeP =   case activePane' of
+                        Nothing -> Nothing
+                        Just (s,_) -> Just s
+    lift $writeLayout layoutPath $SessionState layout population size active activeP
 
 writeLayout :: FilePath -> SessionState -> IO ()
 writeLayout fpath ls = writeFile fpath (showLayout ls layoutDescr)
@@ -118,21 +131,22 @@ getLayout = do
         l2          <-  getLayout' l (pp ++ [TopP])
         r2          <-  getLayout' r (pp ++ [BottomP])
         pane        <-  getPaned pp
-        pos         <-  lift $panedGetPosition pane
+        pos         <-  lift $ panedGetPosition pane
         return (HorizontalP l2 r2 pos)
     getLayout' (VerticalP l r _) pp = do
         l2          <-  getLayout' l (pp ++ [LeftP])
         r2          <-  getLayout' r (pp ++ [RightP])
         pane        <-  getPaned pp
-        pos         <-  lift $panedGetPosition pane
+        pos         <-  lift $ panedGetPosition pane
         return (VerticalP l2 r2 pos)
-    getLayout' (TerminalP _) pp = do
+    getLayout' (TerminalP _ _) pp = do
         nb          <-  getNotebook pp
-        showTabs    <-  lift $notebookGetShowTabs nb
-        pos         <-  lift $notebookGetTabPos nb
+        showTabs    <-  lift $ notebookGetShowTabs nb
+        pos         <-  lift $ notebookGetTabPos nb
+        current     <-  lift $ notebookGetCurrentPage nb
         return (TerminalP (if showTabs
                                 then Just (posTypeToPaneDirection pos)
-                                else Nothing))
+                                else Nothing) current)
 
 getPopulation :: IDEM[(Maybe PaneState,PanePath)]
 getPopulation = do
@@ -171,7 +185,13 @@ recoverSession = do
         Just fp -> activatePackage fp >> return ()
         Nothing -> return ()
     populate (population layoutSt)
-
+    setCurrentPages (layoutS layoutSt)
+    trace ("before activating " ++  show (activePaneN layoutSt)) return ()
+    when (isJust (activePaneN layoutSt)) $ do
+        mbPane <- mbPaneFromName (fromJust (activePaneN layoutSt))
+        when (isJust mbPane) $
+            trace ("make active: " ++ (fromJust (activePaneN layoutSt)))
+                $ makeActive (fromJust mbPane)
 
 readLayout :: IO SessionState
 readLayout = do
@@ -192,13 +212,13 @@ applyLayout :: PaneLayout -> IDEAction
 applyLayout layoutS = do
     old <- readIDE layout
     case old of
-        TerminalP _ ->   applyLayout' layoutS []
-        otherwise   ->   error "apply Layout can only be allied to empty Layout"
+        TerminalP _ _ ->   applyLayout' layoutS []
+        otherwise     ->   error "apply Layout can only be allied to empty Layout"
     where
-    applyLayout' (TerminalP Nothing) pp  = do
+    applyLayout' (TerminalP Nothing _) pp  = do
         nb          <-  getNotebook pp
         lift $notebookSetShowTabs nb False
-    applyLayout' (TerminalP (Just p)) pp = do
+    applyLayout' (TerminalP (Just p) _) pp = do
         nb          <-  getNotebook pp
         lift $notebookSetShowTabs nb True
         lift $notebookSetTabPos nb (paneDirectionToPosType p)
@@ -220,5 +240,19 @@ populate = mapM_ (\ (mbPs,pp) ->
             case mbPs of
                 Nothing -> return ()
                 Just s ->  recoverState pp (paneStateToIDEState s))
+
+setCurrentPages :: PaneLayout -> IDEAction
+setCurrentPages layout = setCurrentPages' layout []
+    where
+    setCurrentPages' (HorizontalP t b _) p  =   do  setCurrentPages' t (TopP : p)
+                                                    setCurrentPages' b (BottomP : p)
+    setCurrentPages' (VerticalP l r _) p    =   do  setCurrentPages' l (LeftP : p)
+                                                    setCurrentPages' r (RightP : p)
+    setCurrentPages' (TerminalP _ ind) p    =   when (ind > 0) $ do
+                                                    nb <- getNotebook (reverse p)
+                                                    lift $ notebookSetCurrentPage nb ind
+
+
+
 
 

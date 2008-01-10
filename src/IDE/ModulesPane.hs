@@ -284,12 +284,8 @@ initModules panePath nb = do
 
         let modules = IDEModules boxOuter pane' treeView treeStore facetView facetStore
                                 rb1 rb2 rb3 cb
-        notebookPrependPage nb boxOuter (paneName modules)
+        notebookInsertOrdered nb boxOuter (paneName modules)
         widgetShowAll boxOuter
-        mbPn <- notebookPageNum nb boxOuter
-        case mbPn of
-            Just i  -> notebookSetCurrentPage nb i
-            Nothing -> putStrLn "Notebook page not found"
         cid0 <- treeView `New.onStartInteractiveSearch`
             (do putStrLn "onStartInteractiveSearchNew"
                 New.treeViewExpandAll treeView)

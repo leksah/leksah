@@ -92,12 +92,8 @@ initToolbar panePath nb = do
                 Nothing -> error "Failed to build toolbar"
     (buf,cids)  <-  lift $ do
         let toolbar' = IDEToolbar (castToToolbar tb)
-        notebookPrependPage nb tb (paneName toolbar')
+        notebookInsertOrdered nb tb (paneName toolbar')
         widgetShowAll tb
-        mbPn <- notebookPageNum nb tb
-        case mbPn of
-            Just i -> notebookSetCurrentPage nb i
-            Nothing -> putStrLn "Notebook page not found"
         return (toolbar',[])
     addPaneAdmin buf (BufConnections [] [] []) panePath
     lift $widgetGrabFocus (toolbar buf)

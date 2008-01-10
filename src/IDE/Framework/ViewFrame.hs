@@ -14,10 +14,13 @@
 ---------------------------------------------------------------------------------
 
 module IDE.Framework.ViewFrame (
+    notebookInsertOrdered
+
 -- * Convenience methods for accesing Pane state
-    posTypeToPaneDirection
+,   posTypeToPaneDirection
 ,   paneDirectionToPosType
 ,   paneFromName
+,   mbPaneFromName
 ,   guiPropertiesFromName
 
 -- * View Actions
@@ -68,9 +71,29 @@ import qualified Data.Map as Map
 import Data.Map (Map)
 import Data.List
 import Data.Maybe
+import GHC.Exception(evaluate,catch)
 
 import IDE.Core.State
 import IDE.Framework.Parameters
+
+notebookInsertOrdered :: (NotebookClass self, WidgetClass child)	
+    => self	
+    -> child	-- child - the Widget to use as the contents of the page.
+    -> String	-- tabLabel - the label for the page
+    -> IO ()
+notebookInsertOrdered nb widget label = do
+    numPages    <-  notebookGetNPages nb
+    mbWidgets   <-  mapM (notebookGetNthPage nb) [0 .. (numPages-1)]
+    widgets     <-  catch (evaluate (map fromJust mbWidgets))
+                        (\e -> throwIDE "ViewFrame.notebookInsertOrdered: no widget")
+    mbLabels    <-  mapM (notebookGetTabLabelText nb) widgets
+    labels      <-  catch (evaluate (map fromJust mbLabels))
+                        (\e -> throwIDE "ViewFrame.notebookInsertOrdered: no label")
+    let pos     =   case findIndex (\s -> s > label) labels of
+                        Just i  ->  i
+                        Nothing ->  -1
+    realPos     <-  notebookInsertPage  nb widget label pos
+    notebookSetCurrentPage nb realPos
 
 getPane ::  CastablePane alpha => Casting alpha -> IDEM (Maybe alpha)
 getPane casting = do
@@ -98,10 +121,15 @@ figureOutPaneName bufs bn ind =
 
 paneFromName :: PaneName -> IDEM IDEPane
 paneFromName pn = do
-    panes  <- readIDE panes
-    case Map.lookup pn panes of
+    mbPane <- mbPaneFromName pn
+    case mbPane of
         Just p -> return p
-        Nothing -> error $"Cant't find pane from unique name " ++ pn
+        Nothing -> throwIDE $"Cant't find pane from unique name " ++ pn
+
+mbPaneFromName :: PaneName -> IDEM (Maybe IDEPane)
+mbPaneFromName pn = do
+    panes  <- readIDE panes
+    return (Map.lookup pn panes)
 
 -- |
 guiPropertiesFromName :: PaneName -> IDEM (PanePath, Connections)
@@ -324,8 +352,7 @@ move toPane idew  = do
                     Nothing -> return ()
                     Just text -> do
                         notebookRemovePage fromNB pn
-                        pn2 <- notebookPrependPage toNB child text
-                        notebookSetCurrentPage toNB pn2
+                        notebookInsertOrdered toNB child text
     let paneMap1    =  Map.delete (paneName idew) paneMap
     let newPaneMap  =  Map.insert (paneName idew) (toPane,cid) paneMap1
     modifyIDE_ (\ide -> return (ide{paneMap = newPaneMap}))
@@ -372,7 +399,7 @@ findMoveTarget panePath layout direction=
              in  Just $basePath ++ findAppropriate layoutP oppositeDir
 
 findAppropriate :: PaneLayout -> PaneDirection -> PanePath
-findAppropriate  (TerminalP _) _ =   []
+findAppropriate  (TerminalP _ _) _ =   []
 findAppropriate  (HorizontalP t b _) LeftP     =   TopP    :  findAppropriate t LeftP
 findAppropriate  (HorizontalP t b _) RightP    =   TopP    :  findAppropriate t RightP
 findAppropriate  (HorizontalP t b _) BottomP   =   BottomP :  findAppropriate b BottomP
@@ -415,7 +442,7 @@ bringPaneToFront pane = do
 getStandardPanePath :: StandardPath -> PaneLayout -> PanePath
 getStandardPanePath sp pl = reverse $ getStandard' sp pl []
     where
-    getStandard' _ (TerminalP _) p                  =   p
+    getStandard' _ (TerminalP _ _) p                =   p
     getStandard' LeftTop (VerticalP l r _) p        =   getStandard' LeftTop l (LeftP:p)
     getStandard' LeftBottom (VerticalP l r _) p     =   getStandard' LeftBottom l (LeftP:p)
     getStandard' RightTop (VerticalP l r _) p       =   getStandard' RightTop r (RightP:p)
@@ -548,8 +575,8 @@ adjustLayoutForSplit            :: Direction -> PanePath -> IDEAction
 adjustLayoutForSplit  dir path  = do
     layout          <- readIDE layout
     let newTerm     = case dir of
-                        Horizontal -> HorizontalP (TerminalP Nothing) (TerminalP Nothing) 0
-                        Vertical   -> VerticalP (TerminalP Nothing) (TerminalP Nothing) 0
+                        Horizontal -> HorizontalP (TerminalP Nothing 0) (TerminalP Nothing 0) 0
+                        Vertical   -> VerticalP (TerminalP Nothing 0) (TerminalP Nothing 0) 0
     let newLayout   = adjust path layout newTerm
     modifyIDE_ $ \ide -> return (ide{layout = newLayout})
 
@@ -560,13 +587,13 @@ adjustLayoutForSplit  dir path  = do
 adjustLayoutForCollapse :: PanePath -> IDEAction
 adjustLayoutForCollapse path = do
     layout          <- readIDE layout
-    let newLayout   = adjust path layout (TerminalP Nothing)
+    let newLayout   = adjust path layout (TerminalP Nothing 0)
     modifyIDE_ $ \ide -> return (ide{layout = newLayout})
 
 getSubpath :: PanePath -> PaneLayout -> Maybe PanePath
 getSubpath path layout =
     case layoutFromPath path layout of
-        TerminalP _         -> Nothing
+        TerminalP _ _       -> Nothing
         HorizontalP _ _ _   -> Just (path ++ [TopP])
         VerticalP _ _ _     -> Just (path ++ [LeftP])
 

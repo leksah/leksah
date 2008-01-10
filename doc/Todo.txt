@@ -118,7 +118,7 @@ ok  - make something after an external process finishes
 
 ok  - New Pane for info
 
-!!! - Selecting the right from a multitude of possibilities
+ok  - Selecting the right from a multitude of possibilities
 
 ok  - Tree Views
 

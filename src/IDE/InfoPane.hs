@@ -182,7 +182,7 @@ initInfo panePath nb idDescrs index = do
             usesB `onClicked` (runReaderT calledBy' ideR)
             nextB `onClicked` (next info)
             prevB `onClicked` (prev info)
-            notebookPrependPage nb sw (paneName info)
+            notebookInsertOrdered nb sw (paneName info)
             widgetShowAll sw
             return (info,cids)
     addPaneAdmin pane (BufConnections [] [] []) panePath

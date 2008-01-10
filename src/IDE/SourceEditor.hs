@@ -133,12 +133,24 @@ instance Pane IDEBuffer
                     return ()
 
 instance ModelPane IDEBuffer BufferState where
-    saveState p     =   case fileName p of
-                            Nothing ->  return Nothing
-                            Just fn ->  return (Just (StateC (BufferState fn 0)))
+    saveState p     =   do  buf     <-  lift $ textViewGetBuffer (sourceView p)
+                            ins     <-  lift $ textBufferGetInsert buf
+                            iter    <-  lift $ textBufferGetIterAtMark buf ins
+                            offset  <-  lift $ textIterGetOffset iter
+                            case fileName p of
+                                Nothing ->  return Nothing
+                                Just fn ->  return (Just (StateC (BufferState fn offset)))
     recoverState pp (BufferState n i) =   do
         exists <- lift $doesFileExist n
-        when exists  (newTextBuffer pp (takeFileName n) (Just n) >> return ())
+        when exists $ do
+            buf     <-  newTextBuffer pp (takeFileName n) (Just n)
+            lift $ do
+                gtkBuf  <-  textViewGetBuffer (sourceView buf)
+                iter    <-  textBufferGetIterAtOffset gtkBuf i
+                textBufferPlaceCursor gtkBuf iter
+                mark    <-  textBufferGetInsert gtkBuf
+                textViewScrollToMark (sourceView buf) mark 0.0 (Just (0.3,0.3))
+                return ()
 
 selectSourceBuf :: FilePath -> IDEM Bool
 selectSourceBuf fp = do
@@ -331,11 +343,7 @@ newTextBuffer panePath bn mbfn = do
         scrolledWindowSetShadowType sw ShadowIn
 
         let buf = IDEBuffer mbfn bn ind sv sw modTime
-        notebookPrependPage nb sw rbn
-        mbPn <- notebookPageNum nb sw
-        case mbPn of
-            Just i -> notebookSetCurrentPage nb i
-            Nothing -> putStrLn "Notebook page not found"
+        notebookInsertOrdered nb sw rbn
         -- events
         cid <- sv `afterFocusIn`
             (\_ -> do runReaderT (makeActive buf) ideR; return True)
