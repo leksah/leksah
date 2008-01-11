@@ -354,16 +354,17 @@ fillFacets :: New.TreeView
 fillFacets treeView tst treeStore = do
     sel             <-  getSelectionTree treeView tst
     case sel of
-        Just val -> case snd val of
-                        ((mod,package):_)   ->  do
-                            let forest = buildFacetForrest mod
-                            New.treeStoreClear treeStore
-                            --putStrLn $ "Now fill " ++ show (length pairs)
-                            mapM_ (\(e,i) -> New.treeStoreInsertTree treeStore [] i e)
-                                        $ zip forest [0 .. length forest]
-                        []  -> return ()
-        Nothing -> do
-            New.treeStoreClear treeStore
+        Just val
+            ->  case snd val of
+                    ((mod,package):_)
+                        ->  let forest = buildFacetForrest mod in do
+                                New.treeStoreClear treeStore
+                                --putStrLn $ "Now fill " ++ show (length pairs)
+                                mapM_ (\(e,i) -> New.treeStoreInsertTree treeStore [] i e)
+                                            $ zip forest [0 .. length forest]
+                    []  -> return ()
+        Nothing
+            ->  New.treeStoreClear treeStore
 
 
 getSelectionTree ::  New.TreeView
