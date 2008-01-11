@@ -49,6 +49,8 @@ module IDE.Core.Panes (
 ,   ToolbarState(..)
 ,   IDEFind(..)
 ,   FindState(..)
+,   IDEReplace(..)
+,   ReplaceState(..)
 
 ) where
 
@@ -164,6 +166,7 @@ data Casting alpha  where
     CallersCasting  ::   Casting IDECallers
     ToolbarCasting  ::   Casting IDEToolbar
     FindCasting     ::   Casting IDEFind
+    ReplaceCasting  ::   Casting IDEReplace
 
 data CastingS alpha  where
     LogCastingS      ::   CastingS LogState
@@ -173,6 +176,8 @@ data CastingS alpha  where
     CallersCastingS  ::   CastingS CallersState
     ToolbarCastingS  ::   CastingS ToolbarState
     FindCastingS     ::   CastingS FindState
+    ReplaceCastingS ::   CastingS ReplaceState
+
 
 
 data PaneState      =   BufferSt BufferState
@@ -182,6 +187,7 @@ data PaneState      =   BufferSt BufferState
                     |   CallersSt CallersState
                     |   ToolbarSt ToolbarState
                     |   FindSt FindState
+                    |   ReplaceSt ReplaceState
     deriving(Eq,Ord,Read,Show)
 
 -- ---------------------------------------------------------------------
@@ -397,4 +403,33 @@ instance CastableModel FindState where
     castingS _              =   FindCastingS
     downCastS _ (StateC a)  =   case castingS a of
                                     FindCastingS -> Just a
+                                    _               -> Nothing
+
+-- | A Replace pane description
+--
+data IDEReplace             =   IDEReplace {
+    replaceBox              ::   HBox
+--,   replaceExtractor        ::   Extractor ReplaceState
+}
+
+instance CastablePane IDEReplace where
+    casting _               =   ReplaceCasting
+    downCast _ (PaneC a)    =   case casting a of
+                                    ReplaceCasting  -> Just a
+                                    _               -> Nothing
+
+data ReplaceState = ReplaceState{
+    searchFor       ::   String
+,   replaceWith     ::   String
+,   matchCase       ::   Bool
+,   matchEntire     ::   Bool
+,   searchBackwards ::   Bool}
+    deriving(Eq,Ord,Read,Show)
+instance Model ReplaceState where
+    toPaneState a           =   ReplaceSt a
+
+instance CastableModel ReplaceState where
+    castingS _              =   ReplaceCastingS
+    downCastS _ (StateC a)  =   case castingS a of
+                                    ReplaceCastingS -> Just a
                                     _               -> Nothing

@@ -48,7 +48,6 @@ instance Pane IDEFind
                 putStrLn "notebook page not found: unexpected"
                 return ()
             Just i  ->  do
-                deactivatePaneIfActive pane
                 lift $notebookRemovePage nb i
                 removePaneAdmin pane
 

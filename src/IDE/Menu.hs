@@ -41,6 +41,7 @@ import IDE.SaveSession
 import IDE.ModulesPane
 import IDE.ToolbarPane
 import IDE.FindPane
+import IDE.ReplacePane
 import IDE.Metainfo.SourceCollector
 import IDE.Metainfo.InterfaceCollector
 import Paths_leksah
@@ -91,7 +92,7 @@ actions =
     ,AD "EditFindPrevious" "Find _Previous" Nothing (Just "gtk-find-previous")
         (editFindInc Backward) [] False
     ,AD "EditReplace" "_Replace" Nothing (Just "gtk-replace")
-        replaceDialog [] False
+        doReplace [] False
     ,AD "EditGotoLine" "_Goto Line" Nothing (Just "gtk-jump")
         editGotoLine [] False
 

@@ -32,3 +32,4 @@ paneStateToIDEState (ModulesSt st)                      =   StateC st
 paneStateToIDEState (CallersSt st)                      =   StateC st
 paneStateToIDEState (ToolbarSt st)                      =   StateC st
 paneStateToIDEState (FindSt st)                         =   StateC st
+paneStateToIDEState (ReplaceSt st)                      =   StateC st

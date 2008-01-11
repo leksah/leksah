@@ -10,6 +10,7 @@ module IDE.FindPane (
 import Graphics.UI.Gtk hiding (get)
 import IDE.Core.State
 
+instance Pane IDEFind
 getFind :: IDEM IDEFind
 getWrapAround :: IDEM (ToggleButton)
 getCaseSensitive :: IDEM (ToggleButton)

@@ -38,6 +38,7 @@ module IDE.SourceEditor (
 ,   editSelectAll
 
 ,   SearchHint(..)
+,   editFind
 ,   editFindInc
 ,   editFindKey
 ,   editReplace
@@ -59,7 +60,6 @@ module IDE.SourceEditor (
 
 ,   markErrorInSourceBuf
 
-,   replaceDialog
 
 ) where
 
@@ -88,6 +88,7 @@ import IDE.Framework.Parameters
 import IDE.Metainfo.Info
 import {-# SOURCE #-} IDE.InfoPane
 import {-# SOURCE #-} IDE.FindPane
+import {-# SOURCE #-} IDE.ReplacePane
 
 instance Pane IDEBuffer
     where
@@ -796,10 +797,11 @@ data SearchHint = Forward | Backward | Insert | Delete | Initial
 
 editFindInc :: SearchHint -> IDEAction
 editFindInc hint = do
-    entry   <- getFindEntry
-    lift $widgetGrabFocus entry
-    when (hint == Initial)
-        (lift $ editableSelectRegion entry 0 (-1))
+    entry   <-  getFindEntry
+    find    <-  getFind
+    lift $ widgetGrabFocus entry
+    lift $ bringPaneToFront find
+    when (hint == Initial) $ lift $ editableSelectRegion entry 0 (-1)
     search  <- lift $entryGetText entry
     if null search
         then return ()
@@ -928,6 +930,8 @@ editReplaceAll entireWord caseSensitive wrapAround search replace hint = do
 editGotoLine :: IDEAction
 editGotoLine = inBufContext' () $ \_ gtkbuf currentBuffer _ -> do
     spin <- getGotoLineSpin
+    find    <-  getFind
+    lift $ bringPaneToFront find
     lift $do
         max <- textBufferGetLineCount gtkbuf
         spinButtonSetRange spin 1.0 (fromIntegral max)
@@ -943,11 +947,11 @@ editGotoLineKey k@(Key _ _ _ _ _ _ _ _ _ _)
     | otherwise = return ()
 editGotoLineKey _ = return ()
 
-
-
 editGotoLineEnd :: IDEAction
 editGotoLineEnd = inBufContext' () $ \_ gtkbuf currentBuffer _ -> do
     spin <- getGotoLineSpin
+    find    <-  getFind
+    lift $ bringPaneToFront find
     lift $ do
         line <- spinButtonGetValueAsInt spin
         iter <- textBufferGetStartIter gtkbuf
@@ -1058,100 +1062,6 @@ editCandy = do
         then lift $mapM_ (transformToCandy to) gtkbufs
         else lift $mapM_ (transformFromCandy from) gtkbufs
 
---Properties of a replace (get rid and do everythink in the statusbar)
-data ReplaceState = ReplaceState{
-    searchFor       ::   String
-,   replaceWith     ::   String
-,   matchCase       ::   Bool
-,   matchEntire     ::   Bool
-,   searchBackwards ::   Bool}
-
-emptyReplaceState = ReplaceState "" "" False False False
-
-replaceDescription :: [FieldDescription ReplaceState]
-replaceDescription = [
-        mkField
-            (paraName <<<- ParaName "Search for" $ emptyParams)
-            searchFor
-            (\ b a -> a{searchFor = b})
-            stringEditor
-    ,   mkField
-            (paraName <<<- ParaName "Replace with" $ emptyParams)
-            replaceWith
-            (\ b a -> a{replaceWith = b})
-            stringEditor
-    ,   mkField
-            (paraName <<<- ParaName "Match case" $ emptyParams)
-            matchCase
-            (\ b a -> a{matchCase = b})
-            boolEditor
-    ,   mkField
-            (paraName <<<- ParaName "Entire word" $ emptyParams)
-            matchEntire
-            (\ b a -> a{matchEntire = b})
-            boolEditor
-    ,   mkField
-            (paraName <<<- ParaName "Search backwards" $ emptyParams)
-            searchBackwards
-            (\ b a -> a{searchBackwards = b})
-            boolEditor]
-
-replaceDialog :: IDEAction
-replaceDialog = do
-    ideR <- ask
-    lift $replaceDialog' emptyReplaceState replaceDescription ideR
-
-
-replaceDialog' :: ReplaceState -> [FieldDescription ReplaceState] -> IDERef -> IO ()
-replaceDialog' replace replaceDesc ideR  = do
-    dialog  <- windowNew
-    vb      <- vBoxNew False 0
-    bb      <- hButtonBoxNew
-    close   <- buttonNewFromStock "gtk-close"
-    replAll <- buttonNewWithMnemonic "Replace _all"
-    replB   <- buttonNewWithMnemonic "_Replace"
-    find    <- buttonNewWithMnemonic "_Find"
-    boxPackStart bb close PackNatural 0
-    boxPackStart bb replAll PackNatural 0
-    boxPackStart bb replB PackNatural 0
-    boxPackStart bb find PackNatural 0
-    resList <- mapM (\ fd -> (fieldEditor fd) replace) replaceDesc
-    let (widgetsP, setInjsP, getExtsP, notifiersP) = unzip4 resList
-    mapM_ (\ w -> boxPackStart vb w PackNatural 0) widgetsP
-    let fieldNames = map (\fd -> case getParameterPrim paraName (parameters fd) of
-                                        Just s -> s
-                                        Nothing -> "Unnamed") replaceDesc
-    find `onClicked` do
-        findOrSearch editFind getExtsP fieldNames replB replAll
-    replB `onClicked` do
-        findOrSearch editReplace getExtsP fieldNames replB replAll
-    replAll `onClicked` do
-        findOrSearch editReplaceAll getExtsP fieldNames replB replAll
-    close `onClicked` do
-        widgetDestroy dialog
-        mainQuit
-    dialog `onDelete` (\_ -> do
-        widgetDestroy dialog
-        mainQuit
-        return True)
-    boxPackEnd vb bb PackNatural 7
-    containerAdd dialog vb
-    widgetShowAll dialog
-    mainGUI
-    where
-        findOrSearch :: (Bool -> Bool -> Bool -> String -> String -> SearchHint -> IDEM Bool)
-            -> [ReplaceState -> Extractor ReplaceState] -> [String] -> Button -> Button -> IO()
-        findOrSearch f getExtsP fieldNames replB replAll =  do
-            mbReplaceState <- extractAndValidate replace getExtsP fieldNames
-            case mbReplaceState of
-                Nothing -> return ()
-                Just rs -> do
-                    let hint = if searchBackwards rs then Backward else Forward
-                    found <- runReaderT (f (matchEntire rs) (matchCase rs) False
-                                            (searchFor rs) (replaceWith rs) hint) ideR
-                    widgetSetSensitivity replB found
-                    widgetSetSensitivity replAll found
-                    return ()
 
 
 

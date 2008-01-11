@@ -126,7 +126,7 @@ runMain = handleTopExceptions $do
 
 startGUI :: IO ()
 startGUI = do
-    st          <-  unsafeInitGUIForThreadedRTS
+    st          <-  initGUI 
     when rtsSupportsBoundThreads
         (putStrLn "Linked with -threaded (Will Gtk work?)")
     timeoutAddFull (yield >> return True) priorityHigh 50
