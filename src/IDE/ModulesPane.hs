@@ -30,7 +30,7 @@ import Distribution.Package
 import Distribution.Version
 import Data.Char (toLower)
 
-import {-# SOURCE #-} IDE.Core.State
+import IDE.Core.State
 import IDE.Framework.ViewFrame
 import IDE.InfoPane
 import IDE.SourceEditor

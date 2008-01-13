@@ -61,7 +61,7 @@ import Parser
 import Outputable hiding (char)
 import HscStats
 
-import {-# SOURCE #-} IDE.Core.State hiding(trace)
+import IDE.Core.State hiding(trace)
 import IDE.Utils.File
 import IDE.Preferences
 

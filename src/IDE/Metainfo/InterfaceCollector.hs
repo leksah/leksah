@@ -63,7 +63,7 @@ import qualified Data.ByteString.Char8 as BS
 
 
 import IDE.Utils.Default
-import {-# SOURCE #-} IDE.Core.State
+import IDE.Core.State
 import IDE.Utils.File
 import IDE.Metainfo.Info
 import IDE.Metainfo.SourceCollector

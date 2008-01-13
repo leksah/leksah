@@ -6,6 +6,7 @@
 module IDE.BuildInfoEditor (
     editBuildInfo  --   Maybe FilePath -> [String] -> BuildInfo -> String -> IO (Maybe BuildInfo)
 ,   BuildEditorFactory(..)
+,   BuildEditorFactoryI(..)
 ) where
 
 import Graphics.UI.Gtk
@@ -24,17 +25,22 @@ import IDE.Framework.SimpleEditors
 import IDE.Framework.CompositeEditors
 import IDE.Framework.Parameters
 
-class IDEEditor (alpha beta)  => BuildEditorFactory alpha beta where
-    buildInfoEditor     ::   Maybe FilePath -> [String] -> alpha  BuildInfo
-    libraryEditor       ::   Maybe FilePath -> [String] -> alpha  Library
-    executableEditor    ::   Maybe FilePath -> [String] -> alpha  Executable
-    executablesEditor   ::   Maybe FilePath -> [String] -> alpha  [Executable]
+class IDEEditor alpha  => BuildEditorFactory alpha where
+    buildInfoEditor     ::   alpha -> Maybe FilePath -> [String] -> Editor BuildInfo
+    libraryEditor       ::   alpha -> Maybe FilePath -> [String] -> Editor Library
+    executableEditor    ::   alpha -> Maybe FilePath -> [String] -> Editor Executable
+    executablesEditor   ::   alpha -> Maybe FilePath -> [String] -> Editor [Executable]
 
-instance BuildEditorFactory Editor alpha  where
-    buildInfoEditor     =   buildInfoEditor'
-    libraryEditor       =   libraryEditor'
-    executableEditor    =   executableEditor'
-    executablesEditor   =   executablesEditor'
+data BuildEditorFactoryI = BuildEditorFactoryI
+    deriving (Eq,Ord,Show)
+
+instance IDEObject BuildEditorFactoryI
+instance IDEEditor BuildEditorFactoryI
+instance BuildEditorFactory BuildEditorFactoryI  where
+    buildInfoEditor factory mbFp list       =   buildInfoEditor' mbFp list
+    libraryEditor   factory mbFp list       =   libraryEditor' mbFp list
+    executableEditor factory mbFp list      =   executableEditor' mbFp list
+    executablesEditor factory mbFp list     =   executablesEditor' mbFp list
 
 -- ------------------------------------------------------------
 -- * Build Infos
@@ -69,7 +75,7 @@ libraryEditor' fp modules para = do
     (wid,inj,ext,notif) <-
         pairEditor
             (modulesEditor modules, paraName <<<- ParaName "Exposed Modules" $para)
-            (buildInfoEditor fp modules, paraName <<<- ParaName "Build Info" $ para)
+            (buildInfoEditor' fp modules, paraName <<<- ParaName "Build Info" $ para)
             (paraDirection <<<- ParaDirection Vertical $ emptyParams)
     let pinj (Library em bi) = inj (em,bi)
     let pext = do
@@ -94,7 +100,7 @@ executableEditor' fp modules para = do
             (fileEditor fp FileChooserActionOpen "Select File",
                 paraName <<<- ParaName "Main Module" $ emptyParams),
             (paraDirection <<<- ParaDirection Vertical $ emptyParams))
-        (buildInfoEditor fp modules, paraName <<<- ParaName "Build Info" $ emptyParams)
+        (buildInfoEditor' fp modules, paraName <<<- ParaName "Build Info" $ emptyParams)
         (paraDirection  <<<- ParaDirection Vertical $ para)
     let pinj (Executable s f bi) = inj ((s,f),bi)
     let pext = do
@@ -109,7 +115,7 @@ executablesEditor' fp modules p =
     multisetEditor
         (ColumnDescr False [("Executable Name",\(Executable exeName _ _) -> [New.cellText := exeName])
                            ,("Module Path",\(Executable  _ mp _) -> [New.cellText := mp])])
-        (executableEditor fp modules ,emptyParams)
+        (executableEditor' fp modules ,emptyParams)
             (paraShadow  <<<- ParaShadow ShadowIn $ p)
 
 buildInfoD :: Maybe FilePath -> [String] -> [(String,[FieldDescription BuildInfo])]

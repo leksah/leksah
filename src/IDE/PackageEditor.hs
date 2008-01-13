@@ -284,7 +284,7 @@ packageDD fp modules = [
                         $ paraShadow <<<- ParaShadow ShadowIn $ emptyParams)
             library
             (\ a b -> b{library  = a})
-            (maybeEditor (libraryEditor (Just fp) modules,
+            (maybeEditor (libraryEditor BuildEditorFactoryI (Just fp) modules,
                 paraName <<<- ParaName "Specify exported modules" $ emptyParams) True
                 "Does this package contain a library?")
     ]),
@@ -296,7 +296,7 @@ packageDD fp modules = [
                     $ paraDirection <<<- ParaDirection Vertical $ emptyParams)
             executables
             (\ a b -> b{executables = a})
-            (executablesEditor (Just fp) modules)
+            (executablesEditor BuildEditorFactoryI (Just fp) modules)
     ])]
 
 

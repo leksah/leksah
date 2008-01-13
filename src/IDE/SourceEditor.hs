@@ -78,7 +78,7 @@ import qualified Data.Map as Map
 import Data.List
 import Data.Maybe
 
-import {-# SOURCE #-} IDE.Core.State
+import IDE.Core.State
 import IDE.Framework.ViewFrame
 import IDE.SourceCandy
 import IDE.Metainfo.Info

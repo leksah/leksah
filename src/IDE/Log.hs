@@ -11,9 +11,7 @@
 -- | Log pane
 --
 -------------------------------------------------------------------------------
---
--- * Interface
---
+
 
 module IDE.Log (
     LogView(..)
@@ -28,7 +26,7 @@ import Graphics.UI.Gtk.Multiline.TextView
 import Control.Monad.Reader
 import Data.Maybe
 
-import {-# SOURCE #-} IDE.Core.State
+import IDE.Core.State
 --import {-# SOURCE #-} IDE.Core.Panes
 import IDE.SourceEditor
 import IDE.Framework.ViewFrame
@@ -143,7 +141,7 @@ initLog panePath nb = do
         set activeErrtag[textTagBackground := "yellow"]
         textTagTableAdd tags activeErrtag
 
-        textViewSetEditable tv False
+        textViewSetEditable tv True
         fd <- case logviewFont prefs of
             Just str -> do
                 fontDescriptionFromString str
