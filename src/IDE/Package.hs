@@ -1,3 +1,4 @@
+{-# OPTIONS_GHC -fglasgow-exts #-}
 -----------------------------------------------------------------------------
 --
 -- Module      :  IDE.Package
@@ -399,7 +400,8 @@ selectErr index = do
                 then markErrorInSourceBuf (line thisErr) (column thisErr)
                         (errDescription thisErr)
                 else return ()
-            markErrorInLog (logLines thisErr)
+            log :: IDELog <- getLog
+            lift $ markErrorInLog log (logLines thisErr)
 
 unmarkCurrentError :: IDEAction
 unmarkCurrentError = do

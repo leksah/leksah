@@ -16,10 +16,12 @@
 -------------------------------------------------------------------------------
 
 module IDE.Core.Panes (
+    Casting(..)
+,   CastingS(..)
+
 -- * Panes and pane layout
-    Pane(..)
+,   Pane(..)
 ,   CastablePane(..)
-,   Casting(..)
 ,   IDEPane(..)
 ,   ModelPane(..)
 ,   PaneDirection(..)
@@ -36,8 +38,6 @@ module IDE.Core.Panes (
 -- * The pane types
 ,   IDEBuffer(..)
 ,   BufferState(..)
-,   IDELog(..)
-,   LogState(..)
 ,   IDEInfo(..)
 ,   InfoState(..)
 ,   FacetWrapper(..)
@@ -65,9 +65,30 @@ import GHC.IOBase hiding (BufferState)
 import IDE.Core.Types
 import {-# SOURCE #-} IDE.Core.State
 import IDE.Framework.EditorBasics
+import {-# SOURCE #-} IDE.Log
 -- ---------------------------------------------------------------------
 -- Panes and pane layout
 --
+
+data Casting alpha  where
+    LogCasting      ::   Casting IDELog
+    InfoCasting     ::   Casting IDEInfo
+    BufferCasting   ::   Casting IDEBuffer
+    ModulesCasting  ::   Casting IDEModules
+    CallersCasting  ::   Casting IDECallers
+    ToolbarCasting  ::   Casting IDEToolbar
+    FindCasting     ::   Casting IDEFind
+    ReplaceCasting  ::   Casting IDEReplace
+
+data CastingS alpha  where
+    LogCastingS      ::   CastingS LogState
+    InfoCastingS     ::   CastingS InfoState
+    BufferCastingS   ::   CastingS BufferState
+    ModulesCastingS  ::   CastingS ModulesState
+    CallersCastingS  ::   CastingS CallersState
+    ToolbarCastingS  ::   CastingS ToolbarState
+    FindCastingS     ::   CastingS FindState
+    ReplaceCastingS ::   CastingS ReplaceState
 
 --
 -- | A path to a pane
@@ -158,27 +179,6 @@ instance ModelPane IDEPane IDEState where
 -- ---------------------------------------------------------------------
 -- All pane types must be in here !
 --
-data Casting alpha  where
-    LogCasting      ::   Casting IDELog
-    InfoCasting     ::   Casting IDEInfo
-    BufferCasting   ::   Casting IDEBuffer
-    ModulesCasting  ::   Casting IDEModules
-    CallersCasting  ::   Casting IDECallers
-    ToolbarCasting  ::   Casting IDEToolbar
-    FindCasting     ::   Casting IDEFind
-    ReplaceCasting  ::   Casting IDEReplace
-
-data CastingS alpha  where
-    LogCastingS      ::   CastingS LogState
-    InfoCastingS     ::   CastingS InfoState
-    BufferCastingS   ::   CastingS BufferState
-    ModulesCastingS  ::   CastingS ModulesState
-    CallersCastingS  ::   CastingS CallersState
-    ToolbarCastingS  ::   CastingS ToolbarState
-    FindCastingS     ::   CastingS FindState
-    ReplaceCastingS ::   CastingS ReplaceState
-
-
 
 data PaneState      =   BufferSt BufferState
                     |   LogSt LogState
@@ -226,31 +226,7 @@ instance CastableModel BufferState where
                                     BufferCastingS -> Just a
                                     _          -> Nothing
 
---
--- | A log view pane description
---
-data IDELog         =   IDELog {
-    textView        ::   TextView
-,   scrolledWindowL ::   ScrolledWindow
-}
 
-instance CastablePane IDELog where
-    casting _               =   LogCasting
-    downCast _ (PaneC a)    =   case casting a of
-                                    LogCasting -> Just a
-                                    _          -> Nothing
-
-data LogState               =   LogState
-    deriving(Eq,Ord,Read,Show)
-
-instance Model LogState where
-    toPaneState a           =   LogSt a
-
-instance CastableModel LogState where
-    castingS _               =   LogCastingS
-    downCastS _ (StateC a)    =   case castingS a of
-                                    LogCastingS -> Just a
-                                    _          -> Nothing
 --
 -- | An info pane description
 --
@@ -425,6 +401,7 @@ data ReplaceState = ReplaceState{
 ,   matchEntire     ::   Bool
 ,   searchBackwards ::   Bool}
     deriving(Eq,Ord,Read,Show)
+
 instance Model ReplaceState where
     toPaneState a           =   ReplaceSt a
 

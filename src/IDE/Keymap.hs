@@ -4,10 +4,8 @@
 --
 
 module IDE.Keymap (
-    parseKeymap
-,   setKeymap
-,   buildSpecialKeys
-,   handleSpecialKeystrokes
+    Keymap(..)
+,   KeymapI,SpecialKeyTable,SpecialKeyCons
 ) where
 
 import Graphics.UI.Gtk
@@ -20,19 +18,34 @@ import Data.Maybe
 import Data.List(sort)
 import Data.Char(toLower)
 import Control.Monad.Reader
+import Debug.Trace
 
-import IDE.Core.State
-import IDE.Framework.ViewFrame
-import IDE.SourceEditor
+import {-# SOURCE #-} IDE.Core.State
+import IDE.Core.Types
 
-type Keymap = Map ActionString [(Maybe (Either KeyString (KeyString,KeyString)), Maybe String)]
+class IDEObject alpha => Keymap alpha where
+    parseKeymap         ::   FilePath -> IO alpha
+    setKeymap           ::   alpha -> [ActionDescr IDERef] -> [ActionDescr IDERef]
+    buildSpecialKeys    ::   alpha -> [ActionDescr IDERef] -> IO (SpecialKeyTable IDERef)
+
+newtype KeymapI         =   KM  (Map ActionString
+                                [(Maybe (Either KeyString (KeyString,KeyString)), Maybe String)])
+type SpecialKeyTable alpha  =   Map (KeyVal,[Modifier]) (Map (KeyVal,[Modifier]) (ActionDescr alpha))
+type SpecialKeyCons  alpha  =   Maybe ((Map (KeyVal,[Modifier]) (ActionDescr alpha)),String)
+
+instance IDEObject KeymapI
+
+instance Keymap KeymapI where
+    parseKeymap         =   parseKeymap'
+    setKeymap           =   setKeymap'
+    buildSpecialKeys    =   buildSpecialKeys'
 
 --
 -- | Loads and parses a keymap file
 --
 
-parseKeymap :: FilePath -> IO Keymap
-parseKeymap fn = do
+parseKeymap' :: FilePath -> IO KeymapI
+parseKeymap' fn = do
     res <- parseFromFile keymapParser fn
     case res of
         Left pe -> error $"Error reading keymap file " ++ show fn ++ " " ++ show pe
@@ -41,8 +54,8 @@ parseKeymap fn = do
 --
 -- | Sets the accelerators is the action descriptions from the keymap
 --
-setKeymap :: [ActionDescr IDERef] -> Keymap -> [ActionDescr IDERef]
-setKeymap actions keymap = map setAccel actions
+setKeymap' :: KeymapI -> [ActionDescr IDERef] -> [ActionDescr IDERef]
+setKeymap' (KM keymap) actions  = map setAccel actions
     where setAccel act = case Map.lookup (name act) keymap of
                             Nothing -> act
                             Just [] -> act
@@ -57,8 +70,8 @@ setKeymap actions keymap = map setAccel actions
 -- | Builds a special keymap for handling double keystroke accelerators
 -- Unfortunately in the IO Monad because of keyvalFromName
 --
-buildSpecialKeys :: Keymap -> [ActionDescr IDERef] -> IO (SpecialKeyTable IDERef)
-buildSpecialKeys keymap actions = do
+buildSpecialKeys' :: KeymapI -> [ActionDescr IDERef] -> IO (SpecialKeyTable IDERef)
+buildSpecialKeys' (KM keymap) actions = do
     pseudoTriples <- mapM build actions
     let map1 = Map.fromListWith (++) $concat pseudoTriples
     return (Map.map Map.fromList map1)
@@ -75,46 +88,6 @@ buildSpecialKeys keymap actions = do
                                         return ((a1p,[(a2p,act)]): list)
     build' act list _           =   return list
 
---
--- | Callback function for onKeyPress of the main window, so preprocess any key
---
-handleSpecialKeystrokes :: Event -> IDEM Bool
-handleSpecialKeystrokes (Key _ _ _ mods _ _ _ keyVal name mbChar) = do
-    bs <- getCandyState
-    when bs $ editKeystrokeCandy mbChar
-    sk  <- readIDE specialKey
-    sks <- readIDE specialKeys
-    sb <- getSBSpecialKeys
-    case sk of
-        Nothing -> do
-            case Map.lookup (keyVal,sort mods) sks of
-                Nothing -> do
-                    lift $statusbarPop sb 1
-                    lift $statusbarPush sb 1 ""
-                    return False
-                Just map -> do
-                    sb <- getSBSpecialKeys
-                    let sym = printMods mods ++ name
-                    lift $statusbarPop sb 1
-                    lift $statusbarPush sb 1 sym
-                    modifyIDE_ (\ide -> return (ide{specialKey = Just (map,sym)}))
-                    return True
-        Just (map,sym) -> do
-            case Map.lookup (keyVal,sort mods) map of
-                Nothing -> do
-                    sb <- getSBSpecialKeys
-                    lift $statusbarPop sb 1
-                    lift $statusbarPush sb 1 $sym ++ printMods mods ++ name ++ "?"
-                    return ()
-                Just (AD actname _ _ _ ideAction _ _) -> do
-                    sb <- getSBSpecialKeys
-                    lift $statusbarPop sb 1
-                    lift $statusbarPush sb 1
-                        $sym ++ " " ++ printMods mods ++ name ++ "=" ++ actname
-                    ideAction
-            modifyIDE_ (\ide -> return (ide{specialKey = Nothing}))
-            return True
-handleSpecialKeystrokes _ = return True
 
 -- ---------------------------------------------------------------------
 -- Parsing
@@ -135,12 +108,12 @@ symbol =  P.symbol lexer
 whiteSpace = P.whiteSpace lexer
 stringLiteral = P.stringLiteral lexer
 
-keymapParser :: CharParser () Keymap
+keymapParser :: CharParser () KeymapI
 keymapParser = do
     whiteSpace
     ls <- many lineparser
     eof
-    return (Map.fromListWith (++) ls)
+    return (KM (Map.fromListWith (++) ls))
 
 lineparser :: CharParser () (ActionString, [(Maybe (Either KeyString
                                 (KeyString,KeyString)), Maybe String)])
@@ -212,12 +185,4 @@ modparser = do
     try $symbol2 "<compose>"
     return Compose
     <?>"modparser"
-
--- ---------------------------------------------------------------------
--- Printing
---
-
-printMods :: [Modifier] -> String
-printMods []    = ""
-printMods (m:r) = show m ++ printMods r
 

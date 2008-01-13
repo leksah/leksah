@@ -36,8 +36,8 @@ import qualified Data.Set as Set
 import Data.Set (Set)
 import Data.List(isSuffixOf)
 
-import IDE.Core.State
 import {-# SOURCE #-} IDE.Log
+import IDE.Core.Types
 
 findSourceFile :: [FilePath]
     -> [String]
@@ -268,7 +268,7 @@ readErr log hndl =
 runExternal :: FilePath -> [String] -> IO (Handle, Handle, Handle, ProcessHandle)
 runExternal path args = do
     hndls@(inp, out, err, _) <- runInteractiveProcess path args Nothing Nothing
-    message $ "Starting external tool: " ++ path ++ " with args " ++ (show args)
+    putStrLn $ "Starting external tool: " ++ path ++ " with args " ++ (show args)
     hSetBuffering out NoBuffering
     hSetBuffering err NoBuffering
     hSetBuffering inp NoBuffering

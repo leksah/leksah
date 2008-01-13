@@ -28,7 +28,7 @@ import Data.Maybe
 import qualified Data.ByteString.Char8 as BS
 import Data.IORef(newIORef,readIORef,writeIORef)
 
-import IDE.Core.State
+import {-# SOURCE #-} IDE.Core.State
 import IDE.Framework.ViewFrame
 import IDE.Framework.MakeEditor
 import IDE.Framework.SimpleEditors

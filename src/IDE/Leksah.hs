@@ -25,6 +25,7 @@ import System.Directory(doesFileExist)
 import Control.Concurrent
 import Data.IORef
 import Data.Maybe
+import Data.List(sort)
 import qualified Data.Map as Map
 import System.Console.GetOpt
 import System.Environment
@@ -48,6 +49,7 @@ import IDE.Framework.ViewFrame
 import IDE.Menu
 import IDE.Preferences
 import IDE.Keymap
+import IDE.SourceEditor
 import IDE.Metainfo.Info
 import IDE.Metainfo.SourceCollector
 import IDE.Metainfo.InterfaceCollector
@@ -126,7 +128,7 @@ runMain = handleTopExceptions $do
 
 startGUI :: IO ()
 startGUI = do
-    st          <-  initGUI 
+    st          <-  initGUI
     when rtsSupportsBoundThreads
         (putStrLn "Linked with -threaded (Will Gtk work?)")
     timeoutAddFull (yield >> return True) priorityHigh 50
@@ -136,7 +138,7 @@ startGUI = do
     prefs       <-  readPrefs prefsPath
     keysPath    <-  getConfigFilePathForLoad $keymapName prefs ++ ".keymap"
     keyMap      <-  parseKeymap keysPath
-    let accelActions = setKeymap actions keyMap
+    let accelActions = setKeymap (keyMap :: KeymapI) actions
     specialKeys <-  buildSpecialKeys keyMap accelActions
     candyPath   <-  getConfigFilePathForLoad
                         (case sourceCandy prefs of
@@ -197,9 +199,55 @@ startGUI = do
     runReaderT (setCandyState (isJust (sourceCandy prefs))) ideR
     let (x,y)   =   defaultSize prefs
     windowSetDefaultSize win x y
-    runReaderT recoverSession ideR
+    runReaderT (recoverSession :: IDEAction) ideR
     widgetShowAll win
     mainGUI
+
+--
+-- | Callback function for onKeyPress of the main window, so preprocess any key
+--
+handleSpecialKeystrokes :: Event -> IDEM Bool
+handleSpecialKeystrokes (Key _ _ _ mods _ _ _ keyVal name mbChar) = do
+    bs <- getCandyState
+    when bs $ editKeystrokeCandy mbChar
+    sk  <- readIDE specialKey
+    sks <- readIDE specialKeys
+    sb <- getSBSpecialKeys
+    case sk of
+        Nothing -> do
+            case Map.lookup (keyVal,sort mods) sks of
+                Nothing -> do
+                    lift $statusbarPop sb 1
+                    lift $statusbarPush sb 1 ""
+                    return False
+                Just map -> do
+                    sb <- getSBSpecialKeys
+                    let sym = printMods mods ++ name
+                    lift $statusbarPop sb 1
+                    lift $statusbarPush sb 1 sym
+                    modifyIDE_ (\ide -> return (ide{specialKey = Just (map,sym)}))
+                    return True
+        Just (map,sym) -> do
+            case Map.lookup (keyVal,sort mods) map of
+                Nothing -> do
+                    sb <- getSBSpecialKeys
+                    lift $statusbarPop sb 1
+                    lift $statusbarPush sb 1 $sym ++ printMods mods ++ name ++ "?"
+                    return ()
+                Just (AD actname _ _ _ ideAction _ _) -> do
+                    sb <- getSBSpecialKeys
+                    lift $statusbarPop sb 1
+                    lift $statusbarPush sb 1
+                        $sym ++ " " ++ printMods mods ++ name ++ "=" ++ actname
+                    ideAction
+            modifyIDE_ (\ide -> return (ide{specialKey = Nothing}))
+            return True
+    where
+    printMods :: [Modifier] -> String
+    printMods []    = ""
+    printMods (m:r) = show m ++ printMods r
+handleSpecialKeystrokes _ = return True
+
 
 
 -- ---------------------------------------------------------------------

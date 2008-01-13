@@ -84,8 +84,9 @@ initToolbar panePath nb = do
     currentInfo <-  readIDE currentInfo
     uiManager   <-  readIDE uiManager
     keysPath    <-  lift $ getConfigFilePathForLoad $keymapName prefs ++ ".keymap"
-    keyMap      <-  lift $ parseKeymap keysPath
-    let accelActions = setKeymap actions keyMap
+    (keyMap :: KeymapI)
+                <-  lift $ parseKeymap keysPath
+    let accelActions = setKeymap keyMap actions
     (acc,menus) <-  makeMenu uiManager accelActions menuDescription
     let tb = case menus !! 1 of
                 Just m -> m

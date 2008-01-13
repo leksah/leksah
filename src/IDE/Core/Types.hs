@@ -26,12 +26,6 @@ module IDE.Core.Types (
 
 ,   Prefs(..)
 
-,   CandyTables
-,   CandyTableForth
-,   CandyTableBack
-,   SpecialKeyTable
-,   SpecialKeyCons
-
 ,   ErrorSpec(..)
 
 ,   PackageDescr(..)
@@ -76,6 +70,7 @@ import qualified Data.ByteString.Char8 as BS
 import Data.ByteString.Char8 (ByteString)
 
 import IDE.Utils.Default
+
 
 
 data StandardPath = LeftTop | LeftBottom | RightTop | RightBottom
@@ -144,12 +139,7 @@ data Prefs = Prefs {
 } deriving(Eq,Show)
 
 
-type CandyTableForth    =   [(Bool,String,String)]
-type CandyTableBack     =   [(String,String,Int)]
-type CandyTables        =   (CandyTableForth,CandyTableBack)
 
-type SpecialKeyTable alpha  =   Map (KeyVal,[Modifier]) (Map (KeyVal,[Modifier]) (ActionDescr alpha))
-type SpecialKeyCons  alpha  =   Maybe ((Map (KeyVal,[Modifier]) (ActionDescr alpha)),String)
 
 instance Show Modifier
     where show Shift    =   "<shift>"

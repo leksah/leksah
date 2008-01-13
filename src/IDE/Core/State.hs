@@ -1,3 +1,4 @@
+{-# OPTIONS_GHC -fglasgow-exts #-}
 -----------------------------------------------------------------------------
 --
 -- Module      :  IDE.Core.State
@@ -15,8 +16,11 @@
 -------------------------------------------------------------------------------
 
 module IDE.Core.State (
+    IDEObject
+,   IDEPaneC
+,   IDEEditor
 -- * IDE State
-    IDE(..)
+,   IDE(..)
 ,   IDERef
 ,   IDEM
 ,   IDEAction
@@ -50,9 +54,17 @@ import GHC (Session)
 import IDE.Core.Types
 import IDE.Core.Panes
 import IDE.Core.Exception
+import IDE.SourceCandy
+import IDE.Keymap
 
 
 message m = trace m (return ())
+
+
+class IDEObject o
+class IDEObject o => IDEPaneC o
+class IDEObject o => IDEEditor o
+
 
 -- ---------------------------------------------------------------------
 -- IDE State
@@ -71,7 +83,7 @@ data IDE            =  IDE {
 ,   layout          ::  PaneLayout              -- ^ a description of the general gui layout
 ,   specialKeys     ::  SpecialKeyTable IDERef  -- ^ a structure for emacs like keystrokes
 ,   specialKey      ::  SpecialKeyCons IDERef   -- ^ the first of a double keystroke
-,   candy           ::  CandyTables             -- ^ table for source candy
+,   candy           ::  CandyTable              -- ^ table for source candy
 ,   prefs           ::  Prefs                   -- ^ configuration preferences
 ,   activePack      ::  Maybe IDEPackage
 ,   errors          ::  [ErrorSpec]

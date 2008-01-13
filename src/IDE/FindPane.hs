@@ -27,7 +27,7 @@ import Data.Maybe
 import Control.Monad.Reader
 import Data.List
 
-import IDE.Core.State
+import {-# SOURCE #-} IDE.Core.State
 import IDE.Framework.ViewFrame
 import IDE.SourceEditor
 

@@ -14,11 +14,8 @@
 ---------------------------------------------------------------------------------
 
 module IDE.SourceCandy (
-    transformToCandy
-,   transformFromCandy
-,   keystrokeCandy
-,   parseCandy
-,   getCandylessText
+    SourceCandy(..)
+,   CandyTable
 ) where
 
 import Data.Char(chr)
@@ -31,7 +28,35 @@ import qualified Text.ParserCombinators.Parsec.Token as P
 import Text.ParserCombinators.Parsec.Language(emptyDef)
 import qualified Data.Set as Set
 
-import IDE.Core.State
+import {-# SOURCE #-} IDE.Core.State
+
+---------------------------------------------------------------------------------
+-- * Interface
+
+class IDEObject alpha => SourceCandy alpha where
+    parseCandy          ::   FilePath -> IO alpha
+    transformToCandy    ::   alpha -> TextBuffer -> IO ()
+    transformFromCandy  ::   alpha -> TextBuffer -> IO ()
+    keystrokeCandy      ::   alpha -> Maybe Char -> TextBuffer -> IO ()
+    getCandylessText    ::   alpha -> TextBuffer -> IO String
+
+newtype CandyTable      =   CT (CandyTableForth,CandyTableBack)
+
+type CandyTableForth    =   [(Bool,String,String)]
+
+type CandyTableBack     =   [(String,String,Int)]
+
+instance IDEObject CandyTable
+
+instance SourceCandy CandyTable where
+    parseCandy          =   parseCandy'
+    transformToCandy    =   transformToCandy'
+    transformFromCandy  =   transformFromCandy'
+    keystrokeCandy      =   keystrokeCandy'
+    getCandylessText    =   getCandylessText'
+
+---------------------------------------------------------------------------------
+-- * Implementation
 
 notBeforeId     =   Set.fromList $['a'..'z'] ++ ['A'..'Z'] ++ ['_']
 notAfterId      =   Set.fromList $['a'..'z'] ++ ['A'..'Z'] ++ ['0'..'9'] ++ ['_']
@@ -39,8 +64,8 @@ notBeforeOp     =   Set.fromList $['!','#','$','%','&','*','+','.','/','<','=','
                                     '^','|','-','~','\'','"']
 notAfterOp      =   notBeforeOp
 
-keystrokeCandy :: Maybe Char -> CandyTableForth -> TextBuffer -> IO ()
-keystrokeCandy mbc transformTable gtkbuf = do
+keystrokeCandy' :: CandyTable -> Maybe Char -> TextBuffer -> IO ()
+keystrokeCandy' (CT(transformTable,_)) mbc gtkbuf = do
     cursorMark  <-  textBufferGetInsert gtkbuf
     endIter     <-  textBufferGetIterAtMark gtkbuf cursorMark
     offset      <-  textIterGetOffset endIter
@@ -84,8 +109,8 @@ keystrokeCandy mbc transformTable gtkbuf = do
                     sourceBufferEndNotUndoableAction (castToSourceBuffer gtkbuf)
                 else replace mbAfterChar cursorMark match offset rest
 
-transformToCandy :: CandyTableForth -> TextBuffer -> IO ()
-transformToCandy transformTable gtkbuf = do
+transformToCandy' :: CandyTable -> TextBuffer -> IO ()
+transformToCandy' (CT(transformTable,_)) gtkbuf = do
     textBufferBeginUserAction gtkbuf
     modified    <-  textBufferGetModified gtkbuf
     mapM_ (\tbl ->  replaceTo gtkbuf tbl 0) transformTable
@@ -136,16 +161,16 @@ replaceTo buf (isOp,from,to) offset = replaceTo' offset
                     return ()
                 replaceTo' (stOff + 1)
 
-transformFromCandy :: CandyTableBack -> TextBuffer -> IO ()
-transformFromCandy transformTableBack gtkbuf = do
+transformFromCandy' :: CandyTable -> TextBuffer -> IO ()
+transformFromCandy' (CT(_,transformTableBack)) gtkbuf = do
     textBufferBeginUserAction gtkbuf
     modified    <-  textBufferGetModified gtkbuf
     mapM_ (\tbl ->  replaceFrom gtkbuf tbl 0) transformTableBack
     textBufferEndUserAction gtkbuf
     textBufferSetModified gtkbuf modified
 
-getCandylessText :: CandyTableBack -> TextBuffer -> IO (String)
-getCandylessText transformTableBack gtkbuf = do
+getCandylessText' :: CandyTable -> TextBuffer -> IO (String)
+getCandylessText' (CT(_,transformTableBack)) gtkbuf = do
     workBuffer  <-  textBufferNew Nothing
     i1          <-  textBufferGetStartIter gtkbuf
     i2          <-  textBufferGetEndIter gtkbuf
@@ -184,9 +209,9 @@ replaceFrom buf (to,from,spaces) offset = replaceFrom' offset
                 textBufferInsert buf iter to
                 replaceFrom' offset
 
-type CandyTable = [(String,Char,Bool)]
+type CandyTableI = [(String,Char,Bool)]
 
-forthFromTable :: CandyTable -> CandyTableForth
+forthFromTable :: CandyTableI -> CandyTableForth
 forthFromTable table = map forthFrom table
     where
     forthFrom (str,chr,noTrimming) =
@@ -196,7 +221,7 @@ forthFromTable table = map forthFrom table
             to = [chr] ++ trailingBlanks
         in (isOp,from,to)
 
-backFromTable :: CandyTable -> CandyTableBack
+backFromTable :: CandyTableI -> CandyTableBack
 backFromTable table = map backFrom table
     where
     backFrom (str,chr,noTrimming) =
@@ -218,14 +243,14 @@ whiteSpace  =   P.whiteSpace lexer
 hexadecimal =   P.hexadecimal lexer
 symbol      =   P.symbol lexer
 
-parseCandy :: FilePath -> IO CandyTables
-parseCandy fn = do
+parseCandy' :: FilePath -> IO CandyTable
+parseCandy' fn = do
     res     <-  parseFromFile candyParser fn
     case res of
         Left pe ->  error $"Error reading keymap file " ++ show fn ++ " " ++ show pe
-        Right r ->  return (forthFromTable r, backFromTable r)
+        Right r ->  return (CT(forthFromTable r, backFromTable r))
 
-candyParser :: CharParser () CandyTable
+candyParser :: CharParser () CandyTableI
 candyParser = do
     whiteSpace
     ls  <-  many oneCandyParser

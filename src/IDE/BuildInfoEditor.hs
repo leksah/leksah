@@ -1,13 +1,11 @@
+{-# OPTIONS_GHC -fglasgow-exts #-}
 --
 -- | Module for editing of cabal build infos
 --
 
 module IDE.BuildInfoEditor (
-    editBuildInfo
-,   buildInfoEditor
-,   libraryEditor
-,   executableEditor
-,   executablesEditor
+    editBuildInfo  --   Maybe FilePath -> [String] -> BuildInfo -> String -> IO (Maybe BuildInfo)
+,   BuildEditorFactory(..)
 ) where
 
 import Graphics.UI.Gtk
@@ -17,6 +15,7 @@ import Distribution.PackageDescription
 import Data.IORef
 import Data.List
 
+import IDE.Core.State
 import IDE.SpecialEditors
 import IDE.Framework.ViewFrame
 import IDE.Framework.EditorBasics
@@ -25,12 +24,24 @@ import IDE.Framework.SimpleEditors
 import IDE.Framework.CompositeEditors
 import IDE.Framework.Parameters
 
+class IDEEditor (alpha beta)  => BuildEditorFactory alpha beta where
+    buildInfoEditor     ::   Maybe FilePath -> [String] -> alpha  BuildInfo
+    libraryEditor       ::   Maybe FilePath -> [String] -> alpha  Library
+    executableEditor    ::   Maybe FilePath -> [String] -> alpha  Executable
+    executablesEditor   ::   Maybe FilePath -> [String] -> alpha  [Executable]
+
+instance BuildEditorFactory Editor alpha  where
+    buildInfoEditor     =   buildInfoEditor'
+    libraryEditor       =   libraryEditor'
+    executableEditor    =   executableEditor'
+    executablesEditor   =   executablesEditor'
+
 -- ------------------------------------------------------------
 -- * Build Infos
 -- ------------------------------------------------------------
 
-buildInfoEditor :: Maybe FilePath -> [String] -> Editor BuildInfo
-buildInfoEditor fp modules p = do
+buildInfoEditor' :: Maybe FilePath -> [String] -> Editor BuildInfo
+buildInfoEditor' fp modules p = do
     (wid,inj,ext,notif) <- otherEditor (editBuildInfo fp modules) p
     box      <-  vBoxNew False 1
     textView <-  textViewNew
@@ -53,8 +64,8 @@ buildInfoEditor fp modules p = do
             Nothing -> return ()
         return True
 
-libraryEditor :: Maybe FilePath -> [String] -> Editor Library
-libraryEditor fp modules para = do
+libraryEditor' :: Maybe FilePath -> [String] -> Editor Library
+libraryEditor' fp modules para = do
     (wid,inj,ext,notif) <-
         pairEditor
             (modulesEditor modules, paraName <<<- ParaName "Exposed Modules" $para)
@@ -75,8 +86,8 @@ moduleEditor :: [String] -> Editor String
 moduleEditor modules    =   staticSelectionEditor modules
 
 
-executableEditor :: Maybe FilePath -> [String] -> Editor Executable
-executableEditor fp modules para = do
+executableEditor' :: Maybe FilePath -> [String] -> Editor Executable
+executableEditor' fp modules para = do
     (wid,inj,ext,notif) <- pairEditor
         (pairEditor
             (stringEditor, paraName <<<- ParaName "Executable Name" $ emptyParams)
@@ -93,8 +104,8 @@ executableEditor fp modules para = do
             Just ((s,f),bi) -> return (Just $Executable s f bi)
     return (wid,pinj,pext,notif)
 
-executablesEditor :: Maybe FilePath -> [String] -> Editor [Executable]
-executablesEditor fp modules p =
+executablesEditor' :: Maybe FilePath -> [String] -> Editor [Executable]
+executablesEditor' fp modules p =
     multisetEditor
         (ColumnDescr False [("Executable Name",\(Executable exeName _ _) -> [New.cellText := exeName])
                            ,("Module Path",\(Executable  _ mp _) -> [New.cellText := mp])])

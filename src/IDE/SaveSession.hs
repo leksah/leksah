@@ -16,9 +16,7 @@
 
 
 module IDE.SaveSession (
-    saveSession
-,   recoverSession
-,   sessionClosePane
+    SaveSessionAction(..)
 ) where
 
 import Graphics.UI.Gtk hiding (showLayout)
@@ -27,7 +25,7 @@ import Control.Monad.Reader
 import System.FilePath
 import qualified Data.Map as Map
 import Data.Maybe
-import GHC.Exception (catch)
+--import GHC.Exception (catch)
 
 import IDE.Core.State
 import IDE.Framework.ViewFrame
@@ -38,8 +36,24 @@ import IDE.Framework.Parameters
 import IDE.Package
 import IDE.RecoverPanes
 
-sessionClosePane :: IDEAction
-sessionClosePane = do
+
+instance IDEObject IDEAction
+
+class IDEObject o => SaveSessionAction o where
+    saveSession         ::   o
+    recoverSession      ::   o
+    sessionClosePane    ::   o
+
+instance SaveSessionAction IDEAction where
+    saveSession         =   saveSession'
+    recoverSession      =   recoverSession'
+    sessionClosePane    =   sessionClosePane'
+
+
+-- | *Implementation
+
+sessionClosePane' :: IDEAction
+sessionClosePane' = do
     activePane'     <-  readIDE activePane
     case activePane' of
         Nothing     ->  return ()
@@ -100,8 +114,8 @@ layoutDescr = [
 --
 -- | Get and save the current layout
 --
-saveSession :: IDEAction
-saveSession = do
+saveSession' :: IDEAction
+saveSession' = do
     lift $ putStrLn "Now saving session"
     wdw         <-  readIDE window
     layout      <-  getLayout
@@ -175,8 +189,8 @@ getActive = do
 -- | Read and apply the saved layout
 --
 
-recoverSession :: IDEAction
-recoverSession = do
+recoverSession' :: IDEAction
+recoverSession' = do
     wdw         <-  readIDE window
     layoutSt <- lift$ readLayout
     lift $windowSetDefaultSize wdw (fst (windowSize layoutSt))(snd (windowSize layoutSt))

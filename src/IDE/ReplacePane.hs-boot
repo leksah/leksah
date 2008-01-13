@@ -4,10 +4,10 @@ module IDE.ReplacePane (
 ,   doReplace
 ) where
 
-import Graphics.UI.Gtk hiding (get)
+--import Graphics.UI.Gtk hiding (get)
 import IDE.Core.State
 
 instance Pane IDEReplace
-instance ModelPane IDEReplace ReplaceState where
+instance ModelPane IDEReplace ReplaceState
 doReplace :: IDEAction
 getReplace :: IDEM IDEReplace

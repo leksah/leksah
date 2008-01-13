@@ -78,17 +78,12 @@ import qualified Data.Map as Map
 import Data.List
 import Data.Maybe
 
-import IDE.Core.State
+import {-# SOURCE #-} IDE.Core.State
 import IDE.Framework.ViewFrame
 import IDE.SourceCandy
-import IDE.Framework.EditorBasics
-import IDE.Framework.MakeEditor
-import IDE.Framework.SimpleEditors
-import IDE.Framework.Parameters
 import IDE.Metainfo.Info
 import {-# SOURCE #-} IDE.InfoPane
 import {-# SOURCE #-} IDE.FindPane
-import {-# SOURCE #-} IDE.ReplacePane
 
 instance Pane IDEBuffer
     where
@@ -267,13 +262,13 @@ standardSourcePanePath = do
 newTextBuffer :: PanePath -> String -> Maybe FilePath -> IDEM IDEBuffer
 newTextBuffer panePath bn mbfn = do
     -- create the appropriate language
-    ideR <- ask
-    nb <- getNotebook panePath
-    panes <- readIDE panes
-    paneMap <- readIDE paneMap
-    prefs <- readIDE prefs
-    bs <- getCandyState
-    (from,_) <- readIDE candy
+    ideR    <-  ask
+    nb      <-  getNotebook panePath
+    panes   <-  readIDE panes
+    paneMap <-  readIDE paneMap
+    prefs   <-  readIDE prefs
+    bs      <-  getCandyState
+    ct      <-  readIDE candy
     let (ind,rbn) = figureOutPaneName panes bn 0
     (buf,cids) <- lift $ do
         lm      <-  sourceLanguagesManagerNew
@@ -306,7 +301,7 @@ newTextBuffer panePath bn mbfn = do
         sourceBufferBeginNotUndoableAction buffer
         textBufferSetText buffer fileContents
         if bs
-            then transformToCandy from (castToTextBuffer buffer)
+            then transformToCandy ct (castToTextBuffer buffer)
             else return ()
         sourceBufferEndNotUndoableAction buffer
         textBufferSetModified buffer False
@@ -416,10 +411,10 @@ fileRevert = inBufContext' () $ \ _ _ currentBuffer _ -> do
 
 revert :: IDEBuffer -> IDEAction
 revert buf = do
-    useCandy <- getCandyState
-    (fromCandy,_) <- readIDE candy
-    panes <- readIDE panes
-    let name = paneName buf
+    useCandy    <-  getCandyState
+    ct          <-  readIDE candy
+    panes       <-  readIDE panes
+    let name    =   paneName buf
     case fileName buf of
         Nothing -> return ()
         Just fn -> do
@@ -431,7 +426,7 @@ revert buf = do
                 sourceBufferBeginNotUndoableAction buffer
                 textBufferSetText buffer fc
                 if useCandy
-                    then transformToCandy fromCandy (castToTextBuffer buffer)
+                    then transformToCandy ct (castToTextBuffer buffer)
                     else return ()
                 sourceBufferEndNotUndoableAction buffer
                 textBufferSetModified buffer False
@@ -599,10 +594,10 @@ fileSave query = inBufContext' () $ \ nb _ currentBuffer i -> do
             (\ide -> return (ide{panes = nbufs, paneMap = pm}))
         Nothing -> return ()
     where
-        fileSave' :: Bool -> IDEBuffer -> Bool -> CandyTables -> FilePath -> IO()
-        fileSave' forceLineEnds ideBuf bs (to,from) fn = do
+        fileSave' :: Bool -> IDEBuffer -> Bool -> CandyTable -> FilePath -> IO()
+        fileSave' forceLineEnds ideBuf bs ct fn = do
             buf     <-   textViewGetBuffer $ sourceView ideBuf
-            text    <-   getCandylessText from buf
+            text    <-   getCandylessText ct buf
             let text' = unlines $map removeTrailingBlanks $lines text
             if forceLineEnds
                 then do
@@ -1037,30 +1032,30 @@ editShiftRight = do
 
 editToCandy :: IDEAction
 editToCandy = do
-    (to,_) <- readIDE candy
+    ct <- readIDE candy
     inBufContext () $ \_ gtkbuf _ _ -> do
-        transformToCandy to gtkbuf
+        transformToCandy ct gtkbuf
 
 editFromCandy :: IDEAction
 editFromCandy = do
-    (_,from) <- readIDE candy
+    ct      <-  readIDE candy
     inBufContext () $ \_ gtkbuf _ _ -> do
-        transformFromCandy from gtkbuf
+        transformFromCandy ct gtkbuf
 
 editKeystrokeCandy :: Maybe Char -> IDEAction
 editKeystrokeCandy c = do
-    (to,_) <- readIDE candy
+    ct <- readIDE candy
     inBufContext () $ \_ gtkbuf _ _ -> do
-        keystrokeCandy c to gtkbuf
+        keystrokeCandy ct c gtkbuf
 
 editCandy = do
-    (to,from) <- readIDE candy
+    ct      <- readIDE candy
     buffers <- allBuffers
     gtkbufs <- lift $mapM (\ b -> textViewGetBuffer (sourceView b)) buffers
     bs <- getCandyState
     if bs
-        then lift $mapM_ (transformToCandy to) gtkbufs
-        else lift $mapM_ (transformFromCandy from) gtkbufs
+        then lift $mapM_ (transformToCandy ct) gtkbufs
+        else lift $mapM_ (transformFromCandy ct) gtkbufs
 
 
 

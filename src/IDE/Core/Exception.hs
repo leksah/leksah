@@ -18,14 +18,13 @@ module IDE.Core.Exception (
   throwIDE
 ) where
 
-
 import Data.Typeable
 import Control.Exception
 
 
 data IDEException = IDEException String deriving Typeable
-throwIDE str = throwDyn (IDEException str)
 
+throwIDE str = throwDyn (IDEException str)
 
 instance Show IDEException where
   show (IDEException str) = str

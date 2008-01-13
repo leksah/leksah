@@ -17,7 +17,9 @@ module IDE.InfoPane (
     setInfos
 ) where
 
-import IDE.Core.State
+import {-# SOURCE #-} IDE.Core.State
+import IDE.Core.Types
+
 
 setInfos :: [IdentifierDescr] -> IDEM ()
 

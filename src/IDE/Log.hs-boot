@@ -4,19 +4,22 @@
 --
 
 module IDE.Log (
-    getLog
-,   appendLog
+    LogView(..)
+,   IDELog
+,   LogState
 ,   LogTag(..)
-,   markErrorInLog
-,   clearLog
-
 ) where
 
-import IDE.Core.State
+import {-# SOURCE #-} IDE.Core.State
 
 data LogTag = LogTag | ErrorTag | FrameTag
+instance LogView IDELog
 
-getLog :: IDEM IDELog
-appendLog :: IDELog -> String -> LogTag -> IO Int
-markErrorInLog :: (Int,Int) -> IDEAction
-clearLog :: IDEAction
+class IDEPaneC alpha => LogView alpha where
+    getLog          ::   IDEM alpha
+    appendLog       ::   alpha  -> String -> LogTag -> IO Int
+    markErrorInLog  ::   alpha  -> (Int, Int) -> IO ()
+
+data IDELog
+data LogState               =   LogState
+    deriving(Eq,Ord,Read,Show)

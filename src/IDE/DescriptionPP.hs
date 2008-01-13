@@ -26,7 +26,7 @@ import qualified Text.ParserCombinators.Parsec as P
 import IDE.PrinterParser hiding (fieldParser,parameters)
 import IDE.Framework.Parameters
 import IDE.Framework.EditorBasics
-import IDE.Core.State
+import {-# SOURCE #-} IDE.Core.State
 
 type Applicator alpha = alpha -> IDEAction
 

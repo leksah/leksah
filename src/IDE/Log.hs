@@ -1,15 +1,26 @@
 {-# OPTIONS_GHC -fglasgow-exts #-}
 --
--- | The log pane og ide
+-- Module      :  IDE.Log
+-- Copyright   :  (c) Juergen Nicklisch-Franken (aka Jutaro)
+-- License     :  GNU-GPL
+--
+-- Maintainer  :  Juergen Nicklisch-Franken <jnf at arcor.de>
+-- Stability   :  experimental
+-- Portability :  portable
+--
+-- | Log pane
+--
+-------------------------------------------------------------------------------
+--
+-- * Interface
 --
 
 module IDE.Log (
-    getLog
-,   appendLog
+    LogView(..)
+,   LogAction(..)
+,   IDELog(..)
+,   LogState
 ,   LogTag(..)
-,   markErrorInLog
-,   clearLog
-
 ) where
 
 import Graphics.UI.Gtk hiding (afterToggleOverwrite)
@@ -17,9 +28,62 @@ import Graphics.UI.Gtk.Multiline.TextView
 import Control.Monad.Reader
 import Data.Maybe
 
-import IDE.Core.State
+import {-# SOURCE #-} IDE.Core.State
+--import {-# SOURCE #-} IDE.Core.Panes
 import IDE.SourceEditor
 import IDE.Framework.ViewFrame
+
+
+-------------------------------------------------------------------------------
+--
+-- * Interface
+--
+
+--
+-- | The Log Viev
+--
+
+class IDEPaneC alpha => LogView alpha where
+    getLog          ::   IDEM alpha
+    appendLog       ::   alpha  -> String -> LogTag -> IO Int
+    markErrorInLog  ::   alpha  -> (Int, Int) -> IO ()
+
+class LogAction alpha where
+    clearLog        ::   alpha
+
+instance LogAction IDEAction where
+    clearLog        =   clearLog'
+
+data IDELog         =   IDELog {
+    textView        ::   TextView
+,   scrolledWindowL ::   ScrolledWindow}
+
+instance IDEObject IDELog
+instance IDEPaneC IDELog
+
+instance LogView IDELog
+    where
+    getLog          =   getLog'
+    appendLog       =   appendLog'
+    markErrorInLog  =   markErrorInLog'
+
+instance CastablePane IDELog where
+    casting _               =   LogCasting
+    downCast _ (PaneC a)    =   case casting a of
+                                    LogCasting -> Just a
+                                    _          -> Nothing
+
+data LogState               =   LogState
+    deriving(Eq,Ord,Read,Show)
+
+instance Model LogState where
+    toPaneState a           =   LogSt a
+
+instance CastableModel LogState where
+    castingS _               =   LogCastingS
+    downCastS _ (StateC a)    =   case castingS a of
+                                    LogCastingS -> Just a
+                                    _          -> Nothing
 
 instance Pane IDELog
     where
@@ -49,6 +113,12 @@ instance ModelPane IDELog LogState where
         initLog pp nb
 
 data LogTag = LogTag | ErrorTag | FrameTag
+
+-------------------------------------------------------------------------------
+--
+-- * Implementation
+--
+
 
 initLog :: PanePath -> Notebook -> IDEAction
 initLog panePath nb = do
@@ -116,14 +186,15 @@ clicked (Button _ SingleClick _ _ _ _ LeftButton x y) ideLog = do
                 then markErrorInSourceBuf (line thisErr) (column thisErr)
                         (errDescription thisErr)
                 else return ()
-            markErrorInLog (logLines thisErr)
+            log :: IDELog <- getLog
+            lift $ markErrorInLog log (logLines thisErr)
             modifyIDE_ (\ide -> return (ide{currentErr = Just n}))
         otherwise   -> return ()
 clicked _ _ = return ()
 
 
-getLog :: IDEM IDELog
-getLog = do
+getLog' :: IDEM IDELog
+getLog' = do
     mbPane <- getPane LogCasting
     case mbPane of
         Nothing -> do
@@ -138,8 +209,8 @@ getLog = do
                 Just l  ->  return l
         Just p -> return p
 
-appendLog :: IDELog -> String -> LogTag -> IO Int
-appendLog l@(IDELog tv _) string tag = do
+appendLog' :: IDELog -> String -> LogTag -> IO Int
+appendLog' l@(IDELog tv _) string tag = do
     buf <- textViewGetBuffer tv
     iter <- textBufferGetEndIter buf
     textBufferSelectRange buf iter iter
@@ -164,10 +235,8 @@ appendLog l@(IDELog tv _) string tag = do
     bringPaneToFront l
     return line
 
-markErrorInLog :: (Int,Int) -> IDEAction
-markErrorInLog (l1,l2) = do
-    (IDELog tv _) <- getLog
-    lift $ do
+markErrorInLog' :: IDELog -> (Int,Int) -> IO ()
+markErrorInLog' (IDELog tv _) (l1,l2) = do
         buf <- textViewGetBuffer tv
         iter <- textBufferGetIterAtLineOffset buf (l1-1) 0
         iter2 <- textBufferGetIterAtLineOffset buf l2 0
@@ -179,8 +248,8 @@ markErrorInLog (l1,l2) = do
             Nothing -> return ()
             Just mark ->  textViewScrollToMark tv  mark 0.0 (Just (0.3,0.3))
 
-clearLog :: IDEAction
-clearLog = do
+clearLog' :: IDEAction
+clearLog' = do
     log <- getLog
     buf <- lift$ textViewGetBuffer $textView log
     lift $textBufferSetText buf ""

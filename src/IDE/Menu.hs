@@ -1,3 +1,4 @@
+{-# OPTIONS_GHC -fglasgow-exts #-}
 -----------------------------------------------------------------------------
 --
 -- Module       :  IDE.Menu
@@ -376,7 +377,7 @@ makeMenu uiManager actions menuDescription = do
 --
 quit :: IDEAction
 quit = do
-    saveSession
+    saveSession :: IDEAction
     b <- fileCloseAll
     if b
         then lift mainQuit

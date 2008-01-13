@@ -74,6 +74,8 @@ import Data.Maybe
 import GHC.Exception(evaluate,catch)
 
 import IDE.Core.State
+import IDE.Core.Types
+import IDE.Core.Panes
 import IDE.Framework.Parameters
 
 notebookInsertOrdered :: (NotebookClass self, WidgetClass child)	
@@ -94,7 +96,6 @@ notebookInsertOrdered nb widget label = do
                         Nothing ->  -1
     realPos     <-  notebookInsertPage  nb widget label pos
     notebookSetCurrentPage nb realPos
-
 getPane ::  CastablePane alpha => Casting alpha -> IDEM (Maybe alpha)
 getPane casting = do
     selectedPanes <- getPanes casting
