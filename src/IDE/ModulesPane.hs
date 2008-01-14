@@ -53,7 +53,7 @@ instance Pane IDEModules
                 lift $notebookRemovePage nb i
                 removePaneAdmin pane
 
-instance ModelPane IDEModules ModulesState where
+instance RecoverablePane IDEModules ModulesState where
     saveState p     =   do
         (IDEModules _ _ treeView treeStore facetView facetStore _ _ _ _) <- getModules
         sc          <-  getScope

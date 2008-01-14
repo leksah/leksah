@@ -50,7 +50,7 @@ instance Pane IDEToolbar
                 removePaneAdmin pane
 
 
-instance ModelPane IDEToolbar ToolbarState where
+instance RecoverablePane IDEToolbar ToolbarState where
     saveState p     =   do
         mbToolbar <- getPane ToolbarCasting
         case mbToolbar of

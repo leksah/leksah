@@ -28,7 +28,7 @@ import Data.Maybe
 import qualified Data.ByteString.Char8 as BS
 import Data.IORef(newIORef,readIORef,writeIORef)
 
-import {-# SOURCE #-} IDE.Core.State
+import IDE.Core.State
 import IDE.Framework.ViewFrame
 import IDE.Framework.MakeEditor
 import IDE.Framework.SimpleEditors
@@ -58,7 +58,7 @@ instance Pane IDEInfo
                 lift $notebookRemovePage nb i
                 removePaneAdmin pane
 
-instance ModelPane IDEInfo InfoState where
+instance RecoverablePane IDEInfo InfoState where
     saveState p     =   do
         currentIDsU <- lift $ readIORef (currentIDs p)
         currentIndU <- lift $ readIORef (currentInd p)

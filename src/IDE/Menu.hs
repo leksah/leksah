@@ -199,7 +199,7 @@ actions =
     ,AD "ShowToolbar" "_Show Toolbar" Nothing Nothing
         (do getToolbar; return ()) [] False
     ,AD "ShowFind" "_Show Find" Nothing Nothing
-        (do getFind; return ()) [] False
+        doFind [] False
 
     ,AD "Preferences" "_Preferences" Nothing Nothing (return ()) [] False
     ,AD "PrefsEdit" "_Edit Prefs" Nothing Nothing

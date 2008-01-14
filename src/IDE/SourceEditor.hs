@@ -128,7 +128,7 @@ instance Pane IDEBuffer
                     fileClose
                     return ()
 
-instance ModelPane IDEBuffer BufferState where
+instance RecoverablePane IDEBuffer BufferState where
     saveState p     =   do  buf     <-  lift $ textViewGetBuffer (sourceView p)
                             ins     <-  lift $ textBufferGetInsert buf
                             iter    <-  lift $ textBufferGetIterAtMark buf ins
@@ -769,7 +769,7 @@ editFindKey k@(Key _ _ _ _ _ _ _ _ _ _)
     | eventKeyName k == "Up" =
         editFindInc Backward
     | eventKeyName k == "Escape" = do
-        entry   <- getFindEntry
+        --entry   <- getFindEntry
         inBufContext' () $ \_ gtkbuf currentBuffer _ -> lift $ do
             i1 <- textBufferGetStartIter gtkbuf
             i2 <- textBufferGetEndIter gtkbuf
@@ -792,8 +792,8 @@ data SearchHint = Forward | Backward | Insert | Delete | Initial
 
 editFindInc :: SearchHint -> IDEAction
 editFindInc hint = do
-    entry   <-  getFindEntry
-    find    <-  getFind
+    find :: IDEFind  <-  getFind
+    let entry =  getFindEntry find
     lift $ widgetGrabFocus entry
     lift $ bringPaneToFront find
     when (hint == Initial) $ lift $ editableSelectRegion entry 0 (-1)
@@ -801,11 +801,11 @@ editFindInc hint = do
     if null search
         then return ()
         else do
-            caseSensitiveW <- getCaseSensitive
+            let caseSensitiveW =  getCaseSensitive find
             caseSensitive <- lift $toggleButtonGetActive caseSensitiveW
-            entireWButton <- getEntireWord
+            let entireWButton =  getEntireWord find
             entireW <- lift $toggleButtonGetActive entireWButton
-            wrapAroundButton <- getWrapAround
+            let wrapAroundButton =  getWrapAround find
             wrapAround <- lift $toggleButtonGetActive wrapAroundButton
             res <- editFind entireW caseSensitive wrapAround search "" hint
             if res || null search
@@ -924,8 +924,8 @@ editReplaceAll entireWord caseSensitive wrapAround search replace hint = do
 
 editGotoLine :: IDEAction
 editGotoLine = inBufContext' () $ \_ gtkbuf currentBuffer _ -> do
-    spin <- getGotoLineSpin
-    find    <-  getFind
+    find :: IDEFind        <-  getFind
+    let spin    =   getGotoLineSpin find
     lift $ bringPaneToFront find
     lift $do
         max <- textBufferGetLineCount gtkbuf
@@ -936,7 +936,8 @@ editGotoLineKey :: Event -> IDEAction
 editGotoLineKey k@(Key _ _ _ _ _ _ _ _ _ _)
     | eventKeyName k == "Escape"  =
         inBufContext' () $ \_ gtkbuf currentBuffer _ -> do
-            spin <- getGotoLineSpin
+            find :: IDEFind <- getFind
+            let spin =  getGotoLineSpin find
             lift $ do
                 widgetGrabFocus $ sourceView currentBuffer
     | otherwise = return ()
@@ -944,8 +945,8 @@ editGotoLineKey _ = return ()
 
 editGotoLineEnd :: IDEAction
 editGotoLineEnd = inBufContext' () $ \_ gtkbuf currentBuffer _ -> do
-    spin <- getGotoLineSpin
-    find    <-  getFind
+    find :: IDEFind   <-  getFind
+    let spin =  getGotoLineSpin find
     lift $ bringPaneToFront find
     lift $ do
         line <- spinButtonGetValueAsInt spin

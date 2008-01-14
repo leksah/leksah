@@ -52,7 +52,7 @@ instance Pane IDECallers
                 removePaneAdmin pane
 
 -- | We don't recover this pane
-instance ModelPane IDECallers CallersState where
+instance RecoverablePane IDECallers CallersState where
     saveState p     =   return Nothing
     recoverState pp _  =  return ()
 

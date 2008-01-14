@@ -23,7 +23,7 @@ module IDE.Core.Panes (
 ,   Pane(..)
 ,   CastablePane(..)
 ,   IDEPane(..)
-,   ModelPane(..)
+,   RecoverablePane(..)
 ,   PaneDirection(..)
 ,   PanePath
 ,   PaneLayout(..)
@@ -32,8 +32,7 @@ module IDE.Core.Panes (
 
 ,   IDEState(..)
 ,   PaneState(..)
-,   Model(..)
-,   CastableModel(..)
+,   Recoverable(..)
 
 -- * The pane types
 ,   IDEBuffer(..)
@@ -47,11 +46,6 @@ module IDE.Core.Panes (
 ,   CallersState(..)
 ,   IDEToolbar(..)
 ,   ToolbarState(..)
-,   IDEFind(..)
-,   FindState(..)
-,   IDEReplace(..)
-,   ReplaceState(..)
-
 ) where
 
 import Graphics.UI.Gtk.SourceView
@@ -66,6 +60,8 @@ import IDE.Core.Types
 import {-# SOURCE #-} IDE.Core.State
 import IDE.Framework.EditorBasics
 import {-# SOURCE #-} IDE.Log
+import {-# SOURCE #-} IDE.ReplacePane
+import {-# SOURCE #-} IDE.FindPane
 -- ---------------------------------------------------------------------
 -- Panes and pane layout
 --
@@ -143,11 +139,11 @@ class CastablePane alpha where
     isIt            ::   Casting alpha -> IDEPane -> Bool
     isIt t i        =   isJust (downCast t i)
 
-class (Pane alpha, Model beta) => ModelPane alpha beta | beta -> alpha, alpha -> beta  where
+class (Pane alpha, Recoverable beta) => RecoverablePane alpha beta | beta -> alpha, alpha -> beta  where
     saveState               ::   alpha -> IDEM (Maybe IDEState)
     recoverState            ::   PanePath -> beta -> IDEAction
 
-data IDEPane        =   forall alpha beta . (CastablePane alpha, ModelPane alpha beta) => PaneC alpha
+data IDEPane        =   forall alpha beta . (CastablePane alpha, RecoverablePane alpha beta) => PaneC alpha
 
 instance Pane IDEPane where
     paneName (PaneC a)      =   paneName a
@@ -158,21 +154,15 @@ instance Pane IDEPane where
     makeActive (PaneC a)    =   makeActive a
     close (PaneC a)         =   close a
 
-class Model alpha where
+class Recoverable alpha where
     toPaneState      ::   alpha -> PaneState
 
-class Model alpha =>   CastableModel alpha where
-    castingS         ::   alpha -> CastingS alpha
-    downCastS        ::   CastingS alpha -> IDEState -> Maybe alpha
-    isItS            ::   CastingS alpha -> IDEState -> Bool
-    isItS t i        =   isJust (downCastS t i)
+data IDEState       =   forall alpha beta . (RecoverablePane alpha beta, Recoverable beta) => StateC beta
 
-data IDEState       =   forall alpha beta . (ModelPane alpha beta, CastableModel beta) => StateC beta
-
-instance Model IDEState where
+instance Recoverable IDEState where
     toPaneState (StateC a)  =   toPaneState a
 
-instance ModelPane IDEPane IDEState where
+instance RecoverablePane IDEPane IDEState where
     saveState (PaneC p)             =   saveState p
     recoverState pp (StateC s)      =   recoverState pp s
 
@@ -217,14 +207,8 @@ instance CastablePane IDEBuffer where
 data BufferState            =   BufferState FilePath Int
     deriving(Eq,Ord,Read,Show)
 
-instance Model BufferState where
+instance Recoverable BufferState where
     toPaneState a           =   BufferSt a
-
-instance CastableModel BufferState where
-    castingS _              =   BufferCastingS
-    downCastS _ (StateC a)  =   case castingS a of
-                                    BufferCastingS -> Just a
-                                    _          -> Nothing
 
 
 --
@@ -250,14 +234,9 @@ instance CastablePane IDEInfo where
 data InfoState              =   InfoState [IdentifierDescr] Int
     deriving(Eq,Ord,Read,Show)
 
-instance Model InfoState where
+instance Recoverable InfoState where
     toPaneState a           =   InfoSt a
 
-instance CastableModel InfoState where
-    castingS _               =   InfoCastingS
-    downCastS _ (StateC a)    =   case castingS a of
-                                    InfoCastingS -> Just a
-                                    _           -> Nothing
 
 -- | A modules pane description
 --
@@ -292,14 +271,9 @@ data ModulesState           =   ModulesState Int (Scope,Bool)
                                     (Maybe String, Maybe String)
     deriving(Eq,Ord,Read,Show)
 
-instance Model ModulesState where
+instance Recoverable ModulesState where
     toPaneState a           =   ModulesSt a
 
-instance CastableModel ModulesState where
-    castingS _               =   ModulesCastingS
-    downCastS _ (StateC a)    =   case castingS a of
-                                    ModulesCastingS -> Just a
-                                    _               -> Nothing
 
 -- | A callers pane description
 --
@@ -319,14 +293,8 @@ instance CastablePane IDECallers where
 data CallersState           =   CallersState
     deriving(Eq,Ord,Read,Show)
 
-instance Model CallersState where
+instance Recoverable CallersState where
     toPaneState a           =   CallersSt a
-
-instance CastableModel CallersState where
-    castingS _               =   CallersCastingS
-    downCastS _ (StateC a)    =   case castingS a of
-                                    CallersCastingS -> Just a
-                                    _               -> Nothing
 
 -- | A Toolbar pane description
 --
@@ -343,70 +311,10 @@ instance CastablePane IDEToolbar where
 data ToolbarState           =   ToolbarState
     deriving(Eq,Ord,Read,Show)
 
-instance Model ToolbarState where
+instance Recoverable ToolbarState where
     toPaneState a           =   ToolbarSt a
 
-instance CastableModel ToolbarState where
-    castingS _              =   ToolbarCastingS
-    downCastS _ (StateC a)  =   case castingS a of
-                                    ToolbarCastingS -> Just a
-                                    _               -> Nothing
 
--- | A Find pane description
---
-data IDEFind                =   IDEFind {
-    findBox                 ::   HBox
-,   caseSensitive           ::   ToggleButton
-,   wrapAround              ::   ToggleButton
-,   entireWord              ::   ToggleButton
-,   gotoLine                ::   SpinButton
-,   findEntry               ::   Entry
-}
 
-instance CastablePane IDEFind where
-    casting _               =   FindCasting
-    downCast _ (PaneC a)    =   case casting a of
-                                    FindCasting  -> Just a
-                                    _               -> Nothing
 
-data FindState              =   FindState
-    deriving(Eq,Ord,Read,Show)
 
-instance Model FindState where
-    toPaneState a           =   FindSt a
-
-instance CastableModel FindState where
-    castingS _              =   FindCastingS
-    downCastS _ (StateC a)  =   case castingS a of
-                                    FindCastingS -> Just a
-                                    _               -> Nothing
-
--- | A Replace pane description
---
-data IDEReplace             =   IDEReplace {
-    replaceBox              ::   HBox
---,   replaceExtractor        ::   Extractor ReplaceState
-}
-
-instance CastablePane IDEReplace where
-    casting _               =   ReplaceCasting
-    downCast _ (PaneC a)    =   case casting a of
-                                    ReplaceCasting  -> Just a
-                                    _               -> Nothing
-
-data ReplaceState = ReplaceState{
-    searchFor       ::   String
-,   replaceWith     ::   String
-,   matchCase       ::   Bool
-,   matchEntire     ::   Bool
-,   searchBackwards ::   Bool}
-    deriving(Eq,Ord,Read,Show)
-
-instance Model ReplaceState where
-    toPaneState a           =   ReplaceSt a
-
-instance CastableModel ReplaceState where
-    castingS _              =   ReplaceCastingS
-    downCastS _ (StateC a)  =   case castingS a of
-                                    ReplaceCastingS -> Just a
-                                    _               -> Nothing

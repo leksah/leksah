@@ -142,7 +142,7 @@ withIDE f = do
     e <- ask
     lift $ f =<< readIORef e
 
-removePaneAdmin :: (CastablePane alpha,ModelPane alpha beta) => alpha -> IDEAction
+removePaneAdmin :: (CastablePane alpha,RecoverablePane alpha beta) => alpha -> IDEAction
 removePaneAdmin pane = do
     panes'          <-  readIDE panes
     paneMap'        <-  readIDE paneMap
@@ -150,7 +150,7 @@ removePaneAdmin pane = do
     let newPaneMap  =   Map.delete (paneName pane) paneMap'
     modifyIDE_ (\ide -> return (ide{panes = newPanes, paneMap = newPaneMap}))
 
-addPaneAdmin :: (CastablePane alpha,ModelPane alpha beta) => alpha -> Connections -> PanePath ->  IDEAction
+addPaneAdmin :: (CastablePane alpha,RecoverablePane alpha beta) => alpha -> Connections -> PanePath ->  IDEAction
 addPaneAdmin pane conn pp = do
     panes'          <-  readIDE panes
     paneMap'        <-  readIDE paneMap

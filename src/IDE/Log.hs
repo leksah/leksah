@@ -74,14 +74,8 @@ instance CastablePane IDELog where
 data LogState               =   LogState
     deriving(Eq,Ord,Read,Show)
 
-instance Model LogState where
+instance Recoverable LogState where
     toPaneState a           =   LogSt a
-
-instance CastableModel LogState where
-    castingS _               =   LogCastingS
-    downCastS _ (StateC a)    =   case castingS a of
-                                    LogCastingS -> Just a
-                                    _          -> Nothing
 
 instance Pane IDELog
     where
@@ -104,7 +98,7 @@ instance Pane IDELog
                 lift $notebookRemovePage nb i
                 removePaneAdmin pane
 
-instance ModelPane IDELog LogState where
+instance RecoverablePane IDELog LogState where
     saveState p     =   return (Just (StateC LogState))
     recoverState pp LogState = do
         nb <- getNotebook pp

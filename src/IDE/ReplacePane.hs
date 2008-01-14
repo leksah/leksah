@@ -14,13 +14,10 @@
 -------------------------------------------------------------------------------
 
 module IDE.ReplacePane (
-    getReplace
-,   doReplace
---,   getFindEntry
---,   getCaseSensitive
---,   getWrapAround
---,   getEntireWord
---,   getGotoLineSpin
+    ReplaceView(..)
+,   ReplaceAction(..)
+,   IDEReplace(..)
+,   ReplaceState(..)
 ) where
 
 import Graphics.UI.Gtk hiding (get)
@@ -36,7 +33,50 @@ import IDE.Framework.Parameters
 import IDE.Framework.SimpleEditors
 import IDE.Framework.EditorBasics
 
-emptyReplaceState = ReplaceState "" "" False False False
+-------------------------------------------------------------------------------
+--
+-- * Interface
+--
+
+--
+-- | The Replace Pane
+--
+class IDEPaneC alpha => ReplaceView alpha where
+    getReplace      ::   IDEM alpha
+
+class ReplaceAction alpha where
+    doReplace       ::   alpha
+
+instance ReplaceAction IDEAction where
+    doReplace        =   doReplace'
+
+data IDEReplace             =   IDEReplace {
+    replaceBox              ::   VBox
+--,   replaceExtractor        ::   Extractor ReplaceState
+}
+instance IDEObject IDEReplace
+instance IDEPaneC IDEReplace
+
+instance ReplaceView IDEReplace
+    where
+    getReplace      =   getReplace'
+
+instance CastablePane IDEReplace where
+    casting _               =   ReplaceCasting
+    downCast _ (PaneC a)    =   case casting a of
+                                    ReplaceCasting  -> Just a
+                                    _               -> Nothing
+
+data ReplaceState = ReplaceState{
+    searchFor       ::   String
+,   replaceWith     ::   String
+,   matchCase       ::   Bool
+,   matchEntire     ::   Bool
+,   searchBackwards ::   Bool}
+    deriving(Eq,Ord,Read,Show)
+
+instance Recoverable ReplaceState where
+    toPaneState a           =   ReplaceSt a
 
 instance Pane IDEReplace
     where
@@ -57,7 +97,7 @@ instance Pane IDEReplace
                 lift $notebookRemovePage nb i
                 removePaneAdmin pane
 
-instance ModelPane IDEReplace ReplaceState where
+instance RecoverablePane IDEReplace ReplaceState where
     saveState p     =   do
         mbFind <- getPane ReplaceCasting
         case mbFind of
@@ -69,14 +109,22 @@ instance ModelPane IDEReplace ReplaceState where
             nb          <-  getNotebook pp
             initReplace pp nb st
 
-doReplace :: IDEAction
-doReplace = do
+
+-------------------------------------------------------------------------------
+--
+-- * Implementation
+--
+
+emptyReplaceState = ReplaceState "" "" False False False
+
+doReplace' :: IDEAction
+doReplace' = do
     replace <- getReplace
     lift $ bringPaneToFront replace
     lift $ widgetGrabFocus (replaceBox replace)
 
-getReplace :: IDEM IDEReplace
-getReplace = do
+getReplace' :: IDEM IDEReplace
+getReplace' = do
     mbReplace <- getPane ReplaceCasting
     case mbReplace of
         Nothing -> do
@@ -99,6 +147,7 @@ initReplace panePath nb replace = do
     prefs       <-  readIDE prefs
     currentInfo <-  readIDE currentInfo
     (buf,cids)  <-  lift $ do
+            vb      <- vBoxNew False 0
             hb      <- hBoxNew False 0
             bb      <- hButtonBoxNew
 
@@ -106,9 +155,9 @@ initReplace panePath nb replace = do
             replB   <- buttonNewWithMnemonic "_Replace"
             find    <- buttonNewWithMnemonic "_Find"
 
-            boxPackStart bb replAll PackNatural 0
-            boxPackStart bb replB PackNatural 0
             boxPackStart bb find PackNatural 0
+            boxPackStart bb replB PackNatural 0
+            boxPackStart bb replAll PackNatural 0
 
             resList <- mapM (\ fd -> (fieldEditor fd) replace) replaceDescription
             let (widgetsP, setInjsP, getExtsP, notifiersP) = unzip4 resList
@@ -125,9 +174,12 @@ initReplace panePath nb replace = do
             replAll `onClicked` do
                 findOrSearch editReplaceAll getExtsP fieldNames replB replAll ideR
 
-            let replace = IDEReplace hb
-            notebookInsertOrdered nb hb (paneName replace)
-            widgetShowAll hb
+            boxPackStart vb hb PackNatural 0
+            boxPackStart vb bb PackNatural 0
+
+            let replace = IDEReplace vb
+            notebookInsertOrdered nb vb (paneName replace)
+            widgetShowAll vb
             return (replace,[])
     addPaneAdmin buf (BufConnections [] [] []) panePath
     lift $widgetGrabFocus (replaceBox buf)
@@ -146,8 +198,6 @@ initReplace panePath nb replace = do
                     widgetSetSensitivity replB found
                     widgetSetSensitivity replAll found
                     return ()
-
-
 
 replaceDescription :: [FieldDescription ReplaceState]
 replaceDescription = [
@@ -178,77 +228,3 @@ replaceDescription = [
             boolEditor]
 
 
-
-{--
-replaceDialog :: IDEAction
-replaceDialog = do
-    ideR <- ask
-    lift $replaceDialog' emptyReplaceState replaceDescription ideR
-
-
-replaceDialog' :: ReplaceState -> [FieldDescription ReplaceState] -> IDERef -> IO ()
-replaceDialog' replace replaceDesc ideR  = do
-    dialog  <- windowNew
-    vb      <- vBoxNew False 0
-    bb      <- hButtonBoxNew
-    close   <- buttonNewFromStock "gtk-close"
-    replAll <- buttonNewWithMnemonic "Replace _all"
-    replB   <- buttonNewWithMnemonic "_Replace"
-    find    <- buttonNewWithMnemonic "_Find"
-    boxPackStart bb close PackNatural 0
-    boxPackStart bb replAll PackNatural 0
-    boxPackStart bb replB PackNatural 0
-    boxPackStart bb find PackNatural 0
-    resList <- mapM (\ fd -> (fieldEditor fd) replace) replaceDesc
-    let (widgetsP, setInjsP, getExtsP, notifiersP) = unzip4 resList
-    mapM_ (\ w -> boxPackStart vb w PackNatural 0) widgetsP
-    let fieldNames = map (\fd -> case getParameterPrim paraName (parameters fd) of
-                                        Just s -> s
-                                        Nothing -> "Unnamed") replaceDesc
-    find `onClicked` do
-        findOrSearch editFind getExtsP fieldNames replB replAll
-    replB `onClicked` do
-        findOrSearch editReplace getExtsP fieldNames replB replAll
-    replAll `onClicked` do
-        findOrSearch editReplaceAll getExtsP fieldNames replB replAll
-    close `onClicked` do
-        widgetDestroy dialog
-        mainQuit
-    dialog `onDelete` (\_ -> do
-        widgetDestroy dialog
-        mainQuit
-        return True)
-    boxPackEnd vb bb PackNatural 7
-    containerAdd dialog vb
-    widgetShowAll dialog
-    mainGUI
-    where
-
-
---getFindEntry :: IDEM Entry
---getFindEntry = do
---    f <- getFind
---    return (findEntry f)
---
---getCaseSensitive :: IDEM ToggleButton
---getCaseSensitive = do
---    f <- getFind
---    return (caseSensitive f)
---
---getWrapAround :: IDEM ToggleButton
---getWrapAround = do
---    f <- getFind
---    return (wrapAround f)
---
---getEntireWord :: IDEM ToggleButton
---getEntireWord = do
---    f <- getFind
---    return (entireWord f)
---
---getGotoLineSpin :: IDEM SpinButton
---getGotoLineSpin = do
---    f <- getFind
---    return (gotoLine f)
-
-
---}

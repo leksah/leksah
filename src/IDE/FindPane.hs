@@ -14,12 +14,10 @@
 -------------------------------------------------------------------------------
 
 module IDE.FindPane (
-    getFind
-,   getFindEntry
-,   getCaseSensitive
-,   getWrapAround
-,   getEntireWord
-,   getGotoLineSpin
+    IDEFind(..)
+,   FindAction(..)
+,   FindState(..)
+,   FindView(..)
 ) where
 
 import Graphics.UI.Gtk hiding (get)
@@ -31,6 +29,61 @@ import IDE.Core.State
 import IDE.Framework.ViewFrame
 import IDE.SourceEditor
 
+-------------------------------------------------------------------------------
+--
+-- * Interface
+--
+
+class IDEPaneC alpha => FindView alpha where
+    getFind             ::   IDEM alpha
+    getFindEntry        ::   alpha -> Entry
+    getCaseSensitive    ::   alpha -> ToggleButton
+    getWrapAround       ::   alpha -> ToggleButton
+    getEntireWord       ::   alpha -> ToggleButton
+    getGotoLineSpin     ::   alpha -> SpinButton
+
+class FindAction alpha where
+    doFind              ::   alpha
+
+instance FindAction IDEAction where
+    doFind              =   doFind'
+
+
+-- | A Find pane description
+--
+
+data IDEFind                =   IDEFind {
+    findBox                 ::   HBox
+,   caseSensitive           ::   ToggleButton
+,   wrapAround              ::   ToggleButton
+,   entireWord              ::   ToggleButton
+,   gotoLine                ::   SpinButton
+,   findEntry               ::   Entry
+}
+
+instance IDEObject IDEFind
+instance IDEPaneC IDEFind
+
+instance FindView IDEFind
+    where
+    getFind             =   getFind'
+    getFindEntry        =   getFindEntry'
+    getCaseSensitive    =   getCaseSensitive'
+    getWrapAround       =   getWrapAround'
+    getEntireWord       =   getEntireWord'
+    getGotoLineSpin     =   getGotoLineSpin'
+
+instance CastablePane IDEFind where
+    casting _               =   FindCasting
+    downCast _ (PaneC a)    =   case casting a of
+                                    FindCasting  -> Just a
+                                    _               -> Nothing
+
+data FindState              =   FindState
+    deriving(Eq,Ord,Read,Show)
+
+instance Recoverable FindState where
+    toPaneState a           =   FindSt a
 
 instance Pane IDEFind
     where
@@ -52,7 +105,7 @@ instance Pane IDEFind
                 removePaneAdmin pane
 
 
-instance ModelPane IDEFind FindState where
+instance RecoverablePane IDEFind FindState where
     saveState p     =   do
         mbFind <- getPane FindCasting
         case mbFind of
@@ -63,8 +116,20 @@ instance ModelPane IDEFind FindState where
             nb          <-  getNotebook pp
             initFind pp nb
 
-getFind :: IDEM IDEFind
-getFind = do
+-------------------------------------------------------------------------------
+--
+-- * Implementation
+--
+
+doFind' :: IDEAction
+doFind' = do
+    find :: IDEFind <- getFind
+    lift $ bringPaneToFront find
+    lift $ widgetGrabFocus (getTopWidget find)
+
+
+getFind' :: IDEM IDEFind
+getFind' = do
     mbFind <- getPane FindCasting
     case mbFind of
         Nothing -> do
@@ -134,28 +199,18 @@ initFind panePath nb = do
     addPaneAdmin buf (BufConnections [] [] []) panePath
     lift $widgetGrabFocus (findBox buf)
 
-getFindEntry :: IDEM Entry
-getFindEntry = do
-    f <- getFind
-    return (findEntry f)
+getFindEntry' :: IDEFind -> Entry
+getFindEntry' f =  findEntry f
 
-getCaseSensitive :: IDEM ToggleButton
-getCaseSensitive = do
-    f <- getFind
-    return (caseSensitive f)
+getCaseSensitive' :: IDEFind ->  ToggleButton
+getCaseSensitive' f = caseSensitive f
 
-getWrapAround :: IDEM ToggleButton
-getWrapAround = do
-    f <- getFind
-    return (wrapAround f)
+getWrapAround' :: IDEFind ->  ToggleButton
+getWrapAround' f = wrapAround f
 
-getEntireWord :: IDEM ToggleButton
-getEntireWord = do
-    f <- getFind
-    return (entireWord f)
+getEntireWord' :: IDEFind ->  ToggleButton
+getEntireWord' f = entireWord f
 
-getGotoLineSpin :: IDEM SpinButton
-getGotoLineSpin = do
-    f <- getFind
-    return (gotoLine f)
+getGotoLineSpin' :: IDEFind ->  SpinButton
+getGotoLineSpin' f = gotoLine f
 
