@@ -16,12 +16,13 @@
 -------------------------------------------------------------------------------
 
 module IDE.Core.Panes (
-    Casting(..)
-,   CastingS(..)
+--    Casting(..)
+--,   CastingS(..)
 
 -- * Panes and pane layout
-,   Pane(..)
+    Pane(..)
 ,   CastablePane(..)
+,   Casting(..)
 ,   IDEPane(..)
 ,   RecoverablePane(..)
 ,   PaneDirection(..)
@@ -66,25 +67,6 @@ import {-# SOURCE #-} IDE.FindPane
 -- Panes and pane layout
 --
 
-data Casting alpha  where
-    LogCasting      ::   Casting IDELog
-    InfoCasting     ::   Casting IDEInfo
-    BufferCasting   ::   Casting IDEBuffer
-    ModulesCasting  ::   Casting IDEModules
-    CallersCasting  ::   Casting IDECallers
-    ToolbarCasting  ::   Casting IDEToolbar
-    FindCasting     ::   Casting IDEFind
-    ReplaceCasting  ::   Casting IDEReplace
-
-data CastingS alpha  where
-    LogCastingS      ::   CastingS LogState
-    InfoCastingS     ::   CastingS InfoState
-    BufferCastingS   ::   CastingS BufferState
-    ModulesCastingS  ::   CastingS ModulesState
-    CallersCastingS  ::   CastingS CallersState
-    ToolbarCastingS  ::   CastingS ToolbarState
-    FindCastingS     ::   CastingS FindState
-    ReplaceCastingS ::   CastingS ReplaceState
 
 --
 -- | A path to a pane
@@ -133,15 +115,25 @@ class Pane alpha  where
     makeActive      ::   alpha -> IDEAction
     close           ::   alpha -> IDEAction
 
+class (Pane alpha, Recoverable beta) => RecoverablePane alpha beta | beta -> alpha, alpha -> beta  where
+    saveState               ::   alpha -> IDEM (Maybe IDEState)
+    recoverState            ::   PanePath -> beta -> IDEAction
+
 class CastablePane alpha where
     casting         ::   alpha -> Casting alpha
     downCast        ::   Casting alpha -> IDEPane -> Maybe alpha
     isIt            ::   Casting alpha -> IDEPane -> Bool
     isIt t i        =   isJust (downCast t i)
 
-class (Pane alpha, Recoverable beta) => RecoverablePane alpha beta | beta -> alpha, alpha -> beta  where
-    saveState               ::   alpha -> IDEM (Maybe IDEState)
-    recoverState            ::   PanePath -> beta -> IDEAction
+data Casting alpha  where
+    LogCasting      ::   Casting IDELog
+    InfoCasting     ::   Casting IDEInfo
+    BufferCasting   ::   Casting IDEBuffer
+    ModulesCasting  ::   Casting IDEModules
+    CallersCasting  ::   Casting IDECallers
+    ToolbarCasting  ::   Casting IDEToolbar
+    FindCasting     ::   Casting IDEFind
+    ReplaceCasting  ::   Casting IDEReplace
 
 data IDEPane        =   forall alpha beta . (CastablePane alpha, RecoverablePane alpha beta) => PaneC alpha
 

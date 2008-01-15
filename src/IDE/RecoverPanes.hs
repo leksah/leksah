@@ -25,7 +25,6 @@ import IDE.ToolbarPane()
 import IDE.FindPane()
 import IDE.ReplacePane()
 
-
 paneStateToIDEState :: PaneState -> IDEState
 paneStateToIDEState (BufferSt st)                       =   StateC st
 paneStateToIDEState (LogSt st)                          =   StateC st
