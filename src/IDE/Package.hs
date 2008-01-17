@@ -59,9 +59,7 @@ import IDE.PackageEditor
 import IDE.SourceEditor
 import IDE.PackageFlags
 import IDE.Framework.ViewFrame
---import IDE.Extractor
 import IDE.Metainfo.Info
---import IDE.Extractor
 import IDE.Utils.File
 
 packageOpen :: IDEAction
@@ -358,8 +356,10 @@ readErrForBuild log hndl = do
     lift $message $"Err " ++ (show errs)
     modifyIDE_ (\ide -> return (ide{errors = reverse errs, currentErr = Nothing}))
     sb <- getSBErrors
+    let errorNum    =   length (filter isError errs)
+    let warnNum     =   length errs - errorNum
     lift $statusbarPop sb 1
-    lift $statusbarPush sb 1 $show (length errs) ++ " Errors"
+    lift $statusbarPush sb 1 $show errorNum ++ " Errors, " ++ show warnNum ++ " Warnings"
     if not (null errs)
         then nextError
         else return ()
@@ -377,14 +377,22 @@ readErrForBuild log hndl = do
                         putStrLn (show e)
                         readAndShow False errs
                     (Right ne@(ErrorLine fp l c str),_) ->
-                        readAndShow True ((ErrorSpec fp l c str (lineNr,lineNr)):errs)
-                    (Right (OtherLine str1),(ErrorSpec fp i1 i2 str (l1,l2)):tl) ->
+                        readAndShow True ((ErrorSpec fp l c str (lineNr,lineNr) True):errs)
+                    (Right (OtherLine str1),(ErrorSpec fp i1 i2 str (l1,l2) isError):tl) ->
                         if inError
                             then readAndShow True ((ErrorSpec fp i1 i2
                                                     (if null str
                                                         then line
                                                         else str ++ "\n" ++ line)
-                                                    (l1,lineNr)) : tl)
+                                                    (l1,lineNr) isError) : tl)
+                            else readAndShow False errs
+                    (Right (WarningLine str1),(ErrorSpec fp i1 i2 str (l1,l2) isError):tl) ->
+                        if inError
+                            then readAndShow True ((ErrorSpec fp i1 i2
+                                                    (if null str
+                                                        then line
+                                                        else str ++ "\n" ++ line)
+                                                    (l1,lineNr) False) : tl)
                             else readAndShow False errs
                     otherwise -> readAndShow False errs
 
@@ -457,6 +465,7 @@ previousError = do
 data BuildError =   BuildLine
                 |   EmptyLine
                 |   ErrorLine FilePath Int Int String
+                |   WarningLine String
                 |   OtherLine String
 
 buildLineParser :: CharParser () BuildError
@@ -482,6 +491,11 @@ buildLineParser = try (do
         whiteSpace
         eof
         return EmptyLine)
+    <|> try (do
+        whiteSpace
+        symbol "Warning:"
+        text <- many anyChar
+        return (WarningLine ("Warning:" ++ text)))
     <|> try (do
         text <- many anyChar
         eof

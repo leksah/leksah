@@ -10,6 +10,7 @@ module IDE.Utils.File (
 ,   getSysLibDir
 ,   moduleNameFromFilePath
 ,   findKnownPackages
+,   isSubPath
 
 ,   readOut
 ,   readErr
@@ -34,10 +35,17 @@ import qualified Data.List as List
 import Paths_leksah
 import qualified Data.Set as Set
 import Data.Set (Set)
-import Data.List(isSuffixOf)
+import Data.List(isSuffixOf, isPrefixOf)
 
+import IDE.Core.State
 import {-# SOURCE #-} IDE.Log
-import IDE.Core.Types
+
+-- | Returns True if the second path is a location which starts with the first path
+isSubPath :: FilePath -> FilePath -> Bool
+isSubPath fp1 fp2 =
+    let fpn1    =   splitPath $ normalise fp1
+        fpn2    =   splitPath $ normalise fp2
+    in isPrefixOf fpn1 fpn2
 
 findSourceFile :: [FilePath]
     -> [String]
@@ -240,11 +248,13 @@ getSysLibDir = do
     waitForProcess pid
     return (normalise libDir2)
 
+-- Spawning external processes
+
 readOut :: IDELog -> Handle -> IO ()
 readOut log hndl =
      catch (readAndShow)
        (\e -> do
-        appendLog log ("----------------------------------------\n") FrameTag
+        --appendLog log ("----------------------------------------\n") FrameTag
         hClose hndl
         return ())
     where

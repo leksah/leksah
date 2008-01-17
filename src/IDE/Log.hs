@@ -27,7 +27,6 @@ import Control.Monad.Reader
 import Data.Maybe
 
 import IDE.Core.State
---import {-# SOURCE #-} IDE.Core.Panes
 import IDE.SourceEditor
 import IDE.Framework.ViewFrame
 
@@ -41,20 +40,16 @@ import IDE.Framework.ViewFrame
 -- | The Log Viev
 --
 
-class IDEPaneC alpha => LogView alpha where
-    getLog          ::   IDEM alpha
-    appendLog       ::   alpha  -> String -> LogTag -> IO Int
-    markErrorInLog  ::   alpha  -> (Int, Int) -> IO ()
-
 class LogAction alpha where
     clearLog        ::   alpha
 
 instance LogAction IDEAction where
     clearLog        =   clearLog'
 
-data IDELog         =   IDELog {
-    textView        ::   TextView
-,   scrolledWindowL ::   ScrolledWindow}
+class IDEPaneC alpha => LogView alpha where
+    getLog          ::   IDEM alpha
+    appendLog       ::   alpha  -> String -> LogTag -> IO Int
+    markErrorInLog  ::   alpha  -> (Int, Int) -> IO ()
 
 instance IDEObject IDELog
 instance IDEPaneC IDELog
@@ -71,8 +66,6 @@ instance CastablePane IDELog where
                                     LogCasting -> Just a
                                     _          -> Nothing
 
-data LogState               =   LogState
-    deriving(Eq,Ord,Read,Show)
 
 instance Recoverable LogState where
     toPaneState a           =   LogSt a
@@ -104,7 +97,6 @@ instance RecoverablePane IDELog LogState where
         nb <- getNotebook pp
         initLog pp nb
 
-data LogTag = LogTag | ErrorTag | FrameTag
 
 -------------------------------------------------------------------------------
 --

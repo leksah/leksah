@@ -47,6 +47,19 @@ module IDE.Core.Panes (
 ,   CallersState(..)
 ,   IDEToolbar(..)
 ,   ToolbarState(..)
+
+,   IDEReplace(..)
+,   ReplaceState(..)
+
+,   IDELog(..)
+,   LogState(..)
+,   LogTag(..)
+
+,   IDEFind(..)
+,   FindState(..)
+
+
+
 ) where
 
 import Graphics.UI.Gtk.SourceView
@@ -60,9 +73,6 @@ import GHC.IOBase hiding (BufferState)
 import IDE.Core.Types
 import {-# SOURCE #-} IDE.Core.State
 import IDE.Framework.EditorBasics
-import {-# SOURCE #-} IDE.Log
-import {-# SOURCE #-} IDE.ReplacePane
-import {-# SOURCE #-} IDE.FindPane
 -- ---------------------------------------------------------------------
 -- Panes and pane layout
 --
@@ -305,6 +315,51 @@ data ToolbarState           =   ToolbarState
 
 instance Recoverable ToolbarState where
     toPaneState a           =   ToolbarSt a
+
+-- | A Control pane for simple text replace
+--
+
+data IDEReplace             =   IDEReplace {
+    replaceBox              ::   VBox
+--,   replaceExtractor        ::   Extractor ReplaceState
+}
+
+data ReplaceState = ReplaceState{
+    searchFor       ::   String
+,   replaceWith     ::   String
+,   matchCase       ::   Bool
+,   matchEntire     ::   Bool
+,   searchBackwards ::   Bool}
+    deriving(Eq,Ord,Read,Show)
+
+--
+-- | The Log Viev
+--
+
+data IDELog         =   IDELog {
+    textView        ::   TextView
+,   scrolledWindowL ::   ScrolledWindow}
+
+data LogState               =   LogState
+    deriving(Eq,Ord,Read,Show)
+
+data LogTag = LogTag | ErrorTag | FrameTag
+
+
+-- | A Find pane description
+--
+
+data IDEFind                =   IDEFind {
+    findBox                 ::   HBox
+,   caseSensitive           ::   ToggleButton
+,   wrapAround              ::   ToggleButton
+,   entireWord              ::   ToggleButton
+,   gotoLine                ::   SpinButton
+,   findEntry               ::   Entry
+}
+
+data FindState              =   FindState
+    deriving(Eq,Ord,Read,Show)
 
 
 

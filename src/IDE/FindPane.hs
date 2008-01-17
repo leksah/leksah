@@ -48,19 +48,6 @@ class FindAction alpha where
 instance FindAction IDEAction where
     doFind              =   doFind'
 
-
--- | A Find pane description
---
-
-data IDEFind                =   IDEFind {
-    findBox                 ::   HBox
-,   caseSensitive           ::   ToggleButton
-,   wrapAround              ::   ToggleButton
-,   entireWord              ::   ToggleButton
-,   gotoLine                ::   SpinButton
-,   findEntry               ::   Entry
-}
-
 instance IDEObject IDEFind
 instance IDEPaneC IDEFind
 
@@ -79,8 +66,6 @@ instance CastablePane IDEFind where
                                     FindCasting  -> Just a
                                     _               -> Nothing
 
-data FindState              =   FindState
-    deriving(Eq,Ord,Read,Show)
 
 instance Recoverable FindState where
     toPaneState a           =   FindSt a

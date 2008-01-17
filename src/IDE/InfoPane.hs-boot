@@ -19,6 +19,5 @@ module IDE.InfoPane (
 
 import IDE.Core.State
 
-
 setInfos :: [IdentifierDescr] -> IDEM ()
 

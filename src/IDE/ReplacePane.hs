@@ -16,8 +16,6 @@
 module IDE.ReplacePane (
     ReplaceView(..)
 ,   ReplaceAction(..)
-,   IDEReplace(..)
-,   ReplaceState(..)
 ) where
 
 import Graphics.UI.Gtk hiding (get)
@@ -50,10 +48,6 @@ class ReplaceAction alpha where
 instance ReplaceAction IDEAction where
     doReplace        =   doReplace'
 
-data IDEReplace             =   IDEReplace {
-    replaceBox              ::   VBox
---,   replaceExtractor        ::   Extractor ReplaceState
-}
 instance IDEObject IDEReplace
 instance IDEPaneC IDEReplace
 
@@ -67,13 +61,6 @@ instance CastablePane IDEReplace where
                                     ReplaceCasting  -> Just a
                                     _               -> Nothing
 
-data ReplaceState = ReplaceState{
-    searchFor       ::   String
-,   replaceWith     ::   String
-,   matchCase       ::   Bool
-,   matchEntire     ::   Bool
-,   searchBackwards ::   Bool}
-    deriving(Eq,Ord,Read,Show)
 
 instance Recoverable ReplaceState where
     toPaneState a           =   ReplaceSt a

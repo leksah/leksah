@@ -28,6 +28,7 @@ module IDE.SourceEditor (
 ,   fileRevert
 ,   fileClose
 ,   fileCloseAll
+,   fileCloseAllButPackage
 ,   fileSave
 ,   editUndo
 ,   editRedo
@@ -79,6 +80,7 @@ import Data.List
 import Data.Maybe
 
 import IDE.Core.State
+import IDE.Utils.File
 import IDE.Framework.ViewFrame
 import IDE.SourceCandy
 import IDE.Metainfo.Info
@@ -665,6 +667,23 @@ fileCloseAll = do
             if r
                 then fileCloseAll
                 else return False
+
+
+fileCloseAllButPackage :: IDEAction
+fileCloseAllButPackage = do
+    mbActivePack <- readIDE activePack
+    bufs        <- allBuffers
+    when (not (null bufs) && isJust mbActivePack)
+        $ mapM_ (close' (fromJust mbActivePack)) bufs
+    where
+        close' activePack buf = do
+            makeActive buf
+            let dir = dropFileName $ cabalFile activePack
+            inBufContext' () $ \nb gtkbuf currentBuffer i -> do
+                when (isJust (fileName currentBuffer)) $ do
+                        modified <- lift $ textBufferGetModified gtkbuf
+                        when (not modified && isSubPath (fromJust (fileName currentBuffer)) dir)
+                            $ do fileClose; return ()
 
 fileOpen :: IDEAction
 fileOpen = do

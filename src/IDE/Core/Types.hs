@@ -157,6 +157,7 @@ data ErrorSpec = ErrorSpec {
 ,   column              ::   Int
 ,   errDescription      ::   String
 ,   logLines            ::   (Int,Int)
+,   isError             ::   Bool
 }   deriving Show
 
 -- ---------------------------------------------------------------------

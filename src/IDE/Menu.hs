@@ -68,6 +68,8 @@ actions =
         (do fileClose; return ()) [] False
     ,AD "FileCloseAll" "Close All" Nothing Nothing
         (do fileCloseAll; return ()) [] False
+    ,AD "FileCloseAllButPackage" "Close All But Package" Nothing Nothing
+        (do fileCloseAllButPackage; return ()) [] False
     ,AD "Quit" "_Quit" Nothing (Just "gtk-quit")
         quit [] False
 
@@ -229,6 +231,7 @@ menuDescription =
     "       <separator/> " ++ "\n" ++
     "       <menuitem name=\"_Close\" action=\"FileClose\" /> " ++ "\n" ++
     "       <menuitem name=\"Close All\" action=\"FileCloseAll\" /> " ++ "\n" ++
+    "       <menuitem name=\"Close All but Package\" action=\"FileCloseAllButPackage\" /> " ++ "\n" ++
     "      <menuitem name=\"_Quit\" action=\"Quit\" /> " ++ "\n" ++
     "     </menu> " ++ "\n" ++
     "     <menu name=\"_Edit\" action=\"Edit\"> " ++ "\n" ++
@@ -425,7 +428,7 @@ buildStatusbar ideR = do
     sbe <- statusbarNew
     widgetSetName sbe "statusBarErrors"
     statusbarSetHasResizeGrip sbe False
-    widgetSetSizeRequest sbe 80 (-1)
+    widgetSetSizeRequest sbe 150 (-1)
 
     sblc <- statusbarNew
     widgetSetName sblc "statusBarLineColumn"

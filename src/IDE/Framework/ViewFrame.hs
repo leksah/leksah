@@ -65,7 +65,7 @@ module IDE.Framework.ViewFrame (
 
 ) where
 
-import Graphics.UI.Gtk hiding (afterToggleOverwrite)
+import Graphics.UI.Gtk hiding (afterToggleOverwrite,onToggleOverwrite)
 import Control.Monad.Reader
 import qualified Data.Map as Map
 import Data.Map (Map)
