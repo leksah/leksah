@@ -94,18 +94,17 @@ runMain = handleTopExceptions $do
                                         UninstalledProject _ -> True
                                         _                    -> False) o
     if elem VersionF o
-        then do putStrLn $ "Leksah an IDE for Haskell, version " ++ showVersion version
+        then do sysMessage Normal $ "Leksah an IDE for Haskell, version " ++ showVersion version
         else
             if elem Sources o
                 then do
                     buildSourceForPackageDB
-                    putStrLn "rebuild SourceForPackageDB"
+                    sysMessage Normal "rebuild SourceForPackageDB"
                 else if elem Rebuild o
                         || elem Collect o
                         || not (null uninstalled)
                     then do
                         libDir          <-  getSysLibDir
-                    --    putStrLn $"libdir '" ++ normalise libDir ++ "'"
 #if __GHC__ > 670
                         session     <-  newSession (Just libDir)
 #else
@@ -130,9 +129,9 @@ startGUI :: IO ()
 startGUI = do
     st          <-  initGUI
     when rtsSupportsBoundThreads
-        (putStrLn "Linked with -threaded (Will Gtk work?)")
+        (sysMessage Normal "Linked with -threaded")
     timeoutAddFull (yield >> return True) priorityHigh 50
-    mapM_ putStrLn st
+    mapM_ (sysMessage Normal) st
     uiManager   <-  uiManagerNew
     prefsPath   <-  getConfigFilePathForLoad "Default.prefs"
     prefs       <-  readPrefs prefsPath
@@ -262,24 +261,24 @@ handleNormalExceptions inner =
     hFlush stdout
     case exception of
       AsyncException StackOverflow -> do
-        putStrLn "stack overflow: use -g +RTS -K<size> to increase it"
+        sysMessage Normal "stack overflow: use -g +RTS -K<size> to increase it"
         exitFailure
       ExitException code -> exitWith code
       _other -> do
-        putStrLn ("ide: internal IDE error: " ++ show exception)
+        sysMessage Normal ("ide: internal IDE error: " ++ show exception)
         exitFailure
   )
 
 
 handleIDEExceptions inner =
   catchDyn inner (\(e::IDEException) -> do
-    putStrLn $ "ide: " ++ (show e)
+    sysMessage Normal $ "ide: " ++ (show e)
     exitFailure
   )
 
 
 handleGhcExceptions inner =
-  -- error messages propagated as exceptions
+  -- throwIDE messages propagated as exceptions
   let inner2 = catchDyn inner (\dyn -> do
         hFlush stdout
         case dyn of
@@ -291,7 +290,7 @@ handleGhcExceptions inner =
   in
   -- compilation errors: messages with locations attached
   catchDyn inner2 (\dyn -> do
-    putStrLn "ide: Compilation error(s):"
+    sysMessage Normal "ide: Compilation error(s):"
     printBagOfErrors defaultDynFlags (unitBag dyn)
     exitFailure
   )

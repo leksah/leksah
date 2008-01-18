@@ -236,7 +236,7 @@ readPrefs :: FilePath -> IO Prefs
 readPrefs fn = do
     res <- P.parseFromFile (prefsParser defaultPrefs (concatMap snd prefsDescription)) fn
     case res of
-        Left pe -> error $"Error reading prefs file " ++ show fn ++ " " ++ show pe
+        Left pe -> throwIDE $"Error reading prefs file " ++ show fn ++ " " ++ show pe
         Right r -> return r
 
 prefsParser ::  a ->  [FieldDescriptionPP a] ->  P.CharParser () a
@@ -267,8 +267,7 @@ editPrefs :: IDEAction
 editPrefs = do
     ideR <- ask
     p <- readIDE prefs
-    res <- lift $editPrefs' p prefsDescription ideR
-    lift $putStrLn $show res
+    lift $editPrefs' p prefsDescription ideR
 
 
 editPrefs' :: Prefs -> [(String,[FieldDescriptionPP Prefs])] -> IDERef -> IO ()

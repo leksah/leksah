@@ -27,6 +27,7 @@ import Data.IORef
 import Data.Maybe
 
 import IDE.Utils.Default
+import IDE.Core.Exception
 import IDE.Framework.Parameters
 import IDE.Framework.EditorBasics
 import IDE.Framework.MakeEditor
@@ -156,7 +157,7 @@ maybeEditor (childEdit, childParams) positive boolLabel parameters = do
     onClickedHandler widget coreRef childRef notifier = (\ event -> do
         core <- readIORef coreRef
         case core of
-            Nothing  -> error "Impossible"
+            Nothing  -> throwIDE "Impossible"
             Just (be@(boolFrame,inj1,ext1,notiRef1),vBox) -> do
                 mbBool <- ext1
                 case mbBool of
@@ -275,7 +276,7 @@ eitherOrEditor (leftEditor,leftParams) (rightEditor,rightParams) label2 paramete
     onClickedHandler widget coreRef = (\ event -> do
         core <- readIORef coreRef
         case core of
-            Nothing  -> error "Impossible"
+            Nothing  -> throwIDE "Impossible"
             Just (be@(_,_,ext1,_),(leftFrame,_,_,_),(rightFrame,_,_,_),box) -> do
                 mbBool <- ext1
                 case mbBool of

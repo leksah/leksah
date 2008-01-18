@@ -38,6 +38,7 @@ import System.FilePath.Posix
 import IDE.Framework.Parameters
 import IDE.Framework.EditorBasics
 import IDE.Framework.MakeEditor
+import IDE.Core.Exception
 
 -- ------------------------------------------------------------
 -- * Simple Editors
@@ -548,7 +549,7 @@ otherEditor func parameters = do
     buttonHandler coreRef = (\ e -> do
         core <- readIORef coreRef
         case core of
-            Nothing -> error "You have to inject a value before the button can be clicked"
+            Nothing -> throwIDE "You have to inject a value before the button can be clicked"
             Just (b,val) -> do
                 res <- func val (getParameter paraName parameters)
                 case res of

@@ -115,7 +115,7 @@ packageFlags = do
             active2 <- getActivePackage
             case active2 of
                 Nothing -> do
-                    lift $putStrLn "no more active package"
+                    lift $sysMessage Normal "no more active package"
                     return ()
                 Just p  ->
                     lift $writeFlags ((dropFileName (cabalFile p)) </> "IDE.flags") p
@@ -173,9 +173,9 @@ packageBuild = do
             case res of
                 Nothing -> return False
                 Just _ -> do
-                    putStrLn "About to build Active Info"
+                    sysMessage Normal "About to build Active Info"
                     runReaderT buildActiveInfo ideR
-                    putStrLn "After building Active Info"
+                    sysMessage Normal "After building Active Info"
                     return True
 
 
@@ -238,7 +238,7 @@ packageRun = do
                     eid <- forkIO (readErr log err)
                     return ()
                 otherwise -> do
-                    putStrLn "no single executable in selected package"
+                    sysMessage Normal "no single executable in selected package"
                     return ()
 
 packageInstall :: IDEAction
@@ -353,7 +353,6 @@ chooseDir str = do
 readErrForBuild :: IDELog -> Handle -> IDEAction
 readErrForBuild log hndl = do
     errs <- lift $readAndShow False []
-    lift $message $"Err " ++ (show errs)
     modifyIDE_ (\ide -> return (ide{errors = reverse errs, currentErr = Nothing}))
     sb <- getSBErrors
     let errorNum    =   length (filter isError errs)
@@ -374,7 +373,7 @@ readErrForBuild log hndl = do
                 lineNr  <-  appendLog log (line ++ "\n") ErrorTag
                 case (parsed, errs) of
                     (Left e,_) -> do
-                        putStrLn (show e)
+                        sysMessage Normal (show e)
                         readAndShow False errs
                     (Right ne@(ErrorLine fp l c str),_) ->
                         readAndShow True ((ErrorSpec fp l c str (lineNr,lineNr) True):errs)

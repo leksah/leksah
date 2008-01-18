@@ -74,11 +74,11 @@ initInfo :: IDEAction
 initInfo = do
     session' <- readIDE session
     let version     =   cProjectVersion
-    lift $ putStrLn "Now updating metadata ..."
+    lift $ sysMessage Normal "Now updating metadata ..."
     lift $ collectInstalled False session' version False
-    lift $ putStrLn "Now loading metadata ..."
+    lift $ sysMessage Normal "Now loading metadata ..."
     loadAccessibleInfo
-    lift $ putStrLn "Finished loding ..."
+    lift $ sysMessage Normal "Finished loding ..."
 
 --
 -- | Load all infos for all installed and exposed packages
@@ -154,7 +154,7 @@ buildActiveInfo' =
         Nothing         ->  return Nothing
         Just idePackage ->  do
             lift $ collectUninstalled False session cProjectVersion (cabalFile idePackage)
-            lift $ putStrLn "uninstalled collected"
+            lift $ sysMessage Normal "uninstalled collected"
             collectorPath   <-  lift $ getCollectorPath cProjectVersion
             packageDescr    <-  lift $ loadInfosForPackage collectorPath
                                             (packageId idePackage)
@@ -207,13 +207,12 @@ loadInfosForPackage dirPath pid = do
         then catch (do
             file            <-  openBinaryFile filePath ReadMode
             bs              <-  BS.hGetContents file
---            putStrLn $ "Now reading iface " ++ showPackageId pid
             let packageInfo = decode bs
             packageInfo `deepSeq` (hClose file)
             return (Just packageInfo))
-            (\e -> do putStrLn (show e); return Nothing)
+            (\e -> do sysMessage Normal (show e); return Nothing)
         else do
-            message $"packageInfo not found for " ++ showPackageId pid
+            sysMessage Normal $"packageInfo not found for " ++ showPackageId pid
             return Nothing
 
 --
@@ -223,8 +222,7 @@ buildScope :: PackageDescr -> PackageScope -> PackageScope
 buildScope packageD (packageMap, symbolTable) =
     let pid = packagePD packageD
     in if pid `Map.member` packageMap
-        then trace  ("package already in world " ++ (showPackageId $ packagePD packageD))
-                    (packageMap, symbolTable)
+        then (packageMap, symbolTable)
         else (Map.insert pid packageD packageMap,
               buildSymbolTable packageD symbolTable)
 
@@ -417,7 +415,7 @@ instance Binary IdentifierDescr where
                             mbComment'           <- get
                             return (InstanceDescr identifierID' classID' moduleIdID'
                                         mbLocation' mbComment')
-                    _ -> error "Impossible in Binary IdentifierDescr get"
+                    _ -> throwIDE "Impossible in Binary IdentifierDescr get"
 
 
 instance Binary IdTypeS where

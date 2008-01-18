@@ -167,13 +167,12 @@ selectSourceBuf fp = do
                 then do
                     path <- standardSourcePanePath
                     newTextBuffer path (takeFileName fpc) (Just fpc)
-                    message "opened new buffer"
                     return True
                 else return False
 
 goToDefinition :: IdentifierDescr -> IDEAction
 goToDefinition idDescr = do
-    mbAccesibleInfo      <-  trace "goToDefinition called" $ readIDE accessibleInfo
+    mbAccesibleInfo      <-  readIDE accessibleInfo
     mbCurrentInfo        <-  readIDE currentInfo
     if isJust mbAccesibleInfo && isJust mbCurrentInfo
         then do
@@ -191,14 +190,13 @@ goToDefinition idDescr = do
                                                                 (fromJust $ mbSourcePathMD mod)
                                                                 (mbLocation idDescr)
                                                         else return ()
-                                        _       ->  trace "not just one module" $ return ()
-                Nothing         ->  trace "no package" $ return ()
-        else trace "no infos" $ return ()
+                                        _       ->  ideMessage Normal "not just one module"
+                Nothing         ->  do ideMessage Normal "no package"
+        else ideMessage Normal  "no infos"
 
 goToSourceDefinition :: FilePath -> Maybe Location -> IDEAction
 goToSourceDefinition fp mbLocation = do
-    success     <- trace ("goToDefinition called with " ++ fp ++ " " ++ show mbLocation)
-                    $ selectSourceBuf fp
+    success     <- selectSourceBuf fp
     when (success && isJust mbLocation) $
         inBufContext () $ \_ gtkbuf buf _ -> do
         let location    =   fromJust mbLocation
@@ -279,7 +277,7 @@ newTextBuffer panePath bn mbfn = do
                         (Just lang) -> return lang
                         Nothing -> do
                             langDirs <- sourceLanguagesManagerGetLangFilesDirs lm
-                            error ("please copy haskell.lang to one of the following"
+                            throwIDE ("please copy haskell.lang to one of the following"
                                   ++ "directories:\n"
                                 ++ unlines langDirs)
 
@@ -362,7 +360,7 @@ checkModTime buf = do
                 then do
                     nmt <- lift $getModificationTime fn
                     case modTime buf of
-                        Nothing ->  error $"checkModTime: time not set " ++ show (fileName buf)
+                        Nothing ->  throwIDE $"checkModTime: time not set " ++ show (fileName buf)
                         Just mt -> do
                             --message $"checkModTime " ++ name ++ " " ++ show mt ++ " " ++ show nmt
                             if nmt /= mt
@@ -505,7 +503,7 @@ inBufContext' def f = do
             mbI         <-  lift $notebookPageNum nb (scrolledWindow ideBuf)
             case mbI of
                 Nothing ->  lift $ do
-                                putStrLn "notebook page not found: unexpected"
+                                sysMessage Normal "notebook page not found: unexpected"
                                 return def
                 Just i  ->  do
                                 gtkbuf <- lift $ textViewGetBuffer (sourceView ideBuf)
@@ -529,7 +527,7 @@ fileSave query = inBufContext' () $ \ nb _ currentBuffer i -> do
         let mbfn = fileName currentBuffer
         mbpage <- lift $notebookGetNthPage nb i
         case mbpage of
-            Nothing     -> error "fileSave: Page not found"
+            Nothing     -> throwIDE "fileSave: Page not found"
             Just page   ->
                 if isJust mbfn && query == False
                     then do checkModTime currentBuffer
@@ -620,7 +618,10 @@ fileNew = do
     return ()
 
 fileClose :: IDEM Bool
-fileClose = inBufContext' True $ \nb gtkbuf currentBuffer i -> do
+fileClose = inBufContext' True $ fileClose'
+
+fileClose' :: Notebook -> TextBuffer -> IDEBuffer -> Int  -> IDEM Bool
+fileClose' nb gtkbuf currentBuffer i = do
     ideRef  <- ask
     window  <- readIDE window
     bufs    <- readIDE panes
@@ -639,7 +640,7 @@ fileClose = inBufContext' True $ \nb gtkbuf currentBuffer i -> do
                 dialogAddButton md "_Don't Save" ResponseNo
                 dialogAddButton md "_Cancel" ResponseCancel
                 resp <- dialogRun md
-                widgetHide md
+                widgetDestroy md
                 case resp of
                     ResponseYes ->   do
                         runReaderT (fileSave False) ideRef
@@ -656,6 +657,7 @@ fileClose = inBufContext' True $ \nb gtkbuf currentBuffer i -> do
             removePaneAdmin currentBuffer
             return True
 
+
 fileCloseAll :: IDEM Bool
 fileCloseAll = do
     bufs    <- allBuffers
@@ -671,19 +673,24 @@ fileCloseAll = do
 
 fileCloseAllButPackage :: IDEAction
 fileCloseAllButPackage = do
-    mbActivePack <- readIDE activePack
-    bufs        <- allBuffers
-    when (not (null bufs) && isJust mbActivePack)
-        $ mapM_ (close' (fromJust mbActivePack)) bufs
+    mbActivePack    <-  readIDE activePack
+    bufs            <-  allBuffers
+    when (not (null bufs) && isJust mbActivePack) $ do
+        mapM_ (close' (fromJust mbActivePack)) bufs
     where
         close' activePack buf = do
-            makeActive buf
-            let dir = dropFileName $ cabalFile activePack
-            inBufContext' () $ \nb gtkbuf currentBuffer i -> do
-                when (isJust (fileName currentBuffer)) $ do
+            (pane,_)    <-  guiPropertiesFromName (paneName buf)
+            nb          <-  getNotebook pane
+            mbI         <-  lift $notebookPageNum nb (scrolledWindow buf)
+            case mbI of
+                Nothing ->  throwIDE "notebook page not found: unexpected"
+                Just i  ->  do
+                    gtkbuf <- lift $ textViewGetBuffer (sourceView buf)
+                    let dir = dropFileName $ cabalFile activePack
+                    when (isJust (fileName buf)) $ do
                         modified <- lift $ textBufferGetModified gtkbuf
-                        when (not modified && isSubPath (fromJust (fileName currentBuffer)) dir)
-                            $ do fileClose; return ()
+                        when (not modified && not (isSubPath dir (fromJust (fileName buf))))
+                            $ do fileClose' nb gtkbuf buf i; return ()
 
 fileOpen :: IDEAction
 fileOpen = do
@@ -714,10 +721,30 @@ fileOpen = do
             _ -> return Nothing
     case mbFileName of
         Nothing -> return ()
-        Just fn -> do
+        Just fp -> do
+            fpc <-  lift $canonicalizePath fp
+            buffers <- allBuffers
+            let buf = filter (\b -> case fileName b of
+                                Just fn -> equalFilePath fn fpc
+                                Nothing -> False) buffers
+            case buf of
+                hdb:tl -> do
+                    md <- lift $messageDialogNew
+                            Nothing []
+                            MessageQuestion
+                            ButtonsYesNo
+                            ("Buffer already open. " ++
+                             "Make active instead of opening a second time?")
+                    resp <- lift $dialogRun md
+                    lift $ widgetDestroy md
+                    case resp of
+                        ResponseNo  ->  reallyOpen prefs fpc
+                        _           ->  makeActive hdb
+                [] -> reallyOpen prefs fpc
+    where
+        reallyOpen prefs fpc =   do
             pp <-  getActivePanePathOrStandard (sourcePanePath prefs)
-            cfn <- lift $canonicalizePath fn
-            newTextBuffer pp (takeFileName fn) (Just cfn)
+            newTextBuffer pp (takeFileName fpc) (Just fpc)
             return ()
 
 editUndo :: IDEAction

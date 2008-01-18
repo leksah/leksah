@@ -139,9 +139,9 @@ packageNew = do
                         b2 <- doesFileExist (dirName </> "Setup.lhs")
                         if  not (b1 || b2)
                             then do
-                                putStrLn "Setup.(l)hs does not exist. Writing Standard"
+                                sysMessage Normal "Setup.(l)hs does not exist. Writing Standard"
                                 writeFile (dirName </> "Setup.lhs") standardSetup
-                            else message "Setup.(l)hs already exist"
+                            else sysMessage Normal "Setup.(l)hs already exist"
                         allModules dirName
                     editPackage emptyPackageDescription dirName modules
                     return ()
@@ -303,8 +303,8 @@ packageDD fp modules = [
 editPackage :: PackageDescription -> FilePath -> [String] -> IDEAction
 editPackage packageD packageDir modules = do
     ideR <- ask
-    res <- lift $editPackage' packageDir packageD (packageDD packageDir modules) ideR
-    lift $putStrLn $show res
+    lift $editPackage' packageDir packageD (packageDD packageDir modules) ideR
+--    lift $sysMessage Normal $show res
 
 editPackage' :: String -> PackageDescription -> PDescr -> IDERef -> IO ()
 editPackage' packageDir packageD packageDD ideR   =

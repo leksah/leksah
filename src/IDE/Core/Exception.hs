@@ -14,8 +14,10 @@
 -------------------------------------------------------------------------------
 
 module IDE.Core.Exception (
-  IDEException,
-  throwIDE
+    IDEException
+,   throwIDE
+,   sysMessage
+,   MessageLevel(..)
 ) where
 
 import Data.Typeable
@@ -29,6 +31,10 @@ throwIDE str = throwDyn (IDEException str)
 instance Show IDEException where
   show (IDEException str) = str
 
+sysMessage :: MessageLevel -> String -> IO ()
+sysMessage ml str = putStrLn str
 
+data MessageLevel = Silent | Normal | High
+    deriving (Eq,Ord,Show)
 
 

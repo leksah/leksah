@@ -76,14 +76,14 @@ instance Pane IDEFind
     getAddedIndex _ =   0
     getTopWidget    =   castToWidget . findBox
     paneId b        =   "*Find"
-    makeActive p    =   error "don't activate find bar"
+    makeActive p    =   throwIDE "don't activate find bar"
     close pane      =   do
         (panePath,_)    <-  guiPropertiesFromName (paneName pane)
         nb              <-  getNotebook panePath
         mbI             <-  lift $notebookPageNum nb (getTopWidget pane)
         case mbI of
             Nothing ->  lift $ do
-                putStrLn "notebook page not found: unexpected"
+                sysMessage Normal "notebook page not found: unexpected"
                 return ()
             Just i  ->  do
                 lift $notebookRemovePage nb i
@@ -125,7 +125,7 @@ getFind' = do
             initFind pp nb
             mbFind <- getPane FindCasting
             case mbFind of
-                Nothing ->  error "Can't init find pane"
+                Nothing ->  throwIDE "Can't init find pane"
                 Just m  ->  return m
         Just m ->   return m
 

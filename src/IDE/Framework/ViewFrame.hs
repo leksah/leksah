@@ -138,7 +138,7 @@ guiPropertiesFromName pn = do
     paneMap <- readIDE paneMap
     case Map.lookup pn paneMap of
             Just it -> return it
-            otherwise  -> error $"Cant't find guiProperties from unique name " ++ pn
+            otherwise  -> throwIDE $"Cant't find guiProperties from unique name " ++ pn
 
 posTypeToPaneDirection PosLeft      =   LeftP
 posTypeToPaneDirection PosRight     =   RightP	
@@ -287,7 +287,7 @@ viewCollapse' panePath = do
     let newPanePath   = reverse $tail $reverse panePath
     let mbOtherSidePath = otherSide panePath
     case mbOtherSidePath of
-        Nothing -> lift $putStrLn "Can't collapse top level"
+        Nothing -> lift $sysMessage Normal "Can't collapse top level"
         Just otherSidePath ->
             let sp1 = getSubpath panePath layout1
                 sp2 = getSubpath otherSidePath layout1
@@ -308,11 +308,11 @@ viewCollapse' panePath = do
             lift $ do
                 mbParent <- widgetGetParent activeNotebook
                 case mbParent of
-                    Nothing -> error "collapse: no parent"
+                    Nothing -> throwIDE "collapse: no parent"
                     Just parent -> do
                         mbGrandparent <- widgetGetParent parent
                         case mbGrandparent of
-                            Nothing -> error "collapse: no grandparent"
+                            Nothing -> throwIDE "collapse: no grandparent"
                             Just grandparent -> do
                                 containerRemove (castToContainer grandparent) parent
                                 containerRemove (castToContainer parent) activeNotebook
@@ -367,23 +367,22 @@ viewMove direction = do
     mbPane <- readIDE activePane
     case mbPane of
         Nothing -> do
-            lift $putStrLn "no active pane"
+            lift $sysMessage Normal "no active pane"
             return ()
         Just (paneName,_) -> do
             pane <- paneFromName paneName
             mbPanePath <- getActivePanePath
             case mbPanePath of
                 Nothing -> do
-                    lift $putStrLn "no active pane path"
+                    lift $sysMessage Normal "no active pane path"
                     return ()
                 Just panePath -> do
                   layout <- readIDE layout
                   case findMoveTarget panePath layout direction of
                       Nothing -> do
-                        lift $putStrLn "no target found"
+                        lift $sysMessage Normal "no target found"
                         return ()
-                      Just moveTo -> trace ("move target: " ++ show moveTo)
-                                        move moveTo pane
+                      Just moveTo -> move moveTo pane
 
 --
 -- | Find the target for a move
@@ -561,7 +560,6 @@ paneDirectionToWidgetName RightP    =  "right"
 --
 adjustPane :: PanePath -> PanePath -> IDEAction
 adjustPane fromPane toPane  = do
-    trace ("adjust pane from: " ++ show fromPane ++ " to: " ++ show toPane) return ()
     paneMap     <- readIDE paneMap
     let newMap  = Map.map (\(pp,other) -> do
         if pp == fromPane
@@ -609,7 +607,7 @@ adjust pp layout replace    = adjust' pp layout
     adjust' (BottomP:r)  (HorizontalP tp bp _)  = HorizontalP tp (adjust' r bp) 0
     adjust' (LeftP:r)  (VerticalP lp rp _)      = VerticalP (adjust' r lp) rp 0
     adjust' (RightP:r)  (VerticalP lp rp _)     = VerticalP lp (adjust' r rp) 0
-    adjust' p l = error $"inconsistent layout " ++ show p ++ " " ++ show l
+    adjust' p l = throwIDE $"inconsistent layout " ++ show p ++ " " ++ show l
 
 --
 -- | Get the widget from a list of strings
@@ -621,7 +619,7 @@ widgetFromPath w (h:t) = do
     names       <- mapM widgetGetName children
     let mbiInd  =  findIndex (== h) names
     case mbiInd of
-        Nothing     -> error $"Cant't find widget path " ++ show (h:t)
+        Nothing     -> throwIDE $"Cant't find widget path " ++ show (h:t)
         Just ind    -> widgetFromPath (children !! ind) t
 
 
@@ -643,7 +641,7 @@ getUIAction str f = do
         findAction <- uiManagerGetAction uiManager str
         case findAction of
             Just act -> return (f act)
-            Nothing  -> error $"getUIAction can't find action " ++ str
+            Nothing  -> throwIDE $"getUIAction can't find action " ++ str
 
 --get widget elements
 

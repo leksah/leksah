@@ -26,7 +26,6 @@ import qualified Maybes as M
 import HscTypes
 import LoadIface
 import Outputable hiding(trace)
-import qualified Pretty as P
 import IfaceSyn
 import FastString
 import Outputable hiding(trace)
@@ -93,7 +92,6 @@ collectInstalled writeAscii session version forceRebuild = do
         getCollectorPath version
         return ()
     knownPackages       <-  findKnownPackages collectorPath
---    putStrLn $ "found known packages" ++ " " ++ show knownPackages
     packageInfos        <-  getInstalledPackageInfos session
     let newPackages     =   filter (\pi -> not $Set.member (showPackageId $ fromDPid $ DP.package pi)
                                                         knownPackages)
@@ -117,9 +115,9 @@ collectInstalled writeAscii session version forceRebuild = do
                                     filter (\p -> isJust (mbSourcePathMD p)) (exposedModulesPD p)))
                                         0 extracted'
     ,   parseFailures       =   failedToParse}
-    putStrLn $ show statistic
+    sysMessage Normal $ show statistic
     when (modulesWithSource statistic > 0) $
-        putStrLn $ "failure percentage "
+        sysMessage Normal $ "failure percentage "
             ++ show ((round (((fromIntegral   (parseFailures statistic)) :: Double) /
                        (fromIntegral   (modulesWithSource statistic)) * 100.0)):: Integer)
     mapM_ (writeExtracted collectorPath writeAscii) extracted'
@@ -135,7 +133,6 @@ collectUninstalled writeAscii session version cabalPath = do
     let buildPath       =   "dist" </> "build" </> pkgName (package pd) </>
                                 (pkgName (package pd) ++ "-tmp/")
     dflags0             <-  getSessionDynFlags session
-    putStrLn $ "topDir = " ++ (basePath </> buildPath)
     setSessionDynFlags session
         dflags0
         {   topDir      =   basePath
@@ -154,7 +151,7 @@ collectUninstalled writeAscii session version cabalPath = do
     collectorPath   <-  getCollectorPath version
     writeExtracted collectorPath writeAscii extractedWithSources
     writeExtracted collectorPath True extractedWithSources
-    putStrLn $ "\nExtracted infos for " ++ cabalPath
+    sysMessage Normal $ "\nExtracted infos for " ++ cabalPath
 
 -------------------------------------------------------------------------
 
@@ -178,8 +175,7 @@ getIFaceInfos pckg modules session =
             return res
             where
                 handleErr (M.Succeeded val)   =   Just val
-                handleErr (M.Failed mess)     =   trace (P.render (mess defaultErrStyle))
-                                                    Nothing
+                handleErr (M.Failed mess)     =   Nothing
 
 getIFaceInfos2 :: [String] -> Session -> IO [(ModIface, FilePath)]
 getIFaceInfos2 modules session = do
@@ -192,8 +188,7 @@ getIFaceInfos2 modules session = do
     return res
     where
         handleErr (M.Succeeded val)   =   Just val
-        handleErr (M.Failed mess)     =   trace (P.render (mess defaultErrStyle))
-                                                    Nothing
+        handleErr (M.Failed mess)     =   Nothing
 
 findAndReadIface2 :: String -> Module -> TcRnIf gbl lcl (MaybeErr Message (ModIface, FilePath))
 findAndReadIface2  doc mod =   do

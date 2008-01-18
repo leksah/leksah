@@ -84,7 +84,7 @@ instance Pane IDELog
         mbI             <-  lift $notebookPageNum nb (getTopWidget pane)
         case mbI of
             Nothing ->  lift $ do
-                putStrLn "notebook page not found: unexpected"
+                sysMessage Normal "notebook page not found: unexpected"
                 return ()
             Just i  ->  do
                 deactivatePaneIfActive pane
@@ -154,7 +154,6 @@ initLog panePath nb = do
 
 clicked :: Event -> IDELog -> IDEAction
 clicked (Button _ SingleClick _ _ _ _ LeftButton x y) ideLog = do
-    lift $ putStrLn "double clicked"
     errors'     <-  readIDE errors
     line' <- lift $ do
         (x,y)       <-  widgetGetPointer (textView ideLog)
@@ -164,7 +163,6 @@ clicked (Button _ SingleClick _ _ _ _ LeftButton x y) ideLog = do
     case filter (\(es,_) -> fst (logLines es) <= (line'+1) && snd (logLines es) >= (line'+1))
             (zip errors' [0..(length errors')]) of
         [(thisErr,n)] -> do
-            lift $ putStrLn "error found"
             succ <- selectSourceBuf (filePath thisErr)
             if succ
                 then markErrorInSourceBuf (line thisErr) (column thisErr)
@@ -189,7 +187,7 @@ getLog' = do
             initLog pp nb
             mbPane <- getPane LogCasting
             case mbPane of
-                Nothing ->  error "Can't init log"
+                Nothing ->  throwIDE "Can't init log"
                 Just l  ->  return l
         Just p -> return p
 

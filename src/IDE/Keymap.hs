@@ -18,7 +18,6 @@ import Data.Maybe
 import Data.List(sort)
 import Data.Char(toLower)
 import Control.Monad.Reader
-import Debug.Trace
 
 import {-# SOURCE #-} IDE.Core.State
 import IDE.Core.Types
@@ -48,7 +47,7 @@ parseKeymap' :: FilePath -> IO KeymapI
 parseKeymap' fn = do
     res <- parseFromFile keymapParser fn
     case res of
-        Left pe -> error $"Error reading keymap file " ++ show fn ++ " " ++ show pe
+        Left pe -> throwIDE $"Error reading keymap file " ++ show fn ++ " " ++ show pe
         Right r -> return r
 
 --
@@ -145,9 +144,8 @@ accParse :: String -> IO (KeyVal,[Modifier])
 accParse str = case parse accparser "accelerator" str of
     Right (ks,mods) -> do
         key <- keyvalFromName (map toLower ks)
-        trace (show (key,mods)) return ()
         return (key,sort mods)
-    Left e -> error $show e
+    Left e -> throwIDE $show e
 
 accStyle :: P.LanguageDef st
 accStyle= emptyDef{P.caseSensitive = False}

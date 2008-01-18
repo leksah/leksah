@@ -45,7 +45,8 @@ isSubPath :: FilePath -> FilePath -> Bool
 isSubPath fp1 fp2 =
     let fpn1    =   splitPath $ normalise fp1
         fpn2    =   splitPath $ normalise fp2
-    in isPrefixOf fpn1 fpn2
+        res     =   isPrefixOf fpn1 fpn2
+    in res
 
 findSourceFile :: [FilePath]
     -> [String]
@@ -93,7 +94,7 @@ getConfigFilePathForLoad fn = do
 --            ex <- doesFileExist (dd </> fn)
 --            if ex
 --                then return (dd </> fn)
---                else error $"Config file not found: " ++ fn
+--                else throwIDE $"Config file not found: " ++ fn
 
 getConfigFilePathForSave :: String -> IO FilePath
 getConfigFilePathForSave fn = do
@@ -106,11 +107,9 @@ allModules filePath = do
     if exists
         then do
             filesAndDirs <- getDirectoryContents filePath
-            putStrLn $show filesAndDirs
             let filesAndDirs' = map (\s -> combine filePath s)
                                     $filter (\s -> s /= "." && s /= ".." && s /= "_darcs" && s /= "dist"
                                         && s /= "Setup.lhs") filesAndDirs
-            putStrLn $show filesAndDirs'
             dirs <-  filterM (\f -> doesDirectoryExist f) filesAndDirs'
             files <-  filterM (\f -> doesFileExist f) filesAndDirs'
             let hsFiles =   filter (\f -> let ext = takeExtension f in
@@ -135,10 +134,8 @@ allFilesWithExtensions extensions recurseFurther filePath = do
     if exists
         then do
             filesAndDirs <- getDirectoryContents filePath
-            --putStrLn $show filesAndDirs
             let filesAndDirs' = map (\s -> combine filePath s)
                                     $filter (\s -> s /= "." && s /= ".." && s /= "_darcs") filesAndDirs
-            --putStrLn $show filesAndDirs'
             dirs    <-  filterM (\f -> doesDirectoryExist f) filesAndDirs'
             files   <-  filterM (\f -> doesFileExist f) filesAndDirs'
             let choosenFiles =   filter (\f -> let ext = takeExtension f in
@@ -164,7 +161,7 @@ moduleNameFromFilePath fp = do
             let parseRes = parse moduleNameParser fp str'
             case parseRes of
                 Left err -> do
-                    putStrLn $show err
+                    sysMessage Normal $show err
                     return Nothing
                 Right str -> do
                     return (Just str)
@@ -223,7 +220,7 @@ cabalFileName filePath = do
                 else if length cabalFiles == 1
                     then return (Just $head cabalFiles)
                     else do
-                        putStrLn "Multiple cabal files"
+                        sysMessage Normal "Multiple cabal files"
                         return Nothing
         else return Nothing
 
@@ -278,7 +275,7 @@ readErr log hndl =
 runExternal :: FilePath -> [String] -> IO (Handle, Handle, Handle, ProcessHandle)
 runExternal path args = do
     hndls@(inp, out, err, _) <- runInteractiveProcess path args Nothing Nothing
-    putStrLn $ "Starting external tool: " ++ path ++ " with args " ++ (show args)
+    sysMessage Normal $ "Starting external tool: " ++ path ++ " with args " ++ (show args)
     hSetBuffering out NoBuffering
     hSetBuffering err NoBuffering
     hSetBuffering inp NoBuffering

@@ -116,7 +116,7 @@ readFlags :: FilePath -> IDEPackage -> IO IDEPackage
 readFlags fn pack = do
     res <- P.parseFromFile (flagsParser pack (concatMap snd flagsDescription)) fn
     case res of
-        Left pe -> error $"Error reading flags file " ++ show fn ++ " " ++ show pe
+        Left pe -> throwIDE $"Error reading flags file " ++ show fn ++ " " ++ show pe
         Right r -> return r
 
 flagsParser ::  a ->  [FieldDescriptionPP a] ->  P.CharParser () a

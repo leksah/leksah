@@ -37,6 +37,8 @@ import Graphics.UI.Gtk
 import Data.Maybe
 import qualified Data.List as List
 
+import IDE.Core.Exception
+
 --
 -- | The direction of a split
 --
@@ -121,7 +123,7 @@ getParameter selector parameter =
         Just ele       -> ele
         _              -> case getParameterPrim selector defaultParameters of
                             Just ele       -> ele
-                            _              -> error "default parameter not defined"
+                            _              -> throwIDE "default parameter not defined"
 
 getParameterPrim :: (Parameter -> (Maybe beta)) -> Parameters -> Maybe beta
 getParameterPrim selector parameter =

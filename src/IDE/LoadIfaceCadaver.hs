@@ -51,7 +51,7 @@ findAndReadIface2 :: SDoc -> Module
 	-- Nothing <=> file not found, or unreadable, or illegible
 	-- Just x  <=> successfully found and parsed
 
-	-- It *doesn't* add an error to the monad, because
+	-- It *doesn't* add an throwIDE to the monad, because
 	-- sometimes it's ok to fail... see notes with loadInterface
 
 findAndReadIface2 doc_str mod hi_boot_file

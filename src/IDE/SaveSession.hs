@@ -116,7 +116,7 @@ layoutDescr = [
 --
 saveSession' :: IDEAction
 saveSession' = do
-    lift $ putStrLn "Now saving session"
+    lift $ sysMessage Normal "Now saving session"
     wdw         <-  readIDE window
     layout      <-  getLayout
     population  <-  getPopulation
@@ -200,19 +200,17 @@ recoverSession' = do
         Nothing -> return ()
     populate (population layoutSt)
     setCurrentPages (layoutS layoutSt)
-    trace ("before activating " ++  show (activePaneN layoutSt)) return ()
     when (isJust (activePaneN layoutSt)) $ do
         mbPane <- mbPaneFromName (fromJust (activePaneN layoutSt))
         when (isJust mbPane) $
-            trace ("make active: " ++ (fromJust (activePaneN layoutSt)))
-                $ makeActive (fromJust mbPane)
+            makeActive (fromJust mbPane)
 
 readLayout :: IO SessionState
 readLayout = do
     layoutPath  <-  getConfigFilePathForLoad sessionFilename
     res <- parseFromFile (prefsParser defaultLayout layoutDescr) layoutPath
     case res of
-        Left pe -> error $"Error reading prefs file " ++ show layoutPath ++ " " ++ show pe
+        Left pe -> throwIDE $"Error reading prefs file " ++ show layoutPath ++ " " ++ show pe
         Right r -> return r
 
 prefsParser ::  a ->  [FieldDescriptionS a] ->  CharParser () a
@@ -227,7 +225,7 @@ applyLayout layoutS = do
     old <- readIDE layout
     case old of
         TerminalP _ _ ->   applyLayout' layoutS []
-        otherwise     ->   error "apply Layout can only be allied to empty Layout"
+        otherwise     ->   throwIDE "apply Layout can only be allied to empty Layout"
     where
     applyLayout' (TerminalP Nothing _) pp  = do
         nb          <-  getNotebook pp

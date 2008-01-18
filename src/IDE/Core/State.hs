@@ -35,15 +35,13 @@ module IDE.Core.State (
 ,   addPaneAdmin
 -- * debugging
 --,   helpDebug
-,   message
-,   trace
+,   ideMessage
 ,   module IDE.Core.Types
 ,   module IDE.Core.Panes
 ,   module IDE.Core.Exception
 
 ) where
 
-import Debug.Trace
 import Graphics.UI.Gtk hiding (get)
 import Data.Map (Map)
 import qualified Data.Map as Map
@@ -58,8 +56,11 @@ import IDE.SourceCandy
 import IDE.Keymap
 
 
-message m = trace m (return ())
-
+ideMessage :: MessageLevel -> String -> IDEAction
+ideMessage level str = do
+--    log <- getLog
+--    appendLog log str LogTag
+    lift $ sysMessage level str
 
 class IDEObject o
 class IDEObject o => IDEPaneC o

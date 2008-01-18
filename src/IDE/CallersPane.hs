@@ -44,7 +44,7 @@ instance Pane IDECallers
         mbI             <-  lift $notebookPageNum nb (getTopWidget pane)
         case mbI of
             Nothing ->  lift $ do
-                putStrLn "notebook page not found: unexpected"
+                sysMessage Normal "notebook page not found: unexpected"
                 return ()
             Just i  ->  do
                 deactivatePaneIfActive pane
@@ -98,7 +98,7 @@ getCallers = do
             initCallers pp nb
             mbMod <- getPane CallersCasting
             case mbMod of
-                Nothing ->  error "Can't init callers"
+                Nothing ->  throwIDE "Can't init callers"
                 Just m  ->  return m
         Just m ->   return m
 
@@ -214,5 +214,5 @@ initCallers panePath nb = do
 --                            otherwise       ->  return ()
 --                        return True
 --                else return False
---treeViewPopup _ _ _ _ = error "treeViewPopup wrong event type"
+--treeViewPopup _ _ _ _ = throwIDE "treeViewPopup wrong event type"
 

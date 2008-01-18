@@ -51,7 +51,7 @@ instance Pane IDEInfo
         mbI             <-  lift $notebookPageNum nb (getTopWidget pane)
         case mbI of
             Nothing ->  lift $ do
-                putStrLn "notebook page not found: unexpected"
+                sysMessage Normal "notebook page not found: unexpected"
                 return ()
             Just i  ->  do
                 deactivatePaneIfActive pane
@@ -156,7 +156,7 @@ initInfo panePath nb idDescrs index = do
                     StopHorizontal  ->  do  boxPackStart box w PackGrow 0
                                             par <- widgetGetParent box
                                             case par of
-                                                Nothing -> error "initInfo - no parent"
+                                                Nothing -> throwIDE "initInfo - no parent"
                                                 Just p -> return (castToBox p))
                 (castToBox ibox)
                 (zip widgets (map (getParameter paraHorizontal . parameters)
@@ -216,7 +216,7 @@ gotoSource :: IDEAction
 gotoSource = do
     mbInfo <- getInfoCont
     case mbInfo of
-        Nothing     ->  do  lift $ putStrLn "gotoSource:noDefition"
+        Nothing     ->  do  lift $ sysMessage Normal "gotoSource:noDefition"
                             return ()
         Just info   ->  do  goToDefinition info
                             return ()

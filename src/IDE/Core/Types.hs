@@ -70,7 +70,7 @@ import qualified Data.ByteString.Char8 as BS
 import Data.ByteString.Char8 (ByteString)
 
 import IDE.Utils.Default
-
+import IDE.Core.Exception
 
 
 data StandardPath = LeftTop | LeftBottom | RightTop | RightBottom
@@ -285,7 +285,7 @@ parsePackModule str     =   let (pack',mod') = span (\c -> c /= ':') str
                                  else case toPackageIdentifier $ pack' of
                                         Nothing -> perror str
                                         Just pi'-> (PM pi' (tail mod'))
-    where perror s      =   error $ "cannot parse PackModule from " ++ s
+    where perror s      =   throwIDE $ "cannot parse PackModule from " ++ s
 
 fromPackageIdentifier :: PackageIdentifier -> String
 fromPackageIdentifier   =   showPackageId

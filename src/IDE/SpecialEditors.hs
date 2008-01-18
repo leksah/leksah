@@ -261,7 +261,7 @@ instance Default Version2
 instance Default Version
     where getDefault = let version = (let l = (readP_to_S parseVersion) "0"
                                         in if null l
-                                            then error "verion parser failed"
+                                            then throwIDE "verion parser failed"
                                             else fst $head l)
                         in version
 

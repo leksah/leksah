@@ -62,9 +62,7 @@ buildInfoEditor' fp modules p = do
     return (castToWidget box,binj,ext,notif)
     where
     changedHandler buffer ext _ = do
-        putStrLn "FocusIn"
         mbv <- ext
-        putStrLn (show mbv)
         case mbv of
             Just v -> textBufferSetText buffer $showHookedBuildInfo (Just v,[])
             Nothing -> return ()
@@ -284,7 +282,7 @@ editBuildInfo' buildInfo contextStr buildInfoD = do
         mbNewBuildInfo <- extractAndValidate buildInfo getExts fieldNames
         case mbNewBuildInfo of
             Nothing -> do
-                putStrLn "Cant't validate build info"
+                sysMessage Normal "Cant't validate build info"
                 return ()
             Just newBuildInfo -> do
                     writeIORef resRef (Just newBuildInfo)

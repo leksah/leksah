@@ -35,14 +35,14 @@ instance Pane IDEToolbar
     getAddedIndex _ =   0
     getTopWidget    =   castToWidget . toolbar
     paneId b        =   "*Toolbar"
-    makeActive p    =   error "don't activate toolbar"
+    makeActive p    =   throwIDE "don't activate toolbar"
     close pane      =   do
         (panePath,_)    <-  guiPropertiesFromName (paneName pane)
         nb              <-  getNotebook panePath
         mbI             <-  lift $notebookPageNum nb (getTopWidget pane)
         case mbI of
             Nothing ->  lift $ do
-                putStrLn "notebook page not found: unexpected"
+                sysMessage Normal "notebook page not found: unexpected"
                 return ()
             Just i  ->  do
                 deactivatePaneIfActive pane
@@ -90,7 +90,7 @@ initToolbar panePath nb = do
     (acc,menus) <-  makeMenu uiManager accelActions menuDescription
     let tb = case menus !! 1 of
                 Just m -> m
-                Nothing -> error "Failed to build toolbar"
+                Nothing -> throwIDE "Failed to build toolbar"
     (buf,cids)  <-  lift $ do
         let toolbar' = IDEToolbar (castToToolbar tb)
         notebookInsertOrdered nb tb (paneName toolbar')

@@ -61,11 +61,9 @@ import Parser
 import Outputable hiding (char)
 import HscStats
 
-import IDE.Core.State hiding(trace)
+import IDE.Core.State
 import IDE.Utils.File
 import IDE.Preferences
-
-import Debug.Trace
 
 -- ---------------------------------------------------------------------
 -- Function to map packages to file paths
@@ -76,16 +74,14 @@ getSourcesMap = do
         mbSources <- parseSourceForPackageDB
         case mbSources of
             Just map -> do
-                --putStrLn $ "sourceDB: " ++ show map
                 return map
             Nothing -> do
                 buildSourceForPackageDB
                 mbSources <- parseSourceForPackageDB
                 case mbSources of
                     Just map -> do
-                        --putStrLn $ "sourceDB: " ++ show map
                         return map
-                    Nothing ->  error "can't build/open source for package file"
+                    Nothing ->  throwIDE "can't build/open source for package file"
 
 sourceForPackage :: PackageIdentifier
     -> (Map PackageIdentifier [FilePath])
@@ -124,12 +120,12 @@ parseSourceForPackageDB = do
             res             <-  parseFromFile sourceForPackageParser filePath
             case res of
                 Left pe ->  do
-                    putStrLn $"Error reading source packages file "
+                    sysMessage Normal $"Error reading source packages file "
                             ++ filePath ++ " " ++ show pe
                     return Nothing
                 Right r ->  return (Just r)
         else do
-            putStrLn $"No source packages file found: " ++ filePath
+            sysMessage Normal $"No source packages file found: " ++ filePath
             return Nothing
 
 -- ---------------------------------------------------------------------
@@ -190,9 +186,9 @@ parseCabal :: FilePath -> IO String
 parseCabal fn = do
     res     <-  parseFromFile cabalMinimalParser fn
     case res of
-        Left pe ->  error $"Error reading cabal file " ++ show fn ++ " " ++ show pe
+        Left pe ->  throwIDE $"Error reading cabal file " ++ show fn ++ " " ++ show pe
         Right r ->  do
-            putStrLn r
+            sysMessage Normal r
             return r
 
 cabalMinimalParser :: CharParser () String
@@ -203,11 +199,11 @@ cabalMinimalParser = do
         Left v -> do
             case r2 of
                 Right n -> return (n ++ "-" ++ v)
-                Left _ -> error "Illegal cabal"
+                Left _ -> throwIDE "Illegal cabal"
         Right n -> do
             case r2 of
                 Left v -> return (n ++ "-" ++ v)
-                Right _ -> error "Illegal cabal"
+                Right _ -> throwIDE "Illegal cabal"
 
 cabalMinimalP :: CharParser () (Either String String)
 cabalMinimalP =
@@ -257,7 +253,7 @@ collectSources :: Session
 collectSources session  sourceMap pdescr = do
     case sourceForPackage (packagePD pdescr) sourceMap of
         Nothing -> do
-            putStrLn $ "No source for package " ++ showPackageId (packagePD pdescr)
+            sysMessage Normal $ "No source for package " ++ showPackageId (packagePD pdescr)
             return (pdescr,0)
         Just cabalPath -> C.catch (do
             let basePath        =   takeDirectory cabalPath
@@ -269,7 +265,6 @@ collectSources session  sourceMap pdescr = do
             dflags1         <-  getSessionDynFlags session
             let flags       =   ["-fglasgow-exts",("-I" ++ basePath </> "include"),"-haddock"]
             (dflags2,_)     <-  parseDynamicFlags dflags1 flags
-            putStrLn $ "flags = " ++ show flags
 
             setSessionDynFlags session dflags2
 
@@ -293,7 +288,7 @@ collectSources session  sourceMap pdescr = do
             let nPackDescr  =   pdescr{mbSourcePathPD = Just cabalPath,
                                             exposedModulesPD = newModDescrs}
             return (nPackDescr,failureCount))
-            (\e -> do   putStrLn $ "source collector error " ++ show e ++ " in " ++
+            (\e -> do   sysMessage Normal $ "source collector throwIDE " ++ show e ++ " in " ++
                             showPackageId (packagePD pdescr)
                         return (pdescr,length $ exposedModulesPD pdescr))
 
@@ -310,7 +305,7 @@ collectSourcesForModule session pkgDescr localBuildInfo (moduleDescrs,failureCou
     (moduleDescr,mbfp) =
     case mbfp of
         Nothing ->  do
-            putStrLn $ "No source for module " ++ (modu $ moduleIdMD moduleDescr)
+            sysMessage Normal $ "No source for module " ++ (modu $ moduleIdMD moduleDescr)
             return(moduleDescr : moduleDescrs, failureCount+1)
         Just fp ->  do
             str             <-  preprocess fp pkgDescr localBuildInfo
@@ -320,7 +315,6 @@ collectSourcesForModule session pkgDescr localBuildInfo (moduleDescrs,failureCou
             let newModD     =   moduleDescr{mbSourcePathMD = mbfp}
             case parseResult of
                 Right (L _ (HsModule _ _ _ decls _ _ _ _)) -> do
-                    --putStrLn $ "Succeeded to parse " ++ fp ++ " " ++ show (length decls)
                     let map'                =   convertToMap (idDescriptionsMD newModD)
                     let commentedDecls      =   addComments (filterSignatures decls)
                     let (descrs,restMap)    =   foldl collectParseInfoForDecl ([],map')
@@ -329,7 +323,7 @@ collectSourcesForModule session pkgDescr localBuildInfo (moduleDescrs,failureCou
                         idDescriptionsMD    =   reverse descrs ++ concat (Map.elems restMap)}
                     return(newModD' : moduleDescrs, failureCount)
                 Left errMsg -> do
-                    putStrLn $ "Failed to parse " ++ fp
+                    sysMessage Normal $ "Failed to parse " ++ fp
                     printBagOfErrors defaultDynFlags (unitBag errMsg)
                     return (newModD : moduleDescrs, failureCount+1)
     where
@@ -361,7 +355,6 @@ addComments declList = reverse $ snd $ foldl addComment (Nothing,[]) declList
     addComment (maybeComment,resultList) (L srcDecl (DocD (DocGroup i doc))) =
         (Nothing,(((Nothing,Just (printHsDoc doc)): resultList)))
     addComment (maybeComment,resultList) (L srcDecl (DocD (DocCommentNamed str doc))) =
-        trace ("docCommentNamed " ++ str ++ printHsDoc doc)
         (Nothing,resultList)
     addComment (Nothing,resultList) decl =
         (Nothing,(Just decl,Nothing):resultList)
@@ -523,11 +516,10 @@ preprocess fp pkgDescr localBuildInfo =
                         isItTheir <- doesFileExist tempFileName
                         if isItTheir
                             then do
-                                -- putStrLn $ "Succeeded to preprocess " ++ fp
                                 str <- readFile tempFileName
                                 return str
                             else do
-                                putStrLn $ "Failed to preprocess " ++ fp
+                                sysMessage Normal $ "Failed to preprocess " ++ fp
                                 str <- readFile fp
                                 return str
                     else do
@@ -537,7 +529,7 @@ preprocess fp pkgDescr localBuildInfo =
                                 then unlit fp str'
                                 else str'
         return str2)
-        (\e -> do   putStrLn $ "preprocess error " ++ show e ++ " in " ++ fp
+        (\e -> do   sysMessage Normal $ "preprocess throwIDE " ++ show e ++ " in " ++ fp
                     str <- readFile fp
                     return str)
 

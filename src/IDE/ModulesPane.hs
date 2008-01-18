@@ -95,7 +95,7 @@ selectIdentifier'  moduleName symbol =
     let nameArray = breakAtDots [] moduleName
     in do
         mods@(IDEModules _ _ treeView treeStore facetView facetStore _ _ _ _) <- getModules
-        tree            <-  trace "1" $ lift $ New.treeStoreGetTree treeStore []
+        tree            <-  lift $ New.treeStoreGetTree treeStore []
         case treePathFromNameArray tree nameArray [] of
             Just treePath   ->  lift $ do
                 New.treeViewExpandToPath treeView treePath
@@ -103,10 +103,10 @@ selectIdentifier'  moduleName symbol =
                 New.treeSelectionSelectPath sel treePath
                 col         <-  New.treeViewGetColumn treeView 0
                 New.treeViewScrollToCell treeView treePath (fromJust col) (Just (0.3,0.3))
-                facetTree   <-  trace "2" $ New.treeStoreGetTree facetStore []
+                facetTree   <-  New.treeStoreGetTree facetStore []
                 selF        <-  New.treeViewGetSelection facetView
                 case  findPathFor symbol facetTree of
-                    Nothing     ->  trace "no path found" $ return ()
+                    Nothing     ->  sysMessage Normal "no path found"
                     Just path   ->  do
                         New.treeSelectionSelectPath selF path
                         col     <-  New.treeViewGetColumn facetView 0
@@ -158,13 +158,12 @@ getModules = do
             initModules pp nb
             mbMod <- getPane ModulesCasting
             case mbMod of
-                Nothing ->  error "Can't init modules"
+                Nothing ->  throwIDE "Can't init modules"
                 Just m  ->  return m
         Just m ->   return m
 
 initModules :: PanePath -> Notebook -> IDEAction
 initModules panePath nb = do
-    lift $ putStrLn "now init modules"
     ideR        <-  ask
     panes       <-  readIDE panes
     paneMap     <-  readIDE paneMap
@@ -287,8 +286,7 @@ initModules panePath nb = do
         notebookInsertOrdered nb boxOuter (paneName modules)
         widgetShowAll boxOuter
         cid0 <- treeView `New.onStartInteractiveSearch`
-            (do putStrLn "onStartInteractiveSearchNew"
-                New.treeViewExpandAll treeView)
+            (New.treeViewExpandAll treeView)
         cid3 <- treeView `New.onRowActivated`
             (\ treePath _ -> do
                 New.treeViewExpandRow treeView treePath False
@@ -325,7 +323,7 @@ treeViewSearch :: TreeView
 treeViewSearch treeView treeStore _ string iter =  do
     path <- New.treeModelGetPath treeStore iter
     val  <- New.treeStoreGetValue treeStore path
-    tree <- trace "3" $ New.treeStoreGetTree treeStore path
+    tree <- New.treeStoreGetTree treeStore path
     exp  <- New.treeViewRowExpanded treeView path
     when (not (null (subForest tree)) && not exp) $
         let found = searchInSubnodes tree string
@@ -359,7 +357,6 @@ fillFacets treeView tst treeStore = do
                     ((mod,package):_)
                         ->  let forest = buildFacetForrest mod in do
                                 New.treeStoreClear treeStore
-                                --putStrLn $ "Now fill " ++ show (length pairs)
                                 mapM_ (\(e,i) -> New.treeStoreInsertTree treeStore [] i e)
                                             $ zip forest [0 .. length forest]
                     []  -> return ()
@@ -635,7 +632,7 @@ treeViewPopup ideR store treeView (Button _ click _ _ _ _ button _ _) = do
                             otherwise       ->  return ()
                         return True
                 else return False
-treeViewPopup _ _ _ _ = error "treeViewPopup wrong event type"
+treeViewPopup _ _ _ _ = throwIDE "treeViewPopup wrong event type"
 
 facetViewPopup :: IDERef
     -> New.TreeStore FacetWrapper
@@ -652,7 +649,7 @@ facetViewPopup ideR store facetView (Button _ click _ _ _ _ button _ _) = do
                 case sel of
                     Just wrapper    ->  runReaderT
                                             (goToDefinition (facetIdDescr wrapper)) ideR
-                    otherwise       ->  trace "no selection" $ return ()
+                    otherwise       ->  sysMessage Normal "no selection"
             menuShellAppend theMenu item1
             menuPopup theMenu Nothing
             widgetShowAll theMenu
@@ -662,10 +659,10 @@ facetViewPopup ideR store facetView (Button _ click _ _ _ _ button _ _) = do
                         case sel of
                             Just wrapper  -> runReaderT (goToDefinition
                                                 (facetIdDescr wrapper)) ideR
-                            otherwise       ->  trace "no selection" $ return ()
+                            otherwise       ->  sysMessage Normal "no selection"
                         return True
                 else return False
-facetViewPopup _ _ _ _ = error "facetViewPopup wrong event type"
+facetViewPopup _ _ _ _ = throwIDE "facetViewPopup wrong event type"
 
 getScope :: IDEM (Scope,Bool)
 getScope = do
@@ -712,7 +709,7 @@ selectNames (mbModuleName, mbIdName) = do
         Just moduleName ->
             let nameArray = breakAtDots [] moduleName
             in do
-                tree            <-  trace "4" $ lift $ New.treeStoreGetTree treeStore []
+                tree            <-  lift $ New.treeStoreGetTree treeStore []
                 case treePathFromNameArray tree nameArray [] of
                     Nothing         ->  return ()
                     Just treePath   ->  lift $ do
@@ -724,10 +721,10 @@ selectNames (mbModuleName, mbIdName) = do
                         case mbIdName of
                             Nothing -> return ()
                             Just symbol -> do
-                                facetTree   <-  trace "5" $ New.treeStoreGetTree facetStore []
+                                facetTree   <-  New.treeStoreGetTree facetStore []
                                 selF        <-  New.treeViewGetSelection facetView
                                 case  findPathFor symbol facetTree of
-                                    Nothing     ->  trace "no path found" $ return ()
+                                    Nothing     ->  sysMessage Normal "no path found"
                                     Just path   ->  do
                                         New.treeSelectionSelectPath selF path
                                         col     <-  New.treeViewGetColumn facetView 0

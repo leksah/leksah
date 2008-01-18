@@ -71,14 +71,14 @@ instance Pane IDEReplace
     getAddedIndex _ =   0
     getTopWidget    =   castToWidget . replaceBox
     paneId b        =   "*Replace"
-    makeActive p    =   error "don't activate replace bar"
+    makeActive p    =   throwIDE "don't activate replace bar"
     close pane      =   do
         (panePath,_)    <-  guiPropertiesFromName (paneName pane)
         nb              <-  getNotebook panePath
         mbI             <-  lift $notebookPageNum nb (getTopWidget pane)
         case mbI of
             Nothing ->  lift $ do
-                putStrLn "notebook page not found: unexpected"
+                sysMessage Normal "notebook page not found: unexpected"
                 return ()
             Just i  ->  do
                 lift $notebookRemovePage nb i
@@ -122,7 +122,7 @@ getReplace' = do
             initReplace pp nb emptyReplaceState
             mbReplace <- getPane ReplaceCasting
             case mbReplace of
-                Nothing ->  error "Can't init replace pane"
+                Nothing ->  throwIDE "Can't init replace pane"
                 Just m  ->  return m
         Just m ->   return m
 

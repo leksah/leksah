@@ -36,6 +36,7 @@ import Data.Map (Map)
 import qualified Data.Map as Map
 import Data.Unique
 
+import IDE.Core.Exception
 import IDE.Framework.Parameters
 import IDE.Framework.EditorBasics
 
@@ -76,7 +77,7 @@ mkField parameters getter setter editor =
                     Just _ -> do
                         return False
                     Nothing -> do
-                        putStrLn "Validation Failure"
+                        sysMessage Normal "Validation Failure"
                         let message = case getParameterPrim paraName parameters of
                                         Just s -> "in field " ++ s
                                         Nothing -> "in unnamed field"
@@ -178,7 +179,7 @@ declareEvent eventSel regFunc notifierState = do
         Nothing -> do
              let noti2 = Map.insert eventSel (Nothing, regFunc, Nothing,[]) noti
              writeIORef notifierState noti2
-        Just _ -> error $"editor has already declared event " ++ show eventSel
+        Just _ -> throwIDE $"editor has already declared event " ++ show eventSel
 
 --
 -- | Activate the event after the widget has been constructed
@@ -187,7 +188,7 @@ activateEvent :: Widget -> EventSelector -> NotifierSt -> IO()
 activateEvent widget eventSel notifierState = do
     noti <- readIORef notifierState
     case Map.lookup eventSel noti of
-        Nothing -> error $"editor has not declared event before activating it " ++ show eventSel
+        Nothing -> throwIDE $"editor has not declared event before activating it " ++ show eventSel
         Just (Nothing,registerFunc,Nothing,handlers) -> do
             cid <- registerFunc widget (\ e -> do
                 noti <- readIORef notifierState
@@ -199,7 +200,7 @@ activateEvent widget eventSel notifierState = do
                         return (foldl (&&) True boolList))
             let noti2 = Map.insert eventSel (Just widget,registerFunc,Just cid,handlers) noti
             writeIORef notifierState noti2
-        Just _ -> error $"editor has already been activated " ++ show eventSel
+        Just _ -> throwIDE $"editor has already been activated " ++ show eventSel
 
 --
 -- | Propagate the event with the selector from notifier to notifierst
@@ -208,7 +209,7 @@ propagateEvent :: EventSelector -> Notifier -> NotifierSt -> IO()
 propagateEvent eventSel notiFrom notifierState = do
     noti <- readIORef notifierState
     case Map.lookup eventSel noti of
-        Nothing -> error $"can't propagte event which is not activated " ++ show eventSel
+        Nothing -> throwIDE $"can't propagte event which is not activated " ++ show eventSel
         Just (mbWidget,registerFunc,Nothing,handlers) -> do
             cid <- notiFrom eventSel (Left (\ e -> do
                 noti <- readIORef notifierState
@@ -220,7 +221,7 @@ propagateEvent eventSel notiFrom notifierState = do
                         return (foldl (&&) True boolList)))
             let noti2 = Map.insert eventSel (mbWidget,registerFunc,Nothing,handlers) noti
             writeIORef notifierState noti2
-        Just _ -> error $"editor has already been activated " ++ show eventSel
+        Just _ -> throwIDE $"editor has already been activated " ++ show eventSel
 
 --
 -- | Constructor for a notifier
@@ -233,9 +234,9 @@ mkNotifier notifierState = notFunc
         noti <- readIORef notifierState
         uni <- newUnique
         case Map.lookup eventSel noti of
-            Nothing -> error $"editor does not support event " ++ show eventSel
+            Nothing -> throwIDE $"editor does not support event " ++ show eventSel
             Just (Just widget,registerFunc,Nothing,handlers)
-                    -> error $"mkNotifier for activated event" ++ show eventSel
+                    -> throwIDE $"mkNotifier for activated event" ++ show eventSel
             Just (mbWidget, registerFunc, mbUnique, handlers)
                     -> do   unique <- newUnique
                             let noti2 = Map.insert eventSel
@@ -245,7 +246,7 @@ mkNotifier notifierState = notFunc
     notFunc eventSel (Right uni) = do
         noti <- readIORef notifierState
         case Map.lookup eventSel noti of
-            Nothing -> error $"editor does not support event " ++ show eventSel
+            Nothing -> throwIDE $"editor does not support event " ++ show eventSel
             Just (mbWidget,regFunc,Just cid,l) -> do
                 let l2 = filter (\(u,_) -> u /= uni) l
                 if null l2
