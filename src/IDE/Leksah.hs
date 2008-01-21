@@ -127,7 +127,7 @@ runMain = handleTopExceptions $do
 
 startGUI :: IO ()
 startGUI = do
-    st          <-  initGUI
+    st          <-  unsafeInitGUIForThreadedRTS --initGUI
     when rtsSupportsBoundThreads
         (sysMessage Normal "Linked with -threaded")
     timeoutAddFull (yield >> return True) priorityHigh 50

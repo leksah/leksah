@@ -159,25 +159,14 @@ packageBuild = do
                                                 ++ buildFlags package)
                 oid <- forkIO (readOut log out)
                 eid <- forkIO (runReaderT (readErrForBuild log err) ideR)
-                forkIO (rebuild pid ideR)
+                forkOS (rebuild pid ideR)
                 return ()
     where
         rebuild pid ideR     =   do
-            res <- do   threadDelay 50
-                        tryRebuild pid ideR
-            if not res
-                then rebuild pid ideR
-                else return ()
-        tryRebuild pid ideR = do
-            res <- getProcessExitCode pid
-            case res of
-                Nothing -> return False
-                Just _ -> do
-                    sysMessage Normal "About to build Active Info"
-                    runReaderT buildActiveInfo ideR
-                    sysMessage Normal "After building Active Info"
-                    return True
-
+                waitForProcess pid
+                sysMessage Normal "About to build Active Info"
+                runReaderT buildActiveInfo ideR
+                sysMessage Normal "After building Active Info"
 
 packageDoc :: IDEAction
 packageDoc = do
