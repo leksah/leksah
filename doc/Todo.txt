@@ -1,149 +1,58 @@
 Version 0.1
 
-ok    -   Candy bug      --Candy without char (notebook)
-!!      -   Reappeared  exists
-ok    -   Project Flags
+Development
 
-!!    -   Cabal Editor    "Change"
-
-ok    -   Activate Pane switching Bug
-ok          Save as geht nicht?!
-ok          Close geht nicht richtig!
-
-~~    -   GTK Warnings
-~        GTK-Errors:
-ok    -   Revert / Filechage detection
-ok    -   Map.! exception
-ok   -   Replace ohne Glade
-ok   -   Replace ohne warp
-ok    -   Find verbessern
-ok    -   Populate Statusbar, Toolbar
-
-ok     change types of activePane from
-            Maybe (GhfPane,Connections) to Maybe (String,Connections)
-ok      change types of paneMap from
-            Map GhfPane (PanePath, [ConnectId Widget]) to
-            Map String (PanePath, Connections)
-
-~~  -   putStrLn in message ...
-
-ok    -   Source markers for error messages
-ok    -   Double click for error messages
+      -   Cabal Editor with Configurations (etc..)    "Change"
       -   1 page Documentation
+      -   Callers Pane
+      -   Provide a useful default configuration
+      -   One Cabal file with configurations
+      -   Try it with ghc 6.8.2
 
-ok    -   Exception handling !!! (Ghc errors, Ghf errors) see haddock
+      -   Populate Toolbar
+      -   Populate Keystrokes
+      -   Make nice icons for sorts of haskell expressions
+      -   Build only one time - Cancel build
+      -   Source collector only one time - Make it run in background
+      -   Preferences embedden
+      -   
+      -   Navigation from info pane (maybe to Version 0.2)
+      -   Search in interface tree
 
+Bugs
+      -   Candy bug   (e.g. exists)
+      -   Activate Pane switching
+      -   GTK Warning at start
 
-Open problems:
-Editor
-ok  -   Clipboard binding (gtk)
-ok  -   Remove Error mark
-    -   Opening more then one editor of the same file does not use the same model
-
-
-ok  -   Project Tree Window
-ok  -   Types
-defer  -   Completion
-ok  -   Find implementor
-ok  -   Find callers
-
-
-Version 0.2 ++
-
-
-
-Version 0.x
-
-    -   Editor; Highliting according to file type
-    -   Editor Templates for new files
-    -   Properties of single editor (no highlight, no candy,...)
-
-    -   darcs
-    -   Interpreter / Debugger
-...
-
-Version 0.9
-    -   Plugins
-
-
-Bug List
-01  -   Revert on close reappears...
-02  -   <ctrl><alt>r does not work for PackageRun
-done 03a -   Find and FindNext unterscheiden
-done 03  -   Delete Text on Find(Next?) in the Box for new searchessrc/Ghf/SourceEditor.hs:961:4: Not in scope: `mainGui'
-04  -   Horizontal centering for errors in source editor
-05  -   (ghf:5795): GtkSourceView-CRITICAL **: gtk_source_undo_manager_modified_changed_handler: assertion `um-> priv-> modified_action == NULL' failed
-done 06  -   Closing closes all windows (exept of log) but then stops Sporadically
-07  -   (Windows only) Log waits every line for timeout before displaying
-done 08  -   Dialogs closing with X dont run mainQuit and next Dialog won't open
-09  -   Error message positioning
-10  -   Changed red color not preserved when moving panes
-11  -   Crashes when error is at the end of the file
-
-        Can't find pane from unique name
+      -   Revert on close (2 times even)
+      -   <ctrl><alt>r does not work for PackageRun
+      -   Horizontal centering for errors in source editor
+      -   (Windows only) Gtk runs out of memory and does not displayx correctly ???
+            _win32_scaled_font_set_world_transform: Für diesen Befehl ist nicht genügend Speicher verfügbar.
+            Doesn't happen with Raleigh Theme in Gtk2Hs\etc\gtk-2.0
+      -   Changed red color not preserved when moving panes
+      -
+      -   Collector: No reexported declarations.
+      -   Collector: Getting Instances types right
+      -   Functional dependencies in class
+      -   support for GADTS
+      -   empty lines in shift left/right
+      -   Reverse order source collector bug
 
 
+Version 0.2
 
+      -   Completion
+      -   Search
+      -   Class Hiearchy pane
+      -   Editor; Highliting according to file type
+      -   Editor Templates for new files
+      -   Properties of single editor (no highlight, no candy,...)
+      -   Haddock (deferr to Haddock 2.0)
+      -   Generic record editor
+      
+      -   Implementing event concept (from Thorsten)
+      -   Using find in sources without location
 
-----------------------
-Collector
-.hi
-- Instances
-- Imported ...
-
-- Using Type var bindings in data, type and class
-- Functional dependencies in class
-- Strictness in data
-- Re from classOp to class
-- support for GADTS
-
-
-
----------------------------------------------------------------------------
-Collector:
-
-
-
-01  -   Problem with reexported declarations. Hidden modules are not correct.
-        For example time
-
-Current work plan
-
-ok  - Scanning non installed packages
-ok  - Scanning for 6.8!!
-ok  - Administration of package infos and symbol tables
-ok  - Optimize storing and reading (binary, byteString)
-ok  - make something after an external process finishes
-
-
-ok  - New Pane for info
-
-ok  - Selecting the right from a multitude of possibilities
-
-ok  - Tree Views
-
-~   - Haddock deferr to Haddock 2.0
-
-    - Implementing event concept from Thorsten
-
-ok  - Parsing of source packages
-
-now - Simple version which finds the files and finds then the definition in the files
-      without Parsing
-
-ok  - get rid of second executable and make collector accessible from ghf command line
-
-
-    - empty lines in shift left/right
-
----------------------------------------------------------------------------
-Haddock:
-
-!!! - Scanning for Haddock Documentation
-
----------------------------------------------------------------------------
-Make find usable again
-ok - Info pane for multiple finds fold
-Reverse order source bug???
 
 

@@ -138,7 +138,6 @@ initInfo panePath nb idDescrs index = do
             boxPackStart bb moduB PackNatural 0
             boxPackStart bb usesB PackNatural 0
             boxPackStart bb docuB PackNatural 0
-            boxPackStart bb usesB PackNatural 0
             boxPackStart bb label PackNatural 0
             boxPackStart bb nextB PackNatural 0
             boxPackStart bb prevB PackNatural 0

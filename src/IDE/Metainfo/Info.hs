@@ -127,6 +127,14 @@ buildCurrentInfo depends = do
                     modifyIDE_ (\ide -> return (ide{currentInfo = Just (active, scope)}))
 
 --
+-- | Builds the current info for the activePackage in the background
+--
+--operateBuild :: IDEAction
+
+
+
+
+--
 -- | Builds the current info for the activePackage
 --
 buildActiveInfo :: IDEAction
