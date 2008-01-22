@@ -46,7 +46,7 @@ import System.FilePath
 import Control.Concurrent
 import System.Directory
 import System.IO
-import System.Process
+--import System.Process
 import Prelude hiding (catch)
 import Text.ParserCombinators.Parsec.Language
 import qualified Text.ParserCombinators.Parsec.Token as P
@@ -91,7 +91,7 @@ activatePackage filePath = do
             then lift $readFlags (ppath </> "IDE.flags") packp
             else return packp)
     modifyIDE_ (\ide -> return (ide{activePack = (Just pack)}))
-    buildCurrentInfo (buildDepends packageD)
+    (buildCurrentInfo (buildDepends packageD)) :: IDEAction
     sb <- getSBActivePackage
     lift $statusbarPop sb 1
     lift $statusbarPush sb 1 (showPackageId $packageId pack)
@@ -159,14 +159,7 @@ packageBuild = do
                                                 ++ buildFlags package)
                 oid <- forkIO (readOut log out)
                 eid <- forkIO (runReaderT (readErrForBuild log err) ideR)
-                forkOS (rebuild pid ideR)
-                return ()
-    where
-        rebuild pid ideR     =   do
-                waitForProcess pid
-                sysMessage Normal "About to build Active Info"
-                runReaderT buildActiveInfo ideR
-                sysMessage Normal "After building Active Info"
+                runReaderT (rebuildInBackground (Just pid)) ideR
 
 packageDoc :: IDEAction
 packageDoc = do

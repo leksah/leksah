@@ -2,11 +2,10 @@ Version 0.1
 
 Development
 
-      -   Cabal Editor with Configurations (etc..)    "Change"
       -   1 page Documentation
       -   Callers Pane
-      -   Provide a useful default configuration
-      -   One Cabal file with configurations
+start -   Provide a useful default configuration
+start -   One Cabal file with configurations
       -   Try it with ghc 6.8.2
 
       -   Populate Toolbar
@@ -18,6 +17,8 @@ Development
       -
       -   Navigation from info pane (maybe to Version 0.2)
       -   Search in interface tree
+      -   Cabal Editor with Configurations (etc..)    "Change"
+      -   First start feature
 
 Bugs
       -   Candy bug   (e.g. exists)
@@ -38,7 +39,7 @@ maybe ok      -   Functional dependencies in class
 maybe ok      -   support for GADTS
       -   empty lines in shift left/right
       -   Reverse order source collector bug
-
+      -   Sort field in Info Pane doesn't work
 
 Version 0.2
 

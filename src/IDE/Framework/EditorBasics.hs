@@ -29,6 +29,8 @@ module IDE.Framework.EditorBasics (
 import Graphics.UI.Gtk --hiding (Event)
 import Data.Unique
 
+import Graphics.UI.Gtk --hiding (Event)
+
 import IDE.Framework.Parameters
 
 -- ---------------------------------------------------------------------
@@ -61,7 +63,7 @@ type Extractor beta    =   IO(Maybe (beta))
 --    event :: a -> Event
 
 --
--- | A type for handling an event
+-- | A type for handling an IO event
 -- Returning True: The event has been handles
 -- Returning False: Handling should proceed
 type Handler        =   Event  -> IO Bool

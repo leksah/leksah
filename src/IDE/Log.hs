@@ -191,6 +191,12 @@ getLog' = do
                 Just l  ->  return l
         Just p -> return p
 
+simpleLog :: String -> IDEAction
+simpleLog str = do
+    log :: IDELog <- getLog
+    lift $ appendLog log str LogTag
+    return ()
+
 appendLog' :: IDELog -> String -> LogTag -> IO Int
 appendLog' l@(IDELog tv _) string tag = do
     buf <- textViewGetBuffer tv

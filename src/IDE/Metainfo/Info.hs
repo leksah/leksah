@@ -15,21 +15,11 @@
 ---------------------------------------------------------------------------------
 
 module IDE.Metainfo.Info (
-    initInfo
-,   loadAccessibleInfo
-,   updateAccessibleInfo
-
-,   clearCurrentInfo
-,   buildCurrentInfo
-,   buildActiveInfo
-,   buildSymbolTable
-
-,   getIdentifierDescr
-
+--,   buildActiveInfo
+    InfoAction(..)
+,    getIdentifierDescr
 ,   getInstalledPackageInfos
 ,   findFittingPackages
-,   findFittingPackagesDP
-
 ,   asDPid
 ,   fromDPid
 
@@ -57,28 +47,48 @@ import Data.Set (Set)
 import qualified Data.Set as Set
 import Data.Map (Map)
 import Data.ByteString.Char8 (ByteString)
-
-
+import System.Process(ProcessHandle,getProcessExitCode)
+import System.Glib.MainLoop(timeoutAddFull,priorityDefaultIdle)
+import Control.Monad.Reader(runReaderT,ask)
+import Control.Concurrent
 
 
 import IDE.Utils.DeepSeq
 import IDE.Utils.File
 import IDE.Core.State
 import {-# SOURCE #-} IDE.Metainfo.InterfaceCollector
---import IDE.Extractor
+
+class InfoAction alpha where
+    -- | Update and initialize metadata for the world
+    initInfo            ::   alpha
+    -- | Builds the current info for a package
+    -- Called when a package gets active
+    buildCurrentInfo    ::   [Dependency] -> alpha
+    -- | Builds the current info for the activePackage in the background.
+    -- If a process handle is given, it waits for this process to finish before building
+    -- Called after a build
+    rebuildInBackground ::   Maybe ProcessHandle -> alpha
+    -- | Manually rebuild current info from menu
+    buildActiveInfo     ::   alpha
+
+instance InfoAction IDEAction where
+    initInfo            =   initInfo'
+    buildCurrentInfo    =   buildCurrentInfo'
+    rebuildInBackground =   rebuildInBackground'
+    buildActiveInfo     =   buildActiveInfo'
 
 --
--- | Update and initialize metadata
+-- | Update and initialize metadata for the world
 --
-initInfo :: IDEAction
-initInfo = do
+initInfo' :: IDEAction
+initInfo' = do
     session' <- readIDE session
     let version     =   cProjectVersion
     lift $ sysMessage Normal "Now updating metadata ..."
     lift $ collectInstalled False session' version False
     lift $ sysMessage Normal "Now loading metadata ..."
     loadAccessibleInfo
-    lift $ sysMessage Normal "Finished loding ..."
+    lift $ sysMessage Normal "Finished loading ..."
 
 --
 -- | Load all infos for all installed and exposed packages
@@ -108,13 +118,13 @@ clearCurrentInfo = do
 --
 -- | Builds the current info for a package
 --
-buildCurrentInfo :: [Dependency] -> IDEAction
-buildCurrentInfo depends = do
+buildCurrentInfo' :: [Dependency] -> IDEAction
+buildCurrentInfo' depends = do
     session'            <-  readIDE session
     fp                  <-  lift $findFittingPackages session' depends
-    mbActive            <-  buildActiveInfo'
+    mbActive            <-  loadActiveInfo
     case mbActive of
-        Nothing         -> modifyIDE_ (\ide -> return (ide{currentInfo = Nothing}))
+        Nothing         ->  modifyIDE_ (\ide -> return (ide{currentInfo = Nothing}))
         Just active     -> do
             accessibleInfo'     <-  readIDE accessibleInfo
             case accessibleInfo' of
@@ -128,22 +138,44 @@ buildCurrentInfo depends = do
 
 --
 -- | Builds the current info for the activePackage in the background
+--   If a process handle is given, it waits for this process to finish before building
 --
---operateBuild :: IDEAction
-
-
+rebuildInBackground' :: Maybe ProcessHandle -> IDEAction
+rebuildInBackground' mbHandle = do
+    ideR <- ask
+    lift $ do
+        timeoutAddFull (myRebuild ideR) priorityDefaultIdle 500
+        return ()
+    where
+        myRebuild :: IDERef -> IO Bool
+        myRebuild ideR =
+            case mbHandle of
+                Just hdl -> do
+                    mbExitCode  <-  getProcessExitCode hdl
+                    case mbExitCode of
+                        --process not finished, wait for next call
+                        Nothing ->  return True
+                        Just _  ->  doIt ideR
+                Nothing -> doIt ideR
+        doIt :: IDERef -> IO Bool
+        doIt ideR = do
+                forkIO $ do
+                    sysMessage Normal "About to build Active Info"
+                    runReaderT buildActiveInfo' ideR
+                    sysMessage Normal "After building Active Info"
+                return False
 
 
 --
 -- | Builds the current info for the activePackage
 --
-buildActiveInfo :: IDEAction
-buildActiveInfo = do
+buildActiveInfo' :: IDEAction
+buildActiveInfo' = do
     currentInfo         <-  readIDE currentInfo
     case currentInfo of
         Nothing                 -> return ()
         Just (active, scope)    -> do
-            newActive   <-  buildActiveInfo'
+            newActive   <-  buildActiveInfo2
             case newActive of
                 Nothing         -> return ()
                 Just newActive  ->
@@ -151,10 +183,30 @@ buildActiveInfo = do
 
 
 --
+-- | Loads the current info for the activePackage
+--
+loadActiveInfo :: IDEM (Maybe PackageScope)
+loadActiveInfo =
+    let version         =   cProjectVersion in do
+    activePack          <-  readIDE activePack
+    session             <-  readIDE session
+    case activePack of
+        Nothing         ->  return Nothing
+        Just idePackage ->  do
+            collectorPath   <-  lift $ getCollectorPath cProjectVersion
+            packageDescr    <-  lift $ loadInfosForPackage collectorPath
+                                            (packageId idePackage)
+            case packageDescr of
+                Nothing     -> return Nothing
+                Just pd     -> do
+                    let scope       =   buildScope pd (Map.empty,Map.empty)
+                    return (Just scope)
+
+--
 -- | Builds the current info for the activePackage
 --
-buildActiveInfo' :: IDEM (Maybe PackageScope)
-buildActiveInfo' =
+buildActiveInfo2 :: IDEM (Maybe PackageScope)
+buildActiveInfo2 =
     let version         =   cProjectVersion in do
     activePack          <-  readIDE activePack
     session             <-  readIDE session
@@ -171,6 +223,7 @@ buildActiveInfo' =
                 Just pd     -> do
                     let scope       =   buildScope pd (Map.empty,Map.empty)
                     return (Just scope)
+
 
 --
 -- | Updates the world info (it is the responsibility of the caller to rebuild
@@ -284,6 +337,7 @@ findFittingPackagesDP :: Session -> [Dependency] -> IO  [PackageIdentifier]
 findFittingPackagesDP session dependencyList =  do
         fp <- (findFittingPackages session dependencyList)
         return fp
+
 
 asDPid :: PackageIdentifier -> DP.PackageIdentifier
 asDPid (PackageIdentifier name version) = DP.PackageIdentifier name version

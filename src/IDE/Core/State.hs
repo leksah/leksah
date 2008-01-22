@@ -55,14 +55,36 @@ import IDE.Core.Exception
 import IDE.SourceCandy
 import IDE.Keymap
 
-
 ideMessage :: MessageLevel -> String -> IDEAction
 ideMessage level str = do
 --    log <- getLog
 --    appendLog log str LogTag
     lift $ sysMessage level str
 
-class IDEObject o
+data IDEEvent alpha =
+        ActivatePackage (alpha Package)
+    |   DeactivatePackage (alpha Package)
+
+eventAsSelector :: Event Maybe -> Event ()
+eventAsSelector ActivatePackage _ = ActivatePackage ()
+eventAsSelector DeactivatePackage _ = DeactivatePackage ()
+
+
+class IDEObject o where
+    canTriggerEvent :: IDEEvent () -> Bool
+    canTriggerEvent e   =   False
+    triggerEvent :: IDEM (IDEEvent Maybe)
+    triggerEvent e      =   do
+        handlerMap      <-  readIDE handlers
+        let selector    =   eventAsSelector e
+        case selector `Map.lookup` handlerMap of
+            Nothing -> return ()
+            Just h  -> mapM_ (\ah -> ah e) h
+    registerEvent   :: IDEEvent () -> Either (IDEEvent Maybe -> IDEAction) Unique -> IDE Unique
+    registerEvent e (Left handler) =   do
+        handlerMap      <-  readIDE handlers
+
+
 class IDEObject o => IDEPaneC o
 class IDEObject o => IDEEditor o
 
@@ -95,6 +117,8 @@ data IDE            =  IDE {
                                                 --the second is the scope in the current package
 ,   session         ::  Session                  -- ^ a ghc session object, side effects
                                                 -- reusing with sessions?
+,   handlers        ::  Map (IDEEvent ()) [(Unique, IDEEvent Maybe -> IDEAction)]
+                                                -- ^ event handling table
 } --deriving Show
 
 --

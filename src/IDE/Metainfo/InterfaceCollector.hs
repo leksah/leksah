@@ -122,8 +122,6 @@ collectInstalled writeAscii session version forceRebuild = do
                        (fromIntegral   (modulesWithSource statistic)) * 100.0)):: Integer)
     mapM_ (writeExtracted collectorPath writeAscii) extracted'
 
-
-
 collectUninstalled :: Bool -> Session -> String -> FilePath -> IO ()
 collectUninstalled writeAscii session version cabalPath = do
     pd                  <-  readPackageDescription normal cabalPath
@@ -154,7 +152,6 @@ collectUninstalled writeAscii session version cabalPath = do
     sysMessage Normal $ "\nExtracted infos for " ++ cabalPath
 
 -------------------------------------------------------------------------
-
 
 getIFaceInfos :: PackageId -> [String] -> Session -> IO [(ModIface, FilePath)]
 getIFaceInfos pckg modules session =
@@ -414,6 +411,7 @@ writeExtracted dirPath writeAscii pd = do
     if writeAscii
         then writeFile (filePath ++ "dpg") (show pd)
         else encodeFile filePath pd
+
 
 
 

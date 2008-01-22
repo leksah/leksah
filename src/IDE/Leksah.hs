@@ -127,10 +127,11 @@ runMain = handleTopExceptions $do
 
 startGUI :: IO ()
 startGUI = do
-    st          <-  unsafeInitGUIForThreadedRTS --initGUI
+    sysMessage Normal "Now starting GUI"
+    st          <-  initGUI
     when rtsSupportsBoundThreads
         (sysMessage Normal "Linked with -threaded")
-    timeoutAddFull (yield >> return True) priorityHigh 50
+    timeoutAddFull (yield >> return True) priorityHigh 25
     mapM_ (sysMessage Normal) st
     uiManager   <-  uiManagerNew
     prefsPath   <-  getConfigFilePathForLoad "Default.prefs"
@@ -177,7 +178,7 @@ startGUI = do
           ,   currentInfo   =   Nothing
           ,   session       =   session}
     ideR        <-  newIORef ide
-    runReaderT initInfo ideR
+    runReaderT (initInfo :: IDEAction) ideR
     (acc,menus) <-  runReaderT (makeMenu uiManager accelActions menuDescription) ideR
     let mb      =   case menus !! 0 of
                         Just m  ->  m
@@ -189,7 +190,6 @@ startGUI = do
     vb          <-  vBoxNew False 1  -- Top-level vbox
     widgetSetName vb "topBox"
     boxPackStart vb mb PackNatural 0
-    --boxPackStart vb tb PackNatural 0
     boxPackStart vb nb PackGrow 0
     boxPackEnd vb statusBar PackNatural 0
     win `onDelete` (\ _ -> do runReaderT quit ideR; return True)

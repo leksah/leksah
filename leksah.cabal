@@ -61,9 +61,9 @@ other-modules: IDE.Utils.Default
 ghc-prof-options:
 ghc-shared-options:
 if impl(ghc >=  6.8) {
-ghc-options: -cpp -D__GHC__=680 -D_Newgtk -fwarn-unused-imports -fwarn-missing-fields -fwarn-incomplete-patterns -threaded
+ghc-options: -cpp -D__GHC__=680 -D_Newgtk -fwarn-unused-imports -fwarn-missing-fields -fwarn-incomplete-patterns
 } else {
-ghc-options: -cpp -D__GHC__=660 -D_Newgtk -fwarn-unused-imports -fwarn-missing-fields -fwarn-incomplete-patterns -threaded
+ghc-options: -cpp -D__GHC__=660 -D_Newgtk -fwarn-unused-imports -fwarn-missing-fields -fwarn-incomplete-patterns
 }
 hugs-options:
 nhc98-options:
