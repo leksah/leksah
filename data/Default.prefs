@@ -2,7 +2,7 @@
 Show line numbers:
                True
      --(True/False)
-TextView Font: "Monospace"
+TextView Font: ""
 Right margin:  96
      --Size or 0 for no right margin
 Tab width:     4
@@ -11,10 +11,16 @@ Use standard line ends even on windows:
 Source candy:  Default
      --Empty for do not use or the name of a candy file in a config dir
 Name of the keymap:
-               Emacs
+               Default
      --The name of a keymap file in a config dir
-LogView Font:  "FreeSerif 11"
+LogView Font:  ""
 Window default size:
                (800,800)
      --Default size of the main ghf window specified as pair (int,int)
 Browser:       "firefox"
+Standard source editor path:
+               LeftTop
+Paths under which haskell sources for packages may be found:
+               []
+Packages which are excluded from the modules pane:
+               [Dependency "ghc" AnyVersion]

@@ -15,14 +15,14 @@ Development
       -   Build only one time - Cancel build
       -   Source collector only one time - Make it run in background
       -   Preferences embedden
-      -   
+      -
       -   Navigation from info pane (maybe to Version 0.2)
       -   Search in interface tree
 
 Bugs
       -   Candy bug   (e.g. exists)
       -   Activate Pane switching
-      -   GTK Warning at start
+ok    -   GTK Warning at start
 
       -   Revert on close (2 times even)
       -   <ctrl><alt>r does not work for PackageRun
@@ -34,8 +34,8 @@ Bugs
       -
       -   Collector: No reexported declarations.
       -   Collector: Getting Instances types right
-      -   Functional dependencies in class
-      -   support for GADTS
+maybe ok      -   Functional dependencies in class
+maybe ok      -   support for GADTS
       -   empty lines in shift left/right
       -   Reverse order source collector bug
 
@@ -50,7 +50,7 @@ Version 0.2
       -   Properties of single editor (no highlight, no candy,...)
       -   Haddock (deferr to Haddock 2.0)
       -   Generic record editor
-      
+
       -   Implementing event concept (from Thorsten)
       -   Using find in sources without location
 

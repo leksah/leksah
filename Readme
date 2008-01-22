@@ -1,0 +1,34 @@
+Leksah, an Integrated Development Environment for Haskell
+=========================================================
+
+This is Leksah, a hopefully practical tool to support the Haskell development process.
+The development has been started because no such tools were available at this time.
+
+The development of an IDE is a big issue, so Ghf is intended to become a
+community project and everyone is invited to contribute.
+
+If you are a user or just test Ghf, we would appreciate to here from you
+and problems and wishes for Ghf.
+
+Ghf uses GTK+ as GUI Toolkit with the gtk2hs binding. It is plattform independend
+and should run on any plattform where GTK+, gtk2hs and ghc can be installed.
+It is currently been tested on Windows and Linux. It uses the Cabal package management
+and build system for Package Management.
+It currently only supports the Glasgow Haskell Compiler (ghc).
+
+Documentation can be found in the doc/ subdirectory.
+
+Please send questions and suggestions to me:
+
+Jutaro <jnf@arcor.de>
+
+
+System Requirements
+===================
+
+Haddock currently requires GHC version 6.6 or 6.8 to compile.
+
+
+
+
+
