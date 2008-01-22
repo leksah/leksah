@@ -1,0 +1,71 @@
+name: leksah
+version: 0.1
+cabal-version: >= 1.2
+build-type: Custom
+license: GPL
+license-file: gpl.txt
+copyright: 2007 Juergen Nicklisch-Franken
+maintainer: Juergen Nicklisch-Franken
+stability: provisional
+homepage:
+package-url:   code.haskell.org/leksah
+synopsis: Genuine Haskell Face
+description: An Integrated Development Environment for Haskell written in Haskell.
+category: Tools
+author: Jutaro (Juergen Nicklisch-Franken)
+data-files: data/Default.candy data/Default.keymap
+            data/Default.prefs data/Emacs.keymap data/leksah.gif
+            data/Current.session
+extra-source-files: Setup.lhs
+extra-tmp-files:
+Executable leksah {
+if impl(ghc >=  6.8) {
+    build-depends: base >=2.1, filepath >=1.0, Cabal >=1.1.6.2,
+                   parsec >=2.0, mtl >=1.0.1, process >=1.0, old-time >=1.0,
+                   containers >=0.1, pretty >=1.0, directory >=1.0, gtk >=0.9.12,
+                   glib >=0.9.12, sourceview >=0.9.12, ghc -any, binary -any,
+                   bytestring -any
+} else {
+    build-depends: base >=2.1, filepath >=1.0,Cabal >=1.2.0, parsec >=2.0,
+                   mtl >=1.0.1, gtk >=0.9.12, glib >=0.9.12,
+                   sourceview >=0.9.12, ghc
+}
+main-is: Main.hs
+buildable: True
+build-tools:
+cpp-options:
+cc-options:
+ld-options:
+pkgconfig-depends:
+frameworks:
+c-sources:
+extensions:
+extra-libraries:
+extra-lib-dirs:
+includes:
+install-includes:
+include-dirs:
+hs-source-dirs: src
+other-modules: IDE.Utils.Default
+               IDE.BuildInfoEditor IDE.CallersPane
+               IDE.DescriptionPP IDE.Utils.File IDE.FindPane IDE.Leksah IDE.Metainfo.Info
+               IDE.InfoPane IDE.Metainfo.InterfaceCollector IDE.Keymap
+               IDE.Log IDE.Menu IDE.ModulesPane IDE.Package IDE.PackageEditor
+               IDE.PackageFlags IDE.Preferences IDE.PrinterParser
+               IDE.ReplacePane IDE.RecoverPanes IDE.SaveSession IDE.SourceCandy
+               IDE.Metainfo.SourceCollector IDE.SourceEditor IDE.SpecialEditors
+               IDE.ToolbarPane IDE.Framework.ViewFrame IDE.Core.Exception IDE.Core.Panes
+               IDE.Core.State IDE.Core.Types IDE.Utils.DeepSeq
+               IDE.Framework.CompositeEditors IDE.Framework.EditorBasics IDE.Framework.MakeEditor
+               IDE.Framework.Parameters IDE.Framework.SimpleEditors
+ghc-prof-options:
+ghc-shared-options:
+if impl(ghc >=  6.8) {
+ghc-options: -cpp -D__GHC__=680 -D_Newgtk -fwarn-unused-imports -fwarn-missing-fields -fwarn-incomplete-patterns -threaded
+} else {
+ghc-options: -cpp -D__GHC__=660 -D_Newgtk -fwarn-unused-imports -fwarn-missing-fields -fwarn-incomplete-patterns -threaded
+}
+hugs-options:
+nhc98-options:
+jhc-options:
+}
