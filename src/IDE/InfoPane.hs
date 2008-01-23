@@ -37,6 +37,7 @@ import IDE.SourceEditor
 import {-# SOURCE #-} IDE.ModulesPane
 import IDE.CallersPane
 
+instance IDEObject IDEInfo
 
 instance Pane IDEInfo
     where
@@ -215,7 +216,7 @@ gotoSource :: IDEAction
 gotoSource = do
     mbInfo <- getInfoCont
     case mbInfo of
-        Nothing     ->  do  lift $ sysMessage Normal "gotoSource:noDefition"
+        Nothing     ->  do  ideMessage Normal "gotoSource:noDefition"
                             return ()
         Just info   ->  do  goToDefinition info
                             return ()

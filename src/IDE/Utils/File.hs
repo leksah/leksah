@@ -11,10 +11,6 @@ module IDE.Utils.File (
 ,   moduleNameFromFilePath
 ,   findKnownPackages
 ,   isSubPath
-
-,   readOut
-,   readErr
-,   runExternal
 ,   findSourceFile
 
 ) where
@@ -29,16 +25,14 @@ import qualified Text.ParserCombinators.Parsec.Token as P
 import Text.ParserCombinators.Parsec.Language(haskell,haskellDef)
 import Data.Maybe (catMaybes)
 import Distribution.Simple.PreProcess.Unlit
---import Debug.Trace
 import Control.Monad
 import qualified Data.List as List
-import Paths_leksah
 import qualified Data.Set as Set
 import Data.Set (Set)
 import Data.List(isSuffixOf, isPrefixOf)
 
+import Paths_leksah
 import IDE.Core.State
-import {-# SOURCE #-} IDE.Log
 
 -- | Returns True if the second path is a location which starts with the first path
 isSubPath :: FilePath -> FilePath -> Bool
@@ -245,43 +239,7 @@ getSysLibDir = do
     waitForProcess pid
     return (normalise libDir2)
 
--- Spawning external processes
 
-readOut :: IDELog -> Handle -> IO ()
-readOut log hndl =
-     catch (readAndShow)
-       (\e -> do
-        --appendLog log ("----------------------------------------\n") FrameTag
-        hClose hndl
-        return ())
-    where
-    readAndShow = do
-        line <- hGetLine hndl
-        appendLog log (line ++ "\n") LogTag
-        readAndShow
-
-readErr :: IDELog -> Handle -> IO ()
-readErr log hndl =
-     catch (readAndShow)
-       (\e -> do
-        hClose hndl
-        return ())
-    where
-    readAndShow = do
-        line <- hGetLine hndl
-        appendLog log (line ++ "\n") ErrorTag
-        readAndShow
-
-runExternal :: FilePath -> [String] -> IO (Handle, Handle, Handle, ProcessHandle)
-runExternal path args = do
-    hndls@(inp, out, err, _) <- runInteractiveProcess path args Nothing Nothing
-    sysMessage Normal $ "Starting external tool: " ++ path ++ " with args " ++ (show args)
-    hSetBuffering out NoBuffering
-    hSetBuffering err NoBuffering
-    hSetBuffering inp NoBuffering
-    hSetBinaryMode out True
-    hSetBinaryMode err True
-    return hndls
 
 
 

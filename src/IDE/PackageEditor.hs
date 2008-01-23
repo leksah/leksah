@@ -304,7 +304,7 @@ editPackage :: PackageDescription -> FilePath -> [String] -> IDEAction
 editPackage packageD packageDir modules = do
     ideR <- ask
     lift $editPackage' packageDir packageD (packageDD packageDir modules) ideR
---    lift $sysMessage Normal $show res
+--    ideMessage Normal $show res
 
 editPackage' :: String -> PackageDescription -> PDescr -> IDERef -> IO ()
 editPackage' packageDir packageD packageDD ideR   =

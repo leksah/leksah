@@ -112,7 +112,7 @@ type PaneName = String
 -- | Description of the different pane types
 --
 
-class Pane alpha  where
+class IDEObject alpha => Pane alpha  where
     paneName        ::   alpha -> PaneName
     paneName b      =   if getAddedIndex b == 0
                             then primPaneName b
@@ -146,6 +146,8 @@ data Casting alpha  where
     ReplaceCasting  ::   Casting IDEReplace
 
 data IDEPane        =   forall alpha beta . (CastablePane alpha, RecoverablePane alpha beta) => PaneC alpha
+
+instance IDEObject IDEPane
 
 instance Pane IDEPane where
     paneName (PaneC a)      =   paneName a

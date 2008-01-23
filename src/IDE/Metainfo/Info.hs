@@ -50,8 +50,6 @@ import Data.ByteString.Char8 (ByteString)
 import System.Process(ProcessHandle,getProcessExitCode)
 import System.Glib.MainLoop(timeoutAddFull,priorityDefaultIdle)
 import Control.Monad.Reader(runReaderT,ask)
-import Control.Concurrent
-
 
 import IDE.Utils.DeepSeq
 import IDE.Utils.File
@@ -84,11 +82,11 @@ initInfo' :: IDEAction
 initInfo' = do
     session' <- readIDE session
     let version     =   cProjectVersion
-    lift $ sysMessage Normal "Now updating metadata ..."
+    ideMessage Normal "Now updating metadata ..."
     lift $ collectInstalled False session' version False
-    lift $ sysMessage Normal "Now loading metadata ..."
+    ideMessage Normal "Now loading metadata ..."
     loadAccessibleInfo
-    lift $ sysMessage Normal "Finished loading ..."
+    ideMessage Normal "Finished loading ..."
 
 --
 -- | Load all infos for all installed and exposed packages
@@ -159,12 +157,12 @@ rebuildInBackground' mbHandle = do
                 Nothing -> doIt ideR
         doIt :: IDERef -> IO Bool
         doIt ideR = do
-                forkIO $ do
-                    sysMessage Normal "About to build Active Info"
-                    runReaderT buildActiveInfo' ideR
-                    sysMessage Normal "After building Active Info"
+                runReaderT (do
+                    errs <- readIDE errors
+                    when (length (filter isError errs) == 0) $ do
+                        ideMessage Normal "Update meta info for active package"
+                        buildActiveInfo') ideR
                 return False
-
 
 --
 -- | Builds the current info for the activePackage
@@ -214,7 +212,7 @@ buildActiveInfo2 =
         Nothing         ->  return Nothing
         Just idePackage ->  do
             lift $ collectUninstalled False session cProjectVersion (cabalFile idePackage)
-            lift $ sysMessage Normal "uninstalled collected"
+            -- ideMessage Normal "uninstalled collected"
             collectorPath   <-  lift $ getCollectorPath cProjectVersion
             packageDescr    <-  lift $ loadInfosForPackage collectorPath
                                             (packageId idePackage)

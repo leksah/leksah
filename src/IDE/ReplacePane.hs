@@ -14,14 +14,14 @@
 -------------------------------------------------------------------------------
 
 module IDE.ReplacePane (
-    ReplaceView(..)
-,   ReplaceAction(..)
+    ReplaceAction(..)
 ) where
 
 import Graphics.UI.Gtk hiding (get)
 import Data.Maybe
 import Control.Monad.Reader
 import Data.List
+import Data.Char(toUpper)
 
 import IDE.Core.State
 import IDE.Framework.ViewFrame
@@ -30,6 +30,8 @@ import IDE.SourceEditor
 import IDE.Framework.Parameters
 import IDE.Framework.SimpleEditors
 import IDE.Framework.EditorBasics
+import IDE.FindPane
+
 
 -------------------------------------------------------------------------------
 --
@@ -39,8 +41,6 @@ import IDE.Framework.EditorBasics
 --
 -- | The Replace Pane
 --
-class IDEPaneC alpha => ReplaceView alpha where
-    getReplace      ::   IDEM alpha
 
 class ReplaceAction alpha where
     doReplace       ::   alpha
@@ -49,11 +49,6 @@ instance ReplaceAction IDEAction where
     doReplace        =   doReplace'
 
 instance IDEObject IDEReplace
-instance IDEPaneC IDEReplace
-
-instance ReplaceView IDEReplace
-    where
-    getReplace      =   getReplace'
 
 instance CastablePane IDEReplace where
     casting _               =   ReplaceCasting
@@ -110,8 +105,8 @@ doReplace' = do
     lift $ bringPaneToFront replace
     lift $ widgetGrabFocus (replaceBox replace)
 
-getReplace' :: IDEM IDEReplace
-getReplace' = do
+getReplace :: IDEM IDEReplace
+getReplace = do
     mbReplace <- getPane ReplaceCasting
     case mbReplace of
         Nothing -> do
@@ -213,5 +208,40 @@ replaceDescription = [
             searchBackwards
             (\ b a -> a{searchBackwards = b})
             boolEditor]
+
+editReplace :: Bool -> Bool -> Bool -> String -> String -> SearchHint -> IDEM Bool
+editReplace entireWord caseSensitive wrapAround search replace hint =
+    editReplace' entireWord caseSensitive wrapAround search replace hint True
+
+editReplace' :: Bool -> Bool -> Bool -> String -> String -> SearchHint -> Bool -> IDEM Bool
+editReplace' entireWord caseSensitive wrapAround search replace hint mayRepeat =
+    inBufContext' False $ \_ gtkbuf currentBuffer _ -> do
+        startMark <- lift $textBufferGetInsert gtkbuf
+        iter <- lift $textBufferGetIterAtMark gtkbuf startMark
+        iter2 <- lift $textIterCopy iter
+        lift $textIterForwardChars iter2 (length search)
+        str1 <- lift $textIterGetText iter iter2
+        if compare str1 search caseSensitive
+            then do
+                lift $textBufferDelete gtkbuf iter iter2
+                lift $textBufferInsert gtkbuf iter replace
+                editFind entireWord caseSensitive wrapAround search "" hint
+            else do
+                r <- editFind entireWord caseSensitive wrapAround search "" hint
+                if r
+                    then editReplace' entireWord caseSensitive wrapAround search
+                            replace hint False
+                    else return False
+    where
+        compare s1 s2 True = s1 == s2
+        compare s1 s2 False = map toUpper s1 == map toUpper s2
+
+editReplaceAll :: Bool -> Bool -> Bool -> String -> String -> SearchHint -> IDEM Bool
+editReplaceAll entireWord caseSensitive wrapAround search replace hint = do
+    res <- editReplace' entireWord caseSensitive wrapAround search replace hint True
+    if res
+        then editReplaceAll entireWord caseSensitive wrapAround search replace hint
+        else return False
+
 
 

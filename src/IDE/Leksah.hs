@@ -53,6 +53,7 @@ import IDE.SourceEditor
 import IDE.Metainfo.Info
 import IDE.Metainfo.SourceCollector
 import IDE.Metainfo.InterfaceCollector
+import IDE.Log(getLog,appendLog)
 
 -- ---------------------------------------------------------------------
 -- Command line options
@@ -176,7 +177,8 @@ startGUI = do
           ,   currentErr    =   Nothing
           ,   accessibleInfo     =   Nothing
           ,   currentInfo   =   Nothing
-          ,   session       =   session}
+          ,   session       =   session
+          ,   handlers      =   Map.empty}
     ideR        <-  newIORef ide
     runReaderT (initInfo :: IDEAction) ideR
     (acc,menus) <-  runReaderT (makeMenu uiManager accelActions menuDescription) ideR
@@ -198,7 +200,9 @@ startGUI = do
     runReaderT (setCandyState (isJust (sourceCandy prefs))) ideR
     let (x,y)   =   defaultSize prefs
     windowSetDefaultSize win x y
-    runReaderT (recoverSession :: IDEAction) ideR
+    runReaderT (do
+        registerEvents (menus !! 1)
+        recoverSession :: IDEAction) ideR
     widgetShowAll win
     mainGUI
 
@@ -247,6 +251,22 @@ handleSpecialKeystrokes (Key _ _ _ mods _ _ _ keyVal name mbChar) = do
     printMods (m:r) = show m ++ printMods r
 handleSpecialKeystrokes _ = return True
 
+registerEvents :: Maybe Widget -> IDEAction
+registerEvents mbTb =    do
+    stRef   <-  ask
+    st      <-  lift $ readIORef stRef
+    registerEvent st LogMessageS (Left logHandler)
+    registerEvent st GetToolbarS (Left tbHandler)
+    return ()
+    where
+        logHandler e@(LogMessage s t) =   do
+            (log :: IDELog)          <-  getLog
+            lift $ appendLog log s t
+            return e
+        logHandler _ =   throwIDE "Leksah>>registerEvents: Impossible event"
+
+        tbHandler (GetToolbar Nothing) =   return (GetToolbar mbTb)
+        tbHandler _ =   throwIDE "Leksah>>registerEvents: Impossible event"
 
 
 -- ---------------------------------------------------------------------

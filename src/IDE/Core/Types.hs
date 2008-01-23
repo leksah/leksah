@@ -55,6 +55,14 @@ module IDE.Core.Types (
 ,   Location(..)
 ,   Scope(..)
 
+,   SearchHint(..)
+,   CandyTable(..)
+,   CandyTableForth
+,   CandyTableBack
+,   KeymapI(..)
+,   SpecialKeyTable
+,   SpecialKeyCons
+
 ) where
 
 import Control.Monad.Reader
@@ -138,6 +146,8 @@ data Prefs = Prefs {
 ,   packageBlacklist    ::   [Dependency]
 } deriving(Eq,Show)
 
+data SearchHint = Forward | Backward | Insert | Delete | Initial
+    deriving (Eq)
 
 
 
@@ -312,5 +322,21 @@ instance Default ByteString
 
 data Scope = World | Package | Local
   deriving (Show, Eq, Ord, Enum, Read)
+
+newtype CandyTable      =   CT (CandyTableForth,CandyTableBack)
+
+type CandyTableForth    =   [(Bool,String,String)]
+
+type CandyTableBack     =   [(String,String,Int)]
+
+newtype KeymapI         =   KM  (Map ActionString
+                                [(Maybe (Either KeyString (KeyString,KeyString)), Maybe String)])
+
+type SpecialKeyTable alpha  =   Map (KeyVal,[Modifier]) (Map (KeyVal,[Modifier]) (ActionDescr alpha))
+
+type SpecialKeyCons  alpha  =   Maybe ((Map (KeyVal,[Modifier]) (ActionDescr alpha)),String)
+
+
+
 
 

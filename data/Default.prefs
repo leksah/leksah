@@ -16,7 +16,7 @@ Name of the keymap:
 LogView Font:  ""
 Window default size:
                (800,800)
-     --Default size of the main ghf window specified as pair (int,int)
+     --Default size of the main leksah window specified as pair (int,int)
 Browser:       "firefox"
 Standard source editor path:
                LeftTop

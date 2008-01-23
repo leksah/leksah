@@ -16,26 +16,26 @@
 -------------------------------------------------------------------------------
 
 module IDE.Core.State (
-    IDEObject
-,   IDEPaneC
+    IDEObject(..)
 ,   IDEEditor
--- * IDE State
 ,   IDE(..)
 ,   IDERef
 ,   IDEM
 ,   IDEAction
+,   IDEEvent(..)
+,   EventSelector(..)
 
 -- * Convenience methods for accesing the IDE State
 ,   readIDE
 ,   modifyIDE
 ,   modifyIDE_
 ,   withIDE
+,   getIDE
 
 ,   removePaneAdmin
 ,   addPaneAdmin
--- * debugging
---,   helpDebug
 ,   ideMessage
+,   logMessage
 ,   module IDE.Core.Types
 ,   module IDE.Core.Panes
 ,   module IDE.Core.Exception
@@ -48,44 +48,80 @@ import qualified Data.Map as Map
 import Data.IORef
 import Control.Monad.Reader
 import GHC (Session)
+import Data.Unique
 
 import IDE.Core.Types
 import IDE.Core.Panes
 import IDE.Core.Exception
-import IDE.SourceCandy
-import IDE.Keymap
 
 ideMessage :: MessageLevel -> String -> IDEAction
 ideMessage level str = do
---    log <- getLog
---    appendLog log str LogTag
+    st <- getIDE
+    triggerEvent st (LogMessage (str ++ "\n") LogTag)
     lift $ sysMessage level str
 
-data IDEEvent alpha =
-        ActivatePackage (alpha Package)
-    |   DeactivatePackage (alpha Package)
-
-eventAsSelector :: Event Maybe -> Event ()
-eventAsSelector ActivatePackage _ = ActivatePackage ()
-eventAsSelector DeactivatePackage _ = DeactivatePackage ()
+logMessage :: String -> LogTag -> IDEAction
+logMessage str tag = do
+    st <- getIDE
+    triggerEvent st (LogMessage (str ++ "\n") tag)
+    return ()
 
 
-class IDEObject o where
-    canTriggerEvent :: IDEEvent () -> Bool
-    canTriggerEvent e   =   False
-    triggerEvent :: IDEM (IDEEvent Maybe)
-    triggerEvent e      =   do
+data IDEEvent  =
+        LogMessage String LogTag
+    |   GetToolbar (Maybe Widget)
+    |   ActivatePackage IDEPackage
+    |   DeactivatePackage IDEPackage
+
+
+data EventSelector  =
+        LogMessageS
+    |   GetToolbarS
+    |   ActivatePackageS
+    |   DeactivatePackageS
+    deriving (Eq,Ord,Show)
+
+eventAsSelector :: IDEEvent -> EventSelector
+eventAsSelector (LogMessage _ _)        =   LogMessageS
+eventAsSelector (GetToolbar _)          =   GetToolbarS
+eventAsSelector (ActivatePackage _)     =   ActivatePackageS
+eventAsSelector (DeactivatePackage _)   =   DeactivatePackageS
+
+class IDEObject alpha  where
+
+    canTriggerEvent :: alpha -> EventSelector -> Bool
+    canTriggerEvent _ _             =   False
+
+    triggerEvent :: alpha -> IDEEvent -> IDEM IDEEvent
+    triggerEvent o e    =
+        if canTriggerEvent o (eventAsSelector e)
+            then do
+                handlerMap      <-  readIDE handlers
+                let selector    =   eventAsSelector e
+                case selector `Map.lookup` handlerMap of
+                    Nothing     ->  return e
+                    Just l      ->  foldM (\e (_,ah) -> ah e) e l
+            else throwIDE $ "Object can't trigger event " ++ show (eventAsSelector e)
+
+    registerEvent   :: alpha -> EventSelector -> Either (IDEEvent -> IDEM IDEEvent) Unique -> IDEM Unique
+    registerEvent o e (Left handler) =   do
         handlerMap      <-  readIDE handlers
-        let selector    =   eventAsSelector e
-        case selector `Map.lookup` handlerMap of
-            Nothing -> return ()
-            Just h  -> mapM_ (\ah -> ah e) h
-    registerEvent   :: IDEEvent () -> Either (IDEEvent Maybe -> IDEAction) Unique -> IDE Unique
-    registerEvent e (Left handler) =   do
+        unique          <-  lift $ newUnique
+        let newHandlers =   case e `Map.lookup` handlerMap of
+                                Nothing -> Map.insert e [(unique,handler)] handlerMap
+                                Just l  -> Map.insert e ((unique,handler):l) handlerMap
+        modifyIDE_ (\ide -> return (ide{handlers = newHandlers}))
+        return unique
+    registerEvent o e (Right unique) =   do
         handlerMap      <-  readIDE handlers
+        let newHandlers =   case e `Map.lookup` handlerMap of
+                                Nothing -> handlerMap
+                                Just l -> let newList = filter (\ (mu,_) -> mu /= unique) l
+                                          in  Map.insert e newList handlerMap
+        modifyIDE_ (\ide -> return (ide{handlers = newHandlers}))
+        return unique
 
 
-class IDEObject o => IDEPaneC o
 class IDEObject o => IDEEditor o
 
 
@@ -117,9 +153,15 @@ data IDE            =  IDE {
                                                 --the second is the scope in the current package
 ,   session         ::  Session                  -- ^ a ghc session object, side effects
                                                 -- reusing with sessions?
-,   handlers        ::  Map (IDEEvent ()) [(Unique, IDEEvent Maybe -> IDEAction)]
+,   handlers        ::  Map EventSelector [(Unique, IDEEvent -> IDEM IDEEvent)]
                                                 -- ^ event handling table
 } --deriving Show
+
+instance IDEObject IDE where
+    canTriggerEvent o LogMessageS   =   True
+    canTriggerEvent o GetToolbarS   =   True
+    canTriggerEvent _ _             =   False
+
 
 --
 -- | A mutable reference to the IDE state
@@ -166,6 +208,12 @@ withIDE :: (IDE -> IO alpha) -> IDEM alpha
 withIDE f = do
     e <- ask
     lift $ f =<< readIORef e
+
+getIDE :: IDEM(IDE)
+getIDE = do
+    e <- ask
+    st <- lift $ readIORef e
+    return st
 
 removePaneAdmin :: (CastablePane alpha,RecoverablePane alpha beta) => alpha -> IDEAction
 removePaneAdmin pane = do

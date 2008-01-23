@@ -46,13 +46,12 @@ class LogAction alpha where
 instance LogAction IDEAction where
     clearLog        =   clearLog'
 
-class IDEPaneC alpha => LogView alpha where
+class Pane alpha => LogView alpha where
     getLog          ::   IDEM alpha
     appendLog       ::   alpha  -> String -> LogTag -> IO Int
     markErrorInLog  ::   alpha  -> (Int, Int) -> IO ()
 
 instance IDEObject IDELog
-instance IDEPaneC IDELog
 
 instance LogView IDELog
     where

@@ -116,7 +116,7 @@ layoutDescr = [
 --
 saveSession' :: IDEAction
 saveSession' = do
-    lift $ sysMessage Normal "Now saving session"
+    ideMessage Normal "Now saving session"
     wdw         <-  readIDE window
     layout      <-  getLayout
     population  <-  getPopulation

@@ -35,6 +35,8 @@ import IDE.Framework.ViewFrame
 import IDE.InfoPane
 import IDE.SourceEditor
 
+instance IDEObject IDEModules
+
 instance Pane IDEModules
     where
     primPaneName _  =   "Modules"

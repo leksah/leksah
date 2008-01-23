@@ -1,8 +1,6 @@
 {-# OPTIONS_GHC -fglasgow-exts #-}
 module IDE.Core.State (
     IDEObject
-,   IDEPaneC
-,   IDEEditor
 ,   IDERef
 ,   IDEM
 ,   IDEAction
@@ -21,10 +19,6 @@ import IDE.Core.Exception
 
 
 class IDEObject o
-
-class IDEObject o => IDEPaneC o
-
-class IDEObject o => IDEEditor o
 
 data IDE
 --

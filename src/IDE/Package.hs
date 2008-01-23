@@ -52,6 +52,8 @@ import Text.ParserCombinators.Parsec.Language
 import qualified Text.ParserCombinators.Parsec.Token as P
 import Text.ParserCombinators.Parsec hiding(Parser)
 import Data.Maybe(isJust,fromJust)
+import Control.Exception hiding (try)
+import System.Process
 
 import IDE.Log
 import IDE.Core.State
@@ -60,7 +62,6 @@ import IDE.SourceEditor
 import IDE.PackageFlags
 import IDE.Framework.ViewFrame
 import IDE.Metainfo.Info
-import IDE.Utils.File
 
 packageOpen :: IDEAction
 packageOpen = do
@@ -115,7 +116,7 @@ packageFlags = do
             active2 <- getActivePackage
             case active2 of
                 Nothing -> do
-                    lift $sysMessage Normal "no more active package"
+                    ideMessage Normal "no more active package"
                     return ()
                 Just p  ->
                     lift $writeFlags ((dropFileName (cabalFile p)) </> "IDE.flags") p
@@ -154,12 +155,13 @@ packageBuild = do
             lift $statusbarPop sb 1
             lift $statusbarPush sb 1 "Building"
             unmarkCurrentError
-            lift $do
+            pid' <- lift $do
                 (inp,out,err,pid) <- runExternal "runhaskell" (["Setup","build"]
                                                 ++ buildFlags package)
-                oid <- forkIO (readOut log out)
-                eid <- forkIO (runReaderT (readErrForBuild log err) ideR)
-                runReaderT (rebuildInBackground (Just pid)) ideR
+                oid     <-  forkIO (readOut log out)
+                eid     <-  forkIO (runReaderT (readErrForBuild log err) ideR)
+                return pid
+            rebuildInBackground (Just pid')
 
 packageDoc :: IDEAction
 packageDoc = do
@@ -329,7 +331,7 @@ chooseDir str = do
             _ -> return Nothing
 
 -- ---------------------------------------------------------------------
--- Handling of Compiler errors
+-- | Handling of Compiler errors
 --
 
 readErrForBuild :: IDELog -> Handle -> IDEAction
@@ -341,9 +343,7 @@ readErrForBuild log hndl = do
     let warnNum     =   length errs - errorNum
     lift $statusbarPop sb 1
     lift $statusbarPush sb 1 $show errorNum ++ " Errors, " ++ show warnNum ++ " Warnings"
-    if not (null errs)
-        then nextError
-        else return ()
+    when (not (null errs)) nextError
     where
     readAndShow inError errs = do
         isEnd <- hIsEOF hndl
@@ -492,3 +492,41 @@ symbol = P.symbol lexer
 identifier = P.identifier lexer
 colon = P.colon lexer
 integer = P.integer lexer
+
+-- Spawning external processes
+
+readOut :: IDELog -> Handle -> IO ()
+readOut log hndl =
+     catch (readAndShow)
+       (\e -> do
+        --appendLog log ("----------------------------------------\n") FrameTag
+        hClose hndl
+        return ())
+    where
+    readAndShow = do
+        line <- hGetLine hndl
+        appendLog log (line ++ "\n") LogTag
+        readAndShow
+
+readErr :: IDELog -> Handle -> IO ()
+readErr log hndl =
+     catch (readAndShow)
+       (\e -> do
+        hClose hndl
+        return ())
+    where
+    readAndShow = do
+        line <- hGetLine hndl
+        appendLog log (line ++ "\n") ErrorTag
+        readAndShow
+
+runExternal :: FilePath -> [String] -> IO (Handle, Handle, Handle, ProcessHandle)
+runExternal path args = do
+    hndls@(inp, out, err, _) <- runInteractiveProcess path args Nothing Nothing
+    sysMessage Normal $ "Starting external tool: " ++ path ++ " with args " ++ (show args)
+    hSetBuffering out NoBuffering
+    hSetBuffering err NoBuffering
+    hSetBuffering inp NoBuffering
+    hSetBinaryMode out True
+    hSetBinaryMode err True
+    return hndls

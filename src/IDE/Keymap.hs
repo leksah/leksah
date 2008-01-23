@@ -5,12 +5,10 @@
 
 module IDE.Keymap (
     Keymap(..)
-,   KeymapI,SpecialKeyTable,SpecialKeyCons
 ) where
 
 import Graphics.UI.Gtk
 import qualified Data.Map as Map
-import Data.Map (Map)
 import Text.ParserCombinators.Parsec
 import qualified Text.ParserCombinators.Parsec.Token as P
 import Text.ParserCombinators.Parsec.Language(emptyDef)
@@ -19,18 +17,12 @@ import Data.List(sort)
 import Data.Char(toLower)
 import Control.Monad.Reader
 
-import {-# SOURCE #-} IDE.Core.State
-import IDE.Core.Types
+import IDE.Core.State
 
 class IDEObject alpha => Keymap alpha where
     parseKeymap         ::   FilePath -> IO alpha
     setKeymap           ::   alpha -> [ActionDescr IDERef] -> [ActionDescr IDERef]
     buildSpecialKeys    ::   alpha -> [ActionDescr IDERef] -> IO (SpecialKeyTable IDERef)
-
-newtype KeymapI         =   KM  (Map ActionString
-                                [(Maybe (Either KeyString (KeyString,KeyString)), Maybe String)])
-type SpecialKeyTable alpha  =   Map (KeyVal,[Modifier]) (Map (KeyVal,[Modifier]) (ActionDescr alpha))
-type SpecialKeyCons  alpha  =   Maybe ((Map (KeyVal,[Modifier]) (ActionDescr alpha)),String)
 
 instance IDEObject KeymapI
 

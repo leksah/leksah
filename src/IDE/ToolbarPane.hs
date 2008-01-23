@@ -21,14 +21,11 @@ module IDE.ToolbarPane (
 import Graphics.UI.Gtk hiding (get)
 import Data.Maybe
 import Control.Monad.Reader
-import Data.List
 
 import IDE.Core.State
 import IDE.Framework.ViewFrame
-import IDE.Utils.File
-import IDE.Keymap
-import {-# SOURCE #-} IDE.Menu
 
+instance IDEObject IDEToolbar
 instance Pane IDEToolbar
     where
     primPaneName _  =   "Toolbar"
@@ -80,17 +77,12 @@ getToolbar = do
 initToolbar :: PanePath -> Notebook -> IDEAction
 initToolbar panePath nb = do
     ideR        <-  ask
-    prefs       <-  readIDE prefs
+    st          <- getIDE
     currentInfo <-  readIDE currentInfo
-    uiManager   <-  readIDE uiManager
-    keysPath    <-  lift $ getConfigFilePathForLoad $keymapName prefs ++ ".keymap"
-    (keyMap :: KeymapI)
-                <-  lift $ parseKeymap keysPath
-    let accelActions = setKeymap keyMap actions
-    (acc,menus) <-  makeMenu uiManager accelActions menuDescription
-    let tb = case menus !! 1 of
-                Just m -> m
-                Nothing -> throwIDE "Failed to build toolbar"
+    res         <-  triggerEvent st (GetToolbar Nothing)
+    let tb      =   case res of
+                        GetToolbar (Just m) -> m
+                        _ -> throwIDE "Failed to build toolbar"
     (buf,cids)  <-  lift $ do
         let toolbar' = IDEToolbar (castToToolbar tb)
         notebookInsertOrdered nb tb (paneName toolbar')

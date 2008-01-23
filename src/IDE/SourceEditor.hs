@@ -9,7 +9,7 @@
 -- Stability   :  experimental
 -- Portability :  portable
 --
--- | The source editor part of GHF
+-- | The source editor part of Leksah
 --
 -----------------------------------------------------------------------------------
 
@@ -38,17 +38,6 @@ module IDE.SourceEditor (
 ,   editDelete
 ,   editSelectAll
 
-,   SearchHint(..)
-,   editFind
-,   editFindInc
-,   editFindKey
-,   editReplace
-,   editReplaceAll
-
-,   editGotoLine
-,   editGotoLineEnd
-,   editGotoLineKey
-
 ,   editComment
 ,   editUncomment
 ,   editShiftRight
@@ -60,21 +49,19 @@ module IDE.SourceEditor (
 ,   editCandy
 
 ,   markErrorInSourceBuf
-
-
+,   inBufContext'
+,   inBufContext
 ) where
 
 import Graphics.UI.Gtk hiding (afterToggleOverwrite)
 import Graphics.UI.Gtk.SourceView
 import Graphics.UI.Gtk.Multiline.TextView
---import Graphics.UI.Gtk.General.Clipboard
 import Control.Monad.Reader
 import Data.IORef
 import System.IO
 import System.FilePath
 import System.Directory
 import Text.Printf
-import Data.Char(toUpper)
 import qualified Data.Map as Map
 import Data.List
 import Data.Maybe
@@ -85,8 +72,8 @@ import IDE.Framework.ViewFrame
 import IDE.SourceCandy
 import IDE.Metainfo.Info
 import {-# SOURCE #-} IDE.InfoPane
-import {-# SOURCE #-} IDE.FindPane
 
+instance IDEObject IDEBuffer
 instance Pane IDEBuffer
     where
     primPaneName    =   bufferName
@@ -802,205 +789,6 @@ editPaste = inBufContext () $ \_ gtkbuf _ _ -> do
 #else
 editPaste = return ()
 #endif
-
-red = Color 640000 10000 10000
-white = Color 64000 64000 64000
-black = Color 0 0 0
-
--- | Keys for searching
-editFindKey :: Event -> IDEAction
-editFindKey k@(Key _ _ _ _ _ _ _ _ _ _)
-    | eventKeyName k == "Down" =
-        editFindInc Forward
-    | eventKeyName k == "Up" =
-        editFindInc Backward
-    | eventKeyName k == "Escape" = do
-        --entry   <- getFindEntry
-        inBufContext' () $ \_ gtkbuf currentBuffer _ -> lift $ do
-            i1 <- textBufferGetStartIter gtkbuf
-            i2 <- textBufferGetEndIter gtkbuf
-            textBufferRemoveTagByName gtkbuf "found" i1 i2
-            startMark <- textBufferGetInsert gtkbuf
-            st1 <- textBufferGetIterAtMark gtkbuf startMark
-            textBufferPlaceCursor gtkbuf st1
-            widgetGrabFocus $ sourceView currentBuffer
-    | otherwise = return ()
-editFindKey _ = return ()
-
-data SearchHint = Forward | Backward | Insert | Delete | Initial
-    deriving (Eq)
-
-{-- can't be used currently becuase of an export error
-  toEnum 1 = SourceSearchVisibleOnly
-  toEnum 2 = SourceSearchTextOnly
-  toEnum 4 = SourceSearchCaseInsensitive
---}
-
-editFindInc :: SearchHint -> IDEAction
-editFindInc hint = do
-    find :: IDEFind  <-  getFind
-    let entry =  getFindEntry find
-    lift $ widgetGrabFocus entry
-    lift $ bringPaneToFront find
-    when (hint == Initial) $ lift $ editableSelectRegion entry 0 (-1)
-    search  <- lift $entryGetText entry
-    if null search
-        then return ()
-        else do
-            let caseSensitiveW =  getCaseSensitive find
-            caseSensitive <- lift $toggleButtonGetActive caseSensitiveW
-            let entireWButton =  getEntireWord find
-            entireW <- lift $toggleButtonGetActive entireWButton
-            let wrapAroundButton =  getWrapAround find
-            wrapAround <- lift $toggleButtonGetActive wrapAroundButton
-            res <- editFind entireW caseSensitive wrapAround search "" hint
-            if res || null search
-                then lift $do
-                    widgetModifyBase entry StateNormal white
-                    widgetModifyText entry StateNormal black
-                else lift $do
-                    widgetModifyBase entry StateNormal red
-                    widgetModifyText entry StateNormal white
-            lift $do
-                widgetGrabFocus entry
-                editableSelectRegion entry 0 (-1)
-
-
-editFind :: Bool -> Bool -> Bool -> String -> String -> SearchHint -> IDEM Bool
-editFind entireWord caseSensitive wrapAround search dummy hint =
-    let searchflags = (if caseSensitive then [] else [toEnum 4]) ++ [toEnum 1,toEnum 2] in
-    if null search
-        then return False
-        else inBufContext' False $ \_ gtkbuf currentBuffer _ -> lift $ do
-            i1 <- textBufferGetStartIter gtkbuf
-            i2 <- textBufferGetEndIter gtkbuf
-            textBufferRemoveTagByName gtkbuf "found" i1 i2
-            startMark <- textBufferGetInsert gtkbuf
-            st1 <- textBufferGetIterAtMark gtkbuf startMark
-            mbsr2 <-
-                if hint == Backward
-                    then do
-                        textIterBackwardChar st1
-                        textIterBackwardChar st1
-                        mbsr <- backSearch st1 search searchflags entireWord searchflags
-                        case mbsr of
-                            Nothing ->
-                                if wrapAround
-                                    then do backSearch i2 search searchflags entireWord searchflags
-                                    else return Nothing
-                            Just (start,end) -> return (Just (start,end))
-                    else do
-                        if hint == Forward
-                            then textIterForwardChar st1
-                            else return True
-                        mbsr <- forwardSearch st1 search searchflags entireWord searchflags
-                        case mbsr of
-                            Nothing ->
-                                if wrapAround
-                                    then do forwardSearch i1 search searchflags entireWord searchflags
-                                    else return Nothing
-                            Just (start,end) -> return (Just (start,end))
-            case mbsr2 of
-                Just (start,end) -> do --found
-                    --widgetGrabFocus sourceView
-                    textViewScrollToIter (sourceView currentBuffer) start 0.2 Nothing
-                    textBufferApplyTagByName gtkbuf "found" start end
-                    textBufferPlaceCursor gtkbuf start
-                    return True
-                Nothing -> return False
-    where
-        backSearch iter string flags entireWord searchflags = do
-            mbsr <- sourceIterBackwardSearch iter search searchflags Nothing
-            case mbsr of
-                Nothing -> return Nothing
-                Just (iter1,iter2) ->
-                    if entireWord
-                        then do
-                            b1 <- textIterStartsWord iter1
-                            b2 <- textIterEndsWord iter2
-                            if b1 && b2 then return $Just (iter1,iter2) else return Nothing
-                        else return (Just (iter1,iter2))
-        forwardSearch iter string flags entireWord searchflags = do
-            mbsr <- sourceIterForwardSearch iter search searchflags Nothing
-            case mbsr of
-                Nothing -> return Nothing
-                Just (iter1,iter2) ->
-                    if entireWord
-                        then do
-                            b1 <- textIterStartsWord iter1
-                            b2 <- textIterEndsWord iter2
-                            if b1 && b2 then return $Just (iter1,iter2) else return Nothing
-                        else return $Just (iter1,iter2)
-
-
-editReplace :: Bool -> Bool -> Bool -> String -> String -> SearchHint -> IDEM Bool
-editReplace entireWord caseSensitive wrapAround search replace hint =
-    editReplace' entireWord caseSensitive wrapAround search replace hint True
-
-editReplace' :: Bool -> Bool -> Bool -> String -> String -> SearchHint -> Bool -> IDEM Bool
-editReplace' entireWord caseSensitive wrapAround search replace hint mayRepeat =
-    inBufContext' False $ \_ gtkbuf currentBuffer _ -> do
-        startMark <- lift $textBufferGetInsert gtkbuf
-        iter <- lift $textBufferGetIterAtMark gtkbuf startMark
-        iter2 <- lift $textIterCopy iter
-        lift $textIterForwardChars iter2 (length search)
-        str1 <- lift $textIterGetText iter iter2
-        if compare str1 search caseSensitive
-            then do
-                lift $textBufferDelete gtkbuf iter iter2
-                lift $textBufferInsert gtkbuf iter replace
-                editFind entireWord caseSensitive wrapAround search "" hint
-            else do
-                r <- editFind entireWord caseSensitive wrapAround search "" hint
-                if r
-                    then editReplace' entireWord caseSensitive wrapAround search
-                            replace hint False
-                    else return False
-    where
-        compare s1 s2 True = s1 == s2
-        compare s1 s2 False = map toUpper s1 == map toUpper s2
-
-editReplaceAll :: Bool -> Bool -> Bool -> String -> String -> SearchHint -> IDEM Bool
-editReplaceAll entireWord caseSensitive wrapAround search replace hint = do
-    res <- editReplace' entireWord caseSensitive wrapAround search replace hint True
-    if res
-        then editReplaceAll entireWord caseSensitive wrapAround search replace hint
-        else return False
-
-
-editGotoLine :: IDEAction
-editGotoLine = inBufContext' () $ \_ gtkbuf currentBuffer _ -> do
-    find :: IDEFind        <-  getFind
-    let spin    =   getGotoLineSpin find
-    lift $ bringPaneToFront find
-    lift $do
-        max <- textBufferGetLineCount gtkbuf
-        spinButtonSetRange spin 1.0 (fromIntegral max)
-        widgetGrabFocus spin
-
-editGotoLineKey :: Event -> IDEAction
-editGotoLineKey k@(Key _ _ _ _ _ _ _ _ _ _)
-    | eventKeyName k == "Escape"  =
-        inBufContext' () $ \_ gtkbuf currentBuffer _ -> do
-            find :: IDEFind <- getFind
-            let spin =  getGotoLineSpin find
-            lift $ do
-                widgetGrabFocus $ sourceView currentBuffer
-    | otherwise = return ()
-editGotoLineKey _ = return ()
-
-editGotoLineEnd :: IDEAction
-editGotoLineEnd = inBufContext' () $ \_ gtkbuf currentBuffer _ -> do
-    find :: IDEFind   <-  getFind
-    let spin =  getGotoLineSpin find
-    lift $ bringPaneToFront find
-    lift $ do
-        line <- spinButtonGetValueAsInt spin
-        iter <- textBufferGetStartIter gtkbuf
-        textIterSetLine iter (line - 1)
-        textBufferPlaceCursor gtkbuf iter
-        textViewScrollToIter (sourceView currentBuffer) iter 0.2 Nothing
-        widgetGrabFocus $ sourceView currentBuffer
 
 
 getStartAndEndLineOfSelection :: TextBuffer -> IO (Int,Int)

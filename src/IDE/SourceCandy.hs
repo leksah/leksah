@@ -15,7 +15,6 @@
 
 module IDE.SourceCandy (
     SourceCandy(..)
-,   CandyTable
 ) where
 
 import Data.Char(chr)
@@ -28,7 +27,7 @@ import qualified Text.ParserCombinators.Parsec.Token as P
 import Text.ParserCombinators.Parsec.Language(emptyDef)
 import qualified Data.Set as Set
 
-import {-# SOURCE #-} IDE.Core.State
+import IDE.Core.State
 
 ---------------------------------------------------------------------------------
 -- * Interface
@@ -39,12 +38,6 @@ class IDEObject alpha => SourceCandy alpha where
     transformFromCandy  ::   alpha -> TextBuffer -> IO ()
     keystrokeCandy      ::   alpha -> Maybe Char -> TextBuffer -> IO ()
     getCandylessText    ::   alpha -> TextBuffer -> IO String
-
-newtype CandyTable      =   CT (CandyTableForth,CandyTableBack)
-
-type CandyTableForth    =   [(Bool,String,String)]
-
-type CandyTableBack     =   [(String,String,Int)]
 
 instance IDEObject CandyTable
 

@@ -30,6 +30,7 @@ import Distribution.Package
 import IDE.Core.State
 import IDE.Framework.ViewFrame
 
+instance IDEObject IDECallers
 instance Pane IDECallers
     where
     primPaneName _  =   "Callers"

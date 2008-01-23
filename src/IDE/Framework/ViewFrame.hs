@@ -287,7 +287,7 @@ viewCollapse' panePath = do
     let newPanePath   = reverse $tail $reverse panePath
     let mbOtherSidePath = otherSide panePath
     case mbOtherSidePath of
-        Nothing -> lift $sysMessage Normal "Can't collapse top level"
+        Nothing -> ideMessage Normal "Can't collapse top level"
         Just otherSidePath ->
             let sp1 = getSubpath panePath layout1
                 sp2 = getSubpath otherSidePath layout1
@@ -367,20 +367,20 @@ viewMove direction = do
     mbPane <- readIDE activePane
     case mbPane of
         Nothing -> do
-            lift $sysMessage Normal "no active pane"
+            ideMessage Normal "no active pane"
             return ()
         Just (paneName,_) -> do
             pane <- paneFromName paneName
             mbPanePath <- getActivePanePath
             case mbPanePath of
                 Nothing -> do
-                    lift $sysMessage Normal "no active pane path"
+                    ideMessage Normal "no active pane path"
                     return ()
                 Just panePath -> do
                   layout <- readIDE layout
                   case findMoveTarget panePath layout direction of
                       Nothing -> do
-                        lift $sysMessage Normal "no target found"
+                        ideMessage Normal "no target found"
                         return ()
                       Just moveTo -> move moveTo pane
 
