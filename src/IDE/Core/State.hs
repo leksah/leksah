@@ -66,13 +66,11 @@ logMessage str tag = do
     triggerEvent st (LogMessage (str ++ "\n") tag)
     return ()
 
-
 data IDEEvent  =
         LogMessage String LogTag
     |   GetToolbar (Maybe Widget)
     |   ActivatePackage IDEPackage
     |   DeactivatePackage IDEPackage
-
 
 data EventSelector  =
         LogMessageS
