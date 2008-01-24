@@ -160,9 +160,9 @@ actions =
     ,AD "RebuildSourceLocs" "_Rebuild source locations" Nothing Nothing
         (lift buildSourceForPackageDB) [] False
     ,AD "UpdateMetadata" "_Update metadata" Nothing Nothing
-        (collectInstalled' False) [] False
+        (collectInstalledI False) [] False
     ,AD "RebuildMetadata" "Re_build metadata" Nothing Nothing
-        (collectInstalled' True) [] False
+        (collectInstalledI True) [] False
     ,AD "UpdateProjectMetadata" "Update _current package metadata" Nothing Nothing
         buildActiveInfo [] False
 

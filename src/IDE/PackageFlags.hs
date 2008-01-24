@@ -182,11 +182,12 @@ editFlags' flags flagsDesc ideR  = do
                                         Just s -> s
                                         Nothing -> "Unnamed") flatflagsDesc
     ok `onClicked` (do
-        mbNewflags <- extractAndValidate flags getExts fieldNames
-        case mbNewflags of
+        mbPackWithNewFlags <- extractAndValidate flags getExts fieldNames
+        case mbPackWithNewFlags of
             Nothing -> return ()
-            Just newflags -> do
-                runReaderT (modifyIDE_ (\ide -> return (ide{activePack = Just newflags}))) ideR
+            Just packWithNewFlags -> do
+                runReaderT (modifyIDE_ (\ide -> return (ide{activePack = Just packWithNewFlags})))
+                    ideR -- we don't trigger the activePack event here
                 widgetDestroy dialog
                 mainQuit)
     cancel `onClicked` (do

@@ -1,3 +1,4 @@
+{-# OPTIONS_GHC -fglasgow-exts #-}
 -----------------------------------------------------------------------------
 --
 -- Module      :  IDE.Metainfo.InterfaceCollector
@@ -14,8 +15,14 @@
 
 module IDE.Metainfo.InterfaceCollector (
     collectInstalled
+,   collectInstalledI
 ,   collectInstalled'
 ,   collectUninstalled
+,   getInstalledPackageInfos
+,   asDPid
+,   fromDPid
+,   findFittingPackages
+
 ) where
 
 
@@ -39,9 +46,12 @@ import Finder
 import qualified FastString as FS
 import ErrUtils
 import Config(cProjectVersion)
+import UniqFM
 
+import Data.List (maximumBy)
 import Data.Char (isSpace)
 import qualified Data.Map as Map
+import Data.Map (Map)
 import Data.Maybe
 import qualified Data.Set as Set
 import Data.Set (Set)
@@ -51,6 +61,7 @@ import Distribution.PackageDescription
 import Distribution.InstalledPackageInfo hiding (package)
 import Distribution.Package
 import Distribution.Verbosity
+import Distribution.Version
 import Control.Monad.Reader
 import System.IO
 import Data.Maybe
@@ -64,7 +75,7 @@ import qualified Data.ByteString.Char8 as BS
 import IDE.Utils.Default
 import IDE.Core.State
 import IDE.Utils.File
-import IDE.Metainfo.Info
+--import IDE.Metainfo.Info
 import IDE.Metainfo.SourceCollector
 
 data CollectStatistics = CollectStatistics {
@@ -79,13 +90,20 @@ instance Default CollectStatistics where
     getDefault          =   CollectStatistics getDefault getDefault getDefault getDefault
                                 getDefault
 
-collectInstalled' :: Bool -> IDEAction
-collectInstalled' b     =   do
+collectInstalledI :: Bool -> IDEAction
+collectInstalledI b      =   do
     session'            <-  readIDE session
-    lift $ collectInstalled False session' cProjectVersion b
+    sources             <-  lift $ getSourcesMap
+    lift $ collectInstalled' False session' cProjectVersion b sources
 
-collectInstalled :: Bool -> Session -> String -> Bool -> IO()
-collectInstalled writeAscii session version forceRebuild = do
+
+collectInstalled :: Session -> Bool -> IO ()
+collectInstalled session b     =   do
+    sources             <-  getSourcesMap
+    collectInstalled' False session cProjectVersion b sources
+
+collectInstalled' :: Bool -> Session -> String -> Bool -> Map PackageIdentifier [FilePath] -> IO()
+collectInstalled' writeAscii session version forceRebuild sources = do
     collectorPath       <-  getCollectorPath version
     when forceRebuild $ do
         removeDirectoryRecursive collectorPath
@@ -105,7 +123,6 @@ collectInstalled writeAscii session version forceRebuild = do
                                                 (map (fromDPid . DP.package) newPackages)
                                                 ((map (\p -> map fromDPid (DP.depends p)))
                                                    newPackages)
-    sources             <-  getSourcesMap
     (extracted',failedToParse) <- collectAllSources session sources extracted
     let statistic       =   CollectStatistics {
         packagesTotal       =   length newPackages
@@ -412,6 +429,193 @@ writeExtracted dirPath writeAscii pd = do
         then writeFile (filePath ++ "dpg") (show pd)
         else encodeFile filePath pd
 
+-- ---------------------------------------------------------------------
+-- The (mothers) little helpers
+--
 
+getInstalledPackageInfos :: Session -> IO [DP.InstalledPackageInfo]
+getInstalledPackageInfos session = do
+    dflags1         <-  getSessionDynFlags session
+    pkgInfos        <-  case pkgDatabase dflags1 of
+                            Nothing -> return []
+                            Just fm -> return (eltsUFM fm)
+    return pkgInfos
+
+asDPid :: PackageIdentifier -> DP.PackageIdentifier
+asDPid (PackageIdentifier name version) = DP.PackageIdentifier name version
+
+fromDPid :: DP.PackageIdentifier -> PackageIdentifier
+fromDPid (DP.PackageIdentifier name version) = PackageIdentifier name version
+
+findFittingPackages :: Session -> [Dependency] -> IO  [PackageIdentifier]
+findFittingPackages session dependencyList = do
+    knownPackages   <-  getInstalledPackageInfos session
+    let packages    =   map (fromDPid . DP.package) knownPackages
+    return (concatMap (fittingKnown packages) dependencyList)
+    where
+    fittingKnown packages (Dependency dname versionRange) =
+        let filtered =  filter (\ (PackageIdentifier name version) ->
+                                    name == dname && withinRange version versionRange)
+                        packages
+        in  if length filtered > 1
+                then [maximumBy (\a b -> compare (pkgVersion a) (pkgVersion b)) filtered]
+                else filtered
+
+findFittingPackagesDP :: Session -> [Dependency] -> IO  [PackageIdentifier]
+findFittingPackagesDP session dependencyList =  do
+        fp <- (findFittingPackages session dependencyList)
+        return fp
+
+-- ---------------------------------------------------------------------
+-- Binary Instances for linear storage
+--
+
+instance Binary PackModule where
+    put (PM pack' modu')
+        =   do  put pack'
+                put modu'
+    get =   do  pack'                <- get
+                modu'                <- get
+                return (PM pack' modu')
+
+instance Binary PackageIdentifier where
+    put (PackageIdentifier name' version')
+        =   do  put name'
+                put version'
+    get =   do  name'                <- get
+                version'             <- get
+                return (PackageIdentifier name' version')
+
+instance Binary Version where
+    put (Version branch' tags')
+        =   do  put branch'
+                put tags'
+    get =   do  branch'              <- get
+                tags'                <- get
+                return (Version branch' tags')
+
+
+instance Binary PackageDescr where
+    put (PackageDescr packagePD' exposedModulesPD' buildDependsPD' mbSourcePathPD')
+        =   do  put packagePD'
+                put exposedModulesPD'
+                put buildDependsPD'
+                put mbSourcePathPD'
+    get =   do  packagePD'           <- get
+                exposedModulesPD'    <- get
+                buildDependsPD'      <- get
+                mbSourcePathPD'      <- get
+                return (PackageDescr packagePD' exposedModulesPD' buildDependsPD'
+                                        mbSourcePathPD')
+
+instance Binary ModuleDescr where
+    put (ModuleDescr moduleIdMD' exportedNamesMD' mbSourcePathMD' usagesMD'
+                idDescriptionsMD')
+        = do    put moduleIdMD'
+                put exportedNamesMD'
+                put mbSourcePathMD'
+                put usagesMD'
+                put idDescriptionsMD'
+    get = do    moduleIdMD'          <- get
+                exportedNamesMD'     <- get
+                mbSourcePathMD'      <- get
+                usagesMD'            <- get
+                idDescriptionsMD'    <- get
+                return (ModuleDescr moduleIdMD' exportedNamesMD' mbSourcePathMD'
+                                    usagesMD' idDescriptionsMD')
+
+instance Binary IdentifierDescr where
+    put (SimpleDescr identifierID' identifierTypeID' typeInfoID' moduleIdID'
+                            mbLocation' mbComment')
+        = do    put (1::Int)
+                put identifierID'
+                put identifierTypeID'
+                put typeInfoID'
+                put moduleIdID'
+                put mbLocation'
+                put mbComment'
+    put (DataDescr identifierID' typeInfoID' moduleIdID'
+                            constructorsID' fieldsID' mbLocation' mbComment')
+        = do    put (2::Int)
+                put identifierID'
+                put typeInfoID'
+                put moduleIdID'
+                put constructorsID'
+                put fieldsID'
+                put mbLocation'
+                put mbComment'
+    put (ClassDescr identifierID' typeInfoID' moduleIdID'
+                            classOpsID' mbLocation' mbComment')
+        = do    put (3::Int)
+                put identifierID'
+                put typeInfoID'
+                put moduleIdID'
+                put classOpsID'
+                put mbLocation'
+                put mbComment'
+    put (InstanceDescr identifierID' classID' moduleIdID' mbLocation' mbComment')
+        = do    put (4::Int)
+                put identifierID'
+                put classID'
+                put moduleIdID'
+                put mbLocation'
+                put mbComment'
+    get = do    (typeHint :: Int)           <- get
+                case typeHint of
+                    1 -> do
+                            identifierID'        <- get
+                            identifierTypeID'    <- get
+                            typeInfoID'          <- get
+                            moduleIdID'          <- get
+                            mbLocation'          <- get
+                            mbComment'           <- get
+                            return (SimpleDescr identifierID' identifierTypeID' typeInfoID'
+                                       moduleIdID' mbLocation' mbComment')
+                    2 -> do
+                            identifierID'        <- get
+                            typeInfoID'          <- get
+                            moduleIdID'          <- get
+                            constructorsID'      <- get
+                            fieldsID'            <- get
+                            mbLocation'          <- get
+                            mbComment'           <- get
+                            return (DataDescr identifierID' typeInfoID' moduleIdID'
+                                        constructorsID' fieldsID' mbLocation' mbComment')
+                    3 -> do
+                            identifierID'        <- get
+                            typeInfoID'          <- get
+                            moduleIdID'          <- get
+                            classOpsID'          <- get
+                            mbLocation'          <- get
+                            mbComment'           <- get
+                            return (ClassDescr identifierID' typeInfoID' moduleIdID'
+                                        classOpsID' mbLocation' mbComment')
+                    4 -> do
+                            identifierID'        <- get
+                            classID'             <- get
+                            moduleIdID'          <- get
+                            mbLocation'          <- get
+                            mbComment'           <- get
+                            return (InstanceDescr identifierID' classID' moduleIdID'
+                                        mbLocation' mbComment')
+                    _ -> throwIDE "Impossible in Binary IdentifierDescr get"
+
+
+instance Binary IdTypeS where
+    put it  =   do  put (fromEnum it)
+    get     =   do  code         <- get
+                    return (toEnum code)
+
+instance Binary Location where
+    put (Location locationSLine' locationSCol' locationELine' locationECol')
+        = do    put locationSLine'
+                put locationSCol'
+                put locationELine'
+                put locationECol'
+    get = do    locationSLine'       <-  get
+                locationSCol'        <-  get
+                locationELine'       <-  get
+                locationECol'        <-  get
+                return (Location locationSLine' locationSCol' locationELine' locationECol')
 
 

@@ -29,15 +29,9 @@ import Data.List(sort)
 import qualified Data.Map as Map
 import System.Console.GetOpt
 import System.Environment
-import System.IO
 import GHC
-import DynFlags hiding(Option)
-import Bag
-import ErrUtils
 import Config
 import Data.Version
-import Control.Exception
-import System.Exit
 import Prelude hiding(catch)
 
 import Paths_leksah
@@ -54,6 +48,9 @@ import IDE.Metainfo.Info
 import IDE.Metainfo.SourceCollector
 import IDE.Metainfo.InterfaceCollector
 import IDE.Log(getLog,appendLog)
+import IDE.InfoPane
+import IDE.ModulesPane
+
 
 -- ---------------------------------------------------------------------
 -- Command line options
@@ -120,7 +117,9 @@ runMain = handleTopExceptions $do
                         if length uninstalled > 0
                             then mapM_ (collectUninstalled writeAscii session version)
                                     $ map (\ (UninstalledProject x) -> x) uninstalled
-                            else collectInstalled writeAscii session version (elem Rebuild o)
+                            else do
+                                sources             <-  getSourcesMap
+                                collectInstalled' writeAscii session version (elem Rebuild o) sources
                     else startGUI
 
 -- ---------------------------------------------------------------------
@@ -257,6 +256,11 @@ registerEvents mbTb =    do
     st      <-  lift $ readIORef stRef
     registerEvent st LogMessageS (Left logHandler)
     registerEvent st GetToolbarS (Left tbHandler)
+    registerEvent st SelectInfoS (Left siHandler)
+    registerEvent st SelectIdentS (Left sidHandler)
+    registerEvent st CurrentInfoS (Left ciuHandler)
+    registerEvent st ActivePackS (Left apHandler)
+
     return ()
     where
         logHandler e@(LogMessage s t) =   do
@@ -268,51 +272,25 @@ registerEvents mbTb =    do
         tbHandler (GetToolbar Nothing) =   return (GetToolbar mbTb)
         tbHandler _ =   throwIDE "Leksah>>registerEvents: Impossible event"
 
+        siHandler e@(SelectInfo str) =   do
+            setSymbol str
+            return e
+        siHandler _ =   throwIDE "Leksah>>registerEvents: Impossible event"
 
--- ---------------------------------------------------------------------
--- Exception handling
---
+        sidHandler e@(SelectIdent id) =   do
+            selectIdentifier id
+            return e
+        sidHandler _ =   throwIDE "Leksah>>registerEvents: Impossible event"
 
-handleTopExceptions =
-  handleNormalExceptions . handleIDEExceptions . handleGhcExceptions
+        ciuHandler CurrentInfo =   do
+            reloadKeepSelection
+            return CurrentInfo
+        ciuHandler _ =   throwIDE "Leksah>>registerEvents: Impossible event"
 
-handleNormalExceptions inner =
-  catch inner (\exception -> do
-    hFlush stdout
-    case exception of
-      AsyncException StackOverflow -> do
-        sysMessage Normal "stack overflow: use -g +RTS -K<size> to increase it"
-        exitFailure
-      ExitException code -> exitWith code
-      _other -> do
-        sysMessage Normal ("ide: internal IDE error: " ++ show exception)
-        exitFailure
-  )
+        apHandler e@(ActivePack dep) =   do
+            (buildCurrentInfo dep :: IDEAction)
+            return e
+        apHandler _ =   throwIDE "Leksah>>registerEvents: Impossible event"
 
-
-handleIDEExceptions inner =
-  catchDyn inner (\(e::IDEException) -> do
-    sysMessage Normal $ "ide: " ++ (show e)
-    exitFailure
-  )
-
-
-handleGhcExceptions inner =
-  -- throwIDE messages propagated as exceptions
-  let inner2 = catchDyn inner (\dyn -> do
-        hFlush stdout
-        case dyn of
-          PhaseFailed _ code -> exitWith code
-          Interrupted -> exitFailure
-          _ -> do
-            print (dyn :: GhcException)
-            exitFailure)
-  in
-  -- compilation errors: messages with locations attached
-  catchDyn inner2 (\dyn -> do
-    sysMessage Normal "ide: Compilation error(s):"
-    printBagOfErrors defaultDynFlags (unitBag dyn)
-    exitFailure
-  )
 
 

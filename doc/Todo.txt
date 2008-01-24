@@ -6,13 +6,12 @@ Development
       -   Callers Pane
 start -   Provide a useful default configuration
 start -   One Cabal file with configurations
-      -   Try it with ghc 6.8.2
+ok    -   Try it with ghc 6.8.2
+start -   Using events for updating between panes
 
       -   Populate Toolbar
       -   Populate Keystrokes
       -   Make nice icons for sorts of haskell expressions
-      -   Build only one time - Cancel build
-      -   Source collector only one time - Make it run in background
       -   Preferences embedden
       -
       -   Navigation from info pane (maybe to Version 0.2)
@@ -24,6 +23,7 @@ Bugs
       -   Candy bug   (e.g. exists)
       -   Activate Pane switching
 ok    -   GTK Warning at start
+      -   other GTK Warnings
 
       -   Revert on close (2 times even)
       -   <ctrl><alt>r does not work for PackageRun
@@ -54,6 +54,8 @@ Version 0.2
 
       -   Implementing event concept (from Thorsten)
       -   Using find in sources without location
+      -   Build only one time - Cancel build
+      -   Source collector only one time - Make it run in background
 
 
 

@@ -70,8 +70,6 @@ import IDE.Core.State
 import IDE.Utils.File
 import IDE.Framework.ViewFrame
 import IDE.SourceCandy
-import IDE.Metainfo.Info
-import {-# SOURCE #-} IDE.InfoPane
 
 instance IDEObject IDEBuffer
 instance Pane IDEBuffer
@@ -450,12 +448,8 @@ showInfo sv ideR = do
     (l,r) <- textBufferGetSelectionBounds buf
     symbol <- textBufferGetText buf l r True
     ide <- readIORef ideR
-    case currentInfo ide of
-        Nothing -> return ()
-        Just ((_,symbolTable1),(_,symbolTable2)) ->
-            case getIdentifierDescr symbol symbolTable1 symbolTable2 of
-                [] -> return ()
-                a -> runReaderT (setInfos a) ideR
+    runReaderT (triggerEvent ide (SelectInfo symbol)) ideR
+    return ()
 
 markLabelAsChanged :: IDEAction
 markLabelAsChanged = do

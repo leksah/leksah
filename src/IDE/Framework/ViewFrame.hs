@@ -14,7 +14,9 @@
 ---------------------------------------------------------------------------------
 
 module IDE.Framework.ViewFrame (
-    notebookInsertOrdered
+    removePaneAdmin
+,   addPaneAdmin
+,   notebookInsertOrdered
 
 -- * Convenience methods for accesing Pane state
 ,   posTypeToPaneDirection
@@ -77,6 +79,24 @@ import IDE.Core.State
 import IDE.Core.Types
 import IDE.Core.Panes
 import IDE.Framework.Parameters
+
+removePaneAdmin :: (CastablePane alpha,RecoverablePane alpha beta) => alpha -> IDEAction
+removePaneAdmin pane = do
+    panes'          <-  readIDE panes
+    paneMap'        <-  readIDE paneMap
+    let newPanes    =   Map.delete (paneName pane) panes'
+    let newPaneMap  =   Map.delete (paneName pane) paneMap'
+    modifyIDE_ (\ide -> return (ide{panes = newPanes, paneMap = newPaneMap}))
+
+addPaneAdmin :: (CastablePane alpha,RecoverablePane alpha beta) => alpha -> Connections -> PanePath ->  IDEAction
+addPaneAdmin pane conn pp = do
+    panes'          <-  readIDE panes
+    paneMap'        <-  readIDE paneMap
+    let newPaneMap  =   Map.insert (paneName pane) (pp, conn) paneMap'
+    let newPanes    =   Map.insert (paneName pane) (PaneC pane) panes'
+    modifyIDE_ (\ide -> return (ide{panes = newPanes,
+                                    paneMap = newPaneMap}))
+
 
 notebookInsertOrdered :: (NotebookClass self, WidgetClass child)	
     => self	

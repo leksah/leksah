@@ -15,6 +15,7 @@
 
 module IDE.InfoPane (
     setInfos
+,   setSymbol
 ) where
 
 import Graphics.UI.Gtk hiding (afterToggleOverwrite)
@@ -34,8 +35,8 @@ import IDE.Framework.MakeEditor
 import IDE.Framework.SimpleEditors
 import IDE.Framework.Parameters
 import IDE.SourceEditor
-import {-# SOURCE #-} IDE.ModulesPane
 import IDE.CallersPane
+import IDE.Metainfo.Info hiding (initInfo)
 
 instance IDEObject IDEInfo
 
@@ -223,10 +224,11 @@ gotoSource = do
 
 gotoModule' :: IDEAction
 gotoModule' = do
-    mbInfo <- getInfoCont
+    mbInfo  <-  getInfoCont
+    ide     <-  getIDE
     case mbInfo of
         Nothing     ->  return ()
-        Just info   ->  do  selectIdentifier info
+        Just info   ->  do  triggerEvent ide (SelectIdent info)
                             return ()
 
 calledBy' :: IDEAction
@@ -236,6 +238,17 @@ calledBy' = do
         Nothing     ->  return ()
         Just info   ->  do  calledBy info
                             return ()
+
+setSymbol :: String -> IDEAction
+setSymbol symbol = do
+    currentInfo' <- readIDE currentInfo
+    case currentInfo' of
+        Nothing -> return ()
+        Just ((_,symbolTable1),(_,symbolTable2)) ->
+            case getIdentifierDescr symbol symbolTable1 symbolTable2 of
+                [] -> return ()
+                a ->  setInfos a
+
 
 setInfos :: [IdentifierDescr] -> IDEM ()
 setInfos identifierDescrs = do

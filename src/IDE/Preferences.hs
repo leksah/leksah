@@ -17,54 +17,34 @@
 module IDE.Preferences (
     readPrefs
 ,   writePrefs
-,   editPrefs
-
+,   defaultPrefs
 ,   prefsDescription
+,   editPrefs
 ) where
 
 import Graphics.UI.Gtk.SourceView
 import Graphics.UI.Gtk
 import Control.Monad.Reader
 import qualified Text.ParserCombinators.Parsec as P
-import Data.IORef
 import Data.List
 import qualified Text.PrettyPrint.HughesPJ as PP
 import Distribution.Package
+import Data.IORef
 
-import IDE.Log
 import IDE.Core.State
 import IDE.Framework.ViewFrame
-import IDE.Framework.MakeEditor hiding (fieldEditor, parameters)
 import IDE.Framework.SimpleEditors
 import IDE.Framework.CompositeEditors
 import IDE.Framework.Parameters
-import IDE.SourceEditor
-import IDE.PrinterParser hiding (fieldParser,parameters)
-import IDE.Utils.File
-import IDE.SpecialEditors
+import IDE.Framework.MakeEditor hiding (fieldEditor,parameters)
 import IDE.DescriptionPP
+import IDE.PrinterParser hiding (fieldParser,parameters)
+import IDE.SourceEditor
+import IDE.Log
+import IDE.SpecialEditors
 import IDE.Utils.Default
+import IDE.Utils.File
 
-
-defaultPrefs = Prefs {
-        showLineNumbers     =   True
-    ,   rightMargin         =   Just 100
-    ,   tabWidth            =   4
-    ,   sourceCandy         =   Just("Default")
-    ,   keymapName          =   "Default"
-    ,   forceLineEnds       =   True
-    ,   textviewFont        =   Nothing
-    ,   logviewFont         =   Nothing
-    ,   defaultSize         =   (1024,800)
-    ,   browser             =   "firefox"
-    ,   sourcePanePath      =   LeftTop
-    ,   logPanePath         =   RightBottom
-    ,   infoPanePath        =   RightBottom
-    ,   modulesPanePath     =   RightTop
-    ,   controlPanePath     =   RightTop
-    ,   sourceDirectories   =   ["C:/ghc","C:/cygwin/home/Nicklisch-Franken/collect"]
-    ,   packageBlacklist    =   []
-    }
 
 prefsDescription :: [(String,[FieldDescriptionPP Prefs])]
 prefsDescription = [
@@ -228,6 +208,26 @@ instance Default PackageIdentifier where
                     Nothing -> throwIDE "Preferences.getDefault: Can't parse Package Identifier"
                     Just it -> it
 
+defaultPrefs = Prefs {
+        showLineNumbers     =   True
+    ,   rightMargin         =   Just 100
+    ,   tabWidth            =   4
+    ,   sourceCandy         =   Just("Default")
+    ,   keymapName          =   "Default"
+    ,   forceLineEnds       =   True
+    ,   textviewFont        =   Nothing
+    ,   logviewFont         =   Nothing
+    ,   defaultSize         =   (1024,800)
+    ,   browser             =   "firefox"
+    ,   sourcePanePath      =   LeftTop
+    ,   logPanePath         =   RightBottom
+    ,   infoPanePath        =   RightBottom
+    ,   modulesPanePath     =   RightTop
+    ,   controlPanePath     =   RightTop
+    ,   sourceDirectories   =   ["C:/ghc","C:/cygwin/home/Nicklisch-Franken/collect"]
+    ,   packageBlacklist    =   []
+    }
+
 -- ------------------------------------------------------------
 -- * Parsing
 -- ------------------------------------------------------------
@@ -345,5 +345,6 @@ editPrefs' prefs prefsDesc ideR  = do
     widgetShowAll dialog
     mainGUI
     return ()
+
 
 

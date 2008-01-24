@@ -92,7 +92,8 @@ activatePackage filePath = do
             then lift $readFlags (ppath </> "IDE.flags") packp
             else return packp)
     modifyIDE_ (\ide -> return (ide{activePack = (Just pack)}))
-    (buildCurrentInfo (buildDepends packageD)) :: IDEAction
+    ide <- getIDE
+    triggerEvent ide (ActivePack (buildDepends packageD))
     sb <- getSBActivePackage
     lift $statusbarPop sb 1
     lift $statusbarPush sb 1 (showPackageId $packageId pack)
@@ -101,6 +102,8 @@ activatePackage filePath = do
 deactivatePackage :: IDEAction
 deactivatePackage = do
     modifyIDE_ (\ide -> return (ide{activePack = Nothing}))
+    ide <- getIDE
+    triggerEvent ide (ActivePack [])
     sb <- getSBActivePackage
     lift $statusbarPop sb 1
     lift $statusbarPush sb 1 ""

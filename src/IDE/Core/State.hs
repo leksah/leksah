@@ -32,8 +32,6 @@ module IDE.Core.State (
 ,   withIDE
 ,   getIDE
 
-,   removePaneAdmin
-,   addPaneAdmin
 ,   ideMessage
 ,   logMessage
 ,   module IDE.Core.Types
@@ -49,6 +47,7 @@ import Data.IORef
 import Control.Monad.Reader
 import GHC (Session)
 import Data.Unique
+import Distribution.Version
 
 import IDE.Core.Types
 import IDE.Core.Panes
@@ -67,23 +66,29 @@ logMessage str tag = do
     return ()
 
 data IDEEvent  =
-        LogMessage String LogTag
+        CurrentInfo
+    |   ActivePack [Dependency]
+    |   SelectInfo String
+    |   SelectIdent IdentifierDescr
+    |   LogMessage String LogTag
     |   GetToolbar (Maybe Widget)
-    |   ActivatePackage IDEPackage
-    |   DeactivatePackage IDEPackage
 
 data EventSelector  =
-        LogMessageS
+        CurrentInfoS
+    |   ActivePackS
+    |   SelectInfoS
+    |   SelectIdentS
+    |   LogMessageS
     |   GetToolbarS
-    |   ActivatePackageS
-    |   DeactivatePackageS
     deriving (Eq,Ord,Show)
 
 eventAsSelector :: IDEEvent -> EventSelector
+eventAsSelector CurrentInfo             =   CurrentInfoS
+eventAsSelector (ActivePack _)          =   ActivePackS
 eventAsSelector (LogMessage _ _)        =   LogMessageS
 eventAsSelector (GetToolbar _)          =   GetToolbarS
-eventAsSelector (ActivatePackage _)     =   ActivatePackageS
-eventAsSelector (DeactivatePackage _)   =   DeactivatePackageS
+eventAsSelector (SelectInfo _)          =   SelectInfoS
+eventAsSelector (SelectIdent _)         =   SelectIdentS
 
 class IDEObject alpha  where
 
@@ -156,10 +161,13 @@ data IDE            =  IDE {
 } --deriving Show
 
 instance IDEObject IDE where
-    canTriggerEvent o LogMessageS   =   True
-    canTriggerEvent o GetToolbarS   =   True
-    canTriggerEvent _ _             =   False
-
+    canTriggerEvent o LogMessageS       =   True
+    canTriggerEvent o GetToolbarS       =   True
+    canTriggerEvent o SelectInfoS       =   True
+    canTriggerEvent o SelectIdentS      =   True
+    canTriggerEvent o CurrentInfoS      =   True
+    canTriggerEvent o ActivePackS       =   True
+    canTriggerEvent _ _                 =   False
 
 --
 -- | A mutable reference to the IDE state
@@ -213,20 +221,4 @@ getIDE = do
     st <- lift $ readIORef e
     return st
 
-removePaneAdmin :: (CastablePane alpha,RecoverablePane alpha beta) => alpha -> IDEAction
-removePaneAdmin pane = do
-    panes'          <-  readIDE panes
-    paneMap'        <-  readIDE paneMap
-    let newPanes    =   Map.delete (paneName pane) panes'
-    let newPaneMap  =   Map.delete (paneName pane) paneMap'
-    modifyIDE_ (\ide -> return (ide{panes = newPanes, paneMap = newPaneMap}))
-
-addPaneAdmin :: (CastablePane alpha,RecoverablePane alpha beta) => alpha -> Connections -> PanePath ->  IDEAction
-addPaneAdmin pane conn pp = do
-    panes'          <-  readIDE panes
-    paneMap'        <-  readIDE paneMap
-    let newPaneMap  =   Map.insert (paneName pane) (pp, conn) paneMap'
-    let newPanes    =   Map.insert (paneName pane) (PaneC pane) panes'
-    modifyIDE_ (\ide -> return (ide{panes = newPanes,
-                                    paneMap = newPaneMap}))
 

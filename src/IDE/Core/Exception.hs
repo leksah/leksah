@@ -18,11 +18,19 @@ module IDE.Core.Exception (
 ,   throwIDE
 ,   sysMessage
 ,   MessageLevel(..)
+,   handleTopExceptions
 ) where
 
 import Data.Typeable
 import Control.Exception
+import System.IO
+import Prelude hiding(catch)
+import System.Exit
 
+import Panic
+import Bag
+import ErrUtils
+import DynFlags
 
 data IDEException = IDEException String deriving Typeable
 
@@ -38,3 +46,48 @@ data MessageLevel = Silent | Normal | High
     deriving (Eq,Ord,Show)
 
 
+-- ---------------------------------------------------------------------
+-- Exception handling
+--
+
+handleTopExceptions =
+  handleNormalExceptions . handleIDEExceptions . handleGhcExceptions
+
+handleNormalExceptions inner =
+  catch inner (\exception -> do
+    hFlush stdout
+    case exception of
+      AsyncException StackOverflow -> do
+        sysMessage Normal "stack overflow: use -g +RTS -K<size> to increase it"
+        exitFailure
+      ExitException code -> exitWith code
+      _other -> do
+        sysMessage Normal ("ide: internal IDE error: " ++ show exception)
+        exitFailure
+  )
+
+
+handleIDEExceptions inner =
+  catchDyn inner (\(e::IDEException) -> do
+    sysMessage Normal $ "ide: " ++ (show e)
+    exitFailure
+  )
+
+
+handleGhcExceptions inner =
+  -- throwIDE messages propagated as exceptions
+  let inner2 = catchDyn inner (\dyn -> do
+        hFlush stdout
+        case dyn of
+          PhaseFailed _ code -> exitWith code
+          Interrupted -> exitFailure
+          _ -> do
+            print (dyn :: GhcException)
+            exitFailure)
+  in
+  -- compilation errors: messages with locations attached
+  catchDyn inner2 (\dyn -> do
+    sysMessage Normal "ide: Compilation error(s):"
+    printBagOfErrors defaultDynFlags (unitBag dyn)
+    exitFailure
+  )

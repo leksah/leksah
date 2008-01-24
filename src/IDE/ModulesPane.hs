@@ -17,6 +17,7 @@
 module IDE.ModulesPane (
     showModules
 ,   selectIdentifier
+,   reloadKeepSelection
 ) where
 
 import Graphics.UI.Gtk hiding (get)
@@ -740,6 +741,28 @@ symbolFromFacetWrapper  (ConstructorW _ idDescr)    =   identifierID idDescr
 symbolFromFacetWrapper  (FieldW _ idDescr)          =   identifierID idDescr
 symbolFromFacetWrapper  (ClassOpsW _ idDescr)       =   identifierID idDescr
 symbolFromFacetWrapper  (OrphanedData idDescr)      =   identifierID idDescr
+
+reloadKeepSelection :: IDEAction
+reloadKeepSelection = do
+    mbMod <- getPane ModulesCasting
+    case mbMod of
+        Nothing -> return ()
+        Just mods@(IDEModules _ _ treeView treeStore facetView facetStore _ _ _ _)
+            -> do
+            mbTreeSelection     <-  lift $ getSelectionTree treeView treeStore
+            mbFacetSelection    <-  lift $ getSelectionFacet facetView facetStore
+            sc                  <-  getScope
+            fillModulesList sc
+            let mbs = (case mbTreeSelection of
+                            Nothing -> Nothing
+                            Just (_,[]) -> Nothing
+                            Just (_,((md,_):_)) -> Just (modu $ moduleIdMD md),
+                                 case mbFacetSelection of
+                                    Nothing -> Nothing
+                                    Just fw -> Just (symbolFromFacetWrapper fw))
+            selectNames mbs
+
+
 
 
 
