@@ -34,6 +34,7 @@ module IDE.Core.State (
 
 ,   ideMessage
 ,   logMessage
+,   forceJust
 ,   module IDE.Core.Types
 ,   module IDE.Core.Panes
 ,   module IDE.Core.Exception
@@ -71,7 +72,7 @@ data IDEEvent  =
     |   SelectInfo String
     |   SelectIdent IdentifierDescr
     |   LogMessage String LogTag
-    |   GetToolbar (Maybe Widget)
+    |   GetToolbar [Widget]
 
 data EventSelector  =
         CurrentInfoS
@@ -221,4 +222,11 @@ getIDE = do
     st <- lift $ readIORef e
     return st
 
+-- ---------------------------------------------------------------------
+-- Convenience methods for accesing the IDE State
+--
+forceJust :: Maybe alpha -> String -> alpha
+forceJust mb str = case mb of
+			Nothing -> throwIDE str
+			Just it -> it 
 

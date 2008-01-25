@@ -157,6 +157,7 @@ multilineStringEditor parameters = do
     coreRef <- newIORef Nothing
     notifier <- emptyNotifier
     declareEvent FocusOut (\w h -> w `onFocusOut` h) notifier
+    declareEvent ButtonRelease (\w h -> w `onButtonRelease` h) notifier
     mkEditor
         (\widget string -> do
             core <- readIORef coreRef
@@ -168,6 +169,7 @@ multilineStringEditor parameters = do
                     containerAdd aScrolledWindow aTextView
                     containerAdd widget aScrolledWindow
                     activateEvent (castToWidget aTextView) FocusOut notifier
+                    activateEvent (castToWidget aTextView) ButtonRelease notifier
                     buffer          <-  textViewGetBuffer aTextView
                     textBufferSetText buffer string
                     writeIORef coreRef (Just (aScrolledWindow,aTextView))

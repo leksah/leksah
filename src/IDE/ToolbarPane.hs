@@ -29,7 +29,6 @@ instance IDEObject IDEToolbar
 instance Pane IDEToolbar
     where
     primPaneName _  =   "Toolbar"
-    getAddedIndex _ =   0
     getTopWidget    =   castToWidget . toolbar
     paneId b        =   "*Toolbar"
     makeActive p    =   throwIDE "don't activate toolbar"
@@ -79,14 +78,17 @@ initToolbar panePath nb = do
     ideR        <-  ask
     st          <- getIDE
     currentInfo <-  readIDE currentInfo
-    res         <-  triggerEvent st (GetToolbar Nothing)
-    let tb      =   case res of
-                        GetToolbar (Just m) -> m
+    res         <-  triggerEvent st (GetToolbar [])
+    let (tb1,tb2) =   case res of
+                        GetToolbar (_:t1:t2:_) -> (t1,t2)
                         _ -> throwIDE "Failed to build toolbar"
     (buf,cids)  <-  lift $ do
-        let toolbar' = IDEToolbar (castToToolbar tb)
-        notebookInsertOrdered nb tb (paneName toolbar')
-        widgetShowAll tb
+        vb      <- vBoxNew False 0
+        boxPackStart vb tb1 PackNatural 0
+        boxPackStart vb tb2 PackNatural 0
+        let toolbar' = IDEToolbar vb
+        notebookInsertOrdered nb vb (paneName toolbar')
+        widgetShowAll vb
         return (toolbar',[])
     addPaneAdmin buf (BufConnections [] [] []) panePath
     lift $widgetGrabFocus (toolbar buf)

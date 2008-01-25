@@ -320,7 +320,7 @@ menuDescription =
     "       <menuitem name=\"_About\" action=\"HelpAbout\" /> " ++ "\n" ++
     "     </menu> " ++ "\n" ++
     "   </menubar> " ++ "\n" ++
-    "    <toolbar> " ++ "\n" ++
+    "    <toolbar name=\"toolbar1\"> " ++ "\n" ++
     "     <placeholder name=\"FileToolItems\"> " ++ "\n" ++
     "       <separator/> " ++ "\n" ++
     "       <toolitem name=\"New\" action=\"FileNew\"/> " ++ "\n" ++
@@ -337,12 +337,30 @@ menuDescription =
     "       <toolitem name=\"Find\" action=\"EditFind\"/> " ++ "\n" ++
     "     </placeholder> " ++ "\n" ++
     "   </toolbar> " ++ "\n" ++
+    "    <toolbar name=\"toolbar2\"> " ++ "\n" ++
+    "     <placeholder name=\"FileToolItems\"> " ++ "\n" ++
+    "       <separator/> " ++ "\n" ++
+    "       <toolitem name=\"New\" action=\"FileNew\"/> " ++ "\n" ++
+    "       <toolitem name=\"Open\" action=\"FileOpen\"/> " ++ "\n" ++
+    "       <toolitem name=\"Save\" action=\"FileSave\"/> " ++ "\n" ++
+    "       <toolitem name=\"Close\" action=\"ViewClosePane\"/> " ++ "\n" ++
+    "       <separator/> " ++ "\n" ++
+    "     </placeholder> " ++ "\n" ++
+    "     <placeholder name=\"FileEditItems\"> " ++ "\n" ++
+    "       <separator/> " ++ "\n" ++
+    "       <toolitem name=\"Undo\" action=\"EditUndo\"/> " ++ "\n" ++
+    "       <toolitem name=\"Redo\" action=\"EditRedo\"/> " ++ "\n" ++
+    "       <separator/> " ++ "\n" ++
+    "       <toolitem name=\"Find\" action=\"EditFind\"/> " ++ "\n" ++
+    "     </placeholder> " ++ "\n" ++
+    "   </toolbar> " ++ "\n" ++
+
     " </ui>"
 
 --
 -- | Building the Menu
 --
-makeMenu :: UIManager -> [ActionDescr IDERef] -> String -> IDEM (AccelGroup, [Maybe Widget])
+makeMenu :: UIManager -> [ActionDescr IDERef] -> String -> IDEM (AccelGroup, [Widget])
 makeMenu uiManager actions menuDescription = do
     ideR <- ask
     lift $ do
@@ -351,7 +369,10 @@ makeMenu uiManager actions menuDescription = do
         uiManagerInsertActionGroup uiManager actionGroupGlobal 1
         uiManagerAddUiFromString uiManager menuDescription
         accGroup <- uiManagerGetAccelGroup uiManager
-        widgets@[_,mbTb] <- mapM (uiManagerGetWidget uiManager) ["ui/menubar","ui/toolbar"]
+        mbWidgets <- mapM (uiManagerGetWidget uiManager) ["ui/menubar","ui/toolbar1","ui/toolbar2"]
+	let widgets = map (\mb -> case mb of 
+					Just it -> it
+					Nothing -> throwIDE "Menu>>makeMenu: failed to build menu") mbWidgets 
         return (accGroup,widgets)
     where
         actm ideR ag (AD name label tooltip stockId ideAction accs isToggle) = do

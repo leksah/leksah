@@ -125,6 +125,7 @@ class IDEObject alpha => Pane alpha  where
     makeActive      ::   alpha -> IDEAction
     close           ::   alpha -> IDEAction
 
+
 class (Pane alpha, Recoverable beta) => RecoverablePane alpha beta | beta -> alpha, alpha -> beta  where
     saveState               ::   alpha -> IDEM (Maybe IDEState)
     recoverState            ::   PanePath -> beta -> IDEAction
@@ -303,7 +304,7 @@ instance Recoverable CallersState where
 -- | A Toolbar pane description
 --
 data IDEToolbar     =   IDEToolbar {
-    toolbar         ::   Toolbar
+    toolbar         ::   VBox
 }
 
 instance CastablePane IDEToolbar where

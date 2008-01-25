@@ -181,16 +181,14 @@ startGUI = do
     ideR        <-  newIORef ide
     runReaderT (initInfo :: IDEAction) ideR
     (acc,menus) <-  runReaderT (makeMenu uiManager accelActions menuDescription) ideR
-    let mb      =   case menus !! 0 of
-                        Just m  ->  m
-                        Nothing ->  throwIDE "Failed to build menu"
+    when (length menus /= 3) $ throwIDE ("Failed to build menu" ++ show (length menus))
     windowAddAccelGroup win acc
     nb          <-  newNotebook
     widgetSetName nb $"root"
     statusBar   <-  buildStatusbar ideR
     vb          <-  vBoxNew False 1  -- Top-level vbox
     widgetSetName vb "topBox"
-    boxPackStart vb mb PackNatural 0
+    boxPackStart vb (menus !! 0) PackNatural 0
     boxPackStart vb nb PackGrow 0
     boxPackEnd vb statusBar PackNatural 0
     win `onDelete` (\ _ -> do runReaderT quit ideR; return True)
@@ -200,7 +198,7 @@ startGUI = do
     let (x,y)   =   defaultSize prefs
     windowSetDefaultSize win x y
     runReaderT (do
-        registerEvents (menus !! 1)
+        registerEvents menus
         recoverSession :: IDEAction) ideR
     widgetShowAll win
     mainGUI
@@ -250,8 +248,8 @@ handleSpecialKeystrokes (Key _ _ _ mods _ _ _ keyVal name mbChar) = do
     printMods (m:r) = show m ++ printMods r
 handleSpecialKeystrokes _ = return True
 
-registerEvents :: Maybe Widget -> IDEAction
-registerEvents mbTb =    do
+registerEvents :: [Widget] -> IDEAction
+registerEvents tbl =    do
     stRef   <-  ask
     st      <-  lift $ readIORef stRef
     registerEvent st LogMessageS (Left logHandler)
@@ -269,7 +267,7 @@ registerEvents mbTb =    do
             return e
         logHandler _ =   throwIDE "Leksah>>registerEvents: Impossible event"
 
-        tbHandler (GetToolbar Nothing) =   return (GetToolbar mbTb)
+        tbHandler (GetToolbar _) =   return (GetToolbar tbl)
         tbHandler _ =   throwIDE "Leksah>>registerEvents: Impossible event"
 
         siHandler e@(SelectInfo str) =   do

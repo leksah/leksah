@@ -37,6 +37,7 @@ import IDE.Framework.Parameters
 import IDE.SourceEditor
 import IDE.CallersPane
 import IDE.Metainfo.Info hiding (initInfo)
+import IDE.Framework.EditorBasics
 
 instance IDEObject IDEInfo
 
@@ -69,8 +70,8 @@ instance RecoverablePane IDEInfo InfoState where
         nb <- getNotebook pp
         initInfo pp nb currentIDsU currentIndu
 
-idDescrDescr :: [FieldDescription IdentifierDescr]
-idDescrDescr = [
+idDescrDescr :: IDERef -> [FieldDescription IdentifierDescr]
+idDescrDescr ideR = [
             mkField
             (paraName <<<- ParaName "Symbol"
                 $ paraHorizontal <<<- ParaHorizontal StartHorizontal
@@ -95,7 +96,7 @@ idDescrDescr = [
             (paraName  <<<- ParaName "Type" $ emptyParams)
             (BS.unpack . typeInfo)
             (\b a -> a)
-            multilineStringEditor
+            (typeEditor ideR)
     ,   mkField
             (paraName <<<- ParaName "Comment" $ emptyParams)
             (\l -> case mbComment l of
@@ -113,6 +114,25 @@ idDescrDescr = [
             multilineStringEditor--}
 
 allIdTypes = [Function,Newtype,Synonym,AbstractData,Foreign]
+
+typeEditor :: IDERef -> Editor String
+typeEditor ideR para = do
+    ed@(wid,inj,ext,notif) <- multilineStringEditor para
+    notif ButtonRelease $Left (\e -> showInfoHandler wid ideR) 
+    return ed
+
+showInfoHandler :: Widget -> IDERef -> IO Bool
+showInfoHandler wid ideR = do
+    mbFrame <- binGetChild (castToAlignment wid)
+    mbInner <- binGetChild (castToFrame (forceJust mbFrame "InfoPane>>typeEditor: Can't find child"))
+    mbScrolled <- binGetChild (castToAlignment (forceJust mbInner "InfoPane>>typeEditor: Can't find child2"))	  
+    mbTV <- binGetChild (castToScrolledWindow (forceJust mbScrolled "InfoPane>>typeEditor: Can't find child3"))	  
+    buf  <-  textViewGetBuffer (castToTextView (forceJust mbTV "InfoPane>>typeEditor: Can't find child4")) 
+    (l,r) <- textBufferGetSelectionBounds buf
+    symbol <- textBufferGetText buf l r True
+    ide <- readIORef ideR
+    runReaderT (triggerEvent ide (SelectInfo symbol)) ideR
+    return False
 
 initInfo :: PanePath -> Notebook -> [IdentifierDescr] -> Int -> IDEAction
 initInfo panePath nb idDescrs index = do
@@ -144,7 +164,7 @@ initInfo panePath nb idDescrs index = do
             boxPackStart bb nextB PackNatural 0
             boxPackStart bb prevB PackNatural 0
 
-            resList <- mapM (\ fd -> (fieldEditor fd) (head idDescrs)) idDescrDescr
+            resList <- mapM (\ fd -> (fieldEditor fd) (head idDescrs)) (idDescrDescr ideR)
             let (widgets, setInjs, getExts, notifiers) = unzip4 resList
             foldM_ (\ box (w,mbh)  ->
                 case mbh of
@@ -161,7 +181,7 @@ initInfo panePath nb idDescrs index = do
                                                 Just p -> return (castToBox p))
                 (castToBox ibox)
                 (zip widgets (map (getParameter paraHorizontal . parameters)
-                    idDescrDescr))
+                    (idDescrDescr ideR)))
             boxPackStart nbbox ibox PackGrow 0
             boxPackEnd nbbox bb PackNatural 0
             --openType

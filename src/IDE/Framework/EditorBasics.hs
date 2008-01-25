@@ -72,6 +72,7 @@ data EventSelector  =   Clicked
                     |   FocusOut
                     |   FocusIn
                     |   SelectionChanged
+                    |   ButtonRelease
     deriving (Eq,Ord,Show)
 
 --
