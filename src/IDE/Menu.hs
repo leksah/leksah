@@ -22,6 +22,7 @@ module IDE.Menu (
 ,   quit
 ,   aboutDialog
 ,   buildStatusbar
+,   newIcons
 ) where
 
 import Graphics.UI.Gtk
@@ -123,9 +124,9 @@ actions =
 
     ,AD "PackageFlags" "Edit Flags" Nothing Nothing
         packageFlags [] False
-    ,AD "ConfigPackage" "_Configure Package" Nothing Nothing
+    ,AD "ConfigPackage" "_Configure Package" Nothing (Just "ide_configure")
         packageConfig [] False
-    ,AD "BuildPackage" "_Build Package" Nothing Nothing
+    ,AD "BuildPackage" "_Build Package" Nothing (Just "ide_make")
         packageBuild [] False
     ,AD "DocPackage" "_Build Documentation" Nothing Nothing
         packageDoc [] False
@@ -133,7 +134,7 @@ actions =
         packageClean [] False
     ,AD "CopyPackage" "_Copy Package" Nothing Nothing
         packageCopy [] False
-    ,AD "RunPackage" "_Run" Nothing Nothing
+    ,AD "RunPackage" "_Run" Nothing (Just "ide_run")
         packageRun [] False
     ,AD "NextError" "_Next Error" Nothing Nothing
         nextError [] False
@@ -338,23 +339,14 @@ menuDescription =
     "     </placeholder> " ++ "\n" ++
     "   </toolbar> " ++ "\n" ++
     "    <toolbar name=\"toolbar2\"> " ++ "\n" ++
-    "     <placeholder name=\"FileToolItems\"> " ++ "\n" ++
+    "     <placeholder name=\"BuildToolItems\"> " ++ "\n" ++
     "       <separator/> " ++ "\n" ++
-    "       <toolitem name=\"New\" action=\"FileNew\"/> " ++ "\n" ++
-    "       <toolitem name=\"Open\" action=\"FileOpen\"/> " ++ "\n" ++
-    "       <toolitem name=\"Save\" action=\"FileSave\"/> " ++ "\n" ++
-    "       <toolitem name=\"Close\" action=\"ViewClosePane\"/> " ++ "\n" ++
+    "       <toolitem name=\"Configure\" action=\"ConfigPackage\"/> " ++ "\n" ++
+    "       <toolitem name=\"Build\" action=\"BuildPackage\"/> " ++ "\n" ++
+    "       <toolitem name=\"Run\" action=\"RunPackage\"/> " ++ "\n" ++
     "       <separator/> " ++ "\n" ++
-    "     </placeholder> " ++ "\n" ++
-    "     <placeholder name=\"FileEditItems\"> " ++ "\n" ++
-    "       <separator/> " ++ "\n" ++
-    "       <toolitem name=\"Undo\" action=\"EditUndo\"/> " ++ "\n" ++
-    "       <toolitem name=\"Redo\" action=\"EditRedo\"/> " ++ "\n" ++
-    "       <separator/> " ++ "\n" ++
-    "       <toolitem name=\"Find\" action=\"EditFind\"/> " ++ "\n" ++
     "     </placeholder> " ++ "\n" ++
     "   </toolbar> " ++ "\n" ++
-
     " </ui>"
 
 --
@@ -370,9 +362,9 @@ makeMenu uiManager actions menuDescription = do
         uiManagerAddUiFromString uiManager menuDescription
         accGroup <- uiManagerGetAccelGroup uiManager
         mbWidgets <- mapM (uiManagerGetWidget uiManager) ["ui/menubar","ui/toolbar1","ui/toolbar2"]
-	let widgets = map (\mb -> case mb of 
+	let widgets = map (\mb -> case mb of
 					Just it -> it
-					Nothing -> throwIDE "Menu>>makeMenu: failed to build menu") mbWidgets 
+					Nothing -> throwIDE "Menu>>makeMenu: failed to build menu") mbWidgets
         return (accGroup,widgets)
     where
         actm ideR ag (AD name label tooltip stockId ideAction accs isToggle) = do
@@ -476,4 +468,23 @@ buildStatusbar ideR = do
     boxPackEnd hb sbe PackNatural 0
 
     return hb
+
+newIcons :: IO ()
+newIcons = do
+    iconFactory <- iconFactoryNew
+    dataDir <- getDataDir
+    mapM_ (loadIcon dataDir iconFactory) ["ide_class","ide_configure","ide_data","ide_field","ide_function",
+        "ide_instance", "ide_konstructor","ide_make","ide_method","ide_newtype","ide_other",
+        "ide_rule","ide_run","ide_slot","ide_source","ide_type","leksah","pointer"
+        ]
+    iconFactoryAddDefault iconFactory
+    where
+    loadIcon dataDir iconFactory name = do
+        pb      <-  pixbufNewFromFile $ dataDir </> "data" </> (name ++ ".png")
+        icon    <-  iconSetNewFromPixbuf pb
+        iconFactoryAdd iconFactory name icon
+
+
+
+
 

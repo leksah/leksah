@@ -207,7 +207,7 @@ initModules panePath nb = do
                 if null (snd row)
                     then ""
                     else if isJust (mbSourcePathMD (fst (head (snd row))))
-                            then stockJumpTo
+                            then "ide_source"
                             else stockYes]
 
         renderer2   <- New.cellRendererTextNew
@@ -254,7 +254,7 @@ initModules panePath nb = do
         New.cellLayoutSetAttributes col renderer31 facetStore
             $ \row -> [
             cellPixbufStockId  := if isJust (mbLocation(facetIdDescr row))
-                                    then stockJumpTo
+                                    then "ide_source"
                                     else ""]
         New.treeViewSetHeadersVisible treeView True
 
@@ -314,8 +314,19 @@ initModules panePath nb = do
     lift $widgetGrabFocus (paned buf)
 
 stockIdFromType :: IdType -> StockId
-stockIdFromType Function    =   stockGoForward
-stockIdFromType _           =   ""
+stockIdFromType Function        =   "ide_function"
+stockIdFromType Newtype         =   "ide_newtype"
+stockIdFromType Synonym         =   "ide_type"
+stockIdFromType AbstractData    =   "ide_data"
+stockIdFromType OpenData        =   "ide_data"
+stockIdFromType Foreign         =   "ide_other"
+stockIdFromType Data            =   "ide_data"
+stockIdFromType Class           =   "ide_class"
+stockIdFromType Instance        =   "ide_instance"
+stockIdFromType Constructor     =   "ide_konstructor"
+stockIdFromType Field           =   "ide_slot"
+stockIdFromType ClassOP         =   "ide_method"
+stockIdFromType OrphanedInstance =  "ide_instance"
 
 treeViewSearch :: TreeView
     -> New.TreeStore (String, [(ModuleDescr,PackageDescr)])

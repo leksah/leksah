@@ -20,8 +20,6 @@ module IDE.Leksah (
 
 import Graphics.UI.Gtk
 import Control.Monad.Reader
-import System.FilePath
-import System.Directory(doesFileExist)
 import Control.Concurrent
 import Data.IORef
 import Data.Maybe
@@ -33,6 +31,9 @@ import GHC
 import Config
 import Data.Version
 import Prelude hiding(catch)
+import System.FilePath
+import System.Directory
+
 
 import Paths_leksah
 import IDE.SaveSession
@@ -134,6 +135,7 @@ startGUI = do
     timeoutAddFull (yield >> return True) priorityHigh 25
     mapM_ (sysMessage Normal) st
     uiManager   <-  uiManagerNew
+    newIcons
     prefsPath   <-  getConfigFilePathForLoad "Default.prefs"
     prefs       <-  readPrefs prefsPath
     keysPath    <-  getConfigFilePathForLoad $keymapName prefs ++ ".keymap"
@@ -147,7 +149,7 @@ startGUI = do
     candySt     <-  parseCandy candyPath
     win         <-  windowNew
     dataDir     <-  getDataDir
-    let iconPath = dataDir </> "data" </> "leksah.gif"
+    let iconPath = dataDir </> "data" </> "leksah.png"
     iconExists  <-  doesFileExist iconPath
     when iconExists $
         windowSetIconFromFile win iconPath
