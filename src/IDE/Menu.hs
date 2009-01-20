@@ -1,11 +1,11 @@
-{-# OPTIONS_GHC -fglasgow-exts #-}
+{-# OPTIONS_GHC -XTypeSynonymInstances -XScopedTypeVariables #-}
 -----------------------------------------------------------------------------
 --
 -- Module       :  IDE.Menu
 -- Copyright   :  (c) Juergen Nicklisch-Franken (aka Jutaro)
 -- License     :  GNU-GPL
 --
--- Maintainer  :  Juergen Nicklisch-Franken <jnf at arcor.de>
+-- Maintainer  :  Juergen Nicklisch-Franken <info at leksah.org>
 -- Stability   :  experimental
 -- Portability :  portable
 --
@@ -23,6 +23,7 @@ module IDE.Menu (
 ,   aboutDialog
 ,   buildStatusbar
 ,   newIcons
+,   setSensitivity
 ) where
 
 import Graphics.UI.Gtk
@@ -30,25 +31,30 @@ import Graphics.UI.Gtk.Types
 import Control.Monad.Reader
 import System.FilePath
 import Data.Version
+import Prelude hiding (catch)
+import Control.Exception
+import Data.Maybe
+
 
 import IDE.Core.State
-import IDE.SourceEditor
-import IDE.Framework.ViewFrame
-import IDE.Preferences
-import IDE.PackageEditor
+import IDE.Pane.SourceBuffer
+import IDE.Pane.Preferences
+import IDE.Pane.PackageFlags
+import IDE.Pane.PackageEditor
 import IDE.Package
-import IDE.Log
-import IDE.Metainfo.Info
+import IDE.Pane.Log
 import IDE.SaveSession
-import IDE.ModulesPane
-import IDE.ToolbarPane
-import IDE.FindPane
-import IDE.ReplacePane
-import IDE.Metainfo.SourceCollector
-import IDE.Metainfo.InterfaceCollector
+import IDE.Pane.Modules
+import IDE.Find
+import IDE.FileUtils
+import IDE.Pane.ClassHierarchy
+import IDE.Pane.Search
+import IDE.Pane.Callers
 import Paths_leksah
---import IDE.GhcAPI
-
+import IDE.GUIHistory
+import Debug.Trace
+import IDE.Metainfo.Provider (rebuildLibInfo,rebuildActiveInfo)
+import IDE.Pane.Info (showInfo)
 --
 -- | The Actions known to the system (they can be activated by keystrokes or menus)
 --
@@ -95,8 +101,6 @@ actions =
         (editFindInc Forward) [] False
     ,AD "EditFindPrevious" "Find _Previous" Nothing (Just "gtk-find-previous")
         (editFindInc Backward) [] False
-    ,AD "EditReplace" "_Replace" Nothing (Just "gtk-replace")
-        doReplace [] False
     ,AD "EditGotoLine" "_Goto Line" Nothing (Just "gtk-jump")
         editGotoLine [] False
 
@@ -109,10 +113,20 @@ actions =
     ,AD "EditShiftLeft" "Shift _Left" Nothing Nothing
         editShiftLeft [] False
 
+    --,AD "Align" "_Align" Nothing Nothing (return ()) [] False
+    ,AD "EditAlignEqual" "Align _=" Nothing Nothing
+        (align '=') [] False
+    ,AD "EditAlignRightArrow" "Align -_>" Nothing Nothing
+        (align '>') [] False
+    ,AD "EditAlignLeftArrow" "Align _<-" Nothing Nothing
+        (align '<') [] False
+    ,AD "EditAlignTypeSig" "Align _::" Nothing Nothing
+        (align ':') [] False
+
     ,AD "EditCandy" "_To Candy" Nothing Nothing
         editCandy [] True
 
-    ,AD "Package" "Package" Nothing Nothing (return ()) [] False
+    ,AD "Package" "_Package" Nothing Nothing (return ()) [] False
     ,AD "NewPackage" "_New Package" Nothing Nothing
         packageNew [] False
     ,AD "OpenPackage" "_Open Package" Nothing Nothing
@@ -122,23 +136,23 @@ actions =
     ,AD "ClosePackage" "_Close Package" Nothing Nothing
         deactivatePackage [] False
 
-    ,AD "PackageFlags" "Edit Flags" Nothing Nothing
-        packageFlags [] False
-    ,AD "ConfigPackage" "_Configure Package" Nothing (Just "ide_configure")
+    ,AD "PackageFlags" "Edit Flags" (Just "Edit the package flags") Nothing
+        (do getFlags; return ()) [] False
+    ,AD "ConfigPackage" "_Configure Package" (Just "Configures the package") (Just "ide_configure")
         packageConfig [] False
-    ,AD "BuildPackage" "_Build Package" Nothing (Just "ide_make")
+    ,AD "BuildPackage" "_Build Package" (Just "Builds the package") (Just "ide_make")
         packageBuild [] False
-    ,AD "DocPackage" "_Build Documentation" Nothing Nothing
+    ,AD "DocPackage" "_Build Documentation" (Just "Builds the documentation") Nothing
         packageDoc [] False
-    ,AD "CleanPackage" "Cl_ean Package" Nothing Nothing
+    ,AD "CleanPackage" "Cl_ean Package" (Just "Cleans the package") Nothing
         packageClean [] False
-    ,AD "CopyPackage" "_Copy Package" Nothing Nothing
+    ,AD "CopyPackage" "_Copy Package" (Just "Copies the package") Nothing
         packageCopy [] False
-    ,AD "RunPackage" "_Run" Nothing (Just "ide_run")
+    ,AD "RunPackage" "_Run" (Just "Runs the package") (Just "ide_run")
         packageRun [] False
-    ,AD "NextError" "_Next Error" Nothing Nothing
+    ,AD "NextError" "_Next Error" (Just "Go to the next error") (Just "ide_error_next")
         nextError [] False
-    ,AD "PreviousError" "_Previous Error" Nothing Nothing
+    ,AD "PreviousError" "_Previous Error" (Just "Go to the previous error") (Just "ide_error_prev")
         previousError [] False
 
     ,AD "InstallPackage" "_Install Package" Nothing Nothing
@@ -154,18 +168,29 @@ actions =
     ,AD "OpenDocPackage" "_Open Doc" Nothing Nothing
         packageOpenDoc [] False
 
-    ,AD "Modules" "_Modules" Nothing Nothing (return ()) [] False
-    ,AD "ShowModules" "_Show Modules" Nothing Nothing
+    ,AD "Metadata" "_Metadata" Nothing Nothing (return ()) [] False
+    ,AD "UpdateMetadataCurrent" "_Update Project" Nothing Nothing
+        rebuildActiveInfo [] False
+    ,AD "UpdateMetadataLib" "_Update Lib" Nothing Nothing
+        rebuildLibInfo [] False
+    ,AD "ShowModules" "Show Modules" Nothing Nothing
         showModules [] False
+    ,AD "ShowCallers" "Show Callers" Nothing Nothing
+        showCallers [] False
+    ,AD "ShowClasses" "Show Classes" Nothing Nothing
+        showClasses [] False
+    ,AD "ShowSearch" "Show Search" Nothing Nothing
+        showSearch [] False
+    ,AD "ShowInfo" "Show Info" Nothing Nothing
+        showInfo [] False
 
-    ,AD "RebuildSourceLocs" "_Rebuild source locations" Nothing Nothing
-        (lift buildSourceForPackageDB) [] False
-    ,AD "UpdateMetadata" "_Update metadata" Nothing Nothing
-        (collectInstalledI False) [] False
-    ,AD "RebuildMetadata" "Re_build metadata" Nothing Nothing
-        (collectInstalledI True) [] False
-    ,AD "UpdateProjectMetadata" "Update _current package metadata" Nothing Nothing
-        buildActiveInfo [] False
+    ,AD "Session" "_Session" Nothing Nothing (return ()) [] False
+    ,AD "SaveSession" "_Save Session" Nothing Nothing
+        saveSessionAsPrompt [] False
+    ,AD "LoadSession" "_Load Session" Nothing Nothing
+        loadSessionPrompt [] False
+    ,AD "ForgetSession" "_Forget Session" Nothing Nothing
+        (return ()) [] True
 
     ,AD "View" "_View" Nothing Nothing (return ()) [] False
     ,AD "ViewMoveLeft" "Move _Left" Nothing Nothing
@@ -197,196 +222,71 @@ actions =
     ,AD "ViewClosePane" "Close pane" Nothing (Just "gtk-close")
         sessionClosePane [] False
 
+    ,AD "ViewHistoryBack" "Back" Nothing (Just "gtk-go-back")
+        historyBack [] False
+    ,AD "ViewHistoryForth" "Forward" Nothing (Just "gtk-go-forward")
+        historyForward [] False
+
+
     ,AD "ClearLog" "_Clear Log" Nothing Nothing
         clearLog [] False
-    ,AD "ShowToolbar" "_Show Toolbar" Nothing Nothing
-        (do getToolbar; return ()) [] False
-    ,AD "ShowFind" "_Show Find" Nothing Nothing
-        doFind [] False
-
-    ,AD "Preferences" "_Preferences" Nothing Nothing (return ()) [] False
-    ,AD "PrefsEdit" "_Edit Prefs" Nothing Nothing
-        editPrefs [] False
-
+    ,AD "ToggleToolbar" "Toggle Toolbar" Nothing Nothing
+        toggleToolbar [] False
 
     ,AD "Help" "_Help" Nothing Nothing (return ()) [] False
---    ,AD "HelpDebug" "Debug" (Just "<Ctrl>d") Nothing helpDebug [] False
+    ,AD "PrefsEdit" "_Edit Prefs" Nothing Nothing
+        editPrefs [] False
+    ,AD "HelpDebug" "Debug" Nothing Nothing (do
+            pack <- readIDE activePack
+            ideMessage Normal (show pack)) [] False
 --    ,AD "HelpDebug2" "Debug2" (Just "<Ctrl>d") Nothing dbgInstalledPackageInfo [] False
     ,AD "HelpAbout" "About" Nothing (Just "gtk-about") aboutDialog [] False]
 
 --
 -- | The menu description in XML Syntax as defined by GTK
 --
-menuDescription :: String
-menuDescription =
-    "" ++ "\n" ++
-    "  <ui>" ++ "\n" ++
-    "    <menubar>" ++ "\n" ++
-    "      <menu name=\"_File\" action=\"File\">" ++ "\n" ++
-    "       <menuitem name=\"_New\" action=\"FileNew\" />" ++ "\n" ++
-    "       <menuitem name=\"_Open\" action=\"FileOpen\" />" ++ "\n" ++
-    "       <menuitem name=\"_Revert\" action=\"FileRevert\" />" ++ "\n" ++
-    "       <separator/>" ++ "\n" ++
-    "       <menuitem name=\"_Save\" action=\"FileSave\" />" ++ "\n" ++
-    "       <menuitem name=\"Save_As\" action=\"FileSaveAs\" />" ++ "\n" ++
-    "       <separator/> " ++ "\n" ++
-    "       <menuitem name=\"_Close\" action=\"FileClose\" /> " ++ "\n" ++
-    "       <menuitem name=\"Close All\" action=\"FileCloseAll\" /> " ++ "\n" ++
-    "       <menuitem name=\"Close All but Package\" action=\"FileCloseAllButPackage\" /> " ++ "\n" ++
-    "      <menuitem name=\"_Quit\" action=\"Quit\" /> " ++ "\n" ++
-    "     </menu> " ++ "\n" ++
-    "     <menu name=\"_Edit\" action=\"Edit\"> " ++ "\n" ++
-    "       <menuitem name=\"_Undo\" action=\"EditUndo\" /> " ++ "\n" ++
-    "       <menuitem name=\"_Redo\" action=\"EditRedo\" /> " ++ "\n" ++
-    "       <separator/> " ++ "\n" ++
-    "       <menuitem name=\"Cu_t\" action=\"EditCut\" /> " ++ "\n" ++
-    "       <menuitem name=\"_Copy\" action=\"EditCopy\" /> " ++ "\n" ++
-    "       <menuitem name=\"_Paste\" action=\"EditPaste\" /> " ++ "\n" ++
-    "       <menuitem name=\"_Delete\" action=\"EditDelete\" /> " ++ "\n" ++
-    "       <separator/> " ++ "\n" ++
-    "       <menuitem name=\"Select _All\" action=\"EditSelectAll\" /> " ++ "\n" ++
-    "       <separator/> " ++ "\n" ++
-    "       <menuitem name=\"_Find\" action=\"EditFind\" /> " ++ "\n" ++
-    "       <menuitem name=\"Find_Next\" action=\"EditFindNext\" /> " ++ "\n" ++
-    "       <menuitem name=\"Find_Previous\" action=\"EditFindPrevious\" /> " ++ "\n" ++
-    "       <menuitem name=\"_Goto Line\" action=\"EditGotoLine\" /> " ++ "\n" ++
-    "       <separator/> " ++ "\n" ++
-    "       <menuitem name=\"Replace\" action=\"EditReplace\" /> " ++ "\n" ++
-    "       <separator/> " ++ "\n" ++
-    "       <menuitem name=\"Comment\" action=\"EditComment\" /> " ++ "\n" ++
-    "       <menuitem name=\"Uncomment\" action=\"EditUncomment\" /> " ++ "\n" ++
-    "       <menuitem name=\"Shift Left\" action=\"EditShiftLeft\" /> " ++ "\n" ++
-    "       <menuitem name=\"Shift Right\" action=\"EditShiftRight\" /> " ++ "\n" ++
-    "       <separator/> " ++ "\n" ++
-    "       <menuitem name=\"Source Candy\" action=\"EditCandy\" /> " ++ "\n" ++
-    "     </menu> " ++ "\n" ++
-    "    <menu name=\"_Package\" action=\"Package\"> " ++ "\n" ++
-    "       <menuitem name=\"_New Package\" action=\"NewPackage\" /> " ++ "\n" ++
-    "       <menuitem name=\"_Open Package\" action=\"OpenPackage\" /> " ++ "\n" ++
-    "       <menuitem name=\"_Edit Package\" action=\"EditPackage\" /> " ++ "\n" ++
-    "       <menuitem name=\"_Close Package\" action=\"ClosePackage\" /> " ++ "\n" ++
-    "       <separator/> " ++ "\n" ++
-    "       <menuitem name=\"Edit _Flags\" action=\"PackageFlags\" /> " ++ "\n" ++
-    "       <menuitem name=\"_Configure Package\" action=\"ConfigPackage\" /> " ++ "\n" ++
-    "       <menuitem name=\"_Build Package\" action=\"BuildPackage\" /> " ++ "\n" ++
-    "       <menuitem name=\"_Run\" action=\"RunPackage\" /> " ++ "\n" ++
-    "       <menuitem name=\"_Next Error\" action=\"NextError\" /> " ++ "\n" ++
-    "       <menuitem name=\"_Previous Error\" action=\"PreviousError\" /> " ++ "\n" ++
-    "       <separator/> " ++ "\n" ++
-    "       <menuitem name=\"Clea_n Package\" action=\"CleanPackage\" /> " ++ "\n" ++
-    "       <menuitem name=\"C_opy Package\" action=\"CopyPackage\" /> " ++ "\n" ++
-    "       <menuitem name=\"_Install Package\" action=\"InstallPackage\" /> " ++ "\n" ++
-    "       <menuitem name=\"Re_gister Package\" action=\"RegisterPackage\" /> " ++ "\n" ++
-    "       <menuitem name=\"_Unregister Package\" action=\"UnregisterPackage\" /> " ++ "\n" ++
-    "       <menuitem name=\"Test Package\" action=\"TestPackage\" /> " ++ "\n" ++
-    "       <menuitem name=\"SDist Package\" action=\"SdistPackage\" /> " ++ "\n" ++
-    "       <separator/> " ++ "\n" ++
-    "       <menuitem name=\"_Build Documentation\" action=\"DocPackage\" /> " ++ "\n" ++
-    "       <menuitem name=\"Open Documentation\" action=\"OpenDocPackage\" /> " ++ "\n" ++
-    "     </menu> " ++ "\n" ++
-    "    <menu name=\"_Modules\" action=\"Modules\"> " ++ "\n" ++
-    "       <menuitem name=\"_Show Modules\" action=\"ShowModules\" /> " ++ "\n" ++
-    "       <separator/> " ++ "\n" ++
-    "       <menuitem name=\"_Rebuild source locations metadata\" action=\"RebuildSourceLocs\" /> " ++ "\n" ++
-    "       <menuitem name=\"_Update metadata for changes to installed packages\" action=\"UpdateMetadata\" /> " ++ "\n" ++
-    "       <menuitem name=\"_Rebuild metadata for all installed packages\" action=\"RebuildMetadata\" /> " ++ "\n" ++
-    "       <menuitem name=\"_Update metadata for current package\" action=\"UpdateProjectMetadata\" /> " ++ "\n" ++
-    "    </menu> " ++ "\n" ++
-    "    <menu name=\"_View\" action=\"View\"> " ++ "\n" ++
-    "       <menuitem name=\"Move _Left\" action=\"ViewMoveLeft\" /> " ++ "\n" ++
-    "       <menuitem name=\"Move _Right\" action=\"ViewMoveRight\" /> " ++ "\n" ++
-    "       <menuitem name=\"Move _Up\" action=\"ViewMoveUp\" /> " ++ "\n" ++
-    "       <menuitem name=\"Move _Down\" action=\"ViewMoveDown\" /> " ++ "\n" ++
-    "       <separator/> " ++ "\n" ++
-    "       <menuitem name=\"Split H_orizontal\" action=\"ViewSplitHorizontal\" /> " ++ "\n" ++
-    "       <menuitem name=\"Split V_ertical\" action=\"ViewSplitVertical\" /> " ++ "\n" ++
-    "       <menuitem name=\"_Collapse\" action=\"ViewCollapse\" /> " ++ "\n" ++
-    "       <separator/> " ++ "\n" ++
-    "       <menuitem name=\"Tabs _Left\" action=\"ViewTabsLeft\" /> " ++ "\n" ++
-    "       <menuitem name=\"Tabs _Right\" action=\"ViewTabsRight\" /> " ++ "\n" ++
-    "       <menuitem name=\"Tabs _Up\" action=\"ViewTabsUp\" /> " ++ "\n" ++
-    "       <menuitem name=\"Tabs _Down\" action=\"ViewTabsDown\" /> " ++ "\n" ++
-    "       <menuitem name=\"Switch Tabs\" action=\"ViewSwitchTabs\" /> " ++ "\n" ++
-    "       <separator/> " ++ "\n" ++
-    "       <menuitem name=\"Close Pane\" action=\"ViewClosePane\" /> " ++ "\n" ++
-    "       <separator/> " ++ "\n" ++
-    "       <menuitem name=\"Clear Log\" action=\"ClearLog\" /> " ++ "\n" ++
-    "       <menuitem name=\"Show Toolbar\" action=\"ShowToolbar\" /> " ++ "\n" ++
-    "       <menuitem name=\"Show Find\" action=\"ShowFind\" /> " ++ "\n" ++
-    "     </menu> " ++ "\n" ++
-    "    <menu name=\"_Preferences\" action=\"Preferences\"> " ++ "\n" ++
-    "       <menuitem name=\"Edit Preferences\" action=\"PrefsEdit\" /> " ++ "\n" ++
-    "     </menu> " ++ "\n" ++
-    "    <menu name=\"_Help\" action=\"Help\"> " ++ "\n" ++
-    "       <menuitem name=\"_About\" action=\"HelpAbout\" /> " ++ "\n" ++
-    "     </menu> " ++ "\n" ++
-    "   </menubar> " ++ "\n" ++
-    "    <toolbar name=\"toolbar1\"> " ++ "\n" ++
-    "     <placeholder name=\"FileToolItems\"> " ++ "\n" ++
-    "       <separator/> " ++ "\n" ++
-    "       <toolitem name=\"New\" action=\"FileNew\"/> " ++ "\n" ++
-    "       <toolitem name=\"Open\" action=\"FileOpen\"/> " ++ "\n" ++
-    "       <toolitem name=\"Save\" action=\"FileSave\"/> " ++ "\n" ++
-    "       <toolitem name=\"Close\" action=\"ViewClosePane\"/> " ++ "\n" ++
-    "       <separator/> " ++ "\n" ++
-    "     </placeholder> " ++ "\n" ++
-    "     <placeholder name=\"FileEditItems\"> " ++ "\n" ++
-    "       <separator/> " ++ "\n" ++
-    "       <toolitem name=\"Undo\" action=\"EditUndo\"/> " ++ "\n" ++
-    "       <toolitem name=\"Redo\" action=\"EditRedo\"/> " ++ "\n" ++
-    "       <separator/> " ++ "\n" ++
-    "       <toolitem name=\"Find\" action=\"EditFind\"/> " ++ "\n" ++
-    "     </placeholder> " ++ "\n" ++
-    "   </toolbar> " ++ "\n" ++
-    "    <toolbar name=\"toolbar2\"> " ++ "\n" ++
-    "     <placeholder name=\"BuildToolItems\"> " ++ "\n" ++
-    "       <separator/> " ++ "\n" ++
-    "       <toolitem name=\"Configure\" action=\"ConfigPackage\"/> " ++ "\n" ++
-    "       <toolitem name=\"Build\" action=\"BuildPackage\"/> " ++ "\n" ++
-    "       <toolitem name=\"Run\" action=\"RunPackage\"/> " ++ "\n" ++
-    "       <separator/> " ++ "\n" ++
-    "     </placeholder> " ++ "\n" ++
-    "   </toolbar> " ++ "\n" ++
-    " </ui>"
+menuDescription :: IO String
+menuDescription = do
+    prefsPath   <-  getConfigFilePathForLoad "Default.menu"
+    res       <-  trace ("read from path : " ++ prefsPath) $ readFile prefsPath
+    return res
 
 --
 -- | Building the Menu
 --
 makeMenu :: UIManager -> [ActionDescr IDERef] -> String -> IDEM (AccelGroup, [Widget])
-makeMenu uiManager actions menuDescription = do
-    ideR <- ask
-    lift $ do
-        actionGroupGlobal <- actionGroupNew "global"
-        mapM_ (actm ideR actionGroupGlobal) actions
-        uiManagerInsertActionGroup uiManager actionGroupGlobal 1
-        uiManagerAddUiFromString uiManager menuDescription
-        accGroup <- uiManagerGetAccelGroup uiManager
-        mbWidgets <- mapM (uiManagerGetWidget uiManager) ["ui/menubar","ui/toolbar1","ui/toolbar2"]
-	let widgets = map (\mb -> case mb of
+makeMenu uiManager actions menuDescription = reifyIDE (\ideR session -> do
+    actionGroupGlobal <- actionGroupNew "global"
+    mapM_ (actm ideR session actionGroupGlobal) actions
+    uiManagerInsertActionGroup uiManager actionGroupGlobal 1
+    uiManagerAddUiFromString uiManager menuDescription
+    accGroup <- uiManagerGetAccelGroup uiManager
+    mbWidgets <- mapM (uiManagerGetWidget uiManager) ["ui/menubar","ui/toolbar"]
+    let widgets = map (\mb -> case mb of
 					Just it -> it
 					Nothing -> throwIDE "Menu>>makeMenu: failed to build menu") mbWidgets
-        return (accGroup,widgets)
+    return (accGroup,widgets))
     where
-        actm ideR ag (AD name label tooltip stockId ideAction accs isToggle) = do
+        actm ideR session ag (AD name label tooltip stockId ideAction accs isToggle) = do
             let (acc,accString) = if null accs
                                     then (Just "","=" ++ name)
                                     else (Just (head accs),(head accs) ++ "=" ++ name)
             if isToggle
                 then do
                     act <- toggleActionNew name label tooltip stockId
-                    onToggleActionToggled act (doAction ideAction ideR accString)
+                    on act actionToggled (doAction ideAction ideR session accString)
                     actionGroupAddActionWithAccel ag act acc
                 else do
                     act <- actionNew name label tooltip stockId
-                    onActionActivate act (doAction ideAction ideR accString)
+                    onActionActivate act (doAction ideAction ideR session accString)
                     actionGroupAddActionWithAccel ag act acc
-        doAction ideAction ideR accStr =
-            runReaderT (do
+        doAction ideAction ideR session accStr =
+            handleTopExceptions (reflectIDE (do
                 ideAction
                 sb <- getSBSpecialKeys
-                lift $statusbarPop sb 1
-                lift $statusbarPush sb 1 $accStr
-                return ()) ideR
+                liftIO $statusbarPop sb 1
+                liftIO $statusbarPush sb 1 $accStr
+                return ()) ideR session)
 
 -- | Quit ide
 --  ### make reasonable
@@ -394,27 +294,28 @@ makeMenu uiManager actions menuDescription = do
 quit :: IDEAction
 quit = do
     saveSession :: IDEAction
+    modifyIDE_ (\ide -> return (ide{isShuttingDown = True}))
     b <- fileCloseAll
     if b
-        then lift mainQuit
-        else return ()
+        then liftIO mainQuit
+        else modifyIDE_ (\ide -> return (ide{isShuttingDown = False}))
 
 --
 -- | Show the about dialog
 --
 aboutDialog :: IDEAction
-aboutDialog = lift $ do
+aboutDialog = liftIO $ do
     d <- aboutDialogNew
     aboutDialogSetName d "Leksah"
     aboutDialogSetVersion d (showVersion version)
-    aboutDialogSetCopyright d "Copyright 2007 Juergen Nicklisch-Franken aka Jutaro"
+    aboutDialogSetCopyright d "Copyright 2007-2009 Jürgen Nicklisch-Franken"
     aboutDialogSetComments d $ "An integrated development environement (IDE) for the " ++
-                               "programming language Haskell and the Glasgow Haskell compiler"
+                               "programming language Haskell and the Glasgow Haskell Compiler"
     dd <- getDataDir
-    license <- readFile $ dd </> "data" </> "gpl.txt"
+    license <- catch (readFile $ dd </> "LICENSE") (\ (_ :: SomeException) -> return "")
     aboutDialogSetLicense d $ Just license
-    aboutDialogSetWebsite d "code.haskell.org/leksah"
-    aboutDialogSetAuthors d ["Juergen Nicklisch-Franken aka Jutaro"]
+    aboutDialogSetWebsite d "http://leksah.org/"
+    aboutDialogSetAuthors d ["Jürgen Nicklisch-Franken (Jutaro)"]
     dialogRun d
     widgetDestroy d
     return ()
@@ -470,21 +371,53 @@ buildStatusbar ideR = do
     return hb
 
 newIcons :: IO ()
-newIcons = do
-    iconFactory <- iconFactoryNew
-    dataDir <- getDataDir
-    mapM_ (loadIcon dataDir iconFactory) ["ide_class","ide_configure","ide_data","ide_field","ide_function",
-        "ide_instance", "ide_konstructor","ide_make","ide_method","ide_newtype","ide_other",
-        "ide_rule","ide_run","ide_slot","ide_source","ide_type","leksah","pointer"
-        ]
-    iconFactoryAddDefault iconFactory
+newIcons =
+    catch (do
+        iconFactory <- iconFactoryNew
+        dataDir <- getDataDir
+        mapM_ (loadIcon dataDir iconFactory) ["ide_class","ide_configure","ide_data","ide_error_next",
+            "ide_error_prev","ide_field","ide_function","ide_instance", "ide_konstructor","ide_make",
+            "ide_method","ide_newtype","ide_other","ide_rule","ide_run","ide_slot",
+            "ide_source","ide_type","leksah", "ide_reexported"
+            ]
+        iconFactoryAddDefault iconFactory)
+    (\(e :: SomeException) -> getDataDir >>= \dataDir -> throwIDE ("Can't load icons from " ++ dataDir))
     where
     loadIcon dataDir iconFactory name = do
         pb      <-  pixbufNewFromFile $ dataDir </> "data" </> (name ++ ".png")
         icon    <-  iconSetNewFromPixbuf pb
         iconFactoryAdd iconFactory name icon
 
+setSensitivity :: [(SensitivityMask, Bool)] -> IDEAction
+setSensitivity l = mapM_ setSensitivitySingle l
+    where   setSensitivitySingle (sens,bool) = do
+                actions <- getActionsFor sens
+                liftIO $ mapM_ (\a -> actionSetSensitive a bool) actions
 
+getActionsFor :: SensitivityMask -> IDEM [Action]
+getActionsFor SensitivityForwardHist = getActionsFor' ["ViewHistoryForth"]
+getActionsFor SensitivityBackwardHist = getActionsFor' ["ViewHistoryBack"]
+getActionsFor SensitivityProjectActive = getActionsFor'
+    ["EditPackage", "ClosePackage", "PackageFlags", "ConfigPackage", "BuildPackage"
+    ,"DocPackage", "CleanPackage", "CopyPackage", "RunPackage","InstallPackage"
+    ,"RegisterPackage", "UnregisterPackage","TestPackage","SdistPackage"
+    ,"OpenDocPackage","FileCloseAll"]
+getActionsFor SensitivityError = getActionsFor' ["NextError", "PreviousError"]
+getActionsFor SensitivityEditor = getActionsFor' ["EditUndo", "EditRedo", "EditGotoLine"
+    ,"EditComment", "EditUncomment", "EditShiftLeft", "EditShiftRight"]
+
+
+getActionsFor' :: [String] -> IDEM[Action]
+getActionsFor' l = do
+    r <- mapM getActionFor l
+    return (catMaybes r)
+    where
+        getActionFor string = do
+            uiManager' <- readIDE uiManager
+            actionGroups <- liftIO $ uiManagerGetActionGroups uiManager'
+            res <- liftIO $ actionGroupGetAction (head actionGroups) string
+            when (isNothing res) $ ideMessage Normal $ "Can't find UI Action " ++ string
+            return res
 
 
 

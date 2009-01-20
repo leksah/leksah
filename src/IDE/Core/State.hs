@@ -1,11 +1,12 @@
-{-# OPTIONS_GHC -fglasgow-exts #-}
+{-# OPTIONS_GHC -XFlexibleContexts -XTypeSynonymInstances -XMultiParamTypeClasses
+    -XScopedTypeVariables #-}
 -----------------------------------------------------------------------------
 --
 -- Module      :  IDE.Core.State
 -- Copyright   :  (c) Juergen Nicklisch-Franken (aka Jutaro)
 -- License     :  GNU-GPL
 --
--- Maintainer  :  Juergen Nicklisch-Franken <jnf at arcor.de>
+-- Maintainer  :  Juergen Nicklisch-Franken <info at leksah.org>
 -- Stability   :  experimental
 -- Portability :  portable
 --
@@ -16,14 +17,13 @@
 -------------------------------------------------------------------------------
 
 module IDE.Core.State (
-    IDEObject(..)
+    IDEObject
 ,   IDEEditor
 ,   IDE(..)
 ,   IDERef
 ,   IDEM
 ,   IDEAction
 ,   IDEEvent(..)
-,   EventSelector(..)
 
 -- * Convenience methods for accesing the IDE State
 ,   readIDE
@@ -32,12 +32,37 @@ module IDE.Core.State (
 ,   withIDE
 ,   getIDE
 
+,   reifyIDE
+,   reflectIDE
+,   catchIDE
+
 ,   ideMessage
 ,   logMessage
-,   forceJust
+,   sysMessage
+,   MessageLevel(..)
+
+,   withoutRecordingDo
+,   activatePane
+,   deactivatePane
+,   deactivatePaneIfActive
+
+,   getCandyState
+,   setCandyState
+,   getForgetSession
+
+,   getSBSpecialKeys
+,   getSBActivePane
+,   getSBActivePackage
+,   getSBErrors
+,   getStatusbarIO
+,   getStatusbarLC
+
+,   Session
+
 ,   module IDE.Core.Types
-,   module IDE.Core.Panes
-,   module IDE.Core.Exception
+,   module Graphics.UI.Frame.Panes
+,   module Graphics.UI.Frame.ViewFrame
+,   module IDE.Exception
 
 ) where
 
@@ -45,87 +70,46 @@ import Graphics.UI.Gtk hiding (get)
 import Data.Map (Map)
 import qualified Data.Map as Map
 import Data.IORef
-import Control.Monad.Reader
-import GHC (Session)
+import Control.Monad.Reader hiding (liftIO)
+import qualified Control.Monad.Reader (liftIO)
+import Control.Monad.Trans
+import HscTypes hiding (liftIO)
 import Data.Unique
-import Distribution.Version
+import Control.Exception
+import Prelude hiding (catch)
 
 import IDE.Core.Types
-import IDE.Core.Panes
-import IDE.Core.Exception
+import Graphics.UI.Frame.Panes
+import Graphics.UI.Frame.ViewFrame
+import IDE.Exception
+import Control.Event
+import System.IO
+
+-- this should not be repeated here, why is it necessary?
+instance MonadIO Ghc where
+  liftIO ioA = Ghc $ \_ -> ioA
 
 ideMessage :: MessageLevel -> String -> IDEAction
 ideMessage level str = do
-    st <- getIDE
+    st <- ask
     triggerEvent st (LogMessage (str ++ "\n") LogTag)
-    lift $ sysMessage level str
+    liftIO $ sysMessage level str
 
 logMessage :: String -> LogTag -> IDEAction
 logMessage str tag = do
-    st <- getIDE
+    st <- ask
     triggerEvent st (LogMessage (str ++ "\n") tag)
     return ()
 
-data IDEEvent  =
-        CurrentInfo
-    |   ActivePack [Dependency]
-    |   SelectInfo String
-    |   SelectIdent IdentifierDescr
-    |   LogMessage String LogTag
-    |   GetToolbar [Widget]
+sysMessage :: MonadIO m =>  MessageLevel -> String -> m ()
+sysMessage ml str = liftIO $ do
+    putStrLn str
+    hFlush stdout
 
-data EventSelector  =
-        CurrentInfoS
-    |   ActivePackS
-    |   SelectInfoS
-    |   SelectIdentS
-    |   LogMessageS
-    |   GetToolbarS
+data MessageLevel = Silent | Normal | High
     deriving (Eq,Ord,Show)
 
-eventAsSelector :: IDEEvent -> EventSelector
-eventAsSelector CurrentInfo             =   CurrentInfoS
-eventAsSelector (ActivePack _)          =   ActivePackS
-eventAsSelector (LogMessage _ _)        =   LogMessageS
-eventAsSelector (GetToolbar _)          =   GetToolbarS
-eventAsSelector (SelectInfo _)          =   SelectInfoS
-eventAsSelector (SelectIdent _)         =   SelectIdentS
-
-class IDEObject alpha  where
-
-    canTriggerEvent :: alpha -> EventSelector -> Bool
-    canTriggerEvent _ _             =   False
-
-    triggerEvent :: alpha -> IDEEvent -> IDEM IDEEvent
-    triggerEvent o e    =
-        if canTriggerEvent o (eventAsSelector e)
-            then do
-                handlerMap      <-  readIDE handlers
-                let selector    =   eventAsSelector e
-                case selector `Map.lookup` handlerMap of
-                    Nothing     ->  return e
-                    Just l      ->  foldM (\e (_,ah) -> ah e) e l
-            else throwIDE $ "Object can't trigger event " ++ show (eventAsSelector e)
-
-    registerEvent   :: alpha -> EventSelector -> Either (IDEEvent -> IDEM IDEEvent) Unique -> IDEM Unique
-    registerEvent o e (Left handler) =   do
-        handlerMap      <-  readIDE handlers
-        unique          <-  lift $ newUnique
-        let newHandlers =   case e `Map.lookup` handlerMap of
-                                Nothing -> Map.insert e [(unique,handler)] handlerMap
-                                Just l  -> Map.insert e ((unique,handler):l) handlerMap
-        modifyIDE_ (\ide -> return (ide{handlers = newHandlers}))
-        return unique
-    registerEvent o e (Right unique) =   do
-        handlerMap      <-  readIDE handlers
-        let newHandlers =   case e `Map.lookup` handlerMap of
-                                Nothing -> handlerMap
-                                Just l -> let newList = filter (\ (mu,_) -> mu /= unique) l
-                                          in  Map.insert e newList handlerMap
-        modifyIDE_ (\ide -> return (ide{handlers = newHandlers}))
-        return unique
-
-
+class IDEObject alpha
 class IDEObject o => IDEEditor o
 
 
@@ -137,54 +121,132 @@ class IDEObject o => IDEEditor o
 -- | The IDE state
 --
 data IDE            =  IDE {
-    window          ::  Window                  -- ^ the gtk window
-,   uiManager       ::  UIManager               -- ^ the gtk uiManager
-,   panes           ::  Map PaneName IDEPane    -- ^ a map with all panes (subwindows)
-,   activePane      ::  Maybe (PaneName,Connections)
-,   paneMap         ::  Map PaneName (PanePath, Connections)
+    window          ::   Window                  -- ^ the gtk window
+,   uiManager       ::   UIManager               -- ^ the gtk uiManager
+,   panes           ::   Map PaneName (IDEPane IDEM)    -- ^ a map with all panes (subwindows)
+,   activePane      ::   Maybe (PaneName,Connections)
+,   lastActiveBufferPane :: Maybe PaneName
+,   paneMap         ::   Map PaneName (PanePath, Connections)
                     -- ^ a map from the pane name to its gui path and signal connections
-,   layout          ::  PaneLayout              -- ^ a description of the general gui layout
-,   specialKeys     ::  SpecialKeyTable IDERef  -- ^ a structure for emacs like keystrokes
-,   specialKey      ::  SpecialKeyCons IDERef   -- ^ the first of a double keystroke
-,   candy           ::  CandyTable              -- ^ table for source candy
-,   prefs           ::  Prefs                   -- ^ configuration preferences
-,   activePack      ::  Maybe IDEPackage
-,   errors          ::  [ErrorSpec]
-,   currentErr      ::  Maybe Int
-,   accessibleInfo  ::  (Maybe (PackageScope))     -- ^  the world scope
-,   currentInfo     ::  (Maybe (PackageScope,PackageScope))
+,   layout          ::   PaneLayout              -- ^ a description of the general gui layout
+,   specialKeys     ::   SpecialKeyTable IDERef  -- ^ a structure for emacs like keystrokes
+,   specialKey      ::   SpecialKeyCons IDERef   -- ^ the first of a double keystroke
+,   candy           ::   CandyTable              -- ^ table for source candy
+,   prefs           ::   Prefs                   -- ^ configuration preferences
+,   activePack      ::   Maybe IDEPackage
+,   errors          ::   [ErrorSpec]
+,   currentErr      ::   Maybe Int
+,   accessibleInfo  ::   (Maybe (PackageScope))     -- ^  the world scope
+,   currentInfo     ::   (Maybe (PackageScope,PackageScope))
                                                 -- ^ the first is for the current package,
                                                 --the second is the scope in the current package
-,   session         ::  Session                  -- ^ a ghc session object, side effects
-                                                -- reusing with sessions?
-,   handlers        ::  Map EventSelector [(Unique, IDEEvent -> IDEM IDEEvent)]
+,   handlers        ::   Map String [(Unique, IDEEvent -> IDEM IDEEvent)]
                                                 -- ^ event handling table
+,   isShuttingDown  ::   Bool
+,   guiHistory      ::   (Bool,[GUIHistory],Int)
+,   findbar         ::   Toolbar
+,   toolbar         ::   Maybe Toolbar
+,   findbarVisible  ::   Bool
+,   toolbarVisible  ::   Bool
 } --deriving Show
 
-instance IDEObject IDE where
-    canTriggerEvent o LogMessageS       =   True
-    canTriggerEvent o GetToolbarS       =   True
-    canTriggerEvent o SelectInfoS       =   True
-    canTriggerEvent o SelectIdentS      =   True
-    canTriggerEvent o CurrentInfoS      =   True
-    canTriggerEvent o ActivePackS       =   True
-    canTriggerEvent _ _                 =   False
+
+data IDEEvent  =
+        CurrentInfo
+    |   ActivePack
+    |   SelectInfo String
+    |   SelectIdent Descr
+    |   LogMessage String LogTag
+    |   RecordHistory GUIHistory
+    |   Sensitivity [(SensitivityMask,Bool)]
+    |   DescrChoice [Descr]
+    |   SearchMeta String
+    |   LoadSession FilePath
+    |   SaveSession FilePath
 
 --
 -- | A mutable reference to the IDE state
 --
 type IDERef = IORef IDE
 
+instance Event IDEEvent String where
+    getSelector CurrentInfo             =   "CurrentInfo"
+    getSelector ActivePack              =   "ActivePack"
+    getSelector (LogMessage _ _)        =   "LogMessage"
+    getSelector (SelectInfo _)          =   "SelectInfo"
+    getSelector (SelectIdent _)         =   "SelectIdent"
+    getSelector (RecordHistory _)       =   "RecordHistory"
+    getSelector (Sensitivity _)         =   "Sensitivity"
+    getSelector (DescrChoice _)         =   "DescrChoice"
+    getSelector (SearchMeta _)          =   "SearchMeta"
+    getSelector (LoadSession _)         =   "LoadSession"
+    getSelector (SaveSession _)         =   "SaveSession"
+
+instance EventSource IDERef IDEEvent IDEM String where
+
+    canTriggerEvent o "CurrentInfo"     =   True
+    canTriggerEvent o "ActivePack"      =   True
+    canTriggerEvent o "LogMessage"      =   True
+    canTriggerEvent o "SelectInfo"      =   True
+    canTriggerEvent o "SelectIdent"     =   True
+    canTriggerEvent o "RecordHistory"   =   True
+    canTriggerEvent o "Sensitivity"     =   True
+    canTriggerEvent o "DescrChoice"     =   True
+    canTriggerEvent o "SearchMeta"      =   True
+    canTriggerEvent o "LoadSession"     =   True
+    canTriggerEvent o "SaveSession"     =   True
+    canTriggerEvent _ _                 =   False
+
+    getHandlers ideRef = do
+        ide <- liftIO $ readIORef ideRef
+        return (handlers ide)
+
+    setHandlers ideRef nh = do
+        ide <- liftIO $ readIORef ideRef
+        liftIO $ writeIORef ideRef (ide {handlers= nh})
+
+    myUnique _ = do
+        liftIO $ newUnique
+
+instance EventSelector String
+
+
 --
 -- | A reader monad for a mutable reference to the IDE state
 --
-type IDEM = ReaderT (IDERef) IO
+type IDEM = ReaderT IDERef Ghc
+
+reifyIDE :: (IDERef -> Session -> IO a) -> IDEM a
+reifyIDE f = ask >>= \ideR -> lift $ reifyGhc (f ideR)
+
+reflectIDE :: IDEM a -> IDERef -> Session -> IO a
+reflectIDE c ideR = reflectGhc (runReaderT c ideR)
+
+catchIDE :: Exception e	=> IDEM a -> (e -> IO a) -> IDEM a
+catchIDE block handler = reifyIDE (\ideR session -> catch (reflectIDE block ideR session) handler)
 
 --
 -- | A shorthand for a reader monad for a mutable reference to the IDE state
 --   which does not return a value
 --
 type IDEAction = IDEM ()
+
+instance PaneMonad IDEM where
+    getWindowSt     =   readIDE window
+    getUIManagerSt  =   readIDE uiManager
+    getPanesSt      =   readIDE panes
+    getPaneMapSt    =   readIDE paneMap
+    getActivePaneSt =   readIDE activePane
+    getLayoutSt     =   readIDE layout
+    setPanesSt v    =   modifyIDE_ (\ide -> return ide{panes = v})
+    setPaneMapSt v  =   modifyIDE_ (\ide -> return ide{paneMap = v})
+    setActivePaneSt v = modifyIDE_ (\ide -> return ide{activePane = v})
+    setLayoutSt v   =   modifyIDE_ (\ide -> return ide{layout = v})
+
+    runInIO f       =   reifyIDE (\ideRef session ->
+                              return (\v -> reflectIDE (f v) ideRef session))
+
+
 
 -- ---------------------------------------------------------------------
 -- Convenience methods for accesing the IDE State
@@ -194,39 +256,147 @@ type IDEAction = IDEM ()
 readIDE :: (IDE -> beta) -> IDEM beta
 readIDE f = do
     e <- ask
-    lift $ liftM f (readIORef e)
+    liftIO $ liftM f (readIORef e)
 
 -- | Modify the contents, using an IO action.
 modifyIDE_ :: (IDE -> IO IDE) -> IDEM ()
 modifyIDE_ f = do
     e <- ask
-    e' <- lift $ (f =<< readIORef e)
-    lift $ writeIORef e e'
+    e' <- liftIO $ (f =<< readIORef e)
+    liftIO $ writeIORef e e'
 
 -- | Variation on modifyIDE_ that lets you return a value
 modifyIDE :: (IDE -> IO (IDE,beta)) -> IDEM beta
 modifyIDE f = do
     e <- ask
-    (e',result) <- lift (f =<< readIORef e)
-    lift $ writeIORef e e'
+    (e',result) <- liftIO (f =<< readIORef e)
+    liftIO $ writeIORef e e'
     return result
 
 withIDE :: (IDE -> IO alpha) -> IDEM alpha
 withIDE f = do
     e <- ask
-    lift $ f =<< readIORef e
+    liftIO $ f =<< readIORef e
 
 getIDE :: IDEM(IDE)
 getIDE = do
     e <- ask
-    st <- lift $ readIORef e
+    st <- liftIO $ readIORef e
     return st
 
+withoutRecordingDo :: IDEAction -> IDEAction
+withoutRecordingDo act = do
+    (b,l,n) <- readIDE guiHistory
+    if not b then do
+        modifyIDE_ (\ide -> return ide{guiHistory = (True,l,n)})
+        act
+        (b,l,n) <- readIDE guiHistory
+        modifyIDE_ (\ide -> return ide{guiHistory = (False,l,n)})
+        else act
+
 -- ---------------------------------------------------------------------
--- Convenience methods for accesing the IDE State
+-- Activating and deactivating Panes.
+-- This is here and not in Views because it needs some dependencies
+-- (e.g. Events for history)
 --
-forceJust :: Maybe alpha -> String -> alpha
-forceJust mb str = case mb of
-			Nothing -> throwIDE str
-			Just it -> it 
+
+activatePane :: Pane alpha IDEM => alpha -> Connections -> IDEAction
+activatePane pane conn = do
+    mbAP <- getActivePaneSt
+    case mbAP of
+        Just (pn,_) | pn == paneName pane -> return ()
+        _  -> do
+            deactivatePaneWithout
+            sb <- getSBActivePane
+            liftIO $ statusbarPop sb 1
+            liftIO $ statusbarPush sb 1 (paneName pane)
+            liftIO $ bringPaneToFront pane
+            setActivePaneSt (Just (paneName pane,conn))
+            trigger (Just (paneName pane)) (case mbAP of
+                                                    Nothing -> Nothing
+                                                    Just (pn,_) -> Just pn)
+            ideRef <- ask
+            return ()
+
+trigger :: Maybe String -> Maybe String -> IDEAction
+trigger s1 s2 = do
+    st <- ask
+    triggerEvent st (RecordHistory ((PaneSelected s1), PaneSelected s2))
+    triggerEvent st (Sensitivity [(SensitivityEditor, False)])
+    return ()
+
+deactivatePane :: IDEAction
+deactivatePane = do
+    ideR    <-  ask
+    mbAP    <-  getActivePaneSt
+    case mbAP of
+        Nothing      -> return ()
+        Just (pn, _) -> do
+            deactivatePaneWithout
+            triggerEvent ideR (RecordHistory (PaneSelected Nothing,
+                PaneSelected (Just pn)))
+            triggerEvent ideR (Sensitivity [(SensitivityEditor, False)])
+            return ()
+
+deactivatePaneWithout :: IDEAction
+deactivatePaneWithout = do
+    sb <- getSBActivePane
+    liftIO $ statusbarPop sb 1
+    liftIO $ statusbarPush sb 1 ""
+    mbAP    <-  getActivePaneSt
+    case mbAP of
+        Just (_,signals) -> liftIO $do
+            signalDisconnectAll signals
+        Nothing -> return ()
+    setActivePaneSt Nothing
+
+deactivatePaneIfActive :: Pane alpha IDEM  => alpha -> IDEAction
+deactivatePaneIfActive pane = do
+    mbActive <- getActivePaneSt
+    case mbActive of
+        Nothing -> return ()
+        Just (n,_) -> if n == paneName pane
+                        then deactivatePane
+                        else return ()
+
+
+-- get widget elements (menu)
+
+getCandyState :: PaneMonad alpha => alpha  (Bool)
+getCandyState = do
+    ui <- getUIAction "ui/menubar/_Edit/Source Candy" castToToggleAction
+    liftIO $toggleActionGetActive ui
+
+setCandyState :: PaneMonad alpha => Bool -> alpha ()
+setCandyState b = do
+    ui <- getUIAction "ui/menubar/_Edit/Source Candy" castToToggleAction
+    liftIO $toggleActionSetActive ui b
+
+getForgetSession :: PaneMonad alpha => alpha  (Bool)
+getForgetSession = do
+    ui <- getUIAction "ui/menubar/_Session/Forget Session" castToToggleAction
+    liftIO $toggleActionGetActive ui
+
+-- (toolbar)
+
+getSBSpecialKeys :: PaneMonad alpha => alpha Statusbar
+getSBSpecialKeys   = widgetGet ["topBox","statusBox","statusBarSpecialKeys"] castToStatusbar
+
+getSBActivePane :: PaneMonad alpha => alpha Statusbar
+getSBActivePane    = widgetGet ["topBox","statusBox","statusBarActivePane"] castToStatusbar
+
+getSBActivePackage :: PaneMonad alpha => alpha Statusbar
+getSBActivePackage = widgetGet ["topBox","statusBox","statusBarActiveProject"] castToStatusbar
+
+getSBErrors :: PaneMonad alpha => alpha Statusbar
+getSBErrors        = widgetGet ["topBox","statusBox","statusBarErrors"] castToStatusbar
+
+getStatusbarIO :: PaneMonad alpha => alpha Statusbar
+getStatusbarIO     =  widgetGet ["topBox","statusBox","statusBarInsertOverwrite"] castToStatusbar
+
+getStatusbarLC :: PaneMonad alpha => alpha Statusbar
+getStatusbarLC     = widgetGet ["topBox","statusBox","statusBarLineColumn"] castToStatusbar
+
+
+
 

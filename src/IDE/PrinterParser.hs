@@ -28,14 +28,15 @@ module IDE.PrinterParser (
 
 ) where
 
-import Graphics.UI.Gtk()    -- Instances only
 import Text.ParserCombinators.Parsec.Language
 import qualified Text.ParserCombinators.Parsec.Token as P
 import Text.ParserCombinators.Parsec hiding(Parser)
 import qualified Text.PrettyPrint.HughesPJ as PP
 
-import IDE.Framework.Parameters
-import IDE.Framework.EditorBasics
+import Graphics.UI.Editor.Parameters
+import Graphics.UI.Editor.Basics
+import System.IO.Unsafe (unsafePerformIO)
+import Control.Monad (liftM)
 
 
 type Printer beta       =   beta -> PP.Doc
@@ -79,13 +80,13 @@ mkFieldS parameter printer parser getter setter =
 
 applyFieldParsers ::  a ->  [a ->  CharParser () a] ->  CharParser () a
 applyFieldParsers prefs parseF = do
+    eof
+    return (prefs)
+    <|> do
     let parsers = map (\a ->  a prefs) parseF
     newprefs <-  choice parsers
     whiteSpace
     applyFieldParsers newprefs parseF
-    <|> do
-    eof
-    return (prefs)
     <?> "field parser"
 
 boolParser ::  CharParser () Bool
@@ -100,7 +101,13 @@ boolParser = do
 readParser ::  Read a =>  CharParser () a
 readParser = do
     str <- many (noneOf ['\n'])
-    return (read str)
+    if null str
+        then unexpected "read parser on empty string"
+        else case unsafePerformIO
+                    (catch (liftM Just (readIO str))
+                        (\e -> return Nothing)) of
+                Nothing -> unexpected $ "read parser no parse " ++ str
+                Just r -> return r
     <?> "read parser"
 
 pairParser ::  CharParser () alpha ->  CharParser () (alpha,alpha)

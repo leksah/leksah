@@ -1,26 +1,36 @@
-
 Show line numbers:
                True
      --(True/False)
-TextView Font: ""
-Right margin:  96
+TextView Font: "Monospace 10"
+Right margin:  101
      --Size or 0 for no right margin
 Tab width:     4
 Use standard line ends even on windows:
+               True
+Remove trailing blanks when saving a file:
                True
 Source candy:  Default
      --Empty for do not use or the name of a candy file in a config dir
 Name of the keymap:
                Default
      --The name of a keymap file in a config dir
-LogView Font:  ""
+Editor Style:  ""
+LogView Font:  "Sans 10"
 Window default size:
                (800,800)
-     --Default size of the main leksah window specified as pair (int,int)
+     --Default size of the main ide window specified as pair (int,int)
 Browser:       "firefox"
-Standard source editor path:
-               LeftTop
+Standard source pane path:
+               [LeftP]
+Standard log pane path:
+               [RightP,BottomP]
+Standard modules pane path:
+               [RightP,TopP]
 Paths under which haskell sources for packages may be found:
                []
 Packages which are excluded from the modules pane:
-               [Dependency "ghc" AnyVersion]
+               [Dependency (PackageName "ghc") AnyVersion]
+Update metadata after every build:
+               True
+Update metadata at startup:
+               True

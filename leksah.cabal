@@ -1,35 +1,42 @@
 name: leksah
-version: 0.1
-cabal-version: >= 1.2
+version: 0.4
+cabal-version: >=1.4
 build-type: Custom
 license: GPL
-license-file: gpl.txt
-copyright: 2007 Juergen Nicklisch-Franken
-maintainer: Juergen Nicklisch-Franken
+license-file: LICENSE
+copyright: 2007-2009 Jürgen Nicklisch-Franken
+maintainer: Jutaro
+build-depends: gtksourceview2 >=0.9.13, old-time >=1.0.0.1,
+               base >= 4.0.0.0, filepath >=1.1.0.1, Cabal >=1.6.0.1, parsec >=2.1.0.1,
+               mtl >=1.1.0.2, process >=1.0.1.0, containers >=0.2.0.0, pretty >=1.0.1.0,
+               directory >=1.0.0.2, gtk >=0.9.13, glib >=0.9.13, ghc >=6.10.1,
+               binary >=0.4.4, bytestring >=0.9.0.1, utf8-string >=0.3.1.1,
+               regex-posix >=0.72.0.3
 stability: provisional
-homepage:
-package-url:   code.haskell.org/leksah
-synopsis: Genuine Haskell Face
+homepage: http://www.leksah.org
+package-url: http://code.haskell.org/leksah
+bug-reports:
+synopsis: Haskell IDE written in Haskell
 description: An Integrated Development Environment for Haskell written in Haskell.
-category: Tools
-author: Jutaro (Juergen Nicklisch-Franken)
-data-files: data/Default.candy data/Default.keymap
-            data/Default.prefs data/Emacs.keymap data/leksah.gif
-            data/Current.session
+category: Development
+author: Jutaro
+tested-with: GHC == 6.10.1
+data-files: data/Current.session data/Default.candy
+            data/Default.keymap data/Default.prefs data/Emacs.keymap
+            data/Default.menu data/ide_class.png data/ide_configure.png
+            data/ide_data.png data/ide_error_next.png data/ide_error_prev.png
+            data/ide_field.png data/ide_function.png data/ide_instance.png
+            data/ide_konstructor.png data/ide_make.png data/ide_method.png
+            data/ide_newtype.png data/ide_reexported.png data/ide_other.png
+            data/ide_rule.png data/ide_run.png data/ide_slot.png
+            data/ide_source.png data/ide_type.png data/leksah.png
+            doc/leksah_manual.pdf Readme LICENSE data/LICENSE
+            data/Module.template
+data-dir: ""
 extra-source-files: Setup.lhs
 extra-tmp-files:
-Executable leksah {
-if impl(ghc >=  6.8) {
-    build-depends: base >=2.1, filepath >=1.0, Cabal >=1.1.6.2,
-                   parsec >=2.0, mtl >=1.0.1, process >=1.0, old-time >=1.0,
-                   containers >=0.1, pretty >=1.0, directory >=1.0, gtk >=0.9.12,
-                   glib >=0.9.12, sourceview >=0.9.12, ghc -any, binary -any,
-                   bytestring -any
-} else {
-    build-depends: base >=2.1, filepath >=1.0,Cabal >=1.2.0, parsec >=2.0,
-                   mtl >=1.0.1, gtk >=0.9.12, glib >=0.9.12,
-                   sourceview >=0.9.12, ghc
-}
+
+executable: leksah
 main-is: Main.hs
 buildable: True
 build-tools:
@@ -39,33 +46,29 @@ ld-options:
 pkgconfig-depends:
 frameworks:
 c-sources:
-extensions:
+extensions: CPP
 extra-libraries:
 extra-lib-dirs:
 includes:
 install-includes:
 include-dirs:
 hs-source-dirs: src
-other-modules: IDE.Utils.Default
-               IDE.BuildInfoEditor IDE.CallersPane
-               IDE.DescriptionPP IDE.Utils.File IDE.FindPane IDE.Leksah IDE.Metainfo.Info
-               IDE.InfoPane IDE.Metainfo.InterfaceCollector IDE.Keymap
-               IDE.Log IDE.Menu IDE.ModulesPane IDE.Package IDE.PackageEditor
-               IDE.PackageFlags IDE.Preferences IDE.PrinterParser
-               IDE.ReplacePane IDE.RecoverPanes IDE.SaveSession IDE.SourceCandy
-               IDE.Metainfo.SourceCollector IDE.SourceEditor IDE.SpecialEditors
-               IDE.ToolbarPane IDE.Framework.ViewFrame IDE.Core.Exception IDE.Core.Panes
-               IDE.Core.State IDE.Core.Types IDE.Utils.DeepSeq
-               IDE.Framework.CompositeEditors IDE.Framework.EditorBasics IDE.Framework.MakeEditor
-               IDE.Framework.Parameters IDE.Framework.SimpleEditors
-ghc-prof-options:
-ghc-shared-options:
-if impl(ghc >=  6.8) {
-ghc-options: -cpp -D__GHC__=680 -D_Newgtk -fwarn-unused-imports -fwarn-missing-fields -fwarn-incomplete-patterns
-} else {
-ghc-options: -cpp -D__GHC__=660 -D_Newgtk -fwarn-unused-imports -fwarn-missing-fields -fwarn-incomplete-patterns
-}
+other-modules: MyMissing DeepSeq Default Control.Event
+               Graphics.UI.Editor.Parameters Graphics.UI.Editor.Composite
+               Graphics.UI.Editor.Basics Graphics.UI.Editor.MakeEditor
+               Graphics.UI.Editor.Simple Graphics.UI.Frame.ViewFrame
+               Graphics.UI.Frame.Panes IDE.Leksah IDE.PrinterParser IDE.FileUtils
+               IDE.Menu IDE.DescriptionPP IDE.Find IDE.SourceCandy IDE.Package
+               IDE.SpecialEditors IDE.GUIHistory IDE.SaveSession IDE.Keymap
+               IDE.Exception IDE.Pane.Modules IDE.Pane.PackageEditor IDE.Pane.Log
+               IDE.Pane.Search IDE.Pane.Info IDE.Pane.SourceBuffer
+               IDE.Pane.Preferences IDE.Pane.Callers IDE.Pane.ClassHierarchy
+               IDE.Pane.PackageFlags IDE.Metainfo.SourceCollector
+               IDE.Metainfo.Provider IDE.Metainfo.InterfaceCollector
+               IDE.Core.Types IDE.Core.State
+ghc-prof-options: -prof -auto-all
+ghc-shared-options: -prof -auto-all
+ghc-options: -fwarn-unused-imports -fwarn-missing-fields -fwarn-incomplete-patterns -O2
 hugs-options:
 nhc98-options:
 jhc-options:
-}

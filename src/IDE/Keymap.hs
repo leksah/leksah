@@ -8,12 +8,13 @@ module IDE.Keymap (
 ) where
 
 import Graphics.UI.Gtk
+import Graphics.UI.Gtk.Gdk.Events(Modifier(..))
 import qualified Data.Map as Map
 import Text.ParserCombinators.Parsec
 import qualified Text.ParserCombinators.Parsec.Token as P
 import Text.ParserCombinators.Parsec.Language(emptyDef)
 import Data.Maybe
-import Data.List(sort)
+import Data.List (foldl',sort)
 import Data.Char(toLower)
 import Control.Monad.Reader
 
@@ -50,7 +51,7 @@ setKeymap' (KM keymap) actions  = map setAccel actions
     where setAccel act = case Map.lookup (name act) keymap of
                             Nothing -> act
                             Just [] -> act
-                            Just keyList -> foldl setAccelerator act keyList
+                            Just keyList -> foldl' setAccelerator act keyList
           setAccelerator act (Just (Left acc),Nothing)      = act{accelerator= acc : accelerator act}
           setAccelerator act (Just (Left acc),Just expl)    = act{accelerator= acc : accelerator act,
                                                                 tooltip= Just expl}
@@ -170,9 +171,9 @@ modparser = do
     return Alt
     <|> do
     try $symbol2 "<apple>"
-    return Apple
+    return Super
     <|> do
     try $symbol2 "<compose>"
-    return Compose
+    return Hyper
     <?>"modparser"
 

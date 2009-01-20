@@ -4,31 +4,33 @@
 -- Copyright   :  (c) Juergen Nicklisch-Franken (aka Jutaro)
 -- License     :  GNU-GPL
 --
--- Maintainer  :  Juergen Nicklisch-Franken <jnf at arcor.de>
+-- Maintainer  :  Juergen Nicklisch-Franken <info at leksah.org>
 -- Stability   :  experimental
 -- Portability :  portable
 --
--- | Description with additional fileds for printing and parsing
+-- | Description of a editor with additional fileds for printing and parsing
 --
 -----------------------------------------------------------------------------------
 module IDE.DescriptionPP (
     Applicator
 ,   FieldDescriptionPP(..)
 ,   mkFieldPP
+,   extractFieldDescription
+,   flattenFieldDescriptionPP
 
 ) where
 
-import Graphics.UI.Gtk hiding (Event)
+import Graphics.UI.Gtk
 import Control.Monad
 import qualified Text.PrettyPrint.HughesPJ as PP
 import qualified Text.ParserCombinators.Parsec as P
 
 import IDE.PrinterParser hiding (fieldParser,parameters)
-import IDE.Framework.Parameters
-import IDE.Framework.EditorBasics
+import Graphics.UI.Editor.Parameters
+--import Graphics.UI.Editor.Basics
+import Graphics.UI.Editor.MakeEditor
 import IDE.Core.State
-
-type Applicator alpha = alpha -> IDEAction
+import Graphics.UI.Editor.Basics (Applicator(..),Editor(..),Setter(..),Getter(..),Notifier(..),Extractor(..),Injector(..))
 
 data FieldDescriptionPP alpha =  FDPP {
         parameters      ::  Parameters
@@ -37,6 +39,9 @@ data FieldDescriptionPP alpha =  FDPP {
     ,   fieldEditor     ::  alpha -> IO (Widget, Injector alpha , alpha -> Extractor alpha , Notifier)
     ,   applicator      ::  alpha -> alpha -> IDEAction
     }
+    | VFDPP Parameters [FieldDescriptionPP alpha]
+    | HFDPP Parameters [FieldDescriptionPP alpha]
+    | NFDPP [(String,FieldDescriptionPP alpha)]
 
 type MkFieldDescriptionPP alpha beta =
     Parameters      ->
@@ -45,12 +50,13 @@ type MkFieldDescriptionPP alpha beta =
     (Getter alpha beta)    ->
     (Setter alpha beta)    ->
     (Editor beta)      ->
-    (Applicator beta)  ->
+    (Applicator beta IDEM)  ->
     FieldDescriptionPP alpha
 
 mkFieldPP :: Eq beta => MkFieldDescriptionPP alpha beta
-mkFieldPP parameters printer parser getter setter editor applicator =
-    FDPP parameters
+mkFieldPP parameters printer parser getter setter editor applicator  =
+    let FD _ ed = mkField parameters getter setter editor
+    in FDPP parameters
         (\ dat -> (PP.text (case getParameterPrim paraName parameters of
                                     Nothing -> ""
                                     Just str -> str) PP.<> PP.colon)
@@ -65,31 +71,26 @@ mkFieldPP parameters printer parser getter setter editor applicator =
             colon
             val <- parser
             return (setter val dat)))
-        (\ dat -> do
-            (widget, inj,ext,noti) <- editor parameters
-            inj (getter dat)
-            noti FocusOut (Left (\e -> do
-                v <- ext
-                case v of
-                    Just _ -> do
-                        widgetModifyFg widget StateNormal (Color 0 0 0)
-                        return False
-                    Nothing -> do
-                        widgetModifyFg widget StateNormal (Color 65535 65535 0)
-                        return False))
-            return (widget,
-                    (\a -> inj (getter a)),
-                    (\a -> do
-                        b <- ext
-                        case b of
-                            Just b -> return (Just (setter b a))
-                            Nothing -> return Nothing),
-                    noti))
-        (\ newDat oldDat -> do --appicator
+        ed
+        (\ newDat oldDat -> do --applicator
             let newField = getter newDat
             let oldField = getter oldDat
             if newField == oldField
                 then return ()
                 else applicator newField)
+
+extractFieldDescription :: FieldDescriptionPP alpha -> FieldDescription alpha
+extractFieldDescription (VFDPP paras descrs) =  VFD paras (map extractFieldDescription descrs)
+extractFieldDescription (HFDPP paras descrs) =  HFD paras (map extractFieldDescription descrs)
+extractFieldDescription (NFDPP descrsp)      =  NFD (map (\(s,d) ->
+                                                    (s, extractFieldDescription d)) descrsp)
+extractFieldDescription (FDPP parameters fieldPrinter fieldParser fieldEditor applicator) =
+    (FD parameters fieldEditor)
+
+flattenFieldDescriptionPP :: FieldDescriptionPP alpha -> [FieldDescriptionPP alpha]
+flattenFieldDescriptionPP (VFDPP paras descrs)  =   concatMap flattenFieldDescriptionPP descrs
+flattenFieldDescriptionPP (HFDPP paras descrs)  =   concatMap flattenFieldDescriptionPP descrs
+flattenFieldDescriptionPP (NFDPP descrsp)       =   concatMap (flattenFieldDescriptionPP . snd) descrsp
+flattenFieldDescriptionPP fdpp                  =   [fdpp]
 
 

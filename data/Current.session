@@ -1,6 +1,9 @@
-Layout:        VerticalP (TerminalP (Just TopP) 0) (HorizontalP (HorizontalP (TerminalP (Just TopP) 1) (TerminalP (Just BottomP) 0) 124) (TerminalP (Just BottomP) 0) 587) 769
-Population:    [(Just (FindSt FindState),[RightP,TopP,TopP]),(Just (LogSt LogState),[RightP,BottomP]),(Just (ModulesSt (ModulesState 348 (Package,True) (Nothing,Nothing))),[RightP,TopP,BottomP]),(Just (ToolbarSt ToolbarState),[RightP,TopP,TopP])]
-Window size:   (1400,1001)
+Layout:        VerticalP (TerminalP (Just LeftP) (-1)) (HorizontalP (TerminalP (Just BottomP) 0) (TerminalP (Just BottomP) 1) 376) 737
+Population:    [(Just (LogSt LogState),[RightP,BottomP]),(Just (ModulesSt (ModulesState 335 (Package,True) (Nothing,Nothing))),[RightP,TopP]),(Just (SearchSt (SearchState {searchString = "", searchScope = System, searchMode = Prefix {caseSense = False}})),[RightP,TopP])]
+Window size:   (1024,780)
 Active package:
                Nothing
 Active pane:   Nothing
+Toolbar visible:
+               True
+FindbarState:  (True,FindState {entryStr = "", entryHist = [], replaceStr = "", replaceHist = [], caseSensitive = False, entireWord = False, wrapAround = True, backward = False, lineNr = 1})

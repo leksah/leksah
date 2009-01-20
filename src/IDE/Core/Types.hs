@@ -1,11 +1,11 @@
-{-# OPTIONS_GHC -fglasgow-exts #-}
+{-# OPTIONS_GHC -XDisambiguateRecordFields -XExistentialQuantification -XRank2Types #-}
 -----------------------------------------------------------------------------
 --
 -- Module      :  IDE.Core.Data
 -- Copyright   :  (c) Juergen Nicklisch-Franken (aka Jutaro)
 -- License     :  GNU-GPL
 --
--- Maintainer  :  Juergen Nicklisch-Franken <jnf at arcor.de>
+-- Maintainer  :  Juergen Nicklisch-Franken <info at leksah.org>
 -- Stability   :  experimental
 -- Portability :  portable
 --
@@ -16,9 +16,7 @@
 -------------------------------------------------------------------------------
 
 module IDE.Core.Types (
-
     IDEPackage(..)
-,   StandardPath(..)
 
 ,   ActionDescr(..)
 ,   ActionString
@@ -30,14 +28,22 @@ module IDE.Core.Types (
 
 ,   PackageDescr(..)
 ,   ModuleDescr(..)
-,   IdentifierDescr(..)
+,   Descr(..)
+,   SpDescr(..)
+,   DescrType(..)
+,   descrName
+,   typeInfo
+,   descrModu
+,   mbLocation
+,   mbComment
+,   details
+,   descrType
+,   stockIdFromType
+,   isReexported
 ,   Symbol
 ,   ClassId
 ,   DataId
 ,   TypeInfo
-,   ModuleIdentifier
-,   IdType(..)
-,   IdTypeS(..)
 ,   SymbolTable
 ,   PackageScope
 ,   PackModule(..)
@@ -45,13 +51,6 @@ module IDE.Core.Types (
 ,   parsePackModule
 ,   fromPackageIdentifier
 ,   toPackageIdentifier
-,   idDescriptionsPD
-,   allFieldsID
-,   allConstructorsID
-,   allClassOpsID
-,   typeInfo
-,   idType
-
 ,   Location(..)
 ,   Scope(..)
 
@@ -63,26 +62,35 @@ module IDE.Core.Types (
 ,   SpecialKeyTable
 ,   SpecialKeyCons
 
+,   LogTag(..)
+
+,   GUIHistory
+,   GUIHistory'(..)
+
+,   SensitivityMask(..)
+,   SearchMode(..)
 ) where
 
 import Control.Monad.Reader
 import Graphics.UI.Gtk hiding (get)
-import Distribution.Package
-import Distribution.Version
-import Data.Map (Map)
+import Graphics.UI.Gtk.Gdk.Events(Modifier(..))
 import qualified Data.Map as Map
 import Data.Set(Set)
 import qualified Data.Set as Set
-import Text.ParserCombinators.ReadP
-import qualified Data.ByteString.Char8 as BS
-import Data.ByteString.Char8 (ByteString)
+import GHC(Ghc)
 
-import IDE.Utils.Default
-import IDE.Core.Exception
+import Default
+import IDE.Exception
+import Graphics.UI.Frame.Panes
+import Data.ByteString (ByteString(..))
+import Distribution.Package (PackageIdentifier(..),Dependency(..))
+import Distribution.Text
+import Data.Map (Map(..))
+import Distribution.ModuleName(ModuleName)
+import Distribution.Text
+import qualified Data.ByteString as BS  (empty)
 
 
-data StandardPath = LeftTop | LeftBottom | RightTop | RightBottom
-    deriving(Read,Show,Eq,Enum)
 
 -- ---------------------------------------------------------------------
 -- IDEPackages
@@ -91,6 +99,7 @@ data StandardPath = LeftTop | LeftBottom | RightTop | RightBottom
 data IDEPackage     =   IDEPackage {
     packageId       ::   PackageIdentifier
 ,   cabalFile       ::   FilePath
+,   depends         ::   [Dependency]
 ,   configFlags     ::   [String]
 ,   buildFlags      ::   [String]
 ,   haddockFlags    ::   [String]
@@ -115,7 +124,7 @@ data ActionDescr alpha = AD {
 ,   label       ::   String
 ,   tooltip     ::   Maybe String
 ,   stockID     ::   Maybe String
-,   action      ::   ReaderT alpha IO ()
+,   action      ::   ReaderT alpha Ghc ()
 ,   accelerator ::   [KeyString]
 ,   isToggle    ::   Bool
 }
@@ -127,36 +136,32 @@ type KeyString = String
 -- | Preferences is a data structure to hold configuration data
 --
 data Prefs = Prefs {
-    showLineNumbers     ::   Bool
-,   rightMargin         ::   Maybe Int
-,   tabWidth            ::   Int
-,   sourceCandy         ::   Maybe String
-,   keymapName          ::   String
-,   forceLineEnds       ::   Bool
-,   textviewFont        ::   Maybe String
-,   logviewFont         ::   Maybe String
-,   defaultSize         ::   (Int,Int)
-,   browser             ::   String
-,   sourcePanePath      ::   StandardPath
-,   logPanePath         ::   StandardPath
-,   infoPanePath        ::   StandardPath
-,   modulesPanePath     ::   StandardPath
-,   controlPanePath     ::   StandardPath
-,   sourceDirectories   ::   [FilePath]
-,   packageBlacklist    ::   [Dependency]
+        showLineNumbers     ::   Bool
+    ,   rightMargin         ::   Maybe Int
+    ,   tabWidth            ::   Int
+    ,   sourceCandy         ::   Maybe String
+    ,   keymapName          ::   String
+    ,   forceLineEnds       ::   Bool
+    ,   removeTBlanks       ::   Bool
+    ,   textviewFont        ::   Maybe String
+    ,   sourceStyle         ::   Maybe String
+    ,   logviewFont         ::   Maybe String
+    ,   defaultSize         ::   (Int,Int)
+    ,   browser             ::   String
+    ,   sourcePanePath      ::   StandardPath
+    ,   logPanePath         ::   StandardPath
+    ,   modulesPanePath     ::   StandardPath
+    ,   sourceDirectories   ::   [FilePath]
+    ,   packageBlacklist    ::   [Dependency]
+    ,   collectAfterBuild   ::   Bool
+    ,   collectAtStart      ::   Bool
 } deriving(Eq,Show)
 
 data SearchHint = Forward | Backward | Insert | Delete | Initial
     deriving (Eq)
 
-
-
-instance Show Modifier
-    where show Shift    =   "<shift>"
-          show Control  =   "<ctrl>"
-          show Alt      =   "<alt>"
-          show Apple    =   "<apple>"
-          show Compose  =   "<compose>"
+instance Ord Modifier
+    where compare a b = compare (fromEnum a) (fromEnum b)
 
 --
 -- | Other types
@@ -175,137 +180,163 @@ data ErrorSpec = ErrorSpec {
 --
 
 type PackageScope       =   (Map PackageIdentifier PackageDescr,SymbolTable)
-type SymbolTable        =   Map Symbol [IdentifierDescr]
+type SymbolTable        =   Map Symbol [Descr]
 
 data PackageDescr       =   PackageDescr {
     packagePD           ::   PackageIdentifier
 ,   mbSourcePathPD      ::   (Maybe FilePath)
 ,   exposedModulesPD    ::   [ModuleDescr]
 ,   buildDependsPD      ::   [PackageIdentifier]
-} deriving (Eq,Ord,Show)
+} deriving Show
+
+instance Eq PackageDescr where
+    (== ) a b             =   packagePD a == packagePD b
+
+instance Ord PackageDescr where
+    (<=) a b             =   packagePD a <=  packagePD b
+
 
 data ModuleDescr        =   ModuleDescr {
     moduleIdMD          ::   PackModule
 ,   mbSourcePathMD      ::   (Maybe FilePath)
 ,   exportedNamesMD     ::   (Set Symbol)                        -- unqualified
-,   usagesMD            ::   (Map ModuleIdentifier (Set Symbol)) -- imports
-,   idDescriptionsMD    ::   [IdentifierDescr]
-} deriving (Eq,Ord,Show)
+,   usagesMD            ::   (Map ModuleName (Set Symbol)) -- imports
+,   idDescriptionsMD    ::   [Descr]
+} deriving Show
 
-data IdentifierDescr    =
-    SimpleDescr {
-            identifierID        ::   Symbol
-        ,   identifierTypeID    ::   IdTypeS
-        ,   typeInfoID          ::   TypeInfo
-        ,   moduleIdID          ::   PackModule
-        ,   mbLocation          ::   (Maybe Location)
-        ,   mbComment           ::   (Maybe ByteString)}
-    |    DataDescr {
-            identifierID        ::   Symbol
-        ,   typeInfoID          ::   TypeInfo
-        ,   moduleIdID          ::   PackModule
-        ,   constructorsID      ::   [Symbol]
-        ,   fieldsID            ::   [Symbol]
-        ,   mbLocation          ::   (Maybe Location)
-        ,   mbComment           ::   (Maybe ByteString)}
-    |    ClassDescr {
-            identifierID        ::   Symbol
-        ,   typeInfoID          ::   TypeInfo
-        ,   moduleIdID          ::   PackModule
-        ,   classOpsID          ::   [Symbol]
-        ,   mbLocation          ::   (Maybe Location)
-        ,   mbComment           ::   (Maybe ByteString)}
-    |    InstanceDescr {
-            identifierID        ::   Symbol --the class
-        ,   binds               ::   [Symbol]
-        ,   moduleIdID          ::   PackModule
-        ,   mbLocation          ::   (Maybe Location)
-        ,   mbComment           ::   (Maybe ByteString)}
-    deriving (Show,Eq,Ord,Read)
+instance Eq ModuleDescr where
+    (== ) a b             =   moduleIdMD a == moduleIdMD b
 
-allFieldsID :: IdentifierDescr -> [Symbol]
-allFieldsID (DataDescr _ _ _ _ fieldsId _ _)              =   fieldsId
-allFieldsID _                                             =   []
+instance Ord ModuleDescr where
+    (<=) a b             =   moduleIdMD a <=  moduleIdMD b
 
-allConstructorsID :: IdentifierDescr -> [Symbol]
-allConstructorsID (DataDescr _ _ _ constructorsID _ _ _)  =   constructorsID
-allConstructorsID _                                       =   []
+data Descr              =   Descr {
+    descrName'          ::   Symbol
+,   typeInfo'           ::   TypeInfo
+,   descrModu'          ::   PackModule
+,   mbLocation'         ::   Maybe Location
+,   mbComment'          ::   Maybe ByteString
+,   details'            ::   SpDescr}
+    | Reexported {
+    descrModu'          ::   PackModule
+,   impDescr            ::   Descr}
+    deriving (Show,Read)
 
-allClassOpsID :: IdentifierDescr -> [Symbol]
-allClassOpsID (ClassDescr _ _ _ classOpsID _ _)           =   classOpsID
-allClassOpsID _                                           =   []
+isReexported :: Descr -> Bool
+isReexported (Reexported _ _)   =   True
+isReexported _                  =   False
 
-typeInfo :: IdentifierDescr -> TypeInfo
-typeInfo (SimpleDescr _ _ ti _ _ _)     =   ti
-typeInfo (DataDescr _ ti _ _ _ _ _)     =   ti
-typeInfo (ClassDescr _ ti _ _ _ _)      =   ti
-typeInfo (InstanceDescr _ _ _ _ _)      =   BS.pack ""
+descrName :: Descr -> Symbol
+descrName d
+    |   isReexported d  =   descrName (impDescr d)
+    |   otherwise       =   descrName' d
 
-idDescriptionsPD :: PackageDescr -> [IdentifierDescr]
-idDescriptionsPD pd =  concatMap idDescriptionsMD (exposedModulesPD pd)
+typeInfo :: Descr -> TypeInfo
+typeInfo d
+    |   isReexported d  =   typeInfo (impDescr d)
+    |   otherwise       =   typeInfo' d
 
-instance Default IdentifierDescr where
-    getDefault = SimpleDescr getDefault getDefault getDefault getDefault getDefault
-                                    getDefault
+descrModu :: Descr -> PackModule
+descrModu d
+    |   isReexported d  =   descrModu (impDescr d)
+    |   otherwise       =   descrModu' d
 
-data IdType = Function | Newtype | Synonym | AbstractData | OpenData | Foreign
-    | Data | Class | Instance | Constructor | Field | ClassOP | OrphanedInstance
-  deriving (Show, Eq, Ord, Enum, Read)
+mbLocation :: Descr -> Maybe Location
+mbLocation d
+    |   isReexported d  =   mbLocation (impDescr d)
+    |   otherwise       =   mbLocation' d
 
-instance Default IdType where
-    getDefault = Function
+mbComment :: Descr -> Maybe ByteString
+mbComment d
+    |   isReexported d  =   mbComment (impDescr d)
+    |   otherwise       =   mbComment' d
 
-data IdTypeS = FunctionS | NewtypeS | SynonymS | AbstractDataS | OpenDataS | ForeignS
-  deriving (Show, Eq, Ord, Enum, Read)
+details :: Descr -> SpDescr
+details d
+    |   isReexported d  =   details (impDescr d)
+    |   otherwise       =   details' d
 
-instance Default IdTypeS where
-    getDefault = FunctionS
 
-idType :: IdentifierDescr -> IdType
-idType (SimpleDescr _ stype _ _ _ _)    =   case stype of
-                                                FunctionS   ->  Function
-                                                NewtypeS    ->  Newtype
-                                                SynonymS    ->  Synonym
-                                                AbstractDataS -> AbstractData
-                                                OpenDataS   ->  OpenData
-                                                ForeignS    ->  Foreign
-idType (DataDescr _ _ _ _ _ _ _)        =   Data
-idType (ClassDescr _ _ _ _ _ _)         =   Class
-idType (InstanceDescr _ _ _ _ _)        =   Instance
+data SpDescr   =   VariableDescr
+                    |   FieldDescr {typeDescrF :: Descr}
+                    |   ConstructorDescr {typeDescrC :: Descr}
+                    |   DataDescr {constructors :: [(Symbol,TypeInfo)],
+                            fields :: [(Symbol,TypeInfo)]}
+                    |   TypeDescr
+                    |   NewtypeDescr {constructor :: (Symbol,TypeInfo),
+                            mbField :: Maybe (Symbol,TypeInfo)}
+                    |   ClassDescr  {super :: [Symbol], methods :: [(Symbol,TypeInfo)]}
+                    |   MethodDescr {classDescrM :: Descr}
+                    |   InstanceDescr {binds :: [Symbol]}
+                            --the descrName is the type Konstructor?
+    deriving (Show,Read,Eq,Ord)
+
+instance Eq Descr where
+    (== ) a b             =   descrName a == descrName b
+                                && descrType (details a)   == descrType (details b)
+
+instance Ord Descr where
+    (<=) a b             =   if descrName a == descrName b
+                                then descrType (details a)   <= descrType (details b)
+                                else descrName a <  descrName b
+
+data DescrType = Variable | Field | Constructor | Data  | Type | Newtype
+    | Class | Method | Instance
+  deriving (Show, Eq, Ord, Bounded, Enum, Read)
+
+instance Default DescrType where
+    getDefault = Variable
+
+descrType ::  SpDescr -> DescrType
+descrType VariableDescr      =   Variable
+descrType (FieldDescr _)     =   Field
+descrType (ConstructorDescr _) = Constructor
+descrType (DataDescr _ _)    =   Data
+descrType TypeDescr          =   Type
+descrType (NewtypeDescr _ _) =   Newtype
+descrType (ClassDescr  _ _)  =   Class
+descrType (MethodDescr _)    =   Method
+descrType (InstanceDescr _)  =   Instance
+
+stockIdFromType :: DescrType -> StockId
+stockIdFromType Variable        =   "ide_function"
+stockIdFromType Newtype         =   "ide_newtype"
+stockIdFromType Type            =   "ide_type"
+stockIdFromType Data            =   "ide_data"
+stockIdFromType Class           =   "ide_class"
+stockIdFromType Instance        =   "ide_instance"
+stockIdFromType Constructor     =   "ide_konstructor"
+stockIdFromType Field           =   "ide_slot"
+stockIdFromType Method          =   "ide_method"
 
 type Symbol             =   String  -- Qualified or unqualified
 type ClassId            =   String  -- Qualified or unqualified
 type DataId             =   String  -- Qualified or unqualified
 type TypeInfo           =   ByteString
-type ModuleIdentifier   =   String  -- always qualified
+--type ModuleIdentifier   =   String  -- always qualified
 
 data PackModule         =   PM {    pack :: PackageIdentifier
-                                ,   modu :: ModuleIdentifier}
+                                ,   modu :: ModuleName}
                                 deriving (Eq, Ord,Read,Show)
 
-
-
 showPackModule ::  PackModule -> String
-showPackModule (PM p m) =   showPackageId p ++ ":" ++ m
+showPackModule (PM p m) =   display p ++ ":" ++ display m
 
 parsePackModule         ::   String -> PackModule
 parsePackModule str     =   let (pack',mod') = span (\c -> c /= ':') str
-                            in  if null (tail mod')
-                                 then perror str
-                                 else case toPackageIdentifier $ pack' of
-                                        Nothing -> perror str
-                                        Just pi'-> (PM pi' (tail mod'))
+                            in case toPackageIdentifier $ pack' of
+                                Nothing -> perror $ "Types>>parsePackModule: Can't parse package:" ++ str
+                                Just pi'-> case simpleParse $ tail mod' of
+                                            Nothing -> perror $
+                                                "Types>>parsePackModule: Can't parse module:" ++ str
+                                            Just mn -> (PM pi' mn)
     where perror s      =   throwIDE $ "cannot parse PackModule from " ++ s
 
 fromPackageIdentifier :: PackageIdentifier -> String
-fromPackageIdentifier   =   showPackageId
+fromPackageIdentifier   =   display
 
 toPackageIdentifier :: String -> Maybe PackageIdentifier
-toPackageIdentifier pd      =   let l = filter (\ (_,s) -> null s)
-                                            $ readP_to_S parsePackageId pd
-                                in  if null l
-                                    then Nothing
-                                    else Just (fst $ head l)
+toPackageIdentifier         =   simpleParse
 
 instance Default PackModule where
     getDefault = parsePackModule "unknow-0:Undefined"
@@ -320,7 +351,7 @@ data Location           =   Location {
 instance Default ByteString
     where getDefault = BS.empty
 
-data Scope = World | Package | Local
+data Scope = Local | Package | System
   deriving (Show, Eq, Ord, Enum, Read)
 
 newtype CandyTable      =   CT (CandyTableForth,CandyTableBack)
@@ -336,6 +367,36 @@ type SpecialKeyTable alpha  =   Map (KeyVal,[Modifier]) (Map (KeyVal,[Modifier])
 
 type SpecialKeyCons  alpha  =   Maybe ((Map (KeyVal,[Modifier]) (ActionDescr alpha)),String)
 
+data LogTag = LogTag | ErrorTag | FrameTag
+
+-- | the first one is the new and the second the old state
+type GUIHistory = (GUIHistory', GUIHistory')
+
+data GUIHistory' =
+        ModuleSelected  {
+            moduleS :: Maybe ModuleName
+        ,   facetS  :: Maybe Symbol}
+    |   ScopeSelected {
+            scope   :: Scope
+        ,   blacklist :: Bool}
+    |   InfoElementSelected {
+            info    :: Descr}
+    |   PaneSelected {
+            paneN   :: Maybe (String)}
+   deriving (Eq, Ord, Show)
+
+data SensitivityMask =
+        SensitivityForwardHist
+    |   SensitivityBackwardHist
+    |   SensitivityProjectActive
+    |   SensitivityError
+    |   SensitivityEditor
+
+   deriving (Eq, Ord, Show)
+
+data SearchMode = Exact {caseSense :: Bool} | Prefix {caseSense :: Bool}
+                | Regex {caseSense :: Bool}
+    deriving (Eq,Ord,Read,Show)
 
 
 
