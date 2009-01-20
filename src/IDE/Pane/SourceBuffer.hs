@@ -993,10 +993,10 @@ align = alignChar . transChar
 --        ".haddock" -> Just "Haddock"
 --        _         -> Nothing
 
-
+{--
 sourceLanguageForFilename :: SourceLanguageManager -> Maybe String -> IO (Maybe String, Maybe SourceLanguage)
 sourceLanguageForFilename lm Nothing         =
-    liftM (\l -> (Just "haskell", Just l)) (sourceLanguageManagerGetLanguage lm "haskell")
+    liftM (\l -> (Just "haskell", Just l)) ()
 sourceLanguageForFilename lm (Just filename) =
     let extension = takeExtension filename in do
         ids      <- sourceLanguageManagerGetLanguageIds lm
@@ -1010,19 +1010,25 @@ sourceLanguageForFilename lm (Just filename) =
     where
     match :: String -> [String] -> Bool
     match ext = not . null . filter (== ext) . map (drop 1)
+--}
 
-{--
+
 sourceLanguageForFilename :: SourceLanguageManager -> Maybe String -> IO (Maybe String, Maybe SourceLanguage)
 sourceLanguageForFilename lm Nothing         = do
-    lang <- sourceLanguageManagerGuessLanguage lm "" "text/x-haskell"
-    name <- sourceLanguageGetName lang
-    return (Just name, Just lang)
+    mbLang <- sourceLanguageManagerGuessLanguage lm Nothing (Just "text/x-haskell")
+    case mbLang of
+        Nothing -> return (Nothing,Nothing)
+        Just lang -> do
+            name <- sourceLanguageGetName lang
+            return (Just name, Just lang)
 
 sourceLanguageForFilename lm (Just filename) = do
-    lang <- sourceLanguageManagerGuessLanguage lm filename ""
-    name <- sourceLanguageGetName lang
-    return (Just name, Just lang)
---}
+    mbLang <- sourceLanguageManagerGuessLanguage lm (Just filename) Nothing
+    case mbLang of
+        Nothing -> return (Nothing,Nothing)
+        Just lang -> do
+            name <- sourceLanguageGetName lang
+            return (Just name, Just lang)
 
 
 
