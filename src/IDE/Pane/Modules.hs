@@ -787,7 +787,7 @@ descrViewPopup ideR session store descrView (Button _ click _ _ _ _ button _ _) 
                 case sel of
                     Just descr      ->  reflectIDE
                                             (goToDefinition descr) ideR session
-                    otherwise       ->  sysMessage Normal "no selection"
+                    otherwise       ->  sysMessage Normal "Modules>> descrViewPopup: no selection"
             menuShellAppend theMenu item1
             menuPopup theMenu Nothing
             widgetShowAll theMenu
@@ -796,7 +796,7 @@ descrViewPopup ideR session store descrView (Button _ click _ _ _ _ button _ _) 
                 then do sel         <-  getSelectionDescr descrView store
                         case sel of
                             Just descr      -> reflectIDE (goToDefinition descr) ideR session
-                            otherwise       ->  sysMessage Normal "no selection"
+                            otherwise       ->  sysMessage Normal "Modules>> descrViewPopup: no selection2"
                         return True
                 else do
                     mbPane :: Maybe IDEInfo <- reflectIDE getPane ideR session

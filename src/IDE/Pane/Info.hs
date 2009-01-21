@@ -175,19 +175,20 @@ symbolEditor :: IDERef -> Session -> Editor String
 symbolEditor ideR session parameters notifier = do
     window       <- reflectIDE (readIDE window) ideR session
     ed@(w,i,ext) <- stringEditor (\_ -> True) parameters notifier
-    registerEvent notifier AfterKeyRelease (Left (\event -> do
+    registerEvent notifier AfterKeyRelease (Left (\ event -> do
         mbText   <- ext
         case mbText of
             Just t  -> do
                 reflectIDE (do
                     triggerEvent ideR (SearchMeta t)
-                    rw <- liftIO $ getRealWidget w
-                    when (isJust rw) $ liftIO $ do
-                        widgetGrabFocus (fromJust rw)
-                        editableSelectRegion (castToEditable (fromJust rw)) 0 0
-                        editableSetPosition (castToEditable (fromJust rw)) (-1)) ideR session
+                    return ()) ideR session
+                rw <- liftIO $ getRealWidget w
+                when (isJust rw) $ liftIO $ do
+                    widgetGrabFocus (fromJust rw)
+                    editableSelectRegion (castToEditable (fromJust rw)) 0 0
+                    editableSetPosition (castToEditable (fromJust rw)) (-1)
             Nothing -> return ()
-        return event))
+        return event{gtkReturn=False}))
     return ed
 
 showInfoHandler :: Widget -> IDERef -> Session -> IO Bool
@@ -232,8 +233,8 @@ initInfo panePath nb idDescr = do
             currentDescr' <- newIORef idDescr
             let info = IDEInfo sw currentDescr' injb ext
             -- mapM_ (\w -> widgetSetExtensionEvents w [ExtensionEventsAll]) widgets
-            widget `onFocus` (\_ ->  do reflectIDE (makeActive info) ideR session
-                                        return False)
+--            widget `onFocus` (\_ ->  do reflectIDE (makeActive info) ideR session
+--                                        return False)
             definitionB `onClicked` (reflectIDE gotoSource ideR session)
             moduB `onClicked` (reflectIDE gotoModule' ideR session)
             usesB `onClicked` (reflectIDE calledBy' ideR session)

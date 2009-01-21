@@ -3027,12 +3027,7 @@ Time of storage:
 \end_layout
 
 \begin_layout LyX-Code
-Layout:        VerticalP (TerminalP (Just TopP) 0) (HorizontalP (TerminalP
- (Just BottomP) 1) 
-\begin_inset Newline newline
-\end_inset
-
-                   (TerminalP (Just BottomP) 1) 396) 777
+Layout:        VerticalP (TerminalP (Just TopP) 0) ...
 \end_layout
 
 \begin_layout LyX-Code

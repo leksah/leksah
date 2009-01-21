@@ -61,6 +61,8 @@ import IDE.Pane.Modules
 import IDE.GUIHistory
 import IDE.Pane.Search(setChoices,searchMetaGUI)
 import IDE.Find
+import Graphics.UI.Editor.Composite (maybeEditor)
+import Graphics.UI.Editor.Simple (fileEditor)
 
 -- ---------------------------------------------------------------------
 -- Command line options
@@ -131,8 +133,7 @@ runMain = handleTopExceptions $ do
                 then mapM_ (collectUninstalled writeAscii version)
                     $ map (\ (UninstalledProject x) -> x) uninstalled
                 else do
-                    sources <-  liftIO $ getSourcesMap
-                    collectInstalled' writeAscii version (elem Rebuild o) sources
+                    collectInstalled' writeAscii version (elem Rebuild o)
     when (not (elem NoGUI o) && not (elem VersionF o)) (startGUI sessionFilename)
 
 -- ---------------------------------------------------------------------
@@ -141,7 +142,7 @@ runMain = handleTopExceptions $ do
 startGUI :: String -> IO ()
 startGUI sessionFilename = do
     trace "start gui called" $ return ()
-    st          <-  unsafeInitGUIForThreadedRTS -- initGUI
+    st          <-  initGUI
     when rtsSupportsBoundThreads
         (sysMessage Normal "Linked with -threaded")
     timeoutAddFull (yield >> return True) priorityHigh 25
@@ -152,7 +153,7 @@ startGUI sessionFilename = do
     when (not hasConfigDir') firstStart
     prefsPath   <-  getConfigFilePathForLoad "Default.prefs"
     prefs       <-  readPrefs prefsPath
-    keysPath    <-  getConfigFilePathForLoad $keymapName prefs ++ ".keymap"
+    keysPath    <-  getConfigFilePathForLoad $ keymapName prefs ++ ".keymap"
     keyMap      <-  parseKeymap keysPath
     let accelActions = setKeymap (keyMap :: KeymapI) actions
     specialKeys <-  buildSpecialKeys keyMap accelActions
@@ -367,7 +368,7 @@ registerEvents tbl =    do
         ssHandler _ =   throwIDE "Leksah>>registerEvents: Impossible event"
 
 fDescription :: FieldDescription Prefs
-fDescription =
+fDescription = VFD emptyParams [
         mkField
             (paraName <<<- ParaName "Paths under which haskell sources may be found"
                 $ paraDirection  <<<- ParaDirection Vertical
@@ -375,6 +376,12 @@ fDescription =
             sourceDirectories
             (\b a -> a{sourceDirectories = b})
             (filesEditor Nothing FileChooserActionSelectFolder "Select folders")
+    ,   mkField
+            (paraName <<<- ParaName "Extract packages from cabal-install" $ emptyParams)
+            autoExtractTars
+            (\b a -> a{autoExtractTars = b})
+            (maybeEditor ((fileEditor (Just "~/.cabal/packages/") FileChooserActionSelectFolder
+                "Select folder"), emptyParams) True "Yes")]
 
 --
 -- | Called when leksah ist first called (the .leksah directory does not exist)
@@ -427,6 +434,6 @@ firstBuild = let version = cProjectVersion in do
     buildSourceForPackageDB
     sources             <-  getSourcesMap
     libDir          <-  getSysLibDir
-    runGhc (Just libDir) $ collectInstalled' False version True sources
+    runGhc (Just libDir) $ collectInstalled' False version True
 
 

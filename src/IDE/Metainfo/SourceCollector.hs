@@ -86,6 +86,12 @@ buildSourceForPackageDB :: IO ()
 buildSourceForPackageDB = do
     prefsPath       <-  getConfigFilePathForLoad "Default.prefs"
     prefs           <-  readPrefs prefsPath
+    case autoExtractTars prefs of
+        Nothing     -> return ()
+        Just path   -> do
+            dir <- getCurrentDirectory
+            autoExtractTarFiles path
+            setCurrentDirectory dir
     let dirs        =   sourceDirectories prefs
     cabalFiles      <-  mapM allCabalFiles dirs
     fCabalFiles     <-  mapM canonicalizePath $ concat cabalFiles
@@ -180,7 +186,7 @@ symbol      =   P.symbol lexer
 
 parseCabal :: FilePath -> IO (Maybe String)
 parseCabal fn = do
-    putStrLn $ "Now parsing minimal " ++ fn
+    --putStrLn $ "Now parsing minimal " ++ fn
     res     <-  parseFromFile cabalMinimalParser fn
     case res of
         Left pe ->  do
@@ -258,7 +264,7 @@ collectSources sourceMap pdescr = do
             let dflags4 = dflags3 {
                 topDir      =   basePath,
                 importPaths =   buildPaths,
---                hscTarget = HscAsm,
+                hscTarget = HscAsm,
                 ghcMode   = CompManager,
                 ghcLink   = NoLink}
             setSessionDynFlags dflags4
@@ -266,17 +272,19 @@ collectSources sourceMap pdescr = do
             trace ("buildPaths = " ++ show buildPaths) (return ())
 
             defaultCleanupHandler dflags (do
+                let allMods     =   map display (libModules pkgDescr)
                 let exposedMods =   map (display . modu . moduleIdMD) $ exposedModulesPD pdescr
                 sourceFiles     <-  liftIO $ mapM (findSourceFile
                                                     (map (\p -> basePath </> p) buildPaths)
                                                     ["hs","lhs","chs","hs.pp","lhs.pp","chs.pp"])
-                                                    $ map (modu . moduleIdMD) (exposedModulesPD pdescr)
+                                                    $ libModules pkgDescr
 
                 liftIO $ mapM_ (\(mbSf, mn) ->
                     case mbSf of
                         Nothing -> putStrLn $ "Cant find source file for " ++ mn
-                        Just _ ->  return ()) $ zip sourceFiles exposedMods
+                        Just _ ->  return ()) $ zip sourceFiles allMods
                 (newModDescrs,failureCount) <- collectSourcesForPackage pdescr (catMaybes sourceFiles)
+                                                    exposedMods
                 let nPackDescr  =   pdescr{mbSourcePathPD = Just cabalPath,
                                            exposedModulesPD = newModDescrs}
                 return (nPackDescr,failureCount)))
@@ -293,35 +301,41 @@ collectSources sourceMap pdescr = do
 
 --------------------------
 
-collectSourcesForPackage :: PackageDescr -> [String] -> Ghc ([ModuleDescr],Int)
-collectSourcesForPackage pkgDescr modules = do
+collectSourcesForPackage :: PackageDescr -> [String] -> [String] -> Ghc ([ModuleDescr],Int)
+collectSourcesForPackage pkgDescr modules exposedMods = do
     targets <- mapM (\f -> guessTarget f Nothing) modules
     setTargets targets
+    trace "before load" $ return ()
+--    flag <- load LoadAllTargets
+--    when (failed flag) $
+--        throwIDE "Failed to load all needed modules"
+--    modgraph <- getModuleGraph
     modgraph <- depanal [] False
+    trace "after load" $ return ()
     let orderedMods = flattenSCCs $ topSortModuleGraph False modgraph Nothing
---    let interestingMods = filter (\m -> elem (moduleNameString (ms_mod_name m)) modules) orderedMods
+    let interestingMods = filter (\m -> elem (moduleNameString (ms_mod_name m)) exposedMods) orderedMods
     let orderedTupels = catMaybes (map (\om -> case filter (\m -> ((moduleNameString . moduleName . ms_mod) om) ==
                                 		(display .  modu . moduleIdMD) m)
                                     			(exposedModulesPD pkgDescr) of
 						[] -> trace ("Cant find module source " ++ (moduleNameString . moduleName . ms_mod) om) $ Nothing
-						(x:_) -> (Just (x,om))) orderedMods)
+						(x:_) -> (Just (x,om))) interestingMods)
 --    trace ("ordered tupels " ++ (show . length) orderedTupels) $ return ()
     foldM collectSourcesForModule ([],0) orderedTupels
 
 collectSourcesForModule :: ([ModuleDescr],Int) -> (ModuleDescr, ModSummary) -> Ghc ([ModuleDescr],Int)
 collectSourcesForModule (moduleDescrs,failureCount) (modD,modsum) = gcatch (do
-    let filename = msHsFilePath modsum
-    let dynflags = ms_hspp_opts modsum
-    parsedMod <- parseModule modsum
-    let decls = (hsmodDecls . unLoc . parsedSource) $ parsedMod
+    let filename            = msHsFilePath modsum
+    let dynflags            = ms_hspp_opts modsum
+    parsedMod               <- parseModule modsum
+    let decls               = (hsmodDecls . unLoc . parsedSource) $ parsedMod
     let map'                =   convertToMap (idDescriptionsMD modD)
     let commentedDecls      =   addComments (filterSignatures decls)
     let (descrs,restMap)    =   foldl' collectParseInfoForDecl ([],map') commentedDecls
-    let newMod            =   modD{
-         idDescriptionsMD    =   reverse descrs ++ concat (Map.elems restMap),
-         mbSourcePathMD      =   Just filename}
+    let newMod              =   modD{
+         idDescriptionsMD   =   reverse descrs ++ concat (Map.elems restMap),
+         mbSourcePathMD     =   Just filename}
     return(newMod : moduleDescrs, failureCount))
-        (\(e :: SomeException) -> do
+        (\(e :: SomeException)                -> do
                     sysMessage Normal $ "source collector throwIDE2 " ++ show e ++ " in " ++
                                  msHsFilePath modsum
                     return (modD : moduleDescrs, failureCount + 1))

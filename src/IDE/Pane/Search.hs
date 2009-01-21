@@ -38,6 +38,7 @@ import Data.Typeable
 import IDE.Core.State
 import Distribution.Text(display)
 import Control.Event (triggerEvent)
+import Debug.Trace (trace)
 
 -- | A search pane description
 --
@@ -248,7 +249,7 @@ initSearch panePath nb scope mode = do
         treeView `onButtonPress` (listViewPopup ideR session listStore treeView)
         sel `New.onSelectionChanged` do
             fillInfo treeView listStore ideR session
-            return ()
+            trace "search pane selection changes" $ return ()
         return (search,[ConnectC cid1])
     addPaneAdmin buf cids panePath
     liftIO $widgetGrabFocus (scrolledView buf)
@@ -283,7 +284,9 @@ modeSelectionCase caseSense = do
 
 searchMetaGUI :: String -> IDEAction
 searchMetaGUI str = do
+    trace ("searchMetaGUI " ++ str) $ return ()
     search <- getSearch
+    liftIO $ bringPaneToFront search
     liftIO $ writeIORef (searchStringRef search) str
     scope  <- liftIO $ getScope search
     mode   <- liftIO $ getMode search
@@ -291,10 +294,9 @@ searchMetaGUI str = do
     descrs <- if null str
                 then return []
                 else searchMeta scope str mode'
-    liftIO $do
+    liftIO $ do
         New.listStoreClear (searchStore search)
         mapM_ (New.listStoreAppend (searchStore search)) descrs
-        bringPaneToFront search
 
 listViewPopup :: IDERef
     -> Session
@@ -312,7 +314,7 @@ listViewPopup ideR session store descrView (Button _ click _ _ _ _ button _ _) =
                 case sel of
                     Just descr      ->  reflectIDE
                                             (goToDefinition descr) ideR session
-                    otherwise       ->  sysMessage Normal "no selection"
+                    otherwise       ->  sysMessage Normal "Search >> listViewPopup: no selection"
             menuShellAppend theMenu item1
             menuPopup theMenu Nothing
             widgetShowAll theMenu
@@ -322,7 +324,7 @@ listViewPopup ideR session store descrView (Button _ click _ _ _ _ button _ _) =
                         case sel of
                             Just descr      ->  reflectIDE (triggerEvent ideR (SelectIdent descr))
                                                     ideR session >> return ()
-                            otherwise       ->  sysMessage Normal "no selection"
+                            otherwise       ->  sysMessage Normal "Search >> listViewPopup: no selection2"
                         return True
                 else do
                     mbPane :: Maybe IDEInfo <- reflectIDE getPane ideR session
@@ -351,7 +353,7 @@ fillInfo treeView listStore ideR session = do
     sel <- getSelectionDescr treeView listStore
     case sel of
         Just descr      ->  reflectIDE (setInfo descr) ideR session
-        otherwise       ->  sysMessage Normal "no selection"
+        otherwise       ->  sysMessage Normal "Search>>fillInfo:no selection"
 
 setChoices :: [Descr] -> IDEAction
 setChoices descrs = do

@@ -405,6 +405,15 @@ prefsDescription packages = NFDPP [
             (\b a -> a{collectAtStart = b})
             boolEditor
             (\i -> return ())
+    ,   mkFieldPP
+            (paraName <<<- ParaName "Extract packages from cabal-install" $ emptyParams)
+            (PP.text . show)
+            readParser
+            autoExtractTars
+            (\b a -> a{autoExtractTars = b})
+            (maybeEditor ((fileEditor (Just "~/.cabal/packages/") FileChooserActionSelectFolder
+                "Select folder"), emptyParams) True "Yes")
+            (\i -> return ())
     ])]
 
 instance Default PackageIdentifier where
@@ -432,6 +441,7 @@ defaultPrefs = Prefs {
     ,   packageBlacklist    =   []
     ,   collectAfterBuild   =   False
     ,   collectAtStart      =   True
+    ,   autoExtractTars     =   Nothing
     }
 
 -- ------------------------------------------------------------

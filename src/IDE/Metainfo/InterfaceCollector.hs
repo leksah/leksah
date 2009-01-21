@@ -55,7 +55,6 @@ import Debug.Trace
 
 import Data.Char (isSpace)
 import qualified Data.Map as Map
-import Data.Map (Map)
 import Data.Maybe
 import qualified Data.Set as Set
 import Data.Set (Set)
@@ -100,17 +99,15 @@ instance Default CollectStatistics where
 collectInstalledI :: Bool -> IDEAction
 collectInstalledI b      =   do
     session'            <-  lift $ getSession
-    sources             <-  liftIO $ getSourcesMap
-    lift $ collectInstalled' False cProjectVersion b sources
+    lift $ collectInstalled' False cProjectVersion b
 
 
 collectInstalled :: HscEnv -> Bool -> Ghc ()
 collectInstalled session b     =   do
-    sources             <-  liftIO $ getSourcesMap
-    collectInstalled' False cProjectVersion b sources
+    collectInstalled' False cProjectVersion b
 
-collectInstalled' :: Bool -> String -> Bool -> Map PackageIdentifier [FilePath] -> Ghc()
-collectInstalled' writeAscii version forceRebuild sources = do
+collectInstalled' :: Bool -> String -> Bool -> Ghc()
+collectInstalled' writeAscii version forceRebuild = do
     session             <- getSession
     setTargets []
     load LoadAllTargets
@@ -125,38 +122,43 @@ collectInstalled' writeAscii version forceRebuild sources = do
     let newPackages     =   filter (\pi -> not $Set.member (fromPackageIdentifier $ IPI.package pi)
                                                         knownPackages)
                                     packageInfos
-    exportedIfaceInfos  <-  mapM (\ info -> getIFaceInfos (mkPackageId $ IPI.package info)
-                                            (IPI.exposedModules info) session) newPackages
-    hiddenIfaceInfos    <-  mapM (\ info -> getIFaceInfos (mkPackageId $ IPI.package info)
-                                        (IPI.hiddenModules info) session) newPackages
-    let extracted       =   map extractInfo $ zip4 exportedIfaceInfos
-                                                hiddenIfaceInfos
-                                                (map IPI.package newPackages)
-                                                (map depends newPackages)
-    (packagesWithSource', modulesTotal', modulesWithSource', parseFailures')
-                        <-  foldM (\ (pws,mt,ms,failed) pdescr   ->  do
-                                    (pdescr, num)   <-  collectSources sources pdescr
-                                    writeExtracted collectorPath writeAscii False pdescr
-                                    let pws' = pws + if isJust (mbSourcePathPD pdescr)
-                                                        then 1
-                                                        else 0
-                                    let mt'  = mt +  (length . exposedModulesPD) pdescr
-                                    let ms'  = ms + if isJust (mbSourcePathPD pdescr)
-                                                        then (length . exposedModulesPD) pdescr
-                                                        else 0
-                                    return (pws',mt',ms',failed + num))
-                                  (0,0,0,0) extracted
-    let statistic       =   CollectStatistics {
-        packagesTotal       =   length extracted
-    ,   packagesWithSource  =   packagesWithSource'
-    ,   modulesTotal        =   modulesTotal'
-    ,   modulesWithSource   =   modulesWithSource'
-    ,   parseFailures       =   parseFailures'}
-    liftIO $ sysMessage Normal $ show statistic
-    when (modulesWithSource statistic > 0) $
-        sysMessage Normal $ "failure percentage "
-            ++ show ((round (((fromIntegral   (parseFailures statistic)) :: Double) /
-                       (fromIntegral   (modulesWithSource statistic)) * 100.0)):: Integer)
+    if null newPackages then do
+            sysMessage Normal "Metadata collector has nothing to do"
+        else do
+            liftIO $ buildSourceForPackageDB
+            sources             <-  liftIO $ getSourcesMap
+            exportedIfaceInfos  <-  mapM (\ info -> getIFaceInfos (mkPackageId $ IPI.package info)
+                                                    (IPI.exposedModules info) session) newPackages
+            hiddenIfaceInfos    <-  mapM (\ info -> getIFaceInfos (mkPackageId $ IPI.package info)
+                                                (IPI.hiddenModules info) session) newPackages
+            let extracted       =   map extractInfo $ zip4 exportedIfaceInfos
+                                                        hiddenIfaceInfos
+                                                        (map IPI.package newPackages)
+                                                        (map depends newPackages)
+            (packagesWithSource', modulesTotal', modulesWithSource', parseFailures')
+                                <-  foldM (\ (pws,mt,ms,failed) pdescr   ->  do
+                                            (pdescr, num)   <-  collectSources sources pdescr
+                                            writeExtracted collectorPath writeAscii False pdescr
+                                            let pws' = pws + if isJust (mbSourcePathPD pdescr)
+                                                                then 1
+                                                                else 0
+                                            let mt'  = mt +  (length . exposedModulesPD) pdescr
+                                            let ms'  = ms + if isJust (mbSourcePathPD pdescr)
+                                                                then (length . exposedModulesPD) pdescr
+                                                                else 0
+                                            return (pws',mt',ms',failed + num))
+                                          (0,0,0,0) extracted
+            let statistic       =   CollectStatistics {
+                packagesTotal       =   length extracted
+            ,   packagesWithSource  =   packagesWithSource'
+            ,   modulesTotal        =   modulesTotal'
+            ,   modulesWithSource   =   modulesWithSource'
+            ,   parseFailures       =   parseFailures'}
+            liftIO $ sysMessage Normal $ show statistic
+            when (modulesWithSource statistic > 0) $
+                sysMessage Normal $ "failure percentage "
+                    ++ show ((round (((fromIntegral   (parseFailures statistic)) :: Double) /
+                               (fromIntegral   (modulesWithSource statistic)) * 100.0)):: Integer)
 
 collectUninstalled :: Bool -> String -> FilePath -> Ghc ()
 collectUninstalled writeAscii version cabalPath = do

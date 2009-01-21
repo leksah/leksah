@@ -14,6 +14,7 @@ module IDE.FileUtils (
 ,   findKnownPackages
 ,   isSubPath
 ,   findSourceFile
+,   autoExtractTarFiles
 
 ,   getInstalledPackageInfos
 ,   findFittingPackages
@@ -71,11 +72,12 @@ findSourceFile directories exts modId  =
 
 find' :: [FilePath] -> IO (Maybe FilePath)
 find' []            =   return Nothing
-find' (h:t)         =   do
+find' (h:t)         =   catch (do
     exists <- doesFileExist h
     if exists
         then return (Just h)
-        else find' t
+        else find' t)
+        $ \ _ -> return Nothing
 
 dots_to_slashes = map (\c -> if c == '.' then pathSeparator else c)
 
@@ -118,7 +120,7 @@ getConfigFilePathForSave fn = do
     return (cd </> fn)
 
 allModules :: FilePath -> IO [ModuleName]
-allModules filePath = do
+allModules filePath = catch (do
     exists <- doesDirectoryExist filePath
     if exists
         then do
@@ -133,7 +135,8 @@ allModules filePath = do
             mbModuleNames <- mapM moduleNameFromFilePath hsFiles
             otherModules <- mapM allModules dirs
             return (catMaybes mbModuleNames ++ concat otherModules)
-        else return []
+        else return [])
+            $ \ _ -> return []
 
 allHiFiles :: FilePath -> IO [FilePath]
 allHiFiles = allFilesWithExtensions [".hi"] True []
@@ -145,8 +148,8 @@ allHaskellSourceFiles :: FilePath -> IO [FilePath]
 allHaskellSourceFiles = allFilesWithExtensions [".hs",".lhs"] True []
 
 allFilesWithExtensions :: [String] -> Bool -> [FilePath] -> FilePath -> IO [FilePath]
-allFilesWithExtensions extensions recurseFurther collecting filePath = do
-    exists <- trace ("allFilesWithExtensions " ++ filePath) $ doesDirectoryExist filePath
+allFilesWithExtensions extensions recurseFurther collecting filePath = catch (do
+    exists <- doesDirectoryExist filePath
     if exists
         then do
             filesAndDirs <- getDirectoryContents filePath
@@ -161,12 +164,12 @@ allFilesWithExtensions extensions recurseFurther collecting filePath = do
                     then foldM (allFilesWithExtensions extensions recurseFurther) (choosenFiles ++ collecting) dirs
                     else return (choosenFiles ++ collecting)
             return (allFiles)
-        else return collecting
-
+        else return collecting)
+            $ \ _ -> return collecting
 
 
 moduleNameFromFilePath :: FilePath -> IO (Maybe ModuleName)
-moduleNameFromFilePath fp = do
+moduleNameFromFilePath fp = catch (do
     exists <- doesFileExist fp
     if exists
         then do
@@ -192,7 +195,8 @@ moduleNameFromFilePath fp = do
                                         "Can't parse module name " ++ str
                                     return Nothing
                                 Just mn -> return (Just mn)
-        else return Nothing
+        else return Nothing)
+            $ \ _ -> return Nothing
 
 lexer = haskell
 lexeme = P.lexeme lexer
@@ -229,13 +233,14 @@ mident
         <?> "midentifier"
 
 findKnownPackages :: FilePath -> IO (Set String)
-findKnownPackages filePath = do
+findKnownPackages filePath = catch (do
     paths           <-  getDirectoryContents filePath
     let nameList    =   map dropExtension  $filter (\s -> ".pack" `isSuffixOf` s) paths
-    return (Set.fromList nameList)
+    return (Set.fromList nameList))
+        $ \ _ -> return (Set.empty)
 
 cabalFileName :: FilePath -> IO (Maybe String)
-cabalFileName filePath = do
+cabalFileName filePath = catch (do
     exists <- doesDirectoryExist filePath
     if exists
         then do
@@ -249,7 +254,34 @@ cabalFileName filePath = do
                     else do
                         sysMessage Normal "Multiple cabal files"
                         return Nothing
-        else return Nothing
+        else return Nothing)
+        (\_ -> return Nothing)
+
+autoExtractTarFiles :: FilePath -> IO ()
+autoExtractTarFiles filePath =
+    catch (do
+        trace ("autoExtractTarFiles " ++ filePath) $ return ()
+        exists <- doesDirectoryExist filePath
+        if exists
+            then do
+                filesAndDirs             <- getDirectoryContents filePath
+                let filesAndDirs'        =  map (\s -> combine filePath s)
+                                                $ filter (\s -> s /= "." && s /= ".." && not (isPrefixOf "00-index" s)) filesAndDirs
+                dirs                     <- filterM (\f -> doesDirectoryExist f) filesAndDirs'
+                files                    <- filterM (\f -> doesFileExist f) filesAndDirs'
+                let choosenFiles         =  filter (\f -> isSuffixOf ".tar.gz" f) files
+                let decompressionTargets =  filter (\f -> (dropExtension . dropExtension) f `notElem` dirs) choosenFiles
+                mapM_ (\f -> let (dir,fn) = splitFileName f in do
+                                setCurrentDirectory dir
+                                handle   <- runCommand $ "tar -zxf " ++ fn
+                                waitForProcess handle
+                                trace ("extracted " ++ fn) $ return ())
+                        decompressionTargets
+                mapM_ autoExtractTarFiles dirs
+                return ()
+            else return ()
+    ) $ \ _ -> trace ("error extractTarFiles" ++ filePath) $ return ()
+
 
 getCollectorPath :: MonadIO m => String -> m FilePath
 getCollectorPath version = liftIO $ do

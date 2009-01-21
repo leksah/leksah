@@ -155,6 +155,7 @@ data Prefs = Prefs {
     ,   packageBlacklist    ::   [Dependency]
     ,   collectAfterBuild   ::   Bool
     ,   collectAtStart      ::   Bool
+    ,   autoExtractTars     ::   Maybe FilePath
 } deriving(Eq,Show)
 
 data SearchHint = Forward | Backward | Insert | Delete | Initial
