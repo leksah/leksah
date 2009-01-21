@@ -5,7 +5,7 @@ build-type: Custom
 license: GPL
 license-file: LICENSE
 copyright: 2007-2009 Jürgen Nicklisch-Franken
-maintainer: Jutaro
+maintainer: Jutaro <jutaro@leksah.org>
 build-depends: regex-posix >=0.72.0.3, utf8-string >=0.3.1.1,
                bytestring >=0.9.0.1, binary >=0.4.4, ghc >=6.10.1, glib >=0.10,
                gtk >=0.10, directory >=1.0.0.2, pretty >=1.0.1.0,
@@ -18,7 +18,7 @@ package-url: http://code.haskell.org/leksah
 bug-reports:
 synopsis: Haskell IDE written in Haskell
 description: An Integrated Development Environment for Haskell written in Haskell.
-category: Development
+category: Development, IDE, Editor
 author: Jutaro
 tested-with: GHC ==6.10.1
 data-files: data/Current.session data/Default.candy
