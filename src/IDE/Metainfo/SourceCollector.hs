@@ -46,7 +46,7 @@ import SrcLoc
 import RdrName
 import OccName
 import DynFlags
-import PackageConfig hiding (exposedModules,package)
+--import PackageConfig hiding (exposedModules,package)
 import FastString
 import Outputable hiding (char)
 
@@ -55,6 +55,8 @@ import IDE.FileUtils
 import IDE.Pane.Preferences
 import Digraph (flattenSCCs)
 import HscTypes (msHsFilePath)
+import Distribution.Package (PackageIdentifier(..))
+import Distribution.Text (display)
 
 
 -- ---------------------------------------------------------------------
@@ -70,43 +72,47 @@ collectSources sourceMap pdescr = do
             sysMessage Normal $ "No source for package " ++ display (packagePD pdescr)
             return (pdescr,0)
         Just cabalPath -> gcatch (do
-            setTargets []
-            load LoadAllTargets
             basePath        <-  liftIO $ canonicalizePath (takeDirectory cabalPath)
             pkgDescr        <-  gcatch (liftIO $  (liftM flattenPackageDescription
                                         (readPackageDescription silent cabalPath)))
                                     (\(e :: SomeException) -> return emptyPackageDescription)
+            let bis = allBuildInfo pkgDescr
+            let buildPaths  =   map (\p -> basePath </> p)
+                                    $ nub $ ("dist" </> "build" </> "autogen") : (".")
+                                                : concatMap hsSourceDirs bis
+            let includes    =   map (\p -> basePath </> p)  $ nub $ concatMap includeDirs bis
+
             dflags             <-  getSessionDynFlags
-            let flags       =   [noLoc "-fglasgow-exts", noLoc "-cpp", noLoc ("-I" ++ basePath </> "include"),
-                                    noLoc ("-I" ++ basePath)]
-            (dflags2,_,_)   <-  parseDynamicFlags dflags flags
-            let buildPaths  =   nub $ ("dist" </> "build" </> "autogen") : (".") :
-                                    (concatMap hsSourceDirs $ allBuildInfo pkgDescr)
-            let dflags3     =   dopt_set dflags2 Opt_Haddock
-            let dflags4 = dflags3 {
+            let dflags2 = dflags {
                 topDir      =   basePath,
-                importPaths =   buildPaths,
                 hscTarget = HscAsm,
                 ghcMode   = CompManager,
                 ghcLink   = NoLink}
-            setSessionDynFlags dflags4
-            trace ("basePath = " ++ basePath) (return ())
-            trace ("buildPaths = " ++ show buildPaths) (return ())
-
+            setSessionDynFlags dflags2
+            let flags       =         ["-fglasgow-exts"]
+                                    ++ ["-cpp"]
+                                    ++ ["-I" ++ dir | dir <- includes]
+                                    ++ ["-I" ++ dir | dir <- buildPaths]
+                                    ++ ["-i" ++ dir | dir <- includes]
+                                    ++ ["-i" ++ dir | dir <- buildPaths]
+            -- trace ("flags " ++ show flags) $ return ()
+            dflags3          <-  getSessionDynFlags
+            (dflags4,_,_)   <-  parseDynamicFlags dflags3 (map noLoc flags)
+            let dflags5     =   dopt_set dflags4 Opt_Haddock
+            setSessionDynFlags dflags5
             defaultCleanupHandler dflags (do
-                let allMods     =   map display (libModules pkgDescr)
-                let exposedMods =   map (display . modu . moduleIdMD) $ exposedModulesPD pdescr
+                let allMods         =  nub (exeModules pkgDescr ++ libModules pkgDescr)
+                let interestingMods =  map (modu . moduleIdMD) (exposedModulesPD pdescr)
                 sourceFiles     <-  liftIO $ mapM (findSourceFile
-                                                    (map (\p -> basePath </> p) buildPaths)
+                                                    buildPaths
                                                     ["hs","lhs","chs","hs.pp","lhs.pp","chs.pp"])
-                                                    $ libModules pkgDescr
-
+                                                    $ nub (interestingMods ++ allMods)
                 liftIO $ mapM_ (\(mbSf, mn) ->
                     case mbSf of
                         Nothing -> putStrLn $ "Cant find source file for " ++ mn
-                        Just _ ->  return ()) $ zip sourceFiles allMods
+                        Just _ ->  return ()) $ zip sourceFiles (map display allMods)
                 (newModDescrs,failureCount) <- collectSourcesForPackage pdescr (catMaybes sourceFiles)
-                                                    exposedMods
+                                                    (map display interestingMods)
                 let nPackDescr  =   pdescr{mbSourcePathPD = Just cabalPath,
                                            exposedModulesPD = newModDescrs}
                 return (nPackDescr,failureCount)))
@@ -123,22 +129,17 @@ collectSources sourceMap pdescr = do
 --------------------------
 
 collectSourcesForPackage :: PackageDescr -> [String] -> [String] -> Ghc ([ModuleDescr],Int)
-collectSourcesForPackage pkgDescr sourceFiles exposedMods = do
+collectSourcesForPackage pkgDescr sourceFiles interesting = do
     targets <- mapM (\f -> guessTarget f Nothing) sourceFiles
     setTargets targets
---    flag <- load LoadAllTargets
---    when (failed flag) $
---        throwIDE "Failed to load all needed modules"
---    modgraph <- getModuleGraph
     modgraph <- depanal [] False
     let orderedMods = flattenSCCs $ topSortModuleGraph False modgraph Nothing
-    let interestingMods = filter (\m -> elem (moduleNameString (ms_mod_name m)) exposedMods) orderedMods
+    let interestingMods = filter (\m -> elem (moduleNameString (ms_mod_name m)) interesting) orderedMods
     let orderedTupels = catMaybes (map (\om -> case filter (\m -> ((moduleNameString . moduleName . ms_mod) om) ==
                                 		(display .  modu . moduleIdMD) m)
                                     			(exposedModulesPD pkgDescr) of
 						[] -> trace ("Cant find module source " ++ (moduleNameString . moduleName . ms_mod) om) $ Nothing
 						(x:_) -> (Just (x,om))) interestingMods)
---    trace ("ordered tupels " ++ (show . length) orderedTupels) $ return ()
     foldM collectSourcesForModule ([],0) orderedTupels
 
 collectSourcesForModule :: ([ModuleDescr],Int) -> (ModuleDescr, ModSummary) -> Ghc ([ModuleDescr],Int)

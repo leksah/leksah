@@ -284,7 +284,6 @@ modeSelectionCase caseSense = do
 
 searchMetaGUI :: String -> IDEAction
 searchMetaGUI str = do
-    trace ("searchMetaGUI " ++ str) $ return ()
     search <- getSearch
     liftIO $ bringPaneToFront search
     liftIO $ writeIORef (searchStringRef search) str

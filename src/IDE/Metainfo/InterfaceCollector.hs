@@ -109,9 +109,6 @@ collectInstalled session b     =   do
 collectInstalled' :: Bool -> String -> Bool -> Ghc()
 collectInstalled' writeAscii version forceRebuild = do
     session             <- getSession
-    setTargets []
-    load LoadAllTargets
-    depanal [] False
     collectorPath       <-  liftIO $ getCollectorPath version
     when forceRebuild $ liftIO $ do
         removeDirectoryRecursive collectorPath
@@ -158,13 +155,10 @@ collectInstalled' writeAscii version forceRebuild = do
             when (modulesWithSource statistic > 0) $
                 sysMessage Normal $ "failure percentage "
                     ++ show ((round (((fromIntegral   (parseFailures statistic)) :: Double) /
-                               (fromIntegral   (modulesWithSource statistic)) * 100.0)):: Integer)
+                               (fromIntegral   (modulesTotal statistic)) * 100.0)):: Integer)
 
 collectUninstalled :: Bool -> String -> FilePath -> Ghc ()
 collectUninstalled writeAscii version cabalPath = do
-    setTargets []
-    load LoadAllTargets
-    depanal [] False
     pd                  <-  liftIO $ readPackageDescription normal cabalPath
                                         >>= return . flattenPackageDescription
     let packageName     =   if hasExes pd
@@ -178,9 +172,6 @@ collectUninstalled writeAscii version cabalPath = do
                                      in "dist" </> "build" </> exeName' </>
                                                     exeName' ++ "-tmp" </> ""
                                 else "dist" </> "build" </> ""
-    trace ("basePath = " ++ basePath) (return ())
-    trace ("buildPath = " ++ buildPath) (return ())
-
     dflags0             <-  getSessionDynFlags
     setSessionDynFlags
         dflags0
@@ -192,17 +183,16 @@ collectUninstalled writeAscii version cabalPath = do
     dflags1         <-  getSessionDynFlags
     (dflags2,_,_)   <-  parseDynamicFlags dflags1 [(noLoc "-fglasgow-exts")]
     setSessionDynFlags dflags2
---    trace ("modules = " ++ show modules) (return ())
     let ghcmodules  =   map (mkModuleName . display) modules
     allIfaceInfos   <-  getIFaceInfos2 ghcmodules packageName
     deps            <-  findFittingPackages (buildDepends pd)
     let extracted   =   extractInfo (allIfaceInfos, [], package pd, deps)
---    trace ("extracted = " ++ show extracted) (return ())
     let sources     =   Map.fromList [(package pd,[cabalPath])]
     (extractedWithSources,_)    <-  collectSources sources extracted
     collectorPath   <-  getCollectorPath version
     writeExtracted collectorPath writeAscii True extractedWithSources
-    sysMessage Normal $ "\nExtracted infos for " ++ cabalPath
+    sysMessage Normal $ "\nExtracted infos for " ++ cabalPath ++
+        " size: " ++ (show . length) (exposedModulesPD extractedWithSources)
 
 -------------------------------------------------------------------------
 
