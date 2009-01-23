@@ -260,7 +260,6 @@ cabalFileName filePath = catch (do
 autoExtractTarFiles :: FilePath -> IO ()
 autoExtractTarFiles filePath =
     catch (do
-        trace ("autoExtractTarFiles " ++ filePath) $ return ()
         exists <- doesDirectoryExist filePath
         if exists
             then do

@@ -41,13 +41,12 @@ import Distribution.PackageDescription.Parse (readPackageDescription)
 import Distribution.PackageDescription.Configuration (flattenPackageDescription)
 import Control.Exception (SomeException)
 
-
 import GHC hiding (idType)
 import SrcLoc
 import RdrName
 import OccName
 import DynFlags
-import PackageConfig hiding (exposedModules)
+import PackageConfig hiding (exposedModules,package)
 import FastString
 import Outputable hiding (char)
 
@@ -57,183 +56,6 @@ import IDE.Pane.Preferences
 import Digraph (flattenSCCs)
 import HscTypes (msHsFilePath)
 
--- ---------------------------------------------------------------------
--- Function to map packages to file paths
---
-
-getSourcesMap :: IO (Map PackageIdentifier [FilePath])
-getSourcesMap = do
-        mbSources <- parseSourceForPackageDB
-        case mbSources of
-            Just map -> return map
-            Nothing -> do
-                buildSourceForPackageDB
-                mbSources <- parseSourceForPackageDB
-                case mbSources of
-                    Just map -> do
-                        return map
-                    Nothing ->  throwIDE "can't build/open source for package file"
-
-sourceForPackage :: PackageIdentifier
-    -> (Map PackageIdentifier [FilePath])
-    -> Maybe FilePath
-sourceForPackage id map =
-    case id `Map.lookup` map of
-        Just (h:_)  ->  Just h
-        _           ->  Nothing
-
-buildSourceForPackageDB :: IO ()
-buildSourceForPackageDB = do
-    prefsPath       <-  getConfigFilePathForLoad "Default.prefs"
-    prefs           <-  readPrefs prefsPath
-    case autoExtractTars prefs of
-        Nothing     -> return ()
-        Just path   -> do
-            dir <- getCurrentDirectory
-            autoExtractTarFiles path
-            setCurrentDirectory dir
-    let dirs        =   sourceDirectories prefs
-    cabalFiles      <-  mapM allCabalFiles dirs
-    fCabalFiles     <-  mapM canonicalizePath $ concat cabalFiles
-    mbPackages      <-  mapM (\fp -> parseCabal fp) fCabalFiles
-    let pdToFiles   =   Map.fromListWith (++)
-                $ map (\(Just p,o ) -> (p,o))
-                    $ filter (\(mb, _) -> case mb of
-                                            Nothing -> False
-                                            _       -> True )
-                        $ zip mbPackages (map (\a -> [a]) fCabalFiles)
-    filePath        <-  getConfigFilePathForSave "source_packages.txt"
-    writeFile filePath  (PP.render (showSourceForPackageDB pdToFiles))
-
-showSourceForPackageDB  :: Map String [FilePath] -> PP.Doc
-showSourceForPackageDB aMap = PP.vcat (map showIt (Map.toList aMap))
-    where
-    showIt :: (String,[FilePath]) -> PP.Doc
-    showIt (pd,list) =  (foldl' (\l n -> l PP.$$ (PP.text $ show n)) label list)
-                             PP.<>  PP.char '\n'
-        where label  =  PP.text pd PP.<> PP.colon
-
-parseSourceForPackageDB :: IO (Maybe (Map PackageIdentifier [FilePath]))
-parseSourceForPackageDB = do
-    filePath        <-  getConfigFilePathForLoad "source_packages.txt"
-    exists          <-  doesFileExist filePath
-    if exists
-        then do
-            res             <-  parseFromFile sourceForPackageParser filePath
-            case res of
-                Left pe ->  do
-                    sysMessage Normal $"Error reading source packages file "
-                            ++ filePath ++ " " ++ show pe
-                    return Nothing
-                Right r ->  return (Just r)
-        else do
-            sysMessage Normal $"No source packages file found: " ++ filePath
-            return Nothing
-
--- ---------------------------------------------------------------------
--- | Parser for Package DB
---
-
-sourceForPackageParser :: CharParser () (Map PackageIdentifier [FilePath])
-sourceForPackageParser = do
-    whiteSpace
-    ls  <-  many onePackageParser
-    whiteSpace
-    eof
-    return (Map.fromList (catMaybes ls))
-    <?> "sourceForPackageParser"
-
-onePackageParser :: CharParser () (Maybe (PackageIdentifier,[FilePath]))
-onePackageParser = do
-    mbPd        <-  packageDescriptionParser
-    filePaths   <-  many filePathParser
-    case mbPd of
-        Nothing -> return Nothing
-        Just pd -> return (Just (pd,filePaths))
-    <?> "onePackageParser"
-
-packageDescriptionParser :: CharParser () (Maybe PackageIdentifier)
-packageDescriptionParser = try (do
-    whiteSpace
-    str <- many (noneOf ":")
-    char ':'
-    return (toPackageIdentifier str))
-    <?> "packageDescriptionParser"
-
-filePathParser :: CharParser () FilePath
-filePathParser = try (do
-    whiteSpace
-    char '"'
-    str <- many (noneOf ['"'])
-    char '"'
-    return (str))
-    <?> "filePathParser"
-
--- ---------------------------------------------------------------------
--- | Parser for the package name from a cabal file
---
-
-cabalStyle  :: P.LanguageDef st
-cabalStyle  = emptyDef
-                { P.commentStart   = "{-"
-                , P.commentEnd     = "-}"
-                , P.commentLine    = "--"
-                }
-
-lexer       =   P.makeTokenParser cabalStyle
-whiteSpace  =   P.whiteSpace lexer
-symbol      =   P.symbol lexer
-
-parseCabal :: FilePath -> IO (Maybe String)
-parseCabal fn = do
-    --putStrLn $ "Now parsing minimal " ++ fn
-    res     <-  parseFromFile cabalMinimalParser fn
-    case res of
-        Left pe ->  do
-            sysMessage Normal $"Error reading cabal file " ++ show fn ++ " " ++ show pe
-            return Nothing
-        Right r ->  do
-            sysMessage Normal r
-            return (Just r)
-
-cabalMinimalParser :: CharParser () String
-cabalMinimalParser = do
-    r1 <- cabalMinimalP
-    r2 <- cabalMinimalP
-    case r1 of
-        Left v -> do
-            case r2 of
-                Right n -> return (n ++ "-" ++ v)
-                Left _ -> unexpected "Illegal cabal"
-        Right n -> do
-            case r2 of
-                Left v -> return (n ++ "-" ++ v)
-                Right _ -> unexpected "Illegal cabal"
-
-cabalMinimalP :: CharParser () (Either String String)
-cabalMinimalP =
-    do  try $(symbol "name:" <|> symbol "Name:")
-        whiteSpace
-        name       <-  (many $noneOf " \n")
-        (many $noneOf "\n")
-        char '\n'
-        return (Right name)
-    <|> do
-            try $(symbol "version:" <|> symbol "Version:")
-            whiteSpace
-            version    <-  (many $noneOf " \n")
-            (many $noneOf "\n")
-            char '\n'
-            return (Left version)
-    <|> do
-            many $noneOf "\n"
-            char '\n'
-            cabalMinimalP
-    <?> "cabal minimal"
-
--- ---------------------------------------------------------------------
--- Functions to collect infos from the sources
---
 
 -- ---------------------------------------------------------------------
 -- | Collect infos from sources for one package
@@ -296,22 +118,19 @@ collectSources sourceMap pdescr = do
 
 
 -- ---------------------------------------------------------------------
--- | Collect infos from sources for one module
+-- | Collect infos from sources for modules
 --
-
 --------------------------
 
 collectSourcesForPackage :: PackageDescr -> [String] -> [String] -> Ghc ([ModuleDescr],Int)
-collectSourcesForPackage pkgDescr modules exposedMods = do
-    targets <- mapM (\f -> guessTarget f Nothing) modules
+collectSourcesForPackage pkgDescr sourceFiles exposedMods = do
+    targets <- mapM (\f -> guessTarget f Nothing) sourceFiles
     setTargets targets
-    trace "before load" $ return ()
 --    flag <- load LoadAllTargets
 --    when (failed flag) $
 --        throwIDE "Failed to load all needed modules"
 --    modgraph <- getModuleGraph
     modgraph <- depanal [] False
-    trace "after load" $ return ()
     let orderedMods = flattenSCCs $ topSortModuleGraph False modgraph Nothing
     let interestingMods = filter (\m -> elem (moduleNameString (ms_mod_name m)) exposedMods) orderedMods
     let orderedTupels = catMaybes (map (\om -> case filter (\m -> ((moduleNameString . moduleName . ms_mod) om) ==
@@ -501,3 +320,180 @@ instance Show alpha => Show (DocDecl alpha) where
         show  (DocCommentNamed str doc) =       "DocCommentNamed" ++ " " ++ str ++ " " ++ show doc
         show  (DocGroup i doc)          =       "DocGroup" ++ " " ++ show i ++ " " ++ show doc
 
+-- ---------------------------------------------------------------------
+-- Function to map packages to file paths
+--
+
+getSourcesMap :: IO (Map PackageIdentifier [FilePath])
+getSourcesMap = do
+        mbSources <- parseSourceForPackageDB
+        case mbSources of
+            Just map -> return map
+            Nothing -> do
+                buildSourceForPackageDB
+                mbSources <- parseSourceForPackageDB
+                case mbSources of
+                    Just map -> do
+                        return map
+                    Nothing ->  throwIDE "can't build/open source for package file"
+
+sourceForPackage :: PackageIdentifier
+    -> (Map PackageIdentifier [FilePath])
+    -> Maybe FilePath
+sourceForPackage id map =
+    case id `Map.lookup` map of
+        Just (h:_)  ->  Just h
+        _           ->  Nothing
+
+buildSourceForPackageDB :: IO ()
+buildSourceForPackageDB = do
+    prefsPath       <-  getConfigFilePathForLoad "Default.prefs"
+    prefs           <-  readPrefs prefsPath
+    case autoExtractTars prefs of
+        Nothing     -> return ()
+        Just path   -> do
+            dir <- getCurrentDirectory
+            autoExtractTarFiles path
+            setCurrentDirectory dir
+    let dirs        =   sourceDirectories prefs
+    cabalFiles      <-  mapM allCabalFiles dirs
+    fCabalFiles     <-  mapM canonicalizePath $ concat cabalFiles
+    mbPackages      <-  mapM (\fp -> parseCabal fp) fCabalFiles
+    let pdToFiles   =   Map.fromListWith (++)
+                $ map (\(Just p,o ) -> (p,o))
+                    $ filter (\(mb, _) -> case mb of
+                                            Nothing -> False
+                                            _       -> True )
+                        $ zip mbPackages (map (\a -> [a]) fCabalFiles)
+    filePath        <-  getConfigFilePathForSave "source_packages.txt"
+    writeFile filePath  (PP.render (showSourceForPackageDB pdToFiles))
+
+showSourceForPackageDB  :: Map String [FilePath] -> PP.Doc
+showSourceForPackageDB aMap = PP.vcat (map showIt (Map.toList aMap))
+    where
+    showIt :: (String,[FilePath]) -> PP.Doc
+    showIt (pd,list) =  (foldl' (\l n -> l PP.$$ (PP.text $ show n)) label list)
+                             PP.<>  PP.char '\n'
+        where label  =  PP.text pd PP.<> PP.colon
+
+parseSourceForPackageDB :: IO (Maybe (Map PackageIdentifier [FilePath]))
+parseSourceForPackageDB = do
+    filePath        <-  getConfigFilePathForLoad "source_packages.txt"
+    exists          <-  doesFileExist filePath
+    if exists
+        then do
+            res             <-  parseFromFile sourceForPackageParser filePath
+            case res of
+                Left pe ->  do
+                    sysMessage Normal $"Error reading source packages file "
+                            ++ filePath ++ " " ++ show pe
+                    return Nothing
+                Right r ->  return (Just r)
+        else do
+            sysMessage Normal $"No source packages file found: " ++ filePath
+            return Nothing
+
+---- Returns the package name as a string (e.g. ohohoh-0.1.0)
+--parseCabal :: FilePath -> IO (Maybe String)
+--parseCabal cabalPath = gcatch (do
+--    gpd <- readPackageDescription silent cabalPath
+--    return (Just ((display . package . packageDescription) gpd)))
+--        $ \ (e :: SomeException) -> do
+--            sysMessage Normal ("SourceCollector>>parseCabal:Can't parse cabal " ++ show e)
+--            return Nothing
+--
+-- ---------------------------------------------------------------------
+-- | Parser for Package DB
+--
+packageStyle  :: P.LanguageDef st
+packageStyle  = emptyDef
+                { P.commentStart   = "{-"
+                , P.commentEnd     = "-}"
+                , P.commentLine    = "--"
+                }
+
+lexer       =   P.makeTokenParser packageStyle
+whiteSpace  =   P.whiteSpace lexer
+symbol      =   P.symbol lexer
+
+sourceForPackageParser :: CharParser () (Map PackageIdentifier [FilePath])
+sourceForPackageParser = do
+    whiteSpace
+    ls  <-  many onePackageParser
+    whiteSpace
+    eof
+    return (Map.fromList (catMaybes ls))
+    <?> "sourceForPackageParser"
+
+onePackageParser :: CharParser () (Maybe (PackageIdentifier,[FilePath]))
+onePackageParser = do
+    mbPd        <-  packageDescriptionParser
+    filePaths   <-  many filePathParser
+    case mbPd of
+        Nothing -> return Nothing
+        Just pd -> return (Just (pd,filePaths))
+    <?> "onePackageParser"
+
+packageDescriptionParser :: CharParser () (Maybe PackageIdentifier)
+packageDescriptionParser = try (do
+    whiteSpace
+    str <- many (noneOf ":")
+    char ':'
+    return (toPackageIdentifier str))
+    <?> "packageDescriptionParser"
+
+filePathParser :: CharParser () FilePath
+filePathParser = try (do
+    whiteSpace
+    char '"'
+    str <- many (noneOf ['"'])
+    char '"'
+    return (str))
+    <?> "filePathParser"
+
+parseCabal :: FilePath -> IO (Maybe String)
+parseCabal fn = do
+    --putStrLn $ "Now parsing minimal " ++ fn
+    res     <-  parseFromFile cabalMinimalParser fn
+    case res of
+        Left pe ->  do
+            sysMessage Normal $"Error reading cabal file " ++ show fn ++ " " ++ show pe
+            return Nothing
+        Right r ->  do
+            sysMessage Normal r
+            return (Just r)
+
+cabalMinimalParser :: CharParser () String
+cabalMinimalParser = do
+    r1 <- cabalMinimalP
+    r2 <- cabalMinimalP
+    case r1 of
+        Left v -> do
+            case r2 of
+                Right n -> return (n ++ "-" ++ v)
+                Left _ -> unexpected "Illegal cabal"
+        Right n -> do
+            case r2 of
+                Left v -> return (n ++ "-" ++ v)
+                Right _ -> unexpected "Illegal cabal"
+
+cabalMinimalP :: CharParser () (Either String String)
+cabalMinimalP =
+    do  try $(symbol "name:" <|> symbol "Name:")
+        whiteSpace
+        name       <-  (many $noneOf " \n")
+        (many $noneOf "\n")
+        char '\n'
+        return (Right name)
+    <|> do
+            try $(symbol "version:" <|> symbol "Version:")
+            whiteSpace
+            version    <-  (many $noneOf " \n")
+            (many $noneOf "\n")
+            char '\n'
+            return (Left version)
+    <|> do
+            many $noneOf "\n"
+            char '\n'
+            cabalMinimalP
+    <?> "cabal minimal"
