@@ -152,7 +152,7 @@ paneFromName pn = do
     mbPane <- mbPaneFromName pn
     case mbPane of
         Just p -> return p
-        Nothing -> error $"Cant't find pane from unique name " ++ pn
+        Nothing -> error $ "Can't find pane from unique name " ++ pn
 
 mbPaneFromName :: PaneMonad alpha => PaneName -> alpha (Maybe (IDEPane alpha))
 mbPaneFromName pn = do

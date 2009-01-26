@@ -943,43 +943,42 @@ addModule :: TreeView -> TreeStore (String, [(ModuleDescr,PackageDescr)]) -> IDE
 addModule treeView store = do
     sel   <- liftIO $ treeViewGetSelection treeView
     paths <- liftIO $ treeSelectionGetSelectedRows sel
-    case paths of
-        []     -> return ()
-        (treePath:_) -> do
-            categories <- liftIO $ mapM (treeStoreGetValue store)
+    categories <- case paths of
+        []     -> return []
+        (treePath:_) -> liftIO $ mapM (treeStoreGetValue store)
                                     $ map (\n -> take n treePath)  [1 .. length treePath]
-            mbPD <- getPackageDescriptionAndPath
-            case mbPD of
-                Nothing             -> ideMessage Normal "No package description"
-                Just (pd,cabalPath) -> let srcPaths = concatMap hsSourceDirs $ allBuildInfo pd
-                                           rootPath = dropFileName cabalPath
-                                           modPath  = foldr (\a b -> a ++ "." ++ b) ""
-                                                        (map fst categories)
-                                       in do
-                    mbResp <- liftIO $ addModuleDialog modPath srcPaths
-                    case mbResp of
-                        Nothing                -> return ()
-                        Just (AddModule modPath srcPath isExposed) ->
-                            let splitter            = split '.' modPath
-                                (modPaths,[modName])= splitAt (length splitter - 1) splitter
-                                targetPath          = foldl' (</>) (rootPath </> srcPath) modPaths
-                                targetFile          = targetPath </> (modName ++ ".hs")
-                            in do
-                            liftIO $ createDirectoryIfMissing True targetPath
-                            alreadyExists <- liftIO $ doesFileExist targetFile
-                            if alreadyExists
-                                then ideMessage Normal "File already exists"
-                                else do
-                                    template <- liftIO $ getModuleTemplate pd modName
-                                    liftIO $ writeFile targetFile template
-                                    addModuleToPackageDescr
-                                        (forceJust (simpleParse modPath)
-                                            ("Modules>>addModule Can't parse module name " ++ modPath))
-                                        isExposed
-                                    packageConfig
-                                    rebuildActiveInfo
-                                    trace ("now openening " ++ targetFile) $ return ()
-                                    fileOpenThis targetFile
+    mbPD <- getPackageDescriptionAndPath
+    case mbPD of
+        Nothing             -> ideMessage Normal "No package description"
+        Just (pd,cabalPath) -> let srcPaths = concatMap hsSourceDirs $ allBuildInfo pd
+                                   rootPath = dropFileName cabalPath
+                                   modPath  = foldr (\a b -> a ++ "." ++ b) ""
+                                                (map fst categories)
+                               in do
+            mbResp <- liftIO $ addModuleDialog modPath srcPaths
+            case mbResp of
+                Nothing                -> return ()
+                Just (AddModule modPath srcPath isExposed) ->
+                    let splitter            = split '.' modPath
+                        (modPaths,[modName])= splitAt (length splitter - 1) splitter
+                        targetPath          = foldl' (</>) (rootPath </> srcPath) modPaths
+                        targetFile          = targetPath </> (modName ++ ".hs")
+                    in do
+                    liftIO $ createDirectoryIfMissing True targetPath
+                    alreadyExists <- liftIO $ doesFileExist targetFile
+                    if alreadyExists
+                        then ideMessage Normal "File already exists"
+                        else do
+                            template <- liftIO $ getModuleTemplate pd modName
+                            liftIO $ writeFile targetFile template
+                            addModuleToPackageDescr
+                                (forceJust (simpleParse modPath)
+                                    ("Modules>>addModule Can't parse module name " ++ modPath))
+                                isExposed
+                            packageConfig
+                            rebuildActiveInfo
+                            trace ("now openening " ++ targetFile) $ return ()
+                            fileOpenThis targetFile
 
 
 -- |* Yet another stupid little dialog

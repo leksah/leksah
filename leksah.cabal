@@ -1,5 +1,5 @@
 name: leksah
-version: 0.4
+version: 0.4.0.1
 cabal-version: >=1.4
 build-type: Custom
 license: GPL
@@ -35,7 +35,7 @@ data-files: data/Current.session data/Default.candy
 data-dir: ""
 extra-source-files: Setup.lhs
 extra-tmp-files:
-
+ 
 executable: leksah
 main-is: Main.hs
 buildable: True
@@ -68,7 +68,7 @@ other-modules: MyMissing DeepSeq Default Control.Event
                IDE.Core.Types IDE.Core.State
 ghc-prof-options: -prof -auto-all
 ghc-shared-options: -prof -auto-all
-ghc-options: -fwarn-unused-imports -fwarn-missing-fields -fwarn-incomplete-patterns -O2
+ghc-options: -fwarn-unused-imports -fwarn-missing-fields -fwarn-incomplete-patterns -O
 hugs-options:
 nhc98-options:
 jhc-options:
