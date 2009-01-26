@@ -80,7 +80,7 @@ class (Typeable alpha, PaneMonad beta) => Pane alpha beta | alpha -> beta where
     getTopWidget    ::   alpha -> Widget
     paneId          ::   alpha -> String
     makeActive      ::   alpha -> beta ()
-    makeActive _    =    return ()
+--    makeActive _    =    return ()
     close           ::   alpha -> beta ()
 
 class (Pane alpha delta, Read beta, Show beta, Typeable beta, PaneMonad delta)

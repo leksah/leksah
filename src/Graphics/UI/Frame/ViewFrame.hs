@@ -67,11 +67,7 @@ import qualified Data.Map as Map
 import Data.Map (Map)
 import Data.List
 import Data.Maybe
-#if __GLASGOW_HASKELL__ >= 609
 import Control.OldException(evaluate,catch)
-#else
-import Control.Exception(evaluate,catch)
-#endif
 import Prelude hiding(catch)
 import Data.Unique
 import Data.Typeable
@@ -133,8 +129,6 @@ notebookInsertOrdered nb widget label mbTabLabel = do
     realPos     <-  notebookInsertPageMenu nb widget tabLabel menuLabel pos
     notebookSetCurrentPage nb realPos
 
-
-
 -- | Constructs a unique pane name, which is an index and a string
 figureOutPaneName :: Map String (IDEPane alpha) -> String -> Int -> (Int,String)
 figureOutPaneName bufs bn ind =
@@ -152,7 +146,7 @@ paneFromName pn = do
     mbPane <- mbPaneFromName pn
     case mbPane of
         Just p -> return p
-        Nothing -> error $ "Can't find pane from unique name " ++ pn
+        Nothing -> error $ "ViewFrame>>paneFromName:Can't find pane from unique name " ++ pn
 
 mbPaneFromName :: PaneMonad alpha => PaneName -> alpha (Maybe (IDEPane alpha))
 mbPaneFromName pn = do

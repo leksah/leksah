@@ -75,8 +75,6 @@ import Data.List
 import Data.Maybe
 import Data.Typeable
 import System.Time
---import GHC.Conc
---import Debug.Trace
 
 import IDE.Core.State
 import Control.Event
@@ -85,6 +83,7 @@ import IDE.SourceCandy
 import qualified System.IO.UTF8 as UTF8
 import Graphics.UI.Gtk.Gdk.Enums (Modifier(..))
 import qualified Graphics.UI.Gtk.Gdk.Events as G (Event(..))
+import Data.IORef (writeIORef,readIORef,newIORef,IORef(..))
 
 --
 -- | A text editor pane description
@@ -95,7 +94,7 @@ data IDEBuffer      =   IDEBuffer {
 ,   addedIndex      ::  Int
 ,   sourceView      ::  SourceView
 ,   scrolledWindow  ::  ScrolledWindow
-,   modTime         ::  Maybe (ClockTime)
+,   modTime         ::  IORef (Maybe (ClockTime))
 ,   language        ::  Maybe String
 } deriving (Typeable)
 
@@ -111,43 +110,37 @@ instance Pane IDEBuffer IDEM
     paneId b        =   case fileName b of
                             Just s  -> s
                             Nothing -> "?" ++ bufferName b
-    makeActive buf = do
-        (PaneC pane) <-  paneFromName (paneName buf)
-        let mbActbuf = cast pane
-        if isJust mbActbuf
-            then do
-              let actbuf =  fromJust mbActbuf
-              ideR    <-  ask
-              sbLC    <-  getStatusbarLC
-              sbIO    <-  getStatusbarIO
-              infos   <-  readIDE accessibleInfo
-              let sv = sourceView actbuf
-              (cids) <- reifyIDE $ \ideR session -> do
-                  gtkBuf  <- textViewGetBuffer sv
-                  bringPaneToFront actbuf
-                  writeCursorPositionInStatusbar sv sbLC
-                  writeOverwriteInStatusbar sv sbIO
-                  id1 <- gtkBuf `afterModifiedChanged` reflectIDE (markLabelAsChanged) ideR session
-                  id2 <- sv `afterMoveCursor`
-                      (\_ _ _ -> writeCursorPositionInStatusbar sv sbLC)
-                  id3 <- gtkBuf `afterEndUserAction`  writeCursorPositionInStatusbar sv sbLC
-                  sv `widgetAddEvents` [ButtonReleaseMask]
-                  id5 <- sv `onButtonRelease`
-                    (\ e -> do
-                      writeCursorPositionInStatusbar sv sbLC
-                      when (controlIsPressed e) $ showInfo sv ideR session
-                      return False)
-                  id6 <- sv `afterToggleOverwrite`  writeOverwriteInStatusbar sv sbIO
-                  return [ConnectC id2,ConnectC id6,ConnectC id1,ConnectC id3]
-              activatePane actbuf cids
-              liftIO $
-                idleAdd (do
-                    widgetQueueDraw sv -- Patch for problem on one machine ##
-                    return False) priorityDefaultIdle
-              modifyIDE_ (\ide -> return (ide{lastActiveBufferPane = Just (paneName buf)}))
-              triggerEvent ideR (Sensitivity [(SensitivityEditor, True)])
-              checkModTime actbuf
-            else return ()
+    makeActive actbuf = do
+      ideR    <-  ask
+      sbLC    <-  getStatusbarLC
+      sbIO    <-  getStatusbarIO
+      infos   <-  readIDE accessibleInfo
+      let sv = sourceView actbuf
+      (cids) <- reifyIDE $ \ideR session -> do
+          gtkBuf  <- textViewGetBuffer sv
+          bringPaneToFront actbuf
+          writeCursorPositionInStatusbar sv sbLC
+          writeOverwriteInStatusbar sv sbIO
+          id1 <- gtkBuf `afterModifiedChanged` reflectIDE (markLabelAsChanged) ideR session
+          id2 <- sv `afterMoveCursor`
+              (\_ _ _ -> writeCursorPositionInStatusbar sv sbLC)
+          id3 <- gtkBuf `afterEndUserAction`  writeCursorPositionInStatusbar sv sbLC
+          sv `widgetAddEvents` [ButtonReleaseMask]
+          id5 <- sv `onButtonRelease`
+            (\ e -> do
+              writeCursorPositionInStatusbar sv sbLC
+              when (controlIsPressed e) $ showInfo sv ideR session
+              return False)
+          id6 <- sv `afterToggleOverwrite`  writeOverwriteInStatusbar sv sbIO
+          return [ConnectC id2,ConnectC id6,ConnectC id1,ConnectC id3]
+      activatePane actbuf cids
+      liftIO $
+        idleAdd (do
+            widgetQueueDraw sv -- Patch for problem on one machine ##
+            return False) priorityDefaultIdle
+      modifyIDE_ (\ide -> return (ide{lastActiveBufferPane = Just (paneName actbuf)}))
+      triggerEvent ideR (Sensitivity [(SensitivityEditor, True)])
+      checkModTime actbuf
     close pane = do makeActive pane
                     fileClose
                     return ()
@@ -368,8 +361,8 @@ newTextBuffer panePath bn mbfn = do
         containerAdd sw sv
         scrolledWindowSetPolicy sw PolicyAutomatic PolicyAutomatic
         scrolledWindowSetShadowType sw ShadowIn
-
-        let buf = IDEBuffer mbfn bn ind sv sw modTime mbLanguage
+        modTimeRef <- newIORef modTime
+        let buf = IDEBuffer mbfn bn ind sv sw modTimeRef mbLanguage
         notebookInsertOrdered nb sw rbn Nothing
         -- events
         cid <- sv `afterFocusIn`
@@ -393,33 +386,27 @@ checkModTime buf = do
                     exists <- liftIO $doesFileExist fn
                     if exists
                         then do
-                            nmt <- liftIO $getModificationTime fn
-                            case modTime buf of
+                            nmt <- liftIO $ getModificationTime fn
+                            modTime' <- liftIO $ readIORef (modTime buf)
+                            case modTime' of
                                 Nothing ->  throwIDE $"checkModTime: time not set " ++ show (fileName buf)
                                 Just mt -> do
                                     --message $"checkModTime " ++ name ++ " " ++ show mt ++ " " ++ show nmt
                                     if nmt /= mt
                                         then do
-                                            md <- liftIO $messageDialogNew
+                                            md <- liftIO $ messageDialogNew
                                                     Nothing []
                                                     MessageQuestion
                                                     ButtonsYesNo
                                                     ("File has changed on disk " ++ name ++ " Revert?")
-                                            resp <- liftIO $dialogRun md
+                                            resp <- liftIO $ dialogRun md
                                             case resp of
                                                 ResponseYes ->  do
                                                     revert buf
-                                                    liftIO $widgetHide md
-                                                ResponseNo  ->  do
-                                                    let newPanes = Map.adjust (\(PaneC b) ->
-                                                            let mbActbuf = cast b
-                                                            in  if isJust mbActbuf
-                                                                    then PaneC ((fromJust mbActbuf)
-                                                                                {modTime = (Just nmt)})
-                                                                    else PaneC b)
-                                                                name panes
-                                                    modifyIDE_ (\ide -> return (ide{panes = newPanes}))
-                                                    liftIO $widgetHide md
+                                                    liftIO $ widgetHide md
+                                                ResponseNo  -> liftIO $ do
+                                                    writeIORef (modTime buf) (Just nmt)
+                                                    widgetHide md
                                                 _           ->  do return ()
                                         else return ()
                         else return ()
@@ -431,15 +418,9 @@ setModTime buf = do
     let name = paneName buf
     case fileName buf of
         Nothing -> return ()
-        Just fn -> do
-            nmt <- liftIO $getModificationTime fn
-            let newPanes = Map.adjust (\(PaneC b) ->
-                    let mbActbuf = cast b
-                    in  if isJust mbActbuf
-                            then PaneC ((fromJust mbActbuf){modTime = (Just nmt)})
-                            else PaneC b)
-                                name panes
-            modifyIDE_ (\ide -> return (ide{panes = newPanes}))
+        Just fn -> liftIO $ do
+            nmt <- getModificationTime fn
+            writeIORef (modTime buf) (Just nmt)
 
 fileRevert :: IDEAction
 fileRevert = inBufContext' () $ \ _ _ currentBuffer _ -> do
@@ -453,27 +434,20 @@ revert buf = do
     let name    =   paneName buf
     case fileName buf of
         Nothing -> return ()
-        Just fn -> do
-            mt <- liftIO $do
-                buffer' <- textViewGetBuffer (sourceView buf)
-                let buffer = castToSourceBuffer buffer'
-                fc <- UTF8.readFile fn
-                mt <- getModificationTime fn
-                sourceBufferBeginNotUndoableAction buffer
-                textBufferSetText buffer fc
-                if useCandy
-                    then transformToCandy ct (castToTextBuffer buffer)
-                    else return ()
-                sourceBufferEndNotUndoableAction buffer
-                textBufferSetModified buffer False
-                return mt
-            let newPanes = Map.adjust (\(PaneC b) ->
-                    let mbActbuf = cast b
-                    in  if isJust mbActbuf
-                            then PaneC ((fromJust mbActbuf){modTime = (Just mt)})
-                            else (PaneC b))
-                                name panes
-            modifyIDE_ (\ide -> return (ide{panes = newPanes}))
+        Just fn -> liftIO $do
+            buffer' <- textViewGetBuffer (sourceView buf)
+            let buffer = castToSourceBuffer buffer'
+            fc <- UTF8.readFile fn
+            mt <- getModificationTime fn
+            sourceBufferBeginNotUndoableAction buffer
+            textBufferSetText buffer fc
+            if useCandy
+                then transformToCandy ct (castToTextBuffer buffer)
+                else return ()
+            sourceBufferEndNotUndoableAction buffer
+            textBufferSetModified buffer False
+            return mt
+            writeIORef (modTime buf) (Just mt)
 
 writeCursorPositionInStatusbar :: SourceView -> Statusbar -> IO()
 writeCursorPositionInStatusbar sv sb = do
@@ -512,7 +486,7 @@ markLabelAsChanged = do
           mbBS <- maybeActiveBuf
           case mbBS of
               Nothing -> return ()
-              Just buf -> liftIO $do
+              Just buf -> liftIO $ do
                   gtkbuf   <- textViewGetBuffer (sourceView buf)
                   modified <- textBufferGetModified gtkbuf
                   mbText   <- notebookGetTabLabelText nb (scrolledWindow buf)
@@ -555,76 +529,59 @@ fileSave query = inBufContext' () $ \ nb _ currentBuffer i -> do
     paneMap <- readIDE paneMap
     bs      <- getCandyState
     candy   <- readIDE candy
-    (panePath,connects)
-            <- guiPropertiesFromName (paneName currentBuffer)
-    mbnbufsPm <- do
-        let mbfn = fileName currentBuffer
-        mbpage <- liftIO $notebookGetNthPage nb i
-        case mbpage of
-            Nothing     -> throwIDE "fileSave: Page not found"
-            Just page   ->
-                if isJust mbfn && query == False
-                    then do checkModTime currentBuffer
-                            liftIO $fileSave' (forceLineEnds prefs) (removeTBlanks prefs) currentBuffer bs candy $fromJust mbfn
-                            setModTime currentBuffer
-                            return Nothing
-                    else reifyIDE $ \ideR session ->  do
-                        dialog <- fileChooserDialogNew
-                                        (Just $ "Save File")
-                                        (Just window)
-                                    FileChooserActionSave
-                                    [("gtk-cancel"     --buttons to display
-                                    ,ResponseCancel)  --you can use stock buttons
-                                    ,("gtk-save"
-                                    , ResponseAccept)]
-                        widgetShow dialog
-                        response <- dialogRun dialog
-                        mbFileName <- case response of
-                                ResponseAccept ->       fileChooserGetFilename dialog
-                                ResponseCancel ->       return Nothing
-                                ResponseDeleteEvent->   return Nothing
-                                _               ->      return Nothing
-                        widgetDestroy dialog
-                        case mbFileName of
-                            Nothing -> return Nothing
-                            Just fn -> do
-                                dfe <- doesFileExist fn
-                                resp <- if dfe
-                                    then do md <- messageDialogNew (Just window) []
-                                                    MessageQuestion
-                                                    ButtonsYesNo
-                                                    "File already exist. Overwrite?"
-                                            resp <- dialogRun md
-                                            widgetHide md
-                                            return resp
-                                    else return ResponseYes
-                                case resp of
-                                    ResponseYes -> do
-                                        fileSave' (forceLineEnds prefs) (removeTBlanks prefs) currentBuffer bs candy fn
-                                        modT <- getModificationTime fn
-                                        let bn = takeFileName fn
-                                        let bufs1 =  Map.delete (paneName currentBuffer) bufs
-                                        let (ind,rbn) =  figureOutPaneName bufs1 bn 0
-                                        cfn <- canonicalizePath fn
-                                        let newBuffer =  currentBuffer {fileName = Just cfn,
-                                                        bufferName = bn, addedIndex = ind, modTime = Just modT}
-                                        let newBufs   =  Map.insert rbn (PaneC newBuffer) bufs1
-                                        signalDisconnectAll connects
-                                        cid1 <- (sourceView currentBuffer) `afterFocusIn`
-                                            (\_ -> do reflectIDE (makeActive newBuffer) ideR session
-                                                      return True)
-                                        let paneMap1  =  Map.delete rbn paneMap
-                                        let newPaneMap =  Map.insert rbn
-                                                            (panePath,[ConnectC cid1])  paneMap
-                                        label <- labelNew (Just rbn)
-                                        notebookSetTabLabel nb page label
-                                        return (Just (newBufs,newPaneMap))
-                                    ResponseNo -> return Nothing
-                                    _           -> return Nothing
-    case mbnbufsPm of
-        Just (nbufs,pm) -> modifyIDE_
-            (\ide -> return (ide{panes = nbufs, paneMap = pm}))
-        Nothing -> return ()
+    (panePath,connects) <- guiPropertiesFromName (paneName currentBuffer)
+    let mbfn = fileName currentBuffer
+    mbpage <- liftIO $ notebookGetNthPage nb i
+    case mbpage of
+        Nothing     -> throwIDE "fileSave: Page not found"
+        Just page   ->
+            if isJust mbfn && query == False
+                then do checkModTime currentBuffer
+                        liftIO $fileSave' (forceLineEnds prefs) (removeTBlanks prefs) currentBuffer bs candy $fromJust mbfn
+                        setModTime currentBuffer
+                        return ()
+                else reifyIDE $ \ideR session ->  do
+                    dialog <- fileChooserDialogNew
+                                    (Just $ "Save File")
+                                    (Just window)
+                                FileChooserActionSave
+                                [("gtk-cancel"     --buttons to display
+                                ,ResponseCancel)  --you can use stock buttons
+                                ,("gtk-save"
+                                , ResponseAccept)]
+                    widgetShow dialog
+                    response <- dialogRun dialog
+                    mbFileName <- case response of
+                            ResponseAccept ->       fileChooserGetFilename dialog
+                            ResponseCancel ->       return Nothing
+                            ResponseDeleteEvent->   return Nothing
+                            _               ->      return Nothing
+                    widgetDestroy dialog
+                    case mbFileName of
+                        Nothing -> return ()
+                        Just fn -> do
+                            dfe <- doesFileExist fn
+                            resp <- if dfe
+                                then do md <- messageDialogNew (Just window) []
+                                                MessageQuestion
+                                                ButtonsYesNo
+                                                "File already exist. Overwrite?"
+                                        resp <- dialogRun md
+                                        widgetHide md
+                                        return resp
+                                else return ResponseYes
+                            case resp of
+                                ResponseYes -> do
+                                    cfn <- canonicalizePath fn
+                                    fileSave' (forceLineEnds prefs) (removeTBlanks prefs) currentBuffer bs candy cfn
+
+                                    reflectIDE (do
+                                        close currentBuffer
+                                        newTextBuffer panePath (takeFileName fn) (Just cfn)
+                                        )   ideR session
+                                    return ()
+                                ResponseNo -> return ()
+                                _          -> return ()
     where
         fileSave' :: Bool -> Bool -> IDEBuffer -> Bool -> CandyTable -> FilePath -> IO()
         fileSave' forceLineEnds removeTBlanks ideBuf bs ct fn = do
