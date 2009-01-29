@@ -142,7 +142,7 @@ initLog panePath nb = do
     panes      <- readIDE panes
     paneMap    <- readIDE paneMap
     prefs      <- readIDE prefs
-    (buf,cids) <- reifyIDE $ \ideR session ->  do
+    (buf,cids) <- reifyIDE $ \ideR  ->  do
         tv           <- textViewNew
         buf          <- textViewGetBuffer tv
         iter         <- textBufferGetEndIter buf
@@ -177,9 +177,9 @@ initLog panePath nb = do
         notebookInsertOrdered nb sw (paneName buf) Nothing
         widgetShowAll (scrolledWindowL buf)
         cid1         <- tv `afterFocusIn`
-            (\_      -> do reflectIDE (makeActive buf) ideR session; return True)
+            (\_      -> do reflectIDE (makeActive buf) ideR ; return True)
         cid2         <- tv `onButtonPress`
-            (\ b     -> do reflectIDE (clicked b buf) ideR session; return True)
+            (\ b     -> do reflectIDE (clicked b buf) ideR ; return True)
         return (buf,[ConnectC cid1, ConnectC cid2])
     addPaneAdmin buf cids panePath
     liftIO $widgetGrabFocus (textView buf)
@@ -206,18 +206,18 @@ clicked (Button _ SingleClick _ _ _ _ LeftButton x y) ideLog = do
         otherwise   -> return ()
 clicked (Button _ SingleClick _ _ _ _ RightButton x y) ideLog = do
     errors'     <-  readIDE errors
-    line'       <-  reifyIDE $ \ideR session ->  do
+    line'       <-  reifyIDE $ \ideR  ->  do
         (x,y)       <-  widgetGetPointer (textView ideLog)
         (_,y')      <-  textViewWindowToBufferCoords (textView ideLog) TextWindowWidget (x,y)
         (iter,_)    <-  textViewGetLineAtY (textView ideLog) y'
         textIterGetLine iter
     case filter (\(es,_) -> fst (logLines es) <= (line'+1) && snd (logLines es) >= (line'+1))
             (zip errors' [0..(length errors')]) of
-        [(thisErr,n)] -> reifyIDE $ \ideR session ->  do
+        [(thisErr,n)] -> reifyIDE $ \ideR  ->  do
             theMenu         <-  menuNew
             item0           <-  menuItemNewWithLabel "Add all imports"
             item0 `onActivateLeaf` do
-                reflectIDE addAllImports' ideR session
+                reflectIDE addAllImports' ideR
             menuShellAppend theMenu item0
             case parseNotInScope (errDescription thisErr) of
                 Nothing   -> do
@@ -225,7 +225,7 @@ clicked (Button _ SingleClick _ _ _ _ RightButton x y) ideLog = do
                 Just _  -> do
                     item1   <-  menuItemNewWithLabel "Add import"
                     item1 `onActivateLeaf` do
-                        reflectIDE (addImport thisErr >> return()) ideR session
+                        reflectIDE (addImport thisErr >> return()) ideR
                     menuShellAppend theMenu item1
             menuPopup theMenu Nothing
             widgetShowAll theMenu

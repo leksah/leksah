@@ -48,7 +48,7 @@ import System.Glib.MainLoop(timeoutAddFull,priorityDefaultIdle)
 import Control.Monad.Reader(ask)
 import Distribution.Version
 import Distribution.ModuleName
-import GHC (runGhc,getSession)
+import GHC (runGhc)
 
 import DeepSeq
 import IDE.FileUtils
@@ -59,6 +59,7 @@ import Data.Char (toLower,isUpper,toUpper,isLower)
 import Text.Regex.Posix
 import System.IO.Unsafe (unsafePerformIO)
 import Text.Regex.Posix.String (execute,compile)
+import IDE.Metainfo.GHCUtils (findFittingPackages,getInstalledPackageInfos,inGhc)
 
 --
 -- | Searching of metadata
@@ -149,10 +150,9 @@ searchRegex searchString st caseSense =
 initInfo :: IDEAction
 initInfo = do
     prefs           <- readIDE prefs
-    session'        <- lift getSession
     when (collectAtStart prefs) $ do
         ideMessage Normal "Now updating metadata ..."
-        lift $ collectInstalled session' False
+        collectInstalled False
     ideMessage Normal "Now loading metadata ..."
     loadAccessibleInfo
     ideMessage Normal "Finished loading ..."
@@ -165,7 +165,7 @@ loadAccessibleInfo :: IDEAction
 loadAccessibleInfo =
     let version     =   cProjectVersion in do
         collectorPath   <-  lift $ getCollectorPath version
-        packageInfos    <-  lift $ getInstalledPackageInfos
+        packageInfos    <-  inGhc $ getInstalledPackageInfos
         packageList     <-  liftIO $ mapM (loadInfosForPackage collectorPath False)
                                                     (map DP.package packageInfos)
         let scope       =   foldr buildScope (Map.empty,Map.empty)
@@ -194,7 +194,7 @@ infoForActivePackage  = do
             modifyIDE_ (\ide -> return (ide{currentInfo = Nothing}))
         Just pack       ->  do
             let depends'         =  depends pack
-            fp                  <-  lift $findFittingPackages depends'
+            fp                  <-  inGhc $ findFittingPackages depends'
             mbActive            <-  loadOrBuildActiveInfo
             case mbActive of
                 Nothing         ->  do
@@ -221,7 +221,7 @@ infoForActivePackage  = do
 --   If a process handle is given, it waits for this process to finish before building
 --
 mayRebuildInBackground :: Maybe ProcessHandle -> IDEAction
-mayRebuildInBackground mbHandle = reifyIDE $ \ ideR session ->
+mayRebuildInBackground mbHandle = reifyIDE $ \ ideR  ->
     let
         myRebuild :: IO Bool
         myRebuild =
@@ -239,12 +239,13 @@ mayRebuildInBackground mbHandle = reifyIDE $ \ ideR session ->
                     errs <- readIDE errors
                     when (length (filter isError errs) == 0) $ do
                         ideMessage Normal "Update meta info for active package"
-                        setInfo buildActiveInfo) ideR session
+                        setInfo buildActiveInfo) ideR
                 return False
     in do
         timeoutAddFull myRebuild priorityDefaultIdle 500
         return ()
 
+rebuildActiveInfo :: IDEAction
 rebuildActiveInfo       =   setInfo buildActiveInfo
 
 --
@@ -306,7 +307,7 @@ buildActiveInfo =
         Just idePackage ->  do
             libDir          <-   liftIO $ getSysLibDir
             liftIO $ runGhc (Just libDir)
-                        $ collectUninstalled False cProjectVersion (cabalFile idePackage)
+                        $ collectUninstalled False cProjectVersion (takeFileName $ cabalFile idePackage)
             -- ideMessage Normal "uninstalled collected"
             collectorPath   <-  lift $ getCollectorPath cProjectVersion
             packageDescr    <-  liftIO $ loadInfosForPackage collectorPath True
@@ -333,7 +334,7 @@ updateAccessibleInfo = do
     case wi of
         Nothing -> loadAccessibleInfo
         Just (psmap,psst) -> do
-            packageInfos        <-  lift getInstalledPackageInfos
+            packageInfos        <-  inGhc getInstalledPackageInfos
             let packageIds      =   map DP.package packageInfos
             let newPackages     =   filter (\ pi -> Map.member pi psmap) packageIds
             let trashPackages   =   filter (\ e  -> not (elem e packageIds))(Map.keys psmap)

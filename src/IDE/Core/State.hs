@@ -214,16 +214,17 @@ instance EventSelector String
 --
 -- | A reader monad for a mutable reference to the IDE state
 --
-type IDEM = ReaderT IDERef Ghc
+type IDEM = ReaderT IDERef IO
 
-reifyIDE :: (IDERef -> Session -> IO a) -> IDEM a
-reifyIDE f = ask >>= \ideR -> lift $ reifyGhc (f ideR)
+reifyIDE :: (IDERef -> IO a) -> IDEM a
+reifyIDE = ReaderT
 
-reflectIDE :: IDEM a -> IDERef -> Session -> IO a
-reflectIDE c ideR = reflectGhc (runReaderT c ideR)
+
+reflectIDE :: IDEM a -> IDERef -> IO a
+reflectIDE c ideR = runReaderT c ideR
 
 catchIDE :: Exception e	=> IDEM a -> (e -> IO a) -> IDEM a
-catchIDE block handler = reifyIDE (\ideR session -> catch (reflectIDE block ideR session) handler)
+catchIDE block handler = reifyIDE (\ideR -> catch (reflectIDE block ideR) handler)
 
 --
 -- | A shorthand for a reader monad for a mutable reference to the IDE state
@@ -243,8 +244,7 @@ instance PaneMonad IDEM where
     setActivePaneSt v = modifyIDE_ (\ide -> return ide{activePane = v})
     setLayoutSt v   =   modifyIDE_ (\ide -> return ide{layout = v})
 
-    runInIO f       =   reifyIDE (\ideRef session ->
-                              return (\v -> reflectIDE (f v) ideRef session))
+    runInIO f       =   reifyIDE (\ideRef -> return (\v -> reflectIDE (f v) ideRef))
 
 
 

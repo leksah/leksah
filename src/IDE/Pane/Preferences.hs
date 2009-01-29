@@ -52,6 +52,7 @@ import Default
 import IDE.FileUtils
 import System.IO
 import Distribution.InstalledPackageInfo (package)
+import IDE.Metainfo.GHCUtils (getInstalledPackageInfos,inGhc)
 
 --
 -- | The Preferences Pane
@@ -123,14 +124,14 @@ getPrefs = do
 
 initPrefs :: PanePath -> Notebook -> IDEAction
 initPrefs panePath nb2 = do
-    packageInfos <- lift $ getInstalledPackageInfos
+    packageInfos <- inGhc getInstalledPackageInfos
     let flatPrefsDesc = flattenFieldDescriptionPP (prefsDescription (map package packageInfos))
     prefs       <-  readIDE prefs
     lastAppliedPrefsRef <- liftIO $ newIORef prefs
     panes       <-  readIDE panes
     paneMap     <-  readIDE paneMap
     currentInfo <-  readIDE currentInfo
-    (buf,cids)  <-  reifyIDE $ \ideR session -> do
+    (buf,cids)  <-  reifyIDE $ \ideR -> do
         vb      <-  vBoxNew False 0
         bb      <-  hButtonBoxNew
         apply   <-  buttonNewFromStock "gtk-apply"
@@ -151,11 +152,11 @@ initPrefs panePath nb2 = do
                 Nothing -> return ()
                 Just newPrefs -> do
                     lastAppliedPrefs    <- readIORef lastAppliedPrefsRef
-                    mapM_ (\ (FDPP _ _ _ _ applyF) -> reflectIDE (applyF newPrefs lastAppliedPrefs) ideR session) flatPrefsDesc
+                    mapM_ (\ (FDPP _ _ _ _ applyF) -> reflectIDE (applyF newPrefs lastAppliedPrefs) ideR ) flatPrefsDesc
                     writeIORef lastAppliedPrefsRef newPrefs)
         restore `onClicked` (do
             lastAppliedPrefs <- readIORef lastAppliedPrefsRef
-            mapM_ (\ (FDPP _ _ _ _ applyF) -> reflectIDE (applyF prefs lastAppliedPrefs) ideR session) flatPrefsDesc
+            mapM_ (\ (FDPP _ _ _ _ applyF) -> reflectIDE (applyF prefs lastAppliedPrefs) ideR ) flatPrefsDesc
             injb prefs
             writeIORef lastAppliedPrefsRef prefs)
         save `onClicked` (do
@@ -164,13 +165,13 @@ initPrefs panePath nb2 = do
             case mbNewPrefs of
                 Nothing -> return ()
                 Just newPrefs -> do
-                mapM_ (\ (FDPP _ _ _ _ applyF) -> reflectIDE (applyF newPrefs lastAppliedPrefs) ideR session) flatPrefsDesc
+                mapM_ (\ (FDPP _ _ _ _ applyF) -> reflectIDE (applyF newPrefs lastAppliedPrefs) ideR ) flatPrefsDesc
                 fp <- getConfigFilePathForSave "Default.prefs"
                 writePrefs fp newPrefs
-                reflectIDE (modifyIDE_ (\ide -> return (ide{prefs = newPrefs}))) ideR session)
-        closeB `onClicked` (reflectIDE (close prefsPane) ideR session)
+                reflectIDE (modifyIDE_ (\ide -> return (ide{prefs = newPrefs}))) ideR )
+        closeB `onClicked` (reflectIDE (close prefsPane) ideR )
         registerEvent notifier FocusIn (Left (\e -> do
-            reflectIDE (makeActive prefsPane) ideR session
+            reflectIDE (makeActive prefsPane) ideR
             return (e{gtkReturn=False})))
         notebookInsertOrdered nb2 vb (paneName prefsPane) Nothing
         widgetShowAll vb
@@ -196,7 +197,7 @@ prefsDescription packages = NFDPP [
             boolEditor
             (\b -> do
                 buffers <- allBuffers
-                mapM_ (\buf -> liftIO$sourceViewSetShowLineNumbers (sourceView buf) b) buffers)
+                mapM_ (\buf -> liftIO $ sourceViewSetShowLineNumbers (sourceView buf) b) buffers)
     ,   mkFieldPP
             (paraName <<<- ParaName "TextView Font" $ emptyParams)
             (\a -> PP.text (case a of Nothing -> show ""; Just s -> show s))
@@ -207,7 +208,7 @@ prefsDescription packages = NFDPP [
             fontEditor
             (\mbs -> do
                 buffers <- allBuffers
-                fdesc <- liftIO $fontDescriptionFromString (case mbs of Just str -> str; Nothing -> "")
+                fdesc <- liftIO $ fontDescriptionFromString (case mbs of Just str -> str; Nothing -> "")
                 liftIO $mapM_ (\buf -> widgetModifyFont (castToWidget $sourceView buf) (Just fdesc)) buffers)
     ,   mkFieldPP
             (paraName <<<- ParaName "Right margin"

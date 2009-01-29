@@ -1,28 +1,28 @@
 -- Candy file
 
-"->"        0x2192   Trimming       --RIGHTWARDS ARROW
-"<-"        0x2190   Trimming       --LEFTWARDS ARROW
-"=>"        0x21d2                  --RIGHTWARDS DOUBLE ARROW
-">="        0x2265                  --GREATER-THAN OR EQUAL TO
-"<="        0x2264                  --LESS-THAN OR EQUAL TO
-"/="        0x2260                  --NOT EQUAL TO
-"&&"        0x2227                  --LOGICAL AND
-"||"        0x2228                  --LOGICAL OR
-"++"        0x2295                  --CIRCLED PLUS
-"::"        0x2551  Trimming        --BAR
---"::"        0x2237 Trimming         --PROPORTION
-".."        0x2025                  --TWO DOT LEADER
-"^"         0x2191                  --UPWARDS ARROW
-"=="        0x2261                  --IDENTICAL TO
-" . "       0x2218                  --RING OPERATOR
-"\"         0x03bb                  --GREEK SMALL LETTER LAMBDA
---"=<<"       0x291e                  --
-">>="       0x21a0
-"$"         0x25ca
-">>"        0x226b                  -- MUCH GREATER THEN
+"->"        0x2192   Trimming       --RIGHTWARDS ARROW          -> -
+"<-"        0x2190   Trimming       --LEFTWARDS ARROW           <- -
+"=>"        0x21d2                  --RIGHTWARDS DOUBLE ARROW   => -
+">="        0x2265                  --GREATER-THAN OR EQUAL TO  >= -
+"<="        0x2264                  --LESS-THAN OR EQUAL TO     <= -
+"/="        0x2260                  --NOT EQUAL TO              /= -
+"&&"        0x2227                  --LOGICAL AND               && -
+"||"        0x2228                  --LOGICAL OR                || -
+"++"        0x2295                  --CIRCLED PLUS              ++ -
+--"::"        0x2551  Trimming        --BAR                     :: -
+--"::"        0x2237 Trimming         --PROPORTION              :: -
+--".."        0x2025                  --TWO DOT LEADER            .. -
+"^"         0x2191                  --UPWARDS ARROW             ^ -
+"=="        0x2261                  --IDENTICAL TO              == -
+" . "       0x2218                  --RING OPERATOR              .  -
+"\"         0x03bb                  --GREEK SMALL LETTER LAMBDA \ -
+--"=<<"       0x291e                  --                        =<< -
+">>="       0x21a0                  --                          >>= -
+"$"         0x25ca                  --                          $ -
+--">>"        0x226b                  -- MUCH GREATER THEN      >> -
 
-"forall"    0x2200                  --FOR ALL
-"exist"     0x2203                  --THERE EXISTS
+--"forall"    0x2200                  --FOR ALL
+--"exist"     0x2203                  --THERE EXISTS
 "not"       0x00ac                  --NOT SIGN
 "alpha"     0x03b1
 "beta"      0x03b2

@@ -43,7 +43,6 @@ import Distribution.PackageDescription.Configuration (freeVars,flattenPackageDes
 import Distribution.ModuleName(ModuleName)
 import Data.Typeable (Typeable(..))
 import Debug.Trace (trace)
-import IDE.Metainfo.InterfaceCollector (getInstalledPackageInfos)
 import qualified Distribution.InstalledPackageInfo as IPI (package)
 import Graphics.UI.Editor.Composite (maybeEditor,pairEditor,ColumnDescr(..),multisetEditor)
 import qualified Graphics.UI.Gtk as New  (cellText)
@@ -52,6 +51,7 @@ import MyMissing
 import Graphics.UI.Editor.Parameters (Parameter(..),paraPack,Direction(..),paraDirection,paraMinSize,paraShadow,paraSynopsis,(<<<-),emptyParams,paraName,getParameterPrim)
 import Graphics.UI.Editor.Simple (boolEditor,fileEditor,comboSelectionEditor,multilineStringEditor,stringEditor)
 import Distribution.License (License(..))
+import IDE.Metainfo.GHCUtils (inGhc,getInstalledPackageInfos)
 
 -- ---------------------------------------------------------------------
 -- The exported stuff goes here
@@ -257,7 +257,7 @@ editPackage packageD packagePath modules afterSaveAction = do
             layout      <-  readIDE layout
             let pp      =   getStandardPanePath (sourcePanePath prefs) layout
             nb          <-  getNotebook pp
-            packageInfos <- lift $ getInstalledPackageInfos
+            packageInfos <- inGhc $ getInstalledPackageInfos
             let packageEd = toEditor packageD
             initPackage packagePath packageEd
                 (packageDD
@@ -286,8 +286,8 @@ initPackage packageDir packageD packageDescr panePath nb2 modules afterSaveActio
     window      <-  readIDE window
     paneMap     <-  readIDE paneMap
     currentInfo <-  readIDE currentInfo
-    packageInfos <- lift $ getInstalledPackageInfos
-    (buf,cids)  <-  reifyIDE $ \ideR session -> do
+    packageInfos <- inGhc $ getInstalledPackageInfos
+    (buf,cids)  <-  reifyIDE $ \ideR -> do
         vb      <-  vBoxNew False 0
         let packagePane = PackagePane vb
         bb      <-  hButtonBoxNew
@@ -313,7 +313,7 @@ initPackage packageDir packageD packageDescr panePath nb2 modules afterSaveActio
                     let packagePath = packageDir </> (display . pkgName . package . pd) newPackage'
                                                     ++ ".cabal"
                     writePackageDescription packagePath newPackage
-                    reflectIDE (afterSaveAction packagePath) ideR session)
+                    reflectIDE (afterSaveAction packagePath) ideR)
         closeB `onClicked` (do
             mbNewPackage' <- extractAndValidate packageD [getExt] fieldNames
             case mbNewPackage' of
@@ -323,7 +323,7 @@ initPackage packageDir packageD packageDescr panePath nb2 modules afterSaveActio
                     rid <- dialogRun md
                     widgetDestroy md
                     case rid of
-                        ResponseYes ->  (reflectIDE (close packagePane) ideR session)
+                        ResponseYes ->  (reflectIDE (close packagePane) ideR)
                         otherwise   ->  return ()
                 Just newPackage -> do
                     let packagePath = packageDir </> (display . pkgName . package . pd) newPackage
@@ -363,7 +363,7 @@ initPackage packageDir packageD packageDescr panePath nb2 modules afterSaveActio
                                 ResponseNo      ->   return False
                                 _               ->   return False
                         else return False
-                    when (not cancel) (reflectIDE (close packagePane) ideR session))
+                    when (not cancel) (reflectIDE (close packagePane) ideR))
         restore `onClicked` (do
             package <- readPackageDescription normal initialPackagePath
             setInj (toEditor (flattenPackageDescription package)))
@@ -382,7 +382,7 @@ initPackage packageDir packageD packageDescr panePath nb2 modules afterSaveActio
                                 (length (bis pde) + 1)
                                 (concatMap (buildInfoD (Just packageDir) modules)
                                     [0..length (bis pde)]))
-                            panePath nb2 modules afterSaveAction) ideR session)
+                            panePath nb2 modules afterSaveAction) ideR)
         removeB `onClicked` (do
             mbNewPackage' <- extractAndValidate packageD [getExt] fieldNames
             case mbNewPackage' of
@@ -398,7 +398,7 @@ initPackage packageDir packageD packageDescr panePath nb2 modules afterSaveActio
                                 (length (bis pde) - 1)
                                 (concatMap (buildInfoD (Just packageDir) modules)
                                     [0..length (bis pde) - 2]))
-                            panePath nb2 modules afterSaveAction) ideR session)
+                            panePath nb2 modules afterSaveAction) ideR)
         boxPackStart vb widget PackGrow 7
         boxPackEnd vb bb PackNatural 7
         widgetShowAll vb

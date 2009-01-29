@@ -101,8 +101,8 @@ showInfo = do
         Nothing -> return ()
         Just p  -> liftIO $ bringPaneToFront p
 
-idDescrDescr :: IDERef -> Session -> FieldDescription Descr
-idDescrDescr ideR session = VFD emptyParams [
+idDescrDescr :: IDERef -> FieldDescription Descr
+idDescrDescr ideR  = VFD emptyParams [
     HFD emptyParams [
          mkField
             (paraName <<<- ParaName "Identifier"
@@ -110,7 +110,7 @@ idDescrDescr ideR session = VFD emptyParams [
                     $ emptyParams)
             descrName
             (\ b a -> if isReexported a then a else a{descrName' = b})
-            (symbolEditor ideR session)
+            (symbolEditor ideR )
     ,    mkField
             emptyParams
             (stockIdFromType . descrType . details)
@@ -142,22 +142,22 @@ idDescrDescr ideR session = VFD emptyParams [
                             mbComment' = case snd b of
                                             "" -> Nothing
                                             s  -> Just (BS.pack s)}))
-            (typeAndCommentEditor ideR session)]
+            (typeAndCommentEditor ideR )]
 
 --allIdTypes =  [Function, Newtype, Type, AbstractData, OpenData, Foreign
 --    , Data, Class, Instance, Constructor, Field, Method, OrphanedInstance]
 
-typeEditor :: IDERef -> Session -> Editor String
-typeEditor ideR session para noti = do
+typeEditor :: IDERef -> Editor String
+typeEditor ideR  para noti = do
     ed@(wid,inj,ext) <- multilineStringEditor para noti
     registerEvent noti ButtonRelease $Left (\e -> do
-        res <- showInfoHandler wid ideR session
+        res <- showInfoHandler wid ideR
         return e {gtkReturn = res})
     return ed
 
-typeAndCommentEditor :: IDERef -> Session -> Editor (String,String)
-typeAndCommentEditor ideR session para noti =
-    splitEditor (typeEditor ideR session,
+typeAndCommentEditor :: IDERef -> Editor (String,String)
+typeAndCommentEditor ideR  para noti =
+    splitEditor (typeEditor ideR,
                 paraName  <<<- ParaName "Type"
                 $ paraOuterPadding <<<- ParaOuterPadding    (0, 0, 0, 0)
                 $ paraInnerPadding <<<- ParaInnerPadding   (0, 0, 0, 0)
@@ -171,9 +171,9 @@ typeAndCommentEditor ideR session para noti =
                     $ paraInnerPadding <<<- ParaInnerPadding   (0, 0, 0, 0)
                     $ para) noti
 
-symbolEditor :: IDERef -> Session -> Editor String
-symbolEditor ideR session parameters notifier = do
-    window       <- reflectIDE (readIDE window) ideR session
+symbolEditor :: IDERef -> Editor String
+symbolEditor ideR  parameters notifier = do
+    window       <- reflectIDE (readIDE window) ideR
     ed@(w,i,ext) <- stringEditor (\_ -> True) parameters notifier
     registerEvent notifier AfterKeyRelease (Left (\ event -> do
         mbText   <- ext
@@ -181,7 +181,7 @@ symbolEditor ideR session parameters notifier = do
             Just t  -> do
                 reflectIDE (do
                     triggerEvent ideR (SearchMeta t)
-                    return ()) ideR session
+                    return ()) ideR
                 rw <- liftIO $ getRealWidget w
                 when (isJust rw) $ liftIO $ do
                     widgetGrabFocus (fromJust rw)
@@ -191,8 +191,8 @@ symbolEditor ideR session parameters notifier = do
         return event{gtkReturn=False}))
     return ed
 
-showInfoHandler :: Widget -> IDERef -> Session -> IO Bool
-showInfoHandler wid ideR session = do
+showInfoHandler :: Widget -> IDERef -> IO Bool
+showInfoHandler wid ideR  = do
     mbFrame    <- binGetChild (castToAlignment wid)
     mbInner    <- binGetChild (castToFrame (forceJust mbFrame "InfoPane>>typeEditor: Can't find child"))
     mbScrolled <- binGetChild (castToAlignment (forceJust mbInner "InfoPane>>typeEditor: Can't find child2"))	
@@ -200,7 +200,7 @@ showInfoHandler wid ideR session = do
     buf        <- textViewGetBuffer (castToTextView (forceJust mbTV "InfoPane>>typeEditor: Can't find child4"))
     (l,r)      <- textBufferGetSelectionBounds buf
     symbol     <- textBufferGetText buf l r True
-    reflectIDE (triggerEvent ideR (SelectInfo symbol)) ideR session
+    reflectIDE (triggerEvent ideR (SelectInfo symbol)) ideR
     return False
 
 initInfo :: PanePath -> Notebook -> Descr -> IDEAction
@@ -208,7 +208,7 @@ initInfo panePath nb idDescr = do
     panes       <- readIDE panes
     paneMap     <- readIDE paneMap
     prefs       <- readIDE prefs
-    (pane,cids) <- reifyIDE $ \ideR session ->  do
+    (pane,cids) <- reifyIDE $ \ideR  ->  do
             ibox        <- vBoxNew False 0
             bb          <- hButtonBoxNew
             buttonBoxSetLayout bb ButtonboxSpread
@@ -223,7 +223,7 @@ initInfo panePath nb idDescr = do
             boxPackStartDefaults bb usesB
             boxPackStartDefaults bb docuB
             boxPackStartDefaults bb searchB
-            (widget,injb,ext,notifier) <-  buildEditor (idDescrDescr ideR session) idDescr
+            (widget,injb,ext,notifier) <-  buildEditor (idDescrDescr ideR ) idDescr
             boxPackStart ibox widget PackGrow 0
             boxPackEnd ibox bb PackNatural 0
             --openType
@@ -233,18 +233,18 @@ initInfo panePath nb idDescr = do
             currentDescr' <- newIORef idDescr
             let info = IDEInfo sw currentDescr' injb ext
             -- mapM_ (\w -> widgetSetExtensionEvents w [ExtensionEventsAll]) widgets
---            widget `onFocus` (\_ ->  do reflectIDE (makeActive info) ideR session
+--            widget `onFocus` (\_ ->  do reflectIDE (makeActive info) ideR
 --                                        return False)
-            definitionB `onClicked` (reflectIDE gotoSource ideR session)
-            moduB `onClicked` (reflectIDE gotoModule' ideR session)
-            usesB `onClicked` (reflectIDE calledBy' ideR session)
+            definitionB `onClicked` (reflectIDE gotoSource ideR )
+            moduB `onClicked` (reflectIDE gotoModule' ideR )
+            usesB `onClicked` (reflectIDE calledBy' ideR )
             searchB `onClicked` (do
                 mbDescr <- ext idDescr
                 case mbDescr of
                     Nothing -> return ()
                     Just descr -> reflectIDE (do
                                     triggerEvent ideR (SearchMeta (descrName' descr))
-                                    showInfo) ideR session)
+                                    showInfo) ideR )
             notebookInsertOrdered nb sw (paneName info) Nothing
             widgetShowAll sw
             return (info,[])

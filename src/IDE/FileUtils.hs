@@ -16,8 +16,6 @@ module IDE.FileUtils (
 ,   findSourceFile
 ,   autoExtractTarFiles
 
-,   getInstalledPackageInfos
-,   findFittingPackages
 ) where
 
 import System.FilePath
@@ -34,21 +32,13 @@ import Control.Monad.Trans(MonadIO,liftIO)
 import qualified Data.List as List
 import qualified Data.Set as Set
 import Data.Set (Set)
-import Data.List (maximumBy,isSuffixOf,isPrefixOf)
+import Data.List (isSuffixOf,isPrefixOf)
 import Distribution.ModuleName(ModuleName,toFilePath)
 import Distribution.Text(simpleParse)
 import Debug.Trace
 
 import Paths_leksah
 import IDE.Core.State
-import GHC (setSessionDynFlags,getSessionDynFlags,Ghc(..))
-import PackageConfig (PackageConfig(..))
-import DynFlags (DynFlag(..),flags,pkgDatabase)
-import UniqFM (eltsUFM)
-import Distribution.Simple (PackageIdentifier(..),Dependency(..))
-import qualified Distribution.InstalledPackageInfo as IPI  (package)
-import Distribution.Version (withinRange)
-import Distribution.Package (pkgVersion)
 import Data.Char (ord)
 
 -- | Returns True if the second path is a location which starts with the first path
@@ -302,33 +292,6 @@ getSysLibDir = do
                     else libDir
     trace ("getSysLibDir " ++ libDir2) $ waitForProcess pid
     return (normalise libDir2)
-
--- ---------------------------------------------------------------------
--- The (mothers) little helpers
---
-
-getInstalledPackageInfos :: Ghc [PackageConfig]
-getInstalledPackageInfos = do
-    dflags1         <-  getSessionDynFlags
-    setSessionDynFlags dflags1{flags = Opt_ReadUserPackageConf : (flags dflags1)}
-    pkgInfos        <-  case pkgDatabase dflags1 of
-                            Nothing -> return []
-                            Just fm -> return (eltsUFM fm)
-    return pkgInfos
-
-findFittingPackages :: [Dependency] -> Ghc [PackageIdentifier]
-findFittingPackages dependencyList = do
-    knownPackages   <-  getInstalledPackageInfos
-    let packages    =   map IPI.package knownPackages
-    return (concatMap (fittingKnown packages) dependencyList)
-    where
-    fittingKnown packages (Dependency dname versionRange) =
-        let filtered =  filter (\ (PackageIdentifier name version) ->
-                                    name == dname && withinRange version versionRange)
-                        packages
-        in  if length filtered > 1
-                then [maximumBy (\a b -> compare (pkgVersion a) (pkgVersion b)) filtered]
-                else filtered
 
 
 

@@ -53,19 +53,19 @@ includes:
 install-includes:
 include-dirs:
 hs-source-dirs: src
-other-modules: MyMissing DeepSeq Default Control.Event
-               Graphics.UI.Editor.Parameters Graphics.UI.Editor.Composite
-               Graphics.UI.Editor.Basics Graphics.UI.Editor.MakeEditor
-               Graphics.UI.Editor.Simple Graphics.UI.Frame.ViewFrame
-               Graphics.UI.Frame.Panes IDE.Leksah IDE.PrinterParser IDE.FileUtils
-               IDE.Menu IDE.DescriptionPP IDE.Find IDE.SourceCandy IDE.Package
-               IDE.SpecialEditors IDE.GUIHistory IDE.SaveSession IDE.Keymap
-               IDE.Exception IDE.Pane.Modules IDE.Pane.PackageEditor IDE.Pane.Log
-               IDE.Pane.Search IDE.Pane.Info IDE.Pane.SourceBuffer
-               IDE.Pane.Preferences IDE.Pane.Callers IDE.Pane.ClassHierarchy
-               IDE.Pane.PackageFlags IDE.Metainfo.SourceCollector
-               IDE.Metainfo.Provider IDE.Metainfo.InterfaceCollector
-               IDE.Core.Types IDE.Core.State
+other-modules: IDE.Metainfo.GHCUtils MyMissing DeepSeq Default
+               Control.Event Graphics.UI.Editor.Parameters
+               Graphics.UI.Editor.Composite Graphics.UI.Editor.Basics
+               Graphics.UI.Editor.MakeEditor Graphics.UI.Editor.Simple
+               Graphics.UI.Frame.ViewFrame Graphics.UI.Frame.Panes IDE.Leksah
+               IDE.PrinterParser IDE.FileUtils IDE.Menu IDE.DescriptionPP IDE.Find
+               IDE.SourceCandy IDE.Package IDE.SpecialEditors IDE.GUIHistory
+               IDE.SaveSession IDE.Keymap IDE.Exception IDE.Pane.Modules
+               IDE.Pane.PackageEditor IDE.Pane.Log IDE.Pane.Search IDE.Pane.Info
+               IDE.Pane.SourceBuffer IDE.Pane.Preferences IDE.Pane.Callers
+               IDE.Pane.ClassHierarchy IDE.Pane.PackageFlags
+               IDE.Metainfo.SourceCollector IDE.Metainfo.Provider
+               IDE.Metainfo.InterfaceCollector IDE.Core.Types IDE.Core.State
 ghc-prof-options: -prof -auto-all
 ghc-shared-options: -prof -auto-all
 ghc-options: -fwarn-unused-imports -fwarn-missing-fields -fwarn-incomplete-patterns -O

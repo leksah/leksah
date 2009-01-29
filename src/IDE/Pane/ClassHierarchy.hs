@@ -262,7 +262,7 @@ initClassHierarchy panePath nb = do
     paneMap     <-  readIDE paneMap
     prefs       <-  readIDE prefs
     currentInfo <-  readIDE currentInfo
-    (buf,cids)  <-  reifyIDE $ \ideR session ->  do
+    (buf,cids)  <-  reifyIDE $ \ideR ->  do
 
 -- Class Hierarchy
         let forest  = case currentInfo of
@@ -366,7 +366,7 @@ initClassHierarchy panePath nb = do
                 New.treeViewExpandRow treeView treePath False
                 return ())
         cid1 <- treeView `afterFocusIn`
-            (\_ -> do reflectIDE (makeActive classes) ideR session; return True)
+            (\_ -> do reflectIDE (makeActive classes) ideR; return True)
 --        cid2 <- facetView `afterFocusIn`
 --            (\_ -> do runReaderT (makeActive classes) ideR; return True)
 --        treeView  `onButtonPress` (treeViewPopup ideR treeStore treeView)

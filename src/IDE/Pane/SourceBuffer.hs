@@ -116,12 +116,12 @@ instance Pane IDEBuffer IDEM
       sbIO    <-  getStatusbarIO
       infos   <-  readIDE accessibleInfo
       let sv = sourceView actbuf
-      (cids) <- reifyIDE $ \ideR session -> do
+      (cids) <- reifyIDE $ \ideR   -> do
           gtkBuf  <- textViewGetBuffer sv
           bringPaneToFront actbuf
           writeCursorPositionInStatusbar sv sbLC
           writeOverwriteInStatusbar sv sbIO
-          id1 <- gtkBuf `afterModifiedChanged` reflectIDE (markLabelAsChanged) ideR session
+          id1 <- gtkBuf `afterModifiedChanged` reflectIDE (markLabelAsChanged) ideR
           id2 <- sv `afterMoveCursor`
               (\_ _ _ -> writeCursorPositionInStatusbar sv sbLC)
           id3 <- gtkBuf `afterEndUserAction`  writeCursorPositionInStatusbar sv sbLC
@@ -129,7 +129,7 @@ instance Pane IDEBuffer IDEM
           id5 <- sv `onButtonRelease`
             (\ e -> do
               writeCursorPositionInStatusbar sv sbLC
-              when (controlIsPressed e) $ showInfo sv ideR session
+              when (controlIsPressed e) $ showInfo sv ideR
               return False)
           id6 <- sv `afterToggleOverwrite`  writeOverwriteInStatusbar sv sbIO
           return [ConnectC id2,ConnectC id6,ConnectC id1,ConnectC id3]
@@ -290,7 +290,7 @@ newTextBuffer panePath bn mbfn = do
     bs      <-  getCandyState
     ct      <-  readIDE candy
     let (ind,rbn) = figureOutPaneName panes bn 0
-    (buf,cids)   <- reifyIDE $ \ideR session -> do
+    (buf,cids)   <- reifyIDE $ \ideR   -> do
         lm       <- sourceLanguageManagerNew
         (mbLanguage, mbSLang)  <- sourceLanguageForFilename lm mbfn
 
@@ -326,7 +326,6 @@ newTextBuffer panePath bn mbfn = do
 
         -- create a new SourceView Widget
         sv <- sourceViewNewWithBuffer buffer
-        set sv [sourceViewHighlightCurrentLine := True]
         fd <- case textviewFont prefs of
             Just str -> do
                 fontDescriptionFromString str
@@ -335,6 +334,7 @@ newTextBuffer panePath bn mbfn = do
                 fontDescriptionSetFamily f "Monospace"
                 return f
         widgetModifyFont sv (Just fd)
+        set sv [sourceViewHighlightCurrentLine := True]
         sourceViewSetShowLineNumbers sv (showLineNumbers prefs)
         case rightMargin prefs of
             Just n -> do
@@ -366,11 +366,19 @@ newTextBuffer panePath bn mbfn = do
         notebookInsertOrdered nb sw rbn Nothing
         -- events
         cid <- sv `afterFocusIn`
-            (\_ -> do reflectIDE (makeActive buf) ideR session; return False)
+            (\_ -> do reflectIDE (makeActive buf) ideR  ; return False)
         return (buf,[cid])
     addPaneAdmin buf (map ConnectC cids) panePath
-    liftIO $widgetShowAll (scrolledWindow buf)
-    liftIO $widgetGrabFocus (sourceView buf)
+    liftIO $do
+        widgetShowAll (scrolledWindow buf)
+        widgetGrabFocus (sourceView buf)
+-- patch for windows
+        fdesc <- fontDescriptionFromString (case textviewFont prefs of Just str -> str; Nothing -> "")
+        fds <- fontDescriptionGetSize fdesc
+        when (isJust fds) $ do
+            fontDescriptionSetSize fdesc (fromJust fds + 0.01)
+            widgetModifyFont (castToWidget $ sourceView buf) (Just fdesc)
+-- end patch
     return buf
 
 checkModTime :: IDEBuffer -> IDEAction
@@ -468,12 +476,12 @@ writeOverwriteInStatusbar sv sb = do
     return ()
 
 
-showInfo :: SourceView -> IDERef -> Session -> IO ()
-showInfo sv ideR session = do
+showInfo :: SourceView -> IDERef -> IO ()
+showInfo sv ideR = do
     buf     <-  textViewGetBuffer sv
     (l,r)   <- textBufferGetSelectionBounds buf
     symbol  <- textBufferGetText buf l r True
-    reflectIDE (triggerEvent ideR (SelectInfo symbol)) ideR session
+    reflectIDE (triggerEvent ideR (SelectInfo symbol)) ideR
     return ()
 
 markLabelAsChanged :: IDEAction
@@ -540,7 +548,7 @@ fileSave query = inBufContext' () $ \ nb _ currentBuffer i -> do
                         liftIO $fileSave' (forceLineEnds prefs) (removeTBlanks prefs) currentBuffer bs candy $fromJust mbfn
                         setModTime currentBuffer
                         return ()
-                else reifyIDE $ \ideR session ->  do
+                else reifyIDE $ \ideR   ->  do
                     dialog <- fileChooserDialogNew
                                     (Just $ "Save File")
                                     (Just window)
@@ -578,7 +586,7 @@ fileSave query = inBufContext' () $ \ nb _ currentBuffer i -> do
                                     reflectIDE (do
                                         close currentBuffer
                                         newTextBuffer panePath (takeFileName fn) (Just cfn)
-                                        )   ideR session
+                                        )   ideR
                                     return ()
                                 ResponseNo -> return ()
                                 _          -> return ()
@@ -613,7 +621,7 @@ fileClose' nb gtkbuf currentBuffer i = do
     window  <- readIDE window
     bufs    <- readIDE panes
     paneMap <- readIDE paneMap
-    cancel <- reifyIDE $ \ideR session ->  do
+    cancel <- reifyIDE $ \ideR   ->  do
         modified <- textBufferGetModified gtkbuf
         if modified
             then do
@@ -630,7 +638,7 @@ fileClose' nb gtkbuf currentBuffer i = do
                 widgetDestroy md
                 case resp of
                     ResponseYes ->   do
-                        reflectIDE (fileSave False) ideR session
+                        reflectIDE (fileSave False) ideR
                         return False
                     ResponseCancel  ->   return True
                     ResponseNo      ->   return False
@@ -640,6 +648,7 @@ fileClose' nb gtkbuf currentBuffer i = do
         then return False
         else do
             deactivatePane
+            modifyIDE_ (\ide -> return (ide{lastActiveBufferPane = Nothing}))
             removePaneAdmin currentBuffer
             liftIO $ do
                 notebookRemovePage nb i

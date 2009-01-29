@@ -151,7 +151,7 @@ initCallers panePath nb = do
     paneMap     <-  readIDE paneMap
     prefs       <-  readIDE prefs
     currentInfo <-  readIDE currentInfo
-    (buf,cids)  <-  reifyIDE $ \ideR session ->  do
+    (buf,cids)  <-  reifyIDE $ \ideR  ->  do
         listStore   <-  New.listStoreNew []
         treeView    <-  New.treeViewNew
         New.treeViewSetModel treeView listStore
@@ -204,8 +204,8 @@ initCallers panePath nb = do
         notebookInsertOrdered nb box (paneName callers) Nothing
         widgetShowAll box
         cid1 <- treeView `afterFocusIn`
-            (\_ -> do reflectIDE (makeActive callers) ideR session; return True)
-        treeView `onButtonPress` (treeViewPopup ideR session callers)
+            (\_ -> do reflectIDE (makeActive callers) ideR ; return True)
+        treeView `onButtonPress` (treeViewPopup ideR  callers)
         return (callers,[ConnectC cid1])
     addPaneAdmin buf cids panePath
     liftIO $widgetGrabFocus (scrolledView buf)
@@ -224,11 +224,10 @@ getSelectionTree treeView listStore = do
         _       ->  return Nothing
 
 treeViewPopup :: IDERef
-    -> Session
     -> IDECallers
     -> Event
     -> IO (Bool)
-treeViewPopup ideR session callers (Button _ click _ _ _ _ button _ _) = do
+treeViewPopup ideR  callers (Button _ click _ _ _ _ button _ _) = do
     if button == RightButton
         then do
             theMenu         <-  menuNew
@@ -242,7 +241,7 @@ treeViewPopup ideR session callers (Button _ click _ _ _ _ button _ _) = do
                                         text <- entryGetText (callersEntry callers)
                                         case words text of
                                             (hd : tl)    ->  do
-                                                reflectIDE (selectText fp hd) ideR session
+                                                reflectIDE (selectText fp hd) ideR
                                                 return ()
                                             _           ->  return ()
                     otherwise       ->  return ()
@@ -261,12 +260,12 @@ treeViewPopup ideR session callers (Button _ click _ _ _ _ button _ _) = do
                                             text <- entryGetText (callersEntry callers)
                                             case words text of
                                                 (hd : tl) -> do
-                                                    reflectIDE (selectText fp hd) ideR session
+                                                    reflectIDE (selectText fp hd) ideR
                                                     return True
                                                 _ -> return False
                             otherwise       ->  return False
                 else return False
-treeViewPopup _ _ _ _ = throwIDE "treeViewPopup wrong event type"
+treeViewPopup _ _ _ = throwIDE "treeViewPopup wrong event type"
 
 selectText :: FilePath -> String -> IDEM Bool
 selectText fp text = do
@@ -278,9 +277,9 @@ selectText fp text = do
             setFindState fs {entryStr = text}
             showFindbar
             focusFindEntry
-            reifyIDE $ \ideR session ->  do
+            reifyIDE $ \ideR  ->  do
                         idleAdd  (do
-                            reflectIDE (editFind True True True text "" Forward) ideR session
+                            reflectIDE (editFind True True True text "" Forward) ideR
                             return False)
                                  priorityDefaultIdle
             return True

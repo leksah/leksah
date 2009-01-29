@@ -19,6 +19,8 @@ module IDE.Metainfo.SourceCollector (
 ,   sourceForPackage
 ,   parseSourceForPackageDB
 ,   getSourcesMap
+
+,   unloadGhc
 ) where
 
 import qualified Text.PrettyPrint.HughesPJ as PP
@@ -66,25 +68,33 @@ collectSources :: Map PackageIdentifier [FilePath]
     -> PackageDescr
     -> Ghc (PackageDescr,Int)
 collectSources sourceMap pdescr = do
+    unloadGhc
     sysMessage Normal $ "Now collecting sources for " ++ display (packagePD pdescr)
     case sourceForPackage (packagePD pdescr) sourceMap of
         Nothing -> do
             sysMessage Normal $ "No source for package " ++ display (packagePD pdescr)
             return (pdescr,0)
-        Just cabalPath -> gcatch (do
-            basePath        <-  liftIO $ canonicalizePath (takeDirectory cabalPath)
+        Just cabalPath' -> gcatch (do
+            cabalPath       <-  liftIO $ canonicalizePath cabalPath'
+            let basePath    =   takeDirectory cabalPath
             pkgDescr        <-  gcatch (liftIO $  (liftM flattenPackageDescription
                                         (readPackageDescription silent cabalPath)))
                                     (\(e :: SomeException) -> return emptyPackageDescription)
-            let bis = allBuildInfo pkgDescr
-            let buildPaths  =   map (\p -> basePath </> p)
-                                    $ nub $ ("dist" </> "build" </> "autogen") : (".")
-                                                : concatMap hsSourceDirs bis
-            let includes    =   map (\p -> basePath </> p)  $ nub $ concatMap includeDirs bis
-
+            let bis         =   allBuildInfo pkgDescr
+            let buildPaths  =   if hasExes pkgDescr
+                                then let exeName' = exeName (head (executables pkgDescr))
+                                     in -- map (\p -> basePath </> p) $
+                                        ("dist" </> "build" </> exeName' </>
+                                                    exeName' ++ "-tmp" </> "") :
+                                        ("dist" </> "build" </> "autogen") : (".")
+                                                : (nub $ concatMap hsSourceDirs bis)
+                                else -- map (\p -> basePath </> p) $
+                                        ("dist" </> "build" </> "autogen") : (".")
+                                                : (nub $ concatMap hsSourceDirs bis)
+            let includes    =   {-- map (\p -> basePath </> p)  $ --} nub $ concatMap includeDirs bis
             dflags             <-  getSessionDynFlags
             let dflags2 = dflags {
-                topDir      =   basePath,
+                topDir    = basePath,
                 hscTarget = HscAsm,
                 ghcMode   = CompManager,
                 ghcLink   = NoLink}
@@ -132,7 +142,9 @@ collectSourcesForPackage :: PackageDescr -> [String] -> [String] -> Ghc ([Module
 collectSourcesForPackage pkgDescr sourceFiles interesting = do
     targets <- mapM (\f -> guessTarget f Nothing) sourceFiles
     setTargets targets
+    trace ("before depanal") $ return ()
     modgraph <- depanal [] False
+    trace ("after depanal") $ return ()
     let orderedMods = flattenSCCs $ topSortModuleGraph False modgraph Nothing
     let interestingMods = filter (\m -> elem (moduleNameString (ms_mod_name m)) interesting) orderedMods
     let orderedTupels = catMaybes (map (\om -> case filter (\m -> ((moduleNameString . moduleName . ms_mod) om) ==
@@ -144,8 +156,8 @@ collectSourcesForPackage pkgDescr sourceFiles interesting = do
 
 collectSourcesForModule :: ([ModuleDescr],Int) -> (ModuleDescr, ModSummary) -> Ghc ([ModuleDescr],Int)
 collectSourcesForModule (moduleDescrs,failureCount) (modD,modsum) = gcatch (do
-    let filename            = msHsFilePath modsum
-    let dynflags            = ms_hspp_opts modsum
+    let filename            =  msHsFilePath modsum
+    let dynflags            =  ms_hspp_opts modsum
     parsedMod               <- parseModule modsum
     let decls               = (hsmodDecls . unLoc . parsedSource) $ parsedMod
     let map'                =   convertToMap (idDescriptionsMD modD)
@@ -320,6 +332,12 @@ instance Show alpha => Show (DocDecl alpha) where
         show  (DocCommentPrev doc)      =       "DocCommentPrev " ++ show doc
         show  (DocCommentNamed str doc) =       "DocCommentNamed" ++ " " ++ str ++ " " ++ show doc
         show  (DocGroup i doc)          =       "DocGroup" ++ " " ++ show i ++ " " ++ show doc
+
+unloadGhc :: Ghc ()
+unloadGhc = do
+   setTargets []
+   load LoadAllTargets
+   return ()
 
 -- ---------------------------------------------------------------------
 -- Function to map packages to file paths

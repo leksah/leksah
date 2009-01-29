@@ -148,7 +148,7 @@ toggleFindbar = do
         else showFindbar
 
 constructFindReplace :: Toolbar -> IDEM (Toolbar)
-constructFindReplace toolbar = reifyIDE $ \ ideR session -> do
+constructFindReplace toolbar = reifyIDE $ \ ideR   -> do
     closeButton <- toolButtonNewFromStock "gtk-close"
     toolbarInsert toolbar closeButton 0
 
@@ -228,35 +228,35 @@ constructFindReplace toolbar = reifyIDE $ \ ideR session -> do
     containerAdd labelTool label
     toolbarInsert toolbar labelTool 0
 
-    findButton `onToolButtonClicked` (doSearch toolbar Forward ideR session)
+    findButton `onToolButtonClicked` (doSearch toolbar Forward ideR  )
 
     entry `afterInsertText` (\t i -> do
-        doSearch toolbar Insert ideR session
+        doSearch toolbar Insert ideR
         return i)
-    entry `afterDeleteText` (\ _ _ -> doSearch toolbar Delete ideR session)
+    entry `afterDeleteText` (\ _ _ -> doSearch toolbar Delete ideR  )
     entry `afterKeyPress`  (\ e -> case e of
         k@(Key _ _ _ _ _ _ _ _ _ _)
             | eventKeyName k == "Down"                 -> do
-                doSearch toolbar Forward ideR session
+                doSearch toolbar Forward ideR
                 return True
             | eventKeyName k == "Up"                   -> do
-                doSearch toolbar Backward ideR session
+                doSearch toolbar Backward ideR
                 return True
             | eventKeyName k == "Escape"               -> do
-                getOut ideR session
+                getOut ideR
                 return True
             | otherwise                ->  return True
         _                              ->  return True)
-    entry `onEntryActivate` getOut ideR session
-    replaceButton `onToolButtonClicked` replace toolbar Forward ideR session
+    entry `onEntryActivate` getOut ideR
+    replaceButton `onToolButtonClicked` replace toolbar Forward ideR
 
-    replaceAllButton `onToolButtonClicked` replaceAll toolbar Forward ideR session
+    replaceAllButton `onToolButtonClicked` replaceAll toolbar Forward ideR
 
 
     spinL `afterFocusIn` (\ _ -> (reflectIDE (inBufContext True $ \_ gtkbuf currentBuffer _ -> do
         max <- textBufferGetLineCount gtkbuf
         spinButtonSetRange spinL 1.0 (fromIntegral max)
-        return True) ideR session))
+        return True) ideR  ))
 
 
     spinL `afterEntryActivate` (reflectIDE (inBufContext () $ \_ gtkbuf currentBuffer _ -> do
@@ -265,10 +265,10 @@ constructFindReplace toolbar = reifyIDE $ \ ideR session -> do
         textIterSetLine iter (line - 1)
         textBufferPlaceCursor gtkbuf iter
         textViewScrollToIter (sourceView currentBuffer) iter 0.2 Nothing
-        return ()) ideR session)
+        return ()) ideR  )
 
     closeButton `onToolButtonClicked` do
-        reflectIDE hideFindbar ideR session
+        reflectIDE hideFindbar ideR
 
     set toolbar [ toolbarChildHomogeneous spinTool := False ]
     set toolbar [ toolbarChildHomogeneous wrapAroundButton := False ]
@@ -291,14 +291,14 @@ constructFindReplace toolbar = reifyIDE $ \ ideR session -> do
                                     return ()
 
 
-doSearch :: Toolbar -> SearchHint -> IDERef -> Session -> IO ()
-doSearch fb hint ideR session = do
+doSearch :: Toolbar -> SearchHint -> IDERef -> IO ()
+doSearch fb hint ideR   = do
     entry         <- getFindEntry fb
     search        <- entryGetText (castToEntry entry)
     entireWord    <- getEntireWord fb
     caseSensitive <- getCaseSensitive fb
     wrapAround    <- getWrapAround fb
-    res           <- reflectIDE (editFind entireWord caseSensitive wrapAround search "" hint) ideR session
+    res           <- reflectIDE (editFind entireWord caseSensitive wrapAround search "" hint) ideR
     if res || null search
         then do
             widgetModifyBase entry StateNormal white
@@ -308,8 +308,8 @@ doSearch fb hint ideR session = do
             widgetModifyText entry StateNormal white
     return ()
 
-replace :: Toolbar -> SearchHint -> IDERef -> Session -> IO ()
-replace fb hint ideR session =  do
+replace :: Toolbar -> SearchHint -> IDERef -> IO ()
+replace fb hint ideR   =  do
     entry          <- getFindEntry fb
     search         <- entryGetText (castToEntry entry)
     rentry         <- getReplaceEntry fb
@@ -318,12 +318,12 @@ replace fb hint ideR session =  do
     caseSensitive  <- getCaseSensitive fb
     wrapAround     <- getWrapAround fb
     found <- reflectIDE (editReplace entireWord caseSensitive wrapAround search replace hint)
-                ideR session
+                ideR
     return ()
 
 
-replaceAll :: Toolbar -> SearchHint -> IDERef -> Session -> IO ()
-replaceAll fb hint ideR session =  do
+replaceAll :: Toolbar -> SearchHint -> IDERef -> IO ()
+replaceAll fb hint ideR   =  do
     entry          <- getFindEntry fb
     search         <- entryGetText (castToEntry entry)
     rentry         <- getReplaceEntry fb
@@ -332,7 +332,7 @@ replaceAll fb hint ideR session =  do
     caseSensitive  <- getCaseSensitive fb
     wrapAround     <- getWrapAround fb
     found <- reflectIDE (editReplaceAll entireWord caseSensitive wrapAround search replace hint)
-                ideR session
+                ideR
     return ()
 
 editFind :: Bool -> Bool -> Bool -> String -> String -> SearchHint -> IDEM Bool
@@ -443,12 +443,12 @@ editFindInc :: SearchHint -> IDEAction
 editFindInc hint = do
     showFindbar
     fb <- readIDE findbar
-    reifyIDE $ \ideR session -> do
+    reifyIDE $ \ideR   -> do
         entry <- getFindEntry fb
         widgetGrabFocus entry
         case hint of
-            Forward  -> doSearch fb Forward ideR session
-            Backward -> doSearch fb Backward ideR session
+            Forward  -> doSearch fb Forward ideR
+            Backward -> doSearch fb Backward ideR
             _        -> return ()
 
 editGotoLine :: IDEAction

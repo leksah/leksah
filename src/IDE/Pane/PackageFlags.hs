@@ -229,7 +229,7 @@ initFlags :: IDEPackage -> PanePath -> Notebook -> IDEAction
 initFlags idePackage panePath nb = do
     let flagsDesc       =   extractFieldDescription flagsDescription
     let flatflagsDesc   =   flattenFieldDescription flagsDesc
-    (buf,cids)  <-  reifyIDE $ \ ideR session ->  do
+    (buf,cids)  <-  reifyIDE $ \ ideR ->  do
         vb                  <-  vBoxNew False 0
         let flagsPane = IDEFlags vb
         bb                  <-  hButtonBoxNew
@@ -249,12 +249,12 @@ initFlags idePackage panePath nb = do
                 Just packWithNewFlags -> do
                     reflectIDE (do
                         modifyIDE_ (\ide -> return (ide{activePack = Just packWithNewFlags}))
-                        close flagsPane) ideR session -- we don't trigger the activePack event here
+                        close flagsPane) ideR -- we don't trigger the activePack event here
                     writeFlags ((dropFileName (cabalFile packWithNewFlags)) </> "IDE.flags")
                         packWithNewFlags)
-        closeB `onClicked` (reflectIDE (close flagsPane) ideR session)
+        closeB `onClicked` (reflectIDE (close flagsPane) ideR)
         registerEvent notifier FocusIn (Left (\e -> do
-            reflectIDE (makeActive flagsPane) ideR session
+            reflectIDE (makeActive flagsPane) ideR
             return (e{gtkReturn=False})))
         boxPackStart vb sw PackGrow 7
         boxPackEnd vb bb PackNatural 7

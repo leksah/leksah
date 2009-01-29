@@ -31,7 +31,6 @@ import qualified Data.Map as Map
 import System.Console.GetOpt
 import System.Environment
 import GHC
-import HscTypes hiding (liftIO)
 import Config
 import Data.Version
 import Prelude hiding(catch)
@@ -63,6 +62,8 @@ import IDE.Pane.Search(setChoices,searchMetaGUI)
 import IDE.Find
 import Graphics.UI.Editor.Composite (maybeEditor)
 import Graphics.UI.Editor.Simple (fileEditor)
+--import Outputable (ppr,showSDoc)
+import IDE.Metainfo.GHCUtils (inGhcIO)
 
 -- ---------------------------------------------------------------------
 -- Command line options
@@ -121,9 +122,8 @@ runMain = handleTopExceptions $ do
         buildSourceForPackageDB
         sysMessage Normal "rebuild SourceForPackageDB")
     when (elem Rebuild o || elem Collect o || not (null uninstalled)) $ do
-        libDir          <-   getSysLibDir
-        runGhc (Just libDir) $ do
-            getSessionDynFlags >>= setSessionDynFlags
+        inGhcIO $ do
+            flags <- getSessionDynFlags
             let version     =   cProjectVersion
             let uninstalled =   filter (\x -> case x of
                                                 UninstalledProject _ -> True
@@ -145,7 +145,7 @@ startGUI sessionFilename = do
     st          <-  initGUI
     when rtsSupportsBoundThreads
         (sysMessage Normal "Linked with -threaded")
-    timeoutAddFull (yield >> return True) priorityHigh 25
+    timeoutAddFull (yield >> return True) priorityHigh 5
     mapM_ (sysMessage Normal) st
     uiManager   <-  uiManagerNew
     newIcons
@@ -194,65 +194,69 @@ startGUI sessionFilename = do
           ,   toolbar       =   Nothing
           ,   findbarVisible  = True
           ,   toolbarVisible  = True
-}
+    }
     ideR        <-  newIORef ide
-    libDir      <-  getSysLibDir
-    runGhc (Just libDir) (do
-        getSessionDynFlags >>= setSessionDynFlags
-        reifyGhc (\session -> do
-            menuDescription' <- menuDescription
-            (acc,menus) <-  reflectIDE (makeMenu uiManager accelActions menuDescription') ideR session
-            when (length menus /= 2) $ throwIDE ("Failed to build menu" ++ show (length menus))
-            let toolbar = castToToolbar (menus !! 1)
-            reflectIDE (do
-                constructFindReplace findBar
-                modifyIDE_ (\ide -> return ide{toolbar = Just toolbar})
-                initInfo :: IDEAction) ideR session
-            sep0 <- separatorToolItemNew
-            separatorToolItemSetDraw sep0 False
-            toolItemSetExpand sep0 True
-            toolbarInsert toolbar sep0 (-1)
-            closeButton <- toolButtonNewFromStock "gtk-close"
-            toolbarInsert toolbar closeButton (-1)
-            closeButton `onToolButtonClicked` do
-                reflectIDE hideToolbar ideR session
+    menuDescription' <- menuDescription
+    (acc,menus) <-  reflectIDE (makeMenu uiManager accelActions menuDescription') ideR
+    when (length menus /= 2) $ throwIDE ("Failed to build menu" ++ show (length menus))
+    let toolbar = castToToolbar (menus !! 1)
+    reflectIDE (do
+        constructFindReplace findBar
+        modifyIDE_ (\ide -> return ide{toolbar = Just toolbar})
+        initInfo :: IDEAction) ideR
+    sep0 <- separatorToolItemNew
+    separatorToolItemSetDraw sep0 False
+    toolItemSetExpand sep0 True
+    toolbarInsert toolbar sep0 (-1)
+    closeButton <- toolButtonNewFromStock "gtk-close"
+    toolbarInsert toolbar closeButton (-1)
+    closeButton `onToolButtonClicked` do
+        reflectIDE hideToolbar ideR
 
-            windowAddAccelGroup win acc
-            nb          <-  newNotebook
-            afterSwitchPage nb (\i -> reflectIDE (handleNotebookSwitch nb i) ideR session)
-            widgetSetName nb $"root"
-            statusBar   <-  buildStatusbar ideR
-            vb          <-  vBoxNew False 1  -- Top-level vbox
-            widgetSetName vb "topBox"
-            toolbarSetStyle (castToToolbar (menus !! 1)) ToolbarIcons
-            boxPackStart vb (menus !! 0) PackNatural 0
-            boxPackStart vb (menus !! 1) PackNatural 0
-            boxPackStart vb nb PackGrow 0
-            boxPackStart vb findBar PackNatural 0
-            boxPackEnd vb statusBar PackNatural 0
-            win `onDelete` (\ _ -> do reflectIDE quit ideR session; return True)
-            win `onKeyPress` (\ e -> reflectIDE (handleSpecialKeystrokes e) ideR session)
-            containerAdd win vb
-            reflectIDE (setCandyState (isJust (sourceCandy prefs))) ideR session
-            let (x,y)   =   defaultSize prefs
-            windowSetDefaultSize win x y
-            sessionPath <- getConfigFilePathForLoad sessionFilename
-            (tbv,fbv) <- reflectIDE (do
-                registerEvents menus
-                recoverSession sessionPath
-                ) ideR session
-            widgetShowAll win
-            reflectIDE (do
-                if tbv
-                    then showToolbar
-                    else hideToolbar
-                if fbv
-                    then showFindbar
-                    else hideFindbar) ideR session
-            mainGUI))
+    windowAddAccelGroup win acc
+    nb          <-  newNotebook
+    afterSwitchPage nb (\i -> reflectIDE (handleNotebookSwitch nb i) ideR)
+    widgetSetName nb $"root"
+    statusBar   <-  buildStatusbar ideR
+    vb          <-  vBoxNew False 1  -- Top-level vbox
+    widgetSetName vb "topBox"
+    toolbarSetStyle (castToToolbar (menus !! 1)) ToolbarIcons
+    boxPackStart vb (menus !! 0) PackNatural 0
+    boxPackStart vb (menus !! 1) PackNatural 0
+    boxPackStart vb nb PackGrow 0
+    boxPackStart vb findBar PackNatural 0
+    boxPackEnd vb statusBar PackNatural 0
+    win `onDelete` (\ _ -> do reflectIDE quit ideR; return True)
+    win `onKeyPress` (\ e -> reflectIDE (handleSpecialKeystrokes e) ideR)
+    containerAdd win vb
+    reflectIDE (setCandyState (isJust (sourceCandy prefs))) ideR
+    let (x,y)   =   defaultSize prefs
+    windowSetDefaultSize win x y
+    sessionPath <- getConfigFilePathForLoad sessionFilename
+    (tbv,fbv) <- reflectIDE (do
+        registerEvents menus
+        recoverSession sessionPath
+        ) ideR
+    reflectIDE (do
+        if tbv
+            then showToolbar
+            else hideToolbar
+        if fbv
+            then showFindbar
+            else hideFindbar) ideR
+    widgetShowAll win
+-- patch for windows
+    buffers <- reflectIDE allBuffers ideR
+    fdesc <- fontDescriptionFromString (case textviewFont prefs of Just str -> str; Nothing -> "")
+    fds <- fontDescriptionGetSize fdesc
+    when (isJust fds) $ do
+        fontDescriptionSetSize fdesc (fromJust fds + 0.01)
+        mapM_ (\buf -> widgetModifyFont (castToWidget $sourceView buf) (Just fdesc)) buffers
+-- end patch
+        mainGUI
 
 --
--- | Callback function for onKeyPress of the main window, so preprocess any key
+-- | Callback function for onKeyPress of the main window, so 'preprocess' any key
 --
 handleSpecialKeystrokes :: GdkEvents.Event -> IDEM Bool
 handleSpecialKeystrokes (Key _ _ _ mods _ _ _ keyVal name mbChar) = do

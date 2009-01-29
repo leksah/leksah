@@ -124,7 +124,7 @@ data ActionDescr alpha = AD {
 ,   label       ::   String
 ,   tooltip     ::   Maybe String
 ,   stockID     ::   Maybe String
-,   action      ::   ReaderT alpha Ghc ()
+,   action      ::   ReaderT alpha IO ()
 ,   accelerator ::   [KeyString]
 ,   isToggle    ::   Bool
 }

@@ -123,11 +123,11 @@ activatePackage filePath = do
     ideR <- ask
     let ppath = dropFileName filePath
     liftIO $ setCurrentDirectory ppath
-    mbPackageD <- reifyIDE (\ideR session -> catch (do
+    mbPackageD <- reifyIDE (\ideR -> catch (do
         pd <- readPackageDescription normal filePath
         return (Just (flattenPackageDescription pd)))
             (\(e :: SomeException) -> do
-                reflectIDE (ideMessage Normal ("Can't activate package " ++(show e))) ideR session
+                reflectIDE (ideMessage Normal ("Can't activate package " ++(show e))) ideR
                 return Nothing))
     case mbPackageD of
         Nothing -> return (Nothing)
@@ -173,7 +173,7 @@ packageConfig = catchIDE (do
         case mbPackage of
             Nothing         -> return ()
             Just package    -> do
-                mbPackageD  <- reifyIDE (\ideR session ->  catch (do
+                mbPackageD  <- reifyIDE (\ideR ->  catch (do
                     (inp,out,err,pid) <- runExternal "runhaskell" (["Setup","configure"]
                                                     ++ (configFlags package))
                     oid <- forkIO(readOut log out)
@@ -181,7 +181,7 @@ packageConfig = catchIDE (do
                     pd  <- readPackageDescription normal (cabalFile package)
                     return (Just (flattenPackageDescription pd)))
                     (\(e :: SomeException) -> do
-                            reflectIDE (ideMessage Normal (show e)) ideR session
+                            reflectIDE (ideMessage Normal (show e)) ideR
                             return Nothing))
                 case mbPackageD of
                     Just packageD -> do
@@ -205,12 +205,12 @@ packageBuild = catchIDE (do
                 liftIO $statusbarPop sb 1
                 liftIO $statusbarPush sb 1 "Building"
                 unmarkCurrentError
-                pid' <- reifyIDE (\ideR session -> do
+                pid' <- reifyIDE (\ideR -> do
                     (inp,out,err,pid) <- runExternal "runhaskell" (["Setup","build"]
                                                     ++ buildFlags package)
                     oid     <-  forkIO (readOut log out)
                     hSetBuffering err NoBuffering
-                    eid     <-  forkIO (reflectIDE (readErrForBuild log err) ideR session)
+                    eid     <-  forkIO (reflectIDE (readErrForBuild log err) ideR)
                     return pid)
                 when (collectAfterBuild prefs) $ mayRebuildInBackground (Just pid'))
         (\(e :: SomeException) -> putStrLn (show e))
@@ -576,11 +576,11 @@ getPackageDescriptionAndPath = do
             return Nothing
         Just p  -> do
             ideR <- ask
-            reifyIDE (\ideR session -> catch (do
+            reifyIDE (\ideR -> catch (do
                 pd <- readPackageDescription normal (cabalFile p)
                 return (Just (flattenPackageDescription pd,cabalFile p)))
                     (\(e :: SomeException) -> do
-                        reflectIDE (ideMessage Normal ("Can't load package " ++(show e))) ideR session
+                        reflectIDE (ideMessage Normal ("Can't load package " ++(show e))) ideR
                         return Nothing))
 
 getModuleTemplate :: PackageDescription -> String -> IO String
@@ -601,12 +601,12 @@ addModuleToPackageDescr moduleName isExposed = do
             return ()
         Just p  -> do
             ideR <- ask
-            reifyIDE (\ideR session -> catch (do
+            reifyIDE (\ideR -> catch (do
                 gpd <- readPackageDescription normal (cabalFile p)
                 if hasConfigs gpd
                     then do
                         reflectIDE (ideMessage High
-                            "Cabal File with configurations can't be automatically updated") ideR session
+                            "Cabal File with configurations can't be automatically updated") ideR
                     else
                         let pd = flattenPackageDescription gpd
                             npd = if isExposed && isJust (library pd)
@@ -621,7 +621,7 @@ addModuleToPackageDescr moduleName isExposed = do
                                                     (executables npd1)}
                         in writePackageDescription (cabalFile p) npd)
                            (\(e :: SomeException) -> do
-                            reflectIDE (ideMessage Normal ("Can't upade package " ++ show e)) ideR session
+                            reflectIDE (ideMessage Normal ("Can't upade package " ++ show e)) ideR
                             return ()))
     where
     addModToBuildInfo :: BuildInfo -> ModuleName -> BuildInfo

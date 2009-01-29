@@ -15,11 +15,8 @@
 
 module IDE.Metainfo.InterfaceCollector (
     collectInstalled
-,   collectInstalledI
 ,   collectInstalled'
 ,   collectUninstalled
-,   getInstalledPackageInfos
-,   findFittingPackages
 ,   metadataVersion
 
 ) where
@@ -27,6 +24,7 @@ module IDE.Metainfo.InterfaceCollector (
 
 import GHC hiding(Id,Failed,Succeeded,ModuleName)
 import Module hiding (PackageId,ModuleName)
+import IDE.Metainfo.GHCUtils (findFittingPackages,getInstalledPackageInfos)
 import qualified Module
 import TcRnMonad hiding (liftIO,MonadIO)
 import qualified Maybes as M
@@ -80,6 +78,7 @@ import IDE.Core.State hiding (depends)
 import IDE.FileUtils
 --import IDE.Metainfo.Provider
 import IDE.Metainfo.SourceCollector
+import IDE.Metainfo.GHCUtils(inGhc)
 
 metadataVersion :: Integer
 metadataVersion = 3
@@ -96,15 +95,8 @@ instance Default CollectStatistics where
     getDefault          =   CollectStatistics getDefault getDefault getDefault getDefault
                                 getDefault
 
-collectInstalledI :: Bool -> IDEAction
-collectInstalledI b      =   do
-    session'            <-  lift $ getSession
-    lift $ collectInstalled' False cProjectVersion b
-
-
-collectInstalled :: HscEnv -> Bool -> Ghc ()
-collectInstalled session b     =   do
-    collectInstalled' False cProjectVersion b
+collectInstalled :: Bool -> IDEAction
+collectInstalled b      =   inGhc $ collectInstalled' False cProjectVersion b
 
 collectInstalled' :: Bool -> String -> Bool -> Ghc()
 collectInstalled' writeAscii version forceRebuild = do
@@ -159,13 +151,14 @@ collectInstalled' writeAscii version forceRebuild = do
 
 collectUninstalled :: Bool -> String -> FilePath -> Ghc ()
 collectUninstalled writeAscii version cabalPath = do
-    pd                  <-  liftIO $ readPackageDescription normal cabalPath
+    trace ("collect Uninstalled " ++ show cabalPath) return ()
+    cCabalPath          <-  liftIO $ canonicalizePath cabalPath
+    pd                  <-  liftIO $ readPackageDescription normal cCabalPath
                                         >>= return . flattenPackageDescription
     let packageName     =   if hasExes pd
                                 then "main"
                                 else show $ package pd
     let modules         =   nub $ exeModules pd ++ libModules pd
-    cCabalPath          <-  liftIO $ canonicalizePath cabalPath
     let basePath        =   takeDirectory cCabalPath
     let buildPath       =   if hasExes pd
                                 then let exeName' = exeName (head (executables pd))
@@ -187,11 +180,11 @@ collectUninstalled writeAscii version cabalPath = do
     allIfaceInfos   <-  getIFaceInfos2 ghcmodules packageName
     deps            <-  findFittingPackages (buildDepends pd)
     let extracted   =   extractInfo (allIfaceInfos, [], package pd, deps)
-    let sources     =   Map.fromList [(package pd,[cabalPath])]
+    let sources     =   Map.fromList [(package pd,[cCabalPath])]
     (extractedWithSources,_)    <-  collectSources sources extracted
     collectorPath   <-  getCollectorPath version
     writeExtracted collectorPath writeAscii True extractedWithSources
-    sysMessage Normal $ "\nExtracted infos for " ++ cabalPath ++
+    sysMessage Normal $ "\nExtracted infos for " ++ cCabalPath ++
         " size: " ++ (show . length) (exposedModulesPD extractedWithSources)
 
 -------------------------------------------------------------------------
@@ -372,7 +365,7 @@ extractFields  decl    =   zip (map extractFieldNames (ifConFields decl))
                                 (map extractType (ifConArgTys decl))
 
 extractType :: IfaceType -> TypeInfo
-extractType decl = BS.pack $ filterExtras $ showSDocUnqual $ppr decl
+extractType = BS.pack . filterExtras . showSDocUnqual . ppr
 
 extractFieldNames :: OccName -> Symbol
 extractFieldNames occName = unpackFS $occNameFS occName

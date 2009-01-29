@@ -255,9 +255,9 @@ menuDescription = do
 -- | Building the Menu
 --
 makeMenu :: UIManager -> [ActionDescr IDERef] -> String -> IDEM (AccelGroup, [Widget])
-makeMenu uiManager actions menuDescription = reifyIDE (\ideR session -> do
+makeMenu uiManager actions menuDescription = reifyIDE (\ideR -> do
     actionGroupGlobal <- actionGroupNew "global"
-    mapM_ (actm ideR session actionGroupGlobal) actions
+    mapM_ (actm ideR actionGroupGlobal) actions
     uiManagerInsertActionGroup uiManager actionGroupGlobal 1
     uiManagerAddUiFromString uiManager menuDescription
     accGroup <- uiManagerGetAccelGroup uiManager
@@ -267,26 +267,26 @@ makeMenu uiManager actions menuDescription = reifyIDE (\ideR session -> do
 					Nothing -> throwIDE "Menu>>makeMenu: failed to build menu") mbWidgets
     return (accGroup,widgets))
     where
-        actm ideR session ag (AD name label tooltip stockId ideAction accs isToggle) = do
+        actm ideR ag (AD name label tooltip stockId ideAction accs isToggle) = do
             let (acc,accString) = if null accs
                                     then (Just "","=" ++ name)
                                     else (Just (head accs),(head accs) ++ "=" ++ name)
             if isToggle
                 then do
                     act <- toggleActionNew name label tooltip stockId
-                    on act actionToggled (doAction ideAction ideR session accString)
+                    on act actionToggled (doAction ideAction ideR accString)
                     actionGroupAddActionWithAccel ag act acc
                 else do
                     act <- actionNew name label tooltip stockId
-                    onActionActivate act (doAction ideAction ideR session accString)
+                    onActionActivate act (doAction ideAction ideR  accString)
                     actionGroupAddActionWithAccel ag act acc
-        doAction ideAction ideR session accStr =
+        doAction ideAction ideR accStr =
             handleTopExceptions (reflectIDE (do
                 ideAction
                 sb <- getSBSpecialKeys
                 liftIO $statusbarPop sb 1
                 liftIO $statusbarPush sb 1 $accStr
-                return ()) ideR session)
+                return ()) ideR)
 
 -- | Quit ide
 --  ### make reasonable

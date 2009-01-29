@@ -123,7 +123,7 @@ initSearch panePath nb scope mode = do
     paneMap     <-  readIDE paneMap
     prefs       <-  readIDE prefs
     currentInfo <-  readIDE currentInfo
-    (buf,cids)  <-  reifyIDE $ \ideR session -> do
+    (buf,cids)  <-  reifyIDE $ \ideR  -> do
 
         scopebox        <-  hBoxNew True 2
         rb1             <-  radioButtonNewWithLabel "Local"
@@ -227,28 +227,28 @@ initSearch panePath nb scope mode = do
         widgetShowAll box
 
         cid1 <- treeView `afterFocusIn`
-            (\_ -> do reflectIDE (makeActive search) ideR session; return True)
-        rb1 `onToggled` (reflectIDE (scopeSelection Local) ideR session)
-        rb2 `onToggled` (reflectIDE (scopeSelection Package) ideR session)
-        rb3 `onToggled` (reflectIDE (scopeSelection System) ideR session)
+            (\_ -> do reflectIDE (makeActive search) ideR ; return True)
+        rb1 `onToggled` (reflectIDE (scopeSelection Local) ideR )
+        rb2 `onToggled` (reflectIDE (scopeSelection Package) ideR )
+        rb3 `onToggled` (reflectIDE (scopeSelection System) ideR )
         mb1 `onToggled` do
             widgetSetSensitivity mb4 False
             active <- toggleButtonGetActive mb4
-            (reflectIDE (modeSelection (Exact active)) ideR session)
+            (reflectIDE (modeSelection (Exact active)) ideR )
         mb2 `onToggled`do
             widgetSetSensitivity mb4 True
             active <- toggleButtonGetActive mb4
-            (reflectIDE (modeSelection (Prefix active)) ideR session)
+            (reflectIDE (modeSelection (Prefix active)) ideR )
         mb3 `onToggled` do
             widgetSetSensitivity mb4 True
             active <- toggleButtonGetActive mb4
-            (reflectIDE (modeSelection (Regex active)) ideR session)
+            (reflectIDE (modeSelection (Regex active)) ideR )
         mb4 `onToggled` do
             active <- toggleButtonGetActive mb4
-            (reflectIDE (modeSelectionCase active) ideR session)
-        treeView `onButtonPress` (listViewPopup ideR session listStore treeView)
+            (reflectIDE (modeSelectionCase active) ideR )
+        treeView `onButtonPress` (listViewPopup ideR  listStore treeView)
         sel `New.onSelectionChanged` do
-            fillInfo treeView listStore ideR session
+            fillInfo treeView listStore ideR
             trace "search pane selection changes" $ return ()
         return (search,[ConnectC cid1])
     addPaneAdmin buf cids panePath
@@ -298,12 +298,11 @@ searchMetaGUI str = do
         mapM_ (New.listStoreAppend (searchStore search)) descrs
 
 listViewPopup :: IDERef
-    -> Session
     -> New.ListStore Descr
     -> New.TreeView
     -> Event
     -> IO (Bool)
-listViewPopup ideR session store descrView (Button _ click _ _ _ _ button _ _) = do
+listViewPopup ideR  store descrView (Button _ click _ _ _ _ button _ _) = do
     if button == RightButton
         then do
             theMenu         <-  menuNew
@@ -312,7 +311,7 @@ listViewPopup ideR session store descrView (Button _ click _ _ _ _ button _ _) =
                 sel         <-  getSelectionDescr descrView store
                 case sel of
                     Just descr      ->  reflectIDE
-                                            (goToDefinition descr) ideR session
+                                            (goToDefinition descr) ideR
                     otherwise       ->  sysMessage Normal "Search >> listViewPopup: no selection"
             menuShellAppend theMenu item1
             menuPopup theMenu Nothing
@@ -322,14 +321,14 @@ listViewPopup ideR session store descrView (Button _ click _ _ _ _ button _ _) =
                 then do sel         <-  getSelectionDescr descrView store
                         case sel of
                             Just descr      ->  reflectIDE (triggerEvent ideR (SelectIdent descr))
-                                                    ideR session >> return ()
+                                                    ideR  >> return ()
                             otherwise       ->  sysMessage Normal "Search >> listViewPopup: no selection2"
                         return True
                 else do
-                    mbPane :: Maybe IDEInfo <- reflectIDE getPane ideR session
+                    mbPane :: Maybe IDEInfo <- reflectIDE getPane ideR
                     when (isJust mbPane) $ bringPaneToFront (fromJust mbPane)
                     return False
-listViewPopup _ _ _ _ _ = throwIDE "listViewPopup wrong event type"
+listViewPopup _ _ _ _ = throwIDE "listViewPopup wrong event type"
 
 getSelectionDescr ::  New.TreeView
     ->  New.ListStore Descr
@@ -346,12 +345,11 @@ getSelectionDescr treeView listStore = do
 fillInfo :: New.TreeView
     -> New.ListStore Descr
     -> IDERef
-    -> Session
     -> IO ()
-fillInfo treeView listStore ideR session = do
+fillInfo treeView listStore ideR  = do
     sel <- getSelectionDescr treeView listStore
     case sel of
-        Just descr      ->  reflectIDE (setInfo descr) ideR session
+        Just descr      ->  reflectIDE (setInfo descr) ideR
         otherwise       ->  sysMessage Normal "Search>>fillInfo:no selection"
 
 setChoices :: [Descr] -> IDEAction
