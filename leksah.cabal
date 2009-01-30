@@ -1,12 +1,12 @@
 name: leksah
-version: 0.4.0.1
+version: 0.4.0.2
 cabal-version: >=1.4
 build-type: Custom
 license: GPL
 license-file: LICENSE
 copyright: 2007-2009 Jürgen Nicklisch-Franken
 maintainer: Jutaro <jutaro@leksah.org>
-build-depends: regex-posix >=0.72.0.3, utf8-string >=0.3.1.1,
+build-depends: regex-posix ==0.72.0.3, utf8-string >=0.3.1.1,
                bytestring >=0.9.0.1, binary >=0.4.4, ghc >=6.10.1, glib >=0.10,
                gtk >=0.10, directory >=1.0.0.2, pretty >=1.0.1.0,
                containers >=0.2.0.0, process >=1.0.1.0, mtl >=1.1.0.2,
@@ -66,9 +66,10 @@ other-modules: IDE.Metainfo.GHCUtils MyMissing DeepSeq Default
                IDE.Pane.ClassHierarchy IDE.Pane.PackageFlags
                IDE.Metainfo.SourceCollector IDE.Metainfo.Provider
                IDE.Metainfo.InterfaceCollector IDE.Core.Types IDE.Core.State
+
 ghc-prof-options: -prof -auto-all
 ghc-shared-options: -prof -auto-all
-ghc-options: -fwarn-unused-imports -fwarn-missing-fields -fwarn-incomplete-patterns -O
+ghc-options: -fwarn-unused-imports -fwarn-missing-fields -fwarn-incomplete-patterns
 hugs-options:
 nhc98-options:
 jhc-options:

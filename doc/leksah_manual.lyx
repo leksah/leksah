@@ -177,12 +177,12 @@ Version 0.4 Beta Release February 2009
 
 \begin_layout Standard
 The 0.4 Release will become the first beta when it is stable enough.
- It should be useable for practical work for the ones that wants to engage
+ It should be usable for practical work for the ones that wants to engage
  with it.
 \end_layout
 
 \begin_layout Standard
-It depends on Ghc 
+It depends on GHC 
 \begin_inset Formula $\geq$
 \end_inset
 
@@ -194,7 +194,7 @@ It depends on Ghc
 \end_layout
 
 \begin_layout Standard
-The class brower and the history features are not quite ready, so we propose
+The class browser and the history features are not quite ready, so we propose
  not to use it yet.
  
 \end_layout
@@ -216,7 +216,7 @@ Installing Leksah
 
 \begin_layout Enumerate
 You need an installed GHC (Glasgow Haskell Compiler).
- For information about Ghc go to 
+ For information about GHC go to 
 \begin_inset Flex URL
 status open
 
@@ -242,7 +242,7 @@ status open
 
 \begin_layout Plain Layout
 
-http://haskell.org/ght2hs
+http://haskell.org/gtk2hs
 \end_layout
 
 \end_inset
@@ -257,7 +257,7 @@ http://haskell.org/ght2hs
 Either
 \noun default
 : Download, and build Leksah with cabal install leksah.
- (TODO: I'm not shure if this will be possible, because gtk2hs is not cabalized).
+ (You have to install the package cabal-install before)
 \begin_inset Newline newline
 \end_inset
 
@@ -293,22 +293,23 @@ runhaskell configure, runhaskell build, sudo runhaskell install
 \begin_layout Standard
 Inside: Leksah installs a an executable in a folder that should be in the
  search path, and a couple of data files in a data folder.
- These places are choosen by the Cabal package management system and depend
+ These places are chosen by the Cabal package management system and depend
  on the target platform and the way you install.
  On Linux the data folder may be
 \emph on
  /usr/share/leksah-0.4/data.
  
 \emph default
-For storing preferences, sessions and collected metadata Leksah constructs
+For storing preferences, sessions and collected meta-data Leksah constructs
  a .leksah directory in your home folder.
  If you want to change or add configuration files for keymaps, source candy,
  etc, you can put them in this place.
 \end_layout
 
 \begin_layout Standard
-If you have any trouble installing Cabal please check with the developers
- to find out if it is a Leksah problem.
+If you have any trouble installing Cabal please check the Wiki, the mailing
+ list or contact the developers at (info at leksah.org) to find out if it
+ is a Leksah problem.
 \end_layout
 
 \begin_layout Standard
@@ -637,20 +638,20 @@ When a file has changed compared to the stored version, the file name is
 On the right side in the status bar you can see the line and column, in
  which the cursor is and if overwrite mode is switched on.
  In the second compartment from the left you can see the currently active
- pane, which is helpful if you want to be shure that you have selected the
+ pane, which is helpful if you want to be sure that you have selected the
  right pane for some operation.
 \end_layout
 
 \begin_layout Standard
 In the edit menu (Figure 5) you find the usual operations: undo, redo, cut,
  copy, paste and select all.
- In addition you can comment and uncomment selected lines in a per line
+ In addition you can comment and un-comment selected lines in a per line
  style (--).
  Furthermore you can align some special characters (=,<-,->,::,|) in selected
  lines.
  The characters are never moved to the left, but the operation is very simple
  and takes the rightmost position of the special character in all lines,
- and inserts spaces before the first occurence of this special characters
+ and inserts spaces before the first occurrence of this special characters
  in the other lines for alignment.
 \end_layout
 
@@ -662,7 +663,7 @@ Search and Replace
 Leksah supports basic functionality for searching in text files.
  When you select Edit/Find from the menu the find bar will open (Figure
  6) and you can type in a text string.
- Hitting the up and down arrow will bring you to the next/previous occurence
+ Hitting the up and down arrow will bring you to the next/previous occurrence
  of the search string.
  Hitting Enter will close the find bar and place the cursor at the currently
  selected search position.
@@ -670,7 +671,7 @@ Leksah supports basic functionality for searching in text files.
  You have options for case sensitive search, for searching only whole worlds
  and for wrapping around, which means that the search will start at the
  beginning/end of the file, when the end/beginning is reached.
- If their is no occurence of the search string the entry turns red.
+ If their is no occurrence of the search string the entry turns red.
 \end_layout
 
 \begin_layout Standard
@@ -835,7 +836,7 @@ Using the source candy feature can give you problems with layout, because
 \begin_layout Standard
 Leksah reads and writes files encoded in UTF-8.
  So you can edit Unicode Haskell source files.
- When you want to do this, switch of source candy, because otherwise unicode
+ When you want to do this, switch of source candy, because otherwise Unicode
  characters may be converted to ASCII when saving the file.
 \end_layout
 
@@ -891,14 +892,14 @@ When selecting Edit/Edit Prefs the preferences pane opens, which has a selection
 \begin_layout Standard
 You can set here the Tab size you want.
  Leksah always stores tabs as spaces to ease the use of layout.
- (As you may know, otherwise only a tab size of 8 can be digested by haskell
+ (As you may know, otherwise only a tab size of 8 can be digested by Haskell
  compilers).
  
 \end_layout
 
 \begin_layout Standard
-Leksah has an option for storing the files with standard unix line ends
- even on Windows, and not using the infamous cr/lf combination.
+Leksah has an option for storing the files with standard UNIX line ends
+ even on Windows, and not using the infamous Cr/Lf combination.
  This is e.g.
  useful if Windows and other users commit to the same repository.
 \end_layout
@@ -957,9 +958,9 @@ Package Menu
 \end_inset
 
 A central concept for any IDE is a package, which is a project for development
- of some library or exectuable you may work on.
+ of some library or executable you may work on.
  One instance of Leksah can only open one package at a time.
- Leksah can store configurations for packages seperately (and does this
+ Leksah can store configurations for packages separately (and does this
  by default), so that you can switch between packages and get exactly back
  to where you stopped when opening a different package.
 \end_layout
@@ -1114,7 +1115,7 @@ The most frequently used functionality with packages is to make a build,
  which is possible after a successful configure.
  When you start a build, the log window will be opened or displayed.
  In the Log window you can see the standard output the Cabal build produces,
- which comes from the Ghc compiler.
+ which comes from the GHC compiler.
  
 \end_layout
 
@@ -1224,7 +1225,7 @@ Leksah then adds a line or an entry to the import list of the affected module
  Leksah imports individual elements, but imports all elements of a class
  or data structure if one of them is needed.
  The import helper can work with qualified identifiers and should add a
- currect import statement.
+ correct import statement.
  You can as well select 
 \emph on
 add all imports
@@ -1246,9 +1247,9 @@ The import helper just looks in imported packages, so if you miss a package
  import it will not be treated automatically.
  If you find that an identifier is not exported by another module and you
  add it their and then run the import helper again, it will still not find
- the identifier, because the meta information theimport mechanism depends
+ the identifier, because the meta information the import mechanism depends
  on was not updated.
- So chosse Metadata / Update project and choose add import again and it
+ So choose Metadata / Update project and choose add import again and it
  should work.
 \end_layout
 
@@ -1437,7 +1438,7 @@ global
 \begin_inset Quotes erd
 \end_inset
 
- approach froom the intuition, that it takes most of our time to find something
+ approach from the intuition, that it takes most of our time to find something
  that is not already imported and 
 \begin_inset Quotes eld
 \end_inset
@@ -1590,7 +1591,7 @@ Go to definition
 \end_layout
 
 \begin_layout Standard
-The easiets way if you want to edit some file is not to choose File open,
+The easiest way if you want to edit some file is not to choose File open,
  but to select the modules pane with local scope, find the module by entering
  text, and double click for editing the file.
 \end_layout
@@ -1690,7 +1691,7 @@ The Info Pane (Figure 15) shows information about an interface element,
  which may be a function, a class, a data definition \SpecialChar \ldots{}
 .
  It shows the identifier, of which sort it is, the package and module that
- it is exported by, it's haskell type and if possible a comment.
+ it is exported by, it's Haskell type and if possible a comment.
  
 \end_layout
 
@@ -1874,7 +1875,7 @@ Usage Pane
 \begin_layout Standard
 As said in the end of the last section, this pane shows which modules import
  a certain element.
- The element is displaed in the top, and the modules which import it are
+ The element is displayed in the top, and the modules which import it are
  displayed in the list box.
  If you double click on an entry in the list box, the corresponding source
  will be opened if possible.
@@ -2074,14 +2075,14 @@ Active panes can be moved between areas in the window.
 
 \begin_layout Standard
 The layout will be saved with sessions.
- The session mechanism will be expained in the next section.
+ The session mechanism will be explained in the next section.
  Currently there is no way to load different layouts independent of the
  other data stored in a sessions.
 \end_layout
 
 \begin_layout Standard
 In the GUI Options part of the Preferences (Figure 21), you can configure
- options regarding the layout, namely were windows of vertain types are
+ options regarding the layout, namely were windows of certain types are
  opened.
  
 \end_layout
@@ -2191,7 +2192,7 @@ Beside of this you have the possibility to store and load named sessions
 You can as well choose to mark Forget Session, if you don't want the current
  session to be stored.
  This can be useful, if something goes wrong (e.g.
- you hit accidently Ctrl - 0 and the layout collapses completely).
+ you hit accidentally Ctrl - 0 and the layout collapses completely).
 \end_layout
 
 \begin_layout Subsection

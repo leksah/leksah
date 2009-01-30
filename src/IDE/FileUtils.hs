@@ -290,7 +290,6 @@ getSysLibDir = do
     let libDir2 = if ord (last libDir) == 13
                     then List.init libDir
                     else libDir
-    trace ("getSysLibDir " ++ libDir2) $ waitForProcess pid
     return (normalise libDir2)
 
 

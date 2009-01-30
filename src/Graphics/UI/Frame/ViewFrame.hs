@@ -179,7 +179,7 @@ viewSwitchTabs = do
     mbNb <- getActiveNotebook
     case mbNb of
         Nothing -> return ()
-        Just nb -> liftIO $do
+        Just nb -> liftIO $ do
             b <- notebookGetShowTabs nb
             notebookSetShowTabs nb (not b)
 
