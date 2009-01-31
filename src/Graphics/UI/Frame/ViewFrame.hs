@@ -54,7 +54,7 @@ module Graphics.UI.Frame.ViewFrame (
 ,   newNotebook
 
 -- * Accessing GUI elements
-,   widgetFromPath
+--,   widgetFromPath
 ,   getUIAction
 ,   widgetGet
 
