@@ -261,9 +261,9 @@ prefsDescription packages = NFDPP [
                 $ paraSynopsis <<<- ParaSynopsis
                     "Empty for do not use or the name of a candy file in a config dir"
                     $ paraShadow <<<- ParaShadow ShadowIn $ emptyParams)
-            (\a -> PP.text (case a of Nothing -> ""; Just s -> s))
-            (do id <- identifier
-                return (if null id then Nothing else Just (id)))
+            (\a -> PP.text (case a of Nothing -> show ""; Just s -> show s))
+            (do str <- stringParser
+                return (if null str then Nothing else Just (str)))
             sourceCandy (\b a -> a{sourceCandy = b})
             (maybeEditor ((stringEditor (\s -> not (null s))), paraName <<<- ParaName "Candy specification"
                                     $ emptyParams)
