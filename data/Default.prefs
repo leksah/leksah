@@ -9,7 +9,7 @@ Use standard line ends even on windows:
                True
 Remove trailing blanks when saving a file:
                True
-Source candy:  Default
+Source candy:  "Default"
      --Empty for do not use or the name of a candy file in a config dir
 Name of the keymap:
                Default
