@@ -60,6 +60,7 @@ import Text.Regex.Posix
 import System.IO.Unsafe (unsafePerformIO)
 import Text.Regex.Posix.String (execute,compile)
 import IDE.Metainfo.GHCUtils (findFittingPackages,getInstalledPackageInfos,inGhc)
+--import Debug.Trace
 
 --
 -- | Searching of metadata
@@ -166,6 +167,7 @@ loadAccessibleInfo =
     let version     =   cProjectVersion in do
         collectorPath   <-  lift $ getCollectorPath version
         packageInfos    <-  inGhc $ getInstalledPackageInfos
+ --       trace ("allInfos " ++ show (map (DP.unpackPackageId . DP.packageConfigId) packageInfos)) $ return ()
         packageList     <-  liftIO $ mapM (loadInfosForPackage collectorPath False)
                                                     (map DP.package packageInfos)
         let scope       =   foldr buildScope (Map.empty,Map.empty)

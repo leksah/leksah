@@ -83,15 +83,15 @@ collectSources sourceMap pdescr = do
             let bis         =   allBuildInfo pkgDescr
             let buildPaths  =   if hasExes pkgDescr
                                 then let exeName' = exeName (head (executables pkgDescr))
-                                     in -- map (\p -> basePath </> p) $
+                                     in  map (\p -> basePath </> p) $
                                         ("dist" </> "build" </> exeName' </>
                                                     exeName' ++ "-tmp" </> "") :
                                         ("dist" </> "build" </> "autogen") : (".")
                                                 : (nub $ concatMap hsSourceDirs bis)
-                                else -- map (\p -> basePath </> p) $
+                                else  map (\p -> basePath </> p) $
                                         ("dist" </> "build" </> "autogen") : (".")
                                                 : (nub $ concatMap hsSourceDirs bis)
-            let includes    =   {-- map (\p -> basePath </> p)  $ --} nub $ concatMap includeDirs bis
+            let includes    =    map (\p -> basePath </> p)  $ nub $ concatMap includeDirs bis
             dflags             <-  getSessionDynFlags
             let dflags2 = dflags {
                 topDir    = basePath,
@@ -142,17 +142,18 @@ collectSourcesForPackage :: PackageDescr -> [String] -> [String] -> Ghc ([Module
 collectSourcesForPackage pkgDescr sourceFiles interesting = do
     targets <- mapM (\f -> guessTarget f Nothing) sourceFiles
     setTargets targets
-    trace ("before depanal") $ return ()
     modgraph <- depanal [] False
-    trace ("after depanal") $ return ()
     let orderedMods = flattenSCCs $ topSortModuleGraph False modgraph Nothing
-    let interestingMods = filter (\m -> elem (moduleNameString (ms_mod_name m)) interesting) orderedMods
-    let orderedTupels = catMaybes (map (\om -> case filter (\m -> ((moduleNameString . moduleName . ms_mod) om) ==
-                                		(display .  modu . moduleIdMD) m)
-                                    			(exposedModulesPD pkgDescr) of
-						[] -> trace ("Cant find module source " ++ (moduleNameString . moduleName . ms_mod) om) $ Nothing
-						(x:_) -> (Just (x,om))) interestingMods)
-    foldM collectSourcesForModule ([],0) orderedTupels
+    let tupels = catMaybes $ map (filterMods orderedMods) (exposedModulesPD pkgDescr)
+    foldM collectSourcesForModule ([],0) tupels
+        where
+            moduleNameModSummary  =  moduleNameString . moduleName . ms_mod
+            moduleNameModuleDescr = display . modu . moduleIdMD
+            filterMods ordered mod =
+                case filter (\om -> moduleNameModSummary om == moduleNameModuleDescr mod) ordered of
+                    []    -> trace ("Missing source for module " ++ moduleNameModuleDescr mod) Nothing
+                    (x:_) -> Just (mod,x)
+
 
 collectSourcesForModule :: ([ModuleDescr],Int) -> (ModuleDescr, ModSummary) -> Ghc ([ModuleDescr],Int)
 collectSourcesForModule (moduleDescrs,failureCount) (modD,modsum) = gcatch (do
