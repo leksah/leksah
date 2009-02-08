@@ -77,7 +77,6 @@ import Graphics.UI.Gtk.Gdk.Events(Modifier(..))
 import qualified Data.Map as Map
 import Data.Set(Set)
 import qualified Data.Set as Set
-import GHC(Ghc)
 
 import Default
 import IDE.Exception

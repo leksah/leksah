@@ -2,6 +2,9 @@
 --Allowed Modifiers are <shift>	<ctrl> <alt> <apple> <compose>
 --<apple> is the Windows key on PC keyboards
 --<compose> is often labelled Alt Gr.
+--The defined values for the keys can can be found at
+-- http://gitweb.freedesktop.org/?p=xorg/proto/x11proto.git;a=blob_plain;f=keysymdef.h.
+-- The names of the keys are the names of the macros without the prefix.
 
 
 --File
@@ -75,8 +78,10 @@ F3                          ->          EditFindNext     "Find the next occurenc
 <ctrl><shift>j          ->          PreviousError
 
 <ctrl>m                 ->          ShowModules
-<ctrl>i                 ->          ShowInterface
-<ctrl>i                 ->          ShowInfo
+
+
+--<ctrl>i                 ->          ShowInterface
+-- <ctrl>i                 ->          ShowInfo
 
 
 <ctrl><shift>e          ->          EditAlignEqual
@@ -86,3 +91,6 @@ F3                          ->          EditFindNext     "Find the next occurenc
 
 -- <alt>i                  ->          AddOneImport
 -- <alt><shift>i           ->          AddAllImports
+
+<ctrl>Page_Up           ->          FlipUp
+<ctrl>Page_Down         ->          FlipDown

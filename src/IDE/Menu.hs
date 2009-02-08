@@ -55,6 +55,7 @@ import IDE.GUIHistory
 import Debug.Trace
 import IDE.Metainfo.Provider (rebuildLibInfo,rebuildActiveInfo)
 import IDE.Pane.Info (showInfo)
+import IDE.NotebookFlipper
 --
 -- | The Actions known to the system (they can be activated by keystrokes or menus)
 --
@@ -222,6 +223,11 @@ actions =
     ,AD "ViewClosePane" "Close pane" Nothing (Just "gtk-close")
         sessionClosePane [] False
 
+    ,AD "FlipDown" "Flip down" Nothing Nothing
+        flipDown [] False
+    ,AD "FlipUp" "Flip up" Nothing Nothing
+        flipUp [] False
+
     ,AD "ViewHistoryBack" "Back" Nothing (Just "gtk-go-back")
         historyBack [] False
     ,AD "ViewHistoryForth" "Forward" Nothing (Just "gtk-go-forward")
@@ -294,11 +300,11 @@ makeMenu uiManager actions menuDescription = reifyIDE (\ideR -> do
 quit :: IDEAction
 quit = do
     saveSession :: IDEAction
-    modifyIDE_ (\ide -> return (ide{isShuttingDown = True}))
+    modifyIDE_ (\ide -> return (ide{currentState = IsShuttingDown}))
     b <- fileCloseAll
     if b
         then liftIO mainQuit
-        else modifyIDE_ (\ide -> return (ide{isShuttingDown = False}))
+        else modifyIDE_ (\ide -> return (ide{currentState = IsRunning}))
 
 --
 -- | Show the about dialog

@@ -133,4 +133,6 @@
        <separator/>
       </placeholder>
    </toolbar>
+   <accelerator name="FlipUp" action="FlipUp"/>
+   <accelerator name="FlipDown" action="FlipDown"/>
  </ui>

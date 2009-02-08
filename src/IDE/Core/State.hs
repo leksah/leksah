@@ -20,6 +20,7 @@ module IDE.Core.State (
     IDEObject
 ,   IDEEditor
 ,   IDE(..)
+,   IDEState(..)
 ,   IDERef
 ,   IDEM
 ,   IDEAction
@@ -142,7 +143,7 @@ data IDE            =  IDE {
                                                 --the second is the scope in the current package
 ,   handlers        ::   Map String [(Unique, IDEEvent -> IDEM IDEEvent)]
                                                 -- ^ event handling table
-,   isShuttingDown  ::   Bool
+,   currentState    ::   IDEState
 ,   guiHistory      ::   (Bool,[GUIHistory],Int)
 ,   findbar         ::   Toolbar
 ,   toolbar         ::   Maybe Toolbar
@@ -150,6 +151,11 @@ data IDE            =  IDE {
 ,   toolbarVisible  ::   Bool
 } --deriving Show
 
+data IDEState =
+        IsStartingUp
+    |   IsShuttingDown
+    |   IsRunning
+    |   IsFlipping TreeView
 
 data IDEEvent  =
         CurrentInfo

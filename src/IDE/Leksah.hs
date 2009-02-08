@@ -188,7 +188,7 @@ startGUI sessionFilename = do
           ,   accessibleInfo     =   Nothing
           ,   currentInfo   =   Nothing
           ,   handlers      =   Map.empty
-          ,   isShuttingDown =  False
+          ,   currentState  =   IsStartingUp
           ,   guiHistory    =   (False,[],-1)
           ,   findbar       =   findBar
           ,   toolbar       =   Nothing
@@ -253,6 +253,7 @@ startGUI sessionFilename = do
         fontDescriptionSetSize fdesc (fromJust fds + 0.01)
         mapM_ (\buf -> widgetModifyFont (castToWidget $sourceView buf) (Just fdesc)) buffers
 -- end patch
+        reflectIDE (modifyIDE_ (\ide -> return ide{currentState = IsRunning})) ideR
         mainGUI
 
 --

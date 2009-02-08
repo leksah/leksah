@@ -383,10 +383,10 @@ newTextBuffer panePath bn mbfn = do
 
 checkModTime :: IDEBuffer -> IDEAction
 checkModTime buf = do
-    isShuttingDown' <- readIDE isShuttingDown
-    if isShuttingDown'
-        then return ()
-        else do
+    currentState' <- readIDE currentState
+    case  currentState' of
+        IsShuttingDown -> return ()
+        _              -> do
             panes <- readIDE panes
             let name = paneName buf
             case fileName buf of
