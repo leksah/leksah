@@ -227,21 +227,8 @@ instance Pane PackagePane IDEM
     getAddedIndex _ =   0
     getTopWidget    =   castToWidget . packageBox
     paneId b        =   "*Package"
-    makeActive p    =  activatePane p []
-    close pane      =   do
-        (panePath,_)    <-  guiPropertiesFromName (paneName pane)
-        nb              <-  getNotebook panePath
-        mbI             <-  liftIO $notebookPageNum nb (getTopWidget pane)
-        case mbI of
-            Nothing ->  liftIO $ do
-                sysMessage Normal "notebook page not found: unexpected"
-                return ()
-            Just i  ->  do
-                deactivatePaneIfActive pane
-                liftIO $ do
-                    notebookRemovePage nb i
-                    widgetDestroy (getTopWidget pane)
-                removePaneAdmin pane
+    makeActive p    =   activatePane p []
+    close           =   closePane
 
 instance RecoverablePane PackagePane PackageState IDEM where
     saveState p     =   return Nothing

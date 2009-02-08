@@ -96,7 +96,7 @@ getPane = do
     selectedPanes <- getPanes
     if null selectedPanes || length selectedPanes > 1
         then return Nothing
-        else (return (Just $head selectedPanes))
+        else (return (Just $ head selectedPanes))
 
 getPanes ::  RecoverablePane alpha beta delta => delta ([alpha])
 getPanes = do

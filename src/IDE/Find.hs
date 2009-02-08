@@ -44,7 +44,6 @@ import Data.List
 import IDE.Core.State
 import IDE.Pane.SourceBuffer
 import Data.Char (toUpper)
-import Debug.Trace
 
 data FindState = FindState {
             entryStr        ::    String
@@ -95,7 +94,7 @@ setFindState fs = do
 
 hideToolbar :: IDEAction
 hideToolbar = do
-    mbtb <- trace "hide tool bar" $ readIDE toolbar
+    mbtb <- readIDE toolbar
     case mbtb of
         Nothing -> return ()
         Just tb -> do

@@ -95,18 +95,7 @@ instance Pane IDEModules IDEM
     makeActive p    =   do
         activatePane p []
         --liftIO $ widgetGrabFocus (descrView p)
-    close pane      =   do
-        (panePath,_)    <-  guiPropertiesFromName (paneName pane)
-        nb              <-  getNotebook panePath
-        mbI             <-  liftIO $notebookPageNum nb (getTopWidget pane)
-        case mbI of
-            Nothing ->  throwIDE "Pane>IDEModules: notebook page not found: unexpected"
-            Just i  ->  do
-                deactivatePaneIfActive pane
-                liftIO $ do
-                    notebookRemovePage nb i
-                    widgetDestroy (getTopWidget pane)
-                removePaneAdmin pane
+    close           =   closePane
 
 instance RecoverablePane IDEModules ModulesState IDEM where
     saveState p     =   do

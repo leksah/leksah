@@ -1,4 +1,4 @@
-{-# OPTIONS_GHC  -XDeriveDataTypeable -XMultiParamTypeClasses -XTypeSynonymInstances #-}
+{-# OPTIONS_GHC  -XDeriveDataTypeable -XMultiParamTypeClasses -XTypeSynonymInstances -XScopedTypeVariables #-}
 -----------------------------------------------------------------------------
 --
 -- Module      :  IDE.Pane.SourceBuffer
@@ -84,6 +84,7 @@ import qualified System.IO.UTF8 as UTF8
 import Graphics.UI.Gtk.Gdk.Enums (Modifier(..))
 import qualified Graphics.UI.Gtk.Gdk.Events as G (Event(..))
 import Data.IORef (writeIORef,readIORef,newIORef,IORef(..))
+import Graphics.UI.Frame.Panes (IDEPane(..))
 
 --
 -- | A text editor pane description
@@ -138,7 +139,6 @@ instance Pane IDEBuffer IDEM
         idleAdd (do
             widgetQueueDraw sv -- Patch for problem on one machine ##
             return False) priorityDefaultIdle
-      modifyIDE_ (\ide -> return (ide{lastActiveBufferPane = Just (paneName actbuf)}))
       triggerEvent ideR (Sensitivity [(SensitivityEditor, True)])
       checkModTime actbuf
     close pane = do makeActive pane
@@ -190,6 +190,14 @@ selectSourceBuf fp = do
                     nbuf <- newTextBuffer path (takeFileName fpc) (Just fpc)
                     return (Just nbuf)
                 else return Nothing
+
+lastActiveBufferPane :: IDEM (Maybe PaneName)
+lastActiveBufferPane = do
+    recentPanes' <- readIDE recentPanes
+    mbBufs       <- mapM mbPaneFromName recentPanes'
+    case (catMaybes $ map (\ (PaneC p) -> cast p) $ catMaybes mbBufs) :: [IDEBuffer] of
+        (hd : _) -> return (Just (paneName hd))
+        _        -> return Nothing
 
 goToDefinition :: Descr -> IDEAction
 goToDefinition idDescr = do
@@ -266,7 +274,7 @@ allBuffers = getPanes
 
 maybeActiveBuf :: IDEM (Maybe IDEBuffer)
 maybeActiveBuf = do
-    mbPane   <- readIDE lastActiveBufferPane
+    mbPane   <- lastActiveBufferPane
     case mbPane of
         Nothing -> return Nothing
         Just paneName -> do
@@ -647,12 +655,7 @@ fileClose' nb gtkbuf currentBuffer i = do
     if cancel
         then return False
         else do
-            deactivatePane
-            modifyIDE_ (\ide -> return (ide{lastActiveBufferPane = Nothing}))
-            removePaneAdmin currentBuffer
-            liftIO $ do
-                notebookRemovePage nb i
-                widgetDestroy (getTopWidget currentBuffer)
+            closePane currentBuffer
             return True
 
 

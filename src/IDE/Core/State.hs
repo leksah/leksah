@@ -46,6 +46,7 @@ module IDE.Core.State (
 ,   activatePane
 ,   deactivatePane
 ,   deactivatePaneIfActive
+,   closePane
 
 ,   getCandyState
 ,   setCandyState
@@ -126,7 +127,7 @@ data IDE            =  IDE {
 ,   uiManager       ::   UIManager               -- ^ the gtk uiManager
 ,   panes           ::   Map PaneName (IDEPane IDEM)    -- ^ a map with all panes (subwindows)
 ,   activePane      ::   Maybe (PaneName,Connections)
-,   lastActiveBufferPane :: Maybe PaneName
+,   recentPanes     ::   [PaneName]
 ,   paneMap         ::   Map PaneName (PanePath, Connections)
                     -- ^ a map from the pane name to its gui path and signal connections
 ,   layout          ::   PaneLayout              -- ^ a description of the general gui layout
@@ -321,7 +322,8 @@ activatePane pane conn = do
             trigger (Just (paneName pane)) (case mbAP of
                                                     Nothing -> Nothing
                                                     Just (pn,_) -> Just pn)
-            ideRef <- ask
+            modifyIDE_ (\ide -> return ide{recentPanes =
+                paneName pane : filter (/= paneName pane) (recentPanes ide)})
             return ()
 
 trigger :: Maybe String -> Maybe String -> IDEAction
@@ -365,6 +367,22 @@ deactivatePaneIfActive pane = do
                         then deactivatePane
                         else return ()
 
+closePane :: Pane alpha IDEM  => alpha -> IDEAction
+closePane pane = do
+    (panePath,_)    <-  guiPropertiesFromName (paneName pane)
+    nb              <-  getNotebook panePath
+    mbI             <-  liftIO $notebookPageNum nb (getTopWidget pane)
+    case mbI of
+        Nothing ->  liftIO $ do
+            sysMessage Normal "notebook page not found: unexpected"
+            return ()
+        Just i  ->  do
+            deactivatePaneIfActive pane
+            liftIO $ do
+                notebookRemovePage nb i
+                widgetDestroy (getTopWidget pane)
+            removePaneAdmin pane
+            modifyIDE_ (\ide -> return ide{recentPanes = filter (/= paneName pane) (recentPanes ide)})
 
 -- get widget elements (menu)
 

@@ -61,20 +61,7 @@ instance Pane IDEFlags IDEM
     getTopWidget    =   castToWidget . flagsBox
     paneId b        =   "*Flags"
     makeActive prefs =  activatePane prefs []
-    close pane      =   do
-        (panePath,_)    <-  guiPropertiesFromName (paneName pane)
-        nb              <-  getNotebook panePath
-        mbI             <-  liftIO $notebookPageNum nb (getTopWidget pane)
-        case mbI of
-            Nothing ->  liftIO $ do
-                sysMessage Normal "notebook page not found: unexpected"
-                return ()
-            Just i  ->  do
-                deactivatePaneIfActive pane
-                liftIO $ do
-                    notebookRemovePage nb i
-                    widgetDestroy (getTopWidget pane)
-                removePaneAdmin pane
+    close           =   closePane
 
 instance RecoverablePane IDEFlags FlagsState IDEM where
     saveState p     =   do

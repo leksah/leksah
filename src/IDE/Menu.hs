@@ -52,7 +52,6 @@ import IDE.Pane.Search
 import IDE.Pane.Callers
 import Paths_leksah
 import IDE.GUIHistory
-import Debug.Trace
 import IDE.Metainfo.Provider (rebuildLibInfo,rebuildActiveInfo)
 import IDE.Pane.Info (showInfo)
 import IDE.NotebookFlipper
@@ -254,7 +253,7 @@ actions =
 menuDescription :: IO String
 menuDescription = do
     prefsPath   <-  getConfigFilePathForLoad "Default.menu"
-    res       <-  trace ("read from path : " ++ prefsPath) $ readFile prefsPath
+    res         <-  readFile prefsPath
     return res
 
 --

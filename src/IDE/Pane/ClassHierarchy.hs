@@ -66,18 +66,7 @@ instance Pane IDEClassHierarchy IDEM
     getTopWidget    =   castToWidget . outer
     paneId b        =   "*ClassHierarchy"
     makeActive p    =   activatePane p []
-    close pane      =   do
-        (panePath,_)    <-  guiPropertiesFromName (paneName pane)
-        nb              <-  getNotebook panePath
-        mbI             <-  liftIO $notebookPageNum nb (getTopWidget pane)
-        case mbI of
-            Nothing ->  throwIDE "Pane>IDEClassHierarchy: notebook page not found: unexpected"
-            Just i  ->  do
-                deactivatePaneIfActive pane
-                liftIO $ do
-                    notebookRemovePage nb i
-                    widgetDestroy (getTopWidget pane)
-                removePaneAdmin pane
+    close           =   closePane
 
 instance RecoverablePane IDEClassHierarchy ClassHierarchyState IDEM where
     saveState p     =   return Nothing

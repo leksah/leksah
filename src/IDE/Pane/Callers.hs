@@ -65,20 +65,8 @@ instance Pane IDECallers IDEM
     getTopWidget    =   castToWidget . topBox
     paneId b        =   "*Usage"
     makeActive p    =   activatePane p []
-    close pane      =   do
-        (panePath,_)    <-  guiPropertiesFromName (paneName pane)
-        nb              <-  getNotebook panePath
-        mbI             <-  liftIO $notebookPageNum nb (getTopWidget pane)
-        case mbI of
-            Nothing ->  liftIO $ do
-                sysMessage Normal "notebook page not found: unexpected"
-                return ()
-            Just i  ->  do
-                deactivatePaneIfActive pane
-                liftIO $ do
-                    notebookRemovePage nb i
-                    widgetDestroy (getTopWidget pane)
-                removePaneAdmin pane
+    close           =   closePane
+
 
 -- | We don't recover this pane
 instance RecoverablePane IDECallers CallersState IDEM where
