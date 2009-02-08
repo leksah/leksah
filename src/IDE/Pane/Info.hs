@@ -47,6 +47,7 @@ import IDE.Pane.SourceBuffer
 import IDE.Pane.Callers
 import Graphics.UI.Editor.Basics
 import MyMissing
+import IDE.FileUtils (openBrowser)
 
 
 
@@ -204,7 +205,6 @@ initInfo panePath nb idDescr = do
             usesB       <- buttonNewWithLabel "Usage"
             docuB       <- buttonNewWithLabel "Docu"
             searchB     <- buttonNewWithLabel "Find"
-            widgetSetSensitivity docuB False
             boxPackStartDefaults bb definitionB
             boxPackStartDefaults bb moduB
             boxPackStartDefaults bb usesB
@@ -232,6 +232,12 @@ initInfo panePath nb idDescr = do
                     Just descr -> reflectIDE (do
                                     triggerEvent ideR (SearchMeta (descrName' descr))
                                     showInfo) ideR )
+            docuB `onClicked` (do
+                mbDescr <- ext idDescr
+                case mbDescr of
+                    Nothing -> return ()
+                    Just descr -> reflectIDE (
+                        openBrowser $ docuSearchURL prefs ++ descrName' descr) ideR)
             notebookInsertOrdered nb sw (paneName info) Nothing
             widgetShowAll sw
             return (info,[])

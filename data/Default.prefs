@@ -21,7 +21,6 @@ Window default size:
      --Default size of the main ide window specified as pair (int,int)
 Use ctrl Tab for Notebook flipper:
                True
-Browser:       "firefox"
 Standard source pane path:
                [LeftP]
 Standard log pane path:
@@ -36,3 +35,6 @@ Update metadata after every build:
                True
 Update metadata at startup:
                True
+Browser:       "firefox"
+URL for searching documentation:
+                "http://holumbus.fh-wedel.de/hayoo/hayoo.html?query="

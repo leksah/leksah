@@ -323,14 +323,6 @@ prefsDescription packages = NFDPP [
             boolEditor
             (\i -> return ())
     ,   mkFieldPP
-            (paraName <<<- ParaName "Browser" $ emptyParams)
-            (PP.text . show)
-            stringParser
-            browser
-            (\b a -> a{browser = b})
-            (stringEditor (\s -> not (null s)))
-            (\i -> return ())
-    ,   mkFieldPP
             (paraName <<<- ParaName "Standard source pane path" $ emptyParams)
             (PP.text . show)
             readParser
@@ -410,6 +402,28 @@ prefsDescription packages = NFDPP [
             (maybeEditor ((fileEditor (Just "~/.cabal/packages/") FileChooserActionSelectFolder
                 "Select folder"), emptyParams) True "Yes")
             (\i -> return ())
+    ]),
+    ("Help", VFDPP emptyParams [
+        mkFieldPP
+            (paraName <<<- ParaName "Browser" $ emptyParams)
+            (PP.text . show)
+            stringParser
+            browser
+            (\b a -> a{browser = b})
+            (stringEditor (\s -> not (null s)))
+            (\i -> return ())
+    ,   mkFieldPP
+            (paraName <<<- ParaName "URL for searching documentation" $
+                paraSynopsis <<<- ParaSynopsis
+                    ("e.g Hoogle: http://www.haskell.org/hoogle/?q= or " ++
+                        "Hayoo: http://holumbus.fh-wedel.de/hayoo/hayoo.html?query=")
+                        $ emptyParams)
+            (PP.text . show)
+            stringParser
+            docuSearchURL
+            (\b a -> a{docuSearchURL = b})
+            (stringEditor (\s -> not (null s)))
+            (\i -> return ())
     ])]
 
 instance Default PackageIdentifier where
@@ -439,6 +453,7 @@ defaultPrefs = Prefs {
     ,   collectAtStart      =   True
     ,   autoExtractTars     =   Nothing
     ,   useCtrlTabFlipping  =   True
+    ,   docuSearchURL       =   "http://holumbus.fh-wedel.de/hayoo/hayoo.html?query="
     }
 
 -- ------------------------------------------------------------

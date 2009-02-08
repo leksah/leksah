@@ -15,6 +15,7 @@ module IDE.FileUtils (
 ,   isSubPath
 ,   findSourceFile
 ,   autoExtractTarFiles
+,   openBrowser
 
 ) where
 
@@ -40,6 +41,12 @@ import Debug.Trace
 import Paths_leksah
 import IDE.Core.State
 import Data.Char (ord)
+
+openBrowser :: String -> IDEAction
+openBrowser url = do
+    prefs' <- readIDE prefs
+    liftIO $ runProcess (browser prefs') [url] Nothing Nothing Nothing Nothing Nothing
+    return ()
 
 -- | Returns True if the second path is a location which starts with the first path
 isSubPath :: FilePath -> FilePath -> Bool
