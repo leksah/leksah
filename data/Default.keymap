@@ -89,8 +89,10 @@ F3                          ->          EditFindNext     "Find the next occurenc
 <ctrl><shift>r          ->          EditAlignRightArrow
 <ctrl><shift>t          ->          EditAlignTypeSig
 
--- <alt>i                  ->          AddOneImport
--- <alt><shift>i           ->          AddAllImports
+<alt>i                  ->          AddOneImport
+<alt><shift>i           ->          AddAllImports
 
-<ctrl>Page_Up           ->          FlipUp
-<ctrl>Page_Down         ->          FlipDown
+-- "For the next to entries the <ctrl> modifier is mandatory"
+<ctrl>Page_Up           ->          FlipUp          "Switch to next pane in reverse recently used oder"
+<ctrl>Page_Down         ->          FlipDown        "Switch to next pane in recently used oder"
+

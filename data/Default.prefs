@@ -19,6 +19,8 @@ LogView Font:  "Sans 10"
 Window default size:
                (800,800)
      --Default size of the main ide window specified as pair (int,int)
+Use ctrl Tab for Notebook flipper:
+               True
 Browser:       "firefox"
 Standard source pane path:
                [LeftP]

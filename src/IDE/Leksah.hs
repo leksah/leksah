@@ -64,6 +64,7 @@ import Graphics.UI.Editor.Composite (maybeEditor)
 import Graphics.UI.Editor.Simple (fileEditor)
 --import Outputable (ppr,showSDoc)
 import IDE.Metainfo.GHCUtils (inGhcIO)
+import IDE.NotebookFlipper (flipUp,flipDown)
 
 -- ---------------------------------------------------------------------
 -- Command line options
@@ -260,41 +261,51 @@ startGUI sessionFilename = do
 -- | Callback function for onKeyPress of the main window, so 'preprocess' any key
 --
 handleSpecialKeystrokes :: GdkEvents.Event -> IDEM Bool
-handleSpecialKeystrokes (Key _ _ _ mods _ _ _ keyVal name mbChar) = do
-    bs <- getCandyState
-    when bs $ editKeystrokeCandy mbChar
-    sk  <- readIDE specialKey
-    sks <- readIDE specialKeys
+handleSpecialKeystrokes (Key { eventKeyName = name,  eventModifier = mods,
+                                eventKeyVal = keyVal, eventKeyChar = mbChar}) = do
     sb <- getSBSpecialKeys
-    case sk of
-        Nothing -> do
-            case Map.lookup (keyVal,sort mods) sks of
-                Nothing -> do
-                    liftIO $statusbarPop sb 1
-                    liftIO $statusbarPush sb 1 ""
-                    return False
-                Just map -> do
-                    sb <- getSBSpecialKeys
-                    let sym = printMods mods ++ name
-                    liftIO $statusbarPop sb 1
-                    liftIO $statusbarPush sb 1 sym
-                    modifyIDE_ (\ide -> return (ide{specialKey = Just (map,sym)}))
-                    return True
-        Just (map,sym) -> do
-            case Map.lookup (keyVal,sort mods) map of
-                Nothing -> do
-                    sb <- getSBSpecialKeys
-                    liftIO $statusbarPop sb 1
-                    liftIO $statusbarPush sb 1 $sym ++ printMods mods ++ name ++ "?"
-                    return ()
-                Just (AD actname _ _ _ ideAction _ _) -> do
-                    sb <- getSBSpecialKeys
-                    liftIO $statusbarPop sb 1
-                    liftIO $statusbarPush sb 1
-                        $sym ++ " " ++ printMods mods ++ name ++ "=" ++ actname
-                    ideAction
-            modifyIDE_ (\ide -> return (ide{specialKey = Nothing}))
-            return True
+    prefs' <- readIDE prefs
+    case (name, mods) of
+		(tab, [Control]) | (tab == "Tab" || tab == "ISO_Left_Tab")
+		                        && useCtrlTabFlipping prefs'      -> do
+		    flipDown
+		    return True
+		(tab, [Shift, Control]) | (tab == "Tab" || tab == "ISO_Left_Tab")
+		                        && useCtrlTabFlipping prefs'      -> do
+		    flipUp
+		    return True
+		_                                                            -> do
+                bs <- getCandyState
+                when bs (editKeystrokeCandy mbChar)
+                sk  <- readIDE specialKey
+                sks <- readIDE specialKeys
+                return True
+                case sk of
+                    Nothing ->
+                        case Map.lookup (keyVal,sort mods) sks of
+                            Nothing -> do
+                                liftIO $statusbarPop sb 1
+                                liftIO $statusbarPush sb 1 ""
+                                return False
+                            Just map -> do
+                                let sym = printMods mods ++ name
+                                liftIO $statusbarPop sb 1
+                                liftIO $statusbarPush sb 1 sym
+                                modifyIDE_ (\ide -> return (ide{specialKey = Just (map,sym)}))
+                                return True
+                    Just (map,sym) -> do
+                        case Map.lookup (keyVal,sort mods) map of
+                            Nothing -> do
+                                liftIO $statusbarPop sb 1
+                                liftIO $statusbarPush sb 1 $ sym ++ printMods mods ++ name ++ "?"
+                                return ()
+                            Just (AD actname _ _ _ ideAction _ _) -> do
+                                liftIO $statusbarPop sb 1
+                                liftIO $statusbarPush sb 1
+                                    $ sym ++ " " ++ printMods mods ++ name ++ "=" ++ actname
+                                ideAction
+                        modifyIDE_ (\ide -> return (ide{specialKey = Nothing}))
+                        return True
     where
     printMods :: [Modifier] -> String
     printMods []    = ""

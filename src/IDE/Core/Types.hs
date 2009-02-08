@@ -155,6 +155,7 @@ data Prefs = Prefs {
     ,   collectAfterBuild   ::   Bool
     ,   collectAtStart      ::   Bool
     ,   autoExtractTars     ::   Maybe FilePath
+    ,   useCtrlTabFlipping  ::   Bool
 } deriving(Eq,Show)
 
 data SearchHint = Forward | Backward | Insert | Delete | Initial

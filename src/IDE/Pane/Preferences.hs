@@ -315,6 +315,14 @@ prefsDescription packages = NFDPP [
                             paraName <<<- ParaName "Y" $ emptyParams))
             (\a -> return ())
     ,   mkFieldPP
+            (paraName <<<- ParaName "Use ctrl Tab for Notebook flipper" $ emptyParams)
+            (PP.text . show)
+            boolParser
+            useCtrlTabFlipping
+            (\b a -> a{useCtrlTabFlipping = b})
+            boolEditor
+            (\i -> return ())
+    ,   mkFieldPP
             (paraName <<<- ParaName "Browser" $ emptyParams)
             (PP.text . show)
             stringParser
@@ -430,6 +438,7 @@ defaultPrefs = Prefs {
     ,   collectAfterBuild   =   False
     ,   collectAtStart      =   True
     ,   autoExtractTars     =   Nothing
+    ,   useCtrlTabFlipping  =   True
     }
 
 -- ------------------------------------------------------------
