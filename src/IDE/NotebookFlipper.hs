@@ -114,7 +114,7 @@ initFlipper direction = do
             widgetDestroy window)
         set window [windowWindowPosition := WinPosCenterOnParent]
         n <- New.treeModelIterNChildren store Nothing
-        New.treeViewSetCursor tree [if direction then 0 else (n-1)] Nothing
+        New.treeViewSetCursor tree [if direction then min 1 (n-1) else (n-1)] Nothing
         widgetShowAll window
         return tree
     modifyIDE_ (\ide -> return (ide{currentState = IsFlipping tree'}))
