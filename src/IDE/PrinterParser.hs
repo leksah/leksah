@@ -35,8 +35,7 @@ import qualified Text.PrettyPrint.HughesPJ as PP
 
 import Graphics.UI.Editor.Parameters
 import Graphics.UI.Editor.Basics
-import System.IO.Unsafe (unsafePerformIO)
-import Control.Monad (liftM)
+import Data.Maybe (listToMaybe)
 
 
 type Printer beta       =   beta -> PP.Doc
@@ -103,12 +102,12 @@ readParser = do
     str <- many (noneOf ['\n'])
     if null str
         then unexpected "read parser on empty string"
-        else case unsafePerformIO
-                    (catch (liftM Just (readIO str))
-                        (\e -> return Nothing)) of
+        else do
+            case maybeRead str of
                 Nothing -> unexpected $ "read parser no parse " ++ str
                 Just r -> return r
     <?> "read parser"
+        where maybeRead = listToMaybe . map fst . filter (null . snd) . reads
 
 pairParser ::  CharParser () alpha ->  CharParser () (alpha,alpha)
 pairParser p2 = do

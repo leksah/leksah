@@ -934,51 +934,6 @@ transChar c   = c
 align :: Char -> IDEAction
 align = alignChar . transChar
 
---
---alignEqual :: IDEAction
---alignEqual = alignChar '='
---
---alignRightArrow :: IDEAction
---alignRightArrow = alignChar (toEnum 0x2192) --RIGHTWARDS ARROW
---
---alignLeftArrow :: IDEAction
---alignLeftArrow = alignChar (toEnum 0x2190) --LEFTWARDS ARROW
---
---alignTypeOf :: IDEAction
---alignTypeOf = alignChar (toEnum 0x2237) --PROPORTION
-
---guessLanguage :: Maybe FilePath -> Maybe String
---guessLanguage Nothing = Just "Haskell"
---guessLanguage (Just fp) =
---    case takeExtension fp of
---        ".c"       -> Just "C"
---        ".hs"      -> Just "Haskell"
---        ".chs"     -> Just "Haskell"
---        ".hsc"     -> Just "Haskell"
---        ".lhs"     -> Just "Literate Haskell"
---        ".haddock" -> Just "Haddock"
---        _         -> Nothing
-
-{--
-sourceLanguageForFilename :: SourceLanguageManager -> Maybe String -> IO (Maybe String, Maybe SourceLanguage)
-sourceLanguageForFilename lm Nothing         =
-    liftM (\l -> (Just "haskell", Just l)) ()
-sourceLanguageForFilename lm (Just filename) =
-    let extension = takeExtension filename in do
-        ids      <- sourceLanguageManagerGetLanguageIds lm
-        relevant <- filterM  (\id -> do
-                        lang  <- sourceLanguageManagerGetLanguage lm id
-                        globs <- sourceLanguageGetGlobs lang
-                        return (match extension globs)) ids
-        case relevant of
-            []   -> return (Nothing,Nothing)
-            hd:_ -> liftM (\l -> (Just hd, Just l)) (sourceLanguageManagerGetLanguage lm hd)
-    where
-    match :: String -> [String] -> Bool
-    match ext = not . null . filter (== ext) . map (drop 1)
---}
-
-
 sourceLanguageForFilename :: SourceLanguageManager -> Maybe String -> IO (Maybe String, Maybe SourceLanguage)
 sourceLanguageForFilename lm Nothing         = do
     mbLang <- sourceLanguageManagerGuessLanguage lm Nothing (Just "text/x-haskell")
