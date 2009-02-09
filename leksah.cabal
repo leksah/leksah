@@ -35,7 +35,7 @@ data-files: data/Current.session data/Default.candy
 data-dir: ""
 extra-source-files: Setup.lhs
 extra-tmp-files:
- 
+
 executable: leksah
 main-is: Main.hs
 buildable: True
@@ -66,6 +66,7 @@ other-modules: MyMissing Default Main DeepSeq
                IDE.Pane.Log IDE.Pane.Callers IDE.Pane.Search
                IDE.Pane.PackageEditor IDE.Metainfo.Provider
                IDE.Metainfo.SourceCollector IDE.Metainfo.InterfaceCollector
+               IDE.Metainfo.GHCUtils
                IDE.Core.State IDE.Core.Types
 ghc-prof-options: -prof -auto-all
 ghc-shared-options: -prof -auto-all

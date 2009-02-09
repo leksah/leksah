@@ -95,6 +95,7 @@ getIdentifiersStartingWith prefix st1 st2 =
         (_, memberGlobal, globalNames) = Set.splitMember prefix (Map.keysSet st2)
         names = Set.union globalNames localNames
 
+getCompletionOptions :: String -> IDEM [String]
 getCompletionOptions prefix = do
     currentInfo' <- readIDE currentInfo
     case currentInfo' of
