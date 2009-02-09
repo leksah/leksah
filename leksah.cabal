@@ -59,14 +59,14 @@ other-modules: MyMissing Default Main DeepSeq
                Graphics.UI.Editor.MakeEditor Graphics.UI.Frame.Panes
                Graphics.UI.Frame.ViewFrame Control.Event IDE.Package IDE.Keymap
                IDE.PrinterParser IDE.Exception IDE.SpecialEditors IDE.SaveSession
-               IDE.Leksah IDE.DescriptionPP IDE.Find IDE.Menu IDE.FileUtils
-               IDE.SourceCandy IDE.GUIHistory IDE.NotebookFlipper
+               IDE.Leksah IDE.DescriptionPP IDE.Find IDE.Menu IDE.Completion
+               IDE.FileUtils IDE.SourceCandy IDE.GUIHistory IDE.NotebookFlipper
                IDE.Pane.PackageFlags IDE.Pane.Info IDE.Pane.ClassHierarchy
                IDE.Pane.SourceBuffer IDE.Pane.Modules IDE.Pane.Preferences
                IDE.Pane.Log IDE.Pane.Callers IDE.Pane.Search
                IDE.Pane.PackageEditor IDE.Metainfo.Provider
                IDE.Metainfo.SourceCollector IDE.Metainfo.InterfaceCollector
-               IDE.Metainfo.GHCUtils IDE.Core.State IDE.Core.Types
+               IDE.Core.State IDE.Core.Types
 ghc-prof-options: -prof -auto-all
 ghc-shared-options: -prof -auto-all
 ghc-options: -fwarn-unused-imports -fwarn-missing-fields -fwarn-incomplete-patterns

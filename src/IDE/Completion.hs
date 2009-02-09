@@ -1,6 +1,6 @@
 -----------------------------------------------------------------------------
 --
--- Module      :  IDE.NotebookFlipper
+-- Module      :  IDE.Completion
 -- Copyright   :  2007-2009 Hamish Mackenzie, Jürgen Nicklisch-Franken
 -- License     :  GPL
 --
