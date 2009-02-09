@@ -17,9 +17,6 @@ module IDE.Completion (complete, cancel) where
 import Data.List as List
 import Data.Char
 import Data.IORef
-import Data.Map as Map
-import Data.Set as Set
-import qualified Data.ByteString.Char8 as BS
 import Control.Monad
 import Control.Monad.Trans (liftIO)
 import Control.Concurrent
@@ -30,6 +27,7 @@ import Graphics.UI.Gtk.SourceView.SourceBuffer
 import Graphics.UI.Gtk.ModelView as New
 import Graphics.UI.Gtk.Gdk.Events as Gtk
 import IDE.Core.State
+import IDE.Metainfo.Provider(getDescription,getCompletionOptions)
 
 complete :: SourceView -> IDEAction
 complete sourceView = do
@@ -46,60 +44,6 @@ cancel = do
         IsCompleting window tv ls cidPress cidRelease ->
             cancelCompletion window tv ls cidPress cidRelease
         _ -> return ()
-
--- TODO work out where these two should go (currently duplicated in Info.hs)
---
--- | Lookup of an identifier description
---
-getIdentifierDescr :: String -> SymbolTable -> SymbolTable -> [Descr]
-getIdentifierDescr str st1 st2 =
-    let r1 = case str `Map.lookup` st1 of
-                Nothing -> []
-                Just r -> r
-        r2 = case str `Map.lookup` st2 of
-                Nothing -> []
-                Just r -> r
-    in r1 ++ r2
-
---
--- | Lookup of an identifiers starting with the specified prefix and return a list.
---
-getIdentifiersStartingWith :: String -> SymbolTable -> SymbolTable -> [String]
-getIdentifiersStartingWith prefix st1 st2 =
-    takeWhile (isPrefixOf prefix) $
-        if memberLocal || memberGlobal then
-            prefix : Set.toAscList names
-            else
-            Set.toAscList names
-    where
-        (_, memberLocal, localNames) = Set.splitMember prefix (Map.keysSet st1)
-        (_, memberGlobal, globalNames) = Set.splitMember prefix (Map.keysSet st2)
-        names = Set.union globalNames localNames
-
-getCompletionOptions prefix = do
-    currentInfo' <- readIDE currentInfo
-    case currentInfo' of
-        Nothing -> return []
-        Just ((_,symbolTable1),(_,symbolTable2)) ->
-            return $ getIdentifiersStartingWith prefix symbolTable1 symbolTable2
-
-getDescription :: String -> IDEM String
-getDescription name = do
-    currentInfo' <- readIDE currentInfo
-    case currentInfo' of
-        Nothing -> return ""
-        Just ((_,symbolTable1),(_,symbolTable2)) ->
-            return $ foldl (\result description ->
-                result
-                ++ case description of
-                    Descr _ _ _ _ _ _ ->
-                        (BS.unpack $ typeInfo description)
-                        ++ case mbComment description of
-                            Just comment -> "\n" ++ (BS.unpack comment)
-                            Nothing -> ""
-                        ++ "\n"
-                    _ -> ""
-                ) "" $ getIdentifierDescr name symbolTable1 symbolTable2
 
 initCompletion :: SourceView -> IDEAction
 initCompletion sourceView = do

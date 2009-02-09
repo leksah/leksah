@@ -15,7 +15,12 @@
 ---------------------------------------------------------------------------------
 
 module IDE.Metainfo.Provider (
-    initInfo
+    getIdentifierDescr
+,   getIdentifiersStartingWith
+,   getCompletionOptions
+,   getDescription
+
+,   initInfo
 ,   updateAccessibleInfo
 ,   infoForActivePackage
 ,   mayRebuildInBackground
@@ -37,12 +42,12 @@ import Data.List
 import qualified PackageConfig as DP
 import Data.Maybe
 import Data.Binary
-import qualified Data.ByteString.Lazy as BS
 import Distribution.Package hiding (depends,packageId)
 import Data.Set (Set)
 import qualified Data.Set as Set
 import Data.Map (Map)
-import Data.ByteString.Char8 (ByteString)
+import qualified Data.ByteString.Char8 as BS
+import qualified Data.ByteString.Lazy as BSL
 import System.Process (ProcessHandle(..),getProcessExitCode)
 import System.Glib.MainLoop(timeoutAddFull,priorityDefaultIdle)
 import Control.Monad.Reader(ask)
@@ -61,6 +66,59 @@ import System.IO.Unsafe (unsafePerformIO)
 import Text.Regex.Posix.String (execute,compile)
 import IDE.Metainfo.GHCUtils (findFittingPackages,getInstalledPackageInfos,inGhc)
 --import Debug.Trace
+
+--
+-- | Lookup of an identifier description
+--
+getIdentifierDescr :: String -> SymbolTable -> SymbolTable -> [Descr]
+getIdentifierDescr str st1 st2 =
+    let r1 = case str `Map.lookup` st1 of
+                Nothing -> []
+                Just r -> r
+        r2 = case str `Map.lookup` st2 of
+                Nothing -> []
+                Just r -> r
+    in r1 ++ r2
+
+--
+-- | Lookup of an identifiers starting with the specified prefix and return a list.
+--
+getIdentifiersStartingWith :: String -> SymbolTable -> SymbolTable -> [String]
+getIdentifiersStartingWith prefix st1 st2 =
+    takeWhile (isPrefixOf prefix) $
+        if memberLocal || memberGlobal then
+            prefix : Set.toAscList names
+            else
+            Set.toAscList names
+    where
+        (_, memberLocal, localNames) = Set.splitMember prefix (Map.keysSet st1)
+        (_, memberGlobal, globalNames) = Set.splitMember prefix (Map.keysSet st2)
+        names = Set.union globalNames localNames
+
+getCompletionOptions prefix = do
+    currentInfo' <- readIDE currentInfo
+    case currentInfo' of
+        Nothing -> return []
+        Just ((_,symbolTable1),(_,symbolTable2)) ->
+            return $ getIdentifiersStartingWith prefix symbolTable1 symbolTable2
+
+getDescription :: String -> IDEM String
+getDescription name = do
+    currentInfo' <- readIDE currentInfo
+    case currentInfo' of
+        Nothing -> return ""
+        Just ((_,symbolTable1),(_,symbolTable2)) ->
+            return $ foldl (\result description ->
+                result
+                ++ case description of
+                    Descr _ _ _ _ _ _ ->
+                        (BS.unpack $ typeInfo description)
+                        ++ case mbComment description of
+                            Just comment -> "\n" ++ (BS.unpack comment)
+                            Nothing -> ""
+                        ++ "\n"
+                    _ -> ""
+                ) "" $ getIdentifierDescr name symbolTable1 symbolTable2
 
 --
 -- | Searching of metadata
@@ -153,7 +211,7 @@ initInfo = do
     prefs           <- readIDE prefs
     when (collectAtStart prefs) $ do
         ideMessage Normal "Now updating metadata ..."
-        collectInstalled False
+        collectInstalled prefs False
     ideMessage Normal "Now loading metadata ..."
     loadAccessibleInfo
     ideMessage Normal "Finished loading ..."
@@ -365,7 +423,7 @@ loadInfosForPackage dirPath isWorkingPackage pid = do
     if exists
         then catch (do
             file            <-  openBinaryFile filePath ReadMode
-            bs              <-  BS.hGetContents file
+            bs              <-  BSL.hGetContents file
             let (metadataVersion', packageInfo) =   decode bs
             if metadataVersion /= metadataVersion'
                 then do
@@ -491,7 +549,7 @@ instance (DeepSeq alpha, DeepSeq beta) => DeepSeq (Map alpha beta) where
 
 instance DeepSeq DescrType where  deepSeq = seq
 
-instance DeepSeq ByteString where  deepSeq = seq
+instance DeepSeq BS.ByteString where  deepSeq = seq
 
 instance DeepSeq Version where  deepSeq = seq
 

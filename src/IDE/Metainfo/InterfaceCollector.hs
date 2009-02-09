@@ -95,11 +95,11 @@ instance Default CollectStatistics where
     getDefault          =   CollectStatistics getDefault getDefault getDefault getDefault
                                 getDefault
 
-collectInstalled :: Bool -> IDEAction
-collectInstalled b      =   inGhc $ collectInstalled' False cProjectVersion b
+collectInstalled :: Prefs -> Bool -> IDEAction
+collectInstalled prefs b =   inGhc $ collectInstalled' prefs False cProjectVersion b
 
-collectInstalled' :: Bool -> String -> Bool -> Ghc()
-collectInstalled' writeAscii version forceRebuild = do
+collectInstalled' :: Prefs -> Bool -> String -> Bool -> Ghc()
+collectInstalled' prefs writeAscii version forceRebuild = do
     session             <- getSession
     collectorPath       <-  liftIO $ getCollectorPath version
     when forceRebuild $ liftIO $ do
@@ -114,8 +114,8 @@ collectInstalled' writeAscii version forceRebuild = do
     if null newPackages then do
             sysMessage Normal "Metadata collector has nothing to do"
         else do
-            liftIO $ buildSourceForPackageDB
-            sources             <-  liftIO $ getSourcesMap
+            liftIO $ buildSourceForPackageDB prefs
+            sources             <-  liftIO $ getSourcesMap prefs
             exportedIfaceInfos  <-  mapM (\ info -> getIFaceInfos (mkPackageId $ IPI.package info)
                                                     (IPI.exposedModules info) session) newPackages
             hiddenIfaceInfos    <-  mapM (\ info -> getIFaceInfos (mkPackageId $ IPI.package info)

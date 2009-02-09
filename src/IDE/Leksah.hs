@@ -119,8 +119,10 @@ runMain = handleTopExceptions $ do
                                 else  "Current.session"
     when (elem VersionF o)
         (sysMessage Normal $ "Leksah an IDE for Haskell, version " ++ showVersion version)
+    prefsPath       <-  getConfigFilePathForLoad "Default.prefs"
+    prefs           <-  readPrefs prefsPath
     when (elem Sources o) (do
-        buildSourceForPackageDB
+        buildSourceForPackageDB prefs
         sysMessage Normal "rebuild SourceForPackageDB")
     when (elem Rebuild o || elem Collect o || not (null uninstalled)) $ do
         inGhcIO $ do
@@ -134,14 +136,14 @@ runMain = handleTopExceptions $ do
                 then mapM_ (collectUninstalled writeAscii version)
                     $ map (\ (UninstalledProject x) -> x) uninstalled
                 else do
-                    collectInstalled' writeAscii version (elem Rebuild o)
-    when (not (elem NoGUI o) && not (elem VersionF o)) (startGUI sessionFilename)
+                    collectInstalled' prefs writeAscii version (elem Rebuild o)
+    when (not (elem NoGUI o) && not (elem VersionF o)) (startGUI sessionFilename prefs)
 
 -- ---------------------------------------------------------------------
 -- | Start the GUI
 
-startGUI :: String -> IO ()
-startGUI sessionFilename = do
+startGUI :: String -> Prefs -> IO ()
+startGUI sessionFilename prefs = do
     trace "start gui called" $ return ()
     st          <-  initGUI
     when rtsSupportsBoundThreads
@@ -151,9 +153,7 @@ startGUI sessionFilename = do
     uiManager   <-  uiManagerNew
     newIcons
     hasConfigDir' <- hasConfigDir
-    when (not hasConfigDir') firstStart
-    prefsPath   <-  getConfigFilePathForLoad "Default.prefs"
-    prefs       <-  readPrefs prefsPath
+    when (not hasConfigDir') $ firstStart prefs
     keysPath    <-  getConfigFilePathForLoad $ keymapName prefs ++ ".keymap"
     keyMap      <-  parseKeymap keysPath
     let accelActions = setKeymap (keyMap :: KeymapI) actions
@@ -402,8 +402,8 @@ fDescription = VFD emptyParams [
 --
 -- | Called when leksah ist first called (the .leksah directory does not exist)
 --
-firstStart :: IO ()
-firstStart = do
+firstStart :: Prefs -> IO ()
+firstStart prefs = do
     prefsPath   <-  getConfigFilePathForLoad "Default.prefs"
     prefs       <-  readPrefs prefsPath
     dialog      <- windowNew
@@ -428,7 +428,7 @@ firstStart = do
                 writePrefs fp newPrefs
                 widgetDestroy dialog
                 mainQuit
-                firstBuild)
+                firstBuild prefs)
     cancel `onClicked` (do
         widgetDestroy dialog
         mainQuit)
@@ -445,11 +445,11 @@ firstStart = do
     mainGUI
     return ()
 
-firstBuild :: IO ()
-firstBuild = let version = cProjectVersion in do
-    buildSourceForPackageDB
-    sources             <-  getSourcesMap
+firstBuild :: Prefs -> IO ()
+firstBuild prefs = let version = cProjectVersion in do
+    buildSourceForPackageDB prefs
+    sources             <-  getSourcesMap prefs
     libDir          <-  getSysLibDir
-    runGhc (Just libDir) $ collectInstalled' False version True
+    runGhc (Just libDir) $ collectInstalled' prefs False version True
 
 

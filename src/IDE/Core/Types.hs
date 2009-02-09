@@ -81,13 +81,13 @@ import qualified Data.Set as Set
 import Default
 import IDE.Exception
 import Graphics.UI.Frame.Panes
-import Data.ByteString (ByteString(..))
 import Distribution.Package (PackageIdentifier(..),Dependency(..))
 import Distribution.Text
 import Data.Map (Map(..))
 import Distribution.ModuleName(ModuleName)
 import Distribution.Text
-import qualified Data.ByteString as BS  (empty)
+import qualified Data.ByteString.Char8 as BS  (empty)
+import Data.ByteString.Char8 (ByteString)
 
 
 

@@ -54,7 +54,7 @@ import Outputable hiding (char)
 
 import IDE.Core.State
 import IDE.FileUtils
-import IDE.Pane.Preferences
+-- import IDE.Pane.Preferences
 import Digraph (flattenSCCs)
 import HscTypes (msHsFilePath)
 import Distribution.Package (PackageIdentifier(..))
@@ -344,13 +344,13 @@ unloadGhc = do
 -- Function to map packages to file paths
 --
 
-getSourcesMap :: IO (Map PackageIdentifier [FilePath])
-getSourcesMap = do
+getSourcesMap :: Prefs -> IO (Map PackageIdentifier [FilePath])
+getSourcesMap prefs = do
         mbSources <- parseSourceForPackageDB
         case mbSources of
             Just map -> return map
             Nothing -> do
-                buildSourceForPackageDB
+                buildSourceForPackageDB prefs
                 mbSources <- parseSourceForPackageDB
                 case mbSources of
                     Just map -> do
@@ -365,10 +365,8 @@ sourceForPackage id map =
         Just (h:_)  ->  Just h
         _           ->  Nothing
 
-buildSourceForPackageDB :: IO ()
-buildSourceForPackageDB = do
-    prefsPath       <-  getConfigFilePathForLoad "Default.prefs"
-    prefs           <-  readPrefs prefsPath
+buildSourceForPackageDB :: Prefs -> IO ()
+buildSourceForPackageDB prefs = do
     case autoExtractTars prefs of
         Nothing     -> return ()
         Just path   -> do
