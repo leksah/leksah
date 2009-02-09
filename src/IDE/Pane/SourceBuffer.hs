@@ -80,11 +80,13 @@ import IDE.Core.State
 import Control.Event
 import IDE.FileUtils
 import IDE.SourceCandy
+import IDE.Completion as Completion (complete,cancel)
 import qualified System.IO.UTF8 as UTF8
 import Graphics.UI.Gtk.Gdk.Enums (Modifier(..))
 import qualified Graphics.UI.Gtk.Gdk.Events as G (Event(..))
 import Data.IORef (writeIORef,readIORef,newIORef,IORef(..))
 import Graphics.UI.Frame.Panes (IDEPane(..))
+import Data.Char (isAlphaNum)
 
 --
 -- | A text editor pane description
@@ -375,6 +377,16 @@ newTextBuffer panePath bn mbfn = do
         -- events
         cid <- sv `afterFocusIn`
             (\_ -> do reflectIDE (makeActive buf) ideR  ; return False)
+        buffer `afterBufferInsertText`
+            (\iter text -> do
+                case text of
+                    [c] | ((isAlphaNum c) || (c == '.') || (c == '_')) -> do
+                        reflectIDE (Completion.complete sv) ideR
+                    _ -> return ()
+            )
+        sv `onMoveCursor`
+            (\step n select -> do reflectIDE Completion.cancel ideR)
+        sv `onButtonPress` (\event -> do reflectIDE Completion.cancel ideR; return False)
         return (buf,[cid])
     addPaneAdmin buf (map ConnectC cids) panePath
     liftIO $do

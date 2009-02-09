@@ -69,6 +69,7 @@ module IDE.Core.State (
 ) where
 
 import Graphics.UI.Gtk hiding (get)
+import Graphics.UI.Gtk.SourceView.SourceView
 import Data.Map (Map)
 import qualified Data.Map as Map
 import Data.IORef
@@ -157,6 +158,7 @@ data IDEState =
     |   IsShuttingDown
     |   IsRunning
     |   IsFlipping TreeView
+    |   IsCompleting Window TreeView (ListStore String) (ConnectId SourceView) (ConnectId SourceView)
 
 data IDEEvent  =
         CurrentInfo

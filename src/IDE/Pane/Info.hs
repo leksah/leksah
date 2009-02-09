@@ -21,6 +21,7 @@ module IDE.Pane.Info (
 ,   setSymbol
 ,   replayInfoHistory
 ,   getIdentifierDescr
+,   getIdentifiersStartingWith
 ,   showInfo
 ) where
 
@@ -30,11 +31,12 @@ import System.IO
 import Control.Monad
 import Control.Monad.Trans
 import System.IO
---import Data.List
+import Data.List (isPrefixOf)
 import Data.Maybe
 import qualified Data.ByteString.Char8 as BS
 import Data.IORef
 import qualified Data.Map as Map
+import qualified Data.Set as Set
 import Data.Typeable
 
 import IDE.Core.State
@@ -309,6 +311,7 @@ getInfoCont = do
         Nothing ->  return Nothing
         Just p  ->  liftIO $ readIORef (currentDescr p) >>= return . Just
 
+-- TODO work out where these two should go (currently duplicated in Completion.hs)
 --
 -- | Lookup of an identifier description
 --
@@ -321,6 +324,21 @@ getIdentifierDescr str st1 st2 =
                 Nothing -> []
                 Just r -> r
     in r1 ++ r2
+
+--
+-- | Lookup of an identifiers starting with the specified prefix and return a list.
+--
+getIdentifiersStartingWith :: String -> SymbolTable -> SymbolTable -> [String]
+getIdentifiersStartingWith prefix st1 st2 =
+    takeWhile (isPrefixOf prefix) $
+        if memberLocal || memberGlobal then
+            prefix : Set.toAscList names
+            else
+            Set.toAscList names
+    where
+        (_, memberLocal, localNames) = Set.splitMember prefix (Map.keysSet st1)
+        (_, memberGlobal, globalNames) = Set.splitMember prefix (Map.keysSet st2)
+        names = Set.union globalNames localNames
 
 -- * GUI History
 
