@@ -31,14 +31,16 @@ flipDown = do
     currentState' <- readIDE currentState
     case currentState' of
         IsFlipping tv -> moveFlipperDown tv
-        _             -> initFlipper True
+        IsRunning     -> initFlipper True
+        _             -> return ()
 
 flipUp :: IDEAction
 flipUp = do
     currentState' <- readIDE currentState
     case currentState' of
         IsFlipping  tv -> moveFlipperUp tv
-        _              -> initFlipper False
+        IsRunning      -> initFlipper False
+        _              -> return ()
 
 -- | Moves down in the Flipper state
 moveFlipperDown :: TreeViewClass alpha => alpha -> IDEAction

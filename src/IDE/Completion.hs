@@ -36,7 +36,8 @@ complete sourceView = do
     currentState' <- readIDE currentState
     case currentState' of
         IsCompleting window tv ls _ _ -> updateOptions window tv ls sourceView
-        _                  -> initCompletion sourceView
+        IsRunning                     -> initCompletion sourceView
+        _                             -> return ()
 
 cancel :: IDEAction
 cancel = do
@@ -261,11 +262,7 @@ initCompletion sourceView = do
                                 return False
                                 )
                             _ -> (do
-                                visible <- get tree widgetVisible
-                                when visible (do
-                                    widgetHideAll window
-                                    return ()
-                                    )
+                                reflectIDE cancel ideR
                                 return False
                                 )
                     )
