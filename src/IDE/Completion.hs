@@ -32,23 +32,22 @@ complete :: SourceView -> IDEAction
 complete sourceView = do
     currentState' <- readIDE currentState
     case currentState' of
-        IsCompleting window tv ls _ _ -> updateOptions window tv ls sourceView
-        IsRunning                     -> initCompletion sourceView
-        _                             -> return ()
+        IsCompleting window tv ls _ -> updateOptions window tv ls sourceView
+        IsRunning                   -> initCompletion sourceView
+        _                           -> return ()
 
 cancel :: IDEAction
 cancel = do
     currentState' <- readIDE currentState
     case currentState' of
-        IsCompleting window tv ls cidPress cidRelease ->
-            cancelCompletion window tv ls cidPress cidRelease
-        _ -> return ()
+        IsCompleting window tv ls c -> cancelCompletion window tv ls c
+        _                           -> return ()
 
 initCompletion :: SourceView -> IDEAction
 initCompletion sourceView = do
     mainWindow <- readIDE window
     prefs      <- readIDE prefs
-    (window', tree', store', cidPress', cidRelease') <- reifyIDE (\ideR -> do
+    (window', tree', store', cids) <- reifyIDE (\ideR -> do
                 window <- windowNewPopup
                 --set window [ windowTypeHint := WindowTypeHintDialog ] --,
                   -- windowDecorated := False ]
@@ -230,10 +229,10 @@ initCompletion sourceView = do
                         _ -> return False
                     )
 
-                return (window, tree, store, cidPress, cidRelease)
+                return (window, tree, store, [cidPress, cidRelease])
                 )
 
-    modifyIDE_ (\ide -> return (ide{currentState = IsCompleting window' tree' store' cidPress' cidRelease'}))
+    modifyIDE_ (\ide -> return (ide{currentState = IsCompleting window' tree' store' (map ConnectC cids)}))
     updateOptions window' tree' store' sourceView
 
     where
@@ -247,11 +246,10 @@ initCompletion sourceView = do
            )
 
 cancelCompletion :: TreeViewClass alpha => Window -> alpha ->
-    ListStore String -> ConnectId SourceView -> ConnectId SourceView -> IDEAction
-cancelCompletion window tree store cidPress cidRelease = do
+    ListStore String -> Connections -> IDEAction
+cancelCompletion window tree store connections = do
     liftIO (do
-        signalDisconnect cidPress
-        signalDisconnect cidRelease
+        signalDisconnectAll connections
         widgetHideAll window
         widgetDestroy window
         )
