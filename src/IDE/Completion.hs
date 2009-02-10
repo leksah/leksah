@@ -22,8 +22,7 @@ import Control.Monad.Trans (liftIO)
 import Control.Concurrent
 import Control.Exception
 import Graphics.UI.Gtk as Gtk
-import Graphics.UI.Gtk.SourceView.SourceView
-import Graphics.UI.Gtk.SourceView.SourceBuffer
+import Graphics.UI.Gtk.SourceView
 import Graphics.UI.Gtk.ModelView as New
 import Graphics.UI.Gtk.Gdk.Events as Gtk
 import IDE.Core.State
@@ -85,7 +84,17 @@ initCompletion sourceView = do
 
                 descriptionView <- sourceViewNew
                 descriptionBuffer <- (get descriptionView textViewBuffer) >>= (return . castToSourceBuffer)
+                lm <- sourceLanguageManagerNew
+                mbLang <- sourceLanguageManagerGuessLanguage lm Nothing (Just "text/x-haskell")
+                case mbLang of
+                    Nothing -> return ()
+                    Just lang -> do sourceBufferSetLanguage descriptionBuffer lang
 
+                -- This call is here because in the past I have had problems where the
+                -- language object became invalid if the manager was garbage collected
+                sourceLanguageManagerGetLanguageIds lm
+
+                sourceBufferSetHighlightSyntax descriptionBuffer True
                 widgetModifyFont descriptionView (Just font)
 
                 containerAdd paned descriptionView

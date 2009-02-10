@@ -113,13 +113,17 @@ getDescription name = do
                 result
                 ++ case description of
                     Descr _ _ _ _ _ _ ->
-                        (BS.unpack $ typeInfo description)
+                        "-- " ++ showPackModule (descrModu description) ++ "\n"
                         ++ case mbComment description of
-                            Just comment -> "\n" ++ (BS.unpack comment)
+                            Just comment -> unlines $ map ((++) "-- ") $ nonemptyLines (BS.unpack comment)
                             Nothing -> ""
+                        ++ (unlines $ nonemptyLines (BS.unpack $ typeInfo description))
                         ++ "\n"
                     _ -> ""
                 ) "" $ getIdentifierDescr name symbolTable1 symbolTable2
+    where
+        nonemptyLines text = filter (\line -> isJust $ find notSpace line) $ lines text
+        notSpace char = char /= ' ' && char /= '\t'
 
 --
 -- | Searching of metadata
