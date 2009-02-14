@@ -841,6 +841,19 @@ Leksah reads and writes files encoded in UTF-8.
 \end_layout
 
 \begin_layout Subsection
+Using the Flipper to Switch Active Panes
+\end_layout
+
+\begin_layout Standard
+You can change the active pane using a keyboard shortcut to bring up the
+ flipper.
+ It lists the most recently used panes first so they are easir to get to.
+ The default shortcuts for the flipper are Ctrl+Tab and Ctrl+Shift+Tab or
+ Ctrl+Page Down and Ctrl+Page Up.
+ 
+\end_layout
+
+\begin_layout Subsection
 Editor Preferences
 \end_layout
 
