@@ -19,8 +19,6 @@ module IDE.Metainfo.SourceCollector (
 ,   sourceForPackage
 ,   parseSourceForPackageDB
 ,   getSourcesMap
-
-,   unloadGhc
 ) where
 
 import qualified Text.PrettyPrint.HughesPJ as PP
@@ -36,29 +34,32 @@ import Control.Monad.State
 import System.FilePath
 import System.IO
 import Data.List (foldl',nub,delete,sort)
-import Data.Maybe (catMaybes)
-import qualified Control.Exception as C
+import Data.Maybe(catMaybes)
 import qualified Data.ByteString.Char8 as BS
-import Distribution.PackageDescription.Parse (readPackageDescription)
-import Distribution.PackageDescription.Configuration (flattenPackageDescription)
-import Control.Exception (SomeException)
+
 
 import GHC hiding (idType)
 import SrcLoc
 import RdrName
 import OccName
 import DynFlags
---import PackageConfig hiding (exposedModules,package)
+import StringBuffer
+import Bag
+import ErrUtils
 import FastString
+import Lexer hiding (lexer)
+import qualified Parser as P
 import Outputable hiding (char)
+import HscStats
 
 import IDE.Core.State
 import IDE.FileUtils
--- import IDE.Pane.Preferences
-import Digraph (flattenSCCs)
-import HscTypes (msHsFilePath)
+import Distribution.PackageDescription.Configuration (flattenPackageDescription)
+import Distribution.PackageDescription.Parse (readPackageDescription)
+import GHC.Exception (SomeException(..))
 import Distribution.Package (PackageIdentifier(..))
 import Distribution.Text (display)
+import DriverPipeline (preprocess)
 import GHC.Show (showSpace)
 
 
@@ -69,15 +70,13 @@ collectSources :: Map PackageIdentifier [FilePath]
     -> PackageDescr
     -> Ghc (PackageDescr,Int)
 collectSources sourceMap pdescr = do
-    unloadGhc
     sysMessage Normal $ "Now collecting sources for " ++ display (packagePD pdescr)
     case sourceForPackage (packagePD pdescr) sourceMap of
         Nothing -> do
             sysMessage Normal $ "No source for package " ++ display (packagePD pdescr)
             return (pdescr,0)
-        Just cabalPath' -> gcatch (do
-            cabalPath       <-  liftIO $ canonicalizePath cabalPath'
-            let basePath    =   takeDirectory cabalPath
+        Just cabalPath -> gcatch (do
+            let basePath    =   normalise $ (takeDirectory cabalPath)
             pkgDescr        <-  gcatch (liftIO $  (liftM flattenPackageDescription
                                         (readPackageDescription silent cabalPath)))
                                     (\(e :: SomeException) -> return emptyPackageDescription)
@@ -93,10 +92,11 @@ collectSources sourceMap pdescr = do
                                         ("dist" </> "build" </> "autogen") : (".")
                                                 : (nub $ concatMap hsSourceDirs bis)
             let includes    =    map (\p -> basePath </> p)  $ nub $ concatMap includeDirs bis
+
             dflags             <-  getSessionDynFlags
             let dflags2 = dflags {
                 topDir    = basePath,
-                hscTarget = HscAsm,
+                hscTarget = HscNothing,
                 ghcMode   = CompManager,
                 ghcLink   = NoLink}
             setSessionDynFlags dflags2
@@ -111,68 +111,57 @@ collectSources sourceMap pdescr = do
             (dflags4,_,_)   <-  parseDynamicFlags dflags3 (map noLoc flags)
             let dflags5     =   dopt_set dflags4 Opt_Haddock
             setSessionDynFlags dflags5
-            defaultCleanupHandler dflags (do
-                let allMods         =  nub (exeModules pkgDescr ++ libModules pkgDescr)
-                let interestingMods =  map (modu . moduleIdMD) (exposedModulesPD pdescr)
-                sourceFiles     <-  liftIO $ mapM (findSourceFile
+
+            let allMods     =  nub (exeModules pkgDescr ++ libModules pkgDescr)
+            let exposedMods =   map (modu . moduleIdMD) (exposedModulesPD pdescr)
+            sourceFiles     <-  liftIO $ mapM (findSourceFile
                                                     buildPaths
                                                     ["hs","lhs","chs","hs.pp","lhs.pp","chs.pp"])
-                                                    $ nub (interestingMods ++ allMods)
-                liftIO $ mapM_ (\(mbSf, mn) ->
-                    case mbSf of
-                        Nothing -> putStrLn $ "Cant find source file for " ++ mn
-                        Just _ ->  return ()) $ zip sourceFiles (map display allMods)
-                (newModDescrs,failureCount) <- collectSourcesForPackage pdescr (catMaybes sourceFiles)
-                                                    (map display interestingMods)
-                let nPackDescr  =   pdescr{mbSourcePathPD = Just cabalPath,
-                                           exposedModulesPD = newModDescrs}
-                return (nPackDescr,failureCount)))
+                                                    $ nub (exposedMods ++ allMods)
+            (newModDescrs,failureCount)
+                            <-  foldM collectSourcesForModule ([],0)
+                                                (zip (exposedModulesPD pdescr) sourceFiles)
+            let nPackDescr  =   pdescr{mbSourcePathPD = Just cabalPath,
+                                            exposedModulesPD = newModDescrs}
+            return (nPackDescr,failureCount))
             (\(e :: SomeException) -> do
                 sysMessage Normal $ "source collector throwIDE1 " ++ show e ++ " in " ++
                             display (packagePD pdescr) ++ " missed "
                                 ++ show (length $ exposedModulesPD pdescr)
                 return (pdescr,length $ exposedModulesPD pdescr))
 
-
 -- ---------------------------------------------------------------------
--- | Collect infos from sources for modules
+-- | Collect infos from sources for one module
 --
---------------------------
-
-collectSourcesForPackage :: PackageDescr -> [String] -> [String] -> Ghc ([ModuleDescr],Int)
-collectSourcesForPackage pkgDescr sourceFiles interesting = do
-    targets <- mapM (\f -> guessTarget f Nothing) sourceFiles
-    setTargets targets
-    modgraph <- depanal [] False
-    let orderedMods = flattenSCCs $ topSortModuleGraph False modgraph Nothing
-    let tupels = catMaybes $ map (filterMods orderedMods) (exposedModulesPD pkgDescr)
-    foldM collectSourcesForModule ([],0) tupels
-        where
-            moduleNameModSummary  =  moduleNameString . moduleName . ms_mod
-            moduleNameModuleDescr = display . modu . moduleIdMD
-            filterMods ordered mod =
-                case filter (\om -> moduleNameModSummary om == moduleNameModuleDescr mod) ordered of
-                    []    -> trace ("Missing source for module " ++ moduleNameModuleDescr mod) Nothing
-                    (x:_) -> Just (mod,x)
-
-
-collectSourcesForModule :: ([ModuleDescr],Int) -> (ModuleDescr, ModSummary) -> Ghc ([ModuleDescr],Int)
-collectSourcesForModule (moduleDescrs,failureCount) (modD,modsum) = gcatch (do
-    let filename            =  msHsFilePath modsum
-    let dynflags            =  ms_hspp_opts modsum
-    parsedMod               <- parseModule modsum
-    let decls               = (hsmodDecls . unLoc . parsedSource) $ parsedMod
-    let map'                =   convertToMap (idDescriptionsMD modD)
-    let commentedDecls      =   addComments (filterSignatures decls)
-    let (descrs,restMap)    =   foldl' collectParseInfoForDecl ([],map') commentedDecls
-    let newMod              =   modD{
-         idDescriptionsMD   =   reverse descrs ++ concat (Map.elems restMap),
-         mbSourcePathMD     =   Just filename}
-    return(newMod : moduleDescrs, failureCount))
-        (\(e :: SomeException)                -> do
-                    sysMessage Normal $ "source collector throwIDE2 " ++ show e ++ " in " ++
-                                 msHsFilePath modsum
-                    return (modD : moduleDescrs, failureCount + 1))
+collectSourcesForModule :: ([ModuleDescr],Int)
+    -> (ModuleDescr, Maybe FilePath)
+    -> Ghc ([ModuleDescr],Int)
+collectSourcesForModule (moduleDescrs,failureCount) (moduleDescr,mbfp) =
+    case mbfp of
+        Nothing ->  do
+            sysMessage Normal $ "No source for module " ++ (display $ modu $ moduleIdMD moduleDescr)
+            return(moduleDescr : moduleDescrs, failureCount+1)
+        Just fp ->  do
+            session <- getSession
+            (_,fp)          <-  preprocess session (fp,Nothing)
+            dynFlags        <-  getSessionDynFlags
+            liftIO $ do
+                stringBuffer    <-  hGetStringBuffer fp
+                parseResult     <-  myParseModule dynFlags fp (Just stringBuffer)
+                let newModD     =   moduleDescr{mbSourcePathMD = mbfp}
+                case parseResult of
+                    Right (L _ (HsModule _ _ _ decls _ _ _ )) -> do
+                        let map'                =   convertToMap (idDescriptionsMD newModD)
+                        let commentedDecls      =   addComments (filterSignatures decls)
+                        let (descrs,restMap)    =   foldl collectParseInfoForDecl ([],map')
+                                                        commentedDecls
+                        let newModD'            =   newModD{
+                            idDescriptionsMD    =   reverse descrs ++ concat (Map.elems restMap)}
+                        return(newModD' : moduleDescrs, failureCount)
+                    Left errMsg -> do
+                        sysMessage Normal $ "Failed to parse " ++ fp
+                        printBagOfErrors defaultDynFlags (unitBag errMsg)
+                        return (newModD : moduleDescrs, failureCount+1)
     where
         convertToMap :: [Descr] -> Map Symbol [Descr]
         convertToMap  list  =
@@ -345,6 +334,42 @@ unloadGhc = do
    setTargets []
    load LoadAllTargets
    return ()
+
+-- | Copied here from HscMain, because we have no ModSummary
+myParseModule :: DynFlags -> FilePath -> Maybe StringBuffer
+              -> IO (Either ErrMsg (Located (HsModule RdrName)))
+myParseModule dflags src_filename maybe_src_buf
+ =    --------------------------  Parser  ----------------
+      showPass dflags "Parser" >>
+      {-# SCC "Parser" #-} do
+
+	-- sometimes we already have the buffer in memory, perhaps
+	-- because we needed to parse the imports out of it, or get the
+	-- module name.
+      buf <- case maybe_src_buf of
+		Just b  -> return b
+		Nothing -> hGetStringBuffer src_filename
+
+      let loc  = mkSrcLoc (mkFastString src_filename) 1 0
+
+      case unP parseModule (mkPState buf loc dflags) of {
+
+	PFailed span err -> return (Left (mkPlainErrMsg span err));
+
+	POk pst rdr_module -> do {
+
+      let {ms = getMessages pst};
+      printErrorsAndWarnings dflags ms; -- XXX
+      when (errorsFound dflags ms) $ exitWith (ExitFailure 1);
+
+      dumpIfSet_dyn dflags Opt_D_dump_parsed "Parser" (ppr rdr_module) ;
+
+      dumpIfSet_dyn dflags Opt_D_source_stats "Source Statistics"
+			   (ppSourceStats False rdr_module) ;
+
+      return (Right rdr_module)
+	-- ToDo: free the string buffer later.
+      }}
 
 -- ---------------------------------------------------------------------
 -- Function to map packages to file paths
@@ -521,3 +546,6 @@ cabalMinimalP =
             char '\n'
             cabalMinimalP
     <?> "cabal minimal"
+
+
+
