@@ -88,7 +88,7 @@ collectSources sourceMap pdescr = do
                                                     exeName' ++ "-tmp" </> "") :
                                         ("dist" </> "build" </> "autogen") : (".")
                                                 : (nub $ concatMap hsSourceDirs bis)
-                                else  map (\p -> basePath </> p) $
+                                else map (\p -> basePath </> p) $
                                         ("dist" </> "build" </> "autogen") : (".")
                                                 : (nub $ concatMap hsSourceDirs bis)
             let includes    =    map (\p -> basePath </> p)  $ nub $ concatMap includeDirs bis
@@ -109,7 +109,7 @@ collectSources sourceMap pdescr = do
             -- trace ("flags " ++ show flags) $ return ()
             dflags3          <-  getSessionDynFlags
             (dflags4,_,_)   <-  parseDynamicFlags dflags3 (map noLoc flags)
-            let dflags5     =   dopt_set dflags4 Opt_Haddock
+            let dflags5     =   dopt_set (dopt_set dflags4 Opt_Haddock) Opt_ReadUserPackageConf
             setSessionDynFlags dflags5
 
             let allMods     =  nub (exeModules pkgDescr ++ libModules pkgDescr)

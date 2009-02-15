@@ -91,6 +91,15 @@ getConfigDir = do
             createDirectory filePath
             return filePath
 
+getConfigDirForLoad :: IO (Maybe FilePath)
+getConfigDirForLoad = do
+    d <- getHomeDirectory
+    let filePath = d </> ".leksah"
+    exists <- doesDirectoryExist filePath
+    if exists
+        then return (Just filePath)
+        else return Nothing
+
 hasConfigDir :: IO Bool
 hasConfigDir = do
     d <- getHomeDirectory
@@ -100,11 +109,15 @@ hasConfigDir = do
 
 getConfigFilePathForLoad :: String -> IO FilePath
 getConfigFilePathForLoad fn = do
-    cd <- getConfigDir
-    ex <- doesFileExist (cd </> fn)
-    if ex
-        then return (cd </> fn)
-        else do
+    mbCd <- getConfigDirForLoad
+    case mbCd of
+        Nothing -> getFromData
+        Just cd -> do
+            ex <- doesFileExist (cd </> fn)
+            if ex
+                then return (cd </> fn)
+                else getFromData
+    where getFromData = do
             dd <- getDataDir
             ex <- doesFileExist (dd </> "data" </> fn)
             if ex
