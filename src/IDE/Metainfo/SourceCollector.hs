@@ -335,7 +335,9 @@ unloadGhc = do
    load LoadAllTargets
    return ()
 
--- | Copied here from HscMain, because we have no ModSummary
+ ---------------------------------------------------------------------
+--  | Parser function copied here, because it is not exported
+
 myParseModule :: DynFlags -> FilePath -> Maybe StringBuffer
               -> IO (Either ErrMsg (Located (HsModule RdrName)))
 myParseModule dflags src_filename maybe_src_buf
@@ -352,15 +354,15 @@ myParseModule dflags src_filename maybe_src_buf
 
       let loc  = mkSrcLoc (mkFastString src_filename) 1 0
 
-      case unP parseModule (mkPState buf loc dflags) of {
+      case unP P.parseModule (mkPState buf loc dflags) of {
 
 	PFailed span err -> return (Left (mkPlainErrMsg span err));
 
 	POk pst rdr_module -> do {
 
       let {ms = getMessages pst};
-      printErrorsAndWarnings dflags ms; -- XXX
-      when (errorsFound dflags ms) $ exitWith (ExitFailure 1);
+      printErrorsAndWarnings dflags ms;
+      -- when (errorsFound dflags ms) $ exitWith (ExitFailure 1);
 
       dumpIfSet_dyn dflags Opt_D_dump_parsed "Parser" (ppr rdr_module) ;
 
