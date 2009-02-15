@@ -96,3 +96,6 @@ F3                          ->          EditFindNext     "Find the next occurenc
 <ctrl>Page_Up           ->          FlipUp          "Switch to next pane in reverse recently used oder"
 <ctrl>Page_Down         ->          FlipDown        "Switch to next pane in recently used oder"
 
+<ctrl>space             ->          StartComplete   "Initiate complete in a source buffer"
+
+

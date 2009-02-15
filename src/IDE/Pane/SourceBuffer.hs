@@ -58,6 +58,7 @@ module IDE.Pane.SourceBuffer (
 ,   inBufContext
 
 ,   align
+,   startComplete
 ) where
 
 import Graphics.UI.Gtk hiding (afterToggleOverwrite)
@@ -81,6 +82,7 @@ import Control.Event
 import IDE.FileUtils
 import IDE.SourceCandy
 import IDE.Completion as Completion (complete,cancel)
+import Debug.Trace (trace)
 import qualified System.IO.UTF8 as UTF8
 import Graphics.UI.Gtk.Gdk.Enums (Modifier(..))
 import qualified Graphics.UI.Gtk.Gdk.Events as G (Event(..))
@@ -172,6 +174,15 @@ instance RecoverablePane IDEBuffer BufferState IDEM where
                     textViewScrollToMark (sourceView buf) mark 0.0 (Just (0.3,0.3))
                     return False) priorityDefaultIdle
                 return ()
+
+startComplete :: IDEAction
+startComplete = do
+    trace "start complete" return ()
+    mbBuf <- maybeActiveBuf
+    currentState' <- readIDE currentState
+    case mbBuf of
+        Nothing     -> return ()
+        Just buf    -> complete (sourceView buf) True
 
 selectSourceBuf :: FilePath -> IDEM (Maybe IDEBuffer)
 selectSourceBuf fp = do
@@ -276,13 +287,14 @@ allBuffers = getPanes
 
 maybeActiveBuf :: IDEM (Maybe IDEBuffer)
 maybeActiveBuf = do
-    mbPane   <- lastActiveBufferPane
-    case mbPane of
-        Nothing -> return Nothing
-        Just paneName -> do
-            (PaneC pane) <- paneFromName paneName
+    mbActivePane <-  readIDE activePane
+    mbPane       <- lastActiveBufferPane
+    case (mbPane,mbActivePane) of
+        (Just paneName1, Just (paneName2,_)) | paneName1 == paneName2 -> do
+            (PaneC pane) <- paneFromName paneName1
             let mbActbuf = cast pane
             return mbActbuf
+        _ -> return Nothing
 
 standardSourcePanePath :: IDEM PanePath
 standardSourcePanePath = do
@@ -381,7 +393,7 @@ newTextBuffer panePath bn mbfn = do
             (\iter text -> do
                 case text of
                     [c] | ((isAlphaNum c) || (c == '.') || (c == '_')) -> do
-                        reflectIDE (Completion.complete sv) ideR
+                        reflectIDE (Completion.complete sv False) ideR
                     _ -> return ()
             )
         sv `onMoveCursor`

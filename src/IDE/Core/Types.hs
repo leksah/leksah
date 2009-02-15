@@ -157,6 +157,7 @@ data Prefs = Prefs {
     ,   autoExtractTars     ::   Maybe FilePath
     ,   useCtrlTabFlipping  ::   Bool
     ,   docuSearchURL       ::   String
+    ,   completeRestricted  ::   Bool
 } deriving(Eq,Show)
 
 data SearchHint = Forward | Backward | Insert | Delete | Initial

@@ -28,13 +28,16 @@ import Graphics.UI.Gtk.Gdk.Events as Gtk
 import IDE.Core.State
 import IDE.Metainfo.Provider(getDescription,getCompletionOptions)
 
-complete :: SourceView -> IDEAction
-complete sourceView = do
+complete :: SourceView -> Bool ->  IDEAction
+complete sourceView always = do
     currentState' <- readIDE currentState
+    prefs'        <- readIDE prefs
     case currentState' of
         IsCompleting window tv ls _ -> updateOptions window tv ls sourceView
-        IsRunning                   -> initCompletion sourceView
+        IsRunning                   -> when (always || not (completeRestricted prefs'))
+                                            (initCompletion sourceView)
         _                           -> return ()
+
 
 cancel :: IDEAction
 cancel = do
@@ -141,10 +144,10 @@ initCompletion sourceView = do
             count <- New.treeModelIterNChildren model Nothing
             Just column <- New.treeViewGetColumn tree 0
             case (name, modifier, char) of
-                ("space", [Gtk.Control], _) -> (do
-                    reflectIDE (complete sourceView) ideR
-                    return True
-                    )
+--                ("space", [Gtk.Control], _) -> (do
+--                    reflectIDE (complete sourceView ) ideR
+--                    return True
+--                    )
                 ("Tab", _, _) -> (do
                     visible <- get tree widgetVisible
                     if visible then (do
@@ -221,7 +224,7 @@ initCompletion sourceView = do
             let Key { eventKeyName = name, eventModifier = modifier, eventKeyChar = char } = event
             case (name, modifier, char) of
                 ("BackSpace", _, _) -> (do
-                    reflectIDE (complete sourceView) ideR
+                    reflectIDE (complete sourceView False) ideR
                     return False
                     )
                 _ -> return False

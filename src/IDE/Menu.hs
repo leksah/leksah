@@ -226,6 +226,8 @@ actions =
         flipDown [] False
     ,AD "FlipUp" "Flip up" Nothing Nothing
         flipUp [] False
+    ,AD "StartComplete" "StartComplete" Nothing Nothing
+        startComplete [] False
 
     ,AD "ViewHistoryBack" "Back" Nothing (Just "gtk-go-back")
         historyBack [] False

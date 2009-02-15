@@ -323,6 +323,14 @@ prefsDescription packages = NFDPP [
             boolEditor
             (\i -> return ())
     ,   mkFieldPP
+            (paraName <<<- ParaName "Complete only on Hotkey" $ emptyParams)
+            (PP.text . show)
+            boolParser
+            completeRestricted
+            (\b a -> a{completeRestricted = b})
+            boolEditor
+            (\i -> return ())
+    ,   mkFieldPP
             (paraName <<<- ParaName "Standard source pane path" $ emptyParams)
             (PP.text . show)
             readParser
@@ -454,6 +462,7 @@ defaultPrefs = Prefs {
     ,   autoExtractTars     =   Nothing
     ,   useCtrlTabFlipping  =   True
     ,   docuSearchURL       =   "http://holumbus.fh-wedel.de/hayoo/hayoo.html?query="
+    ,   completeRestricted  =   False
     }
 
 -- ------------------------------------------------------------

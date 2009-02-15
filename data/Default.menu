@@ -135,4 +135,5 @@
    </toolbar>
    <accelerator name="FlipUp" action="FlipUp"/>
    <accelerator name="FlipDown" action="FlipDown"/>
+   <accelerator name="StartComplete" action="StartComplete"/>
  </ui>
