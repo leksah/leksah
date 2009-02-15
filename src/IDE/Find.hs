@@ -429,9 +429,9 @@ editReplace' entireWord caseSensitive wrapAround search replace hint mayRepeat =
 
 editReplaceAll :: Bool -> Bool -> Bool -> String -> String -> SearchHint -> IDEM Bool
 editReplaceAll entireWord caseSensitive wrapAround search replace hint = do
-    res <- editReplace' entireWord caseSensitive wrapAround search replace hint True
+    res <- editReplace' entireWord caseSensitive False search replace hint True
     if res
-        then editReplaceAll entireWord caseSensitive wrapAround search replace hint
+        then editReplaceAll entireWord caseSensitive False search replace hint
         else return False
 
 red = Color 640000 10000 10000
