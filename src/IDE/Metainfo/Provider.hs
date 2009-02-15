@@ -115,7 +115,9 @@ getDescription name = do
 --
 -- | Searching of metadata
 --
+
 searchMeta :: Scope -> String -> SearchMode -> IDEM [Descr]
+searchMeta _ "" _ = return []
 searchMeta Local searchString searchType = do
     currentInfo'    <- readIDE currentInfo
     case currentInfo' of

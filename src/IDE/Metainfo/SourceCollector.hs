@@ -331,31 +331,6 @@ instance Show alpha => Show (PPDoc alpha)  where
     showsPrec _ (PPDoc (DocAName str))          =   showChar '#' . showString str . showChar '#'
     showsPrec _ (PPDoc _)                       =   id
 
-
-{--
-printHsDoc :: Show alpha => HsDoc alpha  -> String
-printHsDoc = (unlines . map ((++) "-- ") .  nonemptyLines) . printHsDoc'
-    where
-        printHsDoc' DocEmpty                     =   ""
-        printHsDoc' (DocAppend l r)              =   printHsDoc' l ++ printHsDoc' r
-        printHsDoc' (DocString str)              =   text str
-        printHsDoc' (DocParagraph d)             =   printHsDoc' d ++ "\n"
-        printHsDoc' (DocIdentifier l)            =   concatMap (\i -> '\'' : show l ++ "'")  l
-        printHsDoc' (DocModule str)              =   '"' : str ++ "\""
-        printHsDoc' (DocEmphasis doc)            =   '/' : printHsDoc' doc ++ "/"
-        printHsDoc' (DocMonospaced doc)          =   '@' ++ printHsDoc' doc ++ "@"
-        printHsDoc' (DocUnorderedList l)         =   concatMap (\i -> "* " ++ printHsDoc' i) l
-        printHsDoc' (DocOrderedList l)           =   concatMap (\(i,n) -> show n ++ " " ++ printHsDoc' i)
-                                                                    $ zip l [1 .. length l]
-        printHsDoc' (DocDefList li)              =   concatMap (\(l,r) -> printHsDoc' l ++ " " ++
-                                                        printHsDoc' r) li
-        printHsDoc' (DocCodeBlock doc)           =   "@ " ++  printHsDoc' doc ++ " @"
-        printHsDoc' (DocURL str)                 =   '<' : str ++ ">"
-        printHsDoc' (DocAName str)               =   '#' : str ++ "#"
-        printHsDoc' _                            =   ""
---}
-
-
 instance Show RdrName where
     show                                =   unpackFS . occNameFS . rdrNameOcc
 

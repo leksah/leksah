@@ -29,16 +29,13 @@ import Data.IORef (newIORef)
 import Data.IORef (writeIORef,readIORef,IORef(..))
 import IDE.Pane.Info (setInfo,IDEInfo(..))
 import IDE.Pane.SourceBuffer (goToDefinition)
---import Debug.Trace (trace)
 import IDE.Metainfo.Provider (searchMeta)
 import Data.Maybe
 import Control.Monad.Reader
---import Distribution.Package
 import Data.Typeable
 import IDE.Core.State
 import Distribution.Text(display)
 import Control.Event (triggerEvent)
-import Debug.Trace (trace)
 
 -- | A search pane description
 --
@@ -47,10 +44,10 @@ data IDESearch      =   IDESearch {
     scrolledView    ::   ScrolledWindow
 ,   treeView        ::   New.TreeView
 ,   searchStore     ::   New.ListStore Descr
-,   searchStringRef ::   IORef String
 ,   searchScopeRef  ::   IORef Scope
 ,   searchModeRef   ::   IORef SearchMode
 ,   topBox          ::   VBox
+,   entry           ::   Entry
 } deriving Typeable
 
 data SearchState    =   SearchState {
@@ -72,7 +69,7 @@ instance Pane IDESearch IDEM
 
 instance RecoverablePane IDESearch SearchState IDEM where
     saveState p     =   do
-        str     <-  liftIO $ readIORef (searchStringRef p)
+        str     <-  liftIO $ entryGetText (entry p)
         mode    <-  liftIO $ readIORef (searchModeRef p)
         scope   <-  liftIO $ readIORef (searchScopeRef p)
         return (Just (SearchState str scope mode))
@@ -85,7 +82,7 @@ showSearch :: IDEAction
 showSearch = do
     m <- getSearch
     liftIO $ bringPaneToFront m
-    liftIO $ widgetGrabFocus (treeView m)
+    liftIO $ widgetGrabFocus (entry m)
 
 getSearch :: IDEM IDESearch
 getSearch = do
@@ -145,7 +142,6 @@ initSearch panePath nb scope mode = do
         treeView    <-  New.treeViewNew
         New.treeViewSetModel treeView listStore
 
-
         renderer3    <- New.cellRendererTextNew
         renderer30   <- New.cellRendererPixbufNew
         col3         <- New.treeViewColumnNew
@@ -202,16 +198,18 @@ initSearch panePath nb scope mode = do
         containerAdd sw treeView
         scrolledWindowSetPolicy sw PolicyAutomatic PolicyAutomatic
 
+        entry   <-  entryNew
+
         box             <-  vBoxNew False 2
         boxPackStart box scopebox PackNatural 0
         boxPackStart box sw PackGrow 0
-        boxPackEnd box modebox PackNatural 0
-        stringRef <- newIORef ""
+        boxPackStart box modebox PackNatural 0
+        boxPackEnd box entry PackNatural 0
+
         scopeRef  <- newIORef scope
         modeRef   <- newIORef mode
-        let search = IDESearch sw treeView listStore stringRef scopeRef modeRef box
+        let search = IDESearch sw treeView listStore scopeRef modeRef box entry
         notebookInsertOrdered nb box (paneName search) Nothing
-        widgetShowAll box
 
         cid1 <- treeView `afterFocusIn`
             (\_ -> do reflectIDE (makeActive search) ideR ; return True)
@@ -235,11 +233,15 @@ initSearch panePath nb scope mode = do
             (reflectIDE (modeSelectionCase active) ideR )
         treeView `onButtonPress` (listViewPopup ideR  listStore treeView)
         sel `New.onSelectionChanged` do
-            fillInfo treeView listStore ideR
-            trace "search pane selection changes" $ return ()
+            fillInfo search ideR
+        entry `afterKeyRelease` (\ event -> do
+            text <- entryGetText entry
+            reflectIDE (searchMetaGUI text) ideR
+            return False)
         return (search,[ConnectC cid1])
     addPaneAdmin buf cids panePath
-    liftIO $widgetGrabFocus (scrolledView buf)
+    liftIO $ widgetShowAll (topBox buf)
+    liftIO $ widgetGrabFocus (scrolledView buf)
 
 getScope :: IDESearch -> IO Scope
 getScope search = readIORef (searchScopeRef search)
@@ -251,14 +253,14 @@ scopeSelection :: Scope -> IDEAction
 scopeSelection scope = do
     search <- getSearch
     liftIO $ writeIORef (searchScopeRef search) scope
-    text   <- liftIO $ readIORef (searchStringRef search)
+    text   <- liftIO $ entryGetText (entry search)
     searchMetaGUI text
 
 modeSelection :: SearchMode -> IDEAction
 modeSelection mode = do
     search <- getSearch
     liftIO $ writeIORef (searchModeRef search) mode
-    text   <- liftIO $ readIORef (searchStringRef search)
+    text   <- liftIO $ entryGetText (entry search)
     searchMetaGUI text
 
 modeSelectionCase :: Bool -> IDEAction
@@ -266,23 +268,23 @@ modeSelectionCase caseSense = do
     search <- getSearch
     oldMode <- liftIO $ readIORef (searchModeRef search)
     liftIO $ writeIORef (searchModeRef search) oldMode{caseSense = caseSense}
-    text   <- liftIO $ readIORef (searchStringRef search)
+    text   <- liftIO $ entryGetText (entry search)
     searchMetaGUI text
 
 searchMetaGUI :: String -> IDEAction
 searchMetaGUI str = do
     search <- getSearch
     liftIO $ bringPaneToFront search
-    liftIO $ writeIORef (searchStringRef search) str
+    liftIO $ entrySetText (entry search) str
     scope  <- liftIO $ getScope search
     mode   <- liftIO $ getMode search
-    let mode' = if length str > 2 then mode else Exact (caseSense mode)
+--    let mode' = if length str > 2 then mode else Exact (caseSense mode)
     descrs <- if null str
                 then return []
-                else searchMeta scope str mode'
+                else searchMeta scope str mode
     liftIO $ do
         New.listStoreClear (searchStore search)
-        mapM_ (New.listStoreAppend (searchStore search)) descrs
+        mapM_ (New.listStoreAppend (searchStore search)) (take 500 descrs)
 
 listViewPopup :: IDERef
     -> New.ListStore Descr
@@ -329,14 +331,15 @@ getSelectionDescr treeView listStore = do
             return (Just val)
         _  ->  return Nothing
 
-fillInfo :: New.TreeView
-    -> New.ListStore Descr
+fillInfo :: IDESearch
     -> IDERef
     -> IO ()
-fillInfo treeView listStore ideR  = do
-    sel <- getSelectionDescr treeView listStore
+fillInfo search ideR  = do
+    sel <- getSelectionDescr (treeView search) (searchStore search)
     case sel of
-        Just descr      ->  reflectIDE (setInfo descr) ideR
+        Just descr      ->  do
+            reflectIDE (setInfo descr) ideR
+            entrySetText (entry search) (descrName descr)
         otherwise       ->  sysMessage Normal "Search>>fillInfo:no selection"
 
 setChoices :: [Descr] -> IDEAction
@@ -346,6 +349,6 @@ setChoices descrs = do
         New.listStoreClear (searchStore search)
         mapM_ (New.listStoreAppend (searchStore search)) descrs
         bringPaneToFront search
-        writeIORef (searchStringRef search) ""
+        entrySetText (entry search) ""
 
 
