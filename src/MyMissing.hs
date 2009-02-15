@@ -19,9 +19,20 @@ module MyMissing (
 ,   forceHead
 ,   split
 ,   replace
+,   nonEmptyLines
 ) where
 
-import Data.List (unfoldr)
+import Data.List (find,unfoldr)
+import Data.Maybe (isJust)
+import Data.Char (isSpace)
+
+-- ---------------------------------------------------------------------
+-- | A class for pretty printing
+--
+
+nonEmptyLines :: String -> [String]
+nonEmptyLines = filter (\line -> isJust $ find (not . isSpace) line) . lines
+
 
 allOf :: forall alpha. (Bounded alpha, Enum alpha) =>  [alpha]
 allOf = map toEnum [fromEnum (minBound :: alpha) .. fromEnum (maxBound :: alpha)]

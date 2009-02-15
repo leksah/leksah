@@ -401,7 +401,7 @@ treeViewSearch treeView treeStore string iter =  do
             return ()
     let str2      = case snd val of
                         []      -> fst val
-                        (m,_):_ -> showPackModule (moduleIdMD m)
+                        (m,_):_ -> showPackModule  (moduleIdMD m)
     let res       =  isInfixOf (map toLower string) (map toLower str2)
     return res
 
@@ -411,7 +411,7 @@ searchInModSubnodes tree str =
         $ filter (\ val ->
             let cstr = case snd val of
                     [] -> fst val
-                    (m,_):_ -> showPackModule (moduleIdMD m)
+                    (m,_):_ -> show (Present (moduleIdMD m))
             in  isInfixOf (map toLower str) (map toLower cstr))
                 $ concatMap flatten (subForest tree)
 

@@ -111,7 +111,7 @@ idDescrDescr ideR  = VFD emptyParams [
             (paraName <<<- ParaName "Exported by"
                 $ paraPack <<<- ParaPack PackGrow
                         $ emptyParams)
-            (\l -> showPackModule (descrModu l))
+            (\l -> showPackModule  (descrModu l))
             (\ b a -> if isReexported a then a else a{descrModu' = parsePackModule b})
             (stringEditor (const True))]
     ,   mkField

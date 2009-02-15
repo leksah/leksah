@@ -109,21 +109,8 @@ getDescription name = do
     case currentInfo' of
         Nothing -> return ""
         Just ((_,symbolTable1),(_,symbolTable2)) ->
-            return $ foldl (\result description ->
-                result
-                ++ case description of
-                    Descr _ _ _ _ _ _ ->
-                        "-- " ++ showPackModule (descrModu description) ++ "\n"
-                        ++ case mbComment description of
-                            Just comment -> unlines $ map ((++) "-- ") $ nonemptyLines (BS.unpack comment)
-                            Nothing -> ""
-                        ++ (unlines $ nonemptyLines (BS.unpack $ typeInfo description))
-                        ++ "\n"
-                    _ -> ""
-                ) "" $ getIdentifierDescr name symbolTable1 symbolTable2
-    where
-        nonemptyLines text = filter (\line -> isJust $ find notSpace line) $ lines text
-        notSpace char = char /= ' ' && char /= '\t'
+            return ((foldr (\d f -> shows (Present d) . showChar '\n' . f) id
+                (getIdentifierDescr name symbolTable1 symbolTable2)) "")
 
 --
 -- | Searching of metadata

@@ -1,4 +1,4 @@
-{-# OPTIONS_GHC -XDisambiguateRecordFields -XExistentialQuantification -XRank2Types #-}
+{-# OPTIONS_GHC -XDisambiguateRecordFields -XExistentialQuantification -XRank2Types -XFlexibleInstances #-}
 -----------------------------------------------------------------------------
 --
 -- Module      :  IDE.Core.Data
@@ -29,6 +29,7 @@ module IDE.Core.Types (
 ,   PackageDescr(..)
 ,   ModuleDescr(..)
 ,   Descr(..)
+,   Present(..)
 ,   SpDescr(..)
 ,   DescrType(..)
 ,   descrName
@@ -47,8 +48,8 @@ module IDE.Core.Types (
 ,   SymbolTable
 ,   PackageScope
 ,   PackModule(..)
-,   showPackModule
 ,   parsePackModule
+,   showPackModule
 ,   fromPackageIdentifier
 ,   toPackageIdentifier
 ,   Location(..)
@@ -86,10 +87,9 @@ import Distribution.Text
 import Data.Map (Map(..))
 import Distribution.ModuleName(ModuleName)
 import Distribution.Text
-import qualified Data.ByteString.Char8 as BS  (empty)
+import qualified Data.ByteString.Char8 as BS  (unpack,empty)
 import Data.ByteString.Char8 (ByteString)
-
-
+import MyMissing
 
 -- ---------------------------------------------------------------------
 -- IDEPackages
@@ -181,6 +181,8 @@ data ErrorSpec = ErrorSpec {
 --  | Information about the world, extraced from .hi and maybe source files
 --
 
+newtype Present alpha       =   Present alpha
+
 type PackageScope       =   (Map PackageIdentifier PackageDescr,SymbolTable)
 type SymbolTable        =   Map Symbol [Descr]
 
@@ -189,14 +191,16 @@ data PackageDescr       =   PackageDescr {
 ,   mbSourcePathPD      ::   (Maybe FilePath)
 ,   exposedModulesPD    ::   [ModuleDescr]
 ,   buildDependsPD      ::   [PackageIdentifier]
-} deriving Show
+} deriving (Show)
+
+instance Show (Present PackageDescr) where
+    show (Present pd)   =   (fromPackageIdentifier . packagePD) pd
 
 instance Eq PackageDescr where
     (== ) a b             =   packagePD a == packagePD b
 
 instance Ord PackageDescr where
     (<=) a b             =   packagePD a <=  packagePD b
-
 
 data ModuleDescr        =   ModuleDescr {
     moduleIdMD          ::   PackModule
@@ -205,6 +209,9 @@ data ModuleDescr        =   ModuleDescr {
 ,   usagesMD            ::   (Map ModuleName (Set Symbol)) -- imports
 ,   idDescriptionsMD    ::   [Descr]
 } deriving Show
+
+instance Show (Present ModuleDescr) where
+    show (Present md)   =   (show . moduleIdMD) md
 
 instance Eq ModuleDescr where
     (== ) a b             =   moduleIdMD a == moduleIdMD b
@@ -223,6 +230,15 @@ data Descr              =   Descr {
     descrModu'          ::   PackModule
 ,   impDescr            ::   Descr}
     deriving (Show,Read)
+
+instance Show (Present Descr) where
+    showsPrec _ (Present descr) =   case mbComment descr of
+                                        Just comment -> p . showChar '\n' . c comment . t
+                                        Nothing      -> p . showChar '\n' . t
+        where p         =   showString "-- | " . shows (Present (descrModu' descr))
+              c com     =   showString $ (unlines . map ((++) "-- ") .  nonEmptyLines) (BS.unpack com)
+              t         =   showString $ BS.unpack (typeInfo descr)
+
 
 isReexported :: Descr -> Bool
 isReexported (Reexported _ _)   =   True
@@ -321,8 +337,9 @@ data PackModule         =   PM {    pack :: PackageIdentifier
                                 ,   modu :: ModuleName}
                                 deriving (Eq, Ord,Read,Show)
 
-showPackModule ::  PackModule -> String
-showPackModule (PM p m) =   display p ++ ":" ++ display m
+instance Show (Present PackModule) where
+    showsPrec _ (Present pd)  =   showString ((fromPackageIdentifier . pack) pd) . showChar ':'
+                                    .  showString (display (modu pd))
 
 parsePackModule         ::   String -> PackModule
 parsePackModule str     =   let (pack',mod') = span (\c -> c /= ':') str
@@ -333,6 +350,9 @@ parsePackModule str     =   let (pack',mod') = span (\c -> c /= ':') str
                                                 "Types>>parsePackModule: Can't parse module:" ++ str
                                             Just mn -> (PM pi' mn)
     where perror s      =   throwIDE $ "cannot parse PackModule from " ++ s
+
+showPackModule :: PackModule -> String
+showPackModule = show. Present
 
 fromPackageIdentifier :: PackageIdentifier -> String
 fromPackageIdentifier   =   display

@@ -25,6 +25,7 @@ module IDE.Metainfo.InterfaceCollector (
 import GHC hiding(Id,Failed,Succeeded,ModuleName)
 import Module hiding (PackageId,ModuleName)
 import IDE.Metainfo.GHCUtils (findFittingPackages,getInstalledPackageInfos)
+import MyMissing (nonEmptyLines)
 import qualified Module
 import TcRnMonad hiding (liftIO,MonadIO)
 import qualified Maybes as M
@@ -81,7 +82,7 @@ import IDE.Metainfo.SourceCollector
 import IDE.Metainfo.GHCUtils(inGhc)
 
 metadataVersion :: Integer
-metadataVersion = 3
+metadataVersion = 4
 
 data CollectStatistics = CollectStatistics {
     packagesTotal       ::   Int
@@ -301,7 +302,7 @@ extractIdentifierDescr package modules decl
       else
         let descr = Descr{
                     descrName'           =   unpackFS $occNameFS (ifName decl)
-                ,   typeInfo'            =   BS.pack $ filterExtras $ showSDocUnqual $ppr decl
+                ,   typeInfo'            =   BS.pack $ unlines $ nonEmptyLines $ filterExtras $ showSDocUnqual $ppr decl
                 ,   descrModu'           =   PM package (last modules)
                 ,   mbLocation'          =   Nothing
                 ,   mbComment'           =   Nothing

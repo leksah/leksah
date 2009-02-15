@@ -36,7 +36,7 @@ import Control.Monad.State
 import System.FilePath
 import System.IO
 import Data.List (foldl',nub,delete,sort)
-import Data.Maybe(catMaybes)
+import Data.Maybe (catMaybes)
 import qualified Control.Exception as C
 import qualified Data.ByteString.Char8 as BS
 import Distribution.PackageDescription.Parse (readPackageDescription)
@@ -59,6 +59,7 @@ import Digraph (flattenSCCs)
 import HscTypes (msHsFilePath)
 import Distribution.Package (PackageIdentifier(..))
 import Distribution.Text (display)
+import GHC.Show (showSpace)
 
 
 -- ---------------------------------------------------------------------
@@ -286,17 +287,17 @@ addLocationAndComment (l,st) lid srcSpan mbComment' types insts =
             other   -> elem other idTypes
 
 declTypeToString :: Show alpha => HsDecl alpha -> String
-declTypeToString  (TyClD	_)  =   "TyClD"
-declTypeToString  (InstD _) =   "InstD"
-declTypeToString  (DerivD _)=   "DerivD"
-declTypeToString  (ValD	_)  =   "ValD"
-declTypeToString  (SigD _)  =   "SigD"
-declTypeToString  (DefD _)  =   "DefD"
-declTypeToString  (ForD _)  =   "ForD"
+declTypeToString  (TyClD	_)   =   "TyClD"
+declTypeToString  (InstD _)   =   "InstD"
+declTypeToString  (DerivD _)  =   "DerivD"
+declTypeToString  (ValD	_)    =   "ValD"
+declTypeToString  (SigD _)    =   "SigD"
+declTypeToString  (DefD _)    =   "DefD"
+declTypeToString  (ForD _)    =   "ForD"
 declTypeToString  (WarningD _)=  "WarnD"
-declTypeToString  (RuleD _) =   "RuleD"
+declTypeToString  (RuleD _)   =   "RuleD"
 declTypeToString  (SpliceD _) = "SpliceD"
-declTypeToString  (DocD v)  =   "DocD " ++ show v
+declTypeToString  (DocD v)    =   "DocD " ++ show v
 
 srcSpanToLocation :: SrcSpan -> Location
 srcSpanToLocation span | not (isGoodSrcSpan span)
@@ -306,23 +307,53 @@ srcSpanToLocation span
                  (srcSpanEndLine span) (srcSpanEndCol span)
 
 printHsDoc :: Show alpha => HsDoc alpha  -> String
-printHsDoc DocEmpty                     =   ""
-printHsDoc (DocAppend l r)              =   printHsDoc l ++ " " ++ printHsDoc r
-printHsDoc (DocString str)              =   str
-printHsDoc (DocParagraph d)             =   printHsDoc d ++ "\n"
-printHsDoc (DocIdentifier l)            =   concatMap show l
-printHsDoc (DocModule str)              =   "Module " ++ str
-printHsDoc (DocEmphasis doc)            =   printHsDoc doc
-printHsDoc (DocMonospaced doc)          =   printHsDoc doc
-printHsDoc (DocUnorderedList l)         =   concatMap printHsDoc l
-printHsDoc (DocOrderedList l)           =   concatMap printHsDoc l
-printHsDoc (DocDefList li)              =   concatMap (\(l,r) -> printHsDoc l ++ " " ++
-                                                printHsDoc r) li
-printHsDoc (DocCodeBlock doc)           =   printHsDoc doc
-printHsDoc (DocURL str)                 =   str
-printHsDoc (DocAName str)               =   str
-printHsDoc _                            =   ""
+printHsDoc d = show (PPDoc d)
 
+newtype PPDoc alpha = PPDoc (HsDoc alpha)
+
+instance Show alpha => Show (PPDoc alpha)  where
+    showsPrec _ (PPDoc DocEmpty)                 =   id
+    showsPrec _ (PPDoc (DocAppend l r))          =   shows (PPDoc l)  . shows (PPDoc r)
+    showsPrec _ (PPDoc (DocString str))          =   showString str
+    showsPrec _ (PPDoc (DocParagraph d))         =   shows (PPDoc d) . showChar '\n'
+    showsPrec _ (PPDoc (DocIdentifier l))        =   foldr (\i f -> showChar '\'' . shows i . showChar '\'') id l
+    showsPrec _ (PPDoc (DocModule str))          =   showChar '"' . showString str . showChar '"'
+    showsPrec _ (PPDoc (DocEmphasis doc))        =   showChar '/' . shows (PPDoc doc)  . showChar '/'
+    showsPrec _ (PPDoc (DocMonospaced doc))      =   showChar '@' . shows (PPDoc doc) . showChar '@'
+    showsPrec _ (PPDoc (DocUnorderedList l))     =
+        foldr (\s r -> showString "* " . shows (PPDoc s) . showChar '\n' . r) id l
+    showsPrec _ (PPDoc (DocOrderedList l))       =
+        foldr (\(i,n) f -> shows n . showSpace .  shows (PPDoc i)) id (zip l [1 .. length l])
+    showsPrec _ (PPDoc (DocDefList li))          =
+        foldr (\(l,r) f -> showString "[@" . shows (PPDoc l) . showString "[@ " . shows (PPDoc r) . f) id li
+    showsPrec _ (PPDoc (DocCodeBlock doc))      =   showChar '@' . shows (PPDoc doc) . showChar '@'
+    showsPrec _ (PPDoc (DocURL str))            =   showChar '<' . showString str . showChar '>'
+    showsPrec _ (PPDoc (DocAName str))          =   showChar '#' . showString str . showChar '#'
+    showsPrec _ (PPDoc _)                       =   id
+
+
+{--
+printHsDoc :: Show alpha => HsDoc alpha  -> String
+printHsDoc = (unlines . map ((++) "-- ") .  nonemptyLines) . printHsDoc'
+    where
+        printHsDoc' DocEmpty                     =   ""
+        printHsDoc' (DocAppend l r)              =   printHsDoc' l ++ printHsDoc' r
+        printHsDoc' (DocString str)              =   text str
+        printHsDoc' (DocParagraph d)             =   printHsDoc' d ++ "\n"
+        printHsDoc' (DocIdentifier l)            =   concatMap (\i -> '\'' : show l ++ "'")  l
+        printHsDoc' (DocModule str)              =   '"' : str ++ "\""
+        printHsDoc' (DocEmphasis doc)            =   '/' : printHsDoc' doc ++ "/"
+        printHsDoc' (DocMonospaced doc)          =   '@' ++ printHsDoc' doc ++ "@"
+        printHsDoc' (DocUnorderedList l)         =   concatMap (\i -> "* " ++ printHsDoc' i) l
+        printHsDoc' (DocOrderedList l)           =   concatMap (\(i,n) -> show n ++ " " ++ printHsDoc' i)
+                                                                    $ zip l [1 .. length l]
+        printHsDoc' (DocDefList li)              =   concatMap (\(l,r) -> printHsDoc' l ++ " " ++
+                                                        printHsDoc' r) li
+        printHsDoc' (DocCodeBlock doc)           =   "@ " ++  printHsDoc' doc ++ " @"
+        printHsDoc' (DocURL str)                 =   '<' : str ++ ">"
+        printHsDoc' (DocAName str)               =   '#' : str ++ "#"
+        printHsDoc' _                            =   ""
+--}
 
 
 instance Show RdrName where
