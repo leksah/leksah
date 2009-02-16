@@ -312,8 +312,8 @@ comboSelectionEditor list parameters notifier = do
             core <- readIORef coreRef
             case core of
                 Nothing  -> do
-                    ls <- New.listStoreNew $ map show list
-                    combo <-  New.comboBoxNewWithModel ls
+                    combo <- New.comboBoxNewText
+                    mapM_ (\o -> comboBoxAppendText combo (show o)) list
                     widgetSetName combo (getParameter paraName parameters)
                     mapM_ (activateEvent (castToWidget combo) notifier Nothing)
                             [FocusOut,FocusIn]
