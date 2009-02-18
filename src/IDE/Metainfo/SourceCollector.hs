@@ -106,6 +106,7 @@ collectSources sourceMap pdescr = do
                                     ++ ["-I" ++ dir | dir <- buildPaths]
                                     ++ ["-i" ++ dir | dir <- includes]
                                     ++ ["-i" ++ dir | dir <- buildPaths]
+                                    ++ ["-X" ++ show e | e <- nub $ concatMap extensions bis]
             -- trace ("flags " ++ show flags) $ return ()
             dflags3          <-  getSessionDynFlags
             (dflags4,_,_)   <-  parseDynamicFlags dflags3 (map noLoc flags)
