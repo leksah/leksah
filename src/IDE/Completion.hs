@@ -20,7 +20,6 @@ import Data.IORef
 import Control.Monad
 import Control.Monad.Trans (liftIO)
 import Control.Concurrent
-import Control.Exception
 import Graphics.UI.Gtk as Gtk
 import Graphics.UI.Gtk.SourceView
 import Graphics.UI.Gtk.ModelView as New

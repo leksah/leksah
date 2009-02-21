@@ -41,7 +41,6 @@ import System.IO
 import Data.List
 import qualified PackageConfig as DP
 import Data.Maybe
-import Data.Binary
 import Distribution.Package hiding (depends,packageId)
 import Data.Set (Set)
 import qualified Data.Set as Set
@@ -65,7 +64,7 @@ import Text.Regex.Posix
 import System.IO.Unsafe (unsafePerformIO)
 import Text.Regex.Posix.String (execute,compile)
 import IDE.Metainfo.GHCUtils (findFittingPackages,getInstalledPackageInfos,inGhc)
---import Debug.Trace
+import Data.Binary.Shared (decodeSer)
 
 --
 -- | Lookup of an identifier description
@@ -417,8 +416,9 @@ loadInfosForPackage dirPath isWorkingPackage pid = do
     if exists
         then catch (do
             file            <-  openBinaryFile filePath ReadMode
+            -- trace ("now loading metadata for package" ++ filePath) return ()
             bs              <-  BSL.hGetContents file
-            let (metadataVersion', packageInfo) =   decode bs
+            let (metadataVersion', packageInfo) =   decodeSer bs
             if metadataVersion /= metadataVersion'
                 then do
                     hClose file

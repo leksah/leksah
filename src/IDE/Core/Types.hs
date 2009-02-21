@@ -1,4 +1,9 @@
-{-# OPTIONS_GHC -XDisambiguateRecordFields -XExistentialQuantification -XRank2Types -XFlexibleInstances #-}
+{-# OPTIONS_GHC
+    -XDisambiguateRecordFields
+    -XExistentialQuantification
+    -XRank2Types
+    -XFlexibleInstances
+    -XDeriveDataTypeable #-}
 -----------------------------------------------------------------------------
 --
 -- Module      :  IDE.Core.Data
@@ -90,6 +95,7 @@ import Distribution.Text
 import qualified Data.ByteString.Char8 as BS  (unpack,empty)
 import Data.ByteString.Char8 (ByteString)
 import MyMissing
+import Data.Typeable (Typeable(..))
 
 -- ---------------------------------------------------------------------
 -- IDEPackages
@@ -192,7 +198,7 @@ data PackageDescr       =   PackageDescr {
 ,   mbSourcePathPD      ::   (Maybe FilePath)
 ,   exposedModulesPD    ::   [ModuleDescr]
 ,   buildDependsPD      ::   [PackageIdentifier]
-} deriving (Show)
+} deriving (Show,Typeable)
 
 instance Show (Present PackageDescr) where
     show (Present pd)   =   (fromPackageIdentifier . packagePD) pd
@@ -209,7 +215,7 @@ data ModuleDescr        =   ModuleDescr {
 ,   exportedNamesMD     ::   (Set Symbol)                        -- unqualified
 ,   usagesMD            ::   (Map ModuleName (Set Symbol)) -- imports
 ,   idDescriptionsMD    ::   [Descr]
-} deriving Show
+} deriving (Show,Typeable)
 
 instance Show (Present ModuleDescr) where
     show (Present md)   =   (show . moduleIdMD) md
@@ -230,7 +236,7 @@ data Descr              =   Descr {
     | Reexported {
     descrModu'          ::   PackModule
 ,   impDescr            ::   Descr}
-    deriving (Show,Read)
+    deriving (Show,Read,Typeable)
 
 instance Show (Present Descr) where
     showsPrec _ (Present descr) =   case mbComment descr of
@@ -288,7 +294,7 @@ data SpDescr   =   VariableDescr
                     |   MethodDescr {classDescrM :: Descr}
                     |   InstanceDescr {binds :: [Symbol]}
                             --the descrName is the type Konstructor?
-    deriving (Show,Read,Eq,Ord)
+    deriving (Show,Read,Eq,Ord,Typeable)
 
 instance Eq Descr where
     (== ) a b             =   descrName a == descrName b
@@ -336,7 +342,7 @@ type TypeInfo           =   ByteString
 
 data PackModule         =   PM {    pack :: PackageIdentifier
                                 ,   modu :: ModuleName}
-                                deriving (Eq, Ord,Read,Show)
+                                deriving (Eq, Ord,Read,Show,Typeable)
 
 instance Show (Present PackModule) where
     showsPrec _ (Present pd)  =   showString ((fromPackageIdentifier . pack) pd) . showChar ':'
@@ -369,7 +375,7 @@ data Location           =   Location {
 ,   locationSCol	    ::   Int
 ,   locationELine       ::   Int
 ,   locationECol        ::   Int
-}   deriving (Show,Eq,Ord,Read)
+}   deriving (Show,Eq,Ord,Read,Typeable)
 
 instance Default ByteString
     where getDefault = BS.empty
