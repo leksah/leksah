@@ -169,7 +169,7 @@ initCompletion sourceView = do
                                 return True
                                 )
                             Nothing -> (do
-                                widgetHideAll window
+                                reflectIDE cancel ideR
                                 return False
                                 )
                         )
