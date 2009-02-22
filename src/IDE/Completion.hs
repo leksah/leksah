@@ -267,7 +267,6 @@ updateOptions window tree store sourceView =
             wordStart <- textBufferGetText buffer start end True
             forkIO (do
                 options <- reflectIDE (getCompletionOptions wordStart) ideR
-                evaluate options
                 postGUIAsync $ processResults ideR window tree store sourceView wordStart options
                 return ()
                 )
