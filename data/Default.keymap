@@ -15,8 +15,9 @@
 <ctrl>s                    ->          FileSave        "Saves the current buffer"
 --<ctrl>x/<ctrl>s          ->          FileSave        "Saves the current buffer"
 
-<ctrl><shift>s             ->          FileSaveAs      "Saves the current buffer as a new file"
 --<ctrl>x/<ctrl>w          ->          FileSaveAs      "Saves the current buffer as a new file"
+
+<ctrl><shift>s             ->          FileSaveAll     "Saves all modified buffers"
 
 <ctrl>w                    ->          FileClose       "Closes the current buffer"
 --<ctrl>x/k                ->          FileClose       "Closes the current buffer"

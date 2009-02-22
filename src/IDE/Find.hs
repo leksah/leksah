@@ -252,13 +252,13 @@ constructFindReplace toolbar = reifyIDE $ \ ideR   -> do
     replaceAllButton `onToolButtonClicked` replaceAll toolbar Forward ideR
 
 
-    spinL `afterFocusIn` (\ _ -> (reflectIDE (inBufContext True $ \_ gtkbuf currentBuffer _ -> do
+    spinL `afterFocusIn` (\ _ -> (reflectIDE (inActiveBufContext True $ \_ gtkbuf currentBuffer _ -> do
         max <- textBufferGetLineCount gtkbuf
         spinButtonSetRange spinL 1.0 (fromIntegral max)
         return True) ideR  ))
 
 
-    spinL `afterEntryActivate` (reflectIDE (inBufContext () $ \_ gtkbuf currentBuffer _ -> do
+    spinL `afterEntryActivate` (reflectIDE (inActiveBufContext () $ \_ gtkbuf currentBuffer _ -> do
         line <- spinButtonGetValueAsInt spinL
         iter <- textBufferGetStartIter gtkbuf
         textIterSetLine iter (line - 1)
@@ -339,7 +339,7 @@ editFind entireWord caseSensitive wrapAround search dummy hint =
     let searchflags = (if caseSensitive then [] else [toEnum 4]) ++ [toEnum 1,toEnum 2] in
     if null search
         then return False
-        else inBufContext' False $ \_ gtkbuf currentBuffer _ -> liftIO $ do
+        else inActiveBufContext' False $ \_ gtkbuf currentBuffer _ -> liftIO $ do
             i1 <- textBufferGetStartIter gtkbuf
             i2 <- textBufferGetEndIter gtkbuf
             textBufferRemoveTagByName gtkbuf "found" i1 i2
@@ -406,7 +406,7 @@ editReplace entireWord caseSensitive wrapAround search replace hint =
 
 editReplace' :: Bool -> Bool -> Bool -> String -> String -> SearchHint -> Bool -> IDEM Bool
 editReplace' entireWord caseSensitive wrapAround search replace hint mayRepeat =
-    inBufContext' False $ \_ gtkbuf currentBuffer _ -> do
+    inActiveBufContext' False $ \_ gtkbuf currentBuffer _ -> do
         startMark <- liftIO $textBufferGetInsert gtkbuf
         iter      <- liftIO $textBufferGetIterAtMark gtkbuf startMark
         iter2     <- liftIO $textIterCopy iter

@@ -411,6 +411,16 @@ prefsDescription packages = NFDPP [
                 "Select folder"), emptyParams) True "Yes")
             (\i -> return ())
     ]),
+    ("Build", VFDPP emptyParams [
+         mkFieldPP
+            (paraName <<<- ParaName "Automatically save all files before building" $ emptyParams)
+            (PP.text . show)
+            boolParser
+            saveAllBeforeBuild
+            (\b a -> a{saveAllBeforeBuild = b})
+            boolEditor
+            (\i -> return ())
+    ]),
     ("Help", VFDPP emptyParams [
         mkFieldPP
             (paraName <<<- ParaName "Browser" $ emptyParams)
@@ -463,6 +473,7 @@ defaultPrefs = Prefs {
     ,   useCtrlTabFlipping  =   True
     ,   docuSearchURL       =   "http://holumbus.fh-wedel.de/hayoo/hayoo.html?query="
     ,   completeRestricted  =   False
+    ,   saveAllBeforeBuild  =   True
     }
 
 -- ------------------------------------------------------------

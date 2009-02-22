@@ -4,7 +4,8 @@
        <menuitem name="_New" action="FileNew" />
        <menuitem name="_Open" action="FileOpen" />
        <menuitem name="_Save" action="FileSave" />
-       <menuitem name="Save_As" action="FileSaveAs" />
+       <menuitem name="Save _As" action="FileSaveAs" />
+       <menuitem name="Save _All" action="FileSaveAll" />
        <menuitem name="_Revert" action="FileRevert" />
        <menuitem name="_Close" action="FileClose" />
        <separator/>

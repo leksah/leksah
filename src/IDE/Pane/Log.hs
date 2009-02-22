@@ -44,7 +44,7 @@ import qualified Text.ParserCombinators.Parsec.Token as P
 import Text.ParserCombinators.Parsec.Language (haskellStyle)
 import Data.List (foldl',sort,nub)
 import IDE.SourceCandy (getCandylessText)
-import IDE.Pane.SourceBuffer (inBufContext')
+import IDE.Pane.SourceBuffer (inActiveBufContext')
 import IDE.Metainfo.Provider (getIdentifierDescr)
 import Debug.Trace (trace)
 import Data.List (nubBy)
@@ -361,7 +361,7 @@ addImport' nis filePath descr = let
         case mbBuf of
             Nothing  -> return (True,Nothing)
             Just buf -> do
-                inBufContext' () $ \ _ gtkbuf _ _ -> do
+                inActiveBufContext' () $ \ _ gtkbuf _ _ -> do
                     ideMessage Normal $ "addImport " ++ show id ++ " from " ++ (render $ disp $ mod)
                     liftIO $ do
                         i1          <-  textBufferGetStartIter gtkbuf

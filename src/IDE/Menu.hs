@@ -69,8 +69,10 @@ actions =
         fileRevert [] False
     ,AD "FileSave" "_Save" Nothing (Just "gtk-save")
         (fileSave False) [] False
-    ,AD "FileSaveAs" "Save_As" Nothing (Just "gtk-save_as")
+    ,AD "FileSaveAs" "Save _As" Nothing (Just "gtk-save-as")
         (fileSave True) [] False
+    ,AD "FileSaveAll" "Save A_ll" Nothing Nothing
+        fileSaveAll [] False
     ,AD "FileClose" "_Close" Nothing (Just "gtk-close")
         (do fileClose; return ()) [] False
     ,AD "FileCloseAll" "Close All" Nothing Nothing

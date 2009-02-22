@@ -192,6 +192,30 @@ packageConfig = catchIDE (do
                     Nothing -> return ())
         (\(e :: SomeException) -> putStrLn (show e))
 
+packageCompile :: IDEAction
+packageCompile = catchIDE (do
+        mbPackage   <- getActivePackage
+        log         <- getLog
+        ideR        <- ask
+        prefs       <- readIDE prefs
+        case mbPackage of
+            Nothing         -> return ()
+            Just package    -> do
+                when (saveAllBeforeBuild prefs) $ fileSaveAll
+                sb <- getSBErrors
+                liftIO $statusbarPop sb 1
+                liftIO $statusbarPush sb 1 "Compiling"
+                unmarkCurrentError
+                pid' <- reifyIDE (\ideR -> do
+                    (inp,out,err,pid) <- runExternal "runhaskell" (["Setup","build","--build-to=Compile"]
+                                                    ++ buildFlags package)
+                    oid     <-  forkIO (readOut log out)
+                    hSetBuffering err NoBuffering
+                    eid     <-  forkIO (reflectIDE (readErrForBuild log err) ideR)
+                    return pid)
+                when (collectAfterBuild prefs) $ mayRebuildInBackground (Just pid'))
+        (\(e :: SomeException) -> putStrLn (show e))
+
 packageBuild :: IDEAction
 packageBuild = catchIDE (do
         mbPackage   <- getActivePackage
@@ -201,6 +225,7 @@ packageBuild = catchIDE (do
         case mbPackage of
             Nothing         -> return ()
             Just package    -> do
+                when (saveAllBeforeBuild prefs) $ fileSaveAll
                 sb <- getSBErrors
                 liftIO $statusbarPop sb 1
                 liftIO $statusbarPush sb 1 "Building"

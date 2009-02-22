@@ -164,6 +164,7 @@ data Prefs = Prefs {
     ,   useCtrlTabFlipping  ::   Bool
     ,   docuSearchURL       ::   String
     ,   completeRestricted  ::   Bool
+    ,   saveAllBeforeBuild  ::   Bool
 } deriving(Eq,Show)
 
 data SearchHint = Forward | Backward | Insert | Delete | Initial

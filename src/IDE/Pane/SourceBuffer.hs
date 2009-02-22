@@ -35,6 +35,7 @@ module IDE.Pane.SourceBuffer (
 ,   fileCloseAll
 ,   fileCloseAllButPackage
 ,   fileSave
+,   fileSaveAll
 ,   editUndo
 ,   editRedo
 ,   editCut
@@ -56,6 +57,8 @@ module IDE.Pane.SourceBuffer (
 ,   markErrorInSourceBuf
 ,   inBufContext'
 ,   inBufContext
+,   inActiveBufContext'
+,   inActiveBufContext
 
 ,   align
 ,   startComplete
@@ -145,6 +148,7 @@ instance Pane IDEBuffer IDEM
             return False) priorityDefaultIdle
       triggerEvent ideR (Sensitivity [(SensitivityEditor, True)])
       checkModTime actbuf
+      return ()
     close pane = do makeActive pane
                     fileClose
                     return ()
@@ -240,7 +244,7 @@ goToSourceDefinition :: FilePath -> Maybe Location -> IDEAction
 goToSourceDefinition fp mbLocation = do
     mbBuf     <- selectSourceBuf fp
     when (isJust mbBuf && isJust mbLocation) $
-        inBufContext () $ \_ gtkbuf buf _ -> do
+        inActiveBufContext () $ \_ gtkbuf buf _ -> do
             let location    =   fromJust mbLocation
             lines           <-  textBufferGetLineCount gtkbuf
             iter            <-  textBufferGetIterAtLine gtkbuf (max 0 (min (lines-1)
@@ -263,7 +267,7 @@ goToSourceDefinition fp mbLocation = do
 
 markErrorInSourceBuf ::  Int -> Int -> String -> IDEAction
 markErrorInSourceBuf line column string =
-    inBufContext () $ \_ gtkbuf buf _ -> do
+    inActiveBufContext () $ \_ gtkbuf buf _ -> do
         i1 <- textBufferGetStartIter gtkbuf
         i2 <- textBufferGetEndIter gtkbuf
         textBufferRemoveTagByName gtkbuf "activeErr" i1 i2
@@ -413,11 +417,11 @@ newTextBuffer panePath bn mbfn = do
 -- end patch
     return buf
 
-checkModTime :: IDEBuffer -> IDEAction
+checkModTime :: IDEBuffer -> IDEM Bool
 checkModTime buf = do
     currentState' <- readIDE currentState
     case  currentState' of
-        IsShuttingDown -> return ()
+        IsShuttingDown -> return False
         _              -> do
             panes <- readIDE panes
             let name = paneName buf
@@ -444,13 +448,15 @@ checkModTime buf = do
                                                 ResponseYes ->  do
                                                     revert buf
                                                     liftIO $ widgetHide md
+                                                    return False
                                                 ResponseNo  -> liftIO $ do
                                                     writeIORef (modTime buf) (Just nmt)
                                                     widgetHide md
-                                                _           ->  do return ()
-                                        else return ()
-                        else return ()
-                Nothing -> return ()
+                                                    return True
+                                                _           ->  do return False
+                                        else return False
+                        else return False
+                Nothing -> return False
 
 setModTime :: IDEBuffer -> IDEAction
 setModTime buf = do
@@ -463,7 +469,7 @@ setModTime buf = do
             writeIORef (modTime buf) (Just nmt)
 
 fileRevert :: IDEAction
-fileRevert = inBufContext' () $ \ _ _ currentBuffer _ -> do
+fileRevert = inActiveBufContext' () $ \ _ _ currentBuffer _ -> do
     revert currentBuffer
 
 revert :: IDEBuffer -> IDEAction
@@ -540,28 +546,40 @@ markLabelAsChanged = do
                                           else text)
                   notebookSetTabLabel nb (scrolledWindow buf) label
 
-inBufContext' :: alpha -> (Notebook -> TextBuffer -> IDEBuffer -> Int -> IDEM alpha ) -> IDEM alpha
-inBufContext' def f = do
+inBufContext' :: alpha -> IDEBuffer -> (Notebook -> TextBuffer -> IDEBuffer -> Int -> IDEM alpha) -> IDEM alpha
+inBufContext' def ideBuf f = do
+    (pane,_)       <-  guiPropertiesFromName (paneName ideBuf)
+    nb             <-  getNotebook pane
+    mbI            <-  liftIO $notebookPageNum nb (scrolledWindow ideBuf)
+    case mbI of
+        Nothing ->  liftIO $ do
+            sysMessage Normal $ bufferName ideBuf ++ " notebook page not found: unexpected"
+            return def
+        Just i  ->  do
+            gtkbuf <- liftIO $ textViewGetBuffer (sourceView ideBuf)
+            f nb gtkbuf ideBuf i
+
+inBufContext :: alpha -> IDEBuffer -> (Notebook -> TextBuffer -> IDEBuffer -> Int -> IO alpha) -> IDEM alpha
+inBufContext def ideBuff f = inBufContext' def ideBuff (\ a b c d -> liftIO $ f a b c d)
+
+inActiveBufContext' :: alpha -> (Notebook -> TextBuffer -> IDEBuffer -> Int -> IDEM alpha) -> IDEM alpha
+inActiveBufContext' def f = do
     mbBuf                  <- maybeActiveBuf
     case mbBuf of
         Nothing         -> return def
         Just ideBuf -> do
-            (pane,_)       <-  guiPropertiesFromName (paneName ideBuf)
-            nb             <-  getNotebook pane
-            mbI            <-  liftIO $notebookPageNum nb (scrolledWindow ideBuf)
-            case mbI of
-                Nothing ->  liftIO $ do
-                    sysMessage Normal $ bufferName ideBuf ++ " notebook page not found: unexpected"
-                    return def
-                Just i  ->  do
-                    gtkbuf <- liftIO $ textViewGetBuffer (sourceView ideBuf)
-                    f nb gtkbuf ideBuf i
+            inBufContext' def ideBuf f
 
-inBufContext :: alpha -> (Notebook -> TextBuffer -> IDEBuffer -> Int -> IO alpha ) -> IDEM alpha
-inBufContext def f = inBufContext' def (\ a b c d -> liftIO $ f a b c d)
+inActiveBufContext :: alpha -> (Notebook -> TextBuffer -> IDEBuffer -> Int -> IO alpha) -> IDEM alpha
+inActiveBufContext def f = inActiveBufContext' def (\ a b c d -> liftIO $ f a b c d)
 
-fileSave :: Bool -> IDEAction
-fileSave query = inBufContext' () $ \ nb _ currentBuffer i -> do
+forAllBuffers_ :: (Notebook -> TextBuffer -> IDEBuffer -> Int -> IDEAction) -> IDEAction
+forAllBuffers_ f = do
+    bufs    <- allBuffers
+    forM_ bufs (\buf -> inBufContext' () buf f)
+
+fileSaveBuffer :: Bool -> Notebook -> TextBuffer -> IDEBuffer -> Int -> IDEAction
+fileSaveBuffer query nb gtkbuf ideBuf i = do
     ideR    <- ask
     window  <- readIDE window
     bufs    <- readIDE panes
@@ -569,16 +587,18 @@ fileSave query = inBufContext' () $ \ nb _ currentBuffer i -> do
     paneMap <- readIDE paneMap
     bs      <- getCandyState
     candy   <- readIDE candy
-    (panePath,connects) <- guiPropertiesFromName (paneName currentBuffer)
-    let mbfn = fileName currentBuffer
+    (panePath,connects) <- guiPropertiesFromName (paneName ideBuf)
+    let mbfn = fileName ideBuf
     mbpage <- liftIO $ notebookGetNthPage nb i
     case mbpage of
         Nothing     -> throwIDE "fileSave: Page not found"
         Just page   ->
             if isJust mbfn && query == False
-                then do checkModTime currentBuffer
-                        liftIO $fileSave' (forceLineEnds prefs) (removeTBlanks prefs) currentBuffer bs candy $fromJust mbfn
-                        setModTime currentBuffer
+                then do modifiedOnDisk <- checkModTime ideBuf -- The user is given option to reload
+                        modifiedInBuffer <- liftIO $ textBufferGetModified gtkbuf
+                        when (modifiedOnDisk || modifiedInBuffer) $ do
+                            liftIO $fileSave' (forceLineEnds prefs) (removeTBlanks prefs) ideBuf bs candy $fromJust mbfn
+                            setModTime ideBuf
                         return ()
                 else reifyIDE $ \ideR   ->  do
                     dialog <- fileChooserDialogNew
@@ -613,10 +633,10 @@ fileSave query = inBufContext' () $ \ nb _ currentBuffer i -> do
                             case resp of
                                 ResponseYes -> do
                                     cfn <- canonicalizePath fn
-                                    fileSave' (forceLineEnds prefs) (removeTBlanks prefs) currentBuffer bs candy cfn
+                                    fileSave' (forceLineEnds prefs) (removeTBlanks prefs) ideBuf bs candy cfn
 
                                     reflectIDE (do
-                                        close currentBuffer
+                                        close ideBuf
                                         newTextBuffer panePath (takeFileName fn) (Just cfn)
                                         )   ideR
                                     return ()
@@ -638,6 +658,12 @@ fileSave query = inBufContext' () $ \ nb _ currentBuffer i -> do
         removeTrailingBlanks :: String -> String
         removeTrailingBlanks = reverse . dropWhile (\c -> c == ' ') . reverse
 
+fileSave :: Bool -> IDEAction
+fileSave query = inActiveBufContext' () $ fileSaveBuffer query
+
+fileSaveAll :: IDEAction
+fileSaveAll = forAllBuffers_ $ fileSaveBuffer False
+
 fileNew :: IDEAction
 fileNew = do
     prefs   <- readIDE prefs
@@ -646,7 +672,7 @@ fileNew = do
     return ()
 
 fileClose :: IDEM Bool
-fileClose = inBufContext' True $ fileClose'
+fileClose = inActiveBufContext' True $ fileClose'
 
 fileClose' :: Notebook -> TextBuffer -> IDEBuffer -> Int  -> IDEM Bool
 fileClose' nb gtkbuf currentBuffer i = do
@@ -778,7 +804,7 @@ fileOpenThis fp =  do
             return ()
 
 editUndo :: IDEAction
-editUndo = inBufContext () $ \_ gtkbuf _ _ ->
+editUndo = inActiveBufContext () $ \_ gtkbuf _ _ ->
     let sb = castToSourceBuffer gtkbuf in
     do  canUndo <- sourceBufferGetCanUndo sb
         if canUndo
@@ -786,7 +812,7 @@ editUndo = inBufContext () $ \_ gtkbuf _ _ ->
             else return ()
 
 editRedo :: IDEAction
-editRedo = inBufContext () $ \_ gtkbuf _ _ ->
+editRedo = inActiveBufContext () $ \_ gtkbuf _ _ ->
     let sb = castToSourceBuffer gtkbuf in
     do  canRedo <- sourceBufferGetCanRedo sb
         if canRedo
@@ -794,30 +820,30 @@ editRedo = inBufContext () $ \_ gtkbuf _ _ ->
             else return ()
 
 editDelete :: IDEAction
-editDelete = inBufContext ()  $ \_ gtkbuf _ _ ->  do
+editDelete = inActiveBufContext ()  $ \_ gtkbuf _ _ ->  do
     textBufferDeleteSelection gtkbuf True True
     return ()
 
 editSelectAll :: IDEAction
-editSelectAll = inBufContext () $ \_ gtkbuf _ _ -> do
+editSelectAll = inActiveBufContext () $ \_ gtkbuf _ _ -> do
     start <- textBufferGetStartIter gtkbuf
     end   <- textBufferGetEndIter gtkbuf
     textBufferSelectRange gtkbuf start end
 
 editCut :: IDEAction
-editCut = inBufContext () $ \_ gtkbuf _ _ -> do
+editCut = inActiveBufContext () $ \_ gtkbuf _ _ -> do
     cb   <- atomNew "GDK_SELECTION_CLIPBOARD"
     clip <- clipboardGet cb
     textBufferCutClipboard gtkbuf clip True
 
 editCopy :: IDEAction
-editCopy = inBufContext () $ \_ gtkbuf _ _ -> do
+editCopy = inActiveBufContext () $ \_ gtkbuf _ _ -> do
     cb   <- atomNew "GDK_SELECTION_CLIPBOARD"
     clip <- clipboardGet cb
     textBufferCopyClipboard gtkbuf clip
 
 editPaste :: IDEAction
-editPaste = inBufContext () $ \_ gtkbuf _ _ -> do
+editPaste = inActiveBufContext () $ \_ gtkbuf _ _ -> do
     cb   <- atomNew "GDK_SELECTION_CLIPBOARD"
     mark <- textBufferGetInsert gtkbuf
     iter <- textBufferGetIterAtMark gtkbuf mark
@@ -840,7 +866,7 @@ getStartAndEndLineOfSelection gtkbuf = do
     return (startLine',endLineReal)
 
 doForSelectedLines :: [a] -> (TextBuffer -> TextIter -> Int -> IO a) -> IDEM [a]
-doForSelectedLines d f = inBufContext' d $ \_ gtkbuf currentBuffer _ -> liftIO $do
+doForSelectedLines d f = inActiveBufContext' d $ \_ gtkbuf currentBuffer _ -> liftIO $do
     (start,end) <- getStartAndEndLineOfSelection gtkbuf
     iter        <- textBufferGetStartIter gtkbuf
     mapM (f gtkbuf iter) [start .. end]
@@ -901,19 +927,19 @@ editShiftRight = do
 editToCandy :: IDEAction
 editToCandy = do
     ct <- readIDE candy
-    inBufContext () $ \_ gtkbuf _ _ -> do
+    inActiveBufContext () $ \_ gtkbuf _ _ -> do
         transformToCandy ct gtkbuf
 
 editFromCandy :: IDEAction
 editFromCandy = do
     ct      <-  readIDE candy
-    inBufContext () $ \_ gtkbuf _ _ -> do
+    inActiveBufContext () $ \_ gtkbuf _ _ -> do
         transformFromCandy ct gtkbuf
 
 editKeystrokeCandy :: Maybe Char -> IDEAction
 editKeystrokeCandy c = do
     ct <- readIDE candy
-    inBufContext () $ \_ gtkbuf _ _ -> do
+    inActiveBufContext () $ \_ gtkbuf _ _ -> do
         keystrokeCandy ct c gtkbuf
 
 editCandy :: IDEAction
