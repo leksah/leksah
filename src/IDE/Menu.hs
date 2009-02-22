@@ -324,7 +324,7 @@ aboutDialog = liftIO $ do
     license <- catch (readFile $ dd </> "LICENSE") (\ (_ :: SomeException) -> return "")
     aboutDialogSetLicense d $ Just license
     aboutDialogSetWebsite d "http://leksah.org/"
-    aboutDialogSetAuthors d ["Jürgen Nicklisch-Franken (Jutaro)"]
+    aboutDialogSetAuthors d ["Jürgen Nicklisch-Franken (Jutaro)","Hamish Mackenzie"]
     dialogRun d
     widgetDestroy d
     return ()
