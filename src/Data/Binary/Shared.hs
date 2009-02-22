@@ -41,17 +41,8 @@ import Data.ByteString (ByteString(..))
 import Control.Monad.State.Lazy (evalStateT)
 import Data.Binary.Get (runGet,getWord64be)
 
-type PutShared = St.StateT (Map Object Int, Int) PutM ()
-type GetShared = St.StateT (IntMap Object) Bin.Get
-
-encodeSer :: BinaryShared a => a -> L.ByteString
-encodeSer v = runPut (evalStateT (put v) (Map.empty,0))
-
-encodeFileSer :: BinaryShared a => FilePath -> a -> IO ()
-encodeFileSer f v = L.writeFile f (encodeSer v)
-
-decodeSer :: BinaryShared alpha  => L.ByteString -> alpha
-decodeSer =  runGet (evalStateT get IMap.empty)
+-- | A class for storing Binary instances with shared nodes.
+-- Cycles are not supported, cause put and get is a one path process.
 
 class (Typeable alpha, Ord alpha, Eq alpha, Show alpha) => BinaryShared alpha  where
     -- | Encode a value in the Put monad.
@@ -93,6 +84,20 @@ class (Typeable alpha, Ord alpha, Eq alpha, Show alpha) => BinaryShared alpha  w
                 return obj
             _ -> error $ "Shared>>getShared : Encoding error"
 
+
+-- * How to call this
+
+encodeSer :: BinaryShared a => a -> L.ByteString
+encodeSer v = runPut (evalStateT (put v) (Map.empty,0))
+
+encodeFileSer :: BinaryShared a => FilePath -> a -> IO ()
+encodeFileSer f v = L.writeFile f (encodeSer v)
+
+decodeSer :: BinaryShared alpha  => L.ByteString -> alpha
+decodeSer =  runGet (evalStateT get IMap.empty)
+
+-- * The types needed internally
+
 data Object = forall alpha. (Typeable alpha, Ord alpha, Eq alpha, Show alpha) => ObjC {unObj :: alpha}
 
 instance Eq Object where
@@ -105,6 +110,9 @@ instance Ord Object where
                                 then compare ((unsafePerformIO . typeRepKey . typeOf) a)
                                                 ((unsafePerformIO . typeRepKey . typeOf) b)
                                 else compare (Just a) (cast b)
+
+type PutShared = St.StateT (Map Object Int, Int) PutM ()
+type GetShared = St.StateT (IntMap Object) Bin.Get
 
 -----------
 -- * Some standard instances, but very incomplete
