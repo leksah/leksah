@@ -195,6 +195,8 @@ startGUI sessionFilename prefs = do
           ,   toolbar       =   Nothing
           ,   findbarVisible  = True
           ,   toolbarVisible  = True
+          ,   recentFiles     =   []
+          ,   recentPackages  =   []
     }
     ideR        <-  newIORef ide
     menuDescription' <- menuDescription
@@ -239,6 +241,7 @@ startGUI sessionFilename prefs = do
         recoverSession sessionPath
         ) ideR
     reflectIDE (do
+        ask >>= \ideR -> triggerEvent ideR UpdateRecent
         if tbv
             then showToolbar
             else hideToolbar
@@ -329,6 +332,8 @@ registerEvents tbl =    do
     registerEvent stRef "SearchMeta" (Left smHandler)
     registerEvent stRef "LoadSession" (Left lsHandler)
     registerEvent stRef "SaveSession" (Left ssHandler)
+    registerEvent stRef "UpdateRecent" (Left urHandler)
+
 
 
     return ()
@@ -382,6 +387,9 @@ registerEvents tbl =    do
 
         ssHandler e@(SaveSession fp) =  saveSessionAs fp >> return e
         ssHandler _ =   throwIDE "Leksah>>registerEvents: Impossible event"
+
+        urHandler e@UpdateRecent =  updateRecentEntries >> return e
+        urHandler _ =   throwIDE "Leksah>>registerEvents: Impossible event"
 
 fDescription :: FieldDescription Prefs
 fDescription = VFD emptyParams [

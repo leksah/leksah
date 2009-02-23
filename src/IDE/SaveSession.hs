@@ -115,6 +115,8 @@ data SessionState = SessionState {
     ,   activePaneN         ::   Maybe String
     ,   toolbarVisibleS     ::   Bool
     ,   findbarState        ::   (Bool,FindState)
+    ,   recentOpenedFiles   ::   [FilePath]
+    ,   recentOpenedPackages  ::   [FilePath]
 } deriving()
 
 defaultLayout = SessionState {
@@ -134,7 +136,10 @@ defaultLayout = SessionState {
         ,   entireWord      =   False
         ,   wrapAround      =   True
         ,   backward        =   False
-        ,   lineNr          =   1})}
+        ,   lineNr          =   1})
+    ,   recentOpenedFiles   =   []
+    ,   recentOpenedPackages  =   []
+}
 
 layoutDescr :: [FieldDescriptionS SessionState]
 layoutDescr = [
@@ -185,14 +190,26 @@ layoutDescr = [
             (PP.text . show)
             readParser
             findbarState
-            (\fp a -> a{findbarState = fp})]
+            (\fp a -> a{findbarState = fp})
+    ,   mkFieldS
+            (paraName <<<- ParaName "Recently opened files" $ emptyParams)
+            (PP.text . show)
+            readParser
+            recentOpenedFiles
+            (\fp a -> a{recentOpenedFiles = fp})
+    ,   mkFieldS
+            (paraName <<<- ParaName "Recently opened packages" $ emptyParams)
+            (PP.text . show)
+            readParser
+            recentOpenedPackages
+            (\fp a -> a{recentOpenedPackages = fp})]
 
 --
 -- | Get and save the current layout
 --
 saveSession :: IDEAction
 saveSession = do
-    sessionPath  <-  liftIO $getConfigFilePathForSave standardSessionFilename
+    sessionPath  <-  liftIO $ getConfigFilePathForSave standardSessionFilename
     saveSessionAs sessionPath
 
 saveSessionAs :: FilePath -> IDEAction
@@ -205,7 +222,7 @@ saveSessionAs sessionPath = do
             wdw             <-  readIDE window
             layout          <-  getLayout
             population      <-  getPopulation
-            size            <-  liftIO $windowGetSize wdw
+            size            <-  liftIO $ windowGetSize wdw
             active          <-  getActive
             activePane'     <-  readIDE activePane
             let activeP =   case activePane' of
@@ -214,6 +231,8 @@ saveSessionAs sessionPath = do
             toolbarVisible  <- readIDE toolbarVisible
             findState       <- getFindState
             timeNow         <- liftIO getClockTime
+            recentFiles'      <- readIDE recentFiles
+            recentPackages'   <- readIDE recentPackages
             liftIO $ writeLayout sessionPath (SessionState {
                 saveTime            =   show timeNow
             ,   layoutS             =   layout
@@ -222,7 +241,9 @@ saveSessionAs sessionPath = do
             ,   activePackage       =   active
             ,   activePaneN         =   activeP
             ,   toolbarVisibleS     =   toolbarVisible
-            ,   findbarState        =   (False,findState)})
+            ,   findbarState        =   (False,findState)
+            ,   recentOpenedFiles   =   recentFiles'
+            ,   recentOpenedPackages=   recentPackages'})
 
 saveSessionAsPrompt :: IDEAction
 saveSessionAsPrompt = do
@@ -284,12 +305,15 @@ loadSession :: FilePath -> IDEAction
 loadSession sessionPath = do
     saveSession :: IDEAction
     deactivatePackage
+    recentFiles'      <- readIDE recentFiles
+    recentPackages'   <- readIDE recentPackages
     b <- fileCloseAll
     if b
         then do
             paneCloseAll
             viewCollapseAll
             recoverSession sessionPath
+            modifyIDE_ (\ide -> return ide{recentFiles = recentFiles', recentPackages = recentPackages'})
             return ()
         else return ()
 
@@ -368,27 +392,29 @@ getActive = do
 recoverSession :: FilePath -> IDEM (Bool,Bool)
 recoverSession sessionPath = do
     wdw         <-  readIDE window
-    layoutSt    <- liftIO$ readLayout sessionPath
-    liftIO $windowSetDefaultSize wdw (fst (windowSize layoutSt))(snd (windowSize layoutSt))
-    applyLayout (layoutS layoutSt)
-    case activePackage layoutSt of
+    sessionSt    <- liftIO $ readLayout sessionPath
+    liftIO $ windowSetDefaultSize wdw (fst (windowSize sessionSt))(snd (windowSize sessionSt))
+    applyLayout (layoutS sessionSt)
+    case activePackage sessionSt of
         Just fp -> activatePackage fp >> return ()
         Nothing -> return ()
-    populate (population layoutSt)
-    setCurrentPages (layoutS layoutSt)
-    when (isJust (activePaneN layoutSt)) $ do
-        mbPane <- mbPaneFromName (fromJust (activePaneN layoutSt))
+    populate (population sessionSt)
+    setCurrentPages (layoutS sessionSt)
+    when (isJust (activePaneN sessionSt)) $ do
+        mbPane <- mbPaneFromName (fromJust (activePaneN sessionSt))
         case mbPane of
             Nothing -> return ()
             Just (PaneC p) -> makeActive p
-    setFindState ((snd . findbarState) layoutSt)
-    if toolbarVisibleS layoutSt
+    setFindState ((snd . findbarState) sessionSt)
+    if toolbarVisibleS sessionSt
         then showToolbar
         else hideToolbar
-    if (fst . findbarState) layoutSt
+    if (fst . findbarState) sessionSt
         then showFindbar
         else hideFindbar
-    return (toolbarVisibleS layoutSt, (fst . findbarState) layoutSt)
+    modifyIDE_ (\ide -> return ide{recentFiles = recentOpenedFiles sessionSt,
+                                    recentPackages = recentOpenedPackages sessionSt})
+    return (toolbarVisibleS sessionSt, (fst . findbarState) sessionSt)
 
 readLayout :: FilePath -> IO SessionState
 readLayout sessionPath = do

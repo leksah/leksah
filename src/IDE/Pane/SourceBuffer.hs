@@ -415,6 +415,7 @@ newTextBuffer panePath bn mbfn = do
             fontDescriptionSetSize fdesc (fromJust fds + 0.01)
             widgetModifyFont (castToWidget $ sourceView buf) (Just fdesc)
 -- end patch
+    when (isJust mbfn) $ removeRecentlyUsedFile (fromJust mbfn)
     return buf
 
 checkModTime :: IDEBuffer -> IDEM Bool
@@ -706,6 +707,8 @@ fileClose' nb gtkbuf currentBuffer i = do
         then return False
         else do
             closePane currentBuffer
+            when (isJust $ fileName currentBuffer)
+                (addRecentlyUsedFile (fromJust $ fileName currentBuffer))
             return True
 
 
@@ -1004,7 +1007,25 @@ sourceLanguageForFilename lm (Just filename) = do
             name <- sourceLanguageGetName lang
             return (Just name, Just lang)
 
+addRecentlyUsedFile :: FilePath -> IDEAction
+addRecentlyUsedFile fp = do
+    state <- readIDE currentState
+    when (not $ isStartingOrClosing state) $ do
+        recentFiles' <- readIDE recentFiles
+        unless (elem fp recentFiles') $
+            modifyIDE_ (\ide -> return ide{recentFiles = take 12 (fp : recentFiles')})
+        ask >>= \ideR -> triggerEvent ideR UpdateRecent
+        return ()
 
+removeRecentlyUsedFile :: FilePath -> IDEAction
+removeRecentlyUsedFile fp = do
+    state <- readIDE currentState
+    when (not $ isStartingOrClosing state) $ do
+        recentFiles' <- readIDE recentFiles
+        when (elem fp recentFiles') $
+            modifyIDE_ (\ide -> return ide{recentFiles = filter (\e -> e /= fp) recentFiles'})
+        ask >>= \ideR -> triggerEvent ideR UpdateRecent
+        return ()
 
 
 

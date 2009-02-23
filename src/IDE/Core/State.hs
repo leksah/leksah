@@ -21,6 +21,7 @@ module IDE.Core.State (
 ,   IDEEditor
 ,   IDE(..)
 ,   IDEState(..)
+,   isStartingOrClosing
 ,   IDERef
 ,   IDEM
 ,   IDEAction
@@ -58,6 +59,9 @@ module IDE.Core.State (
 ,   getSBErrors
 ,   getStatusbarIO
 ,   getStatusbarLC
+
+,   getRecentFiles
+,   getRecentPackages
 
 ,   Session
 
@@ -151,6 +155,8 @@ data IDE            =  IDE {
 ,   toolbar         ::   Maybe Toolbar
 ,   findbarVisible  ::   Bool
 ,   toolbarVisible  ::   Bool
+,   recentFiles     ::   [FilePath]
+,   recentPackages  ::   [FilePath]
 } --deriving Show
 
 data IDEState =
@@ -159,6 +165,11 @@ data IDEState =
     |   IsRunning
     |   IsFlipping TreeView
     |   IsCompleting Window TreeView (ListStore String) Connections
+
+isStartingOrClosing ::  IDEState -> Bool
+isStartingOrClosing IsStartingUp    = True
+isStartingOrClosing IsShuttingDown  = True
+isStartingOrClosing _               = False
 
 data IDEEvent  =
         CurrentInfo
@@ -172,6 +183,7 @@ data IDEEvent  =
     |   SearchMeta String
     |   LoadSession FilePath
     |   SaveSession FilePath
+    |   UpdateRecent
 
 --
 -- | A mutable reference to the IDE state
@@ -190,6 +202,8 @@ instance Event IDEEvent String where
     getSelector (SearchMeta _)          =   "SearchMeta"
     getSelector (LoadSession _)         =   "LoadSession"
     getSelector (SaveSession _)         =   "SaveSession"
+    getSelector UpdateRecent            =   "UpdateRecent"
+
 
 instance EventSource IDERef IDEEvent IDEM String where
 
@@ -204,6 +218,7 @@ instance EventSource IDERef IDEEvent IDEM String where
     canTriggerEvent o "SearchMeta"      =   True
     canTriggerEvent o "LoadSession"     =   True
     canTriggerEvent o "SaveSession"     =   True
+    canTriggerEvent o "UpdateRecent"    =   True
     canTriggerEvent _ _                 =   False
 
     getHandlers ideRef = do
@@ -402,6 +417,18 @@ getForgetSession :: PaneMonad alpha => alpha  (Bool)
 getForgetSession = do
     ui <- getUIAction "ui/menubar/_Session/Forget Session" castToToggleAction
     liftIO $toggleActionGetActive ui
+
+getMenuItem :: String -> IDEM MenuItem
+getMenuItem path = do
+    uiManager' <- readIDE uiManager
+    mbWidget   <- liftIO $ uiManagerGetWidget uiManager' path
+    case mbWidget of
+        Nothing     -> throwIDE ("State.hs>>getMenuItem: Can't find ui path " ++ path)
+        Just widget -> return (castToMenuItem widget)
+
+getRecentFiles , getRecentPackages :: IDEM MenuItem
+getRecentFiles    = getMenuItem "ui/menubar/_File/_Recent Files"
+getRecentPackages = getMenuItem "ui/menubar/_Package/_Recent Packages"
 
 -- (toolbar)
 

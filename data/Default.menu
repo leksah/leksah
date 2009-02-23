@@ -3,6 +3,7 @@
       <menu name="_File" action="File">
        <menuitem name="_New" action="FileNew" />
        <menuitem name="_Open" action="FileOpen" />
+       <menuitem name="_Recent Files" action="RecentFiles"/>
        <menuitem name="_Save" action="FileSave" />
        <menuitem name="Save _As" action="FileSaveAs" />
        <menuitem name="Save _All" action="FileSaveAll" />
@@ -45,6 +46,7 @@
     <menu name="_Package" action="Package">
        <menuitem name="_New Package" action="NewPackage" />
        <menuitem name="_Open Package" action="OpenPackage" />
+       <menuitem name="_Recent Packages" action="RecentPackages"/>
        <menuitem name="_Close Package" action="ClosePackage" />
        <separator/>
        <menuitem name="_Edit Cabal" action="EditPackage" />

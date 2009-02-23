@@ -24,6 +24,7 @@ module IDE.Menu (
 ,   buildStatusbar
 ,   newIcons
 ,   setSensitivity
+,   updateRecentEntries
 ) where
 
 import Graphics.UI.Gtk
@@ -55,16 +56,18 @@ import IDE.GUIHistory
 import IDE.Metainfo.Provider (rebuildLibInfo,rebuildActiveInfo)
 import IDE.Pane.Info (showInfo)
 import IDE.NotebookFlipper
+
 --
 -- | The Actions known to the system (they can be activated by keystrokes or menus)
 --
 actions :: [ActionDescr IDERef]
 actions =
-    [(AD "File" "_File" Nothing Nothing (return ()) [] False)
-    ,(AD "FileNew" "_New" Nothing (Just "gtk-new")
-        fileNew [] False)
+    [AD "File" "_File" Nothing Nothing (return ()) [] False
+    ,AD "FileNew" "_New" Nothing (Just "gtk-new")
+        fileNew [] False
     ,AD "FileOpen" "_Open" Nothing (Just "gtk-open")
         fileOpen [] False
+    ,AD "RecentFiles" "_Recent Files" Nothing Nothing (return ()) [] False
     ,AD "FileRevert" "_Revert" Nothing Nothing
         fileRevert [] False
     ,AD "FileSave" "_Save" Nothing (Just "gtk-save")
@@ -133,6 +136,7 @@ actions =
         packageNew [] False
     ,AD "OpenPackage" "_Open Package" Nothing Nothing
         packageOpen [] False
+    ,AD "RecentPackages" "_Recent Packages" Nothing Nothing (return ()) [] False
     ,AD "EditPackage" "_Edit Package" Nothing Nothing
         packageEdit [] False
     ,AD "ClosePackage" "_Close Package" Nothing Nothing
@@ -260,6 +264,37 @@ menuDescription = do
     res         <-  readFile prefsPath
     return res
 
+updateRecentEntries :: IDEAction
+updateRecentEntries = do
+    recentFiles'       <-  readIDE recentFiles
+    recentPackages'    <-  readIDE recentPackages
+    recentFilesItem    <-  getRecentFiles
+    recentPackagesItem <-  getRecentPackages
+    reifyIDE (\ ideR -> do
+        recentFilesMenu    <-  menuNew
+        mapM_ (\s -> do
+            mi <- menuItemNewWithLabel s
+            mi `onActivateLeaf` (reflectIDE (fileOpenThis s) ideR)
+            menuShellAppend recentFilesMenu mi) recentFiles'
+        oldSubmenu <- menuItemGetSubmenu recentFilesItem
+        when (isJust oldSubmenu) $ do
+            widgetHideAll (fromJust oldSubmenu)
+            widgetDestroy (fromJust oldSubmenu)
+        menuItemSetSubmenu recentFilesItem recentFilesMenu
+        widgetShowAll recentFilesMenu
+        recentPackagesMenu    <-  menuNew
+        mapM_ (\s -> do
+            mi <- menuItemNewWithLabel s
+            mi `onActivateLeaf` (reflectIDE (packageOpenThis (Just s) >> return ()) ideR)
+            menuShellAppend recentPackagesMenu mi) recentPackages'
+        oldSubmenu <- menuItemGetSubmenu recentPackagesItem
+        when (isJust oldSubmenu) $ do
+            widgetHideAll (fromJust oldSubmenu)
+            widgetDestroy (fromJust oldSubmenu)
+        menuItemSetSubmenu recentPackagesItem recentPackagesMenu
+        widgetShowAll recentPackagesMenu)
+
+
 --
 -- | Building the Menu
 --
@@ -302,8 +337,8 @@ makeMenu uiManager actions menuDescription = reifyIDE (\ideR -> do
 --
 quit :: IDEAction
 quit = do
-    saveSession :: IDEAction
     modifyIDE_ (\ide -> return (ide{currentState = IsShuttingDown}))
+    saveSession :: IDEAction
     b <- fileCloseAll
     if b
         then liftIO mainQuit

@@ -17,6 +17,7 @@
 
 module IDE.Package (
     packageOpen
+,   packageOpenThis
 ,   packageNew
 ,   packageConfig
 ,   packageBuild
@@ -77,27 +78,31 @@ packageNew :: IDEAction
 packageNew = packageNew' (\fp -> activatePackage fp >> return ())
 
 packageOpen :: IDEAction
-packageOpen = do
+packageOpen = packageOpenThis Nothing
+
+packageOpenThis :: Maybe FilePath -> IDEAction
+packageOpenThis mbFilePath = do
     active <- readIDE activePack
     case active of
         Just p -> deactivatePackage
         Nothing -> return ()
-    selectActivePackage
+    selectActivePackage mbFilePath
     return ()
-
 
 getActivePackage :: IDEM (Maybe IDEPackage)
 getActivePackage = do
     active <- readIDE activePack
     case active of
         Just p -> return (Just p)
-        Nothing -> selectActivePackage
+        Nothing -> selectActivePackage Nothing
 
-selectActivePackage :: IDEM (Maybe IDEPackage)
-selectActivePackage = do
+selectActivePackage :: Maybe FilePath -> IDEM (Maybe IDEPackage)
+selectActivePackage mbFilePath' = do
     ideR       <- ask
     window     <- readIDE window
-    mbFilePath <- liftIO $choosePackageFile window
+    mbFilePath <- case mbFilePath' of
+                    Nothing -> liftIO $ choosePackageFile window
+                    Just fp -> return (Just fp)
     case mbFilePath of
         Nothing -> return Nothing
         Just filePath -> do
@@ -145,6 +150,7 @@ activatePackage filePath = do
             sb <- getSBActivePackage
             liftIO $ statusbarPop sb 1
             liftIO $ statusbarPush sb 1 (display $ packageId pack)
+            removeRecentlyUsedPackage filePath
             return (Just pack)
 
 deactivatePackage :: IDEAction
@@ -154,6 +160,7 @@ deactivatePackage = do
     when (isJust oldActivePack) $ do
         triggerEvent ideR (SaveSession
             ((dropFileName . cabalFile . fromJust) oldActivePack </> "IDE.session"))
+        addRecentlyUsedPackage ((cabalFile . fromJust) oldActivePack)
         return ()
     modifyIDE_ (\ide -> return (ide{activePack = Nothing}))
     ideR          <- ask
@@ -651,3 +658,24 @@ addModuleToPackageDescr moduleName isExposed = do
     where
     addModToBuildInfo :: BuildInfo -> ModuleName -> BuildInfo
     addModToBuildInfo bi mn = bi {otherModules = mn : otherModules bi}
+
+
+addRecentlyUsedPackage :: FilePath -> IDEAction
+addRecentlyUsedPackage fp = do
+    state <- readIDE currentState
+    when (not $ isStartingOrClosing state) $ do
+        recentPackages' <- readIDE recentPackages
+        unless (elem fp recentPackages') $
+            modifyIDE_ (\ide -> return ide{recentPackages = take 12 (fp : recentPackages')})
+        ask >>= \ideR -> triggerEvent ideR UpdateRecent
+        return ()
+
+removeRecentlyUsedPackage :: FilePath -> IDEAction
+removeRecentlyUsedPackage fp = do
+    state <- readIDE currentState
+    when (not $ isStartingOrClosing state) $ do
+        recentPackages' <- readIDE recentPackages
+        when (elem fp recentPackages') $
+            modifyIDE_ (\ide -> return ide{recentPackages = filter (\e -> e /= fp) recentPackages'})
+        ask >>= \ideR -> triggerEvent ideR UpdateRecent
+        return ()
