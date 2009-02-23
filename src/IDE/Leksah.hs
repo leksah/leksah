@@ -249,7 +249,7 @@ startGUI sessionFilename prefs = do
             then showFindbar
             else hideFindbar) ideR
     widgetShowAll win
--- patch for windows
+-- TODO: patch for windows, maybe we can remove it again
     buffers <- reflectIDE allBuffers ideR
     fdesc <- fontDescriptionFromString (case textviewFont prefs of Just str -> str; Nothing -> "")
     fds <- fontDescriptionGetSize fdesc

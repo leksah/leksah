@@ -408,7 +408,7 @@ newTextBuffer panePath bn mbfn = do
     liftIO $do
         widgetShowAll (scrolledWindow buf)
         widgetGrabFocus (sourceView buf)
--- patch for windows
+-- TODO: patch for windows, maybe we can remove it again
         fdesc <- fontDescriptionFromString (case textviewFont prefs of Just str -> str; Nothing -> "")
         fds <- fontDescriptionGetSize fdesc
         when (isJust fds) $ do

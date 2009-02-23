@@ -584,7 +584,8 @@ buildFacetForrest modDescr =
     let (instances,other)       =   partition (\id -> case details id of
                                                         InstanceDescr _ -> True
                                                         _   -> False)
-                                            $ idDescriptionsMD modDescr
+                                            $ take 2000 $  idDescriptionsMD modDescr
+                                -- TODO: Patch for toxioc TypeLevel package with 28000 aliases
         forestWithoutInstances  =   map buildFacet other
         (forest2,orphaned)      =   foldl' addInstances (forestWithoutInstances,[])
                                         instances

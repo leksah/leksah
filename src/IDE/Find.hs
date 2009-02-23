@@ -246,7 +246,7 @@ constructFindReplace toolbar = reifyIDE $ \ ideR   -> do
                 return True
             | otherwise                ->  return True
         _                              ->  return True)
-    entry `onEntryActivate` getOut ideR
+    entry `onEntryActivate` (doSearch toolbar Forward ideR)
     replaceButton `onToolButtonClicked` replace toolbar Forward ideR
 
     replaceAllButton `onToolButtonClicked` replaceAll toolbar Forward ideR
