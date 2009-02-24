@@ -149,9 +149,11 @@ initInfo panePath nb idDescr = do
                     buf     <-  textViewGetBuffer descriptionView
                     (l,r)   <- textBufferGetSelectionBounds buf
                     symbol  <- textBufferGetText buf l r True
-                    reflectIDE (triggerEvent ideR (SelectInfo symbol)) ideR
+                    when (controlIsPressed e)
+                        (reflectIDE (do
+                            triggerEvent ideR (SelectInfo symbol)
+                            return ()) ideR)
                     return False)
-
             notebookInsertOrdered nb ibox (paneName info) Nothing
             widgetShowAll ibox
             return (info,[])

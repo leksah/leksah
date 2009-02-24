@@ -407,15 +407,15 @@ editReplace entireWord caseSensitive wrapAround search replace hint =
 editReplace' :: Bool -> Bool -> Bool -> String -> String -> SearchHint -> Bool -> IDEM Bool
 editReplace' entireWord caseSensitive wrapAround search replace hint mayRepeat =
     inActiveBufContext' False $ \_ gtkbuf currentBuffer _ -> do
-        startMark <- liftIO $textBufferGetInsert gtkbuf
-        iter      <- liftIO $textBufferGetIterAtMark gtkbuf startMark
-        iter2     <- liftIO $textIterCopy iter
-        liftIO $textIterForwardChars iter2 (length search)
-        str1      <- liftIO $textIterGetText iter iter2
+        startMark <- liftIO $ textBufferGetInsert gtkbuf
+        iter      <- liftIO $ textBufferGetIterAtMark gtkbuf startMark
+        iter2     <- liftIO $ textIterCopy iter
+        liftIO $ textIterForwardChars iter2 (length search)
+        str1      <- liftIO $ textIterGetText iter iter2
         if compare str1 search caseSensitive
             then do
-                liftIO $textBufferDelete gtkbuf iter iter2
-                liftIO $textBufferInsert gtkbuf iter replace
+                liftIO $ textBufferDelete gtkbuf iter iter2
+                liftIO $ textBufferInsert gtkbuf iter replace
                 editFind entireWord caseSensitive wrapAround search "" hint
             else do
                 r <- editFind entireWord caseSensitive wrapAround search "" hint
@@ -440,8 +440,19 @@ black = Color 0 0 0
 
 editFindInc :: SearchHint -> IDEAction
 editFindInc hint = do
-    showFindbar
+    ideR <- ask
     fb <- readIDE findbar
+    case hint of
+        Initial -> inActiveBufContext' () $ \_ gtkbuf currentBuffer _ -> liftIO $ do
+            hasSelection <- textBufferHasSelection gtkbuf
+            when hasSelection $ do
+                (i1,i2)   <- textBufferGetSelectionBounds gtkbuf
+                text      <- textBufferGetText gtkbuf i1 i2 False
+                findEntry <- getFindEntry fb
+                entrySetText (castToEntry findEntry) text
+                return ()
+        _ -> return ()
+    showFindbar
     reifyIDE $ \ideR   -> do
         entry <- getFindEntry fb
         widgetGrabFocus entry

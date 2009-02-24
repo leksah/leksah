@@ -87,8 +87,6 @@ import IDE.SourceCandy
 import IDE.Completion as Completion (complete,cancel)
 import Debug.Trace (trace)
 import qualified System.IO.UTF8 as UTF8
-import Graphics.UI.Gtk.Gdk.Enums (Modifier(..))
-import qualified Graphics.UI.Gtk.Gdk.Events as G (Event(..))
 import Data.IORef (writeIORef,readIORef,newIORef,IORef(..))
 import Graphics.UI.Frame.Panes (IDEPane(..))
 import Data.Char (isAlphaNum)
@@ -152,10 +150,6 @@ instance Pane IDEBuffer IDEM
     close pane = do makeActive pane
                     fileClose
                     return ()
-
-controlIsPressed :: G.Event -> Bool
-controlIsPressed (G.Button _ _ _ _ _ mods _ _ _) | Control `elem` mods = True
-controlIsPressed _                                                   = False
 
 instance RecoverablePane IDEBuffer BufferState IDEM where
     saveState p     =   do  buf     <-  liftIO $ textViewGetBuffer (sourceView p)

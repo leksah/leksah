@@ -62,6 +62,7 @@ module IDE.Core.State (
 
 ,   getRecentFiles
 ,   getRecentPackages
+,   controlIsPressed
 
 ,   Session
 
@@ -74,6 +75,8 @@ module IDE.Core.State (
 
 import Graphics.UI.Gtk hiding (get)
 import Graphics.UI.Gtk.SourceView.SourceView ()
+import Graphics.UI.Gtk.Gdk.Enums (Modifier(..))
+import qualified Graphics.UI.Gtk.Gdk.Events as G (Event(..))
 import Data.Map (Map)
 import qualified Data.Map as Map
 import Data.IORef
@@ -450,6 +453,8 @@ getStatusbarIO     =  widgetGet ["topBox","statusBox","statusBarInsertOverwrite"
 getStatusbarLC :: PaneMonad alpha => alpha Statusbar
 getStatusbarLC     = widgetGet ["topBox","statusBox","statusBarLineColumn"] castToStatusbar
 
-
+controlIsPressed :: G.Event -> Bool
+controlIsPressed (G.Button _ _ _ _ _ mods _ _ _) | Control `elem` mods = True
+controlIsPressed _                                                   = False
 
 
