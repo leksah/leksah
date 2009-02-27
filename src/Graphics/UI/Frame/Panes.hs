@@ -59,6 +59,7 @@ data PaneDirection  =   TopP | BottomP | LeftP | RightP
   	
 --
 -- | Description of a window layout
+-- Horizontal: top bottom Vertical: left right
 --
 data PaneLayout =       HorizontalP PaneLayout PaneLayout Int
                     |   VerticalP PaneLayout PaneLayout Int

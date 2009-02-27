@@ -33,7 +33,6 @@ module Graphics.UI.Editor.Simple (
 
 import Graphics.UI.Gtk
 import qualified Graphics.UI.Gtk as Gtk
-import Graphics.UI.Gtk.ModelView as New
 import IDE.Core.State (MessageLevel(..))
 import IDE.Core.State (sysMessage)
 import Control.Monad
@@ -312,28 +311,28 @@ comboSelectionEditor list parameters notifier = do
             core <- readIORef coreRef
             case core of
                 Nothing  -> do
-                    combo <- New.comboBoxNewText
+                    combo <- comboBoxNewText
                     mapM_ (\o -> comboBoxAppendText combo (show o)) list
                     widgetSetName combo (getParameter paraName parameters)
                     mapM_ (activateEvent (castToWidget combo) notifier Nothing)
                             [FocusOut,FocusIn]
-                    New.comboBoxSetActive combo 1
+                    comboBoxSetActive combo 1
                     containerAdd widget combo
                     let ind = elemIndex obj list
                     case ind of
-                        Just i -> New.comboBoxSetActive combo i
+                        Just i -> comboBoxSetActive combo i
                         Nothing -> return ()
                     writeIORef coreRef (Just combo)
                 Just combo -> do
                     let ind = elemIndex obj list
                     case ind of
-                        Just i -> New.comboBoxSetActive combo i
+                        Just i -> comboBoxSetActive combo i
                         Nothing -> return ())
         (do core <- readIORef coreRef
             case core of
                 Nothing -> return Nothing
                 Just combo -> do
-                    ind <- New.comboBoxGetActive combo
+                    ind <- comboBoxGetActive combo
                     case ind of
                         (-1)   -> return Nothing
                         otherwise  -> return (Just (list !! ind)))
@@ -351,36 +350,36 @@ multiselectionEditor parameters notifier = do
             core <- readIORef coreRef
             case core of
                 Nothing  -> do
-                    listStore   <- New.listStoreNew ([]:: [alpha])
-                    listView    <- New.treeViewNewWithModel listStore
+                    listStore   <- listStoreNew ([]:: [alpha])
+                    listView    <- treeViewNewWithModel listStore
                     widgetSetName listView (getParameter paraName parameters)
                     mapM_ (activateEvent (castToWidget listView) notifier Nothing)
                             [FocusOut,FocusIn]
-                    sel         <- New.treeViewGetSelection listView
-                    New.treeSelectionSetMode sel SelectionMultiple
-                    renderer    <- New.cellRendererTextNew
-                    col         <- New.treeViewColumnNew
-                    New.treeViewAppendColumn listView col
-                    New.cellLayoutPackStart col renderer True
-                    New.cellLayoutSetAttributes col renderer listStore
-                        $ \row -> [ New.cellText := show row ]
-                    New.treeViewSetHeadersVisible listView False
-                    New.listStoreClear listStore
-                    mapM_ (New.listStoreAppend listStore) objs
+                    sel         <- treeViewGetSelection listView
+                    treeSelectionSetMode sel SelectionMultiple
+                    renderer    <- cellRendererTextNew
+                    col         <- treeViewColumnNew
+                    treeViewAppendColumn listView col
+                    cellLayoutPackStart col renderer True
+                    cellLayoutSetAttributes col renderer listStore
+                        $ \row -> [ cellText := show row ]
+                    treeViewSetHeadersVisible listView False
+                    listStoreClear listStore
+                    mapM_ (listStoreAppend listStore) objs
                     containerAdd widget listView
-                    New.treeSelectionUnselectAll sel
+                    treeSelectionUnselectAll sel
                     --let inds = catMaybes $map (\obj -> elemIndex obj list) objs
-                    --mapM_ (\i -> New.treeSelectionSelectPath sel [i]) inds
+                    --mapM_ (\i -> treeSelectionSelectPath sel [i]) inds
                     writeIORef coreRef (Just (listView,listStore))
                 Just (listView,listStore) -> do
-                    New.listStoreClear listStore
-                    mapM_ (New.listStoreAppend listStore) objs)
+                    listStoreClear listStore
+                    mapM_ (listStoreAppend listStore) objs)
         (do core <- readIORef coreRef
             case core of
                 Nothing -> return Nothing
                 Just (listView,listStore) -> do
-                    sel         <- New.treeViewGetSelection listView
-                    treePath    <- New.treeSelectionGetSelectedRows sel
+                    sel         <- treeViewGetSelection listView
+                    treePath    <- treeSelectionGetSelectedRows sel
                     values      <- mapM (\[i] -> listStoreGetValue listStore i) treePath
                     return (Just values))
         parameters
@@ -398,46 +397,46 @@ staticListEditor list parameters notifier = do
             core <- readIORef coreRef
             case core of
                 Nothing  -> do
-                    listStore <- New.listStoreNew ([]:: [alpha])
-                    listView <- New.treeViewNewWithModel listStore
+                    listStore <- listStoreNew ([]:: [alpha])
+                    listView <- treeViewNewWithModel listStore
                     widgetSetName listView (getParameter paraName parameters)
                     mapM_ (activateEvent (castToWidget listView) notifier Nothing)
                             [FocusOut,FocusIn]
-                    sel <- New.treeViewGetSelection listView
-                    New.treeSelectionSetMode sel
+                    sel <- treeViewGetSelection listView
+                    treeSelectionSetMode sel
                         (case getParameter paraMultiSel parameters of
                             True  -> SelectionMultiple
                             False -> SelectionSingle)
-                    renderer <- New.cellRendererTextNew
-                    col <- New.treeViewColumnNew
-                    New.treeViewAppendColumn listView col
-                    New.cellLayoutPackStart col renderer True
-                    New.cellLayoutSetAttributes col renderer listStore
-                        $ \row -> [ New.cellText := show row ]
-                    New.treeViewSetHeadersVisible listView False
-                    New.listStoreClear listStore
-                    mapM_ (New.listStoreAppend listStore) list
+                    renderer <- cellRendererTextNew
+                    col <- treeViewColumnNew
+                    treeViewAppendColumn listView col
+                    cellLayoutPackStart col renderer True
+                    cellLayoutSetAttributes col renderer listStore
+                        $ \row -> [ cellText := show row ]
+                    treeViewSetHeadersVisible listView False
+                    listStoreClear listStore
+                    mapM_ (listStoreAppend listStore) list
                     let minSize =   getParameter paraMinSize parameters
                     uncurry (widgetSetSizeRequest listView) minSize
                     sw          <-  scrolledWindowNew Nothing Nothing
                     containerAdd sw listView
                     scrolledWindowSetPolicy sw PolicyAutomatic PolicyAutomatic
                     containerAdd widget sw
-                    New.treeSelectionUnselectAll sel
+                    treeSelectionUnselectAll sel
                     let inds = catMaybes $map (\obj -> elemIndex obj list) objs
-                    mapM_ (\i -> New.treeSelectionSelectPath sel [i]) inds
+                    mapM_ (\i -> treeSelectionSelectPath sel [i]) inds
                     writeIORef coreRef (Just listView)
                 Just listView -> do
-                    sel <- New.treeViewGetSelection listView
-                    New.treeSelectionUnselectAll sel
+                    sel <- treeViewGetSelection listView
+                    treeSelectionUnselectAll sel
                     let inds = catMaybes $map (\obj -> elemIndex obj list) objs
-                    mapM_ (\i -> New.treeSelectionSelectPath sel [i]) inds)
+                    mapM_ (\i -> treeSelectionSelectPath sel [i]) inds)
         (do core <- readIORef coreRef
             case core of
                 Nothing -> return Nothing
                 Just listView -> do
-                    sel <- New.treeViewGetSelection listView
-                    treePath <- New.treeSelectionGetSelectedRows sel
+                    sel <- treeViewGetSelection listView
+                    treePath <- treeSelectionGetSelectedRows sel
                     return (Just (map (\[i] -> list !! i) treePath)))
         parameters
         notifier

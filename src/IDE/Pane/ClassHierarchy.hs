@@ -25,7 +25,6 @@ module IDE.Pane.ClassHierarchy (
 ) where
 
 import Graphics.UI.Gtk hiding (get)
-import Graphics.UI.Gtk.ModelView as New
 import Data.Maybe
 import Control.Monad.Reader
 import qualified Data.Map as Map
@@ -43,10 +42,10 @@ import IDE.Core.State
 data IDEClassHierarchy     =   IDEClassHierarchy {
     outer           ::   VBox
 ,   paned           ::   HPaned
-,   treeView        ::   New.TreeView
-,   treeStore       ::   New.TreeStore ClassWrapper
---,   facetView       ::   New.TreeView
---,   facetStore      ::   New.TreeStore FacetWrapper
+,   treeView        ::   TreeView
+,   treeStore       ::   TreeStore ClassWrapper
+--,   facetView       ::   TreeView
+--,   facetStore      ::   TreeStore FacetWrapper
 ,   localScopeB     ::   RadioButton
 ,   packageScopeB   ::   RadioButton
 ,   worldScopeB     ::   RadioButton
@@ -125,19 +124,19 @@ selectClass'  moduleName symbol =
         mbTree          <-  liftIO $ treeStoreGetTreeSave treeStore []
         case treePathFromNameArray mbTree nameArray [] of
             Just treePath   ->  liftIO $ do
-                New.treeViewExpandToPath treeView treePath
-                sel         <-  New.treeViewGetSelection treeView
-                New.treeSelectionSelectPath sel treePath
-                col         <-  New.treeViewGetColumn treeView 0
-                New.treeViewScrollToCell treeView treePath (fromJust col) (Just (0.3,0.3))
+                treeViewExpandToPath treeView treePath
+                sel         <-  treeViewGetSelection treeView
+                treeSelectionSelectPath sel treePath
+                col         <-  treeViewGetColumn treeView 0
+                treeViewScrollToCell treeView treePath (fromJust col) (Just (0.3,0.3))
                 mbFacetTree <-  treeStoreGetTreeSave facetStore []
-                selF        <-  New.treeViewGetSelection facetView
+                selF        <-  treeViewGetSelection facetView
                 case  findPathFor symbol mbFacetTree of
                     Nothing     ->  sysMessage Normal "no path found"
                     Just path   ->  do
-                        New.treeSelectionSelectPath selF path
-                        col     <-  New.treeViewGetColumn facetView 0
-                        New.treeViewScrollToCell facetView path (fromJust col) (Just (0.3,0.3))
+                        treeSelectionSelectPath selF path
+                        col     <-  treeViewGetColumn facetView 0
+                        treeViewScrollToCell facetView path (fromJust col) (Just (0.3,0.3))
                 bringPaneToFront mods
             Nothing         ->  return ()
 --}
@@ -257,66 +256,66 @@ initClassHierarchy panePath nb = do
         let forest  = case currentInfo of
                         Nothing     ->  []
                         Just pair   ->  buildClassHierarchyTree pair
-        treeStore   <-  New.treeStoreNew forest
-        treeView    <-  New.treeViewNew
-        New.treeViewSetModel treeView treeStore
-        --New.treeViewSetRulesHint treeView True
+        treeStore   <-  treeStoreNew forest
+        treeView    <-  treeViewNew
+        treeViewSetModel treeView treeStore
+        --treeViewSetRulesHint treeView True
 
-        renderer0    <- New.cellRendererPixbufNew
+        renderer0    <- cellRendererPixbufNew
         set renderer0 [ cellPixbufStockId  := "ide_no_source" ]
 
-        renderer    <- New.cellRendererTextNew
-        col         <- New.treeViewColumnNew
-        New.treeViewColumnSetTitle col "Classes"
-        New.treeViewColumnSetSizing col TreeViewColumnAutosize
-        New.treeViewColumnSetResizable col True
-        New.treeViewColumnSetReorderable col True
-        New.treeViewAppendColumn treeView col
-        New.cellLayoutPackStart col renderer0 False
-        New.cellLayoutPackStart col renderer True
-        New.cellLayoutSetAttributes col renderer treeStore
-            $ \(s,_,_) -> [ New.cellText := s]
-        New.cellLayoutSetAttributes col renderer0 treeStore
+        renderer    <- cellRendererTextNew
+        col         <- treeViewColumnNew
+        treeViewColumnSetTitle col "Classes"
+        treeViewColumnSetSizing col TreeViewColumnAutosize
+        treeViewColumnSetResizable col True
+        treeViewColumnSetReorderable col True
+        treeViewAppendColumn treeView col
+        cellLayoutPackStart col renderer0 False
+        cellLayoutPackStart col renderer True
+        cellLayoutSetAttributes col renderer treeStore
+            $ \(s,_,_) -> [ cellText := s]
+        cellLayoutSetAttributes col renderer0 treeStore
             $ \(_,_,d) -> [
             cellPixbufStockId  :=
                 if isJust (mbLocation d)
                     then "ide_source"
                     else "ide_no_source"]
 
-        New.treeViewSetHeadersVisible treeView True
- --     New.treeViewSetEnableSearch treeView True
- --     New.treeViewSetSearchColumn treeView 0
- --     New.treeViewSetSearchEqualFunc treeView (treeViewSearch treeView treeStore)
+        treeViewSetHeadersVisible treeView True
+ --     treeViewSetEnableSearch treeView True
+ --     treeViewSetSearchColumn treeView 0
+ --     treeViewSetSearchEqualFunc treeView (treeViewSearch treeView treeStore)
 
 -- Facet view
 {--
-        facetView   <-  New.treeViewNew
-        facetStore  <-  New.treeStoreNew []
-        New.treeViewSetModel facetView facetStore
-        renderer30    <- New.cellRendererPixbufNew
-        renderer31    <- New.cellRendererPixbufNew
-        renderer3   <- New.cellRendererTextNew
-        col         <- New.treeViewColumnNew
-        New.treeViewColumnSetTitle col "Interface"
-        --New.treeViewColumnSetSizing col TreeViewColumnAutosize
-        New.treeViewAppendColumn facetView col
-        New.cellLayoutPackStart col renderer30 False
-        New.cellLayoutPackStart col renderer31 False
-        New.cellLayoutPackStart col renderer3 True
-        New.cellLayoutSetAttributes col renderer3 facetStore
-            $ \row -> [ New.cellText := facetTreeText row]
-        New.cellLayoutSetAttributes col renderer30 facetStore
+        facetView   <-  treeViewNew
+        facetStore  <-  treeStoreNew []
+        treeViewSetModel facetView facetStore
+        renderer30    <- cellRendererPixbufNew
+        renderer31    <- cellRendererPixbufNew
+        renderer3   <- cellRendererTextNew
+        col         <- treeViewColumnNew
+        treeViewColumnSetTitle col "Interface"
+        --treeViewColumnSetSizing col TreeViewColumnAutosize
+        treeViewAppendColumn facetView col
+        cellLayoutPackStart col renderer30 False
+        cellLayoutPackStart col renderer31 False
+        cellLayoutPackStart col renderer3 True
+        cellLayoutSetAttributes col renderer3 facetStore
+            $ \row -> [ cellText := facetTreeText row]
+        cellLayoutSetAttributes col renderer30 facetStore
             $ \row -> [
             cellPixbufStockId  := stockIdFromType (facetIdType row)]
-        New.cellLayoutSetAttributes col renderer31 facetStore
+        cellLayoutSetAttributes col renderer31 facetStore
             $ \row -> [
             cellPixbufStockId  := if isJust (mbLocation(facetIdDescr row))
                                     then "ide_source"
                                     else ""]
-        New.treeViewSetHeadersVisible facetView True
-        New.treeViewSetEnableSearch facetView True
-        New.treeViewSetSearchColumn facetView 0
-        New.treeViewSetSearchEqualFunc facetView (facetViewSearch facetView facetStore)
+        treeViewSetHeadersVisible facetView True
+        treeViewSetEnableSearch facetView True
+        treeViewSetSearchColumn facetView 0
+        treeViewSetSearchEqualFunc facetView (facetViewSearch facetView facetStore)
 --}
         pane'           <-  hPanedNew
         sw              <-  scrolledWindowNew Nothing Nothing
@@ -350,9 +349,9 @@ initClassHierarchy panePath nb = do
                         {--facetView facetStore--} rb1 rb2 rb3 cb
         notebookInsertOrdered nb boxOuter (paneName classes) Nothing
         widgetShowAll boxOuter
-        cid3 <- treeView `New.onRowActivated`
+        cid3 <- treeView `onRowActivated`
             (\ treePath _ -> do
-                New.treeViewExpandRow treeView treePath False
+                treeViewExpandRow treeView treePath False
                 return ())
         cid1 <- treeView `afterFocusIn`
             (\_ -> do reflectIDE (makeActive classes) ideR; return True)
@@ -364,10 +363,10 @@ initClassHierarchy panePath nb = do
 --        rb2 `onToggled` (runReaderT scopeSelection ideR)
 --        rb3 `onToggled` (runReaderT scopeSelection ideR)
 --        cb  `onToggled` (runReaderT scopeSelection ideR)
-        sel     <-  New.treeViewGetSelection treeView
---        sel `New.onSelectionChanged` (fillFacets treeView treeStore facetView facetStore)
---        sel2    <-  New.treeViewGetSelection facetView
---        sel2 `New.onSelectionChanged` (fillInfo facetView facetStore ideR)
+        sel     <-  treeViewGetSelection treeView
+--        sel `onSelectionChanged` (fillFacets treeView treeStore facetView facetStore)
+--        sel2    <-  treeViewGetSelection facetView
+--        sel2 `onSelectionChanged` (fillInfo facetView facetStore ideR)
 
         return (classes,[ConnectC cid1{--,ConnectC cid2--}, ConnectC cid3])
     addPaneAdmin buf cids panePath
@@ -376,20 +375,20 @@ initClassHierarchy panePath nb = do
 
 {--
 treeViewSearch :: TreeView
-    -> New.TreeStore (String, [(ModuleDescr,PackageDescr)])
+    -> TreeStore (String, [(ModuleDescr,PackageDescr)])
     -> Int
     -> String
     -> TreeIter
     -> IO Bool
 treeViewSearch treeView treeStore _ string iter =  do
-    path <- New.treeModelGetPath treeStore iter
-    val  <- New.treeStoreGetValue treeStore path
+    path <- treeModelGetPath treeStore iter
+    val  <- treeStoreGetValue treeStore path
     mbTree <- treeStoreGetTreeSave treeStore path
-    exp  <- New.treeViewRowExpanded treeView path
+    exp  <- treeViewRowExpanded treeView path
     when (isJust mbTree && (not (null (subForest (fromJust mbTree)))) && not exp) $
         let found = searchInModSubnodes (fromJust mbTree) string
         in when found $ do
-            New.treeViewExpandRow treeView path False
+            treeViewExpandRow treeView path False
             return ()
     let str2 = case snd val of
                     [] -> fst val
@@ -407,20 +406,20 @@ searchInModSubnodes tree str =
                 $ concatMap flatten (subForest tree)
 
 facetViewSearch :: TreeView
-    -> New.TreeStore FacetWrapper
+    -> TreeStore FacetWrapper
     -> Int
     -> String
     -> TreeIter
     -> IO Bool
 facetViewSearch facetView facetStore _ string iter = do
-    path    <- New.treeModelGetPath facetStore iter
-    val     <- New.treeStoreGetValue facetStore path
-    tree <- New.treeStoreGetTree facetStore path
-    exp  <- New.treeViewRowExpanded facetView path
+    path    <- treeModelGetPath facetStore iter
+    val     <- treeStoreGetValue facetStore path
+    tree <- treeStoreGetTree facetStore path
+    exp  <- treeViewRowExpanded facetView path
     when (not (null (subForest tree)) && not exp) $
         let found = searchInFacetSubnodes tree string
         in when found $ do
-            New.treeViewExpandRow facetView path False
+            treeViewExpandRow facetView path False
             return ()
     return (isInfixOf (map toLower string) (map toLower (facetTreeText val)))
 
@@ -433,10 +432,10 @@ searchInFacetSubnodes tree str =
 --}
 
 {--
-fillFacets :: New.TreeView
-    -> New.TreeStore (String, [(ModuleDescr,PackageDescr)])
-    -> New.TreeView
-    -> New.TreeStore FacetWrapper
+fillFacets :: TreeView
+    -> TreeStore (String, [(ModuleDescr,PackageDescr)])
+    -> TreeView
+    -> TreeStore FacetWrapper
     -> IO ()
 fillFacets treeView treeStore facetView facetStore = do
     sel             <-  getSelectionTree treeView treeStore
@@ -445,59 +444,59 @@ fillFacets treeView treeStore facetView facetStore = do
             ->  case snd val of
                     ((mod,package):_)
                         ->  let forest = buildFacetForest mod in do
-                                emptyModel <- New.treeStoreNew []
-                                New.treeViewSetModel facetView emptyModel
-                                New.treeStoreClear facetStore
-                                mapM_ (\(e,i) -> New.treeStoreInsertTree facetStore [] i e)
+                                emptyModel <- treeStoreNew []
+                                treeViewSetModel facetView emptyModel
+                                treeStoreClear facetStore
+                                mapM_ (\(e,i) -> treeStoreInsertTree facetStore [] i e)
                                             $ zip forest [0 .. length forest]
-                                New.treeViewSetModel facetView facetStore
-                                New.treeViewSetEnableSearch facetView True
-                                New.treeViewSetSearchColumn facetView 0
-                                New.treeViewSetSearchEqualFunc facetView (facetViewSearch facetView facetStore)
+                                treeViewSetModel facetView facetStore
+                                treeViewSetEnableSearch facetView True
+                                treeViewSetSearchColumn facetView 0
+                                treeViewSetSearchEqualFunc facetView (facetViewSearch facetView facetStore)
 
                     []  -> return ()
         Nothing
             ->  do
-                    New.treeStoreClear facetStore
+                    treeStoreClear facetStore
                     return ()
 --}
 {--
-getSelectionTree ::  New.TreeView
-    ->  New.TreeStore (String, [(ModuleDescr,PackageDescr)])
+getSelectionTree ::  TreeView
+    ->  TreeStore (String, [(ModuleDescr,PackageDescr)])
     -> IO (Maybe (String, [(ModuleDescr,PackageDescr)]))
 getSelectionTree treeView treeStore = do
-    treeSelection   <-  New.treeViewGetSelection treeView
-    paths           <-  New.treeSelectionGetSelectedRows treeSelection
+    treeSelection   <-  treeViewGetSelection treeView
+    paths           <-  treeSelectionGetSelectedRows treeSelection
     case paths of
         []  ->  return Nothing
         a:r ->  do
-            val     <-  New.treeStoreGetValue treeStore a
+            val     <-  treeStoreGetValue treeStore a
             return (Just val)
 
-getSelectionFacet ::  New.TreeView
-    ->  New.TreeStore FacetWrapper
+getSelectionFacet ::  TreeView
+    ->  TreeStore FacetWrapper
     -> IO (Maybe FacetWrapper)
 getSelectionFacet treeView treeStore = do
-    treeSelection   <-  New.treeViewGetSelection treeView
-    paths           <-  New.treeSelectionGetSelectedRows treeSelection
+    treeSelection   <-  treeViewGetSelection treeView
+    paths           <-  treeSelectionGetSelectedRows treeSelection
     case paths of
         a:r ->  do
-            val     <-  New.treeStoreGetValue treeStore a
+            val     <-  treeStoreGetValue treeStore a
             return (Just val)
         _  ->  return Nothing
 
 
-fillInfo :: New.TreeView
-    -> New.TreeStore FacetWrapper
+fillInfo :: TreeView
+    -> TreeStore FacetWrapper
     -> IDERef
     -> IO ()
 fillInfo treeView lst ideR = do
-    treeSelection   <-  New.treeViewGetSelection treeView
-    paths           <-  New.treeSelectionGetSelectedRows treeSelection
+    treeSelection   <-  treeViewGetSelection treeView
+    paths           <-  treeSelectionGetSelectedRows treeSelection
     case paths of
         []      ->  return ()
         [a]     ->  do
-            wrapper     <-  New.treeStoreGetValue lst a
+            wrapper     <-  treeStoreGetValue lst a
             runReaderT (setInfos [facetIdDescr wrapper]) ideR
             return ()
         _       ->  return ()
@@ -526,12 +525,12 @@ fillModulesList (scope,useBlacklist) = do
                                             (Node _ li) = buildModulesTree
                                                                     ((Map.empty,Map.empty),p2)
                                         in liftIO $ do
-                                            New.treeStoreClear treeStore
-                                            mapM_ (\(e,i) -> New.treeStoreInsertTree treeStore [] i e)
+                                            treeStoreClear treeStore
+                                            mapM_ (\(e,i) -> treeStoreInsertTree treeStore [] i e)
                                                 $ zip li [0 .. length li]
                                     _       -> liftIO $ do
-                                        New.treeStoreClear treeStore
-                                        New.treeStoreInsertTree treeStore [] 0 (Node ("",[]) [])
+                                        treeStoreClear treeStore
+                                        treeStoreInsertTree treeStore [] 0 (Node ("",[]) [])
         Just (l,p)          ->  let (l',p'@(pm,ps)) =   case scope of
                                                     Local   -> (l,(Map.empty,Map.empty))
                                                     Package -> (l,p)
@@ -544,15 +543,15 @@ fillModulesList (scope,useBlacklist) = do
                                                     else p'
                                     (Node _ li) = buildModulesTree (l',p2)
                                 in liftIO $ do
-                                    emptyModel <- New.treeStoreNew []
-                                    New.treeViewSetModel treeView emptyModel
-                                    New.treeStoreClear treeStore
-                                    mapM_ (\(e,i) -> New.treeStoreInsertTree treeStore [] i e)
+                                    emptyModel <- treeStoreNew []
+                                    treeViewSetModel treeView emptyModel
+                                    treeStoreClear treeStore
+                                    mapM_ (\(e,i) -> treeStoreInsertTree treeStore [] i e)
                                             $ zip li [0 .. length li]
-                                    New.treeViewSetModel treeView treeStore
-                                    New.treeViewSetEnableSearch treeView True
-                                    New.treeViewSetSearchColumn treeView 0
-                                    New.treeViewSetSearchEqualFunc treeView (treeViewSearch treeView treeStore)
+                                    treeViewSetModel treeView treeStore
+                                    treeViewSetEnableSearch treeView True
+                                    treeViewSetSearchColumn treeView 0
+                                    treeViewSetSearchEqualFunc treeView (treeViewSearch treeView treeStore)
 
     where
     filterBlacklist :: [Dependency] -> PackageDescr -> Bool
@@ -650,8 +649,8 @@ buildFacetForest modDescr =
 
 {--
 treeViewPopup :: IDERef
-    -> New.TreeStore (String, [(ModuleDescr,PackageDescr)])
-    -> New.TreeView
+    -> TreeStore (String, [(ModuleDescr,PackageDescr)])
+    -> TreeView
     -> Event
     -> IO (Bool)
 treeViewPopup ideR store treeView (Button _ click _ _ _ _ button _ _) = do
@@ -669,9 +668,9 @@ treeViewPopup ideR store treeView (Button _ click _ _ _ _ button _ _) = do
                                                 return ()
                     otherwise       ->  return ()
             item2           <-  menuItemNewWithLabel "ExpandAll"
-            item2 `onActivateLeaf` (New.treeViewExpandAll treeView)
+            item2 `onActivateLeaf` (treeViewExpandAll treeView)
             item3           <-  menuItemNewWithLabel "CollapseAll"
-            item3 `onActivateLeaf` (New.treeViewCollapseAll treeView)
+            item3 `onActivateLeaf` (treeViewCollapseAll treeView)
             mapM_ (menuShellAppend theMenu) [item1,item2,item3]
             menuPopup theMenu Nothing
             widgetShowAll theMenu
@@ -690,8 +689,8 @@ treeViewPopup ideR store treeView (Button _ click _ _ _ _ button _ _) = do
 treeViewPopup _ _ _ _ = throwIDE "treeViewPopup wrong event type"
 
 facetViewPopup :: IDERef
-    -> New.TreeStore FacetWrapper
-    -> New.TreeView
+    -> TreeStore FacetWrapper
+    -> TreeView
     -> Event
     -> IO (Bool)
 facetViewPopup ideR store facetView (Button _ click _ _ _ _ button _ _) = do
@@ -751,8 +750,8 @@ scopeSelection = do
     mbFacetSelection    <-  liftIO $ getSelectionFacet facetView facetStore
 
     sc                  <-  getScope
-    ts                  <-  liftIO $ New.treeViewGetSelection treeView
-    liftIO $ New.treeSelectionUnselectAll ts
+    ts                  <-  liftIO $ treeViewGetSelection treeView
+    liftIO $ treeSelectionUnselectAll ts
     fillModulesList sc
     let mbs = (case mbTreeSelection of
                             Nothing -> Nothing
@@ -777,23 +776,23 @@ selectNames (mbModuleName, mbIdName) = do
                 case treePathFromNameArray mbTree nameArray [] of
                     Nothing         ->  return ()
                     Just treePath   ->  liftIO $ do
-                        New.treeViewExpandToPath treeView treePath
-                        sel         <-  New.treeViewGetSelection treeView
-                        New.treeSelectionSelectPath sel treePath
-                        col         <-  New.treeViewGetColumn treeView 0
-                        New.treeViewScrollToCell treeView treePath (fromJust col)
+                        treeViewExpandToPath treeView treePath
+                        sel         <-  treeViewGetSelection treeView
+                        treeSelectionSelectPath sel treePath
+                        col         <-  treeViewGetColumn treeView 0
+                        treeViewScrollToCell treeView treePath (fromJust col)
                             (Just (0.3,0.3))
                         case mbIdName of
                             Nothing -> return ()
                             Just symbol -> do
                                 mbFacetTree   <-  treeStoreGetTreeSave facetStore []
-                                selF        <-  New.treeViewGetSelection facetView
+                                selF        <-  treeViewGetSelection facetView
                                 case  findPathFor symbol mbFacetTree of
                                     Nothing     ->  sysMessage Normal "no path found"
                                     Just path   ->  do
-                                        New.treeSelectionSelectPath selF path
-                                        col     <-  New.treeViewGetColumn facetView 0
-                                        New.treeViewScrollToCell facetView path (fromJust col)
+                                        treeSelectionSelectPath selF path
+                                        col     <-  treeViewGetColumn facetView 0
+                                        treeViewScrollToCell facetView path (fromJust col)
                                             (Just (0.3,0.3))
 
 
@@ -815,7 +814,7 @@ reloadKeepSelection = do
             mbFacetSelection    <-  liftIO $ getSelectionFacet facetView facetStore
             sc                  <-  getScope
             fillModulesList sc
-            liftIO $ New.treeStoreClear facetStore
+            liftIO $ treeStoreClear facetStore
             let mbs = (case mbTreeSelection of
                             Nothing -> Nothing
                             Just (_,[]) -> Nothing
@@ -826,7 +825,7 @@ reloadKeepSelection = do
             selectNames mbs
 
 
-treeStoreGetTreeSave :: New.TreeStore a -> TreePath -> IO (Maybe (Tree a))
+treeStoreGetTreeSave :: TreeStore a -> TreePath -> IO (Maybe (Tree a))
 treeStoreGetTreeSave treeStore treePath = catch (do
     res <- treeStoreGetTree treeStore treePath
     return (Just res)) (\ _ -> return Nothing)

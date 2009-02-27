@@ -24,7 +24,6 @@ module IDE.SpecialEditors (
 
 import Graphics.UI.Editor.Simple (intEditor,genericEditor,staticListEditor,comboSelectionEditor,stringEditor,fileEditor)
 import Graphics.UI.Gtk
-import Graphics.UI.Gtk.ModelView as New
 import Graphics.UI.Gtk.SourceView (sourceStyleSchemeManagerGetSchemeIds)
 import Graphics.UI.Gtk.SourceView (sourceStyleSchemeManagerNew)
 import Distribution.ModuleName (ModuleName(..))
@@ -66,8 +65,8 @@ packageEditor para noti = do
 testedWidthEditor :: Editor [(CompilerFlavor, VersionRange)]
 testedWidthEditor para = do
     multisetEditor
-       (ColumnDescr True [("Compiler Flavor",\(cv,_) -> [New.cellText := show cv])
-                           ,("Version Range",\(_,vr) -> [New.cellText := display vr])])
+       (ColumnDescr True [("Compiler Flavor",\(cv,_) -> [cellText := show cv])
+                           ,("Version Range",\(_,vr) -> [cellText := display vr])])
        (pairEditor
             (compilerFlavorEditor, paraShadow <<<- (ParaShadow ShadowNone) $ emptyParams)
             (versionRangeEditor, paraShadow <<<- (ParaShadow ShadowNone) $ emptyParams),
@@ -211,8 +210,8 @@ dependencyEditor packages para noti = do
 dependenciesEditor :: [PackageIdentifier] -> Editor [Dependency]
 dependenciesEditor packages p noti =
     multisetEditor
-        (ColumnDescr True [("Package",\(Dependency (PackageName str) _) -> [New.cellText := str])
-                           ,("Version",\(Dependency _ vers) -> [New.cellText := display vers])])
+        (ColumnDescr True [("Package",\(Dependency (PackageName str) _) -> [cellText := str])
+                           ,("Version",\(Dependency _ vers) -> [cellText := display vers])])
         (dependencyEditor packages,
             paraOuterAlignment <<<- ParaInnerAlignment (0.0, 0.5, 1.0, 1.0)
                 $ paraInnerAlignment <<<- ParaOuterAlignment (0.0, 0.5, 1.0, 1.0)
@@ -228,7 +227,7 @@ dependenciesEditor packages p noti =
 filesEditor :: Maybe FilePath -> FileChooserAction -> String -> Editor [FilePath]
 filesEditor fp act label p =
     multisetEditor
-        (ColumnDescr False [("",(\row -> [New.cellText := row]))])
+        (ColumnDescr False [("",(\row -> [cellText := row]))])
         (fileEditor fp act label, emptyParams)
             (paraShadow <<<- ParaShadow ShadowIn $
                 paraDirection  <<<- ParaDirection Vertical $ p)
@@ -236,7 +235,7 @@ filesEditor fp act label p =
 stringsEditor :: (String -> Bool) -> Editor [String]
 stringsEditor validation p =
     multisetEditor
-        (ColumnDescr False [("",(\row -> [New.cellText := row]))])
+        (ColumnDescr False [("",(\row -> [cellText := row]))])
         (stringEditor validation, emptyParams)
             (paraShadow <<<- ParaShadow ShadowIn $ p)
 
@@ -347,10 +346,10 @@ modulesEditor modules   =   staticListEditor (map display modules)
 executablesEditor :: Maybe FilePath -> [ModuleName] -> Int -> Editor [Executable']
 executablesEditor fp modules countBuildInfo p =
     multisetEditor
-        (ColumnDescr True [("Executable Name",\(Executable' exeName _ _) -> [New.cellText := exeName])
-                           ,("Module Path",\(Executable'  _ mp _) -> [New.cellText := mp])
+        (ColumnDescr True [("Executable Name",\(Executable' exeName _ _) -> [cellText := exeName])
+                           ,("Module Path",\(Executable'  _ mp _) -> [cellText := mp])
 
-                           ,("Build info index",\(Executable'  _ _ bii) -> [New.cellText := show (bii + 1)])])
+                           ,("Build info index",\(Executable'  _ _ bii) -> [cellText := show (bii + 1)])])
         (executableEditor fp modules countBuildInfo,emptyParams)
             (paraShadow  <<<- ParaShadow ShadowIn $ p)
 

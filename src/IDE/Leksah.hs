@@ -169,8 +169,6 @@ startGUI sessionFilename prefs = do
     iconExists  <-  doesFileExist iconPath
     when iconExists $
         windowSetIconFromFile win iconPath
-    findBar <- liftIO $ toolbarNew
-    toolbarSetStyle findBar ToolbarIcons
     let ide = IDE
           {   window        =   win
           ,   uiManager     =   uiManager
@@ -191,10 +189,8 @@ startGUI sessionFilename prefs = do
           ,   handlers      =   Map.empty
           ,   currentState  =   IsStartingUp
           ,   guiHistory    =   (False,[],-1)
-          ,   findbar       =   findBar
-          ,   toolbar       =   Nothing
-          ,   findbarVisible  = True
-          ,   toolbarVisible  = True
+          ,   findbar       =   (False,Nothing)
+          ,   toolbar       =   (True,Nothing)
           ,   recentFiles     =   []
           ,   recentPackages  =   []
     }
@@ -203,10 +199,10 @@ startGUI sessionFilename prefs = do
     (acc,menus) <-  reflectIDE (makeMenu uiManager accelActions menuDescription') ideR
     when (length menus /= 2) $ throwIDE ("Failed to build menu" ++ show (length menus))
     let toolbar = castToToolbar (menus !! 1)
-    reflectIDE (do
-        constructFindReplace findBar
-        modifyIDE_ (\ide -> return ide{toolbar = Just toolbar})
-        initInfo :: IDEAction) ideR
+    findbar <- reflectIDE (do
+        initInfo :: IDEAction
+        modifyIDE_ (\ide -> return (ide{toolbar = (True,Just toolbar)}))
+        constructFindReplace ) ideR
     sep0 <- separatorToolItemNew
     separatorToolItemSetDraw sep0 False
     toolItemSetExpand sep0 True
@@ -227,7 +223,7 @@ startGUI sessionFilename prefs = do
     boxPackStart vb (menus !! 0) PackNatural 0
     boxPackStart vb (menus !! 1) PackNatural 0
     boxPackStart vb nb PackGrow 0
-    boxPackStart vb findBar PackNatural 0
+    boxPackStart vb findbar PackNatural 0
     boxPackEnd vb statusBar PackNatural 0
     win `onDelete` (\ _ -> do reflectIDE quit ideR; return True)
     win `onKeyPress` (\ e -> reflectIDE (handleSpecialKeystrokes e) ideR)

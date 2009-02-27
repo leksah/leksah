@@ -33,15 +33,12 @@ import System.FilePath
 import qualified Data.Map as Map
 import Data.Maybe
 import Data.Typeable
---import GHC.Exception (catch)
---import Debug.Trace
 
 import IDE.Core.State
 import IDE.FileUtils
 import IDE.PrinterParser
 import qualified Text.PrettyPrint.HughesPJ as PP
 import Graphics.UI.Editor.Parameters
---import IDE.Package
 import IDE.Pane.Modules
 import IDE.Pane.SourceBuffer
 import IDE.Pane.Info
@@ -218,7 +215,7 @@ saveSessionAs sessionPath = do
     if forget
         then ideMessage Normal "Forget this session"
         else do
-            ideMessage Normal "Now saving session"
+            -- ideMessage Normal "Now saving session"
             wdw             <-  readIDE window
             layout          <-  getLayout
             population      <-  getPopulation
@@ -228,7 +225,7 @@ saveSessionAs sessionPath = do
             let activeP =   case activePane' of
                                 Nothing -> Nothing
                                 Just (s,_) -> Just s
-            toolbarVisible  <- readIDE toolbarVisible
+            (toolbarVisible,_)  <- readIDE toolbar
             findState       <- getFindState
             timeNow         <- liftIO getClockTime
             recentFiles'      <- readIDE recentFiles
@@ -372,7 +369,7 @@ getPopulation = do
         case mbSt of
             Nothing -> return (Nothing, fst v)
             Just st -> return (Just (asPaneState st), fst v))
-                $Map.toList paneMap
+                $ Map.toList paneMap
 
 getActive :: IDEM(Maybe String)
 getActive = do
@@ -470,10 +467,9 @@ setCurrentPages layout = setCurrentPages' layout []
                                                     setCurrentPages' b (BottomP : p)
     setCurrentPages' (VerticalP l r _) p    =   do  setCurrentPages' l (LeftP : p)
                                                     setCurrentPages' r (RightP : p)
-    setCurrentPages' (TerminalP _ ind) p    =   when (ind > 0) $ do
+    setCurrentPages' (TerminalP _ ind) p    =   when (ind >=  0) $ do
                                                     nb <- getNotebook (reverse p)
                                                     liftIO $ notebookSetCurrentPage nb ind
-
 
 
 

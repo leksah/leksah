@@ -22,7 +22,6 @@ import Control.Monad.Trans (liftIO)
 import Control.Concurrent
 import Graphics.UI.Gtk as Gtk
 import Graphics.UI.Gtk.SourceView
-import Graphics.UI.Gtk.ModelView as New
 import Graphics.UI.Gtk.Gdk.Events as Gtk
 import IDE.Core.State
 import IDE.Metainfo.Provider(getDescription,getCompletionOptions)
@@ -60,10 +59,10 @@ initCompletion sourceView = do
         scrolledWindow <- scrolledWindowNew Nothing Nothing
         widgetSetSizeRequest scrolledWindow 300 300
         containerAdd paned scrolledWindow
-        tree <- New.treeViewNew
+        tree <- treeViewNew
         containerAdd scrolledWindow tree
-        store <- New.listStoreNew []
-        New.treeViewSetModel tree store
+        store <- listStoreNew []
+        treeViewSetModel tree store
 
         font <- case textviewFont prefs of
             Just str -> do
@@ -74,14 +73,14 @@ initCompletion sourceView = do
                 return f
         widgetModifyFont tree (Just font)
 
-        column <- New.treeViewColumnNew
-        set column [ New.treeViewColumnSizing := New.TreeViewColumnAutosize ]
-        New.treeViewAppendColumn tree column
-        renderer <- New.cellRendererTextNew
-        New.treeViewColumnPackStart column renderer True
-        cellLayoutSetAttributes column renderer store (\name -> [ New.cellText := name ])
+        column <- treeViewColumnNew
+        set column [ treeViewColumnSizing := TreeViewColumnAutosize ]
+        treeViewAppendColumn tree column
+        renderer <- cellRendererTextNew
+        treeViewColumnPackStart column renderer True
+        cellLayoutSetAttributes column renderer store (\name -> [ cellText := name ])
 
-        set tree [New.treeViewHeadersVisible := False]
+        set tree [treeViewHeadersVisible := False]
 
         descriptionView <- sourceViewNew
         descriptionBuffer <- (get descriptionView textViewBuffer) >>= (return . castToSourceBuffer)
@@ -103,11 +102,11 @@ initCompletion sourceView = do
         visible <- newIORef False
         activeView <- newIORef Nothing
 
-        treeSelection <- New.treeViewGetSelection tree
+        treeSelection <- treeViewGetSelection tree
 
         treeSelection `onSelectionChanged` (do
-            New.treeSelectionSelectedForeach treeSelection (\treePath -> (do
-                rows <- New.treeSelectionGetSelectedRows treeSelection
+            treeSelectionSelectedForeach treeSelection (\treePath -> (do
+                rows <- treeSelectionGetSelectedRows treeSelection
                 case rows of
                     [treePath] -> withWord store treePath (\name -> do
                         description <- reflectIDE (getDescription name) ideR
@@ -138,10 +137,10 @@ initCompletion sourceView = do
 
         cidPress <- sourceView `onKeyPress` (\event -> do
             let Key { eventKeyName = name, eventModifier = modifier, eventKeyChar = char } = event
-            Just model <- New.treeViewGetModel tree
-            selection <- New.treeViewGetSelection tree
-            count <- New.treeModelIterNChildren model Nothing
-            Just column <- New.treeViewGetColumn tree 0
+            Just model <- treeViewGetModel tree
+            selection <- treeViewGetSelection tree
+            count <- treeModelIterNChildren model Nothing
+            Just column <- treeViewGetColumn tree 0
             case (name, modifier, char) of
 --                ("space", [Gtk.Control], _) -> (do
 --                    reflectIDE (complete sourceView ) ideR
@@ -152,7 +151,7 @@ initCompletion sourceView = do
                     if visible then (do
                         maybeRow <- getRow tree
                         case maybeRow of
-                            Just row -> New.treeViewRowActivated tree [row] column
+                            Just row -> treeViewRowActivated tree [row] column
                             Nothing -> return ()
                         return True
                         )
@@ -164,7 +163,7 @@ initCompletion sourceView = do
                         maybeRow <- getRow tree
                         case maybeRow of
                             Just row -> (do
-                                New.treeViewRowActivated tree [row] column
+                                treeViewRowActivated tree [row] column
                                 return True
                                 )
                             Nothing -> (do
@@ -180,10 +179,10 @@ initCompletion sourceView = do
                         maybeRow <- getRow tree
                         let newRow = maybe 0 (\row -> row + 1) maybeRow
                         when (newRow < count) (do
-                            New.treeSelectionSelectPath selection [newRow]
-                            New.treeViewScrollToCell tree [newRow] column Nothing
+                            treeSelectionSelectPath selection [newRow]
+                            treeViewScrollToCell tree [newRow] column Nothing
                             -- Crazy hack to avoid the horizontal scroll
-                            New.treeViewScrollToCell tree [newRow] column Nothing
+                            treeViewScrollToCell tree [newRow] column Nothing
                             )
                         return True
                         )
@@ -195,10 +194,10 @@ initCompletion sourceView = do
                         maybeRow <- getRow tree
                         let newRow = maybe 0 (\row -> row - 1) maybeRow
                         when (newRow >= 0) (do
-                            New.treeSelectionSelectPath selection [newRow]
-                            New.treeViewScrollToCell tree [newRow] column Nothing
+                            treeSelectionSelectPath selection [newRow]
+                            treeViewScrollToCell tree [newRow] column Nothing
                             -- Crazy hack to avoid the horizontal scroll
-                            New.treeViewScrollToCell tree [newRow] column Nothing
+                            treeViewScrollToCell tree [newRow] column Nothing
                             )
                         return True
                         )
@@ -239,7 +238,7 @@ initCompletion sourceView = do
        withWord store treePath f = (do
            case treePath of
                [row] -> (do
-                    value <- New.listStoreGetValue store row
+                    value <- listStoreGetValue store row
                     f value
                     )
                _ -> return ()
@@ -259,7 +258,7 @@ updateOptions :: TreeViewClass alpha => Window -> alpha -> ListStore String -> S
 updateOptions window tree store sourceView =
     reifyIDE (\ideR -> do
         buffer <- textViewGetBuffer sourceView
-        New.listStoreClear (store :: ListStore String)
+        listStoreClear (store :: ListStore String)
         (start, end) <- textBufferGetSelectionBounds buffer
         isWordEnd <- textIterEndsWord end
         when isWordEnd (do
@@ -297,14 +296,14 @@ processResults ideR window tree store sourceView wordStart options = do
         moveToWordStart start
         newWordStart <- textBufferGetText buffer start end True
         when (isPrefixOf wordStart newWordStart) (do
-            New.listStoreClear store
-            forM_ (take 200 (List.filter (isPrefixOf newWordStart) options)) (New.listStoreAppend store)
+            listStoreClear store
+            forM_ (take 200 (List.filter (isPrefixOf newWordStart) options)) (listStoreAppend store)
             Rectangle startx starty width height <- textViewGetIterLocation sourceView start
             (x, y) <- textViewBufferToWindowCoords sourceView TextWindowWidget (startx, starty+height)
             drawWindow <- widgetGetDrawWindow sourceView
             (ox, oy) <- drawWindowGetOrigin drawWindow
             windowMove window (ox+x) (oy+y)
-            when ((length options) == 1) $ New.treeViewSetCursor tree [0] Nothing
+            when ((length options) == 1) $ treeViewSetCursor tree [0] Nothing
             case options of
                 [] -> reflectIDE cancel ideR
                 -- [(wordStart,_)] -> (cancel completion) getRow
@@ -313,12 +312,12 @@ processResults ideR window tree store sourceView wordStart options = do
         )
 
 getRow tree = do
-    Just model <- New.treeViewGetModel tree
-    selection <- New.treeViewGetSelection tree
-    maybeIter <- New.treeSelectionGetSelected selection
+    Just model <- treeViewGetModel tree
+    selection <- treeViewGetSelection tree
+    maybeIter <- treeSelectionGetSelected selection
     case maybeIter of
         Just iter -> (do
-            [row] <- New.treeModelGetPath model iter
+            [row] <- treeModelGetPath model iter
             return $ Just row
             )
         Nothing -> return Nothing

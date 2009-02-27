@@ -22,7 +22,6 @@ module Graphics.UI.Editor.Composite (
 ) where
 
 import Graphics.UI.Gtk
-import Graphics.UI.Gtk.ModelView as New
 import Control.Monad
 import Data.IORef
 import Data.Maybe
@@ -336,10 +335,10 @@ eitherOrEditor (leftEditor,leftParams) (rightEditor,rightParams)
                 return event{gtkReturn=True}
 
 
--- a trivial example: (ColumnDescr False [("",(\row -> [New.cellText := show row]))])
+-- a trivial example: (ColumnDescr False [("",(\row -> [cellText := show row]))])
 -- and a nontrivial:
---  [("Package",\(Dependency str _) -> [New.cellText := str])
---  ,("Version",\(Dependency _ vers) -> [New.cellText := showVersionRange vers])])
+--  [("Package",\(Dependency str _) -> [cellText := str])
+--  ,("Version",\(Dependency _ vers) -> [cellText := showVersionRange vers])])
 data ColumnDescr row = ColumnDescr Bool [(String,(row -> [AttrOp CellRendererText]))]
 
 --
@@ -370,57 +369,57 @@ multisetEditor (ColumnDescr showHeaders columnsDD) (singleEditor, sParams)
                     removeButton <- buttonNewWithLabel "Remove"
                     containerAdd buttonBox addButton
                     containerAdd buttonBox removeButton
-                    listStore   <-  New.listStoreNew ([]:: [alpha])
-                    list        <-  New.treeViewNewWithModel listStore
+                    listStore   <-  listStoreNew ([]:: [alpha])
+                    list        <-  treeViewNewWithModel listStore
                     let minSize =   getParameter paraMinSize parameters
                     uncurry (widgetSetSizeRequest list) minSize
                     sw          <-  scrolledWindowNew Nothing Nothing
                     containerAdd sw list
                     scrolledWindowSetPolicy sw PolicyAutomatic PolicyAutomatic
-                    sel         <-  New.treeViewGetSelection list
-                    New.treeSelectionSetMode sel SelectionSingle
+                    sel         <-  treeViewGetSelection list
+                    treeSelectionSetMode sel SelectionSingle
                     mapM_ (\(str,func) -> do
-                            col <- New.treeViewColumnNew
-                            New.treeViewColumnSetTitle  col str
-                            New.treeViewColumnSetResizable col True
-                            New.treeViewAppendColumn list col
-                            renderer <- New.cellRendererTextNew
-                            New.cellLayoutPackStart col renderer True
-                            New.cellLayoutSetAttributes col renderer listStore func
+                            col <- treeViewColumnNew
+                            treeViewColumnSetTitle  col str
+                            treeViewColumnSetResizable col True
+                            treeViewAppendColumn list col
+                            renderer <- cellRendererTextNew
+                            cellLayoutPackStart col renderer True
+                            cellLayoutSetAttributes col renderer listStore func
                         ) columnsDD
-                    New.treeViewSetHeadersVisible list showHeaders
-                    sel  `New.onSelectionChanged` selectionHandler sel listStore injS
+                    treeViewSetHeadersVisible list showHeaders
+                    sel  `onSelectionChanged` selectionHandler sel listStore injS
                     boxPackStart box sw PackGrow 0
                     boxPackStart box buttonBox PackNatural 0
                     boxPackStart box frameS PackNatural 0
                     activateEvent (castToWidget list) notifier Nothing FocusOut
                     containerAdd widget box
-                    New.listStoreClear listStore
-                    mapM_ (New.listStoreAppend listStore) v
+                    listStoreClear listStore
+                    mapM_ (listStoreAppend listStore) v
                     addButton `onClicked` do
                         mbv <- extS
                         case mbv of
                             Just v -> do
-                              seq <- New.listStoreAppend listStore v
-                              New.treeSelectionSelectPath sel [seq]
+                              seq <- listStoreAppend listStore v
+                              treeSelectionSelectPath sel [seq]
                               mbCol <- treeViewGetColumn list 0
                               case mbCol of
                                 Nothing -> return ()
-                                Just col -> New.treeViewScrollToCell list [seq] col Nothing
+                                Just col -> treeViewScrollToCell list [seq] col Nothing
                               return ()
                             Nothing -> return ()
                     removeButton `onClicked` do
-                        mbi <- New.treeSelectionGetSelected sel
+                        mbi <- treeSelectionGetSelected sel
                         case mbi of
                             Nothing -> return ()
                             Just iter -> do
-                                [i] <- New.treeModelGetPath listStore iter
-                                New.listStoreRemove listStore i
+                                [i] <- treeModelGetPath listStore iter
+                                listStoreRemove listStore i
                     writeIORef coreRef (Just listStore)
                     injS getDefault
                 Just listStore -> do
-                    New.listStoreClear listStore
-                    mapM_ (New.listStoreAppend listStore) v)
+                    listStoreClear listStore
+                    mapM_ (listStoreAppend listStore) v)
         (do core <- readIORef coreRef
             case core of
                 Nothing -> return Nothing
@@ -430,24 +429,24 @@ multisetEditor (ColumnDescr showHeaders columnsDD) (singleEditor, sParams)
         (paraMinSize <<<- ParaMinSize (-1,-1) $ parameters)
         notifier
     where
-    listStoreGetValues :: New.ListStore a -> IO [a]
-    listStoreGetValues listStore = New.treeModelGetIterFirst listStore >>= getTail
+    listStoreGetValues :: ListStore a -> IO [a]
+    listStoreGetValues listStore = treeModelGetIterFirst listStore >>= getTail
         where getTail mbi = case mbi of
                                 Nothing -> return []
                                 Just iter -> do
-                                    [i] <- New.treeModelGetPath listStore iter
-                                    v <- New.listStoreGetValue listStore i
-                                    mbi2 <- New.treeModelIterNext listStore iter
+                                    [i] <- treeModelGetPath listStore iter
+                                    v <- listStoreGetValue listStore i
+                                    mbi2 <- treeModelIterNext listStore iter
                                     rest <- getTail mbi2
                                     return (v : rest)
-    selectionHandler :: New.TreeSelection -> New.ListStore a -> Injector a -> IO ()
+    selectionHandler :: TreeSelection -> ListStore a -> Injector a -> IO ()
     selectionHandler sel listStore inj = do
-        ts <- New.treeSelectionGetSelected sel
+        ts <- treeSelectionGetSelected sel
         case ts of
             Nothing -> return ()
             Just iter -> do
-                [i] <- New.treeModelGetPath listStore iter
-                v <- New.listStoreGetValue listStore i
+                [i] <- treeModelGetPath listStore iter
+                v <- listStoreGetValue listStore i
                 inj v
                 return ()
 

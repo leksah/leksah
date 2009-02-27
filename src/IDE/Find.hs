@@ -8,7 +8,7 @@
 --
 -- Maintainer  :  Juergen Nicklisch-Franken <info at leksah.org>
 -- Stability   :  experimental
--- Portability :  portable
+-- Portability :  portablea
 --
 -- | The toolbar for searching and replacing in a text buffer
 --
@@ -43,7 +43,7 @@ import Data.List
 
 import IDE.Core.State
 import IDE.Pane.SourceBuffer
-import Data.Char (toUpper)
+import Data.Char (toLower,toUpper)
 
 data FindState = FindState {
             entryStr        ::    String
@@ -59,18 +59,19 @@ data FindState = FindState {
 
 getFindState :: IDEM FindState
 getFindState = do
-    fb            <- readIDE findbar
+    (fb,ls)      <- needFindbar
     liftIO $ do
         lineNr        <- getLineEntry fb >>= (\e -> spinButtonGetValueAsInt (castToSpinButton e))
         replaceStr    <- getReplaceEntry fb >>= (\e -> entryGetText (castToEntry e))
         entryStr      <- getFindEntry fb >>=  (\e -> entryGetText (castToEntry e))
+        entryHist     <- listStoreToList ls
         entireWord    <- getEntireWord fb
         wrapAround    <- getWrapAround fb
         caseSensitive <- getCaseSensitive fb
         backward      <- getBackward fb
         return FindState{
                 entryStr        =   entryStr
-            ,   entryHist       =   []
+            ,   entryHist       =   entryHist
             ,   replaceStr      =   replaceStr
             ,   replaceHist     =   []
             ,   caseSensitive   =   caseSensitive
@@ -81,11 +82,13 @@ getFindState = do
 
 setFindState :: FindState -> IDEAction
 setFindState fs = do
-    fb            <- readIDE findbar
+    (fb,ls)      <- needFindbar
     liftIO $ do
         getLineEntry fb >>= (\e -> spinButtonSetValue (castToSpinButton e) (fromIntegral (lineNr fs)))
         getReplaceEntry fb >>= (\e -> entrySetText (castToEntry e) (replaceStr fs))
         getFindEntry fb >>=  (\e -> entrySetText (castToEntry e) (entryStr fs))
+        listStoreClear ls
+        mapM_ (\s -> listStoreAppend ls s) (entryHist fs)
         setEntireWord fb (entireWord fs)
         setWrapAround fb (wrapAround fs)
         setCaseSensitive fb (caseSensitive fs)
@@ -94,60 +97,63 @@ setFindState fs = do
 
 hideToolbar :: IDEAction
 hideToolbar = do
-    mbtb <- readIDE toolbar
+    (_,mbtb) <- readIDE toolbar
     case mbtb of
         Nothing -> return ()
         Just tb -> do
-            modifyIDE_ (\ide -> return (ide{toolbarVisible = False}))
+            modifyIDE_ (\ide -> return (ide{toolbar = (False,snd (toolbar ide))}))
             liftIO $ widgetHideAll tb
 
 showToolbar :: IDEAction
 showToolbar = do
-    mbtb <- readIDE toolbar
+    (_,mbtb) <- readIDE toolbar
     case mbtb of
         Nothing -> return ()
         Just tb -> do
-            modifyIDE_ (\ide -> return (ide{toolbarVisible = True}))
+            modifyIDE_ (\ide -> return (ide{toolbar = (True,snd (toolbar ide))}))
             liftIO $ widgetShowAll tb
 
 toggleToolbar :: IDEAction
 toggleToolbar = do
-    toolBarVisible' <- readIDE toolbarVisible
-    if toolBarVisible'
+    toolbar' <- readIDE toolbar
+    if fst toolbar'
         then hideToolbar
         else showToolbar
 
 hideFindbar :: IDEAction
 hideFindbar = do
-    fb <- readIDE findbar
-    modifyIDE_ (\ide -> return (ide{findbarVisible = False}))
-    liftIO $ widgetHideAll fb
+    (_,mbfb) <- readIDE findbar
+    modifyIDE_ (\ide -> return (ide{findbar = (False,mbfb)}))
+    case mbfb of
+        Nothing -> return ()
+        Just (fb,_) -> liftIO $ widgetHideAll fb
 
 showFindbar :: IDEAction
 showFindbar = do
-    fb <- readIDE findbar
-    modifyIDE_ (\ide -> return (ide{findbarVisible = True}))
-    liftIO $ widgetShowAll fb
+    (_,mbfb) <- readIDE findbar
+    modifyIDE_ (\ide -> return (ide{findbar = (True,mbfb)}))
+    case mbfb of
+        Nothing -> return ()
+        Just (fb,_) -> liftIO $ widgetShowAll fb
 
 focusFindEntry :: IDEAction
 focusFindEntry = do
-    fb              <- readIDE findbar
-    findbarVisible' <- readIDE findbarVisible
-    when findbarVisible' $ liftIO $ do
+    (fb,_) <- needFindbar
+    liftIO $ do
         entry <- getFindEntry fb
         widgetGrabFocus entry
 
-
-
 toggleFindbar :: IDEAction
 toggleFindbar = do
-    findbarVisible' <- readIDE findbarVisible
-    if findbarVisible'
+    findbar <- readIDE findbar
+    if fst findbar
         then hideFindbar
         else showFindbar
 
-constructFindReplace :: Toolbar -> IDEM (Toolbar)
-constructFindReplace toolbar = reifyIDE $ \ ideR   -> do
+constructFindReplace :: IDEM Toolbar
+constructFindReplace = reifyIDE $ \ ideR   -> do
+    toolbar <- toolbarNew
+    toolbarSetStyle toolbar ToolbarIcons
     closeButton <- toolButtonNewFromStock "gtk-close"
     toolbarInsert toolbar closeButton 0
 
@@ -222,6 +228,24 @@ constructFindReplace toolbar = reifyIDE $ \ ideR   -> do
     widgetSetName entryTool "searchEntryTool"
     toolbarInsert toolbar entryTool 0
 
+    store <- listStoreNew []
+    customStoreSetColumn store (makeColumnIdString 0) id
+
+    completion <- entryCompletionNew
+    entrySetCompletion entry completion
+
+    set completion [entryCompletionModel := Just store]
+    cell <- cellRendererTextNew
+    cellLayoutPackStart completion cell True
+    cellLayoutSetAttributes completion cell store
+        (\cd -> [cellText := cd])
+    entryCompletionSetMatchFunc completion (matchFunc store)
+    on completion matchSelected $ \ model iter -> do
+        txt <- treeModelGetValue model iter (makeColumnIdString 0)
+        entrySetText entry txt
+        doSearch toolbar Forward ideR
+        return True
+
     labelTool <- toolItemNew
     label <- labelNew (Just "Search: ")
     containerAdd labelTool label
@@ -244,8 +268,8 @@ constructFindReplace toolbar = reifyIDE $ \ ideR   -> do
             | eventKeyName k == "Escape"               -> do
                 getOut ideR
                 return True
-            | otherwise                ->  return True
-        _                              ->  return True)
+            | otherwise                ->  return False
+        _                              ->  return False)
     entry `onEntryActivate` (doSearch toolbar Forward ideR)
     replaceButton `onToolButtonClicked` replace toolbar Forward ideR
 
@@ -279,6 +303,7 @@ constructFindReplace toolbar = reifyIDE $ \ ideR   -> do
     set toolbar [ toolbarChildHomogeneous labelTool2 := False ]
     set toolbar [ toolbarChildHomogeneous labelTool3 := False ]
 
+    reflectIDE (modifyIDE_ (\ide -> return ide{findbar = (False,Just (toolbar,store))})) ideR
     return toolbar
         where getOut = reflectIDE $ do
                             hideFindbar
@@ -305,7 +330,31 @@ doSearch fb hint ideR   = do
         else do
             widgetModifyBase entry StateNormal red
             widgetModifyText entry StateNormal white
+    reflectIDE (addToHist search) ideR
     return ()
+
+matchFunc :: ListStore String -> String -> TreeIter -> IO Bool
+matchFunc model str iter = do
+  tp <- treeModelGetPath model iter
+  r <- case tp of
+         (i:_) -> do row <- listStoreGetValue model i
+                     return (isPrefixOf (map toLower str) (map toLower row) && length str < length row)
+         otherwise -> return False
+  return r
+
+addToHist :: String -> IDEAction
+addToHist str =
+    if null str
+        then return ()
+        else do
+            (_,ls)      <- needFindbar
+            liftIO $ do
+                entryHist   <- listStoreToList ls
+                when (null (filter (\e -> (str `isPrefixOf` e)) entryHist)) $ do
+                    let newList = take 12 (str : filter (\e -> not (e `isPrefixOf` str)) entryHist)
+                    listStoreClear ls
+                    mapM_ (\s -> listStoreAppend ls s) newList
+
 
 replace :: Toolbar -> SearchHint -> IDERef -> IO ()
 replace fb hint ideR   =  do
@@ -438,10 +487,17 @@ red = Color 640000 10000 10000
 white = Color 64000 64000 64000
 black = Color 0 0 0
 
+needFindbar :: IDEM (Toolbar,ListStore String)
+needFindbar = do
+    (_,mbfb) <- readIDE findbar
+    case mbfb of
+        Nothing -> throwIDE "Find>>needFindbar: Findbar not initialized"
+        Just p  -> return p
+
 editFindInc :: SearchHint -> IDEAction
 editFindInc hint = do
     ideR <- ask
-    fb <- readIDE findbar
+    (fb,_) <- needFindbar
     case hint of
         Initial -> inActiveBufContext' () $ \_ gtkbuf currentBuffer _ -> liftIO $ do
             hasSelection <- textBufferHasSelection gtkbuf
@@ -464,7 +520,7 @@ editFindInc hint = do
 editGotoLine :: IDEAction
 editGotoLine = do
     showFindbar
-    fb <- readIDE findbar
+    (fb,_) <- needFindbar
     entry <- liftIO $ getLineEntry fb
     liftIO $ widgetGrabFocus entry
 

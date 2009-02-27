@@ -154,10 +154,8 @@ data IDE            =  IDE {
                                                 -- ^ event handling table
 ,   currentState    ::   IDEState
 ,   guiHistory      ::   (Bool,[GUIHistory],Int)
-,   findbar         ::   Toolbar
-,   toolbar         ::   Maybe Toolbar
-,   findbarVisible  ::   Bool
-,   toolbarVisible  ::   Bool
+,   findbar         ::   (Bool,Maybe (Toolbar,ListStore String))
+,   toolbar         ::   (Bool,Maybe Toolbar)
 ,   recentFiles     ::   [FilePath]
 ,   recentPackages  ::   [FilePath]
 } --deriving Show

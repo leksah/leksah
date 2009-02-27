@@ -45,7 +45,6 @@ import Data.Typeable (Typeable(..))
 import Debug.Trace (trace)
 import qualified Distribution.InstalledPackageInfo as IPI (package)
 import Graphics.UI.Editor.Composite (maybeEditor,pairEditor,ColumnDescr(..),multisetEditor)
-import qualified Graphics.UI.Gtk as New  (cellText)
 import Distribution.Text (simpleParse,display)
 import MyMissing
 import Graphics.UI.Editor.Parameters (Parameter(..),paraPack,Direction(..),paraDirection,paraMinSize,paraShadow,paraSynopsis,(<<<-),emptyParams,paraName,getParameterPrim)
@@ -616,8 +615,8 @@ buildInfoD fp modules i = [
             (options . (\a -> a !! i) . bis)
             (\ a b -> b{bis = update (bis b) i (\bi -> bi{options = a})})
             (multisetEditor
-                (ColumnDescr True [("Compiler Flavor",\(cv,_) -> [New.cellText := show cv])
-                                   ,("Options",\(_,op) -> [New.cellText := concatMap (\s -> ' ' : s) op])])
+                (ColumnDescr True [("Compiler Flavor",\(cv,_) -> [cellText := show cv])
+                                   ,("Options",\(_,op) -> [cellText := concatMap (\s -> ' ' : s) op])])
                 ((pairEditor
                     (compilerFlavorEditor,emptyParams)
                     (stringsEditor (const True),emptyParams)),

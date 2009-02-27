@@ -22,7 +22,6 @@ module IDE.Pane.Callers (
 ) where
 
 import Graphics.UI.Gtk hiding (get)
-import Graphics.UI.Gtk.ModelView as New
 import IDE.Find (focusFindEntry,showFindbar,setFindState,entryStr, getFindState, editFind)
 import IDE.Pane.SourceBuffer (selectSourceBuf)
 import Graphics.UI.Gtk.Gdk.Events
@@ -45,9 +44,9 @@ import IDE.Core.State
 
 data IDECallers     =   IDECallers {
     scrolledView    ::   ScrolledWindow
-,   treeViewC       ::   New.TreeView
+,   treeViewC       ::   TreeView
 ,   callersDescr    ::   IORef (Maybe Descr)
-,   callersStore    ::   New.ListStore (ModuleDescr,Symbol)
+,   callersStore    ::   ListStore (ModuleDescr,Symbol)
 ,   callersEntry    ::   Entry
 ,   topBox          ::   VBox
 } deriving Typeable
@@ -102,8 +101,8 @@ calledBy idDescr = do
             in do   callers             <-  getCallers
                     liftIO $ do
                         writeIORef (callersDescr callers) (Just idDescr)
-                        New.listStoreClear (callersStore callers)
-                        mapM_ (New.listStoreAppend (callersStore callers)) finalList
+                        listStoreClear (callersStore callers)
+                        mapM_ (listStoreAppend (callersStore callers)) finalList
                         entrySetText (callersEntry callers)
                             $   descrName idDescr ++
                                 " << " ++ showPackModule (descrModu idDescr)
@@ -140,44 +139,44 @@ initCallers panePath nb = do
     prefs       <-  readIDE prefs
     currentInfo <-  readIDE currentInfo
     (buf,cids)  <-  reifyIDE $ \ideR  ->  do
-        listStore   <-  New.listStoreNew []
-        treeView    <-  New.treeViewNew
-        New.treeViewSetModel treeView listStore
+        listStore   <-  listStoreNew []
+        treeView    <-  treeViewNew
+        treeViewSetModel treeView listStore
 
-        renderer0    <- New.cellRendererPixbufNew
+        renderer0    <- cellRendererPixbufNew
         set renderer0 [ cellPixbufStockId  := stockYes ]
 
-        renderer    <- New.cellRendererTextNew
-        col         <- New.treeViewColumnNew
-        New.treeViewColumnSetTitle col "Modules"
-        New.treeViewColumnSetSizing col TreeViewColumnAutosize
-        New.treeViewColumnSetResizable col True
-        New.treeViewColumnSetReorderable col True
-        New.treeViewAppendColumn treeView col
-        New.cellLayoutPackStart col renderer0 False
-        New.cellLayoutPackStart col renderer True
-        New.cellLayoutSetAttributes col renderer listStore
-            $ \row -> [ New.cellText := render $ disp $ modu $ moduleIdMD $ fst row]
-        New.cellLayoutSetAttributes col renderer0 listStore
+        renderer    <- cellRendererTextNew
+        col         <- treeViewColumnNew
+        treeViewColumnSetTitle col "Modules"
+        treeViewColumnSetSizing col TreeViewColumnAutosize
+        treeViewColumnSetResizable col True
+        treeViewColumnSetReorderable col True
+        treeViewAppendColumn treeView col
+        cellLayoutPackStart col renderer0 False
+        cellLayoutPackStart col renderer True
+        cellLayoutSetAttributes col renderer listStore
+            $ \row -> [ cellText := render $ disp $ modu $ moduleIdMD $ fst row]
+        cellLayoutSetAttributes col renderer0 listStore
             $ \row -> [cellPixbufStockId  :=
                         if isJust (mbSourcePathMD $ fst row)
                             then stockJumpTo
                             else stockYes]
 
-        renderer2   <- New.cellRendererTextNew
-        col2        <- New.treeViewColumnNew
-        New.treeViewColumnSetTitle col2 "Packages"
-        New.treeViewColumnSetSizing col2 TreeViewColumnAutosize
-        New.treeViewColumnSetResizable col True
-        New.treeViewColumnSetReorderable col2 True
-        New.treeViewAppendColumn treeView col2
-        New.cellLayoutPackStart col2 renderer2 True
-        New.cellLayoutSetAttributes col2 renderer2 listStore
-            $ \row -> [ New.cellText := render $ disp $ pack $ moduleIdMD $ fst row]
+        renderer2   <- cellRendererTextNew
+        col2        <- treeViewColumnNew
+        treeViewColumnSetTitle col2 "Packages"
+        treeViewColumnSetSizing col2 TreeViewColumnAutosize
+        treeViewColumnSetResizable col True
+        treeViewColumnSetReorderable col2 True
+        treeViewAppendColumn treeView col2
+        cellLayoutPackStart col2 renderer2 True
+        cellLayoutSetAttributes col2 renderer2 listStore
+            $ \row -> [ cellText := render $ disp $ pack $ moduleIdMD $ fst row]
 
-        New.treeViewSetHeadersVisible treeView True
-        sel <- New.treeViewGetSelection treeView
-        New.treeSelectionSetMode sel SelectionSingle
+        treeViewSetHeadersVisible treeView True
+        sel <- treeViewGetSelection treeView
+        treeSelectionSetMode sel SelectionSingle
 
         sw <- scrolledWindowNew Nothing Nothing
         containerAdd sw treeView
@@ -199,15 +198,15 @@ initCallers panePath nb = do
     liftIO $widgetGrabFocus (scrolledView buf)
 
 
-getSelectionTree ::  New.TreeView
-    -> New.ListStore (ModuleDescr,Symbol)
+getSelectionTree ::  TreeView
+    -> ListStore (ModuleDescr,Symbol)
     -> IO (Maybe (ModuleDescr,Symbol))
 getSelectionTree treeView listStore = do
-    treeSelection   <-  New.treeViewGetSelection treeView
-    rows           <-  New.treeSelectionGetSelectedRows treeSelection
+    treeSelection   <-  treeViewGetSelection treeView
+    rows           <-  treeSelectionGetSelectedRows treeSelection
     case rows of
         [[n]]   ->  do
-            val     <-  New.listStoreGetValue listStore n
+            val     <-  listStoreGetValue listStore n
             return (Just val)
         _       ->  return Nothing
 

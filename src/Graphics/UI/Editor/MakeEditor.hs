@@ -29,7 +29,6 @@ module Graphics.UI.Editor.MakeEditor (
 ) where
 
 import Graphics.UI.Gtk
-import Graphics.UI.Gtk.ModelView as New
 import Control.Monad
 import Data.List(unzip4)
 
@@ -80,22 +79,22 @@ buildEditor (NFD pairList)     v =   do
         scrolledWindowSetPolicy sw PolicyAutomatic PolicyAutomatic
         notebookAppendPage nb sw labelString)
          (zip (map fst pairList) widgets)
-    listStore   <- New.listStoreNew (map fst pairList)
-    listView    <- New.treeViewNewWithModel listStore
+    listStore   <- listStoreNew (map fst pairList)
+    listView    <- treeViewNewWithModel listStore
     widgetSetSizeRequest listView 100 (-1)
-    sel         <- New.treeViewGetSelection listView
-    New.treeSelectionSetMode sel SelectionSingle
-    renderer    <- New.cellRendererTextNew
-    col         <- New.treeViewColumnNew
-    New.treeViewAppendColumn listView col
-    New.cellLayoutPackStart col renderer True
-    New.cellLayoutSetAttributes col renderer listStore $ \row ->
-        [ New.cellText := row ]
-    New.treeViewSetHeadersVisible listView False
-    New.treeSelectionSelectPath sel [0]
+    sel         <- treeViewGetSelection listView
+    treeSelectionSetMode sel SelectionSingle
+    renderer    <- cellRendererTextNew
+    col         <- treeViewColumnNew
+    treeViewAppendColumn listView col
+    cellLayoutPackStart col renderer True
+    cellLayoutSetAttributes col renderer listStore $ \row ->
+        [ cellText := row ]
+    treeViewSetHeadersVisible listView False
+    treeSelectionSelectPath sel [0]
     notebookSetCurrentPage nb 0
-    sel `New.onSelectionChanged` (do
-        selections <- New.treeSelectionGetSelectedRows sel
+    sel `onSelectionChanged` (do
+        selections <- treeSelectionGetSelectedRows sel
         case selections of
             [[i]] -> notebookSetCurrentPage nb i
             _ -> return ())

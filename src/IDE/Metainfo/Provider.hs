@@ -65,6 +65,7 @@ import System.IO.Unsafe (unsafePerformIO)
 import Text.Regex.Posix.String (execute,compile)
 import IDE.Metainfo.GHCUtils (findFittingPackages,getInstalledPackageInfos,inGhc)
 import Data.Binary.Shared (decodeSer)
+import System.Mem (performGC)
 
 --
 -- | Lookup of an identifier description
@@ -224,6 +225,7 @@ loadAccessibleInfo =
         let scope       =   foldr buildScope (Map.empty,Map.empty)
                                 $ map fromJust
                                     $ filter isJust packageList
+        liftIO performGC
         modifyIDE_ (\ide -> return (ide{accessibleInfo = (Just scope)}))
 
 --

@@ -1,5 +1,5 @@
 Layout:        VerticalP (TerminalP (Just LeftP) (-1)) (HorizontalP (TerminalP (Just BottomP) 0) (TerminalP (Just BottomP) 1) 376) 737
-Population:    [(Just (LogSt LogState),[RightP,BottomP]),(Just (ModulesSt (ModulesState 335 (Package,True) (Nothing,Nothing))),[RightP,TopP]),(Just (SearchSt (SearchState {searchString = "", searchScope = System, searchMode = Prefix {caseSense = False}})),[RightP,TopP])]
+Population:    [(Just (LogSt LogState),[RightP,BottomP]),(Just (ModulesSt (ModulesState 335 (System,True) (Nothing,Nothing) (ExpanderState {localExp = ([],[]), localExpNoBlack = ([],[]), packageExp = ([],[]), packageExpNoBlack = ([],[]), systemExp = ([],[]), systemExpNoBlack = ([],[])}))),[RightP,TopP]),(Just (SearchSt (SearchState {searchString = "", searchScope = System, searchMode = Prefix {caseSense = False}})),[RightP,TopP])]
 Window size:   (1024,780)
 Active package:
                Nothing

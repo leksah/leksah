@@ -23,7 +23,6 @@ module IDE.Pane.Search (
 ) where
 
 import Graphics.UI.Gtk hiding (get)
-import qualified Graphics.UI.Gtk.ModelView as New
 import Graphics.UI.Gtk.Gdk.Events
 import Data.IORef (newIORef)
 import Data.IORef (writeIORef,readIORef,IORef(..))
@@ -42,8 +41,8 @@ import Control.Event (triggerEvent)
 
 data IDESearch      =   IDESearch {
     scrolledView    ::   ScrolledWindow
-,   treeView        ::   New.TreeView
-,   searchStore     ::   New.ListStore Descr
+,   treeView        ::   TreeView
+,   searchStore     ::   ListStore Descr
 ,   searchScopeRef  ::   IORef Scope
 ,   searchModeRef   ::   IORef SearchMode
 ,   topBox          ::   VBox
@@ -138,61 +137,61 @@ initSearch panePath nb scope mode = do
         boxPackStart modebox mb3 PackNatural 2
         boxPackEnd modebox mb4 PackNatural 2
 
-        listStore   <-  New.listStoreNew []
-        treeView    <-  New.treeViewNew
-        New.treeViewSetModel treeView listStore
+        listStore   <-  listStoreNew []
+        treeView    <-  treeViewNew
+        treeViewSetModel treeView listStore
 
-        renderer3    <- New.cellRendererTextNew
-        renderer30   <- New.cellRendererPixbufNew
-        col3         <- New.treeViewColumnNew
-        New.treeViewColumnSetTitle col3 "Symbol"
-        New.treeViewColumnSetSizing col3 TreeViewColumnAutosize
-        New.treeViewColumnSetResizable col3 True
-        New.treeViewColumnSetReorderable col3 True
-        New.treeViewAppendColumn treeView col3
-        New.cellLayoutPackStart col3 renderer30 False
-        New.cellLayoutPackStart col3 renderer3 True
-        New.cellLayoutSetAttributes col3 renderer3 listStore
-            $ \row -> [ New.cellText := descrName row]
-        New.cellLayoutSetAttributes col3 renderer30 listStore
+        renderer3    <- cellRendererTextNew
+        renderer30   <- cellRendererPixbufNew
+        col3         <- treeViewColumnNew
+        treeViewColumnSetTitle col3 "Symbol"
+        treeViewColumnSetSizing col3 TreeViewColumnAutosize
+        treeViewColumnSetResizable col3 True
+        treeViewColumnSetReorderable col3 True
+        treeViewAppendColumn treeView col3
+        cellLayoutPackStart col3 renderer30 False
+        cellLayoutPackStart col3 renderer3 True
+        cellLayoutSetAttributes col3 renderer3 listStore
+            $ \row -> [ cellText := descrName row]
+        cellLayoutSetAttributes col3 renderer30 listStore
             $ \row -> [
-            New.cellPixbufStockId  := stockIdFromType ((descrType . details) row)]
+            cellPixbufStockId  := stockIdFromType ((descrType . details) row)]
 
 
-        renderer1    <- New.cellRendererTextNew
-        renderer10   <- New.cellRendererPixbufNew
-        col1         <- New.treeViewColumnNew
-        New.treeViewColumnSetTitle col1 "Module"
-        New.treeViewColumnSetSizing col1 TreeViewColumnAutosize
-        New.treeViewColumnSetResizable col1 True
-        New.treeViewColumnSetReorderable col1 True
-        New.treeViewAppendColumn treeView col1
-        New.cellLayoutPackStart col1 renderer10 False
-        New.cellLayoutPackStart col1 renderer1 True
-        New.cellLayoutSetAttributes col1 renderer1 listStore
-            $ \row -> [ New.cellText := display $ modu $ descrModu' row]
-        New.cellLayoutSetAttributes col1 renderer10 listStore
+        renderer1    <- cellRendererTextNew
+        renderer10   <- cellRendererPixbufNew
+        col1         <- treeViewColumnNew
+        treeViewColumnSetTitle col1 "Module"
+        treeViewColumnSetSizing col1 TreeViewColumnAutosize
+        treeViewColumnSetResizable col1 True
+        treeViewColumnSetReorderable col1 True
+        treeViewAppendColumn treeView col1
+        cellLayoutPackStart col1 renderer10 False
+        cellLayoutPackStart col1 renderer1 True
+        cellLayoutSetAttributes col1 renderer1 listStore
+            $ \row -> [ cellText := display $ modu $ descrModu' row]
+        cellLayoutSetAttributes col1 renderer10 listStore
             $ \row -> [
-            New.cellPixbufStockId  := if isReexported row
+            cellPixbufStockId  := if isReexported row
                                     then "ide_reexported"
                                         else if isJust (mbLocation row)
                                             then "ide_source"
                                             else ""]
 
-        renderer2   <- New.cellRendererTextNew
-        col2        <- New.treeViewColumnNew
-        New.treeViewColumnSetTitle col2 "Package"
-        New.treeViewColumnSetSizing col2 TreeViewColumnAutosize
-        New.treeViewColumnSetResizable col2 True
-        New.treeViewColumnSetReorderable col2 True
-        New.treeViewAppendColumn treeView col2
-        New.cellLayoutPackStart col2 renderer2 True
-        New.cellLayoutSetAttributes col2 renderer2 listStore
-            $ \row -> [ New.cellText := display $ pack $ descrModu' row]
+        renderer2   <- cellRendererTextNew
+        col2        <- treeViewColumnNew
+        treeViewColumnSetTitle col2 "Package"
+        treeViewColumnSetSizing col2 TreeViewColumnAutosize
+        treeViewColumnSetResizable col2 True
+        treeViewColumnSetReorderable col2 True
+        treeViewAppendColumn treeView col2
+        cellLayoutPackStart col2 renderer2 True
+        cellLayoutSetAttributes col2 renderer2 listStore
+            $ \row -> [ cellText := display $ pack $ descrModu' row]
 
-        New.treeViewSetHeadersVisible treeView True
-        sel <- New.treeViewGetSelection treeView
-        New.treeSelectionSetMode sel SelectionSingle
+        treeViewSetHeadersVisible treeView True
+        sel <- treeViewGetSelection treeView
+        treeSelectionSetMode sel SelectionSingle
 
         sw <- scrolledWindowNew Nothing Nothing
         containerAdd sw treeView
@@ -232,7 +231,7 @@ initSearch panePath nb scope mode = do
             active <- toggleButtonGetActive mb4
             (reflectIDE (modeSelectionCase active) ideR )
         treeView `onButtonPress` (listViewPopup ideR  listStore treeView)
-        sel `New.onSelectionChanged` do
+        sel `onSelectionChanged` do
             fillInfo search ideR
         entry `afterKeyRelease` (\ event -> do
             text <- entryGetText entry
@@ -283,12 +282,12 @@ searchMetaGUI str = do
                 then return []
                 else searchMeta scope str mode
     liftIO $ do
-        New.listStoreClear (searchStore search)
-        mapM_ (New.listStoreAppend (searchStore search)) (take 500 descrs)
+        listStoreClear (searchStore search)
+        mapM_ (listStoreAppend (searchStore search)) (take 500 descrs)
 
 listViewPopup :: IDERef
-    -> New.ListStore Descr
-    -> New.TreeView
+    -> ListStore Descr
+    -> TreeView
     -> Event
     -> IO (Bool)
 listViewPopup ideR  store descrView (Button _ click _ _ _ _ button _ _) = do
@@ -319,15 +318,15 @@ listViewPopup ideR  store descrView (Button _ click _ _ _ _ button _ _) = do
                     return False
 listViewPopup _ _ _ _ = throwIDE "listViewPopup wrong event type"
 
-getSelectionDescr ::  New.TreeView
-    ->  New.ListStore Descr
+getSelectionDescr ::  TreeView
+    ->  ListStore Descr
     -> IO (Maybe Descr)
 getSelectionDescr treeView listStore = do
-    treeSelection   <-  New.treeViewGetSelection treeView
-    paths           <-  New.treeSelectionGetSelectedRows treeSelection
+    treeSelection   <-  treeViewGetSelection treeView
+    paths           <-  treeSelectionGetSelectedRows treeSelection
     case paths of
         [a]:r ->  do
-            val     <-  New.listStoreGetValue listStore a
+            val     <-  listStoreGetValue listStore a
             return (Just val)
         _  ->  return Nothing
 
@@ -346,8 +345,8 @@ setChoices :: [Descr] -> IDEAction
 setChoices descrs = do
     search <- getSearch
     liftIO $ do
-        New.listStoreClear (searchStore search)
-        mapM_ (New.listStoreAppend (searchStore search)) descrs
+        listStoreClear (searchStore search)
+        mapM_ (listStoreAppend (searchStore search)) descrs
         bringPaneToFront search
         entrySetText (entry search) ""
 

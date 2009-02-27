@@ -18,7 +18,6 @@ module IDE.NotebookFlipper (
 ) where
 
 import Graphics.UI.Gtk
-import Graphics.UI.Gtk.ModelView as New
 import Graphics.UI.Frame.Panes (IDEPane(..))
 import IDE.Core.State
 import Control.Monad.Trans (liftIO)
@@ -45,36 +44,36 @@ flipUp = do
 -- | Moves down in the Flipper state
 moveFlipperDown :: TreeViewClass alpha => alpha -> IDEAction
 moveFlipperDown tree = liftIO $ do
-    mbStore <- New.treeViewGetModel tree
+    mbStore <- treeViewGetModel tree
     case mbStore of
         Nothing -> throwIDE "NotebookFlipper>>setFlipper: no store"
         Just store -> do
-            n <- New.treeModelIterNChildren store Nothing
+            n <- treeModelIterNChildren store Nothing
             when (n /= 0) $ do
-                (cl, _) <- New.treeViewGetCursor tree
+                (cl, _) <- treeViewGetCursor tree
                 case cl of
                     (current:_) ->  let next =  if current == n - 1
                                                     then 0
                                                     else current + 1
-                                    in New.treeViewSetCursor tree [min (n-1) next] Nothing
-                    []          ->  New.treeViewSetCursor tree [1] Nothing
+                                    in treeViewSetCursor tree [min (n-1) next] Nothing
+                    []          ->  treeViewSetCursor tree [1] Nothing
 
 -- | Moves up in the Flipper state
 moveFlipperUp :: TreeViewClass alpha => alpha  -> IDEAction
 moveFlipperUp tree = liftIO $ do
-    mbStore <- New.treeViewGetModel tree
+    mbStore <- treeViewGetModel tree
     case mbStore of
         Nothing -> throwIDE "NotebookFlipper>>setFlipper: no store"
         Just store -> do
-            n <- New.treeModelIterNChildren store Nothing
+            n <- treeModelIterNChildren store Nothing
             when (n /= 0) $ do
-                (cl, _) <- New.treeViewGetCursor tree
+                (cl, _) <- treeViewGetCursor tree
                 case cl of
                     (current:_) ->  let next =  if current == 0
                                                     then n - 1
                                                     else current - 1
-                                    in New.treeViewSetCursor tree [min (n-1) next] Nothing
-                    []          ->  New.treeViewSetCursor tree [n-1] Nothing
+                                    in treeViewSetCursor tree [min (n-1) next] Nothing
+                    []          ->  treeViewSetCursor tree [n-1] Nothing
 
 -- | Initiate Filpper , If True moves down, if false up
 initFlipper :: Bool -> IDEAction
@@ -87,26 +86,26 @@ initFlipper direction = do
         set window [windowResizable := True]
         frame <- frameNew
         containerAdd window frame
-        tree <- New.treeViewNew
+        tree <- treeViewNew
 
         containerAdd frame tree
-        store <- New.listStoreNew recentPanes'
-        New.treeViewSetModel tree store
-        column <- New.treeViewColumnNew
-        New.treeViewAppendColumn tree column
-        renderer <- New.cellRendererTextNew
-        New.treeViewColumnPackStart column renderer True
+        store <- listStoreNew recentPanes'
+        treeViewSetModel tree store
+        column <- treeViewColumnNew
+        treeViewAppendColumn tree column
+        renderer <- cellRendererTextNew
+        treeViewColumnPackStart column renderer True
         cellLayoutSetAttributes column renderer store
-            (\str -> [ New.cellText := str])
+            (\str -> [ cellText := str])
 
-        set tree [New.treeViewHeadersVisible := False]
+        set tree [treeViewHeadersVisible := False]
 
         cid <- onKeyRelease mainWindow $ handleKeyRelease tree ideR
 
-        New.onRowActivated tree (\treePath column -> do
+        onRowActivated tree (\treePath column -> do
             signalDisconnect cid
             let [row] = treePath
-            string <- New.listStoreGetValue store row
+            string <- listStoreGetValue store row
             reflectIDE (do
                 mbPane <- mbPaneFromName string
                 case mbPane of
@@ -115,8 +114,8 @@ initFlipper direction = do
             widgetHideAll window
             widgetDestroy window)
         set window [windowWindowPosition := WinPosCenterOnParent]
-        n <- New.treeModelIterNChildren store Nothing
-        New.treeViewSetCursor tree [if direction then min 1 (n-1) else (n-1)] Nothing
+        n <- treeModelIterNChildren store Nothing
+        treeViewSetCursor tree [if direction then min 1 (n-1) else (n-1)] Nothing
         widgetShowAll window
         return tree
     modifyIDE_ (\ide -> return (ide{currentState = IsFlipping tree'}))
@@ -129,9 +128,9 @@ handleKeyRelease tree ideR Key{eventKeyName = name, eventModifier = modifier, ev
             currentState' <- reflectIDE (readIDE currentState) ideR
             case currentState' of
                 IsFlipping  tv -> do
-                    (treePath, _) <- New.treeViewGetCursor tree
-                    Just column <- New.treeViewGetColumn tree 0
-                    New.treeViewRowActivated tree treePath column
+                    (treePath, _) <- treeViewGetCursor tree
+                    Just column <- treeViewGetColumn tree 0
+                    treeViewRowActivated tree treePath column
                     reflectIDE (modifyIDE_ (\ide -> return (ide{currentState = IsRunning}))) ideR
                     return True
                 _ -> return False

@@ -249,7 +249,7 @@ initFlags idePackage panePath nb = do
         widgetShowAll vb
         return (flagsPane,[])
     addPaneAdmin buf [] panePath
-    liftIO $widgetGrabFocus (flagsBox buf)
+    liftIO $ widgetGrabFocus (flagsBox buf)
 
 
 
