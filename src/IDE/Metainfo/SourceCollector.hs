@@ -47,10 +47,7 @@ import StringBuffer
 import Bag
 import ErrUtils
 import FastString
-import Lexer hiding (lexer)
-import qualified Parser as P
 import Outputable hiding (char)
-import HscStats
 
 import IDE.Core.State
 import IDE.FileUtils
@@ -61,6 +58,7 @@ import Distribution.Package (PackageIdentifier(..))
 import Distribution.Text (display)
 import DriverPipeline (preprocess)
 import GHC.Show (showSpace)
+import IDE.Metainfo.GHCUtils (myParseModule)
 
 
 -- ---------------------------------------------------------------------
@@ -336,43 +334,6 @@ unloadGhc = do
    load LoadAllTargets
    return ()
 
- ---------------------------------------------------------------------
---  | Parser function copied here, because it is not exported
-
-myParseModule :: DynFlags -> FilePath -> Maybe StringBuffer
-              -> IO (Either ErrMsg (Located (HsModule RdrName)))
-myParseModule dflags src_filename maybe_src_buf
- =    --------------------------  Parser  ----------------
-      showPass dflags "Parser" >>
-      {-# SCC "Parser" #-} do
-
-	-- sometimes we already have the buffer in memory, perhaps
-	-- because we needed to parse the imports out of it, or get the
-	-- module name.
-      buf <- case maybe_src_buf of
-		Just b  -> return b
-		Nothing -> hGetStringBuffer src_filename
-
-      let loc  = mkSrcLoc (mkFastString src_filename) 1 0
-
-      case unP P.parseModule (mkPState buf loc dflags) of {
-
-	PFailed span err -> return (Left (mkPlainErrMsg span err));
-
-	POk pst rdr_module -> do {
-
-      let {ms = getMessages pst};
-      printErrorsAndWarnings dflags ms;
-      -- when (errorsFound dflags ms) $ exitWith (ExitFailure 1);
-
-      dumpIfSet_dyn dflags Opt_D_dump_parsed "Parser" (ppr rdr_module) ;
-
-      dumpIfSet_dyn dflags Opt_D_source_stats "Source Statistics"
-			   (ppSourceStats False rdr_module) ;
-
-      return (Right rdr_module)
-	-- ToDo: free the string buffer later.
-      }}
 
 -- ---------------------------------------------------------------------
 -- Function to map packages to file paths

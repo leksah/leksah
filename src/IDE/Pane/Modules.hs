@@ -55,9 +55,9 @@ import Graphics.UI.Editor.MakeEditor (buildEditor,FieldDescription(..),mkField)
 import Graphics.UI.Editor.Parameters (paraMultiSel,Parameter(..),emptyParams,(<<<-),paraName)
 import Graphics.UI.Editor.Simple (boolEditor,okCancelFields,staticListEditor,stringEditor)
 import Graphics.UI.Editor.Basics (eventPaneName,GUIEventSelector(..))
-import MyMissing (forceJust,forceHead,split)
+import MyMissing (forceHead)
 import IDE.Metainfo.Provider (rebuildActiveInfo)
-import Debug.Trace (trace)
+import qualified System.IO.UTF8 as UTF8  (writeFile)
 
 
 -- | A modules pane description
@@ -968,29 +968,24 @@ addModule treeView store = do
             case mbResp of
                 Nothing                -> return ()
                 Just (AddModule modPath srcPath isExposed) ->
-                    let splitter            = split '.' modPath
-                        (modPaths,[modName])= splitAt (length splitter - 1) splitter
-                        targetPath          = foldl' (</>) (rootPath </> srcPath) modPaths
-                        targetFile          = targetPath </> (modName ++ ".hs")
-                    in do
-                    liftIO $ createDirectoryIfMissing True targetPath
-                    alreadyExists <- liftIO $ doesFileExist targetFile
-                    if alreadyExists
-                        then ideMessage Normal "File already exists"
-                        else do
-                            template <- liftIO $ getModuleTemplate pd modName
-                            liftIO $ writeFile targetFile template
-                            addModuleToPackageDescr
-                                (forceJust (simpleParse modPath)
-                                    ("Modules>>addModule Can't parse module name " ++ modPath))
-                                isExposed
-                            packageConfig
-                            rebuildActiveInfo
-                            trace ("now openening " ++ targetFile) $ return ()
-                            fileOpenThis targetFile
+                    case simpleParse modPath of
+                        Nothing         -> ideMessage Normal ("Not a valid module name :" ++ modPath)
+                        Just moduleName -> do
+                            let  target = srcPath </> toFilePath moduleName ++ ".hs"
+                            liftIO $ createDirectoryIfMissing True (dropFileName target)
+                            alreadyExists <- liftIO $ doesFileExist target
+                            if alreadyExists
+                                then ideMessage Normal "File already exists"
+                                else do
+                                    template <- liftIO $ getModuleTemplate pd modPath
+                                    liftIO $ UTF8.writeFile target template
+                                    addModuleToPackageDescr moduleName isExposed
+                                    packageConfig
+                                    rebuildActiveInfo
+                                    fileOpenThis target
 
 
--- |* Yet another stupid little dialog
+--  Yet another stupid little dialog
 
 data AddModule = AddModule {moduleName :: String, sourceRoot :: FilePath, isExposed :: Bool}
 

@@ -73,6 +73,7 @@ import IDE.FileUtils (getConfigFilePathForLoad)
 import MyMissing (replace)
 import Distribution.ModuleName (ModuleName(..))
 import Data.List (foldl')
+import qualified System.IO.UTF8 as UTF8  (readFile)
 
 packageNew :: IDEAction
 packageNew = packageNew' (\fp -> activatePackage fp >> return ())
@@ -618,7 +619,7 @@ getPackageDescriptionAndPath = do
 getModuleTemplate :: PackageDescription -> String -> IO String
 getModuleTemplate pd modName = do
     filePath <- getConfigFilePathForLoad "Module.template"
-    template <- readFile filePath
+    template <- UTF8.readFile filePath
     return (foldl' (\ a (from, to) -> replace from to a) template
         [("@License@", (show . license) pd), ("@Maintainer@", maintainer pd),
             ("@Stability@",stability pd), ("@Portability@",""),
