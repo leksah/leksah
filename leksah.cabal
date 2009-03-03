@@ -29,13 +29,12 @@ data-files: data/Current.session data/Default.candy
             data/ide_konstructor.png data/ide_make.png data/ide_method.png
             data/ide_newtype.png data/ide_reexported.png data/ide_other.png
             data/ide_rule.png data/ide_run.png data/ide_slot.png
-            data/ide_source.png data/ide_type.png data/leksah.png
-            Readme LICENSE data/LICENSE
-            data/Module.template
+            data/ide_source.png data/ide_type.png data/leksah.png Readme
+            LICENSE data/LICENSE data/Module.template
 data-dir: ""
 extra-source-files: Setup.lhs
 extra-tmp-files:
-
+ 
 executable: leksah
 main-is: Main.hs
 buildable: True

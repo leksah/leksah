@@ -22,12 +22,12 @@ module IDE.Metainfo.GHCUtils (
 
 ) where
 
-import IDE.Core.State (MessageLevel(..),sysMessage,IDEM(..))
+import IDE.Core.State (MessageLevel(..),sysMessage,IDEM(..),readIDE,IDE(..),IDEPackage(..))
 import UniqFM (eltsUFM)
 import Distribution.Simple (withinRange,PackageIdentifier(..),Dependency(..))
 import qualified Distribution.InstalledPackageInfo as IPI  (package)
 import GHC
-import StringBuffer (StringBuffer(..),hGetStringBuffer,stringToStringBuffer)
+import StringBuffer (StringBuffer(..),hGetStringBuffer)
 import FastString (mkFastString)
 import Lexer (mkPState,ParseResult(..),getMessages,unP)
 import Outputable (ppr)
@@ -40,6 +40,8 @@ import DynFlags (defaultDynFlags)
 import qualified Parser as P  (parseModule,parseHeader)
 import HscStats (ppSourceStats)
 import Control.Monad.Trans
+import DriverPipeline (preprocess)
+import System.FilePath (takeDirectory)
 
 
 inGhc :: Ghc a -> IDEM a
@@ -75,25 +77,32 @@ findFittingPackages dependencyList = do
                 then [maximumBy (\a b -> compare (pkgVersion a) (pkgVersion b)) filtered]
                 else filtered
 
-parseHeader :: FilePath -> String -> IO (Maybe [LImportDecl RdrName])
-parseHeader fp str = inGhcIO $ do
-    dflags             <-  getSessionDynFlags
-    let dflags2 = dflags {
---        topDir    = basePath,
-        hscTarget = HscNothing,
-        ghcMode   = CompManager,
-        ghcLink   = NoLink}
-    setSessionDynFlags dflags2
-    dynFlags           <-  getSessionDynFlags
-    liftIO $ do
-        stringBuffer       <-  stringToStringBuffer str
-        parseResult        <-  myParseModuleHeader dynFlags fp (Just stringBuffer)
-        case parseResult of
-            Right (L _ mod) -> return (Just (hsmodImports mod))
-            Left errMsg     -> do
-                sysMessage Normal $ "Failed to parse " ++ fp
-                printBagOfErrors defaultDynFlags (unitBag errMsg)
-                return Nothing
+parseHeader :: FilePath -> String -> IDEM (Maybe [LImportDecl RdrName])
+parseHeader fp str = do
+    activePack' <- readIDE activePack
+    case activePack' of
+        Nothing   -> return Nothing
+        Just pack -> inGhc $ do
+            dflags  <- getSessionDynFlags
+            let dflags2 = dflags {
+                topDir    = takeDirectory (cabalFile pack),
+                hscTarget = HscNothing,
+                ghcMode   = OneShot,
+                ghcLink   = NoLink}
+            setSessionDynFlags dflags2
+            session   <- getSession
+            dynFlags  <-  getSessionDynFlags
+            (_,fp)    <-  preprocess session (fp,Nothing)
+            dynFlags  <-  getSessionDynFlags
+            liftIO $ do
+                stringBuffer  <-  hGetStringBuffer fp
+                parseResult   <-  myParseModuleHeader dynFlags fp (Just stringBuffer)
+                case parseResult of
+                    Right (L _ mod) -> return (Just (hsmodImports mod))
+                    Left errMsg         -> do
+                        sysMessage Normal $ "Failed to parse " ++ fp
+                        printBagOfErrors defaultDynFlags (unitBag errMsg)
+                        return (Nothing)
 
  ---------------------------------------------------------------------
 --  | Parser function copied here, because it is not exported

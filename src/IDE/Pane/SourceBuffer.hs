@@ -36,6 +36,7 @@ module IDE.Pane.SourceBuffer (
 ,   fileCloseAllButPackage
 ,   fileSave
 ,   fileSaveAll
+,   fileSaveBuffer
 ,   editUndo
 ,   editRedo
 ,   editCut
