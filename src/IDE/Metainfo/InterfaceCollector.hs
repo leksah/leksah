@@ -291,7 +291,7 @@ extractExportedDescrR pid hidden iface =
                     moduleIdMD          =   PM pid mid
                 ,   exportedNamesMD     =   exportedNames
                 ,   mbSourcePathMD      =   Nothing
-                ,   usagesMD            =   uses
+                ,   referencesMD        =   uses
                 ,   idDescriptionsMD    =   ownDecls ++ inst ++ reexported}
 
 extractIdentifierDescr :: PackageIdentifier -> [ModuleName] -> IfaceDecl

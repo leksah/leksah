@@ -42,7 +42,7 @@ import Graphics.UI.Editor.Parameters
 import IDE.Pane.Modules
 import IDE.Pane.SourceBuffer
 import IDE.Pane.Info
-import IDE.Pane.Callers
+import IDE.Pane.References
 import IDE.Pane.Log
 import IDE.Pane.Preferences
 import IDE.Pane.PackageFlags
@@ -60,7 +60,7 @@ data PaneState      =   BufferSt BufferState
                     |   LogSt LogState
                     |   InfoSt InfoState
                     |   ModulesSt ModulesState
-                    |   CallersSt CallersState
+                    |   ReferencesSt ReferencesState
                     |   PrefsSt PrefsState
                     |   FlagsSt FlagsState
                     |   SearchSt SearchState
@@ -71,7 +71,7 @@ asPaneState s | isJust ((cast s) :: Maybe BufferState)   =   BufferSt (fromJust 
 asPaneState s | isJust ((cast s) :: Maybe LogState)      =   LogSt (fromJust $ cast s)
 asPaneState s | isJust ((cast s) :: Maybe InfoState)     =   InfoSt (fromJust $ cast s)
 asPaneState s | isJust ((cast s) :: Maybe ModulesState)  =   ModulesSt (fromJust $ cast s)
-asPaneState s | isJust ((cast s) :: Maybe CallersState)  =   CallersSt (fromJust $ cast s)
+asPaneState s | isJust ((cast s) :: Maybe ReferencesState)  =   ReferencesSt (fromJust $ cast s)
 asPaneState s | isJust ((cast s) :: Maybe PrefsState)    =   PrefsSt (fromJust $ cast s)
 asPaneState s | isJust ((cast s) :: Maybe FlagsState)    =   FlagsSt (fromJust $ cast s)
 asPaneState s | isJust ((cast s) :: Maybe SearchState)   =   SearchSt (fromJust $ cast s)
@@ -82,7 +82,7 @@ recover pp (BufferSt p)         =   recoverState pp p
 recover pp (LogSt p)            =   recoverState pp p
 recover pp (InfoSt p)           =   recoverState pp p
 recover pp (ModulesSt p)        =   recoverState pp p
-recover pp (CallersSt p)        =   recoverState pp p
+recover pp (ReferencesSt p)     =   recoverState pp p
 recover pp (PrefsSt p)          =   recoverState pp p
 recover pp (FlagsSt p)          =   recoverState pp p
 recover pp (SearchSt p)         =   recoverState pp p
@@ -215,7 +215,7 @@ saveSessionAs sessionPath = do
     if forget
         then ideMessage Normal "Forget this session"
         else do
-            -- ideMessage Normal "Now saving session"
+            sysMessage Normal "Now saving session"
             wdw             <-  readIDE window
             layout          <-  getLayout
             population      <-  getPopulation
@@ -227,6 +227,7 @@ saveSessionAs sessionPath = do
                                 Just (s,_) -> Just s
             (toolbarVisible,_)  <- readIDE toolbar
             findState       <- getFindState
+            (findbarVisible,_)  <- readIDE findbar
             timeNow         <- liftIO getClockTime
             recentFiles'      <- readIDE recentFiles
             recentPackages'   <- readIDE recentPackages
@@ -238,7 +239,7 @@ saveSessionAs sessionPath = do
             ,   activePackage       =   active
             ,   activePaneN         =   activeP
             ,   toolbarVisibleS     =   toolbarVisible
-            ,   findbarState        =   (False,findState)
+            ,   findbarState        =   (findbarVisible,findState)
             ,   recentOpenedFiles   =   recentFiles'
             ,   recentOpenedPackages=   recentPackages'})
 

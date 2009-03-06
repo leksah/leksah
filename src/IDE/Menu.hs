@@ -50,7 +50,7 @@ import IDE.Find
 import IDE.FileUtils
 import IDE.Pane.ClassHierarchy
 import IDE.Pane.Search
-import IDE.Pane.Callers
+import IDE.Pane.References
 import Paths_leksah
 import IDE.GUIHistory
 import IDE.Metainfo.Provider (rebuildLibInfo,rebuildActiveInfo)
@@ -181,8 +181,8 @@ actions =
         rebuildLibInfo [] False
     ,AD "ShowModules" "Show Modules" Nothing Nothing
         showModules [] False
-    ,AD "ShowCallers" "Show Callers" Nothing Nothing
-        showCallers [] False
+    ,AD "ShowReferences" "Show References" Nothing Nothing
+        showReferences [] False
     ,AD "ShowClasses" "Show Classes" Nothing Nothing
         showClasses [] False
     ,AD "ShowSearch" "Show Search" Nothing Nothing

@@ -180,7 +180,7 @@ clicked (Button _ SingleClick _ _ _ _ RightButton x y) ideLog = do
                 Just _  -> do
                     item1   <-  menuItemNewWithLabel "Add import"
                     item1 `onActivateLeaf` do
-                        reflectIDE (addImport thisErr >> return()) ideR
+                        reflectIDE (addImport thisErr [] >> return()) ideR
                     menuShellAppend theMenu item1
             menuPopup theMenu Nothing
             widgetShowAll theMenu

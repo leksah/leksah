@@ -82,7 +82,6 @@ import Data.Typeable
 import System.Time
 
 import IDE.Core.State
-import Control.Event
 import IDE.FileUtils
 import IDE.SourceCandy
 import IDE.Completion as Completion (complete,cancel)
@@ -91,6 +90,7 @@ import qualified System.IO.UTF8 as UTF8
 import Data.IORef (writeIORef,readIORef,newIORef,IORef(..))
 import Graphics.UI.Frame.Panes (IDEPane(..))
 import Data.Char (isAlphaNum)
+import Control.Event (triggerEvent)
 
 --
 -- | A text editor pane description
@@ -404,11 +404,11 @@ newTextBuffer panePath bn mbfn = do
         widgetShowAll (scrolledWindow buf)
         widgetGrabFocus (sourceView buf)
 -- TODO: patch for windows, maybe we can remove it again
-        fdesc <- fontDescriptionFromString (case textviewFont prefs of Just str -> str; Nothing -> "")
-        fds <- fontDescriptionGetSize fdesc
-        when (isJust fds) $ do
-            fontDescriptionSetSize fdesc (fromJust fds + 0.01)
-            widgetModifyFont (castToWidget $ sourceView buf) (Just fdesc)
+--        fdesc <- fontDescriptionFromString (case textviewFont prefs of Just str -> str; Nothing -> "")
+--        fds <- fontDescriptionGetSize fdesc
+--        when (isJust fds) $ do
+--            fontDescriptionSetSize fdesc (fromJust fds + 0.01)
+--            widgetModifyFont (castToWidget $ sourceView buf) (Just fdesc)
 -- end patch
     when (isJust mbfn) $ removeRecentlyUsedFile (fromJust mbfn)
     return buf

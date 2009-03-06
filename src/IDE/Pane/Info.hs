@@ -34,7 +34,7 @@ import Data.Typeable
 import IDE.Core.State
 import Control.Event
 import IDE.Pane.SourceBuffer
-import IDE.Pane.Callers
+import IDE.Pane.References
 import IDE.FileUtils (openBrowser)
 import IDE.Metainfo.Provider (getIdentifierDescr)
 import Graphics.UI.Gtk.SourceView
@@ -90,9 +90,9 @@ initInfo panePath nb idDescr = do
             buttonBoxSetLayout bb ButtonboxSpread
             definitionB <- buttonNewWithLabel "Source"
             moduB       <- buttonNewWithLabel "Modules"
-            usesB       <- buttonNewWithLabel "Usage"
+            usesB       <- buttonNewWithLabel "Refs"
             docuB       <- buttonNewWithLabel "Docu"
-            searchB     <- buttonNewWithLabel "Find"
+            searchB     <- buttonNewWithLabel "Search"
             boxPackStartDefaults bb definitionB
             boxPackStartDefaults bb moduB
             boxPackStartDefaults bb usesB
@@ -122,6 +122,16 @@ initInfo panePath nb idDescr = do
             sourceBufferSetHighlightSyntax descriptionBuffer True
             widgetModifyFont descriptionView (Just font)
 
+            case sourceStyle prefs of
+                Nothing  -> return ()
+                Just str -> do
+                    styleManager <- sourceStyleSchemeManagerNew
+                    ids <- sourceStyleSchemeManagerGetSchemeIds styleManager
+                    when (elem str ids) $ do
+                        scheme <- sourceStyleSchemeManagerGetScheme styleManager str
+                        sourceBufferSetStyleScheme descriptionBuffer scheme
+
+
             sw <- scrolledWindowNew Nothing Nothing
             containerAdd sw descriptionView
             scrolledWindowSetPolicy sw PolicyAutomatic PolicyAutomatic
@@ -134,7 +144,7 @@ initInfo panePath nb idDescr = do
             let info = IDEInfo ibox currentDescr' descriptionView
             definitionB `onClicked` (reflectIDE gotoSource ideR )
             moduB `onClicked` (reflectIDE gotoModule' ideR )
-            usesB `onClicked` (reflectIDE calledBy' ideR )
+            usesB `onClicked` (reflectIDE referencedFrom' ideR )
             searchB `onClicked` (do
                 descr <- readIORef currentDescr'
                 reflectIDE (do
@@ -177,12 +187,12 @@ gotoModule' = do
         Nothing     ->  return ()
         Just info   ->  triggerEvent ideR (SelectIdent info) >> return ()
 
-calledBy' :: IDEAction
-calledBy' = do
+referencedFrom' :: IDEAction
+referencedFrom' = do
     mbInfo <- getInfoCont
     case mbInfo of
         Nothing     ->  return ()
-        Just info   ->  calledBy info  >> return ()
+        Just info   ->  referencedFrom info  >> return ()
 
 setSymbol :: String -> IDEAction
 setSymbol symbol = do

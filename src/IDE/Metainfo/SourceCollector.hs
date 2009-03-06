@@ -100,6 +100,7 @@ collectSources sourceMap pdescr = do
             setSessionDynFlags dflags2
             let flags       =         ["-fglasgow-exts"]
                                     ++ ["-cpp"]
+                                    ++ ["-w"]
                                     ++ ["-I" ++ dir | dir <- includes]
                                     ++ ["-I" ++ dir | dir <- buildPaths]
                                     ++ ["-i" ++ dir | dir <- includes]

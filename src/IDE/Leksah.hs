@@ -71,7 +71,7 @@ import IDE.NotebookFlipper (flipUp,flipDown)
 --
 
 data Flag =  UninstalledProject String | Collect | Rebuild | Sources | VersionF | DebugF
-                | SessionN String | NoGUI
+                | SessionN String | NoGUI | ExtractTars (Maybe String) | Help
        deriving (Show,Eq)
 
 options :: [OptDescr Flag]
@@ -90,15 +90,19 @@ options =   [Option ['r'] ["Rebuild"] (NoArg Rebuild)
          ,   Option ['l'] ["LoadSession"] (ReqArg SessionN "NAME")
                 "Load session"
          ,   Option ['n'] ["NoGUI"] (NoArg NoGUI)
-                "Don't start the leksah GUI"]
+                "Don't start the leksah GUI"
+         ,   Option ['x'] ["Extract"] (OptArg ExtractTars "FILE")
+                "Extract tars from cabal install directory"
+         ,   Option ['h'] ["Help"] (NoArg Help)
+                "Display command line options"]
 
+header = "Usage: ide [OPTION...] files..."
 
 ideOpts :: [String] -> IO ([Flag], [String])
 ideOpts argv =
     case getOpt Permute options argv of
           (o,n,[]  ) -> return (o,n)
-          (_,_,errs) -> ioError $userError $concat errs ++ usageInfo header options
-    where header = "Usage: ide [OPTION...] files..."
+          (_,_,errs) -> ioError $ userError $ concat errs ++ usageInfo header options
 
 
 -- ---------------------------------------------------------------------
@@ -119,8 +123,25 @@ runMain = handleTopExceptions $ do
                                 else  "Current.session"
     when (elem VersionF o)
         (sysMessage Normal $ "Leksah an IDE for Haskell, version " ++ showVersion version)
+    when (elem Help o)
+        (sysMessage Normal $ "Leksah an IDE for Haskell, version " ++ usageInfo header options)
     prefsPath       <-  getConfigFilePathForLoad "Default.prefs"
     prefs           <-  readPrefs prefsPath
+    let extract     =   filter (\x -> case x of
+                                        ExtractTars _ -> True
+                                        _             -> False) o
+    when (not (null extract)) $ case head extract of
+                                ExtractTars (Just path) -> do
+                                            dir <- getCurrentDirectory
+                                            autoExtractTarFiles path
+                                            setCurrentDirectory dir
+                                _                       -> do
+                                    case autoExtractTars prefs of
+                                        Nothing         -> return ()
+                                        Just path       -> do
+                                            dir <- getCurrentDirectory
+                                            autoExtractTarFiles path
+                                            setCurrentDirectory dir
     when (elem Sources o) (do
         buildSourceForPackageDB prefs
         sysMessage Normal "rebuild SourceForPackageDB")
@@ -137,23 +158,29 @@ runMain = handleTopExceptions $ do
                     $ map (\ (UninstalledProject x) -> x) uninstalled
                 else do
                     collectInstalled' prefs writeAscii version (elem Rebuild o)
-    when (not (elem NoGUI o) && not (elem VersionF o)) (startGUI sessionFilename prefs)
+    when (not (elem NoGUI o) && not (elem VersionF o) && not (elem Help o))
+        (startGUI sessionFilename prefs)
 
 -- ---------------------------------------------------------------------
 -- | Start the GUI
 
 startGUI :: String -> Prefs -> IO ()
-startGUI sessionFilename prefs = do
+startGUI sessionFilename iprefs = do
     trace "start gui called" $ return ()
     st          <-  initGUI
     when rtsSupportsBoundThreads
         (sysMessage Normal "Linked with -threaded")
-    timeoutAddFull (yield >> return True) priorityHigh 5
+    timeoutAddFull (yield >> return True) priorityHigh 25
     mapM_ (sysMessage Normal) st
     uiManager   <-  uiManagerNew
     newIcons
     hasConfigDir' <- hasConfigDir
-    when (not hasConfigDir') $ firstStart prefs
+    prefs       <-   if hasConfigDir'
+                        then return iprefs
+                        else do
+                            firstStart iprefs
+                            prefsPath  <- getConfigFilePathForLoad "Default.prefs"
+                            readPrefs prefsPath
     keysPath    <-  getConfigFilePathForLoad $ keymapName prefs ++ ".keymap"
     keyMap      <-  parseKeymap keysPath
     let accelActions = setKeymap (keyMap :: KeymapI) actions
@@ -236,6 +263,7 @@ startGUI sessionFilename prefs = do
         registerEvents menus
         recoverSession sessionPath
         ) ideR
+    widgetShowAll win
     reflectIDE (do
         ask >>= \ideR -> triggerEvent ideR UpdateRecent
         if tbv
@@ -244,17 +272,17 @@ startGUI sessionFilename prefs = do
         if fbv
             then showFindbar
             else hideFindbar) ideR
-    widgetShowAll win
+
 -- TODO: patch for windows, maybe we can remove it again
-    buffers <- reflectIDE allBuffers ideR
-    fdesc <- fontDescriptionFromString (case textviewFont prefs of Just str -> str; Nothing -> "")
-    fds <- fontDescriptionGetSize fdesc
-    when (isJust fds) $ do
-        fontDescriptionSetSize fdesc (fromJust fds + 0.01)
-        mapM_ (\buf -> widgetModifyFont (castToWidget $sourceView buf) (Just fdesc)) buffers
+--    buffers <- reflectIDE allBuffers ideR
+--    fdesc <- fontDescriptionFromString (case textviewFont prefs of Just str -> str; Nothing -> "")
+--    fds <- fontDescriptionGetSize fdesc
+--    when (isJust fds) $ do
+--        fontDescriptionSetSize fdesc (fromJust fds + 0.01)
+--        mapM_ (\buf -> widgetModifyFont (castToWidget $sourceView buf) (Just fdesc)) buffers
 -- end patch
-        reflectIDE (modifyIDE_ (\ide -> return ide{currentState = IsRunning})) ideR
-        mainGUI
+    reflectIDE (modifyIDE_ (\ide -> return ide{currentState = IsRunning})) ideR
+    mainGUI
 
 --
 -- | Callback function for onKeyPress of the main window, so 'preprocess' any key
@@ -426,13 +454,15 @@ firstStart prefs = do
     ok `onClicked` (do
         mbNewPrefs <- extract prefs [getExt]
         case mbNewPrefs of
-            Nothing -> return ()
+            Nothing -> do
+                sysMessage Normal "No dialog results"
+                return ()
             Just newPrefs -> do
                 fp <- getConfigFilePathForSave "Default.prefs"
                 writePrefs fp newPrefs
                 widgetDestroy dialog
                 mainQuit
-                firstBuild prefs)
+                firstBuild newPrefs)
     cancel `onClicked` (do
         widgetDestroy dialog
         mainQuit)
@@ -453,7 +483,7 @@ firstBuild :: Prefs -> IO ()
 firstBuild prefs = let version = cProjectVersion in do
     buildSourceForPackageDB prefs
     sources             <-  getSourcesMap prefs
-    libDir          <-  getSysLibDir
+    libDir              <-  getSysLibDir
     runGhc (Just libDir) $ collectInstalled' prefs False version True
 
 

@@ -22,11 +22,8 @@ module IDE.ImportTool (
 
 import IDE.Core.State
 import Data.List (sort,nub,nubBy)
-import IDE.Core.Types (SpDescr(..),Descr(..),modu,filePath,errDescription)
 import Data.Maybe (isNothing,isJust)
-import Distribution.ModuleName (ModuleName(..))
 import IDE.Metainfo.Provider (getIdentifierDescr)
-import Control.Monad.Trans (liftIO)
 import Text.PrettyPrint (render)
 import Distribution.Text (disp)
 import IDE.Pane.SourceBuffer
@@ -35,9 +32,13 @@ import Graphics.UI.Gtk
 import IDE.SourceCandy (getCandylessText)
 import Text.Parsec.Language (haskellStyle)
 import Graphics.UI.Editor.MakeEditor (buildEditor,mkField,FieldDescription(..))
-import Graphics.UI.Editor.Parameters (emptyParams,Parameter(..),paraMultiSel,(<<<-),paraName)
-import Graphics.UI.Editor.Simple (okCancelFields,staticListEditor)
-import Control.Event (registerEvent)
+import Graphics.UI.Editor.Parameters
+    (paraMinSize,
+     emptyParams,
+     Parameter(..),
+     paraMultiSel,
+     (<<<-),
+     paraName)
 import Graphics.UI.Editor.Basics (eventPaneName,GUIEventSelector(..))
 import IDE.Metainfo.GHCUtils(parseHeader)
 import Outputable (showSDoc,Outputable(..))
@@ -48,24 +49,27 @@ import Module (pprModuleName)
 import Distribution.Text (display)
 import GHC hiding (ModuleName)
 import Text.Parsec
-import Text.ParserCombinators.Parsec (CharParser(..))
 import qualified Text.Parsec.Token as  P
-    (operator,
-     dot,
-     identifier,
-     symbol,
-     whiteSpace,
-     lexeme,
-     makeTokenParser)
+    (operator, dot, identifier, symbol, whiteSpace, lexeme,makeTokenParser)
+import Text.ParserCombinators.Parsec (CharParser(..))
+import Graphics.UI.Editor.Simple (okCancelFields, staticListEditor)
+import Control.Event (registerEvent)
+import Control.Monad (foldM_)
+import Control.Monad.Trans (liftIO)
 
 -- | Add all imports which gave error messages ...
 addAllImports :: IDEAction
 addAllImports = do
     errors <- readIDE errors
-    mapM_ addImport [ y | (x,y) <-
-        nubBy (\ (p1,_) (p2,_) -> p1 == p2)
-            $ [(x,y) |  (x,y) <- [((parseNotInScope . errDescription) e, e) | e <- errors]],
-                        isJust x]
+    foldM_ addThis (True,[])
+        [ y | (x,y) <-
+            nubBy (\ (p1,_) (p2,_) -> p1 == p2)
+                $ [(x,y) |  (x,y) <- [((parseNotInScope . errDescription) e, e) | e <- errors]],
+                                isJust x]
+    where
+        addThis :: (Bool,[Descr]) -> ErrorSpec -> IDEM (Bool,[Descr])
+        addThis c@(False,_) _                =  return c
+        addThis c@(True,descrList) errorSpec =  addImport errorSpec descrList
 
 -- | Add import for current error ...
 addOneImport :: IDEAction
@@ -79,40 +83,48 @@ addOneImport = do
         Just i -> do
             if  0 <= i && i < length errors'
                 then let error = errors' !! i
-                     in addImport error >> return ()
+                     in addImport error [] >> return ()
                 else error "Log>>addOneImport: Error out of range"
 
 -- | Add one missing import
-addImport :: ErrorSpec -> IDEM (Bool,Maybe ModuleName)
-addImport error =
+-- Returns a boolean, if the process should be stopped in case of multiple addition
+-- Returns a list of already added descrs, so that it will not be added two times and can
+-- be used for default selection
+addImport :: ErrorSpec -> [Descr] -> IDEM (Bool, [Descr])
+addImport error descrList =
     case parseNotInScope (errDescription error) of
-        Nothing -> return (True,Nothing)
+        Nothing -> return (True,descrList)
         Just nis -> do
             currentInfo' <- readIDE currentInfo
             case currentInfo' of
-                Nothing -> return (False,Nothing)
+                Nothing -> return (False,descrList)
                 Just ((_,symbolTable1),(_,symbolTable2)) ->
                     case (getIdentifierDescr (id' nis) symbolTable1 symbolTable2) of
                         []          ->  do
                                             ideMessage Normal $ "Identifier " ++ (id' nis) ++
                                                 " not found in imported packages"
-                                            return (True,Nothing)
-                        descr : []  ->  addImport' nis (filePath error) descr
+                                            return (True,descrList)
+                        descr : []  ->  addImport' nis (filePath error) descr descrList
                         list        ->  do
                             mbDescr <-  liftIO $ selectModuleDialog list (id' nis)
+                                            (if null descrList
+                                                then Nothing
+                                                else Just (head descrList))
                             case mbDescr of
-                                Nothing ->  return (False,Nothing)
-                                Just descr  ->  addImport' nis (filePath error) descr
+                                Nothing     ->  return (False,descrList)
+                                Just descr  ->  if elem descr descrList
+                                                    then return (True, descrList)
+                                                    else addImport' nis (filePath error) descr descrList
 
-addImport' :: NotInScopeParseResult -> FilePath -> Descr -> IDEM (Bool,Maybe ModuleName)
-addImport' nis filePath descr =  do
+addImport' :: NotInScopeParseResult -> FilePath -> Descr -> [Descr] -> IDEM (Bool,[Descr])
+addImport' nis filePath descr descrList =  do
     candy' <- readIDE candy
     mbBuf  <- selectSourceBuf filePath
     let mod = modu (descrModu' descr)
     case mbBuf of
-        Nothing  -> return (False, Nothing)
+        Nothing  -> return (False, descrList)
         Just buf -> do
-            inActiveBufContext' (False,Nothing) $ \ nb gtkbuf idebuf n -> do
+            inActiveBufContext' (False,descrList) $ \ nb gtkbuf idebuf n -> do
                 ideMessage Normal $ "addImport " ++ show (descrName descr) ++ " from "
                     ++ (render $ disp $ mod)
                 text <- liftIO $ do
@@ -123,7 +135,7 @@ addImport' nis filePath descr =  do
                 case parseResult of
                      Nothing            -> do
                         ideMessage Normal ("Can't parse module header " ++ filePath)
-                        return (False, Nothing)
+                        return (False, descrList)
                      Just imports ->
                         case filter qualifyAsImportStatement imports of
                             []     ->   let newLine  =  showSDoc (ppr newImpDecl) ++ "\n"
@@ -134,13 +146,13 @@ addImport' nis filePath descr =  do
                                         in  case mbLineSel of
                                                 Nothing -> do
                                                     ideMessage Normal "No source location"
-                                                    return  (False,Nothing)
+                                                    return  (False,descrList)
                                                 Just lineSel -> do
                                                     liftIO $ do
                                                         i1 <- textBufferGetIterAtLine gtkbuf lineSel
                                                         textBufferInsert gtkbuf i1 newLine
                                                     fileSaveBuffer False nb gtkbuf idebuf n
-                                                    return (True,Just mod)
+                                                    return (True,descr : descrList)
                             l@(impDecl:_) ->
                                             let newImpDecl  =  addToDecl (unLoc impDecl)
                                                 newLine     =  showSDoc (ppr newImpDecl) ++ "\n"
@@ -153,7 +165,7 @@ addImport' nis filePath descr =  do
                                             in  case mbLineSel of
                                                     Nothing -> do
                                                         ideMessage Normal "No source location"
-                                                        return  (False,Nothing)
+                                                        return  (False,descrList)
                                                     Just (lineStart, lineEnd) -> do
                                                         liftIO $ do
                                                             i1 <- textBufferGetIterAtLine gtkbuf (lineStart - 1)
@@ -161,7 +173,7 @@ addImport' nis filePath descr =  do
                                                             textBufferDelete gtkbuf i1 i2
                                                             textBufferInsert gtkbuf i1 newLine
                                                         fileSaveBuffer False nb gtkbuf idebuf n
-                                                        return (True,Just mod)
+                                                        return (True, descr : descrList)
     where
         isHiding (Just (_,False)) =  True
         isHiding _                =  False
@@ -252,8 +264,8 @@ data NotInScopeParseResult = NotInScopeParseResult {
 -- |* The error line parser
 
 lexer      = P.makeTokenParser haskellStyle
-lexeme     = P.lexeme lexer
 whiteSpace = P.whiteSpace lexer
+lexeme     = P.lexeme lexer
 symbol     = P.symbol lexer
 identifier = P.identifier lexer
 dot        = P.dot lexer
@@ -327,19 +339,27 @@ moduleFields list id =
         mkField
             (paraName <<<- ParaName ("From which module is " ++ id)
                 $ paraMultiSel <<<- ParaMultiSel False
-                    $ emptyParams)
+                    $ paraMinSize <<<- ParaMinSize (300,400)
+                        $ emptyParams)
             (\ a -> [a])
             (\ [a] b -> a)
             (staticListEditor ((nub . sort) list))
 
-selectModuleDialog :: [Descr] -> String -> IO (Maybe Descr)
-selectModuleDialog list id = do
-    dia                        <-   dialogNew
-    upper                      <-   dialogGetUpper dia
-    lower                      <-   dialogGetActionArea dia
-    (widget,_,ext,_)           <-   buildEditor (moduleFields
-                                        (map (render . disp . modu . descrModu')  list) id)
-                                            ((render . disp . modu . descrModu') (head list))
+selectModuleDialog :: [Descr] -> String -> Maybe Descr -> IO (Maybe Descr)
+selectModuleDialog list id mbDescr = do
+    let selectionList       =  map (render . disp . modu . descrModu') list
+    let mbSelectedString    =  case mbDescr of
+                                    Nothing -> Nothing
+                                    Just descr -> Just ((render . disp . modu . descrModu') descr)
+    let realSelectionString =  case mbSelectedString of
+                                    Nothing -> head selectionList
+                                    Just str -> if elem str selectionList
+                                                    then str
+                                                    else head selectionList
+    dia               <- dialogNew
+    upper             <- dialogGetUpper dia
+    lower             <- dialogGetActionArea dia
+    (widget,inj,ext,_) <- buildEditor (moduleFields selectionList id) realSelectionString
     (widget2,_,_,notifier)     <-   buildEditor okCancelFields ()
     registerEvent notifier Clicked (Left (\e -> do
             case eventPaneName e of

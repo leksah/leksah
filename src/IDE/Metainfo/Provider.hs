@@ -506,7 +506,7 @@ instance DeepSeq ModuleDescr where
     deepSeq pd =  deepSeq (moduleIdMD pd)
                     $   deepSeq (mbSourcePathMD pd)
                     $   deepSeq (exportedNamesMD pd)
-                    $   deepSeq (usagesMD pd)
+                    $   deepSeq (referencesMD pd)
 
 instance DeepSeq Descr where
     deepSeq (Descr descrName' typeInfo' descrModu'

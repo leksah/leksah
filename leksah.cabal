@@ -52,21 +52,21 @@ includes:
 install-includes:
 include-dirs:
 hs-source-dirs: src
-other-modules: IDE.Metainfo.Serializable
-               Data.Binary.Shared MyMissing Default Main DeepSeq
-               Graphics.UI.Editor.Simple Graphics.UI.Editor.Parameters
+other-modules: DeepSeq MyMissing Default Control.Event
                Graphics.UI.Editor.Basics Graphics.UI.Editor.Composite
+               Graphics.UI.Editor.Simple Graphics.UI.Editor.Parameters
                Graphics.UI.Editor.MakeEditor Graphics.UI.Frame.Panes
-               Graphics.UI.Frame.ViewFrame Control.Event IDE.Package IDE.Keymap
-               IDE.PrinterParser IDE.Exception IDE.SpecialEditors IDE.SaveSession
-               IDE.Leksah IDE.DescriptionPP IDE.Find IDE.Menu IDE.Completion
-               IDE.FileUtils IDE.SourceCandy IDE.GUIHistory IDE.NotebookFlipper
-               IDE.Pane.PackageFlags IDE.Pane.Info IDE.Pane.ClassHierarchy
-               IDE.Pane.SourceBuffer IDE.Pane.Modules IDE.Pane.Preferences
-               IDE.Pane.Log IDE.Pane.Callers IDE.Pane.Search
-               IDE.Pane.PackageEditor IDE.Metainfo.Provider
-               IDE.Metainfo.SourceCollector IDE.Metainfo.InterfaceCollector
-               IDE.Metainfo.GHCUtils IDE.Core.State IDE.Core.Types
+               Graphics.UI.Frame.ViewFrame Data.Binary.Shared IDE.PrinterParser
+               IDE.Completion IDE.Exception IDE.ImportTool IDE.SaveSession
+               IDE.Menu IDE.SpecialEditors IDE.GUIHistory IDE.Leksah IDE.Keymap
+               IDE.SourceCandy IDE.Package IDE.FileUtils IDE.DescriptionPP
+               IDE.Find IDE.NotebookFlipper IDE.Metainfo.SourceCollector
+               IDE.Metainfo.Provider IDE.Metainfo.Serializable
+               IDE.Metainfo.InterfaceCollector IDE.Metainfo.GHCUtils
+               IDE.Core.Types IDE.Core.State IDE.Pane.Modules IDE.Pane.References
+               IDE.Pane.PackageFlags IDE.Pane.PackageEditor IDE.Pane.Search
+               IDE.Pane.Info IDE.Pane.ClassHierarchy IDE.Pane.SourceBuffer
+               IDE.Pane.Preferences IDE.Pane.Log
 ghc-prof-options: -prof -auto-all
 ghc-shared-options: -prof -auto-all
 ghc-options: -fwarn-unused-imports -fwarn-missing-fields -fwarn-incomplete-patterns

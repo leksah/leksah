@@ -205,16 +205,16 @@ instance Show (Present PackageDescr) where
     show (Present pd)   =   (fromPackageIdentifier . packagePD) pd
 
 instance Eq PackageDescr where
-    (== ) a b             =   packagePD a == packagePD b
+    (== ) a b            =   packagePD a == packagePD b
 
 instance Ord PackageDescr where
-    (<=) a b             =   packagePD a <=  packagePD b
+    (<=) a b              =   packagePD a <=  packagePD b
 
 data ModuleDescr        =   ModuleDescr {
     moduleIdMD          ::   PackModule
 ,   mbSourcePathMD      ::   (Maybe FilePath)
 ,   exportedNamesMD     ::   (Set Symbol)                        -- unqualified
-,   usagesMD            ::   (Map ModuleName (Set Symbol)) -- imports
+,   referencesMD        ::   (Map ModuleName (Set Symbol)) -- imports
 ,   idDescriptionsMD    ::   [Descr]
 } deriving (Show,Typeable)
 
