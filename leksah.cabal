@@ -1,5 +1,5 @@
 name: leksah
-version: 0.4.2
+version: 0.4.2.1
 cabal-version: >=1.4
 build-type: Custom
 license: GPL
@@ -34,7 +34,7 @@ data-files: data/Current.session data/Default.candy
 data-dir: ""
 extra-source-files: Setup.lhs
 extra-tmp-files:
- 
+
 executable: leksah
 main-is: Main.hs
 buildable: True
