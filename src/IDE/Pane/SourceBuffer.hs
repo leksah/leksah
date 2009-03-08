@@ -68,6 +68,8 @@ module IDE.Pane.SourceBuffer (
 import Graphics.UI.Gtk hiding (afterToggleOverwrite)
 import Graphics.UI.Gtk.SourceView
 import Graphics.UI.Gtk.Multiline.TextView
+import Graphics.UI.Gtk.General.Enums	(Click(..))
+import Graphics.UI.Gtk.Gdk.Events (eventClick)
 import Control.Monad.Reader
 --import Data.IORef
 import System.IO
@@ -397,7 +399,32 @@ newTextBuffer panePath bn mbfn = do
             )
         sv `onMoveCursor`
             (\step n select -> do reflectIDE Completion.cancel ideR)
-        sv `onButtonPress` (\event -> do reflectIDE Completion.cancel ideR; return False)
+        sv `onButtonPress`
+            \event -> do
+                let click = eventClick event
+                liftIO $ do
+                    reflectIDE Completion.cancel ideR
+                    case click of
+                        DoubleClick -> do
+                            let isSelectChar a = (isAlphaNum a) || (a == '_')
+                            (start, end) <- textBufferGetSelectionBounds buffer
+                            mbStartChar <- textIterGetChar start
+                            mbEndChar <- textIterGetChar end
+                            case mbStartChar of
+                                Just startChar | isSelectChar startChar -> do
+                                    found <- textIterBackwardFindChar start (not.isSelectChar) Nothing
+                                    when found $ do
+                                        textIterForwardChar start
+                                        return ()
+                                _ -> return ()
+                            case mbEndChar of
+                                Just endChar | isSelectChar endChar -> do
+                                    textIterForwardFindChar end (not.isSelectChar) Nothing
+                                    return ()
+                                _ -> return ()
+                            textBufferSelectRange buffer start end
+                            return True
+                        _ -> return False
         return (buf,[cid])
     addPaneAdmin buf (map ConnectC cids) panePath
     liftIO $do
