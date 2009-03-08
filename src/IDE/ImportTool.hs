@@ -30,7 +30,7 @@ import IDE.Pane.SourceBuffer
     (fileSaveBuffer, inActiveBufContext', selectSourceBuf)
 import Graphics.UI.Gtk
 import IDE.SourceCandy (getCandylessText)
-import Text.Parsec.Language (haskellStyle)
+import Text.ParserCombinators.Parsec.Language (haskellStyle)
 import Graphics.UI.Editor.MakeEditor (buildEditor,mkField,FieldDescription(..))
 import Graphics.UI.Editor.Parameters
     (paraMinSize,
@@ -48,10 +48,9 @@ import OccName (mkDataOcc,mkVarOcc)
 import Module (pprModuleName)
 import Distribution.Text (display)
 import GHC hiding (ModuleName)
-import Text.Parsec
-import qualified Text.Parsec.Token as  P
+import Text.ParserCombinators.Parsec
+import qualified Text.ParserCombinators.Parsec.Token as  P
     (operator, dot, identifier, symbol, whiteSpace, lexeme,makeTokenParser)
-import Text.ParserCombinators.Parsec (CharParser(..))
 import Graphics.UI.Editor.Simple (okCancelFields, staticListEditor)
 import Control.Event (registerEvent)
 import Control.Monad (foldM_)
