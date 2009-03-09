@@ -1,9 +1,15 @@
-Layout:        VerticalP (TerminalP (Just LeftP) (-1)) (HorizontalP (TerminalP (Just BottomP) 0) (TerminalP (Just BottomP) 1) 376) 737
-Population:    [(Just (LogSt LogState),[RightP,BottomP]),(Just (ModulesSt (ModulesState 335 (System,True) (Nothing,Nothing) (ExpanderState {localExp = ([],[]), localExpNoBlack = ([],[]), packageExp = ([],[]), packageExpNoBlack = ([],[]), systemExp = ([],[]), systemExpNoBlack = ([],[])}))),[RightP,TopP]),(Just (SearchSt (SearchState {searchString = "", searchScope = System, searchMode = Prefix {caseSense = False}})),[RightP,TopP])]
-Window size:   (1024,780)
+Time of storage:
+               "Mon Mar  9 22:58:23 CET 2009"
+Layout:        VerticalP (TerminalP (Just TopP) (-1)) (HorizontalP (TerminalP (Just BottomP) 0) (TerminalP (Just BottomP) 0) 527) 762
+Population:    [(Just (LogSt LogState),[RightP,BottomP]),(Just (ModulesSt (ModulesState 347 (System,True) (Nothing,Nothing) (ExpanderState {localExp = ([],[]), localExpNoBlack = ([],[]), packageExp = ([],[]), packageExpNoBlack = ([],[]), systemExp = ([],[]), systemExpNoBlack = ([],[])}))),[RightP,TopP])]
+Window size:   (1393,903)
 Active package:
                Nothing
 Active pane:   Nothing
 Toolbar visible:
                True
-FindbarState:  (True,FindState {entryStr = "", entryHist = [], replaceStr = "", replaceHist = [], caseSensitive = False, entireWord = False, wrapAround = True, backward = False, lineNr = 1})
+FindbarState:  (False,FindState {entryStr = "", entryHist = [], replaceStr = "", replaceHist = [], caseSensitive = False, entireWord = False, wrapAround = True, backward = False, lineNr = 1})
+Recently opened files:
+               []
+Recently opened packages:
+               []

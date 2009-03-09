@@ -175,12 +175,13 @@ startGUI sessionFilename iprefs = do
     uiManager   <-  uiManagerNew
     newIcons
     hasConfigDir' <- hasConfigDir
-    prefs       <-   if hasConfigDir'
-                        then return iprefs
-                        else do
-                            firstStart iprefs
-                            prefsPath  <- getConfigFilePathForLoad "Default.prefs"
-                            readPrefs prefsPath
+    (prefs,isFirstStart) <-   if hasConfigDir'
+                                then return (iprefs,False)
+                                else do
+                                    firstStart iprefs
+                                    prefsPath  <- getConfigFilePathForLoad "Default.prefs"
+                                    prefs <- readPrefs prefsPath
+                                    return (prefs,True)
     keysPath    <-  getConfigFilePathForLoad $ keymapName prefs ++ ".keymap"
     keyMap      <-  parseKeymap keysPath
     let accelActions = setKeymap (keyMap :: KeymapI) actions
@@ -281,6 +282,9 @@ startGUI sessionFilename iprefs = do
 --        fontDescriptionSetSize fdesc (fromJust fds + 0.01)
 --        mapM_ (\buf -> widgetModifyFont (castToWidget $sourceView buf) (Just fdesc)) buffers
 -- end patch
+    when isFirstStart $ do
+        welcomePath <- getConfigFilePathForLoad $ "welcome.txt"
+        reflectIDE (fileOpenThis welcomePath) ideR
     reflectIDE (modifyIDE_ (\ide -> return ide{currentState = IsRunning})) ideR
     mainGUI
 

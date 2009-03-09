@@ -30,7 +30,7 @@ data-files: data/Current.session data/Default.candy
             data/ide_newtype.png data/ide_reexported.png data/ide_other.png
             data/ide_rule.png data/ide_run.png data/ide_slot.png
             data/ide_source.png data/ide_type.png data/leksah.png Readme
-            LICENSE data/LICENSE data/Module.template
+            LICENSE data/LICENSE data/Module.template data/welcome.txt
 data-dir: ""
 extra-source-files: Setup.lhs
 extra-tmp-files:

@@ -213,7 +213,9 @@ viewSplit dir = do
     mbPanePath <- getActivePanePath
     case mbPanePath of
         Nothing -> return ()
-        Just panePath -> viewSplit' panePath dir
+        Just panePath -> do
+            viewSplit' panePath dir
+
 
 viewSplit' :: PaneMonad alpha => PanePath -> Direction -> alpha ()
 viewSplit' panePath dir = do
@@ -257,10 +259,11 @@ viewSplit' panePath dir = do
               liftIO $ afterSwitchPage nb handleFunc
               return (Just (paneDir,dir))
     case mbPD of
-      Just (paneDir,dir) -> do
+      Just (paneDir,pdir) -> do
           let toPane = panePath ++ [paneDir]
           adjustPane panePath toPane
-          adjustLayoutForSplit dir panePath
+          adjustLayoutForSplit pdir panePath
+          viewMove (otherDirection paneDir)
       Nothing -> return ()
 
 handleNotebookSwitch :: PaneMonad beta => Notebook -> Int -> beta ()
