@@ -5,36 +5,37 @@ build-type: Custom
 license: GPL
 license-file: LICENSE
 copyright: 2007-2009 Jürgen Nicklisch-Franken
-maintainer: Jutaro <jutaro@leksah.org>
-build-depends: regex-posix ==0.72.0.3, utf8-string >=0.3.1.1,
-               bytestring >=0.9.0.1, binary >=0.4.4, ghc >=6.10.1, glib >=0.10,
-               gtk >=0.10, directory >=1.0.0.2, pretty >=1.0.1.0,
-               containers >=0.2.0.0, process >=1.0.1.0, mtl >=1.1.0.2,
-               parsec >=2.1.0.1, Cabal ==1.6.0.1, filepath >=1.1.0.1,
-               base >=4.0.0.0, old-time >=1.0.0.1, gtksourceview2 >=0.10.0
+maintainer: maintainer@leksah.org
+build-depends: Cabal ==1.6.0.1, base >=4.0.0.0, binary >=0.4.4,
+               bytestring >=0.9.0.1, containers >=0.2.0.0, directory >=1.0.0.2,
+               filepath >=1.1.0.1, ghc >=6.10.1, glib >=0.10, gtk >=0.10,
+               gtksourceview2 >=0.10.0, mtl >=1.1.0.2, old-time >=1.0.0.1,
+               parsec >=2.1.0.1, pretty >=1.0.1.0, process >=1.0.1.0,
+               regex-posix ==0.72.0.3, utf8-string >=0.3.1.1
 stability: provisional
 homepage: http://www.leksah.org
 package-url: http://code.haskell.org/leksah
-bug-reports:
+bug-reports: http://code.google.com/p/leksah/issues/list
 synopsis: Haskell IDE written in Haskell
 description: An Integrated Development Environment for Haskell written in Haskell.
 category: Development, IDE, Editor
 author: Jutaro
 tested-with: GHC ==6.10.1
-data-files: data/Current.session data/Default.candy
-            data/Default.keymap data/Default.prefs data/Emacs.keymap
-            data/Default.menu data/ide_class.png data/ide_configure.png
-            data/ide_data.png data/ide_error_next.png data/ide_error_prev.png
-            data/ide_field.png data/ide_function.png data/ide_instance.png
+data-files: LICENSE Readme data/Current.session data/Default.candy
+            data/Default.keymap data/Default.menu data/Default.prefs
+            data/Emacs.keymap data/LICENSE data/Module.template
+            data/ide_class.png data/ide_configure.png data/ide_data.png
+            data/ide_error_next.png data/ide_error_prev.png data/ide_field.png
+            data/ide_function.png data/ide_instance.png
             data/ide_konstructor.png data/ide_make.png data/ide_method.png
-            data/ide_newtype.png data/ide_reexported.png data/ide_other.png
+            data/ide_newtype.png data/ide_other.png data/ide_reexported.png
             data/ide_rule.png data/ide_run.png data/ide_slot.png
-            data/ide_source.png data/ide_type.png data/leksah.png Readme
-            LICENSE data/LICENSE data/Module.template data/welcome.txt
+            data/ide_source.png data/ide_type.png data/leksah.png
+            data/welcome.txt
 data-dir: ""
 extra-source-files: Setup.lhs
 extra-tmp-files:
-
+ 
 executable: leksah
 main-is: Main.hs
 buildable: True
@@ -58,17 +59,17 @@ other-modules: DeepSeq MyMissing Default Control.Event
                Graphics.UI.Editor.MakeEditor Graphics.UI.Frame.Panes
                Graphics.UI.Frame.ViewFrame Data.Binary.Shared IDE.PrinterParser
                IDE.Completion IDE.Exception IDE.ImportTool IDE.SaveSession
-               IDE.Menu IDE.SpecialEditors IDE.GUIHistory IDE.Leksah IDE.Keymap
-               IDE.SourceCandy IDE.Package IDE.FileUtils IDE.DescriptionPP
-               IDE.Find IDE.NotebookFlipper IDE.Metainfo.SourceCollector
+               IDE.Menu IDE.GUIHistory IDE.Leksah IDE.Keymap IDE.SourceCandy
+               IDE.Package IDE.FileUtils IDE.DescriptionPP IDE.Find
+               IDE.NotebookFlipper IDE.Metainfo.SourceCollector
                IDE.Metainfo.Provider IDE.Metainfo.Serializable
                IDE.Metainfo.InterfaceCollector IDE.Metainfo.GHCUtils
                IDE.Core.Types IDE.Core.State IDE.Pane.Modules IDE.Pane.References
                IDE.Pane.PackageFlags IDE.Pane.PackageEditor IDE.Pane.Search
                IDE.Pane.Info IDE.Pane.ClassHierarchy IDE.Pane.SourceBuffer
                IDE.Pane.Preferences IDE.Pane.Log
-ghc-prof-options: -prof -auto-all
-ghc-shared-options: -prof -auto-all
+ghc-prof-options: -auto-all -prof
+ghc-shared-options: -auto-all -prof
 ghc-options: -fwarn-unused-imports -fwarn-missing-fields -fwarn-incomplete-patterns
 hugs-options:
 nhc98-options:

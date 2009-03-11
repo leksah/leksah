@@ -50,7 +50,6 @@ import IDE.Menu
 import IDE.Pane.Preferences
 import IDE.Keymap
 import IDE.Pane.SourceBuffer
-import IDE.SpecialEditors
 import IDE.Metainfo.Provider
 import IDE.Metainfo.SourceCollector
 import IDE.Metainfo.InterfaceCollector
@@ -60,7 +59,7 @@ import IDE.Pane.Modules
 import IDE.GUIHistory
 import IDE.Pane.Search(setChoices,searchMetaGUI)
 import IDE.Find
-import Graphics.UI.Editor.Composite (maybeEditor)
+import Graphics.UI.Editor.Composite (filesEditor, maybeEditor)
 import Graphics.UI.Editor.Simple (fileEditor)
 --import Outputable (ppr,showSDoc)
 import IDE.Metainfo.GHCUtils (inGhcIO)

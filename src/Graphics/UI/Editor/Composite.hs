@@ -15,10 +15,23 @@
 module Graphics.UI.Editor.Composite (
     maybeEditor
 ,   pairEditor
+,   tupel3Editor
+,   tupel4Editor
+,   tupel5Editor
+,   tupel6Editor
+,   tupel7Editor
 ,   splitEditor
 ,   eitherOrEditor
 ,   multisetEditor
 ,   ColumnDescr(..)
+
+,   filesEditor
+,   stringsEditor
+
+,   versionEditor
+,   versionRangeEditor
+,   dependencyEditor
+,   dependenciesEditor
 ) where
 
 import Graphics.UI.Gtk
@@ -33,6 +46,20 @@ import Graphics.UI.Editor.Parameters
 import Graphics.UI.Editor.Basics
 import Graphics.UI.Editor.MakeEditor
 import Graphics.UI.Editor.Simple
+import Data.List (sortBy, nub, sort, elemIndex)
+import Distribution.Simple
+    (orEarlierVersion,
+     orLaterVersion,
+     VersionRange(..),
+     PackageName(..),
+     Dependency(..),
+     PackageIdentifier(..))
+import Distribution.Text (simpleParse, display)
+import Distribution.Package (pkgName)
+import Distribution.Version
+    (VersionRange(..))
+import Data.Version (Version(..))
+import MyMissing (forceJust)
 
 --
 -- | An editor which composes two subeditors
@@ -77,6 +104,86 @@ pairEditor (fstEd,fstPara) (sndEd,sndPara) parameters notifier = do
                         else return Nothing)
         parameters
         notifier
+
+tupel3Editor :: (Editor alpha, Parameters)
+    -> (Editor beta, Parameters)
+    -> (Editor gamma, Parameters)
+    -> Editor (alpha,beta,gamma)
+tupel3Editor p1 p2 p3 parameters notifier = do
+    (widg,inj,ext) <- pairEditor ((pairEditor p1 p2), parameters) p3 parameters notifier
+    return (widg,
+        (\ (a, b, c) -> inj ((a,b),c)),
+        (do
+            mb <- ext
+            case mb of
+                Nothing        -> return Nothing
+                Just ((a,b),c) -> return (Just (a,b,c))))
+
+tupel4Editor :: (Editor alpha, Parameters)
+    -> (Editor beta, Parameters)
+    -> (Editor gamma, Parameters)
+    -> (Editor delta, Parameters)
+    -> Editor (alpha,beta,gamma,delta)
+tupel4Editor p1 p2 p3 p4 parameters notifier = do
+    (widg,inj,ext) <- pairEditor ((tupel3Editor p1 p2 p3), parameters) p4 parameters notifier
+    return (widg,
+        (\ (a, b, c, d) -> inj ((a,b,c),d)),
+        (do
+            mb <- ext
+            case mb of
+                Nothing        -> return Nothing
+                Just ((a,b,c),d) -> return (Just (a,b,c,d))))
+
+tupel5Editor :: (Editor alpha, Parameters)
+    -> (Editor beta, Parameters)
+    -> (Editor gamma, Parameters)
+    -> (Editor delta, Parameters)
+    -> (Editor epsilon, Parameters)
+    -> Editor (alpha,beta,gamma,delta,epsilon)
+tupel5Editor p1 p2 p3 p4 p5 parameters notifier = do
+    (widg,inj,ext) <- pairEditor ((tupel4Editor p1 p2 p3 p4), parameters) p5 parameters notifier
+    return (widg,
+        (\ (a, b, c, d, e) -> inj ((a,b,c,d),e)),
+        (do
+            mb <- ext
+            case mb of
+                Nothing        -> return Nothing
+                Just ((a,b,c,d),e) -> return (Just (a,b,c,d,e))))
+
+tupel6Editor :: (Editor alpha, Parameters)
+    -> (Editor beta, Parameters)
+    -> (Editor gamma, Parameters)
+    -> (Editor delta, Parameters)
+    -> (Editor epsilon, Parameters)
+    -> (Editor zeta, Parameters)
+    -> Editor (alpha,beta,gamma,delta,epsilon,zeta)
+tupel6Editor p1 p2 p3 p4 p5 p6 parameters notifier = do
+    (widg,inj,ext) <- pairEditor ((tupel5Editor p1 p2 p3 p4 p5), parameters) p6 parameters notifier
+    return (widg,
+        (\ (a, b, c, d, e, f) -> inj ((a,b,c,d,e),f)),
+        (do
+            mb <- ext
+            case mb of
+                Nothing        -> return Nothing
+                Just ((a,b,c,d,e),f) -> return (Just (a,b,c,d,e,f))))
+
+tupel7Editor :: (Editor alpha, Parameters)
+    -> (Editor beta, Parameters)
+    -> (Editor gamma, Parameters)
+    -> (Editor delta, Parameters)
+    -> (Editor epsilon, Parameters)
+    -> (Editor zeta, Parameters)
+    -> (Editor eta, Parameters)
+    -> Editor (alpha,beta,gamma,delta,epsilon,zeta,eta)
+tupel7Editor p1 p2 p3 p4 p5 p6 p7 parameters notifier = do
+    (widg,inj,ext) <- pairEditor ((tupel6Editor p1 p2 p3 p4 p5 p6), parameters) p7 parameters notifier
+    return (widg,
+        (\ (a, b, c, d, e, f, g) -> inj ((a,b,c,d,e,f),g)),
+        (do
+            mb <- ext
+            case mb of
+                Nothing        -> return Nothing
+                Just ((a,b,c,d,e,f),g) -> return (Just (a,b,c,d,e,f,g))))
 
 --
 -- | Like a pair editor, but with a moveable split
@@ -251,9 +358,9 @@ eitherOrEditor (leftEditor,leftParams) (rightEditor,rightParams)
     noti2 <- emptyNotifier
     noti3 <- emptyNotifier
     mapM_ (propagateEvent notifier [noti1,noti2,noti3]) allGUIEvents
-    be@(boolFrame,inj1,ext1) <- boolEditor2  label2 parameters noti1
-    le@(leftFrame,inj2,ext2) <- leftEditor leftParams noti2
-    re@(rightFrame,inj3,ext3) <- rightEditor rightParams noti3
+    be@(boolFrame,inj1,ext1) <- boolEditor2  (getParameter paraName rightParams) leftParams noti1
+    le@(leftFrame,inj2,ext2) <- leftEditor (paraName <<<- ParaName "" $ leftParams) noti2
+    re@(rightFrame,inj3,ext3) <- rightEditor (paraName <<<- ParaName "" $ rightParams) noti3
     mkEditor
         (\widget v -> do
             core <- readIORef coreRef
@@ -343,15 +450,19 @@ data ColumnDescr row = ColumnDescr Bool [(String,(row -> [AttrOp CellRendererTex
 
 --
 -- | An editor with a subeditor, of which a list of items can be selected
-multisetEditor :: (Show alpha, Default alpha) =>
-                    ColumnDescr alpha -> (Editor alpha, Parameters) -> Editor [alpha]
-multisetEditor (ColumnDescr showHeaders columnsDD) (singleEditor, sParams)
+multisetEditor :: (Show alpha, Default alpha, Eq alpha) => ColumnDescr alpha
+    -> (Editor alpha, Parameters)
+    -> Maybe ([alpha] -> [alpha]) -- ^ The 'mbSort' arg, a sort function if desired
+    -> Maybe (alpha -> alpha -> Bool) -- ^ The 'mbReplace' arg, a function which is a criteria for removing an
+                              --   old entry when adding a new value
+    -> Editor [alpha]
+multisetEditor (ColumnDescr showHeaders columnsDD) (singleEditor, sParams) mbSort mbReplace
         parameters notifier = do
     coreRef <- newIORef Nothing
     cnoti   <- emptyNotifier
     mapM_ (propagateEvent notifier [cnoti]) allGUIEvents
     mkEditor
-        (\widget v -> do
+        (\widget vs -> do
             core <- readIORef coreRef
             case core of
                 Nothing  -> do
@@ -370,43 +481,64 @@ multisetEditor (ColumnDescr showHeaders columnsDD) (singleEditor, sParams)
                     containerAdd buttonBox addButton
                     containerAdd buttonBox removeButton
                     listStore   <-  listStoreNew ([]:: [alpha])
-                    list        <-  treeViewNewWithModel listStore
+                    treeView        <-  treeViewNewWithModel listStore
                     let minSize =   getParameter paraMinSize parameters
-                    uncurry (widgetSetSizeRequest list) minSize
+                    uncurry (widgetSetSizeRequest treeView) minSize
                     sw          <-  scrolledWindowNew Nothing Nothing
-                    containerAdd sw list
+                    containerAdd sw treeView
                     scrolledWindowSetPolicy sw PolicyAutomatic PolicyAutomatic
-                    sel         <-  treeViewGetSelection list
+                    sel         <-  treeViewGetSelection treeView
                     treeSelectionSetMode sel SelectionSingle
                     mapM_ (\(str,func) -> do
                             col <- treeViewColumnNew
                             treeViewColumnSetTitle  col str
                             treeViewColumnSetResizable col True
-                            treeViewAppendColumn list col
+                            treeViewAppendColumn treeView col
                             renderer <- cellRendererTextNew
                             cellLayoutPackStart col renderer True
                             cellLayoutSetAttributes col renderer listStore func
                         ) columnsDD
-                    treeViewSetHeadersVisible list showHeaders
+                    treeViewSetHeadersVisible treeView showHeaders
                     sel  `onSelectionChanged` selectionHandler sel listStore injS
                     boxPackStart box sw PackGrow 0
                     boxPackStart box buttonBox PackNatural 0
                     boxPackStart box frameS PackNatural 0
-                    activateEvent (castToWidget list) notifier Nothing FocusOut
+                    activateEvent (castToWidget treeView) notifier Nothing FocusOut
                     containerAdd widget box
                     listStoreClear listStore
-                    mapM_ (listStoreAppend listStore) v
+                    mapM_ (listStoreAppend listStore)
+                        (case mbSort of
+                            Nothing -> vs
+                            Just sortF -> sortF vs)
                     addButton `onClicked` do
                         mbv <- extS
                         case mbv of
                             Just v -> do
-                              seq <- listStoreAppend listStore v
-                              treeSelectionSelectPath sel [seq]
-                              mbCol <- treeViewGetColumn list 0
-                              case mbCol of
-                                Nothing -> return ()
-                                Just col -> treeViewScrollToCell list [seq] col Nothing
-                              return ()
+                                case mbReplace of
+                                    Nothing         -> return ()
+                                    Just replaceF   -> do
+                                         cont <- listStoreToList listStore
+                                         mapM_ (listStoreRemove listStore)
+                                            $ map fst
+                                                $ filter (\(_,e) -> replaceF v e)
+                                                    $ zip [0..] cont
+                                case mbSort of
+                                    Nothing    -> do
+                                        listStoreAppend listStore v
+                                        return ()
+                                    Just sortF -> do
+                                        cont <- listStoreToList listStore
+                                        listStoreClear listStore
+                                        mapM_ (listStoreAppend listStore) (sortF (v:cont))
+                                cont <- listStoreToList listStore
+                                case elemIndex v cont of
+                                    Just idx -> do
+                                        treeSelectionSelectPath sel [idx]
+                                        mbCol <- treeViewGetColumn treeView 0
+                                        case mbCol of
+                                            Nothing  -> return ()
+                                            Just col -> treeViewScrollToCell treeView [idx] col Nothing
+                                    Nothing -> return ()
                             Nothing -> return ()
                     removeButton `onClicked` do
                         mbi <- treeSelectionGetSelected sel
@@ -419,26 +551,19 @@ multisetEditor (ColumnDescr showHeaders columnsDD) (singleEditor, sParams)
                     injS getDefault
                 Just listStore -> do
                     listStoreClear listStore
-                    mapM_ (listStoreAppend listStore) v)
+                    mapM_ (listStoreAppend listStore)
+                        (case mbSort of
+                            Nothing -> vs
+                            Just sortF -> sortF vs))
         (do core <- readIORef coreRef
             case core of
                 Nothing -> return Nothing
                 Just listStore -> do
-                    v <- listStoreGetValues listStore
+                    v <- listStoreToList listStore
                     return (Just v))
         (paraMinSize <<<- ParaMinSize (-1,-1) $ parameters)
         notifier
     where
-    listStoreGetValues :: ListStore a -> IO [a]
-    listStoreGetValues listStore = treeModelGetIterFirst listStore >>= getTail
-        where getTail mbi = case mbi of
-                                Nothing -> return []
-                                Just iter -> do
-                                    [i] <- treeModelGetPath listStore iter
-                                    v <- listStoreGetValue listStore i
-                                    mbi2 <- treeModelIterNext listStore iter
-                                    rest <- getTail mbi2
-                                    return (v : rest)
     selectionHandler :: TreeSelection -> ListStore a -> Injector a -> IO ()
     selectionHandler sel listStore inj = do
         ts <- treeSelectionGetSelected sel
@@ -449,4 +574,171 @@ multisetEditor (ColumnDescr showHeaders columnsDD) (singleEditor, sParams)
                 v <- listStoreGetValue listStore i
                 inj v
                 return ()
+
+
+filesEditor :: Maybe FilePath -> FileChooserAction -> String -> Editor [FilePath]
+filesEditor fp act label p =
+    multisetEditor
+        (ColumnDescr False [("",(\row -> [cellText := row]))])
+        (fileEditor fp act label, emptyParams)
+        (Just sort)
+        (Just (==))
+        (paraShadow <<<- ParaShadow ShadowIn $
+            paraDirection  <<<- ParaDirection Vertical $ p)
+
+stringsEditor :: (String -> Bool) -> Editor [String]
+stringsEditor validation p =
+    multisetEditor
+        (ColumnDescr False [("",(\row -> [cellText := row]))])
+        (stringEditor validation, emptyParams)
+        (Just sort)
+        (Just (==))
+        (paraShadow <<<- ParaShadow ShadowIn $ p)
+
+dependencyEditor :: [PackageIdentifier] -> Editor Dependency
+dependencyEditor packages para noti = do
+    (wid,inj,ext) <- pairEditor
+        (comboSelectionEditor ((sort . nub) (map (display . pkgName) packages)) id
+            , paraName <<<- ParaName "Package Name" $ emptyParams)
+        (versionRangeEditor,paraName <<<- ParaName "Version" $ emptyParams)
+        (paraDirection <<<- ParaDirection Vertical $ para)
+        noti
+    let pinj (Dependency (PackageName s) v) = inj (s,v)
+    let pext = do
+        mbp <- ext
+        case mbp of
+            Nothing -> return Nothing
+            Just ("",v) -> return Nothing
+            Just (s,v) -> return (Just $Dependency (PackageName s) v)
+    return (wid,pinj,pext)
+
+dependenciesEditor :: [PackageIdentifier] -> Editor [Dependency]
+dependenciesEditor packages p noti =
+    multisetEditor
+        (ColumnDescr True [("Package",\(Dependency (PackageName str) _) -> [cellText := str])
+                           ,("Version",\(Dependency _ vers) -> [cellText := display vers])])
+        (dependencyEditor packages,
+            paraOuterAlignment <<<- ParaInnerAlignment (0.0, 0.5, 1.0, 1.0)
+                $ paraInnerAlignment <<<- ParaOuterAlignment (0.0, 0.5, 1.0, 1.0)
+                   $ emptyParams)
+        (Just (sortBy (\ (Dependency p1 _) (Dependency p2 _) -> compare p1 p2)))
+        (Just (\ (Dependency p1 _) (Dependency p2 _) -> p1 == p2))
+        (paraShadow <<<- ParaShadow ShadowIn $
+            paraOuterAlignment <<<- ParaInnerAlignment (0.0, 0.5, 1.0, 1.0)
+                $ paraInnerAlignment <<<- ParaOuterAlignment (0.0, 0.5, 1.0, 1.0)
+                    $ paraDirection  <<<-  ParaDirection Vertical
+                        $ paraPack <<<- ParaPack PackGrow
+                            $ p)
+        noti
+
+versionRangeEditor :: Editor VersionRange
+versionRangeEditor para noti = do
+    (wid,inj,ext) <-
+        maybeEditor
+            ((eitherOrEditor
+                (pairEditor
+                    (comboSelectionEditor v1 show, emptyParams)
+                    (versionEditor, paraName <<<- ParaName "Enter Version" $ emptyParams),
+                        (paraDirection <<<- ParaDirection Vertical
+                            $ paraName <<<- ParaName "Simple"
+                            $ paraOuterAlignment <<<- ParaOuterAlignment  (0.0, 0.0, 0.0, 0.0)
+                            $ paraOuterPadding <<<- ParaOuterPadding    (0, 0, 0, 0)
+                            $ paraInnerAlignment <<<- ParaInnerAlignment  (0.0, 0.0, 0.0, 0.0)
+                            $ paraInnerPadding <<<- ParaInnerPadding   (0, 0, 0, 0)
+                            $ emptyParams))
+                (tupel3Editor
+                    (comboSelectionEditor v2 show, emptyParams)
+                    (versionRangeEditor, paraShadow <<<- ParaShadow ShadowIn $ emptyParams)
+                    (versionRangeEditor, paraShadow <<<- ParaShadow ShadowIn $ emptyParams),
+                        paraName <<<- ParaName "Complex"
+                        $    paraDirection <<<- ParaDirection Vertical
+                        $ paraOuterAlignment <<<- ParaOuterAlignment  (0.0, 0.0, 0.0, 0.0)
+                        $ paraOuterPadding <<<- ParaOuterPadding    (0, 0, 0, 0)
+                        $ paraInnerAlignment <<<- ParaInnerAlignment  (0.0, 0.0, 0.0, 0.0)
+                        $ paraInnerPadding <<<- ParaInnerPadding   (0, 0, 0, 0)
+                        $ emptyParams) "Select version range"), emptyParams)
+            False "Any Version"
+            (paraDirection <<<- ParaDirection Vertical $ para)
+            noti
+    let vrinj AnyVersion                =   inj Nothing
+        vrinj (ThisVersion v)           =   inj (Just (Left (ThisVersionS,v)))
+        vrinj (LaterVersion v)          =   inj (Just (Left (LaterVersionS,v)))
+        vrinj (EarlierVersion v)        =   inj (Just (Left (EarlierVersionS,v)))
+        vrinj (UnionVersionRanges (ThisVersion v1) (LaterVersion v2)) | v1 == v2
+                                        =  inj (Just (Left (ThisOrLaterVersionS,v1)))
+        vrinj (UnionVersionRanges (LaterVersion v1) (ThisVersion v2)) | v1 == v2
+                                        =  inj (Just (Left (ThisOrLaterVersionS,v1)))
+        vrinj (UnionVersionRanges (ThisVersion v1) (EarlierVersion v2)) | v1 == v2
+                                        =  inj (Just (Left (ThisOrEarlierVersionS,v1)))
+        vrinj (UnionVersionRanges (EarlierVersion v1) (ThisVersion v2)) | v1 == v2
+                                        =  inj (Just (Left (ThisOrEarlierVersionS,v1)))
+        vrinj (UnionVersionRanges v1 v2)=  inj (Just (Right (UnionVersionRangesS,v1,v2)))
+        vrinj (IntersectVersionRanges v1 v2)
+                                        =    inj (Just (Right (IntersectVersionRangesS,v1,v2)))
+    let vrext = do  mvr <- ext
+                    case mvr of
+                        Nothing -> return (Just AnyVersion)
+                        Just Nothing -> return (Just AnyVersion)
+                        Just (Just (Left (ThisVersionS,v)))     -> return (Just (ThisVersion v))
+                        Just (Just (Left (LaterVersionS,v)))    -> return (Just (LaterVersion v))
+                        Just (Just (Left (EarlierVersionS,v)))   -> return (Just (EarlierVersion v))
+
+                        Just (Just (Left (ThisOrLaterVersionS,v)))   -> return (Just (orLaterVersion  v))
+                        Just (Just (Left (ThisOrEarlierVersionS,v)))   -> return (Just (orEarlierVersion  v))
+                        Just (Just (Right (UnionVersionRangesS,v1,v2)))
+                                                        -> return (Just (UnionVersionRanges v1 v2))
+                        Just (Just (Right (IntersectVersionRangesS,v1,v2)))
+                                                        -> return (Just (IntersectVersionRanges v1 v2))
+    return (wid,vrinj,vrext)
+        where
+            v1 = [ThisVersionS,LaterVersionS,ThisOrLaterVersionS,EarlierVersionS,ThisOrEarlierVersionS]
+            v2 = [UnionVersionRangesS,IntersectVersionRangesS]
+
+data Version1 = ThisVersionS | LaterVersionS | ThisOrLaterVersionS | EarlierVersionS | ThisOrEarlierVersionS
+    deriving (Eq)
+instance Show Version1 where
+    show ThisVersionS   =  "This Version"
+    show LaterVersionS  =  "Later Version"
+    show ThisOrLaterVersionS = "This or later Version"
+    show EarlierVersionS =  "Earlier Version"
+    show ThisOrEarlierVersionS = "This or earlier Version"
+
+data Version2 = UnionVersionRangesS | IntersectVersionRangesS
+    deriving (Eq)
+instance Show Version2 where
+    show UnionVersionRangesS =  "Union Version Ranges"
+    show IntersectVersionRangesS =  "Intersect Version Ranges"
+
+versionEditor :: Editor Version
+versionEditor para noti = do
+    (wid,inj,ext) <- stringEditor (\s -> not (null s)) para noti
+    let pinj v = inj (display v)
+    let pext = do
+        s <- ext
+        case s of
+            Nothing -> return Nothing
+            Just s -> return (simpleParse s)
+    return (wid, pinj, pext)
+
+instance Default Version1
+    where getDefault = ThisVersionS
+
+instance Default Version2
+    where getDefault = UnionVersionRangesS
+
+instance Default Version
+    where getDefault = forceJust (simpleParse "0") "PackageEditor>>default version"
+
+instance Default VersionRange
+    where getDefault = AnyVersion
+
+instance Default Dependency
+    where getDefault = Dependency getDefault getDefault
+
+instance Default PackageName
+    where getDefault = PackageName getDefault
+
+
+
+
 

@@ -95,8 +95,15 @@ referencedFrom idDescr = do
     mbAccessibleInfo <- readIDE accessibleInfo
     packages <- case scope of
                     System  ->  case mbAccessibleInfo of
-                                    Nothing -> return []
-                                    Just scope -> return ((Map.elems . fst) scope)
+                                    Nothing -> case mbCurrentInfo of
+                                                    Nothing             ->  return []
+                                                    Just currentInfo    ->  return
+                                                                ((Map.elems . fst . fst) currentInfo)
+                                    Just scope -> case mbCurrentInfo of
+                                                    Nothing             ->  return ((Map.elems . fst) scope)
+                                                    Just currentInfo    ->  return
+                                                        ((Map.elems . fst . fst) currentInfo
+                                                        ++ (Map.elems . fst) scope)
                     Package ->  case mbCurrentInfo of
                                     Nothing             ->  return []
                                     Just currentInfo    ->  return ((Map.elems . fst . fst) currentInfo

@@ -1028,7 +1028,7 @@ moduleFields list = VFD emptyParams [
                     $ emptyParams)
             (\a -> [sourceRoot a])
             (\ a b -> b{sourceRoot = forceHead a "Modules>>moduleFields"})
-            (staticListEditor list),
+            (staticListEditor list id),
         mkField
             (paraName <<<- ParaName ("Is this an exposed library module")
                     $ emptyParams)

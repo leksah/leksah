@@ -32,6 +32,9 @@ instance Default alpha  => Default (Either alpha beta) where
 instance (Default alpha, Default beta) => Default (alpha, beta) where
         getDefault  =   (getDefault,getDefault)
 
+instance (Default alpha, Default beta, Default gamma) => Default (alpha, beta, gamma) where
+        getDefault  =   (getDefault,getDefault,getDefault)
+
 instance Default [alpha] where
         getDefault  =   []
 

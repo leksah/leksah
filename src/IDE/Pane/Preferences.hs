@@ -47,7 +47,6 @@ import IDE.DescriptionPP
 import IDE.PrinterParser hiding (fieldParser,parameters)
 import IDE.Pane.SourceBuffer
 import IDE.Pane.Log
-import IDE.SpecialEditors
 import Default
 import IDE.FileUtils
 import System.IO
@@ -443,6 +442,18 @@ prefsDescription packages = NFDPP [
             (stringEditor (\s -> not (null s)))
             (\i -> return ())
     ])]
+
+
+styleEditor :: Editor (Maybe String)
+styleEditor p n = do
+    styleManager <- sourceStyleSchemeManagerNew
+    ids          <- sourceStyleSchemeManagerGetSchemeIds styleManager
+    maybeEditor (comboSelectionEditor ids id, p) True "Select a special style?" p n
+
+panePathEditor :: Editor StandardPath
+panePathEditor = genericEditor
+
+
 
 instance Default PackageIdentifier where
     getDefault = case toPackageIdentifier "unknown-0" of

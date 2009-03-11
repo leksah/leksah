@@ -334,15 +334,15 @@ skipHeader =do
 -- |* The little dialog to choose between possible modules
 
 moduleFields :: [String] -> String -> FieldDescription String
-moduleFields list id =
+moduleFields list ident =
         mkField
-            (paraName <<<- ParaName ("From which module is " ++ id)
+            (paraName <<<- ParaName ("From which module is " ++ ident)
                 $ paraMultiSel <<<- ParaMultiSel False
                     $ paraMinSize <<<- ParaMinSize (300,400)
                         $ emptyParams)
             (\ a -> [a])
             (\ [a] b -> a)
-            (staticListEditor ((nub . sort) list))
+            (staticListEditor ((nub . sort) list) id)
 
 selectModuleDialog :: [Descr] -> String -> Maybe Descr -> IO (Maybe Descr)
 selectModuleDialog list id mbDescr = do

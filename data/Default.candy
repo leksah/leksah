@@ -24,9 +24,14 @@
 "forall"    0x2200                  --FOR ALL
 "exist"     0x2203                  --THERE EXISTS
 "not"       0x00ac                  --NOT SIGN
-"alpha"     0x03b1
-"beta"      0x03b2
-"gamma"     0x03b3
-"delta"     0x03b4
-"epsilon"   0x03b5
+
+"alpha"     0x03b1                  --ALPHA
+"beta"      0x03b2                  --BETA
+"gamma"     0x03b3                  --GAMMA
+"delta"     0x03b4                  --DELTA
+"epsilon"   0x03b5                  --EPSILON
+"zeta"      0x03b6                  --ZETA
+"eta"       0x03b7                  --ETA
+"theta"     0x03b8                  --THETA
+
 

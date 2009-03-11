@@ -303,8 +303,8 @@ buttonEditor parameters notifier = do
 -- | Editor for the selection of some element from a static list of elements in the
 -- | form of a combo box
 
-comboSelectionEditor :: (Show beta, Eq beta) => [beta] -> Editor beta
-comboSelectionEditor list parameters notifier = do
+comboSelectionEditor :: Eq beta => [beta] -> (beta -> String) -> Editor beta
+comboSelectionEditor list showF parameters notifier = do
     coreRef <- newIORef Nothing
     mkEditor
         (\widget obj -> do
@@ -312,7 +312,7 @@ comboSelectionEditor list parameters notifier = do
             case core of
                 Nothing  -> do
                     combo <- comboBoxNewText
-                    mapM_ (\o -> comboBoxAppendText combo (show o)) list
+                    mapM_ (\o -> comboBoxAppendText combo (showF o)) list
                     widgetSetName combo (getParameter paraName parameters)
                     mapM_ (activateEvent (castToWidget combo) notifier Nothing)
                             [FocusOut,FocusIn]
@@ -389,8 +389,8 @@ multiselectionEditor parameters notifier = do
 -- | Editor for the selection of some elements from a static list of elements in the
 -- | form of a list box
 
-staticListEditor :: (Show beta, Eq beta) => [beta] -> Editor [beta]
-staticListEditor list parameters notifier = do
+staticListEditor :: (Eq beta) => [beta] -> (beta -> String) -> Editor [beta]
+staticListEditor list showF parameters notifier = do
     coreRef <- newIORef Nothing
     mkEditor
         (\widget objs -> do
@@ -412,7 +412,7 @@ staticListEditor list parameters notifier = do
                     treeViewAppendColumn listView col
                     cellLayoutPackStart col renderer True
                     cellLayoutSetAttributes col renderer listStore
-                        $ \row -> [ cellText := show row ]
+                        $ \row -> [ cellText := showF row ]
                     treeViewSetHeadersVisible listView False
                     listStoreClear listStore
                     mapM_ (listStoreAppend listStore) list
