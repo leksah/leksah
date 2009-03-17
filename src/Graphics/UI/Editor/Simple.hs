@@ -23,6 +23,7 @@ module Graphics.UI.Editor.Simple (
 ,   fontEditor
 ,   comboSelectionEditor
 ,   staticListEditor
+,   staticListEditor2
 ,   multiselectionEditor
 ,   fileEditor
 ,   otherEditor
@@ -45,6 +46,7 @@ import Graphics.UI.Editor.Parameters
 import Graphics.UI.Editor.Basics
 import Graphics.UI.Editor.MakeEditor
 import Control.Event
+import Graphics.UI.Gtk.Gdk.Events (Event(..))
 
 -- ------------------------------------------------------------
 -- * Simple Editors
@@ -278,7 +280,7 @@ genericEditor parameters notifier = do
     return (wid,ginj,gext)
 
 --
--- | Editor for a boolean value in the form of a check button
+-- | Editor for no value, it only emtis a clicked event and has the form of a check button
 --
 buttonEditor :: Editor ()
 buttonEditor parameters notifier = do
@@ -387,10 +389,84 @@ multiselectionEditor parameters notifier = do
 
 --
 -- | Editor for the selection of some elements from a static list of elements in the
--- | form of a list box
+-- | form of a list box with toggle elements
 
 staticListEditor :: (Eq beta) => [beta] -> (beta -> String) -> Editor [beta]
 staticListEditor list showF parameters notifier = do
+    coreRef <- newIORef Nothing
+    mkEditor
+        (\widget objs -> do
+            core <- readIORef coreRef
+            case core of
+                Nothing  -> do
+                    listStore <- listStoreNew ([]:: [(Bool,beta)])
+                    listView <- treeViewNewWithModel listStore
+                    widgetSetName listView (getParameter paraName parameters)
+                    mapM_ (activateEvent (castToWidget listView) notifier Nothing)
+                            [FocusOut,FocusIn]
+                    sel <- treeViewGetSelection listView
+                    treeSelectionSetMode sel
+                        (case getParameter paraMultiSel parameters of
+                            True  -> SelectionMultiple
+                            False -> SelectionSingle)
+                    rendererToggle <- cellRendererToggleNew
+                    set rendererToggle [cellToggleActivatable := True]
+                    rendererText <- cellRendererTextNew
+                    col1 <- treeViewColumnNew
+                    treeViewAppendColumn listView col1
+                    cellLayoutPackStart col1 rendererToggle True
+                    cellLayoutSetAttributes col1 rendererToggle listStore
+                        $ \row -> [ cellToggleActive := fst row]
+                    col2 <- treeViewColumnNew
+                    treeViewAppendColumn listView col2
+                    cellLayoutPackStart col2 rendererText True
+                    cellLayoutSetAttributes col2 rendererText listStore
+                        $ \row -> [ cellText := showF (snd row)]
+                    treeViewSetHeadersVisible listView False
+                    listStoreClear listStore
+                    mapM_ (listStoreAppend listStore) $ map (\e -> (elem e objs,e)) list
+                    let minSize =   getParameter paraMinSize parameters
+                    uncurry (widgetSetSizeRequest listView) minSize
+                    sw          <-  scrolledWindowNew Nothing Nothing
+                    containerAdd sw listView
+                    scrolledWindowSetPolicy sw PolicyAutomatic PolicyAutomatic
+                    containerAdd widget sw
+                      -- update the model when the toggle buttons are activated
+                    on rendererToggle cellToggled $ \pathStr -> do
+                        let (i:_) = stringToTreePath pathStr
+                        val <- listStoreGetValue listStore i
+                        listStoreSetValue listStore i (not (fst val),snd val)
+                    listView `onKeyPress` (\event -> do
+                        let Key { eventKeyName = name, eventModifier = modifier, eventKeyChar = char } = event
+                        case (name, modifier, char) of
+                            ("Return", _, _) -> do
+                                sel <- treeViewGetSelection listView
+                                rows <- treeSelectionGetSelectedRows sel
+                                mapM_ (\ (i:_) -> do
+                                    val <- listStoreGetValue listStore i
+                                    listStoreSetValue listStore i (not (fst val),snd val)) rows
+                                return True
+                            _ -> return False)
+                    writeIORef coreRef (Just (listView,listStore))
+                Just (listView,listStore) -> do
+                    let model = map (\e -> (elem e objs,e)) list
+                    listStoreClear listStore
+                    mapM_ (listStoreAppend listStore) $ map (\e -> (elem e objs,e)) list)
+        (do core <- readIORef coreRef
+            case core of
+                Nothing -> return Nothing
+                Just (listView,listStore) -> do
+                    model <- listStoreToList listStore
+                    return (Just (map snd $ filter (\e -> fst e) model)))
+        parameters
+        notifier
+
+--
+-- | Editor for the selection of some elements from a static list of elements in the
+-- | form of a list box
+
+staticListEditor2 :: (Eq beta) => [beta] -> (beta -> String) -> Editor [beta]
+staticListEditor2 list showF parameters notifier = do
     coreRef <- newIORef Nothing
     mkEditor
         (\widget objs -> do
@@ -441,6 +517,7 @@ staticListEditor list showF parameters notifier = do
         parameters
         notifier
 
+
 --
 -- | Editor for the selection of a file path in the form of a text entry and a button,
 -- | which opens a gtk file chooser
@@ -458,7 +535,7 @@ fileEditor mbFilePath action buttonName parameters notifier = do
                             [FocusOut,FocusIn,Clicked]
                     entry   <-  entryNew
                     widgetSetName entry $ getParameter paraName parameters ++ "-entry"
-                    set entry [ entryEditable := False ]
+                    -- set entry [ entryEditable := False ]
                     mapM_ (activateEvent (castToWidget entry) notifier Nothing)
                             [FocusOut,FocusIn]
                     registerEvent notifier Clicked (Left (buttonHandler entry))

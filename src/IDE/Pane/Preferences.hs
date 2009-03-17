@@ -376,21 +376,13 @@ prefsDescription packages = NFDPP [
             (filesEditor Nothing FileChooserActionSelectFolder "Select folder")
             (\i -> return ())
     ,   mkFieldPP
-            (paraName <<<- ParaName
-                "Packages which are excluded from the modules pane" $ emptyParams)
+            (paraName <<<- ParaName "Extract packages from cabal-install" $ emptyParams)
             (PP.text . show)
             readParser
-            packageBlacklist
-            (\b a -> a{packageBlacklist = b})
-            (dependenciesEditor packages)
-            (\i -> return ())
-    ,   mkFieldPP
-            (paraName <<<- ParaName "Update metadata after every build" $ emptyParams)
-            (PP.text . show)
-            boolParser
-            collectAfterBuild
-            (\b a -> a{collectAfterBuild = b})
-            boolEditor
+            autoExtractTars
+            (\b a -> a{autoExtractTars = b})
+            (maybeEditor ((fileEditor (Just "~/.cabal/packages/") FileChooserActionSelectFolder
+                "Select folder"), emptyParams) True "Yes")
             (\i -> return ())
     ,   mkFieldPP
             (paraName <<<- ParaName "Update metadata at startup" $ emptyParams)
@@ -401,13 +393,23 @@ prefsDescription packages = NFDPP [
             boolEditor
             (\i -> return ())
     ,   mkFieldPP
-            (paraName <<<- ParaName "Extract packages from cabal-install" $ emptyParams)
+            (paraName <<<- ParaName "Update metadata after every build" $ emptyParams)
+            (PP.text . show)
+            boolParser
+            collectAfterBuild
+            (\b a -> a{collectAfterBuild = b})
+            boolEditor
+            (\i -> return ())
+    ]),
+    ("Blacklist", VFDPP emptyParams [
+        mkFieldPP
+            (paraName <<<- ParaName
+                "Packages which are excluded from the modules pane" $ emptyParams)
             (PP.text . show)
             readParser
-            autoExtractTars
-            (\b a -> a{autoExtractTars = b})
-            (maybeEditor ((fileEditor (Just "~/.cabal/packages/") FileChooserActionSelectFolder
-                "Select folder"), emptyParams) True "Yes")
+            packageBlacklist
+            (\b a -> a{packageBlacklist = b})
+            (dependenciesEditor packages)
             (\i -> return ())
     ]),
     ("Build", VFDPP emptyParams [

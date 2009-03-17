@@ -16,10 +16,10 @@ module Graphics.UI.Editor.Composite (
     maybeEditor
 ,   pairEditor
 ,   tupel3Editor
-,   tupel4Editor
-,   tupel5Editor
-,   tupel6Editor
-,   tupel7Editor
+--,   tupel4Editor
+--,   tupel5Editor
+--,   tupel6Editor
+--,   tupel7Editor
 ,   splitEditor
 ,   eitherOrEditor
 ,   multisetEditor
@@ -110,15 +110,52 @@ tupel3Editor :: (Editor alpha, Parameters)
     -> (Editor gamma, Parameters)
     -> Editor (alpha,beta,gamma)
 tupel3Editor p1 p2 p3 parameters notifier = do
-    (widg,inj,ext) <- pairEditor ((pairEditor p1 p2), parameters) p3 parameters notifier
-    return (widg,
-        (\ (a, b, c) -> inj ((a,b),c)),
-        (do
-            mb <- ext
-            case mb of
-                Nothing        -> return Nothing
-                Just ((a,b),c) -> return (Just (a,b,c))))
+    coreRef <- newIORef Nothing
+    noti1   <- emptyNotifier
+    noti2   <- emptyNotifier
+    noti3   <- emptyNotifier
+    mapM_ (propagateEvent notifier [noti2]) allGUIEvents
+    r1@(frame1,inj1,ext1) <- (fst p1) (snd p1) noti1
+    r2@(frame2,inj2,ext2) <- (fst p2) (snd p2) noti2
+    r3@(frame3,inj3,ext3) <- (fst p3) (snd p3) noti3
+    mkEditor
+        (\widget (v1,v2,v3) -> do
+            core <- readIORef coreRef
+            case core of
+                Nothing  -> do
+                    box <- case getParameter paraDirection parameters of
+                        Horizontal -> do
+                            b <- hBoxNew False 1
+                            return (castToBox b)
+                        Vertical -> do
+                            b <- vBoxNew False 1
+                            return (castToBox b)
+                    boxPackStart box frame1 PackGrow 0
+                    boxPackStart box frame2 PackGrow 0
+                    boxPackStart box frame3 PackGrow 0
+                    containerAdd widget box
+                    inj1 v1
+                    inj2 v2
+                    inj3 v3
+                    writeIORef coreRef (Just (r1,r2,r3))
+                Just ((_,inj1,_),(_,inj2,_),(_,inj3,_)) -> do
+                    inj1 v1
+                    inj2 v2
+                    inj3 v3)
+        (do core <- readIORef coreRef
+            case core of
+                Nothing -> return Nothing
+                Just ((_,_,ext1),(_,_,ext2),(_,_,ext3)) -> do
+                    r1 <- ext1
+                    r2 <- ext2
+                    r3 <- ext3
+                    if isJust r1 && isJust r2 && isJust r3
+                        then return (Just (fromJust r1,fromJust r2, fromJust r3))
+                        else return Nothing)
+        parameters
+        notifier
 
+{--
 tupel4Editor :: (Editor alpha, Parameters)
     -> (Editor beta, Parameters)
     -> (Editor gamma, Parameters)
@@ -184,6 +221,7 @@ tupel7Editor p1 p2 p3 p4 p5 p6 p7 parameters notifier = do
             case mb of
                 Nothing        -> return Nothing
                 Just ((a,b,c,d,e,f),g) -> return (Just (a,b,c,d,e,f,g))))
+--}
 
 --
 -- | Like a pair editor, but with a moveable split
@@ -280,10 +318,12 @@ maybeEditor (childEdit, childParams) positive boolLabel parameters notifier = do
                         Just val ->
                             if hasChild
                                 then do
+                                    inj1 positive
                                     (childWidget,inj2,_) <- getChildEditor childRef childEdit childParams cNoti
                                     widgetShowAll childWidget
                                     inj2 val
                                 else do
+                                    inj1 positive
                                     (childWidget,inj2,_) <- getChildEditor childRef childEdit childParams cNoti
                                     boxPackEnd box childWidget PackGrow 0
                                     widgetShowAll childWidget
@@ -598,18 +638,24 @@ stringsEditor validation p =
 dependencyEditor :: [PackageIdentifier] -> Editor Dependency
 dependencyEditor packages para noti = do
     (wid,inj,ext) <- pairEditor
-        (comboSelectionEditor ((sort . nub) (map (display . pkgName) packages)) id
-            , paraName <<<- ParaName "Package Name" $ emptyParams)
+        ((eitherOrEditor (comboSelectionEditor ((sort . nub) (map (display . pkgName) packages)) id
+            , paraName <<<- ParaName "Select" $ emptyParams)
+            (stringEditor (const True), paraName <<<- ParaName "Enter" $ emptyParams)
+            "Select from list?"), paraName <<<- ParaName "Name"$ emptyParams)
         (versionRangeEditor,paraName <<<- ParaName "Version" $ emptyParams)
         (paraDirection <<<- ParaDirection Vertical $ para)
         noti
-    let pinj (Dependency (PackageName s) v) = inj (s,v)
+    let pinj (Dependency pn@(PackageName s) v) = if elem s (map (display . pkgName) packages)
+                                                    then inj (Left s,v)
+                                                    else inj (Right s,v)
     let pext = do
         mbp <- ext
         case mbp of
             Nothing -> return Nothing
-            Just ("",v) -> return Nothing
-            Just (s,v) -> return (Just $Dependency (PackageName s) v)
+            Just (Left "",v) -> return Nothing
+            Just (Left s,v) -> return (Just $ Dependency (PackageName s) v)
+            Just (Right "",v) -> return Nothing
+            Just (Right s,v) -> return (Just $ Dependency (PackageName s) v)
     return (wid,pinj,pext)
 
 dependenciesEditor :: [PackageIdentifier] -> Editor [Dependency]
