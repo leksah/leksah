@@ -27,7 +27,7 @@ import IDE.Metainfo.Provider (getIdentifierDescr)
 import Text.PrettyPrint (render)
 import Distribution.Text (disp)
 import IDE.Pane.SourceBuffer
-    (fileSaveBuffer, inActiveBufContext', selectSourceBuf)
+    (inActiveBufContext', selectSourceBuf)
 import Graphics.UI.Gtk
 import IDE.SourceCandy (getCandylessText)
 import Text.ParserCombinators.Parsec.Language (haskellStyle)
@@ -150,7 +150,6 @@ addImport' nis filePath descr descrList =  do
                                                     liftIO $ do
                                                         i1 <- textBufferGetIterAtLine gtkbuf lineSel
                                                         textBufferInsert gtkbuf i1 newLine
-                                                    fileSaveBuffer False nb gtkbuf idebuf n
                                                     return (True,descr : descrList)
                             l@(impDecl:_) ->
                                             let newImpDecl  =  addToDecl (unLoc impDecl)
@@ -171,7 +170,6 @@ addImport' nis filePath descr descrList =  do
                                                             i2 <- textBufferGetIterAtLine gtkbuf (lineEnd)
                                                             textBufferDelete gtkbuf i1 i2
                                                             textBufferInsert gtkbuf i1 newLine
-                                                        fileSaveBuffer False nb gtkbuf idebuf n
                                                         return (True, descr : descrList)
     where
         isHiding (Just (_,False)) =  True

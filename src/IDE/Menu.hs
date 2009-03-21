@@ -56,6 +56,7 @@ import IDE.GUIHistory
 import IDE.Metainfo.Provider (rebuildLibInfo,rebuildActiveInfo)
 import IDE.Pane.Info (showInfo)
 import IDE.NotebookFlipper
+import IDE.ImportTool (addAllImports)
 
 --
 -- | The Actions known to the system (they can be activated by keystrokes or menus)
@@ -160,6 +161,8 @@ actions =
         nextError [] False
     ,AD "PreviousError" "_Previous Error" (Just "Go to the previous error") (Just "ide_error_prev")
         previousError [] False
+    ,AD "AddAllImports" "_Add All Imports" (Just "Resolve 'Not in scope' errors by adding the necessary imports") Nothing
+        addAllImports [] False
 
     ,AD "InstallPackage" "_Install Package" Nothing Nothing
         packageInstall [] False

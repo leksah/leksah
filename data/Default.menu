@@ -58,6 +58,7 @@
        <menuitem name="_Run" action="RunPackage" />
        <menuitem name="_Next Error" action="NextError" />
        <menuitem name="_Previous Error" action="PreviousError" />
+       <menuitem name="_Add All Imports" action="AddAllImports" />
        <separator/>
        <menuitem name="C_opy Package" action="CopyPackage" />
        <menuitem name="_Install Package" action="InstallPackage" />
