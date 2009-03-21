@@ -421,6 +421,22 @@ prefsDescription packages = NFDPP [
             (\b a -> a{saveAllBeforeBuild = b})
             boolEditor
             (\i -> return ())
+         , mkFieldPP
+            (paraName <<<- ParaName "Background build" $ emptyParams)
+            (PP.text . show)
+            boolParser
+            backgroundBuild
+            (\b a -> a{backgroundBuild = b})
+            boolEditor
+            (\i -> return ())
+         , mkFieldPP
+            (paraName <<<- ParaName "Use --build-to when performing background build" $ emptyParams)
+            (PP.text . show)
+            boolParser
+            useBuildToFlag
+            (\b a -> a{useBuildToFlag = b})
+            boolEditor
+            (\i -> return ())
     ]),
     ("Help", VFDPP emptyParams [
         mkFieldPP
@@ -487,6 +503,8 @@ defaultPrefs = Prefs {
     ,   docuSearchURL       =   "http://holumbus.fh-wedel.de/hayoo/hayoo.html?query="
     ,   completeRestricted  =   False
     ,   saveAllBeforeBuild  =   True
+    ,   useBuildToFlag      =   False
+    ,   backgroundBuild     =   True
     }
 
 -- ------------------------------------------------------------

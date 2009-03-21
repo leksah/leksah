@@ -37,6 +37,7 @@ module IDE.Pane.SourceBuffer (
 ,   fileSave
 ,   fileSaveAll
 ,   fileSaveBuffer
+,   fileCheckAll
 ,   editUndo
 ,   editRedo
 ,   editCut
@@ -130,7 +131,7 @@ instance Pane IDEBuffer IDEM
           bringPaneToFront actbuf
           writeCursorPositionInStatusbar sv sbLC
           writeOverwriteInStatusbar sv sbIO
-          id1 <- gtkBuf `afterModifiedChanged` reflectIDE (markLabelAsChanged) ideR
+          id1 <- gtkBuf `afterModifiedChanged` reflectIDE (markActiveLabelAsChanged) ideR
           id2 <- sv `afterMoveCursor`
               (\_ _ _ -> writeCursorPositionInStatusbar sv sbLC)
           id3 <- gtkBuf `afterEndUserAction`  writeCursorPositionInStatusbar sv sbLC
@@ -262,12 +263,20 @@ goToSourceDefinition fp mbLocation = do
             return ()
 
 
-markErrorInSourceBuf ::  Int -> Int -> String -> IDEAction
-markErrorInSourceBuf line column string =
-    inActiveBufContext () $ \_ gtkbuf buf _ -> do
-        i1 <- textBufferGetStartIter gtkbuf
-        i2 <- textBufferGetEndIter gtkbuf
-        textBufferRemoveTagByName gtkbuf "activeErr" i1 i2
+markErrorInSourceBuf :: Int -> IDEBuffer -> Int -> Int -> String -> Bool -> IDEAction
+markErrorInSourceBuf index buf line column string scrollTo =
+    inBufContext () buf $ \_ gtkbuf buf _ -> do
+        tagTable <- textBufferGetTagTable gtkbuf
+        mbTag <- textTagTableLookup tagTable ("Err" ++ show index)
+        case mbTag of
+            Just tag -> do
+                i1 <- textBufferGetStartIter gtkbuf
+                i2 <- textBufferGetEndIter gtkbuf
+                textBufferRemoveTagByName gtkbuf ("Err" ++ show index) i1 i2
+            Nothing -> do
+                errtag <- textTagNew (Just $ "Err" ++ show index)
+                set errtag[textTagUnderline := UnderlineError]
+                textTagTableAdd tagTable errtag
 
         lines   <-  textBufferGetLineCount gtkbuf
         iter    <-  textBufferGetIterAtLine gtkbuf (max 0 (min (lines-1) (line-1)))
@@ -275,13 +284,14 @@ markErrorInSourceBuf line column string =
         textIterSetLineOffset iter (max 0 (min (chars-1) column))
         iter2 <- textIterCopy iter
         textIterForwardWordEnd iter2
-        textBufferApplyTagByName gtkbuf "activeErr" iter iter2
-        textBufferPlaceCursor gtkbuf iter
+        textBufferApplyTagByName gtkbuf ("Err" ++ show index) iter iter2
+        when scrollTo $ textBufferPlaceCursor gtkbuf iter
         mark <- textBufferGetInsert gtkbuf
-        idleAdd  (do
-            textViewScrollToMark (sourceView buf) mark 0.3 Nothing
-            return False) priorityDefaultIdle
-        return ()
+        when scrollTo $ do
+            idleAdd (do
+                textViewScrollToMark (sourceView buf) mark 0.3 Nothing
+                return False) priorityDefaultIdle
+            return ()
 
 allBuffers :: IDEM [IDEBuffer]
 allBuffers = getPanes
@@ -326,9 +336,6 @@ newTextBuffer panePath bn mbfn = do
         foundTag <- textTagNew (Just "found")
         set foundTag [textTagBackground := "yellow"]
         textTagTableAdd tagTable foundTag
-        activeErrtag <- textTagNew (Just "activeErr")
-        set activeErrtag[textTagUnderline := UnderlineError]
-        textTagTableAdd tagTable activeErrtag
 
         -- load up and display a file
         (fileContents,modTime) <- case mbfn of
@@ -545,8 +552,8 @@ showInfo sv ideR = do
     reflectIDE (triggerEvent ideR (SelectInfo symbol)) ideR
     return ()
 
-markLabelAsChanged :: IDEAction
-markLabelAsChanged = do
+markActiveLabelAsChanged :: IDEAction
+markActiveLabelAsChanged = do
     mbPath <- getActivePanePath
     case mbPath of
         Nothing -> return ()
@@ -555,7 +562,10 @@ markLabelAsChanged = do
           mbBS <- maybeActiveBuf
           case mbBS of
               Nothing -> return ()
-              Just buf -> liftIO $ do
+              Just buf -> liftIO $ markLabelAsChanged nb buf
+
+markLabelAsChanged :: Notebook -> IDEBuffer -> IO ()
+markLabelAsChanged nb buf = do
                   gtkbuf   <- textViewGetBuffer (sourceView buf)
                   modified <- textBufferGetModified gtkbuf
                   mbText   <- notebookGetTabLabelText nb (scrolledWindow buf)
@@ -596,12 +606,7 @@ inActiveBufContext' def f = do
 inActiveBufContext :: alpha -> (Notebook -> TextBuffer -> IDEBuffer -> Int -> IO alpha) -> IDEM alpha
 inActiveBufContext def f = inActiveBufContext' def (\ a b c d -> liftIO $ f a b c d)
 
-forAllBuffers_ :: (Notebook -> TextBuffer -> IDEBuffer -> Int -> IDEAction) -> IDEAction
-forAllBuffers_ f = do
-    bufs    <- allBuffers
-    forM_ bufs (\buf -> inBufContext' () buf f)
-
-fileSaveBuffer :: Bool -> Notebook -> TextBuffer -> IDEBuffer -> Int -> IDEAction
+fileSaveBuffer :: Bool -> Notebook -> TextBuffer -> IDEBuffer -> Int -> IDEM Bool
 fileSaveBuffer query nb gtkbuf ideBuf i = do
     ideR    <- ask
     window  <- readIDE window
@@ -619,10 +624,12 @@ fileSaveBuffer query nb gtkbuf ideBuf i = do
             if isJust mbfn && query == False
                 then do modifiedOnDisk <- checkModTime ideBuf -- The user is given option to reload
                         modifiedInBuffer <- liftIO $ textBufferGetModified gtkbuf
-                        when (modifiedOnDisk || modifiedInBuffer) $ do
-                            liftIO $fileSave' (forceLineEnds prefs) (removeTBlanks prefs) ideBuf bs candy $fromJust mbfn
-                            setModTime ideBuf
-                        return ()
+                        if (modifiedOnDisk || modifiedInBuffer)
+                            then do
+                                liftIO $fileSave' (forceLineEnds prefs) (removeTBlanks prefs) nb ideBuf bs candy $fromJust mbfn
+                                setModTime ideBuf
+                                return True
+                            else return False
                 else reifyIDE $ \ideR   ->  do
                     dialog <- fileChooserDialogNew
                                     (Just $ "Save File")
@@ -641,7 +648,7 @@ fileSaveBuffer query nb gtkbuf ideBuf i = do
                             _               ->      return Nothing
                     widgetDestroy dialog
                     case mbFileName of
-                        Nothing -> return ()
+                        Nothing -> return False
                         Just fn -> do
                             dfe <- doesFileExist fn
                             resp <- if dfe
@@ -656,18 +663,18 @@ fileSaveBuffer query nb gtkbuf ideBuf i = do
                             case resp of
                                 ResponseYes -> do
                                     cfn <- canonicalizePath fn
-                                    fileSave' (forceLineEnds prefs) (removeTBlanks prefs) ideBuf bs candy cfn
+                                    fileSave' (forceLineEnds prefs) (removeTBlanks prefs) nb ideBuf bs candy cfn
 
                                     reflectIDE (do
                                         close ideBuf
                                         newTextBuffer panePath (takeFileName fn) (Just cfn)
                                         )   ideR
-                                    return ()
-                                ResponseNo -> return ()
-                                _          -> return ()
+                                    return True
+                                ResponseNo -> return False
+                                _          -> return False
     where
-        fileSave' :: Bool -> Bool -> IDEBuffer -> Bool -> CandyTable -> FilePath -> IO()
-        fileSave' forceLineEnds removeTBlanks ideBuf bs ct fn = do
+        fileSave' :: Bool -> Bool -> Notebook -> IDEBuffer -> Bool -> CandyTable -> FilePath -> IO()
+        fileSave' forceLineEnds removeTBlanks nb ideBuf bs ct fn = do
             buf     <-   textViewGetBuffer $ sourceView ideBuf
             text    <-   getCandylessText ct buf
             let text' = if removeTBlanks
@@ -678,14 +685,45 @@ fileSaveBuffer query nb gtkbuf ideBuf i = do
                     sysMessage Normal (show e)
                     return False)
             textBufferSetModified buf (not succ)
+            markLabelAsChanged nb ideBuf
         removeTrailingBlanks :: String -> String
         removeTrailingBlanks = reverse . dropWhile (\c -> c == ' ') . reverse
 
-fileSave :: Bool -> IDEAction
-fileSave query = inActiveBufContext' () $ fileSaveBuffer query
+fileSave :: Bool -> IDEM Bool
+fileSave query = inActiveBufContext' False $ fileSaveBuffer query
 
-fileSaveAll :: IDEAction
-fileSaveAll = forAllBuffers_ $ fileSaveBuffer False
+fileSaveAll :: IDEM Bool
+fileSaveAll = do
+    bufs    <- allBuffers
+    results <- forM bufs (\buf -> inBufContext' False buf (fileSaveBuffer False))
+    return $ True `elem` results
+
+fileCheckBuffer :: Bool -> Notebook -> TextBuffer -> IDEBuffer -> Int -> IDEM Bool
+fileCheckBuffer query nb gtkbuf ideBuf i = do
+    ideR    <- ask
+    window  <- readIDE window
+    bufs    <- readIDE panes
+    prefs   <- readIDE prefs
+    paneMap <- readIDE paneMap
+    bs      <- getCandyState
+    candy   <- readIDE candy
+    (panePath,connects) <- guiPropertiesFromName (paneName ideBuf)
+    let mbfn = fileName ideBuf
+    mbpage <- liftIO $ notebookGetNthPage nb i
+    case mbpage of
+        Nothing     -> throwIDE "fileCheck: Page not found"
+        Just page   ->
+            if isJust mbfn && query == False
+                then do modifiedOnDisk <- checkModTime ideBuf -- The user is given option to reload
+                        modifiedInBuffer <- liftIO $ textBufferGetModified gtkbuf
+                        return (modifiedOnDisk || modifiedInBuffer)
+                else return False
+
+fileCheckAll :: IDEM Bool
+fileCheckAll = do
+    bufs    <- allBuffers
+    results <- forM bufs (\buf -> inBufContext' False buf (fileCheckBuffer False))
+    return $ True `elem` results
 
 fileNew :: IDEAction
 fileNew = do

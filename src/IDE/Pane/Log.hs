@@ -32,12 +32,13 @@ import Graphics.UI.Gtk
 import Graphics.UI.Gtk.Gdk.Events
 import Control.Monad.Trans (liftIO)
 import IDE.Pane.SourceBuffer (markErrorInSourceBuf,selectSourceBuf)
-import Data.Maybe (isJust)
-import System.Process
 import System.IO
 import Prelude hiding (catch)
 import Control.Exception hiding (try)
 import IDE.ImportTool (addAllImports,addImport,parseNotInScope)
+import System.Process
+    (runInteractiveProcess, ProcessHandle(..))
+
 -------------------------------------------------------------------------------
 --
 -- * Interface
@@ -150,11 +151,11 @@ clicked (Button _ SingleClick _ _ _ _ LeftButton x y) ideLog = do
     case filter (\(es,_) -> fst (logLines es) <= (line'+1) && snd (logLines es) >= (line'+1))
             (zip errors' [0..(length errors')]) of
         [(thisErr,n)] -> do
-            succ <- selectSourceBuf (filePath thisErr)
-            if isJust succ
-                then markErrorInSourceBuf (line thisErr) (column thisErr)
-                        (errDescription thisErr)
-                else return ()
+            mbBuf <- selectSourceBuf (filePath thisErr)
+            case mbBuf of
+                Just buf -> markErrorInSourceBuf n buf (line thisErr) (column thisErr)
+                        (errDescription thisErr) True
+                Nothing -> return ()
             log :: IDELog <- getLog
             liftIO $ markErrorInLog log (logLines thisErr)
             modifyIDE_ (\ide -> return (ide{currentErr = Just n}))

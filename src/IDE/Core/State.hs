@@ -94,6 +94,7 @@ import Graphics.UI.Frame.ViewFrame
 import IDE.Exception
 import Control.Event
 import System.IO
+import System.Process (ProcessHandle(..))
 
 -- this should not be repeated here, why is it necessary?
 instance MonadIO Ghc where
@@ -158,6 +159,7 @@ data IDE            =  IDE {
 ,   toolbar         ::   (Bool,Maybe Toolbar)
 ,   recentFiles     ::   [FilePath]
 ,   recentPackages  ::   [FilePath]
+,   buildProcess    ::   Maybe ProcessHandle
 } --deriving Show
 
 data IDEState =

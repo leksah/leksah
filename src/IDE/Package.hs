@@ -1,3 +1,4 @@
+{-# LANGUAGE CPP, ForeignFunctionInterface #-}
 {-# OPTIONS_GHC -XScopedTypeVariables #-}
 -----------------------------------------------------------------------------
 --
@@ -58,7 +59,7 @@ import Prelude hiding (catch)
 import Text.ParserCombinators.Parsec.Language
 import qualified Text.ParserCombinators.Parsec.Token as P
 import Text.ParserCombinators.Parsec hiding(Parser)
-import Data.Maybe(isJust,fromJust)
+import Data.Maybe (isJust, fromJust)
 import Control.Exception hiding (try)
 
 import IDE.Pane.Log
@@ -72,8 +73,38 @@ import Distribution.Text (display)
 import IDE.FileUtils (getConfigFilePathForLoad)
 import MyMissing (replace)
 import Distribution.ModuleName (ModuleName(..))
-import Data.List (foldl')
+import Data.List (isPrefixOf, foldl')
 import qualified System.IO.UTF8 as UTF8  (readFile)
+
+#if defined(mingw32_HOST_OS) || defined(__MINGW32__)
+import System.Process (getProcessExitCode, ProcessHandle(..))
+import Data.Maybe (isNothing)
+import GHC.ConsoleHandler (Handler(..), installHandler)
+import System.Win32
+    (th32SnapEnumProcesses,
+     DWORD(..),
+     cTRL_BREAK_EVENT,
+     generateConsoleCtrlEvent,
+     tH32CS_SNAPPROCESS,
+     withTh32Snap)
+import System.Process.Internals
+    (withProcessHandle, ProcessHandle__(..))
+
+foreign import stdcall unsafe "winbase.h GetCurrentProcessId"
+    c_GetCurrentProcessId :: IO DWORD
+
+foreign import stdcall unsafe "winbase.h GetProcessId"
+    c_GetProcessId :: DWORD -> IO DWORD
+#else
+import System.Posix
+    (getGroupProcessStatus,
+     sigINT,
+     installHandler,
+     signalProcessGroup,
+     getProcessGroupID)
+import System.Posix.Signals (Handler(..))
+import Foreign.C (Errno(..), getErrno)
+#endif
 
 packageNew :: IDEAction
 packageNew = packageNew' (\fp -> activatePackage fp >> return ())
@@ -200,8 +231,8 @@ packageConfig = catchIDE (do
                     Nothing -> return ())
         (\(e :: SomeException) -> putStrLn (show e))
 
-packageCompile :: IDEAction
-packageCompile = catchIDE (do
+packageBuild :: Bool -> IDEAction
+packageBuild backgroundBuild = catchIDE (do
         mbPackage   <- getActivePackage
         log         <- getLog
         ideR        <- ask
@@ -209,43 +240,52 @@ packageCompile = catchIDE (do
         case mbPackage of
             Nothing         -> return ()
             Just package    -> do
-                when (saveAllBeforeBuild prefs) $ fileSaveAll
-                sb <- getSBErrors
-                liftIO $statusbarPop sb 1
-                liftIO $statusbarPush sb 1 "Compiling"
-                unmarkCurrentError
-                pid' <- reifyIDE (\ideR -> do
-                    (inp,out,err,pid) <- runExternal "runhaskell" (["Setup","build","--build-to=Compile"]
-                                                    ++ buildFlags package)
-                    oid     <-  forkIO (readOut log out)
-                    hSetBuffering err NoBuffering
-                    eid     <-  forkIO (reflectIDE (readErrForBuild log err) ideR)
-                    return pid)
-                when (collectAfterBuild prefs) $ mayRebuildInBackground (Just pid'))
-        (\(e :: SomeException) -> putStrLn (show e))
-
-packageBuild :: IDEAction
-packageBuild = catchIDE (do
-        mbPackage   <- getActivePackage
-        log         <- getLog
-        ideR        <- ask
-        prefs       <- readIDE prefs
-        case mbPackage of
-            Nothing         -> return ()
-            Just package    -> do
-                when (saveAllBeforeBuild prefs) $ fileSaveAll
-                sb <- getSBErrors
-                liftIO $statusbarPop sb 1
-                liftIO $statusbarPush sb 1 "Building"
-                unmarkCurrentError
-                pid' <- reifyIDE (\ideR -> do
-                    (inp,out,err,pid) <- runExternal "runhaskell" (["Setup","build"]
-                                                    ++ buildFlags package)
-                    oid     <-  forkIO (readOut log out)
-                    hSetBuffering err NoBuffering
-                    eid     <-  forkIO (reflectIDE (readErrForBuild log err) ideR)
-                    return pid)
-                when (collectAfterBuild prefs) $ mayRebuildInBackground (Just pid'))
+                modified <- if (saveAllBeforeBuild prefs) then fileCheckAll else return False
+                when ((not backgroundBuild) || modified) $ do
+#if defined(mingw32_HOST_OS) || defined(__MINGW32__)
+                    maybeProcess <- readIDE buildProcess
+                    alreadyRunning <- liftIO $ do
+                        case maybeProcess of
+                            Just process -> do
+                                maybeExitCode <- getProcessExitCode process
+                                return $ isNothing maybeExitCode
+                            Nothing -> return False
+--                    Once we can interupt the build on windows, then something like this might be needed
+--                    alreadyRunning <- liftIO $ do
+--                        withTh32Snap tH32CS_SNAPPROCESS Nothing (\h -> do
+--                            all <- th32SnapEnumProcesses h
+--                            currentId <- c_GetCurrentProcessId
+--                            return $ not $ null $ filter (\(_, _, parentId, _, _) -> parentId == currentId) all)
+#else
+                    alreadyRunning <- liftIO $ (do
+                        group <- getProcessGroupID
+                        getGroupProcessStatus False False group
+                        return True)
+                        `catch` (\(e :: IOError) -> do
+                            Errno errno <- getErrno
+                            return $ errno /= 10)
+#endif
+                    if alreadyRunning
+                        then interruptBuild
+                        else do
+                            when (saveAllBeforeBuild prefs) (do fileSaveAll; return ())
+                            sb <- getSBErrors
+                            liftIO $statusbarPop sb 1
+                            liftIO $statusbarPush sb 1 "Building"
+                            reifyIDE (\ideR -> forkIO $ do
+                                let args = (["Setup","build"] ++
+                                            if (backgroundBuild && (useBuildToFlag prefs))
+                                                    then ["--build-to=Compile"]
+                                                    else []
+                                            ++ buildFlags package)
+                                (inp,out,err,pid) <- runExternal "runhaskell" args
+                                oid     <-  forkIO (readOut log out)
+                                hSetBuffering err NoBuffering
+                                eid     <-  forkIO (reflectIDE (readErrForBuild backgroundBuild log err) ideR)
+                                reflectIDE (modifyIDE_ (\ide -> return ide{buildProcess = Just pid})) ideR
+                                when ((not backgroundBuild) && (collectAfterBuild prefs)) $ reflectIDE (mayRebuildInBackground (Just pid)) ideR
+                                return ())
+                            return ())
         (\(e :: SomeException) -> putStrLn (show e))
 
 packageDoc :: IDEAction
@@ -434,50 +474,94 @@ chooseDir str = do
 -- ---------------------------------------------------------------------
 -- | Handling of Compiler errors
 --
+interruptBuild :: IDEAction
+#if defined(mingw32_HOST_OS) || defined(__MINGW32__)
+interruptBuild = do
+    -- I can't get this to work
+    --maybeProcess <- readIDE buildProcess
+    --liftIO $ do
+    --    processGroupId <- case maybeProcess of
+    --        Just h -> do
+    --            withProcessHandle h (\h2 -> do
+    --                case h2 of
+    --                    OpenHandle oh -> do
+    --                        pid <- c_GetProcessId oh
+    --                        return (h2, pid)
+    --                    _ -> return (h2, 0))
+    --        _ -> return 0
+    --    old <- installHandler Ignore
+    --    putStrLn $ show processGroupId
+    --    generateConsoleCtrlEvent cTRL_BREAK_EVENT processGroupId
+    --    installHandler old
+    return ()
+#else
+interruptBuild = liftIO $ do
+    group <- getProcessGroupID
+    old_int <- installHandler sigINT Ignore Nothing
+    signalProcessGroup sigINT group
+    installHandler sigINT old_int Nothing
+    return ()
+#endif
 
-readErrForBuild :: IDELog -> Handle -> IDEAction
-readErrForBuild log hndl = do
+readErrForBuild :: Bool -> IDELog -> Handle -> IDEAction
+readErrForBuild backgroundBuild log hndl = do
     ideRef <- ask
-    errs <- liftIO $readAndShow False []
+    errs <- liftIO $readAndShow ideRef False []
+    unmarkErrors
     modifyIDE_ (\ide -> return (ide{errors = reverse errs, currentErr = Nothing}))
+    markErrors
     triggerEvent ideRef (Sensitivity [(SensitivityError,not (null errs))])
     sb <- getSBErrors
     let errorNum    =   length (filter isError errs)
     let warnNum     =   length errs - errorNum
     liftIO $statusbarPop sb 1
     liftIO $statusbarPush sb 1 $show errorNum ++ " Errors, " ++ show warnNum ++ " Warnings"
-    when (not (null errs)) nextError
+    when ((not backgroundBuild) && (not (null errs))) nextError
     where
-    readAndShow :: Bool -> [ErrorSpec] -> IO [ErrorSpec]
-    readAndShow inError errs = catch (do
+    readAndShow :: IDERef -> Bool -> [ErrorSpec] -> IO [ErrorSpec]
+    readAndShow ideR inError errs = catch (do
         line    <-  hGetLine hndl
+        tag     <-  case line of
+            '[' : _ -> return LogTag
+            _ | "Linking " `isPrefixOf` line -> do
+                -- when backgroundBuild $ reflectIDE interruptProcess ideR
+                postGUISync $ reflectIDE (do
+                        unmarkErrors
+                        modifyIDE_ (\ide -> return (ide{errors = reverse errs, currentErr = Nothing}))
+                        markErrors
+                    ) ideR
+                return LogTag
+            _ -> return ErrorTag
         let parsed  =  parse buildLineParser "" line
-        lineNr  <-  appendLog log (line ++ "\n") ErrorTag
+        lineNr <- appendLog log (line ++ "\n") tag
         case (parsed, errs) of
             (Left e,_) -> do
                 sysMessage Normal (show e)
-                readAndShow False errs
+                readAndShow ideR False errs
             (Right ne@(ErrorLine fp l c str),_) ->
-                readAndShow True ((ErrorSpec fp l c str (lineNr,lineNr) True):errs)
+                readAndShow ideR True ((ErrorSpec fp l c str (lineNr,lineNr) True):errs)
             (Right (OtherLine str1),(ErrorSpec fp i1 i2 str (l1,l2) isError):tl) ->
                 if inError
-                    then readAndShow True ((ErrorSpec fp i1 i2
+                    then readAndShow ideR True ((ErrorSpec fp i1 i2
                                             (if null str
                                                 then line
                                                 else str ++ "\n" ++ line)
                                             (l1,lineNr) isError) : tl)
-                    else readAndShow False errs
+                    else readAndShow ideR False errs
             (Right (WarningLine str1),(ErrorSpec fp i1 i2 str (l1,l2) isError):tl) ->
                 if inError
-                    then readAndShow True ((ErrorSpec fp i1 i2
+                    then readAndShow ideR True ((ErrorSpec fp i1 i2
                                             (if null str
                                                 then line
                                                 else str ++ "\n" ++ line)
                                             (l1,lineNr) False) : tl)
-                    else readAndShow False errs
-            otherwise -> readAndShow False errs)
+                    else readAndShow ideR False errs
+            otherwise -> readAndShow ideR False errs)
         (\ (_ :: SomeException) -> do
             hClose hndl
+            case errs of
+                [] -> appendLog log "Finished.\n" LogTag
+                _ -> appendLog log ("Finished. " ++ show (length errs) ++ " errors.") LogTag
             return errs)
 
 selectErr :: Int -> IDEAction
@@ -487,32 +571,39 @@ selectErr index = do
         then return ()
         else do
             let thisErr = errors !! index
-            succ <- selectSourceBuf (filePath thisErr)
-            if isJust succ
-                then markErrorInSourceBuf (line thisErr) (column thisErr)
-                        (errDescription thisErr)
-                else return ()
+            mbBuf <- selectSourceBuf (filePath thisErr)
+            case mbBuf of
+                Just buf -> markErrorInSourceBuf index buf (line thisErr) (column thisErr)
+                        (errDescription thisErr) True
+                Nothing -> return ()
             log :: IDELog <- getLog
             liftIO $ markErrorInLog log (logLines thisErr)
 
-unmarkCurrentError :: IDEAction
-unmarkCurrentError = do
-    currentErr'     <-  readIDE currentErr
-    errors'         <-  readIDE errors
-    when (isJust currentErr') $ do
-        let theError =  errors' !! fromJust currentErr'
-        allBufs     <-  allBuffers
-        fpc         <-  liftIO $ canonicalizePath $ filePath theError
-        let theBufs =   filter (\ buf -> isJust (fileName buf) &&
-                                            equalFilePath fpc (fromJust (fileName buf)))
-                            allBufs
-        mapM_ removeMark theBufs
-        where
-        removeMark buf = liftIO $ do
+forOpenErrors :: (Int -> ErrorSpec -> IDEBuffer -> IDEAction) -> IDEAction
+forOpenErrors f = do
+    errors  <- readIDE errors
+    allBufs <- allBuffers
+    forM_ [0 .. ((length errors)-1)] (\index -> do
+        let error = errors !! index
+        fpc <- liftIO $ canonicalizePath $ filePath error
+        forM_ (filter (\buf -> case (fileName buf) of
+                Just fn -> equalFilePath fpc fn
+                Nothing -> False) allBufs) (f index error))
+
+markErrors :: IDEAction
+markErrors = do
+    forOpenErrors (\index error buf -> do
+        markErrorInSourceBuf index buf (line error) (column error)
+                        (errDescription error) False
+        return())
+
+unmarkErrors :: IDEAction
+unmarkErrors = do
+    forOpenErrors (\index error buf -> liftIO $ do
             gtkbuf  <-  textViewGetBuffer (sourceView buf)
             i1      <-  textBufferGetStartIter gtkbuf
             i2      <-  textBufferGetEndIter gtkbuf
-            textBufferRemoveTagByName gtkbuf "activeErr" i1 i2
+            textBufferRemoveTagByName gtkbuf ("Err" ++ show index)  i1 i2)
 
 nextError :: IDEAction
 nextError = do

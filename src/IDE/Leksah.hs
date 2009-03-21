@@ -64,6 +64,7 @@ import Graphics.UI.Editor.Simple (fileEditor)
 --import Outputable (ppr,showSDoc)
 import IDE.Metainfo.GHCUtils (inGhcIO)
 import IDE.NotebookFlipper (flipUp,flipDown)
+import IDE.Package (packageBuild)
 
 -- ---------------------------------------------------------------------
 -- Command line options
@@ -174,19 +175,19 @@ startGUI sessionFilename iprefs = do
     uiManager   <-  uiManagerNew
     newIcons
     hasConfigDir' <- hasConfigDir
-    (prefs,isFirstStart) <-   if hasConfigDir'
+    (startupPrefs,isFirstStart) <-   if hasConfigDir'
                                 then return (iprefs,False)
                                 else do
                                     firstStart iprefs
                                     prefsPath  <- getConfigFilePathForLoad "Default.prefs"
                                     prefs <- readPrefs prefsPath
                                     return (prefs,True)
-    keysPath    <-  getConfigFilePathForLoad $ keymapName prefs ++ ".keymap"
+    keysPath    <-  getConfigFilePathForLoad $ keymapName startupPrefs ++ ".keymap"
     keyMap      <-  parseKeymap keysPath
     let accelActions = setKeymap (keyMap :: KeymapI) actions
     specialKeys <-  buildSpecialKeys keyMap accelActions
     candyPath   <-  getConfigFilePathForLoad
-                        (case sourceCandy prefs of
+                        (case sourceCandy startupPrefs of
                                     Nothing     ->   "Default.candy"
                                     Just name   ->   name ++ ".candy")
     candySt     <-  parseCandy candyPath
@@ -207,7 +208,7 @@ startGUI sessionFilename iprefs = do
           ,   specialKeys   =   specialKeys
           ,   specialKey    =   Nothing
           ,   candy         =   candySt
-          ,   prefs         =   prefs
+          ,   prefs         =   startupPrefs
           ,   activePack    =   Nothing
           ,   errors        =   []
           ,   currentErr    =   Nothing
@@ -220,6 +221,7 @@ startGUI sessionFilename iprefs = do
           ,   toolbar       =   (True,Nothing)
           ,   recentFiles     =   []
           ,   recentPackages  =   []
+          ,   buildProcess    =   Nothing
     }
     ideR        <-  newIORef ide
     menuDescription' <- menuDescription
@@ -255,8 +257,8 @@ startGUI sessionFilename iprefs = do
     win `onDelete` (\ _ -> do reflectIDE quit ideR; return True)
     win `onKeyPress` (\ e -> reflectIDE (handleSpecialKeystrokes e) ideR)
     containerAdd win vb
-    reflectIDE (setCandyState (isJust (sourceCandy prefs))) ideR
-    let (x,y)   =   defaultSize prefs
+    reflectIDE (setCandyState (isJust (sourceCandy startupPrefs))) ideR
+    let (x,y)   =   defaultSize startupPrefs
     windowSetDefaultSize win x y
     sessionPath <- getConfigFilePathForLoad sessionFilename
     (tbv,fbv) <- reflectIDE (do
@@ -275,7 +277,7 @@ startGUI sessionFilename iprefs = do
 
 -- TODO: patch for windows, maybe we can remove it again
 --    buffers <- reflectIDE allBuffers ideR
---    fdesc <- fontDescriptionFromString (case textviewFont prefs of Just str -> str; Nothing -> "")
+--    fdesc <- fontDescriptionFromString (case textviewFont startupPrefs of Just str -> str; Nothing -> "")
 --    fds <- fontDescriptionGetSize fdesc
 --    when (isJust fds) $ do
 --        fontDescriptionSetSize fdesc (fromJust fds + 0.01)
@@ -285,6 +287,13 @@ startGUI sessionFilename iprefs = do
         welcomePath <- getConfigFilePathForLoad $ "welcome.txt"
         reflectIDE (fileOpenThis welcomePath) ideR
     reflectIDE (modifyIDE_ (\ide -> return ide{currentState = IsRunning})) ideR
+
+    timeoutAddFull (do
+        reflectIDE (do
+            currentPrefs <- readIDE prefs
+            when (backgroundBuild currentPrefs) $ packageBuild True) ideR
+        return True) priorityDefaultIdle 100
+
     mainGUI
 
 --

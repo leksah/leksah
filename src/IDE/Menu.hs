@@ -71,11 +71,11 @@ actions =
     ,AD "FileRevert" "_Revert" Nothing Nothing
         fileRevert [] False
     ,AD "FileSave" "_Save" Nothing (Just "gtk-save")
-        (fileSave False) [] False
+        (do fileSave False; return ()) [] False
     ,AD "FileSaveAs" "Save _As" Nothing (Just "gtk-save-as")
-        (fileSave True) [] False
+        (do fileSave True; return ()) [] False
     ,AD "FileSaveAll" "Save A_ll" Nothing Nothing
-        fileSaveAll [] False
+        (do fileSaveAll; return ()) [] False
     ,AD "FileClose" "_Close" Nothing (Just "gtk-close")
         (do fileClose; return ()) [] False
     ,AD "FileCloseAll" "Close All" Nothing Nothing
@@ -147,7 +147,7 @@ actions =
     ,AD "ConfigPackage" "_Configure Package" (Just "Configures the package") (Just "ide_configure")
         packageConfig [] False
     ,AD "BuildPackage" "_Build Package" (Just "Builds the package") (Just "ide_make")
-        packageBuild [] False
+        (packageBuild False) [] False
     ,AD "DocPackage" "_Build Documentation" (Just "Builds the documentation") Nothing
         packageDoc [] False
     ,AD "CleanPackage" "Cl_ean Package" (Just "Cleans the package") Nothing
