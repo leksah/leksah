@@ -260,7 +260,7 @@ packageBuild backgroundBuild = catchIDE (do
                                 let args = (["Setup","build"] ++
                                             if ((not backgroundBuild) || (backgroundLink prefs))
                                                     then []
-                                                    else ["--ghc-options=-c", "--with-ar=/usr/bin/true", "--with-ld=/usr/bin/true"]
+                                                    else ["--ghc-options=-c", "--with-ar=true", "--with-ld=true"]
                                             ++ buildFlags package)
                                 (inp,out,err,pid) <- runExternal "runhaskell" args
                                 oid     <-  forkIO (readOut log out)
