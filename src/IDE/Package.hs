@@ -242,31 +242,15 @@ packageBuild backgroundBuild = catchIDE (do
             Just package    -> do
                 modified <- if (saveAllBeforeBuild prefs) then fileCheckAll else return False
                 when ((not backgroundBuild) || modified) $ do
-#if defined(mingw32_HOST_OS) || defined(__MINGW32__)
-                    maybeProcess <- readIDE buildProcess
-                    alreadyRunning <- liftIO $ do
-                        case maybeProcess of
-                            Just process -> do
-                                maybeExitCode <- getProcessExitCode process
-                                return $ isNothing maybeExitCode
-                            Nothing -> return False
---                    Once we can interupt the build on windows, then something like this might be needed
---                    alreadyRunning <- liftIO $ do
---                        withTh32Snap tH32CS_SNAPPROCESS Nothing (\h -> do
---                            all <- th32SnapEnumProcesses h
---                            currentId <- c_GetCurrentProcessId
---                            return $ not $ null $ filter (\(_, _, parentId, _, _) -> parentId == currentId) all)
-#else
-                    alreadyRunning <- liftIO $ (do
-                        group <- getProcessGroupID
-                        getGroupProcessStatus False False group
-                        return True)
-                        `catch` (\(e :: IOError) -> do
-                            Errno errno <- getErrno
-                            return $ errno /= 10)
-#endif
+                    alreadyRunning <- isRunning
                     if alreadyRunning
-                        then interruptBuild
+                        then do
+                            interruptBuild
+                            when (not backgroundBuild) $ liftIO $ do
+                                timeoutAddFull (do
+                                    reflectIDE (do packageBuild False; return False) ideR
+                                    return False) priorityDefaultIdle 100
+                                return ()
                         else do
                             when (saveAllBeforeBuild prefs) (do fileSaveAll; return ())
                             sb <- getSBErrors
@@ -276,7 +260,7 @@ packageBuild backgroundBuild = catchIDE (do
                                 let args = (["Setup","build"] ++
                                             if ((not backgroundBuild) || (backgroundLink prefs))
                                                     then []
-                                                    else ["--ghc-options=-c"]
+                                                    else ["--ghc-options=-c", "--with-ar=/usr/bin/true", "--with-ld=/usr/bin/true"]
                                             ++ buildFlags package)
                                 (inp,out,err,pid) <- runExternal "runhaskell" args
                                 oid     <-  forkIO (readOut log out)
@@ -474,6 +458,38 @@ chooseDir str = do
 -- ---------------------------------------------------------------------
 -- | Handling of Compiler errors
 --
+isRunning :: IDEM Bool
+#if defined(mingw32_HOST_OS) || defined(__MINGW32__)
+isRunning = do
+    maybeProcess <- readIDE buildProcess
+    liftIO $ do
+        case maybeProcess of
+            Just process -> do
+                maybeExitCode <- getProcessExitCode process
+                return $ isNothing maybeExitCode
+            Nothing -> return False
+--    Once we can interupt the build on windows, then something like this might be needed
+--    alreadyRunning <- liftIO $ do
+--        withTh32Snap tH32CS_SNAPPROCESS Nothing (\h -> do
+--            all <- th32SnapEnumProcesses h
+--            currentId <- c_GetCurrentProcessId
+--            return $ not $ null $ filter (\(_, _, parentId, _, _) -> parentId == currentId) all)
+#else
+isRunning = do
+    ideR <- ask
+    liftIO $ (do
+        group <- getProcessGroupID
+        status <- getGroupProcessStatus False False group
+        putStrLn $ "Status " ++ show status
+        case status of
+            Just _ -> reflectIDE isRunning ideR
+            Nothing -> return True)
+        `catch` (\(e :: IOError) -> do
+            Errno errno <- liftIO $ getErrno
+            putStrLn $ "Error " ++ show errno
+            return $ errno /= 10)
+#endif
+
 interruptBuild :: IDEAction
 #if defined(mingw32_HOST_OS) || defined(__MINGW32__)
 interruptBuild = do
@@ -523,7 +539,7 @@ readErrForBuild backgroundBuild log hndl = do
         line    <-  hGetLine hndl
         tag     <-  case line of
             '[' : _ -> return LogTag
-            _ | "Linking " `isPrefixOf` line -> do
+            _ | "Linking " `isPrefixOf` line || "ar:" `isPrefixOf` line || "ld:" `isPrefixOf` line -> do
                 -- when backgroundBuild $ reflectIDE interruptProcess ideR
                 postGUISync $ reflectIDE (do
                         unmarkErrors
