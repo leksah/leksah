@@ -274,9 +274,9 @@ packageBuild backgroundBuild = catchIDE (do
                             liftIO $statusbarPush sb 1 "Building"
                             reifyIDE (\ideR -> forkIO $ do
                                 let args = (["Setup","build"] ++
-                                            if (backgroundBuild && (useBuildToFlag prefs))
-                                                    then ["--build-to=Compile"]
-                                                    else []
+                                            if ((not backgroundBuild) || (backgroundLink prefs))
+                                                    then []
+                                                    else ["--ghc-options=-c"]
                                             ++ buildFlags package)
                                 (inp,out,err,pid) <- runExternal "runhaskell" args
                                 oid     <-  forkIO (readOut log out)

@@ -165,8 +165,8 @@ data Prefs = Prefs {
     ,   docuSearchURL       ::   String
     ,   completeRestricted  ::   Bool
     ,   saveAllBeforeBuild  ::   Bool
-    ,   useBuildToFlag      ::   Bool
     ,   backgroundBuild     ::   Bool
+    ,   backgroundLink      ::   Bool
 } deriving(Eq,Show)
 
 data SearchHint = Forward | Backward | Insert | Delete | Initial

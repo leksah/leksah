@@ -1,3 +1,4 @@
+{-# LANGUAGE CPP #-}
 {-# OPTIONS_GHC -XScopedTypeVariables -XDeriveDataTypeable -XMultiParamTypeClasses
     -XTypeSynonymInstances #-}
 -----------------------------------------------------------------------------
@@ -430,11 +431,11 @@ prefsDescription packages = NFDPP [
             boolEditor
             (\i -> return ())
          , mkFieldPP
-            (paraName <<<- ParaName "Use --build-to when performing background build" $ emptyParams)
+            (paraName <<<- ParaName "Include linking in background builds" $ emptyParams)
             (PP.text . show)
             boolParser
-            useBuildToFlag
-            (\b a -> a{useBuildToFlag = b})
+            backgroundLink
+            (\b a -> a{backgroundLink = b})
             boolEditor
             (\i -> return ())
     ]),
@@ -503,8 +504,13 @@ defaultPrefs = Prefs {
     ,   docuSearchURL       =   "http://holumbus.fh-wedel.de/hayoo/hayoo.html?query="
     ,   completeRestricted  =   False
     ,   saveAllBeforeBuild  =   True
-    ,   useBuildToFlag      =   False
     ,   backgroundBuild     =   True
+    ,   backgroundLink      =
+#if defined(mingw32_HOST_OS) || defined(__MINGW32__)
+                                False
+#else
+                                True
+#endif
     }
 
 -- ------------------------------------------------------------
