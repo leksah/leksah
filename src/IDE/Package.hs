@@ -54,13 +54,14 @@ import Distribution.Verbosity
 import System.FilePath
 import Control.Concurrent
 import System.Directory
-import System.IO
+    (doesFileExist, setCurrentDirectory, canonicalizePath)
+import System.IO (Handle(..), hClose, hGetLine, hSetBuffering)
 import Prelude hiding (catch)
 import Text.ParserCombinators.Parsec.Language
 import qualified Text.ParserCombinators.Parsec.Token as P
 import Text.ParserCombinators.Parsec hiding(Parser)
 import Data.Maybe (isJust, fromJust)
-import Control.Exception hiding (try)
+import Control.Exception (SomeException(..), catch)
 
 import IDE.Pane.Log
 import Control.Event
@@ -104,6 +105,7 @@ import System.Posix
      getProcessGroupID)
 import System.Posix.Signals (Handler(..))
 import Foreign.C (Errno(..), getErrno)
+import GHC.IOBase (BufferMode(..))
 #endif
 
 packageNew :: IDEAction

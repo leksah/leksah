@@ -338,8 +338,8 @@ moduleFields list ident =
                 $ paraMultiSel <<<- ParaMultiSel False
                     $ paraMinSize <<<- ParaMinSize (300,400)
                         $ emptyParams)
-            (\ a -> [a])
-            (\ [a] b -> a)
+            (\ a -> a)
+            (\ a b -> a)
             (staticListEditor ((nub . sort) list) id)
 
 selectModuleDialog :: [Descr] -> String -> Maybe Descr -> IO (Maybe Descr)

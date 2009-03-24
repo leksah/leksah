@@ -58,8 +58,7 @@ import Graphics.UI.Editor.Composite
 import Distribution.Text (simpleParse, display)
 import MyMissing
 import Graphics.UI.Editor.Parameters
-    (paraMultiSel,
-     paraInnerPadding,
+    (paraInnerPadding,
      paraInnerAlignment,
      paraOuterPadding,
      paraOuterAlignment,
@@ -75,8 +74,8 @@ import Graphics.UI.Editor.Parameters
      paraName,
      getParameterPrim)
 import Graphics.UI.Editor.Simple
-    (intEditor,
-     staticListEditor,
+    (staticListMultiEditor,
+     intEditor,
      boolEditor,
      fileEditor,
      comboSelectionEditor,
@@ -935,7 +934,7 @@ buildTypeEditor para noti = do
         flavors = [Simple, Configure, Make, Custom]
 
 extensionsEditor :: Editor [Extension]
-extensionsEditor p = staticListEditor extensionsL show (paraMultiSel <<<- ParaMultiSel True $ p)
+extensionsEditor = staticListMultiEditor extensionsL show
 
 
 extensionsL :: [Extension]
@@ -1088,7 +1087,7 @@ libraryEditor fp modules numBuildInfos para noti = do
 --moduleEditor modules    =   comboSelectionEditor (map display modules)
 
 modulesEditor :: [ModuleName] -> Editor [String]
-modulesEditor modules   =   staticListEditor (map display modules) id
+modulesEditor modules   =   staticListMultiEditor (map display modules) id
 
 executablesEditor :: Maybe FilePath -> [ModuleName] -> Int -> Editor [Executable']
 executablesEditor fp modules countBuildInfo p =

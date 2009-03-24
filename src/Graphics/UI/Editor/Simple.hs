@@ -23,7 +23,7 @@ module Graphics.UI.Editor.Simple (
 ,   fontEditor
 ,   comboSelectionEditor
 ,   staticListEditor
-,   staticListEditor2
+,   staticListMultiEditor
 ,   multiselectionEditor
 ,   fileEditor
 ,   otherEditor
@@ -391,8 +391,8 @@ multiselectionEditor parameters notifier = do
 -- | Editor for the selection of some elements from a static list of elements in the
 -- | form of a list box with toggle elements
 
-staticListEditor :: (Eq beta) => [beta] -> (beta -> String) -> Editor [beta]
-staticListEditor list showF parameters notifier = do
+staticListMultiEditor :: (Eq beta) => [beta] -> (beta -> String) -> Editor [beta]
+staticListMultiEditor list showF parameters notifier = do
     coreRef <- newIORef Nothing
     mkEditor
         (\widget objs -> do
@@ -405,10 +405,7 @@ staticListEditor list showF parameters notifier = do
                     mapM_ (activateEvent (castToWidget listView) notifier Nothing)
                             [FocusOut,FocusIn]
                     sel <- treeViewGetSelection listView
-                    treeSelectionSetMode sel
-                        (case getParameter paraMultiSel parameters of
-                            True  -> SelectionMultiple
-                            False -> SelectionSingle)
+                    treeSelectionSetMode sel SelectionSingle
                     rendererToggle <- cellRendererToggleNew
                     set rendererToggle [cellToggleActivatable := True]
                     rendererText <- cellRendererTextNew
@@ -465,11 +462,11 @@ staticListEditor list showF parameters notifier = do
 -- | Editor for the selection of some elements from a static list of elements in the
 -- | form of a list box
 
-staticListEditor2 :: (Eq beta) => [beta] -> (beta -> String) -> Editor [beta]
-staticListEditor2 list showF parameters notifier = do
+staticListEditor :: (Eq beta) => [beta] -> (beta -> String) -> Editor beta
+staticListEditor list showF parameters notifier = do
     coreRef <- newIORef Nothing
     mkEditor
-        (\widget objs -> do
+        (\widget obj -> do
             core <- readIORef coreRef
             case core of
                 Nothing  -> do
@@ -499,21 +496,27 @@ staticListEditor2 list showF parameters notifier = do
                     scrolledWindowSetPolicy sw PolicyAutomatic PolicyAutomatic
                     containerAdd widget sw
                     treeSelectionUnselectAll sel
-                    let inds = catMaybes $map (\obj -> elemIndex obj list) objs
-                    mapM_ (\i -> treeSelectionSelectPath sel [i]) inds
+                    let mbInd = elemIndex obj list
+                    case mbInd of
+                        Nothing -> return ()
+                        Just ind -> treeSelectionSelectPath sel [ind]
                     writeIORef coreRef (Just listView)
                 Just listView -> do
                     sel <- treeViewGetSelection listView
                     treeSelectionUnselectAll sel
-                    let inds = catMaybes $map (\obj -> elemIndex obj list) objs
-                    mapM_ (\i -> treeSelectionSelectPath sel [i]) inds)
+                    let mbInd = elemIndex obj list
+                    case mbInd of
+                        Nothing -> return ()
+                        Just ind -> treeSelectionSelectPath sel [ind])
         (do core <- readIORef coreRef
             case core of
                 Nothing -> return Nothing
                 Just listView -> do
                     sel <- treeViewGetSelection listView
-                    treePath <- treeSelectionGetSelectedRows sel
-                    return (Just (map (\[i] -> list !! i) treePath)))
+                    treePaths <- treeSelectionGetSelectedRows sel
+                    case treePaths of
+                        [[i]] -> return (Just (list !! i))
+                        _ -> return Nothing)
         parameters
         notifier
 

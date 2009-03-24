@@ -55,7 +55,6 @@ import Graphics.UI.Editor.MakeEditor (buildEditor,FieldDescription(..),mkField)
 import Graphics.UI.Editor.Parameters (paraMultiSel,Parameter(..),emptyParams,(<<<-),paraName)
 import Graphics.UI.Editor.Simple (boolEditor,okCancelFields,staticListEditor,stringEditor)
 import Graphics.UI.Editor.Basics (eventPaneName,GUIEventSelector(..))
-import MyMissing (forceHead)
 import IDE.Metainfo.Provider (rebuildActiveInfo)
 import qualified System.IO.UTF8 as UTF8  (writeFile)
 
@@ -1026,8 +1025,8 @@ moduleFields list = VFD emptyParams [
             (paraName <<<- ParaName ("Root of the source path")
                 $ paraMultiSel <<<- ParaMultiSel False
                     $ emptyParams)
-            (\a -> [sourceRoot a])
-            (\ a b -> b{sourceRoot = forceHead a "Modules>>moduleFields"})
+            (\a -> sourceRoot a)
+            (\ a b -> b{sourceRoot = a})
             (staticListEditor list id),
         mkField
             (paraName <<<- ParaName ("Is this an exposed library module")

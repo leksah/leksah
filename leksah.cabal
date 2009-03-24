@@ -29,13 +29,12 @@ data-files: LICENSE Readme data/Current.session data/Default.candy
 data-dir: ""
 extra-source-files: Setup.lhs
 extra-tmp-files:
-
 Executable leksah
     if os(windows)
         build-depends: Win32 >=2.2.0.0
     else
         build-depends: unix >=2.3.1.0
-    build-depends: Cabal >=1.6.0.1, base >=4.0.0.0, binary >=0.4.4,
+    build-depends: Cabal ==1.6.0.1, base >=4.0.0.0, binary >=0.4.4,
                    bytestring >=0.9.0.1, containers >=0.2.0.0, directory >=1.0.0.2,
                    filepath >=1.1.0.1, ghc >=6.10.1, glib >=0.10, gtk >=0.10,
                    gtksourceview2 >=0.10.0, mtl >=1.1.0.2, old-time >=1.0.0.1,
@@ -77,4 +76,6 @@ Executable leksah
     hugs-options:
     nhc98-options:
     jhc-options:
+
+
 
