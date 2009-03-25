@@ -132,7 +132,7 @@ handleKeyRelease tree ideR Key{eventKeyName = name, eventModifier = modifier, ev
                     Just column <- treeViewGetColumn tree 0
                     treeViewRowActivated tree treePath column
                     reflectIDE (modifyIDE_ (\ide -> return (ide{currentState = IsRunning}))) ideR
-                    return True
+                    return False
                 _ -> return False
         (_,_,_) -> return False
 handleKeyRelease tree ideR _ = return False
