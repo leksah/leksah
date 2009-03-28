@@ -260,31 +260,70 @@ This is a pre-release of Leksah.
 Installing Leksah
 \end_layout
 
-\begin_layout Enumerate
-You need an installed GHC (Glasgow Haskell Compiler).
- For information about GHC go to 
+\begin_layout Standard
+
+\series bold
+It is a good idea to install everything from sources when using Leksah
+\series default
+.
+ Leksah can then use the output produced while building to give you much
+ better Metadata.
+ You will be able to see the source comments for functions while autocompleting
+ and you will be able to look up the source of functions easily.
+ Sadly, on 
+\series bold
+Windows
+\series default
+ it can be difficult to install GHC and Gtk2Hs from source and you may wish
+ to install both using the binary installers.
+\end_layout
+
+\begin_layout Standard
+If you have any trouble installing please check the Wiki, the mailing list
+ or contact the developers to find a solution.
+ If it is a Leksah problem, then it is important to us and needs to be fixed.
+\end_layout
+
+\begin_layout Standard
+
+\emph on
+In the future we would like to have packages/installers for Linux distributions,
+ Windows and Mac.
+ Please contact us if you can offer help.
+\end_layout
+
+\begin_layout Subsection
+Generic Installation Instructions
+\end_layout
+
+\begin_layout Subsubsection
+Install GHC (Glasgow Haskell Compiler)
+\end_layout
+
+\begin_layout Standard
+At the time of writing Leksah supports only the most current version (6.10.1).
+ For information about installing GHC go to 
 \begin_inset Flex URL
 status open
 
 \begin_layout Plain Layout
 
-www.haskell.org/ghc
+http://haskell.org/ghc
 \end_layout
 
 \end_inset
 
 .
- It is a good idea to install everything with sources, specially when using
- Leksah! 
+ 
 \end_layout
 
-\begin_layout Enumerate
-Install GTK+ and gtk2hs in a version compatible with the version of GHC
- you just installed.
- Gtk2hs can't be installed with cabal install.
- On Linux use a package or compile from source, which should be easy but
- takes some time.
- On Windows use a fitting installer (
+\begin_layout Subsubsection
+Install Gtk2Hs
+\end_layout
+
+\begin_layout Standard
+At the time of writing Leksah supports only the most current version (0.10.0).
+ For information about installing Gtk2Hs got to 
 \begin_inset Flex URL
 status open
 
@@ -295,27 +334,97 @@ http://haskell.org/gtk2hs
 
 \end_inset
 
-), compiling from source should be possible, but is difficult.
- If you compile from source, check that after ./configure the packages gtk,
- glib and gtksourceview2 have a yes, because they are needed by leksah.
-\begin_inset Newline newline
-\end_inset
+.
+ 
+\end_layout
 
-Gtk2hs conditionaly compiles some code dependent of the version of the underlyin
-g Gtk libraries.
+\begin_layout Standard
+If you are planning on installing a newer version, then you will need to
+ make sure it is compatible with the version of GHC you have installed first.
+\end_layout
+
+\begin_layout Standard
+On operating systems with a package manager you may wish to use a source
+ os package and build a binary os package to install.
+ You should be able to prevent the working directory from being cleaned,
+ so it can be used for Leksah's Metadata.
+ Doing this means that other os packages depending on Gtk2Hs can still easily
+ be installed.
+\end_layout
+
+\begin_layout Standard
+If you compile Gtk2Hs manually, check the output of ./configure.
+ At the end it will list the haskell packages that are going to be build.
+ Leksah needs gtk, glib and gtksourceview2.
+\end_layout
+
+\begin_layout Standard
+Gtk2Hs conditionally compiles some code dependent of the version of the
+ underlying Gtk libraries.
  This can cause strange compiler errors when compiling leksah later.
 \end_layout
 
-\begin_layout Enumerate
+\begin_layout Subsubsection
+Install Cabal
+\end_layout
+
+\begin_layout Standard
+At the time of writing Leksah requires at least version 1.6.0.1.
+ For information about installing Gtk2Hs got to 
+\begin_inset Flex URL
+status open
+
+\begin_layout Plain Layout
+
+http://haskell.org/cabal
+\end_layout
+
+\end_inset
+
+.
+ 
+\end_layout
+
+\begin_layout Standard
+On operating systems with package managers you may find that a Cabal package
+ is avaliable.
+ Once again if you want good Metadata for the Cabal functions, try to build
+ binaries on your machine.
+\end_layout
+
+\begin_layout Subsubsection
+Install Leksah
+\end_layout
+
+\begin_layout Standard
 
 \noun on
 Either
 \noun default
-: Download, and build Leksah with cabal install leksah.
- (You have to install the package cabal-install before)
-\begin_inset Newline newline
+: Install cabal-install from 
+\begin_inset Flex URL
+status open
+
+\begin_layout Plain Layout
+
+http://haskell.org/cabal
+\end_layout
+
 \end_inset
 
+.
+ Then run 
+\begin_inset Quotes eld
+\end_inset
+
+cabal install leksah
+\begin_inset Quotes erd
+\end_inset
+
+.
+\end_layout
+
+\begin_layout Standard
 
 \noun on
 Or
@@ -345,9 +454,13 @@ runhaskell configure, runhaskell build, sudo runhaskell install
  Then get the leksah package via hackage and do the same.
 \end_layout
 
+\begin_layout Subsubsection
+Where Things Are Installed
+\end_layout
+
 \begin_layout Standard
-Inside: Leksah installs a an executable in a folder that should be in the
- search path, and a couple of data files in a data folder.
+Leksah installs a an executable in a folder that should be in the search
+ path, and a couple of data files in a data folder.
  These places are chosen by the Cabal package management system and depend
  on the target platform and the way you install.
  On Linux the data folder may be
@@ -361,19 +474,564 @@ For storing preferences, sessions and collected meta-data Leksah constructs
  etc, you can put them in this place.
 \end_layout
 
+\begin_layout Subsection
+OS X (using MacPorts)
+\end_layout
+
 \begin_layout Standard
-If you have any trouble installing Cabal please check the Wiki, the mailing
- list or contact the developers to find a solution.
- For us it is important if it is a Leksah problem and needs to be fixed.
+This is our recommended procedure for installing on OS X at present.
+\end_layout
+
+\begin_layout Subsubsection
+Install MacPorts
+\end_layout
+
+\begin_layout Standard
+Download and install MacPorts by following the instructions on 
+\begin_inset Flex URL
+status open
+
+\begin_layout Plain Layout
+
+http://www.macports.org/install.php
+\end_layout
+
+\end_inset
+
+.
+ Make sure you run 
+\begin_inset Quotes eld
+\end_inset
+
+sudo port -v selfupdate
+\begin_inset Quotes erd
+\end_inset
+
+.
+\end_layout
+
+\begin_layout Subsubsection
+Set Variants To Use Quartz (Optional)
+\end_layout
+
+\begin_layout Standard
+If you want to use the Quartz version of GTK+ (instead of the X11 version)
+ then add the following to /opt/local/etc/macports/variants.conf.
+\end_layout
+
+\begin_layout Standard
+\begin_inset Box Frameless
+position "t"
+hor_pos "c"
+has_inner_box 1
+inner_pos "t"
+use_parbox 1
+width "100col%"
+special "none"
+height "1in"
+height_special "totalheight"
+status open
+
+\begin_layout Plain Layout
+
+\family typewriter
++no_x11
+\end_layout
+
+\begin_layout Plain Layout
+
+\family typewriter
+-x11
+\end_layout
+
+\begin_layout Plain Layout
+
+\family typewriter
++quartz
+\end_layout
+
+\end_inset
+
+
+\end_layout
+
+\begin_layout Standard
+
+\series bold
+\color red
+Warning 1
+\series default
+\color inherit
+ doing this will disable OpenGL support in GTK+ or Gtk2Hs (gtkglext).
+\end_layout
+
+\begin_layout Standard
+
+\series bold
+\color red
+Warning 2
+\series default
+\color inherit
+ for some reason GTK applications when they start will not be in the foreground,
+ instead they will be hidden all your other running applications.
+\end_layout
+
+\begin_layout Subsubsection
+Update Gtk2Hs Portfile (0.9.13 Will Not Work)
+\end_layout
+
+\begin_layout Standard
+At the time of writing the Gtk2Hs Portfile was out of date.
+ Check /opt/local/var/macports/sources/rsync.macports.org/release/ports/devel/gtk2
+hs/Portfile.
+ If says it is for version 0.9.13 of Gtk2Hs then you should replace it with
+ the one attached to this issue 
+\begin_inset Flex URL
+status open
+
+\begin_layout Plain Layout
+
+http://trac.macports.org/ticket/17308
+\end_layout
+
+\end_inset
+
+
+\end_layout
+
+\begin_layout Subsubsection
+Install
+\end_layout
+
+\begin_layout Standard
+Run the following to install leksah.
+ The -k is important it keeps the source and .hi files for use in the Leksah
+ metadata.
+\end_layout
+
+\begin_layout Standard
+\begin_inset Box Frameless
+position "t"
+hor_pos "c"
+has_inner_box 1
+inner_pos "t"
+use_parbox 1
+width "100col%"
+special "none"
+height "1in"
+height_special "totalheight"
+status open
+
+\begin_layout Plain Layout
+
+\family typewriter
+sudo port install gtk2 cairo librsvg libglade2 gtksourceview2 gtkglext gtk-chthe
+me gtk2-clearlooks
+\end_layout
+
+\begin_layout Plain Layout
+
+\family typewriter
+sudo port -k install ghc gtk2hs hs-cabal
+\end_layout
+
+\begin_layout Plain Layout
+
+\family typewriter
+cabal install leksah
+\end_layout
+
+\end_inset
+
+
+\end_layout
+
+\begin_layout Subsubsection
+Make It Look Nice
+\end_layout
+
+\begin_layout Standard
+Run gtk-chtheme and choose one of the Clearlooks themes.
+\end_layout
+
+\begin_layout Subsubsection
+Point Leksah At The Source
+\end_layout
+
+\begin_layout Standard
+Run 
+\begin_inset Quotes eld
+\end_inset
+
+leksah
+\begin_inset Quotes erd
+\end_inset
+
+ and when it asks for 
+\begin_inset Quotes eld
+\end_inset
+
+paths under which haskell source packages may be found
+\begin_inset Quotes erd
+\end_inset
+
+ add the following to the list.
+\end_layout
+
+\begin_layout Standard
+\begin_inset Box Frameless
+position "t"
+hor_pos "c"
+has_inner_box 1
+inner_pos "t"
+use_parbox 1
+width "100col%"
+special "none"
+height "1in"
+height_special "totalheight"
+status open
+
+\begin_layout Plain Layout
+/opt/local/var/macports/build/_opt_local_var_macports_sources_rsync.macports.org_r
+elease_ports_lang_ghc/work/ghc-6.10.1
+\end_layout
+
+\begin_layout Plain Layout
+/opt/local/var/macports/build/_opt_local_var_macports_sources_rsync.macports.org_r
+elease_ports_devel_gtk2hs/work/gtk2hs-0.10.0
+\end_layout
+
+\end_inset
+
+
+\end_layout
+
+\begin_layout Subsection
+Ubuntu (8.10)
+\end_layout
+
+\begin_layout Standard
+Thanks to Sean Chapel for help with this 
+\begin_inset Flex URL
+status collapsed
+
+\begin_layout Plain Layout
+
+http://seanchapel.blogspot.com/2009/03/haskell.html
+\end_layout
+
+\end_inset
+
+.
+\end_layout
+
+\begin_layout Subsubsection
+Install Prerequisites
+\end_layout
+
+\begin_layout Standard
+Open up the package manager and install the following packages:
+\end_layout
+
+\begin_layout Itemize
+glib-devel
+\end_layout
+
+\begin_layout Itemize
+gtksourceview2-devel
+\end_layout
+
+\begin_layout Itemize
+make
+\end_layout
+
+\begin_layout Itemize
+gcc
+\end_layout
+
+\begin_layout Itemize
+g++
+\end_layout
+
+\begin_layout Itemize
+libgmp3-dev
+\end_layout
+
+\begin_layout Subsubsection
+Install GHC (Once 6.10.1 is in the universe repository)
 \end_layout
 
 \begin_layout Standard
 
 \emph on
-In the future we would like to have packages/installers for Linux distributions,
- Windows and Mac.
- Please contact us if you can offer help.
- 
+At the time of writing only 6.8.2 was available in the Ubuntu universe repository.
+\end_layout
+
+\begin_layout Standard
+We recommend building the binary package locally so you have the source
+ ready for use in Leksah.
+ The following should leave you with a copy of the GHC source in the current
+ directory in a state that is ready for use with Leksah.
+\end_layout
+
+\begin_layout Standard
+\begin_inset Box Frameless
+position "t"
+hor_pos "c"
+has_inner_box 1
+inner_pos "t"
+use_parbox 1
+width "100col%"
+special "none"
+height "1in"
+height_special "totalheight"
+status open
+
+\begin_layout Plain Layout
+
+\family typewriter
+sudo apt-get build-dep ghc
+\end_layout
+
+\begin_layout Plain Layout
+
+\family typewriter
+apt-get -b source ghc
+\end_layout
+
+\begin_layout Plain Layout
+
+\family typewriter
+sudo dpkg -i ghc*.deb
+\end_layout
+
+\end_inset
+
+
+\end_layout
+
+\begin_layout Subsubsection
+Instell GHC (Until then install from source)
+\end_layout
+
+\begin_layout Subsubsection
+Install Cabal
+\end_layout
+
+\begin_layout Standard
+\begin_inset Box Frameless
+position "t"
+hor_pos "c"
+has_inner_box 1
+inner_pos "t"
+use_parbox 1
+width "100col%"
+special "none"
+height "1in"
+height_special "totalheight"
+status open
+
+\begin_layout Plain Layout
+
+\family typewriter
+wget http://www.haskell.org/cabal/release/cabal-install-0.6.2/cabal-install-0.6.2.tar.gz
+\end_layout
+
+\begin_layout Plain Layout
+
+\family typewriter
+tar -xvjpf cabal-install-0.6.2.tar.gz
+\end_layout
+
+\begin_layout Plain Layout
+
+\family typewriter
+cd cabal-install-0.6.2
+\end_layout
+
+\begin_layout Plain Layout
+
+\family typewriter
+./bootstrap
+\end_layout
+
+\end_inset
+
+
+\end_layout
+
+\begin_layout Subsubsection
+Install Gtk2Hs
+\end_layout
+
+\begin_layout Standard
+Check the output of ./configure, at the end it should list the haskell packages
+ it is going to build.
+ Leksah needs gtksourcevie, gtk and glib (if you have installed glib-devel
+ and gtksourceview2-devel then these should be enabled).
+ If there are any that are not going to be installed that you would like,
+ then you most likely need to install the corresponding -devel ubuntu package.
+\end_layout
+
+\begin_layout Standard
+\begin_inset Box Frameless
+position "t"
+hor_pos "c"
+has_inner_box 1
+inner_pos "t"
+use_parbox 1
+width "100col%"
+special "none"
+height "1in"
+height_special "totalheight"
+status open
+
+\begin_layout Plain Layout
+
+\family typewriter
+wget http://downloads.sourceforge.net/gtk2hs/gtk2hs-0.10.0.tar.gz
+\end_layout
+
+\begin_layout Plain Layout
+
+\family typewriter
+tar -xvjpf gtk2hs-0.10.0.tar.gz
+\end_layout
+
+\begin_layout Plain Layout
+
+\family typewriter
+cd gtk2hs-0.10.0.tar.gz
+\end_layout
+
+\begin_layout Plain Layout
+
+\family typewriter
+./configure
+\end_layout
+
+\begin_layout Plain Layout
+
+\family typewriter
+make
+\end_layout
+
+\begin_layout Plain Layout
+
+\family typewriter
+sudo make install
+\end_layout
+
+\end_inset
+
+
+\end_layout
+
+\begin_layout Subsubsection
+Add Cabal To Your PATH
+\end_layout
+
+\begin_layout Standard
+Cabal can install packages globally or local to the current user (use --user
+ and --global to select which).
+ We recommend you add the following to your ~/.bash_profile
+\end_layout
+
+\begin_layout Standard
+\begin_inset Box Frameless
+position "t"
+hor_pos "c"
+has_inner_box 1
+inner_pos "t"
+use_parbox 1
+width "100col%"
+special "none"
+height "1in"
+height_special "totalheight"
+status open
+
+\begin_layout Plain Layout
+
+\family typewriter
+PATH=$PATH:/home/sean/.cabal/bin
+\end_layout
+
+\begin_layout Plain Layout
+
+\family typewriter
+export PATH
+\end_layout
+
+\end_inset
+
+
+\end_layout
+
+\begin_layout Standard
+If you change your path you will have to restart X to make it apply automaticall
+y or you can type
+\end_layout
+
+\begin_layout Standard
+\begin_inset Box Frameless
+position "t"
+hor_pos "c"
+has_inner_box 1
+inner_pos "t"
+use_parbox 1
+width "100col%"
+special "none"
+height "1in"
+height_special "totalheight"
+status open
+
+\begin_layout Plain Layout
+
+\family typewriter
+source ~/.bash_profile
+\end_layout
+
+\end_inset
+
+
+\end_layout
+
+\begin_layout Standard
+each time you open a new terminal until you get a chance to restart X.
+\end_layout
+
+\begin_layout Subsubsection
+Install Leksah
+\end_layout
+
+\begin_layout Standard
+\begin_inset Box Frameless
+position "t"
+hor_pos "c"
+has_inner_box 1
+inner_pos "t"
+use_parbox 1
+width "100col%"
+special "none"
+height "1in"
+height_special "totalheight"
+status open
+
+\begin_layout Plain Layout
+
+\family typewriter
+cabal update
+\end_layout
+
+\begin_layout Plain Layout
+
+\family typewriter
+cabal install leksah
+\end_layout
+
+\end_inset
+
+
 \end_layout
 
 \begin_layout Section
@@ -959,6 +1617,41 @@ Completion
 \end_inset
 
 
+\end_layout
+
+\begin_layout Subsection
+Background Build
+\end_layout
+
+\begin_layout Standard
+Leksah can run builds while you work and highlight any errors as it finds
+ them.
+ This works with a timer that runs every 100ms.
+ If there are changes made to any open file it....
+\end_layout
+
+\begin_layout Itemize
+interrupts any running build by sending SIGINT (sadly this step is OSX and
+ Linux only at this point)
+\end_layout
+
+\begin_layout Itemize
+waits for any running build processes to finish
+\end_layout
+
+\begin_layout Itemize
+saves all the modified files
+\end_layout
+
+\begin_layout Itemize
+starts a new build
+\end_layout
+
+\begin_layout Standard
+Because we can't interupt the build on windows there is an option in the
+ Leksah build preferences to have it skip the linking stage in background
+ builds.
+ This reduces the delay before a next build starts.
 \end_layout
 
 \begin_layout Subsection
