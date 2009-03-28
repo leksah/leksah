@@ -304,13 +304,14 @@ getCollectorPath version = liftIO $ do
             return filePath
 
 getSysLibDir :: IO FilePath
-getSysLibDir = do
+getSysLibDir = catch (do
     (_, out, _, pid) <- runInteractiveProcess "ghc" ["--print-libdir"] Nothing Nothing
     libDir <- hGetLine out
     let libDir2 = if ord (last libDir) == 13
                     then List.init libDir
                     else libDir
     return (normalise libDir2)
+    ) $ \ _ -> error ("FileUtils>>getSysLibDir failed")
 
 
 
