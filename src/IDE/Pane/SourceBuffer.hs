@@ -438,11 +438,11 @@ newTextBuffer panePath bn mbfn = do
         widgetShowAll (scrolledWindow buf)
         widgetGrabFocus (sourceView buf)
 -- TODO: patch for windows, maybe we can remove it again
---        fdesc <- fontDescriptionFromString (case textviewFont prefs of Just str -> str; Nothing -> "")
---        fds <- fontDescriptionGetSize fdesc
---        when (isJust fds) $ do
---            fontDescriptionSetSize fdesc (fromJust fds + 0.01)
---            widgetModifyFont (castToWidget $ sourceView buf) (Just fdesc)
+        fdesc <- fontDescriptionFromString (case textviewFont prefs of Just str -> str; Nothing -> "")
+        fds <- fontDescriptionGetSize fdesc
+        when (isJust fds) $ do
+            fontDescriptionSetSize fdesc (fromJust fds + 0.01)
+            widgetModifyFont (castToWidget $ sourceView buf) (Just fdesc)
 -- end patch
     when (isJust mbfn) $ removeRecentlyUsedFile (fromJust mbfn)
     return buf

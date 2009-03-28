@@ -276,12 +276,12 @@ startGUI sessionFilename iprefs = do
             else hideFindbar) ideR
 
 -- TODO: patch for windows, maybe we can remove it again
---    buffers <- reflectIDE allBuffers ideR
---    fdesc <- fontDescriptionFromString (case textviewFont startupPrefs of Just str -> str; Nothing -> "")
---    fds <- fontDescriptionGetSize fdesc
---    when (isJust fds) $ do
---        fontDescriptionSetSize fdesc (fromJust fds + 0.01)
---        mapM_ (\buf -> widgetModifyFont (castToWidget $sourceView buf) (Just fdesc)) buffers
+    buffers <- reflectIDE allBuffers ideR
+    fdesc <- fontDescriptionFromString (case textviewFont startupPrefs of Just str -> str; Nothing -> "")
+    fds <- fontDescriptionGetSize fdesc
+    when (isJust fds) $ do
+        fontDescriptionSetSize fdesc (fromJust fds + 0.01)
+        mapM_ (\buf -> widgetModifyFont (castToWidget $sourceView buf) (Just fdesc)) buffers
 -- end patch
     when isFirstStart $ do
         welcomePath <- getConfigFilePathForLoad $ "welcome.txt"
