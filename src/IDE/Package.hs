@@ -90,12 +90,6 @@ import System.Win32
      withTh32Snap)
 import System.Process.Internals
     (withProcessHandle, ProcessHandle__(..))
-
-foreign import stdcall unsafe "winbase.h GetCurrentProcessId"
-    c_GetCurrentProcessId :: IO DWORD
-
-foreign import stdcall unsafe "winbase.h GetProcessId"
-    c_GetProcessId :: DWORD -> IO DWORD
 #else
 import System.Posix
     (getGroupProcessStatus,
@@ -107,6 +101,14 @@ import System.Posix.Signals (Handler(..))
 import Foreign.C (Errno(..), getErrno)
 #endif
 import GHC.IOBase (BufferMode(..))
+
+#if defined(mingw32_HOST_OS) || defined(__MINGW32__)
+foreign import stdcall unsafe "winbase.h GetCurrentProcessId"
+    c_GetCurrentProcessId :: IO DWORD
+
+foreign import stdcall unsafe "winbase.h GetProcessId"
+    c_GetProcessId :: DWORD -> IO DWORD
+#endif
 
 packageNew :: IDEAction
 packageNew = packageNew' (\fp -> activatePackage fp >> return ())
