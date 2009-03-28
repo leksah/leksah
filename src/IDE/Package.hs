@@ -105,8 +105,8 @@ import System.Posix
      getProcessGroupID)
 import System.Posix.Signals (Handler(..))
 import Foreign.C (Errno(..), getErrno)
-import GHC.IOBase (BufferMode(..))
 #endif
+import GHC.IOBase (BufferMode(..))
 
 packageNew :: IDEAction
 packageNew = packageNew' (\fp -> activatePackage fp >> return ())
