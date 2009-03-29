@@ -151,7 +151,7 @@ actions =
         (packageBuild False) [] False
     ,AD "DocPackage" "_Build Documentation" (Just "Builds the documentation") Nothing
         packageDoc [] False
-    ,AD "CleanPackage" "Cl_ean Package" (Just "Cleans the package") Nothing
+    ,AD "CleanPackage" "Cl_ean Package" (Just "Cleans the package") (Just "ide_clean")
         packageClean [] False
     ,AD "CopyPackage" "_Copy Package" (Just "Copies the package") Nothing
         packageCopy [] False
@@ -258,9 +258,9 @@ actions =
 --    ,AD "HelpDebug2" "Debug2" (Just "<Ctrl>d") Nothing dbgInstalledPackageInfo [] False
     ,AD "HelpAbout" "About" Nothing (Just "gtk-about") aboutDialog [] False
 
-    ,AD "BackgroundBuildToggled" "_BackgroundBuild" (Just "Try to build in thze background and report errors") Nothing
+    ,AD "BackgroundBuildToggled" "_BackgroundBuild" (Just "Build in the background and report errors") (Just "ide_build")
         backgroundBuildToggled [] True
-    ,AD "BackgroundLinkToggled" "_BackgroundLink" (Just "Try to link in the background") Nothing
+    ,AD "BackgroundLinkToggled" "_BackgroundLink" (Just "Link in the background") (Just "ide_link")
         backgroundLinkToggled [] True]
 
 --
@@ -430,7 +430,7 @@ newIcons =
         mapM_ (loadIcon dataDir iconFactory) ["ide_class","ide_configure","ide_data","ide_error_next",
             "ide_error_prev","ide_field","ide_function","ide_instance", "ide_konstructor","ide_make",
             "ide_method","ide_newtype","ide_other","ide_rule","ide_run","ide_slot",
-            "ide_source","ide_type","leksah", "ide_reexported"
+            "ide_source","ide_type","leksah", "ide_reexported", "ide_clean", "ide_link", "ide_build"
             ]
         iconFactoryAddDefault iconFactory)
     (\(e :: SomeException) -> getDataDir >>= \dataDir -> throwIDE ("Can't load icons from " ++ dataDir))
