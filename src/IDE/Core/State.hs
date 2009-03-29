@@ -60,6 +60,11 @@ module IDE.Core.State (
 ,   getStatusbarIO
 ,   getStatusbarLC
 
+,   getBackgroundBuildToggled
+,   setBackgroundBuildToggled
+,   getBackgroundLinkToggled
+,   setBackgroundLinkToggled
+
 ,   getRecentFiles
 ,   getRecentPackages
 ,   controlIsPressed
@@ -404,7 +409,7 @@ closePane pane = do
             removePaneAdmin pane
             modifyIDE_ (\ide -> return ide{recentPanes = filter (/= paneName pane) (recentPanes ide)})
 
--- get widget elements (menu)
+-- get widget elements (menu & toolbar)
 
 getCandyState :: PaneMonad alpha => alpha  (Bool)
 getCandyState = do
@@ -428,6 +433,26 @@ getMenuItem path = do
     case mbWidget of
         Nothing     -> throwIDE ("State.hs>>getMenuItem: Can't find ui path " ++ path)
         Just widget -> return (castToMenuItem widget)
+
+getBackgroundBuildToggled :: PaneMonad alpha => alpha  (Bool)
+getBackgroundBuildToggled = do
+    ui <- getUIAction "ui/toolbar/BuildToolItems/BackgroundBuild" castToToggleAction
+    liftIO $ toggleActionGetActive ui
+
+setBackgroundBuildToggled :: PaneMonad alpha => Bool -> alpha ()
+setBackgroundBuildToggled b = do
+    ui <- getUIAction "ui/toolbar/BuildToolItems/BackgroundBuild" castToToggleAction
+    liftIO $ toggleActionSetActive ui b
+
+getBackgroundLinkToggled :: PaneMonad alpha => alpha  (Bool)
+getBackgroundLinkToggled = do
+    ui <- getUIAction "ui/toolbar/BuildToolItems/BackgroundLink" castToToggleAction
+    liftIO $ toggleActionGetActive ui
+
+setBackgroundLinkToggled :: PaneMonad alpha => Bool -> alpha ()
+setBackgroundLinkToggled b = do
+    ui <- getUIAction "ui/toolbar/BuildToolItems/BackgroundLink" castToToggleAction
+    liftIO $ toggleActionSetActive ui b
 
 getRecentFiles , getRecentPackages :: IDEM MenuItem
 getRecentFiles    = getMenuItem "ui/menubar/_File/_Recent Files"

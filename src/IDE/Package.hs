@@ -42,6 +42,9 @@ module IDE.Package (
 ,   getPackageDescriptionAndPath
 ,   getModuleTemplate
 ,   addModuleToPackageDescr
+
+,   backgroundBuildToggled
+,   backgroundLinkToggled
 ) where
 
 import Graphics.UI.Gtk
@@ -791,3 +794,13 @@ removeRecentlyUsedPackage fp = do
             modifyIDE_ (\ide -> return ide{recentPackages = filter (\e -> e /= fp) recentPackages'})
         ask >>= \ideR -> triggerEvent ideR UpdateRecent
         return ()
+
+backgroundBuildToggled :: IDEAction
+backgroundBuildToggled = do
+    toggled <- getBackgroundBuildToggled
+    modifyIDE_ (\ide -> return (ide{prefs = (prefs ide){backgroundBuild= toggled}}))
+
+backgroundLinkToggled :: IDEAction
+backgroundLinkToggled = do
+    toggled <- getBackgroundLinkToggled
+    modifyIDE_ (\ide -> return (ide{prefs = (prefs ide){backgroundLink= toggled}}))

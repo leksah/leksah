@@ -256,7 +256,12 @@ actions =
             pack <- readIDE activePack
             ideMessage Normal (show pack)) [] False
 --    ,AD "HelpDebug2" "Debug2" (Just "<Ctrl>d") Nothing dbgInstalledPackageInfo [] False
-    ,AD "HelpAbout" "About" Nothing (Just "gtk-about") aboutDialog [] False]
+    ,AD "HelpAbout" "About" Nothing (Just "gtk-about") aboutDialog [] False
+
+    ,AD "BackgroundBuildToggled" "_BackgroundBuild" (Just "Try to build in thze background and report errors") Nothing
+        backgroundBuildToggled [] True
+    ,AD "BackgroundLinkToggled" "_BackgroundLink" (Just "Try to link in the background") Nothing
+        backgroundLinkToggled [] True]
 
 --
 -- | The menu description in XML Syntax as defined by GTK

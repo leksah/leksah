@@ -257,7 +257,10 @@ startGUI sessionFilename iprefs = do
     win `onDelete` (\ _ -> do reflectIDE quit ideR; return True)
     win `onKeyPress` (\ e -> reflectIDE (handleSpecialKeystrokes e) ideR)
     containerAdd win vb
-    reflectIDE (setCandyState (isJust (sourceCandy startupPrefs))) ideR
+    reflectIDE (do
+        setCandyState (isJust (sourceCandy startupPrefs))
+        setBackgroundBuildToggled (backgroundBuild startupPrefs)
+        setBackgroundLinkToggled (backgroundLink startupPrefs)) ideR
     let (x,y)   =   defaultSize startupPrefs
     windowSetDefaultSize win x y
     sessionPath <- getConfigFilePathForLoad sessionFilename

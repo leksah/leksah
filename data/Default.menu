@@ -125,16 +125,18 @@
      </placeholder>
      <placeholder name="BuildToolItems">
        <separator/>
+       <toolitem name="CleanPackage" action="CleanPackage"/>
        <toolitem name="Configure" action="ConfigPackage"/>
        <toolitem name="Build" action="BuildPackage"/>
        <toolitem name="Run" action="RunPackage"/>
        <toolitem name="Next Error" action="NextError"/>
        <toolitem name="Previous Error" action="PreviousError"/>
        <separator/>
-       <separator/>
        <toolitem name="Back" action="ViewHistoryBack"/>
        <toolitem name="Forward" action="ViewHistoryForth"/>
        <separator/>
+       <toolitem name="BackgroundBuild" action="BackgroundBuildToggled"/>
+       <toolitem name="BackgroundLink" action="BackgroundLinkToggled"/>
       </placeholder>
    </toolbar>
    <accelerator name="FlipUp" action="FlipUp"/>
