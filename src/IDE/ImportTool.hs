@@ -41,7 +41,6 @@ import Graphics.UI.Editor.Parameters
      paraName)
 import Graphics.UI.Editor.Basics (eventPaneName,GUIEventSelector(..))
 import IDE.Metainfo.GHCUtils(parseHeader)
-import Outputable (showSDoc,Outputable(..))
 import Data.Maybe (fromJust)
 import RdrName (mkRdrUnqual)
 import OccName (mkDataOcc,mkVarOcc)
@@ -53,18 +52,28 @@ import qualified Text.ParserCombinators.Parsec.Token as  P
     (operator, dot, identifier, symbol, whiteSpace, lexeme,makeTokenParser)
 import Graphics.UI.Editor.Simple (okCancelFields, staticListEditor)
 import Control.Event (registerEvent)
-import Control.Monad (foldM_)
 import Control.Monad.Trans (liftIO)
+import Control.Monad (foldM_, when)
+import Outputable (ppr,showSDoc)
+
+
 
 -- | Add all imports which gave error messages ...
 addAllImports :: IDEAction
 addAllImports = do
+    prefs' <- readIDE prefs
+    let buildInBackground = backgroundBuild prefs'
+    when buildInBackground (
+        modifyIDE_ (\ide -> return (ide{prefs = prefs'{backgroundBuild = False}})))
     errors <- readIDE errors
     foldM_ addThis (True,[])
         [ y | (x,y) <-
             nubBy (\ (p1,_) (p2,_) -> p1 == p2)
                 $ [(x,y) |  (x,y) <- [((parseNotInScope . errDescription) e, e) | e <- errors]],
                                 isJust x]
+    when buildInBackground $
+        modifyIDE_ (\ide -> return (ide{prefs = prefs'{backgroundBuild = True}}))
+
     where
         addThis :: (Bool,[Descr]) -> ErrorSpec -> IDEM (Bool,[Descr])
         addThis c@(False,_) _                =  return c

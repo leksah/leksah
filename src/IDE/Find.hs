@@ -59,7 +59,7 @@ data FindState = FindState {
 
 getFindState :: IDEM FindState
 getFindState = do
-    (fb,ls)      <- needFindbar
+    (fb,ls) <- needFindbar
     liftIO $ do
         lineNr        <- getLineEntry fb >>= (\e -> spinButtonGetValueAsInt (castToSpinButton e))
         replaceStr    <- getReplaceEntry fb >>= (\e -> entryGetText (castToEntry e))
@@ -93,7 +93,6 @@ setFindState fs = do
         setWrapAround fb (wrapAround fs)
         setCaseSensitive fb (caseSensitive fs)
         setBackward fb (backward fs)
-
 
 hideToolbar :: IDEAction
 hideToolbar = do
