@@ -3,11 +3,11 @@
 -----------------------------------------------------------------------------
 --
 -- Module      :  IDE.Pane.ClassHierarchy
--- Copyright   :  (c) Juergen Nicklisch-Franken (aka Jutaro)
+-- Copyright   :  (c) Juergen Nicklisch-Franken, Hamish Mackenzie
 -- License     :  GNU-GPL
 --
--- Maintainer  :  Juergen Nicklisch-Franken <info at leksah.org>
--- Stability   :  experimental
+-- Maintainer  :  <maintainer at leksah.org>
+-- Stability   :  provisional
 -- Portability  :  portable
 --
 -- | The pane of ide where modules are presented in tree form with their

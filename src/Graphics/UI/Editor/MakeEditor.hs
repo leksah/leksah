@@ -1,11 +1,11 @@
 -----------------------------------------------------------------------------
 --
 -- Module      :  Graphics.UI.Editor.MakeEditor
--- Copyright   :  (c) Juergen Nicklisch-Franken (aka Jutaro)
+-- Copyright   :  (c) Juergen Nicklisch-Franken, Hamish Mackenzie
 -- License     :  GNU-GPL
 --
--- Maintainer  :  Juergen Nicklisch-Franken <info at leksah.org>
--- Stability   :  experimental
+-- Maintainer  :  <maintainer at leksah.org>
+-- Stability   :  provisional
 -- Portability :  portable
 --
 -- | Module for making editors out of descriptions

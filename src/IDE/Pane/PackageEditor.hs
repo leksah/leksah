@@ -3,11 +3,11 @@
 -----------------------------------------------------------------------------
 --
 -- Module      :  IDE.Pane.PackageEditor
--- Copyright   :  (c) Juergen Nicklisch-Franken (aka Jutaro)
+-- Copyright   :  (c) Juergen Nicklisch-Franken, Hamish Mackenzie
 -- License     :  GNU-GPL
 --
 -- Maintainer  :  Juergen Nicklisch-Franken <info@leksah.org>
--- Stability   :  experimental
+-- Stability   :  provisional
 -- Portability :  portable
 --
 -- | Module for editing of cabal packages and build infos

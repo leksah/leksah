@@ -3,11 +3,11 @@
 -----------------------------------------------------------------------------
 --
 -- Module      :  IDE.Package
--- Copyright   :  (c) Juergen Nicklisch-Franken (aka Jutaro)
+-- Copyright   :  (c) Juergen Nicklisch-Franken, Hamish Mackenzie
 -- License     :  GNU-GPL
 --
--- Maintainer  :  Juergen Nicklisch-Franken <info at leksah.org>
--- Stability   :  experimental
+-- Maintainer  :  <maintainer at leksah.org>
+-- Stability   :  provisional
 -- Portability :  portable
 --
 --
@@ -582,9 +582,12 @@ readErrForBuild backgroundBuild log hndl = do
             otherwise -> readAndShow ideR False errs)
         (\ (_ :: SomeException) -> do
             hClose hndl
+            let errorNum    =   length (filter isError errs)
+            let warnNum     =   length errs - errorNum
             case errs of
                 [] -> appendLog log "Finished.\n" LogTag
-                _ -> appendLog log ("Finished. " ++ show (length errs) ++ " errors.") LogTag
+                _ -> appendLog log ("Finished. " ++ show errorNum ++ " errors - "
+                                        ++ show warnNum ++ " warnings.") LogTag
             return errs)
 
 selectErr :: Int -> IDEAction

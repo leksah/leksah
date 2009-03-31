@@ -1,10 +1,10 @@
 name: leksah
-version: 0.4.3
+version: 0.4.4
 cabal-version: >=1.4
 build-type: Simple
 license: GPL
 license-file: LICENSE
-copyright: 2007-2009 Jürgen Nicklisch-Franken
+copyright: 2007-2009 Juergen Nicklisch-Franken, Hamish Mackenzie
 maintainer: maintainer@leksah.org
 stability: provisional
 homepage: http://www.leksah.org
@@ -13,7 +13,7 @@ bug-reports: http://code.google.com/p/leksah/issues/list
 synopsis: Haskell IDE written in Haskell
 description: An Integrated Development Environment for Haskell written in Haskell.
 category: Development, IDE, Editor
-author: Jutaro
+author: Juergen Nicklisch-Franken, Hamish Mackenzie
 tested-with: GHC ==6.10.1
 data-files: LICENSE Readme data/Current.session data/Default.candy
             data/Default.keymap data/Default.menu data/Default.prefs

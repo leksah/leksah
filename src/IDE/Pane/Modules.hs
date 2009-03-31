@@ -3,11 +3,11 @@
 -----------------------------------------------------------------------------
 --
 -- Module      :  IDE.Pane.Modules
--- Copyright   :  (c) Juergen Nicklisch-Franken (aka Jutaro)
+-- Copyright   :  (c) Juergen Nicklisch-Franken, Hamish Mackenzie
 -- License     :  GNU-GPL
 --
 -- Maintainer  :  Juergen Nicklisch-Franken <info@leksah.org>
--- Stability   :  experimental
+-- Stability   :  provisional
 -- Portability  :  portable
 --
 -- | The pane of ide where modules are presented in tree form with their

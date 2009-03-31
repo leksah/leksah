@@ -2,11 +2,11 @@
 -----------------------------------------------------------------------------
 --
 -- Module      :  IDE.Metainfo.Provider
--- Copyright   :  (c) Juergen Nicklisch-Franken (aka Jutaro)
+-- Copyright   :  (c) Juergen Nicklisch-Franken, Hamish Mackenzie
 -- License     :  GNU-GPL
 --
--- Maintainer  :  Juergen Nicklisch-Franken <info at leksah.org>
--- Stability   :  experimental
+-- Maintainer  :  <maintainer at leksah.org>
+-- Stability   :  provisional
 -- Portability :  portable
 --
 -- | This module provides the infos collected by the extractor before
