@@ -1,3 +1,4 @@
+{-# LANGUAGE CPP #-}
 {-# OPTIONS_GHC  -XDeriveDataTypeable -XMultiParamTypeClasses -XTypeSynonymInstances -XScopedTypeVariables #-}
 -----------------------------------------------------------------------------
 --
@@ -437,13 +438,6 @@ newTextBuffer panePath bn mbfn = do
     liftIO $do
         widgetShowAll (scrolledWindow buf)
         widgetGrabFocus (sourceView buf)
--- TODO: patch for windows, maybe we can remove it again
-        fdesc <- fontDescriptionFromString (case textviewFont prefs of Just str -> str; Nothing -> "")
-        fds <- fontDescriptionGetSize fdesc
-        when (isJust fds) $ do
-            fontDescriptionSetSize fdesc (fromJust fds + 0.01)
-            widgetModifyFont (castToWidget $ sourceView buf) (Just fdesc)
--- end patch
     when (isJust mbfn) $ removeRecentlyUsedFile (fromJust mbfn)
     return buf
 
@@ -465,6 +459,10 @@ checkModTime buf = do
                             case modTime' of
                                 Nothing ->  throwIDE $"checkModTime: time not set " ++ show (fileName buf)
                                 Just mt -> do
+#if defined(mingw32_HOST_OS) || defined(__MINGW32__)
+                                    -- For some reason evaluating nmt /= mt causes corrupt fonts ?!?
+                                    return False
+#else
                                     --message $"checkModTime " ++ name ++ " " ++ show mt ++ " " ++ show nmt
                                     if nmt /= mt
                                         then do
@@ -485,6 +483,7 @@ checkModTime buf = do
                                                     return True
                                                 _           ->  do return False
                                         else return False
+#endif
                         else return False
                 Nothing -> return False
 
