@@ -5,18 +5,18 @@ This is Leksah, a hopefully practical tool to support the Haskell development pr
 
 Leksah uses GTK+ as GUI Toolkit with the gtk2hs binding. It is plattform independend
 and should run on any plattform where GTK+, gtk2hs and ghc can be installed.
-It is currently been tested on Windows and Linux. It uses the Cabal package management
+It is currently been tested on Linux, Mac and Windows. It uses the Cabal package management
 and build system for Package Management.
 It currently only supports the Glasgow Haskell Compiler (ghc).
 
-Documentation can be found in the doc/ subdirectory.
+Documentation can be found on leksah.org.
 
 System Requirements
 ===================
 
 Leksah currently requires:
     GHC version 6.10.x
-    gtk2hs 0.9.14
+    gtk2hs 0.10.x
     other dependencies see cabal file
 
 Leksah works better if you install GHC and additional packages with sources
