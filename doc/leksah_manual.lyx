@@ -499,15 +499,23 @@ http://www.macports.org/install.php
 \end_inset
 
 .
- Make sure you run 
+\end_layout
+
+\begin_layout Subsubsection
+Update MacPorts
+\end_layout
+
+\begin_layout Standard
+Run 
 \begin_inset Quotes eld
 \end_inset
 
-sudo port -v selfupdate
+sudo port selfupdate
 \begin_inset Quotes erd
 \end_inset
 
 .
+ To make sure you have the latest Portfiles.
 \end_layout
 
 \begin_layout Subsubsection
@@ -576,27 +584,15 @@ Warning 2
  instead they will be hidden all your other running applications.
 \end_layout
 
-\begin_layout Subsubsection
-Update Gtk2Hs Portfile (0.9.13 Will Not Work)
-\end_layout
-
 \begin_layout Standard
-At the time of writing the Gtk2Hs Portfile was out of date.
- Check /opt/local/var/macports/sources/rsync.macports.org/release/ports/devel/gtk2
-hs/Portfile.
- If says it is for version 0.9.13 of Gtk2Hs then you should replace it with
- the one attached to this issue 
-\begin_inset Flex URL
-status open
 
-\begin_layout Plain Layout
-
-http://trac.macports.org/ticket/17308
-\end_layout
-
-\end_inset
-
-
+\series bold
+\color red
+Warning 3
+\series default
+\color inherit
+ if you already have GTK MacPorts packages installed then you need to uninstall
+ and reinstall the packages that support these variants
 \end_layout
 
 \begin_layout Subsubsection
