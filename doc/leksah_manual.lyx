@@ -790,13 +790,13 @@ status open
 \begin_layout Plain Layout
 
 \family typewriter
-sudo apt-get build-dep ghc
+sudo apt-get build-dep ghc6
 \end_layout
 
 \begin_layout Plain Layout
 
 \family typewriter
-apt-get -b source ghc
+apt-get -b source ghc6
 \end_layout
 
 \begin_layout Plain Layout
@@ -812,6 +812,95 @@ sudo dpkg -i ghc*.deb
 
 \begin_layout Subsubsection
 Instell GHC (Until then install from source)
+\end_layout
+
+\begin_layout Standard
+If you have ghc 6.8 installed then we recomend you uninstall it to avoid
+ conflicts.
+\end_layout
+
+\begin_layout Standard
+\begin_inset Box Frameless
+position "t"
+hor_pos "c"
+has_inner_box 1
+inner_pos "t"
+use_parbox 1
+width "100col%"
+special "none"
+height "1in"
+height_special "totalheight"
+status open
+
+\begin_layout Plain Layout
+
+\family typewriter
+sudo apt-get remove ghc6
+\end_layout
+
+\begin_layout Plain Layout
+
+\family typewriter
+sudo apt-get build-dep ghc6
+\end_layout
+
+\begin_layout Plain Layout
+
+\family typewriter
+wget http://www.haskell.org/ghc/dist/6.10.1/ghc-6.10.1-src.tar.bz2
+\end_layout
+
+\begin_layout Plain Layout
+
+\family typewriter
+wget http://www.haskell.org/ghc/dist/6.10.1/ghc-6.10.1-src-extralibs.tar.bz2
+\end_layout
+
+\begin_layout Plain Layout
+
+\family typewriter
+tar xjf ghc-6.10.1-src.tar.bz2
+\end_layout
+
+\begin_layout Plain Layout
+
+\family typewriter
+tar xjf ghc-6.10.1-src-extralibs.tar.bz2
+\end_layout
+
+\begin_layout Plain Layout
+
+\family typewriter
+cd ghc-6.10.1
+\end_layout
+
+\begin_layout Plain Layout
+
+\family typewriter
+./configure --prefix=/home/username/ghc
+\end_layout
+
+\begin_layout Plain Layout
+
+\family typewriter
+make
+\end_layout
+
+\begin_layout Plain Layout
+
+\family typewriter
+make install
+\end_layout
+
+\begin_layout Plain Layout
+
+\family typewriter
+export $PATH=$PATH:/home/username/ghc/bin
+\end_layout
+
+\end_inset
+
+
 \end_layout
 
 \begin_layout Subsubsection
