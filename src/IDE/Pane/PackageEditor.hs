@@ -126,7 +126,7 @@ choosePackageDir window = do
 choosePackageFile :: Window -> IO (Maybe FilePath)
 choosePackageFile window = do
     dialog <- fileChooserDialogNew
-                    (Just $ "Select file of project")
+                    (Just $ "Select .cabal project file")
                     (Just window)
                 FileChooserActionOpen
                 [("gtk-cancel"

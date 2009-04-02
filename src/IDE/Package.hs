@@ -159,7 +159,9 @@ selectActivePackage mbFilePath' = do
                             otherwise   ->  return False
                     else return False
             if wantToLoadSession
-                then triggerEvent ideR (LoadSession (ppath </> "IDE.session")) >> getActivePackage
+                then do
+                    triggerEvent ideR (LoadSession (ppath </> "IDE.session"))
+                    readIDE activePack
                 else activatePackage filePath
 
 activatePackage :: FilePath -> IDEM (Maybe IDEPackage)
@@ -240,7 +242,7 @@ packageConfig = catchIDE (do
 
 packageBuild :: Bool -> IDEAction
 packageBuild backgroundBuild = catchIDE (do
-        mbPackage   <- getActivePackage
+        mbPackage   <- if backgroundBuild then readIDE activePack else getActivePackage
         log         <- getLog
         ideR        <- ask
         prefs       <- readIDE prefs
