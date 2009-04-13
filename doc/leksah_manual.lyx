@@ -506,6 +506,58 @@ http://www.macports.org/install.php
 \end_layout
 
 \begin_layout Subsubsection
+Set up ~/.profile
+\end_layout
+
+\begin_layout Standard
+Add the following to your ~/.profile then open a new terminal window and
+ type 
+\begin_inset Quotes eld
+\end_inset
+
+set
+\begin_inset Quotes erd
+\end_inset
+
+ to make sure it has worked
+\end_layout
+
+\begin_layout Standard
+\begin_inset Box Frameless
+position "t"
+hor_pos "c"
+has_inner_box 1
+inner_pos "t"
+use_parbox 1
+width "100col%"
+special "none"
+height "1in"
+height_special "totalheight"
+status open
+
+\begin_layout Plain Layout
+
+\family typewriter
+export PATH=~/.cabal/bin:/opt/local/bin:$PATH
+\end_layout
+
+\begin_layout Plain Layout
+
+\family typewriter
+export XDG_DATA_DIRS=/opt/local/share
+\end_layout
+
+\end_inset
+
+
+\end_layout
+
+\begin_layout Standard
+XDG_DATA_DIRS is only needed at run time, so if you have already built without
+ it you can just add it now and it should help GTK find the files it needs.
+\end_layout
+
+\begin_layout Subsubsection
 Update MacPorts
 \end_layout
 
@@ -607,6 +659,8 @@ Install
 Run the following to install leksah.
  The -k is important it keeps the source and .hi files for use in the Leksah
  metadata.
+ Do not include gtkglext in the first line if you are building the Quartz
+ version (as it is only supported in X11 builds).
 \end_layout
 
 \begin_layout Standard
@@ -625,9 +679,59 @@ status open
 \begin_layout Plain Layout
 
 \family typewriter
-sudo port install gtk2 cairo librsvg libglade2 gtksourceview2 gtkglext gtk-chthe
-me gtk2-clearlooks
+sudo port install gtk2 cairo librsvg libglade2 gtksourceview2 gtk-chtheme
+ gtk2-clearlooks gtkglext
 \end_layout
+
+\begin_layout Plain Layout
+
+\family typewriter
+pkg-config --modversion gtksourceview-2.0
+\end_layout
+
+\end_inset
+
+
+\end_layout
+
+\begin_layout Standard
+The 
+\family typewriter
+pkg-config
+\family default
+ should output version 
+\family typewriter
+2.4.2
+\family default
+ or greater.
+ If it does not check your 
+\family typewriter
+PATH
+\family default
+ has 
+\family typewriter
+/op/local/bin
+\family default
+ before any other folders with 
+\family typewriter
+pkg-config
+\family default
+.
+ Once this is sorted you can move on to running...
+\end_layout
+
+\begin_layout Standard
+\begin_inset Box Frameless
+position "t"
+hor_pos "c"
+has_inner_box 1
+inner_pos "t"
+use_parbox 1
+width "100col%"
+special "none"
+height "1in"
+height_special "totalheight"
+status open
 
 \begin_layout Plain Layout
 
@@ -641,6 +745,22 @@ sudo port -k install ghc gtk2hs hs-cabal
 cabal install leksah
 \end_layout
 
+\end_inset
+
+
+\end_layout
+
+\begin_layout Standard
+If you have errors at this point it is a good idea to check 
+\begin_inset Quotes eld
+\end_inset
+
+
+\family typewriter
+ghc-pkg list
+\family default
+
+\begin_inset Quotes erd
 \end_inset
 
 
