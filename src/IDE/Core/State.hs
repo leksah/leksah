@@ -20,6 +20,9 @@ module IDE.Core.State (
     IDEObject
 ,   IDEEditor
 ,   IDE(..)
+,   errorRefs
+,   breakpointRefs
+,   contextRefs
 ,   IDEState(..)
 ,   isStartingOrClosing
 ,   IDERef
@@ -64,6 +67,8 @@ module IDE.Core.State (
 ,   setBackgroundBuildToggled
 ,   getBackgroundLinkToggled
 ,   setBackgroundLinkToggled
+,   getDebugToggled
+,   setDebugToggled
 
 ,   getRecentFiles
 ,   getRecentPackages
@@ -100,6 +105,7 @@ import IDE.Exception
 import Control.Event
 import System.IO
 import System.Process (ProcessHandle(..))
+import IDE.Tool (ToolState(..))
 
 -- this should not be repeated here, why is it necessary?
 instance MonadIO Ghc where
@@ -128,7 +134,6 @@ data MessageLevel = Silent | Normal | High
 class IDEObject alpha
 class IDEObject o => IDEEditor o
 
-
 -- ---------------------------------------------------------------------
 -- IDE State
 --
@@ -150,8 +155,10 @@ data IDE            =  IDE {
 ,   candy           ::   CandyTable              -- ^ table for source candy
 ,   prefs           ::   Prefs                   -- ^ configuration preferences
 ,   activePack      ::   Maybe IDEPackage
-,   errors          ::   [ErrorSpec]
-,   currentErr      ::   Maybe Int
+,   allLogRefs      ::   [LogRef]
+,   currentError    ::   Maybe LogRef
+,   currentBreak    ::   Maybe LogRef
+,   currentContext  ::   Maybe LogRef
 ,   accessibleInfo  ::   (Maybe (PackageScope))     -- ^  the world scope
 ,   currentInfo     ::   (Maybe (PackageScope,PackageScope))
                                                 -- ^ the first is for the current package,
@@ -164,8 +171,18 @@ data IDE            =  IDE {
 ,   toolbar         ::   (Bool,Maybe Toolbar)
 ,   recentFiles     ::   [FilePath]
 ,   recentPackages  ::   [FilePath]
-,   buildProcess    ::   Maybe ProcessHandle
+,   runningTool     ::   Maybe ProcessHandle
+,   ghciState       ::   Maybe ToolState
 } --deriving Show
+
+errorRefs :: IDE -> [LogRef]
+errorRefs = (filter ((\t -> t == ErrorRef || t == WarningRef) . logRefType)) . allLogRefs
+
+breakpointRefs :: IDE -> [LogRef]
+breakpointRefs = (filter ((== BreakpointRef) . logRefType)) . allLogRefs
+
+contextRefs :: IDE -> [LogRef]
+contextRefs = (filter ((== ContextRef) . logRefType)) . allLogRefs
 
 data IDEState =
         IsStartingUp
@@ -452,6 +469,16 @@ getBackgroundLinkToggled = do
 setBackgroundLinkToggled :: PaneMonad alpha => Bool -> alpha ()
 setBackgroundLinkToggled b = do
     ui <- getUIAction "ui/toolbar/BuildToolItems/BackgroundLink" castToToggleAction
+    liftIO $ toggleActionSetActive ui b
+
+getDebugToggled :: PaneMonad alpha => alpha  (Bool)
+getDebugToggled = do
+    ui <- getUIAction "ui/toolbar/BuildToolItems/Debug" castToToggleAction
+    liftIO $ toggleActionGetActive ui
+
+setDebugToggled :: PaneMonad alpha => Bool -> alpha ()
+setDebugToggled b = do
+    ui <- getUIAction "ui/toolbar/BuildToolItems/Debug" castToToggleAction
     liftIO $ toggleActionSetActive ui b
 
 getRecentFiles , getRecentPackages :: IDEM MenuItem

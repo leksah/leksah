@@ -57,7 +57,7 @@ module IDE.Pane.SourceBuffer (
 ,   editKeystrokeCandy
 ,   editCandy
 
-,   markErrorInSourceBuf
+,   markRefInSourceBuf
 ,   inBufContext'
 ,   inBufContext
 ,   inActiveBufContext'
@@ -95,6 +95,8 @@ import Data.IORef (writeIORef,readIORef,newIORef,IORef(..))
 import Graphics.UI.Frame.Panes (IDEPane(..))
 import Data.Char (isAlphaNum)
 import Control.Event (triggerEvent)
+import SrcLoc
+    (srcLocCol, srcLocLine, srcSpanEnd, srcSpanStart)
 
 --
 -- | A text editor pane description
@@ -263,29 +265,56 @@ goToSourceDefinition fp mbLocation = do
                 return False) priorityDefaultIdle
             return ()
 
-
-markErrorInSourceBuf :: Int -> IDEBuffer -> Int -> Int -> String -> Bool -> IDEAction
-markErrorInSourceBuf index buf line column string scrollTo =
+markRefInSourceBuf :: Int -> IDEBuffer -> LogRef -> Bool -> IDEAction
+markRefInSourceBuf index buf logRef scrollTo = do
+    contextRefs <- readIDE contextRefs
     inBufContext () buf $ \_ gtkbuf buf _ -> do
+        let tagName = (show $ logRefType logRef) ++ show index
         tagTable <- textBufferGetTagTable gtkbuf
-        mbTag <- textTagTableLookup tagTable ("Err" ++ show index)
+        mbTag <- textTagTableLookup tagTable tagName
         case mbTag of
-            Just tag -> do
+            Just existingTag -> do
                 i1 <- textBufferGetStartIter gtkbuf
                 i2 <- textBufferGetEndIter gtkbuf
-                textBufferRemoveTagByName gtkbuf ("Err" ++ show index) i1 i2
+                textBufferRemoveTagByName gtkbuf tagName i1 i2
             Nothing -> do
-                errtag <- textTagNew (Just $ "Err" ++ show index)
-                set errtag[textTagUnderline := UnderlineError]
+                errtag <- textTagNew (Just tagName)
+                case logRefType logRef of
+                    ErrorRef -> do
+                        set errtag[textTagUnderline := UnderlineError]
+                    WarningRef -> do
+                        set errtag[textTagUnderline := UnderlineError]
+                    BreakpointRef -> do
+                        set errtag[textTagBackground := "yellow"]
+                    ContextRef -> do
+                        set errtag[textTagBackground := "pink"]
                 textTagTableAdd tagTable errtag
 
+        let start = srcSpanStart (logRefSrcSpan logRef)
+        let end   = srcSpanEnd   (logRefSrcSpan logRef)
+
         lines   <-  textBufferGetLineCount gtkbuf
-        iter    <-  textBufferGetIterAtLine gtkbuf (max 0 (min (lines-1) (line-1)))
+        iter    <-  textBufferGetIterAtLine gtkbuf (max 0 (min (lines-1) ((srcLocLine start)-1)))
         chars   <-  textIterGetCharsInLine iter
-        textIterSetLineOffset iter (max 0 (min (chars-1) column))
-        iter2 <- textIterCopy iter
-        textIterForwardWordEnd iter2
-        textBufferApplyTagByName gtkbuf ("Err" ++ show index) iter iter2
+        textIterSetLineOffset iter (max 0 (min (chars-1) (srcLocCol start)))
+
+        iter2 <- if start == end
+            then do
+                copy <- textIterCopy iter
+                textIterForwardWordEnd copy
+                return copy
+            else do
+                new    <-  textBufferGetIterAtLine gtkbuf (max 0 (min (lines-1) ((srcLocLine end)-1)))
+                chars   <-  textIterGetCharsInLine iter
+                textIterSetLineOffset new (max 0 (min (chars-1) (srcLocCol end)))
+                textIterForwardChar new
+                return new
+
+        let latest = if null contextRefs then Nothing else Just $ last contextRefs
+        let isOldContext = case (logRefType logRef, latest) of
+                                (ContextRef, Just ctx) | ctx /= logRef -> True
+                                _ -> False
+        unless isOldContext $ textBufferApplyTagByName gtkbuf tagName iter iter2
         when scrollTo $ textBufferPlaceCursor gtkbuf iter
         mark <- textBufferGetInsert gtkbuf
         when scrollTo $ do
@@ -293,6 +322,7 @@ markErrorInSourceBuf index buf line column string scrollTo =
                 textViewScrollToMark (sourceView buf) mark 0.3 Nothing
                 return False) priorityDefaultIdle
             return ()
+        when (isOldContext && scrollTo) $ textBufferSelectRange gtkbuf iter iter2
 
 allBuffers :: IDEM [IDEBuffer]
 allBuffers = getPanes

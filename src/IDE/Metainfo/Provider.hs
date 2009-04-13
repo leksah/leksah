@@ -23,7 +23,6 @@ module IDE.Metainfo.Provider (
 ,   initInfo
 ,   updateAccessibleInfo
 ,   infoForActivePackage
-,   mayRebuildInBackground
 ,   rebuildActiveInfo
 ,   searchMeta
 ,   rebuildLibInfo
@@ -47,8 +46,6 @@ import qualified Data.Set as Set
 import Data.Map (Map)
 import qualified Data.ByteString.Char8 as BS
 import qualified Data.ByteString.Lazy as BSL
-import System.Process (ProcessHandle(..),getProcessExitCode)
-import System.Glib.MainLoop(timeoutAddFull,priorityDefaultIdle)
 import Control.Monad.Reader(ask)
 import Distribution.Version
 import Distribution.ModuleName
@@ -272,34 +269,8 @@ infoForActivePackage  = do
 
 
 --
--- | Builds the current info for the activePackage in the background
---   If a process handle is given, it waits for this process to finish before building
+-- | Builds the current info for the activePackage
 --
-mayRebuildInBackground :: Maybe ProcessHandle -> IDEAction
-mayRebuildInBackground mbHandle = reifyIDE $ \ ideR  ->
-    let
-        myRebuild :: IO Bool
-        myRebuild =
-            case mbHandle of
-                Just hdl -> do
-                    mbExitCode  <-  getProcessExitCode hdl
-                    case mbExitCode of
-                        --process not finished, wait for next call
-                        Nothing ->  return True
-                        Just _  ->  doIt
-                Nothing -> doIt
-        doIt :: IO Bool
-        doIt = do
-                reflectIDE (do
-                    errs <- readIDE errors
-                    when (length (filter isError errs) == 0) $ do
-                        ideMessage Normal "Update meta info for active package"
-                        setInfo buildActiveInfo) ideR
-                return False
-    in do
-        timeoutAddFull myRebuild priorityDefaultIdle 500
-        return ()
-
 rebuildActiveInfo :: IDEAction
 rebuildActiveInfo       =   setInfo buildActiveInfo
 

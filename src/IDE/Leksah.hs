@@ -210,8 +210,10 @@ startGUI sessionFilename iprefs = do
           ,   candy         =   candySt
           ,   prefs         =   startupPrefs
           ,   activePack    =   Nothing
-          ,   errors        =   []
-          ,   currentErr    =   Nothing
+          ,   allLogRefs    =   []
+          ,   currentError  =   Nothing
+          ,   currentBreak  =   Nothing
+          ,   currentContext     =   Nothing
           ,   accessibleInfo     =   Nothing
           ,   currentInfo   =   Nothing
           ,   handlers      =   Map.empty
@@ -221,7 +223,8 @@ startGUI sessionFilename iprefs = do
           ,   toolbar       =   (True,Nothing)
           ,   recentFiles     =   []
           ,   recentPackages  =   []
-          ,   buildProcess    =   Nothing
+          ,   runningTool     =   Nothing
+          ,   ghciState       =   Nothing
     }
     ideR        <-  newIORef ide
     menuDescription' <- menuDescription

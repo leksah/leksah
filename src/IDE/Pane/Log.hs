@@ -31,7 +31,7 @@ import IDE.Core.State
 import Graphics.UI.Gtk
 import Graphics.UI.Gtk.Gdk.Events
 import Control.Monad.Trans (liftIO)
-import IDE.Pane.SourceBuffer (markErrorInSourceBuf,selectSourceBuf)
+import IDE.Pane.SourceBuffer (markRefInSourceBuf,selectSourceBuf)
 import System.IO
 import Prelude hiding (catch)
 import Control.Exception hiding (try)
@@ -114,6 +114,12 @@ initLog panePath nb = do
         activeErrtag <- textTagNew (Just "activeErr")
         set activeErrtag[textTagBackground := "yellow"]
         textTagTableAdd tags activeErrtag
+        intputTag <- textTagNew (Just "input")
+        set intputTag[textTagForeground := "blue"]
+        textTagTableAdd tags intputTag
+        infoTag <- textTagNew (Just "info")
+        set infoTag[textTagForeground := "grey"]
+        textTagTableAdd tags infoTag
 
         textViewSetEditable tv True
         fd           <- case logviewFont prefs of
@@ -142,46 +148,47 @@ initLog panePath nb = do
 
 clicked :: Event -> IDELog -> IDEAction
 clicked (Button _ SingleClick _ _ _ _ LeftButton x y) ideLog = do
-    errors'     <-  readIDE errors
+    logRefs'     <-  readIDE allLogRefs
     line' <- liftIO $ do
         (x,y)       <-  widgetGetPointer (textView ideLog)
         (_,y')      <-  textViewWindowToBufferCoords (textView ideLog) TextWindowWidget (x,y)
         (iter,_)    <-  textViewGetLineAtY (textView ideLog) y'
         textIterGetLine iter
     case filter (\(es,_) -> fst (logLines es) <= (line'+1) && snd (logLines es) >= (line'+1))
-            (zip errors' [0..(length errors')]) of
-        [(thisErr,n)] -> do
-            mbBuf <- selectSourceBuf (filePath thisErr)
+            (zip logRefs' [0..(length logRefs')]) of
+        [(thisRef,n)] -> do
+            mbBuf <- selectSourceBuf (filePath thisRef)
             case mbBuf of
-                Just buf -> markErrorInSourceBuf n buf (line thisErr) (column thisErr)
-                        (errDescription thisErr) True
+                Just buf -> markRefInSourceBuf n buf thisRef True
                 Nothing -> return ()
             log :: IDELog <- getLog
-            liftIO $ markErrorInLog log (logLines thisErr)
-            modifyIDE_ (\ide -> return (ide{currentErr = Just n}))
+            liftIO $ markErrorInLog log (logLines thisRef)
+            case logRefType thisRef of
+                BreakpointRef -> modifyIDE_ (\ide -> return (ide{currentBreak = Just thisRef}))
+                _             -> modifyIDE_ (\ide -> return (ide{currentError = Just thisRef}))
         otherwise   -> return ()
 clicked (Button _ SingleClick _ _ _ _ RightButton x y) ideLog = do
-    errors'     <-  readIDE errors
+    logRefs'    <-  readIDE allLogRefs
     line'       <-  reifyIDE $ \ideR  ->  do
         (x,y)       <-  widgetGetPointer (textView ideLog)
         (_,y')      <-  textViewWindowToBufferCoords (textView ideLog) TextWindowWidget (x,y)
         (iter,_)    <-  textViewGetLineAtY (textView ideLog) y'
         textIterGetLine iter
     case filter (\(es,_) -> fst (logLines es) <= (line'+1) && snd (logLines es) >= (line'+1))
-            (zip errors' [0..(length errors')]) of
-        [(thisErr,n)] -> reifyIDE $ \ideR  ->  do
+            (zip logRefs' [0..(length logRefs')]) of
+        [(thisRef,n)] -> reifyIDE $ \ideR  ->  do
             theMenu         <-  menuNew
             item0           <-  menuItemNewWithLabel "Add all imports"
             item0 `onActivateLeaf` do
                 reflectIDE addAllImports ideR
             menuShellAppend theMenu item0
-            case parseNotInScope (errDescription thisErr) of
+            case parseNotInScope (refDescription thisRef) of
                 Nothing   -> do
                     return ()
                 Just _  -> do
                     item1   <-  menuItemNewWithLabel "Add import"
                     item1 `onActivateLeaf` do
-                        reflectIDE (addImport thisErr [] >> return()) ideR
+                        reflectIDE (addImport thisRef [] >> return()) ideR
                     menuShellAppend theMenu item1
             menuPopup theMenu Nothing
             widgetShowAll theMenu
@@ -218,23 +225,26 @@ appendLog' l@(IDELog tv _) string tag = do
     textBufferSelectRange buf iter iter
     textBufferInsert buf iter string
     iter2 <- textBufferGetEndIter buf
-    case tag of
-        LogTag   -> return ()
-        ErrorTag -> do
+    let tagName = case tag of
+                    LogTag   -> Nothing
+                    ErrorTag -> Just "err"
+                    FrameTag -> Just "frame"
+                    InputTag -> Just "input"
+                    InfoTag  -> Just "info"
+
+    case tagName of
+        Nothing   -> return ()
+        Just name -> do
             len   <- textBufferGetCharCount buf
             strti <- textBufferGetIterAtOffset buf (len - length string)
-            textBufferApplyTagByName buf "err" iter2 strti
-        FrameTag -> do
-            len   <- textBufferGetCharCount buf
-            strti <- textBufferGetIterAtOffset buf (len - length string)
-            textBufferApplyTagByName buf "frame" iter2 strti
+            textBufferApplyTagByName buf name iter2 strti
+
     textBufferMoveMarkByName buf "end" iter2
     mbMark <- textBufferGetMark buf "end"
     line   <- textIterGetLine iter2
     case mbMark of
         Nothing   -> return ()
         Just mark -> textViewScrollMarkOnscreen tv mark
-    bringPaneToFront l
     return line
 
 markErrorInLog' :: IDELog -> (Int,Int) -> IO ()
@@ -260,7 +270,7 @@ clearLog = do
     log <- getLog
     buf <- liftIO$ textViewGetBuffer $textView log
     liftIO $textBufferSetText buf ""
-    modifyIDE_ (\ide -> return (ide{errors = [], currentErr = Nothing}))
+    modifyIDE_ (\ide -> return (ide{allLogRefs = [], currentError = Nothing, currentBreak = Nothing}))
 
 
 

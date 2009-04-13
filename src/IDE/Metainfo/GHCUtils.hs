@@ -77,7 +77,7 @@ findFittingPackages dependencyList = do
                 then [maximumBy (\a b -> compare (pkgVersion a) (pkgVersion b)) filtered]
                 else filtered
 
-parseHeader :: FilePath -> String -> IDEM (Maybe [LImportDecl RdrName])
+parseHeader :: FilePath -> String -> IDEM (Maybe (HsModule RdrName))
 parseHeader fp str = do
     activePack' <- readIDE activePack
     case activePack' of
@@ -98,7 +98,7 @@ parseHeader fp str = do
                 stringBuffer  <-  hGetStringBuffer fp
                 parseResult   <-  myParseModuleHeader dynFlags fp (Just stringBuffer)
                 case parseResult of
-                    Right (L _ mod) -> return (Just (hsmodImports mod))
+                    Right (L _ mod) -> return (Just mod)
                     Left errMsg         -> do
                         sysMessage Normal $ "Failed to parse " ++ fp
                         printBagOfErrors defaultDynFlags (unitBag errMsg)

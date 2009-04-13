@@ -29,7 +29,11 @@ module IDE.Core.Types (
 
 ,   Prefs(..)
 
-,   ErrorSpec(..)
+,   LogRefType(..)
+,   LogRef(..)
+,   filePath
+,   isError
+,   isBreakpoint
 
 ,   PackageDescr(..)
 ,   ModuleDescr(..)
@@ -96,6 +100,8 @@ import qualified Data.ByteString.Char8 as BS  (unpack,empty)
 import Data.ByteString.Char8 (ByteString)
 import MyMissing
 import Data.Typeable (Typeable(..))
+import SrcLoc (SrcSpan(..))
+import FastString (unpackFS)
 
 -- ---------------------------------------------------------------------
 -- IDEPackages
@@ -178,14 +184,26 @@ instance Ord Modifier
 --
 -- | Other types
 --
-data ErrorSpec = ErrorSpec {
-    filePath            ::   FilePath
-,   line                ::   Int
-,   column              ::   Int
-,   errDescription      ::   String
+data LogRefType = WarningRef | ErrorRef | BreakpointRef | ContextRef deriving (Eq, Show)
+
+data LogRef = LogRef {
+    logRefSrcSpan       ::   SrcSpan
+,   refDescription      ::   String
 ,   logLines            ::   (Int,Int)
-,   isError             ::   Bool
-}   deriving Show
+,   logRefType          ::   LogRefType
+}   deriving (Eq)
+
+filePath :: LogRef -> FilePath
+filePath = unpackFS . srcSpanFile. logRefSrcSpan
+
+isError :: LogRef -> Bool
+isError = (== ErrorRef) . logRefType
+
+isBreakpoint :: LogRef -> Bool
+isBreakpoint = (== BreakpointRef) . logRefType
+
+isContext :: LogRef -> Bool
+isContext = (== ContextRef) . logRefType
 
 -- ---------------------------------------------------------------------
 --  | Information about the world, extraced from .hi and maybe source files
@@ -399,7 +417,7 @@ type SpecialKeyTable alpha  =   Map (KeyVal,[Modifier]) (Map (KeyVal,[Modifier])
 
 type SpecialKeyCons  alpha  =   Maybe ((Map (KeyVal,[Modifier]) (ActionDescr alpha)),String)
 
-data LogTag = LogTag | ErrorTag | FrameTag
+data LogTag = LogTag | ErrorTag | FrameTag | InputTag | InfoTag
 
 -- | the first one is the new and the second the old state
 type GUIHistory = (GUIHistory', GUIHistory')

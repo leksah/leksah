@@ -26,8 +26,6 @@ module IDE.Package (
 ,   packageClean
 ,   packageCopy
 ,   packageRun
-,   nextError
-,   previousError
 ,   activatePackage
 ,   deactivatePackage
 ,   getActivePackage
@@ -45,6 +43,9 @@ module IDE.Package (
 
 ,   backgroundBuildToggled
 ,   backgroundLinkToggled
+
+,   debugStart
+,   debugToggled
 ) where
 
 import Graphics.UI.Gtk
@@ -57,28 +58,25 @@ import Distribution.Verbosity
 import System.FilePath
 import Control.Concurrent
 import System.Directory
-    (doesFileExist, setCurrentDirectory, canonicalizePath)
-import System.IO (Handle(..), hClose, hGetLine, hSetBuffering)
+    (doesFileExist, setCurrentDirectory)
 import Prelude hiding (catch)
-import Text.ParserCombinators.Parsec.Language
-import qualified Text.ParserCombinators.Parsec.Token as P
-import Text.ParserCombinators.Parsec hiding(Parser)
 import Data.Maybe (isJust, fromJust)
 import Control.Exception (SomeException(..), catch)
 
-import IDE.Pane.Log
 import Control.Event
 import IDE.Core.State
 import IDE.Pane.PackageEditor
 import IDE.Pane.SourceBuffer
 import IDE.Pane.PackageFlags
-import IDE.Metainfo.Provider
 import Distribution.Text (display)
 import IDE.FileUtils (getConfigFilePathForLoad)
+import IDE.LogRef
+import IDE.Debug
 import MyMissing (replace)
 import Distribution.ModuleName (ModuleName(..))
-import Data.List (isPrefixOf, foldl')
+import Data.List (foldl')
 import qualified System.IO.UTF8 as UTF8  (readFile)
+import IDE.Tool (ToolOutput(..), runTool, newGhci, ToolState(..))
 
 #if defined(mingw32_HOST_OS) || defined(__MINGW32__)
 import System.Process (getProcessExitCode, ProcessHandle(..))
@@ -103,7 +101,10 @@ import System.Posix
 import System.Posix.Signals (Handler(..))
 import Foreign.C (Errno(..), getErrno)
 #endif
-import GHC.IOBase (BufferMode(..))
+-- Leave at least one import ofter this #endif
+-- so the auto import tool does not add stuf insied the
+import IDE.Metainfo.Provider
+    (rebuildActiveInfo)
 
 #if defined(mingw32_HOST_OS) || defined(__MINGW32__)
 foreign import stdcall unsafe "winbase.h GetCurrentProcessId"
@@ -217,15 +218,12 @@ deactivatePackage = do
 packageConfig :: IDEAction
 packageConfig = catchIDE (do
         mbPackage   <- getActivePackage
-        log         <- getLog
         case mbPackage of
             Nothing         -> return ()
             Just package    -> do
                 mbPackageD  <- reifyIDE (\ideR ->  catch (do
-                    (inp,out,err,pid) <- runExternal "runhaskell" (["Setup","configure"]
-                                                    ++ (configFlags package))
-                    oid <- forkIO(readOut log out)
-                    eid <- forkIO (readErr log err)
+                    reflectIDE (runExternalTool "Configuring" "runhaskell" (["Setup","configure"]
+                                                    ++ (configFlags package)) logOutput) ideR
                     pd  <- readPackageDescription normal (cabalFile package)
                     return (Just (flattenPackageDescription pd)))
                     (\(e :: SomeException) -> do
@@ -240,178 +238,163 @@ packageConfig = catchIDE (do
                     Nothing -> return ())
         (\(e :: SomeException) -> putStrLn (show e))
 
+runExternalTool :: String -> FilePath -> [String] -> ([ToolOutput] -> IDEAction) -> IDEAction
+runExternalTool description executable args handleOutput = do
+        prefs          <- readIDE prefs
+        alreadyRunning <- isRunning
+        unless alreadyRunning $ do
+            when (saveAllBeforeBuild prefs) (do fileSaveAll; return ())
+            sb <- getSBErrors
+            liftIO $statusbarPop sb 1
+            liftIO $statusbarPush sb 1 description
+            reifyIDE (\ideR -> forkIO $ do
+                (output, pid) <- runTool executable args
+                reflectIDE (do
+                    modifyIDE_ (\ide -> return ide{runningTool = Just pid})
+                    handleOutput output) ideR)
+            return ()
+
+runCabalBuild :: Bool -> IDEPackage -> IDEAction
+runCabalBuild backgroundBuild package = do
+        prefs       <- readIDE prefs
+        let args = (["Setup","build"] ++
+                    if ((not backgroundBuild) || (backgroundLink prefs))
+                            then []
+                            else ["--ghc-options=-c", "--with-ar=true", "--with-ld=true"]
+                    ++ buildFlags package)
+        runExternalTool "Building" "runhaskell" args $ \output -> do
+            logOutputForBuild backgroundBuild output
+            errs <- readIDE errorRefs
+            when ((not backgroundBuild)
+                && (collectAfterBuild prefs)
+                && (not (any isError errs))) $ do
+                    ideMessage Normal "Update meta info for active package"
+                    rebuildActiveInfo
+
 packageBuild :: Bool -> IDEAction
 packageBuild backgroundBuild = catchIDE (do
         mbPackage   <- if backgroundBuild then readIDE activePack else getActivePackage
-        log         <- getLog
         ideR        <- ask
         prefs       <- readIDE prefs
         case mbPackage of
             Nothing         -> return ()
             Just package    -> do
-                modified <- if (saveAllBeforeBuild prefs) then fileCheckAll else return False
+                modified <- if saveAllBeforeBuild prefs then fileCheckAll else return False
                 when ((not backgroundBuild) || modified) $ do
-                    alreadyRunning <- isRunning
-                    if alreadyRunning
-                        then do
-                            interruptBuild
-                            when (not backgroundBuild) $ liftIO $ do
-                                timeoutAddFull (do
-                                    reflectIDE (do packageBuild False; return False) ideR
-                                    return False) priorityDefaultIdle 100
-                                return ()
-                        else do
-                            when (saveAllBeforeBuild prefs) (do fileSaveAll; return ())
-                            sb <- getSBErrors
-                            liftIO $statusbarPop sb 1
-                            liftIO $statusbarPush sb 1 "Building"
-                            reifyIDE (\ideR -> forkIO $ do
-                                let args = (["Setup","build"] ++
-                                            if ((not backgroundBuild) || (backgroundLink prefs))
-                                                    then []
-                                                    else ["--ghc-options=-c", "--with-ar=true", "--with-ld=true"]
-                                            ++ buildFlags package)
-                                (inp,out,err,pid) <- runExternal "runhaskell" args
-                                oid     <-  forkIO (readOut log out)
-                                hSetBuffering err NoBuffering
-                                eid     <-  forkIO (reflectIDE (readErrForBuild backgroundBuild log err) ideR)
-                                reflectIDE (modifyIDE_ (\ide -> return ide{buildProcess = Just pid})) ideR
-                                when ((not backgroundBuild) && (collectAfterBuild prefs)) $ reflectIDE (mayRebuildInBackground (Just pid)) ideR
-                                return ())
-                            return ())
+                    maybeGhci <- readIDE ghciState
+                    case maybeGhci of
+                        Nothing -> do
+                            alreadyRunning <- isRunning
+                            if alreadyRunning
+                                then do
+                                    interruptBuild
+                                    when (not backgroundBuild) $ liftIO $ do
+                                        timeoutAddFull (do
+                                            reflectIDE (do packageBuild False; return False) ideR
+                                            return False) priorityDefaultIdle 100
+                                        return ()
+                                else runCabalBuild backgroundBuild package
+                        Just ghci -> do
+                            ready <- liftIO $ isEmptyMVar (currentToolCommand ghci)
+                            when ready $ do
+                                when (saveAllBeforeBuild prefs) (do fileSaveAll; return ())
+                                executeDebugCommand ":reload" $ logOutputForBuild backgroundBuild
+        )
         (\(e :: SomeException) -> putStrLn (show e))
 
 packageDoc :: IDEAction
 packageDoc = catchIDE (do
         mbPackage   <- getActivePackage
-        log         <- getLog
         case mbPackage of
             Nothing         -> return ()
-            Just package    -> liftIO $do
-                (inp,out,err,pid) <- runExternal "runhaskell" (["Setup","haddock"]
-                                                ++ (haddockFlags package))
-                oid <- forkIO (readOut log out)
-                eid <- forkIO (readErr log err)
-                return ())
+            Just package    -> runExternalTool "Documenting" "runhaskell" (["Setup","haddock"]
+                                                ++ (haddockFlags package)) logOutput)
         (\(e :: SomeException) -> putStrLn (show e))
 
 packageClean :: IDEAction
 packageClean = do
     mbPackage   <- getActivePackage
-    log         <- getLog
     case mbPackage of
         Nothing         -> return ()
-        Just package    -> liftIO $do
-            (inp,out,err,pid) <- runExternal "runhaskell" ["Setup","clean"]
-            oid <- forkIO (readOut log out)
-            eid <- forkIO (readErr log err)
-            return ()
+        Just package    -> runExternalTool "Cleaning" "runhaskell" ["Setup","clean"] logOutput
 
 packageCopy :: IDEAction
 packageCopy = catchIDE (do
         mbPackage   <- getActivePackage
-        log         <- getLog
         mbDir       <- chooseDir "Select the target directory"
         case mbDir of
             Nothing -> return ()
             Just fp ->
                 case mbPackage of
                     Nothing         -> return ()
-                    Just package    -> liftIO $ do
-                        (inp,out,err,pid) <- runExternal "runhaskell" (["Setup","copy"]
-                                                ++ ["--destdir=" ++ fp])
-                        oid <- forkIO (readOut log out)
-                        eid <- forkIO (readErr log err)
-                        return ())
+                    Just package    -> runExternalTool "Copying" "runhaskell" (["Setup","copy"]
+                                                ++ ["--destdir=" ++ fp]) logOutput)
         (\(e :: SomeException) -> putStrLn (show e))
 
 packageRun :: IDEAction
 packageRun = catchIDE (do
+        ideR        <- ask
         mbPackage   <- getActivePackage
-        log         <- getLog
+        maybeGhci   <- readIDE ghciState
         case mbPackage of
             Nothing         -> return ()
-            Just package    -> liftIO $do
-                pd <- readPackageDescription normal (cabalFile package) >>= return . flattenPackageDescription
-                case executables pd of
-                    [(Executable name _ _)] -> do
-                        let path = "dist/build" </> name </> name
-                        (inp,out,err,pid) <- runExternal path (exeFlags package)
-                        oid <- forkIO (readOut log out)
-                        eid <- forkIO (readErr log err)
-                        return ()
-                    otherwise -> do
-                        sysMessage Normal "no single executable in selected package"
-                        return ())
+            Just package    -> do
+                case maybeGhci of
+                    Nothing -> do
+                        pd <- liftIO $ readPackageDescription normal (cabalFile package) >>= return . flattenPackageDescription
+                        case executables pd of
+                            [(Executable name _ _)] -> do
+                                let path = "dist/build" </> name </> name
+                                runExternalTool ("Running "++name) path (exeFlags package) logOutput
+                            otherwise -> do
+                                sysMessage Normal "no single executable in selected package"
+                                return ()
+                    Just ghci -> do
+                        executeDebugCommand (":main " ++ (unwords (exeFlags package))) logOutput)
         (\(e :: SomeException) -> putStrLn (show e))
 
 packageInstall :: IDEAction
 packageInstall = catchIDE (do
         mbPackage   <- getActivePackage
-        log         <- getLog
         case mbPackage of
             Nothing         -> return ()
-            Just package    -> liftIO $ do
-                (inp,out,err,pid) <- runExternal "runhaskell" (["Setup","install"]
-                                                ++ (installFlags package))
-                oid <- forkIO (readOut log out)
-                eid <- forkIO (readErr log err)
-                return ())
+            Just package    -> runExternalTool "Installing" "runhaskell" (["Setup","install"]
+                                                ++ (installFlags package)) logOutput)
         (\(e :: SomeException) -> putStrLn (show e))
 
 packageRegister :: IDEAction
 packageRegister = catchIDE (do
         mbPackage   <- getActivePackage
-        log         <- getLog
         case mbPackage of
             Nothing         -> return ()
-            Just package    -> liftIO $do
-                (inp,out,err,pid) <- runExternal "runhaskell" (["Setup","register"]
-                                                ++ (registerFlags package))
-                oid <- forkIO (readOut log out)
-                eid <- forkIO (readErr log err)
-                return ())
+            Just package    -> runExternalTool "Registering" "runhaskell" (["Setup","register"]
+                                                ++ (registerFlags package)) logOutput)
         (\(e :: SomeException) -> putStrLn (show e))
 
 packageUnregister :: IDEAction
 packageUnregister = catchIDE (do
     mbPackage   <- getActivePackage
-    log         <- getLog
     case mbPackage of
         Nothing         -> return ()
-        Just package    -> liftIO $do
-            (inp,out,err,pid) <- runExternal "runhaskell" (["Setup","unregister"]
-                                            ++ (unregisterFlags package))
-            oid <- forkIO (readOut log out)
-            eid <- forkIO (readErr log err)
-            return ())
+        Just package    -> runExternalTool "Unregistering" "runhaskell" (["Setup","unregister"]
+                                            ++ (unregisterFlags package)) logOutput)
         (\(e :: SomeException) -> putStrLn (show e))
 
 packageTest :: IDEAction
 packageTest = catchIDE (do
         mbPackage   <- getActivePackage
-        log         <- getLog
         case mbPackage of
             Nothing         -> return ()
-            Just package    -> liftIO $do
-                (inp,out,err,pid) <- runExternal "runhaskell" (["Setup","test"])
-                oid <- forkIO (readOut log out)
-                eid <- forkIO (readErr log err)
-                return ())
+            Just package    -> runExternalTool "Testing" "runhaskell" (["Setup","test"]) logOutput)
         (\(e :: SomeException) -> putStrLn (show e))
 
 packageSdist :: IDEAction
 packageSdist = catchIDE (do
         mbPackage   <- getActivePackage
-        log         <- getLog
         case mbPackage of
             Nothing         -> return ()
-            Just package    -> liftIO $do
-                (inp,out,err,pid) <- runExternal "runhaskell" (["Setup","sdist"]
-                                                ++ (sdistFlags package))
-                oid <- forkIO (readOut log out)
-                eid <- forkIO (readErr log err)
-                return ())
+            Just package    -> runExternalTool "Source Dist" "runhaskell" (["Setup","sdist"]
+                                                ++ (sdistFlags package)) logOutput)
         (\(e :: SomeException) -> putStrLn (show e))
 
 
@@ -419,7 +402,6 @@ packageOpenDoc :: IDEAction
 packageOpenDoc = catchIDE (do
         mbPackage   <- getActivePackage
         prefs       <- readIDE prefs
-        log         <- getLog
         case mbPackage of
             Nothing         -> return ()
             Just package    ->
@@ -428,11 +410,7 @@ packageOpenDoc = catchIDE (do
                                 </> display (pkgName (packageId package))
                                 </> display (pkgName (packageId package))
                                 </> "index.html"
-                in liftIO $do
-                (inp,out,err,pid) <- runExternal (browser prefs) [path]
-                oid <- forkIO (readOut log out)
-                eid <- forkIO (readErr log err)
-                return ())
+                in runExternalTool "Opening Documentation" (browser prefs) [path] logOutput)
         (\(e :: SomeException) -> putStrLn (show e))
 
 
@@ -470,7 +448,7 @@ chooseDir str = do
 isRunning :: IDEM Bool
 #if defined(mingw32_HOST_OS) || defined(__MINGW32__)
 isRunning = do
-    maybeProcess <- readIDE buildProcess
+    maybeProcess <- readIDE runningTool
     liftIO $ do
         case maybeProcess of
             Just process -> do
@@ -489,13 +467,13 @@ isRunning = do
     liftIO $ (do
         group <- getProcessGroupID
         status <- getGroupProcessStatus False False group
-        putStrLn $ "Status " ++ show status
+        -- putStrLn $ "Status " ++ show status
         case status of
             Just _ -> reflectIDE isRunning ideR
             Nothing -> return True)
         `catch` (\(e :: IOError) -> do
             Errno errno <- liftIO $ getErrno
-            putStrLn $ "Error " ++ show errno
+            -- putStrLn $ "Error " ++ show errno
             return $ errno /= 10)
 #endif
 
@@ -503,7 +481,7 @@ interruptBuild :: IDEAction
 #if defined(mingw32_HOST_OS) || defined(__MINGW32__)
 interruptBuild = do
     -- I can't get this to work
-    --maybeProcess <- readIDE buildProcess
+    --maybeProcess <- readIDE runningTool
     --liftIO $ do
     --    processGroupId <- case maybeProcess of
     --        Just h -> do
@@ -527,193 +505,6 @@ interruptBuild = liftIO $ do
     installHandler sigINT old_int Nothing
     return ()
 #endif
-
-readErrForBuild :: Bool -> IDELog -> Handle -> IDEAction
-readErrForBuild backgroundBuild log hndl = do
-    ideRef <- ask
-    errs <- liftIO $readAndShow ideRef False []
-    unmarkErrors
-    modifyIDE_ (\ide -> return (ide{errors = reverse errs, currentErr = Nothing}))
-    markErrors
-    triggerEvent ideRef (Sensitivity [(SensitivityError,not (null errs))])
-    sb <- getSBErrors
-    let errorNum    =   length (filter isError errs)
-    let warnNum     =   length errs - errorNum
-    liftIO $statusbarPop sb 1
-    liftIO $statusbarPush sb 1 $show errorNum ++ " Errors, " ++ show warnNum ++ " Warnings"
-    when ((not backgroundBuild) && (not (null errs))) nextError
-    where
-    readAndShow :: IDERef -> Bool -> [ErrorSpec] -> IO [ErrorSpec]
-    readAndShow ideR inError errs = catch (do
-        line    <-  hGetLine hndl
-        tag     <-  case line of
-            '[' : _ -> return LogTag
-            _ | "Linking " `isPrefixOf` line || "ar:" `isPrefixOf` line || "ld:" `isPrefixOf` line -> do
-                -- when backgroundBuild $ reflectIDE interruptProcess ideR
-                postGUISync $ reflectIDE (do
-                        unmarkErrors
-                        modifyIDE_ (\ide -> return (ide{errors = reverse errs, currentErr = Nothing}))
-                        markErrors
-                    ) ideR
-                return LogTag
-            _ -> return ErrorTag
-        let parsed  =  parse buildLineParser "" line
-        lineNr <- appendLog log (line ++ "\n") tag
-        case (parsed, errs) of
-            (Left e,_) -> do
-                sysMessage Normal (show e)
-                readAndShow ideR False errs
-            (Right ne@(ErrorLine fp l c str),_) ->
-                readAndShow ideR True ((ErrorSpec fp l c str (lineNr,lineNr) True):errs)
-            (Right (OtherLine str1),(ErrorSpec fp i1 i2 str (l1,l2) isError):tl) ->
-                if inError
-                    then readAndShow ideR True ((ErrorSpec fp i1 i2
-                                            (if null str
-                                                then line
-                                                else str ++ "\n" ++ line)
-                                            (l1,lineNr) isError) : tl)
-                    else readAndShow ideR False errs
-            (Right (WarningLine str1),(ErrorSpec fp i1 i2 str (l1,l2) isError):tl) ->
-                if inError
-                    then readAndShow ideR True ((ErrorSpec fp i1 i2
-                                            (if null str
-                                                then line
-                                                else str ++ "\n" ++ line)
-                                            (l1,lineNr) False) : tl)
-                    else readAndShow ideR False errs
-            otherwise -> readAndShow ideR False errs)
-        (\ (_ :: SomeException) -> do
-            hClose hndl
-            let errorNum    =   length (filter isError errs)
-            let warnNum     =   length errs - errorNum
-            case errs of
-                [] -> appendLog log "Finished.\n" LogTag
-                _ -> appendLog log ("Finished. " ++ show errorNum ++ " errors - "
-                                        ++ show warnNum ++ " warnings.") LogTag
-            return errs)
-
-selectErr :: Int -> IDEAction
-selectErr index = do
-    errors <- readIDE errors
-    if length errors < index + 1
-        then return ()
-        else do
-            let thisErr = errors !! index
-            mbBuf <- selectSourceBuf (filePath thisErr)
-            case mbBuf of
-                Just buf -> markErrorInSourceBuf index buf (line thisErr) (column thisErr)
-                        (errDescription thisErr) True
-                Nothing -> return ()
-            log :: IDELog <- getLog
-            liftIO $ markErrorInLog log (logLines thisErr)
-
-forOpenErrors :: (Int -> ErrorSpec -> IDEBuffer -> IDEAction) -> IDEAction
-forOpenErrors f = do
-    errors  <- readIDE errors
-    allBufs <- allBuffers
-    forM_ [0 .. ((length errors)-1)] (\index -> do
-        let error = errors !! index
-        fpc <- liftIO $ canonicalizePath $ filePath error
-        forM_ (filter (\buf -> case (fileName buf) of
-                Just fn -> equalFilePath fpc fn
-                Nothing -> False) allBufs) (f index error))
-
-markErrors :: IDEAction
-markErrors = do
-    forOpenErrors (\index error buf -> do
-        markErrorInSourceBuf index buf (line error) (column error)
-                        (errDescription error) False
-        return())
-
-unmarkErrors :: IDEAction
-unmarkErrors = do
-    forOpenErrors (\index error buf -> liftIO $ do
-            gtkbuf  <-  textViewGetBuffer (sourceView buf)
-            i1      <-  textBufferGetStartIter gtkbuf
-            i2      <-  textBufferGetEndIter gtkbuf
-            textBufferRemoveTagByName gtkbuf ("Err" ++ show index)  i1 i2)
-
-nextError :: IDEAction
-nextError = do
-    errs <- readIDE errors
-    currentErr <- readIDE currentErr
-    if null errs
-        then return ()
-        else do
-            case currentErr of
-                Nothing -> do
-                    modifyIDE_ (\ide -> return (ide{currentErr = Just 0}))
-                    selectErr 0
-                Just n | (n + 1) < length errs -> do
-                    modifyIDE_ (\ide -> return (ide{currentErr = Just (n + 1)}))
-                    selectErr (n + 1)
-                Just n  -> selectErr n
-
-previousError :: IDEAction
-previousError = do
-    errs <- readIDE errors
-    currentErr <- readIDE currentErr
-    if null errs
-        then return ()
-        else do
-            case currentErr of
-                Nothing -> do
-                    modifyIDE_ (\ide -> return (ide{currentErr = Just (length errs - 1)}))
-                    selectErr (length errs - 1)
-                Just n | n > 0 -> do
-                    modifyIDE_ (\ide -> return (ide{currentErr = Just (n - 1)}))
-                    selectErr (n - 1)
-                otherwise -> selectErr 0
-
-data BuildError =   BuildLine
-                |   EmptyLine
-                |   ErrorLine FilePath Int Int String
-                |   WarningLine String
-                |   OtherLine String
-
-buildLineParser :: CharParser () BuildError
-buildLineParser = try (do
-        char '['
-        integer
-        symbol "of"
-        integer
-        char '['
-        many (anyChar)
-        return BuildLine)
-    <|> try (do
-        filePath <- many (noneOf ":")
-        char ':'
-        line <- integer
-        char ':'
-        column <- integer
-        char ':'
-        whiteSpace
-        text <- many anyChar
-        return (ErrorLine filePath (fromIntegral line) (fromIntegral column) text))
-    <|> try (do
-        whiteSpace
-        eof
-        return EmptyLine)
-    <|> try (do
-        whiteSpace
-        symbol "Warning:"
-        text <- many anyChar
-        return (WarningLine ("Warning:" ++ text)))
-    <|> try (do
-        text <- many anyChar
-        eof
-        return (OtherLine text))
-    <?> "buildLineParser"
-
-
-lexer = P.makeTokenParser emptyDef
-lexeme = P.lexeme lexer
-whiteSpace = P.whiteSpace lexer
-hexadecimal = P.hexadecimal lexer
-symbol = P.symbol lexer
-identifier = P.identifier lexer
-colon = P.colon lexer
-integer = P.integer lexer
 
 -- ---------------------------------------------------------------------
 -- | * Utility functions/procedures, that have to do with packages
@@ -809,3 +600,48 @@ backgroundLinkToggled :: IDEAction
 backgroundLinkToggled = do
     toggled <- getBackgroundLinkToggled
     modifyIDE_ (\ide -> return (ide{prefs = (prefs ide){backgroundLink= toggled}}))
+
+-- ---------------------------------------------------------------------
+-- | * Debug gode that needs to use the package
+--
+
+debugStart :: IDEAction
+debugStart = catchIDE (do
+        ideRef      <- ask
+        mbPackage   <- getActivePackage
+        case mbPackage of
+            Nothing         -> return ()
+            Just package    -> do
+                maybeGhci <- readIDE ghciState
+                case maybeGhci of
+                    Nothing -> do
+                        ghci <- reifyIDE $ \ideR -> newGhci (buildFlags package) $ \output ->
+                            reflectIDE (logOutputForBuild True output) ideR
+                        modifyIDE_ (\ide -> return ide {ghciState = Just ghci})
+
+                        -- Fork a thread to wait for the output from the process to close
+                        liftIO $ forkIO $ do
+                            readMVar (outputClosed ghci)
+                            reflectIDE (do
+                                modifyIDE_ (\ide -> return ide {ghciState = Nothing})
+                                -- Kick of a build if one is not already due
+                                modified <- fileCheckAll
+                                prefs <- readIDE prefs
+                                when ((not modified) && (backgroundBuild prefs)) $ do
+                                    mbPackage   <- readIDE activePack
+                                    case mbPackage of
+                                        Just package -> runCabalBuild True package
+                                        Nothing -> return ()) ideRef
+                        return ()
+                    _ -> do
+                        sysMessage Normal "Debugger already running"
+                        return ())
+        (\(e :: SomeException) -> putStrLn (show e))
+
+debugToggled :: IDEAction
+debugToggled = do
+    toggled <- getDebugToggled
+    if toggled
+        then debugStart
+        else debugQuit
+

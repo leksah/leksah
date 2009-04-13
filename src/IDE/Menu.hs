@@ -57,6 +57,8 @@ import IDE.Metainfo.Provider (rebuildLibInfo,rebuildActiveInfo)
 import IDE.Pane.Info (showInfo)
 import IDE.NotebookFlipper
 import IDE.ImportTool (addAllImports)
+import IDE.LogRef
+import IDE.Debug
 
 --
 -- | The Actions known to the system (they can be activated by keystrokes or menus)
@@ -177,6 +179,77 @@ actions =
     ,AD "OpenDocPackage" "_Open Doc" Nothing Nothing
         packageOpenDoc [] False
 
+    ,AD "Debug" "_Debug" Nothing Nothing (return ()) [] False
+    ,AD "StartDebugger" "_Start Debugger" (Just "Starts using the GHCi debugger for build and run") Nothing
+        debugStart [] False
+    ,AD "QuitDebugger" "_Quit Debugger" (Just "Quit the GHCi debugger if it is running") Nothing
+        debugQuit [] False
+    ,AD "ExecuteSelection" "_Execute Selection" (Just "Sends the selected text to the debugger") Nothing
+        debugExecuteSelection [] False
+
+    ,AD "DebugSetBreakpoint" "Set Breakpoint" (Just "Set a breakpoint on the selected name or current line") Nothing
+        debugSetBreakpoint [] False
+    ,AD "ShowNextBreakpoint" "Show Next Breakpoint" (Just "Show the next breakpoint") Nothing
+        nextBreakpoint [] False
+    ,AD "ShowPreviousBreakpoint" "Show Previous Breakpoint" (Just "Show the previous breakpoint") Nothing
+        previousBreakpoint [] False
+    ,AD "DebugDeleteAllBreakpoints" "Delete All Breakpoints" (Just "") Nothing
+        debugDeleteAllBreakpoints [] False
+
+    ,AD "DebugContinue" "Continue" (Just "Resume after a breakpoint") Nothing
+        debugContinue [] False
+    ,AD "DebugAbandon" "Abandon" (Just "At a breakpoint, abandon current computation") Nothing
+        debugAbandon [] False
+    ,AD "DebugStop" "Stop" (Just "Interrupt the running operation.") Nothing
+        debugStop [] False
+
+    ,AD "DebugStep" "Step" (Just "Single-step after stopping at a breakpoint") Nothing
+        debugStep [] False
+    ,AD "DebugStepExpression" "Step Expression" (Just "Single-step into selected expression") Nothing
+        debugStepExpression [] False
+    ,AD "DebugStepLocal" "Step Local" (Just "Single-step within the current top-level binding") Nothing
+        debugStepLocal [] False
+    ,AD "DebugStepModule" "Step Module" (Just "Single-step restricted to the current module") Nothing
+        debugStepModule [] False
+
+    ,AD "DebugTrace" "Trace" (Just "Trace after stopping at a breakpoint") Nothing
+        debugTrace [] False
+    ,AD "DebugTraceExpression" "Trace Expression" (Just "Evaluate the selected expression with tracing on") Nothing
+        debugTraceExpression [] False
+    ,AD "DebugHistory" "History" (Just "After 'Trace', show the execution history") Nothing
+        debugHistory [] False
+    ,AD "DebugBack" "Back" (Just "Go back in the history (after 'Trace')") Nothing
+        debugBack [] False
+    ,AD "DebugForward" "Forward" (Just "Go forward in the history (after 'Back')") Nothing
+        debugForward [] False
+
+    ,AD "DebugForce" "Force" (Just "Print the selected expression, forcing unevaluated parts") Nothing
+        debugForce [] False
+    ,AD "DebugPrint" "Print" (Just "Prints a value without forcing its computation") Nothing
+        debugPrint [] False
+    ,AD "DebugSimplePrint" "SimplePrint" (Just "Simplifed version of Print") Nothing
+        debugSimplePrint [] False
+
+    ,AD "ShowBindings" "Show Bin_dings" (Just "Show the current bindings") Nothing
+        debugShowBindings [] False
+    ,AD "ShowBreakpoints" "Show _Breakpoints" (Just "Show the active breakpoints") Nothing
+        debugShowBreakpoints [] False
+    ,AD "ShowContext" "Show _Context" (Just "Show the breakpoint context") Nothing
+        debugShowContext [] False
+    ,AD "ShowLoadedModules" "Show Loaded _Modules" (Just "Show the currently loaded modules") Nothing
+        debugShowModules [] False
+    ,AD "ShowPackages" "Show _Packages" (Just "Show the currently active packages") Nothing
+        debugShowPackages [] False
+    ,AD "ShowLanguages" "Show _Languages" (Just "Show the currently active language") Nothing
+        debugShowLanguages [] False
+
+    ,AD "DebugInformation" "Information" (Just "Display information about the selected name(s)") Nothing
+        debugInformation [] False
+    ,AD "DebugKind" "Kind" (Just "Show the kind of the selected type") Nothing
+        debugKind [] False
+    ,AD "DebugType" "Type" (Just "Show the type of the selected expression") Nothing
+        debugType [] False
+
     ,AD "Metadata" "_Metadata" Nothing Nothing (return ()) [] False
     ,AD "UpdateMetadataCurrent" "_Update Project" Nothing Nothing
         rebuildActiveInfo [] False
@@ -261,7 +334,9 @@ actions =
     ,AD "BackgroundBuildToggled" "_BackgroundBuild" (Just "Build in the background and report errors") (Just "ide_build")
         backgroundBuildToggled [] True
     ,AD "BackgroundLinkToggled" "_BackgroundLink" (Just "Link in the background") (Just "ide_link")
-        backgroundLinkToggled [] True]
+        backgroundLinkToggled [] True
+    ,AD "DebugToggled" "_Debug" (Just "Use GHCi debuggr to build and run") (Just "ide_build")
+        debugToggled [] True]
 
 --
 -- | The menu description in XML Syntax as defined by GTK

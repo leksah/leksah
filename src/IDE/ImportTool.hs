@@ -65,42 +65,39 @@ addAllImports = do
     let buildInBackground = backgroundBuild prefs'
     when buildInBackground (
         modifyIDE_ (\ide -> return (ide{prefs = prefs'{backgroundBuild = False}})))
-    errors <- readIDE errors
+    errors <- readIDE errorRefs
     foldM_ addThis (True,[])
         [ y | (x,y) <-
             nubBy (\ (p1,_) (p2,_) -> p1 == p2)
-                $ [(x,y) |  (x,y) <- [((parseNotInScope . errDescription) e, e) | e <- errors]],
+                $ [(x,y) |  (x,y) <- [((parseNotInScope . refDescription) e, e) | e <- errors]],
                                 isJust x]
     when buildInBackground $
         modifyIDE_ (\ide -> return (ide{prefs = prefs'{backgroundBuild = True}}))
 
     where
-        addThis :: (Bool,[Descr]) -> ErrorSpec -> IDEM (Bool,[Descr])
+        addThis :: (Bool,[Descr]) -> LogRef -> IDEM (Bool,[Descr])
         addThis c@(False,_) _                =  return c
         addThis c@(True,descrList) errorSpec =  addImport errorSpec descrList
 
 -- | Add import for current error ...
 addOneImport :: IDEAction
 addOneImport = do
-    errors'     <- readIDE errors
-    currentErr' <- readIDE currentErr
+    errors'     <- readIDE errorRefs
+    currentErr' <- readIDE currentError
     case currentErr' of
         Nothing -> do
             ideMessage Normal $ "No error selected"
             return ()
-        Just i -> do
-            if  0 <= i && i < length errors'
-                then let error = errors' !! i
-                     in addImport error [] >> return ()
-                else error "Log>>addOneImport: Error out of range"
+        Just ref -> do
+            addImport ref [] >> return ()
 
 -- | Add one missing import
 -- Returns a boolean, if the process should be stopped in case of multiple addition
 -- Returns a list of already added descrs, so that it will not be added two times and can
 -- be used for default selection
-addImport :: ErrorSpec -> [Descr] -> IDEM (Bool, [Descr])
+addImport :: LogRef -> [Descr] -> IDEM (Bool, [Descr])
 addImport error descrList =
-    case parseNotInScope (errDescription error) of
+    case parseNotInScope (refDescription error) of
         Nothing -> return (True,descrList)
         Just nis -> do
             currentInfo' <- readIDE currentInfo
@@ -144,7 +141,7 @@ addImport' nis filePath descr descrList =  do
                      Nothing            -> do
                         ideMessage Normal ("Can't parse module header " ++ filePath)
                         return (False, descrList)
-                     Just imports ->
+                     Just HsModule{ hsmodImports = imports } ->
                         case filter qualifyAsImportStatement imports of
                             []     ->   let newLine  =  showSDoc (ppr newImpDecl) ++ "\n"
                                             lastLoc = foldr max noSrcSpan (map getLoc imports)
