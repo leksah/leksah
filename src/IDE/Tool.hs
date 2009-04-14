@@ -225,9 +225,9 @@ newGhci buildFlags startupOutputHandler = do
             ToolCommand (":set prompt " ++ ghciPrompt) startupOutputHandler
         putStrLn "Working out GHCi options"
         forkIO $ do
-            (output, pid) <- runTool "runhaskell" (["Setup","build","--with-ghc=echo"] ++ buildFlags)
+            (output, pid) <- runTool "runhaskell" (["Setup","build","--with-ghc=leksahecho"] ++ buildFlags)
             case catMaybes $ map (findMake.line) output of
-                [options] -> do
+                options:_ -> do
                         putStrLn options
                         putStrLn "Starting GHCi"
                         runInteractiveTool tool getGhciOutput "ghci" (words options)

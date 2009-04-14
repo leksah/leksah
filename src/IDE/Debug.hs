@@ -69,6 +69,7 @@ import System.Win32
      withTh32Snap)
 import System.Process.Internals
     (withProcessHandle, ProcessHandle__(..))
+import Control.Concurrent.MVar (tryTakeMVar)
 #else
 import System.Posix
     (sigINT,
@@ -91,6 +92,14 @@ import IDE.Metainfo.GHCUtils (parseHeader)
 import GHC (moduleNameString, unLoc, HsModule(..))
 import IDE.Pane.Log (appendLog)
 import Data.List (isSuffixOf)
+
+#if defined(mingw32_HOST_OS) || defined(__MINGW32__)
+foreign import stdcall unsafe "winbase.h GetCurrentProcessId"
+    c_GetCurrentProcessId :: IO DWORD
+
+foreign import stdcall unsafe "winbase.h GetProcessId"
+    c_GetProcessId :: DWORD -> IO DWORD
+#endif
 
 executeDebugCommand :: String -> ([ToolOutput] -> IDEAction) -> IDEAction
 executeDebugCommand command handler = do
@@ -161,7 +170,7 @@ debugAbandon :: IDEAction
 debugAbandon = debugCommand ":abandon" logOutput
 
 debugBack :: IDEAction
-debugBack = debugCommand ":back" logOutput
+debugBack = debugCommand ":back" logOutputForHistoricContext
 
 debugStop :: IDEAction
 #if defined(mingw32_HOST_OS) || defined(__MINGW32__)
@@ -169,8 +178,8 @@ debugStop = do
     maybeGhci <- readIDE ghciState
     case maybeGhci of
         Just ghci -> do
-            maybeProcess <- tryTakeMVar (toolProcess maybeGhci)
             liftIO $ do
+                maybeProcess <- tryTakeMVar (toolProcess ghci)
                 processGroupId <- case maybeProcess of
                     Just h -> do
                         withProcessHandle h (\h2 -> do
@@ -184,6 +193,7 @@ debugStop = do
                 putStrLn $ show processGroupId
                 generateConsoleCtrlEvent cTRL_BREAK_EVENT processGroupId
                 installHandler old
+                return ()
         Nothing -> return ()
 #else
 debugStop = do
@@ -216,7 +226,7 @@ debugForward :: IDEAction
 debugForward = debugCommand ":forward" logOutputForHistoricContext
 
 debugHistory :: IDEAction
-debugHistory = debugCommand ":history" logOutputForHistoricContext
+debugHistory = debugCommand ":history" logOutput
 
 debugPrint :: IDEAction
 debugPrint = do

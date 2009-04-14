@@ -78,5 +78,31 @@ Executable leksah
     nhc98-options:
     jhc-options:
 
+Executable leksahecho
+    build-depends:
+    main-is: LeksahEcho.hs
+    buildable: True
+    build-tools:
+    cpp-options:
+    cc-options:
+    ld-options:
+    pkgconfig-depends:
+    frameworks:
+    c-sources:
+    extensions: CPP
+    extra-libraries:
+    extra-lib-dirs:
+    includes:
+    install-includes:
+    include-dirs:
+    hs-source-dirs: src
+    other-modules:
+    ghc-prof-options: -auto-all -prof
+    ghc-shared-options: -auto-all -prof
+    ghc-options: -fwarn-unused-imports -fwarn-missing-fields -fwarn-incomplete-patterns -ferror-spans
+    hugs-options:
+    nhc98-options:
+    jhc-options:
+
 
 

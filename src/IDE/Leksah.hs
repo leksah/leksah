@@ -111,6 +111,7 @@ ideOpts argv =
 
 runMain = handleTopExceptions $ do
     args            <-  getArgs
+
     (o,_)           <-  ideOpts args
     let uninstalled     =   filter (\x -> case x of
                                         UninstalledProject _ -> True
