@@ -1,3 +1,17 @@
+-----------------------------------------------------------------------------
+--
+-- Module      :  Default
+-- Copyright   :  (c) Juergen Nicklisch-Franken, Hamish Mackenzie
+-- License     :  GNU-GPL
+--
+-- Maintainer  :  Juergen Nicklisch-Franken <info@leksah.org>
+-- Stability   :  provisional
+-- Portability :  portable
+--
+-- | Module for default values of a data type
+--
+------------------------------------------------------------------------------
+
 module DeepSeq where
 
 class DeepSeq a where

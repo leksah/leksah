@@ -168,7 +168,7 @@ runMain = handleTopExceptions $ do
 startGUI :: String -> Prefs -> IO ()
 startGUI sessionFilename iprefs = do
     trace "start gui called" $ return ()
-    st          <-  initGUI
+    st          <-  unsafeInitGUIForThreadedRTS
     when rtsSupportsBoundThreads
         (sysMessage Normal "Linked with -threaded")
     timeoutAddFull (yield >> return True) priorityHigh 25
