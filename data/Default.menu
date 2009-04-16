@@ -116,6 +116,7 @@
        <separator/>
        <menuitem name="Show _Info" action="ShowInfo" />
        <menuitem name="Show _Modules" action="ShowModules" />
+       <menuitem name="Show _Search" action="ShowSearch" />
        <menuitem name="Show _Classes" action="ShowClasses" />
      </menu>
     <menu name="_Session" action="Session">
