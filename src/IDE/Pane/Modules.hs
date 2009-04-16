@@ -958,12 +958,13 @@ addModule treeView store = do
     mbPD <- getPackageDescriptionAndPath
     case mbPD of
         Nothing             -> ideMessage Normal "No package description"
-        Just (pd,cabalPath) -> let srcPaths = concatMap hsSourceDirs $ allBuildInfo pd
+        Just (pd,cabalPath) -> let srcPaths = nub $ concatMap hsSourceDirs $ allBuildInfo pd
                                    rootPath = dropFileName cabalPath
                                    modPath  = foldr (\a b -> a ++ "." ++ b) ""
                                                 (map fst categories)
                                in do
-            mbResp <- liftIO $ addModuleDialog modPath srcPaths
+            window' <- readIDE window
+            mbResp <- liftIO $ addModuleDialog window' modPath srcPaths
             case mbResp of
                 Nothing                -> return ()
                 Just (AddModule modPath srcPath isExposed) ->
@@ -988,9 +989,10 @@ addModule treeView store = do
 
 data AddModule = AddModule {moduleName :: String, sourceRoot :: FilePath, isExposed :: Bool}
 
-addModuleDialog :: String -> [String] -> IO (Maybe AddModule)
-addModuleDialog modString sourceRoots = do
+addModuleDialog :: Window -> String -> [String] -> IO (Maybe AddModule)
+addModuleDialog parent modString sourceRoots = do
     dia                        <-   dialogNew
+    windowSetTransientFor dia parent
     windowSetTitle dia "Construct new module"
     upper                      <-   dialogGetUpper dia
     lower                      <-   dialogGetActionArea dia

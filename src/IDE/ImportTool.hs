@@ -111,7 +111,8 @@ addImport error descrList =
                                             return (True,descrList)
                         descr : []  ->  addImport' nis (filePath error) descr descrList
                         list        ->  do
-                            mbDescr <-  liftIO $ selectModuleDialog list (id' nis)
+                            window' <- readIDE window
+                            mbDescr <-  liftIO $ selectModuleDialog window' list (id' nis)
                                             (if null descrList
                                                 then Nothing
                                                 else Just (head descrList))
@@ -348,8 +349,8 @@ moduleFields list ident =
             (\ a b -> a)
             (staticListEditor ((nub . sort) list) id)
 
-selectModuleDialog :: [Descr] -> String -> Maybe Descr -> IO (Maybe Descr)
-selectModuleDialog list id mbDescr = do
+selectModuleDialog :: Window -> [Descr] -> String -> Maybe Descr -> IO (Maybe Descr)
+selectModuleDialog parentWindow list id mbDescr = do
     let selectionList       =  map (render . disp . modu . descrModu') list
     let mbSelectedString    =  case mbDescr of
                                     Nothing -> Nothing
@@ -360,6 +361,7 @@ selectModuleDialog list id mbDescr = do
                                                     then str
                                                     else head selectionList
     dia               <- dialogNew
+    windowSetTransientFor dia parentWindow
     upper             <- dialogGetUpper dia
     lower             <- dialogGetActionArea dia
     (widget,inj,ext,_) <- buildEditor (moduleFields selectionList id) realSelectionString
