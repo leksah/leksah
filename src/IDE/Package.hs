@@ -615,8 +615,8 @@ debugStart = catchIDE (do
                 maybeGhci <- readIDE ghciState
                 case maybeGhci of
                     Nothing -> do
-                        ghci <- reifyIDE $ \ideR -> newGhci (buildFlags package) $ \output ->
-                            reflectIDE (logOutputForBuild True output) ideR
+                        ghci <- reifyIDE $ \ideR -> newGhci (buildFlags package)
+                            $ \output -> reflectIDE (logOutputForBuild True output) ideR
                         modifyIDE_ (\ide -> return ide {ghciState = Just ghci})
 
                         -- Fork a thread to wait for the output from the process to close

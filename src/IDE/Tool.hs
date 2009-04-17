@@ -262,7 +262,7 @@ newGhci buildFlags startupOutputHandler = do
                 options:_ -> do
                         putStrLn options
                         putStrLn "Starting GHCi"
-                        runInteractiveTool tool getGhciOutput "ghci" (words options)
+                        runInteractiveTool tool getGhciOutput "ghci" (words options ++ ["-fforce-recomp"])
                 _ -> do
                     startupOutputHandler output
                     putMVar (outputClosed tool) True

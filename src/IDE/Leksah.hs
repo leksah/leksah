@@ -54,8 +54,6 @@ import IDE.Metainfo.Provider
 import IDE.Metainfo.SourceCollector
 import IDE.Metainfo.InterfaceCollector
 import IDE.Pane.Log
-import IDE.Pane.Info
-import IDE.Pane.Modules
 import IDE.GUIHistory
 import IDE.Pane.Search(setChoices,searchMetaGUI)
 import IDE.Find
@@ -65,6 +63,9 @@ import Graphics.UI.Editor.Simple (fileEditor)
 import IDE.Metainfo.GHCUtils (inGhcIO)
 import IDE.NotebookFlipper (flipUp,flipDown)
 import IDE.Package (packageBuild)
+import IDE.Pane.Modules (reloadKeepSelection, selectIdentifier)
+import IDE.Pane.Info (setSymbol)
+import IDE.Pane.Debugger (updateDebugger)
 
 -- ---------------------------------------------------------------------
 -- Command line options
@@ -368,7 +369,7 @@ registerEvents tbl =    do
     registerEvent stRef "LoadSession" (Left lsHandler)
     registerEvent stRef "SaveSession" (Left ssHandler)
     registerEvent stRef "UpdateRecent" (Left urHandler)
-
+    registerEvent stRef "DebuggerChanged" (Left debHandler)
 
 
     return ()
@@ -425,6 +426,10 @@ registerEvents tbl =    do
 
         urHandler e@UpdateRecent =  updateRecentEntries >> return e
         urHandler _ =   throwIDE "Leksah>>registerEvents: Impossible event"
+
+        debHandler e@DebuggerChanged =  updateDebugger >> return e
+        debHandler _ =   throwIDE "Leksah>>registerEvents: Impossible event"
+
 
 fDescription :: FieldDescription Prefs
 fDescription = VFD emptyParams [

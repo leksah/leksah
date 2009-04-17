@@ -24,6 +24,7 @@ module IDE.Debug (
 
 ,   debugSetBreakpoint
 ,   debugDeleteAllBreakpoints
+,   debugDeleteBreakpoint
 
 ,   debugContinue
 ,   debugAbandon
@@ -92,6 +93,8 @@ import IDE.Metainfo.GHCUtils (parseHeader)
 import GHC (moduleNameString, unLoc, HsModule(..))
 import IDE.Pane.Log (appendLog)
 import Data.List (isSuffixOf)
+import Control.Event (triggerEvent)
+import Debug.Trace (trace)
 
 #if defined(mingw32_HOST_OS) || defined(__MINGW32__)
 foreign import stdcall unsafe "winbase.h GetCurrentProcessId"
@@ -119,9 +122,15 @@ executeDebugCommand command handler = do
         _ -> sysMessage Normal "Debugger not running"
 
 debugCommand :: String -> ([ToolOutput] -> IDEAction) -> IDEAction
-debugCommand command handler = catchIDE (do
-    executeDebugCommand command handler)
-    (\(e :: SomeException) -> putStrLn (show e))
+debugCommand command handler = do
+    ideR <- ask
+    catchIDE (do
+        executeDebugCommand command (\ h -> do
+            (handler h)
+            triggerEvent ideR DebuggerChanged
+            return ()))
+        (\(e :: SomeException) -> putStrLn (show e))
+
 
 debugQuit :: IDEAction
 debugQuit = debugCommand ":quit" logOutput
@@ -212,8 +221,20 @@ debugContinue :: IDEAction
 debugContinue = debugCommand ":continue" logOutputForLiveContext
 
 debugDeleteAllBreakpoints :: IDEAction
-debugDeleteAllBreakpoints = debugCommand ":delete *" $ \output -> do
-    logOutput output
+debugDeleteAllBreakpoints = do
+    debugCommand ":delete *" $ \output -> do
+        logOutput output
+    setBreakpointList []
+
+debugDeleteBreakpoint :: String -> LogRef -> IDEAction
+debugDeleteBreakpoint indexString lr = do
+    debugCommand (":delete " ++ indexString) $ \output -> do
+        logOutput output
+    bl <- readIDE breakpointRefs
+    setBreakpointList $ filter (/= lr) bl
+    ideR <- ask
+    triggerEvent ideR DebuggerChanged
+    return ()
 
 debugForce :: IDEAction
 debugForce = do
@@ -320,17 +341,19 @@ debugSetBreakpoint = do
     maybeModuleName <- selectedModuleName
     case maybeModuleName of
         Just moduleName -> do
-            debugCommand (":add *"++moduleName) $ logOutputForBuild True
+            -- ###           debugCommand (":add *"++moduleName) $ logOutputForBuild True
             maybeText <- selectedText
             case maybeText of
                 Just text -> do
-                    debugCommand (":module *"++moduleName) logOutput
-                    debugCommand (":break "++text) logOutputForSetBreakpoint
+            -- ###                   debugCommand (":module *"++moduleName) logOutput
+                    debugCommand (":break " ++ moduleName ++ "::" ++ text) logOutputForSetBreakpoint
                 Nothing   -> do
                     maybeLocation <- selectedLocation
                     case maybeLocation of
                         Just (line, lineOffset) ->
                             debugCommand (":break "++moduleName++" "++(show (line+1))++" "++(show lineOffset)) logOutputForSetBreakpoint
                         Nothing -> ideMessage Normal "Unknown error setting breakpoint"
+            ref <- trace "before trigger" $ ask
+            return ()
         Nothing   -> ideMessage Normal "Please select module file in the editor"
 

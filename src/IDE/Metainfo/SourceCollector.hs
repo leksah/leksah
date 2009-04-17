@@ -250,6 +250,7 @@ addLocationAndComment (l,st) lid srcSpan mbComment' types insts =
         mbItems     =   Map.lookup name st
         (mbItem,nst)=   case mbItems of
                             Nothing     -> (Nothing,st)
+
                             Just [i]    ->  (Just i, Map.delete name st)
                             Just list   ->
                                 case filter (\i -> matches i types insts) list of

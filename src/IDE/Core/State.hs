@@ -209,6 +209,7 @@ data IDEEvent  =
     |   LoadSession FilePath
     |   SaveSession FilePath
     |   UpdateRecent
+    |   DebuggerChanged
 
 --
 -- | A mutable reference to the IDE state
@@ -228,7 +229,7 @@ instance Event IDEEvent String where
     getSelector (LoadSession _)         =   "LoadSession"
     getSelector (SaveSession _)         =   "SaveSession"
     getSelector UpdateRecent            =   "UpdateRecent"
-
+    getSelector DebuggerChanged         =   "DebuggerChanged"
 
 instance EventSource IDERef IDEEvent IDEM String where
 
@@ -244,6 +245,7 @@ instance EventSource IDERef IDEEvent IDEM String where
     canTriggerEvent o "LoadSession"     =   True
     canTriggerEvent o "SaveSession"     =   True
     canTriggerEvent o "UpdateRecent"    =   True
+    canTriggerEvent o "DebuggerChanged" =   True
     canTriggerEvent _ _                 =   False
 
     getHandlers ideRef = do
@@ -258,7 +260,6 @@ instance EventSource IDERef IDEEvent IDEM String where
         liftIO $ newUnique
 
 instance EventSelector String
-
 
 --
 -- | A reader monad for a mutable reference to the IDE state

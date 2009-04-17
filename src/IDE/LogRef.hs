@@ -31,6 +31,8 @@ module IDE.LogRef (
 ,   logOutputForSetBreakpoint
 ,   logOutputForLiveContext
 ,   logOutputForHistoricContext
+,   selectRef
+,   setBreakpointList
 ) where
 
 import Graphics.UI.Gtk

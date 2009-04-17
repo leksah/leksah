@@ -70,7 +70,7 @@ Executable leksah
                    IDE.Pane.Preferences IDE.Pane.ClassHierarchy IDE.Pane.PackageEditor
                    IDE.Pane.Info IDE.Pane.Log IDE.Pane.SourceBuffer IDE.Pane.Modules
                    IDE.Pane.Search IDE.Pane.References IDE.Pane.PackageFlags
-                   IDE.Tool IDE.LogRef IDE.Debug
+                   IDE.Tool IDE.LogRef IDE.Debug IDE.Pane.Debugger
     ghc-prof-options: -auto-all -prof
     ghc-shared-options: -auto-all -prof
     ghc-options: -fwarn-unused-imports -fwarn-missing-fields -fwarn-incomplete-patterns -ferror-spans

@@ -51,6 +51,7 @@ import IDE.Find
 import System.Time (getClockTime)
 import IDE.Package (activatePackage,deactivatePackage)
 import Data.List (foldl')
+import IDE.Pane.Debugger (DebuggerState(..))
 
 -- ---------------------------------------------------------------------
 -- All pane types must be in here !
@@ -64,7 +65,8 @@ data PaneState      =   BufferSt BufferState
                     |   PrefsSt PrefsState
                     |   FlagsSt FlagsState
                     |   SearchSt SearchState
-                        deriving(Eq,Ord,Read,Show)
+                    |   DebuggerSt DebuggerState
+    deriving(Eq,Ord,Read,Show)
 
 asPaneState :: RecoverablePane alpha beta gamma => beta -> PaneState
 asPaneState s | isJust ((cast s) :: Maybe BufferState)   =   BufferSt (fromJust $ cast s)
@@ -75,6 +77,7 @@ asPaneState s | isJust ((cast s) :: Maybe ReferencesState)  =   ReferencesSt (fr
 asPaneState s | isJust ((cast s) :: Maybe PrefsState)    =   PrefsSt (fromJust $ cast s)
 asPaneState s | isJust ((cast s) :: Maybe FlagsState)    =   FlagsSt (fromJust $ cast s)
 asPaneState s | isJust ((cast s) :: Maybe SearchState)   =   SearchSt (fromJust $ cast s)
+asPaneState s | isJust ((cast s) :: Maybe DebuggerState) =   DebuggerSt (fromJust $ cast s)
 asPaneState s                                            =   error "SaveSession>>asPaneState incomplete cast"
 
 recover :: PanePath -> PaneState -> IDEAction
@@ -86,7 +89,7 @@ recover pp (ReferencesSt p)     =   recoverState pp p
 recover pp (PrefsSt p)          =   recoverState pp p
 recover pp (FlagsSt p)          =   recoverState pp p
 recover pp (SearchSt p)         =   recoverState pp p
-
+recover pp (DebuggerSt p)       =   recoverState pp p
 
 -- ---------------------------------------------------------------------
 

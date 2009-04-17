@@ -43,7 +43,9 @@ import Data.List
 
 import IDE.Core.State
 import IDE.Pane.SourceBuffer
-import Data.Char (toLower,toUpper)
+import Data.Char (toUpper)
+import Data.Char (toLower)
+
 
 data FindState = FindState {
             entryStr        ::    String

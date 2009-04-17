@@ -168,6 +168,7 @@ packageEdit = do
 
 hasConfigs :: GenericPackageDescription -> Bool
 hasConfigs gpd =
+
     let freeVars1 = case condLibrary gpd of
                         Nothing ->  []
                         Just ct -> freeVars ct
@@ -769,13 +770,13 @@ buildInfoD fp modules i = [
             (\ a b -> b{bis = update (bis b) i (\bi -> bi{ldOptions = a})})
             optsEditor
     ,    mkField
-            (paraName <<<- ParaName "A list of header files already installed on the system"
+            (paraName <<<- ParaName "A list of header files to use when compiling"
                 $ paraDirection <<<- ParaDirection Vertical $ emptyParams)
             (includes . (\a -> a !! i) . bis)
             (\ a b -> b{bis = update (bis b) i (\bi -> bi{includes = a})})
             (stringsEditor (const True))
      ,   mkField
-            (paraName <<<- ParaName "A list of header files from this package"
+            (paraName <<<- ParaName "A list of header files to install"
                 $ paraDirection <<<- ParaDirection Vertical $ emptyParams)
             (installIncludes . (\a -> a !! i) . bis)
              (\ a b -> b{bis = update (bis b) i (\bi -> bi{installIncludes = a})})

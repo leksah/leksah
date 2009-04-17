@@ -102,6 +102,7 @@ import MyMissing
 import Data.Typeable (Typeable(..))
 import SrcLoc (SrcSpan(..))
 import FastString (unpackFS)
+import Outputable (ppr, showSDoc)
 
 -- ---------------------------------------------------------------------
 -- IDEPackages
@@ -192,6 +193,9 @@ data LogRef = LogRef {
 ,   logLines            ::   (Int,Int)
 ,   logRefType          ::   LogRefType
 }   deriving (Eq)
+
+instance Show LogRef where
+    show lr =  refDescription lr ++ showSDoc (ppr (logRefSrcSpan lr))
 
 filePath :: LogRef -> FilePath
 filePath = unpackFS . srcSpanFile. logRefSrcSpan

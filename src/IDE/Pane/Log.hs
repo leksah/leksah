@@ -73,7 +73,7 @@ instance LogView IDELog IDEM
 
 instance Pane IDELog IDEM
     where
-    primPaneName _  =   "Log"
+    primPaneName  _ =   "Log"
     getAddedIndex _ =   0
     getTopWidget    =   castToWidget . scrolledWindowL
     paneId b        =   "*Log"

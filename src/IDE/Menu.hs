@@ -59,6 +59,7 @@ import IDE.NotebookFlipper
 import IDE.ImportTool (addAllImports)
 import IDE.LogRef
 import IDE.Debug
+import IDE.Pane.Debugger
 
 --
 -- | The Actions known to the system (they can be activated by keystrokes or menus)
@@ -186,6 +187,8 @@ actions =
         debugQuit [] False
     ,AD "ExecuteSelection" "_Execute Selection" (Just "Sends the selected text to the debugger") Nothing
         debugExecuteSelection [] False
+    ,AD "ShowDebugger" "Show Debugger" Nothing Nothing
+        showDebugger [] False
 
     ,AD "DebugSetBreakpoint" "Set Breakpoint" (Just "Set a breakpoint on the selected name or current line") Nothing
         debugSetBreakpoint [] False
