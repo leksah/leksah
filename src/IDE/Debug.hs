@@ -362,7 +362,8 @@ debugSetBreakpoint = do
                     maybeLocation <- selectedLocation
                     case maybeLocation of
                         Just (line, lineOffset) ->
-                            debugCommand (":break "++moduleName++" "++(show (line+1))++" "++(show lineOffset)) logOutputForSetBreakpoint
+                            debugCommand (":break " ++ moduleName ++ " " ++ (show (line+1)) ++ " " ++
+                                (show lineOffset)) logOutputForSetBreakpoint
                         Nothing -> ideMessage Normal "Unknown error setting breakpoint"
             ref <- ask
             return ()

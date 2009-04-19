@@ -22,7 +22,6 @@ module IDE.Pane.Debugger (
 
 ) where
 
-import IDE.Debug
 import Graphics.UI.Gtk
 import Graphics.UI.Gtk.SourceView
 import Data.Typeable (Typeable(..))
@@ -34,14 +33,26 @@ import Graphics.UI.Gtk.General.Enums
      Packing(..),
      PolicyType(..),
      ButtonBoxStyle(..))
-import Control.Monad (when)
-import Control.Event (triggerEvent)
 import Graphics.UI.Gtk.Gdk.Enums (EventMask(..))
 import System.Glib.Attributes (get)
 import IDE.LogRef (selectRef, logOutput)
-import Debug.Trace (trace)
 import Outputable (ppr, showSDoc)
 import Graphics.UI.Gtk.Gdk.Events (Event(..))
+import IDE.Debug
+    (debugTraceExpr,
+     debugStepExpr,
+     debugStepModule,
+     debugStepLocal,
+     debugDeleteBreakpoint,
+     debugContinue,
+     debugStep,
+     debugDeleteAllBreakpoints,
+     debugCommand,
+     debugCommandRet)
+import Control.Monad (when)
+import Control.Event (triggerEvent)
+import IDE.Tool (ToolOutput(..))
+import Debug.Trace (trace)
 
 
 -- | A debugger pane description
@@ -50,6 +61,7 @@ data IDEDebugger    =   IDEDebugger {
     sw              ::   VBox
 ,   workspaceView   ::   SourceView
 ,   breakpoints     ::   ListStore LogRef
+,   variables     ::   ListStore String
 } deriving Typeable
 
 data DebuggerState  =   DebuggerState String
@@ -109,32 +121,63 @@ initDebugger panePath nb workSpaceCont = do
     -- Buttons
         bb          <- hButtonBoxNew
         buttonBoxSetLayout bb ButtonboxSpread
-        exeB <- buttonNewWithLabel "Execute"
-        boxPackStartDefaults bb exeB
+        stepB <- buttonNewWithLabel "Step"
+        stepLB <- buttonNewWithLabel "StepLocal"
+        stepMB <- buttonNewWithLabel "StepModule"
+        continueB <- buttonNewWithLabel "Continue"
+
+        boxPackStartDefaults bb stepB
+        boxPackStartDefaults bb stepLB
+        boxPackStartDefaults bb stepMB
+        boxPackStartDefaults bb continueB
 
     -- BreakpointView
-        listStore   <-  listStoreNew []
-        treeView    <-  treeViewNew
-        treeViewSetModel treeView listStore
+        listStoreB   <-  listStoreNew []
+        treeViewB    <-  treeViewNew
+        treeViewSetModel treeViewB listStoreB
 
-        renderer    <- cellRendererTextNew
-        col         <- treeViewColumnNew
-        treeViewColumnSetTitle col "Breakpoints"
-        treeViewColumnSetSizing col TreeViewColumnAutosize
-        treeViewAppendColumn treeView col
-        cellLayoutPackStart col renderer False
-        cellLayoutSetAttributes col renderer listStore
+        rendererB    <- cellRendererTextNew
+        colB         <- treeViewColumnNew
+        treeViewColumnSetTitle colB "Breakpoints"
+        treeViewColumnSetSizing colB TreeViewColumnAutosize
+        treeViewAppendColumn treeViewB colB
+        cellLayoutPackStart colB rendererB False
+        cellLayoutSetAttributes colB rendererB listStoreB
             $ \row -> [ cellText := showSDoc (ppr (logRefSrcSpan row))]
 
-        treeViewSetHeadersVisible treeView True
-        sel <- treeViewGetSelection treeView
-        treeSelectionSetMode sel SelectionSingle
+        treeViewSetHeadersVisible treeViewB True
+        selB <- treeViewGetSelection treeViewB
+        treeSelectionSetMode selB SelectionSingle
 
         swBreak <- scrolledWindowNew Nothing Nothing
-        containerAdd swBreak treeView
+        containerAdd swBreak treeViewB
         scrolledWindowSetPolicy swBreak PolicyAutomatic PolicyAutomatic
 
+    -- VariablesView
+        listStoreV   <-  listStoreNew []
+        treeViewV    <-  treeViewNew
+        treeViewSetModel treeViewV listStoreV
+
+        rendererV    <- cellRendererTextNew
+        colV         <- treeViewColumnNew
+        treeViewColumnSetTitle colV "Variables"
+        treeViewColumnSetSizing colV TreeViewColumnAutosize
+        treeViewAppendColumn treeViewV colV
+        cellLayoutPackStart colV rendererV False
+        cellLayoutSetAttributes colV rendererV listStoreV
+            $ \row -> [ cellText := row]
+
+        treeViewSetHeadersVisible treeViewV True
+        selV <- treeViewGetSelection treeViewV
+        treeSelectionSetMode selV SelectionSingle
+
+        swVariables <- scrolledWindowNew Nothing Nothing
+        containerAdd swVariables treeViewV
+        scrolledWindowSetPolicy swVariables PolicyAutomatic PolicyAutomatic
+
+
     -- Workspace View
+        wbox        <- hBoxNew False 0
         font <- case textviewFont prefs of
             Just str -> do
                 fontDescriptionFromString str
@@ -171,13 +214,32 @@ initDebugger panePath nb workSpaceCont = do
         swWorkspace <- scrolledWindowNew Nothing Nothing
         containerAdd swWorkspace workspaceView
         scrolledWindowSetPolicy swWorkspace PolicyAutomatic PolicyAutomatic
+        boxPackStart wbox swWorkspace PackGrow 10
 
-        boxPackStart ibox swBreak PackGrow 10
-        boxPackStart ibox swWorkspace PackGrow 10
+        wbbox       <- vBoxNew False 0
+        exeB        <- buttonNewWithLabel "Execute"
+        stepExpB    <- buttonNewWithLabel "Step Expression"
+        traceExpB   <- buttonNewWithLabel "Trace Expression"
+
+        boxPackStart wbbox exeB PackNatural 10
+        boxPackStart wbbox stepExpB PackNatural 10
+        boxPackStart wbbox traceExpB PackNatural 10
+        boxPackStart wbox wbbox PackNatural 10
+
+        paned0  <- hPanedNew
+        panedAdd1 paned0 swVariables
+        panedAdd2 paned0 swBreak
+
+
+        paned1           <-  vPanedNew
+        panedAdd1 paned1 wbox
+        panedAdd2 paned1 paned0
+
+        boxPackStart ibox paned1 PackGrow 10
         boxPackEnd ibox bb PackNatural 10
 
         --openType
-        let deb = IDEDebugger ibox workspaceView listStore
+        let deb = IDEDebugger ibox workspaceView listStoreB listStoreV
         exeB `onClicked` (do
             maybeText <- selectedDebuggerText workspaceView
             reflectIDE (
@@ -185,6 +247,24 @@ initDebugger panePath nb workSpaceCont = do
                     Just text -> debugCommand text logOutput
                     Nothing   -> ideMessage Normal "Please select some text in the editor to execute")
                         ideR)
+        stepExpB `onClicked` (do
+            t <- selectedDebuggerText workspaceView
+            reflectIDE (debugStepExpr t) ideR)
+        traceExpB `onClicked` (do
+            t <- selectedDebuggerText workspaceView
+            reflectIDE (debugTraceExpr t) ideR)
+        stepB `onClicked` (reflectIDE debugStep ideR)
+        stepLB `onClicked` (reflectIDE debugStepLocal ideR)
+        stepMB `onClicked` (reflectIDE debugStepModule ideR)
+        continueB `onClicked` (reflectIDE debugContinue ideR)
+        exeB `onClicked` (do
+            maybeText <- selectedDebuggerText workspaceView
+            reflectIDE (
+                case maybeText of
+                    Just text -> debugCommand text logOutput
+                    Nothing   -> ideMessage Normal "Please select some text in the editor to execute")
+                        ideR)
+
         workspaceView `widgetAddEvents` [ButtonReleaseMask]
         id5 <- workspaceView `onButtonRelease`
             (\ e -> do
@@ -196,14 +276,14 @@ initDebugger panePath nb workSpaceCont = do
                         triggerEvent ideR (SelectInfo symbol)
                         return ()) ideR)
                 return False)
-        treeView  `onButtonPress` (breakpointViewPopup ideR listStore treeView)
+        treeViewB  `onButtonPress` (breakpointViewPopup ideR listStoreB treeViewB)
 
         notebookInsertOrdered nb ibox (paneName deb) Nothing
         widgetShowAll ibox
         return (deb,[])
     addPaneAdmin pane [] panePath
-    liftIO $widgetGrabFocus (workspaceView pane)
-    liftIO $bringPaneToFront pane
+    liftIO $ widgetGrabFocus (workspaceView pane)
+    liftIO $ bringPaneToFront pane
 
 selectedDebuggerText :: SourceView -> IO (Maybe String)
 selectedDebuggerText workspaceView = do
@@ -224,13 +304,32 @@ fillBreakpointList = do
         Just deb -> do
             refs <- readIDE breakpointRefs
             liftIO $ do
-                trace ("breakpointList " ++ show refs) $ return ()
+                --trace ("breakpointList " ++ show refs) $ return ()
                 listStoreClear (breakpoints deb)
                 mapM_ (listStoreAppend (breakpoints deb)) refs
 
+fillVariablesList :: IDEAction
+fillVariablesList = do
+    mbDebugger <- getPane
+    case mbDebugger of
+        Nothing -> return ()
+        Just deb -> do
+            refs <- readIDE contextRefs
+            liftIO $ listStoreClear (variables deb)
+            debugCommand ":show bindings" (\to -> liftIO
+                $ postGUIAsync
+                    $ mapM_ (listStoreAppend (variables deb))
+                        $ concatMap selectString to)
+    where
+    selectString :: ToolOutput -> [String]
+    selectString (ToolOutput str)   = lines str
+    selectString _                  = []
+
+
 updateDebugger :: IDEAction
 updateDebugger = do
-    trace "updateDebugger" $ fillBreakpointList
+    fillBreakpointList
+    fillVariablesList
 
 breakpointViewPopup :: IDERef
     -> ListStore LogRef
@@ -278,7 +377,7 @@ getSelectedBreakpoint treeView listStore = do
 deleteBreakpoint :: LogRef -> IDEAction
 deleteBreakpoint logRef =
     case logRefType logRef of
-        BreakpointRef -> debugDeleteBreakpoint (read $ (words (refDescription logRef)) !! 2) logRef
+        BreakpointRef -> debugDeleteBreakpoint ((words (refDescription logRef)) !! 1) logRef
         _   -> sysMessage Normal "Debugger>>deleteBreakpoint: Not a breakpoint"
 
 
