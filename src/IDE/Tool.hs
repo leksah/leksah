@@ -30,8 +30,6 @@ import System.IO
 import Control.Concurrent
     (takeMVar,
      putMVar,
-     threadDelay,
-     yield,
      newEmptyMVar,
      forkIO,
      newChan,
@@ -40,7 +38,7 @@ import Control.Concurrent
      writeChan,
      getChanContents,
      dupChan)
-import Control.Monad (when, unless)
+import Control.Monad (when)
 import Data.List (stripPrefix)
 import Data.Maybe (isJust, catMaybes)
 import System.Process
@@ -68,8 +66,8 @@ line (ToolError l) = l
 
 runTool :: FilePath -> [String] -> IO ([ToolOutput], ProcessHandle)
 runTool executable arguments = do
-    (_,out,err,pid) <- runInteractiveProcess executable arguments Nothing Nothing
-    output <- getOutputNoPrompt out err pid
+    (inp,out,err,pid) <- runInteractiveProcess executable arguments Nothing Nothing
+    output <- getOutputNoPrompt inp out err pid
     return (output, pid)
 
 newToolState :: IO ToolState
@@ -81,11 +79,11 @@ newToolState = do
     currentToolCommand <- newEmptyMVar
     return ToolState{..}
 
-runInteractiveTool :: ToolState -> (Handle -> Handle -> ProcessHandle -> IO [RawToolOutput]) -> FilePath -> [String] -> IO ()
+runInteractiveTool :: ToolState -> (Handle -> Handle -> Handle -> ProcessHandle -> IO [RawToolOutput]) -> FilePath -> [String] -> IO ()
 runInteractiveTool tool getOutput executable arguments = do
     (inp,out,err,pid) <- runInteractiveProcess executable arguments Nothing Nothing
     putMVar (toolProcess tool) pid
-    output <- getOutput out err pid
+    output <- getOutput inp out err pid
     -- This is handy to show the processed output
     -- forkIO $ forM_ output (putStrLn.show)
     forkIO $ do
@@ -109,7 +107,7 @@ runInteractiveTool tool getOutput executable arguments = do
                 _ -> do
                     putStrLn "This should never happen in Tool.hs"
 
-newInteractiveTool :: (Handle -> Handle -> ProcessHandle -> IO [RawToolOutput]) -> FilePath -> [String] -> IO ToolState
+newInteractiveTool :: (Handle -> Handle -> Handle -> ProcessHandle -> IO [RawToolOutput]) -> FilePath -> [String] -> IO ToolState
 newInteractiveTool getOutput executable arguments = do
     tool <- newToolState
     runInteractiveTool tool getOutput executable arguments
@@ -117,6 +115,13 @@ newInteractiveTool getOutput executable arguments = do
 
 ghciPrompt :: String
 ghciPrompt = "3KM2KWR7LZZbHdXfHUOA5YBBsJVYoCQnKX"
+
+data CommanLineReader = CommanLineReader {
+    stripInitialPrompt :: String -> Maybe String,
+    stripFollowingPrompt :: String -> Maybe String,
+    errorSyncCommand :: Maybe String,
+    stripExpectedError :: String -> Maybe String
+    }
 
 ghciStripInitialPrompt :: String -> Maybe String
 ghciStripInitialPrompt output =
@@ -127,12 +132,29 @@ ghciStripInitialPrompt output =
                 _ -> Nothing
         _ -> Nothing
 
-ghciStripPrompt :: String -> Maybe String
-ghciStripPrompt = stripPrefix ghciPrompt
+ghciStripFollowingPrompt :: String -> Maybe String
+ghciStripFollowingPrompt = stripPrefix ghciPrompt
 
-noStripPrompt :: String -> Maybe String
-noStripPrompt _ = Nothing
+ghciStripExpectedError :: String -> Maybe String
+ghciStripExpectedError output = case stripPrefix "\n<interactive>:1:0" output of
+                                    Just rest ->
+                                        stripPrefix ": Not in scope: `kM2KWR7LZZbHdXfHUOA5YBBsJVYoC'\n"
+                                            (maybe rest id (stripPrefix "-28" rest))
+                                    Nothing -> Nothing
 
+ghciCommandLineReader = CommanLineReader {
+    stripInitialPrompt = ghciStripInitialPrompt,
+    stripFollowingPrompt = ghciStripFollowingPrompt,
+    errorSyncCommand = Just "kM2KWR7LZZbHdXfHUOA5YBBsJVYoC",
+    stripExpectedError = ghciStripExpectedError
+    }
+
+noInputCommandLineReader = CommanLineReader {
+    stripInitialPrompt = const Nothing,
+    stripFollowingPrompt = const Nothing,
+    errorSyncCommand = Nothing,
+    stripExpectedError = const Nothing
+    }
 --waitTillEmpty :: Handle -> IO ()
 --waitTillEmpty handle = do
 --    ready <- hReady handle
@@ -142,22 +164,23 @@ noStripPrompt _ = Nothing
 --        yield
 --        waitTillEmpty handle
 
-getOutput :: (String -> Maybe String) -> (String -> Maybe String) -> Handle -> Handle -> ProcessHandle -> IO [RawToolOutput]
-getOutput stripInitialPrompt stripFollowingPrompt out err pid = do
+getOutput :: CommanLineReader -> Handle -> Handle -> Handle -> ProcessHandle -> IO [RawToolOutput]
+getOutput clr inp out err pid = do
     chan <- newChan
     hSetBuffering out NoBuffering
     hSetBuffering err NoBuffering
+    foundExpectedError <- newEmptyMVar
     -- Use this and the too putStr threads bellow if you want to see the raw output
     -- hSetBuffering stdout NoBuffering
     forkIO $ do
         errors <- hGetContents err
         -- forkIO $ putStr errors
-        readError chan errors
+        readError chan errors foundExpectedError
         writeChan chan ToolErrClosed
     forkIO $ do
         output <- hGetContents out
         -- forkIO $ putStr output
-        readOutput chan output True
+        readOutput chan output True foundExpectedError False
         writeChan chan ToolOutClosed
     forkIO $ do
         testClosed <- dupChan chan
@@ -167,38 +190,47 @@ getOutput stripInitialPrompt stripFollowingPrompt out err pid = do
             writeChan chan ToolClosed
     fmap (takeWhile ((/=) ToolClosed)) $ getChanContents chan
     where
-        readError chan errors = do
-            let (line, remaining) = break (== '\n') errors
-            case remaining of
-                [] -> return ()
-                _:remainingLines -> do
-                    writeChan chan $ RawToolOutput $ ToolError line
-                    readError chan remainingLines
+        readError chan errors foundExpectedError = do
+            case stripExpectedError clr errors of
+                Just unexpectedErrors -> do
+                    putMVar foundExpectedError True
+                    readError chan unexpectedErrors foundExpectedError
+                Nothing -> do
+                    let (line, remaining) = break (== '\n') errors
+                    case remaining of
+                        [] -> return ()
+                        _:remainingLines -> do
+                            writeChan chan $ RawToolOutput $ ToolError line
+                            readError chan remainingLines foundExpectedError
 
-        readOutput chan output initial = do
-            let stripPrompt = (if initial then stripInitialPrompt else stripFollowingPrompt)
+        readOutput chan output initial foundExpectedError synced = do
+            let stripPrompt = (if initial then (stripInitialPrompt clr) else (stripFollowingPrompt clr))
             let line = getLine stripPrompt output
             let remaining = drop (length line) output
             case remaining of
                 [] -> do
-                        yield
                         when (line /= "") $ writeChan chan $ RawToolOutput $ ToolOutput line
                 '\n':remainingLines -> do
-                        yield
                         writeChan chan $ RawToolOutput $ ToolOutput line
-                        readOutput chan remainingLines initial
+                        readOutput chan remainingLines initial foundExpectedError synced
                 _ -> do
                     when (line /= "") $ writeChan chan $ RawToolOutput $ ToolOutput line
                     case stripPrompt remaining of
                         Just afterPrompt -> do
-                            unless initial $ do
-                                -- Try to give the error thread a chance to catch up
-                                -- waitTillEmpty err
-                                yield
-                                threadDelay 200
-                                yield
-                                writeChan chan ToolPrompt
-                            readOutput chan afterPrompt False
+                            case (initial, synced, errorSyncCommand clr) of
+                                (True, _, _) -> do
+                                    readOutput chan afterPrompt False foundExpectedError synced
+                                (False, _, Nothing) -> do
+                                    writeChan chan ToolPrompt
+                                    readOutput chan afterPrompt False foundExpectedError synced
+                                (False, False, Just syncCmd) -> do
+                                    hPutStrLn inp syncCmd
+                                    hFlush inp
+                                    takeMVar foundExpectedError
+                                    readOutput chan afterPrompt False foundExpectedError True
+                                (False, True, Just _) -> do
+                                    writeChan chan ToolPrompt
+                                    readOutput chan afterPrompt False foundExpectedError False
                         _ -> return () -- Should never happen
         getLine _ [] = []
         getLine _ ('\n':xs) = []
@@ -212,11 +244,11 @@ fromRawOutput (RawToolOutput output:xs) = output : (fromRawOutput xs)
 fromRawOutput (ToolClosed:xs) = []
 fromRawOutput (_:xs) = fromRawOutput xs
 
-getGhciOutput :: Handle -> Handle -> ProcessHandle -> IO [RawToolOutput]
-getGhciOutput = getOutput ghciStripInitialPrompt ghciStripPrompt
+getGhciOutput :: Handle -> Handle -> Handle -> ProcessHandle -> IO [RawToolOutput]
+getGhciOutput = getOutput ghciCommandLineReader
 
-getOutputNoPrompt :: Handle -> Handle -> ProcessHandle -> IO [ToolOutput]
-getOutputNoPrompt out err pid = fmap fromRawOutput $ getOutput noStripPrompt noStripPrompt out err pid
+getOutputNoPrompt :: Handle -> Handle -> Handle -> ProcessHandle -> IO [ToolOutput]
+getOutputNoPrompt inp out err pid = fmap fromRawOutput $ getOutput noInputCommandLineReader inp out err pid
 
 newGhci :: [String] -> ([ToolOutput] -> IO ()) -> IO ToolState
 newGhci buildFlags startupOutputHandler = do
