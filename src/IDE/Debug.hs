@@ -32,11 +32,13 @@ module IDE.Debug (
 
 ,   debugStep
 ,   debugStepExpression
+,   debugStepExpr
 ,   debugStepLocal
 ,   debugStepModule
 
 ,   debugTrace
 ,   debugTraceExpression
+,   debugTraceExpr
 ,   debugHistory
 ,   debugBack
 ,   debugForward
@@ -240,7 +242,7 @@ debugForce :: IDEAction
 debugForce = do
     maybeText <- selectedText
     case maybeText of
-        Just text -> debugCommand (":force "++text) logOutput
+        Just text -> debugCommand (":force " ++ text) logOutput
         Nothing   -> ideMessage Normal "Please select an expression in the editor"
 
 debugForward :: IDEAction
@@ -253,14 +255,14 @@ debugPrint :: IDEAction
 debugPrint = do
     maybeText <- selectedText
     case maybeText of
-        Just text -> debugCommand (":force "++text) logOutput
+        Just text -> debugCommand (":force " ++ text) logOutput
         Nothing   -> ideMessage Normal "Please select an name in the editor"
 
 debugSimplePrint :: IDEAction
 debugSimplePrint = do
     maybeText <- selectedText
     case maybeText of
-        Just text -> debugCommand (":force "++text) logOutput
+        Just text -> debugCommand (":force " ++ text) logOutput
         Nothing   -> ideMessage Normal "Please select an name in the editor"
 
 debugStep :: IDEAction
@@ -269,8 +271,12 @@ debugStep = debugCommand ":step" logOutputForLiveContext
 debugStepExpression :: IDEAction
 debugStepExpression = do
     maybeText <- selectedText
+    debugStepExpr maybeText
+
+debugStepExpr :: Maybe String -> IDEAction
+debugStepExpr maybeText = do
     case maybeText of
-        Just text -> debugCommand (":step "++text) logOutputForLiveContext
+        Just text -> debugCommand (":step " ++ text) logOutputForLiveContext
         Nothing   -> ideMessage Normal "Please select an expression in the editor"
 
 debugStepLocal :: IDEAction
@@ -285,9 +291,14 @@ debugTrace = debugCommand ":trace" logOutputForLiveContext
 debugTraceExpression :: IDEAction
 debugTraceExpression = do
     maybeText <- selectedText
+    debugTraceExpr maybeText
+
+debugTraceExpr :: Maybe String -> IDEAction
+debugTraceExpr maybeText = do
     case maybeText of
         Just text -> debugCommand (":trace "++text) logOutputForLiveContext
         Nothing   -> ideMessage Normal "Please select an expression in the editor"
+
 
 debugShowBindings :: IDEAction
 debugShowBindings = debugCommand ":show bindings" logOutput
@@ -345,15 +356,15 @@ debugSetBreakpoint = do
             maybeText <- selectedText
             case maybeText of
                 Just text -> do
-            -- ###                   debugCommand (":module *"++moduleName) logOutput
-                    debugCommand (":break " ++ moduleName ++ "::" ++ text) logOutputForSetBreakpoint
+                    debugCommand (":module *" ++ moduleName) logOutput
+                    debugCommand (":break " ++ text) logOutputForSetBreakpoint
                 Nothing   -> do
                     maybeLocation <- selectedLocation
                     case maybeLocation of
                         Just (line, lineOffset) ->
                             debugCommand (":break "++moduleName++" "++(show (line+1))++" "++(show lineOffset)) logOutputForSetBreakpoint
                         Nothing -> ideMessage Normal "Unknown error setting breakpoint"
-            ref <- trace "before trigger" $ ask
+            ref <- ask
             return ()
         Nothing   -> ideMessage Normal "Please select module file in the editor"
 
