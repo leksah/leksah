@@ -19,6 +19,7 @@
 module IDE.Debug (
     executeDebugCommand
 ,   debugCommand
+,   debugCommand'
 ,   debugQuit
 ,   debugExecuteSelection
 
@@ -96,7 +97,6 @@ import GHC (moduleNameString, unLoc, HsModule(..))
 import IDE.Pane.Log (appendLog)
 import Data.List (isSuffixOf)
 import Control.Event (triggerEvent)
-import Debug.Trace (trace)
 
 #if defined(mingw32_HOST_OS) || defined(__MINGW32__)
 foreign import stdcall unsafe "winbase.h GetCurrentProcessId"
@@ -124,15 +124,21 @@ executeDebugCommand command handler = do
         _ -> sysMessage Normal "Debugger not running"
 
 debugCommand :: String -> ([ToolOutput] -> IDEAction) -> IDEAction
-debugCommand command handler = do
+debugCommand command handler = debugCommand' command
+    (\to -> do
+        ideR <- ask
+        (handler to)
+        triggerEvent ideR DebuggerChanged
+        return ())
+
+debugCommand' :: String -> ([ToolOutput] -> IDEAction) -> IDEAction
+debugCommand' command handler = do
     ideR <- ask
     catchIDE (do
         executeDebugCommand command (\ h -> do
             (handler h)
-            triggerEvent ideR DebuggerChanged
             return ()))
         (\(e :: SomeException) -> putStrLn (show e))
-
 
 debugQuit :: IDEAction
 debugQuit = debugCommand ":quit" logOutput

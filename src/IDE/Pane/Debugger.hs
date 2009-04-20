@@ -19,7 +19,6 @@ module IDE.Pane.Debugger (
 ,   DebuggerState
 ,   showDebugger
 ,   updateDebugger
-
 ) where
 
 import Graphics.UI.Gtk
@@ -39,7 +38,8 @@ import IDE.LogRef (selectRef, logOutput)
 import Outputable (ppr, showSDoc)
 import Graphics.UI.Gtk.Gdk.Events (Event(..))
 import IDE.Debug
-    (debugTraceExpr,
+    (debugCommand',
+     debugTraceExpr,
      debugStepExpr,
      debugStepModule,
      debugStepLocal,
@@ -47,12 +47,10 @@ import IDE.Debug
      debugContinue,
      debugStep,
      debugDeleteAllBreakpoints,
-     debugCommand,
-     debugCommandRet)
+     debugCommand)
 import Control.Monad (when)
 import Control.Event (triggerEvent)
 import IDE.Tool (ToolOutput(..))
-import Debug.Trace (trace)
 
 
 -- | A debugger pane description
@@ -145,7 +143,7 @@ initDebugger panePath nb workSpaceCont = do
         cellLayoutSetAttributes colB rendererB listStoreB
             $ \row -> [ cellText := showSDoc (ppr (logRefSrcSpan row))]
 
-        treeViewSetHeadersVisible treeViewB True
+        treeViewSetHeadersVisible treeViewB False
         selB <- treeViewGetSelection treeViewB
         treeSelectionSetMode selB SelectionSingle
 
@@ -175,6 +173,27 @@ initDebugger panePath nb workSpaceCont = do
         containerAdd swVariables treeViewV
         scrolledWindowSetPolicy swVariables PolicyAutomatic PolicyAutomatic
 
+    -- TracesView
+        listStoreT   <-  listStoreNew []
+        treeViewT    <-  treeViewNew
+        treeViewSetModel treeViewT listStoreT
+
+        rendererT    <- cellRendererTextNew
+        colT         <- treeViewColumnNew
+        treeViewColumnSetTitle colT "Traces"
+        treeViewColumnSetSizing colT TreeViewColumnAutosize
+        treeViewAppendColumn treeViewT colT
+        cellLayoutPackStart colT rendererT False
+        cellLayoutSetAttributes colT rendererT listStoreT
+            $ \row -> [ cellText := row]
+
+        treeViewSetHeadersVisible treeViewT False
+        selT <- treeViewGetSelection treeViewT
+        treeSelectionSetMode selT SelectionSingle
+
+        swTraces <- scrolledWindowNew Nothing Nothing
+        containerAdd swTraces treeViewT
+        scrolledWindowSetPolicy swTraces PolicyAutomatic PolicyAutomatic
 
     -- Workspace View
         wbox        <- hBoxNew False 0
@@ -226,10 +245,13 @@ initDebugger panePath nb workSpaceCont = do
         boxPackStart wbbox traceExpB PackNatural 10
         boxPackStart wbox wbbox PackNatural 10
 
+        nbBreakAndTrace <- newNotebook
+        notebookInsertPage nbBreakAndTrace swTraces "Trace" 0
+        notebookInsertPage nbBreakAndTrace swBreak "Breakpoints" 1
+
         paned0  <- hPanedNew
         panedAdd1 paned0 swVariables
-        panedAdd2 paned0 swBreak
-
+        panedAdd2 paned0 nbBreakAndTrace
 
         paned1           <-  vPanedNew
         panedAdd1 paned1 wbox
@@ -316,7 +338,7 @@ fillVariablesList = do
         Just deb -> do
             refs <- readIDE contextRefs
             liftIO $ listStoreClear (variables deb)
-            debugCommand ":show bindings" (\to -> liftIO
+            debugCommand' ":show bindings" (\to -> liftIO
                 $ postGUIAsync
                     $ mapM_ (listStoreAppend (variables deb))
                         $ concatMap selectString to)
@@ -336,7 +358,8 @@ breakpointViewPopup :: IDERef
     -> TreeView
     -> Event
     -> IO (Bool)
-breakpointViewPopup ideR  store treeView (Button _ click _ _ _ _ button _ _) = do
+breakpointViewPopup ideR  store treeView (Button _ click _ _ _ _ button _ _)
+    = do
     if button == RightButton
         then do
             theMenu         <-  menuNew
