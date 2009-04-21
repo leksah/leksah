@@ -48,9 +48,10 @@ import IDE.Debug
      debugStep,
      debugDeleteAllBreakpoints,
      debugCommand)
-import Control.Monad (when)
+import Control.Monad (unless, when)
 import Control.Event (triggerEvent)
-import IDE.Tool (ToolOutput(..))
+import IDE.Tool (ToolOutput(..),toolline)
+import IDE.SourceCandy (getCandylessText)
 
 
 -- | A debugger pane description
@@ -60,10 +61,15 @@ data IDEDebugger    =   IDEDebugger {
 ,   workspaceView   ::   SourceView
 ,   breakpoints     ::   ListStore LogRef
 ,   variables     ::   ListStore String
+,   hpaned      ::  HPaned
+,   vpaned      ::  VPaned
 } deriving Typeable
 
-data DebuggerState  =   DebuggerState String
-    deriving(Eq,Ord,Read,Show,Typeable)
+data DebuggerState  =   DebuggerState {
+    workspace :: String
+,   horizontalSplit :: Int
+,   verticalSplit :: Int
+}   deriving(Eq,Ord,Read,Show,Typeable)
 
 
 instance IDEObject IDEDebugger
@@ -79,13 +85,22 @@ instance Pane IDEDebugger IDEM
 
 instance RecoverablePane IDEDebugger DebuggerState IDEM where
     saveState p     =   do
-        return (Just (DebuggerState ""))
-    recoverState pp (DebuggerState str) =   do
+        ct          <-  readIDE candy
+        liftIO $ do
+            buf         <-  textViewGetBuffer $ workspaceView p
+            text        <-  getCandylessText ct buf
+            hi          <-  panedGetPosition (hpaned p)
+            vi          <-  panedGetPosition (vpaned p)
+            return (Just (DebuggerState text hi vi))
+    recoverState pp (DebuggerState text hi vi) =   do
         prefs       <-  readIDE prefs
         layout      <-  readIDE layout
         let pp      =   getStandardPanePath (modulesPanePath prefs) layout
         nb          <-  getNotebook pp
-        initDebugger pp nb str
+        initDebugger pp nb text
+        debugger    <- getDebugger
+        liftIO $ panedSetPosition (hpaned debugger) hi
+        liftIO $ panedSetPosition (vpaned debugger) vi
 
 showDebugger :: IDEAction
 showDebugger = do
@@ -110,7 +125,7 @@ getDebugger = do
         Just m ->   return m
 
 initDebugger :: PanePath -> Notebook -> String -> IDEAction
-initDebugger panePath nb workSpaceCont = do
+initDebugger panePath nb wstext = do
     panes       <- readIDE panes
     paneMap     <- readIDE paneMap
     prefs       <- readIDE prefs
@@ -129,7 +144,7 @@ initDebugger panePath nb workSpaceCont = do
         boxPackStartDefaults bb stepMB
         boxPackStartDefaults bb continueB
 
-    -- BreakpointView
+    -- BreakpointView 1 + 2
         listStoreB   <-  listStoreNew []
         treeViewB    <-  treeViewNew
         treeViewSetModel treeViewB listStoreB
@@ -228,7 +243,7 @@ initDebugger panePath nb workSpaceCont = do
                 when (elem str ids) $ do
                     scheme <- sourceStyleSchemeManagerGetScheme styleManager str
                     sourceBufferSetStyleScheme workspaceBuffer scheme
-
+        textBufferSetText workspaceBuffer wstext
 
         swWorkspace <- scrolledWindowNew Nothing Nothing
         containerAdd swWorkspace workspaceView
@@ -261,12 +276,14 @@ initDebugger panePath nb workSpaceCont = do
         boxPackEnd ibox bb PackNatural 10
 
         --openType
-        let deb = IDEDebugger ibox workspaceView listStoreB listStoreV
+        let deb = IDEDebugger ibox workspaceView listStoreB listStoreV paned0 paned1
         exeB `onClicked` (do
             maybeText <- selectedDebuggerText workspaceView
             reflectIDE (
                 case maybeText of
-                    Just text -> debugCommand text logOutput
+                    Just text -> debugCommand text (\o -> do
+                        logOutput o
+                        liftIO $ postGUIAsync (setDebuggerText deb o))
                     Nothing   -> ideMessage Normal "Please select some text in the editor to execute")
                         ideR)
         stepExpB `onClicked` (do
@@ -279,13 +296,6 @@ initDebugger panePath nb workSpaceCont = do
         stepLB `onClicked` (reflectIDE debugStepLocal ideR)
         stepMB `onClicked` (reflectIDE debugStepModule ideR)
         continueB `onClicked` (reflectIDE debugContinue ideR)
-        exeB `onClicked` (do
-            maybeText <- selectedDebuggerText workspaceView
-            reflectIDE (
-                case maybeText of
-                    Just text -> debugCommand text logOutput
-                    Nothing   -> ideMessage Normal "Please select some text in the editor to execute")
-                        ideR)
 
         workspaceView `widgetAddEvents` [ButtonReleaseMask]
         id5 <- workspaceView `onButtonRelease`
@@ -317,6 +327,22 @@ selectedDebuggerText workspaceView = do
             text      <- textBufferGetText gtkbuf i1 i2 False
             return $ Just text
         else return Nothing
+
+setDebuggerText :: IDEDebugger -> [ToolOutput] -> IO ()
+setDebuggerText deb tol = do
+    let text = (concatMap toolline $ (filter (\t -> case t of
+                                                                ToolOutput _ -> True
+                                                                _ -> False) tol))
+    unless (null text) $ do
+        gtkbuf       <- textViewGetBuffer $ workspaceView deb
+        hasSelection <- liftIO $ textBufferHasSelection gtkbuf
+        if hasSelection
+            then do
+                (i1,i2)   <- liftIO $ textBufferGetSelectionBounds gtkbuf
+                textBufferInsert gtkbuf i2 (" >> " ++ text)
+            else do
+                textBufferInsertAtCursor gtkbuf (" >> " ++ text)
+                return ()
 
 fillBreakpointList :: IDEAction
 fillBreakpointList = do

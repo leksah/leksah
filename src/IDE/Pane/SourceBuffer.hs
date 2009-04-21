@@ -707,7 +707,7 @@ fileSaveBuffer query nb gtkbuf ideBuf i = do
             buf     <-   textViewGetBuffer $ sourceView ideBuf
             text    <-   getCandylessText ct buf
             let text' = if removeTBlanks
-                            then unlines $map removeTrailingBlanks $lines text
+                            then unlines $ map removeTrailingBlanks $lines text
                             else text
             succ <- catch (do UTF8.writeFile fn text'; return True)
                 (\e -> do

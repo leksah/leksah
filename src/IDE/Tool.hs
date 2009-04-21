@@ -16,6 +16,7 @@
 
 module IDE.Tool (
     ToolOutput(..),
+    toolline,
     ToolCommand(..),
     ToolState(..),
     newToolState,
@@ -59,10 +60,10 @@ data RawToolOutput = RawToolOutput ToolOutput
                    | ToolErrClosed
                    | ToolClosed deriving(Eq, Show)
 
-line :: ToolOutput -> String
-line (ToolInput l) = l
-line (ToolOutput l) = l
-line (ToolError l) = l
+toolline :: ToolOutput -> String
+toolline (ToolInput l) = l
+toolline (ToolOutput l) = l
+toolline (ToolError l) = l
 
 runTool :: FilePath -> [String] -> IO ([ToolOutput], ProcessHandle)
 runTool executable arguments = do
@@ -258,11 +259,12 @@ newGhci buildFlags startupOutputHandler = do
         putStrLn "Working out GHCi options"
         forkIO $ do
             (output, pid) <- runTool "runhaskell" (["Setup","build","--with-ghc=leksahecho"] ++ buildFlags)
-            case catMaybes $ map (findMake.line) output of
+            case catMaybes $ map (findMake . toolline) output of
                 options:_ -> do
-                        putStrLn options
+                        let newOptions = filterUnwanted options
+                        putStrLn newOptions
                         putStrLn "Starting GHCi"
-                        runInteractiveTool tool getGhciOutput "ghci" (words options ++ ["-fforce-recomp"])
+                        runInteractiveTool tool getGhciOutput "ghci" (words newOptions ++ ["-fforce-recomp"])
                 _ -> do
                     startupOutputHandler output
                     putMVar (outputClosed tool) True
@@ -270,9 +272,15 @@ newGhci buildFlags startupOutputHandler = do
     where
         findMake [] = Nothing
         findMake line@(x:xs) =
-            case stripPrefix " --make " line of
-                Nothing -> findMake xs
-                s -> s
+                case stripPrefix " --make " line of
+                    Nothing -> findMake xs
+                    s -> s
+        filterUnwanted [] = []
+        filterUnwanted line@(x:xs) =
+                case stripPrefix "-O " line of
+                    Nothing -> x: filterUnwanted xs
+                    Just s  -> filterUnwanted s
+
 
 executeCommand :: ToolState -> String -> ([ToolOutput] -> IO ()) -> IO ()
 executeCommand tool command handler = do
