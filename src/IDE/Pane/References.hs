@@ -314,7 +314,7 @@ selectText fp text = do
             focusFindEntry
             reifyIDE $ \ideR  ->  do
                         idleAdd  (do
-                            reflectIDE (editFind True True True text "" Forward) ideR
+                            reflectIDE (editFind True True True False text "" Forward) ideR
                             return False)
                                  priorityDefaultIdle
             return True

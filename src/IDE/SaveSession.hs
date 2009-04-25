@@ -136,6 +136,7 @@ defaultLayout = SessionState {
         ,   entireWord      =   False
         ,   wrapAround      =   True
         ,   backward        =   False
+        ,   regex           =   False
         ,   lineNr          =   1})
     ,   recentOpenedFiles   =   []
     ,   recentOpenedPackages  =   []

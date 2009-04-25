@@ -320,9 +320,9 @@ markRefInSourceBuf index buf logRef scrollTo = do
         when scrollTo $ do
             idleAdd (do
                 textViewScrollToMark (sourceView buf) mark 0.3 Nothing
+                when (isOldContext && scrollTo) $ textBufferSelectRange gtkbuf iter iter2
                 return False) priorityDefaultIdle
             return ()
-        when (isOldContext && scrollTo) $ textBufferSelectRange gtkbuf iter iter2
 
 allBuffers :: IDEM [IDEBuffer]
 allBuffers = getPanes

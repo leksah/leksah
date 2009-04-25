@@ -8,7 +8,7 @@ Active package:
 Active pane:   Nothing
 Toolbar visible:
                True
-FindbarState:  (False,FindState {entryStr = "", entryHist = [], replaceStr = "", replaceHist = [], caseSensitive = False, entireWord = False, wrapAround = True, backward = False, lineNr = 1})
+FindbarState:  (False,FindState {entryStr = "", entryHist = [], replaceStr = "", replaceHist = [], caseSensitive = False, entireWord = False, wrapAround = True, backward = False, regex = False, lineNr = 1})
 Recently opened files:
                []
 Recently opened packages:

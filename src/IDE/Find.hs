@@ -39,12 +39,19 @@ import Graphics.UI.Gtk.SourceView
 import Graphics.UI.Gtk.Gdk.Events
 import Data.Maybe
 import Control.Monad.Reader
-import Data.List
 
 import IDE.Core.State
 import IDE.Pane.SourceBuffer
 import Data.Char (toUpper)
 import Data.Char (toLower)
+import Text.Regex.Posix.String (compile)
+import Text.Regex.Posix
+    (Regex(..), compNewline, compExtended, execBlank, compIgnoreCase)
+import Data.Bits ((.|.))
+import Data.List (find, stripPrefix, isPrefixOf)
+import Data.Array ((!))
+import Text.Regex.Base.RegexLike (matchAll)
+import Text.Regex (subRegex)
 
 
 data FindState = FindState {
@@ -56,6 +63,7 @@ data FindState = FindState {
         ,   entireWord      ::    Bool
         ,   wrapAround      ::    Bool
         ,   backward        ::    Bool
+        ,   regex           ::    Bool
         ,   lineNr          ::    Int}
     deriving(Eq,Ord,Show,Read)
 
@@ -71,6 +79,7 @@ getFindState = do
         wrapAround    <- getWrapAround fb
         caseSensitive <- getCaseSensitive fb
         backward      <- getBackward fb
+        regex         <- getRegex fb
         return FindState{
                 entryStr        =   entryStr
             ,   entryHist       =   entryHist
@@ -80,6 +89,7 @@ getFindState = do
             ,   entireWord      =   entireWord
             ,   wrapAround      =   wrapAround
             ,   backward        =   backward
+            ,   regex           =   regex
             ,   lineNr          =   lineNr}
 
 setFindState :: FindState -> IDEAction
@@ -95,6 +105,7 @@ setFindState fs = do
         setWrapAround fb (wrapAround fs)
         setCaseSensitive fb (caseSensitive fs)
         setBackward fb (backward fs)
+        setRegex fb (regex fs)
 
 hideToolbar :: IDEAction
 hideToolbar = do
@@ -158,11 +169,6 @@ constructFindReplace = reifyIDE $ \ ideR   -> do
     closeButton <- toolButtonNewFromStock "gtk-close"
     toolbarInsert toolbar closeButton 0
 
-    sep0 <- separatorToolItemNew
-    separatorToolItemSetDraw sep0 False
-    toolItemSetExpand sep0 True
-    toolbarInsert toolbar sep0 0
-
     spinTool <- toolItemNew
     spinL <- spinButtonNewWithRange 1.0 1000.0 10.0
     widgetSetName spinL "gotoLineEntry"
@@ -199,34 +205,25 @@ constructFindReplace = reifyIDE $ \ ideR   -> do
     sep2 <- separatorToolItemNew
     toolbarInsert toolbar sep2 0
 
+    findButton <- toolButtonNewFromStock "gtk-find"
+    toolbarInsert toolbar findButton 0
+
     backwardButton <- toggleToolButtonNew
-    toolButtonSetLabel backwardButton (Just "Backward")
+    toolButtonSetLabel backwardButton (Just "back")
     widgetSetName backwardButton "backwardButton"
     toolbarInsert toolbar backwardButton 0
 
     wrapAroundButton <- toggleToolButtonNew
-    toolButtonSetLabel wrapAroundButton (Just "Wrap around")
+    toolButtonSetLabel wrapAroundButton (Just "wrap")
     widgetSetName wrapAroundButton "wrapAroundButton"
     toolbarInsert toolbar wrapAroundButton 0
-
-    entireWordButton <- toggleToolButtonNew
-    toolButtonSetLabel entireWordButton (Just "Entire word")
-    widgetSetName entireWordButton "entireWordButton"
-    toolbarInsert toolbar entireWordButton 0
-
-    caseSensitiveButton <- toggleToolButtonNew
-    toolButtonSetLabel caseSensitiveButton (Just "Case sensitive")
-    widgetSetName caseSensitiveButton "caseSensitiveButton"
-    toolbarInsert toolbar caseSensitiveButton 0
-
-    findButton <- toolButtonNewFromStock "gtk-find"
-    toolbarInsert toolbar findButton 0
 
     entryTool <- toolItemNew
     entry <- entryNew
     widgetSetName entry "searchEntry"
     containerAdd entryTool entry
     widgetSetName entryTool "searchEntryTool"
+    toolItemSetExpand entryTool True
     toolbarInsert toolbar entryTool 0
 
     store <- listStoreNew []
@@ -246,6 +243,21 @@ constructFindReplace = reifyIDE $ \ ideR   -> do
         entrySetText entry txt
         doSearch toolbar Forward ideR
         return True
+
+    regexButton <- toggleToolButtonNew
+    toolButtonSetLabel regexButton (Just "regex")
+    widgetSetName regexButton "regexButton"
+    toolbarInsert toolbar regexButton 0
+
+    entireWordButton <- toggleToolButtonNew
+    toolButtonSetLabel entireWordButton (Just "word")
+    widgetSetName entireWordButton "entireWordButton"
+    toolbarInsert toolbar entireWordButton 0
+
+    caseSensitiveButton <- toggleToolButtonNew
+    toolButtonSetLabel caseSensitiveButton (Just "c. S.")
+    widgetSetName caseSensitiveButton "caseSensitiveButton"
+    toolbarInsert toolbar caseSensitiveButton 0
 
     labelTool <- toolItemNew
     label <- labelNew (Just "Search: ")
@@ -299,6 +311,7 @@ constructFindReplace = reifyIDE $ \ ideR   -> do
     set toolbar [ toolbarChildHomogeneous entireWordButton := False ]
     set toolbar [ toolbarChildHomogeneous caseSensitiveButton := False ]
     set toolbar [ toolbarChildHomogeneous backwardButton := False ]
+    set toolbar [ toolbarChildHomogeneous regexButton := False ]
     set toolbar [ toolbarChildHomogeneous replaceAllButton := False ]
     set toolbar [ toolbarChildHomogeneous labelTool  := False ]
     set toolbar [ toolbarChildHomogeneous labelTool2 := False ]
@@ -323,7 +336,8 @@ doSearch fb hint ideR   = do
     entireWord    <- getEntireWord fb
     caseSensitive <- getCaseSensitive fb
     wrapAround    <- getWrapAround fb
-    res           <- reflectIDE (editFind entireWord caseSensitive wrapAround search "" hint) ideR
+    regex         <- getRegex fb
+    res           <- reflectIDE (editFind entireWord caseSensitive wrapAround regex search "" hint) ideR
     if res || null search
         then do
             widgetModifyBase entry StateNormal white
@@ -366,7 +380,8 @@ replace fb hint ideR   =  do
     entireWord     <- getEntireWord fb
     caseSensitive  <- getCaseSensitive fb
     wrapAround     <- getWrapAround fb
-    found <- reflectIDE (editReplace entireWord caseSensitive wrapAround search replace hint)
+    regex          <- getRegex fb
+    found <- reflectIDE (editReplace entireWord caseSensitive wrapAround regex search replace hint)
                 ideR
     return ()
 
@@ -380,12 +395,13 @@ replaceAll fb hint ideR   =  do
     entireWord     <- getEntireWord fb
     caseSensitive  <- getCaseSensitive fb
     wrapAround     <- getWrapAround fb
-    found <- reflectIDE (editReplaceAll entireWord caseSensitive wrapAround search replace hint)
+    regex          <- getRegex fb
+    found <- reflectIDE (editReplaceAll entireWord caseSensitive wrapAround regex search replace hint)
                 ideR
     return ()
 
-editFind :: Bool -> Bool -> Bool -> String -> String -> SearchHint -> IDEM Bool
-editFind entireWord caseSensitive wrapAround search dummy hint =
+editFind :: Bool -> Bool -> Bool -> Bool -> String -> String -> SearchHint -> IDEM Bool
+editFind entireWord caseSensitive wrapAround regex search dummy hint =
     let searchflags = (if caseSensitive then [] else [toEnum 4]) ++ [toEnum 1,toEnum 2] in
     if null search
         then return False
@@ -400,22 +416,22 @@ editFind entireWord caseSensitive wrapAround search dummy hint =
                     then do
                         textIterBackwardChar st1
                         textIterBackwardChar st1
-                        mbsr <- backSearch st1 search searchflags entireWord searchflags
+                        mbsr <- backSearch regex st1 search searchflags entireWord searchflags
                         case mbsr of
                             Nothing ->
                                 if wrapAround
-                                    then do backSearch i2 search searchflags entireWord searchflags
+                                    then do backSearch regex i2 search searchflags entireWord searchflags
                                     else return Nothing
                             Just (start,end) -> return (Just (start,end))
                     else do
                         if hint == Forward
                             then textIterForwardChar st1
                             else return True
-                        mbsr <- forwardSearch st1 search searchflags entireWord searchflags
+                        mbsr <- forwardSearch regex st1 search searchflags entireWord searchflags
                         case mbsr of
                             Nothing ->
                                 if wrapAround
-                                    then do forwardSearch i1 search searchflags entireWord searchflags
+                                    then do forwardSearch regex i1 search searchflags entireWord searchflags
                                     else return Nothing
                             Just (start,end) -> return (Just (start,end))
             case mbsr2 of
@@ -427,7 +443,7 @@ editFind entireWord caseSensitive wrapAround search dummy hint =
                     return True
                 Nothing -> return False
     where
-        backSearch iter string flags entireWord searchflags = do
+        backSearch False iter string flags entireWord searchflags = do
             mbsr <- sourceIterBackwardSearch iter search searchflags Nothing
             case mbsr of
                 Nothing -> return Nothing
@@ -438,7 +454,30 @@ editFind entireWord caseSensitive wrapAround search dummy hint =
                             b2 <- textIterEndsWord iter2
                             if b1 && b2 then return $Just (iter1,iter2) else return Nothing
                         else return (Just (iter1,iter2))
-        forwardSearch iter string flags entireWord searchflags = do
+
+        backSearch True iter string flags entireWord searchflags = do
+            mbExp <- compileRegex caseSensitive search
+            case mbExp of
+                Just exp -> do
+                    gtkbuf <- textIterGetBuffer iter
+                    iterStart <- textBufferGetStartIter gtkbuf
+                    iterEnd <- textBufferGetEndIter gtkbuf
+                    before <- textBufferGetText gtkbuf iterStart iter True
+                    after <- textBufferGetText gtkbuf iter iterEnd True
+                    if null before
+                        then return Nothing
+                        else
+                            case find ((<= length before) . fst . (!0)) (reverse (matchAll exp (before ++ after))) of
+                                Just matches -> do
+                                    iter1 <- textIterCopy iterStart
+                                    textIterForwardChars iter1 (fst (matches!0))
+                                    iter2 <- textIterCopy iter1
+                                    textIterForwardChars iter2 (snd (matches!0))
+                                    return $ Just (iter1, iter2)
+                                Nothing -> return Nothing
+                Nothing -> return Nothing
+
+        forwardSearch False iter string flags entireWord searchflags = do
             mbsr <- sourceIterForwardSearch iter search searchflags Nothing
             case mbsr of
                 Nothing -> return Nothing
@@ -450,39 +489,91 @@ editFind entireWord caseSensitive wrapAround search dummy hint =
                             if b1 && b2 then return $Just (iter1,iter2) else return Nothing
                         else return $Just (iter1,iter2)
 
-editReplace :: Bool -> Bool -> Bool -> String -> String -> SearchHint -> IDEM Bool
-editReplace entireWord caseSensitive wrapAround search replace hint =
-    editReplace' entireWord caseSensitive wrapAround search replace hint True
+        forwardSearch True iter string flags entireWord searchflags = do
+            mbExp <- compileRegex caseSensitive search
+            case mbExp of
+                Just exp -> do
+                    gtkbuf <- textIterGetBuffer iter
+                    iterStart <- textBufferGetStartIter gtkbuf
+                    iterEnd <- textBufferGetEndIter gtkbuf
+                    before <- textBufferGetText gtkbuf iterStart iter True
+                    after <- textBufferGetText gtkbuf iter iterEnd True
+                    if null after
+                        then return Nothing
+                        else
+                            case find ((>= length before) . fst . (!0)) (matchAll exp (before ++ after)) of
+                                Just matches -> do
+                                    iter1 <- textIterCopy iterStart
+                                    textIterForwardChars iter1 (fst (matches!0))
+                                    iter2 <- textIterCopy iter1
+                                    textIterForwardChars iter2 (snd (matches!0))
+                                    return $ Just (iter1, iter2)
+                                Nothing -> return Nothing
+                Nothing -> return Nothing
 
-editReplace' :: Bool -> Bool -> Bool -> String -> String -> SearchHint -> Bool -> IDEM Bool
-editReplace' entireWord caseSensitive wrapAround search replace hint mayRepeat =
+editReplace :: Bool -> Bool -> Bool -> Bool -> String -> String -> SearchHint -> IDEM Bool
+editReplace entireWord caseSensitive wrapAround regex search replace hint =
+    editReplace' entireWord caseSensitive wrapAround regex search replace hint True
+
+editReplace' :: Bool -> Bool -> Bool -> Bool -> String -> String -> SearchHint -> Bool -> IDEM Bool
+editReplace' entireWord caseSensitive wrapAround regex search replace hint mayRepeat =
     inActiveBufContext' False $ \_ gtkbuf currentBuffer _ -> do
-        startMark <- liftIO $ textBufferGetInsert gtkbuf
-        iter      <- liftIO $ textBufferGetIterAtMark gtkbuf startMark
-        iter2     <- liftIO $ textIterCopy iter
-        liftIO $ textIterForwardChars iter2 (length search)
-        str1      <- liftIO $ textIterGetText iter iter2
-        if compare str1 search caseSensitive
-            then do
+        insertMark <- liftIO $ textBufferGetInsert gtkbuf
+        iter       <- liftIO $ textBufferGetIterAtMark gtkbuf insertMark
+        iterStart  <- liftIO $ textBufferGetStartIter gtkbuf
+        iterEnd    <- liftIO $ textBufferGetEndIter gtkbuf
+        before     <- liftIO $ textIterGetText iterStart iter
+        after      <- liftIO $ textIterGetText iter iterEnd
+        match      <- liftIO $ subst before after search replace caseSensitive regex
+        case match of
+            Just (matchLength, replacement) -> do
+                iter2     <- liftIO $ textIterCopy iter
+                liftIO $ textIterForwardChars iter2 matchLength
                 liftIO $ textBufferDelete gtkbuf iter iter2
-                liftIO $ textBufferInsert gtkbuf iter replace
-                editFind entireWord caseSensitive wrapAround search "" hint
-            else do
-                r <- editFind entireWord caseSensitive wrapAround search "" hint
+                liftIO $ textBufferInsert gtkbuf iter replacement
+                editFind entireWord caseSensitive wrapAround regex search "" hint
+            Nothing -> do
+                r <- editFind entireWord caseSensitive wrapAround regex search "" hint
                 if r
-                    then editReplace' entireWord caseSensitive wrapAround search
+                    then editReplace' entireWord caseSensitive wrapAround regex search
                             replace hint False
                     else return False
     where
-        compare s1 s2 True = s1 == s2
-        compare s1 s2 False = map toUpper s1 == map toUpper s2
+        subst _ after search replace True False  = do
+            case stripPrefix search after of
+                Just remaining -> return $ Just (length search, replace)
+                Nothing        -> return Nothing
+        subst _ after search replcae False False = do
+            if map toUpper search `isPrefixOf` map toUpper after
+                then return $ Just (length search, replace)
+                else return Nothing
+        subst before after search replace caseSensitive True = do
+            mbExp <- compileRegex caseSensitive search
+            case mbExp of
+                Just exp -> do
+                    case find ((== length before) . fst . (!0)) (matchAll exp (before ++ after)) of
+                        Just matches -> return $ Just (snd (matches!0), subRegex exp (take (snd (matches!0)) after) replace)
+                        Nothing      -> return Nothing
+                Nothing -> return Nothing
 
-editReplaceAll :: Bool -> Bool -> Bool -> String -> String -> SearchHint -> IDEM Bool
-editReplaceAll entireWord caseSensitive wrapAround search replace hint = do
-    res <- editReplace' entireWord caseSensitive False search replace hint True
+editReplaceAll :: Bool -> Bool -> Bool -> Bool -> String -> String -> SearchHint -> IDEM Bool
+editReplaceAll entireWord caseSensitive wrapAround regex search replace hint = do
+    res <- editReplace' entireWord caseSensitive False regex search replace hint True
     if res
-        then editReplaceAll entireWord caseSensitive False search replace hint
+        then editReplaceAll entireWord caseSensitive False regex search replace hint
         else return False
+
+compileRegex :: Bool -> String -> IO (Maybe Regex)
+compileRegex caseSense searchString = do
+    res <- compile ((if caseSense then id else (compIgnoreCase .|.))
+                    (compExtended .|. compNewline))
+                execBlank searchString
+    case res of
+        Left err -> do
+            sysMessage Normal (show err)
+            return Nothing
+        Right regex -> return $ Just regex
+
 
 red = Color 640000 10000 10000
 white = Color 64000 64000 64000
@@ -542,11 +633,12 @@ getWidget str tb = do
                 Just w -> return w
         _   -> throwIDE "Find>>getWidget not found(2)"
 
-getEntireWord, getWrapAround, getCaseSensitive :: Toolbar -> IO Bool
+getEntireWord, getWrapAround, getCaseSensitive, getBackward, getRegex :: Toolbar -> IO Bool
 getEntireWord    = getSelection "entireWordButton"
 getWrapAround    = getSelection "wrapAroundButton"
 getCaseSensitive = getSelection "caseSensitiveButton"
 getBackward      = getSelection "backwardButton"
+getRegex         = getSelection "regexButton"
 
 getSelection :: String -> Toolbar -> IO Bool
 getSelection str tb = do
@@ -556,11 +648,12 @@ getSelection str tb = do
         [w] -> toggleToolButtonGetActive (castToToggleToolButton w)
         _   -> throwIDE "Find>>getIt widget not found"
 
-setEntireWord, setWrapAround, setCaseSensitive, setBackward :: Toolbar -> Bool -> IO ()
+setEntireWord, setWrapAround, setCaseSensitive, setBackward, setRegex :: Toolbar -> Bool -> IO ()
 setEntireWord    = setSelection "entireWordButton"
 setWrapAround    = setSelection "wrapAroundButton"
 setCaseSensitive = setSelection "caseSensitiveButton"
 setBackward      = setSelection "backwardButton"
+setRegex         = setSelection "regexButton"
 
 setSelection :: String -> Toolbar -> Bool ->  IO ()
 setSelection str tb bool = do
