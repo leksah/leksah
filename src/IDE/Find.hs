@@ -35,20 +35,18 @@ module IDE.Find (
 ) where
 
 import Graphics.UI.Gtk hiding (get)
-import Graphics.UI.Gtk.SourceView
 import Graphics.UI.Gtk.Gdk.Events
 import Data.Maybe
 import Control.Monad.Reader
 
 import IDE.Core.State
 import IDE.Pane.SourceBuffer
-import Data.Char (toUpper)
 import Data.Char (toLower)
 import Text.Regex.Posix.String (compile)
 import Text.Regex.Posix
     (Regex(..), compNewline, compExtended, execBlank, compIgnoreCase)
 import Data.Bits ((.|.))
-import Data.List (find, stripPrefix, isPrefixOf)
+import Data.List (find, isPrefixOf)
 import Data.Array ((!))
 import Text.Regex.Base.RegexLike (matchAll)
 import Text.Regex (subRegex)
@@ -402,7 +400,6 @@ replaceAll fb hint ideR   =  do
 
 editFind :: Bool -> Bool -> Bool -> Bool -> String -> String -> SearchHint -> IDEM Bool
 editFind entireWord caseSensitive wrapAround regex search dummy hint =
-    let searchflags = (if caseSensitive then [] else [toEnum 4]) ++ [toEnum 1,toEnum 2] in
     if null search
         then return False
         else inActiveBufContext' False $ \_ gtkbuf currentBuffer _ -> liftIO $ do
@@ -416,22 +413,22 @@ editFind entireWord caseSensitive wrapAround regex search dummy hint =
                     then do
                         textIterBackwardChar st1
                         textIterBackwardChar st1
-                        mbsr <- backSearch regex st1 search searchflags entireWord searchflags
+                        mbsr <- backSearch entireWord caseSensitive regex st1 search
                         case mbsr of
                             Nothing ->
                                 if wrapAround
-                                    then do backSearch regex i2 search searchflags entireWord searchflags
+                                    then do backSearch entireWord caseSensitive regex i2 search
                                     else return Nothing
                             Just (start,end) -> return (Just (start,end))
                     else do
                         if hint == Forward
                             then textIterForwardChar st1
                             else return True
-                        mbsr <- forwardSearch regex st1 search searchflags entireWord searchflags
+                        mbsr <- forwardSearch entireWord caseSensitive regex st1 search
                         case mbsr of
                             Nothing ->
                                 if wrapAround
-                                    then do forwardSearch regex i1 search searchflags entireWord searchflags
+                                    then do forwardSearch entireWord caseSensitive regex i1 search
                                     else return Nothing
                             Just (start,end) -> return (Just (start,end))
             case mbsr2 of
@@ -443,73 +440,41 @@ editFind entireWord caseSensitive wrapAround regex search dummy hint =
                     return True
                 Nothing -> return False
     where
-        backSearch False iter string flags entireWord searchflags = do
-            mbsr <- sourceIterBackwardSearch iter search searchflags Nothing
-            case mbsr of
-                Nothing -> return Nothing
-                Just (iter1,iter2) ->
-                    if entireWord
-                        then do
-                            b1 <- textIterStartsWord iter1
-                            b2 <- textIterEndsWord iter2
-                            if b1 && b2 then return $Just (iter1,iter2) else return Nothing
-                        else return (Just (iter1,iter2))
+        backSearch entireWord caseSensitive regex iter string = do
+            gtkbuf <- textIterGetBuffer iter
+            offset  <- textIterGetOffset iter
+            findMatch entireWord caseSensitive regex gtkbuf (<= offset) True string
 
-        backSearch True iter string flags entireWord searchflags = do
-            mbExp <- compileRegex caseSensitive search
-            case mbExp of
-                Just exp -> do
-                    gtkbuf <- textIterGetBuffer iter
-                    iterStart <- textBufferGetStartIter gtkbuf
-                    iterEnd <- textBufferGetEndIter gtkbuf
-                    before <- textBufferGetText gtkbuf iterStart iter True
-                    after <- textBufferGetText gtkbuf iter iterEnd True
-                    if null before
-                        then return Nothing
-                        else
-                            case find ((<= length before) . fst . (!0)) (reverse (matchAll exp (before ++ after))) of
-                                Just matches -> do
-                                    iter1 <- textIterCopy iterStart
-                                    textIterForwardChars iter1 (fst (matches!0))
-                                    iter2 <- textIterCopy iter1
-                                    textIterForwardChars iter2 (snd (matches!0))
-                                    return $ Just (iter1, iter2)
-                                Nothing -> return Nothing
-                Nothing -> return Nothing
+        forwardSearch entireWord caseSensitive regex iter string = do
+            gtkbuf <- textIterGetBuffer iter
+            offset  <- textIterGetOffset iter
+            findMatch entireWord caseSensitive regex gtkbuf (>= offset) False string
 
-        forwardSearch False iter string flags entireWord searchflags = do
-            mbsr <- sourceIterForwardSearch iter search searchflags Nothing
-            case mbsr of
+findMatch :: Bool -> Bool -> Bool -> TextBuffer -> (Int -> Bool) -> Bool -> String -> IO (Maybe (TextIter, TextIter))
+findMatch entireWord caseSensitive regex gtkbuf offsetPred findLast string = do
+    -- Escape non regex string
+    let regexString = if regex then string else [f x|x <- string, f <- [const '\\', id]]
+    -- Compiel regular expression with word filter if needed
+    mbExp <- compileRegex caseSensitive $
+        if entireWord
+            then "(^|[^a-zA-Z0-9])(" ++ regexString ++ ")($|[^a-zA-Z0-9])"
+            else regexString
+    let matchIndex = if entireWord then 2 else 0
+    case mbExp of
+        Just exp -> do
+            iterStart <- textBufferGetStartIter gtkbuf
+            iterEnd <- textBufferGetEndIter gtkbuf
+            text <- textBufferGetText gtkbuf iterStart iterEnd True
+            let matches = (if findLast then reverse else id) (matchAll exp text)
+            case find (offsetPred . fst . (!matchIndex)) matches of
+                Just matches -> do
+                    iter1 <- textIterCopy iterStart
+                    textIterForwardChars iter1 (fst (matches!matchIndex))
+                    iter2 <- textIterCopy iter1
+                    textIterForwardChars iter2 (snd (matches!matchIndex))
+                    return $ Just (iter1, iter2)
                 Nothing -> return Nothing
-                Just (iter1,iter2) ->
-                    if entireWord
-                        then do
-                            b1 <- textIterStartsWord iter1
-                            b2 <- textIterEndsWord iter2
-                            if b1 && b2 then return $Just (iter1,iter2) else return Nothing
-                        else return $Just (iter1,iter2)
-
-        forwardSearch True iter string flags entireWord searchflags = do
-            mbExp <- compileRegex caseSensitive search
-            case mbExp of
-                Just exp -> do
-                    gtkbuf <- textIterGetBuffer iter
-                    iterStart <- textBufferGetStartIter gtkbuf
-                    iterEnd <- textBufferGetEndIter gtkbuf
-                    before <- textBufferGetText gtkbuf iterStart iter True
-                    after <- textBufferGetText gtkbuf iter iterEnd True
-                    if null after
-                        then return Nothing
-                        else
-                            case find ((>= length before) . fst . (!0)) (matchAll exp (before ++ after)) of
-                                Just matches -> do
-                                    iter1 <- textIterCopy iterStart
-                                    textIterForwardChars iter1 (fst (matches!0))
-                                    iter2 <- textIterCopy iter1
-                                    textIterForwardChars iter2 (snd (matches!0))
-                                    return $ Just (iter1, iter2)
-                                Nothing -> return Nothing
-                Nothing -> return Nothing
+        Nothing -> return Nothing
 
 editReplace :: Bool -> Bool -> Bool -> Bool -> String -> String -> SearchHint -> IDEM Bool
 editReplace entireWord caseSensitive wrapAround regex search replace hint =
@@ -520,17 +485,21 @@ editReplace' entireWord caseSensitive wrapAround regex search replace hint mayRe
     inActiveBufContext' False $ \_ gtkbuf currentBuffer _ -> do
         insertMark <- liftIO $ textBufferGetInsert gtkbuf
         iter       <- liftIO $ textBufferGetIterAtMark gtkbuf insertMark
-        iterStart  <- liftIO $ textBufferGetStartIter gtkbuf
-        iterEnd    <- liftIO $ textBufferGetEndIter gtkbuf
-        before     <- liftIO $ textIterGetText iterStart iter
-        after      <- liftIO $ textIterGetText iter iterEnd
-        match      <- liftIO $ subst before after search replace caseSensitive regex
+        offset     <- liftIO $ textIterGetOffset iter
+        match      <- liftIO $ findMatch entireWord caseSensitive regex gtkbuf
+                                    (== offset) False search
         case match of
-            Just (matchLength, replacement) -> do
-                iter2     <- liftIO $ textIterCopy iter
-                liftIO $ textIterForwardChars iter2 matchLength
-                liftIO $ textBufferDelete gtkbuf iter iter2
-                liftIO $ textBufferInsert gtkbuf iter replacement
+            Just (iterStart, iterEnd) -> do
+                old    <- liftIO $ textIterGetText iterStart iterEnd
+                mbText <- liftIO $ replacementText regex old replace
+                case mbText of
+                    Just text -> do
+                        liftIO $ textBufferDelete gtkbuf iterStart iterEnd
+                        liftIO $ textBufferInsert gtkbuf iterStart text
+                    Nothing -> do
+                        sysMessage Normal
+                            "Should never happen. findMatch worked but repleacementText failed"
+                        return ()
                 editFind entireWord caseSensitive wrapAround regex search "" hint
             Nothing -> do
                 r <- editFind entireWord caseSensitive wrapAround regex search "" hint
@@ -539,22 +508,12 @@ editReplace' entireWord caseSensitive wrapAround regex search replace hint mayRe
                             replace hint False
                     else return False
     where
-        subst _ after search replace True False  = do
-            case stripPrefix search after of
-                Just remaining -> return $ Just (length search, replace)
-                Nothing        -> return Nothing
-        subst _ after search replcae False False = do
-            if map toUpper search `isPrefixOf` map toUpper after
-                then return $ Just (length search, replace)
-                else return Nothing
-        subst before after search replace caseSensitive True = do
+        replacementText False old replace = return $ Just replace
+        replacementText True old replace = do
             mbExp <- compileRegex caseSensitive search
             case mbExp of
-                Just exp -> do
-                    case find ((== length before) . fst . (!0)) (matchAll exp (before ++ after)) of
-                        Just matches -> return $ Just (snd (matches!0), subRegex exp (take (snd (matches!0)) after) replace)
-                        Nothing      -> return Nothing
-                Nothing -> return Nothing
+                Just exp -> return $ Just $ subRegex exp old replace
+                Nothing  -> return Nothing
 
 editReplaceAll :: Bool -> Bool -> Bool -> Bool -> String -> String -> SearchHint -> IDEM Bool
 editReplaceAll entireWord caseSensitive wrapAround regex search replace hint = do
