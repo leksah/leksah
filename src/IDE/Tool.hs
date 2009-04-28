@@ -168,8 +168,8 @@ noInputCommandLineReader = CommanLineReader {
 getOutput :: CommanLineReader -> Handle -> Handle -> Handle -> ProcessHandle -> IO [RawToolOutput]
 getOutput clr inp out err pid = do
     chan <- newChan
-    hSetBuffering out NoBuffering
-    hSetBuffering err NoBuffering
+    -- hSetBuffering out NoBuffering
+    -- hSetBuffering err NoBuffering
     foundExpectedError <- newEmptyMVar
     -- Use this and the too putStr threads bellow if you want to see the raw output
     -- hSetBuffering stdout NoBuffering
