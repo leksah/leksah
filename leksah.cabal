@@ -41,7 +41,7 @@ Executable leksah
                    gtksourceview2 >=0.10.0, mtl >=1.1.0.2, old-time >=1.0.0.1,
                    parsec >=2.1.0.1, pretty >=1.0.1.0, process >=1.0.1.0,
                    regex-posix >=0.72.0.3, regex-compat >=0.71.0.1,
-                   regex-base >=0.93.1, utf8-string >=0.3.1.1, array >=0.2.0.0
+                   regex-base >=0.72.0.2, utf8-string >=0.3.1.1, array >=0.2.0.0
     main-is: Main.hs
     buildable: True
     build-tools:
