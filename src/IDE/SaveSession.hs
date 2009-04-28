@@ -47,6 +47,7 @@ import IDE.Pane.Log
 import IDE.Pane.Preferences
 import IDE.Pane.PackageFlags
 import IDE.Pane.Search
+import IDE.Pane.Grep
 import IDE.Find
 import System.Time (getClockTime)
 import IDE.Package (activatePackage,deactivatePackage)
@@ -66,6 +67,7 @@ data PaneState      =   BufferSt BufferState
                     |   FlagsSt FlagsState
                     |   SearchSt SearchState
                     |   DebuggerSt DebuggerState
+                    |   GrepSt GrepState
     deriving(Eq,Ord,Read,Show)
 
 asPaneState :: RecoverablePane alpha beta gamma => beta -> PaneState
@@ -78,6 +80,7 @@ asPaneState s | isJust ((cast s) :: Maybe PrefsState)    =   PrefsSt (fromJust $
 asPaneState s | isJust ((cast s) :: Maybe FlagsState)    =   FlagsSt (fromJust $ cast s)
 asPaneState s | isJust ((cast s) :: Maybe SearchState)   =   SearchSt (fromJust $ cast s)
 asPaneState s | isJust ((cast s) :: Maybe DebuggerState) =   DebuggerSt (fromJust $ cast s)
+asPaneState s | isJust ((cast s) :: Maybe GrepState)     =   GrepSt (fromJust $ cast s)
 asPaneState s                                            =   error "SaveSession>>asPaneState incomplete cast"
 
 recover :: PanePath -> PaneState -> IDEAction
@@ -90,6 +93,7 @@ recover pp (PrefsSt p)          =   recoverState pp p
 recover pp (FlagsSt p)          =   recoverState pp p
 recover pp (SearchSt p)         =   recoverState pp p
 recover pp (DebuggerSt p)       =   recoverState pp p
+recover pp (GrepSt p)           =   recoverState pp p
 
 -- ---------------------------------------------------------------------
 
@@ -135,7 +139,6 @@ defaultLayout = SessionState {
         ,   caseSensitive   =   False
         ,   entireWord      =   False
         ,   wrapAround      =   True
-        ,   backward        =   False
         ,   regex           =   False
         ,   lineNr          =   1})
     ,   recentOpenedFiles   =   []

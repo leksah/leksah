@@ -109,7 +109,7 @@ initLog panePath nb = do
         set errtag[textTagForeground := "red"]
         textTagTableAdd tags errtag
         frametag     <- textTagNew (Just "frame")
-        set frametag[textTagForeground := "green"]
+        set frametag[textTagForeground := "dark green"]
         textTagTableAdd tags frametag
         activeErrtag <- textTagNew (Just "activeErr")
         set activeErrtag[textTagBackground := "yellow"]
