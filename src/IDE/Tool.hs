@@ -176,12 +176,12 @@ getOutput clr inp out err pid = do
     forkIO $ do
         errors <- hGetContents err
         -- forkIO $ putStr errors
-        readError chan errors foundExpectedError
+        readError chan (filter (/= '\r') errors) foundExpectedError
         writeChan chan ToolErrClosed
     forkIO $ do
         output <- hGetContents out
         -- forkIO $ putStr output
-        readOutput chan output True foundExpectedError False
+        readOutput chan (filter (/= '\r') output) True foundExpectedError False
         writeChan chan ToolOutClosed
     forkIO $ do
         testClosed <- dupChan chan
