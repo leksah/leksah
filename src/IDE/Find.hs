@@ -46,7 +46,7 @@ import Text.Regex.Posix.String (compile)
 import Text.Regex.Posix
     (Regex(..), compNewline, compExtended, execBlank, compIgnoreCase)
 import Data.Bits ((.|.))
-import Data.List (find, isPrefixOf)
+import Data.List (nub, find, isPrefixOf)
 import Data.Array ((!))
 import Text.Regex.Base.RegexLike (matchAll)
 import Text.Regex (subRegex)
@@ -54,6 +54,8 @@ import IDE.Tool (runTool)
 import Control.Concurrent (forkIO)
 import IDE.Pane.Grep
 import GHC.Unicode (isAlphaNum)
+import IDE.Package (getPackageDescriptionAndPath)
+import Distribution.PackageDescription (allBuildInfo, hsSourceDirs)
 
 
 data FindState = FindState {
@@ -185,7 +187,7 @@ constructFindReplace = reifyIDE $ \ ideR   -> do
 
     grepButton <- toolButtonNew (Nothing :: Maybe Widget) (Just "Grep")
     toolbarInsert toolbar grepButton 0
-    grepButton `onToolButtonClicked` (doGrep toolbar ideR)
+    grepButton `onToolButtonClicked` (reflectIDE (doGrep toolbar) ideR)
     tooltipsSetTip tooltips grepButton "Search in multiple files" ""
 
     sep1 <- separatorToolItemNew
@@ -361,20 +363,26 @@ doSearch fb hint ideR   = do
     reflectIDE (addToHist search) ideR
     return ()
 
-doGrep :: Toolbar -> IDERef -> IO ()
-doGrep fb ideR   = do
-    entry         <- getFindEntry fb
-    search        <- entryGetText (castToEntry entry)
-    entireWord    <- getEntireWord fb
-    caseSensitive <- getCaseSensitive fb
-    wrapAround    <- getWrapAround fb
-    regex         <- getRegex fb
+doGrep :: Toolbar -> IDEAction
+doGrep fb   = do
+    ideR          <- ask
+    entry         <- liftIO $ getFindEntry fb
+    search        <- liftIO $ entryGetText (castToEntry entry)
+    entireWord    <- liftIO $ getEntireWord fb
+    caseSensitive <- liftIO $ getCaseSensitive fb
+    wrapAround    <- liftIO $ getWrapAround fb
+    regex         <- liftIO $ getRegex fb
     let (regexString, _) = regexStringAndMatchIndex entireWord regex search
-    forkIO $ do
-        (output, pid) <- runTool "grep" ((if caseSensitive then [] else ["-i"])
-            ++ ["-r", "-E", "-n", regexString, "src"])
-        reflectIDE (setGrepResults output) ideR
-    return ()
+    mbPD <- getPackageDescriptionAndPath
+    case mbPD of
+        Nothing             -> ideMessage Normal "No package description"
+        Just (pd,cabalPath) -> do
+            let srcPaths = nub $ concatMap hsSourceDirs $ allBuildInfo pd
+            liftIO $ forkIO $ do
+                (output, pid) <- runTool "grep" ((if caseSensitive then [] else ["-i"])
+                    ++ ["-r", "-E", "-n", regexString] ++ srcPaths)
+                reflectIDE (setGrepResults output) ideR
+            return ()
 
 matchFunc :: ListStore String -> String -> TreeIter -> IO Bool
 matchFunc model str iter = do
