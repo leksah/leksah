@@ -194,19 +194,20 @@ startGUI sessionFilename iprefs = do
                                     Just name   ->   name ++ ".candy")
     candySt     <-  parseCandy candyPath
     win         <-  windowNew
+    widgetSetName win "Leksah Main Window"
     dataDir     <-  getDataDir
     let iconPath = dataDir </> "data" </> "leksah.png"
     iconExists  <-  doesFileExist iconPath
     when iconExists $
         windowSetIconFromFile win iconPath
     let ide = IDE
-          {   window        =   win
+          {   windows       =   [win]
           ,   uiManager     =   uiManager
           ,   panes         =   Map.empty
           ,   activePane    =   Nothing
           ,   recentPanes   =   []
           ,   paneMap       =   Map.empty
-          ,   layout        =   (TerminalP Nothing (-1))
+          ,   layout        =   (TerminalP Map.empty Nothing (-1) Nothing Nothing)
           ,   specialKeys   =   specialKeys
           ,   specialKey    =   Nothing
           ,   candy         =   candySt

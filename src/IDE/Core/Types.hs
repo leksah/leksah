@@ -163,6 +163,7 @@ data Prefs = Prefs {
     ,   sourcePanePath      ::   StandardPath
     ,   logPanePath         ::   StandardPath
     ,   modulesPanePath     ::   StandardPath
+    ,   debugPanePath       ::   StandardPath
     ,   sourceDirectories   ::   [FilePath]
     ,   packageBlacklist    ::   [Dependency]
     ,   collectAfterBuild   ::   Bool

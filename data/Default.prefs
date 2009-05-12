@@ -22,11 +22,11 @@ Window default size:
 Use ctrl Tab for Notebook flipper:
                True
 Standard source pane path:
-               [LeftP]
+               [SplitP LeftP]
 Standard log pane path:
-               [RightP,BottomP]
+               [SplitP RightP,SplitP BottomP]
 Standard modules pane path:
-               [RightP,TopP]
+               [SplitP RightP,SplitP TopP]
 Paths under which haskell sources for packages may be found:
                []
 Packages which are excluded from the modules pane:

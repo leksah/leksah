@@ -20,6 +20,7 @@ module IDE.Core.State (
     IDEObject
 ,   IDEEditor
 ,   IDE(..)
+,   window
 ,   errorRefs
 ,   breakpointRefs
 ,   contextRefs
@@ -142,7 +143,7 @@ class IDEObject o => IDEEditor o
 -- | The IDE state
 --
 data IDE            =  IDE {
-    window          ::   Window                  -- ^ the gtk window
+    windows         ::   [Window]                -- ^ the gtk window
 ,   uiManager       ::   UIManager               -- ^ the gtk uiManager
 ,   panes           ::   Map PaneName (IDEPane IDEM)    -- ^ a map with all panes (subwindows)
 ,   activePane      ::   Maybe (PaneName,Connections)
@@ -174,6 +175,9 @@ data IDE            =  IDE {
 ,   runningTool     ::   Maybe ProcessHandle
 ,   ghciState       ::   Maybe ToolState
 } --deriving Show
+
+-- Main window is just the first one in the list
+window = head . windows
 
 errorRefs :: IDE -> [LogRef]
 errorRefs = (filter ((\t -> t == ErrorRef || t == WarningRef) . logRefType)) . allLogRefs
@@ -283,7 +287,8 @@ catchIDE block handler = reifyIDE (\ideR -> catch (reflectIDE block ideR) handle
 type IDEAction = IDEM ()
 
 instance PaneMonad IDEM where
-    getWindowSt     =   readIDE window
+    getWindowsSt    =   readIDE windows
+    setWindowsSt v  =   modifyIDE_ (\ide -> return ide{windows = v})
     getUIManagerSt  =   readIDE uiManager
     getPanesSt      =   readIDE panes
     getPaneMapSt    =   readIDE paneMap
@@ -489,22 +494,22 @@ getRecentPackages = getMenuItem "ui/menubar/_Package/_Recent Packages"
 -- (toolbar)
 
 getSBSpecialKeys :: PaneMonad alpha => alpha Statusbar
-getSBSpecialKeys   = widgetGet ["topBox","statusBox","statusBarSpecialKeys"] castToStatusbar
+getSBSpecialKeys   = widgetGet ["Leksah Main Window", "topBox","statusBox","statusBarSpecialKeys"] castToStatusbar
 
 getSBActivePane :: PaneMonad alpha => alpha Statusbar
-getSBActivePane    = widgetGet ["topBox","statusBox","statusBarActivePane"] castToStatusbar
+getSBActivePane    = widgetGet ["Leksah Main Window", "topBox","statusBox","statusBarActivePane"] castToStatusbar
 
 getSBActivePackage :: PaneMonad alpha => alpha Statusbar
-getSBActivePackage = widgetGet ["topBox","statusBox","statusBarActiveProject"] castToStatusbar
+getSBActivePackage = widgetGet ["Leksah Main Window", "topBox","statusBox","statusBarActiveProject"] castToStatusbar
 
 getSBErrors :: PaneMonad alpha => alpha Statusbar
-getSBErrors        = widgetGet ["topBox","statusBox","statusBarErrors"] castToStatusbar
+getSBErrors        = widgetGet ["Leksah Main Window", "topBox","statusBox","statusBarErrors"] castToStatusbar
 
 getStatusbarIO :: PaneMonad alpha => alpha Statusbar
-getStatusbarIO     =  widgetGet ["topBox","statusBox","statusBarInsertOverwrite"] castToStatusbar
+getStatusbarIO     =  widgetGet ["Leksah Main Window", "topBox","statusBox","statusBarInsertOverwrite"] castToStatusbar
 
 getStatusbarLC :: PaneMonad alpha => alpha Statusbar
-getStatusbarLC     = widgetGet ["topBox","statusBox","statusBarLineColumn"] castToStatusbar
+getStatusbarLC     = widgetGet ["Leksah Main Window", "topBox","statusBox","statusBarLineColumn"] castToStatusbar
 
 controlIsPressed :: G.Event -> Bool
 controlIsPressed (G.Button _ _ _ _ _ mods _ _ _) | Control `elem` mods = True

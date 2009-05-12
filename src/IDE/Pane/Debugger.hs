@@ -95,7 +95,7 @@ instance RecoverablePane IDEDebugger DebuggerState IDEM where
     recoverState pp (DebuggerState text hi vi) =   do
         prefs       <-  readIDE prefs
         layout      <-  readIDE layout
-        let pp      =   getStandardPanePath (modulesPanePath prefs) layout
+        let pp      =   getStandardPanePath (debugPanePath prefs) layout
         nb          <-  getNotebook pp
         initDebugger pp nb text
         debugger    <- getDebugger
@@ -115,7 +115,7 @@ getDebugger = do
         Nothing -> do
             prefs       <-  readIDE prefs
             layout      <-  readIDE layout
-            let pp      =   getStandardPanePath (modulesPanePath prefs) layout
+            let pp      =   getStandardPanePath (debugPanePath prefs) layout
             nb          <-  getNotebook pp
             initDebugger pp nb ""
             mbDeb <- getPane
@@ -310,9 +310,12 @@ initDebugger panePath nb wstext = do
                 return False)
         treeViewB  `onButtonPress` (breakpointViewPopup ideR listStoreB treeViewB)
 
+        cid1 <- workspaceView `afterFocusIn`
+            (\_ -> do reflectIDE (makeActive deb) ideR ; return True)
+
         notebookInsertOrdered nb ibox (paneName deb) Nothing
         widgetShowAll ibox
-        return (deb,[])
+        return (deb,[cid1])
     addPaneAdmin pane [] panePath
     liftIO $ widgetGrabFocus (workspaceView pane)
     liftIO $ bringPaneToFront pane

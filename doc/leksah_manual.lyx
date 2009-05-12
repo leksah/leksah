@@ -812,11 +812,17 @@ height_special "totalheight"
 status open
 
 \begin_layout Plain Layout
+
+\family typewriter
+\size scriptsize
 /opt/local/var/macports/build/_opt_local_var_macports_sources_rsync.macports.org_r
 elease_ports_lang_ghc/work/ghc-6.10.1
 \end_layout
 
 \begin_layout Plain Layout
+
+\family typewriter
+\size scriptsize
 /opt/local/var/macports/build/_opt_local_var_macports_sources_rsync.macports.org_r
 elease_ports_devel_gtk2hs/work/gtk2hs-0.10.0
 \end_layout
@@ -1043,24 +1049,28 @@ status open
 \begin_layout Plain Layout
 
 \family typewriter
+\size footnotesize
 wget http://www.haskell.org/cabal/release/cabal-install-0.6.2/cabal-install-0.6.2.tar.gz
 \end_layout
 
 \begin_layout Plain Layout
 
 \family typewriter
+\size footnotesize
 tar -xvjpf cabal-install-0.6.2.tar.gz
 \end_layout
 
 \begin_layout Plain Layout
 
 \family typewriter
+\size footnotesize
 cd cabal-install-0.6.2
 \end_layout
 
 \begin_layout Plain Layout
 
 \family typewriter
+\size footnotesize
 ./bootstrap
 \end_layout
 

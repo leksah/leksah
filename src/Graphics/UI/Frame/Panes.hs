@@ -24,8 +24,11 @@ module Graphics.UI.Frame.Panes (
 ,   IDEPane(..)
 ,   RecoverablePane(..)
 ,   PaneDirection(..)
+,   PanePathElement(..)
 ,   PanePath
 ,   PaneLayout(..)
+,   PaneGroupWindow(..)
+,   PaneGroup(..)
 ,   PaneName
 ,   Connection(..)
 ,   Connections
@@ -49,7 +52,13 @@ import Control.Monad.Trans
 --
 -- | A path to a pane
 --
-type PanePath       =   [PaneDirection]
+type PanePath       =   [PanePathElement]
+
+--
+-- | An element of a path to a pane
+--
+data PanePathElement = SplitP PaneDirection | GroupP String
+    deriving (Eq,Show,Read)
 
 --
 -- | The relative direction to a pane from the parent
@@ -63,8 +72,24 @@ data PaneDirection  =   TopP | BottomP | LeftP | RightP
 --
 data PaneLayout =       HorizontalP PaneLayout PaneLayout Int
                     |   VerticalP PaneLayout PaneLayout Int
-                    |   TerminalP (Maybe PaneDirection) Int
+                    |   TerminalP {
+                                paneGroups   :: PaneGroups
+                            ,   paneTabs     :: (Maybe PaneDirection)
+                            ,   currentPage  :: Int
+                            ,   detachedId   :: Maybe String
+                            ,   detachedSize :: Maybe (Int, Int) }
     deriving (Eq,Show,Read)
+
+data PaneGroupWindow = PaneGroupWindow {
+    groupWindowSize :: (Int, Int)
+} deriving (Eq,Show,Read)
+
+data PaneGroup = PaneGroup {
+        paneGroupLayout :: PaneLayout
+--    ,   paneGroupWindow :: Maybe PaneGroupWindow
+} deriving (Eq,Show,Read)
+
+type PaneGroups = Map.Map String PaneGroup
 
 --
 -- | All kinds of panes are instances of pane
@@ -106,7 +131,8 @@ type StandardPath = PanePath
 
 
 class MonadIO delta =>  PaneMonad delta where
-    getWindowSt     ::   delta Window
+    getWindowsSt    ::   delta [Window]
+    setWindowsSt    ::   [Window] -> delta ()
     getUIManagerSt  ::   delta UIManager
 
     getPanesSt      ::   delta (Map PaneName (IDEPane delta))

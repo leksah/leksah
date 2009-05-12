@@ -131,6 +131,9 @@
        <menuitem name="_Collapse" action="ViewCollapse" />
        <menuitem name="Close Pane" action="ViewClosePane" />
        <separator/>
+       <menuitem name="_Group" action="ViewNest" />
+       <menuitem name="_Detach" action="ViewDetach" />
+       <separator/>
        <menuitem name="Move _Left" action="ViewMoveLeft" />
        <menuitem name="Move _Right" action="ViewMoveRight" />
        <menuitem name="Move _Up" action="ViewMoveUp" />

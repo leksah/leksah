@@ -292,6 +292,10 @@ actions =
         viewSplitVertical [] False
     ,AD "ViewCollapse" "_Collapse" Nothing Nothing
         viewCollapse [] False
+    ,AD "ViewNest" "_Group" Nothing Nothing
+        (viewNest "New") [] False
+    ,AD "ViewDetach" "_Detach" Nothing Nothing
+        viewDetach [] False
 
     ,AD "ViewTabsLeft" "Tabs Left" Nothing Nothing
         (viewTabsPos PosLeft) [] False

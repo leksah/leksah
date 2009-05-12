@@ -125,7 +125,7 @@ data SessionState = SessionState {
 
 defaultLayout = SessionState {
         saveTime            =   ""
-    ,   layoutS             =   TerminalP (Just TopP) (-1)
+    ,   layoutS             =   TerminalP Map.empty (Just TopP) (-1) Nothing Nothing
     ,   population          =   []
     ,   windowSize          =   (1024,768)
     ,   activePackage       =   Nothing
@@ -331,9 +331,9 @@ viewCollapseAll :: IDEAction
 viewCollapseAll = do
     layout' <- readIDE layout
     case layout' of
-        TerminalP _ _ -> return ()
-        VerticalP _ _ _ -> viewCollapse' [LeftP]
-        HorizontalP _ _ _ -> viewCollapse' [TopP]
+        TerminalP {}      -> return ()
+        VerticalP _ _ _   -> viewCollapse' [SplitP LeftP]
+        HorizontalP _ _ _ -> viewCollapse' [SplitP TopP]
 
 writeLayout :: FilePath -> SessionState -> IO ()
 writeLayout fpath ls = writeFile fpath (showLayout ls layoutDescr)
@@ -348,25 +348,36 @@ getLayout = do
     getLayout' rawLayout []
     where
     getLayout' (HorizontalP l r _) pp = do
-        l2          <-  getLayout' l (pp ++ [TopP])
-        r2          <-  getLayout' r (pp ++ [BottomP])
+        l2          <-  getLayout' l (pp ++ [SplitP TopP])
+        r2          <-  getLayout' r (pp ++ [SplitP BottomP])
         pane        <-  getPaned pp
         pos         <-  liftIO $ panedGetPosition pane
         return (HorizontalP l2 r2 pos)
     getLayout' (VerticalP l r _) pp = do
-        l2          <-  getLayout' l (pp ++ [LeftP])
-        r2          <-  getLayout' r (pp ++ [RightP])
+        l2          <-  getLayout' l (pp ++ [SplitP LeftP])
+        r2          <-  getLayout' r (pp ++ [SplitP RightP])
         pane        <-  getPaned pp
         pos         <-  liftIO $ panedGetPosition pane
         return (VerticalP l2 r2 pos)
-    getLayout' (TerminalP _ _) pp = do
+    getLayout' raw@(TerminalP {paneGroups = groups}) pp = do
+        groups2     <-  forM (Map.toAscList groups) $ \(group, g) -> do
+            l <- getLayout' (paneGroupLayout g) (pp ++ [GroupP group])
+            return (group, g{paneGroupLayout = l})
         nb          <-  getNotebook pp
         showTabs    <-  liftIO $ notebookGetShowTabs nb
         pos         <-  liftIO $ notebookGetTabPos nb
         current     <-  liftIO $ notebookGetCurrentPage nb
-        return (TerminalP (if showTabs
-                                then Just (posTypeToPaneDirection pos)
-                                else Nothing) current)
+        size <- case detachedId raw of
+            Just _  -> do
+                Just parent <- liftIO $ widgetGetParent nb
+                liftIO $ fmap Just $ windowGetSize (castToWindow parent)
+            Nothing -> return $ detachedSize raw
+        liftIO $ putStrLn $ show size
+        return raw{
+                paneGroups   = (Map.fromAscList groups2)
+            ,   paneTabs     = if showTabs then Just (posTypeToPaneDirection pos) else Nothing
+            ,   currentPage  = current
+            ,   detachedSize = size}
 
 getPopulation :: IDEM[(Maybe PaneState,PanePath)]
 getPopulation = do
@@ -439,28 +450,36 @@ applyLayout :: PaneLayout -> IDEAction
 applyLayout layoutS = do
     old <- readIDE layout
     case old of
-        TerminalP _ _ ->   applyLayout' layoutS []
-        otherwise     ->   throwIDE "apply Layout can only be allied to empty Layout"
+        TerminalP {} ->   applyLayout' layoutS []
+        otherwise    ->   throwIDE "apply Layout can only be allied to empty Layout"
     where
-    applyLayout' (TerminalP Nothing _) pp  = do
+    applyLayout' (TerminalP groups mbTabPos _ mbDetachedId mbDetachedSize) pp = do
+        forM_ (Map.keys groups) $ \group -> viewNest' pp group
         nb          <-  getNotebook pp
-        liftIO $notebookSetShowTabs nb False
-    applyLayout' (TerminalP (Just p) _) pp = do
-        nb          <-  getNotebook pp
-        liftIO $notebookSetShowTabs nb True
-        liftIO $notebookSetTabPos nb (paneDirectionToPosType p)
+        case (mbDetachedId, mbDetachedSize) of
+            (Just id, Just (width, height)) -> do
+                viewDetach' pp id
+                Just parent <- liftIO $ widgetGetParent nb
+                liftIO $ windowSetDefaultSize (castToWindow parent) width height
+            _ -> return ()
+        liftIO $notebookSetShowTabs nb (isJust mbTabPos)
+        case mbTabPos of
+            Just p -> liftIO $notebookSetTabPos nb (paneDirectionToPosType p)
+            _      -> return ()
+        forM_ (Map.toAscList groups) $ \(group, g) -> do
+            applyLayout' (paneGroupLayout g) (pp ++ [GroupP group])
     applyLayout' (VerticalP l r pos) pp = do
         viewSplit' pp Vertical
         pane        <-  getPaned pp
         liftIO $panedSetPosition pane pos
-        applyLayout' l (pp ++ [LeftP])
-        applyLayout' r (pp ++ [RightP])
+        applyLayout' l (pp ++ [SplitP LeftP])
+        applyLayout' r (pp ++ [SplitP RightP])
     applyLayout' (HorizontalP t b pos) pp = do
         viewSplit' pp Horizontal
         pane        <-  getPaned pp
         liftIO $panedSetPosition pane pos
-        applyLayout' t (pp ++ [TopP])
-        applyLayout' b (pp ++ [BottomP])
+        applyLayout' t (pp ++ [SplitP TopP])
+        applyLayout' b (pp ++ [SplitP BottomP])
 
 populate :: [(Maybe PaneState,PanePath)] -> IDEAction
 populate = mapM_ (\ (mbPs,pp) ->
@@ -471,13 +490,16 @@ populate = mapM_ (\ (mbPs,pp) ->
 setCurrentPages :: PaneLayout -> IDEAction
 setCurrentPages layout = setCurrentPages' layout []
     where
-    setCurrentPages' (HorizontalP t b _) p  =   do  setCurrentPages' t (TopP : p)
-                                                    setCurrentPages' b (BottomP : p)
-    setCurrentPages' (VerticalP l r _) p    =   do  setCurrentPages' l (LeftP : p)
-                                                    setCurrentPages' r (RightP : p)
-    setCurrentPages' (TerminalP _ ind) p    =   when (ind >=  0) $ do
-                                                    nb <- getNotebook (reverse p)
-                                                    liftIO $ notebookSetCurrentPage nb ind
+    setCurrentPages' (HorizontalP t b _) p  =   do  setCurrentPages' t (SplitP TopP : p)
+                                                    setCurrentPages' b (SplitP BottomP : p)
+    setCurrentPages' (VerticalP l r _) p    =   do  setCurrentPages' l (SplitP LeftP : p)
+                                                    setCurrentPages' r (SplitP RightP : p)
+    setCurrentPages' (TerminalP groups _ ind _ _) p  =  do
+                                                    forM_ (Map.toAscList groups) $ \(group, g) -> do
+                                                        setCurrentPages' (paneGroupLayout g) (GroupP group : p)
+                                                    when (ind >=  0) $ do
+                                                        nb <- getNotebook (reverse p)
+                                                        liftIO $ notebookSetCurrentPage nb ind
 
 
 

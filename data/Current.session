@@ -1,7 +1,7 @@
 Time of storage:
                "Mon Mar  9 22:58:23 CET 2009"
-Layout:        VerticalP (TerminalP (Just TopP) (-1)) (HorizontalP (TerminalP (Just BottomP) 0) (TerminalP (Just BottomP) 0) 527) 762
-Population:    [(Just (LogSt LogState),[RightP,BottomP]),(Just (ModulesSt (ModulesState 347 (System,True) (Nothing,Nothing) (ExpanderState {localExp = ([],[]), localExpNoBlack = ([],[]), packageExp = ([],[]), packageExpNoBlack = ([],[]), systemExp = ([],[]), systemExpNoBlack = ([],[])}))),[RightP,TopP])]
+Layout:        VerticalP (TerminalP {paneGroups = (fromList []), paneTabs = (Just TopP), currentPage = (-1), detachedId = Nothing, detachedSize = Nothing}) (HorizontalP (TerminalP {paneGroups = (fromList [("Debug", PaneGroup {paneGroupLayout = TerminalP {paneGroups = (fromList []), paneTabs = (Just BottomP), currentPage = 0, detachedId = Nothing, detachedSize = Nothing}})]), paneTabs = (Just BottomP), currentPage = 0, detachedId = Nothing, detachedSize = Nothing}) (TerminalP {paneGroups = (fromList []), paneTabs = (Just BottomP), currentPage = 0, detachedId = Nothing, detachedSize = Nothing}) 527) 762
+Population:    [(Just (LogSt LogState),[SplitP RightP,SplitP BottomP]),(Just (ModulesSt (ModulesState 347 (System,True) (Nothing,Nothing) (ExpanderState {localExp = ([],[]), localExpNoBlack = ([],[]), packageExp = ([],[]), packageExpNoBlack = ([],[]), systemExp = ([],[]), systemExpNoBlack = ([],[])}))),[SplitP RightP,SplitP TopP])]
 Window size:   (1393,903)
 Active package:
                Nothing
