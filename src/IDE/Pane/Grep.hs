@@ -79,8 +79,8 @@ showGrep = do
 
 getGrep :: IDEM IDEGrep
 getGrep = do
-    mbSearch <- getPane
-    case mbSearch of
+    mbGrep <- getPane
+    case mbGrep of
         Just m ->   return m
         Nothing -> do
             prefs       <-  readIDE prefs

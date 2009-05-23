@@ -48,6 +48,7 @@ import IDE.Pane.Preferences
 import IDE.Pane.PackageFlags
 import IDE.Pane.Search
 import IDE.Pane.Grep
+import IDE.Pane.Breakpoints
 import IDE.Find
 import System.Time (getClockTime)
 import IDE.Package (activatePackage,deactivatePackage)
@@ -68,20 +69,22 @@ data PaneState      =   BufferSt BufferState
                     |   SearchSt SearchState
                     |   DebuggerSt DebuggerState
                     |   GrepSt GrepState
+                    |   BreakpointsSt BreakpointsState
     deriving(Eq,Ord,Read,Show)
 
 asPaneState :: RecoverablePane alpha beta gamma => beta -> PaneState
-asPaneState s | isJust ((cast s) :: Maybe BufferState)   =   BufferSt (fromJust $ cast s)
-asPaneState s | isJust ((cast s) :: Maybe LogState)      =   LogSt (fromJust $ cast s)
-asPaneState s | isJust ((cast s) :: Maybe InfoState)     =   InfoSt (fromJust $ cast s)
-asPaneState s | isJust ((cast s) :: Maybe ModulesState)  =   ModulesSt (fromJust $ cast s)
+asPaneState s | isJust ((cast s) :: Maybe BufferState)      =   BufferSt (fromJust $ cast s)
+asPaneState s | isJust ((cast s) :: Maybe LogState)         =   LogSt (fromJust $ cast s)
+asPaneState s | isJust ((cast s) :: Maybe InfoState)        =   InfoSt (fromJust $ cast s)
+asPaneState s | isJust ((cast s) :: Maybe ModulesState)     =   ModulesSt (fromJust $ cast s)
 asPaneState s | isJust ((cast s) :: Maybe ReferencesState)  =   ReferencesSt (fromJust $ cast s)
-asPaneState s | isJust ((cast s) :: Maybe PrefsState)    =   PrefsSt (fromJust $ cast s)
-asPaneState s | isJust ((cast s) :: Maybe FlagsState)    =   FlagsSt (fromJust $ cast s)
-asPaneState s | isJust ((cast s) :: Maybe SearchState)   =   SearchSt (fromJust $ cast s)
-asPaneState s | isJust ((cast s) :: Maybe DebuggerState) =   DebuggerSt (fromJust $ cast s)
-asPaneState s | isJust ((cast s) :: Maybe GrepState)     =   GrepSt (fromJust $ cast s)
-asPaneState s                                            =   error "SaveSession>>asPaneState incomplete cast"
+asPaneState s | isJust ((cast s) :: Maybe PrefsState)       =   PrefsSt (fromJust $ cast s)
+asPaneState s | isJust ((cast s) :: Maybe FlagsState)       =   FlagsSt (fromJust $ cast s)
+asPaneState s | isJust ((cast s) :: Maybe SearchState)      =   SearchSt (fromJust $ cast s)
+asPaneState s | isJust ((cast s) :: Maybe DebuggerState)    =   DebuggerSt (fromJust $ cast s)
+asPaneState s | isJust ((cast s) :: Maybe GrepState)        =   GrepSt (fromJust $ cast s)
+asPaneState s | isJust ((cast s) :: Maybe BreakpointsState) =   BreakpointsSt (fromJust $ cast s)
+asPaneState s                                               =   error "SaveSession>>asPaneState incomplete cast"
 
 recover :: PanePath -> PaneState -> IDEAction
 recover pp (BufferSt p)         =   recoverState pp p
@@ -94,6 +97,7 @@ recover pp (FlagsSt p)          =   recoverState pp p
 recover pp (SearchSt p)         =   recoverState pp p
 recover pp (DebuggerSt p)       =   recoverState pp p
 recover pp (GrepSt p)           =   recoverState pp p
+recover pp (BreakpointsSt p)    =   recoverState pp p
 
 -- ---------------------------------------------------------------------
 

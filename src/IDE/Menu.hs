@@ -60,6 +60,7 @@ import IDE.ImportTool (addAllImports)
 import IDE.LogRef
 import IDE.Debug
 import IDE.Pane.Debugger
+import IDE.Pane.Breakpoints
 
 --
 -- | The Actions known to the system (they can be activated by keystrokes or menus)
@@ -236,7 +237,7 @@ actions =
     ,AD "ShowBindings" "Show Bin_dings" (Just "Show the current bindings") Nothing
         debugShowBindings [] False
     ,AD "ShowBreakpoints" "Show _Breakpoints" (Just "Show the active breakpoints") Nothing
-        debugShowBreakpoints [] False
+        showBreakpoints [] False
     ,AD "ShowContext" "Show _Context" (Just "Show the breakpoint context") Nothing
         debugShowContext [] False
     ,AD "ShowLoadedModules" "Show Loaded _Modules" (Just "Show the currently loaded modules") Nothing

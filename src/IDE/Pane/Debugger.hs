@@ -27,31 +27,26 @@ import Data.Typeable (Typeable(..))
 import IDE.Core.State
 import Control.Monad.Trans (liftIO)
 import Graphics.UI.Gtk.General.Enums
-    (Click(..),
-     MouseButton(..),
-     Packing(..),
+    (Packing(..),
      PolicyType(..),
      ButtonBoxStyle(..))
 import Graphics.UI.Gtk.Gdk.Enums (EventMask(..))
 import System.Glib.Attributes (get)
-import IDE.LogRef (selectRef, logOutput)
-import Outputable (ppr, showSDoc)
-import Graphics.UI.Gtk.Gdk.Events (Event(..))
+import IDE.LogRef (logOutput)
 import IDE.Debug
     (debugCommand',
      debugTraceExpr,
      debugStepExpr,
      debugStepModule,
      debugStepLocal,
-     debugDeleteBreakpoint,
      debugContinue,
      debugStep,
-     debugDeleteAllBreakpoints,
      debugCommand)
 import Control.Monad (unless, when)
 import Control.Event (triggerEvent)
 import IDE.Tool (ToolOutput(..),toolline)
 import IDE.SourceCandy (getCandylessText)
+import IDE.Pane.Breakpoints (fillBreakpointList)
 
 
 -- | A debugger pane description
@@ -59,7 +54,6 @@ import IDE.SourceCandy (getCandylessText)
 data IDEDebugger    =   IDEDebugger {
     sw              ::   VBox
 ,   workspaceView   ::   SourceView
-,   breakpoints     ::   ListStore LogRef
 ,   variables     ::   ListStore String
 ,   hpaned      ::  HPaned
 ,   vpaned      ::  VPaned
@@ -143,28 +137,6 @@ initDebugger panePath nb wstext = do
         boxPackStartDefaults bb stepLB
         boxPackStartDefaults bb stepMB
         boxPackStartDefaults bb continueB
-
-    -- BreakpointView 1 + 2
-        listStoreB   <-  listStoreNew []
-        treeViewB    <-  treeViewNew
-        treeViewSetModel treeViewB listStoreB
-
-        rendererB    <- cellRendererTextNew
-        colB         <- treeViewColumnNew
-        treeViewColumnSetTitle colB "Breakpoints"
-        treeViewColumnSetSizing colB TreeViewColumnAutosize
-        treeViewAppendColumn treeViewB colB
-        cellLayoutPackStart colB rendererB False
-        cellLayoutSetAttributes colB rendererB listStoreB
-            $ \row -> [ cellText := showSDoc (ppr (logRefSrcSpan row))]
-
-        treeViewSetHeadersVisible treeViewB False
-        selB <- treeViewGetSelection treeViewB
-        treeSelectionSetMode selB SelectionSingle
-
-        swBreak <- scrolledWindowNew Nothing Nothing
-        containerAdd swBreak treeViewB
-        scrolledWindowSetPolicy swBreak PolicyAutomatic PolicyAutomatic
 
     -- VariablesView
         listStoreV   <-  listStoreNew []
@@ -262,7 +234,6 @@ initDebugger panePath nb wstext = do
 
         nbBreakAndTrace <- newNotebook
         notebookInsertPage nbBreakAndTrace swTraces "Trace" 0
-        notebookInsertPage nbBreakAndTrace swBreak "Breakpoints" 1
 
         paned0  <- hPanedNew
         panedAdd1 paned0 swVariables
@@ -276,7 +247,7 @@ initDebugger panePath nb wstext = do
         boxPackEnd ibox bb PackNatural 10
 
         --openType
-        let deb = IDEDebugger ibox workspaceView listStoreB listStoreV paned0 paned1
+        let deb = IDEDebugger ibox workspaceView listStoreV paned0 paned1
         exeB `onClicked` (do
             maybeText <- selectedDebuggerText workspaceView
             reflectIDE (
@@ -308,15 +279,14 @@ initDebugger panePath nb wstext = do
                         triggerEvent ideR (SelectInfo symbol)
                         return ()) ideR)
                 return False)
-        treeViewB  `onButtonPress` (breakpointViewPopup ideR listStoreB treeViewB)
 
         cid1 <- workspaceView `afterFocusIn`
             (\_ -> do reflectIDE (makeActive deb) ideR ; return True)
 
         notebookInsertOrdered nb ibox (paneName deb) Nothing
         widgetShowAll ibox
-        return (deb,[cid1])
-    addPaneAdmin pane [] panePath
+        return (deb,[ConnectC cid1])
+    addPaneAdmin pane cids panePath
     liftIO $ widgetGrabFocus (workspaceView pane)
     liftIO $ bringPaneToFront pane
 
@@ -347,18 +317,6 @@ setDebuggerText deb tol = do
                 textBufferInsertAtCursor gtkbuf (" >> " ++ text)
                 return ()
 
-fillBreakpointList :: IDEAction
-fillBreakpointList = do
-    mbDebugger <- getPane
-    case mbDebugger of
-        Nothing -> return ()
-        Just deb -> do
-            refs <- readIDE breakpointRefs
-            liftIO $ do
-                --trace ("breakpointList " ++ show refs) $ return ()
-                listStoreClear (breakpoints deb)
-                mapM_ (listStoreAppend (breakpoints deb)) refs
-
 fillVariablesList :: IDEAction
 fillVariablesList = do
     mbDebugger <- getPane
@@ -381,55 +339,3 @@ updateDebugger :: IDEAction
 updateDebugger = do
     fillBreakpointList
     fillVariablesList
-
-breakpointViewPopup :: IDERef
-    -> ListStore LogRef
-    -> TreeView
-    -> Event
-    -> IO (Bool)
-breakpointViewPopup ideR  store treeView (Button _ click _ _ _ _ button _ _)
-    = do
-    if button == RightButton
-        then do
-            theMenu         <-  menuNew
-            item1           <-  menuItemNewWithLabel "Remove breakpoint"
-            item1 `onActivateLeaf` do
-                sel         <-  getSelectedBreakpoint treeView store
-                case sel of
-                    Just ref      -> reflectIDE (deleteBreakpoint ref) ideR
-                    otherwise     -> sysMessage Normal "Debugger>> breakpointViewPopup: no selection2"
-            sep1 <- separatorMenuItemNew
-            item2           <-  menuItemNewWithLabel "Remove all breakpoints"
-            item2 `onActivateLeaf` (reflectIDE debugDeleteAllBreakpoints ideR)
-            mapM_ (menuShellAppend theMenu) [castToMenuItem item1, castToMenuItem sep1, castToMenuItem item2]
-            menuPopup theMenu Nothing
-            widgetShowAll theMenu
-            return True
-        else if button == LeftButton && click == DoubleClick
-                then do sel         <-  getSelectedBreakpoint treeView store
-                        case sel of
-                            Just ref      -> reflectIDE (selectRef ref) ideR
-                            otherwise       -> sysMessage Normal "Debugger>> breakpointViewPopup: no selection2"
-                        return True
-                else return False
-breakpointViewPopup _ _ _ _ = throwIDE "breakpointViewPopup wrong event type"
-
-getSelectedBreakpoint ::  TreeView
-    ->  ListStore LogRef
-    -> IO (Maybe LogRef)
-getSelectedBreakpoint treeView listStore = do
-    treeSelection   <-  treeViewGetSelection treeView
-    paths           <-  treeSelectionGetSelectedRows treeSelection
-    case paths of
-        a:r ->  do
-            val     <-  listStoreGetValue listStore (head a)
-            return (Just val)
-        _  ->  return Nothing
-
-deleteBreakpoint :: LogRef -> IDEAction
-deleteBreakpoint logRef =
-    case logRefType logRef of
-        BreakpointRef -> debugDeleteBreakpoint ((words (refDescription logRef)) !! 1) logRef
-        _   -> sysMessage Normal "Debugger>>deleteBreakpoint: Not a breakpoint"
-
-
