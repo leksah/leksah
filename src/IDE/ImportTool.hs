@@ -117,7 +117,7 @@ addImport error descrList =
                                             return (True,descrList)
                         descr : []  ->  addImport' nis (filePath error) descr descrList
                         list        ->  do
-                            window' <- readIDE window
+                            window' <- getMainWindow
                             mbDescr <-  liftIO $ selectModuleDialog window' list (id' nis)
                                             (if null descrList
                                                 then Nothing

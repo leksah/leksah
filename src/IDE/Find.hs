@@ -44,7 +44,7 @@ import IDE.Pane.SourceBuffer
 import Data.Char (toLower)
 import Text.Regex.Posix.String (compile)
 import Text.Regex.Posix
-    (Regex(..), compNewline, compExtended, execBlank, compIgnoreCase)
+    (Regex(..), compNewline, compExtended,  execBlank, compIgnoreCase)
 import Data.Bits ((.|.))
 import Data.List (nub, find, isPrefixOf)
 import Data.Array ((!))

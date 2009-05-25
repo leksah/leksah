@@ -139,7 +139,7 @@ getActivePackage = do
 selectActivePackage :: Maybe FilePath -> IDEM (Maybe IDEPackage)
 selectActivePackage mbFilePath' = do
     ideR       <- ask
-    window     <- readIDE window
+    window     <- getMainWindow
     mbFilePath <- case mbFilePath' of
                     Nothing -> liftIO $ choosePackageFile window
                     Just fp -> return (Just fp)
@@ -416,7 +416,7 @@ packageOpenDoc = catchIDE (do
 
 chooseDir :: String -> IDEM (Maybe FilePath)
 chooseDir str = do
-    win <- readIDE window
+    win <- getMainWindow
     liftIO $do
         dialog <- fileChooserDialogNew
                         (Just $ str)

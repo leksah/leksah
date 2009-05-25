@@ -21,12 +21,9 @@ module IDE.Pane.SourceBuffer (
 
 ,   allBuffers
 ,   maybeActiveBuf
-,   standardSourcePanePath
 ,   selectSourceBuf
 ,   goToSourceDefinition
 ,   goToDefinition
-
-,   newTextBuffer
 
 ,   fileNew
 ,   fileOpenThis
@@ -204,8 +201,9 @@ selectSourceBuf fp = do
             fe <- liftIO $ doesFileExist fpc
             if fe
                 then do
-                    path <- standardSourcePanePath
-                    nbuf <- newTextBuffer path (takeFileName fpc) (Just fpc)
+                    prefs <- readIDE prefs
+                    pp      <- getBestPathForId  "*Buffer"
+                    nbuf <- newTextBuffer pp (takeFileName fpc) (Just fpc)
                     return (Just nbuf)
                 else return Nothing
 
@@ -329,7 +327,7 @@ allBuffers = getPanes
 
 maybeActiveBuf :: IDEM (Maybe IDEBuffer)
 maybeActiveBuf = do
-    mbActivePane <-  readIDE activePane
+    mbActivePane <- getActivePane
     mbPane       <- lastActiveBufferPane
     case (mbPane,mbActivePane) of
         (Just paneName1, Just (paneName2,_)) | paneName1 == paneName2 -> do
@@ -338,22 +336,14 @@ maybeActiveBuf = do
             return mbActbuf
         _ -> return Nothing
 
-standardSourcePanePath :: IDEM PanePath
-standardSourcePanePath = do
-    layout  <-  readIDE layout
-    prefs   <-  readIDE prefs
-    return (getStandardPanePath (sourcePanePath prefs) layout)
-
 newTextBuffer :: PanePath -> String -> Maybe FilePath -> IDEM IDEBuffer
 newTextBuffer panePath bn mbfn = do
     -- create the appropriate language
     nb      <-  getNotebook panePath
-    panes   <-  readIDE panes
-    paneMap <-  readIDE paneMap
     prefs   <-  readIDE prefs
     bs      <-  getCandyState
     ct      <-  readIDE candy
-    let (ind,rbn) = figureOutPaneName panes bn 0
+    (ind,rbn) <- figureOutPaneName bn 0
     (buf,cids)   <- reifyIDE $ \ideR   -> do
         lm       <- sourceLanguageManagerNew
         (mbLanguage, mbSLang)  <- sourceLanguageForFilename lm mbfn
@@ -477,7 +467,6 @@ checkModTime buf = do
     case  currentState' of
         IsShuttingDown -> return False
         _              -> do
-            panes <- readIDE panes
             let name = paneName buf
             case fileName buf of
                 Just fn -> do
@@ -519,7 +508,6 @@ checkModTime buf = do
 
 setModTime :: IDEBuffer -> IDEAction
 setModTime buf = do
-    panes <- readIDE panes
     let name = paneName buf
     case fileName buf of
         Nothing -> return ()
@@ -535,7 +523,6 @@ revert :: IDEBuffer -> IDEAction
 revert buf = do
     useCandy    <-  getCandyState
     ct          <-  readIDE candy
-    panes       <-  readIDE panes
     let name    =   paneName buf
     case fileName buf of
         Nothing -> return ()
@@ -595,18 +582,9 @@ markActiveLabelAsChanged = do
 
 markLabelAsChanged :: Notebook -> IDEBuffer -> IO ()
 markLabelAsChanged nb buf = do
-                  gtkbuf   <- textViewGetBuffer (sourceView buf)
-                  modified <- textBufferGetModified gtkbuf
-                  mbText   <- notebookGetTabLabelText nb (scrolledWindow buf)
-                  label    <- labelNew Nothing
-                  labelSetUseMarkup label True
-                  case mbText of
-                    Nothing   -> return ()
-                    Just text -> labelSetMarkup label
-                                    (if modified
-                                          then "<span foreground=\"red\">" ++ text ++ "</span>"
-                                          else text)
-                  notebookSetTabLabel nb (scrolledWindow buf) label
+    gtkbuf   <- textViewGetBuffer (sourceView buf)
+    modified <- textBufferGetModified gtkbuf
+    markLabel nb (getTopWidget buf) modified
 
 inBufContext' :: alpha -> IDEBuffer -> (Notebook -> TextBuffer -> IDEBuffer -> Int -> IDEM alpha) -> IDEM alpha
 inBufContext' def ideBuf f = do
@@ -638,10 +616,8 @@ inActiveBufContext def f = inActiveBufContext' def (\ a b c d -> liftIO $ f a b 
 fileSaveBuffer :: Bool -> Notebook -> TextBuffer -> IDEBuffer -> Int -> IDEM Bool
 fileSaveBuffer query nb gtkbuf ideBuf i = do
     ideR    <- ask
-    window  <- readIDE window
-    bufs    <- readIDE panes
+    window  <- getMainWindow
     prefs   <- readIDE prefs
-    paneMap <- readIDE paneMap
     bs      <- getCandyState
     candy   <- readIDE candy
     (panePath,connects) <- guiPropertiesFromName (paneName ideBuf)
@@ -730,10 +706,8 @@ fileSaveAll = do
 fileCheckBuffer :: Bool -> Notebook -> TextBuffer -> IDEBuffer -> Int -> IDEM Bool
 fileCheckBuffer query nb gtkbuf ideBuf i = do
     ideR    <- ask
-    window  <- readIDE window
-    bufs    <- readIDE panes
+    window  <- getMainWindow
     prefs   <- readIDE prefs
-    paneMap <- readIDE paneMap
     bs      <- getCandyState
     candy   <- readIDE candy
     (panePath,connects) <- guiPropertiesFromName (paneName ideBuf)
@@ -757,7 +731,7 @@ fileCheckAll = do
 fileNew :: IDEAction
 fileNew = do
     prefs   <- readIDE prefs
-    pp      <- getActivePanePathOrStandard (sourcePanePath prefs)
+    pp      <- getBestPathForId  "*Buffer"
     newTextBuffer pp "Unnamed" Nothing
     return ()
 
@@ -766,9 +740,7 @@ fileClose = inActiveBufContext' True $ fileClose'
 
 fileClose' :: Notebook -> TextBuffer -> IDEBuffer -> Int  -> IDEM Bool
 fileClose' nb gtkbuf currentBuffer i = do
-    window  <- readIDE window
-    bufs    <- readIDE panes
-    paneMap <- readIDE paneMap
+    window  <- getMainWindow
     cancel <- reifyIDE $ \ideR   ->  do
         modified <- textBufferGetModified gtkbuf
         if modified
@@ -837,7 +809,7 @@ fileCloseAllButPackage = do
 
 fileOpen :: IDEAction
 fileOpen = do
-    window <- readIDE window
+    window <- getMainWindow
     prefs <- readIDE prefs
     mbFileName <- liftIO $ do
         dialog <- fileChooserDialogNew
@@ -891,7 +863,7 @@ fileOpenThis fp =  do
         [] -> reallyOpen prefs fpc
     where
         reallyOpen prefs fpc =   do
-            pp <-  standardSourcePanePath
+            pp <-  getBestPathForId "*Buffer"
             newTextBuffer pp (takeFileName fpc) (Just fpc)
             return ()
 

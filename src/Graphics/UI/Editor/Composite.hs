@@ -669,8 +669,8 @@ dependenciesEditor packages p noti =
                    $ emptyParams)
         (Just (sortBy (\ (Dependency p1 _) (Dependency p2 _) -> compare p1 p2)))
         (Just (\ (Dependency p1 _) (Dependency p2 _) -> p1 == p2))
-        (paraShadow <<<- ParaShadow ShadowIn $
-            paraOuterAlignment <<<- ParaInnerAlignment (0.0, 0.5, 1.0, 1.0)
+        (paraShadow <<<- ParaShadow ShadowIn
+            $ paraOuterAlignment <<<- ParaInnerAlignment (0.0, 0.5, 1.0, 1.0)
                 $ paraInnerAlignment <<<- ParaOuterAlignment (0.0, 0.5, 1.0, 1.0)
                     $ paraDirection  <<<-  ParaDirection Vertical
                         $ paraPack <<<- ParaPack PackGrow

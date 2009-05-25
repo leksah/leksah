@@ -46,14 +46,14 @@ cancel = do
 
 initCompletion :: SourceView -> IDEAction
 initCompletion sourceView = do
-    mainWindow <- readIDE window
+    windows <- getWindows
     prefs      <- readIDE prefs
     (window', tree', store', cids) <- reifyIDE (\ideR -> do
         window <- windowNewPopup
         --set window [ windowTypeHint := WindowTypeHintDialog ] --,
           -- windowDecorated := False ]
         --widgetSetSizeRequest window 700 300
-        windowSetTransientFor window mainWindow
+        windowSetTransientFor window (head windows)
         paned <- hPanedNew
         containerAdd window paned
         scrolledWindow <- scrolledWindowNew Nothing Nothing

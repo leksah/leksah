@@ -293,7 +293,7 @@ actions =
     ,AD "ViewCollapse" "_Collapse" Nothing Nothing
         viewCollapse [] False
     ,AD "ViewNest" "_Group" Nothing Nothing
-        (viewNest "New") [] False
+        (viewNewGroup) [] False
     ,AD "ViewDetach" "_Detach" Nothing Nothing
         viewDetach [] False
 
@@ -547,7 +547,7 @@ getActionsFor' l = do
     return (catMaybes r)
     where
         getActionFor string = do
-            uiManager' <- readIDE uiManager
+            uiManager' <- getUiManager
             actionGroups <- liftIO $ uiManagerGetActionGroups uiManager'
             res <- liftIO $ actionGroupGetAction (head actionGroups) string
             when (isNothing res) $ ideMessage Normal $ "Can't find UI Action " ++ string

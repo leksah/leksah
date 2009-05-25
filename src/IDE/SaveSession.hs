@@ -115,7 +115,7 @@ standardSessionFilename =   "Current.session"
 
 sessionClosePane :: IDEAction
 sessionClosePane = do
-    activePane'     <-  readIDE activePane
+    activePane'     <-  getActivePane
     case activePane' of
         Nothing     ->  return ()
         Just (pn,_) ->  do
@@ -235,12 +235,12 @@ saveSessionAs sessionPath = do
         then ideMessage Normal "Forget this session"
         else do
             sysMessage Normal "Now saving session"
-            wdw             <-  readIDE window
-            layout          <-  getLayout
+            wdw             <-  getMainWindow
+            layout          <-  mkLayout
             population      <-  getPopulation
             size            <-  liftIO $ windowGetSize wdw
             active          <-  getActive
-            activePane'     <-  readIDE activePane
+            activePane'     <-  getActivePane
             let activeP =   case activePane' of
                                 Nothing -> Nothing
                                 Just (s,_) -> Just s
@@ -264,7 +264,7 @@ saveSessionAs sessionPath = do
 
 saveSessionAsPrompt :: IDEAction
 saveSessionAsPrompt = do
-    window' <- readIDE window
+    window' <- getMainWindow
     response <- liftIO $ do
         configFolder <- getConfigDir
         dialog <- fileChooserDialogNew
@@ -292,7 +292,7 @@ saveSessionAsPrompt = do
 
 loadSessionPrompt :: IDEAction
 loadSessionPrompt = do
-    window' <- readIDE window
+    window' <- getMainWindow
     response <- liftIO $ do
         configFolder <- getConfigDir
         dialog <- fileChooserDialogNew
@@ -336,12 +336,12 @@ loadSession sessionPath = do
 
 paneCloseAll :: IDEAction
 paneCloseAll = do
-    panes' <- readIDE panes
+    panes' <- getPanesSt
     mapM_ (\ (PaneC p) -> close p) (Map.elems panes')
 
 viewCollapseAll :: IDEAction
 viewCollapseAll = do
-    layout' <- readIDE layout
+    layout' <- getLayout
     case layout' of
         TerminalP {}      -> return ()
         VerticalP _ _ _   -> viewCollapse' [SplitP LeftP]
@@ -354,9 +354,9 @@ showLayout ::  a ->  [FieldDescriptionS a] ->  String
 showLayout prefs prefsDesc = PP.render $
     foldl' (\ doc (FDS _ printer _) ->  doc PP.$+$ printer prefs) PP.empty prefsDesc
 
-getLayout :: IDEM(PaneLayout)
-getLayout = do
-    rawLayout <- readIDE layout
+mkLayout :: IDEM(PaneLayout)
+mkLayout = do
+    rawLayout <- getLayout
     getLayout' rawLayout []
     where
     getLayout' (HorizontalP l r _) pp = do
@@ -373,8 +373,8 @@ getLayout = do
         return (VerticalP l2 r2 pos)
     getLayout' raw@(TerminalP {paneGroups = groups}) pp = do
         groups2     <-  forM (Map.toAscList groups) $ \(group, g) -> do
-            l <- getLayout' (paneGroupLayout g) (pp ++ [GroupP group])
-            return (group, g{paneGroupLayout = l})
+            l <- getLayout' g (pp ++ [GroupP group])
+            return (group, l)
         nb          <-  getNotebook pp
         showTabs    <-  liftIO $ notebookGetShowTabs nb
         pos         <-  liftIO $ notebookGetTabPos nb
@@ -386,14 +386,14 @@ getLayout = do
             Nothing -> return $ detachedSize raw
         liftIO $ putStrLn $ show size
         return raw{
-                paneGroups   = (Map.fromAscList groups2)
+                paneGroups   = Map.fromAscList groups2
             ,   paneTabs     = if showTabs then Just (posTypeToPaneDirection pos) else Nothing
             ,   currentPage  = current
             ,   detachedSize = size}
 
 getPopulation :: IDEM[(Maybe PaneState,PanePath)]
 getPopulation = do
-    paneMap <- readIDE paneMap
+    paneMap <- getPaneMapSt
     mapM (\ (pn,v) -> do
         (PaneC p) <- paneFromName pn
         mbSt <- saveState p
@@ -419,7 +419,7 @@ getActive = do
 
 recoverSession :: FilePath -> IDEM (Bool,Bool)
 recoverSession sessionPath = do
-    wdw         <-  readIDE window
+    wdw         <-  getMainWindow
     sessionSt    <- liftIO $ readLayout sessionPath
     liftIO $ windowSetDefaultSize wdw (fst (windowSize sessionSt))(snd (windowSize sessionSt))
     applyLayout (layoutS sessionSt)
@@ -460,7 +460,7 @@ prefsParser def descriptions =
 
 applyLayout :: PaneLayout -> IDEAction
 applyLayout layoutS = do
-    old <- readIDE layout
+    old <- getLayout
     case old of
         TerminalP {} ->   applyLayout' layoutS []
         otherwise    ->   throwIDE "apply Layout can only be allied to empty Layout"
@@ -479,7 +479,7 @@ applyLayout layoutS = do
             Just p -> liftIO $notebookSetTabPos nb (paneDirectionToPosType p)
             _      -> return ()
         forM_ (Map.toAscList groups) $ \(group, g) -> do
-            applyLayout' (paneGroupLayout g) (pp ++ [GroupP group])
+            applyLayout' g (pp ++ [GroupP group])
     applyLayout' (VerticalP l r pos) pp = do
         viewSplit' pp Vertical
         pane        <-  getPaned pp
@@ -508,7 +508,7 @@ setCurrentPages layout = setCurrentPages' layout []
                                                     setCurrentPages' r (SplitP RightP : p)
     setCurrentPages' (TerminalP groups _ ind _ _) p  =  do
                                                     forM_ (Map.toAscList groups) $ \(group, g) -> do
-                                                        setCurrentPages' (paneGroupLayout g) (GroupP group : p)
+                                                        setCurrentPages' g (GroupP group : p)
                                                     when (ind >=  0) $ do
                                                         nb <- getNotebook (reverse p)
                                                         liftIO $ notebookSetCurrentPage nb ind

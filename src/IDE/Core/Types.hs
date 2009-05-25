@@ -160,10 +160,9 @@ data Prefs = Prefs {
     ,   logviewFont         ::   Maybe String
     ,   defaultSize         ::   (Int,Int)
     ,   browser             ::   String
-    ,   sourcePanePath      ::   StandardPath
-    ,   logPanePath         ::   StandardPath
-    ,   modulesPanePath     ::   StandardPath
-    ,   debugPanePath       ::   StandardPath
+    ,   pathForCategory     ::   [(String, PanePath)]
+    ,   defaultPath         ::   PanePath
+    ,   categoryForPane     ::   [(String, String)]
     ,   sourceDirectories   ::   [FilePath]
     ,   packageBlacklist    ::   [Dependency]
     ,   collectAfterBuild   ::   Bool

@@ -83,9 +83,7 @@ getGrep = do
     case mbGrep of
         Just m ->   return m
         Nothing -> do
-            prefs       <-  readIDE prefs
-            layout      <-  readIDE layout
-            let pp      =   getStandardPanePath (modulesPanePath prefs) layout
+            pp          <-  getBestPathForId "*Grep"
             nb          <-  getNotebook pp
             initGrep pp nb
             mbGrep <- getPane
@@ -96,8 +94,6 @@ getGrep = do
 
 initGrep :: PanePath -> Notebook -> IDEAction
 initGrep panePath nb = do
-    panes       <-  readIDE panes
-    paneMap     <-  readIDE paneMap
     prefs       <-  readIDE prefs
     currentInfo <-  readIDE currentInfo
     (buf,cids)  <-  reifyIDE $ \ideR  -> do

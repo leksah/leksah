@@ -1538,6 +1538,24 @@ The central functionality needed for development is to edit Haskell source
 \end_layout
 
 \begin_layout Standard
+When a file has changed compared to the stored version, the file name is
+ shown in red in the notebook tab.
+ If you want to change to a different buffer you can open a list of all
+ open buffers by pressing the right mouse button, while the mouse is over
+ a notebook tab.
+ You can then select an entry in this list to select this file.
+ 
+\end_layout
+
+\begin_layout Standard
+On the right side in the status bar you can see the line and column, in
+ which the cursor is and if overwrite mode is switched on.
+ In the second compartment from the left you can see the currently active
+ pane, which is helpful if you want to be sure that you have selected the
+ right pane for some operation.
+\end_layout
+
+\begin_layout Standard
 \begin_inset Wrap figure
 lines 0
 placement o
@@ -1572,24 +1590,6 @@ Edit menu
 \end_inset
 
 
-\end_layout
-
-\begin_layout Standard
-When a file has changed compared to the stored version, the file name is
- shown in red in the notebook tab.
- If you want to change to a different buffer you can open a list of all
- open buffers by pressing the right mouse button, while the mouse is over
- a notebook tab.
- You can then select an entry in this list to select this file.
- 
-\end_layout
-
-\begin_layout Standard
-On the right side in the status bar you can see the line and column, in
- which the cursor is and if overwrite mode is switched on.
- In the second compartment from the left you can see the currently active
- pane, which is helpful if you want to be sure that you have selected the
- right pane for some operation.
 \end_layout
 
 \begin_layout Standard

@@ -41,8 +41,6 @@ import Data.Unique
 import Data.IORef
 import Control.Monad
 
---import Debug.Trace
-
 import Graphics.UI.Editor.Parameters
 import Control.Event
 import MyMissing(allOf)

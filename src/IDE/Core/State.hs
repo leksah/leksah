@@ -24,6 +24,13 @@ module IDE.Core.State (
 ,   errorRefs
 ,   breakpointRefs
 ,   contextRefs
+,   currentError
+,   currentBreak
+,   currentContext
+,   setCurrentError
+,   setCurrentBreak
+,   setCurrentContext
+
 ,   IDEState(..)
 ,   isStartingOrClosing
 ,   IDERef
@@ -41,6 +48,7 @@ module IDE.Core.State (
 ,   reifyIDE
 ,   reflectIDE
 ,   catchIDE
+,   newPane
 
 ,   ideMessage
 ,   logMessage
@@ -143,23 +151,15 @@ class IDEObject o => IDEEditor o
 -- | The IDE state
 --
 data IDE            =  IDE {
-    windows         ::   [Window]                -- ^ the gtk window
-,   uiManager       ::   UIManager               -- ^ the gtk uiManager
-,   panes           ::   Map PaneName (IDEPane IDEM)    -- ^ a map with all panes (subwindows)
-,   activePane      ::   Maybe (PaneName,Connections)
+    frameState      ::   FrameState IDEM         -- ^ state of the windows framework
 ,   recentPanes     ::   [PaneName]
-,   paneMap         ::   Map PaneName (PanePath, Connections)
-                    -- ^ a map from the pane name to its gui path and signal connections
-,   layout          ::   PaneLayout              -- ^ a description of the general gui layout
 ,   specialKeys     ::   SpecialKeyTable IDERef  -- ^ a structure for emacs like keystrokes
 ,   specialKey      ::   SpecialKeyCons IDERef   -- ^ the first of a double keystroke
 ,   candy           ::   CandyTable              -- ^ table for source candy
 ,   prefs           ::   Prefs                   -- ^ configuration preferences
 ,   activePack      ::   Maybe IDEPackage
 ,   allLogRefs      ::   [LogRef]
-,   currentError    ::   Maybe LogRef
-,   currentBreak    ::   Maybe LogRef
-,   currentContext  ::   Maybe LogRef
+,   currentEBC      ::   (Maybe LogRef, Maybe LogRef, Maybe LogRef)
 ,   accessibleInfo  ::   (Maybe (PackageScope))     -- ^  the world scope
 ,   currentInfo     ::   (Maybe (PackageScope,PackageScope))
                                                 -- ^ the first is for the current package,
@@ -187,6 +187,15 @@ breakpointRefs = (filter ((== BreakpointRef) . logRefType)) . allLogRefs
 
 contextRefs :: IDE -> [LogRef]
 contextRefs = (filter ((== ContextRef) . logRefType)) . allLogRefs
+
+currentError     = (\(e,_,_)-> e) . currentEBC
+currentBreak     = (\(_,b,_)-> b) . currentEBC
+currentContext   = (\(_,_,c)-> c) . currentEBC
+
+setCurrentError e = modifyIDE_ (\ide -> return (ide{currentEBC = (e, currentBreak ide, currentContext ide)}))
+setCurrentBreak b = modifyIDE_ (\ide -> return (ide{currentEBC = (currentError ide, b, currentContext ide)}))
+setCurrentContext c = modifyIDE_ (\ide -> return (ide{currentEBC = (currentError ide, currentBreak ide, c)}))
+
 
 data IDEState =
         IsStartingUp
@@ -280,6 +289,20 @@ reflectIDE c ideR = runReaderT c ideR
 catchIDE :: Exception e	=> IDEM a -> (e -> IO a) -> IDEM a
 catchIDE block handler = reifyIDE (\ideR -> catch (reflectIDE block ideR) handler)
 
+newPane :: RecoverablePane alpha beta IDEM  =>
+    PanePath ->
+    Notebook ->
+    (PanePath -> Notebook -> Window -> IDERef -> IO (alpha,Connections)) ->
+    IDEM alpha
+newPane panePath notebook builder = do
+    windows <- getWindows
+    (buf,cids)  <-  reifyIDE (\ideR -> builder panePath notebook (head windows) ideR)
+    addPaneAdmin buf cids panePath
+    liftIO $ do
+        widgetShowAll (getTopWidget buf)
+        widgetGrabFocus (getTopWidget buf)
+    return buf
+
 --
 -- | A shorthand for a reader monad for a mutable reference to the IDE state
 --   which does not return a value
@@ -287,20 +310,16 @@ catchIDE block handler = reifyIDE (\ideR -> catch (reflectIDE block ideR) handle
 type IDEAction = IDEM ()
 
 instance PaneMonad IDEM where
-    getWindowsSt    =   readIDE windows
-    setWindowsSt v  =   modifyIDE_ (\ide -> return ide{windows = v})
-    getUIManagerSt  =   readIDE uiManager
-    getPanesSt      =   readIDE panes
-    getPaneMapSt    =   readIDE paneMap
-    getActivePaneSt =   readIDE activePane
-    getLayoutSt     =   readIDE layout
-    setPanesSt v    =   modifyIDE_ (\ide -> return ide{panes = v})
-    setPaneMapSt v  =   modifyIDE_ (\ide -> return ide{paneMap = v})
-    setActivePaneSt v = modifyIDE_ (\ide -> return ide{activePane = v})
-    setLayoutSt v   =   modifyIDE_ (\ide -> return ide{layout = v})
-
+    getFrameState   =   readIDE frameState
+    setFrameState v =   modifyIDE_ (\ide -> return ide{frameState = v})
     runInIO f       =   reifyIDE (\ideRef -> return (\v -> reflectIDE (f v) ideRef))
-
+    panePathForGroup id =   do
+        prefs  <- readIDE prefs
+        case id `lookup` (categoryForPane prefs) of
+            Just group -> case group `lookup`  (pathForCategory prefs) of
+                            Nothing -> return (defaultPath prefs)
+                            Just p  -> return p
+            Nothing    -> return (defaultPath prefs)
 
 
 -- ---------------------------------------------------------------------
@@ -357,7 +376,7 @@ withoutRecordingDo act = do
 
 activatePane :: Pane alpha IDEM => alpha -> Connections -> IDEAction
 activatePane pane conn = do
-    mbAP <- getActivePaneSt
+    mbAP <- getActivePane
     case mbAP of
         Just (pn,_) | pn == paneName pane -> return ()
         _  -> do
@@ -366,7 +385,7 @@ activatePane pane conn = do
             liftIO $ statusbarPop sb 1
             liftIO $ statusbarPush sb 1 (paneName pane)
             liftIO $ bringPaneToFront pane
-            setActivePaneSt (Just (paneName pane,conn))
+            setActivePane (Just (paneName pane,conn))
             trigger (Just (paneName pane)) (case mbAP of
                                                     Nothing -> Nothing
                                                     Just (pn,_) -> Just pn)
@@ -384,7 +403,7 @@ trigger s1 s2 = do
 deactivatePane :: IDEAction
 deactivatePane = do
     ideR    <-  ask
-    mbAP    <-  getActivePaneSt
+    mbAP    <-  getActivePane
     case mbAP of
         Nothing      -> return ()
         Just (pn, _) -> do
@@ -399,16 +418,16 @@ deactivatePaneWithout = do
     sb <- getSBActivePane
     liftIO $ statusbarPop sb 1
     liftIO $ statusbarPush sb 1 ""
-    mbAP    <-  getActivePaneSt
+    mbAP    <-  getActivePane
     case mbAP of
         Just (_,signals) -> liftIO $do
             signalDisconnectAll signals
         Nothing -> return ()
-    setActivePaneSt Nothing
+    setActivePane Nothing
 
 deactivatePaneIfActive :: Pane alpha IDEM  => alpha -> IDEAction
 deactivatePaneIfActive pane = do
-    mbActive <- getActivePaneSt
+    mbActive <- getActivePane
     case mbActive of
         Nothing -> return ()
         Just (n,_) -> if n == paneName pane
@@ -422,7 +441,7 @@ closePane pane = do
     mbI             <-  liftIO $notebookPageNum nb (getTopWidget pane)
     case mbI of
         Nothing ->  liftIO $ do
-            sysMessage Normal "notebook page not found: unexpected"
+            throwIDE ("notebook page not found: unexpected " ++ paneName pane ++ " " ++ show panePath)
             return ()
         Just i  ->  do
             deactivatePaneIfActive pane
@@ -451,7 +470,7 @@ getForgetSession = do
 
 getMenuItem :: String -> IDEM MenuItem
 getMenuItem path = do
-    uiManager' <- readIDE uiManager
+    uiManager' <- getUiManager
     mbWidget   <- liftIO $ uiManagerGetWidget uiManager' path
     case mbWidget of
         Nothing     -> throwIDE ("State.hs>>getMenuItem: Can't find ui path " ++ path)

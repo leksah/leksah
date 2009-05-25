@@ -95,8 +95,6 @@ instance RecoverablePane IDELog LogState IDEM where
 
 initLog :: PanePath -> Notebook -> IDEAction
 initLog panePath nb = do
-    panes      <- readIDE panes
-    paneMap    <- readIDE paneMap
     prefs      <- readIDE prefs
     (buf,cids) <- reifyIDE $ \ideR  ->  do
         tv           <- textViewNew
@@ -121,7 +119,7 @@ initLog panePath nb = do
         set infoTag[textTagForeground := "grey"]
         textTagTableAdd tags infoTag
 
-        textViewSetEditable tv True
+        textViewSetEditable tv False
         fd           <- case logviewFont prefs of
             Just str -> do
                 fontDescriptionFromString str
@@ -137,14 +135,15 @@ initLog panePath nb = do
 
         let buf = IDELog tv sw
         notebookInsertOrdered nb sw (paneName buf) Nothing
-        widgetShowAll (scrolledWindowL buf)
         cid1         <- tv `afterFocusIn`
-            (\_      -> do reflectIDE (makeActive buf) ideR ; return True)
+            (\_      -> do reflectIDE (makeActive buf) ideR ; return False)
         cid2         <- tv `onButtonPress`
-            (\ b     -> do reflectIDE (clicked b buf) ideR ; return True)
+            (\ b     -> do reflectIDE (clicked b buf) ideR ; return False)
         return (buf,[ConnectC cid1, ConnectC cid2])
     addPaneAdmin buf cids panePath
-    liftIO $widgetGrabFocus (textView buf)
+    liftIO $ do
+        widgetShowAll (scrolledWindowL buf)
+        widgetGrabFocus (textView buf)
 
 clicked :: Event -> IDELog -> IDEAction
 clicked (Button _ SingleClick _ _ _ _ LeftButton x y) ideLog = do
@@ -164,8 +163,8 @@ clicked (Button _ SingleClick _ _ _ _ LeftButton x y) ideLog = do
             log :: IDELog <- getLog
             liftIO $ markErrorInLog log (logLines thisRef)
             case logRefType thisRef of
-                BreakpointRef -> modifyIDE_ (\ide -> return (ide{currentBreak = Just thisRef}))
-                _             -> modifyIDE_ (\ide -> return (ide{currentError = Just thisRef}))
+                BreakpointRef -> setCurrentBreak (Just thisRef)
+                _             -> setCurrentError (Just thisRef)
         otherwise   -> return ()
 clicked (Button _ SingleClick _ _ _ _ RightButton x y) ideLog = do
     logRefs'    <-  readIDE allLogRefs
@@ -201,9 +200,7 @@ getLog' = do
     mbPane <- getPane
     case mbPane of
         Nothing -> do
-            prefs   <- readIDE prefs
-            layout  <- readIDE layout
-            let pp  =  getStandardPanePath (logPanePath prefs) layout
+            pp      <- getBestPathForId "*Log"
             nb      <- getNotebook pp
             initLog pp nb
             mbPane <- getPane
@@ -270,7 +267,9 @@ clearLog = do
     log <- getLog
     buf <- liftIO$ textViewGetBuffer $textView log
     liftIO $textBufferSetText buf ""
-    modifyIDE_ (\ide -> return (ide{allLogRefs = [], currentError = Nothing, currentBreak = Nothing}))
+    modifyIDE_ (\ide -> return (ide{allLogRefs = []}))
+    setCurrentError Nothing
+    setCurrentBreak Nothing
 
 
 

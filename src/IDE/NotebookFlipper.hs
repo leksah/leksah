@@ -78,7 +78,7 @@ moveFlipperUp tree = liftIO $ do
 -- | Initiate Filpper , If True moves down, if false up
 initFlipper :: Bool -> IDEAction
 initFlipper direction = do
-    mainWindow   <- readIDE window
+    mainWindow   <- getMainWindow
     recentPanes' <-  readIDE recentPanes
     tree' <- reifyIDE $ \ideR -> do
         window <- windowNewPopup

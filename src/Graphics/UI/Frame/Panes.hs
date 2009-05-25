@@ -1,7 +1,8 @@
 {-# OPTIONS_GHC
     -XExistentialQuantification
     -XMultiParamTypeClasses
-    -XFunctionalDependencies #-}
+    -XFunctionalDependencies
+    -XNoMonomorphismRestriction #-}
 -----------------------------------------------------------------------------
 --
 -- Module      :  IDE.Core.Panes
@@ -27,12 +28,11 @@ module Graphics.UI.Frame.Panes (
 ,   PanePathElement(..)
 ,   PanePath
 ,   PaneLayout(..)
-,   PaneGroupWindow(..)
-,   PaneGroup(..)
 ,   PaneName
 ,   Connection(..)
 ,   Connections
 ,   StandardPath
+,   FrameState(..)
 ,   signalDisconnectAll
 ) where
 
@@ -73,23 +73,12 @@ data PaneDirection  =   TopP | BottomP | LeftP | RightP
 data PaneLayout =       HorizontalP PaneLayout PaneLayout Int
                     |   VerticalP PaneLayout PaneLayout Int
                     |   TerminalP {
-                                paneGroups   :: PaneGroups
-                            ,   paneTabs     :: (Maybe PaneDirection)
+                                paneGroups   :: Map String PaneLayout
+                            ,   paneTabs     :: Maybe PaneDirection
                             ,   currentPage  :: Int
                             ,   detachedId   :: Maybe String
                             ,   detachedSize :: Maybe (Int, Int) }
     deriving (Eq,Show,Read)
-
-data PaneGroupWindow = PaneGroupWindow {
-    groupWindowSize :: (Int, Int)
-} deriving (Eq,Show,Read)
-
-data PaneGroup = PaneGroup {
-        paneGroupLayout :: PaneLayout
---    ,   paneGroupWindow :: Maybe PaneGroupWindow
-} deriving (Eq,Show,Read)
-
-type PaneGroups = Map.Map String PaneGroup
 
 --
 -- | All kinds of panes are instances of pane
@@ -106,7 +95,6 @@ class (Typeable alpha, PaneMonad beta) => Pane alpha beta | alpha -> beta where
     getTopWidget    ::   alpha -> Widget
     paneId          ::   alpha -> String
     makeActive      ::   alpha -> beta ()
---    makeActive _    =    return ()
     close           ::   alpha -> beta ()
 
 class (Pane alpha delta, Read beta, Show beta, Typeable beta, PaneMonad delta)
@@ -129,26 +117,20 @@ instance Show (IDEPane delta) where
 
 type StandardPath = PanePath
 
+data FrameState delta = FrameState {
+    windows         ::  [Window]
+,   uiManager       ::  UIManager
+,   panes           ::  Map PaneName (IDEPane delta)
+,   paneMap         ::  (Map PaneName (PanePath, Connections))
+,   activePane      ::  Maybe (PaneName, Connections)
+,   panePathFromNB  ::  Map Notebook PanePath
+,   layout          ::  PaneLayout}
 
 class MonadIO delta =>  PaneMonad delta where
-    getWindowsSt    ::   delta [Window]
-    setWindowsSt    ::   [Window] -> delta ()
-    getUIManagerSt  ::   delta UIManager
-
-    getPanesSt      ::   delta (Map PaneName (IDEPane delta))
-    setPanesSt      ::   Map PaneName (IDEPane delta) -> delta ()
-
-    getPaneMapSt    ::   delta (Map PaneName (PanePath, Connections))
-    setPaneMapSt    ::   Map PaneName (PanePath, Connections) -> delta ()
-
-    getActivePaneSt ::   delta (Maybe (PaneName, Connections))
-    setActivePaneSt ::   Maybe (PaneName, Connections) -> delta ()
-
-    getLayoutSt     ::   delta PaneLayout
-    setLayoutSt     ::   PaneLayout -> delta ()
-
-    runInIO         ::   forall beta. (beta -> delta()) -> delta (beta -> IO ())
-
+    setFrameState   ::  FrameState delta -> delta ()
+    getFrameState   ::  delta (FrameState delta)
+    runInIO         ::   forall alpha beta. (beta -> delta alpha) -> delta (beta -> IO alpha)
+    panePathForGroup::  String -> delta PanePath
 
 --
 -- | Signal handlers for the different pane types

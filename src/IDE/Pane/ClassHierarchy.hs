@@ -158,9 +158,7 @@ getClassHierarchy = do
     mbCH <- getPane
     case mbCH of
         Nothing -> do
-            prefs       <-  readIDE prefs
-            layout      <-  readIDE layout
-            let pp      =   getStandardPanePath (modulesPanePath prefs) layout
+            pp  <- getBestPathForId  "*ClassHierarchy"
             nb          <-  getNotebook pp
             initClassHierarchy pp nb
             mbCH <- getPane
@@ -246,8 +244,6 @@ sortTree (Node l forest)    =   Node l (sort (map sortTree forest))
 
 initClassHierarchy :: PanePath -> Notebook -> IDEAction
 initClassHierarchy panePath nb = do
-    panes       <-  readIDE panes
-    paneMap     <-  readIDE paneMap
     prefs       <-  readIDE prefs
     currentInfo <-  readIDE currentInfo
     (buf,cids)  <-  reifyIDE $ \ideR ->  do

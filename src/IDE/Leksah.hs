@@ -36,7 +36,6 @@ import Data.Version
 import Prelude hiding(catch)
 import System.FilePath
 import System.Directory
-import Debug.Trace
 
 import Paths_leksah
 import IDE.SaveSession
@@ -67,7 +66,7 @@ import IDE.Pane.Modules (reloadKeepSelection, selectIdentifier)
 import IDE.Pane.Info (setSymbol)
 import IDE.Pane.Debugger (updateDebugger)
 
--- ---------------------------------------------------------------------
+-- --------------------------------------------------------------------
 -- Command line options
 --
 
@@ -168,7 +167,6 @@ runMain = handleTopExceptions $ do
 
 startGUI :: String -> Prefs -> IO ()
 startGUI sessionFilename iprefs = do
-    trace "start gui called" $ return ()
     st          <-  unsafeInitGUIForThreadedRTS
     when rtsSupportsBoundThreads
         (sysMessage Normal "Linked with -threaded")
@@ -200,23 +198,25 @@ startGUI sessionFilename iprefs = do
     iconExists  <-  doesFileExist iconPath
     when iconExists $
         windowSetIconFromFile win iconPath
+    let fs = FrameState
+            {   windows       =   [win]
+            ,   uiManager     =   uiManager
+            ,   panes         =   Map.empty
+            ,   activePane    =   Nothing
+            ,   paneMap       =   Map.empty
+            ,   layout        =   (TerminalP Map.empty Nothing (-1) Nothing Nothing)
+            ,   panePathFromNB =  Map.empty
+            }
     let ide = IDE
-          {   windows       =   [win]
-          ,   uiManager     =   uiManager
-          ,   panes         =   Map.empty
-          ,   activePane    =   Nothing
+          {   frameState    =   fs
           ,   recentPanes   =   []
-          ,   paneMap       =   Map.empty
-          ,   layout        =   (TerminalP Map.empty Nothing (-1) Nothing Nothing)
           ,   specialKeys   =   specialKeys
           ,   specialKey    =   Nothing
           ,   candy         =   candySt
           ,   prefs         =   startupPrefs
           ,   activePack    =   Nothing
           ,   allLogRefs    =   []
-          ,   currentError  =   Nothing
-          ,   currentBreak  =   Nothing
-          ,   currentContext     =   Nothing
+          ,   currentEBC    =   (Nothing, Nothing, Nothing)
           ,   accessibleInfo     =   Nothing
           ,   currentInfo   =   Nothing
           ,   handlers      =   Map.empty
@@ -246,9 +246,8 @@ startGUI sessionFilename iprefs = do
     toolbarInsert toolbar closeButton (-1)
     closeButton `onToolButtonClicked` do
         reflectIDE hideToolbar ideR
-
     windowAddAccelGroup win acc
-    nb          <-  newNotebook
+    nb          <-  reflectIDE (newNotebook []) ideR
     afterSwitchPage nb (\i -> reflectIDE (handleNotebookSwitch nb i) ideR)
     widgetSetName nb $"root"
     statusBar   <-  buildStatusbar ideR
@@ -271,7 +270,7 @@ startGUI sessionFilename iprefs = do
     windowSetDefaultSize win x y
     sessionPath <- getConfigFilePathForLoad sessionFilename
     (tbv,fbv) <- reflectIDE (do
-        registerEvents menus
+        registerEvents
         recoverSession sessionPath
         ) ideR
     widgetShowAll win
@@ -306,15 +305,15 @@ handleSpecialKeystrokes (Key { eventKeyName = name,  eventModifier = mods,
     sb <- getSBSpecialKeys
     prefs' <- readIDE prefs
     case (name, mods) of
-		(tab, [Control]) | (tab == "Tab" || tab == "ISO_Left_Tab")
-		                        && useCtrlTabFlipping prefs'      -> do
-		    flipDown
-		    return True
-		(tab, [Shift, Control]) | (tab == "Tab" || tab == "ISO_Left_Tab")
-		                        && useCtrlTabFlipping prefs'      -> do
-		    flipUp
-		    return True
-		_                                                            -> do
+        (tab, [Control]) | (tab == "Tab" || tab == "ISO_Left_Tab")
+                                && useCtrlTabFlipping prefs'      -> do
+            flipDown
+            return True
+        (tab, [Shift, Control]) | (tab == "Tab" || tab == "ISO_Left_Tab")
+                                && useCtrlTabFlipping prefs'      -> do
+            flipUp
+            return True
+        _                                                            -> do
                 bs <- getCandyState
                 when bs (editKeystrokeCandy mbChar)
                 sk  <- readIDE specialKey
@@ -355,8 +354,8 @@ handleSpecialKeystrokes _ = return True
 --
 -- | Register handlers for IDE events
 --
-registerEvents :: [Widget] -> IDEAction
-registerEvents tbl =    do
+registerEvents :: IDEAction
+registerEvents =    do
     stRef   <-  ask
     registerEvent stRef "LogMessage" (Left logHandler)
     registerEvent stRef "SelectInfo" (Left siHandler)
@@ -371,7 +370,6 @@ registerEvents tbl =    do
     registerEvent stRef "SaveSession" (Left ssHandler)
     registerEvent stRef "UpdateRecent" (Left urHandler)
     registerEvent stRef "DebuggerChanged" (Left debHandler)
-
 
     return ()
     where

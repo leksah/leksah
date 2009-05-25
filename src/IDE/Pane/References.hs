@@ -135,9 +135,7 @@ getReferences = do
     mbMod <- getPane
     case mbMod of
         Nothing -> do
-            prefs       <-  readIDE prefs
-            layout      <-  readIDE layout
-            let pp      =   getStandardPanePath (logPanePath prefs) layout
+            pp          <-  getBestPathForId "*References"
             nb          <-  getNotebook pp
             initReferences pp nb Nothing
             mbMod <- getPane

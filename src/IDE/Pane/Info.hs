@@ -80,8 +80,6 @@ showInfo = do
 
 initInfo :: PanePath -> Notebook -> Descr -> IDEAction
 initInfo panePath nb idDescr = do
-    panes       <- readIDE panes
-    paneMap     <- readIDE paneMap
     prefs       <- readIDE prefs
     (pane,cids) <- reifyIDE $ \ideR  ->  do
             ibox        <- vBoxNew False 0
@@ -216,9 +214,7 @@ setInfo identifierDescr = do
     mbPane <-  getPane
     case mbPane of
         Nothing -> do
-            prefs   <- readIDE prefs
-            layout  <- readIDE layout
-            let pp  =  getStandardPanePath (logPanePath prefs) layout
+            pp      <- getBestPathForId "*Info"
             nb      <- getNotebook pp
             initInfo pp nb identifierDescr
         Just info -> do

@@ -81,9 +81,6 @@ instance RecoverablePane IDEDebugger DebuggerState IDEM where
             text        <-  getCandylessText ct buf
             return (Just (DebuggerState text))
     recoverState pp (DebuggerState text) =   do
-        prefs       <-  readIDE prefs
-        layout      <-  readIDE layout
-        let pp      =   getStandardPanePath (debugPanePath prefs) layout
         nb          <-  getNotebook pp
         initDebugger pp nb text
         debugger    <- getDebugger
@@ -103,9 +100,7 @@ getDebugger = do
     mbDeb <- getPane
     case mbDeb of
         Nothing -> do
-            prefs       <-  readIDE prefs
-            layout      <-  readIDE layout
-            let pp      =   getStandardPanePath (debugPanePath prefs) layout
+            pp          <-  getBestPathForId "*Debug"
             nb          <-  getNotebook pp
             initDebugger pp nb ""
             mbDeb <- getPane
@@ -116,9 +111,7 @@ getDebugger = do
 
 initDebugger :: PanePath -> Notebook -> String -> IDEAction
 initDebugger panePath nb wstext = do
-    panes       <- readIDE panes
-    paneMap     <- readIDE paneMap
-    prefs       <- readIDE prefs
+    prefs <- readIDE prefs
     (pane,cids) <- reifyIDE $ \ideR  ->  do
         ibox        <- vBoxNew False 0
     -- Buttons
@@ -179,10 +172,10 @@ initDebugger panePath nb wstext = do
         stepExpB    <- buttonNewWithLabel "Step Expression"
         traceExpB   <- buttonNewWithLabel "Trace Expression"
 
-        boxPackStart wbbox exeB PackNatural 10
-        boxPackStart wbbox stepExpB PackNatural 10
-        boxPackStart wbbox traceExpB PackNatural 10
-        boxPackStart wbox wbbox PackNatural 10
+        boxPackStart wbbox exeB PackNatural 0
+        boxPackStart wbbox stepExpB PackNatural 0
+        boxPackStart wbbox traceExpB PackNatural 0
+        boxPackStart wbox wbbox PackNatural 0
 
         boxPackStart ibox wbox PackGrow 10
         boxPackEnd ibox bb PackNatural 10

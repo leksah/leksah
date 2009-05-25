@@ -73,10 +73,10 @@ instance RecoverablePane IDEFlags FlagsState IDEM where
             mbPack  <- readIDE activePack
             case mbPack of
                 Just pack -> do
-                    nb          <-  getNotebook pp
+                    pp  <- getBestPathForId "*Flags"
+                    nb  <- getNotebook pp
                     initFlags pack pp nb
                 Nothing -> return ()
-
 
 concatString :: [String] -> String
 concatString l = foldl' (\r s -> if null r then s else r ++ " " ++ s) "" l
@@ -197,9 +197,7 @@ getFlags = do
                     ideMessage Normal "can't edit flags without active package"
                     return Nothing
                 Just pack -> do
-                    prefs       <-  readIDE prefs
-                    layout      <-  readIDE layout
-                    let pp      =   getStandardPanePath (sourcePanePath prefs) layout
+                    pp          <-  getBestPathForId "*Flags"
                     nb          <-  getNotebook pp
                     initFlags pack pp nb
                     mbFlags <- getPane
@@ -216,40 +214,38 @@ initFlags :: IDEPackage -> PanePath -> Notebook -> IDEAction
 initFlags idePackage panePath nb = do
     let flagsDesc       =   extractFieldDescription flagsDescription
     let flatflagsDesc   =   flattenFieldDescription flagsDesc
-    (buf,cids)  <-  reifyIDE $ \ ideR ->  do
-        vb                  <-  vBoxNew False 0
-        let flagsPane = IDEFlags vb
-        bb                  <-  hButtonBoxNew
-        ok                  <-  buttonNewFromStock "gtk-ok"
-        closeB              <-  buttonNewFromStock "gtk-close"
-        boxPackStart bb ok PackNatural 0
-        boxPackStart bb closeB PackNatural 0
-        (widget,injb,ext,notifier)
-                            <-  buildEditor flagsDesc idePackage
-        sw <- scrolledWindowNew Nothing Nothing
-        scrolledWindowAddWithViewport sw widget
-        scrolledWindowSetPolicy sw PolicyAutomatic PolicyAutomatic
-        ok `onClicked` (do
-            mbPackWithNewFlags <- extract idePackage [ext]
-            case mbPackWithNewFlags of
-                Nothing -> return ()
-                Just packWithNewFlags -> do
-                    reflectIDE (do
-                        modifyIDE_ (\ide -> return (ide{activePack = Just packWithNewFlags}))
-                        close flagsPane) ideR -- we don't trigger the activePack event here
-                    writeFlags ((dropFileName (cabalFile packWithNewFlags)) </> "IDE.flags")
-                        packWithNewFlags)
-        closeB `onClicked` (reflectIDE (close flagsPane) ideR)
-        registerEvent notifier FocusIn (Left (\e -> do
-            reflectIDE (makeActive flagsPane) ideR
-            return (e{gtkReturn=False})))
-        boxPackStart vb sw PackGrow 7
-        boxPackEnd vb bb PackNatural 7
-        notebookInsertOrdered nb vb (paneName flagsPane) Nothing
-        widgetShowAll vb
-        return (flagsPane,[])
-    addPaneAdmin buf [] panePath
-    liftIO $ widgetGrabFocus (flagsBox buf)
+    p <- newPane panePath nb (builder idePackage flagsDesc flatflagsDesc)
+    return ()
 
-
-
+builder idePackage flagsDesc flatflagsDesc pp nb window ideR = do
+    vb                  <-  vBoxNew False 0
+    let flagsPane = IDEFlags vb
+    bb                  <-  hButtonBoxNew
+    ok                  <-  buttonNewFromStock "gtk-ok"
+    closeB              <-  buttonNewFromStock "gtk-close"
+    boxPackStart bb ok PackNatural 0
+    boxPackStart bb closeB PackNatural 0
+    (widget,injb,ext,notifier)
+                        <-  buildEditor flagsDesc idePackage
+    sw <- scrolledWindowNew Nothing Nothing
+    scrolledWindowAddWithViewport sw widget
+    scrolledWindowSetPolicy sw PolicyAutomatic PolicyAutomatic
+    ok `onClicked` (do
+        mbPackWithNewFlags <- extract idePackage [ext]
+        case mbPackWithNewFlags of
+            Nothing -> return ()
+            Just packWithNewFlags -> do
+                reflectIDE (do
+                    modifyIDE_ (\ide -> return (ide{activePack = Just packWithNewFlags}))
+                    close flagsPane) ideR -- we don't trigger the activePack event here
+                writeFlags ((dropFileName (cabalFile packWithNewFlags)) </> "IDE.flags")
+                    packWithNewFlags)
+    closeB `onClicked` (reflectIDE (close flagsPane) ideR)
+    registerEvent notifier FocusIn (Left (\e -> do
+        reflectIDE (makeActive flagsPane) ideR
+        return (e{gtkReturn=False})))
+    boxPackStart vb sw PackGrow 7
+    boxPackEnd vb bb PackNatural 7
+    notebookInsertOrdered nb vb (paneName flagsPane) Nothing
+    widgetShowAll vb
+    return (flagsPane,[])

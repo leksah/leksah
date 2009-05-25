@@ -35,7 +35,7 @@ import Data.List(unzip4)
 import Control.Event
 import Graphics.UI.Editor.Parameters
 import Graphics.UI.Editor.Basics
-import Graphics.UI.Frame.ViewFrame
+--import Graphics.UI.Frame.ViewFrame
 import Data.Maybe (isNothing)
 
 --
@@ -62,6 +62,18 @@ parameters (FD p _) = p
 parameters (VFD p _) = p
 parameters (HFD p _) = p
 parameters (NFD _) = emptyParams
+
+--
+-- | Construct a new notebook
+--
+newNotebook :: IO Notebook
+newNotebook = do
+    nb <- notebookNew
+    notebookSetTabPos nb PosTop
+    notebookSetShowTabs nb True
+    notebookSetScrollable nb True
+    notebookSetPopup nb True
+    return nb
 
 buildEditor :: FieldDescription alpha -> alpha -> IO (Widget, Injector alpha , alpha -> Extractor alpha , Notifier)
 buildEditor (FD paras editorf) v  =   editorf v

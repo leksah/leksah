@@ -69,9 +69,7 @@ getVariables = do
     mbVar <- getPane
     case mbVar of
         Nothing -> do
-            prefs       <-  readIDE prefs
-            layout      <-  readIDE layout
-            let pp      =   getStandardPanePath (debugPanePath prefs) layout
+            pp          <-  getBestPathForId "*Variables"
             nb          <-  getNotebook pp
             initVariables pp nb
             mbVar <- getPane
@@ -82,8 +80,6 @@ getVariables = do
 
 initVariables :: PanePath -> Notebook -> IDEAction
 initVariables panePath nb = do
-    panes       <- readIDE panes
-    paneMap     <- readIDE paneMap
     prefs       <- readIDE prefs
     (pane,cids) <- reifyIDE $ \ideR  ->  do
         variables   <-  listStoreNew []

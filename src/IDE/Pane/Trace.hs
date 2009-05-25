@@ -71,9 +71,7 @@ getTrace = do
     mbTrace <- getPane
     case mbTrace of
         Nothing -> do
-            prefs       <-  readIDE prefs
-            layout      <-  readIDE layout
-            let pp      =   getStandardPanePath (debugPanePath prefs) layout
+            pp          <-  getBestPathForId "*Trace"
             nb          <-  getNotebook pp
             initTrace pp nb
             mbTrace <- getPane
@@ -84,8 +82,6 @@ getTrace = do
 
 initTrace :: PanePath -> Notebook -> IDEAction
 initTrace panePath nb = do
-    panes       <- readIDE panes
-    paneMap     <- readIDE paneMap
     prefs       <- readIDE prefs
     (pane,cids) <- reifyIDE $ \ideR  ->  do
 

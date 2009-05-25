@@ -77,9 +77,7 @@ getBreakpoints = do
     mbBreakpoints <- getPane
     case mbBreakpoints of
         Nothing -> do
-            prefs       <-  readIDE prefs
-            layout      <-  readIDE layout
-            let pp      =   getStandardPanePath (debugPanePath prefs) layout
+            pp          <-  getBestPathForId "*Breakpoints"
             nb          <-  getNotebook pp
             initBreakpoints pp nb
             mbBreakpoints <- getPane
@@ -90,8 +88,6 @@ getBreakpoints = do
 
 initBreakpoints :: PanePath -> Notebook -> IDEAction
 initBreakpoints panePath nb = do
-    panes       <- readIDE panes
-    paneMap     <- readIDE paneMap
     prefs       <- readIDE prefs
     (pane,cids) <- reifyIDE $ \ideR  ->  do
 

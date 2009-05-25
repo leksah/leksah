@@ -89,10 +89,8 @@ getSearch = do
     case mbSearch of
         Just m ->   return m
         Nothing -> do
-            prefs       <-  readIDE prefs
-            layout      <-  readIDE layout
-            let pp      =   getStandardPanePath (modulesPanePath prefs) layout
-            nb          <-  getNotebook pp
+            pp  <- getBestPathForId "*Search"
+            nb  <-  getNotebook pp
             initSearch pp nb System (Prefix False)
             mbSearch <- getPane
             case mbSearch of
@@ -102,8 +100,6 @@ getSearch = do
 
 initSearch :: PanePath -> Notebook -> Scope -> SearchMode -> IDEAction
 initSearch panePath nb scope mode = do
-    panes       <-  readIDE panes
-    paneMap     <-  readIDE paneMap
     prefs       <-  readIDE prefs
     currentInfo <-  readIDE currentInfo
     (buf,cids)  <-  reifyIDE $ \ideR  -> do

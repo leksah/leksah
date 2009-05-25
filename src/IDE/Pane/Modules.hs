@@ -57,6 +57,7 @@ import Graphics.UI.Editor.Simple (boolEditor,okCancelFields,staticListEditor,str
 import Graphics.UI.Editor.Basics (eventPaneName,GUIEventSelector(..))
 import IDE.Metainfo.Provider (rebuildActiveInfo)
 import qualified System.IO.UTF8 as UTF8  (writeFile)
+import Debug.Trace
 
 
 -- | A modules pane description
@@ -135,6 +136,7 @@ instance RecoverablePane IDEModules ModulesState IDEM where
                                     Just fw -> Just (descrName fw))
                 return (Just (ModulesState i sc mbs expander))
     recoverState pp (ModulesState i sc@(scope,useBlacklist) se exp)  =  do
+            trace "before recoverModules" $ return ()
             nb          <-  getNotebook pp
             initModules pp nb
             mod         <-  getModules
@@ -148,6 +150,7 @@ instance RecoverablePane IDEModules ModulesState IDEM where
             fillModulesList sc
             selectNames se
             applyExpanderState
+            trace "after recoverModules" $ return ()
 
 
 
@@ -248,9 +251,7 @@ getModules = do
     mbMod <- getPane
     case mbMod of
         Nothing -> do
-            prefs       <-  readIDE prefs
-            layout      <-  readIDE layout
-            let pp      =   getStandardPanePath (modulesPanePath prefs) layout
+            pp          <-  getBestPathForId "*Modules"
             nb          <-  getNotebook pp
             initModules pp nb
             mbMod <- getPane
@@ -261,8 +262,6 @@ getModules = do
 
 initModules :: PanePath -> Notebook -> IDEAction
 initModules panePath nb = do
-    panes       <-  readIDE panes
-    paneMap     <-  readIDE paneMap
     prefs       <-  readIDE prefs
     currentInfo <-  readIDE currentInfo
     (buf,cids)  <-  reifyIDE $ \ideR -> do
@@ -963,7 +962,7 @@ addModule treeView store = do
                                    modPath  = foldr (\a b -> a ++ "." ++ b) ""
                                                 (map fst categories)
                                in do
-            window' <- readIDE window
+            window' <- getMainWindow
             mbResp <- liftIO $ addModuleDialog window' modPath srcPaths
             case mbResp of
                 Nothing                -> return ()

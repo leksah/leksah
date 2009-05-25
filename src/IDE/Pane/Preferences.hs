@@ -94,9 +94,7 @@ getPrefs = do
     mbPrefs <- getPane
     case mbPrefs of
         Nothing -> do
-            prefs       <-  readIDE prefs
-            layout      <-  readIDE layout
-            let pp      =   getStandardPanePath (sourcePanePath prefs) layout
+            pp  <- getBestPathForId "*Prefs"
             nb          <-  getNotebook pp
             initPrefs pp nb
             mbPrefs <- getPane
@@ -115,8 +113,6 @@ initPrefs panePath nb2 = do
     let flatPrefsDesc = flattenFieldDescriptionPP (prefsDescription (map package packageInfos))
     prefs       <-  readIDE prefs
     lastAppliedPrefsRef <- liftIO $ newIORef prefs
-    panes       <-  readIDE panes
-    paneMap     <-  readIDE paneMap
     currentInfo <-  readIDE currentInfo
     (buf,cids)  <-  reifyIDE $ \ideR -> do
         vb      <-  vBoxNew False 0
@@ -331,30 +327,6 @@ prefsDescription packages = NFDPP [
             boolEditor
             (\i -> return ())
     ,   mkFieldPP
-            (paraName <<<- ParaName "Standard source pane path" $ emptyParams)
-            (PP.text . show)
-            readParser
-            sourcePanePath
-            (\b a -> a{sourcePanePath = b})
-            panePathEditor
-            (\i -> return ())
-    ,   mkFieldPP
-            (paraName <<<- ParaName "Standard log pane path" $ emptyParams)
-            (PP.text . show)
-            readParser
-            logPanePath
-            (\b a -> a{logPanePath = b})
-            panePathEditor
-            (\i -> return ())
-    ,   mkFieldPP
-            (paraName <<<- ParaName "Standard modules pane path" $ emptyParams)
-            (PP.text . show)
-            readParser
-            modulesPanePath
-            (\b a -> a{modulesPanePath = b})
-            panePathEditor
-            (\i -> return ())
-    ,   mkFieldPP
             (paraName <<<- ParaName "Name of the keymap"
                 $ paraSynopsis <<<- ParaSynopsis
                     "The name of a keymap file in a config dir"
@@ -365,6 +337,52 @@ prefsDescription packages = NFDPP [
             (\b a -> a{keymapName = b})
             (stringEditor (\s -> not (null s)))
             (\ a -> return ())
+    ]),
+    ("Initial Pane positions", VFDPP emptyParams [
+        mkFieldPP
+            (paraName <<<- ParaName
+                "Categories for panes"
+                $ paraShadow <<<- ParaShadow ShadowIn
+                     $ paraDirection <<<- ParaDirection Vertical $ emptyParams)
+            (PP.text . show)
+            readParser
+            categoryForPane
+            (\b a -> a{categoryForPane = b})
+            (multisetEditor
+                (ColumnDescr True [("Pane Id",\(n,_) -> [cellText := n])
+                                   ,("Pane Category",\(_,v) -> [cellText := v])])
+                ((pairEditor
+                    (stringEditor (\s -> not (null s)),emptyParams)
+                    (stringEditor (\s -> not (null s)),emptyParams)),emptyParams)
+            Nothing
+            Nothing)
+            (\i -> return ())
+    ,   mkFieldPP
+            (paraName <<<- ParaName
+                "Pane path for category"
+                $ paraShadow <<<- ParaShadow ShadowIn
+                     $ paraDirection <<<- ParaDirection Vertical $ emptyParams)
+            (PP.text . show)
+            readParser
+            pathForCategory
+            (\b a -> a{pathForCategory = b})
+            (multisetEditor
+                (ColumnDescr True [("Pane category",\(n,_) -> [cellText := n])
+                                   ,("Pane path",\(_,v) -> [cellText := show v])])
+                ((pairEditor
+                    (stringEditor (\s -> not (null s)),emptyParams)
+                    (genericEditor,emptyParams)),emptyParams)
+            Nothing
+            Nothing)
+            (\i -> return ())
+    ,   mkFieldPP
+            (paraName <<<- ParaName "Default pane path" $ emptyParams)
+            (PP.text . show)
+            readParser
+            defaultPath
+            (\b a -> a{defaultPath = b})
+            genericEditor
+            (\i -> return ())
     ]),
     ("Metadata", VFDPP emptyParams [
         mkFieldPP
@@ -469,10 +487,6 @@ styleEditor p n = do
     ids          <- sourceStyleSchemeManagerGetSchemeIds styleManager
     maybeEditor (comboSelectionEditor ids id, p) True "Select a special style?" p n
 
-panePathEditor :: Editor StandardPath
-panePathEditor = genericEditor
-
-
 
 instance Default PackageIdentifier where
     getDefault = case toPackageIdentifier "unknown-0" of
@@ -492,12 +506,24 @@ defaultPrefs = Prefs {
     ,   logviewFont         =   Nothing
     ,   defaultSize         =   (1024,800)
     ,   browser             =   "firefox"
-    ,   sourcePanePath      =   [SplitP LeftP]
-    ,   logPanePath         =   [SplitP RightP,SplitP BottomP]
-    ,   modulesPanePath     =   [SplitP RightP,SplitP TopP]
-    ,   debugPanePath       =   [SplitP RightP,SplitP TopP,GroupP "Debug"]
     ,   sourceDirectories   =   []
     ,   packageBlacklist    =   []
+    ,   pathForCategory     =   [   ("EditorCategory",[SplitP (LeftP)])
+                                ,   ("TreeCategory",[SplitP (RightP),SplitP (TopP)])
+                                ,   ("LogCategory",[SplitP (RightP), SplitP (BottomP)])
+                                ,   ("DialogCategory",[SplitP (RightP),SplitP (TopP)])]
+    ,   defaultPath         =   [SplitP (LeftP)]
+    ,   categoryForPane     =   [   ("*ClassHierarchy","TreeCategory")
+                                ,   ("*Debug","TreeCategory")
+                                ,   ("*Grep","TreeCategory")
+                                ,   ("*Info","LogCategory")
+                                ,   ("*Log","LogCategory")
+                                ,   ("*Modules","TreeCategory")
+                                ,   ("*Package","DialogCategory")
+                                ,   ("*Flags","DialogCategory")
+                                ,   ("*Prefs","DialogCategory")
+                                ,   ("*References","LogCategory")
+                                ,   ("*Search","TreeCategory")]
     ,   collectAfterBuild   =   False
     ,   collectAtStart      =   True
     ,   autoExtractTars     =   Nothing

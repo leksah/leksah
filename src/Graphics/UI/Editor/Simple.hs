@@ -34,8 +34,6 @@ module Graphics.UI.Editor.Simple (
 
 import Graphics.UI.Gtk
 import qualified Graphics.UI.Gtk as Gtk
-import IDE.Core.State (MessageLevel(..))
-import IDE.Core.State (sysMessage)
 import Control.Monad
 import Data.IORef
 import Data.List
@@ -275,7 +273,7 @@ genericEditor parameters notifier = do
             Nothing -> return Nothing
             Just s -> catch (liftM Just (readIO s))
                             (\e -> do
-                                sysMessage Normal $"Generic editor no parse for " ++ s ++ " " ++ show e
+                                putStrLn ("Generic editor no parse for " ++ s ++ " " ++ show e)
                                 return Nothing)
     return (wid,ginj,gext)
 

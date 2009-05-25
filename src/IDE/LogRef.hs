@@ -95,7 +95,8 @@ setErrorList errs = do
     unmarkLogRefs
     breaks <- readIDE breakpointRefs
     contexts <- readIDE contextRefs
-    modifyIDE_ (\ide -> return (ide{allLogRefs = errs ++ breaks ++ contexts, currentError = Nothing}))
+    modifyIDE_ (\ide -> return (ide{allLogRefs = errs ++ breaks ++ contexts}))
+    setCurrentError Nothing
     markLogRefs
 
 setBreakpointList :: [LogRef] -> IDEAction
@@ -103,13 +104,15 @@ setBreakpointList breaks = do
     unmarkLogRefs
     errs <- readIDE errorRefs
     contexts <- readIDE contextRefs
-    modifyIDE_ (\ide -> return (ide{allLogRefs = errs ++ breaks ++ contexts, currentBreak = Nothing}))
+    modifyIDE_ (\ide -> return (ide{allLogRefs = errs ++ breaks ++ contexts}))
+    setCurrentBreak Nothing
     markLogRefs
 
 addLogRefs :: [LogRef] -> IDEAction
 addLogRefs refs = do
     unmarkLogRefs
-    modifyIDE_ (\ide -> return (ide{allLogRefs = (allLogRefs ide) ++ refs, currentError = Nothing}))
+    modifyIDE_ (\ide -> return (ide{allLogRefs = (allLogRefs ide) ++ refs}))
+    setCurrentError Nothing
     markLogRefs
 
 nextError :: IDEAction
@@ -126,7 +129,7 @@ nextError = do
                                 Nothing -> 0
                                 Just n | (n + 1) < length errs -> (n + 1)
                                 Just n -> n
-            modifyIDE_ (\ide -> return (ide{currentError = Just $ errs!!new}))
+            setCurrentError (Just $ errs!!new)
             selectRef $ errs!!new
 
 previousError :: IDEAction
@@ -143,7 +146,7 @@ previousError = do
                                 Nothing -> (length errs - 1)
                                 Just n | n > 0 -> (n - 1)
                                 Just n -> 0
-            modifyIDE_ (\ide -> return (ide{currentError = Just $ errs!!new}))
+            setCurrentError (Just $ errs!!new)
             selectRef $ errs!!new
 
 nextBreakpoint :: IDEAction
@@ -160,7 +163,7 @@ nextBreakpoint = do
                                 Nothing -> 0
                                 Just n | (n + 1) < length breaks -> (n + 1)
                                 Just n -> n
-            modifyIDE_ (\ide -> return (ide{currentBreak = Just $ breaks!!new}))
+            setCurrentBreak (Just $ breaks!!new)
             selectRef $ breaks!!new
 
 previousBreakpoint :: IDEAction
@@ -177,7 +180,7 @@ previousBreakpoint = do
                                 Nothing -> (length breaks - 1)
                                 Just n | n > 0 -> (n - 1)
                                 Just n -> 0
-            modifyIDE_ (\ide -> return (ide{currentBreak = Just $ breaks!!new}))
+            setCurrentBreak (Just $ breaks!!new)
             selectRef $ breaks!!new
 
 nextContext :: IDEAction
@@ -194,7 +197,7 @@ nextContext = do
                                 Nothing -> 0
                                 Just n | (n + 1) < length contexts -> (n + 1)
                                 Just n -> n
-            modifyIDE_ (\ide -> return (ide{currentContext = Just $ contexts!!new}))
+            setCurrentContext (Just $ contexts!!new)
             selectRef $ contexts!!new
 
 previousContext :: IDEAction
@@ -211,7 +214,7 @@ previousContext = do
                                 Nothing -> (length contexts - 1)
                                 Just n | n > 0 -> (n - 1)
                                 Just n -> 0
-            modifyIDE_ (\ide -> return (ide{currentContext = Just $ contexts!!new}))
+            setCurrentContext (Just $ contexts!!new)
             selectRef $ contexts!!new
 
 lastContext :: IDEAction
@@ -222,7 +225,7 @@ lastContext = do
         then return ()
         else do
             let new = (last contexts)
-            modifyIDE_ (\ide -> return (ide{currentContext = Just new}))
+            setCurrentContext (Just new)
             selectRef $ new
 
 srcSpanParser :: CharParser () SrcSpan

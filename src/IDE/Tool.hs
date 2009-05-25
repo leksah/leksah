@@ -143,11 +143,11 @@ ghciStripExpectedError output = case stripPrefix "\n<interactive>:1:0" output of
                                             (maybe rest id (stripPrefix "-28" rest))
                                     Nothing -> Nothing
 
-ghciCommandLineReader = CommanLineReader {
-    stripInitialPrompt = ghciStripInitialPrompt,
+ghciCommandLineReader    = CommanLineReader {
+    stripInitialPrompt   = ghciStripInitialPrompt,
     stripFollowingPrompt = ghciStripFollowingPrompt,
-    errorSyncCommand = Just "kM2KWR7LZZbHdXfHUOA5YBBsJVYoC",
-    stripExpectedError = ghciStripExpectedError
+    errorSyncCommand     = Just "kM2KWR7LZZbHdXfHUOA5YBBsJVYoC",
+    stripExpectedError   = ghciStripExpectedError
     }
 
 noInputCommandLineReader = CommanLineReader {
