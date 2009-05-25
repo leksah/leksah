@@ -49,6 +49,8 @@ import IDE.Pane.PackageFlags
 import IDE.Pane.Search
 import IDE.Pane.Grep
 import IDE.Pane.Breakpoints
+import IDE.Pane.Trace
+import IDE.Pane.Variables
 import IDE.Find
 import System.Time (getClockTime)
 import IDE.Package (activatePackage,deactivatePackage)
@@ -70,6 +72,8 @@ data PaneState      =   BufferSt BufferState
                     |   DebuggerSt DebuggerState
                     |   GrepSt GrepState
                     |   BreakpointsSt BreakpointsState
+                    |   TraceSt TraceState
+                    |   VariablesSt VariablesState
     deriving(Eq,Ord,Read,Show)
 
 asPaneState :: RecoverablePane alpha beta gamma => beta -> PaneState
@@ -84,6 +88,8 @@ asPaneState s | isJust ((cast s) :: Maybe SearchState)      =   SearchSt (fromJu
 asPaneState s | isJust ((cast s) :: Maybe DebuggerState)    =   DebuggerSt (fromJust $ cast s)
 asPaneState s | isJust ((cast s) :: Maybe GrepState)        =   GrepSt (fromJust $ cast s)
 asPaneState s | isJust ((cast s) :: Maybe BreakpointsState) =   BreakpointsSt (fromJust $ cast s)
+asPaneState s | isJust ((cast s) :: Maybe TraceState)       =   TraceSt (fromJust $ cast s)
+asPaneState s | isJust ((cast s) :: Maybe VariablesState)   =   VariablesSt (fromJust $ cast s)
 asPaneState s                                               =   error "SaveSession>>asPaneState incomplete cast"
 
 recover :: PanePath -> PaneState -> IDEAction
@@ -98,6 +104,8 @@ recover pp (SearchSt p)         =   recoverState pp p
 recover pp (DebuggerSt p)       =   recoverState pp p
 recover pp (GrepSt p)           =   recoverState pp p
 recover pp (BreakpointsSt p)    =   recoverState pp p
+recover pp (TraceSt p)          =   recoverState pp p
+recover pp (VariablesSt p)      =   recoverState pp p
 
 -- ---------------------------------------------------------------------
 

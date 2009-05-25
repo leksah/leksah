@@ -34,8 +34,7 @@ import Graphics.UI.Gtk.Gdk.Enums (EventMask(..))
 import System.Glib.Attributes (get)
 import IDE.LogRef (logOutput)
 import IDE.Debug
-    (debugCommand',
-     debugTraceExpr,
+    (debugTraceExpr,
      debugStepExpr,
      debugStepModule,
      debugStepLocal,
@@ -46,7 +45,9 @@ import Control.Monad (unless, when)
 import Control.Event (triggerEvent)
 import IDE.Tool (ToolOutput(..),toolline)
 import IDE.SourceCandy (getCandylessText)
-import IDE.Pane.Breakpoints (fillBreakpointList)
+import IDE.Pane.Breakpoints (showBreakpoints, fillBreakpointList)
+import IDE.Pane.Trace (showTrace, fillTracepointList)
+import IDE.Pane.Variables (showVariables, fillVariablesList)
 
 
 -- | A debugger pane description
@@ -54,15 +55,10 @@ import IDE.Pane.Breakpoints (fillBreakpointList)
 data IDEDebugger    =   IDEDebugger {
     sw              ::   VBox
 ,   workspaceView   ::   SourceView
-,   variables     ::   ListStore String
-,   hpaned      ::  HPaned
-,   vpaned      ::  VPaned
 } deriving Typeable
 
 data DebuggerState  =   DebuggerState {
     workspace :: String
-,   horizontalSplit :: Int
-,   verticalSplit :: Int
 }   deriving(Eq,Ord,Read,Show,Typeable)
 
 
@@ -83,21 +79,21 @@ instance RecoverablePane IDEDebugger DebuggerState IDEM where
         liftIO $ do
             buf         <-  textViewGetBuffer $ workspaceView p
             text        <-  getCandylessText ct buf
-            hi          <-  panedGetPosition (hpaned p)
-            vi          <-  panedGetPosition (vpaned p)
-            return (Just (DebuggerState text hi vi))
-    recoverState pp (DebuggerState text hi vi) =   do
+            return (Just (DebuggerState text))
+    recoverState pp (DebuggerState text) =   do
         prefs       <-  readIDE prefs
         layout      <-  readIDE layout
         let pp      =   getStandardPanePath (debugPanePath prefs) layout
         nb          <-  getNotebook pp
         initDebugger pp nb text
         debugger    <- getDebugger
-        liftIO $ panedSetPosition (hpaned debugger) hi
-        liftIO $ panedSetPosition (vpaned debugger) vi
+        return ()
 
 showDebugger :: IDEAction
 showDebugger = do
+    showVariables
+    showTrace
+    showBreakpoints
     m <- getDebugger
     liftIO $ bringPaneToFront m
     liftIO $ widgetGrabFocus (workspaceView m)
@@ -137,50 +133,6 @@ initDebugger panePath nb wstext = do
         boxPackStartDefaults bb stepLB
         boxPackStartDefaults bb stepMB
         boxPackStartDefaults bb continueB
-
-    -- VariablesView
-        listStoreV   <-  listStoreNew []
-        treeViewV    <-  treeViewNew
-        treeViewSetModel treeViewV listStoreV
-
-        rendererV    <- cellRendererTextNew
-        colV         <- treeViewColumnNew
-        treeViewColumnSetTitle colV "Variables"
-        treeViewColumnSetSizing colV TreeViewColumnAutosize
-        treeViewAppendColumn treeViewV colV
-        cellLayoutPackStart colV rendererV False
-        cellLayoutSetAttributes colV rendererV listStoreV
-            $ \row -> [ cellText := row]
-
-        treeViewSetHeadersVisible treeViewV True
-        selV <- treeViewGetSelection treeViewV
-        treeSelectionSetMode selV SelectionSingle
-
-        swVariables <- scrolledWindowNew Nothing Nothing
-        containerAdd swVariables treeViewV
-        scrolledWindowSetPolicy swVariables PolicyAutomatic PolicyAutomatic
-
-    -- TracesView
-        listStoreT   <-  listStoreNew []
-        treeViewT    <-  treeViewNew
-        treeViewSetModel treeViewT listStoreT
-
-        rendererT    <- cellRendererTextNew
-        colT         <- treeViewColumnNew
-        treeViewColumnSetTitle colT "Traces"
-        treeViewColumnSetSizing colT TreeViewColumnAutosize
-        treeViewAppendColumn treeViewT colT
-        cellLayoutPackStart colT rendererT False
-        cellLayoutSetAttributes colT rendererT listStoreT
-            $ \row -> [ cellText := row]
-
-        treeViewSetHeadersVisible treeViewT False
-        selT <- treeViewGetSelection treeViewT
-        treeSelectionSetMode selT SelectionSingle
-
-        swTraces <- scrolledWindowNew Nothing Nothing
-        containerAdd swTraces treeViewT
-        scrolledWindowSetPolicy swTraces PolicyAutomatic PolicyAutomatic
 
     -- Workspace View
         wbox        <- hBoxNew False 0
@@ -232,22 +184,11 @@ initDebugger panePath nb wstext = do
         boxPackStart wbbox traceExpB PackNatural 10
         boxPackStart wbox wbbox PackNatural 10
 
-        nbBreakAndTrace <- newNotebook
-        notebookInsertPage nbBreakAndTrace swTraces "Trace" 0
-
-        paned0  <- hPanedNew
-        panedAdd1 paned0 swVariables
-        panedAdd2 paned0 nbBreakAndTrace
-
-        paned1           <-  vPanedNew
-        panedAdd1 paned1 wbox
-        panedAdd2 paned1 paned0
-
-        boxPackStart ibox paned1 PackGrow 10
+        boxPackStart ibox wbox PackGrow 10
         boxPackEnd ibox bb PackNatural 10
 
         --openType
-        let deb = IDEDebugger ibox workspaceView listStoreV paned0 paned1
+        let deb = IDEDebugger ibox workspaceView
         exeB `onClicked` (do
             maybeText <- selectedDebuggerText workspaceView
             reflectIDE (
@@ -317,25 +258,9 @@ setDebuggerText deb tol = do
                 textBufferInsertAtCursor gtkbuf (" >> " ++ text)
                 return ()
 
-fillVariablesList :: IDEAction
-fillVariablesList = do
-    mbDebugger <- getPane
-    case mbDebugger of
-        Nothing -> return ()
-        Just deb -> do
-            refs <- readIDE contextRefs
-            liftIO $ listStoreClear (variables deb)
-            debugCommand' ":show bindings" (\to -> liftIO
-                $ postGUIAsync
-                    $ mapM_ (listStoreAppend (variables deb))
-                        $ concatMap selectString to)
-    where
-    selectString :: ToolOutput -> [String]
-    selectString (ToolOutput str)   = lines str
-    selectString _                  = []
-
-
 updateDebugger :: IDEAction
 updateDebugger = do
     fillBreakpointList
     fillVariablesList
+    fillTracepointList
+

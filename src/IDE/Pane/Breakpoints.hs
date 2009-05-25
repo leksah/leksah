@@ -28,11 +28,14 @@ import Control.Monad.Reader
 import Outputable (ppr, showSDoc)
 import Graphics.UI.Gtk.Gdk.Events (Event(..))
 import Graphics.UI.Gtk.General.Enums
-    (Click(..), MouseButton(..), MouseButton(..))
-import IDE.Debug (debugDeleteBreakpoint, debugDeleteAllBreakpoints)
+    (Click(..), MouseButton(..))
+import IDE.Debug
+    (debugShowBreakpoints,
+     debugDeleteBreakpoint,
+     debugDeleteAllBreakpoints)
 import IDE.LogRef (selectRef)
 
--- | A debugger pane description
+-- | A breakpoints pane description
 --
 data IDEBreakpoints    =   IDEBreakpoints {
     scrolledView    ::   ScrolledWindow
@@ -64,6 +67,7 @@ instance RecoverablePane IDEBreakpoints BreakpointsState IDEM where
 
 showBreakpoints :: IDEAction
 showBreakpoints = do
+    debugShowBreakpoints
     m <- getBreakpoints
     liftIO $ bringPaneToFront m
     liftIO $ widgetGrabFocus (treeView m)
@@ -124,6 +128,7 @@ initBreakpoints panePath nb = do
     addPaneAdmin pane cids panePath
     liftIO $ widgetShowAll (scrolledView pane)
     liftIO $ widgetGrabFocus (scrolledView pane)
+    liftIO $ bringPaneToFront pane
 
 fillBreakpointList :: IDEAction
 fillBreakpointList = do
