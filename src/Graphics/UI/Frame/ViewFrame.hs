@@ -1,6 +1,10 @@
 {-# OPTIONS_GHC
     -XFunctionalDependencies
-    -XNoMonomorphismRestriction #-}
+    -XNoMonomorphismRestriction
+    -XFlexibleInstances
+    -XMultiParamTypeClasses
+    -XUndecidableInstances
+    -XDeriveDataTypeable #-}
 -----------------------------------------------------------------------------
 --
 -- Module      :  IDE.Core.ViewFrame
@@ -102,7 +106,6 @@ import Graphics.UI.Editor.Simple (stringEditor, okCancelFields)
 import Control.Event (registerEvent)
 import Graphics.UI.Editor.Basics
     (eventPaneName, GUIEventSelector(..))
-
 
 getThis :: PaneMonad delta =>  (FrameState delta -> alpha) -> delta alpha
 getThis sel = do
@@ -427,6 +430,59 @@ groupNameDialog parent =  liftIO $ do
                     (\ a b -> a)
             (stringEditor (\s -> True))]
 
+{--
+----------------------------------------
+-- |* Group Pane and nesting
+--
+
+data IDEGroup   =   IDEGroup {
+    notebook    ::  Notebook
+,   groupName   ::  String
+} deriving Typeable
+
+data GroupState  =   GroupState {
+    groupNameS   :: String
+}   deriving(Eq,Ord,Read,Show,Typeable)
+
+instance (PaneMonad alpha) => RecoverablePane IDEGroup GroupState alpha where
+    saveState p     =   do
+        return (Just (GroupState (groupName p)))
+    recoverState pp (GroupState s) =   do
+        nb      <-  getNotebook pp
+        initGroup s pp nb
+
+instance PaneMonad alpha => Pane IDEGroup alpha
+    where
+    primPaneName    =   groupName
+    getTopWidget    =   castToWidget . notebook
+    paneId b        =   "*Group"
+    makeActive pane =   undefined --TODO activatePane pane []
+    close           =   undefined --TODO closePane
+
+
+initGroup :: PaneMonad alpha => String -> PanePath -> Notebook -> alpha ()
+initGroup group pp nb = do
+    windows <- getWindows
+    nb <- newNotebook pp
+    let pane = IDEGroup nb group
+    addPaneAdmin pane [] pp
+    liftIO $ do
+        widgetShowAll (getTopWidget pane)
+        widgetGrabFocus (getTopWidget pane)
+    return ()
+
+viewNest :: PaneMonad alpha => String -> alpha ()
+viewNest group = do
+    nested <- getPanes
+    case filter (\g -> groupName g == group) nested of
+        (hd:_) -> liftIO $ bringPaneToFront hd
+        [] -> do
+            pp          <-  getBestPathForId "group"
+            nb          <-  getNotebook pp
+            initGroup group pp nb
+
+--}
+
 viewNest :: PaneMonad alpha => String -> alpha ()
 viewNest group = do
     mbPanePath        <- getActivePanePath
@@ -446,7 +502,7 @@ viewNest' panePath group = do
             let paneLayout  =   layoutFromPath panePath layout
             case paneLayout of
                 (TerminalP {}) -> do
-                    nb <- newNotebook panePath
+                    nb <- newNotebook (panePath ++ [GroupP group])
                     liftIO $ do
                         widgetSetName nb ("group_" ++ group)
                         notebookAppendPage activeNotebook nb group
@@ -781,7 +837,8 @@ newNotebook' = do
 --
 newNotebook :: PaneMonad alpha => PanePath -> alpha Notebook
 newNotebook pp = do
-    st  <- getFrameState
+    st  <- trace ("newNotebook path: " ++ show pp)
+                getFrameState
     nb  <- liftIO newNotebook'
     setFrameState st{panePathFromNB = Map.insert nb pp (panePathFromNB st)}
     func <- runInIO (dragMove)
@@ -814,28 +871,58 @@ dragMove (paneName,toNB) = do
     paneMap         <-  getPaneMapSt
     panes           <-  getPanesSt
     frameState      <- getFrameState
-    let mbPane = paneName `Map.lookup` panes
-    case mbPane of
-        Nothing -> trace ("ViewFrame>>dragMove: pane not found: " ++ paneName) return ()
-        Just (PaneC pane) -> do
-            case toNB `Map.lookup` (panePathFromNB frameState) of
-                Nothing -> trace "ViewFrame>>dragMove: panepath for Notebook not found" return ()
-                Just toPath -> do
-                    let child = getTopWidget pane
-                    (fromPane,cid)  <-  guiPropertiesFromName paneName
-                    fromNB          <-  getNotebook fromPane
-                    when (fromNB /= toNB) $ do
-                        mbNum <- liftIO $ notebookPageNum fromNB child
-                        case mbNum of
-                            Nothing ->  trace "ViewFrame>>dragMove: widget not found" return ()
-                            Just num -> do
-                                liftIO $ do
-                                    notebookRemovePage fromNB num
-                                    notebookInsertOrdered toNB child paneName Nothing
-                                let paneMap1    =   Map.delete paneName paneMap
-                                trace ("dragMove name: " ++ paneName ++ " path: " ++ show toPath) $
-                                    setPaneMapSt    $   Map.insert paneName (toPath,cid) paneMap1
-                                return ()
+    case "group_" `stripPrefix` paneName of
+        Just group  ->
+            return ()
+{--
+            case findGroupPath group of
+                Nothing -> trace ("ViewFrame>>dragMove: group not found: " ++ group)
+                Just fromPath -> case getNotebookOfGroupFromPath path of
+                                    Nothing ->
+                                    Just fnb ->
+                                        case toNB `Map.lookup` (panePathFromNB frameState) of
+                        Nothing -> trace "ViewFrame>>dragMove: panepath for Notebook not found" return ()
+                        Just toPath -> do
+                            let child = getTopWidget pane
+                            (fromPane,cid)  <-  guiPropertiesFromName paneName
+                            fromNB          <-  trace ("dragMove: pane name: " ++ paneName ++ " path: " ++ show fromPane)
+                                                    getNotebook fromPane
+                            when (fromNB /= toNB) $ do
+                                mbNum <- liftIO $ notebookPageNum fromNB child
+                                case mbNum of
+                                    Nothing ->  trace "ViewFrame>>dragMove: widget not found" return ()
+                                    Just num -> do
+                                        liftIO $ do
+                                            notebookRemovePage fromNB num
+                                            notebookInsertOrdered toNB child paneName Nothing
+                                        let paneMap1    =   Map.delete paneName paneMap
+                                        trace ("dragMove name: " ++ paneName ++ " path: " ++ show toPath) $
+                                            setPaneMapSt    $   Map.insert paneName (toPath,cid) paneMap1
+                                        return ()
+--}
+        Nothing     ->
+            case paneName `Map.lookup` panes of
+                Nothing -> trace ("ViewFrame>>dragMove: pane not found: " ++ paneName) return ()
+                Just (PaneC pane) -> do
+                    case toNB `Map.lookup` (panePathFromNB frameState) of
+                        Nothing -> trace "ViewFrame>>dragMove: panepath for Notebook not found" return ()
+                        Just toPath -> do
+                            let child = getTopWidget pane
+                            (fromPane,cid)  <-  guiPropertiesFromName paneName
+                            fromNB          <-  trace ("dragMove: pane name: " ++ paneName ++ " path: " ++ show fromPane)
+                                                    getNotebook fromPane
+                            when (fromNB /= toNB) $ do
+                                mbNum <- liftIO $ notebookPageNum fromNB child
+                                case mbNum of
+                                    Nothing ->  trace "ViewFrame>>dragMove: widget not found" return ()
+                                    Just num -> do
+                                        liftIO $ do
+                                            notebookRemovePage fromNB num
+                                            notebookInsertOrdered toNB child paneName Nothing
+                                        let paneMap1    =   Map.delete paneName paneMap
+                                        trace ("dragMove name: " ++ paneName ++ " path: " ++ show toPath) $
+                                            setPaneMapSt    $   Map.insert paneName (toPath,cid) paneMap1
+                                        return ()
 
 --
 -- | Get another pane path which points to the other side at the same level

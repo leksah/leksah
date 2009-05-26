@@ -142,5 +142,12 @@ type Connections = [Connection]
 signalDisconnectAll :: Connections -> IO ()
 signalDisconnectAll = mapM_ (\ (ConnectC s) -> signalDisconnect s)
 
-
-
+{--
+-- Necessary with pre 10.2 verion of gtk2hs
+instance Eq Notebook
+    where (==) a b = let (GObject pa, GObject pb) = (toGObject a, toGObject b)
+                    in pa == pb
+instance Ord Notebook
+    where (<=) a b = let (GObject pa, GObject pb) = (toGObject a, toGObject b)
+                    in pa <= pb
+--}                    
