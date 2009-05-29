@@ -69,7 +69,8 @@ instance RecoverablePane IDEGrep GrepState IDEM where
         return (Just GrepState)
     recoverState pp GrepState =   do
         nb      <-  getNotebook pp
-        initGrep pp nb
+        newPane pp nb builder
+        return ()
 
 showGrep :: IDEAction
 showGrep = do
@@ -85,86 +86,81 @@ getGrep = do
         Nothing -> do
             pp          <-  getBestPathForId "*Grep"
             nb          <-  getNotebook pp
-            initGrep pp nb
+            newPane pp nb builder
             mbGrep <- getPane
             case mbGrep of
                 Nothing ->  throwIDE "Can't init grep"
                 Just m  ->  return m
 
+builder :: PanePath ->
+    Notebook ->
+    Window ->
+    IDERef ->
+    IO (IDEGrep,Connections)
+builder pp nb windows ideR = do
+    listStore   <-  listStoreNew []
+    treeView    <-  treeViewNew
+    treeViewSetModel treeView listStore
 
-initGrep :: PanePath -> Notebook -> IDEAction
-initGrep panePath nb = do
-    prefs       <-  readIDE prefs
-    currentInfo <-  readIDE currentInfo
-    (buf,cids)  <-  reifyIDE $ \ideR  -> do
+    renderer1    <- cellRendererTextNew
+    renderer10   <- cellRendererPixbufNew
+    col1         <- treeViewColumnNew
+    treeViewColumnSetTitle col1 "File"
+    treeViewColumnSetSizing col1 TreeViewColumnAutosize
+    treeViewColumnSetResizable col1 True
+    treeViewColumnSetReorderable col1 True
+    treeViewAppendColumn treeView col1
+    cellLayoutPackStart col1 renderer10 False
+    cellLayoutPackStart col1 renderer1 True
+    cellLayoutSetAttributes col1 renderer1 listStore
+        $ \row -> [ cellText := file row]
 
-        listStore   <-  listStoreNew []
-        treeView    <-  treeViewNew
-        treeViewSetModel treeView listStore
+    renderer2   <- cellRendererTextNew
+    col2        <- treeViewColumnNew
+    treeViewColumnSetTitle col2 "Line"
+    treeViewColumnSetSizing col2 TreeViewColumnAutosize
+    treeViewColumnSetResizable col2 True
+    treeViewColumnSetReorderable col2 True
+    treeViewAppendColumn treeView col2
+    cellLayoutPackStart col2 renderer2 True
+    cellLayoutSetAttributes col2 renderer2 listStore
+        $ \row -> [ cellText := show $ line row]
 
-        renderer1    <- cellRendererTextNew
-        renderer10   <- cellRendererPixbufNew
-        col1         <- treeViewColumnNew
-        treeViewColumnSetTitle col1 "File"
-        treeViewColumnSetSizing col1 TreeViewColumnAutosize
-        treeViewColumnSetResizable col1 True
-        treeViewColumnSetReorderable col1 True
-        treeViewAppendColumn treeView col1
-        cellLayoutPackStart col1 renderer10 False
-        cellLayoutPackStart col1 renderer1 True
-        cellLayoutSetAttributes col1 renderer1 listStore
-            $ \row -> [ cellText := file row]
-
-        renderer2   <- cellRendererTextNew
-        col2        <- treeViewColumnNew
-        treeViewColumnSetTitle col2 "Line"
-        treeViewColumnSetSizing col2 TreeViewColumnAutosize
-        treeViewColumnSetResizable col2 True
-        treeViewColumnSetReorderable col2 True
-        treeViewAppendColumn treeView col2
-        cellLayoutPackStart col2 renderer2 True
-        cellLayoutSetAttributes col2 renderer2 listStore
-            $ \row -> [ cellText := show $ line row]
-
-        renderer3    <- cellRendererTextNew
-        renderer30   <- cellRendererPixbufNew
-        col3         <- treeViewColumnNew
-        treeViewColumnSetTitle col3 "Context"
-        treeViewColumnSetSizing col3 TreeViewColumnAutosize
-        treeViewColumnSetResizable col3 True
-        treeViewColumnSetReorderable col3 True
-        treeViewAppendColumn treeView col3
-        cellLayoutPackStart col3 renderer30 False
-        cellLayoutPackStart col3 renderer3 True
-        cellLayoutSetAttributes col3 renderer3 listStore
-            $ \row -> [ cellText := context row]
+    renderer3    <- cellRendererTextNew
+    renderer30   <- cellRendererPixbufNew
+    col3         <- treeViewColumnNew
+    treeViewColumnSetTitle col3 "Context"
+    treeViewColumnSetSizing col3 TreeViewColumnAutosize
+    treeViewColumnSetResizable col3 True
+    treeViewColumnSetReorderable col3 True
+    treeViewAppendColumn treeView col3
+    cellLayoutPackStart col3 renderer30 False
+    cellLayoutPackStart col3 renderer3 True
+    cellLayoutSetAttributes col3 renderer3 listStore
+        $ \row -> [ cellText := context row]
 
 
-        treeViewSetHeadersVisible treeView True
-        sel <- treeViewGetSelection treeView
-        treeSelectionSetMode sel SelectionSingle
+    treeViewSetHeadersVisible treeView True
+    sel <- treeViewGetSelection treeView
+    treeSelectionSetMode sel SelectionSingle
 
-        sw <- scrolledWindowNew Nothing Nothing
-        containerAdd sw treeView
-        scrolledWindowSetPolicy sw PolicyAutomatic PolicyAutomatic
+    sw <- scrolledWindowNew Nothing Nothing
+    containerAdd sw treeView
+    scrolledWindowSetPolicy sw PolicyAutomatic PolicyAutomatic
 
-        let grep = IDEGrep sw treeView listStore
-        notebookInsertOrdered nb sw (paneName grep) Nothing
+    let grep = IDEGrep sw treeView listStore
 
-        cid1 <- treeView `afterFocusIn`
-            (\_ -> do reflectIDE (makeActive grep) ideR ; return True)
-        sel `onSelectionChanged` do
-            sel <- getSelectionGrepRecord treeView listStore
-            case sel of
-                Just record -> reflectIDE (do
-                    goToSourceDefinition (file record)
-                        $ Just $ Location (line record) 0 (line record) 0) ideR
-                Nothing -> return ()
+    cid1 <- treeView `afterFocusIn`
+        (\_ -> do reflectIDE (makeActive grep) ideR ; return True)
+    sel `onSelectionChanged` do
+        sel <- getSelectionGrepRecord treeView listStore
+        case sel of
+            Just record -> reflectIDE (do
+                goToSourceDefinition (file record)
+                    $ Just $ Location (line record) 0 (line record) 0) ideR
+            Nothing -> return ()
 
-        return (grep,[ConnectC cid1])
-    addPaneAdmin buf cids panePath
-    liftIO $ widgetShowAll (scrolledView buf)
-    liftIO $ widgetGrabFocus (scrolledView buf)
+    return (grep,[ConnectC cid1])
 
 grepLineParser :: CharParser () GrepRecord
 grepLineParser = try (do

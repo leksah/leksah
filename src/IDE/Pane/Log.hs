@@ -84,7 +84,9 @@ instance RecoverablePane IDELog LogState IDEM where
     saveState p     =   return (Just LogState)
     recoverState pp LogState = do
         nb <- getNotebook pp
-        initLog pp nb
+        prefs' <- readIDE prefs
+        newPane pp nb (builder prefs')
+        return ()
 
 
 -------------------------------------------------------------------------------
@@ -93,57 +95,55 @@ instance RecoverablePane IDELog LogState IDEM where
 --
 
 
-initLog :: PanePath -> Notebook -> IDEAction
-initLog panePath nb = do
-    prefs      <- readIDE prefs
-    (buf,cids) <- reifyIDE $ \ideR  ->  do
-        tv           <- textViewNew
-        buf          <- textViewGetBuffer tv
-        iter         <- textBufferGetEndIter buf
-        textBufferCreateMark buf (Just "end") iter True
+builder :: Prefs ->
+    PanePath ->
+    Notebook ->
+    Window ->
+    IDERef ->
+    IO (IDELog,Connections)
+builder prefs pp nb windows ideR = do
+    tv           <- textViewNew
+    buf          <- textViewGetBuffer tv
+    iter         <- textBufferGetEndIter buf
+    textBufferCreateMark buf (Just "end") iter True
 
-        tags         <- textBufferGetTagTable buf
-        errtag       <- textTagNew (Just "err")
-        set errtag[textTagForeground := "red"]
-        textTagTableAdd tags errtag
-        frametag     <- textTagNew (Just "frame")
-        set frametag[textTagForeground := "dark green"]
-        textTagTableAdd tags frametag
-        activeErrtag <- textTagNew (Just "activeErr")
-        set activeErrtag[textTagBackground := "yellow"]
-        textTagTableAdd tags activeErrtag
-        intputTag <- textTagNew (Just "input")
-        set intputTag[textTagForeground := "blue"]
-        textTagTableAdd tags intputTag
-        infoTag <- textTagNew (Just "info")
-        set infoTag[textTagForeground := "grey"]
-        textTagTableAdd tags infoTag
+    tags         <- textBufferGetTagTable buf
+    errtag       <- textTagNew (Just "err")
+    set errtag[textTagForeground := "red"]
+    textTagTableAdd tags errtag
+    frametag     <- textTagNew (Just "frame")
+    set frametag[textTagForeground := "dark green"]
+    textTagTableAdd tags frametag
+    activeErrtag <- textTagNew (Just "activeErr")
+    set activeErrtag[textTagBackground := "yellow"]
+    textTagTableAdd tags activeErrtag
+    intputTag <- textTagNew (Just "input")
+    set intputTag[textTagForeground := "blue"]
+    textTagTableAdd tags intputTag
+    infoTag <- textTagNew (Just "info")
+    set infoTag[textTagForeground := "grey"]
+    textTagTableAdd tags infoTag
 
-        textViewSetEditable tv False
-        fd           <- case logviewFont prefs of
-            Just str -> do
-                fontDescriptionFromString str
-            Nothing  -> do
-                f    <- fontDescriptionNew
-                fontDescriptionSetFamily f "Sans"
-                return f
-        widgetModifyFont tv (Just fd)
-        sw           <- scrolledWindowNew Nothing Nothing
-        containerAdd sw tv
-        scrolledWindowSetPolicy sw PolicyAutomatic PolicyAutomatic
-        scrolledWindowSetShadowType sw ShadowIn
+    textViewSetEditable tv False
+    fd           <- case logviewFont prefs of
+        Just str -> do
+            fontDescriptionFromString str
+        Nothing  -> do
+            f    <- fontDescriptionNew
+            fontDescriptionSetFamily f "Sans"
+            return f
+    widgetModifyFont tv (Just fd)
+    sw           <- scrolledWindowNew Nothing Nothing
+    containerAdd sw tv
+    scrolledWindowSetPolicy sw PolicyAutomatic PolicyAutomatic
+    scrolledWindowSetShadowType sw ShadowIn
 
-        let buf = IDELog tv sw
-        notebookInsertOrdered nb sw (paneName buf) Nothing
-        cid1         <- tv `afterFocusIn`
-            (\_      -> do reflectIDE (makeActive buf) ideR ; return False)
-        cid2         <- tv `onButtonPress`
-            (\ b     -> do reflectIDE (clicked b buf) ideR ; return False)
-        return (buf,[ConnectC cid1, ConnectC cid2])
-    addPaneAdmin buf cids panePath
-    liftIO $ do
-        widgetShowAll (scrolledWindowL buf)
-        widgetGrabFocus (textView buf)
+    let buf = IDELog tv sw
+    cid1         <- tv `afterFocusIn`
+        (\_      -> do reflectIDE (makeActive buf) ideR ; return False)
+    cid2         <- tv `onButtonPress`
+        (\ b     -> do reflectIDE (clicked b buf) ideR ; return False)
+    return (buf,[ConnectC cid1, ConnectC cid2])
 
 clicked :: Event -> IDELog -> IDEAction
 clicked (Button _ SingleClick _ _ _ _ LeftButton x y) ideLog = do
@@ -202,7 +202,8 @@ getLog' = do
         Nothing -> do
             pp      <- getBestPathForId "*Log"
             nb      <- getNotebook pp
-            initLog pp nb
+            prefs' <- readIDE prefs
+            newPane pp nb (builder prefs')
             mbPane <- getPane
             case mbPane of
                 Nothing ->  throwIDE "Can't init log"

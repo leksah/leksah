@@ -53,6 +53,7 @@ import IDE.FileUtils
 import System.IO
 import Distribution.InstalledPackageInfo (package)
 import IDE.Metainfo.GHCUtils (getInstalledPackageInfos,inGhc)
+import Packages (PackageConfig(..))
 
 --
 -- | The Preferences Pane
@@ -114,53 +115,61 @@ initPrefs panePath nb2 = do
     prefs       <-  readIDE prefs
     lastAppliedPrefsRef <- liftIO $ newIORef prefs
     currentInfo <-  readIDE currentInfo
-    (buf,cids)  <-  reifyIDE $ \ideR -> do
-        vb      <-  vBoxNew False 0
-        bb      <-  hButtonBoxNew
-        apply   <-  buttonNewFromStock "gtk-apply"
-        restore <-  buttonNewFromStock "Restore"
-        save    <-  buttonNewFromStock "gtk-save"
-        closeB  <-  buttonNewFromStock "gtk-close"
-        boxPackStart bb apply PackNatural 0
-        boxPackStart bb restore PackNatural 0
-        boxPackStart bb save PackNatural 0
-        boxPackStart bb closeB PackNatural 0
-        (widget,injb,ext,notifier) <-  buildEditor (extractFieldDescription $ prefsDescription (map package packageInfos)) prefs
-        boxPackStart vb widget PackGrow 7
-        boxPackEnd vb bb PackNatural 7
-        let prefsPane = IDEPrefs vb
-        apply `onClicked` (do
-            mbNewPrefs <- extract prefs [ext]
-            case mbNewPrefs of
-                Nothing -> return ()
-                Just newPrefs -> do
-                    lastAppliedPrefs    <- readIORef lastAppliedPrefsRef
-                    mapM_ (\ (FDPP _ _ _ _ applyF) -> reflectIDE (applyF newPrefs lastAppliedPrefs) ideR ) flatPrefsDesc
-                    writeIORef lastAppliedPrefsRef newPrefs)
-        restore `onClicked` (do
-            lastAppliedPrefs <- readIORef lastAppliedPrefsRef
-            mapM_ (\ (FDPP _ _ _ _ applyF) -> reflectIDE (applyF prefs lastAppliedPrefs) ideR ) flatPrefsDesc
-            injb prefs
-            writeIORef lastAppliedPrefsRef prefs)
-        save `onClicked` (do
-            lastAppliedPrefs <- readIORef lastAppliedPrefsRef
-            mbNewPrefs <- extract prefs [ext]
-            case mbNewPrefs of
-                Nothing -> return ()
-                Just newPrefs -> do
+    newPane panePath nb2 (builder lastAppliedPrefsRef packageInfos flatPrefsDesc prefs)
+    return ()
+
+builder :: IORef Prefs ->
+    [PackageConfig] ->
+    [FieldDescriptionPP Prefs] ->
+    Prefs ->
+    PanePath ->
+    Notebook ->
+    Window ->
+    IDERef ->
+    IO (IDEPrefs,Connections)
+builder lastAppliedPrefsRef packageInfos flatPrefsDesc prefs pp nb windows ideR = do
+    vb      <-  vBoxNew False 0
+    bb      <-  hButtonBoxNew
+    apply   <-  buttonNewFromStock "gtk-apply"
+    restore <-  buttonNewFromStock "Restore"
+    save    <-  buttonNewFromStock "gtk-save"
+    closeB  <-  buttonNewFromStock "gtk-close"
+    boxPackStart bb apply PackNatural 0
+    boxPackStart bb restore PackNatural 0
+    boxPackStart bb save PackNatural 0
+    boxPackStart bb closeB PackNatural 0
+    (widget,injb,ext,notifier) <-  buildEditor (extractFieldDescription $ prefsDescription (map package packageInfos)) prefs
+    boxPackStart vb widget PackGrow 7
+    boxPackEnd vb bb PackNatural 7
+    let prefsPane = IDEPrefs vb
+    apply `onClicked` (do
+        mbNewPrefs <- extract prefs [ext]
+        case mbNewPrefs of
+            Nothing -> return ()
+            Just newPrefs -> do
+                lastAppliedPrefs    <- readIORef lastAppliedPrefsRef
                 mapM_ (\ (FDPP _ _ _ _ applyF) -> reflectIDE (applyF newPrefs lastAppliedPrefs) ideR ) flatPrefsDesc
-                fp <- getConfigFilePathForSave "Default.prefs"
-                writePrefs fp newPrefs
-                reflectIDE (modifyIDE_ (\ide -> return (ide{prefs = newPrefs}))) ideR )
-        closeB `onClicked` (reflectIDE (close prefsPane) ideR )
-        registerEvent notifier FocusIn (Left (\e -> do
-            reflectIDE (makeActive prefsPane) ideR
-            return (e{gtkReturn=False})))
-        notebookInsertOrdered nb2 vb (paneName prefsPane) Nothing
-        widgetShowAll vb
-        return (prefsPane,[])
-    addPaneAdmin buf [] panePath
-    liftIO $widgetGrabFocus (prefsBox buf)
+                writeIORef lastAppliedPrefsRef newPrefs)
+    restore `onClicked` (do
+        lastAppliedPrefs <- readIORef lastAppliedPrefsRef
+        mapM_ (\ (FDPP _ _ _ _ applyF) -> reflectIDE (applyF prefs lastAppliedPrefs) ideR ) flatPrefsDesc
+        injb prefs
+        writeIORef lastAppliedPrefsRef prefs)
+    save `onClicked` (do
+        lastAppliedPrefs <- readIORef lastAppliedPrefsRef
+        mbNewPrefs <- extract prefs [ext]
+        case mbNewPrefs of
+            Nothing -> return ()
+            Just newPrefs -> do
+            mapM_ (\ (FDPP _ _ _ _ applyF) -> reflectIDE (applyF newPrefs lastAppliedPrefs) ideR ) flatPrefsDesc
+            fp <- getConfigFilePathForSave "Default.prefs"
+            writePrefs fp newPrefs
+            reflectIDE (modifyIDE_ (\ide -> return (ide{prefs = newPrefs}))) ideR )
+    closeB `onClicked` (reflectIDE (close prefsPane >> return ()) ideR )
+    registerEvent notifier FocusIn (Left (\e -> do
+        reflectIDE (makeActive prefsPane) ideR
+        return (e{gtkReturn=False})))
+    return (prefsPane,[])
 
 
 -- ------------------------------------------------------------

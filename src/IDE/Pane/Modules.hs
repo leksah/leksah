@@ -57,7 +57,6 @@ import Graphics.UI.Editor.Simple (boolEditor,okCancelFields,staticListEditor,str
 import Graphics.UI.Editor.Basics (eventPaneName,GUIEventSelector(..))
 import IDE.Metainfo.Provider (rebuildActiveInfo)
 import qualified System.IO.UTF8 as UTF8  (writeFile)
-import Debug.Trace
 
 
 -- | A modules pane description
@@ -136,9 +135,9 @@ instance RecoverablePane IDEModules ModulesState IDEM where
                                     Just fw -> Just (descrName fw))
                 return (Just (ModulesState i sc mbs expander))
     recoverState pp (ModulesState i sc@(scope,useBlacklist) se exp)  =  do
-            trace "before recoverModules" $ return ()
             nb          <-  getNotebook pp
-            initModules pp nb
+            ci          <-  readIDE currentInfo
+            newPane pp nb (builder ci)
             mod         <-  getModules
             liftIO $ writeIORef (expanderState mod) exp
             case scope of
@@ -150,9 +149,7 @@ instance RecoverablePane IDEModules ModulesState IDEM where
             fillModulesList sc
             selectNames se
             applyExpanderState
-            trace "after recoverModules" $ return ()
-
-
+            return ()
 
 selectIdentifier :: Descr -> IDEAction
 selectIdentifier idDescr = do
@@ -253,155 +250,153 @@ getModules = do
         Nothing -> do
             pp          <-  getBestPathForId "*Modules"
             nb          <-  getNotebook pp
-            initModules pp nb
+            ci          <-  readIDE currentInfo
+            newPane pp nb (builder ci)
             mbMod <- getPane
             case mbMod of
                 Nothing ->  throwIDE "Can't init modules"
                 Just m  ->  return m
         Just m ->   return m
 
-initModules :: PanePath -> Notebook -> IDEAction
-initModules panePath nb = do
-    prefs       <-  readIDE prefs
-    currentInfo <-  readIDE currentInfo
-    (buf,cids)  <-  reifyIDE $ \ideR -> do
--- Modules List
-        let forest  = case currentInfo of
-                        Nothing     ->  []
-                        Just pair   ->  subForest (buildModulesTree pair)
-        treeStore   <-  treeStoreNew forest
-        treeView    <-  treeViewNew
-        treeViewSetModel treeView treeStore
-        --treeViewSetRulesHint treeView True
+builder :: Maybe (PackageScope, PackageScope) ->
+    PanePath ->
+    Notebook ->
+    Window ->
+    IDERef ->
+    IO (IDEModules,Connections)
+builder currentInfo pp nb windows ideR = do
+    let forest  = case currentInfo of
+                    Nothing     ->  []
+                    Just pair   ->  subForest (buildModulesTree pair)
+    treeStore   <-  treeStoreNew forest
+    treeView    <-  treeViewNew
+    treeViewSetModel treeView treeStore
+    --treeViewSetRulesHint treeView True
 
-        renderer0    <- cellRendererPixbufNew
-        set renderer0 [ cellPixbufStockId  := "" ]
+    renderer0    <- cellRendererPixbufNew
+    set renderer0 [ cellPixbufStockId  := "" ]
 
-        renderer    <- cellRendererTextNew
-        col         <- treeViewColumnNew
-        treeViewColumnSetTitle col "Modules"
-        treeViewColumnSetSizing col TreeViewColumnAutosize
-        treeViewColumnSetResizable col True
-        treeViewColumnSetReorderable col True
-        treeViewAppendColumn treeView col
-        cellLayoutPackStart col renderer0 False
-        cellLayoutPackStart col renderer True
-        cellLayoutSetAttributes col renderer treeStore
-            $ \row -> [ cellText := fst row]
-        cellLayoutSetAttributes col renderer0 treeStore
-            $ \row -> [
-            cellPixbufStockId  :=
-                if null (snd row)
-                    then ""
-                    else if isJust (mbSourcePathMD (fst (head (snd row))))
-                            then "ide_source"
-                            else ""]
+    renderer    <- cellRendererTextNew
+    col         <- treeViewColumnNew
+    treeViewColumnSetTitle col "Modules"
+    treeViewColumnSetSizing col TreeViewColumnAutosize
+    treeViewColumnSetResizable col True
+    treeViewColumnSetReorderable col True
+    treeViewAppendColumn treeView col
+    cellLayoutPackStart col renderer0 False
+    cellLayoutPackStart col renderer True
+    cellLayoutSetAttributes col renderer treeStore
+        $ \row -> [ cellText := fst row]
+    cellLayoutSetAttributes col renderer0 treeStore
+        $ \row -> [
+        cellPixbufStockId  :=
+            if null (snd row)
+                then ""
+                else if isJust (mbSourcePathMD (fst (head (snd row))))
+                        then "ide_source"
+                        else ""]
 
-        renderer2   <- cellRendererTextNew
-        col2        <- treeViewColumnNew
-        treeViewColumnSetTitle col2 "Packages"
-        treeViewColumnSetSizing col2 TreeViewColumnAutosize
-        treeViewColumnSetResizable col2 True
-        treeViewColumnSetReorderable col2 True
-        treeViewAppendColumn treeView col2
-        cellLayoutPackStart col2 renderer2 True
-        cellLayoutSetAttributes col2 renderer2 treeStore
-            $ \row -> [ cellText := (concat . intersperse  ", ")
-                        $ map (display . packagePD . snd) (snd row)]
-        treeViewSetHeadersVisible treeView True
-        treeViewSetEnableSearch treeView True
-        treeViewSetSearchEqualFunc treeView (Just (treeViewSearch treeView treeStore))
+    renderer2   <- cellRendererTextNew
+    col2        <- treeViewColumnNew
+    treeViewColumnSetTitle col2 "Packages"
+    treeViewColumnSetSizing col2 TreeViewColumnAutosize
+    treeViewColumnSetResizable col2 True
+    treeViewColumnSetReorderable col2 True
+    treeViewAppendColumn treeView col2
+    cellLayoutPackStart col2 renderer2 True
+    cellLayoutSetAttributes col2 renderer2 treeStore
+        $ \row -> [ cellText := (concat . intersperse  ", ")
+                    $ map (display . packagePD . snd) (snd row)]
+    treeViewSetHeadersVisible treeView True
+    treeViewSetEnableSearch treeView True
+    treeViewSetSearchEqualFunc treeView (Just (treeViewSearch treeView treeStore))
 
 -- Facet view
 
-        descrView   <-  treeViewNew
-        descrStore  <-  treeStoreNew []
-        treeViewSetModel descrView descrStore
-        renderer30    <- cellRendererPixbufNew
-        renderer31    <- cellRendererPixbufNew
-        renderer3   <- cellRendererTextNew
-        col         <- treeViewColumnNew
-        treeViewColumnSetTitle col "Interface"
-        --treeViewColumnSetSizing col TreeViewColumnAutosize
-        treeViewAppendColumn descrView col
-        cellLayoutPackStart col renderer30 False
-        cellLayoutPackStart col renderer31 False
-        cellLayoutPackStart col renderer3 True
-        cellLayoutSetAttributes col renderer3 descrStore
-            $ \row -> [ cellText := descrTreeText row]
-        cellLayoutSetAttributes col renderer30 descrStore
-            $ \row -> [
-            cellPixbufStockId  := stockIdFromType (descrIdType row)]
-        cellLayoutSetAttributes col renderer31 descrStore
-            $ \row -> [
-            cellPixbufStockId  := if isReexported row
-                                    then "ide_reexported"
-                                        else if isJust (mbLocation row)
-                                            then "ide_source"
-                                            else ""]
-        treeViewSetHeadersVisible descrView True
-        treeViewSetEnableSearch descrView True
-        treeViewSetSearchEqualFunc descrView (Just (descrViewSearch descrView descrStore))
-        pane'           <-  hPanedNew
-        sw              <-  scrolledWindowNew Nothing Nothing
-        containerAdd sw treeView
-        scrolledWindowSetPolicy sw PolicyAutomatic PolicyAutomatic
-        sw2             <-  scrolledWindowNew Nothing Nothing
-        containerAdd sw2 descrView
-        scrolledWindowSetPolicy sw2 PolicyAutomatic PolicyAutomatic
-        panedAdd1 pane' sw
-        panedAdd2 pane' sw2
-        (x,y) <- widgetGetSize nb
-        panedSetPosition pane' (x `quot` 2)
-        box             <-  hBoxNew True 2
-        rb1             <-  radioButtonNewWithLabel "Local"
-        rb2             <-  radioButtonNewWithLabelFromWidget rb1 "Package"
-        rb3             <-  radioButtonNewWithLabelFromWidget rb1 "System"
-        toggleButtonSetActive rb3 True
-        cb              <-  checkButtonNewWithLabel "Blacklist"
+    descrView   <-  treeViewNew
+    descrStore  <-  treeStoreNew []
+    treeViewSetModel descrView descrStore
+    renderer30    <- cellRendererPixbufNew
+    renderer31    <- cellRendererPixbufNew
+    renderer3   <- cellRendererTextNew
+    col         <- treeViewColumnNew
+    treeViewColumnSetTitle col "Interface"
+    --treeViewColumnSetSizing col TreeViewColumnAutosize
+    treeViewAppendColumn descrView col
+    cellLayoutPackStart col renderer30 False
+    cellLayoutPackStart col renderer31 False
+    cellLayoutPackStart col renderer3 True
+    cellLayoutSetAttributes col renderer3 descrStore
+        $ \row -> [ cellText := descrTreeText row]
+    cellLayoutSetAttributes col renderer30 descrStore
+        $ \row -> [
+        cellPixbufStockId  := stockIdFromType (descrIdType row)]
+    cellLayoutSetAttributes col renderer31 descrStore
+        $ \row -> [
+        cellPixbufStockId  := if isReexported row
+                                then "ide_reexported"
+                                    else if isJust (mbLocation row)
+                                        then "ide_source"
+                                        else ""]
+    treeViewSetHeadersVisible descrView True
+    treeViewSetEnableSearch descrView True
+    treeViewSetSearchEqualFunc descrView (Just (descrViewSearch descrView descrStore))
+    pane'           <-  hPanedNew
+    sw              <-  scrolledWindowNew Nothing Nothing
+    containerAdd sw treeView
+    scrolledWindowSetPolicy sw PolicyAutomatic PolicyAutomatic
+    sw2             <-  scrolledWindowNew Nothing Nothing
+    containerAdd sw2 descrView
+    scrolledWindowSetPolicy sw2 PolicyAutomatic PolicyAutomatic
+    panedAdd1 pane' sw
+    panedAdd2 pane' sw2
+    (x,y) <- widgetGetSize nb
+    panedSetPosition pane' (x `quot` 2)
+    box             <-  hBoxNew True 2
+    rb1             <-  radioButtonNewWithLabel "Local"
+    rb2             <-  radioButtonNewWithLabelFromWidget rb1 "Package"
+    rb3             <-  radioButtonNewWithLabelFromWidget rb1 "System"
+    toggleButtonSetActive rb3 True
+    cb              <-  checkButtonNewWithLabel "Blacklist"
 
-        boxPackStart box rb1 PackGrow 2
-        boxPackStart box rb2 PackGrow 2
-        boxPackStart box rb3 PackGrow 2
-        boxPackEnd box cb PackNatural 2
+    boxPackStart box rb1 PackGrow 2
+    boxPackStart box rb2 PackGrow 2
+    boxPackStart box rb3 PackGrow 2
+    boxPackEnd box cb PackNatural 2
 
-        boxOuter        <-  vBoxNew False 2
-        boxPackStart boxOuter box PackNatural 2
-        boxPackStart boxOuter pane' PackGrow 2
-        oldState <- liftIO $ newIORef $ SelectionState Nothing Nothing System False
-        expanderState <- liftIO $ newIORef emptyExpansion
-        scopeRef <- newIORef (System,True)
-        let modules = IDEModules boxOuter pane' treeView treeStore descrView descrStore
-                            rb1 rb2 rb3 cb oldState expanderState
-        notebookInsertOrdered nb boxOuter (paneName modules) Nothing
-        widgetShowAll boxOuter
-        cid3 <- treeView `onRowActivated`
-            (\ treePath _ -> do
-                treeViewExpandRow treeView treePath False
-                return ())
-        cid1 <- treeView `afterFocusIn`
-            (\_ -> do reflectIDE (makeActive modules) ideR; return True)
-        cid2 <- descrView `afterFocusIn`
-            (\_ -> do reflectIDE (makeActive modules) ideR; return True)
-        treeView  `onButtonPress` (treeViewPopup ideR treeStore treeView)
-        descrView `onButtonPress` (descrViewPopup ideR descrStore descrView)
-        rb1 `onToggled` (reflectIDE scopeSelection ideR)
-        rb2 `onToggled` (reflectIDE scopeSelection ideR)
-        rb3 `onToggled` (reflectIDE scopeSelection ideR)
-        cb  `onToggled` (reflectIDE scopeSelection ideR)
-        sel     <-  treeViewGetSelection treeView
-        sel `onSelectionChanged` do
-            fillFacets treeView treeStore descrView descrStore
-            reflectIDE recordSelHistory ideR
-            return ()
-        sel2    <-  treeViewGetSelection descrView
-        sel2 `onSelectionChanged` do
-            fillInfo descrView descrStore ideR
-            reflectIDE recordSelHistory ideR
-            return ()
-        return (modules,[ConnectC cid1,ConnectC cid2, ConnectC cid3])
-    addPaneAdmin buf cids panePath
-    liftIO $widgetGrabFocus (paned buf)
+    boxOuter        <-  vBoxNew False 2
+    boxPackStart boxOuter box PackNatural 2
+    boxPackStart boxOuter pane' PackGrow 2
+    oldState <- liftIO $ newIORef $ SelectionState Nothing Nothing System False
+    expanderState <- liftIO $ newIORef emptyExpansion
+    scopeRef <- newIORef (System,True)
+    let modules = IDEModules boxOuter pane' treeView treeStore descrView descrStore
+                        rb1 rb2 rb3 cb oldState expanderState
+    cid3 <- treeView `onRowActivated`
+        (\ treePath _ -> do
+            treeViewExpandRow treeView treePath False
+            return ())
+    cid1 <- treeView `afterFocusIn`
+        (\_ -> do reflectIDE (makeActive modules) ideR; return True)
+    cid2 <- descrView `afterFocusIn`
+        (\_ -> do reflectIDE (makeActive modules) ideR; return True)
+    treeView  `onButtonPress` (treeViewPopup ideR treeStore treeView)
+    descrView `onButtonPress` (descrViewPopup ideR descrStore descrView)
+    rb1 `onToggled` (reflectIDE scopeSelection ideR)
+    rb2 `onToggled` (reflectIDE scopeSelection ideR)
+    rb3 `onToggled` (reflectIDE scopeSelection ideR)
+    cb  `onToggled` (reflectIDE scopeSelection ideR)
+    sel     <-  treeViewGetSelection treeView
+    sel `onSelectionChanged` do
+        fillFacets treeView treeStore descrView descrStore
+        reflectIDE recordSelHistory ideR
+        return ()
+    sel2    <-  treeViewGetSelection descrView
+    sel2 `onSelectionChanged` do
+        fillInfo descrView descrStore ideR
+        reflectIDE recordSelHistory ideR
+        return ()
+    return (modules,[ConnectC cid1,ConnectC cid2, ConnectC cid3])
 
 treeViewSearch :: TreeView
     -> TreeStore (String, [(ModuleDescr,PackageDescr)])

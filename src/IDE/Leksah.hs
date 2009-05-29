@@ -254,6 +254,7 @@ startGUI sessionFilename iprefs = do
     vb          <-  vBoxNew False 1  -- Top-level vbox
     widgetSetName vb "topBox"
     toolbarSetStyle (castToToolbar (menus !! 1)) ToolbarIcons
+    widgetSetSizeRequest (menus !! 1)  500 (-1)
     boxPackStart vb (menus !! 0) PackNatural 0
     boxPackStart vb (menus !! 1) PackNatural 0
     boxPackStart vb nb PackGrow 0

@@ -1,5 +1,5 @@
 -----------------------------------------------------------------------------
---
+--group_Test
 -- Module      :  Graphics.UI.Editor.MakeEditor
 -- Copyright   :  (c) Juergen Nicklisch-Franken, Hamish Mackenzie
 -- License     :  GNU-GPL

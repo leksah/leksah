@@ -121,6 +121,7 @@ sessionClosePane = do
         Just (pn,_) ->  do
             (PaneC p) <- paneFromName pn
             close p
+            return ()
 
 data SessionState = SessionState {
         saveTime            ::   String

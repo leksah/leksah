@@ -68,7 +68,10 @@ instance RecoverablePane IDEInfo InfoState IDEM where
         currentDescr' <-  liftIO $ readIORef (currentDescr p)
         return (Just (InfoState currentDescr'))
     recoverState pp (InfoState descr) =   do
-        setInfo descr
+        nb <- getNotebook pp
+        prefs <- readIDE prefs
+        newPane pp nb (builder descr prefs)
+        return ()
 
 showInfo :: IDEAction
 showInfo = do
@@ -77,97 +80,95 @@ showInfo = do
         Nothing -> return ()
         Just p  -> liftIO $ bringPaneToFront p
 
+builder :: Descr ->
+    Prefs ->
+    PanePath ->
+    Notebook ->
+    Window ->
+    IDERef ->
+    IO (IDEInfo,Connections)
+builder idDescr prefs pp nb windows ideR = do
+    ibox        <- vBoxNew False 0
+-- Buttons
+    bb          <- hButtonBoxNew
+    buttonBoxSetLayout bb ButtonboxSpread
+    definitionB <- buttonNewWithLabel "Source"
+    moduB       <- buttonNewWithLabel "Modules"
+    usesB       <- buttonNewWithLabel "Refs"
+    docuB       <- buttonNewWithLabel "Docu"
+    searchB     <- buttonNewWithLabel "Search"
+    boxPackStartDefaults bb definitionB
+    boxPackStartDefaults bb moduB
+    boxPackStartDefaults bb usesB
+    boxPackStartDefaults bb docuB
+    boxPackStartDefaults bb searchB
+-- Descr View
+    font <- case textviewFont prefs of
+        Just str -> do
+            fontDescriptionFromString str
+        Nothing -> do
+            f <- fontDescriptionNew
+            fontDescriptionSetFamily f "Monospace"
+            return f
 
-initInfo :: PanePath -> Notebook -> Descr -> IDEAction
-initInfo panePath nb idDescr = do
-    prefs       <- readIDE prefs
-    (pane,cids) <- reifyIDE $ \ideR  ->  do
-            ibox        <- vBoxNew False 0
-    -- Buttons
-            bb          <- hButtonBoxNew
-            buttonBoxSetLayout bb ButtonboxSpread
-            definitionB <- buttonNewWithLabel "Source"
-            moduB       <- buttonNewWithLabel "Modules"
-            usesB       <- buttonNewWithLabel "Refs"
-            docuB       <- buttonNewWithLabel "Docu"
-            searchB     <- buttonNewWithLabel "Search"
-            boxPackStartDefaults bb definitionB
-            boxPackStartDefaults bb moduB
-            boxPackStartDefaults bb usesB
-            boxPackStartDefaults bb docuB
-            boxPackStartDefaults bb searchB
-    -- Descr View
-            font <- case textviewFont prefs of
-                Just str -> do
-                    fontDescriptionFromString str
-                Nothing -> do
-                    f <- fontDescriptionNew
-                    fontDescriptionSetFamily f "Monospace"
-                    return f
+    descriptionView <- sourceViewNew
+    descriptionBuffer <- (get descriptionView textViewBuffer) >>= (return . castToSourceBuffer)
+    lm <- sourceLanguageManagerNew
+    mbLang <- sourceLanguageManagerGuessLanguage lm Nothing (Just "text/x-haskell")
+    case mbLang of
+        Nothing -> return ()
+        Just lang -> do sourceBufferSetLanguage descriptionBuffer lang
 
-            descriptionView <- sourceViewNew
-            descriptionBuffer <- (get descriptionView textViewBuffer) >>= (return . castToSourceBuffer)
-            lm <- sourceLanguageManagerNew
-            mbLang <- sourceLanguageManagerGuessLanguage lm Nothing (Just "text/x-haskell")
-            case mbLang of
-                Nothing -> return ()
-                Just lang -> do sourceBufferSetLanguage descriptionBuffer lang
+    -- This call is here because in the past I have had problems where the
+    -- language object became invalid if the manager was garbage collected
+    sourceLanguageManagerGetLanguageIds lm
 
-            -- This call is here because in the past I have had problems where the
-            -- language object became invalid if the manager was garbage collected
-            sourceLanguageManagerGetLanguageIds lm
+    sourceBufferSetHighlightSyntax descriptionBuffer True
+    widgetModifyFont descriptionView (Just font)
 
-            sourceBufferSetHighlightSyntax descriptionBuffer True
-            widgetModifyFont descriptionView (Just font)
-
-            case sourceStyle prefs of
-                Nothing  -> return ()
-                Just str -> do
-                    styleManager <- sourceStyleSchemeManagerNew
-                    ids <- sourceStyleSchemeManagerGetSchemeIds styleManager
-                    when (elem str ids) $ do
-                        scheme <- sourceStyleSchemeManagerGetScheme styleManager str
-                        sourceBufferSetStyleScheme descriptionBuffer scheme
+    case sourceStyle prefs of
+        Nothing  -> return ()
+        Just str -> do
+            styleManager <- sourceStyleSchemeManagerNew
+            ids <- sourceStyleSchemeManagerGetSchemeIds styleManager
+            when (elem str ids) $ do
+                scheme <- sourceStyleSchemeManagerGetScheme styleManager str
+                sourceBufferSetStyleScheme descriptionBuffer scheme
 
 
-            sw <- scrolledWindowNew Nothing Nothing
-            containerAdd sw descriptionView
-            scrolledWindowSetPolicy sw PolicyAutomatic PolicyAutomatic
+    sw <- scrolledWindowNew Nothing Nothing
+    containerAdd sw descriptionView
+    scrolledWindowSetPolicy sw PolicyAutomatic PolicyAutomatic
 
-            boxPackStart ibox sw PackGrow 10
-            boxPackEnd ibox bb PackNatural 10
+    boxPackStart ibox sw PackGrow 10
+    boxPackEnd ibox bb PackNatural 10
 
-            --openType
-            currentDescr' <- newIORef idDescr
-            let info = IDEInfo ibox currentDescr' descriptionView
-            definitionB `onClicked` (reflectIDE gotoSource ideR )
-            moduB `onClicked` (reflectIDE gotoModule' ideR )
-            usesB `onClicked` (reflectIDE referencedFrom' ideR )
-            searchB `onClicked` (do
-                descr <- readIORef currentDescr'
-                reflectIDE (do
-                    triggerEvent ideR (SearchMeta (descrName descr))
-                    showInfo) ideR )
-            docuB `onClicked` (do
-                descr <- readIORef currentDescr'
-                reflectIDE (openBrowser $ docuSearchURL prefs ++ descrName descr) ideR)
-            descriptionView `widgetAddEvents` [ButtonReleaseMask]
-            id5 <- descriptionView `onButtonRelease`
-                (\ e -> do
-                    buf     <-  textViewGetBuffer descriptionView
-                    (l,r)   <- textBufferGetSelectionBounds buf
-                    symbol  <- textBufferGetText buf l r True
-                    when (controlIsPressed e)
-                        (reflectIDE (do
-                            triggerEvent ideR (SelectInfo symbol)
-                            return ()) ideR)
-                    return False)
-            notebookInsertOrdered nb ibox (paneName info) Nothing
-            widgetShowAll ibox
-            return (info,[])
-    addPaneAdmin pane [] panePath
-    liftIO $widgetGrabFocus (sw pane)
-    liftIO $bringPaneToFront pane
+    --openType
+    currentDescr' <- newIORef idDescr
+    let info = IDEInfo ibox currentDescr' descriptionView
+    definitionB `onClicked` (reflectIDE gotoSource ideR )
+    moduB `onClicked` (reflectIDE gotoModule' ideR )
+    usesB `onClicked` (reflectIDE referencedFrom' ideR )
+    searchB `onClicked` (do
+        descr <- readIORef currentDescr'
+        reflectIDE (do
+            triggerEvent ideR (SearchMeta (descrName descr))
+            showInfo) ideR )
+    docuB `onClicked` (do
+        descr <- readIORef currentDescr'
+        reflectIDE (openBrowser $ docuSearchURL prefs ++ descrName descr) ideR)
+    descriptionView `widgetAddEvents` [ButtonReleaseMask]
+    id5 <- descriptionView `onButtonRelease`
+        (\ e -> do
+            buf     <-  textViewGetBuffer descriptionView
+            (l,r)   <- textBufferGetSelectionBounds buf
+            symbol  <- textBufferGetText buf l r True
+            when (controlIsPressed e)
+                (reflectIDE (do
+                    triggerEvent ideR (SelectInfo symbol)
+                    return ()) ideR)
+            return False)
+    return (info,[])
 
 gotoSource :: IDEAction
 gotoSource = do
@@ -216,7 +217,9 @@ setInfo identifierDescr = do
         Nothing -> do
             pp      <- getBestPathForId "*Info"
             nb      <- getNotebook pp
-            initInfo pp nb identifierDescr
+            prefs   <- readIDE prefs
+            newPane pp nb (builder identifierDescr prefs)
+            return ()
         Just info -> do
             oldDescr <- liftIO $ readIORef (currentDescr info)
             liftIO $ do

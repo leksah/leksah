@@ -109,7 +109,8 @@ import Prelude hiding (catch)
 
 import IDE.Core.Types
 import Graphics.UI.Frame.Panes
-import Graphics.UI.Frame.ViewFrame
+import Graphics.UI.Frame.ViewFrame hiding (notebookInsertOrdered)
+import qualified Graphics.UI.Frame.ViewFrame as VF (notebookInsertOrdered)
 import IDE.Exception
 import Control.Event
 import System.IO
@@ -297,6 +298,7 @@ newPane :: RecoverablePane alpha beta IDEM  =>
 newPane panePath notebook builder = do
     windows <- getWindows
     (buf,cids)  <-  reifyIDE (\ideR -> builder panePath notebook (head windows) ideR)
+    VF.notebookInsertOrdered notebook (getTopWidget buf) (paneName buf) Nothing
     addPaneAdmin buf cids panePath
     liftIO $ do
         widgetShowAll (getTopWidget buf)
@@ -434,7 +436,7 @@ deactivatePaneIfActive pane = do
                         then deactivatePane
                         else return ()
 
-closePane :: Pane alpha IDEM  => alpha -> IDEAction
+closePane :: Pane alpha IDEM  => alpha -> IDEM Bool
 closePane pane = do
     (panePath,_)    <-  guiPropertiesFromName (paneName pane)
     nb              <-  getNotebook panePath
@@ -442,7 +444,7 @@ closePane pane = do
     case mbI of
         Nothing ->  liftIO $ do
             throwIDE ("notebook page not found: unexpected " ++ paneName pane ++ " " ++ show panePath)
-            return ()
+            return False
         Just i  ->  do
             deactivatePaneIfActive pane
             liftIO $ do
@@ -450,6 +452,7 @@ closePane pane = do
                 widgetDestroy (getTopWidget pane)
             removePaneAdmin pane
             modifyIDE_ (\ide -> return ide{recentPanes = filter (/= paneName pane) (recentPanes ide)})
+            return True
 
 -- get widget elements (menu & toolbar)
 

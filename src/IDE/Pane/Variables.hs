@@ -56,7 +56,8 @@ instance RecoverablePane IDEVariables VariablesState IDEM where
         return (Just VariablesState)
     recoverState pp VariablesState =   do
         nb      <-  getNotebook pp
-        initVariables pp nb
+        newPane pp nb builder
+        return ()
 
 showVariables :: IDEAction
 showVariables = do
@@ -71,49 +72,47 @@ getVariables = do
         Nothing -> do
             pp          <-  getBestPathForId "*Variables"
             nb          <-  getNotebook pp
-            initVariables pp nb
+            newPane pp nb builder
             mbVar <- getPane
             case mbVar of
                 Nothing ->  throwIDE "Can't init variables"
                 Just m  ->  return m
         Just m ->   return m
 
-initVariables :: PanePath -> Notebook -> IDEAction
-initVariables panePath nb = do
-    prefs       <- readIDE prefs
-    (pane,cids) <- reifyIDE $ \ideR  ->  do
-        variables   <-  listStoreNew []
-        treeView    <-  treeViewNew
-        treeViewSetModel treeView variables
+builder :: PanePath ->
+    Notebook ->
+    Window ->
+    IDERef ->
+    IO (IDEVariables, Connections)
+builder pp nb windows ideR = do
+    variables   <-  listStoreNew []
+    treeView    <-  treeViewNew
+    treeViewSetModel treeView variables
 
-        renderer    <- cellRendererTextNew
-        col         <- treeViewColumnNew
-        treeViewColumnSetTitle col "Variables"
-        treeViewColumnSetSizing col TreeViewColumnAutosize
-        treeViewAppendColumn treeView col
-        cellLayoutPackStart col renderer False
-        cellLayoutSetAttributes col renderer variables
-            $ \row -> [ cellText := row]
+    renderer    <- cellRendererTextNew
+    col         <- treeViewColumnNew
+    treeViewColumnSetTitle col "Variables"
+    treeViewColumnSetSizing col TreeViewColumnAutosize
+    treeViewAppendColumn treeView col
+    cellLayoutPackStart col renderer False
+    cellLayoutSetAttributes col renderer variables
+        $ \row -> [ cellText := row]
 
-        treeViewSetHeadersVisible treeView False
-        sel <- treeViewGetSelection treeView
-        treeSelectionSetMode sel SelectionSingle
+    treeViewSetHeadersVisible treeView False
+    sel <- treeViewGetSelection treeView
+    treeSelectionSetMode sel SelectionSingle
 
-        scrolledView <- scrolledWindowNew Nothing Nothing
-        containerAdd scrolledView treeView
-        scrolledWindowSetPolicy scrolledView PolicyAutomatic PolicyAutomatic
+    scrolledView <- scrolledWindowNew Nothing Nothing
+    containerAdd scrolledView treeView
+    scrolledWindowSetPolicy scrolledView PolicyAutomatic PolicyAutomatic
 
-        let pane = IDEVariables {..}
-        notebookInsertOrdered nb scrolledView (paneName pane) Nothing
+    let pane = IDEVariables {..}
 
-        cid1 <- treeView `afterFocusIn`
-            (\_ -> do reflectIDE (makeActive pane) ideR ; return True)
+    cid1 <- treeView `afterFocusIn`
+        (\_ -> do reflectIDE (makeActive pane) ideR ; return True)
 
-        return (pane,[ConnectC cid1])
-    addPaneAdmin pane cids panePath
-    liftIO $ widgetShowAll (scrolledView pane)
-    liftIO $ widgetGrabFocus (scrolledView pane)
-    liftIO $ bringPaneToFront pane
+    return (pane,[ConnectC cid1])
+
 
 fillVariablesList :: IDEAction
 fillVariablesList = do

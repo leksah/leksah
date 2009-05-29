@@ -159,8 +159,9 @@ getClassHierarchy = do
     case mbCH of
         Nothing -> do
             pp  <- getBestPathForId  "*ClassHierarchy"
-            nb          <-  getNotebook pp
-            initClassHierarchy pp nb
+            nb  <-  getNotebook pp
+            ci  <- readIDE currentInfo
+            newPane pp nb (builder ci)
             mbCH <- getPane
             case mbCH of
                 Nothing ->  throwIDE "Can't init class hierarchy"
@@ -242,115 +243,113 @@ sortForest forest = sort (map sortTree forest)
 sortTree :: Ord a => Tree a -> Tree a
 sortTree (Node l forest)    =   Node l (sort (map sortTree forest))
 
-initClassHierarchy :: PanePath -> Notebook -> IDEAction
-initClassHierarchy panePath nb = do
-    prefs       <-  readIDE prefs
-    currentInfo <-  readIDE currentInfo
-    (buf,cids)  <-  reifyIDE $ \ideR ->  do
+builder :: Maybe (PackageScope, PackageScope) ->
+    PanePath ->
+    Notebook ->
+    Window ->
+    IDERef ->
+    IO (IDEClassHierarchy, Connections)
+builder currentInfo pp nb windows ideR = do
+    let forest  = case currentInfo of
+                    Nothing     ->  []
+                    Just pair   ->  buildClassHierarchyTree pair
+    treeStore   <-  treeStoreNew forest
+    treeView    <-  treeViewNew
+    treeViewSetModel treeView treeStore
+    --treeViewSetRulesHint treeView True
 
--- Class Hierarchy
-        let forest  = case currentInfo of
-                        Nothing     ->  []
-                        Just pair   ->  buildClassHierarchyTree pair
-        treeStore   <-  treeStoreNew forest
-        treeView    <-  treeViewNew
-        treeViewSetModel treeView treeStore
-        --treeViewSetRulesHint treeView True
+    renderer0    <- cellRendererPixbufNew
+    set renderer0 [ cellPixbufStockId  := "ide_no_source" ]
 
-        renderer0    <- cellRendererPixbufNew
-        set renderer0 [ cellPixbufStockId  := "ide_no_source" ]
+    renderer    <- cellRendererTextNew
+    col         <- treeViewColumnNew
+    treeViewColumnSetTitle col "Classes"
+    treeViewColumnSetSizing col TreeViewColumnAutosize
+    treeViewColumnSetResizable col True
+    treeViewColumnSetReorderable col True
+    treeViewAppendColumn treeView col
+    cellLayoutPackStart col renderer0 False
+    cellLayoutPackStart col renderer True
+    cellLayoutSetAttributes col renderer treeStore
+        $ \(s,_,_) -> [ cellText := s]
+    cellLayoutSetAttributes col renderer0 treeStore
+        $ \(_,_,d) -> [
+        cellPixbufStockId  :=
+            if isJust (mbLocation d)
+                then "ide_source"
+                else "ide_no_source"]
 
-        renderer    <- cellRendererTextNew
-        col         <- treeViewColumnNew
-        treeViewColumnSetTitle col "Classes"
-        treeViewColumnSetSizing col TreeViewColumnAutosize
-        treeViewColumnSetResizable col True
-        treeViewColumnSetReorderable col True
-        treeViewAppendColumn treeView col
-        cellLayoutPackStart col renderer0 False
-        cellLayoutPackStart col renderer True
-        cellLayoutSetAttributes col renderer treeStore
-            $ \(s,_,_) -> [ cellText := s]
-        cellLayoutSetAttributes col renderer0 treeStore
-            $ \(_,_,d) -> [
-            cellPixbufStockId  :=
-                if isJust (mbLocation d)
-                    then "ide_source"
-                    else "ide_no_source"]
-
-        treeViewSetHeadersVisible treeView True
- --     treeViewSetEnableSearch treeView True
- --     treeViewSetSearchColumn treeView 0
- --     treeViewSetSearchEqualFunc treeView (treeViewSearch treeView treeStore)
+    treeViewSetHeadersVisible treeView True
+--     treeViewSetEnableSearch treeView True
+--     treeViewSetSearchColumn treeView 0
+--     treeViewSetSearchEqualFunc treeView (treeViewSearch treeView treeStore)
 
 -- Facet view
 {--
-        facetView   <-  treeViewNew
-        facetStore  <-  treeStoreNew []
-        treeViewSetModel facetView facetStore
-        renderer30    <- cellRendererPixbufNew
-        renderer31    <- cellRendererPixbufNew
-        renderer3   <- cellRendererTextNew
-        col         <- treeViewColumnNew
-        treeViewColumnSetTitle col "Interface"
-        --treeViewColumnSetSizing col TreeViewColumnAutosize
-        treeViewAppendColumn facetView col
-        cellLayoutPackStart col renderer30 False
-        cellLayoutPackStart col renderer31 False
-        cellLayoutPackStart col renderer3 True
-        cellLayoutSetAttributes col renderer3 facetStore
-            $ \row -> [ cellText := facetTreeText row]
-        cellLayoutSetAttributes col renderer30 facetStore
-            $ \row -> [
-            cellPixbufStockId  := stockIdFromType (facetIdType row)]
-        cellLayoutSetAttributes col renderer31 facetStore
-            $ \row -> [
-            cellPixbufStockId  := if isJust (mbLocation(facetIdDescr row))
-                                    then "ide_source"
-                                    else ""]
-        treeViewSetHeadersVisible facetView True
-        treeViewSetEnableSearch facetView True
-        treeViewSetSearchColumn facetView 0
-        treeViewSetSearchEqualFunc facetView (facetViewSearch facetView facetStore)
+    facetView   <-  treeViewNew
+    facetStore  <-  treeStoreNew []
+    treeViewSetModel facetView facetStore
+    renderer30    <- cellRendererPixbufNew
+    renderer31    <- cellRendererPixbufNew
+    renderer3   <- cellRendererTextNew
+    col         <- treeViewColumnNew
+    treeViewColumnSetTitle col "Interface"
+    --treeViewColumnSetSizing col TreeViewColumnAutosize
+    treeViewAppendColumn facetView col
+    cellLayoutPackStart col renderer30 False
+    cellLayoutPackStart col renderer31 False
+    cellLayoutPackStart col renderer3 True
+    cellLayoutSetAttributes col renderer3 facetStore
+        $ \row -> [ cellText := facetTreeText row]
+    cellLayoutSetAttributes col renderer30 facetStore
+        $ \row -> [
+        cellPixbufStockId  := stockIdFromType (facetIdType row)]
+    cellLayoutSetAttributes col renderer31 facetStore
+        $ \row -> [
+        cellPixbufStockId  := if isJust (mbLocation(facetIdDescr row))
+                                then "ide_source"
+                                else ""]
+    treeViewSetHeadersVisible facetView True
+    treeViewSetEnableSearch facetView True
+    treeViewSetSearchColumn facetView 0
+    treeViewSetSearchEqualFunc facetView (facetViewSearch facetView facetStore)
 --}
-        pane'           <-  hPanedNew
-        sw              <-  scrolledWindowNew Nothing Nothing
-        containerAdd sw treeView
-        scrolledWindowSetPolicy sw PolicyAutomatic PolicyAutomatic
+    pane'           <-  hPanedNew
+    sw              <-  scrolledWindowNew Nothing Nothing
+    containerAdd sw treeView
+    scrolledWindowSetPolicy sw PolicyAutomatic PolicyAutomatic
 
 {--        sw2             <-  scrolledWindowNew Nothing Nothing
-        containerAdd sw2 facetView
-        scrolledWindowSetPolicy sw2 PolicyAutomatic PolicyAutomatic--}
-        panedAdd1 pane' sw
+    containerAdd sw2 facetView
+    scrolledWindowSetPolicy sw2 PolicyAutomatic PolicyAutomatic--}
+    panedAdd1 pane' sw
 --        panedAdd2 pane' sw2
-        (x,y) <- widgetGetSize nb
-        panedSetPosition pane' (x `quot` 2)
-        box             <-  hBoxNew True 2
-        rb1             <-  radioButtonNewWithLabel "Local"
-        rb2             <-  radioButtonNewWithLabelFromWidget rb1 "Package"
-        rb3             <-  radioButtonNewWithLabelFromWidget rb1 "World"
-        toggleButtonSetActive rb3 True
-        cb              <-  checkButtonNewWithLabel "Blacklist"
+    (x,y) <- widgetGetSize nb
+    panedSetPosition pane' (x `quot` 2)
+    box             <-  hBoxNew True 2
+    rb1             <-  radioButtonNewWithLabel "Local"
+    rb2             <-  radioButtonNewWithLabelFromWidget rb1 "Package"
+    rb3             <-  radioButtonNewWithLabelFromWidget rb1 "World"
+    toggleButtonSetActive rb3 True
+    cb              <-  checkButtonNewWithLabel "Blacklist"
 
-        boxPackStart box rb1 PackGrow 2
-        boxPackStart box rb2 PackGrow 2
-        boxPackStart box rb3 PackGrow 2
-        boxPackEnd box cb PackNatural 2
+    boxPackStart box rb1 PackGrow 2
+    boxPackStart box rb2 PackGrow 2
+    boxPackStart box rb3 PackGrow 2
+    boxPackEnd box cb PackNatural 2
 
-        boxOuter        <-  vBoxNew False 2
-        boxPackStart boxOuter box PackNatural 2
-        boxPackStart boxOuter pane' PackGrow 2
+    boxOuter        <-  vBoxNew False 2
+    boxPackStart boxOuter box PackNatural 2
+    boxPackStart boxOuter pane' PackGrow 2
 
-        let classes = IDEClassHierarchy boxOuter pane' treeView treeStore
-                        {--facetView facetStore--} rb1 rb2 rb3 cb
-        notebookInsertOrdered nb boxOuter (paneName classes) Nothing
-        widgetShowAll boxOuter
-        cid3 <- treeView `onRowActivated`
-            (\ treePath _ -> do
-                treeViewExpandRow treeView treePath False
-                return ())
-        cid1 <- treeView `afterFocusIn`
-            (\_ -> do reflectIDE (makeActive classes) ideR; return True)
+    let classes = IDEClassHierarchy boxOuter pane' treeView treeStore
+                    {--facetView facetStore--} rb1 rb2 rb3 cb
+    cid3 <- treeView `onRowActivated`
+        (\ treePath _ -> do
+            treeViewExpandRow treeView treePath False
+            return ())
+    cid1 <- treeView `afterFocusIn`
+        (\_ -> do reflectIDE (makeActive classes) ideR; return True)
 --        cid2 <- facetView `afterFocusIn`
 --            (\_ -> do runReaderT (makeActive classes) ideR; return True)
 --        treeView  `onButtonPress` (treeViewPopup ideR treeStore treeView)
@@ -359,14 +358,12 @@ initClassHierarchy panePath nb = do
 --        rb2 `onToggled` (runReaderT scopeSelection ideR)
 --        rb3 `onToggled` (runReaderT scopeSelection ideR)
 --        cb  `onToggled` (runReaderT scopeSelection ideR)
-        sel     <-  treeViewGetSelection treeView
+    sel     <-  treeViewGetSelection treeView
 --        sel `onSelectionChanged` (fillFacets treeView treeStore facetView facetStore)
 --        sel2    <-  treeViewGetSelection facetView
 --        sel2 `onSelectionChanged` (fillInfo facetView facetStore ideR)
 
-        return (classes,[ConnectC cid1{--,ConnectC cid2--}, ConnectC cid3])
-    addPaneAdmin buf cids panePath
-    liftIO $widgetGrabFocus (paned buf)
+    return (classes,[ConnectC cid1{--,ConnectC cid2--}, ConnectC cid3])
 
 
 {--

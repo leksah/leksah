@@ -161,87 +161,88 @@ initReferences panePath nb mbScope = do
     let scope = case mbScope of
                     Just s -> s
                     Nothing -> Package
-    prefs       <-  readIDE prefs
-    currentInfo <-  readIDE currentInfo
-    (buf,cids)  <-  reifyIDE $ \ideR  ->  do
-        scopebox        <-  hBoxNew True 2
-        rb1             <-  radioButtonNewWithLabel "Local"
-        rb2             <-  radioButtonNewWithLabelFromWidget rb1 "Package"
-        rb3             <-  radioButtonNewWithLabelFromWidget rb1 "System"
-        toggleButtonSetActive
-            (case scope of
-                Local   -> rb1
-                Package -> rb2
-                System   -> rb3) True
-        boxPackStart scopebox rb1 PackNatural 2
-        boxPackStart scopebox rb2 PackNatural 2
-        boxPackEnd scopebox rb3 PackNatural 2
+    newPane panePath nb (builder scope)
+    return ()
 
-        listStore   <-  listStoreNew []
-        treeView    <-  treeViewNew
-        treeViewSetModel treeView listStore
+builder :: Scope ->
+    PanePath ->
+    Notebook ->
+    Window ->
+    IDERef ->
+    IO (IDEReferences,Connections)
+builder scope pp nb windows ideR = do
+    scopebox        <-  hBoxNew True 2
+    rb1             <-  radioButtonNewWithLabel "Local"
+    rb2             <-  radioButtonNewWithLabelFromWidget rb1 "Package"
+    rb3             <-  radioButtonNewWithLabelFromWidget rb1 "System"
+    toggleButtonSetActive
+        (case scope of
+            Local   -> rb1
+            Package -> rb2
+            System   -> rb3) True
+    boxPackStart scopebox rb1 PackNatural 2
+    boxPackStart scopebox rb2 PackNatural 2
+    boxPackEnd scopebox rb3 PackNatural 2
 
-        renderer0    <- cellRendererPixbufNew
-        set renderer0 [ cellPixbufStockId  := stockYes ]
+    listStore   <-  listStoreNew []
+    treeView    <-  treeViewNew
+    treeViewSetModel treeView listStore
 
-        renderer    <- cellRendererTextNew
-        col         <- treeViewColumnNew
-        treeViewColumnSetTitle col "Modules"
-        treeViewColumnSetSizing col TreeViewColumnAutosize
-        treeViewColumnSetResizable col True
-        treeViewColumnSetReorderable col True
-        treeViewAppendColumn treeView col
-        cellLayoutPackStart col renderer0 False
-        cellLayoutPackStart col renderer True
-        cellLayoutSetAttributes col renderer listStore
-            $ \row -> [ cellText := render $ disp $ modu $ moduleIdMD $ fst row]
-        cellLayoutSetAttributes col renderer0 listStore
-            $ \row -> [cellPixbufStockId  :=
-                        if isJust (mbSourcePathMD $ fst row)
-                            then stockJumpTo
-                            else stockYes]
+    renderer0    <- cellRendererPixbufNew
+    set renderer0 [ cellPixbufStockId  := stockYes ]
 
-        renderer2   <- cellRendererTextNew
-        col2        <- treeViewColumnNew
-        treeViewColumnSetTitle col2 "Packages"
-        treeViewColumnSetSizing col2 TreeViewColumnAutosize
-        treeViewColumnSetResizable col True
-        treeViewColumnSetReorderable col2 True
-        treeViewAppendColumn treeView col2
-        cellLayoutPackStart col2 renderer2 True
-        cellLayoutSetAttributes col2 renderer2 listStore
-            $ \row -> [ cellText := render $ disp $ pack $ moduleIdMD $ fst row]
+    renderer    <- cellRendererTextNew
+    col         <- treeViewColumnNew
+    treeViewColumnSetTitle col "Modules"
+    treeViewColumnSetSizing col TreeViewColumnAutosize
+    treeViewColumnSetResizable col True
+    treeViewColumnSetReorderable col True
+    treeViewAppendColumn treeView col
+    cellLayoutPackStart col renderer0 False
+    cellLayoutPackStart col renderer True
+    cellLayoutSetAttributes col renderer listStore
+        $ \row -> [ cellText := render $ disp $ modu $ moduleIdMD $ fst row]
+    cellLayoutSetAttributes col renderer0 listStore
+        $ \row -> [cellPixbufStockId  :=
+                    if isJust (mbSourcePathMD $ fst row)
+                        then stockJumpTo
+                        else stockYes]
 
-        treeViewSetHeadersVisible treeView True
-        sel <- treeViewGetSelection treeView
-        treeSelectionSetMode sel SelectionSingle
+    renderer2   <- cellRendererTextNew
+    col2        <- treeViewColumnNew
+    treeViewColumnSetTitle col2 "Packages"
+    treeViewColumnSetSizing col2 TreeViewColumnAutosize
+    treeViewColumnSetResizable col True
+    treeViewColumnSetReorderable col2 True
+    treeViewAppendColumn treeView col2
+    cellLayoutPackStart col2 renderer2 True
+    cellLayoutSetAttributes col2 renderer2 listStore
+        $ \row -> [ cellText := render $ disp $ pack $ moduleIdMD $ fst row]
 
-        sw <- scrolledWindowNew Nothing Nothing
-        containerAdd sw treeView
-        scrolledWindowSetPolicy sw PolicyAutomatic PolicyAutomatic
-        entry           <-  entryNew
-        set entry [ entryEditable := False ]
-        box             <-  vBoxNew False 2
-        boxPackStart box scopebox PackNatural 0
-        boxPackStart box entry PackNatural 0
-        boxPackEnd box sw PackGrow 0
-        referencesDescr' <- newIORef Nothing
-        scope <- newIORef (case mbScope of
-                            Just s -> s
-                            Nothing -> Package)
-        let references = IDEReferences sw treeView referencesDescr' listStore scope entry box
-        notebookInsertOrdered nb box (paneName references) Nothing
-        widgetShowAll box
-        cid1 <- treeView `afterFocusIn`
-            (\_ -> do reflectIDE (makeActive references) ideR ; return True)
-        treeView `onButtonPress` (treeViewPopup ideR  references)
-        rb1 `onToggled` (reflectIDE (scopeSelection Local) ideR )
-        rb2 `onToggled` (reflectIDE (scopeSelection Package) ideR )
-        rb3 `onToggled` (reflectIDE (scopeSelection System) ideR )
+    treeViewSetHeadersVisible treeView True
+    sel <- treeViewGetSelection treeView
+    treeSelectionSetMode sel SelectionSingle
 
-        return (references,[ConnectC cid1])
-    addPaneAdmin buf cids panePath
-    liftIO $widgetGrabFocus (scrolledView buf)
+    sw <- scrolledWindowNew Nothing Nothing
+    containerAdd sw treeView
+    scrolledWindowSetPolicy sw PolicyAutomatic PolicyAutomatic
+    entry           <-  entryNew
+    set entry [ entryEditable := False ]
+    box             <-  vBoxNew False 2
+    boxPackStart box scopebox PackNatural 0
+    boxPackStart box entry PackNatural 0
+    boxPackEnd box sw PackGrow 0
+    referencesDescr' <- newIORef Nothing
+    scopeRef <- newIORef scope
+    let references = IDEReferences sw treeView referencesDescr' listStore scopeRef entry box
+    widgetShowAll box
+    cid1 <- treeView `afterFocusIn`
+        (\_ -> do reflectIDE (makeActive references) ideR ; return True)
+    treeView `onButtonPress` (treeViewPopup ideR  references)
+    rb1 `onToggled` (reflectIDE (scopeSelection Local) ideR )
+    rb2 `onToggled` (reflectIDE (scopeSelection Package) ideR )
+    rb3 `onToggled` (reflectIDE (scopeSelection System) ideR )
+    return (references,[ConnectC cid1])
 
 
 getSelectionTree ::  TreeView

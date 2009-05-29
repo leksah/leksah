@@ -310,7 +310,7 @@ initPackage packageDir packageD packageDescr panePath nb modules afterSaveAction
     let initialPackagePath = packageDir </> (display . pkgName . package . pd) packageD ++ ".cabal"
     liftIO $ setCurrentDirectory packageDir
     packageInfos <- inGhc $ getInstalledPackageInfos
-    (pane :: PackagePane) <- newPane panePath nb (builder packageDir packageD packageDescr afterSaveAction initialPackagePath
+    newPane panePath nb (builder packageDir packageD packageDescr afterSaveAction initialPackagePath
         modules packageInfos fields)
     return ()
 
@@ -364,7 +364,7 @@ builder packageDir packageD packageDescr afterSaveAction initialPackagePath modu
                 rid <- dialogRun md
                 widgetDestroy md
                 case rid of
-                    ResponseYes ->  (reflectIDE (close packagePane) ideR)
+                    ResponseYes ->  (reflectIDE (close packagePane >> return ()) ideR)
                     otherwise   ->  return ()
             Just newPackage -> do
                 let packagePath = packageDir </> (display . pkgName . package . pd) newPackage
@@ -404,7 +404,7 @@ builder packageDir packageD packageDescr afterSaveAction initialPackagePath modu
                             ResponseNo      ->   return False
                             _               ->   return False
                     else return False
-                when (not cancel) (reflectIDE (close packagePane) ideR))
+                when (not cancel) (reflectIDE (close packagePane >> return ()) ideR))
     restore `onClicked` (do
         package <- readPackageDescription normal initialPackagePath
         setInj (toEditor (flattenPackageDescription package)))
@@ -442,8 +442,6 @@ builder packageDir packageD packageDescr afterSaveAction initialPackagePath modu
                         panePath nb modules afterSaveAction) ideR)
     boxPackStart vb widget PackGrow 7
     boxPackEnd vb bb PackNatural 7
-    widgetShowAll vb
-    i <- notebookInsertOrdered nb vb (paneName packagePane) Nothing
     return (packagePane,[])
 
 -- ---------------------------------------------------------------------

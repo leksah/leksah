@@ -57,7 +57,8 @@ instance RecoverablePane IDETrace TraceState IDEM where
         return (Just TraceState)
     recoverState pp TraceState =   do
         nb      <-  getNotebook pp
-        initTrace pp nb
+        newPane pp nb builder
+        return ()
 
 showTrace :: IDEAction
 showTrace = do
@@ -73,55 +74,51 @@ getTrace = do
         Nothing -> do
             pp          <-  getBestPathForId "*Trace"
             nb          <-  getNotebook pp
-            initTrace pp nb
+            newPane pp nb builder
             mbTrace <- getPane
             case mbTrace of
                 Nothing ->  throwIDE "Can't init breakpoints"
                 Just m  ->  return m
         Just m ->   return m
 
-initTrace :: PanePath -> Notebook -> IDEAction
-initTrace panePath nb = do
-    prefs       <- readIDE prefs
-    (pane,cids) <- reifyIDE $ \ideR  ->  do
+builder :: PanePath ->
+    Notebook ->
+    Window ->
+    IDERef ->
+    IO (IDETrace,Connections)
+builder pp nb windows ideR = do
+    tracepoints <-  listStoreNew []
+    treeView    <-  treeViewNew
+    treeViewSetModel treeView tracepoints
 
-        tracepoints <-  listStoreNew []
-        treeView    <-  treeViewNew
-        treeViewSetModel treeView tracepoints
+    rendererB    <- cellRendererTextNew
+    colB         <- treeViewColumnNew
+    treeViewColumnSetTitle colB "Trace"
+    treeViewColumnSetSizing colB TreeViewColumnAutosize
+    treeViewAppendColumn treeView colB
+    cellLayoutPackStart colB rendererB False
+    cellLayoutSetAttributes colB rendererB tracepoints
+        $ \row -> [ cellText := showSDoc (ppr (logRefSrcSpan row))]
 
-        rendererB    <- cellRendererTextNew
-        colB         <- treeViewColumnNew
-        treeViewColumnSetTitle colB "Trace"
-        treeViewColumnSetSizing colB TreeViewColumnAutosize
-        treeViewAppendColumn treeView colB
-        cellLayoutPackStart colB rendererB False
-        cellLayoutSetAttributes colB rendererB tracepoints
-            $ \row -> [ cellText := showSDoc (ppr (logRefSrcSpan row))]
+    treeViewSetHeadersVisible treeView False
+    sel <- treeViewGetSelection treeView
+    treeSelectionSetMode sel SelectionSingle
 
-        treeViewSetHeadersVisible treeView False
-        sel <- treeViewGetSelection treeView
-        treeSelectionSetMode sel SelectionSingle
+    scrolledView <- scrolledWindowNew Nothing Nothing
+    containerAdd scrolledView treeView
+    scrolledWindowSetPolicy scrolledView PolicyAutomatic PolicyAutomatic
 
-        scrolledView <- scrolledWindowNew Nothing Nothing
-        containerAdd scrolledView treeView
-        scrolledWindowSetPolicy scrolledView PolicyAutomatic PolicyAutomatic
+    let pane = IDETrace {..}
 
-        let pane = IDETrace {..}
-        notebookInsertOrdered nb scrolledView (paneName pane) Nothing
+    cid1 <- treeView `afterFocusIn`
+        (\_ -> do reflectIDE (makeActive pane) ideR ; return True)
+    sel `onSelectionChanged` do
+        sel <- getSelectedTracepoint treeView tracepoints
+        case sel of
+            Just ref -> reflectIDE (selectRef ref) ideR
+            Nothing -> return ()
 
-        cid1 <- treeView `afterFocusIn`
-            (\_ -> do reflectIDE (makeActive pane) ideR ; return True)
-        sel `onSelectionChanged` do
-            sel <- getSelectedTracepoint treeView tracepoints
-            case sel of
-                Just ref -> reflectIDE (selectRef ref) ideR
-                Nothing -> return ()
-
-        return (pane,[ConnectC cid1])
-    addPaneAdmin pane cids panePath
-    liftIO $ widgetShowAll (scrolledView pane)
-    liftIO $ widgetGrabFocus (scrolledView pane)
-    liftIO $ bringPaneToFront pane
+    return (pane,[ConnectC cid1])
 
 fillTracepointList :: IDEAction
 fillTracepointList = do

@@ -214,9 +214,17 @@ initFlags :: IDEPackage -> PanePath -> Notebook -> IDEAction
 initFlags idePackage panePath nb = do
     let flagsDesc       =   extractFieldDescription flagsDescription
     let flatflagsDesc   =   flattenFieldDescription flagsDesc
-    p <- newPane panePath nb (builder idePackage flagsDesc flatflagsDesc)
+    newPane panePath nb (builder idePackage flagsDesc flatflagsDesc)
     return ()
 
+builder :: IDEPackage ->
+    FieldDescription IDEPackage ->
+    [FieldDescription IDEPackage] ->
+    PanePath ->
+    Notebook ->
+    Window ->
+    IDERef ->
+    IO (IDEFlags,Connections)
 builder idePackage flagsDesc flatflagsDesc pp nb window ideR = do
     vb                  <-  vBoxNew False 0
     let flagsPane = IDEFlags vb
@@ -240,12 +248,10 @@ builder idePackage flagsDesc flatflagsDesc pp nb window ideR = do
                     close flagsPane) ideR -- we don't trigger the activePack event here
                 writeFlags ((dropFileName (cabalFile packWithNewFlags)) </> "IDE.flags")
                     packWithNewFlags)
-    closeB `onClicked` (reflectIDE (close flagsPane) ideR)
+    closeB `onClicked` (reflectIDE (close flagsPane >> return ()) ideR)
     registerEvent notifier FocusIn (Left (\e -> do
         reflectIDE (makeActive flagsPane) ideR
         return (e{gtkReturn=False})))
     boxPackStart vb sw PackGrow 7
     boxPackEnd vb bb PackNatural 7
-    notebookInsertOrdered nb vb (paneName flagsPane) Nothing
-    widgetShowAll vb
     return (flagsPane,[])

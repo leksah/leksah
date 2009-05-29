@@ -153,7 +153,6 @@ instance Pane IDEBuffer IDEM
       return ()
     close pane = do makeActive pane
                     fileClose
-                    return ()
 
 instance RecoverablePane IDEBuffer BufferState IDEM where
     saveState p     =   do  buf     <-  liftIO $ textViewGetBuffer (sourceView p)
@@ -338,128 +337,135 @@ maybeActiveBuf = do
 
 newTextBuffer :: PanePath -> String -> Maybe FilePath -> IDEM IDEBuffer
 newTextBuffer panePath bn mbfn = do
-    -- create the appropriate language
     nb      <-  getNotebook panePath
     prefs   <-  readIDE prefs
     bs      <-  getCandyState
     ct      <-  readIDE candy
     (ind,rbn) <- figureOutPaneName bn 0
-    (buf,cids)   <- reifyIDE $ \ideR   -> do
-        lm       <- sourceLanguageManagerNew
-        (mbLanguage, mbSLang)  <- sourceLanguageForFilename lm mbfn
+    newPane panePath nb (builder bs mbfn ind bn rbn ct prefs)
 
-        -- create a new SourceBuffer object
-        buffer   <- case mbSLang of
-                        Just sLang -> sourceBufferNewWithLanguage sLang
-                        Nothing -> sourceBufferNew Nothing
-        sourceBufferSetMaxUndoLevels buffer (-1)
-        tagTable <- textBufferGetTagTable buffer
-        foundTag <- textTagNew (Just "found")
-        set foundTag [textTagBackground := "yellow"]
-        textTagTableAdd tagTable foundTag
 
-        -- load up and display a file
-        (fileContents,modTime) <- case mbfn of
-            Just fn -> do
-                fc <- UTF8.readFile fn
-                mt <- getModificationTime fn
-                return (fc,Just mt)
-            Nothing -> return ("\n\n\n\n\n",Nothing)
-        sourceBufferBeginNotUndoableAction buffer
-        textBufferSetText buffer fileContents
-        when bs $ transformToCandy ct (castToTextBuffer buffer)
-        sourceBufferEndNotUndoableAction buffer
-        textBufferSetModified buffer False
-        siter <- textBufferGetStartIter buffer
-        textBufferPlaceCursor buffer siter
-        iter <- textBufferGetEndIter buffer
-        textBufferCreateMark buffer (Just "end") iter True
+builder :: Bool ->
+    Maybe FilePath ->
+    Int ->
+    String ->
+    String ->
+    CandyTable ->
+    Prefs ->
+    PanePath ->
+    Notebook ->
+    Window ->
+    IDERef ->
+    IO (IDEBuffer,Connections)
+builder bs mbfn ind bn rbn ct prefs pp nb windows ideR = do
+    lm       <- sourceLanguageManagerNew
+    (mbLanguage, mbSLang)  <- sourceLanguageForFilename lm mbfn
 
-        -- create a new SourceView Widget
-        sv <- sourceViewNewWithBuffer buffer
-        fd <- case textviewFont prefs of
-            Just str -> do
-                fontDescriptionFromString str
-            Nothing -> do
-                f <- fontDescriptionNew
-                fontDescriptionSetFamily f "Monospace"
-                return f
-        widgetModifyFont sv (Just fd)
-        set sv [sourceViewHighlightCurrentLine := True]
-        sourceViewSetShowLineNumbers sv (showLineNumbers prefs)
-        case rightMargin prefs of
-            Just n -> do
-                set sv [sourceViewShowRightMargin := True]
-                sourceViewSetRightMarginPosition sv (fromIntegral n)
-            Nothing -> set sv [sourceViewShowRightMargin := False]
-        sourceViewSetInsertSpacesInsteadOfTabs sv True
-        sourceViewSetIndentWidth sv (tabWidth prefs)
-        sourceViewSetTabWidth sv (tabWidth prefs)
-        sourceViewSetIndentOnTab sv True
-        sourceViewSetAutoIndent sv True
-        sourceViewSetSmartHomeEnd sv SourceSmartHomeEndBefore
-        case sourceStyle prefs of
-            Nothing  -> return ()
-            Just str -> do
-                styleManager <- sourceStyleSchemeManagerNew
-                ids <- sourceStyleSchemeManagerGetSchemeIds styleManager
-                when (elem str ids) $ do
-                    scheme <- sourceStyleSchemeManagerGetScheme styleManager str
-                    sourceBufferSetStyleScheme buffer scheme
+    -- create a new SourceBuffer object
+    buffer   <- case mbSLang of
+                    Just sLang -> sourceBufferNewWithLanguage sLang
+                    Nothing -> sourceBufferNew Nothing
+    sourceBufferSetMaxUndoLevels buffer (-1)
+    tagTable <- textBufferGetTagTable buffer
+    foundTag <- textTagNew (Just "found")
+    set foundTag [textTagBackground := "yellow"]
+    textTagTableAdd tagTable foundTag
 
-        -- put it in a scrolled window
-        sw <- scrolledWindowNew Nothing Nothing
-        containerAdd sw sv
-        scrolledWindowSetPolicy sw PolicyAutomatic PolicyAutomatic
-        scrolledWindowSetShadowType sw ShadowIn
-        modTimeRef <- newIORef modTime
-        let buf = IDEBuffer mbfn bn ind sv sw modTimeRef mbLanguage
-        notebookInsertOrdered nb sw rbn Nothing
-        -- events
-        cid <- sv `afterFocusIn`
-            (\_ -> do reflectIDE (makeActive buf) ideR  ; return False)
-        buffer `afterBufferInsertText`
-            (\iter text -> do
-                case text of
-                    [c] | ((isAlphaNum c) || (c == '.') || (c == '_')) -> do
-                        reflectIDE (Completion.complete sv False) ideR
-                    _ -> return ()
-            )
-        sv `onMoveCursor`
-            (\step n select -> do reflectIDE Completion.cancel ideR)
-        sv `onButtonPress`
-            \event -> do
-                let click = eventClick event
-                liftIO $ do
-                    reflectIDE Completion.cancel ideR
-                    case click of
-                        DoubleClick -> do
-                            let isSelectChar a = (isAlphaNum a) || (a == '_')
-                            (start, end) <- textBufferGetSelectionBounds buffer
-                            mbStartChar <- textIterGetChar start
-                            mbEndChar <- textIterGetChar end
-                            case mbStartChar of
-                                Just startChar | isSelectChar startChar -> do
-                                    found <- textIterBackwardFindChar start (not.isSelectChar) Nothing
-                                    when found $ do
-                                        textIterForwardChar start
-                                        return ()
-                                _ -> return ()
-                            case mbEndChar of
-                                Just endChar | isSelectChar endChar -> do
-                                    textIterForwardFindChar end (not.isSelectChar) Nothing
+    -- load up and display a file
+    (fileContents,modTime) <- case mbfn of
+        Just fn -> do
+            fc <- UTF8.readFile fn
+            mt <- getModificationTime fn
+            return (fc,Just mt)
+        Nothing -> return ("\n\n\n\n\n",Nothing)
+    sourceBufferBeginNotUndoableAction buffer
+    textBufferSetText buffer fileContents
+    when bs $ transformToCandy ct (castToTextBuffer buffer)
+    sourceBufferEndNotUndoableAction buffer
+    textBufferSetModified buffer False
+    siter <- textBufferGetStartIter buffer
+    textBufferPlaceCursor buffer siter
+    iter <- textBufferGetEndIter buffer
+    textBufferCreateMark buffer (Just "end") iter True
+
+    -- create a new SourceView Widget
+    sv <- sourceViewNewWithBuffer buffer
+    fd <- case textviewFont prefs of
+        Just str -> do
+            fontDescriptionFromString str
+        Nothing -> do
+            f <- fontDescriptionNew
+            fontDescriptionSetFamily f "Monospace"
+            return f
+    widgetModifyFont sv (Just fd)
+    set sv [sourceViewHighlightCurrentLine := True]
+    sourceViewSetShowLineNumbers sv (showLineNumbers prefs)
+    case rightMargin prefs of
+        Just n -> do
+            set sv [sourceViewShowRightMargin := True]
+            sourceViewSetRightMarginPosition sv (fromIntegral n)
+        Nothing -> set sv [sourceViewShowRightMargin := False]
+    sourceViewSetInsertSpacesInsteadOfTabs sv True
+    sourceViewSetIndentWidth sv (tabWidth prefs)
+    sourceViewSetTabWidth sv (tabWidth prefs)
+    sourceViewSetIndentOnTab sv True
+    sourceViewSetAutoIndent sv True
+    sourceViewSetSmartHomeEnd sv SourceSmartHomeEndBefore
+    case sourceStyle prefs of
+        Nothing  -> return ()
+        Just str -> do
+            styleManager <- sourceStyleSchemeManagerNew
+            ids <- sourceStyleSchemeManagerGetSchemeIds styleManager
+            when (elem str ids) $ do
+                scheme <- sourceStyleSchemeManagerGetScheme styleManager str
+                sourceBufferSetStyleScheme buffer scheme
+
+    -- put it in a scrolled window
+    sw <- scrolledWindowNew Nothing Nothing
+    containerAdd sw sv
+    scrolledWindowSetPolicy sw PolicyAutomatic PolicyAutomatic
+    scrolledWindowSetShadowType sw ShadowIn
+    modTimeRef <- newIORef modTime
+    let buf = IDEBuffer mbfn bn ind sv sw modTimeRef mbLanguage
+    -- events
+    cid <- sv `afterFocusIn`
+        (\_ -> do reflectIDE (makeActive buf) ideR  ; return False)
+    buffer `afterBufferInsertText`
+        (\iter text -> do
+            case text of
+                [c] | ((isAlphaNum c) || (c == '.') || (c == '_')) -> do
+                    reflectIDE (Completion.complete sv False) ideR
+                _ -> return ()
+        )
+    sv `onMoveCursor`
+        (\step n select -> do reflectIDE Completion.cancel ideR)
+    sv `onButtonPress`
+        \event -> do
+            let click = eventClick event
+            liftIO $ do
+                reflectIDE Completion.cancel ideR
+                case click of
+                    DoubleClick -> do
+                        let isSelectChar a = (isAlphaNum a) || (a == '_')
+                        (start, end) <- textBufferGetSelectionBounds buffer
+                        mbStartChar <- textIterGetChar start
+                        mbEndChar <- textIterGetChar end
+                        case mbStartChar of
+                            Just startChar | isSelectChar startChar -> do
+                                found <- textIterBackwardFindChar start (not.isSelectChar) Nothing
+                                when found $ do
+                                    textIterForwardChar start
                                     return ()
-                                _ -> return ()
-                            textBufferSelectRange buffer start end
-                            return True
-                        _ -> return False
-        return (buf,[cid])
-    addPaneAdmin buf (map ConnectC cids) panePath
-    liftIO $do
-        widgetShowAll (scrolledWindow buf)
-        widgetGrabFocus (sourceView buf)
-    when (isJust mbfn) $ removeRecentlyUsedFile (fromJust mbfn)
-    return buf
+                            _ -> return ()
+                        case mbEndChar of
+                            Just endChar | isSelectChar endChar -> do
+                                textIterForwardFindChar end (not.isSelectChar) Nothing
+                                return ()
+                            _ -> return ()
+                        textBufferSelectRange buffer start end
+                        return True
+                    _ -> return False
+    return (buf,[ConnectC cid])
 
 checkModTime :: IDEBuffer -> IDEM Bool
 checkModTime buf = do

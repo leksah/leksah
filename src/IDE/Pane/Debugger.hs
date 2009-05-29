@@ -82,7 +82,8 @@ instance RecoverablePane IDEDebugger DebuggerState IDEM where
             return (Just (DebuggerState text))
     recoverState pp (DebuggerState text) =   do
         nb          <-  getNotebook pp
-        initDebugger pp nb text
+        prefs'      <- readIDE prefs
+        newPane pp nb (builder text prefs')
         debugger    <- getDebugger
         return ()
 
@@ -102,127 +103,127 @@ getDebugger = do
         Nothing -> do
             pp          <-  getBestPathForId "*Debug"
             nb          <-  getNotebook pp
-            initDebugger pp nb ""
+            prefs'      <- readIDE prefs
+            newPane pp nb (builder "" prefs')
             mbDeb <- getPane
             case mbDeb of
                 Nothing ->  throwIDE "Can't init debugger"
                 Just m  ->  return m
         Just m ->   return m
 
-initDebugger :: PanePath -> Notebook -> String -> IDEAction
-initDebugger panePath nb wstext = do
-    prefs <- readIDE prefs
-    (pane,cids) <- reifyIDE $ \ideR  ->  do
-        ibox        <- vBoxNew False 0
-    -- Buttons
-        bb          <- hButtonBoxNew
-        buttonBoxSetLayout bb ButtonboxSpread
-        stepB <- buttonNewWithLabel "Step"
-        stepLB <- buttonNewWithLabel "StepLocal"
-        stepMB <- buttonNewWithLabel "StepModule"
-        continueB <- buttonNewWithLabel "Continue"
+builder :: String ->
+    Prefs ->
+    PanePath ->
+    Notebook ->
+    Window ->
+    IDERef ->
+    IO (IDEDebugger,Connections)
+builder wstext prefs pp nb windows ideR = do
+    ibox        <- vBoxNew False 0
+-- Buttons
+    bb          <- hButtonBoxNew
+    buttonBoxSetLayout bb ButtonboxSpread
+    stepB <- buttonNewWithLabel "Step"
+    stepLB <- buttonNewWithLabel "StepLocal"
+    stepMB <- buttonNewWithLabel "StepModule"
+    continueB <- buttonNewWithLabel "Continue"
 
-        boxPackStartDefaults bb stepB
-        boxPackStartDefaults bb stepLB
-        boxPackStartDefaults bb stepMB
-        boxPackStartDefaults bb continueB
+    boxPackStartDefaults bb stepB
+    boxPackStartDefaults bb stepLB
+    boxPackStartDefaults bb stepMB
+    boxPackStartDefaults bb continueB
 
-    -- Workspace View
-        wbox        <- hBoxNew False 0
-        font <- case textviewFont prefs of
-            Just str -> do
-                fontDescriptionFromString str
-            Nothing -> do
-                f <- fontDescriptionNew
-                fontDescriptionSetFamily f "Monospace"
-                return f
+-- Workspace View
+    wbox        <- hBoxNew False 0
+    font <- case textviewFont prefs of
+        Just str -> do
+            fontDescriptionFromString str
+        Nothing -> do
+            f <- fontDescriptionNew
+            fontDescriptionSetFamily f "Monospace"
+            return f
 
-        workspaceView <- sourceViewNew
-        workspaceBuffer <- (get workspaceView textViewBuffer) >>= (return . castToSourceBuffer)
-        lm <- sourceLanguageManagerNew
-        mbLang <- sourceLanguageManagerGuessLanguage lm Nothing (Just "text/x-haskell")
-        case mbLang of
-            Nothing -> return ()
-            Just lang -> do sourceBufferSetLanguage workspaceBuffer lang
+    workspaceView <- sourceViewNew
+    workspaceBuffer <- (get workspaceView textViewBuffer) >>= (return . castToSourceBuffer)
+    lm <- sourceLanguageManagerNew
+    mbLang <- sourceLanguageManagerGuessLanguage lm Nothing (Just "text/x-haskell")
+    case mbLang of
+        Nothing -> return ()
+        Just lang -> do sourceBufferSetLanguage workspaceBuffer lang
 
-        -- This call is here because in the past I have had problems where the
-        -- language object became invalid if the manager was garbage collected
-        sourceLanguageManagerGetLanguageIds lm
+    -- This call is here because in the past I have had problems where the
+    -- language object became invalid if the manager was garbage collected
+    sourceLanguageManagerGetLanguageIds lm
 
-        sourceBufferSetHighlightSyntax workspaceBuffer True
-        widgetModifyFont workspaceView (Just font)
+    sourceBufferSetHighlightSyntax workspaceBuffer True
+    widgetModifyFont workspaceView (Just font)
 
-        case sourceStyle prefs of
-            Nothing  -> return ()
-            Just str -> do
-                styleManager <- sourceStyleSchemeManagerNew
-                ids <- sourceStyleSchemeManagerGetSchemeIds styleManager
-                when (elem str ids) $ do
-                    scheme <- sourceStyleSchemeManagerGetScheme styleManager str
-                    sourceBufferSetStyleScheme workspaceBuffer scheme
-        textBufferSetText workspaceBuffer wstext
+    case sourceStyle prefs of
+        Nothing  -> return ()
+        Just str -> do
+            styleManager <- sourceStyleSchemeManagerNew
+            ids <- sourceStyleSchemeManagerGetSchemeIds styleManager
+            when (elem str ids) $ do
+                scheme <- sourceStyleSchemeManagerGetScheme styleManager str
+                sourceBufferSetStyleScheme workspaceBuffer scheme
+    textBufferSetText workspaceBuffer wstext
 
-        swWorkspace <- scrolledWindowNew Nothing Nothing
-        containerAdd swWorkspace workspaceView
-        scrolledWindowSetPolicy swWorkspace PolicyAutomatic PolicyAutomatic
-        boxPackStart wbox swWorkspace PackGrow 10
+    swWorkspace <- scrolledWindowNew Nothing Nothing
+    containerAdd swWorkspace workspaceView
+    scrolledWindowSetPolicy swWorkspace PolicyAutomatic PolicyAutomatic
+    boxPackStart wbox swWorkspace PackGrow 10
 
-        wbbox       <- vBoxNew False 0
-        exeB        <- buttonNewWithLabel "Execute"
-        stepExpB    <- buttonNewWithLabel "Step Expression"
-        traceExpB   <- buttonNewWithLabel "Trace Expression"
+    wbbox       <- vBoxNew False 0
+    exeB        <- buttonNewWithLabel "Execute"
+    stepExpB    <- buttonNewWithLabel "Step Expression"
+    traceExpB   <- buttonNewWithLabel "Trace Expression"
 
-        boxPackStart wbbox exeB PackNatural 0
-        boxPackStart wbbox stepExpB PackNatural 0
-        boxPackStart wbbox traceExpB PackNatural 0
-        boxPackStart wbox wbbox PackNatural 0
+    boxPackStart wbbox exeB PackNatural 0
+    boxPackStart wbbox stepExpB PackNatural 0
+    boxPackStart wbbox traceExpB PackNatural 0
+    boxPackStart wbox wbbox PackNatural 0
 
-        boxPackStart ibox wbox PackGrow 10
-        boxPackEnd ibox bb PackNatural 10
+    boxPackStart ibox wbox PackGrow 10
+    boxPackEnd ibox bb PackNatural 10
 
-        --openType
-        let deb = IDEDebugger ibox workspaceView
-        exeB `onClicked` (do
-            maybeText <- selectedDebuggerText workspaceView
-            reflectIDE (
-                case maybeText of
-                    Just text -> debugCommand text (\o -> do
-                        logOutput o
-                        liftIO $ postGUIAsync (setDebuggerText deb o))
-                    Nothing   -> ideMessage Normal "Please select some text in the editor to execute")
-                        ideR)
-        stepExpB `onClicked` (do
-            t <- selectedDebuggerText workspaceView
-            reflectIDE (debugStepExpr t) ideR)
-        traceExpB `onClicked` (do
-            t <- selectedDebuggerText workspaceView
-            reflectIDE (debugTraceExpr t) ideR)
-        stepB `onClicked` (reflectIDE debugStep ideR)
-        stepLB `onClicked` (reflectIDE debugStepLocal ideR)
-        stepMB `onClicked` (reflectIDE debugStepModule ideR)
-        continueB `onClicked` (reflectIDE debugContinue ideR)
+    --openType
+    let deb = IDEDebugger ibox workspaceView
+    exeB `onClicked` (do
+        maybeText <- selectedDebuggerText workspaceView
+        reflectIDE (
+            case maybeText of
+                Just text -> debugCommand text (\o -> do
+                    logOutput o
+                    liftIO $ postGUIAsync (setDebuggerText deb o))
+                Nothing   -> ideMessage Normal "Please select some text in the editor to execute")
+                    ideR)
+    stepExpB `onClicked` (do
+        t <- selectedDebuggerText workspaceView
+        reflectIDE (debugStepExpr t) ideR)
+    traceExpB `onClicked` (do
+        t <- selectedDebuggerText workspaceView
+        reflectIDE (debugTraceExpr t) ideR)
+    stepB `onClicked` (reflectIDE debugStep ideR)
+    stepLB `onClicked` (reflectIDE debugStepLocal ideR)
+    stepMB `onClicked` (reflectIDE debugStepModule ideR)
+    continueB `onClicked` (reflectIDE debugContinue ideR)
 
-        workspaceView `widgetAddEvents` [ButtonReleaseMask]
-        id5 <- workspaceView `onButtonRelease`
-            (\ e -> do
-                buf     <-  textViewGetBuffer workspaceView
-                (l,r)   <- textBufferGetSelectionBounds buf
-                symbol  <- textBufferGetText buf l r True
-                when (controlIsPressed e)
-                    (reflectIDE (do
-                        triggerEvent ideR (SelectInfo symbol)
-                        return ()) ideR)
-                return False)
+    workspaceView `widgetAddEvents` [ButtonReleaseMask]
+    id5 <- workspaceView `onButtonRelease`
+        (\ e -> do
+            buf     <-  textViewGetBuffer workspaceView
+            (l,r)   <- textBufferGetSelectionBounds buf
+            symbol  <- textBufferGetText buf l r True
+            when (controlIsPressed e)
+                (reflectIDE (do
+                    triggerEvent ideR (SelectInfo symbol)
+                    return ()) ideR)
+            return False)
 
-        cid1 <- workspaceView `afterFocusIn`
-            (\_ -> do reflectIDE (makeActive deb) ideR ; return True)
+    cid1 <- workspaceView `afterFocusIn`
+        (\_ -> do reflectIDE (makeActive deb) ideR ; return True)
 
-        notebookInsertOrdered nb ibox (paneName deb) Nothing
-        widgetShowAll ibox
-        return (deb,[ConnectC cid1])
-    addPaneAdmin pane cids panePath
-    liftIO $ widgetGrabFocus (workspaceView pane)
-    liftIO $ bringPaneToFront pane
+    return (deb,[ConnectC cid1])
 
 selectedDebuggerText :: SourceView -> IO (Maybe String)
 selectedDebuggerText workspaceView = do

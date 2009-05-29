@@ -63,7 +63,8 @@ instance RecoverablePane IDEBreakpoints BreakpointsState IDEM where
         return (Just BreakpointsState)
     recoverState pp BreakpointsState =   do
         nb      <-  getNotebook pp
-        initBreakpoints pp nb
+        newPane pp nb builder
+        return ()
 
 showBreakpoints :: IDEAction
 showBreakpoints = do
@@ -79,52 +80,41 @@ getBreakpoints = do
         Nothing -> do
             pp          <-  getBestPathForId "*Breakpoints"
             nb          <-  getNotebook pp
-            initBreakpoints pp nb
+            newPane pp nb builder
             mbBreakpoints <- getPane
             case mbBreakpoints of
                 Nothing ->  throwIDE "Can't init breakpoints"
                 Just m  ->  return m
         Just m ->   return m
 
-initBreakpoints :: PanePath -> Notebook -> IDEAction
-initBreakpoints panePath nb = do
-    prefs       <- readIDE prefs
-    (pane,cids) <- reifyIDE $ \ideR  ->  do
-
-        breakpoints <-  listStoreNew []
-        treeView    <-  treeViewNew
-        treeViewSetModel treeView breakpoints
-
-        rendererB    <- cellRendererTextNew
-        colB         <- treeViewColumnNew
-        treeViewColumnSetTitle colB "Breakpoints"
-        treeViewColumnSetSizing colB TreeViewColumnAutosize
-        treeViewAppendColumn treeView colB
-        cellLayoutPackStart colB rendererB False
-        cellLayoutSetAttributes colB rendererB breakpoints
-            $ \row -> [ cellText := showSDoc (ppr (logRefSrcSpan row))]
-
-        treeViewSetHeadersVisible treeView False
-        selB <- treeViewGetSelection treeView
-        treeSelectionSetMode selB SelectionSingle
-
-        scrolledView <- scrolledWindowNew Nothing Nothing
-        containerAdd scrolledView treeView
-        scrolledWindowSetPolicy scrolledView PolicyAutomatic PolicyAutomatic
-
-        let pane = IDEBreakpoints {..}
-        notebookInsertOrdered nb scrolledView (paneName pane) Nothing
-
-        treeView `onButtonPress` (breakpointViewPopup ideR breakpoints treeView)
-
-        cid1 <- treeView `afterFocusIn`
-            (\_ -> do reflectIDE (makeActive pane) ideR ; return True)
-
-        return (pane,[ConnectC cid1])
-    addPaneAdmin pane cids panePath
-    liftIO $ widgetShowAll (scrolledView pane)
-    liftIO $ widgetGrabFocus (scrolledView pane)
-    liftIO $ bringPaneToFront pane
+builder :: PanePath ->
+    Notebook ->
+    Window ->
+    IDERef ->
+    IO (IDEBreakpoints, Connections)
+builder pp nb windows ideR = do
+    breakpoints <-  listStoreNew []
+    treeView    <-  treeViewNew
+    treeViewSetModel treeView breakpoints
+    rendererB    <- cellRendererTextNew
+    colB         <- treeViewColumnNew
+    treeViewColumnSetTitle colB "Breakpoints"
+    treeViewColumnSetSizing colB TreeViewColumnAutosize
+    treeViewAppendColumn treeView colB
+    cellLayoutPackStart colB rendererB False
+    cellLayoutSetAttributes colB rendererB breakpoints
+        $ \row -> [ cellText := showSDoc (ppr (logRefSrcSpan row))]
+    treeViewSetHeadersVisible treeView False
+    selB <- treeViewGetSelection treeView
+    treeSelectionSetMode selB SelectionSingle
+    scrolledView <- scrolledWindowNew Nothing Nothing
+    containerAdd scrolledView treeView
+    scrolledWindowSetPolicy scrolledView PolicyAutomatic PolicyAutomatic
+    let pane = IDEBreakpoints {..}
+    treeView `onButtonPress` (breakpointViewPopup ideR breakpoints treeView)
+    cid1 <- treeView `afterFocusIn`
+        (\_ -> do reflectIDE (makeActive pane) ideR ; return True)
+    return (pane,[ConnectC cid1])
 
 fillBreakpointList :: IDEAction
 fillBreakpointList = do
