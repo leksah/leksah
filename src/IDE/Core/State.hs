@@ -303,6 +303,7 @@ newPane panePath notebook builder = do
     liftIO $ do
         widgetShowAll (getTopWidget buf)
         widgetGrabFocus (getTopWidget buf)
+        bringPaneToFront buf
     return buf
 
 --

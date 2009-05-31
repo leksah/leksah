@@ -244,10 +244,10 @@ mkLabelBox lbl paneName = do
     return lb
     where
         closeHandler :: PaneMonad alpha => () -> alpha ()
-        closeHandler _ =    if "group_" `isPrefixOf` paneName
-                                then
-                                    closeGroup paneName
-                                else do
+        closeHandler _ =    case "group_" `stripPrefix` paneName of
+                                Just group  -> do
+                                    closeGroup group
+                                Nothing -> do
                                     (PaneC pane) <- paneFromName paneName
                                     close pane
                                     return ()
@@ -259,23 +259,33 @@ closeGroup groupName = do
     mainWindow <- getMainWindow
     case mbPath of
         Nothing -> trace ("ViewFrame>>closeGroup: Group path not found: " ++ groupName) return ()
-        Just p -> do
+        Just path -> do
             panesMap <- getPaneMapSt
-            continue <- case filter (\pp -> p `isSuffixOf` pp) $ map fst (Map.elems panesMap) of
+            let nameAndpathList  = filter (\(a,pp) -> path `isPrefixOf` pp)
+                            $ map (\(a,b) -> (a,fst b)) (Map.assocs panesMap)
+            continue <- case nameAndpathList of
                             (_:_) -> liftIO $ do
                                 md <- messageDialogNew (Just mainWindow) [] MessageQuestion ButtonsYesNo
-                                    ("Group " ++ groupName ++ "not empty. Close with all contents?")
+                                    ("Group " ++ groupName ++ " not empty. Close with all contents?")
                                 rid <- dialogRun md
                                 widgetDestroy md
                                 case rid of
                                     ResponseYes ->  return True
                                     otherwise   ->  return False
                             []  -> return True
-            when continue $ undefined
-                --mapM <-
-                --allGroups <- allSubgroups
-
-
+            when continue $ do
+                panes <- mapM paneFromName $ map fst nameAndpathList
+                results <- mapM (\ (PaneC p) -> close p) panes
+                when (foldr (&&) True results) $ do
+                    nbOrPaned  <- getNotebookOrPaned path castToWidget
+                    mbParent <- liftIO $ widgetGetParent nbOrPaned
+                    case mbParent of
+                        Nothing -> error "ViewFrame>>closeGroup: closeGroup: no parent"
+                        Just parent -> liftIO $ containerRemove (castToContainer parent) nbOrPaned
+                    setLayoutSt (removeGL path layout)
+                    ppMap <- getPanePathFromNB
+                    setPanePathFromNB (Map.filter (\pa -> path `isPrefixOf` pa) ppMap)
+                    return ()
 
 -- | Add the change mark or removes it
 markLabel :: (WidgetClass alpha, NotebookClass beta) => beta -> alpha -> Bool -> IO ()
@@ -773,7 +783,7 @@ dragMove (paneName,toNB) = do
                                         notebookInsertOrdered toNB groupNBOrPaned group Nothing
                                         liftIO $ notebookSetTabLabel toNB groupNBOrPaned label
                                         adjustPanes fromPath (toPath ++ [GroupP group])
-                                        adjustLayoutForGroupMove (init fromPath) toPath group
+                                        adjustLayoutForGroupMove fromPath toPath group
                                         adjustNotebooks fromPath (toPath ++ [GroupP group])
                                         layout2          <-  getLayout
                                         trace ("dragMove a group Layout after: " ++ show layout2) return ()
@@ -825,16 +835,6 @@ move toPane idew  = do
     let paneMap1    =   Map.delete (paneName idew) paneMap
     trace ("move name: " ++ (paneName idew) ++ " path: " ++ show toPane) $
         setPaneMapSt    $   Map.insert (paneName idew) (toPane,cid) paneMap1
-
-
-{--                case mbBox of
-                    Just box -> do
-                        theLabel <- binGetChild (castToBin box)
-                        case theLabel of
-                            Nothing -> return ()
-                            Just label -> do
-                                theText <- labelGetText (castToLabel label) --TODO --}
-
 
 findAppropriate :: PaneLayout -> PaneDirection -> PanePath
 findAppropriate  (TerminalP {}) _ =   []
@@ -1160,7 +1160,6 @@ adjustLayoutForDetach id path = do
 
 --
 -- | Changes the layout for a collapse
-
 --
 adjustLayoutForCollapse :: PaneMonad alpha => PanePath -> alpha ()
 adjustLayoutForCollapse oldPath = do
@@ -1174,42 +1173,44 @@ adjustLayoutForCollapse oldPath = do
 adjustLayoutForGroupMove :: PaneMonad alpha => PanePath -> PanePath -> String -> alpha ()
 adjustLayoutForGroupMove fromPath toPath group = do
     layout <- getLayout
-    let layoutToMove = getGL fromPath layout
+    let layoutToMove = layoutFromPath fromPath layout
     let newLayout = removeGL fromPath layout
-    setLayoutSt (addGL layoutToMove toPath newLayout)
-    where
-        getGL :: PanePath -> PaneLayout -> PaneLayout
-        getGL [] t@(TerminalP groups _ _ _ _)
-            | group `Map.member` groups                    = groups Map.! group
-        getGL (GroupP group:r)  old@(TerminalP {paneGroups = groups})
-            | group `Map.member` groups                    = getGL r (groups Map.! group)
-        getGL (SplitP TopP:r)  (HorizontalP tp bp _)       = getGL r tp
-        getGL (SplitP BottomP:r)  (HorizontalP tp bp _)    = getGL r bp
-        getGL (SplitP LeftP:r)  (VerticalP lp rp _)        = getGL r lp
-        getGL (SplitP RightP:r)  (VerticalP lp rp _)       = getGL r rp
-        getGL p l = error $"ViewFrame>>getGL: inconsistent layout" ++ show p ++ " " ++ show l
+    setLayoutSt (addGL layoutToMove (toPath ++ [GroupP group])  newLayout)
 
-        removeGL :: PanePath -> PaneLayout -> PaneLayout
-        removeGL [] t@(TerminalP oldGroups _ _ _ _)
-            | group `Map.member` oldGroups =  t{paneGroups = group `Map.delete` oldGroups}
-        removeGL (GroupP group:r)  old@(TerminalP {paneGroups = groups})
-            | group `Map.member` groups = old{paneGroups    = Map.adjust (removeGL r) group groups}
-        removeGL (SplitP TopP:r)  (HorizontalP tp bp _)     = HorizontalP (removeGL r tp) bp 0
-        removeGL (SplitP BottomP:r)  (HorizontalP tp bp _)  = HorizontalP tp (removeGL r bp) 0
-        removeGL (SplitP LeftP:r)  (VerticalP lp rp _)      = VerticalP (removeGL r lp) rp 0
-        removeGL (SplitP RightP:r)  (VerticalP lp rp _)     = VerticalP lp (removeGL r rp) 0
-        removeGL p l = error $"ViewFrame>>removeGL: inconsistent layout" ++ show p ++ " " ++ show l
+--
+-- | Changes the layout for a remove
+--
+adjustLayoutForGroupRemove :: PaneMonad alpha => PanePath -> String -> alpha ()
+adjustLayoutForGroupRemove fromPath group = do
+    layout <- getLayout
+    setLayoutSt (removeGL fromPath layout)
 
-        addGL :: PaneLayout -> PanePath -> PaneLayout -> PaneLayout
-        addGL toAdd [] t@(TerminalP oldGroups _ _ _ _)         =  t{paneGroups = Map.insert group toAdd oldGroups}
-        addGL toAdd (GroupP group:r)  old@(TerminalP {paneGroups = groups})
-            | group `Map.member` groups = old{paneGroups       = Map.adjust (addGL toAdd r) group groups}
-        addGL toAdd (SplitP TopP:r)  (HorizontalP tp bp _)     = HorizontalP (addGL toAdd r tp) bp 0
-        addGL toAdd (SplitP BottomP:r)  (HorizontalP tp bp _)  = HorizontalP tp (addGL toAdd r bp) 0
-        addGL toAdd (SplitP LeftP:r)  (VerticalP lp rp _)      = VerticalP (addGL toAdd r lp) rp 0
-        addGL toAdd (SplitP RightP:r)  (VerticalP lp rp _)     = VerticalP lp (addGL toAdd r rp) 0
-        addGL _ p l = error $"ViewFrame>>addGL: inconsistent layout" ++ show p ++ " " ++ show l
+--
+-- | Remove group layout at a certain path
+--
+removeGL :: PanePath -> PaneLayout -> PaneLayout
+removeGL [GroupP group] t@(TerminalP oldGroups _ _ _ _)
+    | group `Map.member` oldGroups                        =  t{paneGroups = group `Map.delete` oldGroups}
+removeGL (GroupP group:r)  old@(TerminalP {paneGroups = groups})
+    | group `Map.member` groups                             = old{paneGroups = Map.adjust (removeGL r) group groups}
+removeGL (SplitP TopP:r)  (HorizontalP tp bp _)     = HorizontalP (removeGL r tp) bp 0
+removeGL (SplitP BottomP:r)  (HorizontalP tp bp _)  = HorizontalP tp (removeGL r bp) 0
+removeGL (SplitP LeftP:r)  (VerticalP lp rp _)      = VerticalP (removeGL r lp) rp 0
+removeGL (SplitP RightP:r)  (VerticalP lp rp _)     = VerticalP lp (removeGL r rp) 0
+removeGL p l = error $"ViewFrame>>removeGL: inconsistent layout" ++ show p ++ " " ++ show l
 
+--
+-- | Add group layout at a certain path
+--
+addGL :: PaneLayout -> PanePath -> PaneLayout -> PaneLayout
+addGL toAdd [GroupP group] t@(TerminalP oldGroups _ _ _ _)  =  t{paneGroups = Map.insert group toAdd oldGroups}
+addGL toAdd (GroupP group:r)  old@(TerminalP {paneGroups = groups})
+    | group `Map.member` groups = old{paneGroups       = Map.adjust (addGL toAdd r) group groups}
+addGL toAdd (SplitP TopP:r)  (HorizontalP tp bp _)     = HorizontalP (addGL toAdd r tp) bp 0
+addGL toAdd (SplitP BottomP:r)  (HorizontalP tp bp _)  = HorizontalP tp (addGL toAdd r bp) 0
+addGL toAdd (SplitP LeftP:r)  (VerticalP lp rp _)      = VerticalP (addGL toAdd r lp) rp 0
+addGL toAdd (SplitP RightP:r)  (VerticalP lp rp _)     = VerticalP lp (addGL toAdd r rp) 0
+addGL _ p l = error $"ViewFrame>>addGL: inconsistent layout" ++ show p ++ " " ++ show l
 
 --
 -- | Changes the layout by replacing element at pane path (pp) with replace
