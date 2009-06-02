@@ -107,8 +107,9 @@ import Graphics.UI.Editor.Basics
     (eventPaneName, GUIEventSelector(..))
 import qualified Data.Set as  Set (unions, member)
 import Data.Set (Set(..))
--- import Debug.Trace (trace)
-trace a b = b
+import Debug.Trace (trace)
+import Graphics.UI.Gtk.Gdk.Events (Event(..))
+--trace a b = b
 
 getThis :: PaneMonad delta =>  (FrameState delta -> alpha) -> delta alpha
 getThis sel = do
@@ -567,7 +568,6 @@ viewDetach = do
 viewDetach' :: PaneMonad alpha => PanePath -> String -> alpha ()
 viewDetach' panePath id = do
     activeNotebook  <- getNotebook panePath
-
     mbParent  <- liftIO $ widgetGetParent activeNotebook
     case mbParent of
         Nothing -> return ()
@@ -590,11 +590,27 @@ viewDetach' panePath id = do
                         containerAdd window activeNotebook
                         widgetShowAll window
                         return window
+                    handleFunc <-  runInIO (handleReattach id window)
+                    liftIO $ window `onDelete` handleFunc
                     windows <- getWindowsSt
                     setWindowsSt $ windows ++ [window]
                     adjustLayoutForDetach id panePath
                 _ -> return ()
 
+handleReattach :: PaneMonad alpha => String -> Window -> Event -> alpha Bool
+handleReattach windowId window _ = do
+    layout <- getLayout
+    case findDetachedPath windowId layout of
+        Nothing -> trace ("ViewFrame>>handleReattach: panePath for id not found: " ++ windowId) return True
+        Just pp -> do
+            nb <- getNotebook pp
+            parent <- getNotebookOrPaned (init pp) castToContainer
+            liftIO $ containerRemove (castToContainer window) nb
+            liftIO $ containerAdd parent nb
+            adjustLayoutForReattach pp
+            windows <- getWindowsSt
+            setWindowsSt $ delete window windows
+            return False -- "now destroy the window"
 
 groupLabel :: PaneMonad beta => String -> beta EventBox
 groupLabel group = do
@@ -973,6 +989,18 @@ findGroupPath group layout =
         filterFunc (_,(TerminalP groups _ _ _ _)) =  group  `Set.member` Map.keysSet groups
         filterFunc _                              =  error "ViewFrame>>findGroupPath: impossible"
 
+findDetachedPath :: String -> PaneLayout -> Maybe PanePath
+findDetachedPath id layout =
+    let terminalPairs = terminalsWithPanePath layout
+    in case (filter filterFunc terminalPairs) of
+        [] -> Nothing
+        (pp,_) : [] -> Just pp
+        _ -> error ("ViewFrame>>window id not unique: " ++ id)
+    where
+        filterFunc (_,(TerminalP _ _ _ (Just lid) _)) = lid == id
+        filterFunc _                                  = False
+
+
 allGroupNames :: PaneLayout -> Set String
 allGroupNames pl = Set.unions $ map getFunc (terminalsWithPanePath pl)
     where
@@ -1143,7 +1171,7 @@ adjustLayoutForNest group path = do
         newTerm     =   case paneLayout of
                             (TerminalP {paneGroups = groups}) -> paneLayout {
                                 paneGroups = Map.insert group (TerminalP Map.empty Nothing 0 Nothing Nothing) groups}
-                            _                                   -> error "Unexpected layout type in adjustLayoutForNest"
+                            _          -> error "Unexpected layout type in adjustLayoutForNest"
     setLayoutSt     $   adjustLayout path layout newTerm
 
 --
@@ -1155,7 +1183,19 @@ adjustLayoutForDetach id path = do
     let paneLayout  =   layoutFromPath path layout
         newTerm     =   case paneLayout of
                             (TerminalP {}) -> paneLayout {detachedId = Just id}
-                            _                                   -> error "Unexpected layout type in adjustLayoutForDetach"
+                            _              -> error "Unexpected layout type in adjustLayoutForDetach"
+    setLayoutSt     $   adjustLayout path layout newTerm
+
+--
+-- | Changes the layout for a reattach
+--
+adjustLayoutForReattach :: PaneMonad alpha => PanePath -> alpha ()
+adjustLayoutForReattach path = do
+    layout          <-  getLayoutSt
+    let paneLayout  =   layoutFromPath path layout
+        newTerm     =   case paneLayout of
+                            (TerminalP {}) -> paneLayout {detachedId = Nothing, detachedSize = Nothing}
+                            _   -> error "Unexpected layout type in adjustLayoutForReattach"
     setLayoutSt     $   adjustLayout path layout newTerm
 
 --

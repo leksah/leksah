@@ -107,7 +107,7 @@ type PaneName = String
 data IDEPane delta       =   forall alpha beta. (RecoverablePane alpha beta delta) => PaneC alpha
 
 instance Eq (IDEPane delta) where
-    (== ) (PaneC x) (PaneC y) = paneName x == paneName y
+    (==) (PaneC x) (PaneC y) = paneName x == paneName y
 
 instance Ord (IDEPane delta) where
     (<=) (PaneC x) (PaneC y) = paneName x <=  paneName y
@@ -129,7 +129,7 @@ data FrameState delta = FrameState {
 class MonadIO delta =>  PaneMonad delta where
     setFrameState   ::  FrameState delta -> delta ()
     getFrameState   ::  delta (FrameState delta)
-    runInIO         ::   forall alpha beta. (beta -> delta alpha) -> delta (beta -> IO alpha)
+    runInIO         ::  forall alpha beta. (beta -> delta alpha) -> delta (beta -> IO alpha)
     panePathForGroup::  String -> delta PanePath
 
 --
