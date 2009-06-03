@@ -20,13 +20,10 @@ module IDE.Leksah (
 ) where
 
 import Graphics.UI.Gtk
-import Graphics.UI.Gtk.Gdk.Events
-import qualified Graphics.UI.Gtk.Gdk.Events as GdkEvents
 import Control.Monad.Reader
 import Control.Concurrent
 import Data.IORef
 import Data.Maybe
-import Data.List(sort)
 import qualified Data.Map as Map
 import System.Console.GetOpt
 import System.Environment
@@ -34,7 +31,6 @@ import GHC
 import Config
 import Data.Version
 import Prelude hiding(catch)
-import System.FilePath
 import System.Directory
 
 import Paths_leksah
@@ -49,22 +45,15 @@ import IDE.Menu
 import IDE.Pane.Preferences
 import IDE.Keymap
 import IDE.Pane.SourceBuffer
-import IDE.Metainfo.Provider
 import IDE.Metainfo.SourceCollector
 import IDE.Metainfo.InterfaceCollector
-import IDE.Pane.Log
-import IDE.GUIHistory
-import IDE.Pane.Search(setChoices,searchMetaGUI)
 import IDE.Find
 import Graphics.UI.Editor.Composite (filesEditor, maybeEditor)
 import Graphics.UI.Editor.Simple (fileEditor)
 --import Outputable (ppr,showSDoc)
 import IDE.Metainfo.GHCUtils (inGhcIO)
-import IDE.NotebookFlipper (flipUp,flipDown)
 import IDE.Package (packageBuild)
-import IDE.Pane.Modules (reloadKeepSelection, selectIdentifier)
-import IDE.Pane.Info (setSymbol)
-import IDE.Pane.Debugger (updateDebugger)
+import IDE.Metainfo.Provider (initInfo)
 
 -- --------------------------------------------------------------------
 -- Command line options
@@ -182,22 +171,19 @@ startGUI sessionFilename iprefs = do
                                     prefsPath  <- getConfigFilePathForLoad "Default.prefs"
                                     prefs <- readPrefs prefsPath
                                     return (prefs,True)
-    keysPath    <-  getConfigFilePathForLoad $ keymapName startupPrefs ++ ".keymap"
-    keyMap      <-  parseKeymap keysPath
-    let accelActions = setKeymap (keyMap :: KeymapI) actions
-    specialKeys <-  buildSpecialKeys keyMap accelActions
     candyPath   <-  getConfigFilePathForLoad
                         (case sourceCandy startupPrefs of
-                                    Nothing     ->   "Default.candy"
-                                    Just name   ->   name ++ ".candy")
+                            Nothing     ->   "Default.candy"
+                            Just name   ->   name ++ ".candy")
     candySt     <-  parseCandy candyPath
+    -- keystrokes
+    keysPath    <-  getConfigFilePathForLoad $ keymapName iprefs ++ ".keymap"
+    keyMap      <-  parseKeymap keysPath
+    let accelActions = setKeymap (keyMap :: KeymapI) mkActions
+    specialKeys <-  buildSpecialKeys keyMap accelActions
+
     win         <-  windowNew
     widgetSetName win "Leksah Main Window"
-    dataDir     <-  getDataDir
-    let iconPath = dataDir </> "data" </> "leksah.png"
-    iconExists  <-  doesFileExist iconPath
-    when iconExists $
-        windowSetIconFromFile win iconPath
     let fs = FrameState
             {   windows       =   [win]
             ,   uiManager     =   uiManager
@@ -230,39 +216,14 @@ startGUI sessionFilename iprefs = do
           ,   ghciState       =   Nothing
     }
     ideR        <-  newIORef ide
+    reflectIDE (initInfo :: IDEAction) ideR
     menuDescription' <- menuDescription
-    (acc,menus) <-  reflectIDE (makeMenu uiManager accelActions menuDescription') ideR
-    when (length menus /= 2) $ throwIDE ("Failed to build menu" ++ show (length menus))
-    let toolbar = castToToolbar (menus !! 1)
-    findbar <- reflectIDE (do
-        initInfo :: IDEAction
-        modifyIDE_ (\ide -> return (ide{toolbar = (True,Just toolbar)}))
-        constructFindReplace ) ideR
-    sep0 <- separatorToolItemNew
-    separatorToolItemSetDraw sep0 False
-    toolItemSetExpand sep0 True
-    toolbarInsert toolbar sep0 (-1)
-    closeButton <- toolButtonNewFromStock "gtk-close"
-    toolbarInsert toolbar closeButton (-1)
-    closeButton `onToolButtonClicked` do
-        reflectIDE hideToolbar ideR
-    windowAddAccelGroup win acc
+    reflectIDE (makeMenu uiManager accelActions menuDescription') ideR
     nb          <-  reflectIDE (newNotebook []) ideR
     afterSwitchPage nb (\i -> reflectIDE (handleNotebookSwitch nb i) ideR)
     widgetSetName nb $"root"
-    statusBar   <-  buildStatusbar ideR
-    vb          <-  vBoxNew False 1  -- Top-level vbox
-    widgetSetName vb "topBox"
-    toolbarSetStyle (castToToolbar (menus !! 1)) ToolbarIcons
-    widgetSetSizeRequest (menus !! 1)  500 (-1)
-    boxPackStart vb (menus !! 0) PackNatural 0
-    boxPackStart vb (menus !! 1) PackNatural 0
-    boxPackStart vb nb PackGrow 0
-    boxPackStart vb findbar PackNatural 0
-    boxPackEnd vb statusBar PackNatural 0
     win `onDelete` (\ _ -> do reflectIDE quit ideR; return True)
-    win `onKeyPress` (\ e -> reflectIDE (handleSpecialKeystrokes e) ideR)
-    containerAdd win vb
+    reflectIDE (instrumentWindow win startupPrefs (castToWidget nb)) ideR
     reflectIDE (do
         setCandyState (isJust (sourceCandy startupPrefs))
         setBackgroundBuildToggled (backgroundBuild startupPrefs)
@@ -270,9 +231,12 @@ startGUI sessionFilename iprefs = do
     let (x,y)   =   defaultSize startupPrefs
     windowSetDefaultSize win x y
     sessionPath <- getConfigFilePathForLoad sessionFilename
-    (tbv,fbv) <- reflectIDE (do
+    (tbv,fbv)   <- reflectIDE (do
         registerEvents
-        recoverSession sessionPath
+        pair <- recoverSession sessionPath
+        wins <- getWindows
+        mapM_ instrumentSecWindow (tail wins)
+        return pair
         ) ideR
     widgetShowAll win
     reflectIDE (do
@@ -296,140 +260,6 @@ startGUI sessionFilename iprefs = do
         return True) priorityDefaultIdle 100
 
     mainGUI
-
---
--- | Callback function for onKeyPress of the main window, so 'preprocess' any key
---
-handleSpecialKeystrokes :: GdkEvents.Event -> IDEM Bool
-handleSpecialKeystrokes (Key { eventKeyName = name,  eventModifier = mods,
-                                eventKeyVal = keyVal, eventKeyChar = mbChar}) = do
-    sb <- getSBSpecialKeys
-    prefs' <- readIDE prefs
-    case (name, mods) of
-        (tab, [Control]) | (tab == "Tab" || tab == "ISO_Left_Tab")
-                                && useCtrlTabFlipping prefs'      -> do
-            flipDown
-            return True
-        (tab, [Shift, Control]) | (tab == "Tab" || tab == "ISO_Left_Tab")
-                                && useCtrlTabFlipping prefs'      -> do
-            flipUp
-            return True
-        _                                                            -> do
-                bs <- getCandyState
-                when bs (editKeystrokeCandy mbChar)
-                sk  <- readIDE specialKey
-                sks <- readIDE specialKeys
-                return True
-                case sk of
-                    Nothing ->
-                        case Map.lookup (keyVal,sort mods) sks of
-                            Nothing -> do
-                                liftIO $statusbarPop sb 1
-                                liftIO $statusbarPush sb 1 ""
-                                return False
-                            Just map -> do
-                                let sym = printMods mods ++ name
-                                liftIO $statusbarPop sb 1
-                                liftIO $statusbarPush sb 1 sym
-                                modifyIDE_ (\ide -> return (ide{specialKey = Just (map,sym)}))
-                                return True
-                    Just (map,sym) -> do
-                        case Map.lookup (keyVal,sort mods) map of
-                            Nothing -> do
-                                liftIO $statusbarPop sb 1
-                                liftIO $statusbarPush sb 1 $ sym ++ printMods mods ++ name ++ "?"
-                                return ()
-                            Just (AD actname _ _ _ ideAction _ _) -> do
-                                liftIO $statusbarPop sb 1
-                                liftIO $statusbarPush sb 1
-                                    $ sym ++ " " ++ printMods mods ++ name ++ "=" ++ actname
-                                ideAction
-                        modifyIDE_ (\ide -> return (ide{specialKey = Nothing}))
-                        return True
-    where
-    printMods :: [Modifier] -> String
-    printMods []    = ""
-    printMods (m:r) = show m ++ printMods r
-handleSpecialKeystrokes _ = return True
-
---
--- | Register handlers for IDE events
---
-registerEvents :: IDEAction
-registerEvents =    do
-    stRef   <-  ask
-    registerEvent stRef "LogMessage" (Left logHandler)
-    registerEvent stRef "SelectInfo" (Left siHandler)
-    registerEvent stRef "SelectIdent" (Left sidHandler)
-    registerEvent stRef "CurrentInfo" (Left ciuHandler)
-    registerEvent stRef "ActivePack" (Left apHandler)
-    registerEvent stRef "RecordHistory" (Left rhHandler)
-    registerEvent stRef "Sensitivity" (Left sHandler)
-    registerEvent stRef "DescrChoice" (Left dcHandler)
-    registerEvent stRef "SearchMeta" (Left smHandler)
-    registerEvent stRef "LoadSession" (Left lsHandler)
-    registerEvent stRef "SaveSession" (Left ssHandler)
-    registerEvent stRef "UpdateRecent" (Left urHandler)
-    registerEvent stRef "DebuggerChanged" (Left debHandler)
-
-    return ()
-    where
-        logHandler e@(LogMessage s t) =   do
-            (log :: IDELog)          <-  getLog
-            liftIO $ appendLog log s t
-            return e
-        logHandler _ =   throwIDE "Leksah>>registerEvents: Impossible event"
-
-        siHandler e@(SelectInfo str) =   do
-            setSymbol str
-            return e
-        siHandler _ =   throwIDE "Leksah>>registerEvents: Impossible event"
-
-        sidHandler e@(SelectIdent id) =   do
-            selectIdentifier id
-            return e
-        sidHandler _ =   throwIDE "Leksah>>registerEvents: Impossible event"
-
-        ciuHandler CurrentInfo =   do
-            reloadKeepSelection
-            return CurrentInfo
-        ciuHandler _ =   throwIDE "Leksah>>registerEvents: Impossible event"
-
-        apHandler ActivePack =   do
-            infoForActivePackage :: IDEAction
-            return ActivePack
-        apHandler _ =   throwIDE "Leksah>>registerEvents: Impossible event"
-
-        rhHandler rh@(RecordHistory h) =   do
-            recordHistory h
-            return rh
-        rhHandler _ =   throwIDE "Leksah>>registerEvents: Impossible event"
-
-        sHandler s@(Sensitivity h) =   do
-            setSensitivity h
-            return s
-        sHandler _ =   throwIDE "Leksah>>registerEvents: Impossible event"
-
-        dcHandler e@(DescrChoice descrs) =   do
-            setChoices descrs
-            return e
-        dcHandler _ =   throwIDE "Leksah>>registerEvents: Impossible event"
-
-        smHandler e@(SearchMeta string) =  searchMetaGUI string >> return e
-        smHandler _ =   throwIDE "Leksah>>registerEvents: Impossible event"
-
-        lsHandler e@(LoadSession fp) =  loadSession fp >> return e
-        lsHandler _ =   throwIDE "Leksah>>registerEvents: Impossible event"
-
-        ssHandler e@(SaveSession fp) =  saveSessionAs fp >> return e
-        ssHandler _ =   throwIDE "Leksah>>registerEvents: Impossible event"
-
-        urHandler e@UpdateRecent =  updateRecentEntries >> return e
-        urHandler _ =   throwIDE "Leksah>>registerEvents: Impossible event"
-
-        debHandler e@DebuggerChanged =  updateDebugger >> return e
-        debHandler _ =   throwIDE "Leksah>>registerEvents: Impossible event"
-
 
 fDescription :: FieldDescription Prefs
 fDescription = VFD emptyParams [

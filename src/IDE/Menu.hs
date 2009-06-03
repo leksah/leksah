@@ -16,7 +16,7 @@
 
 
 module IDE.Menu (
-    actions
+    mkActions
 ,   menuDescription
 ,   makeMenu
 ,   quit
@@ -25,6 +25,10 @@ module IDE.Menu (
 ,   newIcons
 ,   setSensitivity
 ,   updateRecentEntries
+,   handleSpecialKeystrokes
+,   registerEvents
+,   instrumentWindow
+,   instrumentSecWindow
 ) where
 
 import Graphics.UI.Gtk
@@ -53,19 +57,30 @@ import IDE.Pane.Search
 import IDE.Pane.References
 import Paths_leksah
 import IDE.GUIHistory
-import IDE.Metainfo.Provider (rebuildLibInfo,rebuildActiveInfo)
-import IDE.Pane.Info (showInfo)
+import IDE.Metainfo.Provider
+    (infoForActivePackage, rebuildLibInfo, rebuildActiveInfo)
+import IDE.Pane.Info (setSymbol, showInfo)
 import IDE.NotebookFlipper
 import IDE.ImportTool (addAllImports)
 import IDE.LogRef
 import IDE.Debug
 import IDE.Pane.Debugger
+import System.Directory (doesFileExist)
+import qualified Graphics.UI.Gtk.Gdk.Events as GdkEvents
+import Graphics.UI.Gtk.Gdk.Events
+    (Modifier(..),
+     Event(..))
+import Graphics.UI.Gtk.Gdk.Enums (Modifier(..))
+import qualified Data.Map as  Map (lookup)
+import Data.List (sort)
+import Control.Event (registerEvent)
+import Paths_leksah
 
 --
 -- | The Actions known to the system (they can be activated by keystrokes or menus)
 --
-actions :: [ActionDescr IDERef]
-actions =
+mkActions :: [ActionDescr IDERef]
+mkActions =
     [AD "File" "_File" Nothing Nothing (return ()) [] False
     ,AD "FileNew" "_New" Nothing (Just "gtk-new")
         fileNew [] False
@@ -295,7 +310,7 @@ actions =
     ,AD "ViewNest" "_Group" Nothing Nothing
         (viewNewGroup) [] False
     ,AD "ViewDetach" "_Detach" Nothing Nothing
-        viewDetach [] False
+        viewDetachInstrumented [] False
 
     ,AD "ViewTabsLeft" "Tabs Left" Nothing Nothing
         (viewTabsPos PosLeft) [] False
@@ -388,18 +403,13 @@ updateRecentEntries = do
 --
 -- | Building the Menu
 --
-makeMenu :: UIManager -> [ActionDescr IDERef] -> String -> IDEM (AccelGroup, [Widget])
+makeMenu :: UIManager -> [ActionDescr IDERef] -> String -> IDEAction
 makeMenu uiManager actions menuDescription = reifyIDE (\ideR -> do
     actionGroupGlobal <- actionGroupNew "global"
     mapM_ (actm ideR actionGroupGlobal) actions
     uiManagerInsertActionGroup uiManager actionGroupGlobal 1
     uiManagerAddUiFromString uiManager menuDescription
-    accGroup <- uiManagerGetAccelGroup uiManager
-    mbWidgets <- mapM (uiManagerGetWidget uiManager) ["ui/menubar","ui/toolbar"]
-    let widgets = map (\mb -> case mb of
-					Just it -> it
-					Nothing -> throwIDE "Menu>>makeMenu: failed to build menu") mbWidgets
-    return (accGroup,widgets))
+    return ())
     where
         actm ideR ag (AD name label tooltip stockId ideAction accs isToggle) = do
             let (acc,accString) = if null accs
@@ -421,6 +431,15 @@ makeMenu uiManager actions menuDescription = reifyIDE (\ideR -> do
                 liftIO $statusbarPop sb 1
                 liftIO $statusbarPush sb 1 $accStr
                 return ()) ideR)
+
+getMenu :: UIManager -> IO (AccelGroup, [Widget])
+getMenu uiManager = do
+    accGroup <- uiManagerGetAccelGroup uiManager
+    mbWidgets <- mapM (uiManagerGetWidget uiManager) ["ui/menubar","ui/toolbar"]
+    let widgets = map (\mb -> case mb of
+					Just it -> it
+					Nothing -> throwIDE "Menu>>makeMenu: failed to build menu") mbWidgets
+    return (accGroup,widgets)
 
 -- | Quit ide
 --  ### make reasonable
@@ -553,5 +572,205 @@ getActionsFor' l = do
             when (isNothing res) $ ideMessage Normal $ "Can't find UI Action " ++ string
             return res
 
+viewDetachInstrumented :: IDEAction
+viewDetachInstrumented = do
+    mbPair <- viewDetach
+    case mbPair of
+        Nothing     -> return ()
+        Just (win,wid) -> do
+            instrumentSecWindow win
+            liftIO $ widgetShowAll win
 
+instrumentWindow :: Window -> Prefs -> Widget -> IDEAction
+instrumentWindow win prefs topWidget = do
+    -- sets the icon
+    ideR <- ask
+    uiManager' <- getUiManager
+    liftIO $ do
+        dataDir <- getDataDir
+        let iconPath = dataDir </> "data" </> "leksah.png"
+        iconExists  <-  doesFileExist iconPath
+        when iconExists $
+            windowSetIconFromFile win iconPath
+
+        (acc,menus) <-  getMenu uiManager'
+        when (length menus /= 2) $ throwIDE ("Failed to build menu" ++ show (length menus))
+        let toolbar = castToToolbar (menus !! 1)
+        findbar <- reflectIDE (do
+            modifyIDE_ (\ide -> return (ide{toolbar = (True,Just toolbar)}))
+            constructFindReplace ) ideR
+        sep0 <- separatorToolItemNew
+        separatorToolItemSetDraw sep0 False
+        toolItemSetExpand sep0 True
+        toolbarInsert toolbar sep0 (-1)
+        closeButton <- toolButtonNewFromStock "gtk-close"
+        toolbarInsert toolbar closeButton (-1)
+        closeButton `onToolButtonClicked` do
+            reflectIDE hideToolbar ideR
+        windowAddAccelGroup win acc
+        statusBar   <-  buildStatusbar ideR
+        vb          <-  vBoxNew False 1  -- Top-level vbox
+        widgetSetName vb "topBox"
+        toolbarSetStyle (castToToolbar (menus !! 1)) ToolbarIcons
+        widgetSetSizeRequest (menus !! 1)  500 (-1)
+        boxPackStart vb (menus !! 0) PackNatural 0
+        boxPackStart vb (menus !! 1) PackNatural 0
+        boxPackStart vb topWidget PackGrow 0
+        boxPackStart vb findbar PackNatural 0
+        boxPackEnd vb statusBar PackNatural 0
+        win `onKeyPress` (\ e -> reflectIDE (handleSpecialKeystrokes e) ideR)
+        containerAdd win vb
+        reflectIDE (do
+            setCandyState (isJust (sourceCandy prefs))
+            setBackgroundBuildToggled (backgroundBuild prefs)
+            setBackgroundLinkToggled (backgroundLink prefs)) ideR
+
+instrumentSecWindow :: Window -> IDEAction
+instrumentSecWindow win = do
+    ideR <- ask
+    uiManager' <- getUiManager
+    liftIO $ do
+        dataDir <- getDataDir
+        let iconPath = dataDir </> "data" </> "leksah.png"
+        iconExists  <-  doesFileExist iconPath
+        when iconExists $
+            windowSetIconFromFile win iconPath
+
+        (acc,_) <-  getMenu uiManager'
+        windowAddAccelGroup win acc
+        win `onKeyPress` (\ e -> reflectIDE (handleSpecialKeystrokes e) ideR)
+        return ()
+
+--
+-- | Callback function for onKeyPress of the main window, so 'preprocess' any key
+--
+handleSpecialKeystrokes :: GdkEvents.Event -> IDEM Bool
+handleSpecialKeystrokes (Key { eventKeyName = name,  eventModifier = mods,
+                                eventKeyVal = keyVal, eventKeyChar = mbChar}) = do
+    sb <- getSBSpecialKeys
+    prefs' <- readIDE prefs
+    case (name, mods) of
+        (tab, [Control]) | (tab == "Tab" || tab == "ISO_Left_Tab")
+                                && useCtrlTabFlipping prefs'      -> do
+            flipDown
+            return True
+        (tab, [Shift, Control]) | (tab == "Tab" || tab == "ISO_Left_Tab")
+                                && useCtrlTabFlipping prefs'      -> do
+            flipUp
+            return True
+        _                                                            -> do
+                bs <- getCandyState
+                when bs (editKeystrokeCandy mbChar)
+                sk  <- readIDE specialKey
+                sks <- readIDE specialKeys
+                return True
+                case sk of
+                    Nothing ->
+                        case Map.lookup (keyVal,sort mods) sks of
+                            Nothing -> do
+                                liftIO $statusbarPop sb 1
+                                liftIO $statusbarPush sb 1 ""
+                                return False
+                            Just map -> do
+                                let sym = printMods mods ++ name
+                                liftIO $statusbarPop sb 1
+                                liftIO $statusbarPush sb 1 sym
+                                modifyIDE_ (\ide -> return (ide{specialKey = Just (map,sym)}))
+                                return True
+                    Just (map,sym) -> do
+                        case Map.lookup (keyVal,sort mods) map of
+                            Nothing -> do
+                                liftIO $statusbarPop sb 1
+                                liftIO $statusbarPush sb 1 $ sym ++ printMods mods ++ name ++ "?"
+                                return ()
+                            Just (AD actname _ _ _ ideAction _ _) -> do
+                                liftIO $statusbarPop sb 1
+                                liftIO $statusbarPush sb 1
+                                    $ sym ++ " " ++ printMods mods ++ name ++ "=" ++ actname
+                                ideAction
+                        modifyIDE_ (\ide -> return (ide{specialKey = Nothing}))
+                        return True
+    where
+    printMods :: [Modifier] -> String
+    printMods []    = ""
+    printMods (m:r) = show m ++ printMods r
+handleSpecialKeystrokes _ = return True
+
+--
+-- | Register handlers for IDE events
+--
+registerEvents :: IDEAction
+registerEvents =    do
+    stRef   <-  ask
+    registerEvent stRef "LogMessage" (Left logHandler)
+    registerEvent stRef "SelectInfo" (Left siHandler)
+    registerEvent stRef "SelectIdent" (Left sidHandler)
+    registerEvent stRef "CurrentInfo" (Left ciuHandler)
+    registerEvent stRef "ActivePack" (Left apHandler)
+    registerEvent stRef "RecordHistory" (Left rhHandler)
+    registerEvent stRef "Sensitivity" (Left sHandler)
+    registerEvent stRef "DescrChoice" (Left dcHandler)
+    registerEvent stRef "SearchMeta" (Left smHandler)
+    registerEvent stRef "LoadSession" (Left lsHandler)
+    registerEvent stRef "SaveSession" (Left ssHandler)
+    registerEvent stRef "UpdateRecent" (Left urHandler)
+    registerEvent stRef "DebuggerChanged" (Left debHandler)
+
+    return ()
+    where
+        logHandler e@(LogMessage s t) =   do
+            (log :: IDELog)          <-  getLog
+            liftIO $ appendLog log s t
+            return e
+        logHandler _ =   throwIDE "Leksah>>registerEvents: Impossible event"
+
+        siHandler e@(SelectInfo str) =   do
+            setSymbol str
+            return e
+        siHandler _ =   throwIDE "Leksah>>registerEvents: Impossible event"
+
+        sidHandler e@(SelectIdent id) =   do
+            selectIdentifier id
+            return e
+        sidHandler _ =   throwIDE "Leksah>>registerEvents: Impossible event"
+
+        ciuHandler CurrentInfo =   do
+            reloadKeepSelection
+            return CurrentInfo
+        ciuHandler _ =   throwIDE "Leksah>>registerEvents: Impossible event"
+
+        apHandler ActivePack =   do
+            infoForActivePackage :: IDEAction
+            return ActivePack
+        apHandler _ =   throwIDE "Leksah>>registerEvents: Impossible event"
+
+        rhHandler rh@(RecordHistory h) =   do
+            recordHistory h
+            return rh
+        rhHandler _ =   throwIDE "Leksah>>registerEvents: Impossible event"
+
+        sHandler s@(Sensitivity h) =   do
+            setSensitivity h
+            return s
+        sHandler _ =   throwIDE "Leksah>>registerEvents: Impossible event"
+
+        dcHandler e@(DescrChoice descrs) =   do
+            setChoices descrs
+            return e
+        dcHandler _ =   throwIDE "Leksah>>registerEvents: Impossible event"
+
+        smHandler e@(SearchMeta string) =  searchMetaGUI string >> return e
+        smHandler _ =   throwIDE "Leksah>>registerEvents: Impossible event"
+
+        lsHandler e@(LoadSession fp) =  loadSession fp >> return e
+        lsHandler _ =   throwIDE "Leksah>>registerEvents: Impossible event"
+
+        ssHandler e@(SaveSession fp) =  saveSessionAs fp >> return e
+        ssHandler _ =   throwIDE "Leksah>>registerEvents: Impossible event"
+
+        urHandler e@UpdateRecent =  updateRecentEntries >> return e
+        urHandler _ =   throwIDE "Leksah>>registerEvents: Impossible event"
+
+        debHandler e@DebuggerChanged =  updateDebugger >> return e
+        debHandler _ =   throwIDE "Leksah>>registerEvents: Impossible event"
 

@@ -111,37 +111,6 @@ import Debug.Trace (trace)
 import Graphics.UI.Gtk.Gdk.Events (Event(..))
 --trace a b = b
 
-getThis :: PaneMonad delta =>  (FrameState delta -> alpha) -> delta alpha
-getThis sel = do
-    st <- getFrameState
-    return (sel st)
-setThis :: PaneMonad delta =>  (FrameState delta -> alpha -> FrameState delta) -> alpha -> delta ()
-setThis sel value = do
-    st <- getFrameState
-    setFrameState (sel st value)
-
-getWindowsSt    = getThis windows
-setWindowsSt    = setThis (\st value -> st{windows = value})
-getUiManagerSt  = getThis uiManager
-getPanesSt      =  getThis panes
-setPanesSt      = setThis (\st value -> st{panes = value})
-getPaneMapSt    = getThis paneMap
-setPaneMapSt    = setThis (\st value -> st{paneMap = value})
-getActivePaneSt = getThis activePane
-setActivePaneSt = setThis (\st value -> st{activePane = value})
-getLayoutSt     = getThis layout
-setLayoutSt     = setThis (\st value -> st{layout = value})
-getPanePathFromNB  = getThis panePathFromNB
-setPanePathFromNB  = setThis (\st value -> st{panePathFromNB = value})
-
-
-getActivePane   = getActivePaneSt
-setActivePane   = setActivePaneSt
-getUiManager    = getUiManagerSt
-getWindows      = getWindowsSt
-getMainWindow   = liftM head getWindows
-getLayout       = getLayoutSt
-
 removePaneAdmin :: Pane alpha beta => alpha -> beta ()
 removePaneAdmin pane = do
     panes'          <-  getPanesSt
@@ -398,77 +367,82 @@ viewSplit dir = do
 
 viewSplit' :: PaneMonad alpha => PanePath -> Direction -> alpha ()
 viewSplit' panePath dir = do
-    activeNotebook  <- getNotebook panePath
-    mbPD <- do
-        mbParent  <- liftIO $ widgetGetParent activeNotebook
-        case mbParent of
-            Nothing -> return Nothing
-            Just parent -> do
-                (nb,paneDir) <- do
-                    let (name,altname,paneDir,
-                         oldPath,newPath) =  case dir of
-                                                Horizontal  -> ("top",
-                                                                "bottom",
-                                                                TopP,
-                                                                panePath ++ [SplitP TopP],
-                                                                panePath ++ [SplitP BottomP])
-                                                Vertical    -> ("left",
-                                                                "right",
-                                                                LeftP,
-                                                                panePath ++ [SplitP LeftP],
-                                                                panePath ++ [SplitP RightP])
-                    nb  <- newNotebook newPath
-                    st  <- getFrameState
-                    setFrameState st{panePathFromNB = Map.insert activeNotebook oldPath (panePathFromNB st)}
-                    (np,nbi) <- liftIO $ do
-                        newpane <- case dir of
-                                      Horizontal  -> do  h <- vPanedNew
-                                                         return (castToPaned h)
-                                      Vertical    -> do  v <- hPanedNew
-                                                         return (castToPaned v)
-                        rName <- widgetGetName activeNotebook
-                        widgetSetName newpane rName
-                        widgetSetName nb altname
-                        panedPack2 newpane nb True True
-                        nbIndex <- if parent `isA` gTypeNotebook
-                                    then notebookPageNum (castToNotebook parent) activeNotebook
-                                    else return Nothing
-                        containerRemove (castToContainer parent) activeNotebook
-                        widgetSetName activeNotebook name
-                        panedPack1 newpane activeNotebook True True
-                        return (newpane,nbIndex)
-                    case (reverse panePath, nbi) of
-                        (SplitP dir:_, _)
-                            | dir `elem` [TopP, LeftP] -> liftIO $ panedPack1 (castToPaned parent) np True True
-                            | otherwise                -> liftIO $ panedPack2 (castToPaned parent) np True True
-                        (GroupP group:_, Just n) -> do
-                            liftIO $ notebookInsertPage (castToNotebook parent) np group n
-                            label <- groupLabel group
-                            liftIO $ notebookSetTabLabel (castToNotebook parent) np label
-                            return ()
-                        ([], _) -> do
-                            liftIO $ boxPackStart (castToBox parent) np PackGrow 0
-                            liftIO $ boxReorderChild (castToVBox parent) np 2
-                        _ -> error "No notebook index found in viewSplit"
-                    liftIO $ do
-                        widgetShowAll np
-                        widgetGrabFocus activeNotebook
-                        case nbi of
-                            Just n -> do
-                                notebookSetCurrentPage (castToNotebook parent) n
-                                return ()
-                            _      -> return ()
-                        return (nb,paneDir)
-                handleFunc <-  runInIO (handleNotebookSwitch nb)
-                liftIO $ afterSwitchPage nb handleFunc
-                return (Just (paneDir,dir))
-    case mbPD of
-      Just (paneDir,pdir) -> do
-          let toPane = panePath ++ [SplitP paneDir]
-          adjustPanes panePath toPane
-          adjustLayoutForSplit paneDir panePath
-          viewMove (otherDirection paneDir)
-      Nothing -> return ()
+    l <- getLayout
+    case layoutFromPath panePath l of
+        (TerminalP _ _ _ (Just _) _) -> trace ("ViewFrame>>viewSplit': can't split detached: ")
+                                            return ()
+        _                            -> do
+            activeNotebook  <- getNotebook panePath
+            mbPD <- do
+                mbParent  <- liftIO $ widgetGetParent activeNotebook
+                case mbParent of
+                    Nothing -> trace ("ViewFrame>>viewSplit': parent not found: ") return Nothing
+                    Just parent -> do
+                        (nb,paneDir) <- do
+                            let (name,altname,paneDir,
+                                 oldPath,newPath) =  case dir of
+                                                        Horizontal  -> ("top",
+                                                                        "bottom",
+                                                                        TopP,
+                                                                        panePath ++ [SplitP TopP],
+                                                                        panePath ++ [SplitP BottomP])
+                                                        Vertical    -> ("left",
+                                                                        "right",
+                                                                        LeftP,
+                                                                        panePath ++ [SplitP LeftP],
+                                                                        panePath ++ [SplitP RightP])
+                            nb  <- newNotebook newPath
+                            st  <- getFrameState
+                            setFrameState st{panePathFromNB = Map.insert activeNotebook oldPath (panePathFromNB st)}
+                            (np,nbi) <- liftIO $ do
+                                newpane <- case dir of
+                                              Horizontal  -> do  h <- vPanedNew
+                                                                 return (castToPaned h)
+                                              Vertical    -> do  v <- hPanedNew
+                                                                 return (castToPaned v)
+                                rName <- widgetGetName activeNotebook
+                                widgetSetName newpane rName
+                                widgetSetName nb altname
+                                panedPack2 newpane nb True True
+                                nbIndex <- if parent `isA` gTypeNotebook
+                                            then notebookPageNum (castToNotebook parent) activeNotebook
+                                            else trace ("ViewFrame>>viewSplit': parent not a notebook: ") return Nothing
+                                containerRemove (castToContainer parent) activeNotebook
+                                widgetSetName activeNotebook name
+                                panedPack1 newpane activeNotebook True True
+                                return (newpane,nbIndex)
+                            case (reverse panePath, nbi) of
+                                (SplitP dir:_, _)
+                                    | dir `elem` [TopP, LeftP] -> liftIO $ panedPack1 (castToPaned parent) np True True
+                                    | otherwise                -> liftIO $ panedPack2 (castToPaned parent) np True True
+                                (GroupP group:_, Just n) -> do
+                                    liftIO $ notebookInsertPage (castToNotebook parent) np group n
+                                    label <- groupLabel group
+                                    liftIO $ notebookSetTabLabel (castToNotebook parent) np label
+                                    return ()
+                                ([], _) -> do
+                                    liftIO $ boxPackStart (castToBox parent) np PackGrow 0
+                                    liftIO $ boxReorderChild (castToVBox parent) np 2
+                                _ -> error "No notebook index found in viewSplit"
+                            liftIO $ do
+                                widgetShowAll np
+                                widgetGrabFocus activeNotebook
+                                case nbi of
+                                    Just n -> do
+                                        notebookSetCurrentPage (castToNotebook parent) n
+                                        return ()
+                                    _      -> trace ("ViewFrame>>viewSplit': parent not a notebook: ")return ()
+                                return (nb,paneDir)
+                        handleFunc <-  runInIO (handleNotebookSwitch nb)
+                        liftIO $ afterSwitchPage nb handleFunc
+                        return (Just (paneDir,dir))
+            case mbPD of
+              Just (paneDir,pdir) -> do
+                  let toPane = panePath ++ [SplitP paneDir]
+                  adjustPanes panePath toPane
+                  adjustLayoutForSplit paneDir panePath
+                  viewMove (otherDirection paneDir)
+              Nothing -> return ()
 
 viewNewGroup :: PaneMonad alpha => alpha ()
 viewNewGroup = do
@@ -483,6 +457,7 @@ viewNewGroup = do
                     md <- messageDialogNew (Just mainWindow) [] MessageWarning ButtonsClose
                         ("Group name not unique " ++ groupName)
                     dialogRun md
+                    widgetDestroy md
                     return ()
                 else viewNest groupName
         Nothing -> return ()
@@ -556,21 +531,21 @@ viewNest' panePath group = do
                     adjustLayoutForNest group panePath
                 _ -> return ()
 
-viewDetach :: PaneMonad alpha => alpha ()
+viewDetach :: PaneMonad alpha => alpha (Maybe (Window,Widget))
 viewDetach = do
     id <- liftIO $ fmap show getCPUTime
     mbPanePath        <- getActivePanePath
     case mbPanePath of
-        Nothing -> return ()
+        Nothing -> return Nothing
         Just panePath -> do
             viewDetach' panePath id
 
-viewDetach' :: PaneMonad alpha => PanePath -> String -> alpha ()
+viewDetach' :: PaneMonad alpha => PanePath -> String -> alpha (Maybe (Window,Widget))
 viewDetach' panePath id = do
     activeNotebook  <- getNotebook panePath
     mbParent  <- liftIO $ widgetGetParent activeNotebook
     case mbParent of
-        Nothing -> return ()
+        Nothing -> return Nothing
         Just parent -> do
             layout          <-  getLayoutSt
             let paneLayout  =   layoutFromPath panePath layout
@@ -595,21 +570,33 @@ viewDetach' panePath id = do
                     windows <- getWindowsSt
                     setWindowsSt $ windows ++ [window]
                     adjustLayoutForDetach id panePath
-                _ -> return ()
+                    return (Just (window, castToWidget activeNotebook))
+                _ -> return Nothing
+
+
 
 handleReattach :: PaneMonad alpha => String -> Window -> Event -> alpha Bool
 handleReattach windowId window _ = do
     layout <- getLayout
     case findDetachedPath windowId layout of
-        Nothing -> trace ("ViewFrame>>handleReattach: panePath for id not found: " ++ windowId) return True
+        Nothing -> trace ("ViewFrame>>handleReattach: panePath for id not found: " ++ windowId)
+                $ do
+            windows <- getWindowsSt
+            setWindowsSt $ delete window windows
+            return False
         Just pp -> do
-            nb <- getNotebook pp
-            parent <- getNotebookOrPaned (init pp) castToContainer
+            nb      <- getNotebook pp
+            parent  <- getNotebookOrPaned (init pp) castToContainer
             liftIO $ containerRemove (castToContainer window) nb
             liftIO $ containerAdd parent nb
             adjustLayoutForReattach pp
             windows <- getWindowsSt
             setWindowsSt $ delete window windows
+            case last pp of
+                GroupP groupName -> do
+                    label <- groupLabel groupName
+                    liftIO $ notebookSetTabLabel (castToNotebook parent) nb label
+                otherwise       -> return ()
             return False -- "now destroy the window"
 
 groupLabel :: PaneMonad beta => String -> beta EventBox
@@ -658,68 +645,72 @@ viewCollapse' :: PaneMonad alpha => PanePath -> alpha ()
 viewCollapse' panePath = do
     trace ("Collapse : " ++ (show panePath)) $ return ()
     layout1           <- getLayoutSt
-    let newPanePath   = init panePath
-    let mbOtherSidePath = otherSide panePath
-    case mbOtherSidePath of
-        Nothing -> return ()
-        Just otherSidePath ->
-            let sp1 = getGroupPathForCollapse panePath layout1
-                sp2 = getGroupPathForCollapse otherSidePath layout1
-            in do
-            case sp1 of
+    case layoutFromPath panePath layout1 of
+        (TerminalP _ _ _ (Just _) _) -> trace ("ViewFrame>>viewCollapse': can't collapse detached: ")
+                                            return ()
+        _                            -> do
+            let newPanePath   = init panePath
+            let mbOtherSidePath = otherSide panePath
+            case mbOtherSidePath of
                 Nothing -> return ()
-                Just sp -> viewCollapse' sp
-            case  sp2 of
-                Nothing -> return ()
-                Just sp -> viewCollapse' sp
-            paneMap         <- getPaneMapSt
-            activeNotebook  <- getNotebook panePath
-            st  <- getFrameState
-            otherSideNotebook <- getNotebook otherSidePath
-            setFrameState st{panePathFromNB = (Map.delete otherSideNotebook
-                                                (Map.insert activeNotebook newPanePath (panePathFromNB st)))}
-            let paneNamesToMove = map (\(w,(p,_)) -> w)
-                                    $filter (\(w,(p,_)) -> otherSidePath `isPrefixOf` p)
-                                        $Map.toList paneMap
-            panesToMove <- mapM paneFromName paneNamesToMove
-            mapM_ (\(PaneC p) -> move panePath p) panesToMove
-            mbParent <- liftIO $ widgetGetParent activeNotebook
-            case mbParent of
-                Nothing -> error "collapse: no parent"
-                Just parent -> do
-                    mbGrandparent <- liftIO $ widgetGetParent parent
-                    case mbGrandparent of
-                        Nothing -> error "collapse: no grandparent"
-                        Just grandparent -> do
-                            nbIndex <- if grandparent `isA` gTypeNotebook
-                                then liftIO $ notebookPageNum (castToNotebook grandparent) parent
-                                else return Nothing
-                            liftIO $ containerRemove (castToContainer grandparent) parent
-                            liftIO $ containerRemove (castToContainer parent) activeNotebook
-                            if length panePath > 1
-                                then do
-                                    let lasPathElem = last newPanePath
-                                    case (lasPathElem, nbIndex) of
-                                        (SplitP dir, _) | dir == TopP || dir == LeftP ->
-                                            liftIO $ panedPack1 (castToPaned grandparent) activeNotebook True True
-                                        (SplitP dir, _) | dir == BottomP || dir == RightP ->
-                                            liftIO $ panedPack2 (castToPaned grandparent) activeNotebook True True
-                                        (GroupP group, Just n) -> do
-                                            liftIO $ notebookInsertPage (castToNotebook grandparent) activeNotebook group n
-                                            label <- groupLabel group
-                                            liftIO $ do
-                                                notebookSetTabLabel (castToNotebook grandparent) activeNotebook label
-                                                notebookSetCurrentPage (castToNotebook grandparent) n
-                                                return ()
-                                        _ -> error "collapse: Unable to find page index"
-                                    liftIO $ widgetSetName activeNotebook $panePathElementToWidgetName lasPathElem
-                                else liftIO $ do
-                                    boxPackStart (castToVBox grandparent) activeNotebook PackGrow 0
-                                    boxReorderChild (castToVBox grandparent) activeNotebook 2
-                                    widgetSetName activeNotebook "root"
-            adjustPanes panePath newPanePath
-            adjustPanes otherSidePath newPanePath
-            adjustLayoutForCollapse panePath
+                Just otherSidePath ->
+                    let sp1 = getGroupPathForCollapse panePath layout1
+                        sp2 = getGroupPathForCollapse otherSidePath layout1
+                    in do
+                    case sp1 of
+                        Nothing -> return ()
+                        Just sp -> viewCollapse' sp
+                    case  sp2 of
+                        Nothing -> return ()
+                        Just sp -> viewCollapse' sp
+                    paneMap         <- getPaneMapSt
+                    activeNotebook  <- getNotebook panePath
+                    st  <- getFrameState
+                    otherSideNotebook <- getNotebook otherSidePath
+                    setFrameState st{panePathFromNB = (Map.delete otherSideNotebook
+                                                        (Map.insert activeNotebook newPanePath (panePathFromNB st)))}
+                    let paneNamesToMove = map (\(w,(p,_)) -> w)
+                                            $filter (\(w,(p,_)) -> otherSidePath `isPrefixOf` p)
+                                                $Map.toList paneMap
+                    panesToMove <- mapM paneFromName paneNamesToMove
+                    mapM_ (\(PaneC p) -> move panePath p) panesToMove
+                    mbParent <- liftIO $ widgetGetParent activeNotebook
+                    case mbParent of
+                        Nothing -> error "collapse: no parent"
+                        Just parent -> do
+                            mbGrandparent <- liftIO $ widgetGetParent parent
+                            case mbGrandparent of
+                                Nothing -> error "collapse: no grandparent"
+                                Just grandparent -> do
+                                    nbIndex <- if grandparent `isA` gTypeNotebook
+                                        then liftIO $ notebookPageNum (castToNotebook grandparent) parent
+                                        else return Nothing
+                                    liftIO $ containerRemove (castToContainer grandparent) parent
+                                    liftIO $ containerRemove (castToContainer parent) activeNotebook
+                                    if length panePath > 1
+                                        then do
+                                            let lasPathElem = last newPanePath
+                                            case (lasPathElem, nbIndex) of
+                                                (SplitP dir, _) | dir == TopP || dir == LeftP ->
+                                                    liftIO $ panedPack1 (castToPaned grandparent) activeNotebook True True
+                                                (SplitP dir, _) | dir == BottomP || dir == RightP ->
+                                                    liftIO $ panedPack2 (castToPaned grandparent) activeNotebook True True
+                                                (GroupP group, Just n) -> do
+                                                    liftIO $ notebookInsertPage (castToNotebook grandparent) activeNotebook group n
+                                                    label <- groupLabel group
+                                                    liftIO $ do
+                                                        notebookSetTabLabel (castToNotebook grandparent) activeNotebook label
+                                                        notebookSetCurrentPage (castToNotebook grandparent) n
+                                                        return ()
+                                                _ -> error "collapse: Unable to find page index"
+                                            liftIO $ widgetSetName activeNotebook $panePathElementToWidgetName lasPathElem
+                                        else liftIO $ do
+                                            boxPackStart (castToVBox grandparent) activeNotebook PackGrow 0
+                                            boxReorderChild (castToVBox grandparent) activeNotebook 2
+                                            widgetSetName activeNotebook "root"
+                    adjustPanes panePath newPanePath
+                    adjustPanes otherSidePath newPanePath
+                    adjustLayoutForCollapse panePath
 
 getGroupPathForCollapse :: PanePath -> PaneLayout -> Maybe PanePath
 getGroupPathForCollapse path layout =
@@ -886,13 +877,10 @@ setCurrentNotebookPages widget = do
                             return ()
                         Nothing      -> return ()
                 else return ()
-        Nothing -> do
-            name <- widgetGetName widget
-            if name == "Leksah Main Window"
-                then return ()
-                else putStrLn $ "No parent for " ++ name
-            --widgetShowAll widget
-            --windowPresent (castToWindow widget)
+        Nothing -> return ()
+                    --do -- TODO use this?
+            -- widgetShowAll widget
+            -- windowPresent (castToWindow widget)
 
 --
 -- | Get a valid panePath from a standard path.
@@ -1098,7 +1086,6 @@ getActivePanePathOrStandard sp = do
         Nothing -> do
             layout <- getLayoutSt
             return (getBestPanePath sp layout)
-
 
 --
 -- | Get the active notebook
@@ -1306,3 +1293,34 @@ getUIAction str f = do
         case findAction of
             Just act -> return (f act)
             Nothing  -> error $"getUIAction can't find action " ++ str
+
+getThis :: PaneMonad delta =>  (FrameState delta -> alpha) -> delta alpha
+getThis sel = do
+    st <- getFrameState
+    return (sel st)
+setThis :: PaneMonad delta =>  (FrameState delta -> alpha -> FrameState delta) -> alpha -> delta ()
+setThis sel value = do
+    st <- getFrameState
+    setFrameState (sel st value)
+
+getWindowsSt    = getThis windows
+setWindowsSt    = setThis (\st value -> st{windows = value})
+getUiManagerSt  = getThis uiManager
+getPanesSt      =  getThis panes
+setPanesSt      = setThis (\st value -> st{panes = value})
+getPaneMapSt    = getThis paneMap
+setPaneMapSt    = setThis (\st value -> st{paneMap = value})
+getActivePaneSt = getThis activePane
+setActivePaneSt = setThis (\st value -> st{activePane = value})
+getLayoutSt     = getThis layout
+setLayoutSt     = setThis (\st value -> st{layout = value})
+getPanePathFromNB  = getThis panePathFromNB
+setPanePathFromNB  = setThis (\st value -> st{panePathFromNB = value})
+
+
+getActivePane   = getActivePaneSt
+setActivePane   = setActivePaneSt
+getUiManager    = getUiManagerSt
+getWindows      = getWindowsSt
+getMainWindow   = liftM head getWindows
+getLayout       = getLayoutSt

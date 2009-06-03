@@ -471,9 +471,12 @@ applyLayout layoutS = do
         nb          <-  getNotebook pp
         case (mbDetachedId, mbDetachedSize) of
             (Just id, Just (width, height)) -> do
-                viewDetach' pp id
-                Just parent <- liftIO $ widgetGetParent nb
-                liftIO $ windowSetDefaultSize (castToWindow parent) width height
+                mbPair <- viewDetach' pp id
+                case mbPair of
+                    Nothing     -> return ()
+                    Just (win,wid) -> do
+                        liftIO $ widgetShowAll win
+                        liftIO $ windowSetDefaultSize win width height
             _ -> return ()
         liftIO $notebookSetShowTabs nb (isJust mbTabPos)
         case mbTabPos of
