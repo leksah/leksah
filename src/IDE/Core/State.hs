@@ -193,7 +193,9 @@ currentError     = (\(e,_,_)-> e) . currentEBC
 currentBreak     = (\(_,b,_)-> b) . currentEBC
 currentContext   = (\(_,_,c)-> c) . currentEBC
 
-setCurrentError e = modifyIDE_ (\ide -> return (ide{currentEBC = (e, currentBreak ide, currentContext ide)}))
+setCurrentError e = do
+    modifyIDE_ (\ide -> return (ide{currentEBC = (e, currentBreak ide, currentContext ide)}))
+    ask >>= \ideR -> triggerEvent ideR (CurrentErrorChanged e) >> return ()
 setCurrentBreak b = modifyIDE_ (\ide -> return (ide{currentEBC = (currentError ide, b, currentContext ide)}))
 setCurrentContext c = modifyIDE_ (\ide -> return (ide{currentEBC = (currentError ide, currentBreak ide, c)}))
 
@@ -224,6 +226,8 @@ data IDEEvent  =
     |   SaveSession FilePath
     |   UpdateRecent
     |   DebuggerChanged
+    |   ErrorChanged
+    |   CurrentErrorChanged (Maybe LogRef)
 
 --
 -- | A mutable reference to the IDE state
@@ -244,6 +248,9 @@ instance Event IDEEvent String where
     getSelector (SaveSession _)         =   "SaveSession"
     getSelector UpdateRecent            =   "UpdateRecent"
     getSelector DebuggerChanged         =   "DebuggerChanged"
+    getSelector ErrorChanged            =   "ErrorChanged"
+    getSelector (CurrentErrorChanged _) =   "CurrentErrorChanged"
+
 
 instance EventSource IDERef IDEEvent IDEM String where
 
@@ -260,6 +267,8 @@ instance EventSource IDERef IDEEvent IDEM String where
     canTriggerEvent o "SaveSession"     =   True
     canTriggerEvent o "UpdateRecent"    =   True
     canTriggerEvent o "DebuggerChanged" =   True
+    canTriggerEvent o "ErrorChanged"    =   True
+    canTriggerEvent o "CurrentErrorChanged" = True
     canTriggerEvent _ _                 =   False
 
     getHandlers ideRef = do

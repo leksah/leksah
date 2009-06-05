@@ -154,7 +154,7 @@ breakpointViewPopup ideR  store treeView (Button _ click _ _ _ _ button _ _)
         else if button == LeftButton && click == DoubleClick
                 then do sel         <-  getSelectedBreakpoint treeView store
                         case sel of
-                            Just ref      -> reflectIDE (selectRef ref) ideR
+                            Just ref      -> reflectIDE (selectRef (Just ref)) ideR
                             otherwise       -> sysMessage Normal "Debugger>> breakpointViewPopup: no selection2"
                         return True
                 else return False

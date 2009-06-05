@@ -74,6 +74,7 @@ Executable leksah
                    IDE.Pane.Search IDE.Pane.References IDE.Pane.PackageFlags
                    IDE.Tool IDE.LogRef IDE.Debug IDE.Pane.Debugger IDE.Pane.Grep
                    IDE.Pane.Breakpoints IDE.Pane.Trace IDE.Pane.Variables
+                   IDE.Pane.Errors
     ghc-prof-options: -auto-all -prof
     ghc-shared-options: -auto-all -prof
     ghc-options: -fwarn-unused-imports -fwarn-missing-fields -fwarn-incomplete-patterns -ferror-spans

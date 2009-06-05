@@ -115,7 +115,7 @@ builder pp nb windows ideR = do
     sel `onSelectionChanged` do
         sel <- getSelectedTracepoint treeView tracepoints
         case sel of
-            Just ref -> reflectIDE (selectRef ref) ideR
+            Just ref -> reflectIDE (selectRef (Just ref)) ideR
             Nothing -> return ()
 
     return (pane,[ConnectC cid1])

@@ -46,6 +46,7 @@ import IDE.Pane.SourceBuffer
 import IDE.Pane.Preferences
 import IDE.Pane.PackageFlags
 import IDE.Pane.PackageEditor
+import IDE.Pane.Errors
 import IDE.Package
 import IDE.Pane.Log
 import IDE.SaveSession
@@ -203,7 +204,7 @@ mkActions =
     ,AD "ExecuteSelection" "_Execute Selection" (Just "Sends the selected text to the debugger") Nothing
         debugExecuteSelection [] False
     ,AD "ShowDebugger" "Show Debugger" Nothing Nothing
-        showDebugger [] False
+        showErrors [] False
 
     ,AD "DebugSetBreakpoint" "Set Breakpoint" (Just "Set a breakpoint on the selected name or current line") Nothing
         debugSetBreakpoint [] False
@@ -702,75 +703,40 @@ handleSpecialKeystrokes _ = return True
 registerEvents :: IDEAction
 registerEvents =    do
     stRef   <-  ask
-    registerEvent stRef "LogMessage" (Left logHandler)
-    registerEvent stRef "SelectInfo" (Left siHandler)
-    registerEvent stRef "SelectIdent" (Left sidHandler)
-    registerEvent stRef "CurrentInfo" (Left ciuHandler)
-    registerEvent stRef "ActivePack" (Left apHandler)
-    registerEvent stRef "RecordHistory" (Left rhHandler)
-    registerEvent stRef "Sensitivity" (Left sHandler)
-    registerEvent stRef "DescrChoice" (Left dcHandler)
-    registerEvent stRef "SearchMeta" (Left smHandler)
-    registerEvent stRef "LoadSession" (Left lsHandler)
-    registerEvent stRef "SaveSession" (Left ssHandler)
-    registerEvent stRef "UpdateRecent" (Left urHandler)
-    registerEvent stRef "DebuggerChanged" (Left debHandler)
-
+    registerEvent stRef "LogMessage"
+        (Left (\e@(LogMessage s t)      -> getLog >>= \(log :: IDELog) -> liftIO $ appendLog log s t
+                                                >> return e))
+    registerEvent stRef "SelectInfo"
+        (Left (\ e@(SelectInfo str)     -> setSymbol str >> return e))
+    registerEvent stRef "SelectIdent"
+        (Left (\ e@(SelectIdent id)     -> selectIdentifier id >> return e))
+    registerEvent stRef "CurrentInfo"
+        (Left (\ CurrentInfo            -> reloadKeepSelection >> return CurrentInfo))
+    registerEvent stRef "ActivePack"
+        (Left (\ ActivePack             -> (infoForActivePackage :: IDEAction) >> return ActivePack))
+    registerEvent stRef "RecordHistory"
+        (Left (\ rh@(RecordHistory h)   -> recordHistory h >> return rh))
+    registerEvent stRef "Sensitivity"
+        (Left (\ s@(Sensitivity h)      -> setSensitivity h >> return s))
+    registerEvent stRef "DescrChoice"
+        (Left (\ e@(DescrChoice descrs) -> setChoices descrs >> return e))
+    registerEvent stRef "SearchMeta"
+        (Left (\ e@(SearchMeta string)  -> searchMetaGUI string >> return e))
+    registerEvent stRef "LoadSession"
+        (Left (\ e@(LoadSession fp)     -> loadSession fp >> return e))
+    registerEvent stRef "SaveSession"
+        (Left (\ e@(SaveSession fp)     -> saveSessionAs fp >> return e))
+    registerEvent stRef "UpdateRecent"
+        (Left (\ e@UpdateRecent         -> updateRecentEntries >> return e))
+    registerEvent stRef "DebuggerChanged"
+        (Left (\ e@DebuggerChanged      -> updateDebugger >> return e))
+    registerEvent stRef "ErrorChanged"
+        (Left (\ e@ErrorChanged         -> reifyIDE (\ideR ->
+            postGUIAsync (reflectIDE fillErrorList ideR)) >> return e))
+    registerEvent stRef "CurrentErrorChanged"
+        (Left (\ e@(CurrentErrorChanged mbLogRef) -> reifyIDE (\ideR ->
+            postGUIAsync (reflectIDE (selectRef mbLogRef) ideR) >>
+            postGUIAsync (reflectIDE (selectError mbLogRef) ideR)) >> return e))
     return ()
-    where
-        logHandler e@(LogMessage s t) =   do
-            (log :: IDELog)          <-  getLog
-            liftIO $ appendLog log s t
-            return e
-        logHandler _ =   throwIDE "Leksah>>registerEvents: Impossible event"
 
-        siHandler e@(SelectInfo str) =   do
-            setSymbol str
-            return e
-        siHandler _ =   throwIDE "Leksah>>registerEvents: Impossible event"
-
-        sidHandler e@(SelectIdent id) =   do
-            selectIdentifier id
-            return e
-        sidHandler _ =   throwIDE "Leksah>>registerEvents: Impossible event"
-
-        ciuHandler CurrentInfo =   do
-            reloadKeepSelection
-            return CurrentInfo
-        ciuHandler _ =   throwIDE "Leksah>>registerEvents: Impossible event"
-
-        apHandler ActivePack =   do
-            infoForActivePackage :: IDEAction
-            return ActivePack
-        apHandler _ =   throwIDE "Leksah>>registerEvents: Impossible event"
-
-        rhHandler rh@(RecordHistory h) =   do
-            recordHistory h
-            return rh
-        rhHandler _ =   throwIDE "Leksah>>registerEvents: Impossible event"
-
-        sHandler s@(Sensitivity h) =   do
-            setSensitivity h
-            return s
-        sHandler _ =   throwIDE "Leksah>>registerEvents: Impossible event"
-
-        dcHandler e@(DescrChoice descrs) =   do
-            setChoices descrs
-            return e
-        dcHandler _ =   throwIDE "Leksah>>registerEvents: Impossible event"
-
-        smHandler e@(SearchMeta string) =  searchMetaGUI string >> return e
-        smHandler _ =   throwIDE "Leksah>>registerEvents: Impossible event"
-
-        lsHandler e@(LoadSession fp) =  loadSession fp >> return e
-        lsHandler _ =   throwIDE "Leksah>>registerEvents: Impossible event"
-
-        ssHandler e@(SaveSession fp) =  saveSessionAs fp >> return e
-        ssHandler _ =   throwIDE "Leksah>>registerEvents: Impossible event"
-
-        urHandler e@UpdateRecent =  updateRecentEntries >> return e
-        urHandler _ =   throwIDE "Leksah>>registerEvents: Impossible event"
-
-        debHandler e@DebuggerChanged =  updateDebugger >> return e
-        debHandler _ =   throwIDE "Leksah>>registerEvents: Impossible event"
 

@@ -56,6 +56,7 @@ import System.Time (getClockTime)
 import IDE.Package (activatePackage,deactivatePackage)
 import Data.List (foldl')
 import IDE.Pane.Debugger (DebuggerState(..))
+import IDE.Pane.Errors (ErrorsState(..))
 
 -- ---------------------------------------------------------------------
 -- All pane types must be in here !
@@ -74,6 +75,7 @@ data PaneState      =   BufferSt BufferState
                     |   BreakpointsSt BreakpointsState
                     |   TraceSt TraceState
                     |   VariablesSt VariablesState
+                    |   ErrorsSt ErrorsState
     deriving(Eq,Ord,Read,Show)
 
 asPaneState :: RecoverablePane alpha beta gamma => beta -> PaneState
@@ -90,6 +92,7 @@ asPaneState s | isJust ((cast s) :: Maybe GrepState)        =   GrepSt (fromJust
 asPaneState s | isJust ((cast s) :: Maybe BreakpointsState) =   BreakpointsSt (fromJust $ cast s)
 asPaneState s | isJust ((cast s) :: Maybe TraceState)       =   TraceSt (fromJust $ cast s)
 asPaneState s | isJust ((cast s) :: Maybe VariablesState)   =   VariablesSt (fromJust $ cast s)
+asPaneState s | isJust ((cast s) :: Maybe ErrorsState)      =   ErrorsSt (fromJust $ cast s)
 asPaneState s                                               =   error "SaveSession>>asPaneState incomplete cast"
 
 recover :: PanePath -> PaneState -> IDEAction
@@ -106,6 +109,7 @@ recover pp (GrepSt p)           =   recoverState pp p
 recover pp (BreakpointsSt p)    =   recoverState pp p
 recover pp (TraceSt p)          =   recoverState pp p
 recover pp (VariablesSt p)      =   recoverState pp p
+recover pp (ErrorsSt p)      =   recoverState pp p
 
 -- ---------------------------------------------------------------------
 
@@ -385,7 +389,6 @@ mkLayout = do
                 Just parent <- liftIO $ widgetGetParent nb
                 liftIO $ fmap Just $ windowGetSize (castToWindow parent)
             Nothing -> return $ detachedSize raw
-        liftIO $ putStrLn $ show size
         return raw{
                 paneGroups   = Map.fromAscList groups2
             ,   paneTabs     = if showTabs then Just (posTypeToPaneDirection pos) else Nothing

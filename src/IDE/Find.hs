@@ -380,7 +380,7 @@ doGrep fb   = do
             let srcPaths = nub $ concatMap hsSourceDirs $ allBuildInfo pd
             liftIO $ forkIO $ do
                 (output, pid) <- runTool "grep" ((if caseSensitive then [] else ["-i"])
-                    ++ ["-r", "-E", "-n", regexString] ++ srcPaths)
+                    ++ ["-r", "-E", "-n", "--exclude=*~", regexString] ++ srcPaths)
                 reflectIDE (setGrepResults output) ideR
             return ()
 

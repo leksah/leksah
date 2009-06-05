@@ -85,7 +85,7 @@ import Control.Monad.Reader
 import Graphics.UI.Gtk hiding (get)
 import Graphics.UI.Gtk.Gdk.Events(Modifier(..))
 import qualified Data.Map as Map
-import Data.Set(Set)
+--import Data.Set(Set)
 import qualified Data.Set as Set
 
 import Default
@@ -103,6 +103,7 @@ import Data.Typeable (Typeable(..))
 import SrcLoc (SrcSpan(..))
 import FastString (unpackFS)
 import Outputable (ppr, showSDoc)
+import Data.Set (Set(..))
 
 -- ---------------------------------------------------------------------
 -- IDEPackages

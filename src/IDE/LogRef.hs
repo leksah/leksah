@@ -33,6 +33,7 @@ module IDE.LogRef (
 ,   logOutputForHistoricContext
 ,   selectRef
 ,   setBreakpointList
+,   showSourceSpan
 ) where
 
 import Graphics.UI.Gtk
@@ -53,19 +54,25 @@ import SrcLoc
     (srcLocSpan, mkSrcLoc, mkSrcSpan, SrcSpan(..))
 import FastString (mkFastString)
 import Data.Maybe (catMaybes)
+import Outputable (ppr, showSDoc)
 
-selectRef :: LogRef -> IDEAction
-selectRef ref = do
+showSourceSpan :: LogRef -> String
+showSourceSpan = showSDoc . ppr . logRefSrcSpan
+
+
+selectRef :: Maybe LogRef -> IDEAction
+selectRef (Just ref) = do
     logRefs <- readIDE allLogRefs
     case elemIndex ref logRefs of
-        Nothing -> return ()
+        Nothing    -> return ()
         Just index -> do
-            mbBuf <- selectSourceBuf (filePath ref)
+            mbBuf         <- selectSourceBuf (filePath ref)
             case mbBuf of
-                Just buf -> markRefInSourceBuf index buf ref True
-                Nothing -> return ()
+                Just buf  -> markRefInSourceBuf index buf ref True
+                Nothing   -> return ()
             log :: IDELog <- getLog
             liftIO $ markErrorInLog log (logLines ref)
+selectRef Nothing = return ()
 
 forOpenLogRefs :: (Int -> LogRef -> IDEBuffer -> IDEAction) -> IDEAction
 forOpenLogRefs f = do
@@ -92,12 +99,15 @@ unmarkLogRefs = do
 
 setErrorList :: [LogRef] -> IDEAction
 setErrorList errs = do
+    ideR <- ask
     unmarkLogRefs
     breaks <- readIDE breakpointRefs
     contexts <- readIDE contextRefs
     modifyIDE_ (\ide -> return (ide{allLogRefs = errs ++ breaks ++ contexts}))
     setCurrentError Nothing
     markLogRefs
+    triggerEvent ideR ErrorChanged
+    return ()
 
 setBreakpointList :: [LogRef] -> IDEAction
 setBreakpointList breaks = do
@@ -110,10 +120,13 @@ setBreakpointList breaks = do
 
 addLogRefs :: [LogRef] -> IDEAction
 addLogRefs refs = do
+    ideR <- ask
     unmarkLogRefs
     modifyIDE_ (\ide -> return (ide{allLogRefs = (allLogRefs ide) ++ refs}))
     setCurrentError Nothing
     markLogRefs
+    triggerEvent ideR ErrorChanged
+    return ()
 
 nextError :: IDEAction
 nextError = do
@@ -130,7 +143,7 @@ nextError = do
                                 Just n | (n + 1) < length errs -> (n + 1)
                                 Just n -> n
             setCurrentError (Just $ errs!!new)
-            selectRef $ errs!!new
+            selectRef $ Just (errs!!new)
 
 previousError :: IDEAction
 previousError = do
@@ -147,7 +160,7 @@ previousError = do
                                 Just n | n > 0 -> (n - 1)
                                 Just n -> 0
             setCurrentError (Just $ errs!!new)
-            selectRef $ errs!!new
+            selectRef $ Just (errs!!new)
 
 nextBreakpoint :: IDEAction
 nextBreakpoint = do
@@ -164,7 +177,7 @@ nextBreakpoint = do
                                 Just n | (n + 1) < length breaks -> (n + 1)
                                 Just n -> n
             setCurrentBreak (Just $ breaks!!new)
-            selectRef $ breaks!!new
+            selectRef $ Just (breaks!!new)
 
 previousBreakpoint :: IDEAction
 previousBreakpoint = do
@@ -181,7 +194,7 @@ previousBreakpoint = do
                                 Just n | n > 0 -> (n - 1)
                                 Just n -> 0
             setCurrentBreak (Just $ breaks!!new)
-            selectRef $ breaks!!new
+            selectRef $ Just (breaks!!new)
 
 nextContext :: IDEAction
 nextContext = do
@@ -198,7 +211,7 @@ nextContext = do
                                 Just n | (n + 1) < length contexts -> (n + 1)
                                 Just n -> n
             setCurrentContext (Just $ contexts!!new)
-            selectRef $ contexts!!new
+            selectRef $ Just (contexts!!new)
 
 previousContext :: IDEAction
 previousContext = do
@@ -215,7 +228,7 @@ previousContext = do
                                 Just n | n > 0 -> (n - 1)
                                 Just n -> 0
             setCurrentContext (Just $ contexts!!new)
-            selectRef $ contexts!!new
+            selectRef $ Just (contexts!!new)
 
 lastContext :: IDEAction
 lastContext = do
@@ -226,7 +239,7 @@ lastContext = do
         else do
             let new = (last contexts)
             setCurrentContext (Just new)
-            selectRef $ new
+            selectRef $ Just new
 
 srcSpanParser :: CharParser () SrcSpan
 srcSpanParser = try (do
