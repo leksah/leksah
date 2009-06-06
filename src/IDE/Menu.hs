@@ -65,7 +65,6 @@ import IDE.NotebookFlipper
 import IDE.ImportTool (addAllImports)
 import IDE.LogRef
 import IDE.Debug
-import IDE.Pane.Debugger
 import System.Directory (doesFileExist)
 import qualified Graphics.UI.Gtk.Gdk.Events as GdkEvents
 import Graphics.UI.Gtk.Gdk.Events
@@ -76,6 +75,8 @@ import qualified Data.Map as  Map (lookup)
 import Data.List (sort)
 import Control.Event (registerEvent)
 import Paths_leksah
+import IDE.Pane.Breakpoints (showBreakpointList, fillBreakpointList, selectBreak)
+import Debug.Trace (trace)
 
 --
 -- | The Actions known to the system (they can be activated by keystrokes or menus)
@@ -203,8 +204,18 @@ mkActions =
         debugQuit [] False
     ,AD "ExecuteSelection" "_Execute Selection" (Just "Sends the selected text to the debugger") Nothing
         debugExecuteSelection [] False
-    ,AD "ShowDebugger" "Show Debugger" Nothing Nothing
+    ,AD "ShowErrorsList" "Show Errors" Nothing Nothing
         showErrors [] False
+    ,AD "ShowBreakpointsList" "Show Breakpoints List" Nothing Nothing
+        (trace "1" showBreakpointList) [] False
+    ,AD "ShowVariablesList" "Show Variables List" Nothing Nothing
+        {--showVariables--} undefined [] False
+    ,AD "ShowTracesList" "Show Traces List" Nothing Nothing
+        {--showTraces--} undefined [] False
+    ,AD "ShowEval" "Show Eval" Nothing Nothing
+        {--showTrace--} undefined [] False
+    ,AD "ShowDebugger" "Show Debugger" Nothing Nothing
+        {--showTrace--} undefined [] False
 
     ,AD "DebugSetBreakpoint" "Set Breakpoint" (Just "Set a breakpoint on the selected name or current line") Nothing
         debugSetBreakpoint [] False
@@ -728,8 +739,8 @@ registerEvents =    do
         (Left (\ e@(SaveSession fp)     -> saveSessionAs fp >> return e))
     registerEvent stRef "UpdateRecent"
         (Left (\ e@UpdateRecent         -> updateRecentEntries >> return e))
-    registerEvent stRef "DebuggerChanged"
-        (Left (\ e@DebuggerChanged      -> updateDebugger >> return e))
+--    registerEvent stRef "DebuggerChanged"
+--        (Left (\ e@DebuggerChanged      -> updateDebugger >> return e))
     registerEvent stRef "ErrorChanged"
         (Left (\ e@ErrorChanged         -> reifyIDE (\ideR ->
             postGUIAsync (reflectIDE fillErrorList ideR)) >> return e))
@@ -737,6 +748,13 @@ registerEvents =    do
         (Left (\ e@(CurrentErrorChanged mbLogRef) -> reifyIDE (\ideR ->
             postGUIAsync (reflectIDE (selectRef mbLogRef) ideR) >>
             postGUIAsync (reflectIDE (selectError mbLogRef) ideR)) >> return e))
+    registerEvent stRef "BreakpointChanged"
+        (Left (\ e@BreakpointChanged    -> reifyIDE (\ideR ->
+            postGUIAsync (reflectIDE fillBreakpointList ideR)) >> return e))
+    registerEvent stRef "CurrentBreakChanged"
+        (Left (\ e@(CurrentBreakChanged mbLogRef) -> reifyIDE (\ideR ->
+            postGUIAsync (reflectIDE (selectRef mbLogRef) ideR) >>
+            postGUIAsync (reflectIDE (selectBreak mbLogRef) ideR)) >> return e))
     return ()
 
 

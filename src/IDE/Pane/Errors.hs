@@ -23,7 +23,7 @@ module IDE.Pane.Errors (
 ) where
 
 import Graphics.UI.Gtk
---import Data.Typeable (Typeable(..))
+import Data.Typeable (Typeable(..))
 import IDE.Core.State
 import Control.Monad.Reader
 import IDE.LogRef
@@ -32,7 +32,7 @@ import Graphics.UI.Gtk.General.Enums
 import Graphics.UI.Gtk.Gdk.Events (Event(..))
 import IDE.ImportTool (addImport, parseNotInScope, addAllImports)
 import Data.List (elemIndex)
-import Data.Typeable (Typeable(..))
+
 
 -- | A breakpoints pane description
 --
@@ -65,6 +65,7 @@ instance RecoverablePane IDEErrors ErrorsState IDEM where
     recoverState pp ErrorsState =   do
         nb      <-  getNotebook pp
         newPane pp nb builder
+        fillErrorList
         return ()
 
 showErrors :: IDEAction
@@ -81,6 +82,7 @@ getErrors = do
             pp          <-  getBestPathForId "*Errors"
             nb          <-  getNotebook pp
             newPane pp nb builder
+            fillErrorList
             mbErrors <- getPane
             case mbErrors of
                 Nothing ->  throwIDE "Can't init errors"
@@ -145,7 +147,7 @@ fillErrorList = do
                 mapM_ (insertError (errorStore pane)) (zip refs [0..length refs])
     where
     insertError treeStore (lr,index) =
-        case lines (refDescription lr) of
+        case {--lines--} [refDescription lr] of
             [] -> treeStoreInsert treeStore [] index (ErrColumn lr "" 0)
             h:t -> do
                 treeStoreInsert treeStore [] index (ErrColumn lr h 0)

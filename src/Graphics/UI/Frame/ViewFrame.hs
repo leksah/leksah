@@ -107,9 +107,9 @@ import Graphics.UI.Editor.Basics
     (eventPaneName, GUIEventSelector(..))
 import qualified Data.Set as  Set (unions, member)
 import Data.Set (Set(..))
-import Debug.Trace (trace)
 import Graphics.UI.Gtk.Gdk.Events (Event(..))
---trace a b = b
+--import Debug.Trace (trace)
+trace a b = b
 
 removePaneAdmin :: Pane alpha beta => alpha -> beta ()
 removePaneAdmin pane = do

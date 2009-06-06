@@ -74,7 +74,13 @@
        <menuitem name="_Start Debugger" action="StartDebugger" />
        <menuitem name="_Quit Debugger" action="QuitDebugger" />
        <menuitem name="_Execute Selection" action="ExecuteSelection" />
-       <menuitem name="Show _Debugger" action="ShowDebugger" />
+       <separator/>
+       <menuitem name="Show _Errors" action="ShowErrorsList" />
+       <menuitem name="Show Breakpoints List" action="ShowBreakpointsList" />
+       <menuitem name="Show Variables List" action="ShowVariablesList" />
+       <menuitem name="Show Trace List" action="ShowTracesList" />
+       <menuitem name="Show Eval" action="ShowEval" />
+       <menuitem name="Show Debugger" action="ShowDebugger" />
        <separator/>
        <menuitem name="Set Breakpoint" action="DebugSetBreakpoint" />
        <menuitem name="Show Breakpoints" action="ShowBreakpoints" />

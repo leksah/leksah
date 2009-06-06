@@ -111,12 +111,15 @@ setErrorList errs = do
 
 setBreakpointList :: [LogRef] -> IDEAction
 setBreakpointList breaks = do
+    ideR <- ask
     unmarkLogRefs
     errs <- readIDE errorRefs
     contexts <- readIDE contextRefs
     modifyIDE_ (\ide -> return (ide{allLogRefs = errs ++ breaks ++ contexts}))
     setCurrentBreak Nothing
     markLogRefs
+    triggerEvent ideR BreakpointChanged
+    return ()
 
 addLogRefs :: [LogRef] -> IDEAction
 addLogRefs refs = do
@@ -126,6 +129,7 @@ addLogRefs refs = do
     setCurrentError Nothing
     markLogRefs
     triggerEvent ideR ErrorChanged
+    triggerEvent ideR BreakpointChanged
     return ()
 
 nextError :: IDEAction

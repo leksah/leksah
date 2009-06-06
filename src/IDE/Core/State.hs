@@ -196,7 +196,9 @@ currentContext   = (\(_,_,c)-> c) . currentEBC
 setCurrentError e = do
     modifyIDE_ (\ide -> return (ide{currentEBC = (e, currentBreak ide, currentContext ide)}))
     ask >>= \ideR -> triggerEvent ideR (CurrentErrorChanged e) >> return ()
-setCurrentBreak b = modifyIDE_ (\ide -> return (ide{currentEBC = (currentError ide, b, currentContext ide)}))
+setCurrentBreak b = do
+    modifyIDE_ (\ide -> return (ide{currentEBC = (currentError ide, b, currentContext ide)}))
+    ask >>= \ideR -> triggerEvent ideR (CurrentBreakChanged b) >> return ()
 setCurrentContext c = modifyIDE_ (\ide -> return (ide{currentEBC = (currentError ide, currentBreak ide, c)}))
 
 
@@ -228,7 +230,8 @@ data IDEEvent  =
     |   DebuggerChanged
     |   ErrorChanged
     |   CurrentErrorChanged (Maybe LogRef)
-
+    |   BreakpointChanged
+    |   CurrentBreakChanged (Maybe LogRef)
 --
 -- | A mutable reference to the IDE state
 --
@@ -250,7 +253,8 @@ instance Event IDEEvent String where
     getSelector DebuggerChanged         =   "DebuggerChanged"
     getSelector ErrorChanged            =   "ErrorChanged"
     getSelector (CurrentErrorChanged _) =   "CurrentErrorChanged"
-
+    getSelector BreakpointChanged       =   "BreakpointChanged"
+    getSelector (CurrentBreakChanged _) =   "CurrentBreakChanged"
 
 instance EventSource IDERef IDEEvent IDEM String where
 
@@ -269,6 +273,8 @@ instance EventSource IDERef IDEEvent IDEM String where
     canTriggerEvent o "DebuggerChanged" =   True
     canTriggerEvent o "ErrorChanged"    =   True
     canTriggerEvent o "CurrentErrorChanged" = True
+    canTriggerEvent o "BreakpointChanged" = True
+    canTriggerEvent o "CurrentBreakChanged" = True
     canTriggerEvent _ _                 =   False
 
     getHandlers ideRef = do
