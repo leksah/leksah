@@ -18,7 +18,7 @@ module IDE.Pane.Debugger (
     IDEDebugger
 ,   DebuggerState
 ,   showDebugger
-,   updateDebugger
+--,   updateDebugger
 ) where
 
 import Graphics.UI.Gtk
@@ -254,9 +254,9 @@ setDebuggerText deb tol = do
                 textBufferInsertAtCursor gtkbuf (" >> " ++ text)
                 return ()
 
-updateDebugger :: IDEAction
-updateDebugger = do
-    fillBreakpointList
-    fillVariablesList
-    fillTracepointList
-
+--updateDebugger :: IDEAction
+--updateDebugger = do
+--    fillBreakpointList
+--    fillVariablesList
+--    fillTracepointList
+--

@@ -77,6 +77,7 @@ import Control.Event (registerEvent)
 import Paths_leksah
 import IDE.Pane.Breakpoints (showBreakpointList, fillBreakpointList, selectBreak)
 import Debug.Trace (trace)
+import IDE.Pane.Variables (showVariables, fillVariablesList)
 
 --
 -- | The Actions known to the system (they can be activated by keystrokes or menus)
@@ -209,7 +210,7 @@ mkActions =
     ,AD "ShowBreakpointsList" "Show Breakpoints List" Nothing Nothing
         (trace "1" showBreakpointList) [] False
     ,AD "ShowVariablesList" "Show Variables List" Nothing Nothing
-        {--showVariables--} undefined [] False
+        showVariables [] False
     ,AD "ShowTracesList" "Show Traces List" Nothing Nothing
         {--showTraces--} undefined [] False
     ,AD "ShowEval" "Show Eval" Nothing Nothing
@@ -739,8 +740,9 @@ registerEvents =    do
         (Left (\ e@(SaveSession fp)     -> saveSessionAs fp >> return e))
     registerEvent stRef "UpdateRecent"
         (Left (\ e@UpdateRecent         -> updateRecentEntries >> return e))
---    registerEvent stRef "DebuggerChanged"
---        (Left (\ e@DebuggerChanged      -> updateDebugger >> return e))
+    registerEvent stRef "DebuggerChanged"
+        (Left (\ e@DebuggerChanged      -> reifyIDE (\ideR ->
+            postGUIAsync (reflectIDE fillVariablesList ideR) >> return e)))
     registerEvent stRef "ErrorChanged"
         (Left (\ e@ErrorChanged         -> reifyIDE (\ideR ->
             postGUIAsync (reflectIDE fillErrorList ideR)) >> return e))
