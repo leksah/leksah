@@ -167,6 +167,7 @@ constructFindReplace = reifyIDE $ \ ideR   -> do
     toolbar <- toolbarNew
     tooltips <- tooltipsNew
     toolbarSetStyle toolbar ToolbarIcons
+    toolbarSetIconSize toolbar IconSizeSmallToolbar
     closeButton <- toolButtonNewFromStock "gtk-close"
     toolbarInsert toolbar closeButton 0
 

@@ -1,0 +1,13 @@
+# leksah specific .gtkrc-2.0 adds
+style "leksah-close-button-style"
+{
+  GtkWidget::focus-padding = 0
+  GtkWidget::focus-line-width = 0
+  xthickness = 0 
+  ythickness = 0 
+}
+widget "*.leksah-close-button" style "leksah-close-button-style"
+
+# Maybe you wish to uncomment this if the beep is annoying
+# gtk-error-bell = 0
+ 

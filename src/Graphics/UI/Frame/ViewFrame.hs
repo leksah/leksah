@@ -108,7 +108,7 @@ import Graphics.UI.Editor.Basics
 import qualified Data.Set as  Set (unions, member)
 import Data.Set (Set(..))
 import Graphics.UI.Gtk.Gdk.Events (Event(..))
---import Debug.Trace (trace)
+-- import Debug.Trace (trace)
 trace a b = b
 
 removePaneAdmin :: Pane alpha beta => alpha -> beta ()
@@ -181,18 +181,21 @@ mkLabelBox lbl paneName = do
         innerBox  <- hBoxNew False 0
 
         tabButton <- buttonNew
+        widgetSetName tabButton "leksah-close-button"
         buttonSetFocusOnClick tabButton False
         buttonSetRelief tabButton ReliefNone
-        image     <- imageNewFromStock stockClose IconSizeMenu
+        buttonSetAlignment tabButton (0.0,0.0)
 
+        image     <- imageNewFromStock stockClose IconSizeMenu
         mbPB <- widgetRenderIcon tabButton stockClose IconSizeMenu ""
         (height,width)   <-  case mbPB of
-                        Nothing -> return (20,20)
-                        Just pb -> do
-                            h <- pixbufGetHeight pb
-                            w <- pixbufGetWidth pb
-                            return (h,w)
-        widgetSetSizeRequest tabButton (height + 8) (width + 8)
+                                Nothing -> trace "no real size" return (14,14)
+                                Just pb -> do
+                                h <- pixbufGetHeight pb
+                                w <- pixbufGetWidth pb
+                                return (h,w)
+        on tabButton styleSet (\style -> do
+            widgetSetSizeRequest tabButton (height + 2) (width + 2))
         containerSetBorderWidth tabButton 0
         containerAdd tabButton image
 

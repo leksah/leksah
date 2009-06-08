@@ -445,14 +445,21 @@ makeMenu uiManager actions menuDescription = reifyIDE (\ideR -> do
                 liftIO $statusbarPush sb 1 $accStr
                 return ()) ideR)
 
-getMenu :: UIManager -> IO (AccelGroup, [Widget])
-getMenu uiManager = do
+getMenuAndToolbars :: UIManager -> IO (AccelGroup, MenuBar, Toolbar)
+getMenuAndToolbars uiManager = do
     accGroup <- uiManagerGetAccelGroup uiManager
-    mbWidgets <- mapM (uiManagerGetWidget uiManager) ["ui/menubar","ui/toolbar"]
-    let widgets = map (\mb -> case mb of
-					Just it -> it
-					Nothing -> throwIDE "Menu>>makeMenu: failed to build menu") mbWidgets
-    return (accGroup,widgets)
+    mbMenu   <- uiManagerGetWidget uiManager "/ui/menubar"
+    let menu = case mbMenu of
+                    Just it -> castToMenuBar it
+                    Nothing -> throwIDE "Menu>>makeMenu: failed to create menubar"
+    mbToolbar <- uiManagerGetWidget uiManager "/ui/toolbar"
+    let toolbar = case mbToolbar of
+                    Just it -> castToToolbar it
+                    Nothing -> throwIDE "Menu>>makeMenu: failed to create toolbar"
+    toolbarSetIconSize toolbar IconSizeSmallToolbar
+    toolbarSetStyle toolbar ToolbarIcons
+    widgetSetSizeRequest toolbar 700 (-1)
+    return (accGroup,menu,toolbar)
 
 -- | Quit ide
 --  ### make reasonable
@@ -605,33 +612,20 @@ instrumentWindow win prefs topWidget = do
         iconExists  <-  doesFileExist iconPath
         when iconExists $
             windowSetIconFromFile win iconPath
-
-        (acc,menus) <-  getMenu uiManager'
-        when (length menus /= 2) $ throwIDE ("Failed to build menu" ++ show (length menus))
-        let toolbar = castToToolbar (menus !! 1)
+        vb <- vBoxNew False 1  -- Top-level vbox
+        widgetSetName vb "topBox"
+        (acc,menu,toolbar) <-  getMenuAndToolbars uiManager'
+        boxPackStart vb menu PackNatural 0
+        boxPackStart vb toolbar PackNatural 0
+        boxPackStart vb topWidget PackGrow 0
         findbar <- reflectIDE (do
             modifyIDE_ (\ide -> return (ide{toolbar = (True,Just toolbar)}))
             constructFindReplace ) ideR
-        sep0 <- separatorToolItemNew
-        separatorToolItemSetDraw sep0 False
-        toolItemSetExpand sep0 True
-        toolbarInsert toolbar sep0 (-1)
-        closeButton <- toolButtonNewFromStock "gtk-close"
-        toolbarInsert toolbar closeButton (-1)
-        closeButton `onToolButtonClicked` do
-            reflectIDE hideToolbar ideR
-        windowAddAccelGroup win acc
-        statusBar   <-  buildStatusbar ideR
-        vb          <-  vBoxNew False 1  -- Top-level vbox
-        widgetSetName vb "topBox"
-        toolbarSetStyle (castToToolbar (menus !! 1)) ToolbarIcons
-        widgetSetSizeRequest (menus !! 1)  500 (-1)
-        boxPackStart vb (menus !! 0) PackNatural 0
-        boxPackStart vb (menus !! 1) PackNatural 0
-        boxPackStart vb topWidget PackGrow 0
         boxPackStart vb findbar PackNatural 0
+        statusBar   <-  buildStatusbar ideR
         boxPackEnd vb statusBar PackNatural 0
         win `onKeyPress` (\ e -> reflectIDE (handleSpecialKeystrokes e) ideR)
+        windowAddAccelGroup win acc
         containerAdd win vb
         reflectIDE (do
             setCandyState (isJust (sourceCandy prefs))
@@ -649,7 +643,7 @@ instrumentSecWindow win = do
         when iconExists $
             windowSetIconFromFile win iconPath
 
-        (acc,_) <-  getMenu uiManager'
+        (acc,_,_) <-  getMenuAndToolbars uiManager'
         windowAddAccelGroup win acc
         win `onKeyPress` (\ e -> reflectIDE (handleSpecialKeystrokes e) ideR)
         return ()
