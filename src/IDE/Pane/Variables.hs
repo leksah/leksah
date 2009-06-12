@@ -28,16 +28,31 @@ import Control.Monad.Reader
 import IDE.Debug (debugCommand, debugCommand')
 import IDE.Tool (ToolOutput(..))
 import Text.ParserCombinators.Parsec
-    (anyChar, (<?>), char, noneOf, many, CharParser(..), parse)
+    (lookAhead,
+     alphaNum,
+     newline,
+     eof,
+     manyTill,
+     (<|>),
+     try,
+     space,
+     notFollowedBy,
+     sepBy,
+     anyChar,
+     (<?>),
+     char,
+     noneOf,
+     many,
+     CharParser(..),
+     parse)
 import qualified Text.ParserCombinators.Parsec.Token as  P
-    (symbol,
-     makeTokenParser)
+    (whiteSpace, symbol, makeTokenParser)
 import Text.ParserCombinators.Parsec.Language (emptyDef)
-import Data.Either (rights, lefts)
 import Graphics.UI.Gtk.Gdk.Events (Event(..))
 import Graphics.UI.Gtk.General.Enums
     (Click(..), MouseButton(..))
 import IDE.LogRef (logOutput)
+import Debug.Trace (trace)
 
 -- | A variables pane description
 --
@@ -157,17 +172,19 @@ fillVariablesList = do
     mbVariables <- getPane
     case mbVariables of
         Nothing -> return ()
-        Just var -> debugCommand' ":show bindings" (\to -> liftIO
+        Just var -> debugCommand' ":show bindings" (\to -> trace ("fillVariablesList to: " ++ show to) $ liftIO
                         $ postGUIAsync (do
-                            let triplesOrErrors = map (parse variableParser "") (map selectString to)
-                            mapM_ (\ e -> sysMessage Normal (show e)) (lefts triplesOrErrors)
-                            treeStoreClear (variables var)
-                            mapM_ (insertBreak (variables var))
-                                (zip (rights triplesOrErrors) [0..length (rights triplesOrErrors)])))
+                            case parse variablesParser "" (selectString to) of
+                                Left e -> sysMessage Normal (show e)
+                                Right triples -> do
+                                    treeStoreClear (variables var)
+                                    mapM_ (insertBreak (variables var))
+                                        (zip triples [0..length triples])))
     where
-    selectString :: ToolOutput -> String
-    selectString (ToolOutput str)    = str
-    selectString _                   = []
+    selectString :: [ToolOutput] -> String
+    selectString (ToolOutput str:r)  = '\n' : str ++ selectString r
+    selectString (_:r)               = selectString r
+    selectString []                  = ""
     insertBreak treeStore (v,index)  = treeStoreInsert treeStore [] index v
 
 getSelectedVariable ::  TreeView
@@ -182,18 +199,33 @@ getSelectedVariable treeView treeStore = do
             return (Just val)
         _  ->  return Nothing
 
+variablesParser :: CharParser () [VarDescription]
+variablesParser = do
+    r <- many variableParser
+    eof
+    return r
+
 variableParser :: CharParser () VarDescription
 variableParser = do
+    whiteSpace
     varName <- many (noneOf ":")
     symbol "::"
     typeStr  <- many (noneOf "=")
     char '='
-    value <- many anyChar
+    value <- many (do
+        noneOf "\n"
+        <|> try (do
+                r <- char '\n'
+                lookAhead (char ' ')
+                return r))
+
     return (VarDescription varName typeStr value)
-    <?> "buildLineParser"
+    <?> "variableParser"
 
 lexer = P.makeTokenParser emptyDef
 symbol = P.symbol lexer
+whiteSpace = P.whiteSpace lexer
+
 
 variablesViewPopup :: IDERef
     -> TreeStore VarDescription
