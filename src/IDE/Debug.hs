@@ -261,7 +261,7 @@ debugPrint :: IDEAction
 debugPrint = do
     maybeText <- selectedText
     case maybeText of
-        Just text -> debugCommand (":force " ++ text) logOutput
+        Just text -> debugCommand (":print " ++ text) logOutput
         Nothing   -> ideMessage Normal "Please select an name in the editor"
 
 debugSimplePrint :: IDEAction

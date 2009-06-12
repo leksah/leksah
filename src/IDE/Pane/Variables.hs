@@ -25,20 +25,14 @@ import Graphics.UI.Gtk
 import Data.Typeable (Typeable(..))
 import IDE.Core.State
 import Control.Monad.Reader
-import IDE.Debug (debugCommand, debugCommand')
+import IDE.Debug (debugCommand')
 import IDE.Tool (ToolOutput(..))
 import Text.ParserCombinators.Parsec
-    (lookAhead,
-     alphaNum,
-     newline,
+    (anyChar,
+     lookAhead,
      eof,
-     manyTill,
      (<|>),
      try,
-     space,
-     notFollowedBy,
-     sepBy,
-     anyChar,
      (<?>),
      char,
      noneOf,
@@ -51,8 +45,6 @@ import Text.ParserCombinators.Parsec.Language (emptyDef)
 import Graphics.UI.Gtk.Gdk.Events (Event(..))
 import Graphics.UI.Gtk.General.Enums
     (Click(..), MouseButton(..))
-import IDE.LogRef (logOutput)
-import Debug.Trace (trace)
 
 -- | A variables pane description
 --
@@ -172,7 +164,7 @@ fillVariablesList = do
     mbVariables <- getPane
     case mbVariables of
         Nothing -> return ()
-        Just var -> debugCommand' ":show bindings" (\to -> trace ("fillVariablesList to: " ++ show to) $ liftIO
+        Just var -> debugCommand' ":show bindings" (\to -> liftIO
                         $ postGUIAsync (do
                             case parse variablesParser "" (selectString to) of
                                 Left e -> sysMessage Normal (show e)
@@ -181,22 +173,23 @@ fillVariablesList = do
                                     mapM_ (insertBreak (variables var))
                                         (zip triples [0..length triples])))
     where
-    selectString :: [ToolOutput] -> String
-    selectString (ToolOutput str:r)  = '\n' : str ++ selectString r
-    selectString (_:r)               = selectString r
-    selectString []                  = ""
     insertBreak treeStore (v,index)  = treeStoreInsert treeStore [] index v
+
+selectString :: [ToolOutput] -> String
+selectString (ToolOutput str:r)  = '\n' : str ++ selectString r
+selectString (_:r)               = selectString r
+selectString []                  = ""
 
 getSelectedVariable ::  TreeView
     -> TreeStore VarDescription
-    -> IO (Maybe VarDescription)
+    -> IO (Maybe (VarDescription,TreePath))
 getSelectedVariable treeView treeStore = do
     treeSelection   <-  treeViewGetSelection treeView
     paths           <-  treeSelectionGetSelectedRows treeSelection
     case paths of
         a:r ->  do
             val     <-  treeStoreGetValue treeStore a
-            return (Just val)
+            return (Just (val,a))
         _  ->  return Nothing
 
 variablesParser :: CharParser () [VarDescription]
@@ -222,6 +215,25 @@ variableParser = do
     return (VarDescription varName typeStr value)
     <?> "variableParser"
 
+valueParser :: CharParser () String
+valueParser = do
+    whiteSpace
+    many (noneOf "=")
+    char '='
+    value <- many anyChar
+    return (value)
+    <?> "valueParser"
+
+typeParser :: CharParser () String
+typeParser = do
+    whiteSpace
+    many (noneOf ":")
+    symbol "::"
+    typeStr  <- many anyChar
+    return typeStr
+    <?> "variableParser"
+
+
 lexer = P.makeTokenParser emptyDef
 symbol = P.symbol lexer
 whiteSpace = P.whiteSpace lexer
@@ -239,14 +251,17 @@ variablesViewPopup ideR  store treeView (Button _ click _ _ _ _ button _ _)
             theMenu         <-  menuNew
             item1           <-  menuItemNewWithLabel "Force"
             item1 `onActivateLeaf` do
-                sel         <-  getSelectedVariable  treeView store
-                case sel of
-                    Just varDescr -> reflectIDE (debugCommand (":force " ++ (varName varDescr))
-                                        logOutput) ideR
+                mbSel  <-  getSelectedVariable treeView store
+                case mbSel of
+                    Just (varDescr,path) -> reflectIDE (forceVariable varDescr path store) ideR
                     otherwise     -> return ()
             sep1 <- separatorMenuItemNew
             item2           <-  menuItemNewWithLabel "Print"
-            item2 `onActivateLeaf` (reflectIDE undefined ideR)
+            item2 `onActivateLeaf` do
+                mbSel  <-  getSelectedVariable treeView store
+                case mbSel of
+                    Just (varDescr,path) -> reflectIDE (printVariable varDescr path store) ideR
+                    otherwise     -> return ()
             item3           <-  menuItemNewWithLabel "Update"
             item3 `onActivateLeaf` (reflectIDE fillVariablesList ideR)
             mapM_ (menuShellAppend theMenu) [castToMenuItem item1, castToMenuItem sep1,
@@ -255,11 +270,41 @@ variablesViewPopup ideR  store treeView (Button _ click _ _ _ _ button _ _)
             widgetShowAll theMenu
             return True
         else if button == LeftButton && click == DoubleClick
-                then do sel         <-  getSelectedVariable treeView store
-                        case sel of
-                            Just varDescr -> reflectIDE (debugCommand (":force " ++ (varName varDescr))
-                                                logOutput) ideR
+                then do mbSel         <-  getSelectedVariable treeView store
+                        case mbSel of
+                            Just (varDescr,path) -> reflectIDE (forceVariable varDescr path store) ideR
                             otherwise     -> return ()
                         return True
                 else return False
 variablesViewPopup _ _ _ _ = throwIDE "breakpointViewPopup wrong event type"
+
+forceVariable :: VarDescription -> TreePath -> TreeStore VarDescription -> IDEAction
+forceVariable varDescr path treeStore = do
+    debugCommand' (":force " ++ (varName varDescr)) (\to -> liftIO $ postGUIAsync (do
+        case parse valueParser "" (selectString to) of
+            Left e -> sysMessage Normal (show e)
+            Right value -> do
+                var <- treeStoreGetValue treeStore path
+                treeStoreSetValue treeStore path var{varValue = value}))
+    debugCommand' (":type " ++ (varName varDescr)) (\to -> liftIO $ postGUIAsync (do
+        case parse typeParser "" (selectString to) of
+            Left e -> sysMessage Normal (show e)
+            Right typ -> do
+                var <- treeStoreGetValue treeStore path
+                treeStoreSetValue treeStore path var{varType = typ}))
+
+printVariable :: VarDescription -> TreePath -> TreeStore VarDescription -> IDEAction
+printVariable varDescr path treeStore = do
+    debugCommand' (":print " ++ (varName varDescr)) (\to -> liftIO $ postGUIAsync (do
+        case parse valueParser "" (selectString to) of
+            Left e -> sysMessage Normal (show e)
+            Right value -> do
+                var <- treeStoreGetValue treeStore path
+                treeStoreSetValue treeStore path var{varValue = value}))
+    debugCommand' (":type " ++ (varName varDescr)) (\to -> liftIO $ postGUIAsync (do
+        case parse typeParser "" (selectString to) of
+            Left e -> sysMessage Normal (show e)
+            Right typ -> do
+                var <- treeStoreGetValue treeStore path
+                treeStoreSetValue treeStore path var{varType = typ}))
+
