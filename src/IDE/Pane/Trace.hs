@@ -25,21 +25,22 @@ import Graphics.UI.Gtk
 import Data.Typeable (Typeable(..))
 import IDE.Core.State
 import Control.Monad.Reader
-import Outputable (ppr, showSDoc)
-import IDE.LogRef (selectRef)
-import IDE.Debug (debugHistory)
+import IDE.Debug (debugCommand', debugHistory)
+import IDE.Tool (ToolOutput(..))
 
 -- | A debugger pane description
 --
 data IDETrace    =   IDETrace {
     scrolledView    ::   ScrolledWindow
 ,   treeView        ::   TreeView
-,   tracepoints     ::   ListStore LogRef
+,   tracepoints     ::   TreeStore TraceHist
 } deriving Typeable
 
 data TraceState  =   TraceState {
 }   deriving(Eq,Ord,Read,Show,Typeable)
 
+data TraceHist = TraceHist {
+    str             ::  String}
 
 instance IDEObject IDETrace
 
@@ -87,7 +88,7 @@ builder :: PanePath ->
     IDERef ->
     IO (IDETrace,Connections)
 builder pp nb windows ideR = do
-    tracepoints <-  listStoreNew []
+    tracepoints <-  treeStoreNew []
     treeView    <-  treeViewNew
     treeViewSetModel treeView tracepoints
 
@@ -95,12 +96,14 @@ builder pp nb windows ideR = do
     colB         <- treeViewColumnNew
     treeViewColumnSetTitle colB "Trace"
     treeViewColumnSetSizing colB TreeViewColumnAutosize
+    treeViewColumnSetResizable colB True
+    treeViewColumnSetReorderable colB True
     treeViewAppendColumn treeView colB
     cellLayoutPackStart colB rendererB False
     cellLayoutSetAttributes colB rendererB tracepoints
-        $ \row -> [ cellText := showSDoc (ppr (logRefSrcSpan row))]
+        $ \row -> [ cellText := str row]
 
-    treeViewSetHeadersVisible treeView False
+    treeViewSetHeadersVisible treeView True
     sel <- treeViewGetSelection treeView
     treeSelectionSetMode sel SelectionSingle
 
@@ -108,39 +111,45 @@ builder pp nb windows ideR = do
     containerAdd scrolledView treeView
     scrolledWindowSetPolicy scrolledView PolicyAutomatic PolicyAutomatic
 
-    let pane = IDETrace {..}
+    let pane = IDETrace scrolledView treeView tracepoints
 
     cid1 <- treeView `afterFocusIn`
         (\_ -> do reflectIDE (makeActive pane) ideR ; return True)
     sel `onSelectionChanged` do
         sel <- getSelectedTracepoint treeView tracepoints
         case sel of
-            Just ref -> reflectIDE (selectRef (Just ref)) ideR
+            Just ref -> return () -- TODO reflectIDE (selectRef (Just ref)) ideR
             Nothing -> return ()
 
     return (pane,[ConnectC cid1])
 
 fillTracepointList :: IDEAction
 fillTracepointList = do
-    mbTrace <- getPane
-    case mbTrace of
+    mbTraces <- getPane
+    case mbTraces of
         Nothing -> return ()
-        Just b  -> do
-            refs <- readIDE contextRefs
-            liftIO $ do
-                --trace ("breakpointList " ++ show refs) $ return ()
-                listStoreClear (tracepoints b)
-                mapM_ (listStoreAppend (tracepoints b)) refs
+        Just tracePane -> debugCommand' ":history" (\to -> liftIO
+                        $ postGUIAsync (do
+                            let strings = selectStrings to
+                            treeStoreClear (tracepoints tracePane)
+                            mapM_ (insertTrace (tracepoints tracePane))
+                                        (zip strings [0..length strings])))
+    where
+    insertTrace treeStore (str,index)  = treeStoreInsert treeStore [] index (TraceHist str)
 
 getSelectedTracepoint ::  TreeView
-    ->  ListStore LogRef
-    -> IO (Maybe LogRef)
-getSelectedTracepoint treeView listStore = do
+    -> TreeStore TraceHist
+    -> IO (Maybe TraceHist)
+getSelectedTracepoint treeView treeStore = do
     treeSelection   <-  treeViewGetSelection treeView
     paths           <-  treeSelectionGetSelectedRows treeSelection
     case paths of
         a:r ->  do
-            val     <-  listStoreGetValue listStore (head a)
+            val     <-  treeStoreGetValue treeStore a
             return (Just val)
         _  ->  return Nothing
 
+selectStrings :: [ToolOutput] -> [String]
+selectStrings (ToolOutput str:r)  = str : selectStrings r
+selectStrings (_:r)               = selectStrings r
+selectStrings []                  = []

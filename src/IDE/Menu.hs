@@ -78,6 +78,7 @@ import Paths_leksah
 import IDE.Pane.Breakpoints (showBreakpointList, fillBreakpointList, selectBreak)
 import Debug.Trace (trace)
 import IDE.Pane.Variables (showVariables, fillVariablesList)
+import IDE.Pane.Trace (showTrace)
 
 --
 -- | The Actions known to the system (they can be activated by keystrokes or menus)
@@ -212,7 +213,7 @@ mkActions =
     ,AD "ShowVariablesList" "Show Variables List" Nothing Nothing
         showVariables [] False
     ,AD "ShowTracesList" "Show Traces List" Nothing Nothing
-        {--showTraces--} undefined [] False
+        showTrace [] False
     ,AD "ShowEval" "Show Eval" Nothing Nothing
         {--showTrace--} undefined [] False
     ,AD "ShowDebugger" "Show Debugger" Nothing Nothing
@@ -364,7 +365,7 @@ mkActions =
             pack <- readIDE activePack
             ideMessage Normal (show pack)) [] False
 --    ,AD "HelpDebug2" "Debug2" (Just "<Ctrl>d") Nothing dbgInstalledPackageInfo [] False
-    ,AD "HelpAbout" "About" Nothing (Just "gtk-about") aboutDialog [] False
+    ,AD "HelpAbout" "About" Nothing (Just "gtk-about") (liftIO aboutDialog) [] False
 
     ,AD "BackgroundBuildToggled" "_BackgroundBuild" (Just "Build in the background and report errors") (Just "ide_build")
         backgroundBuildToggled [] True
@@ -391,9 +392,11 @@ updateRecentEntries = do
     reifyIDE (\ ideR -> do
         recentFilesMenu    <-  menuNew
         mapM_ (\s -> do
-            mi <- menuItemNewWithLabel s
-            mi `onActivateLeaf` (reflectIDE (fileOpenThis s) ideR)
-            menuShellAppend recentFilesMenu mi) recentFiles'
+            fe <- doesFileExist s
+            when fe $ do
+                mi <- menuItemNewWithLabel s
+                mi `onActivateLeaf` (reflectIDE (fileOpenThis s) ideR)
+                menuShellAppend recentFilesMenu mi) recentFiles'
         oldSubmenu <- menuItemGetSubmenu recentFilesItem
         when (isJust oldSubmenu) $ do
             widgetHideAll (fromJust oldSubmenu)
@@ -402,9 +405,11 @@ updateRecentEntries = do
         widgetShowAll recentFilesMenu
         recentPackagesMenu    <-  menuNew
         mapM_ (\s -> do
-            mi <- menuItemNewWithLabel s
-            mi `onActivateLeaf` (reflectIDE (packageOpenThis (Just s) >> return ()) ideR)
-            menuShellAppend recentPackagesMenu mi) recentPackages'
+            fe <- doesFileExist s
+            when fe $ do
+                mi <- menuItemNewWithLabel s
+                mi `onActivateLeaf` (reflectIDE (packageOpenThis (Just s) >> return ()) ideR)
+                menuShellAppend recentPackagesMenu mi) recentPackages'
         oldSubmenu <- menuItemGetSubmenu recentPackagesItem
         when (isJust oldSubmenu) $ do
             widgetHideAll (fromJust oldSubmenu)
@@ -461,9 +466,60 @@ getMenuAndToolbars uiManager = do
     widgetSetSizeRequest toolbar 700 (-1)
     return (accGroup,menu,toolbar)
 
+textPopupMenu :: IDERef -> Menu -> IO ()
+textPopupMenu ideR menu = do
+    items <- containerGetChildren menu
+    mi1 <- menuItemNewWithLabel "Eval"
+    mi1 `onActivateLeaf` (reflectIDE debugExecuteSelection ideR)
+    menuShellAppend menu mi1
+    mi11 <- menuItemNewWithLabel "Eval & Insert"
+    mi11 `onActivateLeaf` (reflectIDE debugExecuteSelection ideR)
+    menuShellAppend menu mi11
+    mi12 <- menuItemNewWithLabel "Step"
+    mi12 `onActivateLeaf` (reflectIDE debugStepExpression ideR)
+    menuShellAppend menu mi12
+    mi13 <- menuItemNewWithLabel "Trace"
+    mi13 `onActivateLeaf` (reflectIDE debugTraceExpression ideR)
+    menuShellAppend menu mi13
+    mi16 <- menuItemNewWithLabel "Set Breakpoint"
+    mi16 `onActivateLeaf` (reflectIDE debugSetBreakpoint ideR)
+    menuShellAppend menu mi16
+    sep1 <- separatorMenuItemNew
+    menuShellAppend menu sep1
+    mi14 <- menuItemNewWithLabel "Type"
+    mi14 `onActivateLeaf` (reflectIDE debugInformation ideR)
+    menuShellAppend menu mi14
+    mi15 <- menuItemNewWithLabel "Kind"
+    mi15 `onActivateLeaf` (reflectIDE debugKind ideR)
+    menuShellAppend menu mi15
+    sep2 <- separatorMenuItemNew
+    menuShellAppend menu sep2
+    mi2 <- menuItemNewWithLabel "Find (text)"
+    mi2 `onActivateLeaf` (reflectIDE (editFindInc Initial) ideR)
+    menuShellAppend menu mi2
+    mi3 <- menuItemNewWithLabel "Search (metadata)"
+    mi3 `onActivateLeaf` (reflectIDE (do
+        mbtext <- selectedText
+        case mbtext of
+            Just t  -> searchMetaGUI t
+            Nothing -> ideMessage Normal "Select a text first") ideR)
+    menuShellAppend menu mi3
+    let interpretingEntries = [castToWidget mi16]
+    let interpretingSelEntries = [castToWidget mi1, castToWidget mi11, castToWidget mi12,
+                                castToWidget mi13, castToWidget mi14, castToWidget mi15]
+    let otherEntries = [castToWidget mi2, castToWidget mi3]
+    isInterpreting' <- (reflectIDE isInterpreting ideR)
+    selected <- (reflectIDE selectedText ideR)
+    unless isInterpreting'
+        $ mapM_ (\w -> widgetSetSensitive w False) (interpretingEntries ++ interpretingSelEntries)
+    unless (isJust selected)
+        $ mapM_ (\w -> widgetSetSensitive w False) (otherEntries ++ interpretingSelEntries)
+    mapM_ widgetShow interpretingEntries
+    mapM_ widgetShow interpretingSelEntries
+    mapM_ widgetShow (castToWidget sep1 : castToWidget sep2 : otherEntries)
+    mapM_ widgetHide $ take 2 (reverse items)
+
 -- | Quit ide
---  ### make reasonable
---
 quit :: IDEAction
 quit = do
     modifyIDE_ (\ide -> return (ide{currentState = IsShuttingDown}))
@@ -476,8 +532,8 @@ quit = do
 --
 -- | Show the about dialog
 --
-aboutDialog :: IDEAction
-aboutDialog = liftIO $ do
+aboutDialog :: IO ()
+aboutDialog = do
     d <- aboutDialogNew
     aboutDialogSetName d "Leksah"
     aboutDialogSetVersion d (showVersion version)
@@ -751,6 +807,8 @@ registerEvents =    do
         (Left (\ e@(CurrentBreakChanged mbLogRef) -> reifyIDE (\ideR ->
             postGUIAsync (reflectIDE (selectRef mbLogRef) ideR) >>
             postGUIAsync (reflectIDE (selectBreak mbLogRef) ideR)) >> return e))
+    registerEvent stRef "GetTextPopup"
+        (Left (\ e@(GetTextPopup _) -> return (GetTextPopup (Just textPopupMenu))))
     return ()
 
 

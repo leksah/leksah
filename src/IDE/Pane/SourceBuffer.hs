@@ -62,6 +62,11 @@ module IDE.Pane.SourceBuffer (
 
 ,   align
 ,   startComplete
+
+,   selectedText
+,   selectedModuleName
+,   selectedLocation
+,   recentSourceBuffers
 ) where
 
 import Graphics.UI.Gtk hiding (afterToggleOverwrite)
@@ -94,6 +99,8 @@ import Data.Char (isAlphaNum)
 import Control.Event (triggerEvent)
 import SrcLoc
     (srcLocCol, srcLocLine, srcSpanEnd, srcSpanStart)
+import IDE.Metainfo.GHCUtils (parseHeader)
+import GHC (unLoc, moduleNameString, HsModule(..))
 
 --
 -- | A text editor pane description
@@ -163,10 +170,9 @@ instance RecoverablePane IDEBuffer BufferState IDEM where
                                 Nothing ->  return Nothing
                                 Just fn ->  return (Just (BufferState fn offset))
     recoverState pp (BufferState n i) =   do
-        exists <- liftIO $doesFileExist n
-        when exists $ do
-            buf     <-  newTextBuffer pp (takeFileName n) (Just n)
-            liftIO $ do
+        mbbuf    <-  newTextBuffer pp (takeFileName n) (Just n)
+        case mbbuf of
+            Just buf -> liftIO $ do
                 gtkBuf  <-  textViewGetBuffer (sourceView buf)
                 iter    <-  textBufferGetIterAtOffset gtkBuf i
                 textBufferPlaceCursor gtkBuf iter
@@ -175,6 +181,7 @@ instance RecoverablePane IDEBuffer BufferState IDEM where
                     textViewScrollToMark (sourceView buf) mark 0.0 (Just (0.3,0.3))
                     return False) priorityDefaultIdle
                 return ()
+            Nothing -> return ()
 
 startComplete :: IDEAction
 startComplete = do
@@ -203,15 +210,20 @@ selectSourceBuf fp = do
                     prefs <- readIDE prefs
                     pp      <- getBestPathForId  "*Buffer"
                     nbuf <- newTextBuffer pp (takeFileName fpc) (Just fpc)
-                    return (Just nbuf)
+                    return nbuf
                 else return Nothing
+
+recentSourceBuffers :: IDEM [PaneName]
+recentSourceBuffers = do
+    recentPanes' <- readIDE recentPanes
+    mbBufs       <- mapM mbPaneFromName recentPanes'
+    return $ map paneName ((catMaybes $ map (\ (PaneC p) -> cast p) $ catMaybes mbBufs) :: [IDEBuffer])
 
 lastActiveBufferPane :: IDEM (Maybe PaneName)
 lastActiveBufferPane = do
-    recentPanes' <- readIDE recentPanes
-    mbBufs       <- mapM mbPaneFromName recentPanes'
-    case (catMaybes $ map (\ (PaneC p) -> cast p) $ catMaybes mbBufs) :: [IDEBuffer] of
-        (hd : _) -> return (Just (paneName hd))
+    rs <- recentSourceBuffers
+    case rs of
+        (hd : _) -> return (Just hd)
         _        -> return Nothing
 
 goToDefinition :: Descr -> IDEAction
@@ -335,15 +347,23 @@ maybeActiveBuf = do
             return mbActbuf
         _ -> return Nothing
 
-newTextBuffer :: PanePath -> String -> Maybe FilePath -> IDEM IDEBuffer
+newTextBuffer :: PanePath -> String -> Maybe FilePath -> IDEM (Maybe IDEBuffer)
 newTextBuffer panePath bn mbfn = do
-    nb      <-  getNotebook panePath
-    prefs   <-  readIDE prefs
-    bs      <-  getCandyState
-    ct      <-  readIDE candy
-    (ind,rbn) <- figureOutPaneName bn 0
-    newPane panePath nb (builder bs mbfn ind bn rbn ct prefs)
-
+    cont <- case mbfn of
+                Nothing -> return True
+                Just fn -> liftIO $ doesFileExist fn
+    if cont
+        then do
+            nb      <-  getNotebook panePath
+            prefs   <-  readIDE prefs
+            bs      <-  getCandyState
+            ct      <-  readIDE candy
+            (ind,rbn) <- figureOutPaneName bn 0
+            pane    <-  newPane panePath nb (builder bs mbfn ind bn rbn ct prefs)
+            return (Just pane)
+        else do
+            ideMessage Normal ("File does not exist " ++ (fromJust mbfn))
+            return Nothing
 
 builder :: Bool ->
     Maybe FilePath ->
@@ -377,7 +397,7 @@ builder bs mbfn ind bn rbn ct prefs pp nb windows ideR = do
             fc <- UTF8.readFile fn
             mt <- getModificationTime fn
             return (fc,Just mt)
-        Nothing -> return ("\n\n\n\n\n",Nothing)
+        Nothing -> return ("\n",Nothing)
     sourceBufferBeginNotUndoableAction buffer
     textBufferSetText buffer fileContents
     when bs $ transformToCandy ct (castToTextBuffer buffer)
@@ -465,7 +485,12 @@ builder bs mbfn ind bn rbn ct prefs pp nb windows ideR = do
                         textBufferSelectRange buffer start end
                         return True
                     _ -> return False
+    (GetTextPopup mbTpm) <- reflectIDE (triggerEvent ideR (GetTextPopup Nothing)) ideR
+    case mbTpm of
+        Just tpm    -> sv `onPopulatePopup` (tpm ideR) >> return ()
+        Nothing     -> sysMessage Normal "SourceBuffer>> no text popup" >> return ()
     return (buf,[ConnectC cid])
+
 
 checkModTime :: IDEBuffer -> IDEM Bool
 checkModTime buf = do
@@ -1094,5 +1119,36 @@ removeRecentlyUsedFile fp = do
         ask >>= \ideR -> triggerEvent ideR UpdateRecent
         return ()
 
+selectedText :: IDEM (Maybe String)
+selectedText = do
+    inActiveBufContext Nothing $ \_ gtkbuf currentBuffer _ -> do
+        hasSelection <- liftIO $ textBufferHasSelection gtkbuf
+        if hasSelection
+            then do
+                (i1,i2)   <- liftIO $ textBufferGetSelectionBounds gtkbuf
+                text <- textBufferGetText gtkbuf i1 i2 False
+                return $ Just text
+            else return Nothing
 
+selectedLocation :: IDEM (Maybe (Int, Int))
+selectedLocation = do
+    inActiveBufContext Nothing $ \_ gtkbuf currentBuffer _ -> do
+        (start, _) <- liftIO $ textBufferGetSelectionBounds gtkbuf
+        line <- textIterGetLine start
+        lineOffset <- textIterGetLineOffset start
+        return $ Just (line, lineOffset)
+
+selectedModuleName :: IDEM (Maybe String)
+selectedModuleName = do
+    candy' <- readIDE candy
+    inActiveBufContext' Nothing $ \_ gtkbuf currentBuffer _ -> do
+        case fileName currentBuffer of
+            Just filePath -> do
+                text <- liftIO $ getCandylessText candy' gtkbuf
+                parseResult <- parseHeader filePath text
+                case parseResult of
+                     Just HsModule{ hsmodName = Just name }
+                        -> return $ Just $ moduleNameString (unLoc name)
+                     _  -> return Nothing
+            Nothing -> return Nothing
 

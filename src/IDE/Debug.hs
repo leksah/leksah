@@ -90,13 +90,14 @@ import IDE.Tool
 import IDE.LogRef
 import Control.Exception (SomeException(..))
 import IDE.Pane.SourceBuffer
-    (inActiveBufContext', fileName, inActiveBufContext)
-import IDE.SourceCandy (getCandylessText)
-import IDE.Metainfo.GHCUtils (parseHeader)
-import GHC (moduleNameString, unLoc, HsModule(..))
+    (selectedLocation,
+     selectedModuleName,
+     selectedText)
 import IDE.Pane.Log (appendLog)
 import Data.List (isSuffixOf)
 import Control.Event (triggerEvent)
+import IDE.Metainfo.Provider (getActivePackageDescr)
+import Distribution.Text (display)
 
 #if defined(mingw32_HOST_OS) || defined(__MINGW32__)
 foreign import stdcall unsafe "winbase.h GetCurrentProcessId"
@@ -143,45 +144,23 @@ debugCommand' command handler = do
 debugQuit :: IDEAction
 debugQuit = debugCommand ":quit" logOutput
 
-selectedText :: IDEM (Maybe String)
-selectedText = do
-    inActiveBufContext Nothing $ \_ gtkbuf currentBuffer _ -> do
-        hasSelection <- liftIO $ textBufferHasSelection gtkbuf
-        if hasSelection
-            then do
-                (i1,i2)   <- liftIO $ textBufferGetSelectionBounds gtkbuf
-                text <- textBufferGetText gtkbuf i1 i2 False
-                return $ Just text
-            else return Nothing
-
-selectedLocation :: IDEM (Maybe (Int, Int))
-selectedLocation = do
-    inActiveBufContext Nothing $ \_ gtkbuf currentBuffer _ -> do
-        (start, _) <- liftIO $ textBufferGetSelectionBounds gtkbuf
-        line <- textIterGetLine start
-        lineOffset <- textIterGetLineOffset start
-        return $ Just (line, lineOffset)
-
-selectedModuleName :: IDEM (Maybe String)
-selectedModuleName = do
-    candy' <- readIDE candy
-    inActiveBufContext' Nothing $ \_ gtkbuf currentBuffer _ -> do
-        case fileName currentBuffer of
-            Just filePath -> do
-                text <- liftIO $ getCandylessText candy' gtkbuf
-                parseResult <- parseHeader filePath text
-                case parseResult of
-                     Just HsModule{ hsmodName = Just name }
-                        -> return $ Just $ moduleNameString (unLoc name)
-                     _  -> return Nothing
-            Nothing -> return Nothing
-
 debugExecuteSelection :: IDEAction
 debugExecuteSelection = do
-    maybeText <- selectedText
+    maybeText   <- selectedText
     case maybeText of
-        Just text -> debugCommand text logOutput
+        Just text -> do
+            debugSetLiberalScope
+            debugCommand text logOutput
         Nothing   -> ideMessage Normal "Please select some text in the editor to execute"
+
+debugSetLiberalScope :: IDEAction
+debugSetLiberalScope = do
+    mbPackage <- getActivePackageDescr
+    case mbPackage of
+        Nothing -> return ()
+        Just p -> let packageNames = map (display . modu . moduleIdMD) (exposedModulesPD p)
+            in debugCommand' (foldl (\a b -> a ++ " *" ++ b) ":module + " packageNames)
+                (\ _ -> return ())
 
 debugAbandon :: IDEAction
 debugAbandon = debugCommand ":abandon" logOutput
@@ -272,11 +251,14 @@ debugSimplePrint = do
         Nothing   -> ideMessage Normal "Please select an name in the editor"
 
 debugStep :: IDEAction
-debugStep = debugCommand ":step" logOutputForLiveContext
+debugStep = do
+    debugSetLiberalScope
+    debugCommand ":step" logOutputForLiveContext
 
 debugStepExpression :: IDEAction
 debugStepExpression = do
     maybeText <- selectedText
+    debugSetLiberalScope
     debugStepExpr maybeText
 
 debugStepExpr :: Maybe String -> IDEAction
@@ -297,6 +279,7 @@ debugTrace = debugCommand ":trace" logOutputForLiveContext
 debugTraceExpression :: IDEAction
 debugTraceExpression = do
     maybeText <- selectedText
+    debugSetLiberalScope
     debugTraceExpr maybeText
 
 debugTraceExpr :: Maybe String -> IDEAction
@@ -336,21 +319,27 @@ debugInformation :: IDEAction
 debugInformation = do
     maybeText <- selectedText
     case maybeText of
-        Just text -> debugCommand (":info "++text) logOutput
+        Just text -> do
+            debugSetLiberalScope
+            debugCommand (":info "++text) logOutput
         Nothing   -> ideMessage Normal "Please select a name in the editor"
 
 debugKind :: IDEAction
 debugKind = do
     maybeText <- selectedText
     case maybeText of
-        Just text -> debugCommand (":kind "++text) logOutput
+        Just text -> do
+            debugSetLiberalScope
+            debugCommand (":kind "++text) logOutput
         Nothing   -> ideMessage Normal "Please select a type in the editor"
 
 debugType :: IDEAction
 debugType = do
     maybeText <- selectedText
     case maybeText of
-        Just text -> debugCommand (":type "++text) logOutput
+        Just text -> do
+            debugSetLiberalScope
+            debugCommand (":type "++text) logOutput
         Nothing   -> ideMessage Normal "Please select an expression in the editor"
 
 debugSetBreakpoint :: IDEAction

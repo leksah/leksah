@@ -203,7 +203,7 @@ mkLabelBox lbl paneName = do
         boxPackEnd innerBox tabButton PackNatural 0
 
         containerAdd labelBox innerBox
-        dragSourceSet labelBox [Button1] [ActionMove]
+        dragSourceSet labelBox [Button1] [ActionCopy,ActionMove]
         tl        <- targetListNew
         targetListAddTextTargets tl 0
         dragSourceSetTargetList labelBox tl
@@ -937,7 +937,7 @@ newNotebook pp = do
     liftIO $ do
         tl <- targetListNew
         targetListAddTextTargets tl 0
-        dragDestSet nb [DestDefaultAll] [ActionMove]
+        dragDestSet nb [DestDefaultAll] [ActionCopy, ActionMove]
         dragDestSetTargetList nb tl
         on nb dragDataReceived (dragFunc nb func)
         return nb

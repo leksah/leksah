@@ -143,6 +143,7 @@ builder prefs pp nb windows ideR = do
         (\_      -> do reflectIDE (makeActive buf) ideR ; return False)
     cid2         <- tv `onButtonPress`
         (\ b     -> do reflectIDE (clicked b buf) ideR ; return False)
+    cid3         <- tv `onPopulatePopup` (populatePopup buf ideR)
     return (buf,[ConnectC cid1, ConnectC cid2])
 
 clicked :: Event -> IDELog -> IDEAction
@@ -166,21 +167,25 @@ clicked (Button _ SingleClick _ _ _ _ LeftButton x y) ideLog = do
                 BreakpointRef -> setCurrentBreak (Just thisRef)
                 _             -> setCurrentError (Just thisRef)
         otherwise   -> return ()
-clicked (Button _ SingleClick _ _ _ _ RightButton x y) ideLog = do
-    logRefs'    <-  readIDE allLogRefs
-    line'       <-  reifyIDE $ \ideR  ->  do
-        (x,y)       <-  widgetGetPointer (textView ideLog)
-        (_,y')      <-  textViewWindowToBufferCoords (textView ideLog) TextWindowWidget (x,y)
-        (iter,_)    <-  textViewGetLineAtY (textView ideLog) y'
-        textIterGetLine iter
-    case filter (\(es,_) -> fst (logLines es) <= (line'+1) && snd (logLines es) >= (line'+1))
-            (zip logRefs' [0..(length logRefs')]) of
-        [(thisRef,n)] -> reifyIDE $ \ideR  ->  do
-            theMenu         <-  menuNew
+clicked _ _ = return ()
+
+populatePopup ideLog ideR menu = do
+    items <- containerGetChildren menu
+    res <- reflectIDE (do
+        logRefs'    <-  readIDE allLogRefs
+        line'       <-  reifyIDE $ \ideR  ->  do
+            (x,y)       <-  widgetGetPointer (textView ideLog)
+            (_,y')      <-  textViewWindowToBufferCoords (textView ideLog) TextWindowWidget (x,y)
+            (iter,_)    <-  textViewGetLineAtY (textView ideLog) y'
+            textIterGetLine iter
+        return $ filter (\(es,_) -> fst (logLines es) <= (line'+1) && snd (logLines es) >= (line'+1))
+                (zip logRefs' [0..(length logRefs')])) ideR
+    case res of
+        [(thisRef,n)] -> do
             item0           <-  menuItemNewWithLabel "Add all imports"
             item0 `onActivateLeaf` do
                 reflectIDE addAllImports ideR
-            menuShellAppend theMenu item0
+            menuShellAppend menu item0
             case parseNotInScope (refDescription thisRef) of
                 Nothing   -> do
                     return ()
@@ -188,12 +193,11 @@ clicked (Button _ SingleClick _ _ _ _ RightButton x y) ideLog = do
                     item1   <-  menuItemNewWithLabel "Add import"
                     item1 `onActivateLeaf` do
                         reflectIDE (addImport thisRef [] >> return()) ideR
-                    menuShellAppend theMenu item1
-            menuPopup theMenu Nothing
-            widgetShowAll theMenu
+                    menuShellAppend menu item1
+            widgetShowAll menu
             return ()
         otherwise   -> return ()
-clicked _ _ = return ()
+    mapM_ widgetHide $ take 2 (reverse items)
 
 getLog' :: IDEM IDELog
 getLog' = do

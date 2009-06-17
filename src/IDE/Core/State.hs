@@ -30,6 +30,7 @@ module IDE.Core.State (
 ,   setCurrentError
 ,   setCurrentBreak
 ,   setCurrentContext
+,   isInterpreting
 
 ,   IDEState(..)
 ,   isStartingOrClosing
@@ -116,6 +117,7 @@ import Control.Event
 import System.IO
 import System.Process (ProcessHandle(..))
 import IDE.Tool (ToolState(..))
+import Data.Maybe (isJust)
 
 -- this should not be repeated here, why is it necessary?
 instance MonadIO Ghc where
@@ -180,6 +182,7 @@ data IDE            =  IDE {
 -- Main window is just the first one in the list
 window = head . windows
 
+
 errorRefs :: IDE -> [LogRef]
 errorRefs = (filter ((\t -> t == ErrorRef || t == WarningRef) . logRefType)) . allLogRefs
 
@@ -214,6 +217,11 @@ isStartingOrClosing IsStartingUp    = True
 isStartingOrClosing IsShuttingDown  = True
 isStartingOrClosing _               = False
 
+isInterpreting :: IDEM Bool
+isInterpreting = do
+    readIDE ghciState >>= \mb -> return (isJust mb)
+
+
 data IDEEvent  =
         CurrentInfo
     |   ActivePack
@@ -232,6 +240,7 @@ data IDEEvent  =
     |   CurrentErrorChanged (Maybe LogRef)
     |   BreakpointChanged
     |   CurrentBreakChanged (Maybe LogRef)
+    |   GetTextPopup (Maybe (IDERef -> Menu -> IO ()))
 --
 -- | A mutable reference to the IDE state
 --
@@ -255,9 +264,9 @@ instance Event IDEEvent String where
     getSelector (CurrentErrorChanged _) =   "CurrentErrorChanged"
     getSelector BreakpointChanged       =   "BreakpointChanged"
     getSelector (CurrentBreakChanged _) =   "CurrentBreakChanged"
+    getSelector (GetTextPopup _)        =   "GetTextPopup"
 
 instance EventSource IDERef IDEEvent IDEM String where
-
     canTriggerEvent o "CurrentInfo"     =   True
     canTriggerEvent o "ActivePack"      =   True
     canTriggerEvent o "LogMessage"      =   True
@@ -275,6 +284,7 @@ instance EventSource IDERef IDEEvent IDEM String where
     canTriggerEvent o "CurrentErrorChanged" = True
     canTriggerEvent o "BreakpointChanged" = True
     canTriggerEvent o "CurrentBreakChanged" = True
+    canTriggerEvent o "GetTextPopup"    = True
     canTriggerEvent _ _                 =   False
 
     getHandlers ideRef = do
@@ -552,5 +562,4 @@ getStatusbarLC     = widgetGet ["Leksah Main Window", "topBox","statusBox","stat
 controlIsPressed :: G.Event -> Bool
 controlIsPressed (G.Button _ _ _ _ _ mods _ _ _) | Control `elem` mods = True
 controlIsPressed _                                                   = False
-
 

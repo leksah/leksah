@@ -24,6 +24,7 @@ import Control.Monad.Trans (liftIO)
 import Graphics.UI.Gtk.Gdk.Events (Event(..))
 import Control.Monad (when)
 import Graphics.UI.Frame.Panes (makeActive)
+import IDE.Pane.SourceBuffer(recentSourceBuffers)
 
 flipDown :: IDEAction
 flipDown = do
@@ -79,7 +80,7 @@ moveFlipperUp tree = liftIO $ do
 initFlipper :: Bool -> IDEAction
 initFlipper direction = do
     mainWindow   <- getMainWindow
-    recentPanes' <-  readIDE recentPanes
+    recentPanes' <-  recentSourceBuffers
     tree' <- reifyIDE $ \ideR -> do
         window <- windowNewPopup
         windowSetTransientFor window mainWindow

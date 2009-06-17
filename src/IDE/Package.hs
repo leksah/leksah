@@ -169,8 +169,8 @@ activatePackage :: FilePath -> IDEM (Maybe IDEPackage)
 activatePackage filePath = do
     ideR <- ask
     let ppath = dropFileName filePath
-    liftIO $ setCurrentDirectory ppath
     mbPackageD <- reifyIDE (\ideR -> catch (do
+        liftIO $ setCurrentDirectory ppath
         pd <- readPackageDescription normal filePath
         return (Just (flattenPackageDescription pd)))
             (\(e :: SomeException) -> do

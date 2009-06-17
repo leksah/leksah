@@ -165,7 +165,7 @@ fillVariablesList = do
     case mbVariables of
         Nothing -> return ()
         Just var -> debugCommand' ":show bindings" (\to -> liftIO
-                        $ postGUIAsync (do
+                        $ (do
                             case parse variablesParser "" (selectString to) of
                                 Left e -> sysMessage Normal (show e)
                                 Right triples -> do
@@ -194,6 +194,7 @@ getSelectedVariable treeView treeStore = do
 
 variablesParser :: CharParser () [VarDescription]
 variablesParser = do
+    whiteSpace
     r <- many variableParser
     eof
     return r
@@ -231,7 +232,7 @@ typeParser = do
     symbol "::"
     typeStr  <- many anyChar
     return typeStr
-    <?> "variableParser"
+    <?> "typeParser"
 
 
 lexer = P.makeTokenParser emptyDef
@@ -263,7 +264,7 @@ variablesViewPopup ideR  store treeView (Button _ click _ _ _ _ button _ _)
                     Just (varDescr,path) -> reflectIDE (printVariable varDescr path store) ideR
                     otherwise     -> return ()
             item3           <-  menuItemNewWithLabel "Update"
-            item3 `onActivateLeaf` (reflectIDE fillVariablesList ideR)
+            item3 `onActivateLeaf` (postGUIAsync (reflectIDE fillVariablesList ideR))
             mapM_ (menuShellAppend theMenu) [castToMenuItem item1, castToMenuItem sep1,
                 castToMenuItem item2, castToMenuItem item3]
             menuPopup theMenu Nothing

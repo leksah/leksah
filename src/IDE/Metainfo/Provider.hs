@@ -19,6 +19,7 @@ module IDE.Metainfo.Provider (
 ,   getIdentifiersStartingWith
 ,   getCompletionOptions
 ,   getDescription
+,   getActivePackageDescr
 
 ,   initInfo
 ,   updateAccessibleInfo
@@ -63,6 +64,17 @@ import Text.Regex.Posix.String (execute,compile)
 import IDE.Metainfo.GHCUtils (findFittingPackages,getInstalledPackageInfos,inGhc)
 import Data.Binary.Shared (decodeSer)
 import System.Mem (performGC)
+
+getActivePackageDescr :: IDEM (Maybe PackageDescr)
+getActivePackageDescr = do
+    mbActive <- readIDE activePack
+    case mbActive of
+        Nothing -> return Nothing
+        Just pack -> do
+            currentInfo' <- readIDE currentInfo
+            case currentInfo' of
+                Nothing -> return Nothing
+                Just ((map,_),(_,_)) -> return (packageId pack `Map.lookup` map)
 
 --
 -- | Lookup of an identifier description
