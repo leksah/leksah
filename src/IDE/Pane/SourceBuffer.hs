@@ -64,6 +64,7 @@ module IDE.Pane.SourceBuffer (
 ,   startComplete
 
 ,   selectedText
+,   insertTextAfterSelection
 ,   selectedModuleName
 ,   selectedLocation
 ,   recentSourceBuffers
@@ -1137,6 +1138,19 @@ selectedLocation = do
         line <- textIterGetLine start
         lineOffset <- textIterGetLineOffset start
         return $ Just (line, lineOffset)
+
+insertTextAfterSelection :: String -> IDEAction
+insertTextAfterSelection str = do
+    inActiveBufContext () $ \_ gtkbuf currentBuffer _ -> do
+        hasSelection <- liftIO $ textBufferHasSelection gtkbuf
+        when hasSelection $ liftIO $ do
+            (_,i)   <- textBufferGetSelectionBounds gtkbuf
+            mark <- textBufferCreateMark gtkbuf Nothing i True
+            textBufferInsert gtkbuf i str
+            i1 <- textBufferGetIterAtMark gtkbuf mark
+            i2 <- textIterCopy i1
+            textIterForwardChars i2 (length str)
+            textBufferSelectRange gtkbuf i1 i2
 
 selectedModuleName :: IDEM (Maybe String)
 selectedModuleName = do

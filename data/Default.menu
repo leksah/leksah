@@ -188,7 +188,12 @@
        <separator/>
        <toolitem name="BackgroundBuild" action="BackgroundBuildToggled"/>
        <toolitem name="BackgroundLink" action="BackgroundLinkToggled"/>
+       <separator/>
        <toolitem name="Debug" action="DebugToggled"/>
+       <toolitem name="Step" action="DebugStep"/>
+       <toolitem name="StepLocal" action="DebugStepLocal"/>
+       <toolitem name="StepModule" action="DebugStepModule"/>
+       <toolitem name="StepContinue" action="DebugContinue"/>
       </placeholder>
    </toolbar>
    <accelerator name="FlipUp" action="FlipUp"/>

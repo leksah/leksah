@@ -22,6 +22,7 @@ module IDE.Debug (
 ,   debugCommand'
 ,   debugQuit
 ,   debugExecuteSelection
+,   debugExecuteAndShowSelection
 
 ,   debugSetBreakpoint
 ,   debugDeleteAllBreakpoints
@@ -92,7 +93,8 @@ import Control.Exception (SomeException(..))
 import IDE.Pane.SourceBuffer
     (selectedLocation,
      selectedModuleName,
-     selectedText)
+     selectedText,
+     insertTextAfterSelection)
 import IDE.Pane.Log (appendLog)
 import Data.List (isSuffixOf)
 import Control.Event (triggerEvent)
@@ -152,6 +154,23 @@ debugExecuteSelection = do
             debugSetLiberalScope
             debugCommand text logOutput
         Nothing   -> ideMessage Normal "Please select some text in the editor to execute"
+
+debugExecuteAndShowSelection :: IDEAction
+debugExecuteAndShowSelection = do
+    maybeText   <- selectedText
+    case maybeText of
+        Just text -> do
+            debugSetLiberalScope
+            debugCommand text (\to -> do
+                insertTextAfterSelection $ " >> " ++ buildOutputString to
+                logOutput to)
+        Nothing   -> ideMessage Normal "Please select some text in the editor to execute"
+    where
+    buildOutputString :: [ToolOutput] -> String
+    buildOutputString (ToolOutput str:[]) = str
+    buildOutputString (ToolOutput str:r)  = str ++ "\n" ++ (buildOutputString r)
+    buildOutputString (_:r)               = buildOutputString r
+    buildOutputString []                  = ""
 
 debugSetLiberalScope :: IDEAction
 debugSetLiberalScope = do

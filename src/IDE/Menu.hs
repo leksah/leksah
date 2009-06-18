@@ -228,20 +228,20 @@ mkActions =
     ,AD "DebugDeleteAllBreakpoints" "Delete All Breakpoints" (Just "") Nothing
         debugDeleteAllBreakpoints [] False
 
-    ,AD "DebugContinue" "Continue" (Just "Resume after a breakpoint") Nothing
+    ,AD "DebugContinue" "Continue" (Just "Resume after a breakpoint") (Just "ide_continue")
         debugContinue [] False
     ,AD "DebugAbandon" "Abandon" (Just "At a breakpoint, abandon current computation") Nothing
         debugAbandon [] False
     ,AD "DebugStop" "Stop" (Just "Interrupt the running operation.") Nothing
         debugStop [] False
 
-    ,AD "DebugStep" "Step" (Just "Single-step after stopping at a breakpoint") Nothing
+    ,AD "DebugStep" "Step" (Just "Single-step after stopping at a breakpoint") (Just "ide_step")
         debugStep [] False
     ,AD "DebugStepExpression" "Step Expression" (Just "Single-step into selected expression") Nothing
         debugStepExpression [] False
-    ,AD "DebugStepLocal" "Step Local" (Just "Single-step within the current top-level binding") Nothing
+    ,AD "DebugStepLocal" "Step Local" (Just "Single-step within the current top-level binding") (Just "ide_local")
         debugStepLocal [] False
-    ,AD "DebugStepModule" "Step Module" (Just "Single-step restricted to the current module") Nothing
+    ,AD "DebugStepModule" "Step Module" (Just "Single-step restricted to the current module") (Just "ide_module")
         debugStepModule [] False
 
     ,AD "DebugTrace" "Trace" (Just "Trace after stopping at a breakpoint") Nothing
@@ -371,7 +371,7 @@ mkActions =
         backgroundBuildToggled [] True
     ,AD "BackgroundLinkToggled" "_BackgroundLink" (Just "Link in the background") (Just "ide_link")
         backgroundLinkToggled [] True
-    ,AD "DebugToggled" "_Debug" (Just "Use GHCi debuggr to build and run") (Just "ide_build")
+    ,AD "DebugToggled" "_Debug" (Just "Use GHCi debugger to build and run") (Just "ide_debug")
         debugToggled [] True]
 
 --
@@ -473,7 +473,7 @@ textPopupMenu ideR menu = do
     mi1 `onActivateLeaf` (reflectIDE debugExecuteSelection ideR)
     menuShellAppend menu mi1
     mi11 <- menuItemNewWithLabel "Eval & Insert"
-    mi11 `onActivateLeaf` (reflectIDE debugExecuteSelection ideR)
+    mi11 `onActivateLeaf` (reflectIDE debugExecuteAndShowSelection ideR)
     menuShellAppend menu mi11
     mi12 <- menuItemNewWithLabel "Step"
     mi12 `onActivateLeaf` (reflectIDE debugStepExpression ideR)
@@ -487,8 +487,11 @@ textPopupMenu ideR menu = do
     sep1 <- separatorMenuItemNew
     menuShellAppend menu sep1
     mi14 <- menuItemNewWithLabel "Type"
-    mi14 `onActivateLeaf` (reflectIDE debugInformation ideR)
+    mi14 `onActivateLeaf` (reflectIDE debugType ideR)
     menuShellAppend menu mi14
+    mi141 <- menuItemNewWithLabel "Info"
+    mi141 `onActivateLeaf` (reflectIDE debugInformation ideR)
+    menuShellAppend menu mi141
     mi15 <- menuItemNewWithLabel "Kind"
     mi15 `onActivateLeaf` (reflectIDE debugKind ideR)
     menuShellAppend menu mi15
@@ -506,7 +509,8 @@ textPopupMenu ideR menu = do
     menuShellAppend menu mi3
     let interpretingEntries = [castToWidget mi16]
     let interpretingSelEntries = [castToWidget mi1, castToWidget mi11, castToWidget mi12,
-                                castToWidget mi13, castToWidget mi14, castToWidget mi15]
+                                castToWidget mi13, castToWidget mi14, castToWidget mi141,
+                                castToWidget mi15]
     let otherEntries = [castToWidget mi2, castToWidget mi3]
     isInterpreting' <- (reflectIDE isInterpreting ideR)
     selected <- (reflectIDE selectedText ideR)
@@ -605,10 +609,10 @@ newIcons =
         iconFactory <- iconFactoryNew
         dataDir <- getDataDir
         mapM_ (loadIcon dataDir iconFactory) ["ide_class","ide_configure","ide_data","ide_error_next",
-            "ide_error_prev","ide_field","ide_function","ide_instance", "ide_konstructor","ide_make",
+            "ide_error_prev","ide_function","ide_instance", "ide_konstructor","ide_make",
             "ide_method","ide_newtype","ide_other","ide_rule","ide_run","ide_slot",
-            "ide_source","ide_type","leksah", "ide_reexported", "ide_clean", "ide_link", "ide_build"
-            ]
+            "ide_source","ide_type","leksah", "ide_reexported", "ide_clean", "ide_link", "ide_build",
+            "ide_debug", "ide_step", "ide_local", "ide_module", "ide_continue"]
         iconFactoryAddDefault iconFactory)
     (\(e :: SomeException) -> getDataDir >>= \dataDir -> throwIDE ("Can't load icons from " ++ dataDir))
     where

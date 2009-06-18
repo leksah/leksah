@@ -45,9 +45,7 @@ import Control.Monad (unless, when)
 import Control.Event (triggerEvent)
 import IDE.Tool (ToolOutput(..),toolline)
 import IDE.SourceCandy (getCandylessText)
-import IDE.Pane.Breakpoints (fillBreakpointList)
-import IDE.Pane.Trace (showTrace, fillTracepointList)
-import IDE.Pane.Variables (showVariables, fillVariablesList)
+
 
 
 -- | A debugger pane description

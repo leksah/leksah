@@ -19,12 +19,14 @@ data-files: LICENSE Readme data/Current.session data/Default.candy
             data/Default.keymap data/Default.menu data/Default.prefs
             data/Emacs.keymap data/LICENSE data/Module.template
             data/ide_class.png data/ide_configure.png data/ide_data.png
-            data/ide_error_next.png data/ide_error_prev.png data/ide_field.png
+            data/ide_error_next.png data/ide_error_prev.png
             data/ide_function.png data/ide_instance.png
             data/ide_konstructor.png data/ide_make.png data/ide_method.png
             data/ide_newtype.png data/ide_other.png data/ide_reexported.png
             data/ide_rule.png data/ide_run.png data/ide_slot.png
             data/ide_source.png data/ide_type.png data/leksah.png
+            data/ide_step.png data/ide_local.png data/ide_module.png data/ide_continue.png
+            data/ide_debug.png
             data/welcome.txt data/ide_clean.png data/ide_build.png data/ide_link.png
 data-dir: ""
 extra-source-files: Setup.lhs
