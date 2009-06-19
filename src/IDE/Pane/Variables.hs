@@ -18,6 +18,7 @@ module IDE.Pane.Variables (
     IDEVariables
 ,   VariablesState
 ,   showVariables
+,   showVariables'
 ,   fillVariablesList
 ) where
 
@@ -94,6 +95,26 @@ getVariables = do
         Nothing -> do
             pp          <-  getBestPathForId "*Variables"
             nb          <-  getNotebook pp
+            newPane pp nb builder
+            mbVar <- getPane
+            case mbVar of
+                Nothing ->  throwIDE "Can't init variables"
+                Just m  ->  return m
+        Just m ->   return m
+
+showVariables' :: PanePath -> IDEAction
+showVariables' pp = do
+    m <- getVariables' pp
+    liftIO $ bringPaneToFront m
+    liftIO $ widgetGrabFocus (treeView m)
+
+getVariables' :: PanePath -> IDEM IDEVariables
+getVariables' pp  = do
+    mbVar <- getPane
+    case mbVar of
+        Nothing -> do
+            layout        <- getLayout
+            nb            <-  getNotebook (getBestPanePath pp layout)
             newPane pp nb builder
             mbVar <- getPane
             case mbVar of

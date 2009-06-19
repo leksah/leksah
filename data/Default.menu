@@ -71,51 +71,22 @@
        <menuitem name="Open Documentation" action="OpenDocPackage" />
      </menu>
     <menu name="_Debug" action="Debug">
-       <menuitem name="_Start Debugger" action="StartDebugger" />
-       <menuitem name="_Quit Debugger" action="QuitDebugger" />
-       <menuitem name="_Execute Selection" action="ExecuteSelection" />
        <separator/>
-       <menuitem name="Show _Errors" action="ShowErrorsList" />
-       <menuitem name="Show Breakpoints List" action="ShowBreakpointsList" />
-       <menuitem name="Show Variables List" action="ShowVariablesList" />
-       <menuitem name="Show Trace List" action="ShowTracesList" />
-       <menuitem name="Show Eval" action="ShowEval" />
        <menuitem name="Show Debugger" action="ShowDebugger" />
-       <separator/>
-       <menuitem name="Set Breakpoint" action="DebugSetBreakpoint" />
-       <menuitem name="Show Breakpoints" action="ShowBreakpoints" />
-       <menuitem name="Show Next Breakpoint" action="ShowNextBreakpoint" />
-       <menuitem name="Show Previous Breakpoint" action="ShowPreviousBreakpoint" />
-       <menuitem name="Delete All Breakpoints" action="DebugDeleteAllBreakpoints" />
        <separator/>
        <menuitem name="Continue" action="DebugContinue" />
        <menuitem name="Abandon" action="DebugAbandon" />
        <menuitem name="Stop" action="DebugStop" />
        <separator/>
        <menuitem name="Step" action="DebugStep" />
-       <menuitem name="Step Expression" action="DebugStepExpression" />
        <menuitem name="Step Local" action="DebugStepLocal" />
        <menuitem name="Step Module" action="DebugStepModule" />
-       <separator/>
-       <menuitem name="Trace" action="DebugTrace" />
-       <menuitem name="Trace Expression" action="DebugTraceExpression" />
-       <menuitem name="History" action="DebugHistory" />
-       <menuitem name="Back" action="DebugBack" />
-       <menuitem name="Forward" action="DebugForward" />
-       <separator/>
-       <menuitem name="Force" action="DebugForce" />
-       <menuitem name="Print" action="DebugPrint" />
-       <menuitem name="Simple Print" action="DebugSimplePrint" />
        <separator/>
        <menuitem name="Show Bin_dings" action="ShowBindings" />
        <menuitem name="Show _Context" action="ShowContext" />
        <menuitem name="Show Loaded _Modules" action="ShowLoadedModules" />
        <menuitem name="Show _Packages" action="ShowPackages" />
        <menuitem name="Show _Languages" action="ShowLanguages" />
-       <separator/>
-       <menuitem name="Information" action="DebugInformation" />
-       <menuitem name="Kind" action="DebugKind" />
-       <menuitem name="Type" action="DebugType" />
      </menu>
     <menu name="_Metadata" action="Metadata">
        <menuitem name="Update Project" action="UpdateMetadataCurrent" />
@@ -199,4 +170,24 @@
    <accelerator name="FlipUp" action="FlipUp"/>
    <accelerator name="FlipDown" action="FlipDown"/>
    <accelerator name="StartComplete" action="StartComplete"/>
+   <accelerator name="_Start Debugger" action="StartDebugger" />
+   <accelerator name="_Quit Debugger" action="QuitDebugger" />
+   <accelerator name="_Execute Selection" action="ExecuteSelection" />
+   <accelerator name="Set Breakpoint" action="DebugSetBreakpoint" />
+   <accelerator name="Show Breakpoints" action="ShowBreakpoints" />
+   <accelerator name="Show Next Breakpoint" action="ShowNextBreakpoint" />
+   <accelerator name="Show Previous Breakpoint" action="ShowPreviousBreakpoint" />
+   <accelerator name="Delete All Breakpoints" action="DebugDeleteAllBreakpoints" />
+   <accelerator name="Step Expression" action="DebugStepExpression" />
+   <accelerator name="Trace Expression" action="DebugTraceExpression" />
+   <accelerator name="Trace" action="DebugTrace" />
+   <accelerator name="History" action="DebugHistory" />
+   <accelerator name="Back" action="DebugBack" />
+   <accelerator name="Forward" action="DebugForward" />
+   <accelerator name="Force" action="DebugForce" />
+   <accelerator name="Print" action="DebugPrint" />
+   <accelerator name="Simple Print" action="DebugSimplePrint" />
+   <accelerator name="Information" action="DebugInformation" />
+   <accelerator name="Kind" action="DebugKind" />
+   <accelerator name="Type" action="DebugType" />
  </ui>

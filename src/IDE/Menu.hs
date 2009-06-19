@@ -75,7 +75,8 @@ import qualified Data.Map as  Map (lookup)
 import Data.List (sort)
 import Control.Event (registerEvent)
 import Paths_leksah
-import IDE.Pane.Breakpoints (showBreakpointList, fillBreakpointList, selectBreak)
+import IDE.Pane.Breakpoints
+    (showDebugger, showBreakpointList, fillBreakpointList, selectBreak)
 import Debug.Trace (trace)
 import IDE.Pane.Variables (showVariables, fillVariablesList)
 import IDE.Pane.Trace (showTrace)
@@ -217,7 +218,7 @@ mkActions =
     ,AD "ShowEval" "Show Eval" Nothing Nothing
         {--showTrace--} undefined [] False
     ,AD "ShowDebugger" "Show Debugger" Nothing Nothing
-        {--showTrace--} undefined [] False
+        showDebugger [] False
 
     ,AD "DebugSetBreakpoint" "Set Breakpoint" (Just "Set a breakpoint on the selected name or current line") Nothing
         debugSetBreakpoint [] False
@@ -638,7 +639,12 @@ getActionsFor SensitivityProjectActive = getActionsFor'
 getActionsFor SensitivityError = getActionsFor' ["NextError", "PreviousError"]
 getActionsFor SensitivityEditor = getActionsFor' ["EditUndo", "EditRedo", "EditGotoLine"
     ,"EditComment", "EditUncomment", "EditShiftLeft", "EditShiftRight"]
-
+getActionsFor SensitivityInterpreting = getActionsFor' ["QuitDebugger" , "ExecuteSelection",
+ "DebugSetBreakpoint", "ShowNextBreakpoint", "ShowPreviousBreakpoint", "DebugDeleteAllBreakpoints",
+ "DebugContinue", "DebugAbandon", "DebugStop", "DebugStep", "DebugStepExpression", "DebugStepLocal",
+ "DebugStepModule", "DebugTrace", "DebugTraceExpression", "DebugHistory", "DebugBack", "DebugForward",
+ "DebugForce", "DebugPrint", "DebugSimplePrint", "ShowBindings", "ShowBreakpoints", "ShowContext",
+ "ShowLoadedModules", "ShowPackages", "ShowLanguages", "DebugInformation", "DebugKind", "DebugType"]
 
 getActionsFor' :: [String] -> IDEM[Action]
 getActionsFor' l = do

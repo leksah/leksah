@@ -40,6 +40,8 @@ module Graphics.UI.Frame.ViewFrame (
 ,   viewSplit
 ,   viewSplit'
 ,   viewNewGroup
+,   newGroupOrBringToFront
+,   bringGroupToFront
 ,   viewNest
 ,   viewNest'
 ,   viewDetach
@@ -224,41 +226,6 @@ mkLabelBox lbl paneName = do
                                     (PaneC pane) <- paneFromName paneName
                                     close pane
                                     return ()
-
-closeGroup :: PaneMonad alpha => String -> alpha ()
-closeGroup groupName = do
-    layout <- getLayout
-    let mbPath = findGroupPath groupName layout
-    mainWindow <- getMainWindow
-    case mbPath of
-        Nothing -> trace ("ViewFrame>>closeGroup: Group path not found: " ++ groupName) return ()
-        Just path -> do
-            panesMap <- getPaneMapSt
-            let nameAndpathList  = filter (\(a,pp) -> path `isPrefixOf` pp)
-                            $ map (\(a,b) -> (a,fst b)) (Map.assocs panesMap)
-            continue <- case nameAndpathList of
-                            (_:_) -> liftIO $ do
-                                md <- messageDialogNew (Just mainWindow) [] MessageQuestion ButtonsYesNo
-                                    ("Group " ++ groupName ++ " not empty. Close with all contents?")
-                                rid <- dialogRun md
-                                widgetDestroy md
-                                case rid of
-                                    ResponseYes ->  return True
-                                    otherwise   ->  return False
-                            []  -> return True
-            when continue $ do
-                panes <- mapM paneFromName $ map fst nameAndpathList
-                results <- mapM (\ (PaneC p) -> close p) panes
-                when (foldr (&&) True results) $ do
-                    nbOrPaned  <- getNotebookOrPaned path castToWidget
-                    mbParent <- liftIO $ widgetGetParent nbOrPaned
-                    case mbParent of
-                        Nothing -> error "ViewFrame>>closeGroup: closeGroup: no parent"
-                        Just parent -> liftIO $ containerRemove (castToContainer parent) nbOrPaned
-                    setLayoutSt (removeGL path layout)
-                    ppMap <- getPanePathFromNB
-                    setPanePathFromNB (Map.filter (\pa -> path `isPrefixOf` pa) ppMap)
-                    return ()
 
 -- | Add the change mark or removes it
 markLabel :: (WidgetClass alpha, NotebookClass beta) => beta -> alpha -> Bool -> IO ()
@@ -465,6 +432,28 @@ viewNewGroup = do
                 else viewNest groupName
         Nothing -> return ()
 
+newGroupOrBringToFront :: PaneMonad alpha => String -> PanePath -> alpha (Maybe PanePath,Bool)
+newGroupOrBringToFront groupName pp = do
+    layout <- getLayoutSt
+    if groupName `Set.member` allGroupNames layout
+        then do
+            mbPP <- bringGroupToFront groupName
+            return (mbPP,False)
+        else let realPath = getBestPanePath pp layout in do
+            viewNest' realPath groupName
+            return (Just (realPath ++ [GroupP groupName]),True)
+
+bringGroupToFront :: PaneMonad alpha => String -> alpha (Maybe PanePath)
+bringGroupToFront groupName = do
+    layout <- getLayoutSt
+    case findGroupPath groupName layout   of
+        Just path -> do
+            widget <- getNotebookOrPaned path castToWidget
+            liftIO $ setCurrentNotebookPages widget
+            return (Just path)
+        Nothing -> return Nothing
+
+
 --  Yet another stupid little dialog
 
 groupNameDialog :: Window -> IO (Maybe String)
@@ -533,6 +522,41 @@ viewNest' panePath group = do
                     liftIO $ afterSwitchPage nb handleFunc
                     adjustLayoutForNest group panePath
                 _ -> return ()
+
+closeGroup :: PaneMonad alpha => String -> alpha ()
+closeGroup groupName = do
+    layout <- getLayout
+    let mbPath = findGroupPath groupName layout
+    mainWindow <- getMainWindow
+    case mbPath of
+        Nothing -> trace ("ViewFrame>>closeGroup: Group path not found: " ++ groupName) return ()
+        Just path -> do
+            panesMap <- getPaneMapSt
+            let nameAndpathList  = filter (\(a,pp) -> path `isPrefixOf` pp)
+                            $ map (\(a,b) -> (a,fst b)) (Map.assocs panesMap)
+            continue <- case nameAndpathList of
+                            (_:_) -> liftIO $ do
+                                md <- messageDialogNew (Just mainWindow) [] MessageQuestion ButtonsYesNo
+                                    ("Group " ++ groupName ++ " not empty. Close with all contents?")
+                                rid <- dialogRun md
+                                widgetDestroy md
+                                case rid of
+                                    ResponseYes ->  return True
+                                    otherwise   ->  return False
+                            []  -> return True
+            when continue $ do
+                panes <- mapM paneFromName $ map fst nameAndpathList
+                results <- mapM (\ (PaneC p) -> close p) panes
+                when (foldr (&&) True results) $ do
+                    nbOrPaned  <- getNotebookOrPaned path castToWidget
+                    mbParent <- liftIO $ widgetGetParent nbOrPaned
+                    case mbParent of
+                        Nothing -> error "ViewFrame>>closeGroup: closeGroup: no parent"
+                        Just parent -> liftIO $ containerRemove (castToContainer parent) nbOrPaned
+                    setLayoutSt (removeGL path layout)
+                    ppMap <- getPanePathFromNB
+                    setPanePathFromNB (Map.filter (\pa -> path `isPrefixOf` pa) ppMap)
+                    return ()
 
 viewDetach :: PaneMonad alpha => alpha (Maybe (Window,Widget))
 viewDetach = do

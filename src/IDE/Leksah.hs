@@ -258,7 +258,7 @@ startGUI sessionFilename iprefs = do
             currentPrefs <- readIDE prefs
             when (backgroundBuild currentPrefs) $ packageBuild True) ideR
         return True) priorityDefaultIdle 100
-
+    reflectIDE (triggerEvent ideR (Sensitivity [(SensitivityInterpreting, False)])) ideR
     mainGUI
 
 fDescription :: FieldDescription Prefs

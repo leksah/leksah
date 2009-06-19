@@ -618,12 +618,13 @@ debugStart = catchIDE (do
                         ghci <- reifyIDE $ \ideR -> newGhci (buildFlags package)
                             $ \output -> reflectIDE (logOutputForBuild True output) ideR
                         modifyIDE_ (\ide -> return ide {ghciState = Just ghci})
-
+                        triggerEvent ideRef (Sensitivity [(SensitivityInterpreting, True)])
                         -- Fork a thread to wait for the output from the process to close
                         liftIO $ forkIO $ do
                             readMVar (outputClosed ghci)
                             reflectIDE (do
                                 modifyIDE_ (\ide -> return ide {ghciState = Nothing})
+                                triggerEvent ideRef (Sensitivity [(SensitivityInterpreting, False)])
                                 -- Kick of a build if one is not already due
                                 modified <- fileCheckAll
                                 prefs <- readIDE prefs

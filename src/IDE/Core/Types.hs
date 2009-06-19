@@ -446,6 +446,7 @@ data SensitivityMask =
     |   SensitivityProjectActive
     |   SensitivityError
     |   SensitivityEditor
+    |   SensitivityInterpreting
 
    deriving (Eq, Ord, Show)
 

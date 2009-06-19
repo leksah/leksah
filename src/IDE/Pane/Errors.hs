@@ -18,6 +18,7 @@ module IDE.Pane.Errors (
     IDEErrors
 ,   ErrorsState
 ,   showErrors
+,   showErrors'
 ,   fillErrorList
 ,   selectError
 ) where
@@ -30,7 +31,7 @@ import IDE.LogRef
 import Graphics.UI.Gtk.General.Enums
     (Click(..), MouseButton(..))
 import Graphics.UI.Gtk.Gdk.Events (Event(..))
-import IDE.ImportTool (addImport, parseNotInScope, addAllImports)
+import IDE.ImportTool (addImport,parseNotInScope, addAllImports)
 import Data.List (elemIndex)
 
 
@@ -81,6 +82,27 @@ getErrors = do
         Nothing -> do
             pp          <-  getBestPathForId "*Errors"
             nb          <-  getNotebook pp
+            newPane pp nb builder
+            fillErrorList
+            mbErrors <- getPane
+            case mbErrors of
+                Nothing ->  throwIDE "Can't init errors"
+                Just m  ->  return m
+        Just m ->   return m
+
+showErrors' :: PanePath -> IDEAction
+showErrors' pp = do
+    m <- getErrors' pp
+    liftIO $ bringPaneToFront m
+    liftIO $ widgetGrabFocus (treeView m)
+
+getErrors' :: PanePath -> IDEM IDEErrors
+getErrors' pp = do
+    mbErrors <- getPane
+    case mbErrors of
+        Nothing -> do
+            layout        <- getLayout
+            nb            <-  getNotebook (getBestPanePath pp layout)
             newPane pp nb builder
             fillErrorList
             mbErrors <- getPane

@@ -68,6 +68,7 @@ module IDE.Pane.SourceBuffer (
 ,   selectedModuleName
 ,   selectedLocation
 ,   recentSourceBuffers
+,   newTextBuffer
 ) where
 
 import Graphics.UI.Gtk hiding (afterToggleOverwrite)

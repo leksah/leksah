@@ -74,7 +74,7 @@ Executable leksah
                    IDE.Pane.Preferences IDE.Pane.ClassHierarchy IDE.Pane.PackageEditor
                    IDE.Pane.Info IDE.Pane.Log IDE.Pane.SourceBuffer IDE.Pane.Modules
                    IDE.Pane.Search IDE.Pane.References IDE.Pane.PackageFlags
-                   IDE.Tool IDE.LogRef IDE.Debug IDE.Pane.Debugger IDE.Pane.Grep
+                   IDE.Tool IDE.LogRef IDE.Debug IDE.Pane.Grep
                    IDE.Pane.Breakpoints IDE.Pane.Trace IDE.Pane.Variables
                    IDE.Pane.Errors
     ghc-prof-options: -auto-all -prof

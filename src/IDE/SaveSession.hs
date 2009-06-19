@@ -55,7 +55,6 @@ import IDE.Find
 import System.Time (getClockTime)
 import IDE.Package (activatePackage,deactivatePackage)
 import Data.List (foldl')
-import IDE.Pane.Debugger (DebuggerState(..))
 import IDE.Pane.Errors (ErrorsState(..))
 
 -- ---------------------------------------------------------------------
@@ -70,7 +69,6 @@ data PaneState      =   BufferSt BufferState
                     |   PrefsSt PrefsState
                     |   FlagsSt FlagsState
                     |   SearchSt SearchState
-                    |   DebuggerSt DebuggerState
                     |   GrepSt GrepState
                     |   BreakpointsSt BreakpointsState
                     |   TraceSt TraceState
@@ -87,7 +85,6 @@ asPaneState s | isJust ((cast s) :: Maybe ReferencesState)  =   ReferencesSt (fr
 asPaneState s | isJust ((cast s) :: Maybe PrefsState)       =   PrefsSt (fromJust $ cast s)
 asPaneState s | isJust ((cast s) :: Maybe FlagsState)       =   FlagsSt (fromJust $ cast s)
 asPaneState s | isJust ((cast s) :: Maybe SearchState)      =   SearchSt (fromJust $ cast s)
-asPaneState s | isJust ((cast s) :: Maybe DebuggerState)    =   DebuggerSt (fromJust $ cast s)
 asPaneState s | isJust ((cast s) :: Maybe GrepState)        =   GrepSt (fromJust $ cast s)
 asPaneState s | isJust ((cast s) :: Maybe BreakpointsState) =   BreakpointsSt (fromJust $ cast s)
 asPaneState s | isJust ((cast s) :: Maybe TraceState)       =   TraceSt (fromJust $ cast s)
@@ -104,7 +101,6 @@ recover pp (ReferencesSt p)     =   recoverState pp p
 recover pp (PrefsSt p)          =   recoverState pp p
 recover pp (FlagsSt p)          =   recoverState pp p
 recover pp (SearchSt p)         =   recoverState pp p
-recover pp (DebuggerSt p)       =   recoverState pp p
 recover pp (GrepSt p)           =   recoverState pp p
 recover pp (BreakpointsSt p)    =   recoverState pp p
 recover pp (TraceSt p)          =   recoverState pp p
