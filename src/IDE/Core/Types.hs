@@ -113,6 +113,9 @@ data IDEPackage     =   IDEPackage {
     packageId       ::   PackageIdentifier
 ,   cabalFile       ::   FilePath
 ,   depends         ::   [Dependency]
+,   modules         ::   Set ModuleName
+,   extraSrcs       ::   Set FilePath
+,   srcDirs         ::   [FilePath]
 ,   configFlags     ::   [String]
 ,   buildFlags      ::   [String]
 ,   haddockFlags    ::   [String]
@@ -175,6 +178,10 @@ data Prefs = Prefs {
     ,   saveAllBeforeBuild  ::   Bool
     ,   backgroundBuild     ::   Bool
     ,   backgroundLink      ::   Bool
+    ,   printEvldWithShow   ::   Bool
+    ,   breakOnException    ::   Bool
+    ,   breakOnError        ::   Bool
+    ,   printBindResult     ::   Bool
 } deriving(Eq,Show)
 
 data SearchHint = Forward | Backward | Insert | Delete | Initial

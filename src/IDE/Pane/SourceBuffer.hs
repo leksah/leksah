@@ -102,7 +102,7 @@ import Control.Event (triggerEvent)
 import SrcLoc
     (srcLocCol, srcLocLine, srcSpanEnd, srcSpanStart)
 import IDE.Metainfo.GHCUtils (parseHeader)
-import GHC (unLoc, moduleNameString, HsModule(..))
+import GHC (SrcLoc(..), unLoc, moduleNameString, HsModule(..))
 
 --
 -- | A text editor pane description
@@ -118,6 +118,7 @@ data IDEBuffer      =   IDEBuffer {
 } deriving (Typeable)
 
 data BufferState            =   BufferState FilePath Int
+                            |   BufferStateTrans String String Int
     deriving(Eq,Ord,Read,Show,Typeable)
 
 instance IDEObject IDEBuffer
@@ -153,10 +154,10 @@ instance Pane IDEBuffer IDEM
           id6 <- sv `afterToggleOverwrite`  writeOverwriteInStatusbar sv sbIO
           return [ConnectC id2,ConnectC id6,ConnectC id1,ConnectC id3]
       activatePane actbuf cids
-      liftIO $
-        idleAdd (do
-            widgetQueueDraw sv -- Patch for problem on one machine ##
-            return False) priorityDefaultIdle
+--      liftIO $
+--        idleAdd (do
+--            widgetQueueDraw sv -- Patch for problem on one machine ##
+--            return False) priorityDefaultIdle
       triggerEvent ideR (Sensitivity [(SensitivityEditor, True)])
       checkModTime actbuf
       return ()
@@ -169,7 +170,10 @@ instance RecoverablePane IDEBuffer BufferState IDEM where
                             iter    <-  liftIO $ textBufferGetIterAtMark buf ins
                             offset  <-  liftIO $ textIterGetOffset iter
                             case fileName p of
-                                Nothing ->  return Nothing
+                                Nothing ->  do
+                                    ct      <-  readIDE candy
+                                    text    <-  liftIO $ getCandylessText ct buf
+                                    return (Just (BufferStateTrans (bufferName p) text offset))
                                 Just fn ->  return (Just (BufferState fn offset))
     recoverState pp (BufferState n i) =   do
         mbbuf    <-  newTextBuffer pp (takeFileName n) (Just n)
@@ -184,6 +188,26 @@ instance RecoverablePane IDEBuffer BufferState IDEM where
                     return False) priorityDefaultIdle
                 return ()
             Nothing -> return ()
+    recoverState pp (BufferStateTrans bn text i) =   do
+        mbbuf    <-  newTextBuffer pp bn Nothing
+        useCandy    <- getCandyState
+        case mbbuf of
+            Just buf -> do
+                candy'      <- readIDE candy
+                liftIO $ do
+                    gtkBuf  <-  textViewGetBuffer (sourceView buf)
+                    textBufferSetText gtkBuf text
+
+                    when useCandy $ transformToCandy candy' gtkBuf
+                    iter    <-  textBufferGetIterAtOffset gtkBuf i
+                    textBufferPlaceCursor gtkBuf iter
+                    mark    <-  textBufferGetInsert gtkBuf
+                    idleAdd  (do
+                        textViewScrollToMark (sourceView buf) mark 0.0 (Just (0.3,0.3))
+                        return False) priorityDefaultIdle
+                    return ()
+            Nothing -> return ()
+
 
 startComplete :: IDEAction
 startComplete = do
@@ -278,6 +302,8 @@ goToSourceDefinition fp mbLocation = do
 
 markRefInSourceBuf :: Int -> IDEBuffer -> LogRef -> Bool -> IDEAction
 markRefInSourceBuf index buf logRef scrollTo = do
+    useCandy    <- getCandyState
+    candy'      <- readIDE candy
     contextRefs <- readIDE contextRefs
     inBufContext () buf $ \_ gtkbuf buf _ -> do
         let tagName = (show $ logRefType logRef) ++ show index
@@ -301,13 +327,18 @@ markRefInSourceBuf index buf logRef scrollTo = do
                         set errtag[textTagBackground := "pink"]
                 textTagTableAdd tagTable errtag
 
-        let start = srcSpanStart (logRefSrcSpan logRef)
-        let end   = srcSpanEnd   (logRefSrcSpan logRef)
-
+        let start' = srcLocToPair $ srcSpanStart (logRefSrcSpan logRef)
+        let end'   = srcLocToPair $ srcSpanEnd   (logRefSrcSpan logRef)
+        start <- if useCandy
+                    then positionToCandy candy' gtkbuf start'
+                    else return start'
+        end   <- if useCandy
+                    then positionToCandy candy' gtkbuf end'
+                    else return end'
         lines   <-  textBufferGetLineCount gtkbuf
-        iter    <-  textBufferGetIterAtLine gtkbuf (max 0 (min (lines-1) ((srcLocLine start)-1)))
+        iter    <-  textBufferGetIterAtLine gtkbuf (max 0 (min (lines-1) ((fst start)-1)))
         chars   <-  textIterGetCharsInLine iter
-        textIterSetLineOffset iter (max 0 (min (chars-1) (srcLocCol start)))
+        textIterSetLineOffset iter (max 0 (min (chars-1) (snd start)))
 
         iter2 <- if start == end
             then do
@@ -315,9 +346,9 @@ markRefInSourceBuf index buf logRef scrollTo = do
                 textIterForwardWordEnd copy
                 return copy
             else do
-                new    <-  textBufferGetIterAtLine gtkbuf (max 0 (min (lines-1) ((srcLocLine end)-1)))
-                chars   <-  textIterGetCharsInLine iter
-                textIterSetLineOffset new (max 0 (min (chars-1) (srcLocCol end)))
+                new     <-  textBufferGetIterAtLine gtkbuf (max 0 (min (lines-1) ((fst end)-1)))
+                chars   <-  textIterGetCharsInLine new
+                textIterSetLineOffset new (max 0 (min (chars-1) (snd end)))
                 textIterForwardChar new
                 return new
 
@@ -334,6 +365,9 @@ markRefInSourceBuf index buf logRef scrollTo = do
                 when (isOldContext && scrollTo) $ textBufferSelectRange gtkbuf iter iter2
                 return False) priorityDefaultIdle
             return ()
+
+srcLocToPair :: SrcLoc -> (Int,Int)
+srcLocToPair srcLoc = (srcLocLine srcLoc, srcLocCol srcLoc)
 
 allBuffers :: IDEM [IDEBuffer]
 allBuffers = getPanes
@@ -730,14 +764,17 @@ fileSaveBuffer query nb gtkbuf ideBuf i = do
 fileSave :: Bool -> IDEM Bool
 fileSave query = inActiveBufContext' False $ fileSaveBuffer query
 
-fileSaveAll :: IDEM Bool
-fileSaveAll = do
-    bufs    <- allBuffers
-    results <- forM bufs (\buf -> inBufContext' False buf (fileSaveBuffer False))
+fileSaveAll :: (FilePath -> IDEM Bool) -> IDEM Bool
+fileSaveAll filterFunc = do
+    bufs     <- allBuffers
+    filtered <- filterM (\buf -> case fileName buf
+                                    of Nothing -> return False
+                                       Just fn -> filterFunc fn) bufs
+    results  <- forM filtered (\buf -> inBufContext' False buf (fileSaveBuffer False))
     return $ True `elem` results
 
-fileCheckBuffer :: Bool -> Notebook -> TextBuffer -> IDEBuffer -> Int -> IDEM Bool
-fileCheckBuffer query nb gtkbuf ideBuf i = do
+fileCheckBuffer :: Notebook -> TextBuffer -> IDEBuffer -> Int -> IDEM Bool
+fileCheckBuffer nb gtkbuf ideBuf i = do
     ideR    <- ask
     window  <- getMainWindow
     prefs   <- readIDE prefs
@@ -749,16 +786,19 @@ fileCheckBuffer query nb gtkbuf ideBuf i = do
     case mbpage of
         Nothing     -> throwIDE "fileCheck: Page not found"
         Just page   ->
-            if isJust mbfn && query == False
+            if isJust mbfn
                 then do modifiedOnDisk <- checkModTime ideBuf -- The user is given option to reload
                         modifiedInBuffer <- liftIO $ textBufferGetModified gtkbuf
                         return (modifiedOnDisk || modifiedInBuffer)
                 else return False
 
-fileCheckAll :: IDEM Bool
-fileCheckAll = do
+fileCheckAll :: (FilePath -> IDEM Bool) -> IDEM Bool
+fileCheckAll filterFunc = do
     bufs    <- allBuffers
-    results <- forM bufs (\buf -> inBufContext' False buf (fileCheckBuffer False))
+    filtered <- filterM (\buf -> case fileName buf
+                                    of Nothing -> return False
+                                       Just fn -> filterFunc fn) bufs
+    results <- forM filtered (\buf -> inBufContext' False buf fileCheckBuffer)
     return $ True `elem` results
 
 fileNew :: IDEAction
@@ -1123,33 +1163,44 @@ removeRecentlyUsedFile fp = do
 
 selectedText :: IDEM (Maybe String)
 selectedText = do
+    candy' <- readIDE candy
     inActiveBufContext Nothing $ \_ gtkbuf currentBuffer _ -> do
         hasSelection <- liftIO $ textBufferHasSelection gtkbuf
         if hasSelection
             then do
                 (i1,i2)   <- liftIO $ textBufferGetSelectionBounds gtkbuf
-                text <- textBufferGetText gtkbuf i1 i2 False
+                text      <- getCandylessPart candy' gtkbuf i1 i2
                 return $ Just text
             else return Nothing
 
 selectedLocation :: IDEM (Maybe (Int, Int))
 selectedLocation = do
+    useCandy    <- getCandyState
+    candy'      <- readIDE candy
     inActiveBufContext Nothing $ \_ gtkbuf currentBuffer _ -> do
         (start, _) <- liftIO $ textBufferGetSelectionBounds gtkbuf
-        line <- textIterGetLine start
+        line       <- textIterGetLine start
         lineOffset <- textIterGetLineOffset start
-        return $ Just (line, lineOffset)
+        res <- if useCandy
+            then positionFromCandy candy' gtkbuf (line, lineOffset)
+            else return (line, lineOffset)
+        return $ Just res
+
+-- " ++ ++ ++ alpha
 
 insertTextAfterSelection :: String -> IDEAction
 insertTextAfterSelection str = do
-    inActiveBufContext () $ \_ gtkbuf currentBuffer _ -> do
+        candy'       <- readIDE candy
+        useCandy     <- getCandyState
+        inActiveBufContext () $ \_ gtkbuf currentBuffer _ -> do
         hasSelection <- liftIO $ textBufferHasSelection gtkbuf
         when hasSelection $ liftIO $ do
-            (_,i)   <- textBufferGetSelectionBounds gtkbuf
-            mark <- textBufferCreateMark gtkbuf Nothing i True
-            textBufferInsert gtkbuf i str
-            i1 <- textBufferGetIterAtMark gtkbuf mark
-            i2 <- textIterCopy i1
+            realString <-  if useCandy then stringToCandy candy' str else return str
+            (_,i)      <- textBufferGetSelectionBounds gtkbuf
+            mark       <- textBufferCreateMark gtkbuf Nothing i True
+            textBufferInsert gtkbuf i realString
+            i1         <- textBufferGetIterAtMark gtkbuf mark
+            i2         <- textIterCopy i1
             textIterForwardChars i2 (length str)
             textBufferSelectRange gtkbuf i1 i2
 

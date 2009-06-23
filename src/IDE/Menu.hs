@@ -76,11 +76,11 @@ import Data.List (sort)
 import Control.Event (registerEvent)
 import Paths_leksah
 import IDE.Pane.Breakpoints
-    (showDebugger, showBreakpointList, fillBreakpointList, selectBreak)
+    (showBreakpointList, fillBreakpointList, selectBreak)
 import Debug.Trace (trace)
 import IDE.Pane.Variables (showVariables, fillVariablesList)
 import IDE.Pane.Trace (showTrace)
-
+import IDE.Group.Debugger(showDebugger)
 --
 -- | The Actions known to the system (they can be activated by keystrokes or menus)
 --
@@ -99,7 +99,7 @@ mkActions =
     ,AD "FileSaveAs" "Save _As" Nothing (Just "gtk-save-as")
         (do fileSave True; return ()) [] False
     ,AD "FileSaveAll" "Save A_ll" Nothing Nothing
-        (do fileSaveAll; return ()) [] False
+        (do fileSaveAll (\ _ -> return True); return ()) [] False
     ,AD "FileClose" "_Close" Nothing (Just "gtk-close")
         (do fileClose; return ()) [] False
     ,AD "FileCloseAll" "Close All" Nothing Nothing

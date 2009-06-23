@@ -236,6 +236,12 @@ saveSessionAs sessionPath = do
         then ideMessage Normal "Forget this session"
         else do
             sysMessage Normal "Now saving session"
+            bufs <- allBuffers
+            case filter (\b -> bufferName b == "_LeksahEval.hs") bufs of
+                [buf] -> liftIO $ do
+                    gtkbuf <- textViewGetBuffer (sourceView buf)
+                    textBufferSetModified gtkbuf False
+                _     -> return ()
             wdw             <-  getMainWindow
             layout          <-  mkLayout
             population      <-  getPopulation

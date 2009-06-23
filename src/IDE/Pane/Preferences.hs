@@ -466,6 +466,40 @@ prefsDescription packages = NFDPP [
             boolEditor
             (\i -> return ())
     ]),
+    ("Debug", VFDPP emptyParams [
+           mkFieldPP
+            (paraName <<<- ParaName "Enable usage of Show instances in :print" $ emptyParams)
+            (PP.text . show)
+            boolParser
+            printEvldWithShow
+            (\b a -> a{printEvldWithShow = b})
+            boolEditor
+            (\i -> return ())
+         , mkFieldPP
+            (paraName <<<- ParaName "Break on any exception thrown" $ emptyParams)
+            (PP.text . show)
+            boolParser
+            breakOnException
+            (\b a -> a{breakOnException = b})
+            boolEditor
+            (\i -> return ())
+         , mkFieldPP
+            (paraName <<<- ParaName "Break on uncaught exceptions and errors" $ emptyParams)
+            (PP.text . show)
+            boolParser
+            breakOnError
+            (\b a -> a{breakOnError = b})
+            boolEditor
+            (\i -> return ())
+         , mkFieldPP
+            (paraName <<<- ParaName "Turn on printing of binding results in GHCi" $ emptyParams)
+            (PP.text . show)
+            boolParser
+            printBindResult
+            (\b a -> a{printBindResult = b})
+            boolEditor
+            (\i -> return ())
+    ]),
     ("Help", VFDPP emptyParams [
         mkFieldPP
             (paraName <<<- ParaName "Browser" $ emptyParams)
@@ -547,6 +581,10 @@ defaultPrefs = Prefs {
 #else
                                 True
 #endif
+    ,   printEvldWithShow   =   True
+    ,   breakOnException    =   True
+    ,   breakOnError        =   True
+    ,   printBindResult     =   False
     }
 
 -- ------------------------------------------------------------

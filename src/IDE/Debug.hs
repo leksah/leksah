@@ -162,7 +162,7 @@ debugExecuteAndShowSelection = do
         Just text -> do
             debugSetLiberalScope
             debugCommand text (\to -> do
-                insertTextAfterSelection $ " >> " ++ buildOutputString to
+                insertTextAfterSelection $ " " ++ buildOutputString to
                 logOutput to)
         Nothing   -> ideMessage Normal "Please select some text in the editor to execute"
     where

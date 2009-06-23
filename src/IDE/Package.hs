@@ -29,6 +29,7 @@ module IDE.Package (
 ,   activatePackage
 ,   deactivatePackage
 ,   getActivePackage
+,   belongsToActivePackage -- :: FilePath -> IDEM Bool
 
 ,   packageInstall
 ,   packageRegister
@@ -69,12 +70,13 @@ import IDE.Pane.PackageEditor
 import IDE.Pane.SourceBuffer
 import IDE.Pane.PackageFlags
 import Distribution.Text (display)
-import IDE.FileUtils (getConfigFilePathForLoad)
+import IDE.FileUtils
+    (moduleNameFromFilePath, isSubPath, getConfigFilePathForLoad)
 import IDE.LogRef
 import IDE.Debug
 import MyMissing (replace)
 import Distribution.ModuleName (ModuleName(..))
-import Data.List (foldl')
+import Data.List (nub, foldl')
 import qualified System.IO.UTF8 as UTF8  (readFile)
 import IDE.Tool (ToolOutput(..), runTool, newGhci, ToolState(..))
 
@@ -105,6 +107,7 @@ import Foreign.C (Errno(..), getErrno)
 -- so the auto import tool does not add stuf insied the
 import IDE.Metainfo.Provider
     (rebuildActiveInfo)
+import qualified Data.Set as  Set (member, fromList)
 
 #if defined(mingw32_HOST_OS) || defined(__MINGW32__)
 foreign import stdcall unsafe "winbase.h GetCurrentProcessId"
@@ -179,7 +182,11 @@ activatePackage filePath = do
     case mbPackageD of
         Nothing -> return (Nothing)
         Just packageD -> do
-            let packp = IDEPackage (package packageD) filePath (buildDepends packageD) [] [] [] [] [] [] [] []
+            let modules = Set.fromList $ libModules packageD ++ exeModules packageD
+            let files = Set.fromList $ extraSrcFiles packageD ++ map modulePath (executables packageD)
+            let srcDirs = nub $ concatMap hsSourceDirs (allBuildInfo packageD)
+            let packp = IDEPackage (package packageD) filePath (buildDepends packageD) modules
+                            files srcDirs [] [] [] [] [] [] [] []
             pack <- (do
                 flagFileExists <- liftIO $ doesFileExist (ppath </> "IDE.flags")
                 if flagFileExists
@@ -194,6 +201,26 @@ activatePackage filePath = do
             liftIO $ statusbarPush sb 1 (display $ packageId pack)
             removeRecentlyUsedPackage filePath
             return (Just pack)
+
+
+belongsToActivePackage :: FilePath -> IDEM Bool
+belongsToActivePackage fp = do
+    activePack' <-  readIDE activePack
+    case activePack' of
+        Nothing   -> return False
+        Just pack -> let basePath = dropFileName $ cabalFile pack in
+                    if isSubPath basePath fp
+                        then
+                            let srcPaths = map (\srcP -> basePath </> srcP) (srcDirs pack)
+                                relPaths = map (\p -> makeRelative p fp) srcPaths in
+                            if or (map (\p -> Set.member p (extraSrcs pack)) relPaths)
+                                then return True
+                                else do
+                                    mbMn <- liftIO $ moduleNameFromFilePath fp
+                                    case mbMn of
+                                        Nothing -> return False
+                                        Just mn -> return (Set.member mn (modules pack))
+                        else return False
 
 deactivatePackage :: IDEAction
 deactivatePackage = do
@@ -231,8 +258,12 @@ packageConfig = catchIDE (do
                             return Nothing))
                 case mbPackageD of
                     Just packageD -> do
+                        let modules = Set.fromList $ libModules packageD ++ exeModules packageD
+                        let files = Set.fromList $ extraSrcFiles packageD ++ map modulePath (executables packageD)
+                        let srcDirs = nub $ concatMap hsSourceDirs (allBuildInfo packageD)
                         modifyIDE_ (\ide -> return (ide{activePack =
-                            Just package{depends=buildDepends packageD}}))
+                            Just package{depends=buildDepends packageD, modules = modules,
+                                         extraSrcs = files, srcDirs = srcDirs}}))
                         ask >>= \ideR -> triggerEvent ideR ActivePack
                         return ()
                     Nothing -> return ())
@@ -243,7 +274,7 @@ runExternalTool description executable args handleOutput = do
         prefs          <- readIDE prefs
         alreadyRunning <- isRunning
         unless alreadyRunning $ do
-            when (saveAllBeforeBuild prefs) (do fileSaveAll; return ())
+            when (saveAllBeforeBuild prefs) (do fileSaveAll belongsToActivePackage; return ())
             sb <- getSBErrors
             liftIO $statusbarPop sb 1
             liftIO $statusbarPush sb 1 description
@@ -273,14 +304,18 @@ runCabalBuild backgroundBuild package = do
 
 packageBuild :: Bool -> IDEAction
 packageBuild backgroundBuild = catchIDE (do
-        mbPackage   <- if backgroundBuild then readIDE activePack else getActivePackage
+        mbPackage   <- if backgroundBuild
+                            then readIDE activePack
+                            else getActivePackage
         ideR        <- ask
         prefs       <- readIDE prefs
         case mbPackage of
             Nothing         -> return ()
             Just package    -> do
-                modified <- if saveAllBeforeBuild prefs then fileCheckAll else return False
-                when ((not backgroundBuild) || modified) $ do
+                modified <- if saveAllBeforeBuild prefs
+                                then fileCheckAll belongsToActivePackage
+                                else return False
+                when (not backgroundBuild || modified) $ do
                     maybeGhci <- readIDE ghciState
                     case maybeGhci of
                         Nothing -> do
@@ -297,7 +332,7 @@ packageBuild backgroundBuild = catchIDE (do
                         Just ghci -> do
                             ready <- liftIO $ isEmptyMVar (currentToolCommand ghci)
                             when ready $ do
-                                when (saveAllBeforeBuild prefs) (do fileSaveAll; return ())
+                                when (saveAllBeforeBuild prefs) (do fileSaveAll belongsToActivePackage; return ())
                                 executeDebugCommand ":reload" $ logOutputForBuild backgroundBuild
         )
         (\(e :: SomeException) -> putStrLn (show e))
@@ -602,20 +637,21 @@ backgroundLinkToggled = do
     modifyIDE_ (\ide -> return (ide{prefs = (prefs ide){backgroundLink= toggled}}))
 
 -- ---------------------------------------------------------------------
--- | * Debug gode that needs to use the package
+-- | * Debug code that needs to use the package
 --
 
 debugStart :: IDEAction
 debugStart = catchIDE (do
         ideRef      <- ask
         mbPackage   <- getActivePackage
+        prefs'      <- readIDE prefs
         case mbPackage of
             Nothing         -> return ()
             Just package    -> do
                 maybeGhci <- readIDE ghciState
                 case maybeGhci of
                     Nothing -> do
-                        ghci <- reifyIDE $ \ideR -> newGhci (buildFlags package)
+                        ghci <- reifyIDE $ \ideR -> newGhci (buildFlags package) (interactiveFlags prefs')
                             $ \output -> reflectIDE (logOutputForBuild True output) ideR
                         modifyIDE_ (\ide -> return ide {ghciState = Just ghci})
                         triggerEvent ideRef (Sensitivity [(SensitivityInterpreting, True)])
@@ -626,7 +662,7 @@ debugStart = catchIDE (do
                                 modifyIDE_ (\ide -> return ide {ghciState = Nothing})
                                 triggerEvent ideRef (Sensitivity [(SensitivityInterpreting, False)])
                                 -- Kick of a build if one is not already due
-                                modified <- fileCheckAll
+                                modified <- fileCheckAll belongsToActivePackage
                                 prefs <- readIDE prefs
                                 when ((not modified) && (backgroundBuild prefs)) $ do
                                     mbPackage   <- readIDE activePack
@@ -638,6 +674,13 @@ debugStart = catchIDE (do
                         sysMessage Normal "Debugger already running"
                         return ())
         (\(e :: SomeException) -> putStrLn (show e))
+
+interactiveFlags :: Prefs -> [String]
+interactiveFlags prefs =
+    (if printEvldWithShow prefs then "-fprint-evld-with-show" else "-fno-print-evld-with-show")
+    : (if breakOnException prefs then "-fbreak-on-exception" else "-fno-break-on-exception")
+    : (if breakOnError prefs then "-fbreak-on-error" else "-fno-break-on-error")
+    : [if printBindResult prefs then "-fprint-bind-result" else "-fno-print-bind-result"]
 
 debugToggled :: IDEAction
 debugToggled = do

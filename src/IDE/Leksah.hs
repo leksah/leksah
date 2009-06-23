@@ -257,7 +257,7 @@ startGUI sessionFilename iprefs = do
         reflectIDE (do
             currentPrefs <- readIDE prefs
             when (backgroundBuild currentPrefs) $ packageBuild True) ideR
-        return True) priorityDefaultIdle 100
+        return True) priorityDefaultIdle 1000
     reflectIDE (triggerEvent ideR (Sensitivity [(SensitivityInterpreting, False)])) ideR
     mainGUI
 

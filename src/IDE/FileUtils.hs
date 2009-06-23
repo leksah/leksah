@@ -195,14 +195,11 @@ moduleNameFromFilePath fp = catch (do
                     let parseRes = parse moduleNameParser fp str'
                     case parseRes of
                         Left err -> do
-                            sysMessage Normal $show err
                             return Nothing
                         Right str -> do
                             let res = simpleParse str
                             case res of
                                 Nothing -> do
-                                    sysMessage Normal $ "FileUtils>>moduleNameFromFilePath " ++
-                                        "Can't parse module name " ++ str
                                     return Nothing
                                 Just mn -> return (Just mn)
         else return Nothing)
@@ -221,8 +218,6 @@ moduleNameParser = do
     whiteSpace
     symbol "module"
     str <- lexeme mident
---    skipMany anyChar
---    eof
     return str
     <?> "module identifier"
 

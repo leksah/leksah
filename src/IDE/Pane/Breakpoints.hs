@@ -18,10 +18,9 @@ module IDE.Pane.Breakpoints (
     IDEBreakpoints
 ,   BreakpointsState
 ,   showBreakpointList
+,   showBreakpointList'
 ,   fillBreakpointList
 ,   selectBreak
-
-,   showDebugger
 ) where
 
 import Graphics.UI.Gtk
@@ -38,10 +37,7 @@ import IDE.Debug
 import IDE.LogRef (showSourceSpan)
 import Debug.Trace (trace)
 import Data.List (elemIndex)
-import IDE.Pane.Errors (showErrors')
-import IDE.Pane.Variables (showVariables')
-import Graphics.UI.Editor.Parameters (Direction(..))
-import IDE.Pane.SourceBuffer (newTextBuffer)
+
 
 -- | A breakpoints pane description
 --
@@ -239,35 +235,7 @@ deleteBreakpoint logRef =
         BreakpointRef -> debugDeleteBreakpoint ((words (refDescription logRef)) !! 1) logRef
         _   -> sysMessage Normal "Debugger>>deleteBreakpoint: Not a breakpoint"
 
-showDebugger :: IDEAction
-showDebugger = do
-    pp   <- panePathForGroup "*Debug"
-    ret  <- newGroupOrBringToFront "Debug" pp
-    case ret of
-        (Just rpp, True) -> do
-            viewSplit' rpp Horizontal
-            let lowerP =  rpp ++ [SplitP BottomP]
-            let upperP =  rpp ++ [SplitP TopP]
-            lower <- getNotebook lowerP
-            upper <- getNotebook upperP
-            liftIO $ do
-                notebookSetTabPos lower PosLeft
-                notebookSetTabPos upper PosLeft
-                notebookSetShowTabs upper False
-            showBreakpointList' (rpp ++ [SplitP BottomP])
-            showErrors' (rpp ++ [SplitP BottomP])
-            showVariables' (rpp ++ [SplitP BottomP])
-            newTextBuffer (rpp ++ [SplitP TopP]) "EvalL.hs" Nothing
-            return ()
-        (Just rpp, False) -> do
-            let lowerP =  rpp ++ [SplitP BottomP]
-            let upperP =  rpp ++ [SplitP TopP]
-            showBreakpointList' lowerP
-            showErrors' lowerP
-            showVariables' lowerP
-            newTextBuffer upperP "EvalL.hs" Nothing
-            return ()
-        _ -> return ()
+
 
 
 

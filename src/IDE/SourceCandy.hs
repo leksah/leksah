@@ -15,10 +15,15 @@
 
 module IDE.SourceCandy (
     parseCandy          -- ::   FilePath -> IO alpha
-,   transformToCandy    -- ::   alpha -> TextBuffer -> IO ()
-,   transformFromCandy  -- ::   alpha -> TextBuffer -> IO ()
-,   keystrokeCandy      -- ::   alpha -> Maybe Char -> TextBuffer -> IO ()
-,   getCandylessText    -- ::   alpha -> TextBuffer -> IO String
+,   transformToCandy    -- ::   TextBuffer -> IO ()
+,   transformFromCandy  -- ::   TextBuffer -> IO ()
+,   keystrokeCandy      -- ::   Maybe Char -> TextBuffer -> IO ()
+,   getCandylessText    -- ::   TextBuffer -> IO String
+
+,   getCandylessPart    -- ::   CandyTable -> TextBuffer -> TextIter -> TextIter -> IO String
+,   stringToCandy       -- ::   CandyTable -> String -> IO String
+,   positionToCandy     -- ::   CandyTable -> TextBuffer -> (Int,Int) -> IO (Int,Int)
+,   positionFromCandy   -- ::   CandyTable -> TextBuffer -> (Int,Int) -> IO (Int,Int)
 ) where
 
 import Data.Char(chr)
@@ -142,7 +147,7 @@ transformFromCandy (CT(_,transformTableBack)) gtkbuf = do
     textBufferEndUserAction gtkbuf
     textBufferSetModified gtkbuf modified
 
-getCandylessText :: CandyTable -> TextBuffer -> IO (String)
+getCandylessText :: CandyTable -> TextBuffer -> IO String
 getCandylessText (CT(_,transformTableBack)) gtkbuf = do
     workBuffer  <-  textBufferNew Nothing
     i1          <-  textBufferGetStartIter gtkbuf
@@ -154,6 +159,58 @@ getCandylessText (CT(_,transformTableBack)) gtkbuf = do
     i2          <-  textBufferGetEndIter workBuffer
     text2       <-  textBufferGetText workBuffer i1 i2 True
     return text2
+
+getCandylessPart :: CandyTable -> TextBuffer -> TextIter -> TextIter -> IO String
+getCandylessPart (CT(_,transformTableBack)) gtkbuf i1 i2 = do
+    workBuffer  <-  textBufferNew Nothing
+    text1       <-  textBufferGetText gtkbuf i1 i2 True
+    textBufferSetText workBuffer text1
+    mapM_ (\tbl ->  replaceFrom workBuffer tbl 0) transformTableBack
+    i1          <-  textBufferGetStartIter workBuffer
+    i2          <-  textBufferGetEndIter workBuffer
+    text2       <-  textBufferGetText workBuffer i1 i2 True
+    return text2
+
+stringToCandy :: CandyTable -> String -> IO String
+stringToCandy  candyTable text = do
+    workBuffer  <-  textBufferNew Nothing
+    textBufferSetText workBuffer text
+    transformToCandy candyTable workBuffer
+    i1          <-  textBufferGetStartIter workBuffer
+    i2          <-  textBufferGetEndIter workBuffer
+    text2       <-  textBufferGetText workBuffer i1 i2 True
+    return text2
+
+positionFromCandy :: CandyTable -> TextBuffer -> (Int,Int) -> IO (Int,Int)
+positionFromCandy candyTable gtkbuf (line,column) = do
+    i1          <- textBufferGetIterAtLine gtkbuf (max 0 (line - 1))
+    i2          <- textIterCopy i1
+    textIterForwardToLineEnd i2
+    text        <-  textBufferGetText gtkbuf i1 i2 True
+    workBuffer  <-  textBufferNew Nothing
+    textBufferSetText workBuffer text
+    i3          <- textBufferGetIterAtOffset workBuffer column
+    mark        <- textBufferCreateMark workBuffer Nothing i3 True
+    transformFromCandy candyTable workBuffer
+    i4          <- textBufferGetIterAtMark workBuffer mark
+    columnNew   <- textIterGetLineOffset i4
+    return (line,columnNew)
+
+positionToCandy :: CandyTable -> TextBuffer -> (Int,Int) -> IO (Int,Int)
+positionToCandy candyTable gtkbuf (line,column) = do
+    i1          <- textBufferGetIterAtLine gtkbuf (max 0 (line - 1))
+    i2          <- textIterCopy i1
+    textIterForwardToLineEnd i2
+    text        <-  textBufferGetText gtkbuf i1 i2 True
+    workBuffer  <-  textBufferNew Nothing
+    textBufferSetText workBuffer text
+    transformFromCandy candyTable workBuffer
+    i3          <- textBufferGetIterAtOffset workBuffer column
+    mark        <- textBufferCreateMark workBuffer Nothing i3 True
+    transformToCandy candyTable workBuffer
+    i4          <- textBufferGetIterAtMark workBuffer mark
+    columnNew   <- textIterGetLineOffset i4
+    return (line,columnNew)
 
 replaceFrom :: TextBuffer -> (String,String,Int) -> Int -> IO ()
 replaceFrom buf (to,from,spaces) offset = replaceFrom' offset

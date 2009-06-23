@@ -482,7 +482,7 @@ closePane pane = do
 
 -- get widget elements (menu & toolbar)
 
-getCandyState :: PaneMonad alpha => alpha  (Bool)
+getCandyState :: PaneMonad alpha => alpha Bool
 getCandyState = do
     ui <- getUIAction "ui/menubar/_Edit/Source Candy" castToToggleAction
     liftIO $toggleActionGetActive ui

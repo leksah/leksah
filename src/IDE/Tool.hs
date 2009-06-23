@@ -251,8 +251,8 @@ getGhciOutput = getOutput ghciCommandLineReader
 getOutputNoPrompt :: Handle -> Handle -> Handle -> ProcessHandle -> IO [ToolOutput]
 getOutputNoPrompt inp out err pid = fmap fromRawOutput $ getOutput noInputCommandLineReader inp out err pid
 
-newGhci :: [String] -> ([ToolOutput] -> IO ()) -> IO ToolState
-newGhci buildFlags startupOutputHandler = do
+newGhci :: [String] -> [String] -> ([ToolOutput] -> IO ()) -> IO ToolState
+newGhci buildFlags interactiveFlags startupOutputHandler = do
         tool <- newToolState
         writeChan (toolCommands tool) $
             ToolCommand (":set prompt " ++ ghciPrompt) startupOutputHandler
@@ -264,7 +264,8 @@ newGhci buildFlags startupOutputHandler = do
                         let newOptions = filterUnwanted options
                         putStrLn newOptions
                         putStrLn "Starting GHCi"
-                        runInteractiveTool tool getGhciOutput "ghci" (words newOptions ++ ["-fforce-recomp"])
+                        runInteractiveTool tool getGhciOutput "ghci"
+                            (words newOptions ++ ["-fforce-recomp"] ++ interactiveFlags)
                 _ -> do
                     startupOutputHandler output
                     putMVar (outputClosed tool) True
