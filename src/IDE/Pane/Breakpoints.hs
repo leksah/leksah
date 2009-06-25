@@ -72,7 +72,6 @@ instance RecoverablePane IDEBreakpoints BreakpointsState IDEM where
 
 showBreakpointList :: IDEAction
 showBreakpointList = trace "showBreakpointList!!" $ do
---    debugShowBreakpoints
     m <- trace "now get breakpoints" getBreakpoints
     liftIO $ bringPaneToFront m
     liftIO $ widgetGrabFocus (treeView m)
@@ -93,7 +92,6 @@ getBreakpoints = do
 
 showBreakpointList' :: PanePath -> IDEAction
 showBreakpointList' pp = do
---    debugShowBreakpoints
     m <- getBreakpoints' pp
     liftIO $ bringPaneToFront m
     liftIO $ widgetGrabFocus (treeView m)

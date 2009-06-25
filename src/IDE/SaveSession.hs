@@ -237,7 +237,7 @@ saveSessionAs sessionPath = do
         else do
             sysMessage Normal "Now saving session"
             bufs <- allBuffers
-            case filter (\b -> bufferName b == "_LeksahEval.hs") bufs of
+            case filter (\b -> bufferName b == "_Eval.hs") bufs of
                 [buf] -> liftIO $ do
                     gtkbuf <- textViewGetBuffer (sourceView buf)
                     textBufferSetModified gtkbuf False

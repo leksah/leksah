@@ -185,7 +185,17 @@ debugAbandon :: IDEAction
 debugAbandon = debugCommand ":abandon" logOutput
 
 debugBack :: IDEAction
-debugBack = debugCommand ":back" logOutputForHistoricContext
+debugBack = do
+    currentHist' <- readIDE currentHist
+    modifyIDE_ (\ide -> return (ide{currentHist = currentHist' - 1}))
+    debugCommand ":back" logOutputForHistoricContext
+
+debugForward :: IDEAction
+debugForward = do
+    currentHist' <- readIDE currentHist
+    modifyIDE_ (\ide -> return (ide{currentHist = currentHist' + 1}))
+    debugCommand ":forward" logOutputForHistoricContext
+
 
 debugStop :: IDEAction
 #if defined(mingw32_HOST_OS) || defined(__MINGW32__)
@@ -249,9 +259,6 @@ debugForce = do
         Just text -> debugCommand (":force " ++ text) logOutput
         Nothing   -> ideMessage Normal "Please select an expression in the editor"
 
-debugForward :: IDEAction
-debugForward = debugCommand ":forward" logOutputForHistoricContext
-
 debugHistory :: IDEAction
 debugHistory = debugCommand ":history" logOutput
 
@@ -293,7 +300,12 @@ debugStepModule :: IDEAction
 debugStepModule = debugCommand ":stepmodule" logOutputForLiveContext
 
 debugTrace :: IDEAction
-debugTrace = debugCommand ":trace" logOutputForLiveContext
+debugTrace = do
+    ideR <- ask
+    debugCommand ":trace" (\to -> do
+        logOutputForLiveContext to
+        triggerEvent ideR TraceChanged
+        return ())
 
 debugTraceExpression :: IDEAction
 debugTraceExpression = do
@@ -303,8 +315,12 @@ debugTraceExpression = do
 
 debugTraceExpr :: Maybe String -> IDEAction
 debugTraceExpr maybeText = do
+    ideR <- ask
     case maybeText of
-        Just text -> debugCommand (":trace "++text) logOutputForLiveContext
+        Just text -> debugCommand (":trace " ++ text) (\to -> do
+        logOutputForLiveContext to
+        triggerEvent ideR TraceChanged
+        return ())
         Nothing   -> ideMessage Normal "Please select an expression in the editor"
 
 

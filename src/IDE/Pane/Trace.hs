@@ -18,15 +18,29 @@ module IDE.Pane.Trace (
     IDETrace
 ,   TraceState
 ,   showTrace
-,   fillTracepointList
+,   showTrace'
+,   fillTraceList
 ) where
 
 import Graphics.UI.Gtk
 import Data.Typeable (Typeable(..))
 import IDE.Core.State
 import Control.Monad.Reader
-import IDE.Debug (debugCommand', debugHistory)
+import IDE.Debug
+    (debugForward, debugBack, debugCommand', debugHistory)
 import IDE.Tool (ToolOutput(..))
+import IDE.LogRef (srcSpanParser)
+import Debug.Trace (trace)
+import Text.ParserCombinators.Parsec
+    (optional, eof, try, parse, (<?>), noneOf, many, CharParser)
+import qualified Text.ParserCombinators.Parsec.Token as  P
+    (integer, whiteSpace, colon, symbol, makeTokenParser)
+import Text.ParserCombinators.Parsec.Language (emptyDef)
+import GHC (SrcSpan(..))
+import Outputable (ppr, showSDoc)
+import Graphics.UI.Gtk.Gdk.Events (Event(..))
+import Graphics.UI.Gtk.General.Enums (MouseButton(..))
+
 
 -- | A debugger pane description
 --
@@ -40,7 +54,11 @@ data TraceState  =   TraceState {
 }   deriving(Eq,Ord,Read,Show,Typeable)
 
 data TraceHist = TraceHist {
-    str             ::  String}
+    thSelected      ::  Bool,
+    thIndex         ::  Int,
+    thFunction      ::  String,
+    thPosition      ::  SrcSpan
+    }
 
 instance IDEObject IDETrace
 
@@ -68,6 +86,13 @@ showTrace = do
     liftIO $ bringPaneToFront m
     liftIO $ widgetGrabFocus (treeView m)
 
+showTrace' :: PanePath -> IDEAction
+showTrace' pp = do
+    m <- getTrace' pp
+    liftIO $ bringPaneToFront m
+    liftIO $ widgetGrabFocus (treeView m)
+
+
 getTrace :: IDEM IDETrace
 getTrace = do
     mbTrace <- getPane
@@ -78,7 +103,21 @@ getTrace = do
             newPane pp nb builder
             mbTrace <- getPane
             case mbTrace of
-                Nothing ->  throwIDE "Can't init breakpoints"
+                Nothing ->  throwIDE "Can't init trace"
+                Just m  ->  return m
+        Just m ->   return m
+
+getTrace' :: PanePath -> IDEM IDETrace
+getTrace' pp = do
+    mbTrace <- getPane
+    case mbTrace of
+        Nothing -> do
+            layout        <- getLayout
+            nb            <- getNotebook (getBestPanePath pp layout)
+            newPane pp nb builder
+            mbTrace <- getPane
+            case mbTrace of
+                Nothing ->  throwIDE "Can't init trace"
                 Just m  ->  return m
         Just m ->   return m
 
@@ -92,16 +131,49 @@ builder pp nb windows ideR = do
     treeView    <-  treeViewNew
     treeViewSetModel treeView tracepoints
 
-    rendererB    <- cellRendererTextNew
-    colB         <- treeViewColumnNew
-    treeViewColumnSetTitle colB "Trace"
-    treeViewColumnSetSizing colB TreeViewColumnAutosize
-    treeViewColumnSetResizable colB True
-    treeViewColumnSetReorderable colB True
-    treeViewAppendColumn treeView colB
-    cellLayoutPackStart colB rendererB False
-    cellLayoutSetAttributes colB rendererB tracepoints
-        $ \row -> [ cellText := str row]
+    renderer0 <- cellRendererToggleNew
+    col0         <- treeViewColumnNew
+    treeViewColumnSetTitle col0 ""
+    treeViewColumnSetSizing col0 TreeViewColumnAutosize
+    treeViewColumnSetResizable col0 False
+    treeViewColumnSetReorderable col0 True
+    treeViewAppendColumn treeView col0
+    cellLayoutPackStart col0 renderer0 False
+    cellLayoutSetAttributes col0 renderer0 tracepoints
+        $ \row -> [ cellToggleActive := thSelected row]
+
+    renderer1    <- cellRendererTextNew
+    col1         <- treeViewColumnNew
+    treeViewColumnSetTitle col1 "Index"
+    treeViewColumnSetSizing col1 TreeViewColumnAutosize
+    treeViewColumnSetResizable col1 True
+    treeViewColumnSetReorderable col1 True
+    treeViewAppendColumn treeView col1
+    cellLayoutPackStart col1 renderer1 False
+    cellLayoutSetAttributes col1 renderer1 tracepoints
+        $ \row -> [ cellText := show (thIndex row)]
+
+    renderer2    <- cellRendererTextNew
+    col2         <- treeViewColumnNew
+    treeViewColumnSetTitle col2 "Function"
+    treeViewColumnSetSizing col2 TreeViewColumnAutosize
+    treeViewColumnSetResizable col2 True
+    treeViewColumnSetReorderable col2 True
+    treeViewAppendColumn treeView col2
+    cellLayoutPackStart col2 renderer2 False
+    cellLayoutSetAttributes col2 renderer2 tracepoints
+        $ \row -> [ cellText := thFunction row]
+
+    renderer3    <- cellRendererTextNew
+    col3         <- treeViewColumnNew
+    treeViewColumnSetTitle col3 "Position"
+    treeViewColumnSetSizing col3 TreeViewColumnAutosize
+    treeViewColumnSetResizable col3 True
+    treeViewColumnSetReorderable col3 True
+    treeViewAppendColumn treeView col3
+    cellLayoutPackStart col3 renderer3 False
+    cellLayoutSetAttributes col3 renderer3 tracepoints
+        $ \row -> [ cellText := (showSDoc . ppr) (thPosition row)]
 
     treeViewSetHeadersVisible treeView True
     sel <- treeViewGetSelection treeView
@@ -120,22 +192,35 @@ builder pp nb windows ideR = do
         case sel of
             Just ref -> return () -- TODO reflectIDE (selectRef (Just ref)) ideR
             Nothing -> return ()
-
+    treeView `onButtonPress` (traceViewPopup ideR tracepoints treeView)
     return (pane,[ConnectC cid1])
 
-fillTracepointList :: IDEAction
-fillTracepointList = do
-    mbTraces <- getPane
+fillTraceList :: IDEAction
+fillTraceList = do
+    currentHist' <- readIDE currentHist
+    mbTraces     <- getPane
     case mbTraces of
         Nothing -> return ()
         Just tracePane -> debugCommand' ":history" (\to -> liftIO
-                        $ postGUIAsync (do
-                            let strings = selectStrings to
-                            treeStoreClear (tracepoints tracePane)
-                            mapM_ (insertTrace (tracepoints tracePane))
-                                        (zip strings [0..length strings])))
+            $ postGUIAsync (do
+                let parseRes = parse tracesParser "" (selectString to)
+                r <- case parseRes of
+                        Left err     -> trace ("trace parse error " ++ show err ++ "\ninput: " ++ selectString to)
+                                    $ return []
+                        Right traces -> return traces
+                treeStoreClear (tracepoints tracePane)
+                let r' = map (\h@(TraceHist _ i _ _) -> if i == currentHist'
+                                                            then h{thSelected = True}
+                                                            else h) r
+                mapM_ (insertTrace (tracepoints tracePane))
+                    (zip r' [0..length r'])))
     where
-    insertTrace treeStore (str,index)  = treeStoreInsert treeStore [] index (TraceHist str)
+    insertTrace treeStore (tr,index)  = treeStoreInsert treeStore [] index tr
+
+selectString :: [ToolOutput] -> String
+selectString (ToolOutput str:r)  = '\n' : str ++ selectString r
+selectString (_:r)               = selectString r
+selectString []                  = ""
 
 getSelectedTracepoint ::  TreeView
     -> TreeStore TraceHist
@@ -153,3 +238,68 @@ selectStrings :: [ToolOutput] -> [String]
 selectStrings (ToolOutput str:r)  = str : selectStrings r
 selectStrings (_:r)               = selectStrings r
 selectStrings []                  = []
+
+traceViewPopup :: IDERef
+    -> TreeStore TraceHist
+    -> TreeView
+    -> Event
+    -> IO (Bool)
+traceViewPopup ideR  store treeView (Button _ click _ _ _ _ button _ _)
+    = do
+    if button == RightButton
+        then do
+            theMenu         <-  menuNew
+            item1           <-  menuItemNewWithLabel "Back"
+            item1 `onActivateLeaf` reflectIDE debugBack ideR
+            sep1 <- separatorMenuItemNew
+            item2           <-  menuItemNewWithLabel "Forward"
+            item2 `onActivateLeaf` (reflectIDE debugForward ideR)
+            item3           <-  menuItemNewWithLabel "Update"
+            item3 `onActivateLeaf` (reflectIDE fillTraceList ideR)
+            mapM_ (menuShellAppend theMenu) [castToMenuItem item1, castToMenuItem sep1,
+                castToMenuItem item2, castToMenuItem item3]
+            menuPopup theMenu Nothing
+            widgetShowAll theMenu
+            return True
+        else return False
+--            if button == LeftButton && click == DoubleClick
+--                then do sel         <-  getSelectedBreakpoint treeView store
+--                        case sel of
+--                            Just ref      -> reflectIDE (setCurrentBreak (Just ref)) ideR
+--                            otherwise     -> sysMessage Normal "Debugger>> breakpointViewPopup: no selection2"
+--                        return True
+--                else return False
+traceViewPopup _ _ _ _ = throwIDE "breakpointViewPopup wrong event type"
+
+
+tracesParser :: CharParser () [TraceHist]
+tracesParser = do
+    traces <- many (try traceParser)
+    whiteSpace
+    symbol "<end of history>"
+    eof
+    return traces
+    <?> "traces parser"
+
+traceParser :: CharParser () TraceHist
+traceParser = do
+    whiteSpace
+    index    <- int
+    colon
+    optional (symbol "\ESC[1m")
+    function <- many (noneOf "(\ESC")
+    optional (symbol "\ESC[0m")
+    symbol "("
+    span     <- srcSpanParser
+    symbol ")"
+    return (TraceHist False index function span)
+    <?> "trace parser"
+
+lexer  = P.makeTokenParser emptyDef
+colon  = P.colon lexer
+symbol = P.symbol lexer
+whiteSpace = P.whiteSpace lexer
+int = fmap fromInteger $ P.integer lexer
+
+
+

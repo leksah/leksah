@@ -31,6 +31,7 @@ import Graphics.UI.Gtk.General.Enums (PositionType(..))
 import IDE.Pane.Errors (showErrors')
 import IDE.Pane.Variables (showVariables')
 import IDE.Pane.Breakpoints (showBreakpointList')
+import IDE.Pane.Trace(showTrace')
 import Control.Monad (when)
 
 showDebugger :: IDEAction
@@ -52,8 +53,9 @@ showDebugger = do
             showBreakpointList' (rpp ++ [SplitP BottomP])
             showErrors' (rpp ++ [SplitP BottomP])
             showVariables' (rpp ++ [SplitP BottomP])
-            when (null $ filter (\b -> bufferName b == "_LeksahEval.hs") bufs) $
-                newTextBuffer (rpp ++ [SplitP TopP]) "_LeksahEval.hs" Nothing >> return ()
+            showTrace' (rpp ++ [SplitP BottomP])
+            when (null $ filter (\b -> bufferName b == "_Eval.hs") bufs) $
+                newTextBuffer (rpp ++ [SplitP TopP]) "_Eval.hs" Nothing >> return ()
             return ()
         (Just rpp, False) -> do
             let lowerP =  rpp ++ [SplitP BottomP]
@@ -61,7 +63,8 @@ showDebugger = do
             showBreakpointList' lowerP
             showErrors' lowerP
             showVariables' lowerP
-            when (null $ filter (\b -> bufferName b == "_LeksahEval.hs") bufs) $
-                newTextBuffer upperP "_LeksahEval.hs" Nothing >> return ()
+            showTrace' (rpp ++ [SplitP BottomP])
+            when (null $ filter (\b -> bufferName b == "_Eval.hs") bufs) $
+                newTextBuffer upperP "_Eval.hs" Nothing >> return ()
             return ()
         _ -> return ()

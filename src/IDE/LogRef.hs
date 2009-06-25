@@ -34,6 +34,7 @@ module IDE.LogRef (
 ,   selectRef
 ,   setBreakpointList
 ,   showSourceSpan
+,   srcSpanParser
 ) where
 
 import Graphics.UI.Gtk
@@ -130,6 +131,7 @@ addLogRefs refs = do
     markLogRefs
     triggerEvent ideR ErrorChanged
     triggerEvent ideR BreakpointChanged
+    triggerEvent ideR TraceChanged
     return ()
 
 nextError :: IDEAction

@@ -79,7 +79,7 @@ import IDE.Pane.Breakpoints
     (showBreakpointList, fillBreakpointList, selectBreak)
 import Debug.Trace (trace)
 import IDE.Pane.Variables (showVariables, fillVariablesList)
-import IDE.Pane.Trace (showTrace)
+import IDE.Pane.Trace (showTrace,fillTraceList)
 import IDE.Group.Debugger(showDebugger)
 --
 -- | The Actions known to the system (they can be activated by keystrokes or menus)
@@ -817,6 +817,9 @@ registerEvents =    do
         (Left (\ e@(CurrentBreakChanged mbLogRef) -> reifyIDE (\ideR ->
             postGUIAsync (reflectIDE (selectRef mbLogRef) ideR) >>
             postGUIAsync (reflectIDE (selectBreak mbLogRef) ideR)) >> return e))
+    registerEvent stRef "TraceChanged"
+        (Left (\ e@TraceChanged    -> reifyIDE (\ideR ->
+            postGUIAsync (reflectIDE fillTraceList ideR)) >> return e))
     registerEvent stRef "GetTextPopup"
         (Left (\ e@(GetTextPopup _) -> return (GetTextPopup (Just textPopupMenu))))
     return ()

@@ -71,9 +71,6 @@
        <menuitem name="Open Documentation" action="OpenDocPackage" />
      </menu>
     <menu name="_Debug" action="Debug">
-       <separator/>
-       <menuitem name="Show Debugger" action="ShowDebugger" />
-       <separator/>
        <menuitem name="Continue" action="DebugContinue" />
        <menuitem name="Abandon" action="DebugAbandon" />
        <menuitem name="Stop" action="DebugStop" />
@@ -87,6 +84,8 @@
        <menuitem name="Show Loaded _Modules" action="ShowLoadedModules" />
        <menuitem name="Show _Packages" action="ShowPackages" />
        <menuitem name="Show _Languages" action="ShowLanguages" />
+       <separator/>
+       <menuitem name="Show Debugger" action="ShowDebugger" />
      </menu>
     <menu name="_Metadata" action="Metadata">
        <menuitem name="Update Project" action="UpdateMetadataCurrent" />

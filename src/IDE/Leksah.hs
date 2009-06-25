@@ -202,6 +202,7 @@ startGUI sessionFilename iprefs = do
           ,   prefs         =   startupPrefs
           ,   activePack    =   Nothing
           ,   allLogRefs    =   []
+          ,   currentHist   =   0
           ,   currentEBC    =   (Nothing, Nothing, Nothing)
           ,   accessibleInfo     =   Nothing
           ,   currentInfo   =   Nothing

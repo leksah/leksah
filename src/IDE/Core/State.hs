@@ -163,6 +163,7 @@ data IDE            =  IDE {
 ,   activePack      ::   Maybe IDEPackage
 ,   allLogRefs      ::   [LogRef]
 ,   currentEBC      ::   (Maybe LogRef, Maybe LogRef, Maybe LogRef)
+,   currentHist     ::   Int
 ,   accessibleInfo  ::   (Maybe (PackageScope))     -- ^  the world scope
 ,   currentInfo     ::   (Maybe (PackageScope,PackageScope))
                                                 -- ^ the first is for the current package,
@@ -240,6 +241,7 @@ data IDEEvent  =
     |   CurrentErrorChanged (Maybe LogRef)
     |   BreakpointChanged
     |   CurrentBreakChanged (Maybe LogRef)
+    |   TraceChanged
     |   GetTextPopup (Maybe (IDERef -> Menu -> IO ()))
 --
 -- | A mutable reference to the IDE state
@@ -264,6 +266,7 @@ instance Event IDEEvent String where
     getSelector (CurrentErrorChanged _) =   "CurrentErrorChanged"
     getSelector BreakpointChanged       =   "BreakpointChanged"
     getSelector (CurrentBreakChanged _) =   "CurrentBreakChanged"
+    getSelector TraceChanged            =   "TraceChanged"
     getSelector (GetTextPopup _)        =   "GetTextPopup"
 
 instance EventSource IDERef IDEEvent IDEM String where
@@ -284,6 +287,7 @@ instance EventSource IDERef IDEEvent IDEM String where
     canTriggerEvent o "CurrentErrorChanged" = True
     canTriggerEvent o "BreakpointChanged" = True
     canTriggerEvent o "CurrentBreakChanged" = True
+    canTriggerEvent o "TraceChanged"    = True
     canTriggerEvent o "GetTextPopup"    = True
     canTriggerEvent _ _                 =   False
 
