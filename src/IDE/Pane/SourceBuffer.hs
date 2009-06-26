@@ -556,7 +556,7 @@ checkModTime buf = do
                                                     Nothing []
                                                     MessageQuestion
                                                     ButtonsYesNo
-                                                    ("File has changed on disk " ++ name ++ " Revert?")
+                                                    ("File \"" ++ name ++ "\" has changed on disk. Load file from disk?")
                                             resp <- liftIO $ dialogRun md
                                             case resp of
                                                 ResponseYes ->  do
