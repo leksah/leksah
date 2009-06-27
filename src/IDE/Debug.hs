@@ -174,12 +174,17 @@ debugExecuteAndShowSelection = do
 
 debugSetLiberalScope :: IDEAction
 debugSetLiberalScope = do
-    mbPackage <- getActivePackageDescr
-    case mbPackage of
-        Nothing -> return ()
-        Just p -> let packageNames = map (display . modu . moduleIdMD) (exposedModulesPD p)
-            in debugCommand' (foldl (\a b -> a ++ " *" ++ b) ":module + " packageNames)
-                (\ _ -> return ())
+    maybeModuleName <- selectedModuleName
+    case maybeModuleName of
+        Just moduleName -> do
+            debugCommand (":module *" ++ moduleName) (\ _ -> return ())
+        Nothing -> do
+            mbPackage <- getActivePackageDescr
+            case mbPackage of
+                Nothing -> return ()
+                Just p -> let packageNames = map (display . modu . moduleIdMD) (exposedModulesPD p)
+                    in debugCommand' (foldl (\a b -> a ++ " *" ++ b) ":module + " packageNames)
+                        (\ _ -> return ())
 
 debugAbandon :: IDEAction
 debugAbandon = debugCommand ":abandon" logOutput
