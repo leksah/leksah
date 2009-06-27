@@ -42,6 +42,10 @@ import Control.Concurrent
 import Control.Monad (when)
 import Data.List (stripPrefix)
 import Data.Maybe (isJust, catMaybes)
+#if !defined(mingw32_HOST_OS) && !defined(__MINGW32__)
+import System.Posix (sigQUIT, sigINT, installHandler)
+import System.Posix.Signals (Handler(..))
+#endif
 import System.Process
     (waitForProcess, ProcessHandle(..), runInteractiveProcess)
 
@@ -67,6 +71,11 @@ toolline (ToolError l) = l
 
 runTool :: FilePath -> [String] -> IO ([ToolOutput], ProcessHandle)
 runTool executable arguments = do
+#if !defined(mingw32_HOST_OS) && !defined(__MINGW32__)
+    installHandler sigINT Ignore Nothing
+    installHandler sigQUIT Ignore Nothing
+#endif
+
     (inp,out,err,pid) <- runInteractiveProcess executable arguments Nothing Nothing
     output <- getOutputNoPrompt inp out err pid
     return (output, pid)
@@ -82,6 +91,11 @@ newToolState = do
 
 runInteractiveTool :: ToolState -> (Handle -> Handle -> Handle -> ProcessHandle -> IO [RawToolOutput]) -> FilePath -> [String] -> IO ()
 runInteractiveTool tool getOutput executable arguments = do
+#if !defined(mingw32_HOST_OS) && !defined(__MINGW32__)
+    installHandler sigINT Ignore Nothing
+    installHandler sigQUIT Ignore Nothing
+#endif
+
     (inp,out,err,pid) <- runInteractiveProcess executable arguments Nothing Nothing
     putMVar (toolProcess tool) pid
     output <- getOutput inp out err pid
