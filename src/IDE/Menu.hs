@@ -99,7 +99,7 @@ mkActions =
     ,AD "FileSaveAs" "Save _As" Nothing (Just "gtk-save-as")
         (do fileSave True; return ()) [] False
     ,AD "FileSaveAll" "Save A_ll" Nothing Nothing
-        (do fileSaveAll (\ _ -> return True); return ()) [] False
+        (do fileSaveAll (\ _ _ -> return True); return ()) [] False
     ,AD "FileClose" "_Close" Nothing (Just "gtk-close")
         (do fileClose; return ()) [] False
     ,AD "FileCloseAll" "Close All" Nothing Nothing

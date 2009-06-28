@@ -11,6 +11,7 @@ module IDE.FileUtils (
 ,   getCollectorPath
 ,   getSysLibDir
 ,   moduleNameFromFilePath
+,   moduleNameFromFilePath'
 ,   findKnownPackages
 ,   isSubPath
 ,   findSourceFile
@@ -184,26 +185,30 @@ moduleNameFromFilePath fp = catch (do
     if exists
         then do
             str <- readFile fp
-            let unlitRes = if takeExtension fp == ".lhs"
-                            then unlit fp str
-                            else Left str
-            case unlitRes of
-                Right err -> do
-                    sysMessage Normal $show err
-                    return Nothing
-                Left str' -> do
-                    let parseRes = parse moduleNameParser fp str'
-                    case parseRes of
-                        Left err -> do
-                            return Nothing
-                        Right str -> do
-                            let res = simpleParse str
-                            case res of
-                                Nothing -> do
-                                    return Nothing
-                                Just mn -> return (Just mn)
+            moduleNameFromFilePath' fp str
         else return Nothing)
             $ \ _ -> return Nothing
+
+moduleNameFromFilePath' :: FilePath -> String -> IO (Maybe ModuleName)
+moduleNameFromFilePath' fp str = do
+    let unlitRes = if takeExtension fp == ".lhs"
+                    then unlit fp str
+                    else Left str
+    case unlitRes of
+        Right err -> do
+            sysMessage Normal $show err
+            return Nothing
+        Left str' -> do
+            let parseRes = parse moduleNameParser fp str'
+            case parseRes of
+                Left err -> do
+                    return Nothing
+                Right str -> do
+                    let res = simpleParse str
+                    case res of
+                        Nothing -> do
+                            return Nothing
+                        Just mn -> return (Just mn)
 
 lexer = haskell
 lexeme = P.lexeme lexer

@@ -71,7 +71,7 @@ import IDE.Pane.SourceBuffer
 import IDE.Pane.PackageFlags
 import Distribution.Text (display)
 import IDE.FileUtils
-    (moduleNameFromFilePath, isSubPath, getConfigFilePathForLoad)
+    (moduleNameFromFilePath', isSubPath, getConfigFilePathForLoad)
 import IDE.LogRef
 import IDE.Debug
 import MyMissing (replace)
@@ -203,8 +203,8 @@ activatePackage filePath = do
             return (Just pack)
 
 
-belongsToActivePackage :: FilePath -> IDEM Bool
-belongsToActivePackage fp = do
+belongsToActivePackage :: FilePath -> String -> IDEM Bool
+belongsToActivePackage fp str = do
     activePack' <-  readIDE activePack
     case activePack' of
         Nothing   -> return False
@@ -216,7 +216,7 @@ belongsToActivePackage fp = do
                             if or (map (\p -> Set.member p (extraSrcs pack)) relPaths)
                                 then return True
                                 else do
-                                    mbMn <- liftIO $ moduleNameFromFilePath fp
+                                    mbMn <- liftIO $ moduleNameFromFilePath' fp str
                                     case mbMn of
                                         Nothing -> return False
                                         Just mn -> return (Set.member mn (modules pack))
