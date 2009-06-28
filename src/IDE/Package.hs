@@ -374,18 +374,24 @@ packageRun = catchIDE (do
         case mbPackage of
             Nothing         -> return ()
             Just package    -> do
+                pd <- liftIO $ readPackageDescription normal (cabalFile package) >>= return . flattenPackageDescription
                 case maybeGhci of
                     Nothing -> do
-                        pd <- liftIO $ readPackageDescription normal (cabalFile package) >>= return . flattenPackageDescription
                         case executables pd of
-                            [(Executable name _ _)] -> do
+                            (Executable name _ _):_ -> do
                                 let path = "dist/build" </> name </> name
                                 runExternalTool ("Running "++name) path (exeFlags package) logOutput
                             otherwise -> do
-                                sysMessage Normal "no single executable in selected package"
+                                sysMessage Normal "no executable in selected package"
                                 return ()
                     Just ghci -> do
-                        executeDebugCommand (":main " ++ (unwords (exeFlags package))) logOutput)
+                        case executables pd of
+                            (Executable _ mainFilePath _):_ -> do
+                                executeDebugCommand (":module " ++ (map (\c -> if c == '/' then '.' else c) (takeWhile (/= '.') mainFilePath))) logOutput
+                                executeDebugCommand (":main " ++ (unwords (exeFlags package))) logOutput
+                            otherwise -> do
+                                sysMessage Normal "no executable in selected package"
+                                return ())
         (\(e :: SomeException) -> putStrLn (show e))
 
 packageInstall :: IDEAction
