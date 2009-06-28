@@ -675,13 +675,6 @@ debugStart = catchIDE (do
                         return ())
         (\(e :: SomeException) -> putStrLn (show e))
 
-interactiveFlags :: Prefs -> [String]
-interactiveFlags prefs =
-    (if printEvldWithShow prefs then "-fprint-evld-with-show" else "-fno-print-evld-with-show")
-    : (if breakOnException prefs then "-fbreak-on-exception" else "-fno-break-on-exception")
-    : (if breakOnError prefs then "-fbreak-on-error" else "-fno-break-on-error")
-    : [if printBindResult prefs then "-fprint-bind-result" else "-fno-print-bind-result"]
-
 debugToggled :: IDEAction
 debugToggled = do
     toggled <- getDebugToggled

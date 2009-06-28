@@ -54,6 +54,11 @@ import System.IO
 import Distribution.InstalledPackageInfo (package)
 import IDE.Metainfo.GHCUtils (getInstalledPackageInfos,inGhc)
 import Packages (PackageConfig(..))
+import IDE.Debug
+    (debugSetPrintBindResult,
+     debugSetBreakOnError,
+     debugSetBreakOnException,
+     debugSetPrintEvldWithShow)
 
 --
 -- | The Preferences Pane
@@ -474,7 +479,7 @@ prefsDescription packages = NFDPP [
             printEvldWithShow
             (\b a -> a{printEvldWithShow = b})
             boolEditor
-            (\i -> return ())
+            debugSetPrintEvldWithShow
          , mkFieldPP
             (paraName <<<- ParaName "Break on any exception thrown" $ emptyParams)
             (PP.text . show)
@@ -482,7 +487,7 @@ prefsDescription packages = NFDPP [
             breakOnException
             (\b a -> a{breakOnException = b})
             boolEditor
-            (\i -> return ())
+            debugSetBreakOnException
          , mkFieldPP
             (paraName <<<- ParaName "Break on uncaught exceptions and errors" $ emptyParams)
             (PP.text . show)
@@ -490,7 +495,7 @@ prefsDescription packages = NFDPP [
             breakOnError
             (\b a -> a{breakOnError = b})
             boolEditor
-            (\i -> return ())
+            debugSetBreakOnError
          , mkFieldPP
             (paraName <<<- ParaName "Turn on printing of binding results in GHCi" $ emptyParams)
             (PP.text . show)
@@ -498,7 +503,7 @@ prefsDescription packages = NFDPP [
             printBindResult
             (\b a -> a{printBindResult = b})
             boolEditor
-            (\i -> return ())
+            debugSetPrintBindResult
     ]),
     ("Help", VFDPP emptyParams [
         mkFieldPP

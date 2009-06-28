@@ -59,6 +59,12 @@ module IDE.Debug (
 ,   debugInformation
 ,   debugKind
 ,   debugType
+
+,   interactiveFlags
+,   debugSetPrintEvldWithShow
+,   debugSetBreakOnException
+,   debugSetBreakOnError
+,   debugSetPrintBindResult
 ) where
 
 #if defined(mingw32_HOST_OS) || defined(__MINGW32__)
@@ -403,4 +409,43 @@ debugSetBreakpoint = do
             ref <- ask
             return ()
         Nothing   -> ideMessage Normal "Please select module file in the editor"
+
+interactiveFlag :: String -> Bool -> String
+interactiveFlag name f = (if f then "-f" else "-fno-") ++ name
+
+printEvldWithShowFlag :: Bool -> String
+printEvldWithShowFlag = interactiveFlag "print-evld-with-show"
+
+breakOnExceptionFlag :: Bool -> String
+breakOnExceptionFlag = interactiveFlag "break-on-exception"
+
+breakOnErrorFlag :: Bool -> String
+breakOnErrorFlag = interactiveFlag "break-on-error"
+
+printBindResultFlag :: Bool -> String
+printBindResultFlag = interactiveFlag "print-bind-result"
+
+interactiveFlags :: Prefs -> [String]
+interactiveFlags prefs =
+    (printEvldWithShowFlag $ printEvldWithShow prefs)
+    : (breakOnExceptionFlag $ breakOnException prefs)
+    : (breakOnErrorFlag $ breakOnError prefs)
+    : [printBindResultFlag $ printBindResult prefs]
+
+debugSet :: (Bool -> String) -> Bool -> IDEAction
+debugSet flag value = do
+    debugCommand (":set "++(flag value)) logOutput
+
+debugSetPrintEvldWithShow :: Bool -> IDEAction
+debugSetPrintEvldWithShow = debugSet printEvldWithShowFlag
+
+debugSetBreakOnException :: Bool -> IDEAction
+debugSetBreakOnException = debugSet breakOnExceptionFlag
+
+debugSetBreakOnError :: Bool -> IDEAction
+debugSetBreakOnError = debugSet breakOnErrorFlag
+
+debugSetPrintBindResult :: Bool -> IDEAction
+debugSetPrintBindResult = debugSet printBindResultFlag
+
 
