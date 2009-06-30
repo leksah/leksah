@@ -333,7 +333,7 @@ fillInfo search ideR  = do
         Just descr      ->  do
             reflectIDE (setInfo descr) ideR
             entrySetText (entry search) (descrName descr)
-        otherwise       ->  sysMessage Normal "Search>>fillInfo:no selection"
+        otherwise       ->  return ()
 
 setChoices :: [Descr] -> IDEAction
 setChoices descrs = do

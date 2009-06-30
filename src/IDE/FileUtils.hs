@@ -46,7 +46,10 @@ import Data.Char (ord)
 openBrowser :: String -> IDEAction
 openBrowser url = do
     prefs' <- readIDE prefs
-    liftIO $ runProcess (browser prefs') [url] Nothing Nothing Nothing Nothing Nothing
+    liftIO (catch (do
+                runProcess (browser prefs') [url] Nothing Nothing Nothing Nothing Nothing
+                return ())
+            (\ _ -> sysMessage Normal ("Can't find browser executable " ++ browser prefs')))
     return ()
 
 -- | Returns True if the second path is a location which starts with the first path

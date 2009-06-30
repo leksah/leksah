@@ -201,6 +201,7 @@ startGUI sessionFilename iprefs = do
           ,   candy         =   candySt
           ,   prefs         =   startupPrefs
           ,   activePack    =   Nothing
+          ,   projFilesCache  = Map.empty
           ,   allLogRefs    =   []
           ,   currentHist   =   0
           ,   currentEBC    =   (Nothing, Nothing, Nothing)
@@ -215,6 +216,7 @@ startGUI sessionFilename iprefs = do
           ,   recentPackages  =   []
           ,   runningTool     =   Nothing
           ,   ghciState       =   Nothing
+          ,   completion      =   Nothing
     }
     ideR        <-  newIORef ide
     reflectIDE (initInfo :: IDEAction) ideR

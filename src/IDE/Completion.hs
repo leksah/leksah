@@ -19,264 +19,271 @@ import Data.Char
 import Data.IORef
 import Control.Monad
 import Control.Monad.Trans (liftIO)
-import Control.Concurrent
 import Graphics.UI.Gtk as Gtk
 import Graphics.UI.Gtk.SourceView
 import Graphics.UI.Gtk.Gdk.Events as Gtk
 import IDE.Core.State
 import IDE.Metainfo.Provider(getDescription,getCompletionOptions)
+import Control.Monad.Reader.Class (ask)
 
 complete :: SourceView -> Bool ->  IDEAction
 complete sourceView always = do
     currentState' <- readIDE currentState
     prefs'        <- readIDE prefs
-    case currentState' of
-        IsCompleting window tv ls _ -> updateOptions window tv ls sourceView
-        IsRunning                   -> when (always || not (completeRestricted prefs'))
-                                            (initCompletion sourceView)
-        _                           -> return ()
-
+    completion'   <- readIDE completion
+    case (currentState',completion') of
+        (IsCompleting c, Just (CompletionWindow window tv st)) ->
+                            updateOptions window tv st sourceView c
+        (IsRunning,_)   ->  when (always || not (completeRestricted prefs'))
+                                (initCompletion sourceView)
+        _               ->  return ()
 
 cancel :: IDEAction
 cancel = do
     currentState' <- readIDE currentState
-    case currentState' of
-        IsCompleting window tv ls c -> cancelCompletion window tv ls c
-        _                           -> return ()
+    completion'   <- readIDE completion
+    case (currentState',completion') of
+        (IsCompleting conn , Just (CompletionWindow window tv st)) ->
+            cancelCompletion window tv st conn
+        _            -> return ()
 
 initCompletion :: SourceView -> IDEAction
 initCompletion sourceView = do
-    windows <- getWindows
-    prefs      <- readIDE prefs
-    (window', tree', store', cids) <- reifyIDE (\ideR -> do
-        window <- windowNewPopup
-        --set window [ windowTypeHint := WindowTypeHintDialog ] --,
-          -- windowDecorated := False ]
-        --widgetSetSizeRequest window 700 300
-        windowSetTransientFor window (head windows)
-        paned <- hPanedNew
-        containerAdd window paned
-        scrolledWindow <- scrolledWindowNew Nothing Nothing
-        widgetSetSizeRequest scrolledWindow 300 300
-        containerAdd paned scrolledWindow
-        tree <- treeViewNew
-        containerAdd scrolledWindow tree
-        store <- listStoreNew []
-        treeViewSetModel tree store
+    ideR <- ask
+    completion' <- readIDE completion
+    case completion' of
+        Just (CompletionWindow window' tree' store') -> do
+            cids <- liftIO $ addEventHandling sourceView tree' store' ideR
+            modifyIDE_ (\ide -> return (ide{currentState = IsCompleting cids}))
+            updateOptions window' tree' store' sourceView cids
+        Nothing -> do
+            windows    <- getWindows
+            prefs      <- readIDE prefs
+            (window', tree', store', cids) <- reifyIDE (\ideR -> do
+                window <- windowNewPopup
+                set window [ windowTypeHint := WindowTypeHintTooltip,
+                             windowDecorated := False ]
+                --widgetSetSizeRequest window 700 300
+                windowSetTransientFor window (head windows)
+                paned          <- hPanedNew
+                containerAdd window paned
+                scrolledWindow <- scrolledWindowNew Nothing Nothing
+                widgetSetSizeRequest scrolledWindow 300 300
+                containerAdd paned scrolledWindow
+                tree           <- treeViewNew
+                containerAdd scrolledWindow tree
+                store          <- listStoreNew []
+                treeViewSetModel tree store
 
-        font <- case textviewFont prefs of
-            Just str -> do
-                fontDescriptionFromString str
-            Nothing -> do
-                f <- fontDescriptionNew
-                fontDescriptionSetFamily f "Monospace"
-                return f
-        widgetModifyFont tree (Just font)
+                font <- case textviewFont prefs of
+                    Just str -> do
+                        fontDescriptionFromString str
+                    Nothing -> do
+                        f <- fontDescriptionNew
+                        fontDescriptionSetFamily f "Monospace"
+                        return f
+                widgetModifyFont tree (Just font)
 
-        column <- treeViewColumnNew
-        set column [ treeViewColumnSizing := TreeViewColumnAutosize ]
-        treeViewAppendColumn tree column
-        renderer <- cellRendererTextNew
-        treeViewColumnPackStart column renderer True
-        cellLayoutSetAttributes column renderer store (\name -> [ cellText := name ])
+                column   <- treeViewColumnNew
+                set column [ treeViewColumnSizing := TreeViewColumnAutosize ]
+                treeViewAppendColumn tree column
+                renderer <- cellRendererTextNew
+                treeViewColumnPackStart column renderer True
+                cellLayoutSetAttributes column renderer store (\name -> [ cellText := name ])
 
-        set tree [treeViewHeadersVisible := False]
+                set tree [treeViewHeadersVisible := False]
 
-        descriptionView <- sourceViewNew
-        descriptionBuffer <- (get descriptionView textViewBuffer) >>= (return . castToSourceBuffer)
-        lm <- sourceLanguageManagerNew
-        mbLang <- sourceLanguageManagerGuessLanguage lm Nothing (Just "text/x-haskell")
-        case mbLang of
-            Nothing -> return ()
-            Just lang -> do sourceBufferSetLanguage descriptionBuffer lang
+                descriptionView <- sourceViewNew
+                descriptionBuffer <- (get descriptionView textViewBuffer) >>= (return . castToSourceBuffer)
+                lm <- sourceLanguageManagerNew
+                mbLang <- sourceLanguageManagerGuessLanguage lm Nothing (Just "text/x-haskell")
+                case mbLang of
+                    Nothing -> return ()
+                    Just lang -> do sourceBufferSetLanguage descriptionBuffer lang
 
-        -- This call is here because in the past I have had problems where the
-        -- language object became invalid if the manager was garbage collected
-        sourceLanguageManagerGetLanguageIds lm
+                -- This call is here because in the past I have had problems where the
+                -- language object became invalid if the manager was garbage collected
+                sourceLanguageManagerGetLanguageIds lm
 
-        sourceBufferSetHighlightSyntax descriptionBuffer True
-        widgetModifyFont descriptionView (Just font)
+                sourceBufferSetHighlightSyntax descriptionBuffer True
+                widgetModifyFont descriptionView (Just font)
 
-        containerAdd paned descriptionView
+                containerAdd paned descriptionView
 
-        visible <- newIORef False
-        activeView <- newIORef Nothing
+                visible <- newIORef False
+                activeView <- newIORef Nothing
 
-        treeSelection <- treeViewGetSelection tree
+                treeSelection <- treeViewGetSelection tree
 
-        treeSelection `onSelectionChanged` (do
-            treeSelectionSelectedForeach treeSelection (\treePath -> (do
-                rows <- treeSelectionGetSelectedRows treeSelection
-                case rows of
-                    [treePath] -> withWord store treePath (\name -> do
-                        description <- reflectIDE (getDescription name) ideR
-                        textBufferSetText descriptionBuffer description
+                treeSelection `onSelectionChanged` (do
+                    treeSelectionSelectedForeach treeSelection (\treePath -> (do
+                        rows <- treeSelectionGetSelectedRows treeSelection
+                        case rows of
+                            [treePath] -> withWord store treePath (\name -> do
+                                description <- reflectIDE (getDescription name) ideR
+                                textBufferSetText descriptionBuffer description
+                                )
+                            _ -> return ()
+                        ))
+                    )
+
+                cids <- liftIO $ addEventHandling sourceView tree store ideR
+                return (window, tree, store, cids)
+                )
+            modifyIDE_ (\ide -> return (ide{currentState = IsCompleting cids,
+                completion = Just (CompletionWindow window' tree' store')}))
+            updateOptions window' tree' store' sourceView cids
+
+addEventHandling :: SourceView -> TreeView -> ListStore String -> IDERef -> IO Connections
+addEventHandling sourceView tree store ideR = do
+    cidPress <- sourceView `onKeyPress` (\event -> do
+        let Key { eventKeyName = name, eventModifier = modifier, eventKeyChar = char } = event
+        Just model  <- treeViewGetModel tree
+        selection   <- treeViewGetSelection tree
+        count       <- treeModelIterNChildren model Nothing
+        Just column <- treeViewGetColumn tree 0
+        case (name, modifier, char) of
+            ("Tab", _, _) -> (do
+                visible <- get tree widgetVisible
+                if visible then (do
+                    maybeRow <- getRow tree
+                    case maybeRow of
+                        Just row -> treeViewRowActivated tree [row] column
+                        Nothing -> return ()
+                    return True
+                    )
+                    else return False
+                )
+            ("Return", _, _) -> (do
+                visible <- get tree widgetVisible
+                if visible then (do
+                    maybeRow <- getRow tree
+                    case maybeRow of
+                        Just row -> (do
+                            treeViewRowActivated tree [row] column
+                            return True
+                            )
+                        Nothing -> (do
+                            reflectIDE cancel ideR
+                            return False
+                            )
+                    )
+                    else return False
+                )
+            ("Down", _, _) -> (do
+                visible <- get tree widgetVisible
+                if visible then (do
+                    maybeRow <- getRow tree
+                    let newRow = maybe 0 (\row -> row + 1) maybeRow
+                    when (newRow < count) (do
+                        treeSelectionSelectPath selection [newRow]
+                        treeViewScrollToCell tree [newRow] column Nothing
+                        -- Crazy hack to avoid the horizontal scroll
+                        treeViewScrollToCell tree [newRow] column Nothing
                         )
-                    _ -> return ()
-                ))
-            )
-
-        tree `onRowActivated` (\treePath column -> (do
-            withWord store treePath (\name -> do
-                buffer <- textViewGetBuffer sourceView
-                (start, end) <- textBufferGetSelectionBounds buffer
-                isWordEnd <- textIterEndsWord end
-                if isWordEnd then (do
-                    moveToWordStart start
-                    wordStart <- textBufferGetText buffer start end True
-                    if (isPrefixOf wordStart name) then (do
-                        textBufferDelete buffer start end
-                        textBufferInsert buffer start name
+                    return True
+                    )
+                    else return False
+                )
+            ("Up", _, _) -> (do
+                visible <- get tree widgetVisible
+                if visible then (do
+                    maybeRow <- getRow tree
+                    let newRow = maybe 0 (\row -> row - 1) maybeRow
+                    when (newRow >= 0) (do
+                        treeSelectionSelectPath selection [newRow]
+                        treeViewScrollToCell tree [newRow] column Nothing
+                        -- Crazy hack to avoid the horizontal scroll
+                        treeViewScrollToCell tree [newRow] column Nothing
                         )
-                        else return ()
+                    return True
+                    )
+                    else return False
+                )
+            (_, _, Just c) | ((isAlphaNum c) || (c == '.') || (c == '_')) -> (do
+                return False
+                )
+            ("BackSpace", _, _) -> (do
+                return False
+                )
+            (shift, _, _) | (shift == "Shift_L") || (shift == "Shift_R") -> (do
+                return False
+                )
+            _ -> (do
+                reflectIDE cancel ideR
+                return False
+                )
+        )
+
+    cidRelease <- sourceView `onKeyRelease` (\event -> do
+        let Key { eventKeyName = name, eventModifier = modifier, eventKeyChar = char } = event
+        case (name, modifier, char) of
+            ("BackSpace", _, _) -> (do
+                reflectIDE (complete sourceView False) ideR
+                return False
+                )
+            _ -> return False
+        )
+    cidSelected <- tree `onRowActivated` (\treePath column -> (do
+        withWord store treePath (\name -> do
+            buffer <- textViewGetBuffer sourceView
+            (start, end) <- textBufferGetSelectionBounds buffer
+            isWordEnd <- textIterEndsWord end
+            if isWordEnd then (do
+                moveToWordStart start
+                wordStart <- textBufferGetText buffer start end True
+                if (isPrefixOf wordStart name) then (do
+                    textBufferDelete buffer start end
+                    textBufferInsert buffer start name
                     )
                     else return ()
                 )
-            reflectIDE cancel ideR
-            ))
-
-        cidPress <- sourceView `onKeyPress` (\event -> do
-            let Key { eventKeyName = name, eventModifier = modifier, eventKeyChar = char } = event
-            Just model <- treeViewGetModel tree
-            selection <- treeViewGetSelection tree
-            count <- treeModelIterNChildren model Nothing
-            Just column <- treeViewGetColumn tree 0
-            case (name, modifier, char) of
---                ("space", [Gtk.Control], _) -> (do
---                    reflectIDE (complete sourceView ) ideR
---                    return True
---                    )
-                ("Tab", _, _) -> (do
-                    visible <- get tree widgetVisible
-                    if visible then (do
-                        maybeRow <- getRow tree
-                        case maybeRow of
-                            Just row -> treeViewRowActivated tree [row] column
-                            Nothing -> return ()
-                        return True
-                        )
-                        else return False
-                    )
-                ("Return", _, _) -> (do
-                    visible <- get tree widgetVisible
-                    if visible then (do
-                        maybeRow <- getRow tree
-                        case maybeRow of
-                            Just row -> (do
-                                treeViewRowActivated tree [row] column
-                                return True
-                                )
-                            Nothing -> (do
-                                reflectIDE cancel ideR
-                                return False
-                                )
-                        )
-                        else return False
-                    )
-                ("Down", _, _) -> (do
-                    visible <- get tree widgetVisible
-                    if visible then (do
-                        maybeRow <- getRow tree
-                        let newRow = maybe 0 (\row -> row + 1) maybeRow
-                        when (newRow < count) (do
-                            treeSelectionSelectPath selection [newRow]
-                            treeViewScrollToCell tree [newRow] column Nothing
-                            -- Crazy hack to avoid the horizontal scroll
-                            treeViewScrollToCell tree [newRow] column Nothing
-                            )
-                        return True
-                        )
-                        else return False
-                    )
-                ("Up", _, _) -> (do
-                    visible <- get tree widgetVisible
-                    if visible then (do
-                        maybeRow <- getRow tree
-                        let newRow = maybe 0 (\row -> row - 1) maybeRow
-                        when (newRow >= 0) (do
-                            treeSelectionSelectPath selection [newRow]
-                            treeViewScrollToCell tree [newRow] column Nothing
-                            -- Crazy hack to avoid the horizontal scroll
-                            treeViewScrollToCell tree [newRow] column Nothing
-                            )
-                        return True
-                        )
-                        else return False
-                    )
-                (_, _, Just c) | ((isAlphaNum c) || (c == '.') || (c == '_')) -> (do
-                    return False
-                    )
-                ("BackSpace", _, _) -> (do
-                    return False
-                    )
-                (shift, _, _) | (shift == "Shift_L") || (shift == "Shift_R") -> (do
-                    return False
-                    )
-                _ -> (do
-                    reflectIDE cancel ideR
-                    return False
-                    )
+                else return ()
             )
+        reflectIDE cancel ideR))
+    return [ConnectC cidPress,ConnectC cidRelease, ConnectC cidSelected]
 
-        cidRelease <- sourceView `onKeyRelease` (\event -> do
-            let Key { eventKeyName = name, eventModifier = modifier, eventKeyChar = char } = event
-            case (name, modifier, char) of
-                ("BackSpace", _, _) -> (do
-                    reflectIDE (complete sourceView False) ideR
-                    return False
-                    )
-                _ -> return False
+withWord store treePath f = (do
+   case treePath of
+       [row] -> (do
+            value <- listStoreGetValue store row
+            f value
             )
-
-        return (window, tree, store, [cidPress, cidRelease])
-        )
-
-    modifyIDE_ (\ide -> return (ide{currentState = IsCompleting window' tree' store' (map ConnectC cids)}))
-    updateOptions window' tree' store' sourceView
-
-    where
-       withWord store treePath f = (do
-           case treePath of
-               [row] -> (do
-                    value <- listStoreGetValue store row
-                    f value
-                    )
-               _ -> return ()
-           )
+       _ -> return ()
+   )
 
 cancelCompletion :: TreeViewClass alpha => Window -> alpha ->
     ListStore String -> Connections -> IDEAction
 cancelCompletion window tree store connections = do
     liftIO (do
+        listStoreClear (store :: ListStore String)
         signalDisconnectAll connections
         widgetHideAll window
-        widgetDestroy window
         )
     modifyIDE_ (\ide -> return (ide{currentState = IsRunning}))
 
-updateOptions :: TreeViewClass alpha => Window -> alpha -> ListStore String -> SourceView -> IDEAction
-updateOptions window tree store sourceView =
+updateOptions :: TreeViewClass alpha => Window -> alpha -> ListStore String -> SourceView -> Connections -> IDEAction
+updateOptions window tree store sourceView connections =
     reifyIDE (\ideR -> do
         buffer <- textViewGetBuffer sourceView
         listStoreClear (store :: ListStore String)
         (start, end) <- textBufferGetSelectionBounds buffer
-        isWordEnd <- textIterEndsWord end
-        when isWordEnd (do
-            moveToWordStart start
-            wordStart <- textBufferGetText buffer start end True
-            forkIO (do
-                options <- reflectIDE (getCompletionOptions wordStart) ideR
-                postGUIAsync $ processResults ideR window tree store sourceView wordStart options
-                return ()
-                )
-            return ()
-            )
-        )
+        moveToWordStart start
+        equal <- textIterEqual start end
+        if equal
+            then reflectIDE (cancelCompletion window tree store connections) ideR
+            else do
+                wordStart <- textBufferGetText buffer start end True
+                postGUIAsync $ do
+                    options <- reflectIDE (getCompletionOptions wordStart) ideR
+                    processResults ideR window tree store sourceView wordStart options
+                    return ()
+                return ())
 
 moveToWordStart iter = do
     textIterBackwardWordStart iter
     isStart <- textIterIsStart iter
-    when (not isStart) (do
+    when (not isStart) $ do
         prev <- textIterCopy iter
         textIterBackwardChar prev
         maybeChar <- textIterGetChar prev
@@ -286,30 +293,27 @@ moveToWordStart iter = do
                 moveToWordStart iter
                 )
             _ -> return ()
-        )
 
 processResults ideR window tree store sourceView wordStart options = do
-    buffer <- textViewGetBuffer sourceView
-    (start, end) <- textBufferGetSelectionBounds buffer
-    isWordEnd <- textIterEndsWord end
-    when isWordEnd (do
-        moveToWordStart start
-        newWordStart <- textBufferGetText buffer start end True
-        when (isPrefixOf wordStart newWordStart) (do
-            listStoreClear store
-            forM_ (take 200 (List.filter (isPrefixOf newWordStart) options)) (listStoreAppend store)
-            Rectangle startx starty width height <- textViewGetIterLocation sourceView start
-            (x, y) <- textViewBufferToWindowCoords sourceView TextWindowWidget (startx, starty+height)
-            drawWindow <- widgetGetDrawWindow sourceView
-            (ox, oy) <- drawWindowGetOrigin drawWindow
-            windowMove window (ox+x) (oy+y)
-            when ((length options) == 1) $ treeViewSetCursor tree [0] Nothing
-            case options of
-                [] -> reflectIDE cancel ideR
-                -- [(wordStart,_)] -> (cancel completion) getRow
-                _ -> widgetShowAll window
-            )
-        )
+    case options of
+        [] -> reflectIDE cancel ideR
+        _  -> do
+            buffer <- textViewGetBuffer sourceView
+            (start, end) <- textBufferGetSelectionBounds buffer
+            isWordEnd <- textIterEndsWord end
+            when isWordEnd (do
+                moveToWordStart start
+                newWordStart <- textBufferGetText buffer start end True
+                when (isPrefixOf wordStart newWordStart) (do
+                    listStoreClear store
+                    forM_ (take 200 (List.filter (isPrefixOf newWordStart) options)) (listStoreAppend store)
+                    Rectangle startx starty width height <- textViewGetIterLocation sourceView start
+                    (x, y)                               <- textViewBufferToWindowCoords sourceView TextWindowWidget (startx, starty+height)
+                    drawWindow                           <- widgetGetDrawWindow sourceView
+                    (ox, oy)                             <- drawWindowGetOrigin drawWindow
+                    windowMove window (ox+x) (oy+y)
+                    when ((length options) == 1) $ treeViewSetCursor tree [0] Nothing
+                    widgetShowAll window))
 
 getRow tree = do
     Just model <- treeViewGetModel tree

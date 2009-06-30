@@ -161,6 +161,7 @@ data IDE            =  IDE {
 ,   candy           ::   CandyTable              -- ^ table for source candy
 ,   prefs           ::   Prefs                   -- ^ configuration preferences
 ,   activePack      ::   Maybe IDEPackage
+,   projFilesCache  ::   Map FilePath Bool       -- ^ caches property: buffer belongs to project
 ,   allLogRefs      ::   [LogRef]
 ,   currentEBC      ::   (Maybe LogRef, Maybe LogRef, Maybe LogRef)
 ,   currentHist     ::   Int
@@ -178,6 +179,7 @@ data IDE            =  IDE {
 ,   recentPackages  ::   [FilePath]
 ,   runningTool     ::   Maybe ProcessHandle
 ,   ghciState       ::   Maybe ToolState
+,   completion      ::   Maybe CompletionWindow
 } --deriving Show
 
 -- Main window is just the first one in the list
@@ -211,7 +213,7 @@ data IDEState =
     |   IsShuttingDown
     |   IsRunning
     |   IsFlipping TreeView
-    |   IsCompleting Window TreeView (ListStore String) Connections
+    |   IsCompleting Connections
 
 isStartingOrClosing ::  IDEState -> Bool
 isStartingOrClosing IsStartingUp    = True

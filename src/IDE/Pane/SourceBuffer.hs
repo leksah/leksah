@@ -764,22 +764,18 @@ fileSaveBuffer query nb gtkbuf ideBuf i = do
 fileSave :: Bool -> IDEM Bool
 fileSave query = inActiveBufContext' False $ fileSaveBuffer query
 
-filterBufferFunc :: (FilePath -> String -> IDEM Bool) -> IDEBuffer -> IDEM Bool
-filterBufferFunc filterFunc ideBuf = do
-    case fileName ideBuf of
-        Nothing -> return False
-        Just fn -> do
-            gtkbuf <- liftIO $ textViewGetBuffer (sourceView ideBuf)
-            candy  <- readIDE candy
-            text   <- liftIO $ getCandylessText candy gtkbuf
-            filterFunc fn text
-
-fileSaveAll :: (FilePath -> String -> IDEM Bool) -> IDEM Bool
+fileSaveAll :: (FilePath -> IDEBuffer -> IDEM Bool) -> IDEM Bool
 fileSaveAll filterFunc = do
     bufs     <- allBuffers
     filtered <- filterM (filterBufferFunc filterFunc) bufs
     results  <- forM filtered (\buf -> inBufContext' False buf (fileSaveBuffer False))
     return $ True `elem` results
+
+filterBufferFunc :: (FilePath -> IDEBuffer -> IDEM Bool) -> IDEBuffer -> IDEM Bool
+filterBufferFunc filterFunc ideBuf = do
+    case fileName ideBuf of
+        Nothing -> return False
+        Just fn -> filterFunc fn ideBuf
 
 fileCheckBuffer :: Notebook -> TextBuffer -> IDEBuffer -> Int -> IDEM Bool
 fileCheckBuffer nb gtkbuf ideBuf i = do
@@ -800,7 +796,7 @@ fileCheckBuffer nb gtkbuf ideBuf i = do
                         return (modifiedOnDisk || modifiedInBuffer)
                 else return False
 
-fileCheckAll :: (FilePath -> String -> IDEM Bool) -> IDEM Bool
+fileCheckAll :: (FilePath -> IDEBuffer -> IDEM Bool) -> IDEM Bool
 fileCheckAll filterFunc = do
     bufs    <- allBuffers
     filtered <- filterM (filterBufferFunc filterFunc) bufs

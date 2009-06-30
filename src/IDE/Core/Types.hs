@@ -79,6 +79,8 @@ module IDE.Core.Types (
 
 ,   SensitivityMask(..)
 ,   SearchMode(..)
+
+,   CompletionWindow(..)
 ) where
 
 import Control.Monad.Reader
@@ -460,6 +462,13 @@ data SensitivityMask =
 data SearchMode = Exact {caseSense :: Bool} | Prefix {caseSense :: Bool}
                 | Regex {caseSense :: Bool}
     deriving (Eq,Ord,Read,Show)
+
+data CompletionWindow = CompletionWindow {
+    cwWindow :: Window,
+    cwTreeView :: TreeView,
+    cwListStore :: ListStore String}
+
+
 
 
 

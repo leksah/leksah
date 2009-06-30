@@ -108,6 +108,8 @@ import Foreign.C (Errno(..), getErrno)
 import IDE.Metainfo.Provider
     (rebuildActiveInfo)
 import qualified Data.Set as  Set (member, fromList)
+import qualified Data.Map as  Map (empty, insert, lookup)
+import IDE.SourceCandy (getCandylessText)
 
 #if defined(mingw32_HOST_OS) || defined(__MINGW32__)
 foreign import stdcall unsafe "winbase.h GetCurrentProcessId"
@@ -192,7 +194,7 @@ activatePackage filePath = do
                 if flagFileExists
                     then liftIO $ readFlags (ppath </> "IDE.flags") packp
                     else return packp)
-            modifyIDE_ (\ide -> return (ide{activePack = (Just pack)}))
+            modifyIDE_ (\ide -> return (ide{activePack = (Just pack), projFilesCache = Map.empty}))
             ide <- getIDE
             triggerEvent ideR ActivePack
             triggerEvent ideR (Sensitivity [(SensitivityProjectActive,True)])
@@ -203,24 +205,34 @@ activatePackage filePath = do
             return (Just pack)
 
 
-belongsToActivePackage :: FilePath -> String -> IDEM Bool
-belongsToActivePackage fp str = do
-    activePack' <-  readIDE activePack
-    case activePack' of
-        Nothing   -> return False
-        Just pack -> let basePath = dropFileName $ cabalFile pack in
-                    if isSubPath basePath fp
-                        then
-                            let srcPaths = map (\srcP -> basePath </> srcP) (srcDirs pack)
-                                relPaths = map (\p -> makeRelative p fp) srcPaths in
-                            if or (map (\p -> Set.member p (extraSrcs pack)) relPaths)
-                                then return True
-                                else do
-                                    mbMn <- liftIO $ moduleNameFromFilePath' fp str
-                                    case mbMn of
-                                        Nothing -> return False
-                                        Just mn -> return (Set.member mn (modules pack))
-                        else return False
+belongsToActivePackage :: FilePath -> IDEBuffer -> IDEM Bool
+belongsToActivePackage fp ideBuf = do
+    projFilesCache' <-  readIDE projFilesCache
+    activePack'     <-  readIDE activePack
+    case Map.lookup fp projFilesCache' of
+        Just b  -> return b
+        Nothing -> case activePack' of
+                        Nothing   -> return False
+                        Just pack -> let basePath = dropFileName $ cabalFile pack in do
+                                     r <- if isSubPath basePath fp
+                                            then
+                                                let srcPaths = map (\srcP -> basePath </> srcP) (srcDirs pack)
+                                                    relPaths = map (\p -> makeRelative p fp) srcPaths in
+                                                if or (map (\p -> Set.member p (extraSrcs pack)) relPaths)
+                                                    then return True
+                                                    else do
+                                                    --        do
+                                                        gtkbuf <- liftIO $ textViewGetBuffer (sourceView ideBuf)
+                                                        candy  <- readIDE candy
+                                                        text   <- liftIO $ getCandylessText candy gtkbuf
+                                                        mbMn <- liftIO $ moduleNameFromFilePath' fp text
+                                                        case mbMn of
+                                                            Nothing -> return False
+                                                            Just mn -> return (Set.member mn (modules pack))
+                                            else return False
+                                     modifyIDE_ (\ide -> return (ide{projFilesCache =
+                                        Map.insert fp r projFilesCache'}))
+                                     return r
 
 deactivatePackage :: IDEAction
 deactivatePackage = do
@@ -231,7 +243,7 @@ deactivatePackage = do
             ((dropFileName . cabalFile . fromJust) oldActivePack </> "IDE.session"))
         addRecentlyUsedPackage ((cabalFile . fromJust) oldActivePack)
         return ()
-    modifyIDE_ (\ide -> return (ide{activePack = Nothing}))
+    modifyIDE_ (\ide -> return (ide{activePack = Nothing, projFilesCache = Map.empty}))
     ideR          <- ask
     triggerEvent ideR ActivePack
     when (isJust oldActivePack) $ do
