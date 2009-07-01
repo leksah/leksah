@@ -244,7 +244,7 @@ builder idePackage flagsDesc flatflagsDesc pp nb window ideR = do
             Nothing -> return ()
             Just packWithNewFlags -> do
                 reflectIDE (do
-                    modifyIDE_ (\ide -> return (ide{activePack = Just packWithNewFlags}))
+                    modifyIDE_ (\ide -> ide{activePack = Just packWithNewFlags})
                     close flagsPane) ideR -- we don't trigger the activePack event here
                 writeFlags ((dropFileName (cabalFile packWithNewFlags)) </> "IDE.flags")
                     packWithNewFlags)

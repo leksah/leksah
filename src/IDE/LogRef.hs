@@ -104,7 +104,7 @@ setErrorList errs = do
     unmarkLogRefs
     breaks <- readIDE breakpointRefs
     contexts <- readIDE contextRefs
-    modifyIDE_ (\ide -> return (ide{allLogRefs = errs ++ breaks ++ contexts}))
+    modifyIDE_ (\ide -> ide{allLogRefs = errs ++ breaks ++ contexts})
     setCurrentError Nothing
     markLogRefs
     triggerEvent ideR ErrorChanged
@@ -116,7 +116,7 @@ setBreakpointList breaks = do
     unmarkLogRefs
     errs <- readIDE errorRefs
     contexts <- readIDE contextRefs
-    modifyIDE_ (\ide -> return (ide{allLogRefs = errs ++ breaks ++ contexts}))
+    modifyIDE_ (\ide -> ide{allLogRefs = errs ++ breaks ++ contexts})
     setCurrentBreak Nothing
     markLogRefs
     triggerEvent ideR BreakpointChanged
@@ -126,7 +126,7 @@ addLogRefs :: [LogRef] -> IDEAction
 addLogRefs refs = do
     ideR <- ask
     unmarkLogRefs
-    modifyIDE_ (\ide -> return (ide{allLogRefs = (allLogRefs ide) ++ refs}))
+    modifyIDE_ (\ide -> ide{allLogRefs = (allLogRefs ide) ++ refs})
     setCurrentError Nothing
     markLogRefs
     triggerEvent ideR ErrorChanged

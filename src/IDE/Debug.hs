@@ -198,13 +198,13 @@ debugAbandon = debugCommand ":abandon" logOutput
 debugBack :: IDEAction
 debugBack = do
     currentHist' <- readIDE currentHist
-    modifyIDE_ (\ide -> return (ide{currentHist = currentHist' - 1}))
+    modifyIDE_ (\ide -> ide{currentHist = currentHist' - 1})
     debugCommand ":back" logOutputForHistoricContext
 
 debugForward :: IDEAction
 debugForward = do
     currentHist' <- readIDE currentHist
-    modifyIDE_ (\ide -> return (ide{currentHist = currentHist' + 1}))
+    modifyIDE_ (\ide -> ide{currentHist = currentHist' + 1})
     debugCommand ":forward" logOutputForHistoricContext
 
 

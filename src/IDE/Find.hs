@@ -113,7 +113,7 @@ hideToolbar = do
     case mbtb of
         Nothing -> return ()
         Just tb -> do
-            modifyIDE_ (\ide -> return (ide{toolbar = (False,snd (toolbar ide))}))
+            modifyIDE_ (\ide -> ide{toolbar = (False,snd (toolbar ide))})
             liftIO $ widgetHideAll tb
 
 showToolbar :: IDEAction
@@ -122,7 +122,7 @@ showToolbar = do
     case mbtb of
         Nothing -> return ()
         Just tb -> do
-            modifyIDE_ (\ide -> return (ide{toolbar = (True,snd (toolbar ide))}))
+            modifyIDE_ (\ide -> ide{toolbar = (True,snd (toolbar ide))})
             liftIO $ widgetShowAll tb
 
 toggleToolbar :: IDEAction
@@ -135,7 +135,7 @@ toggleToolbar = do
 hideFindbar :: IDEAction
 hideFindbar = do
     (_,mbfb) <- readIDE findbar
-    modifyIDE_ (\ide -> return (ide{findbar = (False,mbfb)}))
+    modifyIDE_ (\ide -> ide{findbar = (False,mbfb)})
     case mbfb of
         Nothing -> return ()
         Just (fb,_) -> liftIO $ widgetHideAll fb
@@ -143,7 +143,7 @@ hideFindbar = do
 showFindbar :: IDEAction
 showFindbar = do
     (_,mbfb) <- readIDE findbar
-    modifyIDE_ (\ide -> return (ide{findbar = (True,mbfb)}))
+    modifyIDE_ (\ide -> ide{findbar = (True,mbfb)})
     case mbfb of
         Nothing -> return ()
         Just (fb,_) -> liftIO $ widgetShowAll fb
@@ -333,7 +333,7 @@ constructFindReplace = reifyIDE $ \ ideR   -> do
     set toolbar [ toolbarChildHomogeneous labelTool2 := False ]
     set toolbar [ toolbarChildHomogeneous labelTool3 := False ]
 
-    reflectIDE (modifyIDE_ (\ide -> return ide{findbar = (False,Just (toolbar,store))})) ideR
+    reflectIDE (modifyIDE_ (\ide -> ide{findbar = (False,Just (toolbar,store))})) ideR
     return toolbar
         where getOut = reflectIDE $ do
                             hideFindbar

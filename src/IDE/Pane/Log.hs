@@ -272,9 +272,9 @@ clearLog = do
     log <- getLog
     buf <- liftIO$ textViewGetBuffer $textView log
     liftIO $textBufferSetText buf ""
-    modifyIDE_ (\ide -> return (ide{allLogRefs = []}))
-    setCurrentError Nothing
-    setCurrentBreak Nothing
+--    modifyIDE_ (\ide -> ide{allLogRefs = []})
+--    setCurrentError Nothing
+--    setCurrentBreak Nothing TODO: Check with Hamish
 
 
 

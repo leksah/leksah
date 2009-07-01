@@ -169,7 +169,7 @@ builder lastAppliedPrefsRef packageInfos flatPrefsDesc prefs pp nb windows ideR 
             mapM_ (\ (FDPP _ _ _ _ applyF) -> reflectIDE (applyF newPrefs lastAppliedPrefs) ideR ) flatPrefsDesc
             fp <- getConfigFilePathForSave "Default.prefs"
             writePrefs fp newPrefs
-            reflectIDE (modifyIDE_ (\ide -> return (ide{prefs = newPrefs}))) ideR )
+            reflectIDE (modifyIDE_ (\ide -> ide{prefs = newPrefs})) ideR )
     closeB `onClicked` (reflectIDE (close prefsPane >> return ()) ideR )
     registerEvent notifier FocusIn (Left (\e -> do
         reflectIDE (makeActive prefsPane) ideR

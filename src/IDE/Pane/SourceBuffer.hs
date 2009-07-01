@@ -1149,7 +1149,7 @@ addRecentlyUsedFile fp = do
     when (not $ isStartingOrClosing state) $ do
         recentFiles' <- readIDE recentFiles
         unless (elem fp recentFiles') $
-            modifyIDE_ (\ide -> return ide{recentFiles = take 12 (fp : recentFiles')})
+            modifyIDE_ (\ide -> ide{recentFiles = take 12 (fp : recentFiles')})
         ask >>= \ideR -> triggerEvent ideR UpdateRecent
         return ()
 
@@ -1159,7 +1159,7 @@ removeRecentlyUsedFile fp = do
     when (not $ isStartingOrClosing state) $ do
         recentFiles' <- readIDE recentFiles
         when (elem fp recentFiles') $
-            modifyIDE_ (\ide -> return ide{recentFiles = filter (\e -> e /= fp) recentFiles'})
+            modifyIDE_ (\ide -> ide{recentFiles = filter (\e -> e /= fp) recentFiles'})
         ask >>= \ideR -> triggerEvent ideR UpdateRecent
         return ()
 

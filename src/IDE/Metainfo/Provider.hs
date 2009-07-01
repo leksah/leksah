@@ -235,14 +235,14 @@ loadAccessibleInfo =
                                 $ map fromJust
                                     $ filter isJust packageList
         liftIO performGC
-        modifyIDE_ (\ide -> return (ide{accessibleInfo = (Just scope)}))
+        modifyIDE_ (\ide -> ide{accessibleInfo = (Just scope)})
 
 --
 -- | Clears the current info, not the world infos
 --
 clearCurrentInfo :: IDEAction
 clearCurrentInfo = do
-    modifyIDE_ (\ide    ->  return (ide{currentInfo = Nothing}))
+    modifyIDE_ (\ide    ->  ide{currentInfo = Nothing})
     ideR <- ask
     triggerEvent ideR CurrentInfo
     return ()
@@ -255,7 +255,7 @@ infoForActivePackage  = do
     activePack          <-  readIDE activePack
     case activePack of
         Nothing         ->  do
-            modifyIDE_ (\ide -> return (ide{currentInfo = Nothing}))
+            modifyIDE_ (\ide -> ide{currentInfo = Nothing})
         Just pack       ->  do
             let depends'         =  depends pack
             fp                  <-  inGhc $ findFittingPackages depends'
@@ -263,18 +263,18 @@ infoForActivePackage  = do
             case mbActive of
                 Nothing         ->  do
                     -- no meta info available
-                    modifyIDE_ (\ide -> return (ide{currentInfo = Nothing}))
+                    modifyIDE_ (\ide -> ide{currentInfo = Nothing})
                 Just active     ->  do
 
                     accessibleInfo'     <-  readIDE accessibleInfo
                     case accessibleInfo' of
-                        Nothing         ->  modifyIDE_ (\ide -> return (ide{currentInfo = Nothing}))
+                        Nothing         ->  modifyIDE_ (\ide -> ide{currentInfo = Nothing})
                         Just (pdmap,_)  ->  do
                             let packageList =   map (\ pin -> pin `Map.lookup` pdmap) fp
                             let scope       =   foldr buildScope (Map.empty,Map.empty)
                                                     $ map fromJust
                                                         $ filter isJust packageList
-                            modifyIDE_ (\ide -> return (ide{currentInfo = Just (active, scope)}))
+                            modifyIDE_ (\ide -> ide{currentInfo = Just (active, scope)})
     ideR <- ask
     triggerEvent ideR CurrentInfo
     return ()
@@ -299,7 +299,7 @@ setInfo f = do
             case newActive of
                 Nothing         -> return ()
                 Just newActive  -> do
-                    modifyIDE_ (\ide -> return (ide{currentInfo = Just (newActive, scope)}))
+                    modifyIDE_ (\ide -> ide{currentInfo = Just (newActive, scope)})
                     ideR <- ask
                     triggerEvent ideR CurrentInfo
                     return ()
@@ -389,7 +389,7 @@ updateAccessibleInfo = do
                     let psamp3      =   foldr (\e m -> Map.delete e m) psmap trashPackages
                     let scope       =   foldr buildScope (Map.empty,Map.empty)
                                             (Map.elems psamp3)
-                    modifyIDE_ (\ide -> return (ide{accessibleInfo = Just scope}))
+                    modifyIDE_ (\ide -> ide{accessibleInfo = Just scope})
 
 --
 -- | Loads the infos for the given packages

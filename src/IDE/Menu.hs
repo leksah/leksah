@@ -527,12 +527,12 @@ textPopupMenu ideR menu = do
 -- | Quit ide
 quit :: IDEAction
 quit = do
-    modifyIDE_ (\ide -> return (ide{currentState = IsShuttingDown}))
+    modifyIDE_ (\ide -> ide{currentState = IsShuttingDown})
     saveSession :: IDEAction
     b <- fileCloseAll
     if b
         then liftIO mainQuit
-        else modifyIDE_ (\ide -> return (ide{currentState = IsRunning}))
+        else modifyIDE_ (\ide -> ide{currentState = IsRunning})
 
 --
 -- | Show the about dialog
@@ -685,7 +685,7 @@ instrumentWindow win prefs topWidget = do
         boxPackStart vb toolbar PackNatural 0
         boxPackStart vb topWidget PackGrow 0
         findbar <- reflectIDE (do
-            modifyIDE_ (\ide -> return (ide{toolbar = (True,Just toolbar)}))
+            modifyIDE_ (\ide -> ide{toolbar = (True,Just toolbar)})
             constructFindReplace ) ideR
         boxPackStart vb findbar PackNatural 0
         statusBar   <-  buildStatusbar ideR
@@ -748,7 +748,7 @@ handleSpecialKeystrokes (Key { eventKeyName = name,  eventModifier = mods,
                                 let sym = printMods mods ++ name
                                 liftIO $statusbarPop sb 1
                                 liftIO $statusbarPush sb 1 sym
-                                modifyIDE_ (\ide -> return (ide{specialKey = Just (map,sym)}))
+                                modifyIDE_ (\ide -> ide{specialKey = Just (map,sym)})
                                 return True
                     Just (map,sym) -> do
                         case Map.lookup (keyVal,sort mods) map of
@@ -761,7 +761,7 @@ handleSpecialKeystrokes (Key { eventKeyName = name,  eventModifier = mods,
                                 liftIO $statusbarPush sb 1
                                     $ sym ++ " " ++ printMods mods ++ name ++ "=" ++ actname
                                 ideAction
-                        modifyIDE_ (\ide -> return (ide{specialKey = Nothing}))
+                        modifyIDE_ (\ide -> ide{specialKey = Nothing})
                         return True
     where
     printMods :: [Modifier] -> String

@@ -49,6 +49,9 @@ module IDE.Core.State (
 ,   reifyIDE
 ,   reflectIDE
 ,   catchIDE
+,   postSyncIDE
+,   postAsyncIDE
+
 ,   newPane
 
 ,   ideMessage
@@ -200,12 +203,12 @@ currentBreak     = (\(_,b,_)-> b) . currentEBC
 currentContext   = (\(_,_,c)-> c) . currentEBC
 
 setCurrentError e = do
-    modifyIDE_ (\ide -> return (ide{currentEBC = (e, currentBreak ide, currentContext ide)}))
+    modifyIDE_ (\ide -> ide{currentEBC = (e, currentBreak ide, currentContext ide)})
     ask >>= \ideR -> triggerEvent ideR (CurrentErrorChanged e) >> return ()
 setCurrentBreak b = do
-    modifyIDE_ (\ide -> return (ide{currentEBC = (currentError ide, b, currentContext ide)}))
+    modifyIDE_ (\ide -> ide{currentEBC = (currentError ide, b, currentContext ide)})
     ask >>= \ideR -> triggerEvent ideR (CurrentBreakChanged b) >> return ()
-setCurrentContext c = modifyIDE_ (\ide -> return (ide{currentEBC = (currentError ide, currentBreak ide, c)}))
+setCurrentContext c = modifyIDE_ (\ide -> ide{currentEBC = (currentError ide, currentBreak ide, c)})
 
 
 data IDEState =
@@ -314,12 +317,17 @@ type IDEM = ReaderT IDERef IO
 reifyIDE :: (IDERef -> IO a) -> IDEM a
 reifyIDE = ReaderT
 
-
 reflectIDE :: IDEM a -> IDERef -> IO a
 reflectIDE c ideR = runReaderT c ideR
 
 catchIDE :: Exception e	=> IDEM a -> (e -> IO a) -> IDEM a
 catchIDE block handler = reifyIDE (\ideR -> catch (reflectIDE block ideR) handler)
+
+postSyncIDE :: IDEM a -> IDEM a
+postSyncIDE f = reifyIDE (\ideR -> postGUISync (reflectIDE f ideR))
+
+postAsyncIDE :: IDEM () -> IDEM ()
+postAsyncIDE f = reifyIDE (\ideR -> postGUIAsync (reflectIDE f ideR))
 
 newPane :: RecoverablePane alpha beta IDEM  =>
     PanePath ->
@@ -345,7 +353,7 @@ type IDEAction = IDEM ()
 
 instance PaneMonad IDEM where
     getFrameState   =   readIDE frameState
-    setFrameState v =   modifyIDE_ (\ide -> return ide{frameState = v})
+    setFrameState v =   modifyIDE_ (\ide -> ide{frameState = v})
     runInIO f       =   reifyIDE (\ideRef -> return (\v -> reflectIDE (f v) ideRef))
     panePathForGroup id =   do
         prefs  <- readIDE prefs
@@ -367,19 +375,16 @@ readIDE f = do
     liftIO $ liftM f (readIORef e)
 
 -- | Modify the contents, using an IO action.
-modifyIDE_ :: (IDE -> IO IDE) -> IDEM ()
-modifyIDE_ f = do
+modifyIDE_ :: (IDE -> IDE) -> IDEM ()
+modifyIDE_ f = let f' a  = (f a,()) in do
     e <- ask
-    e' <- liftIO $ (f =<< readIORef e)
-    liftIO $ writeIORef e e'
+    liftIO (atomicModifyIORef e f')
 
 -- | Variation on modifyIDE_ that lets you return a value
-modifyIDE :: (IDE -> IO (IDE,beta)) -> IDEM beta
+modifyIDE :: (IDE -> (IDE,beta)) -> IDEM beta
 modifyIDE f = do
     e <- ask
-    (e',result) <- liftIO (f =<< readIORef e)
-    liftIO $ writeIORef e e'
-    return result
+    liftIO (atomicModifyIORef e f)
 
 withIDE :: (IDE -> IO alpha) -> IDEM alpha
 withIDE f = do
@@ -396,10 +401,10 @@ withoutRecordingDo :: IDEAction -> IDEAction
 withoutRecordingDo act = do
     (b,l,n) <- readIDE guiHistory
     if not b then do
-        modifyIDE_ (\ide -> return ide{guiHistory = (True,l,n)})
+        modifyIDE_ (\ide -> ide{guiHistory = (True,l,n)})
         act
         (b,l,n) <- readIDE guiHistory
-        modifyIDE_ (\ide -> return ide{guiHistory = (False,l,n)})
+        modifyIDE_ (\ide -> ide{guiHistory = (False,l,n)})
         else act
 
 -- ---------------------------------------------------------------------
@@ -423,7 +428,7 @@ activatePane pane conn = do
             trigger (Just (paneName pane)) (case mbAP of
                                                     Nothing -> Nothing
                                                     Just (pn,_) -> Just pn)
-            modifyIDE_ (\ide -> return ide{recentPanes =
+            modifyIDE_ (\ide -> ide{recentPanes =
                 paneName pane : filter (/= paneName pane) (recentPanes ide)})
             return ()
 
@@ -483,7 +488,7 @@ closePane pane = do
                 notebookRemovePage nb i
                 widgetDestroy (getTopWidget pane)
             removePaneAdmin pane
-            modifyIDE_ (\ide -> return ide{recentPanes = filter (/= paneName pane) (recentPanes ide)})
+            modifyIDE_ (\ide -> ide{recentPanes = filter (/= paneName pane) (recentPanes ide)})
             return True
 
 -- get widget elements (menu & toolbar)

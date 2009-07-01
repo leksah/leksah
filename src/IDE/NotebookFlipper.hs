@@ -119,7 +119,7 @@ initFlipper direction = do
         treeViewSetCursor tree [if direction then min 1 (n-1) else (n-1)] Nothing
         widgetShowAll window
         return tree
-    modifyIDE_ (\ide -> return (ide{currentState = IsFlipping tree'}))
+    modifyIDE_ (\ide -> ide{currentState = IsFlipping tree'})
     return ()
 
 handleKeyRelease :: TreeViewClass alpha => alpha -> IDERef -> Event -> IO (Bool)
@@ -132,7 +132,7 @@ handleKeyRelease tree ideR Key{eventKeyName = name, eventModifier = modifier, ev
                     (treePath, _) <- treeViewGetCursor tree
                     Just column <- treeViewGetColumn tree 0
                     treeViewRowActivated tree treePath column
-                    reflectIDE (modifyIDE_ (\ide -> return (ide{currentState = IsRunning}))) ideR
+                    reflectIDE (modifyIDE_ (\ide -> ide{currentState = IsRunning})) ideR
                     return False
                 _ -> return False
         (_,_,_) -> return False

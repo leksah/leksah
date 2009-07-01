@@ -159,7 +159,7 @@ startGUI sessionFilename iprefs = do
     st          <-  unsafeInitGUIForThreadedRTS
     when rtsSupportsBoundThreads
         (sysMessage Normal "Linked with -threaded")
-    timeoutAddFull (yield >> return True) priorityHigh 25
+    timeoutAddFull (yield >> return True) priorityHigh 100
     mapM_ (sysMessage Normal) st
     uiManager   <-  uiManagerNew
     newIcons
@@ -254,7 +254,7 @@ startGUI sessionFilename iprefs = do
     when isFirstStart $ do
         welcomePath <- getConfigFilePathForLoad $ "welcome.txt"
         reflectIDE (fileOpenThis welcomePath) ideR
-    reflectIDE (modifyIDE_ (\ide -> return ide{currentState = IsRunning})) ideR
+    reflectIDE (modifyIDE_ (\ide -> ide{currentState = IsRunning})) ideR
 
     timeoutAddFull (do
         reflectIDE (do

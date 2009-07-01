@@ -194,7 +194,7 @@ activatePackage filePath = do
                 if flagFileExists
                     then liftIO $ readFlags (ppath </> "IDE.flags") packp
                     else return packp)
-            modifyIDE_ (\ide -> return (ide{activePack = (Just pack), projFilesCache = Map.empty}))
+            modifyIDE_ (\ide -> ide{activePack = (Just pack), projFilesCache = Map.empty})
             ide <- getIDE
             triggerEvent ideR ActivePack
             triggerEvent ideR (Sensitivity [(SensitivityProjectActive,True)])
@@ -230,8 +230,8 @@ belongsToActivePackage fp ideBuf = do
                                                             Nothing -> return False
                                                             Just mn -> return (Set.member mn (modules pack))
                                             else return False
-                                     modifyIDE_ (\ide -> return (ide{projFilesCache =
-                                        Map.insert fp r projFilesCache'}))
+                                     modifyIDE_ (\ide -> ide{projFilesCache =
+                                        Map.insert fp r projFilesCache'})
                                      return r
 
 deactivatePackage :: IDEAction
@@ -243,7 +243,7 @@ deactivatePackage = do
             ((dropFileName . cabalFile . fromJust) oldActivePack </> "IDE.session"))
         addRecentlyUsedPackage ((cabalFile . fromJust) oldActivePack)
         return ()
-    modifyIDE_ (\ide -> return (ide{activePack = Nothing, projFilesCache = Map.empty}))
+    modifyIDE_ (\ide -> ide{activePack = Nothing, projFilesCache = Map.empty})
     ideR          <- ask
     triggerEvent ideR ActivePack
     when (isJust oldActivePack) $ do
@@ -273,9 +273,9 @@ packageConfig = catchIDE (do
                         let modules = Set.fromList $ libModules packageD ++ exeModules packageD
                         let files = Set.fromList $ extraSrcFiles packageD ++ map modulePath (executables packageD)
                         let srcDirs = nub $ concatMap hsSourceDirs (allBuildInfo packageD)
-                        modifyIDE_ (\ide -> return (ide{activePack =
+                        modifyIDE_ (\ide -> ide{activePack =
                             Just package{depends=buildDepends packageD, modules = modules,
-                                         extraSrcs = files, srcDirs = srcDirs}}))
+                                         extraSrcs = files, srcDirs = srcDirs}})
                         ask >>= \ideR -> triggerEvent ideR ActivePack
                         return ()
                     Nothing -> return ())
@@ -630,7 +630,7 @@ addRecentlyUsedPackage fp = do
     when (not $ isStartingOrClosing state) $ do
         recentPackages' <- readIDE recentPackages
         unless (elem fp recentPackages') $
-            modifyIDE_ (\ide -> return ide{recentPackages = take 12 (fp : recentPackages')})
+            modifyIDE_ (\ide -> ide{recentPackages = take 12 (fp : recentPackages')})
         ask >>= \ideR -> triggerEvent ideR UpdateRecent
         return ()
 
@@ -640,19 +640,19 @@ removeRecentlyUsedPackage fp = do
     when (not $ isStartingOrClosing state) $ do
         recentPackages' <- readIDE recentPackages
         when (elem fp recentPackages') $
-            modifyIDE_ (\ide -> return ide{recentPackages = filter (\e -> e /= fp) recentPackages'})
+            modifyIDE_ (\ide -> ide{recentPackages = filter (\e -> e /= fp) recentPackages'})
         ask >>= \ideR -> triggerEvent ideR UpdateRecent
         return ()
 
 backgroundBuildToggled :: IDEAction
 backgroundBuildToggled = do
     toggled <- getBackgroundBuildToggled
-    modifyIDE_ (\ide -> return (ide{prefs = (prefs ide){backgroundBuild= toggled}}))
+    modifyIDE_ (\ide -> ide{prefs = (prefs ide){backgroundBuild= toggled}})
 
 backgroundLinkToggled :: IDEAction
 backgroundLinkToggled = do
     toggled <- getBackgroundLinkToggled
-    modifyIDE_ (\ide -> return (ide{prefs = (prefs ide){backgroundLink= toggled}}))
+    modifyIDE_ (\ide -> ide{prefs = (prefs ide){backgroundLink= toggled}})
 
 -- ---------------------------------------------------------------------
 -- | * Debug code that needs to use the package
@@ -671,7 +671,7 @@ debugStart = catchIDE (do
                     Nothing -> do
                         ghci <- reifyIDE $ \ideR -> newGhci (buildFlags package) (interactiveFlags prefs')
                             $ \output -> reflectIDE (logOutputForBuild True output) ideR
-                        modifyIDE_ (\ide -> return ide {ghciState = Just ghci})
+                        modifyIDE_ (\ide -> ide {ghciState = Just ghci})
                         triggerEvent ideRef (Sensitivity [(SensitivityInterpreting, True)])
                         -- Fork a thread to wait for the output from the process to close
                         liftIO $ forkIO $ do

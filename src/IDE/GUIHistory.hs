@@ -34,7 +34,7 @@ recordHistory entry = do
     if b || (n >= 0 && fst entry == fst (l !! n))
         then return ()
         else do
-            modifyIDE_ (\ide -> return ide{guiHistory = (b,entry:(drop n l),0)})
+            modifyIDE_ (\ide -> ide{guiHistory = (b,entry:(drop n l),0)})
             st <- ask
             triggerEvent st (Sensitivity
                 [(SensitivityForwardHist,False),(SensitivityBackwardHist,0 < length (drop n l) - 1)])
@@ -49,7 +49,7 @@ historyBack = do
          (l,n)  | n + 1 >= length l  ->   return ()
                 | otherwise     ->   do
             withoutRecordingDo (activateHistory (snd (l !! n)))
-            modifyIDE_ (\ide -> return ide{guiHistory = (b,l, n + 1)})
+            modifyIDE_ (\ide -> ide{guiHistory = (b,l, n + 1)})
             st <- ask
             triggerEvent st (Sensitivity
                 [(SensitivityForwardHist,(n + 1) > 0),(SensitivityBackwardHist,(n + 1) < (length l) - 1)])
@@ -64,7 +64,7 @@ historyForward = do
         (l,n)  | n < 1      ->  return ()
                | otherwise  ->  do
             withoutRecordingDo (activateHistory (fst (l !! n)))
-            modifyIDE_ (\ide -> return ide{guiHistory = (b,l, n - 1)})
+            modifyIDE_ (\ide -> ide{guiHistory = (b,l, n - 1)})
             st <- ask
             triggerEvent st (Sensitivity
                 [(SensitivityForwardHist,(n - 1) > 0),(SensitivityBackwardHist,(n - 1) < (length l) - 1)])

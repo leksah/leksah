@@ -337,7 +337,7 @@ loadSession sessionPath = do
             paneCloseAll
             viewCollapseAll
             recoverSession sessionPath
-            modifyIDE_ (\ide -> return ide{recentFiles = recentFiles', recentPackages = recentPackages'})
+            modifyIDE_ (\ide -> ide{recentFiles = recentFiles', recentPackages = recentPackages'})
             return ()
         else return ()
 
@@ -446,7 +446,7 @@ recoverSession sessionPath = do
     if (fst . findbarState) sessionSt
         then showFindbar
         else hideFindbar
-    modifyIDE_ (\ide -> return ide{recentFiles = recentOpenedFiles sessionSt,
+    modifyIDE_ (\ide -> ide{recentFiles = recentOpenedFiles sessionSt,
                                     recentPackages = recentOpenedPackages sessionSt})
     return (toolbarVisibleS sessionSt, (fst . findbarState) sessionSt)
 

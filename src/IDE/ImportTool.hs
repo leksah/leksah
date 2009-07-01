@@ -70,7 +70,7 @@ addAllImports = do
     prefs' <- readIDE prefs
     let buildInBackground = backgroundBuild prefs'
     when buildInBackground (
-        modifyIDE_ (\ide -> return (ide{prefs = prefs'{backgroundBuild = False}})))
+        modifyIDE_ (\ide -> ide{prefs = prefs'{backgroundBuild = False}}))
     errors <- readIDE errorRefs
     foldM_ addThis (True,[])
         [ y | (x,y) <-
@@ -78,7 +78,7 @@ addAllImports = do
                 $ [(x,y) |  (x,y) <- [((parseNotInScope . refDescription) e, e) | e <- errors]],
                                 isJust x]
     when buildInBackground $
-        modifyIDE_ (\ide -> return (ide{prefs = prefs'{backgroundBuild = True}}))
+        modifyIDE_ (\ide -> ide{prefs = prefs'{backgroundBuild = True}})
 
     where
         addThis :: (Bool,[Descr]) -> LogRef -> IDEM (Bool,[Descr])

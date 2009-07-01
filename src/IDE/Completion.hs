@@ -54,7 +54,7 @@ initCompletion sourceView = do
     case completion' of
         Just (CompletionWindow window' tree' store') -> do
             cids <- liftIO $ addEventHandling sourceView tree' store' ideR
-            modifyIDE_ (\ide -> return (ide{currentState = IsCompleting cids}))
+            modifyIDE_ (\ide -> ide{currentState = IsCompleting cids})
             updateOptions window' tree' store' sourceView cids
         Nothing -> do
             windows    <- getWindows
@@ -130,8 +130,8 @@ initCompletion sourceView = do
                 cids <- liftIO $ addEventHandling sourceView tree store ideR
                 return (window, tree, store, cids)
                 )
-            modifyIDE_ (\ide -> return (ide{currentState = IsCompleting cids,
-                completion = Just (CompletionWindow window' tree' store')}))
+            modifyIDE_ (\ide -> ide{currentState = IsCompleting cids,
+                completion = Just (CompletionWindow window' tree' store')})
             updateOptions window' tree' store' sourceView cids
 
 addEventHandling :: SourceView -> TreeView -> ListStore String -> IDERef -> IO Connections
@@ -260,7 +260,7 @@ cancelCompletion window tree store connections = do
         signalDisconnectAll connections
         widgetHideAll window
         )
-    modifyIDE_ (\ide -> return (ide{currentState = IsRunning}))
+    modifyIDE_ (\ide -> ide{currentState = IsRunning})
 
 updateOptions :: TreeViewClass alpha => Window -> alpha -> ListStore String -> SourceView -> Connections -> IDEAction
 updateOptions window tree store sourceView connections =
