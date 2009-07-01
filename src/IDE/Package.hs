@@ -293,7 +293,7 @@ runExternalTool description executable args handleOutput = do
             reifyIDE (\ideR -> forkIO $ do
                 (output, pid) <- runTool executable args
                 reflectIDE (do
-                    modifyIDE_ (\ide -> return ide{runningTool = Just pid})
+                    modifyIDE_ (\ide -> ide{runningTool = Just pid})
                     handleOutput output) ideR)
             return ()
 
@@ -677,7 +677,7 @@ debugStart = catchIDE (do
                         liftIO $ forkIO $ do
                             readMVar (outputClosed ghci)
                             reflectIDE (do
-                                modifyIDE_ (\ide -> return ide {ghciState = Nothing})
+                                modifyIDE_ (\ide -> ide {ghciState = Nothing})
                                 triggerEvent ideRef (Sensitivity [(SensitivityInterpreting, False)])
                                 -- Kick of a build if one is not already due
                                 modified <- fileCheckAll belongsToActivePackage
