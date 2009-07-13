@@ -764,18 +764,12 @@ fileSaveBuffer query nb gtkbuf ideBuf i = do
 fileSave :: Bool -> IDEM Bool
 fileSave query = inActiveBufContext' False $ fileSaveBuffer query
 
-fileSaveAll :: (FilePath -> IDEBuffer -> IDEM Bool) -> IDEM Bool
+fileSaveAll :: (IDEBuffer -> IDEM Bool) -> IDEM Bool
 fileSaveAll filterFunc = do
     bufs     <- allBuffers
-    filtered <- filterM (filterBufferFunc filterFunc) bufs
+    filtered <- filterM filterFunc bufs
     results  <- forM filtered (\buf -> inBufContext' False buf (fileSaveBuffer False))
     return $ True `elem` results
-
-filterBufferFunc :: (FilePath -> IDEBuffer -> IDEM Bool) -> IDEBuffer -> IDEM Bool
-filterBufferFunc filterFunc ideBuf = do
-    case fileName ideBuf of
-        Nothing -> return False
-        Just fn -> filterFunc fn ideBuf
 
 fileCheckBuffer :: Notebook -> TextBuffer -> IDEBuffer -> Int -> IDEM Bool
 fileCheckBuffer nb gtkbuf ideBuf i = do
@@ -796,10 +790,10 @@ fileCheckBuffer nb gtkbuf ideBuf i = do
                         return (modifiedOnDisk || modifiedInBuffer)
                 else return False
 
-fileCheckAll :: (FilePath -> IDEBuffer -> IDEM Bool) -> IDEM Bool
+fileCheckAll :: (IDEBuffer -> IDEM Bool) -> IDEM Bool
 fileCheckAll filterFunc = do
     bufs    <- allBuffers
-    filtered <- filterM (filterBufferFunc filterFunc) bufs
+    filtered <- filterM filterFunc bufs
     results <- forM filtered (\buf -> inBufContext' False buf fileCheckBuffer)
     return $ True `elem` results
 
@@ -847,19 +841,18 @@ fileClose' nb gtkbuf currentBuffer i = do
                 (addRecentlyUsedFile (fromJust $ fileName currentBuffer))
             return True
 
-
-fileCloseAll :: IDEM Bool
-fileCloseAll = do
+fileCloseAll :: (IDEBuffer -> IDEM Bool)  -> IDEM Bool
+fileCloseAll filterFunc = do
     bufs    <- allBuffers
-    if null bufs
+    filtered <- filterM filterFunc bufs
+    if null filtered
         then return True
         else do
-            makeActive (head bufs)
+            makeActive (head filtered)
             r <- fileClose
             if r
-                then fileCloseAll
+                then fileCloseAll filterFunc
                 else return False
-
 
 fileCloseAllButPackage :: IDEAction
 fileCloseAllButPackage = do

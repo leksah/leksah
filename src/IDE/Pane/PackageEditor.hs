@@ -38,7 +38,7 @@ import IDE.Core.State
 import IDE.FileUtils
 import Graphics.UI.Editor.MakeEditor
 import Distribution.PackageDescription.Parse (readPackageDescription,writePackageDescription)
-import Distribution.PackageDescription.Configuration (freeVars,flattenPackageDescription)
+import Distribution.PackageDescription.Configuration (flattenPackageDescription)
 import Distribution.ModuleName(ModuleName)
 import Data.Typeable (Typeable(..))
 import Debug.Trace (trace)
@@ -160,8 +160,8 @@ packageEdit = do
             package <- liftIO $ readPackageDescription normal (cabalFile idePackage)
             if hasConfigs package
                 then do
-                    ideMessage High ("Cabal File with configurations can't be edited with the"
-                        ++ "Current version of the editor")
+                    ideMessage High ("Cabal file with configurations can't be edited with the "
+                        ++ "current version of the editor")
                     return ()
                 else do
                     editPackage (flattenPackageDescription package) dirName  modules (\ _ -> return ())
@@ -169,13 +169,16 @@ packageEdit = do
 
 hasConfigs :: GenericPackageDescription -> Bool
 hasConfigs gpd =
+    let libConds = case condLibrary gpd of
+                        Nothing -> False
+                        Just condTree -> not (null (condTreeComponents condTree))
+        exeConds = foldr (\ (_,condTree) hasConfigs ->
+                                if hasConfigs
+                                    then True
+                                    else not (null (condTreeComponents condTree)))
+                        False (condExecutables gpd)
+    in libConds || exeConds
 
-    let freeVars1 = case condLibrary gpd of
-                        Nothing ->  []
-                        Just ct -> freeVars ct
-        freeVars2 = concatMap (freeVars . snd) (condExecutables gpd)
-    in trace ("freeVars " ++ show freeVars1 ++ "-" ++  show freeVars2)
-        $ not (null freeVars1 && null freeVars2)
 
 packageNew' :: (FilePath -> IDEAction) -> IDEAction
 packageNew' activateAction = do

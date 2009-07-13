@@ -389,6 +389,8 @@ viewSplit' panePath dir = do
                                     liftIO $ notebookInsertPage (castToNotebook parent) np group n
                                     label <- groupLabel group
                                     liftIO $ notebookSetTabLabel (castToNotebook parent) np label
+                                    label2 <- groupMenuLabel group
+                                    liftIO $ notebookSetMenuLabel (castToNotebook parent) np label2
                                     return ()
                                 ([], _) -> do
                                     liftIO $ boxPackStart (castToBox parent) np PackGrow 0
@@ -513,8 +515,10 @@ viewNest' panePath group = do
                         widgetSetName nb ("group_" ++ group)
                         notebookAppendPage activeNotebook nb group
                     label <- groupLabel group
+                    label2 <- groupMenuLabel group
                     liftIO $ do
                         notebookSetTabLabel activeNotebook nb label
+                        notebookSetMenuLabel activeNotebook nb label2
                         widgetShowAll nb
                         widgetGrabFocus activeNotebook
                         return nb
@@ -634,6 +638,9 @@ groupLabel group = do
     labelBox <- mkLabelBox label ("group_" ++ group)
     liftIO $ widgetShowAll labelBox
     return labelBox
+
+groupMenuLabel :: PaneMonad beta => String -> beta (Maybe Label)
+groupMenuLabel group = liftM Just (liftIO $ labelNew (Just group))
 
 handleNotebookSwitch :: PaneMonad beta => Notebook -> Int -> beta ()
 handleNotebookSwitch nb index = do

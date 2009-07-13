@@ -164,7 +164,7 @@ data IDE            =  IDE {
 ,   candy           ::   CandyTable              -- ^ table for source candy
 ,   prefs           ::   Prefs                   -- ^ configuration preferences
 ,   activePack      ::   Maybe IDEPackage
-,   projFilesCache  ::   Map FilePath Bool       -- ^ caches property: buffer belongs to project
+,   projFilesCache  ::   Map FilePath Bool       -- ^ caches property that a buffer belongs to a project
 ,   allLogRefs      ::   [LogRef]
 ,   currentEBC      ::   (Maybe LogRef, Maybe LogRef, Maybe LogRef)
 ,   currentHist     ::   Int

@@ -159,6 +159,8 @@
        <toolitem name="BackgroundBuild" action="BackgroundBuildToggled"/>
        <toolitem name="BackgroundLink" action="BackgroundLinkToggled"/>
        <separator/>
+       <toolitem name="Update Project" action="UpdateMetadataCurrent" />
+       <separator/>
        <toolitem name="Debug" action="DebugToggled"/>
        <toolitem name="Step" action="DebugStep"/>
        <toolitem name="StepLocal" action="DebugStepLocal"/>

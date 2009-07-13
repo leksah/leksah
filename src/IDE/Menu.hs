@@ -99,11 +99,11 @@ mkActions =
     ,AD "FileSaveAs" "Save _As" Nothing (Just "gtk-save-as")
         (do fileSave True; return ()) [] False
     ,AD "FileSaveAll" "Save A_ll" Nothing Nothing
-        (do fileSaveAll (\ _ _ -> return True); return ()) [] False
+        (do fileSaveAll (\ b -> return (bufferName b /= "_Eval.hs")); return ()) [] False
     ,AD "FileClose" "_Close" Nothing (Just "gtk-close")
         (do fileClose; return ()) [] False
     ,AD "FileCloseAll" "Close All" Nothing Nothing
-        (do fileCloseAll; return ()) [] False
+        (do fileCloseAll (\ b -> return (bufferName b /= "_Eval.hs")); return ()) [] False
     ,AD "FileCloseAllButPackage" "Close All But Package" Nothing Nothing
         (do fileCloseAllButPackage; return ()) [] False
     ,AD "Quit" "_Quit" Nothing (Just "gtk-quit")
@@ -114,11 +114,11 @@ mkActions =
         editUndo [] False
     ,AD "EditRedo" "_Redo" Nothing (Just "gtk-redo")
         editRedo [] False
-    ,AD "EditCut" "Cu_t" Nothing Nothing{--Just "gtk-cut"--}
+    ,AD "EditCut" "Cu_t" Nothing (Just "gtk-cut")
         editCut [] {--Just "<control>X"--} False
-    ,AD "EditCopy" "_Copy"  Nothing  Nothing{--Just "gtk-copy"--}
+    ,AD "EditCopy" "_Copy"  Nothing  (Just "gtk-copy")
         editCopy [] {--Just "<control>C"--} False
-    ,AD "EditPaste" "_Paste" Nothing Nothing{--Just "gtk-paste"--}
+    ,AD "EditPaste" "_Paste" Nothing (Just "gtk-paste")
         editPaste [] {--Just "<control>V"--} False
     ,AD "EditDelete" "_Delete" Nothing (Just "gtk-delete")
         editDelete [] False
@@ -284,7 +284,7 @@ mkActions =
         debugType [] False
 
     ,AD "Metadata" "_Metadata" Nothing Nothing (return ()) [] False
-    ,AD "UpdateMetadataCurrent" "_Update Project" Nothing Nothing
+    ,AD "UpdateMetadataCurrent" "_Update Project" Nothing  (Just "ide_rebuild_meta")
         rebuildActiveInfo [] False
     ,AD "UpdateMetadataLib" "_Update Lib" Nothing Nothing
         rebuildLibInfo [] False
@@ -529,7 +529,7 @@ quit :: IDEAction
 quit = do
     modifyIDE_ (\ide -> ide{currentState = IsShuttingDown})
     saveSession :: IDEAction
-    b <- fileCloseAll
+    b <- fileCloseAll (\_ -> return True)
     if b
         then liftIO mainQuit
         else modifyIDE_ (\ide -> ide{currentState = IsRunning})
@@ -613,7 +613,7 @@ newIcons =
             "ide_error_prev","ide_function","ide_instance", "ide_konstructor","ide_make",
             "ide_method","ide_newtype","ide_other","ide_rule","ide_run","ide_slot",
             "ide_source","ide_type","leksah", "ide_reexported", "ide_clean", "ide_link", "ide_build",
-            "ide_debug", "ide_step", "ide_local", "ide_module", "ide_continue"]
+            "ide_debug", "ide_step", "ide_local", "ide_module", "ide_continue", "ide_rebuild_meta"]
         iconFactoryAddDefault iconFactory)
     (\(e :: SomeException) -> getDataDir >>= \dataDir -> throwIDE ("Can't load icons from " ++ dataDir))
     where

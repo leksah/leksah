@@ -205,34 +205,37 @@ activatePackage filePath = do
             return (Just pack)
 
 
-belongsToActivePackage :: FilePath -> IDEBuffer -> IDEM Bool
-belongsToActivePackage fp ideBuf = do
-    projFilesCache' <-  readIDE projFilesCache
-    activePack'     <-  readIDE activePack
-    case Map.lookup fp projFilesCache' of
-        Just b  -> return b
-        Nothing -> case activePack' of
-                        Nothing   -> return False
-                        Just pack -> let basePath = dropFileName $ cabalFile pack in do
-                                     r <- if isSubPath basePath fp
-                                            then
-                                                let srcPaths = map (\srcP -> basePath </> srcP) (srcDirs pack)
-                                                    relPaths = map (\p -> makeRelative p fp) srcPaths in
-                                                if or (map (\p -> Set.member p (extraSrcs pack)) relPaths)
-                                                    then return True
-                                                    else do
-                                                    --        do
-                                                        gtkbuf <- liftIO $ textViewGetBuffer (sourceView ideBuf)
-                                                        candy  <- readIDE candy
-                                                        text   <- liftIO $ getCandylessText candy gtkbuf
-                                                        mbMn <- liftIO $ moduleNameFromFilePath' fp text
-                                                        case mbMn of
-                                                            Nothing -> return False
-                                                            Just mn -> return (Set.member mn (modules pack))
-                                            else return False
-                                     modifyIDE_ (\ide -> ide{projFilesCache =
-                                        Map.insert fp r projFilesCache'})
-                                     return r
+belongsToActivePackage :: IDEBuffer -> IDEM Bool
+belongsToActivePackage ideBuf = 
+    case fileName ideBuf of
+        Nothing -> return False
+        Just fp -> do
+            projFilesCache' <-  readIDE projFilesCache
+            activePack'     <-  readIDE activePack
+            case Map.lookup fp projFilesCache' of
+                Just b  -> return b
+                Nothing -> case activePack' of
+                                Nothing   -> return False
+                                Just pack -> let basePath = dropFileName $ cabalFile pack in do
+                                             r <- if isSubPath basePath fp
+                                                    then
+                                                        let srcPaths = map (\srcP -> basePath </> srcP) (srcDirs pack)
+                                                            relPaths = map (\p -> makeRelative p fp) srcPaths in
+                                                        if or (map (\p -> Set.member p (extraSrcs pack)) relPaths)
+                                                            then return True
+                                                            else do
+                                                            --        do
+                                                                gtkbuf <- liftIO $ textViewGetBuffer (sourceView ideBuf)
+                                                                candy  <- readIDE candy
+                                                                text   <- liftIO $ getCandylessText candy gtkbuf
+                                                                mbMn <- liftIO $ moduleNameFromFilePath' fp text
+                                                                case mbMn of
+                                                                    Nothing -> return False
+                                                                    Just mn -> return (Set.member mn (modules pack))
+                                                    else return False
+                                             modifyIDE_ (\ide -> ide{projFilesCache =
+                                                Map.insert fp r projFilesCache'})
+                                             return r
 
 deactivatePackage :: IDEAction
 deactivatePackage = do
@@ -602,7 +605,7 @@ addModuleToPackageDescr moduleName isExposed = do
                 if hasConfigs gpd
                     then do
                         reflectIDE (ideMessage High
-                            "Cabal File with configurations can't be automatically updated") ideR
+                            "Cabal file with configurations can't be automatically updated with the current version of Leksah") ideR
                     else
                         let pd = flattenPackageDescription gpd
                             npd = if isExposed && isJust (library pd)

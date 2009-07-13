@@ -32,7 +32,7 @@ import IDE.Tool (ToolOutput(..))
 import IDE.LogRef (srcSpanParser)
 import Debug.Trace (trace)
 import Text.ParserCombinators.Parsec
-    (optional, eof, try, parse, (<?>), noneOf, many, CharParser)
+    ((<|>), optional, eof, try, parse, (<?>), noneOf, many, CharParser)
 import qualified Text.ParserCombinators.Parsec.Token as  P
     (integer, whiteSpace, colon, symbol, makeTokenParser)
 import Text.ParserCombinators.Parsec.Language (emptyDef)
@@ -202,7 +202,7 @@ fillTraceList = do
     case mbTraces of
         Nothing -> return ()
         Just tracePane -> debugCommand' ":history" (\to -> liftIO
-            $ postGUIAsync (do
+            $ do
                 let parseRes = parse tracesParser "" (selectString to)
                 r <- case parseRes of
                         Left err     -> trace ("trace parse error " ++ show err ++ "\ninput: " ++ selectString to)
@@ -213,7 +213,7 @@ fillTraceList = do
                                                             then h{thSelected = True}
                                                             else h) r
                 mapM_ (insertTrace (tracepoints tracePane))
-                    (zip r' [0..length r'])))
+                    (zip r' [0..length r']))
     where
     insertTrace treeStore (tr,index)  = treeStoreInsert treeStore [] index tr
 
@@ -273,13 +273,17 @@ traceViewPopup _ _ _ _ = throwIDE "breakpointViewPopup wrong event type"
 
 
 tracesParser :: CharParser () [TraceHist]
-tracesParser = do
-    traces <- many (try traceParser)
-    whiteSpace
-    symbol "<end of history>"
-    eof
-    return traces
-    <?> "traces parser"
+tracesParser = try (do
+        symbol "Empty history."
+        return [])
+    <|> do
+        traces <- many (try traceParser)
+        whiteSpace
+        symbol "<end of history>"
+        eof
+        return traces
+    <?>
+        "traces parser"
 
 traceParser :: CharParser () TraceHist
 traceParser = do

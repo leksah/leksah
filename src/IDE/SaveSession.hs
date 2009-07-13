@@ -1,4 +1,4 @@
-{-# OPTIONS_GHC -XTypeSynonymInstances #-}
+{-# OPTIONS_GHC -XTypeSynonymInstances -XScopedTypeVariables #-}
 -----------------------------------------------------------------------------
 --
 -- Module      :  IDE.SaveSession
@@ -56,6 +56,7 @@ import System.Time (getClockTime)
 import IDE.Package (activatePackage,deactivatePackage)
 import Data.List (foldl')
 import IDE.Pane.Errors (ErrorsState(..))
+import Control.Exception (SomeException(..))
 
 -- ---------------------------------------------------------------------
 -- All pane types must be in here !
@@ -331,7 +332,7 @@ loadSession sessionPath = do
     deactivatePackage
     recentFiles'      <- readIDE recentFiles
     recentPackages'   <- readIDE recentPackages
-    b <- fileCloseAll
+    b <- fileCloseAll (\_ -> return True)
     if b
         then do
             paneCloseAll
@@ -424,31 +425,35 @@ getActive = do
 --
 
 recoverSession :: FilePath -> IDEM (Bool,Bool)
-recoverSession sessionPath = do
-    wdw         <-  getMainWindow
-    sessionSt    <- liftIO $ readLayout sessionPath
-    liftIO $ windowSetDefaultSize wdw (fst (windowSize sessionSt))(snd (windowSize sessionSt))
-    applyLayout (layoutS sessionSt)
-    case activePackage sessionSt of
-        Just fp -> activatePackage fp >> return ()
-        Nothing -> return ()
-    populate (population sessionSt)
-    setCurrentPages (layoutS sessionSt)
-    when (isJust (activePaneN sessionSt)) $ do
-        mbPane <- mbPaneFromName (fromJust (activePaneN sessionSt))
-        case mbPane of
+recoverSession sessionPath = catchIDE (do
+        wdw         <-  getMainWindow
+        sessionSt    <- liftIO $ readLayout sessionPath
+        liftIO $ windowSetDefaultSize wdw (fst (windowSize sessionSt))(snd (windowSize sessionSt))
+        applyLayout (layoutS sessionSt)
+        case activePackage sessionSt of
+            Just fp -> activatePackage fp >> return ()
             Nothing -> return ()
-            Just (PaneC p) -> makeActive p
-    setFindState ((snd . findbarState) sessionSt)
-    if toolbarVisibleS sessionSt
-        then showToolbar
-        else hideToolbar
-    if (fst . findbarState) sessionSt
-        then showFindbar
-        else hideFindbar
-    modifyIDE_ (\ide -> ide{recentFiles = recentOpenedFiles sessionSt,
-                                    recentPackages = recentOpenedPackages sessionSt})
-    return (toolbarVisibleS sessionSt, (fst . findbarState) sessionSt)
+        populate (population sessionSt)
+        setCurrentPages (layoutS sessionSt)
+        when (isJust (activePaneN sessionSt)) $ do
+            mbPane <- mbPaneFromName (fromJust (activePaneN sessionSt))
+            case mbPane of
+                Nothing -> return ()
+                Just (PaneC p) -> makeActive p
+        setFindState ((snd . findbarState) sessionSt)
+        if toolbarVisibleS sessionSt
+            then showToolbar
+            else hideToolbar
+        if (fst . findbarState) sessionSt
+            then showFindbar
+            else hideFindbar
+        modifyIDE_ (\ide -> ide{recentFiles = recentOpenedFiles sessionSt,
+                                        recentPackages = recentOpenedPackages sessionSt})
+        return (toolbarVisibleS sessionSt, (fst . findbarState) sessionSt))
+        (\ (e :: SomeException) -> do
+            sysMessage Normal (show e)
+            return (True,True))
+           
 
 readLayout :: FilePath -> IO SessionState
 readLayout sessionPath = do

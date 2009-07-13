@@ -28,6 +28,7 @@ data-files: LICENSE Readme data/Current.session data/Default.candy
             data/ide_step.png data/ide_local.png data/ide_module.png data/ide_continue.png
             data/ide_debug.png
             data/welcome.txt data/ide_clean.png data/ide_build.png data/ide_link.png
+            data/ide_rebuild_meta.png
 data-dir: ""
 extra-source-files: Setup.lhs
 extra-tmp-files:
