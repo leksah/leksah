@@ -170,7 +170,7 @@ fillBreakpointList = do
 getSelectedBreakpoint ::  TreeView
     -> TreeStore LogRef
     -> IO (Maybe LogRef)
-getSelectedBreakpoint treeView treeStore = do
+getSelectedBreakpoint treeView treeStore = trace "Get selected breakpoint" $do
     treeSelection   <-  treeViewGetSelection treeView
     paths           <-  treeSelectionGetSelectedRows treeSelection
     case paths of

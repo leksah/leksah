@@ -1111,7 +1111,7 @@ recordSelHistory = do
                         Nothing -> Nothing
                         Just descr -> Just (descrName descr)
     oldSel       <- liftIO $ readIORef (oldSelection mods)
-    triggerEvent ideR (RecordHistory ((ModuleSelected selMod selFacet),
+    triggerEventIDE (RecordHistory ((ModuleSelected selMod selFacet),
         (ModuleSelected (moduleS' oldSel) (facetS' oldSel))))
     liftIO $ writeIORef (oldSelection mods) (oldSel{moduleS'= selMod, facetS' = selFacet})
     return ()
@@ -1130,7 +1130,7 @@ recordScopeHistory = do
     ideR                    <-  ask
     mods                    <-  getModules
     oldSel                  <-  liftIO $ readIORef (oldSelection mods)
-    triggerEvent ideR (RecordHistory ((ScopeSelected sc bl),
+    triggerEventIDE (RecordHistory ((ScopeSelected sc bl),
         (ScopeSelected (scope' oldSel) (blacklist' oldSel))))
     liftIO $ writeIORef (oldSelection mods) (oldSel{scope'= sc, blacklist' = bl})
     return ()

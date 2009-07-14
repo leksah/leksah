@@ -103,7 +103,6 @@ import IDE.Pane.SourceBuffer
      insertTextAfterSelection)
 import IDE.Pane.Log (appendLog)
 import Data.List (isSuffixOf)
-import Control.Event (triggerEvent)
 import IDE.Metainfo.Provider (getActivePackageDescr)
 import Distribution.Text (display)
 
@@ -135,18 +134,14 @@ executeDebugCommand command handler = do
 debugCommand :: String -> ([ToolOutput] -> IDEAction) -> IDEAction
 debugCommand command handler = debugCommand' command
     (\to -> do
-        ideR <- ask
-        (handler to)
-        triggerEvent ideR DebuggerChanged
+        handler to
+        triggerEventIDE VariablesChanged
         return ())
 
 debugCommand' :: String -> ([ToolOutput] -> IDEAction) -> IDEAction
 debugCommand' command handler = do
     ideR <- ask
-    catchIDE (do
-        executeDebugCommand command (\ h -> do
-            (handler h)
-            return ()))
+    catchIDE (executeDebugCommand command handler)
         (\(e :: SomeException) -> putStrLn (show e))
 
 debugQuit :: IDEAction
@@ -198,7 +193,7 @@ debugAbandon = debugCommand ":abandon" logOutput
 debugBack :: IDEAction
 debugBack = do
     currentHist' <- readIDE currentHist
-    modifyIDE_ (\ide -> ide{currentHist = currentHist' - 1})
+    modifyIDE_ (\ide -> ide{currentHist = min (currentHist' - 1) 0})
     debugCommand ":back" logOutputForHistoricContext
 
 debugForward :: IDEAction
@@ -260,7 +255,6 @@ debugDeleteBreakpoint indexString lr = do
     bl <- readIDE breakpointRefs
     setBreakpointList $ filter (/= lr) bl
     ideR <- ask
-    triggerEvent ideR DebuggerChanged
     return ()
 
 debugForce :: IDEAction
@@ -312,10 +306,9 @@ debugStepModule = debugCommand ":stepmodule" logOutputForLiveContext
 
 debugTrace :: IDEAction
 debugTrace = do
-    ideR <- ask
     debugCommand ":trace" (\to -> do
         logOutputForLiveContext to
-        triggerEvent ideR TraceChanged
+        triggerEventIDE TraceChanged
         return ())
 
 debugTraceExpression :: IDEAction
@@ -325,13 +318,12 @@ debugTraceExpression = do
     debugTraceExpr maybeText
 
 debugTraceExpr :: Maybe String -> IDEAction
-debugTraceExpr maybeText = do
-    ideR <- ask
+debugTraceExpr maybeText =
     case maybeText of
         Just text -> debugCommand (":trace " ++ text) (\to -> do
-        logOutputForLiveContext to
-        triggerEvent ideR TraceChanged
-        return ())
+            logOutputForLiveContext to
+            triggerEventIDE TraceChanged
+            return ())
         Nothing   -> ideMessage Normal "Please select an expression in the editor"
 
 

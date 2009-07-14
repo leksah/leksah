@@ -34,7 +34,6 @@ import Graphics.UI.Gtk.Gdk.Events (Event(..))
 import IDE.ImportTool (addImport,parseNotInScope, addAllImports)
 import Data.List (elemIndex)
 
-
 -- | A breakpoints pane description
 --
 data IDEErrors      =   IDEErrors {

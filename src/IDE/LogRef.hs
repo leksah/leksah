@@ -50,7 +50,6 @@ import IDE.Tool
 import System.FilePath (equalFilePath)
 import System.Directory (canonicalizePath)
 import Data.List (stripPrefix, elemIndex, isPrefixOf)
-import Control.Event (triggerEvent)
 import SrcLoc
     (srcLocSpan, mkSrcLoc, mkSrcSpan, SrcSpan(..))
 import FastString (mkFastString)
@@ -100,14 +99,13 @@ unmarkLogRefs = do
 
 setErrorList :: [LogRef] -> IDEAction
 setErrorList errs = do
-    ideR <- ask
     unmarkLogRefs
     breaks <- readIDE breakpointRefs
     contexts <- readIDE contextRefs
     modifyIDE_ (\ide -> ide{allLogRefs = errs ++ breaks ++ contexts})
     setCurrentError Nothing
     markLogRefs
-    triggerEvent ideR ErrorChanged
+    triggerEventIDE ErrorChanged
     return ()
 
 setBreakpointList :: [LogRef] -> IDEAction
@@ -119,7 +117,7 @@ setBreakpointList breaks = do
     modifyIDE_ (\ide -> ide{allLogRefs = errs ++ breaks ++ contexts})
     setCurrentBreak Nothing
     markLogRefs
-    triggerEvent ideR BreakpointChanged
+    triggerEventIDE BreakpointChanged
     return ()
 
 addLogRefs :: [LogRef] -> IDEAction
@@ -129,9 +127,9 @@ addLogRefs refs = do
     modifyIDE_ (\ide -> ide{allLogRefs = (allLogRefs ide) ++ refs})
     setCurrentError Nothing
     markLogRefs
-    triggerEvent ideR ErrorChanged
-    triggerEvent ideR BreakpointChanged
-    triggerEvent ideR TraceChanged
+    triggerEventIDE ErrorChanged
+    triggerEventIDE BreakpointChanged
+    triggerEventIDE TraceChanged
     return ()
 
 nextError :: IDEAction
@@ -387,12 +385,12 @@ logOutput output = do
 logOutputForBuild :: Bool -> [ToolOutput] -> IDEAction
 logOutputForBuild backgroundBuild output = do
     ideRef <- ask
-    log <- getLog
+    log    <- getLog
     unless backgroundBuild $ liftIO $ bringPaneToFront log
-    errs <- liftIO $ readAndShow output ideRef log False []
+    errs   <- liftIO $ readAndShow output ideRef log False []
     setErrorList $ reverse errs
-    triggerEvent ideRef (Sensitivity [(SensitivityError,not (null errs))])
-    sb <- getSBErrors
+    triggerEventIDE (Sensitivity [(SensitivityError,not (null errs))])
+    sb     <- getSBErrors
     let errorNum    =   length (filter isError errs)
     let warnNum     =   length errs - errorNum
     liftIO $ statusbarPop sb 1
@@ -418,7 +416,7 @@ logOutputForBuild backgroundBuild output = do
                     Right BuildLine -> return InfoTag
                     Right (OtherLine text) | "Linking " `isPrefixOf` text -> do
                         -- when backgroundBuild $ reflectIDE interruptProcess ideR
-                        postGUISync $ reflectIDE (do
+                        postGUIAsync $ reflectIDE (do
                                 setErrorList $ reverse errs
                             ) ideR
                         return InfoTag

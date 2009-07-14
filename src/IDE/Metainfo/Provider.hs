@@ -47,7 +47,6 @@ import qualified Data.Set as Set
 import Data.Map (Map)
 import qualified Data.ByteString.Char8 as BS
 import qualified Data.ByteString.Lazy as BSL
-import Control.Monad.Reader(ask)
 import Distribution.Version
 import Distribution.ModuleName
 import GHC (runGhc)
@@ -56,7 +55,6 @@ import DeepSeq
 import IDE.FileUtils
 import IDE.Core.State
 import IDE.Metainfo.InterfaceCollector
-import Control.Event
 import Data.Char (toLower,isUpper,toUpper,isLower)
 import Text.Regex.Posix
 import System.IO.Unsafe (unsafePerformIO)
@@ -243,8 +241,7 @@ loadAccessibleInfo =
 clearCurrentInfo :: IDEAction
 clearCurrentInfo = do
     modifyIDE_ (\ide    ->  ide{currentInfo = Nothing})
-    ideR <- ask
-    triggerEvent ideR CurrentInfo
+    triggerEventIDE CurrentInfo
     return ()
 
 --
@@ -275,8 +272,7 @@ infoForActivePackage  = do
                                                     $ map fromJust
                                                         $ filter isJust packageList
                             modifyIDE_ (\ide -> ide{currentInfo = Just (active, scope)})
-    ideR <- ask
-    triggerEvent ideR CurrentInfo
+    triggerEventIDE CurrentInfo
     return ()
 
 
@@ -300,8 +296,7 @@ setInfo f = do
                 Nothing         -> return ()
                 Just newActive  -> do
                     modifyIDE_ (\ide -> ide{currentInfo = Just (newActive, scope)})
-                    ideR <- ask
-                    triggerEvent ideR CurrentInfo
+                    triggerEventIDE CurrentInfo
                     return ()
 
 --

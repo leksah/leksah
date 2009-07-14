@@ -39,6 +39,8 @@ module IDE.Core.State (
 ,   IDEAction
 ,   IDEEvent(..)
 
+,   triggerEventIDE
+
 -- * Convenience methods for accesing the IDE State
 ,   readIDE
 ,   modifyIDE
@@ -128,14 +130,12 @@ instance MonadIO Ghc where
 
 ideMessage :: MessageLevel -> String -> IDEAction
 ideMessage level str = do
-    st <- ask
-    triggerEvent st (LogMessage (str ++ "\n") LogTag)
+    triggerEventIDE (LogMessage (str ++ "\n") LogTag)
     liftIO $ sysMessage level str
 
 logMessage :: String -> LogTag -> IDEAction
 logMessage str tag = do
-    st <- ask
-    triggerEvent st (LogMessage (str ++ "\n") tag)
+    triggerEventIDE (LogMessage (str ++ "\n") tag)
     return ()
 
 sysMessage :: MonadIO m =>  MessageLevel -> String -> m ()
@@ -204,10 +204,10 @@ currentContext   = (\(_,_,c)-> c) . currentEBC
 
 setCurrentError e = do
     modifyIDE_ (\ide -> ide{currentEBC = (e, currentBreak ide, currentContext ide)})
-    ask >>= \ideR -> triggerEvent ideR (CurrentErrorChanged e) >> return ()
+    triggerEventIDE (CurrentErrorChanged e) >> return ()
 setCurrentBreak b = do
     modifyIDE_ (\ide -> ide{currentEBC = (currentError ide, b, currentContext ide)})
-    ask >>= \ideR -> triggerEvent ideR (CurrentBreakChanged b) >> return ()
+    triggerEventIDE (CurrentBreakChanged b) >> return ()
 setCurrentContext c = modifyIDE_ (\ide -> ide{currentEBC = (currentError ide, currentBreak ide, c)})
 
 
@@ -241,7 +241,7 @@ data IDEEvent  =
     |   LoadSession FilePath
     |   SaveSession FilePath
     |   UpdateRecent
-    |   DebuggerChanged
+    |   VariablesChanged
     |   ErrorChanged
     |   CurrentErrorChanged (Maybe LogRef)
     |   BreakpointChanged
@@ -266,7 +266,7 @@ instance Event IDEEvent String where
     getSelector (LoadSession _)         =   "LoadSession"
     getSelector (SaveSession _)         =   "SaveSession"
     getSelector UpdateRecent            =   "UpdateRecent"
-    getSelector DebuggerChanged         =   "DebuggerChanged"
+    getSelector VariablesChanged        =   "VariablesChanged"
     getSelector ErrorChanged            =   "ErrorChanged"
     getSelector (CurrentErrorChanged _) =   "CurrentErrorChanged"
     getSelector BreakpointChanged       =   "BreakpointChanged"
@@ -287,7 +287,7 @@ instance EventSource IDERef IDEEvent IDEM String where
     canTriggerEvent o "LoadSession"     =   True
     canTriggerEvent o "SaveSession"     =   True
     canTriggerEvent o "UpdateRecent"    =   True
-    canTriggerEvent o "DebuggerChanged" =   True
+    canTriggerEvent o "VariablesChanged" =   True
     canTriggerEvent o "ErrorChanged"    =   True
     canTriggerEvent o "CurrentErrorChanged" = True
     canTriggerEvent o "BreakpointChanged" = True
@@ -308,6 +308,9 @@ instance EventSource IDERef IDEEvent IDEM String where
         liftIO $ newUnique
 
 instance EventSelector String
+
+triggerEventIDE :: IDEEvent -> IDEM IDEEvent
+triggerEventIDE e = ask >>= \ideR -> triggerEvent ideR e
 
 --
 -- | A reader monad for a mutable reference to the IDE state
@@ -434,22 +437,20 @@ activatePane pane conn = do
 
 trigger :: Maybe String -> Maybe String -> IDEAction
 trigger s1 s2 = do
-    st <- ask
-    triggerEvent st (RecordHistory ((PaneSelected s1), PaneSelected s2))
-    triggerEvent st (Sensitivity [(SensitivityEditor, False)])
+    triggerEventIDE (RecordHistory ((PaneSelected s1), PaneSelected s2))
+    triggerEventIDE (Sensitivity [(SensitivityEditor, False)])
     return ()
 
 deactivatePane :: IDEAction
 deactivatePane = do
-    ideR    <-  ask
     mbAP    <-  getActivePane
     case mbAP of
         Nothing      -> return ()
         Just (pn, _) -> do
             deactivatePaneWithout
-            triggerEvent ideR (RecordHistory (PaneSelected Nothing,
+            triggerEventIDE (RecordHistory (PaneSelected Nothing,
                 PaneSelected (Just pn)))
-            triggerEvent ideR (Sensitivity [(SensitivityEditor, False)])
+            triggerEventIDE (Sensitivity [(SensitivityEditor, False)])
             return ()
 
 deactivatePaneWithout :: IDEAction

@@ -158,7 +158,7 @@ instance Pane IDEBuffer IDEM
 --        idleAdd (do
 --            widgetQueueDraw sv -- Patch for problem on one machine ##
 --            return False) priorityDefaultIdle
-      triggerEvent ideR (Sensitivity [(SensitivityEditor, True)])
+      triggerEventIDE (Sensitivity [(SensitivityEditor, True)])
       checkModTime actbuf
       return ()
     close pane = do makeActive pane
@@ -1143,7 +1143,7 @@ addRecentlyUsedFile fp = do
         recentFiles' <- readIDE recentFiles
         unless (elem fp recentFiles') $
             modifyIDE_ (\ide -> ide{recentFiles = take 12 (fp : recentFiles')})
-        ask >>= \ideR -> triggerEvent ideR UpdateRecent
+        triggerEventIDE UpdateRecent
         return ()
 
 removeRecentlyUsedFile :: FilePath -> IDEAction
@@ -1153,7 +1153,7 @@ removeRecentlyUsedFile fp = do
         recentFiles' <- readIDE recentFiles
         when (elem fp recentFiles') $
             modifyIDE_ (\ide -> ide{recentFiles = filter (\e -> e /= fp) recentFiles'})
-        ask >>= \ideR -> triggerEvent ideR UpdateRecent
+        triggerEventIDE UpdateRecent
         return ()
 
 selectedText :: IDEM (Maybe String)

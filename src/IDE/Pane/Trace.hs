@@ -32,7 +32,17 @@ import IDE.Tool (ToolOutput(..))
 import IDE.LogRef (srcSpanParser)
 import Debug.Trace (trace)
 import Text.ParserCombinators.Parsec
-    ((<|>), optional, eof, try, parse, (<?>), noneOf, many, CharParser)
+    (anyChar,
+     skipMany,
+     (<|>),
+     optional,
+     eof,
+     try,
+     parse,
+     (<?>),
+     noneOf,
+     many,
+     CharParser)
 import qualified Text.ParserCombinators.Parsec.Token as  P
     (integer, whiteSpace, colon, symbol, makeTokenParser)
 import Text.ParserCombinators.Parsec.Language (emptyDef)
@@ -201,8 +211,7 @@ fillTraceList = do
     mbTraces     <- getPane
     case mbTraces of
         Nothing -> return ()
-        Just tracePane -> debugCommand' ":history" (\to -> liftIO
-            $ do
+        Just tracePane -> debugCommand' ":history" (\to -> liftIO $ postGUIAsync $ do
                 let parseRes = parse tracesParser "" (selectString to)
                 r <- case parseRes of
                         Left err     -> trace ("trace parse error " ++ show err ++ "\ninput: " ++ selectString to)
@@ -274,7 +283,10 @@ traceViewPopup _ _ _ _ = throwIDE "breakpointViewPopup wrong event type"
 
 tracesParser :: CharParser () [TraceHist]
 tracesParser = try (do
+        whiteSpace
         symbol "Empty history."
+        skipMany anyChar
+        eof
         return [])
     <|> do
         traces <- many (try traceParser)
@@ -282,6 +294,12 @@ tracesParser = try (do
         symbol "<end of history>"
         eof
         return traces
+    <|> do
+        whiteSpace
+        symbol "Not stopped at a breakpoint"
+        skipMany anyChar
+        eof
+        return []
     <?>
         "traces parser"
 

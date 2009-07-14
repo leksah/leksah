@@ -24,7 +24,6 @@ module IDE.Pane.Info (
 ) where
 
 import Graphics.UI.Gtk hiding (afterToggleOverwrite)
-import Control.Monad.Reader
 import Control.Monad
 import Control.Monad.Trans
 import Data.Maybe
@@ -32,7 +31,6 @@ import Data.IORef
 import Data.Typeable
 
 import IDE.Core.State
-import Control.Event
 import IDE.Pane.SourceBuffer
 import IDE.Pane.References
 import IDE.FileUtils (openBrowser)
@@ -152,7 +150,7 @@ builder idDescr prefs pp nb windows ideR = do
     searchB `onClicked` (do
         descr <- readIORef currentDescr'
         reflectIDE (do
-            triggerEvent ideR (SearchMeta (descrName descr))
+            triggerEventIDE (SearchMeta (descrName descr))
             showInfo) ideR )
     docuB `onClicked` (do
         descr <- readIORef currentDescr'
@@ -165,7 +163,7 @@ builder idDescr prefs pp nb windows ideR = do
             symbol  <- textBufferGetText buf l r True
             when (controlIsPressed e)
                 (reflectIDE (do
-                    triggerEvent ideR (SelectInfo symbol)
+                    triggerEventIDE (SelectInfo symbol)
                     return ()) ideR)
             return False)
     return (info,[])
@@ -181,10 +179,9 @@ gotoSource = do
 gotoModule' :: IDEAction
 gotoModule' = do
     mbInfo  <-  getInfoCont
-    ideR    <-  ask
     case mbInfo of
         Nothing     ->  return ()
-        Just info   ->  triggerEvent ideR (SelectIdent info) >> return ()
+        Just info   ->  triggerEventIDE (SelectIdent info) >> return ()
 
 referencedFrom' :: IDEAction
 referencedFrom' = do
@@ -195,7 +192,6 @@ referencedFrom' = do
 
 setSymbol :: String -> IDEAction
 setSymbol symbol = do
-    ideR         <- ask
     currentInfo' <- readIDE currentInfo
     case currentInfo' of
         Nothing -> return ()
@@ -206,8 +202,8 @@ setSymbol symbol = do
                     setInfo a
                     showInfo
                     if length (a:r) > 1
-                        then triggerEvent ideR (DescrChoice (a:r)) >> return ()
-                        else triggerEvent ideR (SelectIdent a) >> return ()
+                        then triggerEventIDE (DescrChoice (a:r)) >> return ()
+                        else triggerEventIDE (SelectIdent a) >> return ()
 
 
 setInfo :: Descr -> IDEAction
@@ -240,8 +236,7 @@ getInfoCont = do
 
 recordInfoHistory :: Descr -> Descr -> IDEAction
 recordInfoHistory  descr oldDescr = do
-    ideR        <- ask
-    triggerEvent ideR (RecordHistory
+    triggerEventIDE (RecordHistory
         ((InfoElementSelected descr),
          (InfoElementSelected oldDescr)))
     return ()

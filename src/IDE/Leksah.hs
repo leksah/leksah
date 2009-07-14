@@ -243,7 +243,7 @@ startGUI sessionFilename iprefs = do
         ) ideR
     widgetShowAll win
     reflectIDE (do
-        ask >>= \ideR -> triggerEvent ideR UpdateRecent
+        triggerEventIDE UpdateRecent
         if tbv
             then showToolbar
             else hideToolbar

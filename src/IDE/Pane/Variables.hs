@@ -185,7 +185,7 @@ fillVariablesList = do
     mbVariables <- getPane
     case mbVariables of
         Nothing -> return ()
-        Just var -> debugCommand' ":show bindings" (\to -> liftIO
+        Just var -> debugCommand' ":show bindings" (\to -> liftIO $ postGUIAsync
                         $ (do
                             case parse variablesParser "" (selectString to) of
                                 Left e -> sysMessage Normal (show e)

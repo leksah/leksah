@@ -25,7 +25,6 @@ module IDE.GUIHistory (
 import IDE.Core.State
 import IDE.Pane.Modules
 import IDE.Pane.Info
-import Control.Event
 import Control.Monad.Reader
 
 recordHistory :: GUIHistory -> IDEAction
@@ -35,8 +34,7 @@ recordHistory entry = do
         then return ()
         else do
             modifyIDE_ (\ide -> ide{guiHistory = (b,entry:(drop n l),0)})
-            st <- ask
-            triggerEvent st (Sensitivity
+            triggerEventIDE (Sensitivity
                 [(SensitivityForwardHist,False),(SensitivityBackwardHist,0 < length (drop n l) - 1)])
             return ()
             -- liftIO $ putStrLn $ "record n : " ++ show 0 -- ++ " hist: " ++ show (entry:(drop n l))
@@ -50,8 +48,7 @@ historyBack = do
                 | otherwise     ->   do
             withoutRecordingDo (activateHistory (snd (l !! n)))
             modifyIDE_ (\ide -> ide{guiHistory = (b,l, n + 1)})
-            st <- ask
-            triggerEvent st (Sensitivity
+            triggerEventIDE (Sensitivity
                 [(SensitivityForwardHist,(n + 1) > 0),(SensitivityBackwardHist,(n + 1) < (length l) - 1)])
             return ()
             -- liftIO $ putStrLn $ "back n : " ++ show (n + 1) -- ++ " hist: " ++ show l
@@ -65,8 +62,7 @@ historyForward = do
                | otherwise  ->  do
             withoutRecordingDo (activateHistory (fst (l !! n)))
             modifyIDE_ (\ide -> ide{guiHistory = (b,l, n - 1)})
-            st <- ask
-            triggerEvent st (Sensitivity
+            triggerEventIDE (Sensitivity
                 [(SensitivityForwardHist,(n - 1) > 0),(SensitivityBackwardHist,(n - 1) < (length l) - 1)])
             return ()
             -- liftIO $ putStrLn $ "forward n : " ++ show (n - 1) -- ++ " hist: " ++ show l

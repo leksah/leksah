@@ -64,7 +64,6 @@ import Prelude hiding (catch)
 import Data.Maybe (isJust, fromJust)
 import Control.Exception (SomeException(..), catch)
 
-import Control.Event
 import IDE.Core.State
 import IDE.Pane.PackageEditor
 import IDE.Pane.SourceBuffer
@@ -143,7 +142,6 @@ getActivePackage = do
 
 selectActivePackage :: Maybe FilePath -> IDEM (Maybe IDEPackage)
 selectActivePackage mbFilePath' = do
-    ideR       <- ask
     window     <- getMainWindow
     mbFilePath <- case mbFilePath' of
                     Nothing -> liftIO $ choosePackageFile window
@@ -166,13 +164,12 @@ selectActivePackage mbFilePath' = do
                     else return False
             if wantToLoadSession
                 then do
-                    triggerEvent ideR (LoadSession (ppath </> "IDE.session"))
+                    triggerEventIDE (LoadSession (ppath </> "IDE.session"))
                     readIDE activePack
                 else activatePackage filePath
 
 activatePackage :: FilePath -> IDEM (Maybe IDEPackage)
 activatePackage filePath = do
-    ideR <- ask
     let ppath = dropFileName filePath
     mbPackageD <- reifyIDE (\ideR -> catch (do
         liftIO $ setCurrentDirectory ppath
@@ -196,8 +193,8 @@ activatePackage filePath = do
                     else return packp)
             modifyIDE_ (\ide -> ide{activePack = (Just pack), projFilesCache = Map.empty})
             ide <- getIDE
-            triggerEvent ideR ActivePack
-            triggerEvent ideR (Sensitivity [(SensitivityProjectActive,True)])
+            triggerEventIDE ActivePack
+            triggerEventIDE (Sensitivity [(SensitivityProjectActive,True)])
             sb <- getSBActivePackage
             liftIO $ statusbarPop sb 1
             liftIO $ statusbarPush sb 1 (display $ packageId pack)
@@ -206,7 +203,7 @@ activatePackage filePath = do
 
 
 belongsToActivePackage :: IDEBuffer -> IDEM Bool
-belongsToActivePackage ideBuf = 
+belongsToActivePackage ideBuf =
     case fileName ideBuf of
         Nothing -> return False
         Just fp -> do
@@ -239,18 +236,16 @@ belongsToActivePackage ideBuf =
 
 deactivatePackage :: IDEAction
 deactivatePackage = do
-    ideR          <- ask
     oldActivePack <- readIDE activePack
     when (isJust oldActivePack) $ do
-        triggerEvent ideR (SaveSession
+        triggerEventIDE (SaveSession
             ((dropFileName . cabalFile . fromJust) oldActivePack </> "IDE.session"))
         addRecentlyUsedPackage ((cabalFile . fromJust) oldActivePack)
         return ()
     modifyIDE_ (\ide -> ide{activePack = Nothing, projFilesCache = Map.empty})
-    ideR          <- ask
-    triggerEvent ideR ActivePack
+    triggerEventIDE ActivePack
     when (isJust oldActivePack) $ do
-        triggerEvent ideR (Sensitivity [(SensitivityProjectActive,False)])
+        triggerEventIDE (Sensitivity [(SensitivityProjectActive,False)])
         return ()
     sb            <- getSBActivePackage
     liftIO $ statusbarPop sb 1
@@ -279,7 +274,7 @@ packageConfig = catchIDE (do
                         modifyIDE_ (\ide -> ide{activePack =
                             Just package{depends=buildDepends packageD, modules = modules,
                                          extraSrcs = files, srcDirs = srcDirs}})
-                        ask >>= \ideR -> triggerEvent ideR ActivePack
+                        triggerEventIDE ActivePack
                         return ()
                     Nothing -> return ())
         (\(e :: SomeException) -> putStrLn (show e))
@@ -634,7 +629,7 @@ addRecentlyUsedPackage fp = do
         recentPackages' <- readIDE recentPackages
         unless (elem fp recentPackages') $
             modifyIDE_ (\ide -> ide{recentPackages = take 12 (fp : recentPackages')})
-        ask >>= \ideR -> triggerEvent ideR UpdateRecent
+        triggerEventIDE UpdateRecent
         return ()
 
 removeRecentlyUsedPackage :: FilePath -> IDEAction
@@ -644,7 +639,7 @@ removeRecentlyUsedPackage fp = do
         recentPackages' <- readIDE recentPackages
         when (elem fp recentPackages') $
             modifyIDE_ (\ide -> ide{recentPackages = filter (\e -> e /= fp) recentPackages'})
-        ask >>= \ideR -> triggerEvent ideR UpdateRecent
+        triggerEventIDE UpdateRecent
         return ()
 
 backgroundBuildToggled :: IDEAction
@@ -663,37 +658,37 @@ backgroundLinkToggled = do
 
 debugStart :: IDEAction
 debugStart = catchIDE (do
-        ideRef      <- ask
-        mbPackage   <- getActivePackage
-        prefs'      <- readIDE prefs
-        case mbPackage of
-            Nothing         -> return ()
-            Just package    -> do
-                maybeGhci <- readIDE ghciState
-                case maybeGhci of
-                    Nothing -> do
-                        ghci <- reifyIDE $ \ideR -> newGhci (buildFlags package) (interactiveFlags prefs')
-                            $ \output -> reflectIDE (logOutputForBuild True output) ideR
-                        modifyIDE_ (\ide -> ide {ghciState = Just ghci})
-                        triggerEvent ideRef (Sensitivity [(SensitivityInterpreting, True)])
-                        -- Fork a thread to wait for the output from the process to close
-                        liftIO $ forkIO $ do
-                            readMVar (outputClosed ghci)
-                            reflectIDE (do
-                                modifyIDE_ (\ide -> ide {ghciState = Nothing})
-                                triggerEvent ideRef (Sensitivity [(SensitivityInterpreting, False)])
-                                -- Kick of a build if one is not already due
-                                modified <- fileCheckAll belongsToActivePackage
-                                prefs <- readIDE prefs
-                                when ((not modified) && (backgroundBuild prefs)) $ do
-                                    mbPackage   <- readIDE activePack
-                                    case mbPackage of
-                                        Just package -> runCabalBuild True package
-                                        Nothing -> return ()) ideRef
-                        return ()
-                    _ -> do
-                        sysMessage Normal "Debugger already running"
-                        return ())
+    ideRef <- ask
+    mbPackage   <- getActivePackage
+    prefs'      <- readIDE prefs
+    case mbPackage of
+        Nothing         -> return ()
+        Just package    -> do
+            maybeGhci <- readIDE ghciState
+            case maybeGhci of
+                Nothing -> do
+                    ghci <- reifyIDE $ \ideR -> newGhci (buildFlags package) (interactiveFlags prefs')
+                        $ \output -> reflectIDE (logOutputForBuild True output) ideR
+                    modifyIDE_ (\ide -> ide {ghciState = Just ghci})
+                    triggerEventIDE (Sensitivity [(SensitivityInterpreting, True)])
+                    -- Fork a thread to wait for the output from the process to close
+                    liftIO $ forkIO $ do
+                        readMVar (outputClosed ghci)
+                        reflectIDE (do
+                            modifyIDE_ (\ide -> ide {ghciState = Nothing})
+                            triggerEventIDE (Sensitivity [(SensitivityInterpreting, False)])
+                            -- Kick of a build if one is not already due
+                            modified <- fileCheckAll belongsToActivePackage
+                            prefs <- readIDE prefs
+                            when ((not modified) && (backgroundBuild prefs)) $ do
+                                mbPackage   <- readIDE activePack
+                                case mbPackage of
+                                    Just package -> runCabalBuild True package
+                                    Nothing -> return ()) ideRef
+                    return ()
+                _ -> do
+                    sysMessage Normal "Debugger already running"
+                    return ())
         (\(e :: SomeException) -> putStrLn (show e))
 
 debugToggled :: IDEAction

@@ -284,7 +284,7 @@ mkActions =
         debugType [] False
 
     ,AD "Metadata" "_Metadata" Nothing Nothing (return ()) [] False
-    ,AD "UpdateMetadataCurrent" "_Update Project" Nothing  (Just "ide_rebuild_meta")
+    ,AD "UpdateMetadataCurrent" "_Update Project" (Just "Updates metadata for the current project")  (Just "ide_rebuild_meta")
         rebuildActiveInfo [] False
     ,AD "UpdateMetadataLib" "_Update Lib" Nothing Nothing
         rebuildLibInfo [] False
@@ -800,28 +800,24 @@ registerEvents =    do
         (Left (\ e@(SaveSession fp)     -> saveSessionAs fp >> return e))
     registerEvent stRef "UpdateRecent"
         (Left (\ e@UpdateRecent         -> updateRecentEntries >> return e))
-    registerEvent stRef "DebuggerChanged"
-        (Left (\ e@DebuggerChanged      -> reifyIDE (\ideR ->
-            postGUIAsync (reflectIDE fillVariablesList ideR) >> return e)))
+    registerEvent stRef "VariablesChanged"
+        (Left (\ e@VariablesChanged     -> fillVariablesList >> return e))
     registerEvent stRef "ErrorChanged"
-        (Left (\ e@ErrorChanged         -> reifyIDE (\ideR ->
-            postGUIAsync (reflectIDE fillErrorList ideR)) >> return e))
+        (Left (\ e@ErrorChanged         -> postAsyncIDE fillErrorList >> return e))
     registerEvent stRef "CurrentErrorChanged"
-        (Left (\ e@(CurrentErrorChanged mbLogRef) -> reifyIDE (\ideR ->
-            postGUIAsync (reflectIDE (selectRef mbLogRef) ideR) >>
-            postGUIAsync (reflectIDE (selectError mbLogRef) ideR)) >> return e))
+        (Left (\ e@(CurrentErrorChanged mbLogRef) -> postAsyncIDE (do
+            selectRef mbLogRef
+            selectError mbLogRef)  >> return e))
     registerEvent stRef "BreakpointChanged"
-        (Left (\ e@BreakpointChanged    -> reifyIDE (\ideR ->
-            postGUIAsync (reflectIDE fillBreakpointList ideR)) >> return e))
+        (Left (\ e@BreakpointChanged    -> postAsyncIDE fillBreakpointList >> return e))
     registerEvent stRef "CurrentBreakChanged"
-        (Left (\ e@(CurrentBreakChanged mbLogRef) -> reifyIDE (\ideR ->
-            postGUIAsync (reflectIDE (selectRef mbLogRef) ideR) >>
-            postGUIAsync (reflectIDE (selectBreak mbLogRef) ideR)) >> return e))
+        (Left (\ e@(CurrentBreakChanged mbLogRef) -> postAsyncIDE (do
+            selectRef mbLogRef
+            selectBreak mbLogRef) >> return e))
     registerEvent stRef "TraceChanged"
-        (Left (\ e@TraceChanged    -> reifyIDE (\ideR ->
-            postGUIAsync (reflectIDE fillTraceList ideR)) >> return e))
+        (Left (\ e@TraceChanged         -> fillTraceList >> return e))
     registerEvent stRef "GetTextPopup"
-        (Left (\ e@(GetTextPopup _) -> return (GetTextPopup (Just textPopupMenu))))
+        (Left (\ e@(GetTextPopup _)     -> return (GetTextPopup (Just textPopupMenu))))
     return ()
 
 
