@@ -539,11 +539,11 @@ checkModTime buf = do
                             modTime' <- readIORef (modTime buf)
                             case modTime' of
                                 Nothing ->  error $"checkModTime: time not set " ++ show (fileName buf)
-                                Just mt -> 
+                                Just mt ->
 #if defined(mingw32_HOST_OS) || defined(__MINGW32__)
                                     if False
-#else                                    
-                                    if nmt /= mt -- Fonts get messed up under windows when adding this line. 
+#else
+                                    if nmt /= mt -- Fonts get messed up under windows when adding this line.
                                                   -- Praises to whoever finds out what happens and how to fix this
 #endif
                                     then do
@@ -564,7 +564,6 @@ checkModTime buf = do
                                                             return True
                                                         _           ->  do return False
                                                 else return False
--- #endif
                         else return False
                 Nothing -> return False)
 
