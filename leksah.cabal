@@ -1,5 +1,5 @@
 name: leksah
-version: 0.5.0
+version: 0.6.0
 cabal-version: >=1.4
 build-type: Simple
 license: GPL
@@ -55,11 +55,11 @@ Executable leksah
     frameworks:
     c-sources:
     extensions: CPP
-    extra-libraries:
-    extra-lib-dirs:
-    includes:
+    if os(windows)
+        extra-lib-dirs: C:/cygwin/lib/w32api
+        includes: windows.h
+        include-dirs: C:/cygwin/usr/include/w32api
     install-includes:
-    include-dirs:
     hs-source-dirs: src
     other-modules: Default DeepSeq MyMissing Data.Binary.Shared
                    Control.Event Graphics.UI.Frame.ViewFrame Graphics.UI.Frame.Panes

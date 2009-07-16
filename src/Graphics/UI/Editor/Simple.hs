@@ -165,6 +165,7 @@ imageEditor parameters notifier = do
                 Just (_,stockId3) -> return (Just stockId3))
         parameters
         notifier
+
 --
 -- | Editor for a string in the form of a text entry
 --
