@@ -142,7 +142,7 @@ type Connections = [Connection]
 signalDisconnectAll :: Connections -> IO ()
 signalDisconnectAll = mapM_ (\ (ConnectC s) -> signalDisconnect s)
 
-{--
+
 -- Necessary with pre 10.2 verion of gtk2hs
 -- #if ! MIN_VERSION_gtk(0,10,2)
 -- This doesn't work for me for some obscure reason
@@ -155,5 +155,5 @@ instance Ord Notebook
 instance Eq Window
     where (==) a b = let (GObject pa, GObject pb) = (toGObject a, toGObject b)
                     in pa == pb
---}
+
 

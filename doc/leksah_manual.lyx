@@ -1,4 +1,4 @@
-#LyX 1.6.1 created this file. For more info see http://www.lyx.org/
+#LyX 1.6.2 created this file. For more info see http://www.lyx.org/
 \lyxformat 345
 \begin_document
 \begin_header
@@ -104,13 +104,14 @@ Leksah is an IDE (Integrated Development Environment) for the programming
 Leksah uses GTK+ as GUI Toolkit with the gtk2hs binding.
  It is platform independent and should run on any platform where GTK+, gtk2hs
  and GHC can be installed.
+ It is tested on Linux, Windows and Mac.
  It uses the Cabal package management and build system for Package Management.
  It needs the Glasgow Haskell Compiler for full functionality (GHC).
 \end_layout
 
 \begin_layout Standard
-This document is a reference to the functionality you can find in Leksah,
- it is not intended to be a tutorial.
+This document is a reference to the functionality of Leksah, it is not intended
+ to be a tutorial.
  Since Leksah is in the state of development the information may be incomplete
  or even wrong.
 \end_layout
@@ -156,7 +157,7 @@ target "http://projects.haskell.org/cgi-bin/mailman/listinfo/leksah"
 \end_inset
 
 .
- This manual can be found at 
+ The current version of this manual can be found at 
 \begin_inset CommandInset href
 LatexCommand href
 name "leksah.org/leksah_manual.pdf"
@@ -223,6 +224,39 @@ Release Notes
 \end_layout
 
 \begin_layout Subsubsection
+Version 0.6 Beta Release Juli 2009
+\end_layout
+
+\begin_layout Standard
+The 0.6 version introduces an interpreter/debugger mode.
+ This mode can be switched on and off from the toolbar.
+ In interpreter/debugger mode expressions can be evaluated and the type
+ of expressions can be dynamically shown.
+ The GHCi debugger is fully integrated, so that breakpoints can be set,
+ it is possible to step through the code, observe the values of variables
+ and trace the execution history.
+ The other features of Leksah like building in the background and reporting
+ errors on the fly work in debugger mode as in compiler mode.
+\end_layout
+
+\begin_layout Standard
+Another new feature is integration of grep and serach for regular expression.
+ This can be used from the findbar.
+\end_layout
+
+\begin_layout Standard
+The GUI framework has been enhanced, so that layouts can be nested in so
+ called group panes.
+ This feature is used for the debugger group.
+ Furtehrmore notebooks can be detached, so that Leksah can be used on multipe
+ screens.
+\end_layout
+
+\begin_layout Standard
+A lot of little enhancements has been made and numerous bugs has been fixed.
+\end_layout
+
+\begin_layout Subsubsection
 Version 0.4 Beta Release February/March 2009
 \end_layout
 
@@ -272,28 +306,25 @@ It is a good idea to install everything from sources when using Leksah
 .
  Leksah can then use the output produced while building to give you much
  better Metadata.
- You will be able to see the source comments for functions while autocompleting
- and you will be able to look up the source of functions easily.
- Sadly, on 
-\series bold
-Windows
-\series default
- it can be difficult to install GHC and Gtk2Hs from source and you may wish
- to install both using the binary installers.
+ Installing with cabal install will do that, and you can download the sources
+ for Ghc even after you installed it from a binary package.
+ With sources installed Leksah will show you source comments for functions
+ while autocompleting and will be navigate you to the sources of functions.
+ 
 \end_layout
 
 \begin_layout Standard
-If you have any trouble installing please check the Wiki, the mailing list
- or contact the developers to find a solution.
+If you have any trouble installing and this manual will not help, please
+ check the Wiki, the mailing list or contact the developers to find a solution.
  If it is a Leksah problem, then it is important to us and needs to be fixed.
 \end_layout
 
 \begin_layout Standard
 
 \emph on
-In the future we would like to have packages/installers for Linux distributions,
- Windows and Mac.
- Please contact us if you can offer help.
+We work on installers for Windows and Mac and packages for Debian/Ubuntu
+ are in preparation.
+ Further help needed! 
 \end_layout
 
 \begin_layout Subsection
@@ -305,7 +336,7 @@ Install GHC (Glasgow Haskell Compiler)
 \end_layout
 
 \begin_layout Standard
-At the time of writing Leksah supports only the most current version (6.10.1).
+At the time of writing Leksah supports GHC in the versions (6.10.*).
  For information about installing GHC go to 
 \begin_inset Flex URL
 status open
@@ -421,11 +452,12 @@ http://haskell.org/cabal
 \begin_inset Quotes eld
 \end_inset
 
-cabal install leksah
+cabal install leksah --user
 \begin_inset Quotes erd
 \end_inset
 
 .
+ This is the preferred way.
 \end_layout
 
 \begin_layout Standard
@@ -1264,7 +1296,11 @@ When you start Leksah for the first time, the first start dialog appears
  This can be any folder above the source directories.
  So figure out what this will be on your system.
  You have to click the Add Button after selecting the folder.
- If you use cabal install add the cabal install package directory to the
+ 
+\end_layout
+
+\begin_layout Enumerate
+If you use cabal install add the cabal install package directory to the
  
 \begin_inset Quotes eld
 \end_inset
@@ -1274,7 +1310,12 @@ extract packages from cabal-install
 \end_inset
 
  section.
- 
+ This means that leksah uncompresses and untars the sources, so they can
+ be scanned by Leksah.
+ This is kind of a hack currently.
+\end_layout
+
+\begin_layout Enumerate
 \begin_inset Box Framed
 position "t"
 hor_pos "c"
@@ -1610,7 +1651,7 @@ Search and Replace
 \end_layout
 
 \begin_layout Standard
-Leksah supports basic functionality for searching in text files.
+Leksah supports searching in text files.
  When you select Edit/Find from the menu the find bar will open (Figure
  6) and you can type in a text string.
  Hitting the up and down arrow will bring you to the next/previous occurrence
@@ -1622,6 +1663,11 @@ Leksah supports basic functionality for searching in text files.
  and for wrapping around, which means that the search will start at the
  beginning/end of the file, when the end/beginning is reached.
  If their is no occurrence of the search string the entry turns red.
+ 
+\end_layout
+
+\begin_layout Standard
+You can seach for regular expressions TODO.
 \end_layout
 
 \begin_layout Standard
@@ -1667,6 +1713,14 @@ To replace a text enter the new text in the replace entry and select replace
 \begin_layout Standard
 The find bar supports as well to jump to a certain line number in the current
  text buffer.
+\end_layout
+
+\begin_layout Subsection
+Grep
+\end_layout
+
+\begin_layout Standard
+TODO
 \end_layout
 
 \begin_layout Subsection
@@ -1845,7 +1899,7 @@ Background Build
 \begin_layout Standard
 Leksah can run builds while you work and highlight any errors as it finds
  them.
- This works with a timer that runs every 100ms.
+ This works with a timer that runs continously in the background.
  If there are changes made to any open file it....
 \end_layout
 
@@ -1871,6 +1925,8 @@ Because we can't interupt the build on windows there is an option in the
  Leksah build preferences to have it skip the linking stage in background
  builds.
  This reduces the delay before a next build starts.
+ Background build can be switched on and off from the toolbar: TODO.
+ Linking can be switched on and off from the toolbar with: TODO.
 \end_layout
 
 \begin_layout Subsection
@@ -1931,8 +1987,9 @@ You can set here the Tab size you want.
 \end_layout
 
 \begin_layout Standard
-Leksah has an option for storing the files with standard UNIX line ends
- even on Windows, and not using the infamous Cr/Lf combination.
+TODO (Does not work any more?) Leksah has an option for storing the files
+ with standard UNIX line ends even on Windows, and not using the infamous
+ Cr/Lf combination.
  This is e.g.
  useful if Windows and other users commit to the same repository.
 \end_layout
@@ -1993,6 +2050,8 @@ Package Menu
 A central concept for any IDE is a package, which is a project for development
  of some library or executable you may work on.
  One instance of Leksah can only open one package at a time.
+ (It is a wish of many users to make this more flexible in the way of Eclipse
+ Worksapces of VisualStudio TODO).
  Leksah can store configurations for packages separately (and does this
  by default), so that you can switch between packages and get exactly back
  to where you stopped when opening a different package.
@@ -2038,6 +2097,8 @@ target "http://www.haskell.org/ghc/docs/latest/html/Cabal/index.html"
  Since Leksah uses standard cabal files with no modifications this is no
  problem, and you can use Leksah with such packages with no problem, just
  the package editor will not work for you.
+ (We plan to enhance the editor to support configurations in the future).
+ 
 \end_layout
 
 \begin_layout Standard
@@ -2078,7 +2139,7 @@ PackageEditor 1
 
 \begin_layout Standard
 The minimum requirements for any package is to give a name and a version.
- Then you will have to enter dependencies on other packages in the Dependencies
+ Then you will have to enter dependencies on other packages in the dependencies
  part of the editor.
  This will be at least the base package.
 \end_layout
@@ -2323,10 +2384,6 @@ Package Flags
 
 \end_inset
 
-
-\end_layout
-
-\begin_layout Plain Layout
 
 \end_layout
 
@@ -3065,12 +3122,11 @@ For the current package a slightly different procedure is used, because
 \end_layout
 
 \begin_layout Section
-Configuration
+Debugger / Interpreter
 \end_layout
 
-\begin_layout Standard
-Leksah is highly customizable.
- Here it is explained how this works.
+\begin_layout Section
+Layout
 \end_layout
 
 \begin_layout Subsection
@@ -3193,6 +3249,14 @@ GUI Preferences
 \end_layout
 
 \begin_layout Subsection
+Group panes
+\end_layout
+
+\begin_layout Subsection
+Detached windows
+\end_layout
+
+\begin_layout Subsection
 Using the Flipper to Switch Active Panes
 \end_layout
 
@@ -3203,6 +3267,15 @@ You can change the active pane using a keyboard shortcut to bring up the
  The default shortcuts for the flipper are Ctrl+Tab and Ctrl+Shift+Tab or
  Ctrl+Page Down and Ctrl+Page Up.
  
+\end_layout
+
+\begin_layout Section
+Configuration
+\end_layout
+
+\begin_layout Standard
+Leksah is highly customizable.
+ Here it is explained how this works.
 \end_layout
 
 \begin_layout Subsection
@@ -3439,35 +3512,11 @@ I personally plan to develop up to version 1.0.
 \end_layout
 
 \begin_layout Subsection
-Version 0.6
-\end_layout
-
-\begin_layout Itemize
-Class pane
-\end_layout
-
-\begin_layout Itemize
-History navigation
-\end_layout
-
-\begin_layout Itemize
-On the fly error messages
-\end_layout
-
-\begin_layout Itemize
-On the fly type inference
-\end_layout
-
-\begin_layout Subsection
 Version 1.0
 \end_layout
 
 \begin_layout Itemize
-Interpreter
-\end_layout
-
-\begin_layout Itemize
-Debugger 
+History navigation
 \end_layout
 
 \begin_layout Subsection

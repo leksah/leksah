@@ -77,7 +77,6 @@ import Graphics.UI.Gtk.Multiline.TextView
 import Graphics.UI.Gtk.General.Enums	(Click(..))
 import Graphics.UI.Gtk.Gdk.Events (eventClick)
 import Control.Monad.Reader
---import Data.IORef
 import System.IO
 import System.FilePath
 import System.Directory
@@ -154,10 +153,6 @@ instance Pane IDEBuffer IDEM
           id6 <- sv `afterToggleOverwrite`  writeOverwriteInStatusbar sv sbIO
           return [ConnectC id2,ConnectC id6,ConnectC id1,ConnectC id3]
       activatePane actbuf cids
---      liftIO $
---        idleAdd (do
---            widgetQueueDraw sv -- Patch for problem on one machine ##
---            return False) priorityDefaultIdle
       triggerEventIDE (Sensitivity [(SensitivityEditor, True)])
       checkModTime actbuf
       return ()
@@ -533,45 +528,45 @@ checkModTime buf = do
     currentState' <- readIDE currentState
     case  currentState' of
         IsShuttingDown -> return False
-        _              -> do
+        _              -> reifyIDE (\ideR -> do
             let name = paneName buf
             case fileName buf of
                 Just fn -> do
-                    exists <- liftIO $doesFileExist fn
+                    exists <- doesFileExist fn
                     if exists
                         then do
-                            nmt <- liftIO $ getModificationTime fn
-                            modTime' <- liftIO $ readIORef (modTime buf)
+                            nmt <- getModificationTime fn
+                            modTime' <- readIORef (modTime buf)
                             case modTime' of
-                                Nothing ->  throwIDE $"checkModTime: time not set " ++ show (fileName buf)
-                                Just mt -> do
+                                Nothing ->  error $"checkModTime: time not set " ++ show (fileName buf)
+                                Just mt -> 
 #if defined(mingw32_HOST_OS) || defined(__MINGW32__)
-                                    -- For some reason evaluating nmt /= mt causes corrupt fonts ?!?
-                                    return False
-#else
-                                    --message $"checkModTime " ++ name ++ " " ++ show mt ++ " " ++ show nmt
-                                    if nmt /= mt
-                                        then do
-                                            md <- liftIO $ messageDialogNew
-                                                    Nothing []
-                                                    MessageQuestion
-                                                    ButtonsYesNo
-                                                    ("File \"" ++ name ++ "\" has changed on disk. Load file from disk?")
-                                            resp <- liftIO $ dialogRun md
-                                            case resp of
-                                                ResponseYes ->  do
-                                                    revert buf
-                                                    liftIO $ widgetHide md
-                                                    return False
-                                                ResponseNo  -> liftIO $ do
-                                                    writeIORef (modTime buf) (Just nmt)
-                                                    widgetHide md
-                                                    return True
-                                                _           ->  do return False
-                                        else return False
+                                    if False
+#else                                    
+                                    if nmt /= mt -- Fonts get messed up under windows when adding this line. 
+                                                  -- Praises to whoever finds out what happens and how to fix this
 #endif
+                                    then do
+                                                    md <- messageDialogNew
+                                                            Nothing []
+                                                            MessageQuestion
+                                                            ButtonsYesNo
+                                                            ("File \"" ++ name ++ "\" has changed on disk. Load file from disk?")
+                                                    resp <- dialogRun md
+                                                    case resp of
+                                                        ResponseYes ->  do
+                                                            reflectIDE (revert buf) ideR
+                                                            liftIO $ widgetHide md
+                                                            return False
+                                                        ResponseNo  -> do
+                                                            writeIORef (modTime buf) (Just nmt)
+                                                            widgetHide md
+                                                            return True
+                                                        _           ->  do return False
+                                                else return False
+-- #endif
                         else return False
-                Nothing -> return False
+                Nothing -> return False)
 
 setModTime :: IDEBuffer -> IDEAction
 setModTime buf = do
