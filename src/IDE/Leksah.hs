@@ -33,6 +33,10 @@ import Data.Version
 import Prelude hiding(catch)
 import System.Directory
 
+#if defined(darwin_HOST_OS)
+import IDE.OSX
+#endif
+
 import Paths_leksah
 import IDE.SaveSession
 import IDE.Core.State
@@ -242,6 +246,11 @@ startGUI sessionFilename iprefs = do
         return pair
         ) ideR
     widgetShowAll win
+
+#if defined(darwin_HOST_OS)
+    updateMenu uiManager
+#endif
+
     reflectIDE (do
         triggerEventIDE UpdateRecent
         if tbv

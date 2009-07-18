@@ -38,6 +38,8 @@ Executable leksah
         extra-libraries: kernel32
     else
         build-depends: unix >=2.3.1.0
+    if os(osx)
+        extra-libraries: igemacintegration
     build-depends: Cabal >=1.6.0.1, base >=4.0.0.0, binary >=0.4.4,
                    bytestring >=0.9.0.1, containers >=0.2.0.0, directory >=1.0.0.2,
                    filepath >=1.1.0.1, ghc >=6.10.1, glib >=0.10, gtk >=0.10,
