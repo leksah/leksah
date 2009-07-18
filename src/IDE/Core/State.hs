@@ -496,12 +496,12 @@ closePane pane = do
 
 getCandyState :: PaneMonad alpha => alpha Bool
 getCandyState = do
-    ui <- getUIAction "ui/menubar/_Edit/Source Candy" castToToggleAction
+    ui <- getUIAction "ui/menubar/_Configuration/Source Candy" castToToggleAction
     liftIO $toggleActionGetActive ui
 
 setCandyState :: PaneMonad alpha => Bool -> alpha ()
 setCandyState b = do
-    ui <- getUIAction "ui/menubar/_Edit/Source Candy" castToToggleAction
+    ui <- getUIAction "ui/menubar/_Configuration/Source Candy" castToToggleAction
     liftIO $toggleActionSetActive ui b
 
 getForgetSession :: PaneMonad alpha => alpha  (Bool)

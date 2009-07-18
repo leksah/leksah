@@ -152,8 +152,6 @@ mkActions =
     ,AD "EditAlignTypeSig" "Align _::" Nothing Nothing
         (align ':') [] False
 
-    ,AD "EditCandy" "_To Candy" Nothing Nothing
-        editCandy [] True
 
     ,AD "Package" "_Package" Nothing Nothing (return ()) [] False
     ,AD "NewPackage" "_New Package" Nothing Nothing
@@ -359,13 +357,19 @@ mkActions =
     ,AD "ToggleToolbar" "Toggle Toolbar" Nothing Nothing
         toggleToolbar [] False
 
-    ,AD "Help" "_Help" Nothing Nothing (return ()) [] False
+    ,AD "Configuration" "_Configuration" Nothing Nothing (return ()) [] False
+    ,AD "EditCandy" "_To Candy" Nothing Nothing
+        editCandy [] True
     ,AD "PrefsEdit" "_Edit Prefs" Nothing Nothing
         editPrefs [] False
+
+    ,AD "Help" "_Help" Nothing Nothing (return ()) [] False
     ,AD "HelpDebug" "Debug" Nothing Nothing (do
             pack <- readIDE activePack
             ideMessage Normal (show pack)) [] False
 --    ,AD "HelpDebug2" "Debug2" (Just "<Ctrl>d") Nothing dbgInstalledPackageInfo [] False
+    ,AD "HelpManual" "Manual" Nothing Nothing (openBrowser "http://leksah.org/leksah_manual.pdf") [] False
+    ,AD "HelpHomepage" "Homepage" Nothing Nothing (openBrowser "http://leksah.org") [] False
     ,AD "HelpAbout" "About" Nothing (Just "gtk-about") (liftIO aboutDialog) [] False
 
     ,AD "BackgroundBuildToggled" "_BackgroundBuild" (Just "Build in the background and report errors") (Just "ide_build")

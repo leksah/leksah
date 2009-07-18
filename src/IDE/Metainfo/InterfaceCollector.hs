@@ -344,7 +344,7 @@ extractIdentifierDescr package modules decl
                             in [descr{details' = ClassDescr{super =  superclasses,
                                         methods = classOpsID}}]
             (IfaceSyn _ _ _ _ _ )
-                        ->  [descr]
+                        ->  [descr{details' = TypeDescr}]
             (IfaceForeign _ _)
                         ->  [descr]
 

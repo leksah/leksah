@@ -279,7 +279,7 @@ constructFindReplace = reifyIDE $ \ ideR   -> do
     tooltipsSetTip tooltips caseSensitiveButton "When selected the search is case sensitive" ""
 
     labelTool <- toolItemNew
-    label <- labelNew (Just "Search: ")
+    label <- labelNew (Just "Find: ")
     containerAdd labelTool label
     toolbarInsert toolbar labelTool 0
 
@@ -309,8 +309,7 @@ constructFindReplace = reifyIDE $ \ ideR   -> do
     spinL `afterFocusIn` (\ _ -> (reflectIDE (inActiveBufContext True $ \_ gtkbuf currentBuffer _ -> do
         max <- textBufferGetLineCount gtkbuf
         spinButtonSetRange spinL 1.0 (fromIntegral max)
-        return True) ideR  ))
-
+        return True) ideR))
 
     spinL `afterEntryActivate` (reflectIDE (inActiveBufContext () $ \_ gtkbuf currentBuffer _ -> do
         line <- spinButtonGetValueAsInt spinL
