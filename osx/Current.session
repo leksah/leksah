@@ -1,0 +1,15 @@
+Time of storage:
+               "Mon May 25 15:28:15 CEST 2009"
+Layout:        VerticalP (TerminalP {paneGroups = fromList [], paneTabs = Just TopP, currentPage = 0, detachedId = Nothing, detachedSize = Nothing}) (HorizontalP (TerminalP {paneGroups = fromList [], paneTabs = Just BottomP, currentPage = 0, detachedId = Nothing, detachedSize = Nothing}) (TerminalP {paneGroups = fromList [], paneTabs = Just BottomP, currentPage = 0, detachedId = Nothing, detachedSize = Nothing}) 615) 889
+Population:    [(Just (InfoSt (InfoState (Descr {descrName' = "multisetEditor", typeInfo' = "multisetEditor :: forall alpha.\n                  (Show alpha, Default alpha, Eq alpha) =>\n                  ColumnDescr alpha\n                  -> (Editor alpha, Parameters)\n                  -> Maybe ([alpha] -> [alpha])\n                  -> Maybe (alpha -> alpha -> Bool)\n                  -> Editor [alpha]\n", descrModu' = PM {pack = PackageIdentifier {pkgName = PackageName "leksah", pkgVersion = Version {versionBranch = [0,5,0], versionTags = []}}, modu = ModuleName ["Graphics","UI","Editor","Composite"]}, mbLocation' = Just (Location {locationSLine = 499, locationSCol = 0, locationELine = 616, locationECol = 25}), mbComment' = Just "An editor with a subeditor, of which a list of items can be selected\n\n", details' = VariableDescr}))),[SplitP RightP,SplitP BottomP]),(Just (ModulesSt (ModulesState 200 (Package,True) (Nothing,Nothing) (ExpanderState {localExp = ([],[]), localExpNoBlack = ([[5,16],[5,13],[5,1],[5],[4,0,1],[4,0,0],[4,0],[4],[1,0],[1],[0]],[]), packageExp = ([],[]), packageExpNoBlack = ([],[]), systemExp = ([],[]), systemExpNoBlack = ([],[])}))),[SplitP RightP,SplitP TopP]),(Just (BufferSt (BufferState "/home/jutaro/Develop/leksah/data/welcome.txt" 800)),[SplitP LeftP])]
+Window size:   (1280,1024)
+Active package:
+               Nothing
+Active pane:   Just "welcome.txt"
+Toolbar visible:
+               True
+FindbarState:  (False,FindState {entryStr = "paneP", entryHist = ["paneP","Group","stringxEditor","multiset"], replaceStr = "Category", replaceHist = [], caseSensitive = False, entireWord = False, wrapAround = True, regex = False, lineNr = 1})
+Recently opened files:
+               []
+Recently opened packages:
+               []
