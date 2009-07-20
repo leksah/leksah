@@ -378,7 +378,7 @@ Install GHC (Glasgow Haskell Compiler)
 At the time of writing Leksah supports GHC in the versions (6.10.*).
  For information about installing GHC go to 
 \begin_inset Flex URL
-status open
+status collapsed
 
 \begin_layout Plain Layout
 
@@ -399,7 +399,7 @@ Install Gtk2Hs
 At the time of writing Leksah supports only the most current version (0.10.*).
  For information about installing Gtk2Hs got to 
 \begin_inset Flex URL
-status open
+status collapsed
 
 \begin_layout Plain Layout
 
@@ -446,7 +446,7 @@ Install Cabal
 At the time of writing Leksah requires at least version 1.6.0.1.
  For information about installing Gtk2Hs got to 
 \begin_inset Flex URL
-status open
+status collapsed
 
 \begin_layout Plain Layout
 
@@ -477,7 +477,7 @@ Either
 \noun default
 : Install cabal-install from 
 \begin_inset Flex URL
-status open
+status collapsed
 
 \begin_layout Plain Layout
 
@@ -508,7 +508,7 @@ Or
  ≥0.4.1, bytestring ≥0.9.0.1, utf8-string ≥0.3.1.1, regex-posix ≥0.39.1 which is available
  from HackageDB 
 \begin_inset Flex URL
-status open
+status collapsed
 
 \begin_layout Plain Layout
 
@@ -593,7 +593,7 @@ Install MacPorts
 \begin_layout Standard
 Download and install MacPorts by following the instructions on 
 \begin_inset Flex URL
-status open
+status collapsed
 
 \begin_layout Plain Layout
 
@@ -633,7 +633,7 @@ width "100col%"
 special "none"
 height "1in"
 height_special "totalheight"
-status open
+status collapsed
 
 \begin_layout Plain Layout
 
@@ -694,7 +694,7 @@ width "100col%"
 special "none"
 height "1in"
 height_special "totalheight"
-status open
+status collapsed
 
 \begin_layout Plain Layout
 
@@ -774,7 +774,7 @@ width "100col%"
 special "none"
 height "1in"
 height_special "totalheight"
-status open
+status collapsed
 
 \begin_layout Plain Layout
 
@@ -831,7 +831,7 @@ width "100col%"
 special "none"
 height "1in"
 height_special "totalheight"
-status open
+status collapsed
 
 \begin_layout Plain Layout
 
@@ -909,7 +909,7 @@ width "100col%"
 special "none"
 height "1in"
 height_special "totalheight"
-status open
+status collapsed
 
 \begin_layout Plain Layout
 
@@ -994,7 +994,7 @@ width "100col%"
 special "none"
 height "1in"
 height_special "totalheight"
-status open
+status collapsed
 
 \begin_layout Plain Layout
 
@@ -1082,7 +1082,7 @@ width "100col%"
 special "none"
 height "1in"
 height_special "totalheight"
-status open
+status collapsed
 
 \begin_layout Plain Layout
 
@@ -1141,7 +1141,7 @@ width "100col%"
 special "none"
 height "1in"
 height_special "totalheight"
-status open
+status collapsed
 
 \begin_layout Plain Layout
 
@@ -1205,7 +1205,7 @@ width "100col%"
 special "none"
 height "1in"
 height_special "totalheight"
-status open
+status collapsed
 
 \begin_layout Plain Layout
 
@@ -1240,7 +1240,7 @@ width "100col%"
 special "none"
 height "1in"
 height_special "totalheight"
-status open
+status collapsed
 
 \begin_layout Plain Layout
 
@@ -1272,7 +1272,7 @@ width "100col%"
 special "none"
 height "1in"
 height_special "totalheight"
-status open
+status collapsed
 
 \begin_layout Plain Layout
 
@@ -1347,7 +1347,7 @@ width "100col%"
 special "none"
 height "1in"
 height_special "totalheight"
-status open
+status collapsed
 
 \begin_layout Plain Layout
 Later you can change this settings in the preferences pane in Leksah and
@@ -1375,7 +1375,7 @@ width "100col%"
 special "none"
 height "1in"
 height_special "totalheight"
-status open
+status collapsed
 
 \begin_layout Plain Layout
 If you want to start from scratch again delete or rename the .leksah folder
@@ -1389,7 +1389,7 @@ If you want to start from scratch again delete or rename the .leksah folder
 \begin_inset Float figure
 wide false
 sideways false
-status open
+status collapsed
 
 \begin_layout Plain Layout
 \align center
@@ -1458,7 +1458,7 @@ reference "fig:After-start"
 \begin_inset Float figure
 wide false
 sideways false
-status open
+status collapsed
 
 \begin_layout Plain Layout
 \align center
@@ -1516,7 +1516,7 @@ reference "fig:Leksah-with-open"
 \begin_inset Float figure
 wide false
 sideways false
-status open
+status collapsed
 
 \begin_layout Plain Layout
 \align center
@@ -1571,7 +1571,7 @@ lines 0
 placement O
 overhang 0in
 width "30col%"
-status open
+status collapsed
 
 \begin_layout Plain Layout
 \align center
@@ -1665,7 +1665,7 @@ lines 0
 placement o
 overhang 0in
 width "30col%"
-status open
+status collapsed
 
 \begin_layout Plain Layout
 \align center
@@ -1775,7 +1775,7 @@ x package).
 \begin_inset Float figure
 wide false
 sideways false
-status open
+status collapsed
 
 \begin_layout Plain Layout
 \align center
@@ -1850,7 +1850,7 @@ reference "fig:Grep-pane"
 \begin_inset Float figure
 wide false
 sideways false
-status open
+status collapsed
 
 \begin_layout Plain Layout
 \align center
@@ -1895,7 +1895,7 @@ Source Candy
 placement h
 wide false
 sideways false
-status open
+status collapsed
 
 \begin_layout Plain Layout
 \align center
@@ -1963,7 +1963,7 @@ width "100col%"
 special "none"
 height "1in"
 height_special "totalheight"
-status open
+status collapsed
 
 \begin_layout Plain Layout
 
@@ -2011,7 +2011,7 @@ width "100col%"
 special "none"
 height "1in"
 height_special "totalheight"
-status open
+status collapsed
 
 \begin_layout Plain Layout
 Leksah reads and writes files encoded in UTF-8.
@@ -2059,7 +2059,7 @@ Leksah currently uses all names provided by the package scope for completion.
 placement h
 wide false
 sideways false
-status open
+status collapsed
 
 \begin_layout Plain Layout
 \align center
@@ -2157,7 +2157,7 @@ lines 0
 placement O
 overhang 0in
 width "30col%"
-status open
+status collapsed
 
 \begin_layout Plain Layout
 \begin_inset Graphics
@@ -2262,7 +2262,7 @@ target "http://www.haskell.org/ghc/docs/latest/html/Cabal/index.html"
 placement h
 wide false
 sideways false
-status open
+status collapsed
 
 \begin_layout Plain Layout
 \align center
@@ -2397,7 +2397,7 @@ Building
 
 \begin_layout Standard
 \begin_inset Graphics
-	filename /home/j/Develop/leksah-head/data/ide_build.png
+	filename C:/home/j/Develop/leksah-head/data/ide_build.png
 	width 0.5cm
 
 \end_inset
@@ -2425,7 +2425,7 @@ reference "fig:Error-Pane"
 \begin_inset Float figure
 wide false
 sideways false
-status open
+status collapsed
 
 \begin_layout Plain Layout
 \align center
@@ -2510,7 +2510,7 @@ Because we can't interrupt the build on windows there is an option in the
 
 \begin_layout Standard
 \begin_inset Graphics
-	filename /home/j/Develop/leksah-head/data/ide_build.png
+	filename C:/home/j/Develop/leksah-head/data/ide_build.png
 	width 0.5cm
 
 \end_inset
@@ -2524,7 +2524,7 @@ background build
 
 \begin_layout Standard
 \begin_inset Graphics
-	filename /home/j/Develop/leksah-head/data/ide_link.png
+	filename C:/home/j/Develop/leksah-head/data/ide_link.png
 	width 0.5cm
 
 \end_inset
@@ -2550,7 +2550,7 @@ Build system flags
 \begin_inset Float figure
 wide false
 sideways false
-status open
+status collapsed
 
 \begin_layout Plain Layout
 \align center
@@ -2655,7 +2655,7 @@ reference "fig:Import-dialog"
 \begin_inset Float figure
 wide false
 sideways false
-status open
+status collapsed
 
 \begin_layout Plain Layout
 \align center
@@ -2727,7 +2727,7 @@ width "100col%"
 special "none"
 height "1in"
 height_special "totalheight"
-status open
+status collapsed
 
 \begin_layout Plain Layout
 When Leksah does not find an identifier update the Leksah database.
@@ -2736,7 +2736,7 @@ When Leksah does not find an identifier update the Leksah database.
 
 \begin_layout Plain Layout
 \begin_inset Graphics
-	filename /home/j/Develop/leksah-head/data/ide_rebuild_meta.png
+	filename C:/home/j/Develop/leksah-head/data/ide_rebuild_meta.png
 	width 0.5cm
 
 \end_inset
@@ -2780,7 +2780,7 @@ lines 0
 placement o
 overhang 0in
 width "30col%"
-status open
+status collapsed
 
 \begin_layout Plain Layout
 \begin_inset Tabular
@@ -2823,7 +2823,7 @@ function
 
 \begin_layout Plain Layout
 \begin_inset Graphics
-	filename /home/j/Develop/leksah-head/data/ide_function.png
+	filename C:/home/j/Develop/leksah-head/data/ide_function.png
 	width 0.5cm
 
 \end_inset
@@ -2849,7 +2849,7 @@ data
 
 \begin_layout Plain Layout
 \begin_inset Graphics
-	filename /home/j/Develop/leksah-head/data/ide_data.png
+	filename C:/home/j/Develop/leksah-head/data/ide_data.png
 
 \end_inset
 
@@ -2881,7 +2881,7 @@ constructor
 
 \begin_layout Plain Layout
 \begin_inset Graphics
-	filename /home/j/Develop/leksah-head/data/ide_konstructor.png
+	filename C:/home/j/Develop/leksah-head/data/ide_konstructor.png
 
 \end_inset
 
@@ -2913,7 +2913,7 @@ slot
 
 \begin_layout Plain Layout
 \begin_inset Graphics
-	filename /home/j/Develop/leksah-head/data/ide_slot.png
+	filename C:/home/j/Develop/leksah-head/data/ide_slot.png
 
 \end_inset
 
@@ -2938,7 +2938,7 @@ type
 
 \begin_layout Plain Layout
 \begin_inset Graphics
-	filename /home/j/Develop/leksah-head/data/ide_type.png
+	filename C:/home/j/Develop/leksah-head/data/ide_type.png
 
 \end_inset
 
@@ -2963,7 +2963,7 @@ newtype
 
 \begin_layout Plain Layout
 \begin_inset Graphics
-	filename /home/j/Develop/leksah-head/data/ide_newtype.png
+	filename C:/home/j/Develop/leksah-head/data/ide_newtype.png
 	width 0.5cm
 
 \end_inset
@@ -2989,7 +2989,7 @@ class
 
 \begin_layout Plain Layout
 \begin_inset Graphics
-	filename /home/j/Develop/leksah-head/data/ide_class.png
+	filename C:/home/j/Develop/leksah-head/data/ide_class.png
 	width 0.5cm
 
 \end_inset
@@ -3022,7 +3022,7 @@ member
 
 \begin_layout Plain Layout
 \begin_inset Graphics
-	filename /home/j/Develop/leksah-head/data/ide_method.png
+	filename C:/home/j/Develop/leksah-head/data/ide_method.png
 
 \end_inset
 
@@ -3047,7 +3047,7 @@ instance
 
 \begin_layout Plain Layout
 \begin_inset Graphics
-	filename /home/j/Develop/leksah-head/data/ide_instance.png
+	filename C:/home/j/Develop/leksah-head/data/ide_instance.png
 	width 0.5cm
 
 \end_inset
@@ -3073,7 +3073,7 @@ rule
 
 \begin_layout Plain Layout
 \begin_inset Graphics
-	filename /home/j/Develop/leksah-head/data/ide_rule.png
+	filename C:/home/j/Develop/leksah-head/data/ide_rule.png
 
 \end_inset
 
@@ -3161,7 +3161,7 @@ The current Leksah metadata does not contain definitions local to a module.
  We plan to change this for the current project for future versions.
  
 \begin_inset Foot
-status open
+status collapsed
 
 \begin_layout Plain Layout
 We started with the 
@@ -3204,7 +3204,7 @@ The Modules Pane
 \begin_inset Float figure
 wide false
 sideways false
-status open
+status collapsed
 
 \begin_layout Plain Layout
 \align center
@@ -3294,7 +3294,7 @@ If the Blacklist toggle button is selected, the packages in the blacklist
  browser.
  
 \begin_inset Foot
-status open
+status collapsed
 
 \begin_layout Plain Layout
 I invented the blacklist mainly for the GHC package, when will they use
@@ -3320,7 +3320,7 @@ If you select a module in the modules list, its interface is displayed in
 
 \begin_layout Standard
 \begin_inset Graphics
-	filename /home/j/Develop/leksah-head/data/ide_source.png
+	filename C:/home/j/Develop/leksah-head/data/ide_source.png
 	width 0.5cm
 
 \end_inset
@@ -3346,7 +3346,7 @@ Go to definition
 
 \begin_layout Standard
 \begin_inset Graphics
-	filename /home/j/Develop/leksah-head/data/ide_reexported.png
+	filename C:/home/j/Develop/leksah-head/data/ide_reexported.png
 	width 0.5cm
 
 \end_inset
@@ -3374,7 +3374,7 @@ The quickest way to edit some project file is to go to the modules pane,
 placement h
 wide false
 sideways false
-status open
+status collapsed
 
 \begin_layout Plain Layout
 \align center
@@ -3444,7 +3444,7 @@ The Info Pane
 \begin_inset Float figure
 wide false
 sideways false
-status open
+status collapsed
 
 \begin_layout Plain Layout
 \align center
@@ -3562,7 +3562,7 @@ The Search Pane
 \begin_inset Float figure
 wide false
 sideways false
-status open
+status collapsed
 
 \begin_layout Plain Layout
 \align center
@@ -3658,7 +3658,7 @@ The References Pane
 \begin_inset Float figure
 wide false
 sideways false
-status open
+status collapsed
 
 \begin_layout Plain Layout
 \align center
@@ -3714,7 +3714,7 @@ lines 0
 placement O
 overhang 0in
 width "30col%"
-status open
+status collapsed
 
 \begin_layout Plain Layout
 \align center
@@ -3851,7 +3851,7 @@ For the current package a slightly different procedure is used, because
 \begin_inset Float figure
 wide false
 sideways false
-status open
+status collapsed
 
 \begin_layout Plain Layout
 \align center
@@ -3895,11 +3895,238 @@ Metadata Preferences
 \end_layout
 
 \begin_layout Section
-Debugger / Interpreter
+Debugger 
 \end_layout
 
 \begin_layout Standard
-TODO
+You can switch Debugger mode on from the toolbar:
+\end_layout
+
+\begin_layout Standard
+\begin_inset Graphics
+	filename C:/Dokumente und Einstellungen/Juergen.Nicklisch-Fr/Eigene Dateien/Develop/leksah-head/data/ide_debug.png
+	width 1cm
+
+\end_inset
+
+Switch debugger Mode on or off.
+\end_layout
+
+\begin_layout Standard
+After switching debugger mode on, you can see that packages and modules
+ for your current project are loaded into GHCi.
+\end_layout
+
+\begin_layout Standard
+When debugger mode is on, you see that the menu entries from the Debug menu
+ are no longer disabled, and the context menu of source buffers have entries
+ enabled as well, that were disabled when not in debugger mode.
+ 
+\end_layout
+
+\begin_layout Standard
+You can open the debugger group pane by choosing Debug / Show Debugger.
+ 
+\end_layout
+
+\begin_layout Standard
+You can now:
+\end_layout
+
+\begin_layout Enumerate
+
+\noun on
+Evaluate
+\noun default
+ expressions in the interpreter and observe the result.
+\begin_inset Newline newline
+\end_inset
+
+Select the expression in a source buffer.
+ Select eval from the context menu.
+ The result of the evaluation is shown in the log window and as 
+\emph on
+it 
+\emph default
+in the variables pane.
+\begin_inset Newline newline
+\end_inset
+
+The debugger has a pane which is for writing down evaluation expressions.
+ The pane is a Haskell source buffer, which has the reserved name _Eval.
+ Its contest is saved with the session.
+\begin_inset Newline newline
+\end_inset
+
+Or choose 
+\begin_inset Quotes eld
+\end_inset
+
+Eval & Insert
+\begin_inset Quotes erd
+\end_inset
+
+, which inserts a string representation of the result, after the expression
+ you evaluate.
+\end_layout
+
+\begin_layout Enumerate
+Determine the 
+\noun on
+type
+\noun default
+ of an expression, get 
+\noun on
+info
+\noun default
+ for an identifier or the 
+\noun on
+kind
+\noun default
+ of a type.
+\begin_inset Newline newline
+\end_inset
+
+Select the expression in a source buffer.
+ Select type, infor or kind from the context menu.
+\end_layout
+
+\begin_layout Enumerate
+You can 
+\noun on
+Step
+\noun default
+ through code.
+\begin_inset Newline newline
+\end_inset
+
+Select the expression in a source buffer.
+ Select step from the context menu.
+ You can then use the toolbar (or shortcuts):
+\begin_inset Newline newline
+\end_inset
+
+
+\begin_inset Graphics
+	filename C:/Dokumente und Einstellungen/Juergen.Nicklisch-Fr/Eigene Dateien/Develop/leksah-head/data/ide_step.png
+	width 1cm
+
+\end_inset
+
+Step (F6)
+\begin_inset Newline newline
+\end_inset
+
+
+\begin_inset Graphics
+	filename C:/Dokumente und Einstellungen/Juergen.Nicklisch-Fr/Eigene Dateien/Develop/leksah-head/data/ide_local.png
+	width 1cm
+
+\end_inset
+
+Step local (F7)
+\begin_inset Newline newline
+\end_inset
+
+
+\begin_inset Graphics
+	filename C:/Dokumente und Einstellungen/Juergen.Nicklisch-Fr/Eigene Dateien/Develop/leksah-head/data/ide_module.png
+	width 1cm
+
+\end_inset
+
+Step in module (F8)
+\begin_inset Newline newline
+\end_inset
+
+
+\begin_inset Graphics
+	filename C:/Dokumente und Einstellungen/Juergen.Nicklisch-Fr/Eigene Dateien/Develop/leksah-head/data/ide_continue.png
+	width 1cm
+
+\end_inset
+
+Continue (to the next breakpoint, or end of computation) (F9)
+\end_layout
+
+\begin_layout Enumerate
+While stepping through code, you can observe 
+\noun on
+variables
+\noun default
+ in the variables pane.
+ You can print or force a variable from the context menu of the variables
+ pane.
+ You can update the pane from the context menu.
+\end_layout
+
+\begin_layout Enumerate
+You can set 
+\noun on
+breakpoints
+\noun default
+ by putting the cursor at the breakpoint and select 
+\emph on
+set breakpoint 
+\emph default
+from the context menu.
+ Take care not to select text if you want this.
+ If you select a text, the breakpoint will be put to the implementation
+ of this identifier, if possible.
+ You can observe the breakpoints set in the breakpoints pane.
+ You can remove breakpoints from this pane.
+\end_layout
+
+\begin_layout Enumerate
+You can observe an execution trace in the traces pane.
+ Navigation in the traces pane is currently not supported (:back, :forward).
+\end_layout
+
+\begin_layout Enumerate
+You can query information about the current state of GHCi from the Debugger
+ menu.
+ E.g.
+ 
+\emph on
+Show loaded modules
+\emph default
+, 
+\emph on
+Show packages
+\emph default
+ and 
+\emph on
+Show languages
+\emph default
+.
+ 
+\end_layout
+
+\begin_layout Enumerate
+You can directly communicate with GHCi by evaluating commands.
+ E.g.
+ 
+\begin_inset Quotes eld
+\end_inset
+
+:set ...
+\begin_inset Quotes erd
+\end_inset
+
+
+\end_layout
+
+\begin_layout Standard
+For further information about the GHCi debugger, please read the section
+ 2.5.
+ (The GHCi Debugger) of the GHC user manual.
+ 
+\end_layout
+
+\begin_layout Standard
+The Debugger is the newest addition to Leksah and is still in an experimental
+ stage.
+ So please do not expect to much in the moment.
 \end_layout
 
 \begin_layout Standard
@@ -3928,7 +4155,7 @@ lines 0
 placement O
 overhang 0in
 width "30col%"
-status open
+status collapsed
 
 \begin_layout Plain Layout
 \align center
@@ -4008,7 +4235,7 @@ reference "sub:Session-handling"
 
 .
 \begin_inset Foot
-status open
+status collapsed
 
 \begin_layout Plain Layout
  Currently there is no way to load different layouts independent of the
@@ -4039,7 +4266,7 @@ reference "fig:Initial-pane-position"
 \begin_inset Float figure
 wide false
 sideways false
-status open
+status collapsed
 
 \begin_layout Plain Layout
 \align center
@@ -4080,7 +4307,21 @@ Group panes
 \end_layout
 
 \begin_layout Standard
-TODO
+Before we invented group panes, a notebook could only contain atomar panes.
+ Now it can as well contain group panes, which have a layout on their own
+ and may contain arbitary other panes.
+ The debug pane is an example for a group pane.
+ This gives you the possibility to arrange the subpanes in a debugger pane
+ as it fits best for you.
+ 
+\end_layout
+
+\begin_layout Standard
+You can add a new group by selecting View / Group from the menubar.
+ You have to give a unique name for any group.
+ Then you can arrange panes in the group as you like.
+ When closing a group, and the group is not empty, you have to confirm that
+ this is what you really want.
 \end_layout
 
 \begin_layout Subsubsection
@@ -4088,7 +4329,43 @@ Detached windows
 \end_layout
 
 \begin_layout Standard
-TODO
+This feature is useful if you want to use Leksah on multiple screens.
+ You can select a notebook and choose View / Detach from the menubar.
+ Then this notebook is opened in a new window, which you can then move to
+ another screen.
+ 
+\end_layout
+
+\begin_layout Standard
+If you close the detached window, the contents goes back to the place where
+ it was before detaching.
+\end_layout
+
+\begin_layout Standard
+When you close Leksah, the state of detached window is remembered, and they
+ will be reopened when you restart Leksah.
+\end_layout
+
+\begin_layout Standard
+It is possible to drag and drop panes between windows.
+ But splitting and collapsing of panes is disabled for detached windows.
+ So a recommended way to use this feature is to split a pane, arrange the
+ panes that you want to detach in the area of the new notebook.
+ Select the new notebook and detach.
+\end_layout
+
+\begin_layout Standard
+The detached windows have no menubar, toolbar and statusbar on their own.
+ This may be a problem, because when you want to select a menu entry, the
+ focus may change from a pane in the detached window to a pane in the main
+ window, and you may not be able to do what you want.
+ However keystrokes works fine, and that is how we use this feature.
+\end_layout
+
+\begin_layout Standard
+This is a new addition in this release, and the handling of detachement
+ may be a bit unconveniant.
+ Let us know what you need.
 \end_layout
 
 \begin_layout Subsection
@@ -4106,7 +4383,7 @@ Editor Preferences
 placement h
 wide false
 sideways false
-status open
+status collapsed
 
 \begin_layout Plain Layout
 \align center
@@ -4157,7 +4434,7 @@ You can set here the Tab size you want.
 
 \begin_layout Standard
 \begin_inset Foot
-status open
+status collapsed
 
 \begin_layout Plain Layout
 Leksah has an option for storing the files with standard UNIX line ends
@@ -4194,7 +4471,7 @@ lines 0
 placement O
 overhang 0in
 width "30col%"
-status open
+status collapsed
 
 \begin_layout Plain Layout
 \align center

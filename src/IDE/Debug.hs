@@ -68,16 +68,16 @@ module IDE.Debug (
 ) where
 
 #if defined(mingw32_HOST_OS) || defined(__MINGW32__)
-import System.Process (getProcessExitCode, ProcessHandle(..))
-import Data.Maybe (isNothing)
+-- import System.Process (getProcessExitCode, ProcessHandle(..))
+-- import Data.Maybe (isNothing)
 import GHC.ConsoleHandler (Handler(..), installHandler)
 import System.Win32
-    (th32SnapEnumProcesses,
+    (-- th32SnapEnumProcesses,
      DWORD(..),
      cTRL_BREAK_EVENT,
-     generateConsoleCtrlEvent,
-     tH32CS_SNAPPROCESS,
-     withTh32Snap)
+     generateConsoleCtrlEvent)
+     -- tH32CS_SNAPPROCESS,
+     -- withTh32Snap)
 import System.Process.Internals
     (withProcessHandle, ProcessHandle__(..))
 import Control.Concurrent.MVar (tryTakeMVar)

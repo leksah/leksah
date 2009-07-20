@@ -10,7 +10,7 @@
 -- License     :  GNU-GPL
 --
 -- Maintainer  :  <maintainer at leksah.org>
--- Stability   :  provisional
+-- Stability   :  provisional21
 -- Portability :  portable
 --
 -- | The basic definitions for all panes
@@ -144,9 +144,9 @@ signalDisconnectAll = mapM_ (\ (ConnectC s) -> signalDisconnect s)
 
 
 -- Necessary with pre 10.2 verion of gtk2hs
--- #if ! MIN_VERSION_gtk(0,10,2)
+#if ! MIN_VERSION_gtk(0,10,2)
+#else
 -- This doesn't work for me for some obscure reason
-{--
 instance Eq Notebook
     where (==) a b = let (GObject pa, GObject pb) = (toGObject a, toGObject b)
                     in pa == pb
@@ -156,5 +156,5 @@ instance Ord Notebook
 instance Eq Window
     where (==) a b = let (GObject pa, GObject pb) = (toGObject a, toGObject b)
                     in pa == pb
---}
+#endif
 

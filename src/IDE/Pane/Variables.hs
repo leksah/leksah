@@ -286,8 +286,8 @@ variablesViewPopup ideR  store treeView (Button _ click _ _ _ _ button _ _)
                     otherwise     -> return ()
             item3           <-  menuItemNewWithLabel "Update"
             item3 `onActivateLeaf` (postGUIAsync (reflectIDE fillVariablesList ideR))
-            mapM_ (menuShellAppend theMenu) [castToMenuItem item1, castToMenuItem sep1,
-                castToMenuItem item2, castToMenuItem item3]
+            mapM_ (menuShellAppend theMenu) [castToMenuItem item1,
+                castToMenuItem item2, castToMenuItem sep1, castToMenuItem item3]
             menuPopup theMenu Nothing
             widgetShowAll theMenu
             return True
@@ -298,7 +298,7 @@ variablesViewPopup ideR  store treeView (Button _ click _ _ _ _ button _ _)
                             otherwise     -> return ()
                         return True
                 else return False
-variablesViewPopup _ _ _ _ = throwIDE "breakpointViewPopup wrong event type"
+variablesViewPopup _ _ _ _ = throwIDE "variablesViewPopup wrong event type"
 
 forceVariable :: VarDescription -> TreePath -> TreeStore VarDescription -> IDEAction
 forceVariable varDescr path treeStore = do
