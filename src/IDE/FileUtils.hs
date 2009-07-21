@@ -187,7 +187,7 @@ moduleNameFromFilePath fp = catch (do
     exists <- doesFileExist fp
     if exists
         then do
-            str <- readFile fp
+            str <-  readFile fp
             moduleNameFromFilePath' fp str
         else return Nothing)
             $ \ _ -> return Nothing

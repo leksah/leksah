@@ -24,15 +24,15 @@ Name of the keymap:
                Default
      --The name of a keymap file in a config dir
 Categories for panes:
-               [("*ClassHierarchy","TreeCategory"),("*Debug","TreeCategory"),("*Grep","TreeCategory"),("*Info","LogCategory"),("*Log","LogCategory"),("*Modules","TreeCategory"),("*Package","DialogCategory"),("*Flags","DialogCategory"),("*Prefs","DialogCategory"),("*References","LogCategory"),("*Search","TreeCategory")]
+               [("*ClassHierarchy","TreeCategory"),("*Debug","TreeCategory"),("*Grep","TreeCategory"),("*Info","LogCategory"),("*Log","LogCategory"),("*Modules","TreeCategory"),("*Package","DialogCategory"),("*Flags","DialogCategory"),("*Prefs","DialogCategory"),("*References","LogCategory"),("*Search","TreeCategory"),("*Errors","TreeCategory")]
 Pane path for category:
-               [("EditorCategory",[SplitP LeftP]),("TreeCategory",[SplitP RightP,SplitP TopP]),("LogCategory",[SplitP RightP,SplitP BottomP]),("DialogCategory",[SplitP RightP,SplitP LeftP])]
+               [("EditorCategory",[SplitP LeftP]),("TreeCategory",[SplitP RightP,SplitP TopP]),("LogCategory",[SplitP RightP,SplitP BottomP]),("DialogCategory",[SplitP LeftP])]
 Default pane path:
                [SplitP LeftP]
 Paths under which haskell sources for packages may be found:
-               ["/home/jutaro/.cabal/packages","/home/jutaro/Develop","/home/jutaro/Haskell"]
+               ["xxx/.cabal/packages","xxx/Develop","xxx/Haskell"]
 Extract packages from cabal-install:
-               Just "/home/jutaro/.cabal/packages"
+               Just "xxx/.cabal/packages"
 Update metadata at startup:
                True
 Update metadata after every build:
@@ -45,6 +45,14 @@ Background build:
                True
 Include linking in background builds:
                True
+Enable usage of Show instances in :print:
+               True
+Break on any exception thrown:
+               False
+Break on uncaught exceptions and errors:
+               False
+Turn on printing of binding results in GHCi:
+               False
 Browser:       "firefox"
 URL for searching documentation:
                "http://holumbus.fh-wedel.de/hayoo/hayoo.html?query="

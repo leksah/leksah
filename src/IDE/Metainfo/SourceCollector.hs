@@ -143,11 +143,11 @@ collectSourcesForModule (moduleDescrs,failureCount) (moduleDescr,mbfp) =
             return(moduleDescr : moduleDescrs, failureCount+1)
         Just fp ->  do
             session <- getSession
-            (_,fp)          <-  preprocess session (fp,Nothing)
+            (_,fp')          <-  preprocess session (fp,Nothing)
             dynFlags        <-  getSessionDynFlags
             liftIO $ do
-                stringBuffer    <-  hGetStringBuffer fp
-                parseResult     <-  myParseModule dynFlags fp (Just stringBuffer)
+                stringBuffer    <-  hGetStringBuffer fp'
+                parseResult     <-  myParseModule dynFlags fp' (Just stringBuffer)
                 let newModD     =   moduleDescr{mbSourcePathMD = mbfp}
                 case parseResult of
                     Right (L _ (HsModule _ _ _ decls _ _ _ )) -> do

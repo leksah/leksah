@@ -91,7 +91,6 @@
        <menuitem name="Show _Info" action="ShowInfo" />
        <menuitem name="Show _Modules" action="ShowModules" />
        <menuitem name="Show _Search" action="ShowSearch" />
-       <menuitem name="Show _Classes" action="ShowClasses" />
      </menu>
     <menu name="_Session" action="Session">
        <menuitem name="Save Session" action="SaveSession" />
@@ -126,8 +125,8 @@
        <menuitem name="Edit general Preferences" action="PrefsEdit" />
     </menu>
     <menu name="_Help" action="Help">
-       <menuitem name="_Manual" action="HelpManual" />
        <menuitem name="_Homepage" action="HelpHomepage" />
+       <menuitem name="_Manual (pdf)" action="HelpManual" />
        <menuitem name="_About" action="HelpAbout" />
     </menu>
    </menubar>
