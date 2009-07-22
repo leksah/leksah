@@ -80,7 +80,7 @@ import IDE.Pane.Breakpoints
 import Debug.Trace (trace)
 import IDE.Pane.Variables (showVariables, fillVariablesList)
 import IDE.Pane.Trace (showTrace,fillTraceList)
-import IDE.Group.Debugger(showDebugger)
+import IDE.Group.Debugger (setSensitivityDebugger, showDebugger)
 --
 -- | The Actions known to the system (they can be activated by keystrokes or menus)
 --
@@ -631,6 +631,8 @@ setSensitivity l = mapM_ setSensitivitySingle l
     where   setSensitivitySingle (sens,bool) = do
                 actions <- getActionsFor sens
                 liftIO $ mapM_ (\a -> actionSetSensitive a bool) actions
+                let additionalActions = getAdditionalActionsFor sens
+                mapM_ (\a -> a bool) additionalActions
 
 getActionsFor :: SensitivityMask -> IDEM [Action]
 getActionsFor SensitivityForwardHist = getActionsFor' ["ViewHistoryForth"]
@@ -661,6 +663,10 @@ getActionsFor' l = do
             res <- liftIO $ actionGroupGetAction (head actionGroups) string
             when (isNothing res) $ ideMessage Normal $ "Can't find UI Action " ++ string
             return res
+
+getAdditionalActionsFor :: SensitivityMask -> [Bool -> IDEAction]
+getAdditionalActionsFor SensitivityInterpreting = [setSensitivityDebugger]
+getAdditionalActionsFor _ = []
 
 viewDetachInstrumented :: IDEAction
 viewDetachInstrumented = do

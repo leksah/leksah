@@ -1,3 +1,4 @@
+{-# OPTIONS_GHC -XScopedTypeVariables #-}
 -----------------------------------------------------------------------------
 --
 -- Module      :  IDE.Group.Debugger
@@ -13,30 +14,59 @@
 -----------------------------------------------------------------------------
 
 module IDE.Group.Debugger (
-showDebugger
+    showDebugger,
+    setSensitivityDebugger
 ) where
 
 import IDE.Core.State
-    (getNotebook, viewSplit', newGroupOrBringToFront, IDEAction(..))
+    (getPane,
+     getBestPanePath,
+     frameState,
+     readIDE,
+     getNotebook,
+     viewSplit',
+     newGroupOrBringToFront,
+     IDEAction(..))
 import Graphics.UI.Frame.Panes
-    (PaneDirection(..),
+    (getTopWidget,
+     layout,
+     PaneDirection(..),
      PanePathElement(..),
      panePathForGroup)
 import IDE.Pane.SourceBuffer
     (newTextBuffer, bufferName, allBuffers)
 import Graphics.UI.Editor.Parameters (Direction(..))
 import Control.Monad.Trans (liftIO)
-import Graphics.UI.Gtk (notebookSetShowTabs, notebookSetTabPos)
+import Graphics.UI.Gtk
+    (widgetSetSensitive, notebookSetShowTabs, notebookSetTabPos)
 import Graphics.UI.Gtk.General.Enums (PositionType(..))
-import IDE.Pane.Variables (showVariables')
-import IDE.Pane.Breakpoints (showBreakpointList')
-import IDE.Pane.Trace(showTrace')
-import Control.Monad (when)
+import IDE.Pane.Variables (IDEVariables, showVariables')
+import IDE.Pane.Breakpoints
+    (IDEBreakpoints, showBreakpointList')
+import IDE.Pane.Trace (IDETrace,showTrace')
+import Control.Monad (liftM, when)
+
+setSensitivityDebugger :: Bool -> IDEAction
+setSensitivityDebugger sens = do
+    mbBreakpoints :: Maybe IDEBreakpoints <- getPane
+    mbVariables   :: Maybe IDEVariables   <- getPane
+    mbTrace       :: Maybe IDETrace       <- getPane
+    liftIO $ do
+        case mbBreakpoints of
+            Nothing -> return ()
+            Just idePane -> widgetSetSensitive (getTopWidget idePane) sens
+        case mbVariables of
+            Nothing -> return ()
+            Just idePane -> widgetSetSensitive (getTopWidget idePane) sens
+        case mbTrace of
+            Nothing -> return ()
+            Just idePane -> widgetSetSensitive (getTopWidget idePane) sens
 
 showDebugger :: IDEAction
 showDebugger = do
     pp   <- panePathForGroup "*Debug"
     ret  <- newGroupOrBringToFront "Debug" pp
+    layout' <- liftM layout (readIDE frameState)
     bufs <- allBuffers
     case ret of
         (Just rpp, True) -> do
@@ -60,9 +90,9 @@ showDebugger = do
                 newTextBuffer upperP "_Eval.hs" Nothing >> return ()
             return ()
         (Just rpp, False) -> do
-            let lowerP =  rpp ++ [SplitP BottomP]
-            let middleP =  rpp ++ [SplitP TopP,SplitP BottomP]
-            let upperP =  rpp ++ [SplitP TopP,SplitP TopP]
+            let lowerP  =  getBestPanePath (rpp ++ [SplitP BottomP]) layout'
+            let middleP =  getBestPanePath (rpp ++ [SplitP TopP,SplitP BottomP]) layout'
+            let upperP  =  getBestPanePath (rpp ++ [SplitP TopP,SplitP TopP]) layout'
             showBreakpointList' middleP
             showVariables' middleP
             showTrace' lowerP
