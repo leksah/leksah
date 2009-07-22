@@ -1,5 +1,5 @@
 name: leksah
-version: 0.6.0
+version: 0.6.1
 cabal-version: >=1.4
 build-type: Simple
 license: GPL
@@ -40,7 +40,7 @@ Executable leksah
         build-depends: unix >=2.3.1.0
     if os(osx)
         extra-libraries: igemacintegration
-    build-depends: Cabal >=1.6.0.1, base >=4.0.0.0, binary >=0.4.4,
+    build-depends: Cabal >=1.6.0.1, base >=4.0.0.0 && <= 5, binary >=0.4.4,
                    bytestring >=0.9.0.1, containers >=0.2.0.0, directory >=1.0.0.2,
                    filepath >=1.1.0.1, ghc >=6.10.1, glib >=0.10, gtk >=0.10,
                    gtksourceview2 >=0.10.0, mtl >=1.1.0.2, old-time >=1.0.0.1,
@@ -58,9 +58,9 @@ Executable leksah
     c-sources:
     extensions: CPP
     if os(windows)
-        extra-lib-dirs: C:/cygwin/lib/w32api
+--        extra-lib-dirs: C:/cygwin/lib/w32api
         includes: windows.h
-        include-dirs: C:/cygwin/usr/include/w32api
+--        include-dirs: C:/cygwin/usr/include/w32api
     install-includes:
     hs-source-dirs: src
     other-modules: Default DeepSeq MyMissing Data.Binary.Shared
