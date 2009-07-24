@@ -185,7 +185,7 @@ activatePackage filePath = do
             let files = Set.fromList $ extraSrcFiles packageD ++ map modulePath (executables packageD)
             let srcDirs = nub $ concatMap hsSourceDirs (allBuildInfo packageD)
             let packp = IDEPackage (package packageD) filePath (buildDepends packageD) modules
-                            files srcDirs [] [] [] [] [] [] [] []
+                            files srcDirs ["--user"] [] [] [] [] [] [] []
             pack <- (do
                 flagFileExists <- liftIO $ doesFileExist (ppath </> "IDE.flags")
                 if flagFileExists
