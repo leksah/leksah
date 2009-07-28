@@ -278,6 +278,7 @@ newGhci buildFlags interactiveFlags startupOutputHandler = do
                         let newOptions = filterUnwanted options
                         putStrLn newOptions
                         putStrLn "Starting GHCi"
+                        putStrLn $ unwords (words newOptions ++ ["-fforce-recomp"] ++ interactiveFlags)
                         runInteractiveTool tool getGhciOutput "ghci"
                             (words newOptions ++ ["-fforce-recomp"] ++ interactiveFlags)
                 _ -> do
