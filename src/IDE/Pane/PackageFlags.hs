@@ -45,6 +45,10 @@ import Control.Event (registerEvent)
 import IDE.DescriptionPP (extractFieldDescription,FieldDescriptionPP(..),
     mkFieldPP,flattenFieldDescriptionPP)
 
+import Text.ParserCombinators.Parsec.Language
+import Text.ParserCombinators.Parsec hiding(Parser)
+import qualified Text.ParserCombinators.Parsec.Token as P
+
 data IDEFlags               =   IDEFlags {
     flagsBox                ::   VBox
 } deriving Typeable
@@ -78,8 +82,44 @@ instance RecoverablePane IDEFlags FlagsState IDEM where
                     initFlags pack pp nb
                 Nothing -> return ()
 
-concatString :: [String] -> String
-concatString l = foldl' (\r s -> if null r then s else r ++ " " ++ s) "" l
+quoteArg :: String -> String
+quoteArg s | ' ' `elem` s = "\"" ++ (escapeQuotes s) ++ "\""
+quoteArg s = s
+
+escapeQuotes = foldr (\c s -> if c == '"' then '\\':c:s else c:s) ""
+
+quotedArgCharParser :: CharParser () Char
+quotedArgCharParser = try (do
+        char '\\'
+        anyChar)
+    <|> try (do
+        noneOf "\"")
+    <?> "argsParser"
+
+argParser :: CharParser () String
+argParser = try (do
+        char '"'
+        s <- many quotedArgCharParser
+        char '"'
+        return s)
+    <|> try (do
+        many1 (noneOf " "))
+    <?> "argParser"
+
+argsParser :: CharParser () [String]
+argsParser = try (do
+        many (do
+            many (char ' ')
+            argParser))
+    <?> "argsParser"
+
+unargs :: [String] -> String
+unargs = unwords . (map quoteArg)
+
+args :: String -> [String]
+args s = case parse argsParser "" s of
+            Right result -> result
+            _ -> [s]
 
 flatFlagsDescription :: [FieldDescriptionPP IDEPackage]
 flatFlagsDescription = flattenFieldDescriptionPP flagsDescription
@@ -90,64 +130,64 @@ flagsDescription = VFDPP emptyParams [
             (paraName <<<- ParaName "Config flags" $ emptyParams)
             (PP.text . show)
             stringParser
-            (\p -> concatString (configFlags p))
-            (\ b a -> a{configFlags = if null b then [] else [b]})
+            (\p -> unargs (configFlags p))
+            (\ b a -> a{configFlags = args b})
             (stringEditor (const True))
             (\ _ -> return ())
     ,   mkFieldPP
             (paraName <<<- ParaName "Build flags" $ emptyParams)
             (PP.text . show)
             stringParser
-            (\p -> concatString (buildFlags p))
-            (\ b a -> a{buildFlags = if null b then [] else [b]})
+            (\p -> unargs (buildFlags p))
+            (\ b a -> a{buildFlags = args b})
             (stringEditor (const True))
             (\ _ ->  return ())
     ,   mkFieldPP
             (paraName <<<- ParaName "Haddock flags" $ emptyParams)
             (PP.text . show)
             stringParser
-            (\p -> concatString (haddockFlags p))
-            (\ b a -> a{haddockFlags = if null b then [] else [b]})
+            (\p -> unargs (haddockFlags p))
+            (\ b a -> a{haddockFlags = args b})
             (stringEditor (const True))
             (\ _ ->   return ())
     ,   mkFieldPP
             (paraName <<<- ParaName "Executable flags" $ emptyParams)
             (PP.text . show)
             stringParser
-            (\p -> concatString (exeFlags p))
-            (\ b a -> a{exeFlags = if null b then [] else [b]})
+            (\p -> unargs (exeFlags p))
+            (\ b a -> a{exeFlags = args b})
             (stringEditor (const True))
             (\ _ ->   return ())
     ,   mkFieldPP
             (paraName <<<- ParaName "Install flags" $ emptyParams)
             (PP.text . show)
             stringParser
-            (\p -> concatString (installFlags p))
-            (\ b a -> a{installFlags = if null b then [] else [b]})
+            (\p -> unargs (installFlags p))
+            (\ b a -> a{installFlags = args b})
             (stringEditor (const True))
             (\ _ ->   return ())
     ,   mkFieldPP
             (paraName <<<- ParaName "Register flags" $ emptyParams)
             (PP.text . show)
             stringParser
-            (\p -> concatString (registerFlags p))
-            (\ b a -> a{registerFlags = if null b then [] else [b]})
+            (\p -> unargs (registerFlags p))
+            (\ b a -> a{registerFlags = args b})
             (stringEditor (const True))
             (\ _ ->   return ())
     ,   mkFieldPP
             (paraName <<<- ParaName "Unregister flags" $ emptyParams)
             (PP.text . show)
             stringParser
-            (\p -> concatString (unregisterFlags p))
-            (\ b a -> a{unregisterFlags = if null b then [] else [b]})
+            (\p -> unargs (unregisterFlags p))
+            (\ b a -> a{unregisterFlags = args b})
             (stringEditor (const True))
             (\ _ ->   return ())
     ,   mkFieldPP
             (paraName <<<- ParaName "Source Distribution flags" $ emptyParams)
             (PP.text . show)
             stringParser
-            (\p -> concatString (sdistFlags p))
-            (\ b a -> a{sdistFlags = if null b then [] else [b]})
+            (\p -> unargs (sdistFlags p))
+            (\ b a -> a{sdistFlags = args b})
             (stringEditor (const True))
             (\ _ -> return ())]
 
