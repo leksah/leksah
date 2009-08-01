@@ -397,7 +397,7 @@ packageRun = catchIDE (do
                     Just ghci -> do
                         case executables pd of
                             (Executable _ mainFilePath _):_ -> do
-                                executeDebugCommand (":module " ++ (map (\c -> if c == '/' then '.' else c) (takeWhile (/= '.') mainFilePath))) logOutput
+                                executeDebugCommand (":module *" ++ (map (\c -> if c == '/' then '.' else c) (takeWhile (/= '.') mainFilePath))) logOutput
                                 executeDebugCommand (":main " ++ (unwords (exeFlags package))) logOutput
                             otherwise -> do
                                 sysMessage Normal "no executable in selected package"
