@@ -80,7 +80,7 @@
   </data>
 
   <data>
-    ${prefix}/share/leksah-0.6.0
+    ${prefix}/share/leksah-0.6.1
   </data>
 
   <!-- Copy in the themes data. You may want to trim this to save space
@@ -119,10 +119,10 @@
   </icon-theme>
 
   <!-- Custom Default.prefs for the Mac -->
-  <data dest="${bundle}/Contents/Resources/share/leksah-0.6.0/data/Default.prefs">
+  <data dest="${bundle}/Contents/Resources/share/leksah-0.6.1/data/Default.prefs">
     ${project}/Default.prefs
   </data>
-  <data dest="${bundle}/Contents/Resources/share/leksah-0.6.0/data/Current.session">
+  <data dest="${bundle}/Contents/Resources/share/leksah-0.6.1/data/Current.session">
     ${project}/Current.session
   </data>
 </app-bundle>

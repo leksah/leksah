@@ -1,5 +1,9 @@
 #!/bin/sh
 
+if test -e ~/.profile; then
+    . ~/.profile
+fi
+
 if test "x$IGE_DEBUG_LAUNCHER" != x; then
     set -x
 fi
@@ -10,9 +14,9 @@ else
     EXEC=exec
 fi
 
-name="`basename $0`"
-tmp="`pwd`/$0"
-tmp=`dirname "$tmp"`
+name="`basename "$0"`"
+tmp=`dirname "$0"`
+tmp=`cd "$tmp";pwd`
 tmp=`dirname "$tmp"`
 bundle=`dirname "$tmp"`
 bundle_contents="$bundle"/Contents
@@ -36,8 +40,8 @@ export GDK_PIXBUF_MODULE_FILE="$bundle_etc/gtk-2.0/gdk-pixbuf.loaders"
 export PANGO_RC_FILE="$bundle_etc/pango/pangorc"
 
 export leksah_bindir="$bundle_bin"
-export leksah_libdir="$bundle_lib/leksah-0.6.0/ghc-6.10.3"
-export leksah_datadir="$bundle_data/leksah-0.6.0"
+export leksah_libdir="$bundle_lib/leksah-0.6.1/ghc-6.10.3"
+export leksah_datadir="$bundle_data/leksah-0.6.1"
 export leksah_libexecdir="$bundle_res/libexec"
 
 # We need a UTF-8 locale.
