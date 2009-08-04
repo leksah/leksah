@@ -1,7 +1,7 @@
 #!/bin/sh
 
 if test -e ~/.profile; then
-    . ~/.profile
+    export PATH=`. ~/.profile;echo $PATH`
 fi
 
 if test "x$IGE_DEBUG_LAUNCHER" != x; then
