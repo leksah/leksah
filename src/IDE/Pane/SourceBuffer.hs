@@ -484,11 +484,19 @@ builder bs mbfn ind bn rbn ct prefs pp nb windows ideR = do
     cid <- sv `afterFocusIn`
         (\_ -> do reflectIDE (makeActive buf) ideR  ; return False)
     buffer `afterBufferInsertText`
-        (\iter text -> do
-            case text of
-                [c] | ((isAlphaNum c) || (c == '.') || (c == '_')) -> do
-                    reflectIDE (Completion.complete sv False) ideR
-                _ -> return ()
+        (\iter text ->
+            if (all (\c -> (isAlphaNum c) || (c == '.') || (c == '_')) text)
+                then do
+                    hasSel <- textBufferHasSelection buffer
+                    if not hasSel
+                        then do
+                            (iterC, _) <- textBufferGetSelectionBounds buffer
+                            atC <- textIterEqual iter iterC
+                            when atC $ reflectIDE (Completion.complete sv False) ideR
+                        else
+                            reflectIDE Completion.cancel ideR
+                else
+                    reflectIDE Completion.cancel ideR
         )
     sv `onMoveCursor`
         (\step n select -> do reflectIDE Completion.cancel ideR)

@@ -67,11 +67,10 @@ initCompletion sourceView = do
                 windowSetTransientFor window (head windows)
                 paned          <- hPanedNew
                 containerAdd window paned
-                scrolledWindow <- scrolledWindowNew Nothing Nothing
-                widgetSetSizeRequest scrolledWindow 300 300
-                containerAdd paned scrolledWindow
+                nameScrolledWindow <- scrolledWindowNew Nothing Nothing
+                widgetSetSizeRequest nameScrolledWindow 300 300
                 tree           <- treeViewNew
-                containerAdd scrolledWindow tree
+                containerAdd nameScrolledWindow tree
                 store          <- listStoreNew []
                 treeViewSetModel tree store
 
@@ -95,7 +94,10 @@ initCompletion sourceView = do
 
                 set tree [treeViewHeadersVisible := False]
 
+                descriptionScrolledWindow <- scrolledWindowNew Nothing Nothing
+                widgetSetSizeRequest descriptionScrolledWindow 600 300
                 descriptionView <- sourceViewNew
+                containerAdd descriptionScrolledWindow descriptionView
                 descriptionBuffer <- (get descriptionView textViewBuffer) >>= (return . castToSourceBuffer)
                 lm <- sourceLanguageManagerNew
                 mbLang <- sourceLanguageManagerGuessLanguage lm Nothing (Just "text/x-haskell")
@@ -110,7 +112,14 @@ initCompletion sourceView = do
                 sourceBufferSetHighlightSyntax descriptionBuffer True
                 widgetModifyFont descriptionView (Just font)
 
-                containerAdd paned descriptionView
+                case sourceStyle prefs of
+                    Nothing  -> return ()
+                    Just str -> do
+                        styleManager <- sourceStyleSchemeManagerNew
+                        ids <- sourceStyleSchemeManagerGetSchemeIds styleManager
+                        when (elem str ids) $ do
+                            scheme <- sourceStyleSchemeManagerGetScheme styleManager str
+                            sourceBufferSetStyleScheme descriptionBuffer scheme
 
                 visible <- newIORef False
                 activeView <- newIORef Nothing
@@ -128,6 +137,9 @@ initCompletion sourceView = do
                             _ -> return ()
                         ))
                     )
+
+                panedAdd1 paned nameScrolledWindow
+                panedAdd2 paned descriptionScrolledWindow
 
                 cids <- liftIO $ addEventHandling window sourceView tree store ideR
                 return (window, tree, store, cids)
@@ -225,7 +237,7 @@ addEventHandling window sourceView tree store ideR = do
         )
     cidSelected <- tree `onRowActivated` (\treePath column -> (do
         withWord store treePath (replaceWordStart sourceView)
-        reflectIDE cancel ideR))
+        postGUIAsync $ reflectIDE cancel ideR))
     return [ConnectC cidPress,ConnectC cidRelease, ConnectC cidSelected]
 
 withWord store treePath f = (do
@@ -241,16 +253,12 @@ replaceWordStart sourceView name = do
     buffer <- textViewGetBuffer sourceView
     (start, end) <- textBufferGetSelectionBounds buffer
     isWordEnd <- textIterEndsWord end
-    if isWordEnd then (do
+    when isWordEnd $ do
         moveToWordStart start
         wordStart <- textBufferGetText buffer start end True
-        if (isPrefixOf wordStart name) then (do
-            textBufferDelete buffer start end
-            textBufferInsert buffer start name
-            )
-            else return ()
-        )
-        else return ()
+        case stripPrefix wordStart name of
+            Just extra -> textBufferInsert buffer end extra
+            Nothing    -> return ()
 
 cancelCompletion :: TreeViewClass alpha => Window -> alpha ->
     ListStore String -> Connections -> IDEAction
@@ -309,20 +317,18 @@ processResults ideR window tree store sourceView wordStart options selectLCP = d
             buffer <- textViewGetBuffer sourceView
             (start, end) <- textBufferGetSelectionBounds buffer
             isWordEnd <- textIterEndsWord end
-            when isWordEnd (do
+            when isWordEnd $ do
                 moveToWordStart start
+                currentWordStart <- textBufferGetText buffer start end True
                 newWordStart <- do
-                    currentWordStart <- textBufferGetText buffer start end True
                     if selectLCP && currentWordStart == wordStart && (not $ null options)
                         then do
                             let lcp = foldl1 longestCommonPrefix options
-                            when (lcp /= wordStart) $ do
-                                replaceWordStart sourceView lcp
                             return lcp
                         else
                             return currentWordStart
 
-                when (isPrefixOf wordStart newWordStart) (do
+                when (isPrefixOf wordStart newWordStart) $ do
                     listStoreClear store
                     let newOptions = List.filter (isPrefixOf newWordStart) options
                     forM_ (take 200 newOptions) (listStoreAppend store)
@@ -330,9 +336,32 @@ processResults ideR window tree store sourceView wordStart options selectLCP = d
                     (x, y)                               <- textViewBufferToWindowCoords sourceView TextWindowWidget (startx, starty+height)
                     drawWindow                           <- widgetGetDrawWindow sourceView
                     (ox, oy)                             <- drawWindowGetOrigin drawWindow
-                    windowMove window (ox+x) (oy+y)
+                    Just namesSW                         <- widgetGetParent tree
+                    Just paned                           <- widgetGetParent namesSW
+                    Just first                           <- panedGetChild1 (castToPaned paned)
+                    Just second                          <- panedGetChild2 (castToPaned paned)
+                    screen                               <- windowGetScreen window
+                    monitor                              <- screenGetMonitorAtPoint screen (ox+x) (oy+y)
+                    monitorLeft                          <- screenGetMonitorAtPoint screen (ox+x-600) (oy+y)
+                    monitorRight                         <- screenGetMonitorAtPoint screen (ox+x+900) (oy+y)
+                    swidth                               <- screenGetWidth screen
+                    swap <- if (monitorRight /= monitor || (ox+x+900) > swidth) && monitorLeft == monitor
+                        then do
+                            windowMove window (ox+x-600) (oy+y)
+                            return $ first == namesSW
+                        else do
+                            windowMove window (ox+x) (oy+y)
+                            return $ first /= namesSW
+                    when swap $ do
+                        containerRemove (castToPaned paned) first
+                        containerRemove (castToPaned paned) second
+                        panedAdd1 (castToPaned paned) second
+                        panedAdd2 (castToPaned paned) first
                     when (not $ null newOptions) $ treeViewSetCursor tree [0] Nothing
-                    widgetShowAll window))
+                    widgetShowAll window
+
+                when (newWordStart /= currentWordStart) $
+                    replaceWordStart sourceView newWordStart
 
 getRow tree = do
     Just model <- treeViewGetModel tree
