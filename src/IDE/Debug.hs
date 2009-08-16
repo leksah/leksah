@@ -100,6 +100,7 @@ import IDE.Pane.SourceBuffer
     (selectedLocation,
      selectedModuleName,
      selectedText,
+     selectedTextOrCurrentLine,
      insertTextAfterSelection)
 import IDE.Pane.Log (appendLog)
 import Data.List (isSuffixOf)
@@ -149,7 +150,7 @@ debugQuit = debugCommand ":quit" logOutput
 
 debugExecuteSelection :: IDEAction
 debugExecuteSelection = do
-    maybeText   <- selectedText
+    maybeText   <- selectedTextOrCurrentLine
     case maybeText of
         Just text -> do
             debugSetLiberalScope
@@ -158,7 +159,7 @@ debugExecuteSelection = do
 
 debugExecuteAndShowSelection :: IDEAction
 debugExecuteAndShowSelection = do
-    maybeText   <- selectedText
+    maybeText   <- selectedTextOrCurrentLine
     case maybeText of
         Just text -> do
             debugSetLiberalScope
@@ -259,7 +260,7 @@ debugDeleteBreakpoint indexString lr = do
 
 debugForce :: IDEAction
 debugForce = do
-    maybeText <- selectedText
+    maybeText <- selectedTextOrCurrentLine
     case maybeText of
         Just text -> debugCommand (":force " ++ text) logOutput
         Nothing   -> ideMessage Normal "Please select an expression in the editor"
@@ -269,14 +270,14 @@ debugHistory = debugCommand ":history" logOutput
 
 debugPrint :: IDEAction
 debugPrint = do
-    maybeText <- selectedText
+    maybeText <- selectedTextOrCurrentLine
     case maybeText of
         Just text -> debugCommand (":print " ++ text) logOutput
         Nothing   -> ideMessage Normal "Please select an name in the editor"
 
 debugSimplePrint :: IDEAction
 debugSimplePrint = do
-    maybeText <- selectedText
+    maybeText <- selectedTextOrCurrentLine
     case maybeText of
         Just text -> debugCommand (":force " ++ text) logOutput
         Nothing   -> ideMessage Normal "Please select an name in the editor"
@@ -288,7 +289,7 @@ debugStep = do
 
 debugStepExpression :: IDEAction
 debugStepExpression = do
-    maybeText <- selectedText
+    maybeText <- selectedTextOrCurrentLine
     debugSetLiberalScope
     debugStepExpr maybeText
 
@@ -313,7 +314,7 @@ debugTrace = do
 
 debugTraceExpression :: IDEAction
 debugTraceExpression = do
-    maybeText <- selectedText
+    maybeText <- selectedTextOrCurrentLine
     debugSetLiberalScope
     debugTraceExpr maybeText
 
@@ -355,7 +356,7 @@ debugShowLanguages = debugCommand ":show languages" logOutput
 
 debugInformation :: IDEAction
 debugInformation = do
-    maybeText <- selectedText
+    maybeText <- selectedTextOrCurrentLine
     case maybeText of
         Just text -> do
             debugSetLiberalScope
@@ -364,7 +365,7 @@ debugInformation = do
 
 debugKind :: IDEAction
 debugKind = do
-    maybeText <- selectedText
+    maybeText <- selectedTextOrCurrentLine
     case maybeText of
         Just text -> do
             debugSetLiberalScope
@@ -373,7 +374,7 @@ debugKind = do
 
 debugType :: IDEAction
 debugType = do
-    maybeText <- selectedText
+    maybeText <- selectedTextOrCurrentLine
     case maybeText of
         Just text -> do
             debugSetLiberalScope

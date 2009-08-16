@@ -64,6 +64,7 @@ module IDE.Pane.SourceBuffer (
 ,   startComplete
 
 ,   selectedText
+,   selectedTextOrCurrentLine
 ,   insertTextAfterSelection
 ,   selectedModuleName
 ,   selectedLocation
@@ -1161,6 +1162,22 @@ selectedText = do
                 text      <- getCandylessPart candy' gtkbuf i1 i2
                 return $ Just text
             else return Nothing
+
+selectedTextOrCurrentLine :: IDEM (Maybe String)
+selectedTextOrCurrentLine = do
+    candy' <- readIDE candy
+    inActiveBufContext Nothing $ \_ gtkbuf currentBuffer _ -> liftIO $ do
+        hasSelection <- textBufferHasSelection gtkbuf
+        (i1, i2) <- if hasSelection
+            then textBufferGetSelectionBounds gtkbuf
+            else do
+                (i, _) <- textBufferGetSelectionBounds gtkbuf
+                line <- textIterGetLine i
+                iStart <- textBufferGetIterAtLine gtkbuf line
+                iEnd <- textIterCopy iStart
+                textIterForwardToLineEnd iEnd
+                return (iStart, iEnd)
+        fmap Just $ getCandylessPart candy' gtkbuf i1 i2
 
 selectedLocation :: IDEM (Maybe (Int, Int))
 selectedLocation = do

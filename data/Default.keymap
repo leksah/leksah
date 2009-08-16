@@ -105,5 +105,6 @@ F7 -> DebugStepLocal
 F8 -> DebugStepModule
 F9 -> DebugContinue
 
+<ctrl>Return             ->          ExecuteSelection
 
 
