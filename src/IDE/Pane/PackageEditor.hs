@@ -210,7 +210,17 @@ packageNew' activateAction = do
                                 writeFile (dirName </> "Setup.lhs") standardSetup
                             else sysMessage Normal "Setup.(l)hs already exist"
                         allModules dirName
-                    editPackage emptyPackageDescription{buildType = Just Simple} dirName modules activateAction
+                    let Just initialVersion = simpleParse "0.0.1"
+                    editPackage emptyPackageDescription{
+                        package   = PackageIdentifier (PackageName $ takeBaseName dirName)
+                                                      initialVersion,
+                        buildType = Just Simple,
+                        buildDepends = [Dependency (PackageName "base") AnyVersion],
+                        executables = [emptyExecutable {
+                            exeName    = (takeBaseName dirName),
+                            modulePath = "Main.hs",
+                            buildInfo  = emptyBuildInfo {hsSourceDirs = ["src"]}}]
+                        } dirName modules activateAction
                     return ()
 
 standardSetup = "#!/usr/bin/runhaskell \n"
