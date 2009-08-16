@@ -53,7 +53,7 @@ initCompletion sourceView = do
     completion' <- readIDE completion
     case completion' of
         Just (CompletionWindow window' tree' store') -> do
-            cids <- liftIO $ addEventHandling sourceView tree' store' ideR
+            cids <- liftIO $ addEventHandling window' sourceView tree' store' ideR
             modifyIDE_ (\ide -> ide{currentState = IsCompleting cids})
             updateOptions window' tree' store' sourceView cids
         Nothing -> do
@@ -85,7 +85,9 @@ initCompletion sourceView = do
                 widgetModifyFont tree (Just font)
 
                 column   <- treeViewColumnNew
-                set column [ treeViewColumnSizing := TreeViewColumnAutosize ]
+                set column [
+                    treeViewColumnSizing   := TreeViewColumnAutosize,
+                    treeViewColumnMinWidth := 301] -- OSX does not like it if there is no hscroll
                 treeViewAppendColumn tree column
                 renderer <- cellRendererTextNew
                 treeViewColumnPackStart column renderer True
@@ -127,15 +129,15 @@ initCompletion sourceView = do
                         ))
                     )
 
-                cids <- liftIO $ addEventHandling sourceView tree store ideR
+                cids <- liftIO $ addEventHandling window sourceView tree store ideR
                 return (window, tree, store, cids)
                 )
             modifyIDE_ (\ide -> ide{currentState = IsCompleting cids,
                 completion = Just (CompletionWindow window' tree' store')})
             updateOptions window' tree' store' sourceView cids
 
-addEventHandling :: SourceView -> TreeView -> ListStore String -> IDERef -> IO Connections
-addEventHandling sourceView tree store ideR = do
+addEventHandling :: Window -> SourceView -> TreeView -> ListStore String -> IDERef -> IO Connections
+addEventHandling window sourceView tree store ideR = do
     cidPress <- sourceView `onKeyPress` (\event -> do
         let Key { eventKeyName = name, eventModifier = modifier, eventKeyChar = char } = event
         Just model  <- treeViewGetModel tree
@@ -146,10 +148,7 @@ addEventHandling sourceView tree store ideR = do
             ("Tab", _, _) -> (do
                 visible <- get tree widgetVisible
                 if visible then (do
-                    maybeRow <- getRow tree
-                    case maybeRow of
-                        Just row -> treeViewRowActivated tree [row] column
-                        Nothing -> return ()
+                    reflectIDE (tryToUpdateOptions window tree store sourceView True) ideR
                     return True
                     )
                     else return False
@@ -225,21 +224,7 @@ addEventHandling sourceView tree store ideR = do
             _ -> return False
         )
     cidSelected <- tree `onRowActivated` (\treePath column -> (do
-        withWord store treePath (\name -> do
-            buffer <- textViewGetBuffer sourceView
-            (start, end) <- textBufferGetSelectionBounds buffer
-            isWordEnd <- textIterEndsWord end
-            if isWordEnd then (do
-                moveToWordStart start
-                wordStart <- textBufferGetText buffer start end True
-                if (isPrefixOf wordStart name) then (do
-                    textBufferDelete buffer start end
-                    textBufferInsert buffer start name
-                    )
-                    else return ()
-                )
-                else return ()
-            )
+        withWord store treePath (replaceWordStart sourceView)
         reflectIDE cancel ideR))
     return [ConnectC cidPress,ConnectC cidRelease, ConnectC cidSelected]
 
@@ -252,6 +237,21 @@ withWord store treePath f = (do
        _ -> return ()
    )
 
+replaceWordStart sourceView name = do
+    buffer <- textViewGetBuffer sourceView
+    (start, end) <- textBufferGetSelectionBounds buffer
+    isWordEnd <- textIterEndsWord end
+    if isWordEnd then (do
+        moveToWordStart start
+        wordStart <- textBufferGetText buffer start end True
+        if (isPrefixOf wordStart name) then (do
+            textBufferDelete buffer start end
+            textBufferInsert buffer start name
+            )
+            else return ()
+        )
+        else return ()
+
 cancelCompletion :: TreeViewClass alpha => Window -> alpha ->
     ListStore String -> Connections -> IDEAction
 cancelCompletion window tree store connections = do
@@ -263,7 +263,12 @@ cancelCompletion window tree store connections = do
     modifyIDE_ (\ide -> ide{currentState = IsRunning})
 
 updateOptions :: TreeViewClass alpha => Window -> alpha -> ListStore String -> SourceView -> Connections -> IDEAction
-updateOptions window tree store sourceView connections =
+updateOptions window tree store sourceView connections = do
+    result <- tryToUpdateOptions window tree store sourceView False
+    when (not result) $ cancelCompletion window tree store connections
+
+tryToUpdateOptions :: TreeViewClass alpha => Window -> alpha -> ListStore String -> SourceView -> Bool -> IDEM Bool
+tryToUpdateOptions window tree store sourceView selectLCP =
     reifyIDE (\ideR -> do
         buffer <- textViewGetBuffer sourceView
         listStoreClear (store :: ListStore String)
@@ -271,14 +276,14 @@ updateOptions window tree store sourceView connections =
         moveToWordStart start
         equal <- textIterEqual start end
         if equal
-            then reflectIDE (cancelCompletion window tree store connections) ideR
+            then return False
             else do
                 wordStart <- textBufferGetText buffer start end True
                 postGUIAsync $ do
                     options <- reflectIDE (getCompletionOptions wordStart) ideR
-                    processResults ideR window tree store sourceView wordStart options
+                    processResults ideR window tree store sourceView wordStart options selectLCP
                     return ()
-                return ())
+                return True)
 
 moveToWordStart iter = do
     textIterBackwardWordStart iter
@@ -294,7 +299,10 @@ moveToWordStart iter = do
                 )
             _ -> return ()
 
-processResults ideR window tree store sourceView wordStart options = do
+longestCommonPrefix (x:xs) (y:ys) | x == y = x : longestCommonPrefix xs ys
+longestCommonPrefix _ _ = []
+
+processResults ideR window tree store sourceView wordStart options selectLCP = do
     case options of
         [] -> reflectIDE cancel ideR
         _  -> do
@@ -303,16 +311,27 @@ processResults ideR window tree store sourceView wordStart options = do
             isWordEnd <- textIterEndsWord end
             when isWordEnd (do
                 moveToWordStart start
-                newWordStart <- textBufferGetText buffer start end True
+                newWordStart <- do
+                    currentWordStart <- textBufferGetText buffer start end True
+                    if selectLCP && currentWordStart == wordStart && (not $ null options)
+                        then do
+                            let lcp = foldl1 longestCommonPrefix options
+                            when (lcp /= wordStart) $ do
+                                replaceWordStart sourceView lcp
+                            return lcp
+                        else
+                            return currentWordStart
+
                 when (isPrefixOf wordStart newWordStart) (do
                     listStoreClear store
-                    forM_ (take 200 (List.filter (isPrefixOf newWordStart) options)) (listStoreAppend store)
+                    let newOptions = List.filter (isPrefixOf newWordStart) options
+                    forM_ (take 200 newOptions) (listStoreAppend store)
                     Rectangle startx starty width height <- textViewGetIterLocation sourceView start
                     (x, y)                               <- textViewBufferToWindowCoords sourceView TextWindowWidget (startx, starty+height)
                     drawWindow                           <- widgetGetDrawWindow sourceView
                     (ox, oy)                             <- drawWindowGetOrigin drawWindow
                     windowMove window (ox+x) (oy+y)
-                    when ((length options) == 1) $ treeViewSetCursor tree [0] Nothing
+                    when (not $ null newOptions) $ treeViewSetCursor tree [0] Nothing
                     widgetShowAll window))
 
 getRow tree = do
@@ -325,5 +344,3 @@ getRow tree = do
             return $ Just row
             )
         Nothing -> return Nothing
-
-
