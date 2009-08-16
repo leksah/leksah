@@ -21,6 +21,7 @@ module Graphics.UI.Editor.Simple (
 ,   intEditor
 ,   genericEditor
 ,   fontEditor
+,   colorEditor
 ,   comboSelectionEditor
 ,   staticListEditor
 ,   staticListMultiEditor
@@ -628,6 +629,34 @@ fontEditor parameters notifier = do
                 Just fs -> do
                     f <- fontButtonGetFontName fs
                     return (Just (Just f)))
+        parameters
+        notifier
+
+--
+-- | Editor for color selection
+--
+colorEditor :: Editor Color
+colorEditor parameters notifier = do
+    coreRef <- newIORef Nothing
+    mkEditor
+        (\widget c -> do
+            core <- readIORef coreRef
+            case core of
+                Nothing  -> do
+                    cs <- colorButtonNew
+                    widgetSetName cs $ getParameter paraName parameters
+                    mapM_ (activateEvent (castToWidget cs) notifier Nothing)
+                            [FocusOut,FocusIn,Clicked]
+                    containerAdd widget cs
+                    colorButtonSetColor cs c
+                    writeIORef coreRef (Just cs)
+                Just cs -> colorButtonSetColor cs c)
+        (do core <- readIORef coreRef
+            case core of
+                Nothing -> return Nothing
+                Just cs -> do
+                    c <- colorButtonGetColor cs
+                    return (Just c))
         parameters
         notifier
 

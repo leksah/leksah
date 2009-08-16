@@ -297,6 +297,48 @@ prefsDescription packages = NFDPP [
                         mapM_ (\buf -> do
                             gtkBuf  <-  liftIO $ textViewGetBuffer (sourceView buf)
                             liftIO $ sourceBufferSetStyleScheme (castToSourceBuffer gtkBuf) style) buffers)
+    ,   mkFieldPP
+            (paraName <<<- ParaName "Found Text Background" $ emptyParams)
+            (PP.text . show)
+            colorParser
+            foundBackground
+            (\ b a -> a{foundBackground = b})
+            colorEditor
+            (\c -> do
+                buffers <- allBuffers
+                liftIO $ forM_ buffers $ \buf -> do
+                    gtkBuf   <- textViewGetBuffer (sourceView buf)
+                    tagTable <- textBufferGetTagTable gtkBuf
+                    mbTag    <- textTagTableLookup tagTable "found"
+                    case mbTag of
+                        Just tag -> set tag [textTagBackground := colorHexString c]
+                        Nothing  -> return ())
+    ,   mkFieldPP
+            (paraName <<<- ParaName "Execution Context Text Background" $ emptyParams)
+            (PP.text . show)
+            colorParser
+            contextBackground
+            (\ b a -> a{contextBackground = b})
+            colorEditor
+            (\c -> do
+                buffers <- allBuffers
+                liftIO $ forM_ buffers $ \buf -> do
+                    gtkBuf   <- textViewGetBuffer (sourceView buf)
+                    tagTable <- textBufferGetTagTable gtkBuf
+                    return ())
+    ,   mkFieldPP
+            (paraName <<<- ParaName "Breakpoint Text Background" $ emptyParams)
+            (PP.text . show)
+            colorParser
+            breakpointBackground
+            (\ b a -> a{breakpointBackground = b})
+            colorEditor
+            (\c -> do
+                buffers <- allBuffers
+                liftIO $ forM_ buffers $ \buf -> do
+                    gtkBuf   <- textViewGetBuffer (sourceView buf)
+                    tagTable <- textBufferGetTagTable gtkBuf
+                    return ())
     ]),
     ("GUI Options", VFDPP emptyParams [
         mkFieldPP
@@ -551,6 +593,9 @@ defaultPrefs = Prefs {
     ,   removeTBlanks       =   True
     ,   textviewFont        =   Nothing
     ,   sourceStyle         =   Nothing
+    ,   foundBackground     =   Color 65535 65535 32768
+    ,   contextBackground   =   Color 65535 49152 49152
+    ,   breakpointBackground =  Color 65535 49152 32768
     ,   logviewFont         =   Nothing
     ,   defaultSize         =   (1024,800)
     ,   browser             =   "firefox"

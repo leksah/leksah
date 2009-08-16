@@ -20,6 +20,7 @@ module IDE.PrinterParser (
 ,   whiteSpace
 ,   stringParser
 ,   readParser
+,   colorParser
 
 ,   emptyPrinter
 ,   symbol
@@ -36,6 +37,7 @@ import qualified Text.PrettyPrint.HughesPJ as PP
 import Graphics.UI.Editor.Parameters
 import Graphics.UI.Editor.Basics
 import Data.Maybe (listToMaybe)
+import Graphics.UI.Gtk (Color(..))
 
 
 type Printer beta       =   beta -> PP.Doc
@@ -138,6 +140,17 @@ intParser ::  CharParser () Int
 intParser = do
     i <-  integer
     return (fromIntegral i)
+
+colorParser :: CharParser () Color
+colorParser = do
+    string "Color"
+    whiteSpace
+    r <- integer
+    whiteSpace
+    g <- integer
+    whiteSpace
+    b <- integer
+    return $ Color (fromIntegral r) (fromIntegral g) (fromIntegral b)
 
 emptyParser ::  CharParser () ()
 emptyParser = pzero

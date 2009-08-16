@@ -35,6 +35,8 @@ module IDE.Core.Types (
 ,   isError
 ,   isBreakpoint
 
+,   colorHexString
+
 ,   PackageDescr(..)
 ,   ModuleDescr(..)
 ,   Descr(..)
@@ -106,6 +108,7 @@ import SrcLoc (SrcSpan(..))
 import FastString (unpackFS)
 import Outputable (ppr, showSDoc)
 import Data.Set (Set(..))
+import Numeric (showHex)
 
 -- ---------------------------------------------------------------------
 -- IDEPackages
@@ -163,6 +166,9 @@ data Prefs = Prefs {
     ,   removeTBlanks       ::   Bool
     ,   textviewFont        ::   Maybe String
     ,   sourceStyle         ::   Maybe String
+    ,   foundBackground     ::   Color
+    ,   contextBackground   ::   Color
+    ,   breakpointBackground ::  Color
     ,   logviewFont         ::   Maybe String
     ,   defaultSize         ::   (Int,Int)
     ,   browser             ::   String
@@ -218,6 +224,12 @@ isBreakpoint = (== BreakpointRef) . logRefType
 
 isContext :: LogRef -> Bool
 isContext = (== ContextRef) . logRefType
+
+-- This should probably be in Gtk2Hs allong with a suitable parser
+colorHexString (Color r g b) = '#' : (pad $ showHex r "")
+                                  ++ (pad $ showHex g "")
+                                  ++ (pad $ showHex b "")
+    where pad s = replicate (4 - length s) '0' ++ s
 
 -- ---------------------------------------------------------------------
 --  | Information about the world, extraced from .hi and maybe source files

@@ -45,9 +45,7 @@ import Control.Event (registerEvent)
 import IDE.DescriptionPP (extractFieldDescription,FieldDescriptionPP(..),
     mkFieldPP,flattenFieldDescriptionPP)
 
-import Text.ParserCombinators.Parsec.Language
 import Text.ParserCombinators.Parsec hiding(Parser)
-import qualified Text.ParserCombinators.Parsec.Token as P
 
 data IDEFlags               =   IDEFlags {
     flagsBox                ::   VBox

@@ -301,6 +301,7 @@ markRefInSourceBuf index buf logRef scrollTo = do
     useCandy    <- getCandyState
     candy'      <- readIDE candy
     contextRefs <- readIDE contextRefs
+    prefs       <- readIDE prefs
     inBufContext () buf $ \_ gtkbuf buf _ -> do
         let tagName = (show $ logRefType logRef) ++ show index
         tagTable <- textBufferGetTagTable gtkbuf
@@ -318,9 +319,9 @@ markRefInSourceBuf index buf logRef scrollTo = do
                     WarningRef -> do
                         set errtag[textTagUnderline := UnderlineError]
                     BreakpointRef -> do
-                        set errtag[textTagBackground := "yellow"]
+                        set errtag[textTagBackground := colorHexString $ breakpointBackground prefs]
                     ContextRef -> do
-                        set errtag[textTagBackground := "pink"]
+                        set errtag[textTagBackground := colorHexString $ contextBackground prefs]
                 textTagTableAdd tagTable errtag
 
         let start' = srcLocToPair $ srcSpanStart (logRefSrcSpan logRef)
@@ -420,7 +421,7 @@ builder bs mbfn ind bn rbn ct prefs pp nb windows ideR = do
     sourceBufferSetMaxUndoLevels buffer (-1)
     tagTable <- textBufferGetTagTable buffer
     foundTag <- textTagNew (Just "found")
-    set foundTag [textTagBackground := "yellow"]
+    set foundTag [textTagBackground := colorHexString $ foundBackground prefs]
     textTagTableAdd tagTable foundTag
 
     -- load up and display a file
