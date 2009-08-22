@@ -39,6 +39,7 @@ import IDE.FileUtils
 import IDE.PrinterParser
 import qualified Text.PrettyPrint.HughesPJ as PP
 import Graphics.UI.Editor.Parameters
+import IDE.TextEditor
 import IDE.Pane.Modules
 import IDE.Pane.SourceBuffer
 import IDE.Pane.Info
@@ -240,8 +241,8 @@ saveSessionAs sessionPath = do
             bufs <- allBuffers
             case filter (\b -> bufferName b == "_Eval.hs") bufs of
                 [buf] -> liftIO $ do
-                    gtkbuf <- textViewGetBuffer (sourceView buf)
-                    textBufferSetModified gtkbuf False
+                    ebuf <- getBuffer (sourceView buf)
+                    setModified ebuf False
                 _     -> return ()
             wdw             <-  getMainWindow
             layout          <-  mkLayout
@@ -453,7 +454,7 @@ recoverSession sessionPath = catchIDE (do
         (\ (e :: SomeException) -> do
             sysMessage Normal (show e)
             return (True,True))
-           
+
 
 readLayout :: FilePath -> IO SessionState
 readLayout sessionPath = do

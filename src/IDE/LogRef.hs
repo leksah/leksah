@@ -44,6 +44,7 @@ import Text.ParserCombinators.Parsec hiding(Parser)
 import qualified Text.ParserCombinators.Parsec.Token as P
 
 import IDE.Core.State
+import IDE.TextEditor
 import IDE.Pane.SourceBuffer
 import IDE.Pane.Log
 import IDE.Tool
@@ -92,10 +93,10 @@ markLogRefs = do
 unmarkLogRefs :: IDEAction
 unmarkLogRefs = do
     forOpenLogRefs $ \index logRef buf -> liftIO $ do
-            gtkbuf  <-  textViewGetBuffer (sourceView buf)
-            i1      <-  textBufferGetStartIter gtkbuf
-            i2      <-  textBufferGetEndIter gtkbuf
-            textBufferRemoveTagByName gtkbuf (show (logRefType logRef) ++ show index)  i1 i2
+            gtkbuf  <-  getBuffer (sourceView buf)
+            i1      <-  getStartIter gtkbuf
+            i2      <-  getEndIter gtkbuf
+            removeTagByName gtkbuf (show (logRefType logRef) ++ show index)  i1 i2
 
 setErrorList :: [LogRef] -> IDEAction
 setErrorList errs = do

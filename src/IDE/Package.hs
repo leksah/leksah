@@ -66,6 +66,7 @@ import Control.Exception (SomeException(..), catch)
 
 import IDE.Core.State
 import IDE.Pane.PackageEditor
+import IDE.TextEditor
 import IDE.Pane.SourceBuffer
 import IDE.Pane.PackageFlags
 import Distribution.Text (display)
@@ -222,7 +223,7 @@ belongsToActivePackage ideBuf =
                                                             then return True
                                                             else do
                                                             --        do
-                                                                gtkbuf <- liftIO $ textViewGetBuffer (sourceView ideBuf)
+                                                                gtkbuf <- liftIO $ getBuffer (sourceView ideBuf)
                                                                 candy  <- readIDE candy
                                                                 text   <- liftIO $ getCandylessText candy gtkbuf
                                                                 mbMn <- liftIO $ moduleNameFromFilePath' fp text

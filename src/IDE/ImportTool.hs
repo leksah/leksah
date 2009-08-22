@@ -26,6 +26,7 @@ import Data.Maybe (isNothing,isJust)
 import IDE.Metainfo.Provider (getIdentifierDescr)
 import Text.PrettyPrint (render)
 import Distribution.Text (disp)
+import IDE.TextEditor
 import IDE.Pane.SourceBuffer
     (fileSave, inActiveBufContext', selectSourceBuf)
 import Graphics.UI.Gtk
@@ -140,8 +141,8 @@ addImport' nis filePath descr descrList =  do
                 ideMessage Normal $ "addImport " ++ show (descrName descr) ++ " from "
                     ++ (render $ disp $ mod)
                 text <- liftIO $ do
-                    i1          <-  textBufferGetStartIter gtkbuf
-                    i2          <-  textBufferGetEndIter gtkbuf
+                    i1          <-  getStartIter gtkbuf
+                    i2          <-  getEndIter gtkbuf
                     getCandylessText candy' gtkbuf
                 parseResult <- parseHeader filePath text
                 case parseResult of
@@ -161,10 +162,10 @@ addImport' nis filePath descr descrList =  do
                                                     return  (False,descrList)
                                                 Just lineSel -> do
                                                     liftIO $ do
-                                                        i1 <- textBufferGetIterAtLine gtkbuf lineSel
-                                                        textBufferInsert gtkbuf i1 newLine
+                                                        i1 <- getIterAtLine gtkbuf lineSel
+                                                        insert gtkbuf i1 newLine
                                                     fileSave False
-                                                    liftIO $ textBufferSetModified gtkbuf True
+                                                    liftIO $ setModified gtkbuf True
                                                     return (True,descr : descrList)
                             l@(impDecl:_) ->
                                             let newImpDecl  =  addToDecl (unLoc impDecl)
@@ -181,12 +182,12 @@ addImport' nis filePath descr descrList =  do
                                                         return  (False,descrList)
                                                     Just (lineStart, lineEnd) -> do
                                                         liftIO $ do
-                                                            i1 <- textBufferGetIterAtLine gtkbuf (lineStart - 1)
-                                                            i2 <- textBufferGetIterAtLine gtkbuf (lineEnd)
-                                                            textBufferDelete gtkbuf i1 i2
-                                                            textBufferInsert gtkbuf i1 newLine
+                                                            i1 <- getIterAtLine gtkbuf (lineStart - 1)
+                                                            i2 <- getIterAtLine gtkbuf (lineEnd)
+                                                            delete gtkbuf i1 i2
+                                                            insert gtkbuf i1 newLine
                                                         fileSave False
-                                                        liftIO $ textBufferSetModified gtkbuf True
+                                                        liftIO $ setModified gtkbuf True
                                                         return (True, descr : descrList)
     where
         isHiding (Just (_,False)) =  True

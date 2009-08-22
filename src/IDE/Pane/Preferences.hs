@@ -27,8 +27,7 @@ module IDE.Pane.Preferences (
 ,   editPrefs
 ) where
 
-import Graphics.UI.Gtk.SourceView
-import Graphics.UI.Gtk
+import Graphics.UI.Gtk hiding(background)
 import Control.Monad.Reader
 import qualified Text.ParserCombinators.Parsec as P
 import Data.List
@@ -46,6 +45,7 @@ import Graphics.UI.Editor.Parameters
 import Graphics.UI.Editor.MakeEditor hiding (parameters)
 import IDE.DescriptionPP
 import IDE.PrinterParser hiding (fieldParser,parameters)
+import IDE.TextEditor
 import IDE.Pane.SourceBuffer
 import IDE.Pane.Log
 import Default
@@ -59,6 +59,8 @@ import IDE.Debug
      debugSetBreakOnError,
      debugSetBreakOnException,
      debugSetPrintEvldWithShow)
+import Graphics.UI.Gtk.SourceView
+    (sourceStyleSchemeManagerGetSchemeIds, sourceStyleSchemeManagerNew)
 
 --
 -- | The Preferences Pane
@@ -194,7 +196,7 @@ prefsDescription packages = NFDPP [
             boolEditor
             (\b -> do
                 buffers <- allBuffers
-                mapM_ (\buf -> liftIO $ sourceViewSetShowLineNumbers (sourceView buf) b) buffers)
+                mapM_ (\buf -> liftIO $ setShowLineNumbers (sourceView buf) b) buffers)
     ,   mkFieldPP
             (paraName <<<- ParaName "TextView Font" $ emptyParams)
             (\a -> PP.text (case a of Nothing -> show ""; Just s -> show s))
@@ -205,8 +207,7 @@ prefsDescription packages = NFDPP [
             fontEditor
             (\mbs -> do
                 buffers <- allBuffers
-                fdesc <- liftIO $ fontDescriptionFromString (case mbs of Just str -> str; Nothing -> "")
-                liftIO $mapM_ (\buf -> widgetModifyFont (castToWidget $sourceView buf) (Just fdesc)) buffers)
+                liftIO $mapM_ (\buf -> setFont (sourceView buf) mbs) buffers)
     ,   mkFieldPP
             (paraName <<<- ParaName "Right margin"
                 $ paraSynopsis <<<- ParaSynopsis "Size or 0 for no right margin"
@@ -221,12 +222,7 @@ prefsDescription packages = NFDPP [
                     True "Show it ?")
             (\b -> do
                 buffers <- allBuffers
-                mapM_ (\buf -> case b of
-                                Just n -> do
-                                    liftIO $sourceViewSetRightMarginPosition (sourceView buf) (fromIntegral n)
-                                    liftIO $sourceViewSetShowRightMargin (sourceView buf) True
-                                Nothing -> liftIO $sourceViewSetShowRightMargin (sourceView buf) False)
-                                                buffers)
+                mapM_ (\buf -> liftIO $ setRightMargin (sourceView buf) b) buffers)
     ,   mkFieldPP
             (paraName <<<- ParaName "Tab width" $ emptyParams)
             (PP.text . show)
@@ -236,7 +232,7 @@ prefsDescription packages = NFDPP [
             (intEditor (1.0, 20.0, 1.0))
             (\i -> do
                 buffers <- allBuffers
-                mapM_ (\buf -> liftIO $sourceViewSetIndentWidth (sourceView buf) i) buffers)
+                mapM_ (\buf -> liftIO $setIndentWidth (sourceView buf) i) buffers)
     ,   mkFieldPP
             (paraName <<<- ParaName "Use standard line ends even on windows" $ emptyParams)
             (PP.text . show)
@@ -281,22 +277,10 @@ prefsDescription packages = NFDPP [
             (\b a -> a{sourceStyle = b})
             styleEditor
             (\mbs -> do
-                styleManager <- liftIO sourceStyleSchemeManagerNew
-                mbStyle      <- case mbs of
-                                    Nothing  -> return Nothing
-                                    Just str -> liftIO $ do
-                                        ids <- sourceStyleSchemeManagerGetSchemeIds styleManager
-                                        if elem str ids
-                                            then liftM Just
-                                                (sourceStyleSchemeManagerGetScheme styleManager str)
-                                            else return Nothing
-                case mbStyle of
-                    Nothing -> return ()
-                    Just style -> do
-                        buffers <- allBuffers
-                        mapM_ (\buf -> do
-                            gtkBuf  <-  liftIO $ textViewGetBuffer (sourceView buf)
-                            liftIO $ sourceBufferSetStyleScheme (castToSourceBuffer gtkBuf) style) buffers)
+                buffers <- allBuffers
+                mapM_ (\buf -> liftIO $ do
+                    ebuf <- getBuffer (sourceView buf)
+                    setStyle ebuf mbs) buffers)
     ,   mkFieldPP
             (paraName <<<- ParaName "Found Text Background" $ emptyParams)
             (PP.text . show)
@@ -307,11 +291,11 @@ prefsDescription packages = NFDPP [
             (\c -> do
                 buffers <- allBuffers
                 liftIO $ forM_ buffers $ \buf -> do
-                    gtkBuf   <- textViewGetBuffer (sourceView buf)
-                    tagTable <- textBufferGetTagTable gtkBuf
-                    mbTag    <- textTagTableLookup tagTable "found"
+                    ebuf     <- getBuffer (sourceView buf)
+                    tagTable <- getTagTable ebuf
+                    mbTag    <- lookupTag tagTable "found"
                     case mbTag of
-                        Just tag -> set tag [textTagBackground := colorHexString c]
+                        Just tag -> background tag c
                         Nothing  -> return ())
     ,   mkFieldPP
             (paraName <<<- ParaName "Execution Context Text Background" $ emptyParams)
@@ -323,8 +307,9 @@ prefsDescription packages = NFDPP [
             (\c -> do
                 buffers <- allBuffers
                 liftIO $ forM_ buffers $ \buf -> do
-                    gtkBuf   <- textViewGetBuffer (sourceView buf)
-                    tagTable <- textBufferGetTagTable gtkBuf
+                    ebuf     <- getBuffer (sourceView buf)
+                    tagTable <- getTagTable ebuf
+                    --  TODO find and set the tag background
                     return ())
     ,   mkFieldPP
             (paraName <<<- ParaName "Breakpoint Text Background" $ emptyParams)
@@ -336,8 +321,9 @@ prefsDescription packages = NFDPP [
             (\c -> do
                 buffers <- allBuffers
                 liftIO $ forM_ buffers $ \buf -> do
-                    gtkBuf   <- textViewGetBuffer (sourceView buf)
-                    tagTable <- textBufferGetTagTable gtkBuf
+                    ebuf     <- getBuffer (sourceView buf)
+                    tagTable <- getTagTable ebuf
+                    --  TODO find and set the tag background
                     return ())
     ]),
     ("GUI Options", VFDPP emptyParams [
