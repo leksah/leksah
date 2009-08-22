@@ -752,7 +752,6 @@ handleSpecialKeystrokes (Key { eventKeyName = name,  eventModifier = mods,
                         case Map.lookup (keyVal,sort mods) sks of
                             Nothing -> do
                                 liftIO $statusbarPop sb 1
-                                liftIO $statusbarPush sb 1 (show (name, keyVal, sort mods))
                                 return False
                             Just map -> do
                                 let sym = printMods mods ++ name
