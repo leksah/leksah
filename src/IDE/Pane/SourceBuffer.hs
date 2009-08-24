@@ -404,7 +404,7 @@ builder :: Bool ->
     IDERef ->
     IO (IDEBuffer,Connections)
 builder bs mbfn ind bn rbn ct prefs pp nb windows ideR = do
-    buffer <- newGtkBuffer mbfn
+    buffer <- (if useYi prefs then newYiBuffer else newGtkBuffer) mbfn
     tagTable <- getTagTable buffer
     foundTag <- newTag tagTable "found"
     background foundTag $ foundBackground prefs

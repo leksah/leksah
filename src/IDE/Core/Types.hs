@@ -169,6 +169,7 @@ data Prefs = Prefs {
     ,   foundBackground     ::   Color
     ,   contextBackground   ::   Color
     ,   breakpointBackground ::  Color
+    ,   useYi               ::   Bool
     ,   logviewFont         ::   Maybe String
     ,   defaultSize         ::   (Int,Int)
     ,   browser             ::   String

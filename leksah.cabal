@@ -14,7 +14,7 @@ synopsis: Haskell IDE written in Haskell
 description: An Integrated Development Environment for Haskell written in Haskell.
 category: Development, IDE, Editor
 author: Juergen Nicklisch-Franken, Hamish Mackenzie
-tested-with: GHC ==6.10.1
+tested-with: GHC ==6.10.4
 data-files: LICENSE Readme data/Current.session data/Default.candy
             data/Default.keymap data/Default.menu data/Default.prefs
             data/Emacs.keymap data/LICENSE data/Module.template
@@ -32,15 +32,26 @@ data-files: LICENSE Readme data/Current.session data/Default.candy
 data-dir: ""
 extra-source-files: Setup.lhs
 extra-tmp-files:
+
+flag yi
+    Default: False
+    Description: Experimental Yi support
+
 Executable leksah
     if os(windows)
         build-depends: Win32 >=2.2.0.0
         extra-libraries: kernel32
     else
         build-depends: unix >=2.3.1.0
+
     if os(osx)
         extra-libraries: igemacintegration
-    build-depends: Cabal >=1.6.0.1, base >=4.0.0.0 && <= 5, binary >=0.4.4,
+
+    if flag(yi)
+        build-depends: yi >=0.6.1
+        cpp-options: -DYI
+
+    build-depends: Cabal >=1.6.0.1, base >=4.0.0.0 && <= 5, binary >=0.5.0.0,
                    bytestring >=0.9.0.1, containers >=0.2.0.0, directory >=1.0.0.2,
                    filepath >=1.1.0.1, ghc >=6.10.1, glib >=0.10, gtk >=0.10,
                    gtksourceview2 >=0.10.0, mtl >=1.1.0.2, old-time >=1.0.0.1,

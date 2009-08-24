@@ -325,6 +325,14 @@ prefsDescription packages = NFDPP [
                     tagTable <- getTagTable ebuf
                     --  TODO find and set the tag background
                     return ())
+    ,   mkFieldPP
+            (paraName <<<- ParaName "Use Yi - Experimental feature (could wipe your files)" $ emptyParams)
+            (PP.text . show)
+            boolParser
+            useYi
+            (\b a -> a{useYi = b})
+            boolEditor
+            (\i -> return ())
     ]),
     ("GUI Options", VFDPP emptyParams [
         mkFieldPP
@@ -582,6 +590,7 @@ defaultPrefs = Prefs {
     ,   foundBackground     =   Color 65535 65535 32768
     ,   contextBackground   =   Color 65535 49152 49152
     ,   breakpointBackground =  Color 65535 49152 32768
+    ,   useYi               =   False
     ,   logviewFont         =   Nothing
     ,   defaultSize         =   (1024,800)
     ,   browser             =   "firefox"
