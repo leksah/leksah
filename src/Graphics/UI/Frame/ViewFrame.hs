@@ -82,7 +82,7 @@ module Graphics.UI.Frame.ViewFrame (
 ,   getUIAction
 ,   widgetGet
 
-
+,   initGtkRc
 ) where
 
 import Graphics.UI.Gtk hiding (afterToggleOverwrite,onToggleOverwrite)
@@ -112,6 +112,18 @@ import Data.Set (Set(..))
 import Graphics.UI.Gtk.Gdk.Events (Event(..))
 -- import Debug.Trace (trace)
 trace a b = b
+
+initGtkRc :: IO ()
+initGtkRc = return ()
+{--	rcParseString ("style \"leksah-close-button-style\"\n" ++
+    "{\n" ++
+    "  GtkWidget::focus-padding = 0\n" ++
+    "  GtkWidget::focus-line-width = 0\n" ++
+    "  xthickness = 0\n" ++
+    "  ythickness = 0\n" ++
+    "}\n" ++
+    "widget \"*.leksah-close-button\" style \"leksah-close-button-style\"")
+--}
 
 removePaneAdmin :: Pane alpha beta => alpha -> beta ()
 removePaneAdmin pane = do

@@ -165,6 +165,7 @@ startGUI sessionFilename iprefs = do
         (sysMessage Normal "Linked with -threaded")
     timeoutAddFull (yield >> return True) priorityHigh 100
     mapM_ (sysMessage Normal) st
+    initGtkRc
     uiManager   <-  uiManagerNew
     newIcons
     hasConfigDir' <- hasConfigDir
