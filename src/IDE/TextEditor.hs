@@ -131,11 +131,12 @@ import Data.Char (isAlphaNum)
 import Data.Maybe (fromJust)
 import Data.IORef (readIORef, writeIORef)
 import Control.Monad (when)
-import Control.Monad.Reader (liftIO)
+import Control.Monad.Reader (lift, liftIO, ask)
 
 import qualified Graphics.UI.Gtk as Gtk hiding(afterToggleOverwrite)
 import qualified Graphics.UI.Gtk.SourceView as Gtk
 import qualified Graphics.UI.Gtk.Multiline.TextView as Gtk
+import qualified Graphics.UI.Gtk.Gdk.Events as GtkOld
 import qualified Graphics.UI.Gtk.Gdk.EventM as Gtk
 import System.Glib.Attributes (AttrOp(..))
 
@@ -145,8 +146,8 @@ import qualified Yi.UI.Pango.Control as Yi
 #endif
 
 import Graphics.UI.Frame.Panes (Connection(..))
-import IDE.Core.Types (colorHexString)
-import IDE.Core.State (controlIsPressed)
+import IDE.Core.Types
+import IDE.Core.State
 
 -- Data types
 data EditorBuffer = GtkEditorBuffer Gtk.SourceBuffer
@@ -180,7 +181,8 @@ data EditorTag = GtkEditorTag Gtk.TextTag
 #endif
 
 -- Buffer
-newGtkBuffer mbFilename = do
+newGtkBuffer :: Maybe FilePath -> String -> IDEM EditorBuffer
+newGtkBuffer mbFilename contents = liftIO $ do
     lm     <- Gtk.sourceLanguageManagerNew
     mbLang <- case mbFilename of
         Just filename -> Gtk.sourceLanguageManagerGuessLanguage lm (Just filename) Nothing
@@ -189,171 +191,226 @@ newGtkBuffer mbFilename = do
         Just sLang -> Gtk.sourceBufferNewWithLanguage sLang
         Nothing -> Gtk.sourceBufferNew Nothing
     Gtk.sourceBufferSetMaxUndoLevels buffer (-1)
+    Gtk.sourceBufferBeginNotUndoableAction buffer
+    Gtk.textBufferSetText buffer contents
+    Gtk.sourceBufferEndNotUndoableAction buffer
     return $ GtkEditorBuffer buffer
 
+newYiBuffer :: Maybe FilePath -> String -> IDEM EditorBuffer
 #ifdef YI
-newYiBuffer mbFilename = fmap YiEditorBuffer $ Yi.newBuffer 0 (Left "*leksah*") (Yi.fromString "")
+newYiBuffer mbFilename contents = liftYiControl $ do
+    let (filename, id) = case mbFilename of
+                            Just fn -> (fn, Right fn)
+                            Nothing -> ("Unknown.hs", Left "*leksah*")
+    buffer <- Yi.newBuffer id (Yi.fromString contents)
+    Yi.setBufferMode filename buffer
+    return $ YiEditorBuffer buffer
 #else
 newYiBuffer = newGtkBuffer
 #endif
 
-applyTagByName (GtkEditorBuffer sb) name (GtkEditorIter first) (GtkEditorIter last) =
+applyTagByName :: EditorBuffer
+                  -> String
+                  -> EditorIter
+                  -> EditorIter
+                  -> IDEM ()
+applyTagByName (GtkEditorBuffer sb) name (GtkEditorIter first) (GtkEditorIter last) = liftIO $
     Gtk.textBufferApplyTagByName sb name first last
 #ifdef YI
 applyTagByName (YiEditorBuffer fb) name (YiEditorIter) (YiEditorIter) = return () -- TODO
-applyTagByName _ _ _ _ = fail "Mismatching TextEditor types in createMark"
+applyTagByName _ _ _ _ = liftIO $ fail "Mismatching TextEditor types in createMark"
 #endif
 
-beginNotUndoableAction (GtkEditorBuffer sb) = Gtk.sourceBufferBeginNotUndoableAction sb
+beginNotUndoableAction :: EditorBuffer -> IDEM ()
+beginNotUndoableAction (GtkEditorBuffer sb) = liftIO $ Gtk.sourceBufferBeginNotUndoableAction sb
 #ifdef YI
 beginNotUndoableAction (YiEditorBuffer fb) = return () -- TODO
 #endif
 
-beginUserAction (GtkEditorBuffer sb) = Gtk.textBufferBeginUserAction sb
+beginUserAction :: EditorBuffer -> IDEM ()
+beginUserAction (GtkEditorBuffer sb) = liftIO $ Gtk.textBufferBeginUserAction sb
 #ifdef YI
 beginUserAction (YiEditorBuffer fb) = return () -- TODO
 #endif
 
-canRedo (GtkEditorBuffer sb) = Gtk.sourceBufferGetCanRedo sb
+canRedo :: EditorBuffer -> IDEM Bool
+canRedo (GtkEditorBuffer sb) = liftIO $ Gtk.sourceBufferGetCanRedo sb
 #ifdef YI
 canRedo (YiEditorBuffer fb) = return False -- TODO
 #endif
 
-canUndo (GtkEditorBuffer sb) = Gtk.sourceBufferGetCanUndo sb
+canUndo :: EditorBuffer -> IDEM Bool
+canUndo (GtkEditorBuffer sb) = liftIO $ Gtk.sourceBufferGetCanUndo sb
 #ifdef YI
 canUndo (YiEditorBuffer fb) = return False -- TODO
 #endif
 
-copyClipboard (GtkEditorBuffer sb) clipboard = Gtk.textBufferCopyClipboard sb clipboard
+copyClipboard :: EditorBuffer -> Gtk.Clipboard -> IDEM ()
+copyClipboard (GtkEditorBuffer sb) clipboard = liftIO $ Gtk.textBufferCopyClipboard sb clipboard
 #ifdef YI
 copyClipboard (YiEditorBuffer fb) _ = return () -- TODO
 #endif
 
-createMark (GtkEditorBuffer sb) mbName (GtkEditorIter i) leftGravity =
+createMark :: EditorBuffer
+              -> Maybe String
+              -> EditorIter
+              -> Bool
+              -> IDEM EditorMark
+createMark (GtkEditorBuffer sb) mbName (GtkEditorIter i) leftGravity = liftIO $
     fmap GtkEditorMark $ Gtk.textBufferCreateMark sb mbName i leftGravity
 #ifdef YI
 createMark (YiEditorBuffer fb) mbName (YiEditorIter) leftGravity = return YiEditorMark -- TODO
-createMark _ _ _ _ = fail "Mismatching TextEditor types in createMark"
+createMark _ _ _ _ = liftIO $ fail "Mismatching TextEditor types in createMark"
 #endif
 
-cutClipboard (GtkEditorBuffer sb) clipboard defaultEditable = Gtk.textBufferCutClipboard sb clipboard defaultEditable
+cutClipboard :: EditorBuffer -> Gtk.Clipboard -> Bool -> IDEM ()
+cutClipboard (GtkEditorBuffer sb) clipboard defaultEditable = liftIO $ Gtk.textBufferCutClipboard sb clipboard defaultEditable
 #ifdef YI
 cutClipboard (YiEditorBuffer fb) clipboard defaultEditable = return () -- TODO
 #endif
 
-delete (GtkEditorBuffer sb) (GtkEditorIter first) (GtkEditorIter last) =
+delete :: EditorBuffer -> EditorIter -> EditorIter -> IDEM ()
+delete (GtkEditorBuffer sb) (GtkEditorIter first) (GtkEditorIter last) = liftIO $
     Gtk.textBufferDelete sb first last
 #ifdef YI
 delete (YiEditorBuffer fb) (YiEditorIter) (YiEditorIter) = return () -- TODO
-delete _ _ _ = fail "Mismatching TextEditor types in delete"
+delete _ _ _ = liftIO $ fail "Mismatching TextEditor types in delete"
 #endif
 
-deleteSelection (GtkEditorBuffer sb) interactive defaultEditable =
+deleteSelection :: EditorBuffer -> Bool -> Bool -> IDEM ()
+deleteSelection (GtkEditorBuffer sb) interactive defaultEditable = liftIO $
     Gtk.textBufferDeleteSelection sb interactive defaultEditable >> return ()
 #ifdef YI
 deleteSelection (YiEditorBuffer fb) interactive defaultEditable = return () -- TODO
 #endif
 
-endNotUndoableAction (GtkEditorBuffer sb) = Gtk.sourceBufferEndNotUndoableAction sb
+endNotUndoableAction :: EditorBuffer -> IDEM ()
+endNotUndoableAction (GtkEditorBuffer sb) = liftIO $ Gtk.sourceBufferEndNotUndoableAction sb
 #ifdef YI
 endNotUndoableAction (YiEditorBuffer fb) = return () -- TODO
 #endif
 
-endUserAction (GtkEditorBuffer sb) = Gtk.textBufferEndUserAction sb
+endUserAction :: EditorBuffer -> IDEM ()
+endUserAction (GtkEditorBuffer sb) = liftIO $ Gtk.textBufferEndUserAction sb
 #ifdef YI
 endUserAction (YiEditorBuffer fb) = return () -- TODO
 #endif
 
-getEndIter (GtkEditorBuffer sb) = fmap GtkEditorIter $ Gtk.textBufferGetEndIter sb
+getEndIter :: EditorBuffer -> IDEM EditorIter
+getEndIter (GtkEditorBuffer sb) = liftIO $ fmap GtkEditorIter $ Gtk.textBufferGetEndIter sb
 #ifdef YI
 getEndIter (YiEditorBuffer b) = return YiEditorIter -- TODO
 #endif
 
-getInsertMark (GtkEditorBuffer sb) = fmap GtkEditorMark $ Gtk.textBufferGetInsert sb
+getInsertMark :: EditorBuffer -> IDEM EditorMark
+getInsertMark (GtkEditorBuffer sb) = liftIO $ fmap GtkEditorMark $ Gtk.textBufferGetInsert sb
 #ifdef YI
 getInsertMark (YiEditorBuffer b) = return YiEditorMark -- TODO
 #endif
 
-getIterAtLine (GtkEditorBuffer sb) line = fmap GtkEditorIter $ Gtk.textBufferGetIterAtLine sb line
+getIterAtLine :: EditorBuffer -> Int -> IDEM EditorIter
+getIterAtLine (GtkEditorBuffer sb) line = liftIO $ fmap GtkEditorIter $ Gtk.textBufferGetIterAtLine sb line
 #ifdef YI
 getIterAtLine (YiEditorBuffer b) line = return YiEditorIter -- TODO
 #endif
 
-getIterAtMark (GtkEditorBuffer sb) (GtkEditorMark m) = fmap GtkEditorIter $ Gtk.textBufferGetIterAtMark sb m
+getIterAtMark :: EditorBuffer -> EditorMark -> IDEM EditorIter
+getIterAtMark (GtkEditorBuffer sb) (GtkEditorMark m) = liftIO $ fmap GtkEditorIter $ Gtk.textBufferGetIterAtMark sb m
 #ifdef YI
 getIterAtMark (YiEditorBuffer sb) (YiEditorMark) = return YiEditorIter -- TODO
-getIterAtMark _ _ = fail "Mismatching TextEditor types in getIterAtMark" -- TODO
+getIterAtMark _ _ = liftIO $ fail "Mismatching TextEditor types in getIterAtMark" -- TODO
 #endif
 
-getIterAtOffset (GtkEditorBuffer sb) offset = fmap GtkEditorIter $ Gtk.textBufferGetIterAtOffset sb offset
+getIterAtOffset :: EditorBuffer -> Int -> IDEM EditorIter
+getIterAtOffset (GtkEditorBuffer sb) offset = liftIO $ fmap GtkEditorIter $ Gtk.textBufferGetIterAtOffset sb offset
 #ifdef YI
 getIterAtOffset (YiEditorBuffer b) offset = return YiEditorIter -- TODO
 #endif
 
-getLineCount (GtkEditorBuffer sb) = Gtk.textBufferGetLineCount sb
+getLineCount :: EditorBuffer -> IDEM Int
+getLineCount (GtkEditorBuffer sb) = liftIO $ Gtk.textBufferGetLineCount sb
 #ifdef YI
 getLineCount (YiEditorBuffer b) = return 0 -- TODO
 #endif
 
-getModified (GtkEditorBuffer sb) = Gtk.textBufferGetModified sb
+getModified :: EditorBuffer -> IDEM Bool
+getModified (GtkEditorBuffer sb) = liftIO $ Gtk.textBufferGetModified sb
 #ifdef YI
 getModified (YiEditorBuffer b) = return False -- TODO
 #endif
 
-getSelectionBoundMark (GtkEditorBuffer sb) = fmap GtkEditorMark $ Gtk.textBufferGetSelectionBound sb
+getSelectionBoundMark :: EditorBuffer -> IDEM EditorMark
+getSelectionBoundMark (GtkEditorBuffer sb) = liftIO $ fmap GtkEditorMark $ Gtk.textBufferGetSelectionBound sb
 #ifdef YI
 getSelectionBoundMark (YiEditorBuffer b) = return YiEditorMark -- TODO
 #endif
 
-getSelectionBounds (GtkEditorBuffer sb) = do
+getSelectionBounds :: EditorBuffer -> IDEM (EditorIter, EditorIter)
+getSelectionBounds (GtkEditorBuffer sb) = liftIO $ do
     (first, last) <- Gtk.textBufferGetSelectionBounds sb
     return (GtkEditorIter first, GtkEditorIter last)
 #ifdef YI
 getSelectionBounds (YiEditorBuffer b) = return (YiEditorIter, YiEditorIter) -- TODO
 #endif
 
-getSlice (GtkEditorBuffer sb) (GtkEditorIter first) (GtkEditorIter last) includeHidenChars =
+getSlice :: EditorBuffer
+            -> EditorIter
+            -> EditorIter
+            -> Bool
+            -> IDEM String
+getSlice (GtkEditorBuffer sb) (GtkEditorIter first) (GtkEditorIter last) includeHidenChars = liftIO $
     Gtk.textBufferGetSlice sb first last includeHidenChars
 #ifdef YI
 getSlice (YiEditorBuffer b) (YiEditorIter) (YiEditorIter) includeHidenChars = return "" -- TODO
-getSlice _ _ _ _ = fail "Mismatching TextEditor types in getSlice"
+getSlice _ _ _ _ = liftIO $ fail "Mismatching TextEditor types in getSlice"
 #endif
 
-getStartIter (GtkEditorBuffer sb) = fmap GtkEditorIter $ Gtk.textBufferGetStartIter sb
+getStartIter :: EditorBuffer -> IDEM EditorIter
+getStartIter (GtkEditorBuffer sb) = liftIO $ fmap GtkEditorIter $ Gtk.textBufferGetStartIter sb
 #ifdef YI
 getStartIter (YiEditorBuffer b) = return YiEditorIter -- TODO
 #endif
 
-getTagTable (GtkEditorBuffer sb) = fmap GtkEditorTagTable $ Gtk.textBufferGetTagTable sb
+getTagTable :: EditorBuffer -> IDEM EditorTagTable
+getTagTable (GtkEditorBuffer sb) = liftIO $ fmap GtkEditorTagTable $ Gtk.textBufferGetTagTable sb
 #ifdef YI
 getTagTable (YiEditorBuffer b) = return YiEditorTagTable -- TODO
 #endif
 
-getText (GtkEditorBuffer sb) (GtkEditorIter first) (GtkEditorIter last) includeHidenChars =
+getText :: EditorBuffer
+           -> EditorIter
+           -> EditorIter
+           -> Bool
+           -> IDEM String
+getText (GtkEditorBuffer sb) (GtkEditorIter first) (GtkEditorIter last) includeHidenChars = liftIO $
     Gtk.textBufferGetText sb first last includeHidenChars
 #ifdef YI
 getText (YiEditorBuffer b) (YiEditorIter) (YiEditorIter) includeHidenChars = return "" -- TODO
-getText _ _ _ _ = fail "Mismatching TextEditor types in getText"
+getText _ _ _ _ = liftIO $ fail "Mismatching TextEditor types in getText"
 #endif
 
-hasSelection (GtkEditorBuffer sb) = Gtk.textBufferHasSelection sb
+hasSelection :: EditorBuffer -> IDEM Bool
+hasSelection (GtkEditorBuffer sb) = liftIO $ Gtk.textBufferHasSelection sb
 #ifdef YI
 hasSelection (YiEditorBuffer b) = return False -- TODO
 #endif
 
-insert (GtkEditorBuffer sb) (GtkEditorIter i) text = Gtk.textBufferInsert sb i text
+insert :: EditorBuffer -> EditorIter -> String -> IDEM ()
+insert (GtkEditorBuffer sb) (GtkEditorIter i) text = liftIO $ Gtk.textBufferInsert sb i text
 #ifdef YI
 insert (YiEditorBuffer b) (YiEditorIter) text = return () -- TODO
-insert _ _ _ = fail "Mismatching TextEditor types in insert"
+insert _ _ _ = liftIO $ fail "Mismatching TextEditor types in insert"
 #endif
 
-moveMark (GtkEditorBuffer sb) (GtkEditorMark m) (GtkEditorIter i) = Gtk.textBufferMoveMark sb m i
+moveMark :: EditorBuffer -> EditorMark -> EditorIter -> IDEM ()
+moveMark (GtkEditorBuffer sb) (GtkEditorMark m) (GtkEditorIter i) = liftIO $ Gtk.textBufferMoveMark sb m i
 #ifdef YI
 moveMark (YiEditorBuffer b) (YiEditorMark) (YiEditorIter) = return () -- TODO
-moveMark _ _ _ = fail "Mismatching TextEditor types in moveMark"
+moveMark _ _ _ = liftIO $ fail "Mismatching TextEditor types in moveMark"
 #endif
 
-newView (GtkEditorBuffer sb) = do
+newView :: EditorBuffer -> IDEM EditorView
+newView (GtkEditorBuffer sb) = liftIO $ do
     sv <- Gtk.sourceViewNewWithBuffer sb
     Gtk.sourceViewSetHighlightCurrentLine sv True
     Gtk.sourceViewSetInsertSpacesInsteadOfTabs sv True
@@ -364,47 +421,62 @@ newView (GtkEditorBuffer sb) = do
     Gtk.containerAdd sw sv
     return (GtkEditorView sv)
 #ifdef YI
-newView (YiEditorBuffer b) = fmap YiEditorView $ Yi.newView b
+newView (YiEditorBuffer b) = liftYiControl $ fmap YiEditorView $ Yi.newView b
 #endif
 
-pasteClipboard (GtkEditorBuffer sb) clipboard (GtkEditorIter i) defaultEditable =
+pasteClipboard :: EditorBuffer
+                  -> Gtk.Clipboard
+                  -> EditorIter
+                  -> Bool
+                  -> IDEM ()
+pasteClipboard (GtkEditorBuffer sb) clipboard (GtkEditorIter i) defaultEditable = liftIO $
     Gtk.textBufferPasteClipboard sb clipboard i defaultEditable
 #ifdef YI
 pasteClipboard (YiEditorBuffer b) clipboard (YiEditorIter) defaultEditable = return () -- TODO
-pasteClipboard _ _ _ _ = fail "Mismatching TextEditor types in pasteClipboard"
+pasteClipboard _ _ _ _ = liftIO $ fail "Mismatching TextEditor types in pasteClipboard"
 #endif
 
-placeCursor (GtkEditorBuffer sb) (GtkEditorIter i) = Gtk.textBufferPlaceCursor sb i
+placeCursor :: EditorBuffer -> EditorIter -> IDEM ()
+placeCursor (GtkEditorBuffer sb) (GtkEditorIter i) = liftIO $ Gtk.textBufferPlaceCursor sb i
 #ifdef YI
 placeCursor (YiEditorBuffer b) (YiEditorIter) = return () -- TODO
-placeCursor _ _ = fail "Mismatching TextEditor types in placeCursor"
+placeCursor _ _ = liftIO $ fail "Mismatching TextEditor types in placeCursor"
 #endif
 
-redo (GtkEditorBuffer sb) = Gtk.sourceBufferRedo sb
+redo :: EditorBuffer -> IDEM ()
+redo (GtkEditorBuffer sb) = liftIO $ Gtk.sourceBufferRedo sb
 #ifdef YI
 redo (YiEditorBuffer b) = return () -- TODO
 #endif
 
-removeTagByName (GtkEditorBuffer sb) name (GtkEditorIter first) (GtkEditorIter last) =
+removeTagByName :: EditorBuffer
+                   -> String
+                   -> EditorIter
+                   -> EditorIter
+                   -> IDEM ()
+removeTagByName (GtkEditorBuffer sb) name (GtkEditorIter first) (GtkEditorIter last) = liftIO $
     Gtk.textBufferRemoveTagByName sb name first last
 #ifdef YI
 removeTagByName (YiEditorBuffer b) name (YiEditorIter) (YiEditorIter) = return () -- TODO
-removeTagByName _ _ _ _ = fail "Mismatching TextEditor types in removeTagByName"
+removeTagByName _ _ _ _ = liftIO $ fail "Mismatching TextEditor types in removeTagByName"
 #endif
 
-selectRange (GtkEditorBuffer sb) (GtkEditorIter first) (GtkEditorIter last) =
+selectRange :: EditorBuffer -> EditorIter -> EditorIter -> IDEM ()
+selectRange (GtkEditorBuffer sb) (GtkEditorIter first) (GtkEditorIter last) = liftIO $
     Gtk.textBufferSelectRange sb first last
 #ifdef YI
 selectRange (YiEditorBuffer b) (YiEditorIter) (YiEditorIter) = return () -- TODO
-selectRange _ _ _ = fail "Mismatching TextEditor types in selectRange"
+selectRange _ _ _ = liftIO $ fail "Mismatching TextEditor types in selectRange"
 #endif
 
-setModified (GtkEditorBuffer sb) modified = Gtk.textBufferSetModified sb modified >> return ()
+setModified :: EditorBuffer -> Bool -> IDEM ()
+setModified (GtkEditorBuffer sb) modified = liftIO $ Gtk.textBufferSetModified sb modified >> return ()
 #ifdef YI
 setModified (YiEditorBuffer b) modified = return () -- TODO
 #endif
 
-setStyle (GtkEditorBuffer sb) mbStyle = do
+setStyle :: EditorBuffer -> Maybe String -> IDEM ()
+setStyle (GtkEditorBuffer sb) mbStyle = liftIO $ do
     case mbStyle of
         Nothing  -> return ()
         Just str -> do
@@ -417,67 +489,86 @@ setStyle (GtkEditorBuffer sb) mbStyle = do
 setStyle (YiEditorBuffer b) mbStyle = return () -- TODO
 #endif
 
-setText (GtkEditorBuffer sb) text = Gtk.textBufferSetText sb text
+setText :: EditorBuffer -> String -> IDEM ()
+setText (GtkEditorBuffer sb) text = liftIO $ Gtk.textBufferSetText sb text
 #ifdef YI
-setText (YiEditorBuffer b) text =
-    writeIORef (Yi.fBufRef b) $ Yi.newB 0 (Left "*leksah*") (Yi.fromString text) -- TODO
+setText (YiEditorBuffer b) text = liftYiControl $ Yi.liftEditor $ Yi.withGivenBuffer0 (Yi.fBufRef b) $ Yi.writeN text -- TODO
 #endif
 
-undo (GtkEditorBuffer sb) = Gtk.sourceBufferUndo sb
+undo :: EditorBuffer -> IDEM ()
+undo (GtkEditorBuffer sb) = liftIO $ Gtk.sourceBufferUndo sb
 #ifdef YI
 undo (YiEditorBuffer b) = return () -- TODO
 #endif
 
 -- View
-bufferToWindowCoords (GtkEditorView sv) point = Gtk.textViewBufferToWindowCoords sv Gtk.TextWindowWidget point
+bufferToWindowCoords :: EditorView -> (Int, Int) -> IDEM (Int, Int)
+bufferToWindowCoords (GtkEditorView sv) point = liftIO $ Gtk.textViewBufferToWindowCoords sv Gtk.TextWindowWidget point
 #ifdef YI
 bufferToWindowCoords (YiEditorView v) point = return point -- TODO
 #endif
 
-getBuffer (GtkEditorView sv) = fmap (GtkEditorBuffer . Gtk.castToSourceBuffer) $ sv `Gtk.get` Gtk.textViewBuffer
+getBuffer :: EditorView -> IDEM EditorBuffer
+getBuffer (GtkEditorView sv) = liftIO $ fmap (GtkEditorBuffer . Gtk.castToSourceBuffer) $ sv `Gtk.get` Gtk.textViewBuffer
 #ifdef YI
 getBuffer (YiEditorView v) = return $ YiEditorBuffer $ Yi.getBuffer v
 #endif
 
-getDrawWindow (GtkEditorView sv) = Gtk.widgetGetDrawWindow sv
+getDrawWindow :: EditorView -> IDEM Gtk.DrawWindow
+getDrawWindow (GtkEditorView sv) = liftIO $ Gtk.widgetGetDrawWindow sv
 #ifdef YI
-getDrawWindow (YiEditorView v) = Gtk.widgetGetDrawWindow (Yi.drawArea v)
+getDrawWindow (YiEditorView v) = liftIO $ Gtk.widgetGetDrawWindow (Yi.drawArea v)
 #endif
 
-getIterLocation (GtkEditorView sv) (GtkEditorIter i) = Gtk.textViewGetIterLocation sv i
+getIterLocation :: EditorView -> EditorIter -> IDEM Gtk.Rectangle
+getIterLocation (GtkEditorView sv) (GtkEditorIter i) = liftIO $ Gtk.textViewGetIterLocation sv i
 #ifdef YI
 getIterLocation (YiEditorView v) (YiEditorIter) = return $ Gtk.Rectangle 0 0 0 0 -- TODO
-getIterLocation _ _ = fail "Mismatching TextEditor types in getIterLocation"
+getIterLocation _ _ = liftIO $ fail "Mismatching TextEditor types in getIterLocation"
 #endif
 
-getOverwrite (GtkEditorView sv) = Gtk.textViewGetOverwrite sv
+getOverwrite :: EditorView -> IDEM Bool
+getOverwrite (GtkEditorView sv) = liftIO $ Gtk.textViewGetOverwrite sv
 #ifdef YI
 getOverwrite (YiEditorView v) = return False -- TODO
 #endif
 
-getScrolledWindow (GtkEditorView sv) = fmap (Gtk.castToScrolledWindow . fromJust) $ Gtk.widgetGetParent sv
+getScrolledWindow :: EditorView -> IDEM Gtk.ScrolledWindow
+getScrolledWindow (GtkEditorView sv) = liftIO $ fmap (Gtk.castToScrolledWindow . fromJust) $ Gtk.widgetGetParent sv
 #ifdef YI
 getScrolledWindow (YiEditorView v) = return $ Yi.scrollWin v
 #endif
 
-grabFocus (GtkEditorView sv) = Gtk.widgetGrabFocus sv
+grabFocus :: EditorView -> IDEM ()
+grabFocus (GtkEditorView sv) = liftIO $ Gtk.widgetGrabFocus sv
 #ifdef YI
 grabFocus (YiEditorView v) = return () -- TODO
 #endif
 
-scrollToMark (GtkEditorView sv) (GtkEditorMark m) withMargin mbAlign = Gtk.textViewScrollToMark sv m withMargin mbAlign
+scrollToMark :: EditorView
+                -> EditorMark
+                -> Double
+                -> Maybe (Double, Double)
+                -> IDEM ()
+scrollToMark (GtkEditorView sv) (GtkEditorMark m) withMargin mbAlign = liftIO $ Gtk.textViewScrollToMark sv m withMargin mbAlign
 #ifdef YI
 scrollToMark (YiEditorView v) (YiEditorMark) withMargin mbAlign = return () -- TODO
-scrollToMark _ _ _ _ = fail "Mismatching TextEditor types in scrollToMark"
+scrollToMark _ _ _ _ = liftIO $ fail "Mismatching TextEditor types in scrollToMark"
 #endif
 
-scrollToIter (GtkEditorView sv) (GtkEditorIter i) withMargin mbAlign = Gtk.textViewScrollToIter sv i withMargin mbAlign >> return ()
+scrollToIter :: EditorView
+                -> EditorIter
+                -> Double
+                -> Maybe (Double, Double)
+                -> IDEM ()
+scrollToIter (GtkEditorView sv) (GtkEditorIter i) withMargin mbAlign = liftIO $ Gtk.textViewScrollToIter sv i withMargin mbAlign >> return ()
 #ifdef YI
 scrollToIter (YiEditorView v) (YiEditorIter) withMargin mbAlign = return () -- TODO
-scrollToIter _ _ _ _ = fail "Mismatching TextEditor types in scrollToIter"
+scrollToIter _ _ _ _ = liftIO $ fail "Mismatching TextEditor types in scrollToIter"
 #endif
 
-setFont (GtkEditorView sv) mbFontString = do
+setFont :: EditorView -> Maybe String -> IDEM ()
+setFont (GtkEditorView sv) mbFontString = liftIO $ do
     fd <- case mbFontString of
         Just str -> do
             Gtk.fontDescriptionFromString str
@@ -487,7 +578,7 @@ setFont (GtkEditorView sv) mbFontString = do
             return f
     Gtk.widgetModifyFont sv (Just fd)
 #ifdef YI
-setFont (YiEditorView v) mbFontString = do
+setFont (YiEditorView v) mbFontString = liftIO $ do
     fd <- case mbFontString of
         Just str -> do
             Gtk.fontDescriptionFromString str
@@ -498,12 +589,14 @@ setFont (YiEditorView v) mbFontString = do
     Gtk.layoutSetFontDescription (Yi.layout v) (Just fd)
 #endif
 
-setIndentWidth (GtkEditorView sv) width = Gtk.sourceViewSetIndentWidth sv width
+setIndentWidth :: EditorView -> Int -> IDEM ()
+setIndentWidth (GtkEditorView sv) width = liftIO $ Gtk.sourceViewSetIndentWidth sv width
 #ifdef YI
 setIndentWidth (YiEditorView v) width = return () -- TODO
 #endif
 
-setRightMargin (GtkEditorView sv) mbRightMargin = do
+setRightMargin :: EditorView -> Maybe Int -> IDEM ()
+setRightMargin (GtkEditorView sv) mbRightMargin = liftIO $ do
     case mbRightMargin of
         Just n -> do
             Gtk.sourceViewSetShowRightMargin sv True
@@ -513,23 +606,30 @@ setRightMargin (GtkEditorView sv) mbRightMargin = do
 setRightMargin (YiEditorView v) mbRightMargin = return () -- TODO
 #endif
 
-setShowLineNumbers (GtkEditorView sv) show = Gtk.sourceViewSetShowLineNumbers sv show
+setShowLineNumbers :: EditorView -> Bool -> IDEM ()
+setShowLineNumbers (GtkEditorView sv) show = liftIO $ Gtk.sourceViewSetShowLineNumbers sv show
 #ifdef YI
 setShowLineNumbers (YiEditorView v) show = return () -- TODO
 #endif
 
-setTabWidth (GtkEditorView sv) width = Gtk.sourceViewSetTabWidth sv width
+setTabWidth :: EditorView -> Int -> IDEM ()
+setTabWidth (GtkEditorView sv) width = liftIO $ Gtk.sourceViewSetTabWidth sv width
 #ifdef YI
 setTabWidth (YiEditorView v) width = return () -- TODO
 #endif
 
 -- Iterator
-backwardChar (GtkEditorIter i) = Gtk.textIterBackwardChar i
+backwardChar :: EditorIter -> IDEM Bool
+backwardChar (GtkEditorIter i) = liftIO $ Gtk.textIterBackwardChar i
 #ifdef YI
 backwardChar (YiEditorIter) = return False -- TODO
 #endif
 
-backwardFindChar (GtkEditorIter i) pred mbLimit = Gtk.textIterBackwardFindChar i pred (
+backwardFindChar :: EditorIter
+                    -> (Char -> Bool)
+                    -> Maybe EditorIter
+                    -> IDEM Bool
+backwardFindChar (GtkEditorIter i) pred mbLimit = liftIO $ Gtk.textIterBackwardFindChar i pred (
     case mbLimit of
         Just (GtkEditorIter limit) -> Just limit
         Nothing                    -> Nothing
@@ -538,32 +638,41 @@ backwardFindChar (GtkEditorIter i) pred mbLimit = Gtk.textIterBackwardFindChar i
 backwardFindChar (YiEditorIter) pred mbLimit = return False -- TODO
 #endif
 
-backwardWordStart (GtkEditorIter i) = Gtk.textIterBackwardWordStart i
+backwardWordStart :: EditorIter -> IDEM Bool
+backwardWordStart (GtkEditorIter i) = liftIO $ Gtk.textIterBackwardWordStart i
 #ifdef YI
 backwardWordStart (YiEditorIter) = return False -- TODO
 #endif
 
-copyIter (GtkEditorIter i) = fmap GtkEditorIter $ Gtk.textIterCopy i
+copyIter :: EditorIter -> IDEM EditorIter
+copyIter (GtkEditorIter i) = liftIO $ fmap GtkEditorIter $ Gtk.textIterCopy i
 #ifdef YI
 copyIter (YiEditorIter) = return YiEditorIter -- TODO
 #endif
 
-endsWord (GtkEditorIter i) = Gtk.textIterEndsWord i
+endsWord :: EditorIter -> IDEM Bool
+endsWord (GtkEditorIter i) = liftIO $ Gtk.textIterEndsWord i
 #ifdef YI
 endsWord (YiEditorIter) = return False -- TODO
 #endif
 
-forwardChar (GtkEditorIter i) = Gtk.textIterForwardChar i
+forwardChar :: EditorIter -> IDEM Bool
+forwardChar (GtkEditorIter i) = liftIO $ Gtk.textIterForwardChar i
 #ifdef YI
 forwardChar (YiEditorIter) = return False -- TODO
 #endif
 
-forwardChars (GtkEditorIter i) n = Gtk.textIterForwardChars i n
+forwardChars :: EditorIter -> Int -> IDEM Bool
+forwardChars (GtkEditorIter i) n = liftIO $ Gtk.textIterForwardChars i n
 #ifdef YI
 forwardChars (YiEditorIter) n = return False -- TODO
 #endif
 
-forwardFindChar (GtkEditorIter i) pred mbLimit = Gtk.textIterForwardFindChar i pred (
+forwardFindChar :: EditorIter
+                   -> (Char -> Bool)
+                   -> Maybe EditorIter
+                   -> IDEM Bool
+forwardFindChar (GtkEditorIter i) pred mbLimit = liftIO $ Gtk.textIterForwardFindChar i pred (
     case mbLimit of
         Just (GtkEditorIter limit) -> Just limit
         Nothing                    -> Nothing
@@ -572,7 +681,12 @@ forwardFindChar (GtkEditorIter i) pred mbLimit = Gtk.textIterForwardFindChar i p
 forwardFindChar (YiEditorIter) pred mbLimit = return False -- TODO
 #endif
 
-forwardSearch (GtkEditorIter i) str flags mbLimit =
+forwardSearch :: EditorIter
+                 -> String
+                 -> [Gtk.TextSearchFlags]
+                 -> Maybe EditorIter
+                 -> IDEM (Maybe (EditorIter, EditorIter))
+forwardSearch (GtkEditorIter i) str flags mbLimit = liftIO $
     fmap (fmap (\(start, end) -> (GtkEditorIter start, GtkEditorIter end))) $
         Gtk.textIterForwardSearch i str flags (
             case mbLimit of
@@ -583,79 +697,94 @@ forwardSearch (GtkEditorIter i) str flags mbLimit =
 forwardSearch (YiEditorIter) str pred mbLimit = return Nothing -- TODO
 #endif
 
-forwardToLineEnd (GtkEditorIter i) = Gtk.textIterForwardChar i
+forwardToLineEnd :: EditorIter -> IDEM Bool
+forwardToLineEnd (GtkEditorIter i) = liftIO $ Gtk.textIterForwardChar i
 #ifdef YI
 forwardToLineEnd (YiEditorIter) = return False -- TODO
 #endif
 
-forwardWordEnd (GtkEditorIter i) = Gtk.textIterForwardWordEnd i
+forwardWordEnd :: EditorIter -> IDEM Bool
+forwardWordEnd (GtkEditorIter i) = liftIO $ Gtk.textIterForwardWordEnd i
 #ifdef YI
 forwardWordEnd (YiEditorIter) = return False -- TODO
 #endif
 
-getChar (GtkEditorIter i) = Gtk.textIterGetChar i
+getChar :: EditorIter -> IDEM (Maybe Char)
+getChar (GtkEditorIter i) = liftIO $ Gtk.textIterGetChar i
 #ifdef YI
 getChar (YiEditorIter) = return Nothing -- TODO
 #endif
 
-getCharsInLine (GtkEditorIter i) = Gtk.textIterGetCharsInLine i
+getCharsInLine :: EditorIter -> IDEM Int
+getCharsInLine (GtkEditorIter i) = liftIO $ Gtk.textIterGetCharsInLine i
 #ifdef YI
 getCharsInLine (YiEditorIter) = return 0 -- TODO
 #endif
 
-getLine (GtkEditorIter i) = Gtk.textIterGetLine i
+getLine :: EditorIter -> IDEM Int
+getLine (GtkEditorIter i) = liftIO $ Gtk.textIterGetLine i
 #ifdef YI
 getLine (YiEditorIter) = return 0 -- TODO
 #endif
 
-getLineOffset (GtkEditorIter i) = Gtk.textIterGetLineOffset i
+getLineOffset :: EditorIter -> IDEM Int
+getLineOffset (GtkEditorIter i) = liftIO $ Gtk.textIterGetLineOffset i
 #ifdef YI
 getLineOffset (YiEditorIter) = return 0 -- TODO
 #endif
 
-getOffset (GtkEditorIter i) = Gtk.textIterGetOffset i
+getOffset :: EditorIter -> IDEM Int
+getOffset (GtkEditorIter i) = liftIO $ Gtk.textIterGetOffset i
 #ifdef YI
 getOffset (YiEditorIter) = return 0 -- TODO
 #endif
 
-isStart (GtkEditorIter i) = Gtk.textIterIsStart i
+isStart :: EditorIter -> IDEM Bool
+isStart (GtkEditorIter i) = liftIO $ Gtk.textIterIsStart i
 #ifdef YI
 isStart (YiEditorIter) = return False -- TODO
 #endif
 
-isEnd (GtkEditorIter i) = Gtk.textIterIsEnd i
+isEnd :: EditorIter -> IDEM Bool
+isEnd (GtkEditorIter i) = liftIO $ Gtk.textIterIsEnd i
 #ifdef YI
 isEnd (YiEditorIter) = return False -- TODO
 #endif
 
-iterEqual (GtkEditorIter i1) (GtkEditorIter i2) = Gtk.textIterEqual i1 i2
+iterEqual :: EditorIter -> EditorIter -> IDEM Bool
+iterEqual (GtkEditorIter i1) (GtkEditorIter i2) = liftIO $ Gtk.textIterEqual i1 i2
 #ifdef YI
 iterEqual (YiEditorIter) (YiEditorIter) = return False -- TODO
-iterEqual _ _ = fail "Mismatching TextEditor types in iterEqual"
+iterEqual _ _ = liftIO $ fail "Mismatching TextEditor types in iterEqual"
 #endif
 
-startsLine (GtkEditorIter i) = Gtk.textIterStartsLine i
+startsLine :: EditorIter -> IDEM Bool
+startsLine (GtkEditorIter i) = liftIO $ Gtk.textIterStartsLine i
 #ifdef YI
 startsLine (YiEditorIter) = return False -- TODO
 #endif
 
-setLine (GtkEditorIter i) line = Gtk.textIterSetLine i line
+setLine :: EditorIter -> Int -> IDEM ()
+setLine (GtkEditorIter i) line = liftIO $ Gtk.textIterSetLine i line
 #ifdef YI
 setLine (YiEditorIter) line = return () -- TODO
 #endif
 
-setLineOffset (GtkEditorIter i) column = Gtk.textIterSetLineOffset i column
+setLineOffset :: EditorIter -> Int -> IDEM ()
+setLineOffset (GtkEditorIter i) column = liftIO $ Gtk.textIterSetLineOffset i column
 #ifdef YI
 setLineOffset (YiEditorIter) column = return () -- TODO
 #endif
 
-setOffset (GtkEditorIter i) offset = Gtk.textIterSetOffset i offset
+setOffset :: EditorIter -> Int -> IDEM ()
+setOffset (GtkEditorIter i) offset = liftIO $ Gtk.textIterSetOffset i offset
 #ifdef YI
 setOffset (YiEditorIter) offset = return () -- TODO
 #endif
 
 -- Tag Table
-newTag (GtkEditorTagTable tt) name = do
+newTag :: EditorTagTable -> String -> IDEM EditorTag
+newTag (GtkEditorTagTable tt) name = liftIO $ do
     t <- Gtk.textTagNew (Just name)
     Gtk.textTagTableAdd tt t
     return $ GtkEditorTag t
@@ -663,143 +792,194 @@ newTag (GtkEditorTagTable tt) name = do
 newTag (YiEditorTagTable) name = return YiEditorTag -- TODO
 #endif
 
-lookupTag (GtkEditorTagTable tt) name = fmap (fmap GtkEditorTag) $ Gtk.textTagTableLookup tt name
+lookupTag :: EditorTagTable -> String -> IDEM (Maybe EditorTag)
+lookupTag (GtkEditorTagTable tt) name = liftIO $ fmap (fmap GtkEditorTag) $ Gtk.textTagTableLookup tt name
 #ifdef YI
 lookupTag (YiEditorTagTable) name = return Nothing -- TODO
 #endif
 
 -- Tag
-background (GtkEditorTag t) color = Gtk.set t [Gtk.textTagBackground := colorHexString color]
+background :: EditorTag -> Gtk.Color -> IDEM ()
+background (GtkEditorTag t) color = liftIO $ Gtk.set t [Gtk.textTagBackground := colorHexString color]
 #ifdef YI
 background (YiEditorTag) color = return () -- TODO
 #endif
 
-underline (GtkEditorTag t) value = Gtk.set t [Gtk.textTagUnderline := value]
+underline :: EditorTag -> Gtk.Underline -> IDEM ()
+underline (GtkEditorTag t) value = liftIO $ Gtk.set t [Gtk.textTagUnderline := value]
 #ifdef YI
 underline (YiEditorTag) value = return () -- TODO
 #endif
 
 -- Events
+afterFocusIn :: EditorView -> IDEM () -> IDEM [Connection]
 afterFocusIn (GtkEditorView sv) f = do
-    id1 <- sv `Gtk.afterFocusIn` \_ -> f >> return False
-    return [ConnectC id1]
+    ideR <- ask
+    liftIO $ do
+        id1 <- sv `Gtk.afterFocusIn` \_ -> reflectIDE f ideR >> return False
+        return [ConnectC id1]
 #ifdef YI
 afterFocusIn (YiEditorView v) f = do
-    id1 <- (Yi.drawArea v) `Gtk.afterFocusIn` \_ -> f >> return False
-    return [ConnectC id1]
+    ideR <- ask
+    liftIO $ do
+        id1 <- (Yi.drawArea v) `Gtk.afterFocusIn` \_ -> reflectIDE f ideR >> return False
+        return [ConnectC id1]
 #endif
 
+afterModifiedChanged :: EditorBuffer -> IDEM () -> IDEM [Connection]
 afterModifiedChanged (GtkEditorBuffer sb) f = do
-    id1 <- sb `Gtk.afterModifiedChanged` f
-    return [ConnectC id1]
+    ideR <- ask
+    liftIO $ do
+        id1 <- sb `Gtk.afterModifiedChanged` reflectIDE f ideR
+        return [ConnectC id1]
 #ifdef YI
 afterModifiedChanged (YiEditorBuffer b) f = return [] -- TODO
 #endif
 
+afterMoveCursor :: EditorView -> IDEM () -> IDEM [Connection]
 afterMoveCursor (GtkEditorView sv) f = do
+    ideR <- ask
     GtkEditorBuffer sb <- getBuffer (GtkEditorView sv)
-    id1 <- sv `Gtk.afterMoveCursor` \_ _ _ -> f
-    sv `Gtk.widgetAddEvents` [Gtk.ButtonReleaseMask]
-    id2 <- sv `Gtk.onButtonRelease` \_ -> f >> return False
-    id3 <- sb `Gtk.afterEndUserAction` f
-    return [ConnectC id1, ConnectC id2, ConnectC id3]
+    liftIO $ do
+        id1 <- sv `Gtk.afterMoveCursor` \_ _ _ -> reflectIDE f ideR
+        sv `Gtk.widgetAddEvents` [Gtk.ButtonReleaseMask]
+        id2 <- sv `Gtk.onButtonRelease` \_ -> reflectIDE f ideR >> return False
+        id3 <- sb `Gtk.afterEndUserAction` reflectIDE f ideR
+        return [ConnectC id1, ConnectC id2, ConnectC id3]
 #ifdef YI
 afterMoveCursor (YiEditorView v) f = return [] -- TODO
 #endif
 
+afterToggleOverwrite :: EditorView -> IDEM () -> IDEM [Connection]
 afterToggleOverwrite (GtkEditorView sv) f = do
-    id1 <- sv `Gtk.afterToggleOverwrite` f
-    return [ConnectC id1]
+    ideR <- ask
+    liftIO $ do
+        id1 <- sv `Gtk.afterToggleOverwrite` reflectIDE f ideR
+        return [ConnectC id1]
 #ifdef YI
 afterToggleOverwrite (YiEditorView v) f = return [] -- TODO
 #endif
 
+onButtonPress :: EditorView
+                 -> (GtkOld.Event -> IDEM Bool)
+                 -> IDEM [Connection]
 onButtonPress (GtkEditorView sv) f = do
-    id1 <- sv `Gtk.onButtonPress` f
-    return [ConnectC id1]
+    ideR <- ask
+    liftIO $ do
+        id1 <- sv `Gtk.onButtonPress` \event -> reflectIDE (f event) ideR
+        return [ConnectC id1]
 #ifdef YI
 onButtonPress (YiEditorView v) f = do
-    id1 <- (Yi.drawArea v) `Gtk.onButtonPress` f
-    return [ConnectC id1]
+    ideR <- ask
+    liftIO $ do
+        id1 <- (Yi.drawArea v) `Gtk.onButtonPress` \event -> reflectIDE (f event) ideR
+        return [ConnectC id1]
 #endif
 
+onCompletion :: EditorView -> IDEM () -> IDEM () -> IDEM [Connection]
 onCompletion (GtkEditorView sv) start cancel = do
+    ideR <- ask
     (GtkEditorBuffer sb) <- getBuffer (GtkEditorView sv)
-    id1 <- sb `Gtk.afterBufferInsertText` \iter text ->
-        if (all (\c -> (isAlphaNum c) || (c == '.') || (c == '_')) text)
-            then do
-                hasSel <- hasSelection (GtkEditorBuffer sb)
-                if not hasSel
-                    then do
-                        (iterC, _) <- getSelectionBounds (GtkEditorBuffer sb)
-                        atC <- iterEqual (GtkEditorIter iter) iterC
-                        when atC $ start
-                    else
-                        cancel
-            else
-                cancel
-    id2 <- sv `Gtk.onMoveCursor` \_ _ _ -> cancel
-    id3 <- sv `Gtk.onButtonPress` \_ -> cancel >> return False
-    return [ConnectC id1]
+    liftIO $ do
+        id1 <- sb `Gtk.afterBufferInsertText` \iter text ->
+            if (all (\c -> (isAlphaNum c) || (c == '.') || (c == '_')) text)
+                then do
+                    hasSel <- Gtk.textBufferHasSelection sb
+                    if not hasSel
+                        then do
+                            (iterC, _) <- Gtk.textBufferGetSelectionBounds sb
+                            atC <- Gtk.textIterEqual iter iterC
+                            when atC $ reflectIDE start ideR
+                        else
+                            reflectIDE cancel ideR
+                else
+                    reflectIDE cancel ideR
+        id2 <- sv `Gtk.onMoveCursor` \_ _ _ -> reflectIDE cancel ideR
+        id3 <- sv `Gtk.onButtonPress` \_ -> reflectIDE cancel ideR >> return False
+        return [ConnectC id1]
 #ifdef YI
 onCompletion (YiEditorView v) start cancel = return [] -- TODO
 #endif
 
+onKeyPress :: EditorView
+              -> (String -> [Gtk.Modifier] -> Gtk.KeyVal -> IDEM Bool)
+              -> IDEM [Connection]
 onKeyPress (GtkEditorView sv) f = do
-    id1 <- sv `Gtk.on` Gtk.keyPressEvent $ do
-        name        <- Gtk.eventKeyName
-        modifier    <- Gtk.eventModifier
-        keyVal      <- Gtk.eventKeyVal
-        liftIO $ f name modifier keyVal
-    return [ConnectC id1]
+    ideR <- ask
+    liftIO $ do
+        id1 <- sv `Gtk.on` Gtk.keyPressEvent $ do
+            name        <- Gtk.eventKeyName
+            modifier    <- Gtk.eventModifier
+            keyVal      <- Gtk.eventKeyVal
+            liftIO $ reflectIDE (f name modifier keyVal) ideR
+        return [ConnectC id1]
 #ifdef YI
 onKeyPress (YiEditorView v) f = do
-    id1 <- (Yi.drawArea v) `Gtk.on` Gtk.keyPressEvent $ do
-        name        <- Gtk.eventKeyName
-        modifier    <- Gtk.eventModifier
-        keyVal      <- Gtk.eventKeyVal
-        liftIO $ f name modifier keyVal
-    return [ConnectC id1]
+    ideR <- ask
+    liftIO $ do
+        id1 <- (Yi.drawArea v) `Gtk.on` Gtk.keyPressEvent $ do
+            name        <- Gtk.eventKeyName
+            modifier    <- Gtk.eventModifier
+            keyVal      <- Gtk.eventKeyVal
+            liftIO $ reflectIDE (f name modifier keyVal) ideR
+        return [ConnectC id1]
 #endif
 
+onKeyRelease :: EditorView
+                -> (String -> [Gtk.Modifier] -> Gtk.KeyVal -> IDEM Bool)
+                -> IDEM [Connection]
 onKeyRelease (GtkEditorView sv) f = do
-    id1 <- sv `Gtk.on` Gtk.keyReleaseEvent $ do
-        name        <- Gtk.eventKeyName
-        modifier    <- Gtk.eventModifier
-        keyVal      <- Gtk.eventKeyVal
-        liftIO $ f name modifier keyVal
-    return [ConnectC id1]
+    ideR <- ask
+    liftIO $ do
+        id1 <- sv `Gtk.on` Gtk.keyReleaseEvent $ do
+            name        <- Gtk.eventKeyName
+            modifier    <- Gtk.eventModifier
+            keyVal      <- Gtk.eventKeyVal
+            liftIO $ reflectIDE (f name modifier keyVal) ideR
+        return [ConnectC id1]
 #ifdef YI
 onKeyRelease (YiEditorView v) f = do
-    id1 <- (Yi.drawArea v) `Gtk.on` Gtk.keyReleaseEvent $ do
-        name        <- Gtk.eventKeyName
-        modifier    <- Gtk.eventModifier
-        keyVal      <- Gtk.eventKeyVal
-        liftIO $ f name modifier keyVal
-    return [ConnectC id1]
+    ideR <- ask
+    liftIO $ do
+        id1 <- (Yi.drawArea v) `Gtk.on` Gtk.keyReleaseEvent $ do
+            name        <- Gtk.eventKeyName
+            modifier    <- Gtk.eventModifier
+            keyVal      <- Gtk.eventKeyVal
+            liftIO $ reflectIDE (f name modifier keyVal) ideR
+        return [ConnectC id1]
 #endif
 
+onLookupInfo :: EditorView -> IDEM () -> IDEM [Connection]
 onLookupInfo (GtkEditorView sv) f = do
-    sv `Gtk.widgetAddEvents` [Gtk.ButtonReleaseMask]
-    id1 <- sv `Gtk.onButtonRelease` \e -> when (controlIsPressed e) f >> return False
-    return [ConnectC id1]
+    ideR <- ask
+    liftIO $ do
+        sv `Gtk.widgetAddEvents` [Gtk.ButtonReleaseMask]
+        id1 <- sv `Gtk.onButtonRelease` \e -> when (controlIsPressed e) (reflectIDE f ideR) >> return False
+        return [ConnectC id1]
 #ifdef YI
 onLookupInfo (YiEditorView v) f = do
-    (Yi.drawArea v) `Gtk.widgetAddEvents` [Gtk.ButtonReleaseMask]
-    id1 <- (Yi.drawArea v) `Gtk.onButtonRelease` \e -> when (controlIsPressed e) f >> return False
-    return [ConnectC id1]
+    ideR <- ask
+    liftIO $ do
+        (Yi.drawArea v) `Gtk.widgetAddEvents` [Gtk.ButtonReleaseMask]
+        id1 <- (Yi.drawArea v) `Gtk.onButtonRelease` \e -> when (controlIsPressed e) (reflectIDE f ideR) >> return False
+        return [ConnectC id1]
 #endif
 
+onPopulatePopup :: EditorView -> (Gtk.Menu -> IDEM ()) -> IDEM [Connection]
 onPopulatePopup (GtkEditorView sv) f = do
-    id1 <- sv `Gtk.onPopulatePopup` f
-    return [ConnectC id1]
+    ideR <- ask
+    liftIO $ do
+        id1 <- sv `Gtk.onPopulatePopup` \menu -> reflectIDE (f menu) ideR
+        return [ConnectC id1]
 #ifdef YI
 onPopulatePopup (YiEditorView v) f = do
-    id1 <- (Yi.drawArea v) `Gtk.onPopupMenu` do
-         menu <- Gtk.menuNew
-         f menu
-         Gtk.menuPopup menu Nothing
-    return [ConnectC id1]
+    ideR <- ask
+    liftIO $ do
+        id1 <- (Yi.drawArea v) `Gtk.onPopupMenu` do
+             menu <- Gtk.menuNew
+             reflectIDE (f menu) ideR
+             Gtk.menuPopup menu Nothing
+        return [ConnectC id1]
 #endif
 
 

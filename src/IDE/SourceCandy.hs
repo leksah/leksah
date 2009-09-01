@@ -48,7 +48,7 @@ notBeforeOp     =   Set.fromList $['!','#','$','%','&','*','+','.','/','<','=','
                                     '^','|','-','~','\'','"','\n']
 notAfterOp      =   notBeforeOp
 
-keystrokeCandy :: CandyTable -> Maybe Char -> EditorBuffer -> IO ()
+keystrokeCandy :: CandyTable -> Maybe Char -> EditorBuffer -> IDEM ()
 keystrokeCandy (CT(transformTable,_)) mbc ebuf = do
     cursorMark  <-  getInsertMark ebuf
     endIter     <-  getIterAtMark ebuf cursorMark
@@ -62,7 +62,7 @@ keystrokeCandy (CT(transformTable,_)) mbc ebuf = do
                             getChar endIter
     replace mbc2 cursorMark slice offset transformTable
     where
-    replace ::  Maybe Char -> EditorMark -> String -> Int -> [(Bool,String,String)] -> IO ()
+    replace ::  Maybe Char -> EditorMark -> String -> Int -> [(Bool,String,String)] -> IDEM ()
     replace mbAfterChar cursorMark match offset list = replace' list
         where
         replace' [] = return ()
@@ -88,7 +88,7 @@ keystrokeCandy (CT(transformTable,_)) mbc ebuf = do
                     endNotUndoableAction ebuf
                 else replace mbAfterChar cursorMark match offset rest
 
-transformToCandy :: CandyTable -> EditorBuffer -> IO ()
+transformToCandy :: CandyTable -> EditorBuffer -> IDEM ()
 transformToCandy (CT(transformTable,_)) ebuf = do
     beginUserAction ebuf
     modified    <-  getModified ebuf
@@ -97,7 +97,7 @@ transformToCandy (CT(transformTable,_)) ebuf = do
     endUserAction ebuf
 
 
-replaceTo :: EditorBuffer -> (Bool,String,String) -> Int -> IO ()
+replaceTo :: EditorBuffer -> (Bool,String,String) -> Int -> IDEM ()
 replaceTo buf (isOp,from,to) offset = replaceTo' offset
     where
     replaceTo' offset = do
@@ -140,7 +140,7 @@ replaceTo buf (isOp,from,to) offset = replaceTo' offset
                     return ()
                 replaceTo' (stOff + 1)
 
-transformFromCandy :: CandyTable -> EditorBuffer -> IO ()
+transformFromCandy :: CandyTable -> EditorBuffer -> IDEM ()
 transformFromCandy (CT(_,transformTableBack)) ebuf = do
     beginUserAction ebuf
     modified    <-  getModified ebuf
@@ -148,48 +148,44 @@ transformFromCandy (CT(_,transformTableBack)) ebuf = do
     endUserAction ebuf
     setModified ebuf modified
 
-getCandylessText :: CandyTable -> EditorBuffer -> IO String
+getCandylessText :: CandyTable -> EditorBuffer -> IDEM String
 getCandylessText (CT(_,transformTableBack)) ebuf = do
-    workBuffer  <-  newGtkBuffer Nothing
     i1          <-  getStartIter ebuf
     i2          <-  getEndIter ebuf
     text1       <-  getText ebuf i1 i2 True
-    setText workBuffer text1
+    workBuffer  <-  newGtkBuffer Nothing text1
     mapM_ (\tbl ->  replaceFrom workBuffer tbl 0) transformTableBack
     i1          <-  getStartIter workBuffer
     i2          <-  getEndIter workBuffer
     text2       <-  getText workBuffer i1 i2 True
     return text2
 
-getCandylessPart :: CandyTable -> EditorBuffer -> EditorIter -> EditorIter -> IO String
+getCandylessPart :: CandyTable -> EditorBuffer -> EditorIter -> EditorIter -> IDEM String
 getCandylessPart (CT(_,transformTableBack)) ebuf i1 i2 = do
-    workBuffer  <-  newGtkBuffer Nothing
     text1       <-  getText ebuf i1 i2 True
-    setText workBuffer text1
+    workBuffer  <-  newGtkBuffer Nothing text1
     mapM_ (\tbl ->  replaceFrom workBuffer tbl 0) transformTableBack
     i1          <-  getStartIter workBuffer
     i2          <-  getEndIter workBuffer
     text2       <-  getText workBuffer i1 i2 True
     return text2
 
-stringToCandy :: CandyTable -> String -> IO String
+stringToCandy :: CandyTable -> String -> IDEM String
 stringToCandy  candyTable text = do
-    workBuffer  <-  newGtkBuffer Nothing
-    setText workBuffer text
+    workBuffer  <-  newGtkBuffer Nothing text
     transformToCandy candyTable workBuffer
     i1          <-  getStartIter workBuffer
     i2          <-  getEndIter workBuffer
     text2       <-  getText workBuffer i1 i2 True
     return text2
 
-positionFromCandy :: CandyTable -> EditorBuffer -> (Int,Int) -> IO (Int,Int)
+positionFromCandy :: CandyTable -> EditorBuffer -> (Int,Int) -> IDEM (Int,Int)
 positionFromCandy candyTable ebuf (line,column) = do
     i1          <- getIterAtLine ebuf (max 0 (line - 1))
     i2          <- copyIter i1
     forwardToLineEnd i2
     text        <-  getText ebuf i1 i2 True
-    workBuffer  <-  newGtkBuffer Nothing
-    setText workBuffer text
+    workBuffer  <-  newGtkBuffer Nothing text
     i3          <- getIterAtOffset workBuffer column
     mark        <- createMark workBuffer Nothing i3 True
     transformFromCandy candyTable workBuffer
@@ -197,14 +193,13 @@ positionFromCandy candyTable ebuf (line,column) = do
     columnNew   <- getLineOffset i4
     return (line,columnNew)
 
-positionToCandy :: CandyTable -> EditorBuffer -> (Int,Int) -> IO (Int,Int)
+positionToCandy :: CandyTable -> EditorBuffer -> (Int,Int) -> IDEM (Int,Int)
 positionToCandy candyTable ebuf (line,column) = do
     i1          <- getIterAtLine ebuf (max 0 (line - 1))
     i2          <- copyIter i1
     forwardToLineEnd i2
     text        <-  getText ebuf i1 i2 True
-    workBuffer  <-  newGtkBuffer Nothing
-    setText workBuffer text
+    workBuffer  <-  newGtkBuffer Nothing text
     transformFromCandy candyTable workBuffer
     i3          <- getIterAtOffset workBuffer column
     mark        <- createMark workBuffer Nothing i3 True
@@ -213,7 +208,7 @@ positionToCandy candyTable ebuf (line,column) = do
     columnNew   <- getLineOffset i4
     return (line,columnNew)
 
-replaceFrom :: EditorBuffer -> (String,String,Int) -> Int -> IO ()
+replaceFrom :: EditorBuffer -> (String,String,Int) -> Int -> IDEM ()
 replaceFrom buf (to,from,spaces) offset = replaceFrom' offset
     where
     replaceFrom' offset = do

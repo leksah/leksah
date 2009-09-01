@@ -223,9 +223,9 @@ belongsToActivePackage ideBuf =
                                                             then return True
                                                             else do
                                                             --        do
-                                                                gtkbuf <- liftIO $ getBuffer (sourceView ideBuf)
+                                                                gtkbuf <- getBuffer (sourceView ideBuf)
                                                                 candy  <- readIDE candy
-                                                                text   <- liftIO $ getCandylessText candy gtkbuf
+                                                                text   <- getCandylessText candy gtkbuf
                                                                 mbMn <- liftIO $ moduleNameFromFilePath' fp text
                                                                 case mbMn of
                                                                     Nothing -> return False

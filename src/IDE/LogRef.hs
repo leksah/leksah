@@ -92,7 +92,7 @@ markLogRefs = do
 
 unmarkLogRefs :: IDEAction
 unmarkLogRefs = do
-    forOpenLogRefs $ \index logRef buf -> liftIO $ do
+    forOpenLogRefs $ \index logRef buf -> do
             gtkbuf  <-  getBuffer (sourceView buf)
             i1      <-  getStartIter gtkbuf
             i2      <-  getEndIter gtkbuf

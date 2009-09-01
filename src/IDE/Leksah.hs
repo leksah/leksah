@@ -37,6 +37,11 @@ import System.Directory
 import IDE.OSX
 #endif
 
+#ifdef YI
+import qualified Yi as Yi
+import qualified Yi.UI.Pango.Control as Yi
+#endif
+
 import Paths_leksah
 import IDE.SaveSession
 import IDE.Core.State
@@ -198,6 +203,10 @@ startGUI sessionFilename iprefs = do
             ,   layout        =   (TerminalP Map.empty Nothing (-1) Nothing Nothing)
             ,   panePathFromNB =  Map.empty
             }
+#ifdef YI
+    yiControl <- Yi.newControl Yi.defaultVimConfig
+#endif
+
     let ide = IDE
           {   frameState    =   fs
           ,   recentPanes   =   []
@@ -222,6 +231,9 @@ startGUI sessionFilename iprefs = do
           ,   runningTool     =   Nothing
           ,   ghciState       =   Nothing
           ,   completion      =   Nothing
+#ifdef YI
+          ,   yiControl       =   yiControl
+#endif
     }
     ideR        <-  newIORef ide
     reflectIDE (initInfo :: IDEAction) ideR

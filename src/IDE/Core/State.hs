@@ -89,6 +89,10 @@ module IDE.Core.State (
 ,   getRecentPackages
 ,   controlIsPressed
 
+#ifdef YI
+,   liftYiControl
+#endif
+
 ,   Session
 
 ,   module IDE.Core.Types
@@ -112,6 +116,12 @@ import HscTypes hiding (liftIO)
 import Data.Unique
 import Control.Exception
 import Prelude hiding (catch)
+
+#ifdef YI
+import qualified Yi as Yi
+import qualified Yi.UI.Pango.Control as Yi
+import Control.Monad.State
+#endif
 
 import IDE.Core.Types
 import Graphics.UI.Frame.Panes
@@ -183,6 +193,9 @@ data IDE            =  IDE {
 ,   runningTool     ::   Maybe ProcessHandle
 ,   ghciState       ::   Maybe ToolState
 ,   completion      ::   Maybe CompletionWindow
+#ifdef YI
+,   yiControl       ::   Yi.Control
+#endif
 } --deriving Show
 
 -- Main window is just the first one in the list
@@ -322,6 +335,15 @@ reifyIDE = ReaderT
 
 reflectIDE :: IDEM a -> IDERef -> IO a
 reflectIDE c ideR = runReaderT c ideR
+
+#ifdef YI
+
+liftYiControl :: Yi.ControlM a -> IDEM a
+liftYiControl f = do
+    control <- readIDE yiControl
+    liftIO $ Yi.runControl f control
+
+#endif
 
 catchIDE :: Exception e	=> IDEM a -> (e -> IO a) -> IDEM a
 catchIDE block handler = reifyIDE (\ideR -> catch (reflectIDE block ideR) handler)

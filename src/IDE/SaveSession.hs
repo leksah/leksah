@@ -240,7 +240,7 @@ saveSessionAs sessionPath = do
             sysMessage Normal "Now saving session"
             bufs <- allBuffers
             case filter (\b -> bufferName b == "_Eval.hs") bufs of
-                [buf] -> liftIO $ do
+                [buf] -> do
                     ebuf <- getBuffer (sourceView buf)
                     setModified ebuf False
                 _     -> return ()

@@ -196,7 +196,7 @@ prefsDescription packages = NFDPP [
             boolEditor
             (\b -> do
                 buffers <- allBuffers
-                mapM_ (\buf -> liftIO $ setShowLineNumbers (sourceView buf) b) buffers)
+                mapM_ (\buf -> setShowLineNumbers (sourceView buf) b) buffers)
     ,   mkFieldPP
             (paraName <<<- ParaName "TextView Font" $ emptyParams)
             (\a -> PP.text (case a of Nothing -> show ""; Just s -> show s))
@@ -207,7 +207,7 @@ prefsDescription packages = NFDPP [
             fontEditor
             (\mbs -> do
                 buffers <- allBuffers
-                liftIO $mapM_ (\buf -> setFont (sourceView buf) mbs) buffers)
+                mapM_ (\buf -> setFont (sourceView buf) mbs) buffers)
     ,   mkFieldPP
             (paraName <<<- ParaName "Right margin"
                 $ paraSynopsis <<<- ParaSynopsis "Size or 0 for no right margin"
@@ -222,7 +222,7 @@ prefsDescription packages = NFDPP [
                     True "Show it ?")
             (\b -> do
                 buffers <- allBuffers
-                mapM_ (\buf -> liftIO $ setRightMargin (sourceView buf) b) buffers)
+                mapM_ (\buf -> setRightMargin (sourceView buf) b) buffers)
     ,   mkFieldPP
             (paraName <<<- ParaName "Tab width" $ emptyParams)
             (PP.text . show)
@@ -232,7 +232,7 @@ prefsDescription packages = NFDPP [
             (intEditor (1.0, 20.0, 1.0))
             (\i -> do
                 buffers <- allBuffers
-                mapM_ (\buf -> liftIO $setIndentWidth (sourceView buf) i) buffers)
+                mapM_ (\buf -> setIndentWidth (sourceView buf) i) buffers)
     ,   mkFieldPP
             (paraName <<<- ParaName "Use standard line ends even on windows" $ emptyParams)
             (PP.text . show)
@@ -278,7 +278,7 @@ prefsDescription packages = NFDPP [
             styleEditor
             (\mbs -> do
                 buffers <- allBuffers
-                mapM_ (\buf -> liftIO $ do
+                mapM_ (\buf -> do
                     ebuf <- getBuffer (sourceView buf)
                     setStyle ebuf mbs) buffers)
     ,   mkFieldPP
@@ -290,7 +290,7 @@ prefsDescription packages = NFDPP [
             colorEditor
             (\c -> do
                 buffers <- allBuffers
-                liftIO $ forM_ buffers $ \buf -> do
+                forM_ buffers $ \buf -> do
                     ebuf     <- getBuffer (sourceView buf)
                     tagTable <- getTagTable ebuf
                     mbTag    <- lookupTag tagTable "found"
@@ -306,7 +306,7 @@ prefsDescription packages = NFDPP [
             colorEditor
             (\c -> do
                 buffers <- allBuffers
-                liftIO $ forM_ buffers $ \buf -> do
+                forM_ buffers $ \buf -> do
                     ebuf     <- getBuffer (sourceView buf)
                     tagTable <- getTagTable ebuf
                     --  TODO find and set the tag background
@@ -320,7 +320,7 @@ prefsDescription packages = NFDPP [
             colorEditor
             (\c -> do
                 buffers <- allBuffers
-                liftIO $ forM_ buffers $ \buf -> do
+                forM_ buffers $ \buf -> do
                     ebuf     <- getBuffer (sourceView buf)
                     tagTable <- getTagTable ebuf
                     --  TODO find and set the tag background
