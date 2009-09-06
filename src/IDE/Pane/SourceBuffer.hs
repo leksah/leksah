@@ -270,14 +270,14 @@ goToSourceDefinition fp mbLocation = do
         inActiveBufContext () $ \_ ebuf buf _ -> do
             let location    =   fromJust mbLocation
             lines           <-  getLineCount ebuf
-            iter            <-  getIterAtLine ebuf (max 0 (min (lines-1)
+            iterTemp        <-  getIterAtLine ebuf (max 0 (min (lines-1)
                                     ((locationSLine location) -1)))
-            chars           <-  getCharsInLine iter
-            setLineOffset iter (max 0 (min (chars-1) (locationSCol location)))
-            iter2           <-  getIterAtLine ebuf (max 0 (min (lines-1)
+            chars           <-  getCharsInLine iterTemp
+            iter <- atLineOffset iterTemp (max 0 (min (chars-1) (locationSCol location)))
+            iter2Temp       <-  getIterAtLine ebuf (max 0 (min (lines-1)
                                     ((locationELine location) -1)))
-            chars2          <-  getCharsInLine iter2
-            setLineOffset iter2 (max 0 (min (chars2-1) (locationECol location)))
+            chars2          <-  getCharsInLine iter2Temp
+            iter2 <- atLineOffset iter2Temp (max 0 (min (chars2-1) (locationECol location)))
             placeCursor ebuf iter
             smark           <-  getSelectionBoundMark ebuf
             moveMark ebuf smark iter2
@@ -324,21 +324,21 @@ markRefInSourceBuf index buf logRef scrollTo = do
                     then positionToCandy candy' ebuf end'
                     else return end'
         lines   <-  getLineCount ebuf
-        iter    <-  getIterAtLine ebuf (max 0 (min (lines-1) ((fst start)-1)))
-        chars   <-  getCharsInLine iter
-        setLineOffset iter (max 0 (min (chars-1) (snd start)))
+        iterTmp <-  getIterAtLine ebuf (max 0 (min (lines-1) ((fst start)-1)))
+        chars   <-  getCharsInLine iterTmp
+        iter    <- atLineOffset iterTmp (max 0 (min (chars-1) (snd start)))
 
         iter2 <- if start == end
             then do
-                copy <- copyIter iter
-                forwardWordEnd copy
-                return copy
+                maybeWE <- forwardWordEndC iter
+                case maybeWE of
+                    Nothing -> atEnd iter
+                    Just we -> return we
             else do
-                new     <-  getIterAtLine ebuf (max 0 (min (lines-1) ((fst end)-1)))
-                chars   <-  getCharsInLine new
-                setLineOffset new (max 0 (min (chars-1) (snd end)))
-                forwardChar new
-                return new
+                newTmp  <- getIterAtLine ebuf (max 0 (min (lines-1) ((fst end)-1)))
+                chars   <- getCharsInLine newTmp
+                new     <- atLineOffset newTmp (max 0 (min (chars-1) (snd end)))
+                forwardCharC new
 
         let latest = if null contextRefs then Nothing else Just $ last contextRefs
         let isOldContext = case (logRefType logRef, latest) of
@@ -425,7 +425,6 @@ builder bs mbfn ind bn rbn ct prefs pp nb windows ideR = do
         siter <- getStartIter buffer
         placeCursor buffer siter
         iter <- getEndIter buffer
-        createMark buffer (Just "end") iter True
 
         -- create a new SourceView Widget
         sv <- newView buffer
@@ -452,21 +451,23 @@ builder bs mbfn ind bn rbn ct prefs pp nb windows ideR = do
                     case click of
                         DoubleClick -> do
                             let isSelectChar a = (isAlphaNum a) || (a == '_')
-                            (start, end) <- getSelectionBounds buffer
-                            mbStartChar <- getChar start
-                            mbEndChar <- getChar end
-                            case mbStartChar of
+                            (startSel, endSel) <- getSelectionBounds buffer
+                            mbStartChar <- getChar startSel
+                            mbEndChar <- getChar endSel
+                            start <- case mbStartChar of
                                 Just startChar | isSelectChar startChar -> do
-                                    found <- backwardFindChar start (not.isSelectChar) Nothing
-                                    when found $ do
-                                        forwardChar start
-                                        return ()
-                                _ -> return ()
-                            case mbEndChar of
+                                    maybeIter <- backwardFindCharC startSel (not.isSelectChar) Nothing
+                                    case maybeIter of
+                                        Just iter -> forwardCharC iter
+                                        Nothing   -> return startSel
+                                _ -> return startSel
+                            end <- case mbEndChar of
                                 Just endChar | isSelectChar endChar -> do
-                                    forwardFindChar end (not.isSelectChar) Nothing
-                                    return ()
-                                _ -> return ()
+                                    maybeIter <- forwardFindCharC endSel (not.isSelectChar) Nothing
+                                    case maybeIter of
+                                        Just iter -> return iter
+                                        Nothing   -> return endSel
+                                _ -> return endSel
                             selectRange buffer start end
                             return True
                         _ -> return False) ideR
@@ -944,19 +945,18 @@ doForSelectedLines d f = inActiveBufContext d $ \_ ebuf currentBuffer _ -> do
 editComment :: IDEAction
 editComment = do
     doForSelectedLines [] $ \ebuf iter lineNr -> do
-        setLine iter lineNr
-        insert ebuf iter "--"
+        sol <- atLine iter lineNr
+        insert ebuf sol "--"
     return ()
 
 editUncomment :: IDEAction
 editUncomment = do
     doForSelectedLines [] $ \ebuf iter lineNr -> do
-        setLine iter lineNr
-        iter2 <- copyIter iter
-        forwardChars iter 2
-        str   <- getText ebuf iter iter2 True
+        sol <- atLine iter lineNr
+        sol2 <- forwardCharsC sol 2
+        str   <- getText ebuf sol sol2 True
         if str == "--"
-            then do delete ebuf iter iter2
+            then do delete ebuf sol sol2
             else return ()
     return ()
 
@@ -968,19 +968,17 @@ editShiftLeft = do
     if b
         then do
             doForSelectedLines [] $ \ebuf iter lineNr -> do
-                setLine iter lineNr
-                iter2 <- copyIter iter
-                forwardChars iter (tabWidth prefs)
-                delete ebuf iter iter2
+                sol <- atLine iter lineNr
+                sol2 <- forwardCharsC sol (tabWidth prefs)
+                delete ebuf sol sol2
             return ()
         else return ()
     where
     canShiftLeft str prefs = do
         boolList <- doForSelectedLines [] $ \ebuf iter lineNr -> do
-            setLine iter lineNr
-            iter2 <- copyIter iter
-            forwardChars iter (tabWidth prefs)
-            str1 <- getText ebuf iter iter2 True
+            sol <- atLine iter lineNr
+            sol2 <- forwardCharsC sol (tabWidth prefs)
+            str1 <- getText ebuf sol sol2 True
             return (str1 == str)
         return (foldl' (&&) True boolList)
 
@@ -990,8 +988,8 @@ editShiftRight = do
     prefs <- readIDE prefs
     let str = map (\_->' ') [1 .. (tabWidth prefs)]
     doForSelectedLines [] $ \ebuf iter lineNr -> do
-        setLine iter lineNr
-        insert ebuf iter str
+        sol <- atLine iter lineNr
+        insert ebuf sol str
     return ()
 
 editToCandy :: IDEAction
@@ -1032,19 +1030,17 @@ alignChar char = do
     where
     positionsOfChar :: IDEM ([(Int, Maybe Int)])
     positionsOfChar = doForSelectedLines [] $ \ebuf iter lineNr -> do
-            setLine iter lineNr
-            iter2 <- copyIter iter
-            forwardToLineEnd iter2
-            line  <- getText ebuf iter iter2 True
+            sol <- atLine iter lineNr
+            eol <- forwardToLineEndC sol
+            line  <- getText ebuf sol eol True
             return (lineNr, elemIndex char line)
     alignChar :: Map Int (Maybe Int) -> Int -> IDEM ()
     alignChar positions alignTo = do
             doForSelectedLines [] $ \ebuf iter lineNr -> do
                 case lineNr `Map.lookup` positions of
                     Just (Just n)  ->  do
-                        setLine iter lineNr
-                        forwardChars iter n
-                        insert ebuf iter (replicate (alignTo - n) ' ')
+                        sol  <- atLine iter lineNr
+                        insert ebuf sol (replicate (alignTo - n) ' ')
                     _              ->  return ()
             return ()
 
@@ -1100,8 +1096,7 @@ selectedTextOrCurrentLine = do
                 (i, _) <- getSelectionBounds ebuf
                 line <- getLine i
                 iStart <- getIterAtLine ebuf line
-                iEnd <- copyIter iStart
-                forwardToLineEnd iEnd
+                iEnd <- forwardToLineEndC iStart
                 return (iStart, iEnd)
         fmap Just $ getCandylessPart candy' ebuf i1 i2
 
@@ -1129,11 +1124,10 @@ insertTextAfterSelection str = do
         when hasSelection $ do
             realString <-  if useCandy then stringToCandy candy' str else return str
             (_,i)      <- getSelectionBounds ebuf
-            mark       <- createMark ebuf Nothing i True
+            mark       <- createMark ebuf i True
             insert ebuf i realString
             i1         <- getIterAtMark ebuf mark
-            i2         <- copyIter i1
-            forwardChars i2 (length str)
+            i2         <- forwardCharsC i1 (length str)
             selectRange ebuf i1 i2
 
 selectedModuleName :: IDEM (Maybe String)

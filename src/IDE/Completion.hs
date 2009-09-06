@@ -243,10 +243,10 @@ withWord store treePath f = (do
 replaceWordStart :: EditorView -> String -> IDEM ()
 replaceWordStart sourceView name = do
     buffer <- getBuffer sourceView
-    (start, end) <- getSelectionBounds buffer
+    (selStart, end) <- getSelectionBounds buffer
     isWordEnd <- endsWord end
     when isWordEnd $ do
-        moveToWordStart start
+        start <- findWordStart selStart
         wordStart <- getText buffer start end True
         case stripPrefix wordStart name of
             Just extra -> insert buffer end extra
@@ -271,8 +271,8 @@ tryToUpdateOptions window tree store sourceView selectLCP = do
     ideR <- ask
     liftIO $ listStoreClear (store :: ListStore String)
     buffer <- getBuffer sourceView
-    (start, end) <- getSelectionBounds buffer
-    moveToWordStart start
+    (selStart, end) <- getSelectionBounds buffer
+    start <- findWordStart selStart
     equal <- iterEqual start end
     if equal
         then return False
@@ -285,19 +285,17 @@ tryToUpdateOptions window tree store sourceView selectLCP = do
                 return ()
             return True
 
-moveToWordStart iter = do
-    backwardWordStart iter
-    isStart <- isStart iter
-    when (not isStart) $ do
-        prev <- copyIter iter
-        backwardChar prev
-        maybeChar <- getChar prev
-        case maybeChar of
-            Just '_' -> (do
-                backwardChar iter
-                moveToWordStart iter
-                )
-            _ -> return ()
+findWordStart :: EditorIter -> IDEM EditorIter
+findWordStart iter = do
+    maybeWS <- backwardWordStartC iter
+    case maybeWS of
+        Nothing -> atOffset iter 0
+        Just ws -> do
+            prev <- backwardCharC ws
+            maybeChar <- getChar prev
+            case maybeChar of
+                Just '_' -> findWordStart prev
+                _        -> return ws
 
 longestCommonPrefix (x:xs) (y:ys) | x == y = x : longestCommonPrefix xs ys
 longestCommonPrefix _ _ = []
@@ -308,10 +306,10 @@ processResults window tree store sourceView wordStart options selectLCP = do
         [] -> cancel
         _  -> do
             buffer <- getBuffer sourceView
-            (start, end) <- getSelectionBounds buffer
+            (selStart, end) <- getSelectionBounds buffer
             isWordEnd <- endsWord end
             when isWordEnd $ do
-                moveToWordStart start
+                start <- findWordStart selStart
                 currentWordStart <- getText buffer start end True
                 newWordStart <- do
                     if selectLCP && currentWordStart == wordStart && (not $ null options)

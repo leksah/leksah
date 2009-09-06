@@ -313,9 +313,9 @@ constructFindReplace = reifyIDE $ \ ideR   -> do
         return True) ideR))
 
     spinL `afterEntryActivate` (reflectIDE (inActiveBufContext () $ \_ gtkbuf currentBuffer _ -> do
-        line <- liftIO $ spinButtonGetValueAsInt spinL
-        iter <- getStartIter gtkbuf
-        setLine iter (line - 1)
+        line  <- liftIO $ spinButtonGetValueAsInt spinL
+        start <- getStartIter gtkbuf
+        iter  <- atLine start (line - 1)
         placeCursor gtkbuf iter
         scrollToIter (sourceView currentBuffer) iter 0.2 Nothing
         return ()) ideR  )
@@ -466,9 +466,9 @@ editFind' exp matchIndex wrapAround dummy hint =
     mbsr2 <- do
         if hint == Backward
             then do
-                backwardChar st1
-                backwardChar st1
-                mbsr <- backSearch exp matchIndex gtkbuf st1
+                st2 <- backwardCharC st1
+                st3 <- backwardCharC st2
+                mbsr <- backSearch exp matchIndex gtkbuf st3
                 case mbsr of
                     Nothing ->
                         if wrapAround
@@ -476,10 +476,10 @@ editFind' exp matchIndex wrapAround dummy hint =
                             else return Nothing
                     Just (start,end) -> return (Just (start,end))
             else do
-                if hint == Forward
-                    then forwardChar st1
-                    else return True
-                mbsr <- forwardSearch exp matchIndex gtkbuf st1
+                st2 <- if hint == Forward
+                    then forwardCharC st1
+                    else return st1
+                mbsr <- forwardSearch exp matchIndex gtkbuf st2
                 case mbsr of
                     Nothing ->
                         if wrapAround
@@ -531,10 +531,8 @@ findMatch exp matchIndex gtkbuf offsetPred findLast = do
     let matches = (if findLast then reverse else id) (matchAll exp text)
     case find (offsetPred . fst . (!matchIndex)) matches of
         Just matches -> do
-            iter1 <- copyIter iterStart
-            forwardChars iter1 (fst (matches!matchIndex))
-            iter2 <- copyIter iter1
-            forwardChars iter2 (snd (matches!matchIndex))
+            iter1 <- forwardCharsC iterStart (fst (matches!matchIndex))
+            iter2 <- forwardCharsC iter1 (snd (matches!matchIndex))
             return $ Just (iter1, iter2)
         Nothing -> return Nothing
 

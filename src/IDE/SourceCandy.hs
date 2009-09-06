@@ -182,12 +182,11 @@ stringToCandy  candyTable text = do
 positionFromCandy :: CandyTable -> EditorBuffer -> (Int,Int) -> IDEM (Int,Int)
 positionFromCandy candyTable ebuf (line,column) = do
     i1          <- getIterAtLine ebuf (max 0 (line - 1))
-    i2          <- copyIter i1
-    forwardToLineEnd i2
+    i2          <- forwardToLineEndC i1
     text        <-  getText ebuf i1 i2 True
     workBuffer  <-  newGtkBuffer Nothing text
     i3          <- getIterAtOffset workBuffer column
-    mark        <- createMark workBuffer Nothing i3 True
+    mark        <- createMark workBuffer i3 True
     transformFromCandy candyTable workBuffer
     i4          <- getIterAtMark workBuffer mark
     columnNew   <- getLineOffset i4
@@ -196,13 +195,12 @@ positionFromCandy candyTable ebuf (line,column) = do
 positionToCandy :: CandyTable -> EditorBuffer -> (Int,Int) -> IDEM (Int,Int)
 positionToCandy candyTable ebuf (line,column) = do
     i1          <- getIterAtLine ebuf (max 0 (line - 1))
-    i2          <- copyIter i1
-    forwardToLineEnd i2
+    i2          <- forwardToLineEndC i1
     text        <-  getText ebuf i1 i2 True
     workBuffer  <-  newGtkBuffer Nothing text
     transformFromCandy candyTable workBuffer
     i3          <- getIterAtOffset workBuffer column
-    mark        <- createMark workBuffer Nothing i3 True
+    mark        <- createMark workBuffer i3 True
     transformToCandy candyTable workBuffer
     i4          <- getIterAtMark workBuffer mark
     columnNew   <- getLineOffset i4
@@ -227,8 +225,8 @@ replaceFrom buf (to,from,spaces) offset = replaceFrom' offset
                         let l = length (takeWhile (== ' ') slice)
                         if l > 1
                             then do
-                                setOffset iter3 (offset + l - 1)
-                                delete buf iter2 iter3
+                                iter4 <- atOffset iter3 (offset + l - 1)
+                                delete buf iter2 iter4
                             else return ()
                     else return ()
                 iter    <-  getIterAtOffset buf offset

@@ -81,16 +81,15 @@ module IDE.TextEditor (
 ,   setTabWidth
 
 -- Iterator
-,   backwardChar
-,   backwardFindChar
-,   backwardWordStart
-,   copyIter
+,   backwardCharC
+,   backwardFindCharC
+,   backwardWordStartC
 ,   endsWord
-,   forwardChar
-,   forwardChars
-,   forwardFindChar
-,   forwardToLineEnd
-,   forwardWordEnd
+,   forwardCharC
+,   forwardCharsC
+,   forwardFindCharC
+,   forwardToLineEndC
+,   forwardWordEndC
 ,   forwardSearch
 ,   getChar
 ,   getCharsInLine
@@ -101,9 +100,11 @@ module IDE.TextEditor (
 ,   isEnd
 ,   iterEqual
 ,   startsLine
-,   setLine
-,   setLineOffset
-,   setOffset
+,   atEnd
+,   atLine
+,   atLineOffset
+,   atOffset
+,   atStart
 
 -- Tag Table
 ,   newTag
@@ -130,8 +131,9 @@ import Prelude hiding(getChar, getLine)
 import Data.Char (isAlphaNum)
 import Data.Maybe (fromJust)
 import Data.IORef (readIORef, writeIORef)
-import Control.Monad (when)
+import Control.Monad (when, unless)
 import Control.Monad.Reader (lift, liftIO, ask)
+import Control.Applicative ((<$>))
 
 import qualified Graphics.UI.Gtk as Gtk hiding(afterToggleOverwrite)
 import qualified Graphics.UI.Gtk.SourceView as Gtk
@@ -141,13 +143,16 @@ import qualified Graphics.UI.Gtk.Gdk.EventM as Gtk
 import System.Glib.Attributes (AttrOp(..))
 
 #ifdef YI
-import qualified Yi as Yi
+import qualified Yi as Yi hiding(withBuffer)
+import qualified Yi.Buffer.Misc as Yi
 import qualified Yi.UI.Pango.Control as Yi
 #endif
 
 import Graphics.UI.Frame.Panes (Connection(..))
 import IDE.Core.Types
 import IDE.Core.State
+
+import Data.Time (getCurrentTime)
 
 -- Data types
 data EditorBuffer = GtkEditorBuffer Gtk.SourceBuffer
@@ -162,12 +167,12 @@ data EditorView = GtkEditorView Gtk.SourceView
 
 data EditorMark = GtkEditorMark Gtk.TextMark
 #ifdef YI
-    | YiEditorMark
+    | YiEditorMark Yi.Mark
 #endif
 
 data EditorIter = GtkEditorIter Gtk.TextIter
 #ifdef YI
-    | YiEditorIter
+    | YiEditorIter Yi.Iter
 #endif
 
 data EditorTagTable = GtkEditorTagTable Gtk.TextTagTable
@@ -178,6 +183,26 @@ data EditorTagTable = GtkEditorTagTable Gtk.TextTagTable
 data EditorTag = GtkEditorTag Gtk.TextTag
 #ifdef YI
     | YiEditorTag
+#endif
+
+#ifdef YI
+withYiBuffer' :: Yi.BufferRef -> Yi.BufferM a -> IDEM a
+withYiBuffer' b f = liftYiControl $ Yi.liftEditor $ Yi.withGivenBuffer0 b f
+
+withYiBuffer :: Yi.Buffer -> Yi.BufferM a -> IDEM a
+withYiBuffer b f = withYiBuffer' (Yi.fBufRef b) f
+
+mkYiIter' :: Yi.BufferRef -> Yi.Point -> EditorIter
+mkYiIter' b p = YiEditorIter $ Yi.Iter b p
+
+mkYiIter :: Yi.Buffer -> Yi.Point -> EditorIter
+mkYiIter b p = mkYiIter' (Yi.fBufRef b) p
+
+iterFromYiBuffer' :: Yi.BufferRef -> Yi.BufferM Yi.Point -> IDEM EditorIter
+iterFromYiBuffer' b f = mkYiIter' b <$> withYiBuffer' b f
+
+iterFromYiBuffer :: Yi.Buffer -> Yi.BufferM Yi.Point -> IDEM EditorIter
+iterFromYiBuffer b f = iterFromYiBuffer' (Yi.fBufRef b) f
 #endif
 
 -- Buffer
@@ -202,7 +227,7 @@ newYiBuffer mbFilename contents = liftYiControl $ do
     let (filename, id) = case mbFilename of
                             Just fn -> (fn, Right fn)
                             Nothing -> ("Unknown.hs", Left "*leksah*")
-    buffer <- Yi.newBuffer id (Yi.fromString contents)
+    buffer <- Yi.newBuffer id contents
     Yi.setBufferMode filename buffer
     return $ YiEditorBuffer buffer
 #else
@@ -217,7 +242,7 @@ applyTagByName :: EditorBuffer
 applyTagByName (GtkEditorBuffer sb) name (GtkEditorIter first) (GtkEditorIter last) = liftIO $
     Gtk.textBufferApplyTagByName sb name first last
 #ifdef YI
-applyTagByName (YiEditorBuffer fb) name (YiEditorIter) (YiEditorIter) = return () -- TODO
+applyTagByName (YiEditorBuffer fb) name (YiEditorIter first) (YiEditorIter last) = return () -- TODO
 applyTagByName _ _ _ _ = liftIO $ fail "Mismatching TextEditor types in createMark"
 #endif
 
@@ -236,13 +261,13 @@ beginUserAction (YiEditorBuffer fb) = return () -- TODO
 canRedo :: EditorBuffer -> IDEM Bool
 canRedo (GtkEditorBuffer sb) = liftIO $ Gtk.sourceBufferGetCanRedo sb
 #ifdef YI
-canRedo (YiEditorBuffer fb) = return False -- TODO
+canRedo (YiEditorBuffer fb) = return True -- TODO
 #endif
 
 canUndo :: EditorBuffer -> IDEM Bool
 canUndo (GtkEditorBuffer sb) = liftIO $ Gtk.sourceBufferGetCanUndo sb
 #ifdef YI
-canUndo (YiEditorBuffer fb) = return False -- TODO
+canUndo (YiEditorBuffer fb) = return True -- TODO
 #endif
 
 copyClipboard :: EditorBuffer -> Gtk.Clipboard -> IDEM ()
@@ -252,15 +277,15 @@ copyClipboard (YiEditorBuffer fb) _ = return () -- TODO
 #endif
 
 createMark :: EditorBuffer
-              -> Maybe String
               -> EditorIter
               -> Bool
               -> IDEM EditorMark
-createMark (GtkEditorBuffer sb) mbName (GtkEditorIter i) leftGravity = liftIO $
-    fmap GtkEditorMark $ Gtk.textBufferCreateMark sb mbName i leftGravity
+createMark (GtkEditorBuffer sb) (GtkEditorIter i) leftGravity = liftIO $
+    GtkEditorMark <$> Gtk.textBufferCreateMark sb Nothing i leftGravity
 #ifdef YI
-createMark (YiEditorBuffer fb) mbName (YiEditorIter) leftGravity = return YiEditorMark -- TODO
-createMark _ _ _ _ = liftIO $ fail "Mismatching TextEditor types in createMark"
+createMark (YiEditorBuffer b) (YiEditorIter (Yi.Iter _ p)) leftGravity = withYiBuffer b $
+    YiEditorMark <$> Yi.newMarkB (Yi.MarkValue p (if leftGravity then Yi.Backward else Yi.Forward))
+createMark _ _ _ = liftIO $ fail "Mismatching TextEditor types in createMark"
 #endif
 
 cutClipboard :: EditorBuffer -> Gtk.Clipboard -> Bool -> IDEM ()
@@ -273,7 +298,8 @@ delete :: EditorBuffer -> EditorIter -> EditorIter -> IDEM ()
 delete (GtkEditorBuffer sb) (GtkEditorIter first) (GtkEditorIter last) = liftIO $
     Gtk.textBufferDelete sb first last
 #ifdef YI
-delete (YiEditorBuffer fb) (YiEditorIter) (YiEditorIter) = return () -- TODO
+delete (YiEditorBuffer b) (YiEditorIter (Yi.Iter _ first)) (YiEditorIter (Yi.Iter _ last)) =
+    withYiBuffer b $ Yi.deleteRegionB $ Yi.mkRegion first last
 delete _ _ _ = liftIO $ fail "Mismatching TextEditor types in delete"
 #endif
 
@@ -281,7 +307,9 @@ deleteSelection :: EditorBuffer -> Bool -> Bool -> IDEM ()
 deleteSelection (GtkEditorBuffer sb) interactive defaultEditable = liftIO $
     Gtk.textBufferDeleteSelection sb interactive defaultEditable >> return ()
 #ifdef YI
-deleteSelection (YiEditorBuffer fb) interactive defaultEditable = return () -- TODO
+deleteSelection (YiEditorBuffer b) interactive defaultEditable = withYiBuffer b $ do
+    region <- Yi.getRawestSelectRegionB
+    Yi.deleteRegionB region -- TODO support flags
 #endif
 
 endNotUndoableAction :: EditorBuffer -> IDEM ()
@@ -297,34 +325,34 @@ endUserAction (YiEditorBuffer fb) = return () -- TODO
 #endif
 
 getEndIter :: EditorBuffer -> IDEM EditorIter
-getEndIter (GtkEditorBuffer sb) = liftIO $ fmap GtkEditorIter $ Gtk.textBufferGetEndIter sb
+getEndIter (GtkEditorBuffer sb) = liftIO $ GtkEditorIter <$> Gtk.textBufferGetEndIter sb
 #ifdef YI
-getEndIter (YiEditorBuffer b) = return YiEditorIter -- TODO
+getEndIter (YiEditorBuffer b) = iterFromYiBuffer b Yi.sizeB
 #endif
 
 getInsertMark :: EditorBuffer -> IDEM EditorMark
 getInsertMark (GtkEditorBuffer sb) = liftIO $ fmap GtkEditorMark $ Gtk.textBufferGetInsert sb
 #ifdef YI
-getInsertMark (YiEditorBuffer b) = return YiEditorMark -- TODO
+getInsertMark (YiEditorBuffer b) = YiEditorMark <$> (withYiBuffer b $ Yi.insMark <$> Yi.askMarks)
 #endif
 
 getIterAtLine :: EditorBuffer -> Int -> IDEM EditorIter
-getIterAtLine (GtkEditorBuffer sb) line = liftIO $ fmap GtkEditorIter $ Gtk.textBufferGetIterAtLine sb line
+getIterAtLine (GtkEditorBuffer sb) line = liftIO $ GtkEditorIter <$> Gtk.textBufferGetIterAtLine sb line
 #ifdef YI
-getIterAtLine (YiEditorBuffer b) line = return YiEditorIter -- TODO
+getIterAtLine (YiEditorBuffer b) line = iterFromYiBuffer b $ Yi.pointOfLineColB line 1
 #endif
 
 getIterAtMark :: EditorBuffer -> EditorMark -> IDEM EditorIter
-getIterAtMark (GtkEditorBuffer sb) (GtkEditorMark m) = liftIO $ fmap GtkEditorIter $ Gtk.textBufferGetIterAtMark sb m
+getIterAtMark (GtkEditorBuffer sb) (GtkEditorMark m) = liftIO $ GtkEditorIter <$> Gtk.textBufferGetIterAtMark sb m
 #ifdef YI
-getIterAtMark (YiEditorBuffer sb) (YiEditorMark) = return YiEditorIter -- TODO
-getIterAtMark _ _ = liftIO $ fail "Mismatching TextEditor types in getIterAtMark" -- TODO
+getIterAtMark (YiEditorBuffer b) (YiEditorMark m) = iterFromYiBuffer b $ Yi.getMarkPointB m
+getIterAtMark _ _ = liftIO $ fail "Mismatching TextEditor types in getIterAtMark"
 #endif
 
 getIterAtOffset :: EditorBuffer -> Int -> IDEM EditorIter
-getIterAtOffset (GtkEditorBuffer sb) offset = liftIO $ fmap GtkEditorIter $ Gtk.textBufferGetIterAtOffset sb offset
+getIterAtOffset (GtkEditorBuffer sb) offset = liftIO $ GtkEditorIter <$> Gtk.textBufferGetIterAtOffset sb offset
 #ifdef YI
-getIterAtOffset (YiEditorBuffer b) offset = return YiEditorIter -- TODO
+getIterAtOffset (YiEditorBuffer b) offset = return $ mkYiIter b $ Yi.Point offset
 #endif
 
 getLineCount :: EditorBuffer -> IDEM Int
@@ -336,13 +364,13 @@ getLineCount (YiEditorBuffer b) = return 0 -- TODO
 getModified :: EditorBuffer -> IDEM Bool
 getModified (GtkEditorBuffer sb) = liftIO $ Gtk.textBufferGetModified sb
 #ifdef YI
-getModified (YiEditorBuffer b) = return False -- TODO
+getModified (YiEditorBuffer b) = not <$> (withYiBuffer b $ Yi.gets Yi.isUnchangedBuffer)
 #endif
 
 getSelectionBoundMark :: EditorBuffer -> IDEM EditorMark
 getSelectionBoundMark (GtkEditorBuffer sb) = liftIO $ fmap GtkEditorMark $ Gtk.textBufferGetSelectionBound sb
 #ifdef YI
-getSelectionBoundMark (YiEditorBuffer b) = return YiEditorMark -- TODO
+getSelectionBoundMark (YiEditorBuffer b) = YiEditorMark . Yi.selMark <$> (withYiBuffer b $ Yi.askMarks)
 #endif
 
 getSelectionBounds :: EditorBuffer -> IDEM (EditorIter, EditorIter)
@@ -350,7 +378,10 @@ getSelectionBounds (GtkEditorBuffer sb) = liftIO $ do
     (first, last) <- Gtk.textBufferGetSelectionBounds sb
     return (GtkEditorIter first, GtkEditorIter last)
 #ifdef YI
-getSelectionBounds (YiEditorBuffer b) = return (YiEditorIter, YiEditorIter) -- TODO
+getSelectionBounds (YiEditorBuffer b) = withYiBuffer b $ do
+    region <- Yi.getRawestSelectRegionB
+    return (mkYiIter b (Yi.regionStart region),
+            mkYiIter b (Yi.regionEnd region))
 #endif
 
 getSlice :: EditorBuffer
@@ -361,14 +392,15 @@ getSlice :: EditorBuffer
 getSlice (GtkEditorBuffer sb) (GtkEditorIter first) (GtkEditorIter last) includeHidenChars = liftIO $
     Gtk.textBufferGetSlice sb first last includeHidenChars
 #ifdef YI
-getSlice (YiEditorBuffer b) (YiEditorIter) (YiEditorIter) includeHidenChars = return "" -- TODO
+getSlice (YiEditorBuffer b) (YiEditorIter first) (YiEditorIter last) includeHidenChars = liftYiControl $
+    Yi.getText b first last
 getSlice _ _ _ _ = liftIO $ fail "Mismatching TextEditor types in getSlice"
 #endif
 
 getStartIter :: EditorBuffer -> IDEM EditorIter
-getStartIter (GtkEditorBuffer sb) = liftIO $ fmap GtkEditorIter $ Gtk.textBufferGetStartIter sb
+getStartIter (GtkEditorBuffer sb) = liftIO $ GtkEditorIter <$> Gtk.textBufferGetStartIter sb
 #ifdef YI
-getStartIter (YiEditorBuffer b) = return YiEditorIter -- TODO
+getStartIter (YiEditorBuffer b) = return $ mkYiIter b $ Yi.Point 0
 #endif
 
 getTagTable :: EditorBuffer -> IDEM EditorTagTable
@@ -385,27 +417,30 @@ getText :: EditorBuffer
 getText (GtkEditorBuffer sb) (GtkEditorIter first) (GtkEditorIter last) includeHidenChars = liftIO $
     Gtk.textBufferGetText sb first last includeHidenChars
 #ifdef YI
-getText (YiEditorBuffer b) (YiEditorIter) (YiEditorIter) includeHidenChars = fail "Yi support is not complete" -- TODO
+getText (YiEditorBuffer b) (YiEditorIter first) (YiEditorIter last) includeHidenChars = liftYiControl $
+    Yi.getText b first last
 getText _ _ _ _ = liftIO $ fail "Mismatching TextEditor types in getText"
 #endif
 
 hasSelection :: EditorBuffer -> IDEM Bool
 hasSelection (GtkEditorBuffer sb) = liftIO $ Gtk.textBufferHasSelection sb
 #ifdef YI
-hasSelection (YiEditorBuffer b) = return False -- TODO
+hasSelection (YiEditorBuffer b) = withYiBuffer b $ do
+    region <- Yi.getRawestSelectRegionB
+    return $ not $ Yi.regionIsEmpty region
 #endif
 
 insert :: EditorBuffer -> EditorIter -> String -> IDEM ()
 insert (GtkEditorBuffer sb) (GtkEditorIter i) text = liftIO $ Gtk.textBufferInsert sb i text
 #ifdef YI
-insert (YiEditorBuffer b) (YiEditorIter) text = return () -- TODO
+insert (YiEditorBuffer b) (YiEditorIter (Yi.Iter _ p)) text = withYiBuffer b $ Yi.insertNAt text p
 insert _ _ _ = liftIO $ fail "Mismatching TextEditor types in insert"
 #endif
 
 moveMark :: EditorBuffer -> EditorMark -> EditorIter -> IDEM ()
 moveMark (GtkEditorBuffer sb) (GtkEditorMark m) (GtkEditorIter i) = liftIO $ Gtk.textBufferMoveMark sb m i
 #ifdef YI
-moveMark (YiEditorBuffer b) (YiEditorMark) (YiEditorIter) = return () -- TODO
+moveMark (YiEditorBuffer b) (YiEditorMark m) (YiEditorIter (Yi.Iter _ p)) = withYiBuffer b $ Yi.setMarkPointB m p
 moveMark _ _ _ = liftIO $ fail "Mismatching TextEditor types in moveMark"
 #endif
 
@@ -432,21 +467,21 @@ pasteClipboard :: EditorBuffer
 pasteClipboard (GtkEditorBuffer sb) clipboard (GtkEditorIter i) defaultEditable = liftIO $
     Gtk.textBufferPasteClipboard sb clipboard i defaultEditable
 #ifdef YI
-pasteClipboard (YiEditorBuffer b) clipboard (YiEditorIter) defaultEditable = return () -- TODO
+pasteClipboard (YiEditorBuffer b) clipboard (YiEditorIter (Yi.Iter _ p)) defaultEditable = return () -- TODO
 pasteClipboard _ _ _ _ = liftIO $ fail "Mismatching TextEditor types in pasteClipboard"
 #endif
 
 placeCursor :: EditorBuffer -> EditorIter -> IDEM ()
 placeCursor (GtkEditorBuffer sb) (GtkEditorIter i) = liftIO $ Gtk.textBufferPlaceCursor sb i
 #ifdef YI
-placeCursor (YiEditorBuffer b) (YiEditorIter) = return () -- TODO
+placeCursor (YiEditorBuffer b) (YiEditorIter (Yi.Iter _ p)) = withYiBuffer b $ Yi.moveTo p
 placeCursor _ _ = liftIO $ fail "Mismatching TextEditor types in placeCursor"
 #endif
 
 redo :: EditorBuffer -> IDEM ()
 redo (GtkEditorBuffer sb) = liftIO $ Gtk.sourceBufferRedo sb
 #ifdef YI
-redo (YiEditorBuffer b) = return () -- TODO
+redo (YiEditorBuffer b) = withYiBuffer b Yi.redoB
 #endif
 
 removeTagByName :: EditorBuffer
@@ -457,7 +492,7 @@ removeTagByName :: EditorBuffer
 removeTagByName (GtkEditorBuffer sb) name (GtkEditorIter first) (GtkEditorIter last) = liftIO $
     Gtk.textBufferRemoveTagByName sb name first last
 #ifdef YI
-removeTagByName (YiEditorBuffer b) name (YiEditorIter) (YiEditorIter) = return () -- TODO
+removeTagByName (YiEditorBuffer b) name (YiEditorIter (Yi.Iter _ first)) (YiEditorIter (Yi.Iter _ last)) = return () -- TODO
 removeTagByName _ _ _ _ = liftIO $ fail "Mismatching TextEditor types in removeTagByName"
 #endif
 
@@ -465,14 +500,17 @@ selectRange :: EditorBuffer -> EditorIter -> EditorIter -> IDEM ()
 selectRange (GtkEditorBuffer sb) (GtkEditorIter first) (GtkEditorIter last) = liftIO $
     Gtk.textBufferSelectRange sb first last
 #ifdef YI
-selectRange (YiEditorBuffer b) (YiEditorIter) (YiEditorIter) = return () -- TODO
+selectRange (YiEditorBuffer b) (YiEditorIter (Yi.Iter _ first)) (YiEditorIter (Yi.Iter _ last)) = withYiBuffer b $
+    Yi.setSelectRegionB $ Yi.mkRegion first last
 selectRange _ _ _ = liftIO $ fail "Mismatching TextEditor types in selectRange"
 #endif
 
 setModified :: EditorBuffer -> Bool -> IDEM ()
 setModified (GtkEditorBuffer sb) modified = liftIO $ Gtk.textBufferSetModified sb modified >> return ()
 #ifdef YI
-setModified (YiEditorBuffer b) modified = return () -- TODO
+setModified (YiEditorBuffer b) modified = unless modified $ do
+    now <- liftIO $ getCurrentTime
+    withYiBuffer b $ Yi.markSavedB now
 #endif
 
 setStyle :: EditorBuffer -> Maybe String -> IDEM ()
@@ -492,13 +530,13 @@ setStyle (YiEditorBuffer b) mbStyle = return () -- TODO
 setText :: EditorBuffer -> String -> IDEM ()
 setText (GtkEditorBuffer sb) text = liftIO $ Gtk.textBufferSetText sb text
 #ifdef YI
-setText (YiEditorBuffer b) text = liftYiControl $ Yi.liftEditor $ Yi.withGivenBuffer0 (Yi.fBufRef b) $ Yi.writeN text -- TODO
+setText (YiEditorBuffer b) text = liftYiControl $ Yi.setText b text
 #endif
 
 undo :: EditorBuffer -> IDEM ()
 undo (GtkEditorBuffer sb) = liftIO $ Gtk.sourceBufferUndo sb
 #ifdef YI
-undo (YiEditorBuffer b) = return () -- TODO
+undo (YiEditorBuffer b) =  withYiBuffer b Yi.undoB
 #endif
 
 -- View
@@ -523,7 +561,7 @@ getDrawWindow (YiEditorView v) = liftIO $ Gtk.widgetGetDrawWindow (Yi.drawArea v
 getIterLocation :: EditorView -> EditorIter -> IDEM Gtk.Rectangle
 getIterLocation (GtkEditorView sv) (GtkEditorIter i) = liftIO $ Gtk.textViewGetIterLocation sv i
 #ifdef YI
-getIterLocation (YiEditorView v) (YiEditorIter) = return $ Gtk.Rectangle 0 0 0 0 -- TODO
+getIterLocation (YiEditorView v) (YiEditorIter i) = return $ Gtk.Rectangle 0 0 0 0 -- TODO
 getIterLocation _ _ = liftIO $ fail "Mismatching TextEditor types in getIterLocation"
 #endif
 
@@ -542,7 +580,7 @@ getScrolledWindow (YiEditorView v) = return $ Yi.scrollWin v
 grabFocus :: EditorView -> IDEM ()
 grabFocus (GtkEditorView sv) = liftIO $ Gtk.widgetGrabFocus sv
 #ifdef YI
-grabFocus (YiEditorView v) = return () -- TODO
+grabFocus (YiEditorView Yi.View{Yi.drawArea = da}) = liftIO $ Gtk.widgetGrabFocus da
 #endif
 
 scrollToMark :: EditorView
@@ -552,7 +590,7 @@ scrollToMark :: EditorView
                 -> IDEM ()
 scrollToMark (GtkEditorView sv) (GtkEditorMark m) withMargin mbAlign = liftIO $ Gtk.textViewScrollToMark sv m withMargin mbAlign
 #ifdef YI
-scrollToMark (YiEditorView v) (YiEditorMark) withMargin mbAlign = return () -- TODO
+scrollToMark (YiEditorView v) (YiEditorMark m) withMargin mbAlign = return () -- TODO
 scrollToMark _ _ _ _ = liftIO $ fail "Mismatching TextEditor types in scrollToMark"
 #endif
 
@@ -563,7 +601,7 @@ scrollToIter :: EditorView
                 -> IDEM ()
 scrollToIter (GtkEditorView sv) (GtkEditorIter i) withMargin mbAlign = liftIO $ Gtk.textViewScrollToIter sv i withMargin mbAlign >> return ()
 #ifdef YI
-scrollToIter (YiEditorView v) (YiEditorIter) withMargin mbAlign = return () -- TODO
+scrollToIter (YiEditorView v) (YiEditorIter i) withMargin mbAlign = return () -- TODO
 scrollToIter _ _ _ _ = liftIO $ fail "Mismatching TextEditor types in scrollToIter"
 #endif
 
@@ -619,66 +657,93 @@ setTabWidth (YiEditorView v) width = return () -- TODO
 #endif
 
 -- Iterator
-backwardChar :: EditorIter -> IDEM Bool
-backwardChar (GtkEditorIter i) = liftIO $ Gtk.textIterBackwardChar i
+transformGtkIter :: Gtk.TextIter -> (Gtk.TextIter -> IO a) -> IDEM EditorIter
+transformGtkIter i f = do
+    new <- liftIO $ Gtk.textIterCopy i
+    liftIO $ f new
+    return $ GtkEditorIter new
+
+transformGtkIterMaybe :: Gtk.TextIter -> (Gtk.TextIter -> IO Bool) -> IDEM (Maybe EditorIter)
+transformGtkIterMaybe i f = do
+    new <- liftIO $ Gtk.textIterCopy i
+    found <- liftIO $ f new
+    return $ if found
+        then Just $ GtkEditorIter new
+        else Nothing
+
 #ifdef YI
-backwardChar (YiEditorIter) = return False -- TODO
+withYiIter :: Yi.Iter -> Yi.BufferM a -> IDEM a
+withYiIter (Yi.Iter b p) f = withYiBuffer' b $ do
+    oldPoint <- Yi.pointB
+    insertMark <- Yi.insMark <$> Yi.askMarks
+    Yi.setMarkPointB insertMark p -- Using this becauls moveTo forgets the prefered column
+    result <- f
+    Yi.setMarkPointB insertMark oldPoint
+    return result
+
+transformYiIter' :: Yi.Iter -> Yi.BufferM Yi.Point -> IDEM EditorIter
+transformYiIter' i f = mkYiIter' (Yi.iterFBufRef i) <$> withYiIter i f
+
+transformYiIter :: Yi.Iter -> Yi.BufferM a -> IDEM EditorIter
+transformYiIter i f = transformYiIter' i (f >> Yi.pointB)
 #endif
 
-backwardFindChar :: EditorIter
+backwardCharC :: EditorIter -> IDEM EditorIter
+backwardCharC (GtkEditorIter i) = transformGtkIter i Gtk.textIterBackwardChar
+#ifdef YI
+backwardCharC (YiEditorIter i) = transformYiIter' i Yi.prevPointB
+#endif
+
+backwardFindCharC :: EditorIter
                     -> (Char -> Bool)
                     -> Maybe EditorIter
-                    -> IDEM Bool
-backwardFindChar (GtkEditorIter i) pred mbLimit = liftIO $ Gtk.textIterBackwardFindChar i pred (
-    case mbLimit of
-        Just (GtkEditorIter limit) -> Just limit
-        Nothing                    -> Nothing
-        _                          -> fail "Mismatching TextEditor types in backwardFindChar")
+                    -> IDEM (Maybe EditorIter)
+backwardFindCharC (GtkEditorIter i) pred mbLimit = transformGtkIterMaybe i (\x ->
+    Gtk.textIterBackwardFindChar x pred (
+        case mbLimit of
+            Just (GtkEditorIter limit) -> Just limit
+            Nothing                    -> Nothing
+            _                          -> fail "Mismatching TextEditor types in backwardFindChar"))
 #ifdef YI
-backwardFindChar (YiEditorIter) pred mbLimit = return False -- TODO
+backwardFindCharC (YiEditorIter i) pred mbLimit = return Nothing -- TODO
 #endif
 
-backwardWordStart :: EditorIter -> IDEM Bool
-backwardWordStart (GtkEditorIter i) = liftIO $ Gtk.textIterBackwardWordStart i
+backwardWordStartC :: EditorIter -> IDEM (Maybe EditorIter)
+backwardWordStartC (GtkEditorIter i) = transformGtkIterMaybe i Gtk.textIterBackwardWordStart
 #ifdef YI
-backwardWordStart (YiEditorIter) = return False -- TODO
-#endif
-
-copyIter :: EditorIter -> IDEM EditorIter
-copyIter (GtkEditorIter i) = liftIO $ fmap GtkEditorIter $ Gtk.textIterCopy i
-#ifdef YI
-copyIter (YiEditorIter) = return YiEditorIter -- TODO
+backwardWordStartC (YiEditorIter i) = return Nothing -- TODO
 #endif
 
 endsWord :: EditorIter -> IDEM Bool
 endsWord (GtkEditorIter i) = liftIO $ Gtk.textIterEndsWord i
 #ifdef YI
-endsWord (YiEditorIter) = return False -- TODO
+endsWord (YiEditorIter i) = return False -- TODO
 #endif
 
-forwardChar :: EditorIter -> IDEM Bool
-forwardChar (GtkEditorIter i) = liftIO $ Gtk.textIterForwardChar i
+forwardCharC :: EditorIter -> IDEM EditorIter
+forwardCharC (GtkEditorIter i) = transformGtkIter i Gtk.textIterForwardChar
 #ifdef YI
-forwardChar (YiEditorIter) = return False -- TODO
+forwardCharC (YiEditorIter i) = transformYiIter' i Yi.nextPointB
 #endif
 
-forwardChars :: EditorIter -> Int -> IDEM Bool
-forwardChars (GtkEditorIter i) n = liftIO $ Gtk.textIterForwardChars i n
+forwardCharsC :: EditorIter -> Int -> IDEM EditorIter
+forwardCharsC (GtkEditorIter i) n = transformGtkIter i $ flip Gtk.textIterForwardChars n
 #ifdef YI
-forwardChars (YiEditorIter) n = return False -- TODO
+forwardCharsC (YiEditorIter i) n = transformYiIter i $ Yi.rightN n
 #endif
 
-forwardFindChar :: EditorIter
+forwardFindCharC :: EditorIter
                    -> (Char -> Bool)
                    -> Maybe EditorIter
-                   -> IDEM Bool
-forwardFindChar (GtkEditorIter i) pred mbLimit = liftIO $ Gtk.textIterForwardFindChar i pred (
-    case mbLimit of
-        Just (GtkEditorIter limit) -> Just limit
-        Nothing                    -> Nothing
-        _                          -> fail "Mismatching TextEditor types in backwardFindChar")
+                   -> IDEM (Maybe EditorIter)
+forwardFindCharC (GtkEditorIter i) pred mbLimit = transformGtkIterMaybe i (\x ->
+    Gtk.textIterForwardFindChar x pred (
+        case mbLimit of
+            Just (GtkEditorIter limit) -> Just limit
+            Nothing                    -> Nothing
+            _                          -> fail "Mismatching TextEditor types in forwardFindChar"))
 #ifdef YI
-forwardFindChar (YiEditorIter) pred mbLimit = return False -- TODO
+forwardFindCharC (YiEditorIter i) pred mbLimit = return Nothing -- TODO
 #endif
 
 forwardSearch :: EditorIter
@@ -686,100 +751,116 @@ forwardSearch :: EditorIter
                  -> [Gtk.TextSearchFlags]
                  -> Maybe EditorIter
                  -> IDEM (Maybe (EditorIter, EditorIter))
-forwardSearch (GtkEditorIter i) str flags mbLimit = liftIO $
+forwardSearch (GtkEditorIter i) str flags mbLimit = liftIO $ do
     fmap (fmap (\(start, end) -> (GtkEditorIter start, GtkEditorIter end))) $
         Gtk.textIterForwardSearch i str flags (
             case mbLimit of
                 Just (GtkEditorIter limit) -> Just limit
                 Nothing                    -> Nothing
-                _                          -> fail "Mismatching TextEditor types in backwardFindChar")
+                _                          -> fail "Mismatching TextEditor types in forwardSearch")
 #ifdef YI
-forwardSearch (YiEditorIter) str pred mbLimit = return Nothing -- TODO
+forwardSearch (YiEditorIter i) str pred mbLimit = return Nothing -- TODO
 #endif
 
-forwardToLineEnd :: EditorIter -> IDEM Bool
-forwardToLineEnd (GtkEditorIter i) = liftIO $ Gtk.textIterForwardChar i
+forwardToLineEndC :: EditorIter -> IDEM EditorIter
+forwardToLineEndC (GtkEditorIter i) = transformGtkIter i Gtk.textIterForwardToLineEnd
 #ifdef YI
-forwardToLineEnd (YiEditorIter) = return False -- TODO
+forwardToLineEndC (YiEditorIter i) = transformYiIter i Yi.moveToEol
 #endif
 
-forwardWordEnd :: EditorIter -> IDEM Bool
-forwardWordEnd (GtkEditorIter i) = liftIO $ Gtk.textIterForwardWordEnd i
+forwardWordEndC :: EditorIter -> IDEM (Maybe EditorIter)
+forwardWordEndC (GtkEditorIter i) = transformGtkIterMaybe i Gtk.textIterForwardWordEnd
 #ifdef YI
-forwardWordEnd (YiEditorIter) = return False -- TODO
+forwardWordEndC (YiEditorIter i) = return Nothing -- TODO
 #endif
 
 getChar :: EditorIter -> IDEM (Maybe Char)
 getChar (GtkEditorIter i) = liftIO $ Gtk.textIterGetChar i
 #ifdef YI
-getChar (YiEditorIter) = return Nothing -- TODO
+getChar (YiEditorIter i) = withYiIter i Yi.readCharB
 #endif
 
 getCharsInLine :: EditorIter -> IDEM Int
 getCharsInLine (GtkEditorIter i) = liftIO $ Gtk.textIterGetCharsInLine i
 #ifdef YI
-getCharsInLine (YiEditorIter) = return 0 -- TODO
+getCharsInLine (YiEditorIter i) = withYiIter i $ length <$> Yi.readLnB
 #endif
 
 getLine :: EditorIter -> IDEM Int
 getLine (GtkEditorIter i) = liftIO $ Gtk.textIterGetLine i
 #ifdef YI
-getLine (YiEditorIter) = return 0 -- TODO
+getLine (YiEditorIter i) = withYiIter i Yi.curLn
 #endif
 
 getLineOffset :: EditorIter -> IDEM Int
 getLineOffset (GtkEditorIter i) = liftIO $ Gtk.textIterGetLineOffset i
 #ifdef YI
-getLineOffset (YiEditorIter) = return 0 -- TODO
+getLineOffset (YiEditorIter i) = withYiIter i Yi.curCol
 #endif
 
 getOffset :: EditorIter -> IDEM Int
 getOffset (GtkEditorIter i) = liftIO $ Gtk.textIterGetOffset i
 #ifdef YI
-getOffset (YiEditorIter) = return 0 -- TODO
+getOffset (YiEditorIter (Yi.Iter _ (Yi.Point o))) = return o
 #endif
 
 isStart :: EditorIter -> IDEM Bool
 isStart (GtkEditorIter i) = liftIO $ Gtk.textIterIsStart i
 #ifdef YI
-isStart (YiEditorIter) = return False -- TODO
+isStart (YiEditorIter i) = withYiIter i Yi.atSof
 #endif
 
 isEnd :: EditorIter -> IDEM Bool
 isEnd (GtkEditorIter i) = liftIO $ Gtk.textIterIsEnd i
 #ifdef YI
-isEnd (YiEditorIter) = return False -- TODO
+isEnd (YiEditorIter i) = withYiIter i Yi.atEof
 #endif
 
 iterEqual :: EditorIter -> EditorIter -> IDEM Bool
 iterEqual (GtkEditorIter i1) (GtkEditorIter i2) = liftIO $ Gtk.textIterEqual i1 i2
 #ifdef YI
-iterEqual (YiEditorIter) (YiEditorIter) = return False -- TODO
+iterEqual (YiEditorIter (Yi.Iter _ p1)) (YiEditorIter (Yi.Iter _ p2)) = return $ p1 == p2
 iterEqual _ _ = liftIO $ fail "Mismatching TextEditor types in iterEqual"
 #endif
 
 startsLine :: EditorIter -> IDEM Bool
 startsLine (GtkEditorIter i) = liftIO $ Gtk.textIterStartsLine i
 #ifdef YI
-startsLine (YiEditorIter) = return False -- TODO
+startsLine (YiEditorIter i) = withYiIter i Yi.atSol
 #endif
 
-setLine :: EditorIter -> Int -> IDEM ()
-setLine (GtkEditorIter i) line = liftIO $ Gtk.textIterSetLine i line
+atEnd :: EditorIter -> IDEM EditorIter
+atEnd (GtkEditorIter i) = liftIO $ GtkEditorIter <$> do
+    buffer <- Gtk.textIterGetBuffer i
+    Gtk.textBufferGetEndIter buffer
 #ifdef YI
-setLine (YiEditorIter) line = return () -- TODO
+atEnd (YiEditorIter (Yi.Iter b _)) = iterFromYiBuffer' b Yi.sizeB
 #endif
 
-setLineOffset :: EditorIter -> Int -> IDEM ()
-setLineOffset (GtkEditorIter i) column = liftIO $ Gtk.textIterSetLineOffset i column
+atLine :: EditorIter -> Int -> IDEM EditorIter
+atLine (GtkEditorIter i) line = transformGtkIter i $ flip Gtk.textIterSetLine line
 #ifdef YI
-setLineOffset (YiEditorIter) column = return () -- TODO
+atLine (YiEditorIter i) line = transformYiIter i $ Yi.gotoLn line
 #endif
 
-setOffset :: EditorIter -> Int -> IDEM ()
-setOffset (GtkEditorIter i) offset = liftIO $ Gtk.textIterSetOffset i offset
+atLineOffset :: EditorIter -> Int -> IDEM EditorIter
+atLineOffset (GtkEditorIter i) column = transformGtkIter i $ flip Gtk.textIterSetLineOffset column
 #ifdef YI
-setOffset (YiEditorIter) offset = return () -- TODO
+atLineOffset (YiEditorIter i) column = transformYiIter i $ Yi.moveToColB column
+#endif
+
+atOffset :: EditorIter -> Int -> IDEM EditorIter
+atOffset (GtkEditorIter i) offset = transformGtkIter i $ flip Gtk.textIterSetOffset offset
+#ifdef YI
+atOffset (YiEditorIter (Yi.Iter b _)) offset = return $ YiEditorIter $ Yi.Iter b (Yi.Point offset)
+#endif
+
+atStart :: EditorIter -> IDEM EditorIter
+atStart (GtkEditorIter i) = liftIO $ GtkEditorIter <$> do
+    buffer <- Gtk.textIterGetBuffer i
+    Gtk.textBufferGetEndIter buffer
+#ifdef YI
+atStart (YiEditorIter (Yi.Iter b _)) = return $ mkYiIter' b $ Yi.Point 0
 #endif
 
 -- Tag Table
