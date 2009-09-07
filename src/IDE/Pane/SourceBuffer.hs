@@ -1039,8 +1039,9 @@ alignChar char = do
             doForSelectedLines [] $ \ebuf iter lineNr -> do
                 case lineNr `Map.lookup` positions of
                     Just (Just n)  ->  do
-                        sol  <- atLine iter lineNr
-                        insert ebuf sol (replicate (alignTo - n) ' ')
+                        sol       <- atLine iter lineNr
+                        insertLoc <- forwardCharsC sol n
+                        insert ebuf insertLoc (replicate (alignTo - n) ' ')
                     _              ->  return ()
             return ()
 
