@@ -314,8 +314,7 @@ constructFindReplace = reifyIDE $ \ ideR   -> do
 
     spinL `afterEntryActivate` (reflectIDE (inActiveBufContext () $ \_ gtkbuf currentBuffer _ -> do
         line  <- liftIO $ spinButtonGetValueAsInt spinL
-        start <- getStartIter gtkbuf
-        iter  <- atLine start (line - 1)
+        iter  <- getIterAtLine gtkbuf (line - 1)
         placeCursor gtkbuf iter
         scrollToIter (sourceView currentBuffer) iter 0.2 Nothing
         return ()) ideR  )

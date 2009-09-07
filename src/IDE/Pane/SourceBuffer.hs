@@ -936,23 +936,22 @@ getStartAndEndLineOfSelection ebuf = do
     let endLineReal = if b then endLine' - 1 else endLine'
     return (startLine',endLineReal)
 
-doForSelectedLines :: [a] -> (EditorBuffer -> EditorIter -> Int -> IDEM a) -> IDEM [a]
+doForSelectedLines :: [a] -> (EditorBuffer -> Int -> IDEM a) -> IDEM [a]
 doForSelectedLines d f = inActiveBufContext d $ \_ ebuf currentBuffer _ -> do
     (start,end) <- getStartAndEndLineOfSelection ebuf
-    iter        <- getStartIter ebuf
-    mapM (f ebuf iter) [start .. end]
+    mapM (f ebuf) [start .. end]
 
 editComment :: IDEAction
 editComment = do
-    doForSelectedLines [] $ \ebuf iter lineNr -> do
-        sol <- atLine iter lineNr
+    doForSelectedLines [] $ \ebuf lineNr -> do
+        sol <- getIterAtLine ebuf lineNr
         insert ebuf sol "--"
     return ()
 
 editUncomment :: IDEAction
 editUncomment = do
-    doForSelectedLines [] $ \ebuf iter lineNr -> do
-        sol <- atLine iter lineNr
+    doForSelectedLines [] $ \ebuf lineNr -> do
+        sol <- getIterAtLine ebuf lineNr
         sol2 <- forwardCharsC sol 2
         str   <- getText ebuf sol sol2 True
         if str == "--"
@@ -967,16 +966,16 @@ editShiftLeft = do
     b <- canShiftLeft str prefs
     if b
         then do
-            doForSelectedLines [] $ \ebuf iter lineNr -> do
-                sol <- atLine iter lineNr
+            doForSelectedLines [] $ \ebuf lineNr -> do
+                sol <- getIterAtLine ebuf lineNr
                 sol2 <- forwardCharsC sol (tabWidth prefs)
                 delete ebuf sol sol2
             return ()
         else return ()
     where
     canShiftLeft str prefs = do
-        boolList <- doForSelectedLines [] $ \ebuf iter lineNr -> do
-            sol <- atLine iter lineNr
+        boolList <- doForSelectedLines [] $ \ebuf lineNr -> do
+            sol <- getIterAtLine ebuf lineNr
             sol2 <- forwardCharsC sol (tabWidth prefs)
             str1 <- getText ebuf sol sol2 True
             return (str1 == str)
@@ -987,8 +986,8 @@ editShiftRight :: IDEAction
 editShiftRight = do
     prefs <- readIDE prefs
     let str = map (\_->' ') [1 .. (tabWidth prefs)]
-    doForSelectedLines [] $ \ebuf iter lineNr -> do
-        sol <- atLine iter lineNr
+    doForSelectedLines [] $ \ebuf lineNr -> do
+        sol <- getIterAtLine ebuf lineNr
         insert ebuf sol str
     return ()
 
@@ -1029,17 +1028,17 @@ alignChar char = do
         else return ()
     where
     positionsOfChar :: IDEM ([(Int, Maybe Int)])
-    positionsOfChar = doForSelectedLines [] $ \ebuf iter lineNr -> do
-            sol <- atLine iter lineNr
+    positionsOfChar = doForSelectedLines [] $ \ebuf lineNr -> do
+            sol <- getIterAtLine ebuf lineNr
             eol <- forwardToLineEndC sol
             line  <- getText ebuf sol eol True
             return (lineNr, elemIndex char line)
     alignChar :: Map Int (Maybe Int) -> Int -> IDEM ()
     alignChar positions alignTo = do
-            doForSelectedLines [] $ \ebuf iter lineNr -> do
+            doForSelectedLines [] $ \ebuf lineNr -> do
                 case lineNr `Map.lookup` positions of
                     Just (Just n)  ->  do
-                        sol       <- atLine iter lineNr
+                        sol       <- getIterAtLine ebuf lineNr
                         insertLoc <- forwardCharsC sol n
                         insert ebuf insertLoc (replicate (alignTo - n) ' ')
                     _              ->  return ()
