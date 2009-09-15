@@ -199,6 +199,8 @@ activatePackage filePath = do
             sb <- getSBActivePackage
             liftIO $ statusbarPop sb 1
             liftIO $ statusbarPush sb 1 (display $ packageId pack)
+            window <- getMainWindow
+            liftIO $ windowSetTitle window $ "Leksah: " ++  (display $ packageId pack)
             removeRecentlyUsedPackage filePath
             return (Just pack)
 
