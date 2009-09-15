@@ -789,7 +789,13 @@ descrViewPopup ideR  store descrView (Button _ click _ _ _ _ button _ _) = do
                 case sel of
                     Just descr      ->  reflectIDE (goToDefinition descr) ideR
                     otherwise       ->  sysMessage Normal "Modules>> descrViewPopup: no selection"
-            menuShellAppend theMenu item1
+            item2           <-  menuItemNewWithLabel "Insert in buffer"
+            item2 `onActivateLeaf` do
+                sel         <-  getSelectionDescr descrView store
+                case sel of
+                    Just descr      ->  reflectIDE (insertInBuffer descr) ideR
+                    otherwise       ->  sysMessage Normal "Modules>> descrViewPopup: no selection"
+            mapM_ (menuShellAppend theMenu) [item1, item2]
             menuPopup theMenu Nothing
             widgetShowAll theMenu
             return True

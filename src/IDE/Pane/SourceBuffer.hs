@@ -18,12 +18,12 @@ module IDE.Pane.SourceBuffer (
     IDEBuffer(..)
 ,   BufferState(..)
 
-
 ,   allBuffers
 ,   maybeActiveBuf
 ,   selectSourceBuf
 ,   goToSourceDefinition
 ,   goToDefinition
+,   insertInBuffer
 
 ,   fileNew
 ,   fileOpenThis
@@ -287,6 +287,22 @@ goToSourceDefinition fp mbLocation = do
                 reflectIDE (scrollToIter (sourceView buf) iter 0.0 (Just (0.3,0.3))) ideR
                 return False) priorityDefaultIdle
             return ()
+
+insertInBuffer :: Descr -> IDEAction
+insertInBuffer idDescr = do
+    mbPaneName <- lastActiveBufferPane
+    case mbPaneName of
+        Nothing  -> return ()
+        Just name -> do
+            PaneC p <- paneFromName name
+            let mbBuf = cast p
+            case mbBuf of
+                Nothing -> return ()
+                Just buf ->
+                    inBufContext () buf $ \_ ebuf buf _ -> do
+                        mark <- getInsertMark ebuf
+                        iter <- getIterAtMark ebuf mark
+                        insert ebuf iter (descrName idDescr)
 
 markRefInSourceBuf :: Int -> IDEBuffer -> LogRef -> Bool -> IDEAction
 markRefInSourceBuf index buf logRef scrollTo = do
