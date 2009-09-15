@@ -148,23 +148,19 @@ addImport' nis filePath descr descrList =  do
                      Nothing            -> do
                         ideMessage Normal ("Can't parse module header " ++ filePath)
                         return (False, descrList)
-                     Just HsModule{ hsmodImports = imports } ->
+                     Just pr@HsModule{ hsmodImports = imports } ->
                         case filter qualifyAsImportStatement imports of
                             []     ->   let newLine  =  showSDoc (ppr newImpDecl) ++ "\n"
                                             lastLoc = foldr max noSrcSpan (map getLoc imports)
-                                            mbLineSel = if isGoodSrcSpan lastLoc
-                                                            then Just (srcSpanEndLine lastLoc)
-                                                            else figureOutImportLine text
-                                        in  case mbLineSel of
-                                                Nothing -> do
-                                                    ideMessage Normal "No source location"
-                                                    return  (False,descrList)
-                                                Just lineSel -> do
-                                                    i1 <- getIterAtLine gtkbuf lineSel
-                                                    insert gtkbuf i1 newLine
-                                                    fileSave False
-                                                    setModified gtkbuf True
-                                                    return (True,descr : descrList)
+                                            lineSel = if isGoodSrcSpan lastLoc
+                                                            then srcSpanEndLine lastLoc
+                                                            else figureOutImportLine text pr
+                                            in do
+                                                i1 <- getIterAtLine gtkbuf lineSel
+                                                insert gtkbuf i1 newLine
+                                                fileSave False
+                                                setModified gtkbuf True
+                                                return (True,descr : descrList)
                             l@(impDecl:_) ->
                                             let newImpDecl  =  addToDecl (unLoc impDecl)
                                                 newLine     =  showSDoc (ppr newImpDecl) ++ "\n"
@@ -319,30 +315,14 @@ conid  = do
 
 -- |* Where to insert the first import statement?
 
-figureOutImportLine :: String -> Maybe Int
-figureOutImportLine modSource =
-    case parse importPosParser "" modSource of
-        Left e      -> Nothing
-        Right pos   -> (Just pos)
-
-importPosParser :: CharParser () Int
-importPosParser = do
-    whiteSpace
-    skipHeader
-    pos   <- getPosition
-    skipMany anyChar
-    eof
-    return (max (sourceLine pos - 2) 0)
-    <?> "importPosParser"
-
-skipHeader :: CharParser () ()
-skipHeader =do
-    try (do
-        symbol "module"
-        manyTill anyChar (try (symbol "where"))
-        return ())
-    <|> return ()
-    <?> "skipHeader"
+figureOutImportLine :: String -> HsModule alpha -> Int
+figureOutImportLine modSource hsMod =
+    case hsmodExports hsMod of
+        Nothing ->
+            case hsmodName hsMod of
+                Nothing -> 0
+                Just locModName -> srcSpanStartLine (getLoc locModName)
+        Just hsmodExports -> srcSpanStartLine (foldr max noSrcSpan (map getLoc hsmodExports)) + 1
 
 -- |* The little dialog to choose between possible modules
 
