@@ -112,7 +112,10 @@ buildEditor (NFD pairList)     v =   do
             _ -> return ())
 
     hb      <-  hBoxNew False 0
-    boxPackStart hb listView PackNatural 7
+    sw              <-  scrolledWindowNew Nothing Nothing
+    containerAdd sw listView
+    scrolledWindowSetPolicy sw PolicyNever PolicyAutomatic
+    boxPackStart hb sw PackNatural 0
     boxPackEnd hb nb PackGrow 7
     let newInj = (\v -> mapM_ (\ setInj -> setInj v) setInjs)
     let newExt = (\v -> extract v getExts)
