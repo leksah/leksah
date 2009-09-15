@@ -949,7 +949,7 @@ getStartAndEndLineOfSelection ebuf = do
             then (startLine,endLine,endIter)
             else (endLine,startLine,startIter)
     b           <- startsLine endIter'
-    let endLineReal = if b then endLine' - 1 else endLine'
+    let endLineReal = if b && endLine /= startLine then endLine' - 1 else endLine'
     return (startLine',endLineReal)
 
 doForSelectedLines :: [a] -> (EditorBuffer -> Int -> IDEM a) -> IDEM [a]
