@@ -157,5 +157,8 @@ instance Ord Notebook
 instance Eq Window
     where (==) a b = let (GObject pa, GObject pb) = (toGObject a, toGObject b)
                     in pa == pb
+instance Eq Widget
+    where (==) a b = let (GObject pa, GObject pb) = (toGObject a, toGObject b)
+                    in pa == pb
 #endif
 #endif

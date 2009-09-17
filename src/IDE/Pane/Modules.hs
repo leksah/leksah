@@ -156,30 +156,33 @@ selectIdentifier idDescr = do
     accessibleInfo' <-  readIDE accessibleInfo
     currentInfo'    <-  readIDE currentInfo
     currentScope    <-  getScope
-    let pid = pack (descrModu idDescr)
-    let mbNeededScope = case currentInfo' of
-                        Just (localScope,packageScope) ->
-                            if Map.member pid (fst localScope)
-                                then Just Local
-                                else if Map.member pid (fst packageScope)
-                                        then Just Package
-                                        else case accessibleInfo' of
+    case descrModu idDescr of
+        Nothing -> return ()
+        Just pm -> do
+            let pid = pack pm
+            let mbNeededScope = case currentInfo' of
+                                Just (localScope,packageScope) ->
+                                    if Map.member pid (fst localScope)
+                                        then Just Local
+                                        else if Map.member pid (fst packageScope)
+                                                then Just Package
+                                                else case accessibleInfo' of
+                                                        Just worldScope ->
+                                                            if Map.member pid (fst worldScope)
+                                                                then Just System
+                                                                else Nothing
+                                                        Nothing -> Nothing
+                                Nothing -> case accessibleInfo' of
                                                 Just worldScope ->
                                                     if Map.member pid (fst worldScope)
                                                         then Just System
                                                         else Nothing
                                                 Nothing -> Nothing
-                        Nothing -> case accessibleInfo' of
-                                        Just worldScope ->
-                                            if Map.member pid (fst worldScope)
-                                                then Just System
-                                                else Nothing
-                                        Nothing -> Nothing
-    case mbNeededScope of
-        Nothing -> return ()
-        Just sc -> do
-            when (fst currentScope < sc) (setScope (sc,snd currentScope))
-            selectIdentifier' (modu $ descrModu idDescr) (descrName idDescr)
+            case mbNeededScope of
+                Nothing -> return ()
+                Just sc -> do
+                    when (fst currentScope < sc) (setScope (sc,snd currentScope))
+                    selectIdentifier' (modu pm) (descrName idDescr)
 
 selectIdentifier' :: ModuleName -> Symbol -> IDEAction
 selectIdentifier'  moduleName symbol =
@@ -521,7 +524,9 @@ findDescription :: PackModule -> SymbolTable -> Symbol -> Maybe (Symbol,Descr)
 findDescription md st s     =
     case Map.lookup s st  of
         Nothing ->  Nothing
-        Just l  ->  case filter (\id -> md == descrModu id) l of
+        Just l  ->  case filter (\id -> case descrModu id of
+                                            Nothing -> False
+                                            Just pm -> md == pm) l of
                          [] -> Nothing
                          l  -> Just (s,head l)
 

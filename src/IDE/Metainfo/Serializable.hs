@@ -155,6 +155,14 @@ instance BinaryShared SpDescr where
     put (InstanceDescr binds')
         = do    put (9:: Int)
                 put binds'
+    put KeywordDescr
+        = do    put (10:: Int)
+    put ExtensionDescr
+        = do    put (11:: Int)
+    put ModNameDescr
+        = do    put (12:: Int)
+    put QualModNameDescr
+        = do    put (13:: Int)
 
     get = do    (typeHint :: Int)                <- get
                 case typeHint of
@@ -184,6 +192,10 @@ instance BinaryShared SpDescr where
                     9 -> do
                             binds'              <- get
                             return (InstanceDescr binds')
+                    10 -> return KeywordDescr
+                    11 -> return ExtensionDescr
+                    12 -> return ModNameDescr
+                    13 -> return QualModNameDescr
                     _ -> throwIDE "Impossible in Binary SpDescr get"
 
 instance BinaryShared Location where

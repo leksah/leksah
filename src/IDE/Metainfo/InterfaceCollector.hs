@@ -82,7 +82,8 @@ import IDE.Metainfo.Serializable ()
 import Data.Binary.Shared
 
 metadataVersion :: Integer
-metadataVersion = 5
+metadataVersion = 6
+
 
 data CollectStatistics = CollectStatistics {
     packagesTotal       ::   Int
@@ -283,7 +284,7 @@ extractExportedDescrR pid hidden iface =
                                                             (map snd (mi_decls iface))
         ownDecls        =   concatMap (extractIdentifierDescr pid [mid]) exportedDecls
         otherDecls      =   exportedNames `Set.difference` (Set.fromList (map descrName ownDecls))
-        reexported      =   map (\d -> Reexported (PM pid mid) d)
+        reexported      =   map (\d -> Reexported (Just (PM pid mid)) d)
                                  $ filter (\k -> (descrName k) `Set.member` otherDecls) hidden
         inst            =   concatMap (extractInstances (PM pid mid)) (mi_insts iface)
         uses            =   Map.fromList $ map extractUsages (mi_usages iface)
@@ -302,8 +303,8 @@ extractIdentifierDescr package modules decl
       else
         let descr = Descr{
                     descrName'           =   unpackFS $occNameFS (ifName decl)
-                ,   typeInfo'            =   BS.pack $ unlines $ nonEmptyLines $ filterExtras $ showSDocUnqual $ppr decl
-                ,   descrModu'           =   PM package (last modules)
+                ,   typeInfo'            =   Just (BS.pack $ unlines $ nonEmptyLines $ filterExtras $ showSDocUnqual $ppr decl)
+                ,   descrModu'           =   Just (PM package (last modules))
                 ,   mbLocation'          =   Nothing
                 ,   mbComment'           =   Nothing
                 ,   details'             =   VariableDescr
@@ -348,9 +349,9 @@ extractIdentifierDescr package modules decl
             (IfaceForeign _ _)
                         ->  [descr]
 
-extractConstructors ::   OccName -> [IfaceConDecl] -> [(Symbol,TypeInfo)]
+extractConstructors ::   OccName -> [IfaceConDecl] -> [(Symbol,Maybe TypeInfo)]
 extractConstructors name decls    =   map (\decl -> (unpackFS $occNameFS (ifConOcc decl),
-                                                 (BS.pack $ filterExtras $ showSDocUnqual $
+                                                 Just (BS.pack $ filterExtras $ showSDocUnqual $
                                                     pprIfaceForAllPart (ifConUnivTvs decl ++ ifConExTvs decl)
                                                         (eq_ctxt decl ++ ifConCtxt decl) (pp_tau decl)))) decls
     where
@@ -361,19 +362,19 @@ extractConstructors name decls    =   map (\decl -> (unpackFS $occNameFS (ifConO
     eq_ctxt decl    = [(IfaceEqPred (IfaceTyVar (occNameFS tv)) ty)
 	                        | (tv,ty) <- ifConEqSpec decl]
 
-extractFields ::  IfaceConDecl -> [(Symbol,TypeInfo)]
+extractFields ::  IfaceConDecl -> [(Symbol,Maybe TypeInfo)]
 extractFields  decl    =   zip (map extractFieldNames (ifConFields decl))
                                 (map extractType (ifConArgTys decl))
 
-extractType :: IfaceType -> TypeInfo
-extractType = BS.pack . filterExtras . showSDocUnqual . ppr
+extractType :: IfaceType -> Maybe TypeInfo
+extractType it = Just ((BS.pack . filterExtras . showSDocUnqual . ppr) it)
 
 extractFieldNames :: OccName -> Symbol
 extractFieldNames occName = unpackFS $occNameFS occName
 
-extractClassOp :: IfaceClassOp -> (Symbol, TypeInfo)
+extractClassOp :: IfaceClassOp -> (Symbol, Maybe TypeInfo)
 extractClassOp (IfaceClassOp occName dm ty) = (unpackFS $occNameFS occName,
-                                                BS.pack $ showSDocUnqual (ppr ty))
+                                                Just (BS.pack $ showSDocUnqual (ppr ty)))
 
 extractSuperClassNames :: [IfacePredType] -> [Symbol]
 extractSuperClassNames l = catMaybes $ map extractSuperClassName l
@@ -390,8 +391,8 @@ extractInstances pm ifaceInst  =
                                     $ ifInstTys ifaceInst
     in [Descr
                     {   descrName'       =   className
-                    ,   typeInfo'        =   BS.empty
-                    ,   descrModu'       =   pm
+                    ,   typeInfo'        =   Nothing
+                    ,   descrModu'       =   Just pm
                     ,   mbLocation'      =   Nothing
                     ,   mbComment'       =   Nothing
                     ,   details'         =   InstanceDescr {binds = dataNames}}]

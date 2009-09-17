@@ -88,39 +88,42 @@ showReferences = do
 
 -- | Open a pane with the references of this identifier
 referencedFrom :: Descr  -> IDEAction
-referencedFrom idDescr = do
-    references   <-  getReferences
-    scope <- liftIO $ getScope references
-    mbCurrentInfo   <- readIDE currentInfo
-    mbAccessibleInfo <- readIDE accessibleInfo
-    packages <- case scope of
-                    System  ->  case mbAccessibleInfo of
-                                    Nothing -> case mbCurrentInfo of
-                                                    Nothing             ->  return []
-                                                    Just currentInfo    ->  return
-                                                                ((Map.elems . fst . fst) currentInfo)
-                                    Just scope -> case mbCurrentInfo of
-                                                    Nothing             ->  return ((Map.elems . fst) scope)
-                                                    Just currentInfo    ->  return
-                                                        ((Map.elems . fst . fst) currentInfo
-                                                        ++ (Map.elems . fst) scope)
-                    Package ->  case mbCurrentInfo of
-                                    Nothing             ->  return []
-                                    Just currentInfo    ->  return ((Map.elems . fst . fst) currentInfo
-                                            ++  (Map.elems . fst . snd) currentInfo)
-                    Local   ->  case mbCurrentInfo of
-                                    Nothing             ->  return []
-                                    Just currentInfo    ->  return ((Map.elems . fst . fst) currentInfo)
-    let modulesList = modulesForCallerFromPackages packages (descrName idDescr, modu $ descrModu idDescr)
-    liftIO $ do
-        writeIORef (referencesDescr references) (Just idDescr)
-        listStoreClear (referencesStore references)
-        mapM_ (listStoreAppend (referencesStore references))
-            $ sort $ zip modulesList (repeat (descrName idDescr))
-        entrySetText (referencesEntry references)
-            $   descrName idDescr ++
-                " << " ++ showPackModule (descrModu idDescr)
-        bringPaneToFront references
+referencedFrom idDescr =
+    case descrModu' idDescr of
+        Nothing -> return ()
+        Just pm -> do
+            references   <-  getReferences
+            scope <- liftIO $ getScope references
+            mbCurrentInfo   <- readIDE currentInfo
+            mbAccessibleInfo <- readIDE accessibleInfo
+            packages <- case scope of
+                            System  ->  case mbAccessibleInfo of
+                                            Nothing -> case mbCurrentInfo of
+                                                            Nothing             ->  return []
+                                                            Just currentInfo    ->  return
+                                                                        ((Map.elems . fst . fst) currentInfo)
+                                            Just scope -> case mbCurrentInfo of
+                                                            Nothing             ->  return ((Map.elems . fst) scope)
+                                                            Just currentInfo    ->  return
+                                                                ((Map.elems . fst . fst) currentInfo
+                                                                ++ (Map.elems . fst) scope)
+                            Package ->  case mbCurrentInfo of
+                                            Nothing             ->  return []
+                                            Just currentInfo    ->  return ((Map.elems . fst . fst) currentInfo
+                                                    ++  (Map.elems . fst . snd) currentInfo)
+                            Local   ->  case mbCurrentInfo of
+                                            Nothing             ->  return []
+                                            Just currentInfo    ->  return ((Map.elems . fst . fst) currentInfo)
+            let modulesList = modulesForCallerFromPackages packages (descrName idDescr, modu pm)
+            liftIO $ do
+                writeIORef (referencesDescr references) (Just idDescr)
+                listStoreClear (referencesStore references)
+                mapM_ (listStoreAppend (referencesStore references))
+                    $ sort $ zip modulesList (repeat (descrName idDescr))
+                entrySetText (referencesEntry references)
+                    $   descrName idDescr ++
+                        " << " ++ showPackModule pm
+                bringPaneToFront references
 
 modulesForCallerFromPackages :: [PackageDescr] -> (Symbol,ModuleName) -> [ModuleDescr]
 modulesForCallerFromPackages []        _            =  []

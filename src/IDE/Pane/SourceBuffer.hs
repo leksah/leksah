@@ -243,16 +243,16 @@ goToDefinition :: Descr -> IDEAction
 goToDefinition idDescr = do
     mbAccesibleInfo      <-  readIDE accessibleInfo
     mbCurrentInfo        <-  readIDE currentInfo
-    if isJust mbAccesibleInfo && isJust mbCurrentInfo
+    if isJust mbAccesibleInfo && isJust mbCurrentInfo && isJust (descrModu idDescr)
         then do
-            let packageId       =   pack $ descrModu idDescr
+            let packageId       =   pack $ fromJust $ descrModu idDescr
             let mbPack          =   case packageId `Map.lookup` fst
                                             (fromJust mbAccesibleInfo) of
                                         Just it ->  Just it
                                         Nothing ->  packageId `Map.lookup` fst (fst
                                                                  (fromJust mbCurrentInfo))
             case mbPack of
-                Just pack       ->  case filter (\md -> moduleIdMD md == descrModu idDescr)
+                Just pack       ->  case filter (\md -> moduleIdMD md == fromJust (descrModu idDescr))
                                                     (exposedModulesPD pack) of
                                         (mod : tl)   ->  if isJust (mbSourcePathMD mod)
                                                         then goToSourceDefinition

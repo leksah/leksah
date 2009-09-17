@@ -62,6 +62,7 @@ import Control.Event (registerEvent)
 import Outputable (showSDoc, ppr)
 import Control.Monad.Trans (liftIO)
 import Control.Monad (foldM_, when)
+import Distribution.ModuleName (ModuleName)
 
 
 
@@ -133,10 +134,11 @@ addImport' :: NotInScopeParseResult -> FilePath -> Descr -> [Descr] -> IDEM (Boo
 addImport' nis filePath descr descrList =  do
     candy' <- readIDE candy
     mbBuf  <- selectSourceBuf filePath
-    let mod = modu (descrModu' descr)
-    case mbBuf of
-        Nothing  -> return (False, descrList)
-        Just buf -> do
+    let mbMod  = case descrModu' descr of
+                    Nothing -> Nothing
+                    Just pm -> Just (modu pm)
+    case (mbBuf,mbMod) of
+        (Just buf,Just mod) -> do
             inActiveBufContext (False,descrList) $ \ nb gtkbuf idebuf n -> do
                 ideMessage Normal $ "addImport " ++ show (descrName descr) ++ " from "
                     ++ (render $ disp $ mod)
@@ -149,8 +151,8 @@ addImport' nis filePath descr descrList =  do
                         ideMessage Normal ("Can't parse module header " ++ filePath)
                         return (False, descrList)
                      Just pr@HsModule{ hsmodImports = imports } ->
-                        case filter qualifyAsImportStatement imports of
-                            []     ->   let newLine  =  showSDoc (ppr newImpDecl) ++ "\n"
+                        case filter (qualifyAsImportStatement mod) imports of
+                            []     ->   let newLine  =  showSDoc (ppr (newImpDecl mod)) ++ "\n"
                                             lastLoc = foldr max noSrcSpan (map getLoc imports)
                                             lineSel = if isGoodSrcSpan lastLoc
                                                             then srcSpanEndLine lastLoc
@@ -182,20 +184,19 @@ addImport' nis filePath descr descrList =  do
                                                         fileSave False
                                                         setModified gtkbuf True
                                                         return (True, descr : descrList)
+        _  -> return (False, descrList)
     where
-        isHiding (Just (_,False)) =  True
-        isHiding _                =  False
-        qualifyAsImportStatement :: LImportDecl alpha -> Bool
-        qualifyAsImportStatement limpDecl =
+        qualifyAsImportStatement :: ModuleName -> LImportDecl alpha -> Bool
+        qualifyAsImportStatement moduleName limpDecl =
             let impDecl = unLoc limpDecl in
-                showSDoc (ppr (ideclName impDecl)) == display (modu (descrModu' descr))
+                showSDoc (ppr (ideclName impDecl)) == display moduleName
                 && ((isNothing (mbQual' nis) &&  not (ideclQualified impDecl)) ||
                     (isJust (mbQual' nis) && ideclQualified impDecl
                         && fromJust (mbQual' nis) == qualString impDecl))
                 && (isNothing (ideclHiding impDecl) || not (fst (fromJust (ideclHiding impDecl))))
-        newImpDecl :: LImportDecl RdrName
-        newImpDecl = noLoc (ImportDecl
-                        (noLoc (mkModuleName (display (modu (descrModu' descr)))))
+        newImpDecl :: ModuleName -> LImportDecl RdrName
+        newImpDecl moduleName = noLoc (ImportDecl
+                        (noLoc (mkModuleName (display moduleName)))
                         Nothing
                         False
                         (isJust (mbQual' nis))
@@ -339,10 +340,13 @@ moduleFields list ident =
 
 selectModuleDialog :: Window -> [Descr] -> String -> Maybe Descr -> IO (Maybe Descr)
 selectModuleDialog parentWindow list id mbDescr = do
-    let selectionList       =  map (render . disp . modu . descrModu') list
+    let listWithMods        =  filter (isJust . descrModu') list
+    let selectionList       =  map (render . disp . modu . fromJust . descrModu') listWithMods
     let mbSelectedString    =  case mbDescr of
                                     Nothing -> Nothing
-                                    Just descr -> Just ((render . disp . modu . descrModu') descr)
+                                    Just descr -> case descrModu' descr of
+                                                    Nothing -> Nothing
+                                                    Just pm -> Just ((render . disp . modu) pm)
     let realSelectionString =  case mbSelectedString of
                                     Nothing -> head selectionList
                                     Just str -> if elem str selectionList
@@ -367,7 +371,9 @@ selectModuleDialog parentWindow list id mbDescr = do
     widgetDestroy dia
     --find
     case (resp,value) of
-        (ResponseOk,Just v)    -> return (Just (head (filter (\e -> (render . disp . modu . descrModu') e == v)
-                                            list)))
+        (ResponseOk,Just v)    -> return (Just (head
+                                    (filter (\e -> case descrModu' e of
+                                        Nothing -> False
+                                        Just pm -> (render . disp . modu) pm == v) list)))
         _                      -> return Nothing
 

@@ -67,11 +67,11 @@ type Setter alpha beta     =   beta -> alpha -> alpha
 --
 -- | A type for injecting a value into an editor
 --
-type Injector beta     =   beta -> IO()
+type Injector beta     =   beta -> IO ()
 --
 -- | A type for extracting a value from an editor
 --
-type Extractor beta    =   IO(Maybe (beta))
+type Extractor beta    =   IO (Maybe beta)
 --
 -- | A type for the application of a value to be reflected in the GUI
 --

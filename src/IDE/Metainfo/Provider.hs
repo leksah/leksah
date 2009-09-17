@@ -51,6 +51,7 @@ import Distribution.Version
 import Distribution.ModuleName
 import GHC (runGhc)
 
+
 import DeepSeq
 import IDE.FileUtils
 import IDE.Core.State
@@ -62,6 +63,8 @@ import Text.Regex.Posix.String (execute,compile)
 import IDE.Metainfo.GHCUtils (findFittingPackages,getInstalledPackageInfos,inGhc)
 import Data.Binary.Shared (decodeSer)
 import System.Mem (performGC)
+import Language.Haskell.Extension (knownExtensions)
+import Distribution.Text (display)
 
 getActivePackageDescr :: IDEM (Maybe PackageDescr)
 getActivePackageDescr = do
@@ -232,8 +235,9 @@ loadAccessibleInfo =
         let scope       =   foldr buildScope (Map.empty,Map.empty)
                                 $ map fromJust
                                     $ filter isJust packageList
+        let scope'      =   addOtherToScope scope
         liftIO performGC
-        modifyIDE_ (\ide -> ide{accessibleInfo = (Just scope)})
+        modifyIDE_ (\ide -> ide{accessibleInfo = (Just scope')})
 
 --
 -- | Clears the current info, not the world infos
@@ -271,7 +275,8 @@ infoForActivePackage  = do
                             let scope       =   foldr buildScope (Map.empty,Map.empty)
                                                     $ map fromJust
                                                         $ filter isJust packageList
-                            modifyIDE_ (\ide -> ide{currentInfo = Just (active, scope)})
+                            let scope'      =   addOtherToScope scope
+                            modifyIDE_ (\ide -> ide{currentInfo = Just (active, scope')})
     triggerEventIDE CurrentInfo
     return ()
 
@@ -462,7 +467,68 @@ buildSymbolTable pDescr symbolTable =
                 InstanceDescr _ -> []
                 _ -> [descr]
 
+keywords :: [String]
+keywords = [
+        "as"
+    ,   "case"
+    ,   "of"
+    ,   "class"
+    ,   "data"
+    ,   "default"
+    ,   "deriving"
+    ,   "do"
+    ,   "forall"
+    ,   "foreign"
+    ,   "hiding"
+    ,   "if"
+    ,   "then"
+    ,   "else"
+    ,   "import"
+    ,   "infix"
+    ,   "infixl"
+    ,   "infixr"
+    ,   "instance"
+    ,   "let"
+    ,   "in"
+    ,   "mdo"
+    ,   "module"
+    ,   "newtype"
+    ,   "qualified"
+    ,   "type"
+    ,   "where"]
 
+keywordDescrs :: [Descr]
+keywordDescrs = map (\s -> Descr
+                                s
+                                Nothing
+                                Nothing
+                                Nothing
+                                (Just (BS.pack "| Haskell keyword"))
+                                KeywordDescr) keywords
+
+extensionDescrs :: [Descr]
+extensionDescrs =  map (\ext -> Descr
+                                    ("X" ++ show ext)
+                                    Nothing
+                                    Nothing
+                                    Nothing
+                                    (Just (BS.pack "| Haskell language extension"))
+                                    ExtensionDescr) knownExtensions
+
+moduleNameDescrs :: PackageDescr -> [Descr]
+moduleNameDescrs pd = map (\md -> Descr
+                                    ((display . modu . moduleIdMD) md)
+                                    Nothing
+                                    (Just (moduleIdMD md))
+                                    Nothing
+                                    (Just (BS.pack "| Module name"))
+                                    ModNameDescr) (exposedModulesPD pd)
+
+addOtherToScope ::  PackageScope -> PackageScope
+addOtherToScope (packageMap, symbolTable) = (packageMap, newSymbolTable)
+    where newSymbolTable = foldl' (\ map descr -> Map.insertWith (++) (descrName descr) [descr] map)
+                        symbolTable (keywordDescrs ++ extensionDescrs ++ modNameDescrs)
+          modNameDescrs = concatMap moduleNameDescrs (Map.elems packageMap)
 
 -- ---------------------------------------------------------------------
 -- DeepSeq instances for forcing evaluation

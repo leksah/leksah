@@ -3,7 +3,8 @@
     -XExistentialQuantification
     -XRank2Types
     -XFlexibleInstances
-    -XDeriveDataTypeable #-}
+    -XDeriveDataTypeable
+    -XFlexibleContexts #-}
 -----------------------------------------------------------------------------
 --
 -- Module      :  IDE.Core.Data
@@ -276,13 +277,13 @@ instance Ord ModuleDescr where
 
 data Descr              =   Descr {
     descrName'          ::   Symbol
-,   typeInfo'           ::   TypeInfo
-,   descrModu'          ::   PackModule
+,   typeInfo'           ::   Maybe TypeInfo
+,   descrModu'          ::   Maybe PackModule
 ,   mbLocation'         ::   Maybe Location
 ,   mbComment'          ::   Maybe ByteString
 ,   details'            ::   SpDescr}
     | Reexported {
-    descrModu'          ::   PackModule
+    descrModu'          ::   Maybe PackModule
 ,   impDescr            ::   Descr}
     deriving (Show,Read,Typeable)
 
@@ -290,10 +291,13 @@ instance Show (Present Descr) where
     showsPrec _ (Present descr) =   case mbComment descr of
                                         Just comment -> p . showChar '\n' . c comment . t
                                         Nothing      -> p . showChar '\n' . t
-        where p         =   showString "-- | " . shows (Present (descrModu' descr))
+        where p         =   case descrModu' descr of
+                                Just ds -> showString "-- | " . shows (Present ds)
+                                Nothing -> id
               c com     =   showString $ (unlines . map ((++) "-- ") .  nonEmptyLines) (BS.unpack com)
-              t         =   showString $ BS.unpack (typeInfo descr)
-
+              t         =   case typeInfo descr of
+                                Just ti -> showString $ BS.unpack ti
+                                Nothing -> id
 
 isReexported :: Descr -> Bool
 isReexported (Reexported _ _)   =   True
@@ -304,12 +308,12 @@ descrName d
     |   isReexported d  =   descrName (impDescr d)
     |   otherwise       =   descrName' d
 
-typeInfo :: Descr -> TypeInfo
+typeInfo :: Descr -> Maybe TypeInfo
 typeInfo d
     |   isReexported d  =   typeInfo (impDescr d)
     |   otherwise       =   typeInfo' d
 
-descrModu :: Descr -> PackModule
+descrModu :: Descr -> Maybe PackModule
 descrModu d
     |   isReexported d  =   descrModu (impDescr d)
     |   otherwise       =   descrModu' d
@@ -333,14 +337,18 @@ details d
 data SpDescr   =   VariableDescr
                     |   FieldDescr {typeDescrF :: Descr}
                     |   ConstructorDescr {typeDescrC :: Descr}
-                    |   DataDescr {constructors :: [(Symbol,TypeInfo)],
-                            fields :: [(Symbol,TypeInfo)]}
+                    |   DataDescr {constructors :: [(Symbol,Maybe TypeInfo)],
+                            fields :: [(Symbol,Maybe TypeInfo)]}
                     |   TypeDescr
-                    |   NewtypeDescr {constructor :: (Symbol,TypeInfo),
-                            mbField :: Maybe (Symbol,TypeInfo)}
-                    |   ClassDescr  {super :: [Symbol], methods :: [(Symbol,TypeInfo)]}
+                    |   NewtypeDescr {constructor :: (Symbol,Maybe TypeInfo),
+                            mbField :: Maybe (Symbol,Maybe TypeInfo)}
+                    |   ClassDescr  {super :: [Symbol], methods :: [(Symbol,Maybe TypeInfo)]}
                     |   MethodDescr {classDescrM :: Descr}
                     |   InstanceDescr {binds :: [Symbol]}
+                    |   KeywordDescr
+                    |   ExtensionDescr
+                    |   ModNameDescr
+                    |   QualModNameDescr
                             --the descrName is the type Konstructor?
     deriving (Show,Read,Eq,Ord,Typeable)
 
@@ -354,7 +362,7 @@ instance Ord Descr where
                                 else descrName a <  descrName b
 
 data DescrType = Variable | Field | Constructor | Data  | Type | Newtype
-    | Class | Method | Instance
+    | Class | Method | Instance | Keyword | Extension | ModName | QualModName
   deriving (Show, Eq, Ord, Bounded, Enum, Read)
 
 instance Default DescrType where
@@ -370,6 +378,12 @@ descrType (NewtypeDescr _ _) =   Newtype
 descrType (ClassDescr  _ _)  =   Class
 descrType (MethodDescr _)    =   Method
 descrType (InstanceDescr _)  =   Instance
+descrType KeywordDescr       =   Keyword
+descrType ExtensionDescr     =   Extension
+descrType ModNameDescr       =   ModName
+descrType QualModNameDescr   =   QualModName
+
+
 
 stockIdFromType :: DescrType -> StockId
 stockIdFromType Variable        =   "ide_function"
@@ -381,6 +395,8 @@ stockIdFromType Instance        =   "ide_instance"
 stockIdFromType Constructor     =   "ide_konstructor"
 stockIdFromType Field           =   "ide_slot"
 stockIdFromType Method          =   "ide_method"
+stockIdFromType _               =   "ide_other"
+
 
 type Symbol             =   String  -- Qualified or unqualified
 type ClassId            =   String  -- Qualified or unqualified

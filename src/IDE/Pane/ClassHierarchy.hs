@@ -110,7 +110,7 @@ instance RecoverablePane IDEClassHierarchy ClassHierarchyState where
 selectClass :: Descr -> IDEAction
 selectClass d@(Descr descrName _ descrModu _ _ details) =
     case details of
-        (ClassDescr _ _)-> selectClass' (modu descrModu) descrName
+        (ClassDescr _ _)-> selectClass' descrModu descrName
         _               -> return ()
 selectClass _                                           = return ()
 

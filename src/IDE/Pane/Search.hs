@@ -167,7 +167,9 @@ builder scope mode pp nb windows ideR = do
     cellLayoutPackStart col1 renderer10 False
     cellLayoutPackStart col1 renderer1 True
     cellLayoutSetAttributes col1 renderer1 listStore
-        $ \row -> [ cellText := display $ modu $ descrModu' row]
+        $ \row -> [ cellText := case descrModu' row of
+                                    Nothing -> ""
+                                    Just pm -> display $ modu pm]
     cellLayoutSetAttributes col1 renderer10 listStore
         $ \row -> [
         cellPixbufStockId  := if isReexported row
@@ -185,8 +187,9 @@ builder scope mode pp nb windows ideR = do
     treeViewAppendColumn treeView col2
     cellLayoutPackStart col2 renderer2 True
     cellLayoutSetAttributes col2 renderer2 listStore
-        $ \row -> [ cellText := display $ pack $ descrModu' row]
-
+        $ \row -> [ cellText := case descrModu' row of
+                                    Nothing -> ""
+                                    Just pm -> display $ pack pm]
     treeViewSetHeadersVisible treeView True
     sel <- treeViewGetSelection treeView
     treeSelectionSetMode sel SelectionSingle
