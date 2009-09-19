@@ -20,6 +20,7 @@
 --
 ---------------------------------------------------------------------------------
 
+
 module Graphics.UI.Frame.ViewFrame (
     removePaneAdmin
 ,   addPaneAdmin
@@ -110,6 +111,7 @@ import Graphics.UI.Editor.Basics
 import qualified Data.Set as  Set (unions, member)
 import Data.Set (Set(..))
 import Graphics.UI.Gtk.Gdk.Events (Event(..))
+
 -- import Debug.Trace (trace)
 trace a b = b
 

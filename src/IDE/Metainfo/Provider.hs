@@ -51,7 +51,6 @@ import Distribution.Version
 import Distribution.ModuleName
 import GHC (runGhc)
 
-
 import DeepSeq
 import IDE.FileUtils
 import IDE.Core.State
@@ -235,9 +234,8 @@ loadAccessibleInfo =
         let scope       =   foldr buildScope (Map.empty,Map.empty)
                                 $ map fromJust
                                     $ filter isJust packageList
-        let scope'      =   addOtherToScope scope
         liftIO performGC
-        modifyIDE_ (\ide -> ide{accessibleInfo = (Just scope')})
+        modifyIDE_ (\ide -> ide{accessibleInfo = (Just (addOtherToScope scope True))})
 
 --
 -- | Clears the current info, not the world infos
@@ -275,8 +273,8 @@ infoForActivePackage  = do
                             let scope       =   foldr buildScope (Map.empty,Map.empty)
                                                     $ map fromJust
                                                         $ filter isJust packageList
-                            let scope'      =   addOtherToScope scope
-                            modifyIDE_ (\ide -> ide{currentInfo = Just (active, scope')})
+                            modifyIDE_ (\ide -> ide{currentInfo = Just
+                                (addOtherToScope active True, addOtherToScope scope False)})
     triggerEventIDE CurrentInfo
     return ()
 
@@ -300,7 +298,8 @@ setInfo f = do
             case newActive of
                 Nothing         -> return ()
                 Just newActive  -> do
-                    modifyIDE_ (\ide -> ide{currentInfo = Just (newActive, scope)})
+                    modifyIDE_ (\ide -> ide{currentInfo = Just
+                        (addOtherToScope newActive True, scope)})
                     triggerEventIDE CurrentInfo
                     return ()
 
@@ -524,10 +523,12 @@ moduleNameDescrs pd = map (\md -> Descr
                                     (Just (BS.pack "| Module name"))
                                     ModNameDescr) (exposedModulesPD pd)
 
-addOtherToScope ::  PackageScope -> PackageScope
-addOtherToScope (packageMap, symbolTable) = (packageMap, newSymbolTable)
+addOtherToScope ::  PackageScope -> Bool -> PackageScope
+addOtherToScope (packageMap, symbolTable) addAll = (packageMap, newSymbolTable)
     where newSymbolTable = foldl' (\ map descr -> Map.insertWith (++) (descrName descr) [descr] map)
-                        symbolTable (keywordDescrs ++ extensionDescrs ++ modNameDescrs)
+                        symbolTable (if addAll
+                                        then keywordDescrs ++ extensionDescrs ++ modNameDescrs
+                                        else modNameDescrs)
           modNameDescrs = concatMap moduleNameDescrs (Map.elems packageMap)
 
 -- ---------------------------------------------------------------------
