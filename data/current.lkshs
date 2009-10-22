@@ -1,0 +1,16 @@
+Version of session file format:
+               1
+Time of storage:
+               "Wed Oct 21 14:19:26 Westeurop\228ische Sommerzeit 2009"
+Layout:        VerticalP (TerminalP {paneGroups = fromList [], paneTabs = Just TopP, currentPage = 0, detachedId = Nothing, detachedSize = Nothing}) (HorizontalP (TerminalP {paneGroups = fromList [("Browser",HorizontalP (TerminalP {paneGroups = fromList [], paneTabs = Nothing, currentPage = 0, detachedId = Nothing, detachedSize = Nothing}) (TerminalP {paneGroups = fromList [], paneTabs = Nothing, currentPage = 0, detachedId = Nothing, detachedSize = Nothing}) 337),("Search",HorizontalP (TerminalP {paneGroups = fromList [], paneTabs = Just TopP, currentPage = 0, detachedId = Nothing, detachedSize = Nothing}) (TerminalP {paneGroups = fromList [], paneTabs = Just TopP, currentPage = 0, detachedId = Nothing, detachedSize = Nothing}) 291)], paneTabs = Just BottomP, currentPage = 2, detachedId = Nothing, detachedSize = Nothing}) (TerminalP {paneGroups = fromList [], paneTabs = Nothing, currentPage = 0, detachedId = Nothing, detachedSize = Nothing}) 583) 773
+Population:    [(Just (ErrorsSt ErrorsState),[SplitP RightP,SplitP TopP]),(Just (GrepSt GrepState),[SplitP RightP,SplitP TopP,GroupP "Search",SplitP BottomP]),(Just (InfoSt (InfoState (Just (Descr {descrName' = "\\\\", typeInfo' = Just "\\\\ :: forall a. Eq a => [a] -> [a] -> [a]\n", descrModu' = Just (PM {pack = PackageIdentifier {pkgName = PackageName "base", pkgVersion = Version {versionBranch = [4,0,0,0], versionTags = []}}, modu = ModuleName ["Data","List"]}), mbLocation' = Nothing, mbComment' = Nothing, details' = VariableDescr})))),[SplitP RightP,SplitP TopP,GroupP "Browser",SplitP BottomP]),(Just (LogSt LogState),[SplitP RightP,SplitP BottomP]),(Just (ModulesSt (ModulesState 327 (System,True) (Just (ModuleName ["Data","List"]),Just "\\\\") (ExpanderState {localExp = ([],[]), localExpNoBlack = ([],[]), packageExp = ([],[]), packageExpNoBlack = ([],[]), systemExp = ([[2]],[]), systemExpNoBlack = ([],[])}))),[SplitP RightP,SplitP TopP,GroupP "Browser",SplitP TopP]),(Just (SearchSt (SearchState {searchString = "", searchScope = System, searchMode = Prefix {caseSense = False}})),[SplitP RightP,SplitP TopP,GroupP "Search",SplitP TopP]),(Just (BufferSt (BufferStateTrans "Unnamed" "\n" 1)),[SplitP LeftP]),(Just (WorkspaceSt WorkspaceState),[SplitP RightP,SplitP TopP])]
+Window size:   (1440,844)
+Workspace:     Nothing
+Active pane:   Just "Unnamed"
+Toolbar visible:
+               True
+FindbarState:  (True,FindState {entryStr = "", entryHist = [], replaceStr = "", replaceHist = [], caseSensitive = False, entireWord = False, wrapAround = False, regex = False, lineNr = 1})
+Recently opened files:
+               []
+Recently opened workspaces:
+               []

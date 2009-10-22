@@ -1,0 +1,203 @@
+   <ui>
+    <menubar>
+      <menu name="_File" action="File">
+       <menuitem name="_New" action="FileNew" />
+       <menuitem name="_Open" action="FileOpen" />
+       <menuitem name="_Recent Files" action="RecentFiles"/>
+       <menuitem name="_Save" action="FileSave" />
+       <menuitem name="Save _As" action="FileSaveAs" />
+       <menuitem name="Save _All" action="FileSaveAll" />
+       <menuitem name="_Revert" action="FileRevert" />
+       <menuitem name="_Close" action="FileClose" />
+       <separator/>
+       <menuitem name="Close All" action="FileCloseAll" />
+       <menuitem name="Close All but Package" action="FileCloseAllButPackage" />
+       <separator/>
+      <menuitem name="_Quit" action="Quit" />
+     </menu>
+     <menu name="_Edit" action="Edit">
+       <menuitem name="_Undo" action="EditUndo" />
+       <menuitem name="_Redo" action="EditRedo" />
+       <separator/>
+       <menuitem name="Cu_t" action="EditCut" />
+       <menuitem name="_Copy" action="EditCopy" />
+       <menuitem name="_Paste" action="EditPaste" />
+       <menuitem name="_Delete" action="EditDelete" />
+       <menuitem name="Select _All" action="EditSelectAll" />
+       <separator/>
+       <menuitem name="_Find" action="EditFind" />
+       <menuitem name="Find_Next" action="EditFindNext" />
+       <menuitem name="Find_Previous" action="EditFindPrevious" />
+       <menuitem name="_Goto Line" action="EditGotoLine" />
+       <separator/>
+       <menuitem name="Comment" action="EditComment" />
+       <menuitem name="Uncomment" action="EditUncomment" />
+       <menuitem name="Shift Left" action="EditShiftLeft" />
+       <menuitem name="Shift Right" action="EditShiftRight" />
+       <separator/>
+       <menuitem name="Align ="  action="EditAlignEqual" />
+       <menuitem name="Align <-" action="EditAlignLeftArrow" />
+       <menuitem name="Align ->" action="EditAlignRightArrow" />
+       <menuitem name="Align ::" action="EditAlignTypeSig" />
+     </menu>
+    <menu name="_Workspace" action="Workspace">
+       <menuitem name="_New Workspace" action="NewWorkspace" />
+       <menuitem name="_Open Workspace" action="OpenWorkspace" />
+       <menuitem name="_Recent Workspaces" action="RecentWorkspaces"/>
+       <menuitem name="_Close Workspace" action="CloseWorkspace" />
+       <separator/>
+       <menuitem name="_Clean Workspace" action="CleanWorkspace" />
+       <menuitem name="_Make Workspace" action="MakeWorkspace" />
+       <separator/>
+       <menuitem name="_Next Error" action="NextError" />
+       <menuitem name="_Previous Error" action="PreviousError" />
+     </menu>
+    <menu name="_Package" action="Package">
+       <menuitem name="_New Package" action="NewPackage" />
+       <menuitem name="_Edit Cabal" action="EditPackage" />
+       <menuitem name="Edit _Flags" action="PackageFlags" />
+       <separator/>
+       <menuitem name="Clea_n Package" action="CleanPackage" />
+       <menuitem name="_Configure Package" action="ConfigPackage" />
+       <menuitem name="_Build Package" action="BuildPackage" />
+       <menuitem name="_Run" action="RunPackage" />
+       <menuitem name="_Add All Imports" action="AddAllImports" />
+       <separator/>
+       <menuitem name="C_opy Package" action="CopyPackage" />
+       <menuitem name="_Install Package" action="InstallPackage" />
+       <menuitem name="Re_gister Package" action="RegisterPackage" />
+       <menuitem name="_Unregister Package" action="UnregisterPackage" />
+       <menuitem name="Test Package" action="TestPackage" />
+       <menuitem name="SDist Package" action="SdistPackage" />
+       <menuitem name="_Build Documentation" action="DocPackage" />
+       <separator/>
+       <menuitem name="Open Documentation" action="OpenDocPackage" />
+     </menu>
+    <menu name="_Debug" action="Debug">
+       <menuitem name="Continue" action="DebugContinue" />
+       <menuitem name="Abandon" action="DebugAbandon" />
+       <menuitem name="Stop" action="DebugStop" />
+       <separator/>
+       <menuitem name="Step" action="DebugStep" />
+       <menuitem name="Step Local" action="DebugStepLocal" />
+       <menuitem name="Step Module" action="DebugStepModule" />
+       <separator/>
+       <menuitem name="Show Bin_dings" action="ShowBindings" />
+       <menuitem name="Show _Context" action="ShowContext" />
+       <menuitem name="Show Loaded _Modules" action="ShowLoadedModules" />
+       <menuitem name="Show _Packages" action="ShowPackages" />
+       <menuitem name="Show _Languages" action="ShowLanguages" />
+     </menu>
+    <menu name="_Panes" action="Panes">
+       <menuitem name="_Browser" action="ShowBrowser" />
+       <menuitem name="_Debugger" action="ShowDebugger" />
+       <menuitem name="_Errors" action="ShowErrors" />
+       <menuitem name="_Log" action="ShowLog" />
+       <menuitem name="_References" action="ShowReferences" />
+       <menuitem name="_Search" action="ShowSearch" />
+       <menuitem name="_Workspace" action="ShowWorkspace" />
+     </menu>
+    <menu name="_View" action="View">
+       <menuitem name="Split H_orizontal" action="ViewSplitHorizontal" />
+       <menuitem name="Split V_ertical" action="ViewSplitVertical" />
+       <menuitem name="_Collapse" action="ViewCollapse" />
+       <menuitem name="Close Pane" action="ViewClosePane" />
+       <separator/>
+       <menuitem name="_Group" action="ViewNest" />
+       <menuitem name="_Detach" action="ViewDetach" />
+       <separator/>
+       <menuitem name="Move _Left" action="ViewMoveLeft" />
+       <menuitem name="Move _Right" action="ViewMoveRight" />
+       <menuitem name="Move _Up" action="ViewMoveUp" />
+       <menuitem name="Move _Down" action="ViewMoveDown" />
+       <separator/>
+       <menuitem name="Tabs _Left" action="ViewTabsLeft" />
+       <menuitem name="Tabs _Right" action="ViewTabsRight" />
+       <menuitem name="Tabs _Up" action="ViewTabsUp" />
+       <menuitem name="Tabs _Down" action="ViewTabsDown" />
+       <menuitem name="Switch Tabs" action="ViewSwitchTabs" />
+       <separator/>
+       <menuitem name="Clear Log" action="ClearLog" />
+       <menuitem name="Toggle Toolbar" action="ToggleToolbar" />
+     </menu>
+    <menu name="_Configuration" action="Configuration">
+       <menuitem name="Source Candy" action="EditCandy" />
+       <menuitem name="Edit general Preferences" action="PrefsEdit" />
+       <separator/>
+       <menuitem name="Update Project Metadata" action="UpdateMetadataCurrent" />
+       <menuitem name="Update Library Metadata" action="UpdateMetadataLib" />
+       <separator/>
+       <menuitem name="Save Session" action="SaveSession" />
+       <menuitem name="Load Session" action="LoadSession" />
+       <menuitem name="Forget Session" action="ForgetSession" />
+    </menu>
+    <menu name="_Help" action="Help">
+       <menuitem name="_Homepage" action="HelpHomepage" />
+       <menuitem name="_Manual (pdf)" action="HelpManual" />
+       <menuitem name="_About" action="HelpAbout" />
+    </menu>
+   </menubar>
+    <toolbar name="toolbar">
+     <placeholder name="FileToolItems">
+       <separator/>
+       <toolitem name="New" action="FileNew"/>
+       <toolitem name="Open" action="FileOpen"/>
+       <toolitem name="Save" action="FileSave"/>
+       <toolitem name="Close" action="ViewClosePane"/>
+       <separator/>
+     </placeholder>
+     <placeholder name="FileEditItems">
+       <separator/>
+       <toolitem name="Undo" action="EditUndo"/>
+       <toolitem name="Redo" action="EditRedo"/>
+       <separator/>
+       <toolitem name="Find" action="EditFind"/>
+     </placeholder>
+     <placeholder name="BuildToolItems">
+       <separator/>
+       <toolitem name="CleanPackage" action="CleanPackage"/>
+       <toolitem name="Configure" action="ConfigPackage"/>
+       <toolitem name="Build" action="BuildPackage"/>
+       <toolitem name="Run" action="RunPackage"/>
+       <toolitem name="Next Error" action="NextError"/>
+       <toolitem name="Previous Error" action="PreviousError"/>
+       <separator/>
+       <toolitem name="Back" action="ViewHistoryBack"/>
+       <toolitem name="Forward" action="ViewHistoryForth"/>
+       <separator/>
+       <toolitem name="BackgroundBuild" action="BackgroundBuildToggled"/>
+       <toolitem name="BackgroundLink" action="BackgroundLinkToggled"/>
+       <separator/>
+       <toolitem name="Update Project" action="UpdateMetadataCurrent" />
+       <separator/>
+       <toolitem name="Debug" action="DebugToggled"/>
+       <toolitem name="Step" action="DebugStep"/>
+       <toolitem name="StepLocal" action="DebugStepLocal"/>
+       <toolitem name="StepModule" action="DebugStepModule"/>
+       <toolitem name="StepContinue" action="DebugContinue"/>
+      </placeholder>
+   </toolbar>
+   <accelerator name="FlipUp" action="FlipUp"/>
+   <accelerator name="FlipDown" action="FlipDown"/>
+   <accelerator name="StartComplete" action="StartComplete"/>
+   <accelerator name="_Start Debugger" action="StartDebugger" />
+   <accelerator name="_Quit Debugger" action="QuitDebugger" />
+   <accelerator name="_Execute Selection" action="ExecuteSelection" />
+   <accelerator name="Set Breakpoint" action="DebugSetBreakpoint" />
+   <accelerator name="Show Breakpoints" action="ShowBreakpoints" />
+   <accelerator name="Show Next Breakpoint" action="ShowNextBreakpoint" />
+   <accelerator name="Show Previous Breakpoint" action="ShowPreviousBreakpoint" />
+   <accelerator name="Delete All Breakpoints" action="DebugDeleteAllBreakpoints" />
+   <accelerator name="Step Expression" action="DebugStepExpression" />
+   <accelerator name="Trace Expression" action="DebugTraceExpression" />
+   <accelerator name="Trace" action="DebugTrace" />
+   <accelerator name="History" action="DebugHistory" />
+   <accelerator name="Back" action="DebugBack" />
+   <accelerator name="Forward" action="DebugForward" />
+   <accelerator name="Force" action="DebugForce" />
+   <accelerator name="Print" action="DebugPrint" />
+   <accelerator name="Simple Print" action="DebugSimplePrint" />
+   <accelerator name="Information" action="DebugInformation" />
+   <accelerator name="Kind" action="DebugKind" />
+   <accelerator name="Type" action="DebugType" />
+ </ui>
