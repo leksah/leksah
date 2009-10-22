@@ -437,7 +437,7 @@ skipNextWord' []            =   []
 writeExtracted :: MonadIO m => FilePath -> Bool -> Bool -> PackageDescr -> m ()
 writeExtracted dirPath writeAscii isWorkingPackage pd = liftIO $ do
     let filePath    = dirPath </> fromPackageIdentifier (packagePD pd) ++
-                        (if isWorkingPackage then ".packw" else ".pack")
+                        (if isWorkingPackage then leksahCurrentMetaExtension else leksahMetadataFileExtension)
     if writeAscii
         then writeFile (filePath ++ "dpg") (show pd)
         else encodeFileSer filePath (metadataVersion, pd)

@@ -53,14 +53,12 @@ import IDE.SaveSession
 import IDE.Pane.Modules
 import IDE.Find
 import IDE.FileUtils
-import IDE.Pane.ClassHierarchy
-import IDE.Pane.Search
 import IDE.Pane.References
 import Paths_leksah
 import IDE.GUIHistory
 import IDE.Metainfo.Provider
     (infoForActivePackage, rebuildLibInfo, rebuildActiveInfo)
-import IDE.Pane.Info (setSymbol, showInfo)
+import IDE.Pane.Info (setSymbol)
 import IDE.NotebookFlipper
 import IDE.ImportTool (addAllImports)
 import IDE.LogRef
@@ -76,11 +74,17 @@ import Data.List (sort)
 import Control.Event (registerEvent)
 import Paths_leksah
 import IDE.Pane.Breakpoints
-    (showBreakpointList, fillBreakpointList, selectBreak)
-import Debug.Trace (trace)
-import IDE.Pane.Variables (showVariables, fillVariablesList)
-import IDE.Pane.Trace (showTrace,fillTraceList)
+    (fillBreakpointList, selectBreak)
 import IDE.Group.Debugger (setSensitivityDebugger, showDebugger)
+import IDE.Group.Browser (showBrowser)
+import IDE.Workspaces
+import IDE.Statusbar
+import IDE.Pane.Workspace
+import IDE.Pane.Variables (fillVariablesList)
+import IDE.Pane.Trace (fillTraceList)
+import IDE.Group.Search
+import IDE.Pane.Search (setChoices, searchMetaGUI)
+
 --
 -- | The Actions known to the system (they can be activated by keystrokes or menus)
 --
@@ -152,36 +156,49 @@ mkActions =
     ,AD "EditAlignTypeSig" "Align _::" Nothing Nothing
         (align ':') [] False
 
+    ,AD "Workspace" "_Workspace" Nothing Nothing (return ()) [] False
+    ,AD "NewWorkspace" "_New Workspace" Nothing Nothing
+        workspaceNew [] False
+    ,AD "OpenWorkspace" "_Open Workspace" Nothing Nothing
+        workspaceOpen [] False
+    ,AD "RecentWorkspaces" "_Recent Workspaces" Nothing Nothing (return ()) [] False
+    ,AD "CloseWorkspace" "_Close Workspace" Nothing Nothing
+        workspaceClose [] False
+
+    ,AD "CleanWorkspace" "Cl_ean Workspace" (Just "Cleans all packages") (Just "ide_clean")
+        workspaceClean [] False
+    ,AD "MakeWorkspace" "_Make Workspace" (Just "Makes all of this workspace") (Just "ide_configure")
+        workspaceMake [] False
+    ,AD "NextError" "_Next Error" (Just "Go to the next error") (Just "ide_error_next")
+        nextError [] False
+    ,AD "PreviousError" "_Previous Error" (Just "Go to the previous error") (Just "ide_error_prev")
+        previousError [] False
 
     ,AD "Package" "_Package" Nothing Nothing (return ()) [] False
     ,AD "NewPackage" "_New Package" Nothing Nothing
         packageNew [] False
     ,AD "OpenPackage" "_Open Package" Nothing Nothing
         packageOpen [] False
-    ,AD "RecentPackages" "_Recent Packages" Nothing Nothing (return ()) [] False
+--    ,AD "RecentPackages" "_Recent Packages" Nothing Nothing (return ()) [] False
     ,AD "EditPackage" "_Edit Package" Nothing Nothing
         packageEdit [] False
-    ,AD "ClosePackage" "_Close Package" Nothing Nothing
-        deactivatePackage [] False
+--    ,AD "RemovePackage" "_Close Package" Nothing Nothing
+--        removePackage [] False
 
     ,AD "PackageFlags" "Edit Flags" (Just "Edit the package flags") Nothing
-        (do getFlags; return ()) [] False
+        (getFlags Nothing >>= \ p -> displayPane p False) [] False
+    ,AD "CleanPackage" "Cl_ean Package" (Just "Cleans the package") (Just "ide_clean")
+        packageClean [] False
     ,AD "ConfigPackage" "_Configure Package" (Just "Configures the package") (Just "ide_configure")
         packageConfig [] False
     ,AD "BuildPackage" "_Build Package" (Just "Builds the package") (Just "ide_make")
         (packageBuild False) [] False
     ,AD "DocPackage" "_Build Documentation" (Just "Builds the documentation") Nothing
         packageDoc [] False
-    ,AD "CleanPackage" "Cl_ean Package" (Just "Cleans the package") (Just "ide_clean")
-        packageClean [] False
     ,AD "CopyPackage" "_Copy Package" (Just "Copies the package") Nothing
         packageCopy [] False
     ,AD "RunPackage" "_Run" (Just "Runs the package") (Just "ide_run")
         packageRun [] False
-    ,AD "NextError" "_Next Error" (Just "Go to the next error") (Just "ide_error_next")
-        nextError [] False
-    ,AD "PreviousError" "_Previous Error" (Just "Go to the previous error") (Just "ide_error_prev")
-        previousError [] False
     ,AD "AddAllImports" "_Add All Imports" (Just "Resolve 'Not in scope' errors by adding the necessary imports") Nothing
         addAllImports [] False
 
@@ -205,18 +222,6 @@ mkActions =
         debugQuit [] False
     ,AD "ExecuteSelection" "_Execute Selection" (Just "Sends the selected text to the debugger") Nothing
         debugExecuteSelection [] False
-    ,AD "ShowErrorsList" "Show Errors" Nothing Nothing
-        showErrors [] False
-    ,AD "ShowBreakpointsList" "Show Breakpoints List" Nothing Nothing
-        (trace "1" showBreakpointList) [] False
-    ,AD "ShowVariablesList" "Show Variables List" Nothing Nothing
-        showVariables [] False
-    ,AD "ShowTracesList" "Show Traces List" Nothing Nothing
-        showTrace [] False
-    ,AD "ShowEval" "Show Eval" Nothing Nothing
-        {--showTrace--} undefined [] False
-    ,AD "ShowDebugger" "Show Debugger" Nothing Nothing
-        showDebugger [] False
 
     ,AD "DebugSetBreakpoint" "Set Breakpoint" (Just "Set a breakpoint on the selected name or current line") Nothing
         debugSetBreakpoint [] False
@@ -286,16 +291,6 @@ mkActions =
         rebuildActiveInfo [] False
     ,AD "UpdateMetadataLib" "_Update Lib" Nothing Nothing
         rebuildLibInfo [] False
-    ,AD "ShowModules" "Show Modules" Nothing Nothing
-        showModules [] False
-    ,AD "ShowReferences" "Show References" Nothing Nothing
-        showReferences [] False
-    ,AD "ShowClasses" "Show Classes" Nothing Nothing
-        showClasses [] False
-    ,AD "ShowSearch" "Show Search" Nothing Nothing
-        showSearch [] False
-    ,AD "ShowInfo" "Show Info" Nothing Nothing
-        showInfo [] False
 
     ,AD "Session" "_Session" Nothing Nothing (return ()) [] False
     ,AD "SaveSession" "_Save Session" Nothing Nothing
@@ -304,6 +299,22 @@ mkActions =
         loadSessionPrompt [] False
     ,AD "ForgetSession" "_Forget Session" Nothing Nothing
         (return ()) [] True
+
+    ,AD "Panes" "_Panes" Nothing Nothing (return ()) [] False
+    ,AD "ShowBrowser" "Browser" Nothing Nothing
+        showBrowser [] False
+    ,AD "ShowDebugger" "Debugger" Nothing Nothing
+        showDebugger [] False
+    ,AD "ShowSearch" "Search" Nothing Nothing
+        showSearchGroup [] False
+    ,AD "ShowErrors" "Errors" Nothing Nothing
+        (getErrors Nothing  >>= \ p -> displayPane p False) [] False
+    ,AD "ShowLog" "Log" Nothing Nothing
+        showLog [] False
+    ,AD "ShowReferences" "References" Nothing Nothing
+        (getReferences Nothing >>= \ p -> displayPane p False) [] False
+    ,AD "ShowWorkspace" "Workspace" Nothing Nothing
+        (getWorkspace Nothing >>= \ p -> displayPane p False) [] False
 
     ,AD "View" "_View" Nothing Nothing (return ()) [] False
     ,AD "ViewMoveLeft" "Move _Left" Nothing Nothing
@@ -361,7 +372,7 @@ mkActions =
     ,AD "EditCandy" "_To Candy" Nothing Nothing
         editCandy [] True
     ,AD "PrefsEdit" "_Edit Prefs" Nothing Nothing
-        editPrefs [] False
+        (getPrefs Nothing >>= \ p -> displayPane p False) [] False
 
     ,AD "Help" "_Help" Nothing Nothing (return ()) [] False
     ,AD "HelpDebug" "Debug" Nothing Nothing (do
@@ -384,16 +395,16 @@ mkActions =
 --
 menuDescription :: IO String
 menuDescription = do
-    prefsPath   <-  getConfigFilePathForLoad "Default.menu"
+    prefsPath   <-  getConfigFilePathForLoad "leksah.menu" Nothing
     res         <-  readFile prefsPath
     return res
 
 updateRecentEntries :: IDEAction
 updateRecentEntries = do
     recentFiles'       <-  readIDE recentFiles
-    recentPackages'    <-  readIDE recentPackages
+    recentWorkspaces'  <-  readIDE recentWorkspaces
     recentFilesItem    <-  getRecentFiles
-    recentPackagesItem <-  getRecentPackages
+    recentWorkspacesItem <-  getRecentWorkspaces
     reifyIDE (\ ideR -> do
         recentFilesMenu    <-  menuNew
         mapM_ (\s -> do
@@ -408,19 +419,19 @@ updateRecentEntries = do
             widgetDestroy (fromJust oldSubmenu)
         menuItemSetSubmenu recentFilesItem recentFilesMenu
         widgetShowAll recentFilesMenu
-        recentPackagesMenu    <-  menuNew
+        recentWorkspacesMenu    <-  menuNew
         mapM_ (\s -> do
             fe <- doesFileExist s
             when fe $ do
                 mi <- menuItemNewWithLabel s
-                mi `onActivateLeaf` (reflectIDE (packageOpenThis (Just s) >> return ()) ideR)
-                menuShellAppend recentPackagesMenu mi) recentPackages'
-        oldSubmenu <- menuItemGetSubmenu recentPackagesItem
+                mi `onActivateLeaf` (reflectIDE (workspaceOpenThis True (Just s) >> return ()) ideR)
+                menuShellAppend recentWorkspacesMenu mi) recentWorkspaces'
+        oldSubmenu <- menuItemGetSubmenu recentWorkspacesItem
         when (isJust oldSubmenu) $ do
             widgetHideAll (fromJust oldSubmenu)
             widgetDestroy (fromJust oldSubmenu)
-        menuItemSetSubmenu recentPackagesItem recentPackagesMenu
-        widgetShowAll recentPackagesMenu)
+        menuItemSetSubmenu recentWorkspacesItem recentWorkspacesMenu
+        widgetShowAll recentWorkspacesMenu)
 
 
 --
@@ -450,9 +461,7 @@ makeMenu uiManager actions menuDescription = reifyIDE (\ideR -> do
         doAction ideAction ideR accStr =
             handleTopExceptions (reflectIDE (do
                 ideAction
-                sb <- getSBSpecialKeys
-                liftIO $statusbarPop sb 1
-                liftIO $statusbarPush sb 1 $accStr
+                triggerEventIDE (StatusbarChanged [CompartmentCommand accStr])
                 return ()) ideR)
 
 getMenuAndToolbars :: UIManager -> IO (AccelGroup, MenuBar, Toolbar)
@@ -558,55 +567,6 @@ aboutDialog = do
     widgetDestroy d
     return ()
 
-buildStatusbar ideR = do
-    sb <- statusbarNew
-    statusbarSetHasResizeGrip sb False
-
-    sblk <- statusbarNew
-    widgetSetName sblk "statusBarSpecialKeys"
-    statusbarSetHasResizeGrip sblk False
-    widgetSetSizeRequest sblk 150 (-1)
-
-    sbap <- statusbarNew
-    widgetSetName sbap "statusBarActivePane"
-    statusbarSetHasResizeGrip sbap False
-    widgetSetSizeRequest sbap 150 (-1)
-
-    sbapr <- statusbarNew
-    widgetSetName sbapr "statusBarActiveProject"
-    statusbarSetHasResizeGrip sbapr False
-    widgetSetSizeRequest sbapr 150 (-1)
-
-    sbe <- statusbarNew
-    widgetSetName sbe "statusBarErrors"
-    statusbarSetHasResizeGrip sbe False
-    widgetSetSizeRequest sbe 150 (-1)
-
-    sblc <- statusbarNew
-    widgetSetName sblc "statusBarLineColumn"
-    statusbarSetHasResizeGrip sblc True
-    widgetSetSizeRequest sblc 150 (-1)
-
-    sbio <- statusbarNew
-    widgetSetName sbio "statusBarInsertOverwrite"
-    statusbarSetHasResizeGrip sbio False
-    widgetSetSizeRequest sbio 60 (-1)
-
-    dummy <- hBoxNew False 1
-    widgetSetName dummy "dummyBox"
-
-
-    hb <- hBoxNew False 1
-    widgetSetName hb "statusBox"
-    boxPackStart hb sblk PackGrow 0
-    boxPackStart hb sbap PackGrow 0
-    boxPackStart hb sbapr PackGrow 0
-    --boxPackStart hb dummy PackGrow 0
-    boxPackEnd hb sblc PackNatural 0
-    boxPackEnd hb sbio PackNatural 0
-    boxPackEnd hb sbe PackNatural 0
-
-    return hb
 
 newIcons :: IO ()
 newIcons =
@@ -622,7 +582,7 @@ newIcons =
     (\(e :: SomeException) -> getDataDir >>= \dataDir -> throwIDE ("Can't load icons from " ++ dataDir))
     where
     loadIcon dataDir iconFactory name = do
-        pb      <-  pixbufNewFromFile $ dataDir </> "data" </> (name ++ ".png")
+        pb      <-  pixbufNewFromFile $ dataDir </> "pics" </> (name ++ ".png")
         icon    <-  iconSetNewFromPixbuf pb
         iconFactoryAdd iconFactory name icon
 
@@ -638,7 +598,7 @@ getActionsFor :: SensitivityMask -> IDEM [Action]
 getActionsFor SensitivityForwardHist = getActionsFor' ["ViewHistoryForth"]
 getActionsFor SensitivityBackwardHist = getActionsFor' ["ViewHistoryBack"]
 getActionsFor SensitivityProjectActive = getActionsFor'
-    ["EditPackage", "ClosePackage", "PackageFlags", "ConfigPackage", "BuildPackage"
+    ["EditPackage", "PackageFlags", "ConfigPackage", "BuildPackage"
     ,"DocPackage", "CleanPackage", "CopyPackage", "RunPackage","InstallPackage"
     ,"RegisterPackage", "UnregisterPackage","TestPackage","SdistPackage"
     ,"OpenDocPackage","FileCloseAll"]
@@ -651,6 +611,7 @@ getActionsFor SensitivityInterpreting = getActionsFor' ["QuitDebugger" , "Execut
  "DebugStepModule", "DebugTrace", "DebugTraceExpression", "DebugHistory", "DebugBack", "DebugForward",
  "DebugForce", "DebugPrint", "DebugSimplePrint", "ShowBindings", "ShowBreakpoints", "ShowContext",
  "ShowLoadedModules", "ShowPackages", "ShowLanguages", "DebugInformation", "DebugKind", "DebugType"]
+getActionsFor SensitivityWorkspaceOpen = return [] --TODO add here
 
 getActionsFor' :: [String] -> IDEM[Action]
 getActionsFor' l = do
@@ -684,7 +645,7 @@ instrumentWindow win prefs topWidget = do
     uiManager' <- getUiManager
     liftIO $ do
         dataDir <- getDataDir
-        let iconPath = dataDir </> "data" </> "leksah.png"
+        let iconPath = dataDir </> "pics" </> "leksah.png"
         iconExists  <-  doesFileExist iconPath
         when iconExists $
             windowSetIconFromFile win iconPath
@@ -698,7 +659,7 @@ instrumentWindow win prefs topWidget = do
             modifyIDE_ (\ide -> ide{toolbar = (True,Just toolbar)})
             constructFindReplace ) ideR
         boxPackStart vb findbar PackNatural 0
-        statusBar   <-  buildStatusbar ideR
+        statusBar   <-  buildStatusbar
         boxPackEnd vb statusBar PackNatural 0
         win `onKeyPress` (\ e -> reflectIDE (handleSpecialKeystrokes e) ideR)
         windowAddAccelGroup win acc
@@ -730,7 +691,6 @@ instrumentSecWindow win = do
 handleSpecialKeystrokes :: GdkEvents.Event -> IDEM Bool
 handleSpecialKeystrokes (Key { eventKeyName = name,  eventModifier = mods,
                                 eventKeyVal = keyVal, eventKeyChar = mbChar}) = do
-    sb <- getSBSpecialKeys
     prefs' <- readIDE prefs
     case (name, mods) of
         (tab, [Control]) | (tab == "Tab" || tab == "ISO_Left_Tab")
@@ -751,24 +711,22 @@ handleSpecialKeystrokes (Key { eventKeyName = name,  eventModifier = mods,
                     Nothing ->
                         case Map.lookup (keyVal,sort mods) sks of
                             Nothing -> do
-                                liftIO $statusbarPop sb 1
+                                triggerEventIDE (StatusbarChanged [CompartmentCommand ""])
                                 return False
                             Just map -> do
                                 let sym = printMods mods ++ name
-                                liftIO $statusbarPop sb 1
-                                liftIO $statusbarPush sb 1 sym
+                                triggerEventIDE (StatusbarChanged [CompartmentCommand sym])
                                 modifyIDE_ (\ide -> ide{specialKey = Just (map,sym)})
                                 return True
                     Just (map,sym) -> do
                         case Map.lookup (keyVal,sort mods) map of
                             Nothing -> do
-                                liftIO $statusbarPop sb 1
-                                liftIO $statusbarPush sb 1 $ sym ++ printMods mods ++ name ++ "?"
+                                triggerEventIDE (StatusbarChanged [CompartmentCommand
+                                    (sym ++ printMods mods ++ name ++ "?")])
                                 return ()
                             Just (AD actname _ _ _ ideAction _ _) -> do
-                                liftIO $statusbarPop sb 1
-                                liftIO $statusbarPush sb 1
-                                    $ sym ++ " " ++ printMods mods ++ name ++ "=" ++ actname
+                                triggerEventIDE (StatusbarChanged [CompartmentCommand
+                                    (sym ++ " " ++ printMods mods ++ name ++ "=" ++ actname)])
                                 ideAction
                         modifyIDE_ (\ide -> ide{specialKey = Nothing})
                         return True
@@ -795,6 +753,8 @@ registerEvents =    do
         (Left (\ CurrentInfo            -> reloadKeepSelection >> return CurrentInfo))
     registerEvent stRef "ActivePack"
         (Left (\ ActivePack             -> (infoForActivePackage :: IDEAction) >> return ActivePack))
+    registerEvent stRef "WorkspaceChanged"
+        (Left (\ WorkspaceChanged       -> updateWorkspace >> return WorkspaceChanged))
     registerEvent stRef "RecordHistory"
         (Left (\ rh@(RecordHistory h)   -> recordHistory h >> return rh))
     registerEvent stRef "Sensitivity"
@@ -827,6 +787,12 @@ registerEvents =    do
         (Left (\ e@TraceChanged         -> fillTraceList >> return e))
     registerEvent stRef "GetTextPopup"
         (Left (\ e@(GetTextPopup _)     -> return (GetTextPopup (Just textPopupMenu))))
+    registerEvent stRef "StatusbarChanged"
+        (Left (\ e@(StatusbarChanged args)
+                                        -> changeStatusbar args >> return e))
+    registerEvent stRef "WorkspaceAddPackage"
+        (Left (\ e@(WorkspaceAddPackage fp)
+                                        -> workspaceAddPackage' fp >> return e))
     return ()
 
 

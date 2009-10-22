@@ -1,5 +1,8 @@
 module IDE.FileUtils (
-    allModules
+    chooseFile
+,   chooseDir
+,   chooseSaveFile
+,   allModules
 ,   allHiFiles
 ,   allHaskellSourceFiles
 ,   cabalFileName
@@ -27,7 +30,7 @@ import System.Process
 import Text.ParserCombinators.Parsec hiding (Parser)
 import qualified Text.ParserCombinators.Parsec.Token as P
 import Text.ParserCombinators.Parsec.Language(haskell,haskellDef)
-import Data.Maybe (catMaybes)
+import Data.Maybe (fromJust, isJust, catMaybes)
 import Distribution.Simple.PreProcess.Unlit
 import Control.Monad
 import Control.Monad.Trans(MonadIO,liftIO)
@@ -42,6 +45,92 @@ import Debug.Trace
 import Paths_leksah
 import IDE.Core.State
 import Data.Char (ord)
+import Graphics.UI.Gtk
+    (fileChooserSetCurrentFolder,
+     widgetDestroy,
+     fileChooserGetFilename,
+     dialogRun,
+     widgetShow,
+     fileChooserDialogNew,
+     Window(..))
+import Graphics.UI.Gtk.Selectors.FileChooser
+    (FileChooserAction(..))
+import Graphics.UI.Gtk.General.Structs
+    (ResponseId(..))
+
+chooseDir :: Window -> String -> Maybe FilePath -> IO (Maybe FilePath)
+chooseDir window prompt mbFolder = do
+    dialog <- fileChooserDialogNew
+                    (Just $ prompt)
+                    (Just window)
+                FileChooserActionSelectFolder
+                [("gtk-cancel"
+                ,ResponseCancel)
+                ,("gtk-open"
+                ,ResponseAccept)]
+    when (isJust mbFolder) $ fileChooserSetCurrentFolder dialog (fromJust mbFolder) >> return ()
+    widgetShow dialog
+    response <- dialogRun dialog
+    case response of
+        ResponseAccept -> do
+            fn <- fileChooserGetFilename dialog
+            widgetDestroy dialog
+            return fn
+        ResponseCancel -> do
+            widgetDestroy dialog
+            return Nothing
+        ResponseDeleteEvent -> do
+            widgetDestroy dialog
+            return Nothing
+        _                   -> return Nothing
+
+chooseFile :: Window -> String -> Maybe FilePath -> IO (Maybe FilePath)
+chooseFile window prompt mbFolder = do
+    dialog <- fileChooserDialogNew
+                    (Just $ prompt)
+                    (Just window)
+                FileChooserActionOpen
+                [("gtk-cancel"
+                ,ResponseCancel)
+                ,("gtk-open"
+                ,ResponseAccept)]
+    when (isJust mbFolder) $ fileChooserSetCurrentFolder dialog (fromJust mbFolder)  >> return ()
+    widgetShow dialog
+    response <- dialogRun dialog
+    case response of
+        ResponseAccept -> do
+            fn <- fileChooserGetFilename dialog
+            widgetDestroy dialog
+            return fn
+        ResponseCancel -> do
+            widgetDestroy dialog
+            return Nothing
+        ResponseDeleteEvent -> do
+            widgetDestroy dialog
+            return Nothing
+        _                   -> return Nothing
+
+chooseSaveFile :: Window -> String -> Maybe FilePath -> IO (Maybe FilePath)
+chooseSaveFile window prompt mbFolder = do
+    dialog <- fileChooserDialogNew
+              (Just $ prompt)
+              (Just window)
+	      FileChooserActionSave
+	      [("gtk-cancel"
+	       ,ResponseCancel)
+	      ,("gtk-save"
+          , ResponseAccept)]
+    when (isJust mbFolder) $ fileChooserSetCurrentFolder dialog (fromJust mbFolder)  >> return ()
+    widgetShow dialog
+    res <- dialogRun dialog
+    case res of
+        ResponseAccept  ->  do
+            mbFileName <- fileChooserGetFilename dialog
+            widgetDestroy dialog
+            return mbFileName
+        _               ->  do
+            widgetDestroy dialog
+            return Nothing
 
 openBrowser :: String -> IDEAction
 openBrowser url = do
@@ -87,7 +176,7 @@ dots_to_slashes = map (\c -> if c == '.' then pathSeparator else c)
 getConfigDir :: IO FilePath
 getConfigDir = do
     d <- getHomeDirectory
-    let filePath = d </> ".leksah"
+    let filePath = d </> configDirName
     exists <- doesDirectoryExist filePath
     if exists
         then return filePath
@@ -98,7 +187,7 @@ getConfigDir = do
 getConfigDirForLoad :: IO (Maybe FilePath)
 getConfigDirForLoad = do
     d <- getHomeDirectory
-    let filePath = d </> ".leksah"
+    let filePath = d </> configDirName
     exists <- doesDirectoryExist filePath
     if exists
         then return (Just filePath)
@@ -107,13 +196,15 @@ getConfigDirForLoad = do
 hasConfigDir :: IO Bool
 hasConfigDir = do
     d <- getHomeDirectory
-    let filePath = d </> ".leksah"
+    let filePath = d </> configDirName
     doesDirectoryExist filePath
 
 
-getConfigFilePathForLoad :: String -> IO FilePath
-getConfigFilePathForLoad fn = do
-    mbCd <- getConfigDirForLoad
+getConfigFilePathForLoad :: String -> Maybe FilePath -> IO FilePath
+getConfigFilePathForLoad fn mbFilePath = do
+    mbCd <- case mbFilePath of
+                Just p -> return (Just p)
+                Nothing -> getConfigDirForLoad
     case mbCd of
         Nothing -> getFromData
         Just cd -> do
@@ -248,7 +339,7 @@ mident
 findKnownPackages :: FilePath -> IO (Set String)
 findKnownPackages filePath = catch (do
     paths           <-  getDirectoryContents filePath
-    let nameList    =   map dropExtension  $filter (\s -> ".pack" `isSuffixOf` s) paths
+    let nameList    =   map dropExtension  $filter (\s -> leksahMetadataFileExtension `isSuffixOf` s) paths
     return (Set.fromList nameList))
         $ \ _ -> return (Set.empty)
 

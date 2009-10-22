@@ -4,7 +4,10 @@
     -XRank2Types
     -XFlexibleInstances
     -XDeriveDataTypeable
-    -XFlexibleContexts #-}
+    -XFlexibleContexts
+    -XDeriveDataTypeable
+    -XTypeSynonymInstances
+    -XMultiParamTypeClasses #-}
 -----------------------------------------------------------------------------
 --
 -- Module      :  IDE.Core.Data
@@ -22,7 +25,15 @@
 -------------------------------------------------------------------------------
 
 module IDE.Core.Types (
-    IDEPackage(..)
+    IDE(..)
+,   IDEState(..)
+,   IDERef
+,   IDEM
+,   IDEAction
+,   IDEEvent(..)
+
+,   IDEPackage(..)
+,   Workspace(..)
 
 ,   ActionDescr(..)
 ,   ActionString
@@ -35,8 +46,9 @@ module IDE.Core.Types (
 ,   filePath
 ,   isError
 ,   isBreakpoint
-
 ,   colorHexString
+
+
 
 ,   PackageDescr(..)
 ,   ModuleDescr(..)
@@ -84,19 +96,20 @@ module IDE.Core.Types (
 ,   SearchMode(..)
 
 ,   CompletionWindow(..)
+,   StatusbarCompartment(..)
 ) where
 
 import Control.Monad.Reader
 import Graphics.UI.Gtk hiding (get)
 import Graphics.UI.Gtk.Gdk.Events(Modifier(..))
 import qualified Data.Map as Map
---import Data.Set(Set)
 import qualified Data.Set as Set
 
 import Default
 import IDE.Exception
 import Graphics.UI.Frame.Panes
-import Distribution.Package (PackageIdentifier(..),Dependency(..))
+import Distribution.Package
+    (PackageIdentifier(..), Dependency(..))
 import Distribution.Text
 import Data.Map (Map(..))
 import Distribution.ModuleName(ModuleName)
@@ -106,15 +119,112 @@ import Data.ByteString.Char8 (ByteString)
 import MyMissing
 import Data.Typeable (Typeable(..))
 import SrcLoc (SrcSpan(..))
-import FastString (unpackFS)
 import Outputable (ppr, showSDoc)
 import Data.Set (Set(..))
+import Data.Unique (Unique(..))
+import System.Process (ProcessHandle(..))
+import IDE.Tool (ToolState(..))
+import Data.IORef (IORef(..))
+import FastString (unpackFS)
 import Numeric (showHex)
+
+-- ---------------------------------------------------------------------
+-- IDE State
+--
+
+--
+-- | The IDE state
+--
+data IDE            =  IDE {
+    frameState      ::   FrameState IDEM         -- ^ state of the windows framework
+,   recentPanes     ::   [PaneName]
+,   specialKeys     ::   SpecialKeyTable IDERef  -- ^ a structure for emacs like keystrokes
+,   specialKey      ::   SpecialKeyCons IDERef   -- ^ the first of a double keystroke
+,   candy           ::   CandyTable              -- ^ table for source candy
+,   prefs           ::   Prefs                   -- ^ configuration preferences
+,   workspace       ::   Maybe Workspace         -- ^ may be a workspace (set of packages)
+,   activePack      ::   Maybe IDEPackage
+,   packageCache    ::   Map FilePath IDEPackage    -- ^ caches property that a buffer belongs to a project
+,   projFilesCache  ::   Map FilePath Bool       -- ^ caches property that a buffer belongs to a project
+,   allLogRefs      ::   [LogRef]
+,   currentEBC      ::   (Maybe LogRef, Maybe LogRef, Maybe LogRef)
+,   currentHist     ::   Int
+,   accessibleInfo  ::   (Maybe (PackageScope))     -- ^  the world scope
+,   currentInfo     ::   (Maybe (PackageScope,PackageScope))
+                                                -- ^ the first is for the current package,
+                                                --the second is the scope in the current package
+,   handlers        ::   Map String [(Unique, IDEEvent -> IDEM IDEEvent)]
+                                                -- ^ event handling table
+,   currentState    ::   IDEState
+,   guiHistory      ::   (Bool,[GUIHistory],Int)
+,   findbar         ::   (Bool,Maybe (Toolbar,ListStore String))
+,   toolbar         ::   (Bool,Maybe Toolbar)
+,   recentFiles     ::   [FilePath]
+,   recentWorkspaces  ::   [FilePath]
+,   runningTool     ::   Maybe ProcessHandle
+,   ghciState       ::   Maybe ToolState
+,   completion      ::   Maybe CompletionWindow
+#ifdef YI
+,   yiControl       ::   Yi.Control
+#endif
+} --deriving Show
+
+--
+-- | A mutable reference to the IDE state
+--
+type IDERef = IORef IDE
+
+--
+-- The IDE Monad
+--
+type IDEM = ReaderT IDERef IO
+
+--
+-- | A shorthand for a reader monad for a mutable reference to the IDE state
+--   which does not return a value
+--
+type IDEAction = IDEM ()
+
+
+data IDEState =
+        IsStartingUp
+    |   IsShuttingDown
+    |   IsRunning
+    |   IsFlipping TreeView
+    |   IsCompleting Connections
+
+
+-- ---------------------------------------------------------------------
+-- Events which can be signalled and handled
+--
+
+data IDEEvent  =
+        CurrentInfo
+    |   ActivePack
+    |   SelectInfo String
+    |   SelectIdent Descr
+    |   LogMessage String LogTag
+    |   RecordHistory GUIHistory
+    |   Sensitivity [(SensitivityMask,Bool)]
+    |   DescrChoice [Descr]
+    |   SearchMeta String
+    |   LoadSession FilePath
+    |   SaveSession FilePath
+    |   UpdateRecent
+    |   VariablesChanged
+    |   ErrorChanged
+    |   CurrentErrorChanged (Maybe LogRef)
+    |   BreakpointChanged
+    |   CurrentBreakChanged (Maybe LogRef)
+    |   TraceChanged
+    |   GetTextPopup (Maybe (IDERef -> Menu -> IO ()))
+    |   StatusbarChanged [StatusbarCompartment]
+    |   WorkspaceChanged
+    |   WorkspaceAddPackage FilePath
 
 -- ---------------------------------------------------------------------
 -- IDEPackages
 --
-
 data IDEPackage     =   IDEPackage {
     packageId       ::   PackageIdentifier
 ,   cabalFile       ::   FilePath
@@ -132,6 +242,19 @@ data IDEPackage     =   IDEPackage {
 ,   sdistFlags      ::   [String]
 }
     deriving (Eq,Show)
+
+-- ---------------------------------------------------------------------
+-- Workspace
+--
+data Workspace = Workspace {
+    wsVersion       ::   Int
+,   wsSaveTime      ::   String
+,   wsName          ::   String
+,   wsFile          ::   FilePath
+,   wsPackages      ::   [FilePath]
+--,   wsPackageCache  ::  Maybe (Map FilePath IDEPackage)
+,   wsActivePack    ::   Maybe FilePath
+} deriving Show
 
 -- ---------------------------------------------------------------------
 -- Other data structures which are used in the state
@@ -158,7 +281,9 @@ type KeyString = String
 -- | Preferences is a data structure to hold configuration data
 --
 data Prefs = Prefs {
-        showLineNumbers     ::   Bool
+        prefsFormat         ::   Int
+    ,   prefsSaveTime       ::   String
+    ,   showLineNumbers     ::   Bool
     ,   rightMargin         ::   Maybe Int
     ,   tabWidth            ::   Int
     ,   sourceCandy         ::   Maybe String
@@ -259,11 +384,11 @@ instance Ord PackageDescr where
     (<=) a b              =   packagePD a <=  packagePD b
 
 data ModuleDescr        =   ModuleDescr {
-    moduleIdMD          ::   PackModule
-,   mbSourcePathMD      ::   (Maybe FilePath)
-,   exportedNamesMD     ::   (Set Symbol)                        -- unqualified
-,   referencesMD        ::   (Map ModuleName (Set Symbol)) -- imports
-,   idDescriptionsMD    ::   [Descr]
+        moduleIdMD          ::   PackModule
+    ,   mbSourcePathMD      ::   (Maybe FilePath)
+    ,   exportedNamesMD     ::   (Set Symbol)                        -- unqualified
+    ,   referencesMD        ::   (Map ModuleName (Set Symbol)) -- imports
+    ,   idDescriptionsMD    ::   [Descr]
 } deriving (Show,Typeable)
 
 instance Show (Present ModuleDescr) where
@@ -276,90 +401,34 @@ instance Ord ModuleDescr where
     (<=) a b             =   moduleIdMD a <=  moduleIdMD b
 
 data Descr              =   Descr {
-    descrName'          ::   Symbol
-,   typeInfo'           ::   Maybe TypeInfo
-,   descrModu'          ::   Maybe PackModule
-,   mbLocation'         ::   Maybe Location
-,   mbComment'          ::   Maybe ByteString
-,   details'            ::   SpDescr}
-    | Reexported {
-    descrModu'          ::   Maybe PackModule
-,   impDescr            ::   Descr}
-    deriving (Show,Read,Typeable)
-
-instance Show (Present Descr) where
-    showsPrec _ (Present descr) =   case mbComment descr of
-                                        Just comment -> p . showChar '\n' . c comment . t
-                                        Nothing      -> p . showChar '\n' . t
-        where p         =   case descrModu' descr of
-                                Just ds -> showString "-- | " . shows (Present ds)
-                                Nothing -> id
-              c com     =   showString $ (unlines . map ((++) "-- ") .  nonEmptyLines) (BS.unpack com)
-              t         =   case typeInfo descr of
-                                Just ti -> showString $ BS.unpack ti
-                                Nothing -> id
-
-isReexported :: Descr -> Bool
-isReexported (Reexported _ _)   =   True
-isReexported _                  =   False
-
-descrName :: Descr -> Symbol
-descrName d
-    |   isReexported d  =   descrName (impDescr d)
-    |   otherwise       =   descrName' d
-
-typeInfo :: Descr -> Maybe TypeInfo
-typeInfo d
-    |   isReexported d  =   typeInfo (impDescr d)
-    |   otherwise       =   typeInfo' d
-
-descrModu :: Descr -> Maybe PackModule
-descrModu d
-    |   isReexported d  =   descrModu (impDescr d)
-    |   otherwise       =   descrModu' d
-
-mbLocation :: Descr -> Maybe Location
-mbLocation d
-    |   isReexported d  =   mbLocation (impDescr d)
-    |   otherwise       =   mbLocation' d
-
-mbComment :: Descr -> Maybe ByteString
-mbComment d
-    |   isReexported d  =   mbComment (impDescr d)
-    |   otherwise       =   mbComment' d
-
-details :: Descr -> SpDescr
-details d
-    |   isReexported d  =   details (impDescr d)
-    |   otherwise       =   details' d
-
+        descrName'          ::   Symbol
+    ,   typeInfo'           ::   Maybe TypeInfo
+    ,   descrModu'          ::   Maybe PackModule
+    ,   mbLocation'         ::   Maybe Location
+    ,   mbComment'          ::   Maybe ByteString
+    ,   details'            ::   SpDescr}
+        | Reexported {
+        descrModu'          ::   Maybe PackModule
+    ,   impDescr            ::   Descr}
+        deriving (Show,Read,Typeable)
 
 data SpDescr   =   VariableDescr
-                    |   FieldDescr {typeDescrF :: Descr}
-                    |   ConstructorDescr {typeDescrC :: Descr}
-                    |   DataDescr {constructors :: [(Symbol,Maybe TypeInfo)],
-                            fields :: [(Symbol,Maybe TypeInfo)]}
-                    |   TypeDescr
-                    |   NewtypeDescr {constructor :: (Symbol,Maybe TypeInfo),
-                            mbField :: Maybe (Symbol,Maybe TypeInfo)}
-                    |   ClassDescr  {super :: [Symbol], methods :: [(Symbol,Maybe TypeInfo)]}
-                    |   MethodDescr {classDescrM :: Descr}
-                    |   InstanceDescr {binds :: [Symbol]}
-                    |   KeywordDescr
-                    |   ExtensionDescr
-                    |   ModNameDescr
-                    |   QualModNameDescr
-                            --the descrName is the type Konstructor?
-    deriving (Show,Read,Eq,Ord,Typeable)
-
-instance Eq Descr where
-    (== ) a b             =   descrName a == descrName b
-                                && descrType (details a)   == descrType (details b)
-
-instance Ord Descr where
-    (<=) a b             =   if descrName a == descrName b
-                                then descrType (details a)   <= descrType (details b)
-                                else descrName a <  descrName b
+    |   FieldDescr {typeDescrF :: Descr}
+    |   ConstructorDescr {typeDescrC :: Descr}
+    |   DataDescr {constructors :: [(Symbol,Maybe TypeInfo)],
+            fields :: [(Symbol,Maybe TypeInfo)]}
+    |   TypeDescr
+    |   NewtypeDescr {constructor :: (Symbol,Maybe TypeInfo),
+            mbField :: Maybe (Symbol,Maybe TypeInfo)}
+    |   ClassDescr  {super :: [Symbol], methods :: [(Symbol,Maybe TypeInfo)]}
+    |   MethodDescr {classDescrM :: Descr}
+    |   InstanceDescr {binds :: [Symbol]}
+    |   KeywordDescr
+    |   ExtensionDescr
+    |   ModNameDescr
+    |   QualModNameDescr
+            --the descrName is the type Konstructor?
+        deriving (Show,Read,Eq,Ord,Typeable)
 
 data DescrType = Variable | Field | Constructor | Data  | Type | Newtype
     | Class | Method | Instance | Keyword | Extension | ModName | QualModName
@@ -431,6 +500,66 @@ fromPackageIdentifier   =   display
 toPackageIdentifier :: String -> Maybe PackageIdentifier
 toPackageIdentifier         =   simpleParse
 
+-- Metadata accessors
+
+isReexported :: Descr -> Bool
+isReexported (Reexported _ _)   =   True
+isReexported _                  =   False
+
+descrName :: Descr -> Symbol
+descrName d
+    |   isReexported d  =   descrName (impDescr d)
+    |   otherwise       =   descrName' d
+
+typeInfo :: Descr -> Maybe TypeInfo
+typeInfo d
+    |   isReexported d  =   typeInfo (impDescr d)
+    |   otherwise       =   typeInfo' d
+
+descrModu :: Descr -> Maybe PackModule
+descrModu d
+    |   isReexported d  =   descrModu (impDescr d)
+    |   otherwise       =   descrModu' d
+
+mbLocation :: Descr -> Maybe Location
+mbLocation d
+    |   isReexported d  =   mbLocation (impDescr d)
+    |   otherwise       =   mbLocation' d
+
+mbComment :: Descr -> Maybe ByteString
+mbComment d
+    |   isReexported d  =   mbComment (impDescr d)
+    |   otherwise       =   mbComment' d
+
+details :: Descr -> SpDescr
+details d
+    |   isReexported d  =   details (impDescr d)
+    |   otherwise       =   details' d
+
+instance Show (Present Descr) where
+    showsPrec _ (Present descr) =   case mbComment descr of
+                                        Just comment -> p . showChar '\n' . c comment . t
+                                        Nothing      -> p . showChar '\n' . showChar '\n' . t
+        where p         =   case descrModu' descr of
+                                Just ds -> showString "-- " . shows (Present ds)
+                                Nothing -> id
+              c com     =   showString $ unlines
+                                $ map (\(i,l) -> if i == 0 then "-- | " ++ l else "--  " ++ l)
+                                    $ zip [0 .. length lines - 1] lines
+                                where lines = nonEmptyLines (BS.unpack com)
+              t         =   case typeInfo descr of
+                                Just ti -> showString $ BS.unpack ti
+                                Nothing -> id
+
+instance Eq Descr where
+    (== ) a b             =   descrName a == descrName b
+                                && descrType (details a)   == descrType (details b)
+
+instance Ord Descr where
+    (<=) a b             =   if descrName a == descrName b
+                                then descrType (details a)   <= descrType (details b)
+                                else descrName a <  descrName b
+
 instance Default PackModule where
     getDefault = parsePackModule "unknow-0:Undefined"
 
@@ -473,7 +602,7 @@ data GUIHistory' =
             scope   :: Scope
         ,   blacklist :: Bool}
     |   InfoElementSelected {
-            info    :: Descr}
+            mbInfo  :: Maybe Descr}
     |   PaneSelected {
             paneN   :: Maybe (String)}
    deriving (Eq, Ord, Show)
@@ -482,6 +611,7 @@ data SensitivityMask =
         SensitivityForwardHist
     |   SensitivityBackwardHist
     |   SensitivityProjectActive
+    |   SensitivityWorkspaceOpen
     |   SensitivityError
     |   SensitivityEditor
     |   SensitivityInterpreting
@@ -497,7 +627,13 @@ data CompletionWindow = CompletionWindow {
     cwTreeView :: TreeView,
     cwListStore :: ListStore String}
 
-
+data StatusbarCompartment =
+        CompartmentCommand String
+    |   CompartmentPane (Maybe (IDEPane IDEM))
+    |   CompartmentPackage String
+    |   CompartmentState String
+    |   CompartmentOverlay Bool
+    |   CompartmentBufferPos (Int,Int)
 
 
 

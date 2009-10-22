@@ -90,7 +90,6 @@ import System.Posix
 import System.Posix.Signals (Handler(..))
 #endif
 
-import Graphics.UI.Gtk
 import Control.Monad.Reader
 import IDE.Core.State
 import IDE.Tool
@@ -120,14 +119,12 @@ executeDebugCommand command handler = do
     maybeGhci <- readIDE ghciState
     case maybeGhci of
         Just ghci -> do
-            sb <- getSBErrors
+            triggerEventIDE (StatusbarChanged [CompartmentState command])
             reifyIDE $ \ideR -> do
-                statusbarPop sb 1
-                statusbarPush sb 1 $ (if '\n' `elem` command then (head $ lines command) ++ " ..." else command)
                 executeGhciCommand ghci command $ \output ->
                     reflectIDE (do
                         handler output
-                        liftIO $ statusbarPush sb 1 ""
+                        triggerEventIDE (StatusbarChanged [CompartmentState ""])
                         return ()
                         ) ideR
         _ -> sysMessage Normal "Debugger not running"

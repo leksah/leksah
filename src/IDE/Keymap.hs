@@ -20,12 +20,11 @@ import Control.Monad.Reader
 
 import IDE.Core.State
 
-class IDEObject alpha => Keymap alpha where
+class Keymap alpha where
     parseKeymap         ::   FilePath -> IO alpha
     setKeymap           ::   alpha -> [ActionDescr IDERef] -> [ActionDescr IDERef]
     buildSpecialKeys    ::   alpha -> [ActionDescr IDERef] -> IO (SpecialKeyTable IDERef)
 
-instance IDEObject KeymapI
 
 instance Keymap KeymapI where
     parseKeymap         =   parseKeymap'

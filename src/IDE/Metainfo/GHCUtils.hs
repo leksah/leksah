@@ -42,6 +42,7 @@ import HscStats (ppSourceStats)
 import Control.Monad.Trans
 import DriverPipeline (preprocess)
 import System.FilePath (takeDirectory)
+--import IDE.Workspace
 
 
 inGhc :: Ghc a -> IDEM a

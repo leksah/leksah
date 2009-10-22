@@ -24,12 +24,11 @@ module IDE.Pane.Preferences (
 ,   writePrefs
 ,   defaultPrefs
 ,   prefsDescription
-,   editPrefs
+,   getPrefs
 ) where
 
 import Graphics.UI.Gtk hiding(background)
 import Control.Monad.Reader
-import qualified Text.ParserCombinators.Parsec as P
 import Data.List
 import qualified Text.PrettyPrint.HughesPJ as PP
 import Distribution.Package
@@ -53,7 +52,6 @@ import IDE.FileUtils
 import System.IO
 import Distribution.InstalledPackageInfo (package)
 import IDE.Metainfo.GHCUtils (getInstalledPackageInfos,inGhc)
-import Packages (PackageConfig(..))
 import IDE.Debug
     (debugSetPrintBindResult,
      debugSetBreakOnError,
@@ -61,6 +59,13 @@ import IDE.Debug
      debugSetPrintEvldWithShow)
 import Graphics.UI.Gtk.SourceView
     (sourceStyleSchemeManagerGetSchemeIds, sourceStyleSchemeManagerNew)
+import System.Time (getClockTime)
+
+-- ---------------------------------------------------------------------
+-- This needs to be incremented, when the preferences format changes
+--
+prefsVersion :: Int
+prefsVersion = 1
 
 --
 -- | The Preferences Pane
@@ -73,111 +78,68 @@ data IDEPrefs               =   IDEPrefs {
 data PrefsState             =   PrefsState
     deriving(Eq,Ord,Read,Show,Typeable)
 
-instance IDEObject IDEPrefs
-
 instance Pane IDEPrefs IDEM
     where
     primPaneName _  =   "Prefs"
     getAddedIndex _ =   0
     getTopWidget    =   castToWidget . prefsBox
     paneId b        =   "*Prefs"
-    makeActive prefs =  activatePane prefs []
-    close           =   closePane
 
 instance RecoverablePane IDEPrefs PrefsState IDEM where
     saveState p     =   return Nothing
-    recoverState pp st  =  return ()
+    recoverState pp st  =  return Nothing
+    builder pp nb windows = do
+        prefs <- readIDE prefs
+        lastAppliedPrefsRef <- liftIO $ newIORef prefs
+        packageInfos <- inGhc getInstalledPackageInfos
+        let flatPrefsDesc = flattenFieldDescriptionPP (prefsDescription (map package packageInfos))
+        reifyIDE $  \ ideR -> do
+            vb      <-  vBoxNew False 0
+            bb      <-  hButtonBoxNew
+            apply   <-  buttonNewFromStock "gtk-apply"
+            restore <-  buttonNewFromStock "Restore"
+            save    <-  buttonNewFromStock "gtk-save"
+            closeB  <-  buttonNewFromStock "gtk-close"
+            boxPackStart bb apply PackNatural 0
+            boxPackStart bb restore PackNatural 0
+            boxPackStart bb save PackNatural 0
+            boxPackStart bb closeB PackNatural 0
+            (widget,injb,ext,notifier) <-  buildEditor (extractFieldDescription $ prefsDescription (map package packageInfos)) prefs
+            boxPackStart vb widget PackGrow 7
+            boxPackEnd vb bb PackNatural 7
+            let prefsPane = IDEPrefs vb
+            apply `onClicked` (do
+                mbNewPrefs <- extract prefs [ext]
+                case mbNewPrefs of
+                    Nothing -> return ()
+                    Just newPrefs -> do
+                        lastAppliedPrefs    <- readIORef lastAppliedPrefsRef
+                        mapM_ (\ (FDPP _ _ _ _ applyF) -> reflectIDE (applyF newPrefs lastAppliedPrefs) ideR ) flatPrefsDesc
+                        writeIORef lastAppliedPrefsRef newPrefs)
+            restore `onClicked` (do
+                lastAppliedPrefs <- readIORef lastAppliedPrefsRef
+                mapM_ (\ (FDPP _ _ _ _ applyF) -> reflectIDE (applyF prefs lastAppliedPrefs) ideR ) flatPrefsDesc
+                injb prefs
+                writeIORef lastAppliedPrefsRef prefs)
+            save `onClicked` (do
+                lastAppliedPrefs <- readIORef lastAppliedPrefsRef
+                mbNewPrefs <- extract prefs [ext]
+                case mbNewPrefs of
+                    Nothing -> return ()
+                    Just newPrefs -> do
+                    mapM_ (\ (FDPP _ _ _ _ applyF) -> reflectIDE (applyF newPrefs lastAppliedPrefs) ideR ) flatPrefsDesc
+                    fp <- getConfigFilePathForSave standardPreferencesFilename
+                    writePrefs fp newPrefs
+                    reflectIDE (modifyIDE_ (\ide -> ide{prefs = newPrefs})) ideR )
+            closeB `onClicked` (reflectIDE (closePane prefsPane >> return ()) ideR )
+            registerEvent notifier FocusIn (Left (\e -> do
+                reflectIDE (makeActive prefsPane) ideR
+                return (e{gtkReturn=False})))
+            return (Just prefsPane,[])
 
--- ------------------------------------------------------------
--- * Editing
--- ------------------------------------------------------------
-
-editPrefs :: IDEAction
-editPrefs = do
-    getPrefs
-    return ()
-
-getPrefs :: IDEM IDEPrefs
-getPrefs = do
-    mbPrefs <- getPane
-    case mbPrefs of
-        Nothing -> do
-            pp  <- getBestPathForId "*Prefs"
-            nb          <-  getNotebook pp
-            initPrefs pp nb
-            mbPrefs <- getPane
-            case mbPrefs of
-                Nothing ->  throwIDE "Can't init prefs pane"
-                Just m  ->  do
-                        liftIO $bringPaneToFront m
-                        return m
-        Just m ->   do
-            liftIO $bringPaneToFront m
-            return m
-
-initPrefs :: PanePath -> Notebook -> IDEAction
-initPrefs panePath nb2 = do
-    packageInfos <- inGhc getInstalledPackageInfos
-    let flatPrefsDesc = flattenFieldDescriptionPP (prefsDescription (map package packageInfos))
-    prefs       <-  readIDE prefs
-    lastAppliedPrefsRef <- liftIO $ newIORef prefs
-    currentInfo <-  readIDE currentInfo
-    newPane panePath nb2 (builder lastAppliedPrefsRef packageInfos flatPrefsDesc prefs)
-    return ()
-
-builder :: IORef Prefs ->
-    [PackageConfig] ->
-    [FieldDescriptionPP Prefs] ->
-    Prefs ->
-    PanePath ->
-    Notebook ->
-    Window ->
-    IDERef ->
-    IO (IDEPrefs,Connections)
-builder lastAppliedPrefsRef packageInfos flatPrefsDesc prefs pp nb windows ideR = do
-    vb      <-  vBoxNew False 0
-    bb      <-  hButtonBoxNew
-    apply   <-  buttonNewFromStock "gtk-apply"
-    restore <-  buttonNewFromStock "Restore"
-    save    <-  buttonNewFromStock "gtk-save"
-    closeB  <-  buttonNewFromStock "gtk-close"
-    boxPackStart bb apply PackNatural 0
-    boxPackStart bb restore PackNatural 0
-    boxPackStart bb save PackNatural 0
-    boxPackStart bb closeB PackNatural 0
-    (widget,injb,ext,notifier) <-  buildEditor (extractFieldDescription $ prefsDescription (map package packageInfos)) prefs
-    boxPackStart vb widget PackGrow 7
-    boxPackEnd vb bb PackNatural 7
-    let prefsPane = IDEPrefs vb
-    apply `onClicked` (do
-        mbNewPrefs <- extract prefs [ext]
-        case mbNewPrefs of
-            Nothing -> return ()
-            Just newPrefs -> do
-                lastAppliedPrefs    <- readIORef lastAppliedPrefsRef
-                mapM_ (\ (FDPP _ _ _ _ applyF) -> reflectIDE (applyF newPrefs lastAppliedPrefs) ideR ) flatPrefsDesc
-                writeIORef lastAppliedPrefsRef newPrefs)
-    restore `onClicked` (do
-        lastAppliedPrefs <- readIORef lastAppliedPrefsRef
-        mapM_ (\ (FDPP _ _ _ _ applyF) -> reflectIDE (applyF prefs lastAppliedPrefs) ideR ) flatPrefsDesc
-        injb prefs
-        writeIORef lastAppliedPrefsRef prefs)
-    save `onClicked` (do
-        lastAppliedPrefs <- readIORef lastAppliedPrefsRef
-        mbNewPrefs <- extract prefs [ext]
-        case mbNewPrefs of
-            Nothing -> return ()
-            Just newPrefs -> do
-            mapM_ (\ (FDPP _ _ _ _ applyF) -> reflectIDE (applyF newPrefs lastAppliedPrefs) ideR ) flatPrefsDesc
-            fp <- getConfigFilePathForSave "Default.prefs"
-            writePrefs fp newPrefs
-            reflectIDE (modifyIDE_ (\ide -> ide{prefs = newPrefs})) ideR )
-    closeB `onClicked` (reflectIDE (close prefsPane >> return ()) ideR )
-    registerEvent notifier FocusIn (Left (\e -> do
-        reflectIDE (makeActive prefsPane) ideR
-        return (e{gtkReturn=False})))
-    return (prefsPane,[])
-
+getPrefs :: Maybe PanePath -> IDEM IDEPrefs
+getPrefs Nothing    = forceGetPane (Right "*Prefs")
+getPrefs (Just pp)  = forceGetPane (Left pp)
 
 -- ------------------------------------------------------------
 -- * Dialog definition
@@ -187,8 +149,28 @@ prefsDescription :: [PackageIdentifier] -> FieldDescriptionPP Prefs
 prefsDescription packages = NFDPP [
     ("Editor", VFDPP emptyParams [
         mkFieldPP
+            (paraName <<<- ParaName "Version number of preferences file format"
+                $ paraSynopsis <<<- ParaSynopsis "Integer"
+                    $ paraShowLabel <<<- ParaShowLabel False $ emptyParams)
+            (PP.text . show)
+            intParser
+            prefsFormat
+            (\ b a -> a{prefsFormat = b})
+            (noEditor 0)
+            (\b -> return ())
+    ,   mkFieldPP
+            (paraName <<<- ParaName "Time of last storage"
+                $ paraShowLabel <<<- ParaShowLabel False $ emptyParams)
+            (PP.text . show)
+            stringParser
+            prefsSaveTime
+            (\ b a -> a{prefsSaveTime = b})
+            (noEditor "")
+            (\b -> return ())
+    ,   mkFieldPP
             (paraName <<<- ParaName "Show line numbers"
-                $ paraSynopsis <<<- ParaSynopsis "(True/False)" $ emptyParams)
+                $ paraSynopsis <<<- ParaSynopsis "(True/False)"
+                    $ emptyParams)
             (PP.text . show)
             boolParser
             showLineNumbers
@@ -578,11 +560,13 @@ instance Default PackageIdentifier where
                     Just it -> it
 
 defaultPrefs = Prefs {
-        showLineNumbers     =   True
+        prefsFormat         =   prefsVersion
+    ,   prefsSaveTime       =   ""
+    ,   showLineNumbers     =   True
     ,   rightMargin         =   Just 100
     ,   tabWidth            =   4
-    ,   sourceCandy         =   Just("Default")
-    ,   keymapName          =   "Default"
+    ,   sourceCandy         =   Just("candy")
+    ,   keymapName          =   "keymap"
     ,   forceLineEnds       =   True
     ,   removeTBlanks       =   True
     ,   textviewFont        =   Nothing
@@ -597,21 +581,20 @@ defaultPrefs = Prefs {
     ,   sourceDirectories   =   []
     ,   packageBlacklist    =   []
     ,   pathForCategory     =   [   ("EditorCategory",[SplitP (LeftP)])
-                                ,   ("TreeCategory",[SplitP (RightP),SplitP (TopP)])
-                                ,   ("LogCategory",[SplitP (RightP), SplitP (BottomP)])
-                                ,   ("DialogCategory",[SplitP (RightP),SplitP (TopP)])]
+                                ,   ("ToolCategory",[SplitP (RightP),SplitP (TopP)])
+                                ,   ("LogCategory",[SplitP (RightP), SplitP (BottomP)])]
     ,   defaultPath         =   [SplitP (LeftP)]
-    ,   categoryForPane     =   [   ("*ClassHierarchy","TreeCategory")
-                                ,   ("*Debug","TreeCategory")
-                                ,   ("*Grep","TreeCategory")
-                                ,   ("*Info","LogCategory")
+    ,   categoryForPane     =   [   ("*ClassHierarchy","ToolCategory")
+                                ,   ("*Debug","ToolCategory")
+                                ,   ("*Grep","ToolCategory")
+                                ,   ("*Info","ToolCategory")
                                 ,   ("*Log","LogCategory")
-                                ,   ("*Modules","TreeCategory")
-                                ,   ("*Package","DialogCategory")
-                                ,   ("*Flags","DialogCategory")
-                                ,   ("*Prefs","DialogCategory")
-                                ,   ("*References","LogCategory")
-                                ,   ("*Search","TreeCategory")]
+                                ,   ("*Modules","ToolCategory")
+                                ,   ("*Package","ToolCategory")
+                                ,   ("*Flags","ToolCategory")
+                                ,   ("*Prefs","ToolCategory")
+                                ,   ("*References","ToolCategory")
+                                ,   ("*Search","ToolCategory")]
     ,   collectAfterBuild   =   False
     ,   collectAtStart      =   True
     ,   autoExtractTars     =   Nothing
@@ -637,29 +620,15 @@ defaultPrefs = Prefs {
 -- ------------------------------------------------------------
 
 readPrefs :: FilePath -> IO Prefs
-readPrefs fn = catch (do
-    res <- P.parseFromFile (prefsParser defaultPrefs (flattenFieldDescriptionPP
-                    (prefsDescription []))) fn
-    case res of
-                Left pe -> throwIDE $ "Error reading prefs file " ++ show fn ++ " " ++ show pe
-                Right r -> return r)
-    (\ e -> throwIDE $ "Error reading prefs file " ++ show fn ++ " " ++ show e)
-
-prefsParser ::  a ->  [FieldDescriptionPP a] ->  P.CharParser () a
-prefsParser def descriptions =
-    let parsersF = map fieldParser descriptions in do
-        res <-  applyFieldParsers def parsersF
-        return res
-        P.<?> "prefs parser"
+readPrefs fn = readFields fn (flattenFieldDescriptionPPToS (prefsDescription [])) defaultPrefs
 
 -- ------------------------------------------------------------
 -- * Printing
 -- ------------------------------------------------------------
 
 writePrefs :: FilePath -> Prefs -> IO ()
-writePrefs fpath prefs = writeFile fpath (showPrefs prefs (flattenFieldDescriptionPP (prefsDescription [])))
-
-showPrefs ::  a ->  [FieldDescriptionPP a] ->  String
-showPrefs prefs prefsDesc = PP.render $
-    foldl (\ doc (FDPP _ printer _ _ _) ->  doc PP.$+$ printer prefs) PP.empty prefsDesc
+writePrefs fpath prefs = do
+    timeNow         <- liftIO getClockTime
+    let newPrefs    =   prefs {prefsSaveTime = show timeNow, prefsFormat = prefsVersion}
+    writeFields fpath newPrefs (flattenFieldDescriptionPPToS (prefsDescription []))
 

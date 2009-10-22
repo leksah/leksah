@@ -395,7 +395,7 @@ updateAccessibleInfo = do
 --
 loadInfosForPackage :: FilePath -> Bool -> PackageIdentifier -> IO (Maybe PackageDescr)
 loadInfosForPackage dirPath isWorkingPackage pid = do
-    let filePath = dirPath </> fromPackageIdentifier pid ++ (if isWorkingPackage then ".packw" else ".pack")
+    let filePath = dirPath </> fromPackageIdentifier pid ++ (if isWorkingPackage then leksahCurrentMetaExtension else leksahMetadataFileExtension)
     exists <- doesFileExist filePath
     if exists
         then catch (do

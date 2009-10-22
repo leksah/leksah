@@ -17,9 +17,9 @@
 module IDE.Pane.Search (
     IDESearch(..)
 ,   SearchState
-,   showSearch
 ,   setChoices
 ,   searchMetaGUI
+,   getSearch
 ) where
 
 import Graphics.UI.Gtk hiding (get)
@@ -55,16 +55,12 @@ data SearchState    =   SearchState {
 ,   searchMode      ::   SearchMode
 }   deriving(Eq,Ord,Read,Show,Typeable)
 
-instance IDEObject IDESearch
-
 instance Pane IDESearch IDEM
     where
     primPaneName _  =   "Search"
     getAddedIndex _ =   0
     getTopWidget    =   castToWidget . topBox
     paneId b        =   "*Search"
-    makeActive p    =   activatePane p []
-    close           =   closePane
 
 instance RecoverablePane IDESearch SearchState IDEM where
     saveState p     =   do
@@ -74,170 +70,149 @@ instance RecoverablePane IDESearch SearchState IDEM where
         return (Just (SearchState str scope mode))
     recoverState pp (SearchState str scope mode) =   do
         nb      <-  getNotebook pp
-        newPane pp nb (builder scope mode)
+        mbP     <-  buildPane pp nb builder
+        scopeSelection scope
+        modeSelection mode
         searchMetaGUI str
+        return mbP
 
-showSearch :: IDEAction
-showSearch = do
-    m <- getSearch
-    liftIO $ bringPaneToFront m
-    liftIO $ widgetGrabFocus (entry m)
+-- System (Prefix False) als defaults
+    builder pp nb windows =
+        let scope   = System
+            mode    = Prefix False
+        in reifyIDE $ \ ideR -> do
+            scopebox        <-  hBoxNew True 2
+            rb1             <-  radioButtonNewWithLabel "Local"
+            rb2             <-  radioButtonNewWithLabelFromWidget rb1 "Package"
+            rb3             <-  radioButtonNewWithLabelFromWidget rb1 "System"
+            toggleButtonSetActive
+                (case scope of
+                    Local   -> rb1
+                    Package -> rb2
+                    System   -> rb3) True
+            boxPackStart scopebox rb1 PackNatural 2
+            boxPackStart scopebox rb2 PackNatural 2
+            boxPackEnd scopebox rb3 PackNatural 2
 
-getSearch :: IDEM IDESearch
-getSearch = do
-    mbSearch <- getPane
-    case mbSearch of
-        Just m ->   return m
-        Nothing -> do
-            pp  <- getBestPathForId "*Search"
-            nb  <-  getNotebook pp
-            newPane pp nb (builder System (Prefix False))
-            mbSearch <- getPane
-            case mbSearch of
-                Nothing ->  throwIDE "Can't init search"
-                Just m  ->  return m
+            modebox         <-  hBoxNew True 2
+            mb1             <-  radioButtonNewWithLabel "Exact"
+            mb2             <-  radioButtonNewWithLabelFromWidget mb1 "Prefix"
+            mb3             <-  radioButtonNewWithLabelFromWidget mb1 "Regex"
+            toggleButtonSetActive
+                (case mode of
+                    Exact _  -> mb1
+                    Prefix _ -> mb2
+                    Regex _  -> mb3) True
+            mb4             <-  checkButtonNewWithLabel "Case sensitive"
+            toggleButtonSetActive mb4 (caseSense mode)
+            boxPackStart modebox mb1 PackNatural 2
+            boxPackStart modebox mb2 PackNatural 2
+            boxPackStart modebox mb3 PackNatural 2
+            boxPackEnd modebox mb4 PackNatural 2
 
+            listStore   <-  listStoreNew []
+            treeView    <-  treeViewNew
+            treeViewSetModel treeView listStore
 
-builder :: Scope ->
-    SearchMode ->
-    PanePath ->
-    Notebook ->
-    Window ->
-    IDERef ->
-    IO (IDESearch,Connections)
-builder scope mode pp nb windows ideR = do
-    scopebox        <-  hBoxNew True 2
-    rb1             <-  radioButtonNewWithLabel "Local"
-    rb2             <-  radioButtonNewWithLabelFromWidget rb1 "Package"
-    rb3             <-  radioButtonNewWithLabelFromWidget rb1 "System"
-    toggleButtonSetActive
-        (case scope of
-            Local   -> rb1
-            Package -> rb2
-            System   -> rb3) True
-    boxPackStart scopebox rb1 PackNatural 2
-    boxPackStart scopebox rb2 PackNatural 2
-    boxPackEnd scopebox rb3 PackNatural 2
-
-    modebox         <-  hBoxNew True 2
-    mb1             <-  radioButtonNewWithLabel "Exact"
-    mb2             <-  radioButtonNewWithLabelFromWidget mb1 "Prefix"
-    mb3             <-  radioButtonNewWithLabelFromWidget mb1 "Regex"
-    toggleButtonSetActive
-        (case mode of
-            Exact _  -> mb1
-            Prefix _ -> mb2
-            Regex _  -> mb3) True
-    mb4             <-  checkButtonNewWithLabel "Case sensitive"
-    toggleButtonSetActive mb4 (caseSense mode)
-    boxPackStart modebox mb1 PackNatural 2
-    boxPackStart modebox mb2 PackNatural 2
-    boxPackStart modebox mb3 PackNatural 2
-    boxPackEnd modebox mb4 PackNatural 2
-
-    listStore   <-  listStoreNew []
-    treeView    <-  treeViewNew
-    treeViewSetModel treeView listStore
-
-    renderer3    <- cellRendererTextNew
-    renderer30   <- cellRendererPixbufNew
-    col3         <- treeViewColumnNew
-    treeViewColumnSetTitle col3 "Symbol"
-    treeViewColumnSetSizing col3 TreeViewColumnAutosize
-    treeViewColumnSetResizable col3 True
-    treeViewColumnSetReorderable col3 True
-    treeViewAppendColumn treeView col3
-    cellLayoutPackStart col3 renderer30 False
-    cellLayoutPackStart col3 renderer3 True
-    cellLayoutSetAttributes col3 renderer3 listStore
-        $ \row -> [ cellText := descrName row]
-    cellLayoutSetAttributes col3 renderer30 listStore
-        $ \row -> [
-        cellPixbufStockId  := stockIdFromType ((descrType . details) row)]
+            renderer3    <- cellRendererTextNew
+            renderer30   <- cellRendererPixbufNew
+            col3         <- treeViewColumnNew
+            treeViewColumnSetTitle col3 "Symbol"
+            treeViewColumnSetSizing col3 TreeViewColumnAutosize
+            treeViewColumnSetResizable col3 True
+            treeViewColumnSetReorderable col3 True
+            treeViewAppendColumn treeView col3
+            cellLayoutPackStart col3 renderer30 False
+            cellLayoutPackStart col3 renderer3 True
+            cellLayoutSetAttributes col3 renderer3 listStore
+                $ \row -> [ cellText := descrName row]
+            cellLayoutSetAttributes col3 renderer30 listStore
+                $ \row -> [
+                cellPixbufStockId  := stockIdFromType ((descrType . details) row)]
 
 
-    renderer1    <- cellRendererTextNew
-    renderer10   <- cellRendererPixbufNew
-    col1         <- treeViewColumnNew
-    treeViewColumnSetTitle col1 "Module"
-    treeViewColumnSetSizing col1 TreeViewColumnAutosize
-    treeViewColumnSetResizable col1 True
-    treeViewColumnSetReorderable col1 True
-    treeViewAppendColumn treeView col1
-    cellLayoutPackStart col1 renderer10 False
-    cellLayoutPackStart col1 renderer1 True
-    cellLayoutSetAttributes col1 renderer1 listStore
-        $ \row -> [ cellText := case descrModu' row of
-                                    Nothing -> ""
-                                    Just pm -> display $ modu pm]
-    cellLayoutSetAttributes col1 renderer10 listStore
-        $ \row -> [
-        cellPixbufStockId  := if isReexported row
-                                then "ide_reexported"
-                                    else if isJust (mbLocation row)
-                                        then "ide_source"
-                                        else ""]
+            renderer1    <- cellRendererTextNew
+            renderer10   <- cellRendererPixbufNew
+            col1         <- treeViewColumnNew
+            treeViewColumnSetTitle col1 "Module"
+            treeViewColumnSetSizing col1 TreeViewColumnAutosize
+            treeViewColumnSetResizable col1 True
+            treeViewColumnSetReorderable col1 True
+            treeViewAppendColumn treeView col1
+            cellLayoutPackStart col1 renderer10 False
+            cellLayoutPackStart col1 renderer1 True
+            cellLayoutSetAttributes col1 renderer1 listStore
+                $ \row -> [ cellText := case descrModu' row of
+                                            Nothing -> ""
+                                            Just pm -> display $ modu pm]
+            cellLayoutSetAttributes col1 renderer10 listStore
+                $ \row -> [
+                cellPixbufStockId  := if isReexported row
+                                        then "ide_reexported"
+                                            else if isJust (mbLocation row)
+                                                then "ide_source"
+                                                else ""]
 
-    renderer2   <- cellRendererTextNew
-    col2        <- treeViewColumnNew
-    treeViewColumnSetTitle col2 "Package"
-    treeViewColumnSetSizing col2 TreeViewColumnAutosize
-    treeViewColumnSetResizable col2 True
-    treeViewColumnSetReorderable col2 True
-    treeViewAppendColumn treeView col2
-    cellLayoutPackStart col2 renderer2 True
-    cellLayoutSetAttributes col2 renderer2 listStore
-        $ \row -> [ cellText := case descrModu' row of
-                                    Nothing -> ""
-                                    Just pm -> display $ pack pm]
-    treeViewSetHeadersVisible treeView True
-    sel <- treeViewGetSelection treeView
-    treeSelectionSetMode sel SelectionSingle
+            renderer2   <- cellRendererTextNew
+            col2        <- treeViewColumnNew
+            treeViewColumnSetTitle col2 "Package"
+            treeViewColumnSetSizing col2 TreeViewColumnAutosize
+            treeViewColumnSetResizable col2 True
+            treeViewColumnSetReorderable col2 True
+            treeViewAppendColumn treeView col2
+            cellLayoutPackStart col2 renderer2 True
+            cellLayoutSetAttributes col2 renderer2 listStore
+                $ \row -> [ cellText := case descrModu' row of
+                                            Nothing -> ""
+                                            Just pm -> display $ pack pm]
+            treeViewSetHeadersVisible treeView True
+            sel <- treeViewGetSelection treeView
+            treeSelectionSetMode sel SelectionSingle
 
-    sw <- scrolledWindowNew Nothing Nothing
-    containerAdd sw treeView
-    scrolledWindowSetPolicy sw PolicyAutomatic PolicyAutomatic
+            sw <- scrolledWindowNew Nothing Nothing
+            containerAdd sw treeView
+            scrolledWindowSetPolicy sw PolicyAutomatic PolicyAutomatic
 
-    entry   <-  entryNew
+            entry   <-  entryNew
 
-    box             <-  vBoxNew False 2
-    boxPackStart box scopebox PackNatural 0
-    boxPackStart box sw PackGrow 0
-    boxPackStart box modebox PackNatural 0
-    boxPackEnd box entry PackNatural 0
+            box             <-  vBoxNew False 2
+            boxPackStart box scopebox PackNatural 0
+            boxPackStart box sw PackGrow 0
+            boxPackStart box modebox PackNatural 0
+            boxPackEnd box entry PackNatural 0
 
-    scopeRef  <- newIORef scope
-    modeRef   <- newIORef mode
-    let search = IDESearch sw treeView listStore scopeRef modeRef box entry
+            scopeRef  <- newIORef scope
+            modeRef   <- newIORef mode
+            let search = IDESearch sw treeView listStore scopeRef modeRef box entry
 
-    cid1 <- treeView `afterFocusIn`
-        (\_ -> do reflectIDE (makeActive search) ideR ; return True)
-    rb1 `onToggled` (reflectIDE (scopeSelection Local) ideR )
-    rb2 `onToggled` (reflectIDE (scopeSelection Package) ideR )
-    rb3 `onToggled` (reflectIDE (scopeSelection System) ideR )
-    mb1 `onToggled` do
-        widgetSetSensitivity mb4 False
-        active <- toggleButtonGetActive mb4
-        (reflectIDE (modeSelection (Exact active)) ideR )
-    mb2 `onToggled`do
-        widgetSetSensitivity mb4 True
-        active <- toggleButtonGetActive mb4
-        (reflectIDE (modeSelection (Prefix active)) ideR )
-    mb3 `onToggled` do
-        widgetSetSensitivity mb4 True
-        active <- toggleButtonGetActive mb4
-        (reflectIDE (modeSelection (Regex active)) ideR )
-    mb4 `onToggled` do
-        active <- toggleButtonGetActive mb4
-        (reflectIDE (modeSelectionCase active) ideR )
-    treeView `onButtonPress` (listViewPopup ideR  listStore treeView)
-    sel `onSelectionChanged` do
-        fillInfo search ideR
-    entry `afterKeyRelease` (\ event -> do
-        text <- entryGetText entry
-        reflectIDE (searchMetaGUI text) ideR
-        return False)
-    return (search,[ConnectC cid1])
+            cid1 <- treeView `afterFocusIn`
+                (\_ -> do reflectIDE (makeActive search) ideR ; return True)
+            rb1 `onToggled` (reflectIDE (scopeSelection Local) ideR )
+            rb2 `onToggled` (reflectIDE (scopeSelection Package) ideR )
+            rb3 `onToggled` (reflectIDE (scopeSelection System) ideR )
+            mb1 `onToggled` do
+                widgetSetSensitivity mb4 False
+                active <- toggleButtonGetActive mb4
+                (reflectIDE (modeSelection (Exact active)) ideR )
+            mb2 `onToggled`do
+                widgetSetSensitivity mb4 True
+                active <- toggleButtonGetActive mb4
+                (reflectIDE (modeSelection (Prefix active)) ideR )
+            mb3 `onToggled` do
+                widgetSetSensitivity mb4 True
+                active <- toggleButtonGetActive mb4
+                (reflectIDE (modeSelection (Regex active)) ideR )
+            mb4 `onToggled` do
+                active <- toggleButtonGetActive mb4
+                (reflectIDE (modeSelectionCase active) ideR )
+            treeView `onButtonPress` (listViewPopup ideR  listStore treeView)
+            sel `onSelectionChanged` do
+                fillInfo search ideR
+            entry `afterKeyRelease` (\ event -> do
+                text <- entryGetText entry
+                reflectIDE (searchMetaGUI text) ideR
+                return False)
+            return (Just search,[ConnectC cid1])
 
 getScope :: IDESearch -> IO Scope
 getScope search = readIORef (searchScopeRef search)
@@ -245,23 +220,28 @@ getScope search = readIORef (searchScopeRef search)
 getMode :: IDESearch -> IO SearchMode
 getMode search = readIORef (searchModeRef search)
 
+getSearch :: Maybe PanePath -> IDEM IDESearch
+getSearch Nothing = forceGetPane (Right "*Search")
+getSearch (Just pp)  = forceGetPane (Left pp)
+
+
 scopeSelection :: Scope -> IDEAction
 scopeSelection scope = do
-    search <- getSearch
+    search <- getSearch Nothing
     liftIO $ writeIORef (searchScopeRef search) scope
     text   <- liftIO $ entryGetText (entry search)
     searchMetaGUI text
 
 modeSelection :: SearchMode -> IDEAction
 modeSelection mode = do
-    search <- getSearch
+    search <- getSearch Nothing
     liftIO $ writeIORef (searchModeRef search) mode
     text   <- liftIO $ entryGetText (entry search)
     searchMetaGUI text
 
 modeSelectionCase :: Bool -> IDEAction
 modeSelectionCase caseSense = do
-    search <- getSearch
+    search <- getSearch Nothing
     oldMode <- liftIO $ readIORef (searchModeRef search)
     liftIO $ writeIORef (searchModeRef search) oldMode{caseSense = caseSense}
     text   <- liftIO $ entryGetText (entry search)
@@ -269,7 +249,7 @@ modeSelectionCase caseSense = do
 
 searchMetaGUI :: String -> IDEAction
 searchMetaGUI str = do
-    search <- getSearch
+    search <- getSearch Nothing
     liftIO $ bringPaneToFront search
     liftIO $ entrySetText (entry search) str
     scope  <- liftIO $ getScope search
@@ -340,7 +320,7 @@ fillInfo search ideR  = do
 
 setChoices :: [Descr] -> IDEAction
 setChoices descrs = do
-    search <- getSearch
+    search <- getSearch Nothing
     liftIO $ do
         listStoreClear (searchStore search)
         mapM_ (listStoreAppend (searchStore search)) descrs

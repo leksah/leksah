@@ -118,13 +118,13 @@ runMain = handleTopExceptions $ do
                                         SessionN _ -> True
                                         _         -> False) o
     let sessionFilename =  if not (null sessions)
-                                then  (head $ map (\ (SessionN x) -> x) sessions) ++ ".session"
-                                else  "Current.session"
+                                then  (head $ map (\ (SessionN x) -> x) sessions) ++ leksahSessionFileExtension
+                                else  standardSessionFilename
     when (elem VersionF o)
         (sysMessage Normal $ "Leksah an IDE for Haskell, version " ++ showVersion version)
     when (elem Help o)
         (sysMessage Normal $ "Leksah an IDE for Haskell, version " ++ usageInfo header options)
-    prefsPath       <-  getConfigFilePathForLoad "Default.prefs"
+    prefsPath       <-  getConfigFilePathForLoad standardPreferencesFilename Nothing
     prefs           <-  readPrefs prefsPath
     let extract     =   filter (\x -> case x of
                                         ExtractTars _ -> True
@@ -178,16 +178,16 @@ startGUI sessionFilename iprefs = do
                                 then return (iprefs,False)
                                 else do
                                     firstStart iprefs
-                                    prefsPath  <- getConfigFilePathForLoad "Default.prefs"
+                                    prefsPath  <- getConfigFilePathForLoad standardPreferencesFilename Nothing
                                     prefs <- readPrefs prefsPath
                                     return (prefs,True)
     candyPath   <-  getConfigFilePathForLoad
                         (case sourceCandy startupPrefs of
-                            Nothing     ->   "Default.candy"
-                            Just name   ->   name ++ ".candy")
+                            Nothing     ->   standardCandyFilename
+                            Just name   ->   name ++ leksahCandyFileExtension) Nothing
     candySt     <-  parseCandy candyPath
     -- keystrokes
-    keysPath    <-  getConfigFilePathForLoad $ keymapName iprefs ++ ".keymap"
+    keysPath    <-  getConfigFilePathForLoad (keymapName iprefs ++ leksahKeymapFileExtension) Nothing
     keyMap      <-  parseKeymap keysPath
     let accelActions = setKeymap (keyMap :: KeymapI) mkActions
     specialKeys <-  buildSpecialKeys keyMap accelActions
@@ -214,8 +214,10 @@ startGUI sessionFilename iprefs = do
           ,   specialKey    =   Nothing
           ,   candy         =   candySt
           ,   prefs         =   startupPrefs
+          ,   workspace     =   Nothing
           ,   activePack    =   Nothing
-          ,   projFilesCache  = Map.empty
+          ,   packageCache  =   Map.empty
+          ,   projFilesCache =  Map.empty
           ,   allLogRefs    =   []
           ,   currentHist   =   0
           ,   currentEBC    =   (Nothing, Nothing, Nothing)
@@ -226,8 +228,8 @@ startGUI sessionFilename iprefs = do
           ,   guiHistory    =   (False,[],-1)
           ,   findbar       =   (False,Nothing)
           ,   toolbar       =   (True,Nothing)
-          ,   recentFiles     =   []
-          ,   recentPackages  =   []
+          ,   recentFiles       =   []
+          ,   recentWorkspaces  =   []
           ,   runningTool     =   Nothing
           ,   ghciState       =   Nothing
           ,   completion      =   Nothing
@@ -250,7 +252,7 @@ startGUI sessionFilename iprefs = do
         setBackgroundLinkToggled (backgroundLink startupPrefs)) ideR
     let (x,y)   =   defaultSize startupPrefs
     windowSetDefaultSize win x y
-    sessionPath <- getConfigFilePathForLoad sessionFilename
+    sessionPath <- getConfigFilePathForLoad sessionFilename Nothing
     (tbv,fbv)   <- reflectIDE (do
         registerEvents
         pair <- recoverSession sessionPath
@@ -274,7 +276,7 @@ startGUI sessionFilename iprefs = do
             else hideFindbar) ideR
 
     when isFirstStart $ do
-        welcomePath <- getConfigFilePathForLoad $ "welcome.txt"
+        welcomePath <- getConfigFilePathForLoad "welcome.txt" Nothing
         reflectIDE (fileOpenThis welcomePath) ideR
     reflectIDE (modifyIDE_ (\ide -> ide{currentState = IsRunning})) ideR
 
@@ -307,7 +309,7 @@ fDescription = VFD emptyParams [
 --
 firstStart :: Prefs -> IO ()
 firstStart prefs = do
-    prefsPath   <-  getConfigFilePathForLoad "Default.prefs"
+    prefsPath   <-  getConfigFilePathForLoad standardPreferencesFilename Nothing
     prefs       <-  readPrefs prefsPath
     dialog      <- windowNew
     vb          <- vBoxNew False 0
@@ -329,7 +331,7 @@ firstStart prefs = do
                 sysMessage Normal "No dialog results"
                 return ()
             Just newPrefs -> do
-                fp <- getConfigFilePathForSave "Default.prefs"
+                fp <- getConfigFilePathForSave standardPreferencesFilename
                 writePrefs fp newPrefs
                 widgetDestroy dialog
                 mainQuit

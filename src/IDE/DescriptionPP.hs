@@ -17,7 +17,7 @@ module IDE.DescriptionPP (
 ,   mkFieldPP
 ,   extractFieldDescription
 ,   flattenFieldDescriptionPP
-
+,   flattenFieldDescriptionPPToS
 ) where
 
 import Graphics.UI.Gtk
@@ -93,4 +93,10 @@ flattenFieldDescriptionPP (HFDPP paras descrs)  =   concatMap flattenFieldDescri
 flattenFieldDescriptionPP (NFDPP descrsp)       =   concatMap (flattenFieldDescriptionPP . snd) descrsp
 flattenFieldDescriptionPP fdpp                  =   [fdpp]
 
+flattenFieldDescriptionPPToS :: FieldDescriptionPP alpha -> [FieldDescriptionS alpha]
+flattenFieldDescriptionPPToS = map ppToS . flattenFieldDescriptionPP
+
+ppToS :: FieldDescriptionPP alpha -> FieldDescriptionS alpha
+ppToS (FDPP para print pars _ _) = FDS para print pars
+ppToS _                          = error "DescriptionPP.ppToS Can't transform"
 

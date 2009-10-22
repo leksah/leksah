@@ -60,7 +60,6 @@ import Outputable (ppr, showSDoc)
 showSourceSpan :: LogRef -> String
 showSourceSpan = showSDoc . ppr . logRefSrcSpan
 
-
 selectRef :: Maybe LogRef -> IDEAction
 selectRef (Just ref) = do
     logRefs <- readIDE allLogRefs
@@ -368,9 +367,7 @@ logOutputLines lineLogger output = do
     liftIO $ bringPaneToFront log
     results <- forM output $ lineLogger log
     liftIO $ appendLog log "----------------------------------\n" FrameTag
-    sb <- getSBErrors
-    liftIO $ statusbarPop sb 1
-    liftIO $ statusbarPush sb 1 ""
+    triggerEventIDE (StatusbarChanged [CompartmentState ""])
     return results
 
 logOutputLines_ :: (IDELog -> ToolOutput -> IDEM a) -> [ToolOutput] -> IDEAction
@@ -391,11 +388,10 @@ logOutputForBuild backgroundBuild output = do
     errs   <- liftIO $ readAndShow output ideRef log False []
     setErrorList $ reverse errs
     triggerEventIDE (Sensitivity [(SensitivityError,not (null errs))])
-    sb     <- getSBErrors
     let errorNum    =   length (filter isError errs)
     let warnNum     =   length errs - errorNum
-    liftIO $ statusbarPop sb 1
-    liftIO $ statusbarPush sb 1 $show errorNum ++ " Errors, " ++ show warnNum ++ " Warnings"
+    triggerEventIDE (StatusbarChanged [CompartmentState
+        (show errorNum ++ " Errors, " ++ show warnNum ++ " Warnings")])
     unless backgroundBuild nextError
     return ()
     where

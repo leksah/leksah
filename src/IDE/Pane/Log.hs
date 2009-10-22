@@ -16,10 +16,13 @@
 
 module IDE.Pane.Log (
     IDELog(..)
-,   LogView(..)
-,   clearLog
 ,   LogState
 ,   LogTag(..)
+,   showLog
+,   clearLog
+,   getLog          -- ::   beta alpha
+,   appendLog       -- ::   alpha  -> String -> LogTag -> IO Int
+,   markErrorInLog  -- ::   alpha  -> (Int, Int) -> IO ()
 
 ,   readOut
 ,   readErr
@@ -36,8 +39,7 @@ import System.IO
 import Prelude hiding (catch)
 import Control.Exception hiding (try)
 import IDE.ImportTool (addAllImports,addImport,parseNotInScope)
-import System.Process
-    (runInteractiveProcess, ProcessHandle(..))
+import System.Process (runInteractiveProcess, ProcessHandle(..))
 
 -------------------------------------------------------------------------------
 --
@@ -57,94 +59,76 @@ data IDELog         =   IDELog {
 data LogState               =   LogState
     deriving(Eq,Ord,Read,Show,Typeable)
 
-
-class Pane alpha beta => LogView alpha beta where
-    getLog          ::   beta alpha
-    appendLog       ::   alpha  -> String -> LogTag -> IO Int
-    markErrorInLog  ::   alpha  -> (Int, Int) -> IO ()
-
-instance IDEObject IDELog
-
-instance LogView IDELog IDEM
-    where
-    getLog          =   getLog'
-    appendLog       =   appendLog'
-    markErrorInLog  =   markErrorInLog'
-
 instance Pane IDELog IDEM
     where
     primPaneName  _ =   "Log"
     getAddedIndex _ =   0
     getTopWidget    =   castToWidget . scrolledWindowL
     paneId b        =   "*Log"
-    makeActive log  =   activatePane log []
-    close           =   closePane
 
 instance RecoverablePane IDELog LogState IDEM where
     saveState p     =   return (Just LogState)
     recoverState pp LogState = do
         nb <- getNotebook pp
         prefs' <- readIDE prefs
-        newPane pp nb (builder prefs')
-        return ()
-
+        buildPane pp nb builder
+    builder = builder'
 
 -------------------------------------------------------------------------------
 --
 -- * Implementation
 --
 
-
-builder :: Prefs ->
-    PanePath ->
+builder' :: PanePath ->
     Notebook ->
     Window ->
-    IDERef ->
-    IO (IDELog,Connections)
-builder prefs pp nb windows ideR = do
-    tv           <- textViewNew
-    buf          <- textViewGetBuffer tv
-    iter         <- textBufferGetEndIter buf
-    textBufferCreateMark buf (Just "end") iter True
+    IDEM (Maybe IDELog,Connections)
+builder' pp nb windows = do
+    prefs <- readIDE prefs
+    reifyIDE $  \ideR -> do
+        tv           <- textViewNew
+        buf          <- textViewGetBuffer tv
+        iter         <- textBufferGetEndIter buf
+        textBufferCreateMark buf (Just "end") iter True
 
-    tags         <- textBufferGetTagTable buf
-    errtag       <- textTagNew (Just "err")
-    set errtag[textTagForeground := "red"]
-    textTagTableAdd tags errtag
-    frametag     <- textTagNew (Just "frame")
-    set frametag[textTagForeground := "dark green"]
-    textTagTableAdd tags frametag
-    activeErrtag <- textTagNew (Just "activeErr")
-    set activeErrtag[textTagBackground := "yellow"]
-    textTagTableAdd tags activeErrtag
-    intputTag <- textTagNew (Just "input")
-    set intputTag[textTagForeground := "blue"]
-    textTagTableAdd tags intputTag
-    infoTag <- textTagNew (Just "info")
-    set infoTag[textTagForeground := "grey"]
-    textTagTableAdd tags infoTag
+        tags         <- textBufferGetTagTable buf
+        errtag       <- textTagNew (Just "err")
+        set errtag[textTagForeground := "red"]
+        textTagTableAdd tags errtag
+        frametag     <- textTagNew (Just "frame")
+        set frametag[textTagForeground := "dark green"]
+        textTagTableAdd tags frametag
+        activeErrtag <- textTagNew (Just "activeErr")
+        set activeErrtag[textTagBackground := "yellow"]
+        textTagTableAdd tags activeErrtag
+        intputTag <- textTagNew (Just "input")
+        set intputTag[textTagForeground := "blue"]
+        textTagTableAdd tags intputTag
+        infoTag <- textTagNew (Just "info")
+        set infoTag[textTagForeground := "grey"]
+        textTagTableAdd tags infoTag
 
-    textViewSetEditable tv False
-    fd           <- case logviewFont prefs of
-        Just str -> do
-            fontDescriptionFromString str
-        Nothing  -> do
-            f    <- fontDescriptionNew
-            fontDescriptionSetFamily f "Sans"
-            return f
-    widgetModifyFont tv (Just fd)
-    sw           <- scrolledWindowNew Nothing Nothing
-    containerAdd sw tv
-    scrolledWindowSetPolicy sw PolicyAutomatic PolicyAutomatic
-    scrolledWindowSetShadowType sw ShadowIn
+        textViewSetEditable tv False
+        fd           <- case logviewFont prefs of
+            Just str -> do
+                fontDescriptionFromString str
+            Nothing  -> do
+                f    <- fontDescriptionNew
+                fontDescriptionSetFamily f "Sans"
+                return f
+        widgetModifyFont tv (Just fd)
+        sw           <- scrolledWindowNew Nothing Nothing
+        containerAdd sw tv
+        scrolledWindowSetPolicy sw PolicyAutomatic PolicyAutomatic
+        scrolledWindowSetShadowType sw ShadowIn
 
-    let buf = IDELog tv sw
-    cid1         <- tv `afterFocusIn`
-        (\_      -> do reflectIDE (makeActive buf) ideR ; return False)
-    cid2         <- tv `onButtonPress`
-        (\ b     -> do reflectIDE (clicked b buf) ideR ; return False)
-    cid3         <- tv `onPopulatePopup` (populatePopup buf ideR)
-    return (buf,[ConnectC cid1, ConnectC cid2])
+        let buf = IDELog tv sw
+        cid1         <- tv `afterFocusIn`
+            (\_      -> do reflectIDE (makeActive buf) ideR ; return False)
+        cid2         <- tv `onButtonPress`
+            (\ b     -> do reflectIDE (clicked b buf) ideR ; return False)
+        cid3         <- tv `onPopulatePopup` (populatePopup buf ideR)
+        return (Just buf,[ConnectC cid1, ConnectC cid2])
 
 clicked :: Event -> IDELog -> IDEAction
 clicked (Button _ SingleClick _ _ _ _ LeftButton x y) ideLog = do
@@ -199,20 +183,17 @@ populatePopup ideLog ideR menu = do
         otherwise   -> return ()
     mapM_ widgetHide $ take 2 (reverse items)
 
-getLog' :: IDEM IDELog
-getLog' = do
-    mbPane <- getPane
+getLog :: IDEM IDELog
+getLog = do
+    mbPane <- getOrBuildPane (Right "*Log")
     case mbPane of
-        Nothing -> do
-            pp      <- getBestPathForId "*Log"
-            nb      <- getNotebook pp
-            prefs' <- readIDE prefs
-            newPane pp nb (builder prefs')
-            mbPane <- getPane
-            case mbPane of
-                Nothing ->  throwIDE "Can't init log"
-                Just l  ->  return l
+        Nothing ->  throwIDE "Can't init log"
         Just p -> return p
+
+showLog :: IDEAction
+showLog = do
+    l <- getLog
+    displayPane l False
 
 simpleLog :: String -> IDEAction
 simpleLog str = do
@@ -220,8 +201,8 @@ simpleLog str = do
     liftIO $ appendLog log str LogTag
     return ()
 
-appendLog' :: IDELog -> String -> LogTag -> IO Int
-appendLog' l@(IDELog tv _) string tag = do
+appendLog :: IDELog -> String -> LogTag -> IO Int
+appendLog l@(IDELog tv _) string tag = do
     buf   <- textViewGetBuffer tv
     iter  <- textBufferGetEndIter buf
     textBufferSelectRange buf iter iter
@@ -249,8 +230,8 @@ appendLog' l@(IDELog tv _) string tag = do
         Just mark -> textViewScrollMarkOnscreen tv mark
     return line
 
-markErrorInLog' :: IDELog -> (Int,Int) -> IO ()
-markErrorInLog' (IDELog tv _) (l1,l2) = do
+markErrorInLog :: IDELog -> (Int,Int) -> IO ()
+markErrorInLog (IDELog tv _) (l1,l2) = do
     idleAdd  (do
         buf    <- textViewGetBuffer tv
         iter   <- textBufferGetIterAtLineOffset buf (l1-1) 0

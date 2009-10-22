@@ -23,11 +23,10 @@ module IDE.SaveSession (
 ,   sessionClosePane
 ,   loadSession
 ,   loadSessionPrompt
-,   standardSessionFilename
+
 ) where
 
 import Graphics.UI.Gtk hiding (showLayout)
-import Text.ParserCombinators.Parsec hiding(Parser)
 import Control.Monad.Reader
 import System.FilePath
 import qualified Data.Map as Map
@@ -54,10 +53,17 @@ import IDE.Pane.Trace
 import IDE.Pane.Variables
 import IDE.Find
 import System.Time (getClockTime)
-import IDE.Package (activatePackage,deactivatePackage)
-import Data.List (foldl')
+import IDE.Package (deactivatePackage)
 import IDE.Pane.Errors (ErrorsState(..))
 import Control.Exception (SomeException(..))
+import IDE.Pane.Workspace (WorkspaceState(..))
+import IDE.Workspaces (workspaceOpenThis)
+
+-- ---------------------------------------------------------------------
+-- This needs to be incremented, when the session format changes
+--
+theSessionVersion :: Int
+theSessionVersion = 1
 
 -- ---------------------------------------------------------------------
 -- All pane types must be in here !
@@ -76,6 +82,7 @@ data PaneState      =   BufferSt BufferState
                     |   TraceSt TraceState
                     |   VariablesSt VariablesState
                     |   ErrorsSt ErrorsState
+                    |   WorkspaceSt WorkspaceState
     deriving(Eq,Ord,Read,Show)
 
 asPaneState :: RecoverablePane alpha beta gamma => beta -> PaneState
@@ -92,26 +99,28 @@ asPaneState s | isJust ((cast s) :: Maybe BreakpointsState) =   BreakpointsSt (f
 asPaneState s | isJust ((cast s) :: Maybe TraceState)       =   TraceSt (fromJust $ cast s)
 asPaneState s | isJust ((cast s) :: Maybe VariablesState)   =   VariablesSt (fromJust $ cast s)
 asPaneState s | isJust ((cast s) :: Maybe ErrorsState)      =   ErrorsSt (fromJust $ cast s)
+asPaneState s | isJust ((cast s) :: Maybe WorkspaceState)   =   WorkspaceSt (fromJust $ cast s)
 asPaneState s                                               =   error "SaveSession>>asPaneState incomplete cast"
 
 recover :: PanePath -> PaneState -> IDEAction
-recover pp (BufferSt p)         =   recoverState pp p
-recover pp (LogSt p)            =   recoverState pp p
-recover pp (InfoSt p)           =   recoverState pp p
-recover pp (ModulesSt p)        =   recoverState pp p
-recover pp (ReferencesSt p)     =   recoverState pp p
-recover pp (PrefsSt p)          =   recoverState pp p
-recover pp (FlagsSt p)          =   recoverState pp p
-recover pp (SearchSt p)         =   recoverState pp p
-recover pp (GrepSt p)           =   recoverState pp p
-recover pp (BreakpointsSt p)    =   recoverState pp p
-recover pp (TraceSt p)          =   recoverState pp p
-recover pp (VariablesSt p)      =   recoverState pp p
-recover pp (ErrorsSt p)      =   recoverState pp p
+recover pp (BufferSt p)         =   recoverState pp p >> return ()
+recover pp (LogSt p)            =   recoverState pp p >> return ()
+recover pp (InfoSt p)           =   recoverState pp p >> return ()
+recover pp (ModulesSt p)        =   recoverState pp p >> return ()
+recover pp (ReferencesSt p)     =   recoverState pp p >> return ()
+recover pp (PrefsSt p)          =   recoverState pp p >> return ()
+recover pp (FlagsSt p)          =   recoverState pp p >> return ()
+recover pp (SearchSt p)         =   recoverState pp p >> return ()
+recover pp (GrepSt p)           =   recoverState pp p >> return ()
+recover pp (BreakpointsSt p)    =   recoverState pp p >> return ()
+recover pp (TraceSt p)          =   recoverState pp p >> return ()
+recover pp (VariablesSt p)      =   recoverState pp p >> return ()
+recover pp (ErrorsSt p)         =   recoverState pp p >> return ()
+recover pp (WorkspaceSt p)      =   recoverState pp p >> return ()
 
 -- ---------------------------------------------------------------------
 
-standardSessionFilename =   "Current.session"
+
 
 -- | *Implementation
 
@@ -122,28 +131,30 @@ sessionClosePane = do
         Nothing     ->  return ()
         Just (pn,_) ->  do
             (PaneC p) <- paneFromName pn
-            close p
+            closePane p
             return ()
 
 data SessionState = SessionState {
-        saveTime            ::   String
+        sessionVersion      ::   Int
+    ,   saveTime            ::   String
     ,   layoutS             ::   PaneLayout
     ,   population          ::   [(Maybe PaneState,PanePath)]
     ,   windowSize          ::   (Int,Int)
-    ,   activePackage       ::   Maybe FilePath
+    ,   workspacePath       ::   Maybe FilePath
     ,   activePaneN         ::   Maybe String
     ,   toolbarVisibleS     ::   Bool
     ,   findbarState        ::   (Bool,FindState)
     ,   recentOpenedFiles   ::   [FilePath]
-    ,   recentOpenedPackages  ::   [FilePath]
-} deriving()
+    ,   recentOpenedWorksp  ::   [FilePath]
+}
 
-defaultLayout = SessionState {
-        saveTime            =   ""
+defaultSession = SessionState {
+        sessionVersion      =   theSessionVersion
+    ,   saveTime            =   ""
     ,   layoutS             =   TerminalP Map.empty (Just TopP) (-1) Nothing Nothing
     ,   population          =   []
     ,   windowSize          =   (1024,768)
-    ,   activePackage       =   Nothing
+    ,   workspacePath       =   Nothing
     ,   activePaneN         =   Nothing
     ,   toolbarVisibleS     =   True
     ,   findbarState        =   (False,FindState{
@@ -157,12 +168,18 @@ defaultLayout = SessionState {
         ,   regex           =   False
         ,   lineNr          =   1})
     ,   recentOpenedFiles   =   []
-    ,   recentOpenedPackages  =   []
+    ,   recentOpenedWorksp  =   []
 }
 
-layoutDescr :: [FieldDescriptionS SessionState]
-layoutDescr = [
+sessionDescr :: [FieldDescriptionS SessionState]
+sessionDescr = [
         mkFieldS
+            (paraName <<<- ParaName "Version of session file format" $ emptyParams)
+            (PP.text . show)
+            intParser
+            sessionVersion
+            (\ b a -> a{sessionVersion = b})
+    ,   mkFieldS
             (paraName <<<- ParaName "Time of storage" $ emptyParams)
             (PP.text . show)
             stringParser
@@ -187,11 +204,11 @@ layoutDescr = [
             windowSize
             (\(c,d) a -> a{windowSize = (c,d)})
     ,   mkFieldS
-            (paraName <<<- ParaName "Active package" $ emptyParams)
+            (paraName <<<- ParaName "Workspace" $ emptyParams)
             (PP.text . show)
             readParser
-            activePackage
-            (\fp a -> a{activePackage = fp})
+            workspacePath
+            (\fp a -> a{workspacePath = fp})
     ,   mkFieldS
             (paraName <<<- ParaName "Active pane" $ emptyParams)
             (PP.text . show)
@@ -217,14 +234,14 @@ layoutDescr = [
             recentOpenedFiles
             (\fp a -> a{recentOpenedFiles = fp})
     ,   mkFieldS
-            (paraName <<<- ParaName "Recently opened packages" $ emptyParams)
+            (paraName <<<- ParaName "Recently opened workspaces" $ emptyParams)
             (PP.text . show)
             readParser
-            recentOpenedPackages
-            (\fp a -> a{recentOpenedPackages = fp})]
+            recentOpenedWorksp
+            (\fp a -> a{recentOpenedWorksp = fp})]
 
 --
--- | Get and save the current layout
+-- | Get and save the current session
 --
 saveSession :: IDEAction
 saveSession = do
@@ -248,7 +265,7 @@ saveSessionAs sessionPath = do
             layout          <-  mkLayout
             population      <-  getPopulation
             size            <-  liftIO $ windowGetSize wdw
-            active          <-  getActive
+            mbWs            <-  readIDE workspace
             activePane'     <-  getActivePane
             let activeP =   case activePane' of
                                 Nothing -> Nothing
@@ -258,45 +275,33 @@ saveSessionAs sessionPath = do
             (findbarVisible,_)  <- readIDE findbar
             timeNow         <- liftIO getClockTime
             recentFiles'      <- readIDE recentFiles
-            recentPackages'   <- readIDE recentPackages
-            liftIO $ writeLayout sessionPath (SessionState {
-                saveTime            =   show timeNow
+            recentWorkspaces' <- readIDE recentWorkspaces
+            liftIO $ writeFields sessionPath (SessionState {
+                sessionVersion      =   theSessionVersion
+            ,   saveTime            =   show timeNow
             ,   layoutS             =   layout
             ,   population          =   population
             ,   windowSize          =   size
-            ,   activePackage       =   active
+            ,   workspacePath       =   case mbWs of
+                                            Nothing -> Nothing
+                                            Just ws -> Just (wsFile ws)
             ,   activePaneN         =   activeP
             ,   toolbarVisibleS     =   toolbarVisible
             ,   findbarState        =   (findbarVisible,findState)
             ,   recentOpenedFiles   =   recentFiles'
-            ,   recentOpenedPackages=   recentPackages'})
+            ,   recentOpenedWorksp  =   recentWorkspaces'})
+                sessionDescr
 
 saveSessionAsPrompt :: IDEAction
 saveSessionAsPrompt = do
-    window' <- getMainWindow
+    window <- getMainWindow
     response <- liftIO $ do
         configFolder <- getConfigDir
-        dialog <- fileChooserDialogNew
-                  (Just $ "Save Session as")
-                  (Just window')
-    	      FileChooserActionSave
-    	      [("gtk-cancel"
-    	       ,ResponseCancel)
-    	      ,("gtk-save"
-	          , ResponseAccept)]
-        fileChooserSetCurrentFolder dialog configFolder
-        widgetShow dialog
-        res <- dialogRun dialog
-        case res of
-            ResponseAccept  ->  do
-                fileName <- fileChooserGetFilename dialog
-                widgetHide dialog
-                return fileName
-            _               ->  do
-                widgetHide dialog
-                return Nothing
+        chooseSaveFile window "Save Session as" (Just configFolder)
     case response of
-        Just fn -> saveSessionAs fn
+        Just fn -> saveSessionAs (if takeExtension fn == leksahSessionFileExtension
+                                    then fn
+                                    else addExtension fn leksahSessionFileExtension)
         Nothing -> return ()
 
 loadSessionPrompt :: IDEAction
@@ -332,21 +337,21 @@ loadSession sessionPath = do
     saveSession :: IDEAction
     deactivatePackage
     recentFiles'      <- readIDE recentFiles
-    recentPackages'   <- readIDE recentPackages
+    recentWorkspaces' <- readIDE recentWorkspaces
     b <- fileCloseAll (\_ -> return True)
     if b
         then do
             paneCloseAll
             viewCollapseAll
             recoverSession sessionPath
-            modifyIDE_ (\ide -> ide{recentFiles = recentFiles', recentPackages = recentPackages'})
+            modifyIDE_ (\ide -> ide{recentFiles = recentFiles', recentWorkspaces = recentWorkspaces'})
             return ()
         else return ()
 
 paneCloseAll :: IDEAction
 paneCloseAll = do
     panes' <- getPanesSt
-    mapM_ (\ (PaneC p) -> close p) (Map.elems panes')
+    mapM_ (\ (PaneC p) -> closePane p) (Map.elems panes')
 
 viewCollapseAll :: IDEAction
 viewCollapseAll = do
@@ -355,13 +360,6 @@ viewCollapseAll = do
         TerminalP {}      -> return ()
         VerticalP _ _ _   -> viewCollapse' [SplitP LeftP]
         HorizontalP _ _ _ -> viewCollapse' [SplitP TopP]
-
-writeLayout :: FilePath -> SessionState -> IO ()
-writeLayout fpath ls = writeFile fpath (showLayout ls layoutDescr)
-
-showLayout ::  a ->  [FieldDescriptionS a] ->  String
-showLayout prefs prefsDesc = PP.render $
-    foldl' (\ doc (FDS _ printer _) ->  doc PP.$+$ printer prefs) PP.empty prefsDesc
 
 mkLayout :: IDEM(PaneLayout)
 mkLayout = do
@@ -393,7 +391,7 @@ mkLayout = do
                 Just parent <- liftIO $ widgetGetParent nb
                 liftIO $ fmap Just $ windowGetSize (castToWindow parent)
             Nothing -> return $ detachedSize raw
-        return raw{
+        return raw {
                 paneGroups   = Map.fromAscList groups2
             ,   paneTabs     = if showTabs then Just (posTypeToPaneDirection pos) else Nothing
             ,   currentPage  = current
@@ -428,12 +426,10 @@ getActive = do
 recoverSession :: FilePath -> IDEM (Bool,Bool)
 recoverSession sessionPath = catchIDE (do
         wdw         <-  getMainWindow
-        sessionSt    <- liftIO $ readLayout sessionPath
+        sessionSt    <- liftIO $ readFields sessionPath sessionDescr defaultSession
         liftIO $ windowSetDefaultSize wdw (fst (windowSize sessionSt))(snd (windowSize sessionSt))
         applyLayout (layoutS sessionSt)
-        case activePackage sessionSt of
-            Just fp -> activatePackage fp >> return ()
-            Nothing -> return ()
+        workspaceOpenThis False (workspacePath sessionSt)
         populate (population sessionSt)
         setCurrentPages (layoutS sessionSt)
         when (isJust (activePaneN sessionSt)) $ do
@@ -449,26 +445,11 @@ recoverSession sessionPath = catchIDE (do
             then showFindbar
             else hideFindbar
         modifyIDE_ (\ide -> ide{recentFiles = recentOpenedFiles sessionSt,
-                                        recentPackages = recentOpenedPackages sessionSt})
+                                        recentWorkspaces = recentOpenedWorksp sessionSt})
         return (toolbarVisibleS sessionSt, (fst . findbarState) sessionSt))
         (\ (e :: SomeException) -> do
             sysMessage Normal (show e)
             return (True,True))
-
-
-readLayout :: FilePath -> IO SessionState
-readLayout sessionPath = do
-    res <- parseFromFile (prefsParser defaultLayout layoutDescr) sessionPath
-    case res of
-        Left pe -> throwIDE $"Error reading session file " ++ show sessionPath ++ " " ++ show pe
-        Right r -> return r
-
-prefsParser ::  a ->  [FieldDescriptionS a] ->  CharParser () a
-prefsParser def descriptions =
-    let parsersF = map fieldParser descriptions in do
-        whiteSpace
-        applyFieldParsers def parsersF
-        <?> "layout parser"
 
 applyLayout :: PaneLayout -> IDEAction
 applyLayout layoutS = do

@@ -17,8 +17,6 @@
 module IDE.Pane.Variables (
     IDEVariables
 ,   VariablesState
-,   showVariables
-,   showVariables'
 ,   fillVariablesList
 ) where
 
@@ -63,71 +61,27 @@ data VarDescription = VarDescription {
 data VariablesState  =   VariablesState {
 }   deriving(Eq,Ord,Read,Show,Typeable)
 
-instance IDEObject IDEVariables
-
 instance Pane IDEVariables IDEM
     where
     primPaneName _  =   "Variables"
     getAddedIndex _ =   0
     getTopWidget    =   castToWidget . scrolledView
     paneId b        =   "*Variables"
-    makeActive pane =   activatePane pane []
-    close           =   closePane
 
 instance RecoverablePane IDEVariables VariablesState IDEM where
     saveState p     =   do
         return (Just VariablesState)
     recoverState pp VariablesState =   do
         nb      <-  getNotebook pp
-        newPane pp nb builder
-        return ()
+        buildPane pp nb builder
+    builder = builder'
 
-showVariables :: IDEAction
-showVariables = do
-    m <- getVariables
-    liftIO $ bringPaneToFront m
-    liftIO $ widgetGrabFocus (treeView m)
 
-getVariables :: IDEM IDEVariables
-getVariables = do
-    mbVar <- getPane
-    case mbVar of
-        Nothing -> do
-            pp          <-  getBestPathForId "*Variables"
-            nb          <-  getNotebook pp
-            newPane pp nb builder
-            mbVar <- getPane
-            case mbVar of
-                Nothing ->  throwIDE "Can't init variables"
-                Just m  ->  return m
-        Just m ->   return m
-
-showVariables' :: PanePath -> IDEAction
-showVariables' pp = do
-    m <- getVariables' pp
-    liftIO $ bringPaneToFront m
-    liftIO $ widgetGrabFocus (treeView m)
-
-getVariables' :: PanePath -> IDEM IDEVariables
-getVariables' pp  = do
-    mbVar <- getPane
-    case mbVar of
-        Nothing -> do
-            layout        <- getLayout
-            nb            <-  getNotebook (getBestPanePath pp layout)
-            newPane pp nb builder
-            mbVar <- getPane
-            case mbVar of
-                Nothing ->  throwIDE "Can't init variables"
-                Just m  ->  return m
-        Just m ->   return m
-
-builder :: PanePath ->
+builder' :: PanePath ->
     Notebook ->
     Window ->
-    IDERef ->
-    IO (IDEVariables, Connections)
-builder pp nb windows ideR = do
+    IDEM (Maybe IDEVariables, Connections)
+builder' pp nb windows = reifyIDE $  \ideR -> do
     variables   <-  treeStoreNew []
     treeView    <-  treeViewNew
     treeViewSetModel treeView variables
@@ -177,7 +131,7 @@ builder pp nb windows ideR = do
     treeView `onButtonPress` (variablesViewPopup ideR variables treeView)
     cid1 <- treeView `afterFocusIn`
         (\_ -> do reflectIDE (makeActive pane) ideR ; return True)
-    return (pane,[ConnectC cid1])
+    return (Just pane,[ConnectC cid1])
 
 
 fillVariablesList :: IDEAction

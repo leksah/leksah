@@ -17,8 +17,6 @@
 module IDE.Pane.Breakpoints (
     IDEBreakpoints
 ,   BreakpointsState
-,   showBreakpointList
-,   showBreakpointList'
 ,   fillBreakpointList
 ,   selectBreak
 ) where
@@ -51,108 +49,57 @@ data BreakpointsState  =   BreakpointsState {
 }   deriving(Eq,Ord,Read,Show,Typeable)
 
 
-instance IDEObject IDEBreakpoints
-
 instance Pane IDEBreakpoints IDEM
     where
     primPaneName _  =   "Breakpoints"
     getAddedIndex _ =   0
     getTopWidget    =   castToWidget . scrolledView
     paneId b        =   "*Breakpoints"
-    makeActive pane =   activatePane pane []
-    close           =   closePane
 
 instance RecoverablePane IDEBreakpoints BreakpointsState IDEM where
     saveState p     =   do
         return (Just BreakpointsState)
     recoverState pp BreakpointsState =   do
         nb      <-  getNotebook pp
-        newPane pp nb builder
-        return ()
+        buildPane pp nb builder
+    builder pp nb windows = reifyIDE $ \ ideR -> do
+        breakpoints <-  treeStoreNew []
+        treeView    <-  treeViewNew
+        treeViewSetModel treeView breakpoints
 
-showBreakpointList :: IDEAction
-showBreakpointList = trace "showBreakpointList!!" $ do
-    m <- trace "now get breakpoints" getBreakpoints
-    liftIO $ bringPaneToFront m
-    liftIO $ widgetGrabFocus (treeView m)
+        rendererA    <- cellRendererTextNew
+        colA         <- treeViewColumnNew
+        treeViewColumnSetTitle colA "Location"
+        treeViewColumnSetSizing colA TreeViewColumnAutosize
+        treeViewColumnSetResizable colA True
+        treeViewColumnSetReorderable colA True
+        treeViewAppendColumn treeView colA
+        cellLayoutPackStart colA rendererA False
+        cellLayoutSetAttributes colA rendererA breakpoints
+            $ \row -> [cellText := showSourceSpan row]
 
-getBreakpoints :: IDEM IDEBreakpoints
-getBreakpoints = do
-    mbBreakpoints <- getPane
-    case mbBreakpoints of
-        Nothing -> do
-            pp          <-  getBestPathForId "*Breakpoints"
-            nb          <-  getNotebook pp
-            newPane pp nb builder
-            mbBreakpoints <- getPane
-            case mbBreakpoints of
-                Nothing ->  throwIDE "Can't init breakpoints"
-                Just m  ->  return m
-        Just m ->   return m
+        rendererB    <- cellRendererTextNew
+        colB         <- treeViewColumnNew
+        treeViewColumnSetTitle colB "Breakpoints"
+        treeViewColumnSetSizing colB TreeViewColumnAutosize
+        treeViewColumnSetResizable colB True
+        treeViewColumnSetReorderable colB True
+        treeViewAppendColumn treeView colB
+        cellLayoutPackStart colB rendererB False
+        cellLayoutSetAttributes colB rendererB breakpoints
+            $ \row -> [ cellText := refDescription row]
 
-showBreakpointList' :: PanePath -> IDEAction
-showBreakpointList' pp = do
-    m <- getBreakpoints' pp
-    liftIO $ bringPaneToFront m
-    liftIO $ widgetGrabFocus (treeView m)
-
-getBreakpoints' :: PanePath -> IDEM IDEBreakpoints
-getBreakpoints' pp = do
-    mbBreakpoints <- getPane
-    case mbBreakpoints of
-        Nothing -> do
-            layout        <- getLayout
-            nb            <-  getNotebook (getBestPanePath pp layout)
-            newPane pp nb builder
-            mbBreakpoints <- getPane
-            case mbBreakpoints of
-                Nothing ->  throwIDE "Can't init breakpoints"
-                Just m  ->  return m
-        Just m ->   return m
-
-builder :: PanePath ->
-    Notebook ->
-    Window ->
-    IDERef ->
-    IO (IDEBreakpoints, Connections)
-builder pp nb windows ideR = do
-    breakpoints <-  treeStoreNew []
-    treeView    <-  treeViewNew
-    treeViewSetModel treeView breakpoints
-
-    rendererA    <- cellRendererTextNew
-    colA         <- treeViewColumnNew
-    treeViewColumnSetTitle colA "Location"
-    treeViewColumnSetSizing colA TreeViewColumnAutosize
-    treeViewColumnSetResizable colA True
-    treeViewColumnSetReorderable colA True
-    treeViewAppendColumn treeView colA
-    cellLayoutPackStart colA rendererA False
-    cellLayoutSetAttributes colA rendererA breakpoints
-        $ \row -> [cellText := showSourceSpan row]
-
-    rendererB    <- cellRendererTextNew
-    colB         <- treeViewColumnNew
-    treeViewColumnSetTitle colB "Breakpoints"
-    treeViewColumnSetSizing colB TreeViewColumnAutosize
-    treeViewColumnSetResizable colB True
-    treeViewColumnSetReorderable colB True
-    treeViewAppendColumn treeView colB
-    cellLayoutPackStart colB rendererB False
-    cellLayoutSetAttributes colB rendererB breakpoints
-        $ \row -> [ cellText := refDescription row]
-
-    treeViewSetHeadersVisible treeView True
-    selB <- treeViewGetSelection treeView
-    treeSelectionSetMode selB SelectionSingle
-    scrolledView <- scrolledWindowNew Nothing Nothing
-    containerAdd scrolledView treeView
-    scrolledWindowSetPolicy scrolledView PolicyAutomatic PolicyAutomatic
-    let pane = IDEBreakpoints scrolledView treeView breakpoints
-    treeView `onButtonPress` (breakpointViewPopup ideR breakpoints treeView)
-    cid1 <- treeView `afterFocusIn`
-        (\_ -> do reflectIDE (makeActive pane) ideR ; return True)
-    return (pane,[ConnectC cid1])
+        treeViewSetHeadersVisible treeView True
+        selB <- treeViewGetSelection treeView
+        treeSelectionSetMode selB SelectionSingle
+        scrolledView <- scrolledWindowNew Nothing Nothing
+        containerAdd scrolledView treeView
+        scrolledWindowSetPolicy scrolledView PolicyAutomatic PolicyAutomatic
+        let pane = IDEBreakpoints scrolledView treeView breakpoints
+        treeView `onButtonPress` (breakpointViewPopup ideR breakpoints treeView)
+        cid1 <- treeView `afterFocusIn`
+            (\_ -> do reflectIDE (makeActive pane) ideR ; return True)
+        return (Just pane,[ConnectC cid1])
 
 fillBreakpointList :: IDEAction
 fillBreakpointList = do
@@ -182,7 +129,7 @@ getSelectedBreakpoint treeView treeStore = trace "Get selected breakpoint" $do
 selectBreak :: Maybe LogRef -> IDEAction
 selectBreak mbLogRef = do
     breakRefs' <- readIDE breakpointRefs
-    breaks     <- getBreakpoints
+    breaks     <- forceGetPane (Right "*Breakpoints")
     liftIO $ do
         selection <- treeViewGetSelection (treeView breaks)
         case mbLogRef of

@@ -23,10 +23,14 @@ module IDE.PrinterParser (
 ,   colorParser
 
 ,   emptyPrinter
+
 ,   symbol
 ,   colon
 
-
+,   writeFields
+,   showFields
+,   readFields
+,   parseFields
 ) where
 
 import Text.ParserCombinators.Parsec.Language
@@ -38,6 +42,10 @@ import Graphics.UI.Editor.Parameters
 import Graphics.UI.Editor.Basics
 import Data.Maybe (listToMaybe)
 import Graphics.UI.Gtk (Color(..))
+import Data.List (foldl')
+import qualified Text.ParserCombinators.Parsec as  P
+    ((<?>), CharParser(..), parseFromFile)
+import IDE.Core.State (throwIDE)
 
 
 type Printer beta       =   beta -> PP.Doc
@@ -98,6 +106,7 @@ boolParser = do
     (symbol "False"<|> symbol "false")
     return False
     <?> "bool parser"
+
 
 readParser ::  Read a =>  CharParser () a
 readParser = do
@@ -181,6 +190,34 @@ integer = P.integer lexer
 -- * Printing
 -- ------------------------------------------------------------
 
-
 emptyPrinter ::  () ->  PP.Doc
 emptyPrinter _ = PP.empty
+
+
+-- ------------------------------------------------------------
+-- * Read and write
+-- ------------------------------------------------------------
+
+writeFields :: FilePath -> alpha -> [FieldDescriptionS alpha] -> IO ()
+writeFields fpath date dateDesc = writeFile fpath (showFields date dateDesc)
+
+showFields ::  alpha  -> [FieldDescriptionS alpha] ->  String
+showFields date dateDesc = PP.render $
+    foldl' (\ doc (FDS _ printer _) ->  doc PP.$+$ printer date) PP.empty dateDesc
+
+readFields :: FilePath -> [FieldDescriptionS alpha] -> alpha -> IO alpha
+readFields fn fieldDescrs defaultValue = catch (do
+    res <- P.parseFromFile (parseFields defaultValue fieldDescrs) fn
+    case res of
+                Left pe -> throwIDE $ "Error reading file " ++ show fn ++ " " ++ show pe
+                Right r -> return r)
+    (\ e -> throwIDE $ "Error reading file " ++ show fn ++ " " ++ show e)
+
+parseFields ::  alpha ->  [FieldDescriptionS alpha] ->  P.CharParser () alpha
+parseFields defaultValue descriptions =
+    let parsersF = map fieldParser descriptions in do
+        res <-  applyFieldParsers defaultValue parsersF
+        return res
+        P.<?> "prefs parser"
+
+

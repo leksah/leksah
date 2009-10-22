@@ -1,5 +1,5 @@
 {-# OPTIONS_GHC -XScopedTypeVariables -XDeriveDataTypeable -XMultiParamTypeClasses
-    -XTypeSynonymInstances #-}
+    -XTypeSynonymInstances -XRank2Types #-}
 -----------------------------------------------------------------------------
 --
 -- Module      :  IDE.Pane.PackageFlags
@@ -19,9 +19,9 @@
 module IDE.Pane.PackageFlags (
     readFlags
 ,   writeFlags
-,   getFlags
 ,   IDEFlags(..)
 ,   FlagsState
+,   getFlags
 ) where
 
 import Graphics.UI.Gtk
@@ -42,8 +42,11 @@ import Graphics.UI.Editor.Parameters
 import IDE.PrinterParser hiding (fieldParser,parameters)
 
 import Control.Event (registerEvent)
-import IDE.DescriptionPP (extractFieldDescription,FieldDescriptionPP(..),
-    mkFieldPP,flattenFieldDescriptionPP)
+import IDE.DescriptionPP
+    (flattenFieldDescriptionPPToS,
+     extractFieldDescription,
+     FieldDescriptionPP(..),
+     mkFieldPP)
 
 import Text.ParserCombinators.Parsec hiding(Parser)
 
@@ -54,7 +57,6 @@ data IDEFlags               =   IDEFlags {
 data FlagsState             =   FlagsState
     deriving(Eq,Ord,Read,Show,Typeable)
 
-instance IDEObject IDEFlags
 
 instance Pane IDEFlags IDEM
     where
@@ -62,8 +64,6 @@ instance Pane IDEFlags IDEM
     getAddedIndex _ =   0
     getTopWidget    =   castToWidget . flagsBox
     paneId b        =   "*Flags"
-    makeActive prefs =  activatePane prefs []
-    close           =   closePane
 
 instance RecoverablePane IDEFlags FlagsState IDEM where
     saveState p     =   do
@@ -77,8 +77,53 @@ instance RecoverablePane IDEFlags FlagsState IDEM where
                 Just pack -> do
                     pp  <- getBestPathForId "*Flags"
                     nb  <- getNotebook pp
-                    initFlags pack pp nb
-                Nothing -> return ()
+                    case mbPack of
+                        Nothing -> return Nothing
+                        Just pack -> buildThisPane pp nb builder
+                Nothing -> return Nothing
+    builder pp nb w =
+        let flagsDesc       =   extractFieldDescription flagsDescription
+            flatflagsDesc   =   flattenFieldDescription flagsDesc
+        in  do
+                mbPack      <-  readIDE activePack
+                case mbPack of
+                    Nothing -> return (Nothing,[])
+                    Just p  -> reifyIDE $ \ideR -> builder' p flagsDesc flatflagsDesc  pp nb window ideR
+
+builder' idePackage flagsDesc flatflagsDesc pp nb window ideR = do
+    vb                  <-  vBoxNew False 0
+    let flagsPane = IDEFlags vb
+    bb                  <-  hButtonBoxNew
+    ok                  <-  buttonNewFromStock "gtk-ok"
+    closeB              <-  buttonNewFromStock "gtk-close"
+    boxPackStart bb ok PackNatural 0
+    boxPackStart bb closeB PackNatural 0
+    (widget,injb,ext,notifier)
+                        <-  buildEditor flagsDesc idePackage
+    sw <- scrolledWindowNew Nothing Nothing
+    scrolledWindowAddWithViewport sw widget
+    scrolledWindowSetPolicy sw PolicyAutomatic PolicyAutomatic
+    ok `onClicked` (do
+        mbPackWithNewFlags <- extract idePackage [ext]
+        case mbPackWithNewFlags of
+            Nothing -> return ()
+            Just packWithNewFlags -> do
+                reflectIDE (do
+                    modifyIDE_ (\ide -> ide{activePack = Just packWithNewFlags})
+                    closePane flagsPane) ideR -- we don't trigger the activePack event here
+                writeFields ((dropFileName (cabalFile packWithNewFlags)) </> "IDE.flags")
+                    packWithNewFlags flatFlagsDescription)
+    closeB `onClicked` (reflectIDE (closePane flagsPane >> return ()) ideR)
+    registerEvent notifier FocusIn (Left (\e -> do
+        reflectIDE (makeActive flagsPane) ideR
+        return (e{gtkReturn=False})))
+    boxPackStart vb sw PackGrow 7
+    boxPackEnd vb bb PackNatural 7
+    return (Just flagsPane,[])
+
+getFlags :: Maybe PanePath -> IDEM IDEFlags
+getFlags Nothing    = forceGetPane (Right "*Flags")
+getFlags (Just pp)  = forceGetPane (Left pp)
 
 quoteArg :: String -> String
 quoteArg s | ' ' `elem` s = "\"" ++ (escapeQuotes s) ++ "\""
@@ -119,8 +164,8 @@ args s = case parse argsParser "" s of
             Right result -> result
             _ -> [s]
 
-flatFlagsDescription :: [FieldDescriptionPP IDEPackage]
-flatFlagsDescription = flattenFieldDescriptionPP flagsDescription
+flatFlagsDescription :: [FieldDescriptionS IDEPackage]
+flatFlagsDescription = flattenFieldDescriptionPPToS flagsDescription
 
 flagsDescription :: FieldDescriptionPP IDEPackage
 flagsDescription = VFDPP emptyParams [
@@ -194,102 +239,14 @@ flagsDescription = VFDPP emptyParams [
 -- ------------------------------------------------------------
 
 readFlags :: FilePath -> IDEPackage -> IO IDEPackage
-readFlags fn pack = do
-    res <- P.parseFromFile (flagsParser pack flatFlagsDescription) fn
-    case res of
-        Left pe -> throwIDE $"Error reading flags file " ++ show fn ++ " " ++ show pe
-        Right r -> return r
-
-flagsParser ::  a ->  [FieldDescriptionPP a] ->  P.CharParser () a
-flagsParser def descriptions =
-    let parsersF = map fieldParser descriptions in do
-        whiteSpace
-        res <-  applyFieldParsers def parsersF
-        return res
-        P.<?> "flags parser"
+readFlags fn pack = readFields fn flatFlagsDescription pack
 
 -- ------------------------------------------------------------
 -- * Printing
 -- ------------------------------------------------------------
 
 writeFlags :: FilePath -> IDEPackage -> IO ()
-writeFlags fpath flags =
-    writeFile fpath (showFlags flags flatFlagsDescription)
+writeFlags fpath flags = writeFields fpath flags flatFlagsDescription
 
-showFlags ::  a ->  [FieldDescriptionPP a] ->  String
-showFlags flags flagsDesc = PP.render $
-    foldl' (\ doc (FDPP _ printer _ _ _ ) ->  doc PP.$+$ printer flags) PP.empty flagsDesc
 
--- ------------------------------------------------------------
--- * Editing
--- ------------------------------------------------------------
 
-getFlags :: IDEM (Maybe IDEFlags)
-getFlags = do
-    mbFlags <- getPane
-    case mbFlags of
-        Nothing -> do
-            mbPack      <-  readIDE activePack
-            case mbPack of
-                Nothing -> do
-                    ideMessage Normal "can't edit flags without active package"
-                    return Nothing
-                Just pack -> do
-                    pp          <-  getBestPathForId "*Flags"
-                    nb          <-  getNotebook pp
-                    initFlags pack pp nb
-                    mbFlags <- getPane
-                    case mbFlags of
-                        Nothing ->  throwIDE "Can't init flags pane"
-                        Just m  ->  do
-                                liftIO $bringPaneToFront m
-                                return (Just m)
-        Just m ->   do
-            liftIO $bringPaneToFront m
-            return (Just m)
-
-initFlags :: IDEPackage -> PanePath -> Notebook -> IDEAction
-initFlags idePackage panePath nb = do
-    let flagsDesc       =   extractFieldDescription flagsDescription
-    let flatflagsDesc   =   flattenFieldDescription flagsDesc
-    newPane panePath nb (builder idePackage flagsDesc flatflagsDesc)
-    return ()
-
-builder :: IDEPackage ->
-    FieldDescription IDEPackage ->
-    [FieldDescription IDEPackage] ->
-    PanePath ->
-    Notebook ->
-    Window ->
-    IDERef ->
-    IO (IDEFlags,Connections)
-builder idePackage flagsDesc flatflagsDesc pp nb window ideR = do
-    vb                  <-  vBoxNew False 0
-    let flagsPane = IDEFlags vb
-    bb                  <-  hButtonBoxNew
-    ok                  <-  buttonNewFromStock "gtk-ok"
-    closeB              <-  buttonNewFromStock "gtk-close"
-    boxPackStart bb ok PackNatural 0
-    boxPackStart bb closeB PackNatural 0
-    (widget,injb,ext,notifier)
-                        <-  buildEditor flagsDesc idePackage
-    sw <- scrolledWindowNew Nothing Nothing
-    scrolledWindowAddWithViewport sw widget
-    scrolledWindowSetPolicy sw PolicyAutomatic PolicyAutomatic
-    ok `onClicked` (do
-        mbPackWithNewFlags <- extract idePackage [ext]
-        case mbPackWithNewFlags of
-            Nothing -> return ()
-            Just packWithNewFlags -> do
-                reflectIDE (do
-                    modifyIDE_ (\ide -> ide{activePack = Just packWithNewFlags})
-                    close flagsPane) ideR -- we don't trigger the activePack event here
-                writeFlags ((dropFileName (cabalFile packWithNewFlags)) </> "IDE.flags")
-                    packWithNewFlags)
-    closeB `onClicked` (reflectIDE (close flagsPane >> return ()) ideR)
-    registerEvent notifier FocusIn (Left (\e -> do
-        reflectIDE (makeActive flagsPane) ideR
-        return (e{gtkReturn=False})))
-    boxPackStart vb sw PackGrow 7
-    boxPackEnd vb bb PackNatural 7
-    return (flagsPane,[])

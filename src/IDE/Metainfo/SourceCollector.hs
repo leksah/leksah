@@ -380,7 +380,7 @@ buildSourceForPackageDB prefs = do
                                             Nothing -> False
                                             _       -> True )
                         $ zip mbPackages (map (\a -> [a]) fCabalFiles)
-    filePath        <-  getConfigFilePathForSave "source_packages.txt"
+    filePath        <-  getConfigFilePathForSave standardSourcesFilename
     writeFile filePath  (PP.render (showSourceForPackageDB pdToFiles))
 
 showSourceForPackageDB  :: Map String [FilePath] -> PP.Doc
@@ -393,7 +393,7 @@ showSourceForPackageDB aMap = PP.vcat (map showIt (Map.toList aMap))
 
 parseSourceForPackageDB :: IO (Maybe (Map PackageIdentifier [FilePath]))
 parseSourceForPackageDB = do
-    filePath        <-  getConfigFilePathForLoad "source_packages.txt"
+    filePath        <-  getConfigFilePathForLoad standardSourcesFilename Nothing
     exists          <-  doesFileExist filePath
     if exists
         then do

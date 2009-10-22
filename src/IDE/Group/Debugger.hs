@@ -19,7 +19,8 @@ module IDE.Group.Debugger (
 ) where
 
 import IDE.Core.State
-    (getPane,
+    (IDEM(..),
+     getPane,
      getBestPanePath,
      frameState,
      readIDE,
@@ -28,7 +29,8 @@ import IDE.Core.State
      newGroupOrBringToFront,
      IDEAction(..))
 import Graphics.UI.Frame.Panes
-    (getTopWidget,
+    (getOrBuildPane,
+     getTopWidget,
      layout,
      PaneDirection(..),
      PanePathElement(..),
@@ -40,10 +42,10 @@ import Control.Monad.Trans (liftIO)
 import Graphics.UI.Gtk
     (widgetSetSensitive, notebookSetShowTabs, notebookSetTabPos)
 import Graphics.UI.Gtk.General.Enums (PositionType(..))
-import IDE.Pane.Variables (IDEVariables, showVariables')
+import IDE.Pane.Variables (IDEVariables)
 import IDE.Pane.Breakpoints
-    (IDEBreakpoints, showBreakpointList')
-import IDE.Pane.Trace (IDETrace,showTrace')
+    (IDEBreakpoints)
+import IDE.Pane.Trace (IDETrace)
 import Control.Monad (liftM, when)
 
 setSensitivityDebugger :: Bool -> IDEAction
@@ -83,9 +85,9 @@ showDebugger = do
                 notebookSetTabPos middle PosTop
                 notebookSetTabPos upper PosTop
                 notebookSetShowTabs upper False
-            showBreakpointList' middleP
-            showVariables' middleP
-            showTrace' lowerP
+            getOrBuildPane (Left middleP) :: IDEM (Maybe IDEBreakpoints)
+            getOrBuildPane (Left middleP) :: IDEM (Maybe IDEVariables)
+            getOrBuildPane (Left lowerP)  :: IDEM (Maybe IDETrace)
             when (null $ filter (\b -> bufferName b == "_Eval.hs") bufs) $
                 newTextBuffer upperP "_Eval.hs" Nothing >> return ()
             return ()
@@ -93,9 +95,9 @@ showDebugger = do
             let lowerP  =  getBestPanePath (rpp ++ [SplitP BottomP]) layout'
             let middleP =  getBestPanePath (rpp ++ [SplitP TopP,SplitP BottomP]) layout'
             let upperP  =  getBestPanePath (rpp ++ [SplitP TopP,SplitP TopP]) layout'
-            showBreakpointList' middleP
-            showVariables' middleP
-            showTrace' lowerP
+            getOrBuildPane (Left middleP) :: IDEM (Maybe IDEBreakpoints)
+            getOrBuildPane (Left middleP) :: IDEM (Maybe IDEVariables)
+            getOrBuildPane (Left lowerP)  :: IDEM (Maybe IDETrace)
             when (null $ filter (\b -> bufferName b == "_Eval.hs") bufs) $
                 newTextBuffer upperP "_Eval.hs" Nothing >> return ()
             return ()

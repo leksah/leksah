@@ -17,10 +17,9 @@
 module IDE.Pane.Errors (
     IDEErrors
 ,   ErrorsState
-,   showErrors
-,   showErrors'
 ,   fillErrorList
 ,   selectError
+,   getErrors
 ) where
 
 import Graphics.UI.Gtk
@@ -47,75 +46,27 @@ data ErrColumn = ErrColumn {logRef :: LogRef, string :: String, index :: Int}
 data ErrorsState    =   ErrorsState {
 }   deriving(Eq,Ord,Read,Show,Typeable)
 
-
-instance IDEObject IDEErrors
-
 instance Pane IDEErrors IDEM
     where
     primPaneName _  =   "Errors"
-    getAddedIndex _ =   0
     getTopWidget    =   castToWidget . scrolledView
     paneId b        =   "*Errors"
-    makeActive pane =   activatePane pane []
-    close           =   closePane
 
 instance RecoverablePane IDEErrors ErrorsState IDEM where
     saveState p     =   do
         return (Just ErrorsState)
     recoverState pp ErrorsState =   do
         nb      <-  getNotebook pp
-        newPane pp nb builder
+        p <-    buildPane pp nb builder
         fillErrorList
-        return ()
+        return p
+    builder = builder'
 
-showErrors :: IDEAction
-showErrors = do
-    m <- getErrors
-    liftIO $ bringPaneToFront m
-    liftIO $ widgetGrabFocus (treeView m)
-
-getErrors :: IDEM IDEErrors
-getErrors = do
-    mbErrors <- getPane
-    case mbErrors of
-        Nothing -> do
-            pp          <-  getBestPathForId "*Errors"
-            nb          <-  getNotebook pp
-            newPane pp nb builder
-            fillErrorList
-            mbErrors <- getPane
-            case mbErrors of
-                Nothing ->  throwIDE "Can't init errors"
-                Just m  ->  return m
-        Just m ->   return m
-
-showErrors' :: PanePath -> IDEAction
-showErrors' pp = do
-    m <- getErrors' pp
-    liftIO $ bringPaneToFront m
-    liftIO $ widgetGrabFocus (treeView m)
-
-getErrors' :: PanePath -> IDEM IDEErrors
-getErrors' pp = do
-    mbErrors <- getPane
-    case mbErrors of
-        Nothing -> do
-            layout        <- getLayout
-            nb            <-  getNotebook (getBestPanePath pp layout)
-            newPane pp nb builder
-            fillErrorList
-            mbErrors <- getPane
-            case mbErrors of
-                Nothing ->  throwIDE "Can't init errors"
-                Just m  ->  return m
-        Just m ->   return m
-
-builder :: PanePath ->
+builder' :: PanePath ->
     Notebook ->
     Window ->
-    IDERef ->
-    IO (IDEErrors, Connections)
-builder pp nb windows ideR = do
+    IDEM (Maybe IDEErrors, Connections)
+builder' pp nb windows = reifyIDE $ \ ideR -> do
     errorStore <-  treeStoreNew []
     treeView    <-  treeViewNew
     treeViewSetModel treeView errorStore
@@ -154,7 +105,11 @@ builder pp nb windows ideR = do
     treeView `onButtonPress` (errorViewPopup ideR errorStore treeView)
     cid1 <- treeView `afterFocusIn`
         (\_ -> do reflectIDE (makeActive pane) ideR ; return True)
-    return (pane,[ConnectC cid1])
+    return (Just pane,[ConnectC cid1])
+
+getErrors :: Maybe PanePath -> IDEM IDEErrors
+getErrors Nothing    = forceGetPane (Right "*Errors")
+getErrors (Just pp)  = forceGetPane (Left pp)
 
 fillErrorList :: IDEAction
 fillErrorList = do
@@ -191,7 +146,7 @@ getSelectedError treeView treeStore = do
 selectError :: Maybe LogRef -> IDEAction
 selectError mbLogRef = do
     errorRefs' <- readIDE errorRefs
-    errors     <- getErrors
+    errors     <- getErrors Nothing
     liftIO $ do
         selection <- treeViewGetSelection (treeView errors)
         case mbLogRef of

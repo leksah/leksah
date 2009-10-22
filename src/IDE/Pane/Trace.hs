@@ -17,8 +17,6 @@
 module IDE.Pane.Trace (
     IDETrace
 ,   TraceState
-,   showTrace
-,   showTrace'
 ,   fillTraceList
 ) where
 
@@ -27,7 +25,7 @@ import Data.Typeable (Typeable(..))
 import IDE.Core.State
 import Control.Monad.Reader
 import IDE.Debug
-    (debugForward, debugBack, debugCommand', debugHistory)
+    (debugForward, debugBack, debugCommand')
 import IDE.Tool (ToolOutput(..))
 import IDE.LogRef (srcSpanParser)
 import Debug.Trace (trace)
@@ -70,73 +68,26 @@ data TraceHist = TraceHist {
     thPosition      ::  SrcSpan
     }
 
-instance IDEObject IDETrace
-
 instance Pane IDETrace IDEM
     where
     primPaneName _  =   "Trace"
     getAddedIndex _ =   0
     getTopWidget    =   castToWidget . scrolledView
     paneId b        =   "*Trace"
-    makeActive pane =   activatePane pane []
-    close           =   closePane
 
 instance RecoverablePane IDETrace TraceState IDEM where
     saveState p     =   do
         return (Just TraceState)
     recoverState pp TraceState =   do
         nb      <-  getNotebook pp
-        newPane pp nb builder
-        return ()
+        buildPane pp nb builder
+    builder = builder'
 
-showTrace :: IDEAction
-showTrace = do
-    debugHistory
-    m <- getTrace
-    liftIO $ bringPaneToFront m
-    liftIO $ widgetGrabFocus (treeView m)
-
-showTrace' :: PanePath -> IDEAction
-showTrace' pp = do
-    m <- getTrace' pp
-    liftIO $ bringPaneToFront m
-    liftIO $ widgetGrabFocus (treeView m)
-
-
-getTrace :: IDEM IDETrace
-getTrace = do
-    mbTrace <- getPane
-    case mbTrace of
-        Nothing -> do
-            pp          <-  getBestPathForId "*Trace"
-            nb          <-  getNotebook pp
-            newPane pp nb builder
-            mbTrace <- getPane
-            case mbTrace of
-                Nothing ->  throwIDE "Can't init trace"
-                Just m  ->  return m
-        Just m ->   return m
-
-getTrace' :: PanePath -> IDEM IDETrace
-getTrace' pp = do
-    mbTrace <- getPane
-    case mbTrace of
-        Nothing -> do
-            layout        <- getLayout
-            nb            <- getNotebook (getBestPanePath pp layout)
-            newPane pp nb builder
-            mbTrace <- getPane
-            case mbTrace of
-                Nothing ->  throwIDE "Can't init trace"
-                Just m  ->  return m
-        Just m ->   return m
-
-builder :: PanePath ->
+builder' :: PanePath ->
     Notebook ->
     Window ->
-    IDERef ->
-    IO (IDETrace,Connections)
-builder pp nb windows ideR = do
+    IDEM (Maybe IDETrace,Connections)
+builder' pp nb windows = reifyIDE $ \ ideR -> do
     tracepoints <-  treeStoreNew []
     treeView    <-  treeViewNew
     treeViewSetModel treeView tracepoints
@@ -203,7 +154,7 @@ builder pp nb windows ideR = do
             Just ref -> return () -- TODO reflectIDE (selectRef (Just ref)) ideR
             Nothing -> return ()
     treeView `onButtonPress` (traceViewPopup ideR tracepoints treeView)
-    return (pane,[ConnectC cid1])
+    return (Just pane,[ConnectC cid1])
 
 fillTraceList :: IDEAction
 fillTraceList = do

@@ -100,54 +100,10 @@ import Packages (PackageConfig(..))
 --
 
 choosePackageDir :: Window -> IO (Maybe FilePath)
-choosePackageDir window = do
-    dialog <- fileChooserDialogNew
-                    (Just $ "Select root folder for project")
-                    (Just window)
-                FileChooserActionSelectFolder
-                [("gtk-cancel"
-                ,ResponseCancel)
-                ,("gtk-open"
-                ,ResponseAccept)]
-    widgetShow dialog
-    response <- dialogRun dialog
-    case response of
-        ResponseAccept -> do
-            fn <- fileChooserGetFilename dialog
-            widgetDestroy dialog
-            return fn
-        ResponseCancel -> do
-            widgetDestroy dialog
-            return Nothing
-        ResponseDeleteEvent -> do
-            widgetDestroy dialog
-            return Nothing
-        _                   -> return Nothing
+choosePackageDir window = chooseDir window "Select root folder for project" Nothing
 
 choosePackageFile :: Window -> IO (Maybe FilePath)
-choosePackageFile window = do
-    dialog <- fileChooserDialogNew
-                    (Just $ "Select .cabal project file")
-                    (Just window)
-                FileChooserActionOpen
-                [("gtk-cancel"
-                ,ResponseCancel)
-                ,("gtk-open"
-                ,ResponseAccept)]
-    widgetShow dialog
-    response <- dialogRun dialog
-    case response of
-        ResponseAccept -> do
-            fn <- fileChooserGetFilename dialog
-            widgetDestroy dialog
-            return fn
-        ResponseCancel -> do
-            widgetDestroy dialog
-            return Nothing
-        ResponseDeleteEvent -> do
-            widgetDestroy dialog
-            return Nothing
-        _                   -> return Nothing
+choosePackageFile window = chooseFile window "Select cabal package file (.cabal)" Nothing
 
 packageEdit :: IDEAction
 packageEdit = do
@@ -272,7 +228,6 @@ data PackagePane             =   PackagePane {
     packageBox              ::   VBox
 } deriving Typeable
 
-instance IDEObject PackagePane
 
 data PackageState = PackageState
     deriving (Read, Show, Typeable)
@@ -283,12 +238,12 @@ instance Pane PackagePane IDEM
     getAddedIndex _ =   0
     getTopWidget    =   castToWidget . packageBox
     paneId b        =   "*Package"
-    makeActive p    =   activatePane p []
-    close           =   closePane
 
 instance RecoverablePane PackagePane PackageState IDEM where
     saveState p     =   return Nothing
-    recoverState pp st  =  return ()
+    recoverState pp st  =  return Nothing
+    buildPane panePath notebook builder = return Nothing
+    builder pp nb w =    return (Nothing,[])
 
 editPackage :: PackageDescription -> FilePath -> [ModuleName] -> (FilePath -> IDEAction) -> IDEAction
 editPackage packageD packagePath modules afterSaveAction = do
@@ -323,11 +278,12 @@ initPackage packageDir packageD packageDescr panePath nb modules afterSaveAction
     let initialPackagePath = packageDir </> (display . pkgName . package . pd) packageD ++ ".cabal"
     liftIO $ setCurrentDirectory packageDir
     packageInfos <- inGhc $ getInstalledPackageInfos
-    newPane panePath nb (builder packageDir packageD packageDescr afterSaveAction initialPackagePath
-        modules packageInfos fields)
+    buildThisPane panePath nb
+        (builder' packageDir packageD packageDescr afterSaveAction
+            initialPackagePath modules packageInfos fields)
     return ()
 
-builder :: FilePath ->
+builder' :: FilePath ->
     PackageDescriptionEd ->
     FieldDescription PackageDescriptionEd ->
     (FilePath -> IDEAction) ->
@@ -338,10 +294,9 @@ builder :: FilePath ->
     PanePath ->
     Notebook ->
     Window ->
-    IDERef ->
-    IO (PackagePane,Connections)
-builder packageDir packageD packageDescr afterSaveAction initialPackagePath modules packageInfos fields
-    panePath nb window ideR = do
+    IDEM (Maybe PackagePane,Connections)
+builder' packageDir packageD packageDescr afterSaveAction initialPackagePath modules packageInfos fields
+    panePath nb window = reifyIDE $ \ ideR -> do
     vb      <-  vBoxNew False 0
     let packagePane = PackagePane vb
     bb      <-  hButtonBoxNew
@@ -377,7 +332,7 @@ builder packageDir packageD packageDescr afterSaveAction initialPackagePath modu
                 rid <- dialogRun md
                 widgetDestroy md
                 case rid of
-                    ResponseYes ->  (reflectIDE (close packagePane >> return ()) ideR)
+                    ResponseYes ->  (reflectIDE (closePane packagePane >> return ()) ideR)
                     otherwise   ->  return ()
             Just newPackage -> do
                 let packagePath = packageDir </> (display . pkgName . package . pd) newPackage
@@ -417,7 +372,7 @@ builder packageDir packageD packageDescr afterSaveAction initialPackagePath modu
                             ResponseNo      ->   return False
                             _               ->   return False
                     else return False
-                when (not cancel) (reflectIDE (close packagePane >> return ()) ideR))
+                when (not cancel) (reflectIDE (closePane packagePane >> return ()) ideR))
     restore `onClicked` (do
         package <- readPackageDescription normal initialPackagePath
         setInj (toEditor (flattenPackageDescription package)))
@@ -427,7 +382,7 @@ builder packageDir packageD packageDescr afterSaveAction initialPackagePath modu
             Nothing -> sysMessage Normal "Content doesn't validate"
             Just pde -> do
                 reflectIDE (do
-                    close packagePane
+                    closePane packagePane
                     initPackage packageDir pde {bis = bis pde ++ [bis pde !! 0]}
                         (packageDD
                             (map IPI.package packageInfos)
@@ -443,7 +398,7 @@ builder packageDir packageD packageDescr afterSaveAction initialPackagePath modu
             Nothing -> sysMessage Normal "Content doesn't validate"
             Just pde | length (bis pde) == 1  -> sysMessage Normal "Just one Build Info"
                      | otherwise -> reflectIDE (do
-                    close packagePane
+                    closePane packagePane
                     initPackage packageDir pde{bis = take (length (bis pde) - 1) (bis pde)}
                         (packageDD
                             (map IPI.package packageInfos)
@@ -455,7 +410,7 @@ builder packageDir packageD packageDescr afterSaveAction initialPackagePath modu
                         panePath nb modules afterSaveAction) ideR)
     boxPackStart vb widget PackGrow 7
     boxPackEnd vb bb PackNatural 7
-    return (packagePane,[])
+    return (Just packagePane,[])
 
 -- ---------------------------------------------------------------------
 -- The description with some tricks

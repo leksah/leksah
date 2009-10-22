@@ -72,10 +72,8 @@ module IDE.Pane.SourceBuffer (
 
 import Prelude hiding(getChar, getLine)
 import Control.Monad.Reader
-import System.IO hiding(getChar, getLine)
 import System.FilePath
 import System.Directory
-import Text.Printf
 import qualified Data.Map as Map
 import Data.Map (Map)
 import Data.List hiding(insert, delete)
@@ -120,35 +118,12 @@ data BufferState            =   BufferState FilePath Int
                             |   BufferStateTrans String String Int
     deriving(Eq,Ord,Read,Show,Typeable)
 
-instance IDEObject IDEBuffer
 instance Pane IDEBuffer IDEM
     where
     primPaneName    =   bufferName
     getAddedIndex   =   addedIndex
     getTopWidget    =   castToWidget . scrolledWindow
-    paneId b        =   case fileName b of
-                            Just s  -> s
-                            Nothing -> "?" ++ bufferName b
-    makeActive actbuf = do
-      ideR    <-  ask
-      sbLC    <-  getStatusbarLC
-      sbIO    <-  getStatusbarIO
-      infos   <-  readIDE accessibleInfo
-      let sv = sourceView actbuf
-      eBuf    <- getBuffer sv
-      liftIO $ bringPaneToFront actbuf
-      writeCursorPositionInStatusbar sv sbLC
-      writeOverwriteInStatusbar sv sbIO
-      ids1 <- eBuf `afterModifiedChanged` markActiveLabelAsChanged
-      ids2 <- sv `afterMoveCursor` writeCursorPositionInStatusbar sv sbLC
-      ids3 <- sv `onLookupInfo` showInfo sv
-      ids4 <- sv `afterToggleOverwrite`  writeOverwriteInStatusbar sv sbIO
-      activatePane actbuf $ concat [ids1, ids2, ids3, ids4]
-      triggerEventIDE (Sensitivity [(SensitivityEditor, True)])
-      checkModTime actbuf
-      return ()
-    close pane = do makeActive pane
-                    fileClose
+    paneId b        =   ""
 
 instance RecoverablePane IDEBuffer BufferState IDEM where
     saveState p     =   do  buf    <- getBuffer (sourceView p)
@@ -173,8 +148,8 @@ instance RecoverablePane IDEBuffer BufferState IDEM where
                 liftIO $ idleAdd (do
                     reflectIDE (scrollToMark (sourceView buf) mark 0.0 (Just (0.3,0.3))) ideR
                     return False) priorityDefaultIdle
-                return ()
-            Nothing -> return ()
+                return (Just buf)
+            Nothing -> return Nothing
     recoverState pp (BufferStateTrans bn text i) =   do
         mbbuf    <-  newTextBuffer pp bn Nothing
         useCandy    <- getCandyState
@@ -192,8 +167,29 @@ instance RecoverablePane IDEBuffer BufferState IDEM where
                 liftIO $ idleAdd  (do
                     reflectIDE (scrollToMark (sourceView buf) mark 0.0 (Just (0.3,0.3))) ideR
                     return False) priorityDefaultIdle
-                return ()
-            Nothing -> return ()
+                return (Just buf)
+            Nothing -> return Nothing
+    makeActive actbuf = do
+        ideR    <-  ask
+        infos   <-  readIDE accessibleInfo
+        let sv = sourceView actbuf
+        eBuf    <- getBuffer sv
+--        liftIO $ bringPaneToFront actbuf
+        writeCursorPositionInStatusbar sv
+        writeOverwriteInStatusbar sv
+        ids1 <- eBuf `afterModifiedChanged` markActiveLabelAsChanged
+        ids2 <- sv `afterMoveCursor` writeCursorPositionInStatusbar sv
+        ids3 <- sv `onLookupInfo` showInfo sv
+        ids4 <- sv `afterToggleOverwrite`  writeOverwriteInStatusbar sv
+        activateThisPane actbuf $ concat [ids1, ids2, ids3, ids4]
+        triggerEventIDE (Sensitivity [(SensitivityEditor, True)])
+        checkModTime actbuf
+        return ()
+    closePane pane = do makeActive pane
+                        fileClose
+    buildPane panePath notebook builder = return Nothing
+    builder pp nb w =    return (Nothing,[])
+
 
 
 startComplete :: IDEAction
@@ -243,14 +239,14 @@ goToDefinition :: Descr -> IDEAction
 goToDefinition idDescr = do
     mbAccesibleInfo      <-  readIDE accessibleInfo
     mbCurrentInfo        <-  readIDE currentInfo
-    if isJust mbAccesibleInfo && isJust mbCurrentInfo && isJust (descrModu idDescr)
+    if isJust mbAccesibleInfo && isJust (descrModu idDescr)
         then do
-            let packageId       =   pack $ fromJust $ descrModu idDescr
-            let mbPack          =   case packageId `Map.lookup` fst
-                                            (fromJust mbAccesibleInfo) of
-                                        Just it ->  Just it
-                                        Nothing ->  packageId `Map.lookup` fst (fst
-                                                                 (fromJust mbCurrentInfo))
+            let packageId =   pack $ fromJust $ descrModu idDescr
+            let mbPack    =   case packageId `Map.lookup` fst (fromJust mbAccesibleInfo) of
+                                Just it ->  Just it
+                                Nothing ->  if isJust mbCurrentInfo
+                                                then packageId `Map.lookup` fst (fst (fromJust mbCurrentInfo))
+                                                else Nothing
             case mbPack of
                 Just pack       ->  case filter (\md -> moduleIdMD md == fromJust (descrModu idDescr))
                                                     (exposedModulesPD pack) of
@@ -401,13 +397,12 @@ newTextBuffer panePath bn mbfn = do
             bs      <-  getCandyState
             ct      <-  readIDE candy
             (ind,rbn) <- figureOutPaneName bn 0
-            pane    <-  newPane panePath nb (builder bs mbfn ind bn rbn ct prefs)
-            return (Just pane)
+            buildThisPane panePath nb (builder' bs mbfn ind bn rbn ct prefs)
         else do
             ideMessage Normal ("File does not exist " ++ (fromJust mbfn))
             return Nothing
 
-builder :: Bool ->
+builder' :: Bool ->
     Maybe FilePath ->
     Int ->
     String ->
@@ -417,83 +412,82 @@ builder :: Bool ->
     PanePath ->
     Gtk.Notebook ->
     Gtk.Window ->
-    IDERef ->
-    IO (IDEBuffer,Connections)
-builder bs mbfn ind bn rbn ct prefs pp nb windows ideR = do
-    reflectIDE (do
-        -- load up and display a file
-        (fileContents,modTime) <- case mbfn of
-            Just fn -> do
-                fc <- liftIO $ UTF8.readFile fn
-                mt <- liftIO $ getModificationTime fn
-                return (fc,Just mt)
-            Nothing -> return ("\n",Nothing)
+    IDEM (Maybe IDEBuffer,Connections)
+builder' bs mbfn ind bn rbn ct prefs pp nb windows = do
+    ideR <- ask
+    -- load up and display a file
+    (fileContents,modTime) <- case mbfn of
+        Just fn -> do
+            fc <- liftIO $ UTF8.readFile fn
+            mt <- liftIO $ getModificationTime fn
+            return (fc,Just mt)
+        Nothing -> return ("\n",Nothing)
 
-        buffer <- (if useYi prefs then newYiBuffer else newGtkBuffer) mbfn fileContents
-        tagTable <- getTagTable buffer
-        foundTag <- newTag tagTable "found"
-        background foundTag $ foundBackground prefs
+    buffer <- (if useYi prefs then newYiBuffer else newGtkBuffer) mbfn fileContents
+    tagTable <- getTagTable buffer
+    foundTag <- newTag tagTable "found"
+    background foundTag $ foundBackground prefs
 
-        beginNotUndoableAction buffer
-        when bs $ transformToCandy ct buffer
-        endNotUndoableAction buffer
-        setModified buffer False
-        siter <- getStartIter buffer
-        placeCursor buffer siter
-        iter <- getEndIter buffer
+    beginNotUndoableAction buffer
+    when bs $ transformToCandy ct buffer
+    endNotUndoableAction buffer
+    setModified buffer False
+    siter <- getStartIter buffer
+    placeCursor buffer siter
+    iter <- getEndIter buffer
 
-        -- create a new SourceView Widget
-        sv <- newView buffer
-        setFont sv $ textviewFont prefs
-        setShowLineNumbers sv $ showLineNumbers prefs
-        setRightMargin sv $ rightMargin prefs
-        setIndentWidth sv $ tabWidth prefs
-        setTabWidth sv $ tabWidth prefs
-        setStyle buffer $ sourceStyle prefs
+    -- create a new SourceView Widget
+    sv <- newView buffer
+    setFont sv $ textviewFont prefs
+    setShowLineNumbers sv $ showLineNumbers prefs
+    setRightMargin sv $ rightMargin prefs
+    setIndentWidth sv $ tabWidth prefs
+    setTabWidth sv $ tabWidth prefs
+    setStyle buffer $ sourceStyle prefs
 
-        -- put it in a scrolled window
-        sw <- getScrolledWindow sv
-        liftIO $ scrolledWindowSetPolicy sw PolicyAutomatic PolicyAutomatic
-        liftIO $ scrolledWindowSetShadowType sw ShadowIn
-        modTimeRef <- liftIO $ newIORef modTime
-        let buf = IDEBuffer mbfn bn ind sv sw modTimeRef
-        -- events
-        ids1 <- sv `afterFocusIn` makeActive buf
-        ids2 <- onCompletion sv (Completion.complete sv False) Completion.cancel
-        ids3 <- sv `onButtonPress`
-            \event -> do
-                let click = eventClick event
-                liftIO $ reflectIDE (do
-                    case click of
-                        DoubleClick -> do
-                            let isSelectChar a = (isAlphaNum a) || (a == '_')
-                            (startSel, endSel) <- getSelectionBounds buffer
-                            mbStartChar <- getChar startSel
-                            mbEndChar <- getChar endSel
-                            start <- case mbStartChar of
-                                Just startChar | isSelectChar startChar -> do
-                                    maybeIter <- backwardFindCharC startSel (not.isSelectChar) Nothing
-                                    case maybeIter of
-                                        Just iter -> forwardCharC iter
-                                        Nothing   -> return startSel
-                                _ -> return startSel
-                            end <- case mbEndChar of
-                                Just endChar | isSelectChar endChar -> do
-                                    maybeIter <- forwardFindCharC endSel (not.isSelectChar) Nothing
-                                    case maybeIter of
-                                        Just iter -> return iter
-                                        Nothing   -> return endSel
-                                _ -> return endSel
-                            selectRange buffer start end
-                            return True
-                        _ -> return False) ideR
-        (GetTextPopup mbTpm) <- triggerEvent ideR (GetTextPopup Nothing)
-        ids4 <- case mbTpm of
-            Just tpm    -> sv `onPopulatePopup` \menu -> liftIO $ (tpm ideR menu)
-            Nothing     -> do
-                sysMessage Normal "SourceBuffer>> no text popup"
-                return []
-        return (buf,concat [ids1, ids2, ids3, ids4])) ideR
+    -- put it in a scrolled window
+    sw <- getScrolledWindow sv
+    liftIO $ scrolledWindowSetPolicy sw PolicyAutomatic PolicyAutomatic
+    liftIO $ scrolledWindowSetShadowType sw ShadowIn
+    modTimeRef <- liftIO $ newIORef modTime
+    let buf = IDEBuffer mbfn bn ind sv sw modTimeRef
+    -- events
+    ids1 <- sv `afterFocusIn` makeActive buf
+    ids2 <- onCompletion sv (Completion.complete sv False) Completion.cancel
+    ids3 <- sv `onButtonPress`
+        \event -> do
+            let click = eventClick event
+            liftIO $ reflectIDE (do
+                case click of
+                    DoubleClick -> do
+                        let isSelectChar a = (isAlphaNum a) || (a == '_')
+                        (startSel, endSel) <- getSelectionBounds buffer
+                        mbStartChar <- getChar startSel
+                        mbEndChar <- getChar endSel
+                        start <- case mbStartChar of
+                            Just startChar | isSelectChar startChar -> do
+                                maybeIter <- backwardFindCharC startSel (not.isSelectChar) Nothing
+                                case maybeIter of
+                                    Just iter -> forwardCharC iter
+                                    Nothing   -> return startSel
+                            _ -> return startSel
+                        end <- case mbEndChar of
+                            Just endChar | isSelectChar endChar -> do
+                                maybeIter <- forwardFindCharC endSel (not.isSelectChar) Nothing
+                                case maybeIter of
+                                    Just iter -> return iter
+                                    Nothing   -> return endSel
+                            _ -> return endSel
+                        selectRange buffer start end
+                        return True
+                    _ -> return False) ideR
+    (GetTextPopup mbTpm) <- triggerEvent ideR (GetTextPopup Nothing)
+    ids4 <- case mbTpm of
+        Just tpm    -> sv `onPopulatePopup` \menu -> liftIO $ (tpm ideR menu)
+        Nothing     -> do
+            sysMessage Normal "SourceBuffer>> no text popup"
+            return []
+    return (Just buf,concat [ids1, ids2, ids3, ids4])
 
 
 checkModTime :: IDEBuffer -> IDEM Bool
@@ -574,24 +568,21 @@ revert buf = do
             return mt
             liftIO $ writeIORef (modTime buf) (Just mt)
 
-writeCursorPositionInStatusbar :: EditorView -> Statusbar -> IDEAction
-writeCursorPositionInStatusbar sv sb = do
+writeCursorPositionInStatusbar :: EditorView -> IDEAction
+writeCursorPositionInStatusbar sv = do
     buf  <- getBuffer sv
     mark <- getInsertMark buf
     iter <- getIterAtMark buf mark
     line <- getLine iter
     col  <- getLineOffset iter
-    liftIO $ statusbarPop sb 1
-    liftIO $ statusbarPush sb 1 $printf "Ln %4d, Col %3d" (line + 1) (col + 1)
+    triggerEventIDE (StatusbarChanged [CompartmentBufferPos (line,col)])
     return ()
 
-writeOverwriteInStatusbar :: EditorView -> Statusbar -> IDEAction
-writeOverwriteInStatusbar sv sb = do
-    modi <- getOverwrite sv
-    liftIO $ statusbarPop sb 1
-    liftIO $ statusbarPush sb 1 $ if modi then "OVR" else "INS"
+writeOverwriteInStatusbar :: EditorView -> IDEAction
+writeOverwriteInStatusbar sv = do
+    mode <- getOverwrite sv
+    triggerEventIDE (StatusbarChanged [CompartmentOverlay mode])
     return ()
-
 
 showInfo :: EditorView -> IDEAction
 showInfo sv = do
@@ -699,7 +690,7 @@ fileSaveBuffer query nb ebuf ideBuf i = do
 
                                     reflectIDE (do
                                         fileSave' (forceLineEnds prefs) (removeTBlanks prefs) nb ideBuf bs candy cfn
-                                        close ideBuf
+                                        closePane ideBuf
                                         newTextBuffer panePath (takeFileName fn) (Just cfn)
                                         )   ideR
                                     return True
@@ -797,7 +788,7 @@ fileClose' nb ebuf currentBuffer i = do
     if cancel
         then return False
         else do
-            closePane currentBuffer
+            closeThisPane currentBuffer
             when (isJust $ fileName currentBuffer)
                 (addRecentlyUsedFile (fromJust $ fileName currentBuffer))
             return True

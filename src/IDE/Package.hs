@@ -47,6 +47,7 @@ module IDE.Package (
 
 ,   debugStart
 ,   debugToggled
+,   choosePackageFile
 ) where
 
 import Graphics.UI.Gtk
@@ -66,7 +67,6 @@ import Control.Exception (SomeException(..), catch)
 
 import IDE.Core.State
 import IDE.Pane.PackageEditor
-import IDE.TextEditor
 import IDE.Pane.SourceBuffer
 import IDE.Pane.PackageFlags
 import Distribution.Text (display)
@@ -108,7 +108,8 @@ import Foreign.C (Errno(..), getErrno)
 import IDE.Metainfo.Provider
     (rebuildActiveInfo)
 import qualified Data.Set as  Set (member, fromList)
-import qualified Data.Map as  Map (empty, insert, lookup)
+import qualified Data.Map as  Map (insert, lookup, empty)
+import IDE.TextEditor (getBuffer)
 import IDE.SourceCandy (getCandylessText)
 
 #if defined(mingw32_HOST_OS) || defined(__MINGW32__)
@@ -118,92 +119,6 @@ foreign import stdcall unsafe "winbase.h GetCurrentProcessId"
 foreign import stdcall unsafe "winbase.h GetProcessId"
     c_GetProcessId :: DWORD -> IO DWORD
 #endif
-
-packageNew :: IDEAction
-packageNew = packageNew' (\fp -> activatePackage fp >> return ())
-
-packageOpen :: IDEAction
-packageOpen = packageOpenThis Nothing
-
-packageOpenThis :: Maybe FilePath -> IDEAction
-packageOpenThis mbFilePath = do
-    active <- readIDE activePack
-    case active of
-        Just p -> deactivatePackage
-        Nothing -> return ()
-    selectActivePackage mbFilePath
-    return ()
-
-getActivePackage :: IDEM (Maybe IDEPackage)
-getActivePackage = do
-    active <- readIDE activePack
-    case active of
-        Just p -> return (Just p)
-        Nothing -> selectActivePackage Nothing
-
-selectActivePackage :: Maybe FilePath -> IDEM (Maybe IDEPackage)
-selectActivePackage mbFilePath' = do
-    window     <- getMainWindow
-    mbFilePath <- case mbFilePath' of
-                    Nothing -> liftIO $ choosePackageFile window
-                    Just fp -> return (Just fp)
-    case mbFilePath of
-        Nothing -> return Nothing
-        Just filePath -> do
-            let ppath = dropFileName filePath
-            exists <- liftIO $ doesFileExist (ppath </> "IDE.session")
-            wantToLoadSession <-
-                if exists
-                    then liftIO $ do
-                        md  <- messageDialogNew Nothing [] MessageQuestion ButtonsYesNo
-                                $ "Load the session settings stored with this project?"
-                        rid <- dialogRun md
-                        widgetDestroy md
-                        case rid of
-                            ResponseYes ->  return True
-                            otherwise   ->  return False
-                    else return False
-            if wantToLoadSession
-                then do
-                    triggerEventIDE (LoadSession (ppath </> "IDE.session"))
-                    readIDE activePack
-                else activatePackage filePath
-
-activatePackage :: FilePath -> IDEM (Maybe IDEPackage)
-activatePackage filePath = do
-    let ppath = dropFileName filePath
-    mbPackageD <- reifyIDE (\ideR -> catch (do
-        liftIO $ setCurrentDirectory ppath
-        pd <- readPackageDescription normal filePath
-        return (Just (flattenPackageDescription pd)))
-            (\(e :: SomeException) -> do
-                reflectIDE (ideMessage Normal ("Can't activate package " ++(show e))) ideR
-                return Nothing))
-    case mbPackageD of
-        Nothing -> return (Nothing)
-        Just packageD -> do
-            let modules = Set.fromList $ libModules packageD ++ exeModules packageD
-            let files = Set.fromList $ extraSrcFiles packageD ++ map modulePath (executables packageD)
-            let srcDirs = nub $ concatMap hsSourceDirs (allBuildInfo packageD)
-            let packp = IDEPackage (package packageD) filePath (buildDepends packageD) modules
-                            files srcDirs ["--user"] [] [] [] [] [] [] []
-            pack <- (do
-                flagFileExists <- liftIO $ doesFileExist (ppath </> "IDE.flags")
-                if flagFileExists
-                    then liftIO $ readFlags (ppath </> "IDE.flags") packp
-                    else return packp)
-            modifyIDE_ (\ide -> ide{activePack = (Just pack), projFilesCache = Map.empty})
-            ide <- getIDE
-            triggerEventIDE ActivePack
-            triggerEventIDE (Sensitivity [(SensitivityProjectActive,True)])
-            sb <- getSBActivePackage
-            liftIO $ statusbarPop sb 1
-            liftIO $ statusbarPush sb 1 (display $ packageId pack)
-            window <- getMainWindow
-            liftIO $ windowSetTitle window $ "Leksah: " ++  (display $ packageId pack)
-            removeRecentlyUsedPackage filePath
-            return (Just pack)
-
 
 belongsToActivePackage :: IDEBuffer -> IDEM Bool
 belongsToActivePackage ideBuf =
@@ -237,22 +152,129 @@ belongsToActivePackage ideBuf =
                                                 Map.insert fp r projFilesCache'})
                                              return r
 
+{--
+-- | Returns the package, to which this buffer belongs, if possible
+belongsToPackage :: IDEBuffer -> IDEM(Maybe IDEPackage)
+belongsToPackage ideBuf =
+    case fileName ideBuf of
+        Nothing -> return Nothing
+        Just fp -> do
+            projFilesCache' <-  readIDE projFilesCache
+            case Map.lookup fp projFilesCache' of
+                Just b  -> return b
+                Nothing -> case workspace of
+                                Nothing   -> return Nothing
+                                Just workspace -> do
+                                    mbMn <- moduleNameForBuffer ideBuf
+                                    case foldl (belongsToPackage' fp mbMn) Nothing (packages workspace) of
+                                        Nothing -> return Nothing
+                                        Just p -> do
+                                            modifyIDE_ (\ide -> ide{projFilesCache =
+                                                Map.insert fp (Just p) projFilesCache'})
+                                            return (Just p)
+
+belongsToPackage' ::  FilePath -> Maybe String -> Maybe IDEPackage -> IDEPackage -> Maybe IDEPackage
+belongsToPackage' _ _ r@(Just pack) _ = r
+belongsToPackage' fp mbModuleName Nothing pack =
+    let basePath =  dropFileName $ cabalFile pack
+    in if isSubPath basePath fp
+        then
+            let srcPaths = map (\srcP -> basePath </> srcP) (srcDirs pack)
+                relPaths = map (\p -> makeRelative p fp) srcPaths
+            in if or (map (\p -> Set.member p (extraSrcs pack)) relPaths)
+                then return (Just pack)
+                else case mbModuleName of
+                        Nothing -> return Nothing
+                        Just mn -> if Set.member mn (modules pack)
+                                        then return (Just pack)
+                                        else return Nothing
+--}
+
+packageNew :: IDEAction
+packageNew = packageNew' (\fp -> do
+    triggerEventIDE (WorkspaceAddPackage fp)
+    activatePackage fp
+    return ())
+
+packageOpen :: IDEAction
+packageOpen = packageOpenThis Nothing
+
+packageOpenThis :: Maybe FilePath -> IDEAction
+packageOpenThis mbFilePath = do
+    active <- readIDE activePack
+    case active of
+        Just p -> deactivatePackage
+        Nothing -> return ()
+    selectActivePackage mbFilePath
+    return ()
+
+getActivePackage :: IDEM (Maybe IDEPackage)
+getActivePackage = do
+    active <- readIDE activePack
+    case active of
+        Just p -> return (Just p)
+        Nothing -> selectActivePackage Nothing
+
+selectActivePackage :: Maybe FilePath -> IDEM (Maybe IDEPackage)
+selectActivePackage mbFilePath' = do
+    window     <- getMainWindow
+    mbFilePath <- case mbFilePath' of
+                    Nothing -> liftIO $ choosePackageFile window
+                    Just fp -> return (Just fp)
+    case mbFilePath of
+        Nothing -> return Nothing
+        Just filePath -> activatePackage filePath
+
+activatePackage :: FilePath -> IDEM (Maybe IDEPackage)
+activatePackage filePath = do
+    let ppath = dropFileName filePath
+    mbPackageD <- reifyIDE (\ideR -> catch (do
+        liftIO $ setCurrentDirectory ppath
+        pd <- readPackageDescription normal filePath
+        return (Just (flattenPackageDescription pd)))
+            (\(e :: SomeException) -> do
+                reflectIDE (ideMessage Normal ("Can't activate package " ++(show e))) ideR
+                return Nothing))
+    case mbPackageD of
+        Nothing -> return (Nothing)
+        Just packageD -> do
+            let modules = Set.fromList $ libModules packageD ++ exeModules packageD
+            let files = Set.fromList $ extraSrcFiles packageD ++ map modulePath (executables packageD)
+            let srcDirs = nub $ concatMap hsSourceDirs (allBuildInfo packageD)
+            let packp = IDEPackage (package packageD) filePath (buildDepends packageD) modules
+                            files srcDirs ["--user"] [] [] [] [] [] [] []
+            pack <- (do
+                flagFileExists <- liftIO $ doesFileExist (ppath </> "IDE.flags")
+                if flagFileExists
+                    then liftIO $ readFlags (ppath </> "IDE.flags") packp
+                    else return packp)
+            modifyIDE_ (\ide -> ide{activePack = (Just pack), packageCache = Map.empty})
+            ide <- getIDE
+            triggerEventIDE ActivePack
+            triggerEventIDE (Sensitivity [(SensitivityProjectActive,True)])
+            mbWs <- readIDE workspace
+            let wsStr = case mbWs of
+                    Nothing -> ""
+                    Just ws -> wsName ws
+            let txt = wsStr ++ " > " ++ fromPackageIdentifier (packageId pack)
+            triggerEventIDE (StatusbarChanged [CompartmentPackage txt])
+            window <- getMainWindow
+            return (Just pack)
+
 deactivatePackage :: IDEAction
 deactivatePackage = do
     oldActivePack <- readIDE activePack
-    when (isJust oldActivePack) $ do
-        triggerEventIDE (SaveSession
-            ((dropFileName . cabalFile . fromJust) oldActivePack </> "IDE.session"))
-        addRecentlyUsedPackage ((cabalFile . fromJust) oldActivePack)
-        return ()
-    modifyIDE_ (\ide -> ide{activePack = Nothing, projFilesCache = Map.empty})
+    modifyIDE_ (\ide -> ide{activePack = Nothing, packageCache = Map.empty})
     triggerEventIDE ActivePack
     when (isJust oldActivePack) $ do
         triggerEventIDE (Sensitivity [(SensitivityProjectActive,False)])
         return ()
-    sb            <- getSBActivePackage
-    liftIO $ statusbarPop sb 1
-    liftIO $ statusbarPush sb 1 ""
+    mbWs <- readIDE workspace
+    let wsStr = case mbWs of
+                    Nothing -> ""
+                    Just ws -> wsName ws
+    let txt = wsStr ++ ":"
+    triggerEventIDE (StatusbarChanged [CompartmentPackage txt])
     return ()
 
 packageConfig :: IDEAction
@@ -288,9 +310,7 @@ runExternalTool description executable args handleOutput = do
         alreadyRunning <- isRunning
         unless alreadyRunning $ do
             when (saveAllBeforeBuild prefs) (do fileSaveAll belongsToActivePackage; return ())
-            sb <- getSBErrors
-            liftIO $statusbarPop sb 1
-            liftIO $statusbarPush sb 1 description
+            triggerEventIDE (StatusbarChanged [CompartmentState description])
             reifyIDE (\ideR -> forkIO $ do
                 (output, pid) <- runTool executable args
                 reflectIDE (do
@@ -581,13 +601,15 @@ getPackageDescriptionAndPath = do
                         return Nothing))
 
 getModuleTemplate :: PackageDescription -> String -> IO String
-getModuleTemplate pd modName = do
-    filePath <- getConfigFilePathForLoad "Module.template"
+getModuleTemplate pd modName = catch (do
+    filePath <- getConfigFilePathForLoad standardModuleTemplateFilename Nothing
     template <- UTF8.readFile filePath
     return (foldl' (\ a (from, to) -> replace from to a) template
         [("@License@", (show . license) pd), ("@Maintainer@", maintainer pd),
             ("@Stability@",stability pd), ("@Portability@",""),
-                ("@Copyright@", copyright pd),("@ModuleName@", modName)])
+                ("@Copyright@", copyright pd),("@ModuleName@", modName)]))
+                    (\ (e :: SomeException) -> sysMessage Normal ("Couldn't read template file: " ++ show e) >> return "")
+
 
 addModuleToPackageDescr :: ModuleName -> Bool -> IDEM ()
 addModuleToPackageDescr moduleName isExposed = do
@@ -623,27 +645,6 @@ addModuleToPackageDescr moduleName isExposed = do
     where
     addModToBuildInfo :: BuildInfo -> ModuleName -> BuildInfo
     addModToBuildInfo bi mn = bi {otherModules = mn : otherModules bi}
-
-
-addRecentlyUsedPackage :: FilePath -> IDEAction
-addRecentlyUsedPackage fp = do
-    state <- readIDE currentState
-    when (not $ isStartingOrClosing state) $ do
-        recentPackages' <- readIDE recentPackages
-        unless (elem fp recentPackages') $
-            modifyIDE_ (\ide -> ide{recentPackages = take 12 (fp : recentPackages')})
-        triggerEventIDE UpdateRecent
-        return ()
-
-removeRecentlyUsedPackage :: FilePath -> IDEAction
-removeRecentlyUsedPackage fp = do
-    state <- readIDE currentState
-    when (not $ isStartingOrClosing state) $ do
-        recentPackages' <- readIDE recentPackages
-        when (elem fp recentPackages') $
-            modifyIDE_ (\ide -> ide{recentPackages = filter (\e -> e /= fp) recentPackages'})
-        triggerEventIDE UpdateRecent
-        return ()
 
 backgroundBuildToggled :: IDEAction
 backgroundBuildToggled = do
