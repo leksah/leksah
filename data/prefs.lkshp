@@ -2,12 +2,12 @@ Version number of preferences file format:
                1
      --Integer
 Time of last storage:
-               "Wed Oct 21 14:22:46 Westeurop\228ische Sommerzeit 2009"
+               "Wed Oct 28 01:34:04 CET 2009"
 Show line numbers:
                True
      --(True/False)
 TextView Font: "Monospace 10"
-Right margin:  101
+Right margin:  110
      --Size or 0 for no right margin
 Tab width:     4
 Use standard line ends even on windows:
@@ -16,7 +16,7 @@ Remove trailing blanks when saving a file:
                True
 Source candy:  "candy"
      --Empty for do not use or the name of a candy file in a config dir
-Editor Style:  ""
+Editor Style:  "kate"
 Found Text Background:
                Color 65535 65535 32768
 Execution Context Text Background:
@@ -37,15 +37,15 @@ Name of the keymap:
                keymap
      --The name of a keymap file in a config dir
 Categories for panes:
-               [("*Log","LogCategory"),("*Package","DialogCategory"),("*Flags","DialogCategory"),("*Prefs","DialogCategory"),("*References","LogCategory"),("*Debug","ToolCategory"),("*Grep","ToolCategory"),("*Info","ToolCategory"),("*Modules","ToolCategory"),("*SourceBuffer","EditorCategory"),("*Search","ToolCategory"),("*Errors","ToolCategory"),("*Browser","ToolCategory"),("*Breakpoints","ToolCategory"),("*Trace","ToolCategory"),("*Variables","ToolCategory"),("*Workspace","ToolCategory"),("*References","ToolCategory")]
+               [("*ClassHierarchy","TreeCategory"),("*Debug","TreeCategory"),("*Grep","TreeCategory"),("*Info","LogCategory"),("*Log","LogCategory"),("*Modules","TreeCategory"),("*Package","DialogCategory"),("*Flags","DialogCategory"),("*Prefs","DialogCategory"),("*References","LogCategory"),("*Search","TreeCategory"),("*Errors","TreeCategory")]
 Pane path for category:
-               [("EditorCategory",[SplitP LeftP]),("LogCategory",[SplitP RightP,SplitP BottomP]),("DialogCategory",[SplitP LeftP]),("ToolCategory",[SplitP RightP,SplitP TopP])]
+               [("EditorCategory",[SplitP LeftP]),("TreeCategory",[SplitP RightP,SplitP TopP]),("LogCategory",[SplitP RightP,SplitP BottomP]),("DialogCategory",[SplitP LeftP])]
 Default pane path:
                [SplitP LeftP]
 Paths under which haskell sources for packages may be found:
-               ["xxx/.cabal/packages","xxx/Develop","xxx/Haskell"]
+               ["/home/jutaro/.cabal/packages","/home/jutaro/Haskell"]
 Extract packages from cabal-install:
-               Just "xxx/.cabal/packages"
+               Just "/home/jutaro/.cabal/packages"
 Update metadata at startup:
                True
 Update metadata after every build:
