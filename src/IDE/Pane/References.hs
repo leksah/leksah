@@ -74,20 +74,18 @@ instance RecoverablePane IDEReferences ReferencesState IDEM where
             scopeSelection scope
             when (isJust mbDescr) (referencedFrom (fromJust mbDescr))
             return p
-    builder pp nb windows =
-        let scope = Package in reifyIDE $ \ ideR -> do
+    builder pp nb windows = reifyIDE $ \ ideR -> do
             scopebox        <-  hBoxNew True 2
-            rb1             <-  radioButtonNewWithLabel "Local"
-            rb2             <-  radioButtonNewWithLabelFromWidget rb1 "Package"
+            rb1             <-  radioButtonNewWithLabel "Package"
+            rb2             <-  radioButtonNewWithLabelFromWidget rb1 "Workspace"
             rb3             <-  radioButtonNewWithLabelFromWidget rb1 "System"
-            toggleButtonSetActive
-                (case scope of
-                    Local   -> rb1
-                    Package -> rb2
-                    System   -> rb3) True
-            boxPackStart scopebox rb1 PackNatural 2
-            boxPackStart scopebox rb2 PackNatural 2
-            boxPackEnd scopebox rb3 PackNatural 2
+            toggleButtonSetActive rb3 True
+            cb2             <-  checkButtonNewWithLabel "Imports"
+
+            boxPackStart scopebox rb1 PackGrow 2
+            boxPackStart scopebox rb2 PackGrow 2
+            boxPackStart scopebox rb3 PackGrow 2
+            boxPackEnd scopebox cb2 PackNatural 2
 
             listStore   <-  listStoreNew []
             treeView    <-  treeViewNew
@@ -138,15 +136,16 @@ instance RecoverablePane IDEReferences ReferencesState IDEM where
             boxPackStart box entry PackNatural 0
             boxPackEnd box sw PackGrow 0
             referencesDescr' <- newIORef Nothing
-            scopeRef <- newIORef scope
+            scopeRef <- newIORef SystemScope
             let references = IDEReferences sw treeView referencesDescr' listStore scopeRef entry box
             widgetShowAll box
             cid1 <- treeView `afterFocusIn`
                 (\_ -> do reflectIDE (makeActive references) ideR ; return True)
             treeView `onButtonPress` (treeViewPopup ideR  references)
-            rb1 `onToggled` (reflectIDE (scopeSelection Local) ideR )
-            rb2 `onToggled` (reflectIDE (scopeSelection Package) ideR )
-            rb3 `onToggled` (reflectIDE (scopeSelection System) ideR )
+            rb1 `onToggled` (reflectIDE (scopeSelection' rb1 rb2 rb3 cb2) ideR )
+            rb2 `onToggled` (reflectIDE (scopeSelection' rb1 rb2 rb3 cb2) ideR )
+            rb3 `onToggled` (reflectIDE (scopeSelection' rb1 rb2 rb3 cb2) ideR )
+            cb2 `onToggled` (reflectIDE (scopeSelection' rb1 rb2 rb3 cb2) ideR)
             return (Just references,[ConnectC cid1])
 
 getReferences :: Maybe PanePath -> IDEM IDEReferences
@@ -162,26 +161,28 @@ referencedFrom idDescr =
         Just pm -> do
             references   <-  getReferences Nothing
             scope <- liftIO $ getScope references
-            mbCurrentInfo   <- readIDE currentInfo
-            mbAccessibleInfo <- readIDE accessibleInfo
+            mbPackageInfo   <- readIDE packageInfo
+            mbWorkspaceInfo   <- readIDE packageInfo
+            mbSystemInfo <- readIDE systemInfo
             packages <- case scope of
-                            System  ->  case mbAccessibleInfo of
-                                            Nothing -> case mbCurrentInfo of
+                            SystemScope -> case mbSystemInfo of
+                                            Nothing -> case mbPackageInfo of
                                                             Nothing             ->  return []
                                                             Just currentInfo    ->  return
                                                                         ((Map.elems . fst . fst) currentInfo)
-                                            Just scope -> case mbCurrentInfo of
+                                            Just scope -> case mbPackageInfo of
                                                             Nothing             ->  return ((Map.elems . fst) scope)
                                                             Just currentInfo    ->  return
                                                                 ((Map.elems . fst . fst) currentInfo
                                                                 ++ (Map.elems . fst) scope)
-                            Package ->  case mbCurrentInfo of
-                                            Nothing             ->  return []
-                                            Just currentInfo    ->  return ((Map.elems . fst . fst) currentInfo
-                                                    ++  (Map.elems . fst . snd) currentInfo)
-                            Local   ->  case mbCurrentInfo of
-                                            Nothing             ->  return []
-                                            Just currentInfo    ->  return ((Map.elems . fst . fst) currentInfo)
+                            PackageScope _ -> case mbPackageInfo of
+                                                Nothing             ->  return []
+                                                Just packageInfo    ->  return ((Map.elems . fst . fst) packageInfo
+                                                        ++  (Map.elems . fst . snd) packageInfo)
+                            WorkspaceScope _ -> case mbWorkspaceInfo of
+                                                    Nothing             ->  return []
+                                                    Just workspaceInfo  ->  return ((Map.elems . fst . fst)
+                                                                                workspaceInfo)
             let modulesList = modulesForCallerFromPackages packages (descrName idDescr, modu pm)
             liftIO $ do
                 writeIORef (referencesDescr references) (Just idDescr)
@@ -200,6 +201,19 @@ modulesForCallerFromPackages (p :rest) (sym,mod)    =
                         Nothing     -> False
                         Just syms   -> sym `Set.member` syms) (exposedModulesPD p))
         ++ modulesForCallerFromPackages rest (sym,mod)
+
+scopeSelection' rb1 rb2 rb3 cb2 = do
+    scope <- liftIO $ do
+        withImports <-  toggleButtonGetActive cb2
+        s1 <- toggleButtonGetActive rb1
+        s2 <- toggleButtonGetActive rb2
+        s3 <- toggleButtonGetActive rb3
+        if s1
+            then return (PackageScope withImports)
+            else if s2
+                    then return (WorkspaceScope withImports)
+                    else return (SystemScope)
+    scopeSelection scope
 
 scopeSelection :: Scope -> IDEAction
 scopeSelection scope = do

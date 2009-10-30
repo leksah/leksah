@@ -1,3 +1,4 @@
+{-# OPTIONS_GHC -XScopedTypeVariables #-}
 module IDE.FileUtils (
     chooseFile
 ,   chooseDir
@@ -20,6 +21,7 @@ module IDE.FileUtils (
 ,   findSourceFile
 ,   autoExtractTarFiles
 ,   openBrowser
+,   idePackageFromPath
 
 ) where
 
@@ -37,7 +39,7 @@ import Control.Monad.Trans(MonadIO,liftIO)
 import qualified Data.List as List
 import qualified Data.Set as Set
 import Data.Set (Set)
-import Data.List (isSuffixOf,isPrefixOf)
+import Data.List (nub, isSuffixOf, isPrefixOf)
 import Distribution.ModuleName(ModuleName,toFilePath)
 import Distribution.Text(simpleParse)
 import Debug.Trace
@@ -57,6 +59,22 @@ import Graphics.UI.Gtk.Selectors.FileChooser
     (FileChooserAction(..))
 import Graphics.UI.Gtk.General.Structs
     (ResponseId(..))
+import Distribution.PackageDescription.Parse
+    (readPackageDescription)
+import Distribution.Verbosity (normal)
+import Distribution.PackageDescription.Configuration
+    (flattenPackageDescription)
+import Distribution.PackageDescription
+    (buildDepends,
+     package,
+     allBuildInfo,
+     hsSourceDirs,
+     executables,
+     modulePath,
+     extraSrcFiles,
+     exeModules,
+     libModules)
+import IDE.Pane.PackageFlags (readFlags)
 
 chooseDir :: Window -> String -> Maybe FilePath -> IO (Maybe FilePath)
 chooseDir window prompt mbFolder = do
@@ -361,8 +379,13 @@ cabalFileName filePath = catch (do
         else return Nothing)
         (\_ -> return Nothing)
 
-autoExtractTarFiles :: FilePath -> IO ()
-autoExtractTarFiles filePath =
+autoExtractTarFiles filePath = do
+    dir <- getCurrentDirectory
+    autoExtractTarFiles' filePath
+    setCurrentDirectory dir
+
+autoExtractTarFiles' :: FilePath -> IO ()
+autoExtractTarFiles' filePath =
     catch (do
         exists <- doesDirectoryExist filePath
         if exists
@@ -374,13 +397,14 @@ autoExtractTarFiles filePath =
                 files                    <- filterM (\f -> doesFileExist f) filesAndDirs'
                 let choosenFiles         =  filter (\f -> isSuffixOf ".tar.gz" f) files
                 let decompressionTargets =  filter (\f -> (dropExtension . dropExtension) f `notElem` dirs) choosenFiles
-                mapM_ (\f -> let (dir,fn) = splitFileName f in do
-                                setCurrentDirectory dir
-                                handle   <- runCommand $ "tar -zxf " ++ fn
-                                waitForProcess handle
-                                trace ("extracted " ++ fn) $ return ())
+                mapM_ (\f -> let (dir,fn) = splitFileName f
+                                 command = "tar -zxf " ++ fn in do
+                                    setCurrentDirectory dir
+                                    handle   <- runCommand command
+                                    waitForProcess handle
+                                    trace ("extracted " ++ fn) $ return ())
                         decompressionTargets
-                mapM_ autoExtractTarFiles dirs
+                mapM_ autoExtractTarFiles' dirs
                 return ()
             else return ()
     ) $ \ _ -> trace ("error extractTarFiles" ++ filePath) $ return ()
@@ -407,6 +431,28 @@ getSysLibDir = catch (do
     return (normalise libDir2)
     ) $ \ _ -> error ("FileUtils>>getSysLibDir failed")
 
-
+idePackageFromPath :: FilePath -> IDEM (Maybe IDEPackage)
+idePackageFromPath filePath = do
+    mbPackageD <- reifyIDE (\ideR -> catch (do
+        pd <- readPackageDescription normal filePath
+        return (Just (flattenPackageDescription pd)))
+            (\ e -> do
+                reflectIDE (ideMessage Normal ("Can't activate package " ++(show e))) ideR
+                return Nothing))
+    case mbPackageD of
+        Nothing -> return Nothing
+        Just packageD -> do
+            let modules = Set.fromList $ libModules packageD ++ exeModules packageD
+            let files = Set.fromList $ extraSrcFiles packageD ++ map modulePath (executables packageD)
+            let srcDirs = nub $ concatMap hsSourceDirs (allBuildInfo packageD)
+            let packp = IDEPackage (package packageD) filePath (buildDepends packageD) modules
+                            files srcDirs ["--user"] [] [] [] [] [] [] []
+            let pfile = dropExtension filePath
+            pack <- (do
+                flagFileExists <- liftIO $ doesFileExist (pfile ++ leksahFlagFileExtension)
+                if flagFileExists
+                    then liftIO $ readFlags (pfile ++ leksahFlagFileExtension) packp
+                    else return packp)
+            return (Just pack)
 
 

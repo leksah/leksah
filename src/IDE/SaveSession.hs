@@ -23,7 +23,6 @@ module IDE.SaveSession (
 ,   sessionClosePane
 ,   loadSession
 ,   loadSessionPrompt
-
 ) where
 
 import Graphics.UI.Gtk hiding (showLayout)
@@ -245,11 +244,17 @@ sessionDescr = [
 --
 saveSession :: IDEAction
 saveSession = do
-    sessionPath  <-  liftIO $ getConfigFilePathForSave standardSessionFilename
-    saveSessionAs sessionPath
+    sessionPath     <-  liftIO $ getConfigFilePathForSave standardSessionFilename
+    mbSessionPath2  <-  do
+                            ws <- readIDE workspace
+                            case ws of
+                                Nothing -> return Nothing
+                                Just ws -> return $ Just (dropExtension (wsFile ws) ++
+                                                        leksahSessionFileExtension)
+    saveSessionAs sessionPath mbSessionPath2
 
-saveSessionAs :: FilePath -> IDEAction
-saveSessionAs sessionPath = do
+saveSessionAs :: FilePath -> Maybe FilePath ->  IDEAction
+saveSessionAs sessionPath mbSecondPath = do
     forget          <- getForgetSession
     if forget
         then ideMessage Normal "Forget this session"
@@ -276,7 +281,7 @@ saveSessionAs sessionPath = do
             timeNow         <- liftIO getClockTime
             recentFiles'      <- readIDE recentFiles
             recentWorkspaces' <- readIDE recentWorkspaces
-            liftIO $ writeFields sessionPath (SessionState {
+            let state = SessionState {
                 sessionVersion      =   theSessionVersion
             ,   saveTime            =   show timeNow
             ,   layoutS             =   layout
@@ -289,8 +294,10 @@ saveSessionAs sessionPath = do
             ,   toolbarVisibleS     =   toolbarVisible
             ,   findbarState        =   (findbarVisible,findState)
             ,   recentOpenedFiles   =   recentFiles'
-            ,   recentOpenedWorksp  =   recentWorkspaces'})
-                sessionDescr
+            ,   recentOpenedWorksp  =   recentWorkspaces'}
+            liftIO $ writeFields sessionPath state sessionDescr
+            when (isJust mbSecondPath) $
+                liftIO $ writeFields (fromJust mbSecondPath) state sessionDescr
 
 saveSessionAsPrompt :: IDEAction
 saveSessionAsPrompt = do
@@ -302,6 +309,7 @@ saveSessionAsPrompt = do
         Just fn -> saveSessionAs (if takeExtension fn == leksahSessionFileExtension
                                     then fn
                                     else addExtension fn leksahSessionFileExtension)
+                                    Nothing
         Nothing -> return ()
 
 loadSessionPrompt :: IDEAction

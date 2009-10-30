@@ -32,22 +32,18 @@ import System.IO
 import qualified Text.PrettyPrint.HughesPJ as PP
 import Data.Typeable
 import System.FilePath.Posix
-
 import IDE.Core.State
 import Graphics.UI.Editor.Basics
 import Graphics.UI.Editor.MakeEditor
 import Graphics.UI.Editor.Simple
 import Graphics.UI.Editor.Parameters
-
 import IDE.PrinterParser hiding (fieldParser,parameters)
-
 import Control.Event (registerEvent)
 import IDE.DescriptionPP
     (flattenFieldDescriptionPPToS,
      extractFieldDescription,
      FieldDescriptionPP(..),
      mkFieldPP)
-
 import Text.ParserCombinators.Parsec hiding(Parser)
 
 data IDEFlags               =   IDEFlags {
@@ -56,7 +52,6 @@ data IDEFlags               =   IDEFlags {
 
 data FlagsState             =   FlagsState
     deriving(Eq,Ord,Read,Show,Typeable)
-
 
 instance Pane IDEFlags IDEM
     where
@@ -111,7 +106,7 @@ builder' idePackage flagsDesc flatflagsDesc pp nb window ideR = do
                 reflectIDE (do
                     modifyIDE_ (\ide -> ide{activePack = Just packWithNewFlags})
                     closePane flagsPane) ideR -- we don't trigger the activePack event here
-                writeFields ((dropFileName (cabalFile packWithNewFlags)) </> "IDE.flags")
+                writeFields ((dropExtension (cabalFile packWithNewFlags)) ++ leksahFlagFileExtension)
                     packWithNewFlags flatFlagsDescription)
     closeB `onClicked` (reflectIDE (closePane flagsPane >> return ()) ideR)
     registerEvent notifier FocusIn (Left (\e -> do

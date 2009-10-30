@@ -27,7 +27,6 @@ import qualified Text.ParserCombinators.Parsec as P
 
 import IDE.PrinterParser hiding (fieldParser,parameters)
 import Graphics.UI.Editor.Parameters
---import Graphics.UI.Editor.Basics
 import Graphics.UI.Editor.MakeEditor
 import IDE.Core.State
 import Graphics.UI.Editor.Basics (Applicator(..),Editor(..),Setter(..),Getter(..),Notifier(..),Extractor(..),Injector(..))

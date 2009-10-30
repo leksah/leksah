@@ -171,10 +171,8 @@ instance RecoverablePane IDEBuffer BufferState IDEM where
             Nothing -> return Nothing
     makeActive actbuf = do
         ideR    <-  ask
-        infos   <-  readIDE accessibleInfo
         let sv = sourceView actbuf
         eBuf    <- getBuffer sv
---        liftIO $ bringPaneToFront actbuf
         writeCursorPositionInStatusbar sv
         writeOverwriteInStatusbar sv
         ids1 <- eBuf `afterModifiedChanged` markActiveLabelAsChanged
@@ -237,12 +235,12 @@ lastActiveBufferPane = do
 
 goToDefinition :: Descr -> IDEAction
 goToDefinition idDescr = do
-    mbAccesibleInfo      <-  readIDE accessibleInfo
-    mbCurrentInfo        <-  readIDE currentInfo
-    if isJust mbAccesibleInfo && isJust (descrModu idDescr)
+    mbSystemInfo      <-  readIDE systemInfo
+    mbCurrentInfo        <-  readIDE packageInfo
+    if isJust mbSystemInfo && isJust (descrModu idDescr)
         then do
             let packageId =   pack $ fromJust $ descrModu idDescr
-            let mbPack    =   case packageId `Map.lookup` fst (fromJust mbAccesibleInfo) of
+            let mbPack    =   case packageId `Map.lookup` fst (fromJust mbSystemInfo) of
                                 Just it ->  Just it
                                 Nothing ->  if isJust mbCurrentInfo
                                                 then packageId `Map.lookup` fst (fst (fromJust mbCurrentInfo))
@@ -737,17 +735,23 @@ fileCheckBuffer nb ebuf ideBuf i = do
         Nothing     -> throwIDE "fileCheck: Page not found"
         Just page   ->
             if isJust mbfn
-                then do modifiedOnDisk <- checkModTime ideBuf -- The user is given option to reload
-                        modifiedInBuffer <- getModified ebuf
+                then do modifiedOnDisk      <- checkModTime ideBuf -- The user is given option to reload
+                        modifiedInBuffer    <- getModified ebuf
                         return (modifiedOnDisk || modifiedInBuffer)
                 else return False
 
-fileCheckAll :: (IDEBuffer -> IDEM Bool) -> IDEM Bool
+fileCheckAll :: (IDEBuffer -> IDEM (Maybe alpha)) -> IDEM [alpha]
 fileCheckAll filterFunc = do
-    bufs    <- allBuffers
-    filtered <- filterM filterFunc bufs
-    results <- forM filtered (\buf -> inBufContext False buf fileCheckBuffer)
-    return $ True `elem` results
+    bufs     <- allBuffers
+    foldM (\ packs buf -> do
+            mbFilt <- filterFunc buf
+            case mbFilt of
+                Nothing -> return packs
+                Just p  -> do
+                    modified <- inBufContext False buf fileCheckBuffer
+                    if modified
+                        then return (p : packs)
+                        else return packs) [] bufs
 
 fileNew :: IDEAction
 fileNew = do

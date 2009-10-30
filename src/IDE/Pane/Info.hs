@@ -178,7 +178,7 @@ referencedFrom' = do
 
 setSymbol :: String -> IDEAction
 setSymbol symbol = do
-    currentInfo' <- readIDE currentInfo
+    currentInfo' <- readIDE packageInfo
     case currentInfo' of
         Nothing -> return ()
         Just ((_,symbolTable1),(_,symbolTable2)) ->

@@ -69,14 +69,13 @@ toolline (ToolInput l) = l
 toolline (ToolOutput l) = l
 toolline (ToolError l) = l
 
-runTool :: FilePath -> [String] -> IO ([ToolOutput], ProcessHandle)
-runTool executable arguments = do
+runTool :: FilePath -> [String] -> Maybe FilePath -> IO ([ToolOutput], ProcessHandle)
+runTool executable arguments mbDir = do
 #if !defined(mingw32_HOST_OS) && !defined(__MINGW32__)
     installHandler sigINT Ignore Nothing
     installHandler sigQUIT Ignore Nothing
 #endif
-
-    (inp,out,err,pid) <- runInteractiveProcess executable arguments Nothing Nothing
+    (inp,out,err,pid) <- runInteractiveProcess executable arguments mbDir Nothing
     output <- getOutputNoPrompt inp out err pid
     return (output, pid)
 
@@ -272,7 +271,7 @@ newGhci buildFlags interactiveFlags startupOutputHandler = do
             ToolCommand (":set prompt " ++ ghciPrompt) startupOutputHandler
         putStrLn "Working out GHCi options"
         forkIO $ do
-            (output, pid) <- runTool "runhaskell" (["Setup","build","--with-ghc=leksahecho"] ++ buildFlags)
+            (output, pid) <- runTool "runhaskell" (["Setup","build","--with-ghc=leksahecho"] ++ buildFlags) Nothing
             case catMaybes $ map (findMake . toolline) output of
                 options:_ -> do
                         let newOptions = filterUnwanted options

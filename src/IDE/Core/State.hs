@@ -90,6 +90,7 @@ module IDE.Core.State (
 ,   leksahCurrentMetaExtension
 ,   leksahTemplateFileExtension
 ,   standardModuleTemplateFilename
+,   leksahFlagFileExtension
 
 ,   configDirName
 #ifdef YI
@@ -114,7 +115,6 @@ import Control.Monad.Reader hiding (liftIO)
 import qualified Control.Monad.Reader (liftIO)
 import Control.Monad.Trans
 import HscTypes hiding (liftIO)
-import Data.Unique
 import Control.Exception
 import Prelude hiding (catch)
 
@@ -143,6 +143,8 @@ leksahMetadataFileExtension = ".lkshm"
 leksahCurrentMetaExtension = ".lkshe"
 leksahMetadataDebugExtension = ".lkshd"
 leksahTemplateFileExtension = ".lksht"
+leksahFlagFileExtension = ".lkshf"
+
 
 standardSessionFilename =   "current" ++ leksahSessionFileExtension
 packageSessionFilename = "leksah" ++ leksahSessionFileExtension
@@ -239,78 +241,9 @@ instance PaneMonad IDEM where
                 modifyIDE_ (\ide -> ide{recentPanes = filter (/= paneName pane) (recentPanes ide)})
                 return True
 
-
-
-
-
-
 -- this should not be repeated here, why is it necessary?
 instance MonadIO Ghc where
   liftIO ioA = Ghc $ \_ -> ioA
-
-instance Event IDEEvent String where
-    getSelector CurrentInfo             =   "CurrentInfo"
-    getSelector ActivePack              =   "ActivePack"
-    getSelector (LogMessage _ _)        =   "LogMessage"
-    getSelector (SelectInfo _)          =   "SelectInfo"
-    getSelector (SelectIdent _)         =   "SelectIdent"
-    getSelector (RecordHistory _)       =   "RecordHistory"
-    getSelector (Sensitivity _)         =   "Sensitivity"
-    getSelector (DescrChoice _)         =   "DescrChoice"
-    getSelector (SearchMeta _)          =   "SearchMeta"
-    getSelector (LoadSession _)         =   "LoadSession"
-    getSelector (SaveSession _)         =   "SaveSession"
-    getSelector UpdateRecent            =   "UpdateRecent"
-    getSelector VariablesChanged        =   "VariablesChanged"
-    getSelector ErrorChanged            =   "ErrorChanged"
-    getSelector (CurrentErrorChanged _) =   "CurrentErrorChanged"
-    getSelector BreakpointChanged       =   "BreakpointChanged"
-    getSelector (CurrentBreakChanged _) =   "CurrentBreakChanged"
-    getSelector TraceChanged            =   "TraceChanged"
-    getSelector (GetTextPopup _)        =   "GetTextPopup"
-    getSelector (StatusbarChanged _)    =   "StatusbarChanged"
-    getSelector WorkspaceChanged        =   "WorkspaceChanged"
-    getSelector (WorkspaceAddPackage _) =   "WorkspaceAddPackage"
-
-instance EventSource IDERef IDEEvent IDEM String where
-    canTriggerEvent o "CurrentInfo"     =   True
-    canTriggerEvent o "ActivePack"      =   True
-    canTriggerEvent o "LogMessage"      =   True
-    canTriggerEvent o "SelectInfo"      =   True
-    canTriggerEvent o "SelectIdent"     =   True
-    canTriggerEvent o "RecordHistory"   =   True
-    canTriggerEvent o "Sensitivity"     =   True
-    canTriggerEvent o "DescrChoice"     =   True
-    canTriggerEvent o "SearchMeta"      =   True
-    canTriggerEvent o "LoadSession"     =   True
-    canTriggerEvent o "SaveSession"     =   True
-    canTriggerEvent o "UpdateRecent"    =   True
-    canTriggerEvent o "VariablesChanged" =   True
-    canTriggerEvent o "ErrorChanged"    =   True
-    canTriggerEvent o "CurrentErrorChanged" = True
-    canTriggerEvent o "BreakpointChanged" = True
-    canTriggerEvent o "CurrentBreakChanged" = True
-    canTriggerEvent o "TraceChanged"    = True
-    canTriggerEvent o "GetTextPopup"    = True
-    canTriggerEvent o "StatusbarChanged"    = True
-    canTriggerEvent o "WorkspaceChanged"    = True
-    canTriggerEvent o "WorkspaceAddPackage"    = True
-
-    canTriggerEvent _ _                 =   False
-
-    getHandlers ideRef = do
-        ide <- liftIO $ readIORef ideRef
-        return (handlers ide)
-
-    setHandlers ideRef nh = do
-        ide <- liftIO $ readIORef ideRef
-        liftIO $ writeIORef ideRef (ide {handlers= nh})
-
-    myUnique _ = do
-        liftIO $ newUnique
-
-instance EventSelector String
-
 
 ideMessage :: MessageLevel -> String -> IDEAction
 ideMessage level str = do

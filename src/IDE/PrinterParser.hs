@@ -45,7 +45,6 @@ import Graphics.UI.Gtk (Color(..))
 import Data.List (foldl')
 import qualified Text.ParserCombinators.Parsec as  P
     ((<?>), CharParser(..), parseFromFile)
-import IDE.Core.State (throwIDE)
 
 
 type Printer beta       =   beta -> PP.Doc
@@ -209,9 +208,9 @@ readFields :: FilePath -> [FieldDescriptionS alpha] -> alpha -> IO alpha
 readFields fn fieldDescrs defaultValue = catch (do
     res <- P.parseFromFile (parseFields defaultValue fieldDescrs) fn
     case res of
-                Left pe -> throwIDE $ "Error reading file " ++ show fn ++ " " ++ show pe
+                Left pe -> error $ "Error reading file " ++ show fn ++ " " ++ show pe
                 Right r -> return r)
-    (\ e -> throwIDE $ "Error reading file " ++ show fn ++ " " ++ show e)
+    (\ e -> error $ "Error reading file " ++ show fn ++ " " ++ show e)
 
 parseFields ::  alpha ->  [FieldDescriptionS alpha] ->  P.CharParser () alpha
 parseFields defaultValue descriptions =

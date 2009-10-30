@@ -130,9 +130,8 @@ module IDE.TextEditor (
 import Prelude hiding(getChar, getLine)
 import Data.Char (isAlphaNum)
 import Data.Maybe (fromJust)
-import Data.IORef (readIORef, writeIORef)
-import Control.Monad (when, unless)
-import Control.Monad.Reader (lift, liftIO, ask)
+import Control.Monad (when)
+import Control.Monad.Reader (liftIO, ask)
 import Control.Applicative ((<$>))
 
 import qualified Graphics.UI.Gtk as Gtk hiding(afterToggleOverwrite)
@@ -146,13 +145,12 @@ import System.Glib.Attributes (AttrOp(..))
 import qualified Yi as Yi hiding(withBuffer)
 import qualified Yi.Buffer.Misc as Yi
 import qualified Yi.UI.Pango.Control as Yi
+import Data.Time (getCurrentTime)
 #endif
 
-import Graphics.UI.Frame.Panes (Connection(..))
-import IDE.Core.Types
 import IDE.Core.State
 
-import Data.Time (getCurrentTime)
+
 
 -- Data types
 data EditorBuffer = GtkEditorBuffer Gtk.SourceBuffer
@@ -702,8 +700,8 @@ backwardFindCharC (GtkEditorIter i) pred mbLimit = transformGtkIterMaybe i (\x -
     Gtk.textIterBackwardFindChar x pred (
         case mbLimit of
             Just (GtkEditorIter limit) -> Just limit
-            Nothing                    -> Nothing
-            _                          -> fail "Mismatching TextEditor types in backwardFindChar"))
+            Nothing                    -> Nothing))
+--            _                          -> fail "Mismatching TextEditor types in backwardFindChar"))
 #ifdef YI
 backwardFindCharC (YiEditorIter i) pred mbLimit = return Nothing -- TODO
 #endif
@@ -740,8 +738,8 @@ forwardFindCharC (GtkEditorIter i) pred mbLimit = transformGtkIterMaybe i (\x ->
     Gtk.textIterForwardFindChar x pred (
         case mbLimit of
             Just (GtkEditorIter limit) -> Just limit
-            Nothing                    -> Nothing
-            _                          -> fail "Mismatching TextEditor types in forwardFindChar"))
+            Nothing                    -> Nothing))
+--            _                          -> fail "Mismatching TextEditor types in forwardFindChar"))
 #ifdef YI
 forwardFindCharC (YiEditorIter i) pred mbLimit = return Nothing -- TODO
 #endif
@@ -756,8 +754,8 @@ forwardSearch (GtkEditorIter i) str flags mbLimit = liftIO $ do
         Gtk.textIterForwardSearch i str flags (
             case mbLimit of
                 Just (GtkEditorIter limit) -> Just limit
-                Nothing                    -> Nothing
-                _                          -> fail "Mismatching TextEditor types in forwardSearch")
+                Nothing                    -> Nothing)
+--                _                          -> fail "Mismatching TextEditor types in forwardSearch")
 #ifdef YI
 forwardSearch (YiEditorIter i) str pred mbLimit = return Nothing -- TODO
 #endif

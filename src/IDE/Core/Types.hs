@@ -48,8 +48,6 @@ module IDE.Core.Types (
 ,   isBreakpoint
 ,   colorHexString
 
-
-
 ,   PackageDescr(..)
 ,   ModuleDescr(..)
 ,   Descr(..)
@@ -121,12 +119,14 @@ import Data.Typeable (Typeable(..))
 import SrcLoc (SrcSpan(..))
 import Outputable (ppr, showSDoc)
 import Data.Set (Set(..))
-import Data.Unique (Unique(..))
+import Data.Unique (newUnique, Unique(..))
 import System.Process (ProcessHandle(..))
 import IDE.Tool (ToolState(..))
-import Data.IORef (IORef(..))
+import Data.IORef (writeIORef, readIORef, IORef(..))
 import FastString (unpackFS)
 import Numeric (showHex)
+import Control.Event
+    (EventSelector(..), EventSource(..), Event(..))
 
 -- ---------------------------------------------------------------------
 -- IDE State
@@ -144,23 +144,20 @@ data IDE            =  IDE {
 ,   prefs           ::   Prefs                   -- ^ configuration preferences
 ,   workspace       ::   Maybe Workspace         -- ^ may be a workspace (set of packages)
 ,   activePack      ::   Maybe IDEPackage
-,   packageCache    ::   Map FilePath IDEPackage    -- ^ caches property that a buffer belongs to a project
-,   projFilesCache  ::   Map FilePath Bool       -- ^ caches property that a buffer belongs to a project
+,   bufferProjectCache ::   Map FilePath (Maybe IDEPackage)
 ,   allLogRefs      ::   [LogRef]
 ,   currentEBC      ::   (Maybe LogRef, Maybe LogRef, Maybe LogRef)
 ,   currentHist     ::   Int
-,   accessibleInfo  ::   (Maybe (PackageScope))     -- ^  the world scope
-,   currentInfo     ::   (Maybe (PackageScope,PackageScope))
-                                                -- ^ the first is for the current package,
-                                                --the second is the scope in the current package
-,   handlers        ::   Map String [(Unique, IDEEvent -> IDEM IDEEvent)]
-                                                -- ^ event handling table
+,   systemInfo      ::   (Maybe (PackageScope))                           -- ^ the system scope
+,   packageInfo     ::   (Maybe (PackageScope,PackageScope))              -- ^ the second are the imports
+,   workspaceInfo   ::   (Maybe (PackageScope,PackageScope))              -- ^ the second are the imports
+,   handlers        ::   Map String [(Unique, IDEEvent -> IDEM IDEEvent)] -- ^ event handling table
 ,   currentState    ::   IDEState
 ,   guiHistory      ::   (Bool,[GUIHistory],Int)
 ,   findbar         ::   (Bool,Maybe (Toolbar,ListStore String))
 ,   toolbar         ::   (Bool,Maybe Toolbar)
 ,   recentFiles     ::   [FilePath]
-,   recentWorkspaces  ::   [FilePath]
+,   recentWorkspaces ::  [FilePath]
 ,   runningTool     ::   Maybe ProcessHandle
 ,   ghciState       ::   Maybe ToolState
 ,   completion      ::   Maybe CompletionWindow
@@ -193,14 +190,14 @@ data IDEState =
     |   IsFlipping TreeView
     |   IsCompleting Connections
 
-
 -- ---------------------------------------------------------------------
 -- Events which can be signalled and handled
 --
 
 data IDEEvent  =
-        CurrentInfo
-    |   ActivePack
+        InfoChanged
+    |   SystemInfoChanged
+    |   ActivePack (Maybe IDEPackage)
     |   SelectInfo String
     |   SelectIdent Descr
     |   LogMessage String LogTag
@@ -221,6 +218,67 @@ data IDEEvent  =
     |   StatusbarChanged [StatusbarCompartment]
     |   WorkspaceChanged
     |   WorkspaceAddPackage FilePath
+
+instance Event IDEEvent String where
+    getSelector InfoChanged             =   "InfoChanged"
+    getSelector SystemInfoChanged       =   "SystemInfoChanged"
+    getSelector (ActivePack _)          =   "ActivePack"
+    getSelector (LogMessage _ _)        =   "LogMessage"
+    getSelector (SelectInfo _)          =   "SelectInfo"
+    getSelector (SelectIdent _)         =   "SelectIdent"
+    getSelector (RecordHistory _)       =   "RecordHistory"
+    getSelector (Sensitivity _)         =   "Sensitivity"
+    getSelector (DescrChoice _)         =   "DescrChoice"
+    getSelector (SearchMeta _)          =   "SearchMeta"
+    getSelector (LoadSession _)         =   "LoadSession"
+    getSelector (SaveSession _)         =   "SaveSession"
+    getSelector UpdateRecent            =   "UpdateRecent"
+    getSelector VariablesChanged        =   "VariablesChanged"
+    getSelector ErrorChanged            =   "ErrorChanged"
+    getSelector (CurrentErrorChanged _) =   "CurrentErrorChanged"
+    getSelector BreakpointChanged       =   "BreakpointChanged"
+    getSelector (CurrentBreakChanged _) =   "CurrentBreakChanged"
+    getSelector TraceChanged            =   "TraceChanged"
+    getSelector (GetTextPopup _)        =   "GetTextPopup"
+    getSelector (StatusbarChanged _)    =   "StatusbarChanged"
+    getSelector WorkspaceChanged        =   "WorkspaceChanged"
+    getSelector (WorkspaceAddPackage _) =   "WorkspaceAddPackage"
+
+instance EventSource IDERef IDEEvent IDEM String where
+    canTriggerEvent _ "InfoChanged"         = True
+    canTriggerEvent _ "SystemInfoChanged"   = True
+    canTriggerEvent _ "ActivePack"          = True
+    canTriggerEvent _ "LogMessage"          = True
+    canTriggerEvent _ "SelectInfo"          = True
+    canTriggerEvent _ "SelectIdent"         = True
+    canTriggerEvent _ "RecordHistory"       = True
+    canTriggerEvent _ "Sensitivity"         = True
+    canTriggerEvent _ "DescrChoice"         = True
+    canTriggerEvent _ "SearchMeta"          = True
+    canTriggerEvent _ "LoadSession"         = True
+    canTriggerEvent _ "SaveSession"         = True
+    canTriggerEvent _ "UpdateRecent"        = True
+    canTriggerEvent _ "VariablesChanged"    = True
+    canTriggerEvent _ "ErrorChanged"        = True
+    canTriggerEvent _ "CurrentErrorChanged" = True
+    canTriggerEvent _ "BreakpointChanged"   = True
+    canTriggerEvent _ "CurrentBreakChanged" = True
+    canTriggerEvent _ "TraceChanged"        = True
+    canTriggerEvent _ "GetTextPopup"        = True
+    canTriggerEvent _ "StatusbarChanged"    = True
+    canTriggerEvent _ "WorkspaceChanged"    = True
+    canTriggerEvent _ "WorkspaceAddPackage" = True
+    canTriggerEvent _ _                   = False
+    getHandlers ideRef = do
+        ide <- liftIO $ readIORef ideRef
+        return (handlers ide)
+    setHandlers ideRef nh = do
+        ide <- liftIO $ readIORef ideRef
+        liftIO $ writeIORef ideRef (ide {handlers= nh})
+    myUnique _ = do
+        liftIO $ newUnique
+
+instance EventSelector String
 
 -- ---------------------------------------------------------------------
 -- IDEPackages
@@ -251,9 +309,10 @@ data Workspace = Workspace {
 ,   wsSaveTime      ::   String
 ,   wsName          ::   String
 ,   wsFile          ::   FilePath
-,   wsPackages      ::   [FilePath]
---,   wsPackageCache  ::  Maybe (Map FilePath IDEPackage)
-,   wsActivePack    ::   Maybe FilePath
+,   wsPackages      ::   [IDEPackage]
+,   wsActivePack    ::   Maybe IDEPackage
+,   wsPackagesFiles ::   [FilePath]
+,   wsActivePackFile::   Maybe FilePath
 } deriving Show
 
 -- ---------------------------------------------------------------------
@@ -452,8 +511,6 @@ descrType ExtensionDescr     =   Extension
 descrType ModNameDescr       =   ModName
 descrType QualModNameDescr   =   QualModName
 
-
-
 stockIdFromType :: DescrType -> StockId
 stockIdFromType Variable        =   "ide_function"
 stockIdFromType Newtype         =   "ide_newtype"
@@ -465,7 +522,6 @@ stockIdFromType Constructor     =   "ide_konstructor"
 stockIdFromType Field           =   "ide_slot"
 stockIdFromType Method          =   "ide_method"
 stockIdFromType _               =   "ide_other"
-
 
 type Symbol             =   String  -- Qualified or unqualified
 type ClassId            =   String  -- Qualified or unqualified
@@ -573,8 +629,9 @@ data Location           =   Location {
 instance Default ByteString
     where getDefault = BS.empty
 
-data Scope = Local | Package | System
-  deriving (Show, Eq, Ord, Enum, Read)
+data Scope = PackageScope Bool | WorkspaceScope Bool | SystemScope
+    -- True -> with imports, False -> without imports
+  deriving (Show, Eq, Ord, Read)
 
 newtype CandyTable      =   CT (CandyTableForth,CandyTableBack)
 

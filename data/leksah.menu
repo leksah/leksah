@@ -51,17 +51,17 @@
        <separator/>
        <menuitem name="_Next Error" action="NextError" />
        <menuitem name="_Previous Error" action="PreviousError" />
+       <menuitem name="_Add All Imports" action="AddAllImports" />
      </menu>
     <menu name="_Package" action="Package">
        <menuitem name="_New Package" action="NewPackage" />
-       <menuitem name="_Edit Cabal" action="EditPackage" />
+       <menuitem name="_Edit Package" action="EditPackage" />
        <menuitem name="Edit _Flags" action="PackageFlags" />
        <separator/>
        <menuitem name="Clea_n Package" action="CleanPackage" />
        <menuitem name="_Configure Package" action="ConfigPackage" />
        <menuitem name="_Build Package" action="BuildPackage" />
        <menuitem name="_Run" action="RunPackage" />
-       <menuitem name="_Add All Imports" action="AddAllImports" />
        <separator/>
        <menuitem name="C_opy Package" action="CopyPackage" />
        <menuitem name="_Install Package" action="InstallPackage" />

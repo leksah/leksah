@@ -57,6 +57,7 @@ import IDE.Pane.Grep
 import GHC.Unicode (isAlphaNum)
 import IDE.Package (getPackageDescriptionAndPath)
 import Distribution.PackageDescription (allBuildInfo, hsSourceDirs)
+import System.FilePath (dropFileName)
 
 
 data FindState = FindState {
@@ -389,9 +390,10 @@ doGrep fb   = do
         Nothing             -> ideMessage Normal "No package description"
         Just (pd,cabalPath) -> do
             let srcPaths = nub $ concatMap hsSourceDirs $ allBuildInfo pd
+            let dir = dropFileName (cabalPath)
             liftIO $ forkIO $ do
                 (output, pid) <- runTool "grep" ((if caseSensitive then [] else ["-i"])
-                    ++ ["-r", "-E", "-n", "--exclude=*~", regexString] ++ srcPaths)
+                    ++ ["-r", "-E", "-n", "--exclude=*~", regexString] ++ srcPaths) (Just dir)
                 reflectIDE (setGrepResults output) ideR
             return ()
 

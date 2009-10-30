@@ -53,7 +53,7 @@ import Graphics.UI.Editor.MakeEditor (buildEditor,FieldDescription(..),mkField)
 import Graphics.UI.Editor.Parameters (paraMultiSel,Parameter(..),emptyParams,(<<<-),paraName)
 import Graphics.UI.Editor.Simple (boolEditor,okCancelFields,staticListEditor,stringEditor)
 import Graphics.UI.Editor.Basics (eventPaneName,GUIEventSelector(..))
-import IDE.Metainfo.Provider (rebuildActiveInfo)
+import IDE.Metainfo.Provider (rebuildPackageInfo)
 import qualified System.IO.UTF8 as UTF8  (writeFile)
 
 
@@ -67,9 +67,10 @@ data IDEModules     =   IDEModules {
 ,   treeStore       ::   TreeStore (String, [(ModuleDescr,PackageDescr)])
 ,   descrView       ::   TreeView
 ,   descrStore      ::   TreeStore Descr
-,   localScopeB     ::   RadioButton
 ,   packageScopeB   ::   RadioButton
+,   workspaceScopeB ::   RadioButton
 ,   systemScopeB    ::   RadioButton
+,   dependsB        ::   CheckButton
 ,   blacklistB      ::   CheckButton
 ,   oldSelection    ::   IORef SelectionState
 ,   expanderState   ::   IORef ExpanderState
@@ -81,12 +82,16 @@ data ModulesState           =   ModulesState Int (Scope,Bool)
     deriving(Eq,Ord,Read,Show,Typeable)
 
 data ExpanderState =  ExpanderState {
-    localExp            :: ExpanderFacet
-,   localExpNoBlack     :: ExpanderFacet
-,   packageExp          :: ExpanderFacet
-,   packageExpNoBlack   :: ExpanderFacet
-,   systemExp           :: ExpanderFacet
-,   systemExpNoBlack    :: ExpanderFacet
+    packageExp              :: ExpanderFacet
+,   packageExpNoBlack       :: ExpanderFacet
+,   packageDExp             :: ExpanderFacet
+,   packageDExpNoBlack      :: ExpanderFacet
+,   workspaceExp            :: ExpanderFacet
+,   workspaceExpNoBlack     :: ExpanderFacet
+,   workspaceDExp           :: ExpanderFacet
+,   workspaceDExpNoBlack    :: ExpanderFacet
+,   systemExp               :: ExpanderFacet
+,   systemExpNoBlack        :: ExpanderFacet
 }   deriving (Eq,Ord,Show,Read)
 
 type ExpanderFacet      = ([TreePath], [TreePath])
@@ -137,20 +142,16 @@ instance RecoverablePane IDEModules ModulesState IDEM where
         p           <- buildPane pp nb builder
         mod         <-  getModules Nothing
         liftIO $ writeIORef (expanderState mod) exp
-        case scope of
-            Local    -> liftIO $ toggleButtonSetActive (localScopeB mod) True
-            Package  -> liftIO $ toggleButtonSetActive (packageScopeB mod) True
-            System   -> liftIO $ toggleButtonSetActive (systemScopeB mod) True
-        liftIO $ toggleButtonSetActive (blacklistB mod) useBlacklist
+        setScope sc
         liftIO $ panedSetPosition (paned mod) i
         fillModulesList sc
         selectNames se
         applyExpanderState
         return p
     builder pp nb windows = do
-        currentInfo <- readIDE currentInfo
+        packageInfo' <- readIDE packageInfo
         reifyIDE $ \ ideR -> do
-            let forest  = case currentInfo of
+            let forest  = case packageInfo' of
                             Nothing     ->  []
                             Just pair   ->  subForest (buildModulesTree pair)
             treeStore   <-  treeStoreNew forest
@@ -238,25 +239,28 @@ instance RecoverablePane IDEModules ModulesState IDEM where
             (x,y) <- widgetGetSize nb
             panedSetPosition pane' (x `quot` 2)
             box             <-  hBoxNew True 2
-            rb1             <-  radioButtonNewWithLabel "Local"
-            rb2             <-  radioButtonNewWithLabelFromWidget rb1 "Package"
+            rb1             <-  radioButtonNewWithLabel "Package"
+            rb2             <-  radioButtonNewWithLabelFromWidget rb1 "Workspace"
             rb3             <-  radioButtonNewWithLabelFromWidget rb1 "System"
             toggleButtonSetActive rb3 True
+            cb2             <-  checkButtonNewWithLabel "Imports"
             cb              <-  checkButtonNewWithLabel "Blacklist"
 
             boxPackStart box rb1 PackGrow 2
             boxPackStart box rb2 PackGrow 2
             boxPackStart box rb3 PackGrow 2
             boxPackEnd box cb PackNatural 2
+            boxPackEnd box cb2 PackNatural 2
+
 
             boxOuter        <-  vBoxNew False 2
             boxPackStart boxOuter box PackNatural 2
             boxPackStart boxOuter pane' PackGrow 2
-            oldState <- liftIO $ newIORef $ SelectionState Nothing Nothing System False
+            oldState <- liftIO $ newIORef $ SelectionState Nothing Nothing SystemScope False
             expanderState <- liftIO $ newIORef emptyExpansion
-            scopeRef <- newIORef (System,True)
+            scopeRef <- newIORef (SystemScope,True)
             let modules = IDEModules boxOuter pane' treeView treeStore descrView descrStore
-                                rb1 rb2 rb3 cb oldState expanderState
+                                rb1 rb2 rb3 cb2 cb oldState expanderState
             cid3 <- treeView `onRowActivated`
                 (\ treePath _ -> do
                     treeViewExpandRow treeView treePath False
@@ -271,6 +275,7 @@ instance RecoverablePane IDEModules ModulesState IDEM where
             rb2 `onToggled` (reflectIDE scopeSelection ideR)
             rb3 `onToggled` (reflectIDE scopeSelection ideR)
             cb  `onToggled` (reflectIDE scopeSelection ideR)
+            cb2 `onToggled` (reflectIDE scopeSelection ideR)
             sel     <-  treeViewGetSelection treeView
             sel `onSelectionChanged` do
                 fillFacets treeView treeStore descrView descrStore
@@ -286,8 +291,8 @@ instance RecoverablePane IDEModules ModulesState IDEM where
 
 selectIdentifier :: Descr -> IDEAction
 selectIdentifier idDescr = do
-    accessibleInfo' <-  readIDE accessibleInfo
-    currentInfo'    <-  readIDE currentInfo
+    systemInfo'     <-  readIDE systemInfo
+    currentInfo'    <-  readIDE packageInfo
     currentScope    <-  getScope
     case descrModu idDescr of
         Nothing -> return ()
@@ -296,19 +301,19 @@ selectIdentifier idDescr = do
             let mbNeededScope = case currentInfo' of
                                 Just (localScope,packageScope) ->
                                     if Map.member pid (fst localScope)
-                                        then Just Local
+                                        then Just (PackageScope False)
                                         else if Map.member pid (fst packageScope)
-                                                then Just Package
-                                                else case accessibleInfo' of
+                                                then Just (PackageScope True)
+                                                else case systemInfo' of
                                                         Just worldScope ->
                                                             if Map.member pid (fst worldScope)
-                                                                then Just System
+                                                                then Just SystemScope
                                                                 else Nothing
                                                         Nothing -> Nothing
-                                Nothing -> case accessibleInfo' of
+                                Nothing -> case systemInfo' of
                                                 Just worldScope ->
                                                     if Map.member pid (fst worldScope)
-                                                        then Just System
+                                                        then Just SystemScope
                                                         else Nothing
                                                 Nothing -> Nothing
             case mbNeededScope of
@@ -507,45 +512,60 @@ fillModulesList :: (Scope,Bool) -> IDEAction
 fillModulesList (scope,useBlacklist) = do
     mods  <-  getModules Nothing
     prefs                       <-  readIDE prefs
-    currentInfo'                <-  readIDE currentInfo
-    accessibleInfo'             <-  readIDE accessibleInfo
-    case currentInfo' of
-        Nothing             ->  case (scope,accessibleInfo') of
-                                    (System,Just ai@(pm,ps))   ->
-                                        let p2  =   if useBlacklist
-                                                        then (Map.filter (filterBlacklist
-                                                                (packageBlacklist prefs)) pm, ps)
-                                                        else ai
-                                            (Node _ li) = buildModulesTree
-                                                                    ((Map.empty,Map.empty),p2)
-                                        in liftIO $ do
-                                            treeStoreClear (treeStore mods)
-                                            mapM_ (\(e,i) -> treeStoreInsertTree (treeStore mods) [] i e)
-                                                $ zip li [0 .. length li]
-                                    _       -> liftIO $ do
+    case scope of
+        SystemScope -> do
+            accessibleInfo'             <-  readIDE systemInfo
+            case accessibleInfo' of
+                Nothing ->  liftIO $ do
                                         treeStoreClear (treeStore mods)
                                         treeStoreInsertTree (treeStore mods) [] 0 (Node ("",[]) [])
-        Just (l,p)          ->  let (l',p'@(pm,ps)) =   case scope of
-                                                    Local   -> (l,(Map.empty,Map.empty))
-                                                    Package -> (l,p)
-                                                    System   -> case accessibleInfo' of
-                                                                Just ai ->  (l,ai)
-                                                                Nothing ->  (l,p)
-                                    p2      =   if useBlacklist
-                                                    then (Map.filter (filterBlacklist
-                                                            (packageBlacklist prefs)) pm, ps)
-                                                    else p'
-                                    (Node _ li) = buildModulesTree (l',p2)
-                                in liftIO $ do
-                                    emptyModel <- treeStoreNew []
-                                    treeViewSetModel (treeView mods) emptyModel
-                                    treeStoreClear (treeStore mods)
-                                    mapM_ (\(e,i) -> treeStoreInsertTree (treeStore mods) [] i e)
-                                            $ zip li [0 .. length li]
-                                    treeViewSetModel (treeView mods) (treeStore mods)
-                                    treeViewSetEnableSearch (treeView mods) True
-                                    treeViewSetSearchEqualFunc (treeView mods)
-                                        (Just (treeViewSearch (treeView mods) (treeStore mods)))
+                Just (ai@(pm,ps)) ->
+                    let p2  =   if useBlacklist
+                                    then (Map.filter (filterBlacklist
+                                            (packageBlacklist prefs)) pm, ps)
+                                    else ai
+                        (Node _ li) = buildModulesTree ((Map.empty,Map.empty),p2)
+                    in insertIt li mods
+        WorkspaceScope withImports -> do
+            workspaceInfo'           <-  readIDE workspaceInfo
+            packageInfo'             <-  readIDE packageInfo
+            case workspaceInfo' of
+                Nothing ->  insertIt [] mods
+                Just (l,p) ->
+                    let (l',p'@(pm,ps)) =   if withImports
+                                                then (l,p)
+                                                else (l,(Map.empty,Map.empty))
+                        p2              =   if useBlacklist
+                                                then (Map.filter (filterBlacklist
+                                                        (packageBlacklist prefs)) pm, ps)
+                                                else p'
+                        (Node _ li)     =   buildModulesTree (l',p2)
+                    in insertIt li mods
+        PackageScope withImports -> do
+            packageInfo' <- readIDE packageInfo
+            case packageInfo' of
+                Nothing             ->   insertIt [] mods
+                Just (l,p) ->
+                    let (l',p'@(pm,ps)) =   if withImports
+                                                then (l,p)
+                                                else (l,(Map.empty,Map.empty))
+                        p2              =   if useBlacklist
+                                                then (Map.filter (filterBlacklist
+                                                        (packageBlacklist prefs)) pm, ps)
+                                                else p'
+                        (Node _ li)     =   buildModulesTree (l',p2)
+                    in insertIt li mods
+    where
+        insertIt li mods = liftIO $ do
+            emptyModel <- treeStoreNew []
+            treeViewSetModel (treeView mods) emptyModel
+            treeStoreClear (treeStore mods)
+            mapM_ (\(e,i) -> treeStoreInsertTree (treeStore mods) [] i e)
+                    $ zip li [0 .. length li]
+            treeViewSetModel (treeView mods) (treeStore mods)
+            treeViewSetEnableSearch (treeView mods) True
+            treeViewSetSearchEqualFunc (treeView mods)
+                (Just (treeViewSearch (treeView mods) (treeStore mods)))
 
 
 filterBlacklist :: [Dependency] -> PackageDescr -> Bool
@@ -794,29 +814,47 @@ setScope :: (Scope,Bool) -> IDEAction
 setScope (sc,bl) = do
     mods  <-  getModules Nothing
     case sc of
-        Local -> liftIO $ toggleButtonSetActive (localScopeB mods) True
-        Package -> liftIO $ toggleButtonSetActive (packageScopeB mods) True
-        System -> liftIO $ toggleButtonSetActive (systemScopeB mods) True
+        (PackageScope False) -> liftIO $ do
+            toggleButtonSetActive (packageScopeB mods) True
+            widgetSetSensitive (dependsB mods) True
+            toggleButtonSetActive (dependsB mods) False
+        (PackageScope True) -> liftIO $ do
+            toggleButtonSetActive (packageScopeB mods) True
+            widgetSetSensitive (dependsB mods) True
+            toggleButtonSetActive (dependsB mods) True
+        (WorkspaceScope False) -> liftIO $ do
+            toggleButtonSetActive (workspaceScopeB mods) True
+            widgetSetSensitive (dependsB mods) True
+            toggleButtonSetActive (dependsB mods) False
+        (WorkspaceScope True) -> liftIO $ do
+            toggleButtonSetActive (workspaceScopeB mods) True
+            widgetSetSensitive (dependsB mods) True
+            toggleButtonSetActive (dependsB mods) True
+        SystemScope -> liftIO $ do
+            toggleButtonSetActive (systemScopeB mods) True
+            widgetSetSensitive (dependsB mods) False
     liftIO $ toggleButtonSetActive (blacklistB mods) bl
     selectScope (sc,bl)
 
 getScope :: IDEM (Scope,Bool)
 getScope = do
     mods  <-  getModules Nothing
-    rb1s                <-  liftIO $ toggleButtonGetActive (localScopeB mods)
-    rb2s                <-  liftIO $ toggleButtonGetActive (packageScopeB mods)
+    rb1s                <-  liftIO $ toggleButtonGetActive (packageScopeB mods)
+    rb2s                <-  liftIO $ toggleButtonGetActive (workspaceScopeB mods)
     rb3s                <-  liftIO $ toggleButtonGetActive (systemScopeB mods)
+    cb1s                <-  liftIO $ toggleButtonGetActive (dependsB mods)
     cbs                 <-  liftIO $ toggleButtonGetActive (blacklistB mods)
     let scope           =   if rb1s
-                                then Local
+                                then PackageScope cb1s
                                 else if rb2s
-                                    then Package
-                                    else System
+                                    then WorkspaceScope cb1s
+                                    else SystemScope
     return (scope,cbs)
 
 scopeSelection :: IDEAction
 scopeSelection = do
     (sc,bl) <- getScope
+    setScope (sc,bl)
     selectScope (sc,bl)
 
 selectScope :: (Scope,Bool) -> IDEAction
@@ -959,7 +997,7 @@ addModule treeView store = do
                                     liftIO $ UTF8.writeFile target template
                                     addModuleToPackageDescr moduleName isExposed
                                     packageConfig
-                                    rebuildActiveInfo
+                                    rebuildPackageInfo
                                     fileOpenThis target
 
 
@@ -1017,7 +1055,7 @@ moduleFields list = VFD emptyParams [
 
 -- * Expander State
 
-emptyExpansion      = ExpanderState  ([],[])  ([],[])  ([],[])  ([],[])  ([],[])  ([],[])
+emptyExpansion      = ExpanderState  ([],[])  ([],[])  ([],[])  ([],[])  ([],[]) ([],[])  ([],[])  ([],[])  ([],[]) ([],[])
 
 recordExpanderState :: IDEAction
 recordExpanderState = do
@@ -1029,12 +1067,18 @@ recordExpanderState = do
         paths2 <-  getExpandedRows (descrView m) (descrStore m)
         modifyIORef (expanderState m) (\ es ->
             case (sc,bl) of
-                (Local,True)    -> es{localExp          = (paths1,paths2)}
-                (Local,False)   -> es{localExpNoBlack   = (paths1,paths2)}
-                (Package,True)  -> es{packageExp        = (paths1,paths2)}
-                (Package,False) -> es{packageExpNoBlack = (paths1,paths2)}
-                (System,True)   -> es{systemExp         = (paths1,paths2)}
-                (System,False)  -> es{systemExpNoBlack  = (paths1,paths2)})
+                ((PackageScope False),True)    -> es{packageExp          = (paths1,paths2)}
+                ((PackageScope False),False)   -> es{packageExpNoBlack   = (paths1,paths2)}
+                (PackageScope True,True)  -> es{packageDExp        = (paths1,paths2)}
+                (PackageScope True,False) -> es{packageDExpNoBlack = (paths1,paths2)}
+
+                ((WorkspaceScope False),True)    -> es{workspaceExp          = (paths1,paths2)}
+                ((WorkspaceScope False),False)   -> es{workspaceExpNoBlack   = (paths1,paths2)}
+                (WorkspaceScope True,True)  -> es{workspaceDExp        = (paths1,paths2)}
+                (WorkspaceScope True,False) -> es{workspaceDExpNoBlack = (paths1,paths2)}
+
+                (SystemScope,True)   -> es{systemExp         = (paths1,paths2)}
+                (SystemScope,False)  -> es{systemExpNoBlack  = (paths1,paths2)})
         st <- readIORef (expanderState m)
         return ()
 
@@ -1070,12 +1114,16 @@ applyExpanderState = do
     liftIO $ do
         es <- readIORef (expanderState m)
         let (paths1,paths2) = case (sc,bl) of
-                                (Local,True)    -> localExp es
-                                (Local,False)   -> localExpNoBlack es
-                                (Package,True)  -> packageExp es
-                                (Package,False) -> packageExpNoBlack es
-                                (System,True)   -> systemExp es
-                                (System,False)  -> systemExpNoBlack es
+                                ((PackageScope False),True)      -> packageExp es
+                                ((PackageScope False),False)     -> packageExpNoBlack es
+                                (PackageScope True,True)         -> packageDExp es
+                                (PackageScope True,False)        -> packageDExpNoBlack es
+                                ((WorkspaceScope False),True)    -> workspaceExp es
+                                ((WorkspaceScope False),False)   -> workspaceExpNoBlack es
+                                (WorkspaceScope True,True)       -> workspaceDExp es
+                                (WorkspaceScope True,False)      -> workspaceDExpNoBlack es
+                                (SystemScope,True)               -> systemExp es
+                                (SystemScope,False)              -> systemExpNoBlack es
         mapM_ (\p -> treeViewExpandToPath (treeView m) p) paths1
         mapM_ (\p -> treeViewExpandToPath (descrView m) p) paths2
 
@@ -1124,9 +1172,9 @@ replayScopeHistory sc bl = do
     mods <-  getModules Nothing
     liftIO $ do
         toggleButtonSetActive (blacklistB mods) bl
-        toggleButtonSetActive (localScopeB mods) (sc == Local)
-        toggleButtonSetActive (packageScopeB mods) (sc == Package)
-        toggleButtonSetActive (systemScopeB mods) (sc == System)
+        toggleButtonSetActive (packageScopeB mods) (sc == (PackageScope False))
+        toggleButtonSetActive (workspaceScopeB mods) (sc == PackageScope True)
+        toggleButtonSetActive (systemScopeB mods) (sc == SystemScope)
     setScope (sc,bl)
     oldSel <- liftIO $ readIORef (oldSelection mods)
     liftIO $ writeIORef (oldSelection mods) (oldSel{scope'= sc, blacklist' = bl})

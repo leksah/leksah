@@ -276,7 +276,6 @@ initPackage :: FilePath
 initPackage packageDir packageD packageDescr panePath nb modules afterSaveAction = do
     let fields =  trace ("initPackage called " ++ packageDir) $ flattenFieldDescription packageDescr
     let initialPackagePath = packageDir </> (display . pkgName . package . pd) packageD ++ ".cabal"
-    liftIO $ setCurrentDirectory packageDir
     packageInfos <- inGhc $ getInstalledPackageInfos
     buildThisPane panePath nb
         (builder' packageDir packageD packageDescr afterSaveAction

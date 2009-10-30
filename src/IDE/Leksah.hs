@@ -131,9 +131,7 @@ runMain = handleTopExceptions $ do
                                         _             -> False) o
     when (not (null extract)) $ case head extract of
                                 ExtractTars (Just path) -> do
-                                            dir <- getCurrentDirectory
                                             autoExtractTarFiles path
-                                            setCurrentDirectory dir
                                 _                       -> do
                                     case autoExtractTars prefs of
                                         Nothing         -> return ()
@@ -216,13 +214,13 @@ startGUI sessionFilename iprefs = do
           ,   prefs         =   startupPrefs
           ,   workspace     =   Nothing
           ,   activePack    =   Nothing
-          ,   packageCache  =   Map.empty
-          ,   projFilesCache =  Map.empty
+          ,   bufferProjectCache =  Map.empty
           ,   allLogRefs    =   []
           ,   currentHist   =   0
           ,   currentEBC    =   (Nothing, Nothing, Nothing)
-          ,   accessibleInfo     =   Nothing
-          ,   currentInfo   =   Nothing
+          ,   systemInfo    =   Nothing
+          ,   packageInfo   =   Nothing
+          ,   workspaceInfo =   Nothing
           ,   handlers      =   Map.empty
           ,   currentState  =   IsStartingUp
           ,   guiHistory    =   (False,[],-1)

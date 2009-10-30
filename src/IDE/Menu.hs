@@ -57,7 +57,7 @@ import IDE.Pane.References
 import Paths_leksah
 import IDE.GUIHistory
 import IDE.Metainfo.Provider
-    (infoForActivePackage, rebuildLibInfo, rebuildActiveInfo)
+    (updateInfo, buildSystemInfo, rebuildPackageInfo)
 import IDE.Pane.Info (setSymbol)
 import IDE.NotebookFlipper
 import IDE.ImportTool (addAllImports)
@@ -188,7 +188,7 @@ mkActions =
     ,AD "PackageFlags" "Edit Flags" (Just "Edit the package flags") Nothing
         (getFlags Nothing >>= \ p -> displayPane p False) [] False
     ,AD "CleanPackage" "Cl_ean Package" (Just "Cleans the package") (Just "ide_clean")
-        packageClean [] False
+        (packageClean Nothing) [] False
     ,AD "ConfigPackage" "_Configure Package" (Just "Configures the package") (Just "ide_configure")
         packageConfig [] False
     ,AD "BuildPackage" "_Build Package" (Just "Builds the package") (Just "ide_make")
@@ -288,9 +288,9 @@ mkActions =
 
     ,AD "Metadata" "_Metadata" Nothing Nothing (return ()) [] False
     ,AD "UpdateMetadataCurrent" "_Update Project" (Just "Updates metadata for the current project")  (Just "ide_rebuild_meta")
-        rebuildActiveInfo [] False
+        rebuildPackageInfo [] False
     ,AD "UpdateMetadataLib" "_Update Lib" Nothing Nothing
-        rebuildLibInfo [] False
+        buildSystemInfo [] False
 
     ,AD "Session" "_Session" Nothing Nothing (return ()) [] False
     ,AD "SaveSession" "_Save Session" Nothing Nothing
@@ -749,12 +749,12 @@ registerEvents =    do
         (Left (\ e@(SelectInfo str)     -> setSymbol str >> return e))
     registerEvent stRef "SelectIdent"
         (Left (\ e@(SelectIdent id)     -> selectIdentifier id >> return e))
-    registerEvent stRef "CurrentInfo"
-        (Left (\ CurrentInfo            -> reloadKeepSelection >> return CurrentInfo))
+    registerEvent stRef "InfoChanged"
+        (Left (\ e@InfoChanged          -> reloadKeepSelection >> return e))
     registerEvent stRef "ActivePack"
-        (Left (\ ActivePack             -> (infoForActivePackage :: IDEAction) >> return ActivePack))
+        (Left (\ e@(ActivePack _)       -> updateInfo >> return e))
     registerEvent stRef "WorkspaceChanged"
-        (Left (\ WorkspaceChanged       -> updateWorkspace >> return WorkspaceChanged))
+        (Left (\ e@WorkspaceChanged       -> updateWorkspace >> return e))
     registerEvent stRef "RecordHistory"
         (Left (\ rh@(RecordHistory h)   -> recordHistory h >> return rh))
     registerEvent stRef "Sensitivity"
@@ -766,7 +766,7 @@ registerEvents =    do
     registerEvent stRef "LoadSession"
         (Left (\ e@(LoadSession fp)     -> loadSession fp >> return e))
     registerEvent stRef "SaveSession"
-        (Left (\ e@(SaveSession fp)     -> saveSessionAs fp >> return e))
+        (Left (\ e@(SaveSession fp)     -> saveSessionAs fp Nothing >> return e))
     registerEvent stRef "UpdateRecent"
         (Left (\ e@UpdateRecent         -> updateRecentEntries >> return e))
     registerEvent stRef "VariablesChanged"

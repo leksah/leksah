@@ -108,7 +108,7 @@ addImport error descrList =
     case parseNotInScope (refDescription error) of
         Nothing -> return (True,descrList)
         Just nis -> do
-            currentInfo' <- readIDE currentInfo
+            currentInfo' <- readIDE packageInfo
             case currentInfo' of
                 Nothing -> return (False,descrList)
                 Just ((_,symbolTable1),(_,symbolTable2)) ->

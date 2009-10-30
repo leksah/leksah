@@ -107,12 +107,12 @@ collectSources sourceMap pdescr = do
                                     ++ ["-i" ++ dir | dir <- buildPaths]
                                     ++ ["-X" ++ show e | e <- nub $ concatMap extensions bis]
             -- trace ("flags " ++ show flags) $ return ()
-            dflags3          <-  getSessionDynFlags
+            dflags3         <-  getSessionDynFlags
             (dflags4,_,_)   <-  parseDynamicFlags dflags3 (map noLoc flags)
             let dflags5     =   dopt_set (dopt_set dflags4 Opt_Haddock) Opt_ReadUserPackageConf
             setSessionDynFlags dflags5
 
-            let allMods     =  nub (exeModules pkgDescr ++ libModules pkgDescr)
+            let allMods     =   nub (exeModules pkgDescr ++ libModules pkgDescr)
             let exposedMods =   map (modu . moduleIdMD) (exposedModulesPD pdescr)
             sourceFiles     <-  liftIO $ mapM (findSourceFile
                                                     buildPaths
@@ -142,9 +142,9 @@ collectSourcesForModule (moduleDescrs,failureCount) (moduleDescr,mbfp) =
             sysMessage Normal $ "No source for module " ++ (display $ modu $ moduleIdMD moduleDescr)
             return(moduleDescr : moduleDescrs, failureCount+1)
         Just fp ->  do
-            session <- getSession
+            session          <-  getSession
             (_,fp')          <-  preprocess session (fp,Nothing)
-            dynFlags        <-  getSessionDynFlags
+            dynFlags         <-  getSessionDynFlags
             liftIO $ do
                 stringBuffer    <-  hGetStringBuffer fp'
                 parseResult     <-  myParseModule dynFlags fp' (Just stringBuffer)
@@ -366,10 +366,7 @@ buildSourceForPackageDB :: Prefs -> IO ()
 buildSourceForPackageDB prefs = do
     case autoExtractTars prefs of
         Nothing     -> return ()
-        Just path   -> do
-            dir <- getCurrentDirectory
-            autoExtractTarFiles path
-            setCurrentDirectory dir
+        Just path   -> autoExtractTarFiles path
     let dirs        =   sourceDirectories prefs
     cabalFiles      <-  mapM allCabalFiles dirs
     fCabalFiles     <-  mapM canonicalizePath $ concat cabalFiles

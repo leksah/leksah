@@ -29,7 +29,6 @@ module IDE.Package (
 ,   activatePackage
 ,   deactivatePackage
 ,   getActivePackage
-,   belongsToActivePackage -- :: FilePath -> IDEM Bool
 
 ,   packageInstall
 ,   packageRegister
@@ -59,8 +58,7 @@ import Distribution.PackageDescription.Configuration
 import Distribution.Verbosity
 import System.FilePath
 import Control.Concurrent
-import System.Directory
-    (doesFileExist, setCurrentDirectory)
+import System.Directory (setCurrentDirectory)
 import Prelude hiding (catch)
 import Data.Maybe (isJust, fromJust)
 import Control.Exception (SomeException(..), catch)
@@ -68,10 +66,12 @@ import Control.Exception (SomeException(..), catch)
 import IDE.Core.State
 import IDE.Pane.PackageEditor
 import IDE.Pane.SourceBuffer
-import IDE.Pane.PackageFlags
-import Distribution.Text (display)
+import Distribution.Text (disp, display)
 import IDE.FileUtils
-    (moduleNameFromFilePath', isSubPath, getConfigFilePathForLoad)
+    (moduleNameFromFilePath,
+     idePackageFromPath,
+     isSubPath,
+     getConfigFilePathForLoad)
 import IDE.LogRef
 import IDE.Debug
 import MyMissing (replace)
@@ -81,18 +81,10 @@ import qualified System.IO.UTF8 as UTF8  (readFile)
 import IDE.Tool (ToolOutput(..), runTool, newGhci, ToolState(..))
 
 #if defined(mingw32_HOST_OS) || defined(__MINGW32__)
-import System.Process (getProcessExitCode, ProcessHandle(..))
+import System.Process (getProcessExitCode)
 import Data.Maybe (isNothing)
-import GHC.ConsoleHandler (Handler(..), installHandler)
 import System.Win32
-    (th32SnapEnumProcesses,
-     DWORD(..),
-     cTRL_BREAK_EVENT,
-     generateConsoleCtrlEvent,
-     tH32CS_SNAPPROCESS,
-     withTh32Snap)
-import System.Process.Internals
-    (withProcessHandle, ProcessHandle__(..))
+    (DWORD(..))
 #else
 import System.Posix
     (getGroupProcessStatus,
@@ -106,11 +98,12 @@ import Foreign.C (Errno(..), getErrno)
 -- Leave at least one import ofter this #endif
 -- so the auto import tool does not add stuf insied the
 import IDE.Metainfo.Provider
-    (rebuildActiveInfo)
+    (rebuildPackageInfo)
 import qualified Data.Set as  Set (member, fromList)
-import qualified Data.Map as  Map (insert, lookup, empty)
-import IDE.TextEditor (getBuffer)
-import IDE.SourceCandy (getCandylessText)
+import qualified Data.Map as  Map (insert, lookup)
+import Debug.Trace (trace)
+import Text.PrettyPrint (render)
+
 
 #if defined(mingw32_HOST_OS) || defined(__MINGW32__)
 foreign import stdcall unsafe "winbase.h GetCurrentProcessId"
@@ -120,60 +113,27 @@ foreign import stdcall unsafe "winbase.h GetProcessId"
     c_GetProcessId :: DWORD -> IO DWORD
 #endif
 
-belongsToActivePackage :: IDEBuffer -> IDEM Bool
-belongsToActivePackage ideBuf =
-    case fileName ideBuf of
-        Nothing -> return False
-        Just fp -> do
-            projFilesCache' <-  readIDE projFilesCache
-            activePack'     <-  readIDE activePack
-            case Map.lookup fp projFilesCache' of
-                Just b  -> return b
-                Nothing -> case activePack' of
-                                Nothing   -> return False
-                                Just pack -> let basePath = dropFileName $ cabalFile pack in do
-                                             r <- if isSubPath basePath fp
-                                                    then
-                                                        let srcPaths = map (\srcP -> basePath </> srcP) (srcDirs pack)
-                                                            relPaths = map (\p -> makeRelative p fp) srcPaths in
-                                                        if or (map (\p -> Set.member p (extraSrcs pack)) relPaths)
-                                                            then return True
-                                                            else do
-                                                            --        do
-                                                                gtkbuf <- getBuffer (sourceView ideBuf)
-                                                                candy  <- readIDE candy
-                                                                text   <- getCandylessText candy gtkbuf
-                                                                mbMn <- liftIO $ moduleNameFromFilePath' fp text
-                                                                case mbMn of
-                                                                    Nothing -> return False
-                                                                    Just mn -> return (Set.member mn (modules pack))
-                                                    else return False
-                                             modifyIDE_ (\ide -> ide{projFilesCache =
-                                                Map.insert fp r projFilesCache'})
-                                             return r
-
-{--
 -- | Returns the package, to which this buffer belongs, if possible
 belongsToPackage :: IDEBuffer -> IDEM(Maybe IDEPackage)
-belongsToPackage ideBuf =
-    case fileName ideBuf of
-        Nothing -> return Nothing
-        Just fp -> do
-            projFilesCache' <-  readIDE projFilesCache
-            case Map.lookup fp projFilesCache' of
-                Just b  -> return b
-                Nothing -> case workspace of
-                                Nothing   -> return Nothing
-                                Just workspace -> do
-                                    mbMn <- moduleNameForBuffer ideBuf
-                                    case foldl (belongsToPackage' fp mbMn) Nothing (packages workspace) of
-                                        Nothing -> return Nothing
-                                        Just p -> do
-                                            modifyIDE_ (\ide -> ide{projFilesCache =
-                                                Map.insert fp (Just p) projFilesCache'})
-                                            return (Just p)
+belongsToPackage ideBuf | fileName ideBuf == Nothing = return Nothing
+                        | otherwise                 = do
+    bufferToProject' <-  readIDE bufferProjectCache
+    ws               <-  readIDE workspace
+    let fp           =   fromJust (fileName ideBuf)
+    case Map.lookup fp bufferToProject' of
+        Just p  -> return p
+        Nothing -> case ws of
+                        Nothing   -> return Nothing
+                        Just workspace -> do
+                            mbMn <- liftIO $ moduleNameFromFilePath fp
+                            let res = foldl (belongsToPackage' fp mbMn) Nothing (wsPackages workspace)
+                            trace (if isJust res
+                                        then "belongsToPackage: " ++ fp ++ " is " ++  (render . disp . packageId . fromJust) res
+                                        else "belongsToPackage: no package for " ++ fp)  $ do
+                               modifyIDE_ (\ide -> ide{bufferProjectCache = Map.insert fp res bufferToProject'})
+                               return res
 
-belongsToPackage' ::  FilePath -> Maybe String -> Maybe IDEPackage -> IDEPackage -> Maybe IDEPackage
+belongsToPackage' ::  FilePath -> Maybe ModuleName -> Maybe IDEPackage -> IDEPackage -> Maybe IDEPackage
 belongsToPackage' _ _ r@(Just pack) _ = r
 belongsToPackage' fp mbModuleName Nothing pack =
     let basePath =  dropFileName $ cabalFile pack
@@ -182,19 +142,21 @@ belongsToPackage' fp mbModuleName Nothing pack =
             let srcPaths = map (\srcP -> basePath </> srcP) (srcDirs pack)
                 relPaths = map (\p -> makeRelative p fp) srcPaths
             in if or (map (\p -> Set.member p (extraSrcs pack)) relPaths)
-                then return (Just pack)
+                then Just pack
                 else case mbModuleName of
-                        Nothing -> return Nothing
+                        Nothing -> Nothing
                         Just mn -> if Set.member mn (modules pack)
-                                        then return (Just pack)
-                                        else return Nothing
---}
+                                        then Just pack
+                                        else Nothing
+        else Nothing
+
+belongsToWorkspace b =  belongsToPackage b >>= return . isJust
 
 packageNew :: IDEAction
 packageNew = packageNew' (\fp -> do
     triggerEventIDE (WorkspaceAddPackage fp)
-    activatePackage fp
-    return ())
+    mbPack <- idePackageFromPath fp
+    activatePackage mbPack)
 
 packageOpen :: IDEAction
 packageOpen = packageOpenThis Nothing
@@ -213,7 +175,7 @@ getActivePackage = do
     active <- readIDE activePack
     case active of
         Just p -> return (Just p)
-        Nothing -> selectActivePackage Nothing
+        Nothing -> return Nothing
 
 selectActivePackage :: Maybe FilePath -> IDEM (Maybe IDEPackage)
 selectActivePackage mbFilePath' = do
@@ -223,49 +185,28 @@ selectActivePackage mbFilePath' = do
                     Just fp -> return (Just fp)
     case mbFilePath of
         Nothing -> return Nothing
-        Just filePath -> activatePackage filePath
+        Just filePath -> idePackageFromPath filePath >>= (\ p -> activatePackage p >> return p)
 
-activatePackage :: FilePath -> IDEM (Maybe IDEPackage)
-activatePackage filePath = do
-    let ppath = dropFileName filePath
-    mbPackageD <- reifyIDE (\ideR -> catch (do
-        liftIO $ setCurrentDirectory ppath
-        pd <- readPackageDescription normal filePath
-        return (Just (flattenPackageDescription pd)))
-            (\(e :: SomeException) -> do
-                reflectIDE (ideMessage Normal ("Can't activate package " ++(show e))) ideR
-                return Nothing))
-    case mbPackageD of
-        Nothing -> return (Nothing)
-        Just packageD -> do
-            let modules = Set.fromList $ libModules packageD ++ exeModules packageD
-            let files = Set.fromList $ extraSrcFiles packageD ++ map modulePath (executables packageD)
-            let srcDirs = nub $ concatMap hsSourceDirs (allBuildInfo packageD)
-            let packp = IDEPackage (package packageD) filePath (buildDepends packageD) modules
-                            files srcDirs ["--user"] [] [] [] [] [] [] []
-            pack <- (do
-                flagFileExists <- liftIO $ doesFileExist (ppath </> "IDE.flags")
-                if flagFileExists
-                    then liftIO $ readFlags (ppath </> "IDE.flags") packp
-                    else return packp)
-            modifyIDE_ (\ide -> ide{activePack = (Just pack), packageCache = Map.empty})
-            ide <- getIDE
-            triggerEventIDE ActivePack
-            triggerEventIDE (Sensitivity [(SensitivityProjectActive,True)])
-            mbWs <- readIDE workspace
-            let wsStr = case mbWs of
-                    Nothing -> ""
-                    Just ws -> wsName ws
-            let txt = wsStr ++ " > " ++ fromPackageIdentifier (packageId pack)
-            triggerEventIDE (StatusbarChanged [CompartmentPackage txt])
-            window <- getMainWindow
-            return (Just pack)
+activatePackage :: Maybe IDEPackage -> IDEM ()
+activatePackage mbPack@(Just pack) = do
+        modifyIDE_ (\ide -> ide{activePack = mbPack})
+        liftIO $ setCurrentDirectory (dropFileName (cabalFile pack))
+        triggerEventIDE (ActivePack mbPack)
+        triggerEventIDE (Sensitivity [(SensitivityProjectActive,True)])
+        mbWs <- readIDE workspace
+        let wsStr = case mbWs of
+                Nothing -> ""
+                Just ws -> wsName ws
+        let txt = wsStr ++ " > " ++ fromPackageIdentifier (packageId pack)
+        triggerEventIDE (StatusbarChanged [CompartmentPackage txt])
+        return ()
+activatePackage Nothing = return ()
 
 deactivatePackage :: IDEAction
 deactivatePackage = do
     oldActivePack <- readIDE activePack
-    modifyIDE_ (\ide -> ide{activePack = Nothing, packageCache = Map.empty})
-    triggerEventIDE ActivePack
+    modifyIDE_ (\ide -> ide{activePack = Nothing})
+    triggerEventIDE (ActivePack Nothing)
     when (isJust oldActivePack) $ do
         triggerEventIDE (Sensitivity [(SensitivityProjectActive,False)])
         return ()
@@ -284,8 +225,9 @@ packageConfig = catchIDE (do
             Nothing         -> return ()
             Just package    -> do
                 mbPackageD  <- reifyIDE (\ideR ->  catch (do
+                    let dir = dropFileName (cabalFile package)
                     reflectIDE (runExternalTool "Configuring" "runhaskell" (["Setup","configure"]
-                                                    ++ (configFlags package)) logOutput) ideR
+                                                    ++ (configFlags package)) (Just dir) logOutput) ideR
                     pd  <- readPackageDescription normal (cabalFile package)
                     return (Just (flattenPackageDescription pd)))
                     (\(e :: SomeException) -> do
@@ -296,23 +238,23 @@ packageConfig = catchIDE (do
                         let modules = Set.fromList $ libModules packageD ++ exeModules packageD
                         let files = Set.fromList $ extraSrcFiles packageD ++ map modulePath (executables packageD)
                         let srcDirs = nub $ concatMap hsSourceDirs (allBuildInfo packageD)
-                        modifyIDE_ (\ide -> ide{activePack =
-                            Just package{depends=buildDepends packageD, modules = modules,
-                                         extraSrcs = files, srcDirs = srcDirs}})
-                        triggerEventIDE ActivePack
+                        let pack = Just package{depends=buildDepends packageD, modules = modules,
+                                         extraSrcs = files, srcDirs = srcDirs}
+                        modifyIDE_ (\ide -> ide{activePack = pack})
+                        triggerEventIDE (ActivePack pack)
                         return ()
                     Nothing -> return ())
         (\(e :: SomeException) -> putStrLn (show e))
 
-runExternalTool :: String -> FilePath -> [String] -> ([ToolOutput] -> IDEAction) -> IDEAction
-runExternalTool description executable args handleOutput = do
-        prefs          <- readIDE prefs
+runExternalTool :: String -> FilePath -> [String] -> Maybe FilePath -> ([ToolOutput] -> IDEAction) -> IDEAction
+runExternalTool description executable args mbDir handleOutput = do
+        prefs          <- trace ("runExternalTool " ++ executable) $ readIDE prefs
         alreadyRunning <- isRunning
         unless alreadyRunning $ do
-            when (saveAllBeforeBuild prefs) (do fileSaveAll belongsToActivePackage; return ())
+            when (saveAllBeforeBuild prefs) (do fileSaveAll belongsToWorkspace; return ())
             triggerEventIDE (StatusbarChanged [CompartmentState description])
             reifyIDE (\ideR -> forkIO $ do
-                (output, pid) <- runTool executable args
+                (output, pid) <- runTool executable args mbDir
                 reflectIDE (do
                     modifyIDE_ (\ide -> ide{runningTool = Just pid})
                     handleOutput output) ideR)
@@ -320,71 +262,81 @@ runExternalTool description executable args handleOutput = do
 
 runCabalBuild :: Bool -> IDEPackage -> IDEAction
 runCabalBuild backgroundBuild package = do
-        prefs       <- readIDE prefs
-        let args = (["Setup","build"] ++
-                    if ((not backgroundBuild) || (backgroundLink prefs))
-                            then []
-                            else ["--ghc-options=-c", "--with-ar=true", "--with-ld=true"]
-                    ++ buildFlags package)
-        runExternalTool "Building" "runhaskell" args $ \output -> do
-            logOutputForBuild backgroundBuild output
-            errs <- readIDE errorRefs
-            when ((not backgroundBuild)
-                && (collectAfterBuild prefs)
-                && (not (any isError errs))) $ do
-                    ideMessage Normal "Update meta info for active package"
-                    rebuildActiveInfo
+    prefs       <- trace ("runCabalBuild called with " ++ show package) $ readIDE prefs
+    let dir = dropFileName (cabalFile package)
+    let args = (["Setup","build"] ++
+                if ((not backgroundBuild) || (backgroundLink prefs))
+                        then []
+                        else ["--ghc-options=-c", "--with-ar=true", "--with-ld=true"]
+                ++ buildFlags package)
+    runExternalTool "Building" "runhaskell" args (Just dir) $ \output -> do
+        logOutputForBuild backgroundBuild output
+        errs <- readIDE errorRefs
+        when ((not backgroundBuild)
+            && (collectAfterBuild prefs)
+            && (not (any isError errs))) $ do
+                ideMessage Normal "Update meta info for active package"
+                rebuildPackageInfo
 
 packageBuild :: Bool -> IDEAction
 packageBuild backgroundBuild = catchIDE (do
-        mbPackage   <- if backgroundBuild
-                            then readIDE activePack
-                            else getActivePackage
-        ideR        <- ask
-        prefs       <- readIDE prefs
-        case mbPackage of
-            Nothing         -> return ()
-            Just package    -> do
-                modified <- if saveAllBeforeBuild prefs
-                                then fileCheckAll belongsToActivePackage
-                                else return False
-                when (not backgroundBuild || modified) $ do
-                    maybeGhci <- readIDE ghciState
-                    case maybeGhci of
-                        Nothing -> do
-                            alreadyRunning <- isRunning
-                            if alreadyRunning
-                                then do
-                                    interruptBuild
-                                    when (not backgroundBuild) $ liftIO $ do
-                                        timeoutAddFull (do
-                                            reflectIDE (do packageBuild False; return False) ideR
-                                            return False) priorityDefaultIdle 100
-                                        return ()
-                                else runCabalBuild backgroundBuild package
-                        Just ghci -> do
-                            ready <- liftIO $ isEmptyMVar (currentToolCommand ghci)
-                            when ready $ do
-                                when (saveAllBeforeBuild prefs) (do fileSaveAll belongsToActivePackage; return ())
-                                executeDebugCommand ":reload" $ logOutputForBuild backgroundBuild
-        )
-        (\(e :: SomeException) -> putStrLn (show e))
+    mbPackage   <- if backgroundBuild
+                        then readIDE activePack
+                        else getActivePackage
+    ideR        <- ask
+    prefs       <- readIDE prefs
+    case mbPackage of
+        Nothing         -> return ()
+        Just package    -> do
+            modifiedPacks <- if saveAllBeforeBuild prefs
+                                then fileCheckAll belongsToPackage
+                                else return []
+            let isModified = not (null modifiedPacks)
+            when (not backgroundBuild || isModified) $ do
+                maybeGhci <- readIDE ghciState
+                case maybeGhci of
+                    Nothing -> do
+                        alreadyRunning <- isRunning
+                        if alreadyRunning
+                            then do
+                                interruptBuild
+                                when (not backgroundBuild) $ liftIO $ do
+                                    timeoutAddFull (do
+                                        reflectIDE (do packageBuild False; return False) ideR
+                                        return False) priorityDefaultIdle 1000
+                                    return ()
+                            else runCabalBuild backgroundBuild
+                                      (if backgroundBuild && isModified then head modifiedPacks else package)
+                    Just ghci -> do
+                        ready <- liftIO $ isEmptyMVar (currentToolCommand ghci)
+                        when ready $ do
+                            when (saveAllBeforeBuild prefs) (do fileSaveAll belongsToWorkspace; return ())
+                            executeDebugCommand ":reload" $ logOutputForBuild backgroundBuild
+    )
+    (\(e :: SomeException) -> sysMessage Normal (show e))
 
 packageDoc :: IDEAction
 packageDoc = catchIDE (do
         mbPackage   <- getActivePackage
         case mbPackage of
             Nothing         -> return ()
-            Just package    -> runExternalTool "Documenting" "runhaskell" (["Setup","haddock"]
-                                                ++ (haddockFlags package)) logOutput)
+            Just package    -> let dir = dropFileName (cabalFile package)
+                               in runExternalTool "Documenting" "runhaskell" (["Setup","haddock"]
+                                                ++ (haddockFlags package)) (Just dir) logOutput)
         (\(e :: SomeException) -> putStrLn (show e))
 
-packageClean :: IDEAction
-packageClean = do
+packageClean :: Maybe IDEPackage -> IDEAction
+packageClean Nothing = do
     mbPackage   <- getActivePackage
     case mbPackage of
         Nothing         -> return ()
-        Just package    -> runExternalTool "Cleaning" "runhaskell" ["Setup","clean"] logOutput
+        Just package    -> packageClean' package
+packageClean (Just package) = packageClean' package
+
+packageClean' :: IDEPackage -> IDEAction
+packageClean' package =
+    let dir = dropFileName (cabalFile package)
+    in runExternalTool "Cleaning" "runhaskell" ["Setup","clean"] (Just dir) logOutput
 
 packageCopy :: IDEAction
 packageCopy = catchIDE (do
@@ -395,8 +347,9 @@ packageCopy = catchIDE (do
             Just fp ->
                 case mbPackage of
                     Nothing         -> return ()
-                    Just package    -> runExternalTool "Copying" "runhaskell" (["Setup","copy"]
-                                                ++ ["--destdir=" ++ fp]) logOutput)
+                    Just package    -> let dir = dropFileName (cabalFile package)
+                                       in runExternalTool "Copying" "runhaskell" (["Setup","copy"]
+                                                ++ ["--destdir=" ++ fp]) (Just dir) logOutput)
         (\(e :: SomeException) -> putStrLn (show e))
 
 packageRun :: IDEAction
@@ -413,7 +366,8 @@ packageRun = catchIDE (do
                         case executables pd of
                             (Executable name _ _):_ -> do
                                 let path = "dist/build" </> name </> name
-                                runExternalTool ("Running "++name) path (exeFlags package) logOutput
+                                let dir = dropFileName (cabalFile package)
+                                runExternalTool ("Running " ++ name) path (exeFlags package) (Just dir) logOutput
                             otherwise -> do
                                 sysMessage Normal "no executable in selected package"
                                 return ()
@@ -432,8 +386,9 @@ packageInstall = catchIDE (do
         mbPackage   <- getActivePackage
         case mbPackage of
             Nothing         -> return ()
-            Just package    -> runExternalTool "Installing" "runhaskell" (["Setup","install"]
-                                                ++ (installFlags package)) logOutput)
+            Just package    -> let dir = dropFileName (cabalFile package)
+                               in runExternalTool "Installing" "runhaskell" (["Setup","install"]
+                                                ++ (installFlags package)) (Just dir) logOutput)
         (\(e :: SomeException) -> putStrLn (show e))
 
 packageRegister :: IDEAction
@@ -441,8 +396,9 @@ packageRegister = catchIDE (do
         mbPackage   <- getActivePackage
         case mbPackage of
             Nothing         -> return ()
-            Just package    -> runExternalTool "Registering" "runhaskell" (["Setup","register"]
-                                                ++ (registerFlags package)) logOutput)
+            Just package    -> let dir = dropFileName (cabalFile package)
+                               in runExternalTool "Registering" "runhaskell" (["Setup","register"]
+                                                ++ (registerFlags package)) (Just dir) logOutput)
         (\(e :: SomeException) -> putStrLn (show e))
 
 packageUnregister :: IDEAction
@@ -450,8 +406,9 @@ packageUnregister = catchIDE (do
     mbPackage   <- getActivePackage
     case mbPackage of
         Nothing         -> return ()
-        Just package    -> runExternalTool "Unregistering" "runhaskell" (["Setup","unregister"]
-                                            ++ (unregisterFlags package)) logOutput)
+        Just package    -> let dir = dropFileName (cabalFile package)
+                           in runExternalTool "Unregistering" "runhaskell" (["Setup","unregister"]
+                                            ++ (unregisterFlags package)) (Just dir) logOutput)
         (\(e :: SomeException) -> putStrLn (show e))
 
 packageTest :: IDEAction
@@ -459,7 +416,8 @@ packageTest = catchIDE (do
         mbPackage   <- getActivePackage
         case mbPackage of
             Nothing         -> return ()
-            Just package    -> runExternalTool "Testing" "runhaskell" (["Setup","test"]) logOutput)
+            Just package    -> let dir = dropFileName (cabalFile package)
+                               in runExternalTool "Testing" "runhaskell" (["Setup","test"]) (Just dir) logOutput)
         (\(e :: SomeException) -> putStrLn (show e))
 
 packageSdist :: IDEAction
@@ -467,8 +425,9 @@ packageSdist = catchIDE (do
         mbPackage   <- getActivePackage
         case mbPackage of
             Nothing         -> return ()
-            Just package    -> runExternalTool "Source Dist" "runhaskell" (["Setup","sdist"]
-                                                ++ (sdistFlags package)) logOutput)
+            Just package    -> let dir = dropFileName (cabalFile package)
+                               in runExternalTool "Source Dist" "runhaskell" (["Setup","sdist"]
+                                                ++ (sdistFlags package)) (Just dir) logOutput)
         (\(e :: SomeException) -> putStrLn (show e))
 
 
@@ -484,7 +443,8 @@ packageOpenDoc = catchIDE (do
                                 </> display (pkgName (packageId package))
                                 </> display (pkgName (packageId package))
                                 </> "index.html"
-                in runExternalTool "Opening Documentation" (browser prefs) [path] logOutput)
+                    dir = dropFileName (cabalFile package)
+                in runExternalTool "Opening Documentation" (browser prefs) [path] (Just dir) logOutput)
         (\(e :: SomeException) -> putStrLn (show e))
 
 
@@ -682,9 +642,11 @@ debugStart = catchIDE (do
                             modifyIDE_ (\ide -> ide {ghciState = Nothing})
                             triggerEventIDE (Sensitivity [(SensitivityInterpreting, False)])
                             -- Kick of a build if one is not already due
-                            modified <- fileCheckAll belongsToActivePackage
+                            modifiedPacks <- fileCheckAll belongsToPackage
+                            let modified = not (null modifiedPacks)
                             prefs <- readIDE prefs
                             when ((not modified) && (backgroundBuild prefs)) $ do
+                                    -- TODO Check with Hamish what this means.
                                 mbPackage   <- readIDE activePack
                                 case mbPackage of
                                     Just package -> runCabalBuild True package

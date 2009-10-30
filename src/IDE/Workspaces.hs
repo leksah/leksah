@@ -31,8 +31,9 @@ import Control.Monad.Trans (liftIO)
 import Graphics.UI.Editor.Parameters
     (Parameter(..), (<<<-), paraName, emptyParams)
 import Control.Monad (unless, when)
-import Data.Maybe (isJust)
-import IDE.FileUtils (chooseFile, chooseSaveFile)
+import Data.Maybe (isJust,fromJust )
+import IDE.FileUtils
+    (idePackageFromPath, chooseFile, chooseSaveFile)
 import System.FilePath
     (dropExtension,
      takeBaseName,
@@ -50,10 +51,10 @@ import qualified Text.PrettyPrint as  PP (text)
 import Graphics.UI.Gtk
     (widgetDestroy, dialogRun, messageDialogNew, Window(..))
 import IDE.Pane.PackageEditor (choosePackageFile)
-import Data.List (delete, sort)
-import IDE.Package (activatePackage, deactivatePackage)
+import Data.List (delete)
+import IDE.Package
+    (packageClean, activatePackage, deactivatePackage)
 import System.Directory (doesFileExist, canonicalizePath)
-import Debug.Trace (trace)
 import System.Time (getClockTime)
 import Graphics.UI.Gtk.Windows.MessageDialog
     (ButtonsType(..), MessageType(..))
@@ -75,7 +76,7 @@ setWorkspace mbWs = do
     when (pack /= oldPack) $
             case pack of
                 Nothing -> deactivatePackage
-                Just p  -> activatePackage p >> return ()
+                Just p  -> activatePackage pack >> return ()
     mbPack <- readIDE activePack
     triggerEventIDE WorkspaceChanged
     let wsStr = case mbWs of
@@ -88,15 +89,18 @@ setWorkspace mbWs = do
     triggerEventIDE (StatusbarChanged [CompartmentPackage txt])
     return ()
 
+
 -- ---------------------------------------------------------------------
 -- This needs to be incremented, when the workspace format changes
 --
 workspaceVersion :: Int
 workspaceVersion = 1
 
-
-workspaceClean :: IDEAction
-workspaceClean = return () -- TODO
+workspaceClean = do
+    mbWs <-  readIDE workspace
+    case mbWs of
+        Nothing -> return ()
+        Just ws -> mapM_ (packageClean . Just) (wsPackages ws)
 
 workspaceMake :: IDEAction
 workspaceMake = return () -- TODO
@@ -156,7 +160,7 @@ workspaceOpenThis askForSession mbFilePath =
                 else do
                     ideR <- ask
                     catchIDE (do
-                        workspace <- liftIO $ readFields filePath workspaceDescr emptyWorkspace
+                        workspace <- readWorkspace filePath
                         setWorkspace (Just workspace {wsFile = filePath}))
                             (\ (e :: SomeException) -> reflectIDE
                                 (ideMessage Normal ("Can't load workspace file " ++ filePath ++ "\n" ++ show e)) ideR)
@@ -165,16 +169,16 @@ workspaceOpenThis askForSession mbFilePath =
 -- | Closes a workspace
 workspaceClose :: IDEAction
 workspaceClose = do
-    oldWorkspace <- trace "workspace close" $ readIDE workspace
+    oldWorkspace <- readIDE workspace
     case oldWorkspace of
         Nothing -> return ()
         Just ws -> do
             let oldActivePack = wsActivePack ws
-            trace "now trigger" $ triggerEventIDE (SaveSession ((dropExtension (wsFile ws))
+            triggerEventIDE (SaveSession ((dropExtension (wsFile ws))
                                 ++  leksahSessionFileExtension))
             addRecentlyUsedWorkspace (wsFile ws)
             setWorkspace Nothing
-            triggerEventIDE ActivePack
+            triggerEventIDE (ActivePack Nothing)
             when (isJust oldActivePack) $ do
                 triggerEventIDE (Sensitivity [(SensitivityProjectActive, False),
                     (SensitivityWorkspaceOpen, False)])
@@ -193,57 +197,73 @@ workspaceAddPackage = do
 
 workspaceAddPackage' :: FilePath -> IDEAction
 workspaceAddPackage' fp = do
-    cfp <- liftIO $ canonicalizePath fp
+    cfp <-  liftIO $ canonicalizePath fp
     mbWs <- readIDE workspace
     case mbWs of
         Nothing -> return ()
         Just ws -> do
-            unless (elem cfp (wsPackages ws)) $
-                writeWorkspace $ ws {wsPackages =  sort (cfp : wsPackages ws)}
+            mbPack <- idePackageFromPath cfp
+            case mbPack of
+                Just pack -> do
+                    unless (elem cfp (map cabalFile (wsPackages ws))) $
+                        writeWorkspace $ ws {wsPackages =  pack : wsPackages ws}
+                    return ()
+                Nothing -> return ()
+
+
+workspaceRemovePackage :: IDEPackage -> IDEAction
+workspaceRemovePackage pack = do
+    mbWs <- readIDE workspace
+    case mbWs of
+        Nothing -> return ()
+        Just ws -> do
+            when (elem pack (wsPackages ws)) $
+                writeWorkspace ws {wsPackages =  delete pack (wsPackages ws)}
             return ()
 
-
-workspaceRemovePackage :: FilePath -> IDEAction
-workspaceRemovePackage fp = do
+workspaceActivatePackage :: IDEPackage -> IDEAction
+workspaceActivatePackage pack = do
     mbWs <- readIDE workspace
     case mbWs of
         Nothing -> return ()
         Just ws -> do
-            when (elem fp (wsPackages ws)) $
-                writeWorkspace ws {wsPackages =  sort (delete fp (wsPackages ws))}
-            return ()
-
-workspaceActivatePackage :: FilePath -> IDEAction
-workspaceActivatePackage fp = do
-    mbWs <- readIDE workspace
-    case mbWs of
-        Nothing -> return ()
-        Just ws -> do
-            when (elem fp (wsPackages ws)) $ do
-                writeWorkspace ws {wsActivePack =  Just fp}
-                activatePackage fp
+            when (elem pack (wsPackages ws)) $ do
+                writeWorkspace ws {wsActivePack =  Just pack}
                 return ()
             return ()
 
 writeWorkspace :: Workspace -> IDEAction
 writeWorkspace ws = do
-    cWs <- liftIO $ makeCanonic ws
-    timeNow         <- liftIO getClockTime
-    let newWs    =   cWs {wsSaveTime = show timeNow, wsVersion = workspaceVersion}
+    cWs          <- liftIO $ makeCanonic ws
+    timeNow      <- liftIO getClockTime
+    let newWs    =  cWs {wsSaveTime = show timeNow,
+                         wsVersion = workspaceVersion,
+                         wsActivePackFile = case wsActivePack ws of
+                                                Nothing -> Nothing
+                                                Just pack -> Just (cabalFile pack),
+                         wsPackagesFiles = map cabalFile (wsPackages ws)}
     setWorkspace $ Just cWs
     liftIO $ writeFields (wsFile newWs) (newWs {wsFile = ""}) workspaceDescr
 
+readWorkspace :: FilePath -> IDEM Workspace
+readWorkspace fp = do
+    ws <- liftIO $ readFields fp workspaceDescr emptyWorkspace
+    activePack <- case wsActivePackFile ws of
+                        Nothing ->  return Nothing
+                        Just fp ->  idePackageFromPath fp
+    packages <- mapM idePackageFromPath (wsPackagesFiles ws)
+    return ws{ wsActivePack = activePack, wsPackages = map fromJust $ filter isJust $ packages}
 
 makeCanonic :: Workspace -> IO Workspace
 makeCanonic ws = do
-    wsActivePack' <-  case wsActivePack ws of
-                        Nothing -> return Nothing
-                        Just fp -> do
-                            nfp <- canonicalizePath fp
-                            return (Just nfp)
-    wsFile'       <-  canonicalizePath (wsFile ws)
-    wsPackages'   <-  mapM canonicalizePath (wsPackages ws)
-    return ws {wsActivePack = wsActivePack', wsFile = wsFile', wsPackages = wsPackages'}
+    wsActivePackFile'           <-  case wsActivePackFile ws of
+                                        Nothing -> return Nothing
+                                        Just fp -> do
+                                            nfp <- canonicalizePath fp
+                                            return (Just nfp)
+    wsFile'                     <-  canonicalizePath (wsFile ws)
+    wsPackagesFiles'            <-  mapM canonicalizePath (wsPackagesFiles ws)
+    return ws {wsActivePackFile = wsActivePackFile', wsFile = wsFile', wsPackagesFiles = wsPackagesFiles'}
 
 emptyWorkspace =  Workspace {
     wsVersion       =   workspaceVersion
@@ -253,6 +273,9 @@ emptyWorkspace =  Workspace {
 ,   wsPackages      =   []
 --,   wsPackageCache  =   Nothing
 ,   wsActivePack    =   Nothing
+,   wsPackagesFiles =   []
+,   wsActivePackFile =   Nothing
+
 }
 
 workspaceDescr :: [FieldDescriptionS Workspace]
@@ -276,23 +299,17 @@ workspaceDescr = [
             wsName
             (\ b a -> a{wsName = b})
     ,   mkFieldS
-            (paraName <<<- ParaName "File path of the workspace" $ emptyParams)
-            (PP.text . show)
-            stringParser
-            wsFile
-            (\ b a -> a{wsFile = b})
-    ,   mkFieldS
             (paraName <<<- ParaName "File paths of contained packages" $ emptyParams)
             (PP.text . show)
             readParser
-            wsPackages
-            (\b a -> a{wsPackages = b})
+            wsPackagesFiles
+            (\b a -> a{wsPackagesFiles = b})
     ,   mkFieldS
             (paraName <<<- ParaName "Maybe file path of an active package" $ emptyParams)
             (PP.text . show)
             readParser
-            wsActivePack
-            (\fp a -> a{wsActivePack = fp})]
+            wsActivePackFile
+            (\fp a -> a{wsActivePackFile = fp})]
 
 
 addRecentlyUsedWorkspace :: FilePath -> IDEAction

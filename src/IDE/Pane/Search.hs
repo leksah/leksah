@@ -78,21 +78,20 @@ instance RecoverablePane IDESearch SearchState IDEM where
 
 -- System (Prefix False) als defaults
     builder pp nb windows =
-        let scope   = System
+        let scope   = SystemScope
             mode    = Prefix False
         in reifyIDE $ \ ideR -> do
             scopebox        <-  hBoxNew True 2
-            rb1             <-  radioButtonNewWithLabel "Local"
-            rb2             <-  radioButtonNewWithLabelFromWidget rb1 "Package"
+            rb1             <-  radioButtonNewWithLabel "Package"
+            rb2             <-  radioButtonNewWithLabelFromWidget rb1 "Workspace"
             rb3             <-  radioButtonNewWithLabelFromWidget rb1 "System"
-            toggleButtonSetActive
-                (case scope of
-                    Local   -> rb1
-                    Package -> rb2
-                    System   -> rb3) True
-            boxPackStart scopebox rb1 PackNatural 2
-            boxPackStart scopebox rb2 PackNatural 2
-            boxPackEnd scopebox rb3 PackNatural 2
+            toggleButtonSetActive rb3 True
+            cb2             <-  checkButtonNewWithLabel "Imports"
+
+            boxPackStart scopebox rb1 PackGrow 2
+            boxPackStart scopebox rb2 PackGrow 2
+            boxPackStart scopebox rb3 PackGrow 2
+            boxPackEnd scopebox cb2 PackNatural 2
 
             modebox         <-  hBoxNew True 2
             mb1             <-  radioButtonNewWithLabel "Exact"
@@ -187,9 +186,10 @@ instance RecoverablePane IDESearch SearchState IDEM where
 
             cid1 <- treeView `afterFocusIn`
                 (\_ -> do reflectIDE (makeActive search) ideR ; return True)
-            rb1 `onToggled` (reflectIDE (scopeSelection Local) ideR )
-            rb2 `onToggled` (reflectIDE (scopeSelection Package) ideR )
-            rb3 `onToggled` (reflectIDE (scopeSelection System) ideR )
+            rb1 `onToggled` (reflectIDE (scopeSelection' rb1 rb2 rb3 cb2) ideR )
+            rb2 `onToggled` (reflectIDE (scopeSelection' rb1 rb2 rb3 cb2) ideR )
+            rb3 `onToggled` (reflectIDE (scopeSelection' rb1 rb2 rb3 cb2) ideR )
+            cb2 `onToggled` (reflectIDE (scopeSelection' rb1 rb2 rb3 cb2) ideR)
             mb1 `onToggled` do
                 widgetSetSensitivity mb4 False
                 active <- toggleButtonGetActive mb4
@@ -224,6 +224,18 @@ getSearch :: Maybe PanePath -> IDEM IDESearch
 getSearch Nothing = forceGetPane (Right "*Search")
 getSearch (Just pp)  = forceGetPane (Left pp)
 
+scopeSelection' rb1 rb2 rb3 cb2 = do
+    scope <- liftIO $ do
+        withImports <-  toggleButtonGetActive cb2
+        s1 <- toggleButtonGetActive rb1
+        s2 <- toggleButtonGetActive rb2
+        s3 <- toggleButtonGetActive rb3
+        if s1
+            then return (PackageScope withImports)
+            else if s2
+                    then return (WorkspaceScope withImports)
+                    else return (SystemScope)
+    scopeSelection scope
 
 scopeSelection :: Scope -> IDEAction
 scopeSelection scope = do

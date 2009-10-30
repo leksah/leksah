@@ -27,7 +27,6 @@ import Control.Monad.Reader
 import Data.List
 import Data.Typeable
 import IDE.Core.State
-import System.FilePath (takeBaseName)
 import IDE.Workspaces
 import Debug.Trace (trace)
 
@@ -38,7 +37,7 @@ import Debug.Trace (trace)
 data IDEWorkspace   =   IDEWorkspace {
     scrolledView        ::   ScrolledWindow
 ,   treeViewC           ::   TreeView
-,   workspaceStore      ::   ListStore (Bool,String,String)
+,   workspaceStore      ::   ListStore (Bool,IDEPackage)
 ,   wsEntry             ::   Entry
 ,   topBox              ::   VBox
 } deriving Typeable
@@ -79,7 +78,7 @@ instance RecoverablePane IDEWorkspace WorkspaceState IDEM where
         cellLayoutPackStart col0 renderer0 True
         cellLayoutSetAttributes col0 renderer0 listStore
             $ \row -> [cellPixbufStockId  :=
-                        if (\(b,_,_)-> b) row
+                        if (\(b,_)-> b) row
                             then stockYes
                             else ""]
 
@@ -92,7 +91,7 @@ instance RecoverablePane IDEWorkspace WorkspaceState IDEM where
         treeViewAppendColumn treeView col1
         cellLayoutPackStart col1 renderer1 True
         cellLayoutSetAttributes col1 renderer1 listStore
-            $ \row -> [ cellText := (\(_,n,_)-> n) row ]
+            $ \row -> [ cellText := (\(_,pack)-> (fromPackageIdentifier . packageId) pack) row ]
 
         renderer2   <- cellRendererTextNew
         col2        <- treeViewColumnNew
@@ -103,7 +102,7 @@ instance RecoverablePane IDEWorkspace WorkspaceState IDEM where
         treeViewAppendColumn treeView col2
         cellLayoutPackStart col2 renderer2 True
         cellLayoutSetAttributes col2 renderer2 listStore
-            $ \row -> [ cellText := (\(_,_,p)-> p) row]
+            $ \row -> [ cellText := (\(_,pack)-> cabalFile pack) row ]
 
         treeViewSetHeadersVisible treeView True
         sel <- treeViewGetSelection treeView
@@ -129,8 +128,8 @@ getWorkspace Nothing = forceGetPane (Right "*Workspace")
 getWorkspace (Just pp)  = forceGetPane (Left pp)
 
 getSelectionTree ::  TreeView
-    -> ListStore (Bool, String, String)
-    -> IO (Maybe (Bool, String, String))
+    -> ListStore (Bool, IDEPackage)
+    -> IO (Maybe (Bool, IDEPackage))
 getSelectionTree treeView listStore = do
     treeSelection   <-  treeViewGetSelection treeView
     rows           <-  treeSelectionGetSelectedRows treeSelection
@@ -157,7 +156,7 @@ treeViewPopup ideR  workspacePane (Button _ click _ _ _ _ button _ _) = do
                 sel         <-  getSelectionTree (treeViewC workspacePane)
                                                 (workspaceStore workspacePane)
                 case sel of
-                    Just (_,_,fp)      -> reflectIDE (workspaceActivatePackage fp) ideR
+                    Just (_,ideP)      -> reflectIDE (workspaceActivatePackage ideP) ideR
 
                     otherwise         -> return ()
             item2 `onActivateLeaf` reflectIDE workspaceAddPackage ideR
@@ -165,8 +164,8 @@ treeViewPopup ideR  workspacePane (Button _ click _ _ _ _ button _ _) = do
                 sel            <-  getSelectionTree (treeViewC workspacePane)
                                                     (workspaceStore workspacePane)
                 case sel of
-                    Just (_,_,fp)      -> reflectIDE (workspaceRemovePackage fp) ideR
-                    otherwise         -> return ()
+                    Just (_,ideP)      -> reflectIDE (workspaceRemovePackage ideP) ideR
+                    otherwise          -> return ()
             -- TODO ...
             menuShellAppend theMenu item1
             menuShellAppend theMenu item2
@@ -179,7 +178,7 @@ treeViewPopup ideR  workspacePane (Button _ click _ _ _ _ button _ _) = do
                 then do sel         <-  getSelectionTree (treeViewC workspacePane)
                                             (workspaceStore workspacePane)
                         case sel of
-                            Just (_,_,fp)   ->  reflectIDE (workspaceActivatePackage fp) ideR
+                            Just (_,ideP)   ->  reflectIDE (workspaceActivatePackage ideP) ideR
                                                     >> return True
                             otherwise       ->  return False
                 else return False
@@ -199,6 +198,6 @@ updateWorkspace = do
                 Just ws -> liftIO $ do
                     entrySetText (wsEntry p) (wsName ws)
                     listStoreClear (workspaceStore p)
-                    let objs = map (\ filePath -> (Just filePath == wsActivePack ws, takeBaseName filePath, filePath)) (wsPackages ws)
+                    let objs = map (\ ideP -> (Just ideP == wsActivePack ws, ideP)) (wsPackages ws)
                     mapM_ (listStoreAppend (workspaceStore p)) objs
 
