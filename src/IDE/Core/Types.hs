@@ -97,6 +97,10 @@ module IDE.Core.Types (
 ,   StatusbarCompartment(..)
 ) where
 
+#ifdef YI
+import Yi.UI.Pango.Control as Yi
+#endif
+
 import Control.Monad.Reader
 import Graphics.UI.Gtk hiding (get)
 import Graphics.UI.Gtk.Gdk.Events(Modifier(..))

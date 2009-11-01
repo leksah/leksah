@@ -146,6 +146,7 @@ import qualified Yi as Yi hiding(withBuffer)
 import qualified Yi.Buffer.Misc as Yi
 import qualified Yi.UI.Pango.Control as Yi
 import Data.Time (getCurrentTime)
+import Control.Monad (unless)
 #endif
 
 import IDE.Core.State
