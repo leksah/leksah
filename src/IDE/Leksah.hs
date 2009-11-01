@@ -31,7 +31,6 @@ import GHC
 import Config
 import Data.Version
 import Prelude hiding(catch)
-import System.Directory
 
 #if defined(darwin_HOST_OS)
 import IDE.OSX
@@ -57,8 +56,8 @@ import IDE.Pane.SourceBuffer
 import IDE.Metainfo.SourceCollector
 import IDE.Metainfo.InterfaceCollector
 import IDE.Find
-import Graphics.UI.Editor.Composite (filesEditor, maybeEditor)
-import Graphics.UI.Editor.Simple (fileEditor)
+import Graphics.UI.Editor.Composite (filesEditor)
+import Graphics.UI.Editor.Simple (boolEditor)
 --import Outputable (ppr,showSDoc)
 import IDE.Metainfo.GHCUtils (inGhcIO)
 import IDE.Package (packageBuild)
@@ -133,12 +132,7 @@ runMain = handleTopExceptions $ do
                                 ExtractTars (Just path) -> do
                                             autoExtractTarFiles path
                                 _                       -> do
-                                    case autoExtractTars prefs of
-                                        Nothing         -> return ()
-                                        Just path       -> do
-                                            dir <- getCurrentDirectory
-                                            autoExtractTarFiles path
-                                            setCurrentDirectory dir
+                                    when (autoExtractTars prefs) autoExtractCabalTarFiles
     when (elem Sources o) (do
         buildSourceForPackageDB prefs
         sysMessage Normal "rebuild SourceForPackageDB")
@@ -299,8 +293,7 @@ fDescription = VFD emptyParams [
             (paraName <<<- ParaName "Extract packages from cabal-install" $ emptyParams)
             autoExtractTars
             (\b a -> a{autoExtractTars = b})
-            (maybeEditor ((fileEditor (Just "~/.cabal/packages/") FileChooserActionSelectFolder
-                "Select folder"), emptyParams) True "Yes")]
+            boolEditor]
 
 --
 -- | Called when leksah ist first called (the .leksah directory does not exist)

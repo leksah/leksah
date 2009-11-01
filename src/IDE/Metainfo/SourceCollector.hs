@@ -364,10 +364,13 @@ sourceForPackage id map =
 
 buildSourceForPackageDB :: Prefs -> IO ()
 buildSourceForPackageDB prefs = do
-    case autoExtractTars prefs of
-        Nothing     -> return ()
-        Just path   -> autoExtractTarFiles path
-    let dirs        =   sourceDirectories prefs
+    let sourceDirs  =   sourceDirectories prefs
+    dirs            <-  if autoExtractTars prefs
+                            then do
+                                autoExtractCabalTarFiles
+                                mbCabalPackageDir <- getCabalUserPackageDir
+                                return $ maybe sourceDirs (: sourceDirs) mbCabalPackageDir
+                            else return sourceDirs
     cabalFiles      <-  mapM allCabalFiles dirs
     fCabalFiles     <-  mapM canonicalizePath $ concat cabalFiles
     mbPackages      <-  mapM (\fp -> parseCabal fp) fCabalFiles

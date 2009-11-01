@@ -429,11 +429,10 @@ prefsDescription packages = NFDPP [
     ,   mkFieldPP
             (paraName <<<- ParaName "Extract packages from cabal-install" $ emptyParams)
             (PP.text . show)
-            readParser
+            boolParser
             autoExtractTars
             (\b a -> a{autoExtractTars = b})
-            (maybeEditor ((fileEditor (Just "~/.cabal/packages/") FileChooserActionSelectFolder
-                "Select folder"), emptyParams) True "Yes")
+            boolEditor
             (\i -> return ())
     ,   mkFieldPP
             (paraName <<<- ParaName "Update metadata at startup" $ emptyParams)
@@ -597,7 +596,7 @@ defaultPrefs = Prefs {
                                 ,   ("*Search","ToolCategory")]
     ,   collectAfterBuild   =   False
     ,   collectAtStart      =   True
-    ,   autoExtractTars     =   Nothing
+    ,   autoExtractTars     =   True
     ,   useCtrlTabFlipping  =   True
     ,   docuSearchURL       =   "http://holumbus.fh-wedel.de/hayoo/hayoo.html?query="
     ,   completeRestricted  =   False

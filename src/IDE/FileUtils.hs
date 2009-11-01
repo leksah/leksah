@@ -19,6 +19,8 @@ module IDE.FileUtils (
 ,   findKnownPackages
 ,   isSubPath
 ,   findSourceFile
+,   getCabalUserPackageDir
+,   autoExtractCabalTarFiles
 ,   autoExtractTarFiles
 ,   openBrowser
 ,   idePackageFromPath
@@ -39,7 +41,7 @@ import Control.Monad.Trans(MonadIO,liftIO)
 import qualified Data.List as List
 import qualified Data.Set as Set
 import Data.Set (Set)
-import Data.List (nub, isSuffixOf, isPrefixOf)
+import Data.List (nub, isSuffixOf, isPrefixOf, stripPrefix)
 import Distribution.ModuleName(ModuleName,toFilePath)
 import Distribution.Text(simpleParse)
 import Debug.Trace
@@ -378,6 +380,23 @@ cabalFileName filePath = catch (do
                         return Nothing
         else return Nothing)
         (\_ -> return Nothing)
+
+getCabalUserPackageDir :: IO (Maybe FilePath)
+getCabalUserPackageDir = do
+    (_, out, _, pid) <- runInteractiveProcess "cabal" ["help"] Nothing Nothing
+    output <- hGetContents out
+    case stripPrefix "  " (last $ lines output) of
+        Just s | "config" `isSuffixOf` s -> return $ Just $ take (length s - 6) s ++ "packages"
+        _ -> return Nothing
+
+autoExtractCabalTarFiles = do
+    mbFilePath <- getCabalUserPackageDir
+    case mbFilePath of
+	Just filePath -> do
+            dir <- getCurrentDirectory
+            autoExtractTarFiles' filePath
+            setCurrentDirectory dir
+        Nothing -> do sysMessage Normal "Unable to find cabal pacakde dir using \"cabal help\".  Please make sure cabal is in your PATH."
 
 autoExtractTarFiles filePath = do
     dir <- getCurrentDirectory

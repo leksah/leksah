@@ -43,9 +43,9 @@ Pane path for category:
 Default pane path:
                [SplitP LeftP]
 Paths under which haskell sources for packages may be found:
-               ["/home/jutaro/.cabal/packages","/home/jutaro/Haskell"]
+               ["/home/jutaro/Haskell"]
 Extract packages from cabal-install:
-               Just "/home/jutaro/.cabal/packages"
+               True
 Update metadata at startup:
                True
 Update metadata after every build:

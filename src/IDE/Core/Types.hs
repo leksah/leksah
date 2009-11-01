@@ -365,7 +365,7 @@ data Prefs = Prefs {
     ,   packageBlacklist    ::   [Dependency]
     ,   collectAfterBuild   ::   Bool
     ,   collectAtStart      ::   Bool
-    ,   autoExtractTars     ::   Maybe FilePath
+    ,   autoExtractTars     ::   Bool
     ,   useCtrlTabFlipping  ::   Bool
     ,   docuSearchURL       ::   String
     ,   completeRestricted  ::   Bool
