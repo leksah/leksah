@@ -66,7 +66,7 @@ import Control.Exception (SomeException(..), catch)
 import IDE.Core.State
 import IDE.Pane.PackageEditor
 import IDE.Pane.SourceBuffer
-import Distribution.Text (disp, display)
+import Distribution.Text (display)
 import IDE.FileUtils
     (moduleNameFromFilePath,
      idePackageFromPath,
@@ -102,7 +102,6 @@ import IDE.Metainfo.Provider
 import qualified Data.Set as  Set (member, fromList)
 import qualified Data.Map as  Map (insert, lookup)
 import Debug.Trace (trace)
-import Text.PrettyPrint (render)
 
 
 #if defined(mingw32_HOST_OS) || defined(__MINGW32__)
@@ -127,11 +126,8 @@ belongsToPackage ideBuf | fileName ideBuf == Nothing = return Nothing
                         Just workspace -> do
                             mbMn <- liftIO $ moduleNameFromFilePath fp
                             let res = foldl (belongsToPackage' fp mbMn) Nothing (wsPackages workspace)
-                            trace (if isJust res
-                                        then "belongsToPackage: " ++ fp ++ " is " ++  (render . disp . packageId . fromJust) res
-                                        else "belongsToPackage: no package for " ++ fp)  $ do
-                               modifyIDE_ (\ide -> ide{bufferProjectCache = Map.insert fp res bufferToProject'})
-                               return res
+                            modifyIDE_ (\ide -> ide{bufferProjectCache = Map.insert fp res bufferToProject'})
+                            return res
 
 belongsToPackage' ::  FilePath -> Maybe ModuleName -> Maybe IDEPackage -> IDEPackage -> Maybe IDEPackage
 belongsToPackage' _ _ r@(Just pack) _ = r

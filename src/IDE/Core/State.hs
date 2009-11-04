@@ -199,7 +199,7 @@ instance PaneMonad IDEM where
         case mbBuf of
             Nothing -> return Nothing
             Just buf -> do
-                VF.notebookInsertOrdered notebook (getTopWidget buf) (paneName buf) Nothing
+                VF.notebookInsertOrdered notebook (getTopWidget buf) (paneName buf) Nothing False
                 addPaneAdmin buf cids panePath
                 liftIO $ do
                     widgetShowAll (getTopWidget buf)

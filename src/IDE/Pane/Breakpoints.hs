@@ -110,9 +110,8 @@ fillBreakpointList = do
             refs <- readIDE breakpointRefs
             liftIO $ do
                 treeStoreClear (breakpoints b)
-                mapM_ (insertBreak (breakpoints b)) (zip refs [0..length refs])
-    where
-        insertBreak treeStore (lr,index) = treeStoreInsert treeStore [] index lr
+                mapM_ (\ (lr,index) -> treeStoreInsert (breakpoints b) [] index lr)
+                    (zip refs [0..length refs])
 
 getSelectedBreakpoint ::  TreeView
     -> TreeStore LogRef

@@ -160,7 +160,7 @@ startGUI sessionFilename iprefs = do
     st          <-  unsafeInitGUIForThreadedRTS
     when rtsSupportsBoundThreads
         (sysMessage Normal "Linked with -threaded")
-    timeoutAddFull (yield >> return True) priorityHigh 100
+    timeoutAddFull (yield >> return True) priorityHigh 100 -- maybe switch to priorityDefaultIdle???
     mapM_ (sysMessage Normal) st
     initGtkRc
     uiManager   <-  uiManagerNew
