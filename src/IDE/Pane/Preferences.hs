@@ -42,8 +42,8 @@ import Graphics.UI.Editor.Simple
 import Graphics.UI.Editor.Composite
 import Graphics.UI.Editor.Parameters
 import Graphics.UI.Editor.MakeEditor hiding (parameters)
-import IDE.DescriptionPP
-import IDE.PrinterParser hiding (fieldParser,parameters)
+import Graphics.UI.Editor.DescriptionPP
+import Text.PrinterParser hiding (fieldParser,parameters)
 import IDE.TextEditor
 import IDE.Pane.SourceBuffer
 import IDE.Pane.Log
@@ -145,7 +145,7 @@ getPrefs (Just pp)  = forceGetPane (Left pp)
 -- * Dialog definition
 -- ------------------------------------------------------------
 
-prefsDescription :: [PackageIdentifier] -> FieldDescriptionPP Prefs
+prefsDescription :: [PackageIdentifier] -> FieldDescriptionPP Prefs IDEM
 prefsDescription packages = NFDPP [
     ("Editor", VFDPP emptyParams [
         mkFieldPP
@@ -487,6 +487,17 @@ prefsDescription packages = NFDPP [
             (\b a -> a{backgroundLink = b})
             boolEditor
             (\i -> return ())
+         , mkFieldPP
+            (paraName <<<- ParaName "Auto install packages" $
+                paraShadow <<<- ParaShadow ShadowIn $emptyParams)
+            (PP.text . show)
+            readParser
+            autoInstall
+            (\b a -> a{autoInstall = b})
+            (enumEditor ["Install always after a succesful build",
+                "Install if it's a library with dependend packages in the workspace",
+                "Never install"])
+            (\i -> return ())
     ]),
     ("Debug", VFDPP emptyParams [
            mkFieldPP
@@ -608,6 +619,7 @@ defaultPrefs = Prefs {
 #else
                                 True
 #endif
+    ,   autoInstall         =   InstallLibs
     ,   printEvldWithShow   =   True
     ,   breakOnException    =   True
     ,   breakOnError        =   True

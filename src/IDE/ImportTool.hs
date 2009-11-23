@@ -117,7 +117,7 @@ addImport error descrList =
                                             ideMessage Normal $ "Identifier " ++ (id' nis) ++
                                                 " not found in imported packages"
                                             return (True,descrList)
-                        descr : []  ->  addImport' nis (filePath error) descr descrList
+                        descr : []  ->  addImport' nis (logRefFullFilePath error) descr descrList
                         list        ->  do
                             window' <- getMainWindow
                             mbDescr <-  liftIO $ selectModuleDialog window' list (id' nis)
@@ -128,7 +128,7 @@ addImport error descrList =
                                 Nothing     ->  return (False,descrList)
                                 Just descr  ->  if elem descr descrList
                                                     then return (True, descrList)
-                                                    else addImport' nis (filePath error) descr descrList
+                                                    else addImport' nis (logRefFullFilePath error) descr descrList
 
 addImport' :: NotInScopeParseResult -> FilePath -> Descr -> [Descr] -> IDEM (Bool,[Descr])
 addImport' nis filePath descr descrList =  do

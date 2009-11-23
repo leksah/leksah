@@ -34,7 +34,7 @@ import Data.Typeable
 
 import IDE.Core.State
 import IDE.FileUtils
-import IDE.PrinterParser
+import Text.PrinterParser
 import qualified Text.PrettyPrint.HughesPJ as PP
 import Graphics.UI.Editor.Parameters
 import IDE.TextEditor

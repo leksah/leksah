@@ -141,7 +141,7 @@ clicked (Button _ SingleClick _ _ _ _ LeftButton x y) ideLog = do
     case filter (\(es,_) -> fst (logLines es) <= (line'+1) && snd (logLines es) >= (line'+1))
             (zip logRefs' [0..(length logRefs')]) of
         [(thisRef,n)] -> do
-            mbBuf <- selectSourceBuf (filePath thisRef)
+            mbBuf <- selectSourceBuf (logRefFullFilePath thisRef)
             case mbBuf of
                 Just buf -> markRefInSourceBuf n buf thisRef True
                 Nothing -> return ()

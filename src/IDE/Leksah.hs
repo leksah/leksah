@@ -49,7 +49,7 @@ import IDE.SourceCandy
 import IDE.FileUtils
 import Graphics.UI.Editor.MakeEditor
 import Graphics.UI.Editor.Parameters
-import IDE.Menu
+import IDE.Command
 import IDE.Pane.Preferences
 import IDE.Keymap
 import IDE.Pane.SourceBuffer
@@ -60,8 +60,8 @@ import Graphics.UI.Editor.Composite (filesEditor)
 import Graphics.UI.Editor.Simple (boolEditor)
 --import Outputable (ppr,showSDoc)
 import IDE.Metainfo.GHCUtils (inGhcIO)
-import IDE.Package (packageBuild)
 import IDE.Metainfo.Provider (initInfo)
+import IDE.Workspaces (backgroundMake)
 
 -- --------------------------------------------------------------------
 -- Command line options
@@ -160,7 +160,7 @@ startGUI sessionFilename iprefs = do
     st          <-  unsafeInitGUIForThreadedRTS
     when rtsSupportsBoundThreads
         (sysMessage Normal "Linked with -threaded")
-    timeoutAddFull (yield >> return True) priorityHigh 100 -- maybe switch to priorityDefaultIdle???
+    timeoutAddFull (yield >> return True) priorityDefaultIdle 100 -- maybe switch back to priorityHigh/???
     mapM_ (sysMessage Normal) st
     initGtkRc
     uiManager   <-  uiManagerNew
@@ -275,7 +275,7 @@ startGUI sessionFilename iprefs = do
     timeoutAddFull (do
         reflectIDE (do
             currentPrefs <- readIDE prefs
-            when (backgroundBuild currentPrefs) $ packageBuild True) ideR
+            when (backgroundBuild currentPrefs) $ backgroundMake) ideR
         return True) priorityDefaultIdle 1000
     reflectIDE (triggerEvent ideR (Sensitivity [(SensitivityInterpreting, False)])) ideR
     mainGUI

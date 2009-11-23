@@ -41,16 +41,14 @@ import Data.List
 import qualified PackageConfig as DP
 import Data.Maybe
 import Distribution.Package hiding (depends,packageId)
-import Data.Set (Set)
 import qualified Data.Set as Set
-import Data.Map (Map)
 import qualified Data.ByteString.Char8 as BS
 import qualified Data.ByteString.Lazy as BSL
 import Distribution.Version
 import Distribution.ModuleName
 import GHC (runGhc)
 
-import DeepSeq
+import Control.DeepSeq
 import IDE.FileUtils
 import IDE.Core.State
 import IDE.Metainfo.InterfaceCollector
@@ -117,7 +115,7 @@ getDescription name = do
     case packageInfo' of
         Nothing -> return ""
         Just ((_,symbolTable1),(_,symbolTable2)) ->
-            return ((foldr (\d f -> shows (Present d) . showChar '\n' . f) id
+            return ((foldr (\d f -> shows (Present d) .  showChar '\n' . f) id
                 (getIdentifierDescr name symbolTable1 symbolTable2)) "")
 
 --
@@ -382,7 +380,7 @@ updateSystemInfo = do
 --
 -- | Builds the current info for the activePackage
 --
-setInfo :: IDEM (Maybe PackageScope) -> IDEAction
+setInfo :: IDEM (Maybe PackScope) -> IDEAction
 setInfo f = do
     packageInfo         <-  readIDE packageInfo
     case packageInfo of
@@ -451,7 +449,7 @@ loadInfosForPackage dirPath isWorkingPackage pid = do
                     throwIDE ("Metadata has a wrong version."
                             ++  " Consider rebuilding metadata with -r option")
                 else do
-                    packageInfo `deepSeq` (hClose file)
+                    packageInfo `deepseq` (hClose file)
                     return (Just packageInfo))
             (\e -> do sysMessage Normal ("loadInfosForPackage: " ++ show e); return Nothing)
         else do
@@ -461,7 +459,7 @@ loadInfosForPackage dirPath isWorkingPackage pid = do
 --
 -- | Loads the infos for the given packages (has an collecting argument)
 --
-buildScope :: PackageDescr -> PackageScope -> PackageScope
+buildScope :: PackageDescr -> PackScope -> PackScope
 buildScope packageD (packageMap, symbolTable) =
     let pid = packagePD packageD
     in if pid `Map.member` packageMap
@@ -565,7 +563,7 @@ moduleNameDescrs pd = map (\md -> Descr
                                     (Just (BS.pack "| Module name"))
                                     ModNameDescr) (exposedModulesPD pd)
 
-addOtherToScope ::  PackageScope -> Bool -> PackageScope
+addOtherToScope ::  PackScope -> Bool -> PackScope
 addOtherToScope (packageMap, symbolTable) addAll = (packageMap, newSymbolTable)
     where newSymbolTable = foldl' (\ map descr -> Map.insertWith (++) (descrName descr) [descr] map)
                         symbolTable (if addAll
@@ -574,75 +572,70 @@ addOtherToScope (packageMap, symbolTable) addAll = (packageMap, newSymbolTable)
           modNameDescrs = concatMap moduleNameDescrs (Map.elems packageMap)
 
 -- ---------------------------------------------------------------------
--- DeepSeq instances for forcing evaluation
+-- NFData instances for forcing evaluation
 --
 
-instance DeepSeq Location where
-    deepSeq pd =  deepSeq (locationSLine pd)
-                    $   deepSeq (locationSCol pd)
-                    $   deepSeq (locationELine pd)
-                    $   deepSeq (locationECol pd)
+instance NFData Location where
+    rnf pd =  rnf (locationSLine pd)
+                    `seq`    rnf (locationSCol pd)
+                    `seq`    rnf (locationELine pd)
+                    `seq`    rnf (locationECol pd)
 
-instance DeepSeq PackageDescr where
-    deepSeq pd =  deepSeq (packagePD pd)
-                    $   deepSeq (mbSourcePathPD pd)
-                    $   deepSeq (exposedModulesPD pd)
-                    $   deepSeq (buildDependsPD pd)
+instance NFData PackageDescr where
+    rnf pd =  rnf (packagePD pd)
+                    `seq`    rnf (mbSourcePathPD pd)
+                    `seq`    rnf (exposedModulesPD pd)
+                    `seq`    rnf (buildDependsPD pd)
 
-instance DeepSeq ModuleDescr where
-    deepSeq pd =  deepSeq (moduleIdMD pd)
-                    $   deepSeq (mbSourcePathMD pd)
-                    $   deepSeq (exportedNamesMD pd)
-                    $   deepSeq (referencesMD pd)
+instance NFData ModuleDescr where
+    rnf pd =  rnf (moduleIdMD pd)
+                    `seq`    rnf (mbSourcePathMD pd)
+                    `seq`    rnf (exportedNamesMD pd)
+                    `seq`    rnf (referencesMD pd)
 
-instance DeepSeq Descr where
-    deepSeq (Descr descrName' typeInfo' descrModu'
-        mbLocation' mbComment' details')  =  deepSeq descrName'
-                    $   deepSeq typeInfo'
-                    $   deepSeq descrModu'
-                    $   deepSeq mbLocation'
-                    $   deepSeq mbComment'
-                    $   deepSeq details'
-    deepSeq (Reexported reexpModu' impDescr') = deepSeq reexpModu'
-                    $   deepSeq impDescr'
+instance NFData Descr where
+    rnf (Descr descrName' typeInfo' descrModu'
+        mbLocation' mbComment' details')  =  rnf descrName'
+                    `seq`    rnf typeInfo'
+                    `seq`    rnf descrModu'
+                    `seq`    rnf mbLocation'
+                    `seq`    rnf mbComment'
+                    `seq`    rnf details'
 
-instance DeepSeq SpDescr where
-    deepSeq (FieldDescr typeDescrF')              =   deepSeq typeDescrF'
-    deepSeq (ConstructorDescr typeDescrC')        =   deepSeq typeDescrC'
-    deepSeq (DataDescr constructors' fields')     =   deepSeq constructors'
-                    $   deepSeq fields'
-    deepSeq (NewtypeDescr constructor' mbField')  =   deepSeq constructor'
-                    $   deepSeq mbField'
-    deepSeq (ClassDescr super' methods')          =   deepSeq super'
-                    $   deepSeq methods'
-    deepSeq (MethodDescr classDescrM')            =   deepSeq classDescrM'
-    deepSeq (InstanceDescr binds')                =   deepSeq binds'
-    deepSeq a                                     =   seq a
+    rnf (Reexported reexpModu' impDescr') = rnf reexpModu'
+                    `seq`    rnf impDescr'
+
+instance NFData SpDescr where
+    rnf (FieldDescr typeDescrF')              =   rnf typeDescrF'
+    rnf (ConstructorDescr typeDescrC')        =   rnf typeDescrC'
+    rnf (DataDescr constructors' fields')     =   constructors'
+                    `seq` rnf fields'
+    rnf (NewtypeDescr constructor' mbField')  =   rnf constructor'
+                    `seq`    rnf mbField'
+    rnf (ClassDescr super' methods')          =   rnf super'
+                    `seq`    rnf methods'
+    rnf (MethodDescr classDescrM')            =   rnf classDescrM'
+    rnf (InstanceDescr binds')                =   rnf binds'
+    rnf a                                     =   seq a ()
 
 
-instance DeepSeq PackageIdentifier where
-    deepSeq pd =  deepSeq (pkgName pd)
-                    $   deepSeq (pkgVersion pd)
+instance NFData PackageIdentifier where
+    rnf pd =  rnf (pkgName pd)
+                    `seq`    rnf (pkgVersion pd)
 
-instance DeepSeq alpha  => DeepSeq (Set alpha) where
-    deepSeq s =  deepSeq (Set.elems s)
+instance NFData DescrType where  rnf a = seq a ()
 
-instance (DeepSeq alpha, DeepSeq beta) => DeepSeq (Map alpha beta) where
-    deepSeq s =  deepSeq (Map.toList s)
+instance NFData BS.ByteString where  rnf b = seq b ()
 
-instance DeepSeq DescrType where  deepSeq = seq
+instance NFData Version where  rnf v = seq v ()
 
-instance DeepSeq BS.ByteString where  deepSeq = seq
+instance NFData PackModule where
+    rnf pd =  rnf (pack pd)
+                    `seq`   rnf (modu pd)
 
-instance DeepSeq Version where  deepSeq = seq
+instance NFData ModuleName where
+    rnf =  rnf . components
 
-instance DeepSeq PackModule where
-    deepSeq pd =  deepSeq (pack pd)
-                    $   deepSeq (modu pd)
-
-instance DeepSeq ModuleName where
-    deepSeq =  deepSeq . components
-
-instance DeepSeq PackageName where
-    deepSeq (PackageName s) =  deepSeq s
+instance NFData PackageName where
+    rnf (PackageName s) =  rnf s
 

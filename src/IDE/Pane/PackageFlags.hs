@@ -37,9 +37,9 @@ import Graphics.UI.Editor.Basics
 import Graphics.UI.Editor.MakeEditor
 import Graphics.UI.Editor.Simple
 import Graphics.UI.Editor.Parameters
-import IDE.PrinterParser hiding (fieldParser,parameters)
+import Text.PrinterParser hiding (fieldParser,parameters)
 import Control.Event (registerEvent)
-import IDE.DescriptionPP
+import Graphics.UI.Editor.DescriptionPP
     (flattenFieldDescriptionPPToS,
      extractFieldDescription,
      FieldDescriptionPP(..),
@@ -162,7 +162,7 @@ args s = case parse argsParser "" s of
 flatFlagsDescription :: [FieldDescriptionS IDEPackage]
 flatFlagsDescription = flattenFieldDescriptionPPToS flagsDescription
 
-flagsDescription :: FieldDescriptionPP IDEPackage
+flagsDescription :: FieldDescriptionPP IDEPackage IDEM
 flagsDescription = VFDPP emptyParams [
         mkFieldPP
             (paraName <<<- ParaName "Config flags" $ emptyParams)

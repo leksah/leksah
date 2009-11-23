@@ -56,6 +56,7 @@ import SrcLoc
 import FastString (mkFastString)
 import Data.Maybe (catMaybes)
 import Outputable (ppr, showSDoc)
+import Debug.Trace (trace)
 
 showSourceSpan :: LogRef -> String
 showSourceSpan = showSDoc . ppr . logRefSrcSpan
@@ -64,12 +65,12 @@ selectRef :: Maybe LogRef -> IDEAction
 selectRef (Just ref) = do
     logRefs <- readIDE allLogRefs
     case elemIndex ref logRefs of
-        Nothing    -> return ()
+        Nothing    -> trace "no index" $ return ()
         Just index -> do
-            mbBuf         <- selectSourceBuf (filePath ref)
+            mbBuf         <- selectSourceBuf (logRefFullFilePath ref)
             case mbBuf of
                 Just buf  -> markRefInSourceBuf index buf ref True
-                Nothing   -> return ()
+                Nothing   -> trace "no buf" $ return ()
             log :: IDELog <- getLog
             liftIO $ markErrorInLog log (logLines ref)
 selectRef Nothing = return ()
@@ -80,7 +81,7 @@ forOpenLogRefs f = do
     allBufs <- allBuffers
     forM_ [0 .. ((length logRefs)-1)] (\index -> do
         let ref = logRefs !! index
-        fpc <- liftIO $ canonicalizePath $ filePath ref
+        fpc <- liftIO $ canonicalizePath $ logRefFullFilePath ref
         forM_ (filter (\buf -> case (fileName buf) of
                 Just fn -> equalFilePath fpc fn
                 Nothing -> False) allBufs) (f index ref))
@@ -380,8 +381,8 @@ logOutput output = do
     logOutputLines defaultLineLogger output
     return ()
 
-logOutputForBuild :: Bool -> [ToolOutput] -> IDEAction
-logOutputForBuild backgroundBuild output = do
+logOutputForBuild :: FilePath -> Bool -> [ToolOutput] -> IDEAction
+logOutputForBuild rootPath backgroundBuild output = do
     ideRef <- ask
     log    <- getLog
     unless backgroundBuild $ liftIO $ bringPaneToFront log
@@ -426,18 +427,20 @@ logOutputForBuild backgroundBuild output = do
                         sysMessage Normal (show e)
                         readAndShow remainingOutput ideR log False errs
                     (Right ne@(ErrorLine span str),_) ->
-                        readAndShow remainingOutput ideR log True ((LogRef span str (lineNr,lineNr) ErrorRef):errs)
-                    (Right (OtherLine str1),(LogRef span str (l1,l2) refType):tl) ->
+                        readAndShow remainingOutput ideR log True ((LogRef span rootPath str (lineNr,lineNr) ErrorRef):errs)
+                    (Right (OtherLine str1),(LogRef span rootPath str (l1,l2) refType):tl) ->
                         if inError
                             then readAndShow remainingOutput ideR log True ((LogRef span
+                                                    rootPath
                                                     (if null str
                                                         then line
                                                         else str ++ "\n" ++ line)
                                                     (l1,lineNr) refType) : tl)
                             else readAndShow remainingOutput ideR log False errs
-                    (Right (WarningLine str1),(LogRef span str (l1,l2) isError):tl) ->
+                    (Right (WarningLine str1),(LogRef span rootPath str (l1,l2) isError):tl) ->
                         if inError
                             then readAndShow remainingOutput ideR log True ((LogRef span
+                                                    rootPath
                                                     (if null str
                                                         then line
                                                         else str ++ "\n" ++ line)
@@ -451,38 +454,38 @@ logOutputForBuild backgroundBuild output = do
                 appendLog log (line ++ "\n") InputTag
                 readAndShow remainingOutput ideR log inError errs
 
-logOutputForBreakpoints :: [ToolOutput] -> IDEAction
-logOutputForBreakpoints output = do
+logOutputForBreakpoints :: FilePath -> [ToolOutput] -> IDEAction
+logOutputForBreakpoints rootPath output = do
     breaks <- logOutputLines (\log out -> do
         case out of
             ToolOutput line -> do
                 logLineNumber <- liftIO $ appendLog log (line ++ "\n") LogTag
                 case parse breaksLineParser "" line of
                     Right (BreakpointDescription n span) ->
-                        return $ Just $ LogRef span line (logLineNumber, logLineNumber) BreakpointRef
+                        return $ Just $ LogRef span rootPath line (logLineNumber, logLineNumber) BreakpointRef
                     _ -> return Nothing
             _ -> do
                 defaultLineLogger log out
                 return Nothing) output
     setBreakpointList $ catMaybes breaks
 
-logOutputForSetBreakpoint :: [ToolOutput] -> IDEAction
-logOutputForSetBreakpoint output = do
+logOutputForSetBreakpoint :: FilePath -> [ToolOutput] -> IDEAction
+logOutputForSetBreakpoint rootPath output = do
     breaks <- logOutputLines (\log out -> do
         case out of
             ToolOutput line -> do
                 logLineNumber <- liftIO $ appendLog log (line ++ "\n") LogTag
                 case parse setBreakpointLineParser "" line of
                     Right (BreakpointDescription n span) ->
-                        return $ Just $ LogRef span line (logLineNumber, logLineNumber) BreakpointRef
+                        return $ Just $ LogRef span rootPath line (logLineNumber, logLineNumber) BreakpointRef
                     _ -> return Nothing
             _ -> do
                 defaultLineLogger log out
                 return Nothing) output
     addLogRefs $ catMaybes breaks
 
-logOutputForContext :: (String -> [SrcSpan]) -> [ToolOutput] -> IDEAction
-logOutputForContext getContexts output = do
+logOutputForContext :: FilePath -> (String -> [SrcSpan]) -> [ToolOutput] -> IDEAction
+logOutputForContext rootPath getContexts output = do
     refs <- fmap catMaybes $ logOutputLines (\log out -> do
         case out of
             ToolOutput line -> do
@@ -490,7 +493,7 @@ logOutputForContext getContexts output = do
                 let contexts = getContexts line
                 if null contexts
                     then return Nothing
-                    else return $ Just $ LogRef (last contexts) line (logLineNumber, logLineNumber) ContextRef
+                    else return $ Just $ LogRef (last contexts) rootPath line (logLineNumber, logLineNumber) ContextRef
             _ -> do
                 defaultLineLogger log out
                 return Nothing) output
@@ -498,8 +501,8 @@ logOutputForContext getContexts output = do
         addLogRefs [last refs]
         lastContext
 
-logOutputForLiveContext :: [ToolOutput] -> IDEAction
-logOutputForLiveContext = logOutputForContext getContexts
+logOutputForLiveContext :: FilePath -> [ToolOutput] -> IDEAction
+logOutputForLiveContext rootPath = logOutputForContext rootPath getContexts
     where
         getContexts [] = []
         getContexts line@(x:xs) = case stripPrefix "Stopped at " line of
@@ -508,8 +511,8 @@ logOutputForLiveContext = logOutputForContext getContexts
                 _          -> getContexts xs
             _ -> getContexts xs
 
-logOutputForHistoricContext :: [ToolOutput] -> IDEAction
-logOutputForHistoricContext = logOutputForContext getContexts
+logOutputForHistoricContext :: FilePath -> [ToolOutput] -> IDEAction
+logOutputForHistoricContext rootPath = logOutputForContext rootPath getContexts
     where
         getContexts line = case stripPrefix "Logged breakpoint at " line of
             Just rest -> case parse srcSpanParser "" rest of

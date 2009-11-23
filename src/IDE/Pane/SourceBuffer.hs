@@ -177,7 +177,7 @@ instance RecoverablePane IDEBuffer BufferState IDEM where
         writeOverwriteInStatusbar sv
         ids1 <- eBuf `afterModifiedChanged` markActiveLabelAsChanged
         ids2 <- sv `afterMoveCursor` writeCursorPositionInStatusbar sv
-        ids3 <- sv `onLookupInfo` showInfo sv
+        ids3 <- sv `onLookupInfo` selectInfo sv
         ids4 <- sv `afterToggleOverwrite`  writeOverwriteInStatusbar sv
         activateThisPane actbuf $ concat [ids1, ids2, ids3, ids4]
         triggerEventIDE (Sensitivity [(SensitivityEditor, True)])
@@ -234,28 +234,32 @@ lastActiveBufferPane = do
         _        -> return Nothing
 
 goToDefinition :: Descr -> IDEAction
-goToDefinition idDescr = do
-    mbSystemInfo      <-  readIDE systemInfo
-    mbCurrentInfo        <-  readIDE packageInfo
-    if isJust mbSystemInfo && isJust (descrModu idDescr)
-        then do
-            let packageId =   pack $ fromJust $ descrModu idDescr
-            let mbPack    =   case packageId `Map.lookup` fst (fromJust mbSystemInfo) of
-                                Just it ->  Just it
-                                Nothing ->  if isJust mbCurrentInfo
-                                                then packageId `Map.lookup` fst (fst (fromJust mbCurrentInfo))
-                                                else Nothing
-            case mbPack of
-                Just pack       ->  case filter (\md -> moduleIdMD md == fromJust (descrModu idDescr))
+goToDefinition idDescr  = do
+    mbWorkspaceInfo     <-  readIDE workspaceInfo
+    mbSystemInfo        <-  readIDE systemInfo
+    let mbSourcePath1   =   case mbWorkspaceInfo of
+                                Nothing -> Nothing
+                                Just (sc, _) -> sourcePathFromScope sc
+    let mbSourcePath2   =   case mbSourcePath1 of
+                                Just sp -> Just sp
+                                Nothing -> case mbSystemInfo of
+                                                Just si -> sourcePathFromScope si
+                                                Nothing -> Nothing
+    when (isJust mbSourcePath2) $
+        goToSourceDefinition (fromJust $ mbSourcePath2) (mbLocation idDescr)
+    return ()
+    where
+    sourcePathFromScope :: PackScope -> Maybe FilePath
+    sourcePathFromScope scope =
+        case descrModu idDescr of
+            Just mod -> case (pack mod) `Map.lookup` (fst scope) of
+                            Just pack ->
+                                case filter (\md -> moduleIdMD md == fromJust (descrModu idDescr))
                                                     (exposedModulesPD pack) of
-                                        (mod : tl)   ->  if isJust (mbSourcePathMD mod)
-                                                        then goToSourceDefinition
-                                                                (fromJust $ mbSourcePathMD mod)
-                                                                (mbLocation idDescr)
-                                                        else return ()
-                                        []          -> do ideMessage Normal "no module"
-                Nothing         ->  do ideMessage Normal "no package"
-        else ideMessage Normal  "no infos"
+                                    (mod : tl) ->  mbSourcePathMD mod
+                                    []         -> Nothing
+                            Nothing -> Nothing
+            Nothing -> Nothing
 
 goToSourceDefinition :: FilePath -> Maybe Location -> IDEAction
 goToSourceDefinition fp mbLocation = do
@@ -582,8 +586,8 @@ writeOverwriteInStatusbar sv = do
     triggerEventIDE (StatusbarChanged [CompartmentOverlay mode])
     return ()
 
-showInfo :: EditorView -> IDEAction
-showInfo sv = do
+selectInfo :: EditorView -> IDEAction
+selectInfo sv = do
     ideR    <- ask
     buf     <- getBuffer sv
     (l,r)   <- getSelectionBounds buf

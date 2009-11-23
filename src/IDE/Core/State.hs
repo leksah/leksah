@@ -92,6 +92,8 @@ module IDE.Core.State (
 ,   standardModuleTemplateFilename
 ,   leksahFlagFileExtension
 
+,   activeProjectDir
+
 ,   configDirName
 #ifdef YI
 ,   liftYiControl
@@ -126,12 +128,13 @@ import Control.Monad.State
 
 import IDE.Core.Types
 import Graphics.UI.Frame.Panes
-import Graphics.UI.Frame.ViewFrame hiding (notebookInsertOrdered)
-import qualified Graphics.UI.Frame.ViewFrame as VF (notebookInsertOrdered)
+import Graphics.UI.Frame.ViewFrame --hiding (notebookInsertOrdered)
+--import qualified Graphics.UI.Frame.ViewFrame as VF (notebookInsertOrdered)
 import IDE.Exception
 import Control.Event
 import System.IO
 import Data.Maybe (isJust)
+import System.FilePath(dropFileName)
 
 leksahSessionFileExtension = ".lkshs"
 leksahWorkspaceFileExtension = ".lkshw"
@@ -199,7 +202,7 @@ instance PaneMonad IDEM where
         case mbBuf of
             Nothing -> return Nothing
             Just buf -> do
-                VF.notebookInsertOrdered notebook (getTopWidget buf) (paneName buf) Nothing False
+                notebookInsertOrdered notebook (getTopWidget buf) (paneName buf) Nothing False
                 addPaneAdmin buf cids panePath
                 liftIO $ do
                     widgetShowAll (getTopWidget buf)
@@ -222,6 +225,12 @@ instance PaneMonad IDEM where
                         Just (pn,_) -> Just pn)
                 modifyIDE_ (\ide -> ide{recentPanes =
                     paneName pane : filter (/= paneName pane) (recentPanes ide)})
+                return ()
+        where
+            trigger :: Maybe String -> Maybe String -> IDEAction
+            trigger s1 s2 = do
+                triggerEventIDE (RecordHistory ((PaneSelected s1), PaneSelected s2))
+                triggerEventIDE (Sensitivity [(SensitivityEditor, False)])
                 return ()
     --closeThisPane   ::  forall alpha beta . RecoverablePane alpha beta delta => alpha -> delta Bool
     closeThisPane pane = do
@@ -267,6 +276,12 @@ data MessageLevel = Silent | Normal | High
 -- Main window is just the first one in the list
 window = head . windows
 
+activeProjectDir :: IDEM FilePath
+activeProjectDir = do
+    activePack' <- readIDE activePack
+    case activePack' of
+        Nothing   -> return "."
+        Just pack -> return (dropFileName (cabalFile pack))
 
 errorRefs :: IDE -> [LogRef]
 errorRefs = (filter ((\t -> t == ErrorRef || t == WarningRef) . logRefType)) . allLogRefs
@@ -377,13 +392,6 @@ withoutRecordingDo act = do
 -- This is here and not in Views because it needs some dependencies
 -- (e.g. Events for history)
 --
-
-trigger :: Maybe String -> Maybe String -> IDEAction
-trigger s1 s2 = do
-    triggerEventIDE (RecordHistory ((PaneSelected s1), PaneSelected s2))
-    triggerEventIDE (Sensitivity [(SensitivityEditor, False)])
-    return ()
-
 
 deactivatePane :: IDEAction
 deactivatePane = do

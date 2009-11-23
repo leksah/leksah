@@ -24,6 +24,9 @@ module IDE.Workspaces (
 ,   workspaceAddPackage
 ,   workspaceAddPackage'
 ,   workspaceRemovePackage
+
+,   makePackage
+,   backgroundMake
 ) where
 
 import IDE.Core.State
@@ -39,7 +42,7 @@ import System.FilePath
      takeBaseName,
      addExtension,
      takeExtension)
-import IDE.PrinterParser
+import Text.PrinterParser
     (readFields,
      writeFields,
      readParser,
@@ -51,9 +54,14 @@ import qualified Text.PrettyPrint as  PP (text)
 import Graphics.UI.Gtk
     (widgetDestroy, dialogRun, messageDialogNew, Window(..))
 import IDE.Pane.PackageEditor (choosePackageFile)
-import Data.List (delete)
+import Data.List ((\\), foldl', nub, delete)
 import IDE.Package
-    (packageClean, activatePackage, deactivatePackage)
+    (belongsToPackage,
+     buildPackage,
+     packageInstall',
+     packageClean,
+     activatePackage,
+     deactivatePackage)
 import System.Directory (doesFileExist, canonicalizePath)
 import System.Time (getClockTime)
 import Graphics.UI.Gtk.Windows.MessageDialog
@@ -61,13 +69,27 @@ import Graphics.UI.Gtk.Windows.MessageDialog
 import Graphics.UI.Gtk.General.Structs (ResponseId(..))
 import Control.Exception (SomeException(..))
 import Control.Monad.Reader.Class (ask)
+import Data.Map (Map(..))
+import qualified Data.Map as  Map
+    (lookup, empty, mapWithKey, fromList, map)
+import Distribution.Package (pkgVersion, pkgName, Dependency(..))
+import Distribution.Version (withinRange)
+import qualified GHC.List as  List (or)
+import IDE.Pane.SourceBuffer (fileCheckAll)
 
 
 setWorkspace :: Maybe Workspace -> IDEAction
 setWorkspace mbWs = do
+    let mbRealWs = case mbWs of
+                        Nothing -> Nothing
+                        Just ws -> Just ws{wsReverseDeps = calculateReverseDependencies ws}
     mbOldWs <- readIDE workspace
-    modifyIDE_ (\ide -> ide{workspace = mbWs})
-    let pack =  case mbWs of
+--    trace ("deps " ++ case mbRealWs of
+--                        Nothing -> "empty ws"
+--                        Just ws -> show $ map (\ (k,v) -> (packageId k, map packageId v))
+--                                            (Map.toList (wsReverseDeps ws)))
+    modifyIDE_ (\ide -> ide{workspace = mbRealWs})
+    let pack =  case mbRealWs of
                     Nothing -> Nothing
                     Just ws -> wsActivePack ws
     let oldPack = case mbOldWs of
@@ -79,7 +101,7 @@ setWorkspace mbWs = do
                 Just p  -> activatePackage pack >> return ()
     mbPack <- readIDE activePack
     triggerEventIDE WorkspaceChanged
-    let wsStr = case mbWs of
+    let wsStr = case mbRealWs of
                     Nothing -> ""
                     Just ws -> wsName ws
     let txt = wsStr ++ " > " ++
@@ -95,16 +117,6 @@ setWorkspace mbWs = do
 --
 workspaceVersion :: Int
 workspaceVersion = 1
-
-workspaceClean = do
-    mbWs <-  readIDE workspace
-    case mbWs of
-        Nothing -> return ()
-        Just ws -> mapM_ (packageClean . Just) (wsPackages ws)
-
-workspaceMake :: IDEAction
-workspaceMake = return () -- TODO
-
 
 -- | Constructs a new workspace and makes it the current workspace
 workspaceNew :: IDEAction
@@ -161,7 +173,8 @@ workspaceOpenThis askForSession mbFilePath =
                     ideR <- ask
                     catchIDE (do
                         workspace <- readWorkspace filePath
-                        setWorkspace (Just workspace {wsFile = filePath}))
+                        setWorkspace (Just workspace {wsFile = filePath,
+                                                      wsReverseDeps = calculateReverseDependencies workspace}))
                             (\ (e :: SomeException) -> reflectIDE
                                 (ideMessage Normal ("Can't load workspace file " ++ filePath ++ "\n" ++ show e)) ideR)
 
@@ -271,11 +284,10 @@ emptyWorkspace =  Workspace {
 ,   wsName          =   ""
 ,   wsFile          =   ""
 ,   wsPackages      =   []
---,   wsPackageCache  =   Nothing
 ,   wsActivePack    =   Nothing
 ,   wsPackagesFiles =   []
 ,   wsActivePackFile =   Nothing
-
+,   wsReverseDeps   =   Map.empty
 }
 
 workspaceDescr :: [FieldDescriptionS Workspace]
@@ -331,4 +343,109 @@ removeRecentlyUsedWorkspace fp = do
             modifyIDE_ (\ide -> ide{recentWorkspaces = filter (\e -> e /= fp) recentWorkspaces'})
         triggerEventIDE UpdateRecent
         return ()
+
+------------------------
+-- Workspace make
+
+-- | Calculates for every package a list of packages, that depends directly on it
+-- This is the reverse info from cabal, were we specify what a package depends on
+calculateReverseDependencies :: Workspace -> Map IDEPackage [IDEPackage]
+calculateReverseDependencies ws = Map.map nub $ foldl' calc mpacks packages
+    where
+    packages = wsPackages ws
+    mpacks   = Map.fromList (map (\p -> (p,[])) packages)
+
+    calc :: Map IDEPackage [IDEPackage] -> IDEPackage -> Map IDEPackage [IDEPackage]
+    calc theMap pack = Map.mapWithKey (addDeps (depends pack) pack ) theMap
+
+    addDeps :: [Dependency] -> IDEPackage -> IDEPackage -> [IDEPackage] -> [IDEPackage]
+    addDeps dependencies pack pack2 revDeps =  if depsMatch then pack : revDeps else revDeps
+        where
+        depsMatch = List.or (map (matchOne pack2) dependencies)
+        matchOne thePack (Dependency name versionRange) =
+            name == pkgName (packageId thePack)
+            &&  withinRange (pkgVersion (packageId thePack)) versionRange
+
+
+-- | Select a package which is not direct or indirect dependent on any other package
+selectFirstReasonableTarget :: [IDEPackage] -> Map IDEPackage [IDEPackage] -> IDEPackage
+selectFirstReasonableTarget [] _      = error "Workspaces>>selectFirstReasonableTarget: empty package list"
+selectFirstReasonableTarget [p] _     = p
+selectFirstReasonableTarget l revDeps =
+    case foldl' removeDeps l l of
+        hd:_ -> hd
+        []   -> error "Workspaces>>selectFirstReasonableTarget: no remaining"
+    where
+    removeDeps :: [IDEPackage] -> IDEPackage -> [IDEPackage]
+    removeDeps packs p = packs \\ allDeps p
+
+    allDeps :: IDEPackage -> [IDEPackage]
+    allDeps p = case Map.lookup p revDeps of
+                            Nothing   -> []
+                            Just list -> list ++ concatMap allDeps list
+
+makePackages :: Bool -> [IDEPackage] -> IDEAction
+makePackages _ []       = return ()
+makePackages isBackgroundBuild packages = do
+    mbWs <- readIDE workspace
+    prefs' <- readIDE prefs
+    case mbWs of
+        Nothing -> return ()
+        Just ws -> do
+            let package = selectFirstReasonableTarget packages (wsReverseDeps ws)
+            buildPackage isBackgroundBuild package (cont prefs' package ws)
+    where
+    cont prefs' package ws res =
+        if res
+            then do
+                let deps = case Map.lookup package (wsReverseDeps ws) of
+                                        Nothing   -> []
+                                        Just list -> list
+                -- install if either
+                -- AlwaysInstall is set or
+                -- deps are not empty and
+                when ((not (null deps) && autoInstall prefs' == InstallLibs)
+                        || autoInstall prefs' == InstallAlways)
+                    $ packageInstall' package (cont2 deps package)
+            else cont2 [] package
+    cont2 deps package = do
+        let nextTargets = delete package $ nub $ packages ++ deps
+        makePackages isBackgroundBuild nextTargets
+
+
+backgroundMake :: IDEAction
+backgroundMake = catchIDE (do
+    ideR        <- ask
+    prefs       <- readIDE prefs
+    mbPackage   <- readIDE activePack
+    case mbPackage of
+        Nothing         -> return ()
+        Just package    -> do
+            modifiedPacks <- if saveAllBeforeBuild prefs
+                                then fileCheckAll belongsToPackage
+                                else return []
+            let isModified = not (null modifiedPacks)
+            when isModified $ do
+            makePackages True modifiedPacks
+    )
+    (\(e :: SomeException) -> sysMessage Normal (show e))
+
+makePackage :: IDEAction
+makePackage = do
+    activePack' <- readIDE activePack
+    case activePack' of
+        Nothing -> return ()
+        Just p -> makePackages False [p]
+
+workspaceClean = do
+    mbWs <-  readIDE workspace
+    case mbWs of
+        Nothing -> return ()
+        Just ws -> mapM_ (packageClean . Just) (wsPackages ws)
+
+workspaceMake = do
+    mbWs <-  readIDE workspace
+    case mbWs of
+        Nothing -> return ()
+        Just ws -> makePackages False (wsPackages ws)
 

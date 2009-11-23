@@ -56,7 +56,6 @@ import Graphics.UI.Editor.Basics (eventPaneName,GUIEventSelector(..))
 import IDE.Metainfo.Provider (rebuildPackageInfo)
 import qualified System.IO.UTF8 as UTF8  (writeFile)
 
-
 -- | A modules pane description
 --
 
@@ -288,39 +287,50 @@ instance RecoverablePane IDEModules ModulesState IDEM where
                 return ()
             return (Just modules,[ConnectC cid1,ConnectC cid2, ConnectC cid3])
 
-
 selectIdentifier :: Descr -> IDEAction
 selectIdentifier idDescr = do
-    systemInfo'     <-  readIDE systemInfo
-    currentInfo'    <-  readIDE packageInfo
-    currentScope    <-  getScope
+    systemScope     <- readIDE systemInfo
+    workspaceScope  <- readIDE workspaceInfo
+    packageScope    <- readIDE packageInfo
+    currentScope    <- getScope
     case descrModu idDescr of
         Nothing -> return ()
-        Just pm -> do
-            let pid = pack pm
-            let mbNeededScope = case currentInfo' of
-                                Just (localScope,packageScope) ->
-                                    if Map.member pid (fst localScope)
-                                        then Just (PackageScope False)
-                                        else if Map.member pid (fst packageScope)
-                                                then Just (PackageScope True)
-                                                else case systemInfo' of
-                                                        Just worldScope ->
-                                                            if Map.member pid (fst worldScope)
-                                                                then Just SystemScope
-                                                                else Nothing
-                                                        Nothing -> Nothing
-                                Nothing -> case systemInfo' of
-                                                Just worldScope ->
-                                                    if Map.member pid (fst worldScope)
-                                                        then Just SystemScope
-                                                        else Nothing
-                                                Nothing -> Nothing
-            case mbNeededScope of
-                Nothing -> return ()
-                Just sc -> do
-                    when (fst currentScope < sc) (setScope (sc,snd currentScope))
-                    selectIdentifier' (modu pm) (descrName idDescr)
+        Just pm -> case scopeForDescr pm packageScope workspaceScope systemScope of
+                        Nothing -> return ()
+                        Just sc -> do
+                            when (fst currentScope < sc) (setScope (sc,snd currentScope))
+                            selectIdentifier' (modu pm) (descrName idDescr)
+
+scopeForDescr :: PackModule -> Maybe (PackScope,PackScope) ->
+    Maybe (PackScope,PackScope) -> Maybe PackScope -> Maybe Scope
+scopeForDescr pm packageScope workspaceScope systemScope =
+    case ps of
+        (True, r) -> Just (PackageScope r)
+        _         ->
+            case ws of
+                (True, r) -> Just (WorkspaceScope r)
+                _         -> case systemScope of
+                                Nothing -> Nothing
+                                Just ssc -> if Map.member pid (fst ssc)
+                                                then Just SystemScope
+                                                else Nothing
+    where
+    pid = pack pm
+    ps  = case packageScope of
+                    Nothing -> (False,False)
+                    Just (psc1,psc2) -> if Map.member pid (fst psc1)
+                                        then (True,False)
+                                        else if Map.member pid (fst psc2)
+                                            then (True,True)
+                                            else (False, False)
+    ws  = case workspaceScope of
+                        Nothing -> (False,False)
+                        Just (wsc1,wsc2) -> if Map.member pid (fst wsc1)
+                                            then (True,False)
+                                            else if Map.member pid (fst wsc2)
+                                                then (True,True)
+                                                else (False, False)
+
 
 selectIdentifier' :: ModuleName -> Symbol -> IDEAction
 selectIdentifier'  moduleName symbol =
@@ -371,13 +381,6 @@ treePathFromNameArray (Just tree) (h:t) accu   =
             Nothing ->  Nothing
             Just i  ->  treePathFromNameArray (Just (subForest tree !! i)) t (i:accu)
 treePathFromNameArray Nothing _ _  = Nothing
-
---showInterface :: Maybe PanePath -> IDEAction
---showInterface mbPP = do
---    m <- getModules mbPP
---    liftIO $ bringPaneToFront m
-----    liftIO $ widgetGrabFocus (descrView m)
-
 
 treeViewSearch :: TreeView
     -> TreeStore (String, [(ModuleDescr,PackageDescr)])
@@ -674,7 +677,7 @@ type ModTree = Tree (String, [(ModuleDescr,PackageDescr)])
 -- | Make a Tree with a module desription, package description pairs tree to display.
 --   Their are nodes with a label but without a module (like e.g. Data).
 --
-buildModulesTree :: (PackageScope,PackageScope) -> ModTree
+buildModulesTree :: (PackScope,PackScope) -> ModTree
 buildModulesTree ((localMap,_),(otherMap,_)) =
     let flatPairs           =   concatMap (\p -> map (\m -> (m,p)) (exposedModulesPD p))
                                     (Map.elems localMap ++ Map.elems otherMap)

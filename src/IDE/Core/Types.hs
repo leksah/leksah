@@ -40,10 +40,12 @@ module IDE.Core.Types (
 ,   KeyString
 
 ,   Prefs(..)
+,   InstallFlag(..)
 
 ,   LogRefType(..)
 ,   LogRef(..)
-,   filePath
+,   logRefFilePath
+,   logRefFullFilePath
 ,   isError
 ,   isBreakpoint
 ,   colorHexString
@@ -68,7 +70,7 @@ module IDE.Core.Types (
 ,   DataId
 ,   TypeInfo
 ,   SymbolTable
-,   PackageScope
+,   PackScope
 ,   PackModule(..)
 ,   parsePackModule
 ,   showPackModule
@@ -131,6 +133,7 @@ import FastString (unpackFS)
 import Numeric (showHex)
 import Control.Event
     (EventSelector(..), EventSource(..), Event(..))
+import System.FilePath ((</>))
 
 -- ---------------------------------------------------------------------
 -- IDE State
@@ -152,9 +155,9 @@ data IDE            =  IDE {
 ,   allLogRefs      ::   [LogRef]
 ,   currentEBC      ::   (Maybe LogRef, Maybe LogRef, Maybe LogRef)
 ,   currentHist     ::   Int
-,   systemInfo      ::   (Maybe (PackageScope))                           -- ^ the system scope
-,   packageInfo     ::   (Maybe (PackageScope,PackageScope))              -- ^ the second are the imports
-,   workspaceInfo   ::   (Maybe (PackageScope,PackageScope))              -- ^ the second are the imports
+,   systemInfo      ::   (Maybe (PackScope))                           -- ^ the system scope
+,   packageInfo     ::   (Maybe (PackScope,PackScope))                 -- ^ the second are the imports
+,   workspaceInfo   ::   (Maybe (PackScope,PackScope))                 -- ^ the second are the imports
 ,   handlers        ::   Map String [(Unique, IDEEvent -> IDEM IDEEvent)] -- ^ event handling table
 ,   currentState    ::   IDEState
 ,   guiHistory      ::   (Bool,[GUIHistory],Int)
@@ -207,7 +210,6 @@ data IDEEvent  =
     |   LogMessage String LogTag
     |   RecordHistory GUIHistory
     |   Sensitivity [(SensitivityMask,Bool)]
-    |   DescrChoice [Descr]
     |   SearchMeta String
     |   LoadSession FilePath
     |   SaveSession FilePath
@@ -232,7 +234,6 @@ instance Event IDEEvent String where
     getSelector (SelectIdent _)         =   "SelectIdent"
     getSelector (RecordHistory _)       =   "RecordHistory"
     getSelector (Sensitivity _)         =   "Sensitivity"
-    getSelector (DescrChoice _)         =   "DescrChoice"
     getSelector (SearchMeta _)          =   "SearchMeta"
     getSelector (LoadSession _)         =   "LoadSession"
     getSelector (SaveSession _)         =   "SaveSession"
@@ -305,6 +306,9 @@ data IDEPackage     =   IDEPackage {
 }
     deriving (Eq,Show)
 
+instance Ord IDEPackage where
+    compare x y     =   compare (packageId x) (packageId y)
+
 -- ---------------------------------------------------------------------
 -- Workspace
 --
@@ -317,6 +321,7 @@ data Workspace = Workspace {
 ,   wsActivePack    ::   Maybe IDEPackage
 ,   wsPackagesFiles ::   [FilePath]
 ,   wsActivePackFile::   Maybe FilePath
+,   wsReverseDeps   ::   Map IDEPackage [IDEPackage]
 } deriving Show
 
 -- ---------------------------------------------------------------------
@@ -376,6 +381,7 @@ data Prefs = Prefs {
     ,   saveAllBeforeBuild  ::   Bool
     ,   backgroundBuild     ::   Bool
     ,   backgroundLink      ::   Bool
+    ,   autoInstall         ::   InstallFlag
     ,   printEvldWithShow   ::   Bool
     ,   breakOnException    ::   Bool
     ,   breakOnError        ::   Bool
@@ -384,6 +390,9 @@ data Prefs = Prefs {
 
 data SearchHint = Forward | Backward | Insert | Delete | Initial
     deriving (Eq)
+
+data InstallFlag        = InstallAlways | InstallLibs | InstallNo
+    deriving(Eq,Show, Read, Enum, Bounded)
 
 instance Ord Modifier
     where compare a b = compare (fromEnum a) (fromEnum b)
@@ -395,6 +404,7 @@ data LogRefType = WarningRef | ErrorRef | BreakpointRef | ContextRef deriving (E
 
 data LogRef = LogRef {
     logRefSrcSpan       ::   SrcSpan
+,   logRefRootPath      ::   FilePath
 ,   refDescription      ::   String
 ,   logLines            ::   (Int,Int)
 ,   logRefType          ::   LogRefType
@@ -403,8 +413,11 @@ data LogRef = LogRef {
 instance Show LogRef where
     show lr =  refDescription lr ++ showSDoc (ppr (logRefSrcSpan lr))
 
-filePath :: LogRef -> FilePath
-filePath = unpackFS . srcSpanFile. logRefSrcSpan
+logRefFilePath :: LogRef -> FilePath
+logRefFilePath = unpackFS . srcSpanFile. logRefSrcSpan
+
+logRefFullFilePath :: LogRef -> FilePath
+logRefFullFilePath lr = logRefRootPath lr </> logRefFilePath lr
 
 isError :: LogRef -> Bool
 isError = (== ErrorRef) . logRefType
@@ -427,7 +440,7 @@ colorHexString (Color r g b) = '#' : (pad $ showHex r "")
 
 newtype Present alpha       =   Present alpha
 
-type PackageScope       =   (Map PackageIdentifier PackageDescr,SymbolTable)
+type PackScope          =   (Map PackageIdentifier PackageDescr,SymbolTable)
 type SymbolTable        =   Map Symbol [Descr]
 
 data PackageDescr       =   PackageDescr {
@@ -635,7 +648,15 @@ instance Default ByteString
 
 data Scope = PackageScope Bool | WorkspaceScope Bool | SystemScope
     -- True -> with imports, False -> without imports
-  deriving (Show, Eq, Ord, Read)
+  deriving (Show, Eq, Read)
+
+instance Ord Scope where
+    _ <= SystemScope                             = True
+    WorkspaceScope False <=  WorkspaceScope True = True
+    WorkspaceScope False <=  PackageScope True   = True
+    PackageScope True    <=  WorkspaceScope True = True
+    PackageScope False   <=  PackageScope True   = True
+    _ <= _  = False
 
 newtype CandyTable      =   CT (CandyTableForth,CandyTableBack)
 

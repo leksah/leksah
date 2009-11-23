@@ -18,7 +18,6 @@ module IDE.Pane.Info (
     IDEInfo
 ,   InfoState
 ,   setInfo
-,   setSymbol
 ,   replayInfoHistory
 ) where
 
@@ -33,7 +32,6 @@ import IDE.Core.State
 import IDE.Pane.SourceBuffer
 import IDE.Pane.References
 import IDE.FileUtils (openBrowser)
-import IDE.Metainfo.Provider (getIdentifierDescr)
 import Graphics.UI.Gtk.SourceView
 
 
@@ -175,23 +173,6 @@ referencedFrom' = do
     case mbInfo of
         Nothing     ->  return ()
         Just info   ->  referencedFrom info  >> return ()
-
-setSymbol :: String -> IDEAction
-setSymbol symbol = do
-    currentInfo' <- readIDE packageInfo
-    case currentInfo' of
-        Nothing -> return ()
-        Just ((_,symbolTable1),(_,symbolTable2)) ->
-            case getIdentifierDescr symbol symbolTable1 symbolTable2 of
-                []     -> return ()
-                (a:r)  ->  do
-                    setInfo a
-                    p :: IDEInfo <- forceGetPane (Right "*Info")
-                    displayPane p False
-                    if length (a:r) > 1
-                        then triggerEventIDE (DescrChoice (a:r)) >> return ()
-                        else triggerEventIDE (SelectIdent a) >> return ()
-
 
 setInfo :: Descr -> IDEAction
 setInfo identifierDescr = do

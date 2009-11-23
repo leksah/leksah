@@ -26,7 +26,6 @@ import Graphics.UI.Gtk hiding (get)
 import Graphics.UI.Gtk.Gdk.Events
 import Data.IORef (newIORef)
 import Data.IORef (writeIORef,readIORef,IORef(..))
-import IDE.Pane.Info (setInfo,IDEInfo(..))
 import IDE.Pane.SourceBuffer (goToDefinition)
 import IDE.Metainfo.Provider (searchMeta)
 import Data.Maybe
@@ -75,12 +74,11 @@ instance RecoverablePane IDESearch SearchState IDEM where
         modeSelection mode
         searchMetaGUI str
         return mbP
-
--- System (Prefix False) als defaults
     builder pp nb windows =
         let scope   = SystemScope
             mode    = Prefix False
         in reifyIDE $ \ ideR -> do
+
             scopebox        <-  hBoxNew True 2
             rb1             <-  radioButtonNewWithLabel "Package"
             rb2             <-  radioButtonNewWithLabelFromWidget rb1 "Workspace"
@@ -205,9 +203,11 @@ instance RecoverablePane IDESearch SearchState IDEM where
             mb4 `onToggled` do
                 active <- toggleButtonGetActive mb4
                 (reflectIDE (modeSelectionCase active) ideR )
-            treeView `onButtonPress` (listViewPopup ideR  listStore treeView)
-            sel `onSelectionChanged` do
-                fillInfo search ideR
+            treeView `onButtonPress` (handleEvent ideR  listStore treeView)
+            treeView `onButtonPress` (handleEvent ideR  listStore treeView)
+            treeView `onKeyPress` (handleEvent ideR  listStore treeView)
+--            sel `onSelectionChanged` do
+--                fillInfo search ideR
             entry `afterKeyRelease` (\ event -> do
                 text <- entryGetText entry
                 reflectIDE (searchMetaGUI text) ideR
@@ -274,38 +274,44 @@ searchMetaGUI str = do
         listStoreClear (searchStore search)
         mapM_ (listStoreAppend (searchStore search)) (take 500 descrs)
 
-listViewPopup :: IDERef
+handleEvent :: IDERef
     -> ListStore Descr
     -> TreeView
     -> Event
     -> IO (Bool)
-listViewPopup ideR  store descrView (Button _ click _ _ _ _ button _ _) = do
+handleEvent ideR  store descrView (Button {eventClick = click, eventButton = button}) = do
     if button == RightButton
         then do
             theMenu         <-  menuNew
             item1           <-  menuItemNewWithLabel "Go to definition"
-            item1 `onActivateLeaf` do
-                sel         <-  getSelectionDescr descrView store
-                case sel of
-                    Just descr      ->  reflectIDE
-                                            (goToDefinition descr) ideR
-                    otherwise       ->  sysMessage Normal "Search >> listViewPopup: no selection"
+            item1 `onActivateLeaf` (goToDef ideR store descrView)
+
             menuShellAppend theMenu item1
             menuPopup theMenu Nothing
             widgetShowAll theMenu
             return True
         else if button == LeftButton && click == DoubleClick
-                then do sel         <-  getSelectionDescr descrView store
-                        case sel of
-                            Just descr      ->  reflectIDE (triggerEvent ideR (SelectIdent descr))
-                                                    ideR  >> return ()
-                            otherwise       ->  sysMessage Normal "Search >> listViewPopup: no selection2"
-                        return True
-                else do
-                    mbPane :: Maybe IDEInfo <- reflectIDE getPane ideR
-                    when (isJust mbPane) $ bringPaneToFront (fromJust mbPane)
-                    return False
-listViewPopup _ _ _ _ = throwIDE "listViewPopup wrong event type"
+                then selectDescr ideR store descrView
+                else return False
+handleEvent ideR  store descrView (Key { eventKeyName = "Return"}) =
+    selectDescr ideR store descrView
+handleEvent _ _ _ _ = return False
+
+
+goToDef ideR store descrView = do
+    sel         <-  getSelectionDescr descrView store
+    case sel of
+        Just descr      ->  reflectIDE
+                                (goToDefinition descr) ideR
+        otherwise       ->  sysMessage Normal "Search >> listViewPopup: no selection"
+
+selectDescr ideR store descrView= do
+    sel <-  getSelectionDescr descrView store
+    case sel of
+        Just descr      ->  reflectIDE (triggerEvent ideR (SelectIdent descr))
+                                ideR  >> return ()
+        otherwise       ->  sysMessage Normal "Search >> listViewPopup: no selection2"
+    return True
 
 getSelectionDescr ::  TreeView
     ->  ListStore Descr
@@ -319,16 +325,16 @@ getSelectionDescr treeView listStore = do
             return (Just val)
         _  ->  return Nothing
 
-fillInfo :: IDESearch
-    -> IDERef
-    -> IO ()
-fillInfo search ideR  = do
-    sel <- getSelectionDescr (treeView search) (searchStore search)
-    case sel of
-        Just descr      ->  do
-            reflectIDE (setInfo descr) ideR
-            entrySetText (entry search) (descrName descr)
-        otherwise       ->  return ()
+--fillInfo :: IDESearch
+--    -> IDERef
+--    -> IO ()
+--fillInfo search ideR  = do
+--    sel <- getSelectionDescr (treeView search) (searchStore search)
+--    case sel of
+--        Just descr      ->  do
+--            reflectIDE (setInfo descr) ideR
+--            entrySetText (entry search) (descrName descr)
+--        otherwise       ->  return ()
 
 setChoices :: [Descr] -> IDEAction
 setChoices descrs = do
@@ -337,6 +343,9 @@ setChoices descrs = do
         listStoreClear (searchStore search)
         mapM_ (listStoreAppend (searchStore search)) descrs
         bringPaneToFront search
-        entrySetText (entry search) ""
+        entrySetText (entry search)
+            (case descrs of
+                []    -> ""
+                hd: _ -> descrName hd)
 
 

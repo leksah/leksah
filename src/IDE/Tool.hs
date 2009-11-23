@@ -130,7 +130,7 @@ newInteractiveTool getOutput executable arguments = do
 ghciPrompt :: String
 ghciPrompt = "3KM2KWR7LZZbHdXfHUOA5YBBsJVYoCQnKX"
 
-data CommanLineReader = CommanLineReader {
+data CommandLineReader = CommandLineReader {
     stripInitialPrompt :: String -> Maybe String,
     stripFollowingPrompt :: String -> Maybe String,
     errorSyncCommand :: Maybe String,
@@ -156,14 +156,14 @@ ghciStripExpectedError output = case stripPrefix "\n<interactive>:1:0" output of
                                             (maybe rest id (stripPrefix "-28" rest))
                                     Nothing -> Nothing
 
-ghciCommandLineReader    = CommanLineReader {
+ghciCommandLineReader    = CommandLineReader {
     stripInitialPrompt   = ghciStripInitialPrompt,
     stripFollowingPrompt = ghciStripFollowingPrompt,
     errorSyncCommand     = Just "kM2KWR7LZZbHdXfHUOA5YBBsJVYoC",
     stripExpectedError   = ghciStripExpectedError
     }
 
-noInputCommandLineReader = CommanLineReader {
+noInputCommandLineReader = CommandLineReader {
     stripInitialPrompt = const Nothing,
     stripFollowingPrompt = const Nothing,
     errorSyncCommand = Nothing,
@@ -178,7 +178,7 @@ noInputCommandLineReader = CommanLineReader {
 --        yield
 --        waitTillEmpty handle
 
-getOutput :: CommanLineReader -> Handle -> Handle -> Handle -> ProcessHandle -> IO [RawToolOutput]
+getOutput :: CommandLineReader -> Handle -> Handle -> Handle -> ProcessHandle -> IO [RawToolOutput]
 getOutput clr inp out err pid = do
     chan <- newChan
     -- hSetBuffering out NoBuffering

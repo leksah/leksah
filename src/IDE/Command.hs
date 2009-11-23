@@ -15,7 +15,7 @@
 -------------------------------------------------------------------------------
 
 
-module IDE.Menu (
+module IDE.Command (
     mkActions
 ,   menuDescription
 ,   makeMenu
@@ -57,8 +57,10 @@ import IDE.Pane.References
 import Paths_leksah
 import IDE.GUIHistory
 import IDE.Metainfo.Provider
-    (updateInfo, buildSystemInfo, rebuildPackageInfo)
-import IDE.Pane.Info (setSymbol)
+    (getIdentifierDescr,
+     updateInfo,
+     buildSystemInfo,
+     rebuildPackageInfo)
 import IDE.NotebookFlipper
 import IDE.ImportTool (addAllImports)
 import IDE.LogRef
@@ -75,14 +77,12 @@ import Control.Event (registerEvent)
 import Paths_leksah
 import IDE.Pane.Breakpoints
     (fillBreakpointList, selectBreak)
-import IDE.Group.Debugger (setSensitivityDebugger, showDebugger)
-import IDE.Group.Browser (showBrowser)
 import IDE.Workspaces
 import IDE.Statusbar
 import IDE.Pane.Workspace
 import IDE.Pane.Variables (fillVariablesList)
 import IDE.Pane.Trace (fillTraceList)
-import IDE.Group.Search
+import IDE.PaneGroups
 import IDE.Pane.Search (setChoices, searchMetaGUI)
 
 --
@@ -192,7 +192,7 @@ mkActions =
     ,AD "ConfigPackage" "_Configure Package" (Just "Configures the package") (Just "ide_configure")
         packageConfig [] False
     ,AD "BuildPackage" "_Build Package" (Just "Builds the package") (Just "ide_make")
-        (packageBuild False) [] False
+        makePackage [] False
     ,AD "DocPackage" "_Build Documentation" (Just "Builds the documentation") Nothing
         packageDoc [] False
     ,AD "CopyPackage" "_Copy Package" (Just "Copies the package") Nothing
@@ -736,6 +736,17 @@ handleSpecialKeystrokes (Key { eventKeyName = name,  eventModifier = mods,
     printMods (m:r) = show m ++ printMods r
 handleSpecialKeystrokes _ = return True
 
+setSymbol :: String -> IDEAction
+setSymbol symbol = do
+    currentInfo' <- readIDE workspaceInfo
+    case currentInfo' of
+        Nothing -> return ()
+        Just ((_,symbolTable1),(_,symbolTable2)) ->
+            case filter (not . isReexported) (getIdentifierDescr symbol symbolTable1 symbolTable2) of
+                []     -> return ()
+                a:[]   -> selectIdentifier a
+                l      -> setChoices l
+
 --
 -- | Register handlers for IDE events
 --
@@ -759,8 +770,6 @@ registerEvents =    do
         (Left (\ rh@(RecordHistory h)   -> recordHistory h >> return rh))
     registerEvent stRef "Sensitivity"
         (Left (\ s@(Sensitivity h)      -> setSensitivity h >> return s))
-    registerEvent stRef "DescrChoice"
-        (Left (\ e@(DescrChoice descrs) -> setChoices descrs >> return e))
     registerEvent stRef "SearchMeta"
         (Left (\ e@(SearchMeta string)  -> searchMetaGUI string >> return e))
     registerEvent stRef "LoadSession"
