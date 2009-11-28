@@ -697,12 +697,15 @@ backwardFindCharC :: EditorIter
                     -> (Char -> Bool)
                     -> Maybe EditorIter
                     -> IDEM (Maybe EditorIter)
-backwardFindCharC (GtkEditorIter i) pred mbLimit = transformGtkIterMaybe i (\x ->
-    Gtk.textIterBackwardFindChar x pred (
+backwardFindCharC (GtkEditorIter i) pred mbLimit = transformGtkIterMaybe i $ \x ->
+    Gtk.textIterBackwardFindChar x pred $
         case mbLimit of
             Just (GtkEditorIter limit) -> Just limit
-            Nothing                    -> Nothing))
---            _                          -> fail "Mismatching TextEditor types in backwardFindChar"))
+            Nothing                    -> Nothing
+#ifdef YI
+            _                          -> fail "Mismatching TextEditor types in backwardFindChar"
+#endif
+
 #ifdef YI
 backwardFindCharC (YiEditorIter i) pred mbLimit = return Nothing -- TODO
 #endif
@@ -735,12 +738,15 @@ forwardFindCharC :: EditorIter
                    -> (Char -> Bool)
                    -> Maybe EditorIter
                    -> IDEM (Maybe EditorIter)
-forwardFindCharC (GtkEditorIter i) pred mbLimit = transformGtkIterMaybe i (\x ->
-    Gtk.textIterForwardFindChar x pred (
+forwardFindCharC (GtkEditorIter i) pred mbLimit = transformGtkIterMaybe i $ \x ->
+    Gtk.textIterForwardFindChar x pred $
         case mbLimit of
             Just (GtkEditorIter limit) -> Just limit
-            Nothing                    -> Nothing))
---            _                          -> fail "Mismatching TextEditor types in forwardFindChar"))
+            Nothing                    -> Nothing
+#ifdef YI
+            _                          -> fail "Mismatching TextEditor types in forwardFindChar"
+#endif
+
 #ifdef YI
 forwardFindCharC (YiEditorIter i) pred mbLimit = return Nothing -- TODO
 #endif
@@ -752,11 +758,14 @@ forwardSearch :: EditorIter
                  -> IDEM (Maybe (EditorIter, EditorIter))
 forwardSearch (GtkEditorIter i) str flags mbLimit = liftIO $ do
     fmap (fmap (\(start, end) -> (GtkEditorIter start, GtkEditorIter end))) $
-        Gtk.textIterForwardSearch i str flags (
+        Gtk.textIterForwardSearch i str flags $
             case mbLimit of
                 Just (GtkEditorIter limit) -> Just limit
-                Nothing                    -> Nothing)
---                _                          -> fail "Mismatching TextEditor types in forwardSearch")
+                Nothing                    -> Nothing
+#ifdef YI
+                _                          -> fail "Mismatching TextEditor types in forwardSearch"
+#endif
+
 #ifdef YI
 forwardSearch (YiEditorIter i) str pred mbLimit = return Nothing -- TODO
 #endif
