@@ -42,23 +42,19 @@ import Control.Monad.Reader
 import IDE.Core.State
 import IDE.TextEditor hiding(afterFocusIn)
 import IDE.Pane.SourceBuffer
-import Data.Char (toLower)
-import Text.Regex.Posix.String (compile)
-import Text.Regex.Posix
-    (Regex(..), compNewline, compExtended,  execBlank, compIgnoreCase)
-import Data.Bits ((.|.))
+import Data.Char (digitToInt, isDigit, toLower, isAlphaNum)
+import Text.Regex.TDFA hiding (caseSensitive)
+import qualified Text.Regex.TDFA as Regex
+import Text.Regex.TDFA.String (compile)
 import Data.List (nub, find, isPrefixOf)
-import Data.Array ((!))
+import Data.Array (bounds, (!), inRange)
 import Text.Regex.Base.RegexLike (matchAll)
-import Text.Regex (subRegex)
 import IDE.Tool (runTool)
 import Control.Concurrent (forkIO)
 import IDE.Pane.Grep
-import GHC.Unicode (isAlphaNum)
 import IDE.Package (getPackageDescriptionAndPath)
 import Distribution.PackageDescription (allBuildInfo, hsSourceDirs)
 import System.FilePath (dropFileName)
-
 
 data FindState = FindState {
             entryStr        ::    String
@@ -461,6 +457,7 @@ editFind' exp matchIndex wrapAround dummy hint =
     inActiveBufContext False $ \_ gtkbuf currentBuffer _ -> do
     i1 <- getStartIter gtkbuf
     i2 <- getEndIter gtkbuf
+    text <- getText gtkbuf i1 i2 True
     removeTagByName gtkbuf "found" i1 i2
     startMark <- getInsertMark gtkbuf
     st1 <- getIterAtMark gtkbuf startMark
@@ -469,26 +466,26 @@ editFind' exp matchIndex wrapAround dummy hint =
             then do
                 st2 <- backwardCharC st1
                 st3 <- backwardCharC st2
-                mbsr <- backSearch exp matchIndex gtkbuf st3
+                mbsr <- backSearch exp matchIndex gtkbuf text st3
                 case mbsr of
                     Nothing ->
                         if wrapAround
-                            then do backSearch exp matchIndex gtkbuf i2
+                            then do backSearch exp matchIndex gtkbuf text i2
                             else return Nothing
-                    Just (start,end) -> return (Just (start,end))
+                    m -> return m
             else do
                 st2 <- if hint == Forward
                     then forwardCharC st1
                     else return st1
-                mbsr <- forwardSearch exp matchIndex gtkbuf st2
+                mbsr <- forwardSearch exp matchIndex gtkbuf text st2
                 case mbsr of
                     Nothing ->
                         if wrapAround
-                            then do forwardSearch exp matchIndex gtkbuf i1
+                            then do forwardSearch exp matchIndex gtkbuf text i1
                             else return Nothing
-                    Just (start,end) -> return (Just (start,end))
+                    m -> return m
     case mbsr2 of
-        Just (start,end) -> do --found
+        Just (start,end,_) -> do --found
             --widgetGrabFocus sourceView
             scrollToIter (sourceView currentBuffer) start 0.2 Nothing
             applyTagByName gtkbuf "found" start end
@@ -496,13 +493,13 @@ editFind' exp matchIndex wrapAround dummy hint =
             return True
         Nothing -> return False
     where
-        backSearch exp matchIndex gtkbuf iter = do
+        backSearch exp matchIndex gtkbuf text iter = do
             offset <- getOffset iter
-            findMatch exp matchIndex gtkbuf (<= offset) True
+            findMatch exp matchIndex gtkbuf text (<= offset) True
 
-        forwardSearch exp matchIndex gtkbuf iter = do
+        forwardSearch exp matchIndex gtkbuf text iter = do
             offset <- getOffset iter
-            findMatch exp matchIndex gtkbuf (>= offset) False
+            findMatch exp matchIndex gtkbuf text (>= offset) False
 
 regexAndMatchIndex :: Bool -> Bool -> Bool -> String -> IO (Maybe (Regex, Int))
 regexAndMatchIndex caseSensitive entireWord regex string = do
@@ -510,8 +507,11 @@ regexAndMatchIndex caseSensitive entireWord regex string = do
         then return Nothing
         else do
             let (regexString, index) = regexStringAndMatchIndex entireWord regex string
-            mbRegex <- compileRegex caseSensitive regexString
-            return $ maybe Nothing (Just . (flip (,) index)) mbRegex
+            case compileRegex caseSensitive regexString of
+                Left err -> do
+                    sysMessage Normal err
+                    return Nothing
+                Right regex -> return $ Just (regex, index)
 
 regexStringAndMatchIndex :: Bool -> Bool -> String -> (String, Int)
 regexStringAndMatchIndex entireWord regex string =
@@ -524,17 +524,15 @@ regexStringAndMatchIndex entireWord regex string =
         then ("(^|[^a-zA-Z0-9])(" ++ regexString ++ ")($|[^a-zA-Z0-9])", 2)
         else (regexString, 0)
 
-findMatch :: Regex -> Int -> EditorBuffer -> (Int -> Bool) -> Bool -> IDEM (Maybe (EditorIter, EditorIter))
-findMatch exp matchIndex gtkbuf offsetPred findLast = do
-    iterStart <- getStartIter gtkbuf
-    iterEnd <- getEndIter gtkbuf
-    text <- getText gtkbuf iterStart iterEnd True
+findMatch :: Regex -> Int -> EditorBuffer -> String -> (Int -> Bool) -> Bool -> IDEM (Maybe (EditorIter, EditorIter, MatchArray))
+findMatch exp matchIndex gtkbuf text offsetPred findLast = do
     let matches = (if findLast then reverse else id) (matchAll exp text)
     case find (offsetPred . fst . (!matchIndex)) matches of
         Just matches -> do
-            iter1 <- forwardCharsC iterStart (fst (matches!matchIndex))
-            iter2 <- forwardCharsC iter1 (snd (matches!matchIndex))
-            return $ Just (iter1, iter2)
+            iterStart <- getStartIter gtkbuf
+            iter1     <- forwardCharsC iterStart (fst (matches!matchIndex))
+            iter2     <- forwardCharsC iter1 (snd (matches!matchIndex))
+            return $ Just (iter1, iter2, matches)
         Nothing -> return Nothing
 
 editReplace :: Bool -> Bool -> Bool -> Bool -> String -> String -> SearchHint -> IDEM Bool
@@ -550,11 +548,13 @@ editReplace' entireWord caseSensitive wrapAround regex search replace hint mayRe
         mbExpAndMatchIndex <- liftIO $ regexAndMatchIndex caseSensitive entireWord regex search
         case mbExpAndMatchIndex of
             Just (exp, matchIndex) -> do
-                match      <- findMatch exp matchIndex gtkbuf (== offset) False
+                iStart <- getStartIter gtkbuf
+                iEnd   <- getEndIter gtkbuf
+                text   <- getText gtkbuf iStart iEnd True
+                match  <- findMatch exp matchIndex gtkbuf text (== offset) False
                 case match of
-                    Just (iterStart, iterEnd) -> do
-                        old    <- getText gtkbuf iterStart iterEnd True
-                        mbText <- liftIO $ replacementText regex old replace
+                    Just (iterStart, iterEnd, matches) -> do
+                        mbText <- liftIO $ replacementText regex text matchIndex matches replace
                         case mbText of
                             Just text -> do
                                 delete gtkbuf iterStart iterEnd
@@ -572,12 +572,27 @@ editReplace' entireWord caseSensitive wrapAround regex search replace hint mayRe
                             else return False
             Nothing -> return False
     where
-        replacementText False old replace = return $ Just replace
-        replacementText True old replace = do
-            mbExp <- compileRegex caseSensitive search
-            case mbExp of
-                Just exp -> return $ Just $ subRegex exp old replace
-                Nothing  -> return Nothing
+        replacementText False _ _ _ replace = return $ Just replace
+        replacementText True text matchIndex matches replace = do
+            case compileRegex caseSensitive search of
+                Left err -> do
+                    sysMessage Normal err
+                    return Nothing
+                Right exp -> return $ Just $ regexReplacement text matchIndex matches replace
+
+regexReplacement :: String -> Int -> MatchArray -> String -> String
+regexReplacement _ _ _ [] = []
+regexReplacement text matchIndex matches ('\\' : '\\' : xs) = '\\' : regexReplacement text matchIndex matches xs
+regexReplacement text matchIndex matches ('\\' : n : xs) | isDigit n =
+    let subIndex = matchIndex + digitToInt n
+        value    = if inRange (bounds matches) subIndex
+                    then
+                        let subExp = matches!(matchIndex + digitToInt n) in
+                        take (snd subExp) $ drop (fst subExp) text
+                    else ['\\', n] in
+    value ++ regexReplacement text matchIndex matches xs
+
+regexReplacement text matchIndex matches (x : xs) = x : regexReplacement text matchIndex matches xs
 
 editReplaceAll :: Bool -> Bool -> Bool -> Bool -> String -> String -> SearchHint -> IDEM Bool
 editReplaceAll entireWord caseSensitive wrapAround regex search replace hint = do
@@ -586,17 +601,12 @@ editReplaceAll entireWord caseSensitive wrapAround regex search replace hint = d
         then editReplaceAll entireWord caseSensitive False regex search replace hint
         else return False
 
-compileRegex :: Bool -> String -> IO (Maybe Regex)
-compileRegex caseSense searchString = do
-    res <- compile ((if caseSense then id else (compIgnoreCase .|.))
-                    (compExtended .|. compNewline))
-                execBlank searchString
-    case res of
-        Left err -> do
-            sysMessage Normal (show err)
-            return Nothing
-        Right regex -> return $ Just regex
-
+compileRegex :: Bool -> String -> Either String Regex
+compileRegex caseSense searchString =
+    let compOption = defaultCompOpt {
+                            Regex.caseSensitive = caseSense
+                        ,   multiline = True } in
+    compile compOption defaultExecOpt searchString
 
 red = Color 64000 10000 10000
 orange = Color 64000 48000 0

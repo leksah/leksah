@@ -53,9 +53,9 @@ import IDE.FileUtils
 import IDE.Core.State
 import IDE.Metainfo.InterfaceCollector
 import Data.Char (toLower,isUpper,toUpper,isLower)
-import Text.Regex.Posix
+import Text.Regex.TDFA
 import System.IO.Unsafe (unsafePerformIO)
-import Text.Regex.Posix.String (execute,compile)
+import Text.Regex.TDFA.String (execute,compile)
 import IDE.Metainfo.GHCUtils (findFittingPackages,getInstalledPackageInfos,inGhc)
 import Data.Binary.Shared (decodeSer)
 import System.Mem (performGC)
@@ -198,21 +198,20 @@ searchInScopeCaseIns (a:l)  st pre | isLower a  =
 
 searchRegex :: String -> SymbolTable -> Bool -> [Descr]
 searchRegex searchString st caseSense =
-    unsafePerformIO $ do
-        res <- compile (if caseSense then compBlank else compIgnoreCase)
-                    execBlank searchString
-        case res of
-            Left err -> do
-                sysMessage Normal (show err)
-                return []
-            Right regex ->
-                filterM (\e -> do
-                    res <- execute regex (descrName e)
-                    case res of
-                        Left e        -> return False
-                        Right Nothing -> return False
-                        _             -> return True)
-                            (concat (Map.elems st))
+    let compOption = defaultCompOpt {
+                            caseSensitive = caseSense
+                        ,   multiline = True } in
+    case compile compOption defaultExecOpt searchString of
+        Left err -> unsafePerformIO $ do
+            sysMessage Normal (show err)
+            return []
+        Right regex ->
+            filter (\e ->
+                case execute regex (descrName e) of
+                    Left e        -> False
+                    Right Nothing -> False
+                    _             -> True)
+                        (concat (Map.elems st))
 
 --
 -- | Update and initialize metadata for the world -- Called at startup
