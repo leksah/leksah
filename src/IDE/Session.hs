@@ -1,7 +1,7 @@
 {-# OPTIONS_GHC -XTypeSynonymInstances -XScopedTypeVariables #-}
 -----------------------------------------------------------------------------
 --
--- Module      :  IDE.SaveSession
+-- Module      :  IDE.Session
 -- Copyright   :  (c) Juergen Nicklisch-Franken, Hamish Mackenzie
 -- License     :  GNU-GPL
 --
@@ -15,7 +15,7 @@
 ---------------------------------------------------------------------------------
 
 
-module IDE.SaveSession (
+module IDE.Session (
     saveSession
 ,   saveSessionAs
 ,   saveSessionAsPrompt
@@ -31,9 +31,11 @@ import System.FilePath
 import qualified Data.Map as Map
 import Data.Maybe
 import Data.Typeable
+import qualified Data.Set as Set
 
 import IDE.Core.State
-import IDE.FileUtils
+import IDE.Utils.GUIUtils
+import IDE.Utils.FileUtils
 import Text.PrinterParser
 import qualified Text.PrettyPrint.HughesPJ as PP
 import Graphics.UI.Editor.Parameters
@@ -57,6 +59,7 @@ import IDE.Pane.Errors (ErrorsState(..))
 import Control.Exception (SomeException(..))
 import IDE.Pane.Workspace (WorkspaceState(..))
 import IDE.Workspaces (workspaceOpenThis)
+
 
 -- ---------------------------------------------------------------------
 -- This needs to be incremented, when the session format changes
@@ -349,17 +352,29 @@ loadSession sessionPath = do
     b <- fileCloseAll (\_ -> return True)
     if b
         then do
+            detachedCloseAll
             paneCloseAll
+            groupsCloseAll
             viewCollapseAll
             recoverSession sessionPath
             modifyIDE_ (\ide -> ide{recentFiles = recentFiles', recentWorkspaces = recentWorkspaces'})
             return ()
         else return ()
 
+detachedCloseAll :: IDEAction
+detachedCloseAll = do
+    windows <- getWindows
+    liftIO $ mapM_ widgetDestroy (tail windows)
+
 paneCloseAll :: IDEAction
 paneCloseAll = do
     panes' <- getPanesSt
     mapM_ (\ (PaneC p) -> closePane p) (Map.elems panes')
+
+groupsCloseAll :: IDEAction
+groupsCloseAll = do
+    layout' <- getLayout
+    mapM_ closeGroup (Set.toList $ allGroupNames layout')
 
 viewCollapseAll :: IDEAction
 viewCollapseAll = do
@@ -421,7 +436,7 @@ getActive = do
     active <- readIDE activePack
     case active of
         Nothing -> return Nothing
-        Just p -> return (Just (cabalFile p))
+        Just p -> return (Just (ipdCabalFile p))
 
 -- ------------------------------------------------------------
 -- * Parsing

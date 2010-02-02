@@ -150,6 +150,7 @@ import Control.Monad (unless)
 #endif
 
 import IDE.Core.State
+import IDE.Utils.GUIUtils(controlIsPressed)
 
 
 

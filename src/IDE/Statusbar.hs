@@ -38,7 +38,14 @@ import Graphics.UI.Gtk
      statusbarPush,
      statusbarPop,
      Packing(..),
-     boxPackEnd)
+     boxPackEnd,
+     imageSetPixelSize,
+     imageNewFromStock,
+     IconSize(..),
+     Image,
+     castToImage,
+     imageSetFromStock
+     )
 import Graphics.UI.Frame.Panes (IDEPane(..), paneName)
 import Text.Printf (printf)
 
@@ -84,6 +91,14 @@ changeStatusbar = mapM_ changeStatusbar'
         liftIO $ statusbarPop sb 1
         liftIO $ statusbarPush sb 1 $ if modi then "OVR" else "INS"
         return ()
+    changeStatusbar' (CompartmentBuild bool) =  do
+        im <- getImBuild
+        liftIO $ imageSetFromStock im (if bool then "ide_build" else "ide_empty") IconSizeMenu
+        return ()
+    changeStatusbar' (CompartmentCollect bool) =  do
+        im <- getImCollect
+        liftIO $ imageSetFromStock im (if bool then "ide_rebuild_meta" else "ide_empty") IconSizeMenu
+        return ()
 
 
 buildStatusbar :: IO HBox
@@ -121,9 +136,13 @@ buildStatusbar = do
     statusbarSetHasResizeGrip sbio False
     widgetSetSizeRequest sbio 60 (-1)
 
-    dummy <- hBoxNew False 1
-    widgetSetName dummy "dummyBox"
+    buildImage <- imageNewFromStock "ide_empty" IconSizeMenu
+    widgetSetName buildImage "buildImage"
+    imageSetPixelSize buildImage 16
 
+    collectImage <- imageNewFromStock "ide_empty" IconSizeMenu
+    widgetSetName collectImage "collectImage"
+    imageSetPixelSize collectImage 16
 
     hb <- hBoxNew False 1
     widgetSetName hb "statusBox"
@@ -133,6 +152,8 @@ buildStatusbar = do
     --boxPackStart hb dummy PackGrow 0
     boxPackEnd hb sblc PackNatural 0
     boxPackEnd hb sbio PackNatural 0
+    boxPackEnd hb collectImage PackNatural 0
+    boxPackEnd hb buildImage PackNatural 0
     boxPackEnd hb sbe PackNatural 0
 
     return hb
@@ -154,3 +175,9 @@ getStatusbarIO     =  widgetGet ["Leksah Main Window", "topBox","statusBox","sta
 
 getStatusbarLC :: PaneMonad alpha => alpha Statusbar
 getStatusbarLC     = widgetGet ["Leksah Main Window", "topBox","statusBox","statusBarLineColumn"] castToStatusbar
+
+getImBuild :: PaneMonad alpha => alpha Image
+getImBuild        = widgetGet ["Leksah Main Window", "topBox","statusBox","buildImage"] castToImage
+
+getImCollect :: PaneMonad alpha => alpha Image
+getImCollect        = widgetGet ["Leksah Main Window", "topBox","statusBox","collectImage"] castToImage

@@ -48,10 +48,9 @@ import IDE.TextEditor
 import IDE.Pane.SourceBuffer
 import IDE.Pane.Log
 import Default
-import IDE.FileUtils
+import IDE.Utils.FileUtils
+import IDE.Utils.GUIUtils
 import System.IO
-import Distribution.InstalledPackageInfo (package)
-import IDE.Metainfo.GHCUtils (getInstalledPackageInfos,inGhc)
 import IDE.Debug
     (debugSetPrintBindResult,
      debugSetBreakOnError,
@@ -60,6 +59,8 @@ import IDE.Debug
 import Graphics.UI.Gtk.SourceView
     (sourceStyleSchemeManagerGetSchemeIds, sourceStyleSchemeManagerNew)
 import System.Time (getClockTime)
+import System.FilePath((</>))
+import qualified IDE.StrippedPrefs as SP
 
 -- ---------------------------------------------------------------------
 -- This needs to be incremented, when the preferences format changes
@@ -90,9 +91,10 @@ instance RecoverablePane IDEPrefs PrefsState IDEM where
     recoverState pp st  =  return Nothing
     builder pp nb windows = do
         prefs <- readIDE prefs
+        configDir <- liftIO getConfigDir
         lastAppliedPrefsRef <- liftIO $ newIORef prefs
-        packageInfos <- inGhc getInstalledPackageInfos
-        let flatPrefsDesc = flattenFieldDescriptionPP (prefsDescription (map package packageInfos))
+        packageInfos <- liftIO $ getInstalledPackageIds
+        let flatPrefsDesc = flattenFieldDescriptionPP (prefsDescription configDir packageInfos)
         reifyIDE $  \ ideR -> do
             vb      <-  vBoxNew False 0
             bb      <-  hButtonBoxNew
@@ -104,7 +106,8 @@ instance RecoverablePane IDEPrefs PrefsState IDEM where
             boxPackStart bb restore PackNatural 0
             boxPackStart bb save PackNatural 0
             boxPackStart bb closeB PackNatural 0
-            (widget,injb,ext,notifier) <-  buildEditor (extractFieldDescription $ prefsDescription (map package packageInfos)) prefs
+            (widget,injb,ext,notifier) <-  buildEditor
+                                (extractFieldDescription $ prefsDescription configDir packageInfos) prefs
             boxPackStart vb widget PackGrow 7
             boxPackEnd vb bb PackNatural 7
             let prefsPane = IDEPrefs vb
@@ -128,8 +131,10 @@ instance RecoverablePane IDEPrefs PrefsState IDEM where
                     Nothing -> return ()
                     Just newPrefs -> do
                     mapM_ (\ (FDPP _ _ _ _ applyF) -> reflectIDE (applyF newPrefs lastAppliedPrefs) ideR ) flatPrefsDesc
-                    fp <- getConfigFilePathForSave standardPreferencesFilename
+                    fp   <- getConfigFilePathForSave standardPreferencesFilename
                     writePrefs fp newPrefs
+                    fp2  <-  getConfigFilePathForSave strippedPreferencesFilename
+                    SP.writeStrippedPrefs fp2 (SP.Prefs (sourceDirectories newPrefs)(unpackDirectory newPrefs))
                     reflectIDE (modifyIDE_ (\ide -> ide{prefs = newPrefs})) ideR )
             closeB `onClicked` (reflectIDE (closePane prefsPane >> return ()) ideR )
             registerEvent notifier FocusIn (Left (\e -> do
@@ -145,8 +150,8 @@ getPrefs (Just pp)  = forceGetPane (Left pp)
 -- * Dialog definition
 -- ------------------------------------------------------------
 
-prefsDescription :: [PackageIdentifier] -> FieldDescriptionPP Prefs IDEM
-prefsDescription packages = NFDPP [
+prefsDescription :: FilePath -> [PackageIdentifier] -> FieldDescriptionPP Prefs IDEM
+prefsDescription configDir packages = NFDPP [
     ("Editor", VFDPP emptyParams [
         mkFieldPP
             (paraName <<<- ParaName "Version number of preferences file format"
@@ -427,12 +432,13 @@ prefsDescription packages = NFDPP [
             (filesEditor Nothing FileChooserActionSelectFolder "Select folder")
             (\i -> return ())
     ,   mkFieldPP
-            (paraName <<<- ParaName "Extract packages from cabal-install" $ emptyParams)
+            (paraName <<<- ParaName "Maybe a directory for unpacking cabal packages" $ emptyParams)
             (PP.text . show)
-            boolParser
-            autoExtractTars
-            (\b a -> a{autoExtractTars = b})
-            boolEditor
+            readParser
+            unpackDirectory
+            (\b a -> a{unpackDirectory = b})
+            (maybeEditor ((fileEditor (Just (configDir </> "packageSources")) FileChooserActionSelectFolder
+                "Select folder"), emptyParams) True "Yes")
             (\i -> return ())
     ,   mkFieldPP
             (paraName <<<- ParaName "Update metadata at startup" $ emptyParams)
@@ -449,6 +455,14 @@ prefsDescription packages = NFDPP [
             collectAfterBuild
             (\b a -> a{collectAfterBuild = b})
             boolEditor
+            (\i -> return ())
+    ,   mkFieldPP
+            (paraName <<<- ParaName "Port number for server connection" $ emptyParams)
+            (PP.text . show)
+            intParser
+            serverPort
+            (\b a -> a{serverPort = b})
+            (intEditor (1.0, 65535.0, 1.0))
             (\i -> return ())
     ]),
     ("Blacklist", VFDPP emptyParams [
@@ -565,7 +579,7 @@ styleEditor p n = do
 
 
 instance Default PackageIdentifier where
-    getDefault = case toPackageIdentifier "unknown-0" of
+    getDefault = case packageIdentifierFromString "unknown-0" of
                     Nothing -> throwIDE "Preferences.getDefault: Can't parse Package Identifier"
                     Just it -> it
 
@@ -607,7 +621,7 @@ defaultPrefs = Prefs {
                                 ,   ("*Search","ToolCategory")]
     ,   collectAfterBuild   =   False
     ,   collectAtStart      =   True
-    ,   autoExtractTars     =   True
+    ,   unpackDirectory     =   Nothing
     ,   useCtrlTabFlipping  =   True
     ,   docuSearchURL       =   "http://holumbus.fh-wedel.de/hayoo/hayoo.html?query="
     ,   completeRestricted  =   False
@@ -624,6 +638,7 @@ defaultPrefs = Prefs {
     ,   breakOnException    =   True
     ,   breakOnError        =   True
     ,   printBindResult     =   False
+    ,   serverPort          =   11111
     }
 
 -- ------------------------------------------------------------
@@ -631,7 +646,9 @@ defaultPrefs = Prefs {
 -- ------------------------------------------------------------
 
 readPrefs :: FilePath -> IO Prefs
-readPrefs fn = readFields fn (flattenFieldDescriptionPPToS (prefsDescription [])) defaultPrefs
+readPrefs fn = do
+    configDir <- getConfigDir
+    readFields fn (flattenFieldDescriptionPPToS (prefsDescription configDir [])) defaultPrefs
 
 -- ------------------------------------------------------------
 -- * Printing
@@ -640,6 +657,8 @@ readPrefs fn = readFields fn (flattenFieldDescriptionPPToS (prefsDescription [])
 writePrefs :: FilePath -> Prefs -> IO ()
 writePrefs fpath prefs = do
     timeNow         <- liftIO getClockTime
+    configDir <- getConfigDir
     let newPrefs    =   prefs {prefsSaveTime = show timeNow, prefsFormat = prefsVersion}
-    writeFields fpath newPrefs (flattenFieldDescriptionPPToS (prefsDescription []))
+    writeFields fpath newPrefs (flattenFieldDescriptionPPToS (prefsDescription configDir []))
+
 

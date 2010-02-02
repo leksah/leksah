@@ -91,7 +91,7 @@ instance RecoverablePane IDEWorkspace WorkspaceState IDEM where
         treeViewAppendColumn treeView col1
         cellLayoutPackStart col1 renderer1 True
         cellLayoutSetAttributes col1 renderer1 listStore
-            $ \row -> [ cellText := (\(_,pack)-> (fromPackageIdentifier . packageId) pack) row ]
+            $ \row -> [ cellText := (\(_,pack)-> (packageIdentifierToString . ipdPackageId) pack) row ]
 
         renderer2   <- cellRendererTextNew
         col2        <- treeViewColumnNew
@@ -102,7 +102,7 @@ instance RecoverablePane IDEWorkspace WorkspaceState IDEM where
         treeViewAppendColumn treeView col2
         cellLayoutPackStart col2 renderer2 True
         cellLayoutSetAttributes col2 renderer2 listStore
-            $ \row -> [ cellText := (\(_,pack)-> cabalFile pack) row ]
+            $ \row -> [ cellText := (\(_,pack)-> ipdCabalFile pack) row ]
 
         treeViewSetHeadersVisible treeView True
         sel <- treeViewGetSelection treeView

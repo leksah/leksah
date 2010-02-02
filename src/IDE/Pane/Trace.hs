@@ -26,7 +26,7 @@ import IDE.Core.State
 import Control.Monad.Reader
 import IDE.Debug
     (debugForward, debugBack, debugCommand')
-import IDE.Tool (ToolOutput(..))
+import IDE.Utils.Tool (ToolOutput(..))
 import IDE.LogRef (srcSpanParser)
 import Debug.Trace (trace)
 import Text.ParserCombinators.Parsec
@@ -44,8 +44,6 @@ import Text.ParserCombinators.Parsec
 import qualified Text.ParserCombinators.Parsec.Token as  P
     (integer, whiteSpace, colon, symbol, makeTokenParser)
 import Text.ParserCombinators.Parsec.Language (emptyDef)
-import GHC (SrcSpan(..))
-import Outputable (ppr, showSDoc)
 import Graphics.UI.Gtk.Gdk.Events (Event(..))
 import Graphics.UI.Gtk.General.Enums (MouseButton(..))
 
@@ -134,7 +132,7 @@ builder' pp nb windows = reifyIDE $ \ ideR -> do
     treeViewAppendColumn treeView col3
     cellLayoutPackStart col3 renderer3 False
     cellLayoutSetAttributes col3 renderer3 tracepoints
-        $ \row -> [ cellText := (showSDoc . ppr) (thPosition row)]
+        $ \row -> [ cellText := displaySrcSpan (thPosition row)]
 
     treeViewSetHeadersVisible treeView True
     sel <- treeViewGetSelection treeView

@@ -106,7 +106,7 @@ builder' idePackage flagsDesc flatflagsDesc pp nb window ideR = do
                 reflectIDE (do
                     modifyIDE_ (\ide -> ide{activePack = Just packWithNewFlags})
                     closePane flagsPane) ideR -- we don't trigger the activePack event here
-                writeFields ((dropExtension (cabalFile packWithNewFlags)) ++ leksahFlagFileExtension)
+                writeFields ((dropExtension (ipdCabalFile packWithNewFlags)) ++ leksahFlagFileExtension)
                     packWithNewFlags flatFlagsDescription)
     closeB `onClicked` (reflectIDE (closePane flagsPane >> return ()) ideR)
     registerEvent notifier FocusIn (Left (\e -> do
@@ -168,64 +168,64 @@ flagsDescription = VFDPP emptyParams [
             (paraName <<<- ParaName "Config flags" $ emptyParams)
             (PP.text . show)
             stringParser
-            (\p -> unargs (configFlags p))
-            (\ b a -> a{configFlags = args b})
+            (\p -> unargs (ipdConfigFlags p))
+            (\ b a -> a{ipdConfigFlags = args b})
             (stringEditor (const True))
             (\ _ -> return ())
     ,   mkFieldPP
             (paraName <<<- ParaName "Build flags" $ emptyParams)
             (PP.text . show)
             stringParser
-            (\p -> unargs (buildFlags p))
-            (\ b a -> a{buildFlags = args b})
+            (\p -> unargs (ipdBuildFlags p))
+            (\ b a -> a{ipdBuildFlags = args b})
             (stringEditor (const True))
             (\ _ ->  return ())
     ,   mkFieldPP
             (paraName <<<- ParaName "Haddock flags" $ emptyParams)
             (PP.text . show)
             stringParser
-            (\p -> unargs (haddockFlags p))
-            (\ b a -> a{haddockFlags = args b})
+            (\p -> unargs (ipdHaddockFlags p))
+            (\ b a -> a{ipdHaddockFlags = args b})
             (stringEditor (const True))
             (\ _ ->   return ())
     ,   mkFieldPP
             (paraName <<<- ParaName "Executable flags" $ emptyParams)
             (PP.text . show)
             stringParser
-            (\p -> unargs (exeFlags p))
-            (\ b a -> a{exeFlags = args b})
+            (\p -> unargs (ipdExeFlags p))
+            (\ b a -> a{ipdExeFlags = args b})
             (stringEditor (const True))
             (\ _ ->   return ())
     ,   mkFieldPP
             (paraName <<<- ParaName "Install flags" $ emptyParams)
             (PP.text . show)
             stringParser
-            (\p -> unargs (installFlags p))
-            (\ b a -> a{installFlags = args b})
+            (\p -> unargs (ipdInstallFlags p))
+            (\ b a -> a{ipdInstallFlags = args b})
             (stringEditor (const True))
             (\ _ ->   return ())
     ,   mkFieldPP
             (paraName <<<- ParaName "Register flags" $ emptyParams)
             (PP.text . show)
             stringParser
-            (\p -> unargs (registerFlags p))
-            (\ b a -> a{registerFlags = args b})
+            (\p -> unargs (ipdRegisterFlags p))
+            (\ b a -> a{ipdRegisterFlags = args b})
             (stringEditor (const True))
             (\ _ ->   return ())
     ,   mkFieldPP
             (paraName <<<- ParaName "Unregister flags" $ emptyParams)
             (PP.text . show)
             stringParser
-            (\p -> unargs (unregisterFlags p))
-            (\ b a -> a{unregisterFlags = args b})
+            (\p -> unargs (ipdUnregisterFlags p))
+            (\ b a -> a{ipdUnregisterFlags = args b})
             (stringEditor (const True))
             (\ _ ->   return ())
     ,   mkFieldPP
             (paraName <<<- ParaName "Source Distribution flags" $ emptyParams)
             (PP.text . show)
             stringParser
-            (\p -> unargs (sdistFlags p))
-            (\ b a -> a{sdistFlags = args b})
+            (\p -> unargs (ipdSdistFlags p))
+            (\ b a -> a{ipdSdistFlags = args b})
             (stringEditor (const True))
             (\ _ -> return ())]
 

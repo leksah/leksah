@@ -35,14 +35,13 @@ import Data.Maybe
 import System.Directory
 
 import IDE.Core.State
-import IDE.FileUtils
+import IDE.Utils.FileUtils
 import Graphics.UI.Editor.MakeEditor
 import Distribution.PackageDescription.Parse (readPackageDescription,writePackageDescription)
 import Distribution.PackageDescription.Configuration (flattenPackageDescription)
 import Distribution.ModuleName(ModuleName)
 import Data.Typeable (Typeable(..))
 import Debug.Trace (trace)
-import qualified Distribution.InstalledPackageInfo as IPI (package)
 import Graphics.UI.Editor.Composite
     (versionEditor,
      versionRangeEditor,
@@ -82,7 +81,6 @@ import Graphics.UI.Editor.Simple
      multilineStringEditor,
      stringEditor)
 import Distribution.License (License(..))
-import IDE.Metainfo.GHCUtils (inGhc,getInstalledPackageInfos)
 import Graphics.UI.Editor.Basics (Editor(..))
 import Distribution.Compiler
     (CompilerFlavor(..))
@@ -93,7 +91,7 @@ import Distribution.Simple
 import Distribution.Version
     (VersionRange(..))
 import Default (Default(..))
-import Packages (PackageConfig(..))
+import IDE.Utils.GUIUtils
 
 -- ---------------------------------------------------------------------
 -- The exported stuff goes here
@@ -111,9 +109,9 @@ packageEdit = do
     case mbActivePackage of
         Nothing -> sysMessage Normal "No active package to edit"
         Just idePackage -> do
-            let dirName = dropFileName (cabalFile idePackage)
+            let dirName = dropFileName (ipdCabalFile idePackage)
             modules <- liftIO $ allModules dirName
-            package <- liftIO $ readPackageDescription normal (cabalFile idePackage)
+            package <- liftIO $ readPackageDescription normal (ipdCabalFile idePackage)
             if hasConfigs package
                 then do
                     ideMessage High ("Cabal file with configurations can't be edited with the "
@@ -252,11 +250,11 @@ editPackage packageD packagePath modules afterSaveAction = do
         Nothing -> do
             pp  <- getBestPathForId "*Package"
             nb  <- getNotebook pp
-            packageInfos <- inGhc $ getInstalledPackageInfos
+            packageInfos <- liftIO $ getInstalledPackageIds
             let packageEd = toEditor packageD
             initPackage packagePath packageEd
                 (packageDD
-                    (map IPI.package packageInfos)
+                    packageInfos
                     (takeDirectory packagePath)
                     modules
                     (length (bis packageEd))
@@ -276,7 +274,7 @@ initPackage :: FilePath
 initPackage packageDir packageD packageDescr panePath nb modules afterSaveAction = do
     let fields =  trace ("initPackage called " ++ packageDir) $ flattenFieldDescription packageDescr
     let initialPackagePath = packageDir </> (display . pkgName . package . pd) packageD ++ ".cabal"
-    packageInfos <- inGhc $ getInstalledPackageInfos
+    packageInfos <- liftIO $ getInstalledPackageIds
     buildThisPane panePath nb
         (builder' packageDir packageD packageDescr afterSaveAction
             initialPackagePath modules packageInfos fields)
@@ -288,7 +286,7 @@ builder' :: FilePath ->
     (FilePath -> IDEAction) ->
     FilePath ->
     [ModuleName] ->
-    [PackageConfig] ->
+    [PackageId] ->
     [FieldDescription PackageDescriptionEd] ->
     PanePath ->
     Notebook ->
@@ -384,7 +382,7 @@ builder' packageDir packageD packageDescr afterSaveAction initialPackagePath mod
                     closePane packagePane
                     initPackage packageDir pde {bis = bis pde ++ [bis pde !! 0]}
                         (packageDD
-                            (map IPI.package packageInfos)
+                            (packageInfos)
                             packageDir
                             modules
                             (length (bis pde) + 1)
@@ -400,7 +398,7 @@ builder' packageDir packageD packageDescr afterSaveAction initialPackagePath mod
                     closePane packagePane
                     initPackage packageDir pde{bis = take (length (bis pde) - 1) (bis pde)}
                         (packageDD
-                            (map IPI.package packageInfos)
+                            packageInfos
                             packageDir
                             modules
                             (length (bis pde) - 1)
@@ -466,11 +464,15 @@ packageDD packages fp modules numBuildInfos extras = NFD ([
             (stability . pd)
             (\ a b -> b{pd = (pd b){stability = a}})
             (stringEditor (const True))
+#if MIN_VERSION_Cabal(1,8,0)
+            -- TODO
+#else
     ,   mkField
             (paraName <<<- ParaName "License" $ emptyParams)
             (license . pd)
             (\ a b -> b{pd = (pd b){license = a}})
             (comboSelectionEditor [GPL, LGPL, BSD3, BSD4, PublicDomain, AllRightsReserved, OtherLicense] show)
+#endif
     ,   mkField
             (paraName <<<- ParaName "License File" $ emptyParams)
             (licenseFile . pd)

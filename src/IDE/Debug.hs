@@ -92,7 +92,7 @@ import System.Posix.Signals (Handler(..))
 
 import Control.Monad.Reader
 import IDE.Core.State
-import IDE.Tool
+import IDE.Utils.Tool
 import IDE.LogRef
 import Control.Exception (SomeException(..))
 import IDE.Pane.SourceBuffer
@@ -119,12 +119,12 @@ executeDebugCommand command handler = do
     maybeGhci <- readIDE ghciState
     case maybeGhci of
         Just ghci -> do
-            triggerEventIDE (StatusbarChanged [CompartmentState command])
+            triggerEventIDE (StatusbarChanged [CompartmentState command, CompartmentBuild True])
             reifyIDE $ \ideR -> do
                 executeGhciCommand ghci command $ \output ->
                     reflectIDE (do
                         handler output
-                        triggerEventIDE (StatusbarChanged [CompartmentState ""])
+                        triggerEventIDE (StatusbarChanged [CompartmentState "", CompartmentBuild False])
                         return ()
                         ) ideR
         _ -> sysMessage Normal "Debugger not running"
@@ -181,7 +181,7 @@ debugSetLiberalScope = do
             mbPackage <- getActivePackageDescr
             case mbPackage of
                 Nothing -> return ()
-                Just p -> let packageNames = map (display . modu . moduleIdMD) (exposedModulesPD p)
+                Just p -> let packageNames = map (display . modu . mdModuleId) (pdModules p)
                     in debugCommand' (foldl (\a b -> a ++ " *" ++ b) ":module + " packageNames)
                         (\ _ -> return ())
 

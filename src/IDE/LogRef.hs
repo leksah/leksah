@@ -47,19 +47,15 @@ import IDE.Core.State
 import IDE.TextEditor
 import IDE.Pane.SourceBuffer
 import IDE.Pane.Log
-import IDE.Tool
+import IDE.Utils.Tool
 import System.FilePath (equalFilePath)
 import System.Directory (canonicalizePath)
 import Data.List (stripPrefix, elemIndex, isPrefixOf)
-import SrcLoc
-    (srcLocSpan, mkSrcLoc, mkSrcSpan, SrcSpan(..))
-import FastString (mkFastString)
 import Data.Maybe (catMaybes)
-import Outputable (ppr, showSDoc)
 import Debug.Trace (trace)
 
 showSourceSpan :: LogRef -> String
-showSourceSpan = showSDoc . ppr . logRefSrcSpan
+showSourceSpan = displaySrcSpan . logRefSrcSpan
 
 selectRef :: Maybe LogRef -> IDEAction
 selectRef (Just ref) = do
@@ -248,7 +244,7 @@ lastContext = do
 
 srcSpanParser :: CharParser () SrcSpan
 srcSpanParser = try (do
-        filePath <- fmap mkFastString $ many (noneOf ":")
+        filePath <- many (noneOf ":")
         char ':'
         char '('
         beginLine <- int
@@ -261,25 +257,23 @@ srcSpanParser = try (do
         char ','
         endCol <- int
         char ')'
-        return $ mkSrcSpan (mkSrcLoc filePath beginLine beginCol)
-                           (mkSrcLoc filePath endLine   endCol))
+        return $ SrcSpan filePath beginLine beginCol endLine endCol)
     <|> try (do
-        filePath <- fmap mkFastString $ many (noneOf ":")
+        filePath <- many (noneOf ":")
         char ':'
         line <- int
         char ':'
         beginCol <- int
         char '-'
         endCol <- int
-        return $ mkSrcSpan (mkSrcLoc filePath line beginCol)
-                           (mkSrcLoc filePath line endCol))
+        return $ SrcSpan filePath line beginCol line endCol)
     <|> try (do
-        filePath <- fmap mkFastString $ many (noneOf ":")
+        filePath <- many (noneOf ":")
         char ':'
         line <- int
         char ':'
         col <- int
-        return $ srcLocSpan (mkSrcLoc filePath line col))
+        return $ SrcSpan filePath line col line col)
     <?> "srcLocParser"
 
 data BuildError =   BuildLine
@@ -368,7 +362,7 @@ logOutputLines lineLogger output = do
     liftIO $ bringPaneToFront log
     results <- forM output $ lineLogger log
     liftIO $ appendLog log "----------------------------------\n" FrameTag
-    triggerEventIDE (StatusbarChanged [CompartmentState ""])
+    triggerEventIDE (StatusbarChanged [CompartmentState "", CompartmentBuild False])
     return results
 
 logOutputLines_ :: (IDELog -> ToolOutput -> IDEM a) -> [ToolOutput] -> IDEAction
@@ -392,7 +386,7 @@ logOutputForBuild rootPath backgroundBuild output = do
     let errorNum    =   length (filter isError errs)
     let warnNum     =   length errs - errorNum
     triggerEventIDE (StatusbarChanged [CompartmentState
-        (show errorNum ++ " Errors, " ++ show warnNum ++ " Warnings")])
+        (show errorNum ++ " Errors, " ++ show warnNum ++ " Warnings"), CompartmentBuild False])
     unless backgroundBuild nextError
     return ()
     where

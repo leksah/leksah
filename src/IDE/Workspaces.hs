@@ -35,8 +35,8 @@ import Graphics.UI.Editor.Parameters
     (Parameter(..), (<<<-), paraName, emptyParams)
 import Control.Monad (unless, when)
 import Data.Maybe (isJust,fromJust )
-import IDE.FileUtils
-    (idePackageFromPath, chooseFile, chooseSaveFile)
+import IDE.Utils.GUIUtils
+    (chooseFile, chooseSaveFile)
 import System.FilePath
     (dropExtension,
      takeBaseName,
@@ -61,7 +61,8 @@ import IDE.Package
      packageInstall',
      packageClean,
      activatePackage,
-     deactivatePackage)
+     deactivatePackage,
+     idePackageFromPath)
 import System.Directory (doesFileExist, canonicalizePath)
 import System.Time (getClockTime)
 import Graphics.UI.Gtk.Windows.MessageDialog
@@ -107,7 +108,7 @@ setWorkspace mbWs = do
     let txt = wsStr ++ " > " ++
                     (case mbPack of
                             Nothing -> ""
-                            Just p  -> fromPackageIdentifier (packageId p))
+                            Just p  -> packageIdentifierToString (ipdPackageId p))
     triggerEventIDE (StatusbarChanged [CompartmentPackage txt])
     return ()
 
@@ -218,7 +219,7 @@ workspaceAddPackage' fp = do
             mbPack <- idePackageFromPath cfp
             case mbPack of
                 Just pack -> do
-                    unless (elem cfp (map cabalFile (wsPackages ws))) $
+                    unless (elem cfp (map ipdCabalFile (wsPackages ws))) $
                         writeWorkspace $ ws {wsPackages =  pack : wsPackages ws}
                     return ()
                 Nothing -> return ()
@@ -253,8 +254,8 @@ writeWorkspace ws = do
                          wsVersion = workspaceVersion,
                          wsActivePackFile = case wsActivePack ws of
                                                 Nothing -> Nothing
-                                                Just pack -> Just (cabalFile pack),
-                         wsPackagesFiles = map cabalFile (wsPackages ws)}
+                                                Just pack -> Just (ipdCabalFile pack),
+                         wsPackagesFiles = map ipdCabalFile (wsPackages ws)}
     setWorkspace $ Just cWs
     liftIO $ writeFields (wsFile newWs) (newWs {wsFile = ""}) workspaceDescr
 
@@ -356,15 +357,15 @@ calculateReverseDependencies ws = Map.map nub $ foldl' calc mpacks packages
     mpacks   = Map.fromList (map (\p -> (p,[])) packages)
 
     calc :: Map IDEPackage [IDEPackage] -> IDEPackage -> Map IDEPackage [IDEPackage]
-    calc theMap pack = Map.mapWithKey (addDeps (depends pack) pack ) theMap
+    calc theMap pack = Map.mapWithKey (addDeps (ipdDepends pack) pack ) theMap
 
     addDeps :: [Dependency] -> IDEPackage -> IDEPackage -> [IDEPackage] -> [IDEPackage]
     addDeps dependencies pack pack2 revDeps =  if depsMatch then pack : revDeps else revDeps
         where
         depsMatch = List.or (map (matchOne pack2) dependencies)
         matchOne thePack (Dependency name versionRange) =
-            name == pkgName (packageId thePack)
-            &&  withinRange (pkgVersion (packageId thePack)) versionRange
+            name == pkgName (ipdPackageId thePack)
+            &&  withinRange (pkgVersion (ipdPackageId thePack)) versionRange
 
 
 -- | Select a package which is not direct or indirect dependent on any other package

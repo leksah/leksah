@@ -1,5 +1,5 @@
 {-# OPTIONS_GHC -XFlexibleContexts -XTypeSynonymInstances -XMultiParamTypeClasses
-    -XScopedTypeVariables #-}
+    -XScopedTypeVariables -XCPP -XDeriveDataTypeable #-}
 -----------------------------------------------------------------------------
 --
 -- Module      :  IDE.Core.State
@@ -41,124 +41,67 @@ module IDE.Core.State (
 ,   modifyIDE_
 ,   withIDE
 ,   getIDE
+,   throwIDE
 
 ,   reifyIDE
 ,   reflectIDE
 ,   catchIDE
 ,   postSyncIDE
 ,   postAsyncIDE
+,   forkIDE
 
-,   ideMessage
-,   logMessage
 ,   sysMessage
 ,   MessageLevel(..)
+,   ideMessage
+,   logMessage
 
 ,   withoutRecordingDo
 --,   deactivatePane
 --,   deactivatePaneIfActive
 --,   closePane
-
-,   getCandyState
-,   setCandyState
-,   getForgetSession
-
-,   getBackgroundBuildToggled
-,   setBackgroundBuildToggled
-,   getBackgroundLinkToggled
-,   setBackgroundLinkToggled
-,   getDebugToggled
-,   setDebugToggled
-
-,   getRecentFiles
-,   getRecentWorkspaces
-,   controlIsPressed
-
-,   leksahSessionFileExtension
-,   standardSessionFilename
-,   packageSessionFilename
-,   leksahWorkspaceFileExtension
-,   leksahPreferencesFileExtension
-,   standardPreferencesFilename
-,   leksahCandyFileExtension
-,   standardCandyFilename
-,   leksahKeymapFileExtension
-,   standardKeymapFilename
-,   leksahSourcesFileExtension
-,   standardSourcesFilename
-,   leksahMetadataFileExtension
-,   leksahMetadataDebugExtension
-,   leksahCurrentMetaExtension
-,   leksahTemplateFileExtension
-,   standardModuleTemplateFilename
-,   leksahFlagFileExtension
-
 ,   activeProjectDir
 
-,   configDirName
 #ifdef YI
 ,   liftYiControl
 #endif
 
-,   Session
-
 ,   module IDE.Core.Types
+,   module IDE.Core.CTypes
+,   module IDE.Utils.Utils
 ,   module Graphics.UI.Frame.Panes
 ,   module Graphics.UI.Frame.ViewFrame
-,   module IDE.Exception
 
 ) where
 
 import Graphics.UI.Gtk hiding (get)
 import Graphics.UI.Gtk.SourceView.SourceView ()
-import Graphics.UI.Gtk.Gdk.Enums (Modifier(..))
-import qualified Graphics.UI.Gtk.Gdk.Events as G (Event(..))
+
 import Data.IORef
 import Control.Monad.Reader hiding (liftIO)
 import qualified Control.Monad.Reader (liftIO)
-import Control.Monad.Trans
-import HscTypes hiding (liftIO)
 import Control.Exception
 import Prelude hiding (catch)
-
-#ifdef YI
-import qualified Yi as Yi
-import qualified Yi.UI.Pango.Control as Yi
 import Control.Monad.State
-#endif
-
 import IDE.Core.Types
 import Graphics.UI.Frame.Panes
 import Graphics.UI.Frame.ViewFrame --hiding (notebookInsertOrdered)
---import qualified Graphics.UI.Frame.ViewFrame as VF (notebookInsertOrdered)
-import IDE.Exception
 import Control.Event
 import System.IO
 import Data.Maybe (isJust)
 import System.FilePath(dropFileName)
-
-leksahSessionFileExtension = ".lkshs"
-leksahWorkspaceFileExtension = ".lkshw"
-leksahPreferencesFileExtension = ".lkshp"
-leksahCandyFileExtension = ".lkshc"
-leksahKeymapFileExtension = ".lkshk"
-leksahSourcesFileExtension = ".lksho"
-leksahMetadataFileExtension = ".lkshm"
-leksahCurrentMetaExtension = ".lkshe"
-leksahMetadataDebugExtension = ".lkshd"
-leksahTemplateFileExtension = ".lksht"
-leksahFlagFileExtension = ".lkshf"
+import IDE.Core.CTypes
+import Control.Concurrent (forkIO)
+import IDE.Utils.Utils
+import qualified Data.Map as Map(lookup)
+import Data.Typeable(Typeable)
 
 
-standardSessionFilename =   "current" ++ leksahSessionFileExtension
-packageSessionFilename = "leksah" ++ leksahSessionFileExtension
 
-standardKeymapFilename =   "keymap" ++ leksahKeymapFileExtension
-standardCandyFilename =   "candy" ++ leksahCandyFileExtension
-standardPreferencesFilename =   "prefs" ++ leksahPreferencesFileExtension
-standardSourcesFilename =   "sources" ++ leksahSourcesFileExtension
-standardModuleTemplateFilename =   "module" ++ leksahTemplateFileExtension
-configDirName = ".leksah-0.7"
 
+#ifdef YI
+import qualified Yi as Yi
+import qualified Yi.UI.Pango.Control as Yi
+#endif
 
 
 instance PaneMonad IDEM where
@@ -184,8 +127,7 @@ instance PaneMonad IDEM where
                                         layout      <- getLayout
                                         return (getBestPanePath ppp layout)
                 nb          <-  getNotebook pp
-                mbPane'      <-  buildPane pp nb builder
-                return mbPane'
+                buildPane pp nb builder
             Just pane ->   return (Just pane)
 
     -- displayThisPane ::  Bool -> delta alpha
@@ -197,18 +139,31 @@ instance PaneMonad IDEM where
     --                    (PanePath -> Notebook -> Window -> delta (alpha,Connections)) ->
     --                    delta alpha
     buildThisPane panePath notebook builder = do
-        windows <- getWindows
+        windows       <-  getWindows
+
         (mbBuf,cids)  <-  builder panePath notebook (head windows)
         case mbBuf of
             Nothing -> return Nothing
             Just buf -> do
-                notebookInsertOrdered notebook (getTopWidget buf) (paneName buf) Nothing False
-                addPaneAdmin buf cids panePath
-                liftIO $ do
-                    widgetShowAll (getTopWidget buf)
-                    widgetGrabFocus (getTopWidget buf)
-                    bringPaneToFront buf
-                return (Just buf)
+                panes'          <-  getPanesSt
+                paneMap'        <-  getPaneMapSt
+                let b1 = case Map.lookup (paneName buf) paneMap' of
+                            Nothing -> True
+                            Just it -> False
+                let b2 = case Map.lookup (paneName buf) panes' of
+                            Nothing -> True
+                            Just it -> False
+                if b1 && b2
+                    then do
+                        notebookInsertOrdered notebook (getTopWidget buf) (paneName buf) Nothing False
+                        addPaneAdmin buf cids panePath
+                        liftIO $ do
+                            widgetSetName (getTopWidget buf) (paneName buf)
+                            widgetShowAll (getTopWidget buf)
+                            widgetGrabFocus (getTopWidget buf)
+                            bringPaneToFront buf
+                        return (Just buf)
+                    else return Nothing
     --activateThisPane :: forall alpha beta . RecoverablePane alpha beta delta => alpha -> Connections -> delta ()
     activateThisPane pane conn = do
         mbAP <- getActivePane
@@ -239,7 +194,7 @@ instance PaneMonad IDEM where
         mbI             <-  liftIO $notebookPageNum nb (getTopWidget pane)
         case mbI of
             Nothing ->  liftIO $ do
-                throwIDE ("notebook page not found: unexpected " ++ paneName pane ++ " " ++ show panePath)
+                error ("notebook page not found: unexpected " ++ paneName pane ++ " " ++ show panePath)
                 return False
             Just i  ->  do
                 deactivatePaneIfActive pane
@@ -250,9 +205,15 @@ instance PaneMonad IDEM where
                 modifyIDE_ (\ide -> ide{recentPanes = filter (/= paneName pane) (recentPanes ide)})
                 return True
 
--- this should not be repeated here, why is it necessary?
-instance MonadIO Ghc where
-  liftIO ioA = Ghc $ \_ -> ioA
+data MessageLevel = Silent | Normal | High
+    deriving (Eq,Ord,Show)
+
+
+-- Shall be replaced
+sysMessage :: MonadIO m =>  MessageLevel -> String -> m ()
+sysMessage ml str = liftIO $ do
+    putStrLn str
+    hFlush stdout
 
 ideMessage :: MessageLevel -> String -> IDEAction
 ideMessage level str = do
@@ -263,17 +224,24 @@ logMessage :: String -> LogTag -> IDEAction
 logMessage str tag = do
     triggerEventIDE (LogMessage (str ++ "\n") tag)
     return ()
+-- with hslogger
 
-sysMessage :: MonadIO m =>  MessageLevel -> String -> m ()
-sysMessage ml str = liftIO $ do
-    putStrLn str
-    hFlush stdout
+---- ---------------------------------------------------------------------
+---- Exception handling
+----
 
-data MessageLevel = Silent | Normal | High
-    deriving (Eq,Ord,Show)
+data IDEException = IDEException String
+    deriving Typeable
+
+instance Show IDEException where
+  show (IDEException str) = str
+
+instance Exception IDEException
+
+throwIDE str = throw (IDEException str)
 
 
--- Main window is just the first one in the list
+-- Main window is always the first one in the list
 window = head . windows
 
 activeProjectDir :: IDEM FilePath
@@ -281,7 +249,7 @@ activeProjectDir = do
     activePack' <- readIDE activePack
     case activePack' of
         Nothing   -> return "."
-        Just pack -> return (dropFileName (cabalFile pack))
+        Just pack -> return (dropFileName (ipdCabalFile pack))
 
 errorRefs :: IDE -> [LogRef]
 errorRefs = (filter ((\t -> t == ErrorRef || t == WarningRef) . logRefType)) . allLogRefs
@@ -337,6 +305,9 @@ liftYiControl f = do
 
 catchIDE :: Exception e	=> IDEM a -> (e -> IO a) -> IDEM a
 catchIDE block handler = reifyIDE (\ideR -> catch (reflectIDE block ideR) handler)
+
+forkIDE :: IDEAction  -> IDEAction
+forkIDE block  = reifyIDE (\ideR -> forkIO  (reflectIDE block ideR) >> return ())
 
 postSyncIDE :: IDEM a -> IDEM a
 postSyncIDE f = reifyIDE (\ideR -> postGUISync (reflectIDE f ideR))
@@ -424,69 +395,5 @@ deactivatePaneIfActive pane = do
                         then deactivatePane
                         else return ()
 
--- get widget elements (menu & toolbar)
-
-getCandyState :: PaneMonad alpha => alpha Bool
-getCandyState = do
-    ui <- getUIAction "ui/menubar/_Configuration/Source Candy" castToToggleAction
-    liftIO $toggleActionGetActive ui
-
-setCandyState :: PaneMonad alpha => Bool -> alpha ()
-setCandyState b = do
-    ui <- getUIAction "ui/menubar/_Configuration/Source Candy" castToToggleAction
-    liftIO $toggleActionSetActive ui b
-
-getForgetSession :: PaneMonad alpha => alpha  (Bool)
-getForgetSession = do
-    ui <- getUIAction "ui/menubar/_Configuration/Forget Session" castToToggleAction
-    liftIO $toggleActionGetActive ui
-
-getMenuItem :: String -> IDEM MenuItem
-getMenuItem path = do
-    uiManager' <- getUiManager
-    mbWidget   <- liftIO $ uiManagerGetWidget uiManager' path
-    case mbWidget of
-        Nothing     -> throwIDE ("State.hs>>getMenuItem: Can't find ui path " ++ path)
-        Just widget -> return (castToMenuItem widget)
-
-getBackgroundBuildToggled :: PaneMonad alpha => alpha  (Bool)
-getBackgroundBuildToggled = do
-    ui <- getUIAction "ui/toolbar/BuildToolItems/BackgroundBuild" castToToggleAction
-    liftIO $ toggleActionGetActive ui
-
-setBackgroundBuildToggled :: PaneMonad alpha => Bool -> alpha ()
-setBackgroundBuildToggled b = do
-    ui <- getUIAction "ui/toolbar/BuildToolItems/BackgroundBuild" castToToggleAction
-    liftIO $ toggleActionSetActive ui b
-
-getBackgroundLinkToggled :: PaneMonad alpha => alpha  (Bool)
-getBackgroundLinkToggled = do
-    ui <- getUIAction "ui/toolbar/BuildToolItems/BackgroundLink" castToToggleAction
-    liftIO $ toggleActionGetActive ui
-
-setBackgroundLinkToggled :: PaneMonad alpha => Bool -> alpha ()
-setBackgroundLinkToggled b = do
-    ui <- getUIAction "ui/toolbar/BuildToolItems/BackgroundLink" castToToggleAction
-    liftIO $ toggleActionSetActive ui b
-
-getDebugToggled :: PaneMonad alpha => alpha  (Bool)
-getDebugToggled = do
-    ui <- getUIAction "ui/toolbar/BuildToolItems/Debug" castToToggleAction
-    liftIO $ toggleActionGetActive ui
-
-setDebugToggled :: PaneMonad alpha => Bool -> alpha ()
-setDebugToggled b = do
-    ui <- getUIAction "ui/toolbar/BuildToolItems/Debug" castToToggleAction
-    liftIO $ toggleActionSetActive ui b
-
-getRecentFiles , getRecentWorkspaces :: IDEM MenuItem
-getRecentFiles    = getMenuItem "ui/menubar/_File/_Recent Files"
-getRecentWorkspaces = getMenuItem "ui/menubar/_Workspace/_Recent Workspaces"
-
--- (toolbar)
-
-controlIsPressed :: G.Event -> Bool
-controlIsPressed (G.Button _ _ _ _ _ mods _ _ _) | Control `elem` mods = True
-controlIsPressed _                                                   = False
 
 

@@ -30,6 +30,7 @@ import Graphics.UI.Gtk.Gdk.Events
 import Data.Maybe
 import Control.Monad.Reader
 import qualified Data.Map as Map
+import Data.Map (Map)
 import Data.Tree
 import Data.List
 import Distribution.Package
@@ -53,8 +54,9 @@ import Graphics.UI.Editor.MakeEditor (buildEditor,FieldDescription(..),mkField)
 import Graphics.UI.Editor.Parameters (paraMultiSel,Parameter(..),emptyParams,(<<<-),paraName)
 import Graphics.UI.Editor.Simple (boolEditor,okCancelFields,staticListEditor,stringEditor)
 import Graphics.UI.Editor.Basics (eventPaneName,GUIEventSelector(..))
-import IDE.Metainfo.Provider (rebuildPackageInfo)
 import qualified System.IO.UTF8 as UTF8  (writeFile)
+import IDE.Utils.GUIUtils (stockIdFromType)
+import Debug.Trace
 
 -- | A modules pane description
 --
@@ -77,7 +79,7 @@ data IDEModules     =   IDEModules {
 
 
 data ModulesState           =   ModulesState Int (Scope,Bool)
-                                    (Maybe ModuleName, Maybe Symbol) ExpanderState
+                                    (Maybe ModuleName, Maybe String) ExpanderState
     deriving(Eq,Ord,Read,Show,Typeable)
 
 data ExpanderState =  ExpanderState {
@@ -131,28 +133,26 @@ instance RecoverablePane IDEModules ModulesState IDEM where
                 let mbs = (case mbTreeSelection of
                             Nothing -> Nothing
                             Just (_,[]) -> Nothing
-                            Just (_,((md,_):_)) -> Just (modu $ moduleIdMD md),
+                            Just (_,((md,_):_)) -> Just (modu $ mdModuleId md),
                                  case mbFacetSelection of
                                     Nothing -> Nothing
-                                    Just fw -> Just (descrName fw))
+                                    Just fw -> Just (dscName fw))
                 return (Just (ModulesState i sc mbs expander))
     recoverState pp (ModulesState i sc@(scope,useBlacklist) se exp)  =  do
         nb          <-  getNotebook pp
-        p           <- buildPane pp nb builder
+        p           <-  buildPane pp nb builder
         mod         <-  getModules Nothing
         liftIO $ writeIORef (expanderState mod) exp
-        setScope sc
+        liftIO $ writeIORef (oldSelection mod) (SelectionState (fst se) (snd se) scope useBlacklist)
         liftIO $ panedSetPosition (paned mod) i
-        fillModulesList sc
-        selectNames se
-        applyExpanderState
         return p
     builder pp nb windows = do
         packageInfo' <- readIDE packageInfo
         reifyIDE $ \ ideR -> do
             let forest  = case packageInfo' of
                             Nothing     ->  []
-                            Just pair   ->  subForest (buildModulesTree pair)
+                            Just (GenScopeC fst,GenScopeC snd)
+                                ->  subForest (buildModulesTree (fst,snd))
             treeStore   <-  treeStoreNew forest
             treeView    <-  treeViewNew
             treeViewSetModel treeView treeStore
@@ -177,7 +177,7 @@ instance RecoverablePane IDEModules ModulesState IDEM where
                 cellPixbufStockId  :=
                     if null (snd row)
                         then ""
-                        else if isJust (mbSourcePathMD (fst (head (snd row))))
+                        else if isJust (mdMbSourcePath (fst (head (snd row))))
                                 then "ide_source"
                                 else ""]
 
@@ -191,7 +191,7 @@ instance RecoverablePane IDEModules ModulesState IDEM where
             cellLayoutPackStart col2 renderer2 True
             cellLayoutSetAttributes col2 renderer2 treeStore
                 $ \row -> [ cellText := (concat . intersperse  ", ")
-                            $ map (display . packagePD . snd) (snd row)]
+                            $ map (display . pdPackage . snd) (snd row)]
             treeViewSetHeadersVisible treeView True
             treeViewSetEnableSearch treeView True
             treeViewSetSearchEqualFunc treeView (Just (treeViewSearch treeView treeStore))
@@ -220,8 +220,11 @@ instance RecoverablePane IDEModules ModulesState IDEM where
                 $ \row -> [
                 cellPixbufStockId  := if isReexported row
                                         then "ide_reexported"
-                                            else if isJust (mbLocation row)
-                                                then "ide_source"
+                                            else if isJust (dscMbLocation row)
+                                                then
+                                                    if dscExported row
+                                                        then "ide_source"
+                                                        else "ide_source_local"
                                                 else ""]
             treeViewSetHeadersVisible descrView True
             treeViewSetEnableSearch descrView True
@@ -293,16 +296,16 @@ selectIdentifier idDescr = do
     workspaceScope  <- readIDE workspaceInfo
     packageScope    <- readIDE packageInfo
     currentScope    <- getScope
-    case descrModu idDescr of
+    case dsMbModu idDescr of
         Nothing -> return ()
         Just pm -> case scopeForDescr pm packageScope workspaceScope systemScope of
                         Nothing -> return ()
                         Just sc -> do
                             when (fst currentScope < sc) (setScope (sc,snd currentScope))
-                            selectIdentifier' (modu pm) (descrName idDescr)
+                            selectIdentifier' (modu pm) (dscName idDescr)
 
-scopeForDescr :: PackModule -> Maybe (PackScope,PackScope) ->
-    Maybe (PackScope,PackScope) -> Maybe PackScope -> Maybe Scope
+scopeForDescr :: PackModule -> Maybe (GenScope,GenScope) ->
+    Maybe (GenScope,GenScope) -> Maybe GenScope -> Maybe Scope
 scopeForDescr pm packageScope workspaceScope systemScope =
     case ps of
         (True, r) -> Just (PackageScope r)
@@ -311,28 +314,30 @@ scopeForDescr pm packageScope workspaceScope systemScope =
                 (True, r) -> Just (WorkspaceScope r)
                 _         -> case systemScope of
                                 Nothing -> Nothing
-                                Just ssc -> if Map.member pid (fst ssc)
-                                                then Just SystemScope
-                                                else Nothing
+                                Just (GenScopeC(PackScope ssc _)) -> if Map.member pid ssc
+                                                                        then Just SystemScope
+                                                                        else Nothing
     where
     pid = pack pm
     ps  = case packageScope of
                     Nothing -> (False,False)
-                    Just (psc1,psc2) -> if Map.member pid (fst psc1)
+                    Just (GenScopeC (PackScope psc1 _), GenScopeC (PackScope psc2 _)) ->
+                                    if Map.member pid psc1
                                         then (True,False)
-                                        else if Map.member pid (fst psc2)
+                                        else if Map.member pid psc2
                                             then (True,True)
                                             else (False, False)
     ws  = case workspaceScope of
                         Nothing -> (False,False)
-                        Just (wsc1,wsc2) -> if Map.member pid (fst wsc1)
+                        Just (GenScopeC (PackScope wsc1 _), GenScopeC (PackScope wsc2 _)) ->
+                                        if Map.member pid wsc1
                                             then (True,False)
-                                            else if Map.member pid (fst wsc2)
+                                            else if Map.member pid wsc2
                                                 then (True,True)
                                                 else (False, False)
 
 
-selectIdentifier' :: ModuleName -> Symbol -> IDEAction
+selectIdentifier' :: ModuleName -> String -> IDEAction
 selectIdentifier'  moduleName symbol =
     let nameArray = components moduleName
     in do
@@ -357,7 +362,7 @@ selectIdentifier'  moduleName symbol =
                 bringPaneToFront mods
             Nothing         ->  return ()
 
-findPathFor :: Symbol -> Maybe (Tree Descr) -> Maybe TreePath
+findPathFor :: String -> Maybe (Tree Descr) -> Maybe TreePath
 findPathFor symbol (Just (Node _ forest)) =
     foldr ( \i mbTreePath -> findPathFor' [i] (forest !! i) mbTreePath)
                             Nothing  [0 .. ((length forest) - 1)]
@@ -365,7 +370,7 @@ findPathFor symbol (Just (Node _ forest)) =
     findPathFor' :: TreePath -> Tree Descr -> Maybe TreePath -> Maybe TreePath
     findPathFor' _ node (Just p)                  =   Just p
     findPathFor' path (Node wrap sub) Nothing     =
-        if descrName wrap == symbol
+        if dscName wrap == symbol
             then Just (reverse path)
             else
                 foldr ( \i mbTreePath -> findPathFor' (i:path) (sub !! i) mbTreePath)
@@ -399,7 +404,7 @@ treeViewSearch treeView treeStore string iter =  do
             return ()
     let str2      = case snd val of
                         []      -> fst val
-                        (m,_):_ -> showPackModule  (moduleIdMD m)
+                        (m,_):_ -> showPackModule  (mdModuleId m)
     let res       =  isInfixOf (map toLower string) (map toLower str2)
     return res
 
@@ -409,7 +414,7 @@ searchInModSubnodes tree str =
         $ filter (\ val ->
             let cstr = case snd val of
                     [] -> fst val
-                    (m,_):_ -> show (Present (moduleIdMD m))
+                    (m,_):_ -> show (Present (mdModuleId m))
             in  isInfixOf (map toLower str) (map toLower cstr))
                 $ concatMap flatten (subForest tree)
 
@@ -501,15 +506,16 @@ fillInfo treeView lst ideR  = do
             return ()
         _       ->  return ()
 
-findDescription :: PackModule -> SymbolTable -> Symbol -> Maybe (Symbol,Descr)
+findDescription :: SymbolTable alpha => PackModule -> alpha -> String -> Maybe (String,Descr)
 findDescription md st s     =
-    case Map.lookup s st  of
-        Nothing ->  Nothing
-        Just l  ->  case filter (\id -> case descrModu id of
-                                            Nothing -> False
-                                            Just pm -> md == pm) l of
-                         [] -> Nothing
-                         l  -> Just (s,head l)
+    case filter (\id -> case dsMbModu id of
+                            Nothing -> False
+                            Just pm -> md == pm) (symLookup s st) of
+        [] -> Nothing
+        l  -> Just (s,head l)
+
+getEmptyDefaultScope :: Map String [Descr]
+getEmptyDefaultScope = Map.empty
 
 fillModulesList :: (Scope,Bool) -> IDEAction
 fillModulesList (scope,useBlacklist) = do
@@ -522,41 +528,41 @@ fillModulesList (scope,useBlacklist) = do
                 Nothing ->  liftIO $ do
                                         treeStoreClear (treeStore mods)
                                         treeStoreInsertTree (treeStore mods) [] 0 (Node ("",[]) [])
-                Just (ai@(pm,ps)) ->
+                Just (GenScopeC ai@(PackScope pm ps)) ->
                     let p2  =   if useBlacklist
-                                    then (Map.filter (filterBlacklist
-                                            (packageBlacklist prefs)) pm, ps)
+                                    then PackScope (Map.filter (filterBlacklist
+                                            (packageBlacklist prefs)) pm) ps
                                     else ai
-                        (Node _ li) = buildModulesTree ((Map.empty,Map.empty),p2)
+                        (Node _ li) = buildModulesTree (PackScope Map.empty getEmptyDefaultScope,p2)
                     in insertIt li mods
         WorkspaceScope withImports -> do
             workspaceInfo'           <-  readIDE workspaceInfo
             packageInfo'             <-  readIDE packageInfo
             case workspaceInfo' of
                 Nothing ->  insertIt [] mods
-                Just (l,p) ->
-                    let (l',p'@(pm,ps)) =   if withImports
-                                                then (l,p)
-                                                else (l,(Map.empty,Map.empty))
+                Just (GenScopeC l,GenScopeC p) ->
+                    let (l',p'@(PackScope pm ps)) =   if withImports
+                                                        then (l, p)
+                                                        else (l, PackScope Map.empty symEmpty)
                         p2              =   if useBlacklist
-                                                then (Map.filter (filterBlacklist
-                                                        (packageBlacklist prefs)) pm, ps)
+                                                then PackScope (Map.filter (filterBlacklist
+                                                        (packageBlacklist prefs)) pm) ps
                                                 else p'
-                        (Node _ li)     =   buildModulesTree (l',p2)
+                        (Node _ li)     =   buildModulesTree (l', p2)
                     in insertIt li mods
         PackageScope withImports -> do
             packageInfo' <- readIDE packageInfo
             case packageInfo' of
                 Nothing             ->   insertIt [] mods
-                Just (l,p) ->
-                    let (l',p'@(pm,ps)) =   if withImports
-                                                then (l,p)
-                                                else (l,(Map.empty,Map.empty))
+                Just (GenScopeC l,GenScopeC p) ->
+                    let (l',p'@(PackScope pm ps)) =   if withImports
+                                                        then (l,p)
+                                                        else (l, PackScope Map.empty symEmpty)
                         p2              =   if useBlacklist
-                                                then (Map.filter (filterBlacklist
-                                                        (packageBlacklist prefs)) pm, ps)
+                                                then PackScope (Map.filter (filterBlacklist
+                                                        (packageBlacklist prefs)) pm) ps
                                                 else p'
-                        (Node _ li)     =   buildModulesTree (l',p2)
+                        (Node _ li)     =   buildModulesTree (l', p2)
                     in insertIt li mods
     where
         insertIt li mods = liftIO $ do
@@ -573,7 +579,7 @@ fillModulesList (scope,useBlacklist) = do
 
 filterBlacklist :: [Dependency] -> PackageDescr -> Bool
 filterBlacklist dependencies packageDescr =
-    let packageId   =   packagePD packageDescr
+    let packageId   =   pdPackage packageDescr
         name        =   pkgName packageId
         version     =   pkgVersion packageId
     in  isNothing $ find (\ (Dependency str vr) -> str == name && withinRange version vr)
@@ -585,91 +591,95 @@ type DescrTree = Tree Descr
 
 
 descrTreeText :: Descr -> String
-descrTreeText (Descr id _ _ _ _ (InstanceDescr binds)) = id ++ " " ++ printBinds binds
+descrTreeText (Real (RealDescr id _ _ _ _ (InstanceDescr binds) _)) = id ++ " " ++ printBinds binds
     where
         printBinds []       =   ""
         printBinds (a:[])   =   a
         printBinds (a:b)    =   a ++ " " ++ printBinds b
-descrTreeText d = descrName d
+descrTreeText d = dscName d
 
 descrIdType :: Descr -> DescrType
-descrIdType = descrType . details
+descrIdType = descrType . dscTypeHint
 
 buildFacetForrest ::  ModuleDescr -> DescrForest
 buildFacetForrest modDescr =
-    let (instances,other)       =   partition (\id -> case details id of
+    let (instances,other)       =   partition (\id -> case dscTypeHint id of
                                                         InstanceDescr _ -> True
                                                         _   -> False)
-                                            $ take 2000 $  idDescriptionsMD modDescr
+                                            $ take 2000 $  mdIdDescriptions modDescr
                                 -- TODO: Patch for toxioc TypeLevel package with 28000 aliases
         forestWithoutInstances  =   map buildFacet other
         (forest2,orphaned)      =   foldl' addInstances (forestWithoutInstances,[])
-                                        instances
+                                         instances
         orphanedNodes           =   map (\ inst -> Node inst []) orphaned
         in forest2 ++ reverse orphanedNodes
     where
     -- expand nodes in a module desciption for the description tree
     buildFacet :: Descr -> DescrTree
     buildFacet descr =
-            case details descr of
+            case dscTypeHint descr of
                 DataDescr constructors fields ->
-                    Node descr ((map (\(fn,ty) -> Node (makeReexported descr (Descr{descrName' = fn, typeInfo' = ty,
-                            descrModu' = descrModu descr, mbLocation' = mbLocation descr,
-                            mbComment' = mbComment descr, details' = ConstructorDescr {typeDescrC = descr}})) [])
+                    Node descr ((map (\(SimpleDescr fn ty loc comm exp) ->
+                        Node (makeReexported descr (Real $ RealDescr{dscName' = fn, dscMbTypeStr' = ty,
+                            dscMbModu' = dsMbModu descr, dscMbLocation' = loc,
+                            dscMbComment' = comm, dscTypeHint' = ConstructorDescr descr, dscExported' = exp})) [])
                                 constructors)
-                                    ++  (map (\(fn,ty) -> Node (makeReexported descr (Descr{descrName' = fn, typeInfo' = ty,
-                                descrModu' = descrModu descr, mbLocation' = mbLocation descr,
-                                mbComment' = mbComment descr, details' = FieldDescr {typeDescrF = descr}})) [])
+                                    ++  (map (\(SimpleDescr fn ty loc comm exp) ->
+                                        Node (makeReexported descr (Real $
+                                        RealDescr{dscName' = fn, dscMbTypeStr' = ty,
+                                        dscMbModu' = dsMbModu descr, dscMbLocation' = loc,
+                                        dscMbComment' = comm, dscTypeHint' = FieldDescr descr, dscExported' = exp})) [])
                                     fields))
-                NewtypeDescr constr mbField ->
-                    Node descr (Node (makeReexported descr (Descr{descrName' = fst constr, typeInfo' = snd constr,
-                            descrModu' = descrModu descr, mbLocation' = mbLocation descr,
-                            mbComment' = mbComment descr, details' = ConstructorDescr {typeDescrC = descr}})) []
+                NewtypeDescr (SimpleDescr fn ty loc comm exp) mbField ->
+                    Node descr (Node (makeReexported descr (Real $
+                            RealDescr{dscName' = fn, dscMbTypeStr' = ty,
+                                dscMbModu' = dsMbModu descr, dscMbLocation' = loc,
+                                dscMbComment' = comm, dscTypeHint' = ConstructorDescr descr, dscExported' = exp})) []
                                 : case  mbField of
-                                    Just fld ->
-                                        [Node (makeReexported descr (Descr{descrName' = fst fld, typeInfo' = snd fld,
-                                descrModu' = descrModu descr, mbLocation' = mbLocation descr,
-                                mbComment' = mbComment descr, details' = FieldDescr {typeDescrF = descr}})) []]
+                                    Just (SimpleDescr fn ty loc comm exp) ->
+                                        [Node (makeReexported descr (Real $ RealDescr{dscName' = fn, dscMbTypeStr' = ty,
+                                        dscMbModu' = dsMbModu descr, dscMbLocation' = loc,
+                                        dscMbComment' = comm, dscTypeHint' = FieldDescr descr, dscExported' = exp})) []]
                                     Nothing -> [])
                 ClassDescr _ methods ->
-                    Node descr (map (\(fn,ty) -> Node (makeReexported descr (Descr{descrName' = fn, typeInfo' = ty,
-                        descrModu' = descrModu descr, mbLocation' = mbLocation descr,
-                        mbComment' = mbComment descr, details' = MethodDescr {classDescrM = descr}})) [])
-                            methods)
+                    Node descr (map (\(SimpleDescr fn ty loc comm exp) ->
+                        Node (makeReexported descr (Real $ RealDescr{dscName' = fn, dscMbTypeStr' = ty,
+                            dscMbModu' = dsMbModu descr, dscMbLocation' = loc,
+                            dscMbComment' = comm, dscTypeHint' = MethodDescr descr, dscExported' = exp})) [])
+                                methods)
                 _ -> Node descr []
         where
             makeReexported :: Descr -> Descr -> Descr
-            makeReexported d1 d2
-                | isReexported d1   =   Reexported{descrModu' = descrModu' d1, impDescr = d2}
-                | otherwise         =   d2
+            makeReexported (Reexported d1) d2 = Reexported $ ReexportedDescr{dsrMbModu = dsrMbModu d1, dsrDescr = d2}
+            makeReexported _ d2               = d2
 
     addInstances :: (DescrForest,[Descr])
         -> Descr
         -> (DescrForest,[Descr])
     addInstances (forest,orphaned) instDescr =
-        case foldl' (matches instDescr) ([],False) forest of
+        case foldr (matches instDescr) ([],False) forest of
             (f,True)    -> (f,orphaned)
             (f,False)   -> (forest, instDescr:orphaned)
 
     matches :: Descr
-        -> (DescrForest,Bool)
         ->  DescrTree
         -> (DescrForest,Bool)
-    matches instDescr (forest,False) (Node dd@(Descr id _ _ _ _ (DataDescr _ _)) sub)
-        | not (null (binds (details instDescr))) &&
-                id == head (binds (details instDescr))
+        -> (DescrForest,Bool)
+    matches (Real (instDescr@RealDescr{dscTypeHint' = InstanceDescr binds}))
+                (Node dd@(Real (RealDescr id _ _ _ _ (DataDescr _ _) _)) sub) (forest,False)
+        | not (null binds) && id == head binds
             =   ((Node dd (sub ++ [Node newInstDescr []])):forest,True)
-        where newInstDescr = if isNothing (mbLocation instDescr)
-                                then instDescr{mbLocation' = mbLocation dd}
-                                else instDescr
-    matches instDescr (forest,False) (Node dd@(Descr id _ _ _ _ (NewtypeDescr _ _)) sub)
-        | not (null (binds (details instDescr))) &&
-                id == head (binds (details instDescr))
+        where newInstDescr = if isNothing (dscMbLocation' instDescr)
+                                then Real $ instDescr{dscMbLocation' = dscMbLocation dd}
+                                else Real $ instDescr
+    matches (Real (instDescr@RealDescr{dscTypeHint' = InstanceDescr binds}))
+                (Node dd@(Real (RealDescr id _ _ _ _ (NewtypeDescr _ _) _)) sub) (forest,False)
+        | not (null binds) && id == head binds
             =   ((Node dd (sub ++ [Node newInstDescr []])):forest,True)
-        where newInstDescr = if isNothing (mbLocation instDescr)
-                                then instDescr{mbLocation' = mbLocation dd}
-                                else instDescr
-    matches _ (forest,b) node = (node:forest,b)
+        where newInstDescr = if isNothing (dscMbLocation' instDescr)
+                                then Real $ instDescr{dscMbLocation' = dscMbLocation dd}
+                                else Real $ instDescr
+    matches _ node (forest,b)  = (node:forest,b)
 
 
 type ModTree = Tree (String, [(ModuleDescr,PackageDescr)])
@@ -677,9 +687,9 @@ type ModTree = Tree (String, [(ModuleDescr,PackageDescr)])
 -- | Make a Tree with a module desription, package description pairs tree to display.
 --   Their are nodes with a label but without a module (like e.g. Data).
 --
-buildModulesTree :: (PackScope,PackScope) -> ModTree
-buildModulesTree ((localMap,_),(otherMap,_)) =
-    let flatPairs           =   concatMap (\p -> map (\m -> (m,p)) (exposedModulesPD p))
+buildModulesTree :: (SymbolTable alpha, SymbolTable beta) =>  (PackScope alpha,PackScope beta ) -> ModTree
+buildModulesTree (PackScope localMap _,PackScope otherMap _) =
+    let flatPairs           =   concatMap (\p -> map (\m -> (m,p)) (pdModules p))
                                     (Map.elems localMap ++ Map.elems otherMap)
         emptyTree           =   (Node ("",[]) [])
         resultTree          =   foldl' insertPairsInTree emptyTree flatPairs
@@ -687,7 +697,7 @@ buildModulesTree ((localMap,_),(otherMap,_)) =
     where
     insertPairsInTree :: ModTree -> (ModuleDescr,PackageDescr) -> ModTree
     insertPairsInTree tree pair =
-        let nameArray           =   components $ modu $ moduleIdMD $ fst pair
+        let nameArray           =   components $ modu $ mdModuleId $ fst pair
             pairedWith          =   map (\n -> (n,pair)) nameArray
         in  insertNodesInTree pairedWith tree
 
@@ -737,7 +747,7 @@ treeViewPopup ideR  store treeView (Button _ click _ _ _ _ button _ _) = do
             item1 `onActivateLeaf` do
                 sel         <-  getSelectionTree treeView store
                 case sel of
-                    Just (_,[(m,_)]) -> case mbSourcePathMD m of
+                    Just (_,[(m,_)]) -> case mdMbSourcePath m of
                                             Nothing     ->  return ()
                                             Just fp     ->  do
                                                 reflectIDE (selectSourceBuf fp) ideR
@@ -765,7 +775,7 @@ treeViewPopup ideR  store treeView (Button _ click _ _ _ _ button _ _) = do
         else if button == LeftButton && click == DoubleClick
                 then do sel         <-  getSelectionTree treeView store
                         case sel of
-                            Just (_,[(m,_)]) -> case mbSourcePathMD m of
+                            Just (_,[(m,_)]) -> case mdMbSourcePath m of
                                                     Nothing     ->  return ()
                                                     Just fp     ->  do
                                                         reflectIDE (selectSourceBuf fp) ideR
@@ -874,16 +884,16 @@ selectScope (sc,bl) = do
         let mbs = (case mbTreeSelection of
                                 Nothing -> Nothing
                                 Just (_,[]) -> Nothing
-                                Just (_,((md,_):_)) -> Just (modu $ moduleIdMD md),
+                                Just (_,((md,_):_)) -> Just (modu $ mdModuleId md),
                                      case mbDescrSelection of
                                         Nothing -> Nothing
-                                        Just fw -> Just (descrName fw))
+                                        Just fw -> Just (dscName fw))
         selectNames mbs
     recordScopeHistory
     applyExpanderState
     liftIO $ bringPaneToFront mods
 
-selectNames :: (Maybe ModuleName, Maybe Symbol) -> IDEAction
+selectNames :: (Maybe ModuleName, Maybe String) -> IDEAction
 selectNames (mbModuleName, mbIdName) = do
     mods <- getModules Nothing
     case mbModuleName of
@@ -920,30 +930,39 @@ selectNames (mbModuleName, mbIdName) = do
                                         treeViewScrollToCell (descrView mods) path (fromJust col)
                                             (Just (0.3,0.3))
 
-reloadKeepSelection :: IDEAction
-reloadKeepSelection = do
+reloadKeepSelection :: Bool -> IDEAction
+reloadKeepSelection isInitial = trace (">>>Info Changed!!! " ++ show isInitial) $ do
     mbMod <- getPane
     case mbMod of
         Nothing -> return ()
-        Just mods
-            -> do
-            mbTreeSelection     <-  liftIO $ getSelectionTree (treeView mods) (treeStore mods)
-            mbDescrSelection    <-  liftIO $ getSelectionDescr (descrView mods) (descrStore mods)
-            sc                  <-  getScope
-            recordExpanderState
-            fillModulesList sc
-            liftIO $ treeStoreClear (descrStore mods)
-            let mbs = (case mbTreeSelection of
-                            Nothing -> Nothing
-                            Just (_,[]) -> Nothing
-                            Just (_,((md,_):_)) -> Just (modu $ moduleIdMD md),
-                                 case mbDescrSelection of
+        Just mods -> do
+            state <- readIDE currentState
+            if not $ isStartingOrClosing state
+                then do
+                    mbTreeSelection     <-  liftIO $ getSelectionTree (treeView mods) (treeStore mods)
+                    mbDescrSelection    <-  liftIO $ getSelectionDescr (descrView mods) (descrStore mods)
+                    sc                  <-  getScope
+                    recordExpanderState
+                    fillModulesList sc
+                    liftIO $ treeStoreClear (descrStore mods)
+                    let mbs = (case mbTreeSelection of
                                     Nothing -> Nothing
-                                    Just fw -> Just (descrName fw))
-            applyExpanderState
-            selectNames mbs
-
-
+                                    Just (_,[]) -> Nothing
+                                    Just (_,((md,_):_)) -> Just (modu $ mdModuleId md),
+                                         case mbDescrSelection of
+                                            Nothing -> Nothing
+                                            Just fw -> Just (dscName fw))
+                    applyExpanderState
+                    selectNames mbs
+                else if isInitial == True
+                        then do
+                            SelectionState moduleS' facetS' sc bl <- trace (">>>Info Changed Initial") $
+                                    liftIO $ readIORef (oldSelection mods)
+                            setScope (sc,bl)
+                            fillModulesList (sc, bl)
+                            selectNames (moduleS', facetS')
+                            applyExpanderState
+                        else return ()
 
 treeStoreGetTreeSave :: TreeStore a -> TreePath -> IO (Maybe (Tree a))
 treeStoreGetTreeSave treeStore treePath = catch (do
@@ -1000,7 +1019,6 @@ addModule treeView store = do
                                     liftIO $ UTF8.writeFile target template
                                     addModuleToPackageDescr moduleName isExposed
                                     packageConfig
-                                    rebuildPackageInfo
                                     fileOpenThis target
 
 
@@ -1141,17 +1159,17 @@ recordSelHistory = do
     let selMod = case selTree of
                         Nothing -> Nothing
                         Just (_,[]) -> Nothing
-                        Just (_,((md,_):_)) -> Just (modu $ moduleIdMD md)
+                        Just (_,((md,_):_)) -> Just (modu $ mdModuleId md)
     let selFacet = case selDescr of
                         Nothing -> Nothing
-                        Just descr -> Just (descrName descr)
+                        Just descr -> Just (dscName descr)
     oldSel       <- liftIO $ readIORef (oldSelection mods)
     triggerEventIDE (RecordHistory ((ModuleSelected selMod selFacet),
         (ModuleSelected (moduleS' oldSel) (facetS' oldSel))))
     liftIO $ writeIORef (oldSelection mods) (oldSel{moduleS'= selMod, facetS' = selFacet})
     return ()
 
-replaySelHistory :: Maybe ModuleName -> Maybe Symbol -> IDEAction
+replaySelHistory :: Maybe ModuleName -> Maybe String -> IDEAction
 replaySelHistory mbModName mbFacetName = do
     mods <- getModules Nothing
     selectNames (mbModName, mbFacetName)

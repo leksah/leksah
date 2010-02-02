@@ -31,7 +31,7 @@ import Data.Typeable
 import IDE.Core.State
 import IDE.Pane.SourceBuffer
 import IDE.Pane.References
-import IDE.FileUtils (openBrowser)
+import IDE.Utils.GUIUtils (openBrowser,controlIsPressed)
 import Graphics.UI.Gtk.SourceView
 
 
@@ -130,7 +130,7 @@ instance RecoverablePane IDEInfo InfoState IDEM where
                 case mbDescr of
                     Nothing -> return ()
                     Just descr -> reflectIDE (do
-                                    triggerEventIDE (SearchMeta (descrName descr))
+                                    triggerEventIDE (SearchMeta (dscName descr))
                                     i :: IDEInfo <- forceGetPane (Right "*Info")
                                     displayPane i False
                                     return ()) ideR )
@@ -138,7 +138,7 @@ instance RecoverablePane IDEInfo InfoState IDEM where
                 mbDescr <- readIORef currentDescr'
                 case mbDescr of
                     Nothing -> return ()
-                    Just descr -> reflectIDE (openBrowser $ docuSearchURL prefs ++ descrName descr) ideR)
+                    Just descr -> reflectIDE (openBrowser $ docuSearchURL prefs ++ dscName descr) ideR)
             descriptionView `widgetAddEvents` [ButtonReleaseMask]
             id5 <- descriptionView `onButtonRelease`
                 (\ e -> do

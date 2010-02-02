@@ -31,7 +31,11 @@ module IDE.Pane.Log (
 
 import Data.Typeable (Typeable(..))
 import IDE.Core.State
+#if MIN_VERSION_gtk(0,10,2)
+import Graphics.UI.Gtk hiding (populatePopup)
+#else
 import Graphics.UI.Gtk
+#endif
 import Graphics.UI.Gtk.Gdk.Events
 import Control.Monad.Trans (liftIO)
 import IDE.Pane.SourceBuffer (markRefInSourceBuf,selectSourceBuf)
@@ -40,6 +44,7 @@ import Prelude hiding (catch)
 import Control.Exception hiding (try)
 import IDE.ImportTool (addAllImports,addImport,parseNotInScope)
 import System.Process (runInteractiveProcess, ProcessHandle(..))
+
 
 -------------------------------------------------------------------------------
 --
@@ -69,9 +74,13 @@ instance Pane IDELog IDEM
 instance RecoverablePane IDELog LogState IDEM where
     saveState p     =   return (Just LogState)
     recoverState pp LogState = do
-        nb <- getNotebook pp
-        prefs' <- readIDE prefs
-        buildPane pp nb builder
+        mbPane :: Maybe IDELog <- getPane
+        case mbPane of
+            Nothing -> do
+                nb <- getNotebook pp
+                prefs' <- readIDE prefs
+                buildPane pp nb builder
+            Just p -> return (Just p)
     builder = builder'
 
 -------------------------------------------------------------------------------

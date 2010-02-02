@@ -1,4 +1,5 @@
-{-# OPTIONS_GHC -XTypeSynonymInstances -XScopedTypeVariables #-}
+{-# OPTIONS_GHC -XTypeSynonymInstances -XScopedTypeVariables -XNoMonomorphismRestriction
+    -XFlexibleContexts  -XBangPatterns #-}
 -----------------------------------------------------------------------------
 --
 -- Module      :  IDE.Metainfo.Provider
@@ -23,22 +24,20 @@ module IDE.Metainfo.Provider (
 ,   searchMeta
 
 ,   initInfo
-,   rebuildPackageInfo
-,   buildSystemInfo
-,   updateInfo
+,   updateSystemInfo
+,   rebuildSystemInfo
+,   updateWorkspaceInfo
+,   rebuildWorkspaceInfo
 ) where
 
 import System.IO
 import qualified Data.Map as Map
-import Config
 import Control.Monad
 import Control.Monad.Trans
 import System.FilePath
 import System.Directory
 import qualified Data.Map as Map
-import System.IO
 import Data.List
-import qualified PackageConfig as DP
 import Data.Maybe
 import Distribution.Package hiding (depends,packageId)
 import qualified Data.Set as Set
@@ -46,21 +45,395 @@ import qualified Data.ByteString.Char8 as BS
 import qualified Data.ByteString.Lazy as BSL
 import Distribution.Version
 import Distribution.ModuleName
-import GHC (runGhc)
 
 import Control.DeepSeq
-import IDE.FileUtils
+import IDE.Utils.FileUtils
 import IDE.Core.State
-import IDE.Metainfo.InterfaceCollector
 import Data.Char (toLower,isUpper,toUpper,isLower)
 import Text.Regex.TDFA
+import qualified Text.Regex.TDFA as Regex
 import System.IO.Unsafe (unsafePerformIO)
 import Text.Regex.TDFA.String (execute,compile)
-import IDE.Metainfo.GHCUtils (findFittingPackages,getInstalledPackageInfos,inGhc)
 import Data.Binary.Shared (decodeSer)
-import System.Mem (performGC)
 import Language.Haskell.Extension (knownExtensions)
 import Distribution.Text (display)
+import IDE.Core.Serializable ()
+import Data.Map (Map(..))
+import Debug.Trace
+import Control.Exception (SomeException(..), catch)
+import Prelude hiding(catch)
+import IDE.Core.CTypes(ServerCommand(..))
+import IDE.Utils.ServerConnection(doServerCommand)
+
+-- ---------------------------------------------------------------------
+-- Updating metadata
+--
+
+--
+-- | Update and initialize metadata for the world -- Called at startup
+--
+initInfo :: IDEAction -> IDEAction
+initInfo continuation = trace "init info called" $ do
+    prefs  <- readIDE prefs
+    if collectAtStart prefs
+        then do
+            ideMessage Normal "Now updating sytem metadata ..."
+            callCollector False True True $ \ _ -> do
+                ideMessage Normal "Now loading metadata ..."
+                loadSystemInfo
+                ideMessage Normal "Now updating workspace metadata ..."
+                updateWorkspaceInfo' False $ \ _ -> do
+                    ideMessage Normal "Finished"
+                    triggerEventIDE (InfoChanged True) >> return ()
+                    continuation
+        else do
+            ideMessage Normal "Now loading metadata ..."
+            loadSystemInfo
+            ideMessage Normal "Now updating workspace metadata ..."
+            updateWorkspaceInfo' False $ \ _ -> do
+                ideMessage Normal "Finished"
+                triggerEventIDE (InfoChanged True) >> return ()
+                continuation
+
+updateSystemInfo :: IDEAction
+updateSystemInfo     = trace "update sys info called" $ do
+    updateSystemInfo' False $ \ _ ->
+        updateWorkspaceInfo' False $ \ _ -> do
+            triggerEventIDE (InfoChanged False) >> return ()
+
+rebuildSystemInfo :: IDEAction
+rebuildSystemInfo    =  trace "rebuild sys info called" $ do
+    updateSystemInfo' True $ \ _ ->
+        updateWorkspaceInfo' True $ \ _ ->
+            triggerEventIDE (InfoChanged False) >> return ()
+
+updateWorkspaceInfo :: IDEAction
+updateWorkspaceInfo = trace "update workspace info called" $ do
+    currentState' <- readIDE currentState
+    case currentState' of
+        IsStartingUp -> return ()
+        _ -> do
+            updateWorkspaceInfo' False $ \ _ -> do
+                triggerEventIDE (InfoChanged False) >> return ()
+
+rebuildWorkspaceInfo :: IDEAction
+rebuildWorkspaceInfo = trace "rebuild workspace info called" $ do
+    updateWorkspaceInfo' True $ \ _ -> do
+        triggerEventIDE (InfoChanged False) >> return ()
+
+--
+-- | Load all infos for all installed and exposed packages
+--   (see shell command: ghc-pkg list)
+--
+loadSystemInfo :: IDEAction
+loadSystemInfo = do
+    collectorPath   <-  liftIO $ getCollectorPath
+    packageIds      <-  liftM nub $ liftIO $ getInstalledPackageIds
+    packageList     <-  liftIO $ mapM (loadInfosForPackage collectorPath)
+                                                packageIds
+    let scope       =   foldr buildScope (PackScope Map.empty getEmptyDefaultScope)
+                            $ catMaybes packageList
+--        liftIO performGC
+    modifyIDE_ (\ide -> ide{systemInfo = (Just (GenScopeC (addOtherToScope scope False)))})
+
+    return ()
+
+--
+-- | Updates the system info
+--
+updateSystemInfo' :: Bool -> (Bool -> IDEAction) -> IDEAction
+updateSystemInfo' rebuild continuation = do
+    wi              <-  readIDE systemInfo
+    case wi of
+        Nothing -> loadSystemInfo
+        Just (GenScopeC (PackScope psmap psst)) -> do
+            packageIds          <-  liftIO $ getInstalledPackageIds
+            let newPackages     =   filter (\ pi -> Map.member pi psmap) packageIds
+            let trashPackages   =   filter (\ e  -> not (elem e packageIds))(Map.keys psmap)
+            if null newPackages && null trashPackages
+                then continuation True
+                else do
+                    callCollector rebuild True True $ \ _ -> do
+                        collectorPath   <-  lift $ getCollectorPath
+                        newPackageInfos <-  liftIO $ mapM (\pid -> loadInfosForPackage collectorPath pid)
+                                                            newPackages
+                        let psmap2      =   foldr (\e m -> Map.insert (pdPackage e) e m)
+                                                    psmap
+                                                    (map fromJust
+                                                        $ filter isJust newPackageInfos)
+                        let psmap3      =   foldr (\e m -> Map.delete e m) psmap2 trashPackages
+                        let scope :: PackScope (Map String [Descr])
+                                        =   foldr buildScope (PackScope Map.empty symEmpty)
+                                                (Map.elems psmap3)
+                        modifyIDE_ (\ide -> ide{systemInfo = Just (GenScopeC (addOtherToScope scope False))})
+                        continuation True
+
+getEmptyDefaultScope :: Map String [Descr]
+getEmptyDefaultScope = symEmpty
+--
+-- | Rebuilds system info
+--
+rebuildSystemInfo' :: (Bool -> IDEAction) -> IDEAction
+rebuildSystemInfo' continuation = do
+    callCollector True True True $ \ _ -> do
+        loadSystemInfo
+        continuation True
+
+-- ---------------------------------------------------------------------
+-- Metadata for the workspace and active package
+--
+
+
+updateWorkspaceInfo' :: Bool -> (Bool -> IDEAction) -> IDEAction
+updateWorkspaceInfo' rebuild continuation = do
+    mbWorkspace         <- readIDE workspace
+    systemInfo'         <- readIDE systemInfo
+    case mbWorkspace of
+        Nothing ->  do
+            trace "no workspace" $ modifyIDE_ (\ide -> ide{workspaceInfo = Nothing, packageInfo = Nothing})
+            continuation False
+        Just ws -> do
+            updatePackageInfos rebuild (wsPackages ws) $ \ _ packDescrs -> do
+                let dependPackIds = (nub $ concatMap pdBuildDepends packDescrs)
+                                        \\ map pdPackage packDescrs
+                let packDescrsI =   case systemInfo' of
+                                        Nothing -> []
+                                        Just (GenScopeC (PackScope pdmap _)) ->
+                                            catMaybes $ map (\ pid -> pid `Map.lookup` pdmap)  dependPackIds
+                let scope1 :: PackScope (Map String [Descr])
+                                =   foldr buildScope (PackScope Map.empty symEmpty) packDescrs
+                let scope2 :: PackScope (Map String [Descr])
+                                =   foldr buildScope (PackScope Map.empty symEmpty) packDescrsI
+                modifyIDE_ (\ide -> ide{workspaceInfo = Just
+                    (GenScopeC (addOtherToScope scope1 False), GenScopeC(addOtherToScope scope2 False))})
+                -- Now care about active package
+                activePack      <-  readIDE activePack
+                case activePack of
+                    Nothing -> do
+                        modifyIDE_ (\ide -> ide{packageInfo = Nothing})
+                    Just pack -> do
+                        case filter (\pd -> pdPackage pd == ipdPackageId pack) packDescrs of
+                            [pd] -> let impPackDescrs =
+                                            case systemInfo' of
+                                                Nothing -> []
+                                                Just (GenScopeC (PackScope pdmap _)) ->
+                                                     catMaybes $ map (\ pid -> pid `Map.lookup` pdmap)
+                                                        (pdBuildDepends pd)
+                                        -- The imported from the workspace should be treated different
+                                        workspacePackageIds = map ipdPackageId (wsPackages ws)
+                                        impPackDescrs' = filter (\pd -> not (elem (pdPackage pd)
+                                                                    workspacePackageIds)) impPackDescrs
+                                        impPackDescrs'' = catMaybes $ map (\pd ->
+                                            if (elem (pdPackage pd) workspacePackageIds)
+                                                then find (\pd' -> pdPackage pd == pdPackage pd') packDescrs
+                                                else Nothing) impPackDescrs
+                                        scope1 :: PackScope (Map String [Descr])
+                                                =   buildScope pd (PackScope Map.empty symEmpty)
+                                        scope2 :: PackScope (Map String [Descr])
+                                                =   foldr buildScope (PackScope Map.empty symEmpty)
+                                                        (impPackDescrs' ++ impPackDescrs'')
+                                        in modifyIDE_ (\ide -> ide{packageInfo = Just
+                                                            (GenScopeC (addOtherToScope scope1 True),
+                                                            GenScopeC(addOtherToScope scope2 True))})
+                            _    -> modifyIDE_ (\ide -> ide{packageInfo = Nothing})
+                continuation True
+
+updatePackageInfos :: Bool -> [IDEPackage] -> (Bool -> [PackageDescr] -> IDEAction) -> IDEAction
+updatePackageInfos rebuild packs conts = updatePackageInfos' [] rebuild packs conts
+    where
+        updatePackageInfos' collector _ [] continuation =  continuation True collector
+        updatePackageInfos' collector rebuild (hd:tail) continuation =
+            updatePackageInfo rebuild hd $ \ _ packDescr ->
+                updatePackageInfos' (packDescr : collector) rebuild tail continuation
+
+updatePackageInfo :: Bool -> IDEPackage -> (Bool -> PackageDescr -> IDEAction) -> IDEAction
+updatePackageInfo rebuild idePack continuation =
+    trace ("updatePackageInfo " ++ show (ipdPackageId idePack)) $ do
+    workspInfoCache'     <- readIDE workspInfoCache
+    let (packageMap, ic) =  case pi  `Map.lookup` workspInfoCache' of
+                                Nothing -> (Map.empty,True)
+                                Just m  -> (m,False)
+    modPairsMb <- liftIO $ mapM (\ modName -> do
+            sf <- case  modName `Map.lookup` packageMap of
+                        Nothing            -> findSourceFile srcDirs' haskellSrcExts modName
+                        Just (_,Nothing,_) -> findSourceFile srcDirs' haskellSrcExts modName
+                        Just (_,Just fp,_) -> return (Just fp)
+            return (modName, sf))
+                $ Set.toList $ ipdModules idePack
+    mainModules <- liftIO $ mapM (\fn -> do
+                                    mbFn <- findSourceFile' srcDirs' fn
+                                    return (main,mbFn))
+                            (ipdMain idePack)
+    let modPairsMb' = case mainModules of
+                        [] -> modPairsMb
+                        hd:_ -> hd : modPairsMb
+    let (modWith,modWithout) = partition (\(x,y) -> isJust y) modPairsMb'
+    let modWithSources       = map (\(f,Just s) -> (f,s)) modWith
+    let modWithoutSources    = map fst $ modWithout
+    -- Now see which modules have to be truely updated
+    modToUpdate <- if rebuild
+                            then return modWithSources
+                            else liftIO $ figureOutRealSources idePack modWithSources
+    trace ("updatePackageInfo modToUpdate " ++ show (map (display.fst) modToUpdate)) $
+     callCollectorWorkspace
+        rebuild
+        (dropFileName (ipdCabalFile idePack))
+        (ipdPackageId idePack)
+        (map (\(x,y) -> (display x,y)) modToUpdate)
+        (\ b -> do
+            buildDepends         <- liftIO $ findFittingPackages (ipdDepends idePack)
+            collectorPath        <- liftIO $ getCollectorPath
+            let packageCollectorPath = collectorPath </> packageIdentifierToString pi
+            (moduleDescrs,packageMap, changed, modWithout)
+                                 <- liftIO $ foldM
+                                        (getModuleDescr packageCollectorPath)
+                                        ([],packageMap,False,modWithoutSources)
+                                        modPairsMb'
+            when changed $ modifyIDE_ (\ide -> ide{workspInfoCache =
+                                            Map.insert pi packageMap workspInfoCache'})
+            continuation True $ (PackageDescr {
+                pdPackage        = pi,
+                pdMbSourcePath   = Just $ ipdCabalFile idePack,
+                pdModules        = moduleDescrs,
+                pdBuildDepends   = buildDepends}))
+    where
+        basePath =  normalise $ (takeDirectory (ipdCabalFile idePack))
+        srcDirs' =  map (basePath </>) (ipdSrcDirs idePack)
+        pi = ipdPackageId idePack
+
+figureOutRealSources :: IDEPackage -> [(ModuleName,FilePath)] -> IO [(ModuleName,FilePath)]
+figureOutRealSources idePack modWithSources = do
+    collectorPath <- getCollectorPath
+    let packageCollectorPath = collectorPath </> packageIdentifierToString (ipdPackageId idePack)
+    filterM (ff packageCollectorPath) modWithSources
+    where
+        ff packageCollectorPath (md ,fp) =  do
+                let modId = display md
+                let collectorModulePath = packageCollectorPath </> modId <.> leksahMetadataWorkspaceFileExtension
+                existCollectorFile <- doesFileExist collectorModulePath
+                existSourceFile    <- doesFileExist fp
+                if (not existSourceFile)
+                    then return True -- Maybe with preprocessing
+                    else if not existCollectorFile
+                        then return True
+                        else do
+                            sourceModTime <-  getModificationTime fp
+                            collModTime   <-  getModificationTime collectorModulePath
+                            return (sourceModTime > collModTime)
+
+
+getModuleDescr :: FilePath
+    -> ([ModuleDescr],ModuleDescrCache,Bool,[ModuleName])
+    -> (ModuleName, Maybe FilePath)
+    -> IO ([ModuleDescr],ModuleDescrCache,Bool,[ModuleName])
+getModuleDescr packageCollectorPath (modDescrs,packageMap,changed,problemMods) (modName,mbFilePath) =
+    case modName `Map.lookup` packageMap of
+        Just (eTime,mbFp,mdescr) -> do
+            existMetadataFile <- doesFileExist moduleCollectorPath
+            if existMetadataFile
+                then do
+                    modificationTime <- liftIO $ getModificationTime moduleCollectorPath
+                    if modificationTime == eTime
+                        then return (mdescr:modDescrs,packageMap,changed,problemMods)
+                        else do
+                            mbNewDescr  <- trace ("loadInfo: " ++ display modName) $
+                                                loadInfosForModule moduleCollectorPath
+                            case mbNewDescr of
+                                Just newDescr -> return (newDescr:modDescrs,
+                                                    Map.insert modName (modificationTime,mbFilePath,newDescr) packageMap,
+                                                    True, problemMods)
+                                Nothing       -> return (mdescr:modDescrs,packageMap,changed,
+                                                    modName : problemMods)
+                else return (mdescr:modDescrs,packageMap,changed, modName : problemMods)
+        Nothing -> do
+            existMetadataFile <- doesFileExist moduleCollectorPath
+            if existMetadataFile
+                then do
+                    modificationTime <- liftIO $ getModificationTime moduleCollectorPath
+                    mbNewDescr       <- loadInfosForModule moduleCollectorPath
+                    case mbNewDescr of
+                        Just newDescr -> return (newDescr:modDescrs,
+                                    Map.insert modName (modificationTime,mbFilePath,newDescr) packageMap,
+                                        True, problemMods)
+                        Nothing       -> return (modDescrs,packageMap,changed,
+                                        modName : problemMods)
+                else return (modDescrs,packageMap,changed, modName : problemMods)
+    where
+        moduleCollectorPath = packageCollectorPath </> display modName <.>  leksahMetadataWorkspaceFileExtension
+
+-- ---------------------------------------------------------------------
+-- Low level helpers for loading metadata
+--
+
+--
+-- | Loads the infos for the given packages
+--
+loadInfosForPackage :: FilePath -> PackageIdentifier -> IO (Maybe PackageDescr)
+loadInfosForPackage dirPath pid = do
+    let filePath = dirPath </> packageIdentifierToString pid ++ leksahMetadataSystemFileExtension
+    exists <- doesFileExist filePath
+    if exists
+        then catch (do
+            file            <-  openBinaryFile filePath ReadMode
+            trace ("now loading metadata for package" ++ packageIdentifierToString pid) return ()
+            bs              <-  BSL.hGetContents file
+            let (metadataVersion', packageInfo) =   decodeSer bs
+            if metadataVersion /= metadataVersion'
+                then do
+                    hClose file
+                    throwIDE ("Metadata has a wrong version."
+                            ++  " Consider rebuilding metadata with -r option")
+                else do
+                    packageInfo `deepseq` (hClose file)
+                    return (Just packageInfo))
+            (\ (e :: SomeException) -> do
+                sysMessage Normal
+                    ("loadInfosForPackage: " ++ packageIdentifierToString pid ++ " Exception: " ++ show e)
+                return Nothing)
+        else do
+            sysMessage Normal $"packageInfo not found for " ++ packageIdentifierToString pid
+            return Nothing
+
+--
+-- | Loads the infos for the given module
+--
+loadInfosForModule :: FilePath -> IO (Maybe ModuleDescr)
+loadInfosForModule filePath  = do
+    exists <- doesFileExist filePath
+    if exists
+        then catch (do
+            file            <-  openBinaryFile filePath ReadMode
+            bs              <-  BSL.hGetContents file
+            let (metadataVersion', moduleInfo) =   decodeSer bs
+            if metadataVersion /= metadataVersion'
+                then do
+                    hClose file
+                    throwIDE ("Metadata has a wrong version."
+                            ++  " Consider rebuilding metadata with -r option")
+                else do
+                    moduleInfo `deepseq` (hClose file)
+                    return (Just moduleInfo))
+            (\ (e :: SomeException) -> do sysMessage Normal ("loadInfosForModule: " ++ show e); return Nothing)
+        else do
+            sysMessage Normal $"moduleInfo not found for " ++ filePath
+            return Nothing
+
+findFittingPackages :: [Dependency] -> IO [PackageIdentifier]
+findFittingPackages dependencyList = do
+    knownPackages   <-  getInstalledPackageIds
+    return (concatMap (fittingKnown knownPackages) dependencyList)
+    where
+    fittingKnown packages (Dependency dname versionRange) =
+        let filtered =  filter (\ (PackageIdentifier name version) ->
+                                    name == dname && withinRange version versionRange)
+                        packages
+        in  if length filtered > 1
+                then [maximumBy (\a b -> compare (pkgVersion a) (pkgVersion b)) filtered]
+                else filtered
+
+-- ---------------------------------------------------------------------
+-- Looking up and searching metadata
+--
 
 getActivePackageDescr :: IDEM (Maybe PackageDescr)
 getActivePackageDescr = do
@@ -71,25 +444,22 @@ getActivePackageDescr = do
             packageInfo' <- readIDE packageInfo
             case packageInfo' of
                 Nothing -> return Nothing
-                Just ((map,_),(_,_)) -> return (packageId pack `Map.lookup` map)
+                Just (GenScopeC (PackScope map _),(GenScopeC (PackScope _ _))) ->
+                    return (ipdPackageId pack `Map.lookup` map)
 
 --
 -- | Lookup of an identifier description
 --
-getIdentifierDescr :: String -> SymbolTable -> SymbolTable -> [Descr]
+getIdentifierDescr :: (SymbolTable alpha, SymbolTable beta)  => String -> alpha   -> beta   -> [Descr]
 getIdentifierDescr str st1 st2 =
-    let r1 = case str `Map.lookup` st1 of
-                Nothing -> []
-                Just r -> r
-        r2 = case str `Map.lookup` st2 of
-                Nothing -> []
-                Just r -> r
+    let r1 = str `symLookup` st1
+        r2 = str `symLookup` st2
     in r1 ++ r2
 
 --
 -- | Lookup of an identifiers starting with the specified prefix and return a list.
 --
-getIdentifiersStartingWith :: String -> SymbolTable -> SymbolTable -> [String]
+getIdentifiersStartingWith :: (SymbolTable alpha , SymbolTable beta)  => String -> alpha   -> beta   -> [String]
 getIdentifiersStartingWith prefix st1 st2 =
     takeWhile (isPrefixOf prefix) $
         if memberLocal || memberGlobal then
@@ -97,16 +467,16 @@ getIdentifiersStartingWith prefix st1 st2 =
             else
             Set.toAscList names
     where
-        (_, memberLocal, localNames) = Set.splitMember prefix (Map.keysSet st1)
-        (_, memberGlobal, globalNames) = Set.splitMember prefix (Map.keysSet st2)
+        (_, memberLocal, localNames) = Set.splitMember prefix (symbols st1)
+        (_, memberGlobal, globalNames) = Set.splitMember prefix (symbols st2)
         names = Set.union globalNames localNames
 
 getCompletionOptions :: String -> IDEM [String]
 getCompletionOptions prefix = do
-    packageInfo' <- readIDE packageInfo
-    case packageInfo' of
+    workspaceInfo' <- readIDE workspaceInfo
+    case workspaceInfo' of
         Nothing -> return []
-        Just ((_,symbolTable1),(_,symbolTable2)) ->
+        Just ((GenScopeC (PackScope _ symbolTable1)),(GenScopeC (PackScope _ symbolTable2))) ->
             return $ getIdentifiersStartingWith prefix symbolTable1 symbolTable2
 
 getDescription :: String -> IDEM String
@@ -114,7 +484,7 @@ getDescription name = do
     packageInfo' <- readIDE packageInfo
     case packageInfo' of
         Nothing -> return ""
-        Just ((_,symbolTable1),(_,symbolTable2)) ->
+        Just ((GenScopeC (PackScope _ symbolTable1)),(GenScopeC (PackScope _ symbolTable2))) ->
             return ((foldr (\d f -> shows (Present d) .  showChar '\n' . f) id
                 (getIdentifierDescr name symbolTable1 symbolTable2)) "")
 
@@ -128,382 +498,190 @@ searchMeta (PackageScope False) searchString searchType = do
     packageInfo'    <- readIDE packageInfo
     case packageInfo' of
         Nothing    -> return []
-        Just (l,_) -> return (searchInScope searchType searchString (snd l))
+        Just ((GenScopeC (PackScope _ rl)),_) -> return (searchInScope searchType searchString rl)
 searchMeta (PackageScope True) searchString searchType = do
     packageInfo'    <- readIDE packageInfo
     case packageInfo' of
         Nothing    -> return []
-        Just (l,p) -> return (searchInScope searchType searchString (snd l)
-                                ++  searchInScope searchType searchString (snd p))
+        Just ((GenScopeC (PackScope _ rl)),(GenScopeC (PackScope _ rr))) ->
+            return (searchInScope searchType searchString rl
+                                ++  searchInScope searchType searchString rr)
 searchMeta (WorkspaceScope False) searchString searchType = do
     workspaceInfo'    <- readIDE workspaceInfo
     case workspaceInfo' of
         Nothing    -> return []
-        Just (l,_) -> return (searchInScope searchType searchString (snd l))
+        Just ((GenScopeC (PackScope _ rl)),_) -> return (searchInScope searchType searchString rl)
 searchMeta (WorkspaceScope True) searchString searchType = do
     workspaceInfo'    <- readIDE workspaceInfo
     case workspaceInfo' of
         Nothing    -> return []
-        Just (l,p) -> return (searchInScope searchType searchString (snd l)
-                                ++  searchInScope searchType searchString (snd p))
+        Just ((GenScopeC (PackScope _ rl)),(GenScopeC (PackScope _ rr))) ->
+            return (searchInScope searchType searchString rl
+                                ++  searchInScope searchType searchString rr)
 searchMeta SystemScope searchString searchType = do
-    systemInfo' <- readIDE systemInfo
-    let s = case systemInfo' of
-                Nothing        -> Map.empty
-                Just (_,scope) -> scope
-    packageInfo'    <- readIDE packageInfo
-    case packageInfo' of
-        Nothing    -> return (searchInScope searchType searchString s)
-        Just (l,_) -> return (searchInScope searchType searchString (snd l)
-                                ++  searchInScope searchType searchString s)
+    systemInfo'  <- readIDE systemInfo
+    packageInfo' <- readIDE packageInfo
+    case systemInfo' of
+        Nothing ->
+            case packageInfo' of
+                        Nothing    -> return []
+                        Just ((GenScopeC (PackScope _ rl)),_) ->
+                                return (searchInScope searchType searchString rl)
+        Just (GenScopeC (PackScope _ s)) ->
+            case packageInfo' of
+                Nothing    -> return (searchInScope searchType searchString s)
+                Just ((GenScopeC (PackScope _ rl)),_) -> return (searchInScope searchType searchString rl
+                                        ++  searchInScope searchType searchString s)
 
-
-searchInScope :: SearchMode -> String -> SymbolTable -> [Descr]
+searchInScope :: SymbolTable alpha =>  SearchMode -> String -> alpha  -> [Descr]
 searchInScope (Exact _)  l st      = searchInScopeExact l st
-searchInScope (Prefix True) l st   = (concat . Map.elems) (searchInScopePrefix l st)
+searchInScope (Prefix True) l st   = (concat . symElems) (searchInScopePrefix l st)
 searchInScope (Prefix False) [] _  = []
-searchInScope (Prefix False) l st  = (concat . Map.elems) (searchInScopeCaseIns l st "")
+searchInScope (Prefix False) l st  = (concat . symElems) (searchInScopeCaseIns l st "")
 searchInScope (Regex b) l st       = searchRegex l st b
 
 
-searchInScopeExact :: String -> SymbolTable -> [Descr]
-searchInScopeExact searchString symbolTable =
-    case Map.lookup searchString symbolTable of
-        Nothing -> []
-        Just l  -> l
+searchInScopeExact :: SymbolTable alpha =>  String -> alpha  -> [Descr]
+searchInScopeExact = symLookup
 
-searchInScopePrefix :: String -> SymbolTable -> SymbolTable
+searchInScopePrefix :: SymbolTable alpha   =>  String -> alpha  -> alpha
 searchInScopePrefix searchString symbolTable =
-    let (_, exact, mapR)   = Map.splitLookup searchString symbolTable
-        (mbL, _, _)        = Map.splitLookup (searchString ++ "{") mapR
+    let (_, exact, mapR)   = symSplitLookup searchString symbolTable
+        (mbL, _, _)        = symSplitLookup (searchString ++ "{") mapR
     in case exact of
             Nothing -> mbL
-            Just e  -> Map.insert searchString e mbL
+            Just e  -> symInsert searchString e mbL
 
-searchInScopeCaseIns :: String -> SymbolTable -> String -> SymbolTable
+searchInScopeCaseIns :: SymbolTable alpha => String -> alpha -> String -> alpha
 searchInScopeCaseIns [] st _                    =  st
 searchInScopeCaseIns (a:l)  st pre | isLower a  =
     let s1 = pre ++ [a]
         s2 = pre ++ [toUpper a]
-    in  (Map.union (searchInScopeCaseIns l (searchInScopePrefix s1 st) s1)
+    in  (symUnion (searchInScopeCaseIns l (searchInScopePrefix s1 st) s1)
                    (searchInScopeCaseIns l (searchInScopePrefix s2 st) s2))
                                    | isUpper a  =
     let s1 = pre ++ [a]
         s2 = pre ++ [toLower a]
-    in  (Map.union (searchInScopeCaseIns l (searchInScopePrefix s1 st) s1)
+    in  (symUnion (searchInScopeCaseIns l (searchInScopePrefix s1 st) s1)
                    (searchInScopeCaseIns l (searchInScopePrefix s2 st) s2))
                                     | otherwise =
     let s =  pre ++ [a]
     in searchInScopeCaseIns l (searchInScopePrefix s st) s
 
-searchRegex :: String -> SymbolTable -> Bool -> [Descr]
+
+searchRegex :: SymbolTable alpha => String -> alpha  -> Bool -> [Descr]
 searchRegex searchString st caseSense =
-    let compOption = defaultCompOpt {
-                            caseSensitive = caseSense
-                        ,   multiline = True } in
-    case compile compOption defaultExecOpt searchString of
-        Left err -> unsafePerformIO $ do
-            sysMessage Normal (show err)
-            return []
+    case compileRegex caseSense searchString of
+        Left err ->
+            unsafePerformIO $ sysMessage Normal (show err) >> return []
         Right regex ->
-            filter (\e ->
-                case execute regex (descrName e) of
+            filter (\e -> do
+                case execute regex (dscName e) of
                     Left e        -> False
                     Right Nothing -> False
                     _             -> True)
-                        (concat (Map.elems st))
+                        (concat (symElems st))
 
---
--- | Update and initialize metadata for the world -- Called at startup
---
-initInfo :: IDEAction
-initInfo = do
-    prefs           <- readIDE prefs
-    when (collectAtStart prefs) $ do
-        ideMessage Normal "Now updating metadata ..."
-        collectInstalled prefs False
-    ideMessage Normal "Now loading metadata ..."
-    loadSystemInfo
-    ideMessage Normal "Finished loading ..."
+compileRegex :: Bool -> String -> Either String Regex
+compileRegex caseSense searchString =
+    let compOption = defaultCompOpt {
+                            Regex.caseSensitive = caseSense
+                        ,   multiline = True } in
+    compile compOption defaultExecOpt searchString
 
+-- ---------------------------------------------------------------------
+-- Handling of scopes
 --
--- | Load all infos for all installed and exposed packages
---   (see shell command: ghc-pkg list)
---
-loadSystemInfo :: IDEAction
-loadSystemInfo =
-    let version     =   cProjectVersion in do
-        collectorPath   <-  lift $ getCollectorPath version
-        packageInfos    <-  inGhc $ getInstalledPackageInfos
-        packageList     <-  liftIO $ mapM (loadInfosForPackage collectorPath False)
-                                                    (map DP.package packageInfos)
-        let scope       =   foldr buildScope (Map.empty,Map.empty)
-                                $ map fromJust
-                                    $ filter isJust packageList
-        liftIO performGC
-        modifyIDE_ (\ide -> ide{systemInfo = (Just (addOtherToScope scope True))})
-        triggerEventIDE InfoChanged
-        return ()
-
---
--- | Clears the current info, not the world infos
---
-clearPackageInfo :: IDEAction
-clearPackageInfo = do
-    modifyIDE_ (\ide    ->  ide{packageInfo = Nothing})
-    infoForWorkspace
-    triggerEventIDE InfoChanged
-    return ()
-
-updateInfo = do
-    infoForActivePackage False
-    infoForWorkspace
-    triggerEventIDE InfoChanged
-    return ()
-
---
--- | Set info for workspace
---
-infoForWorkspace :: IDEAction
-infoForWorkspace  = do
-    mbWorkspace         <-  readIDE workspace
-    systemInfo'         <- readIDE systemInfo
-    case (mbWorkspace, systemInfo') of
-        (Just ws, Just (pdmap,_))  ->  do
-            let depends'         =  nub $ concatMap depends (wsPackages ws)
-            importPacks          <- inGhc $ findFittingPackages depends'
-            let importPacks'     =  filter (\ i -> isNothing (find (\ e -> packageId e == i) (wsPackages ws)))
-                                        importPacks
-            packages1   <-  mapM loadOrBuildPackageInfo (wsPackages ws)
-            let packages2   =   map (\ pin -> pin `Map.lookup` pdmap) importPacks'
-            let scope1      =   foldr buildScope (Map.empty,Map.empty)
-                                            $ map fromJust
-                                                $ filter isJust packages1
-            let scope2      =   foldr buildScope (Map.empty,Map.empty)
-                                            $ map fromJust
-                                                $ filter isJust packages2
-            modifyIDE_ (\ide -> ide{workspaceInfo = Just
-                (addOtherToScope scope1 False, addOtherToScope scope2 False)})
-        otherwise     ->  modifyIDE_ (\ide -> ide{workspaceInfo = Nothing})
-    return ()
-
---
--- | Set info for package
---
-infoForActivePackage :: Bool -> IDEAction
-infoForActivePackage rebuild = do
-    activePack          <-  readIDE activePack
-    systemInfo'     <-  readIDE systemInfo
-    case (activePack, systemInfo') of
-        (Just pack,Just (pdmap,_)) ->  do
-            let depends'         =  depends pack
-            packs1               <-  inGhc $ findFittingPackages depends'
-            -- we need to sort out current workspace packages and get the 'current' format
-            mbWs <- readIDE workspace
-            let (opacks,wpacks) =   case mbWs of
-                                        Nothing -> (packs1,[])
-                                        Just ws -> foldl' (func (wsPackages ws)) ([],[]) packs1
-            mbActive            <-  if rebuild
-                                        then buildPackageInfo pack
-                                        else loadOrBuildPackageInfo pack
-            case mbActive of
-                Nothing         ->  do
-                    modifyIDE_ (\ide -> ide{packageInfo = Nothing})
-                Just active     ->  do
-                    let packageList      =   map (\ pin -> pin `Map.lookup` pdmap) opacks
-                    packages2    <-  mapM loadOrBuildPackageInfo wpacks
-                    let scope    =   foldr buildScope (Map.empty,Map.empty)
-                                            $ map fromJust
-                                                $ filter isJust (packageList ++ packages2)
-                    modifyIDE_ (\ide -> ide{packageInfo = Just
-                         (addOtherToScope (buildScope active (Map.empty,Map.empty)) True,
-                             addOtherToScope scope False)})
-        otherwise         ->  modifyIDE_ (\ide -> ide{packageInfo = Nothing})
-
-    where func packages (l,r) pid  =  case find (\ a -> packageId a == pid) packages of
-                                Nothing   -> (pid:l,r)
-                                Just pack ->  (l,pack:r)
-
---
--- | Builds the current info for the activePackage
---
-rebuildPackageInfo :: IDEAction
-rebuildPackageInfo       =   do
-    infoForActivePackage True
-    infoForWorkspace
-    triggerEventIDE InfoChanged
-    return ()
-
---
--- | Builds the current info for the activePackage
---
-buildSystemInfo :: IDEAction
-buildSystemInfo = do
-    updateSystemInfo
-    infoForActivePackage True
-    infoForWorkspace
-    triggerEventIDE InfoChanged
-    return ()
-
---
--- | Updates the world info (it is the responsibility of the caller to rebuild
---   the current info)
---
-updateSystemInfo :: IDEAction
-updateSystemInfo = do
-    wi              <-  readIDE systemInfo
-    let version     =   cProjectVersion
-    case wi of
-        Nothing -> loadSystemInfo
-        Just (psmap,psst) -> do
-            packageInfos        <-  inGhc getInstalledPackageInfos
-            let packageIds      =   map DP.package packageInfos
-            let newPackages     =   filter (\ pi -> Map.member pi psmap) packageIds
-            let trashPackages   =   filter (\ e  -> not (elem e packageIds))(Map.keys psmap)
-            if null newPackages && null trashPackages
-                then return ()
-                else do
-                    collectorPath   <-  lift $ getCollectorPath version
-                    newPackageInfos <-  liftIO $ mapM (\pid -> loadInfosForPackage collectorPath False pid)
-                                                        newPackages
-                    let psamp2      =   foldr (\e m -> Map.insert (packagePD e) e m)
-                                                psmap
-                                                (map fromJust
-                                                    $ filter isJust newPackageInfos)
-                    let psamp3      =   foldr (\e m -> Map.delete e m) psmap trashPackages
-                    let scope       =   foldr buildScope (Map.empty,Map.empty)
-                                            (Map.elems psamp3)
-                    modifyIDE_ (\ide -> ide{systemInfo = Just scope})
-
-
---
--- | Builds the current info for the activePackage
---
-setInfo :: IDEM (Maybe PackScope) -> IDEAction
-setInfo f = do
-    packageInfo         <-  readIDE packageInfo
-    case packageInfo of
-        Nothing                 -> return ()
-        Just (active, scope)    -> do
-            newActive   <-  f
-            case newActive of
-                Nothing         -> return ()
-                Just newActive  -> do
-                    modifyIDE_ (\ide -> ide{packageInfo = Just
-                        (addOtherToScope newActive True, scope)})
-                    return ()
-
---
--- | Loads the current info for the activePackage, or builds it if not available
---
-loadOrBuildPackageInfo :: IDEPackage -> IDEM (Maybe PackageDescr)
-loadOrBuildPackageInfo pack = do
-    mbActiveInfo        <-  loadPackageInfoFor  pack
-    case mbActiveInfo of
-        Just ai         ->  return (Just ai)
-        Nothing         ->  buildPackageInfo pack
-
---
--- | Loads the current info for the activePackage
---
-loadPackageInfoFor :: IDEPackage -> IDEM (Maybe PackageDescr)
-loadPackageInfoFor idePackage  = do
-    collectorPath   <-  lift $ getCollectorPath cProjectVersion
-    liftIO $ loadInfosForPackage collectorPath True
-                                    (packageId idePackage)
-
-
-
---
--- | Builds the current info for the activePackage
---
-buildPackageInfo :: IDEPackage -> IDEM (Maybe PackageDescr)
-buildPackageInfo idePackage = do
-    libDir          <-   liftIO $ getSysLibDir
-    liftIO $ runGhc (Just libDir)
-                $ collectUninstalled False cProjectVersion (cabalFile idePackage)
-    -- ideMessage Normal "uninstalled collected"
-    collectorPath   <-  lift $ getCollectorPath cProjectVersion
-    liftIO $ loadInfosForPackage collectorPath True
-                                    (packageId idePackage)
-
-
---
--- | Loads the infos for the given packages
---
-loadInfosForPackage :: FilePath -> Bool -> PackageIdentifier -> IO (Maybe PackageDescr)
-loadInfosForPackage dirPath isWorkingPackage pid = do
-    let filePath = dirPath </> fromPackageIdentifier pid ++
-             (if isWorkingPackage then leksahCurrentMetaExtension else leksahMetadataFileExtension)
-    exists <- doesFileExist filePath
-    if exists
-        then catch (do
-            file            <-  openBinaryFile filePath ReadMode
-            -- trace ("now loading metadata for package" ++ filePath) return ()
-            bs              <-  BSL.hGetContents file
-            let (metadataVersion', packageInfo) =   decodeSer bs
-            if metadataVersion /= metadataVersion'
-                then do
-                    hClose file
-                    throwIDE ("Metadata has a wrong version."
-                            ++  " Consider rebuilding metadata with -r option")
-                else do
-                    packageInfo `deepseq` (hClose file)
-                    return (Just packageInfo))
-            (\e -> do sysMessage Normal ("loadInfosForPackage: " ++ show e); return Nothing)
-        else do
-            sysMessage Normal $"packageInfo not found for " ++ fromPackageIdentifier pid
-            return Nothing
 
 --
 -- | Loads the infos for the given packages (has an collecting argument)
 --
-buildScope :: PackageDescr -> PackScope -> PackScope
-buildScope packageD (packageMap, symbolTable) =
-    let pid = packagePD packageD
+buildScope :: SymbolTable alpha  =>  PackageDescr -> PackScope alpha  -> PackScope alpha
+buildScope packageD (PackScope packageMap symbolTable) =
+    let pid = pdPackage packageD
     in if pid `Map.member` packageMap
-        then (packageMap, symbolTable)
-        else (Map.insert pid packageD packageMap,
-              buildSymbolTable packageD symbolTable)
+        then (PackScope packageMap symbolTable)
+        else (PackScope (Map.insert pid packageD packageMap)
+                  (buildSymbolTable packageD symbolTable))
 
-buildSymbolTable :: PackageDescr -> SymbolTable -> SymbolTable
+buildSymbolTable :: SymbolTable alpha  =>  PackageDescr -> alpha  -> alpha
 buildSymbolTable pDescr symbolTable =
-     foldl' buildScope symbolTable allDescriptions
+     foldl' buildScope'
+            symbolTable allDescriptions
     where
-        allDescriptions =  concatMap idDescriptionsMD (exposedModulesPD pDescr)
-        buildScope st idDescr =
+        allDescriptions =  concatMap mdIdDescriptions (pdModules pDescr)
+        buildScope' st idDescr =
             let allDescrs = allDescrsFrom idDescr
-            in  foldl' (\ map descr -> Map.insertWith (++) (descrName descr) [descr] map)
+            in  foldl' (\ map descr -> symInsert (dscName descr) [descr] map)
                         st allDescrs
         allDescrsFrom descr | isReexported descr = [descr]
                             | otherwise =
-            case details descr of
+            case dscTypeHint descr of
                 DataDescr constructors fields ->
-                    descr : (map (\(fn,ty) -> Descr{descrName' = fn, typeInfo' = ty,
-                        descrModu' = descrModu descr, mbLocation' = mbLocation descr,
-                        mbComment' = mbComment descr, details' = FieldDescr {typeDescrF = descr}})
-                            fields
-                            ++  (map (\(fn,ty) -> Descr{descrName' = fn, typeInfo' = ty,
-                            descrModu' = descrModu descr, mbLocation' = mbLocation descr,
-                            mbComment' = mbComment descr, details' = ConstructorDescr {typeDescrC = descr}})
-                                constructors))
+                    descr : (map (\(SimpleDescr fn ty loc comm exp) ->
+                        Real $ RealDescr{dscName' = fn, dscMbTypeStr' = ty,
+                            dscMbModu' = dscMbModu descr, dscMbLocation' = loc,
+                            dscMbComment' = comm, dscTypeHint' = FieldDescr descr, dscExported' = exp})
+                            fields)
+                            ++  (map (\(SimpleDescr fn ty loc comm exp) ->
+                        Real $ RealDescr{dscName' = fn, dscMbTypeStr' = ty,
+                            dscMbModu' = dscMbModu descr, dscMbLocation' = loc,
+                            dscMbComment' = comm, dscTypeHint' = ConstructorDescr descr, dscExported' = exp})
+                                constructors)
                 ClassDescr _ methods ->
-                    descr : (map (\(fn,ty) -> Descr{descrName' = fn, typeInfo' = ty,
-                        descrModu' = descrModu descr, mbLocation' = mbLocation descr,
-                        mbComment' = mbComment descr, details' = MethodDescr {classDescrM = descr}})
+                    descr : (map (\(SimpleDescr fn ty loc comm exp) ->
+                        Real $ RealDescr{dscName' = fn, dscMbTypeStr' = ty,
+                            dscMbModu' = dscMbModu descr, dscMbLocation' = loc,
+                            dscMbComment' = comm, dscTypeHint' = MethodDescr descr, dscExported' = exp})
                             methods)
-                NewtypeDescr constr mbField ->
-                    descr : Descr{descrName' = fst constr, typeInfo' = snd constr,
-                            descrModu' = descrModu descr, mbLocation' = mbLocation descr,
-                            mbComment' = mbComment descr, details' = ConstructorDescr {typeDescrC = descr}}
+                NewtypeDescr (SimpleDescr fn ty loc comm exp) mbField ->
+                    descr : (Real $ RealDescr{dscName' = fn, dscMbTypeStr' = ty,
+                            dscMbModu' = dscMbModu descr, dscMbLocation' = loc,
+                            dscMbComment' = comm, dscTypeHint' = ConstructorDescr descr, dscExported' = exp})
                              : case mbField of
-                                    Just fld ->
-                                        [Descr{descrName' = fst fld, typeInfo' = snd fld,
-                                        descrModu' = descrModu descr, mbLocation' = mbLocation descr,
-                                        mbComment' = mbComment descr, details' = FieldDescr {typeDescrF = descr}}]
+                                    Just (SimpleDescr fn ty loc comm exp) ->
+                                        [Real $ RealDescr{dscName' = fn, dscMbTypeStr' = ty,
+                                        dscMbModu' = dscMbModu descr, dscMbLocation' = loc,
+                                        dscMbComment' = comm, dscTypeHint' = FieldDescr descr, dscExported' = exp}]
                                     Nothing -> []
                 InstanceDescr _ -> []
                 _ -> [descr]
+
+
+-- ---------------------------------------------------------------------
+-- Low level functions for calling the collector
+--
+
+callCollector :: Bool -> Bool -> Bool -> (Bool -> IDEAction) -> IDEAction
+callCollector rebuild sources extract cont = trace "callCollector" $ do
+    doServerCommand command $ \ res ->
+        case res of
+            ServerOK         -> trace "callCollector finished" $ cont True
+            ServerFailed str -> trace str $ cont False
+    where command = SystemCommand {
+            scRebuild = rebuild,
+            scSources = sources,
+            scExtract = extract}
+
+callCollectorWorkspace :: Bool -> FilePath -> PackageIdentifier -> [(String,FilePath)] ->
+    (Bool -> IDEAction) -> IDEAction
+callCollectorWorkspace rebuild fp  pi modList cont = trace "callCollectorWorkspace" $
+    if null modList
+        then trace "callCollectorWorkspace: Nothing to do" $ cont True
+        else do
+            doServerCommand command  $ \ res ->
+                case res of
+                    ServerOK         -> trace "callCollectorWorkspace finished" $ cont True
+                    ServerFailed str -> trace str $ cont False
+    where command = WorkspaceCommand {
+            wcRebuild = rebuild,
+            wcPackage = pi,
+            wcPath    = fp,
+            wcModList = modList}
+
+-- ---------------------------------------------------------------------
+-- Additions for completion
+--
 
 keywords :: [String]
 keywords = [
@@ -536,35 +714,38 @@ keywords = [
     ,   "where"]
 
 keywordDescrs :: [Descr]
-keywordDescrs = map (\s -> Descr
+keywordDescrs = map (\s -> Real $ RealDescr
                                 s
                                 Nothing
                                 Nothing
                                 Nothing
                                 (Just (BS.pack "| Haskell keyword"))
-                                KeywordDescr) keywords
+                                KeywordDescr
+                                True) keywords
 
 extensionDescrs :: [Descr]
-extensionDescrs =  map (\ext -> Descr
+extensionDescrs =  map (\ext -> Real $ RealDescr
                                     ("X" ++ show ext)
                                     Nothing
                                     Nothing
                                     Nothing
                                     (Just (BS.pack "| Haskell language extension"))
-                                    ExtensionDescr) knownExtensions
+                                    ExtensionDescr
+                                    True) knownExtensions
 
 moduleNameDescrs :: PackageDescr -> [Descr]
-moduleNameDescrs pd = map (\md -> Descr
-                                    ((display . modu . moduleIdMD) md)
+moduleNameDescrs pd = map (\md -> Real $ RealDescr
+                                    ((display . modu . mdModuleId) md)
                                     Nothing
-                                    (Just (moduleIdMD md))
+                                    (Just (mdModuleId md))
                                     Nothing
                                     (Just (BS.pack "| Module name"))
-                                    ModNameDescr) (exposedModulesPD pd)
+                                    ModNameDescr
+                                    True) (pdModules pd)
 
-addOtherToScope ::  PackScope -> Bool -> PackScope
-addOtherToScope (packageMap, symbolTable) addAll = (packageMap, newSymbolTable)
-    where newSymbolTable = foldl' (\ map descr -> Map.insertWith (++) (descrName descr) [descr] map)
+addOtherToScope ::  SymbolTable alpha  =>  PackScope alpha -> Bool -> PackScope alpha
+addOtherToScope (PackScope packageMap symbolTable) addAll = (PackScope packageMap newSymbolTable)
+    where newSymbolTable = foldl' (\ map descr -> symInsert (dscName descr) [descr] map)
                         symbolTable (if addAll
                                         then keywordDescrs ++ extensionDescrs ++ modNameDescrs
                                         else modNameDescrs)
@@ -581,30 +762,31 @@ instance NFData Location where
                     `seq`    rnf (locationECol pd)
 
 instance NFData PackageDescr where
-    rnf pd =  rnf (packagePD pd)
-                    `seq`    rnf (mbSourcePathPD pd)
-                    `seq`    rnf (exposedModulesPD pd)
-                    `seq`    rnf (buildDependsPD pd)
+    rnf pd =  rnf (pdPackage pd)
+                    `seq`    rnf (pdMbSourcePath pd)
+                    `seq`    rnf (pdModules pd)
+                    `seq`    rnf (pdBuildDepends pd)
 
 instance NFData ModuleDescr where
-    rnf pd =  rnf (moduleIdMD pd)
-                    `seq`    rnf (mbSourcePathMD pd)
-                    `seq`    rnf (exportedNamesMD pd)
-                    `seq`    rnf (referencesMD pd)
+    rnf pd =  rnf (mdModuleId pd)
+                    `seq`    rnf (mdMbSourcePath pd)
+                    `seq`    rnf (mdReferences pd)
+                    `seq`    rnf (mdIdDescriptions pd)
 
 instance NFData Descr where
-    rnf (Descr descrName' typeInfo' descrModu'
-        mbLocation' mbComment' details')  =  rnf descrName'
-                    `seq`    rnf typeInfo'
-                    `seq`    rnf descrModu'
-                    `seq`    rnf mbLocation'
-                    `seq`    rnf mbComment'
-                    `seq`    rnf details'
+    rnf (Real (RealDescr dscName' dscMbTypeStr' dscMbModu'
+        dscMbLocation' dscMbComment' dscTypeHint' dscExported'))  =  rnf dscName'
+                    `seq`    rnf dscMbTypeStr'
+                    `seq`    rnf dscMbModu'
+                    `seq`    rnf dscMbLocation'
+                    `seq`    rnf dscMbComment'
+                    `seq`    rnf dscTypeHint'
+                    `seq`    rnf dscExported'
 
-    rnf (Reexported reexpModu' impDescr') = rnf reexpModu'
+    rnf (Reexported (ReexportedDescr reexpModu' impDescr')) = rnf reexpModu'
                     `seq`    rnf impDescr'
 
-instance NFData SpDescr where
+instance NFData TypeDescr where
     rnf (FieldDescr typeDescrF')              =   rnf typeDescrF'
     rnf (ConstructorDescr typeDescrC')        =   rnf typeDescrC'
     rnf (DataDescr constructors' fields')     =   constructors'
@@ -617,6 +799,12 @@ instance NFData SpDescr where
     rnf (InstanceDescr binds')                =   rnf binds'
     rnf a                                     =   seq a ()
 
+instance NFData SimpleDescr where
+    rnf pd =  rnf (sdName pd)
+                    `seq`    rnf (sdType pd)
+                    `seq`    rnf (sdLocation pd)
+                    `seq`    rnf (sdComment pd)
+                    `seq`    rnf (sdExported pd)
 
 instance NFData PackageIdentifier where
     rnf pd =  rnf (pkgName pd)
@@ -638,3 +826,70 @@ instance NFData ModuleName where
 instance NFData PackageName where
     rnf (PackageName s) =  rnf s
 
+---------------------------------------------------------
+
+--callCollector :: Bool -> Bool -> Bool -> (Bool -> IDEAction) -> IDEAction
+--callCollector rebuild sources extract cont = do
+--    let args = ["+RTS -N2 -RTS"] ++
+--                    if rebuild then ["-r"] else [] ++
+--                      if sources then ["-o"] else [] ++
+--                        if extract then ["-x"] else []
+--    dir <- liftIO $ getCurrentDirectory
+--    runCollectorTool "Collecting" "leksah-server" (["-s"] ++ args) (Just dir) (\ _ -> cont True)
+--
+--callCollectorWorkspace :: Bool -> FilePath -> PackageIdentifier -> [(String,FilePath)] ->
+--    IDEAction -> IDEAction
+--callCollectorWorkspace rebuild fp  pi modList cont = do
+--    let args = ["+RTS -N2 -RTS"]
+--                ++ (if rebuild
+--                    then ["-r"]
+--                    else [])
+--                 ++ ["-p" ++ display pi]
+--                    ++ ["-i" ++ fp]
+--                    ++ map (\ (a,b) -> "-m" ++ a ++ "," ++ b) modList
+--    let dir  = dropFileName fp
+--    runCollectorTool "Collecting *" "leksah-server" args (Just dir) (\ _ -> cont)
+--
+--runCollectorTool :: String -> FilePath -> [String] -> Maybe FilePath -> ([ToolOutput] -> IDEAction) -> IDEAction
+--runCollectorTool description executable args mbDir continuation = do
+--    prefs          <- readIDE prefs
+--    waitIfRunning
+--    reifyIDE (\ideR -> forkIO $ do
+--        (!output, pid) <- runTool executable args mbDir
+--        reflectIDE (do
+--            collectorState' <- readIDE collectorState
+--            modifyIDE_ (\ide -> ide{collectorState = collectorState'{mbHandle = Just pid}})
+--            logOutput output
+--            postAsyncIDE (continuation output)) ideR)
+--    return ()
+--
+--
+--waitIfRunning :: IDEAction
+--waitIfRunning = do
+--    collectorState' <- readIDE collectorState
+--    liftIO $ do
+--        case mbHandle collectorState' of
+--            Just process -> do
+--                maybeExitCode <- getProcessExitCode process
+--                if isNothing maybeExitCode
+--                    then do
+--                        waitForProcess process
+--                        return ()
+--                    else return ()
+--            Nothing -> return ()
+
+--defaultLineLogger :: ToolOutput -> IDEAction
+--defaultLineLogger out = do
+--    case out of
+--        ToolInput  line -> triggerEventIDE (LogMessage (line ++ "\n") InputTag) >>return ()
+--        ToolOutput line -> triggerEventIDE (LogMessage (line ++ "\n") LogTag) >>return ()
+--        ToolError  line -> triggerEventIDE (LogMessage (line ++ "\n") ErrorTag) >>return ()
+--
+--logOutputLines :: (ToolOutput -> IDEM alpha) -> [ToolOutput] -> IDEAction
+--logOutputLines lineLogger output = do
+--    forM_ output $ lineLogger
+--
+--logOutput :: [ToolOutput] -> IDEM ()
+--logOutput output = do
+--    logOutputLines defaultLineLogger output
+--    return ()

@@ -49,18 +49,20 @@ import IDE.Pane.PackageEditor
 import IDE.Pane.Errors
 import IDE.Package
 import IDE.Pane.Log
-import IDE.SaveSession
+import IDE.Session
 import IDE.Pane.Modules
 import IDE.Find
-import IDE.FileUtils
+import IDE.Utils.FileUtils
+import IDE.Utils.GUIUtils
 import IDE.Pane.References
 import Paths_leksah
 import IDE.GUIHistory
 import IDE.Metainfo.Provider
     (getIdentifierDescr,
-     updateInfo,
-     buildSystemInfo,
-     rebuildPackageInfo)
+     updateWorkspaceInfo,
+     updateSystemInfo,
+     rebuildSystemInfo,
+     rebuildWorkspaceInfo)
 import IDE.NotebookFlipper
 import IDE.ImportTool (addAllImports)
 import IDE.LogRef
@@ -287,10 +289,14 @@ mkActions =
         debugType [] False
 
     ,AD "Metadata" "_Metadata" Nothing Nothing (return ()) [] False
-    ,AD "UpdateMetadataCurrent" "_Update Project" (Just "Updates metadata for the current project")  (Just "ide_rebuild_meta")
-        rebuildPackageInfo [] False
-    ,AD "UpdateMetadataLib" "_Update Lib" Nothing Nothing
-        buildSystemInfo [] False
+    ,AD "UpdateMetadataCurrent" "_Update workspace data" (Just "Updates data for the current workspace")
+            (Just "ide_rebuild_meta") updateWorkspaceInfo [] False
+    ,AD "RebuildMetadataCurrent" "_Rebuild workspace data" (Just "Rebuilds data for the current workspace")
+            Nothing rebuildWorkspaceInfo [] False
+    ,AD "UpdateMetadataLib" "U_pdate system data" Nothing Nothing
+        updateSystemInfo [] False
+    ,AD "RebuildMetadataLib" "R_ebuild system data" Nothing Nothing
+        rebuildSystemInfo [] False
 
     ,AD "Session" "_Session" Nothing Nothing (return ()) [] False
     ,AD "SaveSession" "_Save Session" Nothing Nothing
@@ -395,8 +401,9 @@ mkActions =
 --
 menuDescription :: IO String
 menuDescription = do
-    prefsPath   <-  getConfigFilePathForLoad "leksah.menu" Nothing
-    res         <-  readFile prefsPath
+    dataDir     <- getDataDir
+    prefsPath   <- getConfigFilePathForLoad "leksah.menu" Nothing dataDir
+    res         <- readFile prefsPath
     return res
 
 updateRecentEntries :: IDEAction
@@ -459,7 +466,7 @@ makeMenu uiManager actions menuDescription = reifyIDE (\ideR -> do
                     onActionActivate act (doAction ideAction ideR  accString)
                     actionGroupAddActionWithAccel ag act acc
         doAction ideAction ideR accStr =
-            handleTopExceptions (reflectIDE (do
+            (reflectIDE (do
                 ideAction
                 triggerEventIDE (StatusbarChanged [CompartmentCommand accStr])
                 return ()) ideR)
@@ -577,7 +584,8 @@ newIcons =
             "ide_error_prev","ide_function","ide_instance", "ide_konstructor","ide_make",
             "ide_method","ide_newtype","ide_other","ide_rule","ide_run","ide_slot",
             "ide_source","ide_type","leksah", "ide_reexported", "ide_clean", "ide_link", "ide_build",
-            "ide_debug", "ide_step", "ide_local", "ide_module", "ide_continue", "ide_rebuild_meta"]
+            "ide_debug", "ide_step", "ide_local", "ide_module", "ide_continue", "ide_rebuild_meta",
+            "ide_empty","ide_source_local"]
         iconFactoryAddDefault iconFactory)
     (\(e :: SomeException) -> getDataDir >>= \dataDir -> throwIDE ("Can't load icons from " ++ dataDir))
     where
@@ -741,7 +749,7 @@ setSymbol symbol = do
     currentInfo' <- readIDE workspaceInfo
     case currentInfo' of
         Nothing -> return ()
-        Just ((_,symbolTable1),(_,symbolTable2)) ->
+        Just ((GenScopeC (PackScope _ symbolTable1)),(GenScopeC (PackScope _ symbolTable2))) ->
             case filter (not . isReexported) (getIdentifierDescr symbol symbolTable1 symbolTable2) of
                 []     -> return ()
                 a:[]   -> selectIdentifier a
@@ -761,11 +769,11 @@ registerEvents =    do
     registerEvent stRef "SelectIdent"
         (Left (\ e@(SelectIdent id)     -> selectIdentifier id >> return e))
     registerEvent stRef "InfoChanged"
-        (Left (\ e@InfoChanged          -> reloadKeepSelection >> return e))
+        (Left (\ e@(InfoChanged b)      -> reloadKeepSelection b >> return e))
     registerEvent stRef "ActivePack"
-        (Left (\ e@(ActivePack _)       -> updateInfo >> return e))
+        (Left (\ e@(ActivePack _)       -> updateWorkspaceInfo >> return e))
     registerEvent stRef "WorkspaceChanged"
-        (Left (\ e@WorkspaceChanged       -> updateWorkspace >> return e))
+        (Left (\ e@WorkspaceChanged     -> updateWorkspace >> return e))
     registerEvent stRef "RecordHistory"
         (Left (\ rh@(RecordHistory h)   -> recordHistory h >> return rh))
     registerEvent stRef "Sensitivity"

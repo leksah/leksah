@@ -49,7 +49,7 @@ import Text.Regex.TDFA.String (compile)
 import Data.List (nub, find, isPrefixOf)
 import Data.Array (bounds, (!), inRange)
 import Text.Regex.Base.RegexLike (matchAll)
-import IDE.Tool (runTool)
+import IDE.Utils.Tool (runTool)
 import Control.Concurrent (forkIO)
 import IDE.Pane.Grep
 import IDE.Package (getPackageDescriptionAndPath)

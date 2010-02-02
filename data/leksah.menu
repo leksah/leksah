@@ -124,8 +124,10 @@
        <menuitem name="Source Candy" action="EditCandy" />
        <menuitem name="Edit general Preferences" action="PrefsEdit" />
        <separator/>
-       <menuitem name="Update Project Metadata" action="UpdateMetadataCurrent" />
-       <menuitem name="Update Library Metadata" action="UpdateMetadataLib" />
+       <menuitem name="Update workspace data" action="UpdateMetadataCurrent" />
+       <menuitem name="Rebuild workspace data" action="RebuildMetadataCurrent" />
+       <menuitem name="Update system data" action="UpdateMetadataLib" />
+       <menuitem name="Rebuild system data" action="RebuildMetadataLib" />
        <separator/>
        <menuitem name="Save Session" action="SaveSession" />
        <menuitem name="Load Session" action="LoadSession" />

@@ -25,7 +25,7 @@ import Data.Typeable (Typeable(..))
 import IDE.Core.State
 import Control.Monad.Reader
 import IDE.Debug (debugCommand')
-import IDE.Tool (ToolOutput(..))
+import IDE.Utils.Tool (ToolOutput(..))
 import Text.ParserCombinators.Parsec
     (anyChar,
      lookAhead,

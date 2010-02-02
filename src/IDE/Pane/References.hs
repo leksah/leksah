@@ -35,6 +35,7 @@ import Distribution.ModuleName(ModuleName)
 import Distribution.Text
 import Text.PrettyPrint (render)
 import IDE.Core.State
+import IDE.Core.CTypes (mdMbSourcePath)
 
 
 -- | A References pane description
@@ -44,7 +45,7 @@ data IDEReferences     =   IDEReferences {
     scrolledView        ::   ScrolledWindow
 ,   treeViewC           ::   TreeView
 ,   referencesDescr     ::   IORef (Maybe Descr)
-,   referencesStore     ::   ListStore (ModuleDescr,Symbol)
+,   referencesStore     ::   ListStore (ModuleDescr,String)
 ,   refScopeRef         ::   IORef Scope
 ,   referencesEntry     ::   Entry
 ,   topBox              ::   VBox
@@ -104,10 +105,10 @@ instance RecoverablePane IDEReferences ReferencesState IDEM where
             cellLayoutPackStart col renderer0 False
             cellLayoutPackStart col renderer True
             cellLayoutSetAttributes col renderer listStore
-                $ \row -> [ cellText := render $ disp $ modu $ moduleIdMD $ fst row]
+                $ \row -> [ cellText := render $ disp $ modu $ mdModuleId $ fst row]
             cellLayoutSetAttributes col renderer0 listStore
                 $ \row -> [cellPixbufStockId  :=
-                            if isJust (mbSourcePathMD $ fst row)
+                            if isJust (mdMbSourcePath $ fst row)
                                 then stockJumpTo
                                 else stockYes]
 
@@ -120,7 +121,7 @@ instance RecoverablePane IDEReferences ReferencesState IDEM where
             treeViewAppendColumn treeView col2
             cellLayoutPackStart col2 renderer2 True
             cellLayoutSetAttributes col2 renderer2 listStore
-                $ \row -> [ cellText := render $ disp $ pack $ moduleIdMD $ fst row]
+                $ \row -> [ cellText := render $ disp $ pack $ mdModuleId $ fst row]
 
             treeViewSetHeadersVisible treeView True
             sel <- treeViewGetSelection treeView
@@ -156,50 +157,58 @@ getReferences (Just pp)  = forceGetPane (Left pp)
 -- | Open a pane with the references of this identifier
 referencedFrom :: Descr  -> IDEAction
 referencedFrom idDescr =
-    case descrModu' idDescr of
+    case dsMbModu idDescr of
         Nothing -> return ()
         Just pm -> do
-            references   <-  getReferences Nothing
-            scope <- liftIO $ getScope references
+            references      <-  getReferences Nothing
+            scope           <- liftIO $ getScope references
             mbPackageInfo   <- readIDE packageInfo
-            mbWorkspaceInfo   <- readIDE packageInfo
-            mbSystemInfo <- readIDE systemInfo
-            packages <- case scope of
-                            SystemScope -> case mbSystemInfo of
-                                            Nothing -> case mbPackageInfo of
-                                                            Nothing             ->  return []
-                                                            Just currentInfo    ->  return
-                                                                        ((Map.elems . fst . fst) currentInfo)
-                                            Just scope -> case mbPackageInfo of
-                                                            Nothing             ->  return ((Map.elems . fst) scope)
-                                                            Just currentInfo    ->  return
-                                                                ((Map.elems . fst . fst) currentInfo
-                                                                ++ (Map.elems . fst) scope)
-                            PackageScope _ -> case mbPackageInfo of
-                                                Nothing             ->  return []
-                                                Just packageInfo    ->  return ((Map.elems . fst . fst) packageInfo
-                                                        ++  (Map.elems . fst . snd) packageInfo)
-                            WorkspaceScope _ -> case mbWorkspaceInfo of
-                                                    Nothing             ->  return []
-                                                    Just workspaceInfo  ->  return ((Map.elems . fst . fst)
-                                                                                workspaceInfo)
-            let modulesList = modulesForCallerFromPackages packages (descrName idDescr, modu pm)
+            mbWorkspaceInfo <- readIDE workspaceInfo
+            mbSystemInfo    <- readIDE systemInfo
+            let packages    =  packagesFromScope scope mbPackageInfo mbWorkspaceInfo mbSystemInfo
+            let modulesList = modulesForCallerFromPackages packages (dscName idDescr, modu pm)
             liftIO $ do
                 writeIORef (referencesDescr references) (Just idDescr)
                 listStoreClear (referencesStore references)
                 mapM_ (listStoreAppend (referencesStore references))
-                    $ sort $ zip modulesList (repeat (descrName idDescr))
+                    $ sort $ zip modulesList (repeat (dscName idDescr))
                 entrySetText (referencesEntry references)
-                    $   descrName idDescr ++
+                    $   dscName idDescr ++
                         " << " ++ showPackModule pm
                 bringPaneToFront references
 
-modulesForCallerFromPackages :: [PackageDescr] -> (Symbol,ModuleName) -> [ModuleDescr]
+packagesFromScope SystemScope
+    _
+    (Just (_,GenScopeC (PackScope p1 _)))
+    (Just (GenScopeC (PackScope p2 _)))       = Map.elems p1 ++ Map.elems p2
+packagesFromScope SystemScope
+    _
+    (Just (GenScopeC (PackScope p1 _),GenScopeC (PackScope p2 _)))
+    _                                       = Map.elems p1 ++ Map.elems p2
+packagesFromScope (WorkspaceScope True)
+    _
+    (Just (GenScopeC (PackScope p1 _),GenScopeC (PackScope p2 _)))
+    _                                       = Map.elems p1 ++ Map.elems p2
+packagesFromScope (WorkspaceScope False)
+    _
+    (Just (GenScopeC (PackScope p1 _),_))
+    _                                       = Map.elems p1
+packagesFromScope (PackageScope True)
+    (Just (GenScopeC (PackScope p1 _),GenScopeC (PackScope p2 _)))
+    _
+    _                                       = Map.elems p1 ++ Map.elems p2
+packagesFromScope (PackageScope False)
+    (Just (GenScopeC (PackScope p1 _),_))
+    _
+    _                                       = Map.elems p1
+packagesFromScope _ _ _  _ = []
+
+modulesForCallerFromPackages :: [PackageDescr] -> (String,ModuleName) -> [ModuleDescr]
 modulesForCallerFromPackages []        _            =  []
 modulesForCallerFromPackages (p :rest) (sym,mod)    =
-    (filter (\ md -> case mod `Map.lookup` (referencesMD md) of
+    (filter (\ md -> case mod `Map.lookup` (mdReferences md) of
                         Nothing     -> False
-                        Just syms   -> sym `Set.member` syms) (exposedModulesPD p))
+                        Just syms   -> sym `Set.member` syms) (pdModules p))
         ++ modulesForCallerFromPackages rest (sym,mod)
 
 scopeSelection' rb1 rb2 rb3 cb2 = do
@@ -229,8 +238,8 @@ getScope refs = readIORef (refScopeRef refs)
 
 
 getSelectionTree ::  TreeView
-    -> ListStore (ModuleDescr,Symbol)
-    -> IO (Maybe (ModuleDescr,Symbol))
+    -> ListStore (ModuleDescr,String)
+    -> IO (Maybe (ModuleDescr,String))
 getSelectionTree treeView listStore = do
     treeSelection   <-  treeViewGetSelection treeView
     rows           <-  treeSelectionGetSelectedRows treeSelection
@@ -252,7 +261,7 @@ treeViewPopup ideR  references (Button _ click _ _ _ _ button _ _) = do
             item1 `onActivateLeaf` do
                 sel         <-  getSelectionTree (treeViewC references) (referencesStore references)
                 case sel of
-                    Just (m,_) -> case mbSourcePathMD m of
+                    Just (m,_) -> case mdMbSourcePath m of
                                     Nothing     ->  return ()
                                     Just fp     ->  do
                                         text <- entryGetText (referencesEntry references)
@@ -271,7 +280,7 @@ treeViewPopup ideR  references (Button _ click _ _ _ _ button _ _) = do
                                             (referencesStore references)
                         case sel of
                             Just (m,_)
-                                -> case mbSourcePathMD m of
+                                -> case mdMbSourcePath m of
                                         Nothing     ->  return False
                                         Just fp     ->  do
                                             text <- entryGetText (referencesEntry references)

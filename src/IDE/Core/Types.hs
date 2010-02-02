@@ -8,6 +8,7 @@
     -XDeriveDataTypeable
     -XTypeSynonymInstances
     -XMultiParamTypeClasses #-}
+
 -----------------------------------------------------------------------------
 --
 -- Module      :  IDE.Core.Data
@@ -48,36 +49,8 @@ module IDE.Core.Types (
 ,   logRefFullFilePath
 ,   isError
 ,   isBreakpoint
+,   displaySrcSpan
 ,   colorHexString
-
-,   PackageDescr(..)
-,   ModuleDescr(..)
-,   Descr(..)
-,   Present(..)
-,   SpDescr(..)
-,   DescrType(..)
-,   descrName
-,   typeInfo
-,   descrModu
-,   mbLocation
-,   mbComment
-,   details
-,   descrType
-,   stockIdFromType
-,   isReexported
-,   Symbol
-,   ClassId
-,   DataId
-,   TypeInfo
-,   SymbolTable
-,   PackScope
-,   PackModule(..)
-,   parsePackModule
-,   showPackModule
-,   fromPackageIdentifier
-,   toPackageIdentifier
-,   Location(..)
-,   Scope(..)
 
 ,   SearchHint(..)
 ,   CandyTable(..)
@@ -87,53 +60,45 @@ module IDE.Core.Types (
 ,   SpecialKeyTable
 ,   SpecialKeyCons
 
-,   LogTag(..)
-
-,   GUIHistory
-,   GUIHistory'(..)
-
-,   SensitivityMask(..)
-,   SearchMode(..)
+,   PackageDescrCache
+,   ModuleDescrCache
 
 ,   CompletionWindow(..)
+,   LogTag(..)
+,   GUIHistory
+,   GUIHistory'(..)
+,   SensitivityMask(..)
+,   SearchMode(..)
 ,   StatusbarCompartment(..)
 ) where
 
 #ifdef YI
 import Yi.UI.Pango.Control as Yi
 #endif
-
+import Graphics.UI.Gtk
+       (Window(..), KeyVal(..), Color(..), Menu(..), TreeView(..),
+        ListStore(..), Toolbar(..))
 import Control.Monad.Reader
-import Graphics.UI.Gtk hiding (get)
-import Graphics.UI.Gtk.Gdk.Events(Modifier(..))
+import Data.Unique (newUnique, Unique(..))
 import qualified Data.Map as Map
-import qualified Data.Set as Set
-
-import Default
-import IDE.Exception
 import Graphics.UI.Frame.Panes
 import Distribution.Package
     (PackageIdentifier(..), Dependency(..))
-import Distribution.Text
 import Data.Map (Map(..))
-import Distribution.ModuleName(ModuleName)
-import Distribution.Text
-import qualified Data.ByteString.Char8 as BS  (unpack,empty)
-import Data.ByteString.Char8 (ByteString)
-import MyMissing
-import Data.Typeable (Typeable(..))
-import SrcLoc (SrcSpan(..))
-import Outputable (ppr, showSDoc)
 import Data.Set (Set(..))
-import Data.Unique (newUnique, Unique(..))
+import Distribution.ModuleName (ModuleName(..))
+import Graphics.UI.Gtk.Gdk.Enums (Modifier(..))
+import System.Time (ClockTime(..))
+import Distribution.Simple (Extension(..))
 import System.Process (ProcessHandle(..))
-import IDE.Tool (ToolState(..))
+import IDE.Utils.Tool (ToolState(..))
 import Data.IORef (writeIORef, readIORef, IORef(..))
-import FastString (unpackFS)
 import Numeric (showHex)
 import Control.Event
     (EventSelector(..), EventSource(..), Event(..))
 import System.FilePath ((</>))
+import IDE.Core.CTypes
+import System.IO (Handle)
 
 -- ---------------------------------------------------------------------
 -- IDE State
@@ -144,20 +109,21 @@ import System.FilePath ((</>))
 --
 data IDE            =  IDE {
     frameState      ::   FrameState IDEM         -- ^ state of the windows framework
-,   recentPanes     ::   [PaneName]
+,   recentPanes     ::   [PaneName]              -- ^ a list of panes which were selected last
 ,   specialKeys     ::   SpecialKeyTable IDERef  -- ^ a structure for emacs like keystrokes
 ,   specialKey      ::   SpecialKeyCons IDERef   -- ^ the first of a double keystroke
 ,   candy           ::   CandyTable              -- ^ table for source candy
 ,   prefs           ::   Prefs                   -- ^ configuration preferences
 ,   workspace       ::   Maybe Workspace         -- ^ may be a workspace (set of packages)
 ,   activePack      ::   Maybe IDEPackage
-,   bufferProjectCache ::   Map FilePath (Maybe IDEPackage)
+,   bufferProjCache ::   Map FilePath (Maybe IDEPackage)
 ,   allLogRefs      ::   [LogRef]
 ,   currentEBC      ::   (Maybe LogRef, Maybe LogRef, Maybe LogRef)
 ,   currentHist     ::   Int
-,   systemInfo      ::   (Maybe (PackScope))                           -- ^ the system scope
-,   packageInfo     ::   (Maybe (PackScope,PackScope))                 -- ^ the second are the imports
-,   workspaceInfo   ::   (Maybe (PackScope,PackScope))                 -- ^ the second are the imports
+,   systemInfo      ::   (Maybe GenScope)              -- ^ the system scope
+,   packageInfo     ::   (Maybe (GenScope, GenScope)) -- ^ the second are the imports
+,   workspaceInfo   ::   (Maybe (GenScope, GenScope)) -- ^ the second are the imports
+,   workspInfoCache ::   PackageDescrCache
 ,   handlers        ::   Map String [(Unique, IDEEvent -> IDEM IDEEvent)] -- ^ event handling table
 ,   currentState    ::   IDEState
 ,   guiHistory      ::   (Bool,[GUIHistory],Int)
@@ -171,6 +137,7 @@ data IDE            =  IDE {
 #ifdef YI
 ,   yiControl       ::   Yi.Control
 #endif
+,   server          ::   Maybe Handle
 } --deriving Show
 
 --
@@ -179,7 +146,7 @@ data IDE            =  IDE {
 type IDERef = IORef IDE
 
 --
--- The IDE Monad
+-- | The IDE Monad
 --
 type IDEM = ReaderT IDERef IO
 
@@ -191,19 +158,24 @@ type IDEAction = IDEM ()
 
 
 data IDEState =
+        -- | Leksah is in startup mode
         IsStartingUp
+        -- | Leksah is about to go down
     |   IsShuttingDown
+        -- | Leksah is running
     |   IsRunning
+        -- | The flipper is used to switch between sources
     |   IsFlipping TreeView
+        -- | The completion feature is used
     |   IsCompleting Connections
+
 
 -- ---------------------------------------------------------------------
 -- Events which can be signalled and handled
 --
 
 data IDEEvent  =
-        InfoChanged
-    |   SystemInfoChanged
+        InfoChanged Bool-- is it the initial = True else False
     |   ActivePack (Maybe IDEPackage)
     |   SelectInfo String
     |   SelectIdent Descr
@@ -226,8 +198,7 @@ data IDEEvent  =
     |   WorkspaceAddPackage FilePath
 
 instance Event IDEEvent String where
-    getSelector InfoChanged             =   "InfoChanged"
-    getSelector SystemInfoChanged       =   "SystemInfoChanged"
+    getSelector (InfoChanged _)         =   "InfoChanged"
     getSelector (ActivePack _)          =   "ActivePack"
     getSelector (LogMessage _ _)        =   "LogMessage"
     getSelector (SelectInfo _)          =   "SelectInfo"
@@ -251,7 +222,6 @@ instance Event IDEEvent String where
 
 instance EventSource IDERef IDEEvent IDEM String where
     canTriggerEvent _ "InfoChanged"         = True
-    canTriggerEvent _ "SystemInfoChanged"   = True
     canTriggerEvent _ "ActivePack"          = True
     canTriggerEvent _ "LogMessage"          = True
     canTriggerEvent _ "SelectInfo"          = True
@@ -289,25 +259,27 @@ instance EventSelector String
 -- IDEPackages
 --
 data IDEPackage     =   IDEPackage {
-    packageId       ::   PackageIdentifier
-,   cabalFile       ::   FilePath
-,   depends         ::   [Dependency]
-,   modules         ::   Set ModuleName
-,   extraSrcs       ::   Set FilePath
-,   srcDirs         ::   [FilePath]
-,   configFlags     ::   [String]
-,   buildFlags      ::   [String]
-,   haddockFlags    ::   [String]
-,   exeFlags        ::   [String]
-,   installFlags    ::   [String]
-,   registerFlags   ::   [String]
-,   unregisterFlags ::   [String]
-,   sdistFlags      ::   [String]
+    ipdPackageId       ::   PackageIdentifier
+,   ipdCabalFile       ::   FilePath
+,   ipdDepends         ::   [Dependency]
+,   ipdModules         ::   Set ModuleName
+,   ipdMain            ::   [FilePath]
+,   ipdExtraSrcs       ::   Set FilePath
+,   ipdSrcDirs         ::   [FilePath]
+,   ipdExtensions      ::   [Extension]
+,   ipdConfigFlags     ::   [String]
+,   ipdBuildFlags      ::   [String]
+,   ipdHaddockFlags    ::   [String]
+,   ipdExeFlags        ::   [String]
+,   ipdInstallFlags    ::   [String]
+,   ipdRegisterFlags   ::   [String]
+,   ipdUnregisterFlags ::   [String]
+,   ipdSdistFlags      ::   [String]
 }
     deriving (Eq,Show)
 
 instance Ord IDEPackage where
-    compare x y     =   compare (packageId x) (packageId y)
+    compare x y     =   compare (ipdPackageId x) (ipdPackageId y)
 
 -- ---------------------------------------------------------------------
 -- Workspace
@@ -374,18 +346,19 @@ data Prefs = Prefs {
     ,   packageBlacklist    ::   [Dependency]
     ,   collectAfterBuild   ::   Bool
     ,   collectAtStart      ::   Bool
-    ,   autoExtractTars     ::   Bool
+    ,   unpackDirectory     ::   Maybe FilePath
     ,   useCtrlTabFlipping  ::   Bool
     ,   docuSearchURL       ::   String
     ,   completeRestricted  ::   Bool
     ,   saveAllBeforeBuild  ::   Bool
     ,   backgroundBuild     ::   Bool
     ,   backgroundLink      ::   Bool
-    ,   autoInstall         ::   InstallFlag
     ,   printEvldWithShow   ::   Bool
+    ,   autoInstall         ::   InstallFlag
     ,   breakOnException    ::   Bool
     ,   breakOnError        ::   Bool
     ,   printBindResult     ::   Bool
+    ,   serverPort          ::   Int
 } deriving(Eq,Show)
 
 data SearchHint = Forward | Backward | Insert | Delete | Initial
@@ -411,12 +384,23 @@ data LogRef = LogRef {
 }   deriving (Eq)
 
 instance Show LogRef where
-    show lr =  refDescription lr ++ showSDoc (ppr (logRefSrcSpan lr))
+    show lr =  refDescription lr ++ displaySrcSpan (logRefSrcSpan lr)
+
+displaySrcSpan s = srcSpanFilename s ++ ":" ++
+    if srcSpanStartLine s == srcSpanEndLine s
+        then show (srcSpanStartLine s) ++ ":" ++
+            if srcSpanStartColumn s == srcSpanEndColumn s
+                then show (srcSpanStartColumn s)
+                else show (srcSpanStartColumn s) ++ "-" ++ show (srcSpanEndColumn s)
+        else show (srcSpanStartLine s) ++ ":" ++
+            show (srcSpanStartColumn s) ++ "-" ++ show (srcSpanEndColumn s)
+
 
 logRefFilePath :: LogRef -> FilePath
-logRefFilePath = unpackFS . srcSpanFile. logRefSrcSpan
+logRefFilePath = srcSpanFilename . logRefSrcSpan
 
-logRefFullFilePath :: LogRef -> FilePath
+logRefFullFilePath :: LogRef -- ^ The log ref
+    -> FilePath -- ^ the result
 logRefFullFilePath lr = logRefRootPath lr </> logRefFilePath lr
 
 isError :: LogRef -> Bool
@@ -434,229 +418,6 @@ colorHexString (Color r g b) = '#' : (pad $ showHex r "")
                                   ++ (pad $ showHex b "")
     where pad s = replicate (4 - length s) '0' ++ s
 
--- ---------------------------------------------------------------------
---  | Information about the world, extraced from .hi and maybe source files
---
-
-newtype Present alpha       =   Present alpha
-
-type PackScope          =   (Map PackageIdentifier PackageDescr,SymbolTable)
-type SymbolTable        =   Map Symbol [Descr]
-
-data PackageDescr       =   PackageDescr {
-    packagePD           ::   PackageIdentifier
-,   mbSourcePathPD      ::   (Maybe FilePath)
-,   exposedModulesPD    ::   [ModuleDescr]
-,   buildDependsPD      ::   [PackageIdentifier]
-} deriving (Show,Typeable)
-
-instance Show (Present PackageDescr) where
-    show (Present pd)   =   (fromPackageIdentifier . packagePD) pd
-
-instance Eq PackageDescr where
-    (== ) a b            =   packagePD a == packagePD b
-
-instance Ord PackageDescr where
-    (<=) a b              =   packagePD a <=  packagePD b
-
-data ModuleDescr        =   ModuleDescr {
-        moduleIdMD          ::   PackModule
-    ,   mbSourcePathMD      ::   (Maybe FilePath)
-    ,   exportedNamesMD     ::   (Set Symbol)                        -- unqualified
-    ,   referencesMD        ::   (Map ModuleName (Set Symbol)) -- imports
-    ,   idDescriptionsMD    ::   [Descr]
-} deriving (Show,Typeable)
-
-instance Show (Present ModuleDescr) where
-    show (Present md)   =   (show . moduleIdMD) md
-
-instance Eq ModuleDescr where
-    (== ) a b             =   moduleIdMD a == moduleIdMD b
-
-instance Ord ModuleDescr where
-    (<=) a b             =   moduleIdMD a <=  moduleIdMD b
-
-data Descr              =   Descr {
-        descrName'          ::   Symbol
-    ,   typeInfo'           ::   Maybe TypeInfo
-    ,   descrModu'          ::   Maybe PackModule
-    ,   mbLocation'         ::   Maybe Location
-    ,   mbComment'          ::   Maybe ByteString
-    ,   details'            ::   SpDescr}
-        | Reexported {
-        descrModu'          ::   Maybe PackModule
-    ,   impDescr            ::   Descr}
-        deriving (Show,Read,Typeable)
-
-data SpDescr   =   VariableDescr
-    |   FieldDescr {typeDescrF :: Descr}
-    |   ConstructorDescr {typeDescrC :: Descr}
-    |   DataDescr {constructors :: [(Symbol,Maybe TypeInfo)],
-            fields :: [(Symbol,Maybe TypeInfo)]}
-    |   TypeDescr
-    |   NewtypeDescr {constructor :: (Symbol,Maybe TypeInfo),
-            mbField :: Maybe (Symbol,Maybe TypeInfo)}
-    |   ClassDescr  {super :: [Symbol], methods :: [(Symbol,Maybe TypeInfo)]}
-    |   MethodDescr {classDescrM :: Descr}
-    |   InstanceDescr {binds :: [Symbol]}
-    |   KeywordDescr
-    |   ExtensionDescr
-    |   ModNameDescr
-    |   QualModNameDescr
-            --the descrName is the type Konstructor?
-        deriving (Show,Read,Eq,Ord,Typeable)
-
-data DescrType = Variable | Field | Constructor | Data  | Type | Newtype
-    | Class | Method | Instance | Keyword | Extension | ModName | QualModName
-  deriving (Show, Eq, Ord, Bounded, Enum, Read)
-
-instance Default DescrType where
-    getDefault = Variable
-
-descrType ::  SpDescr -> DescrType
-descrType VariableDescr      =   Variable
-descrType (FieldDescr _)     =   Field
-descrType (ConstructorDescr _) = Constructor
-descrType (DataDescr _ _)    =   Data
-descrType TypeDescr          =   Type
-descrType (NewtypeDescr _ _) =   Newtype
-descrType (ClassDescr  _ _)  =   Class
-descrType (MethodDescr _)    =   Method
-descrType (InstanceDescr _)  =   Instance
-descrType KeywordDescr       =   Keyword
-descrType ExtensionDescr     =   Extension
-descrType ModNameDescr       =   ModName
-descrType QualModNameDescr   =   QualModName
-
-stockIdFromType :: DescrType -> StockId
-stockIdFromType Variable        =   "ide_function"
-stockIdFromType Newtype         =   "ide_newtype"
-stockIdFromType Type            =   "ide_type"
-stockIdFromType Data            =   "ide_data"
-stockIdFromType Class           =   "ide_class"
-stockIdFromType Instance        =   "ide_instance"
-stockIdFromType Constructor     =   "ide_konstructor"
-stockIdFromType Field           =   "ide_slot"
-stockIdFromType Method          =   "ide_method"
-stockIdFromType _               =   "ide_other"
-
-type Symbol             =   String  -- Qualified or unqualified
-type ClassId            =   String  -- Qualified or unqualified
-type DataId             =   String  -- Qualified or unqualified
-type TypeInfo           =   ByteString
---type ModuleIdentifier   =   String  -- always qualified
-
-data PackModule         =   PM {    pack :: PackageIdentifier
-                                ,   modu :: ModuleName}
-                                deriving (Eq, Ord,Read,Show,Typeable)
-
-instance Show (Present PackModule) where
-    showsPrec _ (Present pd)  =   showString ((fromPackageIdentifier . pack) pd) . showChar ':'
-                                    .  showString (display (modu pd))
-
-parsePackModule         ::   String -> PackModule
-parsePackModule str     =   let (pack',mod') = span (\c -> c /= ':') str
-                            in case toPackageIdentifier $ pack' of
-                                Nothing -> perror $ "Types>>parsePackModule: Can't parse package:" ++ str
-                                Just pi'-> case simpleParse $ tail mod' of
-                                            Nothing -> perror $
-                                                "Types>>parsePackModule: Can't parse module:" ++ str
-                                            Just mn -> (PM pi' mn)
-    where perror s      =   throwIDE $ "cannot parse PackModule from " ++ s
-
-showPackModule :: PackModule -> String
-showPackModule = show. Present
-
-fromPackageIdentifier :: PackageIdentifier -> String
-fromPackageIdentifier   =   display
-
-toPackageIdentifier :: String -> Maybe PackageIdentifier
-toPackageIdentifier         =   simpleParse
-
--- Metadata accessors
-
-isReexported :: Descr -> Bool
-isReexported (Reexported _ _)   =   True
-isReexported _                  =   False
-
-descrName :: Descr -> Symbol
-descrName d
-    |   isReexported d  =   descrName (impDescr d)
-    |   otherwise       =   descrName' d
-
-typeInfo :: Descr -> Maybe TypeInfo
-typeInfo d
-    |   isReexported d  =   typeInfo (impDescr d)
-    |   otherwise       =   typeInfo' d
-
-descrModu :: Descr -> Maybe PackModule
-descrModu d
-    |   isReexported d  =   descrModu (impDescr d)
-    |   otherwise       =   descrModu' d
-
-mbLocation :: Descr -> Maybe Location
-mbLocation d
-    |   isReexported d  =   mbLocation (impDescr d)
-    |   otherwise       =   mbLocation' d
-
-mbComment :: Descr -> Maybe ByteString
-mbComment d
-    |   isReexported d  =   mbComment (impDescr d)
-    |   otherwise       =   mbComment' d
-
-details :: Descr -> SpDescr
-details d
-    |   isReexported d  =   details (impDescr d)
-    |   otherwise       =   details' d
-
-instance Show (Present Descr) where
-    showsPrec _ (Present descr) =   case mbComment descr of
-                                        Just comment -> p . showChar '\n' . c comment . t
-                                        Nothing      -> p . showChar '\n' . showChar '\n' . t
-        where p         =   case descrModu' descr of
-                                Just ds -> showString "-- " . shows (Present ds)
-                                Nothing -> id
-              c com     =   showString $ unlines
-                                $ map (\(i,l) -> if i == 0 then "-- | " ++ l else "--  " ++ l)
-                                    $ zip [0 .. length lines - 1] lines
-                                where lines = nonEmptyLines (BS.unpack com)
-              t         =   case typeInfo descr of
-                                Just ti -> showString $ BS.unpack ti
-                                Nothing -> id
-
-instance Eq Descr where
-    (== ) a b             =   descrName a == descrName b
-                                && descrType (details a)   == descrType (details b)
-
-instance Ord Descr where
-    (<=) a b             =   if descrName a == descrName b
-                                then descrType (details a)   <= descrType (details b)
-                                else descrName a <  descrName b
-
-instance Default PackModule where
-    getDefault = parsePackModule "unknow-0:Undefined"
-
-data Location           =   Location {
-    locationSLine       ::   Int
-,   locationSCol	    ::   Int
-,   locationELine       ::   Int
-,   locationECol        ::   Int
-}   deriving (Show,Eq,Ord,Read,Typeable)
-
-instance Default ByteString
-    where getDefault = BS.empty
-
-data Scope = PackageScope Bool | WorkspaceScope Bool | SystemScope
-    -- True -> with imports, False -> without imports
-  deriving (Show, Eq, Read)
-
-instance Ord Scope where
-    _ <= SystemScope                             = True
-    WorkspaceScope False <=  WorkspaceScope True = True
-    WorkspaceScope False <=  PackageScope True   = True
-    PackageScope True    <=  WorkspaceScope True = True
-    PackageScope False   <=  PackageScope True   = True
-    _ <= _  = False
 
 newtype CandyTable      =   CT (CandyTableForth,CandyTableBack)
 
@@ -679,7 +440,7 @@ type GUIHistory = (GUIHistory', GUIHistory')
 data GUIHistory' =
         ModuleSelected  {
             moduleS :: Maybe ModuleName
-        ,   facetS  :: Maybe Symbol}
+        ,   facetS  :: Maybe String}
     |   ScopeSelected {
             scope   :: Scope
         ,   blacklist :: Bool}
@@ -716,7 +477,9 @@ data StatusbarCompartment =
     |   CompartmentState String
     |   CompartmentOverlay Bool
     |   CompartmentBufferPos (Int,Int)
+    |   CompartmentBuild Bool
+    |   CompartmentCollect Bool
 
-
-
+type PackageDescrCache = Map PackageIdentifier ModuleDescrCache
+type ModuleDescrCache = Map ModuleName (ClockTime, Maybe FilePath, ModuleDescr)
 

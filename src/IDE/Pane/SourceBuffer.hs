@@ -1,5 +1,5 @@
-{-# LANGUAGE CPP #-}
-{-# OPTIONS_GHC  -XDeriveDataTypeable -XMultiParamTypeClasses -XTypeSynonymInstances -XScopedTypeVariables #-}
+{-# OPTIONS_GHC  -XDeriveDataTypeable -XMultiParamTypeClasses -XTypeSynonymInstances
+    -XScopedTypeVariables #-}
 -----------------------------------------------------------------------------
 --
 -- Module      :  IDE.Pane.SourceBuffer
@@ -81,13 +81,20 @@ import Data.Maybe
 import Data.Typeable
 import System.Time
 
+#if MIN_VERSION_gtk(0,10,2)
+import qualified Graphics.UI.Gtk as Gtk
+    hiding(afterFocusIn, afterModifiedChanged, afterMoveCursor, afterToggleOverwrite, background, onButtonPress,
+    onPopulatePopup, cutClipboard, copyClipboard, pasteClipboard)
+#else
 import Graphics.UI.Gtk as Gtk
     hiding(afterFocusIn, afterModifiedChanged, afterMoveCursor, afterToggleOverwrite, background, onButtonPress,
     onPopulatePopup)
-import Graphics.UI.Gtk.Gdk.Events as Gtk
+#endif
 
+import Graphics.UI.Gtk.Gdk.Events as Gtk
 import IDE.Core.State
-import IDE.FileUtils
+import IDE.Utils.GUIUtils(getCandyState)
+import IDE.Utils.FileUtils
 import IDE.SourceCandy
 import IDE.Completion as Completion (complete,cancel)
 import IDE.TextEditor
@@ -97,10 +104,7 @@ import Data.IORef (writeIORef,readIORef,newIORef,IORef(..))
 import Graphics.UI.Frame.Panes (IDEPane(..))
 import Data.Char (isAlphaNum)
 import Control.Event (triggerEvent)
-import SrcLoc
-    (srcLocCol, srcLocLine, srcSpanEnd, srcSpanStart)
-import IDE.Metainfo.GHCUtils (parseHeader)
-import GHC (SrcLoc(..), unLoc, moduleNameString, HsModule(..))
+
 
 --
 -- | A text editor pane description
@@ -237,36 +241,38 @@ goToDefinition :: Descr -> IDEAction
 goToDefinition idDescr  = do
     mbWorkspaceInfo     <-  readIDE workspaceInfo
     mbSystemInfo        <-  readIDE systemInfo
-    let mbSourcePath1   =   case mbWorkspaceInfo of
-                                Nothing -> Nothing
-                                Just (sc, _) -> sourcePathFromScope sc
-    let mbSourcePath2   =   case mbSourcePath1 of
+    let mbSourcePath1   =   (\ v -> trace ("mbSourcePath1" ++ show v) v) $
+                                case mbWorkspaceInfo of
+                                    Nothing -> Nothing
+                                    Just (sc, _) -> sourcePathFromScope sc
+    let mbSourcePath2   =   (\ v -> trace ("mbSourcePath2" ++ show v) v) $
+                            case mbSourcePath1 of
                                 Just sp -> Just sp
                                 Nothing -> case mbSystemInfo of
                                                 Just si -> sourcePathFromScope si
                                                 Nothing -> Nothing
     when (isJust mbSourcePath2) $
-        goToSourceDefinition (fromJust $ mbSourcePath2) (mbLocation idDescr)
+        goToSourceDefinition (fromJust $ mbSourcePath2) (dscMbLocation idDescr)
     return ()
     where
-    sourcePathFromScope :: PackScope -> Maybe FilePath
-    sourcePathFromScope scope =
-        case descrModu idDescr of
-            Just mod -> case (pack mod) `Map.lookup` (fst scope) of
+    sourcePathFromScope :: GenScope -> Maybe FilePath
+    sourcePathFromScope (GenScopeC (PackScope l _)) =
+        case dscMbModu idDescr of
+            Just mod -> case (pack mod) `Map.lookup` l of
                             Just pack ->
-                                case filter (\md -> moduleIdMD md == fromJust (descrModu idDescr))
-                                                    (exposedModulesPD pack) of
-                                    (mod : tl) ->  mbSourcePathMD mod
+                                case filter (\md -> mdModuleId md == fromJust (dscMbModu idDescr))
+                                                    (pdModules pack) of
+                                    (mod : tl) ->  mdMbSourcePath mod
                                     []         -> Nothing
                             Nothing -> Nothing
             Nothing -> Nothing
 
 goToSourceDefinition :: FilePath -> Maybe Location -> IDEAction
-goToSourceDefinition fp mbLocation = do
+goToSourceDefinition fp dscMbLocation = do
     mbBuf     <- selectSourceBuf fp
-    when (isJust mbBuf && isJust mbLocation) $
+    when (isJust mbBuf && isJust dscMbLocation) $
         inActiveBufContext () $ \_ ebuf buf _ -> do
-            let location    =   fromJust mbLocation
+            let location    =   fromJust dscMbLocation
             lines           <-  getLineCount ebuf
             iterTemp        <-  getIterAtLine ebuf (max 0 (min (lines-1)
                                     ((locationSLine location) -1)))
@@ -300,7 +306,7 @@ insertInBuffer idDescr = do
                     inBufContext () buf $ \_ ebuf buf _ -> do
                         mark <- getInsertMark ebuf
                         iter <- getIterAtMark ebuf mark
-                        insert ebuf iter (descrName idDescr)
+                        insert ebuf iter (dscName idDescr)
 
 markRefInSourceBuf :: Int -> IDEBuffer -> LogRef -> Bool -> IDEAction
 markRefInSourceBuf index buf logRef scrollTo = do
@@ -329,8 +335,10 @@ markRefInSourceBuf index buf logRef scrollTo = do
                     ContextRef -> do
                         background errtag $ contextBackground prefs
 
-        let start' = srcLocToPair $ srcSpanStart (logRefSrcSpan logRef)
-        let end'   = srcLocToPair $ srcSpanEnd   (logRefSrcSpan logRef)
+        let start' = (srcSpanStartLine (logRefSrcSpan logRef),
+                        srcSpanStartColumn (logRefSrcSpan logRef))
+        let end'   = (srcSpanEndLine (logRefSrcSpan logRef),
+                        srcSpanEndColumn (logRefSrcSpan logRef))
         start <- if useCandy
                     then positionToCandy candy' ebuf start'
                     else return start'
@@ -369,9 +377,6 @@ markRefInSourceBuf index buf logRef scrollTo = do
                     when (isOldContext && scrollTo) $ selectRange ebuf iter iter2) ideR
                 return False) priorityDefaultIdle
             return ()
-
-srcLocToPair :: SrcLoc -> (Int,Int)
-srcLocToPair srcLoc = (srcLocLine srcLoc, srcLocCol srcLoc)
 
 allBuffers :: IDEM [IDEBuffer]
 allBuffers = getPanes
@@ -829,7 +834,7 @@ fileCloseAllButPackage = do
                 Nothing ->  throwIDE "notebook page not found: unexpected"
                 Just i  ->  do
                     ebuf <- getBuffer (sourceView buf)
-                    let dir = dropFileName $ cabalFile activePack
+                    let dir = dropFileName $ ipdCabalFile activePack
                     when (isJust (fileName buf)) $ do
                         modified <- getModified ebuf
                         when (not modified && not (isSubPath dir (fromJust (fileName buf))))
@@ -1150,12 +1155,6 @@ selectedModuleName = do
     candy' <- readIDE candy
     inActiveBufContext Nothing $ \_ ebuf currentBuffer _ -> do
         case fileName currentBuffer of
-            Just filePath -> do
-                text <- getCandylessText candy' ebuf
-                parseResult <- parseHeader filePath text
-                case parseResult of
-                     Just HsModule{ hsmodName = Just name }
-                        -> return $ Just $ moduleNameString (unLoc name)
-                     _  -> return Nothing
-            Nothing -> return Nothing
+            Just filePath -> liftIO $ moduleNameFromFilePath filePath
+            Nothing       -> return Nothing
 

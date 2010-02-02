@@ -45,6 +45,7 @@ data-files: LICENSE
             pics/ide_run.png
             pics/ide_slot.png
             pics/ide_source.png
+            pics/ide_source_local.png
             pics/ide_type.png
             pics/leksah.png
             pics/ide_step.png
@@ -56,6 +57,7 @@ data-files: LICENSE
             pics/ide_build.png
             pics/ide_link.png
             pics/ide_rebuild_meta.png
+            pics/ide_empty.png
 data-dir: ""
 extra-source-files: Setup.lhs
 extra-tmp-files:
@@ -80,13 +82,13 @@ Executable leksah
 
     build-depends: Cabal >=1.6.0.1, base >=4.0.0.0 && <= 5, binary >=0.5.0.0,
                    bytestring >=0.9.0.1, containers >=0.2.0.0, directory >=1.0.0.2,
-                   filepath >=1.1.0.1, ghc >=6.10.1, glib >=0.10, gtk >=0.10,
+                   filepath >=1.1.0.1, glib >=0.10, gtk >=0.10,
                    gtksourceview2 >=0.10.0, mtl >=1.1.0.2, old-time >=1.0.0.1,
                    parsec >=2.1.0.1, pretty >=1.0.1.0, process >=1.0.1.0,
-                   regex-tdfa ==1.1.*,
-                   regex-base ==0.93.*, utf8-string >=0.3.1.1, array >=0.2.0.0,
-                   time >=0.1, ltk == 0.7, binary-shared == 0.0.1, deepseq >= 1.1.0.0
-    main-is: Main.hs
+                   regex-tdfa ==1.1.*, regex-base ==0.93.*, utf8-string >=0.3.1.1, array >=0.2.0.0,
+                   time >=0.1, ltk == 0.7, binary-shared == 0.0.1, deepseq >= 1.1.0.0,
+                   leksah-server == 0.7, network >= 2.2 && <= 3.0
+    main-is: IDE/Leksah.hs
     buildable: True
     extensions: CPP
     hs-source-dirs: src
@@ -95,31 +97,23 @@ Executable leksah
         includes: windows.h
 --        include-dirs: C:/cygwin/usr/include/w32api
     other-modules: IDE.Completion IDE.ImportTool
-                   IDE.Find IDE.SaveSession IDE.Command IDE.Keymap IDE.FileUtils
-                   IDE.Package IDE.Exception
-                   IDE.Leksah IDE.GUIHistory IDE.SourceCandy IDE.NotebookFlipper
-                   IDE.Core.Types IDE.Core.State IDE.Metainfo.GHCUtils
-                   IDE.Metainfo.Provider IDE.Metainfo.SourceCollector
-                   IDE.Metainfo.Serializable IDE.Metainfo.InterfaceCollector
+                   IDE.Find IDE.Session IDE.Command IDE.Keymap IDE.Utils.GUIUtils
+                   IDE.Package
+                   IDE.GUIHistory IDE.SourceCandy IDE.NotebookFlipper
+                   IDE.Core.Types IDE.Core.State
+                   IDE.Metainfo.Provider
                    IDE.Pane.Preferences IDE.Pane.PackageEditor
                    IDE.Pane.Info IDE.Pane.Log IDE.Pane.SourceBuffer IDE.Pane.Modules
                    IDE.Pane.Search IDE.Pane.References IDE.Pane.PackageFlags
-                   IDE.Tool IDE.LogRef IDE.Debug IDE.Pane.Grep
+                   IDE.LogRef IDE.Debug IDE.Pane.Grep
                    IDE.Pane.Breakpoints IDE.Pane.Trace IDE.Pane.Variables
                    IDE.Pane.Errors IDE.TextEditor IDE.Workspaces
                    IDE.Statusbar IDE.Pane.Workspace IDE.PaneGroups
+                   IDE.Utils.ServerConnection
     ghc-prof-options: -auto-all -prof
     ghc-shared-options: -auto-all -prof
     ghc-options: -fwarn-unused-imports -fwarn-missing-fields -fwarn-incomplete-patterns -ferror-spans
 
-Executable leksahecho
-    build-depends:
-    main-is: LeksahEcho.hs
-    buildable: True
-    extensions: CPP
-    hs-source-dirs: src
-    ghc-prof-options: -auto-all -prof
-    ghc-shared-options: -auto-all -prof
-    ghc-options: -fwarn-unused-imports -fwarn-missing-fields -fwarn-incomplete-patterns -ferror-spans
+
 
 

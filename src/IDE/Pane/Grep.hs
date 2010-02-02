@@ -29,7 +29,7 @@ import Data.Maybe
 import Control.Monad.Reader
 import Data.Typeable
 import IDE.Core.State
-import IDE.Tool (ToolOutput(..))
+import IDE.Utils.Tool (ToolOutput(..))
 import Control.Concurrent (forkIO)
 import IDE.LogRef (logOutput)
 import IDE.Pane.SourceBuffer

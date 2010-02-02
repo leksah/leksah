@@ -2,7 +2,7 @@
 {-# OPTIONS_GHC -XScopedTypeVariables #-}
 -----------------------------------------------------------------------------
 --
--- Module      :  IDE.Leksah
+-- Module      :  Main
 -- Copyright   :  (c) Juergen Nicklisch-Franken, Hamish Mackenzie
 -- License     :  GNU-GPL
 --
@@ -15,8 +15,8 @@
 --
 ---------------------------------------------------------------------------------
 
-module IDE.Leksah (
-    runMain
+module Main (
+    main
 ) where
 
 import Graphics.UI.Gtk
@@ -27,8 +27,6 @@ import Data.Maybe
 import qualified Data.Map as Map
 import System.Console.GetOpt
 import System.Environment
-import GHC
-import Config
 import Data.Version
 import Prelude hiding(catch)
 
@@ -42,54 +40,44 @@ import qualified Yi.UI.Pango.Control as Yi
 #endif
 
 import Paths_leksah
-import IDE.SaveSession
+import IDE.Session
 import IDE.Core.State
 import Control.Event
 import IDE.SourceCandy
-import IDE.FileUtils
+import IDE.Utils.FileUtils
 import Graphics.UI.Editor.MakeEditor
 import Graphics.UI.Editor.Parameters
 import IDE.Command
 import IDE.Pane.Preferences
 import IDE.Keymap
 import IDE.Pane.SourceBuffer
-import IDE.Metainfo.SourceCollector
-import IDE.Metainfo.InterfaceCollector
 import IDE.Find
-import Graphics.UI.Editor.Composite (filesEditor)
-import Graphics.UI.Editor.Simple (boolEditor)
---import Outputable (ppr,showSDoc)
-import IDE.Metainfo.GHCUtils (inGhcIO)
+import Graphics.UI.Editor.Composite (filesEditor, maybeEditor)
+import Graphics.UI.Editor.Simple (fileEditor)
 import IDE.Metainfo.Provider (initInfo)
 import IDE.Workspaces (backgroundMake)
+import IDE.Utils.GUIUtils
+import System.FilePath((</>))
+import Network (withSocketsDo)
+import Control.Exception
+import System.Exit(exitFailure)
+#if defined(mingw32_HOST_OS) || defined(__MINGW32__)
+#else
+import qualified System.Posix as P
+#endif
 
 -- --------------------------------------------------------------------
 -- Command line options
 --
 
-data Flag =  UninstalledProject String | Collect | Rebuild | Sources | VersionF | DebugF
-                | SessionN String | NoGUI | ExtractTars (Maybe String) | Help
+data Flag =  VersionF | SessionN String | Help
        deriving (Show,Eq)
 
 options :: [OptDescr Flag]
-options =   [Option ['r'] ["Rebuild"] (NoArg Rebuild)
-                "Cleans all .pack files and rebuild everything"
-         ,   Option ['c'] ["Collect"] (NoArg Collect)
-                "Collects new information in .pack files"
-         ,   Option ['u'] ["Uninstalled"] (ReqArg UninstalledProject "FILE")
-                "Gather info about an uninstalled package"
-         ,   Option ['s'] ["Sources"] (NoArg Sources)
-                "Gather info about pathes to sources"
-         ,   Option ['v'] ["Version"] (NoArg VersionF)
+options =   [Option ['v'] ["Version"] (NoArg VersionF)
                 "Show the version number of ide"
-         ,   Option ['d'] ["Debug"] (NoArg DebugF)
-                "Write ascii pack files"
          ,   Option ['l'] ["LoadSession"] (ReqArg SessionN "NAME")
                 "Load session"
-         ,   Option ['n'] ["NoGUI"] (NoArg NoGUI)
-                "Don't start the leksah GUI"
-         ,   Option ['x'] ["Extract"] (OptArg ExtractTars "FILE")
-                "Extract tars from cabal install directory"
          ,   Option ['h'] ["Help"] (NoArg Help)
                 "Display command line options"]
 
@@ -106,13 +94,14 @@ ideOpts argv =
 -- | Main function
 --
 
-runMain = handleTopExceptions $ do
+main = withSocketsDo $ handleExceptions $ do
+#if defined(mingw32_HOST_OS) || defined(__MINGW32__)
+#else
+    P.getProcessID >>= P.createProcessGroup
+#endif
     args            <-  getArgs
 
     (o,_)           <-  ideOpts args
-    let uninstalled     =   filter (\x -> case x of
-                                        UninstalledProject _ -> True
-                                        _                    -> False) o
     let sessions        =   filter (\x -> case x of
                                         SessionN _ -> True
                                         _         -> False) o
@@ -123,34 +112,17 @@ runMain = handleTopExceptions $ do
         (sysMessage Normal $ "Leksah an IDE for Haskell, version " ++ showVersion version)
     when (elem Help o)
         (sysMessage Normal $ "Leksah an IDE for Haskell, version " ++ usageInfo header options)
-    prefsPath       <-  getConfigFilePathForLoad standardPreferencesFilename Nothing
-    prefs           <-  readPrefs prefsPath
-    let extract     =   filter (\x -> case x of
-                                        ExtractTars _ -> True
-                                        _             -> False) o
-    when (not (null extract)) $ case head extract of
-                                ExtractTars (Just path) -> do
-                                            autoExtractTarFiles path
-                                _                       -> do
-                                    when (autoExtractTars prefs) autoExtractCabalTarFiles
-    when (elem Sources o) (do
-        buildSourceForPackageDB prefs
-        sysMessage Normal "rebuild SourceForPackageDB")
-    when (elem Rebuild o || elem Collect o || not (null uninstalled)) $ do
-        inGhcIO $ do
-            flags <- getSessionDynFlags
-            let version     =   cProjectVersion
-            let uninstalled =   filter (\x -> case x of
-                                                UninstalledProject _ -> True
-                                                _                    -> False) o
-            let writeAscii  = elem DebugF o
-            if length uninstalled > 0
-                then mapM_ (collectUninstalled writeAscii version)
-                    $ map (\ (UninstalledProject x) -> x) uninstalled
-                else do
-                    collectInstalled' prefs writeAscii version (elem Rebuild o)
-    when (not (elem NoGUI o) && not (elem VersionF o) && not (elem Help o))
+    dataDir         <- getDataDir
+    prefsPath       <- getConfigFilePathForLoad standardPreferencesFilename Nothing dataDir
+    prefs           <- readPrefs prefsPath
+    when (not (elem VersionF o) && not (elem Help o))
         (startGUI sessionFilename prefs)
+
+handleExceptions inner =
+  catch inner (\(exception :: SomeException) -> do
+    sysMessage Normal ("leksah: internal IDE error: " ++ show exception)
+    exitFailure
+  )
 
 -- ---------------------------------------------------------------------
 -- | Start the GUI
@@ -166,20 +138,21 @@ startGUI sessionFilename iprefs = do
     uiManager   <-  uiManagerNew
     newIcons
     hasConfigDir' <- hasConfigDir
+    dataDir       <- getDataDir
     (startupPrefs,isFirstStart) <-   if hasConfigDir'
                                 then return (iprefs,False)
                                 else do
                                     firstStart iprefs
-                                    prefsPath  <- getConfigFilePathForLoad standardPreferencesFilename Nothing
+                                    prefsPath  <- getConfigFilePathForLoad standardPreferencesFilename Nothing dataDir
                                     prefs <- readPrefs prefsPath
                                     return (prefs,True)
     candyPath   <-  getConfigFilePathForLoad
                         (case sourceCandy startupPrefs of
                             Nothing     ->   standardCandyFilename
-                            Just name   ->   name ++ leksahCandyFileExtension) Nothing
+                            Just name   ->   name ++ leksahCandyFileExtension) Nothing dataDir
     candySt     <-  parseCandy candyPath
     -- keystrokes
-    keysPath    <-  getConfigFilePathForLoad (keymapName iprefs ++ leksahKeymapFileExtension) Nothing
+    keysPath    <-  getConfigFilePathForLoad (keymapName iprefs ++ leksahKeymapFileExtension) Nothing dataDir
     keyMap      <-  parseKeymap keysPath
     let accelActions = setKeymap (keyMap :: KeymapI) mkActions
     specialKeys <-  buildSpecialKeys keyMap accelActions
@@ -200,40 +173,41 @@ startGUI sessionFilename iprefs = do
 #endif
 
     let ide = IDE
-          {   frameState    =   fs
-          ,   recentPanes   =   []
-          ,   specialKeys   =   specialKeys
-          ,   specialKey    =   Nothing
-          ,   candy         =   candySt
-          ,   prefs         =   startupPrefs
-          ,   workspace     =   Nothing
-          ,   activePack    =   Nothing
-          ,   bufferProjectCache =  Map.empty
-          ,   allLogRefs    =   []
-          ,   currentHist   =   0
-          ,   currentEBC    =   (Nothing, Nothing, Nothing)
-          ,   systemInfo    =   Nothing
-          ,   packageInfo   =   Nothing
-          ,   workspaceInfo =   Nothing
-          ,   handlers      =   Map.empty
-          ,   currentState  =   IsStartingUp
-          ,   guiHistory    =   (False,[],-1)
-          ,   findbar       =   (False,Nothing)
-          ,   toolbar       =   (True,Nothing)
+          {   frameState        =   fs
+          ,   recentPanes       =   []
+          ,   specialKeys       =   specialKeys
+          ,   specialKey        =   Nothing
+          ,   candy             =   candySt
+          ,   prefs             =   startupPrefs
+          ,   workspace         =   Nothing
+          ,   activePack        =   Nothing
+          ,   bufferProjCache   =   Map.empty
+          ,   allLogRefs        =   []
+          ,   currentHist       =   0
+          ,   currentEBC        =   (Nothing, Nothing, Nothing)
+          ,   systemInfo        =   Nothing
+          ,   packageInfo       =   Nothing
+          ,   workspaceInfo     =   Nothing
+          ,   workspInfoCache   =   Map.empty
+          ,   handlers          =   Map.empty
+          ,   currentState      =   IsStartingUp
+          ,   guiHistory        =   (False,[],-1)
+          ,   findbar           =   (False,Nothing)
+          ,   toolbar           =   (True,Nothing)
           ,   recentFiles       =   []
           ,   recentWorkspaces  =   []
-          ,   runningTool     =   Nothing
-          ,   ghciState       =   Nothing
-          ,   completion      =   Nothing
+          ,   runningTool       =   Nothing
+          ,   ghciState         =   Nothing
+          ,   completion        =   Nothing
 #ifdef YI
-          ,   yiControl       =   yiControl
+          ,   yiControl         =   yiControl
 #endif
+          ,   server            =   Nothing
     }
-    ideR        <-  newIORef ide
-    reflectIDE (initInfo :: IDEAction) ideR
+    ideR             <-  newIORef ide
     menuDescription' <- menuDescription
     reflectIDE (makeMenu uiManager accelActions menuDescription') ideR
-    nb          <-  reflectIDE (newNotebook []) ideR
+    nb               <-  reflectIDE (newNotebook []) ideR
     afterSwitchPage nb (\i -> reflectIDE (handleNotebookSwitch nb i) ideR)
     widgetSetName nb $"root"
     win `onDelete` (\ _ -> do reflectIDE quit ideR; return True)
@@ -244,7 +218,7 @@ startGUI sessionFilename iprefs = do
         setBackgroundLinkToggled (backgroundLink startupPrefs)) ideR
     let (x,y)   =   defaultSize startupPrefs
     windowSetDefaultSize win x y
-    sessionPath <- getConfigFilePathForLoad sessionFilename Nothing
+    sessionPath <- getConfigFilePathForLoad sessionFilename Nothing dataDir
     (tbv,fbv)   <- reflectIDE (do
         registerEvents
         pair <- recoverSession sessionPath
@@ -268,20 +242,22 @@ startGUI sessionFilename iprefs = do
             else hideFindbar) ideR
 
     when isFirstStart $ do
-        welcomePath <- getConfigFilePathForLoad "welcome.txt" Nothing
+        welcomePath <- getConfigFilePathForLoad "welcome.txt" Nothing dataDir
         reflectIDE (fileOpenThis welcomePath) ideR
-    reflectIDE (modifyIDE_ (\ide -> ide{currentState = IsRunning})) ideR
-
+    reflectIDE (initInfo (modifyIDE_ (\ide -> ide{currentState = IsRunning}))) ideR
     timeoutAddFull (do
         reflectIDE (do
             currentPrefs <- readIDE prefs
             when (backgroundBuild currentPrefs) $ backgroundMake) ideR
         return True) priorityDefaultIdle 1000
     reflectIDE (triggerEvent ideR (Sensitivity [(SensitivityInterpreting, False)])) ideR
+--    timeoutAddFull (do
+--        reflectIDE (postAsyncIDE (initInfo (modifyIDE_ (\ide -> ide{currentState = IsRunning})))) ideR
+--        return False) priorityDefault 100
     mainGUI
 
-fDescription :: FieldDescription Prefs
-fDescription = VFD emptyParams [
+fDescription :: FilePath -> FieldDescription Prefs
+fDescription configPath = VFD emptyParams [
         mkField
             (paraName <<<- ParaName "Paths under which haskell sources may be found"
                 $ paraDirection  <<<- ParaDirection Vertical
@@ -290,18 +266,21 @@ fDescription = VFD emptyParams [
             (\b a -> a{sourceDirectories = b})
             (filesEditor Nothing FileChooserActionSelectFolder "Select folders")
     ,   mkField
-            (paraName <<<- ParaName "Extract packages from cabal-install" $ emptyParams)
-            autoExtractTars
-            (\b a -> a{autoExtractTars = b})
-            boolEditor]
+            (paraName <<<- ParaName "Maybe a directory for unpacking cabal packages" $ emptyParams)
+            unpackDirectory
+            (\b a -> a{unpackDirectory = b})
+            (maybeEditor ((fileEditor (Just (configPath </> "packageSources")) FileChooserActionSelectFolder
+                "Select folder for unpacking cabal packages"), emptyParams) True "Yes")]
 
 --
 -- | Called when leksah ist first called (the .leksah directory does not exist)
 --
 firstStart :: Prefs -> IO ()
 firstStart prefs = do
-    prefsPath   <-  getConfigFilePathForLoad standardPreferencesFilename Nothing
-    prefs       <-  readPrefs prefsPath
+    dataDir     <- getDataDir
+    prefsPath   <- getConfigFilePathForLoad standardPreferencesFilename Nothing dataDir
+    prefs       <- readPrefs prefsPath
+    configDir   <- getConfigDir
     dialog      <- windowNew
     vb          <- vBoxNew False 0
     bb          <- hButtonBoxNew
@@ -314,7 +293,7 @@ firstStart prefs = do
         "Select folders under which you have installed Haskell packages with sources below and click add.\n" ++
         "It may take some time before Leksah starts up."))
     (widget, setInj, getExt,notifier)
-                <- buildEditor fDescription prefs
+                <- buildEditor (fDescription configDir) prefs
     ok `onClicked` (do
         mbNewPrefs <- extract prefs [getExt]
         case mbNewPrefs of
@@ -326,7 +305,8 @@ firstStart prefs = do
                 writePrefs fp newPrefs
                 widgetDestroy dialog
                 mainQuit
-                firstBuild newPrefs)
+                --TODO firstBuild newPrefs
+                )
     cancel `onClicked` (do
         widgetDestroy dialog
         mainQuit)
@@ -343,11 +323,5 @@ firstStart prefs = do
     mainGUI
     return ()
 
-firstBuild :: Prefs -> IO ()
-firstBuild prefs = let version = cProjectVersion in do
-    buildSourceForPackageDB prefs
-    sources             <-  getSourcesMap prefs
-    libDir              <-  getSysLibDir
-    runGhc (Just libDir) $ collectInstalled' prefs False version True
 
 

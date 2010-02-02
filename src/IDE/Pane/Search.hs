@@ -32,6 +32,7 @@ import Data.Maybe
 import Control.Monad.Reader
 import Data.Typeable
 import IDE.Core.State
+import IDE.Utils.GUIUtils
 import Distribution.Text(display)
 import Control.Event (triggerEvent)
 
@@ -122,10 +123,10 @@ instance RecoverablePane IDESearch SearchState IDEM where
             cellLayoutPackStart col3 renderer30 False
             cellLayoutPackStart col3 renderer3 True
             cellLayoutSetAttributes col3 renderer3 listStore
-                $ \row -> [ cellText := descrName row]
+                $ \row -> [ cellText := dscName row]
             cellLayoutSetAttributes col3 renderer30 listStore
                 $ \row -> [
-                cellPixbufStockId  := stockIdFromType ((descrType . details) row)]
+                cellPixbufStockId  := stockIdFromType ((descrType . dscTypeHint) row)]
 
 
             renderer1    <- cellRendererTextNew
@@ -139,14 +140,14 @@ instance RecoverablePane IDESearch SearchState IDEM where
             cellLayoutPackStart col1 renderer10 False
             cellLayoutPackStart col1 renderer1 True
             cellLayoutSetAttributes col1 renderer1 listStore
-                $ \row -> [ cellText := case descrModu' row of
+                $ \row -> [ cellText := case dsMbModu row of
                                             Nothing -> ""
                                             Just pm -> display $ modu pm]
             cellLayoutSetAttributes col1 renderer10 listStore
                 $ \row -> [
                 cellPixbufStockId  := if isReexported row
                                         then "ide_reexported"
-                                            else if isJust (mbLocation row)
+                                            else if isJust (dscMbLocation row)
                                                 then "ide_source"
                                                 else ""]
 
@@ -159,7 +160,7 @@ instance RecoverablePane IDESearch SearchState IDEM where
             treeViewAppendColumn treeView col2
             cellLayoutPackStart col2 renderer2 True
             cellLayoutSetAttributes col2 renderer2 listStore
-                $ \row -> [ cellText := case descrModu' row of
+                $ \row -> [ cellText := case dsMbModu row of
                                             Nothing -> ""
                                             Just pm -> display $ pack pm]
             treeViewSetHeadersVisible treeView True
@@ -346,6 +347,6 @@ setChoices descrs = do
         entrySetText (entry search)
             (case descrs of
                 []    -> ""
-                hd: _ -> descrName hd)
+                hd: _ -> dscName hd)
 
 
