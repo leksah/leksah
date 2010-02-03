@@ -2,11 +2,11 @@ Version number of preferences file format:
                1
      --Integer
 Time of last storage:
-               "Wed Oct 28 01:34:04 CET 2009"
+               "Thu Jan 28 13:31:43 Westeurop\228ische Normalzeit 2010"
 Show line numbers:
                True
      --(True/False)
-TextView Font: "Monospace 10"
+TextView Font: "Monospace 9"
 Right margin:  110
      --Size or 0 for no right margin
 Tab width:     4
@@ -29,7 +29,7 @@ LogView Font:  "Sans 10"
 Window default size:
                (800,800)
      --Default size of the main ide window specified as pair (int,int)
-Use ctrl Tab for Notebook flipper:
+Use ctrl Tab for Notebook flipper: 
                True
 Complete only on Hotkey:
                False
@@ -43,21 +43,25 @@ Pane path for category:
 Default pane path:
                [SplitP LeftP]
 Paths under which haskell sources for packages may be found:
-               ["/home/jutaro/Haskell"]
-Extract packages from cabal-install:
-               Nothing
+               ["~/Develop"]
+Maybe a directory for unpacking cabal packages:
+               Just "~/Haskell"
 Update metadata at startup:
                True
 Update metadata after every build:
                True
+Port number for server connection:
+               11111
 Packages which are excluded from the modules pane:
-               [Dependency (PackageName "ghc") AnyVersion]
+               [Dependency (PackageName "base") (EarlierVersion (Version {versionBranch = [4,0,0,0], versionTags = []})),Dependency (PackageName "ghc") AnyVersion,Dependency (PackageName "haskell98") AnyVersion]
 Automatically save all files before building:
                True
 Background build:
                True
 Include linking in background builds:
                True
+Auto install packages:
+               InstallLibs
 Enable usage of Show instances in :print:
                True
 Break on any exception thrown:

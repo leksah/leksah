@@ -576,8 +576,7 @@ aboutDialog = do
 
 
 newIcons :: IO ()
-newIcons =
-    catch (do
+newIcons = catch (do
         iconFactory <- iconFactoryNew
         dataDir <- getDataDir
         mapM_ (loadIcon dataDir iconFactory) ["ide_class","ide_configure","ide_data","ide_error_next",
@@ -587,7 +586,7 @@ newIcons =
             "ide_debug", "ide_step", "ide_local", "ide_module", "ide_continue", "ide_rebuild_meta",
             "ide_empty","ide_source_local"]
         iconFactoryAddDefault iconFactory)
-    (\(e :: SomeException) -> getDataDir >>= \dataDir -> throwIDE ("Can't load icons from " ++ dataDir))
+    (\(e :: SomeException) -> getDataDir >>= \dataDir -> throwIDE ("Can't load icons from " ++ dataDir ++ " " ++ show e))
     where
     loadIcon dataDir iconFactory name = do
         pb      <-  pixbufNewFromFile $ dataDir </> "pics" </> (name ++ ".png")
