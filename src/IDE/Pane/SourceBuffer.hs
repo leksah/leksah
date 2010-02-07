@@ -485,8 +485,8 @@ builder' bs mbfn ind bn rbn ct prefs pp nb windows = do
                                     Just iter -> return iter
                                     Nothing   -> return endSel
                             _ -> return endSel
-                        selectRange buffer start end
-                        return True
+                        liftIO $ postGUIAsync $ reflectIDE (selectRange buffer start end) ideR
+                        return False
                     _ -> return False) ideR
     (GetTextPopup mbTpm) <- triggerEvent ideR (GetTextPopup Nothing)
     ids4 <- case mbTpm of
