@@ -12,6 +12,7 @@
        <separator/>
        <menuitem name="Close All" action="FileCloseAll" />
        <menuitem name="Close All but Package" action="FileCloseAllButPackage" />
+       <menuitem name="Close All but Workspace" action="FileCloseAllButWorkspace" />
        <separator/>
       <menuitem name="_Quit" action="Quit" />
      </menu>

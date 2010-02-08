@@ -658,6 +658,7 @@ callCollector rebuild sources extract cont = trace "callCollector" $ do
         case res of
             ServerOK         -> trace "callCollector finished" $ cont True
             ServerFailed str -> trace str $ cont False
+            _                -> trace "impossible server answer" $ cont False
     where command = SystemCommand {
             scRebuild = rebuild,
             scSources = sources,
@@ -673,6 +674,7 @@ callCollectorWorkspace rebuild fp  pi modList cont = trace "callCollectorWorkspa
                 case res of
                     ServerOK         -> trace "callCollectorWorkspace finished" $ cont True
                     ServerFailed str -> trace str $ cont False
+                    _                -> trace "impossible server answer" $ cont False
     where command = WorkspaceCommand {
             wcRebuild = rebuild,
             wcPackage = pi,

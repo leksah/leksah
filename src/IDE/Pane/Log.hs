@@ -185,7 +185,7 @@ populatePopup ideLog ideR menu = do
                 Just _  -> do
                     item1   <-  menuItemNewWithLabel "Add import"
                     item1 `onActivateLeaf` do
-                        reflectIDE (addImport thisRef [] >> return()) ideR
+                        reflectIDE (addImport thisRef [] (\_ -> return ())) ideR
                     menuShellAppend menu item1
             widgetShowAll menu
             return ()

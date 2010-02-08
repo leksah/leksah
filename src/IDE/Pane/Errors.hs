@@ -26,12 +26,12 @@ import Graphics.UI.Gtk
 import Data.Typeable (Typeable(..))
 import IDE.Core.State
 import Control.Monad.Reader
-import IDE.LogRef
 import Graphics.UI.Gtk.General.Enums
     (Click(..), MouseButton(..))
 import Graphics.UI.Gtk.Gdk.Events (Event(..))
 import IDE.ImportTool (addImport,parseNotInScope, addAllImports)
 import Data.List (elemIndex)
+import IDE.LogRef (showSourceSpan)
 
 -- | A breakpoints pane description
 --
@@ -178,7 +178,7 @@ errorViewPopup ideR  store treeView (Button _ click _ _ _ _ button _ _)
                     Just _  -> do
                         item1   <-  menuItemNewWithLabel "Add import"
                         item1 `onActivateLeaf` do
-                            reflectIDE (addImport sel [] >> return()) ideR
+                            reflectIDE (addImport sel [] (\ _ -> return ())) ideR
                         menuShellAppend theMenu item1
                 Nothing -> return ()
             menuPopup theMenu Nothing

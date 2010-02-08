@@ -112,6 +112,8 @@ mkActions =
         (do fileCloseAll (\ b -> return (bufferName b /= "_Eval.hs")); return ()) [] False
     ,AD "FileCloseAllButPackage" "Close All But Package" Nothing Nothing
         (do fileCloseAllButPackage; return ()) [] False
+    ,AD "FileCloseAllButWorkspace" "Close All But Workspace" Nothing Nothing
+        (do fileCloseAllButWorkspace; return ()) [] False
     ,AD "Quit" "_Quit" Nothing (Just "gtk-quit")
         quit [] False
 

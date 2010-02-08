@@ -32,6 +32,7 @@ module IDE.Pane.SourceBuffer (
 ,   fileClose
 ,   fileCloseAll
 ,   fileCloseAllButPackage
+,   fileCloseAllButWorkspace
 ,   fileSave
 ,   fileSaveAll
 ,   fileSaveBuffer
@@ -839,6 +840,30 @@ fileCloseAllButPackage = do
                         modified <- getModified ebuf
                         when (not modified && not (isSubPath dir (fromJust (fileName buf))))
                             $ do fileClose' nb ebuf buf i; return ()
+
+fileCloseAllButWorkspace :: IDEAction
+fileCloseAllButWorkspace = do
+    mbWorkspace     <-  readIDE workspace
+    bufs            <-  allBuffers
+    when (not (null bufs) && isJust mbWorkspace) $ do
+        mapM_ (close' (fromJust mbWorkspace)) bufs
+    where
+        close' workspace buf = do
+            (pane,_)    <-  guiPropertiesFromName (paneName buf)
+            nb          <-  getNotebook pane
+            mbI         <-  liftIO $notebookPageNum nb (scrolledWindow buf)
+            case mbI of
+                Nothing ->  throwIDE "notebook page not found: unexpected"
+                Just i  ->  do
+                    ebuf <- getBuffer (sourceView buf)
+                    when (isJust (fileName buf)) $ do
+                        modified <- getModified ebuf
+                        when (not modified && not (isSubPathOfAny workspace (fromJust (fileName buf))))
+                            $ do fileClose' nb ebuf buf i; return ()
+        isSubPathOfAny workspace fileName =
+            let pathes = map (dropFileName . ipdCabalFile) (wsPackages workspace)
+            in  or (map (\dir -> isSubPath dir fileName) pathes)
+
 
 fileOpen :: IDEAction
 fileOpen = do

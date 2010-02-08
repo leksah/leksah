@@ -25,13 +25,12 @@ import IDE.Metainfo.Provider (getIdentifierDescr)
 import Text.PrettyPrint (render)
 import Distribution.Text (disp)
 import IDE.Pane.SourceBuffer
-    (fileSave, inActiveBufContext, selectSourceBuf)
+        (fileSave, inActiveBufContext, selectSourceBuf)
 import Graphics.UI.Gtk
-import IDE.SourceCandy (getCandylessText)
 import Text.ParserCombinators.Parsec.Language (haskellStyle)
 import Graphics.UI.Editor.MakeEditor (buildEditor,mkField,FieldDescription(..))
 import Graphics.UI.Editor.Parameters
-       (paraMinSize, (<<<-), emptyParams, Parameter(..), paraMultiSel,
+       ((<<<-), paraMinSize, emptyParams, Parameter(..), paraMultiSel,
         paraName)
 import Graphics.UI.Editor.Basics (eventPaneName,GUIEventSelector(..))
 import Data.Maybe (fromJust)
@@ -40,16 +39,16 @@ import qualified Text.ParserCombinators.Parsec as Parsec (parse)
 import Graphics.UI.Editor.Simple (okCancelFields, staticListEditor)
 import Control.Event (registerEvent)
 import Control.Monad.Trans (liftIO)
-import Control.Monad (foldM_, when)
+import Control.Monad (when)
 import Distribution.Text(display)
-import qualified Distribution.ModuleName as D(ModuleName)
+import qualified Distribution.ModuleName as D(ModuleName(..))
 import Data.List (sort, nub, nubBy)
+import IDE.Utils.ServerConnection
+import Text.PrinterParser (prettyPrint)
+import IDE.TextEditor (delete, setModified, insert, getIterAtLine)
 import qualified Text.ParserCombinators.Parsec.Token as P
-       (dot, operator, identifier, symbol, lexeme, whiteSpace,
+       (operator, dot, identifier, symbol, lexeme, whiteSpace,
         makeTokenParser)
-import IDE.TextEditor
-       (delete, setModified, insert, getIterAtLine, getEndIter,
-        getStartIter)
 
 
 -- | Add all imports which gave error messages ...
@@ -60,18 +59,18 @@ addAllImports = do
     when buildInBackground (
         modifyIDE_ (\ide -> ide{prefs = prefs'{backgroundBuild = False}}))
     errors <- readIDE errorRefs
-    foldM_ addThis (True,[])
+    addAll
         [ y | (x,y) <-
             nubBy (\ (p1,_) (p2,_) -> p1 == p2)
                 $ [(x,y) |  (x,y) <- [((parseNotInScope . refDescription) e, e) | e <- errors]],
-                                isJust x]
+                                isJust x] []
     when buildInBackground $
         modifyIDE_ (\ide -> ide{prefs = prefs'{backgroundBuild = True}})
 
     where
-        addThis :: (Bool,[Descr]) -> LogRef -> IDEM (Bool,[Descr])
-        addThis c@(False,_) _                =  return c
-        addThis c@(True,descrList) errorSpec =  addImport errorSpec descrList
+        addAll :: [LogRef] -> [Descr] -> IDEM ()
+        addAll [] _                          =  return ()
+        addAll (errorSpec:rest) descrList    =  addImport errorSpec descrList (addAll rest)
 
 -- | Add import for current error ...
 addOneImport :: IDEAction
@@ -83,27 +82,27 @@ addOneImport = do
             ideMessage Normal $ "No error selected"
             return ()
         Just ref -> do
-            addImport ref [] >> return ()
+            addImport ref [] (\ _ -> return ())
 
 -- | Add one missing import
 -- Returns a boolean, if the process should be stopped in case of multiple addition
 -- Returns a list of already added descrs, so that it will not be added two times and can
 -- be used for default selection
-addImport :: LogRef -> [Descr] -> IDEM (Bool, [Descr])
-addImport error descrList =
+addImport :: LogRef -> [Descr] -> ([Descr] -> IDEAction) -> IDEAction
+addImport error descrList continuation =
     case parseNotInScope (refDescription error) of
-        Nothing -> return (True,descrList)
+        Nothing -> continuation descrList
         Just nis -> do
             currentInfo' <- readIDE packageInfo
             case currentInfo' of
-                Nothing -> return (False,descrList)
+                Nothing -> continuation descrList
                 Just (GenScopeC(PackScope _ symbolTable1),GenScopeC(PackScope _ symbolTable2)) ->
-                    case (getIdentifierDescr (id' nis) symbolTable1 symbolTable2) of
+                    case nub (getIdentifierDescr (id' nis) symbolTable1 symbolTable2) of
                         []          ->  do
                                             ideMessage Normal $ "Identifier " ++ (id' nis) ++
                                                 " not found in imported packages"
-                                            return (True,descrList)
-                        descr : []  ->  addImport' nis (logRefFullFilePath error) descr descrList
+                                            continuation descrList
+                        descr : []  ->  addImport' nis (logRefFullFilePath error) descr descrList continuation
                         list        ->  do
                             window' <- getMainWindow
                             mbDescr <-  liftIO $ selectModuleDialog window' list (id' nis)
@@ -111,15 +110,14 @@ addImport error descrList =
                                                 then Nothing
                                                 else Just (head descrList))
                             case mbDescr of
-                                Nothing     ->  return (False,descrList)
+                                Nothing     ->  return ()
                                 Just descr  ->  if elem descr descrList
-                                                    then return (True, descrList)
-                                                    else addImport' nis (logRefFullFilePath error) descr descrList
+                                                    then continuation descrList
+                                                    else addImport' nis (logRefFullFilePath error)
+                                                            descr descrList continuation
 
-
-addImport' :: NotInScopeParseResult -> FilePath -> Descr -> [Descr] -> IDEM (Bool,[Descr])
-addImport' nis filePath descr descrList =  undefined
-{--do
+addImport' :: NotInScopeParseResult -> FilePath -> Descr -> [Descr] -> ([Descr] -> IDEAction) -> IDEAction
+addImport' nis filePath descr descrList continuation =  do
     candy' <- readIDE candy
     mbBuf  <- selectSourceBuf filePath
     let mbMod  = case dsMbModu descr of
@@ -127,87 +125,84 @@ addImport' nis filePath descr descrList =  undefined
                     Just pm -> Just (modu pm)
     case (mbBuf,mbMod) of
         (Just buf,Just mod) -> do
-            inActiveBufContext (False,descrList) $ \ nb gtkbuf idebuf n -> do
-                ideMessage Normal $ "addImport " ++ show (dscName descr) ++ " from "
-                    ++ (render $ disp $ mod)
-                i1          <- getStartIter gtkbuf
-                i2          <- getEndIter gtkbuf
-                text        <- getCandylessText candy' gtkbuf
-                case parseFileContentsWithExts [CPP] text of
-                     ParseFailed srcLoc string	-> do
-                        ideMessage Normal ("Can't parse module header " ++ filePath ++
-                                " failed with: " ++ string ++ " at position " ++ prettyPrint srcLoc)
-                        return (False, descrList)
-                     ParseOk pr@(Module srcSpanInfo (Just (ModuleHead _ modName _ _)) _ imports _) ->
-                        case filter (qualifyAsImportStatement mod) imports of
-                            []     ->   let newLine  =  prettyPrint (newImpDecl mod) ++ "\n"
-                                            lastLine = foldr max 0 (map (srcSpanEndLine . srcInfoSpan . ann) imports)
-                                            lastLine' = if lastLine > 0
-                                                            then lastLine
-                                                            else figureOutImportLine text pr
-                                        in do
-                                            i1 <- getIterAtLine gtkbuf lastLine
-                                            insert gtkbuf i1 newLine
-                                            fileSave False
-                                            setModified gtkbuf True
-                                            return (True,descr : descrList)
-                            l@(impDecl:_) ->
-                                            let newDecl     =  addToDecl impDecl
-                                                newLine     =  prettyPrint newDecl ++ "\n"
-                                                myLoc       =  srcInfoSpan (ann impDecl)
-                                                lineStart   =  srcSpanStartLine myLoc
-                                                lineEnd     =  srcSpanEndLine myLoc
+            inActiveBufContext () $ \ nb gtkbuf idebuf n ->
+                doServerCommand (ParseHeaderCommand filePath)  $ \ res ->
+                    case res of
+                         ServerHeader (Left imports) ->
+                            case filter (qualifyAsImportStatement mod) imports of
+                                []     ->   let newLine  =  prettyPrint (newImpDecl mod) ++ "\n"
+                                                lastLine = foldr max 0 (map (locationELine . importLoc) imports)
                                             in do
-                                                i1 <- getIterAtLine gtkbuf (lineStart - 1)
-                                                i2 <- getIterAtLine gtkbuf (lineEnd)
-                                                delete gtkbuf i1 i2
+                                                i1 <- getIterAtLine gtkbuf lastLine
                                                 insert gtkbuf i1 newLine
                                                 fileSave False
                                                 setModified gtkbuf True
-                                                return (True, descr : descrList)
-                     ParseOk pr@(Module _ Nothing _ _ _) -> do
-                        ideMessage Normal "File without module header"
-                        return (False, descrList)
-                     _ -> do
-                        ideMessage Normal "Strange parse result"
-                        return (False, descrList)
-
-        _  -> return (False, descrList)
+                                                continuation (descr : descrList)
+                                l@(impDecl:_) ->
+                                                let newDecl     =  addToDecl impDecl
+                                                    newLine     =  prettyPrint newDecl ++ "\n"
+                                                    myLoc       =  importLoc impDecl
+                                                    lineStart   =  locationSLine myLoc
+                                                    lineEnd     =  locationELine myLoc
+                                                in do
+                                                    i1 <- getIterAtLine gtkbuf (lineStart - 1)
+                                                    i2 <- getIterAtLine gtkbuf (lineEnd)
+                                                    delete gtkbuf i1 i2
+                                                    insert gtkbuf i1 newLine
+                                                    fileSave False
+                                                    setModified gtkbuf True
+                                                    continuation (descr : descrList)
+                         ServerHeader (Right lastLine) ->
+                                            let newLine  =  prettyPrint (newImpDecl mod) ++ "\n"
+                                            in do
+                                                i1 <- getIterAtLine gtkbuf lastLine
+                                                insert gtkbuf i1 newLine
+                                                fileSave False
+                                                setModified gtkbuf True
+                                                continuation (descr : descrList)
+                         ServerFailed string	-> do
+                            ideMessage Normal ("Can't parse module header " ++ filePath ++
+                                    " failed with: " ++ string)
+                            return ()
+                         _ ->    do
+                            ideMessage Normal ("ImportTool>>addImport: Impossible server answer")
+                            return ()
+        _  -> return ()
     where
-        qualifyAsImportStatement :: D.ModuleName -> ImportDecl SrcSpanInfo -> Bool
+        qualifyAsImportStatement :: D.ModuleName -> ImportDecl -> Bool
         qualifyAsImportStatement moduleName impDecl =
-            let (ModuleName _ importName) = importModule impDecl
-                getHiding (ImportSpecList _ isHiding _) = isHiding
+            let importName = importModule impDecl
+                getHiding (ImportSpecList isHiding _) = isHiding
             in importName == display moduleName
                 && ((isNothing (mbQual' nis) &&  not (importQualified impDecl)) ||
                     (isJust (mbQual' nis) && importQualified impDecl
                         && fromJust (mbQual' nis) == qualString impDecl))
                 && (isNothing (importSpecs impDecl) || not (getHiding (fromJust (importSpecs impDecl))))
-        newImpDecl :: D.ModuleName -> ImportDecl SrcSpanInfo
+        newImpDecl :: D.ModuleName -> ImportDecl
         newImpDecl mod = ImportDecl {
-                        importAnn       = noSourceInfo,
-                        importModule    = ModuleName noSourceInfo (display mod),
+                        importLoc       = noLocation,
+                        importModule    = display mod,
                         importQualified = isJust (mbQual' nis),
                         importSrc       = False,
                         importPkg       = Nothing,
-                        importAs        = (if isJust (mbQual' nis)
-                                        then Just (ModuleName noSourceInfo (fromJust (mbQual' nis)))
-                                        else Nothing),
-                        importSpecs = (Just (ImportSpecList noSourceInfo False [newImportSpec]))}
-        newImportSpec :: ImportSpec SrcSpanInfo
+                        importAs        = if isJust (mbQual' nis)
+                                            then Just (fromJust (mbQual' nis))
+                                            else Nothing,
+                        importSpecs = (Just (ImportSpecList False [newImportSpec]))}
+        newImportSpec :: ImportSpec
         newImportSpec =  if isSub' nis
-                            then IThingAll noSourceInfo (Ident noSourceInfo (getRealId descr (id' nis)))
+                            then IThingAll  (getRealId descr (id' nis))
                             else if isOp' nis
-                                    then IVar noSourceInfo (Ident noSourceInfo (id' nis))
-                                    else IVar noSourceInfo (Ident noSourceInfo (id' nis))
-        addToDecl :: ImportDecl SrcSpanInfo -> ImportDecl SrcSpanInfo
+                                    then IVar (id' nis)
+                                    else IVar (id' nis) -- TODO ???
+        addToDecl :: ImportDecl -> ImportDecl
         addToDecl impDecl = case importSpecs impDecl of
-                                Just (ImportSpecList _ True listIE)  -> throwIDE "ImportTool>>addToDecl: ImpList is hiding"
-                                Just (ImportSpecList si False listIE) ->
-                                    impDecl{importSpecs = Just (ImportSpecList si False (newImportSpec : listIE))}
+                                Just (ImportSpecList True listIE)  -> throwIDE "ImportTool>>addToDecl: ImpList is hiding"
+                                Just (ImportSpecList False listIE) ->
+                                    impDecl{importSpecs = Just (ImportSpecList False (newImportSpec : listIE))}
                                 Nothing             ->
-                                    impDecl{importSpecs = Just (ImportSpecList noSourceInfo False [newImportSpec])}
-        noSourceInfo = (noInfoSpan (mkSrcSpan (SrcLoc "" 0 0) (SrcLoc "" 0 0)))
+                                    impDecl{importSpecs = Just (ImportSpecList False [newImportSpec])}
+        noLocation  = Location 0 0 0 0
 
 getRealId descr id = case descr of
     Reexported rdescr -> getRealId (dsrDescr rdescr) id
@@ -218,11 +213,11 @@ getRealId descr id = case descr of
         getReal (MethodDescr d) = dscName d
         getReal _ = id
 
-qualString ::  ImportDecl alpha -> String
+qualString ::  ImportDecl -> String
 qualString impDecl = case importAs impDecl of
                         Nothing -> ""
-                        Just modName -> prettyPrint modName
---}
+                        Just modName -> modName
+
 -- | The import data
 
 data NotInScopeParseResult = NotInScopeParseResult {

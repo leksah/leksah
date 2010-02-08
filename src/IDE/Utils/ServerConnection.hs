@@ -32,7 +32,7 @@ import Control.Event(triggerEvent)
 import Debug.Trace
 
 
-doServerCommand :: ServerCommand -> (ServerAnswer -> IDEAction) -> IDEAction
+doServerCommand :: ServerCommand -> (ServerAnswer -> IDEM alpha) -> IDEAction
 doServerCommand command cont = do
     server' <- readIDE server
     case server' of
@@ -66,7 +66,8 @@ doServerCommand command cont = do
             trace ("server answer: " ++ resp)
                 $ postGUIAsync (reflectIDE (do
                     triggerEvent ideR (StatusbarChanged [CompartmentCollect False])
-                    cont (read resp)) ideR)
+                    cont (read resp)
+                    return ()) ideR)
 
 startServer :: Int -> IO ()
 startServer port = do
