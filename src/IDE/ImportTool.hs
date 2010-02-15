@@ -28,11 +28,13 @@ import IDE.Pane.SourceBuffer
         (fileSave, inActiveBufContext, selectSourceBuf)
 import Graphics.UI.Gtk
 import Text.ParserCombinators.Parsec.Language (haskellStyle)
-import Graphics.UI.Editor.MakeEditor (buildEditor,mkField,FieldDescription(..))
+import Graphics.UI.Editor.MakeEditor
+       (FieldDescription(..), buildEditor, mkField)
 import Graphics.UI.Editor.Parameters
        ((<<<-), paraMinSize, emptyParams, Parameter(..), paraMultiSel,
         paraName)
-import Graphics.UI.Editor.Basics (eventPaneName,GUIEventSelector(..))
+import Graphics.UI.Editor.Basics
+       (GUIEventSelector(..), eventPaneName)
 import Data.Maybe (fromJust)
 import Text.ParserCombinators.Parsec hiding (parse)
 import qualified Text.ParserCombinators.Parsec as Parsec (parse)
@@ -41,14 +43,15 @@ import Control.Event (registerEvent)
 import Control.Monad.Trans (liftIO)
 import Control.Monad (when)
 import Distribution.Text(display)
-import qualified Distribution.ModuleName as D(ModuleName(..))
 import Data.List (sort, nub, nubBy)
 import IDE.Utils.ServerConnection
 import Text.PrinterParser (prettyPrint)
 import IDE.TextEditor (delete, setModified, insert, getIterAtLine)
+import qualified Distribution.ModuleName as D (ModuleName(..))
 import qualified Text.ParserCombinators.Parsec.Token as P
        (operator, dot, identifier, symbol, lexeme, whiteSpace,
         makeTokenParser)
+
 
 
 -- | Add all imports which gave error messages ...
@@ -56,21 +59,25 @@ addAllImports :: IDEAction
 addAllImports = do
     prefs' <- readIDE prefs
     let buildInBackground = backgroundBuild prefs'
-    when buildInBackground (
-        modifyIDE_ (\ide -> ide{prefs = prefs'{backgroundBuild = False}}))
+    when buildInBackground $
+        modifyIDE_ (\ide -> ide{prefs = prefs'{backgroundBuild = False}})
     errors <- readIDE errorRefs
-    addAll
+    addAll buildInBackground
         [ y | (x,y) <-
             nubBy (\ (p1,_) (p2,_) -> p1 == p2)
                 $ [(x,y) |  (x,y) <- [((parseNotInScope . refDescription) e, e) | e <- errors]],
-                                isJust x] []
-    when buildInBackground $
-        modifyIDE_ (\ide -> ide{prefs = prefs'{backgroundBuild = True}})
+                                isJust x] (True,[])
+
 
     where
-        addAll :: [LogRef] -> [Descr] -> IDEM ()
-        addAll [] _                          =  return ()
-        addAll (errorSpec:rest) descrList    =  addImport errorSpec descrList (addAll rest)
+
+        addAll :: Bool -> [LogRef] -> (Bool,[Descr]) -> IDEM ()
+        addAll bib (errorSpec:rest) (True,descrList)  =  addImport errorSpec descrList (addAll bib rest)
+        addAll bib _ _                                =  finally bib
+
+        finally buildInBackground = when buildInBackground $ do
+            prefs' <- readIDE prefs
+            modifyIDE_ (\ide -> ide{prefs = prefs'{backgroundBuild = True}})
 
 -- | Add import for current error ...
 addOneImport :: IDEAction
@@ -88,37 +95,37 @@ addOneImport = do
 -- Returns a boolean, if the process should be stopped in case of multiple addition
 -- Returns a list of already added descrs, so that it will not be added two times and can
 -- be used for default selection
-addImport :: LogRef -> [Descr] -> ([Descr] -> IDEAction) -> IDEAction
+addImport :: LogRef -> [Descr] -> ((Bool,[Descr]) -> IDEAction) -> IDEAction
 addImport error descrList continuation =
     case parseNotInScope (refDescription error) of
-        Nothing -> continuation descrList
+        Nothing -> continuation (True,descrList)
         Just nis -> do
             currentInfo' <- readIDE packageInfo
             case currentInfo' of
-                Nothing -> continuation descrList
+                Nothing -> continuation (True,descrList)
                 Just (GenScopeC(PackScope _ symbolTable1),GenScopeC(PackScope _ symbolTable2)) ->
-                    case nub (getIdentifierDescr (id' nis) symbolTable1 symbolTable2) of
+                    let list = getIdentifierDescr (id' nis) symbolTable1 symbolTable2
+                    in case list of
                         []          ->  do
                                             ideMessage Normal $ "Identifier " ++ (id' nis) ++
                                                 " not found in imported packages"
-                                            continuation descrList
+                                            continuation (True, descrList)
                         descr : []  ->  addImport' nis (logRefFullFilePath error) descr descrList continuation
                         list        ->  do
                             window' <- getMainWindow
-                            mbDescr <-  liftIO $ selectModuleDialog window' list (id' nis)
+                            mbDescr <-  liftIO $ selectModuleDialog window' list (id' nis) (mbQual' nis)
                                             (if null descrList
                                                 then Nothing
                                                 else Just (head descrList))
                             case mbDescr of
-                                Nothing     ->  return ()
+                                Nothing     ->  continuation (False, [])
                                 Just descr  ->  if elem descr descrList
-                                                    then continuation descrList
+                                                    then continuation (True,descrList)
                                                     else addImport' nis (logRefFullFilePath error)
                                                             descr descrList continuation
 
-addImport' :: NotInScopeParseResult -> FilePath -> Descr -> [Descr] -> ([Descr] -> IDEAction) -> IDEAction
+addImport' :: NotInScopeParseResult -> FilePath -> Descr -> [Descr] -> ((Bool,[Descr]) -> IDEAction) -> IDEAction
 addImport' nis filePath descr descrList continuation =  do
-    candy' <- readIDE candy
     mbBuf  <- selectSourceBuf filePath
     let mbMod  = case dsMbModu descr of
                     Nothing -> Nothing
@@ -137,7 +144,7 @@ addImport' nis filePath descr descrList continuation =  do
                                                 insert gtkbuf i1 newLine
                                                 fileSave False
                                                 setModified gtkbuf True
-                                                continuation (descr : descrList)
+                                                continuation (True,(descr : descrList))
                                 l@(impDecl:_) ->
                                                 let newDecl     =  addToDecl impDecl
                                                     newLine     =  prettyPrint newDecl ++ "\n"
@@ -151,7 +158,7 @@ addImport' nis filePath descr descrList continuation =  do
                                                     insert gtkbuf i1 newLine
                                                     fileSave False
                                                     setModified gtkbuf True
-                                                    continuation (descr : descrList)
+                                                    continuation (True,(descr : descrList))
                          ServerHeader (Right lastLine) ->
                                             let newLine  =  prettyPrint (newImpDecl mod) ++ "\n"
                                             in do
@@ -159,14 +166,14 @@ addImport' nis filePath descr descrList continuation =  do
                                                 insert gtkbuf i1 newLine
                                                 fileSave False
                                                 setModified gtkbuf True
-                                                continuation (descr : descrList)
+                                                continuation (True,(descr : descrList))
                          ServerFailed string	-> do
                             ideMessage Normal ("Can't parse module header " ++ filePath ++
                                     " failed with: " ++ string)
-                            return ()
+                            continuation (False,[])
                          _ ->    do
                             ideMessage Normal ("ImportTool>>addImport: Impossible server answer")
-                            return ()
+                            continuation (False,[])
         _  -> return ()
     where
         qualifyAsImportStatement :: D.ModuleName -> ImportDecl -> Bool
@@ -190,16 +197,12 @@ addImport' nis filePath descr descrList continuation =  do
                                             else Nothing,
                         importSpecs = (Just (ImportSpecList False [newImportSpec]))}
         newImportSpec :: ImportSpec
-        newImportSpec =  if isSub' nis
-                            then IThingAll  (getRealId descr (id' nis))
-                            else if isOp' nis
-                                    then IVar (id' nis)
-                                    else IVar (id' nis) -- TODO ???
+        newImportSpec =  getRealId descr (id' nis)
         addToDecl :: ImportDecl -> ImportDecl
         addToDecl impDecl = case importSpecs impDecl of
                                 Just (ImportSpecList True listIE)  -> throwIDE "ImportTool>>addToDecl: ImpList is hiding"
                                 Just (ImportSpecList False listIE) ->
-                                    impDecl{importSpecs = Just (ImportSpecList False (newImportSpec : listIE))}
+                                    impDecl{importSpecs = Just (ImportSpecList False (nub (newImportSpec : listIE)))}
                                 Nothing             ->
                                     impDecl{importSpecs = Just (ImportSpecList False [newImportSpec])}
         noLocation  = Location 0 0 0 0
@@ -208,10 +211,10 @@ getRealId descr id = case descr of
     Reexported rdescr -> getRealId (dsrDescr rdescr) id
     Real edescr -> getReal (dscTypeHint' edescr)
     where
-        getReal (FieldDescr d) = dscName d
-        getReal (ConstructorDescr d) = dscName d
-        getReal (MethodDescr d) = dscName d
-        getReal _ = id
+        getReal (FieldDescr d) = IThingAll (dscName d)
+        getReal (ConstructorDescr d) = IThingAll (dscName d)
+        getReal (MethodDescr d) = IThingAll (dscName d)
+        getReal _ = IVar id
 
 qualString ::  ImportDecl -> String
 qualString impDecl = case importAs impDecl of
@@ -271,16 +274,6 @@ conid  = do
         <?> "conid"
 
 
--- |* Where to insert the first import statement?
-{--
-figureOutImportLine :: String -> Module SrcSpanInfo -> Int
-figureOutImportLine modSource (Module _ (Just (ModuleHead _ _ _ (Just exportSpecList))) _ _ _) =
-    ((srcSpanEndLine . srcInfoSpan . ann) exportSpecList) + 1
-figureOutImportLine modSource (Module _ (Just (ModuleHead mhl _ _ Nothing)) _ _ _)             =
-    ((srcSpanEndLine . srcInfoSpan) mhl) + 1
-figureOutImportLine modSource _                                                                =
-    1
---}
 -- |* The little dialog to choose between possible modules
 
 moduleFields :: [String] -> String -> FieldDescription String
@@ -292,44 +285,49 @@ moduleFields list ident =
                         $ emptyParams)
             (\ a -> a)
             (\ a b -> a)
-            (staticListEditor ((nub . sort) list) id)
+            (staticListEditor ( list) id)
 
-selectModuleDialog :: Window -> [Descr] -> String -> Maybe Descr -> IO (Maybe Descr)
-selectModuleDialog parentWindow list id mbDescr = do
-    let listWithMods        =  filter (isJust . dsMbModu) list
-    let selectionList       =  map (render . disp . modu . fromJust . dsMbModu) listWithMods
-    let mbSelectedString    =  case mbDescr of
-                                    Nothing -> Nothing
-                                    Just descr -> case dsMbModu descr of
-                                                    Nothing -> Nothing
-                                                    Just pm -> Just ((render . disp . modu) pm)
-    let realSelectionString =  case mbSelectedString of
-                                    Nothing -> head selectionList
-                                    Just str -> if elem str selectionList
-                                                    then str
-                                                    else head selectionList
-    dia               <- dialogNew
-    windowSetTransientFor dia parentWindow
-    upper             <- dialogGetUpper dia
-    lower             <- dialogGetActionArea dia
-    (widget,inj,ext,_) <- buildEditor (moduleFields selectionList id) realSelectionString
-    (widget2,_,_,notifier)     <-   buildEditor okCancelFields ()
-    registerEvent notifier Clicked (Left (\e -> do
-            case eventPaneName e of
-                "Ok"    ->  dialogResponse dia ResponseOk
-                _       ->  dialogResponse dia ResponseCancel
-            return e))
-    boxPackStart upper widget PackGrow 7
-    boxPackStart lower widget2 PackNatural 7
-    widgetShowAll dia
-    resp <- dialogRun dia
-    value                      <- ext ([])
-    widgetDestroy dia
-    --find
-    case (resp,value) of
-        (ResponseOk,Just v)    -> return (Just (head
-                                    (filter (\e -> case dsMbModu e of
-                                        Nothing -> False
-                                        Just pm -> (render . disp . modu) pm == v) list)))
-        _                      -> return Nothing
+selectModuleDialog :: Window -> [Descr] -> String -> Maybe String -> Maybe Descr -> IO (Maybe Descr)
+selectModuleDialog parentWindow list id mbQual mbDescr =
+    let selectionList       =  (nub . sort) $ map (render . disp . modu . fromJust . dsMbModu) list
+    in if length selectionList == 1
+        then return (Just (head list))
+        else do
+            let mbSelectedString    =  case mbDescr of
+                                            Nothing -> Nothing
+                                            Just descr -> case dsMbModu descr of
+                                                            Nothing -> Nothing
+                                                            Just pm -> Just ((render . disp . modu) pm)
+            let realSelectionString =  case mbSelectedString of
+                                            Nothing -> head selectionList
+                                            Just str -> if elem str selectionList
+                                                            then str
+                                                            else head selectionList
+            let qualId              =  case mbQual of
+                                            Nothing -> id
+                                            Just str -> str ++ "." ++ id
+            dia               <- dialogNew
+            windowSetTransientFor dia parentWindow
+            upper             <- dialogGetUpper dia
+            lower             <- dialogGetActionArea dia
+            (widget,inj,ext,_) <- buildEditor (moduleFields selectionList qualId) realSelectionString
+            (widget2,_,_,notifier)     <-   buildEditor okCancelFields ()
+            registerEvent notifier Clicked (Left (\e -> do
+                    case eventPaneName e of
+                        "Ok"    ->  dialogResponse dia ResponseOk
+                        _       ->  dialogResponse dia ResponseCancel
+                    return e))
+            boxPackStart upper widget PackGrow 7
+            boxPackStart lower widget2 PackNatural 7
+            widgetShowAll dia
+            resp <- dialogRun dia
+            value                      <- ext ([])
+            widgetDestroy dia
+            --find
+            case (resp,value) of
+                (ResponseOk,Just v)    -> return (Just (head
+                                            (filter (\e -> case dsMbModu e of
+                                                Nothing -> False
+                                                Just pm -> (render . disp . modu) pm == v) list)))
+                _                      -> return Nothing
 
