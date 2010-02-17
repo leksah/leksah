@@ -56,8 +56,7 @@ import Graphics.UI.Gtk
 import IDE.Pane.PackageEditor (choosePackageFile)
 import Data.List ((\\), foldl', nub, delete)
 import IDE.Package
-    (belongsToPackage,
-     buildPackage,
+    (buildPackage,
      packageInstall',
      packageClean,
      activatePackage,
@@ -76,7 +75,7 @@ import qualified Data.Map as  Map
 import Distribution.Package (pkgVersion, pkgName, Dependency(..))
 import Distribution.Version (withinRange)
 import qualified GHC.List as  List (or)
-import IDE.Pane.SourceBuffer (fileCheckAll)
+import IDE.Pane.SourceBuffer (belongsToPackage, fileCheckAll)
 
 
 setWorkspace :: Maybe Workspace -> IDEAction

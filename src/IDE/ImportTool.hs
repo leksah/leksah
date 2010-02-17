@@ -21,11 +21,13 @@ module IDE.ImportTool (
 
 import IDE.Core.State
 import Data.Maybe (isNothing,isJust)
-import IDE.Metainfo.Provider (getIdentifierDescr)
+import IDE.Metainfo.Provider
+       (getPackageImportInfo, getIdentifierDescr)
 import Text.PrettyPrint (render)
 import Distribution.Text (disp)
 import IDE.Pane.SourceBuffer
-        (fileSave, inActiveBufContext, selectSourceBuf)
+       (belongsToPackage, maybeActiveBuf, fileSave,
+        inActiveBufContext, selectSourceBuf)
 import Graphics.UI.Gtk
 import Text.ParserCombinators.Parsec.Language (haskellStyle)
 import Graphics.UI.Editor.MakeEditor
@@ -42,7 +44,7 @@ import Graphics.UI.Editor.Simple (okCancelFields, staticListEditor)
 import Control.Event (registerEvent)
 import Control.Monad.Trans (liftIO)
 import Control.Monad (when)
-import Distribution.Text(display)
+import Distribution.Text (display)
 import Data.List (sort, nub, nubBy)
 import IDE.Utils.ServerConnection
 import Text.PrinterParser (prettyPrint)
@@ -51,6 +53,9 @@ import qualified Distribution.ModuleName as D (ModuleName(..))
 import qualified Text.ParserCombinators.Parsec.Token as P
        (operator, dot, identifier, symbol, lexeme, whiteSpace,
         makeTokenParser)
+import Distribution.ModuleName (ModuleName)
+import Debug.Trace (trace)
+--import Debug.Trace
 
 
 
@@ -67,10 +72,7 @@ addAllImports = do
             nubBy (\ (p1,_) (p2,_) -> p1 == p2)
                 $ [(x,y) |  (x,y) <- [((parseNotInScope . refDescription) e, e) | e <- errors]],
                                 isJust x] (True,[])
-
-
     where
-
         addAll :: Bool -> [LogRef] -> (Bool,[Descr]) -> IDEM ()
         addAll bib (errorSpec:rest) (True,descrList)  =  addImport errorSpec descrList (addAll bib rest)
         addAll bib _ _                                =  finally bib
@@ -100,7 +102,7 @@ addImport error descrList continuation =
     case parseNotInScope (refDescription error) of
         Nothing -> continuation (True,descrList)
         Just nis -> do
-            currentInfo' <- readIDE packageInfo
+            currentInfo' <- getScopeForActiveBuffer
             case currentInfo' of
                 Nothing -> continuation (True,descrList)
                 Just (GenScopeC(PackScope _ symbolTable1),GenScopeC(PackScope _ symbolTable2)) ->
@@ -124,6 +126,17 @@ addImport error descrList continuation =
                                                     else addImport' nis (logRefFullFilePath error)
                                                             descr descrList continuation
 
+getScopeForActiveBuffer :: IDEM (Maybe (GenScope, GenScope))
+getScopeForActiveBuffer = do
+    mbActiveBuf <- maybeActiveBuf
+    case mbActiveBuf of
+        Nothing -> trace "getScopeForActiveBuffer: no activeBuffer" $ return Nothing
+        Just buf -> do
+            mbPackage <- belongsToPackage buf
+            case mbPackage of
+                Nothing -> trace "getScopeForActiveBuffer: no package" $ return Nothing
+                Just pack -> getPackageImportInfo pack
+
 addImport' :: NotInScopeParseResult -> FilePath -> Descr -> [Descr] -> ((Bool,[Descr]) -> IDEAction) -> IDEAction
 addImport' nis filePath descr descrList continuation =  do
     mbBuf  <- selectSourceBuf filePath
@@ -132,7 +145,9 @@ addImport' nis filePath descr descrList continuation =  do
                     Just pm -> Just (modu pm)
     case (mbBuf,mbMod) of
         (Just buf,Just mod) -> do
-            inActiveBufContext () $ \ nb gtkbuf idebuf n ->
+            inActiveBufContext () $ \ nb gtkbuf idebuf n -> do
+                ideMessage Normal $ "addImport " ++ show (dscName descr) ++ " from "
+                    ++ (render $ disp $ mod)
                 doServerCommand (ParseHeaderCommand filePath)  $ \ res ->
                     case res of
                          ServerHeader (Left imports) ->

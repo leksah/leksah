@@ -58,11 +58,8 @@ import IDE.Pane.References
 import Paths_leksah
 import IDE.GUIHistory
 import IDE.Metainfo.Provider
-    (getIdentifierDescr,
-     updateWorkspaceInfo,
-     updateSystemInfo,
-     rebuildSystemInfo,
-     rebuildWorkspaceInfo)
+       (getWorkspaceInfo, getIdentifierDescr, updateWorkspaceInfo,
+        updateSystemInfo, rebuildSystemInfo, rebuildWorkspaceInfo)
 import IDE.NotebookFlipper
 import IDE.ImportTool (addAllImports)
 import IDE.LogRef
@@ -747,7 +744,7 @@ handleSpecialKeystrokes _ = return True
 
 setSymbol :: String -> IDEAction
 setSymbol symbol = do
-    currentInfo' <- readIDE workspaceInfo
+    currentInfo' <- getWorkspaceInfo
     case currentInfo' of
         Nothing -> return ()
         Just ((GenScopeC (PackScope _ symbolTable1)),(GenScopeC (PackScope _ symbolTable2))) ->

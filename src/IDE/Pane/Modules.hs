@@ -57,6 +57,8 @@ import Graphics.UI.Editor.Basics (eventPaneName,GUIEventSelector(..))
 import qualified System.IO.UTF8 as UTF8  (writeFile)
 import IDE.Utils.GUIUtils (stockIdFromType)
 import Debug.Trace
+import IDE.Metainfo.Provider
+       (getSystemInfo, getWorkspaceInfo, getPackageInfo)
 
 -- | A modules pane description
 --
@@ -147,7 +149,7 @@ instance RecoverablePane IDEModules ModulesState IDEM where
         liftIO $ panedSetPosition (paned mod) i
         return p
     builder pp nb windows = do
-        packageInfo' <- readIDE packageInfo
+        packageInfo' <- getPackageInfo
         reifyIDE $ \ ideR -> do
             let forest  = case packageInfo' of
                             Nothing     ->  []
@@ -292,9 +294,9 @@ instance RecoverablePane IDEModules ModulesState IDEM where
 
 selectIdentifier :: Descr -> IDEAction
 selectIdentifier idDescr = do
-    systemScope     <- readIDE systemInfo
-    workspaceScope  <- readIDE workspaceInfo
-    packageScope    <- readIDE packageInfo
+    systemScope     <- getSystemInfo
+    workspaceScope  <- getWorkspaceInfo
+    packageScope    <- getPackageInfo
     currentScope    <- getScope
     case dsMbModu idDescr of
         Nothing -> return ()
@@ -523,7 +525,7 @@ fillModulesList (scope,useBlacklist) = do
     prefs                       <-  readIDE prefs
     case scope of
         SystemScope -> do
-            accessibleInfo'             <-  readIDE systemInfo
+            accessibleInfo'             <-  getSystemInfo
             case accessibleInfo' of
                 Nothing ->  liftIO $ do
                                         treeStoreClear (treeStore mods)
@@ -536,8 +538,8 @@ fillModulesList (scope,useBlacklist) = do
                         (Node _ li) = buildModulesTree (PackScope Map.empty getEmptyDefaultScope,p2)
                     in insertIt li mods
         WorkspaceScope withImports -> do
-            workspaceInfo'           <-  readIDE workspaceInfo
-            packageInfo'             <-  readIDE packageInfo
+            workspaceInfo'           <-  getWorkspaceInfo
+            packageInfo'             <-  getPackageInfo
             case workspaceInfo' of
                 Nothing ->  insertIt [] mods
                 Just (GenScopeC l,GenScopeC p) ->
@@ -551,7 +553,7 @@ fillModulesList (scope,useBlacklist) = do
                         (Node _ li)     =   buildModulesTree (l', p2)
                     in insertIt li mods
         PackageScope withImports -> do
-            packageInfo' <- readIDE packageInfo
+            packageInfo' <- getPackageInfo
             case packageInfo' of
                 Nothing             ->   insertIt [] mods
                 Just (GenScopeC l,GenScopeC p) ->

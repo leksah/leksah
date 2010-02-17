@@ -71,6 +71,6 @@ doServerCommand command cont = do
 
 startServer :: Int -> IO ()
 startServer port = do
-    runCommand ("leksah-server --server=" ++ show port)
+    runCommand ("leksah-server --server=" ++ show port ++ " +RTS -N2 -RTS")
     return ()
 

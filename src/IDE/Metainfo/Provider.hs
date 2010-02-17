@@ -23,11 +23,17 @@ module IDE.Metainfo.Provider (
 ,   getActivePackageDescr
 ,   searchMeta
 
-,   initInfo
+,   initInfo       -- Update and rebuild
 ,   updateSystemInfo
 ,   rebuildSystemInfo
 ,   updateWorkspaceInfo
 ,   rebuildWorkspaceInfo
+
+,   getPackageInfo  -- Just retreive from State
+,   getWorkspaceInfo
+,   getSystemInfo
+
+,   getPackageImportInfo -- Scope for the import tool
 ) where
 
 import System.IO
@@ -143,7 +149,7 @@ loadSystemInfo = do
 --
 updateSystemInfo' :: Bool -> (Bool -> IDEAction) -> IDEAction
 updateSystemInfo' rebuild continuation = do
-    wi              <-  readIDE systemInfo
+    wi              <-  getSystemInfo
     case wi of
         Nothing -> loadSystemInfo
         Just (GenScopeC (PackScope psmap psst)) -> do
@@ -187,7 +193,7 @@ rebuildSystemInfo' continuation = do
 updateWorkspaceInfo' :: Bool -> (Bool -> IDEAction) -> IDEAction
 updateWorkspaceInfo' rebuild continuation = do
     mbWorkspace         <- readIDE workspace
-    systemInfo'         <- readIDE systemInfo
+    systemInfo'         <- getSystemInfo
     case mbWorkspace of
         Nothing ->  do
             trace "no workspace" $ modifyIDE_ (\ide -> ide{workspaceInfo = Nothing, packageInfo = Nothing})
@@ -205,7 +211,7 @@ updateWorkspaceInfo' rebuild continuation = do
                 let scope2 :: PackScope (Map String [Descr])
                                 =   foldr buildScope (PackScope Map.empty symEmpty) packDescrsI
                 modifyIDE_ (\ide -> ide{workspaceInfo = Just
-                    (GenScopeC (addOtherToScope scope1 False), GenScopeC(addOtherToScope scope2 False))})
+                    (GenScopeC (addOtherToScope scope1 True), GenScopeC(addOtherToScope scope2 False))})
                 -- Now care about active package
                 activePack      <-  readIDE activePack
                 case activePack of
@@ -233,8 +239,8 @@ updateWorkspaceInfo' rebuild continuation = do
                                                 =   foldr buildScope (PackScope Map.empty symEmpty)
                                                         (impPackDescrs' ++ impPackDescrs'')
                                         in modifyIDE_ (\ide -> ide{packageInfo = Just
-                                                            (GenScopeC (addOtherToScope scope1 True),
-                                                            GenScopeC(addOtherToScope scope2 True))})
+                                                            (GenScopeC (addOtherToScope scope1 False),
+                                                            GenScopeC(addOtherToScope scope2 False))})
                             _    -> modifyIDE_ (\ide -> ide{packageInfo = Nothing})
                 continuation True
 
@@ -441,7 +447,7 @@ getActivePackageDescr = do
     case mbActive of
         Nothing -> return Nothing
         Just pack -> do
-            packageInfo' <- readIDE packageInfo
+            packageInfo' <- getPackageInfo
             case packageInfo' of
                 Nothing -> return Nothing
                 Just (GenScopeC (PackScope map _),(GenScopeC (PackScope _ _))) ->
@@ -473,7 +479,7 @@ getIdentifiersStartingWith prefix st1 st2 =
 
 getCompletionOptions :: String -> IDEM [String]
 getCompletionOptions prefix = do
-    workspaceInfo' <- readIDE workspaceInfo
+    workspaceInfo' <- getWorkspaceInfo
     case workspaceInfo' of
         Nothing -> return []
         Just ((GenScopeC (PackScope _ symbolTable1)),(GenScopeC (PackScope _ symbolTable2))) ->
@@ -481,13 +487,60 @@ getCompletionOptions prefix = do
 
 getDescription :: String -> IDEM String
 getDescription name = do
-    packageInfo' <- readIDE packageInfo
-    case packageInfo' of
+    workspaceInfo' <- getWorkspaceInfo
+    case workspaceInfo' of
         Nothing -> return ""
         Just ((GenScopeC (PackScope _ symbolTable1)),(GenScopeC (PackScope _ symbolTable2))) ->
             return ((foldr (\d f -> shows (Present d) .  showChar '\n' . f) id
                 (getIdentifierDescr name symbolTable1 symbolTable2)) "")
 
+getPackageInfo :: IDEM (Maybe (GenScope, GenScope))
+getPackageInfo   =  readIDE packageInfo
+
+getWorkspaceInfo :: IDEM (Maybe (GenScope, GenScope))
+getWorkspaceInfo =  readIDE workspaceInfo
+
+getSystemInfo :: IDEM (Maybe GenScope)
+getSystemInfo    =  readIDE systemInfo
+
+-- | Only exported items
+getPackageImportInfo :: IDEPackage -> IDEM (Maybe (GenScope,GenScope))
+getPackageImportInfo idePack = do
+    mbActivePack  <- readIDE activePack
+    systemInfo'   <- getSystemInfo
+    if isJust mbActivePack && ipdPackageId (fromJust mbActivePack) == ipdPackageId idePack
+        then do
+            packageInfo' <- getPackageInfo
+            case packageInfo' of
+                Nothing -> trace "getPackageImportInfo: no package info" $ return Nothing
+                Just ((GenScopeC (PackScope pdmap _)),_) -> do
+                     case Map.lookup (ipdPackageId idePack) pdmap of
+                        Nothing -> trace "getPackageImportInfo: package not found in package" $ return Nothing
+                        Just pd -> buildIt pd systemInfo'
+        else do
+            workspaceInfo <- getWorkspaceInfo
+            case workspaceInfo of
+                Nothing -> trace "getPackageImportInfo: no workspace info" $ return Nothing
+                Just ((GenScopeC (PackScope pdmap _)),_) ->
+                    case Map.lookup (ipdPackageId idePack) pdmap of
+                        Nothing -> trace "getPackageImportInfo: package not found in workspace" $ return Nothing
+                        Just pd -> buildIt pd systemInfo'
+
+    where
+        filterPrivate :: ModuleDescr -> ModuleDescr
+        filterPrivate md = md{mdIdDescriptions = filter dscExported (mdIdDescriptions md)}
+        buildIt pd systemInfo' =
+                case systemInfo' of
+                    Nothing -> trace "getPackageImportInfo: no system info" $ return Nothing
+                    Just (GenScopeC (PackScope pdmap' _)) ->
+                        let impPackDescrs = catMaybes $ map (\ pid -> pid `Map.lookup` pdmap')
+                                                (pdBuildDepends pd)
+                            pd' = pd{pdModules = map filterPrivate (pdModules pd)}
+                            scope1 :: PackScope (Map String [Descr])
+                                            =   buildScope pd (PackScope Map.empty symEmpty)
+                            scope2 :: PackScope (Map String [Descr])
+                                =   foldr buildScope (PackScope Map.empty symEmpty) impPackDescrs
+                        in return (Just (GenScopeC scope1, GenScopeC scope2))
 --
 -- | Searching of metadata
 --
@@ -495,32 +548,32 @@ getDescription name = do
 searchMeta :: Scope -> String -> SearchMode -> IDEM [Descr]
 searchMeta _ "" _ = return []
 searchMeta (PackageScope False) searchString searchType = do
-    packageInfo'    <- readIDE packageInfo
+    packageInfo'    <- getPackageInfo
     case packageInfo' of
         Nothing    -> return []
         Just ((GenScopeC (PackScope _ rl)),_) -> return (searchInScope searchType searchString rl)
 searchMeta (PackageScope True) searchString searchType = do
-    packageInfo'    <- readIDE packageInfo
+    packageInfo'    <- getPackageInfo
     case packageInfo' of
         Nothing    -> return []
         Just ((GenScopeC (PackScope _ rl)),(GenScopeC (PackScope _ rr))) ->
             return (searchInScope searchType searchString rl
                                 ++  searchInScope searchType searchString rr)
 searchMeta (WorkspaceScope False) searchString searchType = do
-    workspaceInfo'    <- readIDE workspaceInfo
+    workspaceInfo'    <- getWorkspaceInfo
     case workspaceInfo' of
         Nothing    -> return []
         Just ((GenScopeC (PackScope _ rl)),_) -> return (searchInScope searchType searchString rl)
 searchMeta (WorkspaceScope True) searchString searchType = do
-    workspaceInfo'    <- readIDE workspaceInfo
+    workspaceInfo'    <- getWorkspaceInfo
     case workspaceInfo' of
         Nothing    -> return []
         Just ((GenScopeC (PackScope _ rl)),(GenScopeC (PackScope _ rr))) ->
             return (searchInScope searchType searchString rl
                                 ++  searchInScope searchType searchString rr)
 searchMeta SystemScope searchString searchType = do
-    systemInfo'  <- readIDE systemInfo
-    packageInfo' <- readIDE packageInfo
+    systemInfo'  <- getSystemInfo
+    packageInfo' <- getPackageInfo
     case systemInfo' of
         Nothing ->
             case packageInfo' of
@@ -721,7 +774,7 @@ keywordDescrs = map (\s -> Real $ RealDescr
                                 Nothing
                                 Nothing
                                 Nothing
-                                (Just (BS.pack "| Haskell keyword"))
+                                (Just (BS.pack " Haskell keyword"))
                                 KeywordDescr
                                 True) keywords
 
@@ -731,7 +784,7 @@ extensionDescrs =  map (\ext -> Real $ RealDescr
                                     Nothing
                                     Nothing
                                     Nothing
-                                    (Just (BS.pack "| Haskell language extension"))
+                                    (Just (BS.pack " Haskell language extension"))
                                     ExtensionDescr
                                     True) knownExtensions
 
@@ -741,7 +794,7 @@ moduleNameDescrs pd = map (\md -> Real $ RealDescr
                                     Nothing
                                     (Just (mdModuleId md))
                                     Nothing
-                                    (Just (BS.pack "| Module name"))
+                                    (Just (BS.pack " Module name"))
                                     ModNameDescr
                                     True) (pdModules pd)
 
@@ -756,8 +809,8 @@ addOtherToScope (PackScope packageMap symbolTable) addAll = (PackScope packageMa
 -- ---------------------------------------------------------------------
 -- NFData instances for forcing evaluation
 --
-
 instance NFData Location where
+
     rnf pd =  rnf (locationSLine pd)
                     `seq`    rnf (locationSCol pd)
                     `seq`    rnf (locationELine pd)
@@ -828,70 +881,4 @@ instance NFData ModuleName where
 instance NFData PackageName where
     rnf (PackageName s) =  rnf s
 
----------------------------------------------------------
 
---callCollector :: Bool -> Bool -> Bool -> (Bool -> IDEAction) -> IDEAction
---callCollector rebuild sources extract cont = do
---    let args = ["+RTS -N2 -RTS"] ++
---                    if rebuild then ["-r"] else [] ++
---                      if sources then ["-o"] else [] ++
---                        if extract then ["-x"] else []
---    dir <- liftIO $ getCurrentDirectory
---    runCollectorTool "Collecting" "leksah-server" (["-s"] ++ args) (Just dir) (\ _ -> cont True)
---
---callCollectorWorkspace :: Bool -> FilePath -> PackageIdentifier -> [(String,FilePath)] ->
---    IDEAction -> IDEAction
---callCollectorWorkspace rebuild fp  pi modList cont = do
---    let args = ["+RTS -N2 -RTS"]
---                ++ (if rebuild
---                    then ["-r"]
---                    else [])
---                 ++ ["-p" ++ display pi]
---                    ++ ["-i" ++ fp]
---                    ++ map (\ (a,b) -> "-m" ++ a ++ "," ++ b) modList
---    let dir  = dropFileName fp
---    runCollectorTool "Collecting *" "leksah-server" args (Just dir) (\ _ -> cont)
---
---runCollectorTool :: String -> FilePath -> [String] -> Maybe FilePath -> ([ToolOutput] -> IDEAction) -> IDEAction
---runCollectorTool description executable args mbDir continuation = do
---    prefs          <- readIDE prefs
---    waitIfRunning
---    reifyIDE (\ideR -> forkIO $ do
---        (!output, pid) <- runTool executable args mbDir
---        reflectIDE (do
---            collectorState' <- readIDE collectorState
---            modifyIDE_ (\ide -> ide{collectorState = collectorState'{mbHandle = Just pid}})
---            logOutput output
---            postAsyncIDE (continuation output)) ideR)
---    return ()
---
---
---waitIfRunning :: IDEAction
---waitIfRunning = do
---    collectorState' <- readIDE collectorState
---    liftIO $ do
---        case mbHandle collectorState' of
---            Just process -> do
---                maybeExitCode <- getProcessExitCode process
---                if isNothing maybeExitCode
---                    then do
---                        waitForProcess process
---                        return ()
---                    else return ()
---            Nothing -> return ()
-
---defaultLineLogger :: ToolOutput -> IDEAction
---defaultLineLogger out = do
---    case out of
---        ToolInput  line -> triggerEventIDE (LogMessage (line ++ "\n") InputTag) >>return ()
---        ToolOutput line -> triggerEventIDE (LogMessage (line ++ "\n") LogTag) >>return ()
---        ToolError  line -> triggerEventIDE (LogMessage (line ++ "\n") ErrorTag) >>return ()
---
---logOutputLines :: (ToolOutput -> IDEM alpha) -> [ToolOutput] -> IDEAction
---logOutputLines lineLogger output = do
---    forM_ output $ lineLogger
---
---logOutput :: [ToolOutput] -> IDEM ()
---logOutput output = do
---    logOutputLines defaultLineLogger output
---    return ()

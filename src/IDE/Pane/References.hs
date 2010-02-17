@@ -36,6 +36,8 @@ import Distribution.Text
 import Text.PrettyPrint (render)
 import IDE.Core.State
 import IDE.Core.CTypes (mdMbSourcePath)
+import IDE.Metainfo.Provider
+       (getSystemInfo, getWorkspaceInfo, getPackageInfo)
 
 
 -- | A References pane description
@@ -162,9 +164,9 @@ referencedFrom idDescr =
         Just pm -> do
             references      <-  getReferences Nothing
             scope           <- liftIO $ getScope references
-            mbPackageInfo   <- readIDE packageInfo
-            mbWorkspaceInfo <- readIDE workspaceInfo
-            mbSystemInfo    <- readIDE systemInfo
+            mbPackageInfo   <- getPackageInfo
+            mbWorkspaceInfo <- getWorkspaceInfo
+            mbSystemInfo    <- getSystemInfo
             let packages    =  packagesFromScope scope mbPackageInfo mbWorkspaceInfo mbSystemInfo
             let modulesList = modulesForCallerFromPackages packages (dscName idDescr, modu pm)
             liftIO $ do

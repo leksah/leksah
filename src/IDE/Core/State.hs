@@ -88,15 +88,12 @@ import Graphics.UI.Frame.ViewFrame --hiding (notebookInsertOrdered)
 import Control.Event
 import System.IO
 import Data.Maybe (isJust)
-import System.FilePath(dropFileName)
+import System.FilePath (dropFileName)
 import IDE.Core.CTypes
 import Control.Concurrent (forkIO)
 import IDE.Utils.Utils
-import qualified Data.Map as Map(lookup)
+import qualified Data.Map as Map (lookup)
 import Data.Typeable(Typeable)
-
-
-
 
 #ifdef YI
 import qualified Yi as Yi

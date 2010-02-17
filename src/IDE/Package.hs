@@ -50,7 +50,6 @@ module IDE.Package (
 ,   debugToggled
 ,   choosePackageFile
 
-,   belongsToPackage
 ,   idePackageFromPath
 ) where
 
@@ -74,11 +73,8 @@ import IDE.Utils.GUIUtils
 import IDE.Pane.PackageEditor
 import IDE.Pane.SourceBuffer
 import IDE.Pane.PackageFlags (readFlags)
-import Distribution.Text (simpleParse, display)
-import IDE.Utils.FileUtils
-    (moduleNameFromFilePath,
-     isSubPath,
-     getConfigFilePathForLoad)
+import Distribution.Text (display)
+import IDE.Utils.FileUtils(getConfigFilePathForLoad)
 import IDE.LogRef
 import IDE.Debug
 import MyMissing (replace)
@@ -106,8 +102,8 @@ import Foreign.C (Errno(..), getErrno)
 -- Leave at least one import ofter this #endif
 -- so the auto import tool does not add stuf insied the
 
-import qualified Data.Set as  Set (member, fromList)
-import qualified Data.Map as  Map (empty, insert, lookup)
+import qualified Data.Set as  Set (fromList)
+import qualified Data.Map as  Map (empty)
 
 
 #if defined(mingw32_HOST_OS) || defined(__MINGW32__)
@@ -117,45 +113,6 @@ foreign import stdcall unsafe "winbase.h GetCurrentProcessId"
 foreign import stdcall unsafe "winbase.h GetProcessId"
     c_GetProcessId :: DWORD -> IO DWORD
 #endif
-
--- | Returns the package, to which this buffer belongs, if possible
-belongsToPackage :: IDEBuffer -> IDEM(Maybe IDEPackage)
-belongsToPackage ideBuf | fileName ideBuf == Nothing = return Nothing
-                        | otherwise                 = do
-    bufferToProject' <-  readIDE bufferProjCache
-    ws               <-  readIDE workspace
-    let fp           =   fromJust (fileName ideBuf)
-    case Map.lookup fp bufferToProject' of
-        Just p  -> return p
-        Nothing -> case ws of
-                        Nothing   -> return Nothing
-                        Just workspace -> do
-                            mbMn <- liftIO $ moduleNameFromFilePath fp
-                            let mbMn2 = case mbMn of
-                                            Nothing -> Nothing
-                                            Just mn -> simpleParse mn
-                            let res = foldl (belongsToPackage' fp mbMn2) Nothing (wsPackages workspace)
-                            modifyIDE_ (\ide -> ide{bufferProjCache = Map.insert fp res bufferToProject'})
-                            return res
-
-belongsToPackage' ::  FilePath -> Maybe ModuleName -> Maybe IDEPackage -> IDEPackage -> Maybe IDEPackage
-belongsToPackage' _ _ r@(Just pack) _ = r
-belongsToPackage' fp mbModuleName Nothing pack =
-    let basePath =  dropFileName $ ipdCabalFile pack
-    in if isSubPath basePath fp
-        then
-            let srcPaths = map (\srcP -> basePath </> srcP) (ipdSrcDirs pack)
-                relPaths = map (\p -> makeRelative p fp) srcPaths
-            in if or (map (\p -> Set.member p (ipdExtraSrcs pack)) relPaths)
-                then Just pack
-                else case mbModuleName of
-                        Nothing -> Nothing
-                        Just mn -> if Set.member mn (ipdModules pack)
-                                        then Just pack
-                                        else Nothing
-        else Nothing
-
-belongsToWorkspace b =  belongsToPackage b >>= return . isJust
 
 packageNew :: IDEAction
 packageNew = packageNew' (\fp -> do
@@ -176,11 +133,7 @@ packageOpenThis mbFilePath = do
     return ()
 
 getActivePackage :: IDEM (Maybe IDEPackage)
-getActivePackage = do
-    active <- readIDE activePack
-    case active of
-        Just p -> return (Just p)
-        Nothing -> return Nothing
+getActivePackage = readIDE activePack
 
 selectActivePackage :: Maybe FilePath -> IDEM (Maybe IDEPackage)
 selectActivePackage mbFilePath' = do
