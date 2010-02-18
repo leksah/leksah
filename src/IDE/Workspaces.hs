@@ -38,10 +38,8 @@ import Data.Maybe (isJust,fromJust )
 import IDE.Utils.GUIUtils
     (chooseFile, chooseSaveFile)
 import System.FilePath
-    (dropExtension,
-     takeBaseName,
-     addExtension,
-     takeExtension)
+       ((</>), isAbsolute, dropFileName, makeRelative, dropExtension,
+        takeBaseName, addExtension, takeExtension)
 import Text.PrinterParser
     (readFields,
      writeFields,
@@ -210,8 +208,8 @@ workspaceAddPackage = do
 
 workspaceAddPackage' :: FilePath -> IDEAction
 workspaceAddPackage' fp = do
-    cfp <-  liftIO $ canonicalizePath fp
     mbWs <- readIDE workspace
+    cfp <-  liftIO $ canonicalizePath fp
     case mbWs of
         Nothing -> return ()
         Just ws -> do
@@ -247,36 +245,54 @@ workspaceActivatePackage pack = do
 
 writeWorkspace :: Workspace -> IDEAction
 writeWorkspace ws = do
-    cWs          <- liftIO $ makeCanonic ws
     timeNow      <- liftIO getClockTime
-    let newWs    =  cWs {wsSaveTime = show timeNow,
+    let newWs    =  ws {wsSaveTime = show timeNow,
                          wsVersion = workspaceVersion,
                          wsActivePackFile = case wsActivePack ws of
                                                 Nothing -> Nothing
                                                 Just pack -> Just (ipdCabalFile pack),
                          wsPackagesFiles = map ipdCabalFile (wsPackages ws)}
-    setWorkspace $ Just cWs
-    liftIO $ writeFields (wsFile newWs) (newWs {wsFile = ""}) workspaceDescr
+    setWorkspace $ Just newWs
+    newWs' <- liftIO $ makePathesRelative newWs
+    liftIO $ writeFields (wsFile newWs') (newWs' {wsFile = ""}) workspaceDescr
 
 readWorkspace :: FilePath -> IDEM Workspace
 readWorkspace fp = do
     ws <- liftIO $ readFields fp workspaceDescr emptyWorkspace
-    activePack <- case wsActivePackFile ws of
+    ws' <- liftIO $ makePathesAbsolute ws fp
+    activePack <- case wsActivePackFile ws' of
                         Nothing ->  return Nothing
                         Just fp ->  idePackageFromPath fp
-    packages <- mapM idePackageFromPath (wsPackagesFiles ws)
-    return ws{ wsActivePack = activePack, wsPackages = map fromJust $ filter isJust $ packages}
+    packages <- mapM idePackageFromPath (wsPackagesFiles ws')
+    return ws'{ wsActivePack = activePack, wsPackages = map fromJust $ filter isJust $ packages}
 
-makeCanonic :: Workspace -> IO Workspace
-makeCanonic ws = do
+makePathesRelative :: Workspace -> IO Workspace
+makePathesRelative ws = do
+    wsFile'                     <-  canonicalizePath (wsFile ws)
     wsActivePackFile'           <-  case wsActivePackFile ws of
                                         Nothing -> return Nothing
                                         Just fp -> do
                                             nfp <- canonicalizePath fp
-                                            return (Just nfp)
-    wsFile'                     <-  canonicalizePath (wsFile ws)
+                                            return (Just (makeRelative (dropFileName wsFile') nfp))
     wsPackagesFiles'            <-  mapM canonicalizePath (wsPackagesFiles ws)
+    let relativePathes          =   map (\p -> makeRelative (dropFileName wsFile') p) wsPackagesFiles'
+    return ws {wsActivePackFile = wsActivePackFile', wsFile = wsFile', wsPackagesFiles = relativePathes}
+
+makePathesAbsolute :: Workspace -> FilePath -> IO Workspace
+makePathesAbsolute ws bp = do
+    wsFile'                     <-  canonicalizePath bp
+    wsActivePackFile'           <-  case wsActivePackFile ws of
+                                        Nothing -> return Nothing
+                                        Just fp -> do
+                                            fp' <- makeAbsolute (dropFileName wsFile') fp
+                                            return (Just fp')
+    wsPackagesFiles'            <-  mapM (makeAbsolute (dropFileName wsFile')) (wsPackagesFiles ws)
     return ws {wsActivePackFile = wsActivePackFile', wsFile = wsFile', wsPackagesFiles = wsPackagesFiles'}
+    where
+        makeAbsolute basePath relativePath  =
+            if isAbsolute relativePath
+                then canonicalizePath relativePath
+                else canonicalizePath (basePath </> relativePath)
 
 emptyWorkspace =  Workspace {
     wsVersion       =   workspaceVersion
