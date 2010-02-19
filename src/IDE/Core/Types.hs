@@ -342,11 +342,12 @@ data Prefs = Prefs {
     ,   pathForCategory     ::   [(String, PanePath)]
     ,   defaultPath         ::   PanePath
     ,   categoryForPane     ::   [(String, String)]
-    ,   sourceDirectories   ::   [FilePath]
     ,   packageBlacklist    ::   [Dependency]
     ,   collectAfterBuild   ::   Bool
     ,   collectAtStart      ::   Bool
+    ,   sourceDirectories   ::   [FilePath]
     ,   unpackDirectory     ::   Maybe FilePath
+    ,   retreiveURL         ::   Maybe String
     ,   useCtrlTabFlipping  ::   Bool
     ,   docuSearchURL       ::   String
     ,   completeRestricted  ::   Bool

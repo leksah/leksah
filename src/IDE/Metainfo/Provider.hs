@@ -377,21 +377,28 @@ getModuleDescr packageCollectorPath (modDescrs,packageMap,changed,problemMods) (
 loadInfosForPackage :: FilePath -> PackageIdentifier -> IO (Maybe PackageDescr)
 loadInfosForPackage dirPath pid = do
     let filePath = dirPath </> packageIdentifierToString pid ++ leksahMetadataSystemFileExtension
+    let filePath2 = dirPath </> packageIdentifierToString pid ++ leksahMetadataPathFileExtension
     exists <- doesFileExist filePath
     if exists
         then catch (do
             file            <-  openBinaryFile filePath ReadMode
-            trace ("now loading metadata for package" ++ packageIdentifierToString pid) return ()
+            trace ("now loading metadata for package " ++ packageIdentifierToString pid) return ()
             bs              <-  BSL.hGetContents file
             let (metadataVersion', packageInfo) =   decodeSer bs
             if metadataVersion /= metadataVersion'
                 then do
                     hClose file
                     throwIDE ("Metadata has a wrong version."
-                            ++  " Consider rebuilding metadata with -r option")
+                            ++  " Consider rebuilding metadata with: leksah-server -osb +RTS -N2 -RTS")
                 else do
                     packageInfo `deepseq` (hClose file)
-                    return (Just packageInfo))
+                    exists'  <-  doesFileExist filePath2
+                    sourcePath <- if exists'
+                                    then liftM Just (readFile filePath2)
+                                    else return Nothing
+                    let packageInfo' = trace ("source path= " ++ show sourcePath) $
+                                        injectSourceInPack sourcePath packageInfo
+                    return (Just packageInfo'))
             (\ (e :: SomeException) -> do
                 sysMessage Normal
                     ("loadInfosForPackage: " ++ packageIdentifierToString pid ++ " Exception: " ++ show e)
@@ -399,6 +406,21 @@ loadInfosForPackage dirPath pid = do
         else do
             sysMessage Normal $"packageInfo not found for " ++ packageIdentifierToString pid
             return Nothing
+
+injectSourceInPack :: Maybe FilePath -> PackageDescr -> PackageDescr
+injectSourceInPack Nothing pd = pd{
+    pdMbSourcePath = Nothing,
+    pdModules      = map (injectSourceInMod Nothing) (pdModules pd)}
+injectSourceInPack (Just pp) pd = pd{
+    pdMbSourcePath = (Just pp),
+    pdModules      = map (injectSourceInMod (Just (dropFileName pp))) (pdModules pd)}
+
+injectSourceInMod :: Maybe FilePath -> ModuleDescr -> ModuleDescr
+injectSourceInMod Nothing md = md{mdMbSourcePath = Nothing}
+injectSourceInMod (Just bp) md =
+    case mdMbSourcePath md of
+        Just sp -> md{mdMbSourcePath = Just (bp </> sp)}
+        Nothing -> md
 
 --
 -- | Loads the infos for the given module

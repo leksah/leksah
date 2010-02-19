@@ -134,7 +134,10 @@ instance RecoverablePane IDEPrefs PrefsState IDEM where
                     fp   <- getConfigFilePathForSave standardPreferencesFilename
                     writePrefs fp newPrefs
                     fp2  <-  getConfigFilePathForSave strippedPreferencesFilename
-                    SP.writeStrippedPrefs fp2 (SP.Prefs (sourceDirectories newPrefs)(unpackDirectory newPrefs))
+                    SP.writeStrippedPrefs fp2
+                        (SP.Prefs (sourceDirectories newPrefs)
+                                    (unpackDirectory newPrefs)
+                                    (retreiveURL newPrefs))
                     reflectIDE (modifyIDE_ (\ide -> ide{prefs = newPrefs})) ideR )
             closeB `onClicked` (reflectIDE (closePane prefsPane >> return ()) ideR )
             registerEvent notifier FocusIn (Left (\e -> do
@@ -441,6 +444,14 @@ prefsDescription configDir packages = NFDPP [
                 "Select folder"), emptyParams) True "Yes")
             (\i -> return ())
     ,   mkFieldPP
+            (paraName <<<- ParaName "Maybe an URL to load prebuild metadata " $ emptyParams)
+            (PP.text . show)
+            readParser
+            retreiveURL
+            (\b a -> a{retreiveURL = b})
+            (maybeEditor ((stringEditor (\ _ -> True)), emptyParams) True "Yes")
+            (\i -> return ())
+    ,   mkFieldPP
             (paraName <<<- ParaName "Update metadata at startup" $ emptyParams)
             (PP.text . show)
             boolParser
@@ -622,6 +633,7 @@ defaultPrefs = Prefs {
     ,   collectAfterBuild   =   False
     ,   collectAtStart      =   True
     ,   unpackDirectory     =   Nothing
+    ,   retreiveURL         =   Just "http://www.leksah.org/packages"
     ,   useCtrlTabFlipping  =   True
     ,   docuSearchURL       =   "http://holumbus.fh-wedel.de/hayoo/hayoo.html?query="
     ,   completeRestricted  =   False

@@ -96,15 +96,13 @@ import IDE.Utils.Tool
 import IDE.LogRef
 import Control.Exception (SomeException(..))
 import IDE.Pane.SourceBuffer
-    (selectedLocation,
-     selectedModuleName,
-     selectedText,
-     selectedTextOrCurrentLine,
-     insertTextAfterSelection)
-import IDE.Pane.Log (appendLog)
-import Data.List (isSuffixOf)
+       (selectedLocation, selectedText, selectedModuleName,
+        insertTextAfterSelection, selectedTextOrCurrentLine)
 import IDE.Metainfo.Provider (getActivePackageDescr)
 import Distribution.Text (display)
+import IDE.Pane.Log (appendLog)
+import Data.List (isSuffixOf)
+
 
 #if defined(mingw32_HOST_OS) || defined(__MINGW32__)
 foreign import stdcall unsafe "winbase.h GetCurrentProcessId"
@@ -135,7 +133,7 @@ debugCommand command handler = debugCommand' command
         handler to
         triggerEventIDE VariablesChanged
         return ())
-
+-- | Comment3
 debugCommand' :: String -> ([ToolOutput] -> IDEAction) -> IDEAction
 debugCommand' command handler = do
     ideR <- ask
