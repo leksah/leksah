@@ -633,7 +633,7 @@ defaultPrefs = Prefs {
     ,   collectAfterBuild   =   False
     ,   collectAtStart      =   True
     ,   unpackDirectory     =   Nothing
-    ,   retreiveURL         =   Just "http://www.leksah.org/packages"
+    ,   retreiveURL         =   Just "http://www.leksah.org"
     ,   useCtrlTabFlipping  =   True
     ,   docuSearchURL       =   "http://holumbus.fh-wedel.de/hayoo/hayoo.html?query="
     ,   completeRestricted  =   False
