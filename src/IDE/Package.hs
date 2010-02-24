@@ -340,13 +340,13 @@ packageInstall = do
         mbPackage   <- getActivePackage
         case mbPackage of
             Nothing         -> return ()
-            Just package    -> packageInstall' package (return ())
+            Just package    -> packageInstall' package (\ _ -> return ())
 
-packageInstall' :: IDEPackage -> IDEAction -> IDEAction
+packageInstall' :: IDEPackage -> (Bool -> IDEAction) -> IDEAction
 packageInstall' package continuation = catchIDE (do
    let dir = dropFileName (ipdCabalFile package)
    runExternalTool "Installing" "runhaskell" (["Setup","install"]
-                    ++ (ipdInstallFlags package)) (Just dir) (\ to -> logOutput to >> continuation))
+                    ++ (ipdInstallFlags package)) (Just dir) (\ to -> logOutput to >> continuation True)) --TODO
         (\(e :: SomeException) -> putStrLn (show e))
 
 packageRegister :: IDEAction

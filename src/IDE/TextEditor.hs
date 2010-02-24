@@ -25,6 +25,7 @@ module IDE.TextEditor (
 -- Buffer
 ,   newGtkBuffer
 ,   newYiBuffer
+,   simpleGtkBuffer
 ,   applyTagByName
 ,   beginNotUndoableAction
 ,   beginUserAction
@@ -220,6 +221,14 @@ newGtkBuffer mbFilename contents = liftIO $ do
     Gtk.textBufferSetText buffer contents
     Gtk.sourceBufferEndNotUndoableAction buffer
     return $ GtkEditorBuffer buffer
+
+-- Buffer
+simpleGtkBuffer :: String -> IDEM EditorBuffer
+simpleGtkBuffer contents = liftIO $ do
+    buffer <- Gtk.sourceBufferNew Nothing
+    Gtk.textBufferSetText buffer contents
+    return $ GtkEditorBuffer buffer
+
 
 newYiBuffer :: Maybe FilePath -> String -> IDEM EditorBuffer
 #ifdef YI

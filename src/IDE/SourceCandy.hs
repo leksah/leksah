@@ -153,7 +153,7 @@ getCandylessText (CT(_,transformTableBack)) ebuf = do
     i1          <-  getStartIter ebuf
     i2          <-  getEndIter ebuf
     text1       <-  getText ebuf i1 i2 True
-    workBuffer  <-  newGtkBuffer Nothing text1
+    workBuffer  <-  simpleGtkBuffer text1
     mapM_ (\tbl ->  replaceFrom workBuffer tbl 0) transformTableBack
     i1          <-  getStartIter workBuffer
     i2          <-  getEndIter workBuffer
@@ -163,7 +163,7 @@ getCandylessText (CT(_,transformTableBack)) ebuf = do
 getCandylessPart :: CandyTable -> EditorBuffer -> EditorIter -> EditorIter -> IDEM String
 getCandylessPart (CT(_,transformTableBack)) ebuf i1 i2 = do
     text1       <-  getText ebuf i1 i2 True
-    workBuffer  <-  newGtkBuffer Nothing text1
+    workBuffer  <-  simpleGtkBuffer text1
     mapM_ (\tbl ->  replaceFrom workBuffer tbl 0) transformTableBack
     i1          <-  getStartIter workBuffer
     i2          <-  getEndIter workBuffer
@@ -172,7 +172,7 @@ getCandylessPart (CT(_,transformTableBack)) ebuf i1 i2 = do
 
 stringToCandy :: CandyTable -> String -> IDEM String
 stringToCandy  candyTable text = do
-    workBuffer  <-  newGtkBuffer Nothing text
+    workBuffer  <-  simpleGtkBuffer text
     transformToCandy candyTable workBuffer
     i1          <-  getStartIter workBuffer
     i2          <-  getEndIter workBuffer
@@ -184,7 +184,7 @@ positionFromCandy candyTable ebuf (line,column) = do
     i1          <- getIterAtLine ebuf (max 0 (line - 1))
     i2          <- forwardToLineEndC i1
     text        <-  getText ebuf i1 i2 True
-    workBuffer  <-  newGtkBuffer Nothing text
+    workBuffer  <-  simpleGtkBuffer text
     i3          <- getIterAtOffset workBuffer column
     mark        <- createMark workBuffer i3 True
     transformFromCandy candyTable workBuffer
@@ -197,7 +197,7 @@ positionToCandy candyTable ebuf (line,column) = do
     i1          <- getIterAtLine ebuf (max 0 (line - 1))
     i2          <- forwardToLineEndC i1
     text        <-  getText ebuf i1 i2 True
-    workBuffer  <-  newGtkBuffer Nothing text
+    workBuffer  <-  simpleGtkBuffer text
     transformFromCandy candyTable workBuffer
     i3          <- getIterAtOffset workBuffer column
     mark        <- createMark workBuffer i3 True
