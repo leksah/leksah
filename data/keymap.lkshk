@@ -79,7 +79,7 @@ F3                          ->          EditFindNext     "Find the next occurenc
 <ctrl>j                 ->          NextError
 <ctrl><shift>j          ->          PreviousError
 
-<ctrl>m                 ->          ShowModules
+<ctrl>o                 ->          ShowModules
 
 
 --<ctrl>i                 ->          ShowInterface
@@ -106,5 +106,7 @@ F8 -> DebugStepModule
 F9 -> DebugContinue
 
 <ctrl>Return             ->          ExecuteSelection
+<ctrl>m                  ->          UpdateMetadataCurrent
+
 
 

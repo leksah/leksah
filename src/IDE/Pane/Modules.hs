@@ -241,7 +241,7 @@ instance RecoverablePane IDEModules ModulesState IDEM where
             panedAdd1 pane' sw
             panedAdd2 pane' sw2
             (x,y) <- widgetGetSize nb
-            panedSetPosition pane' (x `quot` 2)
+            panedSetPosition pane' (max 200 (x `quot` 2))
             box             <-  hBoxNew True 2
             rb1             <-  radioButtonNewWithLabel "Package"
             rb2             <-  radioButtonNewWithLabelFromWidget rb1 "Workspace"

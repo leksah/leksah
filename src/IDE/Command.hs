@@ -82,7 +82,8 @@ import IDE.Pane.Workspace
 import IDE.Pane.Variables (fillVariablesList)
 import IDE.Pane.Trace (fillTraceList)
 import IDE.PaneGroups
-import IDE.Pane.Search (setChoices, searchMetaGUI)
+import IDE.Pane.Search (getSearch, setChoices, searchMetaGUI)
+import IDE.Pane.Grep (getGrep)
 
 --
 -- | The Actions known to the system (they can be activated by keystrokes or menus)
@@ -311,7 +312,9 @@ mkActions =
     ,AD "ShowDebugger" "Debugger" Nothing Nothing
         showDebugger [] False
     ,AD "ShowSearch" "Search" Nothing Nothing
-        showSearchGroup [] False
+        (getSearch Nothing  >>= \ p -> displayPane p False) [] False
+    ,AD "ShowGrep" "Grep" Nothing Nothing
+        (getGrep Nothing  >>= \ p -> displayPane p False) [] False
     ,AD "ShowErrors" "Errors" Nothing Nothing
         (getErrors Nothing  >>= \ p -> displayPane p False) [] False
     ,AD "ShowLog" "Log" Nothing Nothing
@@ -525,7 +528,7 @@ textPopupMenu ideR menu = do
         mbtext <- selectedText
         case mbtext of
             Just t  -> searchMetaGUI t
-            Nothing -> ideMessage Normal "Select a text first") ideR)
+            Nothing -> ideMessage  Normal "Select a text first") ideR)
     menuShellAppend menu mi3
     let interpretingEntries = [castToWidget mi16]
     let interpretingSelEntries = [castToWidget mi1, castToWidget mi11, castToWidget mi12,
@@ -536,8 +539,8 @@ textPopupMenu ideR menu = do
     selected <- (reflectIDE selectedText ideR)
     unless isInterpreting'
         $ mapM_ (\w -> widgetSetSensitive w False) (interpretingEntries ++ interpretingSelEntries)
-    unless (isJust selected)
-        $ mapM_ (\w -> widgetSetSensitive w False) (otherEntries ++ interpretingSelEntries)
+--    unless (isJust selected)
+--        $ mapM_ (\w -> widgetSetSensitive w False) (otherEntries ++ interpretingSelEntries)
     mapM_ widgetShow interpretingEntries
     mapM_ widgetShow interpretingSelEntries
     mapM_ widgetShow (castToWidget sep1 : castToWidget sep2 : otherEntries)

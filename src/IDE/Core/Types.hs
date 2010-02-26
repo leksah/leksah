@@ -343,11 +343,7 @@ data Prefs = Prefs {
     ,   defaultPath         ::   PanePath
     ,   categoryForPane     ::   [(String, String)]
     ,   packageBlacklist    ::   [Dependency]
-    ,   collectAfterBuild   ::   Bool
     ,   collectAtStart      ::   Bool
-    ,   sourceDirectories   ::   [FilePath]
-    ,   unpackDirectory     ::   Maybe FilePath
-    ,   retreiveURL         ::   Maybe String
     ,   useCtrlTabFlipping  ::   Bool
     ,   docuSearchURL       ::   String
     ,   completeRestricted  ::   Bool
@@ -359,7 +355,12 @@ data Prefs = Prefs {
     ,   breakOnException    ::   Bool
     ,   breakOnError        ::   Bool
     ,   printBindResult     ::   Bool
+    ,   serverIP            ::   String
+            -- As well used by server
     ,   serverPort          ::   Int
+    ,   sourceDirectories   ::   [FilePath]
+    ,   unpackDirectory     ::   Maybe FilePath
+    ,   retreiveURL         ::   Maybe String
 } deriving(Eq,Show)
 
 data SearchHint = Forward | Backward | Insert | Delete | Initial

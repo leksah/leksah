@@ -2,12 +2,12 @@ Version number of preferences file format:
                1
      --Integer
 Time of last storage:
-               "Thu Jan 28 13:31:43 Westeurop\228ische Normalzeit 2010"
+               "Fri Feb 26 16:43:57 CET 2010"
 Show line numbers:
                True
      --(True/False)
-TextView Font: "Monospace 9"
-Right margin:  110
+TextView Font: "Monospace 10"
+Right margin:  100
      --Size or 0 for no right margin
 Tab width:     4
 Use standard line ends even on windows:
@@ -16,7 +16,7 @@ Remove trailing blanks when saving a file:
                True
 Source candy:  "candy"
      --Empty for do not use or the name of a candy file in a config dir
-Editor Style:  "kate"
+Editor Style:  ""
 Found Text Background:
                Color 65535 65535 32768
 Execution Context Text Background:
@@ -25,11 +25,11 @@ Breakpoint Text Background:
                Color 65535 49152 32768
 Use Yi - Experimental feature (could wipe your files):
                False
-LogView Font:  "Sans 10"
+LogView Font:  "Sans 12"
 Window default size:
-               (800,800)
+               (1024,800)
      --Default size of the main ide window specified as pair (int,int)
-Use ctrl Tab for Notebook flipper: 
+Use ctrl Tab for Notebook flipper:
                True
 Complete only on Hotkey:
                False
@@ -37,23 +37,25 @@ Name of the keymap:
                keymap
      --The name of a keymap file in a config dir
 Categories for panes:
-               [("*ClassHierarchy","TreeCategory"),("*Debug","TreeCategory"),("*Grep","TreeCategory"),("*Info","LogCategory"),("*Log","LogCategory"),("*Modules","TreeCategory"),("*Package","DialogCategory"),("*Flags","DialogCategory"),("*Prefs","DialogCategory"),("*References","LogCategory"),("*Search","TreeCategory"),("*Errors","TreeCategory")]
+               [("*Debug","ToolCategory"),("*Grep","ToolCategory"),("*Log","LogCategory"),("*Search","ToolCategory"),("*Browser","ToolCategory"),("*Package","EditorCategory"),("*Flags","EditorCategory"),("*References","LogCategory"),("*Workspace","LogCategory"),("*Errors","ToolCategory")]
 Pane path for category:
-               [("EditorCategory",[SplitP LeftP]),("TreeCategory",[SplitP RightP,SplitP TopP]),("LogCategory",[SplitP RightP,SplitP BottomP]),("DialogCategory",[SplitP LeftP])]
+               [("EditorCategory",[SplitP LeftP]),("ToolCategory",[SplitP RightP,SplitP TopP]),("LogCategory",[SplitP RightP,SplitP BottomP])]
 Default pane path:
                [SplitP LeftP]
 Paths under which haskell sources for packages may be found:
-               ["~/Develop"]
+               []
 Maybe a directory for unpacking cabal packages:
-               Just "~/Haskell"
+               Just "~/.leksah-0.7/packageSources"
+Maybe an URL to load prebuild metadata :
+               Just "http://www.leksah.org"
 Update metadata at startup:
-               True
-Update metadata after every build:
                True
 Port number for server connection:
                11111
+Server IP address :
+               "127.0.0.1"
 Packages which are excluded from the modules pane:
-               [Dependency (PackageName "base") (EarlierVersion (Version {versionBranch = [4,0,0,0], versionTags = []})),Dependency (PackageName "ghc") AnyVersion,Dependency (PackageName "haskell98") AnyVersion]
+               [Dependency (PackageName "ghc") AnyVersion]
 Automatically save all files before building:
                True
 Background build:

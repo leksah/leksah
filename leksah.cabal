@@ -23,6 +23,7 @@ data-files: LICENSE
             data/keymap.lkshk
             data/leksah.menu
             data/prefs.lkshp
+            data/prefscoll.lkshp
             data/emacs.lkshk
             data/LICENSE
             data/module.lksht

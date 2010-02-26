@@ -61,6 +61,8 @@ import Graphics.UI.Gtk.SourceView
 import System.Time (getClockTime)
 import System.FilePath((</>))
 import qualified IDE.StrippedPrefs as SP
+import Control.Exception(SomeException,catch)
+import Prelude hiding(catch)
 
 -- ---------------------------------------------------------------------
 -- This needs to be incremented, when the preferences format changes
@@ -135,9 +137,10 @@ instance RecoverablePane IDEPrefs PrefsState IDEM where
                     writePrefs fp newPrefs
                     fp2  <-  getConfigFilePathForSave strippedPreferencesFilename
                     SP.writeStrippedPrefs fp2
-                        (SP.Prefs (sourceDirectories newPrefs)
-                                    (unpackDirectory newPrefs)
-                                    (retreiveURL newPrefs))
+                        (SP.Prefs {SP.sourceDirectories = sourceDirectories newPrefs,
+                                   SP.unpackDirectory   = unpackDirectory newPrefs,
+                                   SP.retreiveURL       = retreiveURL newPrefs,
+                                   SP.serverPort        = serverPort newPrefs})
                     reflectIDE (modifyIDE_ (\ide -> ide{prefs = newPrefs})) ideR )
             closeB `onClicked` (reflectIDE (closePane prefsPane >> return ()) ideR )
             registerEvent notifier FocusIn (Left (\e -> do
@@ -460,20 +463,20 @@ prefsDescription configDir packages = NFDPP [
             boolEditor
             (\i -> return ())
     ,   mkFieldPP
-            (paraName <<<- ParaName "Update metadata after every build" $ emptyParams)
-            (PP.text . show)
-            boolParser
-            collectAfterBuild
-            (\b a -> a{collectAfterBuild = b})
-            boolEditor
-            (\i -> return ())
-    ,   mkFieldPP
             (paraName <<<- ParaName "Port number for server connection" $ emptyParams)
             (PP.text . show)
             intParser
             serverPort
             (\b a -> a{serverPort = b})
             (intEditor (1.0, 65535.0, 1.0))
+            (\i -> return ())
+    ,   mkFieldPP
+            (paraName <<<- ParaName "Server IP address " $ emptyParams)
+            (PP.text . show)
+            stringParser
+            serverIP
+            (\b a -> a{serverIP = b})
+            (stringEditor (\ s -> not $ null s))
             (\i -> return ())
     ]),
     ("Blacklist", VFDPP emptyParams [
@@ -630,7 +633,6 @@ defaultPrefs = Prefs {
                                 ,   ("*Prefs","ToolCategory")
                                 ,   ("*References","ToolCategory")
                                 ,   ("*Search","ToolCategory")]
-    ,   collectAfterBuild   =   False
     ,   collectAtStart      =   True
     ,   unpackDirectory     =   Nothing
     ,   retreiveURL         =   Just "http://www.leksah.org"
@@ -651,6 +653,7 @@ defaultPrefs = Prefs {
     ,   breakOnError        =   True
     ,   printBindResult     =   False
     ,   serverPort          =   11111
+    ,   serverIP            =   "127.0.0.1"
     }
 
 -- ------------------------------------------------------------
@@ -658,10 +661,12 @@ defaultPrefs = Prefs {
 -- ------------------------------------------------------------
 
 readPrefs :: FilePath -> IO Prefs
-readPrefs fn = do
+readPrefs fn = catch (do
     configDir <- getConfigDir
-    readFields fn (flattenFieldDescriptionPPToS (prefsDescription configDir [])) defaultPrefs
-
+    readFields fn (flattenFieldDescriptionPPToS (prefsDescription configDir [])) defaultPrefs)
+	(\ (e :: SomeException) -> do
+		sysMessage Normal (show e)
+		return defaultPrefs)
 -- ------------------------------------------------------------
 -- * Printing
 -- ------------------------------------------------------------

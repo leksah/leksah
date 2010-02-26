@@ -1,0 +1,8 @@
+Paths under which haskell sources for packages may be found:
+               []
+Maybe a directory for unpacking cabal packages:
+               Just "~/.leksah-0.7/packageSources"
+Maybe an URL to load prebuild metadata :
+               Just "http://www.leksah.org"
+Port number for server connection:
+               11111

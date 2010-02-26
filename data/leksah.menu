@@ -93,6 +93,7 @@
        <menuitem name="_Browser" action="ShowBrowser" />
        <menuitem name="_Debugger" action="ShowDebugger" />
        <menuitem name="_Errors" action="ShowErrors" />
+       <menuitem name="_Grep" action="ShowGrep" />
        <menuitem name="_Log" action="ShowLog" />
        <menuitem name="_References" action="ShowReferences" />
        <menuitem name="_Search" action="ShowSearch" />

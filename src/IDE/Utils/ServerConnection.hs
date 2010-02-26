@@ -45,14 +45,16 @@ doServerCommand command cont = do
                     doServerCommand command cont
         Nothing -> do
             prefs' <- readIDE prefs
-            handle <- liftIO $ do
-                catch (connectTo "localhost" (PortNumber(PortNum (fromIntegral $ serverPort prefs'))))
+            handle <- reifyIDE $ \ideR -> do
+                catch (connectTo (serverIP prefs') (PortNumber(PortNum (fromIntegral $ serverPort prefs'))))
                     (\(exc :: SomeException) -> do
                         catch (startServer (serverPort prefs'))
                             (\(exc :: SomeException) -> throwIDE ("Can't start leksah-server" ++ show exc))
-                        threadDelay 5000000 -- in microseconds, so five seconds to start
-                        catch (connectTo "localhost" (PortNumber(PortNum (fromIntegral $ serverPort prefs'))))
-                            (\(exc :: SomeException) -> throwIDE ("Can't connect to leksah-server" ++ show exc)))
+                        mbHandle <- waitForServer prefs' 100
+                        case mbHandle of
+                            Just handle ->  return handle
+                            Nothing     ->  throwIDE ("Can't connect to leksah-server"))
+            modifyIDE_ (\ ide -> ide{server = Just handle})
             doCommand handle
             return ()
     where
@@ -73,4 +75,17 @@ startServer :: Int -> IO ()
 startServer port = do
     runCommand ("leksah-server --server=" ++ show port ++ " +RTS -N2 -RTS")
     return ()
+
+-- | s is in tenth's of seconds
+waitForServer :: Prefs -> Int -> IO (Maybe Handle)
+waitForServer _ 0 = return Nothing
+waitForServer prefs s = do
+    threadDelay 100000 -- 0.1 second
+    catch (do
+        handle <- liftIO $ connectTo (serverIP prefs) (PortNumber(PortNum (fromIntegral $ serverPort prefs)))
+        return (Just handle))
+        (\(exc :: SomeException) -> waitForServer prefs (s-1))
+
+
+
 
