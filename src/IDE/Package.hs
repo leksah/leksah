@@ -104,6 +104,7 @@ import Foreign.C (Errno(..), getErrno)
 
 import qualified Data.Set as  Set (fromList)
 import qualified Data.Map as  Map (empty)
+import System.Exit (ExitCode(..))
 
 
 #if defined(mingw32_HOST_OS) || defined(__MINGW32__)
@@ -225,7 +226,7 @@ runCabalBuild backgroundBuild package shallConfigure continuation = do
             then
                 packageConfig' package (runCabalBuild backgroundBuild package False continuation)
             else do
-                continuation (not (any isError errs))
+                continuation (last output == ToolExit ExitSuccess && not (any isError errs))
                 return ()
 
 isConfigError :: [ToolOutput] -> Bool

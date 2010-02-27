@@ -53,6 +53,7 @@ import System.Directory (canonicalizePath)
 import Data.List (stripPrefix, elemIndex, isPrefixOf)
 import Data.Maybe (catMaybes)
 import Debug.Trace (trace)
+import System.Exit (ExitCode(..))
 
 showSourceSpan :: LogRef -> String
 showSourceSpan = displaySrcSpan . logRefSrcSpan
@@ -350,18 +351,23 @@ colon = P.colon lexer
 int = fmap fromInteger $ P.integer lexer
 
 defaultLineLogger :: IDELog -> ToolOutput -> IDEM Int
-defaultLineLogger log out = liftIO $ do
+defaultLineLogger log out = liftIO $ defaultLineLogger' log out
+
+defaultLineLogger' :: IDELog -> ToolOutput -> IO Int
+defaultLineLogger' log out = do
     case out of
-        ToolInput  line -> appendLog log (line ++ "\n") InputTag
-        ToolOutput line -> appendLog log (line ++ "\n") LogTag
-        ToolError  line -> appendLog log (line ++ "\n") ErrorTag
+        ToolInput  line            -> appendLog log (line ++ "\n") InputTag
+        ToolOutput line            -> appendLog log (line ++ "\n") LogTag
+        ToolError  line            -> appendLog log (line ++ "\n") ErrorTag
+        ToolExit   ExitSuccess     -> appendLog log (take 40 (repeat '-') ++ "\n") FrameTag
+        ToolExit   (ExitFailure 1) -> appendLog log (take 40 (repeat '=') ++ "\n") FrameTag
+        ToolExit   (ExitFailure n) -> appendLog log (take 40 ("========== " ++ show n ++ " " ++ repeat '=') ++ "\n") FrameTag
 
 logOutputLines :: (IDELog -> ToolOutput -> IDEM a) -> [ToolOutput] -> IDEM [a]
 logOutputLines lineLogger output = do
     log :: IDELog <- getLog
     liftIO $ bringPaneToFront log
     results <- forM output $ lineLogger log
-    liftIO $ appendLog log "----------------------------------\n" FrameTag
     triggerEventIDE (StatusbarChanged [CompartmentState "", CompartmentBuild False])
     return results
 
@@ -392,12 +398,7 @@ logOutputForBuild rootPath backgroundBuild output = do
     where
     readAndShow :: [ToolOutput] -> IDERef -> IDELog -> Bool -> [LogRef] -> IO [LogRef]
     readAndShow [] _ log _ errs = do
-        let errorNum    =   length (filter isError errs)
-        let warnNum     =   length errs - errorNum
-        case errs of
-            [] -> appendLog log "----------------------------------\n" FrameTag
-            _ -> appendLog log ("----- " ++ show errorNum ++ " errors -- "
-                                    ++ show warnNum ++ " warnings -----\n") FrameTag
+        appendLog log "No Exit Code Found!!!\n" FrameTag
         return errs
     readAndShow (output:remainingOutput) ideR log inError errs = do
         case output of
@@ -447,6 +448,14 @@ logOutputForBuild rootPath backgroundBuild output = do
             ToolInput line -> do
                 appendLog log (line ++ "\n") InputTag
                 readAndShow remainingOutput ideR log inError errs
+            ToolExit _ -> do
+                let errorNum    =   length (filter isError errs)
+                let warnNum     =   length errs - errorNum
+                case errs of
+                    [] -> defaultLineLogger' log output
+                    _ -> appendLog log ("----- " ++ show errorNum ++ " errors -- "
+                                            ++ show warnNum ++ " warnings -----\n") FrameTag
+                return errs
 
 logOutputForBreakpoints :: FilePath -> [ToolOutput] -> IDEAction
 logOutputForBreakpoints rootPath output = do
