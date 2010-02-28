@@ -88,7 +88,7 @@ Executable leksah
                    parsec >=2.1.0.1, pretty >=1.0.1.0, process >=1.0.1.0,
                    regex-tdfa ==1.1.*, regex-base ==0.93.*, utf8-string >=0.3.1.1, array >=0.2.0.0,
                    time >=0.1, ltk == 0.7, binary-shared == 0.0.1, deepseq >= 1.1.0.0,
-                   leksah-server == 0.7, network >= 2.2 && <= 3.0
+                   hslogger >= 1.0.7, leksah-server == 0.7, network >= 2.2 && <= 3.0
     main-is: IDE/Leksah.hs
     buildable: True
     extensions: CPP

@@ -398,7 +398,12 @@ logOutputForBuild rootPath backgroundBuild output = do
     where
     readAndShow :: [ToolOutput] -> IDERef -> IDELog -> Bool -> [LogRef] -> IO [LogRef]
     readAndShow [] _ log _ errs = do
-        appendLog log "No Exit Code Found!!!\n" FrameTag
+        let errorNum    =   length (filter isError errs)
+        let warnNum     =   length errs - errorNum
+        case errs of
+            [] -> defaultLineLogger' log (ToolExit ExitSuccess)
+            _ -> appendLog log ("----- " ++ show errorNum ++ " errors -- "
+                                    ++ show warnNum ++ " warnings -----\n") FrameTag
         return errs
     readAndShow (output:remainingOutput) ideR log inError errs = do
         case output of
