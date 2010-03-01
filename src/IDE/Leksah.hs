@@ -70,9 +70,7 @@ import System.Process(waitForProcess)
 import qualified System.Posix as P
 #endif
 import System.Log
-import System.Log.Logger(updateGlobalLogger,rootLoggerName,addHandler,debugM,infoM,errorM,
-    setLevel)
-import System.Log.Handler.Simple(fileHandler)
+import System.Log.Logger(updateGlobalLogger,rootLoggerName,setLevel)
 
 -- --------------------------------------------------------------------
 -- Command line options

@@ -30,7 +30,6 @@ import Prelude hiding(getChar, getLine)
 
 import Data.Char(chr)
 import Data.List(isSuffixOf)
-import Control.Monad.Reader
 import Text.ParserCombinators.Parsec
 import qualified Text.ParserCombinators.Parsec.Token as P
 import Text.ParserCombinators.Parsec.Language(emptyDef)

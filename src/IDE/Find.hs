@@ -36,7 +36,6 @@ module IDE.Find (
 
 import Graphics.UI.Gtk hiding (get)
 import Graphics.UI.Gtk.Gdk.Events
-import Data.Maybe
 import Control.Monad.Reader
 
 import IDE.Core.State
@@ -48,7 +47,6 @@ import qualified Text.Regex.TDFA as Regex
 import Text.Regex.TDFA.String (compile)
 import Data.List (nub, find, isPrefixOf)
 import Data.Array (bounds, (!), inRange)
-import Text.Regex.Base.RegexLike (matchAll)
 import IDE.Utils.Tool (runTool)
 import Control.Concurrent (forkIO)
 import IDE.Pane.Grep

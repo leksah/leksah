@@ -18,12 +18,10 @@ module IDE.NotebookFlipper (
 ) where
 
 import Graphics.UI.Gtk
-import Graphics.UI.Frame.Panes (IDEPane(..))
 import IDE.Core.State
 import Control.Monad.Trans (liftIO)
 import Graphics.UI.Gtk.Gdk.Events (Event(..))
 import Control.Monad (when)
-import Graphics.UI.Frame.Panes (makeActive)
 import IDE.Pane.SourceBuffer(recentSourceBuffers)
 
 flipDown :: IDEAction

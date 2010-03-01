@@ -24,7 +24,6 @@ module IDE.Pane.Info (
 import Graphics.UI.Gtk hiding (afterToggleOverwrite)
 import Control.Monad
 import Control.Monad.Trans
-import Data.Maybe
 import Data.IORef
 import Data.Typeable
 

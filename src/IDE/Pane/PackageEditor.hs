@@ -30,7 +30,6 @@ import Distribution.Package
 import Distribution.PackageDescription
 import Distribution.Verbosity
 import System.FilePath
-import Data.List
 import Data.Maybe
 import System.Directory
 
@@ -80,7 +79,6 @@ import Graphics.UI.Editor.Simple
      comboSelectionEditor,
      multilineStringEditor,
      stringEditor)
-import Distribution.License (License(..))
 import Graphics.UI.Editor.Basics (Editor(..))
 import Distribution.Compiler
     (CompilerFlavor(..))
@@ -88,10 +86,12 @@ import Distribution.Simple
     (knownExtensions,
      Extension(..),
      VersionRange(..))
-import Distribution.Version
-    (VersionRange(..))
 import Default (Default(..))
 import IDE.Utils.GUIUtils
+#if MIN_VERSION_Cabal(1,8,0)
+#else
+import Distribution.License
+#endif
 
 -- ---------------------------------------------------------------------
 -- The exported stuff goes here

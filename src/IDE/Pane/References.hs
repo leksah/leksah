@@ -35,7 +35,6 @@ import Distribution.ModuleName(ModuleName)
 import Distribution.Text
 import Text.PrettyPrint (render)
 import IDE.Core.State
-import IDE.Core.CTypes (mdMbSourcePath)
 import IDE.Metainfo.Provider
        (getSystemInfo, getWorkspaceInfo, getPackageInfo)
 

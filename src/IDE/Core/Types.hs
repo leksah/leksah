@@ -80,7 +80,6 @@ import Graphics.UI.Gtk
         ListStore(..), Toolbar(..))
 import Control.Monad.Reader
 import Data.Unique (newUnique, Unique(..))
-import qualified Data.Map as Map
 import Graphics.UI.Frame.Panes
 import Distribution.Package
     (PackageIdentifier(..), Dependency(..))

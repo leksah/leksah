@@ -69,11 +69,9 @@ import qualified Graphics.UI.Gtk.Gdk.Events as GdkEvents
 import Graphics.UI.Gtk.Gdk.Events
     (Modifier(..),
      Event(..))
-import Graphics.UI.Gtk.Gdk.Enums (Modifier(..))
 import qualified Data.Map as  Map (lookup)
 import Data.List (sort)
 import Control.Event (registerEvent)
-import Paths_leksah
 import IDE.Pane.Breakpoints
     (fillBreakpointList, selectBreak)
 import IDE.Workspaces

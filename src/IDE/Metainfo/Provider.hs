@@ -42,7 +42,6 @@ import Control.Monad
 import Control.Monad.Trans
 import System.FilePath
 import System.Directory
-import qualified Data.Map as Map
 import Data.List
 import Data.Maybe
 import Distribution.Package hiding (depends,packageId)
@@ -68,7 +67,6 @@ import Data.Map (Map(..))
 import Debug.Trace
 import Control.Exception (SomeException(..), catch)
 import Prelude hiding(catch)
-import IDE.Core.CTypes(ServerCommand(..))
 import IDE.Utils.ServerConnection(doServerCommand)
 
 -- ---------------------------------------------------------------------

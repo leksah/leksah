@@ -25,7 +25,6 @@ module IDE.GUIHistory (
 import IDE.Core.State
 import IDE.Pane.Modules
 import IDE.Pane.Info
-import Control.Monad.Reader
 
 recordHistory :: GUIHistory -> IDEAction
 recordHistory entry = do

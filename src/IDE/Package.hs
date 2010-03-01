@@ -115,6 +115,16 @@ foreign import stdcall unsafe "winbase.h GetProcessId"
     c_GetProcessId :: DWORD -> IO DWORD
 #endif
 
+#if MIN_VERSION_Cabal(1,8,0)
+myLibModules pd = case library pd of
+                    Nothing -> []
+                    Just l -> libModules l
+myExeModules pd = concatMap exeModules (executables pd)
+#else
+myLibModules pd = libModules pd
+myExeModules pd = exeModules pd
+#endif
+
 packageNew :: IDEAction
 packageNew = packageNew' (\fp -> do
     triggerEventIDE (WorkspaceAddPackage fp)
@@ -197,7 +207,7 @@ packageConfig' package continuation = catchIDE (do
                 return Nothing))
     case mbPackageD of
         Just packageD ->
-            let modules    = Set.fromList $ libModules packageD ++ exeModules packageD
+            let modules    = Set.fromList $ myLibModules packageD ++ myExeModules packageD
                 files      = Set.fromList $ extraSrcFiles packageD ++ map modulePath (executables packageD)
                 ipdSrcDirs = nub $ concatMap hsSourceDirs (allBuildInfo packageD)
                 pack       = Just package{ipdDepends=buildDepends packageD, ipdModules = modules,
@@ -622,7 +632,7 @@ idePackageFromPath filePath = do
     case mbPackageD of
         Nothing       -> return Nothing
         Just packageD -> do
-            let modules    = Set.fromList $ libModules packageD ++ exeModules packageD --TODO Porting 6.12
+            let modules    = Set.fromList $ myLibModules packageD ++ myExeModules packageD
             let mainFiles  = map modulePath (executables packageD)
             let files      = Set.fromList $ extraSrcFiles packageD ++ map modulePath (executables packageD)
             let ipdSrcDirs = nub $ concatMap hsSourceDirs (allBuildInfo packageD)

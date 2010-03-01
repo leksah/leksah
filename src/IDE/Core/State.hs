@@ -78,7 +78,6 @@ import Graphics.UI.Gtk.SourceView.SourceView ()
 
 import Data.IORef
 import Control.Monad.Reader hiding (liftIO)
-import qualified Control.Monad.Reader (liftIO)
 import Control.Exception
 import Prelude hiding (catch)
 import Control.Monad.State

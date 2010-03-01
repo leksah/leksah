@@ -53,7 +53,6 @@ import qualified Distribution.ModuleName as D (ModuleName(..))
 import qualified Text.ParserCombinators.Parsec.Token as P
        (operator, dot, identifier, symbol, lexeme, whiteSpace,
         makeTokenParser)
-import Distribution.ModuleName (ModuleName)
 import Debug.Trace (trace)
 --import Debug.Trace
 

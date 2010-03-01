@@ -24,7 +24,6 @@ import Graphics.UI.Gtk hiding (get)
 import Graphics.UI.Gtk.Gdk.Events
 import Data.Maybe
 import Control.Monad.Reader
-import Data.List
 import Data.Typeable
 import IDE.Core.State
 import IDE.Workspaces

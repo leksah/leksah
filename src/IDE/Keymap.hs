@@ -13,7 +13,6 @@ import qualified Data.Map as Map
 import Text.ParserCombinators.Parsec
 import qualified Text.ParserCombinators.Parsec.Token as P
 import Text.ParserCombinators.Parsec.Language(emptyDef)
-import Data.Maybe
 import Data.List (foldl',sort)
 import Data.Char(toLower)
 import Control.Monad.Reader

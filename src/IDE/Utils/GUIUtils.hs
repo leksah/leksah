@@ -36,17 +36,15 @@ module IDE.Utils.GUIUtils (
 ) where
 
 import Graphics.UI.Gtk
-import System.IO
 import System.Process
 import Data.Maybe (fromJust, isJust)
 import Control.Monad
 import Control.Monad.Trans(MonadIO,liftIO)
-import qualified Data.List as List
 import IDE.Core.State
-import Graphics.UI.Gtk.Selectors.FileChooser
-    (FileChooserAction(..))
-import Graphics.UI.Gtk.General.Structs
-    (ResponseId(..))
+--import Graphics.UI.Gtk.Selectors.FileChooser
+--    (FileChooserAction(..))
+--import Graphics.UI.Gtk.General.Structs
+--    (ResponseId(..))
 import qualified Graphics.UI.Gtk.Gdk.Events as G (Event(..))
 import Graphics.UI.Gtk.Gdk.Enums(Modifier(..))
 

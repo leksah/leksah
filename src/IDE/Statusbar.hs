@@ -22,7 +22,6 @@ import IDE.Core.State
      PaneMonad(..),
      IDEAction(..),
      StatusbarCompartment(..))
-import IDE.Core.Types (StatusbarCompartment(..))
 import Control.Monad.Trans (liftIO)
 import Graphics.UI.Gtk
     (windowSetTitle,

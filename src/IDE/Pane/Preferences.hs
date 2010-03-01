@@ -29,7 +29,6 @@ module IDE.Pane.Preferences (
 
 import Graphics.UI.Gtk hiding(background)
 import Control.Monad.Reader
-import Data.List
 import qualified Text.PrettyPrint.HughesPJ as PP
 import Distribution.Package
 import Data.IORef
@@ -50,7 +49,6 @@ import IDE.Pane.Log
 import Default
 import IDE.Utils.FileUtils
 import IDE.Utils.GUIUtils
-import System.IO
 import IDE.Debug
     (debugSetPrintBindResult,
      debugSetBreakOnError,

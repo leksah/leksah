@@ -25,10 +25,6 @@ module IDE.Pane.PackageFlags (
 ) where
 
 import Graphics.UI.Gtk
-import Control.Monad.Reader
-import qualified Text.ParserCombinators.Parsec as P
-import Data.List
-import System.IO
 import qualified Text.PrettyPrint.HughesPJ as PP
 import Data.Typeable
 import System.FilePath.Posix

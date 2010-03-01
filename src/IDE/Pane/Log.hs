@@ -31,7 +31,7 @@ module IDE.Pane.Log (
 
 import Data.Typeable (Typeable(..))
 import IDE.Core.State
-#if MIN_VERSION_gtk(0,10,2)
+#if MIN_VERSION_gtk(0,10,1)
 import Graphics.UI.Gtk hiding (populatePopup)
 #else
 import Graphics.UI.Gtk

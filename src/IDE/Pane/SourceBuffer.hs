@@ -85,10 +85,10 @@ import Data.Maybe
 import Data.Typeable
 import System.Time
 
-#if MIN_VERSION_gtk(0,10,2)
-import qualified Graphics.UI.Gtk as Gtk
+#if MIN_VERSION_gtk(0,10,1)
+import Graphics.UI.Gtk as Gtk
     hiding(afterFocusIn, afterModifiedChanged, afterMoveCursor, afterToggleOverwrite, background, onButtonPress,
-    onPopulatePopup, cutClipboard, copyClipboard, pasteClipboard)
+    onPopulatePopup, cutClipboard, copyClipboard, pasteClipboard, populatePopup)
 #else
 import Graphics.UI.Gtk as Gtk
     hiding(afterFocusIn, afterModifiedChanged, afterMoveCursor, afterToggleOverwrite, background, onButtonPress,
@@ -105,7 +105,6 @@ import IDE.TextEditor
 import Debug.Trace (trace)
 import qualified System.IO.UTF8 as UTF8
 import Data.IORef (writeIORef,readIORef,newIORef,IORef(..))
-import Graphics.UI.Frame.Panes (IDEPane(..))
 import Data.Char (isAlphaNum)
 import Control.Event (triggerEvent)
 import IDE.Metainfo.Provider (getSystemInfo, getWorkspaceInfo)
