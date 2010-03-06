@@ -29,7 +29,6 @@ import Prelude hiding(catch)
 import Control.Concurrent(forkIO)
 import Graphics.UI.Gtk(postGUIAsync)
 import Control.Event(triggerEvent)
-import Debug.Trace
 
 
 doServerCommand :: ServerCommand -> (ServerAnswer -> IDEM alpha) -> IDEAction
@@ -61,12 +60,10 @@ doServerCommand command cont = do
         doCommand handle = do
         triggerEventIDE (StatusbarChanged [CompartmentCollect True])
         reifyIDE $ \ideR -> forkIO $ do
-            trace ("server call: " ++ show command) $
-                hPutStrLn handle (show command)
+            hPutStrLn handle (show command)
             hFlush handle
             resp <- hGetLine handle
-            trace ("server answer: " ++ resp)
-                $ postGUIAsync (reflectIDE (do
+            postGUIAsync (reflectIDE (do
                     triggerEvent ideR (StatusbarChanged [CompartmentCollect False])
                     cont (read resp)
                     return ()) ideR)

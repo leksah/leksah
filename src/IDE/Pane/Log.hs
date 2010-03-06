@@ -31,19 +31,35 @@ module IDE.Pane.Log (
 
 import Data.Typeable (Typeable(..))
 import IDE.Core.State
-#if MIN_VERSION_gtk(0,10,1)
-import Graphics.UI.Gtk hiding (populatePopup)
-#else
-import Graphics.UI.Gtk
-#endif
 import Graphics.UI.Gtk.Gdk.Events
 import Control.Monad.Trans (liftIO)
 import IDE.Pane.SourceBuffer (markRefInSourceBuf,selectSourceBuf)
 import System.IO
 import Prelude hiding (catch)
 import Control.Exception hiding (try)
-import IDE.ImportTool (addAllImports,addImport,parseNotInScope)
-import System.Process (runInteractiveProcess, ProcessHandle(..))
+import IDE.ImportTool (addImport, parseNotInScope, addAllImports)
+import System.Process (runInteractiveProcess, ProcessHandle)
+import Graphics.UI.Gtk
+       (textBufferSetText, textViewScrollToMark,
+        textBufferGetIterAtLineOffset, textViewScrollMarkOnscreen,
+        textBufferGetMark, textBufferMoveMarkByName,
+        textBufferApplyTagByName, textBufferGetIterAtOffset,
+        textBufferGetCharCount, textBufferInsert, textBufferSelectRange,
+        widgetHide, widgetShowAll, menuShellAppend, onActivateLeaf,
+        menuItemNewWithLabel, containerGetChildren, textIterGetLine,
+        textViewGetLineAtY, textViewWindowToBufferCoords, widgetGetPointer,
+        onPopulatePopup, onButtonPress, afterFocusIn,
+        scrolledWindowSetShadowType, scrolledWindowSetPolicy, containerAdd,
+        scrolledWindowNew, widgetModifyFont, fontDescriptionSetFamily,
+        fontDescriptionNew, fontDescriptionFromString, textViewSetEditable,
+        textTagBackground, textTagTableAdd, textTagForeground, textTagNew,
+        textBufferGetTagTable, textBufferCreateMark, textBufferGetEndIter,
+        textViewGetBuffer, textViewNew, Window, Notebook, castToWidget,
+        ScrolledWindow, TextView)
+import System.Glib.Attributes (AttrOp(..), set)
+import Graphics.UI.Gtk.General.Enums
+       (TextWindowType(..), ShadowType(..), PolicyType(..))
+import System.Glib.MainLoop (priorityDefaultIdle, idleAdd)
 
 
 -------------------------------------------------------------------------------

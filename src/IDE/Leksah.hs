@@ -63,7 +63,6 @@ import Control.Exception
 import System.Exit(exitFailure)
 import qualified IDE.StrippedPrefs as SP
 import IDE.Utils.Tool (runTool,toolline)
-import Debug.Trace
 import System.Process(waitForProcess)
 #if defined(mingw32_HOST_OS) || defined(__MINGW32__)
 #else
@@ -302,7 +301,7 @@ fDescription configPath = VFD emptyParams [
 -- | Called when leksah ist first called (the .leksah-xx directory does not exist)
 --
 firstStart :: Prefs -> IO ()
-firstStart prefs = trace "firstStart" $ do
+firstStart prefs = do
     dataDir     <- getDataDir
     prefsPath   <- getConfigFilePathForLoad standardPreferencesFilename Nothing dataDir
     prefs       <- readPrefs prefsPath

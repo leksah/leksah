@@ -84,18 +84,6 @@ import Data.List hiding(insert, delete)
 import Data.Maybe
 import Data.Typeable
 import System.Time
-
-#if MIN_VERSION_gtk(0,10,1)
-import Graphics.UI.Gtk as Gtk
-    hiding(afterFocusIn, afterModifiedChanged, afterMoveCursor, afterToggleOverwrite, background, onButtonPress,
-    onPopulatePopup, cutClipboard, copyClipboard, pasteClipboard, populatePopup)
-#else
-import Graphics.UI.Gtk as Gtk
-    hiding(afterFocusIn, afterModifiedChanged, afterMoveCursor, afterToggleOverwrite, background, onButtonPress,
-    onPopulatePopup)
-#endif
-
-import Graphics.UI.Gtk.Gdk.Events as Gtk
 import IDE.Core.State
 import IDE.Utils.GUIUtils(getCandyState)
 import IDE.Utils.FileUtils
@@ -111,6 +99,23 @@ import IDE.Metainfo.Provider (getSystemInfo, getWorkspaceInfo)
 import Distribution.Text (simpleParse)
 import Distribution.ModuleName (ModuleName)
 import qualified Data.Set as Set (member)
+import Graphics.UI.Gtk.Gdk.Events as Gtk
+import Graphics.UI.Gtk
+       (Notebook, clipboardGet, atomNew, dialogAddButton, widgetDestroy,
+        fileChooserGetFilename, widgetShow, fileChooserDialogNew,
+        notebookGetNthPage, notebookPageNum, widgetHide, dialogRun,
+        messageDialogNew, postGUIAsync, scrolledWindowSetShadowType,
+        scrolledWindowSetPolicy, castToWidget, ScrolledWindow)
+import System.Glib.MainLoop (priorityDefaultIdle, idleAdd)
+import Graphics.UI.Gtk.Pango.Types (Underline(..))
+import qualified Graphics.UI.Gtk as Gtk (Window, Notebook)
+import Graphics.UI.Gtk.General.Enums
+       (ShadowType(..), PolicyType(..))
+import Graphics.UI.Gtk.Windows.MessageDialog
+       (ButtonsType(..), MessageType(..))
+import Graphics.UI.Gtk.General.Structs (ResponseId(..))
+import Graphics.UI.Gtk.Selectors.FileChooser
+       (FileChooserAction(..))
 
 
 --
@@ -248,12 +253,10 @@ goToDefinition :: Descr -> IDEAction
 goToDefinition idDescr  = do
     mbWorkspaceInfo     <-  getWorkspaceInfo
     mbSystemInfo        <-  getSystemInfo
-    let mbSourcePath1   =   (\ v -> trace ("mbSourcePath1" ++ show v) v) $
-                                case mbWorkspaceInfo of
+    let mbSourcePath1   =   case mbWorkspaceInfo of
                                     Nothing -> Nothing
                                     Just (sc, _) -> sourcePathFromScope sc
-    let mbSourcePath2   =   (\ v -> trace ("mbSourcePath2" ++ show v) v) $
-                            case mbSourcePath1 of
+    let mbSourcePath2   =   case mbSourcePath1 of
                                 Just sp -> Just sp
                                 Nothing -> case mbSystemInfo of
                                                 Just si -> sourcePathFromScope si
