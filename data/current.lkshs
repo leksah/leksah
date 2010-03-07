@@ -11,6 +11,6 @@ Toolbar visible:
                True
 FindbarState:  (True,FindState {entryStr = "", entryHist = [], replaceStr = "", replaceHist = [], caseSensitive = False, entireWord = False, wrapAround = False, regex = False, lineNr = 1})
 Recently opened files:
-               ["/home/jutaro/.cabal/share/leksah-0.7/data/welcome.txt"]
+               []
 Recently opened workspaces:
                []
