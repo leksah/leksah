@@ -562,7 +562,7 @@ aboutDialog = do
     d <- aboutDialogNew
     aboutDialogSetName d "Leksah"
     aboutDialogSetVersion d (showVersion version)
-    aboutDialogSetCopyright d "Copyright 2007-2009 Jürgen Nicklisch-Franken, Hamish Mackenzie"
+    aboutDialogSetCopyright d "Copyright 2007-2010 Jürgen Nicklisch-Franken, Hamish Mackenzie"
     aboutDialogSetComments d $ "An integrated development environement (IDE) for the " ++
                                "programming language Haskell and the Glasgow Haskell Compiler"
     dd <- getDataDir

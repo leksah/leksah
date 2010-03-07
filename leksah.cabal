@@ -1,10 +1,10 @@
 name: leksah
-version: 0.7
+version: 0.8
 cabal-version: >=1.4
 build-type: Simple
 license: GPL
 license-file: LICENSE
-copyright: 2007-2009 Juergen Nicklisch-Franken, Hamish Mackenzie
+copyright: 2007-2010 Juergen Nicklisch-Franken, Hamish Mackenzie
 maintainer: maintainer@leksah.org
 stability: provisional
 homepage: http://www.leksah.org
@@ -14,7 +14,7 @@ synopsis: Haskell IDE written in Haskell
 description: An Integrated Development Environment for Haskell written in Haskell.
 category: Development, IDE, Editor
 author: Juergen Nicklisch-Franken, Hamish Mackenzie
-tested-with: GHC ==6.10.4
+tested-with: GHC ==6.10 || ==6.12
 data-files: LICENSE
             Readme
 
@@ -87,8 +87,8 @@ Executable leksah
                    gtksourceview2 >=0.10.0, mtl >=1.1.0.2, old-time >=1.0.0.1,
                    parsec >=2.1.0.1, pretty >=1.0.1.0, process >=1.0.1.0,
                    regex-tdfa ==1.1.*, regex-base ==0.93.*, utf8-string >=0.3.1.1, array >=0.2.0.0,
-                   time >=0.1, ltk == 0.7, binary-shared == 0.0.1, deepseq >= 1.1.0.0,
-                   hslogger >= 1.0.7, leksah-server == 0.7, network >= 2.2 && <= 3.0
+                   time >=0.1, ltk >= 0.8 && <= 0.9, binary-shared >= 0.8 && <= 0.9, deepseq >= 1.1.0.0,
+                   hslogger >= 1.0.7, leksah-server >= 0.8 && <= 0.9, network >= 2.2 && <= 3.0
     main-is: IDE/Leksah.hs
     buildable: True
     extensions: CPP
