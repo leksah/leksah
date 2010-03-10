@@ -742,22 +742,12 @@ fileSaveAll filterFunc = do
 
 fileCheckBuffer :: Notebook -> EditorBuffer -> IDEBuffer -> Int -> IDEM Bool
 fileCheckBuffer nb ebuf ideBuf i = do
-    ideR    <- ask
-    window  <- getMainWindow
-    prefs   <- readIDE prefs
-    bs      <- getCandyState
-    candy   <- readIDE candy
-    (panePath,connects) <- guiPropertiesFromName (paneName ideBuf)
     let mbfn = fileName ideBuf
-    mbpage <- liftIO $ notebookGetNthPage nb i
-    case mbpage of
-        Nothing     -> throwIDE "fileCheck: Page not found"
-        Just page   ->
-            if isJust mbfn
-                then do modifiedOnDisk      <- checkModTime ideBuf -- The user is given option to reload
-                        modifiedInBuffer    <- getModified ebuf
-                        return (modifiedOnDisk || modifiedInBuffer)
-                else return False
+    if isJust mbfn
+        then do modifiedOnDisk      <- checkModTime ideBuf -- The user is given option to reload
+                modifiedInBuffer    <- getModified ebuf
+                return (modifiedOnDisk || modifiedInBuffer)
+        else return False
 
 fileCheckAll :: (IDEBuffer -> IDEM (Maybe alpha)) -> IDEM [alpha]
 fileCheckAll filterFunc = do
@@ -1203,18 +1193,21 @@ belongsToPackage ideBuf | fileName ideBuf == Nothing = return Nothing
         Just p  -> return p
         Nothing -> case ws of
                         Nothing   -> return Nothing
-                        Just workspace -> do
+                        Just workspace -> trace ("bufferToProject unknown " ++ show fp) $ do
                             mbMn <- liftIO $ moduleNameFromFilePath fp
                             let mbMn2 = case mbMn of
                                             Nothing -> Nothing
                                             Just mn -> simpleParse mn
                             let res = foldl (belongsToPackage' fp mbMn2) Nothing (wsPackages workspace)
-                            modifyIDE_ (\ide -> ide{bufferProjCache = Map.insert fp res bufferToProject'})
+                            trace ("bufferToProject " ++ case res of
+                                                            Nothing -> "Nothing"
+                                                            Just pack -> show (ipdPackageId pack))
+                                $ modifyIDE_ (\ide -> ide{bufferProjCache = Map.insert fp res bufferToProject'})
                             return res
 
 belongsToPackage' ::  FilePath -> Maybe ModuleName -> Maybe IDEPackage -> IDEPackage -> Maybe IDEPackage
 belongsToPackage' _ _ r@(Just pack) _ = r
-belongsToPackage' fp mbModuleName Nothing pack =
+belongsToPackage' fp mbModuleName Nothing pack = trace ("belongsToPackage' " ++ show mbModuleName) $
     let basePath =  dropFileName $ ipdCabalFile pack
     in if isSubPath basePath fp
         then

@@ -28,6 +28,7 @@ import Data.Typeable
 import IDE.Core.State
 import IDE.Workspaces
 import Debug.Trace (trace)
+import IDE.Package (packageNew)
 
 
 -- | Workspace pane state
@@ -149,7 +150,7 @@ treeViewPopup ideR  workspacePane (Button _ click _ _ _ _ button _ _) = do
             item1           <-  menuItemNewWithLabel "Activate Package"
             item2           <-  menuItemNewWithLabel "Add Package"
             item3           <-  menuItemNewWithLabel "Remove Package"
-            item4           <-  menuItemNewWithLabel "Build Package"
+            item4           <-  menuItemNewWithLabel "NewPackage"
 
             item1 `onActivateLeaf` do
                 sel         <-  getSelectionTree (treeViewC workspacePane)
@@ -165,11 +166,12 @@ treeViewPopup ideR  workspacePane (Button _ click _ _ _ _ button _ _) = do
                 case sel of
                     Just (_,ideP)      -> reflectIDE (workspaceRemovePackage ideP) ideR
                     otherwise          -> return ()
-            -- TODO ...
+            item4 `onActivateLeaf` (reflectIDE packageNew ideR)
             menuShellAppend theMenu item1
             menuShellAppend theMenu item2
             menuShellAppend theMenu item3
-            -- TODO ...
+            menuShellAppend theMenu item4
+
             menuPopup theMenu Nothing
             widgetShowAll theMenu
             return True

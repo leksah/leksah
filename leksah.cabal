@@ -1,6 +1,6 @@
 name: leksah
 version: 0.8
-cabal-version: >=1.4
+cabal-version: >=1.6
 build-type: Simple
 license: GPL
 license-file: LICENSE

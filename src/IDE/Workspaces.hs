@@ -197,29 +197,33 @@ workspaceClose = do
             return ()
     return ()
 
-
 workspaceAddPackage :: IDEAction
 workspaceAddPackage = do
     window <-  getMainWindow
-    mbFilePath <- liftIO $ choosePackageFile window
-    case mbFilePath of
-        Nothing -> return ()
-        Just fp -> workspaceAddPackage' fp
+    mbWs <- readIDE workspace
+    case mbWs of
+        Nothing -> ideMessage Normal "No workspace"
+        Just ws -> do
+            let path =  dropFileName (wsFile ws)
+            mbFilePath <- liftIO $ choosePackageFile window (Just path)
+            case mbFilePath of
+                Nothing -> return ()
+                Just fp -> workspaceAddPackage' fp >> return ()
 
-workspaceAddPackage' :: FilePath -> IDEAction
+workspaceAddPackage' :: FilePath -> IDEM (Maybe IDEPackage)
 workspaceAddPackage' fp = do
     mbWs <- readIDE workspace
     cfp <-  liftIO $ canonicalizePath fp
     case mbWs of
-        Nothing -> return ()
+        Nothing -> return Nothing
         Just ws -> do
             mbPack <- idePackageFromPath cfp
             case mbPack of
                 Just pack -> do
                     unless (elem cfp (map ipdCabalFile (wsPackages ws))) $
                         writeWorkspace $ ws {wsPackages =  pack : wsPackages ws}
-                    return ()
-                Nothing -> return ()
+                    return (Just pack)
+                Nothing -> return Nothing
 
 
 workspaceRemovePackage :: IDEPackage -> IDEAction

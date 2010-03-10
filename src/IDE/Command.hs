@@ -808,7 +808,12 @@ registerEvents =    do
                                         -> changeStatusbar args >> return e))
     registerEvent stRef "WorkspaceAddPackage"
         (Left (\ e@(WorkspaceAddPackage fp)
-                                        -> workspaceAddPackage' fp >> return e))
+                                        -> do
+                                            mbIdePack <- workspaceAddPackage' fp
+                                            case mbIdePack of
+                                                Just idePack -> workspaceActivatePackage idePack
+                                                Nothing -> return ()
+                                            return e))
     return ()
 
 

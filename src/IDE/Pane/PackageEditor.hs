@@ -97,11 +97,11 @@ import Distribution.License
 -- The exported stuff goes here
 --
 
-choosePackageDir :: Window -> IO (Maybe FilePath)
-choosePackageDir window = chooseDir window "Select root folder for project" Nothing
+choosePackageDir :: Window -> Maybe FilePath -> IO (Maybe FilePath)
+choosePackageDir window mbDir = chooseDir window "Select root folder for project" mbDir
 
-choosePackageFile :: Window -> IO (Maybe FilePath)
-choosePackageFile window = chooseFile window "Select cabal package file (.cabal)" Nothing
+choosePackageFile :: Window -> Maybe FilePath -> IO (Maybe FilePath)
+choosePackageFile window mbDir = chooseFile window "Select cabal package file (.cabal)" mbDir
 
 packageEdit :: IDEAction
 packageEdit = do
@@ -134,10 +134,10 @@ hasConfigs gpd =
     in libConds || exeConds
 
 
-packageNew' :: (FilePath -> IDEAction) -> IDEAction
-packageNew' activateAction = do
+packageNew' :: Maybe FilePath -> (FilePath -> IDEAction) -> IDEAction
+packageNew' mbDir activateAction = do
     windows  <- getWindows
-    mbDirName <- liftIO $ choosePackageDir (head windows)
+    mbDirName <- liftIO $ choosePackageDir (head windows) mbDir
     case mbDirName of
         Nothing -> return ()
         Just dirName -> do

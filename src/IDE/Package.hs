@@ -83,6 +83,8 @@ import Data.List (isInfixOf, nub, foldl')
 import qualified System.IO.UTF8 as UTF8  (readFile)
 import IDE.Utils.Tool (ToolOutput(..), runTool, newGhci, ToolState(..))
 import Debug.Trace (trace)
+import System.Directory (createDirectoryIfMissing)
+import qualified System.IO.UTF8 as UTF8  (writeFile)
 
 #if defined(mingw32_HOST_OS) || defined(__MINGW32__)
 import Data.Maybe (isNothing)
@@ -126,10 +128,36 @@ myExeModules pd = exeModules pd
 #endif
 
 packageNew :: IDEAction
-packageNew = packageNew' (\fp -> do
-    triggerEventIDE (WorkspaceAddPackage fp)
-    mbPack <- idePackageFromPath fp
-    activatePackage mbPack)
+packageNew = do
+    mbWs <- readIDE workspace
+    let path =  case mbWs of
+                    Nothing -> Nothing
+                    Just ws -> Just $ dropFileName (wsFile ws)
+    packageNew' path (\fp -> do
+        triggerEventIDE (WorkspaceAddPackage fp)
+        mbPack <- idePackageFromPath fp
+        constructAndOpenMainModule mbPack
+        activatePackage mbPack)
+
+constructAndOpenMainModule :: Maybe IDEPackage -> IDEAction
+constructAndOpenMainModule Nothing = return ()
+constructAndOpenMainModule (Just idePackage) =
+    case (ipdMain idePackage, ipdSrcDirs idePackage) of
+        ([target],[path]) -> do
+            mbPD <- getPackageDescriptionAndPath
+            case mbPD of
+                Just (pd,_) -> do
+                    liftIO $ createDirectoryIfMissing True path
+                    alreadyExists <- liftIO $ doesFileExist (path </> target)
+                    if alreadyExists
+                        then ideMessage Normal "Main file already exists"
+                        else do
+                            template <- liftIO $ getModuleTemplate pd (dropExtension target)
+                            liftIO $ UTF8.writeFile (path </> target) template
+                            fileOpenThis (path </> target)
+                Nothing     -> ideMessage Normal "No package description"
+        _ -> return ()
+
 
 packageOpen :: IDEAction
 packageOpen = packageOpenThis Nothing
@@ -150,7 +178,7 @@ selectActivePackage :: Maybe FilePath -> IDEM (Maybe IDEPackage)
 selectActivePackage mbFilePath' = do
     window     <- getMainWindow
     mbFilePath <- case mbFilePath' of
-                    Nothing -> liftIO $ choosePackageFile window
+                    Nothing -> liftIO $ choosePackageFile  window Nothing
                     Just fp -> return (Just fp)
     case mbFilePath of
         Nothing -> return Nothing
@@ -210,15 +238,32 @@ packageConfig' package continuation = catchIDE (do
             let modules    = Set.fromList $ myLibModules packageD ++ myExeModules packageD
                 files      = Set.fromList $ extraSrcFiles packageD ++ map modulePath (executables packageD)
                 ipdSrcDirs = nub $ concatMap hsSourceDirs (allBuildInfo packageD)
-                pack       = Just package{ipdDepends=buildDepends packageD, ipdModules = modules,
+                pack       = package{ipdDepends=buildDepends packageD, ipdModules = modules,
                              ipdExtraSrcs = files, ipdSrcDirs = ipdSrcDirs}
             in trace ("packageD :" ++ show packageD) $ do
-                modifyIDE_ (\ide -> ide{activePack = pack, bufferProjCache = Map.empty})
-                triggerEventIDE (ActivePack pack)
+                changeWorkspacePackage pack
+                modifyIDE_ (\ide -> ide{activePack = Just pack, bufferProjCache = Map.empty})
+                triggerEventIDE (ActivePack (Just pack))
                 continuation
                 return ()
         Nothing -> return()) -- Does not continue if config fails?
         (\(e :: SomeException) -> putStrLn (show e))
+
+
+changeWorkspacePackage :: IDEPackage -> IDEAction
+changeWorkspacePackage ideP@IDEPackage{ipdCabalFile = file} = do
+    oldWorkspace <- readIDE workspace
+    case oldWorkspace of
+        Nothing -> return ()
+        Just ws ->
+            let ap = if isJust (wsActivePack ws) && ipdCabalFile (fromJust $ wsActivePack ws) == file
+                        then Just ideP
+                        else wsActivePack ws
+                ps = map exchange (wsPackages ws)
+            in modifyIDE_ (\ide -> ide{workspace = Just  ws {wsPackages =  ps, wsActivePack = ap}})
+    where
+        exchange p | ipdCabalFile p == file = ideP
+                   | otherwise             = p
 
 runCabalBuild :: Bool -> IDEPackage -> Bool -> (Bool -> IDEAction) -> IDEAction
 runCabalBuild backgroundBuild package shallConfigure continuation = do
@@ -504,7 +549,7 @@ getPackageDescriptionAndPath = do
     active <- readIDE activePack
     case active of
         Nothing -> do
-            ideMessage Normal "No active packjage"
+            ideMessage Normal "No active package"
             return Nothing
         Just p  -> do
             ideR <- ask
@@ -532,7 +577,7 @@ addModuleToPackageDescr moduleName isExposed = do
     active <- readIDE activePack
     case active of
         Nothing -> do
-            ideMessage Normal "No active packjage"
+            ideMessage Normal "No active package"
             return ()
         Just p  -> do
             ideR <- ask

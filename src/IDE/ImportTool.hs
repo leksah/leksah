@@ -31,18 +31,14 @@ import IDE.Pane.SourceBuffer
 import Graphics.UI.Gtk
 import Text.ParserCombinators.Parsec.Language (haskellStyle)
 import Graphics.UI.Editor.MakeEditor
-       (FieldDescription(..), buildEditor, mkField)
+       (getRealWidget, FieldDescription(..), buildEditor, mkField)
 import Graphics.UI.Editor.Parameters
        ((<<<-), paraMinSize, emptyParams, Parameter(..), paraMultiSel,
         paraName)
-import Graphics.UI.Editor.Basics
-       (GUIEventSelector(..), eventPaneName)
 import Data.Maybe (fromJust)
 import Text.ParserCombinators.Parsec hiding (parse)
 import qualified Text.ParserCombinators.Parsec as Parsec (parse)
-import Graphics.UI.Editor.Simple (okCancelFields, staticListEditor)
-import Control.Event (registerEvent)
-import Control.Monad.Trans (liftIO)
+import Graphics.UI.Editor.Simple (staticListEditor)
 import Control.Monad (when)
 import Distribution.Text (display)
 import Data.List (sort, nub, nubBy)
@@ -54,7 +50,9 @@ import qualified Text.ParserCombinators.Parsec.Token as P
        (operator, dot, identifier, symbol, lexeme, whiteSpace,
         makeTokenParser)
 import Debug.Trace (trace)
---import Debug.Trace
+import Graphics.UI.Gtk.Gdk.Events (Event(..))
+import Control.Monad.Trans (liftIO)
+
 
 
 
@@ -323,17 +321,26 @@ selectModuleDialog parentWindow list id mbQual mbDescr =
             dia               <- dialogNew
             windowSetTransientFor dia parentWindow
             upper             <- dialogGetUpper dia
-            lower             <- dialogGetActionArea dia
+            dialogAddButton dia "Ok" ResponseOk
+            dialogAddButton dia "Cancel" ResponseCancel
             (widget,inj,ext,_) <- buildEditor (moduleFields selectionList qualId) realSelectionString
-            (widget2,_,_,notifier)     <-   buildEditor okCancelFields ()
-            registerEvent notifier Clicked (Left (\e -> do
-                    case eventPaneName e of
-                        "Ok"    ->  dialogResponse dia ResponseOk
-                        _       ->  dialogResponse dia ResponseCancel
-                    return e))
             boxPackStart upper widget PackGrow 7
-            boxPackStart lower widget2 PackNatural 7
+            dialogSetDefaultResponse dia ResponseOk --does not work for the tree view
             widgetShowAll dia
+            rw <- getRealWidget widget
+--            case rw of
+--                Nothing -> return ()
+--                Just r -> do
+--                    r `onKeyPress` \ event -> do
+--                        case event of
+--                            Key { eventKeyName = name} ->
+--                                case name of
+--                                    "Return" -> do
+--                                        dialogResponse dia ResponseOk
+--                                        return True
+--                                    _        -> return False
+--                            _ -> return False
+--                    return ()
             resp <- dialogRun dia
             value                      <- ext ([])
             widgetDestroy dia
