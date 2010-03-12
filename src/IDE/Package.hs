@@ -17,10 +17,7 @@
 
 
 module IDE.Package (
-    packageOpen
-,   packageOpenThis
-,   packageNew
-,   packageConfig
+    packageConfig
 ,   buildPackage
 
 ,   packageDoc
@@ -82,7 +79,7 @@ import Distribution.ModuleName (ModuleName(..))
 import Data.List (isInfixOf, nub, foldl')
 import qualified System.IO.UTF8 as UTF8  (readFile)
 import IDE.Utils.Tool (ToolOutput(..), runTool, newGhci, ToolState(..))
-import Debug.Trace (trace)
+
 import System.Directory (createDirectoryIfMissing)
 import qualified System.IO.UTF8 as UTF8  (writeFile)
 
@@ -127,37 +124,6 @@ myLibModules pd = libModules pd
 myExeModules pd = exeModules pd
 #endif
 
-packageNew :: IDEAction
-packageNew = do
-    mbWs <- readIDE workspace
-    let path =  case mbWs of
-                    Nothing -> Nothing
-                    Just ws -> Just $ dropFileName (wsFile ws)
-    packageNew' path (\fp -> do
-        triggerEventIDE (WorkspaceAddPackage fp)
-        mbPack <- idePackageFromPath fp
-        constructAndOpenMainModule mbPack
-        activatePackage mbPack)
-
-constructAndOpenMainModule :: Maybe IDEPackage -> IDEAction
-constructAndOpenMainModule Nothing = return ()
-constructAndOpenMainModule (Just idePackage) =
-    case (ipdMain idePackage, ipdSrcDirs idePackage) of
-        ([target],[path]) -> do
-            mbPD <- getPackageDescriptionAndPath
-            case mbPD of
-                Just (pd,_) -> do
-                    liftIO $ createDirectoryIfMissing True path
-                    alreadyExists <- liftIO $ doesFileExist (path </> target)
-                    if alreadyExists
-                        then ideMessage Normal "Main file already exists"
-                        else do
-                            template <- liftIO $ getModuleTemplate pd (dropExtension target)
-                            liftIO $ UTF8.writeFile (path </> target) template
-                            fileOpenThis (path </> target)
-                Nothing     -> ideMessage Normal "No package description"
-        _ -> return ()
-
 
 packageOpen :: IDEAction
 packageOpen = packageOpenThis Nothing
@@ -188,7 +154,6 @@ activatePackage :: Maybe IDEPackage -> IDEM ()
 activatePackage mbPack@(Just pack) = do
         modifyIDE_ (\ide -> ide{activePack = mbPack})
         liftIO $ setCurrentDirectory (dropFileName (ipdCabalFile pack))
-        triggerEventIDE (ActivePack mbPack)
         triggerEventIDE (Sensitivity [(SensitivityProjectActive,True)])
         mbWs <- readIDE workspace
         let wsStr = case mbWs of
@@ -203,7 +168,6 @@ deactivatePackage :: IDEAction
 deactivatePackage = do
     oldActivePack <- readIDE activePack
     modifyIDE_ (\ide -> ide{activePack = Nothing})
-    triggerEventIDE (ActivePack Nothing)
     when (isJust oldActivePack) $ do
         triggerEventIDE (Sensitivity [(SensitivityProjectActive,False)])
         return ()
@@ -223,32 +187,22 @@ packageConfig = do
             Just package    -> packageConfig' package (return ())
 
 packageConfig'  :: IDEPackage -> IDEAction -> IDEAction
-packageConfig' package continuation = catchIDE (do
-    mbPackageD  <- reifyIDE (\ideR ->  catch (do
-        let dir = dropFileName (ipdCabalFile package)
-        reflectIDE (runExternalTool "Configuring" "runhaskell" (["Setup","configure"]
-                                        ++ (ipdConfigFlags package)) (Just dir) logOutput) ideR
-        pd  <- readPackageDescription normal (ipdCabalFile package)
-        return (Just (flattenPackageDescription pd)))
-        (\(e :: SomeException) -> do
-                reflectIDE (ideMessage Normal (show e)) ideR
-                return Nothing))
-    case mbPackageD of
-        Just packageD ->
-            let modules    = Set.fromList $ myLibModules packageD ++ myExeModules packageD
-                files      = Set.fromList $ extraSrcFiles packageD ++ map modulePath (executables packageD)
-                ipdSrcDirs = nub $ concatMap hsSourceDirs (allBuildInfo packageD)
-                pack       = package{ipdDepends=buildDepends packageD, ipdModules = modules,
-                             ipdExtraSrcs = files, ipdSrcDirs = ipdSrcDirs}
-            in trace ("packageD :" ++ show packageD) $ do
-                changeWorkspacePackage pack
-                modifyIDE_ (\ide -> ide{activePack = Just pack, bufferProjCache = Map.empty})
-                triggerEventIDE (ActivePack (Just pack))
-                continuation
-                return ()
-        Nothing -> return()) -- Does not continue if config fails?
-        (\(e :: SomeException) -> putStrLn (show e))
-
+packageConfig' package continuation = do
+    let dir = dropFileName (ipdCabalFile package)
+    runExternalTool "Configuring" "runhaskell" (["Setup","configure"]
+                                    ++ (ipdConfigFlags package)) (Just dir) logOutput
+    mbPack <- idePackageFromPath (ipdCabalFile package)
+    case mbPack of
+        Just pack -> do
+            changeWorkspacePackage pack
+            modifyIDE_ (\ide -> ide{activePack = Just pack, bufferProjCache = Map.empty})
+            triggerEventIDE UpdateWorkspaceInfo
+            triggerEventIDE (WorkspaceChanged False True)
+            continuation
+            return ()
+        Nothing -> do
+            ideMessage Normal "Can't read package file"
+            return()
 
 changeWorkspacePackage :: IDEPackage -> IDEAction
 changeWorkspacePackage ideP@IDEPackage{ipdCabalFile = file} = do

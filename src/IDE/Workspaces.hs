@@ -24,6 +24,7 @@ module IDE.Workspaces (
 ,   workspaceAddPackage
 ,   workspaceAddPackage'
 ,   workspaceRemovePackage
+,   workspacePackageNew
 
 ,   makePackage
 ,   backgroundMake
@@ -51,16 +52,14 @@ import Text.PrinterParser
 import qualified Text.PrettyPrint as  PP (text)
 import Graphics.UI.Gtk
     (widgetDestroy, dialogRun, messageDialogNew, Window(..))
-import IDE.Pane.PackageEditor (choosePackageFile)
+import IDE.Pane.PackageEditor (packageNew', choosePackageFile)
 import Data.List ((\\), foldl', nub, delete)
 import IDE.Package
-    (buildPackage,
-     packageInstall',
-     packageClean,
-     activatePackage,
-     deactivatePackage,
-     idePackageFromPath)
-import System.Directory (doesFileExist, canonicalizePath)
+       (getModuleTemplate, getPackageDescriptionAndPath, buildPackage,
+        packageInstall', packageClean, activatePackage, deactivatePackage,
+        idePackageFromPath)
+import System.Directory
+       (createDirectoryIfMissing, doesFileExist, canonicalizePath)
 import System.Time (getClockTime)
 import Graphics.UI.Gtk.Windows.MessageDialog
     (ButtonsType(..), MessageType(..))
@@ -73,7 +72,9 @@ import qualified Data.Map as  Map
 import Distribution.Package (pkgVersion, pkgName, Dependency(..))
 import Distribution.Version (withinRange)
 import qualified GHC.List as  List (or)
-import IDE.Pane.SourceBuffer (belongsToPackage, fileCheckAll)
+import IDE.Pane.SourceBuffer
+       (fileOpenThis, belongsToPackage, fileCheckAll)
+import qualified System.IO.UTF8 as UTF8 (writeFile)
 
 
 setWorkspace :: Maybe Workspace -> IDEAction
@@ -82,10 +83,6 @@ setWorkspace mbWs = do
                         Nothing -> Nothing
                         Just ws -> Just ws{wsReverseDeps = calculateReverseDependencies ws}
     mbOldWs <- readIDE workspace
---    trace ("deps " ++ case mbRealWs of
---                        Nothing -> "empty ws"
---                        Just ws -> show $ map (\ (k,v) -> (packageId k, map packageId v))
---                                            (Map.toList (wsReverseDeps ws)))
     modifyIDE_ (\ide -> ide{workspace = mbRealWs})
     let pack =  case mbRealWs of
                     Nothing -> Nothing
@@ -98,7 +95,6 @@ setWorkspace mbWs = do
                 Nothing -> deactivatePackage
                 Just p  -> activatePackage pack >> return ()
     mbPack <- readIDE activePack
-    triggerEventIDE WorkspaceChanged
     let wsStr = case mbRealWs of
                     Nothing -> ""
                     Just ws -> wsName ws
@@ -107,6 +103,8 @@ setWorkspace mbWs = do
                             Nothing -> ""
                             Just p  -> packageIdentifierToString (ipdPackageId p))
     triggerEventIDE (StatusbarChanged [CompartmentPackage txt])
+    triggerEventIDE (WorkspaceChanged True True)
+    triggerEventIDE UpdateWorkspaceInfo
     return ()
 
 
@@ -142,6 +140,8 @@ workspaceOpen = do
     window     <- getMainWindow
     mbFilePath <- liftIO $ chooseWorkspaceFile window
     workspaceOpenThis True mbFilePath
+    return ()
+
 
 chooseWorkspaceFile :: Window -> IO (Maybe FilePath)
 chooseWorkspaceFile window = chooseFile window "Select leksah workspace file (.lkshw)" Nothing
@@ -172,8 +172,9 @@ workspaceOpenThis askForSession mbFilePath =
                     catchIDE (do
                         workspace <- readWorkspace filePath
                         setWorkspace (Just workspace {wsFile = filePath,
-                                                      wsReverseDeps = calculateReverseDependencies workspace}))
-                            (\ (e :: SomeException) -> reflectIDE
+                                                      wsReverseDeps = calculateReverseDependencies workspace})
+                        return ())
+                           (\ (e :: SomeException) -> reflectIDE
                                 (ideMessage Normal ("Can't load workspace file " ++ filePath ++ "\n" ++ show e)) ideR)
 
 
@@ -189,7 +190,6 @@ workspaceClose = do
                                 ++  leksahSessionFileExtension))
             addRecentlyUsedWorkspace (wsFile ws)
             setWorkspace Nothing
-            triggerEventIDE (ActivePack Nothing)
             when (isJust oldActivePack) $ do
                 triggerEventIDE (Sensitivity [(SensitivityProjectActive, False),
                     (SensitivityWorkspaceOpen, False)])
@@ -197,14 +197,48 @@ workspaceClose = do
             return ()
     return ()
 
-workspaceAddPackage :: IDEAction
-workspaceAddPackage = do
-    window <-  getMainWindow
+workspacePackageNew :: IDEAction
+workspacePackageNew = do
     mbWs <- readIDE workspace
     case mbWs of
-        Nothing -> ideMessage Normal "No workspace"
+        Nothing -> ideMessage Normal "Needs an open workspace"
         Just ws -> do
-            let path =  dropFileName (wsFile ws)
+            let path = dropFileName (wsFile ws)
+            packageNew' (Just path) (\fp -> do
+                window     <-  getMainWindow
+                workspaceAddPackage' fp >> return ()
+                mbPack <- idePackageFromPath fp
+                constructAndOpenMainModule mbPack
+                triggerEventIDE UpdateWorkspaceInfo >> return ())
+
+constructAndOpenMainModule :: Maybe IDEPackage -> IDEAction
+constructAndOpenMainModule Nothing = return ()
+constructAndOpenMainModule (Just idePackage) =
+    case (ipdMain idePackage, ipdSrcDirs idePackage) of
+        ([target],[path]) -> do
+            mbPD <- getPackageDescriptionAndPath
+            case mbPD of
+                Just (pd,_) -> do
+                    liftIO $ createDirectoryIfMissing True path
+                    alreadyExists <- liftIO $ doesFileExist (path </> target)
+                    if alreadyExists
+                        then ideMessage Normal "Main file already exists"
+                        else do
+                            template <- liftIO $ getModuleTemplate pd (dropExtension target)
+                            liftIO $ UTF8.writeFile (path </> target) template
+                            fileOpenThis (path </> target)
+                Nothing     -> ideMessage Normal "No package description"
+        _ -> return ()
+
+
+workspaceAddPackage :: IDEAction
+workspaceAddPackage = do
+    mbWs <- readIDE workspace
+    case mbWs of
+        Nothing -> ideMessage Normal "Needs an open workspace"
+        Just ws -> do
+            let path = dropFileName (wsFile ws)
+            window <-  getMainWindow
             mbFilePath <- liftIO $ choosePackageFile window (Just path)
             case mbFilePath of
                 Nothing -> return ()
@@ -221,7 +255,8 @@ workspaceAddPackage' fp = do
             case mbPack of
                 Just pack -> do
                     unless (elem cfp (map ipdCabalFile (wsPackages ws))) $
-                        writeWorkspace $ ws {wsPackages =  pack : wsPackages ws}
+                        writeWorkspace $ ws {wsPackages =  pack : wsPackages ws,
+                                            wsActivePack =  Just pack}
                     return (Just pack)
                 Nothing -> return Nothing
 
@@ -238,6 +273,7 @@ workspaceRemovePackage pack = do
 
 workspaceActivatePackage :: IDEPackage -> IDEAction
 workspaceActivatePackage pack = do
+    activatePackage (Just pack)
     mbWs <- readIDE workspace
     case mbWs of
         Nothing -> return ()

@@ -27,6 +27,8 @@ import Control.Monad.Reader
 import Data.Typeable
 import IDE.Core.State
 import IDE.Workspaces
+import qualified Data.Map as Map (empty)
+import Data.List (sortBy)
 import Debug.Trace (trace)
 import IDE.Package (packageNew)
 
@@ -61,7 +63,7 @@ instance RecoverablePane IDEWorkspace WorkspaceState IDEM where
         buildPane pp nb builder
     buildPane pp nb builder  =   do
         res <- buildThisPane pp nb builder
-        when (isJust res) updateWorkspace
+        when (isJust res) $ updateWorkspace True False
         return res
     builder pp nb windows = reifyIDE $ \ideR -> do
         listStore   <-  listStoreNew []
@@ -150,8 +152,6 @@ treeViewPopup ideR  workspacePane (Button _ click _ _ _ _ button _ _) = do
             item1           <-  menuItemNewWithLabel "Activate Package"
             item2           <-  menuItemNewWithLabel "Add Package"
             item3           <-  menuItemNewWithLabel "Remove Package"
-            item4           <-  menuItemNewWithLabel "NewPackage"
-
             item1 `onActivateLeaf` do
                 sel         <-  getSelectionTree (treeViewC workspacePane)
                                                 (workspaceStore workspacePane)
@@ -166,12 +166,9 @@ treeViewPopup ideR  workspacePane (Button _ click _ _ _ _ button _ _) = do
                 case sel of
                     Just (_,ideP)      -> reflectIDE (workspaceRemovePackage ideP) ideR
                     otherwise          -> return ()
-            item4 `onActivateLeaf` (reflectIDE packageNew ideR)
             menuShellAppend theMenu item1
             menuShellAppend theMenu item2
             menuShellAppend theMenu item3
-            menuShellAppend theMenu item4
-
             menuPopup theMenu Nothing
             widgetShowAll theMenu
             return True
@@ -185,9 +182,10 @@ treeViewPopup ideR  workspacePane (Button _ click _ _ _ _ button _ _) = do
                 else return False
 treeViewPopup _ _ _ = throwIDE "treeViewPopup wrong event type"
 
-updateWorkspace :: IDEAction
-updateWorkspace = do
-    mbMod <- trace "update workspace called" getPane
+updateWorkspace :: Bool -> Bool -> IDEAction
+updateWorkspace showPane updateFileCache = trace "updateWorkspace" $ do
+    when updateFileCache $ modifyIDE_ (\ide -> ide{bufferProjCache = Map.empty})
+    mbMod <- getOrBuildPane (Right ("*Workspace"))
     case mbMod of
         Nothing -> return ()
         Just (p :: IDEWorkspace)  -> do
@@ -200,5 +198,7 @@ updateWorkspace = do
                     entrySetText (wsEntry p) (wsName ws)
                     listStoreClear (workspaceStore p)
                     let objs = map (\ ideP -> (Just ideP == wsActivePack ws, ideP)) (wsPackages ws)
-                    mapM_ (listStoreAppend (workspaceStore p)) objs
+                    let sorted = sortBy (\ (_,f) (_,s) -> compare (ipdPackageId f) (ipdPackageId s)) objs
+                    mapM_ (listStoreAppend (workspaceStore p)) sorted
+            when showPane $ displayPane p False
 

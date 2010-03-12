@@ -176,9 +176,7 @@ mkActions =
 
     ,AD "Package" "_Package" Nothing Nothing (return ()) [] False
     ,AD "NewPackage" "_New Package" Nothing Nothing
-        packageNew [] False
-    ,AD "OpenPackage" "_Open Package" Nothing Nothing
-        packageOpen [] False
+        workspacePackageNew [] False
 --    ,AD "RecentPackages" "_Recent Packages" Nothing Nothing (return ()) [] False
     ,AD "EditPackage" "_Edit Package" Nothing Nothing
         packageEdit [] False
@@ -769,10 +767,11 @@ registerEvents =    do
         (Left (\ e@(SelectIdent id)     -> selectIdentifier id >> return e))
     registerEvent stRef "InfoChanged"
         (Left (\ e@(InfoChanged b)      -> reloadKeepSelection b >> return e))
-    registerEvent stRef "ActivePack"
-        (Left (\ e@(ActivePack _)       -> updateWorkspaceInfo >> return e))
+    registerEvent stRef "UpdateWorkspaceInfo"
+        (Left (\ e@UpdateWorkspaceInfo  -> updateWorkspaceInfo >> return e))
     registerEvent stRef "WorkspaceChanged"
-        (Left (\ e@WorkspaceChanged     -> updateWorkspace >> return e))
+        (Left (\ e@(WorkspaceChanged showPane updateFileCache)
+                                        -> updateWorkspace showPane updateFileCache >> return e))
     registerEvent stRef "RecordHistory"
         (Left (\ rh@(RecordHistory h)   -> recordHistory h >> return rh))
     registerEvent stRef "Sensitivity"
@@ -806,14 +805,6 @@ registerEvents =    do
     registerEvent stRef "StatusbarChanged"
         (Left (\ e@(StatusbarChanged args)
                                         -> changeStatusbar args >> return e))
-    registerEvent stRef "WorkspaceAddPackage"
-        (Left (\ e@(WorkspaceAddPackage fp)
-                                        -> do
-                                            mbIdePack <- workspaceAddPackage' fp
-                                            case mbIdePack of
-                                                Just idePack -> workspaceActivatePackage idePack
-                                                Nothing -> return ()
-                                            return e))
     return ()
 
 

@@ -175,7 +175,7 @@ data IDEState =
 
 data IDEEvent  =
         InfoChanged Bool-- is it the initial = True else False
-    |   ActivePack (Maybe IDEPackage)
+    |   UpdateWorkspaceInfo
     |   SelectInfo String
     |   SelectIdent Descr
     |   LogMessage String LogTag
@@ -193,12 +193,11 @@ data IDEEvent  =
     |   TraceChanged
     |   GetTextPopup (Maybe (IDERef -> Menu -> IO ()))
     |   StatusbarChanged [StatusbarCompartment]
-    |   WorkspaceChanged
-    |   WorkspaceAddPackage FilePath
+    |   WorkspaceChanged Bool Bool -- ^ showPane updateFileCache
 
 instance Event IDEEvent String where
     getSelector (InfoChanged _)         =   "InfoChanged"
-    getSelector (ActivePack _)          =   "ActivePack"
+    getSelector UpdateWorkspaceInfo     =   "UpdateWorkspaceInfo"
     getSelector (LogMessage _ _)        =   "LogMessage"
     getSelector (SelectInfo _)          =   "SelectInfo"
     getSelector (SelectIdent _)         =   "SelectIdent"
@@ -216,12 +215,11 @@ instance Event IDEEvent String where
     getSelector TraceChanged            =   "TraceChanged"
     getSelector (GetTextPopup _)        =   "GetTextPopup"
     getSelector (StatusbarChanged _)    =   "StatusbarChanged"
-    getSelector WorkspaceChanged        =   "WorkspaceChanged"
-    getSelector (WorkspaceAddPackage _) =   "WorkspaceAddPackage"
+    getSelector (WorkspaceChanged _ _)  =   "WorkspaceChanged"
 
 instance EventSource IDERef IDEEvent IDEM String where
     canTriggerEvent _ "InfoChanged"         = True
-    canTriggerEvent _ "ActivePack"          = True
+    canTriggerEvent _ "UpdateWorkspaceInfo" = True
     canTriggerEvent _ "LogMessage"          = True
     canTriggerEvent _ "SelectInfo"          = True
     canTriggerEvent _ "SelectIdent"         = True
@@ -241,7 +239,6 @@ instance EventSource IDERef IDEEvent IDEM String where
     canTriggerEvent _ "GetTextPopup"        = True
     canTriggerEvent _ "StatusbarChanged"    = True
     canTriggerEvent _ "WorkspaceChanged"    = True
-    canTriggerEvent _ "WorkspaceAddPackage" = True
     canTriggerEvent _ _                   = False
     getHandlers ideRef = do
         ide <- liftIO $ readIORef ideRef
