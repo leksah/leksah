@@ -30,7 +30,6 @@ import IDE.Workspaces
 import qualified Data.Map as Map (empty)
 import Data.List (sortBy)
 import Debug.Trace (trace)
-import IDE.Package (packageNew)
 
 
 -- | Workspace pane state
