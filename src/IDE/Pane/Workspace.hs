@@ -183,21 +183,28 @@ treeViewPopup _ _ _ = throwIDE "treeViewPopup wrong event type"
 
 updateWorkspace :: Bool -> Bool -> IDEAction
 updateWorkspace showPane updateFileCache = trace "updateWorkspace" $ do
-    when updateFileCache $ modifyIDE_ (\ide -> ide{bufferProjCache = Map.empty})
-    mbMod <- getOrBuildPane (Right ("*Workspace"))
-    case mbMod of
-        Nothing -> return ()
-        Just (p :: IDEWorkspace)  -> do
-            mbWs <- readIDE workspace
-            case mbWs of
-                Nothing -> liftIO $ do
-                    listStoreClear (workspaceStore p)
-                    entrySetText (wsEntry p) ""
-                Just ws -> liftIO $ do
-                    entrySetText (wsEntry p) (wsName ws)
-                    listStoreClear (workspaceStore p)
+    mbWs <- readIDE workspace
+    case mbWs of
+        Nothing -> do
+            when updateFileCache $ modifyIDE_ (\ide -> ide{bufferProjCache = Map.empty})
+            mbMod <- getOrBuildPane (Right ("*Workspace"))
+            case mbMod of
+                Nothing -> return ()
+                Just (p :: IDEWorkspace)  -> do
+                    liftIO $ listStoreClear (workspaceStore p)
+                    liftIO $ entrySetText (wsEntry p) ""
+                    when showPane $ displayPane p False
+        Just ws -> do
+            when updateFileCache $ modifyIDE_ (\ide -> ide{bufferProjCache = Map.empty,
+                        workspace = Just ws{wsReverseDeps = calculateReverseDependencies ws}})
+            mbMod <- getOrBuildPane (Right ("*Workspace"))
+            case mbMod of
+                Nothing -> return ()
+                Just (p :: IDEWorkspace)  -> do
+                    liftIO $ entrySetText (wsEntry p) (wsName ws)
+                    liftIO $ listStoreClear (workspaceStore p)
                     let objs = map (\ ideP -> (Just ideP == wsActivePack ws, ideP)) (wsPackages ws)
                     let sorted = sortBy (\ (_,f) (_,s) -> compare (ipdPackageId f) (ipdPackageId s)) objs
-                    mapM_ (listStoreAppend (workspaceStore p)) sorted
-            when showPane $ displayPane p False
+                    liftIO $ mapM_ (listStoreAppend (workspaceStore p)) sorted
+                    when showPane $ displayPane p False
 

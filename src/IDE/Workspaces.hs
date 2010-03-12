@@ -28,6 +28,7 @@ module IDE.Workspaces (
 
 ,   makePackage
 ,   backgroundMake
+,   calculateReverseDependencies
 ) where
 
 import IDE.Core.State
@@ -171,8 +172,7 @@ workspaceOpenThis askForSession mbFilePath =
                     ideR <- ask
                     catchIDE (do
                         workspace <- readWorkspace filePath
-                        setWorkspace (Just workspace {wsFile = filePath,
-                                                      wsReverseDeps = calculateReverseDependencies workspace})
+                        setWorkspace (Just workspace {wsFile = filePath})
                         return ())
                            (\ (e :: SomeException) -> reflectIDE
                                 (ideMessage Normal ("Can't load workspace file " ++ filePath ++ "\n" ++ show e)) ideR)
