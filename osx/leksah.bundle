@@ -47,6 +47,7 @@
   <main-binary>${prefix}/bin/leksah</main-binary>
   
   <binary>${prefix}/bin/leksahecho</binary>
+  <binary>${prefix}/bin/leksah-server</binary>
 
   <!-- Copy in GTK+ modules. Note the use of the
        "${pkg:module:variable}" macro, which evaluates to a pkg-config
@@ -80,7 +81,7 @@
   </data>
 
   <data>
-    ${prefix}/share/leksah-0.6.1
+    ${prefix}/share/leksah-0.8
   </data>
 
   <!-- Copy in the themes data. You may want to trim this to save space
@@ -118,11 +119,8 @@
     hicolor
   </icon-theme>
 
-  <!-- Custom Default.prefs for the Mac -->
-  <data dest="${bundle}/Contents/Resources/share/leksah-0.6.1/data/Default.prefs">
-    ${project}/Default.prefs
-  </data>
-  <data dest="${bundle}/Contents/Resources/share/leksah-0.6.1/data/Current.session">
-    ${project}/Current.session
+  <!-- Custom prefs for the Mac -->
+  <data dest="${bundle}/Contents/Resources/share/leksah-0.8/data/prefs.lkshp">
+    ${project}/prefs.lkshp
   </data>
 </app-bundle>

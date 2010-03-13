@@ -1,0 +1,78 @@
+Version number of preferences file format:
+               1
+     --Integer
+Time of last storage:
+               "Fri Feb 26 16:43:57 CET 2010"
+Show line numbers:
+               True
+     --(True/False)
+TextView Font: "Monospace 14"
+Right margin:  100
+     --Size or 0 for no right margin
+Tab width:     4
+Use standard line ends even on windows:
+               True
+Remove trailing blanks when saving a file:
+               True
+Source candy:  ""
+     --Empty for do not use or the name of a candy file in a config dir
+Editor Style:  ""
+Found Text Background:
+               Color 65535 65535 32768
+Execution Context Text Background:
+               Color 65535 49152 49152
+Breakpoint Text Background:
+               Color 65535 49152 32768
+Use Yi - Experimental feature (could wipe your files):
+               False
+LogView Font:  "Sans 12"
+Window default size:
+               (1024,800)
+     --Default size of the main ide window specified as pair (int,int)
+Use ctrl Tab for Notebook flipper:
+               True
+Complete only on Hotkey:
+               False
+Name of the keymap:
+               keymap
+     --The name of a keymap file in a config dir
+Categories for panes:
+               [("*Debug","ToolCategory"),("*Grep","ToolCategory"),("*Log","LogCategory"),("*Search","ToolCategory"),("*Browser","ToolCategory"),("*Package","EditorCategory"),("*Flags","EditorCategory"),("*References","LogCategory"),("*Workspace","LogCategory"),("*Errors","ToolCategory")]
+Pane path for category:
+               [("EditorCategory",[SplitP LeftP]),("ToolCategory",[SplitP RightP,SplitP TopP]),("LogCategory",[SplitP RightP,SplitP BottomP])]
+Default pane path:
+               [SplitP LeftP]
+Paths under which haskell sources for packages may be found:
+               []
+Maybe a directory for unpacking cabal packages:
+               Just "~/.leksah-0.8/packageSources"
+Maybe an URL to load prebuild metadata :
+               Just "http://www.leksah.org"
+Update metadata at startup:
+               True
+Port number for server connection:
+               11111
+Server IP address :
+               "127.0.0.1"
+Packages which are excluded from the modules pane:
+               [Dependency (PackageName "ghc") AnyVersion]
+Automatically save all files before building:
+               True
+Background build:
+               True
+Include linking in background builds:
+               True
+Auto install packages:
+               InstallLibs
+Enable usage of Show instances in :print:
+               True
+Break on any exception thrown:
+               False
+Break on uncaught exceptions and errors:
+               False
+Turn on printing of binding results in GHCi:
+               False
+Browser:       "open"
+URL for searching documentation:
+               "http://holumbus.fh-wedel.de/hayoo/hayoo.html?query="
+     --e.g Hoogle: http://www.haskell.org/hoogle/?q= or Hayoo: http://holumbus.fh-wedel.de/hayoo/hayoo.html?query=

@@ -1,0 +1,22 @@
+<?xml version="1.0"?>
+<!DOCTYPE moduleset SYSTEM "moduleset.dtd">
+<?xml-stylesheet type="text/xsl" href="moduleset.xsl"?>
+<moduleset>
+  <include href="gtk-osx.modules"/>
+
+  <repository type="tarball" name="sourceforge" default="yes" 
+              href="http://downloads.sourceforge.net/gtk2hs/"/>
+
+  <autotools id="gtk2hs" autogen-sh="configure" autogenargs="--disable-deprecated-packages --disable-profiling --enable-packager-mode --with-pkgreg --enable-gtk --enable-gio --enable-libglade --enable-gtksourceview2 --enable-cairo CFLAGS='-O2 -std=gnu89'">
+    <branch module="gtk2hs-0.10.1.tar.gz" version="0.10.1" 
+            repo="sourceforge" />
+    <dependencies>
+      <dep package="cairo"/>
+      <dep package="glib"/>
+      <dep package="pango"/>
+      <dep package="gtk+"/>
+      <dep package="gtksourceview"/>
+    </dependencies>
+  </autotools>
+
+</moduleset>
