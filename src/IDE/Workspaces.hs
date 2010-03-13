@@ -465,7 +465,7 @@ makePackages isBackgroundBuild packages = do
                     ((not (null deps) && autoInstall prefs' == InstallLibs)
                         || autoInstall prefs' == InstallAlways))
                     $ packageInstall' package (cont2 deps package)
-            else ideMessage Normal "Make failed" -- don't continue, when their was an error
+            else return () -- don't continue, when their was an error
     cont2 deps package res = do
         when res $ do
             let nextTargets = delete package $ nub $ packages ++ deps
