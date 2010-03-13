@@ -1,6 +1,6 @@
 Name "Leksah"
 
-OutFile "Leksah-0.6.1.0.exe"
+OutFile "Leksah-0.8.0.0.exe"
 
 InstallDir $PROGRAMFILES\Leksah
 
@@ -31,16 +31,24 @@ Section "Leksah"
   
   ; Put file there
   File "leksah.bat"
+  File "leksah-server.bat"
+  File "leksah-rebuild-metadata.bat"
   File "leksah.ico"
 
   File /r "C:\SDKs\GTK\etc"
-  File /r "C:\SDKs\GTK\leksah-*"
+
+  SetOutPath $INSTDIR\leksah-server-0.8
+  File /r "C:\SDKs\GTK\leksah-server-0.8\data"
+
+  SetOutPath $INSTDIR\leksah-0.8
+  File /r "C:\SDKs\GTK\leksah-0.8\*"
 
   SetOutPath $INSTDIR\etc\gtk-2.0
   File "gtkrc"
 
   SetOutPath $INSTDIR\bin
   File "C:\SDKs\GTK\bin\leksah.exe"
+  File "C:\SDKs\GTK\bin\leksah-server.exe"
   File "C:\SDKs\GTK\bin\leksahecho.exe"
   File "C:\SDKs\GTK\bin\*.dll"
   
@@ -76,6 +84,8 @@ Section "Start Menu Shortcuts"
 
   CreateDirectory "$SMPROGRAMS\Leksah"
   CreateShortCut "$SMPROGRAMS\Leksah\Uninstall.lnk" "$INSTDIR\uninstall.exe" "" "$INSTDIR\uninstall.exe" 0
+  CreateShortCut "$SMPROGRAMS\Leksah\Server.lnk" "$INSTDIR\leksah-server.bat" "" "$INSTDIR\leksah.ico" 0
+  CreateShortCut "$SMPROGRAMS\Leksah\Rebuild Metadata.lnk" "$INSTDIR\leksah-rebuild-metadata.bat" "" "$INSTDIR\leksah.ico" 0
   CreateShortCut "$SMPROGRAMS\Leksah\Leksah.lnk" "$INSTDIR\leksah.bat" "" "$INSTDIR\leksah.ico" 0
   
 SectionEnd
@@ -91,13 +101,14 @@ Section "Uninstall"
   DeleteRegKey HKLM SOFTWARE\Leksah
 
   ; Remove files and uninstaller
-  Delete $INSTDIR\leksah.bat
+  Delete $INSTDIR\leksah*.bat
   Delete $INSTDIR\leksah.ico
-  Delete $INSTDIR\leksah-*
-  Delete $INSTDIR\bin
-  Delete $INSTDIR\lib
-  Delete $INSTDIR\etc
-  Delete $INSTDIR\share
+  RMDir /r $INSTDIR\leksah-0.8
+  RMDir /r $INSTDIR\leksah-server-0.8
+  RMDir /r $INSTDIR\bin
+  RMDir /r $INSTDIR\lib
+  RMDir /r $INSTDIR\etc
+  RMDir /r $INSTDIR\share
   Delete $INSTDIR\uninstall.exe
 
   ; Remove shortcuts, if any

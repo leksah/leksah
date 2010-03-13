@@ -12,10 +12,10 @@ set GDK_PIXBUF_MODULE_FILE=%~dp0etc\gtk-2.0\gdk-pixbuf.loaders
 set PANGO_RC_FILE="%~dp0etc\pango\pangorc
 
 set leksah_bindir=%~dp0bin
-set leksah_libdir=%~dp0leksah-0.8\ghc-6.10.4
-set leksah_datadir=%~dp0leksah-0.8
+set leksah_libdir=%~dp0leksah-server-0.8\ghc-6.10.4
+set leksah_datadir=%~dp0leksah-server-0.8
 set leksah_libexecdir=%~dp0bin
 
-leksah.exe
+leksah-server.exe -bos
 
 pause
