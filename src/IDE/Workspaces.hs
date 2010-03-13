@@ -458,11 +458,12 @@ makePackages isBackgroundBuild packages = do
                 let deps = case Map.lookup package (wsReverseDeps ws) of
                                         Nothing   -> []
                                         Just list -> list
-                -- install if either
+                -- install if backgroundLink is set or it is not a background build and either
                 -- AlwaysInstall is set or
-                -- deps are not empty and
-                when ((not (null deps) && autoInstall prefs' == InstallLibs)
-                        || autoInstall prefs' == InstallAlways)
+                -- deps are not empty
+                when ((not isBackgroundBuild || backgroundLink prefs') &&
+                    ((not (null deps) && autoInstall prefs' == InstallLibs)
+                        || autoInstall prefs' == InstallAlways))
                     $ packageInstall' package (cont2 deps package)
             else ideMessage Normal "Make failed" -- don't continue, when their was an error
     cont2 deps package res = do
