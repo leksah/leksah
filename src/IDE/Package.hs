@@ -80,8 +80,6 @@ import Data.List (isInfixOf, nub, foldl')
 import qualified System.IO.UTF8 as UTF8  (readFile)
 import IDE.Utils.Tool (ToolOutput(..), runTool, newGhci, ToolState(..))
 
-import System.Directory (createDirectoryIfMissing)
-import qualified System.IO.UTF8 as UTF8  (writeFile)
 
 #if defined(mingw32_HOST_OS) || defined(__MINGW32__)
 import Data.Maybe (isNothing)
@@ -184,25 +182,28 @@ packageConfig = do
         mbPackage   <- getActivePackage
         case mbPackage of
             Nothing         -> return ()
-            Just package    -> packageConfig' package (return ())
+            Just package    -> packageConfig' package (\ _ -> return ())
 
-packageConfig'  :: IDEPackage -> IDEAction -> IDEAction
+packageConfig'  :: IDEPackage -> (Bool -> IDEAction) -> IDEAction
 packageConfig' package continuation = do
     let dir = dropFileName (ipdCabalFile package)
     runExternalTool "Configuring" "runhaskell" (["Setup","configure"]
-                                    ++ (ipdConfigFlags package)) (Just dir) logOutput
-    mbPack <- idePackageFromPath (ipdCabalFile package)
-    case mbPack of
-        Just pack -> do
-            changeWorkspacePackage pack
-            modifyIDE_ (\ide -> ide{activePack = Just pack, bufferProjCache = Map.empty})
-            triggerEventIDE UpdateWorkspaceInfo
-            triggerEventIDE (WorkspaceChanged False True)
-            continuation
-            return ()
-        Nothing -> do
-            ideMessage Normal "Can't read package file"
-            return()
+                                    ++ (ipdConfigFlags package)) (Just dir) $ \output -> do
+        logOutput output
+        mbPack <- idePackageFromPath (ipdCabalFile package)
+        case mbPack of
+            Just pack -> do
+                changeWorkspacePackage pack
+                modifyIDE_ (\ide -> ide{activePack = Just pack, bufferProjCache = Map.empty})
+                triggerEventIDE UpdateWorkspaceInfo
+                triggerEventIDE (WorkspaceChanged False True)
+                errs <- readIDE errorRefs
+                continuation (last output == ToolExit ExitSuccess && not (any isError errs))
+                return ()
+            Nothing -> do
+                ideMessage Normal "Can't read package file"
+                continuation False
+                return()
 
 changeWorkspacePackage :: IDEPackage -> IDEAction
 changeWorkspacePackage ideP@IDEPackage{ipdCabalFile = file} = do
@@ -233,7 +234,8 @@ runCabalBuild backgroundBuild package shallConfigure continuation = do
         errs <- readIDE errorRefs
         if shallConfigure && isConfigError output
             then
-                packageConfig' package (runCabalBuild backgroundBuild package False continuation)
+                packageConfig' package (\ b ->
+                    when b $ runCabalBuild backgroundBuild package False continuation)
             else do
                 continuation (last output == ToolExit ExitSuccess && not (any isError errs))
                 return ()
@@ -245,9 +247,6 @@ isConfigError = or . (map isCErr)
     isCErr _ = False
     str1 = "Run the 'configure' command first"
     str2 = "please re-configure"
-
-
--- TODO Care for metadata
 
 buildPackage :: Bool -> IDEPackage -> (Bool -> IDEAction) -> IDEAction
 buildPackage backgroundBuild  package continuation = catchIDE (do
@@ -274,9 +273,6 @@ buildPackage backgroundBuild  package continuation = catchIDE (do
                 executeDebugCommand ":reload" $ logOutputForBuild dir backgroundBuild
     )
     (\(e :: SomeException) -> sysMessage Normal (show e))
-
---buildAndConfigPackage :: Bool -> IDEPackage -> (Bool -> IDEAction) -> IDEAction
---buildAndConfigPackage backgroundBuild package continuation = buildPackage backgroundBuild package continuation
 
 packageDoc :: IDEAction
 packageDoc = catchIDE (do

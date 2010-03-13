@@ -76,10 +76,11 @@ import qualified GHC.List as  List (or)
 import IDE.Pane.SourceBuffer
        (fileOpenThis, belongsToPackage, fileCheckAll)
 import qualified System.IO.UTF8 as UTF8 (writeFile)
+import Debug.Trace (trace)
 
 
 setWorkspace :: Maybe Workspace -> IDEAction
-setWorkspace mbWs = do
+setWorkspace mbWs = trace "setWorkspace" $ do
     let mbRealWs = case mbWs of
                         Nothing -> Nothing
                         Just ws -> Just ws{wsReverseDeps = calculateReverseDependencies ws}
@@ -463,7 +464,7 @@ makePackages isBackgroundBuild packages = do
                 when ((not (null deps) && autoInstall prefs' == InstallLibs)
                         || autoInstall prefs' == InstallAlways)
                     $ packageInstall' package (cont2 deps package)
-            else return () -- don't continue, when their was an error
+            else ideMessage Normal "Make failed" -- don't continue, when their was an error
     cont2 deps package res = do
         when res $ do
             let nextTargets = delete package $ nub $ packages ++ deps
