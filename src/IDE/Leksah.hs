@@ -334,7 +334,8 @@ firstStart prefs = do
                         (SP.Prefs {SP.sourceDirectories = sourceDirectories newPrefs,
                                    SP.unpackDirectory   = unpackDirectory newPrefs,
                                    SP.retreiveURL       = retreiveURL newPrefs,
-                                   SP.serverPort        = serverPort newPrefs})
+                                   SP.serverPort        = serverPort newPrefs,
+                                   SP.endWithLastConn   = endWithLastConn newPrefs})
                 widgetDestroy dialog
                 mainQuit
                 firstBuild newPrefs

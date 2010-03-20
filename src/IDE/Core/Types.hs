@@ -357,6 +357,7 @@ data Prefs = Prefs {
     ,   sourceDirectories   ::   [FilePath]
     ,   unpackDirectory     ::   Maybe FilePath
     ,   retreiveURL         ::   Maybe String
+    ,   endWithLastConn     ::   Bool
 } deriving(Eq,Show)
 
 data SearchHint = Forward | Backward | Insert | Delete | Initial

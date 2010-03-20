@@ -138,7 +138,8 @@ instance RecoverablePane IDEPrefs PrefsState IDEM where
                         (SP.Prefs {SP.sourceDirectories = sourceDirectories newPrefs,
                                    SP.unpackDirectory   = unpackDirectory newPrefs,
                                    SP.retreiveURL       = retreiveURL newPrefs,
-                                   SP.serverPort        = serverPort newPrefs})
+                                   SP.serverPort        = serverPort newPrefs,
+                                   SP.endWithLastConn   = endWithLastConn newPrefs})
                     reflectIDE (modifyIDE_ (\ide -> ide{prefs = newPrefs})) ideR )
             closeB `onClicked` (reflectIDE (closePane prefsPane >> return ()) ideR )
             registerEvent notifier FocusIn (Left (\e -> do
@@ -476,6 +477,14 @@ prefsDescription configDir packages = NFDPP [
             (\b a -> a{serverIP = b})
             (stringEditor (\ s -> not $ null s))
             (\i -> return ())
+    ,   mkFieldPP
+            (paraName <<<- ParaName "End the server with last connection" $ emptyParams)
+            (PP.text . show)
+            boolParser
+            endWithLastConn
+            (\b a -> a{endWithLastConn = b})
+            boolEditor
+            (\i -> return ())
     ]),
     ("Blacklist", VFDPP emptyParams [
         mkFieldPP
@@ -652,6 +661,7 @@ defaultPrefs = Prefs {
     ,   printBindResult     =   False
     ,   serverPort          =   11111
     ,   serverIP            =   "127.0.0.1"
+    ,   endWithLastConn     =   True
     }
 
 -- ------------------------------------------------------------
