@@ -53,7 +53,7 @@ import IDE.Keymap
 import IDE.Pane.SourceBuffer
 import IDE.Find
 import Graphics.UI.Editor.Composite (filesEditor, maybeEditor)
-import Graphics.UI.Editor.Simple (fileEditor, intEditor, stringEditor)
+import Graphics.UI.Editor.Simple (fileEditor, intEditor, stringEditor, boolEditor)
 import IDE.Metainfo.Provider (initInfo)
 import IDE.Workspaces (backgroundMake)
 import IDE.Utils.GUIUtils
@@ -70,6 +70,7 @@ import qualified System.Posix as P
 #endif
 import System.Log
 import System.Log.Logger(updateGlobalLogger,rootLoggerName,setLevel)
+import Data.List (stripPrefix)
 
 -- --------------------------------------------------------------------
 -- Command line options
@@ -287,15 +288,20 @@ fDescription configPath = VFD emptyParams [
             (maybeEditor ((fileEditor (Just (configPath </> "packageSources")) FileChooserActionSelectFolder
                 "Select folder for unpacking cabal packages"), emptyParams) True "Yes")
     ,   mkField
+            (paraName <<<- ParaName "Maybe an URL to load prebuild metadata " $ emptyParams)
+            retreiveURL
+            (\b a -> a{retreiveURL = b})
+            (maybeEditor ((stringEditor (\ _ -> True)), emptyParams) True "Yes")
+    ,   mkField
             (paraName <<<- ParaName "Port number for server connection" $ emptyParams)
             serverPort
             (\b a -> a{serverPort = b})
             (intEditor (1.0, 65535.0, 1.0))
     ,   mkField
-            (paraName <<<- ParaName "Server IP address " $ emptyParams)
-            serverIP
-            (\b a -> a{serverIP = b})
-            (stringEditor (\ s -> not $ null s))]
+            (paraName <<<- ParaName "End the server with last connection" $ emptyParams)
+            endWithLastConn
+            (\b a -> a{endWithLastConn = b})
+            boolEditor]
 
 --
 -- | Called when leksah ist first called (the .leksah-xx directory does not exist)
@@ -306,60 +312,70 @@ firstStart prefs = do
     prefsPath   <- getConfigFilePathForLoad standardPreferencesFilename Nothing dataDir
     prefs       <- readPrefs prefsPath
     configDir   <- getConfigDir
-    dialog      <- windowNew
-    vb          <- vBoxNew False 0
-    bb          <- hButtonBoxNew
-    ok          <- buttonNewFromStock "gtk-ok"
-    cancel      <- buttonNewFromStock "gtk-cancel"
-    boxPackStart bb ok PackNatural 0
-    boxPackStart bb cancel PackNatural 0
+    dialog      <- dialogNew
+    dialogAddButton dialog "gtk-ok" ResponseOk
+    dialogAddButton dialog "gtk-cancel" ResponseCancel
+    vb          <- dialogGetUpper dialog
     label       <- labelNew (Just ("Welcome to Leksah, the Haskell IDE.\n" ++
         "At the first start, Leksah will collect metadata about your installed haskell packages.\n" ++
         "You can add folders under which you have sources for Haskell packages not available from Hackage.\n" ++
         "If you are not shure what to do, just keep the defaults \n" ++
         "This process may take a long time, but it only needs to run one time."))
-    (widget, setInj, getExt,notifier)
-                <- buildEditor (fDescription configDir) prefs
-    ok `onClicked` (do
-        mbNewPrefs <- extract prefs [getExt]
-        case mbNewPrefs of
-            Nothing -> do
-                sysMessage Normal "No dialog results"
-                return ()
-            Just newPrefs -> do
-                fp <- getConfigFilePathForSave standardPreferencesFilename
-                writePrefs fp newPrefs
-                fp2  <-  getConfigFilePathForSave strippedPreferencesFilename
-                SP.writeStrippedPrefs fp2
-                        (SP.Prefs {SP.sourceDirectories = sourceDirectories newPrefs,
-                                   SP.unpackDirectory   = unpackDirectory newPrefs,
-                                   SP.retreiveURL       = retreiveURL newPrefs,
-                                   SP.serverPort        = serverPort newPrefs,
-                                   SP.endWithLastConn   = endWithLastConn newPrefs})
-                widgetDestroy dialog
-                mainQuit
-                firstBuild newPrefs
-                )
-    cancel `onClicked` (do
-        widgetDestroy dialog
-        mainQuit)
-    dialog `onDelete` (\_ -> do
-        widgetDestroy dialog
-        mainQuit
-        return True)
+    (widget, setInj, getExt,notifier) <- buildEditor (fDescription configDir) prefs
     boxPackStart vb label PackGrow 7
     boxPackStart vb widget PackGrow 7
-    boxPackEnd vb bb PackNatural 7
-    containerAdd dialog vb
-    widgetSetSizeRequest dialog 1024 800
+    widgetSetSizeRequest dialog 800 640
     widgetShowAll dialog
-    mainGUI
-    return ()
+    response <- dialogRun dialog
+    widgetHide dialog
+    widgetDestroy dialog
+    case response of
+        ResponseOk -> do
+            mbNewPrefs <- extract prefs [getExt]
+            case mbNewPrefs of
+                Nothing -> do
+                    sysMessage Normal "No dialog results"
+                    return ()
+                Just newPrefs -> do
+                    fp <- getConfigFilePathForSave standardPreferencesFilename
+                    writePrefs fp newPrefs
+                    fp2  <-  getConfigFilePathForSave strippedPreferencesFilename
+                    SP.writeStrippedPrefs fp2
+                            (SP.Prefs {SP.sourceDirectories = sourceDirectories newPrefs,
+                                       SP.unpackDirectory   = unpackDirectory newPrefs,
+                                       SP.retreiveURL       = retreiveURL newPrefs,
+                                       SP.serverPort        = serverPort newPrefs,
+                                       SP.endWithLastConn   = endWithLastConn newPrefs})
+                    firstBuild newPrefs
+        _ -> return ()
 
 firstBuild newPrefs = do
-    (output, pid) <- runTool "leksah-server" ["-sbo"] Nothing
-    mapM_ (putStrLn . toolline) output
-    waitForProcess pid
+    dialog      <- dialogNew
+    vb          <- dialogGetUpper dialog
+    progressBar <- progressBarNew
+    progressBarSetText progressBar "Please wait while Leksah collects information about Haskell package on your system"
+    progressBarSetFraction progressBar 0.0
+    boxPackStart vb progressBar PackGrow 7
+    forkIO $ do
+            (output, pid) <- runTool "leksah-server" ["-sbo"] Nothing
+            mapM_ (update progressBar) output
+            waitForProcess pid
+            postGUIAsync (dialogResponse dialog ResponseOk)
+    widgetShowAll dialog
+    dialogRun dialog
+    widgetHide dialog
+    widgetDestroy dialog
     return ()
+    where
+        update pb to = do
+                putStrLn str
+                when (isJust prog) $ postGUIAsync (progressBarSetFraction pb (fromJust prog))
+            where
+            str = toolline to
+            prog = case stripPrefix "update_toolbar " str of
+                        Just rest -> Just (read rest)
+                        Nothing   -> Nothing
+
+
 
 
