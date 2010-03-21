@@ -606,15 +606,15 @@ Install from Hackage
 \end_layout
 
 \begin_layout Enumerate
-Install Haskell Platform with an installer for Mac OS X (alternatively install
- Ghc directly, install Cabal and cabal-install)
+Install Haskell Platform (alternatively install Ghc directly, install Cabal
+ and cabal-install)
 \end_layout
 
 \begin_layout Enumerate
 Install gtk2hs in a version compatible with the installed Ghc compiler (Currentl
 y gtk2hs can't be installed via Hackage, but this should be possible in
  the near future, so that you don't have to care about this step any more).
- Make sure the gtk2hssourceview2 package gets build and installed.
+ Make sure the gtk2hs gtksourceview2 package gets built and installed.
 \end_layout
 
 \begin_layout Enumerate
@@ -682,13 +682,21 @@ First start of Leksah
 \end_layout
 
 \begin_layout Standard
-The first start of Leksah proceeds in several steps:
+The first time you start Leksah it will take you through the follow steps:
 \end_layout
 
 \begin_layout Enumerate
-You enter in a form information from you where your sources are (if you
- just want to test, you can just accept the defaults; corrections later
- are possible)
+You are asked to fill in a form telling Leksah where your Haskell sources
+ are (if you are not sure or just want to test, you can accept the defaults
+ and correct them later in the 
+\begin_inset Quotes eld
+\end_inset
+
+metadata
+\begin_inset Quotes erd
+\end_inset
+
+ preferences)
 \end_layout
 
 \begin_layout Enumerate
