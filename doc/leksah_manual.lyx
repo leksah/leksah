@@ -52,9 +52,9 @@ Jürgen Nicklisch-Franken
 \end_inset
 
 Hamish Mackenzie
-\end_layout
+\begin_inset Newline newline
+\end_inset
 
-\begin_layout Standard
 edited for v.
  0.8: Andrew U.
  Frank and Christian Gruber
@@ -75,17 +75,6 @@ LatexCommand tableofcontents
 \end_inset
 
 
-\end_layout
-
-\begin_layout Section*
-Notic:
-\end_layout
-
-\begin_layout Standard
-This is the prerelease version for 0.8.
- The screenshots are version 0.6 and will be replaced.
- It is not yet tested agains 0.8 and contains many questions (marked in <<
- ...>>) to be clarified for the next release 0.8.1.
 \end_layout
 
 \begin_layout Section*
@@ -117,7 +106,7 @@ Leksah is an IDE (Integrated Development Environment) for the programming
  Libraries), Haddock for producing documentation, etc.
  in one, single, comprehensive and easy to use environment.
  It allows the developer to concentrate on writing the program and Leksah
- mamages the necessary housekeeping for compiling, linking and package managemen
+ manages the necessary housekeeping for compiling, linking and package managemen
 t in the background.
  
 \end_layout
@@ -135,8 +124,8 @@ make
 \end_inset
 
  command.
- Leksah mamages rebuilding and installing packages as far as necessary automatic
-ally.
+ Leksah manages rebuilding and installing packages as far as desired automatical
+ly.
  
 \end_layout
 
@@ -145,15 +134,18 @@ Support for writing source code: Leksah supports debugging with GHCi evaluation
  of expressions, gathering type information, setting breakpoints, displays
  values at breakpoints, etc.
  is all possible from within the Leksah window.
- Last, but not least, Leksah collects information about installed packages
- helps to find function names and their type and within an auto-completion
- featrure while you type new code.
+\end_layout
+
+\begin_layout Standard
+Last, but not least, Leksah collects information about installed packages,
+ helps to find function names and their type and offers an auto-completion
+ feature while you type new code.
 \end_layout
 
 \begin_layout Standard
 The features of Leksah often reflect closely and exposes features of the
- Haskell tools used; therefore, to understand behaviour in special case
- needs sometimes reading the specific documentation of GHC, Haddock, ghc-phg,
+ Haskell tools used; therefore, to understand behavior in special case needs
+ sometimes reading the specific documentation of GHC, Haddock, ghc-pkg,
  or Cabal (and this manual, to a degree repeats what is found, with more
  detail and authority, in the respective tool documentation).
 \end_layout
@@ -174,13 +166,12 @@ Leksah is written in Haskell, which means the Leksah developers use Leksah
 This document is a reference to the functionality of Leksah, it is not intended
  to be a tutorial.
  Since Leksah is still under development the information may be incomplete
- or superseeded.
+ or superseded.
 \end_layout
 
 \begin_layout Standard
-The current version prepared for the release of Leksah v.
- 0.8 is not in all points up-to-date and has not been tested against for
- this version; an improved version will follow soon for v.0.8.1.
+The current version is for Leksah v.
+ 0.8.
 \end_layout
 
 \begin_layout Subsection
@@ -197,13 +188,28 @@ target "http://leksah.org"
 \end_inset
 
 .
- Stable version of Leksah can be installed from Hackage <<misssing>> using
- Cabal install.
+ Stable version of Leksah can be installed from Hackage 
+\begin_inset CommandInset href
+LatexCommand href
+name "hackage.haskell.org/package/leksah"
+target "http://hackage.haskell.org/package/leksah"
+
+\end_inset
+
+using Cabal install.
  The source code for Leksah is hosted under 
 \begin_inset CommandInset href
 LatexCommand href
 name "code.haskell.org/leksah"
 target "http://code.haskell.org/leksah"
+
+\end_inset
+
+ and 
+\begin_inset CommandInset href
+LatexCommand href
+name "code.haskell.org/leksah-head"
+target "http://code.haskell.org/leksah-head"
 
 \end_inset
 
@@ -217,11 +223,11 @@ target "http://haskell.org/haskellwiki/Leksah"
 \end_inset
 
 .
- The Leksah mailing list can be accessed at 
+ The Leksah forum can be accessed at 
 \begin_inset CommandInset href
 LatexCommand href
-name "projects.haskell.org/cgi-bin/mailman/listinfo/leksah"
-target "http://projects.haskell.org/cgi-bin/mailman/listinfo/leksah"
+name "groups.google.com/group/leksah/topics"
+target "http://groups.google.com/group/leksah/topics"
 
 \end_inset
 
@@ -268,7 +274,15 @@ target "http://www.haskell.org"
 \end_inset
 
 .
- The GHC computer is found at <<missing>>.
+ The GHC computer is found at 
+\begin_inset CommandInset href
+LatexCommand href
+name "www.haskell.org/ghc"
+target "http://www.haskell.org/ghc"
+
+\end_inset
+
+.
  For information about gtk2hs 
 \begin_inset CommandInset href
 LatexCommand href
@@ -304,20 +318,38 @@ The 0.8 release adds the notion of workspaces to allow develop comfortably
  This changes the handling of packages to a degree, which has been improved
  with introducing suitable defaults: a simple, single-shot program can be
  started with very few clicks and entering not much more than the name of
- the program; Leksah becomes usable even for just quickly testing an idea...
+ the program; Leksah becomes usable even for just quickly testing an idea.
+ Other changes include:
 \end_layout
 
-\begin_layout Standard
-The 0.8 release introduces the concept of workspaces, that is intended to
- develop software broken in several packages, transparently as if there
- was a single package.
- Various other changes improve usability and stability of the platform.
- Notably is the split in a Leksah front-end and a Leksah-server.
+\begin_layout Itemize
+Better metadata with non exported definitions for workspace packages
+\end_layout
+
+\begin_layout Itemize
+Support for prebuild metadata packages
+\end_layout
+
+\begin_layout Itemize
+Better completion (keywords, language extensions, module name, non exported
+ definitions)
+\end_layout
+
+\begin_layout Itemize
+Splittet in a client and server part (Client part doesn't import ghc-api)
+\end_layout
+
+\begin_layout Itemize
+Added support for Ghc 6.12
+\end_layout
+
+\begin_layout Itemize
+Prepared for Yi (Abstract TextEditor interface, not ready for use)
+\end_layout
+
+\begin_layout Itemize
+Various other changes improve usability and stability of the platform.
  
-\end_layout
-
-\begin_layout Standard
-<<juergen expand and explain rational>>
 \end_layout
 
 \begin_layout Standard
@@ -327,33 +359,42 @@ A large number of bugs has been fixed, but there remain, probably a large
  minor release to achieve more consistency and make Leksah easier to learn.
  You may see comments to this effect in this document, suggesting possible
  changes in the interface.
- Your opinon on these and other possible improvements you see will be highly
+ Your opinion on these and other possible improvements you see will be highly
  appreciated! 
 \end_layout
 
 \begin_layout Standard
-Version 0.8 works with GHC 6.10 
-\series bold
-and
-\series default
- 6.12.
- The installation is described here for the standard case (6.10.3 or 4, for
- which packages for gtk2hs are available), more details on installation
- are found in the appendix and continuously updated installation instruction
- on the wiki <<address missing>>.
- If you have any trouble installing, please check the Wiki, the mailing
- list or contact the developers to find a solution.
+Version 0.8 works with GHC 6.10 and 6.12.
+ The installation is described in 
+\begin_inset CommandInset ref
+LatexCommand prettyref
+reference "sec:Installing-Leksah"
+
+\end_inset
+
+ for the standard case, more up to date information on installation may
+ be found on the Wiki 
+\begin_inset CommandInset href
+LatexCommand href
+name "haskell.org/haskellwiki/Leksah"
+target "http://haskell.org/haskellwiki/Leksah"
+
+\end_inset
+
+.
+ If you have any trouble installing, please check the Wiki, the forum or
+ contact the developers to find a solution.
  A smooth implementation is a priority for us and we like to hear about
- difficulties you encounter to fix them; best report them on the bug and
- issues tracker <<address missing>>.
-\end_layout
+ difficulties you encounter to fix them; please report them on the bug and
+ issues tracker 
+\begin_inset CommandInset href
+LatexCommand href
+name "code.google.com/p/leksah/issues/list"
+target "http://code.google.com/p/leksah/issues/list"
 
-\begin_layout Standard
+\end_inset
 
-\emph on
-We work on installers for Windows and Mac and packages for Debian/Ubuntu
- are in preparation.
- Help appreciated! 
+.
 \end_layout
 
 \begin_layout Subsubsection
@@ -468,6 +509,13 @@ This is a pre-release of Leksah.
 
 \begin_layout Section
 Installing Leksah
+\begin_inset CommandInset label
+LatexCommand label
+name "sec:Installing-Leksah"
+
+\end_inset
+
+
 \end_layout
 
 \begin_layout Subsection
@@ -475,72 +523,166 @@ How to Install: Brief Instructions
 \end_layout
 
 \begin_layout Standard
-Install first: GHC 6.10 or 6.12 (the version that fits the gtk2hs package
- you can find; e.g.
- for windows currently this is 6.10.3)
+You can install from 
 \end_layout
 
-\begin_layout Standard
-Gtk+
-\end_layout
-
-\begin_layout Standard
-gtk2hs
-\end_layout
-
-\begin_layout Standard
-cabal
-\end_layout
-
-\begin_layout Standard
-(for details about installing the above see the wiki).
+\begin_layout Itemize
+a binary installer for your operating system, which is typically Windows
+ or Macintosh.
  
 \end_layout
 
-\begin_layout Standard
-Then run cabal install leksah -- that is it! 
+\begin_layout Itemize
+a package for your platform, which is currently Arch Linux and Fedora Linux,
+ but we hope to add support for Debian and Ubuntu soon.
 \end_layout
 
-\begin_layout Standard
-If you used a previous version of Leksah and experience difficulties, you
- may need to delete ICE files in your Leksah profile or in the folders you
- keep your sources.
- 
+\begin_layout Itemize
+install from sources from Hackage
+\end_layout
+
+\begin_layout Itemize
+leksah or leksah-head development repositories.
+ (If you are adventurous or want to help with Leksah development)
 \end_layout
 
 \begin_layout Subsection
-Where Things Are Installed
+Microsoft Windows
 \end_layout
 
-\begin_layout Standard
-Leksah installs a an executable in a folder that should be in the search
- path (on ubuntu /usr/local/bin, and a some of data files in a data folder
- (on ubunut in /usr/local/share/leksah-server-0.8).
- The locations are the regular ones, chosen by the Cabal package management
- system and depend on the target platform and the way you install.
+\begin_layout Enumerate
+Install Haskell Platform with an installer for Windows (alternatively install
+ Ghc directly)
 \end_layout
 
-\begin_layout Standard
-For storing preferences, sessions and collected meta-data Leksah constructs
- a .leksah-0.8 directory in your home folder.
- If you want to change or add configuration files for keymaps, source candy,
- etc, you can put them in this place (see <<ref to configuration section>>).
+\begin_layout Enumerate
+Make sure wget and grep are on the path of your Windows shell
 \end_layout
 
-\begin_layout Standard
-\begin_inset Newpage pagebreak
+\begin_layout Enumerate
+Install Leksah from the most recent binary installer for Windows.
+\end_layout
+
+\begin_layout Enumerate
+Go to the post installation section.
+\end_layout
+
+\begin_layout Subsection
+Mac OS X
+\end_layout
+
+\begin_layout Enumerate
+Install Haskell Platform with an installer for Mac OS X (alternatively install
+ Ghc directly)
+\end_layout
+
+\begin_layout Enumerate
+Make sure wget and grep are on the path.
+\end_layout
+
+\begin_layout Enumerate
+Install Leksah from the most recent binary installer for Mac
+\end_layout
+
+\begin_layout Enumerate
+Go to the post installation section.
+\end_layout
+
+\begin_layout Subsection
+Linux from Distro Packages
+\end_layout
+
+\begin_layout Enumerate
+Install Leksah with the package management system of your Linux platform,
+ which should pull all prerequisites automatically.
+\end_layout
+
+\begin_layout Enumerate
+Go to the post installation section.
+\end_layout
+
+\begin_layout Subsection
+Install from Hackage
+\end_layout
+
+\begin_layout Enumerate
+Install Haskell Platform with an installer for Mac OS X (alternatively install
+ Ghc directly, install Cabal and cabal-install)
+\end_layout
+
+\begin_layout Enumerate
+Install gtk2hs in a version compatible with the installed Ghc compiler (Currentl
+y gtk2hs can't be installed via Hackage, but this should be possible in
+ the near future, so that you don't have to care about this step any more).
+ Make sure the gtk2hssourceview2 package gets build and installed.
+\end_layout
+
+\begin_layout Enumerate
+open a Console and do:
+\end_layout
+
+\begin_deeper
+\begin_layout LyX-Code
+cabal update
+\begin_inset Newline newline
 \end_inset
 
-
+cabal install leksah
 \end_layout
 
-\begin_layout Section
-First Start
+\end_deeper
+\begin_layout Enumerate
+Go to the post installation section.
+\end_layout
+
+\begin_layout Subsection
+Post Installation steps
+\end_layout
+
+\begin_layout Enumerate
+Until the next release of gtk2hs, for a pleasant visual appearance, you
+ have to copy or append the .gtkrc-2.0 file from the Leksah data folder or
+ from the data folder in Leksah sources to your home folder.
+ If you miss the step, the cross [x] buttons on tabs are almost invisible
+ (or don't fit in tabs).
+ This step may become obsolete during the 0.8 release cycle.
+\end_layout
+
+\begin_deeper
+\begin_layout LyX-Code
+cd ~ 
+\begin_inset Newline newline
+\end_inset
+
+wget http://code.haskell.org/leksah/leksah/data/.gtkrc-2.0 -O .gtkrc-2.0-leksah
+\begin_inset Newline newline
+\end_inset
+
+echo -e '
+\backslash
+ninclude ".gtkrc-2.0-leksah"' >> .gtkrc-2.0 
+\end_layout
+
+\end_deeper
+\begin_layout Enumerate
+It has been observed, that a package recache is often necessary after installati
+on.
+ The symptom is an empty Module Browser, if you select the System scope.
+ So simply do:
+\end_layout
+
+\begin_deeper
+\begin_layout LyX-Code
+ghc-pkg recache
+\end_layout
+
+\end_deeper
+\begin_layout Subsection
+First start of Leksah
 \end_layout
 
 \begin_layout Standard
-The first start of Leksah is in several steps, the first two occur only
- when you start the very first time:
+The first start of Leksah proceeds in several steps:
 \end_layout
 
 \begin_layout Enumerate
@@ -560,8 +702,9 @@ metadata
 
 , i.e.
  exported symbols and their type, comments explaining them etc.
- from the Haskell sources (this step may take a while and no input will
- be expected from you during this)
+ for all installed packages on your machine.
+ This step may take a while and may give no feedback or a lot of strange
+ errors and warnings, don't worry but be patient.
 \end_layout
 
 \begin_layout Enumerate
@@ -569,12 +712,36 @@ The Leksah IDE starts regularly and you can work on the source code.
 \end_layout
 
 \begin_layout Standard
-Later starts will read in the previously collected metada and check quickly
+Later starts will read in the previously collected metadata and check quickly
  only for changes.
+ After starting up, Leksah will open its Main window in a standard configuration.
+\end_layout
+
+\begin_layout Standard
+Progress on your first contact with Leksah:
+\end_layout
+
+\begin_layout Enumerate
+Start with the, infamous, 
+\begin_inset Quotes eld
+\end_inset
+
+Hello World
+\begin_inset Quotes erd
+\end_inset
+
+ example.
+ The next section gives you a step by step description.
+\end_layout
+
+\begin_layout Enumerate
+Then it might be the best to construct a workspace and add an existing project
+ and explore Leksah while you work on it.
+ 
 \end_layout
 
 \begin_layout Subsection
-Collection of Collect Metadata
+First start dialog
 \end_layout
 
 \begin_layout Standard
@@ -587,11 +754,11 @@ reference "fig:FirstStart-dialog"
 
 \end_inset
 
-) basic information from you where you keep your source program filesfiles.
+) basic information from you where you keep your source program files.
  Leksah then collects information about exported symbols, their type and
  possible comments (collectively called metadata) to support your work,
  e.g.
- by suggestiong autocompletion and type information about functions you
+ by suggesting auto-completion and type information about functions you
  may use while you edit your source.
  
 \end_layout
@@ -685,7 +852,7 @@ name "fig:FirstStart-dialog"
 
 \end_inset
 
-FirstStart dialog
+First-Start dialog
 \end_layout
 
 \end_inset
@@ -699,7 +866,7 @@ FirstStart dialog
 \end_layout
 
 \begin_layout Standard
-In the first start dialog you are aksed for:
+In the first start dialog you are asked for:
 \end_layout
 
 \begin_layout Enumerate
@@ -710,7 +877,7 @@ the location of folders, where Haskell source code for installed packages
 
 \begin_layout Enumerate
 the cabal install folder, where cabal keeps the .tar files package directory,
- (on ubuntu in ~/.cabal/packages/).
+ (on Ubuntu in ~/.cabal/packages/).
  Leksah decompresses and untars the sources and scans them to collect metadata.
  
 \end_layout
@@ -731,234 +898,173 @@ Leksah collects information about all installed packages on your system
 \end_layout
 
 \begin_layout Subsection
-First Start of the IDE
+Where Things Are Installed
 \end_layout
 
 \begin_layout Standard
-After starting up, Leksah will open its Main window in a standard configuration
- (
-\begin_inset CommandInset ref
-LatexCommand ref
-reference "fig:After-start"
-
-\end_inset
-
-).
- <<needs new screenshot>>
-\begin_inset Newline newline
-\end_inset
-
-
+Leksah installs a an executable in a folder that should be in the search
+ path (on ubuntu /usr/local/bin, and a some of data files in a data folder
+ (on Ubuntu in /usr/local/share/leksah-server-0.8).
+ The locations are the regular ones, chosen by the Cabal package management
+ system and depend on the target platform and the way you install.
 \end_layout
 
 \begin_layout Standard
-Leksah organizes your code in packages.
- A package is a set of files that are compiled together and produces an
- executable program (or a library) by Cabal.
- Cabal manages compilation, linking, etc.
- and needs details about your project, e.g.
- which the name of the module with the main, the packages used etc.
- as you would normally specify on a the ghc command.
- This information is conveniently collected in a programname.cabal file.
- Cabal is indispensable for multi-file programs and its value is demonstrated
- especially when you recompile and run a program later after a long interruption
- in your work.
- Normal use of cabal seems a heavy overhead for one-shot, single file mini
- Haskell programs but Leksah reduces this enormously.
- 
+For storing preferences, sessions and collected meta-data Leksah constructs
+ a .leksah-0.8 directory in your home folder.
+ If you want to change or add configuration files for keymaps, source candy,
+ etc, you can put them in this place.
 \end_layout
 
 \begin_layout Standard
-You have two ways to progress on your first contact with Leksah:
-\end_layout
-
-\begin_layout Enumerate
-One way to start up, and probably the best way if you already have experience
- with Haskell, will be to open an existing project.
- So select Package/OpenPackage from the menu and open a Cabal file of some
- project.
- A typical Leksah window may then look like 
-\begin_inset CommandInset ref
-LatexCommand ref
-reference "fig:Leksah-with-open"
-
-\end_inset
-
-.
-\begin_inset Newline newline
-\end_inset
-
-
-\begin_inset Float figure
-wide false
-sideways false
-status collapsed
-
-\begin_layout Plain Layout
-\align center
-\begin_inset Graphics
-	filename screenshots/AtWork0.6.png
-	lyxscale 22
-	display false
-	width 100text%
-
+\begin_inset Newpage pagebreak
 \end_inset
 
 
 \end_layout
 
-\begin_layout Plain Layout
-\begin_inset Caption
-
-\begin_layout Plain Layout
-\begin_inset CommandInset label
-LatexCommand label
-name "fig:Leksah-with-open"
-
-\end_inset
-
-Leksah with open project
-\end_layout
-
-\end_inset
-
-
-\end_layout
-
-\end_inset
-
-
-\end_layout
-
-\begin_layout Enumerate
-Alternatively you can start with the, infamous, 
-\begin_inset Quotes eld
-\end_inset
-
-Hello World
-\begin_inset Quotes erd
-\end_inset
-
- example.
- The following description gives you a step by step description, as a model
- from which to expand for your own programming.
- 
-\end_layout
-
-\begin_layout Subsection
+\begin_layout Section
 Hello World example
-\end_layout
-
-\begin_layout Standard
-Create a Package with one executable module (name of both can be the same)
-\end_layout
-
-\begin_layout Standard
-<< no workspace necessary - or is there a default??>>
-\end_layout
-
-\begin_layout Standard
-<<I miss a 'close workspace command>>
-\end_layout
-
-\begin_layout Standard
-<< the name of the executable is the default (folder name); the name of
- the file must be Main.hs - but the first time user is offered a choice;
- if the user changes this to test, the cabal file is wrong>>
-\end_layout
-
-\begin_layout Standard
-<<I would prefer that the default for the source files is '.' not source
- - for simple one shot testing reduces the indirection by one step>>
 \end_layout
 
 \begin_layout Itemize
 Workspace -> New.
- Starts a new workspace and give it a name (e.g.
- Hello).
- This produces a file Hello.lkshw in your working directory (which you could
- have changed when creating the file)
+ Constructs a new workspace in a selected folder and give it a name (e.g.
+ 
+\begin_inset Quotes eld
+\end_inset
+
+Hello
+\begin_inset Quotes erd
+\end_inset
+
+).
+ This produces a file Hello.lkshw.
 \end_layout
 
 \begin_layout Itemize
 Package -> New and use the "Create Folder" button to make a new folder for
  the package.
- Fill in your package name and accept .
- The other defaults are ok; Click Save and Close (do not forget Save!))
-\end_layout
+ Make sure to be in this folder when you click 
+\begin_inset Quotes eld
+\end_inset
 
-\begin_layout Standard
-Add the Main module
+Open
+\begin_inset Quotes erd
+\end_inset
+
+.
+ An editor opens up, which let you edit cabal files.
+ The name proposed for your package is the name of the folder you just construct
+ed.
+ That is the convention with Cabal packages.
+ The defaults are set for creating a simple executable.
+ The base package is specified as build dependencies, and an executable
+ with the name of the package will be constructed.
+ The main module resides in a file 
+\begin_inset Quotes eld
+\end_inset
+
+Main.hs
+\begin_inset Quotes erd
+\end_inset
+
+.
+ The sources are in a 
+\begin_inset Quotes eld
+\end_inset
+
+src
+\begin_inset Quotes erd
+\end_inset
+
+ subdirectory of the packages.
 \end_layout
 
 \begin_layout Itemize
-Click on the Modules tab in the top right pane (this is like the class browser
- in visual studio).
- Right click and select Add Module.
- Put “Main” in the New Module box.
+Click Save to write the .cabal file.
+\end_layout
+
+\begin_layout Itemize
+The main module gets automatically constructed and opens.
+\end_layout
+
+\begin_layout Itemize
+Now add your code to the module 
+\end_layout
+
+\begin_deeper
+\begin_layout LyX-Code
+
+\emph on
+main = putStrLn "Hello World" .
  
 \end_layout
 
+\end_deeper
 \begin_layout Itemize
-Now the source opens and you add to the module skeleton 
-\emph on
-main = putStrLn "Hello World" .
- Save the file with menu File -> Save (or just ctrl-s)
-\end_layout
-
-\begin_layout Standard
-Run it with
+By default, auto build is on and you can see that the file will be compiled
+ in the Log pane.
 \end_layout
 
 \begin_layout Itemize
-Package -> Configure << button>> 
+Choose Package -> Run or ctrl-alt-r, and you will see Hello World in the
+ Log pane.
 \end_layout
 
 \begin_layout Itemize
-Package -> Build <<button>> or ctrl-b
-\end_layout
-
-\begin_layout Itemize
-Package -> Run <<button>> or ctrl-alt-r
+Or: Choose Package -> Install, open a Shell and try out your newly created
+ executable 
 \end_layout
 
 \begin_layout Standard
 Congratulations ! you have now entered, compiled, linked and run your first
- haskell program with Leksah.
- It is as easy as:
+ Haskell program with Leksah.
+ It is as easy as: Create workspace / New package / enter your code/ Run.
+ Remember: 
 \end_layout
 
-\begin_layout Enumerate
-Create workspace
+\begin_layout Itemize
+the project folder is the folder in which your .cabal file for the project
+ is stored.
+ 
 \end_layout
 
-\begin_layout Enumerate
-Create package
+\begin_layout Itemize
+A workspace is just a file, which contain information about included packages.
+ 
 \end_layout
 
-\begin_layout Enumerate
-add module (from the popup menu in the modules pane)
-\end_layout
-
-\begin_layout Enumerate
-enter your code
-\end_layout
-
-\begin_layout Enumerate
-Save, configure, build and run.
+\begin_layout Itemize
+Output will be in the Log window.
+ 
 \end_layout
 
 \begin_layout Standard
-Remember: the project folder is the folder in which your .cabal file for
- the project is stored.
- A workspace is thus the union of the folders in which the cabal files,
- which are listed in the workspace pane are stored.
- It is not a real folder and in one folder (mine is ~/workspaces) several
- virtual Leksah workspaces may coexist.
+Furthermore:
 \end_layout
 
-\begin_layout Standard
-Output will be in the Log window
+\begin_layout Itemize
+You can add Packages with the context menu in the workspace pane.
+ You can construct new packages with Package -> New, from the menubar.
+ 
+\end_layout
+
+\begin_layout Itemize
+You can add other modules by selecting 
+\begin_inset Quotes eld
+\end_inset
+
+Add module
+\begin_inset Quotes erd
+\end_inset
+
+ from the context menu of the modules pane of the browser group.
+\end_layout
+
+\begin_layout Itemize
+You can open panes you need by selecting Panes -> Browser | Log | ...
+ from the menubar.
 \end_layout
 
 \begin_layout Standard
@@ -967,7 +1073,7 @@ You may as easily debug it
 
 \begin_layout Itemize
 \begin_inset Graphics
-	filename pics/ide_debug.png
+	filename ../pics/ide_debug.png
 	width 1cm
 
 \end_inset
@@ -976,7 +1082,7 @@ Switch debugger Mode on.
 \end_layout
 
 \begin_layout Itemize
-Debug -> Show Debugger 
+Pane -> Debugger 
 \end_layout
 
 \begin_layout Itemize
@@ -984,40 +1090,19 @@ Select the word “main” in your code
 \end_layout
 
 \begin_layout Itemize
-Right click and choose “Eval” from the pop-up menu
+Right click and choose “Eval” from the pop-up menu or press ctrl-enter.
+\end_layout
+
+\begin_layout Itemize
+Switch of debugger Mode if you want to compile an executable.
 \end_layout
 
 \begin_layout Standard
-<<It is probably counter productive for new users to use Candy mode (converts
- some common ascii based operators to Unicode alternatives) because all
- the tutorials use ascii.
+It is probably counter productive for new users to use Candy mode (converts
+ some common ASCII based operators to Unicode alternatives) because all
+ the tutorials use ASCII.
  Switch it off when you get irritated.
-\end_layout
-
-\begin_layout Standard
-candy mode should not be default; it is easy to switch on if an experienced
- user wants it>>
-\end_layout
-
-\begin_layout Standard
-The above steps are typically used for a testing an idea quickly; if you
- have more elaborate projects, you will have to edit a few more things in
- the package editor (see <<missing>>)
-\end_layout
-
-\begin_layout Standard
-For a further info refer to: 
-\begin_inset Flex URL
-status collapsed
-
-\begin_layout Plain Layout
-
-http://en.wikibooks.org/wiki/Haskell
-\end_layout
-
-\end_inset
-
-.
+ Deselect Configuration -> To Candy from the menubar.
 \end_layout
 
 \begin_layout Standard
@@ -1075,9 +1160,8 @@ File menu
 \end_layout
 
 \begin_layout Standard
-Most of the time programming ist spent in editing source code.
- To edit Haskell source files Leksah uses the GtkSourceView2 widget for
- this.
+Most of the time programming is editing source code.
+ To edit Haskell source files Leksah uses the GtkSourceView2 widget.
  It provides editing, undo/redo, syntax highlighting and similar features.
  In the file menu (
 \begin_inset CommandInset ref
@@ -1091,24 +1175,22 @@ reference "fig:File-menu"
  files which are not stored in or below the top folder of the current project
  (this is the folder where the .cabal file resides) at once - this helps
  you focus on your project.
- 
+ This way it is as well possible to close all files, which don't belong
+ to a workspace.
 \end_layout
 
 \begin_layout Standard
 Leksah does not store backup files.
  Leksah detects if a file which is currently edited has changed on disk
  and queries the user if a reload is desired.
+ (Attention: This don't currently work for Windows, so take care).
  When you open a file which is already open, a dialog pops up to inquire
  if you want to make the currently open file active, instead of opening
  it a second time (Leksah does not support multiple views on a file, but
  if you open a file a second time, it's like editing the file two times,
  which makes little sense).
  The list of files is shown as notebook tabs (on top or left of the files
- - as you prefer (Menu -> View -> Tabs Left)
-\end_layout
-
-\begin_layout Standard
-<<why not just go to the file - i see no use for this>>
+ - as you prefer (Menu -> View -> Tabs Left).
 \end_layout
 
 \begin_layout Standard
@@ -1130,18 +1212,7 @@ reference "sub:Using-the-Flipper"
 
 \end_inset
 
- for a better way to switch between source files.
-\end_layout
-
-\begin_layout Standard
-<< a list of all shortcuts would be useful in an appendix 
-\begin_inset CommandInset ref
-LatexCommand ref
-reference "sub:Shortcuts"
-
-\end_inset
-
->>
+ for a better way to switch between source files).
 \end_layout
 
 \begin_layout Standard
@@ -1214,12 +1285,8 @@ reference "fig:Edit-menu"
 \end_layout
 
 \begin_layout Standard
-<<does currently not work, when cursor is in position 1>>
-\end_layout
-
-\begin_layout Standard
-Selected blocks of code can be shifted left or right using the tab or Ctrl-Tab
- keys.
+Selected blocks of code can be shifted left or right using the tab or Tab/Shift-
+Tab keys.
  Furthermore, you can align some special characters (=,<-,->,::,|) in selected
  lines.
  The characters are never moved to the left, but the operation is very simple
@@ -1340,8 +1407,8 @@ Search in the package: Grep
 \end_layout
 
 \begin_layout Standard
-Searching in all files in the package is often useful (but other methods
- using the metadata is often more convenient and much faster!) For this
+Searching in all files in the package is often useful (another method is
+ using the metadata, which is often more convenient and faster!) For this
  feature the grep program must be on your path.
  You can then enter a search string in the find bar and search for all occurrenc
 es for the string in the folder and sub-folder of the current package with
@@ -1362,10 +1429,6 @@ reference "fig:Grep-pane"
 
 \begin_layout Standard
 Greps supports the search for regular expressions.
-\end_layout
-
-\begin_layout Standard
-<< grep as a requirement should go to installation section>>
 \end_layout
 
 \begin_layout Standard
@@ -1410,10 +1473,6 @@ Grep pane
 
 \begin_layout Subsection
 Source Candy
-\end_layout
-
-\begin_layout Standard
-<< should go to appendix and not be default>>
 \end_layout
 
 \begin_layout Standard
@@ -1472,10 +1531,6 @@ This feature can be configured by editing a .candy file in the .leksah folder
  or in the data folder.
  The name of the candy file to be used can be specified in the Preferences
  dialog.
-\end_layout
-
-\begin_layout Standard
-<< goes to configuration>>
 \end_layout
 
 \begin_layout Standard
@@ -1609,26 +1664,20 @@ Completion
 \end_layout
 
 \begin_layout Standard
-<<Autocompletion has currently two limitations: 
+Autocompletion has currently limitations: 
 \end_layout
 
-\begin_layout Standard
+\begin_layout Itemize
 locally defined names are not included
 \end_layout
 
-\begin_layout Standard
-all names from all packages used in the package are provided; this is often
- much more than you want (and causes delays)
+\begin_layout Itemize
+Qualified imports are not handled
 \end_layout
 
-\begin_layout Standard
->>
-\end_layout
-
-\begin_layout Standard
-<<note: if the cursor is inside the box opened by autocompletion, no further
- typing is possibly.
- Just move the cursor out of the box!>>
+\begin_layout Itemize
+All names from all packages imported are provided; this may be more than
+ you want
 \end_layout
 
 \begin_layout Subsection
@@ -1663,10 +1712,6 @@ name "sub:Editor-Preferences"
 \end_inset
 
 Change Your Preferences for the Editor
-\end_layout
-
-\begin_layout Standard
-<< should be moved to discussion of preferences>>
 \end_layout
 
 \begin_layout Standard
@@ -1717,8 +1762,9 @@ When selecting Configuration / Edit Prefs the preferences pane opens, which
 
 \begin_layout Standard
 You can set here the Tab size you want.
- Leksah always stores tabs as spaces to simplify use of layout.
- Using hard tabs the Haskell compilers allow only tab size of 8.
+ Leksah always stores tabs as spaces.
+ Using hard tabs is not recommended for Haskell and the Haskell compilers
+ allow only tab size of 8.
 \end_layout
 
 \begin_layout Standard
@@ -1830,44 +1876,149 @@ Package Menu
 
  Haskell organizes software projects in packages, which are managed independentl
 y.
- A package is compiled and linked as a unit to produce an executable and
- the library -- if it produces one -- is installed in the package manager
- (ghc-pkg).
- A package can be put into Hackage or packages from other are downloaded
- in the Hackage.
- Packages have version and cabal assures that a packages is compiled and
- with other packages which of the correct version.
+ A package is compiled and linked as a unit to produce one or more executables
+ or/and a library.
+ It is installed with the package manager (Cabal, cabal-install, ghc-pkg).
+ A package can be uploaded to Hackage.
+ And provided packages are downloaded from Hackage and installed.
+ Packages have version numbers and specify version ranges for dependencies.
+ Cabal assures that, if a packages is compiled, correct versions of other
+ packages are selected.
 \end_layout
 
 \begin_layout Standard
-The difficulties when working with a project where source code under development
- is spread over several packages are overcome in Leksah with the concept
- of a workspace, combining several packages and allowing smooth working
- with files from all packages.
+The difficulties, when working with a project where source code under developmen
+t is spread over several packages, are overcome in Leksah with the concept
+ of a workspace.
+ It combines several packages and allows smooth working with files from
+ all packages.
  
 \end_layout
 
 \begin_layout Standard
-<<Workspaces are new in version 0.8 and the interface described is tentative
- and may change in following releases>> 
-\end_layout
-
-\begin_layout Standard
-Leksah always works in a workspace and always uses a package.
+Leksah always works in a workspace and always needs at least one package,
+ to do anything useful.
  This seems overkill for very simple projects, where the workspace contains
  just one package and this package just one source module producing one
- executable, but Leksah provides defaults (new in 0.8) that reduce the effort
- to a minimum and we have shown (in <<ref missing>>) that the overhead for
- workspace and packages is actually minimal for one-shot projects, e.g., for
- quickly testing an idea independent from other codes.
- 
+ executable, but Leksah provides defaults that reduce the effort to a minimum.
+ The principle to always to work in a workspace and in a package is beneficial
+ in the long run, because it gives a smooth transition from a one-shot idea
+ to a complex projects and integrates the widely used cabal system fully.
 \end_layout
 
 \begin_layout Standard
-The principle always to work in a workspace and in a package is beneficial
- in the long run, because it gives a smooth transition from a one-shot idea
- to a complex projects and integrates the widely used cabal system fully.
+Leksah, in addition, saves the state of your work environment with a workspace:
+ so you can switch between workspaces and get exactly back to where you
+ stopped working when leaving the workspace: the same files open in editors
+ and the cursor in the same file and position.
+ When you open a workspace, and a session is attached to it, Leksah prompts
+ you, if you want to switch to the session associated with the workspace.
+ Leksah silently always saves the session for the workspace you are closing.
+\end_layout
+
+\begin_layout Standard
+If you have auto-build on and you change a file, Leksah detects if this
+ file belongs to any project in your Workspace.
+ If this is the case, it builds the package.
+ So the source file you are working on, doesn't need to belong to the active
+ package.
+ Leksah will detect and compile the package for you.
+ The active project is important for the menu items of the package menu,
+ because they always work on the active package.
+\end_layout
+
+\begin_layout Itemize
+Background build can be permanently set in Prefs -> Build -> Background
+ build.
+ You can temporarily enable and disable it from the toolbar with this button:
  
+\begin_inset Graphics
+	filename ../pics/ide_build.png
+
+\end_inset
+
+.
+\end_layout
+
+\begin_layout Itemize
+You can set, if Leksah automatically save all files before building, by
+ the setting Prefs -> Build -> Automatically save all files before building.
+\end_layout
+
+\begin_layout Itemize
+Linking can take a long time, and on Windows we can't interrupt the build
+ process in the moment, so it may be an advantage to switch of linking.
+ This can be done by: Prefs -> Build -> Include linking in background builds.
+ You can temporarily enable and disable it from the toolbar with this button:
+ 
+\begin_inset Graphics
+	filename ../pics/ide_link.png
+
+\end_inset
+
+.
+\end_layout
+
+\begin_layout Itemize
+The same option (disable linking) can be used to disable cross package build
+ temporarily.
+\end_layout
+
+\begin_layout Subsection
+Cross package build
+\end_layout
+
+\begin_layout Standard
+The following is valid in compiler mode: Depending on your settings the
+ following may happen.
+ After a library has been successfully build, it will be installed if:
+\end_layout
+
+\begin_layout Itemize
+\begin_inset Quotes eld
+\end_inset
+
+Include linking in background builds
+\begin_inset Quotes erd
+\end_inset
+
+ is on and either
+\end_layout
+
+\begin_deeper
+\begin_layout Itemize
+\begin_inset Quotes eld
+\end_inset
+
+Install always after a successful build
+\begin_inset Quotes erd
+\end_inset
+
+ is selected or
+\end_layout
+
+\begin_layout Itemize
+\begin_inset Quotes eld
+\end_inset
+
+Install if it's a library with depended packages in the workspace
+\begin_inset Quotes erd
+\end_inset
+
+ is selected, and it has dependent packages
+\end_layout
+
+\end_deeper
+\begin_layout Standard
+After this, depend end packages will be build.
+ If you want a background build, but only for the one package you're working
+ on, you can temporarily disable this mechanism, by deselecting 
+\begin_inset Graphics
+	filename ../pics/ide_link.png
+
+\end_inset
+
+.
 \end_layout
 
 \begin_layout Subsection
@@ -1875,49 +2026,39 @@ File Organization with Workspaces
 \end_layout
 
 \begin_layout Standard
-<<what is the uniform style for writing file names? is there a code macro
- in LyX>>
-\end_layout
-
-\begin_layout Standard
 A workspace is represented by a file (
 \emph on
 workspace_name.lkshws
 \emph default
-) in a directory; I use a directory 
+) in a directory.
+ You may choose a hierarchical folder structure with a workspace file at
+ the top and the projects in sub-folders for complex projects, but you can
+ as well put all 
 \emph on
 workspaces
 \emph default
-, where all my Haskell work is collected.
- This workspace directory contains the folders for the packages.
- Each contains a label file (
+ in one directory and put all packages flat.
+ You have to use care when you create a new workspace file.
+ 
+\end_layout
+
+\begin_layout Standard
+Each package directory contains at least a cabal file (
 \emph on
 packagename.cabal
 \emph default
 ) and typically folders for the source files, following the usual Haskell
  ghc convention of hierarchical module names.
- Other organizations are, of course, possible.
- You may, for example, have a workspace folder for each Leksah workspace.
- You have to use care when you create a new workspace file (and if you do
- not like the result, delete the 
-\emph on
-workspace.lkshws
-\emph default
- file)
 \end_layout
 
 \begin_layout Standard
-Cabal then controls the compilation and linking with GHC and puts the results
- in a dist folder in the package; this folder is reconstructed often and
- may be deleted without loss.
+Cabal controls the compilation and linking of packages with GHC and puts
+ the results in a dist folder in the package; this folder is reconstructed
+ often and may be deleted without loss.
  In the folder package_name/dist/build/executable_name you find the executable,
- but it is also installed in the folder ~/.cabal/bin (which you may put on
- your search path).
+ but it is also installed in the folder ?/.cabal/bin (which you want to put
+ on your search path).
  
-\end_layout
-
-\begin_layout Standard
-<< this is Ubuntu locations - windows is missing>>
 \end_layout
 
 \begin_layout Subsection
@@ -1931,14 +2072,9 @@ New workspace
 \begin_layout Standard
 Under the menu workspace you find commands to create a new workspace with
  a specific name and select the folder in which it should reside.
- The window title informs you always about the currently open workspace.
-\end_layout
-
-\begin_layout Standard
-<<the defaults here are seemingly always inside the last package, which
- is most likely not what the user wants.
- i suggest that the default is either the last workspace or the folder containin
-g the last workspace>>
+ The windows title and the 3.
+ compartment of the status bar informs you always about the currently open
+ workspace.
 \end_layout
 
 \begin_layout Subsubsection
@@ -1946,7 +2082,7 @@ Add packages to the workspace
 \end_layout
 
 \begin_layout Standard
-Open the workspace pane (from menu (Pause → workspace) and do a right-click
+Open the workspace pane (from menu (Panes → Workspace) and do a right-click
  to get the pop-up menu to add a package by selecting the corresponding
  cabal file.
  
@@ -1957,17 +2093,10 @@ Open workspace
 \end_layout
 
 \begin_layout Standard
-A workspace is preserved between runs of Leksah.
- When starting, Leksah opens the last workspace used automatically when
- starting.
- you can change to another workspace like opening it by selecting the correspond
-ing workspace file or choosing in the list of recently used workspaces.
- 
-\end_layout
-
-\begin_layout Standard
-<< reading arguments would be nice, would allow to start leksah by double
- clicking>>
+When starting, Leksah opens the last workspace used.
+ You can change to another workspace by opening the corresponding workspace
+ file, or by choosing from the list of recently used workspaces.
+ When opening a Workspace you can choose to 
 \end_layout
 
 \begin_layout Subsubsection
@@ -1975,9 +2104,11 @@ Clean and make workspace
 \end_layout
 
 \begin_layout Standard
-A workspace can be cleaned, meaning all packages must be recompiled from
- scratch.
- Make builds all the packages and initials then properly.
+A workspace can be cleaned, meaning all packages gets cleaned and must be
+ recompiled from scratch.
+ Make builds all the packages in a meaningful order, and installs libraries
+ if needed.
+ It only stops if an error occurs.
 \end_layout
 
 \begin_layout Subsubsection
@@ -1985,10 +2116,9 @@ Jump between errors
 \end_layout
 
 \begin_layout Standard
-There are menu items to jump between errors the complies found (but usually
- I move by pointing to the error messages in the log pane!).
- You can move to the next or the previous error -- even keyboard shortcuts
- are available: 
+There are menu items to move to the next or the previous error the compiler
+ found.
+ You can as well use keyboard shortcuts for this: 
 \noun on
 ctr-j
 \noun default
@@ -1997,11 +2127,8 @@ ctr-j
 shift-ctrl-j
 \noun default
 .
- 
-\end_layout
-
-\begin_layout Standard
-<< is noun a good style for keyboard entries?>>
+ It is as well possible to move by pointing to the error messages in the
+ log pane or error pane.
 \end_layout
 
 \begin_layout Subsubsection
@@ -2022,13 +2149,8 @@ xx is not in scope
 ctrl-r
 \noun default
  is adding them automatically to your import list.
- Limitation: it does so only if the modules they use is from is already
- imported.
- 
-\end_layout
-
-\begin_layout Standard
-<< could this limitation be overcome>>
+ Limitation: it does so only, if the modules they export are in a workspace
+ package or are in a package listed in the build dependencies of the package.
 \end_layout
 
 \begin_layout Subsubsection
@@ -2038,17 +2160,11 @@ The Notion of active package
 \begin_layout Standard
 In the package pane a package can be marked as active either with the pop-up
  menu or by double clicking.
- The active package is the one that configure or build commands affect.
+ The active package is the one that the commands in the Package menu refers
+ to.
+ (e.g.
+ configure, build, install).
  
-\end_layout
-
-\begin_layout Standard
-<<the user interface here may change in future>>
-\end_layout
-
-\begin_layout Standard
-<<could the pop-up menu in the workspace pane contain a clean, configure,build
- and run option>>
 \end_layout
 
 \begin_layout Subsection
@@ -2063,20 +2179,12 @@ The concept of a package is used to handle a unit of work for the development
 \end_layout
 
 \begin_layout Standard
-Leksah stores configurations for packages separately in the standard cabal
- files.
+Leksah stores data for packages in the standard cabal files.
  The same files can be used outside of leksah: for example, you can issue
  the command cabal install in the folder that contains the cabal file and
  cabal will (as it would inside leksah) configures, compiles and links and
- install or register the library produce (if an).
+ install or register the library or executable produced.
  
-\end_layout
-
-\begin_layout Standard
-Leksah, in addition to using cabal for packages, saves the state of your
- work environment in the package: you can switch between packages and get
- exactly back to where you stopped working when leaving the package: the
- same files open in editors and the cursor in the same file and position.
 \end_layout
 
 \begin_layout Subsubsection
@@ -2091,9 +2199,8 @@ cabal
 \emph default
  file.
  So when you select Package / Open Package from the menu, select the *.cabal
- file of the desired package - it is the cabal file in the folder with the
- package files; the name can be arbitrary, but you must not have more than
- one *.cabal file in a folder!
+ file of the desired package.
+ You must not have more than one *.cabal file in a folder!
 \end_layout
 
 \begin_layout Standard
@@ -2102,21 +2209,6 @@ Leksah shows the currently active package in the third compartment in the
  The package file contains appropriate defaults and for a small program,
  you may just save and close it.
  
-\end_layout
-
-\begin_layout Standard
-<<could the dialogs be changed to have an OK and cancel button: OK does
- save&close, cancel does close without saving.
- 
-\end_layout
-
-\begin_layout Standard
-how difficult is it to change that selection does the add?
-\end_layout
-
-\begin_layout Standard
-this is the error i make most often and it is very hard to detect, especially
- for beginners, but not only>>
 \end_layout
 
 \begin_layout Verse
@@ -2168,19 +2260,31 @@ New package
 To start with a new package select Package / NewPackage from the menu.
  Then you have to select a folder for the project, this is by GHC convention
  the same name you will give to your package in the package editor (see
- <<next>>).
+ 
+\begin_inset CommandInset ref
+LatexCommand prettyref
+reference "sub:Package-editor"
+
+\end_inset
+
+).
  Then the package editor will open to collect the package details.
  
 \end_layout
 
 \begin_layout Standard
-<<this seems not to work, if a workspace with a package is open (and the
- package editor window) - it goes into the dialog to select the file but
- edit package will continue to show the old cabal file>>
+This currently does not work, if an editor for a different package is open.
 \end_layout
 
 \begin_layout Subsubsection
 Package editor
+\begin_inset CommandInset label
+LatexCommand label
+name "sub:Package-editor"
+
+\end_inset
+
+
 \end_layout
 
 \begin_layout Standard
@@ -2192,7 +2296,7 @@ reference "fig:PackageEditor-1"
 \end_inset
 
 ) is an editor for cabal files and but you can edit the cabal files in your
- regular text editor.
+ regular text editor as well.
  Leksah works (usually) with the cabal files you and others have already
  written, for example those you get when you install a package from Hackage.
  Since cabal files offer complex options the editor offers many separate
@@ -2210,12 +2314,7 @@ target "http://www.haskell.org/ghc/docs/latest/html/Cabal/index.html"
 \end_layout
 
 \begin_layout Standard
-<<is this still true - what is exactly the limitation now?>>
-\end_layout
-
-\begin_layout Standard
-The package editor does currently not support the cabal configurations feature
- (but it does flags, in a separate pane <<see xx>>).
+The package editor does currently not support the cabal configurations feature.
  If you need cabal configurations, you need to edit the cabal files as a
  text file separately.
  Leksah uses standard cabal files with no modifications this is no problem
@@ -2321,7 +2420,7 @@ The result of the packages can be an executable and you enter the name of
 \end_layout
 
 \begin_layout Standard
-For an executable you can, but usually need not, specify build info.
+You have to specify a build info.
  With build information you give additional 
 \begin_inset space \space{}
 \end_inset
@@ -2359,11 +2458,6 @@ Because more then one executable and a library can be build from one package,
  Every build info gets an index number, and for executables and a library
  you specify the index of the build info.
  
-\end_layout
-
-\begin_layout Standard
-<<could the build info be hierarchically structured under the executable
- or library editor?>>
 \end_layout
 
 \begin_layout Subsubsection
@@ -2407,7 +2501,7 @@ While configuring, Cabal checks that the packages you have listed in the
 cabal install
 \emph default
 .
- For packages that are on hackage -- use a console, go to the directory
+ For packages that are on Hackage -- use a console, go to the directory
  where you keep such sources and type cabal install packageName (possibly
  package_name-version); cabal then recursively installs the package and
  all packages it depends on.
@@ -2416,11 +2510,16 @@ cabal install
 \begin_layout Standard
 Separate from this error message the case, where the compiler misses a module
  you want to import.
- Leksah provides an error message, indicating what package you have to add
+ Ghc provides an error message, indicating what package you have to add
  to the depends on' section in the cabal file.
- Edit the package, add the dependency and do configure/build (possibly you
- have to cabal install the package as well, if you get the error described
- above).
+ Edit the package, add the dependency and do configure/build.
+\end_layout
+
+\begin_layout Standard
+You have to take care as well, that their is a user and a global package
+ db.
+ Leksah uses the --user flag by default, to minimize errors.
+ 
 \end_layout
 
 \begin_layout Subsubsection
@@ -2428,8 +2527,8 @@ Building
 \end_layout
 
 \begin_layout Standard
-The most frequently used functionality with packages is to make a build,
- which is possible after a successful configure.
+The most frequently used functionality with packages is to make a build.
+ If the package was not configured before, Leksah does that step automatically.
  When you start a build, you can see the standard output of the Cabal build
  procedure in the Log pane.
  
@@ -2457,7 +2556,7 @@ Building
 
 \begin_layout Standard
 \begin_inset Graphics
-	filename pics/ide_make.png
+	filename ../pics/ide_make.png
 	width 1cm
 
 \end_inset
@@ -2525,19 +2624,6 @@ Error Pane
 
 \end_layout
 
-\begin_layout Standard
-<< is the error pane actually used by anybody?>>
-\end_layout
-
-\begin_layout Standard
-<<issue: it is not possible to cut&paste from the error log>>
-\end_layout
-
-\begin_layout Standard
-<< copy-past from the log pause does not work properly.
- Can this be fixed?>> 
-\end_layout
-
 \begin_layout Subsubsection
 Run
 \end_layout
@@ -2545,7 +2631,13 @@ Run
 \begin_layout Standard
 You can run your program after the build operation has compiled and linked
  it.
- there is a convenient button <<icon missing button??? >> to start it!
+ there is a convenient button 
+\begin_inset Graphics
+	filename ../pics/ide_run.png
+
+\end_inset
+
+ to start it!
 \end_layout
 
 \begin_layout Subsubsection
@@ -2559,12 +2651,6 @@ Background build
 \end_layout
 
 \begin_layout Standard
-<<Possible to have a switch that the editor jumps only to errors (not warnings?,
- or does not automatically jump.
- Inference with automatic build!>> 
-\end_layout
-
-\begin_layout Standard
 Leksah can run builds while you work and highlight errors as it finds them.
  This works with a timer that runs continuously in the background.
  If there are changes made to any open file it \SpecialChar \ldots{}
@@ -2572,12 +2658,8 @@ Leksah can run builds while you work and highlight errors as it finds them.
 \end_layout
 
 \begin_layout Itemize
-interrupts any running build by sending SIGINT (sadly this step is OSX and
- Linux only at this point)
-\end_layout
-
-\begin_layout Itemize
-<<is this correct with leksah server?>>
+interrupts any running build by sending SIGINT (this step is OS X and Linux
+ only at this point, it's not working on MS Windows)
 \end_layout
 
 \begin_layout Itemize
@@ -2603,7 +2685,7 @@ Current limitation: Because we can't interrupt the build on windows there
 
 \begin_layout Standard
 \begin_inset Graphics
-	filename pics/ide_build.png
+	filename ../pics/ide_build.png
 	width 1cm
 
 \end_inset
@@ -2617,7 +2699,7 @@ background build
 
 \begin_layout Standard
 \begin_inset Graphics
-	filename pics/ide_link.png
+	filename ../pics/ide_link.png
 	width 1cm
 
 \end_inset
@@ -2652,16 +2734,15 @@ Build documentation
  item in the package menu).
  For each of these operations you can enter the specific flags they require
  for you special case.
- We give here two often useful examples of flag, others work similarly and
- we recommend that you consult the respective documentations..
- 
+ We give here two often examples of flags, others work similarly and we
+ recommend that you consult the respective documentations.
 \end_layout
 
 \begin_layout Standard
 \begin_inset Float figure
 wide false
 sideways false
-status open
+status collapsed
 
 \begin_layout Plain Layout
 \align center
@@ -2713,11 +2794,8 @@ target "http://www.haskell.org/ghc/docs/latest/html/Cabal/index.html"
 
 \begin_layout Standard
 Cabal needs the --user flag (which is set by default in Leksah) to install
- the result of a built in the user space.
- The --user flag makes achieves that using cabal within leksah or from the
- command line has the same effect and puts your library and executables
- in the same place (the alternative is --global to put the resulting files
- in global space in ghc-pkg).
+ the result of a built in the user package database (the alternative is
+ --global to put the resulting files in global space in ghc-pkg).
 \end_layout
 
 \begin_layout Standard
@@ -2729,10 +2807,6 @@ Haddock documentation for the leksah source will not be build, because it
 
 \begin_layout Subsection
 Import Helper
-\end_layout
-
-\begin_layout Standard
-<<duplicated, mentioned before>>
 \end_layout
 
 \begin_layout Standard
@@ -2846,7 +2920,7 @@ When Leksah does not find an identifier update the Leksah database.
 
 \begin_layout Plain Layout
 \begin_inset Graphics
-	filename pics/ide_rebuild_meta.png
+	filename ../pics/ide_rebuild_meta.png
 	width 1cm
 
 \end_inset
@@ -2859,10 +2933,6 @@ Update Metadata
 \end_inset
 
 
-\end_layout
-
-\begin_layout Standard
-<< what could be meant by ?? It adds as well an entry in the lop pane.>>
 \end_layout
 
 \begin_layout Standard
@@ -2897,7 +2967,7 @@ lines 0
 placement o
 overhang 0in
 width "30col%"
-status collapsed
+status open
 
 \begin_layout Plain Layout
 \begin_inset Tabular
@@ -2940,7 +3010,7 @@ function
 
 \begin_layout Plain Layout
 \begin_inset Graphics
-	filename pics/ide_function.png
+	filename ../pics/ide_function.png
 	width 0.5cm
 
 \end_inset
@@ -2966,7 +3036,7 @@ data
 
 \begin_layout Plain Layout
 \begin_inset Graphics
-	filename pics/ide_data.png
+	filename ../pics/ide_data.png
 
 \end_inset
 
@@ -2998,7 +3068,7 @@ constructor
 
 \begin_layout Plain Layout
 \begin_inset Graphics
-	filename pics/ide_konstructor.png
+	filename ../pics/ide_konstructor.png
 
 \end_inset
 
@@ -3030,7 +3100,7 @@ slot
 
 \begin_layout Plain Layout
 \begin_inset Graphics
-	filename pics/ide_slot.png
+	filename ../pics/ide_slot.png
 
 \end_inset
 
@@ -3055,7 +3125,7 @@ type
 
 \begin_layout Plain Layout
 \begin_inset Graphics
-	filename pics/ide_type.png
+	filename ../pics/ide_type.png
 
 \end_inset
 
@@ -3080,7 +3150,7 @@ newtype
 
 \begin_layout Plain Layout
 \begin_inset Graphics
-	filename pics/ide_newtype.png
+	filename ../pics/ide_newtype.png
 	width 0.5cm
 
 \end_inset
@@ -3106,7 +3176,7 @@ class
 
 \begin_layout Plain Layout
 \begin_inset Graphics
-	filename pics/ide_class.png
+	filename ../pics/ide_class.png
 	width 0.5cm
 
 \end_inset
@@ -3139,7 +3209,7 @@ member
 
 \begin_layout Plain Layout
 \begin_inset Graphics
-	filename pics/ide_method.png
+	filename ../pics/ide_method.png
 
 \end_inset
 
@@ -3164,7 +3234,7 @@ instance
 
 \begin_layout Plain Layout
 \begin_inset Graphics
-	filename pics/ide_instance.png
+	filename ../pics/ide_instance.png
 	width 0.5cm
 
 \end_inset
@@ -3190,7 +3260,7 @@ rule
 
 \begin_layout Plain Layout
 \begin_inset Graphics
-	filename pics/ide_rule.png
+	filename ../pics/ide_rule.png
 
 \end_inset
 
@@ -3211,6 +3281,12 @@ rule
 \begin_inset Caption
 
 \begin_layout Plain Layout
+\begin_inset CommandInset label
+LatexCommand label
+name "tab:Sorts-of-identifiers"
+
+\end_inset
+
 Sorts of identifiers
 \end_layout
 
@@ -3221,14 +3297,23 @@ Sorts of identifiers
 
 \end_inset
 
-Leksah collects data about the exported modules of all installed Haskell
- packages on your system looking in your cabal directory and the source
- directories you listed in the preferences.
+Leksah collects data about the modules of all installed Haskell packages
+ on your system.
  It does this by reading the Haskell interface files .hi files (from GHC).
- The package you work <<??all packages in the workspace>> on is treated
- differently, as not only external exported entities are collected, but
- all exports from all modules are collected.
+ It as well collects source positions and comments from sources.
+ For this it looks in the source directories you specified in the preferences
+ and downloads and unpacks sources from Hackage depending on your settings.
+ Starting from the current version, Leksah can as well use prebuild metadata
+ it might find on the web, to provide metadata for packages you have sources
+ for, but the call to the Haddock library fails for some reason.
  
+\end_layout
+
+\begin_layout Standard
+The packages in the workspace are treated differently, as not only external
+ exported entities are collected, but all exports from all modules are collected.
+ As well identifiers, which are not exported from a module get listed.
+ The source symbol for them is shown in gray.
 \end_layout
 
 \begin_layout Standard
@@ -3240,7 +3325,7 @@ Which packages and modules export this identifier?
 \end_layout
 
 \begin_layout Itemize
-What is the sort <<type??>> of the exported identifier?
+What is the type of the exported identifier?
 \end_layout
 
 \begin_layout Standard
@@ -3252,8 +3337,7 @@ The comment for this identifier
 \end_layout
 
 \begin_layout Itemize
-<<and can move you the source file at the correct position??? does not work
- for me>>
+and can mark the item in the source file at the correct position
 \end_layout
 
 \begin_layout Standard
@@ -3270,55 +3354,42 @@ and
 \end_layout
 
 \begin_layout Standard
-More precisely the operation is a selection with 
+More precisely the operation starts with a release of the left mouse button
+ with a selection with 
 \noun on
 Ctrl
 \noun default
- pressed; you select first the desired characters with the left button and
- then release the mouse button while you hold down the Ctrl key.
+ pressed; You can use this if the double click doesn't select the intended
+ area.
  If the identifier is known unambiguously the modules and info pane will
  show information about it.
  If more then one possibility exist the search pane will open and present
  the alternatives.
 \end_layout
 
+\begin_layout Subsection
+Sorts of Identifiers
+\end_layout
+
 \begin_layout Standard
-<<The current Leksah metadata does not contain definitions local to a module.
- So names which are not exported will not be found in the metadata.
- We plan to change this for the current project for future versions.
- We started with the 
-\begin_inset Quotes eld
-\end_inset
+The sorts of the identifiers shown are differentiated by the symbols you
+ find in Table 
+\begin_inset CommandInset ref
+LatexCommand ref
+reference "tab:Sorts-of-identifiers"
 
-global
-\begin_inset Quotes erd
-\end_inset
-
- approach from the intuition, that it takes most of our time to find something
- that is not already imported and 
-\begin_inset Quotes eld
-\end_inset
-
-known
-\begin_inset Quotes erd
 \end_inset
 
 .
- A local definition can be easily find by a text search.
-\end_layout
+ Note as well the special symbol for identifiers exposed, but only indirectly,
+ because the definition is imported from another module.
+ 
+\begin_inset Graphics
+	filename /home/jutaro/Develop/lws/leksah/pics/ide_reexported.png
 
-\begin_layout Subsection
-Types of Identifiers
-\end_layout
+\end_inset
 
-\begin_layout Standard
-The types of the identifies are differentiated by the symbols you find in
- Fig.
- xx.
- <<missing>>.
- Note the special symbol for identifiers exposed, but only indirectly, because
- the definition is imported from another module.
- <<symbol missing in figure!>>
+
 \end_layout
 
 \begin_layout Subsection
@@ -3329,7 +3400,7 @@ The Modules Pane
 \begin_inset Float figure
 wide false
 sideways false
-status collapsed
+status open
 
 \begin_layout Plain Layout
 \align center
@@ -3360,10 +3431,6 @@ Modules pane
 
 \end_layout
 
-\begin_layout Plain Layout
-
-\end_layout
-
 \end_inset
 
 
@@ -3380,46 +3447,47 @@ reference "fig:Modules-pane"
 ) shows information about modules and their interface separated in scopes:
  package, workspace, and system.
  If no package or workspace is open only the system scope has information.
- (If a package is open, it's name is displayed in the third subdivision
- from the left of the status and in the titles bar.)
-\end_layout
-
-\begin_layout Standard
-<<is this duplication appropriate - i like the info in the title!>>
+ (If a workspace/package is open, it's name(s) are displayed in the third
+ subdivision from the left of the status and in the title bar.)
 \end_layout
 
 \begin_layout Standard
 The scope of the displayed information is selected with the radio button
  on top of the modules pane: The 
 \emph on
-Local
-\emph default
- scope shows only modules which are part of the current project.
- The 
-\emph on
 Package
 \emph default
- scope shows all modules of the package and all packages which the current
- package depends on.
- The workspace scope shows all modules in the workspace.
+ scope shows only modules which are part of the active project.
+ The 
+\emph on
+Workspace
+\emph default
+ scope shows all modules of all packages in the workspace.
  The 
 \emph on
 System
 \emph default
  scope shows all modules of installed packages of the system.
- It lists all installed packages The same you would get with 
+ 
+\end_layout
+
+\begin_layout Standard
+(It lists all modules of installed packages.
+ These you would get with 
 \emph on
 ghc-pkg
 \emph default
- list (Leksah scans the user and the system package database, when both
- are present).
+ list.
+ Leksah scans the user and the global package database, when both are present).
 \end_layout
 
 \begin_layout Standard
 The amount of information displayed may overwhelm you with details from
- packages that need to be installed but are not of interest to you presently.
- Such packages can be excluded, by blacklisting them - use the radio button
- at the right to get to the pane where you manage your blacklist.
+ packages that are not of interest to you (Like e.g.
+ like Haskell-98, ghc, or base-3.0*).
+ Such packages can be excluded, by blacklisting them.
+ The packages you want to hide can be specified in the preferences and you
+ can use the radio button at the right to hide them.
 \end_layout
 
 \begin_layout Standard
@@ -3435,7 +3503,7 @@ If you select a module in the modules list, its interface is displayed in
 
 \begin_layout Standard
 \begin_inset Graphics
-	filename pics/ide_source.png
+	filename ../pics/ide_source.png
 	width 1cm
 
 \end_inset
@@ -3456,12 +3524,22 @@ double click
 Go to definition
 \emph default
  from the context menu.
+\end_layout
+
+\begin_layout Standard
+\begin_inset Graphics
+	filename /home/jutaro/Develop/lws/leksah/pics/ide_source_local.png
+
+\end_inset
+
+This is the same as before, but is used for definitions not exported from
+ the module.
  
 \end_layout
 
 \begin_layout Standard
 \begin_inset Graphics
-	filename pics/ide_reexported.png
+	filename ../pics/ide_reexported.png
 	width 1cm
 
 \end_inset
@@ -3482,9 +3560,9 @@ By selecting an element in the Interface List the so called Info Pane is
 \begin_layout Standard
 The modules pane provides detailed information and are the quickest way
  to open a source file for edit.
- Go to the modules pane, select local scope, possibly find the module by
- entering some text, and double click on the module's name to open the file
- in the editor for editing the file.
+ Go to the modules pane, select package or workspace scope, possibly find
+ the module by entering some text, and double click on the module's name
+ to open the file in the editor for editing the file.
 \end_layout
 
 \begin_layout Standard
@@ -3529,12 +3607,12 @@ Construct module dialog
 \end_layout
 
 \begin_layout Standard
-The module passes is also where you can add a new module is by selecting
- 
+From the context menu of (right-click) the modules pane you can add a new
+ module by selecting 
 \emph on
-Add module
+Add modul
 \emph default
- from the context menu of (right-click) the modules pane.
+e.
  The Construct Module dialog will open (
 \begin_inset CommandInset ref
 LatexCommand ref
@@ -3544,26 +3622,13 @@ reference "fig:Construct-module-dialog"
 
 ).
  You have to enter the name of the module, the source path to use if alternative
-s exist and, when the project is a library, if the module is exposed.
+s exist.
+ If the project is a library you have to specify if the module is exposed.
  Leksah will construct the directory, modify the cabal file and construct
- an empty module file from a template.
+ an empty module file from a template (The template is stored in the file
+ module.lksht in the data folder of the project, and will be read from the
+ .leksah-** folder if you want to provide a different template file their.
  
-\end_layout
-
-\begin_layout Standard
-<<inconsistency in names: add module in context menu is 
-\begin_inset Quotes eld
-\end_inset
-
-new module
-\begin_inset Quotes erd
-\end_inset
-
- and as add (existing) module is missing>>
-\end_layout
-
-\begin_layout Standard
-<<where is the template stored?>>
 \end_layout
 
 \begin_layout Standard
@@ -3572,28 +3637,8 @@ The modification of the cabal file will currently only happen, if it does
  
 \end_layout
 
-\begin_layout Standard
-<<still valid>>
-\end_layout
-
-\begin_layout Standard
-<<is there a way to add an existing file>>
-\end_layout
-
 \begin_layout Subsection
 The Info Pane
-\end_layout
-
-\begin_layout Standard
-<<has this been renamed to 
-\begin_inset Quotes eld
-\end_inset
-
-Browser
-\begin_inset Quotes erd
-\end_inset
-
- pane????>>
 \end_layout
 
 \begin_layout Standard
@@ -3655,8 +3700,8 @@ reference "fig:Info-pane"
 
 \begin_layout Standard
 If you select and initiate an identifier search in an editor pane, the informati
-on about this identifier available in the package scope, is automatically
- displayed in the info pane (maybe nothing!).
+on about this identifier is automatically displayed in the info pane (maybe
+ nothing!).
  The easiest way to do this is to double click on an identifier while pressing
  
 \noun on
@@ -3670,11 +3715,7 @@ Ctrl
 Only previously collected metadata is available this way.
  If the item has changed you could initiate an update of the information
  collected with update workspace metadata (menu configuration → update workspace
- data).
-\end_layout
-
-\begin_layout Standard
-<<the source button should only be shown when a source is available>>
+ data, or Ctrl-m).
 \end_layout
 
 \begin_layout Standard
@@ -3718,13 +3759,13 @@ Search pane
 \end_layout
 
 \begin_layout Standard
-If a source location was focused, you can go to the definition by clicking
+If a source location is attached, you can go to the definition by clicking
  the 
 \emph on
 Source
 \emph default
  button.
- <<does currently not work reliably>>
+ 
 \end_layout
 
 \begin_layout Standard
@@ -3750,7 +3791,7 @@ With the
 Docu
 \emph default
  button you can initiate an external search in a browser with e.g.
- hayoo or Hoogle, depending on the configuration in the Preferences.
+ Hayoo or Hoogle, depending on the configuration in the Preferences.
 \end_layout
 
 \begin_layout Standard
@@ -3759,10 +3800,6 @@ With the
 Search
 \emph default
  button you can initiate a metadata search for the identifier.
-\end_layout
-
-\begin_layout Standard
-<<i seem to have difficulties to make these work?>>
 \end_layout
 
 \begin_layout Subsection
@@ -3784,13 +3821,11 @@ reference "fig:Search-pane"
  You can choose:
 \end_layout
 
-\begin_layout Standard
-<<i think having two different places where search strings are entered are
- confusing (the same for the duplication of controls>>
-\end_layout
-
 \begin_layout Enumerate
-The scope in which to search, which can be local, package or system.
+The scope in which to search, which can be Package, Workspace or System.
+ For Package and Workspace scopes you can search with or without imports,
+ which gives 5 different scopes.
+ 
 \end_layout
 
 \begin_layout Enumerate
@@ -3810,21 +3845,18 @@ The result of the search is displayed in the list part of the Search pane.
 \begin_layout Standard
 You can see if the module reexports the identifier, or if the source of
  the identifier is reachable.
- When you single click on a search result, the info pane shows the corresponding
- information.
+ When you single click on a search result, the module browser shows the
+ corresponding information.
  If you double click on an entry, the modules and info pane shows the correspond
 ing information.
 \end_layout
 
 \begin_layout Standard
 If you double click on an identifier while pressing Ctrl in an editor pane,
- a case sensitive and exact search in the package scope is started (independent
- on the setting in the search pane.
- 
+ a case sensitive and exact search in the is started.
 \end_layout
 
 \begin_layout Standard
-<<I have often two panes called search>>
 \begin_inset Float figure
 wide false
 sideways false
@@ -3858,24 +3890,6 @@ References Pane
 
 \end_layout
 
-\begin_layout Subsection
-The References Pane
-\end_layout
-
-\begin_layout Standard
-This pane shows which modules uses a certain element.
- The element is displayed in the top, and the modules which import it are
- displayed in the list box.
- If you double click on an entry in the list box, the corresponding source
- will be opened if possible and a text search on the selected element is
- initiated.
- This brings you to the place in the source the item is referenced.
-\end_layout
-
-\begin_layout Standard
-<<i do not see this working>>
-\end_layout
-
 \begin_layout Standard
 \begin_inset Newpage newpage
 \end_inset
@@ -3888,16 +3902,12 @@ Debugger
 \end_layout
 
 \begin_layout Standard
-<<menu item to start debugging missing>>
-\end_layout
-
-\begin_layout Standard
 \begin_inset Wrap figure
 lines 0
 placement O
 overhang 0in
 width "30col%"
-status collapsed
+status open
 
 \begin_layout Plain Layout
 \align center
@@ -3934,6 +3944,12 @@ status collapsed
 \begin_inset Caption
 
 \begin_layout Plain Layout
+\begin_inset CommandInset label
+LatexCommand label
+name "fig:Debug-&-Buffer"
+
+\end_inset
+
 Debug & Buffer menu
 \end_layout
 
@@ -3957,7 +3973,7 @@ only
 
 \begin_layout Standard
 \begin_inset Graphics
-	filename pics/ide_debug.png
+	filename ../pics/ide_debug.png
 	width 1cm
 
 \end_inset
@@ -3973,15 +3989,22 @@ In debugger mode the packages and modules for your current project are loaded
 
 \begin_layout Standard
 In debugger mode, the menu entries from the Debug menu are no longer disabled
- (Fig <<missing>>), and the context menu of source buffers have entries
- that were not meaningful in the regular (GHC) mode.
+ (Fig 
+\begin_inset CommandInset ref
+LatexCommand ref
+reference "fig:Debug-&-Buffer"
+
+\end_inset
+
+), and the context menu of source buffers have entries that were not meaningful
+ in the regular (GHC) mode.
  There is also a group of panes specifically used for debugging, allowing
  you to manage breakpoints, observe variables, etc.
  
 \end_layout
 
 \begin_layout Standard
-You can open the debugger group pane by choosing Debug / Show Debugger.
+You can open the debugger group pane by choosing Panes / Debugger.
  Commands using the debugger are given mostly in the source editor pane
  with a context menu: You select some text and right-click to get the context
  menu.
@@ -3994,12 +4017,15 @@ You can open the debugger group pane by choosing Debug / Show Debugger.
 Evaluate
 \noun default
  the selected expression in the interpreter and observe the result.
+ If no text is selected the current line is taken as input.
  Select eval.
  The result of the evaluation is shown in the log window and as 
 \emph on
 it 
 \emph default
 in the variables pane.
+ You can as well use the keystroke Ctrl-Enter.
+ 
 \begin_inset Newline newline
 \end_inset
 
@@ -4051,14 +4077,14 @@ Step
 
 \begin_layout Standard
 \begin_inset Graphics
-	filename pics/ide_step.png
+	filename ../pics/ide_step.png
 	width 1cm
 
 \end_inset
 
 Step (F6), 
 \begin_inset Graphics
-	filename pics/ide_local.png
+	filename ../pics/ide_local.png
 	width 1cm
 
 \end_inset
@@ -4068,14 +4094,14 @@ Step local (F7)
 
 \begin_layout Standard
 \begin_inset Graphics
-	filename pics/ide_module.png
+	filename ../pics/ide_module.png
 	width 1cm
 
 \end_inset
 
 Step in module (F8), 
 \begin_inset Graphics
-	filename pics/ide_continue.png
+	filename ../pics/ide_continue.png
 	width 1cm
 
 \end_inset
@@ -4178,11 +4204,6 @@ For more information about debugging in GHCi read the GHCi section in the
 \end_layout
 
 \begin_layout Standard
-<<:The Debugger is a new addition to Leksah and is still in an experimental
- stage; its functionality may not be complete yet>>
-\end_layout
-
-\begin_layout Standard
 \begin_inset Float figure
 wide false
 sideways false
@@ -4230,13 +4251,16 @@ Metadata collection
 Remember, that metadata is the data Leksah has collected from all the Haskell
  code (including .hi files for installed packages) it could reach on your
  computer.
- This is a relatively slow process; when Leksah starts, it checks only for
- changes, but does not scan all files again.
+ 
+\end_layout
+
+\begin_layout Standard
+The initial path may take a long time (some minutes); when Leksah starts
+ later, it checks only for changes, but does not scan all files again.
  Metadata collection depends on the local configuration, especially the
  list of places where Haskell code may be found, which is entered in the
- preferences <<see>>.
- Occasionally, you may find it gets confused and metadata collection needs
- to be redone.
+ preferences.
+ Occasionally, you may find it useful to rebuild the metadata.
  
 \end_layout
 
@@ -4286,70 +4310,90 @@ Metadata menu
 \begin_layout Standard
 Metadata collection can be manually triggered: If you select
 \emph on
- Update Project
+ Configuration -> Update workspace data
 \emph default
- in the configuration menu, the metadata for the current project is collected
- from the .hi files and the source files.
+, the metadata for the current project is collected.
  This brings the metadata of the current project up-to-date.
+ You can as well press Ctrl-m or hit this symbol in the toolbar: 
+\begin_inset Graphics
+	filename /home/jutaro/Develop/lws/leksah/pics/ide_rebuild_meta.png
+
+\end_inset
+
+
+\end_layout
+
+\begin_layout Standard
+If you select
+\emph on
+ Configuration -> Rebuild workspace data
+\emph default
+, the metadata for the current project is rebuild.
 \end_layout
 
 \begin_layout Standard
 If you select 
 \emph on
-configuration -> update system data -> Update Lib Leksah
+Configuration -> Update system data,
 \emph default
- checks, if a new library has installed and then collects metadata from
- additions.
+ Leksah checks, if a new library has been installed and then collects metadata
+ for additions.
 \end_layout
 
 \begin_layout Standard
-The metadata collection itself proceeds in two steps: 
-\end_layout
-
-\begin_layout Enumerate
-Extract info from .hi files, produced by GHC.
+If you select 
+\emph on
+Configuration -> Rebuild system data,
+\emph default
+ Leksah rebuilds all metadata, which may take a long time.
+ Currently the preferred way to do this is to call leksah-server -rbo +RTS
+ -N2 from the command line.
+ The reason for this is that the server process may allocate a lot of memory
+ during collection.
  
 \end_layout
 
-\begin_layout Enumerate
-Add source locations and comments by parsing the sources using Haddock.
+\begin_layout Subsection
+Background infos
 \end_layout
 
 \begin_layout Standard
-It works as follows:
+The metadata collection itself proceeds different for workspace and system
+ packages:
+\end_layout
+
+\begin_layout Itemize
+For workspace packages Leksah just uses the parser without typechecking
+ and maybe .hi files if available.
+\end_layout
+
+\begin_layout Itemize
+For system packages Leksah uses .hi files and if sources are available Haddock
+ as a library.
+ 
+\end_layout
+
+\begin_layout Standard
+Collection for system packages works as follows:
 \end_layout
 
 \begin_layout Enumerate
-Packages you installed with cabal from Hackage: Since 
+Packages you installed with cabal from Hackage.
+ If Leksah can't find sources, it does a 
 \emph on
-cabal install
+cabal unpack
 \emph default
- keeps sources as compressed tar archives on your machine, Leksah needs
- to unpack them.
- You can see if this works by browsing the folders.
- You can initiate this step by starting in a terminal with 
+ in the source directory you specified for this in the preferences (By default
+ .
 \emph on
-leksah -x - n
-\emph default
- (means eXtract and NoGUI).
- If files cannot be opened because permission is denied, you most likely
- installed the packages as root (with, e.g., sudo); then only root has write
- access to some cabal packages and you need: 
-\emph on
-sudo leksah -x -n
-\emph default
- (or 
-\emph on
---Extract --NoGui
+leksah-**/packageSources
 \emph default
 ).
- 
 \end_layout
 
 \begin_layout Enumerate
-Source files in a folder in the folders listed as source folder in the preferenc
-es <<see>>: Leksah looks for all .cabal files it can find below the source
- folders.
+Source files in the folders listed as source folder in the preferences.
+ Leksah looks for all .cabal files it can find below the source folders.
  Therefore, Leksah collects source information only from 
 \begin_inset Quotes eld
 \end_inset
@@ -4365,51 +4409,61 @@ Cabalized
  place of the package has been correctly found.
  You can run this step by typing in a terminal: 
 \emph on
-leksah -s -n
+leksah-server -o
 \emph default
  (or 
 \emph on
---Sources --NoGui
+--
 \emph default
-).
+sources).
 \end_layout
 
-\begin_layout Standard
-A problem may occur due to preprocessing, header files, language extensions,
+\begin_layout Enumerate
+Problems may occur due to preprocessing, header files, language extensions,
  etc.
  Error message produced while metadata collection indicate that not all
- information for a package was found are not consequential for future use
- of Leksah.
+ information for a package was found.
+ If the Haddock call doesn't succeed, Leksah looks if it can download a
+ prebuild metadata package from the server, if this option is selected in
+ the preferences.
 \end_layout
 
-\begin_layout Standard
-The result of metadata collection is stored in a folder in the .leksah-0.8
- folder (in your home folder).
- The folder is named after the compiler version (e.g., ghc-6.10.4).
+\begin_layout Enumerate
+The result of metadata collection is stored in the folder 
+\emph on
+.leksah-*.*/metadata
+\emph default
+ in files called 
+\emph on
+*.lkshm.
+
+\emph default
  In this folder for every package a metadata file is stored (e.g.
  binary-0.4.1.lkshm).
  These files are in binary format.
+ If you want to rebuild just one package you can delete it here and update
+ the system metadata.
+ The files .lkshe specify the base path to sources, if the collection for
+ sources was successfully or if a metdata file could be downloaded for this.
+\end_layout
+
+\begin_layout Standard
+For the workspace packages a different procedure is used.
  
 \end_layout
 
-\begin_layout Standard
-You can rebuild the whole metadata when you start Leksah in a terminal with
- the -r -n option (--Rebuild --NoGui), or you can update the metadata with:
- leksah -c -n (--Collect --NoGui).
- If you have a problem with a certain package, remove its metadata file,
- and collect the data afresh with Leksah -c -n.
- (Look for error messages in the console to see if some problem is reported).
-\end_layout
-
-\begin_layout Standard
-For the current package a slightly different procedure is used, as for the
- current package, not only symbols for exported library entities, but for
- all exports of every module are considered.
+\begin_layout Enumerate
+Metadata is collected from the source directories of the packages you are
+ working on.
+ The results are stored in a per module base in a folder with the package
+ name (
+\emph on
+e.g .leksah-*.*/metadata/package-*.*.*).
  
 \end_layout
 
-\begin_layout Standard
-<<how for packages in the workspace?>>
+\begin_layout Enumerate
+Update happens on a per file base only for changed source files.
 \end_layout
 
 \begin_layout Standard
@@ -4453,18 +4507,6 @@ Metadata Preferences
 \end_layout
 
 \begin_layout Standard
-<<what is in the folder metadata?>>
-\end_layout
-
-\begin_layout Standard
-<<what are .lkskm .lkshe files?>>
-\end_layout
-
-\begin_layout Standard
-<<this part is not yet fully updated for version 0.8>>
-\end_layout
-
-\begin_layout Standard
 \begin_inset Newpage newpage
 \end_inset
 
@@ -4481,8 +4523,7 @@ Leksah is highly customizable and can be adapted to your specific needs
  What follows here is not needed for initial use of Leksah (and need not
  be read on a first lecture of the manual).
  Leksah works well with the default settings and a desire to adapt better
- to your work habits comes only with extended use of Leksah -- the settings
- in the preferences are there, if and when you need them (see --).
+ to your work habits comes only with extended use of Leksah.
  However, with time, you may use one or the other option to tailor Leksah
  to your personal preference.
  It is easy! Here it is explained how this works.
@@ -4498,7 +4539,7 @@ lines 0
 placement O
 overhang 0in
 width "30col%"
-status collapsed
+status open
 
 \begin_layout Plain Layout
 \align center
@@ -4516,6 +4557,12 @@ status collapsed
 \begin_inset Caption
 
 \begin_layout Plain Layout
+\begin_inset CommandInset label
+LatexCommand label
+name "fig:View-menu"
+
+\end_inset
+
 View menu
 \end_layout
 
@@ -4530,12 +4577,9 @@ View menu
 \end_layout
 
 \begin_layout Standard
-Leksah shows typically a layout as fig <<missing>> and the current is in
- one of the panes, which is then called the active pane and its name is
- displayed in the second compartment from the left side in the status bar.
- The big pane the the right typically contain the editor buffers to the
- open files and the pane on the right is split in an upper an lower part,
- housing special information panes.
+Leksah has always one special pane, which is called the active pane, and
+ its name is displayed in the second compartment from the left side in the
+ status bar.
  Some actions like moving, splitting, closing panes or finding or replacing
  items in a text buffer act on the current pane, so check the display in
  the status bar to see if the pane you want to act on, is really the active
@@ -4544,9 +4588,11 @@ Leksah shows typically a layout as fig <<missing>> and the current is in
 
 \begin_layout Standard
 You can tailor the layout with the View menu to suit your work style better.
- Internally, the panes are arranged in a tree (this is a gtk design) and
- with the commands to change the layout, you manipulate this tree.
- 
+ Internally, the panes are arranged in a layout of a binary tree, where
+ the leaves are horizontal or vertical splits.
+ Every area can be split horizontally or vertically and panes can collapse.
+ With the commands in the View menu you manipulate this tree to change the
+ layout.
 \end_layout
 
 \begin_layout Standard
@@ -4569,12 +4615,6 @@ The layout of the Leksah window contains areas which contain notebooks which
  contain panes.
  The division between the two areas is adjustable by the user by dragging
  a handle.
- The areas form a binary tree (Gtk+ layout rules).
- Every area can be split horizontally or vertically and panes can collapse.
-\end_layout
-
-\begin_layout Standard
-<<redundancy>>
 \end_layout
 
 \begin_layout Standard
@@ -4591,10 +4631,6 @@ Panes can be moved between areas in the window.
 Note that holding the mouse over the tabs and selecting the right button
  brings up a menu of all panes in this area, so that you can for example
  quickly select one of many open source buffers.
-\end_layout
-
-\begin_layout Standard
-<<move to shortcuts>>
 \end_layout
 
 \begin_layout Standard
@@ -4779,26 +4815,34 @@ current.lksks
 \emph default
  in the 
 \emph on
-~/.leksah
+~/.leksah-*.*
 \emph default
  folder.
- <<changed in 0.8 but not yet updated here>> A session contains the layout
- of the window, its content, the active package and some other state.
+ A session contains the layout of the window, its content, the active package
+ and some other state.
  When you restart Leksah it recovers the state from this information.
- When you close a package, the session is saved in the project folder in
- the file 
+ 
+\end_layout
+
+\begin_layout Standard
+When you close a workspace, the session is saved in the folder of the workspace
+ 
 \emph on
-current.lksks
+in 
+\emph default
+a file named
+\emph on
+ workspacename.lksks
 \emph default
 .
- When you open a project and Leksah finds a 
+ When you open a workspace and Leksah finds a 
 \emph on
-current.lksks
+workspacename.lksks
 \emph default
- file in the folder of the project you are going to open, you get prompted
+ file together with the workspace file you are going to open, you get prompted
  if you want to open this session (this means mostly opening the files you
  had open before in the editor).
- This helps you to switch between different packages you are working on.
+ This helps you to switch between different workspaces you are working on.
 \end_layout
 
 \begin_layout Standard
@@ -4821,7 +4865,7 @@ Shortcuts
 \end_layout
 
 \begin_layout Standard
-You can configure the keystrokes by providing a .keymap file, which should
+You can configure the keystrokes by providing a keymap file, which should
  be be in the ~/.leksah-0.8 folder.
  The name of the key map file to be used can be specified in the Preferences
  dialog (without extension!).
@@ -4829,7 +4873,7 @@ You can configure the keystrokes by providing a .keymap file, which should
 \end_layout
 
 \begin_layout Standard
-A line in the .keymap file looks like (for details see Appendix <<xx>>):
+A line in the .keymap file looks like:
 \end_layout
 
 \begin_layout Standard
@@ -4857,9 +4901,9 @@ action
 \emph default
  function in the Module 
 \emph on
-IDE.Menu
+IDE.
 \emph default
-.
+Command.
  The comment following will be displayed as tool tip for the toolbar button,
  if one exists for this action.
  
@@ -4888,11 +4932,11 @@ Configuration files
 \end_layout
 
 \begin_layout Standard
-Leksah stores its configuration in a directory called ~/.leksah-0.7 under
+Leksah stores its configuration in a directory called ~/.leksah-*.* under
  your home folder.
  Indexing the hidden Leksah directory with the version number avoids that
  changes to preferences file layout from version to version cause difficulties.
- Moving your preferences from a previous version is automatic.
+ Moving your preferences from a previous version can potentially be automatic.
 \end_layout
 
 \begin_layout Standard
@@ -4911,76 +4955,27 @@ Configuration / Edit Prefs
 \end_layout
 
 \begin_layout Standard
-If no preference file is found in your the .leksah-0.8 folder in your home
- directory, then the global prefs.lkshp will be used.
- Sometimes a preference file get corrupted, which means leksah does not
- start; it is then often sufficient to just delete the preference file and
- start afresh.
-\end_layout
-
-\begin_layout Standard
-The Current.session file stores the state of the last session, so that Leksah
- will recover the state from the last session.
- If this file is not available it will be taken from the installed /data
- folder.
- Here applies the same: if Leksah has a problem starting, delete the session
- file (and delete the session file before you delete the preference file).
-\end_layout
-
-\begin_layout Standard
-<<where stored>>
-\end_layout
-
-\begin_layout Subsection
-Other State Preserved between Sessions in Files:
-\end_layout
-
-\begin_layout Standard
->>changed in 0.8>>
+If no preference file is found in your the .leksah-*.* folder then the global
+ prefs.lkshp in the installed data folder will be used.
+ If a preference file get corrupted, which means Leksah does not start;
+ it is then often sufficient to just delete the preference file.
 \end_layout
 
 \begin_layout Standard
 The source_packages.txt file stores source locations for installed packages.
- It can be rebuild by calling Leksah in a terminal with the -s or --Sources
- argument .
+ It can be rebuild by calling leksah-server in a terminal with the -o or
+ --sources argument .
  Do this after you moved your source or added sources for previous installed
  packages without sources.
  
 \end_layout
 
 \begin_layout Standard
-The folder will contain one or other folders named after the computer used
- (e.g.
- ghc-6.8.1).
- In this folder collected information about installed packages for a compiler
- version is stored.
- (e.g.
- binary-0.4.1.pack).
- These files are in binary format.
- If you start Leksah with the -r or --Rebuild argument, it cleans all .pack
- files and rebuilds everything.You can use the command in the configuration
- menu <<see above>>; be aware that collecting all the information takes
- considerable time (say half an hour, for me).
-\end_layout
-
-\begin_layout Standard
-Files for Keymaps and SourceCandy for details see appendix xx may be stored
- in the ~/.leksah folder and will be found according to the name selected
+Files for Keymaps (keymap.lkshk) and SourceCandy(candy.lkshc) may be stored
+ in the ~/.leksah-*.* folder and will be found according to the name selected
  in the Preferences Dialog.
  Leksah first searches in this folder and after this in the /data folder.
  
-\end_layout
-
-\begin_layout Standard
-In the Metadata part of the preferences (
-\begin_inset CommandInset ref
-LatexCommand ref
-reference "fig:Metadata-Preferences"
-
-\end_inset
-
-) you can edit the settings concerning metadata collection.
- <<move next to preferences??>> 
 \begin_inset Newpage pagebreak
 \end_inset
 
@@ -4992,13 +4987,12 @@ The Leksah Project
 \end_layout
 
 \begin_layout Standard
-The development of an integrated Development Environment is a major understandin
-g and Leksah should become increasingly supported by the user community.
+The development of an integrated Development Environment is a major undertaking
+ and Leksah should become increasingly supported by the user community.
  If you are a user or just test Leksah, we would appreciate to here from
  you.
  Do not miss to report bugs, unclear or wrong information in the documentation
  and suggestion for improvements on the Leksah issue tracker.
- <<location>>
 \end_layout
 
 \begin_layout Standard
@@ -5014,7 +5008,19 @@ Leksah will advance over time and become more useful.
 \end_layout
 
 \begin_layout Itemize
-Collect local metadata for the projects worked on
+Package editor with configurations
+\end_layout
+
+\begin_layout Itemize
+Add traces to the Debugger
+\end_layout
+
+\begin_layout Itemize
+Support for some kind of plug-ins or extensions
+\end_layout
+
+\begin_layout Itemize
+Context enriched completion
 \end_layout
 
 \begin_layout Itemize
@@ -5026,23 +5032,7 @@ Testing (Quick check,...)
 \end_layout
 
 \begin_layout Itemize
-Package Editor with configurations <<done??>>
-\end_layout
-
-\begin_layout Itemize
-Context enriched completion
-\end_layout
-
-\begin_layout Itemize
 Object browser
-\end_layout
-
-\begin_layout Itemize
-Extension support with plug-ins by libraries
-\end_layout
-
-\begin_layout Itemize
-Add traces to Debugger
 \end_layout
 
 \begin_layout Itemize
@@ -5058,7 +5048,7 @@ Re-factoring (HaRe,...)
 \end_layout
 
 \begin_layout Itemize
-FAD (Functional Analysis and Design,...
+FAD (Functional Analysis and Design,...)
 \end_layout
 
 \begin_layout Standard
@@ -5071,32 +5061,16 @@ Thanks to Ricardo Herrmann for making the new Leksah logo.
 \end_layout
 
 \begin_layout Standard
-Thanks to Sean Chapel for help with Ubuntu installation instructions.
+Thanks to Fabian Emmes, who created the icons for the module browser.
 \end_layout
 
 \begin_layout Standard
-Thanks to Wolfgang Jeltsch for being our most helpful user.
+Thanks to Lakshmi Narasimhan for packaging for Fedora.
 \end_layout
 
 \begin_layout Standard
-Thanks to Fabian Emmes, who created the very nice icons for the module browser.
+Thanks to Jaochim Breitner for packaging for Debian/Ubuntu.
  
-\end_layout
-
-\begin_layout Standard
-Thanks to Funa which gave its sheer existence for Leksah
-\end_layout
-
-\begin_layout Standard
-And thanks to the constructors of Haskell, Miranda and GHC.
-\end_layout
-
-\begin_layout Standard
-Thanks to Moses Schönfinkel and Alonzo Church
-\end_layout
-
-\begin_layout Standard
-and to the four cardinal points
 \end_layout
 
 \begin_layout Standard
@@ -5111,1066 +5085,137 @@ Appendix
 \end_layout
 
 \begin_layout Subsection
-Generic Installation Instructions
-\end_layout
-
-\begin_layout Standard
-<<not yet updated for v 0.8 -- needs checking >>
-\end_layout
-
-\begin_layout Subsubsection
-Install GHC (Glasgow Haskell Compiler)
-\end_layout
-
-\begin_layout Standard
-At the time of writing Leksah supports GHC in the versions (6.10.*).
- For information about installing GHC go to 
-\begin_inset Flex URL
-status collapsed
-
-\begin_layout Plain Layout
-
-http://haskell.org/ghc
-\end_layout
-
-\end_inset
-
-.
- 
-\end_layout
-
-\begin_layout Subsubsection
-Install Cabal
-\end_layout
-
-\begin_layout Standard
-At the time of writing Leksah requires at least version 1.6.0.1.
- For information about installing Gtk2Hs got to 
-\begin_inset Flex URL
-status collapsed
-
-\begin_layout Plain Layout
-
-http://haskell.org/cabal
-\end_layout
-
-\end_inset
-
-.
- 
-\end_layout
-
-\begin_layout Standard
-On operating systems with package managers you may find that a Cabal package
- is available.
- Once again if you want good Metadata for the Cabal functions, try to build
- binaries on your machine.
-\end_layout
-
-\begin_layout Subsubsection
-Install Gtk2Hs
-\end_layout
-
-\begin_layout Standard
-At the time of writing Leksah supports only the most current version (0.10.*).
- For information about installing Gtk2Hs got to 
-\begin_inset Flex URL
-status collapsed
-
-\begin_layout Plain Layout
-
-http://haskell.org/gtk2hs
-\end_layout
-
-\end_inset
-
-.
- 
-\end_layout
-
-\begin_layout Standard
-If you are planning on installing a newer version, then you will need to
- make sure it is compatible with the version of GHC you have installed first.
-\end_layout
-
-\begin_layout Standard
-On operating systems with a package manager you may wish to use a source
- OS package and build a binary OS package to install.
- You should be able to prevent the working directory from being cleaned,
- so it can be used for Leksah's Metadata.
- Doing this means that other OS packages depending on Gtk2Hs can still easily
- be installed.
-\end_layout
-
-\begin_layout Standard
-If you compile Gtk2Hs manually, check the output of ./configure.
- At the end it will list the Haskell packages that are going to be build.
- Leksah needs GTK, glib and gtksourceview2.
-\end_layout
-
-\begin_layout Standard
-Gtk2Hs conditionally compiles some code dependent of the version of the
- underlying GTK libraries.
- This can cause strange compiler errors when compiling Leksah later.
-\end_layout
-
-\begin_layout Subsubsection
-Install Leksah
-\end_layout
-
-\begin_layout Standard
-
-\noun on
-Either
-\noun default
-: Install cabal-install from 
-\begin_inset Flex URL
-status collapsed
-
-\begin_layout Plain Layout
-
-http://haskell.org/cabal
-\end_layout
-
-\end_inset
-
-.
- Then run 
-\begin_inset Quotes eld
-\end_inset
-
-cabal install leksah --user
-\begin_inset Quotes erd
-\end_inset
-
-.
- This is the preferred way.
-\end_layout
-
-\begin_layout Standard
-
-\noun on
-Or
-\noun default
-: Download, configure, build and install the prerequisite packages: binary
- ≥0.4.1, bytestring ≥0.9.0.1, utf8-string ≥0.3.1.1, regex-posix ≥0.39.1 which is available
- from HackageDB 
-\begin_inset Flex URL
-status collapsed
-
-\begin_layout Plain Layout
-
-hackage.haskell.org
-\end_layout
-
-\end_inset
-
- with typical Cabal procedure.
- (Go to the root folder of the package.
- Then do 
-\emph on
-runhaskell configure, runhaskell build, sudo runhaskell install
-\emph default
-.
- The other packages needed should have been installed with GHC anyway.
- (I'm nut sure if GHC-extralibs is needed).
- Then get the Leksah package via Hackage and do the same.
-\end_layout
-
-\begin_layout Standard
-<< end move to appendix>>
-\end_layout
-
-\begin_layout Standard
-<<move the following to appendix>>
-\end_layout
-
-\begin_layout Subsubsection
-Post installation steps
-\end_layout
-
-\begin_layout Standard
-If you 
-\emph on
-upgrade
-\emph default
- to version 0.6 you should clean the Current.session and maybe the Default.prefs
- file from your .leksah configuration folder.
- This means that you loose your personal settings.
- As well you should clean the IDE.session files from the project folders
- you are working on (or at least avoid to open them when prompted).
-\end_layout
-
-\begin_layout Standard
-If you use a customized keymap in your .leksah folder, you need to append
- new keybindings.
- 
-\end_layout
-
-\begin_layout Standard
-
-\series bold
-\color red
-New
-\series default
-\color inherit
- With version 0.6 for a pleasant visual appearance, you have to copy or append
- the .gtkrc-2.0 file from the Leksah data folder or from the data folder in
- Leksah sources to your home folder.
- 
-\end_layout
-
-\begin_layout Subsection
-OS X (using MacPorts)
-\end_layout
-
-\begin_layout Standard
-We have just finished building an Intel Mac dmg and we would like to know
- if it works OK.
- If you have a chance, could you install it and let us know if it runs OK.
-\end_layout
-
-\begin_layout Standard
-\begin_inset Flex URL
-status open
-
-\begin_layout Plain Layout
-
-http://leksah.org/Leksah.dmg
-\end_layout
-
-\end_inset
-
-
-\end_layout
-
-\begin_layout Standard
-Before starting with the installer, this is our recommended procedure for
- installing on OS X at present.
-\end_layout
-
-\begin_layout Subsubsection
-Install MacPorts
-\end_layout
-
-\begin_layout Standard
-Download and install MacPorts by following the instructions on 
-\begin_inset Flex URL
-status collapsed
-
-\begin_layout Plain Layout
-
-http://www.macports.org/install.php
-\end_layout
-
-\end_inset
-
-.
-\end_layout
-
-\begin_layout Subsubsection
-Set up ~/.profile
-\end_layout
-
-\begin_layout Standard
-Add the following to your ~/.profile then open a new terminal window and
- type 
-\begin_inset Quotes eld
-\end_inset
-
-set
-\begin_inset Quotes erd
-\end_inset
-
- to make sure it has worked
-\end_layout
-
-\begin_layout Standard
-\begin_inset Box Frameless
-position "t"
-hor_pos "c"
-has_inner_box 1
-inner_pos "t"
-use_parbox 1
-width "100col%"
-special "none"
-height "1in"
-height_special "totalheight"
-status collapsed
-
-\begin_layout Plain Layout
-
-\family typewriter
-export PATH=~/.cabal/bin:/opt/local/bin:$PATH
-\end_layout
-
-\begin_layout Plain Layout
-
-\family typewriter
-export XDG_DATA_DIRS=/opt/local/share
-\end_layout
-
-\end_inset
-
-
-\end_layout
-
-\begin_layout Standard
-XDG_DATA_DIRS is only needed at run time, so if you have already built without
- it you can just add it now and it should help GTK find the files it needs.
-\end_layout
-
-\begin_layout Subsubsection
-Update MacPorts
-\end_layout
-
-\begin_layout Standard
-Run 
-\begin_inset Quotes eld
-\end_inset
-
-sudo port selfupdate
-\begin_inset Quotes erd
-\end_inset
-
-.
- To make sure you have the latest Portfiles.
-\end_layout
-
-\begin_layout Subsubsection
-Set Variants To Use Quartz (Optional)
-\end_layout
-
-\begin_layout Standard
-If you want to use the Quartz version of GTK+ (instead of the X11 version)
- then add the following to /opt/local/etc/macports/variants.conf.
-\end_layout
-
-\begin_layout Standard
-\begin_inset Box Frameless
-position "t"
-hor_pos "c"
-has_inner_box 1
-inner_pos "t"
-use_parbox 1
-width "100col%"
-special "none"
-height "1in"
-height_special "totalheight"
-status collapsed
-
-\begin_layout Plain Layout
-
-\family typewriter
-+no_x11
-\end_layout
-
-\begin_layout Plain Layout
-
-\family typewriter
--x11
-\end_layout
-
-\begin_layout Plain Layout
-
-\family typewriter
-+quartz
-\end_layout
-
-\end_inset
-
-
-\end_layout
-
-\begin_layout Standard
-
-\series bold
-\color red
-Warning 1
-\series default
-\color inherit
- doing this will disable OpenGL support in GTK+ or Gtk2Hs (gtkglext).
-\end_layout
-
-\begin_layout Standard
-
-\series bold
-\color red
-Warning 2
-\series default
-\color inherit
- for some reason GTK applications when they start will not be in the foreground,
- instead they will be hidden all your other running applications.
-\end_layout
-
-\begin_layout Standard
-
-\series bold
-\color red
-Warning 3
-\series default
-\color inherit
- if you already have GTK MacPorts packages installed then you need to uninstall
- and reinstall the packages that support these variants
-\end_layout
-
-\begin_layout Subsubsection
-Install
-\end_layout
-
-\begin_layout Standard
-Run the following to install Leksah.
- The -k is important it keeps the source and .hi files for use in the Leksah
- metadata.
- Do not include gtkglext in the first line if you are building the Quartz
- version (as it is only supported in X11 builds).
-\end_layout
-
-\begin_layout Standard
-\begin_inset Box Frameless
-position "t"
-hor_pos "c"
-has_inner_box 1
-inner_pos "t"
-use_parbox 1
-width "100col%"
-special "none"
-height "1in"
-height_special "totalheight"
-status collapsed
-
-\begin_layout Plain Layout
-
-\family typewriter
-sudo port install gtk2 cairo librsvg libglade2 gtksourceview2 gtk-chtheme
- gtk2-clearlooks gtkglext
-\end_layout
-
-\begin_layout Plain Layout
-
-\family typewriter
-pkg-config --modversion gtksourceview-2.0
-\end_layout
-
-\end_inset
-
-
-\end_layout
-
-\begin_layout Standard
-The 
-\family typewriter
-pkg-config
-\family default
- should output version 
-\family typewriter
-2.4.2
-\family default
- or greater.
- If it does not check your 
-\family typewriter
-PATH
-\family default
- has 
-\family typewriter
-/op/local/bin
-\family default
- before any other folders with 
-\family typewriter
-pkg-config
-\family default
-.
- Once this is sorted you can move on to running...
-\end_layout
-
-\begin_layout Standard
-\begin_inset Box Frameless
-position "t"
-hor_pos "c"
-has_inner_box 1
-inner_pos "t"
-use_parbox 1
-width "100col%"
-special "none"
-height "1in"
-height_special "totalheight"
-status collapsed
-
-\begin_layout Plain Layout
-
-\family typewriter
-sudo port -k install ghc gtk2hs hs-cabal
-\end_layout
-
-\begin_layout Plain Layout
-
-\family typewriter
-cabal install leksah
-\end_layout
-
-\end_inset
-
-
-\end_layout
-
-\begin_layout Standard
-If you have errors at this point it is a good idea to check 
-\begin_inset Quotes eld
-\end_inset
-
-
-\family typewriter
-ghc-pkg list
-\family default
-
-\begin_inset Quotes erd
-\end_inset
-
-
-\end_layout
-
-\begin_layout Subsubsection
-Make It Look Nice
-\end_layout
-
-\begin_layout Standard
-Run gtk-chtheme and choose one of the Clearlooks themes.
-\end_layout
-
-\begin_layout Subsubsection
-Point Leksah At The Source
-\end_layout
-
-\begin_layout Standard
-Run 
-\begin_inset Quotes eld
-\end_inset
-
-leksah
-\begin_inset Quotes erd
-\end_inset
-
- and when it asks for 
-\begin_inset Quotes eld
-\end_inset
-
-paths under which haskell source packages may be found
-\begin_inset Quotes erd
-\end_inset
-
- add the following to the list.
-\end_layout
-
-\begin_layout Standard
-\begin_inset Box Frameless
-position "t"
-hor_pos "c"
-has_inner_box 1
-inner_pos "t"
-use_parbox 1
-width "100col%"
-special "none"
-height "1in"
-height_special "totalheight"
-status collapsed
-
-\begin_layout Plain Layout
-
-\family typewriter
-\size scriptsize
-/opt/local/var/macports/build/_opt_local_var_macports_sources_rsync.macports.org_r
-elease_ports_lang_ghc/work/ghc-6.10.1
-\end_layout
-
-\begin_layout Plain Layout
-
-\family typewriter
-\size scriptsize
-/opt/local/var/macports/build/_opt_local_var_macports_sources_rsync.macports.org_r
-elease_ports_devel_gtk2hs/work/gtk2hs-0.10.0
-\end_layout
-
-\end_inset
-
-
-\end_layout
-
-\begin_layout Subsection
-Ubuntu 
-\end_layout
-
-\begin_layout Subsubsection
-Install Prerequisites
-\end_layout
-
-\begin_layout Standard
-Open up the package manager and make shure the following packages are installed:
-\end_layout
-
-\begin_layout Itemize
-glib-devel
-\end_layout
-
-\begin_layout Itemize
-gtksourceview2-devel
-\end_layout
-
-\begin_layout Itemize
-make
-\end_layout
-
-\begin_layout Itemize
-gcc
-\end_layout
-
-\begin_layout Itemize
-g++
-\end_layout
-
-\begin_layout Itemize
-libgmp3-dev
-\end_layout
-
-\begin_layout Subsubsection
-Install GHC (Once 6.10.1 is in the universe repository)
-\end_layout
-
-\begin_layout Standard
-
-\emph on
-At the time of writing only 6.8.2 was available in the Ubuntu universe repository.
-\end_layout
-
-\begin_layout Standard
-If you have ghc 6.8 installed then we recommend you uninstall it to avoid
- conflicts.
-\end_layout
-
-\begin_layout Standard
-\begin_inset Box Frameless
-position "t"
-hor_pos "c"
-has_inner_box 1
-inner_pos "t"
-use_parbox 1
-width "100col%"
-special "none"
-height "1in"
-height_special "totalheight"
-status collapsed
-
-\begin_layout Plain Layout
-
-\family typewriter
-sudo apt-get remove ghc6
-\end_layout
-
-\begin_layout Plain Layout
-
-\family typewriter
-sudo apt-get build-dep ghc6
-\end_layout
-
-\begin_layout Plain Layout
-
-\family typewriter
-wget http://www.haskell.org/ghc/dist/6.10.1/ghc-6.10.*-src.tar.bz2
-\end_layout
-
-\begin_layout Plain Layout
-
-\family typewriter
-wget http://www.haskell.org/ghc/dist/6.10.1/ghc-6.10.*-src-extralibs.tar.bz2
-\end_layout
-
-\begin_layout Plain Layout
-
-\family typewriter
-tar xjf ghc-6.10.1-src.tar.bz2
-\end_layout
-
-\begin_layout Plain Layout
-
-\family typewriter
-tar xjf ghc-6.10.1-src-extralibs.tar.bz2
-\end_layout
-
-\begin_layout Plain Layout
-
-\family typewriter
-cd ghc-6.10.1
-\end_layout
-
-\begin_layout Plain Layout
-
-\family typewriter
-./configure --prefix=/home/username/ghc
-\end_layout
-
-\begin_layout Plain Layout
-
-\family typewriter
-make
-\end_layout
-
-\begin_layout Plain Layout
-
-\family typewriter
-make install
-\end_layout
-
-\begin_layout Plain Layout
-
-\family typewriter
-export $PATH=$PATH:/home/username/ghc/bin
-\end_layout
-
-\end_inset
-
-
-\end_layout
-
-\begin_layout Subsubsection
-Install Cabal
-\end_layout
-
-\begin_layout Standard
-\begin_inset Box Frameless
-position "t"
-hor_pos "c"
-has_inner_box 1
-inner_pos "t"
-use_parbox 1
-width "100col%"
-special "none"
-height "1in"
-height_special "totalheight"
-status collapsed
-
-\begin_layout Plain Layout
-
-\family typewriter
-\size footnotesize
-wget http://www.haskell.org/cabal/release/cabal-install-0.6.2/cabal-install-0.6.2.tar.gz
-\end_layout
-
-\begin_layout Plain Layout
-
-\family typewriter
-\size footnotesize
-tar -xvjpf cabal-install-0.6.2.tar.gz
-\end_layout
-
-\begin_layout Plain Layout
-
-\family typewriter
-\size footnotesize
-cd cabal-install-0.6.2
-\end_layout
-
-\begin_layout Plain Layout
-
-\family typewriter
-\size footnotesize
-./bootstrap
-\end_layout
-
-\end_inset
-
-
-\end_layout
-
-\begin_layout Subsubsection
-Install Gtk2Hs
-\end_layout
-
-\begin_layout Standard
-Check the output of ./configure, at the end it should list the haskell packages
- it is going to build.
- Leksah needs gtksourcevie, gtk and glib (if you have installed glib-devel
- and gtksourceview2-devel then these should be enabled).
- If there are any that are not going to be installed that you would like,
- then you most likely need to install the corresponding -devel Ubuntu package.
-\end_layout
-
-\begin_layout Standard
-\begin_inset Box Frameless
-position "t"
-hor_pos "c"
-has_inner_box 1
-inner_pos "t"
-use_parbox 1
-width "100col%"
-special "none"
-height "1in"
-height_special "totalheight"
-status open
-
-\begin_layout Plain Layout
-
-\family typewriter
-wget http://downloads.sourceforge.net/gtk2hs/gtk2hs-0.10.0.tar.gz
-\end_layout
-
-\begin_layout Plain Layout
-
-\family typewriter
-tar -xvjpf gtk2hs-0.10.0.tar.gz
-\end_layout
-
-\begin_layout Plain Layout
-
-\family typewriter
-cd gtk2hs-0.10.0.tar.gz
-\end_layout
-
-\begin_layout Plain Layout
-
-\family typewriter
-./configure
-\end_layout
-
-\begin_layout Plain Layout
-
-\family typewriter
-make
-\end_layout
-
-\begin_layout Plain Layout
-
-\family typewriter
-sudo make install
-\end_layout
-
-\end_inset
-
-
-\end_layout
-
-\begin_layout Subsubsection
-Add Cabal To Your PATH
-\end_layout
-
-\begin_layout Standard
-Cabal can install packages globally or local to the current user (use --user
- and --global to select which).
- We recommend you add the following to your ~/.bash_profile
-\end_layout
-
-\begin_layout Standard
-\begin_inset Box Frameless
-position "t"
-hor_pos "c"
-has_inner_box 1
-inner_pos "t"
-use_parbox 1
-width "100col%"
-special "none"
-height "1in"
-height_special "totalheight"
-status collapsed
-
-\begin_layout Plain Layout
-
-\family typewriter
-PATH=$PATH:/home/sean/.cabal/bin
-\end_layout
-
-\begin_layout Plain Layout
-
-\family typewriter
-export PATH
-\end_layout
-
-\end_inset
-
-
-\end_layout
-
-\begin_layout Standard
-If you change your path you will have to restart X to make it apply automaticall
-y or you can type
-\end_layout
-
-\begin_layout Standard
-\begin_inset Box Frameless
-position "t"
-hor_pos "c"
-has_inner_box 1
-inner_pos "t"
-use_parbox 1
-width "100col%"
-special "none"
-height "1in"
-height_special "totalheight"
-status collapsed
-
-\begin_layout Plain Layout
-
-\family typewriter
-source ~/.bash_profile
-\end_layout
-
-\end_inset
-
-
-\end_layout
-
-\begin_layout Standard
-each time you open a new terminal until you get a chance to restart X.
-\end_layout
-
-\begin_layout Subsubsection
-Install Leksah
-\end_layout
-
-\begin_layout Standard
-\begin_inset Box Frameless
-position "t"
-hor_pos "c"
-has_inner_box 1
-inner_pos "t"
-use_parbox 1
-width "100col%"
-special "none"
-height "1in"
-height_special "totalheight"
-status collapsed
-
-\begin_layout Plain Layout
-
-\family typewriter
-cabal update
-\end_layout
-
-\begin_layout Plain Layout
-
-\family typewriter
-cabal install leksah
-\end_layout
-
-\end_inset
-
-
-\end_layout
-
-\begin_layout Subsection
-MS Windows
-\end_layout
-
-\begin_layout Standard
-In the future I hope we can provide a Windows installer.
- For now the situation is difficult, because the 
-\color red
-latest gtk2hs Windows installer that works for Leksah is 0.10.0, which only
- works with GHC 6.10.2
-\color inherit
-.
- Build 0.10.1 of gtk2hs has an issue with the the GTKSourceView2 component.
- A windows installer for GHC 6.10.4 is missing.
- Please write to the gtk2hs users mailing list if you want this situation
- to improve.
-\end_layout
-
-\begin_layout Standard
-This is what you can do to get Leksah running on Vista:
-\end_layout
-
-\begin_layout Enumerate
-Install Cygwin with the online installer from http://www.cygwin.com/ Select
- packages wget, curl and gcc-core in addition to the standard selection.
- I used the 1.7.0 version of Cygwin setup, but it is still beta.
-\end_layout
-
-\begin_layout Enumerate
-Install your GHC from http://www.haskell.org/ghc.
- 
-\end_layout
-
-\begin_layout Enumerate
-Install gtk2hs from http://www.haskell.org/gtk2hs/ or Sourceforge.net.
- 
-\end_layout
-
-\begin_layout Enumerate
-Download the GHC sources from http://www.haskell.org/ghc.
- Open a Cygwin shell, make a directory Haskell, copy the source tarballs
- here and unpack them.
- Take care that the directory name has no blanks in its path!
-\end_layout
-
-\begin_layout Enumerate
-cabal install leksah.
- (Guess it is already installed with 6.10.2?)
-\end_layout
-
-\begin_layout Enumerate
-You may wish to install a full Unicode monospace font if you want to use
- the source candy feature of Leksah.
- e.g.
- Everson Mono or Deja Vu Sans Mono or perhaps the GNU FreeFonts which are
- aesthetically pleasing.
-\end_layout
-
-\begin_layout Enumerate
-Start Leksah and give your Haskell directory as source root.
- Select the right font from Help/Prefs.
-\end_layout
-
-\begin_layout Standard
-<<end move>>
-\end_layout
-
-\begin_layout Subsection
 Command line arguments
 \end_layout
 
+\begin_layout Standard
+for leksah-server:
+\end_layout
+
 \begin_layout LyX-Code
-Usage: ide [OPTION...] files...
+
+\size scriptsize
+Leksah Haskell IDE (server) Usage: leksah-server [OPTION...] files...
    
 \end_layout
 
 \begin_layout LyX-Code
--r        --Rebuild           Cleans all .pack files and rebuild everything
+
+\size scriptsize
+-s              --system               Collects new information for installed
+ packages   
+\end_layout
+
+\begin_layout LyX-Code
+
+\size scriptsize
+-r[Maybe Port]  --server[=Maybe Port]  Start as server.
    
 \end_layout
 
 \begin_layout LyX-Code
--c        --Collect           Collects new information in .pack files   
-\end_layout
 
-\begin_layout LyX-Code
--u FILE   --Uninstalled=FILE  Gather info about an uninstalled package 
-  
-\end_layout
-
-\begin_layout LyX-Code
--s        --Sources           Gather info about pathes to sources   
-\end_layout
-
-\begin_layout LyX-Code
--v        --Version           Show the version number of ide   
-\end_layout
-
-\begin_layout LyX-Code
--d        --Debug             Write ascii pack files   
-\end_layout
-
-\begin_layout LyX-Code
--l NAME   --LoadSession=NAME  Load session   
-\end_layout
-
-\begin_layout LyX-Code
--n        --NoGUI             Don't start the leksah GUI   
-\end_layout
-
-\begin_layout LyX-Code
--x[FILE]  --Extract[=FILE]    Extract tars from cabal install directory
+\size scriptsize
+-b              --rebuild              Modifier for -s and -p: Rebuild metadata
    
 \end_layout
 
 \begin_layout LyX-Code
--h        --Help              Display command line options 
+
+\size scriptsize
+-o              --sources              Modifier for -s: Gather info about
+ pathes to sources   
+\end_layout
+
+\begin_layout LyX-Code
+
+\size scriptsize
+-v              --version              Show the version number of ide  
+ 
+\end_layout
+
+\begin_layout LyX-Code
+
+\size scriptsize
+-h              --help                 Display command line options   
+\end_layout
+
+\begin_layout LyX-Code
+
+\size scriptsize
+-d              --debug                Write ascii pack files   
+\end_layout
+
+\begin_layout LyX-Code
+
+\size scriptsize
+-e Verbosity    --verbosity=Verbosity  One of DEBUG, INFO, NOTICE, WARNING,
+ ERROR, CRITICAL, ALERT, EMERGENCY   
+\end_layout
+
+\begin_layout LyX-Code
+
+\size scriptsize
+-l LogFile      --logfile=LogFile      File path for logging messages  
+ 
+\end_layout
+
+\begin_layout LyX-Code
+
+\size scriptsize
+-f              --forever              Don't end the server when last connection
+ ends   
+\end_layout
+
+\begin_layout LyX-Code
+
+\size scriptsize
+-c              --endWithLast          End the server when last connection
+ ends 
+\size default
+ 
+\end_layout
+
+\begin_layout Standard
+for leksah:
+\end_layout
+
+\begin_layout LyX-Code
+
+\size scriptsize
+Usage: leksah [OPTION...] files...
+   
+\end_layout
+
+\begin_layout LyX-Code
+
+\size scriptsize
+-v            --Version              Show the version number of ide   
+\end_layout
+
+\begin_layout LyX-Code
+
+\size scriptsize
+-l NAME       --LoadSession=NAME     Load session   
+\end_layout
+
+\begin_layout LyX-Code
+
+\size scriptsize
+-h            --Help                 Display command line options   
+\end_layout
+
+\begin_layout LyX-Code
+
+\size scriptsize
+-e Verbosity  --verbosity=Verbosity  One of DEBUG, INFO, NOTICE, WARNING,
+ 
+\end_layout
+
+\begin_layout LyX-Code
+
+\size scriptsize
+                                             ERROR, CRITICAL, ALERT, EMERGENCY
 \end_layout
 
 \begin_layout Subsection
@@ -6178,122 +5223,186 @@ The Candy file
 \end_layout
 
 \begin_layout LyX-Code
--- Candy file
+
+\size scriptsize
+"->"        0x2192   Trimming       --RIGHTWARDS ARROW          
 \end_layout
 
 \begin_layout LyX-Code
-"->" 0x2192 Trimming --RIGHTWARDS ARROW
+
+\size scriptsize
+"<-"        0x2190   Trimming       --LEFTWARDS ARROW           
 \end_layout
 
 \begin_layout LyX-Code
-"<-" 0x2190 Trimming --LEFTWARDS ARROW
+
+\size scriptsize
+"=>"        0x21d2                  --RIGHTWARDS DOUBLE ARROW   
 \end_layout
 
 \begin_layout LyX-Code
-"=>" 0x21d2 --RIGHTWARDS DOUBLE ARROW
+
+\size scriptsize
+">="        0x2265                  --GREATER-THAN OR EQUAL TO  
 \end_layout
 
 \begin_layout LyX-Code
-">=" 0x2265 --GREATER-THAN OR EQUAL TO
+
+\size scriptsize
+"<="        0x2264                  --LESS-THAN OR EQUAL TO     
 \end_layout
 
 \begin_layout LyX-Code
-"<=" 0x2264 --LESS-THAN OR EQUAL TO
+
+\size scriptsize
+"/="        0x2260                  --NOT EQUAL TO              
 \end_layout
 
 \begin_layout LyX-Code
-"/=" 0x2260 --NOT EQUAL TO
+
+\size scriptsize
+"&&"        0x2227                  --LOGICAL AND               
 \end_layout
 
 \begin_layout LyX-Code
-"&&" 0x2227 --LOGICAL AND
+
+\size scriptsize
+"||"        0x2228                  --LOGICAL OR                
 \end_layout
 
 \begin_layout LyX-Code
-"||" 0x2228 --LOGICAL OR
+
+\size scriptsize
+"++"        0x2295                  --CIRCLED PLUS              
 \end_layout
 
 \begin_layout LyX-Code
-"++" 0x2295 --CIRCLED PLUS
+
+\size scriptsize
+-- "::"        0x2237 Trimming         --PROPORTION              
 \end_layout
 
 \begin_layout LyX-Code
---"::" 0x2551 Trimming --BAR
+
+\size scriptsize
+-- ".."        0x2025                  --TWO DOT LEADER          
 \end_layout
 
 \begin_layout LyX-Code
-"::" 0x2237 Trimming --PROPORTION
+
+\size scriptsize
+"^"         0x2191                  --UPWARDS ARROW             
 \end_layout
 
 \begin_layout LyX-Code
-".." 0x2025 --TWO DOT LEADER
+
+\size scriptsize
+"=="        0x2261                  --IDENTICAL TO              
 \end_layout
 
 \begin_layout LyX-Code
-"^" 0x2191 --UPWARDS ARROW
-\end_layout
 
-\begin_layout LyX-Code
-"==" 0x2261 --IDENTICAL TO
-\end_layout
-
-\begin_layout LyX-Code
+\size scriptsize
 " .
- " 0x2218 --RING OPERATOR
+ "       0x2218                  --RING OPERATOR              
 \end_layout
 
 \begin_layout LyX-Code
+
+\size scriptsize
 "
 \backslash
-" 0x03bb --GREEK SMALL LETTER LAMBDA
+"         0x03bb                  --GREEK SMALL LETTER LAMBDA 
 \end_layout
 
 \begin_layout LyX-Code
---"=<<" 0x291e --
+
+\size scriptsize
+"=<<"       0x291e                  --                        
 \end_layout
 
 \begin_layout LyX-Code
-">>=" 0x21a0
+
+\size scriptsize
+">>="       0x21a0                  --                          
 \end_layout
 
 \begin_layout LyX-Code
-"$" 0x25ca
+
+\size scriptsize
+-- "$"         0x25ca                  --                        
 \end_layout
 
 \begin_layout LyX-Code
-">>" 0x226b -- MUCH GREATER THEN
+
+\size scriptsize
+">>"        0x226b                  -- MUCH GREATER THEN      
 \end_layout
 
 \begin_layout LyX-Code
-"forall" 0x2200 --FOR ALL
+
+\size scriptsize
+"forall"    0x2200                  --FOR ALL 
 \end_layout
 
 \begin_layout LyX-Code
-"exist" 0x2203 --THERE EXISTS
+
+\size scriptsize
+-- "exist"     0x2203                  --THERE EXISTS 
 \end_layout
 
 \begin_layout LyX-Code
-"not" 0x00ac --NOT SIGN
+
+\size scriptsize
+"not"       0x00ac                  --NOT SIGN
 \end_layout
 
 \begin_layout LyX-Code
-"alpha" 0x03b1
+
+\size scriptsize
+"alpha"     0x03b1                  --ALPHA 
 \end_layout
 
 \begin_layout LyX-Code
-"beta" 0x03b2
+
+\size scriptsize
+"beta"      0x03b2                  --BETA 
 \end_layout
 
 \begin_layout LyX-Code
-"gamma" 0x03b3
+
+\size scriptsize
+"gamma"     0x03b3                  --GAMMA 
 \end_layout
 
 \begin_layout LyX-Code
-"delta" 0x03b4
+
+\size scriptsize
+"delta"     0x03b4                  --DELTA 
 \end_layout
 
 \begin_layout LyX-Code
-"epsilon" 0x03b5
+
+\size scriptsize
+"epsilon"   0x03b5                  --EPSILON 
+\end_layout
+
+\begin_layout LyX-Code
+
+\size scriptsize
+"zeta"      0x03b6                  --ZETA 
+\end_layout
+
+\begin_layout LyX-Code
+
+\size scriptsize
+"eta"       0x03b7                  --ETA 
+\end_layout
+
+\begin_layout LyX-Code
+
+\size scriptsize
+"theta"     0x03b8                  --THETA
 \end_layout
 
 \begin_layout Subsection
@@ -6302,365 +5411,562 @@ The Keymap file
 
 \begin_layout LyX-Code
 
-\size scriptsize
--- Default Keymap file for Leksah --Allowed Modifiers are <shift>	
+\size tiny
+--Default Keymap file for Leksah
 \end_layout
 
 \begin_layout LyX-Code
 
-\size scriptsize
--- <ctrl> <alt> <apple> <compose> --<apple> is the Windows key 
+\size tiny
+--Allowed Modifiers are <shift>	<ctrl> <alt> <apple> <compose>
 \end_layout
 
 \begin_layout LyX-Code
 
-\size scriptsize
--- on PC keyboards --<compose> is often labelled Alt Gr.
- 
+\size tiny
+--<apple> is the Windows key on PC keyboards
 \end_layout
 
 \begin_layout LyX-Code
 
-\size scriptsize
--- The defined values for the keys can can be found at 
+\size tiny
+--<compose> is often labelled Alt Gr.
 \end_layout
 
 \begin_layout LyX-Code
 
-\size scriptsize
+\size tiny
+--The defined values for the keys can can be found at
+\end_layout
+
+\begin_layout LyX-Code
+
+\size tiny
 -- http://gitweb.freedesktop.org/?p=xorg/proto/x11proto.git;a=blob_plain;f=keysymde
 f.h.
- 
 \end_layout
 
 \begin_layout LyX-Code
 
-\size scriptsize
+\size tiny
 -- The names of the keys are the names of the macros without the prefix.
 \end_layout
 
 \begin_layout LyX-Code
 
-\size scriptsize
--- File 
 \end_layout
 
 \begin_layout LyX-Code
 
-\size scriptsize
+\size tiny
+--File
+\end_layout
+
+\begin_layout LyX-Code
+
+\size tiny
 <ctrl>n                    ->          FileNew         "Opens a new empty
- buffer" 
+ buffer"
 \end_layout
 
 \begin_layout LyX-Code
 
-\size scriptsize
+\size tiny
 <ctrl>o                    ->          FileOpen        "Opens an existing
- file" 
+ file"
 \end_layout
 
 \begin_layout LyX-Code
 
-\size scriptsize
+\size tiny
+--<ctrl>x/<ctrl>f          ->          FileOpen        "Opens an existing
+ file"
+\end_layout
+
+\begin_layout LyX-Code
+
+\end_layout
+
+\begin_layout LyX-Code
+
+\size tiny
 <ctrl>s                    ->          FileSave        "Saves the current
- buffer" 
+ buffer"
 \end_layout
 
 \begin_layout LyX-Code
 
-\size scriptsize
+\size tiny
 <ctrl><shift>s             ->          FileSaveAll     "Saves all modified
  buffers"
 \end_layout
 
 \begin_layout LyX-Code
 
-\size scriptsize
+\size tiny
 <ctrl>w                    ->          FileClose       "Closes the current
- buffer" 
+ buffer"
 \end_layout
 
 \begin_layout LyX-Code
 
-\size scriptsize
+\end_layout
+
+\begin_layout LyX-Code
+
+\size tiny
 <alt>F4                    ->          Quit            "Quits this program"
- 
 \end_layout
 
 \begin_layout LyX-Code
 
-\size scriptsize
---Edit <ctrl>z             ->          EditUndo        "Undos the last user
- action" 
 \end_layout
 
 \begin_layout LyX-Code
 
-\size scriptsize
+\size tiny
+--Edit
+\end_layout
+
+\begin_layout LyX-Code
+
+\size tiny
+<ctrl>z                    ->          EditUndo        "Undos the last user
+ action"
+\end_layout
+
+\begin_layout LyX-Code
+
+\end_layout
+
+\begin_layout LyX-Code
+
+\size tiny
 <shift><ctrl>y             ->          EditRedo        "Redos the last user
- action" 
+ action"
 \end_layout
 
 \begin_layout LyX-Code
 
-\size scriptsize
-<ctrl>a                    ->          EditSelectAll   "Select the whole
+\size tiny
+--<ctrl>x/r                ->          EditRedo        "Redos the last user
+ action"
+\end_layout
+
+\begin_layout LyX-Code
+
+\end_layout
+
+\begin_layout LyX-Code
+
+\size tiny
+<ctrl>a                     ->          EditSelectAll   "Select the whole
  text in the current buffer"
 \end_layout
 
 \begin_layout LyX-Code
 
-\size scriptsize
-<ctrl>f                    ->          EditFind         "Search for a text
- string (Toggles the " 
 \end_layout
 
 \begin_layout LyX-Code
 
-\size scriptsize
-F3                         ->          EditFindNext     "Find the next occurence
- of the text string"
+\size tiny
+<ctrl>f                     ->          EditFind         "Search for a text
+ string (Toggles the "
 \end_layout
 
 \begin_layout LyX-Code
 
-\size scriptsize
-<shift>F3                  ->          EditFindPrevious "Find the previous
+\size tiny
+F3                          ->          EditFindNext     "Find the next
  occurence of the text string"
 \end_layout
 
 \begin_layout LyX-Code
 
-\size scriptsize
-<ctrl>l                    ->          EditGotoLine    "Go to line with
+\end_layout
+
+\begin_layout LyX-Code
+
+\size tiny
+<shift>F3                   ->          EditFindPrevious "Find the previous
+ occurence of the text string"
+\end_layout
+
+\begin_layout LyX-Code
+
+\end_layout
+
+\begin_layout LyX-Code
+
+\size tiny
+<ctrl>l                     ->          EditGotoLine    "Go to line with
  a known index"
 \end_layout
 
 \begin_layout LyX-Code
 
-\size scriptsize
-<ctrl><alt>Right           ->          EditComment     "Add a line style
- comment to the selected lines"
 \end_layout
 
 \begin_layout LyX-Code
 
-\size scriptsize
-<ctrl><alt>Left            ->          EditUncomment   "Remove a line style
- comment" 
+\size tiny
+<ctrl><alt>Right            ->          EditComment     "Add a line style
+ comment to the selected lies"
 \end_layout
 
 \begin_layout LyX-Code
 
-\size scriptsize
+\size tiny
+<ctrl><alt>Left             ->          EditUncomment   "Remove a line style
+ comment"
+\end_layout
+
+\begin_layout LyX-Code
+
+\size tiny
+<alt>Right                  ->          EditShiftRight  "Shift right"
+\end_layout
+
+\begin_layout LyX-Code
+
+\size tiny
+<alt>Left                   ->          EditShiftLeft   "Shift Left"
+\end_layout
+
+\begin_layout LyX-Code
+
+\end_layout
+
+\begin_layout LyX-Code
+
+\size tiny
+--View
+\end_layout
+
+\begin_layout LyX-Code
+
+\size tiny
 <alt><shift>Left           ->          ViewMoveLeft    "Move the current
- pane left" 
+ pane left"
 \end_layout
 
 \begin_layout LyX-Code
 
-\size scriptsize
+\size tiny
 <alt><shift>Right          ->          ViewMoveRight   "Move the current
- pane right" 
+ pane right"
 \end_layout
 
 \begin_layout LyX-Code
 
-\size scriptsize
+\size tiny
 <alt><shift>Up             ->          ViewMoveUp      "Move the current
- pane up" 
+ pane up"
 \end_layout
 
 \begin_layout LyX-Code
 
-\size scriptsize
+\size tiny
 <alt><shift>Down           ->          ViewMoveDown    "Move the current
  pane down"
 \end_layout
 
 \begin_layout LyX-Code
 
-\size scriptsize
-<ctrl>2                    ->          ViewSplitHorizontal "Split the current
- horizontal" 
 \end_layout
 
 \begin_layout LyX-Code
 
-\size scriptsize
-<ctrl>3                    ->          ViewSplitVertical "Split the current
- vertical" 
+\size tiny
+<ctrl>2                    ->          ViewSplitHorizontal
 \end_layout
 
 \begin_layout LyX-Code
 
-\size scriptsize
-<ctrl>1                 ->          ViewCollapse    "Collapse the panes"
+\size tiny
+                                                    "Split the current pane
+ in horizontal direction"
 \end_layout
 
 \begin_layout LyX-Code
 
-\size scriptsize
-                        ->          ViewTabsLeft    "Shows the tabs  on
- the left"
+\size tiny
+<ctrl>3                 ->          ViewSplitVertical
 \end_layout
 
 \begin_layout LyX-Code
 
-\size scriptsize
-                        ->          ViewTabsRight   "Shows the tabs on the
- right"                                                 ->          ViewTabsUp
-      "Shows the tabs of the on the top"
+\size tiny
+                                                    "Split the current pane
+ in vertical direction"
 \end_layout
 
 \begin_layout LyX-Code
 
-\size scriptsize
-                        ->          ViewTabsDown    "Shows the tabs on the
- bottom"      
+\size tiny
+<ctrl>1                 ->          ViewCollapse    "Collapse the panes
+ around the currentla selected pane into one"
 \end_layout
 
 \begin_layout LyX-Code
 
-\size scriptsize
-                        ->          ViewSwitchTabs  "Switches tabs visible
- or invisible " 
 \end_layout
 
 \begin_layout LyX-Code
 
-\size scriptsize
-<ctrl>t                 ->          ToggleToolbar                      
-   
+\size tiny
+                        ->          ViewTabsLeft    "Shows the tabs of the
+ current notebook on the left"
 \end_layout
 
 \begin_layout LyX-Code
 
-\size scriptsize
-<ctrl>b                 ->          BuildPackage 
+\size tiny
+                        ->          ViewTabsRight   "Shows the tabs of the
+ current notebook on the right"
 \end_layout
 
 \begin_layout LyX-Code
 
-\size scriptsize
+\size tiny
+                        ->          ViewTabsUp      "Shows the tabs of the
+ current notebook on the top"
+\end_layout
+
+\begin_layout LyX-Code
+
+\size tiny
+                        ->          ViewTabsDown    "Shows the tabs of the
+ current notebook on the bottom"
+\end_layout
+
+\begin_layout LyX-Code
+
+\size tiny
+                        ->          ViewSwitchTabs  "Switches if tabs for
+ the current notebook are visible"
+\end_layout
+
+\begin_layout LyX-Code
+
+\size tiny
+<ctrl>t                 ->          ToggleToolbar
+\end_layout
+
+\begin_layout LyX-Code
+
+\size tiny
+                        ->          HelpDebug
+\end_layout
+
+\begin_layout LyX-Code
+
+\size tiny
+                        ->          HelpAbout
+\end_layout
+
+\begin_layout LyX-Code
+
+\end_layout
+
+\begin_layout LyX-Code
+
+\size tiny
+<ctrl>b                 ->          BuildPackage
+\end_layout
+
+\begin_layout LyX-Code
+
+\size tiny
 <ctrl>r                 ->          AddAllImports
 \end_layout
 
 \begin_layout LyX-Code
 
-\size scriptsize
+\end_layout
+
+\begin_layout LyX-Code
+
+\size tiny
 <ctrl><alt>r            ->          RunPackage
 \end_layout
 
 \begin_layout LyX-Code
 
-\size scriptsize
-<ctrl>j                 ->          NextError 
 \end_layout
 
 \begin_layout LyX-Code
 
-\size scriptsize
+\size tiny
+<ctrl>j                 ->          NextError
+\end_layout
+
+\begin_layout LyX-Code
+
+\size tiny
 <ctrl><shift>j          ->          PreviousError
 \end_layout
 
 \begin_layout LyX-Code
 
-\size scriptsize
-<ctrl>m                 ->          ShowModules
 \end_layout
 
 \begin_layout LyX-Code
 
-\size scriptsize
-<ctrl>i                 ->          ShowInfo
+\size tiny
+<ctrl>o                 ->          ShowModules
 \end_layout
 
 \begin_layout LyX-Code
 
-\size scriptsize
-<ctrl><shift>e          ->          EditAlignEqual 
 \end_layout
 
 \begin_layout LyX-Code
 
-\size scriptsize
-<ctrl><shift>l          ->          EditAlignLeftArrow 
 \end_layout
 
 \begin_layout LyX-Code
 
-\size scriptsize
-<ctrl><shift>r          ->          EditAlignRightArrow 
+\size tiny
+--<ctrl>i                 ->          ShowInterface
 \end_layout
 
 \begin_layout LyX-Code
 
-\size scriptsize
+\size tiny
+-- <ctrl>i                 ->          ShowInfo
+\end_layout
+
+\begin_layout LyX-Code
+
+\end_layout
+
+\begin_layout LyX-Code
+
+\end_layout
+
+\begin_layout LyX-Code
+
+\size tiny
+<ctrl><shift>e          ->          EditAlignEqual
+\end_layout
+
+\begin_layout LyX-Code
+
+\size tiny
+<ctrl><shift>l          ->          EditAlignLeftArrow
+\end_layout
+
+\begin_layout LyX-Code
+
+\size tiny
+<ctrl><shift>r          ->          EditAlignRightArrow
+\end_layout
+
+\begin_layout LyX-Code
+
+\size tiny
 <ctrl><shift>t          ->          EditAlignTypeSig
 \end_layout
 
 \begin_layout LyX-Code
 
-\size scriptsize
-<alt>i                  ->          AddOneImport 
 \end_layout
 
 \begin_layout LyX-Code
 
-\size scriptsize
+\size tiny
+<alt>i                  ->          AddOneImport
+\end_layout
+
+\begin_layout LyX-Code
+
+\size tiny
 <alt><shift>i           ->          AddAllImports
 \end_layout
 
 \begin_layout LyX-Code
 
-\size scriptsize
--- "For the next to entries the <ctrl> modifier is mandatory" 
 \end_layout
 
 \begin_layout LyX-Code
 
-\size scriptsize
-<ctrl>Page_Up           ->          FlipUp          "Switch to next buffer
+\size tiny
+-- "For the next to entries the <ctrl> modifier is mandatory"
+\end_layout
+
+\begin_layout LyX-Code
+
+\size tiny
+<ctrl>Page_Up           ->          FlipUp          "Switch to next pane
  in reverse recently used oder"
 \end_layout
 
 \begin_layout LyX-Code
 
-\size scriptsize
-<ctrl>Page_Down         ->          FlipDown        "Switch to next buffer
+\size tiny
+<ctrl>Page_Down         ->          FlipDown        "Switch to next pane
  in recently used oder"
 \end_layout
 
 \begin_layout LyX-Code
 
-\size scriptsize
+\end_layout
+
+\begin_layout LyX-Code
+
+\size tiny
 <ctrl>space             ->          StartComplete   "Initiate complete in
  a source buffer"
 \end_layout
 
 \begin_layout LyX-Code
 
-\size scriptsize
-F6 -> DebugStep 
 \end_layout
 
 \begin_layout LyX-Code
 
-\size scriptsize
-F7 -> DebugStepLocal 
+\size tiny
+F6 -> DebugStep
 \end_layout
 
 \begin_layout LyX-Code
 
-\size scriptsize
-F8 -> DebugStepModule 
+\size tiny
+F7 -> DebugStepLocal
 \end_layout
 
 \begin_layout LyX-Code
 
-\size scriptsize
+\size tiny
+F8 -> DebugStepModule
+\end_layout
+
+\begin_layout LyX-Code
+
+\size tiny
 F9 -> DebugContinue
+\end_layout
+
+\begin_layout LyX-Code
+
+\end_layout
+
+\begin_layout LyX-Code
+
+\size tiny
+<ctrl>Return             ->          ExecuteSelection
+\end_layout
+
+\begin_layout LyX-Code
+
+\size tiny
+<ctrl>m                  ->          UpdateMetadataCurrent
+\end_layout
+
+\begin_layout LyX-Code
+
 \end_layout
 
 \begin_layout LyX-Code

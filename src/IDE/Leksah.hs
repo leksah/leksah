@@ -88,7 +88,7 @@ options =   [Option ['v'] ["Version"] (NoArg VersionF)
          ,   Option ['e'] ["verbosity"] (ReqArg Verbosity "Verbosity")
                 "One of DEBUG, INFO, NOTICE, WARNING, ERROR, CRITICAL, ALERT, EMERGENCY"]
 
-header = "Usage: ide [OPTION...] files..."
+header = "Usage: leksah [OPTION...] files..."
 
 ideOpts :: [String] -> IO ([Flag], [String])
 ideOpts argv =
