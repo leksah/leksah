@@ -1,0 +1,7 @@
+[Desktop Entry]
+Encoding=UTF-8
+Name=Leksah
+Exec=/usr/bin/leksah
+Icon=leksah_48x48
+Type=Application
+Categories=GNOME;GTK;Development;
