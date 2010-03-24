@@ -56,9 +56,9 @@ import Graphics.UI.Gtk
 import IDE.Pane.PackageEditor (packageNew', choosePackageFile)
 import Data.List ((\\), foldl', nub, delete)
 import IDE.Package
-       (getModuleTemplate, getPackageDescriptionAndPath, buildPackage,
-        packageInstall', packageClean, activatePackage, deactivatePackage,
-        idePackageFromPath)
+       (packageConfig', getModuleTemplate, getPackageDescriptionAndPath,
+        buildPackage, packageInstall', packageClean, activatePackage,
+        deactivatePackage, idePackageFromPath)
 import System.Directory
        (createDirectoryIfMissing, doesFileExist, canonicalizePath)
 import System.Time (getClockTime)
@@ -441,16 +441,21 @@ selectFirstReasonableTarget l revDeps =
                             Nothing   -> []
                             Just list -> list ++ concatMap allDeps list
 
-makePackages :: Bool -> [IDEPackage] -> IDEAction
-makePackages _ []       = return ()
-makePackages isBackgroundBuild packages = do
+makePackages :: Bool -> Bool -> [IDEPackage] -> IDEAction
+makePackages _ _ []     = return ()
+makePackages isBackgroundBuild needConfigure packages = do
     mbWs <- readIDE workspace
     prefs' <- readIDE prefs
     case mbWs of
         Nothing -> return ()
         Just ws -> do
             let package = selectFirstReasonableTarget packages (wsReverseDeps ws)
-            buildPackage isBackgroundBuild package (cont prefs' package ws)
+            if needConfigure
+                then packageConfig' package (\b ->
+                    if b
+                        then buildPackage isBackgroundBuild package (cont prefs' package ws)
+                        else return ())
+                else buildPackage isBackgroundBuild package (cont prefs' package ws)
     where
     cont prefs' package ws res =
         if res
@@ -469,7 +474,7 @@ makePackages isBackgroundBuild packages = do
     cont2 deps package res = do
         when res $ do
             let nextTargets = delete package $ nub $ packages ++ deps
-            makePackages isBackgroundBuild nextTargets
+            makePackages isBackgroundBuild True nextTargets
 
 
 backgroundMake :: IDEAction
@@ -485,7 +490,7 @@ backgroundMake = catchIDE (do
                                 else return []
             let isModified = not (null modifiedPacks)
             when isModified $ do
-            makePackages True modifiedPacks
+            makePackages True False modifiedPacks
     )
     (\(e :: SomeException) -> sysMessage Normal (show e))
 
@@ -494,7 +499,7 @@ makePackage = do
     activePack' <- readIDE activePack
     case activePack' of
         Nothing -> return ()
-        Just p -> makePackages False [p]
+        Just p -> makePackages False False [p]
 
 workspaceClean = do
     mbWs <-  readIDE workspace
@@ -506,5 +511,5 @@ workspaceMake = do
     mbWs <-  readIDE workspace
     case mbWs of
         Nothing -> return ()
-        Just ws -> makePackages False (wsPackages ws)
+        Just ws -> makePackages False True (wsPackages ws)
 

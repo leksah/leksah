@@ -394,8 +394,7 @@ loadInfosForPackage dirPath pid = do
                     sourcePath <- if exists'
                                     then liftM Just (readFile filePath2)
                                     else return Nothing
-                    let packageInfo' = trace ("source path= " ++ show sourcePath) $
-                                        injectSourceInPack sourcePath packageInfo
+                    let packageInfo' = injectSourceInPack sourcePath packageInfo
                     return (Just packageInfo'))
             (\ (e :: SomeException) -> do
                 sysMessage Normal

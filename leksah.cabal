@@ -110,7 +110,7 @@ Executable leksah
                    IDE.Pane.Breakpoints IDE.Pane.Trace IDE.Pane.Variables
                    IDE.Pane.Errors IDE.TextEditor IDE.Workspaces
                    IDE.Statusbar IDE.Pane.Workspace IDE.PaneGroups
-                   IDE.Utils.ServerConnection
+                   IDE.Utils.ServerConnection IDE.OSX
     ghc-prof-options: -auto-all -prof
     ghc-shared-options: -auto-all -prof
     ghc-options: -fwarn-unused-imports -fwarn-missing-fields -fwarn-incomplete-patterns -ferror-spans

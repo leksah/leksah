@@ -18,6 +18,7 @@
 
 module IDE.Package (
     packageConfig
+,   packageConfig'
 ,   buildPackage
 
 ,   packageDoc
