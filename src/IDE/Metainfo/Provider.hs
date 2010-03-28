@@ -10,8 +10,7 @@
 -- Stability   :  provisional
 -- Portability :  portable
 --
--- | This module provides the infos collected by the extractor before
---   and an info pane to present some of them to the user
+-- | This module provides the infos collected by the server before
 --
 ---------------------------------------------------------------------------------
 
