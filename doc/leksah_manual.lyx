@@ -1372,7 +1372,7 @@ c.S.
 ), for searching only whole worlds (toggle Words) and for wrapping around
  (button Wrap), which means that the search will start at the beginning/end
  of the file, when the end/beginning is reached.
- If their is no occurrence of the search string in the currently open file
+ If there is no occurrence of the search string in the currently open file
  the entry turns red.
  
 \end_layout
@@ -2511,8 +2511,8 @@ and many more ...
 \end_layout
 
 \begin_layout Standard
-Because more then one executable and a library can be build from one package,
- it is possible to have cabal files with more then one build info.
+Because more than one executable and a library can be build from one package,
+ it is possible to have cabal files with more than one build info.
  The package editor deals with this by the buttons Add / Remove Build Info.
  Every build info gets an index number, and for executables and a library
  you specify the index of the build info.
@@ -2575,7 +2575,7 @@ Separate from this error message the case, where the compiler misses a module
 \end_layout
 
 \begin_layout Standard
-You have to take care as well, that their is a user and a global package
+You have to take care as well, that there is a user and a global package
  db.
  Leksah uses the --user flag by default, to minimize errors.
  
@@ -2884,7 +2884,7 @@ Add import
 \emph default
 from the context menu in the log pane.
  Leksah will then add an import statement to the import list.
- If there is more then one module that exports this identifier, a dialog
+ If there is more than one module that exports this identifier, a dialog
  will appear which queries you about the module you want to import it from.
 \end_layout
 
@@ -3374,7 +3374,7 @@ Ctrl
  area.
  If the identifier is known unambiguously the modules and info pane will
  show information about it.
- If more then one possibility exist the search pane will open and present
+ If more than one possibility exist the search pane will open and present
  the alternatives.
 \end_layout
 
@@ -3636,7 +3636,7 @@ s exist.
  Leksah will construct the directory, modify the cabal file and construct
  an empty module file from a template (The template is stored in the file
  module.lksht in the data folder of the project, and will be read from the
- .leksah-** folder if you want to provide a different template file their.
+ .leksah-** folder if you want to provide a different template file there.
  
 \end_layout
 
@@ -4787,7 +4787,7 @@ Configuration / Edit Prefs
 \end_layout
 
 \begin_layout Standard
-If no preference file is found in your the .leksah-*.* folder then the global
+If no preference file is found in your .leksah-*.* folder then the global
  prefs.lkshp in the installed data folder will be used.
  If a preference file get corrupted, which means Leksah does not start;
  it is then often sufficient to just delete the preference file.
