@@ -63,6 +63,7 @@ module IDE.Core.State (
 
 #ifdef YI
 ,   liftYiControl
+,   liftYi
 #endif
 
 ,   module IDE.Core.Types
@@ -296,6 +297,9 @@ liftYiControl :: Yi.ControlM a -> IDEM a
 liftYiControl f = do
     control <- readIDE yiControl
     liftIO $ Yi.runControl f control
+
+liftYi :: Yi.YiM a -> IDEM a
+liftYi = liftYiControl . Yi.liftYi
 
 #endif
 

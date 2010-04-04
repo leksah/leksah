@@ -146,6 +146,21 @@ handleExceptions inner =
 
 startGUI :: String -> Prefs -> Bool -> IO ()
 startGUI sessionFilename iprefs isFirstStart = do
+#ifdef YI
+  let myConfig = Yi.defaultVimConfig
+      defaultUIConfig = Yi.configUI myConfig
+  Yi.startControl (
+    myConfig
+      {
+        Yi.configUI = defaultUIConfig
+          {
+            Yi.configLineWrap = False,
+            Yi.configTheme = Yi.happyDeluxe
+          }
+      }) $ do
+   yiControl <- Yi.getControl
+   Yi.controlIO $ do
+#endif
     st          <-  unsafeInitGUIForThreadedRTS
     when rtsSupportsBoundThreads
         (sysMessage Normal "Linked with -threaded")
@@ -184,9 +199,6 @@ startGUI sessionFilename iprefs isFirstStart = do
             ,   layout        =   (TerminalP Map.empty Nothing (-1) Nothing Nothing)
             ,   panePathFromNB =  Map.empty
             }
-#ifdef YI
-    yiControl <- Yi.newControl Yi.defaultVimConfig
-#endif
 
     let ide = IDE
           {   frameState        =   fs

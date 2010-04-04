@@ -121,6 +121,7 @@ module IDE.TextEditor (
 ,   afterMoveCursor
 ,   afterToggleOverwrite
 ,   onButtonPress
+,   onButtonRelease
 ,   onCompletion
 ,   onKeyPress
 ,   onKeyRelease
@@ -188,7 +189,7 @@ data EditorTag = GtkEditorTag Gtk.TextTag
 
 #ifdef YI
 withYiBuffer' :: Yi.BufferRef -> Yi.BufferM a -> IDEM a
-withYiBuffer' b f = liftYiControl $ Yi.liftEditor $ Yi.withGivenBuffer0 b f
+withYiBuffer' b f = liftYi $ Yi.liftEditor $ Yi.withGivenBuffer0 b f
 
 withYiBuffer :: Yi.Buffer -> Yi.BufferM a -> IDEM a
 withYiBuffer b f = withYiBuffer' (Yi.fBufRef b) f
@@ -453,19 +454,24 @@ moveMark (YiEditorBuffer b) (YiEditorMark m) (YiEditorIter (Yi.Iter _ p)) = with
 moveMark _ _ _ = liftIO $ fail "Mismatching TextEditor types in moveMark"
 #endif
 
-newView :: EditorBuffer -> IDEM EditorView
-newView (GtkEditorBuffer sb) = liftIO $ do
-    sv <- Gtk.sourceViewNewWithBuffer sb
-    Gtk.sourceViewSetHighlightCurrentLine sv True
-    Gtk.sourceViewSetInsertSpacesInsteadOfTabs sv True
-    Gtk.sourceViewSetIndentOnTab sv True
-    Gtk.sourceViewSetAutoIndent sv True
-    Gtk.sourceViewSetSmartHomeEnd sv Gtk.SourceSmartHomeEndBefore
-    sw <- Gtk.scrolledWindowNew Nothing Nothing
-    Gtk.containerAdd sw sv
-    return (GtkEditorView sv)
+newView :: EditorBuffer -> Maybe String -> IDEM EditorView
+newView (GtkEditorBuffer sb) mbFontString = do
+    fd <- fontDescription mbFontString
+    liftIO $ do
+        sv <- Gtk.sourceViewNewWithBuffer sb
+        Gtk.sourceViewSetHighlightCurrentLine sv True
+        Gtk.sourceViewSetInsertSpacesInsteadOfTabs sv True
+        Gtk.sourceViewSetIndentOnTab sv True
+        Gtk.sourceViewSetAutoIndent sv True
+        Gtk.sourceViewSetSmartHomeEnd sv Gtk.SourceSmartHomeEndBefore
+        sw <- Gtk.scrolledWindowNew Nothing Nothing
+        Gtk.containerAdd sw sv
+        Gtk.widgetModifyFont sv (Just fd)
+        return (GtkEditorView sv)
 #ifdef YI
-newView (YiEditorBuffer b) = liftYiControl $ fmap YiEditorView $ Yi.newView b
+newView (YiEditorBuffer b) mbFontString = do
+    fd <- fontDescription mbFontString
+    liftYiControl $ fmap YiEditorView $ Yi.newView b fd
 #endif
 
 pasteClipboard :: EditorBuffer
@@ -614,26 +620,24 @@ scrollToIter (YiEditorView v) (YiEditorIter i) withMargin mbAlign = return () --
 scrollToIter _ _ _ _ = liftIO $ fail "Mismatching TextEditor types in scrollToIter"
 #endif
 
+fontDescription :: Maybe String -> IDEM Gtk.FontDescription
+fontDescription mbFontString = liftIO $ do
+    case mbFontString of
+        Just str -> do
+            Gtk.fontDescriptionFromString str
+        Nothing -> do
+            f <- Gtk.fontDescriptionNew
+            Gtk.fontDescriptionSetFamily f "Monospace"
+            return f
+
 setFont :: EditorView -> Maybe String -> IDEM ()
-setFont (GtkEditorView sv) mbFontString = liftIO $ do
-    fd <- case mbFontString of
-        Just str -> do
-            Gtk.fontDescriptionFromString str
-        Nothing -> do
-            f <- Gtk.fontDescriptionNew
-            Gtk.fontDescriptionSetFamily f "Monospace"
-            return f
-    Gtk.widgetModifyFont sv (Just fd)
+setFont (GtkEditorView sv) mbFontString = do
+    fd <- fontDescription mbFontString
+    liftIO $ Gtk.widgetModifyFont sv (Just fd)
 #ifdef YI
-setFont (YiEditorView v) mbFontString = liftIO $ do
-    fd <- case mbFontString of
-        Just str -> do
-            Gtk.fontDescriptionFromString str
-        Nothing -> do
-            f <- Gtk.fontDescriptionNew
-            Gtk.fontDescriptionSetFamily f "Monospace"
-            return f
-    Gtk.layoutSetFontDescription (Yi.layout v) (Just fd)
+setFont (YiEditorView v) mbFontString = do
+    fd <- fontDescription mbFontString
+    liftIO $ Gtk.layoutSetFontDescription (Yi.layout v) (Just fd)
 #endif
 
 setIndentWidth :: EditorView -> Int -> IDEM ()
@@ -972,6 +976,22 @@ onButtonPress (YiEditorView v) f = do
     ideR <- ask
     liftIO $ do
         id1 <- (Yi.drawArea v) `Gtk.onButtonPress` \event -> reflectIDE (f event) ideR
+        return [ConnectC id1]
+#endif
+
+onButtonRelease :: EditorView
+                 -> (GtkOld.Event -> IDEM Bool)
+                 -> IDEM [Connection]
+onButtonRelease (GtkEditorView sv) f = do
+    ideR <- ask
+    liftIO $ do
+        id1 <- sv `Gtk.onButtonRelease` \event -> reflectIDE (f event) ideR
+        return [ConnectC id1]
+#ifdef YI
+onButtonRelease (YiEditorView v) f = do
+    ideR <- ask
+    liftIO $ do
+        id1 <- (Yi.drawArea v) `Gtk.onButtonRelease` \event -> reflectIDE (f event) ideR
         return [ConnectC id1]
 #endif
 

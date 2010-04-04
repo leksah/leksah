@@ -84,6 +84,8 @@ import Data.List hiding(insert, delete)
 import Data.Maybe
 import Data.Typeable
 import System.Time
+
+import Graphics.UI.Gtk.Gdk.Events as Gtk
 import IDE.Core.State
 import IDE.Utils.GUIUtils(getCandyState)
 import IDE.Utils.FileUtils
@@ -454,8 +456,7 @@ builder' bs mbfn ind bn rbn ct prefs pp nb windows = do
     iter <- getEndIter buffer
 
     -- create a new SourceView Widget
-    sv <- newView buffer
-    setFont sv $ textviewFont prefs
+    sv <- newView buffer (textviewFont prefs)
     setShowLineNumbers sv $ showLineNumbers prefs
     setRightMargin sv $ rightMargin prefs
     setIndentWidth sv $ tabWidth prefs

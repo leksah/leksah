@@ -99,8 +99,7 @@ initCompletion sourceView = do
             liftIO $ set tree [treeViewHeadersVisible := False]
 
             descriptionBuffer <- newGtkBuffer Nothing ""
-            descriptionView   <- newView descriptionBuffer
-            setFont descriptionView $ textviewFont prefs
+            descriptionView   <- newView descriptionBuffer (textviewFont prefs)
             setStyle descriptionBuffer $ sourceStyle prefs
             descriptionScrolledWindow <- getScrolledWindow descriptionView
 
