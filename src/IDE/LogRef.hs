@@ -279,7 +279,7 @@ srcSpanParser = try (do
 
 data BuildError =   BuildLine
                 |   EmptyLine
-                |   ErrorLine SrcSpan String
+                |   ErrorLine SrcSpan LogRefType String
                 |   WarningLine String
                 |   OtherLine String
 
@@ -296,8 +296,12 @@ buildLineParser = try (do
         span <- srcSpanParser
         char ':'
         whiteSpace
+        refType <- try (do
+                symbol "Warning:"
+                return WarningRef)
+            <|> return ErrorRef
         text <- many anyChar
-        return (ErrorLine span text))
+        return (ErrorLine span refType text))
     <|> try (do
         whiteSpace
         eof
@@ -426,8 +430,8 @@ logOutputForBuild rootPath backgroundBuild output = do
                     (Left e,_) -> do
                         sysMessage Normal (show e)
                         readAndShow remainingOutput ideR log False errs
-                    (Right ne@(ErrorLine span str),_) ->
-                        readAndShow remainingOutput ideR log True ((LogRef span rootPath str (lineNr,lineNr) ErrorRef):errs)
+                    (Right ne@(ErrorLine span refType str),_) ->
+                        readAndShow remainingOutput ideR log True ((LogRef span rootPath str (lineNr,lineNr) refType):errs)
                     (Right (OtherLine str1),(LogRef span rootPath str (l1,l2) refType):tl) ->
                         if inError
                             then readAndShow remainingOutput ideR log True ((LogRef span
