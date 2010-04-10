@@ -23,6 +23,7 @@ module IDE.LogRef (
 ,   markLogRefs
 ,   unmarkLogRefs
 ,   defaultLineLogger
+,   defaultLineLogger'
 ,   logOutputLines
 ,   logOutputLines_
 ,   logOutput
@@ -363,9 +364,10 @@ defaultLineLogger' log out = do
         ToolInput  line            -> appendLog log (line ++ "\n") InputTag
         ToolOutput line            -> appendLog log (line ++ "\n") LogTag
         ToolError  line            -> appendLog log (line ++ "\n") ErrorTag
-        ToolExit   ExitSuccess     -> appendLog log (take 40 (repeat '-') ++ "\n") FrameTag
-        ToolExit   (ExitFailure 1) -> appendLog log (take 40 (repeat '=') ++ "\n") FrameTag
-        ToolExit   (ExitFailure n) -> appendLog log (take 40 ("========== " ++ show n ++ " " ++ repeat '=') ++ "\n") FrameTag
+        ToolPrompt                 -> appendLog log (concat (take 20 (repeat "- ")) ++ "-\n") FrameTag
+        ToolExit   ExitSuccess     -> appendLog log (take 41 (repeat '-') ++ "\n") FrameTag
+        ToolExit   (ExitFailure 1) -> appendLog log (take 41 (repeat '=') ++ "\n") FrameTag
+        ToolExit   (ExitFailure n) -> appendLog log (take 41 ("========== " ++ show n ++ " " ++ repeat '=') ++ "\n") FrameTag
 
 logOutputLines :: (IDELog -> ToolOutput -> IDEM a) -> [ToolOutput] -> IDEM [a]
 logOutputLines lineLogger output = do
@@ -402,12 +404,7 @@ logOutputForBuild rootPath backgroundBuild output = do
     where
     readAndShow :: [ToolOutput] -> IDERef -> IDELog -> Bool -> [LogRef] -> IO [LogRef]
     readAndShow [] _ log _ errs = do
-        let errorNum    =   length (filter isError errs)
-        let warnNum     =   length errs - errorNum
-        case errs of
-            [] -> defaultLineLogger' log (ToolExit ExitSuccess)
-            _ -> appendLog log ("----- " ++ show errorNum ++ " errors -- "
-                                    ++ show warnNum ++ " warnings -----\n") FrameTag
+        appendLog log ("----- Leksah Error Please Report -----\n") FrameTag
         return errs
     readAndShow (output:remainingOutput) ideR log inError errs = do
         case output of
@@ -457,6 +454,14 @@ logOutputForBuild rootPath backgroundBuild output = do
             ToolInput line -> do
                 appendLog log (line ++ "\n") InputTag
                 readAndShow remainingOutput ideR log inError errs
+            ToolPrompt -> do
+                let errorNum    =   length (filter isError errs)
+                let warnNum     =   length errs - errorNum
+                case errs of
+                    [] -> defaultLineLogger' log output
+                    _ -> appendLog log ("- - - " ++ show errorNum ++ " errors - "
+                                            ++ show warnNum ++ " warnings - - -\n") FrameTag
+                return errs
             ToolExit _ -> do
                 let errorNum    =   length (filter isError errs)
                 let warnNum     =   length errs - errorNum

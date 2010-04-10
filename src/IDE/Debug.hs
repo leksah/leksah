@@ -357,6 +357,7 @@ debugShowModules = debugCommand ":show modules" $
                             -> appendLog log (line ++ "\n") LogTag
             ToolOutput line -> appendLog log (line ++ "\n") InfoTag
             ToolError  line -> appendLog log (line ++ "\n") ErrorTag
+            ToolPrompt      -> defaultLineLogger' log output
             ToolExit _      -> appendLog log "X--X--X ghci process exited unexpectedly X--X--X" FrameTag
         return ()
 
