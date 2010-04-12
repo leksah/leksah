@@ -145,8 +145,8 @@ import System.Glib.Attributes (AttrOp(..))
 
 #ifdef YI
 import qualified Yi as Yi hiding(withBuffer)
-import qualified Yi.Buffer.Misc as Yi
 import qualified Yi.UI.Pango.Control as Yi
+import qualified Yi.Keymap.Cua as Yi
 import Data.Time (getCurrentTime)
 import Control.Monad (unless)
 #endif
@@ -283,7 +283,7 @@ canUndo (YiEditorBuffer fb) = return True -- TODO
 copyClipboard :: EditorBuffer -> Gtk.Clipboard -> IDEM ()
 copyClipboard (GtkEditorBuffer sb) clipboard = liftIO $ Gtk.textBufferCopyClipboard sb clipboard
 #ifdef YI
-copyClipboard (YiEditorBuffer fb) _ = return () -- TODO
+copyClipboard (YiEditorBuffer fb) _ = liftYi $ Yi.liftEditor $ Yi.copy
 #endif
 
 createMark :: EditorBuffer
@@ -301,7 +301,7 @@ createMark _ _ _ = liftIO $ fail "Mismatching TextEditor types in createMark"
 cutClipboard :: EditorBuffer -> Gtk.Clipboard -> Bool -> IDEM ()
 cutClipboard (GtkEditorBuffer sb) clipboard defaultEditable = liftIO $ Gtk.textBufferCutClipboard sb clipboard defaultEditable
 #ifdef YI
-cutClipboard (YiEditorBuffer fb) clipboard defaultEditable = return () -- TODO
+cutClipboard (YiEditorBuffer fb) clipboard defaultEditable = liftYi $ Yi.liftEditor $ Yi.cut
 #endif
 
 delete :: EditorBuffer -> EditorIter -> EditorIter -> IDEM ()
@@ -368,7 +368,7 @@ getIterAtOffset (YiEditorBuffer b) offset = return $ mkYiIter b $ Yi.Point offse
 getLineCount :: EditorBuffer -> IDEM Int
 getLineCount (GtkEditorBuffer sb) = liftIO $ Gtk.textBufferGetLineCount sb
 #ifdef YI
-getLineCount (YiEditorBuffer b) = return 0 -- TODO
+getLineCount (YiEditorBuffer b) = withYiBuffer b $ Yi.sizeB >>= Yi.lineOf
 #endif
 
 getModified :: EditorBuffer -> IDEM Bool
@@ -482,7 +482,7 @@ pasteClipboard :: EditorBuffer
 pasteClipboard (GtkEditorBuffer sb) clipboard (GtkEditorIter i) defaultEditable = liftIO $
     Gtk.textBufferPasteClipboard sb clipboard i defaultEditable
 #ifdef YI
-pasteClipboard (YiEditorBuffer b) clipboard (YiEditorIter (Yi.Iter _ p)) defaultEditable = return () -- TODO
+pasteClipboard (YiEditorBuffer b) clipboard (YiEditorIter (Yi.Iter _ p)) defaultEditable = liftYi $ Yi.liftEditor $ Yi.paste
 pasteClipboard _ _ _ _ = liftIO $ fail "Mismatching TextEditor types in pasteClipboard"
 #endif
 
@@ -583,7 +583,7 @@ getIterLocation _ _ = liftIO $ fail "Mismatching TextEditor types in getIterLoca
 getOverwrite :: EditorView -> IDEM Bool
 getOverwrite (GtkEditorView sv) = liftIO $ Gtk.textViewGetOverwrite sv
 #ifdef YI
-getOverwrite (YiEditorView v) = return False -- TODO
+getOverwrite (YiEditorView Yi.View{Yi.viewFBufRef = b}) = withYiBuffer' b $ not <$> Yi.getA Yi.insertingA
 #endif
 
 getScrolledWindow :: EditorView -> IDEM Gtk.ScrolledWindow

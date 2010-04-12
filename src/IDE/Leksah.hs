@@ -37,6 +37,7 @@ import IDE.OSX
 #ifdef YI
 import qualified Yi as Yi
 import qualified Yi.UI.Pango.Control as Yi
+import IDE.YiConfig
 #endif
 
 import Paths_leksah
@@ -147,17 +148,7 @@ handleExceptions inner =
 startGUI :: String -> Prefs -> Bool -> IO ()
 startGUI sessionFilename iprefs isFirstStart = do
 #ifdef YI
-  let myConfig = Yi.defaultVimConfig
-      defaultUIConfig = Yi.configUI myConfig
-  Yi.startControl (
-    myConfig
-      {
-        Yi.configUI = defaultUIConfig
-          {
-            Yi.configLineWrap = False,
-            Yi.configTheme = Yi.happyDeluxe
-          }
-      }) $ do
+  Yi.startControl yiVimConfig $ do
    yiControl <- Yi.getControl
    Yi.controlIO $ do
 #endif
