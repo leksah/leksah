@@ -67,29 +67,6 @@ module IDE.Debug (
 ,   debugSetPrintBindResult
 ) where
 
-#if defined(mingw32_HOST_OS) || defined(__MINGW32__)
--- import System.Process (getProcessExitCode, ProcessHandle(..))
--- import Data.Maybe (isNothing)
-import GHC.ConsoleHandler (Handler(..), installHandler)
-import System.Win32
-    (-- th32SnapEnumProcesses,
-     DWORD(..),
-     cTRL_BREAK_EVENT,
-     generateConsoleCtrlEvent)
-     -- tH32CS_SNAPPROCESS,
-     -- withTh32Snap)
-import System.Process.Internals
-    (withProcessHandle, ProcessHandle__(..))
-import Control.Concurrent.MVar (tryTakeMVar)
-#else
-import System.Posix
-    (sigINT,
-     installHandler,
-     signalProcessGroup,
-     getProcessGroupID)
-import System.Posix.Signals (Handler(..))
-#endif
-
 import Control.Monad.Reader
 import IDE.Core.State
 import IDE.Utils.Tool
@@ -102,15 +79,7 @@ import IDE.Metainfo.Provider (getActivePackageDescr)
 import Distribution.Text (display)
 import IDE.Pane.Log (appendLog)
 import Data.List (isSuffixOf)
-
-
-#if defined(mingw32_HOST_OS) || defined(__MINGW32__)
-foreign import stdcall unsafe "winbase.h GetCurrentProcessId"
-    c_GetCurrentProcessId :: IO DWORD
-
-foreign import stdcall unsafe "winbase.h GetProcessId"
-    c_GetProcessId :: DWORD -> IO DWORD
-#endif
+import System.Process (interruptProcessGroup)
 
 executeDebugCommand :: String -> ([ToolOutput] -> IDEAction) -> IDEAction
 executeDebugCommand command handler = do
@@ -202,40 +171,11 @@ debugForward = do
 
 
 debugStop :: IDEAction
-#if defined(mingw32_HOST_OS) || defined(__MINGW32__)
 debugStop = do
     maybeGhci <- readIDE ghciState
-    case maybeGhci of
-        Just ghci -> do
-            liftIO $ do
-                maybeProcess <- tryTakeMVar (toolProcess ghci)
-                processGroupId <- case maybeProcess of
-                    Just h -> do
-                        withProcessHandle h (\h2 -> do
-                            case h2 of
-                                OpenHandle oh -> do
-                                    pid <- c_GetProcessId oh
-                                    return (h2, pid)
-                                _ -> return (h2, 0))
-                    _ -> return 0
-                old <- installHandler Ignore
-                putStrLn $ show processGroupId
-                generateConsoleCtrlEvent cTRL_BREAK_EVENT processGroupId
-                installHandler old
-                return ()
+    liftIO $ case maybeGhci of
+        Just ghci -> toolProcess ghci >>= interruptProcessGroup
         Nothing -> return ()
-#else
-debugStop = do
-    maybeGhci <- readIDE ghciState
-    case maybeGhci of
-        Just ghci -> liftIO $ do
-            group <- getProcessGroupID
-            old_int <- installHandler sigINT Ignore Nothing
-            signalProcessGroup sigINT group
-            installHandler sigINT old_int Nothing
-            return ()
-        Nothing -> return ()
-#endif
 
 debugContinue :: IDEAction
 debugContinue = do

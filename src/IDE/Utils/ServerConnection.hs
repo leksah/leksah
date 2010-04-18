@@ -20,7 +20,7 @@ module IDE.Utils.ServerConnection (
 import IDE.Core.State
 import Network (connectTo,PortID(..))
 import Network.Socket (PortNumber(..))
-import System.Process(runCommand)
+import System.Process(runProcess)
 import GHC.Conc(threadDelay)
 import Control.Monad.Trans(liftIO)
 import System.IO
@@ -29,7 +29,6 @@ import Prelude hiding(catch)
 import Control.Concurrent(forkIO)
 import Graphics.UI.Gtk(postGUIAsync)
 import Control.Event(triggerEvent)
-
 
 doServerCommand :: ServerCommand -> (ServerAnswer -> IDEM alpha) -> IDEAction
 doServerCommand command cont = do
@@ -70,7 +69,8 @@ doServerCommand command cont = do
 
 startServer :: Int -> IO ()
 startServer port = do
-    runCommand ("leksah-server --server=" ++ show port ++ " +RTS -N2 -RTS")
+    runProcess "leksah-server" ["--server=" ++ show port, "+RTS", "-N2", "-RTS"]
+        Nothing Nothing Nothing Nothing Nothing
     return ()
 
 -- | s is in tenth's of seconds

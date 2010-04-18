@@ -62,7 +62,7 @@ import System.FilePath
 import Control.Concurrent
 import System.Directory (setCurrentDirectory, doesFileExist)
 import Prelude hiding (catch)
-import Data.Maybe (isJust, fromJust)
+import Data.Maybe (isNothing, isJust, fromJust)
 import Control.Exception (SomeException(..), catch)
 import Paths_leksah
 
@@ -80,38 +80,12 @@ import Distribution.ModuleName (ModuleName(..))
 import Data.List (isInfixOf, nub, foldl')
 import qualified System.IO.UTF8 as UTF8  (readFile)
 import IDE.Utils.Tool (ToolOutput(..), runTool, newGhci, ToolState(..))
-
-
-#if defined(mingw32_HOST_OS) || defined(__MINGW32__)
-import Data.Maybe (isNothing)
-import System.Win32
-    (DWORD(..))
-import System.Process (getProcessExitCode)
-#else
-import System.Posix
-    (getGroupProcessStatus,
-     sigINT,
-     installHandler,
-     signalProcessGroup,
-     getProcessGroupID)
-import System.Posix.Signals (Handler(..))
-import Foreign.C (Errno(..), getErrno)
-#endif
--- Leave at least one import ofter this #endif
--- so the auto import tool does not add stuf insied the
-
 import qualified Data.Set as  Set (fromList)
 import qualified Data.Map as  Map (empty)
 import System.Exit (ExitCode(..))
+import Control.Applicative ((<$>))
+import System.Process (getProcessExitCode, interruptProcessGroup)
 
-
-#if defined(mingw32_HOST_OS) || defined(__MINGW32__)
-foreign import stdcall unsafe "winbase.h GetCurrentProcessId"
-    c_GetCurrentProcessId :: IO DWORD
-
-foreign import stdcall unsafe "winbase.h GetProcessId"
-    c_GetProcessId :: DWORD -> IO DWORD
-#endif
 
 #if MIN_VERSION_Cabal(1,8,0)
 myLibModules pd = case library pd of
@@ -431,65 +405,20 @@ runExternalTool description executable args mbDir handleOutput = do
 -- | Handling of Compiler errors
 --
 isRunning :: IDEM Bool
-#if defined(mingw32_HOST_OS) || defined(__MINGW32__)
 isRunning = do
     maybeProcess <- readIDE runningTool
     liftIO $ do
         case maybeProcess of
             Just process -> do
-                maybeExitCode <- getProcessExitCode process
-                return $ isNothing maybeExitCode
+                isNothing <$> getProcessExitCode process
             Nothing -> return False
---    Once we can interupt the build on windows, then something like this might be needed
---    alreadyRunning <- liftIO $ do
---        withTh32Snap tH32CS_SNAPPROCESS Nothing (\h -> do
---            all <- th32SnapEnumProcesses h
---            currentId <- c_GetCurrentProcessId
---            return $ not $ null $ filter (\(_, _, parentId, _, _) -> parentId == currentId) all)
-#else
-isRunning = do
-    ideR <- ask
-    liftIO $ (do
-        group <- getProcessGroupID
-        status <- getGroupProcessStatus False False group
-        -- putStrLn $ "Status " ++ show status
-        case status of
-            Just _ -> reflectIDE isRunning ideR
-            Nothing -> return True)
-        `catch` (\(e :: IOError) -> do
-            Errno errno <- liftIO $ getErrno
-            -- putStrLn $ "Error " ++ show errno
-            return $ errno /= 10)
-#endif
 
 interruptBuild :: IDEAction
-#if defined(mingw32_HOST_OS) || defined(__MINGW32__)
 interruptBuild = do
-    -- I can't get this to work
-    --maybeProcess <- readIDE runningTool
-    --liftIO $ do
-    --    processGroupId <- case maybeProcess of
-    --        Just h -> do
-    --            withProcessHandle h (\h2 -> do
-    --                case h2 of
-    --                    OpenHandle oh -> do
-    --                        pid <- c_GetProcessId oh
-    --                        return (h2, pid)
-    --                    _ -> return (h2, 0))
-    --        _ -> return 0
-    --    old <- installHandler Ignore
-    --    putStrLn $ show processGroupId
-    --    generateConsoleCtrlEvent cTRL_BREAK_EVENT processGroupId
-    --    installHandler old
-    return ()
-#else
-interruptBuild = liftIO $ do
-    group <- getProcessGroupID
-    old_int <- installHandler sigINT Ignore Nothing
-    signalProcessGroup sigINT group
-    installHandler sigINT old_int Nothing
-    return ()
-#endif
+    maybeProcess <- readIDE runningTool
+    liftIO $ case maybeProcess of
+        Just h -> interruptProcessGroup h
+        _ -> return ()
 
 -- ---------------------------------------------------------------------
 -- | * Utility functions/procedures, that have to do with packages
