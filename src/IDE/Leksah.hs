@@ -64,7 +64,7 @@ import Control.Exception
 import System.Exit(exitFailure)
 import qualified IDE.StrippedPrefs as SP
 import IDE.Utils.Tool (runTool,toolline)
-import System.Process(waitForProcess)
+import IDE.System.Process(waitForProcess)
 #if defined(mingw32_HOST_OS) || defined(__MINGW32__)
 #else
 import qualified System.Posix as P

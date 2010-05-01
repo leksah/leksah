@@ -84,7 +84,7 @@ import qualified Data.Set as  Set (fromList)
 import qualified Data.Map as  Map (empty)
 import System.Exit (ExitCode(..))
 import Control.Applicative ((<$>))
-import System.Process (getProcessExitCode, interruptProcessGroup)
+import IDE.System.Process (getProcessExitCode, interruptProcessGroup)
 
 
 #if MIN_VERSION_Cabal(1,8,0)

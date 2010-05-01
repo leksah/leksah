@@ -79,7 +79,7 @@ import IDE.Metainfo.Provider (getActivePackageDescr)
 import Distribution.Text (display)
 import IDE.Pane.Log (appendLog)
 import Data.List (isSuffixOf)
-import System.Process (interruptProcessGroup)
+import IDE.System.Process (interruptProcessGroup)
 
 executeDebugCommand :: String -> ([ToolOutput] -> IDEAction) -> IDEAction
 executeDebugCommand command handler = do

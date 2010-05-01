@@ -38,7 +38,7 @@ import System.IO
 import Prelude hiding (catch)
 import Control.Exception hiding (try)
 import IDE.ImportTool (addImport, parseNotInScope, addAllImports)
-import System.Process (runInteractiveProcess, ProcessHandle)
+import IDE.System.Process (runInteractiveProcess, ProcessHandle)
 import Graphics.UI.Gtk
        (textBufferSetText, textViewScrollToMark,
         textBufferGetIterAtLineOffset, textViewScrollMarkOnscreen,

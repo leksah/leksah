@@ -20,7 +20,7 @@ module IDE.Utils.ServerConnection (
 import IDE.Core.State
 import Network (connectTo,PortID(..))
 import Network.Socket (PortNumber(..))
-import System.Process(runProcess)
+import IDE.System.Process(runProcess)
 import GHC.Conc(threadDelay)
 import Control.Monad.Trans(liftIO)
 import System.IO

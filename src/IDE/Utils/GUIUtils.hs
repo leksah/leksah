@@ -36,7 +36,7 @@ module IDE.Utils.GUIUtils (
 ) where
 
 import Graphics.UI.Gtk
-import System.Process
+import IDE.System.Process
 import Data.Maybe (fromJust, isJust)
 import Control.Monad
 import Control.Monad.Trans(MonadIO,liftIO)
