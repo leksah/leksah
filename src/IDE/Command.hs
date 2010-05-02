@@ -32,7 +32,11 @@ module IDE.Command (
 ) where
 
 import Graphics.UI.Gtk
+#if MIN_VERSION_gtk(0,10,5)
+
+#else
 import Graphics.UI.Gtk.Types
+#endif
 import Control.Monad.Reader
 import System.FilePath
 import Data.Version

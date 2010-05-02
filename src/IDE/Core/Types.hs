@@ -86,7 +86,11 @@ import Distribution.Package
 import Data.Map (Map(..))
 import Data.Set (Set(..))
 import Distribution.ModuleName (ModuleName(..))
+#if MIN_VERSION_gtk(0,10,5)
+import Graphics.UI.Gtk.Gdk.EventM (Modifier(..))
+#else
 import Graphics.UI.Gtk.Gdk.Enums (Modifier(..))
+#endif
 import System.Time (ClockTime(..))
 import Distribution.Simple (Extension(..))
 import IDE.System.Process (ProcessHandle(..))

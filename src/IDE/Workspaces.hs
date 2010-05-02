@@ -64,7 +64,11 @@ import System.Directory
 import System.Time (getClockTime)
 import Graphics.UI.Gtk.Windows.MessageDialog
     (ButtonsType(..), MessageType(..))
+#if MIN_VERSION_gtk(0,10,5)
+
+#else
 import Graphics.UI.Gtk.General.Structs (ResponseId(..))
+#endif
 import Control.Exception (SomeException(..))
 import Control.Monad.Reader.Class (ask)
 import Data.Map (Map(..))

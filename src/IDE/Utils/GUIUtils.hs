@@ -46,8 +46,11 @@ import IDE.Core.State
 --import Graphics.UI.Gtk.General.Structs
 --    (ResponseId(..))
 import qualified Graphics.UI.Gtk.Gdk.Events as G (Event(..))
-import Graphics.UI.Gtk.Gdk.Enums(Modifier(..))
-
+#if MIN_VERSION_gtk(0,10,5)
+import Graphics.UI.Gtk.Gdk.EventM (Modifier(..))
+#else
+import Graphics.UI.Gtk.Gdk.Enums (Modifier(..))
+#endif
 
 chooseDir :: Window -> String -> Maybe FilePath -> IO (Maybe FilePath)
 chooseDir window prompt mbFolder = do

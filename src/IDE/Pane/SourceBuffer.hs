@@ -109,13 +109,21 @@ import Graphics.UI.Gtk
         messageDialogNew, postGUIAsync, scrolledWindowSetShadowType,
         scrolledWindowSetPolicy, castToWidget, ScrolledWindow)
 import System.Glib.MainLoop (priorityDefaultIdle, idleAdd)
+#if MIN_VERSION_gtk(0,10,5)
+
+#else
 import Graphics.UI.Gtk.Pango.Types (Underline(..))
+#endif
 import qualified Graphics.UI.Gtk as Gtk (Window, Notebook)
 import Graphics.UI.Gtk.General.Enums
        (ShadowType(..), PolicyType(..))
 import Graphics.UI.Gtk.Windows.MessageDialog
        (ButtonsType(..), MessageType(..))
+#if MIN_VERSION_gtk(0,10,5)
+
+#else
 import Graphics.UI.Gtk.General.Structs (ResponseId(..))
+#endif
 import Graphics.UI.Gtk.Selectors.FileChooser
        (FileChooserAction(..))
 
