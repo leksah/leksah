@@ -944,7 +944,11 @@ afterMoveCursor (GtkEditorView sv) f = do
     ideR <- ask
     GtkEditorBuffer sb <- getBuffer (GtkEditorView sv)
     liftIO $ do
+#if MIN_VERSION_gtk(0,10,5)
+        id1 <- sv `Gtk.after` Gtk.moveCursor $ \_ _ _ -> reflectIDE f ideR
+#else
         id1 <- sv `Gtk.afterMoveCursor` \_ _ _ -> reflectIDE f ideR
+#endif
         sv `Gtk.widgetAddEvents` [Gtk.ButtonReleaseMask]
         id2 <- sv `Gtk.onButtonRelease` \_ -> reflectIDE f ideR >> return False
         id3 <- sb `Gtk.afterEndUserAction` reflectIDE f ideR
@@ -957,7 +961,11 @@ afterToggleOverwrite :: EditorView -> IDEM () -> IDEM [Connection]
 afterToggleOverwrite (GtkEditorView sv) f = do
     ideR <- ask
     liftIO $ do
+#if MIN_VERSION_gtk(0,10,5)
+        id1 <- sv `Gtk.after` Gtk.toggleOverwrite $ reflectIDE f ideR
+#else
         id1 <- sv `Gtk.afterToggleOverwrite` reflectIDE f ideR
+#endif
         return [ConnectC id1]
 #ifdef YI
 afterToggleOverwrite (YiEditorView v) f = return [] -- TODO
@@ -1013,7 +1021,7 @@ onCompletion (GtkEditorView sv) start cancel = do
                             reflectIDE cancel ideR
                 else
                     reflectIDE cancel ideR
-        id2 <- sv `Gtk.onMoveCursor` \_ _ _ -> reflectIDE cancel ideR
+        id2 <- sv `Gtk.on` Gtk.moveCursor $ \_ _ _ -> reflectIDE cancel ideR
         id3 <- sv `Gtk.onButtonPress` \_ -> reflectIDE cancel ideR >> return False
         return [ConnectC id1]
 #ifdef YI
@@ -1088,7 +1096,11 @@ onPopulatePopup :: EditorView -> (Gtk.Menu -> IDEM ()) -> IDEM [Connection]
 onPopulatePopup (GtkEditorView sv) f = do
     ideR <- ask
     liftIO $ do
+#if MIN_VERSION_gtk(0,10,5)
+        id1 <- sv `Gtk.on` Gtk.populatePopup $ \menu -> reflectIDE (f menu) ideR
+#else
         id1 <- sv `Gtk.onPopulatePopup` \menu -> reflectIDE (f menu) ideR
+#endif
         return [ConnectC id1]
 #ifdef YI
 onPopulatePopup (YiEditorView v) f = do

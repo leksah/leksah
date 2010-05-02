@@ -32,11 +32,26 @@ module IDE.Command (
 ) where
 
 import Graphics.UI.Gtk
-#if MIN_VERSION_gtk(0,10,5)
-
-#else
-import Graphics.UI.Gtk.Types
-#endif
+       (containerAdd, windowAddAccelGroup, onKeyPress, boxPackEnd,
+        boxPackStart, widgetSetName, vBoxNew, windowSetIconFromFile,
+        Widget, Window, actionGroupGetAction, uiManagerGetActionGroups,
+        Action, actionSetSensitive, iconFactoryAdd, iconSetNewFromPixbuf,
+        pixbufNewFromFile, iconFactoryAddDefault, iconFactoryNew,
+        dialogRun, aboutDialogSetAuthors, aboutDialogSetWebsite,
+        aboutDialogSetLicense, aboutDialogSetComments,
+        aboutDialogSetCopyright, aboutDialogSetVersion, aboutDialogSetName,
+        aboutDialogNew, mainQuit, widgetHide, widgetShow,
+        widgetSetSensitive, castToWidget, separatorMenuItemNew,
+        containerGetChildren, Menu, widgetSetSizeRequest, toolbarSetStyle,
+        toolbarSetIconSize, castToToolbar, castToMenuBar,
+        uiManagerGetWidget, uiManagerGetAccelGroup, onActionActivate,
+        actionNew, actionGroupAddActionWithAccel, actionToggled,
+        toggleActionNew, uiManagerAddUiFromString,
+        uiManagerInsertActionGroup, actionGroupNew, UIManager,
+        widgetShowAll, menuItemSetSubmenu, widgetDestroy, widgetHideAll,
+        menuItemGetSubmenu, menuShellAppend, onActivateLeaf,
+        menuItemNewWithLabel, menuNew, Packing(..), ToolbarStyle(..),
+        PositionType(..), on, IconSize(..))
 import Control.Monad.Reader
 import System.FilePath
 import Data.Version
@@ -473,7 +488,7 @@ makeMenu uiManager actions menuDescription = reifyIDE (\ideR -> do
                 triggerEventIDE (StatusbarChanged [CompartmentCommand accStr])
                 return ()) ideR)
 
-getMenuAndToolbars :: UIManager -> IO (AccelGroup, MenuBar, Toolbar)
+-- getMenuAndToolbars :: UIManager -> IO (AccelGroup, MenuBar, Toolbar)
 getMenuAndToolbars uiManager = do
     accGroup <- uiManagerGetAccelGroup uiManager
     mbMenu   <- uiManagerGetWidget uiManager "/ui/menubar"

@@ -27,7 +27,11 @@ module IDE.Pane.Preferences (
 ,   getPrefs
 ) where
 
-import Graphics.UI.Gtk hiding(background)
+import Graphics.UI.Gtk
+       (cellText, widgetModifyFont, onClicked, boxPackEnd, boxPackStart,
+        buttonNewFromStock, hButtonBoxNew, vBoxNew, castToWidget, VBox,
+        ShadowType(..), Packing(..), fontDescriptionFromString, AttrOp(..),
+        FileChooserAction(..), Color(..))
 import Control.Monad.Reader
 import qualified Text.PrettyPrint.HughesPJ as PP
 import Distribution.Package

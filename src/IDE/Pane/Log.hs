@@ -48,18 +48,21 @@ import Graphics.UI.Gtk
         widgetHide, widgetShowAll, menuShellAppend, onActivateLeaf,
         menuItemNewWithLabel, containerGetChildren, textIterGetLine,
         textViewGetLineAtY, textViewWindowToBufferCoords, widgetGetPointer,
-        onPopulatePopup, onButtonPress, afterFocusIn,
+#if MIN_VERSION_gtk(0,10,5)
+        on, populatePopup,
+#else
+        onPopulatePopup,
+#endif
+        onButtonPress, afterFocusIn,
         scrolledWindowSetShadowType, scrolledWindowSetPolicy, containerAdd,
         scrolledWindowNew, widgetModifyFont, fontDescriptionSetFamily,
         fontDescriptionNew, fontDescriptionFromString, textViewSetEditable,
         textTagBackground, textTagTableAdd, textTagForeground, textTagNew,
         textBufferGetTagTable, textBufferCreateMark, textBufferGetEndIter,
         textViewGetBuffer, textViewNew, Window, Notebook, castToWidget,
-        ScrolledWindow, TextView)
-import System.Glib.Attributes (AttrOp(..), set)
-import Graphics.UI.Gtk.General.Enums
-       (TextWindowType(..), ShadowType(..), PolicyType(..))
-import System.Glib.MainLoop (priorityDefaultIdle, idleAdd)
+        ScrolledWindow, TextView, Menu, AttrOp(..), set,
+        TextWindowType(..), ShadowType(..), PolicyType(..),
+        priorityDefaultIdle, idleAdd)
 
 
 -------------------------------------------------------------------------------
@@ -152,7 +155,12 @@ builder' pp nb windows = do
             (\_      -> do reflectIDE (makeActive buf) ideR ; return False)
         cid2         <- tv `onButtonPress`
             (\ b     -> do reflectIDE (clicked b buf) ideR ; return False)
-        cid3         <- tv `onPopulatePopup` (populatePopup buf ideR)
+
+#if MIN_VERSION_gtk(0,10,5)
+        cid3         <- tv `on` populatePopup $ populatePopupMenu buf ideR
+#else
+        cid3         <- tv `onPopulatePopup` (populatePopupMenu buf ideR)
+#endif
         return (Just buf,[ConnectC cid1, ConnectC cid2])
 
 clicked :: Event -> IDELog -> IDEAction
@@ -178,7 +186,8 @@ clicked (Button _ SingleClick _ _ _ _ LeftButton x y) ideLog = do
         otherwise   -> return ()
 clicked _ _ = return ()
 
-populatePopup ideLog ideR menu = do
+populatePopupMenu :: IDELog -> IDERef -> Menu -> IO ()
+populatePopupMenu ideLog ideR menu = do
     items <- containerGetChildren menu
     res <- reflectIDE (do
         logRefs'    <-  readIDE allLogRefs

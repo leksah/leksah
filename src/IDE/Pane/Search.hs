@@ -22,7 +22,26 @@ module IDE.Pane.Search (
 ,   getSearch
 ) where
 
-import Graphics.UI.Gtk hiding (get)
+import Graphics.UI.Gtk
+       (listStoreGetValue, treeSelectionGetSelectedRows, widgetShowAll,
+        menuPopup, menuShellAppend, onActivateLeaf, menuItemNewWithLabel,
+        menuNew, listStoreAppend, listStoreClear, entrySetText,
+        afterKeyRelease, onKeyPress, onButtonPress, toggleButtonGetActive,
+        widgetSetSensitivity, onToggled, afterFocusIn, vBoxNew, entryNew,
+        scrolledWindowSetPolicy, containerAdd, scrolledWindowNew,
+        treeSelectionSetMode, treeViewGetSelection,
+        treeViewSetHeadersVisible, cellPixbufStockId, cellText,
+        cellLayoutSetAttributes, cellLayoutPackStart, treeViewAppendColumn,
+        treeViewColumnSetReorderable, treeViewColumnSetResizable,
+        treeViewColumnSetSizing, treeViewColumnSetTitle, treeViewColumnNew,
+        cellRendererPixbufNew, cellRendererTextNew, treeViewSetModel,
+        treeViewNew, listStoreNew, boxPackEnd, boxPackStart,
+        checkButtonNewWithLabel, toggleButtonSetActive,
+        radioButtonNewWithLabelFromWidget, radioButtonNewWithLabel,
+        hBoxNew, entryGetText, castToWidget, Entry, VBox, ListStore,
+        TreeView, ScrolledWindow, PolicyType(..), SelectionMode(..),
+        TreeViewColumnSizing(..), AttrOp(..),
+        Packing(..))
 import Graphics.UI.Gtk.Gdk.Events
 import Data.IORef (newIORef)
 import Data.IORef (writeIORef,readIORef,IORef(..))

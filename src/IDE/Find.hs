@@ -34,7 +34,28 @@ module IDE.Find (
 
 ) where
 
-import Graphics.UI.Gtk hiding (get)
+import Graphics.UI.Gtk
+       (toggleToolButtonSetActive, castToToggleToolButton,
+        toggleToolButtonGetActive, castToBin, binGetChild, widgetGetName,
+        containerGetChildren, listStoreGetValue, treeModelGetPath,
+        TreeIter, ListStore, widgetModifyText, widgetModifyBase,
+        toolbarChildHomogeneous, afterEntryActivate, spinButtonSetRange,
+        afterFocusIn, onEntryActivate, afterKeyPress, afterDeleteText,
+        afterInsertText, treeModelGetValue, matchSelected,
+        entryCompletionSetMatchFunc, cellText, cellLayoutSetAttributes,
+        cellLayoutPackStart, cellRendererTextNew, entryCompletionModel,
+        entrySetCompletion, entryCompletionNew, makeColumnIdString,
+        customStoreSetColumn, listStoreNew, toolItemSetExpand,
+        toolButtonSetLabel, toggleToolButtonNew, entryNew, tooltipsSetTip,
+        onToolButtonClicked, Widget, toolButtonNew, separatorToolItemNew,
+        labelNew, containerAdd, widgetSetName, spinButtonNewWithRange,
+        toolItemNew, toolbarInsert, toolButtonNewFromStock,
+        toolbarSetIconSize, toolbarSetStyle, tooltipsNew, toolbarNew,
+        Toolbar, widgetGrabFocus, widgetShowAll, widgetHideAll,
+        listStoreAppend, listStoreClear, entrySetText, spinButtonSetValue,
+        listStoreToList, castToEntry, entryGetText, castToSpinButton,
+        spinButtonGetValueAsInt, StateType(..), ToolbarStyle(..),
+        IconSize(..), AttrOp(..), set, on, Color(..))
 import Graphics.UI.Gtk.Gdk.Events
 import Control.Monad.Reader
 

@@ -18,6 +18,16 @@ module IDE.NotebookFlipper (
 ) where
 
 import Graphics.UI.Gtk
+       (treeViewSetCursor, treeViewGetCursor, treeModelIterNChildren,
+        treeViewGetModel, treeViewRowActivated, treeViewGetColumn,
+        widgetShowAll, windowWindowPosition, widgetDestroy, widgetHideAll,
+        listStoreGetValue, onRowActivated, onKeyRelease,
+        treeViewHeadersVisible, cellText, cellLayoutSetAttributes,
+        treeViewColumnPackStart, cellRendererTextNew, treeViewAppendColumn,
+        treeViewColumnNew, treeViewSetModel, listStoreNew, treeViewNew,
+        containerAdd, frameNew, windowResizable, windowSetTransientFor,
+        windowNewPopup, TreeViewClass, WindowPosition(..), signalDisconnect,
+        AttrOp(..), set)
 import IDE.Core.State
 import Control.Monad.Trans (liftIO)
 import Graphics.UI.Gtk.Gdk.Events (Event(..))
