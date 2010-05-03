@@ -110,7 +110,7 @@ import Graphics.UI.Gtk
         scrolledWindowSetPolicy, castToWidget, ScrolledWindow)
 import System.Glib.MainLoop (priorityDefaultIdle, idleAdd)
 #if MIN_VERSION_gtk(0,10,5)
-import Graphics.Rendering.Pango.BasicTypes (Underline(..))
+import Graphics.UI.Gtk (Underline(..))
 #else
 import Graphics.UI.Gtk.Pango.Types (Underline(..))
 #endif

@@ -1021,7 +1021,11 @@ onCompletion (GtkEditorView sv) start cancel = do
                             reflectIDE cancel ideR
                 else
                     reflectIDE cancel ideR
+#if MIN_VERSION_gtk(0,10,5)
         id2 <- sv `Gtk.on` Gtk.moveCursor $ \_ _ _ -> reflectIDE cancel ideR
+#else
+        id2 <- sv `Gtk.onMoveCursor` \_ _ _ -> reflectIDE cancel ideR
+#endif
         id3 <- sv `Gtk.onButtonPress` \_ -> reflectIDE cancel ideR >> return False
         return [ConnectC id1]
 #ifdef YI
