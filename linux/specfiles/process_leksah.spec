@@ -37,7 +37,7 @@ Requires(post): ghc = %{ghc_version}
 Requires(postun): ghc = %{ghc_version}
 
 %description devel
-ghc-binary-shared library
+Leksah process manager library
 
 This package contains the development files for %{name}
 built for ghc-%{ghc_version}.
