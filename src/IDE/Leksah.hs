@@ -81,11 +81,11 @@ data Flag =  VersionF | SessionN String | Help | Verbosity String
        deriving (Show,Eq)
 
 options :: [OptDescr Flag]
-options =   [Option ['v'] ["Version"] (NoArg VersionF)
+options =   [Option ['v'] ["version"] (NoArg VersionF)
                 "Show the version number of ide"
-         ,   Option ['l'] ["LoadSession"] (ReqArg SessionN "NAME")
+         ,   Option ['l'] ["loadSession"] (ReqArg SessionN "NAME")
                 "Load session"
-         ,   Option ['h'] ["Help"] (NoArg Help)
+         ,   Option ['h'] ["help"] (NoArg Help)
                 "Display command line options"
          ,   Option ['e'] ["verbosity"] (ReqArg Verbosity "Verbosity")
                 "One of DEBUG, INFO, NOTICE, WARNING, ERROR, CRITICAL, ALERT, EMERGENCY"]
@@ -129,7 +129,7 @@ main = withSocketsDo $ handleExceptions $ do
     when (elem VersionF o)
         (sysMessage Normal $ "Leksah the Haskell IDE, version " ++ showVersion version)
     when (elem Help o)
-        (sysMessage Normal $ "Leksah the Haskell IDE, version " ++ usageInfo header options)
+        (sysMessage Normal $ "Leksah the Haskell IDE " ++ usageInfo header options)
     dataDir         <- getDataDir
     prefsPath       <- getConfigFilePathForLoad standardPreferencesFilename Nothing dataDir
     prefs           <- readPrefs prefsPath
