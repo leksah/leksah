@@ -55,11 +55,10 @@ import IDE.Pane.SourceBuffer
 import IDE.Find
 import Graphics.UI.Editor.Composite (filesEditor, maybeEditor)
 import Graphics.UI.Editor.Simple
-       (enumEditor, fileEditor, intEditor, stringEditor, boolEditor)
+       (enumEditor, intEditor, stringEditor, boolEditor)
 import IDE.Metainfo.Provider (initInfo)
 import IDE.Workspaces (backgroundMake)
 import IDE.Utils.GUIUtils
-import System.FilePath((</>))
 import Network (withSocketsDo)
 import Control.Exception
 import System.Exit(exitFailure)
@@ -374,7 +373,6 @@ firstBuild newPrefs = do
     return ()
     where
         update pb to = do
-                putStrLn str
                 when (isJust prog) $ postGUIAsync (progressBarSetFraction pb (fromJust prog))
             where
             str = toolline to

@@ -448,7 +448,6 @@ builder' bs mbfn ind bn rbn ct prefs pp nb windows = do
             return (fc,Just mt)
         Nothing -> return ("\n",Nothing)
 
-    liftIO $ putStrLn $ show mbfn
     buffer <- (if useYi prefs || mbfn == Just "/home/hamish/haskell/leksah/src/IDE/Command.hs" then newYiBuffer else newGtkBuffer) mbfn fileContents
     tagTable <- getTagTable buffer
     foundTag <- newTag tagTable "found"
