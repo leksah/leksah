@@ -186,7 +186,7 @@ updateWorkspace showPane updateFileCache = do
     case mbWs of
         Nothing -> do
             when updateFileCache $ modifyIDE_ (\ide -> ide{bufferProjCache = Map.empty})
-            mbMod <- getOrBuildPane (Right ("*Workspace"))
+            mbMod <- getPane
             case mbMod of
                 Nothing -> return ()
                 Just (p :: IDEWorkspace)  -> do
@@ -196,7 +196,7 @@ updateWorkspace showPane updateFileCache = do
         Just ws -> do
             when updateFileCache $ modifyIDE_ (\ide -> ide{bufferProjCache = Map.empty,
                         workspace = Just ws{wsReverseDeps = calculateReverseDependencies ws}})
-            mbMod <- getOrBuildPane (Right ("*Workspace"))
+            mbMod <- getPane
             case mbMod of
                 Nothing -> return ()
                 Just (p :: IDEWorkspace)  -> do
