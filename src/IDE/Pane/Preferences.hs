@@ -141,7 +141,8 @@ instance RecoverablePane IDEPrefs PrefsState IDEM where
                     SP.writeStrippedPrefs fp2
                         (SP.Prefs {SP.sourceDirectories = sourceDirectories newPrefs,
                                    SP.unpackDirectory   = unpackDirectory newPrefs,
-                                   SP.retreiveURL       = retreiveURL newPrefs,
+                                   SP.retrieveURL       = retrieveURL newPrefs,
+                                   SP.retrieveStrategy  = retrieveStrategy newPrefs,
                                    SP.serverPort        = serverPort newPrefs,
                                    SP.endWithLastConn   = endWithLastConn newPrefs})
                     reflectIDE (modifyIDE_ (\ide -> ide{prefs = newPrefs})) ideR )
@@ -446,16 +447,23 @@ prefsDescription configDir packages = NFDPP [
             readParser
             unpackDirectory
             (\b a -> a{unpackDirectory = b})
-            (maybeEditor ((fileEditor (Just (configDir </> "packageSources")) FileChooserActionSelectFolder
-                "Select folder"), emptyParams) True "Yes")
+            (maybeEditor (stringEditor (\ _ -> True),emptyParams) True "")
             (\i -> return ())
     ,   mkFieldPP
-            (paraName <<<- ParaName "Maybe an URL to load prebuild metadata " $ emptyParams)
+            (paraName <<<- ParaName "An URL to load prebuild metadata" $ emptyParams)
+            (PP.text . show)
+            stringParser
+            retrieveURL
+            (\b a -> a{retrieveURL = b})
+            (stringEditor (\ _ -> True))
+            (\i -> return ())
+    ,   mkFieldPP
+            (paraName <<<- ParaName "A strategy for downloading prebuild metadata" $ emptyParams)
             (PP.text . show)
             readParser
-            retreiveURL
-            (\b a -> a{retreiveURL = b})
-            (maybeEditor ((stringEditor (\ _ -> True)), emptyParams) True "Yes")
+            retrieveStrategy
+            (\b a -> a{retrieveStrategy = b})
+            (enumEditor ["Retrieve then build","Build then retrieve","Never retrieve"])
             (\i -> return ())
     ,   mkFieldPP
             (paraName <<<- ParaName "Update metadata at startup" $ emptyParams)
@@ -646,7 +654,8 @@ defaultPrefs = Prefs {
                                 ,   ("*Search","ToolCategory")]
     ,   collectAtStart      =   True
     ,   unpackDirectory     =   Nothing
-    ,   retreiveURL         =   Just "http://www.leksah.org"
+    ,   retrieveURL         =   "http://www.leksah.org"
+    ,   retrieveStrategy    =   SP.RetrieveThenBuild
     ,   useCtrlTabFlipping  =   True
     ,   docuSearchURL       =   "http://holumbus.fh-wedel.de/hayoo/hayoo.html?query="
     ,   completeRestricted  =   False

@@ -2,8 +2,10 @@ Paths under which haskell sources for packages may be found:
                []
 Maybe a directory for unpacking cabal packages:
                Just "~/.leksah-0.8/packageSources"
-Maybe an URL to load prebuild metadata :
-               Just "http://www.leksah.org"
+An URL to load prebuild metadata:
+               "http://www.leksah.org"
+A strategy for downloading prebuild metadata:
+               RetrieveThenBuild
 Port number for server connection:
                11111
 End the server with last connection:

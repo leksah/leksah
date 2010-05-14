@@ -54,7 +54,8 @@ import IDE.Keymap
 import IDE.Pane.SourceBuffer
 import IDE.Find
 import Graphics.UI.Editor.Composite (filesEditor, maybeEditor)
-import Graphics.UI.Editor.Simple (fileEditor, intEditor, stringEditor, boolEditor)
+import Graphics.UI.Editor.Simple
+       (enumEditor, fileEditor, intEditor, stringEditor, boolEditor)
 import IDE.Metainfo.Provider (initInfo)
 import IDE.Workspaces (backgroundMake)
 import IDE.Utils.GUIUtils
@@ -72,7 +73,7 @@ import qualified System.Posix as P
 import System.Log
 import System.Log.Logger(updateGlobalLogger,rootLoggerName,setLevel)
 import Data.List (stripPrefix)
-
+import Debug.Trace
 -- --------------------------------------------------------------------
 -- Command line options
 --
@@ -270,15 +271,12 @@ startGUI sessionFilename iprefs isFirstStart = do
             when (backgroundBuild currentPrefs) $ backgroundMake) ideR
         return True) priorityDefaultIdle 1000
     reflectIDE (triggerEvent ideR (Sensitivity [(SensitivityInterpreting, False)])) ideR
---    timeoutAddFull (do
---        reflectIDE (postAsyncIDE (initInfo (modifyIDE_ (\ide -> ide{currentState = IsRunning})))) ideR
---        return False) priorityDefault 100
     mainGUI
 
 fDescription :: FilePath -> FieldDescription Prefs
 fDescription configPath = VFD emptyParams [
         mkField
-            (paraName <<<- ParaName "Paths under which haskell sources may be found"
+            (paraName <<<- ParaName "Paths under which haskell sources for packages may be found"
                 $ paraDirection  <<<- ParaDirection Vertical
                     $ emptyParams)
             sourceDirectories
@@ -288,13 +286,17 @@ fDescription configPath = VFD emptyParams [
             (paraName <<<- ParaName "Maybe a directory for unpacking cabal packages" $ emptyParams)
             unpackDirectory
             (\b a -> a{unpackDirectory = b})
-            (maybeEditor ((fileEditor (Just (configPath </> "packageSources")) FileChooserActionSelectFolder
-                "Select folder for unpacking cabal packages"), emptyParams) True "Yes")
+            (maybeEditor (stringEditor (\ _ -> True),emptyParams) True "")
     ,   mkField
-            (paraName <<<- ParaName "Maybe an URL to load prebuild metadata " $ emptyParams)
-            retreiveURL
-            (\b a -> a{retreiveURL = b})
-            (maybeEditor ((stringEditor (\ _ -> True)), emptyParams) True "Yes")
+            (paraName <<<- ParaName "An URL to load prebuild metadata" $ emptyParams)
+            retrieveURL
+            (\b a -> a{retrieveURL = b})
+            (stringEditor (\ _ -> True))
+    ,   mkField
+            (paraName <<<- ParaName "A strategy for downloading prebuild metadata" $ emptyParams)
+            retrieveStrategy
+            (\b a -> a{retrieveStrategy = b})
+            (enumEditor ["Retrieve then build","Build then retrieve","Never retrieve"])
     ,   mkField
             (paraName <<<- ParaName "Port number for server connection" $ emptyParams)
             serverPort
@@ -320,10 +322,10 @@ firstStart prefs = do
     dialogAddButton dialog "gtk-cancel" ResponseCancel
     vb          <- dialogGetUpper dialog
     label       <- labelNew (Just ("Welcome to Leksah, the Haskell IDE.\n" ++
-        "At the first start, Leksah will collect metadata about your installed haskell packages.\n" ++
+        "At the first start, Leksah will collect and download metadata about your installed haskell packages.\n" ++
         "You can add folders under which you have sources for Haskell packages not available from Hackage.\n" ++
         "If you are not shure what to do, just keep the defaults \n" ++
-        "This process may take a long time, but it only needs to run one time."))
+        "This process may take a long time, so be patient."))
     (widget, setInj, getExt,notifier) <- buildEditor (fDescription configDir) prefs
     boxPackStart vb label PackGrow 7
     boxPackStart vb widget PackGrow 7
@@ -331,10 +333,10 @@ firstStart prefs = do
     widgetShowAll dialog
     response <- dialogRun dialog
     widgetHide dialog
-    widgetDestroy dialog
     case response of
         ResponseOk -> do
             mbNewPrefs <- extract prefs [getExt]
+            widgetDestroy dialog
             case mbNewPrefs of
                 Nothing -> do
                     sysMessage Normal "No dialog results"
@@ -346,11 +348,12 @@ firstStart prefs = do
                     SP.writeStrippedPrefs fp2
                             (SP.Prefs {SP.sourceDirectories = sourceDirectories newPrefs,
                                        SP.unpackDirectory   = unpackDirectory newPrefs,
-                                       SP.retreiveURL       = retreiveURL newPrefs,
+                                       SP.retrieveURL       = retrieveURL newPrefs,
+                                       SP.retrieveStrategy  = retrieveStrategy newPrefs,
                                        SP.serverPort        = serverPort newPrefs,
                                        SP.endWithLastConn   = endWithLastConn newPrefs})
                     firstBuild newPrefs
-        _ -> return ()
+        _ ->     widgetDestroy dialog
 
 firstBuild newPrefs = do
     dialog      <- dialogNew

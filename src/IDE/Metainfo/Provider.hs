@@ -136,7 +136,7 @@ loadSystemInfo = do
                                                 packageIds
     let scope       =   foldr buildScope (PackScope Map.empty getEmptyDefaultScope)
                             $ catMaybes packageList
---        liftIO performGC
+--    liftIO performGC
     modifyIDE_ (\ide -> ide{systemInfo = (Just (GenScopeC (addOtherToScope scope False)))})
 
     return ()

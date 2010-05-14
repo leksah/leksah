@@ -101,6 +101,7 @@ import Control.Event
     (EventSelector(..), EventSource(..), Event(..))
 import System.FilePath ((</>))
 import IDE.Core.CTypes
+import IDE.StrippedPrefs(RetrieveStrategy)
 import System.IO (Handle)
 
 -- ---------------------------------------------------------------------
@@ -360,7 +361,8 @@ data Prefs = Prefs {
     ,   serverPort          ::   Int
     ,   sourceDirectories   ::   [FilePath]
     ,   unpackDirectory     ::   Maybe FilePath
-    ,   retreiveURL         ::   Maybe String
+    ,   retrieveURL         ::   String
+    ,   retrieveStrategy    ::   RetrieveStrategy
     ,   endWithLastConn     ::   Bool
 } deriving(Eq,Show)
 
