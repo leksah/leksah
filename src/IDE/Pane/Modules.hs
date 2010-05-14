@@ -56,9 +56,9 @@ import Graphics.UI.Editor.Simple (boolEditor,okCancelFields,staticListEditor,str
 import Graphics.UI.Editor.Basics (eventPaneName,GUIEventSelector(..))
 import qualified System.IO.UTF8 as UTF8  (writeFile)
 import IDE.Utils.GUIUtils (stockIdFromType)
-import Debug.Trace
 import IDE.Metainfo.Provider
        (getSystemInfo, getWorkspaceInfo, getPackageInfo)
+import System.Log.Logger (infoM)
 
 -- | A modules pane description
 --
@@ -933,7 +933,8 @@ selectNames (mbModuleName, mbIdName) = do
                                             (Just (0.3,0.3))
 
 reloadKeepSelection :: Bool -> IDEAction
-reloadKeepSelection isInitial = trace (">>>Info Changed!!! " ++ show isInitial) $ do
+reloadKeepSelection isInitial = do
+    liftIO $ infoM "leksah" (">>>Info Changed!!! " ++ show isInitial)
     mbMod <- getPane
     case mbMod of
         Nothing -> return ()
@@ -958,8 +959,7 @@ reloadKeepSelection isInitial = trace (">>>Info Changed!!! " ++ show isInitial) 
                     selectNames mbs
                 else if isInitial == True
                         then do
-                            SelectionState moduleS' facetS' sc bl <- trace (">>>Info Changed Initial") $
-                                    liftIO $ readIORef (oldSelection mods)
+                            SelectionState moduleS' facetS' sc bl <- liftIO $ readIORef (oldSelection mods)
                             setScope (sc,bl)
                             fillModulesList (sc, bl)
                             selectNames (moduleS', facetS')

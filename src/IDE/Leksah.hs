@@ -73,7 +73,7 @@ import qualified System.Posix as P
 import System.Log
 import System.Log.Logger(updateGlobalLogger,rootLoggerName,setLevel)
 import Data.List (stripPrefix)
-import Debug.Trace
+
 -- --------------------------------------------------------------------
 -- Command line options
 --

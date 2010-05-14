@@ -40,7 +40,6 @@ import Distribution.PackageDescription.Parse (readPackageDescription,writePackag
 import Distribution.PackageDescription.Configuration (flattenPackageDescription)
 import Distribution.ModuleName(ModuleName)
 import Data.Typeable (Typeable(..))
-import Debug.Trace (trace)
 import Graphics.UI.Editor.Composite
     (versionEditor,
      versionRangeEditor,
@@ -272,7 +271,7 @@ initPackage :: FilePath
     -> (FilePath -> IDEAction)
     -> IDEM ()
 initPackage packageDir packageD packageDescr panePath nb modules afterSaveAction = do
-    let fields =  trace ("initPackage called " ++ packageDir) $ flattenFieldDescription packageDescr
+    let fields =  flattenFieldDescription packageDescr
     let initialPackagePath = packageDir </> (display . pkgName . package . pd) packageD ++ ".cabal"
     packageInfos <- liftIO $ getInstalledPackageIds
     buildThisPane panePath nb

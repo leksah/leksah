@@ -28,7 +28,6 @@ import IDE.Debug
     (debugForward, debugBack, debugCommand')
 import IDE.Utils.Tool (ToolOutput(..))
 import IDE.LogRef (srcSpanParser)
-import Debug.Trace (trace)
 import Text.ParserCombinators.Parsec
     (anyChar,
      skipMany,
@@ -46,6 +45,7 @@ import qualified Text.ParserCombinators.Parsec.Token as  P
 import Text.ParserCombinators.Parsec.Language (emptyDef)
 import Graphics.UI.Gtk.Gdk.Events (Event(..))
 import Graphics.UI.Gtk.General.Enums (MouseButton(..))
+import System.Log.Logger (debugM)
 
 
 -- | A debugger pane description
@@ -163,8 +163,9 @@ fillTraceList = do
         Just tracePane -> debugCommand' ":history" (\to -> liftIO $ postGUIAsync $ do
                 let parseRes = parse tracesParser "" (selectString to)
                 r <- case parseRes of
-                        Left err     -> trace ("trace parse error " ++ show err ++ "\ninput: " ++ selectString to)
-                                    $ return []
+                        Left err     -> do
+                            debugM "leksah" ("trace parse error " ++ show err ++ "\ninput: " ++ selectString to)
+                            return []
                         Right traces -> return traces
                 treeStoreClear (tracepoints tracePane)
                 let r' = map (\h@(TraceHist _ i _ _) -> if i == currentHist'

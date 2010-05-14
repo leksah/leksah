@@ -63,10 +63,11 @@ import Language.Haskell.Extension (knownExtensions)
 import Distribution.Text (display)
 import IDE.Core.Serializable ()
 import Data.Map (Map(..))
-import Debug.Trace
 import Control.Exception (SomeException(..), catch)
 import Prelude hiding(catch)
 import IDE.Utils.ServerConnection(doServerCommand)
+
+trace a b = b
 
 -- ---------------------------------------------------------------------
 -- Updating metadata
@@ -76,7 +77,7 @@ import IDE.Utils.ServerConnection(doServerCommand)
 -- | Update and initialize metadata for the world -- Called at startup
 --
 initInfo :: IDEAction -> IDEAction
-initInfo continuation = trace "init info called" $ do
+initInfo continuation = do
     prefs  <- readIDE prefs
     if collectAtStart prefs
         then do
@@ -88,7 +89,8 @@ initInfo continuation = trace "init info called" $ do
                 updateWorkspaceInfo' False $ \ _ -> do
                     ideMessage Normal "Finished"
                     triggerEventIDE (InfoChanged True) >> return ()
-                    continuation
+
+                    trace "blah" $ continuation
         else do
             ideMessage Normal "Now loading metadata ..."
             loadSystemInfo

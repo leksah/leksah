@@ -101,7 +101,6 @@ import IDE.Pane.Trace (fillTraceList)
 import IDE.PaneGroups
 import IDE.Pane.Search (getSearch, setChoices, searchMetaGUI)
 import IDE.Pane.Grep (getGrep)
-import Debug.Trace
 
 --
 -- | The Actions known to the system (they can be activated by keystrokes or menus)

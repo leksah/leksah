@@ -49,7 +49,6 @@ import qualified Distribution.ModuleName as D (ModuleName(..))
 import qualified Text.ParserCombinators.Parsec.Token as P
        (operator, dot, identifier, symbol, lexeme, whiteSpace,
         makeTokenParser)
-import Debug.Trace (trace)
 import Graphics.UI.Gtk.Gdk.Events (Event(..))
 import Control.Monad.Trans (liftIO)
 
@@ -127,11 +126,11 @@ getScopeForActiveBuffer :: IDEM (Maybe (GenScope, GenScope))
 getScopeForActiveBuffer = do
     mbActiveBuf <- maybeActiveBuf
     case mbActiveBuf of
-        Nothing -> trace "getScopeForActiveBuffer: no activeBuffer" $ return Nothing
+        Nothing -> return Nothing
         Just buf -> do
             mbPackage <- belongsToPackage buf
             case mbPackage of
-                Nothing -> trace "getScopeForActiveBuffer: no package" $ return Nothing
+                Nothing -> return Nothing
                 Just pack -> getPackageImportInfo pack
 
 addImport' :: NotInScopeParseResult -> FilePath -> Descr -> [Descr] -> ((Bool,[Descr]) -> IDEAction) -> IDEAction

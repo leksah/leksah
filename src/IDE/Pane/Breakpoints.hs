@@ -33,7 +33,6 @@ import IDE.Debug
      debugDeleteBreakpoint,
      debugDeleteAllBreakpoints)
 import IDE.LogRef (showSourceSpan)
-import Debug.Trace (trace)
 import Data.List (elemIndex)
 
 
@@ -116,7 +115,7 @@ fillBreakpointList = do
 getSelectedBreakpoint ::  TreeView
     -> TreeStore LogRef
     -> IO (Maybe LogRef)
-getSelectedBreakpoint treeView treeStore = trace "Get selected breakpoint" $do
+getSelectedBreakpoint treeView treeStore = do
     treeSelection   <-  treeViewGetSelection treeView
     paths           <-  treeSelectionGetSelectedRows treeSelection
     case paths of

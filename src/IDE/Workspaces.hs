@@ -80,11 +80,10 @@ import qualified GHC.List as  List (or)
 import IDE.Pane.SourceBuffer
        (fileOpenThis, belongsToPackage, fileCheckAll)
 import qualified System.IO.UTF8 as UTF8 (writeFile)
-import Debug.Trace (trace)
 
 
 setWorkspace :: Maybe Workspace -> IDEAction
-setWorkspace mbWs = trace "setWorkspace" $ do
+setWorkspace mbWs = do
     let mbRealWs = case mbWs of
                         Nothing -> Nothing
                         Just ws -> Just ws{wsReverseDeps = calculateReverseDependencies ws}

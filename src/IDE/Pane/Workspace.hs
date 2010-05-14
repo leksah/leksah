@@ -29,7 +29,6 @@ import IDE.Core.State
 import IDE.Workspaces
 import qualified Data.Map as Map (empty)
 import Data.List (sortBy)
-import Debug.Trace (trace)
 
 
 -- | Workspace pane state
@@ -182,7 +181,7 @@ treeViewPopup ideR  workspacePane (Button _ click _ _ _ _ button _ _) = do
 treeViewPopup _ _ _ = throwIDE "treeViewPopup wrong event type"
 
 updateWorkspace :: Bool -> Bool -> IDEAction
-updateWorkspace showPane updateFileCache = trace "updateWorkspace" $ do
+updateWorkspace showPane updateFileCache = do
     mbWs <- readIDE workspace
     case mbWs of
         Nothing -> do

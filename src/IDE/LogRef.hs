@@ -53,8 +53,8 @@ import System.FilePath (equalFilePath)
 import System.Directory (canonicalizePath)
 import Data.List (stripPrefix, elemIndex, isPrefixOf)
 import Data.Maybe (catMaybes)
-import Debug.Trace (trace)
 import System.Exit (ExitCode(..))
+import System.Log.Logger (debugM)
 
 showSourceSpan :: LogRef -> String
 showSourceSpan = displaySrcSpan . logRefSrcSpan
@@ -63,12 +63,12 @@ selectRef :: Maybe LogRef -> IDEAction
 selectRef (Just ref) = do
     logRefs <- readIDE allLogRefs
     case elemIndex ref logRefs of
-        Nothing    -> trace "no index" $ return ()
+        Nothing    -> liftIO $ debugM "leksah" "no index" >> return ()
         Just index -> do
             mbBuf         <- selectSourceBuf (logRefFullFilePath ref)
             case mbBuf of
                 Just buf  -> markRefInSourceBuf index buf ref True
-                Nothing   -> trace "no buf" $ return ()
+                Nothing   -> liftIO $ debugM "leksah" "no buf" >> return ()
             log :: IDELog <- getLog
             liftIO $ markErrorInLog log (logLines ref)
 selectRef Nothing = return ()

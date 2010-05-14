@@ -92,7 +92,6 @@ import IDE.Utils.FileUtils
 import IDE.SourceCandy
 import IDE.Completion as Completion (complete,cancel)
 import IDE.TextEditor
-import Debug.Trace (trace)
 import qualified System.IO.UTF8 as UTF8
 import Data.IORef (writeIORef,readIORef,newIORef,IORef(..))
 import Data.Char (isAlphaNum)
@@ -218,7 +217,6 @@ instance RecoverablePane IDEBuffer BufferState IDEM where
 
 startComplete :: IDEAction
 startComplete = do
-    trace "start complete" return ()
     mbBuf <- maybeActiveBuf
     currentState' <- readIDE currentState
     case mbBuf of
@@ -1203,21 +1201,18 @@ belongsToPackage ideBuf | fileName ideBuf == Nothing = return Nothing
         Just p  -> return p
         Nothing -> case ws of
                         Nothing   -> return Nothing
-                        Just workspace -> trace ("bufferToProject unknown " ++ show fp) $ do
+                        Just workspace -> do
                             mbMn <- liftIO $ moduleNameFromFilePath fp
                             let mbMn2 = case mbMn of
                                             Nothing -> Nothing
                                             Just mn -> simpleParse mn
                             let res = foldl (belongsToPackage' fp mbMn2) Nothing (wsPackages workspace)
-                            trace ("bufferToProject " ++ case res of
-                                                            Nothing -> "Nothing"
-                                                            Just pack -> show (ipdPackageId pack))
-                                $ modifyIDE_ (\ide -> ide{bufferProjCache = Map.insert fp res bufferToProject'})
+                            modifyIDE_ (\ide -> ide{bufferProjCache = Map.insert fp res bufferToProject'})
                             return res
 
 belongsToPackage' ::  FilePath -> Maybe ModuleName -> Maybe IDEPackage -> IDEPackage -> Maybe IDEPackage
 belongsToPackage' _ _ r@(Just pack) _ = r
-belongsToPackage' fp mbModuleName Nothing pack = trace ("belongsToPackage' " ++ show mbModuleName) $
+belongsToPackage' fp mbModuleName Nothing pack =
     let basePath =  dropFileName $ ipdCabalFile pack
     in if isSubPath basePath fp
         then
