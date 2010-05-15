@@ -89,7 +89,7 @@ initCompletion sourceView = do
 
             column   <- liftIO $ treeViewColumnNew
             liftIO $ set column [
-                treeViewColumnSizing   := TreeViewColumnAutosize,
+                treeViewColumnSizing   := TreeViewColumnFixed,
                 treeViewColumnMinWidth := 800] -- OSX does not like it if there is no hscroll
             liftIO $ treeViewAppendColumn tree column
             renderer <- liftIO $ cellRendererTextNew

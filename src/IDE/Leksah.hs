@@ -357,7 +357,7 @@ firstBuild newPrefs = do
     dialog      <- dialogNew
     vb          <- dialogGetUpper dialog
     progressBar <- progressBarNew
-    progressBarSetText progressBar "Please wait while Leksah collects information about Haskell package on your system"
+    progressBarSetText progressBar "Please wait while Leksah collects information about Haskell packages on your system"
     progressBarSetFraction progressBar 0.0
     boxPackStart vb progressBar PackGrow 7
     forkIO $ do
