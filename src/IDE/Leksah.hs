@@ -35,7 +35,6 @@ import IDE.OSX
 #endif
 
 #ifdef YI
-import qualified Yi as Yi
 import qualified Yi.UI.Pango.Control as Yi
 import IDE.YiConfig
 #endif

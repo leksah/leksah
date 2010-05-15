@@ -168,8 +168,11 @@ modparser = do
     try $symbol2 "<alt>"
     return Alt
     <|> do
-    try $symbol2 "<apple>"
+    try $symbol2 "<super>"
     return Super
+    <|> do
+    try $symbol2 "<meta>"
+    return Meta
     <|> do
     try $symbol2 "<compose>"
     return Hyper

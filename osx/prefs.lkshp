@@ -46,14 +46,18 @@ Paths under which haskell sources for packages may be found:
                []
 Maybe a directory for unpacking cabal packages:
                Just "~/.leksah-0.8/packageSources"
-Maybe an URL to load prebuild metadata :
-               Just "http://www.leksah.org"
+An URL to load prebuild metadata:
+               "http://www.leksah.org"
+A strategy for downloading prebuild metadata:
+               RetrieveThenBuild
 Update metadata at startup:
                True
 Port number for server connection:
                11111
 Server IP address :
                "127.0.0.1"
+End the server with last connection:
+               True
 Packages which are excluded from the modules pane:
                [Dependency (PackageName "ghc") AnyVersion]
 Automatically save all files before building:

@@ -1,12 +1,22 @@
 #!/bin/sh
 
+chmod +x osx/*.sh || exit
+
+cd ../yi || exit
+cabal clean || exit
+DYLD_LIBRARY_PATH="/System/Library/Frameworks/ApplicationServices.framework/Versions/A/Frameworks/ImageIO.framework/Versions/A/Resources:$HOME/gtk/inst/lib:$DYLD_LIBRARY_PATH" cabal install -f pango --prefix="$HOME/gtk/inst" --extra-lib-dirs="$HOME/gtk/inst/lib" || exit
+
 cd ../leksah-server || exit
 cabal clean || exit
-cabal install --prefix="$HOME/gtk/inst" --extra-lib-dirs="$HOME/gtk/inst/lib" || exit
+cabal configure --prefix="$HOME/gtk/inst" --extra-lib-dirs="$HOME/gtk/inst/lib" --datasubdir="leksah-0.8" || exit
+cabal build
+runhaskell Setup.lhs install
 
 cd ../leksah
 cabal clean || exit
-cabal install --prefix="$HOME/gtk/inst" --extra-lib-dirs="$HOME/gtk/inst/lib" || exit
+cabal configure -f yi --prefix="$HOME/gtk/inst" --extra-lib-dirs="$HOME/gtk/inst/lib" --datasubdir="leksah-0.8" || exit
+cabal build
+runhaskell Setup.lhs install
 
 cd osx || exit
 

@@ -1,4 +1,3 @@
-{-# INCLUDE <igemacintegration/ige-mac-menu.h> #-}
 {-# LANGUAGE ForeignFunctionInterface #-}
 -----------------------------------------------------------------------------
 --
@@ -22,7 +21,6 @@ module IDE.OSX (
 import Graphics.UI.Gtk
 import Foreign (nullPtr, withForeignPtr, Ptr(..))
 import System.Glib (GObject(..))
-import System.Glib.Types (toGObject)
 
 foreign import ccall unsafe "ige_mac_menu_set_menu_bar" ige_mac_menu_set_menu_bar :: Ptr GObject -> IO ()
 foreign import ccall unsafe "ige_mac_menu_set_quit_menu_item" ige_mac_menu_set_quit_menu_item :: Ptr GObject -> IO ()
