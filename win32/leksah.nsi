@@ -1,6 +1,6 @@
 Name "Leksah"
 
-OutFile "Leksah-0.8.0.0.exe"
+OutFile "$%LEKSAH_X_X_X_X%.exe"
 
 InstallDir $PROGRAMFILES\Leksah
 
@@ -35,37 +35,38 @@ Section "Leksah"
   File "leksah-rebuild-metadata.bat"
   File "leksah.ico"
 
-  File /r "C:\SDKs\GTK\etc"
+  File /r "$%GTK_PREFIX%\etc"
 
-  SetOutPath $INSTDIR\leksah-server-0.8
-  File /r "C:\SDKs\GTK\leksah-server-0.8\data"
-
-  SetOutPath $INSTDIR\leksah-0.8
-  File /r "C:\SDKs\GTK\leksah-0.8\*"
+  SetOutPath $INSTDIR\leksah
+  File /r "$%GTK_PREFIX%\share\$%LEKSAH_X_X%\*"
 
   SetOutPath $INSTDIR\etc\gtk-2.0
   File "gtkrc"
 
   SetOutPath $INSTDIR\bin
-  File "C:\SDKs\GTK\bin\leksah.exe"
-  File "C:\SDKs\GTK\bin\leksah-server.exe"
-  File "C:\SDKs\GTK\bin\leksahecho.exe"
-  File "C:\SDKs\GTK\bin\*.dll"
+  File "$%GTK_PREFIX%\bin\leksah.exe"
+  File "$%GTK_PREFIX%\bin\leksah-server.exe"
+  File "$%GTK_PREFIX%\bin\leksahecho.exe"
+  File "$%GTK_PREFIX%\bin\*.dll"
+  File /oname=libxml2-2.dll "$%GTK_PREFIX%\bin\libxml2.dll"
+  File "$%CURL_PREFIX%\bin\libcurl*.dll"
+  File "$%CURL_PREFIX%\bin\msys-z.dll"
+  File "$%CURL_PREFIX%\bin\msys-1.0.dll"
   
   SetOutPath $INSTDIR\share
-  File /r "C:\SDKs\GTK\share\gtk-engines"
-  File /r "C:\SDKs\GTK\share\themes"
-  ; File /r "C:\SDKs\GTK\share\icons"
-  File /r "C:\SDKs\GTK\share\gtksourceview-2.0"
+  File /r "$%GTK_PREFIX%\share\gtk-engines"
+  File /r "$%GTK_PREFIX%\share\themes"
+  ; File /r "$%GTK_PREFIX%\share\icons"
+  File /r "$%GTK_PREFIX%\share\gtksourceview-2.0"
 
   SetOutPath $INSTDIR\lib\gtk-2.0\2.10.0\engines
-  File "C:\SDKs\GTK\lib\gtk-2.0\2.10.0\engines\*.dll"
+  File "$%GTK_PREFIX%\lib\gtk-2.0\2.10.0\engines\*.dll"
 
-  SetOutPath $INSTDIR\lib\gtk-2.0\2.10.0\loaders
-  File "C:\SDKs\GTK\lib\gtk-2.0\2.10.0\loaders\*.dll"
+  ;SetOutPath $INSTDIR\lib\gtk-2.0\2.10.0\loaders
+  ;File "$%GTK_PREFIX%\lib\gtk-2.0\2.10.0\loaders\*.dll"
 
   SetOutPath $INSTDIR\lib\gtk-2.0\modules
-  File "C:\SDKs\GTK\lib\gtk-2.0\modules\*.dll"
+  File "$%GTK_PREFIX%\lib\gtk-2.0\modules\*.dll"
 
   ; Write the installation path into the registry
   WriteRegStr HKLM SOFTWARE\Leksah "Install_Dir" "$INSTDIR"
@@ -103,8 +104,7 @@ Section "Uninstall"
   ; Remove files and uninstaller
   Delete $INSTDIR\leksah*.bat
   Delete $INSTDIR\leksah.ico
-  RMDir /r $INSTDIR\leksah-0.8
-  RMDir /r $INSTDIR\leksah-server-0.8
+  RMDir /r $INSTDIR\leksah
   RMDir /r $INSTDIR\bin
   RMDir /r $INSTDIR\lib
   RMDir /r $INSTDIR\etc

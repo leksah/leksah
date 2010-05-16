@@ -18,7 +18,7 @@ import Yi.Buffer.Indent (indentAsPreviousB)
 import Yi.Keymap.Keys
 import Yi.Misc (adjBlock)
 
-import qualified Yi.UI.Vty
+import qualified Yi.UI.Pango
 
 import Yi.Style.Library (darkBlueTheme)
 import Data.List (isPrefixOf, reverse, replicate)
@@ -41,7 +41,7 @@ noHaskellAnnots m
 yiVimConfig = defaultConfig
     {
         -- Use VTY as the default UI.
-        startFrontEnd = Yi.UI.Vty.start,
+        startFrontEnd = Yi.UI.Pango.start,
         defaultKm = mkKeymap extendedVimKeymap,
         modeTable = fmap (onMode $ noHaskellAnnots . prefIndent) (modeTable defaultConfig),
         configUI = (configUI defaultConfig)

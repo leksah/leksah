@@ -9,12 +9,11 @@ set GTK_PATH=%~dp0
 set GTK2_RC_FILES=%~dp0etc\gtk-2.0\gtkrc
 set GTK_IM_MODULE_FILE=%~dp0etc\gtk-2.0\gtk.immodules
 set GDK_PIXBUF_MODULE_FILE=%~dp0etc\gtk-2.0\gdk-pixbuf.loaders
-set PANGO_RC_FILE="%~dp0etc\pango\pangorc
 
-set leksah_bindir=%~dp0bin
-set leksah_libdir=%~dp0leksah-server-0.8\ghc-6.10.4
-set leksah_datadir=%~dp0leksah-server-0.8
-set leksah_libexecdir=%~dp0bin
+set leksah_server_bindir=%~dp0bin
+set leksah_server_libdir=%~dp0leksah\ghc-6.12.1
+set leksah_server_datadir=%~dp0leksah
+set leksah_server_libexecdir=%~dp0bin
 
 leksah-server.exe --server=11111
 
