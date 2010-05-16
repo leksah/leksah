@@ -59,6 +59,7 @@ import IDE.Utils.GUIUtils (stockIdFromType)
 import IDE.Metainfo.Provider
        (getSystemInfo, getWorkspaceInfo, getPackageInfo)
 import System.Log.Logger (infoM)
+import Default (Default(..))
 
 -- | A modules pane description
 --
@@ -67,7 +68,7 @@ data IDEModules     =   IDEModules {
     outer           ::   VBox
 ,   paned           ::   HPaned
 ,   treeView        ::   TreeView
-,   treeStore       ::   TreeStore (String, [(ModuleDescr,PackageDescr)])
+,   treeStore       ::   TreeStore (String, Maybe (ModuleDescr,PackageDescr))
 ,   descrView       ::   TreeView
 ,   descrStore      ::   TreeStore Descr
 ,   packageScopeB   ::   RadioButton
@@ -133,12 +134,11 @@ instance RecoverablePane IDEModules ModulesState IDEM where
                 mbTreeSelection     <-  getSelectionTree (treeView m) (treeStore m)
                 mbFacetSelection    <-  getSelectionDescr (descrView m) (descrStore m)
                 let mbs = (case mbTreeSelection of
-                            Nothing -> Nothing
-                            Just (_,[]) -> Nothing
-                            Just (_,((md,_):_)) -> Just (modu $ mdModuleId md),
-                                 case mbFacetSelection of
-                                    Nothing -> Nothing
-                                    Just fw -> Just (dscName fw))
+                            Just (_,Just (md,_)) -> Just (modu $ mdModuleId md)
+                            otherwise            -> Nothing,
+                            case mbFacetSelection of
+                                Nothing -> Nothing
+                                Just fw -> Just (dscName fw))
                 return (Just (ModulesState i sc mbs expander))
     recoverState pp (ModulesState i sc@(scope,useBlacklist) se exp)  =  do
         nb          <-  getNotebook pp
@@ -165,7 +165,7 @@ instance RecoverablePane IDEModules ModulesState IDEM where
 
             renderer    <- cellRendererTextNew
             col         <- treeViewColumnNew
-            treeViewColumnSetTitle col "Modules"
+            treeViewColumnSetTitle col "Module"
             treeViewColumnSetSizing col TreeViewColumnAutosize
             treeViewColumnSetResizable col True
             treeViewColumnSetReorderable col True
@@ -177,23 +177,26 @@ instance RecoverablePane IDEModules ModulesState IDEM where
             cellLayoutSetAttributes col renderer0 treeStore
                 $ \row -> [
                 cellPixbufStockId  :=
-                    if null (snd row)
-                        then ""
-                        else if isJust (mdMbSourcePath (fst (head (snd row))))
-                                then "ide_source"
-                                else ""]
+                   case snd row of
+                        Nothing -> ""
+                        Just pair -> if isJust (mdMbSourcePath (fst pair))
+                                         then "ide_source"
+                                        else ""]
 
             renderer2   <- cellRendererTextNew
             col2        <- treeViewColumnNew
-            treeViewColumnSetTitle col2 "Packages"
+            treeViewColumnSetTitle col2 "Package"
             treeViewColumnSetSizing col2 TreeViewColumnAutosize
             treeViewColumnSetResizable col2 True
             treeViewColumnSetReorderable col2 True
             treeViewAppendColumn treeView col2
             cellLayoutPackStart col2 renderer2 True
             cellLayoutSetAttributes col2 renderer2 treeStore
-                $ \row -> [ cellText := (concat . intersperse  ", ")
-                            $ map (display . pdPackage . snd) (snd row)]
+                $ \row -> [
+                    cellText := case snd row of
+                                    Nothing -> ""
+                                    Just pair -> (display . pdPackage . snd) pair]
+
             treeViewSetHeadersVisible treeView True
             treeViewSetEnableSearch treeView True
             treeViewSetSearchEqualFunc treeView (Just (treeViewSearch treeView treeStore))
@@ -390,7 +393,7 @@ treePathFromNameArray (Just tree) (h:t) accu   =
 treePathFromNameArray Nothing _ _  = Nothing
 
 treeViewSearch :: TreeView
-    -> TreeStore (String, [(ModuleDescr,PackageDescr)])
+    -> TreeStore (String, Maybe (ModuleDescr,PackageDescr))
     -> String
     -> TreeIter
     -> IO Bool
@@ -404,21 +407,22 @@ treeViewSearch treeView treeStore string iter =  do
         in when found $ do
             treeViewExpandRow treeView path False
             return ()
-    let str2      = case snd val of
-                        []      -> fst val
-                        (m,_):_ -> showPackModule  (mdModuleId m)
+    let str2      =  case snd val of
+                        Just (mod,_) ->  showPackModule  (mdModuleId mod)
+                        Nothing -> ""
     let res       =  isInfixOf (map toLower string) (map toLower str2)
     return res
 
 searchInModSubnodes :: ModTree -> String -> Bool
 searchInModSubnodes tree str =
     not $ null
-        $ filter (\ val ->
-            let cstr = case snd val of
-                    [] -> fst val
-                    (m,_):_ -> show (Present (mdModuleId m))
-            in  isInfixOf (map toLower str) (map toLower cstr))
-                $ concatMap flatten (subForest tree)
+        $ filter (\ (_,mbPair) ->
+            case mbPair of
+                Nothing -> False
+                Just (mod,_) ->
+                    let cstr = show (Present (mdModuleId mod))
+                    in  isInfixOf (map toLower str) (map toLower cstr))
+                            $ concatMap flatten (subForest tree)
 
 descrViewSearch :: TreeView
     -> TreeStore Descr
@@ -445,32 +449,29 @@ searchInFacetSubnodes tree str =
                 $ concatMap flatten (subForest tree)
 
 fillFacets :: TreeView
-    -> TreeStore (String, [(ModuleDescr,PackageDescr)])
+    -> TreeStore (String, Maybe (ModuleDescr,PackageDescr))
     -> TreeView
     -> TreeStore Descr
     -> IO ()
 fillFacets treeView treeStore descrView descrStore = do
     sel             <-  getSelectionTree treeView treeStore
     case sel of
-        Just val
-            ->  case snd val of
-                    ((mod,package):_)
-                        ->  let forest = buildFacetForrest mod in do
-                                emptyModel <- treeStoreNew []
-                                treeViewSetModel descrView emptyModel
-                                treeStoreClear descrStore
-                                mapM_ (\(e,i) -> treeStoreInsertTree descrStore [] i e)
-                                            $ zip forest [0 .. length forest]
-                                treeViewSetModel descrView descrStore
-                                treeViewSetEnableSearch descrView True
-                                treeViewSetSearchEqualFunc descrView (Just (descrViewSearch descrView descrStore))
-                    []  ->      treeStoreClear descrStore
-        Nothing
+        Just (_,Just (mod,package))
+            ->  let forest = buildFacetForrest mod in do
+                        emptyModel <- treeStoreNew []
+                        treeViewSetModel descrView emptyModel
+                        treeStoreClear descrStore
+                        mapM_ (\(e,i) -> treeStoreInsertTree descrStore [] i e)
+                                    $ zip forest [0 .. length forest]
+                        treeViewSetModel descrView descrStore
+                        treeViewSetEnableSearch descrView True
+                        treeViewSetSearchEqualFunc descrView (Just (descrViewSearch descrView descrStore))
+        otheriwse
             ->  treeStoreClear descrStore
 
 getSelectionTree ::  TreeView
-    ->  TreeStore (String, [(ModuleDescr,PackageDescr)])
-    -> IO (Maybe (String, [(ModuleDescr,PackageDescr)]))
+    ->  TreeStore (String, Maybe (ModuleDescr,PackageDescr))
+    -> IO (Maybe (String, Maybe (ModuleDescr,PackageDescr)))
 getSelectionTree treeView treeStore = do
     treeSelection   <-  treeViewGetSelection treeView
     paths           <-  treeSelectionGetSelectedRows treeSelection
@@ -529,7 +530,7 @@ fillModulesList (scope,useBlacklist) = do
             case accessibleInfo' of
                 Nothing ->  liftIO $ do
                                         treeStoreClear (treeStore mods)
-                                        treeStoreInsertTree (treeStore mods) [] 0 (Node ("",[]) [])
+                                        --treeStoreInsertTree (treeStore mods) [] 0 (Node ("",[]) [])
                 Just (GenScopeC ai@(PackScope pm ps)) ->
                     let p2  =   if useBlacklist
                                     then PackScope (Map.filter (filterBlacklist
@@ -684,7 +685,10 @@ buildFacetForrest modDescr =
     matches _ node (forest,b)  = (node:forest,b)
 
 
-type ModTree = Tree (String, [(ModuleDescr,PackageDescr)])
+defaultRoot :: Tree (String, Maybe (ModuleDescr,PackageDescr))
+defaultRoot = Node ("",Just (getDefault,getDefault)) []
+
+type ModTree = Tree (String, Maybe (ModuleDescr,PackageDescr))
 --
 -- | Make a Tree with a module desription, package description pairs tree to display.
 --   Their are nodes with a label but without a module (like e.g. Data).
@@ -693,33 +697,31 @@ buildModulesTree :: (SymbolTable alpha, SymbolTable beta) =>  (PackScope alpha,P
 buildModulesTree (PackScope localMap _,PackScope otherMap _) =
     let flatPairs           =   concatMap (\p -> map (\m -> (m,p)) (pdModules p))
                                     (Map.elems localMap ++ Map.elems otherMap)
-        emptyTree           =   (Node ("",[]) [])
-        resultTree          =   foldl' insertPairsInTree emptyTree flatPairs
+        resultTree          =   foldl' insertPairsInTree defaultRoot flatPairs
         in sortTree resultTree
     where
     insertPairsInTree :: ModTree -> (ModuleDescr,PackageDescr) -> ModTree
     insertPairsInTree tree pair =
         let nameArray           =   components $ modu $ mdModuleId $ fst pair
-            pairedWith          =   map (\n -> (n,pair)) nameArray
+            (startArray,last)   =   splitAt (length nameArray - 1) nameArray
+            pairedWith          =   (map (\n -> (n,Nothing)) startArray) ++ [(head last,Just pair)]
         in  insertNodesInTree pairedWith tree
 
-    insertNodesInTree :: [(String,(ModuleDescr,PackageDescr))] -> ModTree -> ModTree
-    insertNodesInTree list@[(str2,pair)] (Node (str1,pairs) forest) =
-        case partition (\ (Node (s,_) _) -> s == str2) forest of
-            ([],_)              ->  (Node (str1,pairs) (makeNodes list : forest))
-            ([(Node (_,pairsf) l)],rest)
-                                ->  (Node (str1,pairs) ((Node (str2,pair : pairsf) l) : rest))
-            (_,_)               ->  throwIDE "insertNodesInTree: impossible1"
+    insertNodesInTree :: [(String,Maybe (ModuleDescr,PackageDescr))] -> ModTree -> ModTree
+    insertNodesInTree list@[(str2,Just pair)] (Node (str1,pairs) forest) =
+        (Node (str1,pairs) (makeNodes list : forest))
+
     insertNodesInTree  list@((str2,pair):tl) (Node (str1,pairs) forest) =
         case partition (\ (Node (s,_) _) -> s == str2) forest of
             ([],_)              ->  (Node (str1,pairs)  (makeNodes list : forest))
-            ([found],rest)      ->  (Node (str1,pairs) (insertNodesInTree tl found : rest))
-            (_,_)               ->  throwIDE "insertNodesInTree: impossible2"
+            ([found],rest)  ->  (Node (str1,pairs)  (insertNodesInTree tl found : rest))
+            (foundList,rest)  -> (Node (str1,pairs)  (insertNodesInTree tl (head foundList) : rest))
+                -- TODO make smart
     insertNodesInTree [] t      =   t
 
-    makeNodes :: [(String,(ModuleDescr,PackageDescr))] -> ModTree
-    makeNodes [(str,pair)]      =   Node (str,[pair]) []
-    makeNodes ((str,_):tl)      =   Node (str,[]) [makeNodes tl]
+    makeNodes :: [(String,Maybe (ModuleDescr,PackageDescr))] -> ModTree
+    makeNodes [(str,mbPair)]    =   Node (str,mbPair) []
+    makeNodes ((str,mbPair):tl) =   Node (str,mbPair) [makeNodes tl]
     makeNodes _                 =   throwIDE "Impossible in makeNodes"
 
 breakAtDots :: [String] -> String -> [String]
@@ -737,7 +739,7 @@ sortTree :: Ord a => Tree a -> Tree a
 sortTree (Node l forest)    =   Node l (sort (map sortTree forest))
 
 treeViewPopup :: IDERef
-    -> TreeStore (String, [(ModuleDescr,PackageDescr)])
+    -> TreeStore (String, Maybe (ModuleDescr,PackageDescr))
     -> TreeView
     -> Event
     -> IO (Bool)
@@ -749,7 +751,7 @@ treeViewPopup ideR  store treeView (Button _ click _ _ _ _ button _ _) = do
             item1 `onActivateLeaf` do
                 sel         <-  getSelectionTree treeView store
                 case sel of
-                    Just (_,[(m,_)]) -> case mdMbSourcePath m of
+                    Just (_,Just (m,_)) -> case mdMbSourcePath m of
                                             Nothing     ->  return ()
                                             Just fp     ->  do
                                                 reflectIDE (selectSourceBuf fp) ideR
@@ -777,7 +779,7 @@ treeViewPopup ideR  store treeView (Button _ click _ _ _ _ button _ _) = do
         else if button == LeftButton && click == DoubleClick
                 then do sel         <-  getSelectionTree treeView store
                         case sel of
-                            Just (_,[(m,_)]) -> case mdMbSourcePath m of
+                            Just (_,Just (m,_)) -> case mdMbSourcePath m of
                                                     Nothing     ->  return ()
                                                     Just fp     ->  do
                                                         reflectIDE (selectSourceBuf fp) ideR
@@ -884,12 +886,12 @@ selectScope (sc,bl) = do
         liftIO $ treeSelectionUnselectAll ts
         fillModulesList (sc,bl)
         let mbs = (case mbTreeSelection of
-                                Nothing -> Nothing
-                                Just (_,[]) -> Nothing
-                                Just (_,((md,_):_)) -> Just (modu $ mdModuleId md),
-                                     case mbDescrSelection of
-                                        Nothing -> Nothing
-                                        Just fw -> Just (dscName fw))
+                    Just (_,Just (md,_)) -> Just (modu $ mdModuleId md)
+                    otherwise -> Nothing,
+                         case mbDescrSelection of
+                            Nothing -> Nothing
+                            Just fw -> Just (dscName fw))
+
         selectNames mbs
     recordScopeHistory
     applyExpanderState
@@ -948,13 +950,13 @@ reloadKeepSelection isInitial = do
                     recordExpanderState
                     fillModulesList sc
                     liftIO $ treeStoreClear (descrStore mods)
-                    let mbs = (case mbTreeSelection of
+                    let mbs =  (case mbTreeSelection of
+                                    Just (_,Just (md,_)) -> Just (modu $ mdModuleId md)
+                                    otherwise -> Nothing,
+                                 case mbDescrSelection of
                                     Nothing -> Nothing
-                                    Just (_,[]) -> Nothing
-                                    Just (_,((md,_):_)) -> Just (modu $ mdModuleId md),
-                                         case mbDescrSelection of
-                                            Nothing -> Nothing
-                                            Just fw -> Just (dscName fw))
+                                    Just fw -> Just (dscName fw))
+
                     applyExpanderState
                     selectNames mbs
                 else if isInitial == True
@@ -987,7 +989,7 @@ collapseHere treeView = do
         []     -> return ()
         (hd:_) -> treeViewCollapseRow treeView hd >> return ()
 
-addModule :: TreeView -> TreeStore (String, [(ModuleDescr,PackageDescr)]) -> IDEAction
+addModule :: TreeView -> TreeStore (String, Maybe (ModuleDescr,PackageDescr)) -> IDEAction
 addModule treeView store = do
     sel   <- liftIO $ treeViewGetSelection treeView
     paths <- liftIO $ treeSelectionGetSelectedRows sel
@@ -1159,9 +1161,8 @@ recordSelHistory = do
     selTree <- liftIO $ getSelectionTree (treeView mods) (treeStore mods)
     selDescr <- liftIO $ getSelectionDescr (descrView mods) (descrStore mods)
     let selMod = case selTree of
-                        Nothing -> Nothing
-                        Just (_,[]) -> Nothing
-                        Just (_,((md,_):_)) -> Just (modu $ mdModuleId md)
+                        Just (_,Just (md,_)) -> Just (modu $ mdModuleId md)
+                        otherwise -> Nothing
     let selFacet = case selDescr of
                         Nothing -> Nothing
                         Just descr -> Just (dscName descr)

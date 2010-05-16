@@ -611,11 +611,6 @@ styleEditor p n = do
     maybeEditor (comboSelectionEditor ids id, p) True "Select a special style?" p n
 
 
-instance Default PackageIdentifier where
-    getDefault = case packageIdentifierFromString "unknown-0" of
-                    Nothing -> throwIDE "Preferences.getDefault: Can't parse Package Identifier"
-                    Just it -> it
-
 defaultPrefs = Prefs {
         prefsFormat         =   prefsVersion
     ,   prefsSaveTime       =   ""
