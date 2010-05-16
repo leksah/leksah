@@ -18,7 +18,7 @@
          app. If you leave out the path, the current directory is
          used. Note the usage of an environment variable here again.
     -->
-    <destination overwrite="yes">${env:HOME}/Desktop/Leksah</destination>
+    <destination overwrite="yes">Leksah</destination>
 
     <image>
       <!-- Not implemented yet (DMG image). -->
