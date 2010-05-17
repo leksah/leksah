@@ -550,10 +550,10 @@ textPopupMenu ideR menu = do
                                 castToWidget mi13, castToWidget mi14, castToWidget mi141,
                                 castToWidget mi15]
     let otherEntries = [castToWidget mi2, castToWidget mi3]
-    isInterpreting' <- (reflectIDE isInterpreting ideR)
+    -- isInterpreting' <- (reflectIDE isInterpreting ideR)
     selected <- (reflectIDE selectedText ideR)
-    unless isInterpreting'
-        $ mapM_ (\w -> widgetSetSensitive w False) (interpretingEntries ++ interpretingSelEntries)
+--    unless isInterpreting'
+--        $ mapM_ (\w -> widgetSetSensitive w False) (interpretingEntries ++ interpretingSelEntries)
 --    unless (isJust selected)
 --        $ mapM_ (\w -> widgetSetSensitive w False) (otherEntries ++ interpretingSelEntries)
     mapM_ widgetShow interpretingEntries
