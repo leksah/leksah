@@ -629,12 +629,7 @@ getActionsFor SensitivityProjectActive = getActionsFor'
 getActionsFor SensitivityError = getActionsFor' ["NextError", "PreviousError"]
 getActionsFor SensitivityEditor = getActionsFor' ["EditUndo", "EditRedo", "EditGotoLine"
     ,"EditComment", "EditUncomment", "EditShiftLeft", "EditShiftRight"]
-getActionsFor SensitivityInterpreting = getActionsFor' ["QuitDebugger" , "ExecuteSelection",
- "DebugSetBreakpoint", "ShowNextBreakpoint", "ShowPreviousBreakpoint", "DebugDeleteAllBreakpoints",
- "DebugContinue", "DebugAbandon", "DebugStop", "DebugStep", "DebugStepExpression", "DebugStepLocal",
- "DebugStepModule", "DebugTrace", "DebugTraceExpression", "DebugHistory", "DebugBack", "DebugForward",
- "DebugForce", "DebugPrint", "DebugSimplePrint", "ShowBindings", "ShowBreakpoints", "ShowContext",
- "ShowLoadedModules", "ShowPackages", "ShowLanguages", "DebugInformation", "DebugKind", "DebugType"]
+getActionsFor SensitivityInterpreting = getActionsFor' ["QuitDebugger"]
 getActionsFor SensitivityWorkspaceOpen = return [] --TODO add here
 
 getActionsFor' :: [String] -> IDEM[Action]

@@ -17,9 +17,9 @@
 
 
 module IDE.Debug (
-    executeDebugCommand
-,   debugCommand
+    debugCommand
 ,   debugCommand'
+,   debugToggled
 ,   debugQuit
 ,   debugExecuteSelection
 ,   debugExecuteAndShowSelection
@@ -60,7 +60,6 @@ module IDE.Debug (
 ,   debugKind
 ,   debugType
 
-,   interactiveFlags
 ,   debugSetPrintEvldWithShow
 ,   debugSetBreakOnException
 ,   debugSetBreakOnError
@@ -69,7 +68,6 @@ module IDE.Debug (
 
 import Control.Monad.Reader
 import IDE.Core.State
-import IDE.Utils.Tool
 import IDE.LogRef
 import Control.Exception (SomeException(..))
 import IDE.Pane.SourceBuffer
@@ -80,21 +78,10 @@ import Distribution.Text (display)
 import IDE.Pane.Log (appendLog)
 import Data.List (isSuffixOf)
 import IDE.System.Process (interruptProcessGroup)
-
-executeDebugCommand :: String -> ([ToolOutput] -> IDEAction) -> IDEAction
-executeDebugCommand command handler = do
-    maybeGhci <- readIDE ghciState
-    case maybeGhci of
-        Just ghci -> do
-            triggerEventIDE (StatusbarChanged [CompartmentState command, CompartmentBuild True])
-            reifyIDE $ \ideR -> do
-                executeGhciCommand ghci command $ \output ->
-                    reflectIDE (do
-                        handler output
-                        triggerEventIDE (StatusbarChanged [CompartmentState "", CompartmentBuild False])
-                        return ()
-                        ) ideR
-        _ -> sysMessage Normal "Debugger not running"
+import IDE.Utils.GUIUtils (getDebugToggled)
+import IDE.Package (debugStart, executeDebugCommand, printBindResultFlag, breakOnErrorFlag,
+        breakOnExceptionFlag, printEvldWithShowFlag)
+import IDE.Utils.Tool (ToolOutput(..), toolProcess)
 
 debugCommand :: String -> ([ToolOutput] -> IDEAction) -> IDEAction
 debugCommand command handler = debugCommand' command
@@ -102,12 +89,19 @@ debugCommand command handler = debugCommand' command
         handler to
         triggerEventIDE VariablesChanged
         return ())
--- | Comment3
+
 debugCommand' :: String -> ([ToolOutput] -> IDEAction) -> IDEAction
 debugCommand' command handler = do
     ideR <- ask
     catchIDE (executeDebugCommand command handler)
         (\(e :: SomeException) -> putStrLn (show e))
+
+debugToggled :: IDEAction
+debugToggled = do
+    toggled <- getDebugToggled
+    if toggled
+        then debugStart
+        else debugQuit
 
 debugQuit :: IDEAction
 debugQuit = debugCommand ":quit" logOutput
@@ -356,28 +350,6 @@ debugSetBreakpoint = do
             ref <- ask
             return ()
         Nothing   -> ideMessage Normal "Please select module file in the editor"
-
-interactiveFlag :: String -> Bool -> String
-interactiveFlag name f = (if f then "-f" else "-fno-") ++ name
-
-printEvldWithShowFlag :: Bool -> String
-printEvldWithShowFlag = interactiveFlag "print-evld-with-show"
-
-breakOnExceptionFlag :: Bool -> String
-breakOnExceptionFlag = interactiveFlag "break-on-exception"
-
-breakOnErrorFlag :: Bool -> String
-breakOnErrorFlag = interactiveFlag "break-on-error"
-
-printBindResultFlag :: Bool -> String
-printBindResultFlag = interactiveFlag "print-bind-result"
-
-interactiveFlags :: Prefs -> [String]
-interactiveFlags prefs =
-    (printEvldWithShowFlag $ printEvldWithShow prefs)
-    : (breakOnExceptionFlag $ breakOnException prefs)
-    : (breakOnErrorFlag $ breakOnError prefs)
-    : [printBindResultFlag $ printBindResult prefs]
 
 debugSet :: (Bool -> String) -> Bool -> IDEAction
 debugSet flag value = do

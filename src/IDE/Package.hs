@@ -45,7 +45,11 @@ module IDE.Package (
 ,   backgroundLinkToggled
 
 ,   debugStart
-,   debugToggled
+,   printBindResultFlag
+,   breakOnErrorFlag
+,   breakOnExceptionFlag
+,   printEvldWithShowFlag
+,   executeDebugCommand
 ,   choosePackageFile
 
 ,   idePackageFromPath
@@ -74,7 +78,6 @@ import IDE.Pane.PackageFlags (readFlags)
 import Distribution.Text (display)
 import IDE.Utils.FileUtils(getConfigFilePathForLoad)
 import IDE.LogRef
-import IDE.Debug
 import MyMissing (replace)
 import Distribution.ModuleName (ModuleName(..))
 import Data.List (isInfixOf, nub, foldl')
@@ -85,7 +88,7 @@ import qualified Data.Map as  Map (empty)
 import System.Exit (ExitCode(..))
 import Control.Applicative ((<$>))
 import IDE.System.Process (getProcessExitCode, interruptProcessGroup)
-
+import IDE.Utils.Tool (executeGhciCommand)
 
 #if MIN_VERSION_Cabal(1,8,0)
 myLibModules pd = case library pd of
@@ -476,7 +479,7 @@ addModuleToPackageDescr moduleName isExposed = do
                                                        Nothing -> pd
                                                        Just lib -> pd{library = Just (lib{libBuildInfo =
                                                                 addModToBuildInfo (libBuildInfo lib) moduleName})}
-                                         in npd1{executables = map
+                                       in npd1{executables = map
                                                 (\exe -> exe{buildInfo = addModToBuildInfo (buildInfo exe) moduleName})
                                                     (executables npd1)}
                         in writePackageDescription (ipdCabalFile p) npd)
@@ -501,6 +504,28 @@ backgroundLinkToggled = do
 -- | * Debug code that needs to use the package
 --
 
+interactiveFlag :: String -> Bool -> String
+interactiveFlag name f = (if f then "-f" else "-fno-") ++ name
+
+printEvldWithShowFlag :: Bool -> String
+printEvldWithShowFlag = interactiveFlag "print-evld-with-show"
+
+breakOnExceptionFlag :: Bool -> String
+breakOnExceptionFlag = interactiveFlag "break-on-exception"
+
+breakOnErrorFlag :: Bool -> String
+breakOnErrorFlag = interactiveFlag "break-on-error"
+
+printBindResultFlag :: Bool -> String
+printBindResultFlag = interactiveFlag "print-bind-result"
+
+interactiveFlags :: Prefs -> [String]
+interactiveFlags prefs =
+    (printEvldWithShowFlag $ printEvldWithShow prefs)
+    : (breakOnExceptionFlag $ breakOnException prefs)
+    : (breakOnErrorFlag $ breakOnError prefs)
+    : [printBindResultFlag $ printBindResult prefs]
+
 debugStart :: IDEAction
 debugStart = catchIDE (do
     ideRef <- ask
@@ -517,10 +542,12 @@ debugStart = catchIDE (do
                         $ \output -> reflectIDE (logOutputForBuild dir True output) ideR
                     modifyIDE_ (\ide -> ide {ghciState = Just ghci})
                     triggerEventIDE (Sensitivity [(SensitivityInterpreting, True)])
+                    setDebugToggled True
                     -- Fork a thread to wait for the output from the process to close
                     liftIO $ forkIO $ do
                         readMVar (outputClosed ghci)
                         reflectIDE (do
+                            setDebugToggled False
                             modifyIDE_ (\ide -> ide {ghciState = Nothing})
                             triggerEventIDE (Sensitivity [(SensitivityInterpreting, False)])
                             -- Kick of a build if one is not already due
@@ -528,7 +555,9 @@ debugStart = catchIDE (do
                             let modified = not (null modifiedPacks)
                             prefs <- readIDE prefs
                             when ((not modified) && (backgroundBuild prefs)) $ do
-                                    -- TODO Check with Hamish what this means.
+                                -- So although none of the pakages are modified,
+                                -- they may have been modified in ghci mode.
+                                -- Lets build to make sure the binaries are up to date
                                 mbPackage   <- readIDE activePack
                                 case mbPackage of
                                     Just package -> runCabalBuild True package True (\ _ -> return ())
@@ -539,12 +568,29 @@ debugStart = catchIDE (do
                     return ())
         (\(e :: SomeException) -> putStrLn (show e))
 
-debugToggled :: IDEAction
-debugToggled = do
-    toggled <- getDebugToggled
-    if toggled
-        then debugStart
-        else debugQuit
+executeDebugCommand :: String -> ([ToolOutput] -> IDEAction) -> IDEAction
+executeDebugCommand command handler = do
+    maybeGhci <- readIDE ghciState
+    case maybeGhci of
+        Just ghci -> do
+            triggerEventIDE (StatusbarChanged [CompartmentState command, CompartmentBuild True])
+            reifyIDE $ \ideR -> do
+                executeGhciCommand ghci command $ \output ->
+                    reflectIDE (do
+                        handler output
+                        triggerEventIDE (StatusbarChanged [CompartmentState "", CompartmentBuild False])
+                        return ()
+                        ) ideR
+        _ -> do
+            md <- liftIO $ messageDialogNew Nothing [] MessageQuestion ButtonsYesNo
+                    "GHCi debugger is not running.  Would you like to start it?"
+            resp <- liftIO $ dialogRun md
+            liftIO $ widgetHide md
+            case resp of
+                ResponseYes -> do
+                    debugStart
+                    executeDebugCommand command handler
+                _  -> return ()
 
 idePackageFromPath :: FilePath -> IDEM (Maybe IDEPackage)
 idePackageFromPath filePath = do
