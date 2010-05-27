@@ -1,4 +1,4 @@
-#LyX 1.6.4 created this file. For more info see http://www.lyx.org/
+#LyX 1.6.5 created this file. For more info see http://www.lyx.org/
 \lyxformat 345
 \begin_document
 \begin_header
@@ -2212,20 +2212,6 @@ ctrl-r
  package or are in a package listed in the build dependencies of the package.
 \end_layout
 
-\begin_layout Subsubsection
-The Notion of active package
-\end_layout
-
-\begin_layout Standard
-In the package pane a package can be marked as active either with the pop-up
- menu or by double clicking.
- The active package is the one that the commands in the Package menu refers
- to.
- (e.g.
- configure, build, install).
- 
-\end_layout
-
 \begin_layout Subsection
 Packages
 \end_layout
@@ -2288,7 +2274,7 @@ Leksah stores data for packages in the standard cabal files.
 \end_layout
 
 \begin_layout Subsubsection
-Opening and closing a package
+Opening and activating a package
 \end_layout
 
 \begin_layout Standard
@@ -2298,9 +2284,27 @@ Leksah uses Cabal for package management, and opening a package is done
 cabal
 \emph default
  file.
- So when you select Package / Open Package from the menu, select the *.cabal
- file of the desired package.
+ To open a package select 
+\emph on
+Add Package
+\emph default
+ from the context menu of the workspace, select the *.cabal file of the desired
+ package.
  You must not have more than one *.cabal file in a folder!
+\end_layout
+
+\begin_layout Standard
+For workspaces with more then one package, you can activate a package in
+ the workspace pane, by double clicking on it or by selecting 
+\emph on
+Activate Package
+\emph default
+ from the context menu.
+ The active package is the one that the commands in the Package menu refers
+ to.
+ (e.g.
+ configure, build, install).
+ 
 \end_layout
 
 \begin_layout Standard
