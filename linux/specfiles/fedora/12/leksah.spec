@@ -7,24 +7,24 @@
 %global debug_package %{nil}
 
 Name:           %{pkg_name}
-Version:        0.8.0.4
+Version:        0.8.0.6
 Release:        1%{?dist}
 Summary:        Haskell IDE
 
 Group:          System Environment/Languages
-License:        BSD
+License:        GPL
 URL:            http://code.haskell.org/leksah/
 Source0:        %{pkg_name}-%{version}.tar.gz
 # fedora ghc archs:
 ExclusiveArch:  %{ix86} x86_64 ppc alpha
-BuildRequires:  ghc >= 6.10.1, ghc-rpm-macros >= 0.2.5, ghc-gtk2hs-compat >= 0.10.1, ghc-utf8-string-devel >= 0.3.1.1, ghc-haskell-platform-devel,ghc-gtksourceview2-devel,ghc-gtk-devel,ghc-glib-devel, ghc-binary-shared-devel, haddock-leksah, leksah-server == 0.8.0.5, leksah-server-devel == 0.8.0.5, ghc-regex-tdfa-devel >= 1.1.0, ghc-regex-base-devel >= 0.93
+BuildRequires:  ghc >= 6.10.1, ghc-rpm-macros >= 0.2.5, ghc-gtk2hs-compat >= 0.10.1, ghc-utf8-string-devel >= 0.3.1.1, ghc-haskell-platform-devel,ghc-gtksourceview2-devel,ghc-gtk-devel,ghc-glib-devel, ghc-binary-shared-devel, haddock-leksah, leksah-server == 0.8.0.6, leksah-server-devel == 0.8.0.6, ghc-regex-tdfa-devel >= 1.1.0, ghc-regex-base-devel >= 0.93
 %if %{with doc}
 BuildRequires:  ghc-doc
 %endif
 %if %{with prof}
 BuildRequires:  ghc-prof
 %endif
-Requires: atk, glibc, cairo, fontconfig, freetype, gtk2, glib2, gmp, gtksourceview2, pango, leksah-server == 0.8.0.5
+Requires: atk, glibc, cairo, fontconfig, freetype, gtk2, glib2, gmp, gtksourceview2, pango, leksah-server == 0.8.0.6
 
 %description
 Haskell IDE
@@ -104,8 +104,10 @@ fi
 %attr(644,root,root) /usr/share/applications/%{pkg_name}.desktop
 %attr(644,root,root) /usr/share/icons/hicolor/48x48/apps/leksah_48x48.png
 
-
 %changelog
+* Fri May 28 2010 <lakshminaras2002@gmail.com>
+- Upgrade to leksah 0.8.0.6
+
 * Fri Apr 09 2010 <lakshminaras2002@gmail.com>
 - Updated to 0.8.0.4
 - Modified dependencies to accommodate split of leksah-server

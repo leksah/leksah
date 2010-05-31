@@ -2,24 +2,18 @@
 
 %bcond_without doc
 %bcond_without prof
-%bcond_with haddock_leksah
+%bcond_without shared
 
 # ghc does not emit debug information
 %global debug_package %{nil}
 
-%if %{with haddock_leksah}
-%global haddock_package haddock-leksah
-%else
-%global haddock_package haddock
-%endif
-
 Name:           %{pkg_name}
-Version:        0.8.0.5
+Version:        0.8.0.6
 Release:        1%{?dist}
 Summary:        Haskell IDE
 
-Group:          System Environment/Languages
-License:        BSD
+Group:          System Development/IDE
+License:        GPL
 URL:            http://code.haskell.org/leksah/leksah-server
 Source0:        %{pkg_name}-%{version}.tar.gz
 # fedora ghc archs:
@@ -31,7 +25,7 @@ BuildRequires:  ghc-doc
 %if %{with prof}
 BuildRequires:  ghc-prof
 %endif
-Requires: atk, glibc, cairo, fontconfig, freetype, gtk2, glib2, gmp, gtksourceview2, pango, bash, ghc, cabal-install, sh
+Requires: atk, glibc, cairo, fontconfig, freetype, gtk2, glib2, gmp, gtksourceview2, pango, bash, ghc, cabal-install
 
 %description
 Haskell IDE
@@ -39,14 +33,13 @@ Haskell IDE
 %package devel
 Summary:        Haskell IDE leksah-server development files
 Group:          Development/Libraries
-BuildRequires:  ghc = %{ghc_version}, ghc-rpm-macros >= 0.2.5, ghc-utf8-string-devel >= 0.3.1.1, ghc-haskell-platform-devel,ghc-gtksourceview2-devel,ghc-gtk-devel,ghc-glib-devel, ghc-binary-shared-devel >= 0.8, ghc-deepseq-devel, ghc-deepseq-prof, ghc-hslogger-devel >= 1.0.10, ghc-ltk-devel >= 0.8, ghc-network-devel >= 2.2.1.4, ghc-binary-devel >= 0.5.0.2, ghc-binary-shared-devel >= 0.8, %{haddock_package} >= 2.5.0, ghc-process-leksah-devel >= 1.0.1.3,  ghc-hslogger-prof >= 1.0.10, ghc-process-leksah-prof >= 1.0.1.3, ghc-ltk-prof >= 0.8, ghc-binary-shared-prof >= 0.8, ghc-network-prof >= 2.2.1.4, ghc-binary-prof >= 0.5.0.2
-Requires:       ghc = %{ghc_version}, ghc-hslogger-devel >= 1.0.10, ghc-ltk-devel >= 0.8, ghc-network-devel >= 2.2.1.4, ghc-binary-devel >= 0.5.0.2, ghc-binary-shared-devel >= 0.8, ghc-deepseq-devel >= 1.1.0.0, %{haddock_package} >= 2.5.0, cabal-install, ghc-process-leksah-devel >= 1.0.1.3, sh
+BuildRequires:  ghc = %{ghc_version}, ghc-rpm-macros >= 0.2.5, ghc-utf8-string-devel >= 0.3.1.1, ghc-haskell-platform-devel,ghc-gtksourceview2-devel,ghc-gtk-devel,ghc-glib-devel, ghc-deepseq-devel, ghc-deepseq-prof, ghc-hslogger-devel >= 1.0.10, ghc-ltk-devel >= 0.8, ghc-network-devel >= 2.2.1.4, ghc-binary-devel >= 0.5.0.2, ghc-binary-shared-devel >= 0.8, haddock-leksah >= 2.5.0, ghc-process-leksah-devel >= 1.0.1.3,  ghc-hslogger-prof >= 1.0.10, ghc-process-leksah-prof >= 1.0.1.3, ghc-ltk-prof >= 0.8, ghc-binary-shared-prof >= 0.8, ghc-network-prof >= 2.2.1.4, ghc-binary-prof >= 0.5.0.2
+Requires:       ghc = %{ghc_version}, ghc-hslogger-devel >= 1.0.10, ghc-ltk-devel >= 0.8, ghc-network-devel >= 2.2.1.4, ghc-binary-devel >= 0.5.0.2, ghc-binary-shared-devel >= 0.8, ghc-deepseq-devel >= 1.1.0.0, haddock-leksah >= 2.5.0, cabal-install, ghc-process-leksah-devel >= 1.0.1.3
 Requires(post): ghc = %{ghc_version}
 Requires(postun): ghc = %{ghc_version}
 
 %description devel
 This package contains development files for leksah-server
-
 
 %if %{with doc}
 %package doc
@@ -95,7 +88,7 @@ built for ghc-%{ghc_version}.
 rm -rf $RPM_BUILD_ROOT
 
 %post devel
-%ghc_register_pkg
+%ghc_register_pkg 
 
 %preun devel
 if [ "$1" -eq 0 ] ; then
@@ -136,16 +129,7 @@ fi
 %defattr(-,root,root,-)
 %endif
 
-
-
 %changelog
-* Fri Apr 09 2010 <lakshminaras2002@gmail.com>
-- Added if macros for doc and prof rpms
-- Added macro definition to conditionally select haddock-leksah 
-- or haddock based on whether rpmbuild is called with -with
-- haddock_leksah or not. This has been done in preparation for
-- Fedora 13 which ships with ghc-6.12
-
 * Fri Apr 09 2010 <lakshminaras2002@gmail.com>
 - Split leksah server into two rpms. The base rpm contains only
 - the leskah-server, leksahecho binaries. The devel rpm contains
@@ -155,6 +139,7 @@ fi
 - development work.
 - Added ghc-process-leksah dependency.Fixed profiling requirements
 - for building the rpm
+- Added if macros for doc and prof rpms
 
 * Mon Feb 08 2010 <lakshminaras2002@gmail.com>
 - Initial Version for Fedora 12

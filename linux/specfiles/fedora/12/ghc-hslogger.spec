@@ -13,7 +13,7 @@ Release:        1%{?dist}
 Summary:        Haskell logger implementation
 
 Group:          System Environment/Libraries
-License:        BSD
+License:        LGPL
 URL:            http://hackage.haskell.org/package/%{pkg_name}-%{version}
 Source0:        %{pkg_name}-%{version}.tar.gz
 # fedora ghc archs:
