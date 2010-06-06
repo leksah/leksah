@@ -33,6 +33,11 @@ module IDE.Core.Types (
 ,   IDEAction
 ,   IDEEvent(..)
 
+,   DebugM
+,   DebugAction
+,   runDebug
+,   liftIDEM
+
 ,   IDEPackage(..)
 ,   Workspace(..)
 
@@ -173,6 +178,18 @@ data IDEState =
         -- | The completion feature is used
     |   IsCompleting Connections
 
+
+-- ---------------------------------------------------------------------
+-- Monad for functions that need to use the GHCi debugger
+--
+type DebugM = ReaderT ToolState IDEM
+type DebugAction = DebugM ()
+
+runDebug :: DebugM a -> ToolState -> IDEM a
+runDebug = runReaderT
+
+liftIDEM :: IDEM a -> DebugM a
+liftIDEM = lift
 
 -- ---------------------------------------------------------------------
 -- Events which can be signalled and handled

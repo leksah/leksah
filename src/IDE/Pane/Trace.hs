@@ -24,6 +24,7 @@ import Graphics.UI.Gtk
 import Data.Typeable (Typeable(..))
 import IDE.Core.State
 import Control.Monad.Reader
+import IDE.Package (tryDebug_)
 import IDE.Debug
     (debugForward, debugBack, debugCommand')
 import IDE.Utils.Tool (ToolOutput(..))
@@ -160,7 +161,7 @@ fillTraceList = do
     mbTraces     <- getPane
     case mbTraces of
         Nothing -> return ()
-        Just tracePane -> debugCommand' ":history" (\to -> liftIO $ postGUIAsync $ do
+        Just tracePane -> tryDebug_ $ debugCommand' ":history" (\to -> liftIO $ postGUIAsync $ do
                 let parseRes = parse tracesParser "" (selectString to)
                 r <- case parseRes of
                         Left err     -> do

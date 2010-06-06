@@ -48,8 +48,12 @@ module IDE.Package (
 ,   printBindResultFlag
 ,   breakOnErrorFlag
 ,   breakOnExceptionFlag
+
 ,   printEvldWithShowFlag
+,   tryDebug
+,   tryDebug_
 ,   executeDebugCommand
+
 ,   choosePackageFile
 
 ,   idePackageFromPath
@@ -248,7 +252,7 @@ buildPackage backgroundBuild  package continuation = catchIDE (do
             when ready $ do
                 let dir = dropFileName (ipdCabalFile package)
                 when (saveAllBeforeBuild prefs) (do fileSaveAll belongsToWorkspace; return ())
-                executeDebugCommand ":reload" $ logOutputForBuild dir backgroundBuild
+                runDebug (executeDebugCommand ":reload" (logOutputForBuild dir backgroundBuild)) ghci
     )
     (\(e :: SomeException) -> sysMessage Normal (show e))
 
@@ -312,8 +316,9 @@ packageRun = catchIDE (do
                     Just ghci -> do
                         case executables pd of
                             (Executable _ mainFilePath _):_ -> do
-                                executeDebugCommand (":module *" ++ (map (\c -> if c == '/' then '.' else c) (takeWhile (/= '.') mainFilePath))) logOutput
-                                executeDebugCommand (":main " ++ (unwords (ipdExeFlags package))) logOutput
+                                runDebug (do
+                                    executeDebugCommand (":module *" ++ (map (\c -> if c == '/' then '.' else c) (takeWhile (/= '.') mainFilePath))) logOutput
+                                    executeDebugCommand (":main " ++ (unwords (ipdExeFlags package))) logOutput) ghci
                             otherwise -> do
                                 sysMessage Normal "no executable in selected package"
                                 return ())
@@ -532,7 +537,13 @@ debugStart = catchIDE (do
     mbPackage   <- getActivePackage
     prefs'      <- readIDE prefs
     case mbPackage of
-        Nothing         -> return ()
+        Nothing         -> do
+            setDebugToggled False
+            md <- liftIO $ messageDialogNew Nothing [] MessageError ButtonsOk
+                    "You need to have an active package before you can start the GHCi debugger"
+            resp <- liftIO $ dialogRun md
+            liftIO $ widgetHide md
+            return ()
         Just package    -> do
             maybeGhci <- readIDE ghciState
             case maybeGhci of
@@ -568,19 +579,11 @@ debugStart = catchIDE (do
                     return ())
         (\(e :: SomeException) -> putStrLn (show e))
 
-executeDebugCommand :: String -> ([ToolOutput] -> IDEAction) -> IDEAction
-executeDebugCommand command handler = do
+tryDebug :: DebugM a -> IDEM (Maybe a)
+tryDebug f = do
     maybeGhci <- readIDE ghciState
     case maybeGhci of
-        Just ghci -> do
-            triggerEventIDE (StatusbarChanged [CompartmentState command, CompartmentBuild True])
-            reifyIDE $ \ideR -> do
-                executeGhciCommand ghci command $ \output ->
-                    reflectIDE (do
-                        handler output
-                        triggerEventIDE (StatusbarChanged [CompartmentState "", CompartmentBuild False])
-                        return ()
-                        ) ideR
+        Just ghci -> liftM Just $ runReaderT f ghci
         _ -> do
             md <- liftIO $ messageDialogNew Nothing [] MessageQuestion ButtonsYesNo
                     "GHCi debugger is not running.  Would you like to start it?"
@@ -589,8 +592,27 @@ executeDebugCommand command handler = do
             case resp of
                 ResponseYes -> do
                     debugStart
-                    executeDebugCommand command handler
-                _  -> return ()
+                    maybeGhci <- readIDE ghciState
+                    case maybeGhci of
+                        Just ghci -> liftM Just $ runReaderT f ghci
+                        _ -> return Nothing
+                _  -> return Nothing
+
+tryDebug_ :: DebugM a -> IDEAction
+tryDebug_ f = tryDebug f >> return ()
+
+executeDebugCommand :: String -> ([ToolOutput] -> IDEAction) -> DebugAction
+executeDebugCommand command handler = do
+    ghci <- ask
+    liftIDEM $ do
+        triggerEventIDE (StatusbarChanged [CompartmentState command, CompartmentBuild True])
+        reifyIDE $ \ideR -> do
+            executeGhciCommand ghci command $ \output ->
+                reflectIDE (do
+                    handler output
+                    triggerEventIDE (StatusbarChanged [CompartmentState "", CompartmentBuild False])
+                    return ()
+                    ) ideR
 
 idePackageFromPath :: FilePath -> IDEM (Maybe IDEPackage)
 idePackageFromPath filePath = do
