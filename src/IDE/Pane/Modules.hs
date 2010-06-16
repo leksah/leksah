@@ -46,10 +46,10 @@ import Distribution.ModuleName
 import Distribution.Text (simpleParse,display)
 import Data.Typeable (Typeable(..))
 import Control.Exception (SomeException(..),catch)
-import IDE.Package (packageConfig,addModuleToPackageDescr,getModuleTemplate,getPackageDescriptionAndPath)
+import IDE.Package (packageConfig,addModuleToPackageDescr,delModuleFromPackageDescr,getModuleTemplate,getPackageDescriptionAndPath)
 import Distribution.PackageDescription (allBuildInfo,hsSourceDirs)
-import System.FilePath ((</>),dropFileName)
-import System.Directory (doesFileExist,createDirectoryIfMissing)
+import System.FilePath (takeBaseName, (</>),dropFileName)
+import System.Directory (doesFileExist,createDirectoryIfMissing, removeFile)
 import Graphics.UI.Editor.MakeEditor (buildEditor,FieldDescription(..),mkField)
 import Graphics.UI.Editor.Parameters (paraMultiSel,Parameter(..),emptyParams,(<<<-),paraName)
 import Graphics.UI.Editor.Simple (boolEditor,okCancelFields,staticListEditor,stringEditor)
@@ -769,13 +769,44 @@ treeViewPopup ideR  store treeView (Button _ click _ _ _ _ button _ _) = do
             sep2 <- separatorMenuItemNew
             item6           <-  menuItemNewWithLabel "Add module"
             item6 `onActivateLeaf` (reflectIDE (addModule treeView store) ideR)
+            item7           <-  menuItemNewWithLabel "Delete module"
+            item7 `onActivateLeaf` do
+                sel         <-  getSelectionTree treeView store
+                case sel of
+                    Just (_,Just (m,_)) -> case mdMbSourcePath m of
+                                            Nothing     ->  return ()
+                                            Just fp     ->  do
+                                                resp <- reflectIDE (respDelModDialog)ideR
+                                                if (resp == False) then return ()
+                                                    else do
+                                                        exists <- doesFileExist fp
+                                                        if exists
+                                                           then do
+                                                             reflectIDE (liftIO $ removeFile fp) ideR
+                                                             reflectIDE (delModule treeView store)ideR
+                                                           else do
+                                                             reflectIDE (delModule treeView store)ideR
+                                                        reflectIDE (packageConfig) ideR
+                                                        return ()
+                    otherwise       ->  return ()
+            sel         <-  getSelectionTree treeView store
+            case sel of
+                Just (s, Nothing) ->do
+                    mapM_ (menuShellAppend theMenu) [castToMenuItem item1, castToMenuItem sep1, castToMenuItem item2,
+                        castToMenuItem item3, castToMenuItem item4, castToMenuItem item5, castToMenuItem sep2,
+                        castToMenuItem item6]
+                    menuPopup theMenu Nothing
+                    widgetShowAll theMenu
+                    return True
+                Just (_,Just (m,_)) -> do
+                    mapM_ (menuShellAppend theMenu) [castToMenuItem item1, castToMenuItem sep1, castToMenuItem item2,
+                        castToMenuItem item3, castToMenuItem item4, castToMenuItem item5, castToMenuItem sep2,
+                        castToMenuItem item6, castToMenuItem item7]
+                    menuPopup theMenu Nothing
+                    widgetShowAll theMenu
+                    return True
+                otherwise -> return True
 
-            mapM_ (menuShellAppend theMenu) [castToMenuItem item1, castToMenuItem sep1, castToMenuItem item2,
-                castToMenuItem item3, castToMenuItem item4, castToMenuItem item5, castToMenuItem sep2,
-                castToMenuItem item6{--,item7,item8--}]
-            menuPopup theMenu Nothing
-            widgetShowAll theMenu
-            return True
         else if button == LeftButton && click == DoubleClick
                 then do sel         <-  getSelectionTree treeView store
                         case sel of
@@ -787,6 +818,7 @@ treeViewPopup ideR  store treeView (Button _ click _ _ _ _ button _ _) = do
                             otherwise       ->  return ()
                         return True
                 else return False
+
 treeViewPopup _ _ _ _ = throwIDE "treeViewPopup wrong event type"
 
 descrViewPopup :: IDERef
@@ -989,6 +1021,40 @@ collapseHere treeView = do
         []     -> return ()
         (hd:_) -> treeViewCollapseRow treeView hd >> return ()
 
+delModule :: TreeView -> TreeStore (String, Maybe (ModuleDescr,PackageDescr)) -> IDEAction
+delModule treeview store = do
+    window <- getMainWindow
+    sel   <- liftIO $ treeViewGetSelection treeview
+    paths <- liftIO $ treeSelectionGetSelectedRows sel
+    categories <- case paths of
+        []     -> return []
+        (treePath:_) -> liftIO $ mapM (treeStoreGetValue store)
+                                    $ map (\n -> take n treePath)  [1 .. length treePath]
+
+    ideMessage Normal ("categories: " ++ (show categories))
+
+    let modPacDescr = snd(last categories)
+    case modPacDescr of
+        Nothing     ->   ideMessage Normal "This should never be shown!"
+        Just(md,_)  -> do
+                         let modName = modu.mdModuleId $ md
+                         ideMessage Normal ("modName: " ++ (show modName))
+                         delModuleFromPackageDescr modName
+
+respDelModDialog :: IDEM (Bool)
+respDelModDialog = do
+    window <- getMainWindow
+    dia <- liftIO $ messageDialogNew (Just window) [] MessageQuestion ButtonsYesNo "Are you sure ?"
+    liftIO $ widgetShowAll dia
+    resp <- liftIO $ dialogRun dia
+    if (resp == ResponseYes)
+        then do
+            liftIO $ widgetDestroy dia
+            return (True)
+        else do
+            liftIO $ widgetDestroy dia
+            return (False)
+
 addModule :: TreeView -> TreeStore (String, Maybe (ModuleDescr,PackageDescr)) -> IDEAction
 addModule treeView store = do
     sel   <- liftIO $ treeViewGetSelection treeView
@@ -1017,7 +1083,10 @@ addModule treeView store = do
                             liftIO $ createDirectoryIfMissing True (dropFileName target)
                             alreadyExists <- liftIO $ doesFileExist target
                             if alreadyExists
-                                then ideMessage Normal "File already exists"
+                                then do
+                                    ideMessage Normal ("File already exists! Importing existing file " ++ takeBaseName target ++ ".hs")
+                                    addModuleToPackageDescr moduleName isExposed
+                                    packageConfig
                                 else do
                                     template <- liftIO $ getModuleTemplate pd modPath
                                     liftIO $ UTF8.writeFile target template

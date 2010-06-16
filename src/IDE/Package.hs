@@ -40,6 +40,7 @@ module IDE.Package (
 ,   getPackageDescriptionAndPath
 ,   getModuleTemplate
 ,   addModuleToPackageDescr
+,   delModuleFromPackageDescr
 
 ,   backgroundBuildToggled
 ,   backgroundLinkToggled
@@ -84,7 +85,7 @@ import IDE.Utils.FileUtils(getConfigFilePathForLoad)
 import IDE.LogRef
 import MyMissing (replace)
 import Distribution.ModuleName (ModuleName(..))
-import Data.List (isInfixOf, nub, foldl')
+import Data.List (isInfixOf, nub, foldl', delete)
 import qualified System.IO.UTF8 as UTF8  (readFile)
 import IDE.Utils.Tool (ToolOutput(..), runTool, newGhci, ToolState(..))
 import qualified Data.Set as  Set (fromList)
@@ -494,6 +495,53 @@ addModuleToPackageDescr moduleName isExposed = do
     where
     addModToBuildInfo :: BuildInfo -> ModuleName -> BuildInfo
     addModToBuildInfo bi mn = bi {otherModules = mn : otherModules bi}
+
+--------------------------------------------------------------------------
+delModuleFromPackageDescr :: ModuleName -> IDEM ()
+delModuleFromPackageDescr moduleName = do
+    active <- readIDE activePack
+    case active of
+        Nothing -> do
+            ideMessage Normal "No active package"
+            return ()
+        Just p  -> do
+            ideR <- ask
+            reifyIDE (\ideR -> catch (do
+                gpd <- readPackageDescription normal (ipdCabalFile p)
+                if hasConfigs gpd
+                    then do
+                        reflectIDE (ideMessage High
+                            "Cabal file with configurations can't be automatically updated with the current version of Leksah") ideR
+                    else
+                        let pd = flattenPackageDescription gpd
+                            isExposedAndJust = isExposedModule pd moduleName
+                            npd = if isExposedAndJust
+                                    then pd{library = Just ((fromJust (library pd)){exposedModules =
+                                                                     delete moduleName (exposedModules (fromJust $ library pd))})}
+                                    else let npd1 = case library pd of
+                                                       Nothing -> pd
+                                                       Just lib -> pd{library = Just (lib{libBuildInfo =
+                                                                delModFromBuildInfo (libBuildInfo lib) moduleName})}
+                                       in npd1{executables = map
+                                                (\exe -> exe{buildInfo = delModFromBuildInfo (buildInfo exe) moduleName})
+                                                    (executables npd1)}
+                        in writePackageDescription (ipdCabalFile p) npd)
+                           (\(e :: SomeException) -> do
+                            reflectIDE (ideMessage Normal ("Can't update package " ++ show e)) ideR
+                            return ()))
+    where
+    delModFromBuildInfo :: BuildInfo -> ModuleName -> BuildInfo
+    delModFromBuildInfo bi mn = bi {otherModules = delete mn (otherModules bi)}
+
+
+isExposedModule :: PackageDescription -> ModuleName -> Bool
+isExposedModule pd mn = do
+    if isJust (library pd)
+        then elem mn (exposedModules (fromJust $ library pd))
+        else False
+
+--------------------------------------------------------------------------
+
 
 backgroundBuildToggled :: IDEAction
 backgroundBuildToggled = do
