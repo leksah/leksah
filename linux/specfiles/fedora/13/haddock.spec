@@ -42,9 +42,9 @@ BuildRequires:  ghc-prof
 %cabal haddock
 
 %install
-rm -rf $RPM_BUILD_ROOT
 %cabal_install
 %cabal_pkg_conf
+mv $RPM_BUILD_ROOT/%{_bindir}/haddock $RPM_BUILD_ROOT/%{_bindir}/leksah-haddock
 
 %ghc_gen_filelists
 
