@@ -1,4 +1,3 @@
-{-# LANGUAGE ForeignFunctionInterface #-}
 -----------------------------------------------------------------------------
 --
 -- Module      :  IDE.OSX
@@ -19,44 +18,35 @@ module IDE.OSX (
 ) where
 
 import Graphics.UI.Gtk
-import Foreign (nullPtr, withForeignPtr, Ptr(..))
-import System.Glib (GObject(..))
+import Graphics.UI.Gtk.OSX
 
-foreign import ccall unsafe "ige_mac_menu_set_menu_bar" ige_mac_menu_set_menu_bar :: Ptr GObject -> IO ()
-foreign import ccall unsafe "ige_mac_menu_set_quit_menu_item" ige_mac_menu_set_quit_menu_item :: Ptr GObject -> IO ()
-foreign import ccall unsafe "ige_mac_menu_add_app_menu_group" ige_mac_menu_add_app_menu_group :: IO (Ptr GObject)
-foreign import ccall unsafe "ige_mac_menu_add_app_menu_item" ige_mac_menu_add_app_menu_item :: Ptr GObject -> Ptr GObject -> Ptr GObject -> IO ()
-
-updateMenu :: UIManager -> IO ()
-updateMenu uiManager = do
+updateMenu :: Application -> UIManager -> IO ()
+updateMenu app uiManager = do
     mbMenu   <- uiManagerGetWidget uiManager "/ui/menubar"
     case mbMenu of
         Just menu -> do
             widgetHide menu
-            let (GObject p) = toGObject menu
-            withForeignPtr p ige_mac_menu_set_menu_bar
+            applicationSetMenuBar app (castToMenuShell menu)
         Nothing   -> return ()
 
     mbQuit   <- uiManagerGetWidget uiManager "/ui/menubar/_File/_Quit"
     case mbQuit of
-        Just quit -> do
-            let (GObject p) = toGObject quit
-            withForeignPtr p ige_mac_menu_set_quit_menu_item
+        Just quit -> widgetHide quit
         Nothing   -> return ()
 
     mbAbout   <- uiManagerGetWidget uiManager "/ui/menubar/_Help/_About"
     case mbAbout of
         Just about -> do
-            let (GObject p) = toGObject about
-            group <- ige_mac_menu_add_app_menu_group
-            withForeignPtr p (\ptr -> ige_mac_menu_add_app_menu_item group ptr nullPtr)
+            group <- applicationAddAppMenuGroup app
+            applicationAddAppMenuItem app group (castToMenuItem about)
         Nothing   -> return ()
 
     mbPrefs   <- uiManagerGetWidget uiManager "/ui/menubar/_Configuration/Edit general Preferences"
     case mbPrefs of
         Just prefs -> do
-            let (GObject p) = toGObject prefs
-            group <- ige_mac_menu_add_app_menu_group
-            withForeignPtr p (\ptr -> ige_mac_menu_add_app_menu_item group ptr nullPtr)
+            group <- applicationAddAppMenuGroup app
+            applicationAddAppMenuItem app group (castToMenuItem prefs)
         Nothing   -> return ()
+
+    applicationSetUseQuartsAccelerators app True
 

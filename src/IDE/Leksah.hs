@@ -31,6 +31,7 @@ import Data.Version
 import Prelude hiding(catch)
 
 #if defined(darwin_HOST_OS)
+import Graphics.UI.Gtk.OSX (applicationNew, applicationReady)
 import IDE.OSX
 #endif
 
@@ -152,6 +153,9 @@ startGUI sessionFilename iprefs isFirstStart = do
    Yi.controlIO $ do
 #endif
     st          <-  unsafeInitGUIForThreadedRTS
+#if defined(darwin_HOST_OS)
+    app <- applicationNew
+#endif
     when rtsSupportsBoundThreads
         (sysMessage Normal "Linked with -threaded")
     timeoutAddFull (yield >> return True) priorityDefaultIdle 100 -- maybe switch back to priorityHigh/???
@@ -247,7 +251,8 @@ startGUI sessionFilename iprefs isFirstStart = do
     widgetShowAll win
 
 #if defined(darwin_HOST_OS)
-    updateMenu uiManager
+    updateMenu app uiManager
+    applicationReady app
 #endif
 
     reflectIDE (do

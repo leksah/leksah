@@ -2,6 +2,8 @@
 
 . scripts/stage.sh || exit
 
+sed 's|\<ctrl\>|\<meta\>|' <data/keymap.lkshk >osx/keymap.lkshk
+
 cd osx || exit
 
 chmod +x *.sh || exit

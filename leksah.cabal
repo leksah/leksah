@@ -75,7 +75,7 @@ Executable leksah
         build-depends: unix >=2.3.1.0
 
     if os(osx)
-        extra-libraries: igemacintegration
+        build-depends: ige-mac-integration
 
     if flag(yi)
         build-depends: yi >=0.6.1

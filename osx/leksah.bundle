@@ -123,4 +123,7 @@
   <data dest="${bundle}/Contents/Resources/share/leksah-0.8/data/prefs.lkshp">
     ${project}/prefs.lkshp
   </data>
+  <data dest="${bundle}/Contents/Resources/share/leksah-0.8/data/keymap.lkshk">
+    ${project}/keymap.lkshk
+  </data>
 </app-bundle>
