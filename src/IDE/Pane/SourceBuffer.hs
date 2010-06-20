@@ -102,7 +102,7 @@ import Distribution.ModuleName (ModuleName)
 import qualified Data.Set as Set (member)
 import Graphics.UI.Gtk.Gdk.Events as Gtk
 import Graphics.UI.Gtk
-       (Notebook, clipboardGet, atomNew, dialogAddButton, widgetDestroy,
+       (Notebook, clipboardGet, selectionClipboard, dialogAddButton, widgetDestroy,
         fileChooserGetFilename, widgetShow, fileChooserDialogNew,
         notebookGetNthPage, notebookPageNum, widgetHide, dialogRun,
         messageDialogNew, postGUIAsync, scrolledWindowSetShadowType,
@@ -954,22 +954,19 @@ editSelectAll = inActiveBufContext () $ \_ ebuf _ _ -> do
 
 editCut :: IDEAction
 editCut = inActiveBufContext () $ \_ ebuf _ _ -> do
-    cb   <- liftIO $ atomNew "GDK_SELECTION_CLIPBOARD"
-    clip <- liftIO $ clipboardGet cb
+    clip <- liftIO $ clipboardGet selectionClipboard
     cutClipboard ebuf clip True
 
 editCopy :: IDEAction
 editCopy = inActiveBufContext () $ \_ ebuf _ _ -> do
-    cb   <- liftIO $ atomNew "GDK_SELECTION_CLIPBOARD"
-    clip <- liftIO $ clipboardGet cb
+    clip <- liftIO $ clipboardGet selectionClipboard
     copyClipboard ebuf clip
 
 editPaste :: IDEAction
 editPaste = inActiveBufContext () $ \_ ebuf _ _ -> do
-    cb   <- liftIO $ atomNew "GDK_SELECTION_CLIPBOARD"
     mark <- getInsertMark ebuf
     iter <- getIterAtMark ebuf mark
-    clip <- liftIO $ clipboardGet cb
+    clip <- liftIO $ clipboardGet selectionClipboard
     pasteClipboard ebuf clip iter True
 
 getStartAndEndLineOfSelection :: EditorBuffer -> IDEM (Int,Int)
