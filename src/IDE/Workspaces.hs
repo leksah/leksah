@@ -124,7 +124,7 @@ workspaceNew :: IDEAction
 workspaceNew = do
     window <- getMainWindow
     mbFile <- liftIO $ do
-        chooseSaveFile window "New file for wokspace" Nothing
+        chooseSaveFile window "New file for workspace" Nothing
     case mbFile of
         Nothing -> return ()
         Just filePath ->
