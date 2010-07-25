@@ -65,10 +65,6 @@ import System.Exit(exitFailure)
 import qualified IDE.StrippedPrefs as SP
 import IDE.Utils.Tool (runTool,toolline)
 import IDE.System.Process(waitForProcess)
-#if defined(mingw32_HOST_OS) || defined(__MINGW32__)
-#else
-import qualified System.Posix as P
-#endif
 import System.Log
 import System.Log.Logger(updateGlobalLogger,rootLoggerName,setLevel)
 import Data.List (stripPrefix)
@@ -104,10 +100,6 @@ ideOpts argv =
 --
 
 main = withSocketsDo $ handleExceptions $ do
-#if defined(mingw32_HOST_OS) || defined(__MINGW32__)
-#else
-    P.getProcessID >>= P.createProcessGroup
-#endif
     args            <-  getArgs
 
     (o,_)           <-  ideOpts args
