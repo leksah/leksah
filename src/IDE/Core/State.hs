@@ -61,7 +61,7 @@ module IDE.Core.State (
 --,   closePane
 ,   activeProjectDir
 
-#ifdef YI
+#ifdef LEKSAH_WITH_YI
 ,   liftYiControl
 ,   liftYi
 #endif
@@ -95,7 +95,7 @@ import IDE.Utils.Utils
 import qualified Data.Map as Map (lookup)
 import Data.Typeable(Typeable)
 
-#ifdef YI
+#ifdef LEKSAH_WITH_YI
 import qualified Yi as Yi
 import qualified Yi.UI.Pango.Control as Yi
 #endif
@@ -291,7 +291,7 @@ reifyIDE = ReaderT
 reflectIDE :: IDEM a -> IDERef -> IO a
 reflectIDE c ideR = runReaderT c ideR
 
-#ifdef YI
+#ifdef LEKSAH_WITH_YI
 
 liftYiControl :: Yi.ControlM a -> IDEM a
 liftYiControl f = do

@@ -6,7 +6,7 @@
  -}
 
 module IDE.YiConfig (
-    yiVimConfig
+    defaultYiConfig
 ) where
 
 import Yi.Prelude
@@ -38,7 +38,7 @@ noHaskellAnnots m
     | modeName m == "haskell" = m { modeGetAnnotations = modeGetAnnotations emptyMode }
     | otherwise = m
 
-yiVimConfig = defaultConfig
+defaultYiConfig = defaultConfig
     {
         -- Use VTY as the default UI.
         startFrontEnd = Yi.UI.Pango.start,

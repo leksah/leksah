@@ -77,7 +77,7 @@ module IDE.Core.Types (
 ,   StatusbarCompartment(..)
 ) where
 
-#ifdef YI
+#ifdef LEKSAH_WITH_YI
 import Yi.UI.Pango.Control as Yi
 #endif
 import Graphics.UI.Gtk
@@ -143,7 +143,7 @@ data IDE            =  IDE {
 ,   runningTool     ::   Maybe ProcessHandle
 ,   ghciState       ::   Maybe ToolState
 ,   completion      ::   Maybe CompletionWindow
-#ifdef YI
+#ifdef LEKSAH_WITH_YI
 ,   yiControl       ::   Yi.Control
 #endif
 ,   server          ::   Maybe Handle

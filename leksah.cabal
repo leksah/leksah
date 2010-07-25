@@ -1,6 +1,6 @@
 name: leksah
 version: 0.8.0.6
-cabal-version: >=1.6
+cabal-version: >=1.8.0.6
 build-type: Simple
 license: GPL
 license-file: LICENSE
@@ -67,10 +67,17 @@ flag yi
     Default: False
     Description: Experimental Yi support
 
-Executable leksah
+flag dyre
+    Default: True
+    Description: Experimental Yi support
+
+library
     if os(windows)
         build-depends: Win32 >=2.2.0.0
         extra-libraries: kernel32
+--        extra-lib-dirs: C:/cygwin/lib/w32api
+        includes: windows.h
+--        include-dirs: C:/cygwin/usr/include/w32api
     else
         build-depends: unix >=2.3.1.0
 
@@ -79,10 +86,17 @@ Executable leksah
 
     if flag(yi)
         build-depends: yi >=0.6.1
-        cpp-options: -DYI
-        other-modules: IDE.YiConfig
+        cpp-options: -DLEKSAH_WITH_YI
+        exposed-modules: IDE.YiConfig
 
-    build-depends: Cabal >=1.6.0.1, base >=4.0.0.0 && <= 5, binary >=0.5.0.0,
+    if flag(yi) && flag(dyre)
+        build-depends: dyre >= 0.8.3
+        cpp-options: -DLEKSAH_WITH_DYRE
+
+    hs-source-dirs: src
+    extensions: CPP
+
+    build-depends: Cabal >=1.8.0.6, base >=4.0.0.0 && <= 5, binary >=0.5.0.0,
                    bytestring >=0.9.0.1, containers >=0.2.0.0, directory >=1.0.0.2,
                    filepath >=1.1.0.1, glib >=0.10, gtk >=0.10,
                    gtksourceview2 >=0.10.0, mtl >=1.1.0.2, old-time >=1.0.0.1,
@@ -90,28 +104,40 @@ Executable leksah
                    regex-tdfa ==1.1.*, regex-base ==0.93.*, utf8-string >=0.3.1.1, array >=0.2.0.0,
                    time >=0.1, ltk >= 0.8 && <= 0.9, binary-shared >= 0.8 && <= 0.9, deepseq >= 1.1.0.0,
                    hslogger >= 1.0.7, leksah-server >= 0.8 && <= 0.9, network >= 2.2 && <= 3.0
-    main-is: IDE/Leksah.hs
+
+    exposed-modules:
+        IDE.Leksah IDE.Completion IDE.ImportTool
+        IDE.Find IDE.Session IDE.Command IDE.Keymap IDE.Utils.GUIUtils
+        IDE.Package
+        IDE.GUIHistory IDE.SourceCandy IDE.NotebookFlipper
+        IDE.Core.Types IDE.Core.State
+        IDE.Metainfo.Provider
+        IDE.Pane.Preferences IDE.Pane.PackageEditor
+        IDE.Pane.Info IDE.Pane.Log IDE.Pane.SourceBuffer IDE.Pane.Modules
+        IDE.Pane.Search IDE.Pane.References IDE.Pane.PackageFlags
+        IDE.LogRef IDE.Debug IDE.Pane.Grep
+        IDE.Pane.Breakpoints IDE.Pane.Trace IDE.Pane.Variables
+        IDE.Pane.Errors IDE.TextEditor IDE.Workspaces
+        IDE.Statusbar IDE.Pane.Workspace IDE.PaneGroups
+        IDE.Utils.ServerConnection IDE.OSX
+
+    other-modules: Paths_leksah
+
+    ghc-prof-options: -auto-all -prof
+    ghc-shared-options: -auto-all -prof
+    ghc-options: -fwarn-unused-imports -fwarn-missing-fields -fwarn-incomplete-patterns -ferror-spans
+
+Executable leksah
+    if flag(yi)
+        cpp-options: -DLEKSAH_WITH_YI
+
+    if flag(yi) && flag(dyre)
+        cpp-options: -DLEKSAH_WITH_DYRE
+
+    build-depends: leksah, base >=4.0.0.0 && <= 5
+    main-is: Main.hs
     buildable: True
     extensions: CPP
-    hs-source-dirs: src
-    if os(windows)
---        extra-lib-dirs: C:/cygwin/lib/w32api
-        includes: windows.h
---        include-dirs: C:/cygwin/usr/include/w32api
-    other-modules: IDE.Completion IDE.ImportTool
-                   IDE.Find IDE.Session IDE.Command IDE.Keymap IDE.Utils.GUIUtils
-                   IDE.Package
-                   IDE.GUIHistory IDE.SourceCandy IDE.NotebookFlipper
-                   IDE.Core.Types IDE.Core.State
-                   IDE.Metainfo.Provider
-                   IDE.Pane.Preferences IDE.Pane.PackageEditor
-                   IDE.Pane.Info IDE.Pane.Log IDE.Pane.SourceBuffer IDE.Pane.Modules
-                   IDE.Pane.Search IDE.Pane.References IDE.Pane.PackageFlags
-                   IDE.LogRef IDE.Debug IDE.Pane.Grep
-                   IDE.Pane.Breakpoints IDE.Pane.Trace IDE.Pane.Variables
-                   IDE.Pane.Errors IDE.TextEditor IDE.Workspaces
-                   IDE.Statusbar IDE.Pane.Workspace IDE.PaneGroups
-                   IDE.Utils.ServerConnection IDE.OSX
     ghc-prof-options: -auto-all -prof
     ghc-shared-options: -auto-all -prof
     ghc-options: -fwarn-unused-imports -fwarn-missing-fields -fwarn-incomplete-patterns -ferror-spans

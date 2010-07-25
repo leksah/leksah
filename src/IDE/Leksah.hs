@@ -1,8 +1,7 @@
-
-{-# OPTIONS_GHC -XScopedTypeVariables #-}
+{-# LANGUAGE CPP, ScopedTypeVariables #-}
 -----------------------------------------------------------------------------
 --
--- Module      :  Main
+-- Module      :  IDE.Leksah
 -- Copyright   :  (c) Juergen Nicklisch-Franken, Hamish Mackenzie
 -- License     :  GNU-GPL
 --
@@ -15,8 +14,8 @@
 --
 ---------------------------------------------------------------------------------
 
-module Main (
-    main
+module IDE.Leksah (
+    leksah
 ) where
 
 import Graphics.UI.Gtk
@@ -35,9 +34,17 @@ import Graphics.UI.Gtk.OSX (applicationNew, applicationReady)
 import IDE.OSX
 #endif
 
-#ifdef YI
+#ifdef LEKSAH_WITH_YI
 import qualified Yi.UI.Pango.Control as Yi
-import IDE.YiConfig
+import qualified Yi as Yi (Config)
+
+#ifdef LEKSAH_WITH_DYRE
+import System.Directory (getAppUserDataDirectory)
+import System.FilePath ((</>))
+import Control.Applicative ((<$>))
+import qualified Config.Dyre as Dyre
+#endif
+
 #endif
 
 import Paths_leksah
@@ -99,7 +106,34 @@ ideOpts argv =
 -- | Main function
 --
 
-main = withSocketsDo $ handleExceptions $ do
+#ifdef LEKSAH_WITH_YI
+
+#ifdef LEKSAH_WITH_DYRE
+leksahDriver = Dyre.wrapMain Dyre.defaultParams
+    { Dyre.projectName  = "yi"
+    , Dyre.realMain     = \(config, mbError) -> do
+        case mbError of
+            Just error -> putStrLn $ "Error in yi configuration file : " ++ error
+            Nothing    -> return ()
+        realMain config
+    , Dyre.showError    = \(config, _) error -> (config, Just error)
+    , Dyre.configDir    = Just . getAppUserDataDirectory $ "yi"
+    , Dyre.cacheDir     = Just $ ((</> "leksah") <$> (getAppUserDataDirectory "cache"))
+    , Dyre.hidePackages = ["mtl"]
+    , Dyre.ghcOpts = ["-DLEKSAH"]
+    }
+
+leksah yiConfig = leksahDriver (yiConfig, Nothing)
+
+realMain yiConfig = do
+#else
+leksah yiConfig = do
+#endif
+
+#else
+leksah = do
+#endif
+  withSocketsDo $ handleExceptions $ do
     args            <-  getArgs
 
     (o,_)           <-  ideOpts args
@@ -126,7 +160,11 @@ main = withSocketsDo $ handleExceptions $ do
     prefsPath       <- getConfigFilePathForLoad standardPreferencesFilename Nothing dataDir
     prefs           <- readPrefs prefsPath
     when (not (elem VersionF o) && not (elem Help o))
+#ifdef LEKSAH_WITH_YI
+        (startGUI yiConfig sessionFilename prefs isFirstStart)
+#else
         (startGUI sessionFilename prefs isFirstStart)
+#endif
 
 handleExceptions inner =
   catch inner (\(exception :: SomeException) -> do
@@ -137,12 +175,15 @@ handleExceptions inner =
 -- ---------------------------------------------------------------------
 -- | Start the GUI
 
-startGUI :: String -> Prefs -> Bool -> IO ()
-startGUI sessionFilename iprefs isFirstStart = do
-#ifdef YI
-  Yi.startControl yiVimConfig $ do
+#ifdef LEKSAH_WITH_YI
+startGUI :: Yi.Config -> String -> Prefs -> Bool -> IO ()
+startGUI yiConfig sessionFilename iprefs isFirstStart = do
+  Yi.startControl yiConfig $ do
    yiControl <- Yi.getControl
    Yi.controlIO $ do
+#else
+startGUI :: String -> Prefs -> Bool -> IO ()
+startGUI sessionFilename iprefs isFirstStart = do
 #endif
     st          <-  unsafeInitGUIForThreadedRTS
 #if defined(darwin_HOST_OS)
@@ -213,7 +254,7 @@ startGUI sessionFilename iprefs isFirstStart = do
           ,   runningTool       =   Nothing
           ,   ghciState         =   Nothing
           ,   completion        =   Nothing
-#ifdef YI
+#ifdef LEKSAH_WITH_YI
           ,   yiControl         =   yiControl
 #endif
           ,   server            =   Nothing
