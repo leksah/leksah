@@ -83,6 +83,7 @@ library
 
     if os(osx)
         build-depends: ige-mac-integration
+        exposed-modules : IDE.OSX
 
     if flag(yi)
         build-depends: yi >=0.6.1
@@ -119,7 +120,7 @@ library
         IDE.Pane.Breakpoints IDE.Pane.Trace IDE.Pane.Variables
         IDE.Pane.Errors IDE.TextEditor IDE.Workspaces
         IDE.Statusbar IDE.Pane.Workspace IDE.PaneGroups
-        IDE.Utils.ServerConnection IDE.OSX
+        IDE.Utils.ServerConnection
 
     other-modules: Paths_leksah
 
