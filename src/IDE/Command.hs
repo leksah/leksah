@@ -185,9 +185,9 @@ mkActions =
         workspaceClose [] False
 
     ,AD "CleanWorkspace" "Cl_ean Workspace" (Just "Cleans all packages") (Just "ide_clean")
-        workspaceClean [] False
+        (workspaceTry_ workspaceClean) [] False
     ,AD "MakeWorkspace" "_Make Workspace" (Just "Makes all of this workspace") (Just "ide_configure")
-        workspaceMake [] False
+        (workspaceTry_ workspaceMake) [] False
     ,AD "NextError" "_Next Error" (Just "Go to the next error") (Just "ide_error_next")
         nextError [] False
     ,AD "PreviousError" "_Previous Error" (Just "Go to the previous error") (Just "ide_error_prev")
@@ -195,46 +195,46 @@ mkActions =
 
     ,AD "Package" "_Package" Nothing Nothing (return ()) [] False
     ,AD "NewPackage" "_New Package" Nothing Nothing
-        workspacePackageNew [] False
+        (workspaceTry_ workspacePackageNew) [] False
 --    ,AD "RecentPackages" "_Recent Packages" Nothing Nothing (return ()) [] False
     ,AD "EditPackage" "_Edit Package" Nothing Nothing
-        packageEdit [] False
+        (packageTry_ packageEdit) [] False
 --    ,AD "RemovePackage" "_Close Package" Nothing Nothing
 --        removePackage [] False
 
     ,AD "PackageFlags" "Edit Flags" (Just "Edit the package flags") Nothing
         (getFlags Nothing >>= \ p -> displayPane p False) [] False
     ,AD "CleanPackage" "Cl_ean Package" (Just "Cleans the package") (Just "ide_clean")
-        (packageClean Nothing) [] False
+        (packageTry_ packageClean) [] False
     ,AD "ConfigPackage" "_Configure Package" (Just "Configures the package") (Just "ide_configure")
-        packageConfig [] False
+        (packageTry_ packageConfig) [] False
     ,AD "BuildPackage" "_Build Package" (Just "Builds the package") (Just "ide_make")
-        makePackage [] False
+        (packageTry_ makePackage) [] False
     ,AD "DocPackage" "_Build Documentation" (Just "Builds the documentation") Nothing
-        packageDoc [] False
+        (packageTry_ packageDoc) [] False
     ,AD "CopyPackage" "_Copy Package" (Just "Copies the package") Nothing
-        packageCopy [] False
+        (packageTry_ packageCopy) [] False
     ,AD "RunPackage" "_Run" (Just "Runs the package") (Just "ide_run")
-        packageRun [] False
+        (packageTry_ packageRun) [] False
     ,AD "AddAllImports" "_Add All Imports" (Just "Resolve 'Not in scope' errors by adding the necessary imports") Nothing
         addAllImports [] False
 
     ,AD "InstallPackage" "_Install Package" Nothing Nothing
-        packageInstall [] False
+        (packageTry_ packageInstall) [] False
     ,AD "RegisterPackage" "_Register Package" Nothing Nothing
-        packageRegister [] False
+        (packageTry_ packageRegister) [] False
     ,AD "UnregisterPackage" "_Unregister" Nothing Nothing
-        packageUnregister [] False
+        (packageTry_ packageUnregister) [] False
     ,AD "TestPackage" "Test Package" Nothing Nothing
-        packageTest [] False
+        (packageTry_ packageTest) [] False
     ,AD "SdistPackage" "Source Dist" Nothing Nothing
-        packageSdist [] False
+        (packageTry_ packageSdist) [] False
     ,AD "OpenDocPackage" "_Open Doc" Nothing Nothing
-        packageOpenDoc [] False
+        (packageTry_ packageOpenDoc) [] False
 
     ,AD "Debug" "_Debug" Nothing Nothing (return ()) [] False
     ,AD "StartDebugger" "_Start Debugger" (Just "Starts using the GHCi debugger for build and run") Nothing
-        debugStart [] False
+        (packageTry_ debugStart) [] False
     ,AD "QuitDebugger" "_Quit Debugger" (Just "Quit the GHCi debugger if it is running") Nothing
         debugQuit [] False
     ,AD "ExecuteSelection" "_Execute Selection" (Just "Sends the selected text to the debugger") Nothing

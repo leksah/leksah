@@ -102,23 +102,20 @@ choosePackageDir window mbDir = chooseDir window "Select root folder for project
 choosePackageFile :: Window -> Maybe FilePath -> IO (Maybe FilePath)
 choosePackageFile window mbDir = chooseFile window "Select cabal package file (.cabal)" mbDir
 
-packageEdit :: IDEAction
+packageEdit :: PackageAction
 packageEdit = do
-    mbActivePackage <- readIDE activePack
-    case mbActivePackage of
-        Nothing -> sysMessage Normal "No active package to edit"
-        Just idePackage -> do
-            let dirName = dropFileName (ipdCabalFile idePackage)
-            modules <- liftIO $ allModules dirName
-            package <- liftIO $ readPackageDescription normal (ipdCabalFile idePackage)
-            if hasConfigs package
-                then do
-                    ideMessage High ("Cabal file with configurations can't be edited with the "
-                        ++ "current version of the editor")
-                    return ()
-                else do
-                    editPackage (flattenPackageDescription package) dirName  modules (\ _ -> return ())
-                    return ()
+    idePackage <- ask
+    let dirName = dropFileName (ipdCabalFile idePackage)
+    modules <- liftIO $ allModules dirName
+    package <- liftIO $ readPackageDescription normal (ipdCabalFile idePackage)
+    if hasConfigs package
+        then do
+            lift $ ideMessage High ("Cabal file with configurations can't be edited with the "
+                ++ "current version of the editor")
+            return ()
+        else do
+            lift $ editPackage (flattenPackageDescription package) dirName  modules (\ _ -> return ())
+            return ()
 
 hasConfigs :: GenericPackageDescription -> Bool
 hasConfigs gpd =

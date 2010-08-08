@@ -45,6 +45,7 @@ import Text.ParserCombinators.Parsec.Language (emptyDef)
 import Graphics.UI.Gtk.Gdk.Events (Event(..))
 import Graphics.UI.Gtk.General.Enums
     (Click(..), MouseButton(..))
+import IDE.Workspaces (packageTry_)
 
 -- | A variables pane description
 --
@@ -136,8 +137,8 @@ builder' pp nb windows = reifyIDE $  \ideR -> do
 
 
 fillVariablesList :: IDEAction
-fillVariablesList = do
-    mbVariables <- getPane
+fillVariablesList = packageTry_ $ do
+    mbVariables <- lift getPane
     case mbVariables of
         Nothing -> return ()
         Just var -> tryDebug_ $ debugCommand' ":show bindings" (\to -> liftIO $ postGUIAsync
@@ -256,7 +257,7 @@ variablesViewPopup ideR  store treeView (Button _ click _ _ _ _ button _ _)
 variablesViewPopup _ _ _ _ = throwIDE "variablesViewPopup wrong event type"
 
 forceVariable :: VarDescription -> TreePath -> TreeStore VarDescription -> IDEAction
-forceVariable varDescr path treeStore = tryDebug_ $ do
+forceVariable varDescr path treeStore = packageTry_ $ tryDebug_ $ do
     debugCommand' (":force " ++ (varName varDescr)) (\to -> liftIO $ postGUIAsync (do
         case parse valueParser "" (selectString to) of
             Left e -> sysMessage Normal (show e)
@@ -271,7 +272,7 @@ forceVariable varDescr path treeStore = tryDebug_ $ do
                 treeStoreSetValue treeStore path var{varType = typ}))
 
 printVariable :: VarDescription -> TreePath -> TreeStore VarDescription -> IDEAction
-printVariable varDescr path treeStore = tryDebug_ $ do
+printVariable varDescr path treeStore = packageTry_ $ tryDebug_ $ do
     debugCommand' (":print " ++ (varName varDescr)) (\to -> liftIO $ postGUIAsync (do
         case parse valueParser "" (selectString to) of
             Left e -> sysMessage Normal (show e)

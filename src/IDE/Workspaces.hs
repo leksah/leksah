@@ -1,4 +1,4 @@
-{-# OPTIONS_GHC -XScopedTypeVariables #-}
+{-# LANGUAGE CPP, ScopedTypeVariables #-}
 -----------------------------------------------------------------------------
 --
 -- Module      :  IDE.Workspace
@@ -16,6 +16,8 @@
 module IDE.Workspaces (
     workspaceNew
 ,   workspaceOpen
+,   workspaceTry
+,   workspaceTry_
 ,   workspaceOpenThis
 ,   workspaceClose
 ,   workspaceClean
@@ -25,6 +27,8 @@ module IDE.Workspaces (
 ,   workspaceAddPackage'
 ,   workspaceRemovePackage
 ,   workspacePackageNew
+,   packageTry
+,   packageTry_
 
 ,   makePackage
 ,   backgroundMake
@@ -35,7 +39,8 @@ import IDE.Core.State
 import Control.Monad.Trans (liftIO)
 import Graphics.UI.Editor.Parameters
     (Parameter(..), (<<<-), paraName, emptyParams)
-import Control.Monad (unless, when)
+import Control.Monad (unless, when, liftM)
+import Control.Monad.Reader (lift)
 import Data.Maybe (isJust,fromJust )
 import IDE.Utils.GUIUtils
     (chooseFile, chooseSaveFile)
@@ -52,12 +57,12 @@ import Text.PrinterParser
      FieldDescriptionS(..))
 import qualified Text.PrettyPrint as  PP (text)
 import Graphics.UI.Gtk
-    (widgetDestroy, dialogRun, messageDialogNew, Window(..))
+    (widgetDestroy, dialogRun, messageDialogNew, dialogAddButton, Window(..), widgetHide)
 import IDE.Pane.PackageEditor (packageNew', choosePackageFile)
 import Data.List ((\\), foldl', nub, delete)
 import IDE.Package
        (packageConfig', getModuleTemplate, getPackageDescriptionAndPath,
-        buildPackage, packageInstall', packageClean, activatePackage,
+        buildPackage, packageInstall', packageClean', activatePackage,
         deactivatePackage, idePackageFromPath)
 import System.Directory
        (createDirectoryIfMissing, doesFileExist, canonicalizePath)
@@ -147,6 +152,40 @@ workspaceOpen = do
     workspaceOpenThis True mbFilePath
     return ()
 
+workspaceTryQuiet :: WorkspaceM a -> IDEM (Maybe a)
+workspaceTryQuiet f = do
+    maybeWorkspace <- readIDE workspace
+    case maybeWorkspace of
+        Just ws -> liftM Just $ runWorkspace f ws
+        Nothing -> return Nothing
+
+workspaceTryQuiet_ :: WorkspaceM a -> IDEAction
+workspaceTryQuiet_ f = workspaceTryQuiet f >> return ()
+
+workspaceTry :: WorkspaceM a -> IDEM (Maybe a)
+workspaceTry f = do
+    maybeWorkspace <- readIDE workspace
+    case maybeWorkspace of
+        Just ws -> liftM Just $ runWorkspace f ws
+        Nothing -> do
+            md <- liftIO $ messageDialogNew Nothing [] MessageQuestion ButtonsCancel (
+                    "You need to have a workspace for this to work. "
+                 ++ "Would you like to open an existing workspace or create a new one?")
+            liftIO $ dialogAddButton md "New Workspace" (ResponseUser 1)
+            liftIO $ dialogAddButton md "Open Workspace" (ResponseUser 2)
+            resp <- liftIO $ dialogRun md
+            liftIO $ widgetHide md
+            case resp of
+                ResponseUser 1 -> do
+                    workspaceNew
+                    workspaceTryQuiet f
+                ResponseUser 2 -> do
+                    workspaceOpen
+                    workspaceTryQuiet f
+                _  -> return Nothing
+
+workspaceTry_ :: WorkspaceM a -> IDEAction
+workspaceTry_ f = workspaceTry f >> return ()
 
 chooseWorkspaceFile :: Window -> IO (Maybe FilePath)
 chooseWorkspaceFile window = chooseFile window "Select leksah workspace file (.lkshw)" Nothing
@@ -201,19 +240,16 @@ workspaceClose = do
             return ()
     return ()
 
-workspacePackageNew :: IDEAction
+workspacePackageNew :: WorkspaceAction
 workspacePackageNew = do
-    mbWs <- readIDE workspace
-    case mbWs of
-        Nothing -> ideMessage Normal "Needs an open workspace"
-        Just ws -> do
-            let path = dropFileName (wsFile ws)
-            packageNew' (Just path) (\fp -> do
-                window     <-  getMainWindow
-                workspaceAddPackage' fp >> return ()
-                mbPack <- idePackageFromPath fp
-                constructAndOpenMainModule mbPack
-                triggerEventIDE UpdateWorkspaceInfo >> return ())
+    ws <- ask
+    let path = dropFileName (wsFile ws)
+    lift $ packageNew' (Just path) (\fp -> do
+        window     <-  getMainWindow
+        workspaceTry_ $ workspaceAddPackage' fp >> return ()
+        mbPack <- idePackageFromPath fp
+        constructAndOpenMainModule mbPack
+        triggerEventIDE UpdateWorkspaceInfo >> return ())
 
 constructAndOpenMainModule :: Maybe IDEPackage -> IDEAction
 constructAndOpenMainModule Nothing = return ()
@@ -235,57 +271,80 @@ constructAndOpenMainModule (Just idePackage) =
         _ -> return ()
 
 
-workspaceAddPackage :: IDEAction
+workspaceAddPackage :: WorkspaceAction
 workspaceAddPackage = do
-    mbWs <- readIDE workspace
-    case mbWs of
-        Nothing -> ideMessage Normal "Needs an open workspace"
-        Just ws -> do
-            let path = dropFileName (wsFile ws)
-            window <-  getMainWindow
-            mbFilePath <- liftIO $ choosePackageFile window (Just path)
-            case mbFilePath of
-                Nothing -> return ()
-                Just fp -> workspaceAddPackage' fp >> return ()
+    ws <- ask
+    let path = dropFileName (wsFile ws)
+    window <-  lift getMainWindow
+    mbFilePath <- liftIO $ choosePackageFile window (Just path)
+    case mbFilePath of
+        Nothing -> return ()
+        Just fp -> workspaceAddPackage' fp >> return ()
 
-workspaceAddPackage' :: FilePath -> IDEM (Maybe IDEPackage)
+workspaceAddPackage' :: FilePath -> WorkspaceM (Maybe IDEPackage)
 workspaceAddPackage' fp = do
-    mbWs <- readIDE workspace
+    ws <- ask
     cfp <-  liftIO $ canonicalizePath fp
-    case mbWs of
+    mbPack <- lift $ idePackageFromPath cfp
+    case mbPack of
+        Just pack -> do
+            unless (elem cfp (map ipdCabalFile (wsPackages ws))) $ lift $
+                writeWorkspace $ ws {wsPackages =  pack : wsPackages ws,
+                                    wsActivePack =  Just pack}
+            return (Just pack)
         Nothing -> return Nothing
-        Just ws -> do
-            mbPack <- idePackageFromPath cfp
-            case mbPack of
-                Just pack -> do
-                    unless (elem cfp (map ipdCabalFile (wsPackages ws))) $
-                        writeWorkspace $ ws {wsPackages =  pack : wsPackages ws,
-                                            wsActivePack =  Just pack}
-                    return (Just pack)
-                Nothing -> return Nothing
 
+packageTryQuiet :: PackageM a -> IDEM (Maybe a)
+packageTryQuiet f = do
+    maybePackage <- readIDE activePack
+    case maybePackage of
+        Just p  -> liftM Just $ runPackage f p
+        Nothing -> return Nothing
 
-workspaceRemovePackage :: IDEPackage -> IDEAction
+packageTryQuiet_ :: PackageM a -> IDEAction
+packageTryQuiet_ f = packageTryQuiet f >> return ()
+
+packageTry :: PackageM a -> IDEM (Maybe a)
+packageTry f = do
+    liftM (>>= id) $ workspaceTry $ do
+        maybePackage <- lift $ readIDE activePack
+        case maybePackage of
+            Just p  -> liftM Just $ lift $ runPackage f p
+            Nothing -> do
+                md <- liftIO $ messageDialogNew Nothing [] MessageQuestion ButtonsCancel (
+                        "You need to have an active package for this to work. "
+                     ++ "Would you like to add existing package or create a new one?")
+                liftIO $ dialogAddButton md "New Package" (ResponseUser 1)
+                liftIO $ dialogAddButton md "Add Package" (ResponseUser 2)
+                resp <- liftIO $ dialogRun md
+                liftIO $ widgetHide md
+                case resp of
+                    ResponseUser 1 -> do
+                        workspacePackageNew
+                        lift $ packageTryQuiet f
+                    ResponseUser 2 -> do
+                        workspaceAddPackage
+                        lift $ packageTryQuiet f
+                    _  -> return Nothing
+
+packageTry_ :: PackageM a -> IDEAction
+packageTry_ f = packageTry f >> return ()
+
+workspaceRemovePackage :: IDEPackage -> WorkspaceAction
 workspaceRemovePackage pack = do
-    mbWs <- readIDE workspace
-    case mbWs of
-        Nothing -> return ()
-        Just ws -> do
-            when (elem pack (wsPackages ws)) $
-                writeWorkspace ws {wsPackages =  delete pack (wsPackages ws)}
-            return ()
+    ws <- ask
+    when (elem pack (wsPackages ws)) $ lift $
+        writeWorkspace ws {wsPackages =  delete pack (wsPackages ws)}
+    return ()
 
-workspaceActivatePackage :: IDEPackage -> IDEAction
+workspaceActivatePackage :: IDEPackage -> WorkspaceAction
 workspaceActivatePackage pack = do
-    activatePackage (Just pack)
-    mbWs <- readIDE workspace
-    case mbWs of
-        Nothing -> return ()
-        Just ws -> do
-            when (elem pack (wsPackages ws)) $ do
-                writeWorkspace ws {wsActivePack =  Just pack}
-                return ()
-            return ()
+    ws <- ask
+    lift $ activatePackage (Just pack)
+    when (elem pack (wsPackages ws)) $ lift $ do
+        writeWorkspace ws {wsActivePack =  Just pack}
+        return ()
+    return ()
 
 writeWorkspace :: Workspace -> IDEAction
 writeWorkspace ws = do
@@ -448,21 +507,19 @@ selectFirstReasonableTarget l revDeps =
                                             Nothing   -> accu
                                             Just list -> foldl' allDeps' (accu ++ list) list
 
-makePackages :: Bool -> Bool -> [IDEPackage] -> IDEAction
+makePackages :: Bool -> Bool -> [IDEPackage] -> WorkspaceAction
 makePackages _ _ []     = return ()
 makePackages isBackgroundBuild needConfigure packages = do
-    mbWs <- readIDE workspace
-    prefs' <- readIDE prefs
-    case mbWs of
-        Nothing -> return ()
-        Just ws -> do
-            let package = selectFirstReasonableTarget packages (wsReverseDeps ws)
-            if needConfigure
-                then packageConfig' package (\b ->
-                    if b
-                        then buildPackage isBackgroundBuild package (cont prefs' package ws)
-                        else return ())
-                else buildPackage isBackgroundBuild package (cont prefs' package ws)
+    ws <- ask
+    lift $ do
+        prefs' <- readIDE prefs
+        let package = selectFirstReasonableTarget packages (wsReverseDeps ws)
+        if needConfigure
+            then packageConfig' package (\b ->
+                if b
+                    then buildPackage isBackgroundBuild package (cont prefs' package ws)
+                    else return ())
+            else buildPackage isBackgroundBuild package (cont prefs' package ws)
     where
     cont prefs' package ws res =
         if res
@@ -482,7 +539,7 @@ makePackages isBackgroundBuild needConfigure packages = do
     cont2 deps package res = do
         when res $ do
             let nextTargets = delete package $ nub $ packages ++ deps
-            makePackages isBackgroundBuild True nextTargets
+            workspaceTryQuiet_ $ makePackages isBackgroundBuild True nextTargets
 
 
 backgroundMake :: IDEAction
@@ -498,26 +555,22 @@ backgroundMake = catchIDE (do
                                 else return []
             let isModified = not (null modifiedPacks)
             when isModified $ do
-            makePackages True False modifiedPacks
+                workspaceTryQuiet_ $ makePackages True False modifiedPacks
     )
     (\(e :: SomeException) -> sysMessage Normal (show e))
 
-makePackage :: IDEAction
+makePackage :: PackageAction
 makePackage = do
-    activePack' <- readIDE activePack
-    case activePack' of
-        Nothing -> return ()
-        Just p -> makePackages False False [p]
+    p <- ask
+    lift $ workspaceTry_ $ makePackages False False [p]
 
+workspaceClean :: WorkspaceAction
 workspaceClean = do
-    mbWs <-  readIDE workspace
-    case mbWs of
-        Nothing -> return ()
-        Just ws -> mapM_ (packageClean . Just) (wsPackages ws)
+    ws <- ask
+    lift $ mapM_ packageClean' (wsPackages ws)
 
+workspaceMake :: WorkspaceAction
 workspaceMake = do
-    mbWs <-  readIDE workspace
-    case mbWs of
-        Nothing -> return ()
-        Just ws -> makePackages False True (wsPackages ws)
+    ws <- ask
+    makePackages False True (wsPackages ws)
 

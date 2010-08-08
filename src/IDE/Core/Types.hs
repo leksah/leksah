@@ -32,11 +32,19 @@ module IDE.Core.Types (
 ,   IDEM
 ,   IDEAction
 ,   IDEEvent(..)
+,   liftIDE
+
+,   WorkspaceM
+,   WorkspaceAction
+,   runWorkspace
+
+,   PackageM
+,   PackageAction
+,   runPackage
 
 ,   DebugM
 ,   DebugAction
 ,   runDebug
-,   liftIDEM
 
 ,   IDEPackage(..)
 ,   Workspace(..)
@@ -179,6 +187,27 @@ data IDEState =
     |   IsCompleting Connections
 
 
+liftIDE :: IDEM a -> WorkspaceM a
+liftIDE = lift
+
+-- ---------------------------------------------------------------------
+-- Monad for functions that need an open workspace
+--
+type WorkspaceM = ReaderT Workspace IDEM
+type WorkspaceAction = WorkspaceM ()
+
+runWorkspace :: WorkspaceM a -> Workspace -> IDEM a
+runWorkspace = runReaderT
+
+-- ---------------------------------------------------------------------
+-- Monad for functions that need an active package
+--
+type PackageM = ReaderT IDEPackage IDEM
+type PackageAction = PackageM ()
+
+runPackage :: PackageM a -> IDEPackage -> IDEM a
+runPackage = runReaderT
+
 -- ---------------------------------------------------------------------
 -- Monad for functions that need to use the GHCi debugger
 --
@@ -187,9 +216,6 @@ type DebugAction = DebugM ()
 
 runDebug :: DebugM a -> ToolState -> IDEM a
 runDebug = runReaderT
-
-liftIDEM :: IDEM a -> DebugM a
-liftIDEM = lift
 
 -- ---------------------------------------------------------------------
 -- Events which can be signalled and handled

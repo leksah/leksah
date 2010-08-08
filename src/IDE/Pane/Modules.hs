@@ -60,6 +60,7 @@ import IDE.Metainfo.Provider
        (getSystemInfo, getWorkspaceInfo, getPackageInfo)
 import System.Log.Logger (infoM)
 import Default (Default(..))
+import IDE.Workspaces (packageTry_)
 
 -- | A modules pane description
 --
@@ -768,7 +769,7 @@ treeViewPopup ideR  store treeView (Button _ click _ _ _ _ button _ _) = do
             item5 `onActivateLeaf` (treeViewCollapseAll treeView)
             sep2 <- separatorMenuItemNew
             item6           <-  menuItemNewWithLabel "Add module"
-            item6 `onActivateLeaf` (reflectIDE (addModule treeView store) ideR)
+            item6 `onActivateLeaf` (reflectIDE (packageTry_ $ addModule treeView store) ideR)
             item7           <-  menuItemNewWithLabel "Delete module"
             item7 `onActivateLeaf` do
                 sel         <-  getSelectionTree treeView store
@@ -783,10 +784,10 @@ treeViewPopup ideR  store treeView (Button _ click _ _ _ _ button _ _) = do
                                                         if exists
                                                            then do
                                                              reflectIDE (liftIO $ removeFile fp) ideR
-                                                             reflectIDE (delModule treeView store)ideR
+                                                             reflectIDE (packageTry_ $ delModule treeView store)ideR
                                                            else do
-                                                             reflectIDE (delModule treeView store)ideR
-                                                        reflectIDE (packageConfig) ideR
+                                                             reflectIDE (packageTry_ $ delModule treeView store)ideR
+                                                        reflectIDE (packageTry_ packageConfig) ideR
                                                         return ()
                     otherwise       ->  return ()
             sel         <-  getSelectionTree treeView store
@@ -1021,9 +1022,9 @@ collapseHere treeView = do
         []     -> return ()
         (hd:_) -> treeViewCollapseRow treeView hd >> return ()
 
-delModule :: TreeView -> TreeStore (String, Maybe (ModuleDescr,PackageDescr)) -> IDEAction
+delModule :: TreeView -> TreeStore (String, Maybe (ModuleDescr,PackageDescr)) -> PackageAction
 delModule treeview store = do
-    window <- getMainWindow
+    window <- lift $ getMainWindow
     sel   <- liftIO $ treeViewGetSelection treeview
     paths <- liftIO $ treeSelectionGetSelectedRows sel
     categories <- case paths of
@@ -1031,14 +1032,14 @@ delModule treeview store = do
         (treePath:_) -> liftIO $ mapM (treeStoreGetValue store)
                                     $ map (\n -> take n treePath)  [1 .. length treePath]
 
-    ideMessage Normal ("categories: " ++ (show categories))
+    lift $ ideMessage Normal ("categories: " ++ (show categories))
 
     let modPacDescr = snd(last categories)
     case modPacDescr of
-        Nothing     ->   ideMessage Normal "This should never be shown!"
+        Nothing     ->   lift $ ideMessage Normal "This should never be shown!"
         Just(md,_)  -> do
                          let modName = modu.mdModuleId $ md
-                         ideMessage Normal ("modName: " ++ (show modName))
+                         lift $ ideMessage Normal ("modName: " ++ (show modName))
                          delModuleFromPackageDescr modName
 
 respDelModDialog :: IDEM (Bool)
@@ -1055,7 +1056,7 @@ respDelModDialog = do
             liftIO $ widgetDestroy dia
             return (False)
 
-addModule :: TreeView -> TreeStore (String, Maybe (ModuleDescr,PackageDescr)) -> IDEAction
+addModule :: TreeView -> TreeStore (String, Maybe (ModuleDescr,PackageDescr)) -> PackageAction
 addModule treeView store = do
     sel   <- liftIO $ treeViewGetSelection treeView
     paths <- liftIO $ treeSelectionGetSelectedRows sel
@@ -1063,28 +1064,28 @@ addModule treeView store = do
         []     -> return []
         (treePath:_) -> liftIO $ mapM (treeStoreGetValue store)
                                     $ map (\n -> take n treePath)  [1 .. length treePath]
-    mbPD <- getPackageDescriptionAndPath
+    mbPD <- lift $ getPackageDescriptionAndPath
     case mbPD of
-        Nothing             -> ideMessage Normal "No package description"
+        Nothing             -> lift $ ideMessage Normal "No package description"
         Just (pd,cabalPath) -> let srcPaths = nub $ concatMap hsSourceDirs $ allBuildInfo pd
                                    rootPath = dropFileName cabalPath
                                    modPath  = foldr (\a b -> a ++ "." ++ b) ""
                                                 (map fst categories)
                                in do
-            window' <- getMainWindow
+            window' <- lift getMainWindow
             mbResp <- liftIO $ addModuleDialog window' modPath srcPaths
             case mbResp of
                 Nothing                -> return ()
                 Just (AddModule modPath srcPath isExposed) ->
                     case simpleParse modPath of
-                        Nothing         -> ideMessage Normal ("Not a valid module name :" ++ modPath)
+                        Nothing         -> lift $ ideMessage Normal ("Not a valid module name :" ++ modPath)
                         Just moduleName -> do
                             let  target = srcPath </> toFilePath moduleName ++ ".hs"
                             liftIO $ createDirectoryIfMissing True (dropFileName target)
                             alreadyExists <- liftIO $ doesFileExist target
                             if alreadyExists
                                 then do
-                                    ideMessage Normal ("File already exists! Importing existing file " ++ takeBaseName target ++ ".hs")
+                                    lift $ ideMessage Normal ("File already exists! Importing existing file " ++ takeBaseName target ++ ".hs")
                                     addModuleToPackageDescr moduleName isExposed
                                     packageConfig
                                 else do
@@ -1092,7 +1093,7 @@ addModule treeView store = do
                                     liftIO $ UTF8.writeFile target template
                                     addModuleToPackageDescr moduleName isExposed
                                     packageConfig
-                                    fileOpenThis target
+                                    lift $ fileOpenThis target
 
 
 --  Yet another stupid little dialog

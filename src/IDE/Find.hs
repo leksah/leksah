@@ -72,6 +72,7 @@ import IDE.Utils.Tool (runTool)
 import Control.Concurrent (forkIO)
 import IDE.Pane.Grep
 import IDE.Package (getPackageDescriptionAndPath)
+import IDE.Workspaces (packageTry_)
 import Distribution.PackageDescription (allBuildInfo, hsSourceDirs)
 import System.FilePath (dropFileName)
 
@@ -205,7 +206,7 @@ constructFindReplace = reifyIDE $ \ ideR   -> do
 
     grepButton <- toolButtonNew (Nothing :: Maybe Widget) (Just "Grep")
     toolbarInsert toolbar grepButton 0
-    grepButton `onToolButtonClicked` (reflectIDE (doGrep toolbar) ideR)
+    grepButton `onToolButtonClicked` (reflectIDE (packageTry_ $ doGrep toolbar) ideR)
     tooltipsSetTip tooltips grepButton "Search in multiple files" ""
 
     sep1 <- separatorToolItemNew
@@ -390,9 +391,9 @@ doSearch fb hint ideR   = do
     reflectIDE (addToHist search) ideR
     return ()
 
-doGrep :: Toolbar -> IDEAction
+doGrep :: Toolbar -> PackageAction
 doGrep fb   = do
-    ideR          <- ask
+    ideR          <- lift $ ask
     entry         <- liftIO $ getFindEntry fb
     search        <- liftIO $ entryGetText (castToEntry entry)
     entireWord    <- liftIO $ getEntireWord fb
@@ -400,8 +401,8 @@ doGrep fb   = do
     wrapAround    <- liftIO $ getWrapAround fb
     regex         <- liftIO $ getRegex fb
     let (regexString, _) = regexStringAndMatchIndex entireWord regex search
-    mbPD <- getPackageDescriptionAndPath
-    case mbPD of
+    mbPD <- lift getPackageDescriptionAndPath
+    lift $ case mbPD of
         Nothing             -> ideMessage Normal "No package description"
         Just (pd,cabalPath) -> do
             let srcPaths = nub $ concatMap hsSourceDirs $ allBuildInfo pd

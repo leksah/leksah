@@ -23,11 +23,11 @@ module IDE.Package (
 
 ,   packageDoc
 ,   packageClean
+,   packageClean'
 ,   packageCopy
 ,   packageRun
 ,   activatePackage
 ,   deactivatePackage
-,   getActivePackage
 
 ,   packageInstall
 ,   packageInstall'
@@ -118,9 +118,6 @@ packageOpenThis mbFilePath = do
     selectActivePackage mbFilePath
     return ()
 
-getActivePackage :: IDEM (Maybe IDEPackage)
-getActivePackage = readIDE activePack
-
 selectActivePackage :: Maybe FilePath -> IDEM (Maybe IDEPackage)
 selectActivePackage mbFilePath' = do
     window     <- getMainWindow
@@ -160,12 +157,10 @@ deactivatePackage = do
     triggerEventIDE (StatusbarChanged [CompartmentPackage txt])
     return ()
 
-packageConfig :: IDEAction
+packageConfig :: PackageAction
 packageConfig = do
-        mbPackage   <- getActivePackage
-        case mbPackage of
-            Nothing         -> return ()
-            Just package    -> packageConfig' package (\ _ -> return ())
+    package <- ask
+    lift $ packageConfig' package (\ _ -> return ())
 
 packageConfig'  :: IDEPackage -> (Bool -> IDEAction) -> IDEAction
 packageConfig' package continuation = do
@@ -257,80 +252,71 @@ buildPackage backgroundBuild  package continuation = catchIDE (do
     )
     (\(e :: SomeException) -> sysMessage Normal (show e))
 
-packageDoc :: IDEAction
-packageDoc = catchIDE (do
-        mbPackage   <- getActivePackage
-        case mbPackage of
-            Nothing         -> return ()
-            Just package    -> let dir = dropFileName (ipdCabalFile package)
-                               in runExternalTool "Documenting" "runhaskell" (["Setup","haddock"]
-                                                ++ (ipdHaddockFlags package)) (Just dir) logOutput)
+packageDoc :: PackageAction
+packageDoc = do
+    package <- ask
+    lift $ catchIDE (do
+        let dir = dropFileName (ipdCabalFile package)
+        runExternalTool "Documenting" "runhaskell" (["Setup","haddock"]
+                        ++ (ipdHaddockFlags package)) (Just dir) logOutput)
         (\(e :: SomeException) -> putStrLn (show e))
 
-packageClean :: Maybe IDEPackage -> IDEAction
-packageClean Nothing = do
-    mbPackage   <- getActivePackage
-    case mbPackage of
-        Nothing         -> return ()
-        Just package    -> packageClean' package
-packageClean (Just package) = packageClean' package
+packageClean :: PackageAction
+packageClean = do
+    package <- ask
+    lift $ packageClean' package
 
 packageClean' :: IDEPackage -> IDEAction
 packageClean' package =
     let dir = dropFileName (ipdCabalFile package)
     in runExternalTool "Cleaning" "runhaskell" ["Setup","clean"] (Just dir) logOutput
 
-packageCopy :: IDEAction
-packageCopy = catchIDE (do
-        mbPackage   <- getActivePackage
+packageCopy :: PackageAction
+packageCopy = do
+    package <- ask
+    lift $ catchIDE (do
         window      <- getMainWindow
         mbDir       <- liftIO $ chooseDir window "Select the target directory" Nothing
         case mbDir of
             Nothing -> return ()
-            Just fp ->
-                case mbPackage of
-                    Nothing         -> return ()
-                    Just package    -> let dir = dropFileName (ipdCabalFile package)
-                                       in runExternalTool "Copying" "runhaskell" (["Setup","copy"]
-                                                ++ ["--destdir=" ++ fp]) (Just dir) logOutput)
+            Just fp -> do
+                let dir = dropFileName (ipdCabalFile package)
+                runExternalTool "Copying" "runhaskell" (["Setup","copy"]
+                           ++ ["--destdir=" ++ fp]) (Just dir) logOutput)
         (\(e :: SomeException) -> putStrLn (show e))
 
-packageRun :: IDEAction
-packageRun = catchIDE (do
+packageRun :: PackageAction
+packageRun = do
+    package <- ask
+    lift $ catchIDE (do
         ideR        <- ask
-        mbPackage   <- getActivePackage
         maybeGhci   <- readIDE ghciState
-        case mbPackage of
-            Nothing         -> return ()
-            Just package    -> do
-                pd <- liftIO $ readPackageDescription normal (ipdCabalFile package) >>= return . flattenPackageDescription
-                case maybeGhci of
-                    Nothing -> do
-                        case executables pd of
-                            (Executable name _ _):_ -> do
-                                let path = "dist/build" </> name </> name
-                                let dir = dropFileName (ipdCabalFile package)
-                                runExternalTool ("Running " ++ name) path (ipdExeFlags package) (Just dir) logOutput
-                            otherwise -> do
-                                sysMessage Normal "no executable in selected package"
-                                return ()
-                    Just ghci -> do
-                        case executables pd of
-                            (Executable _ mainFilePath _):_ -> do
-                                runDebug (do
-                                    executeDebugCommand (":module *" ++ (map (\c -> if c == '/' then '.' else c) (takeWhile (/= '.') mainFilePath))) logOutput
-                                    executeDebugCommand (":main " ++ (unwords (ipdExeFlags package))) logOutput) ghci
-                            otherwise -> do
-                                sysMessage Normal "no executable in selected package"
-                                return ())
+        pd <- liftIO $ readPackageDescription normal (ipdCabalFile package) >>= return . flattenPackageDescription
+        case maybeGhci of
+            Nothing -> do
+                case executables pd of
+                    (Executable name _ _):_ -> do
+                        let path = "dist/build" </> name </> name
+                        let dir = dropFileName (ipdCabalFile package)
+                        runExternalTool ("Running " ++ name) path (ipdExeFlags package) (Just dir) logOutput
+                    otherwise -> do
+                        sysMessage Normal "no executable in selected package"
+                        return ()
+            Just ghci -> do
+                case executables pd of
+                    (Executable _ mainFilePath _):_ -> do
+                        runDebug (do
+                            executeDebugCommand (":module *" ++ (map (\c -> if c == '/' then '.' else c) (takeWhile (/= '.') mainFilePath))) logOutput
+                            executeDebugCommand (":main " ++ (unwords (ipdExeFlags package))) logOutput) ghci
+                    otherwise -> do
+                        sysMessage Normal "no executable in selected package"
+                        return ())
         (\(e :: SomeException) -> putStrLn (show e))
 
-packageInstall :: IDEAction
+packageInstall :: PackageAction
 packageInstall = do
-        mbPackage   <- getActivePackage
-        case mbPackage of
-            Nothing         -> return ()
-            Just package    -> packageInstall' package (\ _ -> return ())
+    package <- ask
+    lift $ packageInstall' package (\ _ -> return ())
 
 packageInstall' :: IDEPackage -> (Bool -> IDEAction) -> IDEAction
 packageInstall' package continuation = catchIDE (do
@@ -342,60 +328,54 @@ packageInstall' package continuation = catchIDE (do
                         continuation (last output == ToolExit ExitSuccess && not (any isError errs))))
         (\(e :: SomeException) -> putStrLn (show e))
 
-packageRegister :: IDEAction
-packageRegister = catchIDE (do
-        mbPackage   <- getActivePackage
-        case mbPackage of
-            Nothing         -> return ()
-            Just package    -> let dir = dropFileName (ipdCabalFile package)
-                               in runExternalTool "Registering" "runhaskell" (["Setup","register"]
-                                                ++ (ipdRegisterFlags package)) (Just dir) logOutput)
+packageRegister :: PackageAction
+packageRegister = do
+    package <- ask
+    lift $ catchIDE (do
+        let dir = dropFileName (ipdCabalFile package)
+        runExternalTool "Registering" "runhaskell" (["Setup","register"]
+                        ++ (ipdRegisterFlags package)) (Just dir) logOutput)
         (\(e :: SomeException) -> putStrLn (show e))
 
-packageUnregister :: IDEAction
-packageUnregister = catchIDE (do
-    mbPackage   <- getActivePackage
-    case mbPackage of
-        Nothing         -> return ()
-        Just package    -> let dir = dropFileName (ipdCabalFile package)
-                           in runExternalTool "Unregistering" "runhaskell" (["Setup","unregister"]
-                                            ++ (ipdUnregisterFlags package)) (Just dir) logOutput)
+packageUnregister :: PackageAction
+packageUnregister = do
+    package <- ask
+    lift $ catchIDE (do
+        let dir = dropFileName (ipdCabalFile package)
+        runExternalTool "Unregistering" "runhaskell" (["Setup","unregister"]
+                        ++ (ipdUnregisterFlags package)) (Just dir) logOutput)
         (\(e :: SomeException) -> putStrLn (show e))
 
-packageTest :: IDEAction
-packageTest = catchIDE (do
-        mbPackage   <- getActivePackage
-        case mbPackage of
-            Nothing         -> return ()
-            Just package    -> let dir = dropFileName (ipdCabalFile package)
-                               in runExternalTool "Testing" "runhaskell" (["Setup","test"]) (Just dir) logOutput)
+packageTest :: PackageAction
+packageTest = do
+    package <- ask
+    lift $ catchIDE (do
+        let dir = dropFileName (ipdCabalFile package)
+        runExternalTool "Testing" "runhaskell" (["Setup","test"]) (Just dir) logOutput)
         (\(e :: SomeException) -> putStrLn (show e))
 
-packageSdist :: IDEAction
-packageSdist = catchIDE (do
-        mbPackage   <- getActivePackage
-        case mbPackage of
-            Nothing         -> return ()
-            Just package    -> let dir = dropFileName (ipdCabalFile package)
-                               in runExternalTool "Source Dist" "runhaskell" (["Setup","sdist"]
-                                                ++ (ipdSdistFlags package)) (Just dir) logOutput)
+packageSdist :: PackageAction
+packageSdist = do
+    package <- ask
+    lift $ catchIDE (do
+        let dir = dropFileName (ipdCabalFile package)
+        runExternalTool "Source Dist" "runhaskell" (["Setup","sdist"]
+                        ++ (ipdSdistFlags package)) (Just dir) logOutput)
         (\(e :: SomeException) -> putStrLn (show e))
 
 
-packageOpenDoc :: IDEAction
-packageOpenDoc = catchIDE (do
-        mbPackage   <- getActivePackage
-        prefs       <- readIDE prefs
-        case mbPackage of
-            Nothing         -> return ()
-            Just package    ->
-                let path = dropFileName (ipdCabalFile package)
-                                </> "dist/doc/html"
-                                </> display (pkgName (ipdPackageId package))
-                                </> display (pkgName (ipdPackageId package))
-                                </> "index.html"
-                    dir = dropFileName (ipdCabalFile package)
-                in runExternalTool "Opening Documentation" (browser prefs) [path] (Just dir) logOutput)
+packageOpenDoc :: PackageAction
+packageOpenDoc = do
+    package <- ask
+    lift $ catchIDE (do
+        prefs   <- readIDE prefs
+        let path = dropFileName (ipdCabalFile package)
+                        </> "dist/doc/html"
+                        </> display (pkgName (ipdPackageId package))
+                        </> display (pkgName (ipdPackageId package))
+                        </> "index.html"
+            dir = dropFileName (ipdCabalFile package)
+        runExternalTool "Opening Documentation" (browser prefs) [path] (Just dir) logOutput)
         (\(e :: SomeException) -> putStrLn (show e))
 
 runExternalTool :: String -> FilePath -> [String] -> Maybe FilePath -> ([ToolOutput] -> IDEAction) -> IDEAction
@@ -464,74 +444,62 @@ getModuleTemplate pd modName = catch (do
                     (\ (e :: SomeException) -> sysMessage Normal ("Couldn't read template file: " ++ show e) >> return "")
 
 
-addModuleToPackageDescr :: ModuleName -> Bool -> IDEM ()
+addModuleToPackageDescr :: ModuleName -> Bool -> PackageAction
 addModuleToPackageDescr moduleName isExposed = do
-    active <- readIDE activePack
-    case active of
-        Nothing -> do
-            ideMessage Normal "No active package"
-            return ()
-        Just p  -> do
-            ideR <- ask
-            reifyIDE (\ideR -> catch (do
-                gpd <- readPackageDescription normal (ipdCabalFile p)
-                if hasConfigs gpd
-                    then do
-                        reflectIDE (ideMessage High
-                            "Cabal file with configurations can't be automatically updated with the current version of Leksah") ideR
-                    else
-                        let pd = flattenPackageDescription gpd
-                            npd = if isExposed && isJust (library pd)
-                                    then pd{library = Just ((fromJust (library pd)){exposedModules =
-                                                                    moduleName : exposedModules (fromJust $ library pd)})}
-                                    else let npd1 = case library pd of
-                                                       Nothing -> pd
-                                                       Just lib -> pd{library = Just (lib{libBuildInfo =
-                                                                addModToBuildInfo (libBuildInfo lib) moduleName})}
-                                       in npd1{executables = map
-                                                (\exe -> exe{buildInfo = addModToBuildInfo (buildInfo exe) moduleName})
-                                                    (executables npd1)}
-                        in writePackageDescription (ipdCabalFile p) npd)
-                           (\(e :: SomeException) -> do
-                            reflectIDE (ideMessage Normal ("Can't upade package " ++ show e)) ideR
-                            return ()))
+    p    <- ask
+    lift $ reifyIDE (\ideR -> catch (do
+        gpd <- readPackageDescription normal (ipdCabalFile p)
+        if hasConfigs gpd
+            then do
+                reflectIDE (ideMessage High
+                    "Cabal file with configurations can't be automatically updated with the current version of Leksah") ideR
+            else
+                let pd = flattenPackageDescription gpd
+                    npd = if isExposed && isJust (library pd)
+                            then pd{library = Just ((fromJust (library pd)){exposedModules =
+                                                            moduleName : exposedModules (fromJust $ library pd)})}
+                            else let npd1 = case library pd of
+                                               Nothing -> pd
+                                               Just lib -> pd{library = Just (lib{libBuildInfo =
+                                                        addModToBuildInfo (libBuildInfo lib) moduleName})}
+                               in npd1{executables = map
+                                        (\exe -> exe{buildInfo = addModToBuildInfo (buildInfo exe) moduleName})
+                                            (executables npd1)}
+                in writePackageDescription (ipdCabalFile p) npd)
+                   (\(e :: SomeException) -> do
+                    reflectIDE (ideMessage Normal ("Can't upade package " ++ show e)) ideR
+                    return ()))
     where
     addModToBuildInfo :: BuildInfo -> ModuleName -> BuildInfo
     addModToBuildInfo bi mn = bi {otherModules = mn : otherModules bi}
 
 --------------------------------------------------------------------------
-delModuleFromPackageDescr :: ModuleName -> IDEM ()
+delModuleFromPackageDescr :: ModuleName -> PackageAction
 delModuleFromPackageDescr moduleName = do
-    active <- readIDE activePack
-    case active of
-        Nothing -> do
-            ideMessage Normal "No active package"
-            return ()
-        Just p  -> do
-            ideR <- ask
-            reifyIDE (\ideR -> catch (do
-                gpd <- readPackageDescription normal (ipdCabalFile p)
-                if hasConfigs gpd
-                    then do
-                        reflectIDE (ideMessage High
-                            "Cabal file with configurations can't be automatically updated with the current version of Leksah") ideR
-                    else
-                        let pd = flattenPackageDescription gpd
-                            isExposedAndJust = isExposedModule pd moduleName
-                            npd = if isExposedAndJust
-                                    then pd{library = Just ((fromJust (library pd)){exposedModules =
-                                                                     delete moduleName (exposedModules (fromJust $ library pd))})}
-                                    else let npd1 = case library pd of
-                                                       Nothing -> pd
-                                                       Just lib -> pd{library = Just (lib{libBuildInfo =
-                                                                delModFromBuildInfo (libBuildInfo lib) moduleName})}
-                                       in npd1{executables = map
-                                                (\exe -> exe{buildInfo = delModFromBuildInfo (buildInfo exe) moduleName})
-                                                    (executables npd1)}
-                        in writePackageDescription (ipdCabalFile p) npd)
-                           (\(e :: SomeException) -> do
-                            reflectIDE (ideMessage Normal ("Can't update package " ++ show e)) ideR
-                            return ()))
+    p    <- ask
+    lift $ reifyIDE (\ideR -> catch (do
+        gpd <- readPackageDescription normal (ipdCabalFile p)
+        if hasConfigs gpd
+            then do
+                reflectIDE (ideMessage High
+                    "Cabal file with configurations can't be automatically updated with the current version of Leksah") ideR
+            else
+                let pd = flattenPackageDescription gpd
+                    isExposedAndJust = isExposedModule pd moduleName
+                    npd = if isExposedAndJust
+                            then pd{library = Just ((fromJust (library pd)){exposedModules =
+                                                             delete moduleName (exposedModules (fromJust $ library pd))})}
+                            else let npd1 = case library pd of
+                                               Nothing -> pd
+                                               Just lib -> pd{library = Just (lib{libBuildInfo =
+                                                        delModFromBuildInfo (libBuildInfo lib) moduleName})}
+                               in npd1{executables = map
+                                        (\exe -> exe{buildInfo = delModFromBuildInfo (buildInfo exe) moduleName})
+                                            (executables npd1)}
+                in writePackageDescription (ipdCabalFile p) npd)
+                   (\(e :: SomeException) -> do
+                    reflectIDE (ideMessage Normal ("Can't update package " ++ show e)) ideR
+                    return ()))
     where
     delModFromBuildInfo :: BuildInfo -> ModuleName -> BuildInfo
     delModFromBuildInfo bi mn = bi {otherModules = delete mn (otherModules bi)}
@@ -582,59 +550,51 @@ interactiveFlags prefs =
     : (breakOnErrorFlag $ breakOnError prefs)
     : [printBindResultFlag $ printBindResult prefs]
 
-debugStart :: IDEAction
-debugStart = catchIDE (do
-    ideRef <- ask
-    mbPackage   <- getActivePackage
-    prefs'      <- readIDE prefs
-    case mbPackage of
-        Nothing         -> do
-            setDebugToggled False
-            md <- liftIO $ messageDialogNew Nothing [] MessageError ButtonsOk
-                    "You need to have an active package before you can start the GHCi debugger"
-            resp <- liftIO $ dialogRun md
-            liftIO $ widgetHide md
-            return ()
-        Just package    -> do
-            maybeGhci <- readIDE ghciState
-            case maybeGhci of
-                Nothing -> do
-                    let dir = dropFileName (ipdCabalFile package)
-                    ghci <- reifyIDE $ \ideR -> newGhci (ipdBuildFlags package) (interactiveFlags prefs')
-                        $ \output -> reflectIDE (logOutputForBuild dir True output) ideR
-                    modifyIDE_ (\ide -> ide {ghciState = Just ghci})
-                    triggerEventIDE (Sensitivity [(SensitivityInterpreting, True)])
-                    setDebugToggled True
-                    -- Fork a thread to wait for the output from the process to close
-                    liftIO $ forkIO $ do
-                        readMVar (outputClosed ghci)
-                        reflectIDE (do
-                            setDebugToggled False
-                            modifyIDE_ (\ide -> ide {ghciState = Nothing})
-                            triggerEventIDE (Sensitivity [(SensitivityInterpreting, False)])
-                            -- Kick of a build if one is not already due
-                            modifiedPacks <- fileCheckAll belongsToPackage
-                            let modified = not (null modifiedPacks)
-                            prefs <- readIDE prefs
-                            when ((not modified) && (backgroundBuild prefs)) $ do
-                                -- So although none of the pakages are modified,
-                                -- they may have been modified in ghci mode.
-                                -- Lets build to make sure the binaries are up to date
-                                mbPackage   <- readIDE activePack
-                                case mbPackage of
-                                    Just package -> runCabalBuild True package True (\ _ -> return ())
-                                    Nothing -> return ()) ideRef
-                    return ()
-                _ -> do
-                    sysMessage Normal "Debugger already running"
-                    return ())
-        (\(e :: SomeException) -> putStrLn (show e))
+debugStart :: PackageAction
+debugStart = do
+    package   <- ask
+    lift $ catchIDE (do
+        ideRef    <- ask
+        prefs'    <- readIDE prefs
+        maybeGhci <- readIDE ghciState
+        case maybeGhci of
+            Nothing -> do
+                let dir = dropFileName (ipdCabalFile package)
+                ghci <- reifyIDE $ \ideR -> newGhci (ipdBuildFlags package) (interactiveFlags prefs')
+                    $ \output -> reflectIDE (logOutputForBuild dir True output) ideR
+                modifyIDE_ (\ide -> ide {ghciState = Just ghci})
+                triggerEventIDE (Sensitivity [(SensitivityInterpreting, True)])
+                setDebugToggled True
+                -- Fork a thread to wait for the output from the process to close
+                liftIO $ forkIO $ do
+                    readMVar (outputClosed ghci)
+                    reflectIDE (do
+                        setDebugToggled False
+                        modifyIDE_ (\ide -> ide {ghciState = Nothing})
+                        triggerEventIDE (Sensitivity [(SensitivityInterpreting, False)])
+                        -- Kick of a build if one is not already due
+                        modifiedPacks <- fileCheckAll belongsToPackage
+                        let modified = not (null modifiedPacks)
+                        prefs <- readIDE prefs
+                        when ((not modified) && (backgroundBuild prefs)) $ do
+                            -- So although none of the pakages are modified,
+                            -- they may have been modified in ghci mode.
+                            -- Lets build to make sure the binaries are up to date
+                            mbPackage   <- readIDE activePack
+                            case mbPackage of
+                                Just package -> runCabalBuild True package True (\ _ -> return ())
+                                Nothing -> return ()) ideRef
+                return ()
+            _ -> do
+                sysMessage Normal "Debugger already running"
+                return ())
+            (\(e :: SomeException) -> putStrLn (show e))
 
-tryDebug :: DebugM a -> IDEM (Maybe a)
+tryDebug :: DebugM a -> PackageM (Maybe a)
 tryDebug f = do
-    maybeGhci <- readIDE ghciState
+    maybeGhci <- lift $ readIDE ghciState
     case maybeGhci of
-        Just ghci -> liftM Just $ runReaderT f ghci
+        Just ghci -> liftM Just $ lift $ runDebug f ghci
         _ -> do
             md <- liftIO $ messageDialogNew Nothing [] MessageQuestion ButtonsYesNo
                     "GHCi debugger is not running.  Would you like to start it?"
@@ -643,19 +603,19 @@ tryDebug f = do
             case resp of
                 ResponseYes -> do
                     debugStart
-                    maybeGhci <- readIDE ghciState
+                    maybeGhci <- lift $ readIDE ghciState
                     case maybeGhci of
-                        Just ghci -> liftM Just $ runReaderT f ghci
+                        Just ghci -> liftM Just $ lift $ runDebug f ghci
                         _ -> return Nothing
                 _  -> return Nothing
 
-tryDebug_ :: DebugM a -> IDEAction
+tryDebug_ :: DebugM a -> PackageAction
 tryDebug_ f = tryDebug f >> return ()
 
 executeDebugCommand :: String -> ([ToolOutput] -> IDEAction) -> DebugAction
 executeDebugCommand command handler = do
     ghci <- ask
-    liftIDEM $ do
+    lift $ do
         triggerEventIDE (StatusbarChanged [CompartmentState command, CompartmentBuild True])
         reifyIDE $ \ideR -> do
             executeGhciCommand ghci command $ \output ->

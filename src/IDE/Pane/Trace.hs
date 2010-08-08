@@ -47,7 +47,7 @@ import Text.ParserCombinators.Parsec.Language (emptyDef)
 import Graphics.UI.Gtk.Gdk.Events (Event(..))
 import Graphics.UI.Gtk.General.Enums (MouseButton(..))
 import System.Log.Logger (debugM)
-
+import IDE.Workspaces (packageTry_)
 
 -- | A debugger pane description
 --
@@ -156,9 +156,9 @@ builder' pp nb windows = reifyIDE $ \ ideR -> do
     return (Just pane,[ConnectC cid1])
 
 fillTraceList :: IDEAction
-fillTraceList = do
-    currentHist' <- readIDE currentHist
-    mbTraces     <- getPane
+fillTraceList = packageTry_ $ do
+    currentHist' <- lift $ readIDE currentHist
+    mbTraces     <- lift getPane
     case mbTraces of
         Nothing -> return ()
         Just tracePane -> tryDebug_ $ debugCommand' ":history" (\to -> liftIO $ postGUIAsync $ do
