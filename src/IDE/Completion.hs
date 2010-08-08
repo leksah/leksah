@@ -34,8 +34,9 @@ complete sourceView always = do
     prefs'        <- readIDE prefs
     completion'   <- readIDE completion
     case (currentState',completion') of
-        (IsCompleting c, Just (CompletionWindow window tv st)) ->
-                            updateOptions window tv st sourceView c
+        (IsCompleting c, Just (CompletionWindow window tv st)) -> do
+                            isWordChar <- getIsWordChar sourceView
+                            updateOptions window tv st sourceView c isWordChar
         (IsRunning,_)   ->  when (always || not (completeRestricted prefs'))
                                 (initCompletion sourceView)
         _               ->  return ()
@@ -49,15 +50,30 @@ cancel = do
             cancelCompletion window tv st conn
         _            -> return ()
 
+getIsWordChar :: EditorView -> IDEM (Char -> Bool)
+getIsWordChar sourceView = do
+    ideR <- ask
+    buffer <- getBuffer sourceView
+    (_, end) <- getSelectionBounds buffer
+    let isIdent a = isAlphaNum a || a == '\'' || a == '_' || a == '.'
+    let isOp    a = isSymbol   a || a == ':'  || a == '\\'
+    prev <- backwardCharC end
+    prevChar <- getChar prev
+    case prevChar of
+        Just prevChar | isIdent prevChar -> return isIdent
+        Just prevChar | isOp    prevChar -> return isOp
+        _                                -> return $ const False
+
 initCompletion :: EditorView -> IDEAction
 initCompletion sourceView = do
     ideR <- ask
     completion' <- readIDE completion
+    isWordChar <- getIsWordChar sourceView
     case completion' of
         Just (CompletionWindow window' tree' store') -> do
-            cids <- addEventHandling window' sourceView tree' store'
+            cids <- addEventHandling window' sourceView tree' store' isWordChar
             modifyIDE_ (\ide -> ide{currentState = IsCompleting cids})
-            updateOptions window' tree' store' sourceView cids
+            updateOptions window' tree' store' sourceView cids isWordChar
         Nothing -> do
             windows    <- getWindows
             prefs      <- readIDE prefs
@@ -124,14 +140,15 @@ initCompletion sourceView = do
             liftIO $ panedAdd1 paned nameScrolledWindow
             liftIO $ panedAdd2 paned descriptionScrolledWindow
 
-            cids <- addEventHandling window sourceView tree store
+            cids <- addEventHandling window sourceView tree store isWordChar
 
             modifyIDE_ (\ide -> ide{currentState = IsCompleting cids,
                 completion = Just (CompletionWindow window tree store)})
-            updateOptions window tree store sourceView cids
+            updateOptions window tree store sourceView cids isWordChar
 
-addEventHandling :: Window -> EditorView -> TreeView -> ListStore String -> IDEM Connections
-addEventHandling window sourceView tree store = do
+addEventHandling :: Window -> EditorView -> TreeView -> ListStore String
+                 -> (Char -> Bool) -> IDEM Connections
+addEventHandling window sourceView tree store isWordChar = do
     ideR      <- ask
     cidsPress <- sourceView `onKeyPress` \name modifier keyVal -> do
         char        <- liftIO $ keyvalToChar keyVal
@@ -143,7 +160,7 @@ addEventHandling window sourceView tree store = do
             ("Tab", _, _) -> (do
                 visible <- liftIO $ get tree widgetVisible
                 if visible then (do
-                    tryToUpdateOptions window tree store sourceView True
+                    tryToUpdateOptions window tree store sourceView True isWordChar
                     return True
                     )
                     else return False
@@ -192,7 +209,7 @@ addEventHandling window sourceView tree store = do
                     )
                     else return False
                 )
-            (_, _, Just c) | ((isAlphaNum c) || (c == '.') || (c == '_')) -> (do
+            (_, _, Just c) | isWordChar c -> (do
                 return False
                 )
             ("BackSpace", _, _) -> (do
@@ -224,7 +241,7 @@ addEventHandling window sourceView tree store = do
         return True
 
     idSelected <- liftIO $ tree `onRowActivated` (\treePath column -> (do
-        reflectIDE (withWord store treePath (replaceWordStart sourceView)) ideR
+        reflectIDE (withWord store treePath (replaceWordStart sourceView isWordChar)) ideR
         liftIO $ postGUIAsync $ reflectIDE cancel ideR))
 
     return $ concat [cidsPress, cidsRelease, [ConnectC idButtonPress, ConnectC idSelected]]
@@ -239,13 +256,13 @@ withWord store treePath f = (do
        _ -> return ()
    )
 
-replaceWordStart :: EditorView -> String -> IDEM ()
-replaceWordStart sourceView name = do
+replaceWordStart :: EditorView -> (Char -> Bool) -> String -> IDEM ()
+replaceWordStart sourceView isWordChar name = do
     buffer <- getBuffer sourceView
     (selStart, end) <- getSelectionBounds buffer
     isWordEnd <- endsWord end
     when isWordEnd $ do
-        start <- findWordStart selStart
+        start <- findWordStart selStart isWordChar
         wordStart <- getText buffer start end True
         case stripPrefix wordStart name of
             Just extra -> insert buffer end extra
@@ -260,18 +277,18 @@ cancelCompletion window tree store connections = do
         )
     modifyIDE_ (\ide -> ide{currentState = IsRunning})
 
-updateOptions :: Window -> TreeView -> ListStore String -> EditorView -> Connections -> IDEAction
-updateOptions window tree store sourceView connections = do
-    result <- tryToUpdateOptions window tree store sourceView False
+updateOptions :: Window -> TreeView -> ListStore String -> EditorView -> Connections -> (Char -> Bool) -> IDEAction
+updateOptions window tree store sourceView connections isWordChar = do
+    result <- tryToUpdateOptions window tree store sourceView False isWordChar
     when (not result) $ cancelCompletion window tree store connections
 
-tryToUpdateOptions :: Window -> TreeView -> ListStore String -> EditorView -> Bool -> IDEM Bool
-tryToUpdateOptions window tree store sourceView selectLCP = do
+tryToUpdateOptions :: Window -> TreeView -> ListStore String -> EditorView -> Bool -> (Char -> Bool) -> IDEM Bool
+tryToUpdateOptions window tree store sourceView selectLCP isWordChar = do
     ideR <- ask
     liftIO $ listStoreClear (store :: ListStore String)
     buffer <- getBuffer sourceView
     (selStart, end) <- getSelectionBounds buffer
-    start <- findWordStart selStart
+    start <- findWordStart selStart isWordChar
     equal <- iterEqual start end
     if equal
         then return False
@@ -280,35 +297,31 @@ tryToUpdateOptions window tree store sourceView selectLCP = do
             liftIO $ postGUIAsync $ do
                 reflectIDE (do
                     options <- getCompletionOptions wordStart
-                    processResults window tree store sourceView wordStart options selectLCP) ideR
+                    processResults window tree store sourceView wordStart options selectLCP isWordChar) ideR
                 return ()
             return True
 
-findWordStart :: EditorIter -> IDEM EditorIter
-findWordStart iter = do
-    maybeWS <- backwardWordStartC iter
+findWordStart :: EditorIter -> (Char -> Bool) -> IDEM EditorIter
+findWordStart iter isWordChar = do
+    maybeWS <- backwardFindCharC iter (not . isWordChar) Nothing
     case maybeWS of
         Nothing -> atOffset iter 0
-        Just ws -> do
-            prev <- backwardCharC ws
-            maybeChar <- getChar prev
-            case maybeChar of
-                Just '_' -> findWordStart prev
-                _        -> return ws
+        Just ws -> forwardCharC ws
 
 longestCommonPrefix (x:xs) (y:ys) | x == y = x : longestCommonPrefix xs ys
 longestCommonPrefix _ _ = []
 
-processResults :: Window -> TreeView -> ListStore String -> EditorView -> String -> [String] -> Bool -> IDEAction
-processResults window tree store sourceView wordStart options selectLCP = do
+processResults :: Window -> TreeView -> ListStore String -> EditorView -> String -> [String]
+               -> Bool -> (Char -> Bool) -> IDEAction
+processResults window tree store sourceView wordStart options selectLCP isWordChar = do
     case options of
         [] -> cancel
         _  -> do
             buffer <- getBuffer sourceView
             (selStart, end) <- getSelectionBounds buffer
-            isWordEnd <- endsWord end
-            when isWordEnd $ do
-                start <- findWordStart selStart
+            mbEndChar <- getChar end
+            when (maybe True (not . isWordChar) mbEndChar) $ do
+                start <- findWordStart selStart isWordChar
                 currentWordStart <- getText buffer start end True
                 newWordStart <- do
                     if selectLCP && currentWordStart == wordStart && (not $ null options)
@@ -365,7 +378,7 @@ processResults window tree store sourceView wordStart options selectLCP = do
                     liftIO $ widgetShowAll window
 
                 when (newWordStart /= currentWordStart) $
-                    replaceWordStart sourceView newWordStart
+                    replaceWordStart sourceView isWordChar newWordStart
 
 getRow tree = do
     Just model <- treeViewGetModel tree

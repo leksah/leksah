@@ -94,7 +94,7 @@ import IDE.Completion as Completion (complete,cancel)
 import IDE.TextEditor
 import qualified System.IO.UTF8 as UTF8
 import Data.IORef (writeIORef,readIORef,newIORef,IORef(..))
-import Data.Char (isAlphaNum)
+import Data.Char (isAlphaNum, isSymbol)
 import Control.Event (triggerEvent)
 import IDE.Metainfo.Provider (getSystemInfo, getWorkspaceInfo)
 import Distribution.Text (simpleParse)
@@ -484,10 +484,16 @@ builder' bs mbfn ind bn rbn ct prefs pp nb windows = do
             liftIO $ reflectIDE (do
                 case click of
                     DoubleClick -> do
-                        let isSelectChar a = (isAlphaNum a) || (a == '_')
+                        let isIdent a = isAlphaNum a || a == '\'' || a == '_'
+                        let isOp    a = isSymbol   a || a == ':'  || a == '\\'
                         (startSel, endSel) <- getSelectionBounds buffer
                         mbStartChar <- getChar startSel
                         mbEndChar <- getChar endSel
+                        let isSelectChar =
+                                case mbStartChar of
+                                    Just startChar | isIdent startChar -> isIdent
+                                    Just startChar | isOp    startChar -> isOp
+                                    _                                  -> const False
                         start <- case mbStartChar of
                             Just startChar | isSelectChar startChar -> do
                                 maybeIter <- backwardFindCharC startSel (not.isSelectChar) Nothing

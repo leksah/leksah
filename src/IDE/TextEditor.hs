@@ -130,7 +130,7 @@ module IDE.TextEditor (
 ) where
 
 import Prelude hiding(getChar, getLine)
-import Data.Char (isAlphaNum)
+import Data.Char (isAlphaNum, isSymbol)
 import Data.Maybe (fromJust)
 import Control.Monad (when)
 import Control.Monad.Reader (liftIO, ask)
@@ -1034,8 +1034,10 @@ onCompletion (GtkEditorView sv) start cancel = do
     ideR <- ask
     (GtkEditorBuffer sb) <- getBuffer (GtkEditorView sv)
     liftIO $ do
-        id1 <- sb `Gtk.afterBufferInsertText` \iter text ->
-            if (all (\c -> (isAlphaNum c) || (c == '.') || (c == '_')) text)
+        id1 <- sb `Gtk.afterBufferInsertText` \iter text -> do
+            let isIdent a = isAlphaNum a || a == '\'' || a == '_' || a == '.'
+            let isOp    a = isSymbol   a || a == ':'  || a == '\\'
+            if (all isIdent text) || (all isOp text)
                 then do
                     hasSel <- Gtk.textBufferHasSelection sb
                     if not hasSel
