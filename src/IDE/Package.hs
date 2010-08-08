@@ -336,7 +336,10 @@ packageInstall' :: IDEPackage -> (Bool -> IDEAction) -> IDEAction
 packageInstall' package continuation = catchIDE (do
    let dir = dropFileName (ipdCabalFile package)
    runExternalTool "Installing" "runhaskell" (["Setup","install"]
-                    ++ (ipdInstallFlags package)) (Just dir) (\ to -> logOutput to >> continuation True)) --TODO
+                    ++ (ipdInstallFlags package)) (Just dir) (\ output -> do
+                        logOutput output
+                        errs <- readIDE errorRefs
+                        continuation (last output == ToolExit ExitSuccess && not (any isError errs))))
         (\(e :: SomeException) -> putStrLn (show e))
 
 packageRegister :: IDEAction

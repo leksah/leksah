@@ -440,9 +440,13 @@ selectFirstReasonableTarget l revDeps =
     removeDeps packs p = packs \\ allDeps p
 
     allDeps :: IDEPackage -> [IDEPackage]
-    allDeps p = case Map.lookup p revDeps of
-                            Nothing   -> []
-                            Just list -> list ++ concatMap allDeps list
+    allDeps p = nub (allDeps' [] p)
+        where
+        allDeps' :: [IDEPackage] -> IDEPackage -> [IDEPackage]
+        allDeps' accu p | elem p accu = accu
+                        | otherwise   = case Map.lookup p revDeps of
+                                            Nothing   -> accu
+                                            Just list -> foldl' allDeps' (accu ++ list) list
 
 makePackages :: Bool -> Bool -> [IDEPackage] -> IDEAction
 makePackages _ _ []     = return ()
@@ -469,10 +473,11 @@ makePackages isBackgroundBuild needConfigure packages = do
                 -- install if backgroundLink is set or it is not a background build and either
                 -- AlwaysInstall is set or
                 -- deps are not empty
-                when ((not isBackgroundBuild || backgroundLink prefs') &&
+                if ((not isBackgroundBuild || backgroundLink prefs') &&
                     ((not (null deps) && autoInstall prefs' == InstallLibs)
                         || autoInstall prefs' == InstallAlways))
-                    $ packageInstall' package (cont2 deps package)
+                    then packageInstall' package (cont2 deps package)
+                    else cont2 deps package True
             else return () -- don't continue, when their was an error
     cont2 deps package res = do
         when res $ do
