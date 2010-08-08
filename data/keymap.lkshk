@@ -1,7 +1,12 @@
 --Default Keymap file for Leksah
---Allowed Modifiers are <shift>	<ctrl> <alt> <apple> <compose>
---<apple> is the Windows key on PC keyboards
+--Allowed Modifiers are <shift>	<alt> <ctrl> <control> <compose>
+--
+--There are two versions of control so we can map them differently on OS X 
+--<ctrl>    is the Apple key on OS X
+--<control> is the Control key on OS X
+--
 --<compose> is often labelled Alt Gr.
+--
 --The defined values for the keys can can be found at
 -- http://gitweb.freedesktop.org/?p=xorg/proto/x11proto.git;a=blob_plain;f=keysymdef.h.
 -- The names of the keys are the names of the macros without the prefix.
@@ -95,18 +100,16 @@ F3                          ->          EditFindNext     "Find the next occurenc
 <alt><shift>i           ->          AddAllImports
 
 -- "For the next to entries the <ctrl> modifier is mandatory"
-<ctrl>Page_Up           ->          FlipUp          "Switch to next pane in reverse recently used oder"
-<ctrl>Page_Down         ->          FlipDown        "Switch to next pane in recently used oder"
+<control>Page_Up           ->          FlipUp          "Switch to next pane in reverse recently used oder"
+<control>Page_Down         ->          FlipDown        "Switch to next pane in recently used oder"
 
-<ctrl>space             ->          StartComplete   "Initiate complete in a source buffer"
+<control>space             ->          StartComplete   "Initiate complete in a source buffer"
 
 F6 -> DebugStep
 F7 -> DebugStepLocal
 F8 -> DebugStepModule
 F9 -> DebugContinue
 
-<ctrl>Return             ->          ExecuteSelection
+<control>Return             ->          ExecuteSelection
 <ctrl>m                  ->          UpdateMetadataCurrent
-
-
 
