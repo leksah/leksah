@@ -155,7 +155,7 @@ gotoSource :: IDEAction
 gotoSource = do
     mbInfo <- getInfoCont
     case mbInfo of
-        Nothing     ->  do  ideMessage Normal "gotoSource:noDefition"
+        Nothing     ->  do  ideMessage Normal "gotoSource:noDefinition"
                             return ()
         Just info   ->  goToDefinition info >> return ()
 

@@ -541,8 +541,8 @@ prefsDescription configDir packages = NFDPP [
             readParser
             autoInstall
             (\b a -> a{autoInstall = b})
-            (enumEditor ["Install always after a succesful build",
-                "Install if it's a library with dependend packages in the workspace",
+            (enumEditor ["Install always after a successful build",
+                "Install if it's a library with dependent packages in the workspace",
                 "Never install"])
             (\i -> return ())
     ]),

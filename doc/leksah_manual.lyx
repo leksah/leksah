@@ -87,7 +87,7 @@ License
 
 \begin_layout Standard
 Leksah has been put under the GNU GENERAL PUBLIC LICENSE Version 2.
- The full license text can be found in the file data/gpl.TX in the distribution.
+ The full license text can be found in the file data/LICENSE in the distribution.
 \end_layout
 
 \begin_layout Standard
@@ -887,7 +887,7 @@ Leksah collects information about all installed packages on your system
  has not succeeded to extract the source locations and comments from a module
  or package; they are not consequential, except that some metainformation
  may be missing.
- The metada is cached and future starts only scan newly installed packaEges,
+ The metadata is cached and future starts only scan newly installed packages,
  starts only information for new packages will be installed.
 \end_layout
 

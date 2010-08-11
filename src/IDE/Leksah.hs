@@ -345,7 +345,7 @@ fDescription configPath = VFD emptyParams [
             boolEditor]
 
 --
--- | Called when leksah ist first called (the .leksah-xx directory does not exist)
+-- | Called when leksah is first called (the .leksah-xx directory does not exist)
 --
 firstStart :: Prefs -> IO ()
 firstStart prefs = do

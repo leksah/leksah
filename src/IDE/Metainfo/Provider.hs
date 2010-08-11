@@ -81,7 +81,7 @@ initInfo continuation = do
     prefs  <- readIDE prefs
     if collectAtStart prefs
         then do
-            ideMessage Normal "Now updating sytem metadata ..."
+            ideMessage Normal "Now updating system metadata ..."
             callCollector False True True $ \ _ -> do
                 ideMessage Normal "Now loading metadata ..."
                 loadSystemInfo

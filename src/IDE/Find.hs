@@ -290,7 +290,7 @@ constructFindReplace = reifyIDE $ \ ideR   -> do
     tooltipsSetTip tooltips entireWordButton "When selected only entire words are matched" ""
 
     caseSensitiveButton <- toggleToolButtonNew
-    toolButtonSetLabel caseSensitiveButton (Just "c. S.")
+    toolButtonSetLabel caseSensitiveButton (Just "Case")
     widgetSetName caseSensitiveButton "caseSensitiveButton"
     toolbarInsert toolbar caseSensitiveButton 0
     caseSensitiveButton `onToolButtonClicked` (doSearch toolbar Insert ideR)
