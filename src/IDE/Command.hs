@@ -41,7 +41,7 @@ import Graphics.UI.Gtk
         aboutDialogSetLicense, aboutDialogSetComments,
         aboutDialogSetCopyright, aboutDialogSetVersion, aboutDialogSetName,
         aboutDialogNew, mainQuit, widgetHide, widgetShow,
-        widgetSetSensitive, castToWidget, separatorMenuItemNew,
+        castToWidget, separatorMenuItemNew,
         containerGetChildren, Menu, widgetSetSizeRequest, toolbarSetStyle,
         toolbarSetIconSize, castToToolbar, castToMenuBar,
         uiManagerGetWidget, uiManagerGetAccelGroup, onActionActivate,

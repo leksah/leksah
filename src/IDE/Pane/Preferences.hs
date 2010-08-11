@@ -50,7 +50,6 @@ import Text.PrinterParser hiding (fieldParser,parameters)
 import IDE.TextEditor
 import IDE.Pane.SourceBuffer
 import IDE.Pane.Log
-import Default
 import IDE.Utils.FileUtils
 import IDE.Utils.GUIUtils
 import IDE.Debug
@@ -61,7 +60,6 @@ import IDE.Debug
 import Graphics.UI.Gtk.SourceView
     (sourceStyleSchemeManagerGetSchemeIds, sourceStyleSchemeManagerNew)
 import System.Time (getClockTime)
-import System.FilePath((</>))
 import qualified IDE.StrippedPrefs as SP
 import Control.Exception(SomeException,catch)
 import Prelude hiding(catch)

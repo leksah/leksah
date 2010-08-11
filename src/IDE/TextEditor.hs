@@ -138,9 +138,7 @@ import Control.Applicative ((<$>))
 
 import qualified Graphics.UI.Gtk as Gtk hiding(afterToggleOverwrite)
 import qualified Graphics.UI.Gtk.SourceView as Gtk
-import qualified Graphics.UI.Gtk.Multiline.TextView as Gtk
 import qualified Graphics.UI.Gtk.Gdk.Events as GtkOld
-import qualified Graphics.UI.Gtk.Gdk.EventM as Gtk
 import System.Glib.Attributes (AttrOp(..))
 
 #ifdef LEKSAH_WITH_YI

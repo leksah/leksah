@@ -100,7 +100,6 @@ import IDE.Metainfo.Provider (getSystemInfo, getWorkspaceInfo)
 import Distribution.Text (simpleParse)
 import Distribution.ModuleName (ModuleName)
 import qualified Data.Set as Set (member)
-import Graphics.UI.Gtk.Gdk.Events as Gtk
 import Graphics.UI.Gtk
        (Notebook, clipboardGet, selectionClipboard, dialogAddButton, widgetDestroy,
         fileChooserGetFilename, widgetShow, fileChooserDialogNew,
