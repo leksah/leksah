@@ -2,6 +2,8 @@
 
 . scripts/stage.sh || exit
 
+sed 's|\<ctrl\>q|\<alt\>F4|' <data/keymap.lkshk >"$GTK_PREFIX\share\$LEKSAH_X_X/keymap.lkshk"
+
 cd win32 || exit
 
 export CURL_PREFIX=`pkg-config --libs-only-L libcurl | sed 's|^-L||' | sed 's|/lib *$||'`

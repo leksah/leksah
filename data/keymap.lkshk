@@ -27,7 +27,7 @@
 <ctrl>w                    ->          FileClose       "Closes the current buffer"
 --<ctrl>x/k                ->          FileClose       "Closes the current buffer"
 
-<alt>F4                    ->          Quit            "Quits this program"
+<ctrl>q                    ->          Quit            "Quits this program"
 --<ctrl>x/<ctrl>c          ->          Quit            "Quits this program"
 
 --Edit
