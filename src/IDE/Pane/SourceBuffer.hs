@@ -470,7 +470,7 @@ builder' bs mbfn ind bn rbn ct prefs pp nb windows = do
 
     -- put it in a scrolled window
     sw <- getScrolledWindow sv
-    liftIO $ scrolledWindowSetPolicy sw PolicyAutomatic PolicyAutomatic
+    liftIO $ scrolledWindowSetPolicy sw PolicyNever PolicyAutomatic
     liftIO $ scrolledWindowSetShadowType sw ShadowIn
     modTimeRef <- liftIO $ newIORef modTime
     let buf = IDEBuffer mbfn bn ind sv sw modTimeRef
