@@ -1035,7 +1035,8 @@ onCompletion (GtkEditorView sv) start cancel = do
     liftIO $ do
         id1 <- sb `Gtk.afterBufferInsertText` \iter text -> do
             let isIdent a = isAlphaNum a || a == '\'' || a == '_' || a == '.'
-            let isOp    a = isSymbol   a || a == ':'  || a == '\\'
+            let isOp    a = isSymbol   a || a == ':'  || a == '\\' || a == '*' || a == '/' || a == '-'
+                                         || a == '!'  || a == '@' || a == '%' || a == '&' || a == '?'
             if (all isIdent text) || (all isOp text)
                 then do
                     hasSel <- Gtk.textBufferHasSelection sb

@@ -484,7 +484,8 @@ builder' bs mbfn ind bn rbn ct prefs pp nb windows = do
                 case click of
                     DoubleClick -> do
                         let isIdent a = isAlphaNum a || a == '\'' || a == '_'
-                        let isOp    a = isSymbol   a || a == ':'  || a == '\\'
+                        let isOp    a = isSymbol   a || a == ':'  || a == '\\' || a == '*' || a == '/' || a == '-'
+                                                     || a == '!'  || a == '@' || a == '%' || a == '&' || a == '?'
                         (startSel, endSel) <- getSelectionBounds buffer
                         mbStartChar <- getChar startSel
                         mbEndChar <- getChar endSel
