@@ -13,10 +13,12 @@
 -----------------------------------------------------------------------------
 
 module IDE.ImportTool (
-    addAllImports
+    addAllPackagesAndImports
 ,   addOneImport
 ,   addImport
+,   addPackage
 ,   parseNotInScope
+,   parseHiddenModule
 ) where
 
 import IDE.Core.State
@@ -26,7 +28,7 @@ import IDE.Metainfo.Provider
 import Text.PrettyPrint (render)
 import Distribution.Text (disp)
 import IDE.Pane.SourceBuffer
-       (belongsToPackage, maybeActiveBuf, fileSave,
+       (fileOpenThis, belongsToPackage, maybeActiveBuf, fileSave,
         inActiveBufContext, selectSourceBuf)
 import Graphics.UI.Gtk
 import Text.ParserCombinators.Parsec.Language (haskellStyle)
@@ -39,8 +41,8 @@ import Data.Maybe (fromJust)
 import Text.ParserCombinators.Parsec hiding (parse)
 import qualified Text.ParserCombinators.Parsec as Parsec (parse)
 import Graphics.UI.Editor.Simple (staticListEditor)
-import Control.Monad (when)
-import Distribution.Text (display)
+import Control.Monad (forM_, when)
+import Distribution.Text (simpleParse, Text(..), display)
 import Data.List (sort, nub, nubBy)
 import IDE.Utils.ServerConnection
 import Text.PrinterParser (prettyPrint)
@@ -51,18 +53,31 @@ import qualified Text.ParserCombinators.Parsec.Token as P
         makeTokenParser)
 import Graphics.UI.Gtk.Gdk.Events (Event(..))
 import Control.Monad.Trans (liftIO)
+import Distribution.PackageDescription.Parse
+       (writePackageDescription, readPackageDescription)
+import Distribution.Verbosity (normal)
+import IDE.Pane.PackageEditor (hasConfigs)
+import Distribution.Package
+       (PackageIdentifier(..), pkgName, PackageId, PackageName(..),
+        Dependency(..))
+import Distribution.Version (VersionRange(..))
+import Distribution.PackageDescription (buildDepends)
+import Distribution.PackageDescription.Configuration
+       (flattenPackageDescription)
+import Data.Version (Version(..))
 
 
 
 
 -- | Add all imports which gave error messages ...
-addAllImports :: IDEAction
-addAllImports = do
+addAllPackagesAndImports :: IDEAction
+addAllPackagesAndImports = do
     prefs' <- readIDE prefs
     let buildInBackground = backgroundBuild prefs'
     when buildInBackground $
         modifyIDE_ (\ide -> ide{prefs = prefs'{backgroundBuild = False}})
     errors <- readIDE errorRefs
+    forM_ errors addPackage
     addAll buildInBackground
         [ y | (x,y) <-
             nubBy (\ (p1,_) (p2,_) -> p1 == p2)
@@ -86,8 +101,7 @@ addOneImport = do
         Nothing -> do
             ideMessage Normal $ "No error selected"
             return ()
-        Just ref -> do
-            addImport ref [] (\ _ -> return ())
+        Just ref -> addImport ref [] (\ _ -> return ())
 
 -- | Add one missing import
 -- Returns a boolean, if the process should be stopped in case of multiple addition
@@ -121,6 +135,22 @@ addImport error descrList continuation =
                                                     then continuation (True,descrList)
                                                     else addImport' nis (logRefFullFilePath error)
                                                             descr descrList continuation
+
+addPackage :: LogRef -> IDEAction
+addPackage error = do
+    case parseHiddenModule (refDescription error) of
+        Nothing -> return ()
+        Just (HiddenModuleResult mod pack) -> do
+            let idePackage = logRefPackage error
+            package <- liftIO $ readPackageDescription normal (ipdCabalFile $ idePackage)
+            if hasConfigs package
+                then return ()
+                else do
+                    let flat = flattenPackageDescription package
+                    ideMessage Normal $ "addPackage " ++ (display $ pkgName pack)
+                    liftIO $ writePackageDescription (ipdCabalFile $ idePackage)
+                        flat { buildDepends =
+                            Dependency (pkgName pack) AnyVersion : buildDepends flat}
 
 getScopeForActiveBuffer :: IDEM (Maybe (GenScope, GenScope))
 getScopeForActiveBuffer = do
@@ -351,3 +381,37 @@ selectModuleDialog parentWindow list id mbQual mbDescr =
                                                 Just pm -> (render . disp . modu) pm == v) list)))
                 _                      -> return Nothing
 
+--testString =    "    Could not find module `Graphics.UI.Gtk':\n"
+--             ++ "      It is a member of the hidden package `gtk-0.11.0'.\n"
+--             ++ "      Perhaps you need to add `gtk' to the build-depends in your .cabal file.\n"
+--             ++ "      Use -v to see a list of the files searched for."
+--
+--test = parseHiddenModule testString == Just (HiddenModuleResult {hiddenModule = "Graphics.UI.Gtk", missingPackage = PackageIdentifier {pkgName = PackageName "gtk", pkgVersion = Version {versionBranch = [0,11,0], versionTags = []}}})
+
+data HiddenModuleResult = HiddenModuleResult {
+        hiddenModule      :: String
+    ,   missingPackage    :: PackageId}
+    deriving (Eq, Show)
+
+parseHiddenModule :: String -> (Maybe HiddenModuleResult)
+parseHiddenModule str =
+    case Parsec.parse hiddenModuleParser "" str of
+        Left e             -> Nothing
+        Right (mod, pack)  ->
+            case simpleParse pack of
+                Just p  -> Just $ HiddenModuleResult mod p
+                Nothing -> Nothing
+
+hiddenModuleParser :: CharParser () (String, String)
+hiddenModuleParser = do
+    whiteSpace
+    symbol "Could not find module `"
+    mod    <- many (noneOf "'")
+    symbol "':\n"
+    whiteSpace
+    symbol "It is a member of the hidden package `"
+    pack   <- many (noneOf "'")
+    symbol "'.\n"
+    many anyChar
+    return (mod, pack)
+    <?> "hiddenModuleParser"

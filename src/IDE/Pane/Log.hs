@@ -37,7 +37,9 @@ import IDE.Pane.SourceBuffer (markRefInSourceBuf,selectSourceBuf)
 import System.IO
 import Prelude hiding (catch)
 import Control.Exception hiding (try)
-import IDE.ImportTool (addImport, parseNotInScope, addAllImports)
+import IDE.ImportTool
+       (addPackage, parseHiddenModule, addImport, parseNotInScope,
+        addAllPackagesAndImports)
 import IDE.System.Process (runInteractiveProcess, ProcessHandle)
 import Graphics.UI.Gtk
        (textBufferSetText, textViewScrollToMark,
@@ -200,18 +202,26 @@ populatePopupMenu ideLog ideR menu = do
                 (zip logRefs' [0..(length logRefs')])) ideR
     case res of
         [(thisRef,n)] -> do
-            item0           <-  menuItemNewWithLabel "Add all imports"
+            item0           <-  menuItemNewWithLabel "Add All Packages and Imports"
             item0 `onActivateLeaf` do
-                reflectIDE addAllImports ideR
+                reflectIDE addAllPackagesAndImports ideR
             menuShellAppend menu item0
             case parseNotInScope (refDescription thisRef) of
                 Nothing   -> do
                     return ()
                 Just _  -> do
-                    item1   <-  menuItemNewWithLabel "Add import"
+                    item1   <-  menuItemNewWithLabel "Add Import"
                     item1 `onActivateLeaf` do
                         reflectIDE (addImport thisRef [] (\_ -> return ())) ideR
                     menuShellAppend menu item1
+            case parseHiddenModule (refDescription thisRef) of
+                Nothing   -> do
+                    return ()
+                Just _  -> do
+                    item2   <-  menuItemNewWithLabel "Add Package"
+                    item2 `onActivateLeaf` do
+                        reflectIDE (addPackage thisRef) ideR
+                    menuShellAppend menu item2
             widgetShowAll menu
             return ()
         otherwise   -> return ()

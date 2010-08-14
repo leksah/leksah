@@ -87,6 +87,7 @@ import Distribution.Simple
      VersionRange(..))
 import Default (Default(..))
 import IDE.Utils.GUIUtils
+import IDE.Pane.SourceBuffer (fileOpenThis)
 #if MIN_VERSION_Cabal(1,8,0)
 #else
 import Distribution.License
@@ -112,6 +113,7 @@ packageEdit = do
         then do
             lift $ ideMessage High ("Cabal file with configurations can't be edited with the "
                 ++ "current version of the editor")
+            lift $ fileOpenThis $ ipdCabalFile idePackage
             return ()
         else do
             lift $ editPackage (flattenPackageDescription package) dirName  modules (\ _ -> return ())
@@ -140,15 +142,17 @@ packageNew' mbDir activateAction = do
             cfn <-  liftIO $ cabalFileName dirName
             continue <- do
                 if isJust cfn
-                    then liftIO $ do
-                        md <- messageDialogNew Nothing [] MessageQuestion ButtonsYesNo
-                                    $ "There is already a .cabal file in this directory."
-                                    ++  " Continue anyway?"
-                        rid <- dialogRun md
-                        widgetDestroy md
-                        case rid of
-                            ResponseYes ->  return True
-                            otherwise   ->  return False
+                    then do
+                        window <- getMainWindow
+                        liftIO $ do
+                            md <- messageDialogNew Nothing [] MessageQuestion ButtonsNone
+                                        $ "There is already a .cabal file in this directory."
+                            dialogAddButton md "Continue Anyway" (ResponseUser 1)
+                            dialogAddButton md "Cancel" ResponseCancel
+                            dialogSetDefaultResponse md (ResponseUser 1)
+                            rid <- dialogRun md
+                            widgetDestroy md
+                            return $ rid == ResponseUser 1
                     else return True
             when continue $ do
                     modules <- liftIO $ do
@@ -320,13 +324,16 @@ builder' packageDir packageD packageDescr afterSaveAction initialPackagePath mod
         mbNewPackage' <- extractAndValidate packageD [getExt] fieldNames
         case mbNewPackage' of
             Nothing -> do
-                md <- messageDialogNew Nothing [] MessageQuestion ButtonsYesNo
-                                   "Package does not validate. Close anyway?"
+                md <- messageDialogNew (Just window) [] MessageQuestion ButtonsNone
+                                   "Package does not validate."
+                dialogAddButton md "Close Anyway" (ResponseUser 1)
+                dialogAddButton md "Cancel" ResponseCancel
+                dialogSetDefaultResponse md (ResponseUser 1)
                 rid <- dialogRun md
                 widgetDestroy md
                 case rid of
-                    ResponseYes ->  (reflectIDE (closePane packagePane >> return ()) ideR)
-                    otherwise   ->  return ()
+                    ResponseUser 1 ->  (reflectIDE (closePane packagePane >> return ()) ideR)
+                    otherwise      ->  return ()
             Just newPackage -> do
                 let packagePath = packageDir </> (display . pkgName . package . pd) newPackage
                 modified <- do

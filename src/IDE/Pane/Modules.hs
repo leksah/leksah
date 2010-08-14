@@ -1045,16 +1045,15 @@ delModule treeview store = do
 respDelModDialog :: IDEM (Bool)
 respDelModDialog = do
     window <- getMainWindow
-    dia <- liftIO $ messageDialogNew (Just window) [] MessageQuestion ButtonsYesNo "Are you sure ?"
-    liftIO $ widgetShowAll dia
-    resp <- liftIO $ dialogRun dia
-    if (resp == ResponseYes)
-        then do
-            liftIO $ widgetDestroy dia
-            return (True)
-        else do
-            liftIO $ widgetDestroy dia
-            return (False)
+    resp <- liftIO $ do
+        dia <- messageDialogNew (Just window) [] MessageQuestion ButtonsNone "Are you sure?"
+        dialogAddButton dia "Delete Module" (ResponseUser 1)
+        dialogAddButton dia "Cancel" ResponseCancel
+        dialogSetDefaultResponse dia ResponseCancel
+        resp <- dialogRun dia
+        widgetDestroy dia
+        return resp
+    return $ resp == ResponseUser 1
 
 addModule :: TreeView -> TreeStore (String, Maybe (ModuleDescr,PackageDescr)) -> PackageAction
 addModule treeView store = do

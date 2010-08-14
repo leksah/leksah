@@ -105,7 +105,7 @@ import Graphics.UI.Gtk
         fileChooserGetFilename, widgetShow, fileChooserDialogNew,
         notebookGetNthPage, notebookPageNum, widgetHide, dialogRun,
         messageDialogNew, postGUIAsync, scrolledWindowSetShadowType,
-        scrolledWindowSetPolicy, castToWidget, ScrolledWindow)
+        scrolledWindowSetPolicy, castToWidget, ScrolledWindow, dialogSetDefaultResponse)
 import System.Glib.MainLoop (priorityDefaultIdle, idleAdd)
 #if MIN_VERSION_gtk(0,10,5)
 import Graphics.UI.Gtk (Underline(..))
@@ -544,23 +544,25 @@ checkModTime buf = do
                                                   -- Praises to whoever finds out what happens and how to fix this
 #endif
                                     then do
-                                                    md <- messageDialogNew
-                                                            Nothing []
-                                                            MessageQuestion
-                                                            ButtonsYesNo
-                                                            ("File \"" ++ name ++ "\" has changed on disk. Load file from disk?")
-                                                    resp <- dialogRun md
-                                                    case resp of
-                                                        ResponseYes ->  do
-                                                            reflectIDE (revert buf) ideR
-                                                            liftIO $ widgetHide md
-                                                            return False
-                                                        ResponseNo  -> do
-                                                            writeIORef (modTime buf) (Just nmt)
-                                                            widgetHide md
-                                                            return True
-                                                        _           ->  do return False
-                                                else return False
+                                        md <- messageDialogNew
+                                                Nothing []
+                                                MessageQuestion
+                                                ButtonsNone
+                                                ("File \"" ++ name ++ "\" has changed on disk.")
+                                        dialogAddButton md "Load From Disk" (ResponseUser 1)
+                                        dialogAddButton md "Don't Load" (ResponseUser 2)
+                                        dialogSetDefaultResponse md (ResponseUser 1)
+                                        resp <- dialogRun md
+                                        widgetDestroy md
+                                        case resp of
+                                            ResponseUser 1 -> do
+                                                reflectIDE (revert buf) ideR
+                                                return False
+                                            ResponseUser 2 -> do
+                                                writeIORef (modTime buf) (Just nmt)
+                                                return True
+                                            _           ->  do return False
+                                    else return False
                         else return False
                 Nothing -> return False)
 
@@ -708,8 +710,11 @@ fileSaveBuffer query nb ebuf ideBuf i = do
                             resp <- if dfe
                                 then do md <- messageDialogNew (Just window) []
                                                 MessageQuestion
-                                                ButtonsYesNo
-                                                "File already exist. Overwrite?"
+                                                ButtonsNone
+                                                "File already exist."
+                                        dialogAddButton md "Overwrite" ResponseYes
+                                        dialogAddButton md "Cancel" ResponseCancel
+                                        dialogSetDefaultResponse md ResponseCancel
                                         resp <- dialogRun md
                                         widgetHide md
                                         return resp
@@ -724,7 +729,6 @@ fileSaveBuffer query nb ebuf ideBuf i = do
                                         newTextBuffer panePath (takeFileName fn) (Just cfn)
                                         )   ideR
                                     return True
-                                ResponseNo -> return False
                                 _          -> return False
     where
         fileSave' :: Bool -> Bool -> Notebook -> IDEBuffer -> Bool -> CandyTable -> FilePath -> IDEAction
@@ -919,17 +923,22 @@ fileOpenThis fp =  do
                         Nothing -> False) buffers
     case buf of
         hdb:tl -> do
-            md <- liftIO $messageDialogNew
-                    Nothing []
-                    MessageQuestion
-                    ButtonsYesNo
-                    ("Buffer already open. " ++
-                     "Make active instead of opening a second time?")
-            resp <- liftIO $dialogRun md
-            liftIO $ widgetDestroy md
+            window <- getMainWindow
+            resp <- liftIO $ do
+                md <- messageDialogNew
+                        (Just window) []
+                        MessageQuestion
+                        ButtonsNone
+                        "Buffer already open."
+                dialogAddButton md "Make Active" (ResponseUser 1)
+                dialogAddButton md "Open Second" (ResponseUser 2)
+                dialogSetDefaultResponse md (ResponseUser 1)
+                resp <- dialogRun md
+                widgetDestroy md
+                return resp
             case resp of
-                ResponseNo  ->  reallyOpen prefs fpc
-                _           ->  makeActive hdb
+                ResponseUser 2 -> reallyOpen prefs fpc
+                _              -> makeActive hdb
         [] -> reallyOpen prefs fpc
     where
         reallyOpen prefs fpc =   do

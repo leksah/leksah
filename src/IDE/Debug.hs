@@ -100,18 +100,18 @@ debugCommand' command handler = do
 debugToggled :: IDEAction
 debugToggled = do
     toggled <- getDebugToggled
-    maybeGhci <- readIDE ghciState
-    case (toggled, maybeGhci) of
+    maybeDebug <- readIDE debugState
+    case (toggled, maybeDebug) of
         (True, Nothing) -> packageTry_ $ debugStart
         (False, Just _) -> debugQuit
         _               -> return ()
 
 debugQuit :: IDEAction
 debugQuit = do
-    maybeGhci <- readIDE ghciState
-    case maybeGhci of
-        Just ghci -> runDebug (debugCommand ":quit" logOutput) ghci
-        _         -> return ()
+    maybeDebug <- readIDE debugState
+    case maybeDebug of
+        Just debug -> runDebug (debugCommand ":quit" logOutput) debug
+        _          -> return ()
 
 debugExecuteSelection :: IDEAction
 debugExecuteSelection = do
@@ -161,27 +161,32 @@ debugBack = packageTry_ $ do
     currentHist' <- lift $ readIDE currentHist
     rootPath <- lift activeProjectDir
     lift $ modifyIDE_ (\ide -> ide{currentHist = min (currentHist' - 1) 0})
-    tryDebug_ $ debugCommand ":back" (logOutputForHistoricContext rootPath)
+    tryDebug_ $ do
+        (debugPackage, _) <- ask
+        debugCommand ":back" (logOutputForHistoricContext debugPackage)
 
 debugForward :: IDEAction
 debugForward = packageTry_ $ do
     currentHist' <- lift $ readIDE currentHist
     rootPath <- lift activeProjectDir
     lift $ modifyIDE_ (\ide -> ide{currentHist = currentHist' + 1})
-    tryDebug_ $ debugCommand ":forward" (logOutputForHistoricContext rootPath)
-
+    tryDebug_ $ do
+        (debugPackage, _) <- ask
+        debugCommand ":forward" (logOutputForHistoricContext debugPackage)
 
 debugStop :: IDEAction
 debugStop = do
-    maybeGhci <- readIDE ghciState
-    liftIO $ case maybeGhci of
-        Just ghci -> toolProcess ghci >>= interruptProcessGroup
+    maybeDebug <- readIDE debugState
+    liftIO $ case maybeDebug of
+        Just (_, ghci) -> toolProcess ghci >>= interruptProcessGroup
         Nothing -> return ()
 
 debugContinue :: IDEAction
 debugContinue = packageTry_ $ do
     rootPath <- lift $ activeProjectDir
-    tryDebug_ $ debugCommand ":continue" (logOutputForLiveContext rootPath)
+    tryDebug_ $ do
+        (debugPackage, _) <- ask
+        debugCommand ":continue" (logOutputForLiveContext debugPackage)
 
 debugDeleteAllBreakpoints :: IDEAction
 debugDeleteAllBreakpoints = do
@@ -226,8 +231,9 @@ debugStep :: IDEAction
 debugStep = packageTry_ $ do
     rootPath <- lift $ activeProjectDir
     tryDebug_ $ do
+        (debugPackage, _) <- ask
         debugSetLiberalScope
-        debugCommand ":step" (logOutputForLiveContext rootPath)
+        debugCommand ":step" (logOutputForLiveContext debugPackage)
 
 debugStepExpression :: IDEAction
 debugStepExpression = do
@@ -238,28 +244,35 @@ debugStepExpression = do
 
 debugStepExpr :: Maybe String -> DebugAction
 debugStepExpr maybeText = do
+    (debugPackage, _) <- ask
     rootPath <- lift $ activeProjectDir
     case maybeText of
-        Just text -> debugCommand (":step " ++ text) (logOutputForLiveContext rootPath)
+        Just text -> debugCommand (":step " ++ text) (logOutputForLiveContext debugPackage)
         Nothing   -> lift $ ideMessage Normal "Please select an expression in the editor"
 
 debugStepLocal :: IDEAction
 debugStepLocal = packageTry_ $ do
     rootPath <- lift $ activeProjectDir
-    tryDebug_ $ debugCommand ":steplocal" (logOutputForLiveContext rootPath)
+    tryDebug_ $ do
+        (debugPackage, _) <- ask
+        debugCommand ":steplocal" (logOutputForLiveContext debugPackage)
 
 debugStepModule :: IDEAction
 debugStepModule = packageTry_ $ do
     rootPath <- lift $ activeProjectDir
-    tryDebug_ $ debugCommand ":stepmodule" (logOutputForLiveContext rootPath)
+    tryDebug_ $ do
+        (debugPackage, _) <- ask
+        debugCommand ":stepmodule" (logOutputForLiveContext debugPackage)
 
 debugTrace :: IDEAction
 debugTrace = packageTry_ $ do
     rootPath <- lift $ activeProjectDir
-    tryDebug_ $ debugCommand ":trace" (\to -> do
-        logOutputForLiveContext rootPath to
-        triggerEventIDE TraceChanged
-        return ())
+    tryDebug_ $ do
+        (debugPackage, _) <- ask
+        debugCommand ":trace" (\to -> do
+            logOutputForLiveContext debugPackage to
+            triggerEventIDE TraceChanged
+            return ())
 
 debugTraceExpression :: IDEAction
 debugTraceExpression = do
@@ -269,11 +282,12 @@ debugTraceExpression = do
         debugTraceExpr maybeText
 
 debugTraceExpr :: Maybe String -> DebugAction
-debugTraceExpr maybeText =
+debugTraceExpr maybeText = do
+    (debugPackage, _) <- ask
     case maybeText of
         Just text -> debugCommand (":trace " ++ text) (\to -> do
             rootPath <- activeProjectDir
-            logOutputForLiveContext rootPath to
+            logOutputForLiveContext debugPackage to
             triggerEventIDE TraceChanged
             return ())
         Nothing   -> lift $ ideMessage Normal "Please select an expression in the editor"
@@ -285,12 +299,16 @@ debugShowBindings = packageTry_ $ tryDebug_ $ debugCommand ":show bindings" logO
 debugShowBreakpoints :: IDEAction
 debugShowBreakpoints = packageTry_ $ do
     rootPath <- lift activeProjectDir
-    tryDebug_ $ debugCommand ":show breaks" (logOutputForBreakpoints rootPath)
+    tryDebug_ $ do
+        (debugPackage, _) <- ask
+        debugCommand ":show breaks" (logOutputForBreakpoints debugPackage)
 
 debugShowContext :: IDEAction
 debugShowContext = packageTry_ $ do
     rootPath <- lift activeProjectDir
-    tryDebug_ $ debugCommand ":show context" (logOutputForLiveContext rootPath)
+    tryDebug_ $ do
+        (debugPackage, _) <- ask
+        debugCommand ":show context" (logOutputForLiveContext debugPackage)
 
 debugShowModules :: IDEAction
 debugShowModules = packageTry_ $ tryDebug_ $ debugCommand ":show modules" $
@@ -348,14 +366,16 @@ debugSetBreakpoint = do
             maybeText <- selectedText
             case maybeText of
                 Just text -> packageTry_ $ tryDebug_ $ do
+                    (debugPackage, _) <- ask
                     debugCommand (":module *" ++ moduleName) logOutput
-                    debugCommand (":break " ++ text) (logOutputForSetBreakpoint rootPath)
+                    debugCommand (":break " ++ text) (logOutputForSetBreakpoint debugPackage)
                 Nothing   -> do
                     maybeLocation <- selectedLocation
                     case maybeLocation of
-                        Just (line, lineOffset) -> packageTry_ $ tryDebug_ $
+                        Just (line, lineOffset) -> packageTry_ $ tryDebug_ $ do
+                            (debugPackage, _) <- ask
                             debugCommand (":break " ++ moduleName ++ " " ++ (show (line+1)) ++ " " ++
-                                (show lineOffset)) (logOutputForSetBreakpoint rootPath)
+                                (show lineOffset)) (logOutputForSetBreakpoint debugPackage)
                         Nothing -> ideMessage Normal "Unknown error setting breakpoint"
             ref <- ask
             return ()

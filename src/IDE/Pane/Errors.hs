@@ -29,7 +29,9 @@ import Control.Monad.Reader
 import Graphics.UI.Gtk.General.Enums
     (Click(..), MouseButton(..))
 import Graphics.UI.Gtk.Gdk.Events (Event(..))
-import IDE.ImportTool (addImport,parseNotInScope, addAllImports)
+import IDE.ImportTool
+       (addPackage, parseHiddenModule, addImport, parseNotInScope,
+        addAllPackagesAndImports)
 import Data.List (elemIndex)
 import IDE.LogRef (showSourceSpan)
 
@@ -166,20 +168,28 @@ errorViewPopup ideR  store treeView (Button _ click _ _ _ _ button _ _)
         then do
             mbSel           <-  getSelectedError treeView store
             theMenu         <-  menuNew
-            item0           <-  menuItemNewWithLabel "Add all imports"
+            item0           <-  menuItemNewWithLabel "Add All Packages and Imports"
             item0 `onActivateLeaf` do
-                reflectIDE addAllImports ideR
+                reflectIDE addAllPackagesAndImports ideR
             menuShellAppend theMenu item0
             case mbSel of
-                Just sel ->
+                Just sel -> do
                     case parseNotInScope (refDescription sel) of
-                    Nothing   -> do
-                        return ()
-                    Just _  -> do
-                        item1   <-  menuItemNewWithLabel "Add import"
-                        item1 `onActivateLeaf` do
-                            reflectIDE (addImport sel [] (\ _ -> return ())) ideR
-                        menuShellAppend theMenu item1
+                        Nothing   -> do
+                            return ()
+                        Just _  -> do
+                            item1   <-  menuItemNewWithLabel "Add Import"
+                            item1 `onActivateLeaf` do
+                                reflectIDE (addImport sel [] (\ _ -> return ())) ideR
+                            menuShellAppend theMenu item1
+                    case parseHiddenModule (refDescription sel) of
+                        Nothing   -> do
+                            return ()
+                        Just _  -> do
+                            item1   <-  menuItemNewWithLabel "Add Package"
+                            item1 `onActivateLeaf` do
+                                reflectIDE (addPackage sel) ideR
+                            menuShellAppend theMenu item1
                 Nothing -> return ()
             menuPopup theMenu Nothing
             widgetShowAll theMenu

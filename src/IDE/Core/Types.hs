@@ -110,7 +110,7 @@ import Data.IORef (writeIORef, readIORef, IORef(..))
 import Numeric (showHex)
 import Control.Event
     (EventSelector(..), EventSource(..), Event(..))
-import System.FilePath ((</>))
+import System.FilePath (dropFileName, (</>))
 import IDE.Core.CTypes
 import IDE.StrippedPrefs(RetrieveStrategy)
 import System.IO (Handle)
@@ -147,7 +147,7 @@ data IDE            =  IDE {
 ,   recentFiles     ::   [FilePath]
 ,   recentWorkspaces ::  [FilePath]
 ,   runningTool     ::   Maybe ProcessHandle
-,   ghciState       ::   Maybe ToolState
+,   debugState      ::   Maybe (IDEPackage, ToolState)
 ,   completion      ::   Maybe CompletionWindow
 ,   yiControl       ::   Yi.Control
 ,   server          ::   Maybe Handle
@@ -207,10 +207,10 @@ runPackage = runReaderT
 -- ---------------------------------------------------------------------
 -- Monad for functions that need to use the GHCi debugger
 --
-type DebugM = ReaderT ToolState IDEM
+type DebugM = ReaderT (IDEPackage, ToolState) IDEM
 type DebugAction = DebugM ()
 
-runDebug :: DebugM a -> ToolState -> IDEM a
+runDebug :: DebugM a -> (IDEPackage, ToolState) -> IDEM a
 runDebug = runReaderT
 
 -- ---------------------------------------------------------------------
@@ -421,7 +421,7 @@ data LogRefType = WarningRef | ErrorRef | BreakpointRef | ContextRef deriving (E
 
 data LogRef = LogRef {
     logRefSrcSpan       ::   SrcSpan
-,   logRefRootPath      ::   FilePath
+,   logRefPackage       ::   IDEPackage
 ,   refDescription      ::   String
 ,   logLines            ::   (Int,Int)
 ,   logRefType          ::   LogRefType
@@ -439,6 +439,8 @@ displaySrcSpan s = srcSpanFilename s ++ ":" ++
         else show (srcSpanStartLine s) ++ ":" ++
             show (srcSpanStartColumn s) ++ "-" ++ show (srcSpanEndColumn s)
 
+logRefRootPath :: LogRef -> FilePath
+logRefRootPath = dropFileName . ipdCabalFile . logRefPackage
 
 logRefFilePath :: LogRef -> FilePath
 logRefFilePath = srcSpanFilename . logRefSrcSpan

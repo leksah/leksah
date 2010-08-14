@@ -57,7 +57,9 @@ import Text.PrinterParser
      FieldDescriptionS(..))
 import qualified Text.PrettyPrint as  PP (text)
 import Graphics.UI.Gtk
-    (widgetDestroy, dialogRun, messageDialogNew, dialogAddButton, Window(..), widgetHide)
+       (dialogSetDefaultResponse, windowWindowPosition, widgetDestroy,
+        dialogRun, messageDialogNew, dialogAddButton, Window(..),
+        widgetHide, DialogFlags(..))
 import IDE.Pane.PackageEditor (packageNew', choosePackageFile)
 import Data.List ((\\), foldl', nub, delete)
 import IDE.Package
@@ -85,6 +87,8 @@ import qualified GHC.List as  List (or)
 import IDE.Pane.SourceBuffer
        (fileOpenThis, belongsToPackage, fileCheckAll)
 import qualified System.IO.UTF8 as UTF8 (writeFile)
+import System.Glib.Attributes (AttrOp(..), set)
+import Graphics.UI.Gtk.General.Enums (WindowPosition(..))
 
 
 setWorkspace :: Maybe Workspace -> IDEAction
@@ -168,13 +172,18 @@ workspaceTry f = do
     case maybeWorkspace of
         Just ws -> liftM Just $ runWorkspace f ws
         Nothing -> do
-            md <- liftIO $ messageDialogNew Nothing [] MessageQuestion ButtonsCancel (
-                    "You need to have a workspace for this to work. "
-                 ++ "Would you like to open an existing workspace or create a new one?")
-            liftIO $ dialogAddButton md "New Workspace" (ResponseUser 1)
-            liftIO $ dialogAddButton md "Open Workspace" (ResponseUser 2)
-            resp <- liftIO $ dialogRun md
-            liftIO $ widgetHide md
+            mainWindow <- getMainWindow
+            resp <- liftIO $ do
+                md <- messageDialogNew (Just mainWindow) [DialogModal] MessageQuestion ButtonsNone
+                        "You need to have a workspace for this to work."
+                dialogAddButton md "New Workspace" (ResponseUser 1)
+                dialogAddButton md "Open Workspace" (ResponseUser 2)
+                dialogAddButton md "Cancel" (ResponseCancel)
+                dialogSetDefaultResponse md (ResponseUser 2)
+                set md [ windowWindowPosition := WinPosCenterOnParent ]
+                resp <- dialogRun md
+                widgetHide md
+                return resp
             case resp of
                 ResponseUser 1 -> do
                     workspaceNew
@@ -200,14 +209,19 @@ workspaceOpenThis askForSession mbFilePath =
             exists <- liftIO $ doesFileExist spath
             wantToLoadSession <-
                 if exists && askForSession
-                    then liftIO $ do
-                        md  <- messageDialogNew Nothing [] MessageQuestion ButtonsYesNo
-                                $ "Load the session settings stored with this workspace?"
-                        rid <- dialogRun md
-                        widgetDestroy md
-                        case rid of
-                            ResponseYes ->  return True
-                            otherwise   ->  return False
+                    then do
+                        window <- getMainWindow
+                        liftIO $ do
+                            md  <- messageDialogNew Nothing [] MessageQuestion ButtonsNone
+                                    $ "There are session settings stored with this workspace."
+                            dialogAddButton md "Load Session" ResponseYes
+                            dialogAddButton md "Ignore Session" ResponseCancel
+                            dialogSetDefaultResponse md ResponseYes
+                            rid <- dialogRun md
+                            widgetDestroy md
+                            case rid of
+                                ResponseYes ->  return True
+                                otherwise   ->  return False
                     else return False
             if wantToLoadSession
                 then triggerEventIDE (LoadSession spath) >> return ()
@@ -311,13 +325,17 @@ packageTry f = do
         case maybePackage of
             Just p  -> liftM Just $ lift $ runPackage f p
             Nothing -> do
-                md <- liftIO $ messageDialogNew Nothing [] MessageQuestion ButtonsCancel (
-                        "You need to have an active package for this to work. "
-                     ++ "Would you like to add existing package or create a new one?")
-                liftIO $ dialogAddButton md "New Package" (ResponseUser 1)
-                liftIO $ dialogAddButton md "Add Package" (ResponseUser 2)
-                resp <- liftIO $ dialogRun md
-                liftIO $ widgetHide md
+                window <- lift $ getMainWindow
+                resp <- liftIO $ do
+                    md <- messageDialogNew (Just window) [] MessageQuestion ButtonsNone
+                            "You need to have an active package for this to work."
+                    dialogAddButton md "New Package" (ResponseUser 1)
+                    dialogAddButton md "Add Package" (ResponseUser 2)
+                    dialogAddButton md "Cancel" ResponseCancel
+                    dialogSetDefaultResponse md (ResponseUser 2)
+                    resp <- dialogRun md
+                    widgetHide md
+                    return resp
                 case resp of
                     ResponseUser 1 -> do
                         workspacePackageNew

@@ -269,7 +269,7 @@ isStartingOrClosing _               = False
 
 isInterpreting :: IDEM Bool
 isInterpreting = do
-    readIDE ghciState >>= \mb -> return (isJust mb)
+    readIDE debugState >>= \mb -> return (isJust mb)
 
 triggerEventIDE :: IDEEvent -> IDEM IDEEvent
 triggerEventIDE e = ask >>= \ideR -> triggerEvent ideR e

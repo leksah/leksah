@@ -175,8 +175,7 @@ packageConfig' package continuation = do
                 modifyIDE_ (\ide -> ide{activePack = Just pack, bufferProjCache = Map.empty})
                 triggerEventIDE UpdateWorkspaceInfo
                 triggerEventIDE (WorkspaceChanged False True)
-                errs <- readIDE errorRefs
-                continuation (last output == ToolExit ExitSuccess && not (any isError errs))
+                continuation (last output == ToolExit ExitSuccess)
                 return ()
             Nothing -> do
                 ideMessage Normal "Can't read package file"
@@ -208,14 +207,14 @@ runCabalBuild backgroundBuild package shallConfigure continuation = do
                     else ["--ghc-options=-c", "--with-ar=true", "--with-ld=true"]
                         ++ ipdBuildFlags package)
     runExternalTool "Building" "runhaskell" args (Just dir) $ \output -> do
-        logOutputForBuild dir backgroundBuild output
+        logOutputForBuild package backgroundBuild output
         errs <- readIDE errorRefs
         if shallConfigure && isConfigError output
             then
                 packageConfig' package (\ b ->
                     when b $ runCabalBuild backgroundBuild package False continuation)
             else do
-                continuation (last output == ToolExit ExitSuccess && not (any isError errs))
+                continuation (last output == ToolExit ExitSuccess)
                 return ()
 
 isConfigError :: [ToolOutput] -> Bool
@@ -227,11 +226,11 @@ isConfigError = or . (map isCErr)
     str2 = "please re-configure"
 
 buildPackage :: Bool -> IDEPackage -> (Bool -> IDEAction) -> IDEAction
-buildPackage backgroundBuild  package continuation = catchIDE (do
+buildPackage backgroundBuild package continuation = catchIDE (do
     ideR      <- ask
     prefs     <- readIDE prefs
-    maybeGhci <- readIDE ghciState
-    case maybeGhci of
+    maybeDebug <- readIDE debugState
+    case maybeDebug of
         Nothing -> do
             alreadyRunning <- isRunning
             if alreadyRunning
@@ -243,12 +242,13 @@ buildPackage backgroundBuild  package continuation = catchIDE (do
                             return False) priorityDefaultIdle 1000
                         return ()
                 else runCabalBuild backgroundBuild package True continuation
-        Just ghci -> do
+        Just debug@(_, ghci) -> do
+            -- TODO check debug package matches active package
             ready <- liftIO $ isEmptyMVar (currentToolCommand ghci)
             when ready $ do
                 let dir = dropFileName (ipdCabalFile package)
                 when (saveAllBeforeBuild prefs) (do fileSaveAll belongsToWorkspace; return ())
-                runDebug (executeDebugCommand ":reload" (logOutputForBuild dir backgroundBuild)) ghci
+                runDebug (executeDebugCommand ":reload" (logOutputForBuild package backgroundBuild)) debug
     )
     (\(e :: SomeException) -> sysMessage Normal (show e))
 
@@ -290,9 +290,9 @@ packageRun = do
     package <- ask
     lift $ catchIDE (do
         ideR        <- ask
-        maybeGhci   <- readIDE ghciState
+        maybeDebug   <- readIDE debugState
         pd <- liftIO $ readPackageDescription normal (ipdCabalFile package) >>= return . flattenPackageDescription
-        case maybeGhci of
+        case maybeDebug of
             Nothing -> do
                 case executables pd of
                     (Executable name _ _):_ -> do
@@ -302,12 +302,13 @@ packageRun = do
                     otherwise -> do
                         sysMessage Normal "no executable in selected package"
                         return ()
-            Just ghci -> do
+            Just debug -> do
+                -- TODO check debug package matches active package
                 case executables pd of
                     (Executable _ mainFilePath _):_ -> do
                         runDebug (do
                             executeDebugCommand (":module *" ++ (map (\c -> if c == '/' then '.' else c) (takeWhile (/= '.') mainFilePath))) logOutput
-                            executeDebugCommand (":main " ++ (unwords (ipdExeFlags package))) logOutput) ghci
+                            executeDebugCommand (":main " ++ (unwords (ipdExeFlags package))) logOutput) debug
                     otherwise -> do
                         sysMessage Normal "no executable in selected package"
                         return ())
@@ -324,8 +325,7 @@ packageInstall' package continuation = catchIDE (do
    runExternalTool "Installing" "runhaskell" (["Setup","install"]
                     ++ (ipdInstallFlags package)) (Just dir) (\ output -> do
                         logOutput output
-                        errs <- readIDE errorRefs
-                        continuation (last output == ToolExit ExitSuccess && not (any isError errs))))
+                        continuation (last output == ToolExit ExitSuccess)))
         (\(e :: SomeException) -> putStrLn (show e))
 
 packageRegister :: PackageAction
@@ -554,15 +554,14 @@ debugStart :: PackageAction
 debugStart = do
     package   <- ask
     lift $ catchIDE (do
-        ideRef    <- ask
-        prefs'    <- readIDE prefs
-        maybeGhci <- readIDE ghciState
-        case maybeGhci of
+        ideRef     <- ask
+        prefs'     <- readIDE prefs
+        maybeDebug <- readIDE debugState
+        case maybeDebug of
             Nothing -> do
-                let dir = dropFileName (ipdCabalFile package)
                 ghci <- reifyIDE $ \ideR -> newGhci (ipdBuildFlags package) (interactiveFlags prefs')
-                    $ \output -> reflectIDE (logOutputForBuild dir True output) ideR
-                modifyIDE_ (\ide -> ide {ghciState = Just ghci})
+                    $ \output -> reflectIDE (logOutputForBuild package True output) ideR
+                modifyIDE_ (\ide -> ide {debugState = Just (package, ghci)})
                 triggerEventIDE (Sensitivity [(SensitivityInterpreting, True)])
                 setDebugToggled True
                 -- Fork a thread to wait for the output from the process to close
@@ -570,7 +569,7 @@ debugStart = do
                     readMVar (outputClosed ghci)
                     reflectIDE (do
                         setDebugToggled False
-                        modifyIDE_ (\ide -> ide {ghciState = Nothing})
+                        modifyIDE_ (\ide -> ide {debugState = Nothing})
                         triggerEventIDE (Sensitivity [(SensitivityInterpreting, False)])
                         -- Kick of a build if one is not already due
                         modifiedPacks <- fileCheckAll belongsToPackage
@@ -592,20 +591,28 @@ debugStart = do
 
 tryDebug :: DebugM a -> PackageM (Maybe a)
 tryDebug f = do
-    maybeGhci <- lift $ readIDE ghciState
-    case maybeGhci of
-        Just ghci -> liftM Just $ lift $ runDebug f ghci
+    maybeDebug <- lift $ readIDE debugState
+    case maybeDebug of
+        Just debug -> do
+            -- TODO check debug package matches active package
+            liftM Just $ lift $ runDebug f debug
         _ -> do
-            md <- liftIO $ messageDialogNew Nothing [] MessageQuestion ButtonsYesNo
-                    "GHCi debugger is not running.  Would you like to start it?"
-            resp <- liftIO $ dialogRun md
-            liftIO $ widgetHide md
+            window <- lift $ getMainWindow
+            resp <- liftIO $ do
+                md <- messageDialogNew (Just window) [] MessageQuestion ButtonsNone
+                        "GHCi debugger is not running."
+                dialogAddButton md "Start GHCi" (ResponseUser 1)
+                dialogAddButton md "Cancel" ResponseCancel
+                dialogSetDefaultResponse md (ResponseUser 1)
+                resp <- dialogRun md
+                widgetDestroy md
+                return resp
             case resp of
-                ResponseYes -> do
+                ResponseUser 1 -> do
                     debugStart
-                    maybeGhci <- lift $ readIDE ghciState
-                    case maybeGhci of
-                        Just ghci -> liftM Just $ lift $ runDebug f ghci
+                    maybeDebug <- lift $ readIDE debugState
+                    case maybeDebug of
+                        Just debug -> liftM Just $ lift $ runDebug f debug
                         _ -> return Nothing
                 _  -> return Nothing
 
@@ -614,7 +621,7 @@ tryDebug_ f = tryDebug f >> return ()
 
 executeDebugCommand :: String -> ([ToolOutput] -> IDEAction) -> DebugAction
 executeDebugCommand command handler = do
-    ghci <- ask
+    (_, ghci) <- ask
     lift $ do
         triggerEventIDE (StatusbarChanged [CompartmentState command, CompartmentBuild True])
         reifyIDE $ \ideR -> do
