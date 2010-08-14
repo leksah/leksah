@@ -604,6 +604,7 @@ tryDebug f = do
                 dialogAddButton md "Start GHCi" (ResponseUser 1)
                 dialogAddButton md "Cancel" ResponseCancel
                 dialogSetDefaultResponse md (ResponseUser 1)
+                set md [ windowWindowPosition := WinPosCenterOnParent ]
                 resp <- dialogRun md
                 widgetDestroy md
                 return resp

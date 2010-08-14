@@ -108,13 +108,13 @@ import Graphics.UI.Gtk
         scrolledWindowSetPolicy, castToWidget, ScrolledWindow, dialogSetDefaultResponse)
 import System.Glib.MainLoop (priorityDefaultIdle, idleAdd)
 #if MIN_VERSION_gtk(0,10,5)
-import Graphics.UI.Gtk (Underline(..))
+import Graphics.UI.Gtk (windowWindowPosition, Underline(..))
 #else
 import Graphics.UI.Gtk.Pango.Types (Underline(..))
 #endif
 import qualified Graphics.UI.Gtk as Gtk (Window, Notebook)
 import Graphics.UI.Gtk.General.Enums
-       (ShadowType(..), PolicyType(..))
+       (WindowPosition(..), ShadowType(..), PolicyType(..))
 import Graphics.UI.Gtk.Windows.MessageDialog
        (ButtonsType(..), MessageType(..))
 #if MIN_VERSION_gtk(0,10,5)
@@ -124,6 +124,7 @@ import Graphics.UI.Gtk.General.Structs (ResponseId(..))
 #endif
 import Graphics.UI.Gtk.Selectors.FileChooser
        (FileChooserAction(..))
+import System.Glib.Attributes (AttrOp(..), set)
 
 
 --
@@ -552,6 +553,7 @@ checkModTime buf = do
                                         dialogAddButton md "Load From Disk" (ResponseUser 1)
                                         dialogAddButton md "Don't Load" (ResponseUser 2)
                                         dialogSetDefaultResponse md (ResponseUser 1)
+                                        set md [ windowWindowPosition := WinPosCenterOnParent ]
                                         resp <- dialogRun md
                                         widgetDestroy md
                                         case resp of
@@ -715,6 +717,7 @@ fileSaveBuffer query nb ebuf ideBuf i = do
                                         dialogAddButton md "Overwrite" ResponseYes
                                         dialogAddButton md "Cancel" ResponseCancel
                                         dialogSetDefaultResponse md ResponseCancel
+                                        set md [ windowWindowPosition := WinPosCenterOnParent ]
                                         resp <- dialogRun md
                                         widgetHide md
                                         return resp
@@ -805,6 +808,7 @@ fileClose' nb ebuf currentBuffer i = do
                 dialogAddButton md "_Save" ResponseYes
                 dialogAddButton md "_Don't Save" ResponseNo
                 dialogAddButton md "_Cancel" ResponseCancel
+                set md [ windowWindowPosition := WinPosCenterOnParent ]
                 resp <- dialogRun md
                 widgetDestroy md
                 case resp of
@@ -933,6 +937,7 @@ fileOpenThis fp =  do
                 dialogAddButton md "Make Active" (ResponseUser 1)
                 dialogAddButton md "Open Second" (ResponseUser 2)
                 dialogSetDefaultResponse md (ResponseUser 1)
+                set md [ windowWindowPosition := WinPosCenterOnParent ]
                 resp <- dialogRun md
                 widgetDestroy md
                 return resp

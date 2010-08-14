@@ -217,6 +217,7 @@ workspaceOpenThis askForSession mbFilePath =
                             dialogAddButton md "Load Session" ResponseYes
                             dialogAddButton md "Ignore Session" ResponseCancel
                             dialogSetDefaultResponse md ResponseYes
+                            set md [ windowWindowPosition := WinPosCenterOnParent ]
                             rid <- dialogRun md
                             widgetDestroy md
                             case rid of
@@ -333,6 +334,7 @@ packageTry f = do
                     dialogAddButton md "Add Package" (ResponseUser 2)
                     dialogAddButton md "Cancel" ResponseCancel
                     dialogSetDefaultResponse md (ResponseUser 2)
+                    set md [ windowWindowPosition := WinPosCenterOnParent ]
                     resp <- dialogRun md
                     widgetHide md
                     return resp

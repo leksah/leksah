@@ -150,6 +150,7 @@ packageNew' mbDir activateAction = do
                             dialogAddButton md "Continue Anyway" (ResponseUser 1)
                             dialogAddButton md "Cancel" ResponseCancel
                             dialogSetDefaultResponse md (ResponseUser 1)
+                            set md [ windowWindowPosition := WinPosCenterOnParent ]
                             rid <- dialogRun md
                             widgetDestroy md
                             return $ rid == ResponseUser 1
@@ -329,6 +330,7 @@ builder' packageDir packageD packageDescr afterSaveAction initialPackagePath mod
                 dialogAddButton md "Close Anyway" (ResponseUser 1)
                 dialogAddButton md "Cancel" ResponseCancel
                 dialogSetDefaultResponse md (ResponseUser 1)
+                set md [ windowWindowPosition := WinPosCenterOnParent ]
                 rid <- dialogRun md
                 widgetDestroy md
                 case rid of
@@ -358,6 +360,7 @@ builder' packageDir packageD packageDescr afterSaveAction initialPackagePath mod
                         dialogAddButton md "_Save" ResponseYes
                         dialogAddButton md "_Don't Save" ResponseNo
                         dialogAddButton md "_Cancel" ResponseCancel
+                        set md [ windowWindowPosition := WinPosCenterOnParent ]
                         resp <- dialogRun md
                         widgetDestroy md
                         case resp of

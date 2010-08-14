@@ -1050,6 +1050,7 @@ respDelModDialog = do
         dialogAddButton dia "Delete Module" (ResponseUser 1)
         dialogAddButton dia "Cancel" ResponseCancel
         dialogSetDefaultResponse dia ResponseCancel
+        set dia [ windowWindowPosition := WinPosCenterOnParent ]
         resp <- dialogRun dia
         widgetDestroy dia
         return resp
