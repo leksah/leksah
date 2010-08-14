@@ -61,10 +61,8 @@ module IDE.Core.State (
 --,   closePane
 ,   activeProjectDir
 
-#ifdef LEKSAH_WITH_YI
 ,   liftYiControl
 ,   liftYi
-#endif
 
 ,   module IDE.Core.Types
 ,   module IDE.Core.CTypes
@@ -94,12 +92,7 @@ import Control.Concurrent (forkIO)
 import IDE.Utils.Utils
 import qualified Data.Map as Map (lookup)
 import Data.Typeable(Typeable)
-
-#ifdef LEKSAH_WITH_YI
-import qualified Yi as Yi
-import qualified Yi.UI.Pango.Control as Yi
-#endif
-
+import qualified IDE.YiConfig as Yi
 
 instance PaneMonad IDEM where
     getFrameState   =   readIDE frameState
@@ -291,8 +284,6 @@ reifyIDE = ReaderT
 reflectIDE :: IDEM a -> IDERef -> IO a
 reflectIDE c ideR = runReaderT c ideR
 
-#ifdef LEKSAH_WITH_YI
-
 liftYiControl :: Yi.ControlM a -> IDEM a
 liftYiControl f = do
     control <- readIDE yiControl
@@ -300,8 +291,6 @@ liftYiControl f = do
 
 liftYi :: Yi.YiM a -> IDEM a
 liftYi = liftYiControl . Yi.liftYi
-
-#endif
 
 catchIDE :: Exception e	=> IDEM a -> (e -> IO a) -> IDEM a
 catchIDE block handler = reifyIDE (\ideR -> catch (reflectIDE block ideR) handler)

@@ -82,17 +82,15 @@ library
         build-depends: unix >=2.3.1.0
 
     if os(osx)
-        build-depends: ige-mac-integration
-        exposed-modules : IDE.OSX
+        build-depends: ige-mac-integration >= 0.0.0.2
 
     if flag(yi)
         build-depends: yi >=0.6.1
         cpp-options: -DLEKSAH_WITH_YI
-        exposed-modules: IDE.YiConfig
 
     if flag(yi) && flag(dyre)
         build-depends: dyre >= 0.8.3
-        cpp-options: -DLEKSAH_WITH_DYRE
+        cpp-options: -DLEKSAH_WITH_YI_DYRE
 
     hs-source-dirs: src
     extensions: CPP
@@ -109,7 +107,7 @@ library
     exposed-modules:
         IDE.Leksah IDE.Completion IDE.ImportTool
         IDE.Find IDE.Session IDE.Command IDE.Keymap IDE.Utils.GUIUtils
-        IDE.Package
+        IDE.Package IDE.YiConfig IDE.OSX
         IDE.GUIHistory IDE.SourceCandy IDE.NotebookFlipper
         IDE.Core.Types IDE.Core.State
         IDE.Metainfo.Provider

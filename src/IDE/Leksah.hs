@@ -29,22 +29,14 @@ import System.Environment
 import Data.Version
 import Prelude hiding(catch)
 
-#if defined(darwin_HOST_OS)
-import Graphics.UI.Gtk.OSX (applicationNew, applicationReady)
-import IDE.OSX
-#endif
+import qualified IDE.OSX as OSX
+import qualified IDE.YiConfig as Yi
 
-#ifdef LEKSAH_WITH_YI
-import qualified Yi.UI.Pango.Control as Yi
-import qualified Yi as Yi (Config)
-
-#ifdef LEKSAH_WITH_DYRE
+#ifdef LEKSAH_WITH_YI_DYRE
 import System.Directory (getAppUserDataDirectory)
 import System.FilePath ((</>))
 import Control.Applicative ((<$>))
 import qualified Config.Dyre as Dyre
-#endif
-
 #endif
 
 import Paths_leksah
@@ -106,9 +98,7 @@ ideOpts argv =
 -- | Main function
 --
 
-#ifdef LEKSAH_WITH_YI
-
-#ifdef LEKSAH_WITH_DYRE
+#ifdef LEKSAH_WITH_YI_DYRE
 leksahDriver = Dyre.wrapMain Dyre.defaultParams
     { Dyre.projectName  = "yi"
     , Dyre.realMain     = \(config, mbError) -> do
@@ -124,15 +114,11 @@ leksahDriver = Dyre.wrapMain Dyre.defaultParams
     }
 
 leksah yiConfig = leksahDriver (yiConfig, Nothing)
+#else
+leksah = realMain
+#endif
 
 realMain yiConfig = do
-#else
-leksah yiConfig = do
-#endif
-
-#else
-leksah = do
-#endif
   withSocketsDo $ handleExceptions $ do
     args            <-  getArgs
 
@@ -160,11 +146,7 @@ leksah = do
     prefsPath       <- getConfigFilePathForLoad standardPreferencesFilename Nothing dataDir
     prefs           <- readPrefs prefsPath
     when (not (elem VersionF o) && not (elem Help o))
-#ifdef LEKSAH_WITH_YI
         (startGUI yiConfig sessionFilename prefs isFirstStart)
-#else
-        (startGUI sessionFilename prefs isFirstStart)
-#endif
 
 handleExceptions inner =
   catch inner (\(exception :: SomeException) -> do
@@ -175,20 +157,11 @@ handleExceptions inner =
 -- ---------------------------------------------------------------------
 -- | Start the GUI
 
-#ifdef LEKSAH_WITH_YI
 startGUI :: Yi.Config -> String -> Prefs -> Bool -> IO ()
 startGUI yiConfig sessionFilename iprefs isFirstStart = do
-  Yi.startControl yiConfig $ do
-   yiControl <- Yi.getControl
-   Yi.controlIO $ do
-#else
-startGUI :: String -> Prefs -> Bool -> IO ()
-startGUI sessionFilename iprefs isFirstStart = do
-#endif
+  Yi.start yiConfig $ \yiControl -> do
     st          <-  unsafeInitGUIForThreadedRTS
-#if defined(darwin_HOST_OS)
-    app <- applicationNew
-#endif
+    osxApp <- OSX.applicationNew
     when rtsSupportsBoundThreads
         (sysMessage Normal "Linked with -threaded")
     timeoutAddFull (yield >> return True) priorityDefaultIdle 100 -- maybe switch back to priorityHigh/???
@@ -254,9 +227,7 @@ startGUI sessionFilename iprefs isFirstStart = do
           ,   runningTool       =   Nothing
           ,   ghciState         =   Nothing
           ,   completion        =   Nothing
-#ifdef LEKSAH_WITH_YI
           ,   yiControl         =   yiControl
-#endif
           ,   server            =   Nothing
     }
     ideR             <-  newIORef ide
@@ -283,11 +254,6 @@ startGUI sessionFilename iprefs isFirstStart = do
         ) ideR
     widgetShowAll win
 
-#if defined(darwin_HOST_OS)
-    updateMenu app uiManager
-    applicationReady app
-#endif
-
     reflectIDE (do
         triggerEventIDE UpdateRecent
         if tbv
@@ -295,7 +261,10 @@ startGUI sessionFilename iprefs isFirstStart = do
             else hideToolbar
         if fbv
             then showFindbar
-            else hideFindbar) ideR
+            else hideFindbar
+        OSX.updateMenu osxApp uiManager) ideR
+
+    OSX.applicationReady osxApp
 
     when isFirstStart $ do
         welcomePath <- getConfigFilePathForLoad "welcome.txt" Nothing dataDir

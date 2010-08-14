@@ -19,6 +19,7 @@ module IDE.Command (
     mkActions
 ,   menuDescription
 ,   makeMenu
+,   canQuit
 ,   quit
 ,   aboutDialog
 ,   buildStatusbar
@@ -561,15 +562,19 @@ textPopupMenu ideR menu = do
     mapM_ widgetShow (castToWidget sep1 : castToWidget sep2 : otherEntries)
     mapM_ widgetHide $ take 2 (reverse items)
 
+canQuit :: IDEM Bool
+canQuit = do
+    modifyIDE_ (\ide -> ide{currentState = IsShuttingDown})
+    saveSession :: IDEAction
+    can <- fileCloseAll (\_ -> return True)
+    unless can $ modifyIDE_ (\ide -> ide{currentState = IsRunning})
+    return can
+
 -- | Quit ide
 quit :: IDEAction
 quit = do
-    modifyIDE_ (\ide -> ide{currentState = IsShuttingDown})
-    saveSession :: IDEAction
-    b <- fileCloseAll (\_ -> return True)
-    if b
-        then liftIO mainQuit
-        else modifyIDE_ (\ide -> ide{currentState = IsRunning})
+    can <- canQuit
+    when can $ liftIO mainQuit
 
 --
 -- | Show the about dialog

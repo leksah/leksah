@@ -17,15 +17,10 @@
 module Main (main) where
 
 import IDE.Leksah (leksah)
-#ifdef LEKSAH_WITH_YI
 import IDE.YiConfig (defaultYiConfig)
-#endif
 
 main :: IO ()
 main = do
     putStrLn "Using default Yi configuration"
-    leksah
-#ifdef LEKSAH_WITH_YI
-        defaultYiConfig
-#endif
+    leksah defaultYiConfig
 

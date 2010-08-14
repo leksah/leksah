@@ -7,22 +7,33 @@
 
 module IDE.YiConfig (
     defaultYiConfig
+,   Config
+,   Control
+,   ControlM
+,   YiM
+,   start
+,   runControl
+,   liftYi
 ) where
 
+#ifdef LEKSAH_WITH_YI
+
+import Data.List (reverse, isPrefixOf)
 import Yi.Prelude
 import Prelude ()
 
 import Yi
 import Yi.Keymap.Vim
-import Yi.Buffer.Indent (indentAsPreviousB)
-import Yi.Keymap.Keys
-import Yi.Misc (adjBlock)
 
 import qualified Yi.UI.Pango
+import Yi.UI.Pango.Control
 
-import Yi.Style.Library (darkBlueTheme)
-import Data.List (isPrefixOf, reverse, replicate)
 import Control.Monad (replicateM_)
+
+start yiConfig f =
+    startControl yiConfig $ do
+        yiControl <- getControl
+        controlIO (f yiControl)
 
 -- Set soft tabs of 4 spaces in width.
 prefIndent :: Mode s -> Mode s
@@ -130,4 +141,21 @@ startExtesnionNameInsert self = beginIns self $ do
     insertN " #-}"
     moveTo p
 
+#else
+
+data Config = Config
+data Control = Control
+data ControlM a = ControlM
+data YiM a = YiM
+
+defaultYiConfig :: Config
+defaultYiConfig = Config
+start :: Config -> (Control -> IO a) -> IO a
+start yiConfig f = f Control
+runControl :: ControlM a -> Control -> IO a
+runControl = undefined
+liftYi :: YiM a -> ControlM a
+liftYi = undefined
+
+#endif
 
