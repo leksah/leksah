@@ -172,7 +172,12 @@ packageConfig' package continuation = do
         case mbPack of
             Just pack -> do
                 changeWorkspacePackage pack
-                modifyIDE_ (\ide -> ide{activePack = Just pack, bufferProjCache = Map.empty})
+                modifyIDE_ (\ide -> ide{bufferProjCache = Map.empty})
+                mbActivePack <- readIDE activePack
+                case mbActivePack of
+                    Just activePack | ipdCabalFile package == ipdCabalFile activePack ->
+                        modifyIDE_ (\ide -> ide{activePack = Just pack})
+                    _ -> return ()
                 triggerEventIDE UpdateWorkspaceInfo
                 triggerEventIDE (WorkspaceChanged False True)
                 continuation (last output == ToolExit ExitSuccess)
