@@ -550,8 +550,8 @@ checkModTime buf = do
                                                 MessageQuestion
                                                 ButtonsNone
                                                 ("File \"" ++ name ++ "\" has changed on disk.")
-                                        dialogAddButton md "Load From Disk" (ResponseUser 1)
-                                        dialogAddButton md "Don't Load" (ResponseUser 2)
+                                        dialogAddButton md "_Load From Disk" (ResponseUser 1)
+                                        dialogAddButton md "_Don't Load" (ResponseUser 2)
                                         dialogSetDefaultResponse md (ResponseUser 1)
                                         set md [ windowWindowPosition := WinPosCenterOnParent ]
                                         resp <- dialogRun md
@@ -712,10 +712,9 @@ fileSaveBuffer query nb ebuf ideBuf i = do
                             resp <- if dfe
                                 then do md <- messageDialogNew (Just window) []
                                                 MessageQuestion
-                                                ButtonsNone
+                                                ButtonsCancel
                                                 "File already exist."
-                                        dialogAddButton md "Overwrite" ResponseYes
-                                        dialogAddButton md "Cancel" ResponseCancel
+                                        dialogAddButton md "_Overwrite" ResponseYes
                                         dialogSetDefaultResponse md ResponseCancel
                                         set md [ windowWindowPosition := WinPosCenterOnParent ]
                                         resp <- dialogRun md
@@ -801,13 +800,12 @@ fileClose' nb ebuf currentBuffer i = do
             then do
                 md <- messageDialogNew (Just window) []
                                             MessageQuestion
-                                            ButtonsNone
+                                            ButtonsCancel
                                             ("Save changes to document: "
                                                 ++ paneName currentBuffer
                                                 ++ "?")
                 dialogAddButton md "_Save" ResponseYes
                 dialogAddButton md "_Don't Save" ResponseNo
-                dialogAddButton md "_Cancel" ResponseCancel
                 set md [ windowWindowPosition := WinPosCenterOnParent ]
                 resp <- dialogRun md
                 widgetDestroy md
@@ -934,8 +932,8 @@ fileOpenThis fp =  do
                         MessageQuestion
                         ButtonsNone
                         "Buffer already open."
-                dialogAddButton md "Make Active" (ResponseUser 1)
-                dialogAddButton md "Open Second" (ResponseUser 2)
+                dialogAddButton md "Make _Active" (ResponseUser 1)
+                dialogAddButton md "_Open Second" (ResponseUser 2)
                 dialogSetDefaultResponse md (ResponseUser 1)
                 set md [ windowWindowPosition := WinPosCenterOnParent ]
                 resp <- dialogRun md

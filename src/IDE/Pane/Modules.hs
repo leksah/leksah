@@ -1046,9 +1046,8 @@ respDelModDialog :: IDEM (Bool)
 respDelModDialog = do
     window <- getMainWindow
     resp <- liftIO $ do
-        dia <- messageDialogNew (Just window) [] MessageQuestion ButtonsNone "Are you sure?"
-        dialogAddButton dia "Delete Module" (ResponseUser 1)
-        dialogAddButton dia "Cancel" ResponseCancel
+        dia <- messageDialogNew (Just window) [] MessageQuestion ButtonsCancel "Are you sure?"
+        dialogAddButton dia "_Delete Module" (ResponseUser 1)
         dialogSetDefaultResponse dia ResponseCancel
         set dia [ windowWindowPosition := WinPosCenterOnParent ]
         resp <- dialogRun dia

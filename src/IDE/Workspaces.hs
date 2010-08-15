@@ -67,7 +67,8 @@ import IDE.Package
         buildPackage, packageInstall', packageClean', activatePackage,
         deactivatePackage, idePackageFromPath)
 import System.Directory
-       (createDirectoryIfMissing, doesFileExist, canonicalizePath)
+       (getHomeDirectory, createDirectoryIfMissing, doesFileExist,
+        canonicalizePath)
 import System.Time (getClockTime)
 import Graphics.UI.Gtk.Windows.MessageDialog
     (ButtonsType(..), MessageType(..))
@@ -89,6 +90,7 @@ import IDE.Pane.SourceBuffer
 import qualified System.IO.UTF8 as UTF8 (writeFile)
 import System.Glib.Attributes (AttrOp(..), set)
 import Graphics.UI.Gtk.General.Enums (WindowPosition(..))
+import Control.Applicative ((<$>))
 
 
 setWorkspace :: Maybe Workspace -> IDEAction
@@ -136,18 +138,21 @@ workspaceNew = do
         chooseSaveFile window "New file for workspace" Nothing
     case mbFile of
         Nothing -> return ()
-        Just filePath ->
-            let realPath = if takeExtension filePath == leksahWorkspaceFileExtension
-                                    then filePath
-                                    else addExtension filePath leksahWorkspaceFileExtension
-            in do
-                cPath <- liftIO $ canonicalizePath realPath
-                let newWorkspace = emptyWorkspace {
-                                    wsName = takeBaseName cPath,
-                                    wsFile = cPath}
-                liftIO $ writeFields cPath newWorkspace workspaceDescr
-                workspaceOpenThis False (Just cPath)
-                return ()
+        Just filePath -> workspaceNewHere filePath
+
+workspaceNewHere :: FilePath -> IDEAction
+workspaceNewHere filePath =
+    let realPath = if takeExtension filePath == leksahWorkspaceFileExtension
+                            then filePath
+                            else addExtension filePath leksahWorkspaceFileExtension
+    in do
+        cPath <- liftIO $ canonicalizePath realPath
+        let newWorkspace = emptyWorkspace {
+                            wsName = takeBaseName cPath,
+                            wsFile = cPath}
+        liftIO $ writeFields cPath newWorkspace workspaceDescr
+        workspaceOpenThis False (Just cPath)
+        return ()
 
 workspaceOpen :: IDEAction
 workspaceOpen = do
@@ -161,7 +166,9 @@ workspaceTryQuiet f = do
     maybeWorkspace <- readIDE workspace
     case maybeWorkspace of
         Just ws -> liftM Just $ runWorkspace f ws
-        Nothing -> return Nothing
+        Nothing -> do
+            ideMessage Normal "No workspace open"
+            return Nothing
 
 workspaceTryQuiet_ :: WorkspaceM a -> IDEAction
 workspaceTryQuiet_ f = workspaceTryQuiet f >> return ()
@@ -173,13 +180,18 @@ workspaceTry f = do
         Just ws -> liftM Just $ runWorkspace f ws
         Nothing -> do
             mainWindow <- getMainWindow
+            defaultWorkspace <- liftIO $ (</> "leksah.lkshw") <$> getHomeDirectory
             resp <- liftIO $ do
-                md <- messageDialogNew (Just mainWindow) [DialogModal] MessageQuestion ButtonsNone
-                        "You need to have a workspace for this to work."
-                dialogAddButton md "New Workspace" (ResponseUser 1)
-                dialogAddButton md "Open Workspace" (ResponseUser 2)
-                dialogAddButton md "Cancel" (ResponseCancel)
-                dialogSetDefaultResponse md (ResponseUser 2)
+                defaultExists <- doesFileExist defaultWorkspace
+                md <- messageDialogNew (Just mainWindow) [DialogModal] MessageQuestion ButtonsCancel (
+                        "You need to have a workspace open for this to work. "
+                     ++ "Choose ~/leksah.lkshw to "
+                     ++ (if defaultExists then "open workspace " else "create a workspace ")
+                     ++ defaultWorkspace)
+                dialogAddButton md "_New Workspace" (ResponseUser 1)
+                dialogAddButton md "_Open Workspace" (ResponseUser 2)
+                dialogAddButton md "~/leksah.lkshw" (ResponseUser 3)
+                dialogSetDefaultResponse md (ResponseUser 3)
                 set md [ windowWindowPosition := WinPosCenterOnParent ]
                 resp <- dialogRun md
                 widgetHide md
@@ -190,6 +202,12 @@ workspaceTry f = do
                     workspaceTryQuiet f
                 ResponseUser 2 -> do
                     workspaceOpen
+                    workspaceTryQuiet f
+                ResponseUser 3 -> do
+                    defaultExists <- liftIO $ doesFileExist defaultWorkspace
+                    if defaultExists
+                        then workspaceOpenThis True (Just defaultWorkspace)
+                        else workspaceNewHere defaultWorkspace
                     workspaceTryQuiet f
                 _  -> return Nothing
 
@@ -212,10 +230,10 @@ workspaceOpenThis askForSession mbFilePath =
                     then do
                         window <- getMainWindow
                         liftIO $ do
-                            md  <- messageDialogNew Nothing [] MessageQuestion ButtonsNone
+                            md  <- messageDialogNew (Just window) [] MessageQuestion ButtonsNone
                                     $ "There are session settings stored with this workspace."
-                            dialogAddButton md "Load Session" ResponseYes
-                            dialogAddButton md "Ignore Session" ResponseCancel
+                            dialogAddButton md "_Ignore Session" ResponseCancel
+                            dialogAddButton md "_Load Session" ResponseYes
                             dialogSetDefaultResponse md ResponseYes
                             set md [ windowWindowPosition := WinPosCenterOnParent ]
                             rid <- dialogRun md
@@ -314,7 +332,9 @@ packageTryQuiet f = do
     maybePackage <- readIDE activePack
     case maybePackage of
         Just p  -> liftM Just $ runPackage f p
-        Nothing -> return Nothing
+        Nothing -> do
+            ideMessage Normal "No active package"
+            return Nothing
 
 packageTryQuiet_ :: PackageM a -> IDEAction
 packageTryQuiet_ f = packageTryQuiet f >> return ()
@@ -328,11 +348,10 @@ packageTry f = do
             Nothing -> do
                 window <- lift $ getMainWindow
                 resp <- liftIO $ do
-                    md <- messageDialogNew (Just window) [] MessageQuestion ButtonsNone
+                    md <- messageDialogNew (Just window) [] MessageQuestion ButtonsCancel
                             "You need to have an active package for this to work."
-                    dialogAddButton md "New Package" (ResponseUser 1)
-                    dialogAddButton md "Add Package" (ResponseUser 2)
-                    dialogAddButton md "Cancel" ResponseCancel
+                    dialogAddButton md "_New Package" (ResponseUser 1)
+                    dialogAddButton md "_Add Package" (ResponseUser 2)
                     dialogSetDefaultResponse md (ResponseUser 2)
                     set md [ windowWindowPosition := WinPosCenterOnParent ]
                     resp <- dialogRun md

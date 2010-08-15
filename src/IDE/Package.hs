@@ -599,10 +599,9 @@ tryDebug f = do
         _ -> do
             window <- lift $ getMainWindow
             resp <- liftIO $ do
-                md <- messageDialogNew (Just window) [] MessageQuestion ButtonsNone
+                md <- messageDialogNew (Just window) [] MessageQuestion ButtonsCancel
                         "GHCi debugger is not running."
-                dialogAddButton md "Start GHCi" (ResponseUser 1)
-                dialogAddButton md "Cancel" ResponseCancel
+                dialogAddButton md "_Start GHCi" (ResponseUser 1)
                 dialogSetDefaultResponse md (ResponseUser 1)
                 set md [ windowWindowPosition := WinPosCenterOnParent ]
                 resp <- dialogRun md

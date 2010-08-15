@@ -98,7 +98,7 @@ import Distribution.License
 --
 
 choosePackageDir :: Window -> Maybe FilePath -> IO (Maybe FilePath)
-choosePackageDir window mbDir = chooseDir window "Select root folder for project" mbDir
+choosePackageDir window mbDir = chooseDir window "Select root folder for package" mbDir
 
 choosePackageFile :: Window -> Maybe FilePath -> IO (Maybe FilePath)
 choosePackageFile window mbDir = chooseFile window "Select cabal package file (.cabal)" mbDir
@@ -145,10 +145,9 @@ packageNew' mbDir activateAction = do
                     then do
                         window <- getMainWindow
                         liftIO $ do
-                            md <- messageDialogNew Nothing [] MessageQuestion ButtonsNone
+                            md <- messageDialogNew (Just window) [] MessageQuestion ButtonsCancel
                                         $ "There is already a .cabal file in this directory."
-                            dialogAddButton md "Continue Anyway" (ResponseUser 1)
-                            dialogAddButton md "Cancel" ResponseCancel
+                            dialogAddButton md "_Continue Anyway" (ResponseUser 1)
                             dialogSetDefaultResponse md (ResponseUser 1)
                             set md [ windowWindowPosition := WinPosCenterOnParent ]
                             rid <- dialogRun md
@@ -325,10 +324,9 @@ builder' packageDir packageD packageDescr afterSaveAction initialPackagePath mod
         mbNewPackage' <- extractAndValidate packageD [getExt] fieldNames
         case mbNewPackage' of
             Nothing -> do
-                md <- messageDialogNew (Just window) [] MessageQuestion ButtonsNone
+                md <- messageDialogNew (Just window) [] MessageQuestion ButtonsCancel
                                    "Package does not validate."
-                dialogAddButton md "Close Anyway" (ResponseUser 1)
-                dialogAddButton md "Cancel" ResponseCancel
+                dialogAddButton md "_Close Anyway" (ResponseUser 1)
                 dialogSetDefaultResponse md (ResponseUser 1)
                 set md [ windowWindowPosition := WinPosCenterOnParent ]
                 rid <- dialogRun md
@@ -353,13 +351,12 @@ builder' packageDir packageD packageDescr afterSaveAction initialPackagePath mod
                     then do
                         md <- messageDialogNew (Just window) []
                                                     MessageQuestion
-                                                    ButtonsNone
+                                                    ButtonsCancel
                                                     ("Save changes to Cabal file: "
                                                         ++ packagePath
                                                         ++ "?")
                         dialogAddButton md "_Save" ResponseYes
                         dialogAddButton md "_Don't Save" ResponseNo
-                        dialogAddButton md "_Cancel" ResponseCancel
                         set md [ windowWindowPosition := WinPosCenterOnParent ]
                         resp <- dialogRun md
                         widgetDestroy md
