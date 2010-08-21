@@ -67,6 +67,7 @@ import IDE.System.Process(waitForProcess)
 import System.Log
 import System.Log.Logger(updateGlobalLogger,rootLoggerName,setLevel)
 import Data.List (stripPrefix)
+import System.Directory (doesFileExist)
 
 -- --------------------------------------------------------------------
 -- Command line options
