@@ -68,6 +68,7 @@ import System.Log
 import System.Log.Logger(updateGlobalLogger,rootLoggerName,setLevel)
 import Data.List (stripPrefix)
 import System.Directory (doesFileExist)
+import System.FilePath ((</>))
 
 -- --------------------------------------------------------------------
 -- Command line options
