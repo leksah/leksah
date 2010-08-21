@@ -161,29 +161,38 @@ startGUI :: Yi.Config -> String -> Prefs -> Bool -> IO ()
 startGUI yiConfig sessionFilename iprefs isFirstStart = do
   Yi.start yiConfig $ \yiControl -> do
     st          <-  unsafeInitGUIForThreadedRTS
-    osxApp <- OSX.applicationNew
     when rtsSupportsBoundThreads
         (sysMessage Normal "Linked with -threaded")
     timeoutAddFull (yield >> return True) priorityDefaultIdle 100 -- maybe switch back to priorityHigh/???
     mapM_ (sysMessage Normal) st
     initGtkRc
+    dataDir       <- getDataDir
+    mbStartupPrefs <- if not isFirstStart
+                                then return $ Just iprefs
+                                else do
+                                    firstStartOK <- firstStart iprefs
+                                    if not firstStartOK
+                                        then return Nothing
+                                        else do
+                                            prefsPath  <- getConfigFilePathForLoad standardPreferencesFilename Nothing dataDir
+                                            prefs <- readPrefs prefsPath
+                                            return $ Just prefs
+    case mbStartupPrefs of
+        Nothing           -> return ()
+        Just startupPrefs -> startMainWindow yiControl sessionFilename startupPrefs isFirstStart
+
+startMainWindow yiControl sessionFilename startupPrefs isFirstStart = do
+    osxApp <- OSX.applicationNew
     uiManager   <-  uiManagerNew
     newIcons
     dataDir       <- getDataDir
-    startupPrefs  <-   if not isFirstStart
-                                then return iprefs
-                                else do
-                                    firstStart iprefs
-                                    prefsPath  <- getConfigFilePathForLoad standardPreferencesFilename Nothing dataDir
-                                    prefs <- readPrefs prefsPath
-                                    return prefs
     candyPath   <-  getConfigFilePathForLoad
                         (case sourceCandy startupPrefs of
                             Nothing     ->   standardCandyFilename
                             Just name   ->   name ++ leksahCandyFileExtension) Nothing dataDir
     candySt     <-  parseCandy candyPath
     -- keystrokes
-    keysPath    <-  getConfigFilePathForLoad (keymapName iprefs ++ leksahKeymapFileExtension) Nothing dataDir
+    keysPath    <-  getConfigFilePathForLoad (keymapName startupPrefs ++ leksahKeymapFileExtension) Nothing dataDir
     keyMap      <-  parseKeymap keysPath
     let accelActions = setKeymap (keyMap :: KeymapI) mkActions
     specialKeys <-  buildSpecialKeys keyMap accelActions
@@ -316,21 +325,21 @@ fDescription configPath = VFD emptyParams [
 --
 -- | Called when leksah is first called (the .leksah-xx directory does not exist)
 --
-firstStart :: Prefs -> IO ()
+firstStart :: Prefs -> IO Bool
 firstStart prefs = do
     dataDir     <- getDataDir
     prefsPath   <- getConfigFilePathForLoad standardPreferencesFilename Nothing dataDir
     prefs       <- readPrefs prefsPath
     configDir   <- getConfigDir
     dialog      <- dialogNew
+    setLeksahIcon dialog
     dialogAddButton dialog "gtk-ok" ResponseOk
     dialogAddButton dialog "gtk-cancel" ResponseCancel
     vb          <- dialogGetUpper dialog
     label       <- labelNew (Just ("Welcome to Leksah, the Haskell IDE.\n" ++
         "At the first start, Leksah will collect and download metadata about your installed haskell packages.\n" ++
         "You can add folders under which you have sources for Haskell packages not available from Hackage.\n" ++
-        "If you are not shure what to do, just keep the defaults \n" ++
-        "This process may take a long time, so be patient."))
+        "If you are not sure what to do, just keep the defaults."))
     (widget, setInj, getExt,notifier) <- buildEditor (fDescription configDir) prefs
     boxPackStart vb label PackGrow 7
     boxPackStart vb widget PackGrow 7
@@ -345,7 +354,7 @@ firstStart prefs = do
             case mbNewPrefs of
                 Nothing -> do
                     sysMessage Normal "No dialog results"
-                    return ()
+                    return False
                 Just newPrefs -> do
                     fp <- getConfigFilePathForSave standardPreferencesFilename
                     writePrefs fp newPrefs
@@ -358,10 +367,22 @@ firstStart prefs = do
                                        SP.serverPort        = serverPort newPrefs,
                                        SP.endWithLastConn   = endWithLastConn newPrefs})
                     firstBuild newPrefs
-        _ ->     widgetDestroy dialog
+                    return True
+        _ -> do
+            widgetDestroy dialog
+            return False
+
+setLeksahIcon :: (WindowClass self) => self -> IO ()
+setLeksahIcon window = do
+    dataDir <- getDataDir
+    let iconPath = dataDir </> "pics" </> "leksah.png"
+    iconExists  <-  doesFileExist iconPath
+    when iconExists $
+        windowSetIconFromFile window iconPath
 
 firstBuild newPrefs = do
     dialog      <- dialogNew
+    setLeksahIcon dialog
     vb          <- dialogGetUpper dialog
     progressBar <- progressBarNew
     progressBarSetText progressBar "Please wait while Leksah collects information about Haskell packages on your system"
