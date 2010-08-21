@@ -299,27 +299,27 @@ fDescription configPath = VFD emptyParams [
             (\b a -> a{sourceDirectories = b})
             (filesEditor Nothing FileChooserActionSelectFolder "Select folders")
     ,   mkField
-            (paraName <<<- ParaName "Maybe a directory for unpacking cabal packages" $ emptyParams)
+            (paraName <<<- ParaName "Unpack source for cabal packages to" $ emptyParams)
             unpackDirectory
             (\b a -> a{unpackDirectory = b})
             (maybeEditor (stringEditor (\ _ -> True),emptyParams) True "")
     ,   mkField
-            (paraName <<<- ParaName "An URL to load prebuild metadata" $ emptyParams)
+            (paraName <<<- ParaName "URL from which to download prebuilt metadata" $ emptyParams)
             retrieveURL
             (\b a -> a{retrieveURL = b})
             (stringEditor (\ _ -> True))
     ,   mkField
-            (paraName <<<- ParaName "A strategy for downloading prebuild metadata" $ emptyParams)
+            (paraName <<<- ParaName "Strategy for downloading prebuilt metadata" $ emptyParams)
             retrieveStrategy
             (\b a -> a{retrieveStrategy = b})
-            (enumEditor ["Retrieve then build","Build then retrieve","Never retrieve"])
+            (enumEditor ["Try to download and then build locally if that fails","Try to build locally and then download if that fails","Never download (just try to build locally)"])
     ,   mkField
-            (paraName <<<- ParaName "Port number for server connection" $ emptyParams)
+            (paraName <<<- ParaName "Port number for leksah to comunicate with leksah-server" $ emptyParams)
             serverPort
             (\b a -> a{serverPort = b})
             (intEditor (1.0, 65535.0, 1.0))
     ,   mkField
-            (paraName <<<- ParaName "End the server with last connection" $ emptyParams)
+            (paraName <<<- ParaName "Stop the leksah-server process when leksah disconnects" $ emptyParams)
             endWithLastConn
             (\b a -> a{endWithLastConn = b})
             boolEditor]
@@ -335,15 +335,17 @@ firstStart prefs = do
     configDir   <- getConfigDir
     dialog      <- dialogNew
     setLeksahIcon dialog
+    set dialog [
+        windowTitle := "Welcome to Leksah, the Haskell IDE",
+        windowWindowPosition := WinPosCenter]
     dialogAddButton dialog "gtk-ok" ResponseOk
     dialogAddButton dialog "gtk-cancel" ResponseCancel
     vb          <- dialogGetUpper dialog
-    label       <- labelNew (Just ("Welcome to Leksah, the Haskell IDE.\n" ++
-        "At the first start, Leksah will collect and download metadata about your installed haskell packages.\n" ++
-        "You can add folders under which you have sources for Haskell packages not available from Hackage.\n" ++
-        "If you are not sure what to do, just keep the defaults."))
+    label       <- labelNew (Just (
+        "Before you start using Leksah it will collect and download metadata about your installed Haskell packages.\n" ++
+        "You can add folders under which you have sources for Haskell packages not available from Hackage."))
     (widget, setInj, getExt,notifier) <- buildEditor (fDescription configDir) prefs
-    boxPackStart vb label PackGrow 7
+    boxPackStart vb label PackNatural 7
     boxPackStart vb widget PackGrow 7
     widgetSetSizeRequest dialog 800 640
     widgetShowAll dialog
@@ -385,6 +387,9 @@ setLeksahIcon window = do
 firstBuild newPrefs = do
     dialog      <- dialogNew
     setLeksahIcon dialog
+    set dialog [
+        windowTitle := "Welcome to Leksah, the Haskell IDE",
+        windowWindowPosition := WinPosCenter]
     vb          <- dialogGetUpper dialog
     progressBar <- progressBarNew
     progressBarSetText progressBar "Please wait while Leksah collects information about Haskell packages on your system"

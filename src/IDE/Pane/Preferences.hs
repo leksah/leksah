@@ -440,7 +440,7 @@ prefsDescription configDir packages = NFDPP [
             (filesEditor Nothing FileChooserActionSelectFolder "Select folder")
             (\i -> return ())
     ,   mkFieldPP
-            (paraName <<<- ParaName "Maybe a directory for unpacking cabal packages" $ emptyParams)
+            (paraName <<<- ParaName "Unpack source for cabal packages to" $ emptyParams)
             (PP.text . show)
             readParser
             unpackDirectory
@@ -448,7 +448,7 @@ prefsDescription configDir packages = NFDPP [
             (maybeEditor (stringEditor (\ _ -> True),emptyParams) True "")
             (\i -> return ())
     ,   mkFieldPP
-            (paraName <<<- ParaName "An URL to load prebuild metadata" $ emptyParams)
+            (paraName <<<- ParaName "URL from which to download prebuilt metadata" $ emptyParams)
             (PP.text . show)
             stringParser
             retrieveURL
@@ -456,12 +456,12 @@ prefsDescription configDir packages = NFDPP [
             (stringEditor (\ _ -> True))
             (\i -> return ())
     ,   mkFieldPP
-            (paraName <<<- ParaName "A strategy for downloading prebuild metadata" $ emptyParams)
+            (paraName <<<- ParaName "Strategy for downloading prebuilt metadata" $ emptyParams)
             (PP.text . show)
             readParser
             retrieveStrategy
             (\b a -> a{retrieveStrategy = b})
-            (enumEditor ["Retrieve then build","Build then retrieve","Never retrieve"])
+            (enumEditor ["Try to download and then build locally if that fails","Try to build locally and then download if that fails","Never download (just try to build locally)"])
             (\i -> return ())
     ,   mkFieldPP
             (paraName <<<- ParaName "Update metadata at startup" $ emptyParams)
@@ -472,7 +472,7 @@ prefsDescription configDir packages = NFDPP [
             boolEditor
             (\i -> return ())
     ,   mkFieldPP
-            (paraName <<<- ParaName "Port number for server connection" $ emptyParams)
+            (paraName <<<- ParaName "Port number for leksah to comunicate with leksah-server" $ emptyParams)
             (PP.text . show)
             intParser
             serverPort
@@ -480,7 +480,7 @@ prefsDescription configDir packages = NFDPP [
             (intEditor (1.0, 65535.0, 1.0))
             (\i -> return ())
     ,   mkFieldPP
-            (paraName <<<- ParaName "Server IP address " $ emptyParams)
+            (paraName <<<- ParaName "IP address for leksah to comunicate with leksah-server" $ emptyParams)
             (PP.text . show)
             stringParser
             serverIP
@@ -488,7 +488,7 @@ prefsDescription configDir packages = NFDPP [
             (stringEditor (\ s -> not $ null s))
             (\i -> return ())
     ,   mkFieldPP
-            (paraName <<<- ParaName "End the server with last connection" $ emptyParams)
+            (paraName <<<- ParaName "Stop the leksah-server process when leksah disconnects" $ emptyParams)
             (PP.text . show)
             boolParser
             endWithLastConn

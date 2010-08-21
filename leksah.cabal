@@ -1,5 +1,5 @@
 name: leksah
-version: 0.8.0.6
+version: 0.8.1.0
 cabal-version: >=1.8
 build-type: Simple
 license: GPL
@@ -101,8 +101,8 @@ library
                    gtksourceview2 >=0.10.0, mtl >=1.1.0.2, old-time >=1.0.0.1,
                    parsec >=2.1.0.1, pretty >=1.0.1.0, process-leksah >=1.0.1.3,
                    regex-tdfa ==1.1.*, regex-base ==0.93.*, utf8-string >=0.3.1.1, array >=0.2.0.0,
-                   time >=0.1, ltk >= 0.8 && <= 0.9, binary-shared >= 0.8 && <= 0.9, deepseq >= 1.1.0.0,
-                   hslogger >= 1.0.7, leksah-server >= 0.8 && <= 0.9, network >= 2.2 && <= 3.0
+                   time >=0.1, ltk >= 0.8.1 && <= 0.9, binary-shared >= 0.8 && <= 0.9, deepseq >= 1.1.0.0,
+                   hslogger >= 1.0.7, leksah-server >= 0.8.1 && <= 0.9, network >= 2.2 && <= 3.0
 
     exposed-modules:
         IDE.Leksah IDE.Completion IDE.ImportTool
@@ -141,8 +141,8 @@ Executable leksah
                        gtksourceview2 >=0.10.0, mtl >=1.1.0.2, old-time >=1.0.0.1,
                        parsec >=2.1.0.1, pretty >=1.0.1.0, process-leksah >=1.0.1.3,
                        regex-tdfa ==1.1.*, regex-base ==0.93.*, utf8-string >=0.3.1.1, array >=0.2.0.0,
-                       time >=0.1, ltk >= 0.8 && <= 0.9, binary-shared >= 0.8 && <= 0.9, deepseq >= 1.1.0.0,
-                       hslogger >= 1.0.7, leksah-server >= 0.8 && <= 0.9, network >= 2.2 && <= 3.0
+                       time >=0.1, ltk >= 0.8.1 && <= 0.9, binary-shared >= 0.8 && <= 0.9, deepseq >= 1.1.0.0,
+                       hslogger >= 1.0.7, leksah-server >= 0.8.1 && <= 0.9, network >= 2.2 && <= 3.0
     else
         hs-source-dirs: main
         build-depends: leksah, base >=4.0.0.0 && <= 5
