@@ -85,6 +85,7 @@ module IDE.TextEditor (
 ,   backwardCharC
 ,   backwardFindCharC
 ,   backwardWordStartC
+,   backwardToLineStartC
 ,   endsWord
 ,   forwardCharC
 ,   forwardCharsC
@@ -746,6 +747,15 @@ backwardWordStartC (YiEditorIter i@(Yi.Iter b p)) = withYiIter i $ do
     if p == newPoint
         then return Nothing
         else return . Just $ mkYiIter' b newPoint
+#endif
+
+backwardToLineStartC :: EditorIter -> IDEM EditorIter
+backwardToLineStartC (GtkEditorIter i) = transformGtkIter i $ \new -> do
+    n <- Gtk.textIterGetLineOffset new
+    Gtk.textIterBackwardChars new n
+    return ()
+#ifdef LEKSAH_WITH_YI
+backwardToLineStartC (YiEditorIter i) = transformYiIter i Yi.moveToSol
 #endif
 
 endsWord :: EditorIter -> IDEM Bool

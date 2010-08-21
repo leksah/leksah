@@ -55,9 +55,14 @@ getIsWordChar sourceView = do
     ideR <- ask
     buffer <- getBuffer sourceView
     (_, end) <- getSelectionBounds buffer
-    let isIdent a = isAlphaNum a || a == '\'' || a == '_' || a == '.'
-    let isOp    a = isSymbol   a || a == ':'  || a == '\\' || a == '*' || a == '/' || a == '-'
-                                 || a == '!'  || a == '@' || a == '%' || a == '&' || a == '?'
+    sol <- backwardToLineStartC end
+    eol <- forwardToLineEndC end
+    line <- getSlice buffer sol eol False
+
+    let isImport = "import " `isPrefixOf` line
+        isIdent a = isAlphaNum a || a == '\'' || a == '_'  || (isImport && a == '.')
+        isOp    a = isSymbol   a || a == ':'  || a == '\\' || a == '*' || a == '/' || a == '-'
+                                 || a == '!'  || a == '@'  || a == '%' || a == '&' || a == '?'
     prev <- backwardCharC end
     prevChar <- getChar prev
     case prevChar of
