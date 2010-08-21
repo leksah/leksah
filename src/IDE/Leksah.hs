@@ -346,8 +346,11 @@ firstStart prefs = do
         "You can add folders under which you have sources for Haskell packages not available from Hackage."))
     (widget, setInj, getExt,notifier) <- buildEditor (fDescription configDir) prefs
     boxPackStart vb label PackNatural 7
-    boxPackStart vb widget PackGrow 7
-    widgetSetSizeRequest dialog 800 640
+    sw <- scrolledWindowNew Nothing Nothing
+    scrolledWindowAddWithViewport sw widget
+    scrolledWindowSetPolicy sw PolicyNever PolicyAutomatic
+    boxPackStart vb sw PackGrow 7
+    windowSetDefaultSize dialog 800 720
     widgetShowAll dialog
     response <- dialogRun dialog
     widgetHide dialog
@@ -388,7 +391,7 @@ firstBuild newPrefs = do
     dialog      <- dialogNew
     setLeksahIcon dialog
     set dialog [
-        windowTitle := "Welcome to Leksah, the Haskell IDE",
+        windowTitle := "Leksah: Updating Metadata",
         windowWindowPosition := WinPosCenter]
     vb          <- dialogGetUpper dialog
     progressBar <- progressBarNew
