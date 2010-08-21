@@ -13,7 +13,7 @@
 
 
 --File
-<ctrl>n                    ->          FileNew         "Opens a new empty buffer"
+<ctrl>n                    ->          FileNew         "Creates a new haskell module"
 <ctrl>o                    ->          FileOpen        "Opens an existing file"
 --<ctrl>x/<ctrl>f          ->          FileOpen        "Opens an existing file"
 

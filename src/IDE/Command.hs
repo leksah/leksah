@@ -109,7 +109,9 @@ import IDE.Pane.Grep (getGrep)
 mkActions :: [ActionDescr IDERef]
 mkActions =
     [AD "File" "_File" Nothing Nothing (return ()) [] False
-    ,AD "FileNew" "_New" Nothing (Just "gtk-new")
+    ,AD "FileNew" "_New Module" Nothing (Just "gtk-new")
+        (packageTry_ $ addModule []) [] False
+    ,AD "FileNewTextFile" "_New Text File" Nothing Nothing
         fileNew [] False
     ,AD "FileOpen" "_Open" Nothing (Just "gtk-open")
         fileOpen [] False

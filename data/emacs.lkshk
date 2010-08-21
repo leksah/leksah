@@ -5,7 +5,7 @@
 
 
 --File
-<ctrl>n                 ->          FileNew         "Opens a new empty buffer"
+<ctrl>n                 ->          FileNew         "Creates a new haskell module"
 <ctrl>x/<ctrl>f         ->          FileOpen        "Opens an existing file"
 <ctrl>x/<ctrl>s         ->          FileSave        "Saves the current buffer"
 <ctrl>x/<ctrl>w         ->          FileSaveAs      "Saves the current buffer as a new file"

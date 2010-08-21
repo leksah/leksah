@@ -1,7 +1,8 @@
    <ui>
     <menubar>
       <menu name="_File" action="File">
-       <menuitem name="_New" action="FileNew" />
+       <menuitem name="_New Module" action="FileNew" />
+       <menuitem name="New _Text File" action="FileNewTextFile" />
        <menuitem name="_Open" action="FileOpen" />
        <menuitem name="_Recent Files" action="RecentFiles"/>
        <menuitem name="_Save" action="FileSave" />

@@ -23,6 +23,7 @@ module IDE.Pane.Modules (
 ,   reloadKeepSelection
 ,   replaySelHistory
 ,   replayScopeHistory
+,   addModule
 ) where
 
 import Graphics.UI.Gtk hiding (get)
@@ -769,7 +770,7 @@ treeViewPopup ideR  store treeView (Button _ click _ _ _ _ button _ _) = do
             item5 `onActivateLeaf` (treeViewCollapseAll treeView)
             sep2 <- separatorMenuItemNew
             item6           <-  menuItemNewWithLabel "Add module"
-            item6 `onActivateLeaf` (reflectIDE (packageTry_ $ addModule treeView store) ideR)
+            item6 `onActivateLeaf` (reflectIDE (packageTry_ $ addModule' treeView store) ideR)
             item7           <-  menuItemNewWithLabel "Delete module"
             item7 `onActivateLeaf` do
                 sel         <-  getSelectionTree treeView store
@@ -1055,14 +1056,17 @@ respDelModDialog = do
         return resp
     return $ resp == ResponseUser 1
 
-addModule :: TreeView -> TreeStore (String, Maybe (ModuleDescr,PackageDescr)) -> PackageAction
-addModule treeView store = do
+addModule' :: TreeView -> TreeStore (String, Maybe (ModuleDescr,PackageDescr)) -> PackageAction
+addModule' treeView store = do
     sel   <- liftIO $ treeViewGetSelection treeView
     paths <- liftIO $ treeSelectionGetSelectedRows sel
     categories <- case paths of
         []     -> return []
         (treePath:_) -> liftIO $ mapM (treeStoreGetValue store)
                                     $ map (\n -> take n treePath)  [1 .. length treePath]
+    addModule categories
+
+addModule categories = do
     mbPD <- lift $ getPackageDescriptionAndPath
     case mbPD of
         Nothing             -> lift $ ideMessage Normal "No package description"
