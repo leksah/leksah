@@ -123,7 +123,7 @@ realMain yiConfig = do
     args            <-  getArgs
 
     (o,_)           <-  ideOpts args
-    isFirstStart    <-  liftM not hasConfigDir
+    isFirstStart    <-  liftM not $ hasSavedConfigFile standardPreferencesFilename
     let sessions        =   filter (\x -> case x of
                                         SessionN _ -> True
                                         _         -> False) o
