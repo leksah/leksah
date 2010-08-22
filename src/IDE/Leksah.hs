@@ -350,7 +350,7 @@ firstStart prefs = do
     scrolledWindowAddWithViewport sw widget
     scrolledWindowSetPolicy sw PolicyNever PolicyAutomatic
     boxPackStart vb sw PackGrow 7
-    windowSetDefaultSize dialog 800 720
+    windowSetDefaultSize dialog 800 744
     widgetShowAll dialog
     response <- dialogRun dialog
     widgetHide dialog
