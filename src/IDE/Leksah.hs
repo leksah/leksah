@@ -54,7 +54,7 @@ import IDE.Pane.SourceBuffer
 import IDE.Find
 import Graphics.UI.Editor.Composite (filesEditor, maybeEditor)
 import Graphics.UI.Editor.Simple
-       (enumEditor, intEditor, stringEditor, boolEditor)
+       (enumEditor, stringEditor)
 import IDE.Metainfo.Provider (initInfo)
 import IDE.Workspaces (backgroundMake)
 import IDE.Utils.GUIUtils
@@ -312,17 +312,7 @@ fDescription configPath = VFD emptyParams [
             (paraName <<<- ParaName "Strategy for downloading prebuilt metadata" $ emptyParams)
             retrieveStrategy
             (\b a -> a{retrieveStrategy = b})
-            (enumEditor ["Try to download and then build locally if that fails","Try to build locally and then download if that fails","Never download (just try to build locally)"])
-    ,   mkField
-            (paraName <<<- ParaName "Port number for leksah to comunicate with leksah-server" $ emptyParams)
-            serverPort
-            (\b a -> a{serverPort = b})
-            (intEditor (1.0, 65535.0, 1.0))
-    ,   mkField
-            (paraName <<<- ParaName "Stop the leksah-server process when leksah disconnects" $ emptyParams)
-            endWithLastConn
-            (\b a -> a{endWithLastConn = b})
-            boolEditor]
+            (enumEditor ["Try to download and then build locally if that fails","Try to build locally and then download if that fails","Never download (just try to build locally)"])]
 
 --
 -- | Called when leksah is first called (the .leksah-xx directory does not exist)
@@ -350,7 +340,7 @@ firstStart prefs = do
     scrolledWindowAddWithViewport sw widget
     scrolledWindowSetPolicy sw PolicyNever PolicyAutomatic
     boxPackStart vb sw PackGrow 7
-    windowSetDefaultSize dialog 800 744
+    windowSetDefaultSize dialog 800 630
     widgetShowAll dialog
     response <- dialogRun dialog
     widgetHide dialog
