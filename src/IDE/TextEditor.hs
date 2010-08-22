@@ -463,7 +463,8 @@ newView (GtkEditorBuffer sb) mbFontString = do
         Gtk.sourceViewSetIndentOnTab sv True
         Gtk.sourceViewSetAutoIndent sv True
         Gtk.sourceViewSetSmartHomeEnd sv Gtk.SourceSmartHomeEndBefore
-        Gtk.textViewSetWrapMode sv Gtk.WrapChar
+        -- TODO make this a configuration setting
+        -- Gtk.textViewSetWrapMode sv Gtk.WrapChar
         sw <- Gtk.scrolledWindowNew Nothing Nothing
         Gtk.containerAdd sw sv
         Gtk.widgetModifyFont sv (Just fd)
