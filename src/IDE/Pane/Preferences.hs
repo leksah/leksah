@@ -68,7 +68,7 @@ import Prelude hiding(catch)
 -- This needs to be incremented, when the preferences format changes
 --
 prefsVersion :: Int
-prefsVersion = 1
+prefsVersion = 2
 
 --
 -- | The Preferences Pane

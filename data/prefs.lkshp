@@ -1,5 +1,5 @@
 Version number of preferences file format:
-               1
+               2
      --Integer
 Time of last storage:
                "Fri Feb 26 16:43:57 CET 2010"
@@ -45,7 +45,7 @@ Default pane path:
 Paths under which haskell sources for packages may be found:
                []
 Unpack source for cabal packages to:
-               Just "~/.leksah-0.8.1/packageSources"
+               Just "~/.leksah-0.9/packageSources"
 URL from which to download prebuilt metadata:
                "http://www.leksah.org"
 Strategy for downloading prebuilt metadata:
