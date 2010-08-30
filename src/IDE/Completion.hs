@@ -1,3 +1,4 @@
+{-# LANGUAGE ScopedTypeVariables #-}
 -----------------------------------------------------------------------------
 --
 -- Module      :  IDE.Completion
@@ -12,7 +13,7 @@
 --
 -----------------------------------------------------------------------------
 
-module IDE.Completion (complete, cancel) where
+module IDE.Completion (complete, cancel, setCompletionSize) where
 
 import Prelude hiding(getChar, getLine)
 
@@ -30,9 +31,9 @@ import IDE.TextEditor
 
 complete :: EditorView -> Bool -> IDEAction
 complete sourceView always = do
-    currentState' <- readIDE currentState
-    prefs'        <- readIDE prefs
-    completion'   <- readIDE completion
+    currentState'    <- readIDE currentState
+    prefs'           <- readIDE prefs
+    (_, completion') <- readIDE completion
     case (currentState',completion') of
         (IsCompleting c, Just (CompletionWindow window tv st)) -> do
                             isWordChar <- getIsWordChar sourceView
@@ -43,12 +44,21 @@ complete sourceView always = do
 
 cancel :: IDEAction
 cancel = do
-    currentState' <- readIDE currentState
-    completion'   <- readIDE completion
+    currentState'    <- readIDE currentState
+    (_, completion') <- readIDE completion
     case (currentState',completion') of
         (IsCompleting conn , Just (CompletionWindow window tv st)) ->
             cancelCompletion window tv st conn
         _            -> return ()
+
+setCompletionSize :: (Int, Int) -> IDEAction
+setCompletionSize (x, y) | x > 10 && y > 10 = do
+    (_, completion) <- readIDE completion
+    case completion of
+        Just (CompletionWindow window _ _) -> liftIO $ windowResize window x y
+        Nothing                            -> return ()
+    modifyIDE_ $ \ide -> ide{completion = ((x, y), completion)}
+setCompletionSize _ = return ()
 
 getIsWordChar :: EditorView -> IDEM (Char -> Bool)
 getIsWordChar sourceView = do
@@ -73,7 +83,7 @@ getIsWordChar sourceView = do
 initCompletion :: EditorView -> Bool -> IDEAction
 initCompletion sourceView always = do
     ideR <- ask
-    completion' <- readIDE completion
+    ((width, height), completion') <- readIDE completion
     isWordChar <- getIsWordChar sourceView
     case completion' of
         Just (CompletionWindow window' tree' store') -> do
@@ -83,18 +93,19 @@ initCompletion sourceView always = do
         Nothing -> do
             windows    <- getWindows
             prefs      <- readIDE prefs
-            window     <- liftIO $ do
-                windowNewPopup
-            liftIO $ set window [ windowTypeHint := WindowTypeHintUtility,
-                         windowDecorated := False,
-                         windowResizable := True ]
-            --liftIO $ widgetSetSizeRequest window 700 300
-            liftIO $ containerSetBorderWidth window 3
+            window     <- liftIO windowNewPopup
             liftIO $ windowSetTransientFor window (head windows)
+            liftIO $ set window [
+                         windowTypeHint      := WindowTypeHintUtility,
+                         windowDecorated     := False,
+                         windowResizable     := True,
+                         windowDefaultWidth  := width,
+                         windowDefaultHeight := height]
+            liftIO $ containerSetBorderWidth window 3
             paned      <- liftIO $ hPanedNew
             liftIO $ containerAdd window paned
             nameScrolledWindow <- liftIO $ scrolledWindowNew Nothing Nothing
-            liftIO $ widgetSetSizeRequest nameScrolledWindow 250 400
+            liftIO $ widgetSetSizeRequest nameScrolledWindow 250 40
             tree       <- liftIO $ treeViewNew
             liftIO $ containerAdd nameScrolledWindow tree
             store      <- liftIO $ listStoreNew []
@@ -125,7 +136,6 @@ initCompletion sourceView always = do
             setStyle descriptionBuffer $ sourceStyle prefs
             descriptionScrolledWindow <- getScrolledWindow descriptionView
 
-            liftIO $ widgetSetSizeRequest descriptionScrolledWindow 500 400
             visible    <- liftIO $ newIORef False
             activeView <- liftIO $ newIORef Nothing
 
@@ -149,7 +159,7 @@ initCompletion sourceView always = do
             cids <- addEventHandling window sourceView tree store isWordChar always
 
             modifyIDE_ (\ide -> ide{currentState = IsCompleting cids,
-                completion = Just (CompletionWindow window tree store)})
+                completion = ((width, height), Just (CompletionWindow window tree store))})
             updateOptions window tree store sourceView cids isWordChar always
 
 addEventHandling :: Window -> EditorView -> TreeView -> ListStore String
@@ -236,21 +246,50 @@ addEventHandling window sourceView tree store isWordChar always = do
                 return False
             _ -> return False
 
+    resizeHandler <- liftIO $ newIORef Nothing
+
     idButtonPress <- liftIO $ window `on` buttonPressEvent $ do
         button     <- eventButton
         (x, y)     <- eventCoordinates
         time       <- eventTime
-        (width, _) <- liftIO $ widgetGetSize window
-        liftIO $ windowBeginResizeDrag window
-            (if floor x < width `div` 2 then WindowEdgeSouthWest else WindowEdgeSouthEast)
-            button (floor x) (floor y) time
+
+        drawWindow <- liftIO $ widgetGetDrawWindow window
+        status     <- liftIO $ pointerGrab
+            drawWindow
+            False
+            [PointerMotionMask, ButtonReleaseMask]
+            (Nothing::Maybe DrawWindow)
+            Nothing
+            time
+        when (status == GrabSuccess) $ liftIO $ do
+            (width, height) <- windowGetSize window
+            writeIORef resizeHandler $ Just $ \(newX, newY) -> do
+                reflectIDE (
+                    setCompletionSize ((width + (floor (newX - x))), (height + (floor (newY - y))))) ideR
+
         return True
+
+    idMotion <- liftIO $ window `on` motionNotifyEvent $ do
+        mbResize <- liftIO $ readIORef resizeHandler
+        case mbResize of
+            Just resize -> eventCoordinates >>= (liftIO . resize) >> return True
+            Nothing     -> return False
+
+    idButtonRelease <- liftIO $ window `on` buttonReleaseEvent $ do
+        mbResize <- liftIO $ readIORef resizeHandler
+        case mbResize of
+            Just resize -> do
+                eventCoordinates >>= (liftIO . resize)
+                eventTime >>= (liftIO . pointerUngrab)
+                liftIO $ writeIORef resizeHandler Nothing
+                return True
+            Nothing     -> return False
 
     idSelected <- liftIO $ tree `onRowActivated` (\treePath column -> (do
         reflectIDE (withWord store treePath (replaceWordStart sourceView isWordChar)) ideR
         liftIO $ postGUIAsync $ reflectIDE cancel ideR))
 
-    return $ concat [cidsPress, cidsRelease, [ConnectC idButtonPress, ConnectC idSelected]]
+    return $ concat [cidsPress, cidsRelease, [ConnectC idButtonPress, ConnectC idMotion, ConnectC idButtonRelease, ConnectC idSelected]]
 
 withWord :: ListStore String -> TreePath -> (String -> IDEM ()) -> IDEM ()
 withWord store treePath f = (do

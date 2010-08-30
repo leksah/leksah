@@ -148,7 +148,7 @@ data IDE            =  IDE {
 ,   recentWorkspaces ::  [FilePath]
 ,   runningTool     ::   Maybe ProcessHandle
 ,   debugState      ::   Maybe (IDEPackage, ToolState)
-,   completion      ::   Maybe CompletionWindow
+,   completion      ::   ((Int, Int), Maybe CompletionWindow)
 ,   yiControl       ::   Yi.Control
 ,   server          ::   Maybe Handle
 } --deriving Show

@@ -237,7 +237,7 @@ startMainWindow yiControl sessionFilename startupPrefs isFirstStart = do
           ,   recentWorkspaces  =   []
           ,   runningTool       =   Nothing
           ,   debugState        =   Nothing
-          ,   completion        =   Nothing
+          ,   completion        =   ((750,400),Nothing)
           ,   yiControl         =   yiControl
           ,   server            =   Nothing
     }

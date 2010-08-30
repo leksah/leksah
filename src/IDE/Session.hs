@@ -59,6 +59,7 @@ import IDE.Pane.Errors (ErrorsState(..))
 import Control.Exception (SomeException(..))
 import IDE.Pane.Workspace (WorkspaceState(..))
 import IDE.Workspaces (workspaceOpenThis)
+import IDE.Completion (setCompletionSize)
 
 
 -- ---------------------------------------------------------------------
@@ -142,6 +143,7 @@ data SessionState = SessionState {
     ,   layoutS             ::   PaneLayout
     ,   population          ::   [(Maybe PaneState,PanePath)]
     ,   windowSize          ::   (Int,Int)
+    ,   completionSize      ::   (Int,Int)
     ,   workspacePath       ::   Maybe FilePath
     ,   activePaneN         ::   Maybe String
     ,   toolbarVisibleS     ::   Bool
@@ -156,6 +158,7 @@ defaultSession = SessionState {
     ,   layoutS             =   TerminalP Map.empty (Just TopP) (-1) Nothing Nothing
     ,   population          =   []
     ,   windowSize          =   (1024,768)
+    ,   completionSize      =   (750,400)
     ,   workspacePath       =   Nothing
     ,   activePaneN         =   Nothing
     ,   toolbarVisibleS     =   True
@@ -205,6 +208,12 @@ sessionDescr = [
             (pairParser intParser)
             windowSize
             (\(c,d) a -> a{windowSize = (c,d)})
+    ,   mkFieldS
+            (paraName <<<- ParaName "Completion size" $ emptyParams)
+            (PP.text . show)
+            (pairParser intParser)
+            completionSize
+            (\(c,d) a -> a{completionSize = (c,d)})
     ,   mkFieldS
             (paraName <<<- ParaName "Workspace" $ emptyParams)
             (PP.text . show)
@@ -273,6 +282,7 @@ saveSessionAs sessionPath mbSecondPath = do
             layout          <-  mkLayout
             population      <-  getPopulation
             size            <-  liftIO $ windowGetSize wdw
+            (completionSize,_) <- readIDE completion
             mbWs            <-  readIDE workspace
             activePane'     <-  getActivePane
             let activeP =   case activePane' of
@@ -290,6 +300,7 @@ saveSessionAs sessionPath mbSecondPath = do
             ,   layoutS             =   layout
             ,   population          =   population
             ,   windowSize          =   size
+            ,   completionSize      =   completionSize
             ,   workspacePath       =   case mbWs of
                                             Nothing -> Nothing
                                             Just ws -> Just (wsFile ws)
@@ -467,6 +478,7 @@ recoverSession sessionPath = catchIDE (do
         if (fst . findbarState) sessionSt
             then showFindbar
             else hideFindbar
+        setCompletionSize (completionSize sessionSt)
         modifyIDE_ (\ide -> ide{recentFiles = recentOpenedFiles sessionSt,
                                         recentWorkspaces = recentOpenedWorksp sessionSt})
         return (toolbarVisibleS sessionSt, (fst . findbarState) sessionSt))
