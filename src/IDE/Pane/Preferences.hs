@@ -229,6 +229,16 @@ prefsDescription configDir packages = NFDPP [
                 buffers <- allBuffers
                 mapM_ (\buf -> setIndentWidth (sourceView buf) i) buffers)
     ,   mkFieldPP
+            (paraName <<<- ParaName "Wrap lines" $ emptyParams)
+            (PP.text . show)
+            boolParser
+            wrapLines
+            (\b a -> a{wrapLines = b})
+            boolEditor
+            (\b -> do
+                buffers <- allBuffers
+                mapM_ (\buf -> setWrapMode (sourceView buf) b) buffers)
+    ,   mkFieldPP
             (paraName <<<- ParaName "Use standard line ends even on windows" $ emptyParams)
             (PP.text . show)
             boolParser
@@ -615,6 +625,7 @@ defaultPrefs = Prefs {
     ,   showLineNumbers     =   True
     ,   rightMargin         =   Just 100
     ,   tabWidth            =   4
+    ,   wrapLines           =   False
     ,   sourceCandy         =   Just("candy")
     ,   keymapName          =   "keymap"
     ,   forceLineEnds       =   True

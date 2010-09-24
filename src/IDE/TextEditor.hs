@@ -77,6 +77,7 @@ module IDE.TextEditor (
 ,   scrollToIter
 ,   setFont
 ,   setIndentWidth
+,   setWrapMode
 ,   setRightMargin
 ,   setShowLineNumbers
 ,   setTabWidth
@@ -455,6 +456,7 @@ moveMark _ _ _ = liftIO $ fail "Mismatching TextEditor types in moveMark"
 
 newView :: EditorBuffer -> Maybe String -> IDEM EditorView
 newView (GtkEditorBuffer sb) mbFontString = do
+    prefs <- readIDE prefs
     fd <- fontDescription mbFontString
     liftIO $ do
         sv <- Gtk.sourceViewNewWithBuffer sb
@@ -464,7 +466,9 @@ newView (GtkEditorBuffer sb) mbFontString = do
         Gtk.sourceViewSetAutoIndent sv True
         Gtk.sourceViewSetSmartHomeEnd sv Gtk.SourceSmartHomeEndBefore
         -- TODO make this a configuration setting
-        -- Gtk.textViewSetWrapMode sv Gtk.WrapChar
+        if wrapLines prefs
+            then Gtk.textViewSetWrapMode sv Gtk.WrapWord
+            else Gtk.textViewSetWrapMode sv Gtk.WrapNone
         sw <- Gtk.scrolledWindowNew Nothing Nothing
         Gtk.containerAdd sw sv
         Gtk.widgetModifyFont sv (Just fd)
@@ -649,6 +653,21 @@ setIndentWidth (YiEditorView Yi.View{Yi.viewFBufRef = b}) width =
         \ (mode@Yi.Mode{Yi.modeIndentSettings = mis}) ->
             mode{Yi.modeIndentSettings = mis{Yi.shiftWidth = width}}
 #endif
+
+setWrapMode :: EditorView -> Bool-> IDEM ()
+setWrapMode ev@(GtkEditorView sv) wrapLines = do
+    sw <- getScrolledWindow ev
+    if wrapLines
+        then liftIO $ do
+            Gtk.textViewSetWrapMode sv Gtk.WrapWord
+            Gtk.scrolledWindowSetPolicy sw Gtk.PolicyNever Gtk.PolicyAutomatic
+        else liftIO $ do
+            Gtk.textViewSetWrapMode sv Gtk.WrapNone
+            Gtk.scrolledWindowSetPolicy sw Gtk.PolicyAutomatic Gtk.PolicyAutomatic
+#ifdef LEKSAH_WITH_YI
+setIndentWidth (YiEditorView Yi.View{Yi.viewFBufRef = b}) width = return ()
+#endif
+
 
 setRightMargin :: EditorView -> Maybe Int -> IDEM ()
 setRightMargin (GtkEditorView sv) mbRightMargin = liftIO $ do

@@ -366,6 +366,7 @@ data Prefs = Prefs {
     ,   showLineNumbers     ::   Bool
     ,   rightMargin         ::   Maybe Int
     ,   tabWidth            ::   Int
+    ,   wrapLines           ::   Bool
     ,   sourceCandy         ::   Maybe String
     ,   keymapName          ::   String
     ,   forceLineEnds       ::   Bool
