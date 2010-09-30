@@ -1,7 +1,10 @@
 [Desktop Entry]
 Encoding=UTF-8
 Name=Leksah
-Exec=/usr/bin/leksah
-Icon=leksah_48x48
+GenericName=Haskell IDE
+Comment=The Haskell development environment
+Exec=leksah %F
+Icon=leksah
 Type=Application
 Categories=GNOME;GTK;Development;
+MimeType=text/x-haskell;text/x-literate-haskell;application/leksah-session;application/leksah-workspace

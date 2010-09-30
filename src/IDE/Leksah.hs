@@ -56,7 +56,7 @@ import Graphics.UI.Editor.Composite (filesEditor, maybeEditor)
 import Graphics.UI.Editor.Simple
        (enumEditor, stringEditor)
 import IDE.Metainfo.Provider (initInfo)
-import IDE.Workspaces (backgroundMake)
+import IDE.Workspaces (workspaceOpenThis, backgroundMake)
 import IDE.Utils.GUIUtils
 import Network (withSocketsDo)
 import Control.Exception
@@ -68,33 +68,39 @@ import System.Log
 import System.Log.Logger(updateGlobalLogger,rootLoggerName,setLevel)
 import Data.List (stripPrefix)
 import System.Directory (doesFileExist)
-import System.FilePath ((</>))
+import System.FilePath (dropExtension, splitExtension, (</>))
 
 -- --------------------------------------------------------------------
 -- Command line options
 --
 
-data Flag =  VersionF | SessionN String | Help | Verbosity String
+data Flag =  VersionF | SessionN String | EmptySession | DefaultSession | Help | Verbosity String
        deriving (Show,Eq)
 
 options :: [OptDescr Flag]
-options =   [Option ['v'] ["version"] (NoArg VersionF)
-                "Show the version number of ide"
+options =   [Option ['e'] ["emptySession"] (NoArg EmptySession)
+                "Start with empty session"
+         ,   Option ['d'] ["defaultSession"] (NoArg DefaultSession)
+                "Start with default session (can be used together with a source file)"
          ,   Option ['l'] ["loadSession"] (ReqArg SessionN "NAME")
                 "Load session"
+
          ,   Option ['h'] ["help"] (NoArg Help)
                 "Display command line options"
-         ,   Option ['e'] ["verbosity"] (ReqArg Verbosity "Verbosity")
-                "One of DEBUG, INFO, NOTICE, WARNING, ERROR, CRITICAL, ALERT, EMERGENCY"]
+         ,   Option ['v'] ["version"] (NoArg VersionF)
+                "Show the version number of ide"
 
-header = "Usage: leksah [OPTION...] files..."
+         ,   Option ['e'] ["verbosity"] (ReqArg Verbosity "Verbosity")
+             "One of DEBUG, INFO, NOTICE, WARNING, ERROR, CRITICAL, ALERT, EMERGENCY"]
+
+
+header = "Usage: leksah [OPTION...] [file(.lkshs|.lkshw|.hs|.lhs)]"
 
 ideOpts :: [String] -> IO ([Flag], [String])
 ideOpts argv =
     case getOpt Permute options argv of
           (o,n,[]  ) -> return (o,n)
           (_,_,errs) -> ioError $ userError $ concat errs ++ usageInfo header options
-
 
 -- ---------------------------------------------------------------------
 -- | Main function
@@ -122,16 +128,48 @@ leksah = realMain
 
 realMain yiConfig = do
   withSocketsDo $ handleExceptions $ do
+    dataDir         <- getDataDir
     args            <-  getArgs
 
-    (o,_)           <-  ideOpts args
+    (o,files)       <-  ideOpts args
     isFirstStart    <-  liftM not $ hasSavedConfigFile standardPreferencesFilename
     let sessions        =   filter (\x -> case x of
                                         SessionN _ -> True
                                         _         -> False) o
-    let sessionFilename =  if not (null sessions)
-                                then  (head $ map (\ (SessionN x) -> x) sessions) ++ leksahSessionFileExtension
-                                else  standardSessionFilename
+
+    let sessionFPs    =   filter (\f -> snd (splitExtension f) == leksahSessionFileExtension) files
+    let workspaceFPs  =   filter (\f -> snd (splitExtension f) == leksahWorkspaceFileExtension) files
+    let sourceFPs     =   filter (\f -> let (_,s) = splitExtension f
+                                        in s == ".hs" ||  s == ".lhs" || s == ".chs") files
+    let mbWorkspaceFP'=  case workspaceFPs of
+                                [] ->  Nothing
+                                w:_ -> Just w
+    (mbWSessionFP, mbWorkspaceFP) <-
+        case mbWorkspaceFP' of
+            Nothing ->  return (Nothing,Nothing)
+            Just fp ->  let spath =  dropExtension fp ++ leksahSessionFileExtension
+                        in do
+                            exists <- liftIO $ doesFileExist spath
+                            if exists
+                                then return (Just spath,Nothing)
+                                else return (Nothing,Just fp)
+    let ssession =  if not (null sessions)
+                                then  (head $ map (\ (SessionN x) -> x) sessions) ++
+                                            leksahSessionFileExtension
+                                else  if null sourceFPs
+                                        then standardSessionFilename
+                                        else emptySessionFilename
+
+    sessionFP    <-  if  elem EmptySession o
+                                then getConfigFilePathForLoad
+                                                        emptySessionFilename Nothing dataDir
+                                else if elem DefaultSession o
+                                        then getConfigFilePathForLoad
+                                                        standardSessionFilename Nothing dataDir
+                                        else case mbWSessionFP of
+                                                Just fp -> return fp
+                                                Nothing -> getConfigFilePathForLoad
+                                                                    ssession Nothing dataDir
     let verbosity'      =  catMaybes $
                                 map (\x -> case x of
                                     Verbosity s -> Just s
@@ -144,11 +182,11 @@ realMain yiConfig = do
         (sysMessage Normal $ "Leksah the Haskell IDE, version " ++ showVersion version)
     when (elem Help o)
         (sysMessage Normal $ "Leksah the Haskell IDE " ++ usageInfo header options)
-    dataDir         <- getDataDir
+
     prefsPath       <- getConfigFilePathForLoad standardPreferencesFilename Nothing dataDir
     prefs           <- readPrefs prefsPath
     when (not (elem VersionF o) && not (elem Help o))
-        (startGUI yiConfig sessionFilename prefs isFirstStart)
+        (startGUI yiConfig sessionFP mbWorkspaceFP sourceFPs  prefs isFirstStart)
 
 handleExceptions inner =
   catch inner (\(exception :: SomeException) -> do
@@ -159,8 +197,8 @@ handleExceptions inner =
 -- ---------------------------------------------------------------------
 -- | Start the GUI
 
-startGUI :: Yi.Config -> String -> Prefs -> Bool -> IO ()
-startGUI yiConfig sessionFilename iprefs isFirstStart = do
+startGUI :: Yi.Config -> FilePath -> Maybe FilePath -> [FilePath] -> Prefs -> Bool -> IO ()
+startGUI yiConfig sessionFP mbWorkspaceFP sourceFPs iprefs isFirstStart = do
   Yi.start yiConfig $ \yiControl -> do
     st          <-  unsafeInitGUIForThreadedRTS
     when rtsSupportsBoundThreads
@@ -181,9 +219,12 @@ startGUI yiConfig sessionFilename iprefs isFirstStart = do
                                             return $ Just prefs
     case mbStartupPrefs of
         Nothing           -> return ()
-        Just startupPrefs -> startMainWindow yiControl sessionFilename startupPrefs isFirstStart
+        Just startupPrefs -> startMainWindow yiControl sessionFP mbWorkspaceFP sourceFPs
+                                startupPrefs isFirstStart
 
-startMainWindow yiControl sessionFilename startupPrefs isFirstStart = do
+startMainWindow :: Yi.Control -> FilePath -> Maybe FilePath -> [FilePath] ->
+                        Prefs -> Bool -> IO ()
+startMainWindow yiControl sessionFP mbWorkspaceFP sourceFPs startupPrefs isFirstStart = do
     osxApp <- OSX.applicationNew
     uiManager   <-  uiManagerNew
     newIcons
@@ -255,10 +296,11 @@ startMainWindow yiControl sessionFilename startupPrefs isFirstStart = do
         setBackgroundLinkToggled (backgroundLink startupPrefs)) ideR
     let (x,y)   =   defaultSize startupPrefs
     windowSetDefaultSize win x y
-    sessionPath <- getConfigFilePathForLoad sessionFilename Nothing dataDir
     (tbv,fbv)   <- reflectIDE (do
         registerEvents
-        pair <- recoverSession sessionPath
+        pair <- recoverSession sessionFP
+        workspaceOpenThis False  mbWorkspaceFP
+        mapM fileOpenThis sourceFPs
         wins <- getWindows
         mapM_ instrumentSecWindow (tail wins)
         return pair
