@@ -21,24 +21,11 @@ ExclusiveArch:  %{ix86} x86_64 ppc alpha
 BuildRequires:  ghc
 BuildRequires:  ghc-rpm-macros >= 0.7.0
 %{?ghc_pkg_deps:BuildRequires:  %{ghc_pkg_deps}, %(echo %{ghc_pkg_deps} | sed -e "s/\(ghc-[^, ]\+\)-devel/\1-doc,\1-prof/g")}
-v v v v v v v
 BuildRequires:  ghc-gtksourceview2-devel <= 0.11.2
 BuildRequires:  ghc-gtksourceview2-doc,ghc-gtksourceview2-prof
-*************
-BuildRequires:  ghc-gtksourceview2-devel <= 0.11.2
-BuildRequires:  ghc-gtksourceview2-doc,ghc-gtksourceview2-prof
-
-Requires: leksah-server
-
-^ ^ ^ ^ ^ ^ ^
 %description
-v v v v v v v
 @DESCRIPTION@
 
-*************
-Haskell IDE
-
-^ ^ ^ ^ ^ ^ ^
 
 %prep
 %setup -q
