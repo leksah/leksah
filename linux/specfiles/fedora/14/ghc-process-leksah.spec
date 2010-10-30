@@ -57,7 +57,6 @@ rm -rf $RPM_BUILD_ROOT
 
 
 %changelog
-%changelog
 * Sun Oct 10 2010 Lakshmi Narasimhan <lakshminaras2002@gmail.com> - 1.0.1.3-1
 - Modified license text
 - Added dependencies

@@ -1,10 +1,10 @@
 %global pkg_name binary-shared
 
-%global common_summary Haskell %{pkg_name} library
+%global common_summary Haskell library for sharing binary elements
 
-%global common_description A %{pkg_name} library for Haskell.
+%global common_description This package adds the capability to share elements created by the binary package
 
-%global ghc_pkg_deps ghc-binary-devel
+%global ghc_pkg_deps ghc-binary-devel ghc-mtl-devel
 
 %bcond_without shared
 %bcond_without hscolour
@@ -18,7 +18,7 @@ Release:        1%{?dist}
 Summary:        %{common_summary}
 
 Group:          System Environment/Libraries
-License:        GPL
+License:        GPLv2
 URL:            http://hackage.haskell.org/package/%{pkg_name}
 Source0:        http://hackage.haskell.org/packages/archive/%{pkg_name}/%{version}/%{pkg_name}-%{version}.tar.gz
 BuildRoot:      %{_tmppath}/%{name}-%{version}-%{release}-root-%(%{__id_u} -n)
@@ -30,7 +30,6 @@ BuildRequires:  ghc-rpm-macros >= 0.8.1
 BuildRequires:  hscolour
 %endif
 %{?ghc_pkg_deps:BuildRequires:  %{ghc_pkg_deps}, %(echo %{ghc_pkg_deps} | sed -e "s/\(ghc-[^, ]\+\)-devel/\1-doc,\1-prof/g")}
-%{?ghc_pkg_c_deps:BuildRequires:  %{ghc_pkg_c_deps}}
 
 %description
 %{common_description}
@@ -61,6 +60,7 @@ rm -rf $RPM_BUILD_ROOT
 
 %changelog
 * Sun Oct 10 2010 Lakshmi Narasimhan T V <lakshminaras2002@gmail.com> - 0.8.1-1
+- Modified description
 - Modified license
 - Modified dependencies
 
