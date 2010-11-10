@@ -12,7 +12,7 @@
 # debuginfo is not useful for ghc
 %global debug_package %{nil}
 
-Name:           ghc-%{pkg_name}
+Name:           %{pkg_name}
 Version:        2.7.2
 Release:        1%{?dist}
 Summary:        %{common_summary}

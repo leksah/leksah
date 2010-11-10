@@ -4,7 +4,7 @@
 
 %global common_description %{common_summary}
 
-%global ghc_pkg_deps ghc-hslogger-devel, ghc-network-devel, ghc-process-leksah-devel, ghc-deepseq-devel, ghc-mtl-devel, ghc-ltk-devel, ghc-binary-shared-devel
+%global ghc_pkg_deps ghc-hslogger-devel, ghc-network-devel, ghc-process-leksah-devel, ghc-deepseq-devel, ghc-mtl-devel, ghc-ltk-devel, ghc-binary-shared-devel, ghc-haddock-devel
 
 %bcond_without shared
 %bcond_without hscolour
