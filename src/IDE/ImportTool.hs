@@ -372,6 +372,7 @@ selectModuleDialog parentWindow list id mbQual mbDescr =
 --                    return ()
             resp <- dialogRun dia
             value                      <- ext ([])
+            widgetHide dia
             widgetDestroy dia
             --find
             case (resp,value) of

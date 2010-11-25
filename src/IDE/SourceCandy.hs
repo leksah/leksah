@@ -29,7 +29,7 @@ module IDE.SourceCandy (
 import Prelude hiding(getChar, getLine)
 
 import Data.Char(chr)
-import Data.List(isSuffixOf)
+import Data.List (elemIndices, isInfixOf, isSuffixOf)
 import Text.ParserCombinators.Parsec
 import qualified Text.ParserCombinators.Parsec.Token as P
 import Text.ParserCombinators.Parsec.Language(emptyDef)
@@ -37,6 +37,7 @@ import qualified Data.Set as Set
 
 import IDE.Core.State
 import IDE.TextEditor
+import Control.Monad (unless)
 
 ---------------------------------------------------------------------------------
 -- * Implementation
@@ -44,22 +45,25 @@ import IDE.TextEditor
 notBeforeId     =   Set.fromList $['a'..'z'] ++ ['A'..'Z'] ++ ['_']
 notAfterId      =   Set.fromList $['a'..'z'] ++ ['A'..'Z'] ++ ['0'..'9'] ++ ['_']
 notBeforeOp     =   Set.fromList $['!','#','$','%','&','*','+','.','/','<','=','>','?','@','\\',
-                                    '^','|','-','~','\'','"','\n']
+                                    '^','|','-','~','\'','"']
 notAfterOp      =   notBeforeOp
 
 keystrokeCandy :: CandyTable -> Maybe Char -> EditorBuffer -> IDEM ()
 keystrokeCandy (CT(transformTable,_)) mbc ebuf = do
     cursorMark  <-  getInsertMark ebuf
     endIter     <-  getIterAtMark ebuf cursorMark
+    lineNr      <-  getLine endIter
+    columnNr    <-  getLineOffset endIter
     offset      <-  getOffset endIter
-    let sliceStart = if offset < 8 then 0 else offset - 8
-    startIter   <-  getIterAtOffset ebuf sliceStart
+    startIter   <-  backwardToLineStartC endIter
     slice       <-  getSlice ebuf startIter endIter True
     mbc2        <-  case mbc of
                         Just c -> return (Just c)
                         Nothing -> do
                             getChar endIter
-    replace mbc2 cursorMark slice offset transformTable
+    block       <- isInCommentOrString lineNr columnNr slice
+    unless block $
+        replace mbc2 cursorMark slice offset transformTable
     where
     replace ::  Maybe Char -> EditorMark -> String -> Int -> [(Bool,String,String)] -> IDEM ()
     replace mbAfterChar cursorMark match offset list = replace' list
@@ -106,37 +110,43 @@ replaceTo buf (isOp,from,to) offset = replaceTo' offset
             Nothing         -> return ()
             Just (st,end)   -> do
                 stOff <- getOffset st
-                beforeOk <-
-                    if stOff == 0
-                        then return True
-                        else do
-                            iter <- getIterAtOffset buf (stOff - 1)
-                            mbChar <- getChar iter
-                            case mbChar of
-                                Nothing     ->  return True
-                                Just char   ->  return (not $if isOp
-                                                                then Set.member char notBeforeOp
-                                                                else Set.member char notBeforeId)
-                if beforeOk
-                    then do
-                        afterOk <-  do
-                            endOff  <-  getOffset end
-                            iter    <-  getIterAtOffset buf endOff
-                            mbChar  <-  getChar iter
-                            case mbChar of
-                                Nothing     ->  return True
-                                Just char   ->  return (not $if isOp
-                                                                then Set.member char notAfterOp
-                                                                else Set.member char notAfterId)
-                        if afterOk
-                            then do
-                                delete buf st end
-                                insert buf st to
-                                return ()
+                lineNr      <-  getLine end
+                columnNr    <-  getLineOffset end
+                startIter   <-  backwardToLineStartC end
+                slice       <-  getSlice buf startIter end True
+                block       <- isInCommentOrString lineNr columnNr slice
+                unless block $ do
+                    beforeOk <-
+                        if stOff == 0
+                            then return True
                             else do
-                                return ()
-                    else do
-                    return ()
+                                iter <- getIterAtOffset buf (stOff - 1)
+                                mbChar <- getChar iter
+                                case mbChar of
+                                    Nothing     ->  return True
+                                    Just char   ->  return (not $if isOp
+                                                                    then Set.member char notBeforeOp
+                                                                    else Set.member char notBeforeId)
+                    if beforeOk
+                        then do
+                            afterOk <-  do
+                                endOff  <-  getOffset end
+                                iter    <-  getIterAtOffset buf endOff
+                                mbChar  <-  getChar iter
+                                case mbChar of
+                                    Nothing     ->  return True
+                                    Just char   ->  return (not $if isOp
+                                                                    then Set.member char notAfterOp
+                                                                    else Set.member char notAfterId)
+                            if afterOk
+                                then do
+                                    delete buf st end
+                                    insert buf st to
+                                    return ()
+                                else do
+                                    return ()
+                        else do
+                        return ()
                 replaceTo' (stOff + 1)
 
 transformFromCandy :: CandyTable -> EditorBuffer -> IDEM ()
@@ -302,3 +312,16 @@ replaceWithParser = do
     char '0'
     hd  <-  lexeme hexadecimal
     return (chr (fromIntegral hd))
+
+-- TODO Literal Haskell
+isInCommentOrString :: Int -> Int -> String -> IDEM Bool
+isInCommentOrString line column preLine =
+    if isInfixOf "--" preLine
+        then return True
+        else let indices = elemIndices '"' preLine
+             in if length indices == 0
+                    then return False
+                    else if even (length indices) -- TODO Handle \"
+                        then return False
+                        else return True
+
