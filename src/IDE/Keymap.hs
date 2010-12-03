@@ -7,7 +7,7 @@ module IDE.Keymap (
     Keymap(..)
 ) where
 
-import Graphics.UI.Gtk
+import Graphics.UI.Gtk (keyvalFromName, KeyVal)
 import Graphics.UI.Gtk.Gdk.Events(Modifier(..))
 import qualified Data.Map as Map
 import Text.ParserCombinators.Parsec

@@ -652,7 +652,11 @@ idePackageFromPath filePath = do
             let mainFiles  = map modulePath (executables packageD)
             let files      = Set.fromList $ extraSrcFiles packageD ++ map modulePath (executables packageD)
             let ipdSrcDirs = nub $ concatMap hsSourceDirs (allBuildInfo packageD)
+#if MIN_VERSION_Cabal(1,10,0)
+            let exts       = nub $ concatMap oldExtensions (allBuildInfo packageD)
+#else
             let exts       = nub $ concatMap extensions (allBuildInfo packageD)
+#endif
             let packp      = IDEPackage (package packageD) filePath (buildDepends packageD) modules
 
                              mainFiles files ipdSrcDirs exts ["--user"] [] [] [] [] [] [] []

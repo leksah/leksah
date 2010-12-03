@@ -90,10 +90,13 @@ instance RecoverablePane IDEInfo InfoState IDEM where
             descriptionBuffer <- (get descriptionView textViewBuffer) >>= (return . castToSourceBuffer)
             lm <- sourceLanguageManagerNew
             mbLang <- sourceLanguageManagerGuessLanguage lm Nothing (Just "text/x-haskell")
+#if MIN_VERSION_gtksourceview2(0,12,0)
+            sourceBufferSetLanguage descriptionBuffer mbLang
+#else
             case mbLang of
                 Nothing -> return ()
                 Just lang -> do sourceBufferSetLanguage descriptionBuffer lang
-
+#endif
             -- This call is here because in the past I have had problems where the
             -- language object became invalid if the manager was garbage collected
             sourceLanguageManagerGetLanguageIds lm
@@ -108,7 +111,11 @@ instance RecoverablePane IDEInfo InfoState IDEM where
                     ids <- sourceStyleSchemeManagerGetSchemeIds styleManager
                     when (elem str ids) $ do
                         scheme <- sourceStyleSchemeManagerGetScheme styleManager str
+#if MIN_VERSION_gtksourceview2(0,12,0)
+                        sourceBufferSetStyleScheme descriptionBuffer $ Just scheme
+#else
                         sourceBufferSetStyleScheme descriptionBuffer scheme
+#endif
 
 
             sw <- scrolledWindowNew Nothing Nothing

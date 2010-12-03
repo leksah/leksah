@@ -541,7 +541,12 @@ setStyle (GtkEditorBuffer sb) mbStyle = liftIO $ do
             ids <- Gtk.sourceStyleSchemeManagerGetSchemeIds styleManager
             when (elem str ids) $ do
                 scheme <- Gtk.sourceStyleSchemeManagerGetScheme styleManager str
+#if MIN_VERSION_gtksourceview2(0,12,0)
+                Gtk.sourceBufferSetStyleScheme sb (Just scheme)
+#else
                 Gtk.sourceBufferSetStyleScheme sb scheme
+#endif
+
 #ifdef LEKSAH_WITH_YI
 setStyle (YiEditorBuffer b) mbStyle = return () -- TODO
 #endif

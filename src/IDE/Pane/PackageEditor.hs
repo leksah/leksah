@@ -526,7 +526,11 @@ packageDD packages fp modules numBuildInfos extras = NFD ([
                     "Does this package depends on a specific version of Cabal?"
                     $ paraShadow <<<- ParaShadow ShadowIn $ emptyParams)
             (descCabalVersion . pd)
+#if MIN_VERSION_Cabal(1,10,0)
+            (\ a b -> b{pd = (pd b){specVersionRaw = Right a}})
+#else
             (\ a b -> b{pd = (pd b){descCabalVersion = a}})
+#endif
             versionRangeEditor
     ,   mkField
             (paraName <<<- ParaName "Tested with compiler"
@@ -710,8 +714,13 @@ buildInfoD fp modules i = [
                          $ paraMinSize <<<- ParaMinSize (-1,400)
                             $ paraPack <<<- ParaPack PackGrow
                                 $ emptyParams)
+#if MIN_VERSION_Cabal(1,10,0)
+            (oldExtensions . (\a -> a !! i) . bis)
+            (\ a b -> b{bis = update (bis b) i (\bi -> bi{oldExtensions = a})})
+#else
             (extensions . (\a -> a !! i) . bis)
             (\ a b -> b{bis = update (bis b) i (\bi -> bi{extensions = a})})
+#endif
             extensionsEditor
     ]),
     (show (i + 1) ++ " Build Tools ", VFD emptyParams [
