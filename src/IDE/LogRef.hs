@@ -1,4 +1,4 @@
-{-# OPTIONS_GHC -XScopedTypeVariables #-}
+{-# LANGUAGE CPP, ScopedTypeVariables #-}
 -----------------------------------------------------------------------------
 --
 -- Module      :  IDE.LogRef
@@ -244,6 +244,12 @@ lastContext = do
             setCurrentContext (Just new)
             selectRef $ Just new
 
+#if MIN_VERSION_ghc(7,0,1)
+fixColumn c = max 0 (c - 1)
+#else
+fixColumn = id
+#endif
+
 srcSpanParser :: CharParser () SrcSpan
 srcSpanParser = try (do
         filePath <- many (noneOf ":")
@@ -259,7 +265,7 @@ srcSpanParser = try (do
         char ','
         endCol <- int
         char ')'
-        return $ SrcSpan filePath beginLine beginCol endLine endCol)
+        return $ SrcSpan filePath beginLine (fixColumn beginCol) endLine (fixColumn endCol))
     <|> try (do
         filePath <- many (noneOf ":")
         char ':'
@@ -268,14 +274,14 @@ srcSpanParser = try (do
         beginCol <- int
         char '-'
         endCol <- int
-        return $ SrcSpan filePath line beginCol line endCol)
+        return $ SrcSpan filePath line (fixColumn beginCol) line (fixColumn endCol))
     <|> try (do
         filePath <- many (noneOf ":")
         char ':'
         line <- int
         char ':'
         col <- int
-        return $ SrcSpan filePath line col line col)
+        return $ SrcSpan filePath line (fixColumn col) line (fixColumn col))
     <?> "srcLocParser"
 
 data BuildError =   BuildLine
