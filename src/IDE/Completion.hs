@@ -17,7 +17,7 @@ module IDE.Completion (complete, cancel, setCompletionSize) where
 
 import Prelude hiding(getChar, getLine)
 
-import Data.List as List hiding(insert)
+import Data.List as List (stripPrefix, isPrefixOf, filter)
 import Data.Char
 import Data.IORef
 import Control.Monad
@@ -304,14 +304,19 @@ withWord store treePath f = (do
 replaceWordStart :: EditorView -> (Char -> Bool) -> String -> IDEM ()
 replaceWordStart sourceView isWordChar name = do
     buffer <- getBuffer sourceView
-    (selStart, end) <- getSelectionBounds buffer
-    isWordEnd <- endsWord end
-    when isWordEnd $ do
-        start <- findWordStart selStart isWordChar
-        wordStart <- getText buffer start end True
-        case stripPrefix wordStart name of
-            Just extra -> insert buffer end extra
-            Nothing    -> return ()
+    (selStart, selEnd) <- getSelectionBounds buffer
+    start <- findWordStart selStart isWordChar
+    wordStart <- getText buffer start selEnd True
+    case stripPrefix wordStart name of
+        Just extra -> do
+            end <- findWordEnd selEnd isWordChar
+            wordFinish <- getText buffer selEnd end True
+            case (wordFinish, stripPrefix wordFinish extra) of
+                (_:_,Just extra2) -> do
+                    selectRange buffer end end
+                    insert buffer end extra2
+                _                 -> insert buffer selEnd extra
+        Nothing    -> return ()
 
 cancelCompletion :: Window -> TreeView -> ListStore String -> Connections -> IDEAction
 cancelCompletion window tree store connections = do
@@ -353,6 +358,13 @@ findWordStart iter isWordChar = do
         Nothing -> atOffset iter 0
         Just ws -> forwardCharC ws
 
+findWordEnd :: EditorIter -> (Char -> Bool) -> IDEM EditorIter
+findWordEnd iter isWordChar = do
+    maybeWE <- forwardFindCharC iter (not . isWordChar) Nothing
+    case maybeWE of
+        Nothing -> forwardToLineEndC iter
+        Just we -> return we
+
 longestCommonPrefix (x:xs) (y:ys) | x == y = x : longestCommonPrefix xs ys
 longestCommonPrefix _ _ = []
 
@@ -365,66 +377,64 @@ processResults window tree store sourceView wordStart options selectLCP isWordCh
         _ -> do
             buffer <- getBuffer sourceView
             (selStart, end) <- getSelectionBounds buffer
-            mbEndChar <- getChar end
-            when (maybe True (not . isWordChar) mbEndChar) $ do
-                start <- findWordStart selStart isWordChar
-                currentWordStart <- getText buffer start end True
-                newWordStart <- do
-                    if selectLCP && currentWordStart == wordStart && (not $ null options)
-                        then do
-                            let lcp = foldl1 longestCommonPrefix options
-                            return lcp
-                        else
-                            return currentWordStart
+            start <- findWordStart selStart isWordChar
+            currentWordStart <- getText buffer start end True
+            newWordStart <- do
+                if selectLCP && currentWordStart == wordStart && (not $ null options)
+                    then do
+                        let lcp = foldl1 longestCommonPrefix options
+                        return lcp
+                    else
+                        return currentWordStart
 
-                when (isPrefixOf wordStart newWordStart) $ do
-                    liftIO $ listStoreClear store
-                    let newOptions = List.filter (isPrefixOf newWordStart) options
-                    liftIO $ forM_ (take 200 newOptions) (listStoreAppend store)
-                    Rectangle startx starty width height <- getIterLocation sourceView start
-                    (wWindow, hWindow)                   <- liftIO $ windowGetSize window
-                    (x, y)                               <- bufferToWindowCoords sourceView (startx, starty+height)
-                    drawWindow                           <- getDrawWindow sourceView
-                    (ox, oy)                             <- liftIO $ drawWindowGetOrigin drawWindow
-                    Just namesSW                         <- liftIO $ widgetGetParent tree
-                    (wNames, hNames)                     <- liftIO $ widgetGetSize namesSW
-                    Just paned                           <- liftIO $ widgetGetParent namesSW
-                    Just first                           <- liftIO $ panedGetChild1 (castToPaned paned)
-                    Just second                          <- liftIO $ panedGetChild2 (castToPaned paned)
-                    screen                               <- liftIO $ windowGetScreen window
-                    monitor                              <- liftIO $ screenGetMonitorAtPoint screen (ox+x) (oy+y)
-                    monitorLeft                          <- liftIO $ screenGetMonitorAtPoint screen (ox+x-wWindow+wNames) (oy+y)
-                    monitorRight                         <- liftIO $ screenGetMonitorAtPoint screen (ox+x+wWindow) (oy+y)
-                    monitorBelow                         <- liftIO $ screenGetMonitorAtPoint screen (ox+x) (oy+y+hWindow)
-                    wScreen                              <- liftIO $ screenGetWidth screen
-                    hScreen                              <- liftIO $ screenGetHeight screen
-                    top <- if monitorBelow /= monitor || (oy+y+hWindow) > hScreen
-                        then do
-                            sourceSW <- getScrolledWindow sourceView
-                            (_, hSource)  <- liftIO $ widgetGetSize sourceSW
-                            scrollToIter sourceView end 0.1 (Just (1.0, 1.0 - (fromIntegral hWindow / fromIntegral hSource)))
-                            (_, newy)     <- bufferToWindowCoords sourceView (startx, starty+height)
-                            return (oy+newy)
-                        else return (oy+y)
-                    swap <- if (monitorRight /= monitor || (ox+x+wWindow) > wScreen) && monitorLeft == monitor && (ox+x-wWindow+wNames) > 0
-                        then do
-                            liftIO $ windowMove window (ox+x-wWindow+wNames) top
-                            return $ first == namesSW
-                        else do
-                            liftIO $ windowMove window (ox+x) top
-                            return $ first /= namesSW
-                    when swap $ liftIO $ do
-                        pos <- panedGetPosition (castToPaned paned)
-                        containerRemove (castToPaned paned) first
-                        containerRemove (castToPaned paned) second
-                        panedAdd1 (castToPaned paned) second
-                        panedAdd2 (castToPaned paned) first
-                        panedSetPosition (castToPaned paned) (wWindow-pos)
-                    when (not $ null newOptions) $ liftIO $ treeViewSetCursor tree [0] Nothing
-                    liftIO $ widgetShowAll window
+            when (isPrefixOf wordStart newWordStart) $ do
+                liftIO $ listStoreClear store
+                let newOptions = List.filter (isPrefixOf newWordStart) options
+                liftIO $ forM_ (take 200 newOptions) (listStoreAppend store)
+                Rectangle startx starty width height <- getIterLocation sourceView start
+                (wWindow, hWindow)                   <- liftIO $ windowGetSize window
+                (x, y)                               <- bufferToWindowCoords sourceView (startx, starty+height)
+                drawWindow                           <- getDrawWindow sourceView
+                (ox, oy)                             <- liftIO $ drawWindowGetOrigin drawWindow
+                Just namesSW                         <- liftIO $ widgetGetParent tree
+                (wNames, hNames)                     <- liftIO $ widgetGetSize namesSW
+                Just paned                           <- liftIO $ widgetGetParent namesSW
+                Just first                           <- liftIO $ panedGetChild1 (castToPaned paned)
+                Just second                          <- liftIO $ panedGetChild2 (castToPaned paned)
+                screen                               <- liftIO $ windowGetScreen window
+                monitor                              <- liftIO $ screenGetMonitorAtPoint screen (ox+x) (oy+y)
+                monitorLeft                          <- liftIO $ screenGetMonitorAtPoint screen (ox+x-wWindow+wNames) (oy+y)
+                monitorRight                         <- liftIO $ screenGetMonitorAtPoint screen (ox+x+wWindow) (oy+y)
+                monitorBelow                         <- liftIO $ screenGetMonitorAtPoint screen (ox+x) (oy+y+hWindow)
+                wScreen                              <- liftIO $ screenGetWidth screen
+                hScreen                              <- liftIO $ screenGetHeight screen
+                top <- if monitorBelow /= monitor || (oy+y+hWindow) > hScreen
+                    then do
+                        sourceSW <- getScrolledWindow sourceView
+                        (_, hSource)  <- liftIO $ widgetGetSize sourceSW
+                        scrollToIter sourceView end 0.1 (Just (1.0, 1.0 - (fromIntegral hWindow / fromIntegral hSource)))
+                        (_, newy)     <- bufferToWindowCoords sourceView (startx, starty+height)
+                        return (oy+newy)
+                    else return (oy+y)
+                swap <- if (monitorRight /= monitor || (ox+x+wWindow) > wScreen) && monitorLeft == monitor && (ox+x-wWindow+wNames) > 0
+                    then do
+                        liftIO $ windowMove window (ox+x-wWindow+wNames) top
+                        return $ first == namesSW
+                    else do
+                        liftIO $ windowMove window (ox+x) top
+                        return $ first /= namesSW
+                when swap $ liftIO $ do
+                    pos <- panedGetPosition (castToPaned paned)
+                    containerRemove (castToPaned paned) first
+                    containerRemove (castToPaned paned) second
+                    panedAdd1 (castToPaned paned) second
+                    panedAdd2 (castToPaned paned) first
+                    panedSetPosition (castToPaned paned) (wWindow-pos)
+                when (not $ null newOptions) $ liftIO $ treeViewSetCursor tree [0] Nothing
+                liftIO $ widgetShowAll window
 
-                when (newWordStart /= currentWordStart) $
-                    replaceWordStart sourceView isWordChar newWordStart
+            when (newWordStart /= currentWordStart) $
+                replaceWordStart sourceView isWordChar newWordStart
 
 getRow tree = do
     Just model <- treeViewGetModel tree
