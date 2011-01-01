@@ -53,7 +53,7 @@
        <separator/>
        <menuitem name="_Next Error" action="NextError" />
        <menuitem name="_Previous Error" action="PreviousError" />
-       <menuitem name="_Add All Imports" action="AddAllImports" />
+       <menuitem name="Resol_ve Errors" action="ResolveErrors" />
      </menu>
     <menu name="_Package" action="Package">
        <menuitem name="_New Package" action="NewPackage" />

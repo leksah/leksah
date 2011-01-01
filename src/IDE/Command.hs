@@ -81,7 +81,7 @@ import IDE.Metainfo.Provider
        (getWorkspaceInfo, getIdentifierDescr, updateWorkspaceInfo,
         updateSystemInfo, rebuildSystemInfo, rebuildWorkspaceInfo)
 import IDE.NotebookFlipper
-import IDE.ImportTool (addAllPackagesAndImports)
+import IDE.ImportTool (resolveErrors)
 import IDE.LogRef
 import IDE.Debug
 import System.Directory (doesFileExist)
@@ -219,8 +219,8 @@ mkActions =
         (packageTry_ packageCopy) [] False
     ,AD "RunPackage" "_Run" (Just "Runs the package") (Just "ide_run")
         (packageTry_ packageRun) [] False
-    ,AD "AddAllImports" "_Add All Packages and Imports" (Just "Resolve 'Hidden package' and 'Not in scope' errors by adding the necessary dependancies or imports") Nothing
-        addAllPackagesAndImports [] False
+    ,AD "ResolveErrors" "Resol_ve Errors" (Just "Resolve 'Hidden package' and 'Not in scope' errors by adding the necessary dependancies or imports") Nothing
+        resolveErrors [] False
 
     ,AD "InstallPackage" "_Install Package" Nothing Nothing
         (packageTry_ packageInstall) [] False

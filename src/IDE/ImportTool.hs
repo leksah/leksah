@@ -13,7 +13,7 @@
 -----------------------------------------------------------------------------
 
 module IDE.ImportTool (
-    addAllPackagesAndImports
+    resolveErrors
 ,   addOneImport
 ,   addImport
 ,   addPackage
@@ -41,7 +41,7 @@ import Data.Maybe (fromJust)
 import Text.ParserCombinators.Parsec hiding (parse)
 import qualified Text.ParserCombinators.Parsec as Parsec (parse)
 import Graphics.UI.Editor.Simple (staticListEditor)
-import Control.Monad (forM_, when)
+import Control.Monad (forM, when)
 import Distribution.Text (simpleParse, Text(..), display)
 import Data.List (sort, nub, nubBy)
 import IDE.Utils.ServerConnection
@@ -66,23 +66,21 @@ import Distribution.PackageDescription.Configuration
        (flattenPackageDescription)
 import Data.Version (Version(..))
 
-
-
-
 -- | Add all imports which gave error messages ...
-addAllPackagesAndImports :: IDEAction
-addAllPackagesAndImports = do
+resolveErrors :: IDEAction
+resolveErrors = do
     prefs' <- readIDE prefs
     let buildInBackground = backgroundBuild prefs'
     when buildInBackground $
         modifyIDE_ (\ide -> ide{prefs = prefs'{backgroundBuild = False}})
     errors <- readIDE errorRefs
-    forM_ errors addPackage
-    addAll buildInBackground
-        [ y | (x,y) <-
+    addPackageResults <- forM errors addPackage
+    let notInScopes = [ y | (x,y) <-
             nubBy (\ (p1,_) (p2,_) -> p1 == p2)
                 $ [(x,y) |  (x,y) <- [((parseNotInScope . refDescription) e, e) | e <- errors]],
-                                isJust x] (True,[])
+                                isJust x]
+    when (not (or addPackageResults) && null notInScopes) $ ideMessage Normal $ "No errors that can be auto resolved"
+    addAll buildInBackground notInScopes (True,[])
     where
         addAll :: Bool -> [LogRef] -> (Bool,[Descr]) -> IDEM ()
         addAll bib (errorSpec:rest) (True,descrList)  =  addImport errorSpec descrList (addAll bib rest)
@@ -136,21 +134,22 @@ addImport error descrList continuation =
                                                     else addImport' nis (logRefFullFilePath error)
                                                             descr descrList continuation
 
-addPackage :: LogRef -> IDEAction
+addPackage :: LogRef -> IDEM Bool
 addPackage error = do
     case parseHiddenModule (refDescription error) of
-        Nothing -> return ()
+        Nothing -> return False
         Just (HiddenModuleResult mod pack) -> do
             let idePackage = logRefPackage error
             package <- liftIO $ readPackageDescription normal (ipdCabalFile $ idePackage)
             if hasConfigs package
-                then return ()
+                then return False
                 else do
                     let flat = flattenPackageDescription package
                     ideMessage Normal $ "addPackage " ++ (display $ pkgName pack)
                     liftIO $ writePackageDescription (ipdCabalFile $ idePackage)
                         flat { buildDepends =
                             Dependency (pkgName pack) AnyVersion : buildDepends flat}
+                    return True
 
 getScopeForActiveBuffer :: IDEM (Maybe (GenScope, GenScope))
 getScopeForActiveBuffer = do

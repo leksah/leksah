@@ -31,7 +31,7 @@ import Graphics.UI.Gtk.General.Enums
 import Graphics.UI.Gtk.Gdk.Events (Event(..))
 import IDE.ImportTool
        (addPackage, parseHiddenModule, addImport, parseNotInScope,
-        addAllPackagesAndImports)
+        resolveErrors)
 import Data.List (elemIndex)
 import IDE.LogRef (showSourceSpan)
 
@@ -168,9 +168,9 @@ errorViewPopup ideR  store treeView (Button _ click _ _ _ _ button _ _)
         then do
             mbSel           <-  getSelectedError treeView store
             theMenu         <-  menuNew
-            item0           <-  menuItemNewWithLabel "Add All Packages and Imports"
+            item0           <-  menuItemNewWithLabel "Resolve Errors"
             item0 `onActivateLeaf` do
-                reflectIDE addAllPackagesAndImports ideR
+                reflectIDE resolveErrors ideR
             menuShellAppend theMenu item0
             case mbSel of
                 Just sel -> do
@@ -188,7 +188,7 @@ errorViewPopup ideR  store treeView (Button _ click _ _ _ _ button _ _)
                         Just _  -> do
                             item1   <-  menuItemNewWithLabel "Add Package"
                             item1 `onActivateLeaf` do
-                                reflectIDE (addPackage sel) ideR
+                                reflectIDE (addPackage sel >> return ()) ideR
                             menuShellAppend theMenu item1
                 Nothing -> return ()
             menuPopup theMenu Nothing

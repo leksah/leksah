@@ -39,7 +39,7 @@ import Prelude hiding (catch)
 import Control.Exception hiding (try)
 import IDE.ImportTool
        (addPackage, parseHiddenModule, addImport, parseNotInScope,
-        addAllPackagesAndImports)
+        resolveErrors)
 import IDE.System.Process (runInteractiveProcess, ProcessHandle)
 import Graphics.UI.Gtk
        (textBufferSetText, textViewScrollToMark,
@@ -191,6 +191,10 @@ clicked _ _ = return ()
 populatePopupMenu :: IDELog -> IDERef -> Menu -> IO ()
 populatePopupMenu ideLog ideR menu = do
     items <- containerGetChildren menu
+    item0           <-  menuItemNewWithLabel "Resolve Errors"
+    item0 `onActivateLeaf` do
+        reflectIDE resolveErrors ideR
+    menuShellAppend menu item0
     res <- reflectIDE (do
         logRefs'    <-  readIDE allLogRefs
         line'       <-  reifyIDE $ \ideR  ->  do
@@ -202,10 +206,6 @@ populatePopupMenu ideLog ideR menu = do
                 (zip logRefs' [0..(length logRefs')])) ideR
     case res of
         [(thisRef,n)] -> do
-            item0           <-  menuItemNewWithLabel "Add All Packages and Imports"
-            item0 `onActivateLeaf` do
-                reflectIDE addAllPackagesAndImports ideR
-            menuShellAppend menu item0
             case parseNotInScope (refDescription thisRef) of
                 Nothing   -> do
                     return ()
@@ -220,7 +220,7 @@ populatePopupMenu ideLog ideR menu = do
                 Just _  -> do
                     item2   <-  menuItemNewWithLabel "Add Package"
                     item2 `onActivateLeaf` do
-                        reflectIDE (addPackage thisRef) ideR
+                        reflectIDE (addPackage thisRef >> return ()) ideR
                     menuShellAppend menu item2
             widgetShowAll menu
             return ()

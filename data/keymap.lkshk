@@ -77,7 +77,7 @@ F3                          ->          EditFindNext     "Find the next occurenc
                         ->          HelpAbout
 
 <ctrl>b                 ->          BuildPackage
-<ctrl>r                 ->          AddAllImports
+<ctrl>r                 ->          ResolveErrors
 
 <ctrl><alt>r            ->          RunPackage
 
