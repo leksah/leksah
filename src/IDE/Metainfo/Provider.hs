@@ -383,7 +383,7 @@ loadInfosForPackage dirPath pid = do
             file            <-  openBinaryFile filePath ReadMode
             trace ("now loading metadata for package " ++ packageIdentifierToString pid) return ()
             bs              <-  BSL.hGetContents file
-            let (metadataVersion', packageInfo) =   decodeSer bs
+            let (metadataVersion'::Integer, packageInfo::PackageDescr) = decodeSer bs
             if metadataVersion /= metadataVersion'
                 then do
                     hClose file
@@ -430,7 +430,7 @@ loadInfosForModule filePath  = do
         then catch (do
             file            <-  openBinaryFile filePath ReadMode
             bs              <-  BSL.hGetContents file
-            let (metadataVersion', moduleInfo) =   decodeSer bs
+            let (metadataVersion'::Integer, moduleInfo::ModuleDescr) = decodeSer bs
             if metadataVersion /= metadataVersion'
                 then do
                     hClose file
