@@ -523,20 +523,20 @@ builder' bs mbfn ind bn rbn ct prefs pp nb windows = do
     return (Just buf,concat [ids1, ids2, ids3, ids4])
 
 
-checkModTime :: IDEBuffer -> IDEM Bool
+checkModTime :: IDEBuffer -> IDEM (Bool, Bool)
 checkModTime buf = do
     currentState' <- readIDE currentState
     case  currentState' of
-        IsShuttingDown -> return False
-        _              -> reifyIDE (\ideR -> do
+        IsShuttingDown -> return (False, False)
+        _              -> do
             let name = paneName buf
             case fileName buf of
                 Just fn -> do
-                    exists <- doesFileExist fn
+                    exists <- liftIO $ doesFileExist fn
                     if exists
                         then do
-                            nmt <- getModificationTime fn
-                            modTime' <- readIORef (modTime buf)
+                            nmt <- liftIO $ getModificationTime fn
+                            modTime' <- liftIO $ readIORef (modTime buf)
                             case modTime' of
                                 Nothing ->  error $"checkModTime: time not set " ++ show (fileName buf)
                                 Just mt ->
@@ -547,28 +547,44 @@ checkModTime buf = do
                                                   -- Praises to whoever finds out what happens and how to fix this
 #endif
                                     then do
-                                        md <- messageDialogNew
-                                                Nothing []
-                                                MessageQuestion
-                                                ButtonsNone
-                                                ("File \"" ++ name ++ "\" has changed on disk.")
-                                        dialogAddButton md "_Load From Disk" (ResponseUser 1)
-                                        dialogAddButton md "_Don't Load" (ResponseUser 2)
-                                        dialogSetDefaultResponse md (ResponseUser 1)
-                                        set md [ windowWindowPosition := WinPosCenterOnParent ]
-                                        resp <- dialogRun md
-                                        widgetDestroy md
-                                        case resp of
-                                            ResponseUser 1 -> do
-                                                reflectIDE (revert buf) ideR
-                                                return False
-                                            ResponseUser 2 -> do
-                                                writeIORef (modTime buf) (Just nmt)
-                                                return True
-                                            _           ->  do return False
-                                    else return False
-                        else return False
-                Nothing -> return False)
+                                        load <- readIDE (autoLoad . prefs)
+                                        if load
+                                            then do
+                                                ideMessage Normal $ "Auto Loading " ++ fn
+                                                revert buf
+                                                return (False, True)
+                                            else do
+                                                window <- getMainWindow
+                                                resp <- liftIO $ do
+                                                    md <- messageDialogNew
+                                                            (Just window) []
+                                                            MessageQuestion
+                                                            ButtonsNone
+                                                            ("File \"" ++ name ++ "\" has changed on disk.")
+                                                    dialogAddButton md "_Load From Disk" (ResponseUser 1)
+                                                    dialogAddButton md "_Always Load From Disk" (ResponseUser 2)
+                                                    dialogAddButton md "_Don't Load" (ResponseUser 3)
+                                                    dialogSetDefaultResponse md (ResponseUser 1)
+                                                    set md [ windowWindowPosition := WinPosCenterOnParent ]
+                                                    resp <- dialogRun md
+                                                    widgetDestroy md
+                                                    return resp
+                                                case resp of
+                                                    ResponseUser 1 -> do
+                                                        revert buf
+                                                        return (False, True)
+                                                    ResponseUser 2 -> do
+                                                        revert buf
+                                                        modifyIDE_ $ \ide -> ide{prefs = (prefs ide) {autoLoad = True}}
+                                                        return (False, True)
+                                                    ResponseUser 3 -> do
+                                                        nmt2 <- liftIO $ getModificationTime fn
+                                                        liftIO $ writeIORef (modTime buf) (Just nmt2)
+                                                        return (True, True)
+                                                    _           ->  do return (False, False)
+                                    else return (False, False)
+                        else return (False, False)
+                Nothing -> return (False, False)
 
 setModTime :: IDEBuffer -> IDEAction
 setModTime buf = do
@@ -682,14 +698,14 @@ fileSaveBuffer query nb ebuf ideBuf i = do
         Nothing     -> throwIDE "fileSave: Page not found"
         Just page   ->
             if isJust mbfn && query == False
-                then do modifiedOnDisk <- checkModTime ideBuf -- The user is given option to reload
+                then do (modifiedOnDiskNotLoaded, modifiedOnDisk) <- checkModTime ideBuf -- The user is given option to reload
                         modifiedInBuffer <- getModified ebuf
-                        if (modifiedOnDisk || modifiedInBuffer)
+                        if (modifiedOnDiskNotLoaded || modifiedInBuffer)
                             then do
                                 fileSave' (forceLineEnds prefs) (removeTBlanks prefs) nb ideBuf bs candy $fromJust mbfn
                                 setModTime ideBuf
                                 return True
-                            else return False
+                            else return modifiedOnDisk
                 else reifyIDE $ \ideR   ->  do
                     dialog <- fileChooserDialogNew
                                     (Just $ "Save File")
@@ -765,7 +781,7 @@ fileCheckBuffer :: Notebook -> EditorBuffer -> IDEBuffer -> Int -> IDEM Bool
 fileCheckBuffer nb ebuf ideBuf i = do
     let mbfn = fileName ideBuf
     if isJust mbfn
-        then do modifiedOnDisk      <- checkModTime ideBuf -- The user is given option to reload
+        then do (_, modifiedOnDisk) <- checkModTime ideBuf -- The user is given option to reload
                 modifiedInBuffer    <- getModified ebuf
                 return (modifiedOnDisk || modifiedInBuffer)
         else return False

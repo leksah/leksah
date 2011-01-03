@@ -331,6 +331,14 @@ prefsDescription configDir packages = NFDPP [
                     --  TODO find and set the tag background
                     return ())
     ,   mkFieldPP
+            (paraName <<<- ParaName "Automatically load modified files modified outside of Leksah" $ emptyParams)
+            (PP.text . show)
+            boolParser
+            autoLoad
+            (\b a -> a{autoLoad = b})
+            boolEditor
+            (\i -> return ())
+    ,   mkFieldPP
             (paraName <<<- ParaName "Use Yi - Experimental feature (could wipe your files)" $ emptyParams)
             (PP.text . show)
             boolParser
@@ -636,6 +644,7 @@ defaultPrefs = Prefs {
     ,   contextBackground   =   Color 65535 49152 49152
     ,   breakpointBackground =  Color 65535 49152 32768
     ,   useYi               =   False
+    ,   autoLoad            =   False
     ,   logviewFont         =   Nothing
     ,   defaultSize         =   (1024,800)
     ,   browser             =   "firefox"

@@ -376,6 +376,7 @@ data Prefs = Prefs {
     ,   foundBackground     ::   Color
     ,   contextBackground   ::   Color
     ,   breakpointBackground ::  Color
+    ,   autoLoad            ::   Bool
     ,   useYi               ::   Bool
     ,   logviewFont         ::   Maybe String
     ,   defaultSize         ::   (Int,Int)
