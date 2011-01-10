@@ -713,7 +713,7 @@ buildModulesTree (PackScope localMap _,PackScope otherMap _) =
     insertNodesInTree list@[(str2,Just pair)] (Node (str1,pairs) forest) =
         (Node (str1,pairs) (makeNodes list : forest))
 
-    insertNodesInTree  list@((str2,pair):tl) (Node (str1,pairs) forest) =
+    insertNodesInTree list@((str2,mbPair):tl) (Node (str1,pairs) forest) =
         case partition (\ (Node (s,_) _) -> s == str2) forest of
             ([],_)              ->  (Node (str1,pairs)  (makeNodes list : forest))
             ([found],rest)  ->  (Node (str1,pairs)  (insertNodesInTree tl found : rest))
@@ -793,7 +793,7 @@ treeViewPopup ideR  store treeView (Button _ click _ _ _ _ button _ _) = do
                     otherwise       ->  return ()
             sel         <-  getSelectionTree treeView store
             case sel of
-                Just (s, Nothing) ->do
+                Just (s, Nothing) -> do
                     mapM_ (menuShellAppend theMenu) [castToMenuItem item1, castToMenuItem sep1, castToMenuItem item2,
                         castToMenuItem item3, castToMenuItem item4, castToMenuItem item5, castToMenuItem sep2,
                         castToMenuItem item6]

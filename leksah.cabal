@@ -120,6 +120,7 @@ library
         IDE.Pane.Errors IDE.TextEditor IDE.Workspaces
         IDE.Statusbar IDE.Pane.Workspace IDE.PaneGroups
         IDE.Utils.ServerConnection
+        IDE.BufferMode
 
     other-modules: Paths_leksah
 

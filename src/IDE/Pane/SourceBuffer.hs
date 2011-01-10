@@ -1,5 +1,5 @@
 {-# OPTIONS_GHC  -XDeriveDataTypeable -XMultiParamTypeClasses -XTypeSynonymInstances
-    -XScopedTypeVariables #-}
+    -XScopedTypeVariables -XRankNTypes #-}
 -----------------------------------------------------------------------------
 --
 -- Module      :  IDE.Pane.SourceBuffer
@@ -125,30 +125,10 @@ import Graphics.UI.Gtk.General.Structs (ResponseId(..))
 import Graphics.UI.Gtk.Selectors.FileChooser
        (FileChooserAction(..))
 import System.Glib.Attributes (AttrOp(..), set)
+import IDE.BufferMode
 
-
---
--- | A text editor pane description
---
-data IDEBuffer      =   IDEBuffer {
-    fileName        ::  Maybe FilePath
-,   bufferName      ::  String
-,   addedIndex      ::  Int
-,   sourceView      ::  EditorView
-,   scrolledWindow  ::  ScrolledWindow
-,   modTime         ::  IORef (Maybe (ClockTime))
-} deriving (Typeable)
-
-data BufferState            =   BufferState FilePath Int
-                            |   BufferStateTrans String String Int
-    deriving(Eq,Ord,Read,Show,Typeable)
-
-instance Pane IDEBuffer IDEM
-    where
-    primPaneName    =   bufferName
-    getAddedIndex   =   addedIndex
-    getTopWidget    =   castToWidget . scrolledWindow
-    paneId b        =   ""
+allBuffers :: IDEM [IDEBuffer]
+allBuffers = getPanes
 
 instance RecoverablePane IDEBuffer BufferState IDEM where
     saveState p     =   do  buf    <- getBuffer (sourceView p)
@@ -177,18 +157,17 @@ instance RecoverablePane IDEBuffer BufferState IDEM where
             Nothing -> return Nothing
     recoverState pp (BufferStateTrans bn text i) =   do
         mbbuf    <-  newTextBuffer pp bn Nothing
-        useCandy    <- getCandyState
         case mbbuf of
             Just buf -> do
-                candy'  <- readIDE candy
-                gtkBuf  <-  getBuffer (sourceView buf)
+                useCandy <- useCandyFor buf
+                candy'   <- readIDE candy
+                gtkBuf   <-  getBuffer (sourceView buf)
                 setText gtkBuf text
-
                 when useCandy $ transformToCandy candy' gtkBuf
-                iter    <-  getIterAtOffset gtkBuf i
+                iter     <-  getIterAtOffset gtkBuf i
                 placeCursor gtkBuf iter
-                mark    <-  getInsertMark gtkBuf
-                ideR    <- ask
+                mark     <-  getInsertMark gtkBuf
+                ideR     <- ask
                 liftIO $ idleAdd  (do
                     reflectIDE (scrollToMark (sourceView buf) mark 0.0 (Just (0.3,0.3))) ideR
                     return False) priorityDefaultIdle
@@ -212,8 +191,6 @@ instance RecoverablePane IDEBuffer BufferState IDEM where
                         fileClose
     buildPane panePath notebook builder = return Nothing
     builder pp nb w =    return (Nothing,[])
-
-
 
 startComplete :: IDEAction
 startComplete = do
@@ -243,19 +220,6 @@ selectSourceBuf fp = do
                     nbuf <- newTextBuffer pp (takeFileName fpc) (Just fpc)
                     return nbuf
                 else return Nothing
-
-recentSourceBuffers :: IDEM [PaneName]
-recentSourceBuffers = do
-    recentPanes' <- readIDE recentPanes
-    mbBufs       <- mapM mbPaneFromName recentPanes'
-    return $ map paneName ((catMaybes $ map (\ (PaneC p) -> cast p) $ catMaybes mbBufs) :: [IDEBuffer])
-
-lastActiveBufferPane :: IDEM (Maybe PaneName)
-lastActiveBufferPane = do
-    rs <- recentSourceBuffers
-    case rs of
-        (hd : _) -> return (Just hd)
-        _        -> return Nothing
 
 goToDefinition :: Descr -> IDEAction
 goToDefinition idDescr  = do
@@ -328,7 +292,7 @@ insertInBuffer idDescr = do
 
 markRefInSourceBuf :: Int -> IDEBuffer -> LogRef -> Bool -> IDEAction
 markRefInSourceBuf index buf logRef scrollTo = do
-    useCandy    <- getCandyState
+    useCandy    <- useCandyFor buf
     candy'      <- readIDE candy
     contextRefs <- readIDE contextRefs
     prefs       <- readIDE prefs
@@ -396,20 +360,6 @@ markRefInSourceBuf index buf logRef scrollTo = do
                 return False) priorityDefaultIdle
             return ()
 
-allBuffers :: IDEM [IDEBuffer]
-allBuffers = getPanes
-
-maybeActiveBuf :: IDEM (Maybe IDEBuffer)
-maybeActiveBuf = do
-    mbActivePane <- getActivePane
-    mbPane       <- lastActiveBufferPane
-    case (mbPane,mbActivePane) of
-        (Just paneName1, Just (paneName2,_)) | paneName1 == paneName2 -> do
-            (PaneC pane) <- paneFromName paneName1
-            let mbActbuf = cast pane
-            return mbActbuf
-        _ -> return Nothing
-
 newTextBuffer :: PanePath -> String -> Maybe FilePath -> IDEM (Maybe IDEBuffer)
 newTextBuffer panePath bn mbfn = do
     cont <- case mbfn of
@@ -454,7 +404,8 @@ builder' bs mbfn ind bn rbn ct prefs pp nb windows = do
     background foundTag $ foundBackground prefs
 
     beginNotUndoableAction buffer
-    when bs $ transformToCandy ct buffer
+    let mod = modFromFileName mbfn
+    when (bs && isHaskellMode mod) $ transformToCandy ct buffer
     endNotUndoableAction buffer
     setModified buffer False
     siter <- getStartIter buffer
@@ -476,7 +427,14 @@ builder' bs mbfn ind bn rbn ct prefs pp nb windows = do
         else liftIO $ scrolledWindowSetPolicy sw PolicyAutomatic PolicyAutomatic
     liftIO $ scrolledWindowSetShadowType sw ShadowIn
     modTimeRef <- liftIO $ newIORef modTime
-    let buf = IDEBuffer mbfn bn ind sv sw modTimeRef
+    let buf = IDEBuffer {
+        fileName =  mbfn,
+        bufferName = bn,
+        addedIndex = ind,
+        sourceView =sv,
+        scrolledWindow = sw,
+        modTime = modTimeRef,
+        mode = mod}
     -- events
     ids1 <- sv `afterFocusIn` makeActive buf
     ids2 <- onCompletion sv (Completion.complete sv False) Completion.cancel
@@ -601,7 +559,7 @@ fileRevert = inActiveBufContext () $ \ _ _ currentBuffer _ -> do
 
 revert :: IDEBuffer -> IDEAction
 revert buf = do
-    useCandy    <-  getCandyState
+    useCandy    <-  useCandyFor buf
     ct          <-  readIDE candy
     let name    =   paneName buf
     case fileName buf of
@@ -663,33 +621,12 @@ markLabelAsChanged nb buf = do
     modified <- getModified ebuf
     liftIO $ markLabel nb (getTopWidget buf) modified
 
-inBufContext :: alpha -> IDEBuffer -> (Notebook -> EditorBuffer -> IDEBuffer -> Int -> IDEM alpha) -> IDEM alpha
-inBufContext def ideBuf f = do
-    (pane,_)       <-  guiPropertiesFromName (paneName ideBuf)
-    nb             <-  getNotebook pane
-    mbI            <-  liftIO $notebookPageNum nb (scrolledWindow ideBuf)
-    case mbI of
-        Nothing ->  liftIO $ do
-            sysMessage Normal $ bufferName ideBuf ++ " notebook page not found: unexpected"
-            return def
-        Just i  ->  do
-            ebuf <- getBuffer (sourceView ideBuf)
-            f nb ebuf ideBuf i
-
-inActiveBufContext :: alpha -> (Notebook -> EditorBuffer -> IDEBuffer -> Int -> IDEM alpha) -> IDEM alpha
-inActiveBufContext def f = do
-    mbBuf                  <- maybeActiveBuf
-    case mbBuf of
-        Nothing         -> return def
-        Just ideBuf -> do
-            inBufContext def ideBuf f
-
 fileSaveBuffer :: Bool -> Notebook -> EditorBuffer -> IDEBuffer -> Int -> IDEM Bool
 fileSaveBuffer query nb ebuf ideBuf i = do
     ideR    <- ask
     window  <- getMainWindow
     prefs   <- readIDE prefs
-    bs      <- getCandyState
+    useCandy <- useCandyFor ideBuf
     candy   <- readIDE candy
     (panePath,connects) <- guiPropertiesFromName (paneName ideBuf)
     let mbfn = fileName ideBuf
@@ -702,7 +639,8 @@ fileSaveBuffer query nb ebuf ideBuf i = do
                         modifiedInBuffer <- getModified ebuf
                         if (modifiedOnDiskNotLoaded || modifiedInBuffer)
                             then do
-                                fileSave' (forceLineEnds prefs) (removeTBlanks prefs) nb ideBuf bs candy $fromJust mbfn
+                                fileSave' (forceLineEnds prefs) (removeTBlanks prefs) nb ideBuf
+                                    useCandy candy $fromJust mbfn
                                 setModTime ideBuf
                                 return True
                             else return modifiedOnDisk
@@ -741,20 +679,20 @@ fileSaveBuffer query nb ebuf ideBuf i = do
                                 else return ResponseYes
                             case resp of
                                 ResponseYes -> do
-                                    cfn <- canonicalizePath fn
-
                                     reflectIDE (do
-                                        fileSave' (forceLineEnds prefs) (removeTBlanks prefs) nb ideBuf bs candy cfn
+                                        fileSave' (forceLineEnds prefs) (removeTBlanks prefs)
+                                            nb ideBuf useCandy candy fn
                                         closePane ideBuf
-                                        newTextBuffer panePath (takeFileName fn) (Just cfn)
-                                        )   ideR
+                                        cfn <- liftIO $ canonicalizePath fn
+                                        newTextBuffer panePath (takeFileName cfn) (Just cfn)
+                                        ) ideR
                                     return True
                                 _          -> return False
     where
         fileSave' :: Bool -> Bool -> Notebook -> IDEBuffer -> Bool -> CandyTable -> FilePath -> IDEAction
-        fileSave' forceLineEnds removeTBlanks nb ideBuf bs ct fn = do
+        fileSave' forceLineEnds removeTBlanks nb ideBuf useCandy candyTable fn = do
             buf     <-   getBuffer $ sourceView ideBuf
-            text    <-   getCandylessText ct buf
+            text    <-   getCandylessText candyTable buf
             let text' = if removeTBlanks
                             then unlines $ map removeTrailingBlanks $lines text
                             else text
@@ -1005,44 +943,6 @@ editPaste = inActiveBufContext () $ \_ ebuf _ _ -> do
     clip <- liftIO $ clipboardGet selectionClipboard
     pasteClipboard ebuf clip iter True
 
-getStartAndEndLineOfSelection :: EditorBuffer -> IDEM (Int,Int)
-getStartAndEndLineOfSelection ebuf = do
-    startMark   <- getInsertMark ebuf
-    endMark     <- getSelectionBoundMark ebuf
-    startIter   <- getIterAtMark ebuf startMark
-    endIter     <- getIterAtMark ebuf endMark
-    startLine   <- getLine startIter
-    endLine     <- getLine endIter
-    let (startLine',endLine',endIter') = if endLine >=  startLine
-            then (startLine,endLine,endIter)
-            else (endLine,startLine,startIter)
-    b           <- startsLine endIter'
-    let endLineReal = if b && endLine /= startLine then endLine' - 1 else endLine'
-    return (startLine',endLineReal)
-
-doForSelectedLines :: [a] -> (EditorBuffer -> Int -> IDEM a) -> IDEM [a]
-doForSelectedLines d f = inActiveBufContext d $ \_ ebuf currentBuffer _ -> do
-    (start,end) <- getStartAndEndLineOfSelection ebuf
-    mapM (f ebuf) [start .. end]
-
-editComment :: IDEAction
-editComment = do
-    doForSelectedLines [] $ \ebuf lineNr -> do
-        sol <- getIterAtLine ebuf lineNr
-        insert ebuf sol "--"
-    return ()
-
-editUncomment :: IDEAction
-editUncomment = do
-    doForSelectedLines [] $ \ebuf lineNr -> do
-        sol <- getIterAtLine ebuf lineNr
-        sol2 <- forwardCharsC sol 2
-        str   <- getText ebuf sol sol2 True
-        if str == "--"
-            then do delete ebuf sol sol2
-            else return ()
-    return ()
-
 editShiftLeft :: IDEAction
 editShiftLeft = do
     prefs <- readIDE prefs
@@ -1074,34 +974,6 @@ editShiftRight = do
         sol <- getIterAtLine ebuf lineNr
         insert ebuf sol str
     return ()
-
-editToCandy :: IDEAction
-editToCandy = do
-    ct <- readIDE candy
-    inActiveBufContext () $ \_ ebuf _ _ -> do
-        transformToCandy ct ebuf
-
-editFromCandy :: IDEAction
-editFromCandy = do
-    ct      <-  readIDE candy
-    inActiveBufContext () $ \_ ebuf _ _ -> do
-        transformFromCandy ct ebuf
-
-editKeystrokeCandy :: Maybe Char -> IDEAction
-editKeystrokeCandy c = do
-    ct <- readIDE candy
-    inActiveBufContext () $ \_ ebuf _ _ -> do
-        keystrokeCandy ct c ebuf
-
-editCandy :: IDEAction
-editCandy = do
-    ct      <- readIDE candy
-    buffers <- allBuffers
-    gtkbufs <- mapM (\ b -> getBuffer (sourceView b)) buffers
-    bs <- getCandyState
-    if bs
-        then mapM_ (transformToCandy ct) gtkbufs
-        else mapM_ (transformFromCandy ct) gtkbufs
 
 alignChar :: Char -> IDEAction
 alignChar char = do
@@ -1186,9 +1058,9 @@ selectedTextOrCurrentLine = do
 
 selectedLocation :: IDEM (Maybe (Int, Int))
 selectedLocation = do
-    useCandy    <- getCandyState
     candy'      <- readIDE candy
     inActiveBufContext Nothing $ \_ ebuf currentBuffer _ -> do
+        useCandy   <- useCandyFor currentBuffer
         (start, _) <- getSelectionBounds ebuf
         line       <- getLine start
         lineOffset <- getLineOffset start
@@ -1197,13 +1069,11 @@ selectedLocation = do
             else return (line, lineOffset)
         return $ Just res
 
--- " ++ ++ ++ alpha
-
 insertTextAfterSelection :: String -> IDEAction
 insertTextAfterSelection str = do
-        candy'       <- readIDE candy
-        useCandy     <- getCandyState
-        inActiveBufContext () $ \_ ebuf currentBuffer _ -> do
+    candy'       <- readIDE candy
+    inActiveBufContext () $ \_ ebuf currentBuffer _ -> do
+        useCandy     <- useCandyFor currentBuffer
         hasSelection <- hasSelection ebuf
         when hasSelection $ do
             realString <-  if useCandy then stringToCandy candy' str else return str
@@ -1214,18 +1084,11 @@ insertTextAfterSelection str = do
             i2         <- forwardCharsC i1 (length str)
             selectRange ebuf i1 i2
 
-selectedModuleName :: IDEM (Maybe String)
-selectedModuleName = do
-    candy' <- readIDE candy
-    inActiveBufContext Nothing $ \_ ebuf currentBuffer _ -> do
-        case fileName currentBuffer of
-            Just filePath -> liftIO $ moduleNameFromFilePath filePath
-            Nothing       -> return Nothing
-
 -- | Returns the package, to which this buffer belongs, if possible
 belongsToPackage :: IDEBuffer -> IDEM(Maybe IDEPackage)
-belongsToPackage ideBuf | fileName ideBuf == Nothing = return Nothing
-                        | otherwise                 = do
+belongsToPackage ideBuf | fileName ideBuf == Nothing        = return Nothing
+                        | not (isHaskellMode (mode ideBuf))  = return Nothing
+                        | otherwise                        = do
     bufferToProject' <-  readIDE bufferProjCache
     ws               <-  readIDE workspace
     let fp           =   fromJust (fileName ideBuf)
@@ -1260,3 +1123,15 @@ belongsToPackage' fp mbModuleName Nothing pack =
         else Nothing
 
 belongsToWorkspace b =  belongsToPackage b >>= return . isJust
+
+useCandyFor :: IDEBuffer -> IDEM Bool
+useCandyFor aBuffer = do
+    use <- getCandyState
+    return (use && isHaskellMode (mode aBuffer))
+
+editCandy = do
+    use <- getCandyState
+    buffers <- allBuffers
+    if use
+        then mapM_ (modeEditToCandy . mode) buffers
+        else mapM_ (modeEditFromCandy . mode) buffers
