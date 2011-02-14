@@ -78,7 +78,7 @@ import Graphics.UI.Editor.Simple
      comboSelectionEditor,
      multilineStringEditor,
      stringEditor)
-import Graphics.UI.Editor.Basics (Editor(..))
+import Graphics.UI.Editor.Basics (Editor(..),GUIEventSelector(..),GUIEvent(..))
 import Distribution.Compiler
     (CompilerFlavor(..))
 import Distribution.Simple
@@ -88,6 +88,7 @@ import Distribution.Simple
 import Default (Default(..))
 import IDE.Utils.GUIUtils
 import IDE.Pane.SourceBuffer (fileOpenThis)
+import Control.Event (EventSource(..))
 #if MIN_VERSION_Cabal(1,8,0)
 #else
 import Distribution.License
@@ -193,6 +194,13 @@ data PackageDescriptionEd = PDE {
     exes         :: [Executable'],
     mbLib        :: Maybe Library',
     bis          :: [BuildInfo]}
+    deriving Eq
+
+comparePDE a b = do
+    when (pd a /= pd b) $ putStrLn  "pd"
+    when (exes a /= exes b) $ putStrLn  "exes"
+    when (mbLib a /= mbLib b) $ putStrLn  "mbLib"
+    when (bis a /= bis b) $ putStrLn  "bis"
 
 fromEditor :: PackageDescriptionEd -> PackageDescription
 fromEditor (PDE pd exes' mbLib' buildInfos) =
@@ -260,7 +268,7 @@ editPackage packageD packagePath modules afterSaveAction = do
                     (length (bis packageEd))
                     (concatMap (buildInfoD (Just (takeDirectory packagePath)) modules)
                         [0..length (bis packageEd) - 1]))
-                pp nb modules afterSaveAction
+                pp nb modules afterSaveAction packageEd
         Just p -> liftIO $ bringPaneToFront p
 
 initPackage :: FilePath
@@ -270,14 +278,15 @@ initPackage :: FilePath
     -> Notebook
     -> [ModuleName]
     -> (FilePath -> IDEAction)
+    -> PackageDescriptionEd
     -> IDEM ()
-initPackage packageDir packageD packageDescr panePath nb modules afterSaveAction = do
+initPackage packageDir packageD packageDescr panePath nb modules afterSaveAction origPackageD = do
     let fields =  flattenFieldDescription packageDescr
     let initialPackagePath = packageDir </> (display . pkgName . package . pd) packageD ++ ".cabal"
     packageInfos <- liftIO $ getInstalledPackageIds
     buildThisPane panePath nb
         (builder' packageDir packageD packageDescr afterSaveAction
-            initialPackagePath modules packageInfos fields)
+            initialPackagePath modules packageInfos fields origPackageD)
     return ()
 
 builder' :: FilePath ->
@@ -288,100 +297,46 @@ builder' :: FilePath ->
     [ModuleName] ->
     [PackageId] ->
     [FieldDescription PackageDescriptionEd] ->
+    PackageDescriptionEd ->
     PanePath ->
     Notebook ->
     Window ->
     IDEM (Maybe PackagePane,Connections)
 builder' packageDir packageD packageDescr afterSaveAction initialPackagePath modules packageInfos fields
-    panePath nb window = reifyIDE $ \ ideR -> do
+    origPackageD panePath nb window  = reifyIDE $ \ ideR -> do
     vb      <-  vBoxNew False 0
     let packagePane = PackagePane vb
     bb      <-  hButtonBoxNew
     restore <- buttonNewFromStock "Revert"
     save    <- buttonNewFromStock "gtk-save"
+    widgetSetSensitive save False
     closeB  <- buttonNewFromStock "gtk-close"
     addB    <- buttonNewFromStock "Add Build Info"
     removeB <- buttonNewFromStock "Remove Build Info"
+    label   <-  labelNew Nothing
+    boxPackStart vb label PackNatural 0
     boxPackStart bb addB PackNatural 0
     boxPackStart bb removeB PackNatural 0
     boxPackStart bb restore PackNatural 0
-    boxPackStart bb save PackNatural 0
-    boxPackStart bb closeB PackNatural 0
+    boxPackEnd bb closeB PackNatural 0
+    boxPackEnd bb save PackNatural 0
     (widget, setInj, getExt, notifier)  <-  buildEditor packageDescr packageD
+    boxPackStart vb widget PackGrow 7
+    boxPackStart vb label PackNatural 0
+    boxPackEnd vb bb PackNatural 7
+
     let fieldNames = map (\fd -> case getParameterPrim paraName (parameters fd) of
                                     Just s -> s
                                     Nothing -> "Unnamed") fields
-    save `onClicked` (do
-        mbNewPackage' <- extractAndValidate packageD [getExt] fieldNames notifier
-        case mbNewPackage' of
-            Nothing -> return ()
-            Just newPackage' -> let newPackage = fromEditor newPackage' in do
-                let packagePath = packageDir </> (display . pkgName . package . pd) newPackage'
-                                                ++ ".cabal"
-                writePackageDescription packagePath newPackage
-                reflectIDE (afterSaveAction packagePath) ideR)
-    closeB `onClicked` (do
-        mbNewPackage' <- extractAndValidate packageD [getExt] fieldNames notifier
-        case mbNewPackage' of
-            Nothing -> do
-                md <- messageDialogNew (Just window) [] MessageQuestion ButtonsCancel
-                                   "Package does not validate."
-                dialogAddButton md "_Close Anyway" (ResponseUser 1)
-                dialogSetDefaultResponse md (ResponseUser 1)
-                set md [ windowWindowPosition := WinPosCenterOnParent ]
-                rid <- dialogRun md
-                widgetDestroy md
-                case rid of
-                    ResponseUser 1 ->  (reflectIDE (closePane packagePane >> return ()) ideR)
-                    otherwise      ->  return ()
-            Just newPackage -> do
-                let packagePath = packageDir </> (display . pkgName . package . pd) newPackage
-                modified <- do
-                    exists <- liftIO $ doesFileExist packagePath
-                    if exists
-                        then do
-                            packageNow    <- readPackageDescription normal packagePath
-                            let simpleNow = flattenPackageDescription packageNow
-                            case mbNewPackage' of
-                                Nothing -> return True --doesn't validate, so something has changed
-                                Just pd -> return (fromEditor pd /=
-                                     simpleNow{buildDepends = reverse (buildDepends simpleNow)})
-                        else return False
-                cancel <- if modified
-                    then do
-                        md <- messageDialogNew (Just window) []
-                                                    MessageQuestion
-                                                    ButtonsCancel
-                                                    ("Save changes to Cabal file: "
-                                                        ++ packagePath
-                                                        ++ "?")
-                        dialogAddButton md "_Save" ResponseYes
-                        dialogAddButton md "_Don't Save" ResponseNo
-                        set md [ windowWindowPosition := WinPosCenterOnParent ]
-                        resp <- dialogRun md
-                        widgetDestroy md
-                        case resp of
-                            ResponseYes ->   do
-                                case mbNewPackage' of
-                                    Nothing -> return False
-                                    Just newPackage' -> let newPackage = fromEditor newPackage' in do
-                                        let PackageIdentifier (PackageName n) v = package newPackage
-                                        writePackageDescription packagePath newPackage
-                                        return False
-                            ResponseCancel  ->   return True
-                            ResponseNo      ->   return False
-                            _               ->   return False
-                    else return False
-                when (not cancel) (reflectIDE (closePane packagePane >> return ()) ideR))
     restore `onClicked` (do
-        package <- readPackageDescription normal initialPackagePath
-        setInj (toEditor (flattenPackageDescription package)))
+        setInj packageD
+        markLabel nb (getTopWidget packagePane) False
+        widgetSetSensitive save False)
     addB `onClicked` (do
         mbNewPackage' <- extractAndValidate packageD [getExt] fieldNames notifier
         case mbNewPackage' of
             Nothing -> sysMessage Normal "Content doesn't validate"
-            Just pde -> do
-                reflectIDE (do
+            Just pde -> reflectIDE (do
                     closePane packagePane
                     initPackage packageDir pde {bis = bis pde ++ [bis pde !! 0]}
                         (packageDD
@@ -391,7 +346,7 @@ builder' packageDir packageD packageDescr afterSaveAction initialPackagePath mod
                             (length (bis pde) + 1)
                             (concatMap (buildInfoD (Just packageDir) modules)
                                 [0..length (bis pde)]))
-                        panePath nb modules afterSaveAction) ideR)
+                        panePath nb modules afterSaveAction origPackageD) ideR)
     removeB `onClicked` (do
         mbNewPackage' <- extractAndValidate packageD [getExt] fieldNames notifier
         case mbNewPackage' of
@@ -407,9 +362,106 @@ builder' packageDir packageD packageDescr afterSaveAction initialPackagePath mod
                             (length (bis pde) - 1)
                             (concatMap (buildInfoD (Just packageDir) modules)
                                 [0..length (bis pde) - 2]))
-                        panePath nb modules afterSaveAction) ideR)
-    boxPackStart vb widget PackGrow 7
-    boxPackEnd vb bb PackNatural 7
+                        panePath nb modules afterSaveAction origPackageD) ideR)
+    closeB `onClicked` (do
+        mbP <- extract packageD [getExt]
+        let hasChanged = case mbP of
+                                Nothing -> False
+                                Just p -> p /= origPackageD
+        if not hasChanged
+            then reflectIDE (closePane packagePane >> return ()) ideR
+            else do
+                md <- messageDialogNew (Just window) []
+                    MessageQuestion
+                    ButtonsYesNo
+                    "Unsaved changes. Close anyway?"
+                set md [ windowWindowPosition := WinPosCenterOnParent ]
+                resp <- dialogRun md
+                widgetDestroy md
+                case resp of
+                    ResponseYes ->   do
+                        reflectIDE (closePane packagePane >> return ()) ideR
+                    _  ->   return ())
+    save `onClicked` (do
+        mbNewPackage' <- extract packageD [getExt]
+        case mbNewPackage' of
+            Nothing -> return ()
+            Just newPackage' -> let newPackage = fromEditor newPackage' in do
+                let packagePath = packageDir </> (display . pkgName . package . pd) newPackage'
+                                                ++ ".cabal"
+                writePackageDescription packagePath newPackage
+                reflectIDE (do
+                    afterSaveAction packagePath
+                    closePane packagePane
+                    return ()) ideR)
+    registerEvent notifier MayHaveChanged (\ e -> do
+        mbP <- extract packageD [getExt]
+        let hasChanged = case mbP of
+                                Nothing -> False
+                                Just p -> p /= origPackageD
+        when (isJust mbP) $ labelSetMarkup label ""
+        when (isJust mbP) $ comparePDE (fromJust mbP) packageD
+        markLabel nb (getTopWidget packagePane) hasChanged
+        widgetSetSensitive save hasChanged
+        return (e{gtkReturn=False}))
+    registerEvent notifier ValidationError (\e -> do
+        labelSetMarkup label $ "<span foreground=\"red\" size=\"x-large\">The following fields have invalid values: "
+            ++ eventText e ++ "</span>"
+        return e)
+
+
+--        mbNewPackage' <- extractAndValidate packageD [getExt] fieldNames notifier
+--        case mbNewPackage' of
+--            Nothing -> do
+--                md <- messageDialogNew (Just window) [] MessageQuestion ButtonsCancel
+--                                   "Package does not validate."
+--                dialogAddButton md "_Close Anyway" (ResponseUser 1)
+--                dialogSetDefaultResponse md (ResponseUser 1)
+--                set md [ windowWindowPosition := WinPosCenterOnParent ]
+--                rid <- dialogRun md
+--                widgetDestroy md
+--                case rid of
+--                    ResponseUser 1 ->  (reflectIDE (closePane packagePane >> return ()) ideR)
+--                    otherwise      ->  return ()
+--            Just newPackage -> do
+--                let packagePath = packageDir </> (display . pkgName . package . pd) newPackage
+--                modified <- do
+--                    exists <- liftIO $ doesFileExist packagePath
+--                    if exists
+--                        then do
+--                            packageNow    <- readPackageDescription normal packagePath
+--                            let simpleNow = flattenPackageDescription packageNow
+--                            case mbNewPackage' of
+--                                Nothing -> return True --doesn't validate, so something has changed
+--                                Just pd -> return (fromEditor pd /=
+--                                     simpleNow{buildDepends = reverse (buildDepends simpleNow)})
+--                        else return False
+--                cancel <- if modified
+--                    then do
+--                        md <- messageDialogNew (Just window) []
+--                                                    MessageQuestion
+--                                                    ButtonsCancel
+--                                                    ("Save changes to Cabal file: "
+--                                                        ++ packagePath
+--                                                        ++ "?")
+--                        dialogAddButton md "_Save" ResponseYes
+--                        dialogAddButton md "_Don't Save" ResponseNo
+--                        set md [ windowWindowPosition := WinPosCenterOnParent ]
+--                        resp <- dialogRun md
+--                        widgetDestroy md
+--                        case resp of
+--                            ResponseYes ->   do
+--                                case mbNewPackage' of
+--                                    Nothing -> return False
+--                                    Just newPackage' -> let newPackage = fromEditor newPackage' in do
+--                                        let PackageIdentifier (PackageName n) v = package newPackage
+--                                        writePackageDescription packagePath newPackage
+--                                        return False
+--                            ResponseCancel  ->   return True
+--                            ResponseNo      ->   return False
+--                            _               ->   return False
+--                    else return False
+--                when (not cancel) (reflectIDE (closePane packagePane >> return ()) ideR))
     return (Just packagePane,[])
 
 -- ---------------------------------------------------------------------
@@ -515,7 +567,7 @@ packageDD packages fp modules numBuildInfos extras = NFD ([
                     $ paraDirection <<<- ParaDirection Vertical
                         $ paraMinSize <<<- ParaMinSize (-1,250)
                             $ emptyParams)
-            (reverse . buildDepends . pd)
+            (buildDepends . pd)
             (\ a b -> b{pd = (pd b){buildDepends = a}})
             (dependenciesEditor packages)
     ]),

@@ -28,11 +28,12 @@ module IDE.Pane.Preferences (
 ) where
 
 import Graphics.UI.Gtk
-       (labelSetMarkup, labelNew, widgetSetSensitive,
+       (widgetDestroy, dialogRun, windowWindowPosition, dialogAddButton,
+        messageDialogNew, labelSetMarkup, labelNew, widgetSetSensitive,
         cellText, widgetModifyFont, onClicked, boxPackEnd, boxPackStart,
         buttonNewFromStock, hButtonBoxNew, vBoxNew, castToWidget, VBox,
         ShadowType(..), Packing(..), fontDescriptionFromString, AttrOp(..),
-        FileChooserAction(..), Color(..))
+        FileChooserAction(..), Color(..), ResponseId(..))
 import Control.Monad.Reader
 import qualified Text.PrettyPrint.HughesPJ as PP
 import Distribution.Package
@@ -66,6 +67,10 @@ import Control.Exception(SomeException,catch)
 import Prelude hiding(catch)
 import Data.List (sortBy)
 import Data.Maybe (isJust)
+import Graphics.UI.Gtk.Windows.MessageDialog
+       (ButtonsType(..), MessageType(..))
+import System.Glib.Attributes (set)
+import Graphics.UI.Gtk.General.Enums (WindowPosition(..))
 
 -- ---------------------------------------------------------------------
 -- This needs to be incremented, when the preferences format changes
@@ -141,20 +146,39 @@ instance RecoverablePane IDEPrefs PrefsState IDEM where
                 case mbNewPrefs of
                     Nothing -> return ()
                     Just newPrefs -> do
-                    mapM_ (\ (FDPP _ _ _ _ applyF) -> reflectIDE (applyF newPrefs lastAppliedPrefs) ideR ) flatPrefsDesc
-                    fp   <- getConfigFilePathForSave standardPreferencesFilename
-                    writePrefs fp newPrefs
-                    fp2  <-  getConfigFilePathForSave strippedPreferencesFilename
-                    SP.writeStrippedPrefs fp2
-                        (SP.Prefs {SP.sourceDirectories = sourceDirectories newPrefs,
-                                   SP.unpackDirectory   = unpackDirectory newPrefs,
-                                   SP.retrieveURL       = retrieveURL newPrefs,
-                                   SP.retrieveStrategy  = retrieveStrategy newPrefs,
-                                   SP.serverPort        = serverPort newPrefs,
-                                   SP.endWithLastConn   = endWithLastConn newPrefs})
-                    reflectIDE (modifyIDE_ (\ide -> ide{prefs = newPrefs})) ideR
-                    reflectIDE (closePane prefsPane >> return ()) ideR)
-            closeB `onClicked` (reflectIDE (closePane prefsPane >> return ()) ideR )
+                        mapM_ (\ (FDPP _ _ _ _ applyF) -> reflectIDE (applyF newPrefs lastAppliedPrefs) ideR ) flatPrefsDesc
+                        fp   <- getConfigFilePathForSave standardPreferencesFilename
+                        writePrefs fp newPrefs
+                        fp2  <-  getConfigFilePathForSave strippedPreferencesFilename
+                        SP.writeStrippedPrefs fp2
+                            (SP.Prefs {SP.sourceDirectories = sourceDirectories newPrefs,
+                                       SP.unpackDirectory   = unpackDirectory newPrefs,
+                                       SP.retrieveURL       = retrieveURL newPrefs,
+                                       SP.retrieveStrategy  = retrieveStrategy newPrefs,
+                                       SP.serverPort        = serverPort newPrefs,
+                                       SP.endWithLastConn   = endWithLastConn newPrefs})
+                        reflectIDE (modifyIDE_ (\ide -> ide{prefs = newPrefs})) ideR
+                        reflectIDE (closePane prefsPane >> return ()) ideR)
+            closeB `onClicked` do
+                mbP <- extract prefs [ext]
+                let hasChanged = case mbP of
+                                        Nothing -> False
+                                        Just p -> p{prefsFormat = 0, prefsSaveTime = ""} /=
+                                                  prefs{prefsFormat = 0, prefsSaveTime = ""}
+                if not hasChanged
+                    then reflectIDE (closePane prefsPane >> return ()) ideR
+                    else do
+                        md <- messageDialogNew (Just windows) []
+                            MessageQuestion
+                            ButtonsYesNo
+                            "Unsaved changes. Close anyway?"
+                        set md [ windowWindowPosition := WinPosCenterOnParent ]
+                        resp <- dialogRun md
+                        widgetDestroy md
+                        case resp of
+                            ResponseYes ->   do
+                                reflectIDE (closePane prefsPane >> return ()) ideR
+                            _  ->   return ()
             registerEvent notifier FocusIn (\e -> do
                 reflectIDE (makeActive prefsPane) ideR
                 return (e{gtkReturn=False}))
