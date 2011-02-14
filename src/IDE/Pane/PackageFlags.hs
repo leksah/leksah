@@ -41,6 +41,8 @@ import Graphics.UI.Editor.DescriptionPP
      FieldDescriptionPP(..),
      mkFieldPP)
 import Text.ParserCombinators.Parsec hiding(Parser)
+import Debug.Trace (trace)
+import Control.Monad.Trans (liftIO)
 
 data IDEFlags               =   IDEFlags {
     flagsBox                ::   VBox
@@ -85,16 +87,17 @@ builder' idePackage flagsDesc flatflagsDesc pp nb window ideR = do
     vb                  <-  vBoxNew False 0
     let flagsPane = IDEFlags vb
     bb                  <-  hButtonBoxNew
-    ok                  <-  buttonNewFromStock "gtk-ok"
-    closeB              <-  buttonNewFromStock "gtk-close"
-    boxPackStart bb ok PackNatural 0
-    boxPackStart bb closeB PackNatural 0
+    saveB               <-  buttonNewFromStock "gtk-save"
+    widgetSetSensitive saveB False
+    cancelB             <-  buttonNewFromStock "gtk-cancel"
+    boxPackStartDefaults bb cancelB
+    boxPackStartDefaults bb saveB
     (widget,injb,ext,notifier)
                         <-  buildEditor flagsDesc idePackage
     sw <- scrolledWindowNew Nothing Nothing
     scrolledWindowAddWithViewport sw widget
     scrolledWindowSetPolicy sw PolicyAutomatic PolicyAutomatic
-    ok `onClicked` (do
+    saveB `onClicked` (do
         mbPackWithNewFlags <- extract idePackage [ext]
         case mbPackWithNewFlags of
             Nothing -> return ()
@@ -104,10 +107,19 @@ builder' idePackage flagsDesc flatflagsDesc pp nb window ideR = do
                     closePane flagsPane) ideR -- we don't trigger the activePack event here
                 writeFields ((dropExtension (ipdCabalFile packWithNewFlags)) ++ leksahFlagFileExtension)
                     packWithNewFlags flatFlagsDescription)
-    closeB `onClicked` (reflectIDE (closePane flagsPane >> return ()) ideR)
-    registerEvent notifier FocusIn (Left (\e -> do
+    cancelB `onClicked` (reflectIDE (closePane flagsPane >> return ()) ideR)
+    registerEvent notifier FocusIn (\e -> do
         reflectIDE (makeActive flagsPane) ideR
-        return (e{gtkReturn=False})))
+        return (e{gtkReturn=False}))
+    registerEvent notifier MayHaveChanged (\e -> do
+        mbP <- extract idePackage [ext]
+        let hasChanged = case mbP of
+                                Nothing -> False
+                                Just p -> p /= idePackage
+        markLabel nb (getTopWidget flagsPane) hasChanged
+        widgetSetSensitive saveB hasChanged
+        return (e{gtkReturn=False}))
+
     boxPackStart vb sw PackGrow 7
     boxPackEnd vb bb PackNatural 7
     return (Just flagsPane,[])
@@ -166,7 +178,7 @@ flagsDescription = VFDPP emptyParams [
             stringParser
             (\p -> unargs (ipdConfigFlags p))
             (\ b a -> a{ipdConfigFlags = args b})
-            (stringEditor (const True))
+            (stringEditor (const True) True)
             (\ _ -> return ())
     ,   mkFieldPP
             (paraName <<<- ParaName "Build flags" $ emptyParams)
@@ -174,7 +186,7 @@ flagsDescription = VFDPP emptyParams [
             stringParser
             (\p -> unargs (ipdBuildFlags p))
             (\ b a -> a{ipdBuildFlags = args b})
-            (stringEditor (const True))
+            (stringEditor (const True) True)
             (\ _ ->  return ())
     ,   mkFieldPP
             (paraName <<<- ParaName "Haddock flags" $ emptyParams)
@@ -182,7 +194,7 @@ flagsDescription = VFDPP emptyParams [
             stringParser
             (\p -> unargs (ipdHaddockFlags p))
             (\ b a -> a{ipdHaddockFlags = args b})
-            (stringEditor (const True))
+            (stringEditor (const True) True)
             (\ _ ->   return ())
     ,   mkFieldPP
             (paraName <<<- ParaName "Executable flags" $ emptyParams)
@@ -190,7 +202,7 @@ flagsDescription = VFDPP emptyParams [
             stringParser
             (\p -> unargs (ipdExeFlags p))
             (\ b a -> a{ipdExeFlags = args b})
-            (stringEditor (const True))
+            (stringEditor (const True) True)
             (\ _ ->   return ())
     ,   mkFieldPP
             (paraName <<<- ParaName "Install flags" $ emptyParams)
@@ -198,7 +210,7 @@ flagsDescription = VFDPP emptyParams [
             stringParser
             (\p -> unargs (ipdInstallFlags p))
             (\ b a -> a{ipdInstallFlags = args b})
-            (stringEditor (const True))
+            (stringEditor (const True) True)
             (\ _ ->   return ())
     ,   mkFieldPP
             (paraName <<<- ParaName "Register flags" $ emptyParams)
@@ -206,7 +218,7 @@ flagsDescription = VFDPP emptyParams [
             stringParser
             (\p -> unargs (ipdRegisterFlags p))
             (\ b a -> a{ipdRegisterFlags = args b})
-            (stringEditor (const True))
+            (stringEditor (const True) True)
             (\ _ ->   return ())
     ,   mkFieldPP
             (paraName <<<- ParaName "Unregister flags" $ emptyParams)
@@ -214,7 +226,7 @@ flagsDescription = VFDPP emptyParams [
             stringParser
             (\p -> unargs (ipdUnregisterFlags p))
             (\ b a -> a{ipdUnregisterFlags = args b})
-            (stringEditor (const True))
+            (stringEditor (const True) True)
             (\ _ ->   return ())
     ,   mkFieldPP
             (paraName <<<- ParaName "Source Distribution flags" $ emptyParams)
@@ -222,7 +234,7 @@ flagsDescription = VFDPP emptyParams [
             stringParser
             (\p -> unargs (ipdSdistFlags p))
             (\ b a -> a{ipdSdistFlags = args b})
-            (stringEditor (const True))
+            (stringEditor (const True) True)
             (\ _ -> return ())]
 
 -- ------------------------------------------------------------

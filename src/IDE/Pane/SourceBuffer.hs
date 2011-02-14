@@ -219,7 +219,9 @@ selectSourceBuf fp = do
                     pp      <- getBestPathForId  "*Buffer"
                     nbuf <- newTextBuffer pp (takeFileName fpc) (Just fpc)
                     return nbuf
-                else return Nothing
+                else do
+                    ideMessage Normal ("File path not found " ++ fpc)
+                    return Nothing
 
 goToDefinition :: Descr -> IDEAction
 goToDefinition idDescr  = do
@@ -251,6 +253,7 @@ goToDefinition idDescr  = do
 
 goToSourceDefinition :: FilePath -> Maybe Location -> IDEAction
 goToSourceDefinition fp dscMbLocation = do
+    liftIO $ putStrLn $ "goToSourceDefinition " ++ fp
     mbBuf     <- selectSourceBuf fp
     when (isJust mbBuf && isJust dscMbLocation) $
         inActiveBufContext () $ \_ ebuf buf _ -> do

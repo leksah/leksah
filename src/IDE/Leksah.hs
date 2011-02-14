@@ -231,8 +231,7 @@ startMainWindow yiControl sessionFP mbWorkspaceFP sourceFPs startupPrefs isFirst
     dataDir       <- getDataDir
     candyPath   <-  getConfigFilePathForLoad
                         (case sourceCandy startupPrefs of
-                            Nothing     ->   standardCandyFilename
-                            Just name   ->   name ++ leksahCandyFileExtension) Nothing dataDir
+                            (_,name)   ->   name ++ leksahCandyFileExtension) Nothing dataDir
     candySt     <-  parseCandy candyPath
     -- keystrokes
     keysPath    <-  getConfigFilePathForLoad (keymapName startupPrefs ++ leksahKeymapFileExtension) Nothing dataDir
@@ -291,13 +290,13 @@ startMainWindow yiControl sessionFP mbWorkspaceFP sourceFPs startupPrefs isFirst
     win `onDelete` (\ _ -> do reflectIDE quit ideR; return True)
     reflectIDE (instrumentWindow win startupPrefs (castToWidget nb)) ideR
     reflectIDE (do
-        setCandyState (isJust (sourceCandy startupPrefs))
+        setCandyState (fst (sourceCandy startupPrefs))
         setBackgroundBuildToggled (backgroundBuild startupPrefs)
         setBackgroundLinkToggled (backgroundLink startupPrefs)) ideR
     let (x,y)   =   defaultSize startupPrefs
     windowSetDefaultSize win x y
     (tbv,fbv)   <- reflectIDE (do
-        registerEvents
+        registerLeksahEvents
         pair <- recoverSession sessionFP
         workspaceOpenThis False  mbWorkspaceFP
         mapM fileOpenThis sourceFPs
@@ -344,12 +343,12 @@ fDescription configPath = VFD emptyParams [
             (paraName <<<- ParaName "Unpack source for cabal packages to" $ emptyParams)
             unpackDirectory
             (\b a -> a{unpackDirectory = b})
-            (maybeEditor (stringEditor (\ _ -> True),emptyParams) True "")
+            (maybeEditor (stringEditor (const True) True,emptyParams) True "")
     ,   mkField
             (paraName <<<- ParaName "URL from which to download prebuilt metadata" $ emptyParams)
             retrieveURL
             (\b a -> a{retrieveURL = b})
-            (stringEditor (\ _ -> True))
+            (stringEditor (\ _ -> True) True)
     ,   mkField
             (paraName <<<- ParaName "Strategy for downloading prebuilt metadata" $ emptyParams)
             retrieveStrategy

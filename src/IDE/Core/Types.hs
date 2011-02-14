@@ -305,7 +305,7 @@ data IDEPackage     =   IDEPackage {
 ,   ipdModules         ::   Set ModuleName
 ,   ipdMain            ::   [FilePath]
 ,   ipdExtraSrcs       ::   Set FilePath
-,   ipdSrcDirs         ::   [FilePath]
+,   ipdSrcDirs         ::   [FilePath]	
 ,   ipdExtensions      ::   [Extension]
 ,   ipdConfigFlags     ::   [String]
 ,   ipdBuildFlags      ::   [String]
@@ -364,10 +364,10 @@ data Prefs = Prefs {
         prefsFormat         ::   Int
     ,   prefsSaveTime       ::   String
     ,   showLineNumbers     ::   Bool
-    ,   rightMargin         ::   Maybe Int
+    ,   rightMargin         ::   (Bool, Int)
     ,   tabWidth            ::   Int
     ,   wrapLines           ::   Bool
-    ,   sourceCandy         ::   Maybe String
+    ,   sourceCandy         ::   (Bool,String)
     ,   keymapName          ::   String
     ,   forceLineEnds       ::   Bool
     ,   removeTBlanks       ::   Bool

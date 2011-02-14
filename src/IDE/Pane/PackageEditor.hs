@@ -312,7 +312,7 @@ builder' packageDir packageD packageDescr afterSaveAction initialPackagePath mod
                                     Just s -> s
                                     Nothing -> "Unnamed") fields
     save `onClicked` (do
-        mbNewPackage' <- extractAndValidate packageD [getExt] fieldNames
+        mbNewPackage' <- extractAndValidate packageD [getExt] fieldNames notifier
         case mbNewPackage' of
             Nothing -> return ()
             Just newPackage' -> let newPackage = fromEditor newPackage' in do
@@ -321,7 +321,7 @@ builder' packageDir packageD packageDescr afterSaveAction initialPackagePath mod
                 writePackageDescription packagePath newPackage
                 reflectIDE (afterSaveAction packagePath) ideR)
     closeB `onClicked` (do
-        mbNewPackage' <- extractAndValidate packageD [getExt] fieldNames
+        mbNewPackage' <- extractAndValidate packageD [getExt] fieldNames notifier
         case mbNewPackage' of
             Nothing -> do
                 md <- messageDialogNew (Just window) [] MessageQuestion ButtonsCancel
@@ -377,7 +377,7 @@ builder' packageDir packageD packageDescr afterSaveAction initialPackagePath mod
         package <- readPackageDescription normal initialPackagePath
         setInj (toEditor (flattenPackageDescription package)))
     addB `onClicked` (do
-        mbNewPackage' <- extractAndValidate packageD [getExt] fieldNames
+        mbNewPackage' <- extractAndValidate packageD [getExt] fieldNames notifier
         case mbNewPackage' of
             Nothing -> sysMessage Normal "Content doesn't validate"
             Just pde -> do
@@ -393,7 +393,7 @@ builder' packageDir packageD packageDescr afterSaveAction initialPackagePath mod
                                 [0..length (bis pde)]))
                         panePath nb modules afterSaveAction) ideR)
     removeB `onClicked` (do
-        mbNewPackage' <- extractAndValidate packageD [getExt] fieldNames
+        mbNewPackage' <- extractAndValidate packageD [getExt] fieldNames notifier
         case mbNewPackage' of
             Nothing -> sysMessage Normal "Content doesn't validate"
             Just pde | length (bis pde) == 1  -> sysMessage Normal "Just one Build Info"
@@ -430,7 +430,7 @@ packageDD packages fp modules numBuildInfos extras = NFD ([
            $ emptyParams)
             (synopsis . pd)
             (\ a b -> b{pd = (pd b){synopsis = a}})
-            (stringEditor (const True))
+            (stringEditor (const True) True)
     ,   mkField
             (paraName <<<- ParaName "Package Identifier" $ emptyParams)
             (package . pd)
@@ -449,24 +449,24 @@ packageDD packages fp modules numBuildInfos extras = NFD ([
             (paraName <<<- ParaName "Homepage" $ emptyParams)
             (homepage . pd)
             (\ a b -> b{pd = (pd b){homepage = a}})
-            (stringEditor (const True))
+            (stringEditor (const True) True)
     ,   mkField
             (paraName <<<- ParaName "Package URL" $ emptyParams)
             (pkgUrl . pd)
             (\ a b -> b{pd = (pd b){pkgUrl = a}})
-            (stringEditor (const True))
+            (stringEditor (const True) True)
     ,   mkField
             (paraName <<<- ParaName "Category" $ emptyParams)
             (category . pd)
             (\ a b -> b{pd = (pd b){category = a}})
-            (stringEditor (const True))
+            (stringEditor (const True) True)
     ]),
     ("Description", VFD emptyParams [
         mkField
             (paraName <<<- ParaName "Stability" $ emptyParams)
             (stability . pd)
             (\ a b -> b{pd = (pd b){stability = a}})
-            (stringEditor (const True))
+            (stringEditor (const True) True)
 #if MIN_VERSION_Cabal(1,8,0)
             -- TODO
 #else
@@ -485,22 +485,22 @@ packageDD packages fp modules numBuildInfos extras = NFD ([
             (paraName <<<- ParaName "Copyright" $ emptyParams)
             (copyright . pd)
             (\ a b -> b{pd = (pd b){copyright = a}})
-            (stringEditor (const True))
+            (stringEditor (const True) True)
     ,   mkField
             (paraName <<<- ParaName "Author" $ emptyParams)
             (author . pd)
             (\ a b -> b{pd = (pd b){author = a}})
-            (stringEditor (const True))
+            (stringEditor (const True) True)
     ,   mkField
             (paraName <<<- ParaName "Maintainer" $ emptyParams)
             (maintainer . pd)
             (\ a b -> b{pd = (pd b){maintainer = a}})
-            (stringEditor (const True))
+            (stringEditor (const True) True)
     ,   mkField
             (paraName <<<- ParaName "Bug Reports" $ emptyParams)
             (bugReports . pd)
             (\ a b -> b{pd = (pd b){bugReports = a}})
-            (stringEditor (const True))
+            (stringEditor (const True) True)
     ]),
 --    ("Repositories", VFD emptyParams [
 --        mkField
@@ -604,7 +604,7 @@ packageDD packages fp modules numBuildInfos extras = NFD ([
                                    ,("Value",\(_,v) -> [cellText := v])])
                 ((pairEditor
                     (stringxEditor (const True),emptyParams)
-                    (stringEditor (const True),emptyParams)),emptyParams)
+                    (stringEditor (const True) True,emptyParams)),emptyParams)
             Nothing
             Nothing)
     ]),
@@ -763,7 +763,7 @@ buildInfoD fp modules i = [
                 $ paraDirection <<<- ParaDirection Vertical $ emptyParams)
             (includes . (\a -> a !! i) . bis)
             (\ a b -> b{bis = update (bis b) i (\bi -> bi{includes = a})})
-            (stringsEditor (const True))
+            (stringsEditor (const True) True)
      ,   mkField
             (paraName <<<- ParaName "A list of header files to install"
                 $ paraDirection <<<- ParaDirection Vertical $ emptyParams)
@@ -792,7 +792,7 @@ buildInfoD fp modules i = [
                 $ paraDirection <<<- ParaDirection Vertical $ emptyParams)
             (extraLibs . (\a -> a !! i) . bis)
             (\ a b -> b{bis = update (bis b) i (\bi -> bi{extraLibs = a})})
-            (stringsEditor (const True))
+            (stringsEditor (const True) True)
      ,   mkField
             (paraName <<<- ParaName "A list of directories to search for libraries."
                 $ paraDirection <<<- ParaDirection Vertical $ emptyParams)
@@ -806,7 +806,7 @@ buildInfoD fp modules i = [
                 $ paraDirection <<<- ParaDirection Vertical $ emptyParams)
             (frameworks . (\a -> a !! i) . bis)
             (\ a b -> b{bis = update (bis b) i (\bi -> bi{frameworks = a})})
-            (stringsEditor (const True))
+            (stringsEditor (const True) True)
     ,   mkField
             (paraName <<<- ParaName "Custom fields build info"
                 $ paraShadow <<<- ParaShadow ShadowIn
@@ -818,14 +818,14 @@ buildInfoD fp modules i = [
                                    ,("Value",\(_,v) -> [cellText := v])])
                 ((pairEditor
                     (stringxEditor (const True),emptyParams)
-                    (stringEditor (const True),emptyParams)),emptyParams)
+                    (stringEditor (const True) True,emptyParams)),emptyParams)
             Nothing
             Nothing)
             ])]
 
 stringxEditor :: (String -> Bool) -> Editor String
 stringxEditor val para noti = do
-    (wid,inj,ext) <- stringEditor val para noti
+    (wid,inj,ext) <- stringEditor val True para noti
     let
         xinj ("") = inj ""
         xinj ('x':'-':rest) = inj rest
@@ -839,7 +839,7 @@ stringxEditor val para noti = do
 
 optsEditor :: Editor [String]
 optsEditor para noti = do
-    (wid,inj,ext) <- stringEditor (const True) para noti
+    (wid,inj,ext) <- stringEditor (const True) True para noti
     let
         oinj = inj . unwords
         oext = do
@@ -852,7 +852,7 @@ optsEditor para noti = do
 packageEditor :: Editor PackageIdentifier
 packageEditor para noti = do
     (wid,inj,ext) <- pairEditor
-        (stringEditor (\s -> not (null s)), paraName <<<- ParaName "Name" $ emptyParams)
+        (stringEditor (\s -> not (null s)) True, paraName <<<- ParaName "Name" $ emptyParams)
         (versionEditor, paraName <<<- ParaName "Version" $ emptyParams)
         (paraDirection <<<- ParaDirection Horizontal
             $ paraShadow <<<- ParaShadow ShadowIn
@@ -885,7 +885,7 @@ compilerFlavorEditor :: Editor CompilerFlavor
 compilerFlavorEditor para noti = do
     (wid,inj,ext) <- eitherOrEditor
         (comboSelectionEditor flavors show, paraName <<<- (ParaName "Select compiler") $ emptyParams)
-        (stringEditor (\s -> not (null s)), paraName <<<- (ParaName "Specify compiler") $ emptyParams)
+        (stringEditor (\s -> not (null s)) True, paraName <<<- (ParaName "Specify compiler") $ emptyParams)
         "Other"
         (paraName <<<- ParaName "Select" $ para)
         noti
@@ -906,7 +906,7 @@ buildTypeEditor :: Editor BuildType
 buildTypeEditor para noti = do
     (wid,inj,ext) <- eitherOrEditor
         (comboSelectionEditor flavors show, paraName <<<- (ParaName "Select") $ emptyParams)
-        (stringEditor (const True), paraName <<<- (ParaName "Unknown") $ emptyParams)
+        (stringEditor (const True) True, paraName <<<- (ParaName "Unknown") $ emptyParams)
         "Unknown"
         (paraName <<<- ParaName "Select" $ para)
         noti
@@ -964,11 +964,11 @@ repoEditor paras noti = do
     (widg,inj,ext) <- tupel7Editor
                             (repoKindEditor,noBorder)
                             (maybeEditor (repoTypeEditor,noBorder) True "Specify a type", emptyParams)
-                            (maybeEditor (stringEditor (const True),noBorder) True "Specify a location", emptyParams)
-                            (maybeEditor (stringEditor (const True),noBorder) True "Specify a module", emptyParams)
-                            (maybeEditor (stringEditor (const True),noBorder) True "Specify a branch", emptyParams)
-                            (maybeEditor (stringEditor (const True),noBorder) True "Specify a tag", emptyParams)
-                            (maybeEditor (stringEditor (const True),noBorder) True "Specify a subdir", emptyParams)
+                            (maybeEditor (stringEditor (const True) True,noBorder) True "Specify a location", emptyParams)
+                            (maybeEditor (stringEditor (const True) True,noBorder) True "Specify a module", emptyParams)
+                            (maybeEditor (stringEditor (const True) True,noBorder) True "Specify a branch", emptyParams)
+                            (maybeEditor (stringEditor (const True) True,noBorder) True "Specify a tag", emptyParams)
+                            (maybeEditor (stringEditor (const True) True,noBorder) True "Specify a subdir", emptyParams)
                             (paraDirection  <<<- ParaDirection Vertical $ noBorder)
                             noti
     return (widg,
@@ -988,7 +988,7 @@ repoKindEditor :: Editor RepoKind
 repoKindEditor paras noti = do
     (widg,inj,ext) <- pairEditor
                         (comboSelectionEditor selectionList show, emptyParams)
-                        (stringEditor (const True),emptyParams)
+                        (stringEditor (const True) True,emptyParams)
                         paras
                         noti
     return (widg,
@@ -1007,7 +1007,7 @@ repoTypeEditor :: Editor RepoType
 repoTypeEditor paras noti = do
     (widg,inj,ext) <- pairEditor
                         (comboSelectionEditor selectionList show, emptyParams)
-                        (stringEditor (const True),emptyParams)
+                        (stringEditor (const True) True,emptyParams)
                         paras
                         noti
     return (widg,
@@ -1094,10 +1094,10 @@ executablesEditor fp modules countBuildInfo p =
 executableEditor :: Maybe FilePath -> [ModuleName] -> Int -> Editor Executable'
 executableEditor fp modules countBuildInfo para noti = do
     (wid,inj,ext) <- tupel3Editor
-        (stringEditor (\s -> not (null s)),
+        (stringEditor (\s -> not (null s)) True,
             paraName <<<- ParaName "Executable Name"
             $ emptyParams)
-        (stringEditor (\s -> not (null s)),
+        (stringEditor (\s -> not (null s)) True,
             paraDirection <<<- ParaDirection Vertical
             $ paraName <<<- ParaName "File with main function"
             $ emptyParams)

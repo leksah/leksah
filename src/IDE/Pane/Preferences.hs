@@ -28,7 +28,8 @@ module IDE.Pane.Preferences (
 ) where
 
 import Graphics.UI.Gtk
-       (cellText, widgetModifyFont, onClicked, boxPackEnd, boxPackStart,
+       (labelSetMarkup, labelNew, widgetSetSensitive,
+        cellText, widgetModifyFont, onClicked, boxPackEnd, boxPackStart,
         buttonNewFromStock, hButtonBoxNew, vBoxNew, castToWidget, VBox,
         ShadowType(..), Packing(..), fontDescriptionFromString, AttrOp(..),
         FileChooserAction(..), Color(..))
@@ -63,6 +64,8 @@ import System.Time (getClockTime)
 import qualified IDE.StrippedPrefs as SP
 import Control.Exception(SomeException,catch)
 import Prelude hiding(catch)
+import Data.List (sortBy)
+import Data.Maybe (isJust)
 
 -- ---------------------------------------------------------------------
 -- This needs to be incremented, when the preferences format changes
@@ -102,15 +105,18 @@ instance RecoverablePane IDEPrefs PrefsState IDEM where
             bb      <-  hButtonBoxNew
             apply   <-  buttonNewFromStock "gtk-apply"
             restore <-  buttonNewFromStock "Restore"
+            closeB  <-  buttonNewFromStock "gtk-cancel"
             save    <-  buttonNewFromStock "gtk-save"
-            closeB  <-  buttonNewFromStock "gtk-close"
+            widgetSetSensitive save False
             boxPackStart bb apply PackNatural 0
             boxPackStart bb restore PackNatural 0
-            boxPackStart bb save PackNatural 0
-            boxPackStart bb closeB PackNatural 0
+            boxPackEnd bb closeB PackNatural 0
+            boxPackEnd bb save PackNatural 0
             (widget,injb,ext,notifier) <-  buildEditor
                                 (extractFieldDescription $ prefsDescription configDir packageInfos) prefs
             boxPackStart vb widget PackGrow 7
+            label   <-  labelNew Nothing
+            boxPackStart vb label PackNatural 0
             boxPackEnd vb bb PackNatural 7
             let prefsPane = IDEPrefs vb
             apply `onClicked` (do
@@ -125,7 +131,10 @@ instance RecoverablePane IDEPrefs PrefsState IDEM where
                 lastAppliedPrefs <- readIORef lastAppliedPrefsRef
                 mapM_ (\ (FDPP _ _ _ _ applyF) -> reflectIDE (applyF prefs lastAppliedPrefs) ideR ) flatPrefsDesc
                 injb prefs
-                writeIORef lastAppliedPrefsRef prefs)
+                writeIORef lastAppliedPrefsRef prefs
+                markLabel nb (getTopWidget prefsPane) False
+                widgetSetSensitive save False
+                )
             save `onClicked` (do
                 lastAppliedPrefs <- readIORef lastAppliedPrefsRef
                 mbNewPrefs <- extract prefs [ext]
@@ -143,11 +152,26 @@ instance RecoverablePane IDEPrefs PrefsState IDEM where
                                    SP.retrieveStrategy  = retrieveStrategy newPrefs,
                                    SP.serverPort        = serverPort newPrefs,
                                    SP.endWithLastConn   = endWithLastConn newPrefs})
-                    reflectIDE (modifyIDE_ (\ide -> ide{prefs = newPrefs})) ideR )
+                    reflectIDE (modifyIDE_ (\ide -> ide{prefs = newPrefs})) ideR
+                    reflectIDE (closePane prefsPane >> return ()) ideR)
             closeB `onClicked` (reflectIDE (closePane prefsPane >> return ()) ideR )
-            registerEvent notifier FocusIn (Left (\e -> do
+            registerEvent notifier FocusIn (\e -> do
                 reflectIDE (makeActive prefsPane) ideR
-                return (e{gtkReturn=False})))
+                return (e{gtkReturn=False}))
+            registerEvent notifier MayHaveChanged (\ e -> do
+                mbP <- extract prefs [ext]
+                let hasChanged = case mbP of
+                                        Nothing -> False
+                                        Just p -> p{prefsFormat = 0, prefsSaveTime = ""} /=
+                                                  prefs{prefsFormat = 0, prefsSaveTime = ""}
+                when (isJust mbP) $ labelSetMarkup label ""
+                markLabel nb (getTopWidget prefsPane) hasChanged
+                widgetSetSensitive save hasChanged
+                return (e{gtkReturn=False}))
+            registerEvent notifier ValidationError (\e -> do
+                labelSetMarkup label $ "<span foreground=\"red\" size=\"x-large\">The following fields have invalid values: "
+                    ++ eventText e ++ "</span>"
+                return e)
             return (Just prefsPane,[])
 
 getPrefs :: Maybe PanePath -> IDEM IDEPrefs
@@ -207,12 +231,11 @@ prefsDescription configDir packages = NFDPP [
             (paraName <<<- ParaName "Right margin"
                 $ paraSynopsis <<<- ParaSynopsis "Size or 0 for no right margin"
                     $ paraShadow <<<- ParaShadow ShadowIn $ emptyParams)
-            (\a -> (PP.text . show) (case a of Nothing -> 0; Just i -> i))
-            (do i <- intParser
-                return (if i == 0 then Nothing else Just i))
+            (PP.text . show)
+            readParser
             rightMargin
             (\b a -> a{rightMargin = b})
-            (maybeEditor (intEditor (1.0, 200.0, 5.0), paraName <<<- ParaName "Position"
+            (disableEditor (intEditor (1.0, 200.0, 5.0), paraName <<<- ParaName "Position"
                     $ emptyParams)
                     True "Show it ?")
             (\b -> do
@@ -259,18 +282,18 @@ prefsDescription configDir packages = NFDPP [
                 $ paraSynopsis <<<- ParaSynopsis
                     "Empty for do not use or the name of a candy file in a config dir"
                     $ paraShadow <<<- ParaShadow ShadowIn $ emptyParams)
-            (\a -> PP.text (case a of Nothing -> show ""; Just s -> show s))
-            (do str <- stringParser
-                return (if null str then Nothing else Just (str)))
+            (PP.text . show)
+            readParser
             sourceCandy (\b a -> a{sourceCandy = b})
-            (maybeEditor ((stringEditor (\s -> not (null s))), paraName <<<- ParaName "Candy specification"
+            (disableEditor (stringEditor (\s -> not (null s)) True,
+                paraName <<<- ParaName "Candy specification"
                                     $ emptyParams)
                     True "Use it ?")
             (\cs -> case cs of
-                        Nothing -> do
+                        (False,_) -> do
                             setCandyState False
                             editCandy
-                        Just name -> do
+                        (True,name) -> do
                             setCandyState True
                             editCandy)
     ,   mkFieldPP
@@ -398,7 +421,7 @@ prefsDescription configDir packages = NFDPP [
             identifier
             keymapName
             (\b a -> a{keymapName = b})
-            (stringEditor (\s -> not (null s)))
+            (stringEditor (\s -> not (null s)) True)
             (\ a -> return ())
     ]),
     ("Initial Pane positions", VFDPP emptyParams [
@@ -406,7 +429,9 @@ prefsDescription configDir packages = NFDPP [
             (paraName <<<- ParaName
                 "Categories for panes"
                 $ paraShadow <<<- ParaShadow ShadowIn
-                     $ paraDirection <<<- ParaDirection Vertical $ emptyParams)
+                     $ paraDirection <<<- ParaDirection Vertical
+                        $ paraMinSize <<<- ParaMinSize (-1,130)
+                            $ emptyParams)
             (PP.text . show)
             readParser
             categoryForPane
@@ -415,16 +440,18 @@ prefsDescription configDir packages = NFDPP [
                 (ColumnDescr True [("Pane Id",\(n,_) -> [cellText := n])
                                    ,("Pane Category",\(_,v) -> [cellText := v])])
                 ((pairEditor
-                    (stringEditor (\s -> not (null s)),emptyParams)
-                    (stringEditor (\s -> not (null s)),emptyParams)),emptyParams)
-            Nothing
-            Nothing)
+                    (stringEditor (\s -> not (null s)) True,emptyParams)
+                    (stringEditor (\s -> not (null s)) True,emptyParams)),emptyParams)
+                (Just (sortBy (\(a,_) (a2,_) -> compare a a2)))
+                (Just (\(a,_) (a2,_) -> a == a2)))
             (\i -> return ())
     ,   mkFieldPP
             (paraName <<<- ParaName
                 "Pane path for category"
                 $ paraShadow <<<- ParaShadow ShadowIn
-                     $ paraDirection <<<- ParaDirection Vertical $ emptyParams)
+                     $ paraDirection <<<- ParaDirection Vertical
+                        $ paraMinSize <<<- ParaMinSize (-1,130)
+                            $ emptyParams)
             (PP.text . show)
             readParser
             pathForCategory
@@ -433,10 +460,10 @@ prefsDescription configDir packages = NFDPP [
                 (ColumnDescr True [("Pane category",\(n,_) -> [cellText := n])
                                    ,("Pane path",\(_,v) -> [cellText := show v])])
                 ((pairEditor
-                    (stringEditor (\s -> not (null s)),emptyParams)
+                    (stringEditor (\s -> not (null s)) True,emptyParams)
                     (genericEditor,emptyParams)),emptyParams)
-            Nothing
-            Nothing)
+                (Just (sortBy (\(a,_) (a2,_) -> compare a a2)))
+                (Just (\(a,_) (a2,_) -> a == a2)))
             (\i -> return ())
     ,   mkFieldPP
             (paraName <<<- ParaName "Default pane path" $ emptyParams)
@@ -450,7 +477,9 @@ prefsDescription configDir packages = NFDPP [
     ("Metadata", VFDPP emptyParams [
         mkFieldPP
             (paraName <<<- ParaName
-                "Paths under which haskell sources for packages may be found" $ emptyParams)
+                "Paths under which haskell sources for packages may be found"
+                        $ paraMinSize <<<- ParaMinSize (-1,100)
+                            $ emptyParams)
             (PP.text . show)
             readParser
             sourceDirectories
@@ -463,7 +492,7 @@ prefsDescription configDir packages = NFDPP [
             readParser
             unpackDirectory
             (\b a -> a{unpackDirectory = b})
-            (maybeEditor (stringEditor (\ _ -> True),emptyParams) True "")
+            (maybeEditor (stringEditor (\ _ -> True) True,emptyParams) True "")
             (\i -> return ())
     ,   mkFieldPP
             (paraName <<<- ParaName "URL from which to download prebuilt metadata" $ emptyParams)
@@ -471,7 +500,7 @@ prefsDescription configDir packages = NFDPP [
             stringParser
             retrieveURL
             (\b a -> a{retrieveURL = b})
-            (stringEditor (\ _ -> True))
+            (stringEditor (const True) True)
             (\i -> return ())
     ,   mkFieldPP
             (paraName <<<- ParaName "Strategy for downloading prebuilt metadata" $ emptyParams)
@@ -503,7 +532,7 @@ prefsDescription configDir packages = NFDPP [
             stringParser
             serverIP
             (\b a -> a{serverIP = b})
-            (stringEditor (\ s -> not $ null s))
+            (stringEditor (\ s -> not $ null s) True)
             (\i -> return ())
     ,   mkFieldPP
             (paraName <<<- ParaName "Stop the leksah-server process when leksah disconnects" $ emptyParams)
@@ -517,7 +546,9 @@ prefsDescription configDir packages = NFDPP [
     ("Blacklist", VFDPP emptyParams [
         mkFieldPP
             (paraName <<<- ParaName
-                "Packages which are excluded from the modules pane" $ emptyParams)
+                "Packages which are excluded from the modules pane"
+                        $ paraMinSize <<<- ParaMinSize (-1,200)
+                            $ emptyParams)
             (PP.text . show)
             readParser
             packageBlacklist
@@ -603,7 +634,7 @@ prefsDescription configDir packages = NFDPP [
             stringParser
             browser
             (\b a -> a{browser = b})
-            (stringEditor (\s -> not (null s)))
+            (stringEditor (\s -> not (null s)) True)
             (\i -> return ())
     ,   mkFieldPP
             (paraName <<<- ParaName "URL for searching documentation" $
@@ -615,7 +646,7 @@ prefsDescription configDir packages = NFDPP [
             stringParser
             docuSearchURL
             (\b a -> a{docuSearchURL = b})
-            (stringEditor (\s -> not (null s)))
+            (stringEditor (\s -> not (null s)) True)
             (\i -> return ())
     ])]
 
@@ -634,7 +665,7 @@ defaultPrefs = Prefs {
     ,   rightMargin         =   Just 100
     ,   tabWidth            =   4
     ,   wrapLines           =   False
-    ,   sourceCandy         =   Just("candy")
+    ,   sourceCandy         =   (False,"candy")
     ,   keymapName          =   "keymap"
     ,   forceLineEnds       =   True
     ,   removeTBlanks       =   True
@@ -651,17 +682,18 @@ defaultPrefs = Prefs {
     ,   sourceDirectories   =   []
     ,   packageBlacklist    =   []
     ,   pathForCategory     =   [   ("EditorCategory",[SplitP (LeftP)])
+                                ,   ("LogCategory",[SplitP (RightP), SplitP (BottomP)])
                                 ,   ("ToolCategory",[SplitP (RightP),SplitP (TopP)])
-                                ,   ("LogCategory",[SplitP (RightP), SplitP (BottomP)])]
+                                ]
     ,   defaultPath         =   [SplitP (LeftP)]
     ,   categoryForPane     =   [   ("*ClassHierarchy","ToolCategory")
                                 ,   ("*Debug","ToolCategory")
+                                ,   ("*Flags","ToolCategory")
                                 ,   ("*Grep","ToolCategory")
                                 ,   ("*Info","ToolCategory")
                                 ,   ("*Log","LogCategory")
                                 ,   ("*Modules","ToolCategory")
                                 ,   ("*Package","ToolCategory")
-                                ,   ("*Flags","ToolCategory")
                                 ,   ("*Prefs","ToolCategory")
                                 ,   ("*References","ToolCategory")
                                 ,   ("*Search","ToolCategory")]

@@ -54,7 +54,7 @@ import System.Directory (doesFileExist,createDirectoryIfMissing, removeFile)
 import Graphics.UI.Editor.MakeEditor (buildEditor,FieldDescription(..),mkField)
 import Graphics.UI.Editor.Parameters (paraMultiSel,Parameter(..),emptyParams,(<<<-),paraName)
 import Graphics.UI.Editor.Simple (boolEditor,okCancelFields,staticListEditor,stringEditor)
-import Graphics.UI.Editor.Basics (eventPaneName,GUIEventSelector(..))
+import Graphics.UI.Editor.Basics (eventText,GUIEventSelector(..))
 import qualified System.IO.UTF8 as UTF8  (writeFile)
 import IDE.Utils.GUIUtils (stockIdFromType)
 import IDE.Metainfo.Provider
@@ -1113,11 +1113,11 @@ addModuleDialog parent modString sourceRoots = do
     (widget,inj,ext,_)         <-   buildEditor (moduleFields sourceRoots)
                                         (AddModule modString (head sourceRoots) False)
     (widget2,_,_,notifier)     <-   buildEditor okCancelFields ()
-    registerEvent notifier Clicked (Left (\e -> do
-            case eventPaneName e of
+    registerEvent notifier Clicked (\e -> do
+            case eventText e of
                 "Ok"    ->  dialogResponse dia ResponseOk
                 _       ->  dialogResponse dia ResponseCancel
-            return e))
+            return e)
     boxPackStart upper widget PackGrow 7
     boxPackStart lower widget2 PackNatural 7
     widgetShowAll dia
@@ -1136,7 +1136,7 @@ moduleFields list = VFD emptyParams [
                     $ emptyParams)
             moduleName
             (\ a b -> b{moduleName = a})
-            (stringEditor (\s -> True)),
+            (stringEditor (const True) True),
         mkField
             (paraName <<<- ParaName ("Root of the source path")
                 $ paraMultiSel <<<- ParaMultiSel False

@@ -427,7 +427,7 @@ getText :: EditorBuffer
 getText (GtkEditorBuffer sb) (GtkEditorIter first) (GtkEditorIter last) includeHidenChars = liftIO $
     Gtk.textBufferGetText sb first last includeHidenChars
 #ifdef LEKSAH_WITH_YI
-getText (YiEditorBuffer b) (YiEditorIter first) (YiEditorIter last) includeHidenChars = liftYiControl $
+getText (YiEditorBuffer b) (YiEditorIter first) (YiEditorIter last) includeHidenChars = liftYiCon12trol $
     Yi.getText b first last
 getText _ _ _ _ = liftIO $ fail "Mismatching TextEditor types in getText"
 #endif

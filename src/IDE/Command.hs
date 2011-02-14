@@ -27,7 +27,7 @@ module IDE.Command (
 ,   setSensitivity
 ,   updateRecentEntries
 ,   handleSpecialKeystrokes
-,   registerEvents
+,   registerLeksahEvents
 ,   instrumentWindow
 ,   instrumentSecWindow
 ) where
@@ -691,7 +691,7 @@ instrumentWindow win prefs topWidget = do
         windowAddAccelGroup win acc
         containerAdd win vb
         reflectIDE (do
-            setCandyState (isJust (sourceCandy prefs))
+            setCandyState (fst (sourceCandy prefs))
             setBackgroundBuildToggled (backgroundBuild prefs)
             setBackgroundLinkToggled (backgroundLink prefs)) ideR
 
@@ -776,56 +776,55 @@ setSymbol symbol = do
 --
 -- | Register handlers for IDE events
 --
-registerEvents :: IDEAction
-registerEvents =    do
+registerLeksahEvents :: IDEAction
+registerLeksahEvents =    do
     stRef   <-  ask
     registerEvent stRef "LogMessage"
-        (Left (\e@(LogMessage s t)      -> getLog >>= \(log :: IDELog) -> liftIO $ appendLog log s t
-                                                >> return e))
+        (\e@(LogMessage s t)      -> getLog >>= \(log :: IDELog) -> liftIO $ appendLog log s t
+                                                >> return e)
     registerEvent stRef "SelectInfo"
-        (Left (\ e@(SelectInfo str)     -> setSymbol str >> return e))
+        (\ e@(SelectInfo str)     -> setSymbol str >> return e)
     registerEvent stRef "SelectIdent"
-        (Left (\ e@(SelectIdent id)     -> selectIdentifier id >> return e))
+        (\ e@(SelectIdent id)     -> selectIdentifier id >> return e)
     registerEvent stRef "InfoChanged"
-        (Left (\ e@(InfoChanged b)      -> reloadKeepSelection b >> return e))
+        (\ e@(InfoChanged b)      -> reloadKeepSelection b >> return e)
     registerEvent stRef "UpdateWorkspaceInfo"
-        (Left (\ e@UpdateWorkspaceInfo  -> updateWorkspaceInfo >> return e))
+        (\ e@UpdateWorkspaceInfo  -> updateWorkspaceInfo >> return e)
     registerEvent stRef "WorkspaceChanged"
-        (Left (\ e@(WorkspaceChanged showPane updateFileCache)
-                                        -> updateWorkspace showPane updateFileCache >> return e))
+        (\ e@(WorkspaceChanged showPane updateFileCache)
+                                        -> updateWorkspace showPane updateFileCache >> return e)
     registerEvent stRef "RecordHistory"
-        (Left (\ rh@(RecordHistory h)   -> recordHistory h >> return rh))
+        (\ rh@(RecordHistory h)   -> recordHistory h >> return rh)
     registerEvent stRef "Sensitivity"
-        (Left (\ s@(Sensitivity h)      -> setSensitivity h >> return s))
+        (\ s@(Sensitivity h)      -> setSensitivity h >> return s)
     registerEvent stRef "SearchMeta"
-        (Left (\ e@(SearchMeta string)  -> searchMetaGUI string >> return e))
+        (\ e@(SearchMeta string)  -> searchMetaGUI string >> return e)
     registerEvent stRef "LoadSession"
-        (Left (\ e@(LoadSession fp)     -> loadSession fp >> return e))
+        (\ e@(LoadSession fp)     -> loadSession fp >> return e)
     registerEvent stRef "SaveSession"
-        (Left (\ e@(SaveSession fp)     -> saveSessionAs fp Nothing >> return e))
+        (\ e@(SaveSession fp)     -> saveSessionAs fp Nothing >> return e)
     registerEvent stRef "UpdateRecent"
-        (Left (\ e@UpdateRecent         -> updateRecentEntries >> return e))
+        (\ e@UpdateRecent         -> updateRecentEntries >> return e)
     registerEvent stRef "VariablesChanged"
-        (Left (\ e@VariablesChanged     -> fillVariablesList >> return e))
+        (\ e@VariablesChanged     -> fillVariablesList >> return e)
     registerEvent stRef "ErrorChanged"
-        (Left (\ e@ErrorChanged         -> postAsyncIDE fillErrorList >> return e))
+        (\ e@ErrorChanged         -> postAsyncIDE fillErrorList >> return e)
     registerEvent stRef "CurrentErrorChanged"
-        (Left (\ e@(CurrentErrorChanged mbLogRef) -> postAsyncIDE (do
+        (\ e@(CurrentErrorChanged mbLogRef) -> postAsyncIDE (do
             selectRef mbLogRef
-            selectError mbLogRef)  >> return e))
+            selectError mbLogRef)  >> return e)
     registerEvent stRef "BreakpointChanged"
-        (Left (\ e@BreakpointChanged    -> postAsyncIDE fillBreakpointList >> return e))
+        (\ e@BreakpointChanged    -> postAsyncIDE fillBreakpointList >> return e)
     registerEvent stRef "CurrentBreakChanged"
-        (Left (\ e@(CurrentBreakChanged mbLogRef) -> postAsyncIDE (do
+        (\ e@(CurrentBreakChanged mbLogRef) -> postAsyncIDE (do
             selectRef mbLogRef
-            selectBreak mbLogRef) >> return e))
+            selectBreak mbLogRef) >> return e)
     registerEvent stRef "TraceChanged"
-        (Left (\ e@TraceChanged         -> fillTraceList >> return e))
+        (\ e@TraceChanged         -> fillTraceList >> return e)
     registerEvent stRef "GetTextPopup"
-        (Left (\ e@(GetTextPopup _)     -> return (GetTextPopup (Just textPopupMenu))))
+        (\ e@(GetTextPopup _)     -> return (GetTextPopup (Just textPopupMenu)))
     registerEvent stRef "StatusbarChanged"
-        (Left (\ e@(StatusbarChanged args)
-                                        -> changeStatusbar args >> return e))
+        (\ e@(StatusbarChanged args) -> changeStatusbar args >> return e)
     return ()
 
 
