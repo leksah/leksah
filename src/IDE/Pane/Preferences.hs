@@ -240,7 +240,10 @@ prefsDescription configDir packages = NFDPP [
                     True "Show it ?")
             (\b -> do
                 buffers <- allBuffers
-                mapM_ (\buf -> setRightMargin (sourceView buf) b) buffers)
+                mapM_ (\buf -> setRightMargin (sourceView buf)
+                                (case b of
+                                    (True,v) -> Just v
+                                    (False,_) -> Nothing)) buffers)
     ,   mkFieldPP
             (paraName <<<- ParaName "Tab width" $ emptyParams)
             (PP.text . show)
@@ -298,9 +301,9 @@ prefsDescription configDir packages = NFDPP [
                             editCandy)
     ,   mkFieldPP
             (paraName <<<- ParaName "Editor Style" $ emptyParams)
-            (\a -> PP.text (case a of Nothing -> show ""; Just s -> show s))
+            (\a -> PP.text (case a of (False,_) -> show ""; (True, s) -> show s))
             (do str <- stringParser
-                return (if null str then Nothing else Just (str)))
+                return (if null str then (False,"classic") else (True,str)))
             sourceStyle
             (\b a -> a{sourceStyle = b})
             styleEditor
@@ -308,7 +311,9 @@ prefsDescription configDir packages = NFDPP [
                 buffers <- allBuffers
                 mapM_ (\buf -> do
                     ebuf <- getBuffer (sourceView buf)
-                    setStyle ebuf mbs) buffers)
+                    setStyle ebuf (case mbs of
+                                    (False,_) -> Nothing
+                                    (True,s) -> Just s)) buffers)
     ,   mkFieldPP
             (paraName <<<- ParaName "Found Text Background" $ emptyParams)
             (PP.text . show)
@@ -651,18 +656,18 @@ prefsDescription configDir packages = NFDPP [
     ])]
 
 
-styleEditor :: Editor (Maybe String)
+styleEditor :: Editor (Bool, String)
 styleEditor p n = do
     styleManager <- sourceStyleSchemeManagerNew
     ids          <- sourceStyleSchemeManagerGetSchemeIds styleManager
-    maybeEditor (comboSelectionEditor ids id, p) True "Select a special style?" p n
+    disableEditor (comboSelectionEditor ids id, p) True "Select a special style?" p n
 
 
 defaultPrefs = Prefs {
         prefsFormat         =   prefsVersion
     ,   prefsSaveTime       =   ""
     ,   showLineNumbers     =   True
-    ,   rightMargin         =   Just 100
+    ,   rightMargin         =   (True,100)
     ,   tabWidth            =   4
     ,   wrapLines           =   False
     ,   sourceCandy         =   (False,"candy")
@@ -670,7 +675,7 @@ defaultPrefs = Prefs {
     ,   forceLineEnds       =   True
     ,   removeTBlanks       =   True
     ,   textviewFont        =   Nothing
-    ,   sourceStyle         =   Nothing
+    ,   sourceStyle         =   (False,"classic")
     ,   foundBackground     =   Color 65535 65535 32768
     ,   contextBackground   =   Color 65535 49152 49152
     ,   breakpointBackground =  Color 65535 49152 32768

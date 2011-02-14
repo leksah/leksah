@@ -26,10 +26,8 @@ import Data.Maybe (isNothing,isJust)
 import IDE.Metainfo.Provider
        (getPackageImportInfo, getIdentifierDescr)
 import Text.PrettyPrint (render)
-import Distribution.Text (disp)
+import Distribution.Text (simpleParse, display, disp)
 import IDE.Pane.SourceBuffer
-       (fileOpenThis, belongsToPackage, maybeActiveBuf, fileSave,
-        inActiveBufContext, selectSourceBuf)
 import Graphics.UI.Gtk
 import Text.ParserCombinators.Parsec.Language (haskellStyle)
 import Graphics.UI.Editor.MakeEditor
@@ -42,7 +40,6 @@ import Text.ParserCombinators.Parsec hiding (parse)
 import qualified Text.ParserCombinators.Parsec as Parsec (parse)
 import Graphics.UI.Editor.Simple (staticListEditor)
 import Control.Monad (forM, when)
-import Distribution.Text (simpleParse, Text(..), display)
 import Data.List (sort, nub, nubBy)
 import IDE.Utils.ServerConnection
 import Text.PrinterParser (prettyPrint)
@@ -51,20 +48,16 @@ import qualified Distribution.ModuleName as D (ModuleName(..))
 import qualified Text.ParserCombinators.Parsec.Token as P
        (operator, dot, identifier, symbol, lexeme, whiteSpace,
         makeTokenParser)
-import Graphics.UI.Gtk.Gdk.Events (Event(..))
 import Control.Monad.Trans (liftIO)
 import Distribution.PackageDescription.Parse
        (writePackageDescription, readPackageDescription)
 import Distribution.Verbosity (normal)
 import IDE.Pane.PackageEditor (hasConfigs)
 import Distribution.Package
-       (PackageIdentifier(..), pkgName, PackageId, PackageName(..),
-        Dependency(..))
 import Distribution.Version (VersionRange(..))
 import Distribution.PackageDescription (buildDepends)
 import Distribution.PackageDescription.Configuration
        (flattenPackageDescription)
-import Data.Version (Version(..))
 
 -- | Add all imports which gave error messages ...
 resolveErrors :: IDEAction
@@ -349,26 +342,15 @@ selectModuleDialog parentWindow list id mbQual mbDescr =
             dia               <- dialogNew
             windowSetTransientFor dia parentWindow
             upper             <- dialogGetUpper dia
-            dialogAddButton dia "Ok" ResponseOk
+            okButton <- dialogAddButton dia "Ok" ResponseOk
             dialogAddButton dia "Cancel" ResponseCancel
             (widget,inj,ext,_) <- buildEditor (moduleFields selectionList qualId) realSelectionString
             boxPackStart upper widget PackGrow 7
             dialogSetDefaultResponse dia ResponseOk --does not work for the tree view
             widgetShowAll dia
             rw <- getRealWidget widget
---            case rw of
---                Nothing -> return ()
---                Just r -> do
---                    r `onKeyPress` \ event -> do
---                        case event of
---                            Key { eventKeyName = name} ->
---                                case name of
---                                    "Return" -> do
---                                        dialogResponse dia ResponseOk
---                                        return True
---                                    _        -> return False
---                            _ -> return False
---                    return ()
+            set okButton [widgetCanDefault := True]
+            widgetGrabDefault okButton
             resp <- dialogRun dia
             value                      <- ext ([])
             widgetHide dia

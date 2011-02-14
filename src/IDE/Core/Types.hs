@@ -372,7 +372,7 @@ data Prefs = Prefs {
     ,   forceLineEnds       ::   Bool
     ,   removeTBlanks       ::   Bool
     ,   textviewFont        ::   Maybe String
-    ,   sourceStyle         ::   Maybe String
+    ,   sourceStyle         ::   (Bool, String)
     ,   foundBackground     ::   Color
     ,   contextBackground   ::   Color
     ,   breakpointBackground ::  Color

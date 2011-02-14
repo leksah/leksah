@@ -418,10 +418,14 @@ builder' bs mbfn ind bn rbn ct prefs pp nb windows = do
     -- create a new SourceView Widget
     sv <- newView buffer (textviewFont prefs)
     setShowLineNumbers sv $ showLineNumbers prefs
-    setRightMargin sv $ rightMargin prefs
+    setRightMargin sv $ case rightMargin prefs of
+                            (False,_) -> Nothing
+                            (True,v) -> Just v
     setIndentWidth sv $ tabWidth prefs
     setTabWidth sv $ tabWidth prefs
-    setStyle buffer $ sourceStyle prefs
+    setStyle buffer $ case sourceStyle prefs of
+                        (False,_) -> Nothing
+                        (True,v) -> Just v
 
     -- put it in a scrolled window
     sw <- getScrolledWindow sv

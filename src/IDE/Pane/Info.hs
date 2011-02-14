@@ -105,8 +105,8 @@ instance RecoverablePane IDEInfo InfoState IDEM where
             widgetModifyFont descriptionView (Just font)
 
             case sourceStyle prefs of
-                Nothing  -> return ()
-                Just str -> do
+                (False,_)  -> return ()
+                (True,str) -> do
                     styleManager <- sourceStyleSchemeManagerNew
                     ids <- sourceStyleSchemeManagerGetSchemeIds styleManager
                     when (elem str ids) $ do

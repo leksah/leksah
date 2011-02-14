@@ -133,7 +133,9 @@ initCompletion sourceView always = do
 
             descriptionBuffer <- newGtkBuffer Nothing ""
             descriptionView   <- newView descriptionBuffer (textviewFont prefs)
-            setStyle descriptionBuffer $ sourceStyle prefs
+            setStyle descriptionBuffer $ case sourceStyle prefs of
+                                            (False,_) -> Nothing
+                                            (True,v) -> Just v
             descriptionScrolledWindow <- getScrolledWindow descriptionView
 
             visible    <- liftIO $ newIORef False

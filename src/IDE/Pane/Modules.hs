@@ -1112,17 +1112,20 @@ addModuleDialog parent modString sourceRoots = do
     lower                      <-   dialogGetActionArea dia
     (widget,inj,ext,_)         <-   buildEditor (moduleFields sourceRoots)
                                         (AddModule modString (head sourceRoots) False)
-    (widget2,_,_,notifier)     <-   buildEditor okCancelFields ()
-    registerEvent notifier Clicked (\e -> do
-            case eventText e of
-                "Ok"    ->  dialogResponse dia ResponseOk
-                _       ->  dialogResponse dia ResponseCancel
-            return e)
+    bb      <-  hButtonBoxNew
+    closeB  <-  buttonNewFromStock "gtk-cancel"
+    save    <-  buttonNewFromStock "gtk-ok"
+    boxPackEnd bb closeB PackNatural 0
+    boxPackEnd bb save PackNatural 0
+    save `onClicked` (dialogResponse dia ResponseOk)
+    closeB `onClicked` (dialogResponse dia ResponseCancel)
     boxPackStart upper widget PackGrow 7
-    boxPackStart lower widget2 PackNatural 7
+    boxPackStart lower bb PackNatural 7
+    set save [widgetCanDefault := True]
+    widgetGrabDefault save
     widgetShowAll dia
-    resp <- dialogRun dia
-    value                      <- ext (AddModule modString (head sourceRoots) False)
+    resp  <- dialogRun dia
+    value <- ext (AddModule modString (head sourceRoots) False)
     widgetDestroy dia
     --find
     case resp of

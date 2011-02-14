@@ -7,15 +7,15 @@ Show line numbers:
                True
      --(True/False)
 TextView Font: "Monospace 10"
-Right margin:  100
-     --Size or 0 for no right margin
+Right margin:  (True,100)
+     --Pair with True or False for use and number for column
 Tab width:     4
 Use standard line ends even on windows:
                True
 Remove trailing blanks when saving a file:
                True
-Source candy:  ""
-     --Empty for do not use or the name of a candy file in a config dir
+Source candy:  (False,"candy")
+     --Pair with True or False for use and name of a candy file in a config dir
 Editor Style:  ""
 Found Text Background:
                Color 65535 65535 32768
