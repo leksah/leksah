@@ -42,7 +42,6 @@ import Data.IORef
 import IDE.Core.State
 import IDE.Pane.Info
 import IDE.Pane.SourceBuffer
-import Control.Event hiding (Event)
 import Distribution.ModuleName
 import Distribution.Text (simpleParse,display)
 import Data.Typeable (Typeable(..))
@@ -53,8 +52,7 @@ import System.FilePath (takeBaseName, (</>),dropFileName)
 import System.Directory (doesFileExist,createDirectoryIfMissing, removeFile)
 import Graphics.UI.Editor.MakeEditor (buildEditor,FieldDescription(..),mkField)
 import Graphics.UI.Editor.Parameters (paraMultiSel,Parameter(..),emptyParams,(<<<-),paraName)
-import Graphics.UI.Editor.Simple (boolEditor,okCancelFields,staticListEditor,stringEditor)
-import Graphics.UI.Editor.Basics (eventText,GUIEventSelector(..))
+import Graphics.UI.Editor.Simple (boolEditor,staticListEditor,stringEditor)
 import qualified System.IO.UTF8 as UTF8  (writeFile)
 import IDE.Utils.GUIUtils (stockIdFromType)
 import IDE.Metainfo.Provider
@@ -697,42 +695,44 @@ type ModTree = Tree (String, Maybe (ModuleDescr,PackageDescr))
 --
 buildModulesTree :: (SymbolTable alpha, SymbolTable beta) =>  (PackScope alpha,PackScope beta ) -> ModTree
 buildModulesTree (PackScope localMap _,PackScope otherMap _) =
-    let flatPairs           =   concatMap (\p -> map (\m -> (m,p)) (pdModules p))
+    let modDescrPackDescr =   concatMap (\p -> map (\m -> (m,p)) (pdModules p))
                                     (Map.elems localMap ++ Map.elems otherMap)
-        resultTree          =   foldl' insertPairsInTree defaultRoot flatPairs
+        resultTree        =   foldl' insertPairsInTree defaultRoot modDescrPackDescr
         in sortTree resultTree
-    where
-    insertPairsInTree :: ModTree -> (ModuleDescr,PackageDescr) -> ModTree
-    insertPairsInTree tree pair =
-        let nameArray           =   components $ modu $ mdModuleId $ fst pair
-            (startArray,last)   =   splitAt (length nameArray - 1) nameArray
-            pairedWith          =   (map (\n -> (n,Nothing)) startArray) ++ [(head last,Just pair)]
-        in  insertNodesInTree pairedWith tree
 
-    insertNodesInTree :: [(String,Maybe (ModuleDescr,PackageDescr))] -> ModTree -> ModTree
-    insertNodesInTree list@[(str2,Just pair)] (Node (str1,pairs) forest) =
-        (Node (str1,pairs) (makeNodes list : forest))
+insertPairsInTree :: ModTree -> (ModuleDescr,PackageDescr) -> ModTree
+insertPairsInTree tree pair =
+    let nameArray           =   components $ modu $ mdModuleId $ fst pair
+        (startArray,last)   =   splitAt (length nameArray - 1) nameArray
+        pairedWith          =   (map (\n -> (n,Nothing)) startArray) ++ [(head last,Just pair)]
+    in  insertNodesInTree pairedWith tree
 
-    insertNodesInTree list@((str2,mbPair):tl) (Node (str1,pairs) forest) =
-        case partition (\ (Node (s,_) _) -> s == str2) forest of
-            ([],_)              ->  (Node (str1,pairs)  (makeNodes list : forest))
-            ([found],rest)  ->  (Node (str1,pairs)  (insertNodesInTree tl found : rest))
-            (foundList,rest)  -> (Node (str1,pairs)  (insertNodesInTree tl (head foundList) : rest))
-                -- TODO make smart
-    insertNodesInTree [] t      =   t
 
-    makeNodes :: [(String,Maybe (ModuleDescr,PackageDescr))] -> ModTree
-    makeNodes [(str,mbPair)]    =   Node (str,mbPair) []
-    makeNodes ((str,mbPair):tl) =   Node (str,mbPair) [makeNodes tl]
-    makeNodes _                 =   throwIDE "Impossible in makeNodes"
+insertNodesInTree :: [(String, Maybe (ModuleDescr,PackageDescr))] -> ModTree -> ModTree
+insertNodesInTree  [p1@(str1,Just pair)] (Node p2@(str2,mbPair) forest2) =
+    case partition (\ (Node (s,_) _) -> s == str1) forest2 of
+        ([found],rest) -> case found of
+                            Node p3@(_,Nothing) forest3 ->
+                                Node p2 (Node p1 forest3 : rest)
+                            Node p3@(_,Just pair3) forest3 ->
+                                Node p2 (Node p1 [] : Node p3 forest3 : rest)
+        ([],rest)      -> Node p2 (Node p1 [] : forest2)
+        _              -> error "Modules>>insertNodesInTree: Should not happen1"
 
-breakAtDots :: [String] -> String -> [String]
-breakAtDots res []          =   reverse res
-breakAtDots res toBreak     =   let (newRes,newToBreak) = span (\c -> c /= '.') toBreak
-                                in  if null newToBreak
-                                        then reverse (newRes : res)
-                                        else breakAtDots (newRes : res) (tail newToBreak)
+insertNodesInTree li@(hd@(str1,Nothing):tl) (Node p@(str2,mbPair) forest) =
+    case partition (\ (Node (s,_) _) -> s == str1) forest of
+        ([found],rest) -> Node p  (insertNodesInTree tl found : rest)
+        ([],rest)      -> Node p  (makeNodes li : forest)
+        (found,rest)   -> Node p  (insertNodesInTree tl (head found) : tail found ++ rest)
 
+insertNodesInTree [] n = n
+insertNodesInTree _ _      =   error "Modules>>insertNodesInTree: Should not happen2"
+
+
+makeNodes :: [(String,Maybe (ModuleDescr,PackageDescr))] -> ModTree
+makeNodes [(str,mbPair)]    =   Node (str,mbPair) []
+makeNodes ((str,mbPair):tl) =   Node (str,mbPair) [makeNodes tl]
+makeNodes _                 =   throwIDE "Impossible in makeNodes"
 
 instance Ord a => Ord (Tree a) where
     compare (Node l1 _) (Node l2 _) =  compare l1 l2
