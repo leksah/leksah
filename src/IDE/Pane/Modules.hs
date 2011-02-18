@@ -717,7 +717,11 @@ insertNodesInTree  [p1@(str1,Just pair)] (Node p2@(str2,mbPair) forest2) =
                             Node p3@(_,Just pair3) forest3 ->
                                 Node p2 (Node p1 [] : Node p3 forest3 : rest)
         ([],rest)      -> Node p2 (Node p1 [] : forest2)
-        _              -> error "Modules>>insertNodesInTree: Should not happen1"
+        (found,rest)   -> case head found of
+                            Node p3@(_,Nothing) forest3 ->
+                                Node p2 (Node p1 forest3 : tail found ++ rest)
+                            Node p3@(_,Just pair3) forest3 ->
+                                Node p2 (Node p1 [] : Node p3 forest3 : tail found ++ rest)
 
 insertNodesInTree li@(hd@(str1,Nothing):tl) (Node p@(str2,mbPair) forest) =
     case partition (\ (Node (s,_) _) -> s == str1) forest of
