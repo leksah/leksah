@@ -651,7 +651,9 @@ idePackageFromPath filePath = do
             let modules    = Set.fromList $ myLibModules packageD ++ myExeModules packageD
             let mainFiles  = map modulePath (executables packageD)
             let files      = Set.fromList $ extraSrcFiles packageD ++ map modulePath (executables packageD)
-            let ipdSrcDirs = nub $ concatMap hsSourceDirs (allBuildInfo packageD)
+            let ipdSrcDirs = case (nub $ concatMap hsSourceDirs (allBuildInfo packageD)) of
+                                [] -> [".","src"]
+                                l -> l
 #if MIN_VERSION_Cabal(1,10,0)
             let exts       = nub $ concatMap oldExtensions (allBuildInfo packageD)
 #else
