@@ -35,7 +35,8 @@ module IDE.Metainfo.Provider (
 ,   getPackageImportInfo -- Scope for the import tool
 ) where
 
-import System.IO
+import System.IO (hClose, openBinaryFile, IOMode(..))
+import System.IO.Strict (readFile)
 import qualified Data.Map as Map
 import Control.Monad
 import Control.Monad.Trans
@@ -64,7 +65,7 @@ import Distribution.Text (display)
 import IDE.Core.Serializable ()
 import Data.Map (Map(..))
 import Control.Exception (SomeException(..), catch)
-import Prelude hiding(catch)
+import Prelude hiding(catch, readFile)
 import IDE.Utils.ServerConnection(doServerCommand)
 
 trace a b = b
