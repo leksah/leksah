@@ -333,6 +333,7 @@ data Workspace = Workspace {
 ,   wsActivePack    ::   Maybe IDEPackage
 ,   wsPackagesFiles ::   [FilePath]
 ,   wsActivePackFile::   Maybe FilePath
+,   wsNobuildPack   ::   [IDEPackage]
 ,   wsReverseDeps   ::   Map IDEPackage [IDEPackage]
 } deriving Show
 

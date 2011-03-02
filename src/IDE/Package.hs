@@ -171,7 +171,7 @@ packageConfig' package continuation = do
         mbPack <- idePackageFromPath (ipdCabalFile package)
         case mbPack of
             Just pack -> do
-                changeWorkspacePackage pack
+--                changeWorkspacePackage pack
                 modifyIDE_ (\ide -> ide{bufferProjCache = Map.empty})
                 mbActivePack <- readIDE activePack
                 case mbActivePack of

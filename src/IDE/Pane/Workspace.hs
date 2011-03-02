@@ -29,6 +29,7 @@ import IDE.Core.State
 import IDE.Workspaces
 import qualified Data.Map as Map (empty)
 import Data.List (sortBy)
+import IDE.Build(calculateReverseDependencies)
 
 
 -- | Workspace pane state

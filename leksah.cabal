@@ -121,6 +121,7 @@ library
         IDE.Statusbar IDE.Pane.Workspace IDE.PaneGroups
         IDE.Utils.ServerConnection
         IDE.BufferMode
+        IDE.Build
 
     other-modules: Paths_leksah
 

@@ -30,9 +30,9 @@ module IDE.Workspaces (
 ,   packageTry
 ,   packageTry_
 
-,   makePackage
 ,   backgroundMake
-,   calculateReverseDependencies
+,   makePackage
+
 ) where
 
 import IDE.Core.State
@@ -61,10 +61,10 @@ import Graphics.UI.Gtk
         dialogRun, messageDialogNew, dialogAddButton, Window(..),
         widgetHide, DialogFlags(..))
 import IDE.Pane.PackageEditor (packageNew', choosePackageFile)
-import Data.List ((\\), foldl', nub, delete)
+import Data.List (delete)
 import IDE.Package
-       (packageConfig', getModuleTemplate, getPackageDescriptionAndPath,
-        buildPackage, packageInstall', packageClean', activatePackage,
+       (getModuleTemplate, getPackageDescriptionAndPath,
+        packageClean', activatePackage,
         deactivatePackage, idePackageFromPath)
 import System.Directory
        (getHomeDirectory, createDirectoryIfMissing, doesFileExist,
@@ -79,25 +79,20 @@ import Graphics.UI.Gtk.General.Structs (ResponseId(..))
 #endif
 import Control.Exception (SomeException(..))
 import Control.Monad.Reader.Class (ask)
-import Data.Map (Map(..))
-import qualified Data.Map as  Map
-    (lookup, empty, mapWithKey, fromList, map)
-import Distribution.Package (pkgVersion, pkgName, Dependency(..))
-import Distribution.Version (withinRange)
-import qualified GHC.List as  List (or)
-import IDE.Pane.SourceBuffer
-       (fileOpenThis, belongsToPackage, fileCheckAll)
+import qualified Data.Map as  Map (empty)
+import IDE.Pane.SourceBuffer (fileOpenThis, fileCheckAll, belongsToPackage)
 import qualified System.IO.UTF8 as UTF8 (writeFile)
 import System.Glib.Attributes (AttrOp(..), set)
 import Graphics.UI.Gtk.General.Enums (WindowPosition(..))
 import Control.Applicative ((<$>))
+import IDE.Build
 
 
 setWorkspace :: Maybe Workspace -> IDEAction
 setWorkspace mbWs = do
     let mbRealWs = case mbWs of
                         Nothing -> Nothing
-                        Just ws -> Just ws{wsReverseDeps = calculateReverseDependencies ws}
+                        Just ws -> Just ws{wsReverseDeps = constrDepGraph (wsPackages ws)}
     mbOldWs <- readIDE workspace
     modifyIDE_ (\ide -> ide{workspace = mbRealWs})
     let pack =  case mbRealWs of
@@ -445,6 +440,7 @@ emptyWorkspace =  Workspace {
 ,   wsActivePack    =   Nothing
 ,   wsPackagesFiles =   []
 ,   wsActivePackFile =   Nothing
+,   wsNobuildPack   =   []
 ,   wsReverseDeps   =   Map.empty
 }
 
@@ -505,81 +501,23 @@ removeRecentlyUsedWorkspace fp = do
 ------------------------
 -- Workspace make
 
--- | Calculates for every package a list of packages, that depends directly on it
--- This is the reverse info from cabal, were we specify what a package depends on
-calculateReverseDependencies :: Workspace -> Map IDEPackage [IDEPackage]
-calculateReverseDependencies ws = Map.map nub $ foldl' calc mpacks packages
-    where
-    packages = wsPackages ws
-    mpacks   = Map.fromList (map (\p -> (p,[])) packages)
-
-    calc :: Map IDEPackage [IDEPackage] -> IDEPackage -> Map IDEPackage [IDEPackage]
-    calc theMap pack = Map.mapWithKey (addDeps (ipdDepends pack) pack ) theMap
-
-    addDeps :: [Dependency] -> IDEPackage -> IDEPackage -> [IDEPackage] -> [IDEPackage]
-    addDeps dependencies pack pack2 revDeps =  if depsMatch then pack : revDeps else revDeps
-        where
-        depsMatch = List.or (map (matchOne pack2) dependencies)
-        matchOne thePack (Dependency name versionRange) =
-            name == pkgName (ipdPackageId thePack)
-            &&  withinRange (pkgVersion (ipdPackageId thePack)) versionRange
-
-
--- | Select a package which is not direct or indirect dependent on any other package
-selectFirstReasonableTarget :: [IDEPackage] -> Map IDEPackage [IDEPackage] -> IDEPackage
-selectFirstReasonableTarget [] _      = error "Workspaces>>selectFirstReasonableTarget: empty package list"
-selectFirstReasonableTarget [p] _     = p
-selectFirstReasonableTarget l revDeps =
-    case foldl' removeDeps l l of
-        hd:_ -> hd
-        []   -> error "Workspaces>>selectFirstReasonableTarget: no remaining"
-    where
-    removeDeps :: [IDEPackage] -> IDEPackage -> [IDEPackage]
-    removeDeps packs p = packs \\ allDeps p
-
-    allDeps :: IDEPackage -> [IDEPackage]
-    allDeps p = nub (allDeps' [] p)
-        where
-        allDeps' :: [IDEPackage] -> IDEPackage -> [IDEPackage]
-        allDeps' accu p | elem p accu = accu
-                        | otherwise   = case Map.lookup p revDeps of
-                                            Nothing   -> accu
-                                            Just list -> foldl' allDeps' (accu ++ list) list
-
-makePackages :: Bool -> Bool -> [IDEPackage] -> WorkspaceAction
-makePackages _ _ []     = return ()
-makePackages isBackgroundBuild needConfigure packages = do
+workspaceClean :: WorkspaceAction
+workspaceClean = do
     ws <- ask
-    lift $ do
-        prefs' <- readIDE prefs
-        let package = selectFirstReasonableTarget packages (wsReverseDeps ws)
-        if needConfigure
-            then packageConfig' package (\b ->
-                if b
-                    then buildPackage isBackgroundBuild package (cont prefs' package ws)
-                    else return ())
-            else buildPackage isBackgroundBuild package (cont prefs' package ws)
-    where
-    cont prefs' package ws res =
-        if res
-            then do
-                let deps = case Map.lookup package (wsReverseDeps ws) of
-                                        Nothing   -> []
-                                        Just list -> list
-                -- install if backgroundLink is set or it is not a background build and either
-                -- AlwaysInstall is set or
-                -- deps are not empty
-                if ((not isBackgroundBuild || backgroundLink prefs') &&
-                    ((not (null deps) && autoInstall prefs' == InstallLibs)
-                        || autoInstall prefs' == InstallAlways))
-                    then packageInstall' package (cont2 deps package)
-                    else cont2 deps package True
-            else return () -- don't continue, when their was an error
-    cont2 deps package res = do
-        when res $ do
-            let nextTargets = delete package $ nub $ packages ++ deps
-            workspaceTryQuiet_ $ makePackages isBackgroundBuild True nextTargets
+    lift $ mapM_ packageClean' (wsPackages ws)
 
+workspaceMake :: WorkspaceAction
+workspaceMake = do
+    ws <- ask
+    settings <- lift $ do
+        prefs' <- readIDE prefs
+        return (MakeSettings {
+            msInstallMode        =  autoInstall prefs',
+            msIsSingleMake       = False,
+            msSaveAllBeforeBuild = saveAllBeforeBuild prefs',
+            msBackgroundBuild    = False,
+            msLinkingInBB        = False})
+    makePackages settings (wsPackages ws) MoBuild
 
 backgroundMake :: IDEAction
 backgroundMake = catchIDE (do
@@ -594,22 +532,28 @@ backgroundMake = catchIDE (do
                                 else return []
             let isModified = not (null modifiedPacks)
             when isModified $ do
-                workspaceTryQuiet_ $ makePackages True False modifiedPacks
+                let settings =  MakeSettings {
+                                    msInstallMode        = autoInstall prefs,
+                                    msIsSingleMake       = False,
+                                    msSaveAllBeforeBuild = saveAllBeforeBuild prefs,
+                                    msBackgroundBuild    = True,
+                                    msLinkingInBB        = True}
+                workspaceTryQuiet_ $ makePackages settings modifiedPacks (MoComposed [MoBuild,MoInstall])
     )
     (\(e :: SomeException) -> sysMessage Normal (show e))
 
-makePackage :: PackageAction
+makePackage ::  PackageAction
 makePackage = do
     p <- ask
-    lift $ workspaceTry_ $ makePackages False False [p]
-
-workspaceClean :: WorkspaceAction
-workspaceClean = do
-    ws <- ask
-    lift $ mapM_ packageClean' (wsPackages ws)
-
-workspaceMake :: WorkspaceAction
-workspaceMake = do
-    ws <- ask
-    makePackages False True (wsPackages ws)
-
+    (mbWs,settings) <- lift $ do
+        prefs' <- readIDE prefs
+        ws     <- readIDE workspace
+        return (ws,MakeSettings {
+            msInstallMode        = autoInstall prefs',
+            msIsSingleMake       = False,
+            msSaveAllBeforeBuild = saveAllBeforeBuild prefs',
+            msBackgroundBuild    = False,
+            msLinkingInBB        = False})
+    case mbWs of
+        Nothing -> sysMessage Normal "No workspace for build."
+        Just ws -> lift $ runWorkspace (makePackages settings [p] (MoComposed [MoBuild,MoInstall])) ws
