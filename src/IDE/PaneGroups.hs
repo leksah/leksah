@@ -46,6 +46,7 @@ import IDE.Pane.SourceBuffer
 import IDE.Pane.Breakpoints (IDEBreakpoints(..))
 import IDE.Pane.Variables (IDEVariables(..))
 import IDE.Pane.Trace (IDETrace(..))
+import IDE.Pane.Workspace (IDEWorkspace(..))
 
 showBrowser :: IDEAction
 showBrowser = do
@@ -55,23 +56,31 @@ showBrowser = do
     case ret of
         (Just rpp, True) -> do
             viewSplit' rpp Horizontal
-            let lowerP =  rpp ++ [SplitP BottomP]
-            let upperP =  rpp ++ [SplitP TopP]
+            viewSplit' (rpp ++ [SplitP BottomP]) Horizontal
+            let lowerP =  rpp ++ [SplitP BottomP, SplitP BottomP]
+            let upperP =  rpp ++ [SplitP BottomP, SplitP TopP]
+            let topP = rpp ++ [SplitP TopP]
             lower <- getNotebook lowerP
             upper <- getNotebook upperP
+            top   <- getNotebook topP
             liftIO $ do
-                notebookSetTabPos lower PosTop
+                notebookSetTabPos lower PosBottom
                 notebookSetTabPos upper PosTop
+                notebookSetTabPos top PosTop
                 notebookSetShowTabs upper False
                 notebookSetShowTabs lower False
+                notebookSetShowTabs top False
             getOrBuildPane (Left upperP) :: IDEM (Maybe IDEModules)
             getOrBuildPane (Left lowerP) :: IDEM (Maybe IDEInfo)
+            getOrBuildPane (Left topP) :: IDEM (Maybe IDEWorkspace)
             return ()
         (Just rpp, False) -> do
-            let lowerP  =  getBestPanePath (rpp ++ [SplitP BottomP]) layout'
-            let upperP  =  getBestPanePath (rpp ++ [SplitP TopP]) layout'
+            let lowerP  =  getBestPanePath (rpp ++  [SplitP BottomP, SplitP BottomP]) layout'
+            let upperP  =  getBestPanePath (rpp ++ [SplitP BottomP, SplitP TopP]) layout'
+            let topP    =  getBestPanePath (rpp ++ [SplitP TopP]) layout'
             getOrBuildPane (Left upperP) :: IDEM (Maybe IDEModules)
             getOrBuildPane (Left lowerP) :: IDEM (Maybe IDEInfo)
+            getOrBuildPane (Left topP) :: IDEM (Maybe IDEWorkspace)
             return ()
         _ -> return ()
 

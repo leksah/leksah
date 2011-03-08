@@ -1,7 +1,7 @@
 --Default Keymap file for Leksah
 --Allowed Modifiers are <shift>	<alt> <ctrl> <control> <compose>
 --
---There are two versions of control so we can map them differently on OS X 
+--There are two versions of control so we can map them differently on OS X
 --<ctrl>    is the Apple key on OS X
 --<control> is the Control key on OS X
 --
@@ -50,8 +50,8 @@ F3                          ->          EditFindNext     "Find the next occurenc
 
 <ctrl>l                     ->          EditGotoLine    "Go to line with a known index"
 
-<ctrl><alt>Right            ->          EditComment     "Add a line style comment to the selected lies"
-<ctrl><alt>Left             ->          EditUncomment   "Remove a line style comment"
+<ctrl>d                     ->          EditComment     "Add a line style comment to the selected lies"
+<ctrl><shift>d              ->          EditUncomment   "Remove a line style comment"
 <alt>Right                  ->          EditShiftRight  "Shift right"
 <alt>Left                   ->          EditShiftLeft   "Shift Left"
 

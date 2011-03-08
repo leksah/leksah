@@ -114,7 +114,7 @@ library
         IDE.Metainfo.Provider
         IDE.Pane.Preferences IDE.Pane.PackageEditor
         IDE.Pane.Info IDE.Pane.Log IDE.Pane.SourceBuffer IDE.Pane.Modules
-        IDE.Pane.Search IDE.Pane.References IDE.Pane.PackageFlags
+        IDE.Pane.Search IDE.Pane.PackageFlags
         IDE.LogRef IDE.Debug IDE.Pane.Grep
         IDE.Pane.Breakpoints IDE.Pane.Trace IDE.Pane.Variables
         IDE.Pane.Errors IDE.TextEditor IDE.Workspaces

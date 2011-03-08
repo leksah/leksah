@@ -32,7 +32,6 @@ module IDE.Package (
 ,   packageInstall
 ,   packageInstall'
 ,   packageRegister
-,   packageUnregister
 ,   packageTest
 ,   packageSdist
 ,   packageOpenDoc
@@ -165,13 +164,13 @@ packageConfig = do
 packageConfig'  :: IDEPackage -> (Bool -> IDEAction) -> IDEAction
 packageConfig' package continuation = do
     let dir = dropFileName (ipdCabalFile package)
-    runExternalTool "Configuring" "runhaskell" (["Setup","configure"]
+    runExternalTool "Configuring" "cabal" (["configure"]
                                     ++ (ipdConfigFlags package)) (Just dir) $ \output -> do
         logOutput output
         mbPack <- idePackageFromPath (ipdCabalFile package)
         case mbPack of
             Just pack -> do
---                changeWorkspacePackage pack
+                changeWorkspacePackage pack
                 modifyIDE_ (\ide -> ide{bufferProjCache = Map.empty})
                 mbActivePack <- readIDE activePack
                 case mbActivePack of
@@ -193,25 +192,22 @@ changeWorkspacePackage ideP@IDEPackage{ipdCabalFile = file} = do
     case oldWorkspace of
         Nothing -> return ()
         Just ws ->
-            let ap = if isJust (wsActivePack ws) && ipdCabalFile (fromJust $ wsActivePack ws) == file
-                        then Just ideP
-                        else wsActivePack ws
-                ps = map exchange (wsPackages ws)
-            in modifyIDE_ (\ide -> ide{workspace = Just  ws {wsPackages =  ps, wsActivePack = ap}})
+            let ps = map exchange (wsPackages ws)
+            in modifyIDE_ (\ide -> ide{workspace = Just  ws {wsPackages = ps}})
     where
         exchange p | ipdCabalFile p == file = ideP
-                   | otherwise             = p
+                   | otherwise              = p
 
 runCabalBuild :: Bool -> IDEPackage -> Bool -> (Bool -> IDEAction) -> IDEAction
 runCabalBuild backgroundBuild package shallConfigure continuation = do
     prefs   <- readIDE prefs
     let dir =  dropFileName (ipdCabalFile package)
-    let args = (["Setup","build"] ++
+    let args = (["build"] ++
                 if ((not backgroundBuild) || (backgroundLink prefs))
                     then []
                     else ["--ghc-options=-c", "--with-ar=true", "--with-ld=true"]
                         ++ ipdBuildFlags package)
-    runExternalTool "Building" "runhaskell" args (Just dir) $ \output -> do
+    runExternalTool "Building" "cabal" args (Just dir) $ \output -> do
         logOutputForBuild package backgroundBuild output
         errs <- readIDE errorRefs
         if shallConfigure && isConfigError output
@@ -262,19 +258,22 @@ packageDoc = do
     package <- ask
     lift $ catchIDE (do
         let dir = dropFileName (ipdCabalFile package)
-        runExternalTool "Documenting" "runhaskell" (["Setup","haddock"]
+        runExternalTool "Documenting" "cabal" (["haddock"]
                         ++ (ipdHaddockFlags package)) (Just dir) logOutput)
         (\(e :: SomeException) -> putStrLn (show e))
 
 packageClean :: PackageAction
 packageClean = do
     package <- ask
-    lift $ packageClean' package
+    lift $ packageClean' package (\ _ -> return ())
 
-packageClean' :: IDEPackage -> IDEAction
-packageClean' package =
+packageClean' :: IDEPackage -> (Bool -> IDEAction) -> IDEAction
+packageClean' package continuation =
     let dir = dropFileName (ipdCabalFile package)
-    in runExternalTool "Cleaning" "runhaskell" ["Setup","clean"] (Just dir) logOutput
+    in runExternalTool "Cleaning" "cabal" ["clean"] (Just dir)
+        (\ output -> do
+            logOutput output
+            continuation (last output == ToolExit ExitSuccess))
 
 packageCopy :: PackageAction
 packageCopy = do
@@ -286,7 +285,7 @@ packageCopy = do
             Nothing -> return ()
             Just fp -> do
                 let dir = dropFileName (ipdCabalFile package)
-                runExternalTool "Copying" "runhaskell" (["Setup","copy"]
+                runExternalTool "Copying" "cabal" (["copy"]
                            ++ ["--destdir=" ++ fp]) (Just dir) logOutput)
         (\(e :: SomeException) -> putStrLn (show e))
 
@@ -327,7 +326,7 @@ packageInstall = do
 packageInstall' :: IDEPackage -> (Bool -> IDEAction) -> IDEAction
 packageInstall' package continuation = catchIDE (do
    let dir = dropFileName (ipdCabalFile package)
-   runExternalTool "Installing" "runhaskell" (["Setup","install"]
+   runExternalTool "Installing" "cabal" (["install"]
                     ++ (ipdInstallFlags package)) (Just dir) (\ output -> do
                         logOutput output
                         continuation (last output == ToolExit ExitSuccess)))
@@ -338,17 +337,8 @@ packageRegister = do
     package <- ask
     lift $ catchIDE (do
         let dir = dropFileName (ipdCabalFile package)
-        runExternalTool "Registering" "runhaskell" (["Setup","register"]
+        runExternalTool "Registering" "cabal" (["register"]
                         ++ (ipdRegisterFlags package)) (Just dir) logOutput)
-        (\(e :: SomeException) -> putStrLn (show e))
-
-packageUnregister :: PackageAction
-packageUnregister = do
-    package <- ask
-    lift $ catchIDE (do
-        let dir = dropFileName (ipdCabalFile package)
-        runExternalTool "Unregistering" "runhaskell" (["Setup","unregister"]
-                        ++ (ipdUnregisterFlags package)) (Just dir) logOutput)
         (\(e :: SomeException) -> putStrLn (show e))
 
 packageTest :: PackageAction
@@ -356,7 +346,7 @@ packageTest = do
     package <- ask
     lift $ catchIDE (do
         let dir = dropFileName (ipdCabalFile package)
-        runExternalTool "Testing" "runhaskell" (["Setup","test"]) (Just dir) logOutput)
+        runExternalTool "Testing" "cabal" (["test"]) (Just dir) logOutput)
         (\(e :: SomeException) -> putStrLn (show e))
 
 packageSdist :: PackageAction
@@ -364,7 +354,7 @@ packageSdist = do
     package <- ask
     lift $ catchIDE (do
         let dir = dropFileName (ipdCabalFile package)
-        runExternalTool "Source Dist" "runhaskell" (["Setup","sdist"]
+        runExternalTool "Source Dist" "cabal" (["sdist"]
                         ++ (ipdSdistFlags package)) (Just dir) logOutput)
         (\(e :: SomeException) -> putStrLn (show e))
 

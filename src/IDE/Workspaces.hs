@@ -63,8 +63,7 @@ import Graphics.UI.Gtk
 import IDE.Pane.PackageEditor (packageNew', choosePackageFile)
 import Data.List (delete)
 import IDE.Package
-       (getModuleTemplate, getPackageDescriptionAndPath,
-        packageClean', activatePackage,
+       (getModuleTemplate, getPackageDescriptionAndPath, activatePackage,
         deactivatePackage, idePackageFromPath)
 import System.Directory
        (getHomeDirectory, createDirectoryIfMissing, doesFileExist,
@@ -95,16 +94,19 @@ setWorkspace mbWs = do
                         Just ws -> Just ws{wsReverseDeps = constrDepGraph (wsPackages ws)}
     mbOldWs <- readIDE workspace
     modifyIDE_ (\ide -> ide{workspace = mbRealWs})
-    let pack =  case mbRealWs of
+    let packFile =  case mbRealWs of
                     Nothing -> Nothing
-                    Just ws -> wsActivePack ws
-    let oldPack = case mbOldWs of
+                    Just ws -> wsActivePackFile ws
+    let oldPackFile = case mbOldWs of
                     Nothing -> Nothing
-                    Just ws -> wsActivePack ws
-    when (pack /= oldPack) $
-            case pack of
+                    Just ws -> wsActivePackFile ws
+    let mbPackages =  case mbRealWs of
+                        Nothing -> Nothing
+                        Just ws -> Just (wsPackages ws)
+    when (packFile /= oldPackFile) $
+            case packFile of
                 Nothing -> deactivatePackage
-                Just p  -> activatePackage pack >> return ()
+                Just p  -> activatePackage (getPackage p (fromJust mbPackages)) >> return ()
     mbPack <- readIDE activePack
     let wsStr = case mbRealWs of
                     Nothing -> ""
@@ -118,6 +120,11 @@ setWorkspace mbWs = do
     triggerEventIDE UpdateWorkspaceInfo
     return ()
 
+getPackage :: FilePath -> [IDEPackage] -> Maybe IDEPackage
+getPackage fp packages =
+    case filter (\ p -> ipdCabalFile p == fp) packages of
+        [p] -> Just p
+        l   -> Nothing
 
 -- ---------------------------------------------------------------------
 -- This needs to be incremented, when the workspace format changes
@@ -256,12 +263,12 @@ workspaceClose = do
     case oldWorkspace of
         Nothing -> return ()
         Just ws -> do
-            let oldActivePack = wsActivePack ws
+            let oldActivePackFile = wsActivePackFile ws
             triggerEventIDE (SaveSession ((dropExtension (wsFile ws))
                                 ++  leksahSessionFileExtension))
             addRecentlyUsedWorkspace (wsFile ws)
             setWorkspace Nothing
-            when (isJust oldActivePack) $ do
+            when (isJust oldActivePackFile) $ do
                 triggerEventIDE (Sensitivity [(SensitivityProjectActive, False),
                     (SensitivityWorkspaceOpen, False)])
                 return ()
@@ -318,7 +325,7 @@ workspaceAddPackage' fp = do
         Just pack -> do
             unless (elem cfp (map ipdCabalFile (wsPackages ws))) $ lift $
                 writeWorkspace $ ws {wsPackages =  pack : wsPackages ws,
-                                    wsActivePack =  Just pack}
+                                     wsActivePackFile =  Just (ipdCabalFile pack)}
             return (Just pack)
         Nothing -> return Nothing
 
@@ -376,7 +383,7 @@ workspaceActivatePackage pack = do
     ws <- ask
     lift $ activatePackage (Just pack)
     when (elem pack (wsPackages ws)) $ lift $ do
-        writeWorkspace ws {wsActivePack =  Just pack}
+        writeWorkspace ws {wsActivePackFile =  Just (ipdCabalFile pack)}
         return ()
     return ()
 
@@ -385,9 +392,6 @@ writeWorkspace ws = do
     timeNow      <- liftIO getClockTime
     let newWs    =  ws {wsSaveTime = show timeNow,
                          wsVersion = workspaceVersion,
-                         wsActivePackFile = case wsActivePack ws of
-                                                Nothing -> Nothing
-                                                Just pack -> Just (ipdCabalFile pack),
                          wsPackagesFiles = map ipdCabalFile (wsPackages ws)}
     setWorkspace $ Just newWs
     newWs' <- liftIO $ makePathesRelative newWs
@@ -397,11 +401,8 @@ readWorkspace :: FilePath -> IDEM Workspace
 readWorkspace fp = do
     ws <- liftIO $ readFields fp workspaceDescr emptyWorkspace
     ws' <- liftIO $ makePathesAbsolute ws fp
-    activePack <- case wsActivePackFile ws' of
-                        Nothing ->  return Nothing
-                        Just fp ->  idePackageFromPath fp
     packages <- mapM idePackageFromPath (wsPackagesFiles ws')
-    return ws'{ wsActivePack = activePack, wsPackages = map fromJust $ filter isJust $ packages}
+    return ws'{ wsPackages = map fromJust $ filter isJust $ packages}
 
 makePathesRelative :: Workspace -> IO Workspace
 makePathesRelative ws = do
@@ -437,7 +438,6 @@ emptyWorkspace =  Workspace {
 ,   wsName          =   ""
 ,   wsFile          =   ""
 ,   wsPackages      =   []
-,   wsActivePack    =   Nothing
 ,   wsPackagesFiles =   []
 ,   wsActivePackFile =   Nothing
 ,   wsNobuildPack   =   []
@@ -504,7 +504,13 @@ removeRecentlyUsedWorkspace fp = do
 workspaceClean :: WorkspaceAction
 workspaceClean = do
     ws <- ask
-    lift $ mapM_ packageClean' (wsPackages ws)
+    let settings = MakeSettings {
+            msInstallMode        = InstallNo,
+            msIsSingleMake       = False,
+            msSaveAllBeforeBuild = False,
+            msBackgroundBuild    = False,
+            msLinkingInBB        = False}
+    makePackages settings (wsPackages ws) MoClean
 
 workspaceMake :: WorkspaceAction
 workspaceMake = do
@@ -517,7 +523,7 @@ workspaceMake = do
             msSaveAllBeforeBuild = saveAllBeforeBuild prefs',
             msBackgroundBuild    = False,
             msLinkingInBB        = False})
-    makePackages settings (wsPackages ws) MoBuild
+    makePackages settings (wsPackages ws) MoInstall
 
 backgroundMake :: IDEAction
 backgroundMake = catchIDE (do
@@ -538,7 +544,7 @@ backgroundMake = catchIDE (do
                                     msSaveAllBeforeBuild = saveAllBeforeBuild prefs,
                                     msBackgroundBuild    = True,
                                     msLinkingInBB        = True}
-                workspaceTryQuiet_ $ makePackages settings modifiedPacks (MoComposed [MoBuild,MoInstall])
+                workspaceTryQuiet_ $ makePackages settings modifiedPacks MoInstall
     )
     (\(e :: SomeException) -> sysMessage Normal (show e))
 
@@ -556,4 +562,4 @@ makePackage = do
             msLinkingInBB        = False})
     case mbWs of
         Nothing -> sysMessage Normal "No workspace for build."
-        Just ws -> lift $ runWorkspace (makePackages settings [p] (MoComposed [MoBuild,MoInstall])) ws
+        Just ws -> lift $ runWorkspace (makePackages settings [p] MoInstall) ws

@@ -29,7 +29,6 @@ import Data.Typeable
 
 import IDE.Core.State
 import IDE.Pane.SourceBuffer
-import IDE.Pane.References
 import IDE.Utils.GUIUtils (openBrowser,controlIsPressed)
 import Graphics.UI.Gtk.SourceView
 
@@ -64,19 +63,6 @@ instance RecoverablePane IDEInfo InfoState IDEM where
         prefs <- readIDE prefs
         reifyIDE $ \ ideR -> do
             ibox        <- vBoxNew False 0
-        -- Buttons
-            bb          <- hButtonBoxNew
-            buttonBoxSetLayout bb ButtonboxSpread
-            definitionB <- buttonNewWithLabel "Source"
-            moduB       <- buttonNewWithLabel "Modules"
-            usesB       <- buttonNewWithLabel "Refs"
-            docuB       <- buttonNewWithLabel "Docu"
-            searchB     <- buttonNewWithLabel "Search"
-            boxPackStartDefaults bb definitionB
-            boxPackStartDefaults bb moduB
-            boxPackStartDefaults bb usesB
-            boxPackStartDefaults bb docuB
-            boxPackStartDefaults bb searchB
         -- Descr View
             font <- case textviewFont prefs of
                 Just str -> do
@@ -123,28 +109,17 @@ instance RecoverablePane IDEInfo InfoState IDEM where
             scrolledWindowSetPolicy sw PolicyAutomatic PolicyAutomatic
 
             boxPackStart ibox sw PackGrow 10
-            boxPackEnd ibox bb PackNatural 10
+
+
 
             --openType
             currentDescr' <- newIORef idDescr
+#if MIN_VERSION_gtk(0,10,5)
+            cid         <- on descriptionView populatePopup (populatePopupMenu ideR currentDescr')
+#else
+            cid         <- descriptionView `onPopulatePopup` (populatePopupMenu ideR currentDescr')
+#endif
             let info = IDEInfo ibox currentDescr' descriptionView
-            definitionB `onClicked` (reflectIDE gotoSource ideR )
-            moduB `onClicked` (reflectIDE gotoModule' ideR )
-            usesB `onClicked` (reflectIDE referencedFrom' ideR )
-            searchB `onClicked` (do
-                mbDescr <- readIORef currentDescr'
-                case mbDescr of
-                    Nothing -> return ()
-                    Just descr -> reflectIDE (do
-                                    triggerEventIDE (SearchMeta (dscName descr))
-                                    i :: IDEInfo <- forceGetPane (Right "*Info")
-                                    displayPane i False
-                                    return ()) ideR )
-            docuB `onClicked` (do
-                mbDescr <- readIORef currentDescr'
-                case mbDescr of
-                    Nothing -> return ()
-                    Just descr -> reflectIDE (openBrowser $ docuSearchURL prefs ++ dscName descr) ideR)
             descriptionView `widgetAddEvents` [ButtonReleaseMask]
             id5 <- descriptionView `onButtonRelease`
                 (\ e -> do
@@ -156,7 +131,7 @@ instance RecoverablePane IDEInfo InfoState IDEM where
                             triggerEventIDE (SelectInfo symbol)
                             return ()) ideR)
                     return False)
-            return (Just info,[])
+            return (Just info,[ConnectC cid])
 
 gotoSource :: IDEAction
 gotoSource = do
@@ -173,12 +148,6 @@ gotoModule' = do
         Nothing     ->  return ()
         Just info   ->  triggerEventIDE (SelectIdent info) >> return ()
 
-referencedFrom' :: IDEAction
-referencedFrom' = do
-    mbInfo <- getInfoCont
-    case mbInfo of
-        Nothing     ->  return ()
-        Just info   ->  referencedFrom info  >> return ()
 
 setInfo :: Descr -> IDEAction
 setInfo identifierDescr = do
@@ -212,5 +181,27 @@ replayInfoHistory mbDescr = do
     case mbDescr of
         Nothing    -> return ()
         Just descr -> setInfo descr
+
+populatePopupMenu :: IDERef -> IORef (Maybe Descr) -> Menu -> IO ()
+populatePopupMenu ideR currentDescr' menu = do
+    items <- containerGetChildren menu
+    item0 <- menuItemNewWithLabel "Goto Definition"
+    item0 `onActivateLeaf` (reflectIDE gotoSource ideR)
+    item1 <- menuItemNewWithLabel "Select Module"
+    item1 `onActivateLeaf` (reflectIDE gotoModule' ideR )
+    item2 <- menuItemNewWithLabel "Open Documentation"
+    item2 `onActivateLeaf` (do
+                mbDescr <- readIORef currentDescr'
+                case mbDescr of
+                    Nothing -> return ()
+                    Just descr -> reflectIDE (do
+                        prefs' <- readIDE prefs
+                        openBrowser $ docuSearchURL prefs' ++ dscName descr) ideR)
+    menuShellAppend menu item0
+    menuShellAppend menu item1
+    menuShellAppend menu item2
+    widgetShowAll menu
+    mapM_ widgetHide $ take 2 (reverse items)
+    return ()
 
 

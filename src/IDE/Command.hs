@@ -74,7 +74,6 @@ import IDE.Pane.Modules
 import IDE.Find
 import IDE.Utils.FileUtils
 import IDE.Utils.GUIUtils
-import IDE.Pane.References
 import Paths_leksah
 import IDE.GUIHistory
 import IDE.Metainfo.Provider
@@ -226,8 +225,6 @@ mkActions =
         (packageTry_ packageInstall) [] False
     ,AD "RegisterPackage" "_Register Package" Nothing Nothing
         (packageTry_ packageRegister) [] False
-    ,AD "UnregisterPackage" "_Unregister" Nothing Nothing
-        (packageTry_ packageUnregister) [] False
     ,AD "TestPackage" "Test Package" Nothing Nothing
         (packageTry_ packageTest) [] False
     ,AD "SdistPackage" "Source Dist" Nothing Nothing
@@ -337,8 +334,6 @@ mkActions =
         (getErrors Nothing  >>= \ p -> displayPane p False) [] False
     ,AD "ShowLog" "Log" Nothing Nothing
         showLog [] False
-    ,AD "ShowReferences" "References" Nothing Nothing
-        (getReferences Nothing >>= \ p -> displayPane p False) [] False
     ,AD "ShowWorkspace" "Workspace" Nothing Nothing
         (getWorkspace Nothing >>= \ p -> displayPane p False) [] False
 

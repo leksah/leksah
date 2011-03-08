@@ -43,7 +43,6 @@ import IDE.TextEditor
 import IDE.Pane.Modules
 import IDE.Pane.SourceBuffer
 import IDE.Pane.Info
-import IDE.Pane.References
 import IDE.Pane.Log
 import IDE.Pane.Preferences
 import IDE.Pane.PackageFlags
@@ -76,7 +75,6 @@ data PaneState      =   BufferSt BufferState
                     |   LogSt LogState
                     |   InfoSt InfoState
                     |   ModulesSt ModulesState
-                    |   ReferencesSt ReferencesState
                     |   PrefsSt PrefsState
                     |   FlagsSt FlagsState
                     |   SearchSt SearchState
@@ -93,7 +91,6 @@ asPaneState s | isJust ((cast s) :: Maybe BufferState)      =   BufferSt (fromJu
 asPaneState s | isJust ((cast s) :: Maybe LogState)         =   LogSt (fromJust $ cast s)
 asPaneState s | isJust ((cast s) :: Maybe InfoState)        =   InfoSt (fromJust $ cast s)
 asPaneState s | isJust ((cast s) :: Maybe ModulesState)     =   ModulesSt (fromJust $ cast s)
-asPaneState s | isJust ((cast s) :: Maybe ReferencesState)  =   ReferencesSt (fromJust $ cast s)
 asPaneState s | isJust ((cast s) :: Maybe PrefsState)       =   PrefsSt (fromJust $ cast s)
 asPaneState s | isJust ((cast s) :: Maybe FlagsState)       =   FlagsSt (fromJust $ cast s)
 asPaneState s | isJust ((cast s) :: Maybe SearchState)      =   SearchSt (fromJust $ cast s)
@@ -110,7 +107,6 @@ recover pp (BufferSt p)         =   recoverState pp p >> return ()
 recover pp (LogSt p)            =   recoverState pp p >> return ()
 recover pp (InfoSt p)           =   recoverState pp p >> return ()
 recover pp (ModulesSt p)        =   recoverState pp p >> return ()
-recover pp (ReferencesSt p)     =   recoverState pp p >> return ()
 recover pp (PrefsSt p)          =   recoverState pp p >> return ()
 recover pp (FlagsSt p)          =   recoverState pp p >> return ()
 recover pp (SearchSt p)         =   recoverState pp p >> return ()

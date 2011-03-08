@@ -330,7 +330,6 @@ data Workspace = Workspace {
 ,   wsName          ::   String
 ,   wsFile          ::   FilePath
 ,   wsPackages      ::   [IDEPackage]
-,   wsActivePack    ::   Maybe IDEPackage
 ,   wsPackagesFiles ::   [FilePath]
 ,   wsActivePackFile::   Maybe FilePath
 ,   wsNobuildPack   ::   [IDEPackage]

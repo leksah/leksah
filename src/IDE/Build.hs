@@ -35,11 +35,14 @@ import Distribution.Package (pkgVersion, pkgName, Dependency(..))
 import Data.List (nub, find)
 import Distribution.Version (withinRange)
 import Data.Maybe (mapMaybe)
-import Debug.Trace (trace)
-import IDE.Package (packageInstall', buildPackage, packageConfig')
+import IDE.Package
+       (packageClean', packageInstall', buildPackage, packageConfig')
 import IDE.Core.Types (InstallFlag, IDE(..), WorkspaceAction)
 import Control.Monad.Reader
 import Distribution.Text (Text(..))
+
+-- import Debug.Trace (trace)
+trace a b = b
 
 
 -- ** Types
@@ -144,6 +147,8 @@ doBuildChain ms chain@Chain{mcAction = MoBuild} = do
     buildPackage (msBackgroundBuild ms) (mcEle chain) (constrCont ms (mcPos chain) (mcNeg chain))
 doBuildChain ms chain@Chain{mcAction = MoInstall} = do
     packageInstall' (mcEle chain) (constrCont ms (mcPos chain) (mcNeg chain))
+doBuildChain ms chain@Chain{mcAction = MoClean} = do
+    packageClean' (mcEle chain) (constrCont ms (mcPos chain) (mcNeg chain))
 doBuildChain ms chain  = doBuildChain ms (mcPos chain)
 
 constrCont ms pos (Just neg) False = doBuildChain ms neg

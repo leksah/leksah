@@ -39,7 +39,6 @@ data IDEWorkspace   =   IDEWorkspace {
     scrolledView        ::   ScrolledWindow
 ,   treeViewC           ::   TreeView
 ,   workspaceStore      ::   ListStore (Bool,IDEPackage)
-,   wsEntry             ::   Entry
 ,   topBox              ::   VBox
 } deriving Typeable
 
@@ -112,12 +111,9 @@ instance RecoverablePane IDEWorkspace WorkspaceState IDEM where
         sw <- scrolledWindowNew Nothing Nothing
         containerAdd sw treeView
         scrolledWindowSetPolicy sw PolicyAutomatic PolicyAutomatic
-        entry           <-  entryNew
-        set entry [ entryEditable := False ]
         box             <-  vBoxNew False 2
-        boxPackStart box entry PackNatural 0
         boxPackEnd box sw PackGrow 0
-        let workspacePane = IDEWorkspace sw treeView listStore entry box
+        let workspacePane = IDEWorkspace sw treeView listStore box
         widgetShowAll box
         cid1 <- treeView `afterFocusIn`
             (\_ -> do reflectIDE (makeActive workspacePane) ideR ; return True)
@@ -192,7 +188,6 @@ updateWorkspace showPane updateFileCache = do
                 Nothing -> return ()
                 Just (p :: IDEWorkspace)  -> do
                     liftIO $ listStoreClear (workspaceStore p)
-                    liftIO $ entrySetText (wsEntry p) ""
                     when showPane $ displayPane p False
         Just ws -> do
             when updateFileCache $ modifyIDE_ (\ide -> ide{bufferProjCache = Map.empty,
@@ -201,9 +196,9 @@ updateWorkspace showPane updateFileCache = do
             case mbMod of
                 Nothing -> return ()
                 Just (p :: IDEWorkspace)  -> do
-                    liftIO $ entrySetText (wsEntry p) (wsName ws)
                     liftIO $ listStoreClear (workspaceStore p)
-                    let objs = map (\ ideP -> (Just ideP == wsActivePack ws, ideP)) (wsPackages ws)
+                    let objs = map (\ ideP -> (Just (ipdCabalFile ideP) == wsActivePackFile ws, ideP))
+                                        (wsPackages ws)
                     let sorted = sortBy (\ (_,f) (_,s) -> compare (ipdPackageId f) (ipdPackageId s)) objs
                     liftIO $ mapM_ (listStoreAppend (workspaceStore p)) sorted
                     when showPane $ displayPane p False
