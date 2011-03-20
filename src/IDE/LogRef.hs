@@ -300,6 +300,7 @@ buildLineParser = try (do
         many (anyChar)
         return BuildLine)
     <|> try (do
+        whiteSpace
         span <- srcSpanParser
         char ':'
         whiteSpace
