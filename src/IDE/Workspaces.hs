@@ -45,8 +45,9 @@ import Data.Maybe (isJust,fromJust )
 import IDE.Utils.GUIUtils
     (chooseFile, chooseSaveFile)
 import System.FilePath
-       ((</>), isAbsolute, dropFileName, makeRelative, dropExtension,
-        takeBaseName, addExtension, takeExtension, takeDirectory)
+       (takeFileName, (</>), isAbsolute, dropFileName, makeRelative,
+        dropExtension, takeBaseName, addExtension, takeExtension,
+        takeDirectory)
 import Text.PrinterParser
     (readFields,
      writeFields,
@@ -148,8 +149,9 @@ workspaceNewHere filePath =
                             then filePath
                             else addExtension filePath leksahWorkspaceFileExtension
     in do
-        cPath <- liftIO $ canonicalizePath realPath
-        let newWorkspace = emptyWorkspace {
+        dir <- liftIO $ canonicalizePath $ takeDirectory realPath
+        let cPath = dir </> takeFileName realPath
+            newWorkspace = emptyWorkspace {
                             wsName = takeBaseName cPath,
                             wsFile = cPath}
         liftIO $ writeFields cPath newWorkspace workspaceDescr

@@ -202,7 +202,11 @@ startComplete = do
 
 selectSourceBuf :: FilePath -> IDEM (Maybe IDEBuffer)
 selectSourceBuf fp = do
-    fpc <-  liftIO $ canonicalizePath fp
+
+    exists <- liftIO $ doesFileExist $ fp
+    fpc <- if exists
+        then liftIO $ canonicalizePath fp
+        else return fp
     buffers <- allBuffers
     let buf = filter (\b -> case fileName b of
                                 Just fn -> equalFilePath fn fpc
