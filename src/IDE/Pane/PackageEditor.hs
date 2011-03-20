@@ -22,6 +22,7 @@ module IDE.Pane.PackageEditor (
 ,   choosePackageFile
 
 ,   hasConfigs
+,   standardSetup
 ) where
 
 import Graphics.UI.Gtk

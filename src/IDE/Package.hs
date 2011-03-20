@@ -326,7 +326,7 @@ packageInstall = do
 packageInstall' :: IDEPackage -> (Bool -> IDEAction) -> IDEAction
 packageInstall' package continuation = catchIDE (do
    let dir = dropFileName (ipdCabalFile package)
-   runExternalTool "Installing" "cabal" (["install"]
+   runExternalTool "Installing" "runhaskell" (["Setup", "install"]
                     ++ (ipdInstallFlags package)) (Just dir) (\ output -> do
                         logOutput output
                         continuation (last output == ToolExit ExitSuccess)))

@@ -46,7 +46,7 @@ import IDE.Utils.GUIUtils
     (chooseFile, chooseSaveFile)
 import System.FilePath
        ((</>), isAbsolute, dropFileName, makeRelative, dropExtension,
-        takeBaseName, addExtension, takeExtension)
+        takeBaseName, addExtension, takeExtension, takeDirectory)
 import Text.PrinterParser
     (readFields,
      writeFields,
@@ -60,7 +60,7 @@ import Graphics.UI.Gtk
        (dialogSetDefaultResponse, windowWindowPosition, widgetDestroy,
         dialogRun, messageDialogNew, dialogAddButton, Window(..),
         widgetHide, DialogFlags(..))
-import IDE.Pane.PackageEditor (packageNew', choosePackageFile)
+import IDE.Pane.PackageEditor (packageNew', choosePackageFile, standardSetup)
 import Data.List (delete)
 import IDE.Package
        (getModuleTemplate, getPackageDescriptionAndPath, activatePackage,
@@ -323,6 +323,12 @@ workspaceAddPackage' fp = do
     mbPack <- lift $ idePackageFromPath cfp
     case mbPack of
         Just pack -> do
+            let dir = takeDirectory cfp
+            b1 <- liftIO $ doesFileExist (dir </> "Setup.hs")
+            b2 <- liftIO $ doesFileExist (dir </> "Setup.lhs")
+            unless (b1 || b2) $ liftIO $ do
+                sysMessage Normal "Setup.(l)hs does not exist. Writing Standard"
+                writeFile (dir </> "Setup.lhs") standardSetup
             unless (elem cfp (map ipdCabalFile (wsPackages ws))) $ lift $
                 writeWorkspace $ ws {wsPackages =  pack : wsPackages ws,
                                      wsActivePackFile =  Just (ipdCabalFile pack)}
@@ -523,7 +529,7 @@ workspaceMake = do
             msSaveAllBeforeBuild = saveAllBeforeBuild prefs',
             msBackgroundBuild    = False,
             msLinkingInBB        = False})
-    makePackages settings (wsPackages ws) MoInstall
+    makePackages settings (wsPackages ws) MoBuild
 
 backgroundMake :: IDEAction
 backgroundMake = catchIDE (do
@@ -544,7 +550,7 @@ backgroundMake = catchIDE (do
                                     msSaveAllBeforeBuild = saveAllBeforeBuild prefs,
                                     msBackgroundBuild    = True,
                                     msLinkingInBB        = True}
-                workspaceTryQuiet_ $ makePackages settings modifiedPacks MoInstall
+                workspaceTryQuiet_ $ makePackages settings modifiedPacks MoBuild
     )
     (\(e :: SomeException) -> sysMessage Normal (show e))
 
@@ -562,4 +568,4 @@ makePackage = do
             msLinkingInBB        = False})
     case mbWs of
         Nothing -> sysMessage Normal "No workspace for build."
-        Just ws -> lift $ runWorkspace (makePackages settings [p] MoInstall) ws
+        Just ws -> lift $ runWorkspace (makePackages settings [p] MoBuild) ws
