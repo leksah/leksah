@@ -627,6 +627,15 @@ executeDebugCommand command handler = do
                     return ()
                     ) ideR
 
+allBuildInfo' :: PackageDescription -> [BuildInfo]
+#if MIN_VERSION_Cabal(1,10,0)
+allBuildInfo' pkg_descr = [ libBuildInfo lib  | Just lib <- [library pkg_descr] ]
+                       ++ [ buildInfo exe     | exe <- executables pkg_descr ]
+                       ++ [ testBuildInfo tst | tst <- testSuites pkg_descr ]
+#else
+allBuildInfo' = allBuildInfo
+#endif
+
 idePackageFromPath :: FilePath -> IDEM (Maybe IDEPackage)
 idePackageFromPath filePath = do
     mbPackageD <- reifyIDE (\ideR -> catch (do
@@ -641,13 +650,13 @@ idePackageFromPath filePath = do
             let modules    = Set.fromList $ myLibModules packageD ++ myExeModules packageD
             let mainFiles  = map modulePath (executables packageD)
             let files      = Set.fromList $ extraSrcFiles packageD ++ map modulePath (executables packageD)
-            let ipdSrcDirs = case (nub $ concatMap hsSourceDirs (allBuildInfo packageD)) of
+            let ipdSrcDirs = case (nub $ concatMap hsSourceDirs (allBuildInfo' packageD)) of
                                 [] -> [".","src"]
                                 l -> l
 #if MIN_VERSION_Cabal(1,10,0)
-            let exts       = nub $ concatMap oldExtensions (allBuildInfo packageD)
+            let exts       = nub $ concatMap oldExtensions (allBuildInfo' packageD)
 #else
-            let exts       = nub $ concatMap extensions (allBuildInfo packageD)
+            let exts       = nub $ concatMap extensions (allBuildInfo' packageD)
 #endif
             let packp      = IDEPackage (package packageD) filePath (buildDepends packageD) modules
 
