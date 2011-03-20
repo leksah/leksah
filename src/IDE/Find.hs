@@ -66,14 +66,13 @@ import Data.Char (digitToInt, isDigit, toLower, isAlphaNum)
 import Text.Regex.TDFA hiding (caseSensitive)
 import qualified Text.Regex.TDFA as Regex
 import Text.Regex.TDFA.String (compile)
-import Data.List (nub, find, isPrefixOf)
+import Data.List (find, isPrefixOf)
 import Data.Array (bounds, (!), inRange)
 import IDE.Utils.Tool (runTool)
 import Control.Concurrent (forkIO)
 import IDE.Pane.Grep
 import IDE.Package (getPackageDescriptionAndPath)
 import IDE.Workspaces (packageTry_)
-import Distribution.PackageDescription (allBuildInfo, hsSourceDirs)
 import System.FilePath (dropFileName)
 
 data FindState = FindState {
@@ -393,6 +392,7 @@ doSearch fb hint ideR   = do
 
 doGrep :: Toolbar -> PackageAction
 doGrep fb   = do
+    package       <- ask
     ideR          <- lift $ ask
     entry         <- liftIO $ getFindEntry fb
     search        <- liftIO $ entryGetText (castToEntry entry)
@@ -405,7 +405,7 @@ doGrep fb   = do
     lift $ case mbPD of
         Nothing             -> ideMessage Normal "No package description"
         Just (pd,cabalPath) -> do
-            let srcPaths = nub $ concatMap hsSourceDirs $ allBuildInfo pd
+            let srcPaths = ipdSrcDirs package
             let dir = dropFileName (cabalPath)
             liftIO $ forkIO $ do
                 (output, pid) <- runTool "grep" ((if caseSensitive then [] else ["-i"])
