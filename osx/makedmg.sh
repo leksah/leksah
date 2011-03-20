@@ -2,7 +2,7 @@
 
 . scripts/stage.sh || exit
 
-sed 's|\<ctrl\>|\<meta\>|' <data/keymap.lkshk >osx/keymap.lkshk
+sed -e 's|\<ctrl\>|\<meta\>|' -e 's|\<alt\>|\<control\>|' <data/keymap.lkshk >osx/keymap.lkshk
 cat osx/osxkeymap.lkshk >>osx/keymap.lkshk
 
 cd osx || exit

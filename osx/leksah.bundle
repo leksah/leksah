@@ -55,7 +55,7 @@
        binaries link to are also copied in automatically.
   -->
   <binary>
-    ${prefix}/lib/gtk-2.0/${pkg:gtk+-2.0:gtk_binary_version}/loaders/*.so
+    ${prefix}/lib/gdk-pixbuf-2.0/${pkg:gtk+-2.0:gtk_binary_version}/loaders/*.so
   </binary>
 
   <!-- Copy in GTK+ theme engines.  -->
