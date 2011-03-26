@@ -669,7 +669,7 @@ setWrapMode ev@(GtkEditorView sv) wrapLines = do
             Gtk.textViewSetWrapMode sv Gtk.WrapNone
             Gtk.scrolledWindowSetPolicy sw Gtk.PolicyAutomatic Gtk.PolicyAutomatic
 #ifdef LEKSAH_WITH_YI
-setIndentWidth (YiEditorView Yi.View{Yi.viewFBufRef = b}) width = return ()
+setWrapMode (YiEditorView Yi.View{Yi.viewFBufRef = b}) width = return ()
 #endif
 
 
