@@ -13,7 +13,7 @@ export DYLD_LIBRARY_PATH="/System/Library/Frameworks/ApplicationServices.framewo
 
 cd ../yi || exit
 cabal clean || exit
-cabal install -flags="pango" --prefix=$GTK_PREFIX --extra-lib-dirs="$GTK_PREFIX/lib" || exit
+cabal install --flags="pango -vte" --prefix=$GTK_PREFIX --extra-lib-dirs="$GTK_PREFIX/lib" || exit
 
 cd ../ltk || exit
 cabal clean || exit
@@ -21,10 +21,10 @@ cabal install || exit
 
 cd ../leksah-server || exit
 cabal clean || exit
-cabal install -flags="libcurl" --prefix="$GTK_PREFIX" --extra-lib-dirs="$GTK_PREFIX/lib" --datasubdir="$LEKSAH_X_X" || exit
+cabal install --flags="libcurl" --prefix="$GTK_PREFIX" --extra-lib-dirs="$GTK_PREFIX/lib" --datasubdir="$LEKSAH_X_X" || exit
 
 cd ../leksah || exit
 cabal clean || exit
-cabal install -flags="yi -dyre" --prefix="$GTK_PREFIX" --extra-lib-dirs="$GTK_PREFIX/lib" --datasubdir="$LEKSAH_X_X" || exit
+cabal install --flags="yi -dyre" --prefix="$GTK_PREFIX" --extra-lib-dirs="$GTK_PREFIX/lib" --datasubdir="$LEKSAH_X_X" || exit
 
 
