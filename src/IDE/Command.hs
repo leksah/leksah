@@ -766,8 +766,14 @@ setSymbol symbol = do
             case filter (not . isReexported) (getIdentifierDescr symbol symbolTable1 symbolTable2) of
                 []     -> return ()
                 a:[]   -> selectIdentifier a
+                a:b:[] -> if isJust (dscMbModu a) && dscMbModu a == dscMbModu b &&
+                            isNear (dscMbLocation a) (dscMbLocation b)
+                                then selectIdentifier a
+                                else setChoices [a,b]
                 l      -> setChoices l
-
+  where
+    isNear (Just a) (Just b) = abs (locationSLine a - locationSLine b) <= 3
+    isNear _ _               = False
 --
 -- | Register handlers for IDE events
 --
