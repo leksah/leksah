@@ -72,6 +72,7 @@ import IDE.Pane.Log
 import IDE.Session
 import IDE.Pane.Modules
 import IDE.Find
+import IDE.Pane.Info
 import IDE.Utils.FileUtils
 import IDE.Utils.GUIUtils
 import Paths_leksah
@@ -409,7 +410,10 @@ mkActions =
     ,AD "BackgroundLinkToggled" "_BackgroundLink" (Just "Link in the background") (Just "ide_link")
         backgroundLinkToggled [] True
     ,AD "DebugToggled" "_Debug" (Just "Use GHCi debugger to build and run") (Just "ide_debug")
-        debugToggled [] True]
+        debugToggled [] True
+    ,AD "OpenDocu" "_OpenDocu" (Just "Opens a browser for a search of the selected data") Nothing
+        openDocu [] True
+        ]
 
 --
 -- | The menu description in XML Syntax as defined by GTK
