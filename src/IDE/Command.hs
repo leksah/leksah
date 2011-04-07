@@ -581,7 +581,7 @@ aboutDialog = do
     d <- aboutDialogNew
     aboutDialogSetName d "Leksah"
     aboutDialogSetVersion d (showVersion version)
-    aboutDialogSetCopyright d "Copyright 2007-2010 Jürgen Nicklisch-Franken, Hamish Mackenzie"
+    aboutDialogSetCopyright d "Copyright 2007-2011 Jürgen Nicklisch-Franken, Hamish Mackenzie"
     aboutDialogSetComments d $ "An integrated development environement (IDE) for the " ++
                                "programming language Haskell and the Glasgow Haskell Compiler"
     dd <- getDataDir
@@ -626,7 +626,7 @@ getActionsFor SensitivityBackwardHist = getActionsFor' ["ViewHistoryBack"]
 getActionsFor SensitivityProjectActive = getActionsFor'
     ["EditPackage", "PackageFlags", "ConfigPackage", "BuildPackage"
     ,"DocPackage", "CleanPackage", "CopyPackage", "RunPackage","InstallPackage"
-    ,"RegisterPackage", "UnregisterPackage","TestPackage","SdistPackage"
+    ,"RegisterPackage", "TestPackage","SdistPackage"
     ,"OpenDocPackage","FileCloseAll"]
 getActionsFor SensitivityError = getActionsFor' ["NextError", "PreviousError"]
 getActionsFor SensitivityEditor = getActionsFor' ["EditUndo", "EditRedo", "EditGotoLine"
