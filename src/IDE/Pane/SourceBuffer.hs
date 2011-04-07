@@ -202,11 +202,7 @@ startComplete = do
 
 selectSourceBuf :: FilePath -> IDEM (Maybe IDEBuffer)
 selectSourceBuf fp = do
-
-    exists <- liftIO $ doesFileExist $ fp
-    fpc <- if exists
-        then liftIO $ canonicalizePath fp
-        else return fp
+    fpc <- liftIO $ myCanonicalizePath fp
     buffers <- allBuffers
     let buf = filter (\b -> case fileName b of
                                 Just fn -> equalFilePath fn fpc
@@ -694,7 +690,7 @@ fileSaveBuffer query nb ebuf ideBuf i = do
                                         fileSave' (forceLineEnds prefs) (removeTBlanks prefs)
                                             nb ideBuf useCandy candy fn
                                         closePane ideBuf
-                                        cfn <- liftIO $ canonicalizePath fn
+                                        cfn <- liftIO $ myCanonicalizePath fn
                                         newTextBuffer panePath (takeFileName cfn) (Just cfn)
                                         ) ideR
                                     return True
@@ -885,7 +881,7 @@ fileOpen = do
 fileOpenThis :: FilePath -> IDEAction
 fileOpenThis fp =  do
     prefs <- readIDE prefs
-    fpc <-  liftIO $canonicalizePath fp
+    fpc <-  liftIO $ myCanonicalizePath fp
     buffers <- allBuffers
     let buf = filter (\b -> case fileName b of
                         Just fn -> equalFilePath fn fpc

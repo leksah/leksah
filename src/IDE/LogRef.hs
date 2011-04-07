@@ -50,11 +50,11 @@ import IDE.Pane.SourceBuffer
 import IDE.Pane.Log
 import IDE.Utils.Tool
 import System.FilePath (equalFilePath)
-import System.Directory (doesFileExist, canonicalizePath)
 import Data.List (stripPrefix, elemIndex, isPrefixOf)
 import Data.Maybe (catMaybes)
 import System.Exit (ExitCode(..))
 import System.Log.Logger (debugM)
+import IDE.Utils.FileUtils(myCanonicalizePath)
 
 showSourceSpan :: LogRef -> String
 showSourceSpan = displaySrcSpan . logRefSrcSpan
@@ -80,10 +80,7 @@ forOpenLogRefs f = do
     forM_ [0 .. ((length logRefs)-1)] (\index -> do
         let ref = logRefs !! index
             fp = logRefFullFilePath ref
-        exists <- liftIO $ doesFileExist $ fp
-        fpc <- if exists
-            then liftIO $ canonicalizePath fp
-            else return fp
+        fpc <- liftIO $ myCanonicalizePath fp
         forM_ (filter (\buf -> case (fileName buf) of
                 Just fn -> equalFilePath fpc fn
                 Nothing -> False) allBufs) (f index ref))

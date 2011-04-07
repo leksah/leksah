@@ -67,8 +67,7 @@ import IDE.Package
        (getModuleTemplate, getPackageDescriptionAndPath, activatePackage,
         deactivatePackage, idePackageFromPath)
 import System.Directory
-       (getHomeDirectory, createDirectoryIfMissing, doesFileExist,
-        canonicalizePath)
+       (getHomeDirectory, createDirectoryIfMissing, doesFileExist)
 import System.Time (getClockTime)
 import Graphics.UI.Gtk.Windows.MessageDialog
     (ButtonsType(..), MessageType(..))
@@ -86,6 +85,7 @@ import System.Glib.Attributes (AttrOp(..), set)
 import Graphics.UI.Gtk.General.Enums (WindowPosition(..))
 import Control.Applicative ((<$>))
 import IDE.Build
+import IDE.Utils.FileUtils(myCanonicalizePath)
 
 
 setWorkspace :: Maybe Workspace -> IDEAction
@@ -149,7 +149,7 @@ workspaceNewHere filePath =
                             then filePath
                             else addExtension filePath leksahWorkspaceFileExtension
     in do
-        dir <- liftIO $ canonicalizePath $ takeDirectory realPath
+        dir <- liftIO $ myCanonicalizePath realPath
         let cPath = dir </> takeFileName realPath
             newWorkspace = emptyWorkspace {
                             wsName = takeBaseName cPath,
@@ -321,7 +321,7 @@ workspaceAddPackage = do
 workspaceAddPackage' :: FilePath -> WorkspaceM (Maybe IDEPackage)
 workspaceAddPackage' fp = do
     ws <- ask
-    cfp <-  liftIO $ canonicalizePath fp
+    cfp <- liftIO $ myCanonicalizePath fp
     mbPack <- lift $ idePackageFromPath cfp
     case mbPack of
         Just pack -> do
@@ -414,19 +414,20 @@ readWorkspace fp = do
 
 makePathesRelative :: Workspace -> IO Workspace
 makePathesRelative ws = do
-    wsFile'                     <-  canonicalizePath (wsFile ws)
+    wsFile' <- myCanonicalizePath (wsFile ws)
     wsActivePackFile'           <-  case wsActivePackFile ws of
                                         Nothing -> return Nothing
                                         Just fp -> do
-                                            nfp <- canonicalizePath fp
+                                            nfp <- liftIO $ myCanonicalizePath fp
                                             return (Just (makeRelative (dropFileName wsFile') nfp))
-    wsPackagesFiles'            <-  mapM canonicalizePath (wsPackagesFiles ws)
+    wsPackagesFiles'            <-  mapM myCanonicalizePath (wsPackagesFiles ws)
     let relativePathes          =   map (\p -> makeRelative (dropFileName wsFile') p) wsPackagesFiles'
     return ws {wsActivePackFile = wsActivePackFile', wsFile = wsFile', wsPackagesFiles = relativePathes}
 
+
 makePathesAbsolute :: Workspace -> FilePath -> IO Workspace
 makePathesAbsolute ws bp = do
-    wsFile'                     <-  canonicalizePath bp
+    wsFile'                     <-  myCanonicalizePath bp
     wsActivePackFile'           <-  case wsActivePackFile ws of
                                         Nothing -> return Nothing
                                         Just fp -> do
@@ -437,8 +438,8 @@ makePathesAbsolute ws bp = do
     where
         makeAbsolute basePath relativePath  =
             if isAbsolute relativePath
-                then canonicalizePath relativePath
-                else canonicalizePath (basePath </> relativePath)
+                then myCanonicalizePath relativePath
+                else myCanonicalizePath (basePath </> relativePath)
 
 emptyWorkspace =  Workspace {
     wsVersion       =   workspaceVersion
