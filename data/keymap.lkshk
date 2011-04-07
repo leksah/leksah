@@ -113,3 +113,5 @@ F9 -> DebugContinue
 <control>Return             ->          ExecuteSelection
 <ctrl>m                  ->          UpdateMetadataCurrent
 
+<ctrl>p                  ->        OpenDocu
+

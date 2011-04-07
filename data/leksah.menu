@@ -202,4 +202,5 @@
    <accelerator name="Information" action="DebugInformation" />
    <accelerator name="Kind" action="DebugKind" />
    <accelerator name="Type" action="DebugType" />
+   <accelerator name="OpenDocu" action="OpenDocu" />
  </ui>

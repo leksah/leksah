@@ -19,6 +19,7 @@ module IDE.Pane.Info (
 ,   InfoState
 ,   setInfo
 ,   replayInfoHistory
+,   openDocu
 ) where
 
 import Graphics.UI.Gtk hiding (afterToggleOverwrite)
@@ -182,6 +183,15 @@ replayInfoHistory mbDescr = do
         Nothing    -> return ()
         Just descr -> setInfo descr
 
+openDocu :: IDEAction
+openDocu = do
+    mbDescr <- getInfoCont
+    case mbDescr of
+        Nothing -> return ()
+        Just descr -> do
+            prefs' <- readIDE prefs
+            openBrowser $ docuSearchURL prefs' ++ dscName descr
+
 populatePopupMenu :: IDERef -> IORef (Maybe Descr) -> Menu -> IO ()
 populatePopupMenu ideR currentDescr' menu = do
     items <- containerGetChildren menu
@@ -190,13 +200,7 @@ populatePopupMenu ideR currentDescr' menu = do
     item1 <- menuItemNewWithLabel "Select Module"
     item1 `onActivateLeaf` (reflectIDE gotoModule' ideR )
     item2 <- menuItemNewWithLabel "Open Documentation"
-    item2 `onActivateLeaf` (do
-                mbDescr <- readIORef currentDescr'
-                case mbDescr of
-                    Nothing -> return ()
-                    Just descr -> reflectIDE (do
-                        prefs' <- readIDE prefs
-                        openBrowser $ docuSearchURL prefs' ++ dscName descr) ideR)
+    item2 `onActivateLeaf` (reflectIDE openDocu ideR )
     menuShellAppend menu item0
     menuShellAppend menu item1
     menuShellAppend menu item2
