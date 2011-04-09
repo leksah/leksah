@@ -87,7 +87,7 @@ constrParentGraph :: [IDEPackage] -> MakeGraph
 constrParentGraph targets = trace ("parentGraph : " ++ showGraph parGraph) parGraph
   where
     parGraph = Map.fromList
-        $ map (\ p -> (p,nub $ mapMaybe (depToTarget targets)(ipdDepends p))) targets
+        $ map (\ p -> (p,nub $ p : mapMaybe (depToTarget targets)(ipdDepends p))) targets
 
 -- | Construct a dependency graph for a package
 -- pointing to the packages which depend on the subject package
