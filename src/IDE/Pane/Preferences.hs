@@ -731,7 +731,7 @@ defaultPrefs = Prefs {
     ,   retrieveURL         =   "http://www.leksah.org"
     ,   retrieveStrategy    =   SP.RetrieveThenBuild
     ,   useCtrlTabFlipping  =   True
-    ,   docuSearchURL       =   "http://holumbus.fh-wedel.de/hayoo/hayoo.html?query="
+    ,   docuSearchURL       =   "http://www.holumbus.org/hayoo/hayoo.html?query="
     ,   completeRestricted  =   False
     ,   saveAllBeforeBuild  =   True
     ,   backgroundBuild     =   True
