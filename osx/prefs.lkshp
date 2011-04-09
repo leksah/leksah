@@ -78,5 +78,5 @@ Turn on printing of binding results in GHCi:
                False
 Browser:       "open"
 URL for searching documentation:
-               "http://holumbus.fh-wedel.de/hayoo/hayoo.html?query="
+               "http://www.holumbus.org/hayoo/hayoo.html?query="
      --e.g Hoogle: http://www.haskell.org/hoogle/?q= or Hayoo: http://holumbus.fh-wedel.de/hayoo/hayoo.html?query=
