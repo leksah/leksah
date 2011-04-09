@@ -29,7 +29,6 @@ import IDE.Core.State
 import IDE.Workspaces
 import qualified Data.Map as Map (empty)
 import Data.List (sortBy)
-import IDE.Build(calculateReverseDependencies)
 
 
 -- | Workspace pane state
@@ -190,8 +189,7 @@ updateWorkspace showPane updateFileCache = do
                     liftIO $ listStoreClear (workspaceStore p)
                     when showPane $ displayPane p False
         Just ws -> do
-            when updateFileCache $ modifyIDE_ (\ide -> ide{bufferProjCache = Map.empty,
-                        workspace = Just ws{wsReverseDeps = calculateReverseDependencies ws}})
+            when updateFileCache $ modifyIDE_ (\ide -> ide{bufferProjCache = Map.empty})
             mbMod <- getPane
             case mbMod of
                 Nothing -> return ()

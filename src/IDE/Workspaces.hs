@@ -90,18 +90,15 @@ import IDE.Utils.FileUtils(myCanonicalizePath)
 
 setWorkspace :: Maybe Workspace -> IDEAction
 setWorkspace mbWs = do
-    let mbRealWs = case mbWs of
-                        Nothing -> Nothing
-                        Just ws -> Just ws{wsReverseDeps = constrDepGraph (wsPackages ws)}
     mbOldWs <- readIDE workspace
-    modifyIDE_ (\ide -> ide{workspace = mbRealWs})
-    let packFile =  case mbRealWs of
+    modifyIDE_ (\ide -> ide{workspace = mbWs})
+    let packFile =  case mbWs of
                     Nothing -> Nothing
                     Just ws -> wsActivePackFile ws
     let oldPackFile = case mbOldWs of
                     Nothing -> Nothing
                     Just ws -> wsActivePackFile ws
-    let mbPackages =  case mbRealWs of
+    let mbPackages =  case mbWs of
                         Nothing -> Nothing
                         Just ws -> Just (wsPackages ws)
     when (packFile /= oldPackFile) $
@@ -109,7 +106,7 @@ setWorkspace mbWs = do
                 Nothing -> deactivatePackage
                 Just p  -> activatePackage (getPackage p (fromJust mbPackages)) >> return ()
     mbPack <- readIDE activePack
-    let wsStr = case mbRealWs of
+    let wsStr = case mbWs of
                     Nothing -> ""
                     Just ws -> wsName ws
     let txt = wsStr ++ " > " ++
@@ -450,7 +447,6 @@ emptyWorkspace =  Workspace {
 ,   wsPackagesFiles =   []
 ,   wsActivePackFile =   Nothing
 ,   wsNobuildPack   =   []
-,   wsReverseDeps   =   Map.empty
 }
 
 workspaceDescr :: [FieldDescriptionS Workspace]
@@ -532,7 +528,7 @@ workspaceMake = do
             msSaveAllBeforeBuild = saveAllBeforeBuild prefs',
             msBackgroundBuild    = False,
             msLinkingInBB        = False})
-    makePackages settings (wsPackages ws) MoBuild
+    makePackages settings (wsPackages ws) (MoComposed [MoConfigure,MoBuild,MoInstall])
 
 backgroundMake :: IDEAction
 backgroundMake = catchIDE (do
@@ -553,7 +549,7 @@ backgroundMake = catchIDE (do
                                     msSaveAllBeforeBuild = saveAllBeforeBuild prefs,
                                     msBackgroundBuild    = True,
                                     msLinkingInBB        = True}
-                workspaceTryQuiet_ $ makePackages settings modifiedPacks MoBuild
+                workspaceTryQuiet_ $ makePackages settings modifiedPacks (MoComposed [MoBuild,MoInstall])
     )
     (\(e :: SomeException) -> sysMessage Normal (show e))
 
@@ -571,4 +567,4 @@ makePackage = do
             msLinkingInBB        = False})
     case mbWs of
         Nothing -> sysMessage Normal "No workspace for build."
-        Just ws -> lift $ runWorkspace (makePackages settings [p] MoBuild) ws
+        Just ws -> lift $ runWorkspace (makePackages settings [p] (MoComposed [MoBuild,MoInstall])) ws

@@ -19,20 +19,21 @@ module IDE.Build (
     constrMakeChain, -- :: MakeSettings -> MakeGraph -> [IDEPackage] -> BuildChain MakeOp
     doBuildChain, -- :: BuildChain MakeOp -> IDE Bool
     makePackages,
-    calculateReverseDependencies,
     MakeSettings(..),
-    MakeOp(..)
+    MakeOp(..),
 ) where
 
 import Data.Map (Map)
 import IDE.Core.State
        (readIDE, IDEAction, Workspace(..), ipdPackageId, ipdDepends,
         IDEPackage)
-import qualified Data.Map as Map (lookup, toList, fromList)
+import qualified Data.Map as Map
+       (insert, empty, lookup, toList, fromList)
 import Data.Graph
-       (topSort, vertices, graphFromEdges, Vertex, Graph, transposeG)
+       (edges, topSort, graphFromEdges, Vertex, Graph,
+        transposeG)
 import Distribution.Package (pkgVersion, pkgName, Dependency(..))
-import Data.List (nub, find)
+import Data.List ((\\), nub, find)
 import Distribution.Version (withinRange)
 import Data.Maybe (mapMaybe)
 import IDE.Package
@@ -60,6 +61,7 @@ data MakeOp =
     | MoDocu
     | MoOther String
     | MoComposed [MakeOp]
+    deriving Show
 
 data Chain alpha beta  =
     Chain {
@@ -68,6 +70,7 @@ data Chain alpha beta  =
         mcPos    :: Chain alpha beta,
         mcNeg    :: Maybe (Chain alpha beta)}
     | EmptyChain
+    deriving Show
 
 data MakeSettings = MakeSettings {
     msInstallMode        :: InstallFlag,
@@ -80,15 +83,18 @@ data MakeSettings = MakeSettings {
 
 -- | Construct a dependency graph for a package
 -- pointing to the packages the subject package depends on
-constrParentPath targets =
-    Map.fromList $ map (\ p -> (p,mapMaybe (depToTarget targets)(ipdDepends p))) targets
+constrParentGraph :: [IDEPackage] -> MakeGraph
+constrParentGraph targets = trace ("parentGraph : " ++ showGraph parGraph) parGraph
+  where
+    parGraph = Map.fromList
+        $ map (\ p -> (p,nub $ mapMaybe (depToTarget targets)(ipdDepends p))) targets
 
 -- | Construct a dependency graph for a package
 -- pointing to the packages which depend on the subject package
 constrDepGraph :: [IDEPackage] -> MakeGraph
-constrDepGraph packages = trace ("depGraph " ++ showGraph depGraph) depGraph
+constrDepGraph packages = trace ("depGraph : " ++ showGraph depGraph) depGraph
   where
-    depGraph = reverseGraph (constrParentPath packages)
+    depGraph = reverseGraph (constrParentGraph packages)
 
 showGraph :: MakeGraph -> String
 showGraph mg =
@@ -107,23 +113,26 @@ constrMakeChain _ _ [] _ = EmptyChain
 constrMakeChain ms@MakeSettings{msIsSingleMake = isSingle}
                     Workspace{wsPackages = packages, wsNobuildPack = noBuilds} targets@(headTarget:restTargets) op
     | isSingle  =  chainFor headTarget ms op EmptyChain Nothing
-    | otherwise =  trace ("topSorted " ++ showTopSorted topsorted)
-                        $ constrElem targets topsorted
+    | otherwise =  trace ("topsorted: " ++ showTopSorted topsorted) constrElem targets topsorted
       where
         depGraph        =  constrDepGraph packages
-        topsorted       =  reverse $ topSortGraph depGraph
+        topsorted       =  topSortGraph depGraph
         constrElem      :: [IDEPackage] -> [IDEPackage] -> Chain MakeOp IDEPackage
-        constrElem _ [] = EmptyChain
-        constrElem [] _ = EmptyChain
+        constrElem _ [] = trace ("constrElem: 1") EmptyChain
+        constrElem [] _ = trace ("constrElem: 2")EmptyChain
         constrElem currentTargets (current:rest)
             | elem current currentTargets && not (elem headTarget noBuilds) =
                 let dependends = case Map.lookup current depGraph of
                                 Nothing -> trace ("Build>>constrMakeChain: unknown package"
                                                     ++ show current) []
                                 Just deps -> deps
-                in chainFor current ms op
+                in trace ("constrElem: 3 "  ++ show currentTargets ++ " "
+                                            ++ show current ++ " " ++ show rest ++
+                                            " " ++ show dependends) $ chainFor current ms op
                         (constrElem (nub $ currentTargets ++ dependends)  rest) (Just EmptyChain)
-            | otherwise                = constrElem currentTargets rest
+            | otherwise                = trace ("constrElem: 4 "  ++ show currentTargets ++ " "
+                                            ++ show current ++ " " ++ show rest)
+                                            $ constrElem currentTargets rest
 
 chainFor :: IDEPackage ->  MakeSettings -> MakeOp -> Chain MakeOp IDEPackage
                 -> Maybe (Chain MakeOp IDEPackage)
@@ -160,7 +169,7 @@ makePackages ms targets op = do
     lift $ do
         prefs' <- readIDE prefs
         let plan = constrMakeChain ms ws targets op
-        doBuildChain ms plan
+        trace ("makeChain : " ++ show plan) $ doBuildChain ms plan
 
 
 -- | Calculates for every dependency a target (or not)
@@ -187,14 +196,28 @@ withIndexGraph idxOp myGraph = toMyGraph (idxOp graph) lookup
     (graph,lookup,_) = fromMyGraph myGraph
 
 fromMyGraph :: Ord alpha => MyGraph alpha -> (Graph, Vertex -> ((), alpha , [alpha]), alpha -> Maybe Vertex)
-fromMyGraph =  graphFromEdges . map (\(e,l)-> ((),e,l)) . Map.toList
+fromMyGraph myGraph =
+    graphFromEdges
+        $ map (\(e,l)-> ((),e,l))
+            $ graphList ++ map (\e-> (e,[])) missingEdges
+  where
+    mentionedEdges = nub $ concatMap snd graphList
+    graphList = Map.toList myGraph
+    missingEdges = mentionedEdges \\ map fst graphList
 
 toMyGraph ::  Ord alpha =>  Graph -> (Vertex -> ((), alpha, [alpha])) -> MyGraph alpha
-toMyGraph graph lookup = Map.fromList $ map ((\(_,e,l)-> (e,l)) . lookup) $ vertices graph
+toMyGraph graph lookup = foldr constr Map.empty myEdges
+  where
+    constr (from,to) map = case Map.lookup from map of
+                                Nothing -> Map.insert from [to] map
+                                Just l -> Map.insert from (to : l) map
+    myEdges              = map (\(a,b) -> (lookItUp a, lookItUp b)) $ edges graph
+    lookItUp             =  (\(_,e,_)-> e) . lookup
 
-calculateReverseDependencies ::
-  Workspace -> Map IDEPackage [IDEPackage]
-calculateReverseDependencies Workspace{wsPackages = wsPackages} = constrDepGraph wsPackages
+
+--calculateReverseDependencies ::
+--  Workspace -> Map IDEPackage [IDEPackage]
+--calculateReverseDependencies Workspace{wsPackages = wsPackages} = constrDepGraph wsPackages
 
 
 

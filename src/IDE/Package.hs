@@ -650,7 +650,7 @@ idePackageFromPath filePath = do
             let modules    = Set.fromList $ myLibModules packageD ++ myExeModules packageD
             let mainFiles  = map modulePath (executables packageD)
             let files      = Set.fromList $ extraSrcFiles packageD ++ map modulePath (executables packageD)
-            let ipdSrcDirs = case (nub $ concatMap hsSourceDirs (allBuildInfo' packageD)) of
+            let srcDirs = case (nub $ concatMap hsSourceDirs (allBuildInfo' packageD)) of
                                 [] -> [".","src"]
                                 l -> l
 #if MIN_VERSION_Cabal(1,10,0)
@@ -658,9 +658,23 @@ idePackageFromPath filePath = do
 #else
             let exts       = nub $ concatMap extensions (allBuildInfo' packageD)
 #endif
-            let packp      = IDEPackage (package packageD) filePath (buildDepends packageD) modules
-
-                             mainFiles files ipdSrcDirs exts ["--user"] [] [] [] [] [] [] []
+            let packp      = IDEPackage {
+                ipdPackageId = package packageD,
+                ipdCabalFile = filePath,
+                ipdDepends = buildDepends packageD,
+                ipdModules = modules,
+                ipdMain    = mainFiles,
+                ipdExtraSrcs =  files,
+                ipdSrcDirs = srcDirs,
+                ipdExtensions =  exts,
+                ipdConfigFlags = ["--user"],
+                ipdBuildFlags = [],
+                ipdHaddockFlags = [],
+                ipdExeFlags = [],
+                ipdInstallFlags = [],
+                ipdRegisterFlags = [],
+                ipdUnregisterFlags = [],
+                ipdSdistFlags = []}
             let pfile      = dropExtension filePath
             pack <- (do
                 flagFileExists <- liftIO $ doesFileExist (pfile ++ leksahFlagFileExtension)

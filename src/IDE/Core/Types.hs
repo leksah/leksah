@@ -114,6 +114,8 @@ import System.FilePath (dropFileName, (</>))
 import IDE.Core.CTypes
 import IDE.StrippedPrefs(RetrieveStrategy)
 import System.IO (Handle)
+import Distribution.Text(disp)
+import Text.PrettyPrint (render)
 
 -- ---------------------------------------------------------------------
 -- IDE State
@@ -316,7 +318,10 @@ data IDEPackage     =   IDEPackage {
 ,   ipdUnregisterFlags ::   [String]
 ,   ipdSdistFlags      ::   [String]
 }
-    deriving (Eq,Show)
+    deriving (Eq)
+
+instance Show IDEPackage where
+    show p = show "IDEPackage for " ++ (render . disp) (ipdPackageId p)
 
 instance Ord IDEPackage where
     compare x y     =   compare (ipdPackageId x) (ipdPackageId y)
@@ -333,7 +338,6 @@ data Workspace = Workspace {
 ,   wsPackagesFiles ::   [FilePath]
 ,   wsActivePackFile::   Maybe FilePath
 ,   wsNobuildPack   ::   [IDEPackage]
-,   wsReverseDeps   ::   Map IDEPackage [IDEPackage]
 } deriving Show
 
 -- ---------------------------------------------------------------------
