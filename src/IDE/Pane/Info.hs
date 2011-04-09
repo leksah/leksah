@@ -27,6 +27,8 @@ import Control.Monad
 import Control.Monad.Trans
 import Data.IORef
 import Data.Typeable
+import Data.Char (isAlphaNum)
+import Network.URI (escapeURIString)
 
 import IDE.Core.State
 import IDE.Pane.SourceBuffer
@@ -190,7 +192,7 @@ openDocu = do
         Nothing -> return ()
         Just descr -> do
             prefs' <- readIDE prefs
-            openBrowser $ docuSearchURL prefs' ++ dscName descr
+            openBrowser $ docuSearchURL prefs' ++ (escapeURIString isAlphaNum $ dscName descr)
 
 populatePopupMenu :: IDERef -> IORef (Maybe Descr) -> Menu -> IO ()
 populatePopupMenu ideR currentDescr' menu = do
