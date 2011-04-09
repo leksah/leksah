@@ -105,7 +105,8 @@ import Graphics.UI.Gtk
         fileChooserGetFilename, widgetShow, fileChooserDialogNew,
         notebookGetNthPage, notebookPageNum, widgetHide, dialogRun,
         messageDialogNew, postGUIAsync, scrolledWindowSetShadowType,
-        scrolledWindowSetPolicy, castToWidget, ScrolledWindow, dialogSetDefaultResponse)
+        scrolledWindowSetPolicy, castToWidget, ScrolledWindow, dialogSetDefaultResponse,
+        fileChooserSetCurrentFolder, fileChooserSelectFilename)
 import System.Glib.MainLoop (priorityDefaultIdle, idleAdd)
 #if MIN_VERSION_gtk(0,10,5)
 import Graphics.UI.Gtk (windowWindowPosition, Underline(..))
@@ -660,6 +661,9 @@ fileSaveBuffer query nb ebuf ideBuf i = do
                                 ,ResponseCancel)  --you can use stock buttons
                                 ,("gtk-save"
                                 , ResponseAccept)]
+                    case mbfn of
+                        Just fn -> fileChooserSelectFilename dialog fn >> return ()
+                        Nothing -> return ()
                     widgetShow dialog
                     response <- dialogRun dialog
                     mbFileName <- case response of
@@ -850,6 +854,7 @@ fileOpen :: IDEAction
 fileOpen = do
     window <- getMainWindow
     prefs <- readIDE prefs
+    mbBuf <- maybeActiveBuf
     mbFileName <- liftIO $ do
         dialog <- fileChooserDialogNew
                         (Just $ "Open File")
@@ -859,6 +864,9 @@ fileOpen = do
                     ,ResponseCancel)
                     ,("gtk-open"
                     ,ResponseAccept)]
+        case mbBuf >>= fileName of
+            Just fn -> fileChooserSetCurrentFolder dialog (dropFileName $ fn) >> return ()
+            Nothing -> return ()
         widgetShow dialog
         response <- dialogRun dialog
         case response of
