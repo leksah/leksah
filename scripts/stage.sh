@@ -21,10 +21,10 @@ cabal install || exit
 
 cd ../leksah-server || exit
 cabal clean || exit
-cabal install --flags="libcurl" --prefix="$GTK_PREFIX" --extra-lib-dirs="$GTK_PREFIX/lib" --datasubdir="$LEKSAH_X_X" || exit
+cabal install --flags="curl" --prefix="$GTK_PREFIX" --datadir="$GTK_PREFIX/share" --extra-lib-dirs="$GTK_PREFIX/lib" --datasubdir="$LEKSAH_X_X" || exit
 
 cd ../leksah || exit
 cabal clean || exit
-cabal install --flags="yi -dyre" --prefix="$GTK_PREFIX" --extra-lib-dirs="$GTK_PREFIX/lib" --datasubdir="$LEKSAH_X_X" || exit
+cabal install --flags="yi -dyre" --prefix="$GTK_PREFIX" --datadir="$GTK_PREFIX/share" --extra-lib-dirs="$GTK_PREFIX/lib" --datasubdir="$LEKSAH_X_X" || exit
 
 
