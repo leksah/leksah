@@ -146,7 +146,7 @@ workspaceNewHere filePath =
                             then filePath
                             else addExtension filePath leksahWorkspaceFileExtension
     in do
-        dir <- liftIO $ myCanonicalizePath realPath
+        dir <- liftIO $ myCanonicalizePath $ dropFileName realPath
         let cPath = dir </> takeFileName realPath
             newWorkspace = emptyWorkspace {
                             wsName = takeBaseName cPath,
