@@ -4,6 +4,7 @@
 
 sed -e 's|\<ctrl\>|\<meta\>|' -e 's|\<alt\>|\<control\>|' <data/keymap.lkshk >osx/keymap.lkshk
 cat osx/osxkeymap.lkshk >>osx/keymap.lkshk
+touch osx/prefs.lkshp
 
 cd osx || exit
 
