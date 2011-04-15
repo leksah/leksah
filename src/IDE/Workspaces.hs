@@ -515,7 +515,7 @@ workspaceClean = do
             msSaveAllBeforeBuild = False,
             msBackgroundBuild    = False,
             msLinkingInBB        = False}
-    makePackages settings (wsPackages ws) MoClean
+    makePackages settings (wsPackages ws) MoClean MoClean
 
 workspaceMake :: WorkspaceAction
 workspaceMake = do
@@ -529,6 +529,7 @@ workspaceMake = do
             msBackgroundBuild    = False,
             msLinkingInBB        = False})
     makePackages settings (wsPackages ws) (MoComposed [MoConfigure,MoBuild,MoInstall])
+        (MoComposed [MoConfigure,MoBuild,MoInstall])
 
 backgroundMake :: IDEAction
 backgroundMake = catchIDE (do
@@ -550,6 +551,7 @@ backgroundMake = catchIDE (do
                                     msBackgroundBuild    = True,
                                     msLinkingInBB        = True}
                 workspaceTryQuiet_ $ makePackages settings modifiedPacks (MoComposed [MoBuild,MoInstall])
+                                        (MoComposed [MoConfigure,MoBuild,MoInstall])
     )
     (\(e :: SomeException) -> sysMessage Normal (show e))
 
@@ -567,4 +569,5 @@ makePackage = do
             msLinkingInBB        = False})
     case mbWs of
         Nothing -> sysMessage Normal "No workspace for build."
-        Just ws -> lift $ runWorkspace (makePackages settings [p] (MoComposed [MoBuild,MoInstall])) ws
+        Just ws -> lift $ runWorkspace (makePackages settings [p]
+                        (MoComposed [MoBuild,MoInstall])(MoComposed [MoConfigure,MoBuild,MoInstall])) ws

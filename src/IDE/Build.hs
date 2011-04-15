@@ -33,7 +33,7 @@ import Data.Graph
        (edges, topSort, graphFromEdges, Vertex, Graph,
         transposeG)
 import Distribution.Package (pkgVersion, pkgName, Dependency(..))
-import Data.List ((\\), nub, find)
+import Data.List (nub, (\\), find)
 import Distribution.Version (withinRange)
 import Data.Maybe (mapMaybe)
 import IDE.Package
@@ -108,31 +108,33 @@ showTopSorted = show . map (disp .ipdPackageId)
 -- | Construct a make chain for a package,
 -- which is a plan of the build to perform.
 -- Consumes settings, the workspace and a list of targets.
-constrMakeChain :: MakeSettings -> Workspace ->  [IDEPackage] -> MakeOp -> Chain MakeOp IDEPackage
-constrMakeChain _ _ [] _ = EmptyChain
+constrMakeChain :: MakeSettings -> Workspace ->  [IDEPackage] -> MakeOp -> MakeOp -> Chain MakeOp IDEPackage
+constrMakeChain _ _ [] _ _ = EmptyChain
 constrMakeChain ms@MakeSettings{msIsSingleMake = isSingle}
-                    Workspace{wsPackages = packages, wsNobuildPack = noBuilds} targets@(headTarget:restTargets) op
-    | isSingle  =  chainFor headTarget ms op EmptyChain Nothing
-    | otherwise =  trace ("topsorted: " ++ showTopSorted topsorted) constrElem targets topsorted
+                    Workspace{wsPackages = packages, wsNobuildPack = noBuilds}
+                    targets@(headTarget:restTargets) op1 op2
+    | isSingle  =  chainFor headTarget ms op1 EmptyChain Nothing
+    | otherwise =  trace ("topsorted: " ++ showTopSorted topsorted)
+                    constrElem targets topsorted depGraph ms noBuilds op1 op2
       where
         depGraph        =  constrDepGraph packages
-        topsorted       =  topSortGraph depGraph
-        constrElem      :: [IDEPackage] -> [IDEPackage] -> Chain MakeOp IDEPackage
-        constrElem _ [] = trace ("constrElem: 1") EmptyChain
-        constrElem [] _ = trace ("constrElem: 2")EmptyChain
-        constrElem currentTargets (current:rest)
-            | elem current currentTargets && not (elem headTarget noBuilds) =
-                let dependends = case Map.lookup current depGraph of
-                                Nothing -> trace ("Build>>constrMakeChain: unknown package"
-                                                    ++ show current) []
-                                Just deps -> deps
-                in trace ("constrElem: 3 "  ++ show currentTargets ++ " "
-                                            ++ show current ++ " " ++ show rest ++
-                                            " " ++ show dependends) $ chainFor current ms op
-                        (constrElem (nub $ currentTargets ++ dependends)  rest) (Just EmptyChain)
-            | otherwise                = trace ("constrElem: 4 "  ++ show currentTargets ++ " "
-                                            ++ show current ++ " " ++ show rest)
-                                            $ constrElem currentTargets rest
+        topsorted       =  reverse $ topSortGraph $ constrParentGraph packages
+
+constrElem  :: [IDEPackage] -> [IDEPackage] -> MakeGraph -> MakeSettings -> [IDEPackage]
+    -> MakeOp -> MakeOp -> Chain MakeOp IDEPackage
+constrElem _ [] _ _  _ _ _ = trace ("constrElem: 1") EmptyChain
+constrElem [] _ _ _  _ _ _ = trace ("constrElem: 2") EmptyChain
+constrElem currentTargets (current:rest)  depGraph ms noBuilds op1 op2
+    | elem current currentTargets && not (elem current noBuilds) =
+        let dependends = case Map.lookup current depGraph of
+                        Nothing -> trace ("Build>>constrMakeChain: unknown package"
+                                            ++ show current) []
+                        Just deps -> deps
+        in trace ("constrElem1 " ++ show op1) $
+            chainFor current ms op1
+                (constrElem (nub $ currentTargets ++ dependends)  rest depGraph ms noBuilds op2 op2)
+                (Just EmptyChain)
+    | otherwise  = trace ("constrElem2 " ++ show op2) $ constrElem currentTargets rest depGraph ms noBuilds op1 op2
 
 chainFor :: IDEPackage ->  MakeSettings -> MakeOp -> Chain MakeOp IDEPackage
                 -> Maybe (Chain MakeOp IDEPackage)
@@ -163,12 +165,12 @@ doBuildChain ms chain  = doBuildChain ms (mcPos chain)
 constrCont ms pos (Just neg) False = doBuildChain ms neg
 constrCont ms pos _ _ = doBuildChain ms pos
 
-makePackages ::  MakeSettings -> [IDEPackage] -> MakeOp -> WorkspaceAction
-makePackages ms targets op = do
+makePackages ::  MakeSettings -> [IDEPackage] -> MakeOp -> MakeOp -> WorkspaceAction
+makePackages ms targets op1 op2  = trace ("makePackages : " ++ show op1 ++ " " ++ show op2) $ do
     ws <- ask
     lift $ do
         prefs' <- readIDE prefs
-        let plan = constrMakeChain ms ws targets op
+        let plan = constrMakeChain ms ws targets op1 op2
         trace ("makeChain : " ++ show plan) $ doBuildChain ms plan
 
 
