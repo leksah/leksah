@@ -1,5 +1,5 @@
 name: leksah
-version: 0.10.0.1
+version: 0.10.0.2
 cabal-version: >=1.8
 build-type: Simple
 license: GPL
@@ -167,7 +167,7 @@ Executable leksah
                        ghc >=6.10.1 && <7.1, strict >= 0.3.2 && <0.4
     else
         hs-source-dirs: main
-        build-depends: leksah ==0.10.0.1, base >=4.0.0.0 && <= 5
+        build-depends: leksah ==0.10.0.2, base >=4.0.0.0 && <= 5
 
     main-is: Main.hs
     buildable: True
