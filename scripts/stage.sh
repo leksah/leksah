@@ -11,9 +11,10 @@ echo Staging Leksah in $GTK_PREFIX
 # Only used by OS X
 export DYLD_LIBRARY_PATH="/System/Library/Frameworks/ApplicationServices.framework/Versions/A/Frameworks/ImageIO.framework/Versions/A/Resources:$GTK_PREFIX/lib:$DYLD_LIBRARY_PATH"
 
-cd ../yi || exit
+cd ../yi/yi || exit
 cabal clean || exit
-cabal install --flags="pango -vte" --prefix=$GTK_PREFIX --extra-lib-dirs="$GTK_PREFIX/lib" || exit
+cabal install --flags="pango -vte" --constraint='parsec<2.2' --prefix=$GTK_PREFIX --extra-lib-dirs="$GTK_PREFIX/lib" || exit
+cd ..
 
 cd ../ltk || exit
 cabal clean || exit
