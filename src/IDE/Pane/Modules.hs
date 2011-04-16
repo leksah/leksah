@@ -46,7 +46,7 @@ import Distribution.ModuleName
 import Distribution.Text (simpleParse,display)
 import Data.Typeable (Typeable(..))
 import Control.Exception (SomeException(..),catch)
-import IDE.Package (packageConfig,addModuleToPackageDescr,delModuleFromPackageDescr,getModuleTemplate,getPackageDescriptionAndPath)
+import IDE.Package (packageConfig,addModuleToPackageDescr,delModuleFromPackageDescr,getEmptyModuleTemplate,getPackageDescriptionAndPath)
 import Distribution.PackageDescription (allBuildInfo,hsSourceDirs)
 import System.FilePath (takeBaseName, (</>),dropFileName)
 import System.Directory (doesFileExist,createDirectoryIfMissing, removeFile)
@@ -1096,7 +1096,7 @@ addModule categories = do
                                     addModuleToPackageDescr moduleName isExposed
                                     packageConfig
                                 else do
-                                    template <- liftIO $ getModuleTemplate pd modPath
+                                    template <- liftIO $ getEmptyModuleTemplate pd modPath
                                     liftIO $ UTF8.writeFile target template
                                     addModuleToPackageDescr moduleName isExposed
                                     packageConfig

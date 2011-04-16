@@ -37,6 +37,7 @@ module IDE.Package (
 ,   packageOpenDoc
 
 ,   getPackageDescriptionAndPath
+,   getEmptyModuleTemplate
 ,   getModuleTemplate
 ,   addModuleToPackageDescr
 ,   delModuleFromPackageDescr
@@ -427,17 +428,24 @@ getPackageDescriptionAndPath = do
                         reflectIDE (ideMessage Normal ("Can't load package " ++(show e))) ideR
                         return Nothing))
 
-getModuleTemplate :: PackageDescription -> String -> IO String
-getModuleTemplate pd modName = catch (do
+getEmptyModuleTemplate :: PackageDescription -> String -> IO String
+getEmptyModuleTemplate pd modName = getModuleTemplate pd modName "" ""
+
+getModuleTemplate :: PackageDescription -> String -> String -> String -> IO String
+getModuleTemplate pd modName exports body = catch (do
     dataDir  <- getDataDir
     filePath <- getConfigFilePathForLoad standardModuleTemplateFilename Nothing dataDir
     template <- UTF8.readFile filePath
     return (foldl' (\ a (from, to) -> replace from to a) template
-        [("@License@", (show . license) pd), ("@Maintainer@", maintainer pd),
-            ("@Stability@",stability pd), ("@Portability@",""),
-                ("@Copyright@", copyright pd),("@ModuleName@", modName)]))
+        [   ("@License@"      , (show . license) pd)
+        ,   ("@Maintainer@"   , maintainer pd)
+        ,   ("@Stability@"    , stability pd)
+        ,   ("@Portability@"  , "")
+        ,   ("@Copyright@"    , copyright pd)
+        ,   ("@ModuleName@"   , modName)
+        ,   ("@ModuleExports@", exports)
+        ,   ("@ModuleBody@"   , body)]))
                     (\ (e :: SomeException) -> sysMessage Normal ("Couldn't read template file: " ++ show e) >> return "")
-
 
 addModuleToPackageDescr :: ModuleName -> Bool -> PackageAction
 addModuleToPackageDescr moduleName isExposed = do
