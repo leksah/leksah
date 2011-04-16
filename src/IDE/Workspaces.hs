@@ -278,11 +278,12 @@ workspacePackageNew :: WorkspaceAction
 workspacePackageNew = do
     ws <- ask
     let path = dropFileName (wsFile ws)
-    lift $ packageNew' (Just path) (\fp -> do
+    lift $ packageNew' (Just path) (\isNew fp -> do
         window     <-  getMainWindow
         workspaceTry_ $ workspaceAddPackage' fp >> return ()
-        mbPack <- idePackageFromPath fp
-        constructAndOpenMainModule mbPack
+        when isNew $ do
+            mbPack <- idePackageFromPath fp
+            constructAndOpenMainModule mbPack
         triggerEventIDE UpdateWorkspaceInfo >> return ())
 
 constructAndOpenMainModule :: Maybe IDEPackage -> IDEAction
@@ -307,7 +308,6 @@ constructAndOpenMainModule (Just idePackage) =
                 Nothing     -> ideMessage Normal "No package description"
         _ -> return ()
 
-
 workspaceAddPackage :: WorkspaceAction
 workspaceAddPackage = do
     ws <- ask
@@ -316,7 +316,9 @@ workspaceAddPackage = do
     mbFilePath <- liftIO $ choosePackageFile window (Just path)
     case mbFilePath of
         Nothing -> return ()
-        Just fp -> workspaceAddPackage' fp >> return ()
+        Just fp -> do
+            workspaceAddPackage' fp >> return ()
+            lift $ triggerEventIDE UpdateWorkspaceInfo >> return ()
 
 workspaceAddPackage' :: FilePath -> WorkspaceM (Maybe IDEPackage)
 workspaceAddPackage' fp = do

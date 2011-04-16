@@ -139,29 +139,29 @@ hasConfigs gpd =
     in libConds || exeConds
 
 
-packageNew' :: Maybe FilePath -> (FilePath -> IDEAction) -> IDEAction
+packageNew' :: Maybe FilePath -> (Bool -> FilePath -> IDEAction) -> IDEAction
 packageNew' mbDir activateAction = do
     windows  <- getWindows
     mbDirName <- liftIO $ choosePackageDir (head windows) mbDir
     case mbDirName of
         Nothing -> return ()
         Just dirName -> do
-            cfn <-  liftIO $ cabalFileName dirName
-            continue <- do
-                if isJust cfn
-                    then do
-                        window <- getMainWindow
-                        liftIO $ do
-                            md <- messageDialogNew (Just window) [] MessageQuestion ButtonsCancel
-                                        $ "There is already a .cabal file in this directory."
-                            dialogAddButton md "_Continue Anyway" (ResponseUser 1)
-                            dialogSetDefaultResponse md (ResponseUser 1)
-                            set md [ windowWindowPosition := WinPosCenterOnParent ]
-                            rid <- dialogRun md
-                            widgetDestroy md
-                            return $ rid == ResponseUser 1
-                    else return True
-            when continue $ do
+            mbCabalFile <-  liftIO $ cabalFileName dirName
+            case mbCabalFile of
+                Just cfn -> do
+                    window <- getMainWindow
+                    add <- liftIO $ do
+                        md <- messageDialogNew (Just window) [] MessageQuestion ButtonsCancel
+                            $ "There is already file " ++ takeFileName cfn ++ " in this directory. "
+                            ++ "Would you like to add this package to the workspace?"
+                        dialogAddButton md "_Add Package" (ResponseUser 1)
+                        dialogSetDefaultResponse md (ResponseUser 1)
+                        set md [ windowWindowPosition := WinPosCenterOnParent ]
+                        rid <- dialogRun md
+                        widgetDestroy md
+                        return $ rid == ResponseUser 1
+                    when add $ activateAction False cfn
+                Nothing -> do
                     modules <- liftIO $ do
                         b1 <- doesFileExist (dirName </> "Setup.hs")
                         b2 <- doesFileExist (dirName </> "Setup.lhs")
@@ -181,7 +181,7 @@ packageNew' mbDir activateAction = do
                             exeName    = (takeBaseName dirName),
                             modulePath = "Main.hs",
                             buildInfo  = emptyBuildInfo {hsSourceDirs = ["src"]}}]
-                        } dirName modules activateAction
+                        } dirName modules (activateAction True)
                     return ()
 
 standardSetup = "#!/usr/bin/runhaskell \n"
