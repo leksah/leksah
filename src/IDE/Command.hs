@@ -109,18 +109,18 @@ import IDE.Pane.Grep (getGrep)
 mkActions :: [ActionDescr IDERef]
 mkActions =
     [AD "File" "_File" Nothing Nothing (return ()) [] False
-    ,AD "FileNew" "_New Module" Nothing (Just "gtk-new")
+    ,AD "FileNew" "_New Module..." Nothing (Just "gtk-new")
         (packageTry_ $ addModule []) [] False
     ,AD "FileNewTextFile" "_New Text File" Nothing Nothing
         fileNew [] False
-    ,AD "FileOpen" "_Open" Nothing (Just "gtk-open")
+    ,AD "FileOpen" "_Open..." Nothing (Just "gtk-open")
         fileOpen [] False
-    ,AD "RecentFiles" "_Recent Files" Nothing Nothing (return ()) [] False
+    ,AD "RecentFiles" "Open _Recent" Nothing Nothing (return ()) [] False
     ,AD "FileRevert" "_Revert" Nothing Nothing
         fileRevert [] False
     ,AD "FileSave" "_Save" Nothing (Just "gtk-save")
         (do fileSave False; return ()) [] False
-    ,AD "FileSaveAs" "Save _As" Nothing (Just "gtk-save-as")
+    ,AD "FileSaveAs" "Save _As..." Nothing (Just "gtk-save-as")
         (do fileSave True; return ()) [] False
     ,AD "FileSaveAll" "Save A_ll" Nothing Nothing
         (do fileSaveAll (\ b -> return (bufferName b /= "_Eval.hs")); return ()) [] False
@@ -179,17 +179,17 @@ mkActions =
         (align ':') [] False
 
     ,AD "Workspace" "_Workspace" Nothing Nothing (return ()) [] False
-    ,AD "NewWorkspace" "_New Workspace" Nothing Nothing
+    ,AD "NewWorkspace" "_New..." Nothing Nothing
         workspaceNew [] False
-    ,AD "OpenWorkspace" "_Open Workspace" Nothing Nothing
+    ,AD "OpenWorkspace" "_Open..." Nothing Nothing
         workspaceOpen [] False
-    ,AD "RecentWorkspaces" "_Recent Workspaces" Nothing Nothing (return ()) [] False
-    ,AD "CloseWorkspace" "_Close Workspace" Nothing Nothing
+    ,AD "RecentWorkspaces" "Open _Recent" Nothing Nothing (return ()) [] False
+    ,AD "CloseWorkspace" "_Close" Nothing Nothing
         workspaceClose [] False
 
-    ,AD "CleanWorkspace" "Cl_ean Workspace" (Just "Cleans all packages") (Just "ide_clean")
+    ,AD "CleanWorkspace" "Cl_ean" (Just "Cleans all packages") (Just "ide_clean")
         (workspaceTry_ workspaceClean) [] False
-    ,AD "MakeWorkspace" "_Make Workspace" (Just "Makes all of this workspace") (Just "ide_configure")
+    ,AD "MakeWorkspace" "_Make" (Just "Makes all of this workspace") (Just "ide_configure")
         (workspaceTry_ workspaceMake) [] False
     ,AD "NextError" "_Next Error" (Just "Go to the next error") (Just "ide_error_next")
         nextError [] False
@@ -197,36 +197,38 @@ mkActions =
         previousError [] False
 
     ,AD "Package" "_Package" Nothing Nothing (return ()) [] False
-    ,AD "NewPackage" "_New Package" Nothing Nothing
+    ,AD "NewPackage" "_New..." Nothing Nothing
         (workspaceTry_ workspacePackageNew) [] False
+    ,AD "AddPackage" "_Add..." Nothing Nothing
+        (workspaceTry_ workspaceAddPackage) [] False
 --    ,AD "RecentPackages" "_Recent Packages" Nothing Nothing (return ()) [] False
-    ,AD "EditPackage" "_Edit Package" Nothing Nothing
+    ,AD "EditPackage" "_Edit" Nothing Nothing
         (packageTry_ packageEdit) [] False
 --    ,AD "RemovePackage" "_Close Package" Nothing Nothing
 --        removePackage [] False
 
     ,AD "PackageFlags" "Edit Flags" (Just "Edit the package flags") Nothing
         (getFlags Nothing >>= \ p -> displayPane p False) [] False
-    ,AD "CleanPackage" "Cl_ean Package" (Just "Cleans the package") (Just "ide_clean")
+    ,AD "CleanPackage" "Cl_ean" (Just "Cleans the package") (Just "ide_clean")
         (packageTry_ packageClean) [] False
-    ,AD "ConfigPackage" "_Configure Package" (Just "Configures the package") (Just "ide_configure")
+    ,AD "ConfigPackage" "_Configure" (Just "Configures the package") (Just "ide_configure")
         (packageTry_ packageConfig) [] False
-    ,AD "BuildPackage" "_Build Package" (Just "Builds the package") (Just "ide_make")
+    ,AD "BuildPackage" "_Build" (Just "Builds the package") (Just "ide_make")
         (packageTry_ makePackage) [] False
     ,AD "DocPackage" "_Build Documentation" (Just "Builds the documentation") Nothing
         (packageTry_ packageDoc) [] False
-    ,AD "CopyPackage" "_Copy Package" (Just "Copies the package") Nothing
+    ,AD "CopyPackage" "_Copy" (Just "Copies the package") Nothing
         (packageTry_ packageCopy) [] False
     ,AD "RunPackage" "_Run" (Just "Runs the package") (Just "ide_run")
         (packageTry_ packageRun) [] False
     ,AD "ResolveErrors" "Resol_ve Errors" (Just "Resolve 'Hidden package' and 'Not in scope' errors by adding the necessary dependancies or imports") Nothing
         resolveErrors [] False
 
-    ,AD "InstallPackage" "_Install Package" Nothing Nothing
+    ,AD "InstallPackage" "_Install" Nothing Nothing
         (packageTry_ packageInstall) [] False
-    ,AD "RegisterPackage" "_Register Package" Nothing Nothing
+    ,AD "RegisterPackage" "_Register" Nothing Nothing
         (packageTry_ packageRegister) [] False
-    ,AD "TestPackage" "Test Package" Nothing Nothing
+    ,AD "TestPackage" "Test" Nothing Nothing
         (packageTry_ packageTest) [] False
     ,AD "SdistPackage" "Source Dist" Nothing Nothing
         (packageTry_ packageSdist) [] False

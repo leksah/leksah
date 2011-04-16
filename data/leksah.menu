@@ -1,12 +1,12 @@
    <ui>
     <menubar>
       <menu name="_File" action="File">
-       <menuitem name="_New Module" action="FileNew" />
+       <menuitem name="_New Module..." action="FileNew" />
        <menuitem name="New _Text File" action="FileNewTextFile" />
-       <menuitem name="_Open" action="FileOpen" />
-       <menuitem name="_Recent Files" action="RecentFiles"/>
+       <menuitem name="_Open..." action="FileOpen" />
+       <menuitem name="Open _Recent" action="RecentFiles"/>
        <menuitem name="_Save" action="FileSave" />
-       <menuitem name="Save _As" action="FileSaveAs" />
+       <menuitem name="Save _As..." action="FileSaveAs" />
        <menuitem name="Save _All" action="FileSaveAll" />
        <menuitem name="_Revert" action="FileRevert" />
        <menuitem name="_Close" action="FileClose" />
@@ -43,33 +43,34 @@
        <menuitem name="Align ::" action="EditAlignTypeSig" />
      </menu>
     <menu name="_Workspace" action="Workspace">
-       <menuitem name="_New Workspace" action="NewWorkspace" />
-       <menuitem name="_Open Workspace" action="OpenWorkspace" />
-       <menuitem name="_Recent Workspaces" action="RecentWorkspaces"/>
-       <menuitem name="_Close Workspace" action="CloseWorkspace" />
+       <menuitem name="_New..." action="NewWorkspace" />
+       <menuitem name="_Open..." action="OpenWorkspace" />
+       <menuitem name="Open _Recent" action="RecentWorkspaces"/>
+       <menuitem name="_Close" action="CloseWorkspace" />
        <separator/>
-       <menuitem name="_Clean Workspace" action="CleanWorkspace" />
-       <menuitem name="_Make Workspace" action="MakeWorkspace" />
+       <menuitem name="_Clean" action="CleanWorkspace" />
+       <menuitem name="_Make" action="MakeWorkspace" />
        <separator/>
        <menuitem name="_Next Error" action="NextError" />
        <menuitem name="_Previous Error" action="PreviousError" />
        <menuitem name="Resol_ve Errors" action="ResolveErrors" />
      </menu>
     <menu name="_Package" action="Package">
-       <menuitem name="_New Package" action="NewPackage" />
-       <menuitem name="_Edit Package" action="EditPackage" />
+       <menuitem name="_New..." action="NewPackage" />
+       <menuitem name="_Add..." action="AddPackage" />
+       <menuitem name="_Edit" action="EditPackage" />
        <menuitem name="Edit _Flags" action="PackageFlags" />
        <separator/>
-       <menuitem name="Clea_n Package" action="CleanPackage" />
-       <menuitem name="_Configure Package" action="ConfigPackage" />
-       <menuitem name="_Build Package" action="BuildPackage" />
+       <menuitem name="Clea_n" action="CleanPackage" />
+       <menuitem name="_Configure" action="ConfigPackage" />
+       <menuitem name="_Build" action="BuildPackage" />
        <menuitem name="_Run" action="RunPackage" />
        <separator/>
-       <menuitem name="C_opy Package" action="CopyPackage" />
-       <menuitem name="_Install Package" action="InstallPackage" />
-       <menuitem name="Re_gister Package" action="RegisterPackage" />
-       <menuitem name="Test Package" action="TestPackage" />
-       <menuitem name="SDist Package" action="SdistPackage" />
+       <menuitem name="C_opy" action="CopyPackage" />
+       <menuitem name="_Install" action="InstallPackage" />
+       <menuitem name="Re_gister" action="RegisterPackage" />
+       <menuitem name="Test" action="TestPackage" />
+       <menuitem name="SDist" action="SdistPackage" />
        <menuitem name="_Build Documentation" action="DocPackage" />
        <separator/>
        <menuitem name="Open Documentation" action="OpenDocPackage" />

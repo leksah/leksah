@@ -191,8 +191,8 @@ setDebugToggled b = do
     liftIO $ toggleActionSetActive ui b
 
 getRecentFiles , getRecentWorkspaces :: IDEM MenuItem
-getRecentFiles    = getMenuItem "ui/menubar/_File/_Recent Files"
-getRecentWorkspaces = getMenuItem "ui/menubar/_Workspace/_Recent Workspaces"
+getRecentFiles    = getMenuItem "ui/menubar/_File/Open _Recent"
+getRecentWorkspaces = getMenuItem "ui/menubar/_Workspace/Open _Recent"
 
 -- (toolbar)
 
