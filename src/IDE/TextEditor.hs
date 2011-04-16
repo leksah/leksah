@@ -1089,7 +1089,8 @@ onCompletion (GtkEditorView sv) start cancel = do
         id2 <- sv `Gtk.onMoveCursor` \_ _ _ -> reflectIDE cancel ideR
 #endif
         id3 <- sv `Gtk.onButtonPress` \_ -> reflectIDE cancel ideR >> return False
-        return [ConnectC id1]
+        id4 <- sv `Gtk.onFocusOut` \_ -> reflectIDE cancel ideR >> return False
+        return [ConnectC id1, ConnectC id2, ConnectC id3, ConnectC id4]
 #ifdef LEKSAH_WITH_YI
 onCompletion (YiEditorView v) start cancel = return [] -- TODO
 #endif
