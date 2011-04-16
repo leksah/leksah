@@ -67,6 +67,7 @@ module IDE.TextEditor (
 
 -- View
 ,   bufferToWindowCoords
+,   drawTabs
 ,   getBuffer
 ,   getDrawWindow
 ,   getIterLocation
@@ -568,6 +569,12 @@ bufferToWindowCoords :: EditorView -> (Int, Int) -> IDEM (Int, Int)
 bufferToWindowCoords (GtkEditorView sv) point = liftIO $ Gtk.textViewBufferToWindowCoords sv Gtk.TextWindowWidget point
 #ifdef LEKSAH_WITH_YI
 bufferToWindowCoords (YiEditorView v) point = return point -- TODO
+#endif
+
+drawTabs :: EditorView -> IDEM ()
+drawTabs (GtkEditorView sv) = liftIO $ Gtk.sourceViewSetDrawSpaces sv Gtk.SourceDrawSpacesTab
+#ifdef LEKSAH_WITH_YI
+drawTabs (YiEditorView _) = return () -- TODO
 #endif
 
 getBuffer :: EditorView -> IDEM EditorBuffer
