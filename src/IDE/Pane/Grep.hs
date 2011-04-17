@@ -36,15 +36,18 @@ import IDE.LogRef (logOutput)
 import IDE.Pane.SourceBuffer
     (goToSourceDefinition)
 import Control.Applicative ((<$>))
-import System.FilePath (dropFileName)
+import System.FilePath ((</>), dropFileName)
 import System.Exit (ExitCode(..))
 
 data GrepRecord = GrepRecord {
             file        :: FilePath
         ,   line        :: Int
         ,   context     :: String
-        ,   isDir       :: Bool
+        ,   parDir      :: Maybe FilePath
         }
+
+isDir GrepRecord{parDir = Nothing}  = True
+isDir otherwies                     = False
 
 -- | A grep pane description
 --
@@ -135,8 +138,8 @@ instance RecoverablePane IDEGrep GrepState IDEM where
             case sel of
                 Just record -> reflectIDE (do
                     case record of
-                        GrepRecord {file=f, line=l, isDir=False} ->
-                            goToSourceDefinition f $ Just $ Location l 0 l 0
+                        GrepRecord {file=f, line=l, parDir=Just pp} ->
+                            goToSourceDefinition (pp </> f) $ Just $ Location l 0 l 0
                         _ -> return ()) ideR
                 Nothing -> return ()
 
@@ -153,7 +156,7 @@ grepLineParser = try (do
         line <- int
         char ':'
         context <- many anyChar
-        let isDir = False
+        let parDir = Nothing
         return $ GrepRecord {..}
     <?> "grepLineParser")
 
@@ -177,14 +180,15 @@ getSelectionGrepRecord treeView grepStore = do
         _   ->  return Nothing
 
 grepWorkspace :: String -> Bool -> WorkspaceAction
+grepWorkspace "" caseSensitive = return ()
 grepWorkspace regexString caseSensitive = do
     ws <- ask
     maybeActive <- lift $ readIDE activePack
     let packages = case maybeActive of
-            Just active -> active : (filter (\p -> ipdCabalFile p /= ipdCabalFile active) $ wsPackages ws)
+            Just active -> active : (filter (/= active) $ wsPackages ws)
             Nothing     -> wsPackages ws
     lift $ grepDirectories regexString caseSensitive $
-        map (\p -> (dropFileName (ipdCabalFile p), ipdSrcDirs p)) $ packages
+            map (\p -> (dropFileName (ipdCabalFile p), ipdSrcDirs p)) $ packages
 
 grepDirectories :: String -> Bool -> [(FilePath, [FilePath])] -> IDEAction
 grepDirectories regexString caseSensitive dirs = do
@@ -214,7 +218,7 @@ grepDirectories regexString caseSensitive dirs = do
             when nooneWaiting $ do
                 nDir <- postGUISync $ treeModelIterNChildren store Nothing
                 postGUIAsync $ treeStoreInsert store [] nDir $
-                    GrepRecord "Search Complete" totalFound "" True
+                    GrepRecord "Search Complete" totalFound "" Nothing
 
             takeMVar (activeGrep grep) >> return ()
     return ()
@@ -226,7 +230,7 @@ setGrepResults dir output = do
         view  = treeView grep
     ideRef <- ask
     liftIO $ do
-        let (displayed, dropped) = splitAt 10000 output
+        let (displayed, dropped) = splitAt 5000 output
         forkIO $ do
             let errors = filter isError output
                     ++ if null dropped
@@ -234,11 +238,11 @@ setGrepResults dir output = do
                         else [ToolError $ "Dropped " ++ show (length dropped) ++ " search results"]
             unless (null errors) $ postGUISync $ reflectIDE (logOutput errors) ideRef
             return ()
-        case catMaybes (map process displayed) of
+        case catMaybes (map (process dir) displayed) of
             []      -> return 0
             results -> do
                 nDir <- postGUISync $ treeModelIterNChildren store Nothing
-                postGUIAsync $ treeStoreInsert store [] nDir $ GrepRecord dir 0 "" True
+                postGUIAsync $ treeStoreInsert store [] nDir $ GrepRecord dir 0 "" Nothing
                 forM_ (zip results [0..]) $ \(record, n) -> do
                     nooneWaiting <- isEmptyMVar (waitingGrep grep)
                     when nooneWaiting $ postGUIAsync $ do
@@ -248,15 +252,15 @@ setGrepResults dir output = do
                             treeViewExpandAll view
                 return $ length results
     where
-        process (ToolOutput line) =
+        process pp (ToolOutput line) =
             case parse grepLineParser "" line of
-                Right record -> Just record
+                Right record -> Just record{parDir = Just pp}
                 _ -> Nothing
-        process _ = Nothing
+        process _ _ = Nothing
 
         isError (ToolExit ExitSuccess) = False
         isError (ToolExit (ExitFailure 1)) = False
-        isError o = isNothing (process o)
+        isError o = isNothing (process "" o)
 
 
 
