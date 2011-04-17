@@ -306,7 +306,7 @@ data IDEPackage     =   IDEPackage {
 ,   ipdModules         ::   Set ModuleName
 ,   ipdMain            ::   [FilePath]
 ,   ipdExtraSrcs       ::   Set FilePath
-,   ipdSrcDirs         ::   [FilePath]	
+,   ipdSrcDirs         ::   [FilePath]
 ,   ipdExtensions      ::   [Extension]
 ,   ipdConfigFlags     ::   [String]
 ,   ipdBuildFlags      ::   [String]

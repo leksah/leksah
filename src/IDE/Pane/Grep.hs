@@ -16,7 +16,7 @@
 
 module IDE.Pane.Grep (
     IDEGrep(..)
-,   setGrepResults
+,   grepWorkspace
 ,   GrepState(..)
 ,   getGrep
 ) where
@@ -29,17 +29,22 @@ import Data.Maybe
 import Control.Monad.Reader
 import Data.Typeable
 import IDE.Core.State
-import IDE.Utils.Tool (ToolOutput(..))
-import Control.Concurrent (forkIO)
+import IDE.Utils.Tool (runTool, ToolOutput(..))
+import Control.Concurrent
+       (newEmptyMVar, isEmptyMVar, takeMVar, putMVar, MVar, forkIO)
 import IDE.LogRef (logOutput)
 import IDE.Pane.SourceBuffer
     (goToSourceDefinition)
+import Control.Applicative ((<$>))
+import System.FilePath (dropFileName)
+import System.Exit (ExitCode(..))
 
 data GrepRecord = GrepRecord {
-    file        :: FilePath
-,   line        :: Int
-,   context     :: String
-}
+            file        :: FilePath
+        ,   line        :: Int
+        ,   context     :: String
+        ,   isDir       :: Bool
+        }
 
 -- | A grep pane description
 --
@@ -47,7 +52,9 @@ data GrepRecord = GrepRecord {
 data IDEGrep        =   IDEGrep {
     scrolledView    ::   ScrolledWindow
 ,   treeView        ::   TreeView
-,   grepStore       ::   ListStore GrepRecord
+,   grepStore       ::   TreeStore GrepRecord
+,   waitingGrep     ::   MVar Bool
+,   activeGrep      ::   MVar Bool
 } deriving Typeable
 
 data GrepState      =   GrepState
@@ -67,9 +74,9 @@ instance RecoverablePane IDEGrep GrepState IDEM where
         nb      <-  getNotebook pp
         buildPane pp nb builder
     builder pp nb windows = reifyIDE $ \ ideR -> do
-        listStore   <-  listStoreNew []
+        grepStore   <-  treeStoreNew []
         treeView    <-  treeViewNew
-        treeViewSetModel treeView listStore
+        treeViewSetModel treeView grepStore
 
         renderer1    <- cellRendererTextNew
         renderer10   <- cellRendererPixbufNew
@@ -81,7 +88,7 @@ instance RecoverablePane IDEGrep GrepState IDEM where
         treeViewAppendColumn treeView col1
         cellLayoutPackStart col1 renderer10 False
         cellLayoutPackStart col1 renderer1 True
-        cellLayoutSetAttributes col1 renderer1 listStore
+        cellLayoutSetAttributes col1 renderer1 grepStore
             $ \row -> [ cellText := file row]
 
         renderer2   <- cellRendererTextNew
@@ -92,7 +99,7 @@ instance RecoverablePane IDEGrep GrepState IDEM where
         treeViewColumnSetReorderable col2 True
         treeViewAppendColumn treeView col2
         cellLayoutPackStart col2 renderer2 True
-        cellLayoutSetAttributes col2 renderer2 listStore
+        cellLayoutSetAttributes col2 renderer2 grepStore
             $ \row -> [ cellText := show $ line row]
 
         renderer3    <- cellRendererTextNew
@@ -105,7 +112,7 @@ instance RecoverablePane IDEGrep GrepState IDEM where
         treeViewAppendColumn treeView col3
         cellLayoutPackStart col3 renderer30 False
         cellLayoutPackStart col3 renderer3 True
-        cellLayoutSetAttributes col3 renderer3 listStore
+        cellLayoutSetAttributes col3 renderer3 grepStore
             $ \row -> [ cellText := context row]
 
 
@@ -113,20 +120,24 @@ instance RecoverablePane IDEGrep GrepState IDEM where
         sel <- treeViewGetSelection treeView
         treeSelectionSetMode sel SelectionSingle
 
-        sw <- scrolledWindowNew Nothing Nothing
-        containerAdd sw treeView
-        scrolledWindowSetPolicy sw PolicyAutomatic PolicyAutomatic
+        scrolledView <- scrolledWindowNew Nothing Nothing
+        containerAdd scrolledView treeView
+        scrolledWindowSetPolicy scrolledView PolicyAutomatic PolicyAutomatic
 
-        let grep = IDEGrep sw treeView listStore
+        waitingGrep <- newEmptyMVar
+        activeGrep <- newEmptyMVar
+        let grep = IDEGrep {..}
 
         cid1 <- treeView `afterFocusIn`
             (\_ -> do reflectIDE (makeActive grep) ideR ; return True)
         sel `onSelectionChanged` do
-            sel <- getSelectionGrepRecord treeView listStore
+            sel <- getSelectionGrepRecord treeView grepStore
             case sel of
                 Just record -> reflectIDE (do
-                    goToSourceDefinition (file record)
-                        $ Just $ Location (line record) 0 (line record) 0) ideR
+                    case record of
+                        GrepRecord {file=f, line=l, isDir=False} ->
+                            goToSourceDefinition f $ Just $ Location l 0 l 0
+                        _ -> return ()) ideR
                 Nothing -> return ()
 
         return (Just grep,[ConnectC cid1])
@@ -142,6 +153,7 @@ grepLineParser = try (do
         line <- int
         char ':'
         context <- many anyChar
+        let isDir = False
         return $ GrepRecord {..}
     <?> "grepLineParser")
 
@@ -155,43 +167,97 @@ colon = P.colon lexer
 int = fmap fromInteger $ P.integer lexer
 
 getSelectionGrepRecord ::  TreeView
-    ->  ListStore GrepRecord
+    ->  TreeStore GrepRecord
     -> IO (Maybe GrepRecord)
-getSelectionGrepRecord treeView listStore = do
+getSelectionGrepRecord treeView grepStore = do
     treeSelection   <-  treeViewGetSelection treeView
     paths           <-  treeSelectionGetSelectedRows treeSelection
     case paths of
-        [a]:r ->  do
-            size    <-  listStoreGetSize listStore
-            if a < size
-                then fmap Just $ listStoreGetValue listStore a
-                else return Nothing
-        _  ->  return Nothing
+        p:_ ->  Just <$> treeStoreGetValue grepStore p
+        _   ->  return Nothing
 
-setGrepResults :: [ToolOutput] -> IDEAction
-setGrepResults output = do
+grepWorkspace :: String -> Bool -> WorkspaceAction
+grepWorkspace regexString caseSensitive = do
+    ws <- ask
+    maybeActive <- lift $ readIDE activePack
+    let packages = case maybeActive of
+            Just active -> active : (filter (\p -> ipdCabalFile p /= ipdCabalFile active) $ wsPackages ws)
+            Nothing     -> wsPackages ws
+    lift $ grepDirectories regexString caseSensitive $
+        map (\p -> (dropFileName (ipdCabalFile p), ipdSrcDirs p)) $ packages
+
+grepDirectories :: String -> Bool -> [(FilePath, [FilePath])] -> IDEAction
+grepDirectories regexString caseSensitive dirs = do
     grep <- getGrep Nothing
+    let store = grepStore grep
+    ideRef <- ask
+    liftIO $ do
+        bringPaneToFront grep
+        forkIO $ do
+            putMVar (waitingGrep grep) True
+            putMVar (activeGrep grep) True
+            takeMVar (waitingGrep grep)
+
+            postGUIAsync $ treeStoreClear store
+
+            totalFound <- foldM (\a (dir, subDirs) -> do
+                nooneWaiting <- isEmptyMVar (waitingGrep grep)
+                found <- if nooneWaiting
+                    then do
+                        (output, pid) <- runTool "grep" ((if caseSensitive then [] else ["-i"])
+                            ++ ["-r", "-E", "-n", "--exclude=*~", regexString] ++ subDirs) (Just dir)
+                        reflectIDE (setGrepResults dir output) ideRef
+                    else return 0
+                return $ a + found) 0 dirs
+
+            nooneWaiting <- isEmptyMVar (waitingGrep grep)
+            when nooneWaiting $ do
+                nDir <- postGUISync $ treeModelIterNChildren store Nothing
+                postGUIAsync $ treeStoreInsert store [] nDir $
+                    GrepRecord "Search Complete" totalFound "" True
+
+            takeMVar (activeGrep grep) >> return ()
+    return ()
+
+setGrepResults :: FilePath -> [ToolOutput] -> IDEM Int
+setGrepResults dir output = do
+    grep <- getGrep Nothing
+    let store = grepStore grep
+        view  = treeView grep
     ideRef <- ask
     liftIO $ do
         let (displayed, dropped) = splitAt 10000 output
-        bringPaneToFront grep
         forkIO $ do
-            let errors = filter (isNothing . process) output
+            let errors = filter isError output
                     ++ if null dropped
                         then []
                         else [ToolError $ "Dropped " ++ show (length dropped) ++ " search results"]
-            unless (null errors) $ reflectIDE (logOutput errors) ideRef
+            unless (null errors) $ postGUISync $ reflectIDE (logOutput errors) ideRef
             return ()
-        postGUIAsync $ listStoreClear (grepStore grep)
-        forM_ (catMaybes (map process displayed)) $ \record -> do
-            postGUIAsync $ do
-                listStoreAppend (grepStore grep) record
-                return ()
+        case catMaybes (map process displayed) of
+            []      -> return 0
+            results -> do
+                nDir <- postGUISync $ treeModelIterNChildren store Nothing
+                postGUIAsync $ treeStoreInsert store [] nDir $ GrepRecord dir 0 "" True
+                forM_ (zip results [0..]) $ \(record, n) -> do
+                    nooneWaiting <- isEmptyMVar (waitingGrep grep)
+                    when nooneWaiting $ postGUIAsync $ do
+                        treeStoreInsert store [nDir] n record
+                        treeStoreChange store [nDir] (\r -> r{ line = n+1 }) >> return ()
+                        when (nDir == 0 && n == 0) $
+                            treeViewExpandAll view
+                return $ length results
     where
         process (ToolOutput line) =
             case parse grepLineParser "" line of
                 Right record -> Just record
                 _ -> Nothing
         process _ = Nothing
+
+        isError (ToolExit ExitSuccess) = False
+        isError (ToolExit (ExitFailure 1)) = False
+        isError o = isNothing (process o)
+
+
 
 
