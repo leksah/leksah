@@ -2,7 +2,7 @@
 -----------------------------------------------------------------------------
 --
 -- Module      :  IDE.Completion
--- Copyright   :  2007-2010 Juergen Nicklisch-Franken, Hamish Mackenzie
+-- Copyright   :  2007-2011 Juergen Nicklisch-Franken, Hamish Mackenzie
 -- License     :  GPL
 --
 -- Maintainer  :  <maintainer@leksah.org>
@@ -260,7 +260,7 @@ addEventHandling window sourceView tree store isWordChar always = do
             drawWindow
             False
             [PointerMotionMask, ButtonReleaseMask]
-            (Nothing::Maybe DrawWindow)
+            (Nothing:: Maybe DrawWindow)
             Nothing
             time
         when (status == GrabSuccess) $ liftIO $ do
