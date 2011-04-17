@@ -18,6 +18,7 @@ module IDE.Pane.Workspace (
 ,   IDEWorkspace
 ,   updateWorkspace
 ,   getWorkspace
+,   showWorkspace
 ) where
 
 import Graphics.UI.Gtk hiding (get)
@@ -122,6 +123,11 @@ instance RecoverablePane IDEWorkspace WorkspaceState IDEM where
 getWorkspace :: Maybe PanePath -> IDEM IDEWorkspace
 getWorkspace Nothing = forceGetPane (Right "*Workspace")
 getWorkspace (Just pp)  = forceGetPane (Left pp)
+
+showWorkspace :: IDEAction
+showWorkspace = do
+    l <- getWorkspace Nothing
+    displayPane l False
 
 getSelectionTree ::  TreeView
     -> ListStore (Bool, IDEPackage)

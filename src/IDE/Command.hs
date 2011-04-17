@@ -180,9 +180,9 @@ mkActions =
 
     ,AD "Workspace" "_Workspace" Nothing Nothing (return ()) [] False
     ,AD "NewWorkspace" "_New..." Nothing Nothing
-        workspaceNew [] False
+        (workspaceNew >> showWorkspace) [] False
     ,AD "OpenWorkspace" "_Open..." Nothing Nothing
-        workspaceOpen [] False
+        (workspaceOpen >> showWorkspace) [] False
     ,AD "RecentWorkspaces" "Open _Recent" Nothing Nothing (return ()) [] False
     ,AD "CloseWorkspace" "_Close" Nothing Nothing
         workspaceClose [] False
@@ -198,9 +198,9 @@ mkActions =
 
     ,AD "Package" "_Package" Nothing Nothing (return ()) [] False
     ,AD "NewPackage" "_New..." Nothing Nothing
-        (workspaceTry_ workspacePackageNew) [] False
+        (showWorkspace >> workspaceTry_ workspacePackageNew) [] False
     ,AD "AddPackage" "_Add..." Nothing Nothing
-        (workspaceTry_ workspaceAddPackage) [] False
+        (showWorkspace >> workspaceTry_ workspaceAddPackage) [] False
 --    ,AD "RecentPackages" "_Recent Packages" Nothing Nothing (return ()) [] False
     ,AD "EditPackage" "_Edit" Nothing Nothing
         (packageTry_ packageEdit) [] False
@@ -338,7 +338,7 @@ mkActions =
     ,AD "ShowLog" "Log" Nothing Nothing
         showLog [] False
     ,AD "ShowWorkspace" "Workspace" Nothing Nothing
-        (getWorkspace Nothing >>= \ p -> displayPane p False) [] False
+        showWorkspace [] False
 
     ,AD "View" "_View" Nothing Nothing (return ()) [] False
     ,AD "ViewMoveLeft" "Move _Left" Nothing Nothing
@@ -452,7 +452,7 @@ updateRecentEntries = do
             fe <- doesFileExist s
             when fe $ do
                 mi <- menuItemNewWithLabel s
-                mi `onActivateLeaf` (reflectIDE (workspaceOpenThis True (Just s) >> return ()) ideR)
+                mi `onActivateLeaf` (reflectIDE (workspaceOpenThis True (Just s) >> showWorkspace) ideR)
                 menuShellAppend recentWorkspacesMenu mi) recentWorkspaces'
         oldSubmenu <- menuItemGetSubmenu recentWorkspacesItem
         when (isJust oldSubmenu) $ do

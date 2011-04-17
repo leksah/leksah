@@ -97,6 +97,7 @@
        <menuitem name="_Grep" action="ShowGrep" />
        <menuitem name="_Log" action="ShowLog" />
        <menuitem name="_Search" action="ShowSearch" />
+       <menuitem name="_Workspace" action="ShowWorkspace" />
      </menu>
     <menu name="_View" action="View">
        <menuitem name="Split H_orizontal" action="ViewSplitHorizontal" />
