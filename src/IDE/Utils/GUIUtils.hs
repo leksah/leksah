@@ -23,8 +23,8 @@ module IDE.Utils.GUIUtils (
 
 ,   getBackgroundBuildToggled
 ,   setBackgroundBuildToggled
-,   getBackgroundLinkToggled
-,   setBackgroundLinkToggled
+,   getMakeModeToggled
+,   setMakeModeToggled
 ,   getDebugToggled
 ,   setDebugToggled
 
@@ -170,14 +170,14 @@ setBackgroundBuildToggled b = do
     ui <- getUIAction "ui/toolbar/BuildToolItems/BackgroundBuild" castToToggleAction
     liftIO $ toggleActionSetActive ui b
 
-getBackgroundLinkToggled :: PaneMonad alpha => alpha  (Bool)
-getBackgroundLinkToggled = do
-    ui <- getUIAction "ui/toolbar/BuildToolItems/BackgroundLink" castToToggleAction
+getMakeModeToggled :: PaneMonad alpha => alpha  (Bool)
+getMakeModeToggled = do
+    ui <- getUIAction "ui/toolbar/BuildToolItems/MakeMode" castToToggleAction
     liftIO $ toggleActionGetActive ui
 
-setBackgroundLinkToggled :: PaneMonad alpha => Bool -> alpha ()
-setBackgroundLinkToggled b = do
-    ui <- getUIAction "ui/toolbar/BuildToolItems/BackgroundLink" castToToggleAction
+setMakeModeToggled :: PaneMonad alpha => Bool -> alpha ()
+setMakeModeToggled b = do
+    ui <- getUIAction "ui/toolbar/BuildToolItems/MakeMode" castToToggleAction
     liftIO $ toggleActionSetActive ui b
 
 getDebugToggled :: PaneMonad alpha => alpha  (Bool)

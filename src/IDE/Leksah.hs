@@ -292,7 +292,7 @@ startMainWindow yiControl sessionFP mbWorkspaceFP sourceFPs startupPrefs isFirst
     reflectIDE (do
         setCandyState (fst (sourceCandy startupPrefs))
         setBackgroundBuildToggled (backgroundBuild startupPrefs)
-        setBackgroundLinkToggled (backgroundLink startupPrefs)) ideR
+        setMakeModeToggled (makeMode startupPrefs)) ideR
     let (x,y)   =   defaultSize startupPrefs
     windowSetDefaultSize win x y
     (tbv,fbv)   <- reflectIDE (do

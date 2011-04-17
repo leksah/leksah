@@ -43,7 +43,7 @@ module IDE.Package (
 ,   delModuleFromPackageDescr
 
 ,   backgroundBuildToggled
-,   backgroundLinkToggled
+,   makeModeToggled
 
 ,   debugStart
 ,   printBindResultFlag
@@ -199,14 +199,14 @@ changeWorkspacePackage ideP@IDEPackage{ipdCabalFile = file} = do
         exchange p | ipdCabalFile p == file = ideP
                    | otherwise              = p
 
-runCabalBuild :: Bool -> IDEPackage -> Bool -> (Bool -> IDEAction) -> IDEAction
-runCabalBuild backgroundBuild package shallConfigure continuation = do
+runCabalBuild :: Bool -> Bool -> IDEPackage -> Bool -> (Bool -> IDEAction) -> IDEAction
+runCabalBuild backgroundBuild withoutLinking package shallConfigure continuation = do
     prefs   <- readIDE prefs
     let dir =  dropFileName (ipdCabalFile package)
     let args = (["build"] ++
-                if ((not backgroundBuild) || (backgroundLink prefs))
-                    then []
-                    else ["--ghc-options=-c", "--with-ar=true", "--with-ld=true"]
+                if backgroundBuild && withoutLinking
+                    then ["--with-ld=false"]
+                    else []
                         ++ ipdBuildFlags package)
     runExternalTool "Building" "cabal" args (Just dir) $ \output -> do
         logOutputForBuild package backgroundBuild output
@@ -214,7 +214,7 @@ runCabalBuild backgroundBuild package shallConfigure continuation = do
         if shallConfigure && isConfigError output
             then
                 packageConfig' package (\ b ->
-                    when b $ runCabalBuild backgroundBuild package False continuation)
+                    when b $ runCabalBuild backgroundBuild withoutLinking package False continuation)
             else do
                 continuation (last output == ToolExit ExitSuccess)
                 return ()
@@ -227,8 +227,8 @@ isConfigError = or . (map isCErr)
     str1 = "Run the 'configure' command first"
     str2 = "please re-configure"
 
-buildPackage :: Bool -> IDEPackage -> (Bool -> IDEAction) -> IDEAction
-buildPackage backgroundBuild package continuation = catchIDE (do
+buildPackage :: Bool -> Bool -> IDEPackage -> (Bool -> IDEAction) -> IDEAction
+buildPackage backgroundBuild withoutLinking package continuation = catchIDE (do
     ideR      <- ask
     prefs     <- readIDE prefs
     maybeDebug <- readIDE debugState
@@ -240,10 +240,13 @@ buildPackage backgroundBuild package continuation = catchIDE (do
                     interruptBuild
                     when (not backgroundBuild) $ liftIO $ do
                         timeoutAddFull (do
-                            reflectIDE (do buildPackage backgroundBuild  package continuation; return False) ideR
+                            reflectIDE (do
+                                buildPackage backgroundBuild withoutLinking
+                                                package continuation
+                                return False) ideR
                             return False) priorityDefaultIdle 1000
                         return ()
-                else runCabalBuild backgroundBuild package True continuation
+                else runCabalBuild backgroundBuild withoutLinking package True continuation
         Just debug@(_, ghci) -> do
             -- TODO check debug package matches active package
             ready <- liftIO $ isEmptyMVar (currentToolCommand ghci)
@@ -522,10 +525,10 @@ backgroundBuildToggled = do
     toggled <- getBackgroundBuildToggled
     modifyIDE_ (\ide -> ide{prefs = (prefs ide){backgroundBuild= toggled}})
 
-backgroundLinkToggled :: IDEAction
-backgroundLinkToggled = do
-    toggled <- getBackgroundLinkToggled
-    modifyIDE_ (\ide -> ide{prefs = (prefs ide){backgroundLink= toggled}})
+makeModeToggled :: IDEAction
+makeModeToggled = do
+    toggled <- getMakeModeToggled
+    modifyIDE_ (\ide -> ide{prefs = (prefs ide){makeMode= toggled}})
 
 -- ---------------------------------------------------------------------
 -- | * Debug code that needs to use the package
@@ -584,7 +587,7 @@ debugStart = do
                             -- Lets build to make sure the binaries are up to date
                             mbPackage   <- readIDE activePack
                             case mbPackage of
-                                Just package -> runCabalBuild True package True (\ _ -> return ())
+                                Just package -> runCabalBuild True True package True (\ _ -> return ())
                                 Nothing -> return ()) ideRef
                 return ()
             _ -> do

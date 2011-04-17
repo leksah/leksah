@@ -409,8 +409,8 @@ mkActions =
 
     ,AD "BackgroundBuildToggled" "_BackgroundBuild" (Just "Build in the background and report errors") (Just "ide_build")
         backgroundBuildToggled [] True
-    ,AD "BackgroundLinkToggled" "_BackgroundLink" (Just "Link in the background") (Just "ide_link")
-        backgroundLinkToggled [] True
+    ,AD "MakeModeToggled" "_MakeMode" (Just "Make dependend packages") (Just "ide_make")
+        makeModeToggled [] True
     ,AD "DebugToggled" "_Debug" (Just "Use GHCi debugger to build and run") (Just "ide_debug")
         debugToggled [] True
     ,AD "OpenDocu" "_OpenDocu" (Just "Opens a browser for a search of the selected data") Nothing
@@ -694,7 +694,7 @@ instrumentWindow win prefs topWidget = do
         reflectIDE (do
             setCandyState (fst (sourceCandy prefs))
             setBackgroundBuildToggled (backgroundBuild prefs)
-            setBackgroundLinkToggled (backgroundLink prefs)) ideR
+            setMakeModeToggled (makeMode prefs)) ideR
 
 instrumentSecWindow :: Window -> IDEAction
 instrumentSecWindow win = do

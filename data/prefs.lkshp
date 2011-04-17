@@ -64,10 +64,12 @@ Automatically save all files before building:
                True
 Background build:
                True
-Include linking in background builds:
+Make mode:
                True
-Auto install packages:
-               InstallLibs
+Single build without linking:
+               False
+Don't install last package:
+               False
 Enable usage of Show instances in :print:
                True
 Break on any exception thrown:

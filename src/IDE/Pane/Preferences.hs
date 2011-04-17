@@ -603,24 +603,31 @@ prefsDescription configDir packages = NFDPP [
             boolEditor
             (\i -> return ())
          , mkFieldPP
-            (paraName <<<- ParaName "Include linking in background builds" $ emptyParams)
+            (paraName <<<- ParaName "Make mode" $ emptyParams)
             (PP.text . show)
             boolParser
-            backgroundLink
-            (\b a -> a{backgroundLink = b})
+            makeMode
+            (\b a -> a{makeMode = b})
+            (boolEditor2 "Single mode")
+            (\i -> return ())
+
+         , mkFieldPP
+            (paraName <<<- ParaName "Single build without linking" $ emptyParams)
+            (PP.text . show)
+            boolParser
+            singleBuildWithoutLinking
+            (\b a -> a{singleBuildWithoutLinking = b})
             boolEditor
             (\i -> return ())
          , mkFieldPP
-            (paraName <<<- ParaName "Auto install packages" $
-                paraShadow <<<- ParaShadow ShadowIn $emptyParams)
+            (paraName <<<- ParaName "Don't install last package" $ emptyParams)
             (PP.text . show)
-            readParser
-            autoInstall
-            (\b a -> a{autoInstall = b})
-            (enumEditor ["Install always after a successful build",
-                "Install if it's a library with dependent packages in the workspace",
-                "Never install"])
+            boolParser
+            dontInstallLast
+            (\b a -> a{dontInstallLast = b})
+            boolEditor
             (\i -> return ())
+
     ]),
     ("Debug", VFDPP emptyParams [
            mkFieldPP
@@ -735,13 +742,9 @@ defaultPrefs = Prefs {
     ,   completeRestricted  =   False
     ,   saveAllBeforeBuild  =   True
     ,   backgroundBuild     =   True
-    ,   backgroundLink      =
-#if defined(mingw32_HOST_OS) || defined(__MINGW32__)
-                                False
-#else
-                                True
-#endif
-    ,   autoInstall         =   InstallLibs
+    ,   makeMode            =   True
+    ,   singleBuildWithoutLinking  = False
+    ,   dontInstallLast     =   False
     ,   printEvldWithShow   =   True
     ,   breakOnException    =   True
     ,   breakOnError        =   True

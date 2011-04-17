@@ -21,6 +21,7 @@ module IDE.Build (
     makePackages,
     MakeSettings(..),
     MakeOp(..),
+    defaultMakeSettings
 ) where
 
 import Data.Map (Map)
@@ -33,12 +34,13 @@ import Data.Graph
        (edges, topSort, graphFromEdges, Vertex, Graph,
         transposeG)
 import Distribution.Package (pkgVersion, pkgName, Dependency(..))
-import Data.List (nub, (\\), find)
+import Data.List (delete, nub, (\\), find)
 import Distribution.Version (withinRange)
 import Data.Maybe (mapMaybe)
 import IDE.Package
        (packageClean', packageInstall', buildPackage, packageConfig')
-import IDE.Core.Types (InstallFlag, IDE(..), WorkspaceAction)
+import IDE.Core.Types
+       (Prefs(..), IDE(..), WorkspaceAction)
 import Control.Monad.Reader
 import Distribution.Text (Text(..))
 
@@ -61,7 +63,7 @@ data MakeOp =
     | MoDocu
     | MoOther String
     | MoComposed [MakeOp]
-    deriving Show
+    deriving (Eq,Ord,Show)
 
 data Chain alpha beta  =
     Chain {
@@ -73,11 +75,19 @@ data Chain alpha beta  =
     deriving Show
 
 data MakeSettings = MakeSettings {
-    msInstallMode        :: InstallFlag,
-    msIsSingleMake       :: Bool,
-    msSaveAllBeforeBuild :: Bool,
-    msBackgroundBuild    :: Bool,
-    msLinkingInBB        :: Bool}
+    msMakeMode                       :: Bool,
+    msSingleBuildWithoutLinking      :: Bool,
+    msSaveAllBeforeBuild             :: Bool,
+    msBackgroundBuild                :: Bool,
+    msDontInstallLast                :: Bool}
+
+defaultMakeSettings :: Prefs -> MakeSettings
+defaultMakeSettings prefs = MakeSettings  {
+    msMakeMode                       = makeMode prefs,
+    msSingleBuildWithoutLinking      = singleBuildWithoutLinking prefs,
+    msSaveAllBeforeBuild             = saveAllBeforeBuild prefs,
+    msBackgroundBuild                = backgroundBuild prefs,
+    msDontInstallLast                = dontInstallLast prefs}
 
 -- ** Functions
 
@@ -87,7 +97,7 @@ constrParentGraph :: [IDEPackage] -> MakeGraph
 constrParentGraph targets = trace ("parentGraph : " ++ showGraph parGraph) parGraph
   where
     parGraph = Map.fromList
-        $ map (\ p -> (p,nub $ p : mapMaybe (depToTarget targets)(ipdDepends p))) targets
+        $ map (\ p -> (p,nub $ mapMaybe (depToTarget targets)(ipdDepends p))) targets
 
 -- | Construct a dependency graph for a package
 -- pointing to the packages which depend on the subject package
@@ -110,10 +120,10 @@ showTopSorted = show . map (disp .ipdPackageId)
 -- Consumes settings, the workspace and a list of targets.
 constrMakeChain :: MakeSettings -> Workspace ->  [IDEPackage] -> MakeOp -> MakeOp -> Chain MakeOp IDEPackage
 constrMakeChain _ _ [] _ _ = EmptyChain
-constrMakeChain ms@MakeSettings{msIsSingleMake = isSingle}
+constrMakeChain ms@MakeSettings{msMakeMode = makeMode}
                     Workspace{wsPackages = packages, wsNobuildPack = noBuilds}
                     targets@(headTarget:restTargets) op1 op2
-    | isSingle  =  chainFor headTarget ms op1 EmptyChain Nothing
+    | not makeMode  =  chainFor headTarget ms op1 EmptyChain Nothing
     | otherwise =  trace ("topsorted: " ++ showTopSorted topsorted)
                     constrElem targets topsorted depGraph ms noBuilds op1 op2
       where
@@ -130,8 +140,14 @@ constrElem currentTargets (current:rest)  depGraph ms noBuilds op1 op2
                         Nothing -> trace ("Build>>constrMakeChain: unknown package"
                                             ++ show current) []
                         Just deps -> deps
-        in trace ("constrElem1 " ++ show op1) $
-            chainFor current ms op1
+            withoutInstall = msDontInstallLast ms && null (delete current dependends)
+            filteredOps = case op1 of
+                            MoComposed l -> MoComposed (filter (\e -> e /= MoInstall) l)
+                            MoInstall    -> MoComposed []
+                            other        -> other
+        in trace ("constrElem1 deps: " ++ show dependends ++ " withoutInstall: " ++ show withoutInstall)
+            $
+            chainFor current ms (if withoutInstall then filteredOps else op1)
                 (constrElem (nub $ currentTargets ++ dependends)  rest depGraph ms noBuilds op2 op2)
                 (Just EmptyChain)
     | otherwise  = trace ("constrElem2 " ++ show op2) $ constrElem currentTargets rest depGraph ms noBuilds op1 op2
@@ -155,7 +171,8 @@ doBuildChain _ EmptyChain = return ()
 doBuildChain ms chain@Chain{mcAction = MoConfigure} = do
     packageConfig' (mcEle chain) (constrCont ms (mcPos chain) (mcNeg chain))
 doBuildChain ms chain@Chain{mcAction = MoBuild} = do
-    buildPackage (msBackgroundBuild ms) (mcEle chain) (constrCont ms (mcPos chain) (mcNeg chain))
+    buildPackage (msBackgroundBuild ms) (not (msMakeMode ms) && msSingleBuildWithoutLinking ms)
+        (mcEle chain) (constrCont ms (mcPos chain) (mcNeg chain))
 doBuildChain ms chain@Chain{mcAction = MoInstall} = do
     packageInstall' (mcEle chain) (constrCont ms (mcPos chain) (mcNeg chain))
 doBuildChain ms chain@Chain{mcAction = MoClean} = do

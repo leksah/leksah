@@ -170,7 +170,7 @@
        <toolitem name="Forward" action="ViewHistoryForth"/>
        <separator/>
        <toolitem name="BackgroundBuild" action="BackgroundBuildToggled"/>
-       <toolitem name="BackgroundLink" action="BackgroundLinkToggled"/>
+       <toolitem name="MakeMode" action="MakeModeToggled"/>
        <separator/>
        <toolitem name="Update Project" action="UpdateMetadataCurrent" />
        <separator/>

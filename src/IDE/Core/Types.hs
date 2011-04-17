@@ -54,7 +54,6 @@ module IDE.Core.Types (
 ,   KeyString
 
 ,   Prefs(..)
-,   InstallFlag(..)
 
 ,   LogRefType(..)
 ,   LogRef(..)
@@ -395,9 +394,10 @@ data Prefs = Prefs {
     ,   completeRestricted  ::   Bool
     ,   saveAllBeforeBuild  ::   Bool
     ,   backgroundBuild     ::   Bool
-    ,   backgroundLink      ::   Bool
+    ,   makeMode            ::   Bool
+    ,   singleBuildWithoutLinking :: Bool
+    ,   dontInstallLast     ::   Bool
     ,   printEvldWithShow   ::   Bool
-    ,   autoInstall         ::   InstallFlag
     ,   breakOnException    ::   Bool
     ,   breakOnError        ::   Bool
     ,   printBindResult     ::   Bool
@@ -413,9 +413,6 @@ data Prefs = Prefs {
 
 data SearchHint = Forward | Backward | Insert | Delete | Initial
     deriving (Eq)
-
-data InstallFlag        = InstallAlways | InstallLibs | InstallNo
-    deriving(Eq,Show, Read, Enum, Bounded)
 
 instance Ord Modifier
     where compare a b = compare (fromEnum a) (fromEnum b)

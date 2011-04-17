@@ -514,12 +514,9 @@ removeRecentlyUsedWorkspace fp = do
 workspaceClean :: WorkspaceAction
 workspaceClean = do
     ws <- ask
-    let settings = MakeSettings {
-            msInstallMode        = InstallNo,
-            msIsSingleMake       = False,
-            msSaveAllBeforeBuild = False,
-            msBackgroundBuild    = False,
-            msLinkingInBB        = False}
+    settings <- lift $ do
+        prefs' <- readIDE prefs
+        return (defaultMakeSettings prefs')
     makePackages settings (wsPackages ws) MoClean MoClean
 
 workspaceMake :: WorkspaceAction
@@ -527,12 +524,9 @@ workspaceMake = do
     ws <- ask
     settings <- lift $ do
         prefs' <- readIDE prefs
-        return (MakeSettings {
-            msInstallMode        =  autoInstall prefs',
-            msIsSingleMake       = False,
-            msSaveAllBeforeBuild = saveAllBeforeBuild prefs',
-            msBackgroundBuild    = False,
-            msLinkingInBB        = False})
+        return ((defaultMakeSettings prefs'){
+                    msMakeMode           = True,
+                    msBackgroundBuild    = False})
     makePackages settings (wsPackages ws) (MoComposed [MoConfigure,MoBuild,MoInstall])
         (MoComposed [MoConfigure,MoBuild,MoInstall])
 
@@ -549,13 +543,12 @@ backgroundMake = catchIDE (do
                                 else return []
             let isModified = not (null modifiedPacks)
             when isModified $ do
-                let settings =  MakeSettings {
-                                    msInstallMode        = autoInstall prefs,
-                                    msIsSingleMake       = False,
-                                    msSaveAllBeforeBuild = saveAllBeforeBuild prefs,
-                                    msBackgroundBuild    = True,
-                                    msLinkingInBB        = True}
-                workspaceTryQuiet_ $ makePackages settings modifiedPacks (MoComposed [MoBuild,MoInstall])
+                let settings = defaultMakeSettings prefs
+                if msSingleBuildWithoutLinking settings &&  not (msMakeMode settings)
+                    then workspaceTryQuiet_ $
+                        makePackages settings modifiedPacks MoBuild (MoComposed [])
+                    else workspaceTryQuiet_ $
+                        makePackages settings modifiedPacks (MoComposed [MoBuild,MoInstall])
                                         (MoComposed [MoConfigure,MoBuild,MoInstall])
     )
     (\(e :: SomeException) -> sysMessage Normal (show e))
@@ -566,13 +559,16 @@ makePackage = do
     (mbWs,settings) <- lift $ do
         prefs' <- readIDE prefs
         ws     <- readIDE workspace
-        return (ws,MakeSettings {
-            msInstallMode        = autoInstall prefs',
-            msIsSingleMake       = False,
-            msSaveAllBeforeBuild = saveAllBeforeBuild prefs',
-            msBackgroundBuild    = False,
-            msLinkingInBB        = False})
+        let settings = (defaultMakeSettings prefs'){msBackgroundBuild = False}
+        return (ws,settings)
     case mbWs of
         Nothing -> sysMessage Normal "No workspace for build."
-        Just ws -> lift $ runWorkspace (makePackages settings [p]
-                        (MoComposed [MoBuild,MoInstall])(MoComposed [MoConfigure,MoBuild,MoInstall])) ws
+        Just ws -> lift $
+            if msSingleBuildWithoutLinking settings &&  not (msMakeMode settings)
+                then runWorkspace
+                        (makePackages settings [p] MoBuild (MoComposed [])) ws
+                else runWorkspace
+                        (makePackages settings [p]
+                        (MoComposed [MoBuild,MoInstall])
+                        (MoComposed [MoConfigure,MoBuild,MoInstall])) ws
+
