@@ -1,0 +1,117 @@
+--Default Keymap file for Leksah
+--Allowed Modifiers are <shift>	<alt> <ctrl> <control> <compose>
+--
+--There are two versions of control so we can map them differently on OS X
+--<ctrl>    is the Apple key on OS X
+--<control> is the Control key on OS X
+--
+--<compose> is often labelled Alt Gr.
+--
+--The defined values for the keys can can be found at
+-- http://gitweb.freedesktop.org/?p=xorg/proto/x11proto.git;a=blob_plain;f=keysymdef.h.
+-- The names of the keys are the names of the macros without the prefix.
+
+
+--File
+<ctrl>n                    ->          FileNew         "Creates a new haskell module"
+<ctrl>o                    ->          FileOpen        "Opens an existing file"
+--<ctrl>x/<ctrl>f          ->          FileOpen        "Opens an existing file"
+
+<ctrl>s                    ->          FileSave        "Saves the current buffer"
+--<ctrl>x/<ctrl>s          ->          FileSave        "Saves the current buffer"
+
+--<ctrl>x/<ctrl>w          ->          FileSaveAs      "Saves the current buffer as a new file"
+
+<ctrl><shift>s             ->          FileSaveAll     "Saves all modified buffers"
+
+<ctrl>w                    ->          FileClose       "Closes the current buffer"
+--<ctrl>x/k                ->          FileClose       "Closes the current buffer"
+
+<ctrl>q                    ->          Quit            "Quits this program"
+--<ctrl>x/<ctrl>c          ->          Quit            "Quits this program"
+
+--Edit
+<ctrl>z                    ->          EditUndo        "Undos the last user action"
+--<ctrl>x/u                ->          EditUndo        "Undos the last user action"
+
+<shift><ctrl>y             ->          EditRedo        "Redos the last user action"
+--<ctrl>x/r                ->          EditRedo        "Redos the last user action"
+
+--<ctrl>x     ->          EditCut
+--<ctrl>c     ->          EditCopy
+--<ctrl>v     ->          EditPaste
+                            ->          EditDelete
+<ctrl>a                     ->          EditSelectAll   "Select the whole text in the current buffer"
+
+<ctrl>f                     ->          EditFind         "Search for a text string"
+F3                          ->          EditFindNext     "Find the next occurence of the text string"
+
+<shift>F3                   ->          EditFindPrevious "Find the previous occurence of the text string"
+
+<ctrl>l                     ->          EditGotoLine    "Go to line with a known index"
+
+<ctrl>d                     ->          EditComment     "Add a line style comment to the selected lies"
+<ctrl><shift>d              ->          EditUncomment   "Remove a line style comment"
+<alt>Right                  ->          EditShiftRight  "Shift right"
+<alt>Left                   ->          EditShiftLeft   "Shift Left"
+
+--View
+<alt><shift>Left           ->          ViewMoveLeft    "Move the current pane left"
+<alt><shift>Right          ->          ViewMoveRight   "Move the current pane right"
+<alt><shift>Up             ->          ViewMoveUp      "Move the current pane up"
+<alt><shift>Down           ->          ViewMoveDown    "Move the current pane down"
+
+<ctrl>2                    ->          ViewSplitHorizontal
+                                                    "Split the current pane in horizontal direction"
+<ctrl>3                 ->          ViewSplitVertical
+                                                    "Split the current pane in vertical direction"
+<ctrl>1                 ->          ViewCollapse    "Collapse the panes around the currentla selected pane into one"
+
+                        ->          ViewTabsLeft    "Shows the tabs of the current notebook on the left"
+                        ->          ViewTabsRight   "Shows the tabs of the current notebook on the right"
+                        ->          ViewTabsUp      "Shows the tabs of the current notebook on the top"
+                        ->          ViewTabsDown    "Shows the tabs of the current notebook on the bottom"
+                        ->          ViewSwitchTabs  "Switches if tabs for the current notebook are visible"
+<ctrl>t                 ->          ToggleToolbar
+                        ->          HelpDebug
+                        ->          HelpAbout
+
+<ctrl>b                 ->          BuildPackage
+<ctrl>r                 ->          ResolveErrors
+
+<ctrl><alt>r            ->          RunPackage
+
+<ctrl>j                 ->          NextError
+<ctrl><shift>j          ->          PreviousError
+
+<ctrl>o                 ->          ShowModules
+
+
+--<ctrl>i                 ->          ShowInterface
+-- <ctrl>i                 ->          ShowInfo
+
+
+<ctrl><shift>e          ->          EditAlignEqual
+<ctrl><shift>l          ->          EditAlignLeftArrow
+<ctrl><shift>r          ->          EditAlignRightArrow
+<ctrl><shift>t          ->          EditAlignTypeSig
+
+<alt>i                  ->          AddOneImport
+<alt><shift>i           ->          AddAllImports
+
+-- "For the next to entries the <ctrl> modifier is mandatory"
+<control>Page_Up           ->          FlipUp          "Switch to next pane in reverse recently used oder"
+<control>Page_Down         ->          FlipDown        "Switch to next pane in recently used oder"
+
+<control>space             ->          StartComplete   "Initiate complete in a source buffer"
+
+F6 -> DebugStep
+F7 -> DebugStepLocal
+F8 -> DebugStepModule
+F9 -> DebugContinue
+
+<control>Return             ->          ExecuteSelection
+<ctrl>m                  ->          UpdateMetadataCurrent
+
+<ctrl>p                  ->        OpenDocu
+
