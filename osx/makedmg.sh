@@ -4,7 +4,12 @@
 
 sed -e 's|TextView Font: *\"Monospace 10\"|TextView Font: "Monospace 14"|' -e 's|Browser: *\"firefox\"|Browser:       \"open\"|' <data/prefs.lkshp >osx/prefs.lkshp
 
-sed -e 's|\<ctrl\>|\<meta\>|' -e 's|\<alt\>|\<control\>|' <data/keymap.lkshk >osx/keymap.lkshk
+sed -e 's|\<ctrl\>|\<meta\>|' \
+    -e 's|\<alt\>|\<control\>|' \
+    -e 's|^--\<meta\>x |\<meta\>x |' \
+    -e 's|^--\<meta\>c |\<meta\>c |' \
+    -e 's|^--\<meta\>v |\<meta\>v |' \
+    <data/keymap.lkshk >osx/keymap.lkshk
 cat osx/osxkeymap.lkshk >>osx/keymap.lkshk
 
 cd osx || exit
