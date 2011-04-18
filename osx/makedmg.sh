@@ -2,9 +2,10 @@
 
 . scripts/stage.sh || exit
 
+sed -e 's|TextView Font: *\"Monospace 10\"|TextView Font: "Monospace 14"|' -e 's|Browser: *\"firefox\"|Browser:       \"open\"|' <data/prefs.lkshp >osx/prefs.lkshp
+
 sed -e 's|\<ctrl\>|\<meta\>|' -e 's|\<alt\>|\<control\>|' <data/keymap.lkshk >osx/keymap.lkshk
 cat osx/osxkeymap.lkshk >>osx/keymap.lkshk
-touch osx/prefs.lkshp
 
 cd osx || exit
 
