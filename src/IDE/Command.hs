@@ -409,7 +409,7 @@ mkActions =
 
     ,AD "BackgroundBuildToggled" "_BackgroundBuild" (Just "Build in the background and report errors") (Just "ide_build")
         backgroundBuildToggled [] True
-    ,AD "MakeModeToggled" "_MakeMode" (Just "Make dependend packages") (Just "ide_make")
+    ,AD "MakeModeToggled" "_MakeMode" (Just "Make dependent packages") (Just "ide_make")
         makeModeToggled [] True
     ,AD "DebugToggled" "_Debug" (Just "Use GHCi debugger to build and run") (Just "ide_debug")
         debugToggled [] True

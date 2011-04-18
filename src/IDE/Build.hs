@@ -136,19 +136,19 @@ constrElem _ [] _ _  _ _ _ = trace ("constrElem: 1") EmptyChain
 constrElem [] _ _ _  _ _ _ = trace ("constrElem: 2") EmptyChain
 constrElem currentTargets (current:rest)  depGraph ms noBuilds op1 op2
     | elem current currentTargets && not (elem current noBuilds) =
-        let dependends = case Map.lookup current depGraph of
+        let dependents = case Map.lookup current depGraph of
                         Nothing -> trace ("Build>>constrMakeChain: unknown package"
                                             ++ show current) []
                         Just deps -> deps
-            withoutInstall = msDontInstallLast ms && null (delete current dependends)
+            withoutInstall = msDontInstallLast ms && null (delete current dependents)
             filteredOps = case op1 of
                             MoComposed l -> MoComposed (filter (\e -> e /= MoInstall) l)
                             MoInstall    -> MoComposed []
                             other        -> other
-        in trace ("constrElem1 deps: " ++ show dependends ++ " withoutInstall: " ++ show withoutInstall)
+        in trace ("constrElem1 deps: " ++ show dependents ++ " withoutInstall: " ++ show withoutInstall)
             $
             chainFor current ms (if withoutInstall then filteredOps else op1)
-                (constrElem (nub $ currentTargets ++ dependends)  rest depGraph ms noBuilds op2 op2)
+                (constrElem (nub $ currentTargets ++ dependents)  rest depGraph ms noBuilds op2 op2)
                 (Just EmptyChain)
     | otherwise  = trace ("constrElem2 " ++ show op2) $ constrElem currentTargets rest depGraph ms noBuilds op1 op2
 
