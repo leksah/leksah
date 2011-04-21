@@ -1,5 +1,5 @@
 name: leksah
-version: 0.10.0.3
+version: 0.10.0.4
 cabal-version: >=1.8
 build-type: Simple
 license: GPL
@@ -99,7 +99,7 @@ library
                    bytestring >=0.9.0.1 && <0.10, containers >=0.2.0.0 && <0.5, directory >=1.0.0.2 && <3.1,
                    filepath >=1.1.0.1 && <1.3, glib >=0.10 && <0.13, gtk >=0.10 && <0.13,
                    gtksourceview2 >=0.10.0 && <0.13, mtl >=1.1.0.2 && <2.1, old-time >=1.0.0.1 && <1.1,
-                   parsec >=2.1.0.1 && <2.2, pretty >=1.0.1.0 && <1.1, process-leksah >=1.0.1.3 && <1.1,
+                   parsec >=2.1.0.1 && <3.2, pretty >=1.0.1.0 && <1.1, process-leksah >=1.0.1.3 && <1.1,
                    regex-tdfa ==1.1.*, regex-base ==0.93.*, utf8-string >=0.3.1.1 && <0.4, array >=0.2.0.0 && <0.4,
                    time >=0.1 && <1.3, ltk >= 0.10 && <0.11, binary-shared >= 0.8 && <0.9, deepseq >= 1.1.0.0 && <1.2,
                    hslogger >= 1.0.7 && <1.2, leksah-server >= 0.10 && <0.11, network >= 2.2 && <3.0,
@@ -160,14 +160,14 @@ Executable leksah
                        bytestring >=0.9.0.1 && <0.10, containers >=0.2.0.0 && <0.5, directory >=1.0.0.2 && <3.1,
                        filepath >=1.1.0.1 && <1.3, glib >=0.10 && <0.13, gtk >=0.10 && <0.13,
                        gtksourceview2 >=0.10.0 && <0.13, mtl >=1.1.0.2 && <2.1, old-time >=1.0.0.1 && <1.1,
-                       parsec >=2.1.0.1 && <2.2, pretty >=1.0.1.0 && <1.1, process-leksah >=1.0.1.3 && <1.1,
+                       parsec >=2.1.0.1 && <3.2, pretty >=1.0.1.0 && <1.1, process-leksah >=1.0.1.3 && <1.1,
                        regex-tdfa ==1.1.*, regex-base ==0.93.*, utf8-string >=0.3.1.1 && <0.4, array >=0.2.0.0 && <0.4,
                        time >=0.1 && <1.3, ltk >= 0.10 && <0.11, binary-shared >= 0.8 && <0.9, deepseq >= 1.1.0.0 && <1.2,
                        hslogger >= 1.0.7 && <1.2, leksah-server >= 0.10 && <0.11, network >= 2.2 && <3.0,
                        ghc >=6.10.1 && <7.1, strict >= 0.3.2 && <0.4
     else
         hs-source-dirs: main
-        build-depends: leksah ==0.10.0.3, base >=4.0.0.0 && <= 5
+        build-depends: leksah ==0.10.0.4, base >=4.0.0.0 && <= 5
 
     main-is: Main.hs
     buildable: True
