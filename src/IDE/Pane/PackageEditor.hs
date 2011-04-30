@@ -97,7 +97,7 @@ import Distribution.License
 #endif
 
 import qualified Graphics.UI.Gtk.Gdk.Events as GTK (Event(..))
-import Data.List (sort)
+import Data.List (sort,nub)
 
 
 -- ---------------------------------------------------------------------
@@ -521,7 +521,7 @@ packageDD packages fp modules numBuildInfos extras = NFD ([
                     $ paraDirection <<<- ParaDirection Vertical
                         $ paraMinSize <<<- ParaMinSize (-1,250)
                             $ emptyParams)
-            (buildDepends . pd)
+            (nub . buildDepends . pd)
             (\ a b -> b{pd = (pd b){buildDepends = a}})
             (dependenciesEditor packages)
     ]),
