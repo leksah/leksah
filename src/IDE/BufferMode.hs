@@ -19,9 +19,10 @@ import Prelude hiding(getLine)
 import IDE.Core.State
 import Data.List (isSuffixOf)
 import IDE.TextEditor
-       (getOffset, startsLine, getIterAtMark, getSelectionBoundMark,
-        getInsertMark, EditorBuffer, getBuffer, EditorView, delete,
-        getText, forwardCharsC, insert, getIterAtLine, getLine)
+       (EditorIter, getOffset, startsLine, getIterAtMark,
+        getSelectionBoundMark, getInsertMark, EditorBuffer, getBuffer,
+        EditorView, delete, getText, forwardCharsC, insert, getIterAtLine,
+        getLine)
 import Data.IORef (IORef)
 import System.Time (ClockTime)
 import Data.Typeable (cast, Typeable)
@@ -34,7 +35,7 @@ import Data.Maybe (catMaybes)
 import IDE.Utils.FileUtils
 import Control.Monad.Reader
 import Graphics.UI.Gtk
-       (castToWidget, notebookPageNum, Notebook, ScrolledWindow)
+       (Notebook, castToWidget, notebookPageNum, ScrolledWindow)
 
 
 -- * Buffer Basics
@@ -138,7 +139,8 @@ data Mode = Mode {
     modeSelectedModuleName :: IDEM (Maybe String),
     modeEditToCandy        :: IDEAction,
     modeEditFromCandy      :: IDEAction,
-    modeEditKeystrokeCandy :: Maybe Char -> IDEAction
+    modeEditKeystrokeCandy :: Maybe Char -> IDEAction,
+    modeEditInsertCode     :: String -> EditorIter -> EditorBuffer -> IDEAction
     }
 
 
@@ -182,7 +184,9 @@ haskellMode = Mode {
     modeEditKeystrokeCandy = \c -> do
         ct <- readIDE candy
         inActiveBufContext () $ \_ ebuf _ _ -> do
-            keystrokeCandy ct c ebuf
+            keystrokeCandy ct c ebuf,
+    modeEditInsertCode = \ str iter buf ->
+        insert buf iter str
 }
 
 literalHaskellMode = Mode {
@@ -220,7 +224,9 @@ literalHaskellMode = Mode {
     modeEditKeystrokeCandy = \c -> do
         ct <- readIDE candy
         inActiveBufContext () $ \_ ebuf _ _ -> do
-            keystrokeCandy ct c ebuf
+            keystrokeCandy ct c ebuf,
+    modeEditInsertCode = \ str iter buf ->
+        insert buf iter (unlines $ map (\ s -> "> " ++ s) $ lines str)
 }
 
 cabalMode = Mode {
@@ -242,7 +248,9 @@ cabalMode = Mode {
     modeSelectedModuleName   = return Nothing,
     modeEditToCandy          = return (),
     modeEditFromCandy        = return (),
-    modeEditKeystrokeCandy   = \c -> return ()
+    modeEditKeystrokeCandy   = \c -> return (),
+    modeEditInsertCode       = \str iter buf ->
+        insert buf iter str
     }
 
 otherMode = Mode {
@@ -252,7 +260,9 @@ otherMode = Mode {
     modeSelectedModuleName   = return Nothing,
     modeEditToCandy          = return (),
     modeEditFromCandy        = return (),
-    modeEditKeystrokeCandy   = \c -> return ()
+    modeEditKeystrokeCandy   = \c -> return (),
+    modeEditInsertCode       = \str iter buf ->
+        insert buf iter str
     }
 
 isHaskellMode mode = modeName mode == "Haskell" || modeName mode == "Literal Haskell"
@@ -282,6 +292,9 @@ editFromCandy = withCurrentMode () modeEditFromCandy
 editKeystrokeCandy :: Maybe Char -> IDEAction
 editKeystrokeCandy c = withCurrentMode () (\m -> modeEditKeystrokeCandy m c)
 
+editInsertCode :: EditorBuffer -> EditorIter -> String -> IDEAction
+editInsertCode buffer iter str = withCurrentMode ()
+                                            (\ m -> modeEditInsertCode m str iter buffer)
 
 
 

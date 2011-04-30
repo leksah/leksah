@@ -58,6 +58,7 @@ import Distribution.Version (VersionRange(..))
 import Distribution.PackageDescription (buildDepends)
 import Distribution.PackageDescription.Configuration
        (flattenPackageDescription)
+import IDE.BufferMode (editInsertCode)
 
 -- | Add all imports which gave error messages ...
 resolveErrors :: IDEAction
@@ -174,7 +175,7 @@ addImport' nis filePath descr descrList continuation =  do
                                                 lastLine = foldr max 0 (map (locationELine . importLoc) imports)
                                             in do
                                                 i1 <- getIterAtLine gtkbuf lastLine
-                                                insert gtkbuf i1 newLine
+                                                editInsertCode gtkbuf i1 newLine
                                                 fileSave False
                                                 setModified gtkbuf True
                                                 continuation (True,(descr : descrList))
@@ -188,7 +189,7 @@ addImport' nis filePath descr descrList continuation =  do
                                                     i1 <- getIterAtLine gtkbuf (lineStart - 1)
                                                     i2 <- getIterAtLine gtkbuf (lineEnd)
                                                     delete gtkbuf i1 i2
-                                                    insert gtkbuf i1 newLine
+                                                    editInsertCode gtkbuf i1 newLine
                                                     fileSave False
                                                     setModified gtkbuf True
                                                     continuation (True,(descr : descrList))
@@ -196,7 +197,7 @@ addImport' nis filePath descr descrList continuation =  do
                                             let newLine  =  prettyPrint (newImpDecl mod) ++ "\n"
                                             in do
                                                 i1 <- getIterAtLine gtkbuf lastLine
-                                                insert gtkbuf i1 newLine
+                                                editInsertCode gtkbuf i1 newLine
                                                 fileSave False
                                                 setModified gtkbuf True
                                                 continuation (True,(descr : descrList))
