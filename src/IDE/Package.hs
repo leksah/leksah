@@ -178,7 +178,6 @@ packageConfig' package continuation = do
                     Just activePack | ipdCabalFile package == ipdCabalFile activePack ->
                         modifyIDE_ (\ide -> ide{activePack = Just pack})
                     _ -> return ()
-                triggerEventIDE UpdateWorkspaceInfo
                 triggerEventIDE (WorkspaceChanged False True)
                 continuation (last output == ToolExit ExitSuccess)
                 return ()

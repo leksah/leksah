@@ -15,19 +15,17 @@
 
 
 module IDE.Build (
-    constrDepGraph, -- :: [IDEPackage] -> MakeGraph
-    constrMakeChain, -- :: MakeSettings -> MakeGraph -> [IDEPackage] -> BuildChain MakeOp
-    doBuildChain, -- :: BuildChain MakeOp -> IDE Bool
-    makePackages,
     MakeSettings(..),
     MakeOp(..),
+    moNoOp,
+    makePackages,
     defaultMakeSettings
 ) where
 
 import Data.Map (Map)
 import IDE.Core.State
-       (readIDE, IDEAction, Workspace(..), ipdPackageId, ipdDepends,
-        IDEPackage)
+       (triggerEventIDE, readIDE, IDEAction, Workspace(..), ipdPackageId,
+        ipdDepends, IDEPackage)
 import qualified Data.Map as Map
        (insert, empty, lookup, toList, fromList)
 import Data.Graph
@@ -40,19 +38,31 @@ import Data.Maybe (mapMaybe)
 import IDE.Package
        (packageClean', packageInstall', buildPackage, packageConfig')
 import IDE.Core.Types
-       (Prefs(..), IDE(..), WorkspaceAction)
+       (IDEEvent(..), Prefs(..), IDE(..), WorkspaceAction)
 import Control.Monad.Reader
 import Distribution.Text (Text(..))
+import Control.Event (EventSource(..))
 
 -- import Debug.Trace (trace)
 trace a b = b
 
+-- * Exported
 
--- ** Types
+data MakeSettings = MakeSettings {
+    msMakeMode                       :: Bool,
+    msSingleBuildWithoutLinking      :: Bool,
+    msSaveAllBeforeBuild             :: Bool,
+    msBackgroundBuild                :: Bool,
+    msDontInstallLast                :: Bool}
 
-type MyGraph a = Map a [a]
-
-type MakeGraph = MyGraph IDEPackage
+-- | Take make settings from preferences
+defaultMakeSettings :: Prefs -> MakeSettings
+defaultMakeSettings prefs = MakeSettings  {
+    msMakeMode                       = makeMode prefs,
+    msSingleBuildWithoutLinking      = singleBuildWithoutLinking prefs,
+    msSaveAllBeforeBuild             = saveAllBeforeBuild prefs,
+    msBackgroundBuild                = backgroundBuild prefs,
+    msDontInstallLast                = dontInstallLast prefs}
 
 -- | a make operation
 data MakeOp =
@@ -62,8 +72,31 @@ data MakeOp =
     | MoClean
     | MoDocu
     | MoOther String
+    | MoMetaInfo -- rebuild meta info for workspace
     | MoComposed [MakeOp]
     deriving (Eq,Ord,Show)
+
+moNoOp = MoComposed[]
+
+-- | The interface to the build system
+-- Consumes settings, a list of targets and a the operation to perform.
+-- The firstOp will be applied to the first target
+-- The restOp will be applied to all other targets
+-- The finishOp will be applied to the last target after any op succeeded,
+-- but it is applied after restOp has been tried on the last target
+makePackages ::  MakeSettings -> [IDEPackage] -> MakeOp -> MakeOp -> MakeOp -> WorkspaceAction
+makePackages ms targets firstOp restOp  finishOp = trace ("makePackages : " ++ show firstOp ++ " " ++ show restOp) $ do
+    ws <- ask
+    lift $ do
+        prefs' <- readIDE prefs
+        let plan = constrMakeChain ms ws targets firstOp restOp finishOp
+        trace ("makeChain : " ++ show plan) $ doBuildChain ms plan
+
+-- ** Types
+
+type MyGraph a = Map a [a]
+
+type MakeGraph = MyGraph IDEPackage
 
 data Chain alpha beta  =
     Chain {
@@ -74,22 +107,100 @@ data Chain alpha beta  =
     | EmptyChain
     deriving Show
 
-data MakeSettings = MakeSettings {
-    msMakeMode                       :: Bool,
-    msSingleBuildWithoutLinking      :: Bool,
-    msSaveAllBeforeBuild             :: Bool,
-    msBackgroundBuild                :: Bool,
-    msDontInstallLast                :: Bool}
-
-defaultMakeSettings :: Prefs -> MakeSettings
-defaultMakeSettings prefs = MakeSettings  {
-    msMakeMode                       = makeMode prefs,
-    msSingleBuildWithoutLinking      = singleBuildWithoutLinking prefs,
-    msSaveAllBeforeBuild             = saveAllBeforeBuild prefs,
-    msBackgroundBuild                = backgroundBuild prefs,
-    msDontInstallLast                = dontInstallLast prefs}
-
 -- ** Functions
+-- | Construct a make chain for a package,
+-- which is a plan of the build to perform.
+-- Consumes settings, the workspace and a list of targets.
+-- The first op is applied to the first target.
+
+constrMakeChain :: MakeSettings -> Workspace ->  [IDEPackage] -> MakeOp ->
+    MakeOp -> MakeOp -> Chain MakeOp IDEPackage
+-- No more targets
+constrMakeChain _ _ [] _ _ _ = EmptyChain
+
+constrMakeChain ms@MakeSettings{msMakeMode = makeMode}
+                    Workspace{wsPackages = packages, wsNobuildPack = noBuilds}
+                    targets@(headTarget:restTargets) firstOp restOp finishOp
+-- single build
+    | not makeMode  =  chainFor headTarget ms firstOp
+                        (chainFor headTarget ms finishOp EmptyChain Nothing) Nothing
+-- complex build
+    | otherwise =  trace ("topsorted: " ++ showTopSorted topsorted)
+                    constrElem targets topsorted depGraph ms noBuilds
+                        firstOp restOp finishOp False
+      where
+        depGraph        =  constrDepGraph packages
+        topsorted       =  reverse $ topSortGraph $ constrParentGraph packages
+
+-- Constructs a make chain
+chainFor :: IDEPackage ->  MakeSettings -> MakeOp -> Chain MakeOp IDEPackage
+                -> Maybe (Chain MakeOp IDEPackage)
+                -> Chain MakeOp IDEPackage
+chainFor target settings (MoComposed (hdOp:[])) cont mbNegCont =
+    chainFor target settings hdOp cont mbNegCont
+chainFor target settings (MoComposed (hdOp:rest)) cont mbNegCont =
+    chainFor target settings hdOp (chainFor target settings (MoComposed rest) cont mbNegCont)
+        mbNegCont
+chainFor target settings op cont mbNegCont = Chain {
+        mcAction =  op,
+        mcEle    = target,
+        mcPos    =  cont,
+        mcNeg    =  mbNegCont}
+
+-- Recursive building of a make chain
+-- The first list of packages are the targets
+-- The second list of packages is the topsorted graph of all deps of all targets
+constrElem  :: [IDEPackage] -> [IDEPackage] -> MakeGraph -> MakeSettings -> [IDEPackage]
+    -> MakeOp -> MakeOp -> MakeOp -> Bool -> Chain MakeOp IDEPackage
+constrElem currentTargets tops  depGraph ms noBuilds
+    firstOp restOp finishOp doneAnything
+
+-- finished traversing the topsorted deps or no targets
+    | null currentTargets || null tops = EmptyChain
+-- operations have to be applied to current
+    | elem (head tops) currentTargets && not (elem (head tops) noBuilds) =
+        let current = head tops
+            dependents = case Map.lookup current depGraph of
+                            Nothing -> trace ("Build>>constrMakeChain: unknown package"
+                                                ++ show current) []
+                            Just deps -> deps
+            withoutInstall = msDontInstallLast ms && null (delete current dependents)
+            filteredOps = case firstOp of
+                            MoComposed l -> MoComposed (filter (\e -> e /= MoInstall) l)
+                            MoInstall    -> MoComposed []
+                            other        -> other
+        in trace ("constrElem1 deps: " ++ show dependents ++ " withoutInstall: " ++ show withoutInstall)
+            $
+            chainFor current ms (if withoutInstall then filteredOps else firstOp)
+                (constrElem (nub $ currentTargets ++ dependents)
+                    (tail tops) depGraph ms noBuilds restOp restOp finishOp True)
+                (Just $ if doneAnything
+                            then chainFor current ms finishOp EmptyChain Nothing
+                            else EmptyChain)
+-- no operations have to be applied to current, just try the next
+    | otherwise  = trace ("constrElem2 " ++ show restOp) $
+        constrElem currentTargets (tail tops) depGraph ms noBuilds
+            firstOp restOp finishOp doneAnything
+
+
+-- | Performs the operations of a build chain
+doBuildChain :: MakeSettings -> Chain MakeOp IDEPackage -> IDEAction
+doBuildChain _ EmptyChain = return ()
+doBuildChain ms chain@Chain{mcAction = MoConfigure} =
+    packageConfig' (mcEle chain) (constrCont ms (mcPos chain) (mcNeg chain))
+doBuildChain ms chain@Chain{mcAction = MoBuild} =
+    buildPackage (msBackgroundBuild ms) (not (msMakeMode ms) && msSingleBuildWithoutLinking ms)
+        (mcEle chain) (constrCont ms (mcPos chain) (mcNeg chain))
+doBuildChain ms chain@Chain{mcAction = MoInstall} =
+    packageInstall' (mcEle chain) (constrCont ms (mcPos chain) (mcNeg chain))
+doBuildChain ms chain@Chain{mcAction = MoClean} =
+    packageClean' (mcEle chain) (constrCont ms (mcPos chain) (mcNeg chain))
+doBuildChain ms chain@Chain{mcAction = MoMetaInfo} =
+    triggerEventIDE UpdateWorkspaceInfo >> return ()
+doBuildChain ms chain  = doBuildChain ms (mcPos chain)
+
+constrCont ms pos (Just neg) False = doBuildChain ms neg
+constrCont ms pos _ _ = doBuildChain ms pos
 
 -- | Construct a dependency graph for a package
 -- pointing to the packages the subject package depends on
@@ -115,85 +226,9 @@ showGraph mg =
 showTopSorted :: [IDEPackage] -> String
 showTopSorted = show . map (disp .ipdPackageId)
 
--- | Construct a make chain for a package,
--- which is a plan of the build to perform.
--- Consumes settings, the workspace and a list of targets.
-constrMakeChain :: MakeSettings -> Workspace ->  [IDEPackage] -> MakeOp -> MakeOp -> Chain MakeOp IDEPackage
-constrMakeChain _ _ [] _ _ = EmptyChain
-constrMakeChain ms@MakeSettings{msMakeMode = makeMode}
-                    Workspace{wsPackages = packages, wsNobuildPack = noBuilds}
-                    targets@(headTarget:restTargets) op1 op2
-    | not makeMode  =  chainFor headTarget ms op1 EmptyChain Nothing
-    | otherwise =  trace ("topsorted: " ++ showTopSorted topsorted)
-                    constrElem targets topsorted depGraph ms noBuilds op1 op2
-      where
-        depGraph        =  constrDepGraph packages
-        topsorted       =  reverse $ topSortGraph $ constrParentGraph packages
-
-constrElem  :: [IDEPackage] -> [IDEPackage] -> MakeGraph -> MakeSettings -> [IDEPackage]
-    -> MakeOp -> MakeOp -> Chain MakeOp IDEPackage
-constrElem _ [] _ _  _ _ _ = trace ("constrElem: 1") EmptyChain
-constrElem [] _ _ _  _ _ _ = trace ("constrElem: 2") EmptyChain
-constrElem currentTargets (current:rest)  depGraph ms noBuilds op1 op2
-    | elem current currentTargets && not (elem current noBuilds) =
-        let dependents = case Map.lookup current depGraph of
-                        Nothing -> trace ("Build>>constrMakeChain: unknown package"
-                                            ++ show current) []
-                        Just deps -> deps
-            withoutInstall = msDontInstallLast ms && null (delete current dependents)
-            filteredOps = case op1 of
-                            MoComposed l -> MoComposed (filter (\e -> e /= MoInstall) l)
-                            MoInstall    -> MoComposed []
-                            other        -> other
-        in trace ("constrElem1 deps: " ++ show dependents ++ " withoutInstall: " ++ show withoutInstall)
-            $
-            chainFor current ms (if withoutInstall then filteredOps else op1)
-                (constrElem (nub $ currentTargets ++ dependents)  rest depGraph ms noBuilds op2 op2)
-                (Just EmptyChain)
-    | otherwise  = trace ("constrElem2 " ++ show op2) $ constrElem currentTargets rest depGraph ms noBuilds op1 op2
-
-chainFor :: IDEPackage ->  MakeSettings -> MakeOp -> Chain MakeOp IDEPackage
-                -> Maybe (Chain MakeOp IDEPackage)
-                -> Chain MakeOp IDEPackage
-chainFor target settings (MoComposed (hdOp:[])) cont mbNegCont =
-    chainFor target settings hdOp cont mbNegCont
-chainFor target settings (MoComposed (hdOp:rest)) cont mbNegCont =
-    chainFor target settings hdOp (chainFor target settings (MoComposed rest) cont mbNegCont)
-        mbNegCont
-chainFor target settings op cont mbNegCont = Chain {
-        mcAction =  op,
-        mcEle    = target,
-        mcPos    =  cont,
-        mcNeg    =  mbNegCont}
-
-doBuildChain :: MakeSettings -> Chain MakeOp IDEPackage -> IDEAction
-doBuildChain _ EmptyChain = return ()
-doBuildChain ms chain@Chain{mcAction = MoConfigure} = do
-    packageConfig' (mcEle chain) (constrCont ms (mcPos chain) (mcNeg chain))
-doBuildChain ms chain@Chain{mcAction = MoBuild} = do
-    buildPackage (msBackgroundBuild ms) (not (msMakeMode ms) && msSingleBuildWithoutLinking ms)
-        (mcEle chain) (constrCont ms (mcPos chain) (mcNeg chain))
-doBuildChain ms chain@Chain{mcAction = MoInstall} = do
-    packageInstall' (mcEle chain) (constrCont ms (mcPos chain) (mcNeg chain))
-doBuildChain ms chain@Chain{mcAction = MoClean} = do
-    packageClean' (mcEle chain) (constrCont ms (mcPos chain) (mcNeg chain))
-doBuildChain ms chain  = doBuildChain ms (mcPos chain)
-
-constrCont ms pos (Just neg) False = doBuildChain ms neg
-constrCont ms pos _ _ = doBuildChain ms pos
-
-makePackages ::  MakeSettings -> [IDEPackage] -> MakeOp -> MakeOp -> WorkspaceAction
-makePackages ms targets op1 op2  = trace ("makePackages : " ++ show op1 ++ " " ++ show op2) $ do
-    ws <- ask
-    lift $ do
-        prefs' <- readIDE prefs
-        let plan = constrMakeChain ms ws targets op1 op2
-        trace ("makeChain : " ++ show plan) $ doBuildChain ms plan
-
 
 -- | Calculates for every dependency a target (or not)
 
--- TODO
 depToTarget :: [IDEPackage] -> Dependency -> Maybe IDEPackage
 depToTarget list dep = find (doesMatch dep) list
         where
@@ -233,10 +268,6 @@ toMyGraph graph lookup = foldr constr Map.empty myEdges
     myEdges              = map (\(a,b) -> (lookItUp a, lookItUp b)) $ edges graph
     lookItUp             =  (\(_,e,_)-> e) . lookup
 
-
---calculateReverseDependencies ::
---  Workspace -> Map IDEPackage [IDEPackage]
---calculateReverseDependencies Workspace{wsPackages = wsPackages} = constrDepGraph wsPackages
 
 
 

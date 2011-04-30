@@ -517,7 +517,7 @@ workspaceClean = do
     settings <- lift $ do
         prefs' <- readIDE prefs
         return (defaultMakeSettings prefs')
-    makePackages settings (wsPackages ws) MoClean MoClean
+    makePackages settings (wsPackages ws) MoClean MoClean moNoOp
 
 workspaceMake :: WorkspaceAction
 workspaceMake = do
@@ -528,7 +528,7 @@ workspaceMake = do
                     msMakeMode           = True,
                     msBackgroundBuild    = False})
     makePackages settings (wsPackages ws) (MoComposed [MoConfigure,MoBuild,MoInstall])
-        (MoComposed [MoConfigure,MoBuild,MoInstall])
+        (MoComposed [MoConfigure,MoBuild,MoInstall]) MoMetaInfo
 
 backgroundMake :: IDEAction
 backgroundMake = catchIDE (do
@@ -546,10 +546,10 @@ backgroundMake = catchIDE (do
                 let settings = defaultMakeSettings prefs
                 if msSingleBuildWithoutLinking settings &&  not (msMakeMode settings)
                     then workspaceTryQuiet_ $
-                        makePackages settings modifiedPacks MoBuild (MoComposed [])
+                        makePackages settings modifiedPacks MoBuild (MoComposed []) moNoOp
                     else workspaceTryQuiet_ $
                         makePackages settings modifiedPacks (MoComposed [MoBuild,MoInstall])
-                                        (MoComposed [MoConfigure,MoBuild,MoInstall])
+                                        (MoComposed [MoConfigure,MoBuild,MoInstall]) MoMetaInfo
     )
     (\(e :: SomeException) -> sysMessage Normal (show e))
 
@@ -566,9 +566,10 @@ makePackage = do
         Just ws -> lift $
             if msSingleBuildWithoutLinking settings &&  not (msMakeMode settings)
                 then runWorkspace
-                        (makePackages settings [p] MoBuild (MoComposed [])) ws
+                        (makePackages settings [p] MoBuild (MoComposed []) moNoOp) ws
                 else runWorkspace
                         (makePackages settings [p]
                         (MoComposed [MoBuild,MoInstall])
-                        (MoComposed [MoConfigure,MoBuild,MoInstall])) ws
+                        (MoComposed [MoConfigure,MoBuild,MoInstall])
+                        MoMetaInfo) ws
 
