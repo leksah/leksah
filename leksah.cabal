@@ -126,7 +126,7 @@ library
     other-modules: Paths_leksah
 
     ghc-prof-options: -auto-all -prof
-    ghc-shared-options: -auto-all -prof
+    ghc-shared-options: -auto-all
     ghc-options: -fwarn-missing-fields -fwarn-incomplete-patterns -ferror-spans
 
 Executable leksah
@@ -173,7 +173,7 @@ Executable leksah
     buildable: True
     extensions: CPP
     ghc-prof-options: -auto-all -prof
-    ghc-shared-options: -auto-all -prof
+    ghc-shared-options: -auto-all
     ghc-options:  -fwarn-missing-fields -fwarn-incomplete-patterns -ferror-spans
 
 
