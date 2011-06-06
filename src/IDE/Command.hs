@@ -124,11 +124,14 @@ commitAction = do
 
 setupRepoAction :: IDEAction
 setupRepoAction = do
-    repo <- liftIO $ Git.openRepo "/home/n0s/testrepo" --TODO set this to the package/workspace location
-    modifyIDE_ (\ide -> do
-            let newWorkspace = (fromJust (workspace ide)) { gitRepo = Just repo }
-            ide {workspace = Just newWorkspace }
-        )
+    mbRepoPath <- liftIO $ GitGui.openRepoWindow "Choose repository location"
+    case mbRepoPath of
+        Just repoPath -> do
+            repo <- liftIO $ Git.openRepo repoPath --TODO set this to the package/workspace location
+            modifyIDE_ (\ide -> do
+                let newWorkspace = (fromJust (workspace ide)) { gitRepo = Just repo }
+                ide {workspace = Just newWorkspace })
+        Nothing -> return ()
 
 
 --getRepo :: String -> IDEM -> IO Git.GitRepo
