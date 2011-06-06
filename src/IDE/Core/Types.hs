@@ -116,6 +116,8 @@ import System.IO (Handle)
 import Distribution.Text(disp)
 import Text.PrettyPrint (render)
 
+import qualified GitGui.Core as Git
+
 -- ---------------------------------------------------------------------
 -- IDE State
 --
@@ -337,6 +339,7 @@ data Workspace = Workspace {
 ,   wsPackagesFiles ::   [FilePath]
 ,   wsActivePackFile::   Maybe FilePath
 ,   wsNobuildPack   ::   [IDEPackage]
+,   gitRepo         ::   Maybe Git.GitRepo       -- ^ git repositories (TODO add to workspace?)
 } deriving Show
 
 -- ---------------------------------------------------------------------

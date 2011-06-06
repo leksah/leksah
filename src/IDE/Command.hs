@@ -103,12 +103,48 @@ import IDE.PaneGroups
 import IDE.Pane.Search (getSearch, setChoices, searchMetaGUI)
 import IDE.Pane.Grep (getGrep)
 
+import qualified GitGui.Gui as GitGui
+import qualified GitGui.Core as Git
+
+import qualified Data.Map as Map
+
+
+testAction :: ReaderT alpha IO ()
+testAction = do
+    return ()
+
+-- TODO set the field in IDE somewhere to nothing if repo is not configured
+commitAction :: IDEAction
+commitAction = do
+    Just workspace <- readIDE workspace
+    let repo = (gitRepo workspace)
+    case repo of
+        Just r -> liftIO $ GitGui.openCommitWindow r
+        Nothing -> liftIO $ GitGui.openErrorWin "No active Repository."
+
+setupRepoAction :: IDEAction
+setupRepoAction = do
+    repo <- liftIO $ Git.openRepo "/home/n0s/testrepo" --TODO set this to the package/workspace location
+    modifyIDE_ (\ide -> do
+            let newWorkspace = (fromJust (workspace ide)) { gitRepo = Just repo }
+            ide {workspace = Just newWorkspace }
+        )
+
+
+--getRepo :: String -> IDEM -> IO Git.GitRepo
+--getRepo repo ide = fromJust $ Map.lookup repo $ gitRepo ide
+--getRepo _ ide = gitRepo ide
+
 --
 -- | The Actions known to the system (they can be activated by keystrokes or menus)
 --
 mkActions :: [ActionDescr IDERef]
 mkActions =
-    [AD "File" "_File" Nothing Nothing (return ()) [] False
+    [
+    AD "vcs" "Version Con_trol" Nothing Nothing (return ()) [] False
+    ,AD "SetupRepo" "_Setup Repo" Nothing Nothing setupRepoAction [] False
+    ,AD "Commit" "_Commit" Nothing Nothing commitAction [] False
+    ,AD "File" "_File" Nothing Nothing (return ()) [] False
     ,AD "FileNew" "_New Module..." Nothing (Just "gtk-new")
         (packageTry_ $ addModule []) [] False
     ,AD "FileNewTextFile" "_New Text File" Nothing Nothing

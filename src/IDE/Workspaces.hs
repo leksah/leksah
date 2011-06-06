@@ -452,6 +452,7 @@ emptyWorkspace =  Workspace {
 ,   wsPackagesFiles =   []
 ,   wsActivePackFile =   Nothing
 ,   wsNobuildPack   =   []
+,   gitRepo         =   Nothing
 }
 
 workspaceDescr :: [FieldDescriptionS Workspace]
