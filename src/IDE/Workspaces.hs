@@ -33,6 +33,7 @@ module IDE.Workspaces (
 ,   backgroundMake
 ,   makePackage
 
+,   workspaceSetGitRepo
 ) where
 
 import IDE.Core.State
@@ -86,6 +87,8 @@ import Graphics.UI.Gtk.General.Enums (WindowPosition(..))
 import Control.Applicative ((<$>))
 import IDE.Build
 import IDE.Utils.FileUtils(myCanonicalizePath)
+
+import qualified GitGui.Core as Git
 
 
 setWorkspace :: Maybe Workspace -> IDEAction
@@ -486,7 +489,13 @@ workspaceDescr = [
             (PP.text . show)
             readParser
             wsActivePackFile
-            (\fp a -> a{wsActivePackFile = fp})]
+            (\fp a -> a{wsActivePackFile = fp})
+    ,   mkFieldS
+            (paraName <<<- ParaName "Maybe a git repository" $ emptyParams)
+            (PP.text . show)
+            readParser
+            gitRepo
+            (\filePath a -> a{gitRepo = filePath})]
 
 
 addRecentlyUsedWorkspace :: FilePath -> IDEAction
@@ -572,4 +581,13 @@ makePackage = do
                         (makePackages settings [p]
                         (MoComposed [MoBuild,MoInstall])
                         (MoComposed [MoConfigure,MoBuild,MoInstall])) ws
+
+workspaceSetGitRepo :: Maybe Git.GitRepo -> IDEAction
+workspaceSetGitRepo repo = do
+    modifyIDE_ (\ide -> do
+        let modifiedWs = (fromJust (workspace ide)) { gitRepo = repo }
+        ide {workspace = Just modifiedWs })
+    modifiedWs <- readIDE workspace
+    writeWorkspace $ fromJust modifiedWs
+
 

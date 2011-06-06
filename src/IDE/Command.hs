@@ -109,11 +109,6 @@ import qualified GitGui.Core as Git
 import qualified Data.Map as Map
 
 
-testAction :: ReaderT alpha IO ()
-testAction = do
-    return ()
-
--- TODO set the field in IDE somewhere to nothing if repo is not configured
 commitAction :: IDEAction
 commitAction = do
     Just workspace <- readIDE workspace
@@ -127,16 +122,11 @@ setupRepoAction = do
     mbRepoPath <- liftIO $ GitGui.openRepoWindow "Choose repository location"
     case mbRepoPath of
         Just repoPath -> do
-            repo <- liftIO $ Git.openRepo repoPath --TODO set this to the package/workspace location
-            modifyIDE_ (\ide -> do
-                let newWorkspace = (fromJust (workspace ide)) { gitRepo = Just repo }
-                ide {workspace = Just newWorkspace })
+            repo <- liftIO $ Git.openRepo repoPath
+            workspaceSetGitRepo $ Just repo
+--            triggerEventIDE $ WorkspaceChanged True True
+--            return ()
         Nothing -> return ()
-
-
---getRepo :: String -> IDEM -> IO Git.GitRepo
---getRepo repo ide = fromJust $ Map.lookup repo $ gitRepo ide
---getRepo _ ide = gitRepo ide
 
 --
 -- | The Actions known to the system (they can be activated by keystrokes or menus)
