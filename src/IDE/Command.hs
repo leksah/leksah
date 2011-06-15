@@ -107,6 +107,8 @@ import qualified GitGui.Gui as GitGui
 import qualified GitGui.Core as Git
 
 import qualified Data.Map as Map
+import MonadUtils (liftIO1)
+import Data.IORef (readIORef)
 
 
 commitAction :: IDEAction
@@ -129,10 +131,12 @@ viewLogAction = do
 
 setupRepoAction :: IDEAction
 setupRepoAction = do
-        liftIO $ GitGui.openRepoWindow (workspaceSetGitRepo mbRepo)
---    where
---    setRepo :: Maybe GitGui.GitRepo -> IO ()
---    setRepo mbRepo = workspaceSetGitRepo mbRepo
+        liftIO $ GitGui.openRepoWindow setRepo
+    where
+    setRepo :: Maybe Git.GitRepo -> IO ()
+    setRepo mbRepo = do
+        _ <- readIORef $ runReaderT $ workspaceSetGitRepo mbRepo
+        return ()
 
 
 --setupRepoAction :: IDEAction
