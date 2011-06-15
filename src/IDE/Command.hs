@@ -129,14 +129,22 @@ viewLogAction = do
 
 setupRepoAction :: IDEAction
 setupRepoAction = do
-    mbRepoPath <- liftIO $ GitGui.openRepoWindow "Choose repository location"
-    case mbRepoPath of
-        Just repoPath -> do
-            repo <- liftIO $ Git.openRepo repoPath
-            workspaceSetGitRepo $ Just repo
---            triggerEventIDE $ WorkspaceChanged True True
---            return ()
-        Nothing -> return ()
+        liftIO $ GitGui.openRepoWindow (workspaceSetGitRepo mbRepo)
+--    where
+--    setRepo :: Maybe GitGui.GitRepo -> IO ()
+--    setRepo mbRepo = workspaceSetGitRepo mbRepo
+
+
+--setupRepoAction :: IDEAction
+--setupRepoAction = do
+--    mbRepoPath <- liftIO $ GitGui.openRepoWindow "Choose repository location"
+--    case mbRepoPath of
+--        Just repoPath -> do
+--            repo <- liftIO $ Git.openRepo repoPath
+--            workspaceSetGitRepo $ Just repo
+----            triggerEventIDE $ WorkspaceChanged True True
+----            return ()
+--        Nothing -> return ()
 
 --
 -- | The Actions known to the system (they can be activated by keystrokes or menus)
