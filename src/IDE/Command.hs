@@ -132,7 +132,8 @@ viewLogAction = do
 setupRepoAction :: IDEAction
 setupRepoAction = do
         ide <- ask
-        liftIO $ GitGui.openRepoWindow ((flip setRepo) ide)
+        Just workspace <- readIDE workspace
+        liftIO $ GitGui.openRepoWindow (gitRepo workspace) ((flip setRepo) ide)
     where
     setRepo :: Maybe Git.GitRepo -> IDERef -> IO ()
     setRepo mbRepo = runReaderT $ workspaceSetGitRepo mbRepo
