@@ -103,8 +103,8 @@ import IDE.PaneGroups
 import IDE.Pane.Search (getSearch, setChoices, searchMetaGUI)
 import IDE.Pane.Grep (getGrep)
 
-import qualified GitGui.Gui as GitGui
-import qualified GitGui.Core as Git
+import qualified VCSGui.Git.Gui as GitGui
+import qualified VCSWrapper.Git as Git
 
 import qualified Data.Map as Map
 import MonadUtils (liftIO1)

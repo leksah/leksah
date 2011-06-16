@@ -88,7 +88,7 @@ import Control.Applicative ((<$>))
 import IDE.Build
 import IDE.Utils.FileUtils(myCanonicalizePath)
 
-import qualified GitGui.Core as Git
+import qualified VCSWrapper.Git as Git
 
 
 setWorkspace :: Maybe Workspace -> IDEAction

@@ -116,7 +116,7 @@ import System.IO (Handle)
 import Distribution.Text(disp)
 import Text.PrettyPrint (render)
 
-import qualified GitGui.Core as Git
+import qualified VCSWrapper.Git as Git
 
 -- ---------------------------------------------------------------------
 -- IDE State
