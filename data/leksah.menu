@@ -135,17 +135,9 @@
        <menuitem name="Load Session" action="LoadSession" />
        <menuitem name="Forget Session" action="ForgetSession" />
     </menu>
-    <!--
-    <menu name="Version Con_trol" action="vcs">
-       <menuitem name="_Commit" action="Commit" />
-       <menuitem name="_View Log" action="ViewLog" />
-       <menuitem name="_Setup Repo" action="SetupRepo" />
-    </menu>
-    -->
     <menu name="Version Con_trol" action="vcs">
         <menuitem name="_Commit" action="Commit" />
         <menuitem name="_View Log" action="ViewLog" />
-        <menuitem name="_Update" action="Update" />
         <menuitem name="_Setup Repo" action="SetupRepo" />
     </menu>
     <menu name="_Help" action="Help">

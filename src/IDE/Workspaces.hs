@@ -33,7 +33,7 @@ module IDE.Workspaces (
 ,   backgroundMake
 ,   makePackage
 
---,   workspaceSetGitRepo
+,   workspaceSetVCSConfig
 ) where
 
 import IDE.Core.State
@@ -88,7 +88,7 @@ import Control.Applicative ((<$>))
 import IDE.Build
 import IDE.Utils.FileUtils(myCanonicalizePath)
 
---import qualified VCSWrapper.Git as Git
+import qualified VCSWrapper.Common as Vcs
 
 
 setWorkspace :: Maybe Workspace -> IDEAction
@@ -455,7 +455,7 @@ emptyWorkspace =  Workspace {
 ,   wsPackagesFiles =   []
 ,   wsActivePackFile =   Nothing
 ,   wsNobuildPack   =   []
---,   gitRepo         =   Nothing
+,   vcsConfig       =   Nothing
 }
 
 workspaceDescr :: [FieldDescriptionS Workspace]
@@ -490,13 +490,12 @@ workspaceDescr = [
             readParser
             wsActivePackFile
             (\fp a -> a{wsActivePackFile = fp})
---    ,   mkFieldS
---            (paraName <<<- ParaName "Maybe a git repository" $ emptyParams)
---            (PP.text . show)
---            readParser
---            gitRepo
---            (\filePath a -> a{gitRepo = filePath})
-            ]
+    ,   mkFieldS
+            (paraName <<<- ParaName "Maybe Config of a Version Control System" $ emptyParams)
+            (PP.text . show)
+            readParser
+            vcsConfig
+            (\filePath a -> a{vcsConfig = filePath})]
 
 
 addRecentlyUsedWorkspace :: FilePath -> IDEAction
@@ -583,12 +582,12 @@ makePackage = do
                         (MoComposed [MoBuild,MoInstall])
                         (MoComposed [MoConfigure,MoBuild,MoInstall])) ws
 
---workspaceSetGitRepo :: Maybe Git.GitRepo -> IDEAction
---workspaceSetGitRepo repo = do
---    modifyIDE_ (\ide -> do
---        let modifiedWs = (fromJust (workspace ide)) { gitRepo = repo }
---        ide {workspace = Just modifiedWs })
---    modifiedWs <- readIDE workspace
---    writeWorkspace $ fromJust modifiedWs
+workspaceSetVCSConfig :: Maybe Vcs.Config -> IDEAction
+workspaceSetVCSConfig config = do
+    modifyIDE_ (\ide -> do
+        let modifiedWs = (fromJust (workspace ide)) { vcsConfig = config }
+        ide {workspace = Just modifiedWs })
+    modifiedWs <- readIDE workspace
+    writeWorkspace $ fromJust modifiedWs
 
 
