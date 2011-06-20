@@ -103,40 +103,40 @@ import IDE.PaneGroups
 import IDE.Pane.Search (getSearch, setChoices, searchMetaGUI)
 import IDE.Pane.Grep (getGrep)
 
-import qualified VCSGui.Git.Gui as GitGui
-import qualified VCSWrapper.Git as Git
+--import qualified VCSGui.Git.Gui as GitGui
+--import qualified VCSWrapper.Git as Git
 
 import qualified Data.Map as Map
 import MonadUtils (liftIO1)
 import Data.IORef (readIORef)
 
 
-commitAction :: IDEAction
-commitAction = do
-    Just workspace <- readIDE workspace
-    let repo = (gitRepo workspace)
-    case repo of
-        Just r -> liftIO $ GitGui.openCommitWindow r
-        Nothing -> liftIO $ GitGui.openErrorWin "No active Repository."
-
-
-viewLogAction :: IDEAction
-viewLogAction = do
-    Just workspace <- readIDE workspace
-    let repo = (gitRepo workspace)
-    case repo of
-        Just r -> liftIO $ GitGui.openLogWindow r
-        Nothing -> liftIO $ GitGui.openErrorWin "No active Repository."
-
-
-setupRepoAction :: IDEAction
-setupRepoAction = do
-        ide <- ask
-        Just workspace <- readIDE workspace
-        liftIO $ GitGui.openRepoWindow (gitRepo workspace) ((flip setRepo) ide)
-    where
-    setRepo :: Maybe Git.GitRepo -> IDERef -> IO ()
-    setRepo mbRepo = runReaderT $ workspaceSetGitRepo mbRepo
+--commitAction :: IDEAction
+--commitAction = do
+--    Just workspace <- readIDE workspace
+--    let repo = (gitRepo workspace)
+--    case repo of
+--        Just r -> liftIO $ GitGui.openCommitWindow r
+--        Nothing -> liftIO $ GitGui.openErrorWin "No active Repository."
+--
+--
+--viewLogAction :: IDEAction
+--viewLogAction = do
+--    Just workspace <- readIDE workspace
+--    let repo = (gitRepo workspace)
+--    case repo of
+--        Just r -> liftIO $ GitGui.openLogWindow r
+--        Nothing -> liftIO $ GitGui.openErrorWin "No active Repository."
+--
+--
+--setupRepoAction :: IDEAction
+--setupRepoAction = do
+--        ide <- ask
+--        Just workspace <- readIDE workspace
+--        liftIO $ GitGui.openRepoWindow (gitRepo workspace) ((flip setRepo) ide)
+--    where
+--    setRepo :: Maybe Git.GitRepo -> IDERef -> IO ()
+--    setRepo mbRepo = runReaderT $ workspaceSetGitRepo mbRepo
 
 
 --setupRepoAction :: IDEAction
@@ -156,11 +156,11 @@ setupRepoAction = do
 mkActions :: [ActionDescr IDERef]
 mkActions =
     [
-    AD "vcs" "Version Con_trol" Nothing Nothing (return ()) [] False
-    ,AD "SetupRepo" "_Setup Repo" Nothing Nothing setupRepoAction [] False
-    ,AD "Commit" "_Commit" Nothing Nothing commitAction [] False
-    ,AD "ViewLog" "_View Log" Nothing Nothing viewLogAction [] False
-    ,AD "File" "_File" Nothing Nothing (return ()) [] False
+--    AD "vcs" "Version Con_trol" Nothing Nothing (return ()) [] False
+--    ,AD "SetupRepo" "_Setup Repo" Nothing Nothing setupRepoAction [] False
+--    ,AD "Commit" "_Commit" Nothing Nothing commitAction [] False
+--    ,AD "ViewLog" "_View Log" Nothing Nothing viewLogAction [] False
+    AD "File" "_File" Nothing Nothing (return ()) [] False
     ,AD "FileNew" "_New Module..." Nothing (Just "gtk-new")
         (packageTry_ $ addModule []) [] False
     ,AD "FileNewTextFile" "_New Text File" Nothing Nothing
