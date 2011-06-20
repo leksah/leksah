@@ -110,6 +110,7 @@ import qualified Data.Map as Map
 import MonadUtils (liftIO1)
 import Data.IORef (readIORef)
 
+import IDE.Command.Svn
 
 --commitAction :: IDEAction
 --commitAction = do
@@ -156,11 +157,11 @@ import Data.IORef (readIORef)
 mkActions :: [ActionDescr IDERef]
 mkActions =
     [
---    AD "vcs" "Version Con_trol" Nothing Nothing (return ()) [] False
---    ,AD "SetupRepo" "_Setup Repo" Nothing Nothing setupRepoAction [] False
---    ,AD "Commit" "_Commit" Nothing Nothing commitAction [] False
---    ,AD "ViewLog" "_View Log" Nothing Nothing viewLogAction [] False
-    AD "File" "_File" Nothing Nothing (return ()) [] False
+    AD "vcs" "Version Con_trol" Nothing Nothing (return ()) [] False
+    ,AD "SetupRepo" "_Setup Repo" Nothing Nothing (return ()) [] False
+    ,AD "Commit" "_Commit" Nothing Nothing commitAction [] False
+    ,AD "ViewLog" "_View Log" Nothing Nothing viewLogAction [] False
+    ,AD "File" "_File" Nothing Nothing (return ()) [] False
     ,AD "FileNew" "_New Module..." Nothing (Just "gtk-new")
         (packageTry_ $ addModule []) [] False
     ,AD "FileNewTextFile" "_New Text File" Nothing Nothing

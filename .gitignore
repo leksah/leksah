@@ -1,7 +1,7 @@
 /dist/
 /*.lkshf
 /.DS_Store
-leksahFork.lkshs
-leksahFork.lkshw
+*.lkshs
+*.lkshw
 leksah.lkshs
 leksah.lkshw
