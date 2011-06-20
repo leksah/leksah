@@ -116,7 +116,7 @@ import System.IO (Handle)
 import Distribution.Text(disp)
 import Text.PrettyPrint (render)
 
-import qualified VCSWrapper.Git as Git
+import qualified VCSWrapper.Common as Vcs
 
 -- ---------------------------------------------------------------------
 -- IDE State
@@ -339,7 +339,7 @@ data Workspace = Workspace {
 ,   wsPackagesFiles ::   [FilePath]
 ,   wsActivePackFile::   Maybe FilePath
 ,   wsNobuildPack   ::   [IDEPackage]
-,   gitRepo         ::   Maybe Git.GitRepo       -- ^ git repositories (TODO add to workspace?)
+,   vcsConfig         ::   Maybe Vcs.Config       -- ^ Configuration for a Version Control System
 } deriving Show
 
 -- ---------------------------------------------------------------------

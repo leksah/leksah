@@ -103,7 +103,7 @@ import IDE.PaneGroups
 import IDE.Pane.Search (getSearch, setChoices, searchMetaGUI)
 import IDE.Pane.Grep (getGrep)
 
-import qualified VCSGui.Git.Gui as GitGui
+import qualified VCSGui.Git as GitGui
 import qualified VCSWrapper.Git as Git
 
 import qualified Data.Map as Map
@@ -114,41 +114,30 @@ import Data.IORef (readIORef)
 commitAction :: IDEAction
 commitAction = do
     Just workspace <- readIDE workspace
-    let repo = (gitRepo workspace)
-    case repo of
-        Just r -> liftIO $ GitGui.openCommitWindow r
-        Nothing -> liftIO $ GitGui.openErrorWin "No active Repository."
+    let cfg = (vcsConfig workspace)
+    case cfg of
+        Just c -> liftIO $ Git.runVcs c GitGui.showCommitGUI
+        Nothing -> liftIO $ GitGui.showErrorGUI "No active Repository."
 
 
 viewLogAction :: IDEAction
 viewLogAction = do
     Just workspace <- readIDE workspace
-    let repo = (gitRepo workspace)
-    case repo of
-        Just r -> liftIO $ GitGui.openLogWindow r
-        Nothing -> liftIO $ GitGui.openErrorWin "No active Repository."
+    let cfg = (vcsConfig workspace)
+    case cfg of
+        Just c -> liftIO $ Git.runVcs c GitGui.showLogGUI
+        Nothing -> liftIO $ GitGui.showErrorGUI "No active Repository."
 
 
 setupRepoAction :: IDEAction
 setupRepoAction = do
         ide <- ask
         Just workspace <- readIDE workspace
-        liftIO $ GitGui.openRepoWindow (gitRepo workspace) ((flip setRepo) ide)
+        liftIO $ GitGui.showSetupConfigGUI (vcsConfig workspace) (setRepo ide)
     where
-    setRepo :: Maybe Git.GitRepo -> IDERef -> IO ()
-    setRepo mbRepo = runReaderT $ workspaceSetGitRepo mbRepo
+    setRepo :: IDERef -> Maybe Git.Config -> IO ()
+    setRepo ide mbConfig = runReaderT (workspaceSetVCSConfig mbConfig) ide
 
-
---setupRepoAction :: IDEAction
---setupRepoAction = do
---    mbRepoPath <- liftIO $ GitGui.openRepoWindow "Choose repository location"
---    case mbRepoPath of
---        Just repoPath -> do
---            repo <- liftIO $ Git.openRepo repoPath
---            workspaceSetGitRepo $ Just repo
-----            triggerEventIDE $ WorkspaceChanged True True
-----            return ()
---        Nothing -> return ()
 
 --
 -- | The Actions known to the system (they can be activated by keystrokes or menus)
