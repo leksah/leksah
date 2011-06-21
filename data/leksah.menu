@@ -139,6 +139,8 @@
         <menuitem name="_Commit" action="Commit" />
         <menuitem name="_View Log" action="ViewLog" />
         <menuitem name="_Setup Repo" action="SetupRepo" />
+        <menuitem name="_Update" action="Update" />
+        <menuitem name="_Checkout" action="Checkout" />
     </menu>
     <menu name="_Help" action="Help">
        <menuitem name="_Homepage" action="HelpHomepage" />

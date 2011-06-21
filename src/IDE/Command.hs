@@ -150,6 +150,8 @@ mkActions =
     AD "vcs" "Version Con_trol" Nothing Nothing (return ()) [] False
     ,AD "SetupRepo" "_Setup Repo" Nothing Nothing setupRepoAction [] False
     ,AD "Commit" "_Commit" Nothing Nothing commitAction [] False
+    ,AD "Checkout" "_Checkout" Nothing Nothing checkoutAction [] False
+    ,AD "Update" "_Update" Nothing Nothing updateAction [] False
     ,AD "ViewLog" "_View Log" Nothing Nothing viewLogAction [] False
     ,AD "File" "_File" Nothing Nothing (return ()) [] False
     ,AD "FileNew" "_New Module..." Nothing (Just "gtk-new")
