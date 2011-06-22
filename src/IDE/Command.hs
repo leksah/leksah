@@ -110,7 +110,7 @@ import qualified Data.Map as Map
 import MonadUtils (liftIO1)
 import Data.IORef (readIORef)
 
-import IDE.Command.Svn
+import IDE.Command.VCS.SVN
 
 
 --commitAction :: IDEAction
