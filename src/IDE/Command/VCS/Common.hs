@@ -32,10 +32,10 @@ createActionFromContext vcsAction errorHandler = do
     mbWorkspace <- readIDE workspace
     case mbWorkspace of
         Just workspace -> do
-                             let mbConfig = vcsConfig workspace
-                             case mbConfig of
-                                    Just config -> liftIO $ VCS.runVcs config $ vcsAction
-                                    Nothing -> liftIO $ errorHandler "No active repository!"
+             let mbConfig = vcsConfig workspace
+             case mbConfig of
+                Nothing -> liftIO $ errorHandler "No active repository!"
+                Just (_,config) -> liftIO $ VCS.runVcs config $ vcsAction
         Nothing -> return() --TODO error message
 
 

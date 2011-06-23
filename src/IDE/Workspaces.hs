@@ -88,7 +88,7 @@ import Control.Applicative ((<$>))
 import IDE.Build
 import IDE.Utils.FileUtils(myCanonicalizePath)
 
-import qualified VCSWrapper.Common as Vcs
+import qualified VCSWrapper.Common as VCS
 
 
 setWorkspace :: Maybe Workspace -> IDEAction
@@ -582,7 +582,7 @@ makePackage = do
                         (MoComposed [MoBuild,MoInstall])
                         (MoComposed [MoConfigure,MoBuild,MoInstall])) ws
 
-workspaceSetVCSConfig :: Maybe Vcs.Config -> IDEAction
+workspaceSetVCSConfig :: Maybe (VCS.VCSType, VCS.Config) -> IDEAction
 workspaceSetVCSConfig config = do
     modifyIDE_ (\ide -> do
         let modifiedWs = (fromJust (workspace ide)) { vcsConfig = config }

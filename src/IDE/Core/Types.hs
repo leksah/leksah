@@ -116,7 +116,7 @@ import System.IO (Handle)
 import Distribution.Text(disp)
 import Text.PrettyPrint (render)
 
-import qualified VCSWrapper.Common as Vcs
+import qualified VCSWrapper.Common as VCS
 
 -- ---------------------------------------------------------------------
 -- IDE State
@@ -339,7 +339,7 @@ data Workspace = Workspace {
 ,   wsPackagesFiles ::   [FilePath]
 ,   wsActivePackFile::   Maybe FilePath
 ,   wsNobuildPack   ::   [IDEPackage]
-,   vcsConfig         ::   Maybe Vcs.Config       -- ^ Configuration for a Version Control System
+,   vcsConfig       ::   Maybe (VCS.VCSType, VCS.Config)       -- ^ Configuration for a Version Control System
 } deriving Show
 
 -- ---------------------------------------------------------------------

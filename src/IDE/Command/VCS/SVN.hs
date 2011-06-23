@@ -46,17 +46,16 @@ setupRepoAction = do
     ide <- ask
     mbWorkspace <- readIDE workspace
     case mbWorkspace of
+
         Just workspace -> do
-                             liftIO $ SvnGUI.showSetupConfigGUI (vcsConfig workspace) (setRepo ide)
+                             let config = case vcsConfig workspace of
+                                                Nothing -> Nothing
+                                                Just (_,conf) -> Just conf
+                             liftIO $ SvnGUI.showSetupConfigGUI config (setRepo ide)
         Nothing -> return () --TODO show error message (use ..Common for this)
     where
         setRepo :: IDERef -> Maybe (SvnC.VCSType, SvnC.Config) -> IO ()
-        setRepo ide mbConfig = do
-                        let config = case mbConfig of
-                                        Nothing -> Nothing
-                                        Just (vcsType,conf) -> Just conf
-                        runReaderT (workspaceSetVCSConfig config) ide -- TODO fix this
---        setRepo ide mbConfig = runReaderT (workspaceSetVCSConfig mbConfig) ide
+        setRepo ide mbConfig = runReaderT (workspaceSetVCSConfig mbConfig) ide
 
 updateAction :: IDEAction
 updateAction = do
