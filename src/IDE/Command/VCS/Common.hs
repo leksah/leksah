@@ -67,7 +67,7 @@ setupRepoAction = do
                 let manager = uiManager fs
                 let file = case vcsType of
                                     VCS.GIT -> "git.menu"
-                                    VCS.SVN -> "vcs.menu"
+                                    VCS.SVN -> "svn.menu"
 
                 menuItems <- liftIO $ vcsMenuDescription file
                 mergeInfo <- liftIO $ uiManagerAddUiFromString manager menuItems
