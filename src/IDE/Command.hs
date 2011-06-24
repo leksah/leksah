@@ -110,36 +110,8 @@ import qualified Data.Map as Map
 import MonadUtils (liftIO1)
 import Data.IORef (readIORef)
 
-import IDE.Command.VCS.SVN
-
-
---commitAction :: IDEAction
---commitAction = do
---    Just workspace <- readIDE workspace
---    let cfg = (vcsConfig workspace)
---    case cfg of
---        Just c -> liftIO $ Git.runVcs c GitGui.showCommitGUI
---        Nothing -> liftIO $ GitGui.showErrorGUI "No active Repository."
---
---
---viewLogAction :: IDEAction
---viewLogAction = do
---    Just workspace <- readIDE workspace
---    let cfg = (vcsConfig workspace)
---    case cfg of
---        Just c -> liftIO $ Git.runVcs c GitGui.showLogGUI
---        Nothing -> liftIO $ GitGui.showErrorGUI "No active Repository."
---
---
---setupRepoAction :: IDEAction
---setupRepoAction = do
---        ide <- ask
---        Just workspace <- readIDE workspace
---        liftIO $ GitGui.showSetupConfigGUI (vcsConfig workspace) (setRepo ide)
---    where
---    setRepo :: IDERef -> Maybe Git.Config -> IO ()
---    setRepo ide mbConfig = runReaderT (workspaceSetVCSConfig mbConfig) ide
-
+import qualified IDE.Command.VCS.SVN as VCSSVN
+import qualified IDE.Command.VCS.Common as VCS
 
 --
 -- | The Actions known to the system (they can be activated by keystrokes or menus)
@@ -147,12 +119,15 @@ import IDE.Command.VCS.SVN
 mkActions :: [ActionDescr IDERef]
 mkActions =
     [
+    --common vcs actions
     AD "vcs" "Version Con_trol" Nothing Nothing (return ()) [] False
-    ,AD "SetupRepo" "_Setup Repo" Nothing Nothing setupRepoAction [] False
-    ,AD "Commit" "_Commit" Nothing Nothing commitAction [] False
-    ,AD "Checkout" "_Checkout" Nothing Nothing checkoutAction [] False
-    ,AD "Update" "_Update" Nothing Nothing updateAction [] False
-    ,AD "ViewLog" "_View Log" Nothing Nothing viewLogAction [] False
+    ,AD "SetupRepo" "_Setup Repo" Nothing Nothing VCS.setupRepoAction [] False
+    --svn actions TODO rename actions
+    ,AD "Commit" "_Commit" Nothing Nothing VCSSVN.commitAction [] False
+    ,AD "Checkout" "_Checkout" Nothing Nothing VCSSVN.checkoutAction [] False
+    ,AD "Update" "_Update" Nothing Nothing VCSSVN.updateAction [] False
+    ,AD "ViewLog" "_View Log" Nothing Nothing VCSSVN.viewLogAction [] False
+    --TODO add git actions
     ,AD "File" "_File" Nothing Nothing (return ()) [] False
     ,AD "FileNew" "_New Module..." Nothing (Just "gtk-new")
         (packageTry_ $ addModule []) [] False
@@ -471,6 +446,8 @@ menuDescription = do
     prefsPath   <- getConfigFilePathForLoad "leksah.menu" Nothing dataDir
     res         <- readFile prefsPath
     return res
+
+
 
 updateRecentEntries :: IDEAction
 updateRecentEntries = do

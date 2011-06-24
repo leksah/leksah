@@ -22,6 +22,8 @@ data-files: LICENSE
             data/candy.lkshc
             data/keymap.lkshk
             data/leksah.menu
+	    data/vcs.menu
+	    data/git.menu	    
             data/prefs.lkshp
             data/prefscoll.lkshp
             data/emacs.lkshk

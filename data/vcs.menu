@@ -1,0 +1,10 @@
+  <ui>
+    <menubar>
+      <menu name="Version Con_trol" action="vcs">
+        <menuitem name="_Commit" action="Commit" />
+        <menuitem name="_View Log" action="ViewLog" />
+        <menuitem name="_Update" action="Update" />
+        <menuitem name="_Checkout" action="Checkout" />
+      </menu>
+    </menubar>
+  </ui>
