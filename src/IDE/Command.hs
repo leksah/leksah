@@ -130,6 +130,10 @@ mkActions =
     ,AD "SvnViewLog" "_View Log" Nothing Nothing VCSSVN.viewLogAction [] False
     -- git actions
     ,AD "GitCommit" "_Commit" Nothing Nothing VCSGit.commitAction [] False
+    -- TODO display progress/status-window
+    -- TODO select remote to push/pull to/from
+    ,AD "GitPush" "_Push" Nothing Nothing VCSGit.pushAction [] False
+    ,AD "GitPull" "P_ull" Nothing Nothing VCSGit.pullAction [] False
     ,AD "GitViewLog" "_View Log" Nothing Nothing VCSGit.viewLogAction [] False
     -- other actions
     ,AD "File" "_File" Nothing Nothing (return ()) [] False

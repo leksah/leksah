@@ -3,6 +3,8 @@
       <menu name="Version Con_trol" action="vcs">
         <menuitem name="_Commit" action="GitCommit" />
         <menuitem name="_View Log" action="GitViewLog" />
+        <menuitem name="_Push" action="GitPush" />
+        <menuitem name="P_ull" action="GitPull" />
       </menu>
     </menubar>
   </ui>

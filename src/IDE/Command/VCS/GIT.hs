@@ -15,9 +15,12 @@
 module IDE.Command.VCS.GIT (
     commitAction
     ,viewLogAction
+    ,pushAction
+    ,pullAction
 ) where
 
 import qualified VCSGui.Git as GitGUI
+import qualified VCSWrapper.Git as Git
 
 import IDE.Command.VCS.Common
 
@@ -25,9 +28,13 @@ import IDE.Core.Types
 import IDE.Core.State
 
 commitAction :: IDEAction
-commitAction = do
-    createActionFromContext GitGUI.showCommitGUI
+commitAction = createActionFromContext GitGUI.showCommitGUI
 
 viewLogAction :: IDEAction
-viewLogAction = do
-    createActionFromContext GitGUI.showLogGUI
+viewLogAction = createActionFromContext GitGUI.showLogGUI
+
+pushAction :: IDEAction
+pushAction = createActionFromContext Git.push
+
+pullAction :: IDEAction
+pullAction = createActionFromContext Git.pull
