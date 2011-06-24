@@ -111,6 +111,7 @@ import MonadUtils (liftIO1)
 import Data.IORef (readIORef)
 
 import qualified IDE.Command.VCS.SVN as VCSSVN
+import qualified IDE.Command.VCS.GIT as VCSGit
 import qualified IDE.Command.VCS.Common as VCS
 
 --
@@ -122,12 +123,15 @@ mkActions =
     --common vcs actions
     AD "vcs" "Version Con_trol" Nothing Nothing (return ()) [] False
     ,AD "SetupRepo" "_Setup Repo" Nothing Nothing VCS.setupRepoAction [] False
-    --svn actions TODO rename actions
-    ,AD "Commit" "_Commit" Nothing Nothing VCSSVN.commitAction [] False
-    ,AD "Checkout" "_Checkout" Nothing Nothing VCSSVN.checkoutAction [] False
-    ,AD "Update" "_Update" Nothing Nothing VCSSVN.updateAction [] False
-    ,AD "ViewLog" "_View Log" Nothing Nothing VCSSVN.viewLogAction [] False
-    --TODO add git actions
+    --svn actions
+    ,AD "SvnCommit" "_Commit" Nothing Nothing VCSSVN.commitAction [] False
+    ,AD "SvnCheckout" "_Checkout" Nothing Nothing VCSSVN.checkoutAction [] False
+    ,AD "SvnUpdate" "_Update" Nothing Nothing VCSSVN.updateAction [] False
+    ,AD "SvnViewLog" "_View Log" Nothing Nothing VCSSVN.viewLogAction [] False
+    -- git actions
+    ,AD "GitCommit" "_Commit" Nothing Nothing VCSGit.commitAction [] False
+    ,AD "GitViewLog" "_View Log" Nothing Nothing VCSGit.viewLogAction [] False
+    -- other actions
     ,AD "File" "_File" Nothing Nothing (return ()) [] False
     ,AD "FileNew" "_New Module..." Nothing (Just "gtk-new")
         (packageTry_ $ addModule []) [] False

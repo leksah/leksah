@@ -124,7 +124,7 @@ library
         IDE.Utils.ServerConnection
         IDE.BufferMode
         IDE.Build
-        IDE.Command.VCS IDE.Command.VCS.SVN IDE.Command.VCS.Common
+        IDE.Command.VCS IDE.Command.VCS.SVN IDE.Command.VCS.GIT IDE.Command.VCS.Common
 
     other-modules: Paths_leksah
 
