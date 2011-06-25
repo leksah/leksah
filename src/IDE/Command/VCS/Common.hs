@@ -42,7 +42,7 @@ setupRepoAction = do
         Just workspace -> do
                              let config = case vcsConfig workspace of
                                                 Nothing -> Nothing
-                                                Just (_,conf) -> Just conf
+                                                Just (vcs,conf) -> Just (vcs,conf)
                              liftIO $ VCSGUI.showSetupConfigGUI config (callback ide)
 
         Nothing -> noOpenWorkspace
