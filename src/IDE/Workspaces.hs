@@ -90,11 +90,11 @@ import Control.Applicative ((<$>))
 import IDE.Build
 import IDE.Utils.FileUtils(myCanonicalizePath)
 
+-- VCS imports
 import qualified VCSWrapper.Common as VCS
 import Data.IORef(writeIORef, readIORef, IORef(..))
 import Paths_leksah(getDataDir)
 import IDE.Utils.FileUtils(getConfigFilePathForLoad)
-
 import Graphics.UI.Frame.Panes
 import Graphics.UI.Gtk.ActionMenuToolbar.UIManager
 
