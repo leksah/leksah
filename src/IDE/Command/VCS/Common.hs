@@ -11,7 +11,6 @@
 -- |
 --
 -----------------------------------------------------------------------------
-
 module IDE.Command.VCS.Common (
     createActionFromContext
     ,setupRepoAction
@@ -28,6 +27,7 @@ import IDE.Workspaces(workspaceSetVCSConfig,addMenuItems)
 
 import Control.Monad.Reader
 import Control.Monad.Trans(liftIO)
+import qualified Control.Exception as Exc
 
 
 
@@ -66,7 +66,7 @@ createActionFromContext vcsAction = do
              let mbConfig = vcsConfig workspace
              case mbConfig of
                 Nothing -> liftIO $ VCSGUI.showErrorGUI "No active repository!"
-                Just (_,config) -> liftIO $ VCS.runVcs config $ vcsAction
+                Just (_,config) -> liftIO $ VCSGUI.defaultVCSExceptionHandler $ VCS.runVcs config $ vcsAction
         Nothing -> noOpenWorkspace
 
 
