@@ -31,7 +31,7 @@ import qualified Control.Exception as Exc
 
 
 
-
+-- | shows a gui for setting up a vcs, adding menu items and persisting the created configuration
 setupRepoAction :: IDEAction
 setupRepoAction = do
     ide <- ask
@@ -51,12 +51,12 @@ setupRepoAction = do
         callback ideRef mbConfig = do
                 -- set config in workspace
                 runReaderT (workspaceSetVCSConfig mbConfig) ideRef
-
-
+                -- add menu items
                 case mbConfig of
                     Nothing -> return ()
                     Just config -> runReaderT (addMenuItems config) ideRef
 
+-- | retrievs VCS configuration from the workspace and executes given computation using it
 createActionFromContext :: VCS.Ctx()    -- ^ computation to execute, i.e. showCommit
                         -> IDEAction
 createActionFromContext vcsAction = do

@@ -27,13 +27,22 @@ import IDE.Command.VCS.Common
 import IDE.Core.Types
 import IDE.Core.State
 
+import Control.Monad.Reader(liftIO)
+
 checkoutAction :: IDEAction
 checkoutAction = do
     createActionFromContext SvnGUI.showCheckoutGUI
 
 commitAction :: IDEAction
 commitAction = do
-    createActionFromContext SvnGUI.showCommitGUI
+    createActionFromContext (SvnGUI.showCommitGUI passwordHandler)
+
+passwordHandler :: (Maybe (Maybe (Bool, String)) -> SvnC.Ctx ())
+passwordHandler result = liftIO $ do
+    case result of
+        Nothing -> return ()
+
+
 
 updateAction :: IDEAction
 updateAction = do
@@ -42,6 +51,7 @@ updateAction = do
 viewLogAction :: IDEAction
 viewLogAction = do
     createActionFromContext SvnGUI.showLogGUI
+
 
 
 
