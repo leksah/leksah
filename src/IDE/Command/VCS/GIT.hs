@@ -34,7 +34,7 @@ viewLogAction :: IDEAction
 viewLogAction = createActionFromContext GitGUI.showLogGUI
 
 pushAction :: IDEAction
-pushAction = createActionFromContext Git.push
+pushAction = createActionFromContext $ GitGUI.askPassWrapper Git.push
 
 pullAction :: IDEAction
-pullAction = createActionFromContext Git.pull
+pullAction = createActionFromContext $ GitGUI.askPassWrapper Git.pull
