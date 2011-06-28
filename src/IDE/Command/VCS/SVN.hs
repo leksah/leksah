@@ -35,12 +35,16 @@ checkoutAction = do
 
 commitAction :: IDEAction
 commitAction = do
-    createActionFromContext (SvnGUI.showCommitGUI passwordHandler)
-
-passwordHandler :: (Maybe (Maybe (Bool, String)) -> SvnC.Ctx ())
-passwordHandler result = liftIO $ do
-    case result of
-        Nothing -> return ()
+    let mbPassword = Nothing --  TODO get password here
+    case mbPassword of
+            Nothing -> createActionFromContext (SvnGUI.showCommitGUI (Just passwordHandler))
+            _       -> createActionFromContext (SvnGUI.showCommitGUI Nothing)
+    where
+        passwordHandler :: (Maybe (Maybe (Bool, String)) -> SvnC.Ctx ())
+        passwordHandler result = liftIO $ do
+            case result of
+                Just (Just (True, pw)) -> return () --  TODO store password here
+                _                      -> return ()
 
 
 

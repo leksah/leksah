@@ -34,8 +34,6 @@ module IDE.Workspaces (
 ,   makePackage
 
 ,   workspaceSetVCSConfig
-
-,  addMenuItems
 ) where
 
 import IDE.Core.State
@@ -89,14 +87,8 @@ import Graphics.UI.Gtk.General.Enums (WindowPosition(..))
 import Control.Applicative ((<$>))
 import IDE.Build
 import IDE.Utils.FileUtils(myCanonicalizePath)
-
--- VCS imports
+import IDE.Command.VCS.Common.Workspaces
 import qualified VCSWrapper.Common as VCS
-import Data.IORef(writeIORef, readIORef, IORef(..))
-import Paths_leksah(getDataDir)
-import IDE.Utils.FileUtils(getConfigFilePathForLoad)
-import Graphics.UI.Frame.Panes
-import Graphics.UI.Gtk.ActionMenuToolbar.UIManager
 
 setWorkspace :: Maybe Workspace -> IDEAction
 setWorkspace mbWs = do
@@ -267,32 +259,6 @@ workspaceOpenThis askForSession mbFilePath =
                         return ())
                            (\ (e :: SomeException) -> reflectIDE
                                 (ideMessage Normal ("Can't load workspace file " ++ filePath ++ "\n" ++ show e)) ideR)
-
---TODO this should be moved to a more related module (can't be moved to IDE.Command.VCS.Common due to circula dependencies
-addMenuItems :: (VCS.VCSType, VCS.Config) -> IDEAction
-addMenuItems (vcsType,config) = do
-        -- TODO delete old menu items, see below
-
-        fs <- readIDE frameState
-        let manager = uiManager fs
-        let file = case vcsType of
-                            VCS.GIT -> "git.menu"
-                            VCS.SVN -> "svn.menu"
-
-        menuItems <- liftIO $ vcsMenuDescription file
-        mergeInfo <- liftIO $ uiManagerAddUiFromString manager menuItems
-
-        -- TODO mergeInfo should be saved to framestate to allow removing menuitems from version control menu again
-        -- TODO framestate is part of the ltk => forking of ltk is necessary
-        -- TODO other solution might be to save mergeInfo to IDE
-        return ()
-        where
-        vcsMenuDescription :: FilePath -> IO String
-        vcsMenuDescription file = do
-                dataDir     <- getDataDir
-                prefsPath   <- getConfigFilePathForLoad file Nothing dataDir
-                res         <- readFile prefsPath
-                return res
 
 -- | Closes a workspace
 workspaceClose :: IDEAction
@@ -618,6 +584,7 @@ makePackage = do
                         (MoComposed [MoBuild,MoInstall])
                         (MoComposed [MoConfigure,MoBuild,MoInstall])) ws
 
+
 workspaceSetVCSConfig :: Maybe (VCS.VCSType, VCS.Config) -> IDEAction
 workspaceSetVCSConfig config = do
     modifyIDE_ (\ide -> do
@@ -625,5 +592,4 @@ workspaceSetVCSConfig config = do
         ide {workspace = Just modifiedWs })
     modifiedWs <- readIDE workspace
     writeWorkspace $ fromJust modifiedWs
-
 

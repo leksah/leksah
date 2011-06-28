@@ -101,6 +101,7 @@ import Graphics.UI.Gtk.Gdk.EventM (Modifier(..))
 #else
 import Graphics.UI.Gtk.Gdk.Enums (Modifier(..))
 #endif
+import Graphics.UI.Gtk.ActionMenuToolbar.UIManager(MergeId)
 import System.Time (ClockTime(..))
 import Distribution.Simple (Extension(..))
 import IDE.System.Process (ProcessHandle(..))
@@ -154,6 +155,7 @@ data IDE            =  IDE {
 ,   completion      ::   ((Int, Int), Maybe CompletionWindow)
 ,   yiControl       ::   Yi.Control
 ,   server          ::   Maybe Handle
+,   vcsData         ::   (Maybe MergeId, Maybe String)
 } --deriving Show
 
 --

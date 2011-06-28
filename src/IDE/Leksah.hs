@@ -280,6 +280,7 @@ startMainWindow yiControl sessionFP mbWorkspaceFP sourceFPs startupPrefs isFirst
           ,   completion        =   ((750,400),Nothing)
           ,   yiControl         =   yiControl
           ,   server            =   Nothing
+          ,   vcsData           =   (Nothing, Nothing)
     }
     ideR             <-  newIORef ide
     menuDescription' <- menuDescription

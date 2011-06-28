@@ -22,16 +22,19 @@ import qualified VCSGui.Common as VCSGUI
 
 import IDE.Core.Types
 import IDE.Core.State
-import IDE.Workspaces(workspaceSetVCSConfig,addMenuItems)
+import IDE.Command.VCS.Common.Workspaces
+import IDE.Workspaces(workspaceSetVCSConfig)
+
 
 
 import Control.Monad.Reader
 import Control.Monad.Trans(liftIO)
 import qualified Control.Exception as Exc
+import Data.Maybe
 
 
 
--- | shows a gui for setting up a vcs, adding menu items and persisting the created configuration
+-- | displays a window for setting up a vcs, thereafter adding menu items and persisting the created configuration
 setupRepoAction :: IDEAction
 setupRepoAction = do
     ide <- ask
@@ -56,7 +59,7 @@ setupRepoAction = do
                     Nothing -> return ()
                     Just config -> runReaderT (addMenuItems config) ideRef
 
--- | retrievs VCS configuration from the workspace and executes given computation using it
+-- | retrieves VCS configuration from the workspace and executes given computation using it
 createActionFromContext :: VCS.Ctx()    -- ^ computation to execute, i.e. showCommit
                         -> IDEAction
 createActionFromContext vcsAction = do
@@ -74,3 +77,6 @@ createActionFromContext vcsAction = do
 noOpenWorkspace = do
                     liftIO $ putStrLn "No open workspace"
                     return () --TODO show error message (use ..Common for this)
+
+
+
