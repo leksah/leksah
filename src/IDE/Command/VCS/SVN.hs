@@ -19,6 +19,8 @@ module IDE.Command.VCS.SVN (
     ,viewLogAction
 ) where
 
+import Graphics.UI.Gtk.ActionMenuToolbar.UIManager(MergeId)
+
 import qualified VCSGui.Svn as SvnGUI
 import qualified VCSWrapper.Svn as SvnC
 
@@ -27,7 +29,9 @@ import IDE.Command.VCS.Common
 import IDE.Core.Types
 import IDE.Core.State
 
-import Control.Monad.Reader(liftIO)
+import Control.Monad.Reader(liftIO,ask)
+import Data.IORef(atomicModifyIORef, IORef)
+import Data.Either
 
 checkoutAction :: IDEAction
 checkoutAction = do
@@ -35,18 +39,23 @@ checkoutAction = do
 
 commitAction :: IDEAction
 commitAction = do
-    let mbPassword = Nothing --  TODO get password here
-    case mbPassword of
-            Nothing -> createActionFromContext (SvnGUI.showCommitGUI (Just passwordHandler))
-            _       -> createActionFromContext (SvnGUI.showCommitGUI Nothing)
+    (mergeInfo, mbPw) <- readIDE vcsData
+    e <- ask
+    case mbPw of
+            Nothing -> createActionFromContext $ SvnGUI.showCommitGUI $ Left $ passwordHandler e mergeInfo
+            Just mb -> createActionFromContext $ SvnGUI.showCommitGUI $ Right mb
     where
-        passwordHandler :: (Maybe (Maybe (Bool, String)) -> SvnC.Ctx ())
-        passwordHandler result = liftIO $ do
+        passwordHandler :: IORef IDE-> Maybe MergeId -> ((Maybe (Bool, Maybe String)) -> SvnC.Ctx ())
+        passwordHandler e mbMergeInfo result = liftIO $ do
             case result of
-                Just (Just (True, pw)) -> return () --  TODO store password here
-                _                      -> return ()
+                Just (True, pw) -> modifyIDE_' e (\ide -> ide {vcsData = (mbMergeInfo, Just pw) })
+                _               -> return ()
+        modifyIDE_' e f = do
+                liftIO (atomicModifyIORef e f')
+                where
+                    f' a  = (f a,())
 
-
+--pw = Maybe Maybe String, Nothing = not set, Just Nothing = passwort set to not use, Just String = passwort set
 
 updateAction :: IDEAction
 updateAction = do
