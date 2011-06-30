@@ -155,7 +155,7 @@ data IDE            =  IDE {
 ,   completion      ::   ((Int, Int), Maybe CompletionWindow)
 ,   yiControl       ::   Yi.Control
 ,   server          ::   Maybe Handle
-,   vcsData         ::   (Maybe MergeId, Maybe (Maybe String))
+,   vcsData         ::   (Maybe MergeId, Maybe (Maybe String)) --TODO this data should be deleted when workspace switches
 } --deriving Show
 
 --

@@ -125,7 +125,6 @@ mkActions =
     ,AD "SetupRepo" "_Setup Repo" Nothing Nothing VCS.setupRepoAction [] False
     --svn actions
     ,AD "SvnCommit" "_Commit" Nothing Nothing VCSSVN.commitAction [] False
-    ,AD "SvnCheckout" "_Checkout" Nothing Nothing VCSSVN.checkoutAction [] False
     ,AD "SvnUpdate" "_Update" Nothing Nothing VCSSVN.updateAction [] False
     ,AD "SvnViewLog" "_View Log" Nothing Nothing VCSSVN.viewLogAction [] False
     -- git actions

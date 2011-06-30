@@ -87,7 +87,7 @@ import Graphics.UI.Gtk.General.Enums (WindowPosition(..))
 import Control.Applicative ((<$>))
 import IDE.Build
 import IDE.Utils.FileUtils(myCanonicalizePath)
-import IDE.Command.VCS.Common.Workspaces
+import IDE.Command.VCS.Common.Workspaces as VCSWS
 import qualified VCSWrapper.Common as VCS
 
 setWorkspace :: Maybe Workspace -> IDEAction
@@ -255,7 +255,7 @@ workspaceOpenThis askForSession mbFilePath =
                         let mbConfig = vcsConfig workspace
                         case mbConfig of
                             Nothing -> return ()
-                            Just config -> addMenuItems config
+                            Just config -> VCSWS.onWorkspaceOpen config
                         return ())
                            (\ (e :: SomeException) -> reflectIDE
                                 (ideMessage Normal ("Can't load workspace file " ++ filePath ++ "\n" ++ show e)) ideR)
@@ -267,6 +267,7 @@ workspaceClose = do
     case oldWorkspace of
         Nothing -> return ()
         Just ws -> do
+            VCSWS.onWorkspaceClose
             let oldActivePackFile = wsActivePackFile ws
             triggerEventIDE (SaveSession ((dropExtension (wsFile ws))
                                 ++  leksahSessionFileExtension))

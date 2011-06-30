@@ -13,7 +13,8 @@
 -----------------------------------------------------------------------------
 
 module IDE.Command.VCS.Common.Workspaces (
-    addMenuItems
+    onWorkspaceOpen
+    , onWorkspaceClose
 ) where
 
 -- VCS imports
@@ -30,17 +31,26 @@ import Control.Monad.Reader(liftIO)
 import Graphics.UI.Frame.Panes
 import Graphics.UI.Gtk.ActionMenuToolbar.UIManager
 
-
-addMenuItems :: (VCS.VCSType, VCS.Config) -> IDEAction
-addMenuItems (vcsType,config) = do
+onWorkspaceClose :: IDEAction
+onWorkspaceClose = do
         fs <- readIDE frameState
         let manager = uiManager fs
 
-        (mbMergeInfo, pw) <- readIDE vcsData
+        (mbMergeInfo, _) <- readIDE vcsData
+        -- remove menuitems
         case mbMergeInfo of
             Nothing   -> return()
             Just info -> liftIO $ uiManagerRemoveUi manager info
 
+        -- reset vcsData
+        modifyIDE_ (\ide -> ide {vcsData = (Nothing,Nothing) })
+        return ()
+
+
+onWorkspaceOpen :: (VCS.VCSType, VCS.Config) -> IDEAction
+onWorkspaceOpen (vcsType,config) = do
+        fs <- readIDE frameState
+        let manager = uiManager fs
 
 
         let file = case vcsType of
@@ -50,6 +60,8 @@ addMenuItems (vcsType,config) = do
         menuItems <- liftIO $ vcsMenuDescription file
         mergeInfo <- liftIO $ uiManagerAddUiFromString manager menuItems
 
+        -- set vcsData with new mergeInfo
+        (_, pw) <- readIDE vcsData
         modifyIDE_ (\ide -> ide {vcsData = (Just mergeInfo, pw) })
         return ()
         where

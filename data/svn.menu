@@ -4,7 +4,6 @@
         <menuitem name="_Commit" action="SvnCommit" />
         <menuitem name="_View Log" action="SvnViewLog" />
         <menuitem name="_Update" action="SvnUpdate" />
-        <menuitem name="_Checkout" action="SvnCheckout" />
       </menu>
     </menubar>
   </ui>

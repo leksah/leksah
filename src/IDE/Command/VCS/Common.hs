@@ -14,7 +14,6 @@
 module IDE.Command.VCS.Common (
     createActionFromContext
     ,setupRepoAction
-    ,addMenuItems
 ) where
 
 import qualified VCSWrapper.Common as VCS
@@ -57,7 +56,9 @@ setupRepoAction = do
                 -- add menu items
                 case mbConfig of
                     Nothing -> return ()
-                    Just config -> runReaderT (addMenuItems config) ideRef
+                    Just config -> do
+                                    runReaderT onWorkspaceClose ideRef
+                                    runReaderT (onWorkspaceOpen config) ideRef
 
 -- | retrieves VCS configuration from the workspace and executes given computation using it
 createActionFromContext :: VCS.Ctx()    -- ^ computation to execute, i.e. showCommit
