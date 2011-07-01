@@ -37,7 +37,9 @@ commitAction :: IDEAction
 commitAction = createSVNActionFromContext GUISvn.showCommitGUI
 
 updateAction :: IDEAction
-updateAction = createActionFromContext $ WSvn.update Nothing []
+updateAction = createSVNActionFromContext $ GUISvn.showUpdateGUI
+
+
 
 viewLogAction :: IDEAction
 viewLogAction = createSVNActionFromContext GUISvn.showLogGUI
