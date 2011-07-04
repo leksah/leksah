@@ -127,6 +127,9 @@ import Graphics.UI.Gtk.Selectors.FileChooser
        (FileChooserAction(..))
 import System.Glib.Attributes (AttrOp(..), set)
 import IDE.BufferMode
+import Graphics.UI.Gtk.Multiline.TextIter
+import Graphics.UI.Gtk.Multiline.TextTag(textTagBackgroundGdk, textTagBackground)
+import Graphics.UI.Gtk.Gdk.GC(Color)
 
 allBuffers :: IDEM [IDEBuffer]
 allBuffers = getPanes
@@ -481,15 +484,153 @@ builder' bs mbfn ind bn rbn ct prefs pp nb windows = do
                         liftIO $ postGUIAsync $ reflectIDE (selectRange buffer start end) ideR
                         return False
                     _ -> return False) ideR
+
     (GetTextPopup mbTpm) <- triggerEvent ideR (GetTextPopup Nothing)
     ids4 <- case mbTpm of
         Just tpm    -> sv `onPopulatePopup` \menu -> liftIO $ (tpm ideR menu)
         Nothing     -> do
             sysMessage Normal "SourceBuffer>> no text popup"
             return []
-    return (Just buf,concat [ids1, ids2, ids3, ids4])
 
+    --TODO refactor this
+    ids5 <- onMotionNotifyEvent sv $ \ideRef -> do
+                            liftIO (putStrLn "motion notify event!")
+                            mbSTxt <- liftIO $ runReaderT ( do
+                                        candy' <- readIDE candy
+                                        inActiveBufContext Nothing $ \_ ebuf currentBuffer _ -> do
+                                        hasSelection <- hasSelection ebuf
+                                        if hasSelection --TODO eleminate whitespace, get any text next to selection NOT separated by ws
+                                            then do
+                                                (i1,i2)   <- getSelectionBounds ebuf
+                                                text      <- getCandylessPart candy' ebuf i1 i2
+                                                return $ Just (text,i1,i2)
+                                            else return Nothing
+                                        ) ideRef
+                            case mbSTxt of
+                                Nothing -> return ()
+                                Just (sTxt,si1,si2) -> do
+                                    liftIO $ putStrLn $ sTxt ++ "selected!"
+                                    liftIO $ runReaderT (
+                                        inBufContext () buf $ \_ ebuf buf _ -> do
+                                            let tagName = "gray_bg"
+                                            tagTable <- getTagTable ebuf
+                                            mbTag <- lookupTag tagTable tagName
+                                            bi1 <- getStartIter ebuf
+                                            bi2 <- getEndIter ebuf
+                                            case mbTag of
+                                                Just existingTag -> do
+                                                    removeTagByName ebuf tagName bi1 bi2 --TODO remove tags even if no selection has been made
+                                                Nothing -> do
+                                                    tag <- newTag tagTable tagName
+                                                    case tag of --TODO change to casting
+                                                        GtkEditorTag txtTag -> liftIO $ set txtTag [ textTagBackground := "grey"]
+                                                    liftIO $ return()
+                                            case (bi1,bi2, si1, si2) of --TODO change to casting
+                                                (GtkEditorIter bti1, GtkEditorIter bti2, GtkEditorIter sti1, GtkEditorIter sti2) -> do
+                                                            forwardApplying bti1 sTxt (Just sti1) tagName ebuf
+                                                            forwardApplying sti2 sTxt (Just bti2) tagName ebuf
+--                                                            mbFTxt <- liftIO $ textIterForwardSearch sti2 sTxt [TextSearchVisibleOnly, TextSearchTextOnly] (Just bti2)
+--                                                            case mbFTxt of
+--                                                                Just (start, end) -> do
+--                                                                    liftIO $ putStrLn "Found occurence"
+--                                                                    applyTagByName ebuf tagName (GtkEditorIter start) (GtkEditorIter end)
+--                                                                Nothing -> liftIO $ putStrLn "No occurence found"
+                                        ) ideRef
+--                                                newTag
+--                                                case logRefType logRef of
+--                                                    ErrorRef -> do
+--                                                        underline errtag UnderlineError
+--                                                    WarningRef -> do
+--                                                        underline errtag UnderlineError
+--                                                    BreakpointRef -> do
+--                                                        background errtag $ breakpointBackground prefs
+--                                                    ContextRef -> do
+--                                                        background errtag $ contextBackground prefs
 
+                            return False
+    return (Just buf,concat [ids1, ids2, ids3, ids4,ids5])
+
+--TODO refactor
+forwardApplying :: TextIter
+                -> String
+                -> Maybe TextIter
+                -> String   -- tagname
+                -> EditorBuffer
+                -> IDEM ()
+forwardApplying tI txt mbTi tagName ebuf = do
+    mbFTxt <- liftIO $ textIterForwardSearch tI txt [TextSearchVisibleOnly, TextSearchTextOnly] mbTi
+    case mbFTxt of
+        Just (start, end) -> do
+            liftIO $ putStrLn "Found occurence"
+            applyTagByName ebuf tagName (GtkEditorIter start) (GtkEditorIter end)
+            forwardApplying end txt mbTi tagName ebuf
+        Nothing -> liftIO $ putStrLn "No occurence found"
+
+--inBufContext () buf $ \_ ebuf buf _ -> do
+--        let tagName = (show $ logRefType logRef) ++ show index
+--        tagTable <- getTagTable ebuf
+--        mbTag <- lookupTag tagTable tagName
+--        case mbTag of
+--            Just existingTag -> do
+--                i1 <- getStartIter ebuf
+--                i2 <- getEndIter ebuf
+--                removeTagByName ebuf tagName i1 i2
+--            Nothing -> do
+--                errtag <- newTag tagTable tagName
+--                newTag
+--                case logRefType logRef of
+--                    ErrorRef -> do
+--                        underline errtag UnderlineError
+--                    WarningRef -> do
+--                        underline errtag UnderlineError
+--                    BreakpointRef -> do
+--                        background errtag $ breakpointBackground prefs
+--                    ContextRef -> do
+--                        background errtag $ contextBackground prefs
+--
+--        let start' = (srcSpanStartLine (logRefSrcSpan logRef),
+--                        srcSpanStartColumn (logRefSrcSpan logRef))
+--        let end'   = (srcSpanEndLine (logRefSrcSpan logRef),
+--                        srcSpanEndColumn (logRefSrcSpan logRef))
+--        start <- if useCandy
+--                    then positionToCandy candy' ebuf start'
+--                    else return start'
+--        end   <- if useCandy
+--                    then positionToCandy candy' ebuf end'
+--                    else return end'
+--        lines   <-  getLineCount ebuf
+--        iterTmp <-  getIterAtLine ebuf (max 0 (min (lines-1) ((fst start)-1)))
+--        chars   <-  getCharsInLine iterTmp
+--        iter    <- atLineOffset iterTmp (max 0 (min (chars-1) (snd start)))
+--
+--        iter2 <- if start == end
+--            then do
+--                maybeWE <- forwardWordEndC iter
+--                case maybeWE of
+--                    Nothing -> atEnd iter
+--                    Just we -> return we
+--            else do
+--                newTmp  <- getIterAtLine ebuf (max 0 (min (lines-1) ((fst end)-1)))
+--                chars   <- getCharsInLine newTmp
+--                new     <- atLineOffset newTmp (max 0 (min (chars-1) (snd end)))
+--                forwardCharC new
+--
+--        let latest = if null contextRefs then Nothing else Just $ last contextRefs
+--        let isOldContext = case (logRefType logRef, latest) of
+--                                (ContextRef, Just ctx) | ctx /= logRef -> True
+--                                _ -> False
+--        unless isOldContext $ applyTagByName ebuf tagName iter iter2
+--        when scrollTo $ placeCursor ebuf iter
+--        mark <- getInsertMark ebuf
+--        when scrollTo $ do
+--            ideR <- ask
+--            liftIO $ idleAdd (do
+--                reflectIDE (do
+--                    scrollToMark (sourceView buf) mark 0.3 Nothing
+--                    when (isOldContext && scrollTo) $ selectRange ebuf iter iter2) ideR
+--                return False) priorityDefaultIdle
+--            return ()
+--
 checkModTime :: IDEBuffer -> IDEM (Bool, Bool)
 checkModTime buf = do
     currentState' <- readIDE currentState
