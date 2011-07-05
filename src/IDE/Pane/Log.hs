@@ -16,6 +16,7 @@
 
 module IDE.Pane.Log (
     IDELog(..)
+,   IDELogLaunch(..)
 ,   LogState
 ,   LogTag(..)
 ,   showLog
@@ -62,8 +63,9 @@ import Graphics.UI.Gtk
         textTagBackground, textTagTableAdd, textTagForeground, textTagNew,
         textBufferGetTagTable, textBufferCreateMark, textBufferGetEndIter,
         textViewGetBuffer, textViewNew, Window, Notebook, castToWidget,
-        ScrolledWindow, TextView, Menu, AttrOp(..), set,
-        TextWindowType(..), ShadowType(..), PolicyType(..),
+        ScrolledWindow, TextView, Container, HBox, VBox, Menu, AttrOp(..), set,
+        TextWindowType(..), ShadowType(..), PolicyType(..), hBoxNew, buttonNewWithLabel,
+        boxPackStartDefaults, vBoxNew, comboBoxNewText, boxPackEndDefaults,
         priorityDefaultIdle, idleAdd)
 
 
@@ -77,7 +79,13 @@ import Graphics.UI.Gtk
 --
 
 
-data IDELog         =   IDELog {
+data IDELog = IDELog {
+    logVBox :: VBox
+,   logButtons :: HBox
+,   logLaunces :: [IDELogLaunch]
+} deriving Typeable
+
+data IDELogLaunch = IDELogLaunch {
     textView        ::   TextView
 ,   scrolledWindowL ::   ScrolledWindow
 } deriving Typeable
@@ -89,7 +97,7 @@ instance Pane IDELog IDEM
     where
     primPaneName  _ =   "Log"
     getAddedIndex _ =   0
-    getTopWidget    =   castToWidget . scrolledWindowL
+    getTopWidget    =   castToWidget . logVBox
     paneId b        =   "*Log"
 
 instance RecoverablePane IDELog LogState IDEM where
@@ -152,7 +160,21 @@ builder' pp nb windows = do
         scrolledWindowSetPolicy sw PolicyAutomatic PolicyAutomatic
         scrolledWindowSetShadowType sw ShadowIn
 
-        let buf = IDELog tv sw
+
+        hBox <- hBoxNew False 0
+        btn <- buttonNewWithLabel "sample button"
+        boxPackStartDefaults hBox btn
+        comboBox <- comboBoxNewText
+        boxPackEndDefaults hBox comboBox
+        container <- vBoxNew False 0
+
+        containerAdd container hBox
+        containerAdd container sw
+
+
+
+
+        let buf = IDELog container hBox [IDELogLaunch tv sw]
         cid1         <- tv `afterFocusIn`
             (\_      -> do reflectIDE (makeActive buf) ideR ; return False)
         cid2         <- tv `onButtonPress`
@@ -169,9 +191,10 @@ clicked :: Event -> IDELog -> IDEAction
 clicked (Button _ SingleClick _ _ _ _ LeftButton x y) ideLog = do
     logRefs'     <-  readIDE allLogRefs
     line' <- liftIO $ do
-        (x,y)       <-  widgetGetPointer (textView ideLog)
-        (_,y')      <-  textViewWindowToBufferCoords (textView ideLog) TextWindowWidget (x,y)
-        (iter,_)    <-  textViewGetLineAtY (textView ideLog) y'
+        let activeLogLaunch = (logLaunces ideLog)!!0 -- TODO srp get active log launch here
+        (x,y)       <-  widgetGetPointer (textView activeLogLaunch)
+        (_,y')      <-  textViewWindowToBufferCoords (textView activeLogLaunch) TextWindowWidget (x,y)
+        (iter,_)    <-  textViewGetLineAtY (textView activeLogLaunch) y'
         textIterGetLine iter
     case filter (\(es,_) -> fst (logLines es) <= (line'+1) && snd (logLines es) >= (line'+1))
             (zip logRefs' [0..(length logRefs')]) of
@@ -198,9 +221,10 @@ populatePopupMenu ideLog ideR menu = do
     res <- reflectIDE (do
         logRefs'    <-  readIDE allLogRefs
         line'       <-  reifyIDE $ \ideR  ->  do
-            (x,y)       <-  widgetGetPointer (textView ideLog)
-            (_,y')      <-  textViewWindowToBufferCoords (textView ideLog) TextWindowWidget (x,y)
-            (iter,_)    <-  textViewGetLineAtY (textView ideLog) y'
+            let activeLogLaunch = (logLaunces ideLog)!!0 -- TODO srp get active log launch here
+            (x,y)       <-  widgetGetPointer (textView activeLogLaunch)
+            (_,y')      <-  textViewWindowToBufferCoords (textView activeLogLaunch) TextWindowWidget (x,y)
+            (iter,_)    <-  textViewGetLineAtY (textView activeLogLaunch) y'
             textIterGetLine iter
         return $ filter (\(es,_) -> fst (logLines es) <= (line'+1) && snd (logLines es) >= (line'+1))
                 (zip logRefs' [0..(length logRefs')])) ideR
@@ -246,7 +270,9 @@ simpleLog str = do
     return ()
 
 appendLog :: IDELog -> String -> LogTag -> IO Int
-appendLog l@(IDELog tv _) string tag = do
+appendLog l string tag = do
+    let activeLogLaunch = (logLaunces l)!!0 -- TODO srp get active log launch here
+    let tv = textView activeLogLaunch
     buf   <- textViewGetBuffer tv
     iter  <- textBufferGetEndIter buf
     textBufferSelectRange buf iter iter
@@ -275,7 +301,9 @@ appendLog l@(IDELog tv _) string tag = do
     return line
 
 markErrorInLog :: IDELog -> (Int,Int) -> IO ()
-markErrorInLog (IDELog tv _) (l1,l2) = do
+markErrorInLog l (l1,l2) = do
+    let activeLogLaunch = (logLaunces l)!!0 -- TODO srp get active log launch here
+    let tv = textView activeLogLaunch
     idleAdd  (do
         buf    <- textViewGetBuffer tv
         iter   <- textBufferGetIterAtLineOffset buf (l1-1) 0
@@ -295,7 +323,8 @@ markErrorInLog (IDELog tv _) (l1,l2) = do
 clearLog :: IDEAction
 clearLog = do
     log <- getLog
-    buf <- liftIO$ textViewGetBuffer $textView log
+    let activeLogLaunch = (logLaunces log)!!0 -- TODO srp get active log launch here
+    buf <- liftIO$ textViewGetBuffer $ textView activeLogLaunch
     liftIO $textBufferSetText buf ""
 --    modifyIDE_ (\ide -> ide{allLogRefs = []})
 --    setCurrentError Nothing

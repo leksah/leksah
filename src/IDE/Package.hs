@@ -387,7 +387,7 @@ runExternalTool description executable args mbDir handleOutput = do
             reifyIDE (\ideR -> forkIO $ do
                 (output, pid) <- runTool executable args mbDir
                 reflectIDE (do
-                    modifyIDE_ (\ide -> ide{runningTool = Just pid})
+                    modifyIDE_ (\ide -> ide{runningTool = Just pid}) --TODO srp: runningTools should be a list
                     handleOutput output) ideR)
             return ()
 
