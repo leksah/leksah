@@ -815,9 +815,12 @@ setSymbol symbol = do
 registerLeksahEvents :: IDEAction
 registerLeksahEvents =    do
     stRef   <-  ask
+    defaultLogLaunch <- getDefaultLogLaunch
     registerEvent stRef "LogMessage"
-        (\e@(LogMessage s t)      -> getLog >>= \(log :: IDELog) -> liftIO $ appendLog log s t
-                                                >> return e)
+        (\e@(LogMessage s t)      -> do
+                                    defaultLogLaunch <- getDefaultLogLaunch
+                                    liftIO $ appendLog defaultLogLaunch s t
+                                    return e)
     registerEvent stRef "SelectInfo"
         (\ e@(SelectInfo str)     -> setSymbol str >> return e)
     registerEvent stRef "SelectIdent"

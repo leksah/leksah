@@ -26,12 +26,17 @@ module IDE.LogRef (
 ,   defaultLineLogger'
 ,   logOutputLines
 ,   logOutputLines_
+,   logOutputLines_Default
 ,   logOutput
+,   logOutputDefault
 ,   logOutputForBuild
 ,   logOutputForBreakpoints
 ,   logOutputForSetBreakpoint
+,   logOutputForSetBreakpointDefault
 ,   logOutputForLiveContext
+,   logOutputForLiveContextDefault
 ,   logOutputForHistoricContext
+,   logOutputForHistoricContextDefault
 ,   selectRef
 ,   setBreakpointList
 ,   showSourceSpan
@@ -55,6 +60,7 @@ import Data.Maybe (catMaybes)
 import System.Exit (ExitCode(..))
 import System.Log.Logger (debugM)
 import IDE.Utils.FileUtils(myCanonicalizePath)
+import IDE.Pane.Log (getDefaultLogLaunch)
 
 showSourceSpan :: LogRef -> String
 showSourceSpan = displaySrcSpan . logRefSrcSpan
@@ -384,7 +390,6 @@ logOutputLines :: LogLaunch -- ^ logLaunch
 logOutputLines logLaunch lineLogger output = do
     log :: Log.IDELog <- Log.getLog
     liftIO $ bringPaneToFront log
-    --TODO srp switch to logLaunch here
 --    logL <- Log.getOrBuildLogLaunchByName log logLaunch
     results <- forM output $ lineLogger logLaunch
     triggerEventIDE (StatusbarChanged [CompartmentState "", CompartmentBuild False])
@@ -398,12 +403,25 @@ logOutputLines_ logLaunch lineLogger output = do
     logOutputLines logLaunch lineLogger output
     return ()
 
+logOutputLines_Default :: (LogLaunch -> ToolOutput -> IDEM a)
+                       -> [ToolOutput]
+                       -> IDEAction
+logOutputLines_Default lineLogger output = do
+    defaultLogLaunch <- getDefaultLogLaunch
+    logOutputLines_  defaultLogLaunch lineLogger output
+
 logOutput :: LogLaunch
           -> [ToolOutput]
           -> IDEM ()
 logOutput logLaunch output = do
     logOutputLines logLaunch defaultLineLogger output
     return ()
+
+logOutputDefault :: [ToolOutput]
+                          -> IDEM ()
+logOutputDefault output = do
+    defaultLogLaunch <- getDefaultLogLaunch
+    logOutput defaultLogLaunch output
 
 logOutputForBuild :: IDEPackage
                   -> Bool
@@ -413,7 +431,7 @@ logOutputForBuild package backgroundBuild output = do
     ideRef <- ask
     log    <- Log.getLog
     unless backgroundBuild $ liftIO $ bringPaneToFront log
-    logL <- Log.getOrBuildLogLaunchByPackage log package --TODO getOrBuild, or just build new one here ?
+    logL <- Log.getOrBuildLogLaunchByPackage package --TODO getOrBuild, or just build new one here ?
     errs   <- liftIO $ readAndShow output ideRef logL False []
     setErrorList $ reverse errs
     triggerEventIDE (Sensitivity [(SensitivityError,not (null errs))])
@@ -535,6 +553,14 @@ logOutputForSetBreakpoint package logLaunch output = do
                 return Nothing) output
     addLogRefs $ catMaybes breaks
 
+
+logOutputForSetBreakpointDefault :: IDEPackage
+                                 -> [ToolOutput]
+                                 -> IDEAction
+logOutputForSetBreakpointDefault package out = do
+    defaultLogLaunch <- getDefaultLogLaunch
+    logOutputForSetBreakpoint package defaultLogLaunch out
+
 logOutputForContext :: IDEPackage
                     -> LogLaunch                   -- ^ loglaunch
                     -> (String -> [SrcSpan])
@@ -569,6 +595,14 @@ logOutputForLiveContext package logLaunch = logOutputForContext package logLaunc
                 _          -> getContexts xs
             _ -> getContexts xs
 
+logOutputForLiveContextDefault:: IDEPackage
+                        -> [ToolOutput]
+                        -> IDEAction
+logOutputForLiveContextDefault package out = do
+    defaultLogLaunch <- getDefaultLogLaunch
+    logOutputForLiveContext package defaultLogLaunch out
+
+
 logOutputForHistoricContext :: IDEPackage
                             -> LogLaunch           -- ^ loglaunch
                             -> [ToolOutput]
@@ -581,3 +615,9 @@ logOutputForHistoricContext package logLaunch = logOutputForContext package logL
                 _          -> []
             _ -> []
 
+logOutputForHistoricContextDefault :: IDEPackage
+                            -> [ToolOutput]
+                            -> IDEAction
+logOutputForHistoricContextDefault package out = do
+    defaultLogLaunch <- getDefaultLogLaunch
+    logOutputForHistoricContext package defaultLogLaunch out

@@ -16,7 +16,7 @@
 
 module IDE.Pane.Grep (
     IDEGrep(..)
---,   grepWorkspace
+,   grepWorkspace
 ,   GrepState(..)
 ,   getGrep
 ) where
@@ -38,6 +38,7 @@ import IDE.Pane.SourceBuffer
 import Control.Applicative ((<$>))
 import System.FilePath ((</>), dropFileName)
 import System.Exit (ExitCode(..))
+import IDE.Pane.Log
 
 data GrepRecord = GrepRecord {
             file        :: FilePath
@@ -178,89 +179,91 @@ getSelectionGrepRecord treeView grepStore = do
     case paths of
         p:_ ->  Just <$> treeStoreGetValue grepStore p
         _   ->  return Nothing
+
 --TODO srp use default loglaunch probably
---grepWorkspace :: String -> Bool -> WorkspaceAction
---grepWorkspace "" caseSensitive = return ()
---grepWorkspace regexString caseSensitive = do
---    ws <- ask
---    maybeActive <- lift $ readIDE activePack
---    let packages = case maybeActive of
---            Just active -> active : (filter (/= active) $ wsPackages ws)
---            Nothing     -> wsPackages ws
---    lift $ grepDirectories regexString caseSensitive $
---            map (\p -> (dropFileName (ipdCabalFile p), ipdSrcDirs p)) $ packages
---
---grepDirectories :: String -> Bool -> [(FilePath, [FilePath])] -> IDEAction
---grepDirectories regexString caseSensitive dirs = do
---    grep <- getGrep Nothing
---    let store = grepStore grep
---    ideRef <- ask
---    liftIO $ do
---        bringPaneToFront grep
---        forkIO $ do
---            putMVar (waitingGrep grep) True
---            putMVar (activeGrep grep) True
---            takeMVar (waitingGrep grep)
---
---            postGUIAsync $ treeStoreClear store
---
---            totalFound <- foldM (\a (dir, subDirs) -> do
---                nooneWaiting <- isEmptyMVar (waitingGrep grep)
---                found <- if nooneWaiting
---                    then do
---                        (output, pid) <- runTool "grep" ((if caseSensitive then [] else ["-i"])
---                            ++ ["-r", "-E", "-n", "--exclude=*~", regexString] ++ subDirs) (Just dir)
---                        reflectIDE (setGrepResults dir output) ideRef
---                    else return 0
---                return $ a + found) 0 dirs
---
---            nooneWaiting <- isEmptyMVar (waitingGrep grep)
---            when nooneWaiting $ do
---                nDir <- postGUISync $ treeModelIterNChildren store Nothing
---                postGUIAsync $ treeStoreInsert store [] nDir $
---                    GrepRecord "Search Complete" totalFound "" Nothing
---
---            takeMVar (activeGrep grep) >> return ()
---    return ()
---
---setGrepResults :: FilePath -> [ToolOutput] -> IDEM Int
---setGrepResults dir output = do
---    grep <- getGrep Nothing
---    let store = grepStore grep
---        view  = treeView grep
---    ideRef <- ask
---    liftIO $ do
---        let (displayed, dropped) = splitAt 5000 output
---        forkIO $ do
---            let errors = filter isError output
---                    ++ if null dropped
---                        then []
---                        else [ToolError $ "Dropped " ++ show (length dropped) ++ " search results"]
---            unless (null errors) $ postGUISync $ reflectIDE (logOutput errors) ideRef
---            return ()
---        case catMaybes (map (process dir) displayed) of
---            []      -> return 0
---            results -> do
---                nDir <- postGUISync $ treeModelIterNChildren store Nothing
---                postGUIAsync $ treeStoreInsert store [] nDir $ GrepRecord dir 0 "" Nothing
---                forM_ (zip results [0..]) $ \(record, n) -> do
---                    nooneWaiting <- isEmptyMVar (waitingGrep grep)
---                    when nooneWaiting $ postGUIAsync $ do
---                        treeStoreInsert store [nDir] n record
---                        treeStoreChange store [nDir] (\r -> r{ line = n+1 }) >> return ()
---                        when (nDir == 0 && n == 0) $
---                            treeViewExpandAll view
---                return $ length results
---    where
---        process pp (ToolOutput line) =
---            case parse grepLineParser "" line of
---                Right record -> Just record{parDir = Just pp}
---                _ -> Nothing
---        process _ _ = Nothing
---
---        isError (ToolExit ExitSuccess) = False
---        isError (ToolExit (ExitFailure 1)) = False
---        isError o = isNothing (process "" o)
+grepWorkspace :: String -> Bool -> WorkspaceAction
+grepWorkspace "" caseSensitive = return ()
+grepWorkspace regexString caseSensitive = do
+    ws <- ask
+    maybeActive <- lift $ readIDE activePack
+    let packages = case maybeActive of
+            Just active -> active : (filter (/= active) $ wsPackages ws)
+            Nothing     -> wsPackages ws
+    lift $ grepDirectories regexString caseSensitive $
+            map (\p -> (dropFileName (ipdCabalFile p), ipdSrcDirs p)) $ packages
+
+grepDirectories :: String -> Bool -> [(FilePath, [FilePath])] -> IDEAction
+grepDirectories regexString caseSensitive dirs = do
+    grep <- getGrep Nothing
+    let store = grepStore grep
+    ideRef <- ask
+    liftIO $ do
+        bringPaneToFront grep
+        forkIO $ do
+            putMVar (waitingGrep grep) True
+            putMVar (activeGrep grep) True
+            takeMVar (waitingGrep grep)
+
+            postGUIAsync $ treeStoreClear store
+
+            totalFound <- foldM (\a (dir, subDirs) -> do
+                nooneWaiting <- isEmptyMVar (waitingGrep grep)
+                found <- if nooneWaiting
+                    then do
+                        (output, pid) <- runTool "grep" ((if caseSensitive then [] else ["-i"])
+                            ++ ["-r", "-E", "-n", "--exclude=*~", regexString] ++ subDirs) (Just dir)
+                        reflectIDE (setGrepResults dir output) ideRef
+                    else return 0
+                return $ a + found) 0 dirs
+
+            nooneWaiting <- isEmptyMVar (waitingGrep grep)
+            when nooneWaiting $ do
+                nDir <- postGUISync $ treeModelIterNChildren store Nothing
+                postGUIAsync $ treeStoreInsert store [] nDir $
+                    GrepRecord "Search Complete" totalFound "" Nothing
+
+            takeMVar (activeGrep grep) >> return ()
+    return ()
+
+setGrepResults :: FilePath -> [ToolOutput] -> IDEM Int
+setGrepResults dir output = do
+    grep <- getGrep Nothing
+    let store = grepStore grep
+        view  = treeView grep
+    ideRef <- ask
+    defaultLogLaunch <- getDefaultLogLaunch
+    liftIO $ do
+        let (displayed, dropped) = splitAt 5000 output
+        forkIO $ do
+            let errors = filter isError output
+                    ++ if null dropped
+                        then []
+                        else [ToolError $ "Dropped " ++ show (length dropped) ++ " search results"]
+            unless (null errors) $ postGUISync $ reflectIDE (logOutput defaultLogLaunch errors) ideRef
+            return ()
+        case catMaybes (map (process dir) displayed) of
+            []      -> return 0
+            results -> do
+                nDir <- postGUISync $ treeModelIterNChildren store Nothing
+                postGUIAsync $ treeStoreInsert store [] nDir $ GrepRecord dir 0 "" Nothing
+                forM_ (zip results [0..]) $ \(record, n) -> do
+                    nooneWaiting <- isEmptyMVar (waitingGrep grep)
+                    when nooneWaiting $ postGUIAsync $ do
+                        treeStoreInsert store [nDir] n record
+                        treeStoreChange store [nDir] (\r -> r{ line = n+1 }) >> return ()
+                        when (nDir == 0 && n == 0) $
+                            treeViewExpandAll view
+                return $ length results
+    where
+        process pp (ToolOutput line) =
+            case parse grepLineParser "" line of
+                Right record -> Just record{parDir = Just pp}
+                _ -> Nothing
+        process _ _ = Nothing
+
+        isError (ToolExit ExitSuccess) = False
+        isError (ToolExit (ExitFailure 1)) = False
+        isError o = isNothing (process "" o)
 
 
 

@@ -77,6 +77,7 @@ import Paths_leksah
 
 import IDE.Core.State
 import IDE.Utils.GUIUtils
+import IDE.Pane.Log
 import IDE.Pane.PackageEditor
 import IDE.Pane.SourceBuffer
 import IDE.Pane.PackageFlags (readFlags)
@@ -169,8 +170,12 @@ packageConfig' package continuation = do
                     "cabal"
                     (["configure"] ++ (ipdConfigFlags package))
                     (Just dir)
-                    $ \output -> do
-        logOutput output
+                    $ handleOutput package
+    where
+    handleOutput :: IDEPackage -> [ToolOutput] -> IDEM ()
+    handleOutput package output = do
+        logLaunch <- getOrBuildLogLaunchByPackage package
+        logOutput logLaunch output
         mbPack <- idePackageFromPath (ipdCabalFile package)
         case mbPack of
             Just pack -> do
@@ -263,10 +268,14 @@ buildPackage backgroundBuild withoutLinking package continuation = catchIDE (do
 packageDoc :: PackageAction
 packageDoc = do
     package <- ask
+    logLaunch <- lift $ getOrBuildLogLaunchByPackage package
     lift $ catchIDE (do
         let dir = dropFileName (ipdCabalFile package)
-        runExternalTool "Documenting" "cabal" (["haddock"]
-                        ++ (ipdHaddockFlags package)) (Just dir) logOutput)
+        runExternalTool "Documenting"
+                        "cabal"
+                        (["haddock"] ++ (ipdHaddockFlags package))
+                        (Just dir)
+                        $ logOutput logLaunch)
         (\(e :: SomeException) -> putStrLn (show e))
 
 packageClean :: PackageAction
@@ -275,16 +284,22 @@ packageClean = do
     lift $ packageClean' package (\ _ -> return ())
 
 packageClean' :: IDEPackage -> (Bool -> IDEAction) -> IDEAction
-packageClean' package continuation =
-    let dir = dropFileName (ipdCabalFile package)
-    in runExternalTool "Cleaning" "cabal" ["clean"] (Just dir)
-        (\ output -> do
-            logOutput output
-            continuation (last output == ToolExit ExitSuccess))
+packageClean' package continuation = do
+    logLaunch <- getOrBuildLogLaunchByPackage package
+    runExternalTool "Cleaning"
+                    "cabal"
+                    ["clean"]
+                    (Just dir)
+                    (\output -> do
+                        logOutput logLaunch output
+                        continuation (last output == ToolExit ExitSuccess))
+    where
+    dir = dropFileName (ipdCabalFile package)
 
 packageCopy :: PackageAction
 packageCopy = do
     package <- ask
+    logLaunch <- lift $ getOrBuildLogLaunchByPackage package
     lift $ catchIDE (do
         window      <- getMainWindow
         mbDir       <- liftIO $ chooseDir window "Select the target directory" Nothing
@@ -292,13 +307,17 @@ packageCopy = do
             Nothing -> return ()
             Just fp -> do
                 let dir = dropFileName (ipdCabalFile package)
-                runExternalTool "Copying" "cabal" (["copy"]
-                           ++ ["--destdir=" ++ fp]) (Just dir) logOutput)
+                runExternalTool "Copying"
+                                "cabal"
+                                (["copy"] ++ ["--destdir=" ++ fp])
+                                (Just dir)
+                                (logOutput logLaunch))
         (\(e :: SomeException) -> putStrLn (show e))
 
 packageRun :: PackageAction
 packageRun = do
     package <- ask
+    logLaunch <- lift $ getOrBuildLogLaunchByPackage package
     lift $ catchIDE (do
         ideR        <- ask
         maybeDebug   <- readIDE debugState
@@ -309,7 +328,7 @@ packageRun = do
                     (Executable name _ _):_ -> do
                         let path = "dist/build" </> name </> name
                         let dir = dropFileName (ipdCabalFile package)
-                        runExternalTool ("Running " ++ name) path (ipdExeFlags package) (Just dir) logOutput
+                        runExternalTool ("Running " ++ name) path (ipdExeFlags package) (Just dir) (logOutput logLaunch)
                     otherwise -> do
                         sysMessage Normal "no executable in selected package"
                         return ()
@@ -318,8 +337,9 @@ packageRun = do
                 case executables pd of
                     (Executable _ mainFilePath _):_ -> do
                         runDebug (do
-                            executeDebugCommand (":module *" ++ (map (\c -> if c == '/' then '.' else c) (takeWhile (/= '.') mainFilePath))) logOutput
-                            executeDebugCommand (":main " ++ (unwords (ipdExeFlags package))) logOutput) debug
+                                    executeDebugCommand (":module *" ++ (map (\c -> if c == '/' then '.' else c) (takeWhile (/= '.') mainFilePath))) (logOutput logLaunch)
+                                    executeDebugCommand (":main " ++ (unwords (ipdExeFlags package))) (logOutput logLaunch))
+                                 debug
                     otherwise -> do
                         sysMessage Normal "no executable in selected package"
                         return ())
@@ -333,42 +353,47 @@ packageInstall = do
 packageInstall' :: IDEPackage -> (Bool -> IDEAction) -> IDEAction
 packageInstall' package continuation = catchIDE (do
    let dir = dropFileName (ipdCabalFile package)
+   logLaunch <- getOrBuildLogLaunchByPackage package
    runExternalTool "Installing" "runhaskell" (["Setup", "install"]
                     ++ (ipdInstallFlags package)) (Just dir) (\ output -> do
-                        logOutput output
+                        logOutput logLaunch output
                         continuation (last output == ToolExit ExitSuccess)))
         (\(e :: SomeException) -> putStrLn (show e))
 
 packageRegister :: PackageAction
 packageRegister = do
     package <- ask
+    logLaunch <- lift $ getOrBuildLogLaunchByPackage package
     lift $ catchIDE (do
         let dir = dropFileName (ipdCabalFile package)
         runExternalTool "Registering" "cabal" (["register"]
-                        ++ (ipdRegisterFlags package)) (Just dir) logOutput)
+                        ++ (ipdRegisterFlags package)) (Just dir) (logOutput logLaunch))
         (\(e :: SomeException) -> putStrLn (show e))
 
 packageTest :: PackageAction
 packageTest = do
     package <- ask
+    logLaunch <- lift $ getOrBuildLogLaunchByPackage package
     lift $ catchIDE (do
         let dir = dropFileName (ipdCabalFile package)
-        runExternalTool "Testing" "cabal" (["test"]) (Just dir) logOutput)
+        runExternalTool "Testing" "cabal" (["test"]) (Just dir) (logOutput logLaunch))
         (\(e :: SomeException) -> putStrLn (show e))
 
 packageSdist :: PackageAction
 packageSdist = do
     package <- ask
+    logLaunch <- lift $ getOrBuildLogLaunchByPackage package
     lift $ catchIDE (do
         let dir = dropFileName (ipdCabalFile package)
         runExternalTool "Source Dist" "cabal" (["sdist"]
-                        ++ (ipdSdistFlags package)) (Just dir) logOutput)
+                        ++ (ipdSdistFlags package)) (Just dir) (logOutput logLaunch))
         (\(e :: SomeException) -> putStrLn (show e))
 
 
 packageOpenDoc :: PackageAction
 packageOpenDoc = do
     package <- ask
+    logLaunch <- lift $ getOrBuildLogLaunchByPackage package
     lift $ catchIDE (do
         prefs   <- readIDE prefs
         let path = dropFileName (ipdCabalFile package)
@@ -377,10 +402,15 @@ packageOpenDoc = do
                         </> display (pkgName (ipdPackageId package))
                         </> "index.html"
             dir = dropFileName (ipdCabalFile package)
-        runExternalTool "Opening Documentation" (browser prefs) [path] (Just dir) logOutput)
+        runExternalTool "Opening Documentation" (browser prefs) [path] (Just dir) (logOutput logLaunch))
         (\(e :: SomeException) -> putStrLn (show e))
 
-runExternalTool :: String -> FilePath -> [String] -> Maybe FilePath -> ([ToolOutput] -> IDEAction) -> IDEAction
+runExternalTool :: String
+                -> FilePath
+                -> [String]
+                -> Maybe FilePath
+                -> ([ToolOutput] -> IDEAction)
+                -> IDEAction
 runExternalTool description executable args mbDir handleOutput = do
         prefs          <- readIDE prefs
         alreadyRunning <- isRunning
