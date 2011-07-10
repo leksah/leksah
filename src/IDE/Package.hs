@@ -165,8 +165,11 @@ packageConfig = do
 packageConfig'  :: IDEPackage -> (Bool -> IDEAction) -> IDEAction
 packageConfig' package continuation = do
     let dir = dropFileName (ipdCabalFile package)
-    runExternalTool "Configuring" "cabal" (["configure"]
-                                    ++ (ipdConfigFlags package)) (Just dir) $ \output -> do
+    runExternalTool "Configuring"
+                    "cabal"
+                    (["configure"] ++ (ipdConfigFlags package))
+                    (Just dir)
+                    $ \output -> do
         logOutput output
         mbPack <- idePackageFromPath (ipdCabalFile package)
         case mbPack of
@@ -385,7 +388,7 @@ runExternalTool description executable args mbDir handleOutput = do
             when (saveAllBeforeBuild prefs) (do fileSaveAll belongsToWorkspace; return ())
             triggerEventIDE (StatusbarChanged [CompartmentState description, CompartmentBuild True])
             reifyIDE (\ideR -> forkIO $ do
-                (output, pid) <- runTool executable args mbDir
+                (output, pid) <- runTool executable args mbDir --TODO srp: here one could either return the whole TOOL, or the pid connect it with the launch in order to be able to stop it
                 reflectIDE (do
                     modifyIDE_ (\ide -> ide{runningTool = Just pid}) --TODO srp: runningTools should be a list
                     handleOutput output) ideR)

@@ -16,7 +16,6 @@
 
 module IDE.Pane.Log (
     IDELog(..)
-,   IDELogLaunch(..)
 ,   LogState
 ,   LogTag(..)
 ,   showLog
@@ -24,16 +23,23 @@ module IDE.Pane.Log (
 ,   getLog          -- ::   beta alpha
 ,   appendLog       -- ::   alpha  -> String -> LogTag -> IO Int
 ,   markErrorInLog  -- ::   alpha  -> (Int, Int) -> IO ()
+,   getActiveLogLaunch
+,   getDefaultLogLaunch
+,   getOrBuildLogLaunchByName
+,   getOrBuildLogLaunchByPackage
+,   getOrBuildLogLaunchByPackageId
 
 ,   readOut
 ,   readErr
-,   runExternal
+--,   runExternal
 ) where
 
 import Data.Typeable (Typeable(..))
 import IDE.Core.State
+import IDE.Core.Types(LogLaunch)
 import Graphics.UI.Gtk.Gdk.Events
 import Control.Monad.Trans (liftIO)
+import Control.Monad.Reader
 import IDE.Pane.SourceBuffer (markRefInSourceBuf,selectSourceBuf)
 import System.IO
 import Prelude hiding (catch)
@@ -63,11 +69,14 @@ import Graphics.UI.Gtk
         textTagBackground, textTagTableAdd, textTagForeground, textTagNew,
         textBufferGetTagTable, textBufferCreateMark, textBufferGetEndIter,
         textViewGetBuffer, textViewNew, Window, Notebook, castToWidget,
-        ScrolledWindow, TextView, Container, HBox, VBox, Menu, AttrOp(..), set,
+        ScrolledWindow, TextView, Container, ComboBox, HBox, VBox, Menu, AttrOp(..), set,
         TextWindowType(..), ShadowType(..), PolicyType(..), hBoxNew, buttonNewWithLabel,
         boxPackStartDefaults, vBoxNew, comboBoxNewText, boxPackEndDefaults,
+        comboBoxAppendText, comboBoxSetActive, comboBoxGetActiveText,
         priorityDefaultIdle, idleAdd)
-
+import qualified Data.Map as Map
+import Data.Maybe
+import Distribution.Package
 
 -------------------------------------------------------------------------------
 --
@@ -82,13 +91,69 @@ import Graphics.UI.Gtk
 data IDELog = IDELog {
     logVBox :: VBox
 ,   logButtons :: HBox
-,   logLaunces :: [IDELogLaunch]
+,   logLaunchBox :: ComboBox
 } deriving Typeable
 
-data IDELogLaunch = IDELogLaunch {
-    textView        ::   TextView
-,   scrolledWindowL ::   ScrolledWindow
-} deriving Typeable
+getActiveLogLaunch :: IDELog
+                   -> IDEM (Maybe LogLaunch)
+getActiveLogLaunch (IDELog _ _ comboBox) = do
+                                                     launches <- readIDE logLaunches
+                                                     active <- liftIO $ comboBoxGetActiveText comboBox
+                                                     case active of
+                                                        Nothing -> return Nothing
+                                                        Just key -> return $ Just $ launches Map.! key
+
+getOrBuildLogLaunchByName :: IDELog
+             -> String
+             -> IDEM LogLaunch
+getOrBuildLogLaunchByName log@(IDELog _ _ comboBox) logName = do
+                                                        launches <- readIDE logLaunches
+                                                        let logLaunch = Map.lookup logName launches
+                                                        case logLaunch of
+                                                            Just value -> return value
+                                                            Nothing -> do
+                                                                        newLogLaunch <- createNewLogLaunch
+                                                                        liftIO $ comboBoxAppendText comboBox logName
+                                                                        --TODO put logName and newLogLaunch to ide.logLaunches
+                                                                        return newLogLaunch
+
+
+getLogLaunchNameByPackage :: IDEPackage -> String
+getLogLaunchNameByPackage package = getLogLaunchNameByPackageId (ipdPackageId package)
+
+
+getLogLaunchNameByPackageId :: PackageIdentifier -> String
+getLogLaunchNameByPackageId (PackageIdentifier pkgName pkgVersion) = show pkgName ++ show pkgVersion
+
+
+getDefaultLogLaunch :: IDELog
+                    -> IDEM LogLaunch
+getDefaultLogLaunch (IDELog _ _ _) = do
+    launches <- readIDE logLaunches
+    return $ launches Map.! defaultLogName
+
+defaultLogName = "default"
+--removeLogLaunch :: IDELog
+--                -> String
+--                -> LogLaunch
+--                ->
+
+
+getOrBuildLogLaunchByPackage :: IDELog
+                               -> IDEPackage
+                               -> IDEM LogLaunch
+getOrBuildLogLaunchByPackage log package = getOrBuildLogLaunchByShownPackageId log $ getLogLaunchNameByPackage package
+
+getOrBuildLogLaunchByPackageId :: IDELog
+                               -> PackageIdentifier
+                               -> IDEM LogLaunch
+getOrBuildLogLaunchByPackageId log packageId = getOrBuildLogLaunchByShownPackageId log $ getLogLaunchNameByPackageId packageId
+
+getOrBuildLogLaunchByShownPackageId :: IDELog
+                               -> String
+                               -> IDEM LogLaunch
+getOrBuildLogLaunchByShownPackageId = getOrBuildLogLaunchByName
+
 
 data LogState               =   LogState
     deriving(Eq,Ord,Read,Show,Typeable)
@@ -117,18 +182,14 @@ instance RecoverablePane IDELog LogState IDEM where
 -- * Implementation
 --
 
-builder' :: PanePath ->
-    Notebook ->
-    Window ->
-    IDEM (Maybe IDELog,Connections)
-builder' pp nb windows = do
-    prefs <- readIDE prefs
-    reifyIDE $  \ideR -> do
+createNewLogLaunch :: IDEM LogLaunch
+createNewLogLaunch = do
+    idePrefs <- readIDE prefs
+    liftIO $ do
         tv           <- textViewNew
         buf          <- textViewGetBuffer tv
         iter         <- textBufferGetEndIter buf
         textBufferCreateMark buf (Just "end") iter True
-
         tags         <- textBufferGetTagTable buf
         errtag       <- textTagNew (Just "err")
         set errtag[textTagForeground := "red"]
@@ -147,7 +208,7 @@ builder' pp nb windows = do
         textTagTableAdd tags infoTag
 
         textViewSetEditable tv False
-        fd           <- case logviewFont prefs of
+        fd           <- case logviewFont idePrefs of
             Just str -> do
                 fontDescriptionFromString str
             Nothing  -> do
@@ -160,38 +221,58 @@ builder' pp nb windows = do
         scrolledWindowSetPolicy sw PolicyAutomatic PolicyAutomatic
         scrolledWindowSetShadowType sw ShadowIn
 
+        return $ LogLaunch tv sw
 
+builder' :: PanePath ->
+    Notebook ->
+    Window ->
+    IDEM (Maybe IDELog,Connections)
+builder' pp nb windows = do
+    prefs <- readIDE prefs
+    logLaunch <- createNewLogLaunch
+    let emptyMap = Map.empty :: Map.Map String LogLaunch
+    let map = Map.insert defaultLogName logLaunch emptyMap
+    modifyIDE_ $ \ide -> ide { logLaunches = map}
+
+    reifyIDE $  \ideR -> do
         hBox <- hBoxNew False 0
         btn <- buttonNewWithLabel "sample button"
         boxPackStartDefaults hBox btn
         comboBox <- comboBoxNewText
         boxPackEndDefaults hBox comboBox
         container <- vBoxNew False 0
-
         containerAdd container hBox
-        containerAdd container sw
 
 
 
+        --TODO remove this, loglaunches should be created as they are needed
+        containerAdd container $ scrolledWindowL logLaunch
+        index <- comboBoxAppendText comboBox defaultLogName
+        comboBoxSetActive comboBox index
 
-        let buf = IDELog container hBox [IDELogLaunch tv sw]
-        cid1         <- tv `afterFocusIn`
-            (\_      -> do reflectIDE (makeActive buf) ideR ; return False)
-        cid2         <- tv `onButtonPress`
-            (\ b     -> do reflectIDE (clicked b buf) ideR ; return False)
 
-#if MIN_VERSION_gtk(0,10,5)
-        cid3         <- tv `on` populatePopup $ populatePopupMenu buf ideR
-#else
-        cid3         <- tv `onPopulatePopup` (populatePopupMenu buf ideR)
-#endif
-        return (Just buf,[ConnectC cid1, ConnectC cid2])
+        let buf = IDELog container hBox comboBox
+--        cid1         <- container `afterFocusIn`
+--            (\_      -> do reflectIDE (makeActive buf) ideR ; return False)
+        cid2         <- container `onButtonPress`
+                    (\ b     -> do reflectIDE (clicked b buf) ideR ; return False)
+--        return (Just buf,[ConnectC cid1, ConnectC cid2])
+        return (Just buf,[ConnectC cid2])
+
+{--TODO
+--#if MIN_VERSION_gtk(0,10,5)
+--        cid3         <- container `on` populatePopup $ populatePopupMenu buf ideR
+--#else
+--        cid3         <- container `onPopulatePopup` (populatePopupMenu buf ideR)
+--#endif
+-}
 
 clicked :: Event -> IDELog -> IDEAction
-clicked (Button _ SingleClick _ _ _ _ LeftButton x y) ideLog = do
+clicked (Button _ SingleClick _ _ _ _ LeftButton x y) log = do
     logRefs'     <-  readIDE allLogRefs
+    mbActiveLogLaunch <- getActiveLogLaunch log -- TODO srp get active log launch here
     line' <- liftIO $ do
-        let activeLogLaunch = (logLaunces ideLog)!!0 -- TODO srp get active log launch here
+        let activeLogLaunch = fromJust mbActiveLogLaunch
         (x,y)       <-  widgetGetPointer (textView activeLogLaunch)
         (_,y')      <-  textViewWindowToBufferCoords (textView activeLogLaunch) TextWindowWidget (x,y)
         (iter,_)    <-  textViewGetLineAtY (textView activeLogLaunch) y'
@@ -204,7 +285,7 @@ clicked (Button _ SingleClick _ _ _ _ LeftButton x y) ideLog = do
                 Just buf -> markRefInSourceBuf n buf thisRef True
                 Nothing -> return ()
             log :: IDELog <- getLog
-            liftIO $ markErrorInLog log (logLines thisRef)
+            markErrorInLog log (logLines thisRef)
             case logRefType thisRef of
                 BreakpointRef -> setCurrentBreak (Just thisRef)
                 _             -> setCurrentError (Just thisRef)
@@ -212,7 +293,7 @@ clicked (Button _ SingleClick _ _ _ _ LeftButton x y) ideLog = do
 clicked _ _ = return ()
 
 populatePopupMenu :: IDELog -> IDERef -> Menu -> IO ()
-populatePopupMenu ideLog ideR menu = do
+populatePopupMenu log ideR menu = do
     items <- containerGetChildren menu
     item0           <-  menuItemNewWithLabel "Resolve Errors"
     item0 `onActivateLeaf` do
@@ -220,8 +301,9 @@ populatePopupMenu ideLog ideR menu = do
     menuShellAppend menu item0
     res <- reflectIDE (do
         logRefs'    <-  readIDE allLogRefs
+        mbActiveLogLaunch <- getActiveLogLaunch log -- TODO srp get active log launch here
         line'       <-  reifyIDE $ \ideR  ->  do
-            let activeLogLaunch = (logLaunces ideLog)!!0 -- TODO srp get active log launch here
+            let activeLogLaunch = fromJust mbActiveLogLaunch
             (x,y)       <-  widgetGetPointer (textView activeLogLaunch)
             (_,y')      <-  textViewWindowToBufferCoords (textView activeLogLaunch) TextWindowWidget (x,y)
             (iter,_)    <-  textViewGetLineAtY (textView activeLogLaunch) y'
@@ -263,16 +345,21 @@ showLog = do
     l <- getLog
     displayPane l False
 
-simpleLog :: String -> IDEAction
-simpleLog str = do
-    log :: IDELog <- getLog
-    liftIO $ appendLog log str LogTag
-    return ()
+--simpleLog :: String --
+--          -> String
+--          -> IDEAction
+--simpleLog str = do
+--    log :: IDELog <- getLog
+--    liftIO $ appendLog log str LogTag
+--    return ()
 
-appendLog :: IDELog -> String -> LogTag -> IO Int
-appendLog l string tag = do
-    let activeLogLaunch = (logLaunces l)!!0 -- TODO srp get active log launch here
-    let tv = textView activeLogLaunch
+{- the workhorse for logging: appends given text with given tag to given loglaunch -}
+appendLog :: LogLaunch
+          -> String
+          -> LogTag
+          -> IO Int
+appendLog logLaunch string tag = do
+    let tv = textView logLaunch
     buf   <- textViewGetBuffer tv
     iter  <- textBufferGetEndIter buf
     textBufferSelectRange buf iter iter
@@ -300,11 +387,12 @@ appendLog l string tag = do
         Just mark -> textViewScrollMarkOnscreen tv mark
     return line
 
-markErrorInLog :: IDELog -> (Int,Int) -> IO ()
-markErrorInLog l (l1,l2) = do
-    let activeLogLaunch = (logLaunces l)!!0 -- TODO srp get active log launch here
+markErrorInLog :: IDELog -> (Int,Int) -> IDEAction
+markErrorInLog log (l1,l2) = do
+    mbActiveLogLaunch <- getActiveLogLaunch log -- TODO srp get active log launch here
+    let activeLogLaunch = fromJust mbActiveLogLaunch
     let tv = textView activeLogLaunch
-    idleAdd  (do
+    liftIO $ idleAdd  (do
         buf    <- textViewGetBuffer tv
         iter   <- textBufferGetIterAtLineOffset buf (l1-1) 0
         iter2  <- textBufferGetIterAtLineOffset buf l2 0
@@ -323,7 +411,8 @@ markErrorInLog l (l1,l2) = do
 clearLog :: IDEAction
 clearLog = do
     log <- getLog
-    let activeLogLaunch = (logLaunces log)!!0 -- TODO srp get active log launch here
+    mbActiveLogLaunch <- getActiveLogLaunch log -- TODO srp get active log launch here
+    let activeLogLaunch = fromJust mbActiveLogLaunch
     buf <- liftIO$ textViewGetBuffer $ textView activeLogLaunch
     liftIO $textBufferSetText buf ""
 --    modifyIDE_ (\ide -> ide{allLogRefs = []})
@@ -336,30 +425,35 @@ clearLog = do
 -- ** Spawning external processes
 --
 
-readOut :: IDELog -> Handle -> IO ()
-readOut log hndl =
-     catch (readAndShow)
+readOut :: IDELog -> Handle -> IDEAction
+readOut log hndl = do
+     ideRef <- ask
+     liftIO $ catch (readAndShow ideRef)
        (\(e :: SomeException) -> do
         --appendLog log ("----------------------------------------\n") FrameTag
         hClose hndl
         return ())
     where
-    readAndShow = do
+    readAndShow :: IDERef -> IO()
+    readAndShow ideRef = do
         line <- hGetLine hndl
-        appendLog log (line ++ "\n") LogTag
-        readAndShow
+        defaultLogLaunch <- runReaderT (getDefaultLogLaunch log) ideRef --TODO srp use default log here ?
+        appendLog defaultLogLaunch (line ++ "\n") LogTag
+        readAndShow ideRef
 
-readErr :: IDELog -> Handle -> IO ()
-readErr log hndl =
-     catch (readAndShow)
+readErr :: IDELog -> Handle -> IDEAction
+readErr log hndl = do
+    ideRef <- ask
+    liftIO $ catch (readAndShow ideRef)
        (\(e :: SomeException) -> do
         hClose hndl
         return ())
     where
-    readAndShow = do
+    readAndShow ideRef = do
         line <- hGetLine hndl
-        appendLog log (line ++ "\n") ErrorTag
-        readAndShow
+        defaultLogLaunch <- runReaderT (getDefaultLogLaunch log) ideRef --TODO srp use default log here ?
+        appendLog defaultLogLaunch (line ++ "\n") LogTag
+        readAndShow ideRef
 
 runExternal :: FilePath -> [String] -> IO (Handle, Handle, Handle, ProcessHandle)
 runExternal path args = do

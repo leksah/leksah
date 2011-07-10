@@ -47,7 +47,7 @@ import qualified Text.ParserCombinators.Parsec.Token as P
 import IDE.Core.State
 import IDE.TextEditor
 import IDE.Pane.SourceBuffer
-import IDE.Pane.Log
+import qualified IDE.Pane.Log as Log
 import IDE.Utils.Tool
 import System.FilePath (equalFilePath)
 import Data.List (stripPrefix, elemIndex, isPrefixOf)
@@ -69,8 +69,8 @@ selectRef (Just ref) = do
             case mbBuf of
                 Just buf  -> markRefInSourceBuf index buf ref True
                 Nothing   -> liftIO $ debugM "leksah" "no buf" >> return ()
-            log :: IDELog <- getLog
-            liftIO $ markErrorInLog log (logLines ref)
+            log :: Log.IDELog <- Log.getLog
+            Log.markErrorInLog log (logLines ref)
 selectRef Nothing = return ()
 
 forOpenLogRefs :: (Int -> LogRef -> IDEBuffer -> IDEAction) -> IDEAction
@@ -363,44 +363,58 @@ identifier = P.identifier lexer
 colon = P.colon lexer
 int = fmap fromInteger $ P.integer lexer
 
-defaultLineLogger :: IDELog -> ToolOutput -> IDEM Int
+defaultLineLogger :: LogLaunch -> ToolOutput -> IDEM Int
 defaultLineLogger log out = liftIO $ defaultLineLogger' log out
 
-defaultLineLogger' :: IDELog -> ToolOutput -> IO Int
+defaultLineLogger' :: LogLaunch -> ToolOutput -> IO Int
 defaultLineLogger' log out = do
     case out of
-        ToolInput  line            -> appendLog log (line ++ "\n") InputTag
-        ToolOutput line            -> appendLog log (line ++ "\n") LogTag
-        ToolError  line            -> appendLog log (line ++ "\n") ErrorTag
-        ToolPrompt                 -> appendLog log (concat (take 20 (repeat "- ")) ++ "-\n") FrameTag
-        ToolExit   ExitSuccess     -> appendLog log (take 41 (repeat '-') ++ "\n") FrameTag
-        ToolExit   (ExitFailure 1) -> appendLog log (take 41 (repeat '=') ++ "\n") FrameTag
-        ToolExit   (ExitFailure n) -> appendLog log (take 41 ("========== " ++ show n ++ " " ++ repeat '=') ++ "\n") FrameTag
+        ToolInput  line            -> Log.appendLog log (line ++ "\n") InputTag
+        ToolOutput line            -> Log.appendLog log (line ++ "\n") LogTag
+        ToolError  line            -> Log.appendLog log (line ++ "\n") ErrorTag
+        ToolPrompt                 -> Log.appendLog log (concat (take 20 (repeat "- ")) ++ "-\n") FrameTag
+        ToolExit   ExitSuccess     -> Log.appendLog log (take 41 (repeat '-') ++ "\n") FrameTag
+        ToolExit   (ExitFailure 1) -> Log.appendLog log (take 41 (repeat '=') ++ "\n") FrameTag
+        ToolExit   (ExitFailure n) -> Log.appendLog log (take 41 ("========== " ++ show n ++ " " ++ repeat '=') ++ "\n") FrameTag
 
-logOutputLines :: (IDELog -> ToolOutput -> IDEM a) -> [ToolOutput] -> IDEM [a]
-logOutputLines lineLogger output = do
-    log :: IDELog <- getLog
+logOutputLines :: LogLaunch -- ^ logLaunch
+               -> (LogLaunch -> ToolOutput -> IDEM a)
+               -> [ToolOutput]
+               -> IDEM [a]
+logOutputLines logLaunch lineLogger output = do
+    log :: Log.IDELog <- Log.getLog
     liftIO $ bringPaneToFront log
-    results <- forM output $ lineLogger log
+    --TODO srp switch to logLaunch here
+--    logL <- Log.getOrBuildLogLaunchByName log logLaunch
+    results <- forM output $ lineLogger logLaunch
     triggerEventIDE (StatusbarChanged [CompartmentState "", CompartmentBuild False])
     return results
 
-logOutputLines_ :: (IDELog -> ToolOutput -> IDEM a) -> [ToolOutput] -> IDEAction
-logOutputLines_ lineLogger output = do
-    logOutputLines lineLogger output
+logOutputLines_ :: LogLaunch
+                -> (LogLaunch -> ToolOutput -> IDEM a)
+                -> [ToolOutput]
+                -> IDEAction
+logOutputLines_ logLaunch lineLogger output = do
+    logOutputLines logLaunch lineLogger output
     return ()
 
-logOutput :: [ToolOutput] -> IDEM ()
-logOutput output = do
-    logOutputLines defaultLineLogger output
+logOutput :: LogLaunch
+          -> [ToolOutput]
+          -> IDEM ()
+logOutput logLaunch output = do
+    logOutputLines logLaunch defaultLineLogger output
     return ()
 
-logOutputForBuild :: IDEPackage -> Bool -> [ToolOutput] -> IDEAction
+logOutputForBuild :: IDEPackage
+                  -> Bool
+                  -> [ToolOutput]
+                  -> IDEAction
 logOutputForBuild package backgroundBuild output = do
     ideRef <- ask
-    log    <- getLog
+    log    <- Log.getLog
     unless backgroundBuild $ liftIO $ bringPaneToFront log
-    errs   <- liftIO $ readAndShow output ideRef log False []
+    logL <- Log.getOrBuildLogLaunchByPackage log package --TODO getOrBuild, or just build new one here ?
+    errs   <- liftIO $ readAndShow output ideRef logL False []
     setErrorList $ reverse errs
     triggerEventIDE (Sensitivity [(SensitivityError,not (null errs))])
     let errorNum    =   length (filter isError errs)
@@ -410,9 +424,9 @@ logOutputForBuild package backgroundBuild output = do
     unless backgroundBuild nextError
     return ()
     where
-    readAndShow :: [ToolOutput] -> IDERef -> IDELog -> Bool -> [LogRef] -> IO [LogRef]
+    readAndShow :: [ToolOutput] -> IDERef -> LogLaunch -> Bool -> [LogRef] -> IO [LogRef]
     readAndShow [] _ log _ errs = do
-        appendLog log ("----- Leksah Error Please Report -----\n") FrameTag
+        Log.appendLog log ("----- Leksah Error Please Report -----\n") FrameTag
         return errs
     readAndShow (output:remainingOutput) ideR log inError errs = do
         case output of
@@ -430,7 +444,7 @@ logOutputForBuild package backgroundBuild output = do
                     Right (OtherLine text) | any (`isPrefixOf` text) nonErrorPrefixes -> do
                         return InfoTag
                     _ -> return ErrorTag
-                lineNr <- appendLog log (line ++ "\n") tag
+                lineNr <- Log.appendLog log (line ++ "\n") tag
                 case (parsed, errs) of
                     (Left e,_) -> do
                         sysMessage Normal (show e)
@@ -457,17 +471,17 @@ logOutputForBuild package backgroundBuild output = do
                             else readAndShow remainingOutput ideR log False errs
                     otherwise -> readAndShow remainingOutput ideR log False errs
             ToolOutput line -> do
-                appendLog log (line ++ "\n") LogTag
+                Log.appendLog log (line ++ "\n") LogTag
                 readAndShow remainingOutput ideR log inError errs
             ToolInput line -> do
-                appendLog log (line ++ "\n") InputTag
+                Log.appendLog log (line ++ "\n") InputTag
                 readAndShow remainingOutput ideR log inError errs
             ToolPrompt -> do
                 let errorNum    =   length (filter isError errs)
                 let warnNum     =   length errs - errorNum
                 case errs of
                     [] -> defaultLineLogger' log output
-                    _ -> appendLog log ("- - - " ++ show errorNum ++ " errors - "
+                    _ -> Log.appendLog log ("- - - " ++ show errorNum ++ " errors - "
                                             ++ show warnNum ++ " warnings - - -\n") FrameTag
                 return errs
             ToolExit _ -> do
@@ -475,16 +489,25 @@ logOutputForBuild package backgroundBuild output = do
                 let warnNum     =   length errs - errorNum
                 case errs of
                     [] -> defaultLineLogger' log output
-                    _ -> appendLog log ("----- " ++ show errorNum ++ " errors -- "
+                    _ -> Log.appendLog log ("----- " ++ show errorNum ++ " errors -- "
                                             ++ show warnNum ++ " warnings -----\n") FrameTag
                 return errs
 
-logOutputForBreakpoints :: IDEPackage -> [ToolOutput] -> IDEAction
-logOutputForBreakpoints package output = do
-    breaks <- logOutputLines (\log out -> do
+
+--logOutputLines :: String -- ^ logLaunch
+--               -> (LogLaunch -> ToolOutput -> IDEM a)
+--               -> [ToolOutput]
+--               -> IDEM [a]
+
+logOutputForBreakpoints :: IDEPackage
+                        -> LogLaunch           -- ^ loglaunch
+                        -> [ToolOutput]
+                        -> IDEAction
+logOutputForBreakpoints package logLaunch output = do
+    breaks <- logOutputLines logLaunch (\log out -> do
         case out of
             ToolOutput line -> do
-                logLineNumber <- liftIO $ appendLog log (line ++ "\n") LogTag
+                logLineNumber <- liftIO $ Log.appendLog log (line ++ "\n") LogTag
                 case parse breaksLineParser "" line of
                     Right (BreakpointDescription n span) ->
                         return $ Just $ LogRef span package line (logLineNumber, logLineNumber) BreakpointRef
@@ -494,12 +517,15 @@ logOutputForBreakpoints package output = do
                 return Nothing) output
     setBreakpointList $ catMaybes breaks
 
-logOutputForSetBreakpoint :: IDEPackage -> [ToolOutput] -> IDEAction
-logOutputForSetBreakpoint package output = do
-    breaks <- logOutputLines (\log out -> do
+logOutputForSetBreakpoint :: IDEPackage
+                        -> LogLaunch           -- ^ loglaunch
+                        -> [ToolOutput]
+                        -> IDEAction
+logOutputForSetBreakpoint package logLaunch output = do
+    breaks <- logOutputLines logLaunch (\log out -> do
         case out of
             ToolOutput line -> do
-                logLineNumber <- liftIO $ appendLog log (line ++ "\n") LogTag
+                logLineNumber <- liftIO $ Log.appendLog log (line ++ "\n") LogTag
                 case parse setBreakpointLineParser "" line of
                     Right (BreakpointDescription n span) ->
                         return $ Just $ LogRef span package line (logLineNumber, logLineNumber) BreakpointRef
@@ -509,12 +535,16 @@ logOutputForSetBreakpoint package output = do
                 return Nothing) output
     addLogRefs $ catMaybes breaks
 
-logOutputForContext :: IDEPackage -> (String -> [SrcSpan]) -> [ToolOutput] -> IDEAction
-logOutputForContext package getContexts output = do
-    refs <- fmap catMaybes $ logOutputLines (\log out -> do
+logOutputForContext :: IDEPackage
+                    -> LogLaunch                   -- ^ loglaunch
+                    -> (String -> [SrcSpan])
+                    -> [ToolOutput]
+                    -> IDEAction
+logOutputForContext package loglaunch getContexts output = do
+    refs <- fmap catMaybes $ logOutputLines loglaunch (\log out -> do
         case out of
             ToolOutput line -> do
-                logLineNumber <- liftIO $ appendLog log (line ++ "\n") LogTag
+                logLineNumber <- liftIO $ Log.appendLog log (line ++ "\n") LogTag
                 let contexts = getContexts line
                 if null contexts
                     then return Nothing
@@ -526,8 +556,11 @@ logOutputForContext package getContexts output = do
         addLogRefs [last refs]
         lastContext
 
-logOutputForLiveContext :: IDEPackage -> [ToolOutput] -> IDEAction
-logOutputForLiveContext package = logOutputForContext package getContexts
+logOutputForLiveContext :: IDEPackage
+                        -> LogLaunch           -- ^ loglaunch
+                        -> [ToolOutput]
+                        -> IDEAction
+logOutputForLiveContext package logLaunch = logOutputForContext package logLaunch getContexts
     where
         getContexts [] = []
         getContexts line@(x:xs) = case stripPrefix "Stopped at " line of
@@ -536,8 +569,11 @@ logOutputForLiveContext package = logOutputForContext package getContexts
                 _          -> getContexts xs
             _ -> getContexts xs
 
-logOutputForHistoricContext :: IDEPackage -> [ToolOutput] -> IDEAction
-logOutputForHistoricContext package = logOutputForContext package getContexts
+logOutputForHistoricContext :: IDEPackage
+                            -> LogLaunch           -- ^ loglaunch
+                            -> [ToolOutput]
+                            -> IDEAction
+logOutputForHistoricContext package logLaunch = logOutputForContext package logLaunch getContexts
     where
         getContexts line = case stripPrefix "Logged breakpoint at " line of
             Just rest -> case parse srcSpanParser "" rest of
