@@ -48,7 +48,7 @@ import Control.Exception hiding (try)
 import IDE.ImportTool
        (addPackage, parseHiddenModule, addImport, parseNotInScope,
         resolveErrors)
-import IDE.System.Process (runInteractiveProcess, ProcessHandle)
+import IDE.System.Process (runInteractiveProcess, ProcessHandle, terminateProcess)
 import Graphics.UI.Gtk
        (textBufferSetText, textViewScrollToMark,
         textBufferGetIterAtLineOffset, textViewScrollMarkOnscreen, textViewSetBuffer,
@@ -75,7 +75,7 @@ import Graphics.UI.Gtk
         TextWindowType(..), ShadowType(..), PolicyType(..), hBoxNew, buttonNewWithLabel,
         boxPackStartDefaults, vBoxNew, comboBoxNewText, boxPackEndDefaults,
         comboBoxAppendText, comboBoxSetActive, comboBoxGetActiveText,
-        priorityDefaultIdle, idleAdd,Frame, frameNew)
+        priorityDefaultIdle, idleAdd,Frame, frameNew,buttonActivated)
 import qualified Data.Map as Map
 import Data.Maybe
 import Distribution.Package
@@ -233,7 +233,7 @@ builder' pp nb windows = do
         hBox <- hBoxNew False 0
         boxPackStartDefaults mainContainer hBox
 
-        btn <- buttonNewWithLabel "sample button"
+        btn <- buttonNewWithLabel "terminate"
         boxPackStartDefaults hBox btn
         comboBox <- comboBoxNewText
         boxPackEndDefaults hBox comboBox
@@ -275,6 +275,19 @@ builder' pp nb windows = do
                         let buf = logBuffer logL
 
                         liftIO $ textViewSetBuffer tv buf
+                        )
+                        ideR
+
+        on btn buttonActivated $ do
+                mbTitle <- comboBoxGetActiveText comboBox
+                let title = fromJust mbTitle
+                reflectIDE (
+                    do
+                        launches <- readIDE logLaunches
+                        let mbPH = mbPid $ fromJust $ Map.lookup title launches
+                        case mbPH of
+                            Nothing -> return ()
+                            Just ph -> liftIO $ terminateProcess ph
                         )
                         ideR
 
