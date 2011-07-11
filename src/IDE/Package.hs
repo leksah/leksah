@@ -334,7 +334,13 @@ packageRun = do
                     (Executable name _ _):_ -> do
                         let path = "dist/build" </> name </> name
                         let dir = dropFileName (ipdCabalFile package)
-                        IDE.Package.runPackage (addLogLaunchData logName logLaunch) ("Running " ++ name) path (ipdExeFlags package) (Just dir) (logOutput logLaunch)
+                        IDE.Package.runPackage (addLogLaunchData logName logLaunch)
+                                               ("Running " ++ name)
+                                               path
+                                               (ipdExeFlags package)
+                                               (Just dir)
+                                               (logOutput logLaunch)
+
 
                     otherwise -> do
                         sysMessage Normal "no executable in selected package"

@@ -75,7 +75,8 @@ import Graphics.UI.Gtk
         TextWindowType(..), ShadowType(..), PolicyType(..), hBoxNew, buttonNewWithLabel,
         boxPackStartDefaults, vBoxNew, comboBoxNewText, boxPackEndDefaults,
         comboBoxAppendText, comboBoxSetActive, comboBoxGetActiveText,
-        priorityDefaultIdle, idleAdd,Frame, frameNew,buttonActivated)
+        priorityDefaultIdle, idleAdd,Frame, frameNew,buttonActivated,
+        boxPackStart, Packing(..))
 import qualified Data.Map as Map
 import Data.Maybe
 import Distribution.Package
@@ -128,14 +129,12 @@ buildLogLaunchByName :: String
                           -> IDEM (LogLaunch, String)
 buildLogLaunchByName logName = do
                         log <- getLog
-                        let comboBox = logLaunchBox log
                         launches <- readIDE logLaunches
                         let mbLogLaunch = Map.lookup logName launches
                         let name = case mbLogLaunch of
                                 Just value -> logName++"1" --TODO do this recursively
                                 Nothing -> logName
                         newLogLaunch <- liftIO $ createNewLogLaunch
-                        liftIO $ comboBoxAppendText comboBox name
                         return (newLogLaunch, name)
 
 getLogLaunchNameByPackage :: IDEPackage -> String
@@ -152,6 +151,9 @@ defaultLogName = "default"
 
 addLogLaunchData :: String -> LogLaunch -> ProcessHandle -> IDEM ()
 addLogLaunchData name logLaunch pid = do
+    log <- getLog
+    let comboBox = logLaunchBox log
+    liftIO $ comboBoxAppendText comboBox name
     launches <- readIDE logLaunches
     let newLaunches = Map.insert name (LogLaunchData logLaunch (Just pid)) launches
     modifyIDE_ (\ide -> ide {logLaunches = newLaunches})
@@ -231,10 +233,10 @@ builder' pp nb windows = do
 
         -- top, buttons and combobox
         hBox <- hBoxNew False 0
-        boxPackStartDefaults mainContainer hBox
+        boxPackStart mainContainer hBox PackNatural 0
 
-        btn <- buttonNewWithLabel "terminate"
-        boxPackStartDefaults hBox btn
+        terminateBtn <- buttonNewWithLabel "Terminate process"
+        boxPackStart hBox terminateBtn PackNatural 0
         comboBox <- comboBoxNewText
         boxPackEndDefaults hBox comboBox
 
@@ -278,7 +280,7 @@ builder' pp nb windows = do
                         )
                         ideR
 
-        on btn buttonActivated $ do
+        on terminateBtn buttonActivated $ do
                 mbTitle <- comboBoxGetActiveText comboBox
                 let title = fromJust mbTitle
                 reflectIDE (
