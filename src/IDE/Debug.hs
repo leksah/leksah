@@ -314,15 +314,15 @@ debugShowContext = packageTry_ $ do
 
 debugShowModules :: IDEAction
 debugShowModules = packageTry_ $ tryDebug_ $ debugCommand ":show modules" $
-    logOutputLines_Default $ \log output -> liftIO $ do
+    logOutputLines_Default $ \log logLaunch output -> liftIO $ do
         case output of
-            ToolInput  line -> appendLog log (line ++ "\n") InputTag
+            ToolInput  line -> appendLog log logLaunch (line ++ "\n") InputTag
             ToolOutput line | ", interpreted )" `isSuffixOf` line
-                            -> appendLog log (line ++ "\n") LogTag
-            ToolOutput line -> appendLog log (line ++ "\n") InfoTag
-            ToolError  line -> appendLog log (line ++ "\n") ErrorTag
-            ToolPrompt      -> defaultLineLogger' log output
-            ToolExit _      -> appendLog log "X--X--X ghci process exited unexpectedly X--X--X" FrameTag
+                            -> appendLog log logLaunch (line ++ "\n") LogTag
+            ToolOutput line -> appendLog log logLaunch (line ++ "\n") InfoTag
+            ToolError  line -> appendLog log logLaunch (line ++ "\n") ErrorTag
+            ToolPrompt      -> defaultLineLogger' log logLaunch output
+            ToolExit _      -> appendLog log logLaunch "X--X--X ghci process exited unexpectedly X--X--X" FrameTag
         return ()
 
 debugShowPackages :: IDEAction

@@ -409,9 +409,9 @@ prefsDescription configDir packages = NFDPP [
             (\ b a -> a{logviewFont = b})
             fontEditor
             (\mbs -> do
-                activeLogLaunch <- getActiveOrDefaultLogLaunch -- TODO srp get active log launch here
+                log <- getLog
                 fdesc <- liftIO $fontDescriptionFromString (case mbs of Just str -> str; Nothing -> "")
-                liftIO $widgetModifyFont (castToWidget $ textView activeLogLaunch) (Just fdesc))
+                liftIO $widgetModifyFont (castToWidget $ logLaunchTextView log) (Just fdesc))
     ,   mkFieldPP
             (paraName <<<- ParaName "Window default size"
                 $ paraSynopsis <<<- ParaSynopsis

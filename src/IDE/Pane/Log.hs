@@ -62,7 +62,7 @@ import Graphics.UI.Gtk
 #else
         onPopulatePopup,
 #endif
-        onButtonPress, afterFocusIn,
+        onButtonPress, afterFocusIn, textBufferNew,
         scrolledWindowSetShadowType, scrolledWindowSetPolicy, containerAdd,
         containerForeach, containerRemove, changed,
         scrolledWindowNew, widgetModifyFont, fontDescriptionSetFamily,
@@ -91,7 +91,7 @@ import Distribution.Package
 
 data IDELog = IDELog {
     logMainContainer :: VBox
-,   logLaunchContainer :: VBox
+,   logLaunchTextView :: TextView
 ,   logButtons :: HBox
 ,   logLaunchBox :: ComboBox
 } deriving Typeable
@@ -137,7 +137,7 @@ getOrBuildLogLaunchByName logName = do
                                                                             return value
                                                             Nothing -> do
                                                                         liftIO $ putStrLn $ "getOrBuildLogLaunchByName: LogLaunch "++logName ++ " does not exist. Building it." -- TODO remove this
-                                                                        newLogLaunch <- createNewLogLaunch
+                                                                        newLogLaunch <- liftIO $ createNewLogLaunch
                                                                         liftIO $ comboBoxAppendText comboBox logName
                                                                         let newLaunches = Map.insert logName newLogLaunch launches
                                                                         modifyIDE_ (\ide -> ide {logLaunches = newLaunches})
@@ -186,48 +186,36 @@ instance RecoverablePane IDELog LogState IDEM where
 -- * Implementation
 --
 
-createNewLogLaunch :: IDEM LogLaunch
+createNewLogLaunch :: IO LogLaunch
 createNewLogLaunch = do
-    liftIO $ putStrLn "createNewLogLaunch: Creating new log launch"  -- TODO remove this
-    idePrefs <- readIDE prefs
-    liftIO $ do
-        tv           <- textViewNew
-        buf          <- textViewGetBuffer tv
-        textBufferSetText buf "Starting new loglaunch" -- TODO remove this
-        iter         <- textBufferGetEndIter buf
-        textBufferCreateMark buf (Just "end") iter True
-        tags         <- textBufferGetTagTable buf
-        errtag       <- textTagNew (Just "err")
-        set errtag[textTagForeground := "red"]
-        textTagTableAdd tags errtag
-        frametag     <- textTagNew (Just "frame")
-        set frametag[textTagForeground := "dark green"]
-        textTagTableAdd tags frametag
-        activeErrtag <- textTagNew (Just "activeErr")
-        set activeErrtag[textTagBackground := "yellow"]
-        textTagTableAdd tags activeErrtag
-        intputTag <- textTagNew (Just "input")
-        set intputTag[textTagForeground := "blue"]
-        textTagTableAdd tags intputTag
-        infoTag <- textTagNew (Just "info")
-        set infoTag[textTagForeground := "grey"]
-        textTagTableAdd tags infoTag
+    putStrLn "createNewLogLaunch: Creating new log launch"  -- TODO remove this
+    buf          <- textBufferNew Nothing
+    textBufferSetText buf "Starting new loglaunch" -- TODO remove this
+    iter         <- textBufferGetEndIter buf
+    textBufferCreateMark buf (Just "end") iter True
+    tags         <- textBufferGetTagTable buf
 
-        textViewSetEditable tv False
-        fd           <- case logviewFont idePrefs of
-            Just str -> do
-                fontDescriptionFromString str
-            Nothing  -> do
-                f    <- fontDescriptionNew
-                fontDescriptionSetFamily f "Sans"
-                return f
-        widgetModifyFont tv (Just fd)
-        sw           <- scrolledWindowNew Nothing Nothing
-        containerAdd sw tv
-        scrolledWindowSetPolicy sw PolicyAutomatic PolicyAutomatic
-        scrolledWindowSetShadowType sw ShadowIn
+    errtag       <- textTagNew (Just "err")
+    set errtag[textTagForeground := "red"]
+    textTagTableAdd tags errtag
 
-        return $ LogLaunch tv sw
+    frametag     <- textTagNew (Just "frame")
+    set frametag[textTagForeground := "dark green"]
+    textTagTableAdd tags frametag
+
+    activeErrtag <- textTagNew (Just "activeErr")
+    set activeErrtag[textTagBackground := "yellow"]
+    textTagTableAdd tags activeErrtag
+
+    intputTag <- textTagNew (Just "input")
+    set intputTag[textTagForeground := "blue"]
+    textTagTableAdd tags intputTag
+
+    infoTag <- textTagNew (Just "info")
+    set infoTag[textTagForeground := "grey"]
+    textTagTableAdd tags infoTag
+
+    return $ LogLaunch buf
 
 builder' :: PanePath ->
     Notebook ->
@@ -236,7 +224,7 @@ builder' :: PanePath ->
 builder' pp nb windows = do
     liftIO $ putStrLn $ "builder': Building Logpane" -- TODO remove this
     prefs <- readIDE prefs
-    logLaunch <- createNewLogLaunch
+    logLaunch <- liftIO $ createNewLogLaunch
     let emptyMap = Map.empty :: Map.Map String LogLaunch
     let map = Map.insert defaultLogName logLaunch emptyMap
     modifyIDE_ $ \ide -> ide { logLaunches = map}
@@ -254,61 +242,55 @@ builder' pp nb windows = do
         comboBox <- comboBoxNewText
         boxPackEndDefaults hBox comboBox
 
-        -- bot, launch container
-        container <- vBoxNew False 0
-        boxPackEndDefaults mainContainer container
+        -- bot, launch textview in a scrolled window
+        tv           <- textViewNew
+        textViewSetEditable tv False
+        fd           <- case logviewFont prefs of
+            Just str -> do
+                fontDescriptionFromString str
+            Nothing  -> do
+                f    <- fontDescriptionNew
+                fontDescriptionSetFamily f "Sans"
+                return f
+        widgetModifyFont tv (Just fd)
+        sw           <- scrolledWindowNew Nothing Nothing
+        containerAdd sw tv
+        scrolledWindowSetPolicy sw PolicyAutomatic PolicyAutomatic
+        scrolledWindowSetShadowType sw ShadowIn
+
+        boxPackEndDefaults mainContainer sw
 
         -- add default launch
-        containerAdd container $ scrolledWindowL logLaunch
+        textViewSetBuffer tv (logBuffer logLaunch)
         index <- comboBoxAppendText comboBox defaultLogName
         comboBoxSetActive comboBox index
 
         on comboBox changed $ do
-                putStrLn $ "builder'/comboBox: Combobox changed" --TODO remove this
                 mbTitle <- comboBoxGetActiveText comboBox
                 let title = fromJust mbTitle
                 reflectIDE (
                     do
---                        liftIO $ containerForeach container
---                                         (\widget -> containerRemove container widget)
-
                         launches <- readIDE logLaunches
                         let logLaunch = fromJust $ Map.lookup title launches
 
---                        let sw = scrolledWindowL logLaunch
---                        liftIO $ containerForeach sw
---                                         (\widget -> containerRemove sw widget)
---
-                        defaultLogLaunch <- getDefaultLogLaunch
---                        let defSw = scrolledWindowL defaultLogLaunch
---                        liftIO $ containerForeach defSw
---                                         (\widget -> containerRemove defSw widget)
-
-
---                        tv           <- liftIO $ textViewNew
-                        let tv = textView logLaunch
-                        buf          <- liftIO $ textViewGetBuffer tv
---                        liftIO $ textBufferSetText buf "test output"
---                        cC <- liftIO $ textBufferGetCharCount buf
---                        liftIO $ putStrLn $ "cC" ++ show cC
-
-                        let defTv = textView defaultLogLaunch
-
-                        liftIO $ textViewSetBuffer defTv buf
+                        log <- getLog
+                        let tv = logLaunchTextView log
+                        let buf = logBuffer logLaunch
+                        liftIO $ textViewSetBuffer tv buf
 
                         liftIO $ putStrLn $ "builder'/comboBox: Adding logLaunch: " ++ title --TODO remove this
---                        liftIO $ containerAdd defSw tv
                         )
                         ideR
 
 
-        let buf = IDELog mainContainer container hBox comboBox
+        let buf = IDELog mainContainer tv hBox comboBox
 --        cid1         <- container `afterFocusIn`
 --            (\_      -> do reflectIDE (makeActive buf) ideR ; return False)
-        cid2         <- container `onButtonPress`
-                    (\ b     -> do reflectIDE (clicked b buf) ideR ; return False)
+--        cid2         <- container `onButtonPress`
+--                    (\ b     -> do reflectIDE (clicked b buf) ideR ; return False)
 --        return (Just buf,[ConnectC cid1, ConnectC cid2])
-        return (Just buf,[ConnectC cid2])
+--        return (Just buf,[ConnectC cid2])
+        return (Just buf,[])
 
 {--TODO
 --#if MIN_VERSION_gtk(0,10,5)
@@ -321,11 +303,12 @@ builder' pp nb windows = do
 clicked :: Event -> IDELog -> IDEAction
 clicked (Button _ SingleClick _ _ _ _ LeftButton x y) log = do
     logRefs'     <-  readIDE allLogRefs
-    activeLogLaunch <- getActiveOrDefaultLogLaunch -- TODO srp get active log launch here
+    log <- getLog
     line' <- liftIO $ do
-        (x,y)       <-  widgetGetPointer (textView activeLogLaunch)
-        (_,y')      <-  textViewWindowToBufferCoords (textView activeLogLaunch) TextWindowWidget (x,y)
-        (iter,_)    <-  textViewGetLineAtY (textView activeLogLaunch) y'
+        let tv = logLaunchTextView log
+        (x,y)       <-  widgetGetPointer tv
+        (_,y')      <-  textViewWindowToBufferCoords tv TextWindowWidget (x,y)
+        (iter,_)    <-  textViewGetLineAtY tv y'
         textIterGetLine iter
     case filter (\(es,_) -> fst (logLines es) <= (line'+1) && snd (logLines es) >= (line'+1))
             (zip logRefs' [0..(length logRefs')]) of
@@ -350,12 +333,14 @@ populatePopupMenu log ideR menu = do
         reflectIDE resolveErrors ideR
     menuShellAppend menu item0
     res <- reflectIDE (do
+        log <- getLog
         logRefs'    <-  readIDE allLogRefs
         activeLogLaunch <- getActiveOrDefaultLogLaunch -- TODO srp get active log launch here
         line'       <-  reifyIDE $ \ideR  ->  do
-            (x,y)       <-  widgetGetPointer (textView activeLogLaunch)
-            (_,y')      <-  textViewWindowToBufferCoords (textView activeLogLaunch) TextWindowWidget (x,y)
-            (iter,_)    <-  textViewGetLineAtY (textView activeLogLaunch) y'
+            let tv = logLaunchTextView log
+            (x,y)       <-  widgetGetPointer tv
+            (_,y')      <-  textViewWindowToBufferCoords tv TextWindowWidget (x,y)
+            (iter,_)    <-  textViewGetLineAtY tv y'
             textIterGetLine iter
         return $ filter (\(es,_) -> fst (logLines es) <= (line'+1) && snd (logLines es) >= (line'+1))
                 (zip logRefs' [0..(length logRefs')])) ideR
@@ -403,13 +388,13 @@ showLog = do
 --    return ()
 
 {- the workhorse for logging: appends given text with given tag to given loglaunch -}
-appendLog :: LogLaunch
+appendLog :: IDELog
+          -> LogLaunch
           -> String
           -> LogTag
           -> IO Int
-appendLog logLaunch string tag = do
-    let tv = textView logLaunch
-    buf   <- textViewGetBuffer tv
+appendLog log logLaunch string tag = do
+    let buf = logBuffer logLaunch
     iter  <- textBufferGetEndIter buf
     textBufferSelectRange buf iter iter
     textBufferInsert buf iter string
@@ -420,7 +405,7 @@ appendLog logLaunch string tag = do
                     FrameTag -> Just "frame"
                     InputTag -> Just "input"
                     InfoTag  -> Just "info"
-
+    let tv = logLaunchTextView log
     case tagName of
         Nothing   -> return ()
         Just name -> do
@@ -438,8 +423,7 @@ appendLog logLaunch string tag = do
 
 markErrorInLog :: IDELog -> (Int,Int) -> IDEAction
 markErrorInLog log (l1,l2) = do
-    activeLogLaunch <- getActiveOrDefaultLogLaunch -- TODO srp get active log launch here
-    let tv = textView activeLogLaunch
+    let tv = logLaunchTextView log
     liftIO $ idleAdd  (do
         buf    <- textViewGetBuffer tv
         iter   <- textBufferGetIterAtLineOffset buf (l1-1) 0
@@ -458,9 +442,9 @@ markErrorInLog log (l1,l2) = do
 
 clearLog :: IDEAction
 clearLog = do
-    activeLogLaunch <- getActiveOrDefaultLogLaunch -- TODO srp get active log launch here
-    buf <- liftIO$ textViewGetBuffer $ textView activeLogLaunch
-    liftIO $textBufferSetText buf ""
+    log <- getLog
+    buf <- liftIO $ textViewGetBuffer $ logLaunchTextView log
+    liftIO $ textBufferSetText buf ""
 --    modifyIDE_ (\ide -> ide{allLogRefs = []})
 --    setCurrentError Nothing
 --    setCurrentBreak Nothing TODO: Check with Hamish
@@ -474,32 +458,34 @@ clearLog = do
 readOut :: IDELog -> Handle -> IDEAction
 readOut log hndl = do
      ideRef <- ask
-     liftIO $ catch (readAndShow ideRef)
+     log <- getLog
+     liftIO $ catch (readAndShow log ideRef)
        (\(e :: SomeException) -> do
         --appendLog log ("----------------------------------------\n") FrameTag
         hClose hndl
         return ())
     where
-    readAndShow :: IDERef -> IO()
-    readAndShow ideRef = do
+    readAndShow :: IDELog -> IDERef -> IO()
+    readAndShow log ideRef = do
         line <- hGetLine hndl
         defaultLogLaunch <- runReaderT getDefaultLogLaunch ideRef --TODO srp use default log here ?
-        appendLog defaultLogLaunch (line ++ "\n") LogTag
-        readAndShow ideRef
+        appendLog log defaultLogLaunch (line ++ "\n") LogTag
+        readAndShow log ideRef
 
 readErr :: IDELog -> Handle -> IDEAction
 readErr log hndl = do
     ideRef <- ask
-    liftIO $ catch (readAndShow ideRef)
+    log <- getLog
+    liftIO $ catch (readAndShow log ideRef)
        (\(e :: SomeException) -> do
         hClose hndl
         return ())
     where
-    readAndShow ideRef = do
+    readAndShow log ideRef = do
         line <- hGetLine hndl
         defaultLogLaunch <- runReaderT getDefaultLogLaunch ideRef --TODO srp use default log here ?
-        appendLog defaultLogLaunch (line ++ "\n") LogTag
-        readAndShow ideRef
+        appendLog log defaultLogLaunch (line ++ "\n") LogTag
+        readAndShow log ideRef
 
 runExternal :: FilePath -> [String] -> IO (Handle, Handle, Handle, ProcessHandle)
 runExternal path args = do

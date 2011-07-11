@@ -819,7 +819,8 @@ registerLeksahEvents =    do
     registerEvent stRef "LogMessage"
         (\e@(LogMessage s t)      -> do
                                     defaultLogLaunch <- getDefaultLogLaunch
-                                    liftIO $ appendLog defaultLogLaunch s t
+                                    log <- getLog
+                                    liftIO $ appendLog log defaultLogLaunch s t
                                     return e)
     registerEvent stRef "SelectInfo"
         (\ e@(SelectInfo str)     -> setSymbol str >> return e)
