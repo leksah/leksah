@@ -50,7 +50,7 @@ import IDE.ImportTool
 import IDE.System.Process (runInteractiveProcess, ProcessHandle)
 import Graphics.UI.Gtk
        (textBufferSetText, textViewScrollToMark,
-        textBufferGetIterAtLineOffset, textViewScrollMarkOnscreen,
+        textBufferGetIterAtLineOffset, textViewScrollMarkOnscreen, textViewSetBuffer,
         textBufferGetMark, textBufferMoveMarkByName,
         textBufferApplyTagByName, textBufferGetIterAtOffset,
         textBufferGetCharCount, textBufferInsert, textBufferSelectRange,
@@ -74,7 +74,7 @@ import Graphics.UI.Gtk
         TextWindowType(..), ShadowType(..), PolicyType(..), hBoxNew, buttonNewWithLabel,
         boxPackStartDefaults, vBoxNew, comboBoxNewText, boxPackEndDefaults,
         comboBoxAppendText, comboBoxSetActive, comboBoxGetActiveText,
-        priorityDefaultIdle, idleAdd)
+        priorityDefaultIdle, idleAdd,Frame, frameNew)
 import qualified Data.Map as Map
 import Data.Maybe
 import Distribution.Package
@@ -90,20 +90,21 @@ import Distribution.Package
 
 
 data IDELog = IDELog {
-    logVBox :: VBox
+    logMainContainer :: VBox
+,   logLaunchContainer :: VBox
 ,   logButtons :: HBox
 ,   logLaunchBox :: ComboBox
 } deriving Typeable
 
 getActiveOrDefaultLogLaunch :: IDEM LogLaunch
 getActiveOrDefaultLogLaunch = do
-                         (IDELog _ _ comboBox) <- getLog
+                         log <- getLog
+                         let comboBox = logLaunchBox log
                          launches <- readIDE logLaunches
                          active <- liftIO $ comboBoxGetActiveText comboBox
                          case active of
                             Nothing -> getDefaultLogLaunch
                             Just key -> return $ launches Map.! key
---getActiveOrDefaultLogLaunch = getDefaultLogLaunch
 
 getDefaultLogLaunch :: IDEM LogLaunch
 getDefaultLogLaunch = do
@@ -125,17 +126,23 @@ getOrBuildLogLaunchByShownPackageId = getOrBuildLogLaunchByName
 getOrBuildLogLaunchByName :: String
                           -> IDEM LogLaunch
 getOrBuildLogLaunchByName logName = do
-                                                        log@(IDELog _ _ comboBox) <- getLog
+
+                                                        log <- getLog
+                                                        let comboBox = logLaunchBox log
                                                         launches <- readIDE logLaunches
                                                         let mbLogLaunch = Map.lookup logName launches
                                                         case mbLogLaunch of
-                                                            Just value -> return value
+                                                            Just value -> do
+                                                                            liftIO $ putStrLn $ "getOrBuildLogLaunchByName: LogLaunch "++logName ++ " already exists" -- TODO remove this
+                                                                            return value
                                                             Nothing -> do
+                                                                        liftIO $ putStrLn $ "getOrBuildLogLaunchByName: LogLaunch "++logName ++ " does not exist. Building it." -- TODO remove this
                                                                         newLogLaunch <- createNewLogLaunch
                                                                         liftIO $ comboBoxAppendText comboBox logName
                                                                         let newLaunches = Map.insert logName newLogLaunch launches
                                                                         modifyIDE_ (\ide -> ide {logLaunches = newLaunches})
                                                                         return newLogLaunch
+--getOrBuildLogLaunchByName _ =  getDefaultLogLaunch
 
 getLogLaunchNameByPackage :: IDEPackage -> String
 getLogLaunchNameByPackage package = getLogLaunchNameByPackageId (ipdPackageId package)
@@ -159,7 +166,7 @@ instance Pane IDELog IDEM
     where
     primPaneName  _ =   "Log"
     getAddedIndex _ =   0
-    getTopWidget    =   castToWidget . logVBox
+    getTopWidget    =   castToWidget . logMainContainer
     paneId b        =   "*Log"
 
 instance RecoverablePane IDELog LogState IDEM where
@@ -181,10 +188,12 @@ instance RecoverablePane IDELog LogState IDEM where
 
 createNewLogLaunch :: IDEM LogLaunch
 createNewLogLaunch = do
+    liftIO $ putStrLn "createNewLogLaunch: Creating new log launch"  -- TODO remove this
     idePrefs <- readIDE prefs
     liftIO $ do
         tv           <- textViewNew
         buf          <- textViewGetBuffer tv
+        textBufferSetText buf "Starting new loglaunch" -- TODO remove this
         iter         <- textBufferGetEndIter buf
         textBufferCreateMark buf (Just "end") iter True
         tags         <- textBufferGetTagTable buf
@@ -225,6 +234,7 @@ builder' :: PanePath ->
     Window ->
     IDEM (Maybe IDELog,Connections)
 builder' pp nb windows = do
+    liftIO $ putStrLn $ "builder': Building Logpane" -- TODO remove this
     prefs <- readIDE prefs
     logLaunch <- createNewLogLaunch
     let emptyMap = Map.empty :: Map.Map String LogLaunch
@@ -233,46 +243,66 @@ builder' pp nb windows = do
 
     ideR <- ask
     reifyIDE $  \ideR -> do
---        mainContainer <- vBoxNew False 0
+        mainContainer <- vBoxNew False 0
 
-        -- launch container
-        container <- vBoxNew False 0
-
-
-        -- top
+        -- top, buttons and combobox
         hBox <- hBoxNew False 0
-        --containerAdd mainContainer hBox
-        containerAdd container hBox
+        boxPackStartDefaults mainContainer hBox
+
         btn <- buttonNewWithLabel "sample button"
         boxPackStartDefaults hBox btn
         comboBox <- comboBoxNewText
         boxPackEndDefaults hBox comboBox
 
+        -- bot, launch container
+        container <- vBoxNew False 0
+        boxPackEndDefaults mainContainer container
 
-        --containerAdd mainContainer container
-
-
+        -- add default launch
         containerAdd container $ scrolledWindowL logLaunch
         index <- comboBoxAppendText comboBox defaultLogName
         comboBoxSetActive comboBox index
 
-
         on comboBox changed $ do
+                putStrLn $ "builder'/comboBox: Combobox changed" --TODO remove this
                 mbTitle <- comboBoxGetActiveText comboBox
                 let title = fromJust mbTitle
                 reflectIDE (
                     do
+--                        liftIO $ containerForeach container
+--                                         (\widget -> containerRemove container widget)
+
                         launches <- readIDE logLaunches
                         let logLaunch = fromJust $ Map.lookup title launches
-                        let sw = scrolledWindowL logLaunch
-                        liftIO $ containerForeach container
-                                         (\widget -> containerRemove container widget)
-                        liftIO $ containerAdd container sw
+
+--                        let sw = scrolledWindowL logLaunch
+--                        liftIO $ containerForeach sw
+--                                         (\widget -> containerRemove sw widget)
+--
+                        defaultLogLaunch <- getDefaultLogLaunch
+--                        let defSw = scrolledWindowL defaultLogLaunch
+--                        liftIO $ containerForeach defSw
+--                                         (\widget -> containerRemove defSw widget)
+
+
+--                        tv           <- liftIO $ textViewNew
+                        let tv = textView logLaunch
+                        buf          <- liftIO $ textViewGetBuffer tv
+--                        liftIO $ textBufferSetText buf "test output"
+--                        cC <- liftIO $ textBufferGetCharCount buf
+--                        liftIO $ putStrLn $ "cC" ++ show cC
+
+                        let defTv = textView defaultLogLaunch
+
+                        liftIO $ textViewSetBuffer defTv buf
+
+                        liftIO $ putStrLn $ "builder'/comboBox: Adding logLaunch: " ++ title --TODO remove this
+--                        liftIO $ containerAdd defSw tv
                         )
                         ideR
 
 
-        let buf = IDELog container hBox comboBox
+        let buf = IDELog mainContainer container hBox comboBox
 --        cid1         <- container `afterFocusIn`
 --            (\_      -> do reflectIDE (makeActive buf) ideR ; return False)
         cid2         <- container `onButtonPress`
