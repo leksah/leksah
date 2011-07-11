@@ -25,9 +25,10 @@ module IDE.Pane.Log (
 ,   markErrorInLog  -- ::   alpha  -> (Int, Int) -> IO ()
 ,   getActiveOrDefaultLogLaunch
 ,   getDefaultLogLaunch
-,   getOrBuildLogLaunchByName
-,   getOrBuildLogLaunchByPackage
-,   getOrBuildLogLaunchByPackageId
+,   buildLogLaunchByName
+,   buildLogLaunchByPackage
+,   buildLogLaunchByPackageId
+,   addLogLaunchData
 
 ,   readOut
 ,   readErr
@@ -104,45 +105,38 @@ getActiveOrDefaultLogLaunch = do
                          active <- liftIO $ comboBoxGetActiveText comboBox
                          case active of
                             Nothing -> getDefaultLogLaunch
-                            Just key -> return $ launches Map.! key
+                            Just key -> return $ logLaunch $ launches Map.! key
 
 getDefaultLogLaunch :: IDEM LogLaunch
 getDefaultLogLaunch = do
     launches <- readIDE logLaunches
-    return $ launches Map.! defaultLogName
+    return $ logLaunch $ launches Map.! defaultLogName
 
-getOrBuildLogLaunchByPackage :: IDEPackage
-                             -> IDEM LogLaunch
-getOrBuildLogLaunchByPackage = getOrBuildLogLaunchByShownPackageId . getLogLaunchNameByPackage
+buildLogLaunchByPackage :: IDEPackage
+                             -> IDEM (LogLaunch, String)
+buildLogLaunchByPackage = buildLogLaunchByShownPackageId . getLogLaunchNameByPackage
 
-getOrBuildLogLaunchByPackageId :: PackageIdentifier
-                               -> IDEM LogLaunch
-getOrBuildLogLaunchByPackageId = getOrBuildLogLaunchByShownPackageId . getLogLaunchNameByPackageId
+buildLogLaunchByPackageId :: PackageIdentifier
+                               -> IDEM (LogLaunch, String)
+buildLogLaunchByPackageId = buildLogLaunchByShownPackageId . getLogLaunchNameByPackageId
 
-getOrBuildLogLaunchByShownPackageId :: String
-                               -> IDEM LogLaunch
-getOrBuildLogLaunchByShownPackageId = getOrBuildLogLaunchByName
+buildLogLaunchByShownPackageId :: String
+                               -> IDEM (LogLaunch, String)
+buildLogLaunchByShownPackageId = buildLogLaunchByName
 
-getOrBuildLogLaunchByName :: String
-                          -> IDEM LogLaunch
-getOrBuildLogLaunchByName logName = do
-
-                                                        log <- getLog
-                                                        let comboBox = logLaunchBox log
-                                                        launches <- readIDE logLaunches
-                                                        let mbLogLaunch = Map.lookup logName launches
-                                                        case mbLogLaunch of
-                                                            Just value -> do
-                                                                            liftIO $ putStrLn $ "getOrBuildLogLaunchByName: LogLaunch "++logName ++ " already exists" -- TODO remove this
-                                                                            return value
-                                                            Nothing -> do
-                                                                        liftIO $ putStrLn $ "getOrBuildLogLaunchByName: LogLaunch "++logName ++ " does not exist. Building it." -- TODO remove this
-                                                                        newLogLaunch <- liftIO $ createNewLogLaunch
-                                                                        liftIO $ comboBoxAppendText comboBox logName
-                                                                        let newLaunches = Map.insert logName newLogLaunch launches
-                                                                        modifyIDE_ (\ide -> ide {logLaunches = newLaunches})
-                                                                        return newLogLaunch
---getOrBuildLogLaunchByName _ =  getDefaultLogLaunch
+buildLogLaunchByName :: String
+                          -> IDEM (LogLaunch, String)
+buildLogLaunchByName logName = do
+                        log <- getLog
+                        let comboBox = logLaunchBox log
+                        launches <- readIDE logLaunches
+                        let mbLogLaunch = Map.lookup logName launches
+                        let name = case mbLogLaunch of
+                                Just value -> logName++"1" --TODO do this recursively
+                                Nothing -> logName
+                        newLogLaunch <- liftIO $ createNewLogLaunch
+                        liftIO $ comboBoxAppendText comboBox name
+                        return (newLogLaunch, name)
 
 getLogLaunchNameByPackage :: IDEPackage -> String
 getLogLaunchNameByPackage package = getLogLaunchNameByPackageId (ipdPackageId package)
@@ -156,6 +150,11 @@ defaultLogName = "default"
 --                -> LogLaunch
 --                ->
 
+addLogLaunchData :: String -> LogLaunch -> ProcessHandle -> IDEM ()
+addLogLaunchData name logLaunch pid = do
+    launches <- readIDE logLaunches
+    let newLaunches = Map.insert name (LogLaunchData logLaunch (Just pid)) launches
+    modifyIDE_ (\ide -> ide {logLaunches = newLaunches})
 
 
 
@@ -188,9 +187,7 @@ instance RecoverablePane IDELog LogState IDEM where
 
 createNewLogLaunch :: IO LogLaunch
 createNewLogLaunch = do
-    putStrLn "createNewLogLaunch: Creating new log launch"  -- TODO remove this
     buf          <- textBufferNew Nothing
-    textBufferSetText buf "Starting new loglaunch" -- TODO remove this
     iter         <- textBufferGetEndIter buf
     textBufferCreateMark buf (Just "end") iter True
     tags         <- textBufferGetTagTable buf
@@ -222,11 +219,10 @@ builder' :: PanePath ->
     Window ->
     IDEM (Maybe IDELog,Connections)
 builder' pp nb windows = do
-    liftIO $ putStrLn $ "builder': Building Logpane" -- TODO remove this
     prefs <- readIDE prefs
-    logLaunch <- liftIO $ createNewLogLaunch
-    let emptyMap = Map.empty :: Map.Map String LogLaunch
-    let map = Map.insert defaultLogName logLaunch emptyMap
+    newLogLaunch <- liftIO $ createNewLogLaunch
+    let emptyMap = Map.empty :: Map.Map String LogLaunchData
+    let map = Map.insert defaultLogName (LogLaunchData newLogLaunch Nothing) emptyMap
     modifyIDE_ $ \ide -> ide { logLaunches = map}
 
     ideR <- ask
@@ -261,7 +257,7 @@ builder' pp nb windows = do
         boxPackEndDefaults mainContainer sw
 
         -- add default launch
-        textViewSetBuffer tv (logBuffer logLaunch)
+        textViewSetBuffer tv (logBuffer newLogLaunch)
         index <- comboBoxAppendText comboBox defaultLogName
         comboBoxSetActive comboBox index
 
@@ -271,14 +267,14 @@ builder' pp nb windows = do
                 reflectIDE (
                     do
                         launches <- readIDE logLaunches
-                        let logLaunch = fromJust $ Map.lookup title launches
 
                         log <- getLog
                         let tv = logLaunchTextView log
-                        let buf = logBuffer logLaunch
-                        liftIO $ textViewSetBuffer tv buf
 
-                        liftIO $ putStrLn $ "builder'/comboBox: Adding logLaunch: " ++ title --TODO remove this
+                        let logL = logLaunch $ fromJust $ Map.lookup title launches
+                        let buf = logBuffer logL
+
+                        liftIO $ textViewSetBuffer tv buf
                         )
                         ideR
 
@@ -378,14 +374,6 @@ showLog :: IDEAction
 showLog = do
     l <- getLog
     displayPane l False
-
---simpleLog :: String --
---          -> String
---          -> IDEAction
---simpleLog str = do
---    log :: IDELog <- getLog
---    liftIO $ appendLog log str LogTag
---    return ()
 
 {- the workhorse for logging: appends given text with given tag to given loglaunch -}
 appendLog :: IDELog

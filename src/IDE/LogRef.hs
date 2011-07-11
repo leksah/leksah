@@ -392,7 +392,6 @@ logOutputLines :: LogLaunch -- ^ logLaunch
 logOutputLines logLaunch lineLogger output = do
     log :: Log.IDELog <- Log.getLog
     liftIO $ bringPaneToFront log
---    logL <- Log.getOrBuildLogLaunchByName log logLaunch
     results <- forM output $ lineLogger log logLaunch
     triggerEventIDE (StatusbarChanged [CompartmentState "", CompartmentBuild False])
     return results
@@ -433,7 +432,7 @@ logOutputForBuild package backgroundBuild output = do
     ideRef <- ask
     log    <- Log.getLog
     unless backgroundBuild $ liftIO $ bringPaneToFront log
-    logLaunch <- Log.getOrBuildLogLaunchByPackage package --TODO getOrBuild, or just build new one here ?
+    logLaunch <- Log.getDefaultLogLaunch --TODO getOrBuild, or just build new one here ?
     log <- getLog
     errs   <- liftIO $ readAndShow output ideRef log logLaunch False []
     setErrorList $ reverse errs

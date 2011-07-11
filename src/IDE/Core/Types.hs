@@ -77,6 +77,7 @@ module IDE.Core.Types (
 
 ,   CompletionWindow(..)
 ,   LogLaunch(..)
+,   LogLaunchData(..)
 ,   LogTag(..)
 ,   GUIHistory
 ,   GUIHistory'(..)
@@ -158,8 +159,8 @@ data IDE            =  IDE {
 ,   completion      ::   ((Int, Int), Maybe CompletionWindow)
 ,   yiControl       ::   Yi.Control
 ,   server          ::   Maybe Handle
-,   vcsData         ::   (Maybe MergeId, Maybe (Maybe String)) --TODO this data should be deleted when workspace switches
-,   logLaunches     ::   Map.Map String LogLaunch
+,   vcsData         ::   (Maybe MergeId, Maybe (Maybe String))
+,   logLaunches     ::   Map.Map String LogLaunchData
 } --deriving Show
 
 --
@@ -429,6 +430,11 @@ instance Ord Modifier
 --
 -- | Other types
 --
+
+data LogLaunchData = LogLaunchData {
+    logLaunch :: LogLaunch
+,   mbPid :: Maybe ProcessHandle
+}
 
 data LogLaunch = LogLaunch {
     logBuffer   :: TextBuffer
