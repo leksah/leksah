@@ -37,4 +37,4 @@ pushAction :: IDEAction
 pushAction = createActionFromContext $ GitGUI.askPassWrapper Git.push
 
 pullAction :: IDEAction
-pullAction = createActionFromContext $ GitGUI.askPassWrapper Git.pull
+pullAction = createActionFromContext $ GitGUI.askPassWrapper GitGUI.pull
