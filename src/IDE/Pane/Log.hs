@@ -76,7 +76,7 @@ import Graphics.UI.Gtk
         boxPackStartDefaults, vBoxNew, comboBoxNewText, boxPackEndDefaults,
         comboBoxAppendText, comboBoxSetActive, comboBoxGetActiveText,
         priorityDefaultIdle, idleAdd,Frame, frameNew,buttonActivated,
-        boxPackStart, Packing(..))
+        boxPackStart, Packing(..), comboBoxGetActive, comboBoxRemoveText)
 import qualified Data.Map as Map
 import Data.Maybe
 import Distribution.Package
@@ -182,6 +182,20 @@ addLogLaunchData name logLaunch pid = do
     modifyIDE_ (\ide -> ide {logLaunches = newLaunches})
 
 
+removeActiveLogLaunchData :: IDEM ()
+removeActiveLogLaunchData = do
+                log <- getLog
+                let comboBox = logLaunchBox log
+
+                index <- liftIO $ comboBoxGetActive comboBox
+                mbTitle <- liftIO $ comboBoxGetActiveText comboBox
+                let title = fromJust mbTitle
+
+                liftIO $ comboBoxRemoveText comboBox index
+                launches <- readIDE logLaunches
+                let newLaunches = Map.delete title launches
+                modifyIDE_ (\ide -> ide {logLaunches = newLaunches})
+
 
 data LogState               =   LogState
     deriving(Eq,Ord,Read,Show,Typeable)
@@ -260,6 +274,8 @@ builder' pp nb windows = do
 
         terminateBtn <- buttonNewWithLabel "Terminate process"
         boxPackStart hBox terminateBtn PackNatural 0
+        removeBtn <- buttonNewWithLabel "Remove launch"
+        boxPackStart hBox removeBtn PackNatural 0
         comboBox <- comboBoxNewText
         boxPackEndDefaults hBox comboBox
 
@@ -309,13 +325,23 @@ builder' pp nb windows = do
                 reflectIDE (
                     do
                         launches <- readIDE logLaunches
-                        let mbPH = mbPid $ fromJust $ Map.lookup title launches
-                        case mbPH of
-                            Nothing -> return ()
-                            Just ph -> liftIO $ terminateProcess ph
+                        terminateLogLaunch title launches
                         )
                         ideR
 
+        on removeBtn buttonActivated $ do
+                mbTitle <- comboBoxGetActiveText comboBox
+                let title = fromJust mbTitle
+                if not $ title == defaultLogName then
+                    reflectIDE (
+                        do
+                            launches <- readIDE logLaunches
+                            removeActiveLogLaunchData
+                            terminateLogLaunch title launches
+                            )
+                            ideR
+                                                else
+                    return ()
 
         let buf = IDELog mainContainer tv hBox comboBox
 --        cid1         <- container `afterFocusIn`
@@ -325,6 +351,12 @@ builder' pp nb windows = do
 --        return (Just buf,[ConnectC cid1, ConnectC cid2])
 --        return (Just buf,[ConnectC cid2])
         return (Just buf,[])
+        where
+        terminateLogLaunch title launches = do
+            let mbPH = mbPid $ fromJust $ Map.lookup title launches
+            case mbPH of
+                Nothing -> return ()
+                Just ph -> liftIO $ terminateProcess ph
 
 {--TODO
 --#if MIN_VERSION_gtk(0,10,5)
