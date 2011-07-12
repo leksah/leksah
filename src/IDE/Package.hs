@@ -323,7 +323,6 @@ packageCopy = do
 packageRun :: PackageAction
 packageRun = do
     package <- ask
-    (logLaunch,logName) <- lift $ buildLogLaunchByPackage package
     lift $ catchIDE (do
         ideR        <- ask
         maybeDebug   <- readIDE debugState
@@ -332,6 +331,7 @@ packageRun = do
             Nothing -> do
                 case executables pd of
                     (Executable name _ _):_ -> do
+                        (logLaunch,logName) <- buildLogLaunchByName name
                         let path = "dist/build" </> name </> name
                         let dir = dropFileName (ipdCabalFile package)
                         IDE.Package.runPackage (addLogLaunchData logName logLaunch)
@@ -348,7 +348,8 @@ packageRun = do
             Just debug -> do
                 -- TODO check debug package matches active package
                 case executables pd of
-                    (Executable _ mainFilePath _):_ -> do
+                    (Executable name mainFilePath _):_ -> do
+                        (logLaunch,logName) <- buildLogLaunchByName name
                         runDebug (do
                                     executeDebugCommand (":module *" ++ (map (\c -> if c == '/' then '.' else c) (takeWhile (/= '.') mainFilePath))) (logOutput logLaunch)
                                     executeDebugCommand (":main " ++ (unwords (ipdExeFlags package))) (logOutput logLaunch))

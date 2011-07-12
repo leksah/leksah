@@ -80,6 +80,8 @@ import Graphics.UI.Gtk
 import qualified Data.Map as Map
 import Data.Maybe
 import Distribution.Package
+import Data.List.Utils
+import Data.Char
 
 -------------------------------------------------------------------------------
 --
@@ -128,14 +130,35 @@ buildLogLaunchByShownPackageId = buildLogLaunchByName
 buildLogLaunchByName :: String
                           -> IDEM (LogLaunch, String)
 buildLogLaunchByName logName = do
-                        log <- getLog
-                        launches <- readIDE logLaunches
-                        let mbLogLaunch = Map.lookup logName launches
-                        let name = case mbLogLaunch of
-                                Just value -> logName++"1" --TODO do this recursively
-                                Nothing -> logName
-                        newLogLaunch <- liftIO $ createNewLogLaunch
-                        return (newLogLaunch, name)
+        log <- getLog
+        launches <- readIDE logLaunches
+        let mbLogLaunch = Map.lookup logName launches
+        let name = getNextFreeName logName launches
+        newLogLaunch <- liftIO $ createNewLogLaunch
+        return (newLogLaunch, name)
+        where
+        getNextFreeName prevName launches = case (Map.lookup prevName launches) of
+                            Nothing -> prevName
+                            Just _  -> getNextFreeName (incrementName prevName) launches
+        incrementName name = case (parseName name) of
+                                    Nothing -> createNewName name 0
+                                    Just (number,name) -> createNewName name number
+        createNewName name number = concat [name, " (", show (number+1), ")"]
+        parseName name = if surroundedByParenth $ getLaunchString name then
+                                    if isNumberAndNotEmpty $ init $ tail $ getLaunchString name then -- check if
+                                        Just $ (read $ init $ tail $ getLaunchString name,
+                                                reverse $ drop 4 $ reverse name)
+                                                                                                  else
+                                        Nothing
+                                                                            else
+                                    Nothing
+        surroundedByParenth string = (startswith "(" string ) && (endswith ")" string) && (isNotBlank string)
+        isNumberAndNotEmpty string = (foldr ((&&) . isNumber) True $ string) && (isNotBlank string) -- check if
+        getLaunchString name = reverse $ take 3 $ reverse name
+        isNotBlank [] = False
+        isNotBlank _  = True
+
+
 
 getLogLaunchNameByPackage :: IDEPackage -> String
 getLogLaunchNameByPackage package = getLogLaunchNameByPackageId (ipdPackageId package)
