@@ -456,7 +456,7 @@ runExternalTool runGuard pidHandler description executable args mbDir handleOutp
                 (output, pid) <- runTool executable args mbDir
                 reflectIDE (do
                     pidHandler pid
-                    modifyIDE_ (\ide -> ide{runningTool = Just pid}) --TODO srp: runningTools should be a list, mind other ways of registring running tools, e.g. with package information, etc
+                    modifyIDE_ (\ide -> ide{runningTool = Just pid})
                     handleOutput output) ideR)
             return ()
 

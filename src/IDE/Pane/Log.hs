@@ -159,7 +159,6 @@ buildLogLaunchByName logName = do
         isNotBlank _  = True
 
 
-
 getLogLaunchNameByPackage :: IDEPackage -> String
 getLogLaunchNameByPackage package = getLogLaunchNameByPackageId (ipdPackageId package)
 
@@ -344,13 +343,16 @@ builder' pp nb windows = do
                     return ()
 
         let buf = IDELog mainContainer tv hBox comboBox
---        cid1         <- container `afterFocusIn`
---            (\_      -> do reflectIDE (makeActive buf) ideR ; return False)
---        cid2         <- container `onButtonPress`
---                    (\ b     -> do reflectIDE (clicked b buf) ideR ; return False)
---        return (Just buf,[ConnectC cid1, ConnectC cid2])
---        return (Just buf,[ConnectC cid2])
-        return (Just buf,[])
+        cid1         <- tv `afterFocusIn`
+            (\_      -> do reflectIDE (makeActive buf) ideR ; return False)
+        cid2         <- tv `onButtonPress`
+                    (\ b     -> do reflectIDE (clicked b buf) ideR ; return False)
+#if MIN_VERSION_gtk(0,10,5)
+        cid3         <- tv `on` populatePopup $ populatePopupMenu buf ideR
+#else
+        cid3         <- tv `onPopulatePopup` (populatePopupMenu buf ideR)
+#endif
+        return (Just buf, [ConnectC cid1, ConnectC cid2])
         where
         terminateLogLaunch title launches = do
             let mbPH = mbPid $ fromJust $ Map.lookup title launches
@@ -358,13 +360,6 @@ builder' pp nb windows = do
                 Nothing -> return ()
                 Just ph -> liftIO $ terminateProcess ph
 
-{--TODO
---#if MIN_VERSION_gtk(0,10,5)
---        cid3         <- container `on` populatePopup $ populatePopupMenu buf ideR
---#else
---        cid3         <- container `onPopulatePopup` (populatePopupMenu buf ideR)
---#endif
--}
 
 clicked :: Event -> IDELog -> IDEAction
 clicked (Button _ SingleClick _ _ _ _ LeftButton x y) log = do

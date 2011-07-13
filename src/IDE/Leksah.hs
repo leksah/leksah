@@ -69,6 +69,7 @@ import System.Log.Logger(updateGlobalLogger,rootLoggerName,setLevel)
 import Data.List (stripPrefix)
 import System.Directory (doesFileExist)
 import System.FilePath (dropExtension, splitExtension, (</>))
+import qualified Data.Map as Map
 
 -- --------------------------------------------------------------------
 -- Command line options
@@ -281,6 +282,7 @@ startMainWindow yiControl sessionFP mbWorkspaceFP sourceFPs startupPrefs isFirst
           ,   yiControl         =   yiControl
           ,   server            =   Nothing
           ,   vcsData           =   (Nothing, Nothing)
+          ,   logLaunches       =   Map.empty
     }
     ideR             <-  newIORef ide
     menuDescription' <- menuDescription
