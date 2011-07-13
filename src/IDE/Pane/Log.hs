@@ -166,10 +166,6 @@ getLogLaunchNameByPackageId :: PackageIdentifier -> String
 getLogLaunchNameByPackageId (PackageIdentifier pkgName pkgVersion) = show pkgName ++ show pkgVersion
 
 defaultLogName = "default"
---removeLogLaunch :: IDELog
---                -> String
---                -> LogLaunch
---                ->
 
 addLogLaunchData :: String -> LogLaunch -> ProcessHandle -> IDEM ()
 addLogLaunchData name logLaunch pid = do
@@ -195,6 +191,14 @@ removeActiveLogLaunchData = do
                 let newLaunches = Map.delete title launches
                 modifyIDE_ (\ide -> ide {logLaunches = newLaunches})
 
+showDefaultLogLaunch :: ComboBox -> IO()
+showDefaultLogLaunch comboBox = comboBoxSetActive comboBox 0
+
+showDefaultLogLaunch' :: IDEM ()
+showDefaultLogLaunch' = do
+        log <- getLog
+        let comboBox = logLaunchBox log
+        liftIO $ showDefaultLogLaunch comboBox
 
 data LogState               =   LogState
     deriving(Eq,Ord,Read,Show,Typeable)
@@ -303,44 +307,46 @@ builder' pp nb windows = do
 
         on comboBox changed $ do
                 mbTitle <- comboBoxGetActiveText comboBox
-                let title = fromJust mbTitle
-                reflectIDE (
-                    do
-                        launches <- readIDE logLaunches
+                case mbTitle of
+                    Nothing -> showDefaultLogLaunch comboBox
+                    Just title -> reflectIDE (
+                                    do
+                                        launches <- readIDE logLaunches
+                                        log <- getLog
+                                        let tv = logLaunchTextView log
+                                        let logL = logLaunch $ (Map.!) launches title
+                                        let buf = logBuffer logL
 
-                        log <- getLog
-                        let tv = logLaunchTextView log
-
-                        let logL = logLaunch $ fromJust $ Map.lookup title launches
-                        let buf = logBuffer logL
-
-                        liftIO $ textViewSetBuffer tv buf
-                        )
-                        ideR
+                                        liftIO $ textViewSetBuffer tv buf
+                                        )
+                                        ideR
 
         on terminateBtn buttonActivated $ do
                 mbTitle <- comboBoxGetActiveText comboBox
-                let title = fromJust mbTitle
-                reflectIDE (
-                    do
-                        launches <- readIDE logLaunches
-                        terminateLogLaunch title launches
-                        )
-                        ideR
+                case mbTitle of
+                    Nothing -> return()
+                    Just title -> reflectIDE (
+                                    do
+                                        launches <- readIDE logLaunches
+                                        terminateLogLaunch title launches
+                                        )
+                                        ideR
 
         on removeBtn buttonActivated $ do
                 mbTitle <- comboBoxGetActiveText comboBox
-                let title = fromJust mbTitle
-                if not $ title == defaultLogName then
-                    reflectIDE (
-                        do
-                            launches <- readIDE logLaunches
-                            removeActiveLogLaunchData
-                            terminateLogLaunch title launches
-                            )
-                            ideR
-                                                else
-                    return ()
+                case mbTitle of
+                    Nothing -> return()
+                    Just title -> if not $ title == defaultLogName then
+                                    reflectIDE (
+                                        do
+                                            launches <- readIDE logLaunches
+                                            removeActiveLogLaunchData
+                                            terminateLogLaunch title launches
+                                            )
+                                            ideR
+                                                                else
+                                    return ()
+
 
         let buf = IDELog mainContainer tv hBox comboBox
         cid1         <- tv `afterFocusIn`
