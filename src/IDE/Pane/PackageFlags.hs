@@ -1,5 +1,5 @@
-{-# OPTIONS_GHC -XScopedTypeVariables -XDeriveDataTypeable -XMultiParamTypeClasses
-    -XTypeSynonymInstances -XRank2Types #-}
+{-# LANGUAGE FlexibleInstances, ScopedTypeVariables, DeriveDataTypeable,
+             MultiParamTypeClasses, TypeSynonymInstances, Rank2Types #-}
 -----------------------------------------------------------------------------
 --
 -- Module      :  IDE.Pane.PackageFlags

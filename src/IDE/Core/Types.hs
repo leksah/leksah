@@ -103,7 +103,11 @@ import Graphics.UI.Gtk.Gdk.Enums (Modifier(..))
 #endif
 import System.Time (ClockTime(..))
 import Distribution.Simple (Extension(..))
+#ifdef MIN_VERSION_process_leksah
 import IDE.System.Process (ProcessHandle(..))
+#else
+import System.Process (ProcessHandle(..))
+#endif
 import IDE.Utils.Tool (ToolState(..))
 import Data.IORef (writeIORef, readIORef, IORef(..))
 import Numeric (showHex)

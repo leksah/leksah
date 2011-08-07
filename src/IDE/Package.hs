@@ -92,7 +92,11 @@ import qualified Data.Set as  Set (fromList)
 import qualified Data.Map as  Map (empty)
 import System.Exit (ExitCode(..))
 import Control.Applicative ((<$>))
+#ifdef MIN_VERSION_process_leksah
 import IDE.System.Process (getProcessExitCode, interruptProcessGroup)
+#else
+import System.Process (getProcessExitCode, interruptProcessGroupOf)
+#endif
 import IDE.Utils.Tool (executeGhciCommand)
 
 #if MIN_VERSION_Cabal(1,8,0)
@@ -407,7 +411,11 @@ interruptBuild :: IDEAction
 interruptBuild = do
     maybeProcess <- readIDE runningTool
     liftIO $ case maybeProcess of
+#ifdef MIN_VERSION_process_leksah
         Just h -> interruptProcessGroup h
+#else
+        Just h -> interruptProcessGroupOf h
+#endif
         _ -> return ()
 
 -- ---------------------------------------------------------------------

@@ -1,5 +1,5 @@
-{-# OPTIONS_GHC  -XDeriveDataTypeable -XMultiParamTypeClasses -XTypeSynonymInstances
-    -XScopedTypeVariables -XRankNTypes #-}
+{-# LANGUAGE FlexibleInstances, DeriveDataTypeable, MultiParamTypeClasses,
+             TypeSynonymInstances, ScopedTypeVariables, RankNTypes #-}
 -----------------------------------------------------------------------------
 --
 -- Module      :  IDE.Pane.SourceBuffer

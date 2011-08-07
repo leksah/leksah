@@ -1,4 +1,4 @@
-{-# OPTIONS_GHC  -XDeriveDataTypeable -XTypeSynonymInstances -XMultiParamTypeClasses #-}
+{-# LANGUAGE FlexibleInstances, DeriveDataTypeable, TypeSynonymInstances, MultiParamTypeClasses #-}
 -----------------------------------------------------------------------------
 --
 -- Module      :  IDE.BufferMode

@@ -1,5 +1,6 @@
-{-# OPTIONS_GHC -XFlexibleContexts -XTypeSynonymInstances -XMultiParamTypeClasses
-    -XScopedTypeVariables -XCPP -XDeriveDataTypeable #-}
+{-# LANGUAGE FlexibleInstances, FlexibleContexts, TypeSynonymInstances,
+             MultiParamTypeClasses, ScopedTypeVariables, CPP,
+             DeriveDataTypeable #-}
 -----------------------------------------------------------------------------
 --
 -- Module      :  IDE.Core.State

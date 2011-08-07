@@ -1,5 +1,5 @@
-{-# OPTIONS_GHC -XScopedTypeVariables -XDeriveDataTypeable -XMultiParamTypeClasses
-    -XTypeSynonymInstances #-}
+{-# LANGUAGE FlexibleInstances, ScopedTypeVariables, DeriveDataTypeable,
+             MultiParamTypeClasses, TypeSynonymInstances #-}
 -----------------------------------------------------------------------------
 --
 -- Module      :  IDE.Pane.PackageEditor
@@ -83,10 +83,16 @@ import Graphics.UI.Editor.Basics
        (Notifier, Editor(..), GUIEventSelector(..), GUIEvent(..))
 import Distribution.Compiler
     (CompilerFlavor(..))
+#if MIN_VERSION_Cabal(1,11,0)
+import Distribution.Simple
+    (Extension(..),
+     VersionRange(..))
+#else
 import Distribution.Simple
     (knownExtensions,
      Extension(..),
      VersionRange(..))
+#endif
 import Default (Default(..))
 import IDE.Utils.GUIUtils
 import IDE.Pane.SourceBuffer (fileOpenThis)
@@ -934,7 +940,11 @@ extensionsEditor = staticListMultiEditor extensionsL show
 
 
 extensionsL :: [Extension]
+#if MIN_VERSION_Cabal(1,11,0)
+extensionsL = map EnableExtension [minBound..maxBound]
+#else
 extensionsL = knownExtensions
+#endif
 
 {--
 reposEditor :: Editor [SourceRepo]

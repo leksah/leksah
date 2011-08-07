@@ -1,6 +1,5 @@
-{-# LANGUAGE CPP #-}
-{-# OPTIONS_GHC -XScopedTypeVariables -XDeriveDataTypeable -XMultiParamTypeClasses
-    -XTypeSynonymInstances #-}
+{-# LANGUAGE CPP, FlexibleInstances, ScopedTypeVariables, DeriveDataTypeable,
+             MultiParamTypeClasses, TypeSynonymInstances #-}
 -----------------------------------------------------------------------------
 --
 -- Module      :  IDE.Pane.Preferences
