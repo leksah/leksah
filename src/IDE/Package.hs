@@ -691,12 +691,13 @@ idePackageFromPath filePath = do
                                 l -> l
 #if MIN_VERSION_Cabal(1,10,0)
             let exts       = nub $ concatMap oldExtensions (allBuildInfo' packageD)
-#else
-            let exts       = nub $ concatMap extensions (allBuildInfo' packageD)
-#endif
             let tests      = [ testName t | t <- testSuites packageD
                                           , testEnabled t
                                           , buildable (testBuildInfo t) ]
+#else
+            let exts       = nub $ concatMap extensions (allBuildInfo' packageD)
+            let tests      = []
+#endif
 
             let packp      = IDEPackage {
                 ipdPackageId = package packageD,
