@@ -418,8 +418,10 @@ data Prefs = Prefs {
 data SearchHint = Forward | Backward | Insert | Delete | Initial
     deriving (Eq)
 
+#ifndef LEKSAH_WITH_YI
 instance Ord Modifier
     where compare a b = compare (fromEnum a) (fromEnum b)
+#endif
 
 --
 -- | Other types
