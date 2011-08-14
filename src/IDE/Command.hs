@@ -224,8 +224,8 @@ mkActions =
     ,AD "ResolveErrors" "Resol_ve Errors" (Just "Resolve 'Hidden package' and 'Not in scope' errors by adding the necessary dependancies or imports") Nothing
         resolveErrors [] False
 
-    ,AD "InstallPackage" "_Install" Nothing Nothing
-        (packageTry_ packageInstall) [] False
+    ,AD "InstallDependenciesPackage" "_Install Dependencies" (Just "Install the package's dependencies from the hackage server") Nothing
+        (packageTry_ packageInstallDependencies) [] False
     ,AD "RegisterPackage" "_Register" Nothing Nothing
         (packageTry_ packageRegister) [] False
     ,AD "TestPackage" "Test" Nothing Nothing
@@ -631,7 +631,7 @@ getActionsFor SensitivityForwardHist = getActionsFor' ["ViewHistoryForth"]
 getActionsFor SensitivityBackwardHist = getActionsFor' ["ViewHistoryBack"]
 getActionsFor SensitivityProjectActive = getActionsFor'
     ["EditPackage", "PackageFlags", "ConfigPackage", "BuildPackage"
-    ,"DocPackage", "CleanPackage", "CopyPackage", "RunPackage","InstallPackage"
+    ,"DocPackage", "CleanPackage", "CopyPackage", "RunPackage","InstallDependenciesPackage"
     ,"RegisterPackage", "TestPackage","SdistPackage"
     ,"OpenDocPackage","FileCloseAll"]
 getActionsFor SensitivityError = getActionsFor' ["NextError", "PreviousError"]

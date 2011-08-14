@@ -308,6 +308,8 @@ data IDEPackage     =   IDEPackage {
 ,   ipdCabalFile       ::   FilePath
 ,   ipdDepends         ::   [Dependency]
 ,   ipdModules         ::   Set ModuleName
+,   ipdHasLibs         ::   Bool
+,   ipdTests           ::   [String]
 ,   ipdMain            ::   [FilePath]
 ,   ipdExtraSrcs       ::   Set FilePath
 ,   ipdSrcDirs         ::   [FilePath]

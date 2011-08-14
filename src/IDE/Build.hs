@@ -36,7 +36,7 @@ import Data.List (delete, nub, (\\), find)
 import Distribution.Version (withinRange)
 import Data.Maybe (mapMaybe)
 import IDE.Package
-       (packageClean', packageInstall', buildPackage, packageConfig')
+       (packageClean', packageCopy', packageRegister', buildPackage, packageConfig', packageTest')
 import IDE.Core.Types
        (IDEEvent(..), Prefs(..), IDE(..), WorkspaceAction)
 import Control.Monad.Reader
@@ -68,7 +68,9 @@ defaultMakeSettings prefs = MakeSettings  {
 data MakeOp =
     MoConfigure
     | MoBuild
-    | MoInstall
+    | MoTest
+    | MoCopy
+    | MoRegister
     | MoClean
     | MoDocu
     | MoOther String
@@ -166,8 +168,9 @@ constrElem currentTargets tops  depGraph ms noBuilds
                             Just deps -> deps
             withoutInstall = msDontInstallLast ms && null (delete current dependents)
             filteredOps = case firstOp of
-                            MoComposed l -> MoComposed (filter (\e -> e /= MoInstall) l)
-                            MoInstall    -> MoComposed []
+                            MoComposed l -> MoComposed (filter (\e -> e /= MoCopy && e /= MoRegister) l)
+                            MoCopy       -> MoComposed []
+                            MoRegister   -> MoComposed []
                             other        -> other
         in trace ("constrElem1 deps: " ++ show dependents ++ " withoutInstall: " ++ show withoutInstall)
             $
@@ -191,8 +194,12 @@ doBuildChain ms chain@Chain{mcAction = MoConfigure} =
 doBuildChain ms chain@Chain{mcAction = MoBuild} =
     buildPackage (msBackgroundBuild ms) (not (msMakeMode ms) && msSingleBuildWithoutLinking ms)
         (mcEle chain) (constrCont ms (mcPos chain) (mcNeg chain))
-doBuildChain ms chain@Chain{mcAction = MoInstall} =
-    packageInstall' (mcEle chain) (constrCont ms (mcPos chain) (mcNeg chain))
+doBuildChain ms chain@Chain{mcAction = MoTest} =
+    packageTest' (mcEle chain) (constrCont ms (mcPos chain) (mcNeg chain))
+doBuildChain ms chain@Chain{mcAction = MoCopy} =
+    packageCopy' (mcEle chain) (constrCont ms (mcPos chain) (mcNeg chain))
+doBuildChain ms chain@Chain{mcAction = MoRegister} =
+    packageRegister' (mcEle chain) (constrCont ms (mcPos chain) (mcNeg chain))
 doBuildChain ms chain@Chain{mcAction = MoClean} =
     packageClean' (mcEle chain) (constrCont ms (mcPos chain) (mcNeg chain))
 doBuildChain ms chain@Chain{mcAction = MoMetaInfo} =

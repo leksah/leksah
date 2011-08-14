@@ -25,14 +25,16 @@ module IDE.Package (
 ,   packageClean
 ,   packageClean'
 ,   packageCopy
+,   packageCopy'
 ,   packageRun
 ,   activatePackage
 ,   deactivatePackage
 
-,   packageInstall
-,   packageInstall'
+,   packageInstallDependencies
 ,   packageRegister
+,   packageRegister'
 ,   packageTest
+,   packageTest'
 ,   packageSdist
 ,   packageOpenDoc
 
@@ -296,6 +298,24 @@ packageCopy = do
                            ++ ["--destdir=" ++ fp]) (Just dir) logOutput)
         (\(e :: SomeException) -> putStrLn (show e))
 
+packageInstallDependencies :: PackageAction
+packageInstallDependencies = do
+    package <- ask
+    lift $ catchIDE (do
+        let dir = dropFileName (ipdCabalFile package)
+        runExternalTool "Installing" "cabal" (["install","--only-dependencies"]) (Just dir) logOutput)
+        (\(e :: SomeException) -> putStrLn (show e))
+
+packageRegister :: PackageAction
+packageCopy' :: IDEPackage -> (Bool -> IDEAction) -> IDEAction
+packageCopy' package continuation = catchIDE (do
+   let dir = dropFileName (ipdCabalFile package)
+   runExternalTool "Copying" "cabal" (["copy"]
+                    ++ (ipdInstallFlags package)) (Just dir) (\ output -> do
+                        logOutput output
+                        continuation (last output == ToolExit ExitSuccess)))
+        (\(e :: SomeException) -> putStrLn (show e))
+
 packageRun :: PackageAction
 packageRun = do
     package <- ask
@@ -325,35 +345,33 @@ packageRun = do
                         return ())
         (\(e :: SomeException) -> putStrLn (show e))
 
-packageInstall :: PackageAction
-packageInstall = do
-    package <- ask
-    lift $ packageInstall' package (\ _ -> return ())
-
-packageInstall' :: IDEPackage -> (Bool -> IDEAction) -> IDEAction
-packageInstall' package continuation = catchIDE (do
-   let dir = dropFileName (ipdCabalFile package)
-   runExternalTool "Installing" "runhaskell" (["Setup", "install"]
-                    ++ (ipdInstallFlags package)) (Just dir) (\ output -> do
-                        logOutput output
-                        continuation (last output == ToolExit ExitSuccess)))
-        (\(e :: SomeException) -> putStrLn (show e))
-
-packageRegister :: PackageAction
 packageRegister = do
     package <- ask
-    lift $ catchIDE (do
+    lift $ packageRegister' package (\ _ -> return ())
+
+packageRegister' :: IDEPackage -> (Bool -> IDEAction) -> IDEAction
+packageRegister' package continuation =
+    when (ipdHasLibs package) $ catchIDE (do
         let dir = dropFileName (ipdCabalFile package)
         runExternalTool "Registering" "cabal" (["register"]
-                        ++ (ipdRegisterFlags package)) (Just dir) logOutput)
+                    ++ (ipdRegisterFlags package)) (Just dir) (\ output -> do
+                        logOutput output
+                        continuation (last output == ToolExit ExitSuccess)))
         (\(e :: SomeException) -> putStrLn (show e))
 
 packageTest :: PackageAction
 packageTest = do
     package <- ask
-    lift $ catchIDE (do
+    lift $ packageTest' package (\ _ -> return ())
+
+packageTest' :: IDEPackage -> (Bool -> IDEAction) -> IDEAction
+packageTest' package continuation =
+    when (not . null $ ipdTests package) $ catchIDE (do
         let dir = dropFileName (ipdCabalFile package)
-        runExternalTool "Testing" "cabal" (["test"]) (Just dir) logOutput)
+        runExternalTool "Registering" "cabal" (["test"]
+                    ++ (ipdRegisterFlags package)) (Just dir) (\ output -> do
+                        logOutput output
+                        continuation (last output == ToolExit ExitSuccess)))
         (\(e :: SomeException) -> putStrLn (show e))
 
 packageSdist :: PackageAction
@@ -676,11 +694,17 @@ idePackageFromPath filePath = do
 #else
             let exts       = nub $ concatMap extensions (allBuildInfo' packageD)
 #endif
+            let tests      = [ testName t | t <- testSuites packageD
+                                          , testEnabled t
+                                          , buildable (testBuildInfo t) ]
+
             let packp      = IDEPackage {
                 ipdPackageId = package packageD,
                 ipdCabalFile = filePath,
                 ipdDepends = buildDepends packageD,
                 ipdModules = modules,
+                ipdHasLibs = hasLibs packageD,
+                ipdTests   = tests,
                 ipdMain    = mainFiles,
                 ipdExtraSrcs =  files,
                 ipdSrcDirs = srcDirs,

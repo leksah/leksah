@@ -527,8 +527,8 @@ workspaceMake = do
         return ((defaultMakeSettings prefs'){
                     msMakeMode           = True,
                     msBackgroundBuild    = False})
-    makePackages settings (wsPackages ws) (MoComposed [MoConfigure,MoBuild,MoInstall])
-        (MoComposed [MoConfigure,MoBuild,MoInstall]) MoMetaInfo
+    makePackages settings (wsPackages ws) (MoComposed [MoConfigure,MoBuild,MoTest,MoCopy,MoRegister])
+        (MoComposed [MoConfigure,MoBuild,MoTest,MoCopy,MoRegister]) MoMetaInfo
 
 backgroundMake :: IDEAction
 backgroundMake = catchIDE (do
@@ -548,8 +548,8 @@ backgroundMake = catchIDE (do
                     then workspaceTryQuiet_ $
                         makePackages settings modifiedPacks MoBuild (MoComposed []) moNoOp
                     else workspaceTryQuiet_ $
-                        makePackages settings modifiedPacks (MoComposed [MoBuild,MoInstall])
-                                        (MoComposed [MoConfigure,MoBuild,MoInstall]) MoMetaInfo
+                        makePackages settings modifiedPacks (MoComposed [MoBuild,MoTest,MoCopy,MoRegister])
+                                        (MoComposed [MoConfigure,MoBuild,MoTest,MoCopy,MoRegister]) MoMetaInfo
     )
     (\(e :: SomeException) -> sysMessage Normal (show e))
 
@@ -569,7 +569,7 @@ makePackage = do
                         (makePackages settings [p] MoBuild (MoComposed []) moNoOp) ws
                 else runWorkspace
                         (makePackages settings [p]
-                        (MoComposed [MoBuild,MoInstall])
-                        (MoComposed [MoConfigure,MoBuild,MoInstall])
+                        (MoComposed [MoBuild,MoTest,MoCopy,MoRegister])
+                        (MoComposed [MoConfigure,MoBuild,MoTest,MoCopy,MoRegister])
                         MoMetaInfo) ws
 

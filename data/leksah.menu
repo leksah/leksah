@@ -66,8 +66,8 @@
        <menuitem name="_Build" action="BuildPackage" />
        <menuitem name="_Run" action="RunPackage" />
        <separator/>
+       <menuitem name="_Install Dependencies" action="InstallDependenciesPackage" />
        <menuitem name="C_opy" action="CopyPackage" />
-       <menuitem name="_Install" action="InstallPackage" />
        <menuitem name="Re_gister" action="RegisterPackage" />
        <menuitem name="Test" action="TestPackage" />
        <menuitem name="SDist" action="SdistPackage" />
