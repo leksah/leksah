@@ -303,10 +303,10 @@ packageInstallDependencies = do
     package <- ask
     lift $ catchIDE (do
         let dir = dropFileName (ipdCabalFile package)
-        runExternalTool "Installing" "cabal" (["install","--only-dependencies"]) (Just dir) logOutput)
+        runExternalTool "Installing" "cabal" (["install","--only-dependencies"]
+            ++ (ipdInstallFlags package)) (Just dir) logOutput)
         (\(e :: SomeException) -> putStrLn (show e))
 
-packageRegister :: PackageAction
 packageCopy' :: IDEPackage -> (Bool -> IDEAction) -> IDEAction
 packageCopy' package continuation = catchIDE (do
    let dir = dropFileName (ipdCabalFile package)
@@ -345,6 +345,7 @@ packageRun = do
                         return ())
         (\(e :: SomeException) -> putStrLn (show e))
 
+packageRegister :: PackageAction
 packageRegister = do
     package <- ask
     lift $ packageRegister' package (\ _ -> return ())
@@ -368,8 +369,8 @@ packageTest' :: IDEPackage -> (Bool -> IDEAction) -> IDEAction
 packageTest' package continuation =
     when (not . null $ ipdTests package) $ catchIDE (do
         let dir = dropFileName (ipdCabalFile package)
-        runExternalTool "Registering" "cabal" (["test"]
-                    ++ (ipdRegisterFlags package)) (Just dir) (\ output -> do
+        runExternalTool "Testing" "cabal" (["test"]
+                    ++ (ipdTestFlags package)) (Just dir) (\ output -> do
                         logOutput output
                         continuation (last output == ToolExit ExitSuccess)))
         (\(e :: SomeException) -> putStrLn (show e))
@@ -712,6 +713,7 @@ idePackageFromPath filePath = do
                 ipdExtensions =  exts,
                 ipdConfigFlags = ["--user"],
                 ipdBuildFlags = [],
+                ipdTestFlags = [],
                 ipdHaddockFlags = [],
                 ipdExeFlags = [],
                 ipdInstallFlags = [],

@@ -189,6 +189,14 @@ flagsDescription = VFDPP emptyParams [
             (stringEditor (const True) True)
             (\ _ ->  return ())
     ,   mkFieldPP
+            (paraName <<<- ParaName "Test flags" $ emptyParams)
+            (PP.text . show)
+            readParser
+            (\p -> unargs (ipdTestFlags p))
+            (\ b a -> a{ipdTestFlags = args b})
+            (stringEditor (const True) True)
+            (\ _ ->   return ())
+    ,   mkFieldPP
             (paraName <<<- ParaName "Haddock flags" $ emptyParams)
             (PP.text . show)
             readParser

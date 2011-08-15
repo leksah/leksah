@@ -316,6 +316,7 @@ data IDEPackage     =   IDEPackage {
 ,   ipdExtensions      ::   [Extension]
 ,   ipdConfigFlags     ::   [String]
 ,   ipdBuildFlags      ::   [String]
+,   ipdTestFlags       ::   [String]
 ,   ipdHaddockFlags    ::   [String]
 ,   ipdExeFlags        ::   [String]
 ,   ipdInstallFlags    ::   [String]
