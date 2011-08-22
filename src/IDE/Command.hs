@@ -114,6 +114,7 @@ import qualified IDE.Command.VCS.SVN as VCSSVN
 import qualified IDE.Command.VCS.GIT as VCSGit
 import qualified IDE.Command.VCS.Common as VCS
 
+
 --
 -- | The Actions known to the system (they can be activated by keystrokes or menus)
 --
@@ -134,6 +135,8 @@ mkActions =
     ,AD "GitPush" "_Push" Nothing Nothing VCSGit.pushAction [] False
     ,AD "GitPull" "P_ull" Nothing Nothing VCSGit.pullAction [] False
     ,AD "GitViewLog" "_View Log" Nothing Nothing VCSGit.viewLogAction [] False
+    -- print action
+    ,AD "FilePrint" "_Print File" Nothing Nothing (filePrint) [] False
     -- other actions
     ,AD "File" "_File" Nothing Nothing (return ()) [] False
     ,AD "FileNew" "_New Module..." Nothing (Just "gtk-new")
@@ -161,7 +164,6 @@ mkActions =
         (do fileCloseAllButWorkspace; return ()) [] False
     ,AD "Quit" "_Quit" Nothing (Just "gtk-quit")
         quit [] False
-
     ,AD "Edit" "_Edit" Nothing Nothing (return ()) [] False
     ,AD "EditUndo" "_Undo" Nothing (Just "gtk-undo")
         editUndo [] False

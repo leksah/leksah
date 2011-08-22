@@ -28,6 +28,7 @@ module IDE.Pane.SourceBuffer (
 ,   fileNew
 ,   fileOpenThis
 ,   fileOpen
+,   filePrint
 ,   fileRevert
 ,   fileClose
 ,   fileCloseAll
@@ -130,6 +131,8 @@ import IDE.BufferMode
 import Graphics.UI.Gtk.Multiline.TextIter
 import Graphics.UI.Gtk.Multiline.TextTag(textTagBackgroundGdk, textTagBackground)
 import Graphics.UI.Gtk.Gdk.GC(Color)
+
+import qualified IDE.Command.Print as Print
 
 allBuffers :: IDEM [IDEBuffer]
 allBuffers = getPanes
@@ -988,6 +991,45 @@ fileOpenThis fp =  do
             pp <-  getBestPathForId "*Buffer"
             newTextBuffer pp (takeFileName fpc) (Just fpc)
             return ()
+
+filePrint :: IDEAction
+filePrint = inActiveBufContext () $ filePrint'
+
+filePrint' :: Notebook -> EditorBuffer -> IDEBuffer -> Int -> IDEM ()
+filePrint' nb ebuf currentBuffer _ = do
+    window  <- getMainWindow
+    modified <- getModified ebuf
+    cancel <- reifyIDE $ \ideR ->  do
+        if modified
+            then do
+                md <- messageDialogNew (Just window) []
+                                            MessageQuestion
+                                            ButtonsCancel
+                                            ("Save changes to document: "
+                                                ++ paneName currentBuffer
+                                                ++ "?")
+                dialogAddButton md "_Save" ResponseYes
+                dialogAddButton md "_Don't Save" ResponseNo
+                set md [ windowWindowPosition := WinPosCenterOnParent ]
+                resp <- dialogRun md
+                widgetDestroy md
+                case resp of
+                    ResponseYes ->   do
+                        reflectIDE (fileSave False) ideR
+                        return False
+                    ResponseCancel  ->   return True
+                    ResponseNo      ->   return False
+                    _               ->   return False
+            else
+                return False
+    if cancel
+        then return ()
+        else do
+            case fileName currentBuffer of
+                Just name -> do
+                              liftIO $ Print.print name -- TODO show dialog
+                              return ()
+                Nothing   -> return ()
 
 editUndo :: IDEAction
 editUndo = inActiveBufContext () $ \_ buf _ _ -> do

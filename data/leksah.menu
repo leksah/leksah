@@ -10,6 +10,7 @@
        <menuitem name="Save _All" action="FileSaveAll" />
        <menuitem name="_Revert" action="FileRevert" />
        <menuitem name="_Close" action="FileClose" />
+       <menuitem name="_Print File" action="FilePrint" />
        <separator/>
        <menuitem name="Close All" action="FileCloseAll" />
        <menuitem name="Close All but Package" action="FileCloseAllButPackage" />
