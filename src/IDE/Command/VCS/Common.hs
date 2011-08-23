@@ -18,11 +18,13 @@ module IDE.Command.VCS.Common (
 
 import qualified VCSWrapper.Common as VCS
 import qualified VCSGui.Common as VCSGUI
+import qualified Graphics.UI.Gtk as Gtk
 
 import IDE.Core.Types
 import IDE.Core.State
 import IDE.Command.VCS.Common.Workspaces
 import IDE.Workspaces(workspaceSetVCSConfig)
+import IDE.Utils.GUIUtils
 
 
 
@@ -74,10 +76,8 @@ createActionFromContext vcsAction = do
         Nothing -> noOpenWorkspace
 
 
---TODO stub, proper error handling
 noOpenWorkspace = do
-                    liftIO $ putStrLn "No open workspace"
-                    return () --TODO show error message (use ..Common for this)
+                    liftIO $ showDialog "No open workspace. You must have an open workspace to be able to set a repository." Gtk.MessageError
 
 
 
