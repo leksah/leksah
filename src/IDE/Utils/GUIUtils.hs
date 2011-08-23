@@ -16,6 +16,7 @@ module IDE.Utils.GUIUtils (
 ,   chooseDir
 ,   chooseSaveFile
 ,   openBrowser
+,   showDialog
 
 ,   getCandyState
 ,   setCandyState
@@ -126,6 +127,8 @@ chooseSaveFile window prompt mbFolder = do
             widgetDestroy dialog
             return Nothing
 
+
+
 openBrowser :: String -> IDEAction
 openBrowser url = do
     prefs' <- readIDE prefs
@@ -133,6 +136,14 @@ openBrowser url = do
                 runProcess (browser prefs') [url] Nothing Nothing Nothing Nothing Nothing
                 return ())
             (\ _ -> sysMessage Normal ("Can't find browser executable " ++ browser prefs')))
+    return ()
+
+
+showDialog :: String -> MessageType -> IO ()
+showDialog msg msgType = do
+    dialog <- messageDialogNew Nothing [] msgType ButtonsOk msg
+    _ <- dialogRun dialog
+    widgetDestroy dialog
     return ()
 
 -- get widget elements (menu & toolbar)

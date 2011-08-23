@@ -8,7 +8,7 @@
 -- Stability   :  provisional
 -- Portability :
 --
--- |
+-- | TODO this module should be moved to some other place, maybe utils
 --
 -----------------------------------------------------------------------------
 
@@ -27,7 +27,7 @@ data PrintError = PrintError {
     exitCode :: Int
     , stderr :: String
     , printCmd :: FilePath
-    }
+    } deriving (Read,Show)
 
 printCommand = "lpr"
 

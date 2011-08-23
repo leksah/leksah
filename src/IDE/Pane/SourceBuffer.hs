@@ -88,7 +88,7 @@ import System.Time
 
 import Graphics.UI.Gtk.Gdk.Events as Gtk
 import IDE.Core.State
-import IDE.Utils.GUIUtils(getCandyState)
+import IDE.Utils.GUIUtils(getCandyState,showDialog)
 import IDE.Utils.FileUtils
 import IDE.SourceCandy
 import IDE.Completion as Completion (complete,cancel)
@@ -1027,7 +1027,10 @@ filePrint' nb ebuf currentBuffer _ = do
         else do
             case fileName currentBuffer of
                 Just name -> do
-                              liftIO $ Print.print name -- TODO show dialog
+                              status <- liftIO $ Print.print name
+                              case status of
+                                Left error -> liftIO $ showDialog (show error) MessageError
+                                Right _ -> liftIO $ showDialog "Print job has been sent successfully" MessageInfo
                               return ()
                 Nothing   -> return ()
 
