@@ -63,7 +63,11 @@ import Control.Exception
 import System.Exit(exitFailure)
 import qualified IDE.StrippedPrefs as SP
 import IDE.Utils.Tool (runTool,toolline)
+#ifdef MIN_VERSION_process_leksah
 import IDE.System.Process(waitForProcess)
+#else
+import System.Process(waitForProcess)
+#endif
 import System.Log
 import System.Log.Logger(updateGlobalLogger,rootLoggerName,setLevel)
 import Data.List (stripPrefix)

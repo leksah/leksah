@@ -530,7 +530,7 @@ workspaceClean = do
     settings <- lift $ do
         prefs' <- readIDE prefs
         return (defaultMakeSettings prefs')
-    makePackages settings (wsPackages ws) MoClean MoClean
+    makePackages settings (wsPackages ws) MoClean MoClean moNoOp
 
 workspaceMake :: WorkspaceAction
 workspaceMake = do
@@ -540,8 +540,8 @@ workspaceMake = do
         return ((defaultMakeSettings prefs'){
                     msMakeMode           = True,
                     msBackgroundBuild    = False})
-    makePackages settings (wsPackages ws) (MoComposed [MoConfigure,MoBuild,MoInstall])
-        (MoComposed [MoConfigure,MoBuild,MoInstall])
+    makePackages settings (wsPackages ws) (MoComposed [MoConfigure,MoBuild,MoTest,MoCopy,MoRegister])
+        (MoComposed [MoConfigure,MoBuild,MoTest,MoCopy,MoRegister]) MoMetaInfo
 
 backgroundMake :: IDEAction
 backgroundMake = catchIDE (do
@@ -559,10 +559,10 @@ backgroundMake = catchIDE (do
                 let settings = defaultMakeSettings prefs
                 if msSingleBuildWithoutLinking settings &&  not (msMakeMode settings)
                     then workspaceTryQuiet_ $
-                        makePackages settings modifiedPacks MoBuild (MoComposed [])
+                        makePackages settings modifiedPacks MoBuild (MoComposed []) moNoOp
                     else workspaceTryQuiet_ $
-                        makePackages settings modifiedPacks (MoComposed [MoBuild,MoInstall])
-                                        (MoComposed [MoConfigure,MoBuild,MoInstall])
+                        makePackages settings modifiedPacks (MoComposed [MoBuild,MoTest,MoCopy,MoRegister])
+                                        (MoComposed [MoConfigure,MoBuild,MoTest,MoCopy,MoRegister]) MoMetaInfo
     )
     (\(e :: SomeException) -> sysMessage Normal (show e))
 
@@ -579,11 +579,12 @@ makePackage = do
         Just ws -> lift $
             if msSingleBuildWithoutLinking settings &&  not (msMakeMode settings)
                 then runWorkspace
-                        (makePackages settings [p] MoBuild (MoComposed [])) ws
+                        (makePackages settings [p] MoBuild (MoComposed []) moNoOp) ws
                 else runWorkspace
                         (makePackages settings [p]
-                        (MoComposed [MoBuild,MoInstall])
-                        (MoComposed [MoConfigure,MoBuild,MoInstall])) ws
+                        (MoComposed [MoBuild,MoTest,MoCopy,MoRegister])
+                        (MoComposed [MoConfigure,MoBuild,MoTest,MoCopy,MoRegister])
+                        MoMetaInfo) ws
 
 
 workspaceSetVCSConfig :: Maybe (VCS.VCSType, VCS.Config) -> IDEAction

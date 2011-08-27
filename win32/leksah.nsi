@@ -1,6 +1,6 @@
 Name "Leksah"
 
-OutFile "$%LEKSAH_X_X_X_X%.exe"
+OutFile "$%LEKSAH_X_X_X_X_GHC_X_X_X%.exe"
 
 InstallDir $PROGRAMFILES\Leksah
 

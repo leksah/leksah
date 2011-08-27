@@ -77,7 +77,11 @@ import IDE.Metainfo.Provider (getActivePackageDescr)
 import Distribution.Text (display)
 import IDE.Pane.Log
 import Data.List (isSuffixOf)
+#ifdef MIN_VERSION_process_leksah
 import IDE.System.Process (interruptProcessGroup)
+#else
+import System.Process (interruptProcessGroupOf)
+#endif
 import IDE.Utils.GUIUtils (getDebugToggled)
 import IDE.Package (debugStart, executeDebugCommand, tryDebug_, printBindResultFlag,
         breakOnErrorFlag, breakOnExceptionFlag, printEvldWithShowFlag)
@@ -180,7 +184,11 @@ debugStop :: IDEAction
 debugStop = do
     maybeDebug <- readIDE debugState
     liftIO $ case maybeDebug of
+#ifdef MIN_VERSION_process_leksah
         Just (_, ghci) -> toolProcess ghci >>= interruptProcessGroup
+#else
+        Just (_, ghci) -> toolProcess ghci >>= interruptProcessGroupOf
+#endif
         Nothing -> return ()
 
 debugContinue :: IDEAction

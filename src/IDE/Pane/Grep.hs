@@ -1,5 +1,5 @@
-{-# OPTIONS_GHC -XDeriveDataTypeable -XMultiParamTypeClasses -XTypeSynonymInstances
-    -XRecordWildCards #-}
+{-# LANGUAGE FlexibleInstances, DeriveDataTypeable, MultiParamTypeClasses,
+             TypeSynonymInstances, RecordWildCards #-}
 -----------------------------------------------------------------------------
 --
 -- Module      :  IDE.Pane.Grep

@@ -1,4 +1,4 @@
-{-# OPTIONS_GHC  -XDeriveDataTypeable -XTypeSynonymInstances -XMultiParamTypeClasses #-}
+{-# LANGUAGE FlexibleInstances, DeriveDataTypeable, TypeSynonymInstances, MultiParamTypeClasses #-}
 -----------------------------------------------------------------------------
 --
 -- Module      :  IDE.BufferMode
@@ -17,11 +17,12 @@ module IDE.BufferMode where
 
 import Prelude hiding(getLine)
 import IDE.Core.State
-import Data.List (isSuffixOf)
+import Data.List (isPrefixOf, elemIndices, isInfixOf, isSuffixOf)
 import IDE.TextEditor
-       (getOffset, startsLine, getIterAtMark, getSelectionBoundMark,
-        getInsertMark, EditorBuffer, getBuffer, EditorView, delete,
-        getText, forwardCharsC, insert, getIterAtLine, getLine)
+       (EditorIter, getOffset, startsLine, getIterAtMark,
+        getSelectionBoundMark, getInsertMark, EditorBuffer, getBuffer,
+        EditorView, delete, getText, forwardCharsC, insert, getIterAtLine,
+        getLine)
 import Data.IORef (IORef)
 import System.Time (ClockTime)
 import Data.Typeable (cast, Typeable)
@@ -34,7 +35,7 @@ import Data.Maybe (catMaybes)
 import IDE.Utils.FileUtils
 import Control.Monad.Reader
 import Graphics.UI.Gtk
-       (castToWidget, notebookPageNum, Notebook, ScrolledWindow)
+       (Notebook, castToWidget, notebookPageNum, ScrolledWindow)
 
 
 -- * Buffer Basics
@@ -136,9 +137,12 @@ data Mode = Mode {
     modeEditComment        :: IDEAction,
     modeEditUncomment      :: IDEAction,
     modeSelectedModuleName :: IDEM (Maybe String),
-    modeEditToCandy        :: IDEAction,
+    modeEditToCandy        :: (String -> Bool) -> IDEAction,
+    modeTransformToCandy   :: (String -> Bool) -> EditorBuffer -> IDEAction,
     modeEditFromCandy      :: IDEAction,
-    modeEditKeystrokeCandy :: Maybe Char -> IDEAction
+    modeEditKeystrokeCandy :: Maybe Char -> (String -> Bool) -> IDEAction,
+    modeEditInsertCode     :: String -> EditorIter -> EditorBuffer -> IDEAction,
+    modeEditInCommentOrString :: String -> Bool
     }
 
 
@@ -171,18 +175,32 @@ haskellMode = Mode {
             case fileName currentBuffer of
                 Just filePath -> liftIO $ moduleNameFromFilePath filePath
                 Nothing       -> return Nothing,
-    modeEditToCandy = do
+    modeTransformToCandy = \ inCommentOrString ebuf -> do
+        ct <- readIDE candy
+        transformToCandy ct ebuf inCommentOrString,
+    modeEditToCandy = \ inCommentOrString -> do
         ct <- readIDE candy
         inActiveBufContext () $ \_ ebuf _ _ -> do
-            transformToCandy ct ebuf,
+            transformToCandy ct ebuf inCommentOrString,
     modeEditFromCandy = do
         ct      <-  readIDE candy
         inActiveBufContext () $ \_ ebuf _ _ -> do
             transformFromCandy ct ebuf,
-    modeEditKeystrokeCandy = \c -> do
+    modeEditKeystrokeCandy = \c inCommentOrString -> do
         ct <- readIDE candy
         inActiveBufContext () $ \_ ebuf _ _ -> do
-            keystrokeCandy ct c ebuf
+            keystrokeCandy ct c ebuf inCommentOrString,
+    modeEditInsertCode = \ str iter buf ->
+        insert buf iter str,
+    modeEditInCommentOrString = \ line ->
+            if isInfixOf "--" line
+                then True
+                else let indices = elemIndices '"' line
+                     in if length indices == 0
+                            then False
+                            else if even (length indices)
+                                then False
+                                else True
 }
 
 literalHaskellMode = Mode {
@@ -209,19 +227,32 @@ literalHaskellMode = Mode {
             case fileName currentBuffer of
                 Just filePath -> liftIO $ moduleNameFromFilePath filePath
                 Nothing       -> return Nothing,
-    modeEditToCandy = do
+    modeTransformToCandy = \ inCommentOrString ebuf -> do
+        ct <- readIDE candy
+        transformToCandy ct ebuf inCommentOrString,
+    modeEditToCandy = \ inCommentOrString -> do
         ct <- readIDE candy
         inActiveBufContext () $ \_ ebuf _ _ -> do
-            transformToCandy ct ebuf,
+            transformToCandy ct ebuf inCommentOrString,
     modeEditFromCandy = do
         ct      <-  readIDE candy
         inActiveBufContext () $ \_ ebuf _ _ -> do
             transformFromCandy ct ebuf,
-    modeEditKeystrokeCandy = \c -> do
+    modeEditKeystrokeCandy = \c inCommentOrString -> do
         ct <- readIDE candy
         inActiveBufContext () $ \_ ebuf _ _ -> do
-            keystrokeCandy ct c ebuf
-}
+            keystrokeCandy ct c ebuf inCommentOrString,
+    modeEditInsertCode = \ str iter buf ->
+        insert buf iter (unlines $ map (\ s -> "> " ++ s) $ lines str),
+    modeEditInCommentOrString = \ line ->
+            if not (isPrefixOf ">" line)
+                then True
+                else let indices = elemIndices '"' line
+                     in if length indices == 0
+                            then False
+                            else if even (length indices)
+                                then False
+                                else True  }
 
 cabalMode = Mode {
     modeName                 = "Cabal",
@@ -240,9 +271,13 @@ cabalMode = Mode {
                 else return ()
         return (),
     modeSelectedModuleName   = return Nothing,
-    modeEditToCandy          = return (),
+    modeTransformToCandy     = \ _ _ -> return (),
+    modeEditToCandy          = \ _ -> return (),
     modeEditFromCandy        = return (),
-    modeEditKeystrokeCandy   = \c -> return ()
+    modeEditKeystrokeCandy   = \ _ _ -> return (),
+    modeEditInsertCode       = \ str iter buf -> insert buf iter str,
+    modeEditInCommentOrString = \ str -> isPrefixOf "--" str
+
     }
 
 otherMode = Mode {
@@ -250,9 +285,12 @@ otherMode = Mode {
     modeEditComment          = return (),
     modeEditUncomment        = return (),
     modeSelectedModuleName   = return Nothing,
-    modeEditToCandy          = return (),
+    modeTransformToCandy     = \ _ _ -> return (),
+    modeEditToCandy          = \ _ -> return (),
     modeEditFromCandy        = return (),
-    modeEditKeystrokeCandy   = \c -> return ()
+    modeEditKeystrokeCandy   = \_ _ -> return (),
+    modeEditInsertCode       = \str iter buf -> insert buf iter str,
+    modeEditInCommentOrString = \ _ -> False
     }
 
 isHaskellMode mode = modeName mode == "Haskell" || modeName mode == "Literal Haskell"
@@ -274,14 +312,18 @@ selectedModuleName  :: IDEM (Maybe String)
 selectedModuleName = withCurrentMode Nothing modeSelectedModuleName
 
 editToCandy :: IDEAction
-editToCandy = withCurrentMode () modeEditToCandy
+editToCandy = withCurrentMode () (\m -> modeEditToCandy m (modeEditInCommentOrString m))
 
 editFromCandy :: IDEAction
 editFromCandy = withCurrentMode () modeEditFromCandy
 
 editKeystrokeCandy :: Maybe Char -> IDEAction
-editKeystrokeCandy c = withCurrentMode () (\m -> modeEditKeystrokeCandy m c)
+editKeystrokeCandy c = withCurrentMode () (\m -> modeEditKeystrokeCandy m c
+                            (modeEditInCommentOrString m))
 
+editInsertCode :: EditorBuffer -> EditorIter -> String -> IDEAction
+editInsertCode buffer iter str = withCurrentMode ()
+                                            (\ m -> modeEditInsertCode m str iter buffer)
 
 
 

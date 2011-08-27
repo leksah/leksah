@@ -1,5 +1,5 @@
-{-# OPTIONS_GHC -XScopedTypeVariables -XDeriveDataTypeable -XMultiParamTypeClasses
-    -XTypeSynonymInstances #-}
+{-# LANGUAGE FlexibleInstances, ScopedTypeVariables, DeriveDataTypeable,
+             MultiParamTypeClasses, TypeSynonymInstances #-}
 -----------------------------------------------------------------------------
 --
 -- Module      :  IDE.Pane.PackageEditor
@@ -83,10 +83,16 @@ import Graphics.UI.Editor.Basics
        (Notifier, Editor(..), GUIEventSelector(..), GUIEvent(..))
 import Distribution.Compiler
     (CompilerFlavor(..))
+#if MIN_VERSION_Cabal(1,11,0)
+import Distribution.Simple
+    (Extension(..),
+     VersionRange(..))
+#else
 import Distribution.Simple
     (knownExtensions,
      Extension(..),
      VersionRange(..))
+#endif
 import Default (Default(..))
 import IDE.Utils.GUIUtils
 import IDE.Pane.SourceBuffer (fileOpenThis)
@@ -97,7 +103,7 @@ import Distribution.License
 #endif
 
 import qualified Graphics.UI.Gtk.Gdk.Events as GTK (Event(..))
-import Data.List (sort)
+import Data.List (sort,nub)
 
 
 -- ---------------------------------------------------------------------
@@ -521,7 +527,7 @@ packageDD packages fp modules numBuildInfos extras = NFD ([
                     $ paraDirection <<<- ParaDirection Vertical
                         $ paraMinSize <<<- ParaMinSize (-1,250)
                             $ emptyParams)
-            (buildDepends . pd)
+            (nub . buildDepends . pd)
             (\ a b -> b{pd = (pd b){buildDepends = a}})
             (dependenciesEditor packages)
     ]),
@@ -934,7 +940,11 @@ extensionsEditor = staticListMultiEditor extensionsL show
 
 
 extensionsL :: [Extension]
+#if MIN_VERSION_Cabal(1,11,0)
+extensionsL = map EnableExtension [minBound..maxBound]
+#else
 extensionsL = knownExtensions
+#endif
 
 {--
 reposEditor :: Editor [SourceRepo]

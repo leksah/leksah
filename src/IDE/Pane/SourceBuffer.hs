@@ -1,5 +1,5 @@
-{-# OPTIONS_GHC  -XDeriveDataTypeable -XMultiParamTypeClasses -XTypeSynonymInstances
-    -XScopedTypeVariables -XRankNTypes #-}
+{-# LANGUAGE FlexibleInstances, DeriveDataTypeable, MultiParamTypeClasses,
+             TypeSynonymInstances, ScopedTypeVariables, RankNTypes #-}
 -----------------------------------------------------------------------------
 --
 -- Module      :  IDE.Pane.SourceBuffer
@@ -167,10 +167,10 @@ instance RecoverablePane IDEBuffer BufferState IDEM where
         case mbbuf of
             Just buf -> do
                 useCandy <- useCandyFor buf
-                candy'   <- readIDE candy
                 gtkBuf   <-  getBuffer (sourceView buf)
                 setText gtkBuf text
-                when useCandy $ transformToCandy candy' gtkBuf
+                when useCandy $ modeTransformToCandy (mode buf)
+                                    (modeEditInCommentOrString (mode buf)) gtkBuf
                 iter     <-  getIterAtOffset gtkBuf i
                 placeCursor gtkBuf iter
                 mark     <-  getInsertMark gtkBuf
@@ -415,7 +415,8 @@ builder' bs mbfn ind bn rbn ct prefs pp nb windows = do
 
     beginNotUndoableAction buffer
     let mod = modFromFileName mbfn
-    when (bs && isHaskellMode mod) $ transformToCandy ct buffer
+    when (bs && isHaskellMode mod) $ modeTransformToCandy mod
+                                        (modeEditInCommentOrString mod) buffer
     endNotUndoableAction buffer
     setModified buffer False
     siter <- getStartIter buffer
@@ -651,7 +652,8 @@ revert buf = do
             beginNotUndoableAction buffer
             setText buffer fc
             if useCandy
-                then transformToCandy ct buffer
+                then modeTransformToCandy (mode buf)
+                         (modeEditInCommentOrString (mode buf)) buffer
                 else return ()
             endNotUndoableAction buffer
             setModified buffer False
@@ -1262,5 +1264,6 @@ editCandy = do
     use <- getCandyState
     buffers <- allBuffers
     if use
-        then mapM_ (modeEditToCandy . mode) buffers
+        then mapM_ (\b -> modeEditToCandy (mode b)
+            (modeEditInCommentOrString (mode b))) buffers
         else mapM_ (modeEditFromCandy . mode) buffers

@@ -25,14 +25,16 @@ module IDE.Package (
 ,   packageClean
 ,   packageClean'
 ,   packageCopy
+,   packageCopy'
 ,   packageRun
 ,   activatePackage
 ,   deactivatePackage
 
-,   packageInstall
-,   packageInstall'
+,   packageInstallDependencies
 ,   packageRegister
+,   packageRegister'
 ,   packageTest
+,   packageTest'
 ,   packageSdist
 ,   packageOpenDoc
 
@@ -93,7 +95,11 @@ import qualified Data.Set as  Set (fromList)
 import qualified Data.Map as  Map (empty)
 import System.Exit (ExitCode(..))
 import Control.Applicative ((<$>))
-import IDE.System.Process (ProcessHandle, getProcessExitCode, interruptProcessGroup)
+#ifdef MIN_VERSION_process_leksah
+import IDE.System.Process (getProcessExitCode, interruptProcessGroup, ProcessHandle)
+#else
+import System.Process (getProcessExitCode, interruptProcessGroupOf, ProcessHandle)
+#endif
 import IDE.Utils.Tool (executeGhciCommand)
 
 #if MIN_VERSION_Cabal(1,8,0)
@@ -184,14 +190,7 @@ packageConfig' package continuation = do
         mbPack <- idePackageFromPath (ipdCabalFile package)
         case mbPack of
             Just pack -> do
-                changeWorkspacePackage pack
-                modifyIDE_ (\ide -> ide{bufferProjCache = Map.empty})
-                mbActivePack <- readIDE activePack
-                case mbActivePack of
-                    Just activePack | ipdCabalFile package == ipdCabalFile activePack ->
-                        modifyIDE_ (\ide -> ide{activePack = Just pack})
-                    _ -> return ()
-                triggerEventIDE UpdateWorkspaceInfo
+                changePackage pack
                 triggerEventIDE (WorkspaceChanged False True)
                 continuation (last output == ToolExit ExitSuccess)
                 return ()
@@ -199,18 +198,6 @@ packageConfig' package continuation = do
                 ideMessage Normal "Can't read package file"
                 continuation False
                 return()
-
-changeWorkspacePackage :: IDEPackage -> IDEAction
-changeWorkspacePackage ideP@IDEPackage{ipdCabalFile = file} = do
-    oldWorkspace <- readIDE workspace
-    case oldWorkspace of
-        Nothing -> return ()
-        Just ws ->
-            let ps = map exchange (wsPackages ws)
-            in modifyIDE_ (\ide -> ide{workspace = Just  ws {wsPackages = ps}})
-    where
-        exchange p | ipdCabalFile p == file = ideP
-                   | otherwise              = p
 
 runCabalBuild :: Bool -> Bool -> IDEPackage -> Bool -> (Bool -> IDEAction) -> IDEAction
 runCabalBuild backgroundBuild withoutLinking package shallConfigure continuation = do
@@ -320,6 +307,26 @@ packageCopy = do
                                 (logOutput logLaunch))
         (\(e :: SomeException) -> putStrLn (show e))
 
+packageInstallDependencies :: PackageAction
+packageInstallDependencies = do
+    package <- ask
+    logLaunch <- lift $ getDefaultLogLaunch
+    lift $ catchIDE (do
+        let dir = dropFileName (ipdCabalFile package)
+        runExternalTool' "Installing" "cabal" (["install","--only-dependencies"]
+            ++ (ipdInstallFlags package)) (Just dir) (logOutput logLaunch))
+        (\(e :: SomeException) -> putStrLn (show e))
+
+packageCopy' :: IDEPackage -> (Bool -> IDEAction) -> IDEAction
+packageCopy' package continuation = catchIDE (do
+   let dir = dropFileName (ipdCabalFile package)
+   logLaunch <- getDefaultLogLaunch
+   runExternalTool' "Copying" "cabal" (["copy"]
+                    ++ (ipdInstallFlags package)) (Just dir) (\ output -> do
+                        logOutput logLaunch output
+                        continuation (last output == ToolExit ExitSuccess)))
+        (\(e :: SomeException) -> putStrLn (show e))
+
 packageRun :: PackageAction
 packageRun = do
     package <- ask
@@ -359,39 +366,41 @@ packageRun = do
                         return ())
         (\(e :: SomeException) -> putStrLn (show e))
 
-packageInstall :: PackageAction
-packageInstall = do
-    package <- ask
-    lift $ packageInstall' package (\ _ -> return ())
-
-packageInstall' :: IDEPackage -> (Bool -> IDEAction) -> IDEAction
-packageInstall' package continuation = catchIDE (do
-   let dir = dropFileName (ipdCabalFile package)
-   logLaunch <- getDefaultLogLaunch
-   runExternalTool' "Installing" "runhaskell" (["Setup", "install"]
-                    ++ (ipdInstallFlags package)) (Just dir) (\ output -> do
-                        logOutput logLaunch output
-                        continuation (last output == ToolExit ExitSuccess)))
-        (\(e :: SomeException) -> putStrLn (show e))
-
 packageRegister :: PackageAction
 packageRegister = do
     package <- ask
-    logLaunch <- lift $ getDefaultLogLaunch
-    lift $ catchIDE (do
-        let dir = dropFileName (ipdCabalFile package)
-        runExternalTool' "Registering" "cabal" (["register"]
-                        ++ (ipdRegisterFlags package)) (Just dir) (logOutput logLaunch))
-        (\(e :: SomeException) -> putStrLn (show e))
+    lift $ packageRegister' package (\ _ -> return ())
+
+packageRegister' :: IDEPackage -> (Bool -> IDEAction) -> IDEAction
+packageRegister' package continuation =
+    if ipdHasLibs package
+        then catchIDE (do
+            let dir = dropFileName (ipdCabalFile package)
+            logLaunch <- getDefaultLogLaunch
+            runExternalTool' "Registering" "cabal" (["register"]
+                        ++ (ipdRegisterFlags package)) (Just dir) (\ output -> do
+                            logOutput logLaunch output
+                            continuation (last output == ToolExit ExitSuccess)))
+            (\(e :: SomeException) -> putStrLn (show e))
+        else continuation True
 
 packageTest :: PackageAction
 packageTest = do
     package <- ask
-    logLaunch <- lift $ getDefaultLogLaunch
-    lift $ catchIDE (do
-        let dir = dropFileName (ipdCabalFile package)
-        runExternalTool' "Testing" "cabal" (["test"]) (Just dir) (logOutput logLaunch))
-        (\(e :: SomeException) -> putStrLn (show e))
+    lift $ packageTest' package (\ _ -> return ())
+
+packageTest' :: IDEPackage -> (Bool -> IDEAction) -> IDEAction
+packageTest' package continuation =
+    if not . null $ ipdTests package
+        then catchIDE (do
+            let dir = dropFileName (ipdCabalFile package)
+            logLaunch <- getDefaultLogLaunch
+            runExternalTool' "Testing" "cabal" (["test"]
+                        ++ (ipdTestFlags package)) (Just dir) (\ output -> do
+                            logOutput logLaunch output
+                            continuation (last output == ToolExit ExitSuccess)))
+            (\(e :: SomeException) -> putStrLn (show e))
+        else continuation True
 
 packageSdist :: PackageAction
 packageSdist = do
@@ -487,7 +496,11 @@ interruptBuild :: IDEAction
 interruptBuild = do
     maybeProcess <- readIDE runningTool
     liftIO $ case maybeProcess of
+#ifdef MIN_VERSION_process_leksah
         Just h -> interruptProcessGroup h
+#else
+        Just h -> interruptProcessGroupOf h
+#endif
         _ -> return ()
 
 -- ---------------------------------------------------------------------
@@ -745,20 +758,28 @@ idePackageFromPath filePath = do
                                 l -> l
 #if MIN_VERSION_Cabal(1,10,0)
             let exts       = nub $ concatMap oldExtensions (allBuildInfo' packageD)
+            let tests      = [ testName t | t <- testSuites packageD
+                                          -- , testEnabled t
+                                          , buildable (testBuildInfo t) ]
 #else
             let exts       = nub $ concatMap extensions (allBuildInfo' packageD)
+            let tests      = []
 #endif
+
             let packp      = IDEPackage {
                 ipdPackageId = package packageD,
                 ipdCabalFile = filePath,
                 ipdDepends = buildDepends packageD,
                 ipdModules = modules,
+                ipdHasLibs = hasLibs packageD,
+                ipdTests   = tests,
                 ipdMain    = mainFiles,
                 ipdExtraSrcs =  files,
                 ipdSrcDirs = srcDirs,
                 ipdExtensions =  exts,
                 ipdConfigFlags = ["--user"],
                 ipdBuildFlags = [],
+                ipdTestFlags = [],
                 ipdHaddockFlags = [],
                 ipdExeFlags = [],
                 ipdInstallFlags = [],

@@ -106,7 +106,11 @@ import Graphics.UI.Gtk.Gdk.Enums (Modifier(..))
 import Graphics.UI.Gtk.ActionMenuToolbar.UIManager(MergeId)
 import System.Time (ClockTime(..))
 import Distribution.Simple (Extension(..))
+#ifdef MIN_VERSION_process_leksah
 import IDE.System.Process (ProcessHandle(..))
+#else
+import System.Process (ProcessHandle(..))
+#endif
 import IDE.Utils.Tool (ToolState(..))
 import Data.IORef (writeIORef, readIORef, IORef(..))
 import Numeric (showHex)
@@ -313,12 +317,15 @@ data IDEPackage     =   IDEPackage {
 ,   ipdCabalFile       ::   FilePath
 ,   ipdDepends         ::   [Dependency]
 ,   ipdModules         ::   Set ModuleName
+,   ipdHasLibs         ::   Bool
+,   ipdTests           ::   [String]
 ,   ipdMain            ::   [FilePath]
 ,   ipdExtraSrcs       ::   Set FilePath
 ,   ipdSrcDirs         ::   [FilePath]
 ,   ipdExtensions      ::   [Extension]
 ,   ipdConfigFlags     ::   [String]
 ,   ipdBuildFlags      ::   [String]
+,   ipdTestFlags       ::   [String]
 ,   ipdHaddockFlags    ::   [String]
 ,   ipdExeFlags        ::   [String]
 ,   ipdInstallFlags    ::   [String]
@@ -424,8 +431,10 @@ data Prefs = Prefs {
 data SearchHint = Forward | Backward | Insert | Delete | Initial
     deriving (Eq)
 
+#ifndef LEKSAH_WITH_YI
 instance Ord Modifier
     where compare a b = compare (fromEnum a) (fromEnum b)
+#endif
 
 --
 -- | Other types

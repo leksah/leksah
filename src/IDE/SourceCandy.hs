@@ -48,8 +48,8 @@ notBeforeOp     =   Set.fromList $['!','#','$','%','&','*','+','.','/','<','=','
                                     '^','|','-','~','\'','"']
 notAfterOp      =   notBeforeOp
 
-keystrokeCandy :: CandyTable -> Maybe Char -> EditorBuffer -> IDEM ()
-keystrokeCandy (CT(transformTable,_)) mbc ebuf = do
+keystrokeCandy :: CandyTable -> Maybe Char -> EditorBuffer -> (String -> Bool) -> IDEM ()
+keystrokeCandy (CT(transformTable,_)) mbc ebuf editInCommentOrString = do
     cursorMark  <-  getInsertMark ebuf
     endIter     <-  getIterAtMark ebuf cursorMark
     lineNr      <-  getLine endIter
@@ -61,7 +61,7 @@ keystrokeCandy (CT(transformTable,_)) mbc ebuf = do
                         Just c -> return (Just c)
                         Nothing -> do
                             getChar endIter
-    block       <- isInCommentOrString lineNr columnNr slice
+    let block   =  editInCommentOrString slice
     unless block $
         replace mbc2 cursorMark slice offset transformTable
     where
@@ -91,17 +91,17 @@ keystrokeCandy (CT(transformTable,_)) mbc ebuf = do
                     endNotUndoableAction ebuf
                 else replace mbAfterChar cursorMark match offset rest
 
-transformToCandy :: CandyTable -> EditorBuffer -> IDEM ()
-transformToCandy (CT(transformTable,_)) ebuf = do
+transformToCandy :: CandyTable -> EditorBuffer -> (String -> Bool) -> IDEM ()
+transformToCandy (CT(transformTable,_)) ebuf editInCommentOrString = do
     beginUserAction ebuf
     modified    <-  getModified ebuf
-    mapM_ (\tbl ->  replaceTo ebuf tbl 0) transformTable
+    mapM_ (\tbl ->  replaceTo ebuf tbl 0 editInCommentOrString) transformTable
     setModified ebuf modified
     endUserAction ebuf
 
 
-replaceTo :: EditorBuffer -> (Bool,String,String) -> Int -> IDEM ()
-replaceTo buf (isOp,from,to) offset = replaceTo' offset
+replaceTo :: EditorBuffer -> (Bool,String,String) -> Int -> (String -> Bool) -> IDEM ()
+replaceTo buf (isOp,from,to) offset editInCommentOrString = replaceTo' offset
     where
     replaceTo' offset = do
         iter        <-  getIterAtOffset buf offset
@@ -114,7 +114,7 @@ replaceTo buf (isOp,from,to) offset = replaceTo' offset
                 columnNr    <-  getLineOffset end
                 startIter   <-  backwardToLineStartC end
                 slice       <-  getSlice buf startIter end True
-                block       <- isInCommentOrString lineNr columnNr slice
+                let block   =   editInCommentOrString slice
                 unless block $ do
                     beforeOk <-
                         if stOff == 0
@@ -182,7 +182,7 @@ getCandylessPart (CT(_,transformTableBack)) ebuf i1 i2 = do
 stringToCandy :: CandyTable -> String -> IDEM String
 stringToCandy  candyTable text = do
     workBuffer  <-  simpleGtkBuffer text
-    transformToCandy candyTable workBuffer
+    transformToCandy candyTable workBuffer (\ _ -> False)
     i1          <-  getStartIter workBuffer
     i2          <-  getEndIter workBuffer
     text2       <-  getText workBuffer i1 i2 True
@@ -210,7 +210,7 @@ positionToCandy candyTable ebuf (line,column) = do
     transformFromCandy candyTable workBuffer
     i3          <- getIterAtOffset workBuffer column
     mark        <- createMark workBuffer i3 True
-    transformToCandy candyTable workBuffer
+    transformToCandy candyTable workBuffer (\ _ -> False)
     i4          <- getIterAtMark workBuffer mark
     columnNew   <- getLineOffset i4
     return (line,columnNew)
@@ -313,15 +313,4 @@ replaceWithParser = do
     hd  <-  lexeme hexadecimal
     return (chr (fromIntegral hd))
 
--- TODO Literal Haskell
-isInCommentOrString :: Int -> Int -> String -> IDEM Bool
-isInCommentOrString line column preLine =
-    if isInfixOf "--" preLine
-        then return True
-        else let indices = elemIndices '"' preLine
-             in if length indices == 0
-                    then return False
-                    else if even (length indices) -- TODO Handle \"
-                        then return False
-                        else return True
 
