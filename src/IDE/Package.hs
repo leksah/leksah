@@ -352,13 +352,15 @@ packageRegister = do
 
 packageRegister' :: IDEPackage -> (Bool -> IDEAction) -> IDEAction
 packageRegister' package continuation =
-    when (ipdHasLibs package) $ catchIDE (do
-        let dir = dropFileName (ipdCabalFile package)
-        runExternalTool "Registering" "cabal" (["register"]
-                    ++ (ipdRegisterFlags package)) (Just dir) (\ output -> do
-                        logOutput output
-                        continuation (last output == ToolExit ExitSuccess)))
-        (\(e :: SomeException) -> putStrLn (show e))
+    if ipdHasLibs package
+        then catchIDE (do
+            let dir = dropFileName (ipdCabalFile package)
+            runExternalTool "Registering" "cabal" (["register"]
+                        ++ (ipdRegisterFlags package)) (Just dir) (\ output -> do
+                            logOutput output
+                            continuation (last output == ToolExit ExitSuccess)))
+            (\(e :: SomeException) -> putStrLn (show e))
+        else continuation True
 
 packageTest :: PackageAction
 packageTest = do
@@ -367,13 +369,15 @@ packageTest = do
 
 packageTest' :: IDEPackage -> (Bool -> IDEAction) -> IDEAction
 packageTest' package continuation =
-    when (not . null $ ipdTests package) $ catchIDE (do
-        let dir = dropFileName (ipdCabalFile package)
-        runExternalTool "Testing" "cabal" (["test"]
-                    ++ (ipdTestFlags package)) (Just dir) (\ output -> do
-                        logOutput output
-                        continuation (last output == ToolExit ExitSuccess)))
-        (\(e :: SomeException) -> putStrLn (show e))
+    if not . null $ ipdTests package
+        then catchIDE (do
+            let dir = dropFileName (ipdCabalFile package)
+            runExternalTool "Testing" "cabal" (["test"]
+                        ++ (ipdTestFlags package)) (Just dir) (\ output -> do
+                            logOutput output
+                            continuation (last output == ToolExit ExitSuccess)))
+            (\(e :: SomeException) -> putStrLn (show e))
+        else continuation True
 
 packageSdist :: PackageAction
 packageSdist = do
@@ -693,7 +697,7 @@ idePackageFromPath filePath = do
 #if MIN_VERSION_Cabal(1,10,0)
             let exts       = nub $ concatMap oldExtensions (allBuildInfo' packageD)
             let tests      = [ testName t | t <- testSuites packageD
-                                          , testEnabled t
+                                          -- , testEnabled t
                                           , buildable (testBuildInfo t) ]
 #else
             let exts       = nub $ concatMap extensions (allBuildInfo' packageD)
