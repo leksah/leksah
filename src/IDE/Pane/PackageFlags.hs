@@ -103,8 +103,8 @@ builder' idePackage flagsDesc flatflagsDesc pp nb window ideR = do
             Nothing -> return ()
             Just packWithNewFlags -> do
                 reflectIDE (do
-                    modifyIDE_ (\ide -> ide{activePack = Just packWithNewFlags})
-                    closePane flagsPane) ideR -- we don't trigger the activePack event here
+                	changePackage packWithNewFlags
+                	closePane flagsPane) ideR
                 writeFields ((dropExtension (ipdCabalFile packWithNewFlags)) ++ leksahFlagFileExtension)
                     packWithNewFlags flatFlagsDescription)
     cancelB `onClicked` (reflectIDE (closePane flagsPane >> return ()) ideR)

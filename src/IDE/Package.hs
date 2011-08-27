@@ -177,13 +177,7 @@ packageConfig' package continuation = do
         mbPack <- idePackageFromPath (ipdCabalFile package)
         case mbPack of
             Just pack -> do
-                changeWorkspacePackage pack
-                modifyIDE_ (\ide -> ide{bufferProjCache = Map.empty})
-                mbActivePack <- readIDE activePack
-                case mbActivePack of
-                    Just activePack | ipdCabalFile package == ipdCabalFile activePack ->
-                        modifyIDE_ (\ide -> ide{activePack = Just pack})
-                    _ -> return ()
+                changePackage pack
                 triggerEventIDE (WorkspaceChanged False True)
                 continuation (last output == ToolExit ExitSuccess)
                 return ()
@@ -191,18 +185,6 @@ packageConfig' package continuation = do
                 ideMessage Normal "Can't read package file"
                 continuation False
                 return()
-
-changeWorkspacePackage :: IDEPackage -> IDEAction
-changeWorkspacePackage ideP@IDEPackage{ipdCabalFile = file} = do
-    oldWorkspace <- readIDE workspace
-    case oldWorkspace of
-        Nothing -> return ()
-        Just ws ->
-            let ps = map exchange (wsPackages ws)
-            in modifyIDE_ (\ide -> ide{workspace = Just  ws {wsPackages = ps}})
-    where
-        exchange p | ipdCabalFile p == file = ideP
-                   | otherwise              = p
 
 runCabalBuild :: Bool -> Bool -> IDEPackage -> Bool -> (Bool -> IDEAction) -> IDEAction
 runCabalBuild backgroundBuild withoutLinking package shallConfigure continuation = do

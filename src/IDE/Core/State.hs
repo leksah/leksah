@@ -61,6 +61,7 @@ module IDE.Core.State (
 --,   deactivatePaneIfActive
 --,   closePane
 ,   activeProjectDir
+,   changePackage
 
 ,   liftYiControl
 ,   liftYi
@@ -91,7 +92,7 @@ import System.FilePath (dropFileName)
 import IDE.Core.CTypes
 import Control.Concurrent (forkIO)
 import IDE.Utils.Utils
-import qualified Data.Map as Map (lookup)
+import qualified Data.Map as Map (empty, lookup)
 import Data.Typeable(Typeable)
 import qualified IDE.YiConfig as Yi
 
@@ -384,6 +385,24 @@ deactivatePaneIfActive pane = do
         Just (n,_) -> if n == paneName pane
                         then deactivatePane
                         else return ()
+
+changePackage :: IDEPackage -> IDEAction
+changePackage ideP@IDEPackage{ipdCabalFile = file} = do
+    oldWorkspace <- readIDE workspace
+    case oldWorkspace of
+        Nothing -> return ()
+        Just ws -> do
+            let ps = map exchange (wsPackages ws)
+            modifyIDE_ (\ide -> ide{workspace = Just ws {wsPackages = ps},
+                                    bufferProjCache = Map.empty})
+    mbActivePack <- readIDE activePack
+    case mbActivePack of
+        Just activePack | ipdCabalFile ideP == ipdCabalFile activePack ->
+            modifyIDE_ (\ide -> ide{activePack = Just ideP})
+        _ -> return ()
+    where
+        exchange p | ipdCabalFile p == file = ideP
+                   | otherwise              = p
 
 
 
