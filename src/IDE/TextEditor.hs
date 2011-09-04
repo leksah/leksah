@@ -143,6 +143,7 @@ import qualified Graphics.UI.Gtk as Gtk hiding(afterToggleOverwrite)
 import qualified Graphics.UI.Gtk.SourceView as Gtk
 import qualified Graphics.UI.Gtk.Gdk.Events as GtkOld
 import System.Glib.Attributes (AttrOp(..))
+import System.GIO.File.ContentType (contentTypeGuess)
 
 #ifdef LEKSAH_WITH_YI
 import qualified Yi as Yi hiding(withBuffer)
@@ -213,7 +214,12 @@ newGtkBuffer :: Maybe FilePath -> String -> IDEM EditorBuffer
 newGtkBuffer mbFilename contents = liftIO $ do
     lm     <- Gtk.sourceLanguageManagerNew
     mbLang <- case mbFilename of
-        Just filename -> Gtk.sourceLanguageManagerGuessLanguage lm (Just filename) Nothing
+        Just filename -> do
+            guess <- contentTypeGuess filename contents (length contents)
+            Gtk.sourceLanguageManagerGuessLanguage lm (Just filename) $
+                case guess of
+                    (True, _)  -> Nothing
+                    (False, t) -> Just t
         Nothing       -> Gtk.sourceLanguageManagerGuessLanguage lm Nothing (Just "text/x-haskell")
     buffer <- case mbLang of
         Just sLang -> Gtk.sourceBufferNewWithLanguage sLang
