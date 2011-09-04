@@ -102,6 +102,7 @@ import IDE.Pane.Trace (fillTraceList)
 import IDE.PaneGroups
 import IDE.Pane.Search (getSearch, setChoices, searchMetaGUI)
 import IDE.Pane.Grep (getGrep)
+import IDE.Pane.Files (getFiles)
 
 --
 -- | The Actions known to the system (they can be activated by keystrokes or menus)
@@ -331,6 +332,8 @@ mkActions =
         showDebugger [] False
     ,AD "ShowSearch" "Search" Nothing Nothing
         (getSearch Nothing  >>= \ p -> displayPane p False) [] False
+    ,AD "ShowFiles" "Files" Nothing Nothing
+        (getFiles Nothing  >>= \ p -> displayPane p False) [] False
     ,AD "ShowGrep" "Grep" Nothing Nothing
         (getGrep Nothing  >>= \ p -> displayPane p False) [] False
     ,AD "ShowErrors" "Errors" Nothing Nothing

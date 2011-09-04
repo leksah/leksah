@@ -724,6 +724,7 @@ defaultPrefs = Prefs {
     ,   categoryForPane     =   [   ("*ClassHierarchy","ToolCategory")
                                 ,   ("*Debug","ToolCategory")
                                 ,   ("*Flags","ToolCategory")
+                                ,   ("*Files","ToolCategory")
                                 ,   ("*Grep","ToolCategory")
                                 ,   ("*Info","ToolCategory")
                                 ,   ("*Log","LogCategory")

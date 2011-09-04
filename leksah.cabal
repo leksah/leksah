@@ -120,7 +120,7 @@ library
         IDE.Pane.Preferences IDE.Pane.PackageEditor
         IDE.Pane.Info IDE.Pane.Log IDE.Pane.SourceBuffer IDE.Pane.Modules
         IDE.Pane.Search IDE.Pane.PackageFlags
-        IDE.LogRef IDE.Debug IDE.Pane.Grep
+        IDE.LogRef IDE.Debug IDE.Pane.Grep IDE.Pane.Files
         IDE.Pane.Breakpoints IDE.Pane.Trace IDE.Pane.Variables
         IDE.Pane.Errors IDE.TextEditor IDE.Workspaces
         IDE.Statusbar IDE.Pane.Workspace IDE.PaneGroups
