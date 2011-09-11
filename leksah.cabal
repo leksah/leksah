@@ -153,13 +153,13 @@ Executable leksah
     if flag(yi) && flag(dyre)
         cpp-options: -DLEKSAH_WITH_DYRE
 
-    if impl(ghc < 6.12.3) && flag(yi)
+    if impl(ghc < 7.0) && flag(yi)
         build-depends: yi >=0.6.1 && <0.7
 
-    if impl(ghc < 6.12.3) && flag(yi) && flag(dyre)
+    if impl(ghc < 7.0) && flag(yi) && flag(dyre)
         build-depends: dyre >= 0.8.3 && <0.9
 
-    if impl(ghc < 6.12.3)
+    if impl(ghc < 7.0)
         hs-source-dirs: src, main
         build-depends: Cabal >=1.6.0.1 && <1.12, base >=4.0.0.0 && <4.5, binary >=0.5.0.0 && <0.6,
                        bytestring >=0.9.0.1 && <0.10, containers >=0.2.0.0 && <0.5, directory >=1.0.0.2 && <3.1,
