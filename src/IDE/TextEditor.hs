@@ -155,8 +155,8 @@ import Control.Monad (unless)
 
 import IDE.Core.State
 import IDE.Utils.GUIUtils(controlIsPressed)
-
-
+import Paths_leksah (getDataDir)
+import System.FilePath ((</>))
 
 -- Data types
 data EditorBuffer = GtkEditorBuffer Gtk.SourceBuffer
@@ -212,8 +212,11 @@ iterFromYiBuffer b f = iterFromYiBuffer' (Yi.fBufRef b) f
 -- Buffer
 newGtkBuffer :: Maybe FilePath -> String -> IDEM EditorBuffer
 newGtkBuffer mbFilename contents = liftIO $ do
-    lm     <- Gtk.sourceLanguageManagerNew
-    mbLang <- case mbFilename of
+    lm      <- Gtk.sourceLanguageManagerNew
+    dataDir <- getDataDir
+    oldPath <- Gtk.sourceLanguageManagerGetSearchPath lm
+    Gtk.sourceLanguageManagerSetSearchPath lm (Just $ (dataDir </> "language-specs") : oldPath)
+    mbLang  <- case mbFilename of
         Just filename -> do
             guess <- contentTypeGuess filename contents (length contents)
             Gtk.sourceLanguageManagerGuessLanguage lm (Just filename) $

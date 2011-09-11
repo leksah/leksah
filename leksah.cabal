@@ -29,6 +29,13 @@ data-files: LICENSE
             data/module.lksht
             data/welcome.txt
 
+            language-specs/haskell.lang
+            language-specs/haskell-literate.lang
+            language-specs/hamlet.lang
+            language-specs/cassius.lang
+            language-specs/lucius.lang
+            language-specs/julius.lang
+
             pics/ide_class.png
             pics/ide_configure.png
             pics/ide_data.png
