@@ -126,6 +126,8 @@ import Graphics.UI.Gtk.General.Structs (ResponseId(..))
 import Graphics.UI.Gtk.Selectors.FileChooser
        (FileChooserAction(..))
 import System.Glib.Attributes (AttrOp(..), set)
+import qualified Graphics.UI.Gtk.Gdk.Events as GtkOld
+
 import IDE.BufferMode
 
 allBuffers :: IDEM [IDEBuffer]
@@ -450,8 +452,8 @@ builder' bs mbfn ind bn rbn ct prefs pp nb windows = do
     ids2 <- onCompletion sv (Completion.complete sv False) Completion.cancel
     ids3 <- sv `onButtonPress`
         \event -> do
-            let click = eventClick event
             liftIO $ reflectIDE (do
+                let click = eventClick event
                 case click of
                     DoubleClick -> do
                         let isIdent a = isAlphaNum a || a == '\'' || a == '_'
@@ -488,7 +490,20 @@ builder' bs mbfn ind bn rbn ct prefs pp nb windows = do
         Nothing     -> do
             sysMessage Normal "SourceBuffer>> no text popup"
             return []
-    return (Just buf,concat [ids1, ids2, ids3, ids4])
+    ids5 <- sv `onKeyPress`
+        \name modifier keyval -> do
+            liftIO $ reflectIDE (do
+                    liftIO $ print (name, modifier, keyval)
+                    case (name, modifier, keyval) of
+                        ("Left",[GtkOld.Control],_) -> do
+                            (startSel, endSel) <- getSelectionBounds buffer
+                            mbStartChar <- getChar startSel
+                            liftIO $ print ("Selected chars", mbStartChar, mbEndChar)
+                            return True
+
+                        _ -> return False
+                ) ideR
+    return (Just buf,concat [ids1, ids2, ids3, ids4, ids5])
 
 
 checkModTime :: IDEBuffer -> IDEM (Bool, Bool)
