@@ -84,7 +84,7 @@
     </context>
 
     <context id="hamlet">
-      <start>\[\$?(s|i|)hamlet\|</start>
+      <start>\[\$?(s|i|w|)hamlet\|</start>
       <end>\|\]</end>
       <include>
         <context sub-pattern="0" where="start" style-ref="preprocessor"/>
