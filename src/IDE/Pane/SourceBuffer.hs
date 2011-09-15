@@ -521,7 +521,6 @@ builder' bs mbfn ind bn rbn ct prefs pp nb windows = do
                             when (not keepSelBound) $ do
                                 sb <- getSelectionBoundMark buffer
                                 moveMark buffer sb nsel
-                    liftIO $ print (name, modifier, keyval)
                     case (name, modifier, keyval) of
                         ("Left",[GtkOld.Control],_) -> do
                             calculateNewPosition backwardCharC >>= continueSelection False
