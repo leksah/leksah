@@ -40,6 +40,7 @@ module IDE.TextEditor (
 ,   endUserAction
 ,   getEndIter
 ,   getInsertMark
+,   getInsertIter
 ,   getIterAtLine
 ,   getIterAtMark
 ,   getIterAtOffset
@@ -141,6 +142,7 @@ import Control.Applicative ((<$>))
 
 import qualified Graphics.UI.Gtk as Gtk hiding(afterToggleOverwrite)
 import qualified Graphics.UI.Gtk.SourceView as Gtk
+import qualified Graphics.UI.Gtk.Multiline.TextView as Gtk
 import qualified Graphics.UI.Gtk.Gdk.Events as GtkOld
 import System.Glib.Attributes (AttrOp(..))
 import System.GIO.File.ContentType (contentTypeGuess)
@@ -403,6 +405,17 @@ getSelectionBounds (YiEditorBuffer b) = withYiBuffer b $ do
     return (mkYiIter b (Yi.regionStart region),
             mkYiIter b (Yi.regionEnd region))
 #endif
+
+getInsertIter :: EditorBuffer -> IDEM EditorIter
+getInsertIter (GtkEditorBuffer sb) = liftIO $ do
+    insertMark <- Gtk.textBufferGetInsert sb
+    insertIter <- Gtk.textBufferGetIterAtMark sb insertMark
+    return (GtkEditorIter insertIter)
+#ifdef LEKSAH_WITH_YI
+getSelectionBounds (YiEditorBuffer b) = withYiBuffer b $ do
+    mkYiIter b <$> Yi.getSelectionMarkPointB
+#endif
+
 
 getSlice :: EditorBuffer
             -> EditorIter

@@ -76,12 +76,14 @@ module IDE.Pane.SourceBuffer (
 
 import Prelude hiding(getChar, getLine)
 import Control.Monad.Reader
+import Control.Applicative
 import System.FilePath
 import System.Directory
 import qualified Data.Map as Map
 import Data.Map (Map)
 import Data.List hiding(insert, delete)
 import Data.Maybe
+import Data.Char
 import Data.Typeable
 import System.Time
 
@@ -383,6 +385,15 @@ newTextBuffer panePath bn mbfn = do
             ideMessage Normal ("File does not exist " ++ (fromJust mbfn))
             return Nothing
 
+data CharacterCategory = IdentifierCharacter | SpaceCharacter | SyntaxCharacter
+    deriving (Eq)
+getCharacterCategory :: Maybe Char -> CharacterCategory
+getCharacterCategory Nothing = SpaceCharacter
+getCharacterCategory (Just c)
+    | isAlphaNum c || c == '\'' || c == '_' = IdentifierCharacter
+    | isSpace c = SpaceCharacter
+    | otherwise = SyntaxCharacter
+
 builder' :: Bool ->
     Maybe FilePath ->
     Int ->
@@ -453,8 +464,7 @@ builder' bs mbfn ind bn rbn ct prefs pp nb windows = do
     ids3 <- sv `onButtonPress`
         \event -> do
             liftIO $ reflectIDE (do
-                let click = eventClick event
-                case click of
+                case eventClick event of
                     DoubleClick -> do
                         let isIdent a = isAlphaNum a || a == '\'' || a == '_'
                         let isOp    a = isSymbol   a || a == ':'  || a == '\\' || a == '*' || a == '/' || a == '-'
@@ -493,14 +503,43 @@ builder' bs mbfn ind bn rbn ct prefs pp nb windows = do
     ids5 <- sv `onKeyPress`
         \name modifier keyval -> do
             liftIO $ reflectIDE (do
+                    let isIdent a = isAlphaNum a || a == '\'' || a == '_'       -- parts of haskell identifiers
+                    let isRangeStart sel = do                                   -- if char and previous char are of different char categories
+                        currentChar <- getChar sel
+                        let mbStartCharCat = getCharacterCategory currentChar
+                        mbPrevCharCat <- getCharacterCategory <$> (backwardCharC sel >>= getChar)
+                        return $ currentChar == Nothing || currentChar == Just '\n' || mbStartCharCat /= mbPrevCharCat && (mbStartCharCat == SyntaxCharacter || mbStartCharCat == IdentifierCharacter)
+                    let moveToNextWord iterOp sel  = do
+                        sel' <- iterOp sel
+                        rs <- isRangeStart sel'
+                        if rs then return sel' else moveToNextWord iterOp sel'
+                    let calculateNewPosition iterOp = getInsertIter buffer >>= moveToNextWord iterOp
+                    let continueSelection keepSelBound nsel = do
+                            im <- getInsertMark buffer
+                            moveMark buffer im nsel
+                            scrollToIter sv nsel 0 Nothing
+                            when (not keepSelBound) $ do
+                                sb <- getSelectionBoundMark buffer
+                                moveMark buffer sb nsel
                     liftIO $ print (name, modifier, keyval)
                     case (name, modifier, keyval) of
                         ("Left",[GtkOld.Control],_) -> do
-                            (startSel, endSel) <- getSelectionBounds buffer
-                            mbStartChar <- getChar startSel
-                            liftIO $ print ("Selected chars", mbStartChar, mbEndChar)
+                            calculateNewPosition backwardCharC >>= continueSelection False
                             return True
-
+                        ("Left",[GtkOld.Shift, GtkOld.Control],_) -> do
+                            calculateNewPosition backwardCharC >>= continueSelection True
+                            return True
+                        ("Right",[GtkOld.Control],_) -> do
+                            calculateNewPosition forwardCharC >>= continueSelection False --placeCursor buffer
+                            return True
+                        ("Right",[GtkOld.Shift, GtkOld.Control],_) -> do
+                            calculateNewPosition forwardCharC >>= continueSelection True
+                            return True
+                        ("BackSpace",[GtkOld.Control],_) -> do              -- delete word
+                            here <- getInsertIter buffer
+                            there <- calculateNewPosition backwardCharC
+                            delete buffer here there
+                            return True
                         _ -> return False
                 ) ideR
     return (Just buf,concat [ids1, ids2, ids3, ids4, ids5])
