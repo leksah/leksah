@@ -300,19 +300,25 @@ constructFindReplace = reifyIDE $ \ ideR   -> do
         doSearch toolbar Insert ideR
         return i)
     entry `afterDeleteText` (\ _ _ -> doSearch toolbar Delete ideR  )
-    entry `afterKeyPress`  (\ e -> case e of
-        k@(Key _ _ _ _ _ _ _ _ _ _)
-            | eventKeyName k == "Down"                 -> do
-                doSearch toolbar Forward ideR
-                return True
-            | eventKeyName k == "Up"                   -> do
-                doSearch toolbar Backward ideR
-                return True
-            | eventKeyName k == "Escape"               -> do
-                getOut ideR
-                return True
-            | otherwise                ->  return False
-        _                              ->  return False)
+    entry `afterKeyPress`  (\ e -> do
+        print e
+        case e of
+            k@(Key _ _ _ _ _ _ _ _ _ _)
+                | eventKeyName k == "Down"                 -> do
+                    doSearch toolbar Forward ideR
+                    return True
+                | eventKeyName k == "Up"                   -> do
+                    doSearch toolbar Backward ideR
+                    return True
+                | eventKeyName k == "Escape"               -> do
+                    getOut ideR
+                    return True
+                | eventKeyName k == "Tab"               -> do
+                    re <- getReplaceEntry toolbar
+                    widgetGrabFocus re
+                    return True
+                | otherwise                ->  return False
+            _                              ->  return False)
     entry `onEntryActivate` (doSearch toolbar Forward ideR)
     replaceButton `onToolButtonClicked` replace toolbar Forward ideR
 
