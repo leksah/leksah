@@ -58,6 +58,7 @@ import Graphics.UI.Gtk
         IconSize(..), AttrOp(..), set, on, Color(..))
 import Graphics.UI.Gtk.Gdk.Events
 import Control.Monad.Reader
+import qualified Graphics.UI.Gtk as Gtk
 
 import IDE.Core.State
 import IDE.TextEditor hiding(afterFocusIn)
@@ -300,8 +301,7 @@ constructFindReplace = reifyIDE $ \ ideR   -> do
         doSearch toolbar Insert ideR
         return i)
     entry `afterDeleteText` (\ _ _ -> doSearch toolbar Delete ideR  )
-    entry `afterKeyPress`  (\ e -> do
-        print e
+    entry `Gtk.onKeyPress`  (\ e -> do
         case e of
             k@(Key _ _ _ _ _ _ _ _ _ _)
                 | eventKeyName k == "Down"                 -> do
@@ -319,10 +319,24 @@ constructFindReplace = reifyIDE $ \ ideR   -> do
                     return True
                 | otherwise                ->  return False
             _                              ->  return False)
-    entry `onEntryActivate` (doSearch toolbar Forward ideR)
-    replaceButton `onToolButtonClicked` replace toolbar Forward ideR
 
+    entry `onEntryActivate` (doSearch toolbar Forward ideR)
+
+    rentry `Gtk.onKeyPress`  (\ e -> do
+        case e of
+            k@(Key _ _ _ _ _ _ _ _ _ _)
+                | eventKeyName k == "Tab" || eventKeyName k == "ISO_Left_Tab" -> do
+                    fe <- getFindEntry toolbar
+                    widgetGrabFocus fe
+                    return True
+                | otherwise                ->  return False
+            _                              ->  return False)
+
+
+    replaceButton `onToolButtonClicked` replace toolbar Forward ideR
     replaceAllButton `onToolButtonClicked` replaceAll toolbar Forward ideR
+
+
 
 
     spinL `afterFocusIn` (\ _ -> (reflectIDE (inActiveBufContext True $ \_ gtkbuf currentBuffer _ -> do
