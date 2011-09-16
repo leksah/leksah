@@ -316,6 +316,7 @@ constructFindReplace = reifyIDE $ \ ideR   -> do
                 | eventKeyName k == "Tab"               -> do
                     re <- getReplaceEntry toolbar
                     widgetGrabFocus re
+                    --- widgetAc
                     return True
                 | otherwise                ->  return False
             _                              ->  return False)
