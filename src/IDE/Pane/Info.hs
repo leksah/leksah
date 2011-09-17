@@ -1,5 +1,5 @@
 {-# LANGUAGE FlexibleInstances, DeriveDataTypeable, MultiParamTypeClasses,
-             ScopedTypeVariables, TypeSynonymInstances #-}
+             ScopedTypeVariables, TypeSynonymInstances, NoMonomorphismRestriction #-}
 -----------------------------------------------------------------------------
 --
 -- Module      :  IDE.Pane.Info
@@ -24,16 +24,23 @@ module IDE.Pane.Info (
 
 import Graphics.UI.Gtk hiding (afterToggleOverwrite)
 import Control.Monad
+import Control.Applicative
 import Control.Monad.Trans
 import Data.IORef
 import Data.Typeable
 import Data.Char (isAlphaNum)
 import Network.URI (escapeURIString)
+import Graphics.UI.Gtk.Gdk.Events as Gdk
+import Graphics.UI.Gtk.Gdk.Cursor as Gdk
 
 import IDE.Core.State
 import IDE.Pane.SourceBuffer
+import IDE.TextEditor (EditorIter(..))
 import IDE.Utils.GUIUtils (openBrowser,controlIsPressed)
 import Graphics.UI.Gtk.SourceView
+import Graphics.UI.Gtk.Multiline.TextView
+import System.IO
+import Control.Concurrent
 
 
 -- | An info pane description
@@ -109,10 +116,67 @@ instance RecoverablePane IDEInfo InfoState IDEM where
 
             sw <- scrolledWindowNew Nothing Nothing
             containerAdd sw descriptionView
+
+            let tv = castToTextView descriptionView
+            tvb <- castToTextBuffer <$> get tv textViewBuffer :: IO TextBuffer
+            let myAttr = textBufferTagTable :: ReadWriteAttr TextBuffer TextTagTable TextTagTable
+            ttt <- castToTextTagTable <$> (get tvb myAttr) :: IO TextTagTable
+            -- textBuffer
+            noUnderline <- textTagNew Nothing
+            set noUnderline [ textTagUnderline := UnderlineNone, textTagUnderlineSet := True ]
+            underline <- textTagNew Nothing
+            set underline [ textTagUnderline := UnderlineSingle, textTagUnderlineSet := True ]
+            textTagTableAdd ttt noUnderline
+            textTagTableAdd ttt underline
+            cursor <- Gdk.cursorNew Gdk.Hand2
+            cursorDef <- Gdk.cursorNew Gdk.Arrow
+
+            sw `onLeaveNotify` \e -> do
+                pointerUngrab (Gdk.eventTime e)
+                return True
+            let moveOrClick e click = do
+                sx <- scrolledWindowGetHAdjustment sw >>= adjustmentGetValue
+                sy <- scrolledWindowGetVAdjustment sw >>= adjustmentGetValue
+                let ex = Gdk.eventX e + sx
+                let ey = Gdk.eventY e + sy
+                iter <- textViewGetIterAtLocation descriptionView (round ex) (round ey)
+                (szx, szy) <- widgetGetSize sw
+                if Gdk.eventX e < 0 || Gdk.eventY e < 0
+                    || round(Gdk.eventX e) > szx || round(Gdk.eventY e) > szy then do
+                        pointerUngrab (Gdk.eventTime e)
+                        return True
+                  else do
+                    (GtkEditorIter beg,GtkEditorIter en) <- reflectIDE (getIdentifierUnderCursorFromIter (GtkEditorIter iter, GtkEditorIter iter)) ideR
+                    slice <- liftIO $ textBufferGetSlice descriptionBuffer beg en True
+                    startIter <- textBufferGetStartIter descriptionBuffer
+                    endIter <- textBufferGetEndIter descriptionBuffer
+                    textBufferRemoveTag descriptionBuffer underline startIter endIter
+                    if (length slice > 1) then do
+                        if (click) then do
+                                pointerUngrab (Gdk.eventTime e)
+                                reflectIDE (launchAutoCompleteDialog slice goToDefinition) ideR
+                                return ()
+                            else do
+                                textBufferApplyTag descriptionBuffer underline beg en
+                                Just screen <- screenGetDefault
+                                dw <- widgetGetDrawWindow descriptionView
+                                pointerGrab dw False [PointerMotionMask,ButtonPressMask,LeaveNotifyMask] (Nothing  :: Maybe DrawWindow) (Just cursor) (Gdk.eventTime e)
+                                return ()
+                        return ()
+                      else do
+                        pointerUngrab (Gdk.eventTime e)
+                        return ()
+                    return False;
+
+
+            onButtonPress sw $ \e -> do
+                print "scroll window press"
+                moveOrClick e True
+            onMotionNotify sw True $ \e -> do
+                moveOrClick e False
             scrolledWindowSetPolicy sw PolicyAutomatic PolicyAutomatic
 
             boxPackStart ibox sw PackGrow 10
-
 
 
             --openType
@@ -159,7 +223,7 @@ setInfo identifierDescr = do
     liftIO $ do
         writeIORef (currentDescr info) (Just identifierDescr)
         tb <- get (descriptionView info) textViewBuffer
-        textBufferSetText tb (show (Present identifierDescr))
+        textBufferSetText tb (show (Present identifierDescr) ++ "\n")   -- EOL for text iters to work
     recordInfoHistory (Just identifierDescr) oldDescr
 
 getInfoCont ::  IDEM (Maybe (Descr))
