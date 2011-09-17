@@ -1,4 +1,5 @@
 {-# OPTIONS_GHC -XTypeSynonymInstances -XScopedTypeVariables #-}
+{-# OPTIONS_GHC -fno-warn-incomplete-patterns #-}
 -----------------------------------------------------------------------------
 --
 -- Module       :  IDE.Menu
@@ -783,6 +784,7 @@ setSymbol symbol = do
   where
     isNear (Just a) (Just b) = abs (locationSLine a - locationSLine b) <= 3
     isNear _ _               = False
+
 --
 -- | Register handlers for IDE events
 --

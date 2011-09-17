@@ -139,7 +139,7 @@ library
 
     ghc-prof-options: -auto-all -prof
     ghc-shared-options: -auto-all
-    ghc-options: -fwarn-missing-fields -fwarn-incomplete-patterns -ferror-spans -O0
+    ghc-options: -fwarn-missing-fields -fwarn-incomplete-patterns -ferror-spans 
 
 Executable leksah
     if os(windows)
@@ -186,7 +186,7 @@ Executable leksah
     extensions: CPP
     ghc-prof-options: -auto-all -prof
     ghc-shared-options: -auto-all
-    ghc-options:  -fwarn-missing-fields -fwarn-incomplete-patterns -ferror-spans -O0
+    ghc-options:  -fwarn-missing-fields -fwarn-incomplete-patterns -ferror-spans 
 
 
 

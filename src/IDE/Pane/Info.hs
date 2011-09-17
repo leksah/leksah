@@ -1,5 +1,6 @@
 {-# LANGUAGE FlexibleInstances, DeriveDataTypeable, MultiParamTypeClasses,
-             ScopedTypeVariables, TypeSynonymInstances, NoMonomorphismRestriction #-}
+             ScopedTypeVariables, TypeSynonymInstances #-}
+{-# OPTIONS_GHC -fwarn-unused-imports #-}
 -----------------------------------------------------------------------------
 --
 -- Module      :  IDE.Pane.Info
@@ -38,9 +39,6 @@ import IDE.Pane.SourceBuffer
 import IDE.TextEditor (EditorIter(..))
 import IDE.Utils.GUIUtils (openBrowser,controlIsPressed)
 import Graphics.UI.Gtk.SourceView
-import Graphics.UI.Gtk.Multiline.TextView
-import System.IO
-import Control.Concurrent
 
 
 -- | An info pane description
