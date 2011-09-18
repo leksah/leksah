@@ -495,7 +495,13 @@ builder' bs mbfn ind bn rbn ct prefs pp nb windows = do
                             when (not keepSelBound) $ do
                                 sb <- getSelectionBoundMark buffer
                                 moveMark buffer sb nsel
-                    case (name, modifier, keyval) of
+#if defined(darwin_HOST_OS)
+                    let mapCommand GtkOld.Alt = GtkOld.Control
+                        mapCommand x = x
+#else
+                    let mapCommand = id
+#endif
+                    case (name, map mapCommand modifier, keyval) of
                         ("Left",[GtkOld.Control],_) -> do
                             calculateNewPosition backwardCharC >>= continueSelection False
                             return True
