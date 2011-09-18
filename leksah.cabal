@@ -110,7 +110,7 @@ library
                    regex-tdfa ==1.1.*, regex-base ==0.93.*, utf8-string >=0.3.1.1 && <0.4, array >=0.2.0.0 && <0.4,
                    time >=0.1 && <1.3, ltk >= 0.10 && <0.11, binary-shared >= 0.8 && <0.9, deepseq >= 1.1.0.0 && <1.2,
                    hslogger >= 1.0.7 && <1.2, leksah-server >= 0.10 && <0.11, network >= 2.2 && <3.0,
-                   ghc >=6.10.1 && <7.3, strict >= 0.3.2 && <0.4, gio >=0.12 && <0.13
+                   ghc >=6.10.1 && <7.3, strict >= 0.3.2 && <0.4, gio >=0.12 && <0.13, text
 
     if (impl(ghc >= 7.2))
        build-depends: process >= 1.1 && <1.2
@@ -119,7 +119,7 @@ library
 
     exposed-modules:
         IDE.Leksah IDE.Completion IDE.ImportTool
-        IDE.Find IDE.Session IDE.Command IDE.Keymap IDE.Utils.GUIUtils
+        IDE.Find IDE.Session IDE.Command IDE.Keymap IDE.Utils.GUIUtils IDE.SymbolNavigation
         IDE.Package IDE.YiConfig IDE.OSX
         IDE.GUIHistory IDE.SourceCandy IDE.NotebookFlipper
         IDE.Core.Types IDE.Core.State
@@ -139,7 +139,7 @@ library
 
     ghc-prof-options: -auto-all -prof
     ghc-shared-options: -auto-all
-    ghc-options: -fwarn-missing-fields -fwarn-incomplete-patterns -ferror-spans
+    ghc-options: -fwarn-missing-fields -fwarn-incomplete-patterns -ferror-spans 
 
 Executable leksah
     if os(windows)
@@ -186,7 +186,7 @@ Executable leksah
     extensions: CPP
     ghc-prof-options: -auto-all -prof
     ghc-shared-options: -auto-all
-    ghc-options:  -fwarn-missing-fields -fwarn-incomplete-patterns -ferror-spans
+    ghc-options:  -fwarn-missing-fields -fwarn-incomplete-patterns -ferror-spans 
 
 
 
