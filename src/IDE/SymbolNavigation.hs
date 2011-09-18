@@ -190,6 +190,7 @@ launchAutoCompleteDialog txt act = do
     return ()
 
 
+-- this will be camel case one day
 matchCamelCase :: T.Text -> T.Text -> T.Text -> Bool
 matchCamelCase search lsearch item =
     search `T.isInfixOf` item || (lsearch `T.isInfixOf` (T.toLower item))
