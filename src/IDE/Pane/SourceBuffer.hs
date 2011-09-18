@@ -527,10 +527,6 @@ builder' bs mbfn ind bn rbn ct prefs pp nb windows = do
                         _ -> return False
                 ) ideR
     return (Just buf,concat [ids1, ids2, ids3, ids4, ids5])
-    where
-        getIdentifierUnderCursor buffer = do
-            (startSel, endSel) <- getSelectionBounds buffer
-            getIdentifierUnderCursorFromIter (startSel, endSel)
 
 isIdent a = isAlphaNum a || a == '\'' || a == '_'       -- parts of haskell identifiers
 
@@ -539,6 +535,11 @@ isRangeStart sel = do                                   -- if char and previous 
     let mbStartCharCat = getCharacterCategory currentChar
     mbPrevCharCat <- getCharacterCategory <$> (backwardCharC sel >>= getChar)
     return $ currentChar == Nothing || currentChar == Just '\n' || mbStartCharCat /= mbPrevCharCat && (mbStartCharCat == SyntaxCharacter || mbStartCharCat == IdentifierCharacter)
+
+getIdentifierUnderCursor :: EditorBuffer -> IDEM (EditorIter, EditorIter)
+getIdentifierUnderCursor buffer = do
+    (startSel, endSel) <- getSelectionBounds buffer
+    getIdentifierUnderCursorFromIter (startSel, endSel)
 
 getIdentifierUnderCursorFromIter :: (EditorIter, EditorIter) -> IDEM (EditorIter, EditorIter)
 getIdentifierUnderCursorFromIter (startSel, endSel) = do
@@ -686,7 +687,7 @@ selectInfo :: EditorView -> IDEAction
 selectInfo sv = do
     ideR    <- ask
     buf     <- getBuffer sv
-    (l,r)   <- getSelectionBounds buf
+    (l,r)   <- getIdentifierUnderCursor buf
     symbol  <- getText buf l r True
     triggerEvent ideR (SelectInfo symbol)
     return ()
