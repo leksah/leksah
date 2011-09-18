@@ -412,8 +412,9 @@ getInsertIter (GtkEditorBuffer sb) = liftIO $ do
     insertIter <- Gtk.textBufferGetIterAtMark sb insertMark
     return (GtkEditorIter insertIter)
 #ifdef LEKSAH_WITH_YI
-getSelectionBounds (YiEditorBuffer b) = withYiBuffer b $ do
-    mkYiIter b <$> Yi.getSelectionMarkPointB
+getInsertIter (YiEditorBuffer b) = withYiBuffer b $ do
+    insertMark <- Yi.insMark <$> Yi.askMarks
+    mkYiIter b <$> Yi.getMarkPointB insertMark
 #endif
 
 
