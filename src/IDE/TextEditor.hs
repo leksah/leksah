@@ -130,6 +130,8 @@ module IDE.TextEditor (
 ,   onKeyPress
 ,   onKeyRelease
 ,   onLookupInfo
+,   onMotionNotify
+,   onLeaveNotify
 ,   onPopulatePopup
 ) where
 
@@ -142,6 +144,14 @@ import Control.Applicative ((<$>))
 
 import qualified Graphics.UI.Gtk as Gtk hiding(afterToggleOverwrite)
 import qualified Graphics.UI.Gtk.SourceView as Gtk
+import Graphics.UI.Gtk.Multiline.TextTagTable
+import qualified Graphics.UI.Gtk.Multiline.TextBuffer as Gtk
+import qualified  Graphics.UI.Gtk.Multiline.TextView as Gtk
+import qualified Graphics.UI.Gtk.Scrolling.ScrolledWindow
+import Graphics.UI.Gtk.Multiline.TextTag
+import Graphics.UI.Gtk.Gdk.Cursor
+import Graphics.Rendering.Pango
+import System.Glib.Attributes
 import qualified Graphics.UI.Gtk.Multiline.TextView as Gtk
 import qualified Graphics.UI.Gtk.Gdk.Events as GtkOld
 import System.Glib.Attributes (AttrOp(..))
@@ -190,6 +200,7 @@ data EditorTag = GtkEditorTag Gtk.TextTag
 #ifdef LEKSAH_WITH_YI
     | YiEditorTag
 #endif
+
 
 #ifdef LEKSAH_WITH_YI
 withYiBuffer' :: Yi.BufferRef -> Yi.BufferM a -> IDEM a
@@ -1149,6 +1160,48 @@ onKeyPress (YiEditorView v) f = do
         return [ConnectC id1]
 #endif
 
+onMotionNotify :: EditorView
+              -> (Double -> Double -> [Gtk.Modifier] -> IDEM Bool)
+              -> IDEM [Connection]
+onMotionNotify (GtkEditorView sv) f = do
+    ideR <- ask
+    liftIO $ do
+        id1 <- sv `Gtk.on` Gtk.motionNotifyEvent $ do
+            (ex,ey)     <- Gtk.eventCoordinates
+            modifier    <- Gtk.eventModifier
+            liftIO $ reflectIDE (f ex ey modifier) ideR
+        return [ConnectC id1]
+#ifdef LEKSAH_WITH_YI
+onMotionNotify (YiEditorView v) f = do
+    ideR <- ask
+    liftIO $ do
+        id1 <- sv `Gtk.on` Gtk.motionNotifyEvent $ do
+            ex          <- Gtk.eventX
+            ey          <- Gtk.eventY
+            modifier    <- Gtk.eventModifier
+            liftIO $ reflectIDE (f ex ey modifier) ideR
+        return [ConnectC id1]
+#endif
+
+onLeaveNotify :: EditorView
+              -> (IDEM Bool)
+              -> IDEM [Connection]
+onLeaveNotify (GtkEditorView sv) f = do
+    ideR <- ask
+    liftIO $ do
+        id1 <- sv `Gtk.on` Gtk.leaveNotifyEvent $ do
+            liftIO $ reflectIDE (f) ideR
+        return [ConnectC id1]
+#ifdef LEKSAH_WITH_YI
+onLeaveNotify (YiEditorView v) f = do
+    ideR <- ask
+    liftIO $ do
+        id1 <- sv `Gtk.on` Gtk.leaveNotifyEvent $ do
+            liftIO $ reflectIDE (f) ideR
+        return [ConnectC id1]
+#endif
+
+
 onKeyRelease :: EditorView
                 -> (String -> [Gtk.Modifier] -> Gtk.KeyVal -> IDEM Bool)
                 -> IDEM [Connection]
@@ -1209,6 +1262,5 @@ onPopulatePopup (YiEditorView v) f = do
              Gtk.menuPopup menu Nothing
         return [ConnectC id1]
 #endif
-
 
 

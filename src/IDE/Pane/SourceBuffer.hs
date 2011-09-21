@@ -73,7 +73,7 @@ module IDE.Pane.SourceBuffer (
 ,   belongsToPackage
 ,   belongsToWorkspace
 ,   getIdentifierUnderCursorFromIter
-,   launchAutoCompleteDialog
+,   launchSymbolNavigationDialog
 
 ) where
 
@@ -495,13 +495,7 @@ builder' bs mbfn ind bn rbn ct prefs pp nb windows = do
                             when (not keepSelBound) $ do
                                 sb <- getSelectionBoundMark buffer
                                 moveMark buffer sb nsel
-#if defined(darwin_HOST_OS)
-                    let mapCommand GtkOld.Alt = GtkOld.Control
-                        mapCommand x = x
-#else
-                    let mapCommand = id
-#endif
-                    case (name, map mapCommand modifier, keyval) of
+                    case (name, map mapControlCommand modifier, keyval) of
                         ("Left",[GtkOld.Control],_) -> do
                             calculateNewPosition backwardCharC >>= continueSelection False
                             return True
@@ -522,11 +516,22 @@ builder' bs mbfn ind bn rbn ct prefs pp nb windows = do
                         ("minus",[GtkOld.Control],_) -> do
                             (start, end) <- getIdentifierUnderCursor buffer
                             slice <- getSlice buffer start end True
-                            launchAutoCompleteDialog slice goToDefinition
+                            launchSymbolNavigationDialog slice goToDefinition
                             return True
                         _ -> return False
                 ) ideR
-    return (Just buf,concat [ids1, ids2, ids3, ids4, ids5])
+    ids6 <- case sv of
+        GtkEditorView sv -> do
+            (liftIO $ createHyperLinkSupport sv sw (\ctrl shift iter -> do
+                            (GtkEditorIter beg,GtkEditorIter en) <- reflectIDE (getIdentifierUnderCursorFromIter (GtkEditorIter iter, GtkEditorIter iter)) ideR
+                            return (beg, if ctrl then en else beg)) (\_ _ slice -> do
+                                        reflectIDE (launchSymbolNavigationDialog slice goToDefinition) ideR
+                                        ))
+
+#ifdef LEKSAH_WITH_YI
+        _ -> return []
+#endif
+    return (Just buf,concat [ids1, ids2, ids3, ids4, ids5, ids6])
 
 isIdent a = isAlphaNum a || a == '\'' || a == '_'       -- parts of haskell identifiers
 
