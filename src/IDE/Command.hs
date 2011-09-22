@@ -639,8 +639,11 @@ getActionsFor SensitivityProjectActive = getActionsFor'
     ,"RegisterPackage", "TestPackage","SdistPackage"
     ,"OpenDocPackage","FileCloseAll"]
 getActionsFor SensitivityError = getActionsFor' ["NextError", "PreviousError"]
-getActionsFor SensitivityEditor = getActionsFor' ["EditUndo", "EditRedo", "EditGotoLine"
-    ,"EditComment", "EditUncomment", "EditShiftLeft", "EditShiftRight"]
+getActionsFor SensitivityEditor = getActionsFor' ["EditUndo", "EditRedo",
+        "EditGotoLine","EditComment", "EditUncomment",
+        "EditShiftLeft", "EditShiftRight","FileClose","ResolveErrors",
+        "OpenDocu"
+        ]
 getActionsFor SensitivityInterpreting = getActionsFor' ["QuitDebugger"]
 getActionsFor SensitivityWorkspaceOpen = return [] --TODO add here
 
@@ -737,7 +740,6 @@ handleSpecialKeystrokes (Key { eventKeyName = name,  eventModifier = mods,
                 when bs (editKeystrokeCandy mbChar)
                 sk  <- readIDE specialKey
                 sks <- readIDE specialKeys
-                return True
                 case sk of
                     Nothing ->
                         case Map.lookup (keyVal,sort mods) sks of
@@ -833,6 +835,8 @@ registerLeksahEvents =    do
             selectBreak mbLogRef) >> return e)
     registerEvent stRef "TraceChanged"
         (\ e@TraceChanged         -> fillTraceList >> return e)
+    registerEvent stRef "GotoDefinition"
+        (\ e@(GotoDefinition descr)         -> goToDefinition descr >> return e)
     registerEvent stRef "GetTextPopup"
         (\ e@(GetTextPopup _)     -> return (GetTextPopup (Just textPopupMenu)))
     registerEvent stRef "StatusbarChanged"

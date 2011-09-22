@@ -117,7 +117,7 @@ instance RecoverablePane IDEInfo InfoState IDEM where
             createHyperLinkSupport descriptionView sw (\_ _ iter -> do
                     (GtkEditorIter beg,GtkEditorIter en) <- reflectIDE (getIdentifierUnderCursorFromIter (GtkEditorIter iter, GtkEditorIter iter)) ideR
                     return (beg, en)) (\_ _ slice -> do
-                                reflectIDE (launchSymbolNavigationDialog slice goToDefinition) ideR
+                                reflectIDE (launchSymbolNavigationDialog_ slice goToDefinition) ideR
                                 )
 
             scrolledWindowSetPolicy sw PolicyAutomatic PolicyAutomatic

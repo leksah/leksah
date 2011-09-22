@@ -1,4 +1,4 @@
-module IDE.SymbolNavigation (launchSymbolNavigationDialog, createHyperLinkSupport, mapControlCommand)
+module IDE.SymbolNavigation (launchSymbolNavigationDialog_, createHyperLinkSupport, mapControlCommand)
 
 where
 
@@ -11,6 +11,7 @@ import IDE.Core.Types
 import IDE.Core.CTypes
 import IDE.Core.State
 import IDE.Metainfo.Provider
+import IDE.Utils.GUIUtils
 import qualified Graphics.UI.Gtk.Gdk.Events as Gdk
 import Graphics.UI.Gtk.Gdk.Cursor
 import Graphics.UI.Gtk
@@ -30,11 +31,6 @@ import qualified Graphics.UI.Gtk.Scrolling.ScrolledWindow
 
 data Locality = LocalityPackage  | LocalityWorkspace | LocalitySystem  -- in which category symbol is located
     deriving (Ord,Eq,Show)
-
-#if defined(darwin_HOST_OS)
-mapControlCommand GtkOld.Alt = GtkOld.Control
-#endif
-mapControlCommand = id
 
 createHyperLinkSupport  ::
         SourceView ->                     -- ^ source buffer view
@@ -100,36 +96,44 @@ createHyperLinkSupport sv sw identifierMapper clickHandler = do
                 return ()
             return False;
     lineNumberBugFix <- newIORef Nothing
-    id2 <- onMotionNotify sw True $ \e -> do
+    let fixBugWithX e = do
         dw <- widgetGetDrawWindow tv
         ptr <- drawWindowGetPointer dw
         let hasNoControlModifier e = not $ (mapControlCommand Gdk.Control) `elem` (Gdk.eventModifier e)
+        let
+            eventIsHintSafe (e@Gdk.Motion {}) = Gdk.eventIsHint e
+            eventIsHintSafe _ = False
         case ptr of
             Just (_, ptrx, _, _) -> do
                 lnbf <- readIORef lineNumberBugFix
---                print ("ishint?, event.x, ptr.x, adjustment,hasControl?",Gdk.eventIsHint e,Gdk.eventX e, ptrx, lnbf, hasNoControlModifier e)
-                when (Gdk.eventIsHint e && hasNoControlModifier e) $ do
+                print ("ishint?, adjusted, event.x, ptr.x, adjustment,hasControl?",eventIsHintSafe e,ptrx - fromMaybe (-1000) lnbf , Gdk.eventX e, ptrx, lnbf, hasNoControlModifier e)
+                when (eventIsHintSafe e && hasNoControlModifier e) $ do
                     -- get difference between event X and pointer x
                     -- event X is in coordinates of sourceView text
                     -- pointer X is in coordinates of window (remember "show line numbers" ?)
                     writeIORef lineNumberBugFix $ Just (ptrx - round (Gdk.eventX e))   -- captured difference
                 -- When control key is pressed, mostly NON-HINT events come,
                 -- GTK gives (mistakenly?) X in window coordinates in such cases
-                let nx = if (isJust lnbf && not (Gdk.eventIsHint e))
+                let nx = if (isJust lnbf && not (eventIsHintSafe e))
                             then fromIntegral $ ptrx - fromJust lnbf    -- translate X back
                             else Gdk.eventX e
-                moveOrClick e { Gdk.eventX = nx} False
-                return ()
-            _ -> return ()
+                return $ e { Gdk.eventX = nx}
+            _ -> return e
+    id2 <- onMotionNotify sw True $ \e -> do
+        ne <- fixBugWithX e
+        moveOrClick ne False
         return True
     id3 <- onButtonPress sw $ \e -> do
-        moveOrClick e True
+        print ("button press")
+        ne <- fixBugWithX e
+        print ("click adjustment: old, new", Gdk.eventX e, Gdk.eventX ne)
+        moveOrClick ne True
 
     return $ map ConnectC [id1,id2,id3]
 
 
-launchSymbolNavigationDialog :: String -> (Descr -> IDEM ()) -> IDEM ()
-launchSymbolNavigationDialog txt act = do
+launchSymbolNavigationDialog_ :: String -> (Descr -> IDEM ()) -> IDEM ()
+launchSymbolNavigationDialog_ txt act = do
     dia                        <-   liftIO $ dialogNew
     win <- getMainWindow
     ideR    <- ask

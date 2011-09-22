@@ -70,10 +70,11 @@ module IDE.Pane.SourceBuffer (
 ,   selectedLocation
 ,   recentSourceBuffers
 ,   newTextBuffer
+,   focusLastSourceBuffer
 ,   belongsToPackage
 ,   belongsToWorkspace
 ,   getIdentifierUnderCursorFromIter
-,   launchSymbolNavigationDialog
+,   launchSymbolNavigationDialog_
 
 ) where
 
@@ -90,7 +91,6 @@ import Data.Char
 import Data.Typeable
 import qualified Data.Set as Set
 
-import Graphics.UI.Gtk.Gdk.Events as Gtk
 import IDE.Core.State
 import IDE.Utils.GUIUtils(getCandyState)
 import IDE.Utils.FileUtils
@@ -110,8 +110,8 @@ import Graphics.UI.Gtk
        (Notebook, clipboardGet, selectionClipboard, dialogAddButton, widgetDestroy,
         fileChooserGetFilename, widgetShow, fileChooserDialogNew,
         notebookGetNthPage, notebookPageNum, widgetHide, dialogRun,
-        messageDialogNew, postGUIAsync, scrolledWindowSetShadowType,
-        scrolledWindowSetPolicy, dialogSetDefaultResponse,
+        messageDialogNew, scrolledWindowSetShadowType,
+        scrolledWindowSetPolicy, dialogSetDefaultResponse, postGUIAsync,
         fileChooserSetCurrentFolder, fileChooserSelectFilename)
 import System.Glib.MainLoop (priorityDefaultIdle, idleAdd)
 #if MIN_VERSION_gtk(0,10,5)
@@ -190,10 +190,11 @@ instance RecoverablePane IDEBuffer BufferState IDEM where
         writeOverwriteInStatusbar sv
         ids1 <- eBuf `afterModifiedChanged` markActiveLabelAsChanged
         ids2 <- sv `afterMoveCursor` writeCursorPositionInStatusbar sv
-        ids3 <- sv `onLookupInfo` selectInfo sv
+        -- ids3 <- sv `onLookupInfo` selectInfo sv       -- obsolete by hyperlinks
         ids4 <- sv `afterToggleOverwrite`  writeOverwriteInStatusbar sv
-        activateThisPane actbuf $ concat [ids1, ids2, ids3, ids4]
+        activateThisPane actbuf $ concat [ids1, ids2, ids4]
         triggerEventIDE (Sensitivity [(SensitivityEditor, True)])
+
         checkModTime actbuf
         return ()
     closePane pane = do makeActive pane
@@ -464,15 +465,17 @@ builder' bs mbfn ind bn rbn ct prefs pp nb windows = do
         mode = mod}
     -- events
     ids1 <- sv `afterFocusIn` makeActive buf
-    ids2 <- onCompletion sv (Completion.complete sv False) Completion.cancel
+    ids2 <- onCompletion sv (do
+            Completion.complete sv False) $ do
+                Completion.cancel
     ids3 <- sv `onButtonPress`
         \event -> do
             liftIO $ reflectIDE (do
-                case eventClick event of
-                    DoubleClick -> do
+                case GtkOld.eventClick event of
+                    GtkOld.DoubleClick -> do
                         (start, end) <- getIdentifierUnderCursor buffer
                         liftIO $ postGUIAsync $ reflectIDE (selectRange buffer start end) ideR
-                        return False
+                        return True
                     _ -> return False) ideR
     (GetTextPopup mbTpm) <- triggerEvent ideR (GetTextPopup Nothing)
     ids4 <- case mbTpm of
@@ -516,7 +519,7 @@ builder' bs mbfn ind bn rbn ct prefs pp nb windows = do
                         ("minus",[GtkOld.Control],_) -> do
                             (start, end) <- getIdentifierUnderCursor buffer
                             slice <- getSlice buffer start end True
-                            launchSymbolNavigationDialog slice goToDefinition
+                            launchSymbolNavigationDialog_ slice goToDefinition
                             return True
                         _ -> return False
                 ) ideR
@@ -525,7 +528,9 @@ builder' bs mbfn ind bn rbn ct prefs pp nb windows = do
             (liftIO $ createHyperLinkSupport sv sw (\ctrl shift iter -> do
                             (GtkEditorIter beg,GtkEditorIter en) <- reflectIDE (getIdentifierUnderCursorFromIter (GtkEditorIter iter, GtkEditorIter iter)) ideR
                             return (beg, if ctrl then en else beg)) (\_ _ slice -> do
-                                        reflectIDE (launchSymbolNavigationDialog slice goToDefinition) ideR
+                                        when (slice /= []) $ do
+                                            liftIO$ print ("slice",slice)
+                                            void $ reflectIDE (triggerEventIDE (SearchMeta slice)) ideR
                                         ))
 
 #ifdef LEKSAH_WITH_YI
@@ -1237,3 +1242,8 @@ editCandy = do
         then mapM_ (\b -> modeEditToCandy (mode b)
             (modeEditInCommentOrString (mode b))) buffers
         else mapM_ (modeEditFromCandy . mode) buffers
+
+
+focusLastSourceBuffer = do
+    mbBuf <- maybeActiveBuf
+    return ()

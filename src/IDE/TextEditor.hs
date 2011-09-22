@@ -137,8 +137,9 @@ module IDE.TextEditor (
 
 import Prelude hiding(getChar, getLine)
 import Data.Char (isAlphaNum, isSymbol)
-import Data.Maybe (fromJust)
-import Control.Monad (when)
+import Data.Maybe (fromJust, maybeToList)
+import Data.IORef
+import Control.Monad (when, void)
 import Control.Monad.Reader (liftIO, ask)
 import Control.Applicative ((<$>))
 
@@ -152,6 +153,7 @@ import Graphics.UI.Gtk.Multiline.TextTag
 import Graphics.UI.Gtk.Gdk.Cursor
 import Graphics.Rendering.Pango
 import System.Glib.Attributes
+import System.Glib.MainLoop
 import qualified Graphics.UI.Gtk.Multiline.TextView as Gtk
 import qualified Graphics.UI.Gtk.Gdk.Events as GtkOld
 import System.Glib.Attributes (AttrOp(..))
@@ -1108,22 +1110,34 @@ onCompletion (GtkEditorView sv) start cancel = do
     ideR <- ask
     (GtkEditorBuffer sb) <- getBuffer (GtkEditorView sv)
     liftIO $ do
+        -- when multiple afterBufferInsertText are called quickly,
+        -- we cancel previous idle action which was not processed,
+        -- its handler is stored here.
+        -- Paste operation is example of such sequential events (each word!).
+        lastHandler <- newIORef Nothing
         id1 <- sb `Gtk.afterBufferInsertText` \iter text -> do
-            let isIdent a = isAlphaNum a || a == '\'' || a == '_' || a == '.'
-            let isOp    a = isSymbol   a || a == ':'  || a == '\\' || a == '*' || a == '/' || a == '-'
-                                         || a == '!'  || a == '@' || a == '%' || a == '&' || a == '?'
-            if (all isIdent text) || (all isOp text)
-                then do
-                    hasSel <- Gtk.textBufferHasSelection sb
-                    if not hasSel
+            mapM_ idleRemove =<< maybeToList <$> readIORef lastHandler
+            writeIORef lastHandler =<< Just <$> do
+                (flip idleAdd) priorityDefault $ do
+                    let isIdent a = isAlphaNum a || a == '\'' || a == '_' || a == '.'
+                    let isOp    a = isSymbol   a || a == ':'  || a == '\\' || a == '*' || a == '/' || a == '-'
+                                                 || a == '!'  || a == '@' || a == '%' || a == '&' || a == '?'
+                    if (all isIdent text) || (all isOp text)
                         then do
-                            (iterC, _) <- Gtk.textBufferGetSelectionBounds sb
-                            atC <- Gtk.textIterEqual iter iterC
-                            when atC $ reflectIDE start ideR
-                        else
+                            hasSel <- Gtk.textBufferHasSelection sb
+                            if not hasSel
+                                then do
+                                    (iterC, _) <- Gtk.textBufferGetSelectionBounds sb
+                                    atC <- Gtk.textIterEqual iter iterC
+                                    when atC $ reflectIDE start ideR
+                                    return False
+                                else do
+                                    reflectIDE cancel ideR
+                                    return False
+                        else do
                             reflectIDE cancel ideR
-                else
-                    reflectIDE cancel ideR
+                            return False
+            return ()
 #if MIN_VERSION_gtk(0,10,5)
         id2 <- sv `Gtk.on` Gtk.moveCursor $ \_ _ _ -> reflectIDE cancel ideR
 #else

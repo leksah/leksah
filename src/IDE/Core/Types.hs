@@ -231,6 +231,8 @@ data IDEEvent  =
     |   RecordHistory GUIHistory
     |   Sensitivity [(SensitivityMask,Bool)]
     |   SearchMeta String
+    |   SearchSymbolDialog String
+    |   GotoDefinition Descr
     |   LoadSession FilePath
     |   SaveSession FilePath
     |   UpdateRecent
@@ -253,6 +255,8 @@ instance Event IDEEvent String where
     getSelector (RecordHistory _)       =   "RecordHistory"
     getSelector (Sensitivity _)         =   "Sensitivity"
     getSelector (SearchMeta _)          =   "SearchMeta"
+    getSelector (SearchSymbolDialog _)  =   "SearchSymbolDialog"
+    getSelector (GotoDefinition _)      =   "GotoDefinition"
     getSelector (LoadSession _)         =   "LoadSession"
     getSelector (SaveSession _)         =   "SaveSession"
     getSelector UpdateRecent            =   "UpdateRecent"
@@ -276,6 +280,8 @@ instance EventSource IDERef IDEEvent IDEM String where
     canTriggerEvent _ "Sensitivity"         = True
     canTriggerEvent _ "DescrChoice"         = True
     canTriggerEvent _ "SearchMeta"          = True
+    canTriggerEvent _ "SearchSymbolDialog"  = True
+    canTriggerEvent _ "GotoDefinition"      = True
     canTriggerEvent _ "LoadSession"         = True
     canTriggerEvent _ "SaveSession"         = True
     canTriggerEvent _ "UpdateRecent"        = True
