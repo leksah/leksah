@@ -372,11 +372,28 @@ constructFindReplace = reifyIDE $ \ ideR   -> do
         liftIO $ spinButtonSetRange spinL 1.0 (fromIntegral max)
         return True) ideR))
 
+    spinL `Gtk.onKeyPress`  (\ e -> do
+        case e of
+            k@(Key _ _ _ _ _ _ _ _ _ _)
+                | eventKeyName k == "Escape"               -> do
+                    getOut ideR
+                    return True
+                | eventKeyName k == "Tab"               -> do
+                    re <- getFindEntry toolbar
+                    widgetGrabFocus re
+                    return True
+                | (mapControlCommand Control) `elem` (eventModifier k) ->
+                        ctrl $ map toLower $ eventKeyName k
+                | otherwise                ->  return False
+            _                              ->  return False)
+
+
     spinL `afterEntryActivate` (reflectIDE (inActiveBufContext () $ \_ gtkbuf currentBuffer _ -> do
         line  <- liftIO $ spinButtonGetValueAsInt spinL
         iter  <- getIterAtLine gtkbuf (line - 1)
         placeCursor gtkbuf iter
         scrollToIter (sourceView currentBuffer) iter 0.2 Nothing
+        liftIO $ getOut ideR
         return ()) ideR  )
 
     closeButton `onToolButtonClicked` do
@@ -396,12 +413,7 @@ constructFindReplace = reifyIDE $ \ ideR   -> do
     return toolbar
         where getOut = reflectIDE $ do
                             hideFindbar
-                            mbbuf <- maybeActiveBuf
-                            case mbbuf of
-                                Nothing  -> return ()
-                                Just buf -> do
-                                    grabFocus (sourceView buf)
-                                    return ()
+                            maybeActiveBuf >>= maybe (return ()) makeActive
 
 
 doSearch :: Toolbar -> SearchHint -> IDERef -> IO ()

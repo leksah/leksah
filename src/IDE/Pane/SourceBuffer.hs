@@ -115,13 +115,14 @@ import Graphics.UI.Gtk
         fileChooserSetCurrentFolder, fileChooserSelectFilename)
 import System.Glib.MainLoop (priorityDefaultIdle, idleAdd)
 #if MIN_VERSION_gtk(0,10,5)
-import Graphics.UI.Gtk (windowWindowPosition, Underline(..))
+import Graphics.UI.Gtk (Underline(..))
 #else
 import Graphics.UI.Gtk.Pango.Types (Underline(..))
 #endif
 import qualified Graphics.UI.Gtk as Gtk hiding (eventKeyName)
+import Graphics.UI.Gtk.Windows.Window
 import Graphics.UI.Gtk.General.Enums
-       (WindowPosition(..), ShadowType(..), PolicyType(..))
+       (ShadowType(..), PolicyType(..))
 import Graphics.UI.Gtk.Windows.MessageDialog
        (ButtonsType(..), MessageType(..))
 #if MIN_VERSION_gtk(0,10,5)
@@ -194,7 +195,7 @@ instance RecoverablePane IDEBuffer BufferState IDEM where
         ids4 <- sv `afterToggleOverwrite`  writeOverwriteInStatusbar sv
         activateThisPane actbuf $ concat [ids1, ids2, ids4]
         triggerEventIDE (Sensitivity [(SensitivityEditor, True)])
-
+        grabFocus sv
         checkModTime actbuf
         return ()
     closePane pane = do makeActive pane
