@@ -22,6 +22,7 @@ module IDE.Pane.Grep (
 ) where
 
 import Graphics.UI.Gtk hiding (get)
+import qualified Graphics.UI.Gtk.Gdk.Events as Gdk
 import Text.ParserCombinators.Parsec.Language
 import Text.ParserCombinators.Parsec hiding(Parser)
 import qualified Text.ParserCombinators.Parsec.Token as P
@@ -29,12 +30,14 @@ import Data.Maybe
 import Control.Monad.Reader
 import Data.Typeable
 import IDE.Core.State
+import IDE.BufferMode
 import IDE.Utils.Tool (runTool, ToolOutput(..))
 import Control.Concurrent
        (newEmptyMVar, isEmptyMVar, takeMVar, putMVar, MVar, forkIO)
 import IDE.LogRef (logOutput)
 import IDE.Pane.SourceBuffer
-    (goToSourceDefinition)
+    (goToSourceDefinition, maybeActiveBuf, IDEBuffer(..))
+import IDE.TextEditor (grabFocus)
 import Control.Applicative ((<$>))
 import System.FilePath ((</>), dropFileName)
 import System.Exit (ExitCode(..))
@@ -130,18 +133,42 @@ instance RecoverablePane IDEGrep GrepState IDEM where
         waitingGrep <- newEmptyMVar
         activeGrep <- newEmptyMVar
         let grep = IDEGrep {..}
-
+        let
+            gotoSource :: Bool -> IO Bool
+            gotoSource focus = do
+                sel <- getSelectionGrepRecord treeView grepStore
+                case sel of
+                    Just record -> reflectIDE (do
+                        case record of
+                            GrepRecord {file=f, line=l, parDir=Just pp} ->
+                                (goToSourceDefinition (pp </> f) $ Just $ Location l 0 l 0)
+                                    ?>>= (\b -> when focus $ grabFocus (sourceView b))
+                            _ -> return ()) ideR
+                    Nothing -> return ()
+                return True
         cid1 <- treeView `afterFocusIn`
             (\_ -> do reflectIDE (makeActive grep) ideR ; return True)
-        sel `onSelectionChanged` do
-            sel <- getSelectionGrepRecord treeView grepStore
-            case sel of
-                Just record -> reflectIDE (do
-                    case record of
-                        GrepRecord {file=f, line=l, parDir=Just pp} ->
-                            goToSourceDefinition (pp </> f) $ Just $ Location l 0 l 0
-                        _ -> return ()) ideR
-                Nothing -> return ()
+        cid2 <- treeView `onKeyPress`
+            (\e ->
+                case e of
+                    k@(Gdk.Key _ _ _ _ _ _ _ _ _ _)
+                        | Gdk.eventKeyName k == "Return"  -> do
+                            gotoSource True
+                        | Gdk.eventKeyName k == "Escape"  -> do
+                            reflectIDE (do
+                                lastActiveBufferPane ?>>= \paneName -> do
+                                    (PaneC pane) <- paneFromName paneName
+                                    makeActive pane
+                                    return ()
+                                triggerEventIDE StartFindInitial) ideR
+                            return True
+                            -- gotoSource True
+                        | otherwise -> do
+                            return False
+                    _ -> return False
+             )
+        sel `onSelectionChanged` (void $ gotoSource False)
+
 
         return (Just grep,[ConnectC cid1])
 
@@ -217,8 +244,10 @@ grepDirectories regexString caseSensitive dirs = do
             nooneWaiting <- isEmptyMVar (waitingGrep grep)
             when nooneWaiting $ do
                 nDir <- postGUISync $ treeModelIterNChildren store Nothing
-                postGUIAsync $ treeStoreInsert store [] nDir $
-                    GrepRecord "Search Complete" totalFound "" Nothing
+                postGUIAsync $ do
+                    treeStoreInsert store [] nDir $ GrepRecord "Search Complete" totalFound "" Nothing
+                    when (totalFound > 0) $ do
+                        widgetGrabFocus (treeView grep)
 
             takeMVar (activeGrep grep) >> return ()
     return ()

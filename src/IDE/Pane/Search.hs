@@ -17,9 +17,8 @@
 module IDE.Pane.Search (
     IDESearch(..)
 ,   SearchState
-,   setChoices
 ,   buildSearchPane
-,   searchMetaGUI
+,   launchSymbolNavigationDialog
 ,   getSearch
 ) where
 
@@ -37,8 +36,10 @@ import Graphics.UI.Gtk
         treeViewColumnSetSizing, treeViewColumnSetTitle, treeViewColumnNew,
         cellRendererPixbufNew, cellRendererTextNew, treeViewSetModel,
         treeViewNew, listStoreNew, boxPackEnd, boxPackStart,
-        checkButtonNewWithLabel, toggleButtonSetActive,
-        radioButtonNewWithLabelFromWidget, radioButtonNewWithLabel,
+        checkButtonNewWithLabel, toggleButtonSetActive, ResponseId(..), dialogRun,
+        radioButtonNewWithLabelFromWidget, radioButtonNewWithLabel, buttonNewFromStock,
+        windowSetTransientFor, hButtonBoxNew, dialogGetUpper, dialogGetActionArea, widgetGrabDefault, set, get,
+        dialogNew, onClicked, dialogResponse, widgetHideAll, buttonSetLabel, widgetCanDefault,
         hBoxNew, entryGetText, castToWidget, Entry, VBox, ListStore,
         TreeView, ScrolledWindow, PolicyType(..), SelectionMode(..),
         TreeViewColumnSizing(..), AttrOp(..),
@@ -67,6 +68,10 @@ data IDESearch      =   IDESearch {
 ,   searchModeRef   ::   IORef SearchMode
 ,   topBox          ::   VBox
 ,   entry           ::   Entry
+,   scopeSelection  ::   Scope -> IDEAction
+,   modeSelection   ::   SearchMode -> IDEAction
+,   searchMetaGUI   ::   String -> IDEAction
+,   setChoices     ::   [Descr] -> IDEAction
 } deriving Typeable
 
 data SearchState    =   SearchState {
@@ -90,10 +95,10 @@ instance RecoverablePane IDESearch SearchState IDEM where
         return (Just (SearchState str scope mode))
     recoverState pp (SearchState str scope mode) =   do
         nb      <-  getNotebook pp
-        mbP     <-  buildPane pp nb builder
-        scopeSelection scope
-        modeSelection mode
-        searchMetaGUI str
+        mbP@(Just search)     <-  buildPane pp nb builder
+        (scopeSelection search) scope
+        (modeSelection search) mode
+        (searchMetaGUI search) str
         return mbP
     builder pp nb windows = buildSearchPane
 
@@ -205,7 +210,59 @@ buildSearchPane =
 
         scopeRef  <- newIORef scope
         modeRef   <- newIORef mode
-        let search = IDESearch sw treeView listStore scopeRef modeRef box entry
+        let search = IDESearch sw treeView listStore scopeRef modeRef box entry scopeSelection_ modeSelection_ searchMetaGUI_ setChoices_
+            scopeSelection_ :: Scope -> IDEAction
+            scopeSelection_ scope = do
+                liftIO $ writeIORef (searchScopeRef search) scope
+                text   <- liftIO $ entryGetText entry
+                searchMetaGUI_ text
+
+            modeSelection_ :: SearchMode -> IDEAction
+            modeSelection_ mode = do
+                liftIO $ writeIORef (searchModeRef search) mode
+                text   <- liftIO $ entryGetText entry
+                searchMetaGUI_ text
+            searchMetaGUI_ :: String -> IDEAction
+            searchMetaGUI_ str = do
+                liftIO $ bringPaneToFront search
+                liftIO $ entrySetText entry str
+                scope  <- liftIO $ getScope search
+                mode   <- liftIO $ getMode search
+            --    let mode' = if length str > 2 then mode else Exact (caseSense mode)
+                descrs <- if null str
+                            then return []
+                            else searchMeta scope str mode
+                liftIO $ do
+                    listStoreClear (searchStore search)
+                    mapM_ (listStoreAppend (searchStore search)) (take 500 descrs)
+            modeSelectionCase :: Bool -> IDEAction
+            modeSelectionCase caseSense = do
+                oldMode <- liftIO $ readIORef (searchModeRef search)
+                liftIO $ writeIORef (searchModeRef search) oldMode{caseSense = caseSense}
+                text   <- liftIO $ entryGetText entry
+                searchMetaGUI_ text
+            setChoices_ :: [Descr] -> IDEAction
+            setChoices_ descrs = do
+                liftIO $ do
+                    listStoreClear (searchStore search)
+                    mapM_ (listStoreAppend (searchStore search)) descrs
+                    bringPaneToFront search
+                    entrySetText entry
+                        (case descrs of
+                            []    -> ""
+                            hd: _ -> dscName hd)
+            scopeSelection' rb1 rb2 rb3 cb2 = do
+                scope <- liftIO $ do
+                    withImports <-  toggleButtonGetActive cb2
+                    s1 <- toggleButtonGetActive rb1
+                    s2 <- toggleButtonGetActive rb2
+                    s3 <- toggleButtonGetActive rb3
+                    if s1
+                        then return (PackageScope withImports)
+                        else if s2
+                                then return (WorkspaceScope withImports)
+                                else return (SystemScope)
+                scopeSelection_ scope
 
         cid1 <- treeView `afterFocusIn`
             (\_ -> do reflectIDE (makeActive search) ideR ; return True)
@@ -216,15 +273,15 @@ buildSearchPane =
         mb1 `onToggled` do
             widgetSetSensitivity mb4 False
             active <- toggleButtonGetActive mb4
-            (reflectIDE (modeSelection (Exact active)) ideR )
+            (reflectIDE (modeSelection_ (Exact active)) ideR )
         mb2 `onToggled`do
             widgetSetSensitivity mb4 True
             active <- toggleButtonGetActive mb4
-            (reflectIDE (modeSelection (Prefix active)) ideR )
+            (reflectIDE (modeSelection_ (Prefix active)) ideR )
         mb3 `onToggled` do
             widgetSetSensitivity mb4 True
             active <- toggleButtonGetActive mb4
-            (reflectIDE (modeSelection (Regex active)) ideR )
+            (reflectIDE (modeSelection_ (Regex active)) ideR )
         mb4 `onToggled` do
             active <- toggleButtonGetActive mb4
             (reflectIDE (modeSelectionCase active) ideR )
@@ -235,7 +292,7 @@ buildSearchPane =
 --                fillInfo search ideR
         entry `afterKeyRelease` (\ event -> do
             text <- entryGetText entry
-            reflectIDE (searchMetaGUI text) ideR
+            reflectIDE (searchMetaGUI_ text) ideR
             return False)
         return (Just search,[ConnectC cid1])
 
@@ -250,55 +307,7 @@ getSearch :: Maybe PanePath -> IDEM IDESearch
 getSearch Nothing = forceGetPane (Right "*Search")
 getSearch (Just pp)  = forceGetPane (Left pp)
 
-scopeSelection' rb1 rb2 rb3 cb2 = do
-    scope <- liftIO $ do
-        withImports <-  toggleButtonGetActive cb2
-        s1 <- toggleButtonGetActive rb1
-        s2 <- toggleButtonGetActive rb2
-        s3 <- toggleButtonGetActive rb3
-        if s1
-            then return (PackageScope withImports)
-            else if s2
-                    then return (WorkspaceScope withImports)
-                    else return (SystemScope)
-    scopeSelection scope
 
-scopeSelection :: Scope -> IDEAction
-scopeSelection scope = do
-    search <- getSearch Nothing
-    liftIO $ writeIORef (searchScopeRef search) scope
-    text   <- liftIO $ entryGetText (entry search)
-    searchMetaGUI text
-
-modeSelection :: SearchMode -> IDEAction
-modeSelection mode = do
-    search <- getSearch Nothing
-    liftIO $ writeIORef (searchModeRef search) mode
-    text   <- liftIO $ entryGetText (entry search)
-    searchMetaGUI text
-
-modeSelectionCase :: Bool -> IDEAction
-modeSelectionCase caseSense = do
-    search <- getSearch Nothing
-    oldMode <- liftIO $ readIORef (searchModeRef search)
-    liftIO $ writeIORef (searchModeRef search) oldMode{caseSense = caseSense}
-    text   <- liftIO $ entryGetText (entry search)
-    searchMetaGUI text
-
-searchMetaGUI :: String -> IDEAction
-searchMetaGUI str = do
-    search <- getSearch Nothing
-    liftIO $ bringPaneToFront search
-    liftIO $ entrySetText (entry search) str
-    scope  <- liftIO $ getScope search
-    mode   <- liftIO $ getMode search
---    let mode' = if length str > 2 then mode else Exact (caseSense mode)
-    descrs <- if null str
-                then return []
-                else searchMeta scope str mode
-    liftIO $ do
-        listStoreClear (searchStore search)
-        mapM_ (listStoreAppend (searchStore search)) (take 500 descrs)
 
 handleEvent :: IDERef
     -> ListStore Descr
@@ -362,19 +371,34 @@ getSelectionDescr treeView listStore = do
 --            entrySetText (entry search) (descrName descr)
 --        otherwise       ->  return ()
 
-setChoices :: [Descr] -> IDEAction
-setChoices descrs = do
-    search <- getSearch Nothing
-    liftIO $ do
-        listStoreClear (searchStore search)
-        mapM_ (listStoreAppend (searchStore search)) descrs
-        bringPaneToFront search
-        entrySetText (entry search)
-            (case descrs of
-                []    -> ""
-                hd: _ -> dscName hd)
-
 
 launchSymbolNavigationDialog :: String -> (Descr -> IDEM ()) -> IDEM ()
 launchSymbolNavigationDialog txt act = do
+    dia                        <-   liftIO $ dialogNew
+    win <- getMainWindow
+    (Just searchPane, _) <- buildSearchPane
+    liftIO $ do
+        windowSetTransientFor dia win
+        upper                      <-   dialogGetUpper dia
+        lower                      <-   dialogGetActionArea dia
+        boxPackStart upper (topBox searchPane) PackNatural 7
+
+        bb      <-  hButtonBoxNew
+        closeB  <-  buttonNewFromStock "gtk-cancel"
+        okB    <-  buttonNewFromStock "gtk-ok"
+        okB `onClicked` do
+            dialogResponse dia ResponseOk
+            widgetHideAll dia
+        closeB `onClicked` do
+            dialogResponse dia ResponseCancel
+            widgetHideAll dia
+        boxPackEnd bb closeB PackNatural 0
+        boxPackEnd bb okB PackNatural 0
+        boxPackStart lower bb PackNatural 7
+        set okB [widgetCanDefault := True]
+        buttonSetLabel okB "Goto"
+        widgetGrabDefault okB
+        widgetShowAll dia
+        resp  <- dialogRun dia
+        return ()
     return ()

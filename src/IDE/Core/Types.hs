@@ -33,6 +33,7 @@ module IDE.Core.Types (
 ,   IDEAction
 ,   IDEEvent(..)
 ,   liftIDE
+,   (?>>=)
 
 ,   WorkspaceM
 ,   WorkspaceAction
@@ -191,6 +192,13 @@ data IDEState =
 liftIDE :: IDEM a -> WorkspaceM a
 liftIDE = lift
 
+(?>>=) :: Monad m => (m (Maybe a)) -> (a -> m ()) -> m ()
+a ?>>= b = do
+    mA <- a
+    case mA of
+        Just v -> b v
+        Nothing -> return ()
+
 -- ---------------------------------------------------------------------
 -- Monad for functions that need an open workspace
 --
@@ -231,6 +239,7 @@ data IDEEvent  =
     |   RecordHistory GUIHistory
     |   Sensitivity [(SensitivityMask,Bool)]
     |   SearchMeta String
+    |   StartFindInitial
     |   SearchSymbolDialog String
     |   GotoDefinition Descr
     |   LoadSession FilePath
@@ -255,6 +264,7 @@ instance Event IDEEvent String where
     getSelector (RecordHistory _)       =   "RecordHistory"
     getSelector (Sensitivity _)         =   "Sensitivity"
     getSelector (SearchMeta _)          =   "SearchMeta"
+    getSelector (StartFindInitial)      =   "StartFindInitial"
     getSelector (SearchSymbolDialog _)  =   "SearchSymbolDialog"
     getSelector (GotoDefinition _)      =   "GotoDefinition"
     getSelector (LoadSession _)         =   "LoadSession"
@@ -280,6 +290,7 @@ instance EventSource IDERef IDEEvent IDEM String where
     canTriggerEvent _ "Sensitivity"         = True
     canTriggerEvent _ "DescrChoice"         = True
     canTriggerEvent _ "SearchMeta"          = True
+    canTriggerEvent _ "StartFindInitial"    = True
     canTriggerEvent _ "SearchSymbolDialog"  = True
     canTriggerEvent _ "GotoDefinition"      = True
     canTriggerEvent _ "LoadSession"         = True
@@ -406,6 +417,7 @@ data Prefs = Prefs {
     ,   docuSearchURL       ::   String
     ,   completeRestricted  ::   Bool
     ,   saveAllBeforeBuild  ::   Bool
+    ,   jumpToWarnings      ::   Bool
     ,   backgroundBuild     ::   Bool
     ,   makeMode            ::   Bool
     ,   singleBuildWithoutLinking :: Bool

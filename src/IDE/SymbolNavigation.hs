@@ -106,7 +106,7 @@ createHyperLinkSupport sv sw identifierMapper clickHandler = do
         case ptr of
             Just (_, ptrx, _, _) -> do
                 lnbf <- readIORef lineNumberBugFix
-                print ("ishint?, adjusted, event.x, ptr.x, adjustment,hasControl?",eventIsHintSafe e,ptrx - fromMaybe (-1000) lnbf , Gdk.eventX e, ptrx, lnbf, hasNoControlModifier e)
+                -- print ("ishint?, adjusted, event.x, ptr.x, adjustment,hasControl?",eventIsHintSafe e,ptrx - fromMaybe (-1000) lnbf , Gdk.eventX e, ptrx, lnbf, hasNoControlModifier e)
                 when (eventIsHintSafe e && hasNoControlModifier e) $ do
                     -- get difference between event X and pointer x
                     -- event X is in coordinates of sourceView text

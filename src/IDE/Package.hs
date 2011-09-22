@@ -15,7 +15,6 @@
 --
 ---------------------------------------------------------------------------------
 
-
 module IDE.Package (
     packageConfig
 ,   packageConfig'
@@ -186,8 +185,8 @@ packageConfig' package continuation = do
                 continuation False
                 return()
 
-runCabalBuild :: Bool -> Bool -> IDEPackage -> Bool -> (Bool -> IDEAction) -> IDEAction
-runCabalBuild backgroundBuild withoutLinking package shallConfigure continuation = do
+runCabalBuild :: Bool -> Bool -> Bool -> IDEPackage -> Bool -> (Bool -> IDEAction) -> IDEAction
+runCabalBuild backgroundBuild jumpToWarnings withoutLinking package shallConfigure continuation = do
     prefs   <- readIDE prefs
     let dir =  dropFileName (ipdCabalFile package)
     let args = (["build"] ++
@@ -196,12 +195,12 @@ runCabalBuild backgroundBuild withoutLinking package shallConfigure continuation
                     else []
                         ++ ipdBuildFlags package)
     runExternalTool "Building" "cabal" args (Just dir) $ \output -> do
-        logOutputForBuild package backgroundBuild output
+        logOutputForBuild package backgroundBuild jumpToWarnings output
         errs <- readIDE errorRefs
         if shallConfigure && isConfigError output
             then
                 packageConfig' package (\ b ->
-                    when b $ runCabalBuild backgroundBuild withoutLinking package False continuation)
+                    when b $ runCabalBuild backgroundBuild jumpToWarnings withoutLinking package False continuation)
             else do
                 continuation (last output == ToolExit ExitSuccess)
                 return ()
@@ -214,8 +213,8 @@ isConfigError = or . (map isCErr)
     str1 = "Run the 'configure' command first"
     str2 = "please re-configure"
 
-buildPackage :: Bool -> Bool -> IDEPackage -> (Bool -> IDEAction) -> IDEAction
-buildPackage backgroundBuild withoutLinking package continuation = catchIDE (do
+buildPackage :: Bool -> Bool -> Bool -> IDEPackage -> (Bool -> IDEAction) -> IDEAction
+buildPackage backgroundBuild jumpToWarnings withoutLinking package continuation = catchIDE (do
     ideR      <- ask
     prefs     <- readIDE prefs
     maybeDebug <- readIDE debugState
@@ -228,19 +227,19 @@ buildPackage backgroundBuild withoutLinking package continuation = catchIDE (do
                     when (not backgroundBuild) $ liftIO $ do
                         timeoutAddFull (do
                             reflectIDE (do
-                                buildPackage backgroundBuild withoutLinking
+                                buildPackage backgroundBuild jumpToWarnings withoutLinking
                                                 package continuation
                                 return False) ideR
                             return False) priorityDefaultIdle 1000
                         return ()
-                else runCabalBuild backgroundBuild withoutLinking package True continuation
+                else runCabalBuild backgroundBuild jumpToWarnings withoutLinking package True continuation
         Just debug@(_, ghci) -> do
             -- TODO check debug package matches active package
             ready <- liftIO $ isEmptyMVar (currentToolCommand ghci)
             when ready $ do
                 let dir = dropFileName (ipdCabalFile package)
                 when (saveAllBeforeBuild prefs) (do fileSaveAll belongsToWorkspace; return ())
-                runDebug (executeDebugCommand ":reload" (logOutputForBuild package backgroundBuild)) debug
+                runDebug (executeDebugCommand ":reload" (logOutputForBuild package backgroundBuild jumpToWarnings)) debug
     )
     (\(e :: SomeException) -> sysMessage Normal (show e))
 
@@ -578,7 +577,7 @@ debugStart = do
         case maybeDebug of
             Nothing -> do
                 ghci <- reifyIDE $ \ideR -> newGhci (ipdBuildFlags package) (interactiveFlags prefs')
-                    $ \output -> reflectIDE (logOutputForBuild package True output) ideR
+                    $ \output -> reflectIDE (logOutputForBuild package True False output) ideR
                 modifyIDE_ (\ide -> ide {debugState = Just (package, ghci)})
                 triggerEventIDE (Sensitivity [(SensitivityInterpreting, True)])
                 setDebugToggled True
@@ -599,7 +598,7 @@ debugStart = do
                             -- Lets build to make sure the binaries are up to date
                             mbPackage   <- readIDE activePack
                             case mbPackage of
-                                Just package -> runCabalBuild True True package True (\ _ -> return ())
+                                Just package -> runCabalBuild True False True package True (\ _ -> return ())
                                 Nothing -> return ()) ideRef
                 return ()
             _ -> do

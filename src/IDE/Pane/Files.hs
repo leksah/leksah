@@ -36,7 +36,7 @@ import Graphics.UI.Gtk
         treeViewNew, treeStoreNew, castToWidget, TreeStore, TreeView,
         ScrolledWindow)
 import Data.Maybe (isJust)
-import Control.Monad (forM_, when)
+import Control.Monad (forM_, when, void)
 import Control.Monad.Reader (liftIO, MonadReader(..))
 import Data.Typeable (Typeable)
 import IDE.Core.State
@@ -137,7 +137,7 @@ instance RecoverablePane IDEFiles FilesState IDEM where
             record <- treeStoreGetValue fileStore path
             reflectIDE (do
                 case record of
-                    FileRecord f      -> goToSourceDefinition f $ Just $ Location 1 0 1 0
+                    FileRecord f      -> void $ goToSourceDefinition f $ Just $ Location 1 0 1 0
                     DirRecord f       -> liftIO $ refreshDir fileStore path f
                     PackageRecord _ f -> liftIO $ refreshDir fileStore path f
                     _                 -> ideMessage Normal "Unexpected Activation in Files Pane") ideR

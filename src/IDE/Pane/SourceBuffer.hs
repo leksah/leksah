@@ -70,7 +70,6 @@ module IDE.Pane.SourceBuffer (
 ,   selectedLocation
 ,   recentSourceBuffers
 ,   newTextBuffer
-,   focusLastSourceBuffer
 ,   belongsToPackage
 ,   belongsToWorkspace
 ,   getIdentifierUnderCursorFromIter
@@ -247,7 +246,7 @@ goToDefinition idDescr  = do
                                                 Just si -> sourcePathFromScope si
                                                 Nothing -> Nothing
     when (isJust mbSourcePath2) $
-        goToSourceDefinition (fromJust $ mbSourcePath2) (dscMbLocation idDescr)
+        void $ goToSourceDefinition (fromJust $ mbSourcePath2) (dscMbLocation idDescr)
     return ()
     where
     sourcePathFromScope :: GenScope -> Maybe FilePath
@@ -262,7 +261,7 @@ goToDefinition idDescr  = do
                             Nothing -> Nothing
             Nothing -> Nothing
 
-goToSourceDefinition :: FilePath -> Maybe Location -> IDEAction
+goToSourceDefinition :: FilePath -> Maybe Location -> IDEM (Maybe IDEBuffer)
 goToSourceDefinition fp dscMbLocation = do
     liftIO $ putStrLn $ "goToSourceDefinition " ++ fp
     mbBuf     <- selectSourceBuf fp
@@ -287,6 +286,7 @@ goToSourceDefinition fp dscMbLocation = do
                 reflectIDE (scrollToIter (sourceView buf) iter 0.0 (Just (0.3,0.3))) ideR
                 return False) priorityDefaultIdle
             return ()
+    return mbBuf
 
 insertInBuffer :: Descr -> IDEAction
 insertInBuffer idDescr = do
@@ -517,12 +517,19 @@ builder' bs mbfn ind bn rbn ct prefs pp nb windows = do
                             there <- calculateNewPosition backwardCharC
                             delete buffer here there
                             return True
+                        ("underscore",[GtkOld.Shift, GtkOld.Control],_) -> do
+                            (start, end) <- getIdentifierUnderCursor buffer
+                            slice <- getSlice buffer start end True
+                            triggerEventIDE (SearchSymbolDialog slice)
+                            return True
                         ("minus",[GtkOld.Control],_) -> do
                             (start, end) <- getIdentifierUnderCursor buffer
                             slice <- getSlice buffer start end True
                             launchSymbolNavigationDialog_ slice goToDefinition
                             return True
-                        _ -> return False
+                        _ -> do
+                            liftIO $ print ("sourcebuffer key:",name,modifier,keyval)
+                            return False
                 ) ideR
     ids6 <- case sv of
         GtkEditorView sv -> do
@@ -1245,6 +1252,3 @@ editCandy = do
         else mapM_ (modeEditFromCandy . mode) buffers
 
 
-focusLastSourceBuffer = do
-    mbBuf <- maybeActiveBuf
-    return ()

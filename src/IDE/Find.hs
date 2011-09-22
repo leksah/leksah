@@ -309,9 +309,7 @@ constructFindReplace = reifyIDE $ \ ideR   -> do
 
 
     entry `onEntryActivate` doSearch toolbar Forward ideR
-    entry `Gtk.onFocusIn` \_ -> do
-        reflectIDE (triggerEventIDE (Sensitivity [(SensitivityEditor, False)])) ideR
-        return False
+    entry `Gtk.onFocusIn` \_ -> reflectIDE (triggerEventIDE (Sensitivity [(SensitivityEditor, False)]) >> return False) ideR
 
 
     replaceButton `onToolButtonClicked` replace toolbar Forward ideR
@@ -413,7 +411,7 @@ constructFindReplace = reifyIDE $ \ ideR   -> do
     return toolbar
         where getOut = reflectIDE $ do
                             hideFindbar
-                            maybeActiveBuf >>= maybe (return ()) makeActive
+                            maybeActiveBuf ?>>= makeActive
 
 
 doSearch :: Toolbar -> SearchHint -> IDERef -> IO ()
