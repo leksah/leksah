@@ -236,7 +236,7 @@ grepDirectories regexString caseSensitive dirs = do
                 found <- if nooneWaiting
                     then do
                         (output, pid) <- runTool "grep" ((if caseSensitive then [] else ["-i"])
-                            ++ ["-r", "-E", "-n", "--exclude=*~", regexString] ++ subDirs) (Just dir)
+                            ++ ["-r", "-E", "-n", "-I", "--exclude=*~", "--exclude-dir=.svn", regexString] ++ subDirs) (Just dir)
                         reflectIDE (setGrepResults dir output) ideRef
                     else return 0
                 return $ a + found) 0 dirs
