@@ -1189,9 +1189,8 @@ onMotionNotify (GtkEditorView sv) f = do
 onMotionNotify (YiEditorView v) f = do
     ideR <- ask
     liftIO $ do
-        id1 <- sv `Gtk.on` Gtk.motionNotifyEvent $ do
-            ex          <- Gtk.eventX
-            ey          <- Gtk.eventY
+        id1 <- (Yi.drawArea v) `Gtk.on` Gtk.motionNotifyEvent $ do
+            (ex,ey)     <- Gtk.eventCoordinates
             modifier    <- Gtk.eventModifier
             liftIO $ reflectIDE (f ex ey modifier) ideR
         return [ConnectC id1]
@@ -1210,7 +1209,7 @@ onLeaveNotify (GtkEditorView sv) f = do
 onLeaveNotify (YiEditorView v) f = do
     ideR <- ask
     liftIO $ do
-        id1 <- sv `Gtk.on` Gtk.leaveNotifyEvent $ do
+        id1 <- (Yi.drawArea v) `Gtk.on` Gtk.leaveNotifyEvent $ do
             liftIO $ reflectIDE (f) ideR
         return [ConnectC id1]
 #endif
