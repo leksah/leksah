@@ -220,9 +220,9 @@ stockIdFromType _               =   "ide_other"
 
 -- maps control key for Macos
 #if defined(darwin_HOST_OS)
-mapControlCommand GtkOld.Alt = GtkOld.Control
+mapControlCommand Alt = Control
 #endif
-mapControlCommand = id
+mapControlCommand a = a
 
 
 
