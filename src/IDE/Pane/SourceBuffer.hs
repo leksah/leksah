@@ -73,7 +73,7 @@ module IDE.Pane.SourceBuffer (
 ,   belongsToPackage
 ,   belongsToWorkspace
 ,   getIdentifierUnderCursorFromIter
-,   launchAutoCompleteDialog
+,   launchSymbolNavigationDialog_
 
 ) where
 
@@ -90,7 +90,6 @@ import Data.Char
 import Data.Typeable
 import qualified Data.Set as Set
 
-import Graphics.UI.Gtk.Gdk.Events as Gtk
 import IDE.Core.State
 import IDE.Utils.GUIUtils(getCandyState)
 import IDE.Utils.FileUtils
@@ -110,18 +109,19 @@ import Graphics.UI.Gtk
        (Notebook, clipboardGet, selectionClipboard, dialogAddButton, widgetDestroy,
         fileChooserGetFilename, widgetShow, fileChooserDialogNew,
         notebookGetNthPage, notebookPageNum, widgetHide, dialogRun,
-        messageDialogNew, postGUIAsync, scrolledWindowSetShadowType,
-        scrolledWindowSetPolicy, dialogSetDefaultResponse,
+        messageDialogNew, scrolledWindowSetShadowType,
+        scrolledWindowSetPolicy, dialogSetDefaultResponse, postGUIAsync,
         fileChooserSetCurrentFolder, fileChooserSelectFilename)
 import System.Glib.MainLoop (priorityDefaultIdle, idleAdd)
 #if MIN_VERSION_gtk(0,10,5)
-import Graphics.UI.Gtk (windowWindowPosition, Underline(..))
+import Graphics.UI.Gtk (Underline(..))
 #else
 import Graphics.UI.Gtk.Pango.Types (Underline(..))
 #endif
 import qualified Graphics.UI.Gtk as Gtk hiding (eventKeyName)
+import Graphics.UI.Gtk.Windows.Window
 import Graphics.UI.Gtk.General.Enums
-       (WindowPosition(..), ShadowType(..), PolicyType(..))
+       (ShadowType(..), PolicyType(..))
 import Graphics.UI.Gtk.Windows.MessageDialog
        (ButtonsType(..), MessageType(..))
 #if MIN_VERSION_gtk(0,10,5)
@@ -190,10 +190,11 @@ instance RecoverablePane IDEBuffer BufferState IDEM where
         writeOverwriteInStatusbar sv
         ids1 <- eBuf `afterModifiedChanged` markActiveLabelAsChanged
         ids2 <- sv `afterMoveCursor` writeCursorPositionInStatusbar sv
-        ids3 <- sv `onLookupInfo` selectInfo sv
+        -- ids3 <- sv `onLookupInfo` selectInfo sv       -- obsolete by hyperlinks
         ids4 <- sv `afterToggleOverwrite`  writeOverwriteInStatusbar sv
-        activateThisPane actbuf $ concat [ids1, ids2, ids3, ids4]
+        activateThisPane actbuf $ concat [ids1, ids2, ids4]
         triggerEventIDE (Sensitivity [(SensitivityEditor, True)])
+        grabFocus sv
         checkModTime actbuf
         return ()
     closePane pane = do makeActive pane
@@ -245,7 +246,7 @@ goToDefinition idDescr  = do
                                                 Just si -> sourcePathFromScope si
                                                 Nothing -> Nothing
     when (isJust mbSourcePath2) $
-        goToSourceDefinition (fromJust $ mbSourcePath2) (dscMbLocation idDescr)
+        void $ goToSourceDefinition (fromJust $ mbSourcePath2) (dscMbLocation idDescr)
     return ()
     where
     sourcePathFromScope :: GenScope -> Maybe FilePath
@@ -260,7 +261,7 @@ goToDefinition idDescr  = do
                             Nothing -> Nothing
             Nothing -> Nothing
 
-goToSourceDefinition :: FilePath -> Maybe Location -> IDEAction
+goToSourceDefinition :: FilePath -> Maybe Location -> IDEM (Maybe IDEBuffer)
 goToSourceDefinition fp dscMbLocation = do
     liftIO $ putStrLn $ "goToSourceDefinition " ++ fp
     mbBuf     <- selectSourceBuf fp
@@ -285,6 +286,7 @@ goToSourceDefinition fp dscMbLocation = do
                 reflectIDE (scrollToIter (sourceView buf) iter 0.0 (Just (0.3,0.3))) ideR
                 return False) priorityDefaultIdle
             return ()
+    return mbBuf
 
 insertInBuffer :: Descr -> IDEAction
 insertInBuffer idDescr = do
@@ -464,15 +466,17 @@ builder' bs mbfn ind bn rbn ct prefs pp nb windows = do
         mode = mod}
     -- events
     ids1 <- sv `afterFocusIn` makeActive buf
-    ids2 <- onCompletion sv (Completion.complete sv False) Completion.cancel
+    ids2 <- onCompletion sv (do
+            Completion.complete sv False) $ do
+                Completion.cancel
     ids3 <- sv `onButtonPress`
         \event -> do
             liftIO $ reflectIDE (do
-                case eventClick event of
-                    DoubleClick -> do
+                case GtkOld.eventClick event of
+                    GtkOld.DoubleClick -> do
                         (start, end) <- getIdentifierUnderCursor buffer
                         liftIO $ postGUIAsync $ reflectIDE (selectRange buffer start end) ideR
-                        return False
+                        return True
                     _ -> return False) ideR
     (GetTextPopup mbTpm) <- triggerEvent ideR (GetTextPopup Nothing)
     ids4 <- case mbTpm of
@@ -495,13 +499,7 @@ builder' bs mbfn ind bn rbn ct prefs pp nb windows = do
                             when (not keepSelBound) $ do
                                 sb <- getSelectionBoundMark buffer
                                 moveMark buffer sb nsel
-#if defined(darwin_HOST_OS)
-                    let mapCommand GtkOld.Alt = GtkOld.Control
-                        mapCommand x = x
-#else
-                    let mapCommand = id
-#endif
-                    case (name, map mapCommand modifier, keyval) of
+                    case (name, map mapControlCommand modifier, keyval) of
                         ("Left",[GtkOld.Control],_) -> do
                             calculateNewPosition backwardCharC >>= continueSelection False
                             return True
@@ -519,14 +517,34 @@ builder' bs mbfn ind bn rbn ct prefs pp nb windows = do
                             there <- calculateNewPosition backwardCharC
                             delete buffer here there
                             return True
+                        ("underscore",[GtkOld.Shift, GtkOld.Control],_) -> do
+                            (start, end) <- getIdentifierUnderCursor buffer
+                            slice <- getSlice buffer start end True
+                            triggerEventIDE (SearchSymbolDialog slice)
+                            return True
                         ("minus",[GtkOld.Control],_) -> do
                             (start, end) <- getIdentifierUnderCursor buffer
                             slice <- getSlice buffer start end True
-                            launchAutoCompleteDialog slice goToDefinition
+                            launchSymbolNavigationDialog_ slice goToDefinition
                             return True
-                        _ -> return False
+                        _ -> do
+                            liftIO $ print ("sourcebuffer key:",name,modifier,keyval)
+                            return False
                 ) ideR
-    return (Just buf,concat [ids1, ids2, ids3, ids4, ids5])
+    ids6 <- case sv of
+        GtkEditorView sv -> do
+            (liftIO $ createHyperLinkSupport sv sw (\ctrl shift iter -> do
+                            (GtkEditorIter beg,GtkEditorIter en) <- reflectIDE (getIdentifierUnderCursorFromIter (GtkEditorIter iter, GtkEditorIter iter)) ideR
+                            return (beg, if ctrl then en else beg)) (\_ _ slice -> do
+                                        when (slice /= []) $ do
+                                            liftIO$ print ("slice",slice)
+                                            void $ reflectIDE (triggerEventIDE (SearchMeta slice)) ideR
+                                        ))
+
+#ifdef LEKSAH_WITH_YI
+        _ -> return []
+#endif
+    return (Just buf,concat [ids1, ids2, ids3, ids4, ids5, ids6])
 
 isIdent a = isAlphaNum a || a == '\'' || a == '_'       -- parts of haskell identifiers
 
@@ -1232,3 +1250,5 @@ editCandy = do
         then mapM_ (\b -> modeEditToCandy (mode b)
             (modeEditInCommentOrString (mode b))) buffers
         else mapM_ (modeEditFromCandy . mode) buffers
+
+

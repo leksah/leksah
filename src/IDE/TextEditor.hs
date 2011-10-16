@@ -130,18 +130,30 @@ module IDE.TextEditor (
 ,   onKeyPress
 ,   onKeyRelease
 ,   onLookupInfo
+,   onMotionNotify
+,   onLeaveNotify
 ,   onPopulatePopup
 ) where
 
 import Prelude hiding(getChar, getLine)
 import Data.Char (isAlphaNum, isSymbol)
-import Data.Maybe (fromJust)
-import Control.Monad (when)
+import Data.Maybe (fromJust, maybeToList)
+import Data.IORef
+import Control.Monad (when, void)
 import Control.Monad.Reader (liftIO, ask)
 import Control.Applicative ((<$>))
 
 import qualified Graphics.UI.Gtk as Gtk hiding(afterToggleOverwrite)
 import qualified Graphics.UI.Gtk.SourceView as Gtk
+import Graphics.UI.Gtk.Multiline.TextTagTable
+import qualified Graphics.UI.Gtk.Multiline.TextBuffer as Gtk
+import qualified  Graphics.UI.Gtk.Multiline.TextView as Gtk
+import qualified Graphics.UI.Gtk.Scrolling.ScrolledWindow
+import Graphics.UI.Gtk.Multiline.TextTag
+import Graphics.UI.Gtk.Gdk.Cursor
+import Graphics.Rendering.Pango
+import System.Glib.Attributes
+import System.Glib.MainLoop
 import qualified Graphics.UI.Gtk.Multiline.TextView as Gtk
 import qualified Graphics.UI.Gtk.Gdk.Events as GtkOld
 import System.Glib.Attributes (AttrOp(..))
@@ -190,6 +202,7 @@ data EditorTag = GtkEditorTag Gtk.TextTag
 #ifdef LEKSAH_WITH_YI
     | YiEditorTag
 #endif
+
 
 #ifdef LEKSAH_WITH_YI
 withYiBuffer' :: Yi.BufferRef -> Yi.BufferM a -> IDEM a
@@ -1097,22 +1110,34 @@ onCompletion (GtkEditorView sv) start cancel = do
     ideR <- ask
     (GtkEditorBuffer sb) <- getBuffer (GtkEditorView sv)
     liftIO $ do
+        -- when multiple afterBufferInsertText are called quickly,
+        -- we cancel previous idle action which was not processed,
+        -- its handler is stored here.
+        -- Paste operation is example of such sequential events (each word!).
+        lastHandler <- newIORef Nothing
         id1 <- sb `Gtk.afterBufferInsertText` \iter text -> do
-            let isIdent a = isAlphaNum a || a == '\'' || a == '_' || a == '.'
-            let isOp    a = isSymbol   a || a == ':'  || a == '\\' || a == '*' || a == '/' || a == '-'
-                                         || a == '!'  || a == '@' || a == '%' || a == '&' || a == '?'
-            if (all isIdent text) || (all isOp text)
-                then do
-                    hasSel <- Gtk.textBufferHasSelection sb
-                    if not hasSel
+            mapM_ idleRemove =<< maybeToList <$> readIORef lastHandler
+            writeIORef lastHandler =<< Just <$> do
+                (flip idleAdd) priorityDefault $ do
+                    let isIdent a = isAlphaNum a || a == '\'' || a == '_' || a == '.'
+                    let isOp    a = isSymbol   a || a == ':'  || a == '\\' || a == '*' || a == '/' || a == '-'
+                                                 || a == '!'  || a == '@' || a == '%' || a == '&' || a == '?'
+                    if (all isIdent text) || (all isOp text)
                         then do
-                            (iterC, _) <- Gtk.textBufferGetSelectionBounds sb
-                            atC <- Gtk.textIterEqual iter iterC
-                            when atC $ reflectIDE start ideR
-                        else
+                            hasSel <- Gtk.textBufferHasSelection sb
+                            if not hasSel
+                                then do
+                                    (iterC, _) <- Gtk.textBufferGetSelectionBounds sb
+                                    atC <- Gtk.textIterEqual iter iterC
+                                    when atC $ reflectIDE start ideR
+                                    return False
+                                else do
+                                    reflectIDE cancel ideR
+                                    return False
+                        else do
                             reflectIDE cancel ideR
-                else
-                    reflectIDE cancel ideR
+                            return False
+            return ()
 #if MIN_VERSION_gtk(0,10,5)
         id2 <- sv `Gtk.on` Gtk.moveCursor $ \_ _ _ -> reflectIDE cancel ideR
 #else
@@ -1148,6 +1173,48 @@ onKeyPress (YiEditorView v) f = do
             liftIO $ reflectIDE (f name modifier keyVal) ideR
         return [ConnectC id1]
 #endif
+
+onMotionNotify :: EditorView
+              -> (Double -> Double -> [Gtk.Modifier] -> IDEM Bool)
+              -> IDEM [Connection]
+onMotionNotify (GtkEditorView sv) f = do
+    ideR <- ask
+    liftIO $ do
+        id1 <- sv `Gtk.on` Gtk.motionNotifyEvent $ do
+            (ex,ey)     <- Gtk.eventCoordinates
+            modifier    <- Gtk.eventModifier
+            liftIO $ reflectIDE (f ex ey modifier) ideR
+        return [ConnectC id1]
+#ifdef LEKSAH_WITH_YI
+onMotionNotify (YiEditorView v) f = do
+    ideR <- ask
+    liftIO $ do
+        id1 <- sv `Gtk.on` Gtk.motionNotifyEvent $ do
+            ex          <- Gtk.eventX
+            ey          <- Gtk.eventY
+            modifier    <- Gtk.eventModifier
+            liftIO $ reflectIDE (f ex ey modifier) ideR
+        return [ConnectC id1]
+#endif
+
+onLeaveNotify :: EditorView
+              -> (IDEM Bool)
+              -> IDEM [Connection]
+onLeaveNotify (GtkEditorView sv) f = do
+    ideR <- ask
+    liftIO $ do
+        id1 <- sv `Gtk.on` Gtk.leaveNotifyEvent $ do
+            liftIO $ reflectIDE (f) ideR
+        return [ConnectC id1]
+#ifdef LEKSAH_WITH_YI
+onLeaveNotify (YiEditorView v) f = do
+    ideR <- ask
+    liftIO $ do
+        id1 <- sv `Gtk.on` Gtk.leaveNotifyEvent $ do
+            liftIO $ reflectIDE (f) ideR
+        return [ConnectC id1]
+#endif
+
 
 onKeyRelease :: EditorView
                 -> (String -> [Gtk.Modifier] -> Gtk.KeyVal -> IDEM Bool)
@@ -1209,6 +1276,5 @@ onPopulatePopup (YiEditorView v) f = do
              Gtk.menuPopup menu Nothing
         return [ConnectC id1]
 #endif
-
 
 

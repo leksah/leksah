@@ -1,4 +1,4 @@
-module IDE.SymbolNavigation (launchAutoCompleteDialog)
+module IDE.SymbolNavigation (launchSymbolNavigationDialog_, createHyperLinkSupport, mapControlCommand)
 
 where
 
@@ -6,12 +6,15 @@ import Data.List
 import Data.Ord
 import Data.Maybe
 import Data.Monoid
+import Data.IORef
 import IDE.Core.Types
 import IDE.Core.CTypes
 import IDE.Core.State
 import IDE.Metainfo.Provider
-import Graphics.UI.Gtk.Gdk.Events as Gdk
-import Graphics.UI.Gtk as Gtk
+import IDE.Utils.GUIUtils
+import qualified Graphics.UI.Gtk.Gdk.Events as Gdk
+import Graphics.UI.Gtk.Gdk.Cursor
+import Graphics.UI.Gtk
 import Graphics.UI.Frame.ViewFrame
 import qualified Data.Set as Set
 import Control.Monad.Reader
@@ -20,13 +23,117 @@ import Distribution.ModuleName
 import qualified Data.Text as T
 import qualified Data.ByteString as BS
 import qualified Data.ByteString.Internal as BS
+import qualified Graphics.UI.Gtk.Multiline.TextBuffer
+import Graphics.UI.Gtk.SourceView.SourceGutter
+import Graphics.UI.Gtk.SourceView
+import qualified Graphics.UI.Gtk.Multiline.TextView
+import qualified Graphics.UI.Gtk.Scrolling.ScrolledWindow
 
 data Locality = LocalityPackage  | LocalityWorkspace | LocalitySystem  -- in which category symbol is located
     deriving (Ord,Eq,Show)
 
+createHyperLinkSupport  ::
+        SourceView ->                     -- ^ source buffer view
+        ScrolledWindow ->               -- ^ container window
+        (Bool -> Bool -> TextIter -> IO (TextIter, TextIter)) ->     -- ^ identifiermapper (bools=control,shift)
+        (Bool -> Bool -> String -> IO ()) ->                            -- ^ click handler
+        IO [Connection]
+createHyperLinkSupport sv sw identifierMapper clickHandler = do
+    let tv = castToTextView sv
+    tvb <- castToTextBuffer <$> get tv textViewBuffer :: IO TextBuffer
+    let myAttr = textBufferTagTable :: ReadWriteAttr TextBuffer TextTagTable TextTagTable
+    ttt <- castToTextTagTable <$> (get tvb myAttr) :: IO TextTagTable
+    -- textBuffer
+    noUnderline <- textTagNew Nothing
+    set noUnderline [ textTagUnderline := UnderlineNone, textTagUnderlineSet := True ]
+    underline <- textTagNew Nothing
+    set underline [ textTagUnderline := UnderlineSingle, textTagUnderlineSet := True ]
+    textTagTableAdd ttt noUnderline
+    textTagTableAdd ttt underline
+    cursor <- cursorNew Hand2
+    cursorDef <- cursorNew Arrow
 
-launchAutoCompleteDialog :: String -> (Descr -> IDEM ()) -> IDEM ()
-launchAutoCompleteDialog txt act = do
+    id1 <- sw `onLeaveNotify` \e -> do
+        pointerUngrab (Gdk.eventTime e)
+        return True
+
+    let moveOrClick e click = do
+        sx <- scrolledWindowGetHAdjustment sw >>= adjustmentGetValue
+        sy <- scrolledWindowGetVAdjustment sw >>= adjustmentGetValue
+
+        let ex = Gdk.eventX e + sx
+            ey = Gdk.eventY e + sy
+            mods = Gdk.eventModifier e
+            ctrlPressed = (mapControlCommand Gdk.Control) `elem` mods
+            shiftPressed = Gdk.Shift `elem` mods
+        iter <- textViewGetIterAtLocation tv (round ex) (round ey)
+        (szx, szy) <- widgetGetSize sw
+        if Gdk.eventX e < 0 || Gdk.eventY e < 0
+            || round(Gdk.eventX e) > szx || round(Gdk.eventY e) > szy then do
+                pointerUngrab (Gdk.eventTime e)
+                return True
+          else do
+            (beg, en) <- identifierMapper ctrlPressed shiftPressed iter
+            slice <- liftIO $ textBufferGetSlice tvb beg en True
+            startIter <- textBufferGetStartIter tvb
+            endIter <- textBufferGetEndIter tvb
+            textBufferRemoveTag tvb underline startIter endIter
+            offs <- textIterGetLineOffset beg
+            offsc <- textIterGetLineOffset iter
+            if (length slice > 1) then do
+                if (click) then do
+                        pointerUngrab (Gdk.eventTime e)
+                        clickHandler ctrlPressed shiftPressed slice
+                    else do
+                        textBufferApplyTag tvb underline beg en
+                        Just screen <- screenGetDefault
+                        dw <- widgetGetDrawWindow tv
+                        pointerGrab dw False [PointerMotionMask,ButtonPressMask,LeaveNotifyMask] (Nothing  :: Maybe DrawWindow) (Just cursor) (Gdk.eventTime e)
+                        return ()
+                return ()
+              else do
+                pointerUngrab (Gdk.eventTime e)
+                return ()
+            return False;
+    lineNumberBugFix <- newIORef Nothing
+    let fixBugWithX e = do
+        dw <- widgetGetDrawWindow tv
+        ptr <- drawWindowGetPointer dw
+        let hasNoControlModifier e = not $ (mapControlCommand Gdk.Control) `elem` (Gdk.eventModifier e)
+        let
+            eventIsHintSafe (e@Gdk.Motion {}) = Gdk.eventIsHint e
+            eventIsHintSafe _ = False
+        case ptr of
+            Just (_, ptrx, _, _) -> do
+                lnbf <- readIORef lineNumberBugFix
+                -- print ("ishint?, adjusted, event.x, ptr.x, adjustment,hasControl?",eventIsHintSafe e,ptrx - fromMaybe (-1000) lnbf , Gdk.eventX e, ptrx, lnbf, hasNoControlModifier e)
+                when (eventIsHintSafe e && hasNoControlModifier e) $ do
+                    -- get difference between event X and pointer x
+                    -- event X is in coordinates of sourceView text
+                    -- pointer X is in coordinates of window (remember "show line numbers" ?)
+                    writeIORef lineNumberBugFix $ Just (ptrx - round (Gdk.eventX e))   -- captured difference
+                -- When control key is pressed, mostly NON-HINT events come,
+                -- GTK gives (mistakenly?) X in window coordinates in such cases
+                let nx = if (isJust lnbf && not (eventIsHintSafe e))
+                            then fromIntegral $ ptrx - fromJust lnbf    -- translate X back
+                            else Gdk.eventX e
+                return $ e { Gdk.eventX = nx}
+            _ -> return e
+    id2 <- onMotionNotify sw True $ \e -> do
+        ne <- fixBugWithX e
+        moveOrClick ne False
+        return True
+    id3 <- onButtonPress sw $ \e -> do
+        print ("button press")
+        ne <- fixBugWithX e
+        print ("click adjustment: old, new", Gdk.eventX e, Gdk.eventX ne)
+        moveOrClick ne True
+
+    return $ map ConnectC [id1,id2,id3]
+
+
+launchSymbolNavigationDialog_ :: String -> (Descr -> IDEM ()) -> IDEM ()
+launchSymbolNavigationDialog_ txt act = do
     dia                        <-   liftIO $ dialogNew
     win <- getMainWindow
     ideR    <- ask
@@ -205,3 +312,5 @@ replaceCR [] = []
 replaceCR ('\n':ss) = ' ':(replaceCR ss)
 replaceCR ('\r':ss) = ' ':(replaceCR ss)
 replaceCR (s:ss) = s:(replaceCR ss)
+
+

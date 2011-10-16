@@ -33,6 +33,8 @@ module IDE.Utils.GUIUtils (
 ,   controlIsPressed
 
 ,   stockIdFromType
+,   mapControlCommand
+
 ) where
 
 import Graphics.UI.Gtk
@@ -215,6 +217,12 @@ stockIdFromType Constructor     =   "ide_konstructor"
 stockIdFromType Field           =   "ide_slot"
 stockIdFromType Method          =   "ide_method"
 stockIdFromType _               =   "ide_other"
+
+-- maps control key for Macos
+#if defined(darwin_HOST_OS)
+mapControlCommand GtkOld.Alt = GtkOld.Control
+#endif
+mapControlCommand = id
 
 
 

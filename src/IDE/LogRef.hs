@@ -395,8 +395,8 @@ logOutput output = do
     logOutputLines defaultLineLogger output
     return ()
 
-logOutputForBuild :: IDEPackage -> Bool -> [ToolOutput] -> IDEAction
-logOutputForBuild package backgroundBuild output = do
+logOutputForBuild :: IDEPackage -> Bool -> Bool -> [ToolOutput] -> IDEAction
+logOutputForBuild package backgroundBuild jumpToWarnings output = do
     ideRef <- ask
     log    <- getLog
     unless backgroundBuild $ liftIO $ bringPaneToFront log
@@ -407,7 +407,7 @@ logOutputForBuild package backgroundBuild output = do
     let warnNum     =   length errs - errorNum
     triggerEventIDE (StatusbarChanged [CompartmentState
         (show errorNum ++ " Errors, " ++ show warnNum ++ " Warnings"), CompartmentBuild False])
-    unless backgroundBuild nextError
+    unless (backgroundBuild || (not jumpToWarnings && errorNum == 0)) nextError
     return ()
     where
     readAndShow :: [ToolOutput] -> IDERef -> IDELog -> Bool -> [LogRef] -> IO [LogRef]
