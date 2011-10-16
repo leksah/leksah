@@ -46,6 +46,7 @@ module IDE.Core.State (
 
 ,   reifyIDE
 ,   reflectIDE
+,   reflectIDEI
 ,   catchIDE
 ,   postSyncIDE
 ,   postAsyncIDE
@@ -95,6 +96,9 @@ import IDE.Utils.Utils
 import qualified Data.Map as Map (empty, lookup)
 import Data.Typeable(Typeable)
 import qualified IDE.YiConfig as Yi
+import Data.Enumerator (runIteratee, Iteratee(..))
+import qualified Data.Enumerator as E
+       (returnI, Step(..), yield, continue)
 
 instance PaneMonad IDEM where
     getFrameState   =   readIDE frameState
@@ -285,6 +289,15 @@ reifyIDE = ReaderT
 
 reflectIDE :: IDEM a -> IDERef -> IO a
 reflectIDE c ideR = runReaderT c ideR
+
+reflectIDEI :: Iteratee a IDEM b -> IDERef -> Iteratee a IO b
+reflectIDEI c ideR = loop c where
+    loop x = do
+        s <- liftIO $ reflectIDE (runIteratee x) ideR
+        case s of
+            E.Continue f -> E.continue $ loop . f
+            E.Yield a b  -> E.yield a b
+            E.Error e    -> E.returnI $ E.Error e
 
 liftYiControl :: Yi.ControlM a -> IDEM a
 liftYiControl f = do

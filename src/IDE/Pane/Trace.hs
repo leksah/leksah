@@ -48,6 +48,7 @@ import Graphics.UI.Gtk.Gdk.Events (Event(..))
 import Graphics.UI.Gtk.General.Enums (MouseButton(..))
 import System.Log.Logger (debugM)
 import IDE.Workspaces (packageTry_)
+import qualified Data.Enumerator.List as EL (consume)
 
 -- | A debugger pane description
 --
@@ -161,7 +162,9 @@ fillTraceList = packageTry_ $ do
     mbTraces     <- lift getPane
     case mbTraces of
         Nothing -> return ()
-        Just tracePane -> tryDebug_ $ debugCommand' ":history" (\to -> liftIO $ postGUIAsync $ do
+        Just tracePane -> tryDebug_ $ debugCommand' ":history" $ do
+            to <- EL.consume
+            liftIO $ postGUIAsync $ do
                 let parseRes = parse tracesParser "" (selectString to)
                 r <- case parseRes of
                         Left err     -> do
@@ -173,8 +176,8 @@ fillTraceList = packageTry_ $ do
                                                             then h{thSelected = True}
                                                             else h) r
                 mapM_ (insertTrace (tracepoints tracePane))
-                    (zip r' [0..length r']))
-    where
+                    (zip r' [0..length r'])
+  where
     insertTrace treeStore (tr,index)  = treeStoreInsert treeStore [] index tr
 
 selectString :: [ToolOutput] -> String
