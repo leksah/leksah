@@ -657,6 +657,8 @@ allBuildInfo' :: PackageDescription -> [BuildInfo]
 allBuildInfo' pkg_descr = [ libBuildInfo lib  | Just lib <- [library pkg_descr] ]
                        ++ [ buildInfo exe     | exe <- executables pkg_descr ]
                        ++ [ testBuildInfo tst | tst <- testSuites pkg_descr ]
+testMainPath (TestSuiteExeV10 _ f) = [f]
+testMainPath _ = []
 #else
 allBuildInfo' = allBuildInfo
 #endif
@@ -674,7 +676,10 @@ idePackageFromPath filePath = do
         Just packageD -> do
             let modules    = Set.fromList $ myLibModules packageD ++ myExeModules packageD
             let mainFiles  = map modulePath (executables packageD)
-            let files      = Set.fromList $ extraSrcFiles packageD ++ map modulePath (executables packageD)
+#if MIN_VERSION_Cabal(1,10,0)
+                               ++ concatMap (testMainPath . testInterface) (testSuites packageD)
+#endif
+            let files      = Set.fromList $ extraSrcFiles packageD ++ mainFiles
             let srcDirs = case (nub $ concatMap hsSourceDirs (allBuildInfo' packageD)) of
                                 [] -> [".","src"]
                                 l -> l
