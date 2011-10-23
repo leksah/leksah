@@ -1,3 +1,4 @@
+@echo off
 set PATH=%~dp0\bin;%PATH%
 
 set XDG_CONFIG_DIRS=%~dp0etc\xdg
