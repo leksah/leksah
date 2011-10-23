@@ -277,8 +277,6 @@ grepDirectories regexString caseSensitive dirs = do
             when nooneWaiting $ postGUISync $ do
                 nDir <- treeModelIterNChildren store Nothing
                 treeStoreInsert store [] nDir $ GrepRecord "Search Complete" totalFound "" Nothing
-                when (totalFound > 0) $
-                    widgetGrabFocus (treeView grep)
 
             takeMVar (activeGrep grep) >> return ()
     return ()
@@ -290,8 +288,11 @@ setGrepResults dir = do
     log <- lift $ getLog
     let store = grepStore grep
         view  = treeView grep
-    nDir <- liftIO $ postGUISync $ treeModelIterNChildren store Nothing
-    liftIO $ postGUISync $ treeStoreInsert store [] nDir $ GrepRecord dir 0 "" Nothing
+    nDir <- liftIO $ postGUISync $ do
+        nDir <- treeModelIterNChildren store Nothing
+        treeStoreInsert store [] nDir $ GrepRecord dir 0 "" Nothing
+        when (nDir == 0) (widgetGrabFocus view >> return())
+        return nDir
     EL.foldM (\count line -> do
         if isError line
             then do
