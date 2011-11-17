@@ -23,6 +23,7 @@ import IDE.Core.Types
 import IDE.Core.State
 
 import qualified VCSWrapper.Common as VCS
+import qualified VCSGui.Common as VCSGUI
 
 import Data.IORef(writeIORef, readIORef, IORef(..))
 import Paths_leksah(getDataDir)
@@ -47,8 +48,8 @@ onWorkspaceClose = do
         return ()
 
 
-onWorkspaceOpen :: (VCS.VCSType, VCS.Config) -> IDEAction
-onWorkspaceOpen (vcsType,config) = do
+onWorkspaceOpen :: (VCS.VCSType, VCS.Config, Maybe VCSGUI.MergeTool) -> IDEAction
+onWorkspaceOpen (vcsType,config, mbMergeTool) = do
         fs <- readIDE frameState
         let manager = uiManager fs
 
@@ -60,7 +61,7 @@ onWorkspaceOpen (vcsType,config) = do
         menuItems <- liftIO $ vcsMenuDescription file
         mergeInfo <- liftIO $ uiManagerAddUiFromString manager menuItems
 
-        -- set vcsData with new mergeInfo
+        -- set vcsData with new mergeInfo to be able to remove it later
         (_, pw) <- readIDE vcsData
         modifyIDE_ (\ide -> ide {vcsData = (Just mergeInfo, pw) })
         return ()

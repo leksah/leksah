@@ -34,6 +34,7 @@ module IDE.Workspaces (
 ,   makePackage
 
 ,   workspaceSetVCSConfig
+,   workspaceSetMergeTool
 ) where
 
 import IDE.Core.State
@@ -89,6 +90,7 @@ import IDE.Build
 import IDE.Utils.FileUtils(myCanonicalizePath)
 import IDE.Command.VCS.Common.Workspaces as VCSWS
 import qualified VCSWrapper.Common as VCS
+import qualified VCSGui.Common as VCSGUI
 
 setWorkspace :: Maybe Workspace -> IDEAction
 setWorkspace mbWs = do
@@ -586,7 +588,7 @@ makePackage = do
                         (MoComposed [MoConfigure,MoBuild,MoInstall])) ws
 
 
-workspaceSetVCSConfig :: Maybe (VCS.VCSType, VCS.Config) -> IDEAction
+workspaceSetVCSConfig :: Maybe (VCS.VCSType, VCS.Config, Maybe VCSGUI.MergeTool) -> IDEAction
 workspaceSetVCSConfig config = do
     modifyIDE_ (\ide -> do
         let modifiedWs = (fromJust (workspace ide)) { vcsConfig = config }
@@ -594,3 +596,11 @@ workspaceSetVCSConfig config = do
     modifiedWs <- readIDE workspace
     writeWorkspace $ fromJust modifiedWs
 
+workspaceSetMergeTool :: VCSGUI.MergeTool -> IDEAction
+workspaceSetMergeTool mergeTool = do
+    modifyIDE_ (\ide -> do
+        let (Just (vcsType,config,_)) = vcsConfig $ fromJust $ workspace ide
+        let modifiedWs = (fromJust (workspace ide)) { vcsConfig = (Just (vcsType,config,Just mergeTool)) }
+        ide {workspace = Just modifiedWs })
+    modifiedWs <- readIDE workspace
+    writeWorkspace $ fromJust modifiedWs

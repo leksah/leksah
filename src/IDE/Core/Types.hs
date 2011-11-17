@@ -122,6 +122,7 @@ import Data.Typeable
 import qualified Data.Map as Map
 
 import qualified VCSWrapper.Common as VCS
+import qualified VCSGui.Common as VCSGUI
 
 -- ---------------------------------------------------------------------
 -- IDE State
@@ -346,7 +347,7 @@ data Workspace = Workspace {
 ,   wsPackagesFiles ::   [FilePath]
 ,   wsActivePackFile::   Maybe FilePath
 ,   wsNobuildPack   ::   [IDEPackage]
-,   vcsConfig       ::   Maybe (VCS.VCSType, VCS.Config)       -- ^ Configuration for a Version Control System
+,   vcsConfig       ::   Maybe (VCS.VCSType, VCS.Config, Maybe VCSGUI.MergeTool)       -- ^ Configuration for a Version Control System
 } deriving Show
 
 -- ---------------------------------------------------------------------

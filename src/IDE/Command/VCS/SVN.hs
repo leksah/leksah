@@ -20,6 +20,7 @@ module IDE.Command.VCS.SVN (
 
 import Graphics.UI.Gtk.ActionMenuToolbar.UIManager(MergeId)
 
+import qualified VCSGui.Common as VCSGUI
 import qualified VCSGui.Svn as GUISvn
 import qualified VCSWrapper.Svn as WSvn
 import qualified VCSWrapper.Common as WC
@@ -29,12 +30,30 @@ import IDE.Command.VCS.Common
 import IDE.Core.Types
 import IDE.Core.State
 
-import Control.Monad.Reader(liftIO,ask)
+import IDE.Workspaces as Workspaces
+
+import Control.Monad.Reader(liftIO,ask,runReaderT)
 import Data.IORef(atomicModifyIORef, IORef)
 import Data.Either
 
 commitAction :: IDEAction
-commitAction = createSVNActionFromContext GUISvn.showCommitGUI
+commitAction = do
+    ide <- ask
+    mbWorkspace <- readIDE workspace
+    case mbWorkspace of
+        Just workspace -> do
+                             let (Just (_,_,mbMergeTool)) = vcsConfig workspace
+                             eMergeToolSetter <- case mbMergeTool of
+                                Nothing -> return $ Right $ mergeToolSetter ide
+                                Just mergeTool -> return $ Left $ mergeTool
+                             createSVNActionFromContext $ GUISvn.showCommitGUI eMergeToolSetter
+        Nothing -> do
+            noOpenWorkspace
+    where
+        mergeToolSetter :: IDERef -> VCSGUI.MergeTool -> IO()
+        mergeToolSetter ideRef mergeTool = do
+                -- set mergeTool in config in workspace
+                runReaderT (Workspaces.workspaceSetMergeTool mergeTool) ideRef
 
 updateAction :: IDEAction
 updateAction = createSVNActionFromContext $ GUISvn.showUpdateGUI

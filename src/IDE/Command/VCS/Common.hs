@@ -14,6 +14,7 @@
 module IDE.Command.VCS.Common (
     createActionFromContext
     ,setupRepoAction
+    ,noOpenWorkspace
 ) where
 
 import qualified VCSWrapper.Common as VCS
@@ -44,14 +45,12 @@ setupRepoAction = do
     case mbWorkspace of
 
         Just workspace -> do
-                             let config = case vcsConfig workspace of
-                                                Nothing -> Nothing
-                                                Just (vcs,conf) -> Just (vcs,conf)
+                             let config = vcsConfig workspace
                              liftIO $ VCSGUI.showSetupConfigGUI config (callback ide)
 
         Nothing -> noOpenWorkspace
     where
-        callback :: IDERef -> Maybe (VCS.VCSType, VCS.Config) -> IO()
+        callback :: IDERef -> Maybe (VCS.VCSType, VCS.Config, Maybe VCSGUI.MergeTool) -> IO()
         callback ideRef mbConfig = do
                 -- set config in workspace
                 runReaderT (workspaceSetVCSConfig mbConfig) ideRef
@@ -72,7 +71,7 @@ createActionFromContext vcsAction = do
              let mbConfig = vcsConfig workspace
              case mbConfig of
                 Nothing -> liftIO $ VCSGUI.showErrorGUI "No active repository!"
-                Just (_,config) -> liftIO $ VCSGUI.defaultVCSExceptionHandler $ VCS.runVcs config $ vcsAction
+                Just (_,config, _) -> liftIO $ VCSGUI.defaultVCSExceptionHandler $ VCS.runVcs config $ vcsAction
         Nothing -> noOpenWorkspace
 
 
