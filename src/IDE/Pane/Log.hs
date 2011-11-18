@@ -77,6 +77,7 @@ import Graphics.UI.Gtk
         comboBoxAppendText, comboBoxSetActive, comboBoxGetActiveText,
         priorityDefaultIdle, idleAdd,Frame, frameNew,buttonActivated,
         boxPackStart, Packing(..), comboBoxGetActive, comboBoxRemoveText)
+--        comboBoxGetModelText, listStoreToList) --TODO remove import for logging only
 import qualified Data.Map as Map
 import Data.Maybe
 import Distribution.Package
@@ -179,17 +180,28 @@ addLogLaunchData name logLaunch pid = do
 
 removeActiveLogLaunchData :: IDEM ()
 removeActiveLogLaunchData = do
+--                liftIO $ putStrLn $ "Attempting to remove active log launchdata from ide" --TODO remove logging
                 log <- getLog
                 let comboBox = logLaunchBox log
 
                 index <- liftIO $ comboBoxGetActive comboBox
                 mbTitle <- liftIO $ comboBoxGetActiveText comboBox
+--                liftIO $ putStrLn $ "Lauch to remove: index " ++ (show index) ++ ", mbTitle: "++ (show mbTitle)
                 let title = fromJust mbTitle
 
+--                model <- liftIO $ comboBoxGetModelText comboBox
+--                list <- liftIO $ listStoreToList model
+--                liftIO $ putStrLn $ "Underlying model " ++ (show list)
+
+
+                liftIO $ showDefaultLogLaunch comboBox
                 liftIO $ comboBoxRemoveText comboBox index
+--                liftIO $ putStrLn $ "Removed launch from combobox."
                 launches <- readIDE logLaunches
+--                liftIO $ putStrLn $ "Number of available launches: "++(show $ length $ Map.toList launches)
                 let newLaunches = Map.delete title launches
                 modifyIDE_ (\ide -> ide {logLaunches = newLaunches})
+--                liftIO $ putStrLn $ "Removed log launch data successfully from ide"
 
 showDefaultLogLaunch :: ComboBox -> IO()
 showDefaultLogLaunch comboBox = comboBoxSetActive comboBox 0
@@ -342,6 +354,8 @@ builder' pp nb windows = do
                                             launches <- readIDE logLaunches
                                             removeActiveLogLaunchData
                                             terminateLogLaunch title launches
+
+
                                             )
                                             ideR
                                                                 else
