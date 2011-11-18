@@ -29,6 +29,9 @@ module IDE.Pane.Log (
 ,   buildLogLaunchByPackage
 ,   buildLogLaunchByPackageId
 ,   addLogLaunchData
+,   showLogLaunch
+,   showDefaultLogLaunch
+,   showDefaultLogLaunch'
 
 ,   readOut
 ,   readErr
@@ -76,8 +79,8 @@ import Graphics.UI.Gtk
         boxPackStartDefaults, vBoxNew, comboBoxNewText, boxPackEndDefaults,
         comboBoxAppendText, comboBoxSetActive, comboBoxGetActiveText,
         priorityDefaultIdle, idleAdd,Frame, frameNew,buttonActivated,
-        boxPackStart, Packing(..), comboBoxGetActive, comboBoxRemoveText)
---        comboBoxGetModelText, listStoreToList) --TODO remove import for logging only
+        boxPackStart, Packing(..), comboBoxGetActive, comboBoxRemoveText,
+        comboBoxGetModelText, listStoreToList) --TODO remove import for logging only
 import qualified Data.Map as Map
 import Data.Maybe
 import Distribution.Package
@@ -168,6 +171,8 @@ getLogLaunchNameByPackageId (PackageIdentifier pkgName pkgVersion) = show pkgNam
 
 defaultLogName = "default"
 
+-- ^ adds arguments to ide to process them later.
+-- ^ e.g. using processhandle to kill process and name to switch between view
 addLogLaunchData :: String -> LogLaunch -> ProcessHandle -> IDEM ()
 addLogLaunchData name logLaunch pid = do
     log <- getLog
@@ -176,6 +181,7 @@ addLogLaunchData name logLaunch pid = do
     launches <- readIDE logLaunches
     let newLaunches = Map.insert name (LogLaunchData logLaunch (Just pid)) launches
     modifyIDE_ (\ide -> ide {logLaunches = newLaunches})
+    showLogLaunch name
 
 
 removeActiveLogLaunchData :: IDEM ()
@@ -210,7 +216,25 @@ showDefaultLogLaunch' :: IDEM ()
 showDefaultLogLaunch' = do
         log <- getLog
         let comboBox = logLaunchBox log
+
         liftIO $ showDefaultLogLaunch comboBox
+
+showLogLaunch :: String -> IDEM ()
+showLogLaunch name = do
+    liftIO $ putStrLn $ "showLogLaunch: name = " ++ name
+    log <- getLog
+    let comboBox = logLaunchBox log
+
+    model <- liftIO $ comboBoxGetModelText comboBox
+    list <- liftIO $ listStoreToList model
+    let mbIndex = elemRIndex name list
+
+    liftIO $ putStrLn $ "showLogLaunch: mbIndex = " ++ show mbIndex
+
+    case mbIndex of
+        Nothing -> return() -- TODO errorCalls
+        Just index -> liftIO $ comboBoxSetActive comboBox index
+    liftIO $ putStrLn $ "switched to loglaunch"
 
 data LogState               =   LogState
     deriving(Eq,Ord,Read,Show,Typeable)

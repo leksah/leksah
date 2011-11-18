@@ -167,19 +167,16 @@ packageConfig'  :: IDEPackage -> (Bool -> IDEAction) -> IDEAction
 packageConfig' package continuation = do
     let dir = dropFileName (ipdCabalFile package)
     logLaunch <- getDefaultLogLaunch
+    showDefaultLogLaunch'
+
     runExternalTool'        "Configuring"
                             "cabal"
                             (["configure"] ++ (ipdConfigFlags package))
                             (Just dir)
                             $ handleOutput logLaunch package
-    --TODO
---    addLogLaunchData logName logLaunch pid
---    let newLaunches = Map.insert logName newLogLaunch launches
---    modifyIDE_ (\ide -> ide {logLaunches = newLaunches})
     where
     handleOutput :: LogLaunch -> IDEPackage -> [ToolOutput] -> IDEM ()
     handleOutput logLaunch package output = do
---        logLaunch <- getOrBuildLogLaunchByPackage package
         logOutput logLaunch output
         mbPack <- idePackageFromPath (ipdCabalFile package)
         case mbPack of
@@ -274,6 +271,8 @@ packageDoc :: PackageAction
 packageDoc = do
     package <- ask
     logLaunch <- lift $ getDefaultLogLaunch
+    lift $ showDefaultLogLaunch'
+
     lift $ catchIDE (do
         let dir = dropFileName (ipdCabalFile package)
         runExternalTool' "Documenting"
@@ -292,6 +291,8 @@ packageClean = do
 packageClean' :: IDEPackage -> (Bool -> IDEAction) -> IDEAction
 packageClean' package continuation = do
     logLaunch <- getDefaultLogLaunch
+    showDefaultLogLaunch'
+
     runExternalTool' "Cleaning"
                     "cabal"
                     ["clean"]
@@ -306,6 +307,8 @@ packageCopy :: PackageAction
 packageCopy = do
     package <- ask
     logLaunch <- lift $ getDefaultLogLaunch
+    lift $ showDefaultLogLaunch'
+
     lift $ catchIDE (do
         window      <- getMainWindow
         mbDir       <- liftIO $ chooseDir window "Select the target directory" Nothing
@@ -368,6 +371,8 @@ packageInstall' :: IDEPackage -> (Bool -> IDEAction) -> IDEAction
 packageInstall' package continuation = catchIDE (do
    let dir = dropFileName (ipdCabalFile package)
    logLaunch <- getDefaultLogLaunch
+   showDefaultLogLaunch'
+
    runExternalTool' "Installing" "runhaskell" (["Setup", "install"]
                     ++ (ipdInstallFlags package)) (Just dir) (\ output -> do
                         logOutput logLaunch output
@@ -378,6 +383,8 @@ packageRegister :: PackageAction
 packageRegister = do
     package <- ask
     logLaunch <- lift $ getDefaultLogLaunch
+    lift $ showDefaultLogLaunch'
+
     lift $ catchIDE (do
         let dir = dropFileName (ipdCabalFile package)
         runExternalTool' "Registering" "cabal" (["register"]
@@ -388,6 +395,8 @@ packageTest :: PackageAction
 packageTest = do
     package <- ask
     logLaunch <- lift $ getDefaultLogLaunch
+    lift $ showDefaultLogLaunch'
+
     lift $ catchIDE (do
         let dir = dropFileName (ipdCabalFile package)
         runExternalTool' "Testing" "cabal" (["test"]) (Just dir) (logOutput logLaunch))
@@ -397,6 +406,8 @@ packageSdist :: PackageAction
 packageSdist = do
     package <- ask
     logLaunch <- lift $ getDefaultLogLaunch
+    lift $ showDefaultLogLaunch'
+
     lift $ catchIDE (do
         let dir = dropFileName (ipdCabalFile package)
         runExternalTool' "Source Dist" "cabal" (["sdist"]
@@ -408,6 +419,8 @@ packageOpenDoc :: PackageAction
 packageOpenDoc = do
     package <- ask
     logLaunch <- lift $ getDefaultLogLaunch
+    lift $ showDefaultLogLaunch'
+
     lift $ catchIDE (do
         prefs   <- readIDE prefs
         let path = dropFileName (ipdCabalFile package)
@@ -418,6 +431,7 @@ packageOpenDoc = do
             dir = dropFileName (ipdCabalFile package)
         runExternalTool' "Opening Documentation" (browser prefs) [path] (Just dir) (logOutput logLaunch))
         (\(e :: SomeException) -> putStrLn (show e))
+
 
 runExternalTool' :: String
                 -> FilePath
