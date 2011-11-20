@@ -22,8 +22,8 @@ import Graphics.UI.Gtk.ActionMenuToolbar.UIManager(MergeId)
 
 import qualified VCSGui.Common as VCSGUI
 import qualified VCSGui.Svn as GUISvn
-import qualified VCSWrapper.Svn as WSvn
-import qualified VCSWrapper.Common as WC
+import qualified VCSWrapper.Svn as Wrapper.Svn
+import qualified VCSWrapper.Common as Wrapper
 
 import IDE.Command.VCS.Common
 
@@ -49,14 +49,23 @@ commitAction = do
                              createSVNActionFromContext $ GUISvn.showCommitGUI eMergeToolSetter
         Nothing -> do
             noOpenWorkspace
-    where
-        mergeToolSetter :: IDERef -> VCSGUI.MergeTool -> IO()
-        mergeToolSetter ideRef mergeTool = do
-                -- set mergeTool in config in workspace
-                runReaderT (Workspaces.workspaceSetMergeTool mergeTool) ideRef
+
+
 
 updateAction :: IDEAction
-updateAction = createSVNActionFromContext $ GUISvn.showUpdateGUI
+updateAction = do
+    ide <- ask
+    mbWorkspace <- readIDE workspace
+    case mbWorkspace of
+        Just workspace -> do
+                             let (Just (_,_,mbMergeTool)) = vcsConfig workspace
+                             eMergeToolSetter <- case mbMergeTool of
+                                Nothing -> return $ Right $ mergeToolSetter ide
+                                Just mergeTool -> return $ Left $ mergeTool
+                             createSVNActionFromContext $ GUISvn.showUpdateGUI eMergeToolSetter
+        Nothing -> do
+            noOpenWorkspace
+
 
 
 
@@ -64,7 +73,7 @@ viewLogAction :: IDEAction
 viewLogAction = createSVNActionFromContext GUISvn.showLogGUI
 
 createSVNActionFromContext :: (Either GUISvn.Handler (Maybe String)
-                                -> WC.Ctx())
+                                -> Wrapper.Ctx())
                            -> IDEAction
 createSVNActionFromContext action = do
     (mergeInfo, mbPw) <- readIDE vcsData
@@ -73,7 +82,7 @@ createSVNActionFromContext action = do
             Nothing -> createActionFromContext $ action $ Left $ passwordHandler e mergeInfo
             Just mb -> createActionFromContext $ action $ Right mb
     where
-        passwordHandler :: IORef IDE-> Maybe MergeId -> ((Maybe (Bool, Maybe String)) -> WC.Ctx ())
+        passwordHandler :: IORef IDE-> Maybe MergeId -> ((Maybe (Bool, Maybe String)) -> Wrapper.Ctx ())
         passwordHandler e mbMergeInfo result = liftIO $ do
             case result of
                 Just (True, pw) -> modifyIDE_' e (\ide -> ide {vcsData = (mbMergeInfo, Just pw) })

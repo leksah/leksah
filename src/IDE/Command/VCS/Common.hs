@@ -15,6 +15,7 @@ module IDE.Command.VCS.Common (
     createActionFromContext
     ,setupRepoAction
     ,noOpenWorkspace
+    ,mergeToolSetter
 ) where
 
 import qualified VCSWrapper.Common as VCS
@@ -24,7 +25,7 @@ import qualified Graphics.UI.Gtk as Gtk
 import IDE.Core.Types
 import IDE.Core.State
 import IDE.Command.VCS.Common.Workspaces
-import IDE.Workspaces(workspaceSetVCSConfig)
+import IDE.Workspaces(workspaceSetVCSConfig, workspaceSetMergeTool)
 import IDE.Utils.GUIUtils
 
 
@@ -78,5 +79,8 @@ createActionFromContext vcsAction = do
 noOpenWorkspace = do
                     liftIO $ showDialog "No open workspace. You must have an open workspace to be able to set a repository." Gtk.MessageError
 
-
+mergeToolSetter :: IDERef -> VCSGUI.MergeTool -> IO()
+mergeToolSetter ideRef mergeTool = do
+    -- set mergeTool in config in workspace
+    runReaderT (workspaceSetMergeTool mergeTool) ideRef
 
