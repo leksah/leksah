@@ -548,16 +548,20 @@ builder' bs mbfn ind bn rbn ct prefs pp nb windows = do
     rstrip' :: String -> String
     rstrip' = reverse . lstrip' . reverse
     forwardApplying :: TextIter
-                    -> String
+                    -> String   -- txt
                     -> Maybe TextIter
                     -> String   -- tagname
                     -> EditorBuffer
-                    -> IDEM () --TODO refactor
+                    -> IDEM ()
     forwardApplying tI txt mbTi tagName ebuf = do
         mbFTxt <- liftIO $ textIterForwardSearch tI txt [TextSearchVisibleOnly, TextSearchTextOnly] mbTi
         case mbFTxt of
             Just (start, end) -> do
-                applyTagByName ebuf tagName (GtkEditorIter start) (GtkEditorIter end)
+                startsWord <- liftIO $ textIterStartsWord start
+                endsWord <- liftIO $ textIterEndsWord end
+                if (startsWord && endsWord)
+                    then applyTagByName ebuf tagName (GtkEditorIter start) (GtkEditorIter end)
+                    else return ()
                 forwardApplying end txt mbTi tagName ebuf
             Nothing -> return()
 

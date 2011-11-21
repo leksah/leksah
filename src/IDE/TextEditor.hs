@@ -1169,21 +1169,14 @@ onLookupInfo (YiEditorView v) f = do
         return [ConnectC id1]
 #endif
 
---onMotionNotifyEvent :: EditorView -> IDEM () -> IDEM [Connection]
---onMotionNotify (GtkEditorView sv) f = do
---    ideR <- ask
---    --TODO implement
 onMotionNotifyEvent :: EditorView -> (IDERef -> GTKEventM.EventM GTKEventM.EMotion Bool) -> IDEM [Connection]
 onMotionNotifyEvent (GtkEditorView sv) handler = do
         ideR <- ask
         liftIO $ do
             Gtk.widgetAddEvents sv [Gtk.ButtonMotionMask, Gtk.Button1MotionMask]  -- TODO: this doesn't work yet event gets fired anyways: restrict event to being fired when left mouse button is pressed down
-            id1 <- Gtk.on sv Gtk.motionNotifyEvent (handler ideR) --TODO implement
+            id1 <- Gtk.on sv Gtk.motionNotifyEvent (handler ideR)  --TODO this is potentially slowing leksah, a better event (if there was any) could be more efficient here
             Gtk.widgetAddEvents sv [Gtk.ButtonMotionMask, Gtk.Button1MotionMask]  -- TODO: this doesn't work yet event gets fired anyways: restrict event to being fired when left mouse button is pressed down
             return [ConnectC id1]
-
-
---    ids5 <- on sv motionNotifyEvent onMotionNotifyEvent --TODO this is potentially slowing leksah, a better event (if there was any) could be more efficient here
 
 onPopulatePopup :: EditorView -> (Gtk.Menu -> IDEM ()) -> IDEM [Connection]
 onPopulatePopup (GtkEditorView sv) f = do
