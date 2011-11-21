@@ -48,6 +48,7 @@ module IDE.Core.Types (
 
 ,   IDEPackage(..)
 ,   Workspace(..)
+,   VCSConf
 
 ,   ActionDescr(..)
 ,   ActionString
@@ -347,7 +348,7 @@ data Workspace = Workspace {
 ,   wsPackagesFiles ::   [FilePath]
 ,   wsActivePackFile::   Maybe FilePath
 ,   wsNobuildPack   ::   [IDEPackage]
-,   vcsConfig       ::   Maybe (VCS.VCSType, VCS.Config, Maybe VCSGUI.MergeTool)       -- ^ Configuration for a Version Control System
+,   packageVcsConf  ::   Map FilePath VCSConf -- ^ (FilePath to package, Version-Control-System Configuration)
 } deriving Show
 
 -- ---------------------------------------------------------------------
@@ -427,6 +428,9 @@ data SearchHint = Forward | Backward | Insert | Delete | Initial
 
 instance Ord Modifier
     where compare a b = compare (fromEnum a) (fromEnum b)
+
+-- Version-Control-System Configuration
+type VCSConf = (VCS.VCSType, VCS.Config, Maybe VCSGUI.MergeTool)
 
 --
 -- | Other types

@@ -48,7 +48,7 @@ onWorkspaceClose = do
         return ()
 
 
-onWorkspaceOpen :: (VCS.VCSType, VCS.Config, Maybe VCSGUI.MergeTool) -> IDEAction
+onWorkspaceOpen :: VCSConf -> IDEAction
 onWorkspaceOpen (vcsType,config, mbMergeTool) = do
         fs <- readIDE frameState
         let manager = uiManager fs

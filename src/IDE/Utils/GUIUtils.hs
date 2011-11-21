@@ -17,6 +17,7 @@ module IDE.Utils.GUIUtils (
 ,   chooseSaveFile
 ,   openBrowser
 ,   showDialog
+,   showErrorDialog
 
 ,   getCandyState
 ,   setCandyState
@@ -145,6 +146,9 @@ showDialog msg msgType = do
     _ <- dialogRun dialog
     widgetDestroy dialog
     return ()
+
+showErrorDialog :: String -> IO ()
+showErrorDialog msg = showDialog msg MessageError
 
 -- get widget elements (menu & toolbar)
 

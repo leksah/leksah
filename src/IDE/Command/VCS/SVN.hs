@@ -38,39 +38,62 @@ import Data.Either
 
 commitAction :: IDEAction
 commitAction = do
+    eConfigErr <- getVCSConfForActivePackage
+    execWithErrHandling
+        eConfigErr
+        commitAction'
+
+commitAction' (Just (_,_,mbMergeTool)) = do
     ide <- ask
-    mbWorkspace <- readIDE workspace
-    case mbWorkspace of
-        Just workspace -> do
-                             let (Just (_,_,mbMergeTool)) = vcsConfig workspace
-                             eMergeToolSetter <- case mbMergeTool of
+    eMergeToolSetter <- case mbMergeTool of
                                 Nothing -> return $ Right $ mergeToolSetter ide
                                 Just mergeTool -> return $ Left $ mergeTool
-                             createSVNActionFromContext $ GUISvn.showCommitGUI eMergeToolSetter
-        Nothing -> do
-            noOpenWorkspace
-
-
+    createSVNActionFromContext $ GUISvn.showCommitGUI $ eMergeToolSetter
 
 updateAction :: IDEAction
 updateAction = do
+    eConfigErr <- getVCSConfForActivePackage
+    execWithErrHandling
+        eConfigErr
+        updateAction'
+--    ide <- ask
+--    mbWorkspace <- readIDE workspace
+--    case mbWorkspace of
+--        Just workspace -> do
+--                             let (Just (_,_,mbMergeTool)) = vcsConfig workspace
+--                             eMergeToolSetter <- case mbMergeTool of
+--                                Nothing -> return $ Right $ Workspaces.workspaceSetMergeToolForActivePackage
+--                                Just mergeTool -> return $ Left $ mergeTool
+--                             createSVNActionFromContext $ GUISvn.showUpdateGUI eMergeToolSetter
+--        Nothing -> do
+--            noOpenWorkspace
+updateAction' (Just (_,_,mbMergeTool)) = do
     ide <- ask
-    mbWorkspace <- readIDE workspace
-    case mbWorkspace of
-        Just workspace -> do
-                             let (Just (_,_,mbMergeTool)) = vcsConfig workspace
-                             eMergeToolSetter <- case mbMergeTool of
+    eMergeToolSetter <- case mbMergeTool of
                                 Nothing -> return $ Right $ mergeToolSetter ide
                                 Just mergeTool -> return $ Left $ mergeTool
-                             createSVNActionFromContext $ GUISvn.showUpdateGUI eMergeToolSetter
-        Nothing -> do
-            noOpenWorkspace
-
+    createSVNActionFromContext $ GUISvn.showUpdateGUI eMergeToolSetter
 
 
 
 viewLogAction :: IDEAction
 viewLogAction = createSVNActionFromContext GUISvn.showLogGUI
+
+
+--HELPERS
+
+--TODO use this in commit and update
+createSVNActionFromContextWEMergeToolSetter :: (Either VCSGUI.MergeTool VCSGUI.MergeToolSetter
+                                            -> Either GUISvn.Handler (Maybe String)
+                                            -> Wrapper.Ctx()) -- ^ svn action
+                -> Maybe VCSGUI.MergeTool
+                -> IDEAction
+createSVNActionFromContextWEMergeToolSetter action mbMergeTool = do
+     ide <- ask
+     eMergeToolSetter <- case mbMergeTool of
+                            Nothing -> return $ Right $ mergeToolSetter ide
+                            Just mergeTool -> return $ Left $ mergeTool
+     createSVNActionFromContext $ action eMergeToolSetter
 
 createSVNActionFromContext :: (Either GUISvn.Handler (Maybe String)
                                 -> Wrapper.Ctx())

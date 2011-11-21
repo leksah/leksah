@@ -14,7 +14,7 @@
 module IDE.Command.VCS.Common (
     createActionFromContext
     ,setupRepoAction
-    ,noOpenWorkspace
+    ,execWithErrHandling
     ,mergeToolSetter
 ) where
 
@@ -25,7 +25,11 @@ import qualified Graphics.UI.Gtk as Gtk
 import IDE.Core.Types
 import IDE.Core.State
 import IDE.Command.VCS.Common.Workspaces
-import IDE.Workspaces(workspaceSetVCSConfig, workspaceSetMergeTool)
+import IDE.Workspaces(workspaceSetVCSConfig
+    ,workspaceSetMergeTool
+    ,getVCSConfForActivePackage
+    ,workspaceSetVCSConfigForActivePackage
+    ,workspaceSetMergeToolForActivePackage)
 import IDE.Utils.GUIUtils
 
 
@@ -41,20 +45,17 @@ import Data.Maybe
 setupRepoAction :: IDEAction
 setupRepoAction = do
     ide <- ask
-
-    mbWorkspace <- readIDE workspace
-    case mbWorkspace of
-
-        Just workspace -> do
-                             let config = vcsConfig workspace
-                             liftIO $ VCSGUI.showSetupConfigGUI config (callback ide)
-
-        Nothing -> noOpenWorkspace
+    eConfigErr <- getVCSConfForActivePackage
+    execWithErrHandling
+        eConfigErr
+        (\mbConfig -> liftIO $ VCSGUI.showSetupConfigGUI mbConfig (callback ide))
     where
         callback :: IDERef -> Maybe (VCS.VCSType, VCS.Config, Maybe VCSGUI.MergeTool) -> IO()
         callback ideRef mbConfig = do
                 -- set config in workspace
-                runReaderT (workspaceSetVCSConfig mbConfig) ideRef
+                case mbConfig of
+                    Nothing -> return() --TODO maybe allow to delete conf
+                    Just config -> runReaderT (workspaceSetVCSConfigForActivePackage config) ideRef
                 -- add menu items
                 case mbConfig of
                     Nothing -> return ()
@@ -66,21 +67,24 @@ setupRepoAction = do
 createActionFromContext :: VCS.Ctx()    -- ^ computation to execute, i.e. showCommit
                         -> IDEAction
 createActionFromContext vcsAction = do
-    mbWorkspace <- readIDE workspace
-    case mbWorkspace of
-        Just workspace -> do
-             let mbConfig = vcsConfig workspace
-             case mbConfig of
-                Nothing -> liftIO $ VCSGUI.showErrorGUI "No active repository!"
-                Just (_,config, _) -> liftIO $ VCSGUI.defaultVCSExceptionHandler $ VCS.runVcs config $ vcsAction
-        Nothing -> noOpenWorkspace
+    eErrConf <- getVCSConfForActivePackage
+    execWithErrHandling
+        eErrConf
+        (\mbConfig -> case mbConfig of
+                        Nothing -> liftIO $ showErrorDialog "No active repository!"
+                        Just (_,config, _) -> liftIO $ VCSGUI.defaultVCSExceptionHandler $ VCS.runVcs config $ vcsAction)
 
-
-noOpenWorkspace = do
-                    liftIO $ showDialog "No open workspace. You must have an open workspace to be able to set a repository." Gtk.MessageError
+execWithErrHandling :: Either String (Maybe VCSConf) ->
+                (Maybe VCSConf -> IDEAction)
+                -> IDEAction
+execWithErrHandling eErrConf fun = do
+    case eErrConf of
+        Left error -> liftIO $ showErrorDialog error
+        Right mbConfig -> fun mbConfig
 
 mergeToolSetter :: IDERef -> VCSGUI.MergeTool -> IO()
 mergeToolSetter ideRef mergeTool = do
     -- set mergeTool in config in workspace
-    runReaderT (workspaceSetMergeTool mergeTool) ideRef
+    runReaderT (workspaceSetMergeToolForActivePackage mergeTool) ideRef
+
 
