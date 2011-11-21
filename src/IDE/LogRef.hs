@@ -60,7 +60,7 @@ import Data.Maybe (catMaybes)
 import System.Exit (ExitCode(..))
 import System.Log.Logger (debugM)
 import IDE.Utils.FileUtils(myCanonicalizePath)
-import IDE.Pane.Log (getDefaultLogLaunch, IDELog(..), getLog)
+import IDE.Pane.Log (getDefaultLogLaunch, IDELog(..), getLog, showDefaultLogLaunch')
 
 showSourceSpan :: LogRef -> String
 showSourceSpan = displaySrcSpan . logRefSrcSpan
@@ -432,7 +432,8 @@ logOutputForBuild package backgroundBuild output = do
     ideRef <- ask
     log    <- Log.getLog
     unless backgroundBuild $ liftIO $ bringPaneToFront log
-    logLaunch <- Log.getDefaultLogLaunch --TODO getOrBuild, or just build new one here ?
+    logLaunch <- Log.getDefaultLogLaunch
+    showDefaultLogLaunch'
     log <- getLog
     errs   <- liftIO $ readAndShow output ideRef log logLaunch False []
     setErrorList $ reverse errs
