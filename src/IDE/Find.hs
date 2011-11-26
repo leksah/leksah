@@ -204,7 +204,7 @@ constructFindReplace = reifyIDE $ \ ideR   -> do
     toolbarInsert toolbar sep1 0
 
     let performGrep = (reflectIDE (packageTry_ $ doGrep toolbar) ideR)
-    grepButton <- toolButtonNew (Nothing :: Maybe Widget) (Just "^Grep")
+    grepButton <- toolButtonNew (Nothing :: Maybe Widget) (Just "Grep")
     toolbarInsert toolbar grepButton 0
     grepButton `onToolButtonClicked` performGrep
     tooltipsSetTip tooltips grepButton "Search in multiple files" ""
@@ -212,7 +212,7 @@ constructFindReplace = reifyIDE $ \ ideR   -> do
     sep1 <- separatorToolItemNew
     toolbarInsert toolbar sep1 0
 
-    replaceAllButton <- toolButtonNew (Nothing :: Maybe Widget) (Just "^Replace All")
+    replaceAllButton <- toolButtonNew (Nothing :: Maybe Widget) (Just "Replace All")
     toolbarInsert toolbar replaceAllButton 0
 
     replaceButton <- toolButtonNewFromStock "gtk-find-and-replace"
@@ -239,7 +239,7 @@ constructFindReplace = reifyIDE $ \ ideR   -> do
     nextButton `onToolButtonClicked` (doSearch toolbar Forward ideR  )
 
     wrapAroundButton <- toggleToolButtonNew
-    toolButtonSetLabel wrapAroundButton (Just "Wra^p")
+    toolButtonSetLabel wrapAroundButton (Just "Wrap")
     widgetSetName wrapAroundButton "wrapAroundButton"
     toolbarInsert toolbar wrapAroundButton 0
     tooltipsSetTip tooltips wrapAroundButton "When selected searching will continue from the top when no more matches are found" ""
@@ -276,21 +276,21 @@ constructFindReplace = reifyIDE $ \ ideR   -> do
         return True
 
     regexButton <- toggleToolButtonNew
-    toolButtonSetLabel regexButton (Just "R^egex")
+    toolButtonSetLabel regexButton (Just "Regex")
     widgetSetName regexButton "regexButton"
     toolbarInsert toolbar regexButton 0
     regexButton `onToolButtonClicked` (doSearch toolbar Insert ideR)
     tooltipsSetTip tooltips regexButton "When selected the search string is used as a regular expression" ""
 
     entireWordButton <- toggleToolButtonNew
-    toolButtonSetLabel entireWordButton (Just "^Words")
+    toolButtonSetLabel entireWordButton (Just "Words")
     widgetSetName entireWordButton "entireWordButton"
     toolbarInsert toolbar entireWordButton 0
     entireWordButton `onToolButtonClicked` (doSearch toolbar Insert ideR)
     tooltipsSetTip tooltips entireWordButton "When selected only entire words are matched" ""
 
     caseSensitiveButton <- toggleToolButtonNew
-    toolButtonSetLabel caseSensitiveButton (Just "^Case")
+    toolButtonSetLabel caseSensitiveButton (Just "Case")
     widgetSetName caseSensitiveButton "caseSensitiveButton"
     toolbarInsert toolbar caseSensitiveButton 0
     caseSensitiveButton `onToolButtonClicked` (doSearch toolbar Insert ideR)

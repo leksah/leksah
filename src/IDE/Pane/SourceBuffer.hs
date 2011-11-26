@@ -528,7 +528,7 @@ builder' bs mbfn ind bn rbn ct prefs pp nb windows = do
                             launchSymbolNavigationDialog_ slice goToDefinition
                             return True
                         _ -> do
-                            liftIO $ print ("sourcebuffer key:",name,modifier,keyval)
+                            -- liftIO $ print ("sourcebuffer key:",name,modifier,keyval)
                             return False
                 ) ideR
     ids6 <- case sv of
@@ -537,7 +537,7 @@ builder' bs mbfn ind bn rbn ct prefs pp nb windows = do
                             (GtkEditorIter beg,GtkEditorIter en) <- reflectIDE (getIdentifierUnderCursorFromIter (GtkEditorIter iter, GtkEditorIter iter)) ideR
                             return (beg, if ctrl then en else beg)) (\_ _ slice -> do
                                         when (slice /= []) $ do
-                                            liftIO$ print ("slice",slice)
+                                            -- liftIO$ print ("slice",slice)
                                             void $ reflectIDE (triggerEventIDE (SearchMeta slice)) ideR
                                         ))
 
