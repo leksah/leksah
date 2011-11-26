@@ -151,7 +151,7 @@ import qualified  Graphics.UI.Gtk.Multiline.TextView as Gtk
 import qualified Graphics.UI.Gtk.Scrolling.ScrolledWindow
 import Graphics.UI.Gtk.Multiline.TextTag
 import Graphics.UI.Gtk.Gdk.Cursor
-import Graphics.Rendering.Pango
+--import Graphics.Rendering.Pango
 import System.Glib.Attributes
 import System.Glib.MainLoop
 import qualified Graphics.UI.Gtk.Multiline.TextView as Gtk
