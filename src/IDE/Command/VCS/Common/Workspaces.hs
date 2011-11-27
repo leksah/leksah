@@ -74,9 +74,9 @@ onWorkspaceOpen workspace = do
                     packageMenu <- liftIO $ menuNew
 
                     -- set-up repo action
-                    actionItem <- menuItemNewWithMnemonic "_Setup Repo"
-                    actionItem `onActivateLeaf` (reflectIDE (runSetupRepoActionWithContext cabalFp) ideR)
-                    menuShellAppend packageMenu actionItem
+                    actionItem <- liftIO $ menuItemNewWithMnemonic "_Setup Repo"
+                    liftIO $ actionItem `onActivateLeaf` (reflectIDE (Common.runSetupRepoActionWithContext cabalFp) ideR)
+                    liftIO $ menuShellAppend packageMenu actionItem
 
 --                    liftIO $ addActions' [getSetupRepoAction] Common.runActionWithContext --change runner
 
@@ -120,9 +120,9 @@ onWorkspaceOpen workspace = do
 --TODO move and retrieve this to/from data file e.g. svn.menu, git.menu
 getVCSActions :: VCS.VCSType -> [(String, Common.VCSAction ())]
 getVCSActions VCS.SVN = [
-                            ("_Commit", SVN.commitAction)
-                            ,("_View Log", SVN.viewLogAction)
-                            ,("_Update", SVN.updateAction)
+                            ("_Commit", SVN.commitAction')
+                            ,("_View Log", SVN.viewLogAction')
+                            ,("_Update", SVN.updateAction')
                             ]
 getVCSActions VCS.GIT = [
                             ("_Commit", commitAction')
@@ -130,14 +130,14 @@ getVCSActions VCS.GIT = [
                             ,("_Update", updateAction')
                             ]
 
-getSetupRepoAction :: (String,Common.VCSAction ())
-getSetupRepoAction = ("_Setup Repo", Common.setupRepoAction')
+--getSetupRepoAction :: (String,Common.VCSAction ())
+--getSetupRepoAction = ("_Setup Repo", Common.setupRepoAction')
 --
 ----setupRepoAction' :: VCSAction
 ----setupRepoAction' = return()
 --
 commitAction' :: Common.VCSAction ()
-commitAction' = do
+commitAction' = return()
 
 
 viewLogAction' :: Common.VCSAction ()

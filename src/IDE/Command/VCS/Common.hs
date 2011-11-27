@@ -14,12 +14,15 @@
 {-# LANGUAGE FlexibleInstances, GeneralizedNewtypeDeriving #-}
 module IDE.Command.VCS.Common (
     mergeToolSetter
+    ,eMergeToolSetter
     ,runActionWithContext
     ,createActionFromContext
     ,runSetupRepoActionWithContext
     ,getVCSConf'
-
-    ,VCSAction(..)
+    ,setupRepoAction
+    ,VCSAction
+    ,askIDERef
+    ,readIDE'
 ) where
 
 import qualified VCSWrapper.Common as VCS
@@ -42,6 +45,12 @@ newtype VCSSetupAction a = VCSSetupAction (ReaderT (Maybe VCSConf) IDEM a)
 
 newtype VCSAction a = VCSAction (ReaderT VCSConf IDEM a)
     deriving (Monad, MonadIO, MonadReader VCSConf)
+
+askIDERef :: VCSAction IDERef
+askIDERef = VCSAction $ lift $ ask
+
+readIDE' :: (IDE -> a) -> VCSAction a
+readIDE' f = VCSAction $ lift $ readIDE f
 
 -- | retrieves VCS configuration from the workspace and executes given computation using it
 runActionWithContext :: VCSAction ()    -- ^ computation to execute, i.e. showCommit
@@ -84,7 +93,8 @@ runSetupRepoActionWithContext packageFp = do
 
 
 ---- | displays a window for setting up a vcs, thereafter adding menu items and persisting the created configuration
---setupRepoAction :: IDEAction
+setupRepoAction :: IDEAction
+setupRepoAction = return()
 --setupRepoAction = do
 --    ide <- ask
 --    eConfigErr <- getVCSConfForActivePackage
@@ -124,11 +134,21 @@ createActionFromContext vcsAction = do
 --        Right mbConfig -> fun mbConfig
 
 --TODO set for a specific package
+--TODO this could run in a VCSAction or IDEM to get rid of parameters
 mergeToolSetter :: IDERef -> VCSGUI.MergeTool -> IO()
 mergeToolSetter ideRef mergeTool = do
     -- set mergeTool in config in workspace
     runReaderT (workspaceSetMergeToolForActivePackage mergeTool) ideRef
 
+--TODO set for a specific package
+--TODO this could run in a VCSAction or IDEM to get rid of parameters
+eMergeToolSetter :: IDERef
+                -> Maybe VCSGUI.MergeTool
+                -> Either VCSGUI.MergeTool (VCSGUI.MergeTool -> IO())
+eMergeToolSetter ideRef mbMergeTool = do
+    case mbMergeTool of
+                            Nothing -> Right $ mergeToolSetter ideRef
+                            Just mergeTool -> Left $ mergeTool
 
 workspaceSetVCSConfig :: FilePath -> VCSConf -> IDEAction
 workspaceSetVCSConfig pathToPackage vcsConf = do
