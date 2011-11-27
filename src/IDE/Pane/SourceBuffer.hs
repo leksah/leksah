@@ -28,6 +28,7 @@ module IDE.Pane.SourceBuffer (
 ,   fileNew
 ,   fileOpenThis
 ,   fileOpen
+,   filePrint
 ,   fileRevert
 ,   fileClose
 ,   fileCloseAll
@@ -87,7 +88,7 @@ import System.Time
 
 import Graphics.UI.Gtk.Gdk.Events as Gtk
 import IDE.Core.State
-import IDE.Utils.GUIUtils(getCandyState)
+import IDE.Utils.GUIUtils(getCandyState,showDialog)
 import IDE.Utils.FileUtils
 import IDE.SourceCandy
 import IDE.Completion as Completion (complete,cancel)
@@ -127,6 +128,11 @@ import Graphics.UI.Gtk.Selectors.FileChooser
        (FileChooserAction(..))
 import System.Glib.Attributes (AttrOp(..), set)
 import IDE.BufferMode
+import Graphics.UI.Gtk.Multiline.TextIter
+import Graphics.UI.Gtk.Multiline.TextTag(textTagBackgroundGdk, textTagBackground)
+import Graphics.UI.Gtk.Gdk.GC(Color)
+
+import qualified IDE.Command.Print as Print
 
 allBuffers :: IDEM [IDEBuffer]
 allBuffers = getPanes
@@ -482,14 +488,83 @@ builder' bs mbfn ind bn rbn ct prefs pp nb windows = do
                         liftIO $ postGUIAsync $ reflectIDE (selectRange buffer start end) ideR
                         return False
                     _ -> return False) ideR
+
     (GetTextPopup mbTpm) <- triggerEvent ideR (GetTextPopup Nothing)
     ids4 <- case mbTpm of
         Just tpm    -> sv `onPopulatePopup` \menu -> liftIO $ (tpm ideR menu)
         Nothing     -> do
             sysMessage Normal "SourceBuffer>> no text popup"
             return []
-    return (Just buf,concat [ids1, ids2, ids3, ids4])
 
+    --TODO refactor this
+    ids5 <- onMotionNotifyEvent sv $ \ideRef -> do
+                            mbSTxt <- liftIO $ runReaderT ( do
+                                candy' <- readIDE candy
+                                inActiveBufContext Nothing $ \_ ebuf currentBuffer _ -> do
+                                    let tagName = "gray_bg" -- TODO change color
+                                    tagTable <- getTagTable ebuf
+                                    mbTag <- lookupTag tagTable tagName
+                                    bi1 <- getStartIter ebuf
+                                    bi2 <- getEndIter ebuf
+                                    case mbTag of
+                                        Just existingTag -> do
+                                            removeTagByName ebuf tagName bi1 bi2
+                                        Nothing -> do
+                                            tag <- newTag tagTable tagName
+                                            case tag of --TODO change to casting
+                                                GtkEditorTag txtTag -> liftIO $ set txtTag [ textTagBackground := "grey"]
+                                            liftIO $ return()
+
+                                    hasSelection <- hasSelection ebuf
+                                    if hasSelection
+                                        then do
+                                            (si1,si2)   <- getSelectionBounds ebuf
+
+                                            sTxt      <- getCandylessPart candy' ebuf si1 si2
+                                            let strippedSTxt = strip' sTxt
+                                            case strippedSTxt of
+                                                [] -> return Nothing
+                                                _  -> case (bi1,bi2, si1, si2) of --TODO change to casting
+                                                            (GtkEditorIter bti1, GtkEditorIter bti2, GtkEditorIter sti1, GtkEditorIter sti2) -> do
+                                                                forwardApplying bti1 strippedSTxt (Just sti1) tagName ebuf
+                                                                forwardApplying sti2 strippedSTxt (Just bti2) tagName ebuf
+                                                                return Nothing
+                                        else return Nothing
+                                ) ideRef
+                            return False
+    return (Just buf,concat [ids1, ids2, ids3, ids4,ids5])
+    where
+    wschars' :: String
+    wschars' = " \t\r\n"
+
+    strip' :: String -> String
+    strip' = lstrip' . rstrip'
+
+    lstrip' :: String -> String
+    lstrip' s = case s of
+                    [] -> []
+                    (x:xs) -> if elem x wschars'
+                              then lstrip' xs
+                              else s
+    rstrip' :: String -> String
+    rstrip' = reverse . lstrip' . reverse
+    forwardApplying :: TextIter
+                    -> String   -- txt
+                    -> Maybe TextIter
+                    -> String   -- tagname
+                    -> EditorBuffer
+                    -> IDEM ()
+    forwardApplying tI txt mbTi tagName ebuf = do
+        mbFTxt <- liftIO $ textIterForwardSearch tI txt [TextSearchVisibleOnly, TextSearchTextOnly] mbTi
+        case mbFTxt of
+            Just (start, end) -> do
+                startsWord <- liftIO $ textIterStartsWord start
+                endsWord <- liftIO $ textIterEndsWord end
+                if (startsWord && endsWord)
+                    then applyTagByName ebuf tagName (GtkEditorIter start) (GtkEditorIter end)
+                    else return ()
+                forwardApplying end txt mbTi tagName ebuf
+            Nothing -> return()
 
 checkModTime :: IDEBuffer -> IDEM (Bool, Bool)
 checkModTime buf = do
@@ -922,6 +997,48 @@ fileOpenThis fp =  do
             pp <-  getBestPathForId "*Buffer"
             newTextBuffer pp (takeFileName fpc) (Just fpc)
             return ()
+
+filePrint :: IDEAction
+filePrint = inActiveBufContext () $ filePrint'
+
+filePrint' :: Notebook -> EditorBuffer -> IDEBuffer -> Int -> IDEM ()
+filePrint' nb ebuf currentBuffer _ = do
+    window  <- getMainWindow
+    modified <- getModified ebuf
+    cancel <- reifyIDE $ \ideR ->  do
+        if modified
+            then do
+                md <- messageDialogNew (Just window) []
+                                            MessageQuestion
+                                            ButtonsCancel
+                                            ("Save changes to document: "
+                                                ++ paneName currentBuffer
+                                                ++ "?")
+                dialogAddButton md "_Save" ResponseYes
+                dialogAddButton md "_Don't Save" ResponseNo
+                set md [ windowWindowPosition := WinPosCenterOnParent ]
+                resp <- dialogRun md
+                widgetDestroy md
+                case resp of
+                    ResponseYes ->   do
+                        reflectIDE (fileSave False) ideR
+                        return False
+                    ResponseCancel  ->   return True
+                    ResponseNo      ->   return False
+                    _               ->   return False
+            else
+                return False
+    if cancel
+        then return ()
+        else do
+            case fileName currentBuffer of
+                Just name -> do
+                              status <- liftIO $ Print.print name
+                              case status of
+                                Left error -> liftIO $ showDialog (show error) MessageError
+                                Right _ -> liftIO $ showDialog "Print job has been sent successfully" MessageInfo
+                              return ()
+                Nothing   -> return ()
 
 editUndo :: IDEAction
 editUndo = inActiveBufContext () $ \_ buf _ _ -> do

@@ -77,6 +77,7 @@ import Paths_leksah
 
 import IDE.Core.State
 import IDE.Utils.GUIUtils
+import IDE.Pane.Log
 import IDE.Pane.PackageEditor
 import IDE.Pane.SourceBuffer
 import IDE.Pane.PackageFlags (readFlags)
@@ -92,7 +93,7 @@ import qualified Data.Set as  Set (fromList)
 import qualified Data.Map as  Map (empty)
 import System.Exit (ExitCode(..))
 import Control.Applicative ((<$>))
-import IDE.System.Process (getProcessExitCode, interruptProcessGroup)
+import IDE.System.Process (ProcessHandle, getProcessExitCode, interruptProcessGroup)
 import IDE.Utils.Tool (executeGhciCommand)
 
 #if MIN_VERSION_Cabal(1,8,0)
@@ -165,9 +166,18 @@ packageConfig = do
 packageConfig'  :: IDEPackage -> (Bool -> IDEAction) -> IDEAction
 packageConfig' package continuation = do
     let dir = dropFileName (ipdCabalFile package)
-    runExternalTool "Configuring" "cabal" (["configure"]
-                                    ++ (ipdConfigFlags package)) (Just dir) $ \output -> do
-        logOutput output
+    logLaunch <- getDefaultLogLaunch
+    showDefaultLogLaunch'
+
+    runExternalTool'        "Configuring"
+                            "cabal"
+                            (["configure"] ++ (ipdConfigFlags package))
+                            (Just dir)
+                            $ handleOutput logLaunch package
+    where
+    handleOutput :: LogLaunch -> IDEPackage -> [ToolOutput] -> IDEM ()
+    handleOutput logLaunch package output = do
+        logOutput logLaunch output
         mbPack <- idePackageFromPath (ipdCabalFile package)
         case mbPack of
             Just pack -> do
@@ -207,7 +217,7 @@ runCabalBuild backgroundBuild withoutLinking package shallConfigure continuation
                     then ["--with-ld=false"]
                     else []
                         ++ ipdBuildFlags package)
-    runExternalTool "Building" "cabal" args (Just dir) $ \output -> do
+    runExternalTool' "Building" "cabal" args (Just dir) $ \output -> do
         logOutputForBuild package backgroundBuild output
         errs <- readIDE errorRefs
         if shallConfigure && isConfigError output
@@ -259,11 +269,18 @@ buildPackage backgroundBuild withoutLinking package continuation = catchIDE (do
 packageDoc :: PackageAction
 packageDoc = do
     package <- ask
+    logLaunch <- lift $ getDefaultLogLaunch
+    lift $ showDefaultLogLaunch'
+
     lift $ catchIDE (do
         let dir = dropFileName (ipdCabalFile package)
-        runExternalTool "Documenting" "cabal" (["haddock"]
-                        ++ (ipdHaddockFlags package)) (Just dir) logOutput)
+        runExternalTool' "Documenting"
+                        "cabal"
+                        (["haddock"] ++ (ipdHaddockFlags package))
+                        (Just dir)
+                        $ logOutput logLaunch)
         (\(e :: SomeException) -> putStrLn (show e))
+
 
 packageClean :: PackageAction
 packageClean = do
@@ -271,16 +288,26 @@ packageClean = do
     lift $ packageClean' package (\ _ -> return ())
 
 packageClean' :: IDEPackage -> (Bool -> IDEAction) -> IDEAction
-packageClean' package continuation =
-    let dir = dropFileName (ipdCabalFile package)
-    in runExternalTool "Cleaning" "cabal" ["clean"] (Just dir)
-        (\ output -> do
-            logOutput output
-            continuation (last output == ToolExit ExitSuccess))
+packageClean' package continuation = do
+    logLaunch <- getDefaultLogLaunch
+    showDefaultLogLaunch'
+
+    runExternalTool' "Cleaning"
+                    "cabal"
+                    ["clean"]
+                    (Just dir)
+                    (\output -> do
+                        logOutput logLaunch output
+                        continuation (last output == ToolExit ExitSuccess))
+    where
+    dir = dropFileName (ipdCabalFile package)
 
 packageCopy :: PackageAction
 packageCopy = do
     package <- ask
+    logLaunch <- lift $ getDefaultLogLaunch
+    lift $ showDefaultLogLaunch'
+
     lift $ catchIDE (do
         window      <- getMainWindow
         mbDir       <- liftIO $ chooseDir window "Select the target directory" Nothing
@@ -288,8 +315,11 @@ packageCopy = do
             Nothing -> return ()
             Just fp -> do
                 let dir = dropFileName (ipdCabalFile package)
-                runExternalTool "Copying" "cabal" (["copy"]
-                           ++ ["--destdir=" ++ fp]) (Just dir) logOutput)
+                runExternalTool' "Copying"
+                                "cabal"
+                                (["copy"] ++ ["--destdir=" ++ fp])
+                                (Just dir)
+                                (logOutput logLaunch))
         (\(e :: SomeException) -> putStrLn (show e))
 
 packageRun :: PackageAction
@@ -303,19 +333,29 @@ packageRun = do
             Nothing -> do
                 case executables pd of
                     (Executable name _ _):_ -> do
+                        (logLaunch,logName) <- buildLogLaunchByName name
                         let path = "dist/build" </> name </> name
                         let dir = dropFileName (ipdCabalFile package)
-                        runExternalTool ("Running " ++ name) path (ipdExeFlags package) (Just dir) logOutput
+                        IDE.Package.runPackage (addLogLaunchData logName logLaunch)
+                                               ("Running " ++ name)
+                                               path
+                                               (ipdExeFlags package)
+                                               (Just dir)
+                                               (logOutput logLaunch)
+
+
                     otherwise -> do
                         sysMessage Normal "no executable in selected package"
                         return ()
             Just debug -> do
                 -- TODO check debug package matches active package
                 case executables pd of
-                    (Executable _ mainFilePath _):_ -> do
+                    (Executable name mainFilePath _):_ -> do
+                        (logLaunch,logName) <- buildLogLaunchByName name
                         runDebug (do
-                            executeDebugCommand (":module *" ++ (map (\c -> if c == '/' then '.' else c) (takeWhile (/= '.') mainFilePath))) logOutput
-                            executeDebugCommand (":main " ++ (unwords (ipdExeFlags package))) logOutput) debug
+                                    executeDebugCommand (":module *" ++ (map (\c -> if c == '/' then '.' else c) (takeWhile (/= '.') mainFilePath))) (logOutput logLaunch)
+                                    executeDebugCommand (":main " ++ (unwords (ipdExeFlags package))) (logOutput logLaunch))
+                                 debug
                     otherwise -> do
                         sysMessage Normal "no executable in selected package"
                         return ())
@@ -329,42 +369,57 @@ packageInstall = do
 packageInstall' :: IDEPackage -> (Bool -> IDEAction) -> IDEAction
 packageInstall' package continuation = catchIDE (do
    let dir = dropFileName (ipdCabalFile package)
-   runExternalTool "Installing" "runhaskell" (["Setup", "install"]
+   logLaunch <- getDefaultLogLaunch
+   showDefaultLogLaunch'
+
+   runExternalTool' "Installing" "runhaskell" (["Setup", "install"]
                     ++ (ipdInstallFlags package)) (Just dir) (\ output -> do
-                        logOutput output
+                        logOutput logLaunch output
                         continuation (last output == ToolExit ExitSuccess)))
         (\(e :: SomeException) -> putStrLn (show e))
 
 packageRegister :: PackageAction
 packageRegister = do
     package <- ask
+    logLaunch <- lift $ getDefaultLogLaunch
+    lift $ showDefaultLogLaunch'
+
     lift $ catchIDE (do
         let dir = dropFileName (ipdCabalFile package)
-        runExternalTool "Registering" "cabal" (["register"]
-                        ++ (ipdRegisterFlags package)) (Just dir) logOutput)
+        runExternalTool' "Registering" "cabal" (["register"]
+                        ++ (ipdRegisterFlags package)) (Just dir) (logOutput logLaunch))
         (\(e :: SomeException) -> putStrLn (show e))
 
 packageTest :: PackageAction
 packageTest = do
     package <- ask
+    logLaunch <- lift $ getDefaultLogLaunch
+    lift $ showDefaultLogLaunch'
+
     lift $ catchIDE (do
         let dir = dropFileName (ipdCabalFile package)
-        runExternalTool "Testing" "cabal" (["test"]) (Just dir) logOutput)
+        runExternalTool' "Testing" "cabal" (["test"]) (Just dir) (logOutput logLaunch))
         (\(e :: SomeException) -> putStrLn (show e))
 
 packageSdist :: PackageAction
 packageSdist = do
     package <- ask
+    logLaunch <- lift $ getDefaultLogLaunch
+    lift $ showDefaultLogLaunch'
+
     lift $ catchIDE (do
         let dir = dropFileName (ipdCabalFile package)
-        runExternalTool "Source Dist" "cabal" (["sdist"]
-                        ++ (ipdSdistFlags package)) (Just dir) logOutput)
+        runExternalTool' "Source Dist" "cabal" (["sdist"]
+                        ++ (ipdSdistFlags package)) (Just dir) (logOutput logLaunch))
         (\(e :: SomeException) -> putStrLn (show e))
 
 
 packageOpenDoc :: PackageAction
 packageOpenDoc = do
     package <- ask
+    logLaunch <- lift $ getDefaultLogLaunch
+    lift $ showDefaultLogLaunch'
+
     lift $ catchIDE (do
         prefs   <- readIDE prefs
         let path = dropFileName (ipdCabalFile package)
@@ -373,22 +428,60 @@ packageOpenDoc = do
                         </> display (pkgName (ipdPackageId package))
                         </> "index.html"
             dir = dropFileName (ipdCabalFile package)
-        runExternalTool "Opening Documentation" (browser prefs) [path] (Just dir) logOutput)
+        runExternalTool' "Opening Documentation" (browser prefs) [path] (Just dir) (logOutput logLaunch))
         (\(e :: SomeException) -> putStrLn (show e))
 
-runExternalTool :: String -> FilePath -> [String] -> Maybe FilePath -> ([ToolOutput] -> IDEAction) -> IDEAction
-runExternalTool description executable args mbDir handleOutput = do
-        prefs          <- readIDE prefs
-        alreadyRunning <- isRunning
-        unless alreadyRunning $ do
+
+runExternalTool' :: String
+                -> FilePath
+                -> [String]
+                -> Maybe FilePath
+                -> ([ToolOutput] -> IDEAction)
+                -> IDEM ()
+runExternalTool' description executable args mbDir handleOutput = do
+        runExternalTool (do
+                            run <- isRunning
+                            return (not run))
+                        (\_ -> return ())
+                        description
+                        executable
+                        args
+                        mbDir
+                        handleOutput
+        return()
+
+runExternalTool :: IDEM Bool
+                -> (ProcessHandle -> IDEAction)
+                -> String
+                -> FilePath
+                -> [String]
+                -> Maybe FilePath
+                -> ([ToolOutput] -> IDEAction)
+                -> IDEM ()
+runExternalTool runGuard pidHandler description executable args mbDir handleOutput  = do
+        prefs <- readIDE prefs
+        run <- runGuard
+        liftIO $ putStrLn $ "description" ++ description++ ", executable" ++executable
+        when run $ do
             when (saveAllBeforeBuild prefs) (do fileSaveAll belongsToWorkspace; return ())
             triggerEventIDE (StatusbarChanged [CompartmentState description, CompartmentBuild True])
             reifyIDE (\ideR -> forkIO $ do
                 (output, pid) <- runTool executable args mbDir
                 reflectIDE (do
+                    pidHandler pid
                     modifyIDE_ (\ide -> ide{runningTool = Just pid})
                     handleOutput output) ideR)
             return ()
+
+
+runPackage ::  (ProcessHandle -> IDEAction)
+            -> String
+            -> FilePath
+            -> [String]
+            -> Maybe FilePath
+            -> ([ToolOutput] -> IDEAction)
+            -> IDEM ()
+runPackage = runExternalTool (return True) -- TODO here one could check if package to be run is building/configuring/etc atm
 
 
 -- ---------------------------------------------------------------------

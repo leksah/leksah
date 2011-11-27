@@ -103,12 +103,42 @@ import IDE.PaneGroups
 import IDE.Pane.Search (getSearch, setChoices, searchMetaGUI)
 import IDE.Pane.Grep (getGrep)
 
+import qualified VCSGui.Git as GitGui
+import qualified VCSWrapper.Git as Git
+
+import qualified Data.Map as Map
+import MonadUtils (liftIO1)
+import Data.IORef (readIORef)
+
+import qualified IDE.Command.VCS.SVN as VCSSVN
+import qualified IDE.Command.VCS.GIT as VCSGit
+import qualified IDE.Command.VCS.Common as VCS
+
+
 --
 -- | The Actions known to the system (they can be activated by keystrokes or menus)
 --
 mkActions :: [ActionDescr IDERef]
 mkActions =
-    [AD "File" "_File" Nothing Nothing (return ()) [] False
+    [
+    --common vcs actions
+    AD "vcs" "Version Con_trol" Nothing Nothing (return ()) [] False
+    ,AD "SetupRepo" "_Setup Repo" Nothing Nothing VCS.setupRepoAction [] False
+    --svn actions
+    ,AD "SvnCommit" "_Commit" Nothing Nothing VCSSVN.commitAction [] False
+    ,AD "SvnUpdate" "_Update" Nothing Nothing VCSSVN.updateAction [] False
+    ,AD "SvnViewLog" "_View Log" Nothing Nothing VCSSVN.viewLogAction [] False
+    -- git actions
+    ,AD "GitCommit" "_Commit" Nothing Nothing VCSGit.commitAction [] False
+    -- TODO display progress/status-window
+    -- TODO select remote to push/pull to/from
+    ,AD "GitPush" "_Push" Nothing Nothing VCSGit.pushAction [] False
+    ,AD "GitPull" "P_ull" Nothing Nothing VCSGit.pullAction [] False
+    ,AD "GitViewLog" "_View Log" Nothing Nothing VCSGit.viewLogAction [] False
+    -- print action
+    ,AD "FilePrint" "_Print File" Nothing Nothing (filePrint) [] False
+    -- other actions
+    ,AD "File" "_File" Nothing Nothing (return ()) [] False
     ,AD "FileNew" "_New Module..." Nothing (Just "gtk-new")
         (packageTry_ $ addModule []) [] False
     ,AD "FileNewTextFile" "_New Text File" Nothing Nothing
@@ -134,7 +164,6 @@ mkActions =
         (do fileCloseAllButWorkspace; return ()) [] False
     ,AD "Quit" "_Quit" Nothing (Just "gtk-quit")
         quit [] False
-
     ,AD "Edit" "_Edit" Nothing Nothing (return ()) [] False
     ,AD "EditUndo" "_Undo" Nothing (Just "gtk-undo")
         editUndo [] False
@@ -426,6 +455,8 @@ menuDescription = do
     prefsPath   <- getConfigFilePathForLoad "leksah.menu" Nothing dataDir
     res         <- readFile prefsPath
     return res
+
+
 
 updateRecentEntries :: IDEAction
 updateRecentEntries = do
@@ -786,9 +817,13 @@ setSymbol symbol = do
 registerLeksahEvents :: IDEAction
 registerLeksahEvents =    do
     stRef   <-  ask
+    defaultLogLaunch <- getDefaultLogLaunch
     registerEvent stRef "LogMessage"
-        (\e@(LogMessage s t)      -> getLog >>= \(log :: IDELog) -> liftIO $ appendLog log s t
-                                                >> return e)
+        (\e@(LogMessage s t)      -> do
+                                    defaultLogLaunch <- getDefaultLogLaunch
+                                    log <- getLog
+                                    liftIO $ appendLog log defaultLogLaunch s t
+                                    return e)
     registerEvent stRef "SelectInfo"
         (\ e@(SelectInfo str)     -> setSymbol str >> return e)
     registerEvent stRef "SelectIdent"

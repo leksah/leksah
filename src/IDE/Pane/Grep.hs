@@ -38,6 +38,7 @@ import IDE.Pane.SourceBuffer
 import Control.Applicative ((<$>))
 import System.FilePath ((</>), dropFileName)
 import System.Exit (ExitCode(..))
+import IDE.Pane.Log
 
 data GrepRecord = GrepRecord {
             file        :: FilePath
@@ -179,6 +180,7 @@ getSelectionGrepRecord treeView grepStore = do
         p:_ ->  Just <$> treeStoreGetValue grepStore p
         _   ->  return Nothing
 
+--TODO srp use default loglaunch probably
 grepWorkspace :: String -> Bool -> WorkspaceAction
 grepWorkspace "" caseSensitive = return ()
 grepWorkspace regexString caseSensitive = do
@@ -229,6 +231,7 @@ setGrepResults dir output = do
     let store = grepStore grep
         view  = treeView grep
     ideRef <- ask
+    defaultLogLaunch <- getDefaultLogLaunch
     liftIO $ do
         let (displayed, dropped) = splitAt 5000 output
         forkIO $ do
@@ -236,7 +239,7 @@ setGrepResults dir output = do
                     ++ if null dropped
                         then []
                         else [ToolError $ "Dropped " ++ show (length dropped) ++ " search results"]
-            unless (null errors) $ postGUISync $ reflectIDE (logOutput errors) ideRef
+            unless (null errors) $ postGUISync $ reflectIDE (logOutput defaultLogLaunch errors) ideRef
             return ()
         case catMaybes (map (process dir) displayed) of
             []      -> return 0

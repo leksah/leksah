@@ -48,6 +48,7 @@ module IDE.Core.Types (
 
 ,   IDEPackage(..)
 ,   Workspace(..)
+,   VCSConf
 
 ,   ActionDescr(..)
 ,   ActionString
@@ -76,6 +77,8 @@ module IDE.Core.Types (
 ,   ModuleDescrCache
 
 ,   CompletionWindow(..)
+,   LogLaunch(..)
+,   LogLaunchData(..)
 ,   LogTag(..)
 ,   GUIHistory
 ,   GUIHistory'(..)
@@ -87,7 +90,7 @@ module IDE.Core.Types (
 import qualified IDE.YiConfig as Yi
 import Graphics.UI.Gtk
        (Window(..), KeyVal(..), Color(..), Menu(..), TreeView(..),
-        ListStore(..), Toolbar(..))
+        ListStore(..), Toolbar(..), TextView(..), ScrolledWindow(..), TextBuffer(..))
 import Control.Monad.Reader
 import Data.Unique (newUnique, Unique(..))
 import Graphics.UI.Frame.Panes
@@ -101,6 +104,7 @@ import Graphics.UI.Gtk.Gdk.EventM (Modifier(..))
 #else
 import Graphics.UI.Gtk.Gdk.Enums (Modifier(..))
 #endif
+import Graphics.UI.Gtk.ActionMenuToolbar.UIManager(MergeId)
 import System.Time (ClockTime(..))
 import Distribution.Simple (Extension(..))
 import IDE.System.Process (ProcessHandle(..))
@@ -115,6 +119,11 @@ import IDE.StrippedPrefs(RetrieveStrategy)
 import System.IO (Handle)
 import Distribution.Text(disp)
 import Text.PrettyPrint (render)
+import Data.Typeable
+import qualified Data.Map as Map
+
+import qualified VCSWrapper.Common as VCS
+import qualified VCSGui.Common as VCSGUI
 
 -- ---------------------------------------------------------------------
 -- IDE State
@@ -152,6 +161,8 @@ data IDE            =  IDE {
 ,   completion      ::   ((Int, Int), Maybe CompletionWindow)
 ,   yiControl       ::   Yi.Control
 ,   server          ::   Maybe Handle
+,   vcsData         ::   (Maybe MergeId, Maybe (Maybe String))
+,   logLaunches     ::   Map.Map String LogLaunchData
 } --deriving Show
 
 --
@@ -337,6 +348,7 @@ data Workspace = Workspace {
 ,   wsPackagesFiles ::   [FilePath]
 ,   wsActivePackFile::   Maybe FilePath
 ,   wsNobuildPack   ::   [IDEPackage]
+,   packageVcsConf  ::   Map FilePath VCSConf -- ^ (FilePath to package, Version-Control-System Configuration)
 } deriving Show
 
 -- ---------------------------------------------------------------------
@@ -417,9 +429,22 @@ data SearchHint = Forward | Backward | Insert | Delete | Initial
 instance Ord Modifier
     where compare a b = compare (fromEnum a) (fromEnum b)
 
+-- Version-Control-System Configuration
+type VCSConf = (VCS.VCSType, VCS.Config, Maybe VCSGUI.MergeTool)
+
 --
 -- | Other types
 --
+
+data LogLaunchData = LogLaunchData {
+    logLaunch :: LogLaunch
+,   mbPid :: Maybe ProcessHandle
+}
+
+data LogLaunch = LogLaunch {
+    logBuffer   :: TextBuffer
+} deriving Typeable
+
 data LogRefType = WarningRef | ErrorRef | BreakpointRef | ContextRef deriving (Eq, Show)
 
 data LogRef = LogRef {
