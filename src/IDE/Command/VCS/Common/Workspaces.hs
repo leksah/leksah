@@ -23,6 +23,7 @@ import qualified IDE.Utils.GUIUtils as GUIUtils
 import IDE.Core.Types
 import IDE.Core.State
 import qualified IDE.Command.VCS.Common as Common
+import qualified IDE.Command.VCS.SVN as SVN
 
 import qualified VCSWrapper.Common as VCS
 import qualified VCSGui.Common as VCSGUI
@@ -73,9 +74,14 @@ onWorkspaceOpen workspace = do
                     packageMenu <- liftIO $ menuNew
 
                     -- set-up repo action
-                    let addActions' = addActions cabalFp packageMenu ideR
-                    liftIO $ addActions' [getSetupRepoAction] Common.runActionWithContext --change runner
+                    actionItem <- menuItemNewWithMnemonic "_Setup Repo"
+                    actionItem `onActivateLeaf` (reflectIDE (runSetupRepoActionWithContext cabalFp) ideR)
+                    menuShellAppend packageMenu actionItem
+
+--                    liftIO $ addActions' [getSetupRepoAction] Common.runActionWithContext --change runner
+
                     -- other actions if repo set
+                    let addActions' = addActions cabalFp packageMenu ideR
                     case mbVcsConf of
                         Nothing -> return()
                         Just (vcsType, _,_) -> do
@@ -87,8 +93,6 @@ onWorkspaceOpen workspace = do
                     )
                packages
 
---
---        --
         liftIO $ menuItemSetSubmenu vcsItem vcsMenu
         liftIO $ widgetShowAll vcsMenu
         return ()
@@ -116,9 +120,9 @@ onWorkspaceOpen workspace = do
 --TODO move and retrieve this to/from data file e.g. svn.menu, git.menu
 getVCSActions :: VCS.VCSType -> [(String, Common.VCSAction ())]
 getVCSActions VCS.SVN = [
-                            ("_Commit", commitAction')
-                            ,("_View Log", viewLogAction')
-                            ,("_Update", updateAction')
+                            ("_Commit", SVN.commitAction)
+                            ,("_View Log", SVN.viewLogAction)
+                            ,("_Update", SVN.updateAction)
                             ]
 getVCSActions VCS.GIT = [
                             ("_Commit", commitAction')
@@ -133,7 +137,8 @@ getSetupRepoAction = ("_Setup Repo", Common.setupRepoAction')
 ----setupRepoAction' = return()
 --
 commitAction' :: Common.VCSAction ()
-commitAction' = return()
+commitAction' = do
+
 
 viewLogAction' :: Common.VCSAction ()
 viewLogAction' = return()

@@ -13,14 +13,13 @@
 -----------------------------------------------------------------------------
 {-# LANGUAGE FlexibleInstances, GeneralizedNewtypeDeriving #-}
 module IDE.Command.VCS.Common (
-    createActionFromContext
-    ,setupRepoAction'
-    ,execWithErrHandling
-    ,mergeToolSetter
+    mergeToolSetter
     ,runActionWithContext
+    ,createActionFromContext
+    ,runSetupRepoActionWithContext
     ,getVCSConf'
 
-    ,VCSAction
+    ,VCSAction(..)
 ) where
 
 import qualified VCSWrapper.Common as VCS
@@ -38,69 +37,93 @@ import qualified Control.Exception as Exc
 import Data.Maybe
 import qualified Data.Map as Map
 
-newtype VCSAction a = VCSAction (ReaderT VCS.Config IDEM a)
-    deriving (Monad, MonadIO, MonadReader VCS.Config)
+newtype VCSSetupAction a = VCSSetupAction (ReaderT (Maybe VCSConf) IDEM a)
+    deriving (Monad, MonadIO, MonadReader (Maybe VCSConf))
+
+newtype VCSAction a = VCSAction (ReaderT VCSConf IDEM a)
+    deriving (Monad, MonadIO, MonadReader VCSConf)
 
 -- | retrieves VCS configuration from the workspace and executes given computation using it
 runActionWithContext :: VCSAction ()    -- ^ computation to execute, i.e. showCommit
                         -> FilePath
                         -> IDEAction
 runActionWithContext vcsAction packageFp = do
-    (_,config,_) <- getVCSConf'' packageFp
+    config <- getVCSConf'' packageFp
     runVcs config $ vcsAction
     where
-    runVcs :: VCS.Config -> VCSAction t -> IDEM t
+    runVcs :: VCSConf -> VCSAction t -> IDEM t
     runVcs config (VCSAction a) = runReaderT a config
 
---TODO implement this and refactor/delete below
-setupRepoAction' :: VCSAction ()
-setupRepoAction' = return ()
-
-
-
--- | displays a window for setting up a vcs, thereafter adding menu items and persisting the created configuration
-setupRepoAction :: IDEAction
-setupRepoAction = do
-    ide <- ask
-    eConfigErr <- getVCSConfForActivePackage
-    execWithErrHandling
-        eConfigErr
-        (\mbConfig -> liftIO $ VCSGUI.showSetupConfigGUI mbConfig (callback ide))
+-- | retrieves maybe VCS configuration from the workspace and executes given setupaction using it
+runSetupRepoActionWithContext :: FilePath
+                              -> IDEAction
+runSetupRepoActionWithContext packageFp = do
+    eConfigErr <- getVCSConf packageFp
+    case eConfigErr of
+        Left error -> liftIO $ showErrorDialog error
+        Right mbConfig -> do
+            ide <- ask
+            liftIO $ VCSGUI.showSetupConfigGUI mbConfig (callback ide packageFp)
     where
-        callback :: IDERef -> Maybe (VCS.VCSType, VCS.Config, Maybe VCSGUI.MergeTool) -> IO()
-        callback ideRef mbConfig = do
-                -- set config in workspace
-                case mbConfig of
-                    Nothing -> return() --TODO maybe allow to delete conf
-                    Just config -> runReaderT (workspaceSetVCSConfigForActivePackage config) ideRef
-                -- add menu items
-                case mbConfig of
-                    Nothing -> return ()
-                    Just config -> do
-                                    return()
-                                    --TODO set vcs items here
---                                    runReaderT onWorkspaceClose ideRef
---                                    runReaderT (onWorkspaceOpen config) ideRef
+    callback :: IDERef -> FilePath -> Maybe (VCS.VCSType, VCS.Config, Maybe VCSGUI.MergeTool) -> IO()
+    callback ideRef packageFp mbConfig  = do
+            -- set config in workspace
+            case mbConfig of
+                Nothing -> return() --TODO maybe allow to delete conf
+                Just config -> runReaderT (workspaceSetVCSConfig packageFp config) ideRef
+            -- add menu items
+            case mbConfig of
+                Nothing -> return ()
+                Just config -> do
+                                return()
+                                --TODO set vcs items here
+----                                    runReaderT onWorkspaceClose ideRef
+----                                    runReaderT (onWorkspaceOpen config) ideRef
+
+
+
+
+---- | displays a window for setting up a vcs, thereafter adding menu items and persisting the created configuration
+--setupRepoAction :: IDEAction
+--setupRepoAction = do
+--    ide <- ask
+--    eConfigErr <- getVCSConfForActivePackage
+--    execWithErrHandling
+--        eConfigErr
+--        (\mbConfig -> liftIO $ VCSGUI.showSetupConfigGUI mbConfig (callback ide))
+--    where
+--        callback :: IDERef -> Maybe (VCS.VCSType, VCS.Config, Maybe VCSGUI.MergeTool) -> IO()
+--        callback ideRef mbConfig = do
+--                -- set config in workspace
+--                case mbConfig of
+--                    Nothing -> return() --TODO maybe allow to delete conf
+--                    Just config -> runReaderT (workspaceSetVCSConfigForActivePackage config) ideRef
+--                -- add menu items
+--                case mbConfig of
+--                    Nothing -> return ()
+--                    Just config -> do
+--                                    return()
+--                                    --TODO set vcs items here
+----                                    runReaderT onWorkspaceClose ideRef
+----                                    runReaderT (onWorkspaceOpen config) ideRef
 
 -- | retrieves VCS configuration from the workspace and executes given computation using it
 createActionFromContext :: VCS.Ctx()    -- ^ computation to execute, i.e. showCommit
-                        -> IDEAction
+                        -> VCSAction ()
 createActionFromContext vcsAction = do
-    eErrConf <- getVCSConfForActivePackage
-    execWithErrHandling
-        eErrConf
-        (\mbConfig -> case mbConfig of
-                        Nothing -> liftIO $ showErrorDialog "No active repository!"
-                        Just (_,config, _) -> liftIO $ VCSGUI.defaultVCSExceptionHandler $ VCS.runVcs config $ vcsAction)
+    (_,conf,_) <- ask
+    liftIO $ VCSGUI.defaultVCSExceptionHandler $ VCS.runVcs conf $ vcsAction
 
-execWithErrHandling :: Either String (Maybe VCSConf) ->
-                (Maybe VCSConf -> IDEAction)
-                -> IDEAction
-execWithErrHandling eErrConf fun = do
-    case eErrConf of
-        Left error -> liftIO $ showErrorDialog error
-        Right mbConfig -> fun mbConfig
+--
+--execWithErrHandling :: Either String (Maybe VCSConf) ->
+--                (Maybe VCSConf -> IDEAction)
+--                -> IDEAction
+--execWithErrHandling eErrConf fun = do
+--    case eErrConf of
+--        Left error -> liftIO $ showErrorDialog error
+--        Right mbConfig -> fun mbConfig
 
+--TODO set for a specific package
 mergeToolSetter :: IDERef -> VCSGUI.MergeTool -> IO()
 mergeToolSetter ideRef mergeTool = do
     -- set mergeTool in config in workspace

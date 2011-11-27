@@ -28,13 +28,17 @@ import IDE.Core.Types
 import IDE.Core.State
 
 commitAction :: IDEAction
-commitAction = createActionFromContext GitGUI.showCommitGUI
+commitAction = return()
+--commitAction = createActionFromContext GitGUI.showCommitGUI
 
 viewLogAction :: IDEAction
-viewLogAction = createActionFromContext GitGUI.showLogGUI
+viewLogAction = return()
+--viewLogAction = createActionFromContext GitGUI.showLogGUI
 
 pushAction :: IDEAction
-pushAction = createActionFromContext $ GitGUI.askPassWrapper Git.push
+pushAction = return()
+--pushAction = createActionFromContext $ GitGUI.askPassWrapper Git.push
 
 pullAction :: IDEAction
-pullAction = createActionFromContext $ GitGUI.askPassWrapper GitGUI.pull
+pullAction = return()
+--pullAction = createActionFromContext $ GitGUI.askPassWrapper GitGUI.pull
