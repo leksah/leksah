@@ -60,8 +60,10 @@ setupRepoAction = do
                 case mbConfig of
                     Nothing -> return ()
                     Just config -> do
-                                    runReaderT onWorkspaceClose ideRef
-                                    runReaderT (onWorkspaceOpen config) ideRef
+                                    return()
+                                    --TODO set vcs items here
+--                                    runReaderT onWorkspaceClose ideRef
+--                                    runReaderT (onWorkspaceOpen config) ideRef
 
 -- | retrieves VCS configuration from the workspace and executes given computation using it
 createActionFromContext :: VCS.Ctx()    -- ^ computation to execute, i.e. showCommit

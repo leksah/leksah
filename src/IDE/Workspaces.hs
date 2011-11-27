@@ -262,15 +262,26 @@ workspaceOpenThis askForSession mbFilePath =
                     catchIDE (do
                         workspace <- readWorkspace filePath
                         setWorkspace (Just workspace {wsFile = filePath})
-                        eErrConf <- getVCSConfForActivePackage' workspace
-                        case eErrConf of
-                            Left error -> liftIO $ putStrLn $ "Could not retrieve vcs-conf for active package due to '"++error++"'."
-                            Right mbConf -> case mbConf of
-                                                Nothing -> liftIO $ putStrLn $ "Could not retrieve vcs-conf for active package. No vcs-conf set up."
-                                                Just config -> VCSWS.onWorkspaceOpen config
-                        return ())
+                        let packages = wsPackages workspace
+                        packagesWVCSConf <- mapM (mapper workspace)
+                                                 packages
+                        VCSWS.onWorkspaceOpen packagesWVCSConf)
                            (\ (e :: Exc.SomeException) -> reflectIDE
                                 (ideMessage Normal ("Can't load workspace file " ++ filePath ++ "\n" ++ show e)) ideR)
+    where
+    mapper :: Workspace -> IDEPackage -> IDEM (IDEPackage, Maybe VCSConf)
+    mapper workspace p = do
+        let fp = ipdCabalFile p
+        eErrConf <- getVCSConf' workspace fp
+        case eErrConf of
+            Left error -> do
+                liftIO $ putStrLn $ "Could not retrieve vcs-conf due to '"++error++"'."
+                return (p, Nothing)
+            Right mbConf -> case mbConf of
+                                Nothing -> do
+                                    liftIO $ putStrLn $ "Could not retrieve vcs-conf for active package. No vcs-conf set up."
+                                    return (p, Nothing)
+                                Just vcsConf -> return $ (p,  Just vcsConf)
 
 -- | Closes a workspace
 workspaceClose :: IDEAction

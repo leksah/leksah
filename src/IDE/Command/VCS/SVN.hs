@@ -36,6 +36,9 @@ import Control.Monad.Reader(liftIO,ask,runReaderT)
 import Data.IORef(atomicModifyIORef, IORef)
 import Data.Either
 
+--TODO instead of doing this "getVCSConfForActivePackage" all the time,
+-- action should be run in reader monad with the vcsconf set
+-- and just ask for it if it needs it. the vcsconf should be set in createActionFromContext I guess
 commitAction :: IDEAction
 commitAction = do
     eConfigErr <- getVCSConfForActivePackage
