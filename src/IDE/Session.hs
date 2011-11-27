@@ -14,7 +14,6 @@
 --
 ---------------------------------------------------------------------------------
 
-
 module IDE.Session (
     saveSession
 ,   saveSessionAs
@@ -48,6 +47,7 @@ import IDE.Pane.Preferences
 import IDE.Pane.PackageFlags
 import IDE.Pane.Search
 import IDE.Pane.Grep
+import IDE.Pane.Files
 import IDE.Pane.Breakpoints
 import IDE.Pane.Trace
 import IDE.Pane.Variables
@@ -78,6 +78,7 @@ data PaneState      =   BufferSt BufferState
                     |   PrefsSt PrefsState
                     |   FlagsSt FlagsState
                     |   SearchSt SearchState
+                    |   FilesSt FilesState
                     |   GrepSt GrepState
                     |   BreakpointsSt BreakpointsState
                     |   TraceSt TraceState
@@ -94,6 +95,7 @@ asPaneState s | isJust ((cast s) :: Maybe ModulesState)     =   ModulesSt (fromJ
 asPaneState s | isJust ((cast s) :: Maybe PrefsState)       =   PrefsSt (fromJust $ cast s)
 asPaneState s | isJust ((cast s) :: Maybe FlagsState)       =   FlagsSt (fromJust $ cast s)
 asPaneState s | isJust ((cast s) :: Maybe SearchState)      =   SearchSt (fromJust $ cast s)
+asPaneState s | isJust ((cast s) :: Maybe FilesState)       =   FilesSt (fromJust $ cast s)
 asPaneState s | isJust ((cast s) :: Maybe GrepState)        =   GrepSt (fromJust $ cast s)
 asPaneState s | isJust ((cast s) :: Maybe BreakpointsState) =   BreakpointsSt (fromJust $ cast s)
 asPaneState s | isJust ((cast s) :: Maybe TraceState)       =   TraceSt (fromJust $ cast s)
@@ -110,6 +112,7 @@ recover pp (ModulesSt p)        =   recoverState pp p >> return ()
 recover pp (PrefsSt p)          =   recoverState pp p >> return ()
 recover pp (FlagsSt p)          =   recoverState pp p >> return ()
 recover pp (SearchSt p)         =   recoverState pp p >> return ()
+recover pp (FilesSt p)          =   recoverState pp p >> return ()
 recover pp (GrepSt p)           =   recoverState pp p >> return ()
 recover pp (BreakpointsSt p)    =   recoverState pp p >> return ()
 recover pp (TraceSt p)          =   recoverState pp p >> return ()

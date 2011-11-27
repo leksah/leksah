@@ -1,4 +1,5 @@
 {-# OPTIONS_GHC -XTypeSynonymInstances -XScopedTypeVariables #-}
+{-# OPTIONS_GHC -fno-warn-incomplete-patterns #-}
 -----------------------------------------------------------------------------
 --
 -- Module       :  IDE.Menu
@@ -67,6 +68,7 @@ import IDE.Pane.Preferences
 import IDE.Pane.PackageFlags
 import IDE.Pane.PackageEditor
 import IDE.Pane.Errors
+import IDE.Pane.Search
 import IDE.Package
 import IDE.Pane.Log
 import IDE.Session
@@ -100,8 +102,9 @@ import IDE.Pane.Workspace
 import IDE.Pane.Variables (fillVariablesList)
 import IDE.Pane.Trace (fillTraceList)
 import IDE.PaneGroups
-import IDE.Pane.Search (getSearch, setChoices, searchMetaGUI)
+import IDE.Pane.Search (getSearch, IDESearch(..))
 import IDE.Pane.Grep (getGrep)
+import IDE.Pane.Files (getFiles)
 
 import qualified VCSGui.Git as GitGui
 import qualified VCSWrapper.Git as Git
@@ -253,8 +256,8 @@ mkActions =
     ,AD "ResolveErrors" "Resol_ve Errors" (Just "Resolve 'Hidden package' and 'Not in scope' errors by adding the necessary dependancies or imports") Nothing
         resolveErrors [] False
 
-    ,AD "InstallPackage" "_Install" Nothing Nothing
-        (packageTry_ packageInstall) [] False
+    ,AD "InstallDependenciesPackage" "_Install Dependencies" (Just "Install the package's dependencies from the hackage server") Nothing
+        (packageTry_ packageInstallDependencies) [] False
     ,AD "RegisterPackage" "_Register" Nothing Nothing
         (packageTry_ packageRegister) [] False
     ,AD "TestPackage" "Test" Nothing Nothing
@@ -360,6 +363,8 @@ mkActions =
         showDebugger [] False
     ,AD "ShowSearch" "Search" Nothing Nothing
         (getSearch Nothing  >>= \ p -> displayPane p False) [] False
+    ,AD "ShowFiles" "Files" Nothing Nothing
+        (getFiles Nothing  >>= \ p -> displayPane p False) [] False
     ,AD "ShowGrep" "Grep" Nothing Nothing
         (getGrep Nothing  >>= \ p -> displayPane p False) [] False
     ,AD "ShowErrors" "Errors" Nothing Nothing
@@ -541,44 +546,46 @@ getMenuAndToolbars uiManager = do
 
 textPopupMenu :: IDERef -> Menu -> IO ()
 textPopupMenu ideR menu = do
+    let reflectIDE_ x = reflectIDE x ideR
     items <- containerGetChildren menu
     mi1 <- menuItemNewWithLabel "Eval"
-    mi1 `onActivateLeaf` (reflectIDE debugExecuteSelection ideR)
+    mi1 `onActivateLeaf` reflectIDE_ debugExecuteSelection
     menuShellAppend menu mi1
     mi11 <- menuItemNewWithLabel "Eval & Insert"
-    mi11 `onActivateLeaf` (reflectIDE debugExecuteAndShowSelection ideR)
+    mi11 `onActivateLeaf` reflectIDE_ debugExecuteAndShowSelection
     menuShellAppend menu mi11
     mi12 <- menuItemNewWithLabel "Step"
-    mi12 `onActivateLeaf` (reflectIDE debugStepExpression ideR)
+    mi12 `onActivateLeaf` reflectIDE_ debugStepExpression
     menuShellAppend menu mi12
     mi13 <- menuItemNewWithLabel "Trace"
-    mi13 `onActivateLeaf` (reflectIDE debugTraceExpression ideR)
+    mi13 `onActivateLeaf` reflectIDE_ debugTraceExpression
     menuShellAppend menu mi13
     mi16 <- menuItemNewWithLabel "Set Breakpoint"
-    mi16 `onActivateLeaf` (reflectIDE debugSetBreakpoint ideR)
+    mi16 `onActivateLeaf` reflectIDE_ debugSetBreakpoint
     menuShellAppend menu mi16
     sep1 <- separatorMenuItemNew
     menuShellAppend menu sep1
     mi14 <- menuItemNewWithLabel "Type"
-    mi14 `onActivateLeaf` (reflectIDE debugType ideR)
+    mi14 `onActivateLeaf` reflectIDE_ debugType
     menuShellAppend menu mi14
     mi141 <- menuItemNewWithLabel "Info"
-    mi141 `onActivateLeaf` (reflectIDE debugInformation ideR)
+    mi141 `onActivateLeaf` reflectIDE_ debugInformation
     menuShellAppend menu mi141
     mi15 <- menuItemNewWithLabel "Kind"
-    mi15 `onActivateLeaf` (reflectIDE debugKind ideR)
+    mi15 `onActivateLeaf` reflectIDE_ debugKind
     menuShellAppend menu mi15
     sep2 <- separatorMenuItemNew
     menuShellAppend menu sep2
     mi2 <- menuItemNewWithLabel "Find (text)"
-    mi2 `onActivateLeaf` (reflectIDE (editFindInc Initial) ideR)
+    mi2 `onActivateLeaf` reflectIDE_ (editFindInc Initial)
     menuShellAppend menu mi2
     mi3 <- menuItemNewWithLabel "Search (metadata)"
-    mi3 `onActivateLeaf` (reflectIDE (do
-        mbtext <- selectedText
-        case mbtext of
-            Just t  -> searchMetaGUI t
-            Nothing -> ideMessage  Normal "Select a text first") ideR)
+    mi3 `onActivateLeaf` (reflectIDE_ $
+            getSearch Nothing >>= (\search -> do
+                mbtext <- selectedText
+                case mbtext of
+                    Just t  ->  searchMetaGUI search t
+                    Nothing -> ideMessage  Normal "Select a text first"))
     menuShellAppend menu mi3
     let interpretingEntries = [castToWidget mi16]
     let interpretingSelEntries = [castToWidget mi1, castToWidget mi11, castToWidget mi12,
@@ -662,12 +669,15 @@ getActionsFor SensitivityForwardHist = getActionsFor' ["ViewHistoryForth"]
 getActionsFor SensitivityBackwardHist = getActionsFor' ["ViewHistoryBack"]
 getActionsFor SensitivityProjectActive = getActionsFor'
     ["EditPackage", "PackageFlags", "ConfigPackage", "BuildPackage"
-    ,"DocPackage", "CleanPackage", "CopyPackage", "RunPackage","InstallPackage"
+    ,"DocPackage", "CleanPackage", "CopyPackage", "RunPackage","InstallDependenciesPackage"
     ,"RegisterPackage", "TestPackage","SdistPackage"
     ,"OpenDocPackage","FileCloseAll"]
 getActionsFor SensitivityError = getActionsFor' ["NextError", "PreviousError"]
-getActionsFor SensitivityEditor = getActionsFor' ["EditUndo", "EditRedo", "EditGotoLine"
-    ,"EditComment", "EditUncomment", "EditShiftLeft", "EditShiftRight"]
+getActionsFor SensitivityEditor = getActionsFor' ["EditUndo", "EditRedo",
+        "EditGotoLine","EditComment", "EditUncomment",
+        "EditShiftLeft", "EditShiftRight","FileClose","ResolveErrors",
+        "OpenDocu"
+        ]
 getActionsFor SensitivityInterpreting = getActionsFor' ["QuitDebugger"]
 getActionsFor SensitivityWorkspaceOpen = return [] --TODO add here
 
@@ -764,7 +774,6 @@ handleSpecialKeystrokes (Key { eventKeyName = name,  eventModifier = mods,
                 when bs (editKeystrokeCandy mbChar)
                 sk  <- readIDE specialKey
                 sks <- readIDE specialKeys
-                return True
                 case sk of
                     Nothing ->
                         case Map.lookup (keyVal,sort mods) sks of
@@ -797,6 +806,7 @@ handleSpecialKeystrokes _ = return True
 setSymbol :: String -> IDEAction
 setSymbol symbol = do
     currentInfo' <- getWorkspaceInfo
+    search <- getSearch Nothing
     case currentInfo' of
         Nothing -> return ()
         Just ((GenScopeC (PackScope _ symbolTable1)),(GenScopeC (PackScope _ symbolTable2))) ->
@@ -806,11 +816,12 @@ setSymbol symbol = do
                 a:b:[] -> if isJust (dscMbModu a) && dscMbModu a == dscMbModu b &&
                             isNear (dscMbLocation a) (dscMbLocation b)
                                 then selectIdentifier a
-                                else setChoices [a,b]
-                l      -> setChoices l
+                                else setChoices search [a,b]
+                l      -> setChoices search l
   where
     isNear (Just a) (Just b) = abs (locationSLine a - locationSLine b) <= 3
     isNear _ _               = False
+
 --
 -- | Register handlers for IDE events
 --
@@ -840,7 +851,9 @@ registerLeksahEvents =    do
     registerEvent stRef "Sensitivity"
         (\ s@(Sensitivity h)      -> setSensitivity h >> return s)
     registerEvent stRef "SearchMeta"
-        (\ e@(SearchMeta string)  -> searchMetaGUI string >> return e)
+        (\ e@(SearchMeta string)  -> getSearch Nothing >>= (flip searchMetaGUI) string >> return e)
+    registerEvent stRef "StartFindInitial"
+        (\ e@(StartFindInitial)  -> editFindInc Initial >> return e)
     registerEvent stRef "LoadSession"
         (\ e@(LoadSession fp)     -> loadSession fp >> return e)
     registerEvent stRef "SaveSession"
@@ -863,10 +876,16 @@ registerLeksahEvents =    do
             selectBreak mbLogRef) >> return e)
     registerEvent stRef "TraceChanged"
         (\ e@TraceChanged         -> fillTraceList >> return e)
+    registerEvent stRef "GotoDefinition"
+        (\ e@(GotoDefinition descr)         -> goToDefinition descr >> return e)
+    registerEvent stRef "SearchSymbolDialog"
+        (\ e@(SearchSymbolDialog text)         ->
+            launchSymbolNavigationDialog text (\_ -> return ()) >> return e)
     registerEvent stRef "GetTextPopup"
         (\ e@(GetTextPopup _)     -> return (GetTextPopup (Just textPopupMenu)))
     registerEvent stRef "StatusbarChanged"
         (\ e@(StatusbarChanged args) -> changeStatusbar args >> return e)
     return ()
+
 
 

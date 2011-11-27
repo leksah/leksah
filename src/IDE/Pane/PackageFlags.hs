@@ -1,5 +1,5 @@
-{-# OPTIONS_GHC -XScopedTypeVariables -XDeriveDataTypeable -XMultiParamTypeClasses
-    -XTypeSynonymInstances -XRank2Types #-}
+{-# LANGUAGE FlexibleInstances, ScopedTypeVariables, DeriveDataTypeable,
+             MultiParamTypeClasses, TypeSynonymInstances, Rank2Types #-}
 -----------------------------------------------------------------------------
 --
 -- Module      :  IDE.Pane.PackageFlags
@@ -103,8 +103,8 @@ builder' idePackage flagsDesc flatflagsDesc pp nb window ideR = do
             Nothing -> return ()
             Just packWithNewFlags -> do
                 reflectIDE (do
-                    modifyIDE_ (\ide -> ide{activePack = Just packWithNewFlags})
-                    closePane flagsPane) ideR -- we don't trigger the activePack event here
+                	changePackage packWithNewFlags
+                	closePane flagsPane) ideR
                 writeFields ((dropExtension (ipdCabalFile packWithNewFlags)) ++ leksahFlagFileExtension)
                     packWithNewFlags flatFlagsDescription)
     cancelB `onClicked` (reflectIDE (closePane flagsPane >> return ()) ideR)
@@ -175,7 +175,7 @@ flagsDescription = VFDPP emptyParams [
         mkFieldPP
             (paraName <<<- ParaName "Config flags" $ emptyParams)
             (PP.text . show)
-            stringParser
+            readParser
             (\p -> unargs (ipdConfigFlags p))
             (\ b a -> a{ipdConfigFlags = args b})
             (stringEditor (const True) True)
@@ -183,15 +183,23 @@ flagsDescription = VFDPP emptyParams [
     ,   mkFieldPP
             (paraName <<<- ParaName "Build flags" $ emptyParams)
             (PP.text . show)
-            stringParser
+            readParser
             (\p -> unargs (ipdBuildFlags p))
             (\ b a -> a{ipdBuildFlags = args b})
             (stringEditor (const True) True)
             (\ _ ->  return ())
     ,   mkFieldPP
+            (paraName <<<- ParaName "Test flags" $ emptyParams)
+            (PP.text . show)
+            readParser
+            (\p -> unargs (ipdTestFlags p))
+            (\ b a -> a{ipdTestFlags = args b})
+            (stringEditor (const True) True)
+            (\ _ ->   return ())
+    ,   mkFieldPP
             (paraName <<<- ParaName "Haddock flags" $ emptyParams)
             (PP.text . show)
-            stringParser
+            readParser
             (\p -> unargs (ipdHaddockFlags p))
             (\ b a -> a{ipdHaddockFlags = args b})
             (stringEditor (const True) True)
@@ -199,7 +207,7 @@ flagsDescription = VFDPP emptyParams [
     ,   mkFieldPP
             (paraName <<<- ParaName "Executable flags" $ emptyParams)
             (PP.text . show)
-            stringParser
+            readParser
             (\p -> unargs (ipdExeFlags p))
             (\ b a -> a{ipdExeFlags = args b})
             (stringEditor (const True) True)
@@ -207,7 +215,7 @@ flagsDescription = VFDPP emptyParams [
     ,   mkFieldPP
             (paraName <<<- ParaName "Install flags" $ emptyParams)
             (PP.text . show)
-            stringParser
+            readParser
             (\p -> unargs (ipdInstallFlags p))
             (\ b a -> a{ipdInstallFlags = args b})
             (stringEditor (const True) True)
@@ -215,7 +223,7 @@ flagsDescription = VFDPP emptyParams [
     ,   mkFieldPP
             (paraName <<<- ParaName "Register flags" $ emptyParams)
             (PP.text . show)
-            stringParser
+            readParser
             (\p -> unargs (ipdRegisterFlags p))
             (\ b a -> a{ipdRegisterFlags = args b})
             (stringEditor (const True) True)
@@ -223,7 +231,7 @@ flagsDescription = VFDPP emptyParams [
     ,   mkFieldPP
             (paraName <<<- ParaName "Unregister flags" $ emptyParams)
             (PP.text . show)
-            stringParser
+            readParser
             (\p -> unargs (ipdUnregisterFlags p))
             (\ b a -> a{ipdUnregisterFlags = args b})
             (stringEditor (const True) True)
@@ -231,7 +239,7 @@ flagsDescription = VFDPP emptyParams [
     ,   mkFieldPP
             (paraName <<<- ParaName "Source Distribution flags" $ emptyParams)
             (PP.text . show)
-            stringParser
+            readParser
             (\p -> unargs (ipdSdistFlags p))
             (\ b a -> a{ipdSdistFlags = args b})
             (stringEditor (const True) True)

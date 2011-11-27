@@ -35,10 +35,16 @@ module IDE.Utils.GUIUtils (
 ,   controlIsPressed
 
 ,   stockIdFromType
+,   mapControlCommand
+
 ) where
 
 import Graphics.UI.Gtk
+#ifdef MIN_VERSION_process_leksah
 import IDE.System.Process
+#else
+import System.Process
+#endif
 import Data.Maybe (fromJust, isJust)
 import Control.Monad
 import Control.Monad.Trans(MonadIO,liftIO)
@@ -226,6 +232,12 @@ stockIdFromType Constructor     =   "ide_konstructor"
 stockIdFromType Field           =   "ide_slot"
 stockIdFromType Method          =   "ide_method"
 stockIdFromType _               =   "ide_other"
+
+-- maps control key for Macos
+#if defined(darwin_HOST_OS)
+mapControlCommand Alt = Control
+#endif
+mapControlCommand a = a
 
 
 

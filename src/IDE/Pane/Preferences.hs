@@ -1,6 +1,5 @@
-{-# LANGUAGE CPP #-}
-{-# OPTIONS_GHC -XScopedTypeVariables -XDeriveDataTypeable -XMultiParamTypeClasses
-    -XTypeSynonymInstances #-}
+{-# LANGUAGE CPP, FlexibleInstances, ScopedTypeVariables, DeriveDataTypeable,
+             MultiParamTypeClasses, TypeSynonymInstances #-}
 -----------------------------------------------------------------------------
 --
 -- Module      :  IDE.Pane.Preferences
@@ -595,6 +594,14 @@ prefsDescription configDir packages = NFDPP [
             boolEditor
             (\i -> return ())
          , mkFieldPP
+            (paraName <<<- ParaName "Select first warning if built without errors" $ emptyParams)
+            (PP.text . show)
+            boolParser
+            jumpToWarnings
+            (\b a -> a{jumpToWarnings = b})
+            boolEditor
+            (\i -> return ())
+         , mkFieldPP
             (paraName <<<- ParaName "Background build" $ emptyParams)
             (PP.text . show)
             boolParser
@@ -725,6 +732,7 @@ defaultPrefs = Prefs {
     ,   categoryForPane     =   [   ("*ClassHierarchy","ToolCategory")
                                 ,   ("*Debug","ToolCategory")
                                 ,   ("*Flags","ToolCategory")
+                                ,   ("*Files","ToolCategory")
                                 ,   ("*Grep","ToolCategory")
                                 ,   ("*Info","ToolCategory")
                                 ,   ("*Log","LogCategory")
@@ -741,6 +749,7 @@ defaultPrefs = Prefs {
     ,   docuSearchURL       =   "http://www.holumbus.org/hayoo/hayoo.html?query="
     ,   completeRestricted  =   False
     ,   saveAllBeforeBuild  =   True
+    ,   jumpToWarnings      =   True
     ,   backgroundBuild     =   True
     ,   makeMode            =   True
     ,   singleBuildWithoutLinking  = False

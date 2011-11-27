@@ -1,5 +1,5 @@
-{-# OPTIONS_GHC -XDeriveDataTypeable -XMultiParamTypeClasses
-    -XScopedTypeVariables -XTypeSynonymInstances #-}
+{-# LANGUAGE FlexibleInstances, DeriveDataTypeable, MultiParamTypeClasses,
+             ScopedTypeVariables, TypeSynonymInstances #-}
 -----------------------------------------------------------------------------
 --
 -- Module      :  IDE.Pane.Modules

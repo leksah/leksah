@@ -1,5 +1,5 @@
-{-# OPTIONS_GHC -XRecordWildCards -XTypeSynonymInstances -XMultiParamTypeClasses
-    -XDeriveDataTypeable #-}
+{-# LANGUAGE FlexibleInstances, RecordWildCards, TypeSynonymInstances,
+             MultiParamTypeClasses, DeriveDataTypeable #-}
 -----------------------------------------------------------------------------
 --
 -- Module      :  IDE.Pane.Errors

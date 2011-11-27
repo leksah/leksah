@@ -1,5 +1,5 @@
-{-# OPTIONS_GHC -XRecordWildCards -XTypeSynonymInstances -XMultiParamTypeClasses
-    -XDeriveDataTypeable #-}
+{-# LANGUAGE FlexibleInstances, RecordWildCards, TypeSynonymInstances,
+             MultiParamTypeClasses, DeriveDataTypeable #-}
 -----------------------------------------------------------------------------
 --
 -- Module      :  IDE.Pane.Variables
@@ -46,6 +46,7 @@ import Graphics.UI.Gtk.Gdk.Events (Event(..))
 import Graphics.UI.Gtk.General.Enums
     (Click(..), MouseButton(..))
 import IDE.Workspaces (packageTry_)
+import qualified Data.Enumerator.List as EL (consume)
 
 -- | A variables pane description
 --
@@ -141,15 +142,16 @@ fillVariablesList = packageTry_ $ do
     mbVariables <- lift getPane
     case mbVariables of
         Nothing -> return ()
-        Just var -> tryDebug_ $ debugCommand' ":show bindings" (\to -> liftIO $ postGUIAsync
-                        $ (do
-                            case parse variablesParser "" (selectString to) of
-                                Left e -> sysMessage Normal (show e)
-                                Right triples -> do
-                                    treeStoreClear (variables var)
-                                    mapM_ (insertBreak (variables var))
-                                        (zip triples [0..length triples])))
-    where
+        Just var -> tryDebug_ $ debugCommand' ":show bindings" $ do
+            to <- EL.consume
+            liftIO $ postGUIAsync $ do
+                case parse variablesParser "" (selectString to) of
+                    Left e -> sysMessage Normal (show e)
+                    Right triples -> do
+                        treeStoreClear (variables var)
+                        mapM_ (insertBreak (variables var))
+                            (zip triples [0..length triples])
+  where
     insertBreak treeStore (v,index)  = treeStoreInsert treeStore [] index v
 
 selectString :: [ToolOutput] -> String
@@ -258,31 +260,39 @@ variablesViewPopup _ _ _ _ = throwIDE "variablesViewPopup wrong event type"
 
 forceVariable :: VarDescription -> TreePath -> TreeStore VarDescription -> IDEAction
 forceVariable varDescr path treeStore = packageTry_ $ tryDebug_ $ do
-    debugCommand' (":force " ++ (varName varDescr)) (\to -> liftIO $ postGUIAsync (do
-        case parse valueParser "" (selectString to) of
-            Left e -> sysMessage Normal (show e)
-            Right value -> do
-                var <- treeStoreGetValue treeStore path
-                treeStoreSetValue treeStore path var{varValue = value}))
-    debugCommand' (":type " ++ (varName varDescr)) (\to -> liftIO $ postGUIAsync (do
-        case parse typeParser "" (selectString to) of
-            Left e -> sysMessage Normal (show e)
-            Right typ -> do
-                var <- treeStoreGetValue treeStore path
-                treeStoreSetValue treeStore path var{varType = typ}))
+    debugCommand' (":force " ++ (varName varDescr)) $ do
+        to <- EL.consume
+        liftIO $ postGUIAsync $ do
+            case parse valueParser "" (selectString to) of
+                Left e -> sysMessage Normal (show e)
+                Right value -> do
+                    var <- treeStoreGetValue treeStore path
+                    treeStoreSetValue treeStore path var{varValue = value}
+    debugCommand' (":type " ++ (varName varDescr)) $ do
+        to <- EL.consume
+        liftIO $ postGUIAsync $ do
+            case parse typeParser "" (selectString to) of
+                Left e -> sysMessage Normal (show e)
+                Right typ -> do
+                    var <- treeStoreGetValue treeStore path
+                    treeStoreSetValue treeStore path var{varType = typ}
 
 printVariable :: VarDescription -> TreePath -> TreeStore VarDescription -> IDEAction
 printVariable varDescr path treeStore = packageTry_ $ tryDebug_ $ do
-    debugCommand' (":print " ++ (varName varDescr)) (\to -> liftIO $ postGUIAsync (do
-        case parse valueParser "" (selectString to) of
-            Left e -> sysMessage Normal (show e)
-            Right value -> do
-                var <- treeStoreGetValue treeStore path
-                treeStoreSetValue treeStore path var{varValue = value}))
-    debugCommand' (":type " ++ (varName varDescr)) (\to -> liftIO $ postGUIAsync (do
-        case parse typeParser "" (selectString to) of
-            Left e -> sysMessage Normal (show e)
-            Right typ -> do
-                var <- treeStoreGetValue treeStore path
-                treeStoreSetValue treeStore path var{varType = typ}))
+    debugCommand' (":print " ++ (varName varDescr)) $ do
+        to <- EL.consume
+        liftIO $ postGUIAsync $ do
+            case parse valueParser "" (selectString to) of
+                Left e -> sysMessage Normal (show e)
+                Right value -> do
+                    var <- treeStoreGetValue treeStore path
+                    treeStoreSetValue treeStore path var{varValue = value}
+    debugCommand' (":type " ++ (varName varDescr)) $ do
+        to <- EL.consume
+        liftIO $ postGUIAsync $ do
+            case parse typeParser "" (selectString to) of
+                Left e -> sysMessage Normal (show e)
+                Right typ -> do
+                    var <- treeStoreGetValue treeStore path
+                    treeStoreSetValue treeStore path var{varType = typ}
 

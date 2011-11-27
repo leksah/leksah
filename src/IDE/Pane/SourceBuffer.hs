@@ -1,5 +1,6 @@
-{-# OPTIONS_GHC  -XDeriveDataTypeable -XMultiParamTypeClasses -XTypeSynonymInstances
-    -XScopedTypeVariables -XRankNTypes #-}
+{-# LANGUAGE FlexibleInstances, DeriveDataTypeable, MultiParamTypeClasses,
+             TypeSynonymInstances, ScopedTypeVariables, RankNTypes #-}
+{-# OPTIONS_GHC -fwarn-unused-imports #-}
 -----------------------------------------------------------------------------
 --
 -- Module      :  IDE.Pane.SourceBuffer
@@ -70,53 +71,58 @@ module IDE.Pane.SourceBuffer (
 ,   selectedLocation
 ,   recentSourceBuffers
 ,   newTextBuffer
-
 ,   belongsToPackage
 ,   belongsToWorkspace
+,   getIdentifierUnderCursorFromIter
+,   launchSymbolNavigationDialog_
+
 ) where
 
 import Prelude hiding(getChar, getLine)
 import Control.Monad.Reader
+import Control.Applicative
 import System.FilePath
 import System.Directory
 import qualified Data.Map as Map
 import Data.Map (Map)
 import Data.List hiding(insert, delete)
 import Data.Maybe
+import Data.Char
 import Data.Typeable
-import System.Time
+import qualified Data.Set as Set
 
-import Graphics.UI.Gtk.Gdk.Events as Gtk
 import IDE.Core.State
 import IDE.Utils.GUIUtils(getCandyState,showDialog)
 import IDE.Utils.FileUtils
 import IDE.SourceCandy
+import IDE.SymbolNavigation
 import IDE.Completion as Completion (complete,cancel)
 import IDE.TextEditor
 import qualified System.IO.UTF8 as UTF8
-import Data.IORef (writeIORef,readIORef,newIORef,IORef(..))
-import Data.Char (isAlphaNum, isSymbol)
+import Data.IORef (writeIORef,readIORef,newIORef)
+-- import Data.Char (isAlphaNum, isSymbol)
 import Control.Event (triggerEvent)
 import IDE.Metainfo.Provider (getSystemInfo, getWorkspaceInfo)
 import Distribution.Text (simpleParse)
 import Distribution.ModuleName (ModuleName)
-import qualified Data.Set as Set (member)
+--import qualified Data.Set as Set (member)
 import Graphics.UI.Gtk
        (Notebook, clipboardGet, selectionClipboard, dialogAddButton, widgetDestroy,
         fileChooserGetFilename, widgetShow, fileChooserDialogNew,
         notebookGetNthPage, notebookPageNum, widgetHide, dialogRun,
-        messageDialogNew, postGUIAsync, scrolledWindowSetShadowType,
-        scrolledWindowSetPolicy, castToWidget, ScrolledWindow, dialogSetDefaultResponse,
+        messageDialogNew, scrolledWindowSetShadowType,
+        scrolledWindowSetPolicy, dialogSetDefaultResponse, postGUIAsync,
         fileChooserSetCurrentFolder, fileChooserSelectFilename)
 import System.Glib.MainLoop (priorityDefaultIdle, idleAdd)
 #if MIN_VERSION_gtk(0,10,5)
-import Graphics.UI.Gtk (windowWindowPosition, Underline(..))
+import Graphics.UI.Gtk (Underline(..))
 #else
 import Graphics.UI.Gtk.Pango.Types (Underline(..))
 #endif
-import qualified Graphics.UI.Gtk as Gtk (Window, Notebook)
+import qualified Graphics.UI.Gtk as Gtk hiding (eventKeyName)
+import Graphics.UI.Gtk.Windows.Window
 import Graphics.UI.Gtk.General.Enums
-       (WindowPosition(..), ShadowType(..), PolicyType(..))
+       (ShadowType(..), PolicyType(..))
 import Graphics.UI.Gtk.Windows.MessageDialog
        (ButtonsType(..), MessageType(..))
 #if MIN_VERSION_gtk(0,10,5)
@@ -127,6 +133,8 @@ import Graphics.UI.Gtk.General.Structs (ResponseId(..))
 import Graphics.UI.Gtk.Selectors.FileChooser
        (FileChooserAction(..))
 import System.Glib.Attributes (AttrOp(..), set)
+import qualified Graphics.UI.Gtk.Gdk.Events as GtkOld
+
 import IDE.BufferMode
 import Graphics.UI.Gtk.Multiline.TextIter
 import Graphics.UI.Gtk.Multiline.TextTag(textTagBackgroundGdk, textTagBackground)
@@ -188,10 +196,11 @@ instance RecoverablePane IDEBuffer BufferState IDEM where
         writeOverwriteInStatusbar sv
         ids1 <- eBuf `afterModifiedChanged` markActiveLabelAsChanged
         ids2 <- sv `afterMoveCursor` writeCursorPositionInStatusbar sv
-        ids3 <- sv `onLookupInfo` selectInfo sv
+        -- ids3 <- sv `onLookupInfo` selectInfo sv       -- obsolete by hyperlinks
         ids4 <- sv `afterToggleOverwrite`  writeOverwriteInStatusbar sv
-        activateThisPane actbuf $ concat [ids1, ids2, ids3, ids4]
+        activateThisPane actbuf $ concat [ids1, ids2, ids4]
         triggerEventIDE (Sensitivity [(SensitivityEditor, True)])
+        grabFocus sv
         checkModTime actbuf
         return ()
     closePane pane = do makeActive pane
@@ -243,7 +252,7 @@ goToDefinition idDescr  = do
                                                 Just si -> sourcePathFromScope si
                                                 Nothing -> Nothing
     when (isJust mbSourcePath2) $
-        goToSourceDefinition (fromJust $ mbSourcePath2) (dscMbLocation idDescr)
+        void $ goToSourceDefinition (fromJust $ mbSourcePath2) (dscMbLocation idDescr)
     return ()
     where
     sourcePathFromScope :: GenScope -> Maybe FilePath
@@ -258,7 +267,7 @@ goToDefinition idDescr  = do
                             Nothing -> Nothing
             Nothing -> Nothing
 
-goToSourceDefinition :: FilePath -> Maybe Location -> IDEAction
+goToSourceDefinition :: FilePath -> Maybe Location -> IDEM (Maybe IDEBuffer)
 goToSourceDefinition fp dscMbLocation = do
     liftIO $ putStrLn $ "goToSourceDefinition " ++ fp
     mbBuf     <- selectSourceBuf fp
@@ -283,6 +292,7 @@ goToSourceDefinition fp dscMbLocation = do
                 reflectIDE (scrollToIter (sourceView buf) iter 0.0 (Just (0.3,0.3))) ideR
                 return False) priorityDefaultIdle
             return ()
+    return mbBuf
 
 insertInBuffer :: Descr -> IDEAction
 insertInBuffer idDescr = do
@@ -387,6 +397,15 @@ newTextBuffer panePath bn mbfn = do
             ideMessage Normal ("File does not exist " ++ (fromJust mbfn))
             return Nothing
 
+data CharacterCategory = IdentifierCharacter | SpaceCharacter | SyntaxCharacter
+    deriving (Eq)
+getCharacterCategory :: Maybe Char -> CharacterCategory
+getCharacterCategory Nothing = SpaceCharacter
+getCharacterCategory (Just c)
+    | isAlphaNum c || c == '\'' || c == '_' = IdentifierCharacter
+    | isSpace c = SpaceCharacter
+    | otherwise = SyntaxCharacter
+
 builder' :: Bool ->
     Maybe FilePath ->
     Int ->
@@ -453,40 +472,17 @@ builder' bs mbfn ind bn rbn ct prefs pp nb windows = do
         mode = mod}
     -- events
     ids1 <- sv `afterFocusIn` makeActive buf
-    ids2 <- onCompletion sv (Completion.complete sv False) Completion.cancel
+    ids2 <- onCompletion sv (do
+            Completion.complete sv False) $ do
+                Completion.cancel
     ids3 <- sv `onButtonPress`
         \event -> do
-            let click = eventClick event
             liftIO $ reflectIDE (do
-                case click of
-                    DoubleClick -> do
-                        let isIdent a = isAlphaNum a || a == '\'' || a == '_'
-                        let isOp    a = isSymbol   a || a == ':'  || a == '\\' || a == '*' || a == '/' || a == '-'
-                                                     || a == '!'  || a == '@' || a == '%' || a == '&' || a == '?'
-                        (startSel, endSel) <- getSelectionBounds buffer
-                        mbStartChar <- getChar startSel
-                        mbEndChar <- getChar endSel
-                        let isSelectChar =
-                                case mbStartChar of
-                                    Just startChar | isIdent startChar -> isIdent
-                                    Just startChar | isOp    startChar -> isOp
-                                    _                                  -> const False
-                        start <- case mbStartChar of
-                            Just startChar | isSelectChar startChar -> do
-                                maybeIter <- backwardFindCharC startSel (not.isSelectChar) Nothing
-                                case maybeIter of
-                                    Just iter -> forwardCharC iter
-                                    Nothing   -> return startSel
-                            _ -> return startSel
-                        end <- case mbEndChar of
-                            Just endChar | isSelectChar endChar -> do
-                                maybeIter <- forwardFindCharC endSel (not.isSelectChar) Nothing
-                                case maybeIter of
-                                    Just iter -> return iter
-                                    Nothing   -> return endSel
-                            _ -> return endSel
+                case GtkOld.eventClick event of
+                    GtkOld.DoubleClick -> do
+                        (start, end) <- getIdentifierUnderCursor buffer
                         liftIO $ postGUIAsync $ reflectIDE (selectRange buffer start end) ideR
-                        return False
+                        return True
                     _ -> return False) ideR
 
     (GetTextPopup mbTpm) <- triggerEvent ideR (GetTextPopup Nothing)
@@ -532,7 +528,67 @@ builder' bs mbfn ind bn rbn ct prefs pp nb windows = do
                                         else return Nothing
                                 ) ideRef
                             return False
-    return (Just buf,concat [ids1, ids2, ids3, ids4,ids5])
+    ids6 <- sv `onKeyPress`
+        \name modifier keyval -> do
+            liftIO $ reflectIDE (do
+                    let moveToNextWord iterOp sel  = do
+                        sel' <- iterOp sel
+                        rs <- isRangeStart sel'
+                        if rs then return sel' else moveToNextWord iterOp sel'
+                    let calculateNewPosition iterOp = getInsertIter buffer >>= moveToNextWord iterOp
+                    let continueSelection keepSelBound nsel = do
+                            im <- getInsertMark buffer
+                            moveMark buffer im nsel
+                            scrollToIter sv nsel 0 Nothing
+                            when (not keepSelBound) $ do
+                                sb <- getSelectionBoundMark buffer
+                                moveMark buffer sb nsel
+                    case (name, map mapControlCommand modifier, keyval) of
+                        ("Left",[GtkOld.Control],_) -> do
+                            calculateNewPosition backwardCharC >>= continueSelection False
+                            return True
+                        ("Left",[GtkOld.Shift, GtkOld.Control],_) -> do
+                            calculateNewPosition backwardCharC >>= continueSelection True
+                            return True
+                        ("Right",[GtkOld.Control],_) -> do
+                            calculateNewPosition forwardCharC >>= continueSelection False --placeCursor buffer
+                            return True
+                        ("Right",[GtkOld.Shift, GtkOld.Control],_) -> do
+                            calculateNewPosition forwardCharC >>= continueSelection True
+                            return True
+                        ("BackSpace",[GtkOld.Control],_) -> do              -- delete word
+                            here <- getInsertIter buffer
+                            there <- calculateNewPosition backwardCharC
+                            delete buffer here there
+                            return True
+                        ("underscore",[GtkOld.Shift, GtkOld.Control],_) -> do
+                            (start, end) <- getIdentifierUnderCursor buffer
+                            slice <- getSlice buffer start end True
+                            triggerEventIDE (SearchSymbolDialog slice)
+                            return True
+                        ("minus",[GtkOld.Control],_) -> do
+                            (start, end) <- getIdentifierUnderCursor buffer
+                            slice <- getSlice buffer start end True
+                            launchSymbolNavigationDialog_ slice goToDefinition
+                            return True
+                        _ -> do
+                            -- liftIO $ print ("sourcebuffer key:",name,modifier,keyval)
+                            return False
+                ) ideR
+    ids7 <- case sv of
+        GtkEditorView sv -> do
+            (liftIO $ createHyperLinkSupport sv sw (\ctrl shift iter -> do
+                            (GtkEditorIter beg,GtkEditorIter en) <- reflectIDE (getIdentifierUnderCursorFromIter (GtkEditorIter iter, GtkEditorIter iter)) ideR
+                            return (beg, if ctrl then en else beg)) (\_ _ slice -> do
+                                        when (slice /= []) $ do
+                                            -- liftIO$ print ("slice",slice)
+                                            void $ reflectIDE (triggerEventIDE (SearchMeta slice)) ideR
+                                        ))
+
+#ifdef LEKSAH_WITH_YI
+        _ -> return []
+#endif
+    return (Just buf,concat [ids1, ids2, ids3, ids4, ids5, ids6, ids7])
     where
     wschars' :: String
     wschars' = " \t\r\n"
@@ -565,6 +621,47 @@ builder' bs mbfn ind bn rbn ct prefs pp nb windows = do
                     else return ()
                 forwardApplying end txt mbTi tagName ebuf
             Nothing -> return()
+
+isIdent a = isAlphaNum a || a == '\'' || a == '_'       -- parts of haskell identifiers
+
+isRangeStart sel = do                                   -- if char and previous char are of different char categories
+    currentChar <- getChar sel
+    let mbStartCharCat = getCharacterCategory currentChar
+    mbPrevCharCat <- getCharacterCategory <$> (backwardCharC sel >>= getChar)
+    return $ currentChar == Nothing || currentChar == Just '\n' || mbStartCharCat /= mbPrevCharCat && (mbStartCharCat == SyntaxCharacter || mbStartCharCat == IdentifierCharacter)
+
+getIdentifierUnderCursor :: EditorBuffer -> IDEM (EditorIter, EditorIter)
+getIdentifierUnderCursor buffer = do
+    (startSel, endSel) <- getSelectionBounds buffer
+    getIdentifierUnderCursorFromIter (startSel, endSel)
+
+getIdentifierUnderCursorFromIter :: (EditorIter, EditorIter) -> IDEM (EditorIter, EditorIter)
+getIdentifierUnderCursorFromIter (startSel, endSel) = do
+    let isIdent a = isAlphaNum a || a == '\'' || a == '_'
+    let isOp    a = isSymbol   a || a == ':'  || a == '\\' || a == '*' || a == '/' || a == '-'
+                                 || a == '!'  || a == '@' || a == '%' || a == '&' || a == '?'
+    mbStartChar <- getChar startSel
+    mbEndChar <- getChar endSel
+    let isSelectChar =
+            case mbStartChar of
+                Just startChar | isIdent startChar -> isIdent
+                Just startChar | isOp    startChar -> isOp
+                _                                  -> const False
+    start <- case mbStartChar of
+        Just startChar | isSelectChar startChar -> do
+            maybeIter <- backwardFindCharC startSel (not.isSelectChar) Nothing
+            case maybeIter of
+                Just iter -> forwardCharC iter
+                Nothing   -> return startSel
+        _ -> return startSel
+    end <- case mbEndChar of
+        Just endChar | isSelectChar endChar -> do
+            maybeIter <- forwardFindCharC endSel (not.isSelectChar) Nothing
+            case maybeIter of
+                Just iter -> return iter
+                Nothing   -> return endSel
+        _ -> return endSel
+    return (start, end)
 
 checkModTime :: IDEBuffer -> IDEM (Bool, Bool)
 checkModTime buf = do
@@ -684,7 +781,7 @@ selectInfo :: EditorView -> IDEAction
 selectInfo sv = do
     ideR    <- ask
     buf     <- getBuffer sv
-    (l,r)   <- getSelectionBounds buf
+    (l,r)   <- getIdentifierUnderCursor buf
     symbol  <- getText buf l r True
     triggerEvent ideR (SelectInfo symbol)
     return ()
@@ -1271,3 +1368,5 @@ editCandy = do
         then mapM_ (\b -> modeEditToCandy (mode b)
             (modeEditInCommentOrString (mode b))) buffers
         else mapM_ (modeEditFromCandy . mode) buffers
+
+

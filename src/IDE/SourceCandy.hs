@@ -280,7 +280,7 @@ parseCandy :: FilePath -> IO CandyTable
 parseCandy fn = do
     res     <-  parseFromFile candyParser fn
     case res of
-        Left pe ->  throwIDE $"Error reading keymap file " ++ show fn ++ " " ++ show pe
+        Left pe ->  throwIDE $"Error reading candy file " ++ show fn ++ " " ++ show pe
         Right r ->  return (CT(forthFromTable r, backFromTable r))
 
 candyParser :: CharParser () CandyTableI

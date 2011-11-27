@@ -1,5 +1,5 @@
-{-# OPTIONS_GHC -XScopedTypeVariables -XDeriveDataTypeable -XMultiParamTypeClasses
-    -XTypeSynonymInstances -XParallelListComp #-}
+{-# LANGUAGE FlexibleInstances, ScopedTypeVariables, DeriveDataTypeable,
+             MultiParamTypeClasses, TypeSynonymInstances, ParallelListComp #-}
 --
 -- Module      :  IDE.Pane.Log
 -- Copyright   :  (c) Juergen Nicklisch-Franken, Hamish Mackenzie
@@ -51,7 +51,11 @@ import Control.Exception hiding (try)
 import IDE.ImportTool
        (addPackage, parseHiddenModule, addImport, parseNotInScope,
         resolveErrors)
+#ifdef MIN_VERSION_process_leksah
 import IDE.System.Process (runInteractiveProcess, ProcessHandle, terminateProcess)
+#else
+import System.Process (runInteractiveProcess, ProcessHandle, terminateProcess)
+#endif
 import Graphics.UI.Gtk
        (textBufferSetText, textViewScrollToMark,
         textBufferGetIterAtLineOffset, textViewScrollMarkOnscreen, textViewSetBuffer,

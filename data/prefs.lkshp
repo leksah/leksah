@@ -37,7 +37,7 @@ Name of the keymap:
                keymap
      --The name of a keymap file in a config dir
 Categories for panes:
-               [("*Debug","ToolCategory"),("*Grep","ToolCategory"),("*Log","LogCategory"),("*Search","ToolCategory"),("*Browser","ToolCategory"),("*Package","EditorCategory"),("*Flags","EditorCategory"),("*References","LogCategory"),("*Workspace","LogCategory"),("*Errors","ToolCategory")]
+               [("*Debug","ToolCategory"),("*Files","ToolCategory"),("*Grep","ToolCategory"),("*Log","LogCategory"),("*Search","ToolCategory"),("*Browser","ToolCategory"),("*Package","EditorCategory"),("*Flags","EditorCategory"),("*References","LogCategory"),("*Workspace","LogCategory"),("*Errors","ToolCategory")]
 Pane path for category:
                [("EditorCategory",[SplitP LeftP]),("ToolCategory",[SplitP RightP,SplitP TopP]),("LogCategory",[SplitP RightP,SplitP BottomP])]
 Default pane path:

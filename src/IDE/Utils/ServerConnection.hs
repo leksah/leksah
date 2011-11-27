@@ -20,7 +20,11 @@ module IDE.Utils.ServerConnection (
 import IDE.Core.State
 import Network (connectTo,PortID(..))
 import Network.Socket (PortNumber(..))
+#ifdef MIN_VERSION_process_leksah
 import IDE.System.Process(runProcess)
+#else
+import System.Process(runProcess)
+#endif
 import GHC.Conc(threadDelay)
 import Control.Monad.Trans(liftIO)
 import System.IO
