@@ -17,6 +17,7 @@ module IDE.Command.VCS.GIT (
     ,viewLogAction
     ,pushAction
     ,pullAction
+    ,mkGITActions
 ) where
 
 import qualified VCSGui.Git as GitGUI
@@ -27,18 +28,22 @@ import IDE.Command.VCS.Common
 import IDE.Core.Types
 import IDE.Core.State
 
-commitAction :: IDEAction
-commitAction = return()
---commitAction = createActionFromContext GitGUI.showCommitGUI
+commitAction :: VCSAction ()
+commitAction = createActionFromContext GitGUI.showCommitGUI
 
-viewLogAction :: IDEAction
-viewLogAction = return()
---viewLogAction = createActionFromContext GitGUI.showLogGUI
+viewLogAction :: VCSAction ()
+viewLogAction = createActionFromContext GitGUI.showLogGUI
 
-pushAction :: IDEAction
-pushAction = return()
---pushAction = createActionFromContext $ GitGUI.askPassWrapper Git.push
+pushAction :: VCSAction ()
+pushAction = createActionFromContext $ GitGUI.askPassWrapper Git.push
 
-pullAction :: IDEAction
-pullAction = return()
---pullAction = createActionFromContext $ GitGUI.askPassWrapper GitGUI.pull
+pullAction :: VCSAction ()
+pullAction = createActionFromContext $ GitGUI.askPassWrapper GitGUI.pull
+
+mkGITActions :: [(String, VCSAction ())]
+mkGITActions = [
+                ("_Commit", commitAction)
+                ,("_View Log", viewLogAction)
+                ,("_Push", pushAction)
+                ,("_Pull", pullAction)
+                ]

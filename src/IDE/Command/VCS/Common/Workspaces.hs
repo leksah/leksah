@@ -23,7 +23,8 @@ import qualified IDE.Utils.GUIUtils as GUIUtils
 import IDE.Core.Types
 import IDE.Core.State
 import qualified IDE.Command.VCS.Common as Common
-import qualified IDE.Command.VCS.SVN as SVN
+import qualified IDE.Command.VCS.SVN as SVN (mkSVNActions)
+import qualified IDE.Command.VCS.GIT as GIT (mkGITActions)
 
 import qualified VCSWrapper.Common as VCS
 import qualified VCSGui.Common as VCSGUI
@@ -43,19 +44,6 @@ import Data.List
 
 onWorkspaceClose :: IDEAction
 onWorkspaceClose = return()
---onWorkspaceClose = do
---        fs <- readIDE frameState
---        let manager = uiManager fs
---
---        (mbMergeInfo, _) <- readIDE vcsData
---        -- remove menuitems
---        case mbMergeInfo of
---            Nothing   -> return()
---            Just info -> liftIO $ uiManagerRemoveUi manager info
---
---        -- reset vcsData
---        modifyIDE_ (\ide -> ide {vcsData = (Nothing,Nothing) })
---        return ()
 
 onWorkspaceOpen :: Workspace -> IDEAction
 onWorkspaceOpen workspace = do
@@ -85,7 +73,7 @@ onWorkspaceOpen workspace = do
                     case mbVcsConf of
                         Nothing -> return()
                         Just (vcsType, _,_) -> do
-                            let packageMenuOperations = getVCSActions vcsType
+                            let packageMenuOperations = mkVCSActions vcsType
                             liftIO $ addActions' packageMenuOperations Common.runActionWithContext
 
                     liftIO $ menuItemSetSubmenu packageItem packageMenu
@@ -118,24 +106,10 @@ onWorkspaceOpen workspace = do
                                     Just vcsConf -> return $ (p,  Just vcsConf)
 
 --TODO move and retrieve this to/from data file e.g. svn.menu, git.menu
-getVCSActions :: VCS.VCSType -> [(String, Common.VCSAction ())]
-getVCSActions VCS.SVN = [
-                            ("_Commit", SVN.commitAction')
-                            ,("_View Log", SVN.viewLogAction')
-                            ,("_Update", SVN.updateAction')
-                            ]
-getVCSActions VCS.GIT = [
-                            ("_Commit", commitAction')
-                            ,("_View Log", viewLogAction')
-                            ,("_Update", updateAction')
-                            ]
+mkVCSActions :: VCS.VCSType -> [(String, Common.VCSAction ())]
+mkVCSActions VCS.SVN = SVN.mkSVNActions
+mkVCSActions VCS.GIT = GIT.mkGITActions
 
---getSetupRepoAction :: (String,Common.VCSAction ())
---getSetupRepoAction = ("_Setup Repo", Common.setupRepoAction')
---
-----setupRepoAction' :: VCSAction
-----setupRepoAction' = return()
---
 commitAction' :: Common.VCSAction ()
 commitAction' = return()
 

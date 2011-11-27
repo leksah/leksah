@@ -123,18 +123,13 @@ mkActions =
     [
     --common vcs actions
     AD "vcs" "Version Con_trol" Nothing Nothing (return ()) [] False
-    ,AD "SetupRepo" "_Setup Repo" Nothing Nothing VCS.setupRepoAction [] False
-    --svn actions
-    ,AD "SvnCommit" "_Commit" Nothing Nothing VCSSVN.commitAction [] False
-    ,AD "SvnUpdate" "_Update" Nothing Nothing VCSSVN.updateAction [] False
-    ,AD "SvnViewLog" "_View Log" Nothing Nothing VCSSVN.viewLogAction [] False
     -- git actions
-    ,AD "GitCommit" "_Commit" Nothing Nothing VCSGit.commitAction [] False
-    -- TODO display progress/status-window
-    -- TODO select remote to push/pull to/from
-    ,AD "GitPush" "_Push" Nothing Nothing VCSGit.pushAction [] False
-    ,AD "GitPull" "P_ull" Nothing Nothing VCSGit.pullAction [] False
-    ,AD "GitViewLog" "_View Log" Nothing Nothing VCSGit.viewLogAction [] False
+--    ,AD "GitCommit" "_Commit" Nothing Nothing VCSGit.commitAction [] False
+--    -- TODO display progress/status-window
+--    -- TODO select remote to push/pull to/from
+--    ,AD "GitPush" "_Push" Nothing Nothing VCSGit.pushAction [] False
+--    ,AD "GitPull" "P_ull" Nothing Nothing VCSGit.pullAction [] False
+--    ,AD "GitViewLog" "_View Log" Nothing Nothing VCSGit.viewLogAction [] False
     -- print action
     ,AD "FilePrint" "_Print File" Nothing Nothing (filePrint) [] False
     -- other actions
