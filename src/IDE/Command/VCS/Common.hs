@@ -11,11 +11,16 @@
 -- |
 --
 -----------------------------------------------------------------------------
+{-# LANGUAGE FlexibleInstances, GeneralizedNewtypeDeriving #-}
 module IDE.Command.VCS.Common (
     createActionFromContext
+    ,createActionFromContext'
     ,setupRepoAction
     ,execWithErrHandling
     ,mergeToolSetter
+    ,setupRepoAction'
+    ,runSetupActionWithContext
+    ,runActionWithContext
 ) where
 
 import qualified VCSWrapper.Common as VCS
@@ -24,7 +29,7 @@ import qualified Graphics.UI.Gtk as Gtk
 
 import IDE.Core.Types
 import IDE.Core.State
-import IDE.Command.VCS.Common.Workspaces
+--import IDE.Command.VCS.Common.Workspaces
 import IDE.Workspaces(workspaceSetVCSConfig
     ,workspaceSetMergeTool
     ,getVCSConfForActivePackage
@@ -39,7 +44,28 @@ import Control.Monad.Trans(liftIO)
 import qualified Control.Exception as Exc
 import Data.Maybe
 
+newtype VCSAction a = VCSAction (ReaderT VCS.Config IDEM a)
+    deriving (Monad, MonadIO, MonadReader VCS.Config)
 
+-- | retrieves VCS configuration from the workspace and executes given computation using it
+runActionWithContext :: VCSAction ()    -- ^ computation to execute, i.e. showCommit
+                        -> FilePath
+                        -> IDEAction
+runActionWithContext vcsAction packageFp = do
+    (_,config,_) <- getVCSConf'' packageFp
+    runVcs config $ vcsAction
+
+runSetupActionWithContext :: FilePath
+                          -> IDEAction
+runSetupActionWithContext packageFp = do
+    (_,config,_) <- getVCSConf'' packageFp
+    runVcs config $ setupRepoAction'
+
+setupRepoAction' :: VCSAction
+setupRepoAction' = return()
+
+runVcs :: VCS.Config -> VCSAction t -> IDEM t
+runVcs config (VCSAction a) = runReaderT a config
 
 -- | displays a window for setting up a vcs, thereafter adding menu items and persisting the created configuration
 setupRepoAction :: IDEAction

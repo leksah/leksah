@@ -37,6 +37,7 @@ module IDE.Workspaces (
 ,   getVCSConfForActivePackage'
 ,   getVCSConf
 ,   getVCSConf'
+
 ,   workspaceSetVCSConfig
 ,   workspaceSetVCSConfigForActivePackage
 ,   workspaceSetMergeTool
@@ -692,3 +693,9 @@ getVCSConf' workspace pathToPackage = do
             --Left $ "Could not find version-control-system configuration for package "++pathToPackage
                 Nothing -> return $ Right $ Nothing
                 Just conf -> return $ Right $ Just conf
+
+-- ^ returns vcs configuration, assuming workspace is set and configuration is there
+getVCSConf'' :: FilePath -> IDEM VCSConf
+getVCSConf'' pathToPackage = do
+    (Just workspace) <- readIDE workspace
+    return $ fromJust $ Map.lookup pathToPackage $ packageVcsConf workspace

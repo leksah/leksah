@@ -13,14 +13,16 @@
 -----------------------------------------------------------------------------
 
 module IDE.Command.VCS.Common.Workspaces (
-    onWorkspaceOpen
-    , onWorkspaceClose
+--    onWorkspaceOpen
+--    , onWorkspaceClose
 ) where
 
 -- VCS imports
 import IDE.Utils.FileUtils(getConfigFilePathForLoad)
+import qualified IDE.Utils.GUIUtils as GUIUtils
 import IDE.Core.Types
 import IDE.Core.State
+import qualified IDE.Command.VCS.Common as Common
 
 import qualified VCSWrapper.Common as VCS
 import qualified VCSGui.Common as VCSGUI
@@ -31,10 +33,12 @@ import Control.Monad.Reader(liftIO,ask)
 
 import Graphics.UI.Frame.Panes
 --import Graphics.UI.Gtk.ActionMenuToolbar.UIManager
-import Graphics.UI.Gtk (menuNew, menuItemNewWithLabel, onActivateLeaf, menuShellAppend, menuItemSetSubmenu)
+import Graphics.UI.Gtk (
+    menuNew, menuItemNewWithLabel, onActivateLeaf, menuShellAppend, menuItemSetSubmenu
+        ,widgetShowAll, menuItemNewWithMnemonic)
 
 import Data.Maybe
-import Data.List
+import Data.List*
 
 onWorkspaceClose :: IDEAction
 onWorkspaceClose = return()
@@ -55,84 +59,70 @@ onWorkspaceClose = return()
 
 onWorkspaceOpen :: [(IDEPackage, Maybe VCSConf)] -> IDEAction
 onWorkspaceOpen packages = do
-        let vcsTypes = nub $ mapMaybe mapper packages
-
-        menuItems <- mapM (\vcsType -> do
-                                let file = case vcsType of
-                                                VCS.GIT -> "git.menu"
-                                                VCS.SVN -> "svn.menu"
-                                menuItems <- liftIO $ vcsMenuDescription file
-                                return (vcsType, menuItems)
-                                )
-                           vcsTypes
-        --building the gui
-
-        --get the vcsItem (menu entry)
---        vcsItem <- getVCSItem -- in GUIUtils sthing like getVCSItem = getMenuItem "ui/menubar/Version Con_trol"
+        vcsItem <- GUIUtils.getVCS
         vcsMenu <- liftIO $ menuNew
---
-        ideR <- ask
-        mapM_ (\package ->
-            case package of
-                (_,Nothing) -> return() -- add some error entry ?
-                (p,Just (vcsType, conf,mt)) -> do
-                    --for each package add an extra menu containing vcs specific menuitems
-                    packageMenu <- liftIO $ menuNew
-                    let packageMenuOperations = getVCSActions vcsType --somehow get that
 
+        ideR <- ask
+
+        --for each package add an extra menu containing vcs specific menuitems
+        mapM_ (\(p,mbVcsConf) -> do
                     let cabalFp = ipdCabalFile p
-                    mapM_ (\(name,action) -> do
-                        -- for each operation add it to menu and connect action
-                        liftIO $ do
-                            mi <- menuItemNewWithLabel $ name
-                            mi `onActivateLeaf` (reflectIDE (action cabalFp) ideR)
-                            menuShellAppend packageMenu mi
-                        ) packageMenuOperations
-                    liftIO $ menuItemSetSubmenu vcsMenu packageMenu
+                    packageItem <- liftIO $ menuItemNewWithLabel cabalFp
+                    packageMenu <- liftIO $ menuNew
+
+                    -- set-up repo action
+                    let addActions' = addActions cabalFp packageMenu ideR
+                    liftIO $ addActions'[getSetupRepoAction] Common.runSetupRepoActionWithContext --change runner
+                    -- other actions if repo set
+                    case mbVcsConf of
+                        Nothing -> return()
+                        Just (vcsType, _,_) -> do
+                            let packageMenuOperations = getVCSActions vcsType
+                            liftIO $ addActions' packageMenuOperations Common.runActionWithContext
+
+                    liftIO $ menuItemSetSubmenu packageItem packageMenu
+                    liftIO $ menuShellAppend vcsMenu packageItem
                     )
                packages
 
 --
 --        --
---        menuItemSetSubmenu vcsItem vcsMenu
---        widgetShowAll menuNew
-
-----        TODO remove following 4 lines
-----       mergeInfo <- liftIO $ uiManagerAddUiFromString manager menuItems
-----        -- set vcsData with new mergeInfo to be able to remove it later
-----        (_, pw) <- readIDE vcsData
-----        modifyIDE_ (\ide -> ide {vcsData = (Just mergeInfo, pw) })
+        liftIO $ menuItemSetSubmenu vcsItem vcsMenu
+        liftIO $ widgetShowAll vcsMenu
         return ()
         where
-        vcsMenuDescription :: FilePath -> IO String
-        vcsMenuDescription file = do
-                dataDir     <- getDataDir
-                prefsPath   <- getConfigFilePathForLoad file Nothing dataDir
-                res         <- readFile prefsPath
-                return res
-        mapper :: (IDEPackage, Maybe VCSConf) -> (Maybe VCS.VCSType)
-        mapper (p, mbConf) = case mbConf of
-                                    Nothing -> Nothing
-                                    Just (vcsType,_,_) -> Just vcsType
+        addActions cabalFp packageMenu ideR actions runner =  mapM_ (\(name,action) -> do
+                    -- for each operation add it to menu and connect action
+                    actionItem <- menuItemNewWithMnemonic name
+                    actionItem `onActivateLeaf` (reflectIDE (runner action cabalFp) ideR)
+                    menuShellAppend packageMenu actionItem
+                ) actions
 
---type OpName = String
---type OpAction = FilePath -> IDEAction
-
-getVCSActions :: VCS.VCSType -> [(String, (FilePath -> IDEAction))]
-getVCSActions VCS.GIT = [
-                            ("_Setup Repo", setupRepoAction')
-                            ,("_Commit", commitAction')
+--TODO move and retrieve this to/from data file e.g. svn.menu, git.menu
+getVCSActions :: VCS.VCSType -> [(String, Common.VCSAction)]
+getVCSActions VCS.SVN = [
+                            ("_Commit", commitAction')
                             ,("_View Log", viewLogAction')
                             ,("_Update", updateAction')
                             ]
-setupRepoAction' :: FilePath -> IDEAction
-setupRepoAction' _ = return()
+getVCSActions VCS.GIT = [
+                            ("_Commit", commitAction')
+                            ,("_View Log", viewLogAction')
+                            ,("_Update", updateAction')
+                            ]
 
-commitAction' :: FilePath -> IDEAction
-commitAction' _ = return()
+getSetupRepoAction :: (String,Common.VCSAction)
+getSetupRepoAction = ("_Setup Repo", Common.setupRepoAction')
 
-viewLogAction' :: FilePath -> IDEAction
-viewLogAction' _ = return()
+--setupRepoAction' :: VCSAction
+--setupRepoAction' = return()
 
-updateAction' :: FilePath -> IDEAction
-updateAction' _ = return()
+commitAction' :: Common.VCSAction
+commitAction' = return()
+
+viewLogAction' :: Common.VCSAction
+viewLogAction' = return()
+
+updateAction' :: Common.VCSAction
+updateAction' = return()
+
