@@ -14,35 +14,29 @@
 {-# LANGUAGE FlexibleInstances, GeneralizedNewtypeDeriving #-}
 module IDE.Command.VCS.Common (
     createActionFromContext
-    ,createActionFromContext'
-    ,setupRepoAction
+    ,setupRepoAction'
     ,execWithErrHandling
     ,mergeToolSetter
-    ,setupRepoAction'
-    ,runSetupActionWithContext
     ,runActionWithContext
+    ,getVCSConf'
+
+    ,VCSAction
 ) where
 
 import qualified VCSWrapper.Common as VCS
 import qualified VCSGui.Common as VCSGUI
-import qualified Graphics.UI.Gtk as Gtk
 
 import IDE.Core.Types
 import IDE.Core.State
---import IDE.Command.VCS.Common.Workspaces
-import IDE.Workspaces(workspaceSetVCSConfig
-    ,workspaceSetMergeTool
-    ,getVCSConfForActivePackage
-    ,workspaceSetVCSConfigForActivePackage
-    ,workspaceSetMergeToolForActivePackage)
+import qualified IDE.Workspaces.Writer as Writer
 import IDE.Utils.GUIUtils
 
-
-
+import qualified Graphics.UI.Gtk as Gtk
 import Control.Monad.Reader
 import Control.Monad.Trans(liftIO)
 import qualified Control.Exception as Exc
 import Data.Maybe
+import qualified Data.Map as Map
 
 newtype VCSAction a = VCSAction (ReaderT VCS.Config IDEM a)
     deriving (Monad, MonadIO, MonadReader VCS.Config)
@@ -54,18 +48,15 @@ runActionWithContext :: VCSAction ()    -- ^ computation to execute, i.e. showCo
 runActionWithContext vcsAction packageFp = do
     (_,config,_) <- getVCSConf'' packageFp
     runVcs config $ vcsAction
+    where
+    runVcs :: VCS.Config -> VCSAction t -> IDEM t
+    runVcs config (VCSAction a) = runReaderT a config
 
-runSetupActionWithContext :: FilePath
-                          -> IDEAction
-runSetupActionWithContext packageFp = do
-    (_,config,_) <- getVCSConf'' packageFp
-    runVcs config $ setupRepoAction'
+--TODO implement this and refactor/delete below
+setupRepoAction' :: VCSAction ()
+setupRepoAction' = return ()
 
-setupRepoAction' :: VCSAction
-setupRepoAction' = return()
 
-runVcs :: VCS.Config -> VCSAction t -> IDEM t
-runVcs config (VCSAction a) = runReaderT a config
 
 -- | displays a window for setting up a vcs, thereafter adding menu items and persisting the created configuration
 setupRepoAction :: IDEAction
@@ -115,4 +106,94 @@ mergeToolSetter ideRef mergeTool = do
     -- set mergeTool in config in workspace
     runReaderT (workspaceSetMergeToolForActivePackage mergeTool) ideRef
 
+
+workspaceSetVCSConfig :: FilePath -> VCSConf -> IDEAction
+workspaceSetVCSConfig pathToPackage vcsConf = do
+    modifyIDE_ (\ide -> do
+        let oldWs = fromJust (workspace ide)
+        let oldMap = packageVcsConf oldWs
+        let newMap = Map.insert pathToPackage vcsConf oldMap
+        let newWs = (fromJust (workspace ide)) { packageVcsConf = newMap }
+        ide {workspace = Just newWs })
+    newWs <- readIDE workspace
+    Writer.writeWorkspace $ fromJust newWs
+
+workspaceSetVCSConfigForActivePackage :: VCSConf -> IDEAction
+workspaceSetVCSConfigForActivePackage vcsConf = do
+    mbWorkspace <- readIDE workspace
+    case mbWorkspace of
+        Nothing -> liftIO $ putStrLn $ "Could not set vcs config. No open workspace. Open Workspace first."
+        Just workspace -> do
+            let mbPathToActivePackage = wsActivePackFile workspace
+            case mbPathToActivePackage of
+                Nothing -> liftIO $ putStrLn $ "Could not set vcs config. No active package."
+                Just pathToActivePackage -> workspaceSetVCSConfig pathToActivePackage vcsConf
+
+
+workspaceSetMergeToolForActivePackage :: VCSGUI.MergeTool -> IDEAction
+workspaceSetMergeToolForActivePackage mergeTool = do
+    mbWorkspace <- readIDE workspace
+    case mbWorkspace of
+        Nothing -> liftIO $ putStrLn $ "Could not set mergetool. No open workspace. Open Workspace first."
+        Just workspace -> do
+            let mbPathToActivePackage = wsActivePackFile workspace
+            case mbPathToActivePackage of
+                Nothing -> liftIO $ putStrLn $ "Could not set mergetool. No active package."
+                Just pathToActivePackage -> workspaceSetMergeTool pathToActivePackage mergeTool
+
+workspaceSetMergeTool :: FilePath -> VCSGUI.MergeTool -> IDEAction
+workspaceSetMergeTool pathToPackage mergeTool = do
+    modifyIDE_ (\ide -> do
+        let oldWs = fromJust (workspace ide)
+        let oldMap = packageVcsConf oldWs
+        case (Map.lookup pathToPackage oldMap) of
+            Nothing -> ide --TODO error
+            Just (vcsType,config,_) -> do
+                let vcsConf = (vcsType,config,Just mergeTool)
+                let newMap = Map.insert pathToPackage vcsConf oldMap
+                let newWs = oldWs { packageVcsConf = newMap }
+                ide {workspace = Just newWs })
+    newWs <- readIDE workspace
+    Writer.writeWorkspace $ fromJust newWs
+
+type GetVCSConfReturn = IDEM (Either String (Maybe VCSConf))
+
+-- ^ returns Right configuration for active package or Left description of failure if configuration could not be retrieven
+getVCSConfForActivePackage :: GetVCSConfReturn
+getVCSConfForActivePackage = do
+    mbWorkspace <- readIDE workspace
+    case mbWorkspace of
+        Nothing -> return $ Left $ "No open workspace. Open Workspace first."
+        Just workspace -> getVCSConfForActivePackage' workspace
+
+-- ^ returns Right configuration for active package or Left description of failure if configuration could not be retrieven
+getVCSConfForActivePackage' :: Workspace -> GetVCSConfReturn
+getVCSConfForActivePackage' workspace = do
+    case (wsActivePackFile workspace) of
+        Nothing -> return $ Left $ "Could not find active package for workspace."
+        Just pathToActivePackage -> do
+            getVCSConf' workspace pathToActivePackage
+
+-- ^ returns Right configuration for active package or Left description of failure if configuration could not be retrieven
+getVCSConf :: FilePath -> GetVCSConfReturn
+getVCSConf pathToPackage = do
+    mbWorkspace <- readIDE workspace
+    case mbWorkspace of
+        Nothing -> return $ Left $ "No open workspace. Open Workspace first."
+        Just workspace -> getVCSConf' workspace pathToPackage
+
+-- ^ returns Right configuration for active package or Left description of failure if configuration could not be retrieven
+getVCSConf' :: Workspace -> FilePath -> GetVCSConfReturn
+getVCSConf' workspace pathToPackage = do
+            let mbConfig = Map.lookup pathToPackage $ packageVcsConf workspace
+            case mbConfig of
+            --Left $ "Could not find version-control-system configuration for package "++pathToPackage
+                Nothing -> return $ Right $ Nothing
+                Just conf -> return $ Right $ Just conf
+
+-- ^ returns vcs configuration, assuming workspace is set and configuration is there
+getVCSConf'' :: FilePath -> IDEM VCSConf
+getVCSConf'' pathToPackage = do
+    (Just workspace) <- readIDE workspace
+    return $ fromJust $ Map.lookup pathToPackage $ packageVcsConf workspace
 

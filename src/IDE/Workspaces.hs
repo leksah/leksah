@@ -32,20 +32,9 @@ module IDE.Workspaces (
 
 ,   backgroundMake
 ,   makePackage
-
-,   getVCSConfForActivePackage
-,   getVCSConfForActivePackage'
-,   getVCSConf
-,   getVCSConf'
-
-,   workspaceSetVCSConfig
-,   workspaceSetVCSConfigForActivePackage
-,   workspaceSetMergeTool
-,   workspaceSetMergeToolForActivePackage
 ) where
 
 import IDE.Core.State
---import IDE.Core.Types
 import Control.Monad.Trans (liftIO)
 import Graphics.UI.Editor.Parameters
     (Parameter(..), (<<<-), paraName, emptyParams)
@@ -100,48 +89,9 @@ import IDE.Utils.FileUtils(myCanonicalizePath)
 import IDE.Command.VCS.Common.Workspaces as VCSWS
 import qualified VCSWrapper.Common as VCS
 import qualified VCSGui.Common as VCSGUI
+import qualified IDE.Workspaces.Writer as Writer
 
-setWorkspace :: Maybe Workspace -> IDEAction
-setWorkspace mbWs = do
-    mbOldWs <- readIDE workspace
-    modifyIDE_ (\ide -> ide{workspace = mbWs})
-    let packFile =  case mbWs of
-                    Nothing -> Nothing
-                    Just ws -> wsActivePackFile ws
-    let oldPackFile = case mbOldWs of
-                    Nothing -> Nothing
-                    Just ws -> wsActivePackFile ws
-    let mbPackages =  case mbWs of
-                        Nothing -> Nothing
-                        Just ws -> Just (wsPackages ws)
-    when (packFile /= oldPackFile) $
-            case packFile of
-                Nothing -> deactivatePackage
-                Just p  -> activatePackage (getPackage p (fromJust mbPackages)) >> return ()
-    mbPack <- readIDE activePack
-    let wsStr = case mbWs of
-                    Nothing -> ""
-                    Just ws -> wsName ws
-    let txt = wsStr ++ " > " ++
-                    (case mbPack of
-                            Nothing -> ""
-                            Just p  -> packageIdentifierToString (ipdPackageId p))
-    triggerEventIDE (StatusbarChanged [CompartmentPackage txt])
-    triggerEventIDE (WorkspaceChanged True True)
-    triggerEventIDE UpdateWorkspaceInfo
-    return ()
 
-getPackage :: FilePath -> [IDEPackage] -> Maybe IDEPackage
-getPackage fp packages =
-    case filter (\ p -> ipdCabalFile p == fp) packages of
-        [p] -> Just p
-        l   -> Nothing
-
--- ---------------------------------------------------------------------
--- This needs to be incremented, when the workspace format changes
---
-workspaceVersion :: Int
-workspaceVersion = 1
 
 -- | Constructs a new workspace and makes it the current workspace
 workspaceNew :: IDEAction
@@ -164,7 +114,7 @@ workspaceNewHere filePath =
             newWorkspace = emptyWorkspace {
                             wsName = takeBaseName cPath,
                             wsFile = cPath}
-        liftIO $ writeFields cPath newWorkspace workspaceDescr
+        liftIO $ writeFields cPath newWorkspace Writer.workspaceDescr
         workspaceOpenThis False (Just cPath)
         return ()
 
@@ -262,27 +212,11 @@ workspaceOpenThis askForSession mbFilePath =
                     ideR <- ask
                     catchIDE (do
                         workspace <- readWorkspace filePath
-                        setWorkspace (Just workspace {wsFile = filePath})
-                        let packages = wsPackages workspace
-                        packagesWVCSConf <- mapM (mapper workspace)
-                                                 packages
-                        VCSWS.onWorkspaceOpen packagesWVCSConf)
+                        Writer.setWorkspace (Just workspace {wsFile = filePath})
+                        VCSWS.onWorkspaceOpen workspace)
                            (\ (e :: Exc.SomeException) -> reflectIDE
                                 (ideMessage Normal ("Can't load workspace file " ++ filePath ++ "\n" ++ show e)) ideR)
-    where
-    mapper :: Workspace -> IDEPackage -> IDEM (IDEPackage, Maybe VCSConf)
-    mapper workspace p = do
-        let fp = ipdCabalFile p
-        eErrConf <- getVCSConf' workspace fp
-        case eErrConf of
-            Left error -> do
-                liftIO $ putStrLn $ "Could not retrieve vcs-conf due to '"++error++"'."
-                return (p, Nothing)
-            Right mbConf -> case mbConf of
-                                Nothing -> do
-                                    liftIO $ putStrLn $ "Could not retrieve vcs-conf for active package. No vcs-conf set up."
-                                    return (p, Nothing)
-                                Just vcsConf -> return $ (p,  Just vcsConf)
+
 
 -- | Closes a workspace
 workspaceClose :: IDEAction
@@ -296,7 +230,7 @@ workspaceClose = do
             triggerEventIDE (SaveSession ((dropExtension (wsFile ws))
                                 ++  leksahSessionFileExtension))
             addRecentlyUsedWorkspace (wsFile ws)
-            setWorkspace Nothing
+            Writer.setWorkspace Nothing
             when (isJust oldActivePackFile) $ do
                 triggerEventIDE (Sensitivity [(SensitivityProjectActive, False),
                     (SensitivityWorkspaceOpen, False)])
@@ -364,7 +298,7 @@ workspaceAddPackage' fp = do
                 sysMessage Normal "Setup.(l)hs does not exist. Writing Standard"
                 writeFile (dir </> "Setup.lhs") standardSetup
             unless (elem cfp (map ipdCabalFile (wsPackages ws))) $ lift $
-                writeWorkspace $ ws {wsPackages =  pack : wsPackages ws,
+                Writer.writeWorkspace $ ws {wsPackages =  pack : wsPackages ws,
                                      wsActivePackFile =  Just (ipdCabalFile pack)}
             return (Just pack)
         Nothing -> return Nothing
@@ -415,7 +349,7 @@ workspaceRemovePackage :: IDEPackage -> WorkspaceAction
 workspaceRemovePackage pack = do
     ws <- ask
     when (elem pack (wsPackages ws)) $ lift $
-        writeWorkspace ws {wsPackages =  delete pack (wsPackages ws)}
+        Writer.writeWorkspace ws {wsPackages =  delete pack (wsPackages ws)}
     return ()
 
 workspaceActivatePackage :: IDEPackage -> WorkspaceAction
@@ -423,39 +357,21 @@ workspaceActivatePackage pack = do
     ws <- ask
     lift $ activatePackage (Just pack)
     when (elem pack (wsPackages ws)) $ lift $ do
-        writeWorkspace ws {wsActivePackFile =  Just (ipdCabalFile pack)}
+        Writer.writeWorkspace ws {wsActivePackFile =  Just (ipdCabalFile pack)}
         return ()
     return ()
 
-writeWorkspace :: Workspace -> IDEAction
-writeWorkspace ws = do
-    timeNow      <- liftIO getClockTime
-    let newWs    =  ws {wsSaveTime = show timeNow,
-                         wsVersion = workspaceVersion,
-                         wsPackagesFiles = map ipdCabalFile (wsPackages ws)}
-    setWorkspace $ Just newWs
-    newWs' <- liftIO $ makePathesRelative newWs
-    liftIO $ writeFields (wsFile newWs') (newWs' {wsFile = ""}) workspaceDescr
+
 
 readWorkspace :: FilePath -> IDEM Workspace
 readWorkspace fp = do
-    ws <- liftIO $ readFields fp workspaceDescr emptyWorkspace
+    ws <- liftIO $ readFields fp Writer.workspaceDescr emptyWorkspace
     ws' <- liftIO $ makePathesAbsolute ws fp
     packages <- mapM idePackageFromPath (wsPackagesFiles ws')
     --TODO set package vcs here
     return ws'{ wsPackages = map fromJust $ filter isJust $ packages}
 
-makePathesRelative :: Workspace -> IO Workspace
-makePathesRelative ws = do
-    wsFile' <- myCanonicalizePath (wsFile ws)
-    wsActivePackFile'           <-  case wsActivePackFile ws of
-                                        Nothing -> return Nothing
-                                        Just fp -> do
-                                            nfp <- liftIO $ myCanonicalizePath fp
-                                            return (Just (makeRelative (dropFileName wsFile') nfp))
-    wsPackagesFiles'            <-  mapM myCanonicalizePath (wsPackagesFiles ws)
-    let relativePathes          =   map (\p -> makeRelative (dropFileName wsFile') p) wsPackagesFiles'
-    return ws {wsActivePackFile = wsActivePackFile', wsFile = wsFile', wsPackagesFiles = relativePathes}
+
 
 
 makePathesAbsolute :: Workspace -> FilePath -> IO Workspace
@@ -475,7 +391,7 @@ makePathesAbsolute ws bp = do
                 else myCanonicalizePath (basePath </> relativePath)
 
 emptyWorkspace =  Workspace {
-    wsVersion       =   workspaceVersion
+    wsVersion       =   Writer.workspaceVersion
 ,   wsSaveTime      =   ""
 ,   wsName          =   ""
 ,   wsFile          =   ""
@@ -486,44 +402,7 @@ emptyWorkspace =  Workspace {
 ,   packageVcsConf  =   Map.empty
 }
 
-workspaceDescr :: [FieldDescriptionS Workspace]
-workspaceDescr = [
-        mkFieldS
-            (paraName <<<- ParaName "Version of workspace file format" $ emptyParams)
-            (PP.text . show)
-            intParser
-            wsVersion
-            (\ b a -> a{wsVersion = b})
-    ,   mkFieldS
-            (paraName <<<- ParaName "Time of storage" $ emptyParams)
-            (PP.text . show)
-            stringParser
-            wsSaveTime
-            (\ b a -> a{wsSaveTime = b})
-    ,   mkFieldS
-            (paraName <<<- ParaName "Name of the workspace" $ emptyParams)
-            (PP.text . show)
-            stringParser
-            wsName
-            (\ b a -> a{wsName = b})
-    ,   mkFieldS
-            (paraName <<<- ParaName "File paths of contained packages" $ emptyParams)
-            (PP.text . show)
-            readParser
-            wsPackagesFiles
-            (\b a -> a{wsPackagesFiles = b})
-    ,   mkFieldS
-            (paraName <<<- ParaName "Maybe file path of an active package" $ emptyParams)
-            (PP.text . show)
-            readParser
-            wsActivePackFile
-            (\fp a -> a{wsActivePackFile = fp})
-    ,   mkFieldS
-            (paraName <<<- ParaName "Version Control System configurations for packages" $ emptyParams)
-            (PP.text . show)
-            readParser
-            packageVcsConf
-            (\filePath a -> a{packageVcsConf = filePath})]
+
 
 addRecentlyUsedWorkspace :: FilePath -> IDEAction
 addRecentlyUsedWorkspace fp = do
@@ -608,94 +487,3 @@ makePackage = do
                         (makePackages settings [p]
                         (MoComposed [MoBuild,MoInstall])
                         (MoComposed [MoConfigure,MoBuild,MoInstall])) ws
-
-
-workspaceSetVCSConfig :: FilePath -> VCSConf -> IDEAction
-workspaceSetVCSConfig pathToPackage vcsConf = do
-    modifyIDE_ (\ide -> do
-        let oldWs = fromJust (workspace ide)
-        let oldMap = packageVcsConf oldWs
-        let newMap = Map.insert pathToPackage vcsConf oldMap
-        let newWs = (fromJust (workspace ide)) { packageVcsConf = newMap }
-        ide {workspace = Just newWs })
-    newWs <- readIDE workspace
-    writeWorkspace $ fromJust newWs
-
-workspaceSetVCSConfigForActivePackage :: VCSConf -> IDEAction
-workspaceSetVCSConfigForActivePackage vcsConf = do
-    mbWorkspace <- readIDE workspace
-    case mbWorkspace of
-        Nothing -> liftIO $ putStrLn $ "Could not set vcs config. No open workspace. Open Workspace first."
-        Just workspace -> do
-            let mbPathToActivePackage = wsActivePackFile workspace
-            case mbPathToActivePackage of
-                Nothing -> liftIO $ putStrLn $ "Could not set vcs config. No active package."
-                Just pathToActivePackage -> workspaceSetVCSConfig pathToActivePackage vcsConf
-
-
-workspaceSetMergeToolForActivePackage :: VCSGUI.MergeTool -> IDEAction
-workspaceSetMergeToolForActivePackage mergeTool = do
-    mbWorkspace <- readIDE workspace
-    case mbWorkspace of
-        Nothing -> liftIO $ putStrLn $ "Could not set mergetool. No open workspace. Open Workspace first."
-        Just workspace -> do
-            let mbPathToActivePackage = wsActivePackFile workspace
-            case mbPathToActivePackage of
-                Nothing -> liftIO $ putStrLn $ "Could not set mergetool. No active package."
-                Just pathToActivePackage -> workspaceSetMergeTool pathToActivePackage mergeTool
-
-workspaceSetMergeTool :: FilePath -> VCSGUI.MergeTool -> IDEAction
-workspaceSetMergeTool pathToPackage mergeTool = do
-    modifyIDE_ (\ide -> do
-        let oldWs = fromJust (workspace ide)
-        let oldMap = packageVcsConf oldWs
-        case (Map.lookup pathToPackage oldMap) of
-            Nothing -> ide --TODO error
-            Just (vcsType,config,_) -> do
-                let vcsConf = (vcsType,config,Just mergeTool)
-                let newMap = Map.insert pathToPackage vcsConf oldMap
-                let newWs = oldWs { packageVcsConf = newMap }
-                ide {workspace = Just newWs })
-    newWs <- readIDE workspace
-    writeWorkspace $ fromJust newWs
-
-type GetVCSConfReturn = IDEM (Either String (Maybe VCSConf))
-
--- ^ returns Right configuration for active package or Left description of failure if configuration could not be retrieven
-getVCSConfForActivePackage :: GetVCSConfReturn
-getVCSConfForActivePackage = do
-    mbWorkspace <- readIDE workspace
-    case mbWorkspace of
-        Nothing -> return $ Left $ "No open workspace. Open Workspace first."
-        Just workspace -> getVCSConfForActivePackage' workspace
-
--- ^ returns Right configuration for active package or Left description of failure if configuration could not be retrieven
-getVCSConfForActivePackage' :: Workspace -> GetVCSConfReturn
-getVCSConfForActivePackage' workspace = do
-    case (wsActivePackFile workspace) of
-        Nothing -> return $ Left $ "Could not find active package for workspace."
-        Just pathToActivePackage -> do
-            getVCSConf' workspace pathToActivePackage
-
--- ^ returns Right configuration for active package or Left description of failure if configuration could not be retrieven
-getVCSConf :: FilePath -> GetVCSConfReturn
-getVCSConf pathToPackage = do
-    mbWorkspace <- readIDE workspace
-    case mbWorkspace of
-        Nothing -> return $ Left $ "No open workspace. Open Workspace first."
-        Just workspace -> getVCSConf' workspace pathToPackage
-
--- ^ returns Right configuration for active package or Left description of failure if configuration could not be retrieven
-getVCSConf' :: Workspace -> FilePath -> GetVCSConfReturn
-getVCSConf' workspace pathToPackage = do
-            let mbConfig = Map.lookup pathToPackage $ packageVcsConf workspace
-            case mbConfig of
-            --Left $ "Could not find version-control-system configuration for package "++pathToPackage
-                Nothing -> return $ Right $ Nothing
-                Just conf -> return $ Right $ Just conf
-
--- ^ returns vcs configuration, assuming workspace is set and configuration is there
-getVCSConf'' :: FilePath -> IDEM VCSConf
-getVCSConf'' pathToPackage = do
-    (Just workspace) <- readIDE workspace
-    return $ fromJust $ Map.lookup pathToPackage $ packageVcsConf workspace

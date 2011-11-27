@@ -13,8 +13,8 @@
 -----------------------------------------------------------------------------
 
 module IDE.Command.VCS.Common.Workspaces (
---    onWorkspaceOpen
---    , onWorkspaceClose
+    onWorkspaceOpen
+    , onWorkspaceClose
 ) where
 
 -- VCS imports
@@ -38,7 +38,7 @@ import Graphics.UI.Gtk (
         ,widgetShowAll, menuItemNewWithMnemonic)
 
 import Data.Maybe
-import Data.List*
+import Data.List
 
 onWorkspaceClose :: IDEAction
 onWorkspaceClose = return()
@@ -56,9 +56,11 @@ onWorkspaceClose = return()
 --        modifyIDE_ (\ide -> ide {vcsData = (Nothing,Nothing) })
 --        return ()
 
-
-onWorkspaceOpen :: [(IDEPackage, Maybe VCSConf)] -> IDEAction
-onWorkspaceOpen packages = do
+onWorkspaceOpen :: Workspace -> IDEAction
+onWorkspaceOpen workspace = do
+        let mbPackages = wsPackages workspace
+        packages <- mapM (mapper workspace)
+                                 mbPackages
         vcsItem <- GUIUtils.getVCS
         vcsMenu <- liftIO $ menuNew
 
@@ -72,7 +74,7 @@ onWorkspaceOpen packages = do
 
                     -- set-up repo action
                     let addActions' = addActions cabalFp packageMenu ideR
-                    liftIO $ addActions'[getSetupRepoAction] Common.runSetupRepoActionWithContext --change runner
+                    liftIO $ addActions' [getSetupRepoAction] Common.runActionWithContext --change runner
                     -- other actions if repo set
                     case mbVcsConf of
                         Nothing -> return()
@@ -97,9 +99,22 @@ onWorkspaceOpen packages = do
                     actionItem `onActivateLeaf` (reflectIDE (runner action cabalFp) ideR)
                     menuShellAppend packageMenu actionItem
                 ) actions
+        mapper :: Workspace -> IDEPackage -> IDEM (IDEPackage, Maybe VCSConf)
+        mapper workspace p = do
+            let fp = ipdCabalFile p
+            eErrConf <- Common.getVCSConf' workspace fp
+            case eErrConf of
+                Left error -> do
+                    liftIO $ putStrLn $ "Could not retrieve vcs-conf due to '"++error++"'."
+                    return (p, Nothing)
+                Right mbConf -> case mbConf of
+                                    Nothing -> do
+                                        liftIO $ putStrLn $ "Could not retrieve vcs-conf for active package. No vcs-conf set up."
+                                        return (p, Nothing)
+                                    Just vcsConf -> return $ (p,  Just vcsConf)
 
 --TODO move and retrieve this to/from data file e.g. svn.menu, git.menu
-getVCSActions :: VCS.VCSType -> [(String, Common.VCSAction)]
+getVCSActions :: VCS.VCSType -> [(String, Common.VCSAction ())]
 getVCSActions VCS.SVN = [
                             ("_Commit", commitAction')
                             ,("_View Log", viewLogAction')
@@ -111,18 +126,18 @@ getVCSActions VCS.GIT = [
                             ,("_Update", updateAction')
                             ]
 
-getSetupRepoAction :: (String,Common.VCSAction)
+getSetupRepoAction :: (String,Common.VCSAction ())
 getSetupRepoAction = ("_Setup Repo", Common.setupRepoAction')
-
---setupRepoAction' :: VCSAction
---setupRepoAction' = return()
-
-commitAction' :: Common.VCSAction
+--
+----setupRepoAction' :: VCSAction
+----setupRepoAction' = return()
+--
+commitAction' :: Common.VCSAction ()
 commitAction' = return()
 
-viewLogAction' :: Common.VCSAction
+viewLogAction' :: Common.VCSAction ()
 viewLogAction' = return()
 
-updateAction' :: Common.VCSAction
+updateAction' :: Common.VCSAction ()
 updateAction' = return()
 
