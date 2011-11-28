@@ -281,7 +281,7 @@ startMainWindow yiControl sessionFP mbWorkspaceFP sourceFPs startupPrefs isFirst
           ,   completion        =   ((750,400),Nothing)
           ,   yiControl         =   yiControl
           ,   server            =   Nothing
-          ,   vcsData           =   (Nothing, Nothing)
+          ,   vcsData           =   (Map.empty, Nothing)
           ,   logLaunches       =   Map.empty
     }
     ideR             <-  newIORef ide

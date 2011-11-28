@@ -19,38 +19,40 @@ module IDE.Command.VCS.SVN (
     ,mkSVNActions
 ) where
 
-import Graphics.UI.Gtk.ActionMenuToolbar.UIManager(MergeId)
+
+import IDE.Core.Types
+import IDE.Core.State
+
+import qualified IDE.Command.VCS.Common.Helper as Helper
+import qualified IDE.Command.VCS.Types as Types
 
 import qualified VCSGui.Common as VCSGUI
 import qualified VCSGui.Svn as GUISvn
 import qualified VCSWrapper.Svn as Wrapper.Svn
 import qualified VCSWrapper.Common as Wrapper
 
-import IDE.Core.Types
-import IDE.Core.State
-
-import qualified IDE.Command.VCS.Common as Common
+import Graphics.UI.Gtk.ActionMenuToolbar.UIManager(MergeId)
 
 import Control.Monad.Reader(liftIO,ask,lift)
 import Data.IORef(atomicModifyIORef, IORef)
 import Data.Either
 
-commitAction :: Common.VCSAction ()
+commitAction :: Types.VCSAction ()
 commitAction = do
     ((_,_,mbMergeTool),package) <- ask
-    ide <- Common.askIDERef
-    createSVNActionFromContext $ GUISvn.showCommitGUI $ Common.eMergeToolSetter ide package mbMergeTool
+    ide <- Types.askIDERef
+    createSVNActionFromContext $ GUISvn.showCommitGUI $ Helper.eMergeToolSetter ide package mbMergeTool
 
-updateAction :: Common.VCSAction ()
+updateAction :: Types.VCSAction ()
 updateAction = do
     ((_,_,mbMergeTool),package) <- ask
-    ideRef <- Common.askIDERef
-    createSVNActionFromContext $ GUISvn.showUpdateGUI $ Common.eMergeToolSetter ideRef package mbMergeTool
+    ideRef <- Types.askIDERef
+    createSVNActionFromContext $ GUISvn.showUpdateGUI $ Helper.eMergeToolSetter ideRef package mbMergeTool
 
-viewLogAction :: Common.VCSAction ()
+viewLogAction :: Types.VCSAction ()
 viewLogAction = createSVNActionFromContext GUISvn.showLogGUI
 
-mkSVNActions :: [(String, Common.VCSAction ())]
+mkSVNActions :: [(String, Types.VCSAction ())]
 mkSVNActions = [
                 ("_Commit", commitAction)
                 ,("_View Log", viewLogAction)
@@ -61,15 +63,15 @@ mkSVNActions = [
 
 createSVNActionFromContext :: (Either GUISvn.Handler (Maybe String)
                                 -> Wrapper.Ctx())
-                           -> Common.VCSAction ()
+                           -> Types.VCSAction ()
 createSVNActionFromContext action = do
-    (mergeInfo, mbPw) <- Common.readIDE' vcsData
-    ide <-  Common.askIDERef
+    (mergeInfo, mbPw) <- Types.readIDE' vcsData
+    ide <-  Types.askIDERef
     case mbPw of
-            Nothing -> Common.createActionFromContext $ action $ Left $ passwordHandler ide mergeInfo
-            Just mb -> Common.createActionFromContext $ action $ Right mb
+            Nothing -> Helper.createActionFromContext $ action $ Left $ passwordHandler ide mergeInfo
+            Just mb -> Helper.createActionFromContext $ action $ Right mb
     where
-        passwordHandler :: IORef IDE-> Maybe MergeId -> ((Maybe (Bool, Maybe String)) -> Wrapper.Ctx ())
+--        passwordHandler :: IORef IDE-> Maybe MergeId -> ((Maybe (Bool, Maybe String)) -> Wrapper.Ctx ())
         passwordHandler ide mbMergeInfo result = liftIO $ do
             case result of
                 Just (True, pw) -> modifyIDE_' ide (\ide -> ide {vcsData = (mbMergeInfo, Just pw) })

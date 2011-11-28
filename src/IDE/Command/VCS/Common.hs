@@ -11,26 +11,24 @@
 -- |
 --
 -----------------------------------------------------------------------------
-{-# LANGUAGE FlexibleInstances, GeneralizedNewtypeDeriving #-}
 module IDE.Command.VCS.Common (
-    mergeToolSetter
-    ,eMergeToolSetter
-    ,runActionWithContext
-    ,createActionFromContext
-    ,runSetupRepoActionWithContext
-    ,getVCSConf'
-    ,VCSAction
-    ,askIDERef
-    ,readIDE'
-) where
+    setMenuForPackage
 
-import qualified VCSWrapper.Common as VCS
-import qualified VCSGui.Common as VCSGUI
+    --getter
+    ,getVCSConf'
+) where
 
 import IDE.Core.Types
 import IDE.Core.State
+import qualified IDE.Utils.GUIUtils as GUIUtils
 import qualified IDE.Workspaces.Writer as Writer
-import IDE.Utils.GUIUtils
+import qualified IDE.Command.VCS.Types as Types
+import qualified IDE.Command.VCS.GIT as GIT
+import qualified IDE.Command.VCS.SVN as SVN
+
+
+import qualified VCSWrapper.Common as VCS
+import qualified VCSGui.Common as VCSGUI
 
 import qualified Graphics.UI.Gtk as Gtk
 import Control.Monad.Reader
@@ -39,31 +37,75 @@ import qualified Control.Exception as Exc
 import Data.Maybe
 import qualified Data.Map as Map
 
-newtype VCSSetupAction a = VCSSetupAction (ReaderT (Maybe VCSConf) IDEM a)
-    deriving (Monad, MonadIO, MonadReader (Maybe VCSConf))
 
-newtype VCSAction a = VCSAction (ReaderT (VCSConf,FilePath) IDEM a)
-    deriving (Monad, MonadIO, MonadReader (VCSConf,FilePath))
 
-askIDERef :: VCSAction IDERef
-askIDERef = VCSAction $ lift $ ask
+setMenuForPackage :: FilePath -> Maybe VCSConf -> IDEAction
+setMenuForPackage cabalFp mbVCSConf = do
+                    ideR <- ask
+                    vcsItem <- GUIUtils.getVCS
+                    mbVcsMenu <- liftIO $ Gtk.menuItemGetSubmenu vcsItem
+                    vcsMenu <- case mbVcsMenu of
+                                 Nothing -> liftIO $ Gtk.menuNew
+                                 Just menu -> return $ Gtk.castToMenu menu
 
-readIDE' :: (IDE -> a) -> VCSAction a
-readIDE' f = VCSAction $ lift $ readIDE f
+                    -- create or get packageItem and set it to ide to be able to get it later again
+                    (oldMenuItems,pw) <- readIDE vcsData
+                    packageItem <- do
+                        case (Map.lookup cabalFp oldMenuItems) of
+                            Nothing -> liftIO $ Gtk.menuItemNewWithLabel cabalFp
+                            Just menuItem -> return menuItem
+                    let newMenuItems = Map.insert cabalFp packageItem oldMenuItems
+                    modifyIDE_ (\ide -> ide {vcsData = (newMenuItems,pw)})
+
+                    packageMenu <- liftIO $ Gtk.menuNew
+
+                    -- build and set set-up repo action
+                    setupActionItem <- liftIO $ Gtk.menuItemNewWithMnemonic "_Setup Repo"
+                    liftIO $ setupActionItem `Gtk.onActivateLeaf` (
+                            reflectIDE (
+                                    runSetupRepoActionWithContext cabalFp
+                                ) ideR)
+                    liftIO $ Gtk.menuShellAppend packageMenu setupActionItem
+
+                    -- build and set other actions
+                    let packageMenuOperations = case mbVCSConf of
+                                                    Nothing -> []
+                                                    Just (vcsType,_,_) -> mkVCSActions vcsType
+                    liftIO $ addActions cabalFp packageMenu ideR packageMenuOperations
+
+                    -- set menus
+                    liftIO $ Gtk.menuItemSetSubmenu packageItem packageMenu
+                    liftIO $ Gtk.menuShellAppend vcsMenu packageItem
+                    liftIO $ Gtk.menuItemSetSubmenu vcsItem vcsMenu
+                    liftIO $ Gtk.widgetShowAll vcsMenu
+                    return ()
+                    where
+                    addActions cabalFp packageMenu ideR actions =  mapM_ (\(name,action) -> do
+                        -- for each operation add it to menu and connect action
+                        actionItem <- Gtk.menuItemNewWithMnemonic name
+                        actionItem `Gtk.onActivateLeaf` (reflectIDE (runActionWithContext action cabalFp) ideR)
+                        Gtk.menuShellAppend packageMenu actionItem
+                        ) actions
+                    mkVCSActions :: VCS.VCSType -> [(String, Types.VCSAction ())]
+                    mkVCSActions VCS.SVN = SVN.mkSVNActions
+                    mkVCSActions VCS.GIT = GIT.mkGITActions
+
+
+
 
 {- |
     Retrieves VCS configuration for given package from current workspace and runs given
     VCS action using it. VCS Configuration must be set before.
 -}
-runActionWithContext :: VCSAction ()    -- ^ computation to execute, i.e. showCommit
+runActionWithContext :: Types.VCSAction ()    -- ^ computation to execute, i.e. showCommit
                      -> FilePath        -- ^ filepath to package
                      -> IDEAction
 runActionWithContext vcsAction packageFp = do
     config <- getVCSConf'' packageFp
     runVcs config packageFp $ vcsAction
     where
-    runVcs :: VCSConf -> FilePath -> VCSAction t -> IDEM t
-    runVcs config cabalFp (VCSAction a) = runReaderT a (config,cabalFp)
+    runVcs :: VCSConf -> FilePath -> Types.VCSAction t -> IDEM t
+    runVcs config cabalFp (Types.VCSAction a) = runReaderT a (config,cabalFp)
 
 {- |
     Shows a GUI to set up a VCS. If a vcs-config is set for given package it will be used.
@@ -73,7 +115,7 @@ runSetupRepoActionWithContext :: FilePath
 runSetupRepoActionWithContext packageFp = do
     eConfigErr <- getVCSConf packageFp
     case eConfigErr of
-        Left error -> liftIO $ showErrorDialog error
+        Left error -> liftIO $ GUIUtils.showErrorDialog error
         Right mbConfig -> do
             ide <- ask
             liftIO $ VCSGUI.showSetupConfigGUI mbConfig (callback ide packageFp)
@@ -81,72 +123,32 @@ runSetupRepoActionWithContext packageFp = do
     callback :: IDERef -> FilePath -> Maybe (VCS.VCSType, VCS.Config, Maybe VCSGUI.MergeTool) -> IO()
     callback ideRef packageFp mbConfig  = do
             -- set config in workspace
-            case mbConfig of
-                Nothing -> return() --TODO maybe allow to delete conf
-                Just config -> runReaderT (workspaceSetVCSConfig packageFp config) ideRef
+            runReaderT (workspaceSetVCSConfig packageFp mbConfig) ideRef
 
 
 
 
-{- |
-    Runs given vcs-action using the vcs-conf set in the ReaderT.
-    Provides a basic exception handler for any errors occuring.
--}
-createActionFromContext :: VCS.Ctx()    -- ^ computation to execute, i.e. showCommit
-                        -> VCSAction ()
-createActionFromContext vcsAction = do
-    ((_,conf,_),_) <- ask
-    liftIO $ VCSGUI.defaultVCSExceptionHandler $ VCS.runVcs conf $ vcsAction
 
-
-{- |
-    Facility to set a mergetool for a given package.
--}
-mergeToolSetter :: IDERef -> FilePath -> VCSGUI.MergeTool -> IO()
-mergeToolSetter ideRef cabalFp mergeTool = do
-    runReaderT (workspaceSetMergeTool cabalFp mergeTool) ideRef
-
-{- |
-    Creates an 'eMergeToolSetter' (Either MergeTool or MT-Setter) from given parameters.
--}
-eMergeToolSetter :: IDERef
-                -> FilePath
-                -> Maybe VCSGUI.MergeTool
-                -> Either VCSGUI.MergeTool (VCSGUI.MergeTool -> IO())
-eMergeToolSetter ideRef cabalFp mbMergeTool = do
-    case mbMergeTool of
-                            Nothing -> Right $ mergeToolSetter ideRef cabalFp
-                            Just mergeTool -> Left $ mergeTool
 
 --
 -- Basic setters and getters
 --
 
-workspaceSetVCSConfig :: FilePath -> VCSConf -> IDEAction
-workspaceSetVCSConfig pathToPackage vcsConf = do
+workspaceSetVCSConfig :: FilePath -> Maybe VCSConf -> IDEAction
+workspaceSetVCSConfig pathToPackage mbVCSConf = do
+    setMenuForPackage pathToPackage mbVCSConf
     modifyIDE_ (\ide -> do
         let oldWs = fromJust (workspace ide)
         let oldMap = packageVcsConf oldWs
-        let newMap = Map.insert pathToPackage vcsConf oldMap
+        let newMap =  case mbVCSConf of
+                Nothing -> Map.delete pathToPackage oldMap
+                Just vcsConf -> Map.insert pathToPackage vcsConf oldMap
         let newWs = (fromJust (workspace ide)) { packageVcsConf = newMap }
         ide {workspace = Just newWs })
     newWs <- readIDE workspace
     Writer.writeWorkspace $ fromJust newWs
 
-workspaceSetMergeTool :: FilePath -> VCSGUI.MergeTool -> IDEAction
-workspaceSetMergeTool pathToPackage mergeTool = do
-    modifyIDE_ (\ide -> do
-        let oldWs = fromJust (workspace ide)
-        let oldMap = packageVcsConf oldWs
-        case (Map.lookup pathToPackage oldMap) of
-            Nothing -> ide --TODO error
-            Just (vcsType,config,_) -> do
-                let vcsConf = (vcsType,config,Just mergeTool)
-                let newMap = Map.insert pathToPackage vcsConf oldMap
-                let newWs = oldWs { packageVcsConf = newMap }
-                ide {workspace = Just newWs })
-    newWs <- readIDE workspace
-    Writer.writeWorkspace $ fromJust newWs
+
 
 -- | vcs conf for given package in current workspace.
 getVCSConf :: FilePath -> IDEM (Either String (Maybe VCSConf))
