@@ -17,7 +17,11 @@ module IDE.Command.Print (
     , PrintError (..)
 ) where
 
+#ifdef MIN_VERSION_process_leksah
+import IDE.System.Process
+#else
 import System.Process
+#endif
 import System.Exit
 import Prelude hiding (print)
 import IDE.Core.Types
