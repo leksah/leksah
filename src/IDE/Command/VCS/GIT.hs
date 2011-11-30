@@ -17,24 +17,34 @@ module IDE.Command.VCS.GIT (
     ,viewLogAction
     ,pushAction
     ,pullAction
+    ,mkGITActions
 ) where
-
-import qualified VCSGui.Git as GitGUI
-import qualified VCSWrapper.Git as Git
-
-import IDE.Command.VCS.Common
 
 import IDE.Core.Types
 import IDE.Core.State
 
-commitAction :: IDEAction
-commitAction = createActionFromContext GitGUI.showCommitGUI
+import qualified IDE.Command.VCS.Common.Helper as Helper
+import qualified IDE.Command.VCS.Types as Types
 
-viewLogAction :: IDEAction
-viewLogAction = createActionFromContext GitGUI.showLogGUI
+import qualified VCSGui.Git as GitGUI
+import qualified VCSWrapper.Git as Git
 
-pushAction :: IDEAction
-pushAction = createActionFromContext $ GitGUI.askPassWrapper Git.push
+commitAction :: Types.VCSAction ()
+commitAction = Helper.createActionFromContext GitGUI.showCommitGUI
 
-pullAction :: IDEAction
-pullAction = createActionFromContext $ GitGUI.askPassWrapper GitGUI.pull
+viewLogAction :: Types.VCSAction ()
+viewLogAction = Helper.createActionFromContext GitGUI.showLogGUI
+
+pushAction :: Types.VCSAction ()
+pushAction = Helper.createActionFromContext $ GitGUI.askPassWrapper Git.push
+
+pullAction :: Types.VCSAction ()
+pullAction = Helper.createActionFromContext $ GitGUI.askPassWrapper GitGUI.pull
+
+mkGITActions :: [(String, Types.VCSAction ())]
+mkGITActions = [
+                ("_Commit", commitAction)
+                ,("_View Log", viewLogAction)
+                ,("_Push", pushAction)
+                ,("_Pull", pullAction)
+                ]

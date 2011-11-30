@@ -8,7 +8,7 @@
 -- Stability   :  provisional
 -- Portability :
 --
--- |
+-- | TODO use new runActionWithContext
 --
 -----------------------------------------------------------------------------
 
@@ -16,105 +16,68 @@ module IDE.Command.VCS.SVN (
     commitAction
     ,updateAction
     ,viewLogAction
+    ,mkSVNActions
 ) where
 
-import Graphics.UI.Gtk.ActionMenuToolbar.UIManager(MergeId)
+
+import IDE.Core.Types
+import IDE.Core.State
+
+import qualified IDE.Command.VCS.Common.Helper as Helper
+import qualified IDE.Command.VCS.Types as Types
 
 import qualified VCSGui.Common as VCSGUI
 import qualified VCSGui.Svn as GUISvn
 import qualified VCSWrapper.Svn as Wrapper.Svn
 import qualified VCSWrapper.Common as Wrapper
 
-import IDE.Command.VCS.Common
+import Graphics.UI.Gtk.ActionMenuToolbar.UIManager(MergeId)
 
-import IDE.Core.Types
-import IDE.Core.State
-
-import IDE.Workspaces as Workspaces
-
-import Control.Monad.Reader(liftIO,ask,runReaderT)
+import Control.Monad.Reader(liftIO,ask,lift)
 import Data.IORef(atomicModifyIORef, IORef)
 import Data.Either
 
---TODO instead of doing this "getVCSConfForActivePackage" all the time,
--- action should be run in reader monad with the vcsconf set
--- and just ask for it if it needs it. the vcsconf should be set in createActionFromContext I guess
-commitAction :: IDEAction
+commitAction :: Types.VCSAction ()
 commitAction = do
-    eConfigErr <- getVCSConfForActivePackage
-    execWithErrHandling
-        eConfigErr
-        commitAction'
+    ((_,_,mbMergeTool),package) <- ask
+    ide <- Types.askIDERef
+    createSVNActionFromContext $ GUISvn.showCommitGUI $ Helper.eMergeToolSetter ide package mbMergeTool
 
-commitAction' (Just (_,_,mbMergeTool)) = do
-    ide <- ask
-    eMergeToolSetter <- case mbMergeTool of
-                                Nothing -> return $ Right $ mergeToolSetter ide
-                                Just mergeTool -> return $ Left $ mergeTool
-    createSVNActionFromContext $ GUISvn.showCommitGUI $ eMergeToolSetter
-
-updateAction :: IDEAction
+updateAction :: Types.VCSAction ()
 updateAction = do
-    eConfigErr <- getVCSConfForActivePackage
-    execWithErrHandling
-        eConfigErr
-        updateAction'
---    ide <- ask
---    mbWorkspace <- readIDE workspace
---    case mbWorkspace of
---        Just workspace -> do
---                             let (Just (_,_,mbMergeTool)) = vcsConfig workspace
---                             eMergeToolSetter <- case mbMergeTool of
---                                Nothing -> return $ Right $ Workspaces.workspaceSetMergeToolForActivePackage
---                                Just mergeTool -> return $ Left $ mergeTool
---                             createSVNActionFromContext $ GUISvn.showUpdateGUI eMergeToolSetter
---        Nothing -> do
---            noOpenWorkspace
-updateAction' (Just (_,_,mbMergeTool)) = do
-    ide <- ask
-    eMergeToolSetter <- case mbMergeTool of
-                                Nothing -> return $ Right $ mergeToolSetter ide
-                                Just mergeTool -> return $ Left $ mergeTool
-    createSVNActionFromContext $ GUISvn.showUpdateGUI eMergeToolSetter
+    ((_,_,mbMergeTool),package) <- ask
+    ideRef <- Types.askIDERef
+    createSVNActionFromContext $ GUISvn.showUpdateGUI $ Helper.eMergeToolSetter ideRef package mbMergeTool
 
-
-
-viewLogAction :: IDEAction
+viewLogAction :: Types.VCSAction ()
 viewLogAction = createSVNActionFromContext GUISvn.showLogGUI
 
+mkSVNActions :: [(String, Types.VCSAction ())]
+mkSVNActions = [
+                ("_Commit", commitAction)
+                ,("_View Log", viewLogAction)
+                ,("_Update", updateAction)
+                ]
 
 --HELPERS
 
---TODO use this in commit and update
-createSVNActionFromContextWEMergeToolSetter :: (Either VCSGUI.MergeTool VCSGUI.MergeToolSetter
-                                            -> Either GUISvn.Handler (Maybe String)
-                                            -> Wrapper.Ctx()) -- ^ svn action
-                -> Maybe VCSGUI.MergeTool
-                -> IDEAction
-createSVNActionFromContextWEMergeToolSetter action mbMergeTool = do
-     ide <- ask
-     eMergeToolSetter <- case mbMergeTool of
-                            Nothing -> return $ Right $ mergeToolSetter ide
-                            Just mergeTool -> return $ Left $ mergeTool
-     createSVNActionFromContext $ action eMergeToolSetter
-
 createSVNActionFromContext :: (Either GUISvn.Handler (Maybe String)
                                 -> Wrapper.Ctx())
-                           -> IDEAction
+                           -> Types.VCSAction ()
 createSVNActionFromContext action = do
-    (mergeInfo, mbPw) <- readIDE vcsData
-    e <- ask
+    (mergeInfo, mbPw) <- Types.readIDE' vcsData
+    ide <-  Types.askIDERef
     case mbPw of
-            Nothing -> createActionFromContext $ action $ Left $ passwordHandler e mergeInfo
-            Just mb -> createActionFromContext $ action $ Right mb
+            Nothing -> Helper.createActionFromContext $ action $ Left $ passwordHandler ide mergeInfo
+            Just mb -> Helper.createActionFromContext $ action $ Right mb
     where
-        passwordHandler :: IORef IDE-> Maybe MergeId -> ((Maybe (Bool, Maybe String)) -> Wrapper.Ctx ())
-        passwordHandler e mbMergeInfo result = liftIO $ do
+--        passwordHandler :: IORef IDE-> Maybe MergeId -> ((Maybe (Bool, Maybe String)) -> Wrapper.Ctx ())
+        passwordHandler ide mbMergeInfo result = liftIO $ do
             case result of
-                Just (True, pw) -> modifyIDE_' e (\ide -> ide {vcsData = (mbMergeInfo, Just pw) })
+                Just (True, pw) -> modifyIDE_' ide (\ide -> ide {vcsData = (mbMergeInfo, Just pw) })
                 _               -> return ()
-        modifyIDE_' e f = do
-                liftIO (atomicModifyIORef e f')
+        modifyIDE_' ide f = do
+                liftIO (atomicModifyIORef ide f')
                 where
                     f' a  = (f a,())
 

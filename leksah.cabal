@@ -137,12 +137,16 @@ library
         IDE.Pane.Search IDE.Pane.PackageFlags
         IDE.LogRef IDE.Debug IDE.Pane.Grep IDE.Pane.Files
         IDE.Pane.Breakpoints IDE.Pane.Trace IDE.Pane.Variables
-        IDE.Pane.Errors IDE.TextEditor IDE.Workspaces
+        IDE.Pane.Errors IDE.TextEditor IDE.Workspaces IDE.Workspaces.Writer
         IDE.Statusbar IDE.Pane.Workspace IDE.PaneGroups
         IDE.Utils.ServerConnection
         IDE.BufferMode
         IDE.Build
-        IDE.Command.VCS IDE.Command.VCS.SVN IDE.Command.VCS.GIT IDE.Command.VCS.Common IDE.Command.VCS.Common.Workspaces
+        IDE.Command.VCS IDE.Command.VCS.SVN IDE.Command.VCS.GIT IDE.Command.VCS.Common
+        IDE.Command.VCS.Common.Workspaces
+        IDE.Command.VCS.Common.GUI
+        IDE.Command.VCS.Common.Helper
+        IDE.Command.VCS.Types
         IDE.Command.Print
 
     other-modules: Paths_leksah

@@ -32,6 +32,7 @@ module IDE.Utils.GUIUtils (
 
 ,   getRecentFiles
 ,   getRecentWorkspaces
+,   getVCS
 ,   controlIsPressed
 
 ,   stockIdFromType
@@ -211,10 +212,10 @@ setDebugToggled b = do
     ui <- getUIAction "ui/toolbar/BuildToolItems/Debug" castToToggleAction
     liftIO $ toggleActionSetActive ui b
 
-getRecentFiles , getRecentWorkspaces :: IDEM MenuItem
+getRecentFiles , getRecentWorkspaces, getVCS :: IDEM MenuItem
 getRecentFiles    = getMenuItem "ui/menubar/_File/Open _Recent"
 getRecentWorkspaces = getMenuItem "ui/menubar/_Workspace/Open _Recent"
-
+getVCS = getMenuItem "ui/menubar/Version Con_trol" --this could fail, try returning Menu if it does
 -- (toolbar)
 
 controlIsPressed :: G.Event -> Bool
