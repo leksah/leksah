@@ -39,15 +39,20 @@ import qualified Data.Map as Map
 
 
 
-setMenuForPackage :: FilePath -> Maybe VCSConf -> IDEAction
-setMenuForPackage cabalFp mbVCSConf = do
+setMenuForPackage :: Gtk.Menu -> FilePath -> Maybe VCSConf -> IDEAction
+setMenuForPackage vcsMenu cabalFp mbVCSConf = do
                     ideR <- ask
-                    vcsItem <- GUIUtils.getVCS
-                    mbVcsMenu <- liftIO $ Gtk.menuItemGetSubmenu vcsItem
-                    vcsMenu <- case mbVcsMenu of
-                                 Nothing -> liftIO $ Gtk.menuNew
-                                 Just menu -> return $ Gtk.castToMenu menu
 
+--                    mbVcsMenu <- liftIO $ Gtk.menuItemGetSubmenu vcsItem
+--                    vcsMenu <- case mbVcsMenu of
+--                                 Nothing -> do
+--                                    liftIO $ putStrLn $ "No vcsMenu found. Creating new one."
+--                                    liftIO $ Gtk.menuNew
+--                                 Just menu -> do
+--                                    liftIO $ putStrLn $ "VcsMenu found. Trying to cast it to menu..."
+--                                    return $ Gtk.castToMenu menu
+
+                    liftIO $ putStrLn $ "vcsMenu obtained"
                     -- create or get packageItem and set it to ide to be able to get it later again
                     (oldMenuItems,pw) <- readIDE vcsData
                     packageItem <- do
@@ -56,6 +61,7 @@ setMenuForPackage cabalFp mbVCSConf = do
                             Just menuItem -> return menuItem
                     let newMenuItems = Map.insert cabalFp packageItem oldMenuItems
                     modifyIDE_ (\ide -> ide {vcsData = (newMenuItems,pw)})
+                    liftIO $ putStrLn $ "packageItem obtained"
 
                     packageMenu <- liftIO $ Gtk.menuNew
 
@@ -76,8 +82,7 @@ setMenuForPackage cabalFp mbVCSConf = do
                     -- set menus
                     liftIO $ Gtk.menuItemSetSubmenu packageItem packageMenu
                     liftIO $ Gtk.menuShellAppend vcsMenu packageItem
-                    liftIO $ Gtk.menuItemSetSubmenu vcsItem vcsMenu
-                    liftIO $ Gtk.widgetShowAll vcsMenu
+--                    liftIO $ Gtk.widgetShowAll vcsMenu --TODO if view is not reset on switching vcs for package uncomment this
                     return ()
                     where
                     addActions cabalFp packageMenu ideR actions =  mapM_ (\(name,action) -> do
@@ -136,7 +141,10 @@ runSetupRepoActionWithContext packageFp = do
 
 workspaceSetVCSConfig :: FilePath -> Maybe VCSConf -> IDEAction
 workspaceSetVCSConfig pathToPackage mbVCSConf = do
-    setMenuForPackage pathToPackage mbVCSConf
+    vcsItem <- GUIUtils.getVCS
+    mbVcsMenu <- liftIO $ Gtk.menuItemGetSubmenu vcsItem
+    let vcsMenu = Gtk.castToMenu $ fromJust mbVcsMenu
+    setMenuForPackage vcsMenu pathToPackage mbVCSConf
     modifyIDE_ (\ide -> do
         let oldWs = fromJust (workspace ide)
         let oldMap = packageVcsConf oldWs

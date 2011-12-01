@@ -37,7 +37,7 @@ import Control.Monad.Reader(liftIO,ask,when)
 import Graphics.UI.Frame.Panes
 import Graphics.UI.Gtk (
     menuNew, menuItemNewWithLabel, onActivateLeaf, menuShellAppend, menuItemSetSubmenu
-        ,widgetShowAll, menuItemNewWithMnemonic, menuItemGetSubmenu, widgetHideAll, widgetDestroy)
+        ,widgetShowAll, menuItemNewWithMnemonic, menuItemGetSubmenu, widgetHideAll, widgetDestroy, menuItemRemoveSubmenu)
 
 import Data.Maybe
 import Data.List
@@ -45,10 +45,7 @@ import Data.List
 onWorkspaceClose :: IDEAction
 onWorkspaceClose = do
         vcsItem <- GUIUtils.getVCS
-        oldSubmenu <- liftIO $ menuItemGetSubmenu vcsItem
-        when (isJust oldSubmenu) $ liftIO $ do
-            widgetHideAll (fromJust oldSubmenu)
-            widgetDestroy (fromJust oldSubmenu)
+        liftIO $ menuItemRemoveSubmenu vcsItem
 
 onWorkspaceOpen :: Workspace -> IDEAction
 onWorkspaceOpen ws = do
@@ -56,12 +53,14 @@ onWorkspaceOpen ws = do
         packages <- mapM (mapper ws)
                                  mbPackages
         vcsItem <- GUIUtils.getVCS
+        vcsMenu <- liftIO $ menuNew
 
         ideR <- ask
 
         --for each package add an extra menu containing vcs specific menuitems
         mapM_ (\(p,mbVcsConf) -> do
-                    Common.setMenuForPackage (ipdCabalFile p) mbVcsConf
+                    Common.setMenuForPackage vcsMenu (ipdCabalFile p) mbVcsConf
+                    liftIO $ menuItemSetSubmenu vcsItem vcsMenu
                     )
                packages
 
