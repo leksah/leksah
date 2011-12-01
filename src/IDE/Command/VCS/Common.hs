@@ -43,16 +43,6 @@ setMenuForPackage :: Gtk.Menu -> FilePath -> Maybe VCSConf -> IDEAction
 setMenuForPackage vcsMenu cabalFp mbVCSConf = do
                     ideR <- ask
 
---                    mbVcsMenu <- liftIO $ Gtk.menuItemGetSubmenu vcsItem
---                    vcsMenu <- case mbVcsMenu of
---                                 Nothing -> do
---                                    liftIO $ putStrLn $ "No vcsMenu found. Creating new one."
---                                    liftIO $ Gtk.menuNew
---                                 Just menu -> do
---                                    liftIO $ putStrLn $ "VcsMenu found. Trying to cast it to menu..."
---                                    return $ Gtk.castToMenu menu
-
-                    liftIO $ putStrLn $ "vcsMenu obtained"
                     -- create or get packageItem and set it to ide to be able to get it later again
                     (oldMenuItems,pw) <- readIDE vcsData
                     packageItem <- do
@@ -61,7 +51,6 @@ setMenuForPackage vcsMenu cabalFp mbVCSConf = do
                             Just menuItem -> return menuItem
                     let newMenuItems = Map.insert cabalFp packageItem oldMenuItems
                     modifyIDE_ (\ide -> ide {vcsData = (newMenuItems,pw)})
-                    liftIO $ putStrLn $ "packageItem obtained"
 
                     packageMenu <- liftIO $ Gtk.menuNew
 
