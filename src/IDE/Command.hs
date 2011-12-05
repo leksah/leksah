@@ -124,18 +124,8 @@ import qualified IDE.Command.VCS.Common as VCS
 mkActions :: [ActionDescr IDERef]
 mkActions =
     [
-    --common vcs actions
     AD "vcs" "Version Con_trol" Nothing Nothing (return ()) [] False
-    -- git actions
---    ,AD "GitCommit" "_Commit" Nothing Nothing VCSGit.commitAction [] False
---    -- TODO display progress/status-window
---    -- TODO select remote to push/pull to/from
---    ,AD "GitPush" "_Push" Nothing Nothing VCSGit.pushAction [] False
---    ,AD "GitPull" "P_ull" Nothing Nothing VCSGit.pullAction [] False
---    ,AD "GitViewLog" "_View Log" Nothing Nothing VCSGit.viewLogAction [] False
-    -- print action
     ,AD "FilePrint" "_Print File" Nothing Nothing (filePrint) [] False
-    -- other actions
     ,AD "File" "_File" Nothing Nothing (return ()) [] False
     ,AD "FileNew" "_New Module..." Nothing (Just "gtk-new")
         (packageTry_ $ addModule []) [] False
