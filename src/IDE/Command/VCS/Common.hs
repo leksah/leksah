@@ -69,9 +69,10 @@ setMenuForPackage vcsMenu cabalFp mbVCSConf = do
                     liftIO $ addActions cabalFp packageMenu ideR packageMenuOperations
 
                     -- set menus
+                    liftIO $ Gtk.menuItemRemoveSubmenu packageItem
                     liftIO $ Gtk.menuItemSetSubmenu packageItem packageMenu
                     liftIO $ Gtk.menuShellAppend vcsMenu packageItem
---                    liftIO $ Gtk.widgetShowAll vcsMenu --TODO if view is not reset on switching vcs for package uncomment this
+                    liftIO $ Gtk.widgetShowAll vcsMenu
                     return ()
                     where
                     addActions cabalFp packageMenu ideR actions =  mapM_ (\(name,action) -> do
