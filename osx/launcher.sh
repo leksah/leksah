@@ -40,8 +40,8 @@ export GDK_PIXBUF_MODULE_FILE="$bundle_etc/gtk-2.0/gdk-pixbuf.loaders"
 export PANGO_RC_FILE="$bundle_etc/pango/pangorc"
 
 export leksah_bindir="$bundle_bin"
-export leksah_libdir="$bundle_lib/leksah-0.10/ghc-7.0.2"
-export leksah_datadir="$bundle_data/leksah-0.10"
+export leksah_libdir="$bundle_lib/leksah-0.11/ghc-7.0.2"
+export leksah_datadir="$bundle_data/leksah-0.11"
 export leksah_libexecdir="$bundle_res/libexec"
 
 # We need a UTF-8 locale.
