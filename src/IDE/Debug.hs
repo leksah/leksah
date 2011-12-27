@@ -149,14 +149,14 @@ debugSetLiberalScope = do
     maybeModuleName <- lift selectedModuleName
     case maybeModuleName of
         Just moduleName -> do
-            debugCommand (":module *" ++ moduleName) (return ())
+            debugCommand' (":module *" ++ moduleName) logOutput
         Nothing -> do
             mbPackage <- lift getActivePackageDescr
             case mbPackage of
                 Nothing -> return ()
                 Just p -> let packageNames = map (display . modu . mdModuleId) (pdModules p)
                     in debugCommand' (foldl (\a b -> a ++ " *" ++ b) ":module + " packageNames)
-                        (return ())
+                        logOutput
 
 debugAbandon :: IDEAction
 debugAbandon = packageTry_ $ tryDebug_ $ debugCommand ":abandon" logOutput
@@ -326,7 +326,7 @@ debugShowModules = packageTry_ $ tryDebug_ $ debugCommand ":show modules" $
                             -> appendLog log (line ++ "\n") LogTag
             ToolOutput line -> appendLog log (line ++ "\n") InfoTag
             ToolError  line -> appendLog log (line ++ "\n") ErrorTag
-            ToolPrompt      -> defaultLineLogger' log output
+            ToolPrompt _    -> defaultLineLogger' log output
             ToolExit _      -> appendLog log "X--X--X ghci process exited unexpectedly X--X--X" FrameTag
         return ()
 
@@ -374,7 +374,7 @@ debugSetBreakpoint = do
             case maybeText of
                 Just text -> packageTry_ $ tryDebug_ $ do
                     (debugPackage, _) <- ask
-                    debugCommand (":module *" ++ moduleName) logOutput
+                    debugCommand' (":module *" ++ moduleName) logOutput
                     debugCommand (":break " ++ text) (logOutputForSetBreakpoint debugPackage)
                 Nothing   -> do
                     maybeLocation <- selectedLocation

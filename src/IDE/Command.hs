@@ -99,7 +99,7 @@ import IDE.Pane.Breakpoints
 import IDE.Workspaces
 import IDE.Statusbar
 import IDE.Pane.Workspace
-import IDE.Pane.Variables (fillVariablesList)
+import IDE.Pane.Variables (fillVariablesListQuiet)
 import IDE.Pane.Trace (fillTraceList)
 import IDE.PaneGroups
 import IDE.Pane.Search (getSearch, IDESearch(..))
@@ -826,7 +826,7 @@ registerLeksahEvents =    do
     registerEvent stRef "UpdateRecent"
         (\ e@UpdateRecent         -> updateRecentEntries >> return e)
     registerEvent stRef "VariablesChanged"
-        (\ e@VariablesChanged     -> fillVariablesList >> return e)
+        (\ e@VariablesChanged     -> fillVariablesListQuiet >> return e)
     registerEvent stRef "ErrorChanged"
         (\ e@ErrorChanged         -> postAsyncIDE fillErrorList >> return e)
     registerEvent stRef "CurrentErrorChanged"

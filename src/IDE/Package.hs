@@ -54,6 +54,8 @@ module IDE.Package (
 ,   printEvldWithShowFlag
 ,   tryDebug
 ,   tryDebug_
+,   tryDebugQuiet
+,   tryDebugQuiet_
 ,   executeDebugCommand
 
 ,   choosePackageFile
@@ -589,7 +591,7 @@ debugStart = do
                 -- Fork a thread to wait for the output from the process to close
                 liftIO $ forkIO $ do
                     readMVar (outputClosed ghci)
-                    reflectIDE (do
+                    postGUISync $ reflectIDE (do
                         setDebugToggled False
                         modifyIDE_ (\ide -> ide {debugState = Nothing})
                         triggerEventIDE (Sensitivity [(SensitivityInterpreting, False)])
@@ -641,6 +643,19 @@ tryDebug f = do
 tryDebug_ :: DebugM a -> PackageAction
 tryDebug_ f = tryDebug f >> return ()
 
+tryDebugQuiet :: DebugM a -> PackageM (Maybe a)
+tryDebugQuiet f = do
+    maybeDebug <- lift $ readIDE debugState
+    case maybeDebug of
+        Just debug -> do
+            -- TODO check debug package matches active package
+            liftM Just $ lift $ runDebug f debug
+        _ -> do
+            return Nothing
+
+tryDebugQuiet_ :: DebugM a -> PackageAction
+tryDebugQuiet_ f = tryDebugQuiet f >> return ()
+
 executeDebugCommand :: String -> (E.Iteratee ToolOutput IDEM ()) -> DebugAction
 executeDebugCommand command handler = do
     (_, ghci) <- ask
@@ -649,7 +664,7 @@ executeDebugCommand command handler = do
         reifyIDE $ \ideR -> do
             executeGhciCommand ghci command $ do
                 reflectIDEI handler ideR
-                liftIO $ reflectIDE (triggerEventIDE (StatusbarChanged [CompartmentState "", CompartmentBuild False])) ideR
+                liftIO $ postGUISync $ reflectIDE (triggerEventIDE (StatusbarChanged [CompartmentState "", CompartmentBuild False])) ideR
                 return ()
 
 allBuildInfo' :: PackageDescription -> [BuildInfo]

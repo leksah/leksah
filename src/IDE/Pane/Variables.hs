@@ -18,13 +18,14 @@ module IDE.Pane.Variables (
     IDEVariables
 ,   VariablesState
 ,   fillVariablesList
+,   fillVariablesListQuiet
 ) where
 
 import Graphics.UI.Gtk
 import Data.Typeable (Typeable(..))
 import IDE.Core.State
 import Control.Monad.Reader
-import IDE.Package (tryDebug_)
+import IDE.Package (tryDebug_, tryDebugQuiet_)
 import IDE.Debug (debugCommand')
 import IDE.Utils.Tool (ToolOutput(..))
 import Text.ParserCombinators.Parsec
@@ -45,7 +46,7 @@ import Text.ParserCombinators.Parsec.Language (emptyDef)
 import Graphics.UI.Gtk.Gdk.Events (Event(..))
 import Graphics.UI.Gtk.General.Enums
     (Click(..), MouseButton(..))
-import IDE.Workspaces (packageTry_)
+import IDE.Workspaces (packageTry_, packageTryQuiet_)
 import qualified Data.Enumerator.List as EL (consume)
 
 -- | A variables pane description
@@ -136,6 +137,23 @@ builder' pp nb windows = reifyIDE $  \ideR -> do
         (\_ -> do reflectIDE (makeActive pane) ideR ; return True)
     return (Just pane,[ConnectC cid1])
 
+
+fillVariablesListQuiet :: IDEAction
+fillVariablesListQuiet = packageTryQuiet_ $ do
+    mbVariables <- lift getPane
+    case mbVariables of
+        Nothing -> return ()
+        Just var -> tryDebugQuiet_ $ debugCommand' ":show bindings" $ do
+            to <- EL.consume
+            liftIO $ postGUIAsync $ do
+                case parse variablesParser "" (selectString to) of
+                    Left e -> sysMessage Normal (show e)
+                    Right triples -> do
+                        treeStoreClear (variables var)
+                        mapM_ (insertBreak (variables var))
+                            (zip triples [0..length triples])
+  where
+    insertBreak treeStore (v,index)  = treeStoreInsert treeStore [] index v
 
 fillVariablesList :: IDEAction
 fillVariablesList = packageTry_ $ do

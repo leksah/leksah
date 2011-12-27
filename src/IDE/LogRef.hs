@@ -375,17 +375,22 @@ defaultLineLogger' log out = do
         ToolInput  line            -> appendLog log (line ++ "\n") InputTag
         ToolOutput line            -> appendLog log (line ++ "\n") LogTag
         ToolError  line            -> appendLog log (line ++ "\n") ErrorTag
-        ToolPrompt                 -> appendLog log (concat (take 20 (repeat "- ")) ++ "-\n") FrameTag
+        ToolPrompt line            -> do
+            unless (null line) $ appendLog log (line ++ "\n") LogTag >> return ()
+            appendLog log (concat (take 20 (repeat "- ")) ++ "-\n") FrameTag
         ToolExit   ExitSuccess     -> appendLog log (take 41 (repeat '-') ++ "\n") FrameTag
         ToolExit   (ExitFailure 1) -> appendLog log (take 41 (repeat '=') ++ "\n") FrameTag
         ToolExit   (ExitFailure n) -> appendLog log (take 41 ("========== " ++ show n ++ " " ++ repeat '=') ++ "\n") FrameTag
 
 logOutputLines :: (IDELog -> ToolOutput -> IDEM a) -> E.Iteratee ToolOutput IDEM [a]
 logOutputLines lineLogger = do
+    ideR <- lift ask
     log <- lift getLog
-    liftIO $ bringPaneToFront log
-    results <- (EL.mapM $ lineLogger log) =$ EL.consume
-    lift $ triggerEventIDE (StatusbarChanged [CompartmentState "", CompartmentBuild False])
+    liftIO $ postGUISync $ bringPaneToFront log
+    results <- (EL.mapM $ liftIO . postGUISync . flip reflectIDE ideR . lineLogger log) =$ EL.consume
+    liftIO $ postGUISync $ reflectIDE (do
+        triggerEventIDE (StatusbarChanged [CompartmentState "", CompartmentBuild False])
+        ) ideR
     return results
 
 logOutputLines_ :: (IDELog -> ToolOutput -> IDEM a) -> E.Iteratee ToolOutput IDEM ()
@@ -401,9 +406,10 @@ logOutput = do
 logOutputForBuild :: IDEPackage -> Bool -> Bool -> E.Iteratee ToolOutput IDEM ()
 logOutputForBuild package backgroundBuild jumpToWarnings = do
     log    <- lift getLog
-    unless backgroundBuild $ liftIO $ bringPaneToFront log
+    unless backgroundBuild $ liftIO $ postGUISync $ bringPaneToFront log
     (_, _, errs) <- EL.foldM readAndShow (log, False, [])
-    lift $ do
+    ideR <- lift ask
+    liftIO $ postGUISync $ reflectIDE (do
         setErrorList $ reverse errs
         triggerEventIDE (Sensitivity [(SensitivityError,not (null errs))])
         let errorNum    =   length (filter isError errs)
@@ -411,12 +417,12 @@ logOutputForBuild package backgroundBuild jumpToWarnings = do
         triggerEventIDE (StatusbarChanged [CompartmentState
             (show errorNum ++ " Errors, " ++ show warnNum ++ " Warnings"), CompartmentBuild False])
         unless (backgroundBuild || (not jumpToWarnings && errorNum == 0)) nextError
-        return ()
+        return ()) ideR
   where
     readAndShow :: (IDELog, Bool, [LogRef]) -> ToolOutput -> IDEM (IDELog, Bool, [LogRef])
     readAndShow (log, inError, errs) output = do
         ideR <- ask
-        liftIO $ case output of
+        liftIO $ postGUISync $ case output of
             ToolError line -> do
                 let parsed  =  parse buildLineParser "" line
                 let nonErrorPrefixes = ["Linking ", "ar:", "ld:", "ld warning:"]
@@ -424,7 +430,7 @@ logOutputForBuild package backgroundBuild jumpToWarnings = do
                     Right BuildLine -> return InfoTag
                     Right (OtherLine text) | "Linking " `isPrefixOf` text -> do
                         -- when backgroundBuild $ lift interruptProcess
-                        liftIO $ postGUIAsync $ reflectIDE (do
+                        reflectIDE (do
                                 setErrorList $ reverse errs
                             ) ideR
                         return InfoTag
@@ -463,7 +469,8 @@ logOutputForBuild package backgroundBuild jumpToWarnings = do
             ToolInput line -> do
                 appendLog log (line ++ "\n") InputTag
                 return (log, inError, errs)
-            ToolPrompt -> do
+            ToolPrompt line -> do
+                unless (null line) $ appendLog log (line ++ "\n") LogTag >> return ()
                 let errorNum    =   length (filter isError errs)
                 let warnNum     =   length errs - errorNum
                 case errs of

@@ -29,6 +29,8 @@ module IDE.Workspaces (
 ,   workspacePackageNew
 ,   packageTry
 ,   packageTry_
+,   packageTryQuiet
+,   packageTryQuiet_
 
 ,   backgroundMake
 ,   makePackage
