@@ -89,7 +89,7 @@ library
         build-depends: unix >=2.3.1.0 && <2.6
 
     if os(osx)
-        build-depends: ige-mac-integration >= 0.0.0.2 && <0.2
+        build-depends: gtk-mac-integration >= 0.0.0.2 && <0.2
 
     if flag(yi)
         build-depends: yi >=0.6.1 && <0.7
@@ -158,7 +158,7 @@ Executable leksah
         build-depends: unix >=2.3.1.0 && <2.6
 
     if os(osx)
-        build-depends: ige-mac-integration >= 0.0.0.2 && <0.2
+        build-depends: gtk-mac-integration >= 0.0.0.2 && <0.2
 
     if flag(yi)
         cpp-options: -DLEKSAH_WITH_YI
