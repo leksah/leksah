@@ -32,7 +32,6 @@ module IDE.Pane.Log (
 import Data.Typeable (Typeable(..))
 import IDE.Core.State
 import Graphics.UI.Gtk.Gdk.Events
-import Control.Monad.Trans (liftIO)
 import IDE.Pane.SourceBuffer (markRefInSourceBuf,selectSourceBuf)
 import System.IO
 import Prelude hiding (catch)
@@ -69,6 +68,7 @@ import Graphics.UI.Gtk
         ScrolledWindow, TextView, Menu, AttrOp(..), set,
         TextWindowType(..), ShadowType(..), PolicyType(..),
         priorityDefaultIdle, idleAdd)
+import Control.Monad.IO.Class (MonadIO(..))
 
 
 -------------------------------------------------------------------------------

@@ -21,13 +21,14 @@ import Data.List as List (stripPrefix, isPrefixOf, filter)
 import Data.Char
 import Data.IORef
 import Control.Monad
-import Control.Monad.Trans (liftIO)
 import Graphics.UI.Gtk as Gtk hiding(onKeyPress, onKeyRelease)
 import Graphics.UI.Gtk.Gdk.EventM as Gtk
 import IDE.Core.State
 import IDE.Metainfo.Provider(getDescription,getCompletionOptions)
-import Control.Monad.Reader.Class (ask)
 import IDE.TextEditor
+import Control.Monad.IO.Class (MonadIO(..))
+import Control.Monad.Trans.Reader (ask)
+import qualified Control.Monad.Reader as Gtk (liftIO)
 
 complete :: EditorView -> Bool -> IDEAction
 complete sourceView always = do
@@ -255,15 +256,15 @@ addEventHandling window sourceView tree store isWordChar always = do
         (x, y)     <- eventCoordinates
         time       <- eventTime
 
-        drawWindow <- liftIO $ widgetGetDrawWindow window
-        status     <- liftIO $ pointerGrab
+        drawWindow <- Gtk.liftIO $ widgetGetDrawWindow window
+        status     <- Gtk.liftIO $ pointerGrab
             drawWindow
             False
             [PointerMotionMask, ButtonReleaseMask]
             (Nothing:: Maybe DrawWindow)
             Nothing
             time
-        when (status == GrabSuccess) $ liftIO $ do
+        when (status == GrabSuccess) $ Gtk.liftIO $ do
             (width, height) <- windowGetSize window
             writeIORef resizeHandler $ Just $ \(newX, newY) -> do
                 reflectIDE (
@@ -272,18 +273,18 @@ addEventHandling window sourceView tree store isWordChar always = do
         return True
 
     idMotion <- liftIO $ window `on` motionNotifyEvent $ do
-        mbResize <- liftIO $ readIORef resizeHandler
+        mbResize <- Gtk.liftIO $ readIORef resizeHandler
         case mbResize of
-            Just resize -> eventCoordinates >>= (liftIO . resize) >> return True
+            Just resize -> eventCoordinates >>= (Gtk.liftIO . resize) >> return True
             Nothing     -> return False
 
     idButtonRelease <- liftIO $ window `on` buttonReleaseEvent $ do
-        mbResize <- liftIO $ readIORef resizeHandler
+        mbResize <- Gtk.liftIO $ readIORef resizeHandler
         case mbResize of
             Just resize -> do
-                eventCoordinates >>= (liftIO . resize)
-                eventTime >>= (liftIO . pointerUngrab)
-                liftIO $ writeIORef resizeHandler Nothing
+                eventCoordinates >>= (Gtk.liftIO . resize)
+                eventTime >>= (Gtk.liftIO . pointerUngrab)
+                Gtk.liftIO $ writeIORef resizeHandler Nothing
                 return True
             Nothing     -> return False
 

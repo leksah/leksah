@@ -39,9 +39,10 @@ import IDE.Package
        (packageClean', packageCopy', packageRegister', buildPackage, packageConfig', packageTest')
 import IDE.Core.Types
        (IDEEvent(..), Prefs(..), IDE(..), WorkspaceAction)
-import Control.Monad.Reader
 import Distribution.Text (Text(..))
 import Control.Event (EventSource(..))
+import Control.Monad.Trans.Reader (ask)
+import Control.Monad.Trans.Class (MonadTrans(..))
 
 -- import Debug.Trace (trace)
 trace a b = b

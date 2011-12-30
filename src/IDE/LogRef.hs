@@ -39,7 +39,6 @@ module IDE.LogRef (
 ) where
 
 import Graphics.UI.Gtk
-import Control.Monad.Reader
 import Text.ParserCombinators.Parsec.Language
 import Text.ParserCombinators.Parsec hiding(Parser)
 import qualified Text.ParserCombinators.Parsec.Token as P
@@ -58,6 +57,10 @@ import IDE.Utils.FileUtils(myCanonicalizePath)
 import qualified Data.Enumerator as E
 import qualified Data.Enumerator.List as EL
 import Data.Enumerator ((=$))
+import Control.Monad.IO.Class (MonadIO(..))
+import Control.Monad (forM_, unless)
+import Control.Monad.Trans.Reader (ask)
+import Control.Monad.Trans.Class (lift)
 
 showSourceSpan :: LogRef -> String
 showSourceSpan = displaySrcSpan . logRefSrcSpan

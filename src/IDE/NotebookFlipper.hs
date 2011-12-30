@@ -29,10 +29,10 @@ import Graphics.UI.Gtk
         windowNewPopup, TreeViewClass, WindowPosition(..), signalDisconnect,
         AttrOp(..), set)
 import IDE.Core.State
-import Control.Monad.Trans (liftIO)
 import Graphics.UI.Gtk.Gdk.Events (Event(..))
 import Control.Monad (when)
 import IDE.Pane.SourceBuffer(recentSourceBuffers)
+import Control.Monad.IO.Class (MonadIO(..))
 
 flipDown :: IDEAction
 flipDown = do

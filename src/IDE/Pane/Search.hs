@@ -52,12 +52,12 @@ import Data.IORef (writeIORef,readIORef,IORef(..))
 -- import IDE.Pane.SourceBuffer (goToDefinition)
 import IDE.Metainfo.Provider (searchMeta)
 import Data.Maybe
-import Control.Monad.Reader
 import Data.Typeable
 import IDE.Core.State
 import IDE.Utils.GUIUtils
 import Distribution.Text(display)
 import Control.Event (triggerEvent)
+import Control.Monad.IO.Class (MonadIO(..))
 import qualified Data.ByteString.Char8 as BS (empty, unpack)
 
 -- | A search pane description

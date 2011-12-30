@@ -57,7 +57,6 @@ import Graphics.UI.Gtk
         spinButtonGetValueAsInt, StateType(..), ToolbarStyle(..),
         IconSize(..), AttrOp(..), set, on, Color(..))
 import Graphics.UI.Gtk.Gdk.Events
-import Control.Monad.Reader
 import qualified Graphics.UI.Gtk as Gtk
 import Graphics.UI.Gtk.Buttons.ToggleButton
 import Graphics.UI.Gtk.Buttons.CheckButton
@@ -74,6 +73,10 @@ import Data.List (find, isPrefixOf)
 import Data.Array (bounds, (!), inRange)
 import IDE.Pane.Grep (grepWorkspace)
 import IDE.Workspaces (workspaceTry_, packageTry_)
+import Control.Monad.IO.Class (MonadIO(..))
+import Control.Monad.Trans.Reader (ask)
+import Control.Monad.Trans.Class (MonadTrans(..))
+import Control.Monad (liftM, filterM, when)
 
 data FindState = FindState {
             entryStr        ::    String

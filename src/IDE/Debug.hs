@@ -66,7 +66,6 @@ module IDE.Debug (
 ,   debugSetPrintBindResult
 ) where
 
-import Control.Monad.Reader
 import IDE.Core.State
 import IDE.LogRef
 import Control.Exception (SomeException(..))
@@ -89,6 +88,9 @@ import IDE.Utils.Tool (ToolOutput(..), toolProcess)
 import IDE.Workspaces (packageTry_)
 import qualified Data.Enumerator as E
 import qualified Data.Enumerator.List as EL
+import Control.Monad.Trans.Class (MonadTrans(..))
+import Control.Monad.Trans.Reader (ask)
+import Control.Monad.IO.Class (MonadIO(..))
 
 debugCommand :: String -> E.Iteratee ToolOutput IDEM () -> DebugAction
 debugCommand command handler = do

@@ -64,7 +64,6 @@ module IDE.Package (
 ) where
 
 import Graphics.UI.Gtk
-import Control.Monad.Reader
 import Distribution.Package hiding (depends,packageId)
 import Distribution.PackageDescription
 import Distribution.PackageDescription.Parse
@@ -104,6 +103,10 @@ import IDE.Utils.Tool (executeGhciCommand)
 import qualified Data.Enumerator as E (run_, Iteratee(..), last)
 import qualified Data.Enumerator.List as EL (foldM, zip3, zip)
 import Data.Enumerator (($$))
+import Control.Monad.Trans.Reader (ask)
+import Control.Monad.IO.Class (MonadIO(..))
+import Control.Monad.Trans.Class (lift)
+import Control.Monad (when, unless, liftM)
 
 #if MIN_VERSION_Cabal(1,8,0)
 myLibModules pd = case library pd of

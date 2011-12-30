@@ -22,7 +22,6 @@ import IDE.Core.State
      PaneMonad(..),
      IDEAction(..),
      StatusbarCompartment(..))
-import Control.Monad.Trans (liftIO)
 import Graphics.UI.Gtk
     (windowSetTitle,
      castToStatusbar,
@@ -47,6 +46,7 @@ import Graphics.UI.Gtk
      )
 import Graphics.UI.Frame.Panes (IDEPane(..), paneName)
 import Text.Printf (printf)
+import Control.Monad.IO.Class (MonadIO(..))
 
 
 changeStatusbar :: [StatusbarCompartment] -> IDEAction

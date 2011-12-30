@@ -42,7 +42,6 @@ import Graphics.UI.Editor.DescriptionPP
      mkFieldPP)
 import Text.ParserCombinators.Parsec hiding(Parser)
 import Debug.Trace (trace)
-import Control.Monad.Trans (liftIO)
 
 data IDEFlags               =   IDEFlags {
     flagsBox                ::   VBox

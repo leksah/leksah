@@ -33,9 +33,9 @@ import IDE.Utils.GUIUtils (getCandyState)
 import Control.Monad (when)
 import Data.Maybe (catMaybes)
 import IDE.Utils.FileUtils
-import Control.Monad.Reader
 import Graphics.UI.Gtk
        (Notebook, castToWidget, notebookPageNum, ScrolledWindow)
+import Control.Monad.IO.Class (MonadIO(..))
 
 
 -- * Buffer Basics

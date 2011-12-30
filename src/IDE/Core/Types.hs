@@ -89,7 +89,6 @@ import qualified IDE.YiConfig as Yi
 import Graphics.UI.Gtk
        (Window(..), KeyVal(..), Color(..), Menu(..), TreeView(..),
         ListStore(..), Toolbar(..))
-import Control.Monad.Reader
 import Data.Unique (newUnique, Unique(..))
 import Graphics.UI.Frame.Panes
 import Distribution.Package
@@ -120,6 +119,9 @@ import IDE.StrippedPrefs(RetrieveStrategy)
 import System.IO (Handle)
 import Distribution.Text(disp)
 import Text.PrettyPrint (render)
+import Control.Monad.Trans.Class (lift)
+import Control.Monad.IO.Class (liftIO)
+import Control.Monad.Trans.Reader (ReaderT(..))
 
 -- ---------------------------------------------------------------------
 -- IDE State

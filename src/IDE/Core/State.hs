@@ -79,10 +79,9 @@ import Graphics.UI.Gtk hiding (get)
 import Graphics.UI.Gtk.SourceView.SourceView ()
 
 import Data.IORef
-import Control.Monad.Reader hiding (liftIO)
 import Control.Exception
 import Prelude hiding (catch)
-import Control.Monad.State
+import Control.Monad.IO.Class (MonadIO, liftIO)
 import IDE.Core.Types
 import Graphics.UI.Frame.Panes
 import Graphics.UI.Frame.ViewFrame --hiding (notebookInsertOrdered)
@@ -99,6 +98,8 @@ import qualified IDE.YiConfig as Yi
 import Data.Enumerator (runIteratee, Iteratee(..))
 import qualified Data.Enumerator as E
        (returnI, Step(..), yield, continue)
+import Control.Monad (liftM, when)
+import Control.Monad.Trans.Reader (ask, ReaderT(..))
 
 instance PaneMonad IDEM where
     getFrameState   =   readIDE frameState

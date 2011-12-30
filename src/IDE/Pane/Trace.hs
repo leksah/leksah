@@ -23,7 +23,6 @@ module IDE.Pane.Trace (
 import Graphics.UI.Gtk
 import Data.Typeable (Typeable(..))
 import IDE.Core.State
-import Control.Monad.Reader
 import IDE.Package (tryDebug_)
 import IDE.Debug
     (debugForward, debugBack, debugCommand')
@@ -49,6 +48,8 @@ import Graphics.UI.Gtk.General.Enums (MouseButton(..))
 import System.Log.Logger (debugM)
 import IDE.Workspaces (packageTry_)
 import qualified Data.Enumerator.List as EL (consume)
+import Control.Monad.Trans.Class (MonadTrans(..))
+import Control.Monad.IO.Class (MonadIO(..))
 
 -- | A debugger pane description
 --

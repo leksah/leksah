@@ -26,7 +26,6 @@ module IDE.Pane.PackageEditor (
 ) where
 
 import Graphics.UI.Gtk
-import Control.Monad.Reader
 import Distribution.Package
 import Distribution.PackageDescription
 import Distribution.Verbosity
@@ -104,6 +103,10 @@ import Distribution.License
 
 import qualified Graphics.UI.Gtk.Gdk.Events as GTK (Event(..))
 import Data.List (sort,nub)
+import Control.Monad.Trans.Reader (ask)
+import Control.Monad.IO.Class (MonadIO(..))
+import Control.Monad.Trans.Class (lift)
+import Control.Monad (when)
 
 
 -- ---------------------------------------------------------------------

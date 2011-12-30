@@ -19,7 +19,6 @@ module IDE.Leksah (
 ) where
 
 import Graphics.UI.Gtk
-import Control.Monad.Reader
 import Control.Concurrent
 import Data.IORef
 import Data.Maybe
@@ -76,6 +75,8 @@ import System.FilePath (dropExtension, splitExtension, (</>))
 import qualified Data.Enumerator as E
 import qualified Data.Enumerator.List as EL
 import Data.Enumerator (($$))
+import Control.Monad (when, liftM)
+import Control.Monad.IO.Class (MonadIO(..))
 
 -- --------------------------------------------------------------------
 -- Command line options

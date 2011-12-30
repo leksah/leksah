@@ -54,7 +54,6 @@ import Graphics.UI.Gtk
         menuItemGetSubmenu, menuShellAppend, onActivateLeaf,
         menuItemNewWithLabel, menuNew, Packing(..), ToolbarStyle(..),
         PositionType(..), on, IconSize(..))
-import Control.Monad.Reader
 import System.FilePath
 import Data.Version
 import Prelude hiding (catch)
@@ -105,6 +104,9 @@ import IDE.PaneGroups
 import IDE.Pane.Search (getSearch, IDESearch(..))
 import IDE.Pane.Grep (getGrep)
 import IDE.Pane.Files (getFiles)
+import Control.Monad.IO.Class (MonadIO(..))
+import Control.Monad (unless, when)
+import Control.Monad.Trans.Reader (ask)
 
 --
 -- | The Actions known to the system (they can be activated by keystrokes or menus)

@@ -39,7 +39,6 @@ import System.IO (hClose, openBinaryFile, IOMode(..))
 import System.IO.Strict (readFile)
 import qualified Data.Map as Map
 import Control.Monad
-import Control.Monad.Trans
 import System.FilePath
 import System.Directory
 import Data.List
@@ -67,6 +66,8 @@ import Data.Map (Map(..))
 import Control.Exception (SomeException(..), catch)
 import Prelude hiding(catch, readFile)
 import IDE.Utils.ServerConnection(doServerCommand)
+import Control.Monad.IO.Class (MonadIO(..))
+import Control.Monad.Trans.Class (MonadTrans(..))
 
 trace a b = b
 

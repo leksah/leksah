@@ -35,7 +35,6 @@ import Graphics.UI.Frame.ViewFrame
 import Control.Monad (when, liftM)
 import IDE.Core.Types (frameState)
 import Graphics.UI.Editor.Parameters (Direction(..))
-import Control.Monad.Trans (liftIO)
 import Graphics.UI.Gtk
     (widgetSetSensitive, notebookSetShowTabs, notebookSetTabPos)
 import Graphics.UI.Gtk.General.Enums (PositionType(..))
@@ -47,6 +46,7 @@ import IDE.Pane.Breakpoints (IDEBreakpoints(..))
 import IDE.Pane.Variables (IDEVariables(..))
 import IDE.Pane.Trace (IDETrace(..))
 import IDE.Pane.Workspace (IDEWorkspace(..))
+import Control.Monad.IO.Class (MonadIO(..))
 
 showBrowser :: IDEAction
 showBrowser = do

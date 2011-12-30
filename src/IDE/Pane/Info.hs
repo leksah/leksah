@@ -25,7 +25,6 @@ module IDE.Pane.Info (
 
 import Graphics.UI.Gtk hiding (afterToggleOverwrite)
 import Control.Monad
-import Control.Monad.Trans
 import Data.IORef
 import Data.Typeable
 import Data.Char (isAlphaNum)
@@ -37,6 +36,7 @@ import IDE.Pane.SourceBuffer
 import IDE.TextEditor (EditorIter(..))
 import IDE.Utils.GUIUtils (openBrowser,controlIsPressed)
 import Graphics.UI.Gtk.SourceView
+import Control.Monad.IO.Class (MonadIO(..))
 
 
 -- | An info pane description
@@ -119,7 +119,8 @@ instance RecoverablePane IDEInfo InfoState IDEM where
                     return (beg, en)) (\_ _ slice -> do
                                         when (slice /= []) $ do
                                             -- liftIO$ print ("slice",slice)
-                                            void $ reflectIDE (triggerEventIDE (SelectInfo slice)) ideR
+                                            reflectIDE (triggerEventIDE (SelectInfo slice)) ideR
+                                            return ()
                                         )
 
             scrolledWindowSetPolicy sw PolicyAutomatic PolicyAutomatic

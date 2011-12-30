@@ -77,7 +77,6 @@ module IDE.Pane.SourceBuffer (
 ) where
 
 import Prelude hiding(getChar, getLine)
-import Control.Monad.Reader
 import Control.Applicative
 import System.FilePath
 import System.Directory
@@ -112,11 +111,6 @@ import Graphics.UI.Gtk
         scrolledWindowSetPolicy, dialogSetDefaultResponse, postGUIAsync,
         fileChooserSetCurrentFolder, fileChooserSelectFilename)
 import System.Glib.MainLoop (priorityDefaultIdle, idleAdd)
-#if MIN_VERSION_gtk(0,10,5)
-import Graphics.UI.Gtk (Underline(..))
-#else
-import Graphics.UI.Gtk.Pango.Types (Underline(..))
-#endif
 import qualified Graphics.UI.Gtk as Gtk hiding (eventKeyName)
 import Graphics.UI.Gtk.Windows.Window
 import Graphics.UI.Gtk.General.Enums
@@ -125,8 +119,10 @@ import Graphics.UI.Gtk.Windows.MessageDialog
        (ButtonsType(..), MessageType(..))
 #if MIN_VERSION_gtk(0,10,5)
 import Graphics.UI.Gtk.Windows.Dialog (ResponseId(..))
+import Graphics.UI.Gtk (Underline(..))
 #else
 import Graphics.UI.Gtk.General.Structs (ResponseId(..))
+import Graphics.UI.Gtk.Pango.Types (Underline(..))
 #endif
 import Graphics.UI.Gtk.Selectors.FileChooser
        (FileChooserAction(..))
@@ -134,6 +130,9 @@ import System.Glib.Attributes (AttrOp(..), set)
 import qualified Graphics.UI.Gtk.Gdk.Events as GtkOld
 
 import IDE.BufferMode
+import Control.Monad.Trans.Reader (ask)
+import Control.Monad.IO.Class (MonadIO(..))
+import Control.Monad (foldM, forM, filterM, unless, when)
 
 allBuffers :: IDEM [IDEBuffer]
 allBuffers = getPanes
@@ -245,7 +244,7 @@ goToDefinition idDescr  = do
                                                 Just si -> sourcePathFromScope si
                                                 Nothing -> Nothing
     when (isJust mbSourcePath2) $
-        void $ goToSourceDefinition (fromJust $ mbSourcePath2) (dscMbLocation idDescr)
+        goToSourceDefinition (fromJust $ mbSourcePath2) (dscMbLocation idDescr) >> return ()
     return ()
     where
     sourcePathFromScope :: GenScope -> Maybe FilePath
@@ -538,7 +537,8 @@ builder' bs mbfn ind bn rbn ct prefs pp nb windows = do
                             return (beg, if ctrl then en else beg)) (\_ _ slice -> do
                                         when (slice /= []) $ do
                                             -- liftIO$ print ("slice",slice)
-                                            void $ reflectIDE (triggerEventIDE (SelectInfo slice)) ideR
+                                            reflectIDE (triggerEventIDE (SelectInfo slice)) ideR
+                                            return ()
                                         ))
 
 #ifdef LEKSAH_WITH_YI

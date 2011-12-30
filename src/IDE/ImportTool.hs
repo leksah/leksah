@@ -48,7 +48,6 @@ import qualified Distribution.ModuleName as D (ModuleName(..))
 import qualified Text.ParserCombinators.Parsec.Token as P
        (operator, dot, identifier, symbol, lexeme, whiteSpace,
         makeTokenParser)
-import Control.Monad.Trans (liftIO)
 import Distribution.PackageDescription.Parse
        (writePackageDescription, readPackageDescription)
 import Distribution.Verbosity (normal)
@@ -59,6 +58,7 @@ import Distribution.PackageDescription (buildDepends)
 import Distribution.PackageDescription.Configuration
        (flattenPackageDescription)
 import IDE.BufferMode (editInsertCode)
+import Control.Monad.IO.Class (MonadIO(..))
 
 -- | Add all imports which gave error messages ...
 resolveErrors :: IDEAction

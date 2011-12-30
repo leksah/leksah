@@ -25,13 +25,14 @@ module IDE.Pane.Workspace (
 import Graphics.UI.Gtk hiding (get)
 import Graphics.UI.Gtk.Gdk.Events
 import Data.Maybe
-import Control.Monad.Reader
 import Data.Typeable
 import IDE.Core.State
 import IDE.Workspaces
 import qualified Data.Map as Map (empty)
 import Data.List (sortBy)
 import IDE.Pane.Files (refreshFiles)
+import Control.Monad (when)
+import Control.Monad.IO.Class (MonadIO(..))
 
 -- | Workspace pane state
 --

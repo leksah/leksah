@@ -26,13 +26,13 @@ import IDE.System.Process(runProcess)
 import System.Process(runProcess)
 #endif
 import GHC.Conc(threadDelay)
-import Control.Monad.Trans(liftIO)
 import System.IO
 import Control.Exception (SomeException(..), catch)
 import Prelude hiding(catch)
 import Control.Concurrent(forkIO)
 import Graphics.UI.Gtk(postGUIAsync)
 import Control.Event(triggerEvent)
+import Control.Monad.IO.Class (MonadIO(..))
 
 doServerCommand :: ServerCommand -> (ServerAnswer -> IDEM alpha) -> IDEAction
 doServerCommand command cont = do

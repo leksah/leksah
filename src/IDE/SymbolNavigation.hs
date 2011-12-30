@@ -32,7 +32,6 @@ import Graphics.UI.Gtk.Gdk.Cursor
 import Graphics.UI.Gtk
 import Graphics.UI.Frame.ViewFrame
 import qualified Data.Set as Set
-import Control.Monad.Reader
 import Control.Applicative
 import Distribution.ModuleName
 import qualified Data.Text as T
@@ -43,6 +42,9 @@ import Graphics.UI.Gtk.SourceView.SourceGutter
 import Graphics.UI.Gtk.SourceView
 import qualified Graphics.UI.Gtk.Multiline.TextView
 import qualified Graphics.UI.Gtk.Scrolling.ScrolledWindow
+import Control.Monad.IO.Class (MonadIO(..))
+import Control.Monad (when)
+import Control.Monad.Trans.Reader (ask)
 
 data Locality = LocalityPackage  | LocalityWorkspace | LocalitySystem  -- in which category symbol is located
     deriving (Ord,Eq,Show)

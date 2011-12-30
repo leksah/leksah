@@ -29,7 +29,6 @@ module IDE.Pane.Modules (
 import Graphics.UI.Gtk hiding (get)
 import Graphics.UI.Gtk.Gdk.Events
 import Data.Maybe
-import Control.Monad.Reader
 import qualified Data.Map as Map
 import Data.Map (Map)
 import Data.Tree
@@ -60,6 +59,10 @@ import IDE.Metainfo.Provider
 import System.Log.Logger (infoM)
 import Default (Default(..))
 import IDE.Workspaces (packageTry_)
+import Control.Monad.IO.Class (MonadIO(..))
+import Control.Monad (when)
+import Control.Monad.Trans.Class (MonadTrans(..))
+import Control.Monad.Trans.Reader (ask)
 
 -- | A modules pane description
 --

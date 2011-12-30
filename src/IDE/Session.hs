@@ -25,7 +25,6 @@ module IDE.Session (
 ) where
 
 import Graphics.UI.Gtk hiding (showLayout)
-import Control.Monad.Reader
 import System.FilePath
 import qualified Data.Map as Map
 import Data.Maybe
@@ -59,6 +58,8 @@ import Control.Exception (SomeException(..))
 import IDE.Pane.Workspace (WorkspaceState(..))
 import IDE.Workspaces (workspaceOpenThis)
 import IDE.Completion (setCompletionSize)
+import Control.Monad.IO.Class (MonadIO(..))
+import Control.Monad (forM_, forM, when)
 
 
 -- ---------------------------------------------------------------------

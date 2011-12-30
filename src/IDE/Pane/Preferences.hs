@@ -33,7 +33,6 @@ import Graphics.UI.Gtk
         buttonNewFromStock, hButtonBoxNew, vBoxNew, castToWidget, VBox,
         ShadowType(..), Packing(..), fontDescriptionFromString, AttrOp(..),
         FileChooserAction(..), Color(..), ResponseId(..))
-import Control.Monad.Reader
 import qualified Text.PrettyPrint.HughesPJ as PP
 import Distribution.Package
 import Data.IORef
@@ -70,6 +69,8 @@ import Graphics.UI.Gtk.Windows.MessageDialog
        (ButtonsType(..), MessageType(..))
 import System.Glib.Attributes (set)
 import Graphics.UI.Gtk.General.Enums (WindowPosition(..))
+import Control.Monad.IO.Class (MonadIO(..))
+import Control.Monad (forM_, when)
 
 -- ---------------------------------------------------------------------
 -- This needs to be incremented, when the preferences format changes

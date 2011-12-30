@@ -38,11 +38,9 @@ module IDE.Workspaces (
 ) where
 
 import IDE.Core.State
-import Control.Monad.Trans (liftIO)
 import Graphics.UI.Editor.Parameters
     (Parameter(..), (<<<-), paraName, emptyParams)
 import Control.Monad (unless, when, liftM)
-import Control.Monad.Reader (lift)
 import Data.Maybe (isJust,fromJust )
 import IDE.Utils.GUIUtils
     (chooseFile, chooseSaveFile)
@@ -79,7 +77,6 @@ import Graphics.UI.Gtk.Windows.Dialog (ResponseId(..))
 import Graphics.UI.Gtk.General.Structs (ResponseId(..))
 #endif
 import Control.Exception (SomeException(..))
-import Control.Monad.Reader.Class (ask)
 import qualified Data.Map as  Map (empty)
 import IDE.Pane.SourceBuffer (fileOpenThis, fileCheckAll, belongsToPackage)
 import qualified System.IO.UTF8 as UTF8 (writeFile)
@@ -88,7 +85,9 @@ import Graphics.UI.Gtk.General.Enums (WindowPosition(..))
 import Control.Applicative ((<$>))
 import IDE.Build
 import IDE.Utils.FileUtils(myCanonicalizePath)
-
+import Control.Monad.Trans.Reader (ask)
+import Control.Monad.IO.Class (MonadIO(..))
+import Control.Monad.Trans.Class (lift)
 
 setWorkspace :: Maybe Workspace -> IDEAction
 setWorkspace mbWs = do

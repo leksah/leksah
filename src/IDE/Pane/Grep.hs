@@ -27,7 +27,6 @@ import Text.ParserCombinators.Parsec.Language
 import Text.ParserCombinators.Parsec hiding(Parser)
 import qualified Text.ParserCombinators.Parsec.Token as P
 import Data.Maybe
-import Control.Monad.Reader
 import Data.Typeable
 import IDE.Core.State
 import IDE.BufferMode
@@ -55,6 +54,10 @@ import qualified Data.Enumerator.List as EL
        (foldM, head, dropWhile, isolate)
 import Data.Enumerator (($$), (>>==))
 import qualified Data.List as L ()
+import Control.Monad (foldM, when)
+import Control.Monad.Trans.Reader (ask)
+import Control.Monad.Trans.Class (MonadTrans(..))
+import Control.Monad.IO.Class (MonadIO(..))
 
 data GrepRecord = GrepRecord {
             file        :: FilePath
@@ -181,7 +184,7 @@ instance RecoverablePane IDEGrep GrepState IDEM where
                             return False
                     _ -> return False
              )
-        sel `onSelectionChanged` (void $ gotoSource False)
+        sel `onSelectionChanged` (gotoSource False >> return ())
 
 
         return (Just grep,[ConnectC cid1])

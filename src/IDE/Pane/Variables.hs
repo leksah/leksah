@@ -24,7 +24,6 @@ module IDE.Pane.Variables (
 import Graphics.UI.Gtk
 import Data.Typeable (Typeable(..))
 import IDE.Core.State
-import Control.Monad.Reader
 import IDE.Package (tryDebug_, tryDebugQuiet_)
 import IDE.Debug (debugCommand')
 import IDE.Utils.Tool (ToolOutput(..))
@@ -48,6 +47,8 @@ import Graphics.UI.Gtk.General.Enums
     (Click(..), MouseButton(..))
 import IDE.Workspaces (packageTry_, packageTryQuiet_)
 import qualified Data.Enumerator.List as EL (consume)
+import Control.Monad.Trans.Class (MonadTrans(..))
+import Control.Monad.IO.Class (MonadIO(..))
 
 -- | A variables pane description
 --

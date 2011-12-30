@@ -45,7 +45,6 @@ import System.Process
 #endif
 import Data.Maybe (fromJust, isJust)
 import Control.Monad
-import Control.Monad.Trans(MonadIO,liftIO)
 import IDE.Core.State
 --import Graphics.UI.Gtk.Selectors.FileChooser
 --    (FileChooserAction(..))
@@ -57,6 +56,7 @@ import Graphics.UI.Gtk.Gdk.EventM (Modifier(..))
 #else
 import Graphics.UI.Gtk.Gdk.Enums (Modifier(..))
 #endif
+import Control.Monad.IO.Class (liftIO)
 
 chooseDir :: Window -> String -> Maybe FilePath -> IO (Maybe FilePath)
 chooseDir window prompt mbFolder = do

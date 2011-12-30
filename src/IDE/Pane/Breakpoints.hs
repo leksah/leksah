@@ -24,7 +24,6 @@ module IDE.Pane.Breakpoints (
 import Graphics.UI.Gtk
 import Data.Typeable (Typeable(..))
 import IDE.Core.State
-import Control.Monad.Reader
 import Graphics.UI.Gtk.Gdk.Events (Event(..))
 import Graphics.UI.Gtk.General.Enums
     (Click(..), MouseButton(..))
@@ -34,6 +33,7 @@ import IDE.Debug
      debugDeleteAllBreakpoints)
 import IDE.LogRef (showSourceSpan)
 import Data.List (elemIndex)
+import Control.Monad.IO.Class (MonadIO(..))
 
 
 -- | A breakpoints pane description
