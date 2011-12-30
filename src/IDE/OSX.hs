@@ -48,15 +48,15 @@ updateMenu app uiManager = do
         mbAbout   <- uiManagerGetWidget uiManager "/ui/menubar/_Help/_About"
         case mbAbout of
             Just about -> do
-                group <- applicationAddAppMenuGroup app
-                applicationAddAppMenuItem app group (castToMenuItem about)
+                applicationInsertAppMenuItem app (castToMenuItem about) 0
+                sep <- separatorMenuItemNew
+                applicationInsertAppMenuItem app sep 1
             Nothing   -> return ()
 
         mbPrefs   <- uiManagerGetWidget uiManager "/ui/menubar/_Configuration/Edit general Preferences"
         case mbPrefs of
             Just prefs -> do
-                group <- applicationAddAppMenuGroup app
-                applicationAddAppMenuItem app group (castToMenuItem prefs)
+                applicationInsertAppMenuItem app (castToMenuItem prefs) 2
             Nothing   -> return ()
 
         app `on` blockTermination $ reflectIDE (fmap not canQuit) ideR
