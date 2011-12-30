@@ -845,7 +845,7 @@ registerLeksahEvents =    do
         (\ e@(GotoDefinition descr)         -> goToDefinition descr >> return e)
     registerEvent stRef "SearchSymbolDialog"
         (\ e@(SearchSymbolDialog text)         ->
-            launchSymbolNavigationDialog text (\_ -> return ()) >> return e)
+            setSymbol text >> return e)
     registerEvent stRef "GetTextPopup"
         (\ e@(GetTextPopup _)     -> return (GetTextPopup (Just textPopupMenu)))
     registerEvent stRef "StatusbarChanged"

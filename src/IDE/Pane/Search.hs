@@ -18,15 +18,16 @@ module IDE.Pane.Search (
     IDESearch(..)
 ,   SearchState
 ,   buildSearchPane
-,   launchSymbolNavigationDialog
+--,   launchSymbolNavigationDialog
 ,   getSearch
 ) where
 
 import Graphics.UI.Gtk
-       (listStoreGetValue, treeSelectionGetSelectedRows, widgetShowAll,
-        menuPopup, menuShellAppend, onActivateLeaf, menuItemNewWithLabel,
-        menuNew, listStoreAppend, listStoreClear, entrySetText,
-        afterKeyRelease, onKeyPress, onButtonPress, toggleButtonGetActive,
+       (cellTextScaleSet, cellTextScale, listStoreGetValue,
+        treeSelectionGetSelectedRows, widgetShowAll, menuPopup,
+        menuShellAppend, onActivateLeaf, menuItemNewWithLabel, menuNew,
+        listStoreAppend, listStoreClear, entrySetText, afterKeyRelease,
+        onKeyPress, onButtonPress, toggleButtonGetActive,
         widgetSetSensitivity, onToggled, afterFocusIn, vBoxNew, entryNew,
         scrolledWindowSetPolicy, containerAdd, scrolledWindowNew,
         treeSelectionSetMode, treeViewGetSelection,
@@ -36,14 +37,15 @@ import Graphics.UI.Gtk
         treeViewColumnSetSizing, treeViewColumnSetTitle, treeViewColumnNew,
         cellRendererPixbufNew, cellRendererTextNew, treeViewSetModel,
         treeViewNew, listStoreNew, boxPackEnd, boxPackStart,
-        checkButtonNewWithLabel, toggleButtonSetActive, ResponseId(..), dialogRun,
-        radioButtonNewWithLabelFromWidget, radioButtonNewWithLabel, buttonNewFromStock,
-        windowSetTransientFor, hButtonBoxNew, dialogGetUpper, dialogGetActionArea, widgetGrabDefault, set, get,
-        dialogNew, onClicked, dialogResponse, widgetHideAll, buttonSetLabel, widgetCanDefault,
-        hBoxNew, entryGetText, castToWidget, Entry, VBox, ListStore,
-        TreeView, ScrolledWindow, PolicyType(..), SelectionMode(..),
-        TreeViewColumnSizing(..), AttrOp(..),
-        Packing(..))
+        checkButtonNewWithLabel, toggleButtonSetActive, ResponseId(..),
+        dialogRun, radioButtonNewWithLabelFromWidget,
+        radioButtonNewWithLabel, buttonNewFromStock, windowSetTransientFor,
+        hButtonBoxNew, dialogGetUpper, dialogGetActionArea,
+        widgetGrabDefault, set, get, dialogNew, onClicked, dialogResponse,
+        widgetHideAll, buttonSetLabel, widgetCanDefault, hBoxNew,
+        entryGetText, castToWidget, Entry, VBox, ListStore, TreeView,
+        ScrolledWindow, PolicyType(..), SelectionMode(..),
+        TreeViewColumnSizing(..), AttrOp(..), Packing(..))
 import Graphics.UI.Gtk.Gdk.Events
 import Data.IORef (newIORef)
 import Data.IORef (writeIORef,readIORef,IORef(..))
@@ -56,6 +58,7 @@ import IDE.Core.State
 import IDE.Utils.GUIUtils
 import Distribution.Text(display)
 import Control.Event (triggerEvent)
+import qualified Data.ByteString.Char8 as BS (empty, unpack)
 
 -- | A search pane description
 --
@@ -192,6 +195,20 @@ buildSearchPane =
             $ \row -> [ cellText := case dsMbModu row of
                                         Nothing -> ""
                                         Just pm -> display $ pack pm]
+
+        renderer3   <- cellRendererTextNew
+        col3        <- treeViewColumnNew
+        treeViewColumnSetTitle col3 "Type/Kind"
+        treeViewColumnSetSizing col3 TreeViewColumnAutosize
+        treeViewColumnSetResizable col3 True
+        treeViewColumnSetReorderable col3 True
+        treeViewAppendColumn treeView col3
+        cellLayoutPackStart col3 renderer3 True
+        cellLayoutSetAttributes col3 renderer3 listStore
+            $ \row -> [ cellText := BS.unpack $ fromMaybe BS.empty $
+                            dscMbTypeStr row,
+                        cellTextScale := 0.8, cellTextScaleSet := True    ]
+
         treeViewSetHeadersVisible treeView True
         sel <- treeViewGetSelection treeView
         treeSelectionSetMode sel SelectionSingle
@@ -371,7 +388,7 @@ getSelectionDescr treeView listStore = do
 --            entrySetText (entry search) (descrName descr)
 --        otherwise       ->  return ()
 
-
+{--
 launchSymbolNavigationDialog :: String -> (Descr -> IDEM ()) -> IDEM ()
 launchSymbolNavigationDialog txt act = do
     dia                        <-   liftIO $ dialogNew
@@ -402,3 +419,4 @@ launchSymbolNavigationDialog txt act = do
         resp  <- dialogRun dia
         return ()
     return ()
+--}

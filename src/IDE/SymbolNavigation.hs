@@ -1,6 +1,21 @@
-module IDE.SymbolNavigation (launchSymbolNavigationDialog_, createHyperLinkSupport, mapControlCommand)
+-----------------------------------------------------------------------------
+--
+-- Module      :  IDE.SymbolNavigation
+-- Copyright   :  (c) Sanny Sannof, Juergen Nicklisch-Franken
+-- License     :  GNU-GPL
+--
+-- Maintainer  :  <maintainer at leksah.org>
+-- Stability   :  provisional
+-- Portability :  portable
+--
+-- | The source editor part of Leksah
+--
+-----------------------------------------------------------------------------------
 
-where
+module IDE.SymbolNavigation (
+    createHyperLinkSupport,
+    mapControlCommand
+) where
 
 import Data.List
 import Data.Ord
@@ -124,14 +139,14 @@ createHyperLinkSupport sv sw identifierMapper clickHandler = do
         moveOrClick ne False
         return True
     id3 <- onButtonPress sw $ \e -> do
-        print ("button press")
+--        print ("button press")
         ne <- fixBugWithX e
-        print ("click adjustment: old, new", Gdk.eventX e, Gdk.eventX ne)
+--        print ("click adjustment: old, new", Gdk.eventX e, Gdk.eventX ne)
         moveOrClick ne True
 
     return $ map ConnectC [id1,id2,id3]
 
-
+{--
 launchSymbolNavigationDialog_ :: String -> (Descr -> IDEM ()) -> IDEM ()
 launchSymbolNavigationDialog_ txt act = do
     dia                        <-   liftIO $ dialogNew
@@ -313,4 +328,5 @@ replaceCR ('\n':ss) = ' ':(replaceCR ss)
 replaceCR ('\r':ss) = ' ':(replaceCR ss)
 replaceCR (s:ss) = s:(replaceCR ss)
 
+--}
 

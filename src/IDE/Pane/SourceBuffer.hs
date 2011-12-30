@@ -73,7 +73,6 @@ module IDE.Pane.SourceBuffer (
 ,   belongsToPackage
 ,   belongsToWorkspace
 ,   getIdentifierUnderCursorFromIter
-,   launchSymbolNavigationDialog_
 
 ) where
 
@@ -263,7 +262,7 @@ goToDefinition idDescr  = do
 
 goToSourceDefinition :: FilePath -> Maybe Location -> IDEM (Maybe IDEBuffer)
 goToSourceDefinition fp dscMbLocation = do
-    liftIO $ putStrLn $ "goToSourceDefinition " ++ fp
+--    liftIO $ putStrLn $ "goToSourceDefinition " ++ fp
     mbBuf     <- selectSourceBuf fp
     when (isJust mbBuf && isJust dscMbLocation) $
         inActiveBufContext () $ \_ ebuf buf _ -> do
@@ -520,12 +519,13 @@ builder' bs mbfn ind bn rbn ct prefs pp nb windows = do
                         ("underscore",[GtkOld.Shift, GtkOld.Control],_) -> do
                             (start, end) <- getIdentifierUnderCursor buffer
                             slice <- getSlice buffer start end True
-                            triggerEventIDE (SearchSymbolDialog slice)
+                            triggerEventIDE (SelectInfo slice)
                             return True
+                            -- Redundant should become a go to definition directly
                         ("minus",[GtkOld.Control],_) -> do
                             (start, end) <- getIdentifierUnderCursor buffer
                             slice <- getSlice buffer start end True
-                            launchSymbolNavigationDialog_ slice goToDefinition
+                            triggerEventIDE (SelectInfo slice)
                             return True
                         _ -> do
                             -- liftIO $ print ("sourcebuffer key:",name,modifier,keyval)
@@ -538,7 +538,7 @@ builder' bs mbfn ind bn rbn ct prefs pp nb windows = do
                             return (beg, if ctrl then en else beg)) (\_ _ slice -> do
                                         when (slice /= []) $ do
                                             -- liftIO$ print ("slice",slice)
-                                            void $ reflectIDE (triggerEventIDE (SearchMeta slice)) ideR
+                                            void $ reflectIDE (triggerEventIDE (SelectInfo slice)) ideR
                                         ))
 
 #ifdef LEKSAH_WITH_YI
