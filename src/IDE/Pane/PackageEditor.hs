@@ -109,6 +109,38 @@ import Control.Monad.Trans.Class (lift)
 import Control.Monad (when)
 import Distribution.PackageDescription.PrettyPrintCopied(writeGenericPackageDescription)
 
+--------------------------------------------------------------------------
+-- Handling of Generic Package Descriptions
+
+toGenericPackageDescription :: PackageDescription -> GenericPackageDescription
+toGenericPackageDescription pd =
+    GenericPackageDescription {
+        packageDescription = pd{
+            library = Nothing,
+            executables = [],
+            buildDepends = []},
+        genPackageFlags = [],
+        condLibrary = case library pd of
+                            Nothing -> Nothing
+                            Just lib -> Just (buildCondTreeLibrary lib),
+        condExecutables = map buildCondTreeExe (executables pd),
+        condTestSuites =  map buildCondTreeTest (testSuites pd)}
+  where
+    buildCondTreeLibrary lib =
+        CondNode {
+            condTreeData = lib,
+            condTreeConstraints = buildDepends pd,
+            condTreeComponents = []}
+    buildCondTreeExe exe =
+        (exeName exe, CondNode {
+            condTreeData = exe,
+            condTreeConstraints = buildDepends pd,
+            condTreeComponents = []})
+    buildCondTreeTest test =
+        (testName test, CondNode {
+            condTreeData = test,
+            condTreeConstraints = buildDepends pd,
+            condTreeComponents = []})
 
 -- ---------------------------------------------------------------------
 -- The exported stuff goes here
@@ -407,7 +439,7 @@ builder' packageDir packageD packageDescr afterSaveAction initialPackagePath mod
             Just newPackage' -> let newPackage = fromEditor newPackage' in do
                 let packagePath = packageDir </> (display . pkgName . package . pd) newPackage'
                                                 ++ ".cabal"
-                writeGenericPackageDescription packagePath (toGeneric newPackage)
+                writeGenericPackageDescription packagePath (toGenericPackageDescription newPackage)
                 reflectIDE (do
                     afterSaveAction packagePath
                     closePane packagePane
@@ -428,14 +460,6 @@ builder' packageDir packageD packageDescr afterSaveAction initialPackagePath mod
         return e)
     return (Just packagePane,[])
 
-
-toGeneric :: PackageDescription -> GenericPackageDescription
-toGeneric pd = GenericPackageDescription {
-   packageDescription = pd,
-   genPackageFlags    = [],
-   condLibrary        = Nothing,
-   condExecutables    = [],
-   condTestSuites     = []}
 -- ---------------------------------------------------------------------
 -- The description with some tricks
 --

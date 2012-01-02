@@ -61,6 +61,7 @@ module IDE.Package (
 ,   choosePackageFile
 
 ,   idePackageFromPath
+
 ) where
 
 import Graphics.UI.Gtk
@@ -475,77 +476,90 @@ getModuleTemplate pd modName exports body = catch (do
                     (\ (e :: SomeException) -> sysMessage Normal ("Couldn't read template file: " ++ show e) >> return "")
 
 addModuleToPackageDescr :: ModuleName -> Bool -> PackageAction
-addModuleToPackageDescr moduleName isExposed = trace ("addModule " ++ show moduleName) $ do
+addModuleToPackageDescr moduleName isExposed = do
     p    <- ask
     lift $ reifyIDE (\ideR -> catch (do
         gpd <- readPackageDescription normal (ipdCabalFile p)
-        let pd =  trace ("gpd " ++ show gpd) $ packageDescription gpd
-        let npd = if isExposed && isJust (library pd)
-                then trace "1" $ gpd{
-                        packageDescription = pd{
-                            library = Just ((fromJust (library pd))
-                                {exposedModules =
-                                    moduleName : exposedModules
-                                            (fromJust $ library pd)})}}
-                else trace "2" $
-                     let npd1 = case library pd of
-                                   Nothing -> gpd
-                                   Just lib -> gpd{
-                                                packageDescription = pd{library =
-                                                    Just (lib{libBuildInfo =
-                                            addModToBuildInfo (libBuildInfo lib) moduleName})}}
-                         pd1 =  packageDescription npd1
-                   in npd1{packageDescription = pd1{executables = map
-                            (\exe -> exe{buildInfo = addModToBuildInfo (buildInfo exe) moduleName})
-                                (executables pd1)}}
-        trace ("write " ++ ipdCabalFile p ++ " exposed: " ++ show
-            (exposedModules (fromJust (library (packageDescription npd)))))
-                $ writeGenericPackageDescription (ipdCabalFile p) npd)
-           (\(e :: SomeException) -> do
-            reflectIDE (ideMessage Normal ("Can't update package " ++ show e)) ideR
-            return ()))
-    where
-    addModToBuildInfo :: BuildInfo -> ModuleName -> BuildInfo
-    addModToBuildInfo bi mn = bi {otherModules = mn : otherModules bi}
-
---------------------------------------------------------------------------
-delModuleFromPackageDescr :: ModuleName -> PackageAction
-delModuleFromPackageDescr moduleName = do
-    p    <- ask
-    lift $ reifyIDE (\ideR -> catch (do
-        gpd <- readPackageDescription normal (ipdCabalFile p)
-        let pd = packageDescription gpd
-            isExposedAndJust = isExposedModule pd moduleName
-            npd = if isExposedAndJust
-                    then gpd{
-                        packageDescription = pd{
-                            library = Just ((fromJust (library pd)){exposedModules =
-                                                     delete moduleName (exposedModules (fromJust $ library pd))})}}
-                    else let npd1 = case library pd of
-                                       Nothing -> gpd
-                                       Just lib -> gpd{
-                                packageDescription = pd{library = Just (lib{libBuildInfo =
-                                                delModFromBuildInfo (libBuildInfo lib) moduleName})}}
-                             pd1 =  packageDescription npd1
-                         in gpd{packageDescription = pd1{executables = map
-                                (\exe -> exe{buildInfo = delModFromBuildInfo (buildInfo exe) moduleName})
-                                    (executables pd1)}}
+        let npd = if isExposed && isJust (condLibrary gpd)
+                then gpd{
+                    condLibrary = Just (addModToLib moduleName
+                                                (fromJust (condLibrary gpd))),
+                    condExecutables = map (addModToBuildInfoExe moduleName)
+                                            (condExecutables gpd)}
+                else gpd{
+                    condLibrary = case condLibrary gpd of
+                                    Nothing -> Nothing
+                                    Just lib -> Just (addModToBuildInfoLib moduleName
+                                                       (fromJust (condLibrary gpd))),
+                    condExecutables = map (addModToBuildInfoExe moduleName)
+                                                (condExecutables gpd)}
         writeGenericPackageDescription (ipdCabalFile p) npd)
            (\(e :: SomeException) -> do
             reflectIDE (ideMessage Normal ("Can't update package " ++ show e)) ideR
             return ()))
-  where
-    delModFromBuildInfo :: BuildInfo -> ModuleName -> BuildInfo
-    delModFromBuildInfo bi mn = bi {otherModules = delete mn (otherModules bi)}
 
+addModToLib :: ModuleName -> CondTree ConfVar [Dependency] Library ->
+    CondTree ConfVar [Dependency] Library
+addModToLib modName ct@CondNode{condTreeData = lib} =
+    ct{condTreeData = lib{exposedModules = modName : exposedModules lib}}
 
-isExposedModule :: PackageDescription -> ModuleName -> Bool
-isExposedModule pd mn = do
-    if isJust (library pd)
-        then elem mn (exposedModules (fromJust $ library pd))
-        else False
+addModToBuildInfoLib :: ModuleName -> CondTree ConfVar [Dependency] Library ->
+    CondTree ConfVar [Dependency] Library
+addModToBuildInfoLib modName ct@CondNode{condTreeData = lib} =
+    ct{condTreeData = lib{libBuildInfo = (libBuildInfo lib){otherModules = modName
+        : otherModules (libBuildInfo lib)}}}
+
+addModToBuildInfoExe :: ModuleName -> (String, CondTree ConfVar [Dependency] Executable) ->
+    (String, CondTree ConfVar [Dependency] Executable)
+addModToBuildInfoExe modName (str,ct@CondNode{condTreeData = exe}) =
+    (str, ct{condTreeData = exe{buildInfo = (buildInfo exe){otherModules = modName
+        : otherModules (buildInfo exe)}}})
 
 --------------------------------------------------------------------------
+delModuleFromPackageDescr :: ModuleName -> PackageAction
+delModuleFromPackageDescr moduleName = trace ("addModule " ++ show moduleName) $ do
+    p    <- ask
+    lift $ reifyIDE (\ideR -> catch (do
+        gpd <- readPackageDescription normal (ipdCabalFile p)
+        let isExposedAndJust = isExposedModule moduleName (condLibrary gpd)
+        let npd = if isExposedAndJust
+                then gpd{
+                    condLibrary = Just (delModFromLib moduleName
+                                                (fromJust (condLibrary gpd))),
+                    condExecutables = map (delModFromBuildInfoExe moduleName)
+                                            (condExecutables gpd)}
+                else gpd{
+                    condLibrary = case condLibrary gpd of
+                                    Nothing -> Nothing
+                                    Just lib -> Just (delModFromBuildInfoLib moduleName
+                                                       (fromJust (condLibrary gpd))),
+                    condExecutables = map (delModFromBuildInfoExe moduleName)
+                                                (condExecutables gpd)}
+        writeGenericPackageDescription (ipdCabalFile p) npd)
+           (\(e :: SomeException) -> do
+            reflectIDE (ideMessage Normal ("Can't update package " ++ show e)) ideR
+            return ()))
+
+delModFromLib :: ModuleName -> CondTree ConfVar [Dependency] Library ->
+    CondTree ConfVar [Dependency] Library
+delModFromLib modName ct@CondNode{condTreeData = lib} =
+    ct{condTreeData = lib{exposedModules = delete modName (exposedModules lib)}}
+
+delModFromBuildInfoLib :: ModuleName -> CondTree ConfVar [Dependency] Library ->
+    CondTree ConfVar [Dependency] Library
+delModFromBuildInfoLib modName ct@CondNode{condTreeData = lib} =
+    ct{condTreeData = lib{libBuildInfo = (libBuildInfo lib){otherModules =
+        delete modName (otherModules (libBuildInfo lib))}}}
+
+delModFromBuildInfoExe :: ModuleName -> (String, CondTree ConfVar [Dependency] Executable) ->
+    (String, CondTree ConfVar [Dependency] Executable)
+delModFromBuildInfoExe modName (str,ct@CondNode{condTreeData = exe}) =
+    (str, ct{condTreeData = exe{buildInfo = (buildInfo exe){otherModules =
+        delete modName (otherModules (buildInfo exe))}}})
+
+isExposedModule :: ModuleName -> Maybe (CondTree ConfVar [Dependency] Library)  -> Bool
+isExposedModule mn Nothing                             = False
+isExposedModule mn (Just CondNode{condTreeData = lib}) = elem mn (exposedModules lib)
 
 
 backgroundBuildToggled :: IDEAction

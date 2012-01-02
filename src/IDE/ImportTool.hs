@@ -55,7 +55,8 @@ import IDE.Pane.PackageEditor (hasConfigs)
 import Distribution.Package
 import Distribution.Version (VersionRange(..))
 import Distribution.PackageDescription
-       (packageDescription, buildDepends)
+       (CondTree(..), condExecutables, condLibrary, packageDescription,
+        buildDepends)
 import Distribution.PackageDescription.Configuration
        (flattenPackageDescription)
 import IDE.BufferMode (editInsertCode)
@@ -137,13 +138,19 @@ addPackage error = do
         Nothing -> return False
         Just (HiddenModuleResult mod pack) -> do
             let idePackage = logRefPackage error
-            package <- liftIO $ readPackageDescription normal (ipdCabalFile $ idePackage)
+            gpd <- liftIO $ readPackageDescription normal (ipdCabalFile $ idePackage)
             ideMessage Normal $ "addPackage " ++ (display $ pkgName pack)
             liftIO $ writeGenericPackageDescription (ipdCabalFile $ idePackage)
-                package { packageDescription = (packageDescription package){
-                        buildDepends = Dependency (pkgName pack) AnyVersion
-                            : buildDepends (packageDescription package)}}
+                gpd { condLibrary     = addDepToLib (packageName pack)  (condLibrary gpd),
+                      condExecutables = map (addDepToExe (packageName pack))
+                                            (condExecutables gpd)}
             return True
+  where
+    addDepToLib n Nothing = Nothing
+    addDepToLib n (Just cn@CondNode{condTreeConstraints = deps}) =
+        Just (cn{condTreeConstraints = (Dependency n AnyVersion) : deps})
+    addDepToExe n (str,cn@CondNode{condTreeConstraints = deps}) =
+        (str,cn{condTreeConstraints = (Dependency n AnyVersion) : deps})
 
 getScopeForActiveBuffer :: IDEM (Maybe (GenScope, GenScope))
 getScopeForActiveBuffer = do
