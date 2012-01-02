@@ -107,6 +107,9 @@ import Control.Monad.Trans.Reader (ask)
 import Control.Monad.IO.Class (MonadIO(..))
 import Control.Monad.Trans.Class (lift)
 import Control.Monad (when, unless, liftM)
+import Distribution.PackageDescription.PrettyPrintCopied
+       (writeGenericPackageDescription)
+import Debug.Trace (trace)
 
 #if MIN_VERSION_Cabal(1,8,0)
 myLibModules pd = case library pd of
@@ -472,30 +475,35 @@ getModuleTemplate pd modName exports body = catch (do
                     (\ (e :: SomeException) -> sysMessage Normal ("Couldn't read template file: " ++ show e) >> return "")
 
 addModuleToPackageDescr :: ModuleName -> Bool -> PackageAction
-addModuleToPackageDescr moduleName isExposed = do
+addModuleToPackageDescr moduleName isExposed = trace ("addModule " ++ show moduleName) $ do
     p    <- ask
     lift $ reifyIDE (\ideR -> catch (do
         gpd <- readPackageDescription normal (ipdCabalFile p)
-        if hasConfigs gpd
-            then do
-                reflectIDE (ideMessage High
-                    "Cabal file with configurations can't be automatically updated with the current version of Leksah") ideR
-            else
-                let pd = flattenPackageDescription gpd
-                    npd = if isExposed && isJust (library pd)
-                            then pd{library = Just ((fromJust (library pd)){exposedModules =
-                                                            moduleName : exposedModules (fromJust $ library pd)})}
-                            else let npd1 = case library pd of
-                                               Nothing -> pd
-                                               Just lib -> pd{library = Just (lib{libBuildInfo =
-                                                        addModToBuildInfo (libBuildInfo lib) moduleName})}
-                               in npd1{executables = map
-                                        (\exe -> exe{buildInfo = addModToBuildInfo (buildInfo exe) moduleName})
-                                            (executables npd1)}
-                in writePackageDescription (ipdCabalFile p) npd)
-                   (\(e :: SomeException) -> do
-                    reflectIDE (ideMessage Normal ("Can't upade package " ++ show e)) ideR
-                    return ()))
+        let pd =  trace ("gpd " ++ show gpd) $ packageDescription gpd
+        let npd = if isExposed && isJust (library pd)
+                then trace "1" $ gpd{
+                        packageDescription = pd{
+                            library = Just ((fromJust (library pd))
+                                {exposedModules =
+                                    moduleName : exposedModules
+                                            (fromJust $ library pd)})}}
+                else trace "2" $
+                     let npd1 = case library pd of
+                                   Nothing -> gpd
+                                   Just lib -> gpd{
+                                                packageDescription = pd{library =
+                                                    Just (lib{libBuildInfo =
+                                            addModToBuildInfo (libBuildInfo lib) moduleName})}}
+                         pd1 =  packageDescription npd1
+                   in npd1{packageDescription = pd1{executables = map
+                            (\exe -> exe{buildInfo = addModToBuildInfo (buildInfo exe) moduleName})
+                                (executables pd1)}}
+        trace ("write " ++ ipdCabalFile p ++ " exposed: " ++ show
+            (exposedModules (fromJust (library (packageDescription npd)))))
+                $ writeGenericPackageDescription (ipdCabalFile p) npd)
+           (\(e :: SomeException) -> do
+            reflectIDE (ideMessage Normal ("Can't update package " ++ show e)) ideR
+            return ()))
     where
     addModToBuildInfo :: BuildInfo -> ModuleName -> BuildInfo
     addModToBuildInfo bi mn = bi {otherModules = mn : otherModules bi}
@@ -506,28 +514,27 @@ delModuleFromPackageDescr moduleName = do
     p    <- ask
     lift $ reifyIDE (\ideR -> catch (do
         gpd <- readPackageDescription normal (ipdCabalFile p)
-        if hasConfigs gpd
-            then do
-                reflectIDE (ideMessage High
-                    "Cabal file with configurations can't be automatically updated with the current version of Leksah") ideR
-            else
-                let pd = flattenPackageDescription gpd
-                    isExposedAndJust = isExposedModule pd moduleName
-                    npd = if isExposedAndJust
-                            then pd{library = Just ((fromJust (library pd)){exposedModules =
-                                                             delete moduleName (exposedModules (fromJust $ library pd))})}
-                            else let npd1 = case library pd of
-                                               Nothing -> pd
-                                               Just lib -> pd{library = Just (lib{libBuildInfo =
-                                                        delModFromBuildInfo (libBuildInfo lib) moduleName})}
-                               in npd1{executables = map
-                                        (\exe -> exe{buildInfo = delModFromBuildInfo (buildInfo exe) moduleName})
-                                            (executables npd1)}
-                in writePackageDescription (ipdCabalFile p) npd)
-                   (\(e :: SomeException) -> do
-                    reflectIDE (ideMessage Normal ("Can't update package " ++ show e)) ideR
-                    return ()))
-    where
+        let pd = packageDescription gpd
+            isExposedAndJust = isExposedModule pd moduleName
+            npd = if isExposedAndJust
+                    then gpd{
+                        packageDescription = pd{
+                            library = Just ((fromJust (library pd)){exposedModules =
+                                                     delete moduleName (exposedModules (fromJust $ library pd))})}}
+                    else let npd1 = case library pd of
+                                       Nothing -> gpd
+                                       Just lib -> gpd{
+                                packageDescription = pd{library = Just (lib{libBuildInfo =
+                                                delModFromBuildInfo (libBuildInfo lib) moduleName})}}
+                             pd1 =  packageDescription npd1
+                         in gpd{packageDescription = pd1{executables = map
+                                (\exe -> exe{buildInfo = delModFromBuildInfo (buildInfo exe) moduleName})
+                                    (executables pd1)}}
+        writeGenericPackageDescription (ipdCabalFile p) npd)
+           (\(e :: SomeException) -> do
+            reflectIDE (ideMessage Normal ("Can't update package " ++ show e)) ideR
+            return ()))
+  where
     delModFromBuildInfo :: BuildInfo -> ModuleName -> BuildInfo
     delModFromBuildInfo bi mn = bi {otherModules = delete mn (otherModules bi)}
 

@@ -36,7 +36,7 @@ import System.Directory
 import IDE.Core.State
 import IDE.Utils.FileUtils
 import Graphics.UI.Editor.MakeEditor
-import Distribution.PackageDescription.Parse (readPackageDescription,writePackageDescription)
+import Distribution.PackageDescription.Parse (readPackageDescription)
 import Distribution.PackageDescription.Configuration (flattenPackageDescription)
 import Distribution.ModuleName(ModuleName)
 import Data.Typeable (Typeable(..))
@@ -107,6 +107,7 @@ import Control.Monad.Trans.Reader (ask)
 import Control.Monad.IO.Class (MonadIO(..))
 import Control.Monad.Trans.Class (lift)
 import Control.Monad (when)
+import Distribution.PackageDescription.PrettyPrintCopied(writeGenericPackageDescription)
 
 
 -- ---------------------------------------------------------------------
@@ -406,7 +407,7 @@ builder' packageDir packageD packageDescr afterSaveAction initialPackagePath mod
             Just newPackage' -> let newPackage = fromEditor newPackage' in do
                 let packagePath = packageDir </> (display . pkgName . package . pd) newPackage'
                                                 ++ ".cabal"
-                writePackageDescription packagePath newPackage
+                writeGenericPackageDescription packagePath (toGeneric newPackage)
                 reflectIDE (do
                     afterSaveAction packagePath
                     closePane packagePane
@@ -427,6 +428,14 @@ builder' packageDir packageD packageDescr afterSaveAction initialPackagePath mod
         return e)
     return (Just packagePane,[])
 
+
+toGeneric :: PackageDescription -> GenericPackageDescription
+toGeneric pd = GenericPackageDescription {
+   packageDescription = pd,
+   genPackageFlags    = [],
+   condLibrary        = Nothing,
+   condExecutables    = [],
+   condTestSuites     = []}
 -- ---------------------------------------------------------------------
 -- The description with some tricks
 --

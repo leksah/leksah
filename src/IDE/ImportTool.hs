@@ -49,16 +49,19 @@ import qualified Text.ParserCombinators.Parsec.Token as P
        (operator, dot, identifier, symbol, lexeme, whiteSpace,
         makeTokenParser)
 import Distribution.PackageDescription.Parse
-       (writePackageDescription, readPackageDescription)
+       (readPackageDescription)
 import Distribution.Verbosity (normal)
 import IDE.Pane.PackageEditor (hasConfigs)
 import Distribution.Package
 import Distribution.Version (VersionRange(..))
-import Distribution.PackageDescription (buildDepends)
+import Distribution.PackageDescription
+       (packageDescription, buildDepends)
 import Distribution.PackageDescription.Configuration
        (flattenPackageDescription)
 import IDE.BufferMode (editInsertCode)
 import Control.Monad.IO.Class (MonadIO(..))
+import Distribution.PackageDescription.PrettyPrintCopied
+       (writeGenericPackageDescription)
 
 -- | Add all imports which gave error messages ...
 resolveErrors :: IDEAction
@@ -135,15 +138,12 @@ addPackage error = do
         Just (HiddenModuleResult mod pack) -> do
             let idePackage = logRefPackage error
             package <- liftIO $ readPackageDescription normal (ipdCabalFile $ idePackage)
-            if hasConfigs package
-                then return False
-                else do
-                    let flat = flattenPackageDescription package
-                    ideMessage Normal $ "addPackage " ++ (display $ pkgName pack)
-                    liftIO $ writePackageDescription (ipdCabalFile $ idePackage)
-                        flat { buildDepends =
-                            Dependency (pkgName pack) AnyVersion : buildDepends flat}
-                    return True
+            ideMessage Normal $ "addPackage " ++ (display $ pkgName pack)
+            liftIO $ writeGenericPackageDescription (ipdCabalFile $ idePackage)
+                package { packageDescription = (packageDescription package){
+                        buildDepends = Dependency (pkgName pack) AnyVersion
+                            : buildDepends (packageDescription package)}}
+            return True
 
 getScopeForActiveBuffer :: IDEM (Maybe (GenScope, GenScope))
 getScopeForActiveBuffer = do
