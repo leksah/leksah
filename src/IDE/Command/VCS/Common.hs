@@ -25,6 +25,7 @@ import qualified IDE.Workspaces.Writer as Writer
 import qualified IDE.Command.VCS.Types as Types
 import qualified IDE.Command.VCS.GIT as GIT
 import qualified IDE.Command.VCS.SVN as SVN
+import qualified IDE.Command.VCS.Mercurial as Mercurial
 
 
 import qualified VCSWrapper.Common as VCS
@@ -84,6 +85,7 @@ setMenuForPackage vcsMenu cabalFp mbVCSConf = do
                     mkVCSActions :: VCS.VCSType -> [(String, Types.VCSAction ())]
                     mkVCSActions VCS.SVN = SVN.mkSVNActions
                     mkVCSActions VCS.GIT = GIT.mkGITActions
+                    mkVCSActions VCS.Mercurial = Mercurial.mkMercurialActions
 
 
 
