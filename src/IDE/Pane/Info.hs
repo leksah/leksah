@@ -116,10 +116,11 @@ instance RecoverablePane IDEInfo InfoState IDEM where
 
             createHyperLinkSupport descriptionView sw (\_ _ iter -> do
                     (GtkEditorIter beg,GtkEditorIter en) <- reflectIDE (getIdentifierUnderCursorFromIter (GtkEditorIter iter, GtkEditorIter iter)) ideR
-                    return (beg, en)) (\_ _ slice -> do
+                    return (beg, en)) (\_ shift' slice -> do
                                         when (slice /= []) $ do
                                             -- liftIO$ print ("slice",slice)
-                                            reflectIDE (triggerEventIDE (SelectInfo slice)) ideR
+                                            reflectIDE (triggerEventIDE
+                                                (SelectInfo slice shift')) ideR
                                             return ()
                                         )
 
@@ -144,7 +145,7 @@ instance RecoverablePane IDEInfo InfoState IDEM where
                     symbol  <- textBufferGetText buf l r True
                     when (controlIsPressed e)
                         (reflectIDE (do
-                            triggerEventIDE (SelectInfo symbol)
+                            triggerEventIDE (SelectInfo symbol False)
                             return ()) ideR)
                     return False)
             return (Just info,[ConnectC cid])

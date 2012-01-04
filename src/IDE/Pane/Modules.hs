@@ -298,8 +298,8 @@ instance RecoverablePane IDEModules ModulesState IDEM where
                 return ()
             return (Just modules,[ConnectC cid1,ConnectC cid2, ConnectC cid3])
 
-selectIdentifier :: Descr -> IDEAction
-selectIdentifier idDescr = do
+selectIdentifier :: Descr -> Bool -> IDEAction
+selectIdentifier idDescr openSource= do
     systemScope     <- getSystemInfo
     workspaceScope  <- getWorkspaceInfo
     packageScope    <- getPackageInfo
@@ -311,6 +311,7 @@ selectIdentifier idDescr = do
                         Just sc -> do
                             when (fst currentScope < sc) (setScope (sc,snd currentScope))
                             selectIdentifier' (modu pm) (dscName idDescr)
+    when openSource (goToDefinition idDescr)
 
 scopeForDescr :: PackModule -> Maybe (GenScope,GenScope) ->
     Maybe (GenScope,GenScope) -> Maybe GenScope -> Maybe Scope
