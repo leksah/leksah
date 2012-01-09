@@ -774,8 +774,8 @@ handleSpecialKeystrokes (Key { eventKeyName = name,  eventModifier = mods,
     printMods (m:r) = show m ++ printMods r
 handleSpecialKeystrokes _ = return True
 
-setSymbol :: String -> IDEAction
-setSymbol symbol = do
+setSymbol :: String -> Bool -> IDEAction
+setSymbol symbol openSource = do
     currentInfo' <- getWorkspaceInfo
     search <- getSearch Nothing
     case currentInfo' of
@@ -783,10 +783,10 @@ setSymbol symbol = do
         Just ((GenScopeC (PackScope _ symbolTable1)),(GenScopeC (PackScope _ symbolTable2))) ->
             case filter (not . isReexported) (getIdentifierDescr symbol symbolTable1 symbolTable2) of
                 []     -> return ()
-                a:[]   -> selectIdentifier a
+                a:[]   -> selectIdentifier a openSource
                 a:b:[] -> if isJust (dscMbModu a) && dscMbModu a == dscMbModu b &&
                             isNear (dscMbLocation a) (dscMbLocation b)
-                                then selectIdentifier a
+                                then selectIdentifier a openSource
                                 else setChoices search [a,b]
                 l      -> setChoices search l
   where
@@ -803,9 +803,9 @@ registerLeksahEvents =    do
         (\e@(LogMessage s t)      -> getLog >>= \(log :: IDELog) -> liftIO $ appendLog log s t
                                                 >> return e)
     registerEvent stRef "SelectInfo"
-        (\ e@(SelectInfo str)     -> setSymbol str >> return e)
+        (\ e@(SelectInfo str gotoSource)     -> setSymbol str gotoSource >> return e)
     registerEvent stRef "SelectIdent"
-        (\ e@(SelectIdent id)     -> selectIdentifier id >> return e)
+        (\ e@(SelectIdent id)     -> selectIdentifier id False >> return e)
     registerEvent stRef "InfoChanged"
         (\ e@(InfoChanged b)      -> reloadKeepSelection b >> return e)
     registerEvent stRef "UpdateWorkspaceInfo"
@@ -845,9 +845,6 @@ registerLeksahEvents =    do
         (\ e@TraceChanged         -> fillTraceList >> return e)
     registerEvent stRef "GotoDefinition"
         (\ e@(GotoDefinition descr)         -> goToDefinition descr >> return e)
-    registerEvent stRef "SearchSymbolDialog"
-        (\ e@(SearchSymbolDialog text)         ->
-            setSymbol text >> return e)
     registerEvent stRef "GetTextPopup"
         (\ e@(GetTextPopup _)     -> return (GetTextPopup (Just textPopupMenu)))
     registerEvent stRef "StatusbarChanged"

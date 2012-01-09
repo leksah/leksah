@@ -49,16 +49,20 @@ import qualified Text.ParserCombinators.Parsec.Token as P
        (operator, dot, identifier, symbol, lexeme, whiteSpace,
         makeTokenParser)
 import Distribution.PackageDescription.Parse
-       (writePackageDescription, readPackageDescription)
+       (readPackageDescription)
 import Distribution.Verbosity (normal)
 import IDE.Pane.PackageEditor (hasConfigs)
 import Distribution.Package
 import Distribution.Version (VersionRange(..))
-import Distribution.PackageDescription (buildDepends)
+import Distribution.PackageDescription
+       (CondTree(..), condExecutables, condLibrary, packageDescription,
+        buildDepends)
 import Distribution.PackageDescription.Configuration
        (flattenPackageDescription)
 import IDE.BufferMode (editInsertCode)
 import Control.Monad.IO.Class (MonadIO(..))
+import Distribution.PackageDescription.PrettyPrintCopied
+       (writeGenericPackageDescription)
 
 -- | Add all imports which gave error messages ...
 resolveErrors :: IDEAction
@@ -134,16 +138,19 @@ addPackage error = do
         Nothing -> return False
         Just (HiddenModuleResult mod pack) -> do
             let idePackage = logRefPackage error
-            package <- liftIO $ readPackageDescription normal (ipdCabalFile $ idePackage)
-            if hasConfigs package
-                then return False
-                else do
-                    let flat = flattenPackageDescription package
-                    ideMessage Normal $ "addPackage " ++ (display $ pkgName pack)
-                    liftIO $ writePackageDescription (ipdCabalFile $ idePackage)
-                        flat { buildDepends =
-                            Dependency (pkgName pack) AnyVersion : buildDepends flat}
-                    return True
+            gpd <- liftIO $ readPackageDescription normal (ipdCabalFile $ idePackage)
+            ideMessage Normal $ "addPackage " ++ (display $ pkgName pack)
+            liftIO $ writeGenericPackageDescription (ipdCabalFile $ idePackage)
+                gpd { condLibrary     = addDepToLib (packageName pack)  (condLibrary gpd),
+                      condExecutables = map (addDepToExe (packageName pack))
+                                            (condExecutables gpd)}
+            return True
+  where
+    addDepToLib n Nothing = Nothing
+    addDepToLib n (Just cn@CondNode{condTreeConstraints = deps}) =
+        Just (cn{condTreeConstraints = (Dependency n AnyVersion) : deps})
+    addDepToExe n (str,cn@CondNode{condTreeConstraints = deps}) =
+        (str,cn{condTreeConstraints = (Dependency n AnyVersion) : deps})
 
 getScopeForActiveBuffer :: IDEM (Maybe (GenScope, GenScope))
 getScopeForActiveBuffer = do

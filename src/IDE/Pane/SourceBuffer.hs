@@ -518,13 +518,13 @@ builder' bs mbfn ind bn rbn ct prefs pp nb windows = do
                         ("underscore",[GtkOld.Shift, GtkOld.Control],_) -> do
                             (start, end) <- getIdentifierUnderCursor buffer
                             slice <- getSlice buffer start end True
-                            triggerEventIDE (SelectInfo slice)
+                            triggerEventIDE (SelectInfo slice False)
                             return True
                             -- Redundant should become a go to definition directly
                         ("minus",[GtkOld.Control],_) -> do
                             (start, end) <- getIdentifierUnderCursor buffer
                             slice <- getSlice buffer start end True
-                            triggerEventIDE (SelectInfo slice)
+                            triggerEventIDE (SelectInfo slice True)
                             return True
                         _ -> do
                             -- liftIO $ print ("sourcebuffer key:",name,modifier,keyval)
@@ -534,10 +534,11 @@ builder' bs mbfn ind bn rbn ct prefs pp nb windows = do
         GtkEditorView sv -> do
             (liftIO $ createHyperLinkSupport sv sw (\ctrl shift iter -> do
                             (GtkEditorIter beg,GtkEditorIter en) <- reflectIDE (getIdentifierUnderCursorFromIter (GtkEditorIter iter, GtkEditorIter iter)) ideR
-                            return (beg, if ctrl then en else beg)) (\_ _ slice -> do
+                            return (beg, if ctrl then en else beg)) (\_ shift' slice -> do
                                         when (slice /= []) $ do
                                             -- liftIO$ print ("slice",slice)
-                                            reflectIDE (triggerEventIDE (SelectInfo slice)) ideR
+                                            reflectIDE (triggerEventIDE
+                                                (SelectInfo slice shift')) ideR
                                             return ()
                                         ))
 
@@ -707,7 +708,7 @@ selectInfo sv = do
     buf     <- getBuffer sv
     (l,r)   <- getIdentifierUnderCursor buf
     symbol  <- getText buf l r True
-    triggerEvent ideR (SelectInfo symbol)
+    triggerEvent ideR (SelectInfo symbol False)
     return ()
 
 markActiveLabelAsChanged :: IDEAction

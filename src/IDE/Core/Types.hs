@@ -235,14 +235,13 @@ runDebug = runReaderT
 data IDEEvent  =
         InfoChanged Bool-- is it the initial = True else False
     |   UpdateWorkspaceInfo
-    |   SelectInfo String
+    |   SelectInfo String Bool -- navigate to source (== True)
     |   SelectIdent Descr
     |   LogMessage String LogTag
     |   RecordHistory GUIHistory
     |   Sensitivity [(SensitivityMask,Bool)]
     |   SearchMeta String
     |   StartFindInitial
-    |   SearchSymbolDialog String
     |   GotoDefinition Descr
     |   LoadSession FilePath
     |   SaveSession FilePath
@@ -261,13 +260,12 @@ instance Event IDEEvent String where
     getSelector (InfoChanged _)         =   "InfoChanged"
     getSelector UpdateWorkspaceInfo     =   "UpdateWorkspaceInfo"
     getSelector (LogMessage _ _)        =   "LogMessage"
-    getSelector (SelectInfo _)          =   "SelectInfo"
+    getSelector (SelectInfo _ _)        =   "SelectInfo"
     getSelector (SelectIdent _)         =   "SelectIdent"
     getSelector (RecordHistory _)       =   "RecordHistory"
     getSelector (Sensitivity _)         =   "Sensitivity"
     getSelector (SearchMeta _)          =   "SearchMeta"
     getSelector (StartFindInitial)      =   "StartFindInitial"
-    getSelector (SearchSymbolDialog _)  =   "SearchSymbolDialog"
     getSelector (GotoDefinition _)      =   "GotoDefinition"
     getSelector (LoadSession _)         =   "LoadSession"
     getSelector (SaveSession _)         =   "SaveSession"

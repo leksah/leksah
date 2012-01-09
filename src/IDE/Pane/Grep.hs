@@ -253,7 +253,13 @@ grepDirectories regexString caseSensitive dirs = do
                 found <- if nooneWaiting
                     then do
                         (output, pid) <- runTool "grep" ((if caseSensitive then [] else ["-i"])
-                            ++ ["-r", "-E", "-n", "-I", "--exclude=*~", "--exclude-dir=.svn", regexString] ++ subDirs) (Just dir)
+                            ++ ["-r", "-E", "-n", "-I", "--exclude=*~",
+#if !defined(darwin_HOST_OS)
+                                "--exclude-dir=.svn",
+                                "--exclude-dir=_darcs",
+                                "--exclude-dir=.git",
+#endif
+                                regexString] ++ subDirs) (Just dir)
                         reflectIDE (do
                             E.run_ $ output $$ do
                                 let max = 1000

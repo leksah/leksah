@@ -36,7 +36,7 @@ import System.Directory
 import IDE.Core.State
 import IDE.Utils.FileUtils
 import Graphics.UI.Editor.MakeEditor
-import Distribution.PackageDescription.Parse (readPackageDescription,writePackageDescription)
+import Distribution.PackageDescription.Parse (readPackageDescription)
 import Distribution.PackageDescription.Configuration (flattenPackageDescription)
 import Distribution.ModuleName(ModuleName)
 import Data.Typeable (Typeable(..))
@@ -107,7 +107,40 @@ import Control.Monad.Trans.Reader (ask)
 import Control.Monad.IO.Class (MonadIO(..))
 import Control.Monad.Trans.Class (lift)
 import Control.Monad (when)
+import Distribution.PackageDescription.PrettyPrintCopied(writeGenericPackageDescription)
 
+--------------------------------------------------------------------------
+-- Handling of Generic Package Descriptions
+
+toGenericPackageDescription :: PackageDescription -> GenericPackageDescription
+toGenericPackageDescription pd =
+    GenericPackageDescription {
+        packageDescription = pd{
+            library = Nothing,
+            executables = [],
+            buildDepends = []},
+        genPackageFlags = [],
+        condLibrary = case library pd of
+                            Nothing -> Nothing
+                            Just lib -> Just (buildCondTreeLibrary lib),
+        condExecutables = map buildCondTreeExe (executables pd),
+        condTestSuites =  map buildCondTreeTest (testSuites pd)}
+  where
+    buildCondTreeLibrary lib =
+        CondNode {
+            condTreeData = lib,
+            condTreeConstraints = buildDepends pd,
+            condTreeComponents = []}
+    buildCondTreeExe exe =
+        (exeName exe, CondNode {
+            condTreeData = exe,
+            condTreeConstraints = buildDepends pd,
+            condTreeComponents = []})
+    buildCondTreeTest test =
+        (testName test, CondNode {
+            condTreeData = test,
+            condTreeConstraints = buildDepends pd,
+            condTreeComponents = []})
 
 -- ---------------------------------------------------------------------
 -- The exported stuff goes here
@@ -406,7 +439,7 @@ builder' packageDir packageD packageDescr afterSaveAction initialPackagePath mod
             Just newPackage' -> let newPackage = fromEditor newPackage' in do
                 let packagePath = packageDir </> (display . pkgName . package . pd) newPackage'
                                                 ++ ".cabal"
-                writePackageDescription packagePath newPackage
+                writeGenericPackageDescription packagePath (toGenericPackageDescription newPackage)
                 reflectIDE (do
                     afterSaveAction packagePath
                     closePane packagePane

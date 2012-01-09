@@ -140,6 +140,8 @@ library
         IDE.Utils.ServerConnection
         IDE.BufferMode
         IDE.Build
+        Distribution.PackageDescription.PrettyPrintCopied
+        Distribution.PackageDescription.ParseCopied
 
     other-modules: Paths_leksah
 
@@ -194,7 +196,7 @@ Executable leksah
         hs-source-dirs: main
         build-depends: leksah ==0.11.0.0, base >=4.0.0.0 && <= 5
 
-    main-is: Main.hs
+    main-is: Main.hs 
     buildable: True
     extensions: CPP
     ghc-prof-options: -auto-all -prof
