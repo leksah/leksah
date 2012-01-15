@@ -61,8 +61,15 @@ import Distribution.PackageDescription.Configuration
        (flattenPackageDescription)
 import IDE.BufferMode (editInsertCode)
 import Control.Monad.IO.Class (MonadIO(..))
+#if MIN_VERSION_Cabal(1,10,0)
 import Distribution.PackageDescription.PrettyPrintCopied
        (writeGenericPackageDescription)
+#else
+import Distribution.PackageDescription.Parse
+       (writePackageDescription)
+import Distribution.PackageDescription
+       (CondTree(..))
+#endif
 
 -- | Add all imports which gave error messages ...
 resolveErrors :: IDEAction
@@ -140,11 +147,22 @@ addPackage error = do
             let idePackage = logRefPackage error
             gpd <- liftIO $ readPackageDescription normal (ipdCabalFile $ idePackage)
             ideMessage Normal $ "addPackage " ++ (display $ pkgName pack)
+#if MIN_VERSION_Cabal(1,10,0)
             liftIO $ writeGenericPackageDescription (ipdCabalFile $ idePackage)
                 gpd { condLibrary     = addDepToLib (packageName pack)  (condLibrary gpd),
                       condExecutables = map (addDepToExe (packageName pack))
                                             (condExecutables gpd)}
             return True
+#else
+            if hasConfigs gpd
+                then return False
+                else do
+                    let flat = flattenPackageDescription gpd
+                    liftIO $ writePackageDescription (ipdCabalFile $ idePackage)
+                        flat { buildDepends =
+                            Dependency (pkgName pack) AnyVersion : buildDepends flat}
+                    return True
+#endif
   where
     addDepToLib n Nothing = Nothing
     addDepToLib n (Just cn@CondNode{condTreeConstraints = deps}) =

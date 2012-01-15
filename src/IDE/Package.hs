@@ -108,8 +108,10 @@ import Control.Monad.Trans.Reader (ask)
 import Control.Monad.IO.Class (MonadIO(..))
 import Control.Monad.Trans.Class (lift)
 import Control.Monad (when, unless, liftM)
+#if MIN_VERSION_Cabal(1,10,0)
 import Distribution.PackageDescription.PrettyPrintCopied
        (writeGenericPackageDescription)
+#endif
 import Debug.Trace (trace)
 
 #if MIN_VERSION_Cabal(1,8,0)
@@ -475,6 +477,7 @@ getModuleTemplate pd modName exports body = catch (do
         ,   ("@ModuleBody@"   , body)]))
                     (\ (e :: SomeException) -> sysMessage Normal ("Couldn't read template file: " ++ show e) >> return "")
 
+#if MIN_VERSION_Cabal(1,10,0)
 addModuleToPackageDescr :: ModuleName -> Bool -> PackageAction
 addModuleToPackageDescr moduleName isExposed = do
     p    <- ask
@@ -561,6 +564,75 @@ isExposedModule :: ModuleName -> Maybe (CondTree ConfVar [Dependency] Library)  
 isExposedModule mn Nothing                             = False
 isExposedModule mn (Just CondNode{condTreeData = lib}) = elem mn (exposedModules lib)
 
+#else
+-- Old version to support older Cabal
+addModuleToPackageDescr :: ModuleName -> Bool -> PackageAction
+addModuleToPackageDescr moduleName isExposed = do
+    p    <- ask
+    lift $ reifyIDE (\ideR -> catch (do
+        gpd <- readPackageDescription normal (ipdCabalFile p)
+        if hasConfigs gpd
+            then do
+                reflectIDE (ideMessage High
+                    "Cabal file with configurations can't be automatically updated with the current version of Leksah") ideR
+            else
+                let pd = flattenPackageDescription gpd
+                    npd = if isExposed && isJust (library pd)
+                            then pd{library = Just ((fromJust (library pd)){exposedModules =
+                                                            moduleName : exposedModules (fromJust $ library pd)})}
+                            else let npd1 = case library pd of
+                                               Nothing -> pd
+                                               Just lib -> pd{library = Just (lib{libBuildInfo =
+                                                        addModToBuildInfo (libBuildInfo lib) moduleName})}
+                               in npd1{executables = map
+                                        (\exe -> exe{buildInfo = addModToBuildInfo (buildInfo exe) moduleName})
+                                            (executables npd1)}
+                in writePackageDescription (ipdCabalFile p) npd)
+                   (\(e :: SomeException) -> do
+                    reflectIDE (ideMessage Normal ("Can't upade package " ++ show e)) ideR
+                    return ()))
+    where
+    addModToBuildInfo :: BuildInfo -> ModuleName -> BuildInfo
+    addModToBuildInfo bi mn = bi {otherModules = mn : otherModules bi}
+
+-- Old version to support older Cabal
+delModuleFromPackageDescr :: ModuleName -> PackageAction
+delModuleFromPackageDescr moduleName = do
+    p    <- ask
+    lift $ reifyIDE (\ideR -> catch (do
+        gpd <- readPackageDescription normal (ipdCabalFile p)
+        if hasConfigs gpd
+            then do
+                reflectIDE (ideMessage High
+                    "Cabal file with configurations can't be automatically updated with the current version of Leksah") ideR
+            else
+                let pd = flattenPackageDescription gpd
+                    isExposedAndJust = isExposedModule pd moduleName
+                    npd = if isExposedAndJust
+                            then pd{library = Just ((fromJust (library pd)){exposedModules =
+                                                             delete moduleName (exposedModules (fromJust $ library pd))})}
+                            else let npd1 = case library pd of
+                                               Nothing -> pd
+                                               Just lib -> pd{library = Just (lib{libBuildInfo =
+                                                        delModFromBuildInfo (libBuildInfo lib) moduleName})}
+                               in npd1{executables = map
+                                        (\exe -> exe{buildInfo = delModFromBuildInfo (buildInfo exe) moduleName})
+                                            (executables npd1)}
+                in writePackageDescription (ipdCabalFile p) npd)
+                   (\(e :: SomeException) -> do
+                    reflectIDE (ideMessage Normal ("Can't update package " ++ show e)) ideR
+                    return ()))
+    where
+    delModFromBuildInfo :: BuildInfo -> ModuleName -> BuildInfo
+    delModFromBuildInfo bi mn = bi {otherModules = delete mn (otherModules bi)}
+
+-- Old version to support older Cabal
+isExposedModule :: PackageDescription -> ModuleName -> Bool
+isExposedModule pd mn = do
+    if isJust (library pd)
+        then elem mn (exposedModules (fromJust $ library pd))
+        else False
+#endif
 
 backgroundBuildToggled :: IDEAction
 backgroundBuildToggled = do

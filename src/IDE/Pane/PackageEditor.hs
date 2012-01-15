@@ -107,11 +107,18 @@ import Control.Monad.Trans.Reader (ask)
 import Control.Monad.IO.Class (MonadIO(..))
 import Control.Monad.Trans.Class (lift)
 import Control.Monad (when)
-import Distribution.PackageDescription.PrettyPrintCopied(writeGenericPackageDescription)
+#if MIN_VERSION_Cabal(1,10,0)
+import Distribution.PackageDescription.PrettyPrintCopied
+       (writeGenericPackageDescription)
+#else
+import Distribution.PackageDescription.Parse
+       (writePackageDescription)
+#endif
 
 --------------------------------------------------------------------------
 -- Handling of Generic Package Descriptions
 
+#if MIN_VERSION_Cabal(1,10,0)
 toGenericPackageDescription :: PackageDescription -> GenericPackageDescription
 toGenericPackageDescription pd =
     GenericPackageDescription {
@@ -141,6 +148,7 @@ toGenericPackageDescription pd =
             condTreeData = test,
             condTreeConstraints = buildDepends pd,
             condTreeComponents = []})
+#endif
 
 -- ---------------------------------------------------------------------
 -- The exported stuff goes here
@@ -439,7 +447,11 @@ builder' packageDir packageD packageDescr afterSaveAction initialPackagePath mod
             Just newPackage' -> let newPackage = fromEditor newPackage' in do
                 let packagePath = packageDir </> (display . pkgName . package . pd) newPackage'
                                                 ++ ".cabal"
+#if MIN_VERSION_Cabal(1,10,0)
                 writeGenericPackageDescription packagePath (toGenericPackageDescription newPackage)
+#else
+                writePackageDescription packagePath newPackage
+#endif
                 reflectIDE (do
                     afterSaveAction packagePath
                     closePane packagePane
