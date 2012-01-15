@@ -367,7 +367,7 @@ packageTest = do
 
 packageTest' :: IDEPackage -> (Bool -> IDEAction) -> IDEAction
 packageTest' package continuation =
-    if not . null $ ipdTests package
+    if "--enable-tests" `elem` ipdConfigFlags package
         then catchIDE (do
             let dir = dropFileName (ipdCabalFile package)
             runExternalTool "Testing" "cabal" (["test"]
@@ -797,7 +797,6 @@ idePackageFromPath filePath = do
 #if MIN_VERSION_Cabal(1,10,0)
             let exts       = nub $ concatMap oldExtensions (allBuildInfo' packageD)
             let tests      = [ testName t | t <- testSuites packageD
-                                          -- , testEnabled t
                                           , buildable (testBuildInfo t) ]
 #else
             let exts       = nub $ concatMap extensions (allBuildInfo' packageD)
