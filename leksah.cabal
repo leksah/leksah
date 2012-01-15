@@ -1,5 +1,5 @@
 name: leksah
-version: 0.11.0.1
+version: 0.12.0.0
 cabal-version: >=1.8
 build-type: Simple
 license: GPL
@@ -113,8 +113,8 @@ library
                        gtksourceview2 >=0.10.0 && <0.13, mtl >=1.1.0.2 && <2.1, old-time >=1.0.0.1 && <1.1,
                        parsec >=2.1.0.1 && <3.2, pretty >=1.0.1.0 && <1.2,
                        regex-tdfa ==1.1.*, regex-base ==0.93.*, utf8-string >=0.3.1.1 && <0.4, array >=0.2.0.0 && <0.4,
-                       time >=0.1 && <1.5, ltk >= 0.10 && <0.12, binary-shared >= 0.8 && <0.9, deepseq >= 1.1.0.0 && <1.3,
-                       hslogger >= 1.0.7 && <1.2, leksah-server >= 0.10.0.5 && <0.12, network >= 2.2 && <3.0,
+                       time >=0.1 && <1.5, ltk >= 0.12 && <0.13, binary-shared >= 0.8 && <0.9, deepseq >= 1.1.0.0 && <1.3,
+                       hslogger >= 1.0.7 && <1.2, leksah-server >=0.12 && <0.13, network >= 2.2 && <3.0,
                        ghc >=6.10.1 && <7.4, strict >= 0.3.2 && <0.4, enumerator >=0.4.14 && <0.5, text >= 0.11.1.5 && < 0.12,
                        gio >= 0.12.2 && < 0.13, transformers >=0.2.2.0 && <0.3
 
@@ -191,13 +191,13 @@ Executable leksah
                        gtksourceview2 >=0.10.0 && <0.13, mtl >=1.1.0.2 && <2.1, old-time >=1.0.0.1 && <1.1,
                        parsec >=2.1.0.1 && <3.2, pretty >=1.0.1.0 && <1.2,
                        regex-tdfa ==1.1.*, regex-base ==0.93.*, utf8-string >=0.3.1.1 && <0.4, array >=0.2.0.0 && <0.4,
-                       time >=0.1 && <1.5, ltk >= 0.10 && <0.12, binary-shared >= 0.8 && <0.9, deepseq >= 1.1.0.0 && <1.3,
-                       hslogger >= 1.0.7 && <1.2, leksah-server >= 0.10.0.5 && <0.12, network >= 2.2 && <3.0,
+                       time >=0.1 && <1.5, ltk >=0.12 && <0.13, binary-shared >= 0.8 && <0.9, deepseq >= 1.1.0.0 && <1.3,
+                       hslogger >= 1.0.7 && <1.2, leksah-server >=0.12 && <0.13, network >= 2.2 && <3.0,
                        ghc >=6.10.1 && <7.4, strict >= 0.3.2 && <0.4, enumerator >=0.4.14 && <0.5, text >= 0.11.1.5 && < 0.12,
                        gio >= 0.12.2 && < 0.13, transformers >=0.2.2.0 && <0.3
     else
         hs-source-dirs: main
-        build-depends: leksah ==0.11.0.1, base >=4.0.0.0 && <= 5
+        build-depends: leksah ==0.12.0.0, base >=4.0.0.0 && <= 5
 
     main-is: Main.hs
     buildable: True
