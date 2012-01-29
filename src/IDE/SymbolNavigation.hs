@@ -111,7 +111,7 @@ createHyperLinkSupport sv sw identifierMapper clickHandler = do
               else do
                 pointerUngrab (Gdk.eventTime e)
                 return ()
-            return False;
+            return True;
     lineNumberBugFix <- newIORef Nothing
     let fixBugWithX e = do
         dw <- widgetGetDrawWindow tv
