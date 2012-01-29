@@ -169,6 +169,7 @@ packageEdit = do
             return ()
         else do
             let flat = flattenPackageDescription package
+#if MIN_VERSION_Cabal(1,10,0)
             if hasUnknownTestTypes flat
                 then do
                     lift $ ideMessage High ("Cabal file with tests of this type can't be edited with the "
@@ -178,6 +179,10 @@ packageEdit = do
                 else do
                     lift $ editPackage flat dirName  modules (\ _ -> return ())
                     return ()
+#else
+            lift $ editPackage flat dirName  modules (\ _ -> return ())
+            return ()
+#endif
 
 hasConfigs :: GenericPackageDescription -> Bool
 hasConfigs gpd =
@@ -189,19 +194,25 @@ hasConfigs gpd =
                                     then True
                                     else not (null (condTreeComponents condTree)))
                         False (condExecutables gpd)
+#if MIN_VERSION_Cabal(1,10,0)
         testConds = foldr (\ (_,condTree) hasConfigs ->
                                 if hasConfigs
                                     then True
                                     else not (null (condTreeComponents condTree)))
                         False (condTestSuites gpd)
     in libConds || exeConds || testConds
+#else
+    in libConds || exeConds
+#endif
 
+#if MIN_VERSION_Cabal(1,10,0)
 hasUnknownTestTypes :: PackageDescription -> Bool
 hasUnknownTestTypes pd =
     not . null . filter unknown $ testSuites pd
   where
     unknown (TestSuite _ (TestSuiteExeV10 _ _) _ _) = False
     unknown _ = True
+#endif
 
 packageNew' :: Maybe FilePath -> (Bool -> FilePath -> IDEAction) -> IDEAction
 packageNew' mbDir activateAction = do
@@ -254,16 +265,20 @@ packageNew' mbDir activateAction = do
                             package   = PackageIdentifier (PackageName $ takeBaseName dirName)
                                                           initialVersion,
                             buildType = Just Simple,
+#if MIN_VERSION_Cabal(1,10,0)
                             specVersionRaw = Right (orLaterVersion (Version [1,2] [])),
+#endif
                             buildDepends = [Dependency (PackageName "base") anyVersion],
                             executables = [emptyExecutable {
-                                exeName    = (takeBaseName dirName),
-                                modulePath = "Main.hs",
-                                buildInfo  = emptyBuildInfo {hsSourceDirs = ["src"]}}],
-                                testSuites = [emptyTestSuite {
-                                testName = "test-" ++ takeBaseName dirName,
-                                testInterface = (TestSuiteExeV10 (Version [1,0] []) "Test.hs"),
-                                testBuildInfo = emptyBuildInfo {hsSourceDirs = ["tests"]}}]
+                                exeName    = (takeBaseName dirName)
+                              , modulePath = "Main.hs"
+                              , buildInfo  = emptyBuildInfo {hsSourceDirs = ["src"]}}]
+#if MIN_VERSION_Cabal(1,10,0)
+                              , testSuites = [emptyTestSuite {
+                                    testName = "test-" ++ takeBaseName dirName
+                                  , testInterface = (TestSuiteExeV10 (Version [1,0] []) "Test.hs")
+                                  , testBuildInfo = emptyBuildInfo {hsSourceDirs = ["tests"]}}]
+#endif
                             } dirName modules (activateAction True)
                     return ()
 
@@ -281,7 +296,9 @@ standardSetup = "#!/usr/bin/runhaskell \n"
 data PackageDescriptionEd = PDE {
     pd           :: PackageDescription,
     exes         :: [Executable'],
+#if MIN_VERSION_Cabal(1,10,0)
     tests        :: [Test'],
+#endif
     mbLib        :: Maybe Library',
     bis          :: [BuildInfo]}
         deriving Eq
@@ -289,39 +306,63 @@ data PackageDescriptionEd = PDE {
 comparePDE a b = do
     when (pd a /= pd b) $ putStrLn  "pd"
     when (exes a /= exes b) $ putStrLn  "exes"
+#if MIN_VERSION_Cabal(1,10,0)
     when (tests a /= tests b) $ putStrLn  "tests"
+#endif
     when (mbLib a /= mbLib b) $ putStrLn  "mbLib"
     when (bis a /= bis b) $ putStrLn  "bis"
 
 fromEditor :: PackageDescriptionEd -> PackageDescription
-fromEditor (PDE pd exes' tests' mbLib' buildInfos) =
+fromEditor (PDE pd exes'
+#if MIN_VERSION_Cabal(1,10,0)
+        tests'
+#endif
+        mbLib' buildInfos) =
     let     exes = map (\ (Executable' s fb bii) -> if bii + 1 > length buildInfos
                                         then Executable s fb (buildInfos !! (length buildInfos - 1))
                                         else Executable s fb (buildInfos !! bii)) exes'
+#if MIN_VERSION_Cabal(1,10,0)
             tests = map (\ (Test' s fb bii) -> if bii + 1 > length buildInfos
                                         then TestSuite s fb (buildInfos !! (length buildInfos - 1)) False
                                         else TestSuite s fb (buildInfos !! bii) False) tests'
+#endif
             mbLib = case mbLib' of
                     Nothing -> Nothing
                     Just (Library' mn b bii) -> if bii + 1 > length buildInfos
                                         then Just (Library mn b (buildInfos !! (length buildInfos - 1)))
                                         else Just (Library mn b (buildInfos !! bii))
-    in pd {library = mbLib, executables = exes, testSuites = tests}
+    in pd {
+        library = mbLib
+      , executables = exes
+#if MIN_VERSION_Cabal(1,10,0)
+      , testSuites = tests
+#endif
+      }
 
 toEditor :: PackageDescription -> PackageDescriptionEd
 toEditor pd =
     let     (exes,exeBis) = unzip $ map (\((Executable s fb bi), i) -> ((Executable' s fb i), bi))
                             (zip (executables pd) [0..])
+#if MIN_VERSION_Cabal(1,10,0)
             (tests,testBis) = unzip $ map (\((TestSuite s fb bi _), i) -> ((Test' s fb i), bi))
                             (zip (testSuites pd) [length exeBis..])
             bis = exeBis++testBis
+#else
+            bis = exeBis
+#endif
             (mbLib,bis2) = case library pd of
                     Nothing                -> (Nothing,bis)
                     Just (Library mn b bi) -> (Just (Library' (sort mn) b (length bis)), bis ++ [bi])
             bis3 = if null bis2
                         then [emptyBuildInfo]
                         else bis2
-    in PDE (pd {library = Nothing , executables = []}) exes tests mbLib bis3
+    in PDE (pd {library = Nothing , executables = []})
+        exes
+#if MIN_VERSION_Cabal(1,10,0)
+        tests
+#endif
+        mbLib
+        bis3
 
 -- ---------------------------------------------------------------------
 -- The pane stuff
@@ -719,6 +760,7 @@ packageDD packages fp modules numBuildInfos extras = NFD ([
             (\ a b -> b{exes = a})
             (executablesEditor (Just fp) modules numBuildInfos)
     ]),
+#if MIN_VERSION_Cabal(1,10,0)
     ("Tests",VFD emptyParams  [
         mkField
             (paraName <<<- ParaName "Tests"
@@ -729,6 +771,7 @@ packageDD packages fp modules numBuildInfos extras = NFD ([
             (\ a b -> b{tests = a})
             (testsEditor (Just fp) modules numBuildInfos)
     ]),
+#endif
     ("Library", VFD emptyParams [
         mkField
             (paraName <<<- ParaName "Library"
@@ -1154,11 +1197,13 @@ data Executable' = Executable'{
 ,   buildInfoIdx    :: Int}
     deriving (Show, Eq)
 
+#if MIN_VERSION_Cabal(1,10,0)
 data Test' = Test'{
     testName'        :: String
 ,   testInterface'   :: TestSuiteInterface
 ,   testBuildInfoIdx :: Int}
     deriving (Show, Eq)
+#endif
 
 instance Default Library'
     where getDefault =  Library' [] getDefault getDefault
@@ -1166,8 +1211,10 @@ instance Default Library'
 instance Default Executable'
     where getDefault = Executable' getDefault getDefault getDefault
 
+#if MIN_VERSION_Cabal(1,10,0)
 instance Default Test'
     where getDefault = Test' getDefault (TestSuiteExeV10 (Version [1,0] []) getDefault) getDefault
+#endif
 
 libraryEditor :: Maybe FilePath -> [ModuleName] -> Int -> Editor Library'
 libraryEditor fp modules numBuildInfos para noti = do
@@ -1240,6 +1287,7 @@ executableEditor fp modules countBuildInfo para noti = do
             Just (s,f,bi) -> return (Just $Executable' s f bi)
     return (wid,pinj,pext)
 
+#if MIN_VERSION_Cabal(1,10,0)
 testsEditor :: Maybe FilePath -> [ModuleName] -> Int -> Editor [Test']
 testsEditor fp modules countBuildInfo p =
     multisetEditor
@@ -1281,6 +1329,7 @@ testEditor fp modules countBuildInfo para noti = do
             Nothing -> return Nothing
             Just (s,f,bi) -> return (Just $Test' s (TestSuiteExeV10 (Version [1,0] []) f) bi)
     return (wid,pinj,pext)
+#endif
 
 buildInfoEditorP :: Int -> Editor Int
 buildInfoEditorP numberOfBuildInfos para noti = do
