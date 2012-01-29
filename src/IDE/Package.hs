@@ -92,7 +92,7 @@ import Data.List (isInfixOf, nub, foldl', delete)
 import qualified System.IO.UTF8 as UTF8  (readFile)
 import IDE.Utils.Tool (ToolOutput(..), runTool, newGhci, ToolState(..))
 import qualified Data.Set as  Set (fromList)
-import qualified Data.Map as  Map (empty)
+import qualified Data.Map as  Map (empty, fromList)
 import System.Exit (ExitCode(..))
 import Control.Applicative ((<$>))
 #ifdef MIN_VERSION_process_leksah
@@ -114,14 +114,18 @@ import Distribution.PackageDescription.PrettyPrintCopied
 #endif
 import Debug.Trace (trace)
 
+moduleInfo :: (a -> BuildInfo) -> (a -> [ModuleName]) -> a -> [(ModuleName, BuildInfo)]
+moduleInfo bi mods a = map (\m -> (m, buildInfo)) $ mods a
+    where buildInfo = bi a
+
 #if MIN_VERSION_Cabal(1,8,0)
 myLibModules pd = case library pd of
                     Nothing -> []
-                    Just l -> libModules l
-myExeModules pd = concatMap exeModules (executables pd)
+                    Just l -> moduleInfo libBuildInfo libModules l
+myExeModules pd = concatMap (moduleInfo buildInfo exeModules) (executables pd)
 #else
-myLibModules pd = libModules pd
-myExeModules pd = exeModules pd
+myLibModules pd = moduleInfo libModules libBuildInfo pd
+myExeModules pd = moduleInfo exeModules buildInfo pd
 #endif
 
 
@@ -768,8 +772,6 @@ allBuildInfo' :: PackageDescription -> [BuildInfo]
 allBuildInfo' pkg_descr = [ libBuildInfo lib  | Just lib <- [library pkg_descr] ]
                        ++ [ buildInfo exe     | exe <- executables pkg_descr ]
                        ++ [ testBuildInfo tst | tst <- testSuites pkg_descr ]
-testMainPath (TestSuiteExeV10 _ f) = [f]
-testMainPath _ = []
 #else
 allBuildInfo' = allBuildInfo
 #endif
@@ -785,12 +787,12 @@ idePackageFromPath filePath = do
     case mbPackageD of
         Nothing       -> return Nothing
         Just packageD -> do
-            let modules    = Set.fromList $ myLibModules packageD ++ myExeModules packageD
-            let mainFiles  = map modulePath (executables packageD)
+            let modules    = Map.fromList $ myLibModules packageD ++ myExeModules packageD
+            let mainFiles  = [ (modulePath exe, buildInfo exe, False) | exe <- executables packageD ]
 #if MIN_VERSION_Cabal(1,10,0)
-                               ++ concatMap (testMainPath . testInterface) (testSuites packageD)
+                             ++ [ (f, bi, True) | TestSuite _ (TestSuiteExeV10 _ f) bi _ <- testSuites packageD ]
 #endif
-            let files      = Set.fromList $ extraSrcFiles packageD ++ mainFiles
+            let files      = Set.fromList $ extraSrcFiles packageD
             let srcDirs = case (nub $ concatMap hsSourceDirs (allBuildInfo' packageD)) of
                                 [] -> [".","src"]
                                 l -> l
@@ -814,7 +816,7 @@ idePackageFromPath filePath = do
                 ipdExtraSrcs =  files,
                 ipdSrcDirs = srcDirs,
                 ipdExtensions =  exts,
-                ipdConfigFlags = ["--user"],
+                ipdConfigFlags = ["--user", "--enable-tests"],
                 ipdBuildFlags = [],
                 ipdTestFlags = [],
                 ipdHaddockFlags = [],

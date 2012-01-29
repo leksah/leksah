@@ -93,6 +93,7 @@ import Data.Unique (newUnique, Unique(..))
 import Graphics.UI.Frame.Panes
 import Distribution.Package
     (PackageIdentifier(..), Dependency(..))
+import Distribution.PackageDescription (BuildInfo)
 import Data.Map (Map(..))
 import Data.Set (Set(..))
 import Distribution.ModuleName (ModuleName(..))
@@ -324,10 +325,10 @@ data IDEPackage     =   IDEPackage {
     ipdPackageId       ::   PackageIdentifier
 ,   ipdCabalFile       ::   FilePath
 ,   ipdDepends         ::   [Dependency]
-,   ipdModules         ::   Set ModuleName
+,   ipdModules         ::   Map ModuleName BuildInfo
 ,   ipdHasLibs         ::   Bool
 ,   ipdTests           ::   [String]
-,   ipdMain            ::   [FilePath]
+,   ipdMain            ::   [(FilePath, BuildInfo, Bool)]
 ,   ipdExtraSrcs       ::   Set FilePath
 ,   ipdSrcDirs         ::   [FilePath]
 ,   ipdExtensions      ::   [Extension]

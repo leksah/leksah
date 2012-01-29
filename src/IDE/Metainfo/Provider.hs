@@ -68,6 +68,7 @@ import Prelude hiding(catch, readFile)
 import IDE.Utils.ServerConnection(doServerCommand)
 import Control.Monad.IO.Class (MonadIO(..))
 import Control.Monad.Trans.Class (MonadTrans(..))
+import Distribution.PackageDescription (hsSourceDirs)
 
 trace a b = b
 
@@ -260,15 +261,15 @@ updatePackageInfo rebuild idePack continuation =
     let (packageMap, ic) =  case pi  `Map.lookup` workspInfoCache' of
                                 Nothing -> (Map.empty,True)
                                 Just m  -> (m,False)
-    modPairsMb <- liftIO $ mapM (\ modName -> do
+    modPairsMb <- liftIO $ mapM (\(modName, bi) -> do
             sf <- case  modName `Map.lookup` packageMap of
-                        Nothing            -> findSourceFile srcDirs' haskellSrcExts modName
-                        Just (_,Nothing,_) -> findSourceFile srcDirs' haskellSrcExts modName
+                        Nothing            -> findSourceFile (srcDirs' bi) haskellSrcExts modName
+                        Just (_,Nothing,_) -> findSourceFile (srcDirs' bi) haskellSrcExts modName
                         Just (_,Just fp,_) -> return (Just fp)
             return (modName, sf))
-                $ Set.toList $ ipdModules idePack
-    mainModules <- liftIO $ mapM (\fn -> do
-                                    mbFn <- findSourceFile' srcDirs' fn
+                $ Map.toList $ ipdModules idePack
+    mainModules <- liftIO $ mapM (\(fn, bi, isTest) -> do
+                                    mbFn <- findSourceFile' (srcDirs' bi) fn
                                     return (main,mbFn))
                             (ipdMain idePack)
     let modPairsMb' = case mainModules of
@@ -305,7 +306,7 @@ updatePackageInfo rebuild idePack continuation =
                 pdBuildDepends   = buildDepends}))
     where
         basePath =  normalise $ (takeDirectory (ipdCabalFile idePack))
-        srcDirs' =  map (basePath </>) (ipdSrcDirs idePack)
+        srcDirs' bi =  map (basePath </>) (hsSourceDirs bi)
         pi = ipdPackageId idePack
 
 figureOutRealSources :: IDEPackage -> [(ModuleName,FilePath)] -> IO [(ModuleName,FilePath)]
