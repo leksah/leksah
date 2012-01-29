@@ -7,7 +7,7 @@
     <key>CFBundleExecutable</key>
     <string>Leksah</string>
     <key>CFBundleGetInfoString</key>
-    <string>0.11.0.0</string>
+    <string>0.12.0.0</string>
     <key>CFBundleIconFile</key>
     <string>leksah.icns</string>
     <key>CFBundleIdentifier</key>
@@ -17,11 +17,11 @@
     <key>CFBundlePackageType</key>
     <string>APPL</string>
     <key>CFBundleShortVersionString</key>
-    <string>0.11.0.0</string>
+    <string>0.12.0.0</string>
     <key>CFBundleSignature</key>
     <string>????</string>
     <key>CFBundleVersion</key>
-    <string>0.11.0.0</string>
+    <string>0.12.0.0</string>
     <key>NSHumanReadableCopyright</key>
     <string>2007-2011 Jürgen Nicklisch-Franken, GNU General Public License.</string>
     <key>LSMinimumSystemVersion</key>

@@ -92,7 +92,7 @@ import Data.List (isInfixOf, nub, foldl', delete)
 import qualified System.IO.UTF8 as UTF8  (readFile)
 import IDE.Utils.Tool (ToolOutput(..), runTool, newGhci, ToolState(..))
 import qualified Data.Set as  Set (fromList)
-import qualified Data.Map as  Map (empty)
+import qualified Data.Map as  Map (empty, fromList)
 import System.Exit (ExitCode(..))
 import Control.Applicative ((<$>))
 #ifdef MIN_VERSION_process_leksah
@@ -108,18 +108,24 @@ import Control.Monad.Trans.Reader (ask)
 import Control.Monad.IO.Class (MonadIO(..))
 import Control.Monad.Trans.Class (lift)
 import Control.Monad (when, unless, liftM)
+#if MIN_VERSION_Cabal(1,10,0)
 import Distribution.PackageDescription.PrettyPrintCopied
        (writeGenericPackageDescription)
+#endif
 import Debug.Trace (trace)
+
+moduleInfo :: (a -> BuildInfo) -> (a -> [ModuleName]) -> a -> [(ModuleName, BuildInfo)]
+moduleInfo bi mods a = map (\m -> (m, buildInfo)) $ mods a
+    where buildInfo = bi a
 
 #if MIN_VERSION_Cabal(1,8,0)
 myLibModules pd = case library pd of
                     Nothing -> []
-                    Just l -> libModules l
-myExeModules pd = concatMap exeModules (executables pd)
+                    Just l -> moduleInfo libBuildInfo libModules l
+myExeModules pd = concatMap (moduleInfo buildInfo exeModules) (executables pd)
 #else
-myLibModules pd = libModules pd
-myExeModules pd = exeModules pd
+myLibModules pd = moduleInfo libModules libBuildInfo pd
+myExeModules pd = moduleInfo exeModules buildInfo pd
 #endif
 
 
@@ -365,7 +371,7 @@ packageTest = do
 
 packageTest' :: IDEPackage -> (Bool -> IDEAction) -> IDEAction
 packageTest' package continuation =
-    if not . null $ ipdTests package
+    if "--enable-tests" `elem` ipdConfigFlags package
         then catchIDE (do
             let dir = dropFileName (ipdCabalFile package)
             runExternalTool "Testing" "cabal" (["test"]
@@ -475,6 +481,7 @@ getModuleTemplate pd modName exports body = catch (do
         ,   ("@ModuleBody@"   , body)]))
                     (\ (e :: SomeException) -> sysMessage Normal ("Couldn't read template file: " ++ show e) >> return "")
 
+#if MIN_VERSION_Cabal(1,10,0)
 addModuleToPackageDescr :: ModuleName -> Bool -> PackageAction
 addModuleToPackageDescr moduleName isExposed = do
     p    <- ask
@@ -561,6 +568,75 @@ isExposedModule :: ModuleName -> Maybe (CondTree ConfVar [Dependency] Library)  
 isExposedModule mn Nothing                             = False
 isExposedModule mn (Just CondNode{condTreeData = lib}) = elem mn (exposedModules lib)
 
+#else
+-- Old version to support older Cabal
+addModuleToPackageDescr :: ModuleName -> Bool -> PackageAction
+addModuleToPackageDescr moduleName isExposed = do
+    p    <- ask
+    lift $ reifyIDE (\ideR -> catch (do
+        gpd <- readPackageDescription normal (ipdCabalFile p)
+        if hasConfigs gpd
+            then do
+                reflectIDE (ideMessage High
+                    "Cabal file with configurations can't be automatically updated with the current version of Leksah") ideR
+            else
+                let pd = flattenPackageDescription gpd
+                    npd = if isExposed && isJust (library pd)
+                            then pd{library = Just ((fromJust (library pd)){exposedModules =
+                                                            moduleName : exposedModules (fromJust $ library pd)})}
+                            else let npd1 = case library pd of
+                                               Nothing -> pd
+                                               Just lib -> pd{library = Just (lib{libBuildInfo =
+                                                        addModToBuildInfo (libBuildInfo lib) moduleName})}
+                               in npd1{executables = map
+                                        (\exe -> exe{buildInfo = addModToBuildInfo (buildInfo exe) moduleName})
+                                            (executables npd1)}
+                in writePackageDescription (ipdCabalFile p) npd)
+                   (\(e :: SomeException) -> do
+                    reflectIDE (ideMessage Normal ("Can't upade package " ++ show e)) ideR
+                    return ()))
+    where
+    addModToBuildInfo :: BuildInfo -> ModuleName -> BuildInfo
+    addModToBuildInfo bi mn = bi {otherModules = mn : otherModules bi}
+
+-- Old version to support older Cabal
+delModuleFromPackageDescr :: ModuleName -> PackageAction
+delModuleFromPackageDescr moduleName = do
+    p    <- ask
+    lift $ reifyIDE (\ideR -> catch (do
+        gpd <- readPackageDescription normal (ipdCabalFile p)
+        if hasConfigs gpd
+            then do
+                reflectIDE (ideMessage High
+                    "Cabal file with configurations can't be automatically updated with the current version of Leksah") ideR
+            else
+                let pd = flattenPackageDescription gpd
+                    isExposedAndJust = isExposedModule pd moduleName
+                    npd = if isExposedAndJust
+                            then pd{library = Just ((fromJust (library pd)){exposedModules =
+                                                             delete moduleName (exposedModules (fromJust $ library pd))})}
+                            else let npd1 = case library pd of
+                                               Nothing -> pd
+                                               Just lib -> pd{library = Just (lib{libBuildInfo =
+                                                        delModFromBuildInfo (libBuildInfo lib) moduleName})}
+                               in npd1{executables = map
+                                        (\exe -> exe{buildInfo = delModFromBuildInfo (buildInfo exe) moduleName})
+                                            (executables npd1)}
+                in writePackageDescription (ipdCabalFile p) npd)
+                   (\(e :: SomeException) -> do
+                    reflectIDE (ideMessage Normal ("Can't update package " ++ show e)) ideR
+                    return ()))
+    where
+    delModFromBuildInfo :: BuildInfo -> ModuleName -> BuildInfo
+    delModFromBuildInfo bi mn = bi {otherModules = delete mn (otherModules bi)}
+
+-- Old version to support older Cabal
+isExposedModule :: PackageDescription -> ModuleName -> Bool
+isExposedModule pd mn = do
+    if isJust (library pd)
+        then elem mn (exposedModules (fromJust $ library pd))
+        else False
+#endif
 
 backgroundBuildToggled :: IDEAction
 backgroundBuildToggled = do
@@ -696,8 +772,6 @@ allBuildInfo' :: PackageDescription -> [BuildInfo]
 allBuildInfo' pkg_descr = [ libBuildInfo lib  | Just lib <- [library pkg_descr] ]
                        ++ [ buildInfo exe     | exe <- executables pkg_descr ]
                        ++ [ testBuildInfo tst | tst <- testSuites pkg_descr ]
-testMainPath (TestSuiteExeV10 _ f) = [f]
-testMainPath _ = []
 #else
 allBuildInfo' = allBuildInfo
 #endif
@@ -713,19 +787,18 @@ idePackageFromPath filePath = do
     case mbPackageD of
         Nothing       -> return Nothing
         Just packageD -> do
-            let modules    = Set.fromList $ myLibModules packageD ++ myExeModules packageD
-            let mainFiles  = map modulePath (executables packageD)
+            let modules    = Map.fromList $ myLibModules packageD ++ myExeModules packageD
+            let mainFiles  = [ (modulePath exe, buildInfo exe, False) | exe <- executables packageD ]
 #if MIN_VERSION_Cabal(1,10,0)
-                               ++ concatMap (testMainPath . testInterface) (testSuites packageD)
+                             ++ [ (f, bi, True) | TestSuite _ (TestSuiteExeV10 _ f) bi _ <- testSuites packageD ]
 #endif
-            let files      = Set.fromList $ extraSrcFiles packageD ++ mainFiles
+            let files      = Set.fromList $ extraSrcFiles packageD
             let srcDirs = case (nub $ concatMap hsSourceDirs (allBuildInfo' packageD)) of
                                 [] -> [".","src"]
                                 l -> l
 #if MIN_VERSION_Cabal(1,10,0)
             let exts       = nub $ concatMap oldExtensions (allBuildInfo' packageD)
             let tests      = [ testName t | t <- testSuites packageD
-                                          -- , testEnabled t
                                           , buildable (testBuildInfo t) ]
 #else
             let exts       = nub $ concatMap extensions (allBuildInfo' packageD)
@@ -743,7 +816,7 @@ idePackageFromPath filePath = do
                 ipdExtraSrcs =  files,
                 ipdSrcDirs = srcDirs,
                 ipdExtensions =  exts,
-                ipdConfigFlags = ["--user"],
+                ipdConfigFlags = ["--user", "--enable-tests"],
                 ipdBuildFlags = [],
                 ipdTestFlags = [],
                 ipdHaddockFlags = [],

@@ -40,7 +40,7 @@ module IDE.Workspaces (
 import IDE.Core.State
 import Graphics.UI.Editor.Parameters
     (Parameter(..), (<<<-), paraName, emptyParams)
-import Control.Monad (unless, when, liftM)
+import Control.Monad (forM_, unless, when, liftM)
 import Data.Maybe (isJust,fromJust )
 import IDE.Utils.GUIUtils
     (chooseFile, chooseSaveFile)
@@ -88,6 +88,8 @@ import IDE.Utils.FileUtils(myCanonicalizePath)
 import Control.Monad.Trans.Reader (ask)
 import Control.Monad.IO.Class (MonadIO(..))
 import Control.Monad.Trans.Class (lift)
+import qualified Data.Set as Set (toList)
+import Distribution.PackageDescription (hsSourceDirs)
 
 setWorkspace :: Maybe Workspace -> IDEAction
 setWorkspace mbWs = do
@@ -290,24 +292,28 @@ workspacePackageNew = do
 constructAndOpenMainModule :: Maybe IDEPackage -> IDEAction
 constructAndOpenMainModule Nothing = return ()
 constructAndOpenMainModule (Just idePackage) =
-    case (ipdMain idePackage, ipdSrcDirs idePackage) of
-        ([target],[path]) -> do
-            mbPD <- getPackageDescriptionAndPath
-            case mbPD of
-                Just (pd,_) -> do
-                    liftIO $ createDirectoryIfMissing True path
-                    alreadyExists <- liftIO $ doesFileExist (path </> target)
-                    if alreadyExists
-                        then do
-                            ideMessage Normal "Main file already exists"
-                            fileOpenThis (path </> target)
-                        else do
-                            template <- liftIO $ getModuleTemplate pd (dropExtension target)
-                                "    main" "main = putStrLn \"Hello World!\""
-                            liftIO $ UTF8.writeFile (path </> target) template
-                            fileOpenThis (path </> target)
-                Nothing     -> ideMessage Normal "No package description"
-        _ -> return ()
+    forM_ (ipdMain idePackage) $ \(target, bi, isTest) -> do
+        mbPD <- getPackageDescriptionAndPath
+        case mbPD of
+            Just (pd,_) -> do
+                case hsSourceDirs bi of
+                    path:_ -> do
+                        liftIO $ createDirectoryIfMissing True path
+                        alreadyExists <- liftIO $ doesFileExist (path </> target)
+                        if alreadyExists
+                            then do
+                                ideMessage Normal "Main file already exists"
+                                fileOpenThis (path </> target)
+                            else do
+                                template <- liftIO $ getModuleTemplate pd "Main"
+                                    "    main"
+                                    (if isTest
+                                        then "main = putStrLn \"Put your test code here\""
+                                        else "main = putStrLn \"Hello World!\"")
+                                liftIO $ UTF8.writeFile (path </> target) template
+                                fileOpenThis (path </> target)
+                    _ -> return ()
+            Nothing     -> ideMessage Normal "No package description"
 
 workspaceAddPackage :: WorkspaceAction
 workspaceAddPackage = do

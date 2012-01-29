@@ -102,6 +102,7 @@ import Control.Event (triggerEvent)
 import IDE.Metainfo.Provider (getSystemInfo, getWorkspaceInfo)
 import Distribution.Text (simpleParse)
 import Distribution.ModuleName (ModuleName)
+import Distribution.PackageDescription (hsSourceDirs)
 --import qualified Data.Set as Set (member)
 import Graphics.UI.Gtk
        (Notebook, clipboardGet, selectionClipboard, dialogAddButton, widgetDestroy,
@@ -1228,14 +1229,18 @@ belongsToPackage' fp mbModuleName Nothing pack =
         then
             let srcPaths = map (\srcP -> basePath </> srcP) (ipdSrcDirs pack)
                 relPaths = map (\p -> makeRelative p fp) srcPaths
-            in if or (map (\p -> Set.member p (ipdExtraSrcs pack)) relPaths)
+            in if or $
+                    (fp `elem` possibleMains basePath) :
+                    (map (\p -> Set.member p (ipdExtraSrcs pack)) relPaths)
                 then Just pack
                 else case mbModuleName of
                         Nothing -> Nothing
-                        Just mn -> if Set.member mn (ipdModules pack)
+                        Just mn -> if Map.member mn (ipdModules pack)
                                         then Just pack
                                         else Nothing
         else Nothing
+  where
+    possibleMains basePath = concatMap (\(f, bi, isTest) -> map (\srcDir -> basePath </> srcDir </> f) $ hsSourceDirs bi) $ ipdMain pack
 
 belongsToWorkspace b =  belongsToPackage b >>= return . isJust
 
