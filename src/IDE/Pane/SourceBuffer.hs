@@ -1100,42 +1100,66 @@ filePrint = inActiveBufContext () $ filePrint'
 
 filePrint' :: Notebook -> EditorBuffer -> IDEBuffer -> Int -> IDEM ()
 filePrint' nb ebuf currentBuffer _ = do
+    let pName = paneName currentBuffer
     window  <- getMainWindow
-    modified <- getModified ebuf
-    cancel <- reifyIDE $ \ideR ->  do
-        if modified
-            then do
+    print <- reifyIDE $ \ideR ->  do
                 md <- messageDialogNew (Just window) []
                                             MessageQuestion
-                                            ButtonsCancel
-                                            ("Save changes to document: "
-                                                ++ paneName currentBuffer
+                                            ButtonsNone
+                                            ("Print document: "
+                                                ++ pName
                                                 ++ "?")
-                dialogAddButton md "_Save" ResponseYes
-                dialogAddButton md "_Don't Save" ResponseNo
+                dialogAddButton md "_Print" ResponseYes
+                dialogAddButton md "_Don't Print" ResponseNo
                 set md [ windowWindowPosition := WinPosCenterOnParent ]
                 resp <- dialogRun md
                 widgetDestroy md
                 case resp of
                     ResponseYes ->   do
-                        reflectIDE (fileSave False) ideR
-                        return False
-                    ResponseCancel  ->   return True
+                        return True
+                    ResponseCancel  ->   return False
                     ResponseNo      ->   return False
                     _               ->   return False
-            else
-                return False
-    if cancel
+    if not print
         then return ()
         else do
-            case fileName currentBuffer of
-                Just name -> do
-                              status <- liftIO $ Print.print name
-                              case status of
-                                Left error -> liftIO $ showDialog (show error) MessageError
-                                Right _ -> liftIO $ showDialog "Print job has been sent successfully" MessageInfo
-                              return ()
-                Nothing   -> return ()
+            --real code
+            modified <- getModified ebuf
+            cancel <- reifyIDE $ \ideR ->  do
+                if modified
+                    then do
+                        md <- messageDialogNew (Just window) []
+                                                    MessageQuestion
+                                                    ButtonsNone
+                                                    ("Save changes to document: "
+                                                        ++ pName
+                                                        ++ "?")
+                        dialogAddButton md "_Save" ResponseYes
+                        dialogAddButton md "_Don't Save" ResponseNo
+                        dialogAddButton md "_Cancel Printing" ResponseCancel
+                        set md [ windowWindowPosition := WinPosCenterOnParent ]
+                        resp <- dialogRun md
+                        widgetDestroy md
+                        case resp of
+                            ResponseYes ->   do
+                                reflectIDE (fileSave False) ideR
+                                return False
+                            ResponseCancel  ->   return True
+                            ResponseNo      ->   return False
+                            _               ->   return False
+                    else
+                        return False
+            if cancel
+                then return ()
+                else do
+                    case fileName currentBuffer of
+                        Just name -> do
+                                      status <- liftIO $ Print.print name
+                                      case status of
+                                        Left error -> liftIO $ showDialog (show error) MessageError
+                                        Right _ -> liftIO $ showDialog "Print job has been sent successfully" MessageInfo
+                                      return ()
+                        Nothing   -> return ()
 
 editUndo :: IDEAction
 editUndo = inActiveBufContext () $ \_ buf _ _ -> do
