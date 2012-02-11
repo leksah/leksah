@@ -171,6 +171,7 @@
        <toolitem name="Forward" action="ViewHistoryForth"/>
        <separator/>
        <toolitem name="BackgroundBuild" action="BackgroundBuildToggled"/>
+       <toolitem name="RunUnitTests" action="RunUnitTestsToggled"/>
        <toolitem name="MakeMode" action="MakeModeToggled"/>
        <separator/>
        <toolitem name="Update Project" action="UpdateMetadataCurrent" />

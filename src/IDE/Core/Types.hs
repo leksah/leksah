@@ -420,6 +420,7 @@ data Prefs = Prefs {
     ,   saveAllBeforeBuild  ::   Bool
     ,   jumpToWarnings      ::   Bool
     ,   backgroundBuild     ::   Bool
+    ,   runUnitTests        ::   Bool
     ,   makeMode            ::   Bool
     ,   singleBuildWithoutLinking :: Bool
     ,   dontInstallLast     ::   Bool

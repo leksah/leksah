@@ -416,6 +416,8 @@ mkActions =
 
     ,AD "BackgroundBuildToggled" "_BackgroundBuild" (Just "Build in the background and report errors") (Just "ide_build")
         backgroundBuildToggled [] True
+    ,AD "RunUnitTestsToggled" "_RunUnitTests" (Just "Run unit tests when building") (Just "gtk-apply")
+        runUnitTestsToggled [] True
     ,AD "MakeModeToggled" "_MakeMode" (Just "Make dependent packages") (Just "ide_make")
         makeModeToggled [] True
     ,AD "DebugToggled" "_Debug" (Just "Use GHCi debugger to build and run") (Just "ide_debug")
@@ -706,6 +708,7 @@ instrumentWindow win prefs topWidget = do
         reflectIDE (do
             setCandyState (fst (sourceCandy prefs))
             setBackgroundBuildToggled (backgroundBuild prefs)
+            setRunUnitTests (runUnitTests prefs)
             setMakeModeToggled (makeMode prefs)) ideR
 
 instrumentSecWindow :: Window -> IDEAction

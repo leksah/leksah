@@ -277,7 +277,7 @@ packageNew' mbDir activateAction = do
                               , testSuites = [emptyTestSuite {
                                     testName = "test-" ++ takeBaseName dirName
                                   , testInterface = (TestSuiteExeV10 (Version [1,0] []) "Test.hs")
-                                  , testBuildInfo = emptyBuildInfo {hsSourceDirs = ["tests"]}}]
+                                  , testBuildInfo = emptyBuildInfo {hsSourceDirs = ["src"]}}]
 #endif
                             } dirName modules (activateAction True)
                     return ()

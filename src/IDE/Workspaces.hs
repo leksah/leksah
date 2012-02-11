@@ -534,8 +534,10 @@ workspaceMake = do
         return ((defaultMakeSettings prefs'){
                     msMakeMode           = True,
                     msBackgroundBuild    = False})
-    makePackages settings (wsPackages ws) (MoComposed [MoConfigure,MoBuild,MoTest,MoCopy,MoRegister])
-        (MoComposed [MoConfigure,MoBuild,MoTest,MoCopy,MoRegister]) MoMetaInfo
+    let steps = if msRunUnitTests settings
+                    then [MoConfigure,MoBuild,MoTest,MoCopy,MoRegister]
+                    else [MoConfigure,MoBuild,MoCopy,MoRegister]
+    makePackages settings (wsPackages ws) (MoComposed steps) (MoComposed steps) MoMetaInfo
 
 backgroundMake :: IDEAction
 backgroundMake = catchIDE (do
@@ -554,9 +556,13 @@ backgroundMake = catchIDE (do
                 if msSingleBuildWithoutLinking settings &&  not (msMakeMode settings)
                     then workspaceTryQuiet_ $
                         makePackages settings modifiedPacks MoBuild (MoComposed []) moNoOp
-                    else workspaceTryQuiet_ $
-                        makePackages settings modifiedPacks (MoComposed [MoBuild,MoTest,MoCopy,MoRegister])
-                                        (MoComposed [MoConfigure,MoBuild,MoTest,MoCopy,MoRegister]) MoMetaInfo
+                    else do
+                        let steps = if msRunUnitTests settings
+                                        then [MoBuild,MoTest,MoCopy,MoRegister]
+                                        else [MoBuild,MoCopy,MoRegister]
+                        workspaceTryQuiet_ $
+                            makePackages settings modifiedPacks (MoComposed steps)
+                                        (MoComposed (MoConfigure:steps)) MoMetaInfo
     )
     (\(e :: SomeException) -> sysMessage Normal (show e))
 
@@ -574,9 +580,13 @@ makePackage = do
             if msSingleBuildWithoutLinking settings &&  not (msMakeMode settings)
                 then runWorkspace
                         (makePackages settings [p] MoBuild (MoComposed []) moNoOp) ws
-                else runWorkspace
+                else do
+                    let steps = if msRunUnitTests settings
+                                    then [MoBuild,MoTest,MoCopy,MoRegister]
+                                    else [MoBuild,MoCopy,MoRegister]
+                    runWorkspace
                         (makePackages settings [p]
-                        (MoComposed [MoBuild,MoTest,MoCopy,MoRegister])
-                        (MoComposed [MoConfigure,MoBuild,MoTest,MoCopy,MoRegister])
+                        (MoComposed steps)
+                        (MoComposed (MoConfigure:steps))
                         MoMetaInfo) ws
 

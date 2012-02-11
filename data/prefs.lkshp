@@ -64,6 +64,8 @@ Automatically save all files before building:
                True
 Background build:
                True
+Run unit tests when building:
+               False
 Make mode:
                True
 Single build without linking:

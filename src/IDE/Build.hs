@@ -54,6 +54,7 @@ data MakeSettings = MakeSettings {
     msSingleBuildWithoutLinking      :: Bool,
     msSaveAllBeforeBuild             :: Bool,
     msBackgroundBuild                :: Bool,
+    msRunUnitTests                   :: Bool,
     msJumpToWarnings                 :: Bool,
     msDontInstallLast                :: Bool}
 
@@ -64,6 +65,7 @@ defaultMakeSettings prefs = MakeSettings  {
     msSingleBuildWithoutLinking      = singleBuildWithoutLinking prefs,
     msSaveAllBeforeBuild             = saveAllBeforeBuild prefs,
     msBackgroundBuild                = backgroundBuild prefs,
+    msRunUnitTests                   = runUnitTests prefs,
     msJumpToWarnings                 = jumpToWarnings prefs,
     msDontInstallLast                = dontInstallLast prefs}
 

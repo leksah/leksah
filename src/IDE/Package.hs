@@ -44,6 +44,7 @@ module IDE.Package (
 ,   delModuleFromPackageDescr
 
 ,   backgroundBuildToggled
+,   runUnitTestsToggled
 ,   makeModeToggled
 
 ,   debugStart
@@ -642,6 +643,11 @@ backgroundBuildToggled :: IDEAction
 backgroundBuildToggled = do
     toggled <- getBackgroundBuildToggled
     modifyIDE_ (\ide -> ide{prefs = (prefs ide){backgroundBuild= toggled}})
+
+runUnitTestsToggled :: IDEAction
+runUnitTestsToggled = do
+    toggled <- getRunUnitTests
+    modifyIDE_ (\ide -> ide{prefs = (prefs ide){runUnitTests= toggled}})
 
 makeModeToggled :: IDEAction
 makeModeToggled = do

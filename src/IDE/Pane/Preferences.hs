@@ -611,6 +611,14 @@ prefsDescription configDir packages = NFDPP [
             boolEditor
             (\i -> return ())
          , mkFieldPP
+            (paraName <<<- ParaName "Run unit tests when building" $ emptyParams)
+            (PP.text . show)
+            boolParser
+            runUnitTests
+            (\b a -> a{runUnitTests = b})
+            boolEditor
+            (\i -> return ())
+         , mkFieldPP
             (paraName <<<- ParaName "Make mode" $ emptyParams)
             (PP.text . show)
             boolParser
@@ -752,6 +760,7 @@ defaultPrefs = Prefs {
     ,   saveAllBeforeBuild  =   True
     ,   jumpToWarnings      =   True
     ,   backgroundBuild     =   True
+    ,   runUnitTests        =   False
     ,   makeMode            =   True
     ,   singleBuildWithoutLinking  = False
     ,   dontInstallLast     =   False

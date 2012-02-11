@@ -23,6 +23,8 @@ module IDE.Utils.GUIUtils (
 
 ,   getBackgroundBuildToggled
 ,   setBackgroundBuildToggled
+,   getRunUnitTests
+,   setRunUnitTests
 ,   getMakeModeToggled
 ,   setMakeModeToggled
 ,   getDebugToggled
@@ -174,6 +176,16 @@ getBackgroundBuildToggled = do
 setBackgroundBuildToggled :: PaneMonad alpha => Bool -> alpha ()
 setBackgroundBuildToggled b = do
     ui <- getUIAction "ui/toolbar/BuildToolItems/BackgroundBuild" castToToggleAction
+    liftIO $ toggleActionSetActive ui b
+
+getRunUnitTests :: PaneMonad alpha => alpha  (Bool)
+getRunUnitTests = do
+    ui <- getUIAction "ui/toolbar/BuildToolItems/RunUnitTests" castToToggleAction
+    liftIO $ toggleActionGetActive ui
+
+setRunUnitTests :: PaneMonad alpha => Bool -> alpha ()
+setRunUnitTests b = do
+    ui <- getUIAction "ui/toolbar/BuildToolItems/RunUnitTests" castToToggleAction
     liftIO $ toggleActionSetActive ui b
 
 getMakeModeToggled :: PaneMonad alpha => alpha  (Bool)
