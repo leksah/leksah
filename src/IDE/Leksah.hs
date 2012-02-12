@@ -68,7 +68,9 @@ import IDE.System.Process(waitForProcess)
 import System.Process(waitForProcess)
 #endif
 import System.Log
-import System.Log.Logger(updateGlobalLogger,rootLoggerName,setLevel)
+import System.Log.Logger
+       (getLevel, getRootLogger, warningM, updateGlobalLogger,
+        rootLoggerName, setLevel)
 import Data.List (stripPrefix)
 import System.Directory (doesFileExist)
 import System.FilePath (dropExtension, splitExtension, (</>))
@@ -439,7 +441,11 @@ firstBuild newPrefs = do
     progressBarSetFraction progressBar 0.0
     boxPackStart vb progressBar PackGrow 7
     forkIO $ do
-            (output, pid) <- runTool "leksah-server" ["-sbo"] Nothing
+            logger <- getRootLogger
+            let verbosity = case getLevel logger of
+                                Just level -> ["--verbosity=" ++ show level]
+                                Nothing    -> []
+            (output, pid) <- runTool "leksah-server" ("-sbo":verbosity) Nothing
             E.run_ $ output $$ EL.mapM_ (update progressBar)
             waitForProcess pid
             postGUIAsync (dialogResponse dialog ResponseOk)
@@ -450,12 +456,10 @@ firstBuild newPrefs = do
     return ()
     where
         update pb to = do
-                when (isJust prog) $ postGUIAsync (progressBarSetFraction pb (fromJust prog))
-            where
-            str = toolline to
-            prog = case stripPrefix "update_toolbar " str of
-                        Just rest -> Just (read rest)
-                        Nothing   -> Nothing
+            let str = toolline to
+            case stripPrefix "update_toolbar " str of
+                Just rest -> postGUIAsync $ progressBarSetFraction pb (read rest)
+                Nothing   -> liftIO $ warningM "leksah" str
 
 
 

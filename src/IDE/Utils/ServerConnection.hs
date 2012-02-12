@@ -33,6 +33,7 @@ import Control.Concurrent(forkIO)
 import Graphics.UI.Gtk(postGUIAsync)
 import Control.Event(triggerEvent)
 import Control.Monad.IO.Class (MonadIO(..))
+import System.Log.Logger (getLevel, getRootLogger)
 
 doServerCommand :: ServerCommand -> (ServerAnswer -> IDEM alpha) -> IDEAction
 doServerCommand command cont = do
@@ -73,7 +74,12 @@ doServerCommand command cont = do
 
 startServer :: Int -> IO ()
 startServer port = do
-    runProcess "leksah-server" ["--server=" ++ show port, "+RTS", "-N2", "-RTS"]
+    logger <- getRootLogger
+    let verbosity = case getLevel logger of
+                        Just level -> ["--verbosity=" ++ show level]
+                        Nothing    -> []
+    runProcess "leksah-server"
+        (["--server=" ++ show port, "+RTS", "-N2", "-RTS"] ++ verbosity)
         Nothing Nothing Nothing Nothing Nothing
     return ()
 
