@@ -445,7 +445,7 @@ firstBuild newPrefs = do
             let verbosity = case getLevel logger of
                                 Just level -> ["--verbosity=" ++ show level]
                                 Nothing    -> []
-            (output, pid) <- runTool "leksah-server" ("-sbo":verbosity) Nothing
+            (output, pid) <- runTool "leksah-server" (["-sbo", "+RTS", "-N2", "-RTS"] ++ verbosity) Nothing
             E.run_ $ output $$ EL.mapM_ (update progressBar)
             waitForProcess pid
             postGUIAsync (dialogResponse dialog ResponseOk)
