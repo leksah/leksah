@@ -40,11 +40,7 @@ module IDE.Utils.GUIUtils (
 ) where
 
 import Graphics.UI.Gtk
-#ifdef MIN_VERSION_process_leksah
-import IDE.System.Process
-#else
-import System.Process
-#endif
+import IDE.Utils.Tool (runProcess)
 import Data.Maybe (fromJust, isJust)
 import Control.Monad
 import IDE.Core.State

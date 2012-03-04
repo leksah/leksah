@@ -276,7 +276,7 @@ updatePackageInfo rebuild idePack continuation =
                         [] -> modPairsMb
                         hd:_ -> hd : modPairsMb
     let (modWith,modWithout) = partition (\(x,y) -> isJust y) modPairsMb'
-    let modWithSources       = map (\(f,Just s) -> (f,s)) modWith
+    let modWithSources       = map (\(f,s) -> (f,fromJust s)) modWith
     let modWithoutSources    = map fst $ modWithout
     -- Now see which modules have to be truely updated
     modToUpdate <- if rebuild

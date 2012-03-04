@@ -39,11 +39,7 @@ import Control.Exception hiding (try)
 import IDE.ImportTool
        (addPackage, parseHiddenModule, addImport, parseNotInScope,
         resolveErrors)
-#ifdef MIN_VERSION_process_leksah
-import IDE.System.Process (runInteractiveProcess, ProcessHandle)
-#else
-import System.Process (runInteractiveProcess, ProcessHandle)
-#endif
+import IDE.Utils.Tool (runInteractiveProcess, ProcessHandle)
 import Graphics.UI.Gtk
        (textBufferSetText, textViewScrollToMark,
         textBufferGetIterAtLineOffset, textViewScrollMarkOnscreen,

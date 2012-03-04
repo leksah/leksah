@@ -53,7 +53,7 @@ import Distribution.PackageDescription.Parse
 import Distribution.Verbosity (normal)
 import IDE.Pane.PackageEditor (hasConfigs)
 import Distribution.Package
-import Distribution.Version (VersionRange(..))
+import Distribution.Version (anyVersion)
 import Distribution.PackageDescription
        (CondTree(..), condExecutables, condLibrary, packageDescription,
         buildDepends)
@@ -160,15 +160,15 @@ addPackage error = do
                     let flat = flattenPackageDescription gpd
                     liftIO $ writePackageDescription (ipdCabalFile $ idePackage)
                         flat { buildDepends =
-                            Dependency (pkgName pack) AnyVersion : buildDepends flat}
+                            Dependency (pkgName pack) anyVersion : buildDepends flat}
                     return True
 #endif
   where
     addDepToLib n Nothing = Nothing
     addDepToLib n (Just cn@CondNode{condTreeConstraints = deps}) =
-        Just (cn{condTreeConstraints = (Dependency n AnyVersion) : deps})
+        Just (cn{condTreeConstraints = (Dependency n anyVersion) : deps})
     addDepToExe n (str,cn@CondNode{condTreeConstraints = deps}) =
-        (str,cn{condTreeConstraints = (Dependency n AnyVersion) : deps})
+        (str,cn{condTreeConstraints = (Dependency n anyVersion) : deps})
 
 getScopeForActiveBuffer :: IDEM (Maybe (GenScope, GenScope))
 getScopeForActiveBuffer = do

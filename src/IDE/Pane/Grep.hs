@@ -30,7 +30,7 @@ import Data.Maybe
 import Data.Typeable
 import IDE.Core.State
 import IDE.BufferMode
-import IDE.Utils.Tool (runTool, ToolOutput(..))
+import IDE.Utils.Tool (runTool, ToolOutput(..), getProcessExitCode, interruptProcessGroupOf)
 import Control.Concurrent
        (forkOS, newEmptyMVar, isEmptyMVar, takeMVar, putMVar, MVar,
         forkIO)
@@ -43,11 +43,6 @@ import System.FilePath ((</>), dropFileName)
 import System.Exit (ExitCode(..))
 import IDE.Pane.Log (getLog)
 import Control.DeepSeq
-#ifdef MIN_VERSION_process_leksah
-import IDE.System.Process (getProcessExitCode, interruptProcessGroup)
-#else
-import System.Process (getProcessExitCode, interruptProcessGroupOf)
-#endif
 import qualified Data.Enumerator as E
        (Step(..), run_, Iteratee(..), run)
 import qualified Data.Enumerator.List as EL
@@ -266,11 +261,7 @@ grepDirectories regexString caseSensitive dirs = do
                                 step <- EL.isolate (toInteger max) $$ setGrepResults dir
                                 case step of
                                     E.Continue _ -> do
-#ifdef MIN_VERSION_process_leksah
-                                        liftIO $ interruptProcessGroup pid
-#else
                                         liftIO $ interruptProcessGroupOf pid
-#endif
                                         liftIO $ postGUISync $ do
                                             nDir <- treeModelIterNChildren store Nothing
                                             liftIO $ treeStoreChange store [nDir-1] (\r -> r{ context = "(Stoped Searching)" })

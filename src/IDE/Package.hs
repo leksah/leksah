@@ -96,12 +96,7 @@ import qualified Data.Set as  Set (fromList)
 import qualified Data.Map as  Map (empty, fromList)
 import System.Exit (ExitCode(..))
 import Control.Applicative ((<$>))
-#ifdef MIN_VERSION_process_leksah
-import IDE.System.Process (getProcessExitCode, interruptProcessGroup)
-#else
-import System.Process (getProcessExitCode, interruptProcessGroupOf)
-#endif
-import IDE.Utils.Tool (executeGhciCommand)
+import IDE.Utils.Tool (executeGhciCommand, getProcessExitCode, interruptProcessGroupOf)
 import qualified Data.Enumerator as E (run_, Iteratee(..), last)
 import qualified Data.Enumerator.List as EL (foldM, zip3, zip)
 import Data.Enumerator (($$))
@@ -436,11 +431,7 @@ interruptBuild :: IDEAction
 interruptBuild = do
     maybeProcess <- readIDE runningTool
     liftIO $ case maybeProcess of
-#ifdef MIN_VERSION_process_leksah
-        Just h -> interruptProcessGroup h
-#else
         Just h -> interruptProcessGroupOf h
-#endif
         _ -> return ()
 
 -- ---------------------------------------------------------------------

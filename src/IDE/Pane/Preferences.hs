@@ -130,11 +130,11 @@ instance RecoverablePane IDEPrefs PrefsState IDEM where
                     Nothing -> return ()
                     Just newPrefs -> do
                         lastAppliedPrefs    <- readIORef lastAppliedPrefsRef
-                        mapM_ (\ (FDPP _ _ _ _ applyF) -> reflectIDE (applyF newPrefs lastAppliedPrefs) ideR ) flatPrefsDesc
+                        mapM_ (\f -> reflectIDE (applicator f newPrefs lastAppliedPrefs) ideR) flatPrefsDesc
                         writeIORef lastAppliedPrefsRef newPrefs)
             restore `onClicked` (do
                 lastAppliedPrefs <- readIORef lastAppliedPrefsRef
-                mapM_ (\ (FDPP _ _ _ _ applyF) -> reflectIDE (applyF prefs lastAppliedPrefs) ideR ) flatPrefsDesc
+                mapM_ (\f -> reflectIDE (applicator f prefs lastAppliedPrefs) ideR) flatPrefsDesc
                 injb prefs
                 writeIORef lastAppliedPrefsRef prefs
                 markLabel nb (getTopWidget prefsPane) False
@@ -146,7 +146,7 @@ instance RecoverablePane IDEPrefs PrefsState IDEM where
                 case mbNewPrefs of
                     Nothing -> return ()
                     Just newPrefs -> do
-                        mapM_ (\ (FDPP _ _ _ _ applyF) -> reflectIDE (applyF newPrefs lastAppliedPrefs) ideR ) flatPrefsDesc
+                        mapM_ (\f -> reflectIDE (applicator f newPrefs lastAppliedPrefs) ideR ) flatPrefsDesc
                         fp   <- getConfigFilePathForSave standardPreferencesFilename
                         writePrefs fp newPrefs
                         fp2  <-  getConfigFilePathForSave strippedPreferencesFilename

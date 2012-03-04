@@ -61,15 +61,10 @@ import Network (withSocketsDo)
 import Control.Exception
 import System.Exit(exitFailure)
 import qualified IDE.StrippedPrefs as SP
-import IDE.Utils.Tool (runTool,toolline)
-#ifdef MIN_VERSION_process_leksah
-import IDE.System.Process(waitForProcess)
-#else
-import System.Process(waitForProcess)
-#endif
+import IDE.Utils.Tool (runTool, toolline, waitForProcess)
 import System.Log
 import System.Log.Logger
-       (getLevel, getRootLogger, warningM, updateGlobalLogger,
+       (getLevel, getRootLogger, debugM, updateGlobalLogger,
         rootLoggerName, setLevel)
 import Data.List (stripPrefix)
 import System.Directory (doesFileExist)
@@ -77,7 +72,7 @@ import System.FilePath (dropExtension, splitExtension, (</>))
 import qualified Data.Enumerator as E
 import qualified Data.Enumerator.List as EL
 import Data.Enumerator (($$))
-import Control.Monad (when, liftM)
+import Control.Monad (when, unless, liftM)
 import Control.Monad.IO.Class (MonadIO(..))
 
 -- --------------------------------------------------------------------
@@ -143,9 +138,9 @@ realMain yiConfig = do
 
     (o,files)       <-  ideOpts args
     isFirstStart    <-  liftM not $ hasSavedConfigFile standardPreferencesFilename
-    let sessions        =   filter (\x -> case x of
-                                        SessionN _ -> True
-                                        _         -> False) o
+    let sessions      =   catMaybes $ map (\x -> case x of
+                                        SessionN s -> Just s
+                                        _          -> Nothing) o
 
     let sessionFPs    =   filter (\f -> snd (splitExtension f) == leksahSessionFileExtension) files
     let workspaceFPs  =   filter (\f -> snd (splitExtension f) == leksahWorkspaceFileExtension) files
@@ -163,10 +158,9 @@ realMain yiConfig = do
                             if exists
                                 then return (Just spath,Nothing)
                                 else return (Nothing,Just fp)
-    let ssession =  if not (null sessions)
-                                then  (head $ map (\ (SessionN x) -> x) sessions) ++
-                                            leksahSessionFileExtension
-                                else  if null sourceFPs
+    let ssession =  case sessions of
+                        (s:_) -> s ++ leksahSessionFileExtension
+                        _     -> if null sourceFPs
                                         then standardSessionFilename
                                         else emptySessionFilename
 
@@ -434,7 +428,8 @@ firstBuild newPrefs = do
     setLeksahIcon dialog
     set dialog [
         windowTitle := "Leksah: Updating Metadata",
-        windowWindowPosition := WinPosCenter]
+        windowWindowPosition := WinPosCenter,
+        windowDeletable := False]
     vb          <- dialogGetUpper dialog
     progressBar <- progressBarNew
     progressBarSetText progressBar "Please wait while Leksah collects information about Haskell packages on your system"
@@ -459,7 +454,7 @@ firstBuild newPrefs = do
             let str = toolline to
             case stripPrefix "update_toolbar " str of
                 Just rest -> postGUIAsync $ progressBarSetFraction pb (read rest)
-                Nothing   -> liftIO $ warningM "leksah" str
+                Nothing   -> liftIO $ debugM "leksah" str
 
 
 

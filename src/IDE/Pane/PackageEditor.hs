@@ -680,7 +680,7 @@ packageDD packages fp modules numBuildInfos extras = NFD ([
                     $ paraDirection <<<- ParaDirection Vertical
                         $ emptyParams)
             (\a -> case (testedWith . pd) a of
-                []          -> []--(GHC,AnyVersion)]
+                []          -> []--(GHC,anyVersion)]
                 l           -> l)
             (\ a b -> b{pd = (pd b){testedWith = a}})
             testedWithEditor
