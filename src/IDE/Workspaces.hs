@@ -300,13 +300,10 @@ constructAndOpenMainModule (Just idePackage) =
                     path:_ -> do
                         liftIO $ createDirectoryIfMissing True path
                         alreadyExists <- liftIO $ doesFileExist (path </> target)
-                        if alreadyExists
-                            then do
-                                fileOpenThis (path </> target)
-                            else do
-                                template <- liftIO $ getModuleTemplate "main" pd "Main" "" ""
-                                liftIO $ UTF8.writeFile (path </> target) template
-                                fileOpenThis (path </> target)
+                        unless alreadyExists $ do
+                            template <- liftIO $ getModuleTemplate "main" pd "Main" "" ""
+                            liftIO $ UTF8.writeFile (path </> target) template
+                            fileOpenThis (path </> target)
                     _ -> return ()
             Nothing     -> ideMessage Normal "No package description"
 
