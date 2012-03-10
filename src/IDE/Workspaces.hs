@@ -302,14 +302,9 @@ constructAndOpenMainModule (Just idePackage) =
                         alreadyExists <- liftIO $ doesFileExist (path </> target)
                         if alreadyExists
                             then do
-                                ideMessage Normal "Main file already exists"
                                 fileOpenThis (path </> target)
                             else do
-                                template <- liftIO $ getModuleTemplate pd "Main"
-                                    "    main"
-                                    (if isTest
-                                        then "main = putStrLn \"Put your test code here\""
-                                        else "main = putStrLn \"Hello World!\"")
+                                template <- liftIO $ getModuleTemplate "main" pd "Main" "" ""
                                 liftIO $ UTF8.writeFile (path </> target) template
                                 fileOpenThis (path </> target)
                     _ -> return ()

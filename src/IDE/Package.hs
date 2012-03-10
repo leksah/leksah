@@ -455,12 +455,12 @@ getPackageDescriptionAndPath = do
                         return Nothing))
 
 getEmptyModuleTemplate :: PackageDescription -> String -> IO String
-getEmptyModuleTemplate pd modName = getModuleTemplate pd modName "" ""
+getEmptyModuleTemplate pd modName = getModuleTemplate "module" pd modName "" ""
 
-getModuleTemplate :: PackageDescription -> String -> String -> String -> IO String
-getModuleTemplate pd modName exports body = catch (do
+getModuleTemplate :: String -> PackageDescription -> String -> String -> String -> IO String
+getModuleTemplate template pd modName exports body = catch (do
     dataDir  <- getDataDir
-    filePath <- getConfigFilePathForLoad standardModuleTemplateFilename Nothing dataDir
+    filePath <- getConfigFilePathForLoad (template ++ leksahTemplateFileExtension) Nothing dataDir
     template <- UTF8.readFile filePath
     return (foldl' (\ a (from, to) -> replace from to a) template
         [   ("@License@"      , (show . license) pd)

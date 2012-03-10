@@ -268,16 +268,21 @@ packageNew' mbDir activateAction = do
 #if MIN_VERSION_Cabal(1,10,0)
                             specVersionRaw = Right (orLaterVersion (Version [1,2] [])),
 #endif
-                            buildDepends = [Dependency (PackageName "base") anyVersion],
+                            buildDepends = [
+                                Dependency (PackageName "base") anyVersion
+                              , Dependency (PackageName "QuickCheck") anyVersion],
                             executables = [emptyExecutable {
                                 exeName    = (takeBaseName dirName)
                               , modulePath = "Main.hs"
-                              , buildInfo  = emptyBuildInfo {hsSourceDirs = ["src"]}}]
+                              , buildInfo  = emptyBuildInfo {
+                                    hsSourceDirs = ["src"]}}]
 #if MIN_VERSION_Cabal(1,10,0)
                               , testSuites = [emptyTestSuite {
                                     testName = "test-" ++ takeBaseName dirName
-                                  , testInterface = (TestSuiteExeV10 (Version [1,0] []) "Test.hs")
-                                  , testBuildInfo = emptyBuildInfo {hsSourceDirs = ["src"]}}]
+                                  , testInterface = (TestSuiteExeV10 (Version [1,0] []) "Main.hs")
+                                  , testBuildInfo = emptyBuildInfo {
+                                        hsSourceDirs = ["src"]
+                                      , cppOptions = ["-DMAIN_FUNCTION=testMain"]}}]
 #endif
                             } dirName modules (activateAction True)
                     return ()
@@ -955,7 +960,14 @@ buildInfoD fp modules i = [
             (filesEditor fp FileChooserActionSelectFolder "Select Folder")
    ]),
     (show (i + 1) ++ " Other", VFD emptyParams [
-        mkField
+         mkField
+            (paraName <<<- ParaName "Options for C preprocessor"
+                $ paraDirection <<<- ParaDirection Vertical
+                    $ emptyParams)
+            (cppOptions . (\a -> a !! i) . bis)
+            (\ a b -> b{bis = update (bis b) i (\bi -> bi{cppOptions = a})})
+            optsEditor
+    ,   mkField
             (paraName <<<- ParaName "Support frameworks for Mac OS X"
                 $ paraDirection <<<- ParaDirection Vertical $ emptyParams)
             (frameworks . (\a -> a !! i) . bis)
