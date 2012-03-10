@@ -112,8 +112,8 @@ library
                        time >=0.1 && <1.5, ltk >= 0.12 && <0.13, binary-shared >= 0.8 && <0.9, deepseq >= 1.1.0.0 && <1.4,
                        hslogger >= 1.0.7 && <1.2, leksah-server >=0.12.0.3 && <0.13, network >= 2.2 && <3.0,
                        ghc >=6.10.1 && <7.5, strict >= 0.3.2 && <0.4, enumerator >=0.4.14 && <0.5, text >= 0.11.1.5 && < 0.12,
-                       gio >=0.12.2 && < 0.13, transformers >=0.2.2.0 && <0.3,
-                       QuickCheck >=2.4.2 && QuickCheck <2.5
+                       gio >=0.12.2 && <0.13, transformers >=0.2.2.0 && <0.3,
+                       QuickCheck >=2.4.2 && <2.5
 
     exposed-modules:
         IDE.Leksah IDE.Completion IDE.ImportTool
@@ -180,7 +180,8 @@ Executable leksah
                        time >=0.1 && <1.5, ltk >=0.12 && <0.13, binary-shared >= 0.8 && <0.9, deepseq >= 1.1.0.0 && <1.4,
                        hslogger >= 1.0.7 && <1.2, leksah-server >=0.12.0.3 && <0.13, network >= 2.2 && <3.0,
                        ghc >=6.10.1 && <7.5, strict >= 0.3.2 && <0.4, enumerator >=0.4.14 && <0.5, text >= 0.11.1.5 && < 0.12,
-                       gio >= 0.12.2 && < 0.13, transformers >=0.2.2.0 && <0.3
+                       gio >=0.12.2 && <0.13, transformers >=0.2.2.0 && <0.3,
+                       QuickCheck >=2.4.2 && <2.5
     else
         hs-source-dirs: main
         build-depends: leksah ==0.12.0.3, base >=4.0.0.0 && <= 5
