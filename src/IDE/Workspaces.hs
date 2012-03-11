@@ -27,6 +27,8 @@ module IDE.Workspaces (
 ,   workspaceAddPackage'
 ,   workspaceRemovePackage
 ,   workspacePackageNew
+,   workspaceTryQuiet
+,   workspaceNewHere
 ,   packageTry
 ,   packageTry_
 ,   packageTryQuiet

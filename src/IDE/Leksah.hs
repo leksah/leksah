@@ -55,7 +55,9 @@ import Graphics.UI.Editor.Composite (filesEditor, maybeEditor)
 import Graphics.UI.Editor.Simple
        (enumEditor, stringEditor)
 import IDE.Metainfo.Provider (initInfo)
-import IDE.Workspaces (workspaceOpenThis, backgroundMake)
+import IDE.Workspaces
+       (workspaceAddPackage', workspaceTryQuiet, workspaceNewHere,
+        workspaceOpenThis, backgroundMake)
 import IDE.Utils.GUIUtils
 import Network (withSocketsDo)
 import Control.Exception
@@ -67,13 +69,16 @@ import System.Log.Logger
        (getLevel, getRootLogger, debugM, updateGlobalLogger,
         rootLoggerName, setLevel)
 import Data.List (stripPrefix)
-import System.Directory (doesFileExist)
+import System.Directory
+       (doesDirectoryExist, copyFile, createDirectoryIfMissing,
+        getHomeDirectory, doesFileExist)
 import System.FilePath (dropExtension, splitExtension, (</>))
 import qualified Data.Enumerator as E
 import qualified Data.Enumerator.List as EL
 import Data.Enumerator (($$))
 import Control.Monad (when, unless, liftM)
 import Control.Monad.IO.Class (MonadIO(..))
+import Control.Applicative ((<$>))
 
 -- --------------------------------------------------------------------
 -- Command line options
@@ -323,9 +328,25 @@ startMainWindow yiControl sessionFP mbWorkspaceFP sourceFPs startupPrefs isFirst
 
     OSX.applicationReady osxApp
 
-    when isFirstStart $ do
-        welcomePath <- getConfigFilePathForLoad "welcome.txt" Nothing dataDir
-        reflectIDE (fileOpenThis welcomePath) ideR
+    configDir <- getConfigDir
+    let welcomePath  = configDir</>"leksah-welcome"
+    welcomeExists <- doesDirectoryExist welcomePath
+    unless welcomeExists $ do
+        let welcomeSource = dataDir</>"data"</>"leksah-welcome"
+            welcomeCabal = welcomePath</>"leksah-welcome.cabal"
+            welcomeMain  = welcomePath</>"src"</>"Main.hs"
+        createDirectoryIfMissing True $ welcomePath</>"src"
+        copyFile (welcomeSource</>"Setup.lhs")            (welcomePath</>"Setup.lhs")
+        copyFile (welcomeSource</>"leksah-welcome.cabal") (welcomeCabal)
+        copyFile (welcomeSource</>"src"</>"Main.hs")      (welcomeMain)
+        defaultWorkspace <- liftIO $ (</> "leksah.lkshw") <$> getHomeDirectory
+        defaultExists <- liftIO $ doesFileExist defaultWorkspace
+        reflectIDE (do
+            if defaultExists
+                then workspaceOpenThis False (Just defaultWorkspace)
+                else workspaceNewHere defaultWorkspace
+            workspaceTryQuiet $ workspaceAddPackage' welcomeCabal
+            fileOpenThis welcomeMain) ideR
     reflectIDE (initInfo (modifyIDE_ (\ide -> ide{currentState = IsRunning}))) ideR
     timeoutAddFull (do
         reflectIDE (do
