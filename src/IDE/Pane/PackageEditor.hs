@@ -590,7 +590,7 @@ packageDD packages fp modules numBuildInfos extras = NFD ([
                         $ paraMinSize <<<- ParaMinSize (-1,210)
                             $ emptyParams)
             (description . pd)
-            (\ a b -> b{pd = (pd b){description = if null a then " \n\n\n\n\n" else a}})
+            (\ a b -> b{pd = (pd b){description = if null a then " " else a}})
             multilineStringEditor
     ,   mkField
             (paraName <<<- ParaName "Homepage" $ emptyParams)
@@ -1230,7 +1230,7 @@ instance Default Test'
 
 libraryEditor :: Maybe FilePath -> [ModuleName] -> Int -> Editor Library'
 libraryEditor fp modules numBuildInfos para noti = do
-    (wid,inj,ext) <-
+    (wid,inj,ext) <- 
         tupel3Editor
             (boolEditor,
             paraName <<<- ParaName "Exposed"

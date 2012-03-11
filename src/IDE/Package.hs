@@ -225,10 +225,11 @@ runCabalBuild backgroundBuild jumpToWarnings withoutLinking package shallConfigu
 isConfigError :: Monad m => E.Iteratee ToolOutput m Bool
 isConfigError = EL.foldM (\a b -> return $ a || isCErr b) False
     where
-    isCErr (ToolError str) = str1 `isInfixOf` str || str2 `isInfixOf` str
+    isCErr (ToolError str) = str1 `isInfixOf` str || str2 `isInfixOf` str || str3 `isInfixOf` str
     isCErr _ = False
     str1 = "Run the 'configure' command first"
     str2 = "please re-configure"
+    str3 = "cannot satisfy -package-id"
 
 buildPackage :: Bool -> Bool -> Bool -> IDEPackage -> (Bool -> IDEAction) -> IDEAction
 buildPackage backgroundBuild jumpToWarnings withoutLinking package continuation = catchIDE (do
