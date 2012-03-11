@@ -1,0 +1,26 @@
+name: leksah-welcome
+version: 0.12.0.3
+cabal-version: >=1.2
+build-type: Simple
+license: AllRightsReserved
+license-file: ""
+description:
+             .
+             .
+             .
+             .
+data-dir: ""
+
+executable leksah-welcome
+    build-depends: QuickCheck -any, base -any
+    main-is: Main.hs
+    buildable: True
+    hs-source-dirs: src
+
+test-suite test-leksah-welcome
+    build-depends: QuickCheck -any, base -any
+    type: exitcode-stdio-1.0
+    main-is: Main.hs
+    buildable: True
+    cpp-options: -DMAIN_FUNCTION=testMain
+    hs-source-dirs: src

@@ -29,6 +29,9 @@ data-files: LICENSE
             data/main.lksht
             data/module.lksht
             data/welcome.txt
+            data/leksah-welcome/Setup.lhs
+            data/leksah-welcome/leksah-welcome.cabal
+            data/leksah-welcome/src/Main.hs
 
             language-specs/haskell.lang
             language-specs/haskell-literate.lang
@@ -79,6 +82,10 @@ flag dyre
     Default: True
     Description: Experimental Yi support
 
+flag threaded
+    default: False
+    description: Build with support for multithreaded execution
+
 library
     if os(windows)
         build-depends: Win32 >=2.2.0.0 && <2.3
@@ -99,6 +106,9 @@ library
     if flag(yi) && flag(dyre)
         build-depends: dyre >= 0.8.3 && <0.9
         cpp-options: -DLEKSAH_WITH_YI_DYRE
+
+    if flag(threaded)
+        ghc-options: -threaded
 
     hs-source-dirs: src
     extensions: CPP
@@ -168,6 +178,9 @@ Executable leksah
 
     if impl(ghc < 7.0) && flag(yi) && flag(dyre)
         build-depends: dyre >= 0.8.3 && <0.9
+
+    if flag(threaded)
+        ghc-options: -threaded
 
     if impl(ghc < 7.0)
         hs-source-dirs: src, main
