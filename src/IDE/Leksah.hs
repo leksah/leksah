@@ -212,7 +212,7 @@ startGUI yiConfig sessionFP mbWorkspaceFP sourceFPs iprefs isFirstStart = do
     st          <-  unsafeInitGUIForThreadedRTS
     when rtsSupportsBoundThreads
         (sysMessage Normal "Linked with -threaded")
-    timeoutAddFull (yield >> return True) priorityDefaultIdle 100 -- maybe switch back to priorityHigh/???
+    timeoutAddFull (yield >> return True) priorityHigh 10
     mapM_ (sysMessage Normal) st
     initGtkRc
     dataDir       <- getDataDir
