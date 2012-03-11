@@ -271,7 +271,7 @@ goToSourceDefinition fp dscMbLocation = do
             iterTemp        <-  getIterAtLine ebuf (max 0 (min (lines-1)
                                     ((locationSLine location) -1)))
             chars           <-  getCharsInLine iterTemp
-            iter <- atLineOffset iterTemp (max 0 (min (chars-1) (locationSCol location)))
+            iter <- atLineOffset iterTemp (max 0 (min (chars-1) (locationSCol location -1)))
             iter2Temp       <-  getIterAtLine ebuf (max 0 (min (lines-1)
                                     ((locationELine location) -1)))
             chars2          <-  getCharsInLine iter2Temp
