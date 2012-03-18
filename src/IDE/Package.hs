@@ -302,6 +302,7 @@ packageInstallDependencies = do
     lift $ catchIDE (do
         let dir = dropFileName (ipdCabalFile package)
         runExternalTool "Installing" "cabal" (["install","--only-dependencies"]
+            ++ (ipdConfigFlags package)
             ++ (ipdInstallFlags package)) (Just dir) logOutput)
         (\(e :: SomeException) -> putStrLn (show e))
 
