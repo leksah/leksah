@@ -397,7 +397,6 @@ packageOpenDoc = do
         let path = dropFileName (ipdCabalFile package)
                         </> "dist/doc/html"
                         </> display (pkgName (ipdPackageId package))
-                        </> display (pkgName (ipdPackageId package))
                         </> "index.html"
             dir = dropFileName (ipdCabalFile package)
         runExternalTool "Opening Documentation" (browser prefs) [path] (Just dir) logOutput)
@@ -405,16 +404,16 @@ packageOpenDoc = do
 
 runExternalTool :: String -> FilePath -> [String] -> Maybe FilePath -> E.Iteratee ToolOutput IDEM () -> IDEAction
 runExternalTool description executable args mbDir handleOutput = do
-        prefs          <- readIDE prefs
-        alreadyRunning <- isRunning
-        unless alreadyRunning $ do
-            when (saveAllBeforeBuild prefs) (do fileSaveAll belongsToWorkspace; return ())
-            triggerEventIDE (StatusbarChanged [CompartmentState description, CompartmentBuild True])
-            reifyIDE $ \ideR -> forkIO $ do
-                (output, pid) <- runTool executable args mbDir
-                reflectIDE (modifyIDE_ (\ide -> ide{runningTool = Just pid})) ideR
-                E.run_ $ output $$ (reflectIDEI handleOutput ideR)
-            return ()
+    prefs          <- readIDE prefs
+    alreadyRunning <- isRunning
+    unless alreadyRunning $ do
+        when (saveAllBeforeBuild prefs) (do fileSaveAll belongsToWorkspace; return ())
+        triggerEventIDE (StatusbarChanged [CompartmentState description, CompartmentBuild True])
+        reifyIDE $ \ideR -> forkIO $ do
+            (output, pid) <- runTool executable args mbDir
+            reflectIDE (modifyIDE_ (\ide -> ide{runningTool = Just pid})) ideR
+            E.run_ $ output $$ (reflectIDEI handleOutput ideR)
+        return ()
 
 
 -- ---------------------------------------------------------------------

@@ -137,6 +137,7 @@ initFlipper direction = do
                     Nothing   -> return ()) ideR
             widgetHideAll window
             widgetDestroy window
+            reflectIDE (modifyIDE_ (\ide -> ide{currentState = IsRunning})) ideR
 
         treeSelection <- treeViewGetSelection tree
         _ <- treeSelection `on` treeSelectionSelectionChanged $ do
@@ -173,7 +174,6 @@ handleKeyRelease tree ideR = do
                     (treePath, _) <- treeViewGetCursor tree
                     Just column <- treeViewGetColumn tree 0
                     treeViewRowActivated tree treePath column
-                    reflectIDE (modifyIDE_ (\ide -> ide{currentState = IsRunning})) ideR
                     return False
                 _ -> return False
         _ -> return False

@@ -14,14 +14,14 @@ System Requirements
 ===================
 
 Leksah currently requires:
-    GHC version 6.10.x-6.12
-    gtk2hs 0.10.x-
-    other dependencies see cabal file
+    GHC
+    gtk2hs
+    For more details see the leksah.cabal file
 
 If you are a user or just test Leksah, we would appreciate to here from you.
 
 Please send questions and suggestions to the developers
-info(at)leksah(dot)org 
+info(at)leksah(dot)org
 
 
 
