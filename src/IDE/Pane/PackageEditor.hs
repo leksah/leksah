@@ -1,5 +1,5 @@
 {-# LANGUAGE FlexibleInstances, ScopedTypeVariables, DeriveDataTypeable,
-             MultiParamTypeClasses, TypeSynonymInstances #-}
+             CPP, MultiParamTypeClasses, TypeSynonymInstances #-}
 -----------------------------------------------------------------------------
 --
 -- Module      :  IDE.Pane.PackageEditor

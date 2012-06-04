@@ -1,0 +1,42 @@
+{-# LANGUAGE TemplateHaskell #-}
+-----------------------------------------------------------------------------
+--
+-- Module      :  Tests
+-- Copyright   :  (c) Juergen Nicklisch-Franken, Hamish Mackenzie
+-- License     :  GNU-GPL
+--
+-- Maintainer  :  <maintainer at leksah.org>
+-- Stability   :  provisional
+-- Portability :  portable
+--
+-- |
+--
+-------------------------------------------------------------------------------
+module Main (main) where
+
+import System.Exit (exitFailure)
+import Test.QuickCheck.All (quickCheckAll)
+import IDE.ImportTool (parseHiddenModule, HiddenModuleResult(..))
+import Control.Monad (unless)
+import Distribution.Package
+       (PackageName(..), PackageIdentifier(..))
+import Distribution.Version (Version(..))
+
+testString =    "    Could not find module `Graphics.UI.Gtk':\n"
+             ++ "      It is a member of the hidden package `gtk-0.11.0'.\n"
+             ++ "      Perhaps you need to add `gtk' to the build-depends in your .cabal file.\n"
+             ++ "      Use -v to see a list of the files searched for."
+
+prop_parseHiddenModule = parseHiddenModule testString == Just (HiddenModuleResult {hiddenModule = "Graphics.UI.Gtk", missingPackage = PackageIdentifier {pkgName = PackageName "gtk", pkgVersion = Version {versionBranch = [0,11,0], versionTags = []}}})
+
+-- At some point the : was removed from this message...
+testString2 =   "    Could not find module `Data.Attoparsec.Lazy'\n"
+             ++ "    It is a member of the hidden package `attoparsec-0.10.2.0'.\n"
+             ++ "    Perhaps you need to add `attoparsec' to the build-depends in your .cabal file.\n"
+             ++ "    Use -v to see a list of the files searched for.\n"
+
+prop_parseHiddenModule2 = parseHiddenModule testString2 == Just (HiddenModuleResult {hiddenModule = "Data.Attoparsec.Lazy", missingPackage = PackageIdentifier {pkgName = PackageName "attoparsec", pkgVersion = Version {versionBranch = [0,10,2,0], versionTags = []}}})
+
+main = do
+    allPass <- $quickCheckAll -- Run QuickCheck on all prop_ functions
+    unless allPass exitFailure

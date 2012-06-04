@@ -1,5 +1,7 @@
 #!/bin/sh
 
+cabal install gtk -fhave-quartz-gtk
+
 . scripts/stage.sh || exit
 
 sed -e 's|TextView Font: *\"Monospace 10\"|TextView Font: "Monospace 14"|' -e 's|Browser: *\"firefox\"|Browser:       \"open\"|' <data/prefs.lkshp >osx/prefs.lkshp

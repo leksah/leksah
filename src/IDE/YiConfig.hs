@@ -1,3 +1,4 @@
+{-# LANGUAGE CPP #-}
 {- Based on example config Yi/Users/Corey.hs that uses the Vim keymap with these additions:
     - Always uses the VTY UI by default.
     - The color style is darkBlueTheme

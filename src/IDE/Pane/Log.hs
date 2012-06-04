@@ -1,4 +1,4 @@
-{-# LANGUAGE FlexibleInstances, ScopedTypeVariables, DeriveDataTypeable,
+{-# LANGUAGE CPP, FlexibleInstances, ScopedTypeVariables, DeriveDataTypeable,
              MultiParamTypeClasses, TypeSynonymInstances, ParallelListComp #-}
 --
 -- Module      :  IDE.Pane.Log
