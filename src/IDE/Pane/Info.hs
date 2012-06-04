@@ -1,5 +1,5 @@
 {-# LANGUAGE FlexibleInstances, DeriveDataTypeable, MultiParamTypeClasses,
-             ScopedTypeVariables, TypeSynonymInstances #-}
+             CPP, ScopedTypeVariables, TypeSynonymInstances #-}
 {-# OPTIONS_GHC -fwarn-unused-imports #-}
 -----------------------------------------------------------------------------
 --

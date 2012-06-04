@@ -1,13 +1,14 @@
-{-# OPTIONS_GHC
-    -XDisambiguateRecordFields
-    -XExistentialQuantification
-    -XRank2Types
-    -XFlexibleInstances
-    -XDeriveDataTypeable
-    -XFlexibleContexts
-    -XDeriveDataTypeable
-    -XTypeSynonymInstances
-    -XMultiParamTypeClasses #-}
+{-# LANGUAGE
+        CPP
+      , DisambiguateRecordFields
+      , ExistentialQuantification
+      , Rank2Types
+      , FlexibleInstances
+      , DeriveDataTypeable
+      , FlexibleContexts
+      , DeriveDataTypeable
+      , TypeSynonymInstances
+      , MultiParamTypeClasses #-}
 
 -----------------------------------------------------------------------------
 --

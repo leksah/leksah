@@ -58,15 +58,15 @@ doServerCommand command cont = do
             return ()
     where
         doCommand handle = do
-        triggerEventIDE (StatusbarChanged [CompartmentCollect True])
-        reifyIDE $ \ideR -> forkIO $ do
-            hPutStrLn handle (show command)
-            hFlush handle
-            resp <- hGetLine handle
-            postGUIAsync (reflectIDE (do
-                    triggerEvent ideR (StatusbarChanged [CompartmentCollect False])
-                    cont (read resp)
-                    return ()) ideR)
+            triggerEventIDE (StatusbarChanged [CompartmentCollect True])
+            reifyIDE $ \ideR -> forkIO $ do
+                hPutStrLn handle (show command)
+                hFlush handle
+                resp <- hGetLine handle
+                postGUIAsync (reflectIDE (do
+                        triggerEvent ideR (StatusbarChanged [CompartmentCollect False])
+                        cont (read resp)
+                        return ()) ideR)
 
 startServer :: Int -> IO ()
 startServer port = do
