@@ -37,6 +37,7 @@ import Control.Monad (when)
 import IDE.Pane.SourceBuffer(recentSourceBuffers)
 import Control.Monad.IO.Class (MonadIO(..))
 import System.Glib.Signals (on)
+import qualified Control.Monad.Reader as Gtk (liftIO)
 
 flipDown :: IDEAction
 flipDown = do
@@ -166,7 +167,7 @@ initFlipper direction = do
 handleKeyRelease :: TreeViewClass alpha => alpha -> IDERef -> EventM EKey Bool
 handleKeyRelease tree ideR = do
     name <- eventKeyName
-    liftIO $ case name of
+    Gtk.liftIO $ case name of
         ctrl | (ctrl == "Control_L") || (ctrl == "Control_R") -> do
             currentState' <- reflectIDE (readIDE currentState) ideR
             case currentState' of
