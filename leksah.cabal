@@ -204,6 +204,14 @@ Executable leksah
     ghc-shared-options: -auto-all
     ghc-options:  -fwarn-missing-fields -fwarn-incomplete-patterns -ferror-spans
 
+test-suite tests
+    default-language: Haskell2010
+    type:       exitcode-stdio-1.0
+    hs-source-dirs: tests
+    main-is:    Tests.hs
+    build-depends: base >= 4.0.0.0 && <4.6, Cabal >=1.6.0.1 && <1.15, QuickCheck >=2.4.2 && <2.5,
+                   leksah ==0.12.1.0
+
 
 
 
