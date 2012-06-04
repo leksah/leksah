@@ -17,6 +17,9 @@ export CPPFLAGS=`pkg-config --cflags-only-I libcurl`
 # Only used by OS X
 # export DYLD_LIBRARY_PATH="/System/Library/Frameworks/ApplicationServices.framework/Versions/A/Frameworks/ImageIO.framework/Versions/A/Resources:$GTK_PREFIX/lib:$DYLD_LIBRARY_PATH"
 
+# Gtk2Hs needs the latest Cabal to install properly
+cabal install Cabal
+
 #if [ "$GHC_VER" != "6.12.3" ]; then
 #  LEKSAH_YI_FLAGS="yi -dyre"
 #  cd ../yi/yi || exit
