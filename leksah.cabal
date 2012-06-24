@@ -1,5 +1,5 @@
 name: leksah
-version: 0.12.1.2
+version: 0.12.1.3
 cabal-version: >=1.10
 build-type: Simple
 license: GPL
@@ -200,7 +200,7 @@ Executable leksah
                        QuickCheck >=2.4.2 && <2.5
     else
         hs-source-dirs: main
-        build-depends: leksah ==0.12.1.2, base >=4.0.0.0 && <= 5
+        build-depends: leksah ==0.12.1.3, base >=4.0.0.0 && <= 5
 
     default-language: Haskell98
     main-is: Main.hs
@@ -215,7 +215,7 @@ test-suite tests
     hs-source-dirs: tests
     main-is:    Tests.hs
     build-depends: base >= 4.0.0.0 && <4.6, Cabal >=1.6.0.1 && <1.15, QuickCheck >=2.4.2 && <2.5,
-                   leksah ==0.12.1.2
+                   leksah ==0.12.1.3
 
 
 
