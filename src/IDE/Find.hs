@@ -72,7 +72,7 @@ import Text.Regex.TDFA.String (compile)
 import Data.List (find, isPrefixOf)
 import Data.Array (bounds, (!), inRange)
 import IDE.Pane.Grep (grepWorkspace)
-import IDE.Workspaces (workspaceTry_, packageTry_)
+import IDE.Workspaces (workspaceTry, packageTry)
 import Control.Monad.IO.Class (MonadIO(..))
 import Control.Monad.Trans.Reader (ask)
 import Control.Monad.Trans.Class (MonadTrans(..))
@@ -206,7 +206,7 @@ constructFindReplace = reifyIDE $ \ ideR   -> do
     sep1 <- separatorToolItemNew
     toolbarInsert toolbar sep1 0
 
-    let performGrep = (reflectIDE (packageTry_ $ doGrep toolbar) ideR)
+    let performGrep = (reflectIDE (packageTry $ doGrep toolbar) ideR)
     grepButton <- toolButtonNew (Nothing :: Maybe Widget) (Just "Grep")
     toolbarInsert toolbar grepButton 0
     grepButton `onToolButtonClicked` performGrep
@@ -458,7 +458,7 @@ doGrep fb   = do
     wrapAround    <- liftIO $ getWrapAround fb
     regex         <- liftIO $ getRegex fb
     let (regexString, _) = regexStringAndMatchIndex entireWord regex search
-    lift $ workspaceTry_ $ grepWorkspace regexString caseSensitive
+    lift $ workspaceTry $ grepWorkspace regexString caseSensitive
 
 matchFunc :: ListStore String -> String -> TreeIter -> IO Bool
 matchFunc model str iter = do

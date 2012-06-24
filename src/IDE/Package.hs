@@ -54,9 +54,7 @@ module IDE.Package (
 
 ,   printEvldWithShowFlag
 ,   tryDebug
-,   tryDebug_
 ,   tryDebugQuiet
-,   tryDebugQuiet_
 ,   executeDebugCommand
 
 ,   choosePackageFile
@@ -711,13 +709,13 @@ debugStart = do
                 return ())
             (\(e :: SomeException) -> putStrLn (show e))
 
-tryDebug :: DebugM a -> PackageM (Maybe a)
+tryDebug :: DebugAction -> PackageAction
 tryDebug f = do
     maybeDebug <- lift $ readIDE debugState
     case maybeDebug of
         Just debug -> do
             -- TODO check debug package matches active package
-            liftM Just $ lift $ runDebug f debug
+            lift $ runDebug f debug
         _ -> do
             window <- lift $ getMainWindow
             resp <- liftIO $ do
@@ -734,25 +732,19 @@ tryDebug f = do
                     debugStart
                     maybeDebug <- lift $ readIDE debugState
                     case maybeDebug of
-                        Just debug -> liftM Just $ lift $ runDebug f debug
-                        _ -> return Nothing
-                _  -> return Nothing
+                        Just debug -> lift $ postAsyncIDE $ runDebug f debug
+                        _ -> return ()
+                _  -> return ()
 
-tryDebug_ :: DebugM a -> PackageAction
-tryDebug_ f = tryDebug f >> return ()
-
-tryDebugQuiet :: DebugM a -> PackageM (Maybe a)
+tryDebugQuiet :: DebugAction -> PackageAction
 tryDebugQuiet f = do
     maybeDebug <- lift $ readIDE debugState
     case maybeDebug of
         Just debug -> do
             -- TODO check debug package matches active package
-            liftM Just $ lift $ runDebug f debug
+            lift $ runDebug f debug
         _ -> do
-            return Nothing
-
-tryDebugQuiet_ :: DebugM a -> PackageAction
-tryDebugQuiet_ f = tryDebugQuiet f >> return ()
+            return ()
 
 executeDebugCommand :: String -> (E.Iteratee ToolOutput IDEM ()) -> DebugAction
 executeDebugCommand command handler = do

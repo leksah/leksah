@@ -23,7 +23,7 @@ module IDE.Pane.Trace (
 import Graphics.UI.Gtk
 import Data.Typeable (Typeable(..))
 import IDE.Core.State
-import IDE.Package (tryDebug_)
+import IDE.Package (tryDebug)
 import IDE.Debug
     (debugForward, debugBack, debugCommand')
 import IDE.Utils.Tool (ToolOutput(..))
@@ -46,7 +46,7 @@ import Text.ParserCombinators.Parsec.Language (emptyDef)
 import Graphics.UI.Gtk.Gdk.Events (Event(..))
 import Graphics.UI.Gtk.General.Enums (MouseButton(..))
 import System.Log.Logger (debugM)
-import IDE.Workspaces (packageTry_)
+import IDE.Workspaces (packageTry)
 import qualified Data.Enumerator.List as EL (consume)
 import Control.Monad.Trans.Class (MonadTrans(..))
 import Control.Monad.IO.Class (MonadIO(..))
@@ -158,12 +158,12 @@ builder' pp nb windows = reifyIDE $ \ ideR -> do
     return (Just pane,[ConnectC cid1])
 
 fillTraceList :: IDEAction
-fillTraceList = packageTry_ $ do
+fillTraceList = packageTry $ do
     currentHist' <- lift $ readIDE currentHist
     mbTraces     <- lift getPane
     case mbTraces of
         Nothing -> return ()
-        Just tracePane -> tryDebug_ $ debugCommand' ":history" $ do
+        Just tracePane -> tryDebug $ debugCommand' ":history" $ do
             to <- EL.consume
             liftIO $ postGUIAsync $ do
                 let parseRes = parse tracesParser "" (selectString to)
