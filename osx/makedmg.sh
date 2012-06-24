@@ -1,5 +1,6 @@
 #!/bin/sh
 
+cabal install Cabal
 cabal install gtk -fhave-quartz-gtk
 
 . scripts/stage.sh || exit
