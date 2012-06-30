@@ -24,7 +24,7 @@ module IDE.Pane.Variables (
 import Graphics.UI.Gtk
 import Data.Typeable (Typeable(..))
 import IDE.Core.State
-import IDE.Package (tryDebug_, tryDebugQuiet_)
+import IDE.Package (tryDebug, tryDebugQuiet)
 import IDE.Debug (debugCommand')
 import IDE.Utils.Tool (ToolOutput(..))
 import Text.ParserCombinators.Parsec
@@ -45,7 +45,7 @@ import Text.ParserCombinators.Parsec.Language (emptyDef)
 import Graphics.UI.Gtk.Gdk.Events (Event(..))
 import Graphics.UI.Gtk.General.Enums
     (Click(..), MouseButton(..))
-import IDE.Workspaces (packageTry_, packageTryQuiet_)
+import IDE.Workspaces (packageTry, packageTryQuiet)
 import qualified Data.Enumerator.List as EL (consume)
 import Control.Monad.Trans.Class (MonadTrans(..))
 import Control.Monad.IO.Class (MonadIO(..))
@@ -140,11 +140,11 @@ builder' pp nb windows = reifyIDE $  \ideR -> do
 
 
 fillVariablesListQuiet :: IDEAction
-fillVariablesListQuiet = packageTryQuiet_ $ do
+fillVariablesListQuiet = packageTryQuiet $ do
     mbVariables <- lift getPane
     case mbVariables of
         Nothing -> return ()
-        Just var -> tryDebugQuiet_ $ debugCommand' ":show bindings" $ do
+        Just var -> tryDebugQuiet $ debugCommand' ":show bindings" $ do
             to <- EL.consume
             liftIO $ postGUIAsync $ do
                 case parse variablesParser "" (selectString to) of
@@ -157,11 +157,11 @@ fillVariablesListQuiet = packageTryQuiet_ $ do
     insertBreak treeStore (v,index)  = treeStoreInsert treeStore [] index v
 
 fillVariablesList :: IDEAction
-fillVariablesList = packageTry_ $ do
+fillVariablesList = packageTry $ do
     mbVariables <- lift getPane
     case mbVariables of
         Nothing -> return ()
-        Just var -> tryDebug_ $ debugCommand' ":show bindings" $ do
+        Just var -> tryDebug $ debugCommand' ":show bindings" $ do
             to <- EL.consume
             liftIO $ postGUIAsync $ do
                 case parse variablesParser "" (selectString to) of
@@ -278,7 +278,7 @@ variablesViewPopup ideR  store treeView (Button _ click _ _ _ _ button _ _)
 variablesViewPopup _ _ _ _ = throwIDE "variablesViewPopup wrong event type"
 
 forceVariable :: VarDescription -> TreePath -> TreeStore VarDescription -> IDEAction
-forceVariable varDescr path treeStore = packageTry_ $ tryDebug_ $ do
+forceVariable varDescr path treeStore = packageTry $ tryDebug $ do
     debugCommand' (":force " ++ (varName varDescr)) $ do
         to <- EL.consume
         liftIO $ postGUIAsync $ do
@@ -297,7 +297,7 @@ forceVariable varDescr path treeStore = packageTry_ $ tryDebug_ $ do
                     treeStoreSetValue treeStore path var{varType = typ}
 
 printVariable :: VarDescription -> TreePath -> TreeStore VarDescription -> IDEAction
-printVariable varDescr path treeStore = packageTry_ $ tryDebug_ $ do
+printVariable varDescr path treeStore = packageTry $ tryDebug $ do
     debugCommand' (":print " ++ (varName varDescr)) $ do
         to <- EL.consume
         liftIO $ postGUIAsync $ do

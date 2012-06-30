@@ -58,7 +58,7 @@ import IDE.Metainfo.Provider
        (getSystemInfo, getWorkspaceInfo, getPackageInfo)
 import System.Log.Logger (infoM)
 import Default (Default(..))
-import IDE.Workspaces (packageTry_)
+import IDE.Workspaces (packageTry)
 import Control.Monad.IO.Class (MonadIO(..))
 import Control.Monad (when)
 import Control.Monad.Trans.Class (MonadTrans(..))
@@ -778,7 +778,7 @@ treeViewPopup ideR  store treeView (Button _ click _ _ _ _ button _ _) = do
             item5 `onActivateLeaf` (treeViewCollapseAll treeView)
             sep2 <- separatorMenuItemNew
             item6           <-  menuItemNewWithLabel "Add module"
-            item6 `onActivateLeaf` (reflectIDE (packageTry_ $ addModule' treeView store) ideR)
+            item6 `onActivateLeaf` (reflectIDE (packageTry $ addModule' treeView store) ideR)
             item7           <-  menuItemNewWithLabel "Delete module"
             item7 `onActivateLeaf` do
                 sel         <-  getSelectionTree treeView store
@@ -793,10 +793,10 @@ treeViewPopup ideR  store treeView (Button _ click _ _ _ _ button _ _) = do
                                                         if exists
                                                            then do
                                                              reflectIDE (liftIO $ removeFile fp) ideR
-                                                             reflectIDE (packageTry_ $ delModule treeView store)ideR
+                                                             reflectIDE (packageTry $ delModule treeView store)ideR
                                                            else do
-                                                             reflectIDE (packageTry_ $ delModule treeView store)ideR
-                                                        reflectIDE (packageTry_ packageConfig) ideR
+                                                             reflectIDE (packageTry $ delModule treeView store)ideR
+                                                        reflectIDE (packageTry packageConfig) ideR
                                                         return ()
                     otherwise       ->  return ()
             sel         <-  getSelectionTree treeView store

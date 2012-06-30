@@ -345,7 +345,7 @@ startMainWindow yiControl sessionFP mbWorkspaceFP sourceFPs startupPrefs isFirst
             if defaultExists
                 then workspaceOpenThis False (Just defaultWorkspace)
                 else workspaceNewHere defaultWorkspace
-            workspaceTryQuiet $ workspaceAddPackage' welcomeCabal
+            workspaceTryQuiet $ workspaceAddPackage' welcomeCabal >> return ()
             fileOpenThis welcomeMain) ideR
     reflectIDE (initInfo (modifyIDE_ (\ide -> ide{currentState = IsRunning}))) ideR
     timeoutAddFull (do

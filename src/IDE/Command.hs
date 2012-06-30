@@ -115,7 +115,7 @@ mkActions :: [ActionDescr IDERef]
 mkActions =
     [AD "File" "_File" Nothing Nothing (return ()) [] False
     ,AD "FileNew" "_New Module..." Nothing (Just "gtk-new")
-        (packageTry_ $ addModule []) [] False
+        (packageTry $ addModule []) [] False
     ,AD "FileNewTextFile" "_New Text File" Nothing Nothing
         fileNew [] False
     ,AD "FileOpen" "_Open..." Nothing (Just "gtk-open")
@@ -193,9 +193,9 @@ mkActions =
         workspaceClose [] False
 
     ,AD "CleanWorkspace" "Cl_ean" (Just "Cleans all packages") (Just "ide_clean")
-        (workspaceTry_ workspaceClean) [] False
+        (workspaceTry workspaceClean) [] False
     ,AD "MakeWorkspace" "_Make" (Just "Makes all of this workspace") (Just "ide_configure")
-        (workspaceTry_ workspaceMake) [] False
+        (workspaceTry workspaceMake) [] False
     ,AD "NextError" "_Next Error" (Just "Go to the next error") (Just "ide_error_next")
         nextError [] False
     ,AD "PreviousError" "_Previous Error" (Just "Go to the previous error") (Just "ide_error_prev")
@@ -203,46 +203,46 @@ mkActions =
 
     ,AD "Package" "_Package" Nothing Nothing (return ()) [] False
     ,AD "NewPackage" "_New..." Nothing Nothing
-        (showWorkspace >> workspaceTry_ workspacePackageNew) [] False
+        (showWorkspace >> workspaceTry workspacePackageNew) [] False
     ,AD "AddPackage" "_Add..." Nothing Nothing
-        (showWorkspace >> workspaceTry_ workspaceAddPackage) [] False
+        (showWorkspace >> workspaceTry workspaceAddPackage) [] False
 --    ,AD "RecentPackages" "_Recent Packages" Nothing Nothing (return ()) [] False
     ,AD "EditPackage" "_Edit" Nothing Nothing
-        (packageTry_ packageEdit) [] False
+        (packageTry packageEdit) [] False
 --    ,AD "RemovePackage" "_Close Package" Nothing Nothing
 --        removePackage [] False
 
     ,AD "PackageFlags" "Edit Flags" (Just "Edit the package flags") Nothing
         (getFlags Nothing >>= \ p -> displayPane p False) [] False
     ,AD "CleanPackage" "Cl_ean" (Just "Cleans the package") (Just "ide_clean")
-        (packageTry_ packageClean) [] False
+        (packageTry packageClean) [] False
     ,AD "ConfigPackage" "_Configure" (Just "Configures the package") (Just "ide_configure")
-        (packageTry_ packageConfig) [] False
+        (packageTry packageConfig) [] False
     ,AD "BuildPackage" "_Build" (Just "Builds the package") (Just "ide_make")
-        (packageTry_ makePackage) [] False
+        (packageTry makePackage) [] False
     ,AD "DocPackage" "_Build Documentation" (Just "Builds the documentation") Nothing
-        (packageTry_ packageDoc) [] False
+        (packageTry packageDoc) [] False
     ,AD "CopyPackage" "_Copy" (Just "Copies the package") Nothing
-        (packageTry_ packageCopy) [] False
+        (packageTry packageCopy) [] False
     ,AD "RunPackage" "_Run" (Just "Runs the package") (Just "ide_run")
-        (packageTry_ packageRun) [] False
+        (packageTry packageRun) [] False
     ,AD "ResolveErrors" "Resol_ve Errors" (Just "Resolve 'Hidden package' and 'Not in scope' errors by adding the necessary dependancies or imports") Nothing
         resolveErrors [] False
 
     ,AD "InstallDependenciesPackage" "_Install Dependencies" (Just "Install the package's dependencies from the hackage server") Nothing
-        (packageTry_ packageInstallDependencies) [] False
+        (packageTry packageInstallDependencies) [] False
     ,AD "RegisterPackage" "_Register" Nothing Nothing
-        (packageTry_ packageRegister) [] False
+        (packageTry packageRegister) [] False
     ,AD "TestPackage" "Test" Nothing Nothing
-        (packageTry_ packageTest) [] False
+        (packageTry packageTest) [] False
     ,AD "SdistPackage" "Source Dist" Nothing Nothing
-        (packageTry_ packageSdist) [] False
+        (packageTry packageSdist) [] False
     ,AD "OpenDocPackage" "_Open Doc" Nothing Nothing
-        (packageTry_ packageOpenDoc) [] False
+        (packageTry packageOpenDoc) [] False
 
     ,AD "Debug" "_Debug" Nothing Nothing (return ()) [] False
     ,AD "StartDebugger" "_Start Debugger" (Just "Starts using the GHCi debugger for build and run") Nothing
-        (packageTry_ debugStart) [] False
+        (packageTry debugStart) [] False
     ,AD "QuitDebugger" "_Quit Debugger" (Just "Quit the GHCi debugger if it is running") Nothing
         debugQuit [] False
     ,AD "ExecuteSelection" "_Execute Selection" (Just "Sends the selected text to the debugger") Nothing
