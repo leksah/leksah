@@ -249,20 +249,20 @@ variablesViewPopup ideR  store treeView (Button _ click _ _ _ _ button _ _)
         then do
             theMenu         <-  menuNew
             item1           <-  menuItemNewWithLabel "Force"
-            item1 `onActivateLeaf` do
+            item1 `on` menuItemActivate $ do
                 mbSel  <-  getSelectedVariable treeView store
                 case mbSel of
                     Just (varDescr,path) -> reflectIDE (forceVariable varDescr path store) ideR
                     otherwise     -> return ()
             sep1 <- separatorMenuItemNew
             item2           <-  menuItemNewWithLabel "Print"
-            item2 `onActivateLeaf` do
+            item2 `on` menuItemActivate $ do
                 mbSel  <-  getSelectedVariable treeView store
                 case mbSel of
                     Just (varDescr,path) -> reflectIDE (printVariable varDescr path store) ideR
                     otherwise     -> return ()
             item3           <-  menuItemNewWithLabel "Update"
-            item3 `onActivateLeaf` (postGUIAsync (reflectIDE fillVariablesList ideR))
+            item3 `on` menuItemActivate $ postGUIAsync (reflectIDE fillVariablesList ideR)
             mapM_ (menuShellAppend theMenu) [castToMenuItem item1,
                 castToMenuItem item2, castToMenuItem sep1, castToMenuItem item3]
             menuPopup theMenu Nothing

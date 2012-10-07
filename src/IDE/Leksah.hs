@@ -397,16 +397,16 @@ firstStart prefs = do
         windowWindowPosition := WinPosCenter]
     dialogAddButton dialog "gtk-ok" ResponseOk
     dialogAddButton dialog "gtk-cancel" ResponseCancel
-    vb          <- dialogGetUpper dialog
+    vb          <- dialogGetContentArea dialog
     label       <- labelNew (Just (
         "Before you start using Leksah it will collect and download metadata about your installed Haskell packages.\n" ++
         "You can add folders under which you have sources for Haskell packages not available from Hackage."))
     (widget, setInj, getExt,notifier) <- buildEditor (fDescription configDir) prefs
-    boxPackStart vb label PackNatural 7
+    boxPackStart (castToBox vb) label PackNatural 7
     sw <- scrolledWindowNew Nothing Nothing
     scrolledWindowAddWithViewport sw widget
     scrolledWindowSetPolicy sw PolicyNever PolicyAutomatic
-    boxPackStart vb sw PackGrow 7
+    boxPackStart (castToBox vb) sw PackGrow 7
     windowSetDefaultSize dialog 800 630
     widgetShowAll dialog
     response <- dialogRun dialog
@@ -451,11 +451,11 @@ firstBuild newPrefs = do
         windowTitle := "Leksah: Updating Metadata",
         windowWindowPosition := WinPosCenter,
         windowDeletable := False]
-    vb          <- dialogGetUpper dialog
+    vb          <- dialogGetContentArea dialog
     progressBar <- progressBarNew
     progressBarSetText progressBar "Please wait while Leksah collects information about Haskell packages on your system"
     progressBarSetFraction progressBar 0.0
-    boxPackStart vb progressBar PackGrow 7
+    boxPackStart (castToBox vb) progressBar PackGrow 7
     forkIO $ do
             logger <- getRootLogger
             let verbosity = case getLevel logger of

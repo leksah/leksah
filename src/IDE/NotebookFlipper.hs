@@ -22,7 +22,7 @@ import Graphics.UI.Gtk
         treeSelectionSelectionChanged, treeViewGetSelection, rowActivated,
         treeViewSetCursor, treeViewGetCursor, treeModelIterNChildren,
         treeViewGetModel, treeViewRowActivated, treeViewGetColumn,
-        widgetShowAll, windowWindowPosition, widgetDestroy, widgetHideAll,
+        widgetShowAll, windowWindowPosition, widgetDestroy, widgetHide,
         listStoreGetValue, keyReleaseEvent,
         treeViewHeadersVisible, cellText, cellLayoutSetAttributes,
         treeViewColumnPackStart, cellRendererTextNew, treeViewAppendColumn,
@@ -136,7 +136,7 @@ initFlipper direction = do
                         modifyIDE_ $ \ide -> ide{
                             recentPanes = paneName pane : filter (/= paneName pane) (recentPanes ide)}
                     Nothing   -> return ()) ideR
-            widgetHideAll window
+            widgetHide window
             widgetDestroy window
             reflectIDE (modifyIDE_ (\ide -> ide{currentState = IsRunning})) ideR
 

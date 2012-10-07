@@ -214,12 +214,12 @@ traceViewPopup ideR  store treeView (Button _ click _ _ _ _ button _ _)
         then do
             theMenu         <-  menuNew
             item1           <-  menuItemNewWithLabel "Back"
-            item1 `onActivateLeaf` reflectIDE debugBack ideR
+            item1 `on` menuItemActivate $ reflectIDE debugBack ideR
             sep1 <- separatorMenuItemNew
             item2           <-  menuItemNewWithLabel "Forward"
-            item2 `onActivateLeaf` (reflectIDE debugForward ideR)
+            item2 `on` menuItemActivate $ reflectIDE debugForward ideR
             item3           <-  menuItemNewWithLabel "Update"
-            item3 `onActivateLeaf` (reflectIDE fillTraceList ideR)
+            item3 `on` menuItemActivate $ reflectIDE fillTraceList ideR
             mapM_ (menuShellAppend theMenu) [castToMenuItem item1, castToMenuItem sep1,
                 castToMenuItem item2, castToMenuItem item3]
             menuPopup theMenu Nothing

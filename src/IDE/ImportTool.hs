@@ -375,16 +375,16 @@ selectModuleDialog parentWindow list id mbQual mbDescr =
                                             Just str -> if elem str selectionList
                                                             then str
                                                             else head selectionList
-            let qualId              =  case mbQual of
+            let qualId             =  case mbQual of
                                             Nothing -> id
                                             Just str -> str ++ "." ++ id
             dia               <- dialogNew
             windowSetTransientFor dia parentWindow
-            upper             <- dialogGetUpper dia
+            upper             <- dialogGetContentArea dia
             okButton <- dialogAddButton dia "Ok" ResponseOk
             dialogAddButton dia "Cancel" ResponseCancel
             (widget,inj,ext,_) <- buildEditor (moduleFields selectionList qualId) realSelectionString
-            boxPackStart upper widget PackGrow 7
+            boxPackStart (castToBox upper) widget PackGrow 7
             dialogSetDefaultResponse dia ResponseOk --does not work for the tree view
             widgetShowAll dia
             rw <- getRealWidget widget

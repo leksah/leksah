@@ -147,16 +147,16 @@ breakpointViewPopup ideR  store treeView (Button _ click _ _ _ _ button _ _)
         then do
             theMenu         <-  menuNew
             item1           <-  menuItemNewWithLabel "Remove breakpoint"
-            item1 `onActivateLeaf` do
+            item1 `on` menuItemActivate $ do
                 sel         <-  getSelectedBreakpoint treeView store
                 case sel of
                     Just ref      -> reflectIDE (deleteBreakpoint ref) ideR
                     otherwise     -> sysMessage Normal "Debugger>> breakpointViewPopup: no selection2"
             sep1 <- separatorMenuItemNew
             item2           <-  menuItemNewWithLabel "Remove all breakpoints"
-            item2 `onActivateLeaf` (reflectIDE debugDeleteAllBreakpoints ideR)
+            item2 `on` menuItemActivate $ reflectIDE debugDeleteAllBreakpoints ideR
             item3           <-  menuItemNewWithLabel "Update"
-            item3 `onActivateLeaf` (reflectIDE debugShowBreakpoints ideR)
+            item3 `on` menuItemActivate $ reflectIDE debugShowBreakpoints ideR
             mapM_ (menuShellAppend theMenu) [castToMenuItem item1, castToMenuItem sep1,
                 castToMenuItem item2, castToMenuItem item3]
             menuPopup theMenu Nothing

@@ -34,14 +34,13 @@ export GTK_EXE_PREFIX="$bundle_res"
 export GTK_PATH="$bundle_res"
 export PATH="$bundle_bin":$PATH
 
-export GTK2_RC_FILES="$bundle_etc/gtk-2.0/gtkrc"
-export GTK_IM_MODULE_FILE="$bundle_etc/gtk-2.0/gtk.immodules"
-export GDK_PIXBUF_MODULE_FILE="$bundle_etc/gtk-2.0/gdk-pixbuf.loaders"
+export GTK_IM_MODULE_FILE="$bundle_etc/gtk-3.0/gtk.immodules"
+export GDK_PIXBUF_MODULE_FILE="$bundle_etc/gtk-3.0/gdk-pixbuf.loaders"
 export PANGO_RC_FILE="$bundle_etc/pango/pangorc"
 
 export leksah_bindir="$bundle_bin"
-export leksah_libdir="$bundle_lib/leksah-0.12/ghc-7.0.2"
-export leksah_datadir="$bundle_data/leksah-0.12"
+export leksah_libdir="$bundle_lib/leksah-0.13/ghc"
+export leksah_datadir="$bundle_data/leksah-0.13"
 export leksah_libexecdir="$bundle_res/libexec"
 
 # We need a UTF-8 locale.

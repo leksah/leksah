@@ -8,7 +8,10 @@ export LEKSAH_X_X=leksah-$SHORT_VERSION
 export GHC_VER=`ghc --numeric-version`
 export LEKSAH_X_X_X_X_GHC_X_X_X=leksah-$FULL_VERSION-ghc-$GHC_VER
 
-export GTK_PREFIX=`pkg-config --libs-only-L gtk+-2.0 | sed 's|^-L||' | sed 's|/lib *$||'`
+export SERVER_VERSION=`grep '^version: ' ../leksah-server/leksah-server.cabal | sed 's|version: ||' | tr -d '\r'`
+export LEKSAH_SERVER_X_X_X_X=leksah-server-$SERVER_VERSION
+
+export GTK_PREFIX=`pkg-config --libs-only-L gtk+-3.0 | sed 's|^-L||' | sed 's|/lib *$||'`
 echo Staging Leksah in $GTK_PREFIX
 
 # Needed for installing curl package on windows
@@ -25,7 +28,7 @@ cabal install Cabal
 #  cd ../yi/yi || exit
 #  cabal clean || exit
 #  cabal install --only-dependencies || exit
-#  cabal configure --flags="pango -vte -vty" --prefix=$GTK_PREFIX --extra-lib-dirs="$GTK_PREFIX/lib" || exit
+#  cabal configure --flags="pango -vte -vty" --extra-lib-dirs="$GTK_PREFIX/lib" || exit
 #  cabal build || exit
 #  cabal copy || exit
 #  cabal register || exit
@@ -40,7 +43,7 @@ cabal build || exit
 cabal copy || exit
 cabal register || exit
 
-export LEKSAH_CONFIG_ARGS="--prefix="$GTK_PREFIX" --datadir="$GTK_PREFIX/share" --extra-lib-dirs="$GTK_PREFIX/lib" --datasubdir="$LEKSAH_X_X""
+export LEKSAH_CONFIG_ARGS="--extra-lib-dirs="$GTK_PREFIX/lib" --datasubdir="$LEKSAH_X_X""
 
 cd ../leksah-server || exit
 cabal clean || exit

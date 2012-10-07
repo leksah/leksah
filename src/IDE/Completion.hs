@@ -256,19 +256,22 @@ addEventHandling window sourceView tree store isWordChar always = do
         (x, y)     <- eventCoordinates
         time       <- eventTime
 
-        drawWindow <- Gtk.liftIO $ widgetGetDrawWindow window
-        status     <- Gtk.liftIO $ pointerGrab
-            drawWindow
-            False
-            [PointerMotionMask, ButtonReleaseMask]
-            (Nothing:: Maybe DrawWindow)
-            Nothing
-            time
-        when (status == GrabSuccess) $ Gtk.liftIO $ do
-            (width, height) <- windowGetSize window
-            writeIORef resizeHandler $ Just $ \(newX, newY) -> do
-                reflectIDE (
-                    setCompletionSize ((width + (floor (newX - x))), (height + (floor (newY - y))))) ideR
+        mbDrawWindow <- Gtk.liftIO $ widgetGetWindow window
+        case mbDrawWindow of
+            Just drawWindow -> do
+                status <- Gtk.liftIO $ pointerGrab
+                    drawWindow
+                    False
+                    [PointerMotionMask, ButtonReleaseMask]
+                    (Nothing:: Maybe DrawWindow)
+                    Nothing
+                    time
+                when (status == GrabSuccess) $ Gtk.liftIO $ do
+                    (width, height) <- windowGetSize window
+                    writeIORef resizeHandler $ Just $ \(newX, newY) -> do
+                        reflectIDE (
+                            setCompletionSize ((width + (floor (newX - x))), (height + (floor (newY - y))))) ideR
+            Nothing -> return ()
 
         return True
 
@@ -326,7 +329,7 @@ cancelCompletion window tree store connections = do
     liftIO (do
         listStoreClear (store :: ListStore String)
         signalDisconnectAll connections
-        widgetHideAll window
+        widgetHide window
         )
     modifyIDE_ (\ide -> ide{currentState = IsRunning})
 
@@ -397,44 +400,48 @@ processResults window tree store sourceView wordStart options selectLCP isWordCh
                 Rectangle startx starty width height <- getIterLocation sourceView start
                 (wWindow, hWindow)                   <- liftIO $ windowGetSize window
                 (x, y)                               <- bufferToWindowCoords sourceView (startx, starty+height)
-                drawWindow                           <- getDrawWindow sourceView
-                (ox, oy)                             <- liftIO $ drawWindowGetOrigin drawWindow
-                Just namesSW                         <- liftIO $ widgetGetParent tree
-                (wNames, hNames)                     <- liftIO $ widgetGetSize namesSW
-                Just paned                           <- liftIO $ widgetGetParent namesSW
-                Just first                           <- liftIO $ panedGetChild1 (castToPaned paned)
-                Just second                          <- liftIO $ panedGetChild2 (castToPaned paned)
-                screen                               <- liftIO $ windowGetScreen window
-                monitor                              <- liftIO $ screenGetMonitorAtPoint screen (ox+x) (oy+y)
-                monitorLeft                          <- liftIO $ screenGetMonitorAtPoint screen (ox+x-wWindow+wNames) (oy+y)
-                monitorRight                         <- liftIO $ screenGetMonitorAtPoint screen (ox+x+wWindow) (oy+y)
-                monitorBelow                         <- liftIO $ screenGetMonitorAtPoint screen (ox+x) (oy+y+hWindow)
-                wScreen                              <- liftIO $ screenGetWidth screen
-                hScreen                              <- liftIO $ screenGetHeight screen
-                top <- if monitorBelow /= monitor || (oy+y+hWindow) > hScreen
-                    then do
-                        sourceSW <- getScrolledWindow sourceView
-                        (_, hSource)  <- liftIO $ widgetGetSize sourceSW
-                        scrollToIter sourceView end 0.1 (Just (1.0, 1.0 - (fromIntegral hWindow / fromIntegral hSource)))
-                        (_, newy)     <- bufferToWindowCoords sourceView (startx, starty+height)
-                        return (oy+newy)
-                    else return (oy+y)
-                swap <- if (monitorRight /= monitor || (ox+x+wWindow) > wScreen) && monitorLeft == monitor && (ox+x-wWindow+wNames) > 0
-                    then do
-                        liftIO $ windowMove window (ox+x-wWindow+wNames) top
-                        return $ first == namesSW
-                    else do
-                        liftIO $ windowMove window (ox+x) top
-                        return $ first /= namesSW
-                when swap $ liftIO $ do
-                    pos <- panedGetPosition (castToPaned paned)
-                    containerRemove (castToPaned paned) first
-                    containerRemove (castToPaned paned) second
-                    panedAdd1 (castToPaned paned) second
-                    panedAdd2 (castToPaned paned) first
-                    panedSetPosition (castToPaned paned) (wWindow-pos)
-                when (not $ null newOptions) $ liftIO $ treeViewSetCursor tree [0] Nothing
-                liftIO $ widgetShowAll window
+                mbDrawWindow                         <- getWindow sourceView
+                case mbDrawWindow of
+                    Nothing -> return ()
+                    Just drawWindow -> do
+                        (ox, oy)                     <- liftIO $ drawWindowGetOrigin drawWindow
+                        Just namesSW                 <- liftIO $ widgetGetParent tree
+                        wNames                       <- liftIO $ widgetGetAllocatedWidth namesSW
+                        hNames                       <- liftIO $ widgetGetAllocatedHeight namesSW
+                        Just paned                   <- liftIO $ widgetGetParent namesSW
+                        Just first                   <- liftIO $ panedGetChild1 (castToPaned paned)
+                        Just second                  <- liftIO $ panedGetChild2 (castToPaned paned)
+                        screen                       <- liftIO $ windowGetScreen window
+                        monitor                      <- liftIO $ screenGetMonitorAtPoint screen (ox+x) (oy+y)
+                        monitorLeft                  <- liftIO $ screenGetMonitorAtPoint screen (ox+x-wWindow+wNames) (oy+y)
+                        monitorRight                 <- liftIO $ screenGetMonitorAtPoint screen (ox+x+wWindow) (oy+y)
+                        monitorBelow                 <- liftIO $ screenGetMonitorAtPoint screen (ox+x) (oy+y+hWindow)
+                        wScreen                      <- liftIO $ screenGetWidth screen
+                        hScreen                      <- liftIO $ screenGetHeight screen
+                        top <- if monitorBelow /= monitor || (oy+y+hWindow) > hScreen
+                            then do
+                                sourceSW <- getScrolledWindow sourceView
+                                hSource <- liftIO $ widgetGetAllocatedHeight sourceSW
+                                scrollToIter sourceView end 0.1 (Just (1.0, 1.0 - (fromIntegral hWindow / fromIntegral hSource)))
+                                (_, newy)     <- bufferToWindowCoords sourceView (startx, starty+height)
+                                return (oy+newy)
+                            else return (oy+y)
+                        swap <- if (monitorRight /= monitor || (ox+x+wWindow) > wScreen) && monitorLeft == monitor && (ox+x-wWindow+wNames) > 0
+                            then do
+                                liftIO $ windowMove window (ox+x-wWindow+wNames) top
+                                return $ first == namesSW
+                            else do
+                                liftIO $ windowMove window (ox+x) top
+                                return $ first /= namesSW
+                        when swap $ liftIO $ do
+                            pos <- panedGetPosition (castToPaned paned)
+                            containerRemove (castToPaned paned) first
+                            containerRemove (castToPaned paned) second
+                            panedAdd1 (castToPaned paned) second
+                            panedAdd2 (castToPaned paned) first
+                            panedSetPosition (castToPaned paned) (wWindow-pos)
+                        when (not $ null newOptions) $ liftIO $ treeViewSetCursor tree [0] Nothing
+                        liftIO $ widgetShowAll window
 
             when (newWordStart /= currentWordStart) $
                 replaceWordStart sourceView isWordChar newWordStart

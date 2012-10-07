@@ -46,17 +46,18 @@ import Graphics.UI.Gtk
         cellLayoutPackStart, cellRendererTextNew, entryCompletionModel,
         entrySetCompletion, entryCompletionNew, makeColumnIdString,
         customStoreSetColumn, listStoreNew, toolItemSetExpand,
-        toolButtonSetLabel, toggleToolButtonNew, entryNew, tooltipsSetTip,
+        toolButtonSetLabel, toggleToolButtonNew, entryNew,
         onToolButtonClicked, Widget, toolButtonNew, separatorToolItemNew,
         labelNew, containerAdd, widgetSetName, spinButtonNewWithRange,
         toolItemNew, toolbarInsert, toolButtonNewFromStock,
-        toolbarSetIconSize, toolbarSetStyle, tooltipsNew, toolbarNew,
-        Toolbar, widgetGrabFocus, widgetShowAll, widgetHideAll,
+        toolbarSetIconSize, toolbarSetStyle, toolbarNew,
+        Toolbar, widgetGrabFocus, widgetShowAll, widgetHide,
         listStoreAppend, listStoreClear, entrySetText, spinButtonSetValue,
         listStoreToList, castToEntry, entryGetText, castToSpinButton,
         spinButtonGetValueAsInt, StateType(..), ToolbarStyle(..),
-        IconSize(..), AttrOp(..), set, on, Color(..))
-import Graphics.UI.Gtk.Gdk.Events
+        IconSize(..), AttrOp(..), set, on, Color(..), widgetTooltipText,
+        keyPressEvent)
+import Graphics.UI.Gtk.Gdk.EventM
 import qualified Graphics.UI.Gtk as Gtk
 import Graphics.UI.Gtk.Buttons.ToggleButton
 import Graphics.UI.Gtk.Buttons.CheckButton
@@ -134,7 +135,7 @@ hideToolbar = do
         Nothing -> return ()
         Just tb -> do
             modifyIDE_ (\ide -> ide{toolbar = (False,snd (toolbar ide))})
-            liftIO $ widgetHideAll tb
+            liftIO $ widgetHide tb
 
 showToolbar :: IDEAction
 showToolbar = do
@@ -158,7 +159,7 @@ hideFindbar = do
     modifyIDE_ (\ide -> ide{findbar = (False,mbfb)})
     case mbfb of
         Nothing -> return ()
-        Just (fb,_) -> liftIO $ widgetHideAll fb
+        Just (fb,_) -> liftIO $ widgetHide fb
 
 showFindbar :: IDEAction
 showFindbar = do
@@ -185,7 +186,6 @@ toggleFindbar = do
 constructFindReplace :: IDEM Toolbar
 constructFindReplace = reifyIDE $ \ ideR   -> do
     toolbar <- toolbarNew
-    tooltips <- tooltipsNew
     toolbarSetStyle toolbar ToolbarIcons
     toolbarSetIconSize toolbar IconSizeSmallToolbar
     closeButton <- toolButtonNewFromStock "gtk-close"
@@ -210,7 +210,7 @@ constructFindReplace = reifyIDE $ \ ideR   -> do
     grepButton <- toolButtonNew (Nothing :: Maybe Widget) (Just "Grep")
     toolbarInsert toolbar grepButton 0
     grepButton `onToolButtonClicked` performGrep
-    tooltipsSetTip tooltips grepButton "Search in multiple files" ""
+    set grepButton [widgetTooltipText := Just "Search in multiple files"]
 
     sep1 <- separatorToolItemNew
     toolbarInsert toolbar sep1 0
@@ -238,18 +238,18 @@ constructFindReplace = reifyIDE $ \ ideR   -> do
 
     nextButton <- toolButtonNewFromStock "gtk-go-forward"
     toolbarInsert toolbar nextButton 0
-    tooltipsSetTip tooltips nextButton "Search for the next match in the current file" ""
+    set nextButton [widgetTooltipText := Just "Search for the next match in the current file"]
     nextButton `onToolButtonClicked` (doSearch toolbar Forward ideR  )
 
     wrapAroundButton <- toggleToolButtonNew
     toolButtonSetLabel wrapAroundButton (Just "Wrap")
     widgetSetName wrapAroundButton "wrapAroundButton"
     toolbarInsert toolbar wrapAroundButton 0
-    tooltipsSetTip tooltips wrapAroundButton "When selected searching will continue from the top when no more matches are found" ""
+    set wrapAroundButton [widgetTooltipText := Just "When selected searching will continue from the top when no more matches are found"]
 
     previousButton <- toolButtonNewFromStock "gtk-go-back"
     toolbarInsert toolbar previousButton 0
-    tooltipsSetTip tooltips previousButton "Search for the previous match in the current file" ""
+    set previousButton [widgetTooltipText := Just "Search for the previous match in the current file"]
     previousButton `onToolButtonClicked` (doSearch toolbar Backward ideR  )
 
     entryTool <- toolItemNew
@@ -283,21 +283,21 @@ constructFindReplace = reifyIDE $ \ ideR   -> do
     widgetSetName regexButton "regexButton"
     toolbarInsert toolbar regexButton 0
     regexButton `onToolButtonClicked` (doSearch toolbar Insert ideR)
-    tooltipsSetTip tooltips regexButton "When selected the search string is used as a regular expression" ""
+    set regexButton [widgetTooltipText := Just "When selected the search string is used as a regular expression"]
 
     entireWordButton <- toggleToolButtonNew
     toolButtonSetLabel entireWordButton (Just "Words")
     widgetSetName entireWordButton "entireWordButton"
     toolbarInsert toolbar entireWordButton 0
     entireWordButton `onToolButtonClicked` (doSearch toolbar Insert ideR)
-    tooltipsSetTip tooltips entireWordButton "When selected only entire words are matched" ""
+    set entireWordButton [widgetTooltipText := Just "When selected only entire words are matched"]
 
     caseSensitiveButton <- toggleToolButtonNew
     toolButtonSetLabel caseSensitiveButton (Just "Case")
     widgetSetName caseSensitiveButton "caseSensitiveButton"
     toolbarInsert toolbar caseSensitiveButton 0
     caseSensitiveButton `onToolButtonClicked` (doSearch toolbar Insert ideR)
-    tooltipsSetTip tooltips caseSensitiveButton "When selected the search is case sensitive" ""
+    set caseSensitiveButton [widgetTooltipText := Just "When selected the search is case sensitive"]
 
     labelTool <- toolItemNew
     label <- labelNew (Just "Find: ")
@@ -331,62 +331,51 @@ constructFindReplace = reifyIDE $ \ ideR   -> do
             old <- toggleToolButtonGetActive btn
             toggleToolButtonSetActive btn $ not old
 
-    entry `Gtk.onKeyPress`  (\ e -> do
-        case e of
-            k@(Key _ _ _ _ _ _ _ _ _ _)
-                | eventKeyName k == "Down"                 -> do
-                    doSearch toolbar Forward ideR
-                    return True
-                | eventKeyName k == "Up"                   -> do
-                    doSearch toolbar Backward ideR
-                    return True
-                | eventKeyName k == "Escape"               -> do
-                    getOut ideR
-                    return True
-                | eventKeyName k == "Tab"               -> do
-                    re <- getReplaceEntry toolbar
-                    widgetGrabFocus re
-                    --- widgetAc
-                    return True
-                | (mapControlCommand Control) `elem` (eventModifier k) ->
-                        ctrl $ map toLower $ eventKeyName k
-                | otherwise                ->  return False
-            _                              ->  return False)
+    entry `on` keyPressEvent $ do
+        name <- eventKeyName
+        mods <- eventModifier
+        case name of
+            "Down"   -> liftIO $ doSearch toolbar Forward ideR >> return True
+            "Up"     -> liftIO $ doSearch toolbar Backward ideR >> return True
+            "Escape" -> liftIO $ getOut ideR >> return True
+            "Tab"    -> liftIO $ do
+                re <- getReplaceEntry toolbar
+                widgetGrabFocus re
+                --- widgetAc
+                return True
+            _ | (mapControlCommand Control) `elem` mods -> liftIO . ctrl $ map toLower name
+            _        ->  return False
 
 
-    rentry `Gtk.onKeyPress`  (\ e -> do
-        case e of
-            k@(Key _ _ _ _ _ _ _ _ _ _)
-                | eventKeyName k == "Tab" || eventKeyName k == "ISO_Left_Tab" -> do
+    rentry `on` keyPressEvent $ do
+        name <- eventKeyName
+        mods <- eventModifier
+        case () of
+            _
+                | name == "Tab" || name == "ISO_Left_Tab" -> liftIO $ do
                     fe <- getFindEntry toolbar
                     widgetGrabFocus fe
                     return True
-                | (mapControlCommand Control) `elem` (eventModifier k) ->
-                        ctrl $ map toLower $ eventKeyName k
+                | (mapControlCommand Control) `elem` mods ->
+                        liftIO . ctrl $ map toLower name
                 | otherwise                ->  return False
-            _                              ->  return False)
-
-
 
     spinL `afterFocusIn` (\ _ -> (reflectIDE (inActiveBufContext True $ \_ gtkbuf currentBuffer _ -> do
         max <- getLineCount gtkbuf
         liftIO $ spinButtonSetRange spinL 1.0 (fromIntegral max)
         return True) ideR))
 
-    spinL `Gtk.onKeyPress`  (\ e -> do
-        case e of
-            k@(Key _ _ _ _ _ _ _ _ _ _)
-                | eventKeyName k == "Escape"               -> do
-                    getOut ideR
-                    return True
-                | eventKeyName k == "Tab"               -> do
-                    re <- getFindEntry toolbar
-                    widgetGrabFocus re
-                    return True
-                | (mapControlCommand Control) `elem` (eventModifier k) ->
-                        ctrl $ map toLower $ eventKeyName k
-                | otherwise                ->  return False
-            _                              ->  return False)
+    spinL `on` keyPressEvent $ do
+        name <- eventKeyName
+        mods <- eventModifier
+        case name of
+            "Escape" -> liftIO $ getOut ideR >> return True
+            "Tab"    -> liftIO $ do
+                re <- getFindEntry toolbar
+                widgetGrabFocus re
+                return True
+            _ | (mapControlCommand Control) `elem` mods -> liftIO . ctrl $ map toLower name
+            _        ->  return False
 
 
     spinL `afterEntryActivate` (reflectIDE (inActiveBufContext () $ \_ gtkbuf currentBuffer _ -> do

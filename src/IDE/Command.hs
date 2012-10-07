@@ -50,8 +50,8 @@ import Graphics.UI.Gtk
         actionNew, actionGroupAddActionWithAccel, actionToggled,
         toggleActionNew, uiManagerAddUiFromString,
         uiManagerInsertActionGroup, actionGroupNew, UIManager,
-        widgetShowAll, menuItemSetSubmenu, widgetDestroy, widgetHideAll,
-        menuItemGetSubmenu, menuShellAppend, onActivateLeaf,
+        widgetShowAll, menuItemSetSubmenu, widgetDestroy, widgetHide,
+        menuItemGetSubmenu, menuShellAppend, menuItemActivate,
         menuItemNewWithLabel, menuNew, Packing(..), ToolbarStyle(..),
         PositionType(..), on, IconSize(..))
 import System.FilePath
@@ -366,6 +366,14 @@ mkActions =
         (viewNewGroup) [] False
     ,AD "ViewDetach" "_Detach" Nothing Nothing
         viewDetachInstrumented [] False
+    ,AD "ViewFullScreen" "_Full Screen" Nothing Nothing
+        viewFullScreen [] False
+    ,AD "ViewExitFullScreen" "_Exit Full Screen" Nothing Nothing
+        viewExitFullScreen [] False
+    ,AD "ViewDark" "Dark" Nothing Nothing
+        viewDark [] False
+    ,AD "ViewLight" "Light" Nothing Nothing
+        viewLight [] False
 
     ,AD "ViewTabsLeft" "Tabs Left" Nothing Nothing
         (viewTabsPos PosLeft) [] False
@@ -448,11 +456,11 @@ updateRecentEntries = do
             fe <- doesFileExist s
             when fe $ do
                 mi <- menuItemNewWithLabel s
-                mi `onActivateLeaf` (reflectIDE (fileOpenThis s) ideR)
+                mi `on` menuItemActivate $ reflectIDE (fileOpenThis s) ideR
                 menuShellAppend recentFilesMenu mi) recentFiles'
         oldSubmenu <- menuItemGetSubmenu recentFilesItem
         when (isJust oldSubmenu) $ do
-            widgetHideAll (fromJust oldSubmenu)
+            widgetHide (fromJust oldSubmenu)
             widgetDestroy (fromJust oldSubmenu)
         menuItemSetSubmenu recentFilesItem recentFilesMenu
         widgetShowAll recentFilesMenu
@@ -461,11 +469,11 @@ updateRecentEntries = do
             fe <- doesFileExist s
             when fe $ do
                 mi <- menuItemNewWithLabel s
-                mi `onActivateLeaf` (reflectIDE (workspaceOpenThis True (Just s) >> showWorkspace) ideR)
+                mi `on` menuItemActivate $ reflectIDE (workspaceOpenThis True (Just s) >> showWorkspace) ideR
                 menuShellAppend recentWorkspacesMenu mi) recentWorkspaces'
         oldSubmenu <- menuItemGetSubmenu recentWorkspacesItem
         when (isJust oldSubmenu) $ do
-            widgetHideAll (fromJust oldSubmenu)
+            widgetHide (fromJust oldSubmenu)
             widgetDestroy (fromJust oldSubmenu)
         menuItemSetSubmenu recentWorkspacesItem recentWorkspacesMenu
         widgetShowAll recentWorkspacesMenu)
@@ -522,38 +530,38 @@ textPopupMenu ideR menu = do
     let reflectIDE_ x = reflectIDE x ideR
     items <- containerGetChildren menu
     mi1 <- menuItemNewWithLabel "Eval"
-    mi1 `onActivateLeaf` reflectIDE_ debugExecuteSelection
+    mi1 `on` menuItemActivate $ reflectIDE_ debugExecuteSelection
     menuShellAppend menu mi1
     mi11 <- menuItemNewWithLabel "Eval & Insert"
-    mi11 `onActivateLeaf` reflectIDE_ debugExecuteAndShowSelection
+    mi11 `on` menuItemActivate $ reflectIDE_ debugExecuteAndShowSelection
     menuShellAppend menu mi11
     mi12 <- menuItemNewWithLabel "Step"
-    mi12 `onActivateLeaf` reflectIDE_ debugStepExpression
+    mi12 `on` menuItemActivate $ reflectIDE_ debugStepExpression
     menuShellAppend menu mi12
     mi13 <- menuItemNewWithLabel "Trace"
-    mi13 `onActivateLeaf` reflectIDE_ debugTraceExpression
+    mi13 `on` menuItemActivate $ reflectIDE_ debugTraceExpression
     menuShellAppend menu mi13
     mi16 <- menuItemNewWithLabel "Set Breakpoint"
-    mi16 `onActivateLeaf` reflectIDE_ debugSetBreakpoint
+    mi16 `on` menuItemActivate $ reflectIDE_ debugSetBreakpoint
     menuShellAppend menu mi16
     sep1 <- separatorMenuItemNew
     menuShellAppend menu sep1
     mi14 <- menuItemNewWithLabel "Type"
-    mi14 `onActivateLeaf` reflectIDE_ debugType
+    mi14 `on` menuItemActivate $ reflectIDE_ debugType
     menuShellAppend menu mi14
     mi141 <- menuItemNewWithLabel "Info"
-    mi141 `onActivateLeaf` reflectIDE_ debugInformation
+    mi141 `on` menuItemActivate $ reflectIDE_ debugInformation
     menuShellAppend menu mi141
     mi15 <- menuItemNewWithLabel "Kind"
-    mi15 `onActivateLeaf` reflectIDE_ debugKind
+    mi15 `on` menuItemActivate $ reflectIDE_ debugKind
     menuShellAppend menu mi15
     sep2 <- separatorMenuItemNew
     menuShellAppend menu sep2
     mi2 <- menuItemNewWithLabel "Find (text)"
-    mi2 `onActivateLeaf` reflectIDE_ (editFindInc Initial)
+    mi2 `on` menuItemActivate $ reflectIDE_ (editFindInc Initial)
     menuShellAppend menu mi2
     mi3 <- menuItemNewWithLabel "Search (metadata)"
-    mi3 `onActivateLeaf` (reflectIDE_ $
+    mi3 `on` menuItemActivate $ (reflectIDE_ $
             getSearch Nothing >>= (\search -> do
                 mbtext <- selectedText
                 case mbtext of

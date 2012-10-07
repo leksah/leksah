@@ -46,7 +46,7 @@ import Graphics.UI.Gtk
         textBufferGetMark, textBufferMoveMarkByName,
         textBufferApplyTagByName, textBufferGetIterAtOffset,
         textBufferGetCharCount, textBufferInsert, textBufferSelectRange,
-        widgetHide, widgetShowAll, menuShellAppend, onActivateLeaf,
+        widgetHide, widgetShowAll, menuShellAppend,
         menuItemNewWithLabel, containerGetChildren, textIterGetLine,
         textViewGetLineAtY, textViewWindowToBufferCoords, widgetGetPointer,
 #if MIN_VERSION_gtk(0,10,5)
@@ -63,7 +63,7 @@ import Graphics.UI.Gtk
         textViewGetBuffer, textViewNew, Window, Notebook, castToWidget,
         ScrolledWindow, TextView, Menu, AttrOp(..), set,
         TextWindowType(..), ShadowType(..), PolicyType(..),
-        priorityDefaultIdle, idleAdd)
+        priorityDefaultIdle, idleAdd, menuItemActivate)
 import Control.Monad.IO.Class (MonadIO(..))
 
 
@@ -192,7 +192,7 @@ populatePopupMenu :: IDELog -> IDERef -> Menu -> IO ()
 populatePopupMenu ideLog ideR menu = do
     items <- containerGetChildren menu
     item0           <-  menuItemNewWithLabel "Resolve Errors"
-    item0 `onActivateLeaf` do
+    item0 `on` menuItemActivate $ do
         reflectIDE resolveErrors ideR
     menuShellAppend menu item0
     res <- reflectIDE (do
@@ -211,7 +211,7 @@ populatePopupMenu ideLog ideR menu = do
                     return ()
                 Just _  -> do
                     item1   <-  menuItemNewWithLabel "Add Import"
-                    item1 `onActivateLeaf` do
+                    item1 `on` menuItemActivate $ do
                         reflectIDE (addImport thisRef [] (\_ -> return ())) ideR
                     menuShellAppend menu item1
             case parseHiddenModule (refDescription thisRef) of
@@ -219,7 +219,7 @@ populatePopupMenu ideLog ideR menu = do
                     return ()
                 Just _  -> do
                     item2   <-  menuItemNewWithLabel "Add Package"
-                    item2 `onActivateLeaf` do
+                    item2 `on` menuItemActivate $ do
                         reflectIDE (addPackage thisRef >> return ()) ideR
                     menuShellAppend menu item2
             widgetShowAll menu

@@ -1,9 +1,24 @@
 #!/bin/sh
 
+ghc-pkg unregister --force gtk
 cabal install Cabal
-cabal install gtk -fhave-quartz-gtk
+cd ../gtk2hs/gtk || exit
+cabal clean || exit
+cabal install -fgtk3 -fhave-quartz-gtk
+cd ../../gtksourceview || exit
+cabal clean || exit
+cabal install
+cd ../ige-mac-integration || exit
+cabal clean || exit
+cabal install
+
+cd ../leksah || exit
 
 . scripts/stage.sh || exit
+
+export GHC_USER_PREFIX=$HOME/Library/Haskell/ghc-`ghc --numeric-version`/lib
+export LEKSAH_PREFIX=$GHC_USER_PREFIX/$LEKSAH_X_X_X_X
+export LEKSAH_SERVER_PREFIX=$GHC_USER_PREFIX/$LEKSAH_SERVER_X_X_X_X
 
 sed -e 's|TextView Font: *\"Monospace 10\"|TextView Font: "Monospace 14"|' -e 's|Browser: *\"firefox\"|Browser:       \"open\"|' <data/prefs.lkshp >osx/prefs.lkshp
 
@@ -32,7 +47,10 @@ for f in `find Leksah/Leksah.app/Contents/Resources/lib -name '*.so' -o -name '*
 done
 
 echo Fixing pixbuf loader paths
-sed -i "" -e "s|@executable_path/../Resources/|@executable_path/../|" Leksah/Leksah.app/Contents/Resources/etc/gtk-2.0/gdk-pixbuf.loaders || exit
+sed -i "" -e "s|@executable_path/../Resources/|@executable_path/../|" Leksah/Leksah.app/Contents/Resources/etc/gtk-3.0/gdk-pixbuf.loaders || exit
+
+echo Fixing pango module paths
+sed -i "" -e "s|@executable_path/../Resources/|@executable_path/../|" Leksah/Leksah.app/Contents/Resources/etc/pango/pango.modules || exit
 
 LEKSAH_DMG="$LEKSAH_X_X_X_X_GHC_X_X_X.dmg"
 if test -e "$LEKSAH_DMG"; then

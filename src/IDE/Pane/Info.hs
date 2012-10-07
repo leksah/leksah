@@ -212,11 +212,11 @@ populatePopupMenu :: IDERef -> IORef (Maybe Descr) -> Menu -> IO ()
 populatePopupMenu ideR currentDescr' menu = do
     items <- containerGetChildren menu
     item0 <- menuItemNewWithLabel "Goto Definition"
-    item0 `onActivateLeaf` (reflectIDE gotoSource ideR)
+    item0 `on` menuItemActivate $ reflectIDE gotoSource ideR
     item1 <- menuItemNewWithLabel "Select Module"
-    item1 `onActivateLeaf` (reflectIDE gotoModule' ideR )
+    item1 `on` menuItemActivate $ reflectIDE gotoModule' ideR
     item2 <- menuItemNewWithLabel "Open Documentation"
-    item2 `onActivateLeaf` (reflectIDE openDocu ideR )
+    item2 `on` menuItemActivate $ reflectIDE openDocu ideR
     menuShellAppend menu item0
     menuShellAppend menu item1
     menuShellAppend menu item2
