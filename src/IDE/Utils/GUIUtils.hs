@@ -1,4 +1,4 @@
-{-# LANGUAGE CPP #-}
+{-# LANGUAGE CPP, ScopedTypeVariables #-}
 -----------------------------------------------------------------------------
 --
 -- Module      :  IDE.Utils.GUIUtils
@@ -56,6 +56,7 @@ import Graphics.UI.Gtk.Gdk.EventM (Modifier(..))
 import Graphics.UI.Gtk.Gdk.Enums (Modifier(..))
 #endif
 import Control.Monad.IO.Class (liftIO)
+import Control.Exception as E
 
 chooseDir :: Window -> String -> Maybe FilePath -> IO (Maybe FilePath)
 chooseDir window prompt mbFolder = do
@@ -134,10 +135,10 @@ chooseSaveFile window prompt mbFolder = do
 openBrowser :: String -> IDEAction
 openBrowser url = do
     prefs' <- readIDE prefs
-    liftIO (catch (do
+    liftIO (E.catch (do
                 runProcess (browser prefs') [url] Nothing Nothing Nothing Nothing Nothing
                 return ())
-            (\ _ -> sysMessage Normal ("Can't find browser executable " ++ browser prefs')))
+            (\ (_ :: SomeException) -> sysMessage Normal ("Can't find browser executable " ++ browser prefs')))
     return ()
 
 -- get widget elements (menu & toolbar)

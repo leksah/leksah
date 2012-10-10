@@ -119,6 +119,9 @@ import Text.PrettyPrint (render)
 import Control.Monad.Trans.Class (lift)
 import Control.Monad.IO.Class (liftIO)
 import Control.Monad.Trans.Reader (ReaderT(..))
+#if MIN_VERSION_directory(1,2,0)
+import Data.Time (UTCTime(..))
+#endif
 
 -- ---------------------------------------------------------------------
 -- IDE State
@@ -555,5 +558,8 @@ data StatusbarCompartment =
     |   CompartmentCollect Bool
 
 type PackageDescrCache = Map PackageIdentifier ModuleDescrCache
+#if MIN_VERSION_directory(1,2,0)
+type ModuleDescrCache = Map ModuleName (UTCTime, Maybe FilePath, ModuleDescr)
+#else
 type ModuleDescrCache = Map ModuleName (ClockTime, Maybe FilePath, ModuleDescr)
-
+#endif

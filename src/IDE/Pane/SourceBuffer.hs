@@ -134,6 +134,7 @@ import IDE.BufferMode
 import Control.Monad.Trans.Reader (ask)
 import Control.Monad.IO.Class (MonadIO(..))
 import Control.Monad (foldM, forM, filterM, unless, when)
+import Control.Exception as E (catch, SomeException)
 
 allBuffers :: IDEM [IDEBuffer]
 allBuffers = getPanes
@@ -808,8 +809,8 @@ fileSaveBuffer query nb ebuf ideBuf i = do
             let text' = if removeTBlanks
                             then unlines $ map removeTrailingBlanks $lines text
                             else text
-            succ <- liftIO $ catch (do UTF8.writeFile fn text'; return True)
-                (\e -> do
+            succ <- liftIO $ E.catch (do UTF8.writeFile fn text'; return True)
+                (\(e :: SomeException) -> do
                     sysMessage Normal (show e)
                     return False)
             setModified buf (not succ)
