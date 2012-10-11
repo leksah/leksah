@@ -109,7 +109,7 @@ import Graphics.UI.Gtk
         fileChooserGetFilename, widgetShow, fileChooserDialogNew,
         notebookGetNthPage, notebookPageNum, widgetHide, dialogRun,
         messageDialogNew, scrolledWindowSetShadowType,
-        scrolledWindowSetPolicy, dialogSetDefaultResponse, postGUIAsync,
+        scrolledWindowSetPolicy, dialogSetDefaultResponse,
         fileChooserSetCurrentFolder, fileChooserSelectFilename)
 import System.Glib.MainLoop (priorityDefaultIdle, idleAdd)
 import qualified Graphics.UI.Gtk as Gtk hiding (eventKeyName)
@@ -475,7 +475,7 @@ builder' bs mbfn ind bn rbn ct prefs pp nb windows = do
                 case GtkOld.eventClick event of
                     GtkOld.DoubleClick -> do
                         (start, end) <- getIdentifierUnderCursor buffer
-                        liftIO $ postGUIAsync $ reflectIDE (selectRange buffer start end) ideR
+                        liftIO $ reflectIDE (selectRange buffer start end) ideR
                         return True
                     _ -> return False) ideR
     (GetTextPopup mbTpm) <- triggerEvent ideR (GetTextPopup Nothing)
