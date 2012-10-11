@@ -750,11 +750,15 @@ executeDebugCommand :: String -> (E.Iteratee ToolOutput IDEM ()) -> DebugAction
 executeDebugCommand command handler = do
     (_, ghci) <- ask
     lift $ do
-        triggerEventIDE (StatusbarChanged [CompartmentState command, CompartmentBuild True])
         reifyIDE $ \ideR -> do
+            liftIO $ postGUIAsync $ reflectIDE (do
+                triggerEventIDE (StatusbarChanged [CompartmentState command, CompartmentBuild True])
+                return ()) ideR
             executeGhciCommand ghci command $ do
                 reflectIDEI handler ideR
-                liftIO $ postGUISync $ reflectIDE (triggerEventIDE (StatusbarChanged [CompartmentState "", CompartmentBuild False])) ideR
+                liftIO $ postGUIAsync $ reflectIDE (do
+                    triggerEventIDE (StatusbarChanged [CompartmentState "", CompartmentBuild False])
+                    return ()) ideR
                 return ()
 
 allBuildInfo' :: PackageDescription -> [BuildInfo]
