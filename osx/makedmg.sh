@@ -1,17 +1,5 @@
 #!/bin/sh
 
-ghc-pkg unregister --force gtk
-cabal install Cabal
-cd ../gtk2hs/gtk || exit
-cabal clean || exit
-cabal install -fgtk3 -fhave-quartz-gtk
-cd ../../gtksourceview || exit
-cabal clean || exit
-cabal install
-cd ../ige-mac-integration || exit
-cabal clean || exit
-cabal install
-
 cd ../leksah || exit
 
 . scripts/stage.sh || exit
