@@ -26,7 +26,6 @@ cabal install Cabal
 #if [ "$GHC_VER" != "6.12.3" ]; then
 #  LEKSAH_YI_FLAGS="yi -dyre"
 #  cd ../yi/yi || exit
-#  cabal clean || exit
 #  cabal install --only-dependencies || exit
 #  cabal configure --flags="pango -vte -vty" --extra-lib-dirs="$GTK_PREFIX/lib" || exit
 #  cabal build || exit
@@ -36,7 +35,6 @@ cabal install Cabal
 #fi
 
 cd ../ltk || exit
-cabal clean || exit
 cabal install --only-dependencies || exit
 cabal configure || exit
 cabal build || exit
@@ -46,7 +44,6 @@ cabal register || exit
 export LEKSAH_CONFIG_ARGS="--extra-lib-dirs="$GTK_PREFIX/lib" --datasubdir="$LEKSAH_X_X""
 
 cd ../leksah-server || exit
-cabal clean || exit
 cabal install --flags="libcurl" --only-dependencies || exit
 cabal configure --flags="libcurl" $LEKSAH_CONFIG_ARGS || exit
 cabal build || exit
@@ -54,7 +51,6 @@ cabal copy || exit
 cabal register || exit
 
 cd ../leksah || exit
-cabal clean || exit
 cabal install --flags="$LEKSAH_YI_FLAGS" --only-dependencies || exit
 cabal configure --flags="$LEKSAH_YI_FLAGS" $LEKSAH_CONFIG_ARGS || exit
 cabal build || exit
