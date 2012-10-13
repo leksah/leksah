@@ -39,6 +39,7 @@ data-files: LICENSE
             language-specs/cassius.lang
             language-specs/lucius.lang
             language-specs/julius.lang
+            language-specs/jmacro.lang
 
             pics/ide_class.png
             pics/ide_configure.png

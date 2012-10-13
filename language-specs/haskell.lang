@@ -123,6 +123,46 @@
       </include>
     </context>
 
+    <context id="jmacro">
+      <start>\[\$?jmacro\|</start>
+      <end>\|\]</end>
+      <include>
+        <context sub-pattern="0" where="start" style-ref="preprocessor"/>
+        <context sub-pattern="0" where="end" style-ref="preprocessor"/>
+        <context ref="jmacro:jmacro"/>
+      </include>
+    </context>
+
+    <context id="jmacroE">
+      <start>\[\$?jmacroE\|</start>
+      <end>\|\]</end>
+      <include>
+        <context sub-pattern="0" where="start" style-ref="preprocessor"/>
+        <context sub-pattern="0" where="end" style-ref="preprocessor"/>
+        <context ref="jmacro:jmacro"/>
+      </include>
+    </context>
+
+    <context id="j">
+      <start>\[\$?j\|</start>
+      <end>\|\]</end>
+      <include>
+        <context sub-pattern="0" where="start" style-ref="preprocessor"/>
+        <context sub-pattern="0" where="end" style-ref="preprocessor"/>
+        <context ref="jmacro:j"/>
+      </include>
+    </context>
+
+    <context id="je">
+      <start>\[\$?je\|</start>
+      <end>\|\]</end>
+      <include>
+        <context sub-pattern="0" where="start" style-ref="preprocessor"/>
+        <context sub-pattern="0" where="end" style-ref="preprocessor"/>
+        <context ref="jmacro:j"/>
+      </include>
+    </context>
+
     <context id="variable" style-ref="variable">
       <match>\b[a-z_][0-9a-zA-Z_'#]*</match>
     </context>
@@ -263,6 +303,10 @@
         <context ref="cassius"/>
         <context ref="lucius"/>
         <context ref="julius"/>
+        <context ref="jmacro"/>
+        <context ref="jmacroE"/>
+        <context ref="j"/>
+        <context ref="je"/>
       </include>
     </context>
 
