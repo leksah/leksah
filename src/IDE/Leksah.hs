@@ -74,6 +74,9 @@ import Data.List (stripPrefix)
 import System.Directory (doesFileExist)
 import System.FilePath (dropExtension, splitExtension, (</>))
 import qualified Data.Map as Map
+import qualified Data.Enumerator as E
+import qualified Data.Enumerator.List as EL
+import Data.Enumerator (($$))
 
 -- --------------------------------------------------------------------
 -- Command line options
@@ -285,7 +288,7 @@ startMainWindow yiControl sessionFP mbWorkspaceFP sourceFPs startupPrefs isFirst
           ,   completion        =   ((750,400),Nothing)
           ,   yiControl         =   yiControl
           ,   server            =   Nothing
-          ,   vcsData           =   (Nothing, Nothing)
+          ,   vcsData           =   (Map.empty, Nothing)
           ,   logLaunches       =   Map.empty
     }
     ideR             <-  newIORef ide
@@ -438,7 +441,7 @@ firstBuild newPrefs = do
     boxPackStart vb progressBar PackGrow 7
     forkIO $ do
             (output, pid) <- runTool "leksah-server" ["-sbo"] Nothing
-            mapM_ (update progressBar) output
+            E.run_ $ output $$ EL.mapM_ (update progressBar)
             waitForProcess pid
             postGUIAsync (dialogResponse dialog ResponseOk)
     widgetShowAll dialog

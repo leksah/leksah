@@ -87,15 +87,17 @@ import IDE.Package (debugStart, executeDebugCommand, tryDebug_, printBindResultF
         breakOnErrorFlag, breakOnExceptionFlag, printEvldWithShowFlag)
 import IDE.Utils.Tool (ToolOutput(..), toolProcess)
 import IDE.Workspaces (packageTry_)
+import qualified Data.Enumerator as E
+import qualified Data.Enumerator.List as EL
 
-debugCommand :: String -> ([ToolOutput] -> IDEAction) -> DebugAction
-debugCommand command handler = debugCommand' command
-    (\to -> do
-        handler to
-        triggerEventIDE VariablesChanged
-        return ())
+debugCommand :: String -> E.Iteratee ToolOutput IDEM () -> DebugAction
+debugCommand command handler = do
+    debugCommand' command $ do
+        handler
+        lift $ triggerEventIDE VariablesChanged
+        return ()
 
-debugCommand' :: String -> ([ToolOutput] -> IDEAction) -> DebugAction
+debugCommand' :: String -> E.Iteratee ToolOutput IDEM () -> DebugAction
 debugCommand' command handler = do
     ghci <- ask
     lift $ catchIDE (runDebug (executeDebugCommand command handler) ghci)
@@ -132,30 +134,29 @@ debugExecuteAndShowSelection = do
     case maybeText of
         Just text -> packageTry_ $ tryDebug_ $ do
             debugSetLiberalScope
-            debugCommand text (\to -> do
-                insertTextAfterSelection $ " " ++ buildOutputString to
-                logOutputDefault to)
+            debugCommand text $ do
+                (out, _) <- EL.zip (EL.fold buildOutputString "") logOutputDefault
+                lift $ insertTextAfterSelection $ " " ++ out
         Nothing   -> ideMessage Normal "Please select some text in the editor to execute"
     where
-    buildOutputString :: [ToolOutput] -> String
-    buildOutputString (ToolOutput str:[]) = str
-    buildOutputString (ToolOutput str:r)  = str ++ "\n" ++ (buildOutputString r)
-    buildOutputString (_:r)               = buildOutputString r
-    buildOutputString []                  = ""
+    buildOutputString :: String -> ToolOutput -> String
+    buildOutputString "" (ToolOutput str) = str
+    buildOutputString s  (ToolOutput str) = s ++ "\n" ++ str
+    buildOutputString s  _                = s
 
 debugSetLiberalScope :: DebugAction
 debugSetLiberalScope = do
     maybeModuleName <- lift selectedModuleName
     case maybeModuleName of
         Just moduleName -> do
-            debugCommand (":module *" ++ moduleName) (\ _ -> return ())
+            debugCommand (":module *" ++ moduleName) (return ())
         Nothing -> do
             mbPackage <- lift getActivePackageDescr
             case mbPackage of
                 Nothing -> return ()
                 Just p -> let packageNames = map (display . modu . mdModuleId) (pdModules p)
                     in debugCommand' (foldl (\a b -> a ++ " *" ++ b) ":module + " packageNames)
-                        (\ _ -> return ())
+                        (return ())
 
 debugAbandon :: IDEAction
 debugAbandon = do
@@ -200,14 +201,12 @@ debugContinue = packageTry_ $ do
 
 debugDeleteAllBreakpoints :: IDEAction
 debugDeleteAllBreakpoints = do
-    packageTry_ $ tryDebug_ $ debugCommand ":delete *" $ \output -> do
-        logOutputDefault output
+    packageTry_ $ tryDebug_ $ debugCommand ":delete *" logOutputDefault
     setBreakpointList []
 
 debugDeleteBreakpoint :: String -> LogRef -> IDEAction
 debugDeleteBreakpoint indexString lr = do
-    packageTry_ $ tryDebug_ $ debugCommand (":delete " ++ indexString) $ \output -> do
-        logOutputDefault output
+    packageTry_ $ tryDebug_ $ debugCommand (":delete " ++ indexString) logOutputDefault
     bl <- readIDE breakpointRefs
     setBreakpointList $ filter (/= lr) bl
     ideR <- ask
@@ -279,10 +278,10 @@ debugTrace = packageTry_ $ do
     rootPath <- lift $ activeProjectDir
     tryDebug_ $ do
         (debugPackage, _) <- ask
-        debugCommand ":trace" (\to -> do
-            logOutputForHistoricContextDefault debugPackage to
-            triggerEventIDE TraceChanged
-            return ())
+        debugCommand ":trace" $ do
+            logOutputForLiveContextDefault debugPackage
+            lift $ triggerEventIDE TraceChanged
+            return ()
 
 debugTraceExpression :: IDEAction
 debugTraceExpression = do
@@ -295,11 +294,11 @@ debugTraceExpr :: Maybe String -> DebugAction
 debugTraceExpr maybeText = do
     (debugPackage, _) <- ask
     case maybeText of
-        Just text -> debugCommand (":trace " ++ text) (\to -> do
-            rootPath <- activeProjectDir
-            logOutputForHistoricContextDefault debugPackage to
-            triggerEventIDE TraceChanged
-            return ())
+        Just text -> debugCommand (":trace " ++ text) $ do
+--            rootPath <- activeProjectDir
+            logOutputForLiveContextDefault debugPackage
+            lift $ triggerEventIDE TraceChanged
+            return ()
         Nothing   -> lift $ ideMessage Normal "Please select an expression in the editor"
 
 

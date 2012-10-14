@@ -8,7 +8,7 @@
 -- Stability   :  provisional
 -- Portability :
 --
--- |
+-- | TODO use new runActionWithContext
 --
 -----------------------------------------------------------------------------
 
@@ -16,51 +16,68 @@ module IDE.Command.VCS.SVN (
     commitAction
     ,updateAction
     ,viewLogAction
+    ,mkSVNActions
 ) where
 
-import Graphics.UI.Gtk.ActionMenuToolbar.UIManager(MergeId)
-
-import qualified VCSGui.Svn as GUISvn
-import qualified VCSWrapper.Svn as WSvn
-import qualified VCSWrapper.Common as WC
-
-import IDE.Command.VCS.Common
 
 import IDE.Core.Types
 import IDE.Core.State
 
-import Control.Monad.Reader(liftIO,ask)
+import qualified IDE.Command.VCS.Common.Helper as Helper
+import qualified IDE.Command.VCS.Types as Types
+
+import qualified VCSGui.Common as VCSGUI
+import qualified VCSGui.Svn as GUISvn
+import qualified VCSWrapper.Svn as Wrapper.Svn
+import qualified VCSWrapper.Common as Wrapper
+
+import Graphics.UI.Gtk.ActionMenuToolbar.UIManager(MergeId)
+
+import Control.Monad.Reader(liftIO,ask,lift)
 import Data.IORef(atomicModifyIORef, IORef)
 import Data.Either
 
-commitAction :: IDEAction
-commitAction = createSVNActionFromContext GUISvn.showCommitGUI
+commitAction :: Types.VCSAction ()
+commitAction = do
+    ((_,_,mbMergeTool),package) <- ask
+    ide <- Types.askIDERef
+    createSVNActionFromContext $ GUISvn.showCommitGUI $ Helper.eMergeToolSetter ide package mbMergeTool
 
-updateAction :: IDEAction
-updateAction = createSVNActionFromContext $ GUISvn.showUpdateGUI
+updateAction :: Types.VCSAction ()
+updateAction = do
+    ((_,_,mbMergeTool),package) <- ask
+    ideRef <- Types.askIDERef
+    createSVNActionFromContext $ GUISvn.showUpdateGUI $ Helper.eMergeToolSetter ideRef package mbMergeTool
 
-
-
-viewLogAction :: IDEAction
+viewLogAction :: Types.VCSAction ()
 viewLogAction = createSVNActionFromContext GUISvn.showLogGUI
 
+mkSVNActions :: [(String, Types.VCSAction ())]
+mkSVNActions = [
+                ("_Commit", commitAction)
+                ,("_View Log", viewLogAction)
+                ,("_Update", updateAction)
+                ]
+
+--HELPERS
+
 createSVNActionFromContext :: (Either GUISvn.Handler (Maybe String)
-                                -> WC.Ctx())
-                           -> IDEAction
+                                -> Wrapper.Ctx())
+                           -> Types.VCSAction ()
 createSVNActionFromContext action = do
-    (mergeInfo, mbPw) <- readIDE vcsData
-    e <- ask
+    (mergeInfo, mbPw) <- Types.readIDE' vcsData
+    ide <-  Types.askIDERef
     case mbPw of
-            Nothing -> createActionFromContext $ action $ Left $ passwordHandler e mergeInfo
-            Just mb -> createActionFromContext $ action $ Right mb
+            Nothing -> Helper.createActionFromContext $ action $ Left $ passwordHandler ide mergeInfo
+            Just mb -> Helper.createActionFromContext $ action $ Right mb
     where
-        passwordHandler :: IORef IDE-> Maybe MergeId -> ((Maybe (Bool, Maybe String)) -> WC.Ctx ())
-        passwordHandler e mbMergeInfo result = liftIO $ do
+--        passwordHandler :: IORef IDE-> Maybe MergeId -> ((Maybe (Bool, Maybe String)) -> Wrapper.Ctx ())
+        passwordHandler ide mbMergeInfo result = liftIO $ do
             case result of
-                Just (True, pw) -> modifyIDE_' e (\ide -> ide {vcsData = (mbMergeInfo, Just pw) })
+                Just (True, pw) -> modifyIDE_' ide (\ide -> ide {vcsData = (mbMergeInfo, Just pw) })
                 _               -> return ()
-        modifyIDE_' e f = do
-                liftIO (atomicModifyIORef e f')
+        modifyIDE_' ide f = do
+                liftIO (atomicModifyIORef ide f')
                 where
                     f' a  = (f a,())
 

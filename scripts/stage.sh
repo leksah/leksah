@@ -14,16 +14,16 @@ echo Staging Leksah in $GTK_PREFIX
 # Only used by OS X
 # export DYLD_LIBRARY_PATH="/System/Library/Frameworks/ApplicationServices.framework/Versions/A/Frameworks/ImageIO.framework/Versions/A/Resources:$GTK_PREFIX/lib:$DYLD_LIBRARY_PATH"
 
-if [ "$GHC_VER" != "6.12.3" ]; then
-  LEKSAH_YI_FLAGS="yi -dyre"
-  cd ../yi/yi || exit
-  cabal clean || exit
-  cabal configure --flags="pango -vte -vty" --prefix=$GTK_PREFIX --extra-lib-dirs="$GTK_PREFIX/lib" || exit
-  cabal build || exit
-  cabal copy || exit
-  cabal register || exit
-  cd ..
-fi
+#if [ "$GHC_VER" != "6.12.3" ]; then
+#  LEKSAH_YI_FLAGS="yi -dyre"
+#  cd ../yi/yi || exit
+#  cabal clean || exit
+#  cabal configure --flags="pango -vte -vty" --prefix=$GTK_PREFIX --extra-lib-dirs="$GTK_PREFIX/lib" || exit
+#  cabal build || exit
+#  cabal copy || exit
+#  cabal register || exit
+#  cd ..
+#fi
 
 cd ../ltk || exit
 cabal clean || exit

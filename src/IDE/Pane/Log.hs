@@ -29,6 +29,9 @@ module IDE.Pane.Log (
 ,   buildLogLaunchByPackage
 ,   buildLogLaunchByPackageId
 ,   addLogLaunchData
+,   showLogLaunch
+,   showDefaultLogLaunch
+,   showDefaultLogLaunch'
 
 ,   readOut
 ,   readErr
@@ -80,7 +83,8 @@ import Graphics.UI.Gtk
         boxPackStartDefaults, vBoxNew, comboBoxNewText, boxPackEndDefaults,
         comboBoxAppendText, comboBoxSetActive, comboBoxGetActiveText,
         priorityDefaultIdle, idleAdd,Frame, frameNew,buttonActivated,
-        boxPackStart, Packing(..), comboBoxGetActive, comboBoxRemoveText)
+        boxPackStart, Packing(..), comboBoxGetActive, comboBoxRemoveText,
+        comboBoxGetModelText, listStoreToList) --TODO remove import for logging only
 import qualified Data.Map as Map
 import Data.Maybe
 import Distribution.Package
@@ -171,6 +175,8 @@ getLogLaunchNameByPackageId (PackageIdentifier pkgName pkgVersion) = show pkgNam
 
 defaultLogName = "default"
 
+-- ^ adds arguments to ide to process them later.
+-- ^ e.g. using processhandle to kill process and name to switch between view
 addLogLaunchData :: String -> LogLaunch -> ProcessHandle -> IDEM ()
 addLogLaunchData name logLaunch pid = do
     log <- getLog
@@ -179,21 +185,33 @@ addLogLaunchData name logLaunch pid = do
     launches <- readIDE logLaunches
     let newLaunches = Map.insert name (LogLaunchData logLaunch (Just pid)) launches
     modifyIDE_ (\ide -> ide {logLaunches = newLaunches})
+    showLogLaunch name
 
 
 removeActiveLogLaunchData :: IDEM ()
 removeActiveLogLaunchData = do
+--                liftIO $ putStrLn $ "Attempting to remove active log launchdata from ide" --TODO remove logging
                 log <- getLog
                 let comboBox = logLaunchBox log
 
                 index <- liftIO $ comboBoxGetActive comboBox
                 mbTitle <- liftIO $ comboBoxGetActiveText comboBox
+--                liftIO $ putStrLn $ "Lauch to remove: index " ++ (show index) ++ ", mbTitle: "++ (show mbTitle)
                 let title = fromJust mbTitle
 
+--                model <- liftIO $ comboBoxGetModelText comboBox
+--                list <- liftIO $ listStoreToList model
+--                liftIO $ putStrLn $ "Underlying model " ++ (show list)
+
+
+                liftIO $ showDefaultLogLaunch comboBox
                 liftIO $ comboBoxRemoveText comboBox index
+--                liftIO $ putStrLn $ "Removed launch from combobox."
                 launches <- readIDE logLaunches
+--                liftIO $ putStrLn $ "Number of available launches: "++(show $ length $ Map.toList launches)
                 let newLaunches = Map.delete title launches
                 modifyIDE_ (\ide -> ide {logLaunches = newLaunches})
+--                liftIO $ putStrLn $ "Removed log launch data successfully from ide"
 
 showDefaultLogLaunch :: ComboBox -> IO()
 showDefaultLogLaunch comboBox = comboBoxSetActive comboBox 0
@@ -202,7 +220,25 @@ showDefaultLogLaunch' :: IDEM ()
 showDefaultLogLaunch' = do
         log <- getLog
         let comboBox = logLaunchBox log
+
         liftIO $ showDefaultLogLaunch comboBox
+
+showLogLaunch :: String -> IDEM ()
+showLogLaunch name = do
+    liftIO $ putStrLn $ "showLogLaunch: name = " ++ name
+    log <- getLog
+    let comboBox = logLaunchBox log
+
+    model <- liftIO $ comboBoxGetModelText comboBox
+    list <- liftIO $ listStoreToList model
+    let mbIndex = elemRIndex name list
+
+    liftIO $ putStrLn $ "showLogLaunch: mbIndex = " ++ show mbIndex
+
+    case mbIndex of
+        Nothing -> return() -- TODO errorCalls
+        Just index -> liftIO $ comboBoxSetActive comboBox index
+    liftIO $ putStrLn $ "switched to loglaunch"
 
 data LogState               =   LogState
     deriving(Eq,Ord,Read,Show,Typeable)
@@ -346,6 +382,8 @@ builder' pp nb windows = do
                                             launches <- readIDE logLaunches
                                             removeActiveLogLaunchData
                                             terminateLogLaunch title launches
+
+
                                             )
                                             ideR
                                                                 else

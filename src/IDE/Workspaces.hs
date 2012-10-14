@@ -12,7 +12,7 @@
 -- | Represents a workspace, a work unit, which can be composed of multiple packages
 --
 -----------------------------------------------------------------------------
-
+{-# LANGUAGE DeriveDataTypeable #-}
 module IDE.Workspaces (
     workspaceNew
 ,   workspaceOpen
@@ -32,8 +32,6 @@ module IDE.Workspaces (
 
 ,   backgroundMake
 ,   makePackage
-
-,   workspaceSetVCSConfig
 ) where
 
 import IDE.Core.State
@@ -77,9 +75,10 @@ import Graphics.UI.Gtk.Windows.Dialog (ResponseId(..))
 #else
 import Graphics.UI.Gtk.General.Structs (ResponseId(..))
 #endif
-import Control.Exception (SomeException(..))
+import qualified Control.Exception as Exc (SomeException(..), throw, Exception)
+import Data.Typeable (Typeable)
 import Control.Monad.Reader.Class (ask)
-import qualified Data.Map as  Map (empty)
+import qualified Data.Map as  Map (empty, insert, lookup)
 import IDE.Pane.SourceBuffer (fileOpenThis, fileCheckAll, belongsToPackage)
 import qualified System.IO.UTF8 as UTF8 (writeFile)
 import System.Glib.Attributes (AttrOp(..), set)
@@ -89,48 +88,10 @@ import IDE.Build
 import IDE.Utils.FileUtils(myCanonicalizePath)
 import IDE.Command.VCS.Common.Workspaces as VCSWS
 import qualified VCSWrapper.Common as VCS
+import qualified VCSGui.Common as VCSGUI
+import qualified IDE.Workspaces.Writer as Writer
 
-setWorkspace :: Maybe Workspace -> IDEAction
-setWorkspace mbWs = do
-    mbOldWs <- readIDE workspace
-    modifyIDE_ (\ide -> ide{workspace = mbWs})
-    let packFile =  case mbWs of
-                    Nothing -> Nothing
-                    Just ws -> wsActivePackFile ws
-    let oldPackFile = case mbOldWs of
-                    Nothing -> Nothing
-                    Just ws -> wsActivePackFile ws
-    let mbPackages =  case mbWs of
-                        Nothing -> Nothing
-                        Just ws -> Just (wsPackages ws)
-    when (packFile /= oldPackFile) $
-            case packFile of
-                Nothing -> deactivatePackage
-                Just p  -> activatePackage (getPackage p (fromJust mbPackages)) >> return ()
-    mbPack <- readIDE activePack
-    let wsStr = case mbWs of
-                    Nothing -> ""
-                    Just ws -> wsName ws
-    let txt = wsStr ++ " > " ++
-                    (case mbPack of
-                            Nothing -> ""
-                            Just p  -> packageIdentifierToString (ipdPackageId p))
-    triggerEventIDE (StatusbarChanged [CompartmentPackage txt])
-    triggerEventIDE (WorkspaceChanged True True)
-    triggerEventIDE UpdateWorkspaceInfo
-    return ()
 
-getPackage :: FilePath -> [IDEPackage] -> Maybe IDEPackage
-getPackage fp packages =
-    case filter (\ p -> ipdCabalFile p == fp) packages of
-        [p] -> Just p
-        l   -> Nothing
-
--- ---------------------------------------------------------------------
--- This needs to be incremented, when the workspace format changes
---
-workspaceVersion :: Int
-workspaceVersion = 1
 
 -- | Constructs a new workspace and makes it the current workspace
 workspaceNew :: IDEAction
@@ -153,7 +114,7 @@ workspaceNewHere filePath =
             newWorkspace = emptyWorkspace {
                             wsName = takeBaseName cPath,
                             wsFile = cPath}
-        liftIO $ writeFields cPath newWorkspace workspaceDescr
+        liftIO $ writeFields cPath newWorkspace Writer.workspaceDescr
         workspaceOpenThis False (Just cPath)
         return ()
 
@@ -251,14 +212,11 @@ workspaceOpenThis askForSession mbFilePath =
                     ideR <- ask
                     catchIDE (do
                         workspace <- readWorkspace filePath
-                        setWorkspace (Just workspace {wsFile = filePath})
-                        let mbConfig = vcsConfig workspace
-                        case mbConfig of
-                            Nothing -> return ()
-                            Just config -> VCSWS.onWorkspaceOpen config
-                        return ())
-                           (\ (e :: SomeException) -> reflectIDE
+                        Writer.setWorkspace (Just workspace {wsFile = filePath})
+                        VCSWS.onWorkspaceOpen workspace)
+                           (\ (e :: Exc.SomeException) -> reflectIDE
                                 (ideMessage Normal ("Can't load workspace file " ++ filePath ++ "\n" ++ show e)) ideR)
+
 
 -- | Closes a workspace
 workspaceClose :: IDEAction
@@ -272,7 +230,7 @@ workspaceClose = do
             triggerEventIDE (SaveSession ((dropExtension (wsFile ws))
                                 ++  leksahSessionFileExtension))
             addRecentlyUsedWorkspace (wsFile ws)
-            setWorkspace Nothing
+            Writer.setWorkspace Nothing
             when (isJust oldActivePackFile) $ do
                 triggerEventIDE (Sensitivity [(SensitivityProjectActive, False),
                     (SensitivityWorkspaceOpen, False)])
@@ -340,7 +298,7 @@ workspaceAddPackage' fp = do
                 sysMessage Normal "Setup.(l)hs does not exist. Writing Standard"
                 writeFile (dir </> "Setup.lhs") standardSetup
             unless (elem cfp (map ipdCabalFile (wsPackages ws))) $ lift $
-                writeWorkspace $ ws {wsPackages =  pack : wsPackages ws,
+                Writer.writeWorkspace $ ws {wsPackages =  pack : wsPackages ws,
                                      wsActivePackFile =  Just (ipdCabalFile pack)}
             return (Just pack)
         Nothing -> return Nothing
@@ -391,7 +349,7 @@ workspaceRemovePackage :: IDEPackage -> WorkspaceAction
 workspaceRemovePackage pack = do
     ws <- ask
     when (elem pack (wsPackages ws)) $ lift $
-        writeWorkspace ws {wsPackages =  delete pack (wsPackages ws)}
+        Writer.writeWorkspace ws {wsPackages =  delete pack (wsPackages ws)}
     return ()
 
 workspaceActivatePackage :: IDEPackage -> WorkspaceAction
@@ -399,38 +357,21 @@ workspaceActivatePackage pack = do
     ws <- ask
     lift $ activatePackage (Just pack)
     when (elem pack (wsPackages ws)) $ lift $ do
-        writeWorkspace ws {wsActivePackFile =  Just (ipdCabalFile pack)}
+        Writer.writeWorkspace ws {wsActivePackFile =  Just (ipdCabalFile pack)}
         return ()
     return ()
 
-writeWorkspace :: Workspace -> IDEAction
-writeWorkspace ws = do
-    timeNow      <- liftIO getClockTime
-    let newWs    =  ws {wsSaveTime = show timeNow,
-                         wsVersion = workspaceVersion,
-                         wsPackagesFiles = map ipdCabalFile (wsPackages ws)}
-    setWorkspace $ Just newWs
-    newWs' <- liftIO $ makePathesRelative newWs
-    liftIO $ writeFields (wsFile newWs') (newWs' {wsFile = ""}) workspaceDescr
+
 
 readWorkspace :: FilePath -> IDEM Workspace
 readWorkspace fp = do
-    ws <- liftIO $ readFields fp workspaceDescr emptyWorkspace
+    ws <- liftIO $ readFields fp Writer.workspaceDescr emptyWorkspace
     ws' <- liftIO $ makePathesAbsolute ws fp
     packages <- mapM idePackageFromPath (wsPackagesFiles ws')
+    --TODO set package vcs here
     return ws'{ wsPackages = map fromJust $ filter isJust $ packages}
 
-makePathesRelative :: Workspace -> IO Workspace
-makePathesRelative ws = do
-    wsFile' <- myCanonicalizePath (wsFile ws)
-    wsActivePackFile'           <-  case wsActivePackFile ws of
-                                        Nothing -> return Nothing
-                                        Just fp -> do
-                                            nfp <- liftIO $ myCanonicalizePath fp
-                                            return (Just (makeRelative (dropFileName wsFile') nfp))
-    wsPackagesFiles'            <-  mapM myCanonicalizePath (wsPackagesFiles ws)
-    let relativePathes          =   map (\p -> makeRelative (dropFileName wsFile') p) wsPackagesFiles'
-    return ws {wsActivePackFile = wsActivePackFile', wsFile = wsFile', wsPackagesFiles = relativePathes}
+
 
 
 makePathesAbsolute :: Workspace -> FilePath -> IO Workspace
@@ -450,7 +391,7 @@ makePathesAbsolute ws bp = do
                 else myCanonicalizePath (basePath </> relativePath)
 
 emptyWorkspace =  Workspace {
-    wsVersion       =   workspaceVersion
+    wsVersion       =   Writer.workspaceVersion
 ,   wsSaveTime      =   ""
 ,   wsName          =   ""
 ,   wsFile          =   ""
@@ -458,47 +399,9 @@ emptyWorkspace =  Workspace {
 ,   wsPackagesFiles =   []
 ,   wsActivePackFile =   Nothing
 ,   wsNobuildPack   =   []
-,   vcsConfig       =   Nothing
+,   packageVcsConf  =   Map.empty
 }
 
-workspaceDescr :: [FieldDescriptionS Workspace]
-workspaceDescr = [
-        mkFieldS
-            (paraName <<<- ParaName "Version of workspace file format" $ emptyParams)
-            (PP.text . show)
-            intParser
-            wsVersion
-            (\ b a -> a{wsVersion = b})
-    ,   mkFieldS
-            (paraName <<<- ParaName "Time of storage" $ emptyParams)
-            (PP.text . show)
-            stringParser
-            wsSaveTime
-            (\ b a -> a{wsSaveTime = b})
-    ,   mkFieldS
-            (paraName <<<- ParaName "Name of the workspace" $ emptyParams)
-            (PP.text . show)
-            stringParser
-            wsName
-            (\ b a -> a{wsName = b})
-    ,   mkFieldS
-            (paraName <<<- ParaName "File paths of contained packages" $ emptyParams)
-            (PP.text . show)
-            readParser
-            wsPackagesFiles
-            (\b a -> a{wsPackagesFiles = b})
-    ,   mkFieldS
-            (paraName <<<- ParaName "Maybe file path of an active package" $ emptyParams)
-            (PP.text . show)
-            readParser
-            wsActivePackFile
-            (\fp a -> a{wsActivePackFile = fp})
-    ,   mkFieldS
-            (paraName <<<- ParaName "Maybe Config of a Version Control System" $ emptyParams)
-            (PP.text . show)
-            readParser
-            vcsConfig
-            (\filePath a -> a{vcsConfig = filePath})]
 
 
 addRecentlyUsedWorkspace :: FilePath -> IDEAction
@@ -564,7 +467,7 @@ backgroundMake = catchIDE (do
                         makePackages settings modifiedPacks (MoComposed [MoBuild,MoTest,MoCopy,MoRegister])
                                         (MoComposed [MoConfigure,MoBuild,MoTest,MoCopy,MoRegister]) MoMetaInfo
     )
-    (\(e :: SomeException) -> sysMessage Normal (show e))
+    (\(e :: Exc.SomeException) -> sysMessage Normal (show e))
 
 makePackage ::  PackageAction
 makePackage = do
@@ -585,13 +488,3 @@ makePackage = do
                         (MoComposed [MoBuild,MoTest,MoCopy,MoRegister])
                         (MoComposed [MoConfigure,MoBuild,MoTest,MoCopy,MoRegister])
                         MoMetaInfo) ws
-
-
-workspaceSetVCSConfig :: Maybe (VCS.VCSType, VCS.Config) -> IDEAction
-workspaceSetVCSConfig config = do
-    modifyIDE_ (\ide -> do
-        let modifiedWs = (fromJust (workspace ide)) { vcsConfig = config }
-        ide {workspace = Just modifiedWs })
-    modifiedWs <- readIDE workspace
-    writeWorkspace $ fromJust modifiedWs
-

@@ -15,7 +15,6 @@
 --
 ---------------------------------------------------------------------------------
 
-
 module IDE.Package (
     packageConfig
 ,   packageConfig'
@@ -96,11 +95,14 @@ import qualified Data.Map as  Map (empty)
 import System.Exit (ExitCode(..))
 import Control.Applicative ((<$>))
 #ifdef MIN_VERSION_process_leksah
-import IDE.System.Process (getProcessExitCode, interruptProcessGroup, ProcessHandle)
+import IDE.System.Process (getProcessExitCode, interruptProcessGroup, ProcessHandle(..))
 #else
-import System.Process (getProcessExitCode, interruptProcessGroupOf, ProcessHandle)
+import System.Process (getProcessExitCode, interruptProcessGroupOf, ProcessHandle(..))
 #endif
 import IDE.Utils.Tool (executeGhciCommand)
+import qualified Data.Enumerator as E (run_, Iteratee(..), last)
+import qualified Data.Enumerator.List as EL (foldM, zip3, zip)
+import Data.Enumerator (($$))
 
 #if MIN_VERSION_Cabal(1,8,0)
 myLibModules pd = case library pd of
@@ -173,34 +175,28 @@ packageConfig'  :: IDEPackage -> (Bool -> IDEAction) -> IDEAction
 packageConfig' package continuation = do
     let dir = dropFileName (ipdCabalFile package)
     logLaunch <- getDefaultLogLaunch
+    showDefaultLogLaunch'
+
     runExternalTool'        "Configuring"
                             "cabal"
                             (["configure"] ++ (ipdConfigFlags package))
-                            (Just dir)
-                            $ handleOutput logLaunch package
-    --TODO
---    addLogLaunchData logName logLaunch pid
---    let newLaunches = Map.insert logName newLogLaunch launches
---    modifyIDE_ (\ide -> ide {logLaunches = newLaunches})
-    where
-    handleOutput :: LogLaunch -> IDEPackage -> [ToolOutput] -> IDEM ()
-    handleOutput logLaunch package output = do
---        logLaunch <- getOrBuildLogLaunchByPackage package
-        logOutput logLaunch output
-        mbPack <- idePackageFromPath (ipdCabalFile package)
-        case mbPack of
-            Just pack -> do
-                changePackage pack
-                triggerEventIDE (WorkspaceChanged False True)
-                continuation (last output == ToolExit ExitSuccess)
-                return ()
-            Nothing -> do
-                ideMessage Normal "Can't read package file"
-                continuation False
-                return()
+                            (Just dir) $ do
+        (mbLastOutput, _) <- EL.zip E.last (logOutput logLaunch)
+        lift $ do
+            mbPack <- idePackageFromPath (ipdCabalFile package)
+            case mbPack of
+                Just pack -> do
+                    changePackage pack
+                    triggerEventIDE (WorkspaceChanged False True)
+                    continuation (mbLastOutput == Just (ToolExit ExitSuccess))
+                    return ()
+                Nothing -> do
+                    ideMessage Normal "Can't read package file"
+                    continuation False
+                    return()
 
-runCabalBuild :: Bool -> Bool -> IDEPackage -> Bool -> (Bool -> IDEAction) -> IDEAction
-runCabalBuild backgroundBuild withoutLinking package shallConfigure continuation = do
+runCabalBuild :: Bool -> Bool -> Bool -> IDEPackage -> Bool -> (Bool -> IDEAction) -> IDEAction
+runCabalBuild backgroundBuild jumpToWarnings withoutLinking package shallConfigure continuation = do
     prefs   <- readIDE prefs
     let dir =  dropFileName (ipdCabalFile package)
     let args = (["build"] ++
@@ -208,27 +204,29 @@ runCabalBuild backgroundBuild withoutLinking package shallConfigure continuation
                     then ["--with-ld=false"]
                     else []
                         ++ ipdBuildFlags package)
-    runExternalTool' "Building" "cabal" args (Just dir) $ \output -> do
-        logOutputForBuild package backgroundBuild output
-        errs <- readIDE errorRefs
-        if shallConfigure && isConfigError output
-            then
-                packageConfig' package (\ b ->
-                    when b $ runCabalBuild backgroundBuild withoutLinking package False continuation)
-            else do
-                continuation (last output == ToolExit ExitSuccess)
-                return ()
+    runExternalTool' "Building" "cabal" args (Just dir) $ do
+        (mbLastOutput, isConfigErr, _) <- EL.zip3 E.last isConfigError $
+            logOutputForBuild package backgroundBuild jumpToWarnings
+        lift $ do
+            errs <- readIDE errorRefs
+            if shallConfigure && isConfigErr
+                then
+                    packageConfig' package (\ b ->
+                        when b $ runCabalBuild backgroundBuild jumpToWarnings withoutLinking package False continuation)
+                else do
+                    continuation (mbLastOutput == Just (ToolExit ExitSuccess))
+                    return ()
 
-isConfigError :: [ToolOutput] -> Bool
-isConfigError = or . (map isCErr)
+isConfigError :: Monad m => E.Iteratee ToolOutput m Bool
+isConfigError = EL.foldM (\a b -> return $ a || isCErr b) False
     where
     isCErr (ToolError str) = str1 `isInfixOf` str || str2 `isInfixOf` str
     isCErr _ = False
     str1 = "Run the 'configure' command first"
     str2 = "please re-configure"
 
-buildPackage :: Bool -> Bool -> IDEPackage -> (Bool -> IDEAction) -> IDEAction
-buildPackage backgroundBuild withoutLinking package continuation = catchIDE (do
+buildPackage :: Bool -> Bool -> Bool -> IDEPackage -> (Bool -> IDEAction) -> IDEAction
+buildPackage backgroundBuild jumpToWarnings withoutLinking package continuation = catchIDE (do
     ideR      <- ask
     prefs     <- readIDE prefs
     maybeDebug <- readIDE debugState
@@ -241,19 +239,19 @@ buildPackage backgroundBuild withoutLinking package continuation = catchIDE (do
                     when (not backgroundBuild) $ liftIO $ do
                         timeoutAddFull (do
                             reflectIDE (do
-                                buildPackage backgroundBuild withoutLinking
+                                buildPackage backgroundBuild jumpToWarnings withoutLinking
                                                 package continuation
                                 return False) ideR
                             return False) priorityDefaultIdle 1000
                         return ()
-                else runCabalBuild backgroundBuild withoutLinking package True continuation
+                else runCabalBuild backgroundBuild jumpToWarnings withoutLinking package True continuation
         Just debug@(_, ghci) -> do
             -- TODO check debug package matches active package
             ready <- liftIO $ isEmptyMVar (currentToolCommand ghci)
             when ready $ do
                 let dir = dropFileName (ipdCabalFile package)
                 when (saveAllBeforeBuild prefs) (do fileSaveAll belongsToWorkspace; return ())
-                runDebug (executeDebugCommand ":reload" (logOutputForBuild package backgroundBuild)) debug
+                runDebug (executeDebugCommand ":reload" (logOutputForBuild package backgroundBuild jumpToWarnings)) debug
     )
     (\(e :: SomeException) -> sysMessage Normal (show e))
 
@@ -261,6 +259,8 @@ packageDoc :: PackageAction
 packageDoc = do
     package <- ask
     logLaunch <- lift $ getDefaultLogLaunch
+    lift $ showDefaultLogLaunch'
+
     lift $ catchIDE (do
         let dir = dropFileName (ipdCabalFile package)
         runExternalTool' "Documenting"
@@ -270,7 +270,6 @@ packageDoc = do
                         $ logOutput logLaunch)
         (\(e :: SomeException) -> putStrLn (show e))
 
-
 packageClean :: PackageAction
 packageClean = do
     package <- ask
@@ -279,20 +278,22 @@ packageClean = do
 packageClean' :: IDEPackage -> (Bool -> IDEAction) -> IDEAction
 packageClean' package continuation = do
     logLaunch <- getDefaultLogLaunch
+    showDefaultLogLaunch'
+
+    let dir = dropFileName (ipdCabalFile package)
     runExternalTool' "Cleaning"
                     "cabal"
                     ["clean"]
-                    (Just dir)
-                    (\output -> do
-                        logOutput logLaunch output
-                        continuation (last output == ToolExit ExitSuccess))
-    where
-    dir = dropFileName (ipdCabalFile package)
+                    (Just dir) $ do
+        (mbLastOutput, _) <- EL.zip E.last (logOutput logLaunch)
+        lift $ continuation (mbLastOutput == Just (ToolExit ExitSuccess))
 
 packageCopy :: PackageAction
 packageCopy = do
     package <- ask
     logLaunch <- lift $ getDefaultLogLaunch
+    lift $ showDefaultLogLaunch'
+
     lift $ catchIDE (do
         window      <- getMainWindow
         mbDir       <- liftIO $ chooseDir window "Select the target directory" Nothing
@@ -311,6 +312,8 @@ packageInstallDependencies :: PackageAction
 packageInstallDependencies = do
     package <- ask
     logLaunch <- lift $ getDefaultLogLaunch
+    lift $ showDefaultLogLaunch'
+
     lift $ catchIDE (do
         let dir = dropFileName (ipdCabalFile package)
         runExternalTool' "Installing" "cabal" (["install","--only-dependencies"]
@@ -318,13 +321,16 @@ packageInstallDependencies = do
         (\(e :: SomeException) -> putStrLn (show e))
 
 packageCopy' :: IDEPackage -> (Bool -> IDEAction) -> IDEAction
-packageCopy' package continuation = catchIDE (do
-   let dir = dropFileName (ipdCabalFile package)
-   logLaunch <- getDefaultLogLaunch
-   runExternalTool' "Copying" "cabal" (["copy"]
-                    ++ (ipdInstallFlags package)) (Just dir) (\ output -> do
-                        logOutput logLaunch output
-                        continuation (last output == ToolExit ExitSuccess)))
+packageCopy' package continuation = do
+    logLaunch <- getDefaultLogLaunch
+    showDefaultLogLaunch'
+
+    catchIDE (do
+        let dir = dropFileName (ipdCabalFile package)
+        runExternalTool' "Copying" "cabal" (["copy"]
+            ++ (ipdInstallFlags package)) (Just dir) $ do
+                (mbLastOutput, _) <- EL.zip E.last (logOutput logLaunch)
+                lift $ continuation (mbLastOutput == Just (ToolExit ExitSuccess)))
         (\(e :: SomeException) -> putStrLn (show e))
 
 packageRun :: PackageAction
@@ -374,13 +380,15 @@ packageRegister = do
 packageRegister' :: IDEPackage -> (Bool -> IDEAction) -> IDEAction
 packageRegister' package continuation =
     if ipdHasLibs package
-        then catchIDE (do
+        then do
+          logLaunch <- getDefaultLogLaunch
+          showDefaultLogLaunch'
+          catchIDE (do
             let dir = dropFileName (ipdCabalFile package)
-            logLaunch <- getDefaultLogLaunch
             runExternalTool' "Registering" "cabal" (["register"]
-                        ++ (ipdRegisterFlags package)) (Just dir) (\ output -> do
-                            logOutput logLaunch output
-                            continuation (last output == ToolExit ExitSuccess)))
+                ++ (ipdRegisterFlags package)) (Just dir) $ do
+                    (mbLastOutput, _) <- EL.zip E.last (logOutput logLaunch)
+                    lift $ continuation (mbLastOutput == Just (ToolExit ExitSuccess)))
             (\(e :: SomeException) -> putStrLn (show e))
         else continuation True
 
@@ -392,13 +400,15 @@ packageTest = do
 packageTest' :: IDEPackage -> (Bool -> IDEAction) -> IDEAction
 packageTest' package continuation =
     if not . null $ ipdTests package
-        then catchIDE (do
+        then do
+          logLaunch <- getDefaultLogLaunch
+          showDefaultLogLaunch'
+          catchIDE (do
             let dir = dropFileName (ipdCabalFile package)
-            logLaunch <- getDefaultLogLaunch
             runExternalTool' "Testing" "cabal" (["test"]
-                        ++ (ipdTestFlags package)) (Just dir) (\ output -> do
-                            logOutput logLaunch output
-                            continuation (last output == ToolExit ExitSuccess)))
+                ++ (ipdTestFlags package)) (Just dir) $ do
+                    (mbLastOutput, _) <- EL.zip E.last (logOutput logLaunch)
+                    lift $ continuation (mbLastOutput == Just (ToolExit ExitSuccess)))
             (\(e :: SomeException) -> putStrLn (show e))
         else continuation True
 
@@ -406,6 +416,8 @@ packageSdist :: PackageAction
 packageSdist = do
     package <- ask
     logLaunch <- lift $ getDefaultLogLaunch
+    lift $ showDefaultLogLaunch'
+
     lift $ catchIDE (do
         let dir = dropFileName (ipdCabalFile package)
         runExternalTool' "Source Dist" "cabal" (["sdist"]
@@ -417,6 +429,8 @@ packageOpenDoc :: PackageAction
 packageOpenDoc = do
     package <- ask
     logLaunch <- lift $ getDefaultLogLaunch
+    lift $ showDefaultLogLaunch'
+
     lift $ catchIDE (do
         prefs   <- readIDE prefs
         let path = dropFileName (ipdCabalFile package)
@@ -432,8 +446,8 @@ runExternalTool' :: String
                 -> FilePath
                 -> [String]
                 -> Maybe FilePath
-                -> ([ToolOutput] -> IDEAction)
-                -> IDEM ()
+                -> E.Iteratee ToolOutput IDEM ()
+                -> IDEAction
 runExternalTool' description executable args mbDir handleOutput = do
         runExternalTool (do
                             run <- isRunning
@@ -452,8 +466,8 @@ runExternalTool :: IDEM Bool
                 -> FilePath
                 -> [String]
                 -> Maybe FilePath
-                -> ([ToolOutput] -> IDEAction)
-                -> IDEM ()
+                -> E.Iteratee ToolOutput IDEM ()
+                -> IDEAction
 runExternalTool runGuard pidHandler description executable args mbDir handleOutput  = do
         prefs <- readIDE prefs
         run <- runGuard
@@ -461,12 +475,12 @@ runExternalTool runGuard pidHandler description executable args mbDir handleOutp
         when run $ do
             when (saveAllBeforeBuild prefs) (do fileSaveAll belongsToWorkspace; return ())
             triggerEventIDE (StatusbarChanged [CompartmentState description, CompartmentBuild True])
-            reifyIDE (\ideR -> forkIO $ do
+            reifyIDE $ \ideR -> forkIO $ do
                 (output, pid) <- runTool executable args mbDir
                 reflectIDE (do
                     pidHandler pid
                     modifyIDE_ (\ide -> ide{runningTool = Just pid})
-                    handleOutput output) ideR)
+                    E.run_ $ output $$ handleOutput) ideR
             return ()
 
 
@@ -475,8 +489,8 @@ runPackage ::  (ProcessHandle -> IDEAction)
             -> FilePath
             -> [String]
             -> Maybe FilePath
-            -> ([ToolOutput] -> IDEAction)
-            -> IDEM ()
+            -> E.Iteratee ToolOutput IDEM ()
+            -> IDEAction
 runPackage = runExternalTool (return True) -- TODO here one could check if package to be run is building/configuring/etc atm
 
 
@@ -658,7 +672,7 @@ debugStart = do
         case maybeDebug of
             Nothing -> do
                 ghci <- reifyIDE $ \ideR -> newGhci (ipdBuildFlags package) (interactiveFlags prefs')
-                    $ \output -> reflectIDE (logOutputForBuild package True output) ideR
+                    $ reflectIDEI (logOutputForBuild package True False) ideR
                 modifyIDE_ (\ide -> ide {debugState = Just (package, ghci)})
                 triggerEventIDE (Sensitivity [(SensitivityInterpreting, True)])
                 setDebugToggled True
@@ -679,7 +693,7 @@ debugStart = do
                             -- Lets build to make sure the binaries are up to date
                             mbPackage   <- readIDE activePack
                             case mbPackage of
-                                Just package -> runCabalBuild True True package True (\ _ -> return ())
+                                Just package -> runCabalBuild True False True package True (\ _ -> return ())
                                 Nothing -> return ()) ideRef
                 return ()
             _ -> do
@@ -717,24 +731,24 @@ tryDebug f = do
 tryDebug_ :: DebugM a -> PackageAction
 tryDebug_ f = tryDebug f >> return ()
 
-executeDebugCommand :: String -> ([ToolOutput] -> IDEAction) -> DebugAction
+executeDebugCommand :: String -> (E.Iteratee ToolOutput IDEM ()) -> DebugAction
 executeDebugCommand command handler = do
     (_, ghci) <- ask
     lift $ do
         triggerEventIDE (StatusbarChanged [CompartmentState command, CompartmentBuild True])
         reifyIDE $ \ideR -> do
-            executeGhciCommand ghci command $ \output ->
-                reflectIDE (do
-                    handler output
-                    triggerEventIDE (StatusbarChanged [CompartmentState "", CompartmentBuild False])
-                    return ()
-                    ) ideR
+            executeGhciCommand ghci command $ do
+                reflectIDEI handler ideR
+                liftIO $ reflectIDE (triggerEventIDE (StatusbarChanged [CompartmentState "", CompartmentBuild False])) ideR
+                return ()
 
 allBuildInfo' :: PackageDescription -> [BuildInfo]
 #if MIN_VERSION_Cabal(1,10,0)
 allBuildInfo' pkg_descr = [ libBuildInfo lib  | Just lib <- [library pkg_descr] ]
                        ++ [ buildInfo exe     | exe <- executables pkg_descr ]
                        ++ [ testBuildInfo tst | tst <- testSuites pkg_descr ]
+testMainPath (TestSuiteExeV10 _ f) = [f]
+testMainPath _ = []
 #else
 allBuildInfo' = allBuildInfo
 #endif
@@ -752,7 +766,10 @@ idePackageFromPath filePath = do
         Just packageD -> do
             let modules    = Set.fromList $ myLibModules packageD ++ myExeModules packageD
             let mainFiles  = map modulePath (executables packageD)
-            let files      = Set.fromList $ extraSrcFiles packageD ++ map modulePath (executables packageD)
+#if MIN_VERSION_Cabal(1,10,0)
+                               ++ concatMap (testMainPath . testInterface) (testSuites packageD)
+#endif
+            let files      = Set.fromList $ extraSrcFiles packageD ++ mainFiles
             let srcDirs = case (nub $ concatMap hsSourceDirs (allBuildInfo' packageD)) of
                                 [] -> [".","src"]
                                 l -> l

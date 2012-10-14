@@ -17,7 +17,11 @@ module IDE.Command.Print (
     , PrintError (..)
 ) where
 
+#ifdef MIN_VERSION_process_leksah
+import IDE.System.Process
+#else
 import System.Process
+#endif
 import System.Exit
 import Prelude hiding (print)
 import IDE.Core.Types
@@ -29,7 +33,12 @@ data PrintError = PrintError {
     , printCmd :: FilePath
     } deriving (Read,Show)
 
+
+#if defined (windows_HOST_OS)
+printCommand = "print"
+#else
 printCommand = "lpr"
+#endif
 
 print :: FilePath -> IO (Either PrintError String)
 print fileName = do
@@ -37,5 +46,4 @@ print fileName = do
         case ec of
                 ExitSuccess -> return $ Right out
                 ExitFailure i -> return $ Left $ PrintError i err printCommand
-
 

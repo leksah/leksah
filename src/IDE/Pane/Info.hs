@@ -1,5 +1,6 @@
 {-# LANGUAGE FlexibleInstances, DeriveDataTypeable, MultiParamTypeClasses,
              ScopedTypeVariables, TypeSynonymInstances #-}
+{-# OPTIONS_GHC -fwarn-unused-imports #-}
 -----------------------------------------------------------------------------
 --
 -- Module      :  IDE.Pane.Info
@@ -31,7 +32,9 @@ import Data.Char (isAlphaNum)
 import Network.URI (escapeURIString)
 
 import IDE.Core.State
+import IDE.SymbolNavigation
 import IDE.Pane.SourceBuffer
+import IDE.TextEditor (EditorIter(..))
 import IDE.Utils.GUIUtils (openBrowser,controlIsPressed)
 import Graphics.UI.Gtk.SourceView
 
@@ -109,10 +112,17 @@ instance RecoverablePane IDEInfo InfoState IDEM where
 
             sw <- scrolledWindowNew Nothing Nothing
             containerAdd sw descriptionView
+
+
+            createHyperLinkSupport descriptionView sw (\_ _ iter -> do
+                    (GtkEditorIter beg,GtkEditorIter en) <- reflectIDE (getIdentifierUnderCursorFromIter (GtkEditorIter iter, GtkEditorIter iter)) ideR
+                    return (beg, en)) (\_ _ slice -> do
+                                reflectIDE (launchSymbolNavigationDialog_ slice goToDefinition) ideR
+                                )
+
             scrolledWindowSetPolicy sw PolicyAutomatic PolicyAutomatic
 
             boxPackStart ibox sw PackGrow 10
-
 
 
             --openType
@@ -159,7 +169,7 @@ setInfo identifierDescr = do
     liftIO $ do
         writeIORef (currentDescr info) (Just identifierDescr)
         tb <- get (descriptionView info) textViewBuffer
-        textBufferSetText tb (show (Present identifierDescr))
+        textBufferSetText tb (show (Present identifierDescr) ++ "\n")   -- EOL for text iters to work
     recordInfoHistory (Just identifierDescr) oldDescr
 
 getInfoCont ::  IDEM (Maybe (Descr))

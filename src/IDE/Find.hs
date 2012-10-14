@@ -58,8 +58,12 @@ import Graphics.UI.Gtk
         IconSize(..), AttrOp(..), set, on, Color(..))
 import Graphics.UI.Gtk.Gdk.Events
 import Control.Monad.Reader
+import qualified Graphics.UI.Gtk as Gtk
+import Graphics.UI.Gtk.Buttons.ToggleButton
+import Graphics.UI.Gtk.Buttons.CheckButton
 
 import IDE.Core.State
+import IDE.Utils.GUIUtils
 import IDE.TextEditor hiding(afterFocusIn)
 import IDE.Pane.SourceBuffer
 import Data.Char (digitToInt, isDigit, toLower, isAlphaNum)
@@ -199,9 +203,10 @@ constructFindReplace = reifyIDE $ \ ideR   -> do
     sep1 <- separatorToolItemNew
     toolbarInsert toolbar sep1 0
 
+    let performGrep = (reflectIDE (packageTry_ $ doGrep toolbar) ideR)
     grepButton <- toolButtonNew (Nothing :: Maybe Widget) (Just "Grep")
     toolbarInsert toolbar grepButton 0
-    grepButton `onToolButtonClicked` (reflectIDE (packageTry_ $ doGrep toolbar) ideR)
+    grepButton `onToolButtonClicked` performGrep
     tooltipsSetTip tooltips grepButton "Search in multiple files" ""
 
     sep1 <- separatorToolItemNew
@@ -300,23 +305,64 @@ constructFindReplace = reifyIDE $ \ ideR   -> do
         doSearch toolbar Insert ideR
         return i)
     entry `afterDeleteText` (\ _ _ -> doSearch toolbar Delete ideR  )
-    entry `afterKeyPress`  (\ e -> case e of
-        k@(Key _ _ _ _ _ _ _ _ _ _)
-            | eventKeyName k == "Down"                 -> do
-                doSearch toolbar Forward ideR
-                return True
-            | eventKeyName k == "Up"                   -> do
-                doSearch toolbar Backward ideR
-                return True
-            | eventKeyName k == "Escape"               -> do
-                getOut ideR
-                return True
-            | otherwise                ->  return False
-        _                              ->  return False)
-    entry `onEntryActivate` (doSearch toolbar Forward ideR)
-    replaceButton `onToolButtonClicked` replace toolbar Forward ideR
 
-    replaceAllButton `onToolButtonClicked` replaceAll toolbar Forward ideR
+
+
+    entry `onEntryActivate` doSearch toolbar Forward ideR
+    entry `Gtk.onFocusIn` \_ -> reflectIDE (triggerEventIDE (Sensitivity [(SensitivityEditor, False)]) >> return False) ideR
+
+
+    replaceButton `onToolButtonClicked` replace toolbar Forward ideR
+    let  performReplaceAll = replaceAll toolbar Forward ideR
+    replaceAllButton `onToolButtonClicked` performReplaceAll
+
+    let
+        ctrl "c" = toggleToolButton caseSensitiveButton >> return True
+        ctrl "e" = toggleToolButton regexButton >> return True
+        ctrl "w" = toggleToolButton entireWordButton >> return True
+        ctrl "p" = toggleToolButton wrapAroundButton >> return True
+        ctrl "r" = performReplaceAll >> return True
+        ctrl "g" = performGrep >> return True
+        ctrl _ = return False
+        toggleToolButton btn = do
+            old <- toggleToolButtonGetActive btn
+            toggleToolButtonSetActive btn $ not old
+
+    entry `Gtk.onKeyPress`  (\ e -> do
+        case e of
+            k@(Key _ _ _ _ _ _ _ _ _ _)
+                | eventKeyName k == "Down"                 -> do
+                    doSearch toolbar Forward ideR
+                    return True
+                | eventKeyName k == "Up"                   -> do
+                    doSearch toolbar Backward ideR
+                    return True
+                | eventKeyName k == "Escape"               -> do
+                    getOut ideR
+                    return True
+                | eventKeyName k == "Tab"               -> do
+                    re <- getReplaceEntry toolbar
+                    widgetGrabFocus re
+                    --- widgetAc
+                    return True
+                | (mapControlCommand Control) `elem` (eventModifier k) ->
+                        ctrl $ map toLower $ eventKeyName k
+                | otherwise                ->  return False
+            _                              ->  return False)
+
+
+    rentry `Gtk.onKeyPress`  (\ e -> do
+        case e of
+            k@(Key _ _ _ _ _ _ _ _ _ _)
+                | eventKeyName k == "Tab" || eventKeyName k == "ISO_Left_Tab" -> do
+                    fe <- getFindEntry toolbar
+                    widgetGrabFocus fe
+                    return True
+                | (mapControlCommand Control) `elem` (eventModifier k) ->
+                        ctrl $ map toLower $ eventKeyName k
+                | otherwise                ->  return False
+            _                              ->  return False)
+
 
 
     spinL `afterFocusIn` (\ _ -> (reflectIDE (inActiveBufContext True $ \_ gtkbuf currentBuffer _ -> do
@@ -324,11 +370,28 @@ constructFindReplace = reifyIDE $ \ ideR   -> do
         liftIO $ spinButtonSetRange spinL 1.0 (fromIntegral max)
         return True) ideR))
 
+    spinL `Gtk.onKeyPress`  (\ e -> do
+        case e of
+            k@(Key _ _ _ _ _ _ _ _ _ _)
+                | eventKeyName k == "Escape"               -> do
+                    getOut ideR
+                    return True
+                | eventKeyName k == "Tab"               -> do
+                    re <- getFindEntry toolbar
+                    widgetGrabFocus re
+                    return True
+                | (mapControlCommand Control) `elem` (eventModifier k) ->
+                        ctrl $ map toLower $ eventKeyName k
+                | otherwise                ->  return False
+            _                              ->  return False)
+
+
     spinL `afterEntryActivate` (reflectIDE (inActiveBufContext () $ \_ gtkbuf currentBuffer _ -> do
         line  <- liftIO $ spinButtonGetValueAsInt spinL
         iter  <- getIterAtLine gtkbuf (line - 1)
         placeCursor gtkbuf iter
         scrollToIter (sourceView currentBuffer) iter 0.2 Nothing
+        liftIO $ getOut ideR
         return ()) ideR  )
 
     closeButton `onToolButtonClicked` do
@@ -348,12 +411,7 @@ constructFindReplace = reifyIDE $ \ ideR   -> do
     return toolbar
         where getOut = reflectIDE $ do
                             hideFindbar
-                            mbbuf <- maybeActiveBuf
-                            case mbbuf of
-                                Nothing  -> return ()
-                                Just buf -> do
-                                    grabFocus (sourceView buf)
-                                    return ()
+                            maybeActiveBuf ?>>= makeActive
 
 
 doSearch :: Toolbar -> SearchHint -> IDERef -> IO ()

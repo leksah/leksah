@@ -53,6 +53,7 @@ data MakeSettings = MakeSettings {
     msSingleBuildWithoutLinking      :: Bool,
     msSaveAllBeforeBuild             :: Bool,
     msBackgroundBuild                :: Bool,
+    msJumpToWarnings                 :: Bool,
     msDontInstallLast                :: Bool}
 
 -- | Take make settings from preferences
@@ -62,6 +63,7 @@ defaultMakeSettings prefs = MakeSettings  {
     msSingleBuildWithoutLinking      = singleBuildWithoutLinking prefs,
     msSaveAllBeforeBuild             = saveAllBeforeBuild prefs,
     msBackgroundBuild                = backgroundBuild prefs,
+    msJumpToWarnings                 = jumpToWarnings prefs,
     msDontInstallLast                = dontInstallLast prefs}
 
 -- | a make operation
@@ -192,7 +194,7 @@ doBuildChain _ EmptyChain = return ()
 doBuildChain ms chain@Chain{mcAction = MoConfigure} =
     packageConfig' (mcEle chain) (constrCont ms (mcPos chain) (mcNeg chain))
 doBuildChain ms chain@Chain{mcAction = MoBuild} =
-    buildPackage (msBackgroundBuild ms) (not (msMakeMode ms) && msSingleBuildWithoutLinking ms)
+    buildPackage (msBackgroundBuild ms) (msJumpToWarnings ms) (not (msMakeMode ms) && msSingleBuildWithoutLinking ms)
         (mcEle chain) (constrCont ms (mcPos chain) (mcNeg chain))
 doBuildChain ms chain@Chain{mcAction = MoTest} =
     packageTest' (mcEle chain) (constrCont ms (mcPos chain) (mcNeg chain))

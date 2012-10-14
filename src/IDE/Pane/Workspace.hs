@@ -31,7 +31,7 @@ import IDE.Core.State
 import IDE.Workspaces
 import qualified Data.Map as Map (empty)
 import Data.List (sortBy)
-
+import IDE.Pane.Files (refreshFiles)
 
 -- | Workspace pane state
 --
@@ -207,4 +207,5 @@ updateWorkspace showPane updateFileCache = do
                     let sorted = sortBy (\ (_,f) (_,s) -> compare (ipdPackageId f) (ipdPackageId s)) objs
                     liftIO $ mapM_ (listStoreAppend (workspaceStore p)) sorted
                     when showPane $ displayPane p False
+    refreshFiles
 

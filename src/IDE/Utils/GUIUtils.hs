@@ -17,6 +17,7 @@ module IDE.Utils.GUIUtils (
 ,   chooseSaveFile
 ,   openBrowser
 ,   showDialog
+,   showErrorDialog
 
 ,   getCandyState
 ,   setCandyState
@@ -31,9 +32,12 @@ module IDE.Utils.GUIUtils (
 
 ,   getRecentFiles
 ,   getRecentWorkspaces
+,   getVCS
 ,   controlIsPressed
 
 ,   stockIdFromType
+,   mapControlCommand
+
 ) where
 
 import Graphics.UI.Gtk
@@ -150,6 +154,9 @@ showDialog msg msgType = do
     widgetDestroy dialog
     return ()
 
+showErrorDialog :: String -> IO ()
+showErrorDialog msg = showDialog msg MessageError
+
 -- get widget elements (menu & toolbar)
 
 getCandyState :: PaneMonad alpha => alpha Bool
@@ -205,10 +212,10 @@ setDebugToggled b = do
     ui <- getUIAction "ui/toolbar/BuildToolItems/Debug" castToToggleAction
     liftIO $ toggleActionSetActive ui b
 
-getRecentFiles , getRecentWorkspaces :: IDEM MenuItem
+getRecentFiles , getRecentWorkspaces, getVCS :: IDEM MenuItem
 getRecentFiles    = getMenuItem "ui/menubar/_File/Open _Recent"
 getRecentWorkspaces = getMenuItem "ui/menubar/_Workspace/Open _Recent"
-
+getVCS = getMenuItem "ui/menubar/Version Con_trol" --this could fail, try returning Menu if it does
 -- (toolbar)
 
 controlIsPressed :: G.Event -> Bool
@@ -226,6 +233,12 @@ stockIdFromType Constructor     =   "ide_konstructor"
 stockIdFromType Field           =   "ide_slot"
 stockIdFromType Method          =   "ide_method"
 stockIdFromType _               =   "ide_other"
+
+-- maps control key for Macos
+#if defined(darwin_HOST_OS)
+mapControlCommand Alt = Control
+#endif
+mapControlCommand a = a
 
 
 

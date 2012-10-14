@@ -1,5 +1,5 @@
 name: leksah
-version: 0.10.0.4
+version: 0.11.0.0
 cabal-version: >=1.8
 build-type: Simple
 license: GPL
@@ -14,7 +14,7 @@ synopsis: Haskell IDE written in Haskell
 description: An Integrated Development Environment for Haskell written in Haskell.
 category: Development, IDE, Editor
 author: Juergen Nicklisch-Franken, Hamish Mackenzie
-tested-with: GHC ==6.10 || ==6.12  || ==7.0
+tested-with: GHC == 7.2.2
 data-files: LICENSE
             Readme
 
@@ -30,6 +30,13 @@ data-files: LICENSE
             data/LICENSE
             data/module.lksht
             data/welcome.txt
+
+            language-specs/haskell.lang
+            language-specs/haskell-literate.lang
+            language-specs/hamlet.lang
+            language-specs/cassius.lang
+            language-specs/lucius.lang
+            language-specs/julius.lang
 
             pics/ide_class.png
             pics/ide_configure.png
@@ -94,26 +101,34 @@ library
         build-depends: dyre >= 0.8.3 && <0.9
         cpp-options: -DLEKSAH_WITH_YI_DYRE
 
+    if (impl(ghc >= 7.2))
+       build-depends: process >= 1.1 && <1.2
+    else
+       build-depends: process-leksah >=1.0.1.3 && <1.1
+
     hs-source-dirs: src
     extensions: CPP
 
-    build-depends: Cabal >=1.6.0.1 && <1.12, base >=4.0.0.0 && <4.5, binary >=0.5.0.0 && <0.6,
-                   bytestring >=0.9.0.1 && <0.10, containers >=0.2.0.0 && <0.5, directory >=1.0.0.2 && <3.1,
-                   filepath >=1.1.0.1 && <1.3, glib >=0.10 && <0.13, gtk >=0.10 && <0.13,
-                   gtksourceview2 >=0.10.0 && <0.13, mtl >=1.1.0.2 && <2.1, old-time >=1.0.0.1 && <1.1,
-                   parsec >=2.1.0.1 && <3.2, pretty >=1.0.1.0 && <1.2,
-                   regex-tdfa ==1.1.*, regex-base ==0.93.*, utf8-string >=0.3.1.1 && <0.4, array >=0.2.0.0 && <0.4,
-                   time >=0.1 && <1.3, ltk >= 0.10 && <0.11, binary-shared >= 0.8 && <0.9, deepseq >= 1.1.0.0 && <1.2,
-                   hslogger >= 1.0.7 && <1.2, leksah-server >= 0.10 && <0.11, network >= 2.2 && <3.0,
-                   ghc >=6.10.1 && <7.3, strict >= 0.3.2 && <0.4, vcsgui -any, vcswrapper -any, MissingH -any,
-                   process >= 1.0 && <1.2
+    build-depends: Cabal >=1.6.0.1 && <1.14, base >=4.0.0.0 && <4.5, binary >=0.5.0.0 && <0.6,
+                       bytestring >=0.9.0.1 && <0.10, containers >=0.2.0.0 && <0.5, directory >=1.0.0.2 && <3.1,
+                       filepath >=1.1.0.1 && <1.3, glib >=0.10 && <0.13, gtk >=0.10 && <0.13,
+                       gtksourceview2 >=0.10.0 && <0.13, mtl >=1.1.0.2 && <2.1, old-time >=1.0.0.1 && <1.1,
+                       parsec >=2.1.0.1 && <3.2, pretty >=1.0.1.0 && <1.2, 
+                       regex-tdfa ==1.1.*, regex-base ==0.93.*, utf8-string >=0.3.1.1 && <0.4, array >=0.2.0.0 && <0.4,
+                       time >=0.1 && <1.5, ltk >= 0.10 && <0.12, binary-shared >= 0.8 && <0.9, deepseq >= 1.1.0.0 && <1.3,
+                       hslogger >= 1.0.7 && <1.2, leksah-server >= 0.10.0.5 && <0.12, network >= 2.2 && <3.0,
+                       ghc >=6.10.1 && <7.4, strict >= 0.3.2 && <0.4, enumerator >=0.4.14 && <0.5, text >= 0.11.0.8 && < 0.12,
+                       gio >= 0.12.2 && < 0.13, MissingH >=1.1.1.0 && <1.2,
+                       vcsgui >=0.0.1 && < 0.1, vcswrapper >=0.0.1 && < 0.1
 
-    if (impl(ghc < 7.2))
+    if (impl(ghc >= 7.2))
+       build-depends: process >= 1.1 && <1.2
+    else
        build-depends: process-leksah >=1.0.1.3 && <1.1
 
     exposed-modules:
         IDE.Leksah IDE.Completion IDE.ImportTool
-        IDE.Find IDE.Session IDE.Command IDE.Keymap IDE.Utils.GUIUtils
+        IDE.Find IDE.Session IDE.Command IDE.Keymap IDE.Utils.GUIUtils IDE.SymbolNavigation
         IDE.Package IDE.YiConfig IDE.OSX
         IDE.GUIHistory IDE.SourceCandy IDE.NotebookFlipper
         IDE.Core.Types IDE.Core.State
@@ -121,14 +136,18 @@ library
         IDE.Pane.Preferences IDE.Pane.PackageEditor
         IDE.Pane.Info IDE.Pane.Log IDE.Pane.SourceBuffer IDE.Pane.Modules
         IDE.Pane.Search IDE.Pane.PackageFlags
-        IDE.LogRef IDE.Debug IDE.Pane.Grep
+        IDE.LogRef IDE.Debug IDE.Pane.Grep IDE.Pane.Files
         IDE.Pane.Breakpoints IDE.Pane.Trace IDE.Pane.Variables
-        IDE.Pane.Errors IDE.TextEditor IDE.Workspaces
+        IDE.Pane.Errors IDE.TextEditor IDE.Workspaces IDE.Workspaces.Writer
         IDE.Statusbar IDE.Pane.Workspace IDE.PaneGroups
         IDE.Utils.ServerConnection
         IDE.BufferMode
         IDE.Build
-        IDE.Command.VCS IDE.Command.VCS.SVN IDE.Command.VCS.GIT IDE.Command.VCS.Common IDE.Command.VCS.Common.Workspaces
+        IDE.Command.VCS IDE.Command.VCS.Common IDE.Command.VCS.SVN IDE.Command.VCS.GIT IDE.Command.VCS.Mercurial
+        IDE.Command.VCS.Common.Workspaces
+        IDE.Command.VCS.Common.GUI
+        IDE.Command.VCS.Common.Helper
+        IDE.Command.VCS.Types
         IDE.Command.Print
 
     other-modules: Paths_leksah
@@ -156,33 +175,40 @@ Executable leksah
     if flag(yi) && flag(dyre)
         cpp-options: -DLEKSAH_WITH_DYRE
 
-    if impl(ghc < 6.12.3) && flag(yi)
+    if (impl(ghc >= 7.2))
+       build-depends: process >= 1.1 && <1.2
+    else
+       build-depends: process-leksah >=1.0.1.3 && <1.1
+
+ 
+    if impl(ghc < 7.0) && flag(yi)
         build-depends: yi >=0.6.1 && <0.7
 
-    if impl(ghc < 6.12.3) && flag(yi) && flag(dyre)
+    if impl(ghc < 7.0) && flag(yi) && flag(dyre)
         build-depends: dyre >= 0.8.3 && <0.9
 
-    if impl(ghc < 6.12.3)
+    if impl(ghc < 7.0)
         hs-source-dirs: src, main
-        build-depends: Cabal >=1.6.0.1 && <1.12, base >=4.0.0.0 && <4.5, binary >=0.5.0.0 && <0.6,
+        build-depends: Cabal >=1.6.0.1 && <1.14, base >=4.0.0.0 && <4.5, binary >=0.5.0.0 && <0.6,
                        bytestring >=0.9.0.1 && <0.10, containers >=0.2.0.0 && <0.5, directory >=1.0.0.2 && <3.1,
                        filepath >=1.1.0.1 && <1.3, glib >=0.10 && <0.13, gtk >=0.10 && <0.13,
                        gtksourceview2 >=0.10.0 && <0.13, mtl >=1.1.0.2 && <2.1, old-time >=1.0.0.1 && <1.1,
-                       parsec >=2.1.0.1 && <3.2, pretty >=1.0.1.0 && <1.2, process-leksah >=1.0.1.3 && <1.1,
+                       parsec >=2.1.0.1 && <3.2, pretty >=1.0.1.0 && <1.2, 
                        regex-tdfa ==1.1.*, regex-base ==0.93.*, utf8-string >=0.3.1.1 && <0.4, array >=0.2.0.0 && <0.4,
-                       time >=0.1 && <1.3, ltk >= 0.10 && <0.11, binary-shared >= 0.8 && <0.9, deepseq >= 1.1.0.0 && <1.2,
-                       hslogger >= 1.0.7 && <1.2, leksah-server >= 0.10 && <0.11, network >= 2.2 && <3.0,
-                       ghc >=6.10.1 && <7.3, strict >= 0.3.2 && <0.4, vcsgui -any, vcswrapper -any, MissingH -any
+                       time >=0.1 && <1.5, ltk >= 0.10 && <0.12, binary-shared >= 0.8 && <0.9, deepseq >= 1.1.0.0 && <1.3,
+                       hslogger >= 1.0.7 && <1.2, leksah-server >= 0.10.0.5 && <0.12, network >= 2.2 && <3.0,
+                       ghc >=6.10.1 && <7.4, strict >= 0.3.2 && <0.4, enumerator >=0.4.14 && <0.5, text >= 0.11.0.8 && < 0.12,
+                       gio >= 0.12.2 && < 0.13
     else
         hs-source-dirs: main
-        build-depends: leksah ==0.10.0.4, base >=4.0.0.0 && <= 5
+        build-depends: leksah ==0.11.0.0, base >=4.0.0.0 && <= 5
 
     main-is: Main.hs
     buildable: True
     extensions: CPP
     ghc-prof-options: -auto-all -prof
     ghc-shared-options: -auto-all
-    ghc-options:  -fwarn-missing-fields -fwarn-incomplete-patterns -ferror-spans
+    ghc-options:  -fwarn-missing-fields -fwarn-incomplete-patterns -ferror-spans 
 
 
 

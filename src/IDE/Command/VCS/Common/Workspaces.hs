@@ -19,57 +19,66 @@ module IDE.Command.VCS.Common.Workspaces (
 
 -- VCS imports
 import IDE.Utils.FileUtils(getConfigFilePathForLoad)
+import qualified IDE.Utils.GUIUtils as GUIUtils
 import IDE.Core.Types
 import IDE.Core.State
+import qualified IDE.Command.VCS.Common as Common
+import qualified IDE.Command.VCS.SVN as SVN (mkSVNActions)
+import qualified IDE.Command.VCS.GIT as GIT (mkGITActions)
+import qualified IDE.Command.VCS.Common.GUI as GUI
 
 import qualified VCSWrapper.Common as VCS
+import qualified VCSGui.Common as VCSGUI
 
 import Data.IORef(writeIORef, readIORef, IORef(..))
 import Paths_leksah(getDataDir)
-import Control.Monad.Reader(liftIO)
+import Control.Monad.Reader(liftIO,ask,when)
 
 import Graphics.UI.Frame.Panes
-import Graphics.UI.Gtk.ActionMenuToolbar.UIManager
+import Graphics.UI.Gtk (
+    menuNew, menuItemNewWithLabel, onActivateLeaf, menuShellAppend, menuItemSetSubmenu
+        ,widgetShowAll, menuItemNewWithMnemonic, menuItemGetSubmenu, widgetHideAll, widgetDestroy, menuItemRemoveSubmenu)
+
+import Data.Maybe
+import Data.List
 
 onWorkspaceClose :: IDEAction
 onWorkspaceClose = do
-        fs <- readIDE frameState
-        let manager = uiManager fs
+        vcsItem <- GUIUtils.getVCS
+        liftIO $ menuItemRemoveSubmenu vcsItem
 
-        (mbMergeInfo, _) <- readIDE vcsData
-        -- remove menuitems
-        case mbMergeInfo of
-            Nothing   -> return()
-            Just info -> liftIO $ uiManagerRemoveUi manager info
+onWorkspaceOpen :: Workspace -> IDEAction
+onWorkspaceOpen ws = do
+        let mbPackages = wsPackages ws
+        packages <- mapM (mapper ws)
+                                 mbPackages
+        vcsItem <- GUIUtils.getVCS
+        vcsMenu <- liftIO $ menuNew
 
-        -- reset vcsData
-        modifyIDE_ (\ide -> ide {vcsData = (Nothing,Nothing) })
-        return ()
+        ideR <- ask
 
+        --for each package add an extra menu containing vcs specific menuitems
+        mapM_ (\(p,mbVcsConf) -> do
+                    Common.setMenuForPackage vcsMenu (ipdCabalFile p) mbVcsConf
+                    liftIO $ menuItemSetSubmenu vcsItem vcsMenu
+                    )
+               packages
 
-onWorkspaceOpen :: (VCS.VCSType, VCS.Config) -> IDEAction
-onWorkspaceOpen (vcsType,config) = do
-        fs <- readIDE frameState
-        let manager = uiManager fs
-
-
-        let file = case vcsType of
-                            VCS.GIT -> "git.menu"
-                            VCS.SVN -> "svn.menu"
-
-        menuItems <- liftIO $ vcsMenuDescription file
-        mergeInfo <- liftIO $ uiManagerAddUiFromString manager menuItems
-
-        -- set vcsData with new mergeInfo
-        (_, pw) <- readIDE vcsData
-        modifyIDE_ (\ide -> ide {vcsData = (Just mergeInfo, pw) })
+        liftIO $ widgetShowAll vcsItem
         return ()
         where
-        vcsMenuDescription :: FilePath -> IO String
-        vcsMenuDescription file = do
-                dataDir     <- getDataDir
-                prefsPath   <- getConfigFilePathForLoad file Nothing dataDir
-                res         <- readFile prefsPath
-                return res
+        mapper :: Workspace -> IDEPackage -> IDEM (IDEPackage, Maybe VCSConf)
+        mapper workspace p = do
+            let fp = ipdCabalFile p
+            eErrConf <- Common.getVCSConf' workspace fp
+            case eErrConf of
+                Left error -> do
+                    liftIO $ putStrLn $ "Could not retrieve vcs-conf due to '"++error++"'."
+                    return (p, Nothing)
+                Right mbConf -> case mbConf of
+                                    Nothing -> do
+                                        liftIO $ putStrLn $ "Could not retrieve vcs-conf for active package. No vcs-conf set up."
+                                        return (p, Nothing)
+                                    Just vcsConf -> return $ (p,  Just vcsConf)
 
 
