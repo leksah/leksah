@@ -1,4 +1,4 @@
-{-# LANGUAGE ScopedTypeVariables #-}
+{-# LANGUAGE CPP, ScopedTypeVariables #-}
 -----------------------------------------------------------------------------
 --
 -- Module      :  IDE.Completion
@@ -406,8 +406,12 @@ processResults window tree store sourceView wordStart options selectLCP isWordCh
                     Just drawWindow -> do
                         (ox, oy)                     <- liftIO $ drawWindowGetOrigin drawWindow
                         Just namesSW                 <- liftIO $ widgetGetParent tree
+#ifdef GTK3
                         wNames                       <- liftIO $ widgetGetAllocatedWidth namesSW
                         hNames                       <- liftIO $ widgetGetAllocatedHeight namesSW
+#else
+                        (Rectangle _ _ wNames hNames) <- liftIO $ widgetGetAllocation namesSW
+#endif
                         Just paned                   <- liftIO $ widgetGetParent namesSW
                         Just first                   <- liftIO $ panedGetChild1 (castToPaned paned)
                         Just second                  <- liftIO $ panedGetChild2 (castToPaned paned)
@@ -421,7 +425,11 @@ processResults window tree store sourceView wordStart options selectLCP isWordCh
                         top <- if monitorBelow /= monitor || (oy+y+hWindow) > hScreen
                             then do
                                 sourceSW <- getScrolledWindow sourceView
+#ifdef GTK3
                                 hSource <- liftIO $ widgetGetAllocatedHeight sourceSW
+#else
+                                (Rectangle _ _ _ hSource) <- liftIO $ widgetGetAllocation sourceSW
+#endif
                                 scrollToIter sourceView end 0.1 (Just (1.0, 1.0 - (fromIntegral hWindow / fromIntegral hSource)))
                                 (_, newy)     <- bufferToWindowCoords sourceView (startx, starty+height)
                                 return (oy+newy)
