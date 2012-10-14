@@ -18,16 +18,16 @@ module IDE.Pane.Search (
     IDESearch(..)
 ,   SearchState
 ,   buildSearchPane
-,   launchSymbolNavigationDialog
+--,   launchSymbolNavigationDialog
 ,   getSearch
 ) where
 
 import Graphics.UI.Gtk
-       (listStoreGetValue, treeSelectionGetSelectedRows, widgetShowAll,
-        menuPopup, menuShellAppend, onActivateLeaf, menuItemNewWithLabel,
-        menuNew, listStoreAppend, listStoreClear, entrySetText,
-        afterKeyRelease, onKeyPress, onButtonPress, toggleButtonGetActive,
-        widgetSetSensitivity, onToggled, afterFocusIn, vBoxNew, entryNew,
+       (cellTextScaleSet, cellTextScale, listStoreGetValue,
+        treeSelectionGetSelectedRows, widgetShowAll, menuPopup,
+        menuShellAppend, menuItemActivate, menuItemNewWithLabel, menuNew,
+        listStoreAppend, listStoreClear, entrySetText, toggleButtonGetActive,
+        widgetSetSensitivity, vBoxNew, entryNew,
         scrolledWindowSetPolicy, containerAdd, scrolledWindowNew,
         treeSelectionSetMode, treeViewGetSelection,
         treeViewSetHeadersVisible, cellPixbufStockId, cellText,
@@ -36,26 +36,30 @@ import Graphics.UI.Gtk
         treeViewColumnSetSizing, treeViewColumnSetTitle, treeViewColumnNew,
         cellRendererPixbufNew, cellRendererTextNew, treeViewSetModel,
         treeViewNew, listStoreNew, boxPackEnd, boxPackStart,
-        checkButtonNewWithLabel, toggleButtonSetActive, ResponseId(..), dialogRun,
-        radioButtonNewWithLabelFromWidget, radioButtonNewWithLabel, buttonNewFromStock,
-        windowSetTransientFor, hButtonBoxNew, dialogGetUpper, dialogGetActionArea, widgetGrabDefault, set, get,
-        dialogNew, onClicked, dialogResponse, widgetHideAll, buttonSetLabel, widgetCanDefault,
-        hBoxNew, entryGetText, castToWidget, Entry, VBox, ListStore,
-        TreeView, ScrolledWindow, PolicyType(..), SelectionMode(..),
-        TreeViewColumnSizing(..), AttrOp(..),
-        Packing(..))
-import Graphics.UI.Gtk.Gdk.Events
+        checkButtonNewWithLabel, toggleButtonSetActive, ResponseId(..),
+        dialogRun, radioButtonNewWithLabelFromWidget,
+        radioButtonNewWithLabel, buttonNewFromStock, windowSetTransientFor,
+        hButtonBoxNew, dialogGetContentArea, dialogGetActionArea,
+        widgetGrabDefault, set, get, dialogNew, onClicked, dialogResponse,
+        widgetHide, buttonSetLabel, widgetCanDefault, hBoxNew,
+        entryGetText, castToWidget, Entry, VBox, ListStore, TreeView,
+        ScrolledWindow, PolicyType(..), SelectionMode(..),
+        TreeViewColumnSizing(..), AttrOp(..), Packing(..),
+        focusInEvent, toggled, buttonPressEvent, keyPressEvent, keyReleaseEvent)
+import Graphics.UI.Gtk.Gdk.EventM
+import System.Glib.Signals (on, after)
 import Data.IORef (newIORef)
 import Data.IORef (writeIORef,readIORef,IORef(..))
 -- import IDE.Pane.SourceBuffer (goToDefinition)
 import IDE.Metainfo.Provider (searchMeta)
 import Data.Maybe
-import Control.Monad.Reader
 import Data.Typeable
 import IDE.Core.State
 import IDE.Utils.GUIUtils
 import Distribution.Text(display)
 import Control.Event (triggerEvent)
+import Control.Monad.IO.Class (MonadIO(..))
+import qualified Data.ByteString.Char8 as BS (empty, unpack)
 
 -- | A search pane description
 --
@@ -192,6 +196,20 @@ buildSearchPane =
             $ \row -> [ cellText := case dsMbModu row of
                                         Nothing -> ""
                                         Just pm -> display $ pack pm]
+
+        renderer3   <- cellRendererTextNew
+        col3        <- treeViewColumnNew
+        treeViewColumnSetTitle col3 "Type/Kind"
+        treeViewColumnSetSizing col3 TreeViewColumnAutosize
+        treeViewColumnSetResizable col3 True
+        treeViewColumnSetReorderable col3 True
+        treeViewAppendColumn treeView col3
+        cellLayoutPackStart col3 renderer3 True
+        cellLayoutSetAttributes col3 renderer3 listStore
+            $ \row -> [ cellText := BS.unpack $ fromMaybe BS.empty $
+                            dscMbTypeStr row,
+                        cellTextScale := 0.8, cellTextScaleSet := True    ]
+
         treeViewSetHeadersVisible treeView True
         sel <- treeViewGetSelection treeView
         treeSelectionSetMode sel SelectionSingle
@@ -264,36 +282,37 @@ buildSearchPane =
                                 else return (SystemScope)
                 scopeSelection_ scope
 
-        cid1 <- treeView `afterFocusIn`
-            (\_ -> do reflectIDE (makeActive search) ideR ; return True)
-        rb1 `onToggled` (reflectIDE (scopeSelection' rb1 rb2 rb3 cb2) ideR )
-        rb2 `onToggled` (reflectIDE (scopeSelection' rb1 rb2 rb3 cb2) ideR )
-        rb3 `onToggled` (reflectIDE (scopeSelection' rb1 rb2 rb3 cb2) ideR )
-        cb2 `onToggled` (reflectIDE (scopeSelection' rb1 rb2 rb3 cb2) ideR)
-        mb1 `onToggled` do
+        cid1 <- treeView `after` focusInEvent $ liftIO $ do
+            reflectIDE (makeActive search) ideR
+            return True
+        rb1 `on` toggled $ liftIO (reflectIDE (scopeSelection' rb1 rb2 rb3 cb2) ideR )
+        rb2 `on` toggled $ liftIO (reflectIDE (scopeSelection' rb1 rb2 rb3 cb2) ideR )
+        rb3 `on` toggled $ liftIO (reflectIDE (scopeSelection' rb1 rb2 rb3 cb2) ideR )
+        cb2 `on` toggled $ liftIO (reflectIDE (scopeSelection' rb1 rb2 rb3 cb2) ideR)
+        mb1 `on` toggled $ liftIO $ do
             widgetSetSensitivity mb4 False
             active <- toggleButtonGetActive mb4
             (reflectIDE (modeSelection_ (Exact active)) ideR )
-        mb2 `onToggled`do
+        mb2 `on` toggled $ liftIO $ do
             widgetSetSensitivity mb4 True
             active <- toggleButtonGetActive mb4
             (reflectIDE (modeSelection_ (Prefix active)) ideR )
-        mb3 `onToggled` do
+        mb3 `on` toggled $ liftIO $ do
             widgetSetSensitivity mb4 True
             active <- toggleButtonGetActive mb4
             (reflectIDE (modeSelection_ (Regex active)) ideR )
-        mb4 `onToggled` do
+        mb4 `on` toggled $ liftIO $ do
             active <- toggleButtonGetActive mb4
             (reflectIDE (modeSelectionCase active) ideR )
-        treeView `onButtonPress` (handleEvent ideR  listStore treeView)
-        treeView `onButtonPress` (handleEvent ideR  listStore treeView)
-        treeView `onKeyPress` (handleEvent ideR  listStore treeView)
+        treeView `on` buttonPressEvent $ handleMouseEvent ideR listStore treeView
+        treeView `on` buttonPressEvent $ handleMouseEvent ideR listStore treeView
+        treeView `on` keyPressEvent $ handleKeyEvent ideR  listStore treeView
 --            sel `onSelectionChanged` do
 --                fillInfo search ideR
-        entry `afterKeyRelease` (\ event -> do
+        entry `on` keyReleaseEvent $ liftIO $ do
             text <- entryGetText entry
             reflectIDE (searchMetaGUI_ text) ideR
-            return False)
+            return False
         return (Just search,[ConnectC cid1])
 
 
@@ -309,17 +328,18 @@ getSearch (Just pp)  = forceGetPane (Left pp)
 
 
 
-handleEvent :: IDERef
+handleMouseEvent :: IDERef
     -> ListStore Descr
     -> TreeView
-    -> Event
-    -> IO (Bool)
-handleEvent ideR  store descrView (Button {eventClick = click, eventButton = button}) = do
-    if button == RightButton
+    -> EventM EButton Bool
+handleMouseEvent ideR  store descrView = do
+    click <- eventClick
+    button <- eventButton
+    liftIO $ if button == RightButton
         then do
             theMenu         <-  menuNew
             item1           <-  menuItemNewWithLabel "Go to definition"
-            item1 `onActivateLeaf` (goToDef ideR store descrView)
+            item1 `on` menuItemActivate $ liftIO $ goToDef ideR store descrView
 
             menuShellAppend theMenu item1
             menuPopup theMenu Nothing
@@ -328,9 +348,16 @@ handleEvent ideR  store descrView (Button {eventClick = click, eventButton = but
         else if button == LeftButton && click == DoubleClick
                 then selectDescr ideR store descrView
                 else return False
-handleEvent ideR  store descrView (Key { eventKeyName = "Return"}) =
-    selectDescr ideR store descrView
-handleEvent _ _ _ _ = return False
+
+handleKeyEvent :: IDERef
+    -> ListStore Descr
+    -> TreeView
+    -> EventM EKey Bool
+handleKeyEvent ideR  store descrView = do
+    name <- eventKeyName
+    liftIO $ if name == "Return"
+        then selectDescr ideR store descrView
+        else return False
 
 
 goToDef ideR store descrView = do
@@ -371,7 +398,7 @@ getSelectionDescr treeView listStore = do
 --            entrySetText (entry search) (descrName descr)
 --        otherwise       ->  return ()
 
-
+{--
 launchSymbolNavigationDialog :: String -> (Descr -> IDEM ()) -> IDEM ()
 launchSymbolNavigationDialog txt act = do
     dia                        <-   liftIO $ dialogNew
@@ -402,3 +429,4 @@ launchSymbolNavigationDialog txt act = do
         resp  <- dialogRun dia
         return ()
     return ()
+--}

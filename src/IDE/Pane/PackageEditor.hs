@@ -1,5 +1,5 @@
 {-# LANGUAGE FlexibleInstances, ScopedTypeVariables, DeriveDataTypeable,
-             MultiParamTypeClasses, TypeSynonymInstances #-}
+             CPP, MultiParamTypeClasses, TypeSynonymInstances #-}
 -----------------------------------------------------------------------------
 --
 -- Module      :  IDE.Pane.PackageEditor
@@ -26,7 +26,6 @@ module IDE.Pane.PackageEditor (
 ) where
 
 import Graphics.UI.Gtk
-import Control.Monad.Reader
 import Distribution.Package
 import Distribution.PackageDescription
 import Distribution.Verbosity
@@ -37,7 +36,7 @@ import System.Directory
 import IDE.Core.State
 import IDE.Utils.FileUtils
 import Graphics.UI.Editor.MakeEditor
-import Distribution.PackageDescription.Parse (readPackageDescription,writePackageDescription)
+import Distribution.PackageDescription.Parse (readPackageDescription)
 import Distribution.PackageDescription.Configuration (flattenPackageDescription)
 import Distribution.ModuleName(ModuleName)
 import Data.Typeable (Typeable(..))
@@ -83,28 +82,68 @@ import Graphics.UI.Editor.Basics
        (Notifier, Editor(..), GUIEventSelector(..), GUIEvent(..))
 import Distribution.Compiler
     (CompilerFlavor(..))
-#if MIN_VERSION_Cabal(1,11,0)
-import Distribution.Simple
-    (Extension(..),
-     VersionRange(..))
-#else
-import Distribution.Simple
-    (knownExtensions,
-     Extension(..),
-     VersionRange(..))
+#if !MIN_VERSION_Cabal(1,11,0)
+import Distribution.Simple (knownExtensions)
 #endif
+import Distribution.Simple (Extension(..), VersionRange, anyVersion)
 import Default (Default(..))
 import IDE.Utils.GUIUtils
 import IDE.Pane.SourceBuffer (fileOpenThis)
 import Control.Event (EventSource(..))
-#if MIN_VERSION_Cabal(1,8,0)
-#else
+#if !MIN_VERSION_Cabal(1,8,0)
 import Distribution.License
 #endif
 
 import qualified Graphics.UI.Gtk.Gdk.Events as GTK (Event(..))
 import Data.List (sort,nub)
+import Control.Monad.Trans.Reader (ask)
+import Control.Monad.IO.Class (MonadIO(..))
+import Control.Monad.Trans.Class (lift)
+import Control.Monad (when)
+#if MIN_VERSION_Cabal(1,10,0)
+import Distribution.PackageDescription.PrettyPrintCopied
+       (writeGenericPackageDescription)
+#else
+import Distribution.PackageDescription.Parse
+       (writePackageDescription)
+#endif
+import Distribution.Version (Version(..), orLaterVersion)
 
+--------------------------------------------------------------------------
+-- Handling of Generic Package Descriptions
+
+#if MIN_VERSION_Cabal(1,10,0)
+toGenericPackageDescription :: PackageDescription -> GenericPackageDescription
+toGenericPackageDescription pd =
+    GenericPackageDescription {
+        packageDescription = pd{
+            library = Nothing,
+            executables = [],
+            testSuites = [],
+            buildDepends = []},
+        genPackageFlags = [],
+        condLibrary = case library pd of
+                            Nothing -> Nothing
+                            Just lib -> Just (buildCondTreeLibrary lib),
+        condExecutables = map buildCondTreeExe (executables pd),
+        condTestSuites =  map buildCondTreeTest (testSuites pd)}
+  where
+    buildCondTreeLibrary lib =
+        CondNode {
+            condTreeData = lib,
+            condTreeConstraints = buildDepends pd,
+            condTreeComponents = []}
+    buildCondTreeExe exe =
+        (exeName exe, CondNode {
+            condTreeData = exe,
+            condTreeConstraints = buildDepends pd,
+            condTreeComponents = []})
+    buildCondTreeTest test =
+        (testName test, CondNode {
+            condTreeData = test,
+            condTreeConstraints = buildDepends pd,
+            condTreeComponents = []})
+#endif
 
 -- ---------------------------------------------------------------------
 -- The exported stuff goes here
@@ -129,8 +168,21 @@ packageEdit = do
             lift $ fileOpenThis $ ipdCabalFile idePackage
             return ()
         else do
-            lift $ editPackage (flattenPackageDescription package) dirName  modules (\ _ -> return ())
+            let flat = flattenPackageDescription package
+#if MIN_VERSION_Cabal(1,10,0)
+            if hasUnknownTestTypes flat
+                then do
+                    lift $ ideMessage High ("Cabal file with tests of this type can't be edited with the "
+                        ++ "current version of the editor")
+                    lift $ fileOpenThis $ ipdCabalFile idePackage
+                    return ()
+                else do
+                    lift $ editPackage flat dirName  modules (\ _ -> return ())
+                    return ()
+#else
+            lift $ editPackage flat dirName  modules (\ _ -> return ())
             return ()
+#endif
 
 hasConfigs :: GenericPackageDescription -> Bool
 hasConfigs gpd =
@@ -142,8 +194,25 @@ hasConfigs gpd =
                                     then True
                                     else not (null (condTreeComponents condTree)))
                         False (condExecutables gpd)
+#if MIN_VERSION_Cabal(1,10,0)
+        testConds = foldr (\ (_,condTree) hasConfigs ->
+                                if hasConfigs
+                                    then True
+                                    else not (null (condTreeComponents condTree)))
+                        False (condTestSuites gpd)
+    in libConds || exeConds || testConds
+#else
     in libConds || exeConds
+#endif
 
+#if MIN_VERSION_Cabal(1,10,0)
+hasUnknownTestTypes :: PackageDescription -> Bool
+hasUnknownTestTypes pd =
+    not . null . filter unknown $ testSuites pd
+  where
+    unknown (TestSuite _ (TestSuiteExeV10 _ _) _ _) = False
+    unknown _ = True
+#endif
 
 packageNew' :: Maybe FilePath -> (Bool -> FilePath -> IDEAction) -> IDEAction
 packageNew' mbDir activateAction = do
@@ -153,9 +222,9 @@ packageNew' mbDir activateAction = do
         Nothing -> return ()
         Just dirName -> do
             mbCabalFile <-  liftIO $ cabalFileName dirName
+            window <- getMainWindow
             case mbCabalFile of
                 Just cfn -> do
-                    window <- getMainWindow
                     add <- liftIO $ do
                         md <- messageDialogNew (Just window) [] MessageQuestion ButtonsCancel
                             $ "There is already file " ++ takeFileName cfn ++ " in this directory. "
@@ -168,26 +237,54 @@ packageNew' mbDir activateAction = do
                         return $ rid == ResponseUser 1
                     when add $ activateAction False cfn
                 Nothing -> do
-                    modules <- liftIO $ do
-                        b1 <- doesFileExist (dirName </> "Setup.hs")
-                        b2 <- doesFileExist (dirName </> "Setup.lhs")
-                        if  not (b1 || b2)
-                            then do
-                                sysMessage Normal "Setup.(l)hs does not exist. Writing Standard"
-                                writeFile (dirName </> "Setup.lhs") standardSetup
-                            else sysMessage Normal "Setup.(l)hs already exist"
-                        allModules dirName
-                    let Just initialVersion = simpleParse "0.0.1"
-                    editPackage emptyPackageDescription{
-                        package   = PackageIdentifier (PackageName $ takeBaseName dirName)
-                                                      initialVersion,
-                        buildType = Just Simple,
-                        buildDepends = [Dependency (PackageName "base") AnyVersion],
-                        executables = [emptyExecutable {
-                            exeName    = (takeBaseName dirName),
-                            modulePath = "Main.hs",
-                            buildInfo  = emptyBuildInfo {hsSourceDirs = ["src"]}}]
-                        } dirName modules (activateAction True)
+                    isEmptyDir <- liftIO $ isEmptyDirectory dirName
+                    make <- if isEmptyDir
+                        then return True
+                        else liftIO $ do
+                            md <- messageDialogNew (Just window) [] MessageQuestion ButtonsCancel
+                                $ "The path you have choosen " ++ dirName ++ " is not an empty directory. "
+                                ++ "Are you sure you want to make a new package here?"
+                            dialogAddButton md "_Make Package Here" (ResponseUser 1)
+                            dialogSetDefaultResponse md (ResponseUser 1)
+                            set md [ windowWindowPosition := WinPosCenterOnParent ]
+                            rid <- dialogRun md
+                            widgetDestroy md
+                            return $ rid == ResponseUser 1
+                    when make $ do
+                        modules <- liftIO $ do
+                            b1 <- doesFileExist (dirName </> "Setup.hs")
+                            b2 <- doesFileExist (dirName </> "Setup.lhs")
+                            if  not (b1 || b2)
+                                then do
+                                    sysMessage Normal "Setup.(l)hs does not exist. Writing Standard"
+                                    writeFile (dirName </> "Setup.lhs") standardSetup
+                                else sysMessage Normal "Setup.(l)hs already exist"
+                            allModules dirName
+                        let Just initialVersion = simpleParse "0.0.1"
+                        editPackage emptyPackageDescription{
+                            package   = PackageIdentifier (PackageName $ takeBaseName dirName)
+                                                          initialVersion,
+                            buildType = Just Simple,
+#if MIN_VERSION_Cabal(1,10,0)
+                            specVersionRaw = Right (orLaterVersion (Version [1,2] [])),
+#endif
+                            buildDepends = [
+                                Dependency (PackageName "base") anyVersion
+                              , Dependency (PackageName "QuickCheck") anyVersion],
+                            executables = [emptyExecutable {
+                                exeName    = (takeBaseName dirName)
+                              , modulePath = "Main.hs"
+                              , buildInfo  = emptyBuildInfo {
+                                    hsSourceDirs = ["src"]}}]
+#if MIN_VERSION_Cabal(1,10,0)
+                              , testSuites = [emptyTestSuite {
+                                    testName = "test-" ++ takeBaseName dirName
+                                  , testInterface = (TestSuiteExeV10 (Version [1,0] []) "Main.hs")
+                                  , testBuildInfo = emptyBuildInfo {
+                                        hsSourceDirs = ["src"]
+                                      , cppOptions = ["-DMAIN_FUNCTION=testMain"]}}]
+#endif
+                            } dirName modules (activateAction True)
                     return ()
 
 standardSetup = "#!/usr/bin/runhaskell \n"
@@ -204,6 +301,9 @@ standardSetup = "#!/usr/bin/runhaskell \n"
 data PackageDescriptionEd = PDE {
     pd           :: PackageDescription,
     exes         :: [Executable'],
+#if MIN_VERSION_Cabal(1,10,0)
+    tests        :: [Test'],
+#endif
     mbLib        :: Maybe Library',
     bis          :: [BuildInfo]}
         deriving Eq
@@ -211,32 +311,63 @@ data PackageDescriptionEd = PDE {
 comparePDE a b = do
     when (pd a /= pd b) $ putStrLn  "pd"
     when (exes a /= exes b) $ putStrLn  "exes"
+#if MIN_VERSION_Cabal(1,10,0)
+    when (tests a /= tests b) $ putStrLn  "tests"
+#endif
     when (mbLib a /= mbLib b) $ putStrLn  "mbLib"
     when (bis a /= bis b) $ putStrLn  "bis"
 
 fromEditor :: PackageDescriptionEd -> PackageDescription
-fromEditor (PDE pd exes' mbLib' buildInfos) =
+fromEditor (PDE pd exes'
+#if MIN_VERSION_Cabal(1,10,0)
+        tests'
+#endif
+        mbLib' buildInfos) =
     let     exes = map (\ (Executable' s fb bii) -> if bii + 1 > length buildInfos
                                         then Executable s fb (buildInfos !! (length buildInfos - 1))
                                         else Executable s fb (buildInfos !! bii)) exes'
+#if MIN_VERSION_Cabal(1,10,0)
+            tests = map (\ (Test' s fb bii) -> if bii + 1 > length buildInfos
+                                        then TestSuite s fb (buildInfos !! (length buildInfos - 1)) False
+                                        else TestSuite s fb (buildInfos !! bii) False) tests'
+#endif
             mbLib = case mbLib' of
                     Nothing -> Nothing
                     Just (Library' mn b bii) -> if bii + 1 > length buildInfos
                                         then Just (Library mn b (buildInfos !! (length buildInfos - 1)))
                                         else Just (Library mn b (buildInfos !! bii))
-    in pd {library = mbLib, executables = exes}
+    in pd {
+        library = mbLib
+      , executables = exes
+#if MIN_VERSION_Cabal(1,10,0)
+      , testSuites = tests
+#endif
+      }
 
 toEditor :: PackageDescription -> PackageDescriptionEd
 toEditor pd =
-    let     (exes,bis) = unzip $ map (\ ((Executable s fb bi), i) -> (Executable' s fb i, bi))
-                            (zip (executables pd) [0 .. length (executables pd)])
+    let     (exes,exeBis) = unzip $ map (\((Executable s fb bi), i) -> ((Executable' s fb i), bi))
+                            (zip (executables pd) [0..])
+#if MIN_VERSION_Cabal(1,10,0)
+            (tests,testBis) = unzip $ map (\((TestSuite s fb bi _), i) -> ((Test' s fb i), bi))
+                            (zip (testSuites pd) [length exeBis..])
+            bis = exeBis++testBis
+#else
+            bis = exeBis
+#endif
             (mbLib,bis2) = case library pd of
                     Nothing                -> (Nothing,bis)
                     Just (Library mn b bi) -> (Just (Library' (sort mn) b (length bis)), bis ++ [bi])
             bis3 = if null bis2
                         then [emptyBuildInfo]
                         else bis2
-    in PDE (pd {library = Nothing , executables = []}) exes mbLib bis3
+    in PDE (pd {library = Nothing , executables = []})
+        exes
+#if MIN_VERSION_Cabal(1,10,0)
+        tests
+#endif
+        mbLib
+        bis3
 
 -- ---------------------------------------------------------------------
 -- The pane stuff
@@ -403,7 +534,11 @@ builder' packageDir packageD packageDescr afterSaveAction initialPackagePath mod
             Just newPackage' -> let newPackage = fromEditor newPackage' in do
                 let packagePath = packageDir </> (display . pkgName . package . pd) newPackage'
                                                 ++ ".cabal"
+#if MIN_VERSION_Cabal(1,10,0)
+                writeGenericPackageDescription packagePath (toGenericPackageDescription newPackage)
+#else
                 writePackageDescription packagePath newPackage
+#endif
                 reflectIDE (do
                     afterSaveAction packagePath
                     closePane packagePane
@@ -455,7 +590,7 @@ packageDD packages fp modules numBuildInfos extras = NFD ([
                         $ paraMinSize <<<- ParaMinSize (-1,210)
                             $ emptyParams)
             (description . pd)
-            (\ a b -> b{pd = (pd b){description = if null a then " \n\n\n\n\n" else a}})
+            (\ a b -> b{pd = (pd b){description = if null a then " " else a}})
             multilineStringEditor
     ,   mkField
             (paraName <<<- ParaName "Homepage" $ emptyParams)
@@ -550,7 +685,7 @@ packageDD packages fp modules numBuildInfos extras = NFD ([
                     $ paraDirection <<<- ParaDirection Vertical
                         $ emptyParams)
             (\a -> case (testedWith . pd) a of
-                []          -> []--(GHC,AnyVersion)]
+                []          -> []--(GHC,anyVersion)]
                 l           -> l)
             (\ a b -> b{pd = (pd b){testedWith = a}})
             testedWithEditor
@@ -630,6 +765,18 @@ packageDD packages fp modules numBuildInfos extras = NFD ([
             (\ a b -> b{exes = a})
             (executablesEditor (Just fp) modules numBuildInfos)
     ]),
+#if MIN_VERSION_Cabal(1,10,0)
+    ("Tests",VFD emptyParams  [
+        mkField
+            (paraName <<<- ParaName "Tests"
+                $ paraSynopsis <<<- ParaSynopsis
+                "Describe tests contained in the package"
+                    $ paraDirection <<<- ParaDirection Vertical $ emptyParams)
+            tests
+            (\ a b -> b{tests = a})
+            (testsEditor (Just fp) modules numBuildInfos)
+    ]),
+#endif
     ("Library", VFD emptyParams [
         mkField
             (paraName <<<- ParaName "Library"
@@ -813,7 +960,14 @@ buildInfoD fp modules i = [
             (filesEditor fp FileChooserActionSelectFolder "Select Folder")
    ]),
     (show (i + 1) ++ " Other", VFD emptyParams [
-        mkField
+         mkField
+            (paraName <<<- ParaName "Options for C preprocessor"
+                $ paraDirection <<<- ParaDirection Vertical
+                    $ emptyParams)
+            (cppOptions . (\a -> a !! i) . bis)
+            (\ a b -> b{bis = update (bis b) i (\bi -> bi{cppOptions = a})})
+            optsEditor
+    ,   mkField
             (paraName <<<- ParaName "Support frameworks for Mac OS X"
                 $ paraDirection <<<- ParaDirection Vertical $ emptyParams)
             (frameworks . (\a -> a !! i) . bis)
@@ -1055,16 +1209,28 @@ data Executable' = Executable'{
 ,   buildInfoIdx    :: Int}
     deriving (Show, Eq)
 
+#if MIN_VERSION_Cabal(1,10,0)
+data Test' = Test'{
+    testName'        :: String
+,   testInterface'   :: TestSuiteInterface
+,   testBuildInfoIdx :: Int}
+    deriving (Show, Eq)
+#endif
+
 instance Default Library'
     where getDefault =  Library' [] getDefault getDefault
 
 instance Default Executable'
     where getDefault = Executable' getDefault getDefault getDefault
 
+#if MIN_VERSION_Cabal(1,10,0)
+instance Default Test'
+    where getDefault = Test' getDefault (TestSuiteExeV10 (Version [1,0] []) getDefault) getDefault
+#endif
 
 libraryEditor :: Maybe FilePath -> [ModuleName] -> Int -> Editor Library'
 libraryEditor fp modules numBuildInfos para noti = do
-    (wid,inj,ext) <-
+    (wid,inj,ext) <- 
         tupel3Editor
             (boolEditor,
             paraName <<<- ParaName "Exposed"
@@ -1132,6 +1298,50 @@ executableEditor fp modules countBuildInfo para noti = do
             Nothing -> return Nothing
             Just (s,f,bi) -> return (Just $Executable' s f bi)
     return (wid,pinj,pext)
+
+#if MIN_VERSION_Cabal(1,10,0)
+testsEditor :: Maybe FilePath -> [ModuleName] -> Int -> Editor [Test']
+testsEditor fp modules countBuildInfo p =
+    multisetEditor
+        (ColumnDescr True [("Test Name",\(Test' testName _ _) -> [cellText := testName])
+                           ,("Interface",\(Test'  _ i _) -> [cellText := interfaceName i])
+
+                           ,("Build info index",\(Test'  _ _ bii) -> [cellText := show (bii + 1)])])
+        (testEditor fp modules countBuildInfo,emptyParams)
+        Nothing
+        Nothing
+        (paraShadow  <<<- ParaShadow ShadowIn $ p)
+  where
+    interfaceName (TestSuiteExeV10 _ f) = f
+    interfaceName i = show i
+
+testEditor :: Maybe FilePath -> [ModuleName] -> Int -> Editor Test'
+testEditor fp modules countBuildInfo para noti = do
+    (wid,inj,ext) <- tupel3Editor
+        (stringEditor (\s -> not (null s)) True,
+            paraName <<<- ParaName "Test Name"
+            $ emptyParams)
+        (stringEditor (\s -> not (null s)) True,
+            paraDirection <<<- ParaDirection Vertical
+            $ paraName <<<- ParaName "File with main function"
+            $ emptyParams)
+        (buildInfoEditorP countBuildInfo, paraName <<<- ParaName "Build Info"
+            $ paraOuterAlignment <<<- ParaOuterAlignment  (0.0, 0.0, 0.0, 0.0)
+                $ paraOuterPadding <<<- ParaOuterPadding    (0, 0, 0, 0)
+                    $ paraInnerAlignment <<<- ParaInnerAlignment  (0.0, 0.0, 0.0, 0.0)
+                        $ paraInnerPadding <<<- ParaInnerPadding   (0, 0, 0, 0)
+                            $ emptyParams)
+        (paraDirection  <<<- ParaDirection Vertical $ para)
+        noti
+    let pinj (Test' s (TestSuiteExeV10 (Version [1,0] []) f) bi) = inj (s,f,bi)
+        pinj _ = error "Unexpected Test Interface"
+    let pext = do
+        mbp <- ext
+        case mbp of
+            Nothing -> return Nothing
+            Just (s,f,bi) -> return (Just $Test' s (TestSuiteExeV10 (Version [1,0] []) f) bi)
+    return (wid,pinj,pext)
+#endif
 
 buildInfoEditorP :: Int -> Editor Int
 buildInfoEditorP numberOfBuildInfos para noti = do

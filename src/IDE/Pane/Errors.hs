@@ -25,7 +25,6 @@ module IDE.Pane.Errors (
 import Graphics.UI.Gtk
 import Data.Typeable (Typeable(..))
 import IDE.Core.State
-import Control.Monad.Reader
 import Graphics.UI.Gtk.General.Enums
     (Click(..), MouseButton(..))
 import Graphics.UI.Gtk.Gdk.Events (Event(..))
@@ -34,6 +33,7 @@ import IDE.ImportTool
         resolveErrors)
 import Data.List (elemIndex)
 import IDE.LogRef (showSourceSpan)
+import Control.Monad.IO.Class (MonadIO(..))
 
 -- | A breakpoints pane description
 --
@@ -169,7 +169,7 @@ errorViewPopup ideR  store treeView (Button _ click _ _ _ _ button _ _)
             mbSel           <-  getSelectedError treeView store
             theMenu         <-  menuNew
             item0           <-  menuItemNewWithLabel "Resolve Errors"
-            item0 `onActivateLeaf` do
+            item0 `on` menuItemActivate $ do
                 reflectIDE resolveErrors ideR
             menuShellAppend theMenu item0
             case mbSel of
@@ -179,7 +179,7 @@ errorViewPopup ideR  store treeView (Button _ click _ _ _ _ button _ _)
                             return ()
                         Just _  -> do
                             item1   <-  menuItemNewWithLabel "Add Import"
-                            item1 `onActivateLeaf` do
+                            item1 `on` menuItemActivate $ do
                                 reflectIDE (addImport sel [] (\ _ -> return ())) ideR
                             menuShellAppend theMenu item1
                     case parseHiddenModule (refDescription sel) of
@@ -187,7 +187,7 @@ errorViewPopup ideR  store treeView (Button _ click _ _ _ _ button _ _)
                             return ()
                         Just _  -> do
                             item1   <-  menuItemNewWithLabel "Add Package"
-                            item1 `onActivateLeaf` do
+                            item1 `on` menuItemActivate $ do
                                 reflectIDE (addPackage sel >> return ()) ideR
                             menuShellAppend theMenu item1
                 Nothing -> return ()

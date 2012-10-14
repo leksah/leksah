@@ -18,21 +18,26 @@ module IDE.NotebookFlipper (
 ) where
 
 import Graphics.UI.Gtk
-       (treeViewSetCursor, treeViewGetCursor, treeModelIterNChildren,
+       (treeSelectionGetSelectedRows,
+        treeSelectionSelectionChanged, treeViewGetSelection, rowActivated,
+        treeViewSetCursor, treeViewGetCursor, treeModelIterNChildren,
         treeViewGetModel, treeViewRowActivated, treeViewGetColumn,
-        widgetShowAll, windowWindowPosition, widgetDestroy, widgetHideAll,
-        listStoreGetValue, onRowActivated, onKeyRelease,
+        widgetShowAll, windowWindowPosition, widgetDestroy, widgetHide,
+        listStoreGetValue, keyReleaseEvent,
         treeViewHeadersVisible, cellText, cellLayoutSetAttributes,
         treeViewColumnPackStart, cellRendererTextNew, treeViewAppendColumn,
         treeViewColumnNew, treeViewSetModel, listStoreNew, treeViewNew,
-        containerAdd, frameNew, windowResizable, windowSetTransientFor,
-        windowNewPopup, TreeViewClass, WindowPosition(..), signalDisconnect,
-        AttrOp(..), set)
-import IDE.Core.State
-import Control.Monad.Trans (liftIO)
-import Graphics.UI.Gtk.Gdk.Events (Event(..))
+        containerAdd, windowResizable, windowSetTransientFor,
+        windowNewPopup, TreeViewClass, WindowPosition(..),
+        signalDisconnect, AttrOp(..), set, EventM, EKey, eventKeyName,
+        windowGetSize, windowTypeHint, WindowTypeHint(..), windowDecorated,
+        windowDefaultWidth, windowDefaultHeight, scrolledWindowNew)
+import IDE.Core.State hiding (window, name)
 import Control.Monad (when)
 import IDE.Pane.SourceBuffer(recentSourceBuffers)
+import Control.Monad.IO.Class (MonadIO(..))
+import System.Glib.Signals (on)
+import qualified Control.Monad.Reader as Gtk (liftIO)
 
 flipDown :: IDEAction
 flipDown = do
@@ -89,19 +94,27 @@ initFlipper :: Bool -> IDEAction
 initFlipper direction = do
     mainWindow   <- getMainWindow
     recentPanes' <-  recentSourceBuffers
-    tree' <- reifyIDE $ \ideR -> do
+    (tree', store') <- reifyIDE $ \ideR -> do
         window <- windowNewPopup
         windowSetTransientFor window mainWindow
-        set window [windowResizable := True]
-        frame <- frameNew
-        containerAdd window frame
-        tree <- treeViewNew
+        (_, height) <- windowGetSize mainWindow
+        set window [
+            windowTypeHint      := WindowTypeHintUtility,
+            windowDecorated     := False,
+            windowResizable     := True,
+            windowDefaultWidth  := 200,
+            windowDefaultHeight := height]
 
-        containerAdd frame tree
+        scrolledWindow <- scrolledWindowNew Nothing Nothing
+        containerAdd window scrolledWindow
+
+        tree <- treeViewNew
+        containerAdd scrolledWindow tree
+
         store <- listStoreNew recentPanes'
         treeViewSetModel tree store
         column <- treeViewColumnNew
-        treeViewAppendColumn tree column
+        _ <- treeViewAppendColumn tree column
         renderer <- cellRendererTextNew
         treeViewColumnPackStart column renderer True
         cellLayoutSetAttributes column renderer store
@@ -109,41 +122,61 @@ initFlipper direction = do
 
         set tree [treeViewHeadersVisible := False]
 
-        cid <- onKeyRelease mainWindow $ handleKeyRelease tree ideR
+        cid <- mainWindow `on` keyReleaseEvent $ handleKeyRelease tree ideR
 
-        onRowActivated tree (\treePath column -> do
+        _ <- tree `on` rowActivated $ \treePath _column -> do
             signalDisconnect cid
             let [row] = treePath
             string <- listStoreGetValue store row
             reflectIDE (do
                 mbPane <- mbPaneFromName string
                 case mbPane of
-                    Just (PaneC pane) -> makeActive pane
+                    Just (PaneC pane) -> do
+                        makeActive pane
+                        modifyIDE_ $ \ide -> ide{
+                            recentPanes = paneName pane : filter (/= paneName pane) (recentPanes ide)}
                     Nothing   -> return ()) ideR
-            widgetHideAll window
-            widgetDestroy window)
+            widgetHide window
+            widgetDestroy window
+            reflectIDE (modifyIDE_ (\ide -> ide{currentState = IsRunning})) ideR
+
+        treeSelection <- treeViewGetSelection tree
+        _ <- treeSelection `on` treeSelectionSelectionChanged $ do
+            rows <- treeSelectionGetSelectedRows treeSelection
+            case rows of
+                [[row]] -> do
+                    string <- listStoreGetValue store row
+                    reflectIDE (do
+                        mbPane <- mbPaneFromName string
+                        case mbPane of
+                            Just (PaneC pane) -> makeActive pane
+                            Nothing   -> return ()) ideR
+                _ -> return ()
+
         set window [windowWindowPosition := WinPosCenterOnParent]
-        n <- treeModelIterNChildren store Nothing
-        treeViewSetCursor tree [if direction then min 1 (n-1) else (n-1)] Nothing
         widgetShowAll window
-        return tree
+        return (tree, store)
     modifyIDE_ (\ide -> ide{currentState = IsFlipping tree'})
+    liftIO $ do
+        -- This is done after currentState is set so we know not to update the
+        -- previous panes list
+        n <- treeModelIterNChildren store' Nothing
+        treeViewSetCursor tree' [if direction then min 1 (n-1) else (n-1)] Nothing
     return ()
 
-handleKeyRelease :: TreeViewClass alpha => alpha -> IDERef -> Event -> IO (Bool)
-handleKeyRelease tree ideR Key{eventKeyName = name, eventModifier = modifier, eventKeyChar = char} = do
-    case (name, modifier, char) of
-        (ctrl, _, _) | (ctrl == "Control_L") || (ctrl == "Control_R") -> do
+handleKeyRelease :: TreeViewClass alpha => alpha -> IDERef -> EventM EKey Bool
+handleKeyRelease tree ideR = do
+    name <- eventKeyName
+    Gtk.liftIO $ case name of
+        ctrl | (ctrl == "Control_L") || (ctrl == "Control_R") -> do
             currentState' <- reflectIDE (readIDE currentState) ideR
             case currentState' of
-                IsFlipping  tv -> do
+                IsFlipping _tv -> do
                     (treePath, _) <- treeViewGetCursor tree
                     Just column <- treeViewGetColumn tree 0
                     treeViewRowActivated tree treePath column
-                    reflectIDE (modifyIDE_ (\ide -> ide{currentState = IsRunning})) ideR
                     return False
                 _ -> return False
-        (_,_,_) -> return False
-handleKeyRelease tree ideR _ = return False
+        _ -> return False
 
 

@@ -50,9 +50,9 @@ Section "Leksah"
   File "$%GTK_PREFIX%\bin\libatk-1.0-0.dll"
   File "$%GTK_PREFIX%\bin\libcairo-2.dll"
   File "$%GTK_PREFIX%\bin\libcurl-4.dll"
+  File "$%GTK_PREFIX%\bin\libexpat-1.dll"
   File "$%GTK_PREFIX%\bin\libfontconfig-1.dll"
-  File "$%GTK_PREFIX%\bin\libfreetype-6.dll"
-  File "$%GTK_PREFIX%\bin\libgcrypt-11.dll"
+  File "$%GTK_PREFIX%\bin\freetype6.dll"
   File "$%GTK_PREFIX%\bin\libgailutil-18.dll"
   File "$%GTK_PREFIX%\bin\libgdk-win32-2.0-0.dll"
   File "$%GTK_PREFIX%\bin\libgdk_pixbuf-2.0-0.dll"
@@ -60,21 +60,18 @@ Section "Leksah"
   File "$%GTK_PREFIX%\bin\libglib-2.0-0.dll"
   File "$%GTK_PREFIX%\bin\libgmodule-2.0-0.dll"
   File "$%GTK_PREFIX%\bin\libgobject-2.0-0.dll"
-  File "$%GTK_PREFIX%\bin\libgpg-error-0.dll"
   File "$%GTK_PREFIX%\bin\libgthread-2.0-0.dll"
   File "$%GTK_PREFIX%\bin\libgtk-win32-2.0-0.dll"
   File "$%GTK_PREFIX%\bin\libgtksourceview-2.0-0.dll"
-  File "$%GTK_PREFIX%\bin\libidn-11.dll"
-  File "$%GTK_PREFIX%\bin\libintl-8.dll"
-  File "$%GTK_PREFIX%\bin\libjasper-1.dll"
-  File "$%GTK_PREFIX%\bin\libjpeg-8.dll"
+  File "$%MINGW_BIN%\libiconv-2.dll"
+  File "$%MINGW_BIN%\libintl-8.dll"
+  File "$%GTK_PREFIX%\bin\intl.dll"
   File "$%GTK_PREFIX%\bin\libpango-1.0-0.dll"
   File "$%GTK_PREFIX%\bin\libpangocairo-1.0-0.dll"
   File "$%GTK_PREFIX%\bin\libpangoft2-1.0-0.dll"
   File "$%GTK_PREFIX%\bin\libpangowin32-1.0-0.dll"
-  File "$%GTK_PREFIX%\bin\libpixman-1-0.dll"
   File "$%GTK_PREFIX%\bin\libpng14-14.dll"
-  File "$%GTK_PREFIX%\bin\libssh2-1.dll"
+  File "$%MINGW_BIN%\libpthread-2.dll"
   File "$%GTK_PREFIX%\bin\libxml2-2.dll"
   File "$%GTK_PREFIX%\bin\zlib1.dll"
   
@@ -112,7 +109,7 @@ Section "Start Menu Shortcuts"
   CreateShortCut "$SMPROGRAMS\Leksah\Uninstall.lnk" "$INSTDIR\uninstall.exe" "" "$INSTDIR\uninstall.exe" 0
   CreateShortCut "$SMPROGRAMS\Leksah\Server.lnk" "$INSTDIR\leksah-server.bat" "" "$INSTDIR\leksah.ico" 0
   CreateShortCut "$SMPROGRAMS\Leksah\Rebuild Metadata.lnk" "$INSTDIR\leksah-rebuild-metadata.bat" "" "$INSTDIR\leksah.ico" 0
-  CreateShortCut "$SMPROGRAMS\Leksah\Leksah.lnk" "$INSTDIR\leksah.bat" "" "$INSTDIR\leksah.ico" 0
+  CreateShortCut "$SMPROGRAMS\Leksah\Leksah.lnk" "$INSTDIR\leksah.bat" "" "$INSTDIR\leksah.ico" 0 SW_SHOWMINIMIZED
   
 SectionEnd
 

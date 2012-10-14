@@ -33,7 +33,6 @@ import Graphics.UI.Gtk
         buttonNewFromStock, hButtonBoxNew, vBoxNew, castToWidget, VBox,
         ShadowType(..), Packing(..), fontDescriptionFromString, AttrOp(..),
         FileChooserAction(..), Color(..), ResponseId(..))
-import Control.Monad.Reader
 import qualified Text.PrettyPrint.HughesPJ as PP
 import Distribution.Package
 import Data.IORef
@@ -70,6 +69,8 @@ import Graphics.UI.Gtk.Windows.MessageDialog
        (ButtonsType(..), MessageType(..))
 import System.Glib.Attributes (set)
 import Graphics.UI.Gtk.General.Enums (WindowPosition(..))
+import Control.Monad.IO.Class (MonadIO(..))
+import Control.Monad (forM_, when)
 
 -- ---------------------------------------------------------------------
 -- This needs to be incremented, when the preferences format changes
@@ -129,11 +130,11 @@ instance RecoverablePane IDEPrefs PrefsState IDEM where
                     Nothing -> return ()
                     Just newPrefs -> do
                         lastAppliedPrefs    <- readIORef lastAppliedPrefsRef
-                        mapM_ (\ (FDPP _ _ _ _ applyF) -> reflectIDE (applyF newPrefs lastAppliedPrefs) ideR ) flatPrefsDesc
+                        mapM_ (\f -> reflectIDE (applicator f newPrefs lastAppliedPrefs) ideR) flatPrefsDesc
                         writeIORef lastAppliedPrefsRef newPrefs)
             restore `onClicked` (do
                 lastAppliedPrefs <- readIORef lastAppliedPrefsRef
-                mapM_ (\ (FDPP _ _ _ _ applyF) -> reflectIDE (applyF prefs lastAppliedPrefs) ideR ) flatPrefsDesc
+                mapM_ (\f -> reflectIDE (applicator f prefs lastAppliedPrefs) ideR) flatPrefsDesc
                 injb prefs
                 writeIORef lastAppliedPrefsRef prefs
                 markLabel nb (getTopWidget prefsPane) False
@@ -145,7 +146,7 @@ instance RecoverablePane IDEPrefs PrefsState IDEM where
                 case mbNewPrefs of
                     Nothing -> return ()
                     Just newPrefs -> do
-                        mapM_ (\ (FDPP _ _ _ _ applyF) -> reflectIDE (applyF newPrefs lastAppliedPrefs) ideR ) flatPrefsDesc
+                        mapM_ (\f -> reflectIDE (applicator f newPrefs lastAppliedPrefs) ideR ) flatPrefsDesc
                         fp   <- getConfigFilePathForSave standardPreferencesFilename
                         writePrefs fp newPrefs
                         fp2  <-  getConfigFilePathForSave strippedPreferencesFilename
@@ -610,6 +611,14 @@ prefsDescription configDir packages = NFDPP [
             boolEditor
             (\i -> return ())
          , mkFieldPP
+            (paraName <<<- ParaName "Run unit tests when building" $ emptyParams)
+            (PP.text . show)
+            boolParser
+            runUnitTests
+            (\b a -> a{runUnitTests = b})
+            boolEditor
+            (\i -> return ())
+         , mkFieldPP
             (paraName <<<- ParaName "Make mode" $ emptyParams)
             (PP.text . show)
             boolParser
@@ -751,6 +760,7 @@ defaultPrefs = Prefs {
     ,   saveAllBeforeBuild  =   True
     ,   jumpToWarnings      =   True
     ,   backgroundBuild     =   True
+    ,   runUnitTests        =   False
     ,   makeMode            =   True
     ,   singleBuildWithoutLinking  = False
     ,   dontInstallLast     =   False

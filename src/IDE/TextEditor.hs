@@ -1,3 +1,4 @@
+{-# LANGUAGE CPP #-}
 -----------------------------------------------------------------------------
 --
 -- Module      :  IDE.TextEditor
@@ -70,7 +71,7 @@ module IDE.TextEditor (
 ,   bufferToWindowCoords
 ,   drawTabs
 ,   getBuffer
-,   getDrawWindow
+,   getWindow
 ,   getIterLocation
 ,   getOverwrite
 ,   getScrolledWindow
@@ -140,8 +141,7 @@ import Prelude hiding(getChar, getLine)
 import Data.Char (isAlphaNum, isSymbol)
 import Data.Maybe (fromJust, maybeToList)
 import Data.IORef
-import Control.Monad (when, void)
-import Control.Monad.Reader (liftIO, ask)
+import Control.Monad (when)
 import Control.Applicative ((<$>))
 
 import qualified Graphics.UI.Gtk as Gtk hiding(afterToggleOverwrite)
@@ -157,6 +157,7 @@ import System.Glib.Attributes
 import System.Glib.MainLoop
 import qualified Graphics.UI.Gtk.Multiline.TextView as Gtk
 import qualified Graphics.UI.Gtk.Gdk.Events as GtkOld
+import qualified Graphics.UI.Gtk.Gdk.EventM as GTKEventM
 import System.Glib.Attributes (AttrOp(..))
 import System.GIO.File.ContentType (contentTypeGuess)
 
@@ -172,8 +173,9 @@ import IDE.Core.State
 import IDE.Utils.GUIUtils(controlIsPressed)
 import Paths_leksah (getDataDir)
 import System.FilePath ((</>))
-
-import qualified Graphics.UI.Gtk.Gdk.EventM as GTKEventM
+import Control.Monad.IO.Class (liftIO)
+import Control.Monad.Trans.Reader (ask)
+import qualified Control.Monad.Reader as Gtk (liftIO)
 
 -- Data types
 data EditorBuffer = GtkEditorBuffer Gtk.SourceBuffer
@@ -622,10 +624,10 @@ getBuffer (GtkEditorView sv) = liftIO $ fmap (GtkEditorBuffer . Gtk.castToSource
 getBuffer (YiEditorView v) = return $ YiEditorBuffer $ Yi.getBuffer v
 #endif
 
-getDrawWindow :: EditorView -> IDEM Gtk.DrawWindow
-getDrawWindow (GtkEditorView sv) = liftIO $ Gtk.widgetGetDrawWindow sv
+getWindow :: EditorView -> IDEM (Maybe Gtk.DrawWindow)
+getWindow (GtkEditorView sv) = liftIO $ Gtk.widgetGetWindow sv
 #ifdef LEKSAH_WITH_YI
-getDrawWindow (YiEditorView v) = liftIO $ Gtk.widgetGetDrawWindow (Yi.drawArea v)
+getWindow (YiEditorView v) = liftIO $ Gtk.widgetGetWindow (Yi.drawArea v)
 #endif
 
 getIterLocation :: EditorView -> EditorIter -> IDEM Gtk.Rectangle
@@ -1163,7 +1165,7 @@ onKeyPress (GtkEditorView sv) f = do
             name        <- Gtk.eventKeyName
             modifier    <- Gtk.eventModifier
             keyVal      <- Gtk.eventKeyVal
-            liftIO $ reflectIDE (f name modifier keyVal) ideR
+            Gtk.liftIO $ reflectIDE (f name modifier keyVal) ideR
         return [ConnectC id1]
 #ifdef LEKSAH_WITH_YI
 onKeyPress (YiEditorView v) f = do
@@ -1186,7 +1188,7 @@ onMotionNotify (GtkEditorView sv) f = do
         id1 <- sv `Gtk.on` Gtk.motionNotifyEvent $ do
             (ex,ey)     <- Gtk.eventCoordinates
             modifier    <- Gtk.eventModifier
-            liftIO $ reflectIDE (f ex ey modifier) ideR
+            Gtk.liftIO $ reflectIDE (f ex ey modifier) ideR
         return [ConnectC id1]
 #ifdef LEKSAH_WITH_YI
 onMotionNotify (YiEditorView v) f = do
@@ -1206,7 +1208,7 @@ onLeaveNotify (GtkEditorView sv) f = do
     ideR <- ask
     liftIO $ do
         id1 <- sv `Gtk.on` Gtk.leaveNotifyEvent $ do
-            liftIO $ reflectIDE (f) ideR
+            Gtk.liftIO $ reflectIDE (f) ideR
         return [ConnectC id1]
 #ifdef LEKSAH_WITH_YI
 onLeaveNotify (YiEditorView v) f = do
@@ -1228,7 +1230,7 @@ onKeyRelease (GtkEditorView sv) f = do
             name        <- Gtk.eventKeyName
             modifier    <- Gtk.eventModifier
             keyVal      <- Gtk.eventKeyVal
-            liftIO $ reflectIDE (f name modifier keyVal) ideR
+            Gtk.liftIO $ reflectIDE (f name modifier keyVal) ideR
         return [ConnectC id1]
 #ifdef LEKSAH_WITH_YI
 onKeyRelease (YiEditorView v) f = do

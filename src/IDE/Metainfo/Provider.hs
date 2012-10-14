@@ -39,7 +39,6 @@ import System.IO (hClose, openBinaryFile, IOMode(..))
 import System.IO.Strict (readFile)
 import qualified Data.Map as Map
 import Control.Monad
-import Control.Monad.Trans
 import System.FilePath
 import System.Directory
 import Data.List
@@ -67,6 +66,9 @@ import Data.Map (Map(..))
 import Control.Exception (SomeException(..), catch)
 import Prelude hiding(catch, readFile)
 import IDE.Utils.ServerConnection(doServerCommand)
+import Control.Monad.IO.Class (MonadIO(..))
+import Control.Monad.Trans.Class (MonadTrans(..))
+import Distribution.PackageDescription (hsSourceDirs)
 
 trace a b = b
 
@@ -259,22 +261,22 @@ updatePackageInfo rebuild idePack continuation =
     let (packageMap, ic) =  case pi  `Map.lookup` workspInfoCache' of
                                 Nothing -> (Map.empty,True)
                                 Just m  -> (m,False)
-    modPairsMb <- liftIO $ mapM (\ modName -> do
+    modPairsMb <- liftIO $ mapM (\(modName, bi) -> do
             sf <- case  modName `Map.lookup` packageMap of
-                        Nothing            -> findSourceFile srcDirs' haskellSrcExts modName
-                        Just (_,Nothing,_) -> findSourceFile srcDirs' haskellSrcExts modName
+                        Nothing            -> findSourceFile (srcDirs' bi) haskellSrcExts modName
+                        Just (_,Nothing,_) -> findSourceFile (srcDirs' bi) haskellSrcExts modName
                         Just (_,Just fp,_) -> return (Just fp)
             return (modName, sf))
-                $ Set.toList $ ipdModules idePack
-    mainModules <- liftIO $ mapM (\fn -> do
-                                    mbFn <- findSourceFile' srcDirs' fn
+                $ Map.toList $ ipdModules idePack
+    mainModules <- liftIO $ mapM (\(fn, bi, isTest) -> do
+                                    mbFn <- findSourceFile' (srcDirs' bi) fn
                                     return (main,mbFn))
                             (ipdMain idePack)
     let modPairsMb' = case mainModules of
                         [] -> modPairsMb
                         hd:_ -> hd : modPairsMb
     let (modWith,modWithout) = partition (\(x,y) -> isJust y) modPairsMb'
-    let modWithSources       = map (\(f,Just s) -> (f,s)) modWith
+    let modWithSources       = map (\(f,s) -> (f,fromJust s)) modWith
     let modWithoutSources    = map fst $ modWithout
     -- Now see which modules have to be truely updated
     modToUpdate <- if rebuild
@@ -304,7 +306,7 @@ updatePackageInfo rebuild idePack continuation =
                 pdBuildDepends   = buildDepends}))
     where
         basePath =  normalise $ (takeDirectory (ipdCabalFile idePack))
-        srcDirs' =  map (basePath </>) (ipdSrcDirs idePack)
+        srcDirs' bi =  map (basePath </>) (hsSourceDirs bi)
         pi = ipdPackageId idePack
 
 figureOutRealSources :: IDEPackage -> [(ModuleName,FilePath)] -> IO [(ModuleName,FilePath)]

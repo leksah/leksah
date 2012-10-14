@@ -23,4 +23,5 @@ set leksah_server_libexecdir=%~dp0bin
 
 leksah.exe
 
-pause
+if errorlevel 1 pause
+if not errorlevel 0 pause

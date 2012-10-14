@@ -1,5 +1,5 @@
 {-# LANGUAGE FlexibleInstances, DeriveDataTypeable, MultiParamTypeClasses,
-             ScopedTypeVariables, TypeSynonymInstances #-}
+             CPP, ScopedTypeVariables, TypeSynonymInstances #-}
 {-# OPTIONS_GHC -fwarn-unused-imports #-}
 -----------------------------------------------------------------------------
 --
@@ -25,7 +25,6 @@ module IDE.Pane.Info (
 
 import Graphics.UI.Gtk hiding (afterToggleOverwrite)
 import Control.Monad
-import Control.Monad.Trans
 import Data.IORef
 import Data.Typeable
 import Data.Char (isAlphaNum)
@@ -37,6 +36,7 @@ import IDE.Pane.SourceBuffer
 import IDE.TextEditor (EditorIter(..))
 import IDE.Utils.GUIUtils (openBrowser,controlIsPressed)
 import Graphics.UI.Gtk.SourceView
+import Control.Monad.IO.Class (MonadIO(..))
 
 
 -- | An info pane description
@@ -116,9 +116,13 @@ instance RecoverablePane IDEInfo InfoState IDEM where
 
             createHyperLinkSupport descriptionView sw (\_ _ iter -> do
                     (GtkEditorIter beg,GtkEditorIter en) <- reflectIDE (getIdentifierUnderCursorFromIter (GtkEditorIter iter, GtkEditorIter iter)) ideR
-                    return (beg, en)) (\_ _ slice -> do
-                                reflectIDE (launchSymbolNavigationDialog_ slice goToDefinition) ideR
-                                )
+                    return (beg, en)) (\_ shift' slice -> do
+                                        when (slice /= []) $ do
+                                            -- liftIO$ print ("slice",slice)
+                                            reflectIDE (triggerEventIDE
+                                                (SelectInfo slice shift')) ideR
+                                            return ()
+                                        )
 
             scrolledWindowSetPolicy sw PolicyAutomatic PolicyAutomatic
 
@@ -141,7 +145,7 @@ instance RecoverablePane IDEInfo InfoState IDEM where
                     symbol  <- textBufferGetText buf l r True
                     when (controlIsPressed e)
                         (reflectIDE (do
-                            triggerEventIDE (SelectInfo symbol)
+                            triggerEventIDE (SelectInfo symbol False)
                             return ()) ideR)
                     return False)
             return (Just info,[ConnectC cid])
@@ -208,11 +212,11 @@ populatePopupMenu :: IDERef -> IORef (Maybe Descr) -> Menu -> IO ()
 populatePopupMenu ideR currentDescr' menu = do
     items <- containerGetChildren menu
     item0 <- menuItemNewWithLabel "Goto Definition"
-    item0 `onActivateLeaf` (reflectIDE gotoSource ideR)
+    item0 `on` menuItemActivate $ reflectIDE gotoSource ideR
     item1 <- menuItemNewWithLabel "Select Module"
-    item1 `onActivateLeaf` (reflectIDE gotoModule' ideR )
+    item1 `on` menuItemActivate $ reflectIDE gotoModule' ideR
     item2 <- menuItemNewWithLabel "Open Documentation"
-    item2 `onActivateLeaf` (reflectIDE openDocu ideR )
+    item2 `on` menuItemActivate $ reflectIDE openDocu ideR
     menuShellAppend menu item0
     menuShellAppend menu item1
     menuShellAppend menu item2

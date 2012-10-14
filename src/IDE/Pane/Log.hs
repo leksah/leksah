@@ -1,4 +1,4 @@
-{-# LANGUAGE FlexibleInstances, ScopedTypeVariables, DeriveDataTypeable,
+{-# LANGUAGE CPP, FlexibleInstances, ScopedTypeVariables, DeriveDataTypeable,
              MultiParamTypeClasses, TypeSynonymInstances, ParallelListComp #-}
 --
 -- Module      :  IDE.Pane.Log
@@ -51,18 +51,14 @@ import Control.Exception hiding (try)
 import IDE.ImportTool
        (addPackage, parseHiddenModule, addImport, parseNotInScope,
         resolveErrors)
-#ifdef MIN_VERSION_process_leksah
-import IDE.System.Process (runInteractiveProcess, ProcessHandle, terminateProcess)
-#else
-import System.Process (runInteractiveProcess, ProcessHandle, terminateProcess)
-#endif
+import IDE.Utils.Tool (runInteractiveProcess, ProcessHandle, terminateProcess)
 import Graphics.UI.Gtk
        (textBufferSetText, textViewScrollToMark,
         textBufferGetIterAtLineOffset, textViewScrollMarkOnscreen, textViewSetBuffer,
         textBufferGetMark, textBufferMoveMarkByName,
         textBufferApplyTagByName, textBufferGetIterAtOffset,
         textBufferGetCharCount, textBufferInsert, textBufferSelectRange,
-        widgetHide, widgetShowAll, menuShellAppend, onActivateLeaf,
+        widgetHide, widgetShowAll, menuShellAppend,
         menuItemNewWithLabel, containerGetChildren, textIterGetLine,
         textViewGetLineAtY, textViewWindowToBufferCoords, widgetGetPointer,
 #if MIN_VERSION_gtk(0,10,5)
@@ -80,10 +76,10 @@ import Graphics.UI.Gtk
         textViewGetBuffer, textViewNew, Window, Notebook, castToWidget,
         ScrolledWindow, TextView, Container, ComboBox, HBox, VBox, Menu, AttrOp(..), set,
         TextWindowType(..), ShadowType(..), PolicyType(..), hBoxNew, buttonNewWithLabel,
-        boxPackStartDefaults, vBoxNew, comboBoxNewText, boxPackEndDefaults,
+        vBoxNew, comboBoxNewText, menuItemActivate,
         comboBoxAppendText, comboBoxSetActive, comboBoxGetActiveText,
         priorityDefaultIdle, idleAdd,Frame, frameNew,buttonActivated,
-        boxPackStart, Packing(..), comboBoxGetActive, comboBoxRemoveText,
+        boxPackStart, boxPackEnd, Packing(..), comboBoxGetActive, comboBoxRemoveText,
         comboBoxGetModelText, listStoreToList) --TODO remove import for logging only
 import qualified Data.Map as Map
 import Data.Maybe
@@ -320,7 +316,7 @@ builder' pp nb windows = do
         removeBtn <- buttonNewWithLabel "Remove launch"
         boxPackStart hBox removeBtn PackNatural 0
         comboBox <- comboBoxNewText
-        boxPackEndDefaults hBox comboBox
+        boxPackEnd hBox comboBox PackGrow 0
 
         -- bot, launch textview in a scrolled window
         tv           <- textViewNew
@@ -338,7 +334,7 @@ builder' pp nb windows = do
         scrolledWindowSetPolicy sw PolicyAutomatic PolicyAutomatic
         scrolledWindowSetShadowType sw ShadowIn
 
-        boxPackEndDefaults mainContainer sw
+        boxPackEnd mainContainer sw PackGrow 0
 
         -- add default launch
         textViewSetBuffer tv (logBuffer newLogLaunch)
@@ -438,7 +434,7 @@ populatePopupMenu :: IDELog -> IDERef -> Menu -> IO ()
 populatePopupMenu log ideR menu = do
     items <- containerGetChildren menu
     item0           <-  menuItemNewWithLabel "Resolve Errors"
-    item0 `onActivateLeaf` do
+    item0 `on` menuItemActivate $ do
         reflectIDE resolveErrors ideR
     menuShellAppend menu item0
     res <- reflectIDE (do
@@ -460,7 +456,7 @@ populatePopupMenu log ideR menu = do
                     return ()
                 Just _  -> do
                     item1   <-  menuItemNewWithLabel "Add Import"
-                    item1 `onActivateLeaf` do
+                    item1 `on` menuItemActivate $ do
                         reflectIDE (addImport thisRef [] (\_ -> return ())) ideR
                     menuShellAppend menu item1
             case parseHiddenModule (refDescription thisRef) of
@@ -468,7 +464,7 @@ populatePopupMenu log ideR menu = do
                     return ()
                 Just _  -> do
                     item2   <-  menuItemNewWithLabel "Add Package"
-                    item2 `onActivateLeaf` do
+                    item2 `on` menuItemActivate $ do
                         reflectIDE (addPackage thisRef >> return ()) ideR
                     menuShellAppend menu item2
             widgetShowAll menu

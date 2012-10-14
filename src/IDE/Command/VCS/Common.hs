@@ -57,10 +57,10 @@ setMenuForPackage vcsMenu cabalFp mbVCSConf = do
 
                     -- build and set set-up repo action
                     setupActionItem <- liftIO $ Gtk.menuItemNewWithMnemonic "_Setup Repo"
-                    liftIO $ setupActionItem `Gtk.onActivateLeaf` (
+                    liftIO $ setupActionItem `Gtk.on` Gtk.menuItemActivate $
                             reflectIDE (
                                     runSetupRepoActionWithContext cabalFp
-                                ) ideR)
+                                ) ideR
                     liftIO $ Gtk.menuShellAppend packageMenu setupActionItem
 
                     -- build and set other actions
@@ -79,7 +79,8 @@ setMenuForPackage vcsMenu cabalFp mbVCSConf = do
                     addActions cabalFp packageMenu ideR actions =  mapM_ (\(name,action) -> do
                         -- for each operation add it to menu and connect action
                         actionItem <- Gtk.menuItemNewWithMnemonic name
-                        actionItem `Gtk.onActivateLeaf` (reflectIDE (runActionWithContext action cabalFp) ideR)
+                        actionItem `Gtk.on` Gtk.menuItemActivate $
+                            reflectIDE (runActionWithContext action cabalFp) ideR
                         Gtk.menuShellAppend packageMenu actionItem
                         ) actions
                     mkVCSActions :: VCS.VCSType -> [(String, Types.VCSAction ())]

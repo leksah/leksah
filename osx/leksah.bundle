@@ -13,6 +13,8 @@
          either define your own or just hardcode the path here.
     -->
     <prefix name="default">${env:JHBUILD_PREFIX}</prefix>
+    <prefix name="leksah">${env:LEKSAH_PREFIX}</prefix>
+    <prefix name="leksah-server">${env:LEKSAH_SERVER_PREFIX}</prefix>
 
     <!-- The project directory is the default location of the created
          app. If you leave out the path, the current directory is
@@ -36,6 +38,7 @@
          for example.
     -->
     <!--runtime copy="yes">/usr/bin/python</runtime-->
+    <gtk>gtk+-3.0</gtk>
   </meta>
 
   <!-- The special macro "${project}" refers to the directory where
@@ -44,23 +47,27 @@
   -->
   <plist>${project}/Info.plist</plist>
 
-  <main-binary>${prefix}/bin/leksah</main-binary>
-  
-  <binary>${prefix}/bin/leksahecho</binary>
-  <binary>${prefix}/bin/leksah-server</binary>
+  <main-binary>${prefix:leksah}/bin/leksah</main-binary>
 
-  <!-- Copy in GTK+ modules. Note the use of the
-       "${pkg:module:variable}" macro, which evaluates to a pkg-config
-       variable in the specified module. Note that any libraries that
-       binaries link to are also copied in automatically.
-  -->
+  <binary>${prefix:leksah-server}/bin/leksahecho</binary>
+  <binary>${prefix:leksah-server}/bin/leksah-server</binary>
+
   <binary>
-    ${prefix}/lib/gdk-pixbuf-2.0/${pkg:gtk+-2.0:gtk_binary_version}/loaders/*.so
+      ${prefix}/lib/gdk-pixbuf-2.0/${pkg:gdk-pixbuf-2.0:gdk_pixbuf_binary_version}/loaders/*.so
+  </binary>
+
+  <!-- Copy in pango modules.  -->
+  <binary>
+      ${prefix}/lib/pango/${pkg:pango:pango_module_version}/modules/*.so
   </binary>
 
   <!-- Copy in GTK+ theme engines.  -->
   <binary>
-    ${prefix}/lib/gtk-2.0/${pkg:gtk+-2.0:gtk_binary_version}/engines/*.so
+    ${prefix}/lib/${gtkdir}/${pkg:${gtk}:gtk_binary_version}/theming-engines/*.so
+  </binary>
+
+  <binary>
+    ${prefix}/lib/${gtkdir}/${pkg:${gtk}:gtk_binary_version}/printbackends/*.so
   </binary>
 
   <!-- <binary>${prefix}/lib/libintl.8.dylib</binary>
@@ -77,17 +84,20 @@
        "${bundle}", which refers to the bundle root directory.
   -->
   <data>
-    ${prefix}/share/gtksourceview-2.0
+    ${prefix}/share/gtksourceview-3.0
   </data>
 
   <data>
-    ${prefix}/share/leksah-0.10
+    ${prefix:leksah}/share/${env:LEKSAH_X_X}
   </data>
 
   <!-- Copy in the themes data. You may want to trim this to save space
        in your bundle. -->
   <data>
     ${prefix}/share/themes
+  </data>
+  <data>
+    ${prefix}/share/glib-2.0
   </data>
 
   <!-- Copy icons. Note that the .icns file is an Apple format which
@@ -102,8 +112,8 @@
        theme of choice if they provide and example, or you can just
        change the source path. -->
 
-  <data dest="${bundle}/Contents/Resources/etc/gtk-2.0/gtkrc">
-    ${project}/gtkrc
+  <data dest="${bundle}/Contents/Resources/etc/gtk-3.0/settings.ini">
+    ${project}/settings.ini
   </data>
 
   <!-- Icon themes to copy. The "icons" property can be either of
@@ -120,10 +130,10 @@
   </icon-theme>
 
   <!-- Custom prefs for the Mac -->
-  <data dest="${bundle}/Contents/Resources/share/leksah-0.10/data/prefs.lkshp">
+  <data dest="${bundle}/Contents/Resources/share/${env:LEKSAH_X_X}/data/prefs.lkshp">
     ${project}/prefs.lkshp
   </data>
-  <data dest="${bundle}/Contents/Resources/share/leksah-0.10/data/keymap.lkshk">
+  <data dest="${bundle}/Contents/Resources/share/${env:LEKSAH_X_X}/data/keymap.lkshk">
     ${project}/keymap.lkshk
   </data>
 </app-bundle>

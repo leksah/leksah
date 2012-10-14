@@ -39,9 +39,10 @@ import IDE.Package
        (packageClean', packageCopy', packageRegister', buildPackage, packageConfig', packageTest')
 import IDE.Core.Types
        (IDEEvent(..), Prefs(..), IDE(..), WorkspaceAction)
-import Control.Monad.Reader
 import Distribution.Text (Text(..))
 import Control.Event (EventSource(..))
+import Control.Monad.Trans.Reader (ask)
+import Control.Monad.Trans.Class (MonadTrans(..))
 
 -- import Debug.Trace (trace)
 trace a b = b
@@ -53,6 +54,7 @@ data MakeSettings = MakeSettings {
     msSingleBuildWithoutLinking      :: Bool,
     msSaveAllBeforeBuild             :: Bool,
     msBackgroundBuild                :: Bool,
+    msRunUnitTests                   :: Bool,
     msJumpToWarnings                 :: Bool,
     msDontInstallLast                :: Bool}
 
@@ -63,6 +65,7 @@ defaultMakeSettings prefs = MakeSettings  {
     msSingleBuildWithoutLinking      = singleBuildWithoutLinking prefs,
     msSaveAllBeforeBuild             = saveAllBeforeBuild prefs,
     msBackgroundBuild                = backgroundBuild prefs,
+    msRunUnitTests                   = runUnitTests prefs,
     msJumpToWarnings                 = jumpToWarnings prefs,
     msDontInstallLast                = dontInstallLast prefs}
 
@@ -124,17 +127,14 @@ constrMakeChain _ _ [] _ _ _ = EmptyChain
 
 constrMakeChain ms@MakeSettings{msMakeMode = makeMode}
                     Workspace{wsPackages = packages, wsNobuildPack = noBuilds}
-                    targets@(headTarget:restTargets) firstOp restOp finishOp
--- single build
-    | not makeMode  =  chainFor headTarget ms firstOp
-                        (chainFor headTarget ms finishOp EmptyChain Nothing) Nothing
--- complex build
-    | otherwise =  trace ("topsorted: " ++ showTopSorted topsorted)
-                    constrElem targets topsorted depGraph ms noBuilds
-                        firstOp restOp finishOp False
-      where
-        depGraph        =  constrDepGraph packages
-        topsorted       =  reverse $ topSortGraph $ constrParentGraph packages
+                    targets firstOp restOp finishOp =
+    trace ("topsorted: " ++ showTopSorted topsorted)
+    constrElem targets topsorted depGraph ms noBuilds
+                    firstOp restOp finishOp False
+  where
+        depGraph | makeMode  = constrDepGraph packages
+                 | otherwise = Map.empty
+        topsorted            = reverse $ topSortGraph $ constrParentGraph packages
 
 -- Constructs a make chain
 chainFor :: IDEPackage ->  MakeSettings -> MakeOp -> Chain MakeOp IDEPackage

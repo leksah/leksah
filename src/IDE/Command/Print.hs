@@ -1,3 +1,4 @@
+{-# LANGUAGE CPP #-}
 -----------------------------------------------------------------------------
 --
 -- Module      :  IDE.Command.Print
@@ -17,15 +18,11 @@ module IDE.Command.Print (
     , PrintError (..)
 ) where
 
-#ifdef MIN_VERSION_process_leksah
-import IDE.System.Process
-#else
-import System.Process
-#endif
 import System.Exit
 import Prelude hiding (print)
 import IDE.Core.Types
 import IDE.Core.State
+import IDE.Utils.Tool (readProcessWithExitCode)
 
 data PrintError = PrintError {
     exitCode :: Int

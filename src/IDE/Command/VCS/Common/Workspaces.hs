@@ -36,8 +36,8 @@ import Control.Monad.Reader(liftIO,ask,when)
 
 import Graphics.UI.Frame.Panes
 import Graphics.UI.Gtk (
-    menuNew, menuItemNewWithLabel, onActivateLeaf, menuShellAppend, menuItemSetSubmenu
-        ,widgetShowAll, menuItemNewWithMnemonic, menuItemGetSubmenu, widgetHideAll, widgetDestroy, menuItemRemoveSubmenu)
+    menuNew, menuItemNewWithLabel, menuItemActivate, menuShellAppend, menuItemSetSubmenu
+        ,widgetShowAll, menuItemNewWithMnemonic, menuItemGetSubmenu, widgetHide, widgetDestroy, menuItemRemoveSubmenu)
 
 import Data.Maybe
 import Data.List

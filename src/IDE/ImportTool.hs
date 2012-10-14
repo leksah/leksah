@@ -1,3 +1,4 @@
+{-# LANGUAGE CPP #-}
 -----------------------------------------------------------------------------
 --
 -- Module      :  IDE.ImportTool
@@ -19,6 +20,7 @@ module IDE.ImportTool (
 ,   addPackage
 ,   parseNotInScope
 ,   parseHiddenModule
+,   HiddenModuleResult(..)
 ) where
 
 import IDE.Core.State
@@ -48,17 +50,30 @@ import qualified Distribution.ModuleName as D (ModuleName(..))
 import qualified Text.ParserCombinators.Parsec.Token as P
        (operator, dot, identifier, symbol, lexeme, whiteSpace,
         makeTokenParser)
-import Control.Monad.Trans (liftIO)
 import Distribution.PackageDescription.Parse
-       (writePackageDescription, readPackageDescription)
+       (readPackageDescription)
 import Distribution.Verbosity (normal)
 import IDE.Pane.PackageEditor (hasConfigs)
 import Distribution.Package
-import Distribution.Version (VersionRange(..))
-import Distribution.PackageDescription (buildDepends)
+import Distribution.Version
+       (anyVersion, orLaterVersion, intersectVersionRanges,
+        earlierVersion, Version(..))
+import Distribution.PackageDescription
+       (CondTree(..), condExecutables, condLibrary, packageDescription,
+        buildDepends)
 import Distribution.PackageDescription.Configuration
        (flattenPackageDescription)
 import IDE.BufferMode (editInsertCode)
+import Control.Monad.IO.Class (MonadIO(..))
+#if MIN_VERSION_Cabal(1,10,0)
+import Distribution.PackageDescription.PrettyPrintCopied
+       (writeGenericPackageDescription)
+#else
+import Distribution.PackageDescription.Parse
+       (writePackageDescription)
+import Distribution.PackageDescription
+       (CondTree(..))
+#endif
 
 -- | Add all imports which gave error messages ...
 resolveErrors :: IDEAction
@@ -134,16 +149,39 @@ addPackage error = do
         Nothing -> return False
         Just (HiddenModuleResult mod pack) -> do
             let idePackage = logRefPackage error
-            package <- liftIO $ readPackageDescription normal (ipdCabalFile $ idePackage)
-            if hasConfigs package
+            gpd <- liftIO $ readPackageDescription normal (ipdCabalFile $ idePackage)
+            ideMessage Normal $ "addPackage " ++ (display $ pkgName pack)
+#if MIN_VERSION_Cabal(1,10,0)
+            liftIO $ writeGenericPackageDescription (ipdCabalFile $ idePackage)
+                gpd { condLibrary     = addDepToLib pack (condLibrary gpd),
+                      condExecutables = map (addDepToExe pack)
+                                            (condExecutables gpd)}
+            return True
+#else
+            if hasConfigs gpd
                 then return False
                 else do
-                    let flat = flattenPackageDescription package
-                    ideMessage Normal $ "addPackage " ++ (display $ pkgName pack)
+                    let flat = flattenPackageDescription gpd
                     liftIO $ writePackageDescription (ipdCabalFile $ idePackage)
-                        flat { buildDepends =
-                            Dependency (pkgName pack) AnyVersion : buildDepends flat}
+                        flat { buildDepends = dep pack : buildDepends flat}
                     return True
+#endif
+  where
+    addDepToLib _ Nothing = Nothing
+    addDepToLib p (Just cn@CondNode{condTreeConstraints = deps}) =
+        Just (cn{condTreeConstraints = dep p : deps})
+    addDepToExe p (str,cn@CondNode{condTreeConstraints = deps}) =
+        (str,cn{condTreeConstraints = dep p : deps})
+    -- Empty version is probably only going to happen for ghc-prim
+    dep p | null . versionBranch $ packageVersion p = Dependency (packageName p) (anyVersion)
+    dep p = Dependency (packageName p) (
+        intersectVersionRanges (orLaterVersion (packageVersion p))
+                               (earlierVersion (majorAndMinor (packageVersion p))))
+
+    majorAndMinor v@Version{versionBranch = b} = v{versionBranch = nextMinor b}
+    nextMinor = nextMinor' . (++[0,0])
+    nextMinor' (major:minor:_) = [major, minor+1]
+    nextMinor' _ = undefined
 
 getScopeForActiveBuffer :: IDEM (Maybe (GenScope, GenScope))
 getScopeForActiveBuffer = do
@@ -201,7 +239,7 @@ addImport' nis filePath descr descrList continuation =  do
                                                 fileSave False
                                                 setModified gtkbuf True
                                                 continuation (True,(descr : descrList))
-                         ServerFailed string	-> do
+                         ServerFailed string -> do
                             ideMessage Normal ("Can't parse module header " ++ filePath ++
                                     " failed with: " ++ string)
                             continuation (False,[])
@@ -337,16 +375,16 @@ selectModuleDialog parentWindow list id mbQual mbDescr =
                                             Just str -> if elem str selectionList
                                                             then str
                                                             else head selectionList
-            let qualId              =  case mbQual of
+            let qualId             =  case mbQual of
                                             Nothing -> id
                                             Just str -> str ++ "." ++ id
             dia               <- dialogNew
             windowSetTransientFor dia parentWindow
-            upper             <- dialogGetUpper dia
+            upper             <- dialogGetContentArea dia
             okButton <- dialogAddButton dia "Ok" ResponseOk
             dialogAddButton dia "Cancel" ResponseCancel
             (widget,inj,ext,_) <- buildEditor (moduleFields selectionList qualId) realSelectionString
-            boxPackStart upper widget PackGrow 7
+            boxPackStart (castToBox upper) widget PackGrow 7
             dialogSetDefaultResponse dia ResponseOk --does not work for the tree view
             widgetShowAll dia
             rw <- getRealWidget widget
@@ -363,13 +401,6 @@ selectModuleDialog parentWindow list id mbQual mbDescr =
                                                 Nothing -> False
                                                 Just pm -> (render . disp . modu) pm == v) list)))
                 _                      -> return Nothing
-
---testString =    "    Could not find module `Graphics.UI.Gtk':\n"
---             ++ "      It is a member of the hidden package `gtk-0.11.0'.\n"
---             ++ "      Perhaps you need to add `gtk' to the build-depends in your .cabal file.\n"
---             ++ "      Use -v to see a list of the files searched for."
---
---test = parseHiddenModule testString == Just (HiddenModuleResult {hiddenModule = "Graphics.UI.Gtk", missingPackage = PackageIdentifier {pkgName = PackageName "gtk", pkgVersion = Version {versionBranch = [0,11,0], versionTags = []}}})
 
 data HiddenModuleResult = HiddenModuleResult {
         hiddenModule      :: String
@@ -390,7 +421,8 @@ hiddenModuleParser = do
     whiteSpace
     symbol "Could not find module `"
     mod    <- many (noneOf "'")
-    symbol "':\n"
+    many (noneOf "\n")
+    symbol "\n"
     whiteSpace
     symbol "It is a member of the hidden package `"
     pack   <- many (noneOf "'")

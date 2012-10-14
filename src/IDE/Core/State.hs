@@ -79,10 +79,9 @@ import Graphics.UI.Gtk hiding (get)
 import Graphics.UI.Gtk.SourceView.SourceView ()
 
 import Data.IORef
-import Control.Monad.Reader hiding (liftIO)
 import Control.Exception
 import Prelude hiding (catch)
-import Control.Monad.State
+import Control.Monad.IO.Class (MonadIO, liftIO)
 import IDE.Core.Types
 import Graphics.UI.Frame.Panes
 import Graphics.UI.Frame.ViewFrame --hiding (notebookInsertOrdered)
@@ -99,6 +98,8 @@ import qualified IDE.YiConfig as Yi
 import Data.Enumerator (runIteratee, Iteratee(..))
 import qualified Data.Enumerator as E
        (returnI, Step(..), yield, continue)
+import Control.Monad (liftM, when)
+import Control.Monad.Trans.Reader (ask, ReaderT(..))
 
 instance PaneMonad IDEM where
     getFrameState   =   readIDE frameState
@@ -174,10 +175,11 @@ instance PaneMonad IDEM where
                     (case mbAP of
                         Nothing -> Nothing
                         Just (pn,_) -> Just pn)
-                modifyIDE_ (\ide -> ide{recentPanes =
-                    paneName pane : filter (/= paneName pane) (recentPanes ide)})
+                modifyIDE_ updateRecent
                 return ()
         where
+            updateRecent (ide@IDE{currentState = IsFlipping _}) = ide
+            updateRecent ide = ide{recentPanes = paneName pane : filter (/= paneName pane) (recentPanes ide)}
             trigger :: Maybe String -> Maybe String -> IDEAction
             trigger s1 s2 = do
                 triggerEventIDE (RecordHistory ((PaneSelected s1), PaneSelected s2))

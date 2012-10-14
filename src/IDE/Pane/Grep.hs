@@ -27,11 +27,10 @@ import Text.ParserCombinators.Parsec.Language
 import Text.ParserCombinators.Parsec hiding(Parser)
 import qualified Text.ParserCombinators.Parsec.Token as P
 import Data.Maybe
-import Control.Monad.Reader
 import Data.Typeable
 import IDE.Core.State
 import IDE.BufferMode
-import IDE.Utils.Tool (runTool, ToolOutput(..))
+import IDE.Utils.Tool (runTool, ToolOutput(..), getProcessExitCode, interruptProcessGroupOf)
 import Control.Concurrent
        (forkOS, newEmptyMVar, isEmptyMVar, takeMVar, putMVar, MVar,
         forkIO)
@@ -44,17 +43,16 @@ import System.FilePath ((</>), dropFileName)
 import System.Exit (ExitCode(..))
 import IDE.Pane.Log (getLog, getDefaultLogLaunch)
 import Control.DeepSeq
-#ifdef MIN_VERSION_process_leksah
-import IDE.System.Process (getProcessExitCode, interruptProcessGroup)
-#else
-import System.Process (getProcessExitCode, interruptProcessGroupOf)
-#endif
 import qualified Data.Enumerator as E
        (Step(..), run_, Iteratee(..), run)
 import qualified Data.Enumerator.List as EL
        (foldM, head, dropWhile, isolate)
 import Data.Enumerator (($$), (>>==))
 import qualified Data.List as L ()
+import Control.Monad (foldM, when)
+import Control.Monad.Trans.Reader (ask)
+import Control.Monad.Trans.Class (MonadTrans(..))
+import Control.Monad.IO.Class (MonadIO(..))
 
 data GrepRecord = GrepRecord {
             file        :: FilePath
@@ -181,7 +179,7 @@ instance RecoverablePane IDEGrep GrepState IDEM where
                             return False
                     _ -> return False
              )
-        sel `onSelectionChanged` (void $ gotoSource False)
+        sel `onSelectionChanged` (gotoSource False >> return ())
 
 
         return (Just grep,[ConnectC cid1])
@@ -251,18 +249,20 @@ grepDirectories regexString caseSensitive dirs = do
                 found <- if nooneWaiting
                     then do
                         (output, pid) <- runTool "grep" ((if caseSensitive then [] else ["-i"])
-                            ++ ["-r", "-E", "-n", "-I", "--exclude=*~", "--exclude-dir=.svn", regexString] ++ subDirs) (Just dir)
+                            ++ ["-r", "-E", "-n", "-I", "--exclude=*~",
+#if !defined(darwin_HOST_OS)
+                                "--exclude-dir=.svn",
+                                "--exclude-dir=_darcs",
+                                "--exclude-dir=.git",
+#endif
+                                regexString] ++ subDirs) (Just dir)
                         reflectIDE (do
                             E.run_ $ output $$ do
                                 let max = 1000
                                 step <- EL.isolate (toInteger max) $$ setGrepResults dir
                                 case step of
                                     E.Continue _ -> do
-#ifdef MIN_VERSION_process_leksah
-                                        liftIO $ interruptProcessGroup pid
-#else
                                         liftIO $ interruptProcessGroupOf pid
-#endif
                                         liftIO $ postGUISync $ do
                                             nDir <- treeModelIterNChildren store Nothing
                                             liftIO $ treeStoreChange store [nDir-1] (\r -> r{ context = "(Stoped Searching)" })

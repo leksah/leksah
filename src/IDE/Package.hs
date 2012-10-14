@@ -44,6 +44,7 @@ module IDE.Package (
 ,   delModuleFromPackageDescr
 
 ,   backgroundBuildToggled
+,   runUnitTestsToggled
 ,   makeModeToggled
 
 ,   debugStart
@@ -53,16 +54,16 @@ module IDE.Package (
 
 ,   printEvldWithShowFlag
 ,   tryDebug
-,   tryDebug_
+,   tryDebugQuiet
 ,   executeDebugCommand
 
 ,   choosePackageFile
 
 ,   idePackageFromPath
+
 ) where
 
 import Graphics.UI.Gtk
-import Control.Monad.Reader
 import Distribution.Package hiding (depends,packageId)
 import Distribution.PackageDescription
 import Distribution.PackageDescription.Parse
@@ -91,27 +92,36 @@ import Data.List (isInfixOf, nub, foldl', delete)
 import qualified System.IO.UTF8 as UTF8  (readFile)
 import IDE.Utils.Tool (ToolOutput(..), runTool, newGhci, ToolState(..))
 import qualified Data.Set as  Set (fromList)
-import qualified Data.Map as  Map (empty)
+import qualified Data.Map as  Map (empty, fromList)
 import System.Exit (ExitCode(..))
 import Control.Applicative ((<$>))
-#ifdef MIN_VERSION_process_leksah
-import IDE.System.Process (getProcessExitCode, interruptProcessGroup, ProcessHandle(..))
-#else
-import System.Process (getProcessExitCode, interruptProcessGroupOf, ProcessHandle(..))
-#endif
-import IDE.Utils.Tool (executeGhciCommand)
+import IDE.Utils.Tool (executeGhciCommand, getProcessExitCode, interruptProcessGroupOf,
+    ProcessHandle)
 import qualified Data.Enumerator as E (run_, Iteratee(..), last)
 import qualified Data.Enumerator.List as EL (foldM, zip3, zip)
 import Data.Enumerator (($$))
+import Control.Monad.Trans.Reader (ask)
+import Control.Monad.IO.Class (MonadIO(..))
+import Control.Monad.Trans.Class (lift)
+import Control.Monad (when, unless, liftM)
+#if MIN_VERSION_Cabal(1,10,0)
+import Distribution.PackageDescription.PrettyPrintCopied
+       (writeGenericPackageDescription)
+#endif
+import Debug.Trace (trace)
+
+moduleInfo :: (a -> BuildInfo) -> (a -> [ModuleName]) -> a -> [(ModuleName, BuildInfo)]
+moduleInfo bi mods a = map (\m -> (m, buildInfo)) $ mods a
+    where buildInfo = bi a
 
 #if MIN_VERSION_Cabal(1,8,0)
 myLibModules pd = case library pd of
                     Nothing -> []
-                    Just l -> libModules l
-myExeModules pd = concatMap exeModules (executables pd)
+                    Just l -> moduleInfo libBuildInfo libModules l
+myExeModules pd = concatMap (moduleInfo buildInfo exeModules) (executables pd)
 #else
-myLibModules pd = libModules pd
-myExeModules pd = exeModules pd
+myLibModules pd = moduleInfo libModules libBuildInfo pd
+myExeModules pd = moduleInfo exeModules buildInfo pd
 #endif
 
 
@@ -197,7 +207,7 @@ packageConfig' package continuation = do
 
 runCabalBuild :: Bool -> Bool -> Bool -> IDEPackage -> Bool -> (Bool -> IDEAction) -> IDEAction
 runCabalBuild backgroundBuild jumpToWarnings withoutLinking package shallConfigure continuation = do
-    prefs   <- readIDE prefs
+    prefs <- readIDE prefs
     let dir =  dropFileName (ipdCabalFile package)
     let args = (["build"] ++
                 if backgroundBuild && withoutLinking
@@ -220,10 +230,11 @@ runCabalBuild backgroundBuild jumpToWarnings withoutLinking package shallConfigu
 isConfigError :: Monad m => E.Iteratee ToolOutput m Bool
 isConfigError = EL.foldM (\a b -> return $ a || isCErr b) False
     where
-    isCErr (ToolError str) = str1 `isInfixOf` str || str2 `isInfixOf` str
+    isCErr (ToolError str) = str1 `isInfixOf` str || str2 `isInfixOf` str || str3 `isInfixOf` str
     isCErr _ = False
     str1 = "Run the 'configure' command first"
     str2 = "please re-configure"
+    str3 = "cannot satisfy -package-id"
 
 buildPackage :: Bool -> Bool -> Bool -> IDEPackage -> (Bool -> IDEAction) -> IDEAction
 buildPackage backgroundBuild jumpToWarnings withoutLinking package continuation = catchIDE (do
@@ -317,6 +328,7 @@ packageInstallDependencies = do
     lift $ catchIDE (do
         let dir = dropFileName (ipdCabalFile package)
         runExternalTool' "Installing" "cabal" (["install","--only-dependencies"]
+            ++ (ipdConfigFlags package)
             ++ (ipdInstallFlags package)) (Just dir) (logOutput logLaunch))
         (\(e :: SomeException) -> putStrLn (show e))
 
@@ -399,7 +411,7 @@ packageTest = do
 
 packageTest' :: IDEPackage -> (Bool -> IDEAction) -> IDEAction
 packageTest' package continuation =
-    if not . null $ ipdTests package
+    if "--enable-tests" `elem` ipdConfigFlags package
         then do
           logLaunch <- getDefaultLogLaunch
           showDefaultLogLaunch'
@@ -435,7 +447,6 @@ packageOpenDoc = do
         prefs   <- readIDE prefs
         let path = dropFileName (ipdCabalFile package)
                         </> "dist/doc/html"
-                        </> display (pkgName (ipdPackageId package))
                         </> display (pkgName (ipdPackageId package))
                         </> "index.html"
             dir = dropFileName (ipdCabalFile package)
@@ -510,11 +521,7 @@ interruptBuild :: IDEAction
 interruptBuild = do
     maybeProcess <- readIDE runningTool
     liftIO $ case maybeProcess of
-#ifdef MIN_VERSION_process_leksah
-        Just h -> interruptProcessGroup h
-#else
         Just h -> interruptProcessGroupOf h
-#endif
         _ -> return ()
 
 -- ---------------------------------------------------------------------
@@ -538,12 +545,12 @@ getPackageDescriptionAndPath = do
                         return Nothing))
 
 getEmptyModuleTemplate :: PackageDescription -> String -> IO String
-getEmptyModuleTemplate pd modName = getModuleTemplate pd modName "" ""
+getEmptyModuleTemplate pd modName = getModuleTemplate "module" pd modName "" ""
 
-getModuleTemplate :: PackageDescription -> String -> String -> String -> IO String
-getModuleTemplate pd modName exports body = catch (do
+getModuleTemplate :: String -> PackageDescription -> String -> String -> String -> IO String
+getModuleTemplate template pd modName exports body = catch (do
     dataDir  <- getDataDir
-    filePath <- getConfigFilePathForLoad standardModuleTemplateFilename Nothing dataDir
+    filePath <- getConfigFilePathForLoad (template ++ leksahTemplateFileExtension) Nothing dataDir
     template <- UTF8.readFile filePath
     return (foldl' (\ a (from, to) -> replace from to a) template
         [   ("@License@"      , (show . license) pd)
@@ -556,6 +563,95 @@ getModuleTemplate pd modName exports body = catch (do
         ,   ("@ModuleBody@"   , body)]))
                     (\ (e :: SomeException) -> sysMessage Normal ("Couldn't read template file: " ++ show e) >> return "")
 
+#if MIN_VERSION_Cabal(1,10,0)
+addModuleToPackageDescr :: ModuleName -> Bool -> PackageAction
+addModuleToPackageDescr moduleName isExposed = do
+    p    <- ask
+    lift $ reifyIDE (\ideR -> catch (do
+        gpd <- readPackageDescription normal (ipdCabalFile p)
+        let npd = if isExposed && isJust (condLibrary gpd)
+                then gpd{
+                    condLibrary = Just (addModToLib moduleName
+                                                (fromJust (condLibrary gpd))),
+                    condExecutables = map (addModToBuildInfoExe moduleName)
+                                            (condExecutables gpd)}
+                else gpd{
+                    condLibrary = case condLibrary gpd of
+                                    Nothing -> Nothing
+                                    Just lib -> Just (addModToBuildInfoLib moduleName
+                                                       (fromJust (condLibrary gpd))),
+                    condExecutables = map (addModToBuildInfoExe moduleName)
+                                                (condExecutables gpd)}
+        writeGenericPackageDescription (ipdCabalFile p) npd)
+           (\(e :: SomeException) -> do
+            reflectIDE (ideMessage Normal ("Can't update package " ++ show e)) ideR
+            return ()))
+
+addModToLib :: ModuleName -> CondTree ConfVar [Dependency] Library ->
+    CondTree ConfVar [Dependency] Library
+addModToLib modName ct@CondNode{condTreeData = lib} =
+    ct{condTreeData = lib{exposedModules = modName : exposedModules lib}}
+
+addModToBuildInfoLib :: ModuleName -> CondTree ConfVar [Dependency] Library ->
+    CondTree ConfVar [Dependency] Library
+addModToBuildInfoLib modName ct@CondNode{condTreeData = lib} =
+    ct{condTreeData = lib{libBuildInfo = (libBuildInfo lib){otherModules = modName
+        : otherModules (libBuildInfo lib)}}}
+
+addModToBuildInfoExe :: ModuleName -> (String, CondTree ConfVar [Dependency] Executable) ->
+    (String, CondTree ConfVar [Dependency] Executable)
+addModToBuildInfoExe modName (str,ct@CondNode{condTreeData = exe}) =
+    (str, ct{condTreeData = exe{buildInfo = (buildInfo exe){otherModules = modName
+        : otherModules (buildInfo exe)}}})
+
+--------------------------------------------------------------------------
+delModuleFromPackageDescr :: ModuleName -> PackageAction
+delModuleFromPackageDescr moduleName = trace ("addModule " ++ show moduleName) $ do
+    p    <- ask
+    lift $ reifyIDE (\ideR -> catch (do
+        gpd <- readPackageDescription normal (ipdCabalFile p)
+        let isExposedAndJust = isExposedModule moduleName (condLibrary gpd)
+        let npd = if isExposedAndJust
+                then gpd{
+                    condLibrary = Just (delModFromLib moduleName
+                                                (fromJust (condLibrary gpd))),
+                    condExecutables = map (delModFromBuildInfoExe moduleName)
+                                            (condExecutables gpd)}
+                else gpd{
+                    condLibrary = case condLibrary gpd of
+                                    Nothing -> Nothing
+                                    Just lib -> Just (delModFromBuildInfoLib moduleName
+                                                       (fromJust (condLibrary gpd))),
+                    condExecutables = map (delModFromBuildInfoExe moduleName)
+                                                (condExecutables gpd)}
+        writeGenericPackageDescription (ipdCabalFile p) npd)
+           (\(e :: SomeException) -> do
+            reflectIDE (ideMessage Normal ("Can't update package " ++ show e)) ideR
+            return ()))
+
+delModFromLib :: ModuleName -> CondTree ConfVar [Dependency] Library ->
+    CondTree ConfVar [Dependency] Library
+delModFromLib modName ct@CondNode{condTreeData = lib} =
+    ct{condTreeData = lib{exposedModules = delete modName (exposedModules lib)}}
+
+delModFromBuildInfoLib :: ModuleName -> CondTree ConfVar [Dependency] Library ->
+    CondTree ConfVar [Dependency] Library
+delModFromBuildInfoLib modName ct@CondNode{condTreeData = lib} =
+    ct{condTreeData = lib{libBuildInfo = (libBuildInfo lib){otherModules =
+        delete modName (otherModules (libBuildInfo lib))}}}
+
+delModFromBuildInfoExe :: ModuleName -> (String, CondTree ConfVar [Dependency] Executable) ->
+    (String, CondTree ConfVar [Dependency] Executable)
+delModFromBuildInfoExe modName (str,ct@CondNode{condTreeData = exe}) =
+    (str, ct{condTreeData = exe{buildInfo = (buildInfo exe){otherModules =
+        delete modName (otherModules (buildInfo exe))}}})
+
+isExposedModule :: ModuleName -> Maybe (CondTree ConfVar [Dependency] Library)  -> Bool
+isExposedModule mn Nothing                             = False
+isExposedModule mn (Just CondNode{condTreeData = lib}) = elem mn (exposedModules lib)
+
+#else
+-- Old version to support older Cabal
 addModuleToPackageDescr :: ModuleName -> Bool -> PackageAction
 addModuleToPackageDescr moduleName isExposed = do
     p    <- ask
@@ -585,7 +681,7 @@ addModuleToPackageDescr moduleName isExposed = do
     addModToBuildInfo :: BuildInfo -> ModuleName -> BuildInfo
     addModToBuildInfo bi mn = bi {otherModules = mn : otherModules bi}
 
---------------------------------------------------------------------------
+-- Old version to support older Cabal
 delModuleFromPackageDescr :: ModuleName -> PackageAction
 delModuleFromPackageDescr moduleName = do
     p    <- ask
@@ -616,20 +712,23 @@ delModuleFromPackageDescr moduleName = do
     delModFromBuildInfo :: BuildInfo -> ModuleName -> BuildInfo
     delModFromBuildInfo bi mn = bi {otherModules = delete mn (otherModules bi)}
 
-
+-- Old version to support older Cabal
 isExposedModule :: PackageDescription -> ModuleName -> Bool
 isExposedModule pd mn = do
     if isJust (library pd)
         then elem mn (exposedModules (fromJust $ library pd))
         else False
-
---------------------------------------------------------------------------
-
+#endif
 
 backgroundBuildToggled :: IDEAction
 backgroundBuildToggled = do
     toggled <- getBackgroundBuildToggled
     modifyIDE_ (\ide -> ide{prefs = (prefs ide){backgroundBuild= toggled}})
+
+runUnitTestsToggled :: IDEAction
+runUnitTestsToggled = do
+    toggled <- getRunUnitTests
+    modifyIDE_ (\ide -> ide{prefs = (prefs ide){runUnitTests= toggled}})
 
 makeModeToggled :: IDEAction
 makeModeToggled = do
@@ -679,7 +778,7 @@ debugStart = do
                 -- Fork a thread to wait for the output from the process to close
                 liftIO $ forkIO $ do
                     readMVar (outputClosed ghci)
-                    reflectIDE (do
+                    postGUISync $ reflectIDE (do
                         setDebugToggled False
                         modifyIDE_ (\ide -> ide {debugState = Nothing})
                         triggerEventIDE (Sensitivity [(SensitivityInterpreting, False)])
@@ -701,13 +800,13 @@ debugStart = do
                 return ())
             (\(e :: SomeException) -> putStrLn (show e))
 
-tryDebug :: DebugM a -> PackageM (Maybe a)
+tryDebug :: DebugAction -> PackageAction
 tryDebug f = do
     maybeDebug <- lift $ readIDE debugState
     case maybeDebug of
         Just debug -> do
             -- TODO check debug package matches active package
-            liftM Just $ lift $ runDebug f debug
+            lift $ runDebug f debug
         _ -> do
             window <- lift $ getMainWindow
             resp <- liftIO $ do
@@ -724,22 +823,33 @@ tryDebug f = do
                     debugStart
                     maybeDebug <- lift $ readIDE debugState
                     case maybeDebug of
-                        Just debug -> liftM Just $ lift $ runDebug f debug
-                        _ -> return Nothing
-                _  -> return Nothing
+                        Just debug -> lift $ postAsyncIDE $ runDebug f debug
+                        _ -> return ()
+                _  -> return ()
 
-tryDebug_ :: DebugM a -> PackageAction
-tryDebug_ f = tryDebug f >> return ()
+tryDebugQuiet :: DebugAction -> PackageAction
+tryDebugQuiet f = do
+    maybeDebug <- lift $ readIDE debugState
+    case maybeDebug of
+        Just debug -> do
+            -- TODO check debug package matches active package
+            lift $ runDebug f debug
+        _ -> do
+            return ()
 
 executeDebugCommand :: String -> (E.Iteratee ToolOutput IDEM ()) -> DebugAction
 executeDebugCommand command handler = do
     (_, ghci) <- ask
     lift $ do
-        triggerEventIDE (StatusbarChanged [CompartmentState command, CompartmentBuild True])
         reifyIDE $ \ideR -> do
+            liftIO $ postGUIAsync $ reflectIDE (do
+                triggerEventIDE (StatusbarChanged [CompartmentState command, CompartmentBuild True])
+                return ()) ideR
             executeGhciCommand ghci command $ do
                 reflectIDEI handler ideR
-                liftIO $ reflectIDE (triggerEventIDE (StatusbarChanged [CompartmentState "", CompartmentBuild False])) ideR
+                liftIO $ postGUIAsync $ reflectIDE (do
+                    triggerEventIDE (StatusbarChanged [CompartmentState "", CompartmentBuild False])
+                    return ()) ideR
                 return ()
 
 allBuildInfo' :: PackageDescription -> [BuildInfo]
@@ -764,19 +874,18 @@ idePackageFromPath filePath = do
     case mbPackageD of
         Nothing       -> return Nothing
         Just packageD -> do
-            let modules    = Set.fromList $ myLibModules packageD ++ myExeModules packageD
-            let mainFiles  = map modulePath (executables packageD)
+            let modules    = Map.fromList $ myLibModules packageD ++ myExeModules packageD
+            let mainFiles  = [ (modulePath exe, buildInfo exe, False) | exe <- executables packageD ]
 #if MIN_VERSION_Cabal(1,10,0)
-                               ++ concatMap (testMainPath . testInterface) (testSuites packageD)
+                             ++ [ (f, bi, True) | TestSuite _ (TestSuiteExeV10 _ f) bi _ <- testSuites packageD ]
 #endif
-            let files      = Set.fromList $ extraSrcFiles packageD ++ mainFiles
+            let files      = Set.fromList $ extraSrcFiles packageD
             let srcDirs = case (nub $ concatMap hsSourceDirs (allBuildInfo' packageD)) of
                                 [] -> [".","src"]
                                 l -> l
 #if MIN_VERSION_Cabal(1,10,0)
             let exts       = nub $ concatMap oldExtensions (allBuildInfo' packageD)
             let tests      = [ testName t | t <- testSuites packageD
-                                          -- , testEnabled t
                                           , buildable (testBuildInfo t) ]
 #else
             let exts       = nub $ concatMap extensions (allBuildInfo' packageD)
@@ -794,7 +903,7 @@ idePackageFromPath filePath = do
                 ipdExtraSrcs =  files,
                 ipdSrcDirs = srcDirs,
                 ipdExtensions =  exts,
-                ipdConfigFlags = ["--user"],
+                ipdConfigFlags = ["--user", "--enable-tests"],
                 ipdBuildFlags = [],
                 ipdTestFlags = [],
                 ipdHaddockFlags = [],

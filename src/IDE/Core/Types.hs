@@ -1,13 +1,14 @@
-{-# OPTIONS_GHC
-    -XDisambiguateRecordFields
-    -XExistentialQuantification
-    -XRank2Types
-    -XFlexibleInstances
-    -XDeriveDataTypeable
-    -XFlexibleContexts
-    -XDeriveDataTypeable
-    -XTypeSynonymInstances
-    -XMultiParamTypeClasses #-}
+{-# LANGUAGE
+        CPP
+      , DisambiguateRecordFields
+      , ExistentialQuantification
+      , Rank2Types
+      , FlexibleInstances
+      , DeriveDataTypeable
+      , FlexibleContexts
+      , DeriveDataTypeable
+      , TypeSynonymInstances
+      , MultiParamTypeClasses #-}
 
 -----------------------------------------------------------------------------
 --
@@ -90,13 +91,13 @@ module IDE.Core.Types (
 
 import qualified IDE.YiConfig as Yi
 import Graphics.UI.Gtk
-       (Window(..), KeyVal(..), Color(..), Menu(..), TreeView(..),
-        ListStore(..), Toolbar(..), TextView(..), ScrolledWindow(..), TextBuffer(..), MenuItem)
-import Control.Monad.Reader
+       (TextBuffer, MenuItem, Window(..), KeyVal(..), Color(..), Menu(..),
+        TreeView(..), ListStore(..), Toolbar(..))
 import Data.Unique (newUnique, Unique(..))
 import Graphics.UI.Frame.Panes
 import Distribution.Package
     (PackageIdentifier(..), Dependency(..))
+import Distribution.PackageDescription (BuildInfo)
 import Data.Map (Map(..))
 import Data.Set (Set(..))
 import Distribution.ModuleName (ModuleName(..))
@@ -108,12 +109,7 @@ import Graphics.UI.Gtk.Gdk.Enums (Modifier(..))
 import Graphics.UI.Gtk.ActionMenuToolbar.UIManager(MergeId)
 import System.Time (ClockTime(..))
 import Distribution.Simple (Extension(..))
-#ifdef MIN_VERSION_process_leksah
-import IDE.System.Process (ProcessHandle(..))
-#else
-import System.Process (ProcessHandle(..))
-#endif
-import IDE.Utils.Tool (ToolState(..))
+import IDE.Utils.Tool (ToolState(..), ProcessHandle)
 import Data.IORef (writeIORef, readIORef, IORef(..))
 import Numeric (showHex)
 import Control.Event
@@ -124,11 +120,17 @@ import IDE.StrippedPrefs(RetrieveStrategy)
 import System.IO (Handle)
 import Distribution.Text(disp)
 import Text.PrettyPrint (render)
-import Data.Typeable
-import qualified Data.Map as Map
+import Control.Monad.Trans.Class (lift)
+import Control.Monad.IO.Class (liftIO)
+import Control.Monad.Trans.Reader (ReaderT(..))
+#if MIN_VERSION_directory(1,2,0)
+import Data.Time (UTCTime(..))
+#endif
 
 import qualified VCSWrapper.Common as VCS
 import qualified VCSGui.Common as VCSGUI
+import qualified Data.Map as Map (Map)
+import Data.Typeable (Typeable)
 
 -- ---------------------------------------------------------------------
 -- IDE State
@@ -244,14 +246,13 @@ runDebug = runReaderT
 data IDEEvent  =
         InfoChanged Bool-- is it the initial = True else False
     |   UpdateWorkspaceInfo
-    |   SelectInfo String
+    |   SelectInfo String Bool -- navigate to source (== True)
     |   SelectIdent Descr
     |   LogMessage String LogTag
     |   RecordHistory GUIHistory
     |   Sensitivity [(SensitivityMask,Bool)]
     |   SearchMeta String
     |   StartFindInitial
-    |   SearchSymbolDialog String
     |   GotoDefinition Descr
     |   LoadSession FilePath
     |   SaveSession FilePath
@@ -270,13 +271,12 @@ instance Event IDEEvent String where
     getSelector (InfoChanged _)         =   "InfoChanged"
     getSelector UpdateWorkspaceInfo     =   "UpdateWorkspaceInfo"
     getSelector (LogMessage _ _)        =   "LogMessage"
-    getSelector (SelectInfo _)          =   "SelectInfo"
+    getSelector (SelectInfo _ _)        =   "SelectInfo"
     getSelector (SelectIdent _)         =   "SelectIdent"
     getSelector (RecordHistory _)       =   "RecordHistory"
     getSelector (Sensitivity _)         =   "Sensitivity"
     getSelector (SearchMeta _)          =   "SearchMeta"
     getSelector (StartFindInitial)      =   "StartFindInitial"
-    getSelector (SearchSymbolDialog _)  =   "SearchSymbolDialog"
     getSelector (GotoDefinition _)      =   "GotoDefinition"
     getSelector (LoadSession _)         =   "LoadSession"
     getSelector (SaveSession _)         =   "SaveSession"
@@ -335,10 +335,10 @@ data IDEPackage     =   IDEPackage {
     ipdPackageId       ::   PackageIdentifier
 ,   ipdCabalFile       ::   FilePath
 ,   ipdDepends         ::   [Dependency]
-,   ipdModules         ::   Set ModuleName
+,   ipdModules         ::   Map ModuleName BuildInfo
 ,   ipdHasLibs         ::   Bool
 ,   ipdTests           ::   [String]
-,   ipdMain            ::   [FilePath]
+,   ipdMain            ::   [(FilePath, BuildInfo, Bool)]
 ,   ipdExtraSrcs       ::   Set FilePath
 ,   ipdSrcDirs         ::   [FilePath]
 ,   ipdExtensions      ::   [Extension]
@@ -431,6 +431,7 @@ data Prefs = Prefs {
     ,   saveAllBeforeBuild  ::   Bool
     ,   jumpToWarnings      ::   Bool
     ,   backgroundBuild     ::   Bool
+    ,   runUnitTests        ::   Bool
     ,   makeMode            ::   Bool
     ,   singleBuildWithoutLinking :: Bool
     ,   dontInstallLast     ::   Bool
@@ -582,5 +583,8 @@ data StatusbarCompartment =
     |   CompartmentCollect Bool
 
 type PackageDescrCache = Map PackageIdentifier ModuleDescrCache
+#if MIN_VERSION_directory(1,2,0)
+type ModuleDescrCache = Map ModuleName (UTCTime, Maybe FilePath, ModuleDescr)
+#else
 type ModuleDescrCache = Map ModuleName (ClockTime, Maybe FilePath, ModuleDescr)
-
+#endif

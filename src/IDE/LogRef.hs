@@ -381,7 +381,9 @@ defaultLineLogger' log logLaunch out = do
         ToolInput  line            -> appendLog' (line ++ "\n") InputTag
         ToolOutput line            -> appendLog' (line ++ "\n") LogTag
         ToolError  line            -> appendLog' (line ++ "\n") ErrorTag
-        ToolPrompt                 -> appendLog' (concat (take 20 (repeat "- ")) ++ "-\n") FrameTag
+        ToolPrompt line            -> do
+            unless (null line) $ appendLog' (line ++ "\n") LogTag >> return ()
+            appendLog' (concat (take 20 (repeat "- ")) ++ "-\n") FrameTag
         ToolExit   ExitSuccess     -> appendLog' (take 41 (repeat '-') ++ "\n") FrameTag
         ToolExit   (ExitFailure 1) -> appendLog' (take 41 (repeat '=') ++ "\n") FrameTag
         ToolExit   (ExitFailure n) -> appendLog' (take 41 ("========== " ++ show n ++ " " ++ repeat '=') ++ "\n") FrameTag
@@ -392,10 +394,14 @@ logOutputLines :: LogLaunch -- ^ logLaunch
                -> (IDELog -> LogLaunch -> ToolOutput -> IDEM a)
                -> E.Iteratee ToolOutput IDEM [a]
 logOutputLines logLaunch lineLogger = do
+    ideR <- lift $ ask
     log :: Log.IDELog <- lift Log.getLog
-    liftIO $ bringPaneToFront log
+    liftIO $ postGUIAsync $ bringPaneToFront log
     results <- (EL.mapM $ lineLogger log logLaunch) =$ EL.consume
-    lift $ triggerEventIDE (StatusbarChanged [CompartmentState "", CompartmentBuild False])
+    liftIO $ postGUIAsync $ reflectIDE (do
+        triggerEventIDE (StatusbarChanged [CompartmentState "", CompartmentBuild False])
+        return ()
+        ) ideR
     return results
 
 logOutputLines_ :: LogLaunch
@@ -427,13 +433,13 @@ logOutputForBuild :: IDEPackage
                   -> Bool
                   -> E.Iteratee ToolOutput IDEM ()
 logOutputForBuild package backgroundBuild jumpToWarnings = do
-    ideRef <- lift $ ask
-    log    <- lift $ Log.getLog
-    unless backgroundBuild $ liftIO $ bringPaneToFront log
+    log    <- lift getLog
+    unless backgroundBuild $ liftIO $ postGUISync $ bringPaneToFront log
     logLaunch <- lift $ Log.getDefaultLogLaunch
     lift $ showDefaultLogLaunch'
     (_, _, errs) <- EL.foldM (readAndShow logLaunch) (log, False, [])
-    lift $ do
+    ideR <- lift ask
+    liftIO $ postGUISync $ reflectIDE (do
         setErrorList $ reverse errs
         triggerEventIDE (Sensitivity [(SensitivityError,not (null errs))])
         let errorNum    =   length (filter isError errs)
@@ -441,12 +447,12 @@ logOutputForBuild package backgroundBuild jumpToWarnings = do
         triggerEventIDE (StatusbarChanged [CompartmentState
             (show errorNum ++ " Errors, " ++ show warnNum ++ " Warnings"), CompartmentBuild False])
         unless (backgroundBuild || (not jumpToWarnings && errorNum == 0)) nextError
-    return ()
-    where
+        return ()) ideR
+  where
     readAndShow :: LogLaunch -> (IDELog, Bool, [LogRef]) -> ToolOutput -> IDEM (IDELog, Bool, [LogRef])
     readAndShow logLaunch (log, inError, errs) output = do
         ideR <- ask
-        liftIO $ case output of
+        liftIO $ postGUISync $ case output of
             ToolError line -> do
                 let parsed  =  parse buildLineParser "" line
                 let nonErrorPrefixes = ["Linking ", "ar:", "ld:", "ld warning:"]
@@ -454,7 +460,7 @@ logOutputForBuild package backgroundBuild jumpToWarnings = do
                     Right BuildLine -> return InfoTag
                     Right (OtherLine text) | "Linking " `isPrefixOf` text -> do
                         -- when backgroundBuild $ lift interruptProcess
-                        liftIO $ postGUIAsync $ reflectIDE (do
+                        reflectIDE (do
                                 setErrorList $ reverse errs
                             ) ideR
                         return InfoTag
@@ -493,7 +499,8 @@ logOutputForBuild package backgroundBuild jumpToWarnings = do
             ToolInput line -> do
                 Log.appendLog log logLaunch (line ++ "\n") InputTag
                 return (log, inError, errs)
-            ToolPrompt -> do
+            ToolPrompt line -> do
+                unless (null line) $ Log.appendLog log logLaunch (line ++ "\n") LogTag >> return ()
                 let errorNum    =   length (filter isError errs)
                 let warnNum     =   length errs - errorNum
                 case errs of

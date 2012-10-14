@@ -1,5 +1,5 @@
 {-# LANGUAGE FlexibleInstances, DeriveDataTypeable, MultiParamTypeClasses,
-             TypeSynonymInstances, ScopedTypeVariables, RankNTypes #-}
+             CPP, TypeSynonymInstances, ScopedTypeVariables, RankNTypes #-}
 {-# OPTIONS_GHC -fwarn-unused-imports #-}
 -----------------------------------------------------------------------------
 --
@@ -74,12 +74,10 @@ module IDE.Pane.SourceBuffer (
 ,   belongsToPackage
 ,   belongsToWorkspace
 ,   getIdentifierUnderCursorFromIter
-,   launchSymbolNavigationDialog_
 
 ) where
 
 import Prelude hiding(getChar, getLine)
-import Control.Monad.Reader
 import Control.Applicative
 import System.FilePath
 import System.Directory
@@ -105,20 +103,18 @@ import Control.Event (triggerEvent)
 import IDE.Metainfo.Provider (getSystemInfo, getWorkspaceInfo)
 import Distribution.Text (simpleParse)
 import Distribution.ModuleName (ModuleName)
+import Distribution.PackageDescription (hsSourceDirs)
 --import qualified Data.Set as Set (member)
 import Graphics.UI.Gtk
        (Notebook, clipboardGet, selectionClipboard, dialogAddButton, widgetDestroy,
         fileChooserGetFilename, widgetShow, fileChooserDialogNew,
         notebookGetNthPage, notebookPageNum, widgetHide, dialogRun,
         messageDialogNew, scrolledWindowSetShadowType,
-        scrolledWindowSetPolicy, dialogSetDefaultResponse, postGUIAsync,
-        fileChooserSetCurrentFolder, fileChooserSelectFilename)
+        scrolledWindowSetPolicy, dialogSetDefaultResponse,
+        fileChooserSetCurrentFolder, fileChooserSelectFilename,
+        textTagBackground, TextIter, textIterForwardSearch, TextSearchFlags(..),
+        textIterStartsWord, textIterEndsWord)
 import System.Glib.MainLoop (priorityDefaultIdle, idleAdd)
-#if MIN_VERSION_gtk(0,10,5)
-import Graphics.UI.Gtk (Underline(..))
-#else
-import Graphics.UI.Gtk.Pango.Types (Underline(..))
-#endif
 import qualified Graphics.UI.Gtk as Gtk hiding (eventKeyName)
 import Graphics.UI.Gtk.Windows.Window
 import Graphics.UI.Gtk.General.Enums
@@ -127,8 +123,10 @@ import Graphics.UI.Gtk.Windows.MessageDialog
        (ButtonsType(..), MessageType(..))
 #if MIN_VERSION_gtk(0,10,5)
 import Graphics.UI.Gtk.Windows.Dialog (ResponseId(..))
+import Graphics.UI.Gtk (Underline(..))
 #else
 import Graphics.UI.Gtk.General.Structs (ResponseId(..))
+import Graphics.UI.Gtk.Pango.Types (Underline(..))
 #endif
 import Graphics.UI.Gtk.Selectors.FileChooser
        (FileChooserAction(..))
@@ -136,9 +134,10 @@ import System.Glib.Attributes (AttrOp(..), set)
 import qualified Graphics.UI.Gtk.Gdk.Events as GtkOld
 
 import IDE.BufferMode
-import Graphics.UI.Gtk.Multiline.TextIter
-import Graphics.UI.Gtk.Multiline.TextTag(textTagBackgroundGdk, textTagBackground)
-import Graphics.UI.Gtk.Gdk.GC(Color)
+import Control.Monad.Trans.Reader (ask, runReaderT)
+import Control.Monad.IO.Class (MonadIO(..))
+import Control.Monad (foldM, forM, filterM, unless, when)
+import Control.Exception as E (catch, SomeException)
 
 import qualified IDE.Command.Print as Print
 
@@ -252,7 +251,7 @@ goToDefinition idDescr  = do
                                                 Just si -> sourcePathFromScope si
                                                 Nothing -> Nothing
     when (isJust mbSourcePath2) $
-        void $ goToSourceDefinition (fromJust $ mbSourcePath2) (dscMbLocation idDescr)
+        goToSourceDefinition (fromJust $ mbSourcePath2) (dscMbLocation idDescr) >> return ()
     return ()
     where
     sourcePathFromScope :: GenScope -> Maybe FilePath
@@ -269,7 +268,7 @@ goToDefinition idDescr  = do
 
 goToSourceDefinition :: FilePath -> Maybe Location -> IDEM (Maybe IDEBuffer)
 goToSourceDefinition fp dscMbLocation = do
-    liftIO $ putStrLn $ "goToSourceDefinition " ++ fp
+--    liftIO $ putStrLn $ "goToSourceDefinition " ++ fp
     mbBuf     <- selectSourceBuf fp
     when (isJust mbBuf && isJust dscMbLocation) $
         inActiveBufContext () $ \_ ebuf buf _ -> do
@@ -278,7 +277,7 @@ goToSourceDefinition fp dscMbLocation = do
             iterTemp        <-  getIterAtLine ebuf (max 0 (min (lines-1)
                                     ((locationSLine location) -1)))
             chars           <-  getCharsInLine iterTemp
-            iter <- atLineOffset iterTemp (max 0 (min (chars-1) (locationSCol location)))
+            iter <- atLineOffset iterTemp (max 0 (min (chars-1) (locationSCol location -1)))
             iter2Temp       <-  getIterAtLine ebuf (max 0 (min (lines-1)
                                     ((locationELine location) -1)))
             chars2          <-  getCharsInLine iter2Temp
@@ -481,7 +480,7 @@ builder' bs mbfn ind bn rbn ct prefs pp nb windows = do
                 case GtkOld.eventClick event of
                     GtkOld.DoubleClick -> do
                         (start, end) <- getIdentifierUnderCursor buffer
-                        liftIO $ postGUIAsync $ reflectIDE (selectRange buffer start end) ideR
+                        liftIO $ reflectIDE (selectRange buffer start end) ideR
                         return True
                     _ -> return False) ideR
 
@@ -528,6 +527,7 @@ builder' bs mbfn ind bn rbn ct prefs pp nb windows = do
                                         else return Nothing
                                 ) ideRef
                             return False
+
     ids6 <- sv `onKeyPress`
         \name modifier keyval -> do
             liftIO $ reflectIDE (do
@@ -564,12 +564,13 @@ builder' bs mbfn ind bn rbn ct prefs pp nb windows = do
                         ("underscore",[GtkOld.Shift, GtkOld.Control],_) -> do
                             (start, end) <- getIdentifierUnderCursor buffer
                             slice <- getSlice buffer start end True
-                            triggerEventIDE (SearchSymbolDialog slice)
+                            triggerEventIDE (SelectInfo slice False)
                             return True
+                            -- Redundant should become a go to definition directly
                         ("minus",[GtkOld.Control],_) -> do
                             (start, end) <- getIdentifierUnderCursor buffer
                             slice <- getSlice buffer start end True
-                            launchSymbolNavigationDialog_ slice goToDefinition
+                            triggerEventIDE (SelectInfo slice True)
                             return True
                         _ -> do
                             -- liftIO $ print ("sourcebuffer key:",name,modifier,keyval)
@@ -579,10 +580,12 @@ builder' bs mbfn ind bn rbn ct prefs pp nb windows = do
         GtkEditorView sv -> do
             (liftIO $ createHyperLinkSupport sv sw (\ctrl shift iter -> do
                             (GtkEditorIter beg,GtkEditorIter en) <- reflectIDE (getIdentifierUnderCursorFromIter (GtkEditorIter iter, GtkEditorIter iter)) ideR
-                            return (beg, if ctrl then en else beg)) (\_ _ slice -> do
+                            return (beg, if ctrl then en else beg)) (\_ shift' slice -> do
                                         when (slice /= []) $ do
                                             -- liftIO$ print ("slice",slice)
-                                            void $ reflectIDE (triggerEventIDE (SearchMeta slice)) ideR
+                                            reflectIDE (triggerEventIDE
+                                                (SelectInfo slice shift')) ideR
+                                            return ()
                                         ))
 
 #ifdef LEKSAH_WITH_YI
@@ -783,7 +786,7 @@ selectInfo sv = do
     buf     <- getBuffer sv
     (l,r)   <- getIdentifierUnderCursor buf
     symbol  <- getText buf l r True
-    triggerEvent ideR (SelectInfo symbol)
+    triggerEvent ideR (SelectInfo symbol False)
     return ()
 
 markActiveLabelAsChanged :: IDEAction
@@ -882,8 +885,8 @@ fileSaveBuffer query nb ebuf ideBuf i = do
             let text' = if removeTBlanks
                             then unlines $ map removeTrailingBlanks $lines text
                             else text
-            succ <- liftIO $ catch (do UTF8.writeFile fn text'; return True)
-                (\e -> do
+            succ <- liftIO $ E.catch (do UTF8.writeFile fn text'; return True)
+                (\(e :: SomeException) -> do
                     sysMessage Normal (show e)
                     return False)
             setModified buf (not succ)
@@ -1369,14 +1372,18 @@ belongsToPackage' fp mbModuleName Nothing pack =
         then
             let srcPaths = map (\srcP -> basePath </> srcP) (ipdSrcDirs pack)
                 relPaths = map (\p -> makeRelative p fp) srcPaths
-            in if or (map (\p -> Set.member p (ipdExtraSrcs pack)) relPaths)
+            in if or $
+                    (fp `elem` possibleMains basePath) :
+                    (map (\p -> Set.member p (ipdExtraSrcs pack)) relPaths)
                 then Just pack
                 else case mbModuleName of
                         Nothing -> Nothing
-                        Just mn -> if Set.member mn (ipdModules pack)
+                        Just mn -> if Map.member mn (ipdModules pack)
                                         then Just pack
                                         else Nothing
         else Nothing
+  where
+    possibleMains basePath = concatMap (\(f, bi, isTest) -> map (\srcDir -> basePath </> srcDir </> f) $ hsSourceDirs bi) $ ipdMain pack
 
 belongsToWorkspace b =  belongsToPackage b >>= return . isJust
 

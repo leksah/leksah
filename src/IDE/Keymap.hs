@@ -15,9 +15,9 @@ import qualified Text.ParserCombinators.Parsec.Token as P
 import Text.ParserCombinators.Parsec.Language(emptyDef)
 import Data.List (foldl',sort)
 import Data.Char(toLower)
-import Control.Monad.Reader
 
 import IDE.Core.State
+import Control.Monad (foldM)
 
 class Keymap alpha where
     parseKeymap         ::   FilePath -> IO alpha

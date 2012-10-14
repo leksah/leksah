@@ -109,6 +109,10 @@
        <separator/>
        <menuitem name="_Group" action="ViewNest" />
        <menuitem name="_Detach" action="ViewDetach" />
+       <menuitem name="_Full Screen" action="ViewFullScreen" />
+       <menuitem name="_Exit Full Screen" action="ViewExitFullScreen" />
+       <menuitem name="Dark" action="ViewDark" />
+       <menuitem name="Light" action="ViewLight" />
        <separator/>
        <menuitem name="Move _Left" action="ViewMoveLeft" />
        <menuitem name="Move _Right" action="ViewMoveRight" />
@@ -174,6 +178,7 @@
        <toolitem name="Forward" action="ViewHistoryForth"/>
        <separator/>
        <toolitem name="BackgroundBuild" action="BackgroundBuildToggled"/>
+       <toolitem name="RunUnitTests" action="RunUnitTestsToggled"/>
        <toolitem name="MakeMode" action="MakeModeToggled"/>
        <separator/>
        <toolitem name="Update Project" action="UpdateMetadataCurrent" />

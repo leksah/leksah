@@ -19,7 +19,6 @@ module IDE.Leksah (
 ) where
 
 import Graphics.UI.Gtk
-import Control.Monad.Reader
 import Control.Concurrent
 import Data.IORef
 import Data.Maybe
@@ -56,27 +55,30 @@ import Graphics.UI.Editor.Composite (filesEditor, maybeEditor)
 import Graphics.UI.Editor.Simple
        (enumEditor, stringEditor)
 import IDE.Metainfo.Provider (initInfo)
-import IDE.Workspaces (workspaceOpenThis, backgroundMake)
+import IDE.Workspaces
+       (workspaceAddPackage', workspaceTryQuiet, workspaceNewHere,
+        workspaceOpenThis, backgroundMake)
 import IDE.Utils.GUIUtils
 import Network (withSocketsDo)
 import Control.Exception
 import System.Exit(exitFailure)
 import qualified IDE.StrippedPrefs as SP
-import IDE.Utils.Tool (runTool,toolline)
-#ifdef MIN_VERSION_process_leksah
-import IDE.System.Process(waitForProcess)
-#else
-import System.Process(waitForProcess)
-#endif
+import IDE.Utils.Tool (runTool, toolline, waitForProcess)
 import System.Log
-import System.Log.Logger(updateGlobalLogger,rootLoggerName,setLevel)
+import System.Log.Logger
+       (getLevel, getRootLogger, debugM, updateGlobalLogger,
+        rootLoggerName, setLevel)
 import Data.List (stripPrefix)
-import System.Directory (doesFileExist)
+import System.Directory
+       (doesDirectoryExist, copyFile, createDirectoryIfMissing,
+        getHomeDirectory, doesFileExist)
 import System.FilePath (dropExtension, splitExtension, (</>))
-import qualified Data.Map as Map
 import qualified Data.Enumerator as E
 import qualified Data.Enumerator.List as EL
 import Data.Enumerator (($$))
+import Control.Monad (when, unless, liftM)
+import Control.Monad.IO.Class (MonadIO(..))
+import Control.Applicative ((<$>))
 
 -- --------------------------------------------------------------------
 -- Command line options
@@ -141,9 +143,9 @@ realMain yiConfig = do
 
     (o,files)       <-  ideOpts args
     isFirstStart    <-  liftM not $ hasSavedConfigFile standardPreferencesFilename
-    let sessions        =   filter (\x -> case x of
-                                        SessionN _ -> True
-                                        _         -> False) o
+    let sessions      =   catMaybes $ map (\x -> case x of
+                                        SessionN s -> Just s
+                                        _          -> Nothing) o
 
     let sessionFPs    =   filter (\f -> snd (splitExtension f) == leksahSessionFileExtension) files
     let workspaceFPs  =   filter (\f -> snd (splitExtension f) == leksahWorkspaceFileExtension) files
@@ -161,10 +163,9 @@ realMain yiConfig = do
                             if exists
                                 then return (Just spath,Nothing)
                                 else return (Nothing,Just fp)
-    let ssession =  if not (null sessions)
-                                then  (head $ map (\ (SessionN x) -> x) sessions) ++
-                                            leksahSessionFileExtension
-                                else  if null sourceFPs
+    let ssession =  case sessions of
+                        (s:_) -> s ++ leksahSessionFileExtension
+                        _     -> if null sourceFPs
                                         then standardSessionFilename
                                         else emptySessionFilename
 
@@ -211,7 +212,7 @@ startGUI yiConfig sessionFP mbWorkspaceFP sourceFPs iprefs isFirstStart = do
     st          <-  unsafeInitGUIForThreadedRTS
     when rtsSupportsBoundThreads
         (sysMessage Normal "Linked with -threaded")
-    timeoutAddFull (yield >> return True) priorityDefaultIdle 100 -- maybe switch back to priorityHigh/???
+    timeoutAddFull (yield >> return True) priorityHigh 10
     mapM_ (sysMessage Normal) st
     initGtkRc
     dataDir       <- getDataDir
@@ -302,6 +303,7 @@ startMainWindow yiControl sessionFP mbWorkspaceFP sourceFPs startupPrefs isFirst
     reflectIDE (do
         setCandyState (fst (sourceCandy startupPrefs))
         setBackgroundBuildToggled (backgroundBuild startupPrefs)
+        setRunUnitTests (runUnitTests startupPrefs)
         setMakeModeToggled (makeMode startupPrefs)) ideR
     let (x,y)   =   defaultSize startupPrefs
     windowSetDefaultSize win x y
@@ -328,9 +330,25 @@ startMainWindow yiControl sessionFP mbWorkspaceFP sourceFPs startupPrefs isFirst
 
     OSX.applicationReady osxApp
 
-    when isFirstStart $ do
-        welcomePath <- getConfigFilePathForLoad "welcome.txt" Nothing dataDir
-        reflectIDE (fileOpenThis welcomePath) ideR
+    configDir <- getConfigDir
+    let welcomePath  = configDir</>"leksah-welcome"
+    welcomeExists <- doesDirectoryExist welcomePath
+    unless welcomeExists $ do
+        let welcomeSource = dataDir</>"data"</>"leksah-welcome"
+            welcomeCabal = welcomePath</>"leksah-welcome.cabal"
+            welcomeMain  = welcomePath</>"src"</>"Main.hs"
+        createDirectoryIfMissing True $ welcomePath</>"src"
+        copyFile (welcomeSource</>"Setup.lhs")            (welcomePath</>"Setup.lhs")
+        copyFile (welcomeSource</>"leksah-welcome.cabal") (welcomeCabal)
+        copyFile (welcomeSource</>"src"</>"Main.hs")      (welcomeMain)
+        defaultWorkspace <- liftIO $ (</> "leksah.lkshw") <$> getHomeDirectory
+        defaultExists <- liftIO $ doesFileExist defaultWorkspace
+        reflectIDE (do
+            if defaultExists
+                then workspaceOpenThis False (Just defaultWorkspace)
+                else workspaceNewHere defaultWorkspace
+            workspaceTryQuiet $ workspaceAddPackage' welcomeCabal >> return ()
+            fileOpenThis welcomeMain) ideR
     reflectIDE (initInfo (modifyIDE_ (\ide -> ide{currentState = IsRunning}))) ideR
     timeoutAddFull (do
         reflectIDE (do
@@ -381,16 +399,16 @@ firstStart prefs = do
         windowWindowPosition := WinPosCenter]
     dialogAddButton dialog "gtk-ok" ResponseOk
     dialogAddButton dialog "gtk-cancel" ResponseCancel
-    vb          <- dialogGetUpper dialog
+    vb          <- dialogGetContentArea dialog
     label       <- labelNew (Just (
         "Before you start using Leksah it will collect and download metadata about your installed Haskell packages.\n" ++
         "You can add folders under which you have sources for Haskell packages not available from Hackage."))
     (widget, setInj, getExt,notifier) <- buildEditor (fDescription configDir) prefs
-    boxPackStart vb label PackNatural 7
+    boxPackStart (castToBox vb) label PackNatural 7
     sw <- scrolledWindowNew Nothing Nothing
     scrolledWindowAddWithViewport sw widget
     scrolledWindowSetPolicy sw PolicyNever PolicyAutomatic
-    boxPackStart vb sw PackGrow 7
+    boxPackStart (castToBox vb) sw PackGrow 7
     windowSetDefaultSize dialog 800 630
     widgetShowAll dialog
     response <- dialogRun dialog
@@ -433,14 +451,19 @@ firstBuild newPrefs = do
     setLeksahIcon dialog
     set dialog [
         windowTitle := "Leksah: Updating Metadata",
-        windowWindowPosition := WinPosCenter]
-    vb          <- dialogGetUpper dialog
+        windowWindowPosition := WinPosCenter,
+        windowDeletable := False]
+    vb          <- dialogGetContentArea dialog
     progressBar <- progressBarNew
     progressBarSetText progressBar "Please wait while Leksah collects information about Haskell packages on your system"
     progressBarSetFraction progressBar 0.0
-    boxPackStart vb progressBar PackGrow 7
+    boxPackStart (castToBox vb) progressBar PackGrow 7
     forkIO $ do
-            (output, pid) <- runTool "leksah-server" ["-sbo"] Nothing
+            logger <- getRootLogger
+            let verbosity = case getLevel logger of
+                                Just level -> ["--verbosity=" ++ show level]
+                                Nothing    -> []
+            (output, pid) <- runTool "leksah-server" (["-sbo", "+RTS", "-N2", "-RTS"] ++ verbosity) Nothing
             E.run_ $ output $$ EL.mapM_ (update progressBar)
             waitForProcess pid
             postGUIAsync (dialogResponse dialog ResponseOk)
@@ -451,12 +474,10 @@ firstBuild newPrefs = do
     return ()
     where
         update pb to = do
-                when (isJust prog) $ postGUIAsync (progressBarSetFraction pb (fromJust prog))
-            where
-            str = toolline to
-            prog = case stripPrefix "update_toolbar " str of
-                        Just rest -> Just (read rest)
-                        Nothing   -> Nothing
+            let str = toolline to
+            case stripPrefix "update_toolbar " str of
+                Just rest -> postGUIAsync $ progressBarSetFraction pb (read rest)
+                Nothing   -> liftIO $ debugM "leksah" str
 
 
 
