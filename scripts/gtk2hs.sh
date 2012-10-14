@@ -13,10 +13,11 @@ cabal install -fgtk3 -fhave-quartz-gtk
 cd ../../gtksourceview || exit
 cabal clean || exit
 cabal install -fgtk3
-cd ../ige-mac-integration || exit
-cabal clean || exit
-cabal install
-
+if test "`uname`" = "Darwin"; then
+  cd ../gtk-mac-integration || exit
+  cabal clean || exit
+  cabal install
+fi
 cd ../leksah || exit
 
 
