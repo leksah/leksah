@@ -11,7 +11,7 @@ export LEKSAH_X_X_X_X_GHC_X_X_X=leksah-$FULL_VERSION-ghc-$GHC_VER
 export SERVER_VERSION=`grep '^version: ' ../leksah-server/leksah-server.cabal | sed 's|version: ||' | tr -d '\r'`
 export LEKSAH_SERVER_X_X_X_X=leksah-server-$SERVER_VERSION
 
-export GTK_PREFIX=`pkg-config --libs-only-L gtk+-3.0 | sed 's|^-L||' | sed 's|/lib *$||'`
+export GTK_PREFIX=`pkg-config --libs-only-L gtk+-2.0 | sed 's|^-L||' | sed 's|/lib *$||'`
 echo Staging Leksah in $GTK_PREFIX
 
 # Needed for installing curl package on windows
