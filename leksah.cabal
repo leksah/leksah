@@ -84,7 +84,7 @@ flag dyre
     Description: Experimental Yi support
 
 flag threaded
-    default: True
+    default: False
     description: Build with support for multithreaded execution
 
 library
