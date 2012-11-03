@@ -2,7 +2,11 @@
 
 . scripts/stage.sh || exit
 
-sed 's|\<ctrl\>q|\<alt\>F4|' <data/keymap.lkshk >"$GTK_PREFIX\share\$LEKSAH_X_X/keymap.lkshk"
+export GHC_USER_PREFIX=$HOME/AppData/Roaming/cabal
+export LEKSAH_PREFIX=$GHC_USER_PREFIX
+export LEKSAH_SERVER_PREFIX=$GHC_USER_PREFIX
+
+sed 's|\<ctrl\>q|\<alt\>F4|' <data/keymap.lkshk >"$LEKSAH_PREFIX/$LEKSAH_X_X/keymap.lkshk"
 
 cd win32 || exit
 

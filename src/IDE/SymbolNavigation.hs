@@ -1,3 +1,4 @@
+{-# LANGUAGE CPP #-}
 -----------------------------------------------------------------------------
 --
 -- Module      :  IDE.SymbolNavigation
@@ -84,8 +85,12 @@ createHyperLinkSupport sv sw identifierMapper clickHandler = do
             ctrlPressed = (mapControlCommand Gdk.Control) `elem` mods
             shiftPressed = Gdk.Shift `elem` mods
         iter <- textViewGetIterAtLocation tv (round ex) (round ey)
+#ifdef GTK3
         szx <- widgetGetAllocatedWidth sw
         szy <- widgetGetAllocatedHeight sw
+#else
+        (Rectangle _ _ szx szy) <- liftIO $ widgetGetAllocation sw
+#endif
         if Gdk.eventX e < 0 || Gdk.eventY e < 0
             || round(Gdk.eventX e) > szx || round(Gdk.eventY e) > szy then do
                 pointerUngrab (Gdk.eventTime e)

@@ -38,15 +38,15 @@ Section "Leksah"
   File /r "$%GTK_PREFIX%\etc"
 
   SetOutPath $INSTDIR\leksah
-  File /r "$%GTK_PREFIX%\share\$%LEKSAH_X_X%\*"
+  File /r "$%LEKSAH_PREFIX%\$%LEKSAH_X_X%\*"
 
   SetOutPath $INSTDIR\etc\gtk-2.0
   File "gtkrc"
 
   SetOutPath $INSTDIR\bin
-  File "$%GTK_PREFIX%\bin\leksah.exe"
-  File "$%GTK_PREFIX%\bin\leksah-server.exe"
-  File "$%GTK_PREFIX%\bin\leksahecho.exe"
+  File "$%LEKSAH_PREFIX%\bin\leksah.exe"
+  File "$%LEKSAH_SERVER_PREFIX%\bin\leksah-server.exe"
+  File "$%LEKSAH_SERVER_PREFIX%\bin\leksahecho.exe"
   File "$%GTK_PREFIX%\bin\libatk-1.0-0.dll"
   File "$%GTK_PREFIX%\bin\libcairo-2.dll"
   File "$%GTK_PREFIX%\bin\libcurl-4.dll"
