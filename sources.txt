@@ -1,0 +1,7 @@
+darcs:http://patch-tag.com/r/hamish/gtk2hs
+darcs:http://code.haskell.org/gtksourceview
+https://github.com/leksah/ltk
+https://github.com/leksah/leksah-server
+https://github.com/leksah/haskellVCSWrapper.git
+https://github.com/leksah/haskellVCSGUI.git
+./
