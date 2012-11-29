@@ -2,6 +2,7 @@ language: haskell
 before_install:
   - sudo apt-get update -qq
   - sudo apt-get --no-install-recommends install darcs libgtksourceview-3.0-dev
+  - cabal install Cabal
   - mkdir vendor
   - cd vendor
   - darcs get --lazy http://patch-tag.com/r/hamish/gtk2hs
