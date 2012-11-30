@@ -1,4 +1,4 @@
-{-# LANGUAGE FlexibleInstances, DeriveDataTypeable, MultiParamTypeClasses,
+{-# LANGUAGE CPP, FlexibleInstances, DeriveDataTypeable, MultiParamTypeClasses,
              ScopedTypeVariables, TypeSynonymInstances #-}
 -----------------------------------------------------------------------------
 --
@@ -58,7 +58,7 @@ import IDE.Metainfo.Provider
        (getSystemInfo, getWorkspaceInfo, getPackageInfo)
 import System.Log.Logger (infoM)
 import Default (Default(..))
-import IDE.Workspaces (packageTry_)
+import IDE.Workspaces (packageTry)
 import Control.Monad.IO.Class (MonadIO(..))
 import Control.Monad (when)
 import Control.Monad.Trans.Class (MonadTrans(..))
@@ -246,7 +246,12 @@ instance RecoverablePane IDEModules ModulesState IDEM where
             scrolledWindowSetPolicy sw2 PolicyAutomatic PolicyAutomatic
             panedAdd1 pane' sw
             panedAdd2 pane' sw2
-            (x,y) <- widgetGetSize nb
+#ifdef GTK3
+            x <- widgetGetAllocatedWidth nb
+            y <- widgetGetAllocatedHeight nb
+#else
+            (Rectangle _ _ x y) <- liftIO $ widgetGetAllocation nb
+#endif
             panedSetPosition pane' (max 200 (x `quot` 2))
             box             <-  hBoxNew True 2
             rb1             <-  radioButtonNewWithLabel "Package"
@@ -758,7 +763,7 @@ treeViewPopup ideR  store treeView (Button _ click _ _ _ _ button _ _) = do
         then do
             theMenu         <-  menuNew
             item1           <-  menuItemNewWithLabel "Edit source"
-            item1 `onActivateLeaf` do
+            item1 `on` menuItemActivate $ do
                 sel         <-  getSelectionTree treeView store
                 case sel of
                     Just (_,Just (m,_)) -> case mdMbSourcePath m of
@@ -769,18 +774,18 @@ treeViewPopup ideR  store treeView (Button _ click _ _ _ _ button _ _) = do
                     otherwise       ->  return ()
             sep1 <- separatorMenuItemNew
             item2           <-  menuItemNewWithLabel "Expand here"
-            item2 `onActivateLeaf` (expandHere treeView)
+            item2 `on` menuItemActivate $ expandHere treeView
             item3           <-  menuItemNewWithLabel "Collapse here"
-            item3 `onActivateLeaf` (collapseHere treeView)
+            item3 `on` menuItemActivate $ collapseHere treeView
             item4           <-  menuItemNewWithLabel "Expand all"
-            item4 `onActivateLeaf` (treeViewExpandAll treeView)
+            item4 `on` menuItemActivate $ treeViewExpandAll treeView
             item5           <-  menuItemNewWithLabel "Collapse all"
-            item5 `onActivateLeaf` (treeViewCollapseAll treeView)
+            item5 `on` menuItemActivate $ treeViewCollapseAll treeView
             sep2 <- separatorMenuItemNew
             item6           <-  menuItemNewWithLabel "Add module"
-            item6 `onActivateLeaf` (reflectIDE (packageTry_ $ addModule' treeView store) ideR)
+            item6 `on` menuItemActivate $ reflectIDE (packageTry $ addModule' treeView store) ideR
             item7           <-  menuItemNewWithLabel "Delete module"
-            item7 `onActivateLeaf` do
+            item7 `on` menuItemActivate $ do
                 sel         <-  getSelectionTree treeView store
                 case sel of
                     Just (_,Just (m,_)) -> case mdMbSourcePath m of
@@ -793,10 +798,10 @@ treeViewPopup ideR  store treeView (Button _ click _ _ _ _ button _ _) = do
                                                         if exists
                                                            then do
                                                              reflectIDE (liftIO $ removeFile fp) ideR
-                                                             reflectIDE (packageTry_ $ delModule treeView store)ideR
+                                                             reflectIDE (packageTry $ delModule treeView store)ideR
                                                            else do
-                                                             reflectIDE (packageTry_ $ delModule treeView store)ideR
-                                                        reflectIDE (packageTry_ packageConfig) ideR
+                                                             reflectIDE (packageTry $ delModule treeView store)ideR
+                                                        reflectIDE (packageTry packageConfig) ideR
                                                         return ()
                     otherwise       ->  return ()
             sel         <-  getSelectionTree treeView store
@@ -841,13 +846,13 @@ descrViewPopup ideR  store descrView (Button _ click _ _ _ _ button _ _) = do
         then do
             theMenu         <-  menuNew
             item1           <-  menuItemNewWithLabel "Go to definition"
-            item1 `onActivateLeaf` do
+            item1 `on` menuItemActivate $ do
                 sel         <-  getSelectionDescr descrView store
                 case sel of
                     Just descr      ->  reflectIDE (goToDefinition descr) ideR
                     otherwise       ->  sysMessage Normal "Modules>> descrViewPopup: no selection"
             item2           <-  menuItemNewWithLabel "Insert in buffer"
-            item2 `onActivateLeaf` do
+            item2 `on` menuItemActivate $ do
                 sel         <-  getSelectionDescr descrView store
                 case sel of
                     Just descr      ->  reflectIDE (insertInBuffer descr) ideR
@@ -1116,7 +1121,7 @@ addModuleDialog parent modString sourceRoots = do
     dia                        <-   dialogNew
     windowSetTransientFor dia parent
     windowSetTitle dia "Construct new module"
-    upper                      <-   dialogGetUpper dia
+    upper                      <-   dialogGetContentArea dia
     lower                      <-   dialogGetActionArea dia
     (widget,inj,ext,_)         <-   buildEditor (moduleFields sourceRoots)
                                         (AddModule modString (head sourceRoots) False)
@@ -1127,8 +1132,8 @@ addModuleDialog parent modString sourceRoots = do
     boxPackEnd bb save PackNatural 0
     save `onClicked` (dialogResponse dia ResponseOk)
     closeB `onClicked` (dialogResponse dia ResponseCancel)
-    boxPackStart upper widget PackGrow 7
-    boxPackStart lower bb PackNatural 7
+    boxPackStart (castToBox upper) widget PackGrow 7
+    boxPackStart (castToBox lower) bb PackNatural 7
     set save [widgetCanDefault := True]
     widgetGrabDefault save
     widgetShowAll dia

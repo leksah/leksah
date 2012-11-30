@@ -1,5 +1,5 @@
 {-# LANGUAGE FlexibleInstances, DeriveDataTypeable, MultiParamTypeClasses,
-             TypeSynonymInstances, ScopedTypeVariables, RankNTypes #-}
+             CPP, TypeSynonymInstances, ScopedTypeVariables, RankNTypes #-}
 {-# OPTIONS_GHC -fwarn-unused-imports #-}
 -----------------------------------------------------------------------------
 --
@@ -109,7 +109,7 @@ import Graphics.UI.Gtk
         fileChooserGetFilename, widgetShow, fileChooserDialogNew,
         notebookGetNthPage, notebookPageNum, widgetHide, dialogRun,
         messageDialogNew, scrolledWindowSetShadowType,
-        scrolledWindowSetPolicy, dialogSetDefaultResponse, postGUIAsync,
+        scrolledWindowSetPolicy, dialogSetDefaultResponse,
         fileChooserSetCurrentFolder, fileChooserSelectFilename)
 import System.Glib.MainLoop (priorityDefaultIdle, idleAdd)
 import qualified Graphics.UI.Gtk as Gtk hiding (eventKeyName)
@@ -134,6 +134,7 @@ import IDE.BufferMode
 import Control.Monad.Trans.Reader (ask)
 import Control.Monad.IO.Class (MonadIO(..))
 import Control.Monad (foldM, forM, filterM, unless, when)
+import Control.Exception as E (catch, SomeException)
 
 allBuffers :: IDEM [IDEBuffer]
 allBuffers = getPanes
@@ -271,7 +272,7 @@ goToSourceDefinition fp dscMbLocation = do
             iterTemp        <-  getIterAtLine ebuf (max 0 (min (lines-1)
                                     ((locationSLine location) -1)))
             chars           <-  getCharsInLine iterTemp
-            iter <- atLineOffset iterTemp (max 0 (min (chars-1) (locationSCol location)))
+            iter <- atLineOffset iterTemp (max 0 (min (chars-1) (locationSCol location -1)))
             iter2Temp       <-  getIterAtLine ebuf (max 0 (min (lines-1)
                                     ((locationELine location) -1)))
             chars2          <-  getCharsInLine iter2Temp
@@ -474,7 +475,7 @@ builder' bs mbfn ind bn rbn ct prefs pp nb windows = do
                 case GtkOld.eventClick event of
                     GtkOld.DoubleClick -> do
                         (start, end) <- getIdentifierUnderCursor buffer
-                        liftIO $ postGUIAsync $ reflectIDE (selectRange buffer start end) ideR
+                        liftIO $ reflectIDE (selectRange buffer start end) ideR
                         return True
                     _ -> return False) ideR
     (GetTextPopup mbTpm) <- triggerEvent ideR (GetTextPopup Nothing)
@@ -808,8 +809,8 @@ fileSaveBuffer query nb ebuf ideBuf i = do
             let text' = if removeTBlanks
                             then unlines $ map removeTrailingBlanks $lines text
                             else text
-            succ <- liftIO $ catch (do UTF8.writeFile fn text'; return True)
-                (\e -> do
+            succ <- liftIO $ E.catch (do UTF8.writeFile fn text'; return True)
+                (\(e :: SomeException) -> do
                     sysMessage Normal (show e)
                     return False)
             setModified buf (not succ)

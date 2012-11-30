@@ -1,3 +1,3 @@
 #!/bin/sh
 
-PATH=$PREFIX/bin:$PATH ige-mac-bundler leksah.bundle
+PATH=$PREFIX/bin:$PATH gtk-mac-bundler leksah.bundle

@@ -30,7 +30,6 @@ import Graphics.UI.Gtk
      hBoxNew,
      widgetSetSizeRequest,
      widgetSetName,
-     statusbarSetHasResizeGrip,
      statusbarNew,
      HBox(..),
      statusbarPush,
@@ -102,37 +101,28 @@ changeStatusbar = mapM_ changeStatusbar'
 
 buildStatusbar :: IO HBox
 buildStatusbar = do
-    sb <- statusbarNew
-    statusbarSetHasResizeGrip sb False
-
     sblk <- statusbarNew
     widgetSetName sblk "statusBarSpecialKeys"
-    statusbarSetHasResizeGrip sblk False
     widgetSetSizeRequest sblk 150 (-1)
 
     sbap <- statusbarNew
     widgetSetName sbap "statusBarActivePane"
-    statusbarSetHasResizeGrip sbap False
     widgetSetSizeRequest sbap 150 (-1)
 
     sbapr <- statusbarNew
     widgetSetName sbapr "statusBarActiveProject"
-    statusbarSetHasResizeGrip sbapr False
     widgetSetSizeRequest sbapr 150 (-1)
 
     sbe <- statusbarNew
     widgetSetName sbe "statusBarErrors"
-    statusbarSetHasResizeGrip sbe False
     widgetSetSizeRequest sbe 150 (-1)
 
     sblc <- statusbarNew
     widgetSetName sblc "statusBarLineColumn"
-    statusbarSetHasResizeGrip sblc True
     widgetSetSizeRequest sblc 150 (-1)
 
     sbio <- statusbarNew
     widgetSetName sbio "statusBarInsertOverwrite"
-    statusbarSetHasResizeGrip sbio False
     widgetSetSizeRequest sbio 60 (-1)
 
     buildImage <- imageNewFromStock "ide_empty" IconSizeMenu

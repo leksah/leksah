@@ -1,3 +1,4 @@
+{-# LANGUAGE CPP #-}
 -----------------------------------------------------------------------------
 --
 -- Module      :  IDE.TextEditor
@@ -70,7 +71,7 @@ module IDE.TextEditor (
 ,   bufferToWindowCoords
 ,   drawTabs
 ,   getBuffer
-,   getDrawWindow
+,   getWindow
 ,   getIterLocation
 ,   getOverwrite
 ,   getScrolledWindow
@@ -621,10 +622,10 @@ getBuffer (GtkEditorView sv) = liftIO $ fmap (GtkEditorBuffer . Gtk.castToSource
 getBuffer (YiEditorView v) = return $ YiEditorBuffer $ Yi.getBuffer v
 #endif
 
-getDrawWindow :: EditorView -> IDEM Gtk.DrawWindow
-getDrawWindow (GtkEditorView sv) = liftIO $ Gtk.widgetGetDrawWindow sv
+getWindow :: EditorView -> IDEM (Maybe Gtk.DrawWindow)
+getWindow (GtkEditorView sv) = liftIO $ Gtk.widgetGetWindow sv
 #ifdef LEKSAH_WITH_YI
-getDrawWindow (YiEditorView v) = liftIO $ Gtk.widgetGetDrawWindow (Yi.drawArea v)
+getWindow (YiEditorView v) = liftIO $ Gtk.widgetGetWindow (Yi.drawArea v)
 #endif
 
 getIterLocation :: EditorView -> EditorIter -> IDEM Gtk.Rectangle

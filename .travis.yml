@@ -1,0 +1,22 @@
+language: haskell
+before_install:
+  - sudo apt-get update -qq
+  - sudo apt-get --no-install-recommends install darcs libgtksourceview-3.0-dev
+  - cabal install Cabal
+  - mkdir vendor
+  - cd vendor
+  - darcs get --lazy http://patch-tag.com/r/hamish/gtk2hs
+  - cabal install ./gtk2hs/tools
+  - darcs get --lazy http://code.haskell.org/gtksourceview
+  - wget http://leksah.org/gtksourceview3.patches
+  - cd gtksourceview
+  - darcs apply ../gtksourceview3.patches
+  - cd ../..
+install:
+  - cabal install cabal-meta cabal-src
+script:
+  - cabal-meta install -fgtk3 --force-reinstalls
+notifications:
+  irc:
+    channels: "irc.freenode.net#leksah"
+  email: true

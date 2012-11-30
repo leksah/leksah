@@ -20,11 +20,7 @@ module IDE.Utils.ServerConnection (
 import IDE.Core.State
 import Network (connectTo,PortID(..))
 import Network.Socket (PortNumber(..))
-#ifdef MIN_VERSION_process_leksah
-import IDE.System.Process(runProcess)
-#else
-import System.Process(runProcess)
-#endif
+import IDE.Utils.Tool (runProcess)
 import GHC.Conc(threadDelay)
 import System.IO
 import Control.Exception (SomeException(..), catch)
@@ -33,6 +29,7 @@ import Control.Concurrent(forkIO)
 import Graphics.UI.Gtk(postGUIAsync)
 import Control.Event(triggerEvent)
 import Control.Monad.IO.Class (MonadIO(..))
+import System.Log.Logger (getLevel, getRootLogger)
 
 doServerCommand :: ServerCommand -> (ServerAnswer -> IDEM alpha) -> IDEAction
 doServerCommand command cont = do
@@ -61,19 +58,24 @@ doServerCommand command cont = do
             return ()
     where
         doCommand handle = do
-        triggerEventIDE (StatusbarChanged [CompartmentCollect True])
-        reifyIDE $ \ideR -> forkIO $ do
-            hPutStrLn handle (show command)
-            hFlush handle
-            resp <- hGetLine handle
-            postGUIAsync (reflectIDE (do
-                    triggerEvent ideR (StatusbarChanged [CompartmentCollect False])
-                    cont (read resp)
-                    return ()) ideR)
+            triggerEventIDE (StatusbarChanged [CompartmentCollect True])
+            reifyIDE $ \ideR -> forkIO $ do
+                hPutStrLn handle (show command)
+                hFlush handle
+                resp <- hGetLine handle
+                postGUIAsync (reflectIDE (do
+                        triggerEvent ideR (StatusbarChanged [CompartmentCollect False])
+                        cont (read resp)
+                        return ()) ideR)
 
 startServer :: Int -> IO ()
 startServer port = do
-    runProcess "leksah-server" ["--server=" ++ show port, "+RTS", "-N2", "-RTS"]
+    logger <- getRootLogger
+    let verbosity = case getLevel logger of
+                        Just level -> ["--verbosity=" ++ show level]
+                        Nothing    -> []
+    runProcess "leksah-server"
+        (["--server=" ++ show port, "+RTS", "-N2", "-RTS"] ++ verbosity)
         Nothing Nothing Nothing Nothing Nothing
     return ()
 

@@ -175,10 +175,11 @@ instance PaneMonad IDEM where
                     (case mbAP of
                         Nothing -> Nothing
                         Just (pn,_) -> Just pn)
-                modifyIDE_ (\ide -> ide{recentPanes =
-                    paneName pane : filter (/= paneName pane) (recentPanes ide)})
+                modifyIDE_ updateRecent
                 return ()
         where
+            updateRecent (ide@IDE{currentState = IsFlipping _}) = ide
+            updateRecent ide = ide{recentPanes = paneName pane : filter (/= paneName pane) (recentPanes ide)}
             trigger :: Maybe String -> Maybe String -> IDEAction
             trigger s1 s2 = do
                 triggerEventIDE (RecordHistory ((PaneSelected s1), PaneSelected s2))

@@ -1,4 +1,4 @@
-{-# LANGUAGE FlexibleInstances, DeriveDataTypeable, TypeSynonymInstances, MultiParamTypeClasses #-}
+{-# LANGUAGE CPP, FlexibleInstances, DeriveDataTypeable, TypeSynonymInstances, MultiParamTypeClasses #-}
 -----------------------------------------------------------------------------
 --
 -- Module      :  IDE.BufferMode
@@ -36,6 +36,9 @@ import IDE.Utils.FileUtils
 import Graphics.UI.Gtk
        (Notebook, castToWidget, notebookPageNum, ScrolledWindow)
 import Control.Monad.IO.Class (MonadIO(..))
+#if MIN_VERSION_directory(1,2,0)
+import Data.Time (UTCTime)
+#endif
 
 
 -- * Buffer Basics
@@ -49,7 +52,11 @@ data IDEBuffer      =   IDEBuffer {
 ,   addedIndex      ::  Int
 ,   sourceView      ::  EditorView
 ,   scrolledWindow  ::  ScrolledWindow
+#if MIN_VERSION_directory(1,2,0)
+,   modTime         ::  IORef (Maybe (UTCTime))
+#else
 ,   modTime         ::  IORef (Maybe (ClockTime))
+#endif
 ,   mode            ::  Mode
 } deriving (Typeable)
 

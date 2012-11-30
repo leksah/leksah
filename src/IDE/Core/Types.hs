@@ -1,13 +1,14 @@
-{-# OPTIONS_GHC
-    -XDisambiguateRecordFields
-    -XExistentialQuantification
-    -XRank2Types
-    -XFlexibleInstances
-    -XDeriveDataTypeable
-    -XFlexibleContexts
-    -XDeriveDataTypeable
-    -XTypeSynonymInstances
-    -XMultiParamTypeClasses #-}
+{-# LANGUAGE
+        CPP
+      , DisambiguateRecordFields
+      , ExistentialQuantification
+      , Rank2Types
+      , FlexibleInstances
+      , DeriveDataTypeable
+      , FlexibleContexts
+      , DeriveDataTypeable
+      , TypeSynonymInstances
+      , MultiParamTypeClasses #-}
 
 -----------------------------------------------------------------------------
 --
@@ -104,12 +105,7 @@ import Graphics.UI.Gtk.Gdk.Enums (Modifier(..))
 #endif
 import System.Time (ClockTime(..))
 import Distribution.Simple (Extension(..))
-#ifdef MIN_VERSION_process_leksah
-import IDE.System.Process (ProcessHandle(..))
-#else
-import System.Process (ProcessHandle(..))
-#endif
-import IDE.Utils.Tool (ToolState(..))
+import IDE.Utils.Tool (ToolState(..), ProcessHandle)
 import Data.IORef (writeIORef, readIORef, IORef(..))
 import Numeric (showHex)
 import Control.Event
@@ -123,6 +119,9 @@ import Text.PrettyPrint (render)
 import Control.Monad.Trans.Class (lift)
 import Control.Monad.IO.Class (liftIO)
 import Control.Monad.Trans.Reader (ReaderT(..))
+#if MIN_VERSION_directory(1,2,0)
+import Data.Time (UTCTime(..))
+#endif
 
 -- ---------------------------------------------------------------------
 -- IDE State
@@ -420,6 +419,7 @@ data Prefs = Prefs {
     ,   saveAllBeforeBuild  ::   Bool
     ,   jumpToWarnings      ::   Bool
     ,   backgroundBuild     ::   Bool
+    ,   runUnitTests        ::   Bool
     ,   makeMode            ::   Bool
     ,   singleBuildWithoutLinking :: Bool
     ,   dontInstallLast     ::   Bool
@@ -558,5 +558,8 @@ data StatusbarCompartment =
     |   CompartmentCollect Bool
 
 type PackageDescrCache = Map PackageIdentifier ModuleDescrCache
+#if MIN_VERSION_directory(1,2,0)
+type ModuleDescrCache = Map ModuleName (UTCTime, Maybe FilePath, ModuleDescr)
+#else
 type ModuleDescrCache = Map ModuleName (ClockTime, Maybe FilePath, ModuleDescr)
-
+#endif

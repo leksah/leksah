@@ -391,8 +391,9 @@ logOutputLines lineLogger = do
     log <- lift getLog
     liftIO $ postGUISync $ bringPaneToFront log
     results <- (EL.mapM $ liftIO . postGUISync . flip reflectIDE ideR . lineLogger log) =$ EL.consume
-    liftIO $ postGUISync $ reflectIDE (do
+    liftIO $ postGUIAsync $ reflectIDE (do
         triggerEventIDE (StatusbarChanged [CompartmentState "", CompartmentBuild False])
+        return ()
         ) ideR
     return results
 

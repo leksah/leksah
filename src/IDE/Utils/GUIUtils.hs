@@ -1,3 +1,4 @@
+{-# LANGUAGE CPP, ScopedTypeVariables #-}
 -----------------------------------------------------------------------------
 --
 -- Module      :  IDE.Utils.GUIUtils
@@ -23,6 +24,8 @@ module IDE.Utils.GUIUtils (
 
 ,   getBackgroundBuildToggled
 ,   setBackgroundBuildToggled
+,   getRunUnitTests
+,   setRunUnitTests
 ,   getMakeModeToggled
 ,   setMakeModeToggled
 ,   getDebugToggled
@@ -38,11 +41,7 @@ module IDE.Utils.GUIUtils (
 ) where
 
 import Graphics.UI.Gtk
-#ifdef MIN_VERSION_process_leksah
-import IDE.System.Process
-#else
-import System.Process
-#endif
+import IDE.Utils.Tool (runProcess)
 import Data.Maybe (fromJust, isJust)
 import Control.Monad
 import IDE.Core.State
@@ -57,6 +56,7 @@ import Graphics.UI.Gtk.Gdk.EventM (Modifier(..))
 import Graphics.UI.Gtk.Gdk.Enums (Modifier(..))
 #endif
 import Control.Monad.IO.Class (liftIO)
+import Control.Exception as E
 
 chooseDir :: Window -> String -> Maybe FilePath -> IO (Maybe FilePath)
 chooseDir window prompt mbFolder = do
@@ -135,10 +135,10 @@ chooseSaveFile window prompt mbFolder = do
 openBrowser :: String -> IDEAction
 openBrowser url = do
     prefs' <- readIDE prefs
-    liftIO (catch (do
+    liftIO (E.catch (do
                 runProcess (browser prefs') [url] Nothing Nothing Nothing Nothing Nothing
                 return ())
-            (\ _ -> sysMessage Normal ("Can't find browser executable " ++ browser prefs')))
+            (\ (_ :: SomeException) -> sysMessage Normal ("Can't find browser executable " ++ browser prefs')))
     return ()
 
 -- get widget elements (menu & toolbar)
@@ -174,6 +174,16 @@ getBackgroundBuildToggled = do
 setBackgroundBuildToggled :: PaneMonad alpha => Bool -> alpha ()
 setBackgroundBuildToggled b = do
     ui <- getUIAction "ui/toolbar/BuildToolItems/BackgroundBuild" castToToggleAction
+    liftIO $ toggleActionSetActive ui b
+
+getRunUnitTests :: PaneMonad alpha => alpha  (Bool)
+getRunUnitTests = do
+    ui <- getUIAction "ui/toolbar/BuildToolItems/RunUnitTests" castToToggleAction
+    liftIO $ toggleActionGetActive ui
+
+setRunUnitTests :: PaneMonad alpha => Bool -> alpha ()
+setRunUnitTests b = do
+    ui <- getUIAction "ui/toolbar/BuildToolItems/RunUnitTests" castToToggleAction
     liftIO $ toggleActionSetActive ui b
 
 getMakeModeToggled :: PaneMonad alpha => alpha  (Bool)

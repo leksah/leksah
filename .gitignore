@@ -1,3 +1,6 @@
 /dist/
 /*.lkshf
 /.DS_Store
+*~
+/.shelly/
+/vendor/

@@ -44,6 +44,7 @@ module IDE.Package (
 ,   delModuleFromPackageDescr
 
 ,   backgroundBuildToggled
+,   runUnitTestsToggled
 ,   makeModeToggled
 
 ,   debugStart
@@ -53,9 +54,7 @@ module IDE.Package (
 
 ,   printEvldWithShowFlag
 ,   tryDebug
-,   tryDebug_
 ,   tryDebugQuiet
-,   tryDebugQuiet_
 ,   executeDebugCommand
 
 ,   choosePackageFile
@@ -95,12 +94,7 @@ import qualified Data.Set as  Set (fromList)
 import qualified Data.Map as  Map (empty, fromList)
 import System.Exit (ExitCode(..))
 import Control.Applicative ((<$>))
-#ifdef MIN_VERSION_process_leksah
-import IDE.System.Process (getProcessExitCode, interruptProcessGroup)
-#else
-import System.Process (getProcessExitCode, interruptProcessGroupOf)
-#endif
-import IDE.Utils.Tool (executeGhciCommand)
+import IDE.Utils.Tool (executeGhciCommand, getProcessExitCode, interruptProcessGroupOf)
 import qualified Data.Enumerator as E (run_, Iteratee(..), last)
 import qualified Data.Enumerator.List as EL (foldM, zip3, zip)
 import Data.Enumerator (($$))
@@ -229,10 +223,11 @@ runCabalBuild backgroundBuild jumpToWarnings withoutLinking package shallConfigu
 isConfigError :: Monad m => E.Iteratee ToolOutput m Bool
 isConfigError = EL.foldM (\a b -> return $ a || isCErr b) False
     where
-    isCErr (ToolError str) = str1 `isInfixOf` str || str2 `isInfixOf` str
+    isCErr (ToolError str) = str1 `isInfixOf` str || str2 `isInfixOf` str || str3 `isInfixOf` str
     isCErr _ = False
     str1 = "Run the 'configure' command first"
     str2 = "please re-configure"
+    str3 = "cannot satisfy -package-id"
 
 buildPackage :: Bool -> Bool -> Bool -> IDEPackage -> (Bool -> IDEAction) -> IDEAction
 buildPackage backgroundBuild jumpToWarnings withoutLinking package continuation = catchIDE (do
@@ -305,6 +300,7 @@ packageInstallDependencies = do
     lift $ catchIDE (do
         let dir = dropFileName (ipdCabalFile package)
         runExternalTool "Installing" "cabal" (["install","--only-dependencies"]
+            ++ (ipdConfigFlags package)
             ++ (ipdInstallFlags package)) (Just dir) logOutput)
         (\(e :: SomeException) -> putStrLn (show e))
 
@@ -399,7 +395,6 @@ packageOpenDoc = do
         let path = dropFileName (ipdCabalFile package)
                         </> "dist/doc/html"
                         </> display (pkgName (ipdPackageId package))
-                        </> display (pkgName (ipdPackageId package))
                         </> "index.html"
             dir = dropFileName (ipdCabalFile package)
         runExternalTool "Opening Documentation" (browser prefs) [path] (Just dir) logOutput)
@@ -407,16 +402,16 @@ packageOpenDoc = do
 
 runExternalTool :: String -> FilePath -> [String] -> Maybe FilePath -> E.Iteratee ToolOutput IDEM () -> IDEAction
 runExternalTool description executable args mbDir handleOutput = do
-        prefs          <- readIDE prefs
-        alreadyRunning <- isRunning
-        unless alreadyRunning $ do
-            when (saveAllBeforeBuild prefs) (do fileSaveAll belongsToWorkspace; return ())
-            triggerEventIDE (StatusbarChanged [CompartmentState description, CompartmentBuild True])
-            reifyIDE $ \ideR -> forkIO $ do
-                (output, pid) <- runTool executable args mbDir
-                reflectIDE (modifyIDE_ (\ide -> ide{runningTool = Just pid})) ideR
-                E.run_ $ output $$ (reflectIDEI handleOutput ideR)
-            return ()
+    prefs          <- readIDE prefs
+    alreadyRunning <- isRunning
+    unless alreadyRunning $ do
+        when (saveAllBeforeBuild prefs) (do fileSaveAll belongsToWorkspace; return ())
+        triggerEventIDE (StatusbarChanged [CompartmentState description, CompartmentBuild True])
+        reifyIDE $ \ideR -> forkIO $ do
+            (output, pid) <- runTool executable args mbDir
+            reflectIDE (modifyIDE_ (\ide -> ide{runningTool = Just pid})) ideR
+            E.run_ $ output $$ (reflectIDEI handleOutput ideR)
+        return ()
 
 
 -- ---------------------------------------------------------------------
@@ -435,11 +430,7 @@ interruptBuild :: IDEAction
 interruptBuild = do
     maybeProcess <- readIDE runningTool
     liftIO $ case maybeProcess of
-#ifdef MIN_VERSION_process_leksah
-        Just h -> interruptProcessGroup h
-#else
         Just h -> interruptProcessGroupOf h
-#endif
         _ -> return ()
 
 -- ---------------------------------------------------------------------
@@ -463,12 +454,12 @@ getPackageDescriptionAndPath = do
                         return Nothing))
 
 getEmptyModuleTemplate :: PackageDescription -> String -> IO String
-getEmptyModuleTemplate pd modName = getModuleTemplate pd modName "" ""
+getEmptyModuleTemplate pd modName = getModuleTemplate "module" pd modName "" ""
 
-getModuleTemplate :: PackageDescription -> String -> String -> String -> IO String
-getModuleTemplate pd modName exports body = catch (do
+getModuleTemplate :: String -> PackageDescription -> String -> String -> String -> IO String
+getModuleTemplate template pd modName exports body = catch (do
     dataDir  <- getDataDir
-    filePath <- getConfigFilePathForLoad standardModuleTemplateFilename Nothing dataDir
+    filePath <- getConfigFilePathForLoad (template ++ leksahTemplateFileExtension) Nothing dataDir
     template <- UTF8.readFile filePath
     return (foldl' (\ a (from, to) -> replace from to a) template
         [   ("@License@"      , (show . license) pd)
@@ -643,6 +634,11 @@ backgroundBuildToggled = do
     toggled <- getBackgroundBuildToggled
     modifyIDE_ (\ide -> ide{prefs = (prefs ide){backgroundBuild= toggled}})
 
+runUnitTestsToggled :: IDEAction
+runUnitTestsToggled = do
+    toggled <- getRunUnitTests
+    modifyIDE_ (\ide -> ide{prefs = (prefs ide){runUnitTests= toggled}})
+
 makeModeToggled :: IDEAction
 makeModeToggled = do
     toggled <- getMakeModeToggled
@@ -713,13 +709,13 @@ debugStart = do
                 return ())
             (\(e :: SomeException) -> putStrLn (show e))
 
-tryDebug :: DebugM a -> PackageM (Maybe a)
+tryDebug :: DebugAction -> PackageAction
 tryDebug f = do
     maybeDebug <- lift $ readIDE debugState
     case maybeDebug of
         Just debug -> do
             -- TODO check debug package matches active package
-            liftM Just $ lift $ runDebug f debug
+            lift $ runDebug f debug
         _ -> do
             window <- lift $ getMainWindow
             resp <- liftIO $ do
@@ -736,35 +732,33 @@ tryDebug f = do
                     debugStart
                     maybeDebug <- lift $ readIDE debugState
                     case maybeDebug of
-                        Just debug -> liftM Just $ lift $ runDebug f debug
-                        _ -> return Nothing
-                _  -> return Nothing
+                        Just debug -> lift $ postAsyncIDE $ runDebug f debug
+                        _ -> return ()
+                _  -> return ()
 
-tryDebug_ :: DebugM a -> PackageAction
-tryDebug_ f = tryDebug f >> return ()
-
-tryDebugQuiet :: DebugM a -> PackageM (Maybe a)
+tryDebugQuiet :: DebugAction -> PackageAction
 tryDebugQuiet f = do
     maybeDebug <- lift $ readIDE debugState
     case maybeDebug of
         Just debug -> do
             -- TODO check debug package matches active package
-            liftM Just $ lift $ runDebug f debug
+            lift $ runDebug f debug
         _ -> do
-            return Nothing
-
-tryDebugQuiet_ :: DebugM a -> PackageAction
-tryDebugQuiet_ f = tryDebugQuiet f >> return ()
+            return ()
 
 executeDebugCommand :: String -> (E.Iteratee ToolOutput IDEM ()) -> DebugAction
 executeDebugCommand command handler = do
     (_, ghci) <- ask
     lift $ do
-        triggerEventIDE (StatusbarChanged [CompartmentState command, CompartmentBuild True])
         reifyIDE $ \ideR -> do
+            liftIO $ postGUIAsync $ reflectIDE (do
+                triggerEventIDE (StatusbarChanged [CompartmentState command, CompartmentBuild True])
+                return ()) ideR
             executeGhciCommand ghci command $ do
                 reflectIDEI handler ideR
-                liftIO $ postGUISync $ reflectIDE (triggerEventIDE (StatusbarChanged [CompartmentState "", CompartmentBuild False])) ideR
+                liftIO $ postGUIAsync $ reflectIDE (do
+                    triggerEventIDE (StatusbarChanged [CompartmentState "", CompartmentBuild False])
+                    return ()) ideR
                 return ()
 
 allBuildInfo' :: PackageDescription -> [BuildInfo]

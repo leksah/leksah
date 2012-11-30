@@ -17,7 +17,6 @@ module IDE.Workspaces (
     workspaceNew
 ,   workspaceOpen
 ,   workspaceTry
-,   workspaceTry_
 ,   workspaceOpenThis
 ,   workspaceClose
 ,   workspaceClean
@@ -27,10 +26,10 @@ module IDE.Workspaces (
 ,   workspaceAddPackage'
 ,   workspaceRemovePackage
 ,   workspacePackageNew
+,   workspaceTryQuiet
+,   workspaceNewHere
 ,   packageTry
-,   packageTry_
 ,   packageTryQuiet
-,   packageTryQuiet_
 
 ,   backgroundMake
 ,   makePackage
@@ -165,23 +164,18 @@ workspaceOpen = do
     workspaceOpenThis True mbFilePath
     return ()
 
-workspaceTryQuiet :: WorkspaceM a -> IDEM (Maybe a)
+workspaceTryQuiet :: WorkspaceAction -> IDEAction
 workspaceTryQuiet f = do
     maybeWorkspace <- readIDE workspace
     case maybeWorkspace of
-        Just ws -> liftM Just $ runWorkspace f ws
-        Nothing -> do
-            ideMessage Normal "No workspace open"
-            return Nothing
+        Just ws -> runWorkspace f ws
+        Nothing -> ideMessage Normal "No workspace open"
 
-workspaceTryQuiet_ :: WorkspaceM a -> IDEAction
-workspaceTryQuiet_ f = workspaceTryQuiet f >> return ()
-
-workspaceTry :: WorkspaceM a -> IDEM (Maybe a)
+workspaceTry :: WorkspaceAction -> IDEAction
 workspaceTry f = do
     maybeWorkspace <- readIDE workspace
     case maybeWorkspace of
-        Just ws -> liftM Just $ runWorkspace f ws
+        Just ws -> runWorkspace f ws
         Nothing -> do
             mainWindow <- getMainWindow
             defaultWorkspace <- liftIO $ (</> "leksah.lkshw") <$> getHomeDirectory
@@ -203,20 +197,17 @@ workspaceTry f = do
             case resp of
                 ResponseUser 1 -> do
                     workspaceNew
-                    workspaceTryQuiet f
+                    postAsyncIDE $ workspaceTryQuiet f
                 ResponseUser 2 -> do
                     workspaceOpen
-                    workspaceTryQuiet f
+                    postAsyncIDE $ workspaceTryQuiet f
                 ResponseUser 3 -> do
                     defaultExists <- liftIO $ doesFileExist defaultWorkspace
                     if defaultExists
                         then workspaceOpenThis True (Just defaultWorkspace)
                         else workspaceNewHere defaultWorkspace
-                    workspaceTryQuiet f
-                _  -> return Nothing
-
-workspaceTry_ :: WorkspaceM a -> IDEAction
-workspaceTry_ f = workspaceTry f >> return ()
+                    postAsyncIDE $ workspaceTryQuiet f
+                _  -> return ()
 
 chooseWorkspaceFile :: Window -> IO (Maybe FilePath)
 chooseWorkspaceFile window = chooseFile window "Select leksah workspace file (.lkshw)" Nothing
@@ -283,7 +274,7 @@ workspacePackageNew = do
     let path = dropFileName (wsFile ws)
     lift $ packageNew' (Just path) (\isNew fp -> do
         window     <-  getMainWindow
-        workspaceTry_ $ workspaceAddPackage' fp >> return ()
+        workspaceTry $ workspaceAddPackage' fp >> return ()
         when isNew $ do
             mbPack <- idePackageFromPath fp
             constructAndOpenMainModule mbPack
@@ -300,18 +291,10 @@ constructAndOpenMainModule (Just idePackage) =
                     path:_ -> do
                         liftIO $ createDirectoryIfMissing True path
                         alreadyExists <- liftIO $ doesFileExist (path </> target)
-                        if alreadyExists
-                            then do
-                                ideMessage Normal "Main file already exists"
-                                fileOpenThis (path </> target)
-                            else do
-                                template <- liftIO $ getModuleTemplate pd "Main"
-                                    "    main"
-                                    (if isTest
-                                        then "main = putStrLn \"Put your test code here\""
-                                        else "main = putStrLn \"Hello World!\"")
-                                liftIO $ UTF8.writeFile (path </> target) template
-                                fileOpenThis (path </> target)
+                        unless alreadyExists $ do
+                            template <- liftIO $ getModuleTemplate "main" pd "Main" "" ""
+                            liftIO $ UTF8.writeFile (path </> target) template
+                            fileOpenThis (path </> target)
                     _ -> return ()
             Nothing     -> ideMessage Normal "No package description"
 
@@ -346,24 +329,18 @@ workspaceAddPackage' fp = do
             return (Just pack)
         Nothing -> return Nothing
 
-packageTryQuiet :: PackageM a -> IDEM (Maybe a)
+packageTryQuiet :: PackageAction -> IDEAction
 packageTryQuiet f = do
     maybePackage <- readIDE activePack
     case maybePackage of
-        Just p  -> liftM Just $ runPackage f p
-        Nothing -> do
-            ideMessage Normal "No active package"
-            return Nothing
+        Just p  -> runPackage f p
+        Nothing -> ideMessage Normal "No active package"
 
-packageTryQuiet_ :: PackageM a -> IDEAction
-packageTryQuiet_ f = packageTryQuiet f >> return ()
-
-packageTry :: PackageM a -> IDEM (Maybe a)
-packageTry f = do
-    liftM (>>= id) $ workspaceTry $ do
+packageTry :: PackageAction -> IDEAction
+packageTry f = workspaceTry $ do
         maybePackage <- lift $ readIDE activePack
         case maybePackage of
-            Just p  -> liftM Just $ lift $ runPackage f p
+            Just p  -> lift $ runPackage f p
             Nothing -> do
                 window <- lift $ getMainWindow
                 resp <- liftIO $ do
@@ -379,14 +356,11 @@ packageTry f = do
                 case resp of
                     ResponseUser 1 -> do
                         workspacePackageNew
-                        lift $ packageTryQuiet f
+                        lift $ postAsyncIDE $ packageTryQuiet f
                     ResponseUser 2 -> do
                         workspaceAddPackage
-                        lift $ packageTryQuiet f
-                    _  -> return Nothing
-
-packageTry_ :: PackageM a -> IDEAction
-packageTry_ f = packageTry f >> return ()
+                        lift $ postAsyncIDE $ packageTryQuiet f
+                    _  -> return ()
 
 workspaceRemovePackage :: IDEPackage -> WorkspaceAction
 workspaceRemovePackage pack = do
@@ -534,8 +508,10 @@ workspaceMake = do
         return ((defaultMakeSettings prefs'){
                     msMakeMode           = True,
                     msBackgroundBuild    = False})
-    makePackages settings (wsPackages ws) (MoComposed [MoConfigure,MoBuild,MoTest,MoCopy,MoRegister])
-        (MoComposed [MoConfigure,MoBuild,MoTest,MoCopy,MoRegister]) MoMetaInfo
+    let steps = if msRunUnitTests settings
+                    then [MoConfigure,MoBuild,MoTest,MoCopy,MoRegister]
+                    else [MoConfigure,MoBuild,MoCopy,MoRegister]
+    makePackages settings (wsPackages ws) (MoComposed steps) (MoComposed steps) MoMetaInfo
 
 backgroundMake :: IDEAction
 backgroundMake = catchIDE (do
@@ -552,11 +528,15 @@ backgroundMake = catchIDE (do
             when isModified $ do
                 let settings = defaultMakeSettings prefs
                 if msSingleBuildWithoutLinking settings &&  not (msMakeMode settings)
-                    then workspaceTryQuiet_ $
+                    then workspaceTryQuiet $
                         makePackages settings modifiedPacks MoBuild (MoComposed []) moNoOp
-                    else workspaceTryQuiet_ $
-                        makePackages settings modifiedPacks (MoComposed [MoBuild,MoTest,MoCopy,MoRegister])
-                                        (MoComposed [MoConfigure,MoBuild,MoTest,MoCopy,MoRegister]) MoMetaInfo
+                    else do
+                        let steps = if msRunUnitTests settings
+                                        then [MoBuild,MoTest,MoCopy,MoRegister]
+                                        else [MoBuild,MoCopy,MoRegister]
+                        workspaceTryQuiet $
+                            makePackages settings modifiedPacks (MoComposed steps)
+                                        (MoComposed (MoConfigure:steps)) MoMetaInfo
     )
     (\(e :: SomeException) -> sysMessage Normal (show e))
 
@@ -574,9 +554,13 @@ makePackage = do
             if msSingleBuildWithoutLinking settings &&  not (msMakeMode settings)
                 then runWorkspace
                         (makePackages settings [p] MoBuild (MoComposed []) moNoOp) ws
-                else runWorkspace
+                else do
+                    let steps = if msRunUnitTests settings
+                                    then [MoBuild,MoTest,MoCopy,MoRegister]
+                                    else [MoBuild,MoCopy,MoRegister]
+                    runWorkspace
                         (makePackages settings [p]
-                        (MoComposed [MoBuild,MoTest,MoCopy,MoRegister])
-                        (MoComposed [MoConfigure,MoBuild,MoTest,MoCopy,MoRegister])
+                        (MoComposed steps)
+                        (MoComposed (MoConfigure:steps))
                         MoMetaInfo) ws
 

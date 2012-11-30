@@ -1,0 +1,374 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!--
+
+ Author: Scott Martin <scott@coffeeblack.org>
+ Copyright (C) 2004 Scott Martin <scott@coffeeblack.org>
+ Copyright (C) 2005 Stef Walter (formerly Nate Nielsen) <stef@memberwebs.com>
+ Copyright (C) 2005-2007 Marco Barisione <barisione@gmail.com>
+ Copyright (C) 2005-2007 Emanuele Aina
+
+ This library is free software; you can redistribute it and/or
+ modify it under the terms of the GNU Library General Public
+ License as published by the Free Software Foundation; either
+ version 2 of the License, or (at your option) any later version.
+
+ This library is distributed in the hope that it will be useful,
+ but WITHOUT ANY WARRANTY; without even the implied warranty of
+ MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the GNU
+ Library General Public License for more details.
+
+ You should have received a copy of the GNU Library General Public
+ License along with this library; if not, write to the
+ Free Software Foundation, Inc., 59 Temple Place - Suite 330,
+ Boston, MA 02111-1307, USA.
+
+-->
+<language id="jmacro" _name="JMacro" version="2.0" _section="Scripts">
+    <metadata>
+        <property name="mimetypes">application/x-jmacro;text/x-jmacro</property>
+        <property name="globs">*.jmacro</property>
+        <property name="line-comment-start">//</property>
+        <property name="block-comment-start">/*</property>
+        <property name="block-comment-end">*/</property>
+    </metadata>
+
+    <styles>
+        <style id="haskell-embed"   _name="Haskell"                  map-to="def:preprocessor"/>
+        <style id="comment"         _name="Comment"                  map-to="def:comment"/>
+        <style id="error"           _name="Error"                    map-to="def:error"/>
+        <style id="string"          _name="String"                   map-to="def:string"/>
+        <style id="null-value"      _name="Null Value"               map-to="def:special-constant"/>
+        <style id="undefined-value" _name="Undefined Value"          map-to="def:special-constant"/>
+        <style id="boolean"         _name="Boolean value"            map-to="def:boolean"/>
+        <style id="keyword"         _name="Keyword"                  map-to="def:keyword"/>
+        <style id="object"          _name="Object"/> <!--map-to="def:others"-->
+        <style id="type"            _name="Data Type"                map-to="def:type"/>
+        <style id="function"        _name="Function"                 map-to="def:function"/>
+        <style id="properties"      _name="Properties"               map-to="def:statement"/>
+        <style id="constructors"    _name="Constructors"             map-to="def:type"/>
+        <style id="future-words"    _name="Future Reserved Keywords" map-to="def:error"/>
+    </styles>
+
+    <definitions>
+        <context id="haskell-embed">
+          <start>`\(</start>
+          <end>\)`</end>
+          <include>
+            <context sub-pattern="0" where="start" style-ref="haskell-embed"/>
+            <context sub-pattern="0" where="end" style-ref="haskell-embed"/>
+            <context ref="haskell:body"/>
+          </include>
+        </context>
+
+        <context id="short-haskell-embed">
+          <start>`</start>
+          <end>`</end>
+          <include>
+            <context sub-pattern="0" where="start" style-ref="haskell-embed"/>
+            <context sub-pattern="0" where="end" style-ref="haskell-embed"/>
+            <context ref="haskell:body"/>
+          </include>
+        </context>
+
+        <context id="jmacro-base" class="no-spell-check">
+            <include>
+
+                <!-- Comments -->
+                <context id="line-comment" style-ref="comment" class="comment" class-disabled="no-spell-check">
+                    <start>//</start>
+                    <end>$</end>
+                    <include>
+                        <context ref="def:line-continue"/>
+                        <context ref="def:in-comment"/>
+                        <context ref="haskell-embed"/>
+                    </include>
+                </context>
+
+                <context id="block-comment" style-ref="comment" class="comment" class-disabled="no-spell-check">
+                    <start>/\*</start>
+                    <end>\*/</end>
+                    <include>
+                        <context ref="def:in-comment"/>
+                        <context ref="haskell-embed"/>
+                    </include>
+                </context>
+
+                <context id="close-comment-outside-comment" style-ref="error">
+                    <match>\*/(?!\*)</match>
+                </context>
+
+                <!-- Strings -->
+                <context id="string-double" end-at-line-end="true" style-ref="string" class="string" class-disabled="no-spell-check">
+                    <start>"</start>
+                    <end>"</end>
+                    <include>
+                        <context ref="def:line-continue"/>
+                        <context ref="def:escape"/>
+                        <context ref="haskell-embed"/>
+                    </include>
+                </context>
+
+                <context id="string-single" end-at-line-end="true" style-ref="string" class="string" class-disabled="no-spell-check">
+                    <start>'</start>
+                    <end>'</end>
+                    <include>
+                        <context ref="def:line-continue"/>
+                        <context ref="def:escape"/>
+                        <context ref="haskell-embed"/>
+                    </include>
+                </context>
+
+                <!-- Numbers -->
+                <context ref="def:float"/>
+                <context ref="def:decimal"/>
+                <context ref="def:octal"/>
+                <context ref="def:hexadecimal"/>
+
+                <!-- Constants -->
+                <context id="null-value" style-ref="null-value">
+                    <keyword>null</keyword>
+                </context>
+                <context id="undefined-value" style-ref="undefined-value">
+                    <keyword>undefined</keyword>
+                </context>
+                <context id="boolean" style-ref="boolean">
+                    <keyword>false</keyword>
+                    <keyword>true</keyword>
+                </context>
+
+                <!-- Keywords -->
+                <context id="keywords" style-ref="keyword">
+                    <keyword>break</keyword>
+                    <keyword>case</keyword>
+                    <keyword>catch</keyword>
+                    <keyword>const</keyword>
+                    <keyword>continue</keyword>
+                    <keyword>default</keyword>
+                    <keyword>delete</keyword>
+                    <keyword>do</keyword>
+                    <keyword>else</keyword>
+                    <keyword>export</keyword>
+                    <keyword>finally</keyword>
+                    <keyword>for</keyword>
+                    <keyword>function</keyword>
+                    <keyword>if</keyword>
+                    <keyword>import</keyword>
+                    <keyword>instanceof</keyword>
+                    <keyword>in</keyword>
+                    <keyword>let</keyword>
+                    <keyword>new</keyword>
+                    <keyword>return</keyword>
+                    <keyword>switch</keyword>
+                    <keyword>this</keyword>
+                    <keyword>throw</keyword>
+                    <keyword>try</keyword>
+                    <keyword>typeof</keyword>
+                    <keyword>while</keyword>
+                    <keyword>with</keyword>
+                    <keyword>var</keyword>
+                    <keyword>void</keyword>
+                </context>
+
+                <context id="ojects" style-ref="object">
+                    <keyword>constructor</keyword>
+                    <keyword>prototype</keyword>
+                </context>
+
+                <context id="types" style-ref="type">
+                    <keyword>Infinity</keyword>
+                    <keyword>Math</keyword>
+                    <keyword>NaN</keyword>
+                    <keyword>NEGATIVE_INFINITY</keyword>
+                    <keyword>POSITIVE_INFINITY</keyword>
+                </context>
+
+                <context id="functions" style-ref="function">
+                    <keyword>abs</keyword>
+                    <keyword>acos</keyword>
+                    <keyword>apply</keyword>
+                    <keyword>asin</keyword>
+                    <keyword>atan2</keyword>
+                    <keyword>atan</keyword>
+                    <keyword>call</keyword>
+                    <keyword>ceil</keyword>
+                    <keyword>charAt</keyword>
+                    <keyword>charCodeAt</keyword>
+                    <keyword>concat</keyword>
+                    <keyword>cos</keyword>
+                    <keyword>decodeURIComponent</keyword>
+                    <keyword>decodeURI</keyword>
+                    <keyword>encodeURIComponent</keyword>
+                    <keyword>encodeURI</keyword>
+                    <keyword>escape</keyword>
+                    <keyword>eval</keyword>
+                    <keyword>exec</keyword>
+                    <keyword>exp</keyword>
+                    <keyword>floor</keyword>
+                    <keyword>fromCharCode</keyword>
+                    <keyword>getDate</keyword>
+                    <keyword>getDay</keyword>
+                    <keyword>getFullYear</keyword>
+                    <keyword>getHours</keyword>
+                    <keyword>getMilliseconds</keyword>
+                    <keyword>getMinutes</keyword>
+                    <keyword>getMonth</keyword>
+                    <keyword>getSeconds</keyword>
+                    <keyword>getTime</keyword>
+                    <keyword>getTimezoneOffset</keyword>
+                    <keyword>getUTCDate</keyword>
+                    <keyword>getUTCDay</keyword>
+                    <keyword>getUTCFullYear</keyword>
+                    <keyword>getUTCHours</keyword>
+                    <keyword>getUTCMilliseconds</keyword>
+                    <keyword>getUTCMinutes</keyword>
+                    <keyword>getUTCMonth</keyword>
+                    <keyword>getUTCSeconds</keyword>
+                    <keyword>getYear</keyword>
+                    <keyword>hasOwnProperty</keyword>
+                    <keyword>indexOf</keyword>
+                    <keyword>isFinite</keyword>
+                    <keyword>isNaN</keyword>
+                    <keyword>isPrototypeOf</keyword>
+                    <keyword>join</keyword>
+                    <keyword>lastIndexOf</keyword>
+                    <keyword>localeCompare</keyword>
+                    <keyword>log</keyword>
+                    <keyword>match</keyword>
+                    <keyword>max</keyword>
+                    <keyword>min</keyword>
+                    <keyword>parseFloat</keyword>
+                    <keyword>parseInt</keyword>
+                    <keyword>parse</keyword>
+                    <keyword>pop</keyword>
+                    <keyword>pow</keyword>
+                    <keyword>propertyIsEnumerable</keyword>
+                    <keyword>push</keyword>
+                    <keyword>random</keyword>
+                    <keyword>replace</keyword>
+                    <keyword>reverse</keyword>
+                    <keyword>round</keyword>
+                    <keyword>search</keyword>
+                    <keyword>setDate</keyword>
+                    <keyword>setFullYear</keyword>
+                    <keyword>setHours</keyword>
+                    <keyword>setMilliseconds</keyword>
+                    <keyword>setMinutes</keyword>
+                    <keyword>setMonth</keyword>
+                    <keyword>setSeconds</keyword>
+                    <keyword>setTime</keyword>
+                    <keyword>setUTCDate</keyword>
+                    <keyword>setUTCFullYear</keyword>
+                    <keyword>setUTCHours</keyword>
+                    <keyword>setUTCMilliseconds</keyword>
+                    <keyword>setUTCMinutes</keyword>
+                    <keyword>setUTCMonth</keyword>
+                    <keyword>setUTCSeconds</keyword>
+                    <keyword>setYear</keyword>
+                    <keyword>shift</keyword>
+                    <keyword>sin</keyword>
+                    <keyword>slice</keyword>
+                    <keyword>sort</keyword>
+                    <keyword>split</keyword>
+                    <keyword>sqrt</keyword>
+                    <keyword>substring</keyword>
+                    <keyword>substr</keyword>
+                    <keyword>tan</keyword>
+                    <keyword>toDateString</keyword>
+                    <keyword>toExponential</keyword>
+                    <keyword>toFixed</keyword>
+                    <keyword>toGMTString</keyword>
+                    <keyword>toLocaleDateString</keyword>
+                    <keyword>toLocaleLowerCase</keyword>
+                    <keyword>toLocaleString</keyword>
+                    <keyword>toLocaleTimeString</keyword>
+                    <keyword>toLocaleUpperCase</keyword>
+                    <keyword>toLowerCase</keyword>
+                    <keyword>toPrecision</keyword>
+                    <keyword>toString</keyword>
+                    <keyword>toTimeString</keyword>
+                    <keyword>toUpperCase</keyword>
+                    <keyword>toUTCString</keyword>
+                    <keyword>unescape</keyword>
+                    <keyword>unshift</keyword>
+                    <keyword>UTC</keyword>
+                    <keyword>valueOf</keyword>
+                </context>
+
+                <context id="properties" style-ref="properties">
+                    <keyword>global</keyword>
+                    <keyword>ignoreCase</keyword>
+                    <keyword>lastIndex</keyword>
+                    <keyword>length</keyword>
+                    <keyword>message</keyword>
+                    <keyword>multiline</keyword>
+                    <keyword>name</keyword>
+                    <keyword>source</keyword>
+                </context>
+
+                <context id="constructors" style-ref="constructors">
+                    <keyword>Array</keyword>
+                    <keyword>Boolean</keyword>
+                    <keyword>Date</keyword>
+                    <keyword>Error</keyword>
+                    <keyword>EvalError</keyword>
+                    <keyword>Function</keyword>
+                    <keyword>Number</keyword>
+                    <keyword>Object</keyword>
+                    <keyword>RangeError</keyword>
+                    <keyword>RegExp</keyword>
+                    <keyword>String</keyword>
+                    <keyword>SyntaxError</keyword>
+                    <keyword>TypeError</keyword>
+                    <keyword>URIError</keyword>
+                </context>
+
+                <context id="future-words" style-ref="future-words">
+                    <keyword>abstract</keyword>
+                    <keyword>boolean</keyword>
+                    <keyword>byte</keyword>
+                    <keyword>char</keyword>
+                    <keyword>class</keyword>
+                    <keyword>debugger</keyword>
+                    <keyword>double</keyword>
+                    <keyword>enum</keyword>
+                    <keyword>extends</keyword>
+                    <keyword>final</keyword>
+                    <keyword>float</keyword>
+                    <keyword>goto</keyword>
+                    <keyword>implements</keyword>
+                    <keyword>interface</keyword>
+                    <keyword>int</keyword>
+                    <keyword>long</keyword>
+                    <keyword>native</keyword>
+                    <keyword>package</keyword>
+                    <keyword>private</keyword>
+                    <keyword>protected</keyword>
+                    <keyword>public</keyword>
+                    <keyword>short</keyword>
+                    <keyword>static</keyword>
+                    <keyword>super</keyword>
+                    <keyword>synchronized</keyword>
+                    <keyword>throws</keyword>
+                    <keyword>transient</keyword>
+                    <keyword>volatile</keyword>
+                </context>
+
+            </include>
+        </context>
+
+        <context id="jmacro" class="no-spell-check">
+            <include>
+                <context ref="haskell-embed"/>
+                <context ref="jmacro-base"/>
+            </include>
+        </context>
+
+        <context id="j" class="no-spell-check">
+            <include>
+                <context ref="short-haskell-embed"/>
+                <context ref="jmacro-base"/>
+            </include>
+        </context>
+
+    </definitions>
+</language>

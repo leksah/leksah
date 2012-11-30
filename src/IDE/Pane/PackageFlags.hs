@@ -89,8 +89,8 @@ builder' idePackage flagsDesc flatflagsDesc pp nb window ideR = do
     saveB               <-  buttonNewFromStock "gtk-save"
     widgetSetSensitive saveB False
     cancelB             <-  buttonNewFromStock "gtk-cancel"
-    boxPackStartDefaults bb cancelB
-    boxPackStartDefaults bb saveB
+    boxPackStart bb cancelB PackGrow 0
+    boxPackStart bb saveB PackGrow 0
     (widget,injb,ext,notifier)
                         <-  buildEditor flagsDesc idePackage
     sw <- scrolledWindowNew Nothing Nothing

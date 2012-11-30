@@ -154,19 +154,19 @@ treeViewPopup ideR  workspacePane (Button _ click _ _ _ _ button _ _) = do
             item1           <-  menuItemNewWithLabel "Activate Package"
             item2           <-  menuItemNewWithLabel "Add Package"
             item3           <-  menuItemNewWithLabel "Remove Package"
-            item1 `onActivateLeaf` do
+            item1 `on` menuItemActivate $ do
                 sel         <-  getSelectionTree (treeViewC workspacePane)
                                                 (workspaceStore workspacePane)
                 case sel of
-                    Just (_,ideP)      -> reflectIDE (workspaceTry_ $ workspaceActivatePackage ideP) ideR
+                    Just (_,ideP)      -> reflectIDE (workspaceTry $ workspaceActivatePackage ideP) ideR
 
                     otherwise         -> return ()
-            item2 `onActivateLeaf` reflectIDE (workspaceTry_ $ workspaceAddPackage) ideR
-            item3 `onActivateLeaf` do
+            item2 `on` menuItemActivate $ reflectIDE (workspaceTry $ workspaceAddPackage) ideR
+            item3 `on` menuItemActivate $ do
                 sel            <-  getSelectionTree (treeViewC workspacePane)
                                                     (workspaceStore workspacePane)
                 case sel of
-                    Just (_,ideP)      -> reflectIDE (workspaceTry_ $ workspaceRemovePackage ideP) ideR
+                    Just (_,ideP)      -> reflectIDE (workspaceTry $ workspaceRemovePackage ideP) ideR
                     otherwise          -> return ()
             menuShellAppend theMenu item1
             menuShellAppend theMenu item2
@@ -178,7 +178,7 @@ treeViewPopup ideR  workspacePane (Button _ click _ _ _ _ button _ _) = do
                 then do sel         <-  getSelectionTree (treeViewC workspacePane)
                                             (workspaceStore workspacePane)
                         case sel of
-                            Just (_,ideP)   ->  reflectIDE (workspaceTry_ $ workspaceActivatePackage ideP) ideR
+                            Just (_,ideP)   ->  reflectIDE (workspaceTry $ workspaceActivatePackage ideP) ideR
                                                     >> return True
                             otherwise       ->  return False
                 else return False
