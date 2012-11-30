@@ -16,7 +16,7 @@ category: Development, IDE, Editor
 author: Juergen Nicklisch-Franken, Hamish Mackenzie
 tested-with: GHC == 7.2.2
 data-files: LICENSE
-            Readme
+            Readme.md
 
             data/current.lkshs
             data/candy.lkshc
