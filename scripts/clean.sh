@@ -1,13 +1,8 @@
-#!/bin/sh
+#!/bin/sh -ex
 
-#  cd ../yi/yi || exit
-#  cabal clean || exit
+rm -rf vendor/*/dist \
+       vendor/gtk2hs/*/dist \
+       vendor/*/vendor/*/dist \
+       vendor/*/vendor/gtk2hs/*/dist
 
-cd ../ltk || exit
-cabal clean || exit
-
-cd ../leksah-server || exit
-cabal clean || exit
-
-cd ../leksah || exit
 cabal clean || exit

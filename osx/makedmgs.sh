@@ -1,4 +1,4 @@
-#!/bin/sh
+#!/bin/sh -ex
 
 scripts/clean.sh
 PATH=/Users/hamish/Library/Haskell/bin:/Library/Frameworks/GHC.framework/Versions/7.0.3-i386/usr/bin:$PATH osx/makedmg.sh
