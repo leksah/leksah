@@ -141,7 +141,7 @@ breakpointViewPopup :: IDERef
     -> TreeView
     -> Event
     -> IO (Bool)
-breakpointViewPopup ideR  store treeView (Button _ click _ _ _ _ button _ _)
+breakpointViewPopup ideR  store treeView (Button _ click timestamp _ _ _ button _ _)
     = do
     if button == RightButton
         then do
@@ -159,7 +159,7 @@ breakpointViewPopup ideR  store treeView (Button _ click _ _ _ _ button _ _)
             item3 `on` menuItemActivate $ reflectIDE debugShowBreakpoints ideR
             mapM_ (menuShellAppend theMenu) [castToMenuItem item1, castToMenuItem sep1,
                 castToMenuItem item2, castToMenuItem item3]
-            menuPopup theMenu Nothing
+            menuPopup theMenu $ Just (button, timestamp)
             widgetShowAll theMenu
             return True
         else if button == LeftButton && click == DoubleClick

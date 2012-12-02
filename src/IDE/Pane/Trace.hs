@@ -208,7 +208,7 @@ traceViewPopup :: IDERef
     -> TreeView
     -> Event
     -> IO (Bool)
-traceViewPopup ideR  store treeView (Button _ click _ _ _ _ button _ _)
+traceViewPopup ideR  store treeView (Button _ click timestamp _ _ _ button _ _)
     = do
     if button == RightButton
         then do
@@ -222,7 +222,7 @@ traceViewPopup ideR  store treeView (Button _ click _ _ _ _ button _ _)
             item3 `on` menuItemActivate $ reflectIDE fillTraceList ideR
             mapM_ (menuShellAppend theMenu) [castToMenuItem item1, castToMenuItem sep1,
                 castToMenuItem item2, castToMenuItem item3]
-            menuPopup theMenu Nothing
+            menuPopup theMenu $ Just (button, timestamp)
             widgetShowAll theMenu
             return True
         else return False

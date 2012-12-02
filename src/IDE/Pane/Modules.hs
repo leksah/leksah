@@ -758,7 +758,7 @@ treeViewPopup :: IDERef
     -> TreeView
     -> Event
     -> IO (Bool)
-treeViewPopup ideR  store treeView (Button _ click _ _ _ _ button _ _) = do
+treeViewPopup ideR  store treeView (Button _ click timestamp _ _ _ button _ _) = do
     if button == RightButton
         then do
             theMenu         <-  menuNew
@@ -810,14 +810,14 @@ treeViewPopup ideR  store treeView (Button _ click _ _ _ _ button _ _) = do
                     mapM_ (menuShellAppend theMenu) [castToMenuItem item1, castToMenuItem sep1, castToMenuItem item2,
                         castToMenuItem item3, castToMenuItem item4, castToMenuItem item5, castToMenuItem sep2,
                         castToMenuItem item6]
-                    menuPopup theMenu Nothing
+                    menuPopup theMenu $ Just (button, timestamp)
                     widgetShowAll theMenu
                     return True
                 Just (_,Just (m,_)) -> do
                     mapM_ (menuShellAppend theMenu) [castToMenuItem item1, castToMenuItem sep1, castToMenuItem item2,
                         castToMenuItem item3, castToMenuItem item4, castToMenuItem item5, castToMenuItem sep2,
                         castToMenuItem item6, castToMenuItem item7]
-                    menuPopup theMenu Nothing
+                    menuPopup theMenu $ Just (button, timestamp)
                     widgetShowAll theMenu
                     return True
                 otherwise -> return True
@@ -841,7 +841,7 @@ descrViewPopup :: IDERef
     -> TreeView
     -> Event
     -> IO (Bool)
-descrViewPopup ideR  store descrView (Button _ click _ _ _ _ button _ _) = do
+descrViewPopup ideR  store descrView (Button _ click timestamp _ _ _ button _ _) = do
     if button == RightButton
         then do
             theMenu         <-  menuNew
@@ -858,7 +858,7 @@ descrViewPopup ideR  store descrView (Button _ click _ _ _ _ button _ _) = do
                     Just descr      ->  reflectIDE (insertInBuffer descr) ideR
                     otherwise       ->  sysMessage Normal "Modules>> descrViewPopup: no selection"
             mapM_ (menuShellAppend theMenu) [item1, item2]
-            menuPopup theMenu Nothing
+            menuPopup theMenu $ Just (button, timestamp)
             widgetShowAll theMenu
             return True
         else if button == LeftButton && click == DoubleClick

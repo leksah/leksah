@@ -147,7 +147,7 @@ treeViewPopup :: IDERef
     -> IDEWorkspace
     -> Event
     -> IO (Bool)
-treeViewPopup ideR  workspacePane (Button _ click _ _ _ _ button _ _) = do
+treeViewPopup ideR  workspacePane (Button _ click timestamp _ _ _ button _ _) = do
     if button == RightButton
         then do
             theMenu         <-  menuNew
@@ -171,7 +171,7 @@ treeViewPopup ideR  workspacePane (Button _ click _ _ _ _ button _ _) = do
             menuShellAppend theMenu item1
             menuShellAppend theMenu item2
             menuShellAppend theMenu item3
-            menuPopup theMenu Nothing
+            menuPopup theMenu $ Just (button, timestamp)
             widgetShowAll theMenu
             return True
         else if button == LeftButton && click == DoubleClick

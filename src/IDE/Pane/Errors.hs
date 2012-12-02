@@ -162,7 +162,7 @@ errorViewPopup :: IDERef
     -> TreeView
     -> Event
     -> IO Bool
-errorViewPopup ideR  store treeView (Button _ click _ _ _ _ button _ _)
+errorViewPopup ideR  store treeView (Button _ click timestamp _ _ _ button _ _)
     = do
     if button == RightButton
         then do
@@ -191,7 +191,7 @@ errorViewPopup ideR  store treeView (Button _ click _ _ _ _ button _ _)
                                 reflectIDE (addPackage sel >> return ()) ideR
                             menuShellAppend theMenu item1
                 Nothing -> return ()
-            menuPopup theMenu Nothing
+            menuPopup theMenu $ Just (button, timestamp)
             widgetShowAll theMenu
             return True
         else if button == LeftButton && click == DoubleClick

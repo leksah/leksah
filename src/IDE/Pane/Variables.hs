@@ -243,7 +243,7 @@ variablesViewPopup :: IDERef
     -> TreeView
     -> Event
     -> IO (Bool)
-variablesViewPopup ideR  store treeView (Button _ click _ _ _ _ button _ _)
+variablesViewPopup ideR  store treeView (Button _ click timestamp _ _ _ button _ _)
     = do
     if button == RightButton
         then do
@@ -265,7 +265,7 @@ variablesViewPopup ideR  store treeView (Button _ click _ _ _ _ button _ _)
             item3 `on` menuItemActivate $ postGUIAsync (reflectIDE fillVariablesList ideR)
             mapM_ (menuShellAppend theMenu) [castToMenuItem item1,
                 castToMenuItem item2, castToMenuItem sep1, castToMenuItem item3]
-            menuPopup theMenu Nothing
+            menuPopup theMenu $ Just (button, timestamp)
             widgetShowAll theMenu
             return True
         else if button == LeftButton && click == DoubleClick

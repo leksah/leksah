@@ -335,6 +335,7 @@ handleMouseEvent :: IDERef
 handleMouseEvent ideR  store descrView = do
     click <- eventClick
     button <- eventButton
+    timestamp <- eventTime
     liftIO $ if button == RightButton
         then do
             theMenu         <-  menuNew
@@ -342,7 +343,7 @@ handleMouseEvent ideR  store descrView = do
             item1 `on` menuItemActivate $ liftIO $ goToDef ideR store descrView
 
             menuShellAppend theMenu item1
-            menuPopup theMenu Nothing
+            menuPopup theMenu $ Just (button, timestamp)
             widgetShowAll theMenu
             return True
         else if button == LeftButton && click == DoubleClick
