@@ -151,6 +151,7 @@ treeViewPopup ideR  workspacePane (Button _ click timestamp _ _ _ button _ _) = 
     if button == RightButton
         then do
             theMenu         <-  menuNew
+            menuAttachToWidget theMenu (treeViewC workspacePane)
             item1           <-  menuItemNewWithLabel "Activate Package"
             item2           <-  menuItemNewWithLabel "Add Package"
             item3           <-  menuItemNewWithLabel "Remove Package"

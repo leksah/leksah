@@ -146,6 +146,7 @@ breakpointViewPopup ideR  store treeView (Button _ click timestamp _ _ _ button 
     if button == RightButton
         then do
             theMenu         <-  menuNew
+            menuAttachToWidget theMenu treeView
             item1           <-  menuItemNewWithLabel "Remove breakpoint"
             item1 `on` menuItemActivate $ do
                 sel         <-  getSelectedBreakpoint treeView store

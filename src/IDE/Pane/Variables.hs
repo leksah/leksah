@@ -248,6 +248,7 @@ variablesViewPopup ideR  store treeView (Button _ click timestamp _ _ _ button _
     if button == RightButton
         then do
             theMenu         <-  menuNew
+            menuAttachToWidget theMenu treeView
             item1           <-  menuItemNewWithLabel "Force"
             item1 `on` menuItemActivate $ do
                 mbSel  <-  getSelectedVariable treeView store

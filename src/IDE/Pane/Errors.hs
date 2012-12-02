@@ -168,6 +168,7 @@ errorViewPopup ideR  store treeView (Button _ click timestamp _ _ _ button _ _)
         then do
             mbSel           <-  getSelectedError treeView store
             theMenu         <-  menuNew
+            menuAttachToWidget theMenu treeView
             item0           <-  menuItemNewWithLabel "Resolve Errors"
             item0 `on` menuItemActivate $ do
                 reflectIDE resolveErrors ideR

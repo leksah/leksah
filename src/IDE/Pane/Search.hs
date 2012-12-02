@@ -23,11 +23,11 @@ module IDE.Pane.Search (
 ) where
 
 import Graphics.UI.Gtk
-       (cellTextScaleSet, cellTextScale, listStoreGetValue,
-        treeSelectionGetSelectedRows, widgetShowAll, menuPopup,
-        menuShellAppend, menuItemActivate, menuItemNewWithLabel, menuNew,
-        listStoreAppend, listStoreClear, entrySetText, toggleButtonGetActive,
-        widgetSetSensitivity, vBoxNew, entryNew,
+       (menuAttachToWidget, cellTextScaleSet, cellTextScale,
+        listStoreGetValue, treeSelectionGetSelectedRows, widgetShowAll,
+        menuPopup, menuShellAppend, menuItemActivate, menuItemNewWithLabel,
+        menuNew, listStoreAppend, listStoreClear, entrySetText,
+        toggleButtonGetActive, widgetSetSensitivity, vBoxNew, entryNew,
         scrolledWindowSetPolicy, containerAdd, scrolledWindowNew,
         treeSelectionSetMode, treeViewGetSelection,
         treeViewSetHeadersVisible, cellPixbufStockId, cellText,
@@ -44,8 +44,8 @@ import Graphics.UI.Gtk
         widgetHide, buttonSetLabel, widgetCanDefault, hBoxNew,
         entryGetText, castToWidget, Entry, VBox, ListStore, TreeView,
         ScrolledWindow, PolicyType(..), SelectionMode(..),
-        TreeViewColumnSizing(..), AttrOp(..), Packing(..),
-        focusInEvent, toggled, buttonPressEvent, keyPressEvent, keyReleaseEvent)
+        TreeViewColumnSizing(..), AttrOp(..), Packing(..), focusInEvent,
+        toggled, buttonPressEvent, keyPressEvent, keyReleaseEvent)
 import Graphics.UI.Gtk.Gdk.EventM
 import System.Glib.Signals (on, after)
 import Data.IORef (newIORef)
@@ -339,6 +339,7 @@ handleMouseEvent ideR  store descrView = do
     liftIO $ if button == RightButton
         then do
             theMenu         <-  menuNew
+            menuAttachToWidget theMenu descrView
             item1           <-  menuItemNewWithLabel "Go to definition"
             item1 `on` menuItemActivate $ liftIO $ goToDef ideR store descrView
 

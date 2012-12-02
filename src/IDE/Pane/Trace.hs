@@ -213,6 +213,7 @@ traceViewPopup ideR  store treeView (Button _ click timestamp _ _ _ button _ _)
     if button == RightButton
         then do
             theMenu         <-  menuNew
+            menuAttachToWidget theMenu treeView
             item1           <-  menuItemNewWithLabel "Back"
             item1 `on` menuItemActivate $ reflectIDE debugBack ideR
             sep1 <- separatorMenuItemNew
