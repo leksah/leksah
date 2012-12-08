@@ -34,6 +34,7 @@ import IDE.Debug
 import IDE.LogRef (showSourceSpan)
 import Data.List (elemIndex)
 import Control.Monad.IO.Class (MonadIO(..))
+import IDE.Utils.GUIUtils (treeViewContextMenu)
 
 
 -- | A breakpoints pane description
@@ -95,10 +96,11 @@ instance RecoverablePane IDEBreakpoints BreakpointsState IDEM where
         containerAdd scrolledView treeView
         scrolledWindowSetPolicy scrolledView PolicyAutomatic PolicyAutomatic
         let pane = IDEBreakpoints scrolledView treeView breakpoints
-        treeView `onButtonPress` (breakpointViewPopup ideR breakpoints treeView)
         cid1 <- treeView `afterFocusIn`
             (\_ -> do reflectIDE (makeActive pane) ideR ; return True)
-        return (Just pane,[ConnectC cid1])
+        (cid2, cid3) <- treeViewContextMenu treeView $ breakpointsContextMenu ideR breakpoints treeView
+        cid4 <- treeView `on` rowActivated $ breakpointsSelect ideR breakpoints
+        return (Just pane, map ConnectC [cid1, cid2, cid3, cid4])
 
 fillBreakpointList :: IDEAction
 fillBreakpointList = do
@@ -136,41 +138,35 @@ selectBreak mbLogRef = do
                         Nothing  -> return ()
                         Just ind -> treeSelectionSelectPath selection [ind]
 
-breakpointViewPopup :: IDERef
-    -> TreeStore LogRef
-    -> TreeView
-    -> Event
-    -> IO (Bool)
-breakpointViewPopup ideR  store treeView (Button _ click timestamp _ _ _ button _ _)
-    = do
-    if button == RightButton
-        then do
-            theMenu         <-  menuNew
-            menuAttachToWidget theMenu treeView
-            item1           <-  menuItemNewWithLabel "Remove breakpoint"
-            item1 `on` menuItemActivate $ do
-                sel         <-  getSelectedBreakpoint treeView store
-                case sel of
-                    Just ref      -> reflectIDE (deleteBreakpoint ref) ideR
-                    otherwise     -> sysMessage Normal "Debugger>> breakpointViewPopup: no selection2"
-            sep1 <- separatorMenuItemNew
-            item2           <-  menuItemNewWithLabel "Remove all breakpoints"
-            item2 `on` menuItemActivate $ reflectIDE debugDeleteAllBreakpoints ideR
-            item3           <-  menuItemNewWithLabel "Update"
-            item3 `on` menuItemActivate $ reflectIDE debugShowBreakpoints ideR
-            mapM_ (menuShellAppend theMenu) [castToMenuItem item1, castToMenuItem sep1,
-                castToMenuItem item2, castToMenuItem item3]
-            menuPopup theMenu $ Just (button, timestamp)
-            widgetShowAll theMenu
-            return True
-        else if button == LeftButton && click == DoubleClick
-                then do sel         <-  getSelectedBreakpoint treeView store
-                        case sel of
-                            Just ref      -> reflectIDE (setCurrentBreak (Just ref)) ideR
-                            otherwise     -> sysMessage Normal "Debugger>> breakpointViewPopup: no selection2"
-                        return True
-                else return False
-breakpointViewPopup _ _ _ _ = throwIDE "breakpointViewPopup wrong event type"
+breakpointsContextMenu :: IDERef
+                       -> TreeStore LogRef
+                       -> TreeView
+                       -> Menu
+                       -> IO ()
+breakpointsContextMenu ideR store treeView theMenu = do
+    item1           <-  menuItemNewWithLabel "Remove breakpoint"
+    item1 `on` menuItemActivate $ do
+        sel         <-  getSelectedBreakpoint treeView store
+        case sel of
+            Just ref  -> reflectIDE (deleteBreakpoint ref) ideR
+            otherwise -> sysMessage Normal "Debugger>> breakpointViewPopup: no selection2"
+    sep1 <- separatorMenuItemNew
+    item2           <-  menuItemNewWithLabel "Remove all breakpoints"
+    item2 `on` menuItemActivate $ reflectIDE debugDeleteAllBreakpoints ideR
+    item3           <-  menuItemNewWithLabel "Update"
+    item3 `on` menuItemActivate $ reflectIDE debugShowBreakpoints ideR
+    mapM_ (menuShellAppend theMenu) [castToMenuItem item1, castToMenuItem sep1,
+        castToMenuItem item2, castToMenuItem item3]
+
+
+breakpointsSelect :: IDERef
+                  -> TreeStore LogRef
+                  -> TreePath
+                  -> TreeViewColumn
+                  -> IO ()
+breakpointsSelect ideR store path _ = do
+    ref <- treeStoreGetValue store path
+    reflectIDE (setCurrentBreak (Just ref)) ideR
 
 
 deleteBreakpoint :: LogRef -> IDEAction

@@ -23,12 +23,12 @@ module IDE.Pane.Search (
 ) where
 
 import Graphics.UI.Gtk
-       (menuAttachToWidget, cellTextScaleSet, cellTextScale,
-        listStoreGetValue, treeSelectionGetSelectedRows, widgetShowAll,
-        menuPopup, menuShellAppend, menuItemActivate, menuItemNewWithLabel,
-        menuNew, listStoreAppend, listStoreClear, entrySetText,
-        toggleButtonGetActive, widgetSetSensitivity, vBoxNew, entryNew,
-        scrolledWindowSetPolicy, containerAdd, scrolledWindowNew,
+       (rowActivated, Menu, menuAttachToWidget, cellTextScaleSet,
+        cellTextScale, listStoreGetValue, treeSelectionGetSelectedRows,
+        widgetShowAll, menuPopup, menuShellAppend, menuItemActivate,
+        menuItemNewWithLabel, menuNew, listStoreAppend, listStoreClear,
+        entrySetText, toggleButtonGetActive, widgetSetSensitivity, vBoxNew,
+        entryNew, scrolledWindowSetPolicy, containerAdd, scrolledWindowNew,
         treeSelectionSetMode, treeViewGetSelection,
         treeViewSetHeadersVisible, cellPixbufStockId, cellText,
         cellLayoutSetAttributes, cellLayoutPackStart, treeViewAppendColumn,
@@ -60,6 +60,7 @@ import Distribution.Text(display)
 import Control.Event (triggerEvent)
 import Control.Monad.IO.Class (MonadIO(..))
 import qualified Data.ByteString.Char8 as BS (empty, unpack)
+import System.Glib.Properties (newAttrFromMaybeStringProperty)
 
 -- | A search pane description
 --
@@ -177,12 +178,12 @@ buildSearchPane =
                                         Nothing -> ""
                                         Just pm -> display $ modu pm]
         cellLayoutSetAttributes col1 renderer10 listStore
-            $ \row -> [
-            cellPixbufStockId  := if isReexported row
-                                    then "ide_reexported"
+            $ \row -> [newAttrFromMaybeStringProperty "stock-id"
+                         := if isReexported row
+                                    then Just "ide_reexported"
                                         else if isJust (dscMbLocation row)
-                                            then "ide_source"
-                                            else ""]
+                                            then Just "ide_source"
+                                            else Nothing]
 
         renderer2   <- cellRendererTextNew
         col2        <- treeViewColumnNew
@@ -304,16 +305,15 @@ buildSearchPane =
         mb4 `on` toggled $ liftIO $ do
             active <- toggleButtonGetActive mb4
             (reflectIDE (modeSelectionCase active) ideR )
-        treeView `on` buttonPressEvent $ handleMouseEvent ideR listStore treeView
-        treeView `on` buttonPressEvent $ handleMouseEvent ideR listStore treeView
-        treeView `on` keyPressEvent $ handleKeyEvent ideR  listStore treeView
+        (cid2, cid3) <- treeViewContextMenu treeView $ searchContextMenu ideR listStore treeView
+        cid4 <- treeView `on` rowActivated $ selectDescr ideR listStore
 --            sel `onSelectionChanged` do
 --                fillInfo search ideR
         entry `on` keyReleaseEvent $ liftIO $ do
             text <- entryGetText entry
             reflectIDE (searchMetaGUI_ text) ideR
             return False
-        return (Just search,[ConnectC cid1])
+        return (Just search, map ConnectC [cid1, cid2, cid3, cid4])
 
 
 getScope :: IDESearch -> IO Scope
@@ -326,41 +326,15 @@ getSearch :: Maybe PanePath -> IDEM IDESearch
 getSearch Nothing = forceGetPane (Right "*Search")
 getSearch (Just pp)  = forceGetPane (Left pp)
 
-
-
-handleMouseEvent :: IDERef
-    -> ListStore Descr
-    -> TreeView
-    -> EventM EButton Bool
-handleMouseEvent ideR  store descrView = do
-    click <- eventClick
-    button <- eventButton
-    timestamp <- eventTime
-    liftIO $ if button == RightButton
-        then do
-            theMenu         <-  menuNew
-            menuAttachToWidget theMenu descrView
-            item1           <-  menuItemNewWithLabel "Go to definition"
-            item1 `on` menuItemActivate $ liftIO $ goToDef ideR store descrView
-
-            menuShellAppend theMenu item1
-            menuPopup theMenu $ Just (button, timestamp)
-            widgetShowAll theMenu
-            return True
-        else if button == LeftButton && click == DoubleClick
-                then selectDescr ideR store descrView
-                else return False
-
-handleKeyEvent :: IDERef
-    -> ListStore Descr
-    -> TreeView
-    -> EventM EKey Bool
-handleKeyEvent ideR  store descrView = do
-    name <- eventKeyName
-    liftIO $ if name == "Return"
-        then selectDescr ideR store descrView
-        else return False
-
+searchContextMenu :: IDERef
+                  -> ListStore Descr
+                  -> TreeView
+                  -> Menu
+                  -> IO ()
+searchContextMenu ideR store descrView theMenu = do
+    item1           <-  menuItemNewWithLabel "Go to definition"
+    item1 `on` menuItemActivate $ liftIO $ goToDef ideR store descrView
+    menuShellAppend theMenu item1
 
 goToDef ideR store descrView = do
     sel         <-  getSelectionDescr descrView store
@@ -369,13 +343,12 @@ goToDef ideR store descrView = do
                                 -- (goToDefinition descr) ideR
         otherwise       ->  sysMessage Normal "Search >> listViewPopup: no selection"
 
-selectDescr ideR store descrView= do
-    sel <-  getSelectionDescr descrView store
-    case sel of
-        Just descr      ->  reflectIDE (triggerEvent ideR (SelectIdent descr))
-                                ideR  >> return ()
-        otherwise       ->  sysMessage Normal "Search >> listViewPopup: no selection2"
-    return True
+selectDescr ideR store [i] col = do
+    descr <- listStoreGetValue store i
+    liftIO $ reflectIDE (triggerEvent ideR (SelectIdent descr)) ideR
+    return ()
+
+selectDescr _ _ _ _ = liftIO $ sysMessage Normal "Search >> selectDescr: invalid path"
 
 getSelectionDescr ::  TreeView
     ->  ListStore Descr
