@@ -28,22 +28,11 @@ export CPPFLAGS=`pkg-config --cflags-only-I libcurl`
 # Gtk2Hs needs the latest Cabal to install properly
 cabal install Cabal
 
-#if [ "$GHC_VER" != "6.12.3" ]; then
-#  LEKSAH_YI_FLAGS="-fyi -f-dyre"
-#  cd ../yi/yi || exit
-#  cabal install --only-dependencies || exit
-#  cabal configure --flags="pango -vte -vty" --extra-lib-dirs="$GTK_PREFIX/lib" || exit
-#  cabal build || exit
-#  cabal copy || exit
-#  cabal register || exit
-#  cd ..
-#fi
-
-export LEKSAH_CONFIG_ARGS="--extra-lib-dirs="$GTK_PREFIX/lib" --datasubdir="$LEKSAH_X_X""
+export LEKSAH_CONFIG_ARGS="--extra-lib-dirs="$GTK_PREFIX/lib" --datasubdir="$LEKSAH_X_X" -flibcurl"
 if test "`uname`" = "Darwin"; then
-  cabal-meta install -fgtk3 -fhave-quartz-gtk -flibcurl $LEKSAH_YI_FLAGS $LEKSAH_CONFIG_ARGS || exit
+  cabal-meta install -fgtk3 -fhave-quartz-gtk $LEKSAH_CONFIG_ARGS || exit
 else
-  cabal-meta install -flibcurl -fyi -f-vty -f-dyre -fpango $LEKSAH_CONFIG_ARGS || exit
+  cabal-meta install -fyi -f-vty -f-dyre -fpango $LEKSAH_CONFIG_ARGS || exit
 fi
 
 export SERVER_VERSION=`grep '^version: ' vendor/leksah-server/leksah-server.cabal | sed 's|version: ||' | tr -d '\r'`
