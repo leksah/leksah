@@ -89,7 +89,7 @@ flag threaded
 
 library
     if os(windows)
-        build-depends: Win32 >=2.2.0.0 && <2.3
+        build-depends: Win32 >=2.2.0.0 && <2.4
         extra-libraries: kernel32
 --        extra-lib-dirs: C:/cygwin/lib/w32api
         includes: windows.h
@@ -160,7 +160,7 @@ library
 
 Executable leksah
     if os(windows)
-        build-depends: Win32 >=2.2.0.0 && <2.3
+        build-depends: Win32 >=2.2.0.0 && <2.4
         extra-libraries: kernel32
 --        extra-lib-dirs: C:/cygwin/lib/w32api
         includes: windows.h
