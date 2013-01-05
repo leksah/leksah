@@ -650,6 +650,7 @@ treeViewPopup ideR store treeView (Button _ click _ _ _ _ button _ _) = do
     if button == RightButton
         then do
             theMenu         <-  menuNew
+            menuAttachToWidget theMenu treeView
             item1           <-  menuItemNewWithLabel "Edit"
             item1 `onActivateLeaf` do
                 sel         <-  getSelectionTree treeView store
@@ -690,6 +691,7 @@ facetViewPopup ideR store facetView (Button _ click _ _ _ _ button _ _) = do
     if button == RightButton
         then do
             theMenu         <-  menuNew
+            menuAttachToWidget theMenu treeView
             item1           <-  menuItemNewWithLabel "Go to definition"
             item1 `onActivateLeaf` do
                 sel         <-  getSelectionFacet facetView store

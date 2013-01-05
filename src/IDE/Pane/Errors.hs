@@ -34,6 +34,7 @@ import IDE.ImportTool
 import Data.List (elemIndex)
 import IDE.LogRef (showSourceSpan)
 import Control.Monad.IO.Class (MonadIO(..))
+import IDE.Utils.GUIUtils (treeViewContextMenu)
 
 -- | A breakpoints pane description
 --
@@ -104,10 +105,11 @@ builder' pp nb windows = reifyIDE $ \ ideR -> do
     containerAdd scrolledView treeView
     scrolledWindowSetPolicy scrolledView PolicyAutomatic PolicyAutomatic
     let pane = IDEErrors scrolledView treeView errorStore
-    treeView `onButtonPress` (errorViewPopup ideR errorStore treeView)
     cid1 <- treeView `afterFocusIn`
         (\_ -> do reflectIDE (makeActive pane) ideR ; return True)
-    return (Just pane,[ConnectC cid1])
+    (cid2, cid3) <- treeViewContextMenu treeView $ errorsContextMenu ideR errorStore treeView
+    cid4 <- treeView `on` rowActivated $ errorsSelect ideR errorStore
+    return (Just pane, map ConnectC [cid1, cid2, cid3, cid4])
 
 getErrors :: Maybe PanePath -> IDEM IDEErrors
 getErrors Nothing    = forceGetPane (Right "*Errors")
@@ -157,53 +159,45 @@ selectError mbLogRef = do
                         Nothing  -> return ()
                         Just ind -> treeSelectionSelectPath selection [ind]
 
-errorViewPopup :: IDERef
-    -> TreeStore ErrColumn
-    -> TreeView
-    -> Event
-    -> IO Bool
-errorViewPopup ideR  store treeView (Button _ click _ _ _ _ button _ _)
-    = do
-    if button == RightButton
-        then do
-            mbSel           <-  getSelectedError treeView store
-            theMenu         <-  menuNew
-            item0           <-  menuItemNewWithLabel "Resolve Errors"
-            item0 `on` menuItemActivate $ do
-                reflectIDE resolveErrors ideR
-            menuShellAppend theMenu item0
-            case mbSel of
-                Just sel -> do
-                    case parseNotInScope (refDescription sel) of
-                        Nothing   -> do
-                            return ()
-                        Just _  -> do
-                            item1   <-  menuItemNewWithLabel "Add Import"
-                            item1 `on` menuItemActivate $ do
-                                reflectIDE (addImport sel [] (\ _ -> return ())) ideR
-                            menuShellAppend theMenu item1
-                    case parseHiddenModule (refDescription sel) of
-                        Nothing   -> do
-                            return ()
-                        Just _  -> do
-                            item1   <-  menuItemNewWithLabel "Add Package"
-                            item1 `on` menuItemActivate $ do
-                                reflectIDE (addPackage sel >> return ()) ideR
-                            menuShellAppend theMenu item1
-                Nothing -> return ()
-            menuPopup theMenu Nothing
-            widgetShowAll theMenu
-            return True
-        else if button == LeftButton && click == DoubleClick
-                then liftIO $ do
-                        sel         <-  getSelectedError treeView store
-                        case sel of
-                            Just ref      -> reflectIDE (setCurrentError (Just ref)) ideR
-                            otherwise     -> sysMessage Normal "Error>> errorViewPopup: no selection2"
-                        return True
-                else return False
-errorViewPopup _ _ _ _ = throwIDE "errorViewPopup wrong event type"
+errorsContextMenu :: IDERef
+                  -> TreeStore ErrColumn
+                  -> TreeView
+                  -> Menu
+                  -> IO ()
+errorsContextMenu ideR store treeView theMenu = do
+    mbSel           <-  getSelectedError treeView store
+    item0           <-  menuItemNewWithLabel "Resolve Errors"
+    item0 `on` menuItemActivate $ do
+        reflectIDE resolveErrors ideR
+    menuShellAppend theMenu item0
+    case mbSel of
+        Just sel -> do
+            case parseNotInScope (refDescription sel) of
+                Nothing   -> do
+                    return ()
+                Just _  -> do
+                    item1   <-  menuItemNewWithLabel "Add Import"
+                    item1 `on` menuItemActivate $ do
+                        reflectIDE (addImport sel [] (\ _ -> return ())) ideR
+                    menuShellAppend theMenu item1
+            case parseHiddenModule (refDescription sel) of
+                Nothing   -> do
+                    return ()
+                Just _  -> do
+                    item1   <-  menuItemNewWithLabel "Add Package"
+                    item1 `on` menuItemActivate $ do
+                        reflectIDE (addPackage sel >> return ()) ideR
+                    menuShellAppend theMenu item1
+        Nothing -> return ()
 
+errorsSelect :: IDERef
+                -> TreeStore ErrColumn
+                -> TreePath
+                -> TreeViewColumn
+                -> IO ()
+errorsSelect ideR store path _ = do
+    ref <- treeStoreGetValue store path
+    reflectIDE (setCurrentError (Just (logRef ref))) ideR
 
 
 

@@ -63,6 +63,8 @@ import Control.Monad.IO.Class (MonadIO(..))
 import Control.Monad (when)
 import Control.Monad.Trans.Class (MonadTrans(..))
 import Control.Monad.Trans.Reader (ask)
+import IDE.Utils.GUIUtils (treeViewContextMenu)
+import System.Glib.Properties (newAttrFromMaybeStringProperty)
 
 -- | A modules pane description
 --
@@ -164,7 +166,7 @@ instance RecoverablePane IDEModules ModulesState IDEM where
             --treeViewSetRulesHint treeView True
 
             renderer0    <- cellRendererPixbufNew
-            set renderer0 [ cellPixbufStockId  := "" ]
+            set renderer0 [ newAttrFromMaybeStringProperty "stock-id"  := Nothing ]
 
             renderer    <- cellRendererTextNew
             col         <- treeViewColumnNew
@@ -179,12 +181,12 @@ instance RecoverablePane IDEModules ModulesState IDEM where
                 $ \row -> [ cellText := fst row]
             cellLayoutSetAttributes col renderer0 treeStore
                 $ \row -> [
-                cellPixbufStockId  :=
+                newAttrFromMaybeStringProperty "stock-id" :=
                    case snd row of
-                        Nothing -> ""
+                        Nothing -> Nothing
                         Just pair -> if isJust (mdMbSourcePath (fst pair))
-                                         then "ide_source"
-                                        else ""]
+                                         then Just "ide_source"
+                                         else Nothing]
 
             renderer2   <- cellRendererTextNew
             col2        <- treeViewColumnNew
@@ -233,7 +235,7 @@ instance RecoverablePane IDEModules ModulesState IDEM where
                                                     if dscExported row
                                                         then "ide_source"
                                                         else "ide_source_local"
-                                                else ""]
+                                                else "ide_empty"]
             treeViewSetHeadersVisible descrView True
             treeViewSetEnableSearch descrView True
             treeViewSetSearchEqualFunc descrView (Just (descrViewSearch descrView descrStore))
@@ -276,16 +278,14 @@ instance RecoverablePane IDEModules ModulesState IDEM where
             scopeRef <- newIORef (SystemScope,True)
             let modules = IDEModules boxOuter pane' treeView treeStore descrView descrStore
                                 rb1 rb2 rb3 cb2 cb oldState expanderState
-            cid3 <- treeView `onRowActivated`
-                (\ treePath _ -> do
-                    treeViewExpandRow treeView treePath False
-                    return ())
             cid1 <- treeView `afterFocusIn`
                 (\_ -> do reflectIDE (makeActive modules) ideR; return True)
             cid2 <- descrView `afterFocusIn`
                 (\_ -> do reflectIDE (makeActive modules) ideR; return True)
-            treeView  `onButtonPress` (treeViewPopup ideR treeStore treeView)
-            descrView `onButtonPress` (descrViewPopup ideR descrStore descrView)
+            (cid3, cid4) <- treeViewContextMenu treeView $ modulesContextMenu ideR treeStore treeView
+            cid5 <- treeView `on` rowActivated $ modulesSelect ideR treeStore treeView
+            (cid6, cid7) <- treeViewContextMenu descrView $ descrViewContextMenu ideR descrStore descrView
+            cid8 <- descrView `on` rowActivated $ descrViewSelect ideR descrStore
             rb1 `onToggled` (reflectIDE scopeSelection ideR)
             rb2 `onToggled` (reflectIDE scopeSelection ideR)
             rb3 `onToggled` (reflectIDE scopeSelection ideR)
@@ -301,7 +301,7 @@ instance RecoverablePane IDEModules ModulesState IDEM where
                 fillInfo descrView descrStore ideR
                 reflectIDE recordSelHistory ideR
                 return ()
-            return (Just modules,[ConnectC cid1,ConnectC cid2, ConnectC cid3])
+            return (Just modules,map ConnectC [cid1, cid2, cid3, cid4, cid5, cid6, cid7, cid8])
 
 selectIdentifier :: Descr -> Bool -> IDEAction
 selectIdentifier idDescr openSource= do
@@ -753,126 +753,110 @@ instance Ord a => Ord (Tree a) where
 sortTree :: Ord a => Tree a -> Tree a
 sortTree (Node l forest)    =   Node l (sort (map sortTree forest))
 
-treeViewPopup :: IDERef
-    -> TreeStore (String, Maybe (ModuleDescr,PackageDescr))
-    -> TreeView
-    -> Event
-    -> IO (Bool)
-treeViewPopup ideR  store treeView (Button _ click _ _ _ _ button _ _) = do
-    if button == RightButton
-        then do
-            theMenu         <-  menuNew
-            item1           <-  menuItemNewWithLabel "Edit source"
-            item1 `on` menuItemActivate $ do
-                sel         <-  getSelectionTree treeView store
-                case sel of
-                    Just (_,Just (m,_)) -> case mdMbSourcePath m of
-                                            Nothing     ->  return ()
-                                            Just fp     ->  do
-                                                reflectIDE (selectSourceBuf fp) ideR
+modulesContextMenu :: IDERef
+                   -> TreeStore (String, Maybe (ModuleDescr,PackageDescr))
+                   -> TreeView
+                   -> Menu
+                   -> IO ()
+modulesContextMenu ideR store treeView theMenu = do
+    item1           <-  menuItemNewWithLabel "Edit source"
+    item1 `on` menuItemActivate $ do
+        sel         <-  getSelectionTree treeView store
+        case sel of
+            Just (_,Just (m,_)) -> case mdMbSourcePath m of
+                                    Nothing     ->  return ()
+                                    Just fp     ->  do
+                                        reflectIDE (selectSourceBuf fp) ideR
+                                        return ()
+            otherwise       ->  return ()
+    sep1 <- separatorMenuItemNew
+    item2           <-  menuItemNewWithLabel "Expand here"
+    item2 `on` menuItemActivate $ expandHere treeView
+    item3           <-  menuItemNewWithLabel "Collapse here"
+    item3 `on` menuItemActivate $ collapseHere treeView
+    item4           <-  menuItemNewWithLabel "Expand all"
+    item4 `on` menuItemActivate $ treeViewExpandAll treeView
+    item5           <-  menuItemNewWithLabel "Collapse all"
+    item5 `on` menuItemActivate $ treeViewCollapseAll treeView
+    sep2 <- separatorMenuItemNew
+    item6           <-  menuItemNewWithLabel "Add module"
+    item6 `on` menuItemActivate $ reflectIDE (packageTry $ addModule' treeView store) ideR
+    item7           <-  menuItemNewWithLabel "Delete module"
+    item7 `on` menuItemActivate $ do
+        sel         <-  getSelectionTree treeView store
+        case sel of
+            Just (_,Just (m,_)) -> case mdMbSourcePath m of
+                                    Nothing     ->  return ()
+                                    Just fp     ->  do
+                                        resp <- reflectIDE (respDelModDialog)ideR
+                                        if (resp == False) then return ()
+                                            else do
+                                                exists <- doesFileExist fp
+                                                if exists
+                                                   then do
+                                                     reflectIDE (liftIO $ removeFile fp) ideR
+                                                     reflectIDE (packageTry $ delModule treeView store)ideR
+                                                   else do
+                                                     reflectIDE (packageTry $ delModule treeView store)ideR
+                                                reflectIDE (packageTry packageConfig) ideR
                                                 return ()
-                    otherwise       ->  return ()
-            sep1 <- separatorMenuItemNew
-            item2           <-  menuItemNewWithLabel "Expand here"
-            item2 `on` menuItemActivate $ expandHere treeView
-            item3           <-  menuItemNewWithLabel "Collapse here"
-            item3 `on` menuItemActivate $ collapseHere treeView
-            item4           <-  menuItemNewWithLabel "Expand all"
-            item4 `on` menuItemActivate $ treeViewExpandAll treeView
-            item5           <-  menuItemNewWithLabel "Collapse all"
-            item5 `on` menuItemActivate $ treeViewCollapseAll treeView
-            sep2 <- separatorMenuItemNew
-            item6           <-  menuItemNewWithLabel "Add module"
-            item6 `on` menuItemActivate $ reflectIDE (packageTry $ addModule' treeView store) ideR
-            item7           <-  menuItemNewWithLabel "Delete module"
-            item7 `on` menuItemActivate $ do
-                sel         <-  getSelectionTree treeView store
-                case sel of
-                    Just (_,Just (m,_)) -> case mdMbSourcePath m of
-                                            Nothing     ->  return ()
-                                            Just fp     ->  do
-                                                resp <- reflectIDE (respDelModDialog)ideR
-                                                if (resp == False) then return ()
-                                                    else do
-                                                        exists <- doesFileExist fp
-                                                        if exists
-                                                           then do
-                                                             reflectIDE (liftIO $ removeFile fp) ideR
-                                                             reflectIDE (packageTry $ delModule treeView store)ideR
-                                                           else do
-                                                             reflectIDE (packageTry $ delModule treeView store)ideR
-                                                        reflectIDE (packageTry packageConfig) ideR
-                                                        return ()
-                    otherwise       ->  return ()
-            sel         <-  getSelectionTree treeView store
-            case sel of
-                Just (s, Nothing) -> do
-                    mapM_ (menuShellAppend theMenu) [castToMenuItem item1, castToMenuItem sep1, castToMenuItem item2,
-                        castToMenuItem item3, castToMenuItem item4, castToMenuItem item5, castToMenuItem sep2,
-                        castToMenuItem item6]
-                    menuPopup theMenu Nothing
-                    widgetShowAll theMenu
-                    return True
-                Just (_,Just (m,_)) -> do
-                    mapM_ (menuShellAppend theMenu) [castToMenuItem item1, castToMenuItem sep1, castToMenuItem item2,
-                        castToMenuItem item3, castToMenuItem item4, castToMenuItem item5, castToMenuItem sep2,
-                        castToMenuItem item6, castToMenuItem item7]
-                    menuPopup theMenu Nothing
-                    widgetShowAll theMenu
-                    return True
-                otherwise -> return True
+            otherwise       ->  return ()
+    sel         <-  getSelectionTree treeView store
+    case sel of
+        Just (s, Nothing) -> do
+            mapM_ (menuShellAppend theMenu) [castToMenuItem item1, castToMenuItem sep1, castToMenuItem item2,
+                castToMenuItem item3, castToMenuItem item4, castToMenuItem item5, castToMenuItem sep2,
+                castToMenuItem item6]
+        Just (_,Just (m,_)) -> do
+            mapM_ (menuShellAppend theMenu) [castToMenuItem item1, castToMenuItem sep1, castToMenuItem item2,
+                castToMenuItem item3, castToMenuItem item4, castToMenuItem item5, castToMenuItem sep2,
+                castToMenuItem item6, castToMenuItem item7]
+        otherwise -> return ()
 
-        else if button == LeftButton && click == DoubleClick
-                then do sel         <-  getSelectionTree treeView store
-                        case sel of
-                            Just (_,Just (m,_)) -> case mdMbSourcePath m of
-                                                    Nothing     ->  return ()
-                                                    Just fp     ->  do
-                                                        reflectIDE (selectSourceBuf fp) ideR
-                                                        return ()
-                            otherwise       ->  return ()
-                        return True
-                else return False
+modulesSelect :: IDERef
+              -> TreeStore (String, Maybe (ModuleDescr,PackageDescr))
+              -> TreeView
+              -> TreePath
+              -> TreeViewColumn
+              -> IO ()
+modulesSelect ideR store treeView path _ = do
+    treeViewExpandRow treeView path False
+    sel <- treeStoreGetValue store path
+    case sel of
+        (_,Just (m,_)) -> do
+            case mdMbSourcePath m of
+                Nothing -> return ()
+                Just fp -> liftIO $ reflectIDE (selectSourceBuf fp) ideR >> return ()
+        _ -> return ()
 
-treeViewPopup _ _ _ _ = throwIDE "treeViewPopup wrong event type"
+descrViewContextMenu :: IDERef
+                   -> TreeStore Descr
+                   -> TreeView
+                   -> Menu
+                   -> IO ()
+descrViewContextMenu ideR store descrView theMenu = do
+    item1           <-  menuItemNewWithLabel "Go to definition"
+    item1 `on` menuItemActivate $ do
+        sel         <-  getSelectionDescr descrView store
+        case sel of
+            Just descr      ->  reflectIDE (goToDefinition descr) ideR
+            otherwise       ->  sysMessage Normal "Modules>> descrViewPopup: no selection"
+    item2           <-  menuItemNewWithLabel "Insert in buffer"
+    item2 `on` menuItemActivate $ do
+        sel         <-  getSelectionDescr descrView store
+        case sel of
+            Just descr      ->  reflectIDE (insertInBuffer descr) ideR
+            otherwise       ->  sysMessage Normal "Modules>> descrViewPopup: no selection"
+    mapM_ (menuShellAppend theMenu) [item1, item2]
 
-descrViewPopup :: IDERef
-    -> TreeStore Descr
-    -> TreeView
-    -> Event
-    -> IO (Bool)
-descrViewPopup ideR  store descrView (Button _ click _ _ _ _ button _ _) = do
-    if button == RightButton
-        then do
-            theMenu         <-  menuNew
-            item1           <-  menuItemNewWithLabel "Go to definition"
-            item1 `on` menuItemActivate $ do
-                sel         <-  getSelectionDescr descrView store
-                case sel of
-                    Just descr      ->  reflectIDE (goToDefinition descr) ideR
-                    otherwise       ->  sysMessage Normal "Modules>> descrViewPopup: no selection"
-            item2           <-  menuItemNewWithLabel "Insert in buffer"
-            item2 `on` menuItemActivate $ do
-                sel         <-  getSelectionDescr descrView store
-                case sel of
-                    Just descr      ->  reflectIDE (insertInBuffer descr) ideR
-                    otherwise       ->  sysMessage Normal "Modules>> descrViewPopup: no selection"
-            mapM_ (menuShellAppend theMenu) [item1, item2]
-            menuPopup theMenu Nothing
-            widgetShowAll theMenu
-            return True
-        else if button == LeftButton && click == DoubleClick
-                then do sel         <-  getSelectionDescr descrView store
-                        case sel of
-                            Just descr      -> reflectIDE (goToDefinition descr) ideR
-                            otherwise       ->  sysMessage Normal "Modules>> descrViewPopup: no selection2"
-                        return True
-                else do
-                    mbPane :: Maybe IDEInfo <- reflectIDE getPane ideR
-                    when (isJust mbPane) $ bringPaneToFront (fromJust mbPane)
-                    return False
-
-descrViewPopup _ _ _ _ = throwIDE "descrViewPopup wrong event type"
+descrViewSelect :: IDERef
+              -> TreeStore Descr
+              -> TreePath
+              -> TreeViewColumn
+              -> IO ()
+descrViewSelect ideR store path _ = do
+    descr <- treeStoreGetValue store path
+    reflectIDE (goToDefinition descr) ideR
 
 setScope :: (Scope,Bool) -> IDEAction
 setScope (sc,bl) = do

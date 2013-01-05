@@ -49,6 +49,7 @@ import IDE.Workspaces (packageTry, packageTryQuiet)
 import qualified Data.Enumerator.List as EL (consume)
 import Control.Monad.Trans.Class (MonadTrans(..))
 import Control.Monad.IO.Class (MonadIO(..))
+import IDE.Utils.GUIUtils (treeViewContextMenu)
 
 -- | A variables pane description
 --
@@ -133,10 +134,11 @@ builder' pp nb windows = reifyIDE $  \ideR -> do
     scrolledWindowSetPolicy scrolledView PolicyAutomatic PolicyAutomatic
 
     let pane = IDEVariables scrolledView treeView variables
-    treeView `onButtonPress` (variablesViewPopup ideR variables treeView)
     cid1 <- treeView `afterFocusIn`
         (\_ -> do reflectIDE (makeActive pane) ideR ; return True)
-    return (Just pane,[ConnectC cid1])
+    (cid2, cid3) <- treeViewContextMenu treeView $ variablesContextMenu ideR variables treeView
+    cid4 <- treeView `on` rowActivated $ variablesSelect ideR variables
+    return (Just pane, map ConnectC [cid1, cid2, cid3, cid4])
 
 
 fillVariablesListQuiet :: IDEAction
@@ -238,44 +240,38 @@ symbol = P.symbol lexer
 whiteSpace = P.whiteSpace lexer
 
 
-variablesViewPopup :: IDERef
-    -> TreeStore VarDescription
-    -> TreeView
-    -> Event
-    -> IO (Bool)
-variablesViewPopup ideR  store treeView (Button _ click _ _ _ _ button _ _)
-    = do
-    if button == RightButton
-        then do
-            theMenu         <-  menuNew
-            item1           <-  menuItemNewWithLabel "Force"
-            item1 `on` menuItemActivate $ do
-                mbSel  <-  getSelectedVariable treeView store
-                case mbSel of
-                    Just (varDescr,path) -> reflectIDE (forceVariable varDescr path store) ideR
-                    otherwise     -> return ()
-            sep1 <- separatorMenuItemNew
-            item2           <-  menuItemNewWithLabel "Print"
-            item2 `on` menuItemActivate $ do
-                mbSel  <-  getSelectedVariable treeView store
-                case mbSel of
-                    Just (varDescr,path) -> reflectIDE (printVariable varDescr path store) ideR
-                    otherwise     -> return ()
-            item3           <-  menuItemNewWithLabel "Update"
-            item3 `on` menuItemActivate $ postGUIAsync (reflectIDE fillVariablesList ideR)
-            mapM_ (menuShellAppend theMenu) [castToMenuItem item1,
-                castToMenuItem item2, castToMenuItem sep1, castToMenuItem item3]
-            menuPopup theMenu Nothing
-            widgetShowAll theMenu
-            return True
-        else if button == LeftButton && click == DoubleClick
-                then do mbSel         <-  getSelectedVariable treeView store
-                        case mbSel of
-                            Just (varDescr,path) -> reflectIDE (forceVariable varDescr path store) ideR
-                            otherwise     -> return ()
-                        return True
-                else return False
-variablesViewPopup _ _ _ _ = throwIDE "variablesViewPopup wrong event type"
+variablesContextMenu :: IDERef
+                  -> TreeStore VarDescription
+                  -> TreeView
+                  -> Menu
+                  -> IO ()
+variablesContextMenu ideR store treeView theMenu = do
+    item1           <-  menuItemNewWithLabel "Force"
+    item1 `on` menuItemActivate $ do
+        mbSel  <-  getSelectedVariable treeView store
+        case mbSel of
+            Just (varDescr,path) -> reflectIDE (forceVariable varDescr path store) ideR
+            otherwise     -> return ()
+    sep1 <- separatorMenuItemNew
+    item2           <-  menuItemNewWithLabel "Print"
+    item2 `on` menuItemActivate $ do
+        mbSel  <-  getSelectedVariable treeView store
+        case mbSel of
+            Just (varDescr,path) -> reflectIDE (printVariable varDescr path store) ideR
+            otherwise     -> return ()
+    item3           <-  menuItemNewWithLabel "Update"
+    item3 `on` menuItemActivate $ postGUIAsync (reflectIDE fillVariablesList ideR)
+    mapM_ (menuShellAppend theMenu) [castToMenuItem item1,
+        castToMenuItem item2, castToMenuItem sep1, castToMenuItem item3]
+
+variablesSelect :: IDERef
+                -> TreeStore VarDescription
+                -> TreePath
+                -> TreeViewColumn
+                -> IO ()
+variablesSelect ideR store path _ = do
+    varDescr <- treeStoreGetValue store path
+    reflectIDE (forceVariable varDescr path store) ideR
 
 forceVariable :: VarDescription -> TreePath -> TreeStore VarDescription -> IDEAction
 forceVariable varDescr path treeStore = packageTry $ tryDebug $ do
