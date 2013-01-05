@@ -30,10 +30,14 @@ cabal install Cabal
 
 export LEKSAH_CONFIG_ARGS="--extra-lib-dirs="$GTK_PREFIX/lib" --datasubdir="$LEKSAH_X_X" -flibcurl"
 if test "`uname`" = "Darwin"; then
-  cabal-meta install -fgtk3 -fhave-quartz-gtk $LEKSAH_CONFIG_ARGS || exit
+    export LEKSAH_CONFIG_ARGS="$LEKSAH_CONFIG_ARGS -fgtk3 -fhave-quartz-gtk"
 else
-  cabal-meta install -fyi -f-vty -f-dyre -fpango $LEKSAH_CONFIG_ARGS || exit
+  if [ "$GHC_VER" != "7.0.3" ]; then
+    export LEKSAH_CONFIG_ARGS="$LEKSAH_CONFIG_ARGS -fyi -f-vty -f-dyre -fpango"
+  fi
 fi
+
+cabal-meta install $LEKSAH_CONFIG_ARGS || exit
 
 export SERVER_VERSION=`grep '^version: ' vendor/leksah-server/leksah-server.cabal | sed 's|version: ||' | tr -d '\r'`
 export LEKSAH_SERVER_X_X_X_X=leksah-server-$SERVER_VERSION

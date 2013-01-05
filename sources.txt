@@ -3,5 +3,4 @@ https://github.com/leksah/ltk
 https://github.com/leksah/leksah-server
 https://github.com/leksah/haskellVCSWrapper.git
 https://github.com/leksah/haskellVCSGUI.git
-https://github.com/yi-editor/yi.git
 ./
