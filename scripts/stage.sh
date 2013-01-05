@@ -1,5 +1,9 @@
 #!/bin/sh
 
+ghc-pkg unregister leksah || true
+ghc-pkg unregister leksah-server || true
+ghc-pkg unregister ltk || true
+
 export FULL_VERSION=`grep '^version: ' leksah.cabal | sed 's|version: ||' | tr -d '\r'`
 export SHORT_VERSION=`echo $FULL_VERSION | sed 's|\.[0-9]*\.[0-9]*$||'`
 export LEKSAH_X_X_X_X=leksah-$FULL_VERSION
