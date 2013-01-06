@@ -31,9 +31,6 @@ import Data.Maybe
 import Data.Typeable
 import IDE.Core.State
 import IDE.BufferMode
-import Control.Concurrent
-       (forkOS, newEmptyMVar, isEmptyMVar, takeMVar, putMVar, MVar,
-        forkIO)
 import IDE.LogRef (logOutput, defaultLineLogger)
 import IDE.Pane.SourceBuffer
     (goToSourceDefinition, maybeActiveBuf, IDEBuffer(..))
@@ -49,7 +46,7 @@ import qualified Data.Enumerator.List as EL
        (foldM, head, dropWhile, isolate)
 import Data.Enumerator (($$), (>>==))
 import qualified Data.List as L ()
-import Control.Monad (foldM, when)
+import Control.Monad (forM_, foldM, when)
 import Control.Monad.Trans.Reader (ask)
 import Control.Monad.Trans.Class (MonadTrans(..))
 import Control.Monad.IO.Class (MonadIO(..))
@@ -62,8 +59,7 @@ data HLintRecord = HLintRecord {
         ,   line        :: Int
         ,   context     :: String
         ,   parDir      :: Maybe FilePath
-        }
-
+        } deriving (Eq)
 
 isDir HLintRecord{parDir = Nothing}  = True
 isDir otherwies                     = False
@@ -75,8 +71,6 @@ data IDEHLint       =   IDEHLint {
     scrolledView    ::   ScrolledWindow
 ,   treeView        ::   TreeView
 ,   hlintStore      ::   TreeStore HLintRecord
-,   waitingHLint    ::   MVar Bool
-,   activeHLint     ::   MVar Bool
 } deriving Typeable
 
 data HLintState      =   HLintState
@@ -121,10 +115,7 @@ instance RecoverablePane IDEHLint HLintState IDEM where
         containerAdd scrolledView treeView
         scrolledWindowSetPolicy scrolledView PolicyAutomatic PolicyAutomatic
 
-        waitingHLint <- newEmptyMVar
-        activeHLint <- newEmptyMVar
         let hlint = IDEHLint {..}
-        let
             gotoSource :: Bool -> IO Bool
             gotoSource focus = do
                 sel <- getSelectionHLintRecord treeView hlintStore
@@ -139,7 +130,18 @@ instance RecoverablePane IDEHLint HLintState IDEM where
                 return True
         cid1 <- treeView `afterFocusIn`
             (\_ -> do reflectIDE (makeActive hlint) ideR ; return True)
-        cid2 <- treeView `onKeyPress`
+        cid2 <- treeView `onRowExpanded` \ iter path -> do
+            record <- treeStoreGetValue hlintStore path
+            case record of
+                HLintRecord { file = f, parDir = Nothing } -> refreshDir hlintStore iter f
+                _ -> reflectIDE (ideMessage Normal "Unexpected Expansion in HLint Pane") ideR
+        cid3 <- treeView `onRowActivated` \ path col -> do
+            record <- treeStoreGetValue hlintStore path
+            mbIter <- treeModelGetIter hlintStore path
+            case (mbIter, record) of
+                (Just iter, HLintRecord { file = f, parDir = Nothing }) -> refreshDir hlintStore iter f
+                _ -> return ()
+        cid4 <- treeView `onKeyPress`
             (\e ->
                 case e of
                     k@(Gdk.Key _ _ _ _ _ _ _ _ _ _)
@@ -160,8 +162,7 @@ instance RecoverablePane IDEHLint HLintState IDEM where
              )
         sel `onSelectionChanged` (gotoSource False >> return ())
 
-
-        return (Just hlint,[ConnectC cid1])
+        return (Just hlint,map ConnectC [cid1, cid2, cid3, cid4])
 
 getHLint :: Maybe PanePath -> IDEM IDEHLint
 getHLint Nothing    = forceGetPane (Right "*HLint")
@@ -205,64 +206,76 @@ refreshHLint = do
             Just active -> active : (filter (/= active) $ wsPackages ws)
             Nothing     -> wsPackages ws
     lift $ hlintDirectories $
-            map (\p -> (dropFileName (ipdCabalFile p), ipdSrcDirs p)) $ packages
+            concatMap (\p -> map (dropFileName (ipdCabalFile p) </>) $ ipdSrcDirs p) $ packages
 
-hlintDirectories :: [(FilePath, [FilePath])] -> IDEAction
+hlintDirectories :: [FilePath] -> IDEAction
 hlintDirectories dirs = do
     hlint <- getHLint Nothing
     let store = hlintStore hlint
-    ideRef <- ask
-    liftIO $ do
-        bringPaneToFront hlint
-        forkIO $ do
-            putMVar (waitingHLint hlint) True
-            putMVar (activeHLint hlint) True
-            takeMVar (waitingHLint hlint)
-
-            postGUISync $ treeStoreClear store
-
-            totalFound <- foldM (\a (dir, subDirs) -> do
-                nooneWaiting <- isEmptyMVar (waitingHLint hlint)
-                found <- if nooneWaiting
-                    then do
-                        suggestions <- take 1000 <$> H.hlint subDirs
-                        reflectIDE (setHLintResults dir suggestions) ideRef
-                    else return 0
-                return $ a + found) 0 dirs
-
-            nooneWaiting <- isEmptyMVar (waitingHLint hlint)
-            when nooneWaiting $ postGUISync $ do
-                nDir <- treeModelIterNChildren store Nothing
-                treeStoreInsert store [] nDir $ HLintRecord "Search Complete" totalFound "" Nothing
-
-            takeMVar (activeHLint hlint) >> return ()
-    return ()
-
-setHLintResults :: FilePath -> [Suggestion] -> IDEM Int
-setHLintResults dir suggestions = do
-    ideRef <- ask
-    hlint <- getHLint Nothing
-    log <- getLog
-    let store = hlintStore hlint
-        view  = treeView hlint
-    nDir <- liftIO $ postGUISync $ do
+    liftIO . forM_ dirs $ \ dir -> do
         nDir <- treeModelIterNChildren store Nothing
         treeStoreInsert store [] nDir $ HLintRecord dir 0 dir Nothing
-        when (nDir == 0) (widgetGrabFocus view >> return())
-        return nDir
-    foldM (\count suggestion -> liftIO $ do
-        nooneWaiting <- isEmptyMVar (waitingHLint hlint)
-        when nooneWaiting $ postGUISync $ do
-            parent <- treeModelGetIter store [nDir]
-            n <- treeModelIterNChildren store parent
-            let loc = suggestionLocation suggestion
-            treeStoreInsert store [nDir] n HLintRecord {
-                file = srcFilename loc,
-                line = srcLine loc,
-                context = show suggestion,
-                parDir = Just dir }
-            treeStoreChange store [nDir] (\r -> r{ line = n+1 })
-            when (nDir == 0 && n == 0) $
-                treeViewExpandAll view
-        return (count+1)) 0 suggestions
+        treeStoreInsert store [nDir] 0 $ HLintRecord dir 0 dir Nothing
 
+refreshDir :: TreeStore HLintRecord -> TreeIter -> FilePath -> IO ()
+refreshDir store iter dir = do
+    suggestions <- take 1000 <$> H.hlint [dir]
+    setHLintResults store iter dir suggestions
+    return ()
+
+hlintRecord dir suggestion = HLintRecord {
+    file = srcFilename loc,
+    line = srcLine loc,
+    context = show suggestion,
+    parDir = Just dir}
+  where
+    loc = suggestionLocation suggestion
+
+setHLintResults :: TreeStore HLintRecord -> TreeIter -> FilePath -> [Suggestion] -> IO Int
+setHLintResults store parent dir suggestions = do
+    parentPath <- treeModelGetPath store parent
+    forM_ (zip [0..] records) $ \(n, record) -> do
+        mbChild <- treeModelIterNthChild store (Just parent) n
+        findResult <- find record store mbChild
+        case (mbChild, findResult) of
+            (_, WhereExpected _) -> return ()
+            (Just iter, Found _) -> do
+                path <- treeModelGetPath store iter
+                removeUntil record store path
+            _ -> do
+                treeStoreInsert store parentPath n $ record
+    removeRemaining store (parentPath++[nRecords])
+    return nRecords
+  where
+    records = map (hlintRecord dir) suggestions
+    nRecords = length records
+
+data FindResult = WhereExpected TreeIter | Found TreeIter | NotFound
+
+find :: Eq a => a -> TreeStore a -> Maybe TreeIter -> IO FindResult
+find _ _ Nothing = return NotFound
+find a store (Just iter) = do
+    row <- treeModelGetRow store iter
+    if row == a
+        then return $ WhereExpected iter
+        else treeModelIterNext store iter >>= find'
+  where
+    find' :: Maybe TreeIter -> IO FindResult
+    find' Nothing = return NotFound
+    find' (Just iter) = do
+        row <- treeModelGetRow store iter
+        if row == a
+            then return $ Found iter
+            else treeModelIterNext store iter >>= find'
+
+removeUntil :: Eq a => a -> TreeStore a -> TreePath -> IO ()
+removeUntil a store path = do
+    row <- treeStoreGetValue store path
+    when (row /= a) $ do
+        found <- treeStoreRemove store path
+        when found $ removeUntil a store path
+
+removeRemaining :: TreeStore a -> TreePath -> IO ()
+removeRemaining store path = do
+    found <- treeStoreRemove store path
+    when found $ removeRemaining store path
