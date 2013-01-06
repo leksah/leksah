@@ -103,6 +103,7 @@ import IDE.Pane.Trace (fillTraceList)
 import IDE.PaneGroups
 import IDE.Pane.Search (getSearch, IDESearch(..))
 import IDE.Pane.Grep (getGrep)
+import IDE.Pane.HLint (getHLint)
 import IDE.Pane.Files (getFiles)
 import Control.Monad.IO.Class (MonadIO(..))
 import Control.Monad (unless, when)
@@ -340,6 +341,8 @@ mkActions =
         (getFiles Nothing  >>= \ p -> displayPane p False) [] False
     ,AD "ShowGrep" "Grep" Nothing Nothing
         (getGrep Nothing  >>= \ p -> displayPane p False) [] False
+    ,AD "ShowHLint" "HLint" Nothing Nothing
+        (getHLint Nothing  >>= \ p -> displayPane p False) [] False
     ,AD "ShowErrors" "Errors" Nothing Nothing
         (getErrors Nothing  >>= \ p -> displayPane p False) [] False
     ,AD "ShowLog" "Log" Nothing Nothing
