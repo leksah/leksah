@@ -248,12 +248,7 @@ instance RecoverablePane IDEModules ModulesState IDEM where
             scrolledWindowSetPolicy sw2 PolicyAutomatic PolicyAutomatic
             panedAdd1 pane' sw
             panedAdd2 pane' sw2
-#ifdef GTK3
-            x <- widgetGetAllocatedWidth nb
-            y <- widgetGetAllocatedHeight nb
-#else
             (Rectangle _ _ x y) <- liftIO $ widgetGetAllocation nb
-#endif
             panedSetPosition pane' (max 200 (x `quot` 2))
             box             <-  hBoxNew True 2
             rb1             <-  radioButtonNewWithLabel "Package"
