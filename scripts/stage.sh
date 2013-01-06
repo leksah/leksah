@@ -28,11 +28,19 @@ export CPPFLAGS=`pkg-config --cflags-only-I libcurl`
 # Gtk2Hs needs the latest Cabal to install properly
 cabal install Cabal
 
+echo darcs:http://code.haskell.org/gtksourceview > sources.txt
+echo https://github.com/leksah/ltk >> sources.txt
+echo https://github.com/leksah/leksah-server >> sources.txt
+echo https://github.com/leksah/haskellVCSWrapper.git >> sources.txt
+echo https://github.com/leksah/haskellVCSGUI.git >> sources.txt
+echo ./ >> sources.txt
+
 export LEKSAH_CONFIG_ARGS="--extra-lib-dirs="$GTK_PREFIX/lib" --datasubdir="$LEKSAH_X_X" -flibcurl"
 if test "`uname`" = "Darwin"; then
     export LEKSAH_CONFIG_ARGS="$LEKSAH_CONFIG_ARGS -fgtk3 -fhave-quartz-gtk"
 else
-  if [ "$GHC_VER" != "7.0.3" ]; then
+  if [ "$GHC_VER" != "7.0.3" ] && [ "$GHC_VER" != "7.0.4" ] && [ "$GHC_VER" != "7.6.1" ]; then
+    echo https://github.com/yi-editor/yi.git >> sources.txt
     export LEKSAH_CONFIG_ARGS="$LEKSAH_CONFIG_ARGS -fyi -f-vty -f-dyre -fpango"
   fi
 fi
