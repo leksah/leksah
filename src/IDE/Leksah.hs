@@ -361,7 +361,8 @@ fDescription configPath = VFD emptyParams [
         mkField
             (paraName <<<- ParaName "Paths under which haskell sources for packages may be found"
                 $ paraDirection  <<<- ParaDirection Vertical
-                    $ emptyParams)
+                    $ paraMinSize <<<- ParaMinSize (-1, 150)
+                        $ emptyParams)
             sourceDirectories
             (\b a -> a{sourceDirectories = b})
             (filesEditor Nothing FileChooserActionSelectFolder "Select folders")
@@ -406,9 +407,6 @@ firstStart prefs = do
     sw <- scrolledWindowNew Nothing Nothing
     scrolledWindowAddWithViewport sw widget
     scrolledWindowSetPolicy sw PolicyNever PolicyAutomatic
-#ifdef GTK3
-    scrolledWindowSetMinContentHeight sw 150
-#endif
     boxPackStart (castToBox vb) sw PackGrow 7
     windowSetDefaultSize dialog 800 630
     widgetShowAll dialog
