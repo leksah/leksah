@@ -87,6 +87,10 @@ flag threaded
     default: False
     description: Build with support for multithreaded execution
 
+Flag gtk3
+    Default: False
+    Description: Use GTK3 rather than GTK2
+
 library
     if os(windows)
         build-depends: Win32 >=2.2.0.0 && <2.4
@@ -110,6 +114,9 @@ library
 
     if flag(threaded)
         ghc-options: -threaded
+
+    if flag(gtk3)
+        cpp-options: -DGTK3
 
     hs-source-dirs: src
     default-language: Haskell98
@@ -187,6 +194,9 @@ Executable leksah
 
     if flag(threaded)
         ghc-options: -threaded
+
+    if flag(gtk3)
+        cpp-options: -DGTK3
 
     if impl(ghc < 7.0)
         hs-source-dirs: src, main

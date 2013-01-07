@@ -41,6 +41,11 @@ export PANGO_RC_FILE="$bundle_etc/pango/pangorc"
 export PANGO_LIBDIR="$bundle_lib"
 export PANGO_SYSCONFDIR="$bundle_etc"
 
+export leksah_bindir="$bundle_bin"
+export leksah_libdir="$bundle_lib/leksah-0.13/ghc"
+export leksah_datadir="$bundle_data/leksah-0.13"
+export leksah_libexecdir="$bundle_res/libexec"
+
 APP=name
 I18NDIR="$bundle_data/locale"
 # Set the locale-related variables appropriately:

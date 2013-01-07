@@ -406,6 +406,9 @@ firstStart prefs = do
     sw <- scrolledWindowNew Nothing Nothing
     scrolledWindowAddWithViewport sw widget
     scrolledWindowSetPolicy sw PolicyNever PolicyAutomatic
+#ifdef GTK3
+    scrolledWindowSetMinContentHeight sw 150
+#endif
     boxPackStart (castToBox vb) sw PackGrow 7
     windowSetDefaultSize dialog 800 630
     widgetShowAll dialog

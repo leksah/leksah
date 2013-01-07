@@ -6,4 +6,5 @@ jhbuild build freetype
 
 jhbuild build meta-gtk-osx-gtk3
 jhbuild build gtksourceview3
+jhbuild build librsvg
 
