@@ -21,6 +21,8 @@ set leksah_server_libdir=%~dp0leksah\ghc-6.12.1
 set leksah_server_datadir=%~dp0leksah
 set leksah_server_libexecdir=%~dp0bin
 
+set hlint_datadir=%~dp0hlint
+
 leksah.exe
 
 if errorlevel 1 pause

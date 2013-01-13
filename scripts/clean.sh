@@ -11,6 +11,7 @@ ghc-pkg unregister --force pango || true
 ghc-pkg unregister --force cairo || true
 ghc-pkg unregister --force gio || true
 ghc-pkg unregister --force glib || true
+ghc-pkg unregister --force hlint || true
 
 rm -rf vendor/*/dist \
        vendor/gtk2hs/*/dist \

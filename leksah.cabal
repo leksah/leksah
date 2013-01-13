@@ -1,5 +1,5 @@
 name: leksah
-version: 0.13.1.1
+version: 0.13.1.2
 cabal-version: >=1.10
 build-type: Simple
 license: GPL
@@ -88,16 +88,13 @@ flag threaded
     description: Build with support for multithreaded execution
 
 Flag gtk3
-    Default: False
+    Default: True
     Description: Use GTK3 rather than GTK2
 
 library
     if os(windows)
         build-depends: Win32 >=2.2.0.0 && <2.4
         extra-libraries: kernel32
---        extra-lib-dirs: C:/cygwin/lib/w32api
-        includes: windows.h
---        include-dirs: C:/cygwin/usr/include/w32api
     else
         build-depends: unix >=2.3.1.0 && <2.7
 
@@ -171,9 +168,6 @@ Executable leksah
     if os(windows)
         build-depends: Win32 >=2.2.0.0 && <2.4
         extra-libraries: kernel32
---        extra-lib-dirs: C:/cygwin/lib/w32api
-        includes: windows.h
---        include-dirs: C:/cygwin/usr/include/w32api
     else
         build-depends: unix >=2.3.1.0 && <2.7
 
@@ -214,7 +208,7 @@ Executable leksah
                        hlint >=1.8.39 && <1.9
     else
         hs-source-dirs: main
-        build-depends: leksah ==0.13.1.1, base >=4.0.0.0 && <= 4.7
+        build-depends: leksah ==0.13.1.2, base >=4.0.0.0 && <= 4.7
 
     default-language: Haskell98
     main-is: Main.hs
@@ -229,7 +223,7 @@ test-suite tests
     hs-source-dirs: tests
     main-is:    Tests.hs
     build-depends: base >= 4.0.0.0 && <4.7, Cabal >=1.6.0.1 && <1.17, QuickCheck >=2.4.2 && <2.6,
-                   leksah ==0.13.1.1
+                   leksah ==0.13.1.2
 
 
 
