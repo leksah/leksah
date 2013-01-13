@@ -219,7 +219,7 @@ hlintDirectories dirs = do
 
 refreshDir :: TreeStore HLintRecord -> TreeIter -> FilePath -> IO ()
 refreshDir store iter dir = do
-    suggestions <- take 1000 <$> H.hlint [dir]
+    suggestions <- take 1000 <$> H.hlint ("--quiet":[dir])
     setHLintResults store iter dir suggestions
     return ()
 
