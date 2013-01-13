@@ -15,6 +15,7 @@
     <prefix name="default">${env:JHBUILD_PREFIX}</prefix>
     <prefix name="leksah">${env:LEKSAH_PREFIX}</prefix>
     <prefix name="leksah-server">${env:LEKSAH_SERVER_PREFIX}</prefix>
+    <prefix name="hlint">${env:HLINT_PREFIX}</prefix>
 
     <!-- The project directory is the default location of the created
          app. If you leave out the path, the current directory is
@@ -28,7 +29,7 @@
 
     <!-- Comment this out to keep the install names in binaries -->
     <!-- <run-install-name-tool/> -->
- 
+
     <!-- Optionally specify a launcher script to use. If the
          application sets up everything needed itself, like
          environment variable, linker paths, etc, a launcher script is
@@ -108,7 +109,11 @@
   </data>
 
   <data>
-    ${prefix:leksah}/share/${env:LEKSAH_X_X}
+    ${prefix:leksah}/share
+  </data>
+
+  <data>
+    ${prefix:hlint}/share
   </data>
 
   <!-- Copy in the themes data. You may want to trim this to save space
