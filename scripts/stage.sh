@@ -16,6 +16,10 @@ export GTK_PREFIX=`pkg-config --libs-only-L gtk+-3.0 | sed 's|^-L||' | sed 's|/l
 
 echo Staging Leksah in $GTK_PREFIX
 
+# These don't like all the extra options we pass (CPPFLAGS and --extra-lib-dirs)
+cabal install uniplate || true
+cabal install network || true
+
 # Needed for installing curl package on windows
 export CPPFLAGS=`pkg-config --cflags-only-I libcurl`
 
@@ -23,7 +27,7 @@ export CPPFLAGS=`pkg-config --cflags-only-I libcurl`
 # export DYLD_LIBRARY_PATH="/System/Library/Frameworks/ApplicationServices.framework/Versions/A/Frameworks/ImageIO.framework/Versions/A/Resources:$GTK_PREFIX/lib:$DYLD_LIBRARY_PATH"
 
 # Gtk2Hs needs the latest Cabal to install properly
-cabal install Cabal
+cabal install Cabal || true
 
 echo darcs:http://code.haskell.org/gtksourceview > sources.txt
 echo https://github.com/leksah/ltk >> sources.txt
