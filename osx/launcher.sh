@@ -42,9 +42,11 @@ export PANGO_LIBDIR="$bundle_lib"
 export PANGO_SYSCONFDIR="$bundle_etc"
 
 export leksah_bindir="$bundle_bin"
-export leksah_libdir="$bundle_lib/leksah-0.13/ghc"
-export leksah_datadir="$bundle_data/leksah-0.13"
+export leksah_libdir="$bundle_lib/leksah/ghc"
+export leksah_datadir="$bundle_data/leksah"
 export leksah_libexecdir="$bundle_res/libexec"
+
+export hlint_datadir="$bundle_data/hlint"
 
 APP=name
 I18NDIR="$bundle_data/locale"

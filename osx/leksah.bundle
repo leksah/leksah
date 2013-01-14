@@ -108,11 +108,11 @@
     ${prefix}/share/gtksourceview-3.0
   </data>
 
-  <data>
+  <data dest="${bundle}/Contents/Resources/share/leksah">
     ${prefix:leksah}/share
   </data>
 
-  <data>
+  <data dest="${bundle}/Contents/Resources/share/hlint">
     ${prefix:hlint}/share
   </data>
 
@@ -161,10 +161,10 @@
   </icon-theme>
 
   <!-- Custom prefs for the Mac -->
-  <data dest="${bundle}/Contents/Resources/share/${env:LEKSAH_X_X}/data/prefs.lkshp">
+  <data dest="${bundle}/Contents/Resources/share/leksah/data/prefs.lkshp">
     ${project}/prefs.lkshp
   </data>
-  <data dest="${bundle}/Contents/Resources/share/${env:LEKSAH_X_X}/data/keymap.lkshk">
+  <data dest="${bundle}/Contents/Resources/share/leksah/data/keymap.lkshk">
     ${project}/keymap.lkshk
   </data>
 </app-bundle>
