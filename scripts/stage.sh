@@ -43,7 +43,7 @@ else
     HPDIR=`which ghc` || exit
     HPDIR=`dirname "$HPDIR"` || exit
     HPDIR=`dirname "$HPDIR"` || exit
-    cabal-meta install --extra-lib-dirs="$HPDIR"/mingw/lib -flibcurl || exit
+    cabal-meta install --extra-lib-dirs="$HPDIR"/mingw/lib --extra-lib-dirs=/c/MinGWRPM/lib -flibcurl || exit
 #  if [ "$GHC_VER" != "7.0.3" ] && [ "$GHC_VER" != "7.0.4" ] && [ "$GHC_VER" != "7.6.1" ]; then
 #    echo https://github.com/yi-editor/yi.git >> sources.txt
 #    export LEKSAH_CONFIG_ARGS="$LEKSAH_CONFIG_ARGS -fyi -f-vty -f-dyre -fpango"
