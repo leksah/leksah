@@ -41,7 +41,7 @@ import IDE.TextEditor (grabFocus)
 import Control.Applicative ((<$>))
 import System.FilePath ((</>), dropFileName)
 import System.Exit (ExitCode(..))
-import IDE.Pane.Log (getLog)
+import IDE.Pane.Log (getLog, getDefaultLogLaunch)
 import Control.DeepSeq
 import qualified Data.Enumerator as E
        (Step(..), run_, Iteratee(..), run)
@@ -218,6 +218,7 @@ getSelectionGrepRecord treeView grepStore = do
         p:_ ->  Just <$> treeStoreGetValue grepStore p
         _   ->  return Nothing
 
+--TODO srp use default loglaunch probably
 grepWorkspace :: String -> Bool -> WorkspaceAction
 grepWorkspace "" caseSensitive = return ()
 grepWorkspace regexString caseSensitive = do
@@ -286,6 +287,7 @@ setGrepResults dir = do
     ideRef <- lift ask
     grep <- lift $ getGrep Nothing
     log <- lift $ getLog
+    defaultLogLaunch <- lift $ getDefaultLogLaunch
     let store = grepStore grep
         view  = treeView grep
     nDir <- liftIO $ postGUISync $ do
@@ -296,7 +298,7 @@ setGrepResults dir = do
     EL.foldM (\count line -> do
         if isError line
             then do
-                liftIO $ postGUISync $ reflectIDE (defaultLineLogger log line >> return ()) ideRef
+                liftIO $ postGUISync $ reflectIDE (defaultLineLogger log defaultLogLaunch line >> return ()) ideRef
                 return count
             else do
                 case process dir line of

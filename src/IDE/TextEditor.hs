@@ -131,6 +131,7 @@ module IDE.TextEditor (
 ,   onKeyPress
 ,   onKeyRelease
 ,   onLookupInfo
+,   onMotionNotifyEvent
 ,   onMotionNotify
 ,   onLeaveNotify
 ,   onPopulatePopup
@@ -156,6 +157,7 @@ import System.Glib.Attributes
 import System.Glib.MainLoop
 import qualified Graphics.UI.Gtk.Multiline.TextView as Gtk
 import qualified Graphics.UI.Gtk.Gdk.Events as GtkOld
+import qualified Graphics.UI.Gtk.Gdk.EventM as GTKEventM
 import System.Glib.Attributes (AttrOp(..))
 import System.GIO.File.ContentType (contentTypeGuess)
 
@@ -1257,6 +1259,15 @@ onLookupInfo (YiEditorView v) f = do
         id1 <- (Yi.drawArea v) `Gtk.onButtonRelease` \e -> when (controlIsPressed e) (reflectIDE f ideR) >> return False
         return [ConnectC id1]
 #endif
+
+onMotionNotifyEvent :: EditorView -> (IDERef -> GTKEventM.EventM GTKEventM.EMotion Bool) -> IDEM [Connection]
+onMotionNotifyEvent (GtkEditorView sv) handler = do
+        ideR <- ask
+        liftIO $ do
+            Gtk.widgetAddEvents sv [Gtk.ButtonMotionMask, Gtk.Button1MotionMask]  -- TODO: this doesn't work yet event gets fired anyways: restrict event to being fired when left mouse button is pressed down
+            id1 <- Gtk.on sv Gtk.motionNotifyEvent (handler ideR)  --TODO this is potentially slowing leksah, a better event (if there was any) could be more efficient here
+            Gtk.widgetAddEvents sv [Gtk.ButtonMotionMask, Gtk.Button1MotionMask]  -- TODO: this doesn't work yet event gets fired anyways: restrict event to being fired when left mouse button is pressed down
+            return [ConnectC id1]
 
 onPopulatePopup :: EditorView -> (Gtk.Menu -> IDEM ()) -> IDEM [Connection]
 onPopulatePopup (GtkEditorView sv) f = do

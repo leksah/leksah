@@ -50,6 +50,7 @@ module IDE.Core.Types (
 
 ,   IDEPackage(..)
 ,   Workspace(..)
+,   VCSConf
 
 ,   ActionDescr(..)
 ,   ActionString
@@ -78,6 +79,8 @@ module IDE.Core.Types (
 ,   ModuleDescrCache
 
 ,   CompletionWindow(..)
+,   LogLaunch(..)
+,   LogLaunchData(..)
 ,   LogTag(..)
 ,   GUIHistory
 ,   GUIHistory'(..)
@@ -88,8 +91,8 @@ module IDE.Core.Types (
 
 import qualified IDE.YiConfig as Yi
 import Graphics.UI.Gtk
-       (Window(..), KeyVal(..), Color(..), Menu(..), TreeView(..),
-        ListStore(..), Toolbar(..))
+       (TextBuffer, MenuItem, Window(..), KeyVal(..), Color(..), Menu(..),
+        TreeView(..), ListStore(..), Toolbar(..))
 import Data.Unique (newUnique, Unique(..))
 import Graphics.UI.Frame.Panes
 import Distribution.Package
@@ -103,6 +106,7 @@ import Graphics.UI.Gtk.Gdk.EventM (Modifier(..))
 #else
 import Graphics.UI.Gtk.Gdk.Enums (Modifier(..))
 #endif
+import Graphics.UI.Gtk.ActionMenuToolbar.UIManager(MergeId)
 import System.Time (ClockTime(..))
 import Distribution.Simple (Extension(..))
 import IDE.Utils.Tool (ToolState(..), ProcessHandle)
@@ -122,6 +126,11 @@ import Control.Monad.Trans.Reader (ReaderT(..))
 #if MIN_VERSION_directory(1,2,0)
 import Data.Time (UTCTime(..))
 #endif
+
+import qualified VCSWrapper.Common as VCS
+import qualified VCSGui.Common as VCSGUI
+import qualified Data.Map as Map (Map)
+import Data.Typeable (Typeable)
 
 -- ---------------------------------------------------------------------
 -- IDE State
@@ -159,6 +168,8 @@ data IDE            =  IDE {
 ,   completion      ::   ((Int, Int), Maybe CompletionWindow)
 ,   yiControl       ::   Yi.Control
 ,   server          ::   Maybe Handle
+,   vcsData         ::   (Map FilePath MenuItem, Maybe (Maybe String)) -- menus for packages, password
+,   logLaunches     ::   Map.Map String LogLaunchData
 ,   autoCommand     ::   IDEAction
 } --deriving Show
 
@@ -362,6 +373,7 @@ data Workspace = Workspace {
 ,   wsPackagesFiles ::   [FilePath]
 ,   wsActivePackFile::   Maybe FilePath
 ,   wsNobuildPack   ::   [IDEPackage]
+,   packageVcsConf  ::   Map FilePath VCSConf -- ^ (FilePath to package, Version-Control-System Configuration)
 } deriving Show
 
 -- ---------------------------------------------------------------------
@@ -446,9 +458,22 @@ instance Ord Modifier
     where compare a b = compare (fromEnum a) (fromEnum b)
 #endif
 
+-- Version-Control-System Configuration
+type VCSConf = (VCS.VCSType, VCS.Config, Maybe VCSGUI.MergeTool)
+
 --
 -- | Other types
 --
+
+data LogLaunchData = LogLaunchData {
+    logLaunch :: LogLaunch
+,   mbPid :: Maybe ProcessHandle
+}
+
+data LogLaunch = LogLaunch {
+    logBuffer   :: TextBuffer
+} deriving Typeable
+
 data LogRefType = WarningRef | ErrorRef | BreakpointRef | ContextRef deriving (Eq, Show)
 
 data LogRef = LogRef {

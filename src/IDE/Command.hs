@@ -114,7 +114,10 @@ import Control.Monad.Trans.Reader (ask)
 --
 mkActions :: [ActionDescr IDERef]
 mkActions =
-    [AD "File" "_File" Nothing Nothing (return ()) [] False
+    [
+    AD "vcs" "Version Con_trol" Nothing Nothing (return ()) [] False
+    ,AD "FilePrint" "_Print File" Nothing Nothing (filePrint) [] False
+    ,AD "File" "_File" Nothing Nothing (return ()) [] False
     ,AD "FileNew" "_New Module..." Nothing (Just "gtk-new")
         (packageTry $ addModule []) [] False
     ,AD "FileNewTextFile" "_New Text File" Nothing Nothing
@@ -140,7 +143,6 @@ mkActions =
         (do fileCloseAllButWorkspace; return ()) [] False
     ,AD "Quit" "_Quit" Nothing (Just "gtk-quit")
         quit [] False
-
     ,AD "Edit" "_Edit" Nothing Nothing (return ()) [] False
     ,AD "EditUndo" "_Undo" Nothing (Just "gtk-undo")
         editUndo [] False
@@ -446,6 +448,8 @@ menuDescription = do
     prefsPath   <- getConfigFilePathForLoad "leksah.menu" Nothing dataDir
     res         <- readFile prefsPath
     return res
+
+
 
 updateRecentEntries :: IDEAction
 updateRecentEntries = do
@@ -813,9 +817,13 @@ setSymbol symbol openSource = do
 registerLeksahEvents :: IDEAction
 registerLeksahEvents =    do
     stRef   <-  ask
+    defaultLogLaunch <- getDefaultLogLaunch
     registerEvent stRef "LogMessage"
-        (\e@(LogMessage s t)      -> getLog >>= \(log :: IDELog) -> liftIO $ appendLog log s t
-                                                >> return e)
+        (\e@(LogMessage s t)      -> do
+                                    defaultLogLaunch <- getDefaultLogLaunch
+                                    log <- getLog
+                                    liftIO $ appendLog log defaultLogLaunch s t
+                                    return e)
     registerEvent stRef "SelectInfo"
         (\ e@(SelectInfo str gotoSource)     -> setSymbol str gotoSource >> return e)
     registerEvent stRef "SelectIdent"

@@ -17,6 +17,8 @@ module IDE.Utils.GUIUtils (
 ,   chooseDir
 ,   chooseSaveFile
 ,   openBrowser
+,   showDialog
+,   showErrorDialog
 
 ,   getCandyState
 ,   setCandyState
@@ -33,6 +35,7 @@ module IDE.Utils.GUIUtils (
 
 ,   getRecentFiles
 ,   getRecentWorkspaces
+,   getVCS
 ,   controlIsPressed
 
 ,   stockIdFromType
@@ -133,6 +136,8 @@ chooseSaveFile window prompt mbFolder = do
             widgetDestroy dialog
             return Nothing
 
+
+
 openBrowser :: String -> IDEAction
 openBrowser url = do
     prefs' <- readIDE prefs
@@ -141,6 +146,17 @@ openBrowser url = do
                 return ())
             (\ (_ :: SomeException) -> sysMessage Normal ("Can't find browser executable " ++ browser prefs')))
     return ()
+
+
+showDialog :: String -> MessageType -> IO ()
+showDialog msg msgType = do
+    dialog <- messageDialogNew Nothing [] msgType ButtonsOk msg
+    _ <- dialogRun dialog
+    widgetDestroy dialog
+    return ()
+
+showErrorDialog :: String -> IO ()
+showErrorDialog msg = showDialog msg MessageError
 
 -- get widget elements (menu & toolbar)
 
@@ -207,10 +223,10 @@ setDebugToggled b = do
     ui <- getUIAction "ui/toolbar/BuildToolItems/Debug" castToToggleAction
     liftIO $ toggleActionSetActive ui b
 
-getRecentFiles , getRecentWorkspaces :: IDEM MenuItem
+getRecentFiles , getRecentWorkspaces, getVCS :: IDEM MenuItem
 getRecentFiles    = getMenuItem "ui/menubar/_File/Open _Recent"
 getRecentWorkspaces = getMenuItem "ui/menubar/_Workspace/Open _Recent"
-
+getVCS = getMenuItem "ui/menubar/Version Con_trol" --this could fail, try returning Menu if it does
 -- (toolbar)
 
 controlIsPressed :: G.Event -> Bool
