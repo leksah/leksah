@@ -1,5 +1,5 @@
-{-# LANGUAGE CPP, ForeignFunctionInterface #-}
-{-# OPTIONS_GHC -XScopedTypeVariables #-}
+{-# LANGUAGE CPP #-}
+{-# LANGUAGE ScopedTypeVariables #-}
 -----------------------------------------------------------------------------
 --
 -- Module      :  IDE.Package
