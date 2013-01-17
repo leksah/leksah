@@ -291,6 +291,7 @@ startMainWindow yiControl sessionFP mbWorkspaceFP sourceFPs startupPrefs isFirst
           ,   server            =   Nothing
           ,   vcsData           =   (Map.empty, Nothing)
           ,   logLaunches       =   Map.empty
+          ,   autoCommand       =   return ()
     }
     ideR             <-  newIORef ide
     menuDescription' <- menuDescription
@@ -363,7 +364,8 @@ fDescription configPath = VFD emptyParams [
         mkField
             (paraName <<<- ParaName "Paths under which haskell sources for packages may be found"
                 $ paraDirection  <<<- ParaDirection Vertical
-                    $ emptyParams)
+                    $ paraMinSize <<<- ParaMinSize (-1, 150)
+                        $ emptyParams)
             sourceDirectories
             (\b a -> a{sourceDirectories = b})
             (filesEditor Nothing FileChooserActionSelectFolder "Select folders")

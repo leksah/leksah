@@ -1285,6 +1285,7 @@ onPopulatePopup (YiEditorView v) f = do
     liftIO $ do
         id1 <- (Yi.drawArea v) `Gtk.onPopupMenu` do
              menu <- Gtk.menuNew
+             Gtk.menuAttachToWidget menu (Yi.drawArea v)
              reflectIDE (f menu) ideR
              Gtk.menuPopup menu Nothing
         return [ConnectC id1]

@@ -23,7 +23,7 @@ module IDE.Pane.Workspace (
 ) where
 
 import Graphics.UI.Gtk hiding (get)
-import Graphics.UI.Gtk.Gdk.Events
+import Graphics.UI.Gtk.Gdk.EventM
 import Data.Maybe
 import Data.Typeable
 import IDE.Core.State
@@ -31,8 +31,11 @@ import IDE.Workspaces
 import qualified Data.Map as Map (empty)
 import Data.List (sortBy)
 import IDE.Pane.Files (refreshFiles)
+import IDE.Pane.HLint (refreshHLint)
 import Control.Monad (when)
 import Control.Monad.IO.Class (MonadIO(..))
+import IDE.Utils.GUIUtils (treeViewContextMenu)
+import System.Glib.Properties (newAttrFromMaybeStringProperty)
 
 -- | Workspace pane state
 --
@@ -79,10 +82,10 @@ instance RecoverablePane IDEWorkspace WorkspaceState IDEM where
         treeViewAppendColumn treeView col0
         cellLayoutPackStart col0 renderer0 True
         cellLayoutSetAttributes col0 renderer0 listStore
-            $ \row -> [cellPixbufStockId  :=
+            $ \row -> [newAttrFromMaybeStringProperty "stock-id" :=
                         if (\(b,_)-> b) row
-                            then stockYes
-                            else ""]
+                            then Just stockYes
+                            else Nothing]
 
         renderer1   <- cellRendererTextNew
         col1        <- treeViewColumnNew
@@ -117,10 +120,12 @@ instance RecoverablePane IDEWorkspace WorkspaceState IDEM where
         boxPackEnd box sw PackGrow 0
         let workspacePane = IDEWorkspace sw treeView listStore box
         widgetShowAll box
-        cid1 <- treeView `afterFocusIn`
-            (\_ -> do reflectIDE (makeActive workspacePane) ideR ; return True)
-        treeView `onButtonPress` (treeViewPopup ideR  workspacePane)
-        return (Just workspacePane,[ConnectC cid1])
+        cid1 <- treeView `after` focusInEvent $ do
+            liftIO $ reflectIDE (makeActive workspacePane) ideR
+            return True
+        (cid2, cid3) <- treeViewContextMenu treeView $ workspaceContextMenu ideR workspacePane
+        cid4 <- treeView `on` rowActivated $ workspaceSelect ideR workspacePane
+        return (Just workspacePane, map ConnectC [cid1, cid2, cid3, cid4])
 
 getWorkspace :: Maybe PanePath -> IDEM IDEWorkspace
 getWorkspace Nothing = forceGetPane (Right "*Workspace")
@@ -143,46 +148,41 @@ getSelectionTree treeView listStore = do
             return (Just val)
         _       ->  return Nothing
 
-treeViewPopup :: IDERef
-    -> IDEWorkspace
-    -> Event
-    -> IO (Bool)
-treeViewPopup ideR  workspacePane (Button _ click _ _ _ _ button _ _) = do
-    if button == RightButton
-        then do
-            theMenu         <-  menuNew
-            item1           <-  menuItemNewWithLabel "Activate Package"
-            item2           <-  menuItemNewWithLabel "Add Package"
-            item3           <-  menuItemNewWithLabel "Remove Package"
-            item1 `on` menuItemActivate $ do
-                sel         <-  getSelectionTree (treeViewC workspacePane)
-                                                (workspaceStore workspacePane)
-                case sel of
-                    Just (_,ideP)      -> reflectIDE (workspaceTry $ workspaceActivatePackage ideP) ideR
+workspaceContextMenu :: IDERef
+                     -> IDEWorkspace
+                     -> Menu
+                     -> IO ()
+workspaceContextMenu ideR workspacePane theMenu = do
+    item1 <- menuItemNewWithLabel "Activate Package"
+    item2 <- menuItemNewWithLabel "Add Package"
+    item3 <- menuItemNewWithLabel "Remove Package"
+    item1 `on` menuItemActivate $ do
+        sel <- getSelectionTree (treeViewC workspacePane)
+                                (workspaceStore workspacePane)
+        case sel of
+            Just (_,ideP) -> reflectIDE (workspaceTry $ workspaceActivatePackage ideP) ideR
 
-                    otherwise         -> return ()
-            item2 `on` menuItemActivate $ reflectIDE (workspaceTry $ workspaceAddPackage) ideR
-            item3 `on` menuItemActivate $ do
-                sel            <-  getSelectionTree (treeViewC workspacePane)
-                                                    (workspaceStore workspacePane)
-                case sel of
-                    Just (_,ideP)      -> reflectIDE (workspaceTry $ workspaceRemovePackage ideP) ideR
-                    otherwise          -> return ()
-            menuShellAppend theMenu item1
-            menuShellAppend theMenu item2
-            menuShellAppend theMenu item3
-            menuPopup theMenu Nothing
-            widgetShowAll theMenu
-            return True
-        else if button == LeftButton && click == DoubleClick
-                then do sel         <-  getSelectionTree (treeViewC workspacePane)
-                                            (workspaceStore workspacePane)
-                        case sel of
-                            Just (_,ideP)   ->  reflectIDE (workspaceTry $ workspaceActivatePackage ideP) ideR
-                                                    >> return True
-                            otherwise       ->  return False
-                else return False
-treeViewPopup _ _ _ = throwIDE "treeViewPopup wrong event type"
+            otherwise     -> return ()
+    item2 `on` menuItemActivate $ reflectIDE (workspaceTry $ workspaceAddPackage) ideR
+    item3 `on` menuItemActivate $ do
+        sel <- getSelectionTree (treeViewC workspacePane)
+                                (workspaceStore workspacePane)
+        case sel of
+            Just (_,ideP) -> reflectIDE (workspaceTry $ workspaceRemovePackage ideP) ideR
+            otherwise     -> return ()
+    menuShellAppend theMenu item1
+    menuShellAppend theMenu item2
+    menuShellAppend theMenu item3
+
+workspaceSelect :: IDERef
+                -> IDEWorkspace
+                -> TreePath
+                -> TreeViewColumn
+                -> IO ()
+workspaceSelect ideR workspacePane [n] _ = do
+    (_,ideP) <- listStoreGetValue (workspaceStore workspacePane) n
+    reflectIDE (workspaceTry $ workspaceActivatePackage ideP) ideR
+workspaceSelect _ _ _ _ = liftIO $ sysMessage Normal "Workspace >> workspaceSelect: invalid path"
 
 updateWorkspace :: Bool -> Bool -> IDEAction
 updateWorkspace showPane updateFileCache = do
@@ -209,4 +209,5 @@ updateWorkspace showPane updateFileCache = do
                     liftIO $ mapM_ (listStoreAppend (workspaceStore p)) sorted
                     when showPane $ displayPane p False
     refreshFiles
+    workspaceTry refreshHLint
 

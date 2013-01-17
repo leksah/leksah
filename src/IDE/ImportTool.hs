@@ -16,10 +16,7 @@
 module IDE.ImportTool (
     resolveErrors
 ,   addOneImport
-,   addImport
-,   addPackage
-,   parseNotInScope
-,   parseHiddenModule
+,   addResolveMenuItems
 ,   HiddenModuleResult(..)
 ) where
 
@@ -37,12 +34,13 @@ import Graphics.UI.Editor.MakeEditor
 import Graphics.UI.Editor.Parameters
        ((<<<-), paraMinSize, emptyParams, Parameter(..), paraMultiSel,
         paraName)
-import Data.Maybe (fromJust)
+import Data.Maybe (catMaybes, fromJust)
 import Text.ParserCombinators.Parsec hiding (parse)
 import qualified Text.ParserCombinators.Parsec as Parsec (parse)
 import Graphics.UI.Editor.Simple (staticListEditor)
 import Control.Monad (forM, when)
-import Data.List (sort, nub, nubBy)
+import Control.Applicative ((<$>))
+import Data.List (stripPrefix, sort, nub, nubBy)
 import IDE.Utils.ServerConnection
 import Text.PrinterParser (prettyPrint)
 import IDE.TextEditor (delete, setModified, insert, getIterAtLine)
@@ -88,14 +86,24 @@ resolveErrors = do
             nubBy (\ (p1,_) (p2,_) -> p1 == p2)
                 $ [(x,y) |  (x,y) <- [((parseNotInScope . refDescription) e, e) | e <- errors]],
                                 isJust x]
-    when (not (or addPackageResults) && null notInScopes) $ ideMessage Normal $ "No errors that can be auto resolved"
-    addAll buildInBackground notInScopes (True,[])
-    where
-        addAll :: Bool -> [LogRef] -> (Bool,[Descr]) -> IDEM ()
-        addAll bib (errorSpec:rest) (True,descrList)  =  addImport errorSpec descrList (addAll bib rest)
-        addAll bib _ _                                =  finally bib
+    let extensions = [ y | (x,y) <-
+            nubBy (\ (p1,_) (p2,_) -> p1 == p2)
+                $ [(x,y) |  (x,y) <- [((parsePerhapsYouIntendedToUse . refDescription) e, e) | e <- errors]],
+                                length x == 1]
+    when (not (or addPackageResults) && null notInScopes && null extensions) $ ideMessage Normal $ "No errors that can be auto resolved"
+    addAll buildInBackground notInScopes extensions
+  where
+    addAll buildInBackground notInScopes extensions = addAllImports notInScopes (True,[])
+      where
+        addAllImports :: [LogRef] -> (Bool,[Descr]) -> IDEM ()
+        addAllImports (errorSpec:rest) (True,descrList)  =  addImport errorSpec descrList (addAllImports rest)
+        addAllImports _ (cont, _)                        =  addAllExtensions extensions cont
 
-        finally buildInBackground = when buildInBackground $ do
+        addAllExtensions :: [LogRef] -> Bool -> IDEM ()
+        addAllExtensions (errorSpec:rest) True =  addExtension errorSpec (addAllExtensions rest)
+        addAllExtensions _ _                   =  finally
+
+        finally = when buildInBackground $ do
             prefs' <- readIDE prefs
             modifyIDE_ (\ide -> ide{prefs = prefs'{backgroundBuild = True}})
 
@@ -430,3 +438,54 @@ hiddenModuleParser = do
     many anyChar
     return (mod, pack)
     <?> "hiddenModuleParser"
+
+-- | Given an error message this returns the list of extensions that were
+-- suggested in the message.
+--
+-- > parsePerhapsExt "Error blah blah\n   Perhaps you intended to use -XNoBugsExt\n\n"
+--
+-- > parsePerhapsExt "Error blah blah\n   Use -XNoBugsExt\n\n"
+parsePerhapsYouIntendedToUse :: String -> [String]
+parsePerhapsYouIntendedToUse =
+    concatMap (parseLine . dropWhile (==' ')) . lines
+  where
+    parseLine line = catMaybes [
+        stripPrefix "Perhaps you intended to use -X" line
+      , takeWhile (/=' ') <$> stripPrefix "Use -X" line]
+
+addExtension :: LogRef -> (Bool -> IDEAction) -> IDEAction
+addExtension error continuation =
+    case parsePerhapsYouIntendedToUse (refDescription error) of
+        []    -> continuation True
+        [ext] -> addExtension' ext (logRefFullFilePath error) continuation
+        list  -> continuation True
+
+addExtension' :: String -> FilePath -> (Bool -> IDEAction) -> IDEAction
+addExtension' ext filePath continuation =  do
+    mbBuf  <- selectSourceBuf filePath
+    case mbBuf of
+        Just buf ->
+            inActiveBufContext () $ \ nb gtkbuf idebuf n -> do
+                ideMessage Normal $ "addExtension " ++ ext
+                i1 <- getIterAtLine gtkbuf 0
+                editInsertCode gtkbuf i1 $ "{-# LANGUAGE " ++ ext ++ " #-}\n"
+                fileSave False
+                setModified gtkbuf True
+                continuation True
+        _  -> return ()
+
+addResolveMenuItems ideR theMenu logRef = do
+    let msg = refDescription logRef
+    when (isJust $ parseNotInScope msg) $
+        addFixMenuItem "Add Import"  $ addImport logRef [] (\ _ -> return ())
+    when (isJust $ parseHiddenModule msg) $
+        addFixMenuItem "Add Package" $ addPackage logRef
+    when ((length $ parsePerhapsYouIntendedToUse msg) == 1) $
+        addFixMenuItem "Add Extension" $ addExtension logRef (\ _ -> return ())
+  where
+    addFixMenuItem name fix = do
+        item <- menuItemNewWithLabel name
+        item `on` menuItemActivate $ do
+            reflectIDE (fix >> return ()) ideR
+        menuShellAppend theMenu item
+

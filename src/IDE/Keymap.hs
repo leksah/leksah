@@ -18,6 +18,7 @@ import Data.Char(toLower)
 
 import IDE.Core.State
 import Control.Monad (foldM)
+import System.Log.Logger (infoM)
 
 class Keymap alpha where
     parseKeymap         ::   FilePath -> IO alpha
@@ -36,6 +37,7 @@ instance Keymap KeymapI where
 
 parseKeymap' :: FilePath -> IO KeymapI
 parseKeymap' fn = do
+    infoM "leksah" $ "Reading keymap from " ++ fn
     res <- parseFromFile keymapParser fn
     case res of
         Left pe -> throwIDE $"Error reading keymap file " ++ show fn ++ " " ++ show pe

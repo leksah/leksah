@@ -7,6 +7,7 @@ cd ../leksah || exit
 export GHC_USER_PREFIX=$HOME/Library/Haskell/ghc-`ghc --numeric-version`/lib
 export LEKSAH_PREFIX=$GHC_USER_PREFIX/$LEKSAH_X_X_X_X
 export LEKSAH_SERVER_PREFIX=$GHC_USER_PREFIX/$LEKSAH_SERVER_X_X_X_X
+export HLINT_PREFIX=$GHC_USER_PREFIX/`ghc-pkg list |grep '^ *hlint-' | head -n1 | tr -d ' \n'`
 
 sed -e 's|TextView Font: *\"Monospace 10\"|TextView Font: "Monospace 14"|' -e 's|Browser: *\"firefox\"|Browser:       \"open\"|' <data/prefs.lkshp >osx/prefs.lkshp
 

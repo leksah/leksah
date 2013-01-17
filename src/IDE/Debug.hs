@@ -1,5 +1,4 @@
-{-# LANGUAGE CPP, ForeignFunctionInterface #-}
-{-# OPTIONS_GHC -XScopedTypeVariables #-}
+{-# LANGUAGE ScopedTypeVariables #-}
 -----------------------------------------------------------------------------
 --
 -- Module      :  IDE.Debug
@@ -120,9 +119,12 @@ debugExecuteSelection :: IDEAction
 debugExecuteSelection = do
     maybeText   <- selectedTextOrCurrentLine
     case maybeText of
-        Just text -> packageTry $ tryDebug $ do
-            debugSetLiberalScope
-            debugCommand text logOutputDefault
+        Just text -> do
+            let command = packageTry $ tryDebug $ do
+                debugSetLiberalScope
+                debugCommand text logOutputDefault
+            modifyIDE_ $ \ide -> ide {autoCommand = command}
+            command
         Nothing   -> ideMessage Normal "Please select some text in the editor to execute"
 
 debugExecuteAndShowSelection :: IDEAction
@@ -266,15 +268,18 @@ debugStepModule = packageTry $ do
         (debugPackage, _) <- ask
         debugCommand ":stepmodule" (logOutputForHistoricContextDefault debugPackage)
 
+
+logTraceOutput debugPackage = do
+    logOutputForLiveContextDefault debugPackage
+    lift $ triggerEventIDE TraceChanged
+    return ()
+
 debugTrace :: IDEAction
 debugTrace = packageTry $ do
     rootPath <- lift $ activeProjectDir
     tryDebug $ do
         (debugPackage, _) <- ask
-        debugCommand ":trace" $ do
-            logOutputForLiveContextDefault debugPackage
-            lift $ triggerEventIDE TraceChanged
-            return ()
+        debugCommand ":trace" $ logTraceOutput debugPackage
 
 debugTraceExpression :: IDEAction
 debugTraceExpression = do
@@ -287,11 +292,7 @@ debugTraceExpr :: Maybe String -> DebugAction
 debugTraceExpr maybeText = do
     (debugPackage, _) <- ask
     case maybeText of
-        Just text -> debugCommand (":trace " ++ text) $ do
---            rootPath <- activeProjectDir
-            logOutputForLiveContextDefault debugPackage
-            lift $ triggerEventIDE TraceChanged
-            return ()
+        Just text -> debugCommand (":trace " ++ text) $ logTraceOutput debugPackage
         Nothing   -> lift $ ideMessage Normal "Please select an expression in the editor"
 
 

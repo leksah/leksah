@@ -1,4 +1,4 @@
-{-# OPTIONS_GHC -XTypeSynonymInstances -XScopedTypeVariables #-}
+{-# LANGUAGE ScopedTypeVariables #-}
 {-# OPTIONS_GHC -fno-warn-incomplete-patterns #-}
 -----------------------------------------------------------------------------
 --
@@ -103,7 +103,8 @@ import IDE.Pane.Trace (fillTraceList)
 import IDE.PaneGroups
 import IDE.Pane.Search (getSearch, IDESearch(..))
 import IDE.Pane.Grep (getGrep)
-import IDE.Pane.Files (getFiles)
+import IDE.Pane.HLint (refreshHLint, getHLint)
+import IDE.Pane.Files (refreshFiles, getFiles)
 import Control.Monad.IO.Class (MonadIO(..))
 import Control.Monad (unless, when)
 import Control.Monad.Trans.Reader (ask)
@@ -339,9 +340,11 @@ mkActions =
     ,AD "ShowSearch" "Search" Nothing Nothing
         (getSearch Nothing  >>= \ p -> displayPane p False) [] False
     ,AD "ShowFiles" "Files" Nothing Nothing
-        (getFiles Nothing  >>= \ p -> displayPane p False) [] False
+        (getFiles Nothing  >>= \ p -> displayPane p False >> refreshFiles) [] False
     ,AD "ShowGrep" "Grep" Nothing Nothing
         (getGrep Nothing  >>= \ p -> displayPane p False) [] False
+    ,AD "ShowHLint" "HLint" Nothing Nothing
+        (getHLint Nothing  >>= \ p -> displayPane p False >> workspaceTry refreshHLint) [] False
     ,AD "ShowErrors" "Errors" Nothing Nothing
         (getErrors Nothing  >>= \ p -> displayPane p False) [] False
     ,AD "ShowLog" "Log" Nothing Nothing

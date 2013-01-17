@@ -1,5 +1,3 @@
-{-# OPTIONS_GHC -XScopedTypeVariables -XDeriveDataTypeable -XMultiParamTypeClasses
-    -XTypeSynonymInstances #-}
 -----------------------------------------------------------------------------
 --
 -- Module      :  IDE.Find

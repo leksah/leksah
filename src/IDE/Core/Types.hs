@@ -170,6 +170,7 @@ data IDE            =  IDE {
 ,   server          ::   Maybe Handle
 ,   vcsData         ::   (Map FilePath MenuItem, Maybe (Maybe String)) -- menus for packages, password
 ,   logLaunches     ::   Map.Map String LogLaunchData
+,   autoCommand     ::   IDEAction
 } --deriving Show
 
 --

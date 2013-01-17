@@ -49,9 +49,8 @@ import System.IO
 import Prelude hiding (catch)
 import Control.Exception hiding (try)
 import IDE.ImportTool
-       (addPackage, parseHiddenModule, addImport, parseNotInScope,
-        resolveErrors)
-import IDE.Utils.Tool (runInteractiveProcess, ProcessHandle, terminateProcess)
+       (resolveErrors, addResolveMenuItems)
+import IDE.Utils.Tool (runInteractiveProcess, ProcessHandle)
 import Graphics.UI.Gtk
        (textBufferSetText, textViewScrollToMark,
         textBufferGetIterAtLineOffset, textViewScrollMarkOnscreen, textViewSetBuffer,
@@ -451,22 +450,7 @@ populatePopupMenu log ideR menu = do
                 (zip logRefs' [0..(length logRefs')])) ideR
     case res of
         [(thisRef,n)] -> do
-            case parseNotInScope (refDescription thisRef) of
-                Nothing   -> do
-                    return ()
-                Just _  -> do
-                    item1   <-  menuItemNewWithLabel "Add Import"
-                    item1 `on` menuItemActivate $ do
-                        reflectIDE (addImport thisRef [] (\_ -> return ())) ideR
-                    menuShellAppend menu item1
-            case parseHiddenModule (refDescription thisRef) of
-                Nothing   -> do
-                    return ()
-                Just _  -> do
-                    item2   <-  menuItemNewWithLabel "Add Package"
-                    item2 `on` menuItemActivate $ do
-                        reflectIDE (addPackage thisRef >> return ()) ideR
-                    menuShellAppend menu item2
+            addResolveMenuItems ideR menu thisRef
             widgetShowAll menu
             return ()
         otherwise   -> return ()

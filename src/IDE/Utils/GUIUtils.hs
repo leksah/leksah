@@ -40,6 +40,7 @@ module IDE.Utils.GUIUtils (
 
 ,   stockIdFromType
 ,   mapControlCommand
+,   treeViewContextMenu
 
 ) where
 
@@ -250,5 +251,36 @@ mapControlCommand Alt = Control
 #endif
 mapControlCommand a = a
 
-
-
+treeViewContextMenu :: TreeViewClass treeView
+                    => treeView
+                    -> (Menu -> IO ())
+                    -> IO (ConnectId treeView, ConnectId treeView)
+treeViewContextMenu treeView populateMenu = do
+    cid1 <- treeView `on` popupMenuSignal $ showMenu Nothing
+    cid2 <- treeView `on` buttonPressEvent $ do
+        button    <- eventButton
+        click     <- eventClick
+        timestamp <- eventTime
+        (x, y)    <- eventCoordinates
+        case (button, click) of
+            (RightButton, SingleClick) -> liftIO $ do
+                sel <- treeViewGetSelection treeView
+                selCount <- treeSelectionCountSelectedRows sel
+                when (selCount <= 1) $ do
+                    pathInfo <- treeViewGetPathAtPos treeView (floor x, floor y)
+                    case pathInfo of
+                        Just (path, _, _) -> do
+                            treeSelectionUnselectAll sel
+                            treeSelectionSelectPath sel path
+                        _ -> return ()
+                showMenu (Just (button, timestamp))
+            _ -> return False
+    return (cid1, cid2)
+  where
+    showMenu buttonEventDetails = do
+        theMenu <- menuNew
+        menuAttachToWidget theMenu treeView
+        populateMenu theMenu
+        menuPopup theMenu buttonEventDetails
+        widgetShowAll theMenu
+        return True

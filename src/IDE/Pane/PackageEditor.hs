@@ -683,7 +683,8 @@ packageDD packages fp modules numBuildInfos extras = NFD ([
             (paraName <<<- ParaName "Tested with compiler"
                 $ paraShadow <<<- ParaShadow ShadowIn
                     $ paraDirection <<<- ParaDirection Vertical
-                        $ emptyParams)
+                        $ paraMinSize <<<- ParaMinSize (-1,150)
+                            $ emptyParams)
             (\a -> case (testedWith . pd) a of
                 []          -> []--(GHC,anyVersion)]
                 l           -> l)
@@ -743,7 +744,8 @@ packageDD packages fp modules numBuildInfos extras = NFD ([
     ,   mkField
             (paraName <<<- ParaName "Custom Fields"
                 $ paraShadow <<<- ParaShadow ShadowIn
-                     $ paraDirection <<<- ParaDirection Vertical $ emptyParams)
+                    $ paraMinSize <<<- ParaMinSize (-1,150)
+                        $ paraDirection <<<- ParaDirection Vertical $ emptyParams)
             (customFieldsPD . pd)
             (\ a b -> b{pd = (pd b){customFieldsPD = a}})
             (multisetEditor
@@ -815,7 +817,8 @@ buildInfoD fp modules i = [
                     "Root directories for the source hierarchy."
                     $ paraShadow  <<<- ParaShadow ShadowIn
                         $ paraDirection  <<<- ParaDirection Vertical
-                            $ emptyParams)
+                            $ paraMinSize <<<- ParaMinSize (-1,150)
+                                $ emptyParams)
             (hsSourceDirs . (\a -> a !! i) . bis)
             (\ a b -> b{bis = update (bis b) i (\bi -> bi{hsSourceDirs = a})})
             (filesEditor fp FileChooserActionSelectFolder "Select folder")
@@ -925,7 +928,8 @@ buildInfoD fp modules i = [
             (stringsEditor (const True) True)
      ,   mkField
             (paraName <<<- ParaName "A list of header files to install"
-                $ paraDirection <<<- ParaDirection Vertical $ emptyParams)
+                $ paraMinSize <<<- ParaMinSize (-1,150)
+                    $ paraDirection <<<- ParaDirection Vertical $ emptyParams)
             (installIncludes . (\a -> a !! i) . bis)
              (\ a b -> b{bis = update (bis b) i (\bi -> bi{installIncludes = a})})
            (filesEditor fp FileChooserActionOpen "Select File")
@@ -933,14 +937,16 @@ buildInfoD fp modules i = [
     (show (i + 1) ++ " Opts C -2-", VFD emptyParams [
          mkField
             (paraName <<<- ParaName "A list of directories to search for header files"
-                $ paraDirection <<<- ParaDirection Vertical $ emptyParams)
+                $ paraMinSize <<<- ParaMinSize (-1,150)
+                    $ paraDirection <<<- ParaDirection Vertical $ emptyParams)
             (includeDirs . (\a -> a !! i) . bis)
             (\ a b -> b{bis = update (bis b) i (\bi -> bi{includeDirs = a})})
             (filesEditor fp FileChooserActionSelectFolder "Select Folder")
      ,   mkField
             (paraName <<<- ParaName
                 "A list of C source files to be compiled,linked with the Haskell files."
-                $ paraDirection <<<- ParaDirection Vertical $ emptyParams)
+                $ paraMinSize <<<- ParaMinSize (-1,150)
+                    $ paraDirection <<<- ParaDirection Vertical $ emptyParams)
             (cSources . (\a -> a !! i) . bis)
             (\ a b -> b{bis = update (bis b) i (\bi -> bi{cSources = a})})
             (filesEditor fp FileChooserActionOpen "Select file")
@@ -948,13 +954,15 @@ buildInfoD fp modules i = [
     (show (i + 1) ++ " Opts Libs ", VFD emptyParams [
          mkField
             (paraName <<<- ParaName "A list of extra libraries to link with"
-                $ paraDirection <<<- ParaDirection Vertical $ emptyParams)
+                $ paraMinSize <<<- ParaMinSize (-1,150)
+                    $ paraDirection <<<- ParaDirection Vertical $ emptyParams)
             (extraLibs . (\a -> a !! i) . bis)
             (\ a b -> b{bis = update (bis b) i (\bi -> bi{extraLibs = a})})
             (stringsEditor (const True) True)
      ,   mkField
             (paraName <<<- ParaName "A list of directories to search for libraries."
-                $ paraDirection <<<- ParaDirection Vertical $ emptyParams)
+                $ paraMinSize <<<- ParaMinSize (-1,150)
+                    $ paraDirection <<<- ParaDirection Vertical $ emptyParams)
             (extraLibDirs . (\a -> a !! i) . bis)
             (\ a b -> b{bis = update (bis b) i (\bi -> bi{extraLibDirs = a})})
             (filesEditor fp FileChooserActionSelectFolder "Select Folder")
@@ -969,14 +977,16 @@ buildInfoD fp modules i = [
             optsEditor
     ,   mkField
             (paraName <<<- ParaName "Support frameworks for Mac OS X"
-                $ paraDirection <<<- ParaDirection Vertical $ emptyParams)
+                $ paraMinSize <<<- ParaMinSize (-1,150)
+                    $ paraDirection <<<- ParaDirection Vertical $ emptyParams)
             (frameworks . (\a -> a !! i) . bis)
             (\ a b -> b{bis = update (bis b) i (\bi -> bi{frameworks = a})})
             (stringsEditor (const True) True)
     ,   mkField
             (paraName <<<- ParaName "Custom fields build info"
                 $ paraShadow <<<- ParaShadow ShadowIn
-                     $ paraDirection <<<- ParaDirection Vertical $ emptyParams)
+                    $ paraMinSize <<<- ParaMinSize (-1,150)
+                        $ paraDirection <<<- ParaDirection Vertical $ emptyParams)
              (customFieldsBI . (\a -> a !! i) . bis)
             (\ a b -> b{bis = update (bis b) i (\bi -> bi{customFieldsBI = a})})
             (multisetEditor
@@ -1271,7 +1281,8 @@ executablesEditor fp modules countBuildInfo p =
         (executableEditor fp modules countBuildInfo,emptyParams)
         Nothing
         Nothing
-        (paraShadow  <<<- ParaShadow ShadowIn $ p)
+        (paraShadow  <<<- ParaShadow ShadowIn
+            $ paraMinSize <<<- ParaMinSize (-1,200) $ p)
 
 executableEditor :: Maybe FilePath -> [ModuleName] -> Int -> Editor Executable'
 executableEditor fp modules countBuildInfo para noti = do
@@ -1310,7 +1321,8 @@ testsEditor fp modules countBuildInfo p =
         (testEditor fp modules countBuildInfo,emptyParams)
         Nothing
         Nothing
-        (paraShadow  <<<- ParaShadow ShadowIn $ p)
+        (paraShadow  <<<- ParaShadow ShadowIn
+            $ paraMinSize <<<- ParaMinSize (-1,200) $ p)
   where
     interfaceName (TestSuiteExeV10 _ f) = f
     interfaceName i = show i

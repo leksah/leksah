@@ -50,6 +50,7 @@ import IDE.Workspaces (packageTry)
 import qualified Data.Enumerator.List as EL (consume)
 import Control.Monad.Trans.Class (MonadTrans(..))
 import Control.Monad.IO.Class (MonadIO(..))
+import IDE.Utils.GUIUtils (treeViewContextMenu)
 
 -- | A debugger pane description
 --
@@ -149,13 +150,13 @@ builder' pp nb windows = reifyIDE $ \ ideR -> do
 
     cid1 <- treeView `afterFocusIn`
         (\_ -> do reflectIDE (makeActive pane) ideR ; return True)
+    (cid2, cid3) <- treeViewContextMenu treeView $ traceContextMenu ideR tracepoints treeView
     sel `onSelectionChanged` do
         sel <- getSelectedTracepoint treeView tracepoints
         case sel of
             Just ref -> return () -- TODO reflectIDE (selectRef (Just ref)) ideR
             Nothing -> return ()
-    treeView `onButtonPress` (traceViewPopup ideR tracepoints treeView)
-    return (Just pane,[ConnectC cid1])
+    return (Just pane, map ConnectC [cid1, cid2, cid3])
 
 fillTraceList :: IDEAction
 fillTraceList = packageTry $ do
@@ -203,38 +204,21 @@ selectStrings (ToolOutput str:r)  = str : selectStrings r
 selectStrings (_:r)               = selectStrings r
 selectStrings []                  = []
 
-traceViewPopup :: IDERef
-    -> TreeStore TraceHist
-    -> TreeView
-    -> Event
-    -> IO (Bool)
-traceViewPopup ideR  store treeView (Button _ click _ _ _ _ button _ _)
-    = do
-    if button == RightButton
-        then do
-            theMenu         <-  menuNew
-            item1           <-  menuItemNewWithLabel "Back"
-            item1 `on` menuItemActivate $ reflectIDE debugBack ideR
-            sep1 <- separatorMenuItemNew
-            item2           <-  menuItemNewWithLabel "Forward"
-            item2 `on` menuItemActivate $ reflectIDE debugForward ideR
-            item3           <-  menuItemNewWithLabel "Update"
-            item3 `on` menuItemActivate $ reflectIDE fillTraceList ideR
-            mapM_ (menuShellAppend theMenu) [castToMenuItem item1, castToMenuItem sep1,
-                castToMenuItem item2, castToMenuItem item3]
-            menuPopup theMenu Nothing
-            widgetShowAll theMenu
-            return True
-        else return False
---            if button == LeftButton && click == DoubleClick
---                then do sel         <-  getSelectedBreakpoint treeView store
---                        case sel of
---                            Just ref      -> reflectIDE (setCurrentBreak (Just ref)) ideR
---                            otherwise     -> sysMessage Normal "Debugger>> breakpointViewPopup: no selection2"
---                        return True
---                else return False
-traceViewPopup _ _ _ _ = throwIDE "breakpointViewPopup wrong event type"
-
+traceContextMenu :: IDERef
+                  -> TreeStore TraceHist
+                  -> TreeView
+                  -> Menu
+                  -> IO ()
+traceContextMenu ideR store treeView theMenu = do
+    item1           <-  menuItemNewWithLabel "Back"
+    item1 `on` menuItemActivate $ reflectIDE debugBack ideR
+    sep1 <- separatorMenuItemNew
+    item2           <-  menuItemNewWithLabel "Forward"
+    item2 `on` menuItemActivate $ reflectIDE debugForward ideR
+    item3           <-  menuItemNewWithLabel "Update"
+    item3 `on` menuItemActivate $ reflectIDE fillTraceList ideR
+    mapM_ (menuShellAppend theMenu) [castToMenuItem item1, castToMenuItem sep1,
+        castToMenuItem item2, castToMenuItem item3]
 
 tracesParser :: CharParser () [TraceHist]
 tracesParser = try (do
