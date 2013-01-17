@@ -255,7 +255,11 @@ buildPackage backgroundBuild jumpToWarnings withoutLinking package continuation 
             when ready $ do
                 let dir = dropFileName (ipdCabalFile package)
                 when (saveAllBeforeBuild prefs) (do fileSaveAll belongsToWorkspace; return ())
-                runDebug (executeDebugCommand ":reload" (logOutputForBuild package backgroundBuild jumpToWarnings)) debug
+                (`runDebug` debug) . executeDebugCommand ":reload" $ do
+                    errs <- logOutputForBuild package backgroundBuild jumpToWarnings
+                    when (null errs) $ do
+                        cmd <- lift $ readIDE autoCommand
+                        liftIO . postGUISync $ reflectIDE cmd ideR
     )
     (\(e :: SomeException) -> sysMessage Normal (show e))
 
@@ -680,7 +684,7 @@ debugStart = do
         case maybeDebug of
             Nothing -> do
                 ghci <- reifyIDE $ \ideR -> newGhci (ipdBuildFlags package) (interactiveFlags prefs')
-                    $ reflectIDEI (logOutputForBuild package True False) ideR
+                    $ reflectIDEI (logOutputForBuild package True False >> return ()) ideR
                 modifyIDE_ (\ide -> ide {debugState = Just (package, ghci)})
                 triggerEventIDE (Sensitivity [(SensitivityInterpreting, True)])
                 setDebugToggled True
@@ -689,7 +693,7 @@ debugStart = do
                     readMVar (outputClosed ghci)
                     postGUISync $ reflectIDE (do
                         setDebugToggled False
-                        modifyIDE_ (\ide -> ide {debugState = Nothing})
+                        modifyIDE_ (\ide -> ide {debugState = Nothing, autoCommand = return ()})
                         triggerEventIDE (Sensitivity [(SensitivityInterpreting, False)])
                         -- Kick of a build if one is not already due
                         modifiedPacks <- fileCheckAll belongsToPackage

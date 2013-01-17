@@ -120,9 +120,12 @@ debugExecuteSelection :: IDEAction
 debugExecuteSelection = do
     maybeText   <- selectedTextOrCurrentLine
     case maybeText of
-        Just text -> packageTry $ tryDebug $ do
-            debugSetLiberalScope
-            debugCommand text logOutput
+        Just text -> do
+            let command = packageTry $ tryDebug $ do
+                debugSetLiberalScope
+                debugCommand text logOutput
+            modifyIDE_ $ \ide -> ide {autoCommand = command}
+            command
         Nothing   -> ideMessage Normal "Please select some text in the editor to execute"
 
 debugExecuteAndShowSelection :: IDEAction

@@ -407,7 +407,7 @@ logOutput = do
     logOutputLines defaultLineLogger
     return ()
 
-logOutputForBuild :: IDEPackage -> Bool -> Bool -> E.Iteratee ToolOutput IDEM ()
+logOutputForBuild :: IDEPackage -> Bool -> Bool -> E.Iteratee ToolOutput IDEM [LogRef]
 logOutputForBuild package backgroundBuild jumpToWarnings = do
     log    <- lift getLog
     unless backgroundBuild $ liftIO $ postGUISync $ bringPaneToFront log
@@ -421,7 +421,7 @@ logOutputForBuild package backgroundBuild jumpToWarnings = do
         triggerEventIDE (StatusbarChanged [CompartmentState
             (show errorNum ++ " Errors, " ++ show warnNum ++ " Warnings"), CompartmentBuild False])
         unless (backgroundBuild || (not jumpToWarnings && errorNum == 0)) nextError
-        return ()) ideR
+        return errs) ideR
   where
     readAndShow :: (IDELog, Bool, [LogRef]) -> ToolOutput -> IDEM (IDELog, Bool, [LogRef])
     readAndShow (log, inError, errs) output = do

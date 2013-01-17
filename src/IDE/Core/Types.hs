@@ -159,6 +159,7 @@ data IDE            =  IDE {
 ,   completion      ::   ((Int, Int), Maybe CompletionWindow)
 ,   yiControl       ::   Yi.Control
 ,   server          ::   Maybe Handle
+,   autoCommand     ::   IDEAction
 } --deriving Show
 
 --
