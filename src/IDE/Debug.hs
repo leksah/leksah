@@ -1,5 +1,4 @@
-{-# LANGUAGE CPP, ForeignFunctionInterface #-}
-{-# OPTIONS_GHC -XScopedTypeVariables #-}
+{-# LANGUAGE ScopedTypeVariables #-}
 -----------------------------------------------------------------------------
 --
 -- Module      :  IDE.Debug
@@ -267,15 +266,18 @@ debugStepModule = packageTry $ do
         (debugPackage, _) <- ask
         debugCommand ":stepmodule" (logOutputForLiveContext debugPackage)
 
+
+logTraceOutput debugPackage = do
+    logOutputForLiveContext debugPackage
+    lift $ triggerEventIDE TraceChanged
+    return ()
+
 debugTrace :: IDEAction
 debugTrace = packageTry $ do
     rootPath <- lift $ activeProjectDir
     tryDebug $ do
         (debugPackage, _) <- ask
-        debugCommand ":trace" $ do
-            logOutputForLiveContext debugPackage
-            lift $ triggerEventIDE TraceChanged
-            return ()
+        debugCommand ":trace" $ logTraceOutput debugPackage
 
 debugTraceExpression :: IDEAction
 debugTraceExpression = do
@@ -288,11 +290,7 @@ debugTraceExpr :: Maybe String -> DebugAction
 debugTraceExpr maybeText = do
     (debugPackage, _) <- ask
     case maybeText of
-        Just text -> debugCommand (":trace " ++ text) $ do
---            rootPath <- activeProjectDir
-            logOutputForLiveContext debugPackage
-            lift $ triggerEventIDE TraceChanged
-            return ()
+        Just text -> debugCommand (":trace " ++ text) $ logTraceOutput debugPackage
         Nothing   -> lift $ ideMessage Normal "Please select an expression in the editor"
 
 

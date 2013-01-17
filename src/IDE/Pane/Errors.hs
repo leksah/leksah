@@ -29,12 +29,13 @@ import Graphics.UI.Gtk.General.Enums
     (Click(..), MouseButton(..))
 import Graphics.UI.Gtk.Gdk.Events (Event(..))
 import IDE.ImportTool
-       (addPackage, parseHiddenModule, addImport, parseNotInScope,
-        resolveErrors)
+       (addResolveMenuItems, resolveErrors)
 import Data.List (elemIndex)
 import IDE.LogRef (showSourceSpan)
 import Control.Monad.IO.Class (MonadIO(..))
 import IDE.Utils.GUIUtils (treeViewContextMenu)
+import Data.Maybe (isJust)
+import Control.Monad (when)
 
 -- | A breakpoints pane description
 --
@@ -171,23 +172,7 @@ errorsContextMenu ideR store treeView theMenu = do
         reflectIDE resolveErrors ideR
     menuShellAppend theMenu item0
     case mbSel of
-        Just sel -> do
-            case parseNotInScope (refDescription sel) of
-                Nothing   -> do
-                    return ()
-                Just _  -> do
-                    item1   <-  menuItemNewWithLabel "Add Import"
-                    item1 `on` menuItemActivate $ do
-                        reflectIDE (addImport sel [] (\ _ -> return ())) ideR
-                    menuShellAppend theMenu item1
-            case parseHiddenModule (refDescription sel) of
-                Nothing   -> do
-                    return ()
-                Just _  -> do
-                    item1   <-  menuItemNewWithLabel "Add Package"
-                    item1 `on` menuItemActivate $ do
-                        reflectIDE (addPackage sel >> return ()) ideR
-                    menuShellAppend theMenu item1
+        Just sel -> addResolveMenuItems ideR theMenu sel
         Nothing -> return ()
 
 errorsSelect :: IDERef
