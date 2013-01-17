@@ -50,7 +50,8 @@ import Prelude hiding (catch)
 import Control.Exception hiding (try)
 import IDE.ImportTool
        (resolveErrors, addResolveMenuItems)
-import IDE.Utils.Tool (runInteractiveProcess, ProcessHandle)
+import IDE.Utils.Tool
+       (terminateProcess, runInteractiveProcess, ProcessHandle)
 import Graphics.UI.Gtk
        (textBufferSetText, textViewScrollToMark,
         textBufferGetIterAtLineOffset, textViewScrollMarkOnscreen, textViewSetBuffer,
