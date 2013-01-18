@@ -39,6 +39,8 @@ module IDE.Utils.GUIUtils (
 ,   mapControlCommand
 ,   treeViewContextMenu
 
+,   __ 
+
 ) where
 
 import Graphics.UI.Gtk
@@ -268,3 +270,6 @@ treeViewContextMenu treeView populateMenu = do
         menuPopup theMenu buttonEventDetails
         widgetShowAll theMenu
         return True
+
+-- for i18n using hgettext
+__ = id
