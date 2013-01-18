@@ -109,6 +109,7 @@ import Distribution.PackageDescription.Parse
 #endif
 import Distribution.Version (Version(..), orLaterVersion)
 
+import Text.Printf (printf)
 --------------------------------------------------------------------------
 -- Handling of Generic Package Descriptions
 
@@ -150,10 +151,10 @@ toGenericPackageDescription pd =
 --
 
 choosePackageDir :: Window -> Maybe FilePath -> IO (Maybe FilePath)
-choosePackageDir window mbDir = chooseDir window "Select root folder for package" mbDir
+choosePackageDir window mbDir = chooseDir window (__ "Select root folder for package") mbDir
 
 choosePackageFile :: Window -> Maybe FilePath -> IO (Maybe FilePath)
-choosePackageFile window mbDir = chooseFile window "Select cabal package file (.cabal)" mbDir
+choosePackageFile window mbDir = chooseFile window (__ "Select cabal package file (.cabal)") mbDir
 
 packageEdit :: PackageAction
 packageEdit = do
@@ -163,8 +164,8 @@ packageEdit = do
     package <- liftIO $ readPackageDescription normal (ipdCabalFile idePackage)
     if hasConfigs package
         then do
-            lift $ ideMessage High ("Cabal file with configurations can't be edited with the "
-                ++ "current version of the editor")
+            lift $ ideMessage High 
+                (__ "Cabal file with configurations can't be edited with the current version of the editor")
             lift $ fileOpenThis $ ipdCabalFile idePackage
             return ()
         else do
@@ -172,8 +173,8 @@ packageEdit = do
 #if MIN_VERSION_Cabal(1,10,0)
             if hasUnknownTestTypes flat
                 then do
-                    lift $ ideMessage High ("Cabal file with tests of this type can't be edited with the "
-                        ++ "current version of the editor")
+                    lift $ ideMessage High 
+                        (__ "Cabal file with tests of this type can't be edited with the current version of the editor")
                     lift $ fileOpenThis $ ipdCabalFile idePackage
                     return ()
                 else do
@@ -227,9 +228,10 @@ packageNew' mbDir activateAction = do
                 Just cfn -> do
                     add <- liftIO $ do
                         md <- messageDialogNew (Just window) [] MessageQuestion ButtonsCancel
-                            $ "There is already file " ++ takeFileName cfn ++ " in this directory. "
-                            ++ "Would you like to add this package to the workspace?"
-                        dialogAddButton md "_Add Package" (ResponseUser 1)
+                            $ (printf (__ 
+                              "There is already file %s in this directory. Would you like to add this package to the workspace?") 
+                              (takeFileName cfn) ) 
+                        dialogAddButton md (__ "_Add Package") (ResponseUser 1)
                         dialogSetDefaultResponse md (ResponseUser 1)
                         set md [ windowWindowPosition := WinPosCenterOnParent ]
                         rid <- dialogRun md
@@ -242,9 +244,10 @@ packageNew' mbDir activateAction = do
                         then return True
                         else liftIO $ do
                             md <- messageDialogNew (Just window) [] MessageQuestion ButtonsCancel
-                                $ "The path you have choosen " ++ dirName ++ " is not an empty directory. "
-                                ++ "Are you sure you want to make a new package here?"
-                            dialogAddButton md "_Make Package Here" (ResponseUser 1)
+                                $ (printf (__ 
+                                   "The path you have choosen %s is not an empty directory. Are you sure you want to make a new package here?" 
+                                  ) dirName)
+                            dialogAddButton md (__ "_Make Package Here") (ResponseUser 1)
                             dialogSetDefaultResponse md (ResponseUser 1)
                             set md [ windowWindowPosition := WinPosCenterOnParent ]
                             rid <- dialogRun md
@@ -256,9 +259,9 @@ packageNew' mbDir activateAction = do
                             b2 <- doesFileExist (dirName </> "Setup.lhs")
                             if  not (b1 || b2)
                                 then do
-                                    sysMessage Normal "Setup.(l)hs does not exist. Writing Standard"
+                                    sysMessage Normal (__ "Setup.(l)hs does not exist. Writing Standard")
                                     writeFile (dirName </> "Setup.lhs") standardSetup
-                                else sysMessage Normal "Setup.(l)hs already exist"
+                                else sysMessage Normal (__ "Setup.(l)hs already exist")
                             allModules dirName
                         let Just initialVersion = simpleParse "0.0.1"
                         editPackage emptyPackageDescription{
@@ -384,7 +387,7 @@ data PackageState = PackageState
 
 instance Pane PackagePane IDEM
     where
-    primPaneName _  =   "Package"
+    primPaneName _  =   (__ "Package")
     getAddedIndex _ =   0
     getTopWidget    =   castToWidget . packageBox
     paneId b        =   "*Package"
@@ -461,8 +464,8 @@ builder' packageDir packageD packageDescr afterSaveAction initialPackagePath mod
     save    <- buttonNewFromStock "gtk-save"
     widgetSetSensitive save False
     closeB  <- buttonNewFromStock "gtk-close"
-    addB    <- buttonNewFromStock "Add Build Info"
-    removeB <- buttonNewFromStock "Remove Build Info"
+    addB    <- buttonNewFromStock (__ "Add Build Info")
+    removeB <- buttonNewFromStock (__ "Remove Build Info")
     label   <-  labelNew Nothing
     boxPackStart bb addB PackNatural 0
     boxPackStart bb removeB PackNatural 0
@@ -476,11 +479,11 @@ builder' packageDir packageD packageDescr afterSaveAction initialPackagePath mod
 
     let fieldNames = map (\fd -> case getParameterPrim paraName (parameters fd) of
                                     Just s -> s
-                                    Nothing -> "Unnamed") fields
+                                    Nothing -> (__ "Unnamed")) fields
     addB `onClicked` (do
         mbNewPackage' <- extract packageD [getExt]
         case mbNewPackage' of
-            Nothing -> sysMessage Normal "Content doesn't validate"
+            Nothing -> sysMessage Normal (__ "Content doesn't validate")
             Just pde -> reflectIDE (do
                     closePane packagePane
                     initPackage packageDir pde {bis = bis pde ++ [bis pde !! 0]}
@@ -495,8 +498,8 @@ builder' packageDir packageD packageDescr afterSaveAction initialPackagePath mod
     removeB `onClicked` (do
         mbNewPackage' <- extract packageD [getExt]
         case mbNewPackage' of
-            Nothing -> sysMessage Normal "Content doesn't validate"
-            Just pde | length (bis pde) == 1  -> sysMessage Normal "Just one Build Info"
+            Nothing -> sysMessage Normal (__ "Content doesn't validate")
+            Just pde | length (bis pde) == 1  -> sysMessage Normal (__ "Just one Build Info")
                      | otherwise -> reflectIDE (do
                         closePane packagePane
                         initPackage packageDir pde{bis = take (length (bis pde) - 1) (bis pde)}
@@ -519,7 +522,7 @@ builder' packageDir packageD packageDescr afterSaveAction initialPackagePath mod
                 md <- messageDialogNew (Just window) []
                     MessageQuestion
                     ButtonsYesNo
-                    "Unsaved changes. Close anyway?"
+                    (__ "Unsaved changes. Close anyway?")
                 set md [ windowWindowPosition := WinPosCenterOnParent ]
                 resp <- dialogRun md
                 widgetDestroy md
@@ -570,22 +573,22 @@ packageDD :: [PackageIdentifier]
     -> [(String, FieldDescription PackageDescriptionEd)]
     -> FieldDescription PackageDescriptionEd
 packageDD packages fp modules numBuildInfos extras = NFD ([
-    ("Package", VFD emptyParams [
+    ((__ "Package"), VFD emptyParams [
         mkField
-            (paraName <<<- ParaName "Synopsis"
-           $ paraSynopsis <<<- ParaSynopsis "A one-line summary of this package"
+            (paraName <<<- ParaName (__ "Synopsis")
+           $ paraSynopsis <<<- ParaSynopsis (__ "A one-line summary of this package")
            $ emptyParams)
             (synopsis . pd)
             (\ a b -> b{pd = (pd b){synopsis = a}})
             (stringEditor (const True) True)
     ,   mkField
-            (paraName <<<- ParaName "Package Identifier" $ emptyParams)
+            (paraName <<<- ParaName (__ "Package Identifier") $ emptyParams)
             (package . pd)
             (\ a b -> b{pd = (pd b){package = a}})
             packageEditor
     ,   mkField
-            (paraName <<<- ParaName "Description"
-                $ paraSynopsis <<<- ParaSynopsis "A more verbose description of this package"
+            (paraName <<<- ParaName (__ "Description")
+                $ paraSynopsis <<<- ParaSynopsis (__ "A more verbose description of this package")
                     $ paraShadow <<<- ParaShadow ShadowOut
                         $ paraMinSize <<<- ParaMinSize (-1,210)
                             $ emptyParams)
@@ -593,24 +596,24 @@ packageDD packages fp modules numBuildInfos extras = NFD ([
             (\ a b -> b{pd = (pd b){description = if null a then " " else a}})
             multilineStringEditor
     ,   mkField
-            (paraName <<<- ParaName "Homepage" $ emptyParams)
+            (paraName <<<- ParaName (__ "Homepage") $ emptyParams)
             (homepage . pd)
             (\ a b -> b{pd = (pd b){homepage = a}})
             (stringEditor (const True) True)
     ,   mkField
-            (paraName <<<- ParaName "Package URL" $ emptyParams)
+            (paraName <<<- ParaName (__ "Package URL") $ emptyParams)
             (pkgUrl . pd)
             (\ a b -> b{pd = (pd b){pkgUrl = a}})
             (stringEditor (const True) True)
     ,   mkField
-            (paraName <<<- ParaName "Category" $ emptyParams)
+            (paraName <<<- ParaName (__ "Category") $ emptyParams)
             (category . pd)
             (\ a b -> b{pd = (pd b){category = a}})
             (stringEditor (const True) True)
     ]),
-    ("Description", VFD emptyParams [
+    ((__ "Description"), VFD emptyParams [
         mkField
-            (paraName <<<- ParaName "Stability" $ emptyParams)
+            (paraName <<<- ParaName (__ "Stability") $ emptyParams)
             (stability . pd)
             (\ a b -> b{pd = (pd b){stability = a}})
             (stringEditor (const True) True)
@@ -618,33 +621,33 @@ packageDD packages fp modules numBuildInfos extras = NFD ([
             -- TODO
 #else
     ,   mkField
-            (paraName <<<- ParaName "License" $ emptyParams)
+            (paraName <<<- ParaName (__ "License") $ emptyParams)
             (license . pd)
             (\ a b -> b{pd = (pd b){license = a}})
             (comboSelectionEditor [GPL, LGPL, BSD3, BSD4, PublicDomain, AllRightsReserved, OtherLicense] show)
 #endif
     ,   mkField
-            (paraName <<<- ParaName "License File" $ emptyParams)
+            (paraName <<<- ParaName (__ "License File") $ emptyParams)
             (licenseFile . pd)
             (\ a b -> b{pd = (pd b){licenseFile = a}})
-            (fileEditor (Just fp) FileChooserActionOpen "Select file")
+            (fileEditor (Just fp) FileChooserActionOpen (__ "Select file"))
     ,   mkField
-            (paraName <<<- ParaName "Copyright" $ emptyParams)
+            (paraName <<<- ParaName (__ "Copyright") $ emptyParams)
             (copyright . pd)
             (\ a b -> b{pd = (pd b){copyright = a}})
             (stringEditor (const True) True)
     ,   mkField
-            (paraName <<<- ParaName "Author" $ emptyParams)
+            (paraName <<<- ParaName (__ "Author") $ emptyParams)
             (author . pd)
             (\ a b -> b{pd = (pd b){author = a}})
             (stringEditor (const True) True)
     ,   mkField
-            (paraName <<<- ParaName "Maintainer" $ emptyParams)
+            (paraName <<<- ParaName (__ "Maintainer") $ emptyParams)
             (maintainer . pd)
             (\ a b -> b{pd = (pd b){maintainer = a}})
             (stringEditor (const True) True)
     ,   mkField
-            (paraName <<<- ParaName "Bug Reports" $ emptyParams)
+            (paraName <<<- ParaName (__ "Bug Reports") $ emptyParams)
             (bugReports . pd)
             (\ a b -> b{pd = (pd b){bugReports = a}})
             (stringEditor (const True) True)
@@ -655,10 +658,10 @@ packageDD packages fp modules numBuildInfos extras = NFD ([
 --            (sourceRepos . pd)
 --            (\ a b -> b{pd = (pd b){sourceRepos = a}})
 --            reposEditor]),
-    ("Dependencies  ", VFD emptyParams [
+    ((__ "Dependencies  "), VFD emptyParams [
         mkField
-            (paraName <<<- ParaName "Build Dependencies"
-                $ paraSynopsis <<<- ParaSynopsis "Does this package depends on other packages?"
+            (paraName <<<- ParaName (__ "Build Dependencies")
+                $ paraSynopsis <<<- ParaSynopsis (__ "Does this package depends on other packages?")
                     $ paraDirection <<<- ParaDirection Vertical
                         $ paraMinSize <<<- ParaMinSize (-1,250)
                             $ emptyParams)
@@ -666,11 +669,11 @@ packageDD packages fp modules numBuildInfos extras = NFD ([
             (\ a b -> b{pd = (pd b){buildDepends = a}})
             (dependenciesEditor packages)
     ]),
-    ("Meta Dep.", VFD emptyParams [
+    ((__ "Meta Dep."), VFD emptyParams [
         mkField
-            (paraName <<<- ParaName "Cabal version"
+            (paraName <<<- ParaName (__ "Cabal version")
                 $ paraSynopsis <<<- ParaSynopsis
-                    "Does this package depends on a specific version of Cabal?"
+                    (__ "Does this package depends on a specific version of Cabal?")
                     $ paraShadow <<<- ParaShadow ShadowIn $ emptyParams)
             (descCabalVersion . pd)
 #if MIN_VERSION_Cabal(1,10,0)
@@ -680,7 +683,7 @@ packageDD packages fp modules numBuildInfos extras = NFD ([
 #endif
             versionRangeEditor
     ,   mkField
-            (paraName <<<- ParaName "Tested with compiler"
+            (paraName <<<- ParaName (__ "Tested with compiler")
                 $ paraShadow <<<- ParaShadow ShadowIn
                     $ paraDirection <<<- ParaDirection Vertical
                         $ paraMinSize <<<- ParaMinSize (-1,150)
@@ -691,107 +694,107 @@ packageDD packages fp modules numBuildInfos extras = NFD ([
             (\ a b -> b{pd = (pd b){testedWith = a}})
             testedWithEditor
     ]),
-    ("Data Files", VFD emptyParams [
+    ((__ "Data Files"), VFD emptyParams [
         mkField
-            (paraName <<<- ParaName "Data Files"
+            (paraName <<<- ParaName (__ "Data Files")
                 $ paraSynopsis <<<- ParaSynopsis
-                    "A list of files to be installed for run-time use by the package."
+                    (__ "A list of files to be installed for run-time use by the package.")
                     $ paraDirection <<<- ParaDirection Vertical
                         $ paraMinSize <<<- ParaMinSize (-1,250)
                             $ emptyParams)
             (dataFiles . pd)
             (\ a b -> b{pd = (pd b){dataFiles = a}})
-            (filesEditor (Just fp) FileChooserActionOpen "Select File")
+            (filesEditor (Just fp) FileChooserActionOpen (__ "Select File"))
     ,   mkField
-            (paraName <<<- ParaName "Data directory" $ emptyParams)
+            (paraName <<<- ParaName (__ "Data directory") $ emptyParams)
             (dataDir . pd)
             (\ a b -> b{pd = (pd b){dataDir = a}})
-            (fileEditor (Just fp) FileChooserActionSelectFolder "Select file")
+            (fileEditor (Just fp) FileChooserActionSelectFolder (__ "Select file"))
     ]),
-    ("Extra Files", VFD emptyParams [
+    ((__ "Extra Files"), VFD emptyParams [
         mkField
-            (paraName <<<- ParaName "Extra Source Files"
+            (paraName <<<- ParaName (__ "Extra Source Files")
                 $ paraSynopsis <<<- ParaSynopsis
-                    "A list of additional files to be included in source distributions."
+                    (__ "A list of additional files to be included in source distributions.")
                     $ paraDirection <<<- ParaDirection Vertical
                         $ paraMinSize <<<- ParaMinSize (-1,120)
                             $ emptyParams)
             (extraSrcFiles . pd)
             (\ a b -> b{pd = (pd b){extraSrcFiles = a}})
-            (filesEditor (Just fp) FileChooserActionOpen "Select File")
+            (filesEditor (Just fp) FileChooserActionOpen (__ "Select File"))
     ,   mkField
-            (paraName <<<-  ParaName "Extra Tmp Files"
+            (paraName <<<-  ParaName (__ "Extra Tmp Files")
                 $ paraSynopsis <<<- ParaSynopsis
-                    "A list of additional files or directories to be removed by setup clean."
+                    (__ "A list of additional files or directories to be removed by setup clean.")
                     $ paraDirection <<<- ParaDirection Vertical
                         $ paraMinSize <<<- ParaMinSize (-1,120)
                             $ emptyParams)
             (extraTmpFiles . pd)
             (\ a b -> b{pd = (pd b){extraTmpFiles = a}})
-            (filesEditor (Just fp) FileChooserActionOpen "Select File")
+            (filesEditor (Just fp) FileChooserActionOpen (__ "Select File"))
     ]),
-    ("Other",VFD emptyParams  [
+    ((__ "Other"),VFD emptyParams  [
         mkField
-            (paraName <<<- ParaName "Build Type"
+            (paraName <<<- ParaName (__ "Build Type")
                 $ paraSynopsis <<<- ParaSynopsis
-                "Describe executable programs contained in the package"
+                (__ "Describe executable programs contained in the package")
                         $ paraShadow <<<- ParaShadow ShadowIn
                             $ paraDirection <<<- ParaDirection Vertical
                                 $ emptyParams)
             (buildType . pd)
             (\ a b -> b{pd = (pd b){buildType = a}})
-            (maybeEditor (buildTypeEditor, emptyParams) True "Specify?")
+            (maybeEditor (buildTypeEditor, emptyParams) True (__ "Specify?"))
     ,   mkField
-            (paraName <<<- ParaName "Custom Fields"
+            (paraName <<<- ParaName (__ "Custom Fields")
                 $ paraShadow <<<- ParaShadow ShadowIn
                     $ paraMinSize <<<- ParaMinSize (-1,150)
                         $ paraDirection <<<- ParaDirection Vertical $ emptyParams)
             (customFieldsPD . pd)
             (\ a b -> b{pd = (pd b){customFieldsPD = a}})
             (multisetEditor
-                (ColumnDescr True [("Name",\(n,_) -> [cellText := n])
-                                   ,("Value",\(_,v) -> [cellText := v])])
+                (ColumnDescr True [((__ "Name"),\(n,_) -> [cellText := n])
+                                   ,((__ "Value"),\(_,v) -> [cellText := v])])
                 ((pairEditor
                     (stringxEditor (const True),emptyParams)
                     (stringEditor (const True) True,emptyParams)),emptyParams)
             Nothing
             Nothing)
     ]),
-    ("Executables",VFD emptyParams  [
+    ((__ "Executables"),VFD emptyParams  [
         mkField
-            (paraName <<<- ParaName "Executables"
+            (paraName <<<- ParaName (__ "Executables")
                 $ paraSynopsis <<<- ParaSynopsis
-                "Describe executable programs contained in the package"
+                (__ "Describe executable programs contained in the package")
                     $ paraDirection <<<- ParaDirection Vertical $ emptyParams)
             exes
             (\ a b -> b{exes = a})
             (executablesEditor (Just fp) modules numBuildInfos)
     ]),
 #if MIN_VERSION_Cabal(1,10,0)
-    ("Tests",VFD emptyParams  [
+    ((__ "Tests"),VFD emptyParams  [
         mkField
-            (paraName <<<- ParaName "Tests"
+            (paraName <<<- ParaName (__ "Tests")
                 $ paraSynopsis <<<- ParaSynopsis
-                "Describe tests contained in the package"
+                (__ "Describe tests contained in the package")
                     $ paraDirection <<<- ParaDirection Vertical $ emptyParams)
             tests
             (\ a b -> b{tests = a})
             (testsEditor (Just fp) modules numBuildInfos)
     ]),
 #endif
-    ("Library", VFD emptyParams [
+    ((__ "Library"), VFD emptyParams [
         mkField
-            (paraName <<<- ParaName "Library"
+            (paraName <<<- ParaName (__ "Library")
            $ paraSynopsis <<<- ParaSynopsis
-             "If the package contains a library, specify the exported modules here"
+             (__ "If the package contains a library, specify the exported modules here")
            $ paraDirection <<<- ParaDirection Vertical
            $ paraShadow <<<- ParaShadow ShadowIn $ emptyParams)
             mbLib
             (\ a b -> b{mbLib = a})
             (maybeEditor (libraryEditor (Just fp) modules numBuildInfos,
-                paraName <<<- ParaName "Specify exported modules"
+                paraName <<<- ParaName (__ "Specify exported modules")
                 $ emptyParams) True
-                "Does this package contain a library?")
+                (__ "Does this package contain a library?"))
     ])
     ] ++ extras)
 
@@ -804,28 +807,28 @@ update bis index func =
 
 buildInfoD :: Maybe FilePath -> [ModuleName] -> Int -> [(String,FieldDescription PackageDescriptionEd)]
 buildInfoD fp modules i = [
-    (show (i + 1) ++ " Build Info", VFD emptyParams [
+    ((printf (__ "%s Build Info") (show (i + 1))), VFD emptyParams [
         mkField
-            (paraName <<<- ParaName "Component is buildable here" $ emptyParams)
+            (paraName <<<- ParaName (__ "Component is buildable here") $ emptyParams)
             (buildable . (\a -> a !! i) . bis)
             (\ a b -> b{bis = update (bis b) i (\bi -> bi{buildable = a})})
             boolEditor
     ,   mkField
             (paraName  <<<- ParaName
-                "Where to look for the source hierarchy"
+                (__ "Where to look for the source hierarchy")
                 $ paraSynopsis <<<- ParaSynopsis
-                    "Root directories for the source hierarchy."
+                    (__ "Root directories for the source hierarchy.")
                     $ paraShadow  <<<- ParaShadow ShadowIn
                         $ paraDirection  <<<- ParaDirection Vertical
                             $ paraMinSize <<<- ParaMinSize (-1,150)
                                 $ emptyParams)
             (hsSourceDirs . (\a -> a !! i) . bis)
             (\ a b -> b{bis = update (bis b) i (\bi -> bi{hsSourceDirs = a})})
-            (filesEditor fp FileChooserActionSelectFolder "Select folder")
+            (filesEditor fp FileChooserActionSelectFolder (__ "Select folder"))
     ,   mkField
-            (paraName <<<- ParaName "Non-exposed or non-main modules"
-            $ paraSynopsis <<<- ParaSynopsis ("A list of modules used by the component but "
-                                             ++ "not exposed to users.")
+            (paraName <<<- ParaName (__ "Non-exposed or non-main modules")
+            $ paraSynopsis <<<- ParaSynopsis 
+                                       (__ "A list of modules used by the component but not exposed to users.")
                 $ paraShadow <<<- ParaShadow ShadowIn
                     $ paraDirection <<<- ParaDirection Vertical
                         $ paraMinSize <<<- ParaMinSize (-1,300)
@@ -837,17 +840,17 @@ buildInfoD fp modules i = [
                 "   PackageEditor >> buildInfoD: no parse for moduile name" ) a)})})
             (modulesEditor modules)
     ]),
-    (show (i + 1) ++ " Compiler ", VFD emptyParams [
+    ((printf (__ "%s Compiler ") (show (i + 1))), VFD emptyParams [
         mkField
-            (paraName  <<<- ParaName "Options for haskell compilers"
+            (paraName  <<<- ParaName (__ "Options for haskell compilers")
             $ paraDirection <<<- ParaDirection Vertical
             $ paraShadow <<<- ParaShadow ShadowIn
             $ paraPack <<<- ParaPack PackGrow $ emptyParams)
             (options . (\a -> a !! i) . bis)
             (\ a b -> b{bis = update (bis b) i (\bi -> bi{options = a})})
             (multisetEditor
-                (ColumnDescr True [("Compiler Flavor",\(cv,_) -> [cellText := show cv])
-                                   ,("Options",\(_,op) -> [cellText := concatMap (\s -> ' ' : s) op])])
+                (ColumnDescr True [( (__ "Compiler Flavor"),\(cv,_) -> [cellText := show cv])
+                                   ,( (__ "Options"),\(_,op) -> [cellText := concatMap (\s -> ' ' : s) op])])
                 ((pairEditor
                     (compilerFlavorEditor,emptyParams)
                     (optsEditor,emptyParams)),
@@ -856,23 +859,23 @@ buildInfoD fp modules i = [
                 Nothing
                 Nothing)
      ,  mkField
-            (paraName <<<- ParaName "Additional options for GHC when built with profiling"
+            (paraName <<<- ParaName (__ "Additional options for GHC when built with profiling")
            $ emptyParams)
             (ghcProfOptions . (\a -> a !! i) . bis)
             (\ a b -> b{bis = update (bis b) i (\bi -> bi{ghcProfOptions = a})})
             optsEditor
      ,  mkField
-            (paraName <<<- ParaName "Additional options for GHC when the package is built as shared library"
+            (paraName <<<- ParaName (__ "Additional options for GHC when the package is built as shared library")
            $ emptyParams)
             (ghcSharedOptions . (\a -> a !! i) . bis)
             (\ a b -> b{bis = update (bis b) i (\bi -> bi{ghcSharedOptions = a})})
             optsEditor
     ]),
-    (show (i + 1) ++ " Extensions ", VFD emptyParams [
+    ((printf (__ "%s Extensions ") (show (i + 1))), VFD emptyParams [
         mkField
-            (paraName  <<<- ParaName "Extensions"
+            (paraName  <<<- ParaName (__ "Extensions")
                 $ paraSynopsis  <<<- ParaSynopsis
-                    "A list of Haskell extensions used by every module."
+                    (__ "A list of Haskell extensions used by every module.")
                          $ paraMinSize <<<- ParaMinSize (-1,400)
                             $ paraPack <<<- ParaPack PackGrow
                                 $ emptyParams)
@@ -885,9 +888,9 @@ buildInfoD fp modules i = [
 #endif
             extensionsEditor
     ]),
-    (show (i + 1) ++ " Build Tools ", VFD emptyParams [
+    ((printf (__ "%s Build Tools ") (show (i + 1))), VFD emptyParams [
         mkField
-            (paraName <<<- ParaName "Tools needed for a build"
+            (paraName <<<- ParaName (__ "Tools needed for a build")
                 $ paraDirection <<<- ParaDirection Vertical
                     $ paraMinSize <<<- ParaMinSize (-1,120)
                         $ emptyParams)
@@ -895,9 +898,9 @@ buildInfoD fp modules i = [
             (\ a b -> b{bis = update (bis b) i (\bi -> bi{buildTools = a})})
             (dependenciesEditor [])
     ]),
-    (show (i + 1) ++ " Pkg Config ", VFD emptyParams [
+    ( (printf (__ "%s Pkg Config ") (show (i + 1))), VFD emptyParams [
         mkField
-            (paraName <<<- ParaName "A list of pkg-config packages, needed to build this package"
+            (paraName <<<- ParaName (__ "A list of pkg-config packages, needed to build this package")
                 $ paraDirection <<<- ParaDirection Vertical
                     $ paraMinSize <<<- ParaMinSize (-1,120)
                         $ emptyParams)
@@ -905,93 +908,93 @@ buildInfoD fp modules i = [
             (\ a b -> b{bis = update (bis b) i (\bi -> bi{pkgconfigDepends = a})})
             (dependenciesEditor [])
     ]),
-    (show (i + 1) ++ " Opts C -1-", VFD emptyParams [
+    ( (printf (__ "%s Opts C -1-") (show (i + 1))), VFD emptyParams [
          mkField
-            (paraName <<<- ParaName "Options for C compiler"
+            (paraName <<<- ParaName (__ "Options for C compiler")
                 $ paraDirection <<<- ParaDirection Vertical
                     $ emptyParams)
             (ccOptions . (\a -> a !! i) . bis)
             (\ a b -> b{bis = update (bis b) i (\bi -> bi{ccOptions = a})})
             optsEditor
     ,    mkField
-            (paraName <<<- ParaName "Options for linker"
+            (paraName <<<- ParaName (__ "Options for linker")
                 $ paraDirection <<<- ParaDirection Vertical
                     $ emptyParams)
             (ldOptions . (\a -> a !! i) . bis)
             (\ a b -> b{bis = update (bis b) i (\bi -> bi{ldOptions = a})})
             optsEditor
     ,    mkField
-            (paraName <<<- ParaName "A list of header files to use when compiling"
+            (paraName <<<- ParaName (__ "A list of header files to use when compiling")
                 $ paraDirection <<<- ParaDirection Vertical $ emptyParams)
             (includes . (\a -> a !! i) . bis)
             (\ a b -> b{bis = update (bis b) i (\bi -> bi{includes = a})})
             (stringsEditor (const True) True)
      ,   mkField
-            (paraName <<<- ParaName "A list of header files to install"
+            (paraName <<<- ParaName (__ "A list of header files to install")
                 $ paraMinSize <<<- ParaMinSize (-1,150)
                     $ paraDirection <<<- ParaDirection Vertical $ emptyParams)
             (installIncludes . (\a -> a !! i) . bis)
              (\ a b -> b{bis = update (bis b) i (\bi -> bi{installIncludes = a})})
-           (filesEditor fp FileChooserActionOpen "Select File")
+           (filesEditor fp FileChooserActionOpen (__ "Select File"))
     ]),
-    (show (i + 1) ++ " Opts C -2-", VFD emptyParams [
+    ((printf (__ "%s Opts C -2-") (show (i + 1))), VFD emptyParams [
          mkField
-            (paraName <<<- ParaName "A list of directories to search for header files"
+            (paraName <<<- ParaName (__ "A list of directories to search for header files")
                 $ paraMinSize <<<- ParaMinSize (-1,150)
                     $ paraDirection <<<- ParaDirection Vertical $ emptyParams)
             (includeDirs . (\a -> a !! i) . bis)
             (\ a b -> b{bis = update (bis b) i (\bi -> bi{includeDirs = a})})
-            (filesEditor fp FileChooserActionSelectFolder "Select Folder")
+            (filesEditor fp FileChooserActionSelectFolder (__ "Select Folder"))
      ,   mkField
             (paraName <<<- ParaName
-                "A list of C source files to be compiled,linked with the Haskell files."
+                (__ "A list of C source files to be compiled,linked with the Haskell files.")
                 $ paraMinSize <<<- ParaMinSize (-1,150)
                     $ paraDirection <<<- ParaDirection Vertical $ emptyParams)
             (cSources . (\a -> a !! i) . bis)
             (\ a b -> b{bis = update (bis b) i (\bi -> bi{cSources = a})})
-            (filesEditor fp FileChooserActionOpen "Select file")
+            (filesEditor fp FileChooserActionOpen (__ "Select file"))
     ]),
-    (show (i + 1) ++ " Opts Libs ", VFD emptyParams [
+    ((printf (__ "%s Opts Libs ") (show (i + 1))), VFD emptyParams [
          mkField
-            (paraName <<<- ParaName "A list of extra libraries to link with"
+            (paraName <<<- ParaName (__ "A list of extra libraries to link with")
                 $ paraMinSize <<<- ParaMinSize (-1,150)
                     $ paraDirection <<<- ParaDirection Vertical $ emptyParams)
             (extraLibs . (\a -> a !! i) . bis)
             (\ a b -> b{bis = update (bis b) i (\bi -> bi{extraLibs = a})})
             (stringsEditor (const True) True)
      ,   mkField
-            (paraName <<<- ParaName "A list of directories to search for libraries."
+            (paraName <<<- ParaName (__ "A list of directories to search for libraries.")
                 $ paraMinSize <<<- ParaMinSize (-1,150)
                     $ paraDirection <<<- ParaDirection Vertical $ emptyParams)
             (extraLibDirs . (\a -> a !! i) . bis)
             (\ a b -> b{bis = update (bis b) i (\bi -> bi{extraLibDirs = a})})
-            (filesEditor fp FileChooserActionSelectFolder "Select Folder")
+            (filesEditor fp FileChooserActionSelectFolder (__ "Select Folder"))
    ]),
-    (show (i + 1) ++ " Other", VFD emptyParams [
+    ( (printf (__ "%s Other") (show (i + 1))), VFD emptyParams [
          mkField
-            (paraName <<<- ParaName "Options for C preprocessor"
+            (paraName <<<- ParaName (__ "Options for C preprocessor")
                 $ paraDirection <<<- ParaDirection Vertical
                     $ emptyParams)
             (cppOptions . (\a -> a !! i) . bis)
             (\ a b -> b{bis = update (bis b) i (\bi -> bi{cppOptions = a})})
             optsEditor
     ,   mkField
-            (paraName <<<- ParaName "Support frameworks for Mac OS X"
+            (paraName <<<- ParaName (__ "Support frameworks for Mac OS X")
                 $ paraMinSize <<<- ParaMinSize (-1,150)
                     $ paraDirection <<<- ParaDirection Vertical $ emptyParams)
             (frameworks . (\a -> a !! i) . bis)
             (\ a b -> b{bis = update (bis b) i (\bi -> bi{frameworks = a})})
             (stringsEditor (const True) True)
     ,   mkField
-            (paraName <<<- ParaName "Custom fields build info"
+            (paraName <<<- ParaName (__ "Custom fields build info")
                 $ paraShadow <<<- ParaShadow ShadowIn
                     $ paraMinSize <<<- ParaMinSize (-1,150)
                         $ paraDirection <<<- ParaDirection Vertical $ emptyParams)
              (customFieldsBI . (\a -> a !! i) . bis)
             (\ a b -> b{bis = update (bis b) i (\bi -> bi{customFieldsBI = a})})
             (multisetEditor
-                (ColumnDescr True [("Name",\(n,_) -> [cellText := n])
-                                   ,("Value",\(_,v) -> [cellText := v])])
+                (ColumnDescr True [((__ "Name"),\(n,_) -> [cellText := n])
+                                   ,((__ "Value"),\(_,v) -> [cellText := v])])
                 ((pairEditor
                     (stringxEditor (const True),emptyParams)
                     (stringEditor (const True) True,emptyParams)),emptyParams)
@@ -1028,8 +1031,8 @@ optsEditor para noti = do
 packageEditor :: Editor PackageIdentifier
 packageEditor para noti = do
     (wid,inj,ext) <- pairEditor
-        (stringEditor (\s -> not (null s)) True, paraName <<<- ParaName "Name" $ emptyParams)
-        (versionEditor, paraName <<<- ParaName "Version" $ emptyParams)
+        (stringEditor (\s -> not (null s)) True, paraName <<<- ParaName (__ "Name") $ emptyParams)
+        (versionEditor, paraName <<<- ParaName (__ "Version") $ emptyParams)
         (paraDirection <<<- ParaDirection Horizontal
             $ paraShadow <<<- ParaShadow ShadowIn
                 $ para) noti
@@ -1047,8 +1050,8 @@ packageEditor para noti = do
 testedWithEditor :: Editor [(CompilerFlavor, VersionRange)]
 testedWithEditor para = do
     multisetEditor
-       (ColumnDescr True [("Compiler Flavor",\(cv,_) -> [cellText := show cv])
-                           ,("Version Range",\(_,vr) -> [cellText := display vr])])
+       (ColumnDescr True [((__ "Compiler Flavor"),\(cv,_) -> [cellText := show cv])
+                           ,((__"Version Range"),\(_,vr) -> [cellText := display vr])])
        (pairEditor
             (compilerFlavorEditor, paraShadow <<<- (ParaShadow ShadowNone) $ emptyParams)
             (versionRangeEditor, paraShadow <<<- (ParaShadow ShadowNone) $ emptyParams),
@@ -1060,10 +1063,10 @@ testedWithEditor para = do
 compilerFlavorEditor :: Editor CompilerFlavor
 compilerFlavorEditor para noti = do
     (wid,inj,ext) <- eitherOrEditor
-        (comboSelectionEditor flavors show, paraName <<<- (ParaName "Select compiler") $ emptyParams)
-        (stringEditor (\s -> not (null s)) True, paraName <<<- (ParaName "Specify compiler") $ emptyParams)
-        "Other"
-        (paraName <<<- ParaName "Select" $ para)
+        (comboSelectionEditor flavors show, paraName <<<- (ParaName (__ "Select compiler")) $ emptyParams)
+        (stringEditor (\s -> not (null s)) True, paraName <<<- (ParaName (__ "Specify compiler")) $ emptyParams)
+        (__ "Other")
+        (paraName <<<- ParaName (__ "Select") $ para)
         noti
     let cfinj comp  = case comp of
                         (OtherCompiler str) -> inj (Right str)
@@ -1081,10 +1084,10 @@ compilerFlavorEditor para noti = do
 buildTypeEditor :: Editor BuildType
 buildTypeEditor para noti = do
     (wid,inj,ext) <- eitherOrEditor
-        (comboSelectionEditor flavors show, paraName <<<- (ParaName "Select") $ emptyParams)
-        (stringEditor (const True) True, paraName <<<- (ParaName "Unknown") $ emptyParams)
-        "Unknown"
-        (paraName <<<- ParaName "Select" $ para)
+        (comboSelectionEditor flavors show, paraName <<<- (ParaName (__ "Select")) $ emptyParams)
+        (stringEditor (const True) True, paraName <<<- (ParaName (__ "Unknown")) $ emptyParams)
+        (__ "Unknown")
+        (paraName <<<- ParaName (__ "Select") $ para)
         noti
     let cfinj comp  = case comp of
                         (UnknownBuildType str) -> inj (Right str)
@@ -1243,14 +1246,14 @@ libraryEditor fp modules numBuildInfos para noti = do
     (wid,inj,ext) <- 
         tupel3Editor
             (boolEditor,
-            paraName <<<- ParaName "Exposed"
-            $ paraSynopsis <<<- ParaSynopsis "Is the lib to be exposed by default?"
+            paraName <<<- ParaName (__ "Exposed")
+            $ paraSynopsis <<<- ParaSynopsis (__ "Is the lib to be exposed by default?")
             $ emptyParams)
             (modulesEditor (sort modules),
-            paraName <<<- ParaName "Exposed Modules"
+            paraName <<<- ParaName (__ "Exposed Modules")
             $ paraMinSize <<<- ParaMinSize (-1,300)
             $ para)
-            (buildInfoEditorP numBuildInfos, paraName <<<- ParaName "Build Info"
+            (buildInfoEditorP numBuildInfos, paraName <<<- ParaName (__ "Build Info")
             $ paraPack <<<- ParaPack PackNatural
             $ para)
             (paraDirection <<<- ParaDirection Vertical
@@ -1274,10 +1277,10 @@ modulesEditor modules   =   staticListMultiEditor (map display modules) id
 executablesEditor :: Maybe FilePath -> [ModuleName] -> Int -> Editor [Executable']
 executablesEditor fp modules countBuildInfo p =
     multisetEditor
-        (ColumnDescr True [("Executable Name",\(Executable' exeName _ _) -> [cellText := exeName])
-                           ,("Module Path",\(Executable'  _ mp _) -> [cellText := mp])
+        (ColumnDescr True [( (__ "Executable Name"),\(Executable' exeName _ _) -> [cellText := exeName])
+                           ,( (__ "Module Path"),\(Executable'  _ mp _) -> [cellText := mp])
 
-                           ,("Build info index",\(Executable'  _ _ bii) -> [cellText := show (bii + 1)])])
+                           ,( (__"Build info index"),\(Executable'  _ _ bii) -> [cellText := show (bii + 1)])])
         (executableEditor fp modules countBuildInfo,emptyParams)
         Nothing
         Nothing
@@ -1288,13 +1291,13 @@ executableEditor :: Maybe FilePath -> [ModuleName] -> Int -> Editor Executable'
 executableEditor fp modules countBuildInfo para noti = do
     (wid,inj,ext) <- tupel3Editor
         (stringEditor (\s -> not (null s)) True,
-            paraName <<<- ParaName "Executable Name"
+            paraName <<<- ParaName (__ "Executable Name")
             $ emptyParams)
         (stringEditor (\s -> not (null s)) True,
             paraDirection <<<- ParaDirection Vertical
-            $ paraName <<<- ParaName "File with main function"
+            $ paraName <<<- ParaName (__ "File with main function")
             $ emptyParams)
-        (buildInfoEditorP countBuildInfo, paraName <<<- ParaName "Build Info"
+        (buildInfoEditorP countBuildInfo, paraName <<<- ParaName (__ "Build Info")
             $ paraOuterAlignment <<<- ParaOuterAlignment  (0.0, 0.0, 0.0, 0.0)
                 $ paraOuterPadding <<<- ParaOuterPadding    (0, 0, 0, 0)
                     $ paraInnerAlignment <<<- ParaInnerAlignment  (0.0, 0.0, 0.0, 0.0)
@@ -1314,10 +1317,10 @@ executableEditor fp modules countBuildInfo para noti = do
 testsEditor :: Maybe FilePath -> [ModuleName] -> Int -> Editor [Test']
 testsEditor fp modules countBuildInfo p =
     multisetEditor
-        (ColumnDescr True [("Test Name",\(Test' testName _ _) -> [cellText := testName])
-                           ,("Interface",\(Test'  _ i _) -> [cellText := interfaceName i])
+        (ColumnDescr True [( (__ "Test Name"),\(Test' testName _ _) -> [cellText := testName])
+                           ,( (__"Interface"),\(Test'  _ i _) -> [cellText := interfaceName i])
 
-                           ,("Build info index",\(Test'  _ _ bii) -> [cellText := show (bii + 1)])])
+                           ,( (__ "Build info index"),\(Test'  _ _ bii) -> [cellText := show (bii + 1)])])
         (testEditor fp modules countBuildInfo,emptyParams)
         Nothing
         Nothing
@@ -1331,13 +1334,13 @@ testEditor :: Maybe FilePath -> [ModuleName] -> Int -> Editor Test'
 testEditor fp modules countBuildInfo para noti = do
     (wid,inj,ext) <- tupel3Editor
         (stringEditor (\s -> not (null s)) True,
-            paraName <<<- ParaName "Test Name"
+            paraName <<<- ParaName (__ "Test Name")
             $ emptyParams)
         (stringEditor (\s -> not (null s)) True,
             paraDirection <<<- ParaDirection Vertical
-            $ paraName <<<- ParaName "File with main function"
+            $ paraName <<<- ParaName (__ "File with main function")
             $ emptyParams)
-        (buildInfoEditorP countBuildInfo, paraName <<<- ParaName "Build Info"
+        (buildInfoEditorP countBuildInfo, paraName <<<- ParaName (__ "Build Info")
             $ paraOuterAlignment <<<- ParaOuterAlignment  (0.0, 0.0, 0.0, 0.0)
                 $ paraOuterPadding <<<- ParaOuterPadding    (0, 0, 0, 0)
                     $ paraInnerAlignment <<<- ParaInnerAlignment  (0.0, 0.0, 0.0, 0.0)
@@ -1358,7 +1361,7 @@ testEditor fp modules countBuildInfo para noti = do
 buildInfoEditorP :: Int -> Editor Int
 buildInfoEditorP numberOfBuildInfos para noti = do
     (wid,inj,ext) <- intEditor (1.0,fromIntegral numberOfBuildInfos,1.0)
-        (paraName <<<- ParaName "Build Info" $para) noti
+        (paraName <<<- ParaName (__ "Build Info") $para) noti
     let pinj i = inj (i + 1)
     let pext =   do
         mbV <- ext
