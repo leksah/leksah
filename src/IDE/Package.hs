@@ -264,7 +264,7 @@ buildPackage backgroundBuild jumpToWarnings withoutLinking package continuation 
                 when (saveAllBeforeBuild prefs) (do fileSaveAll belongsToWorkspace; return ())
                 (`runDebug` debug) . executeDebugCommand ":reload" $ do
                     errs <- logOutputForBuild package backgroundBuild jumpToWarnings
-                    when (null errs) $ do
+                    unless (any isError $ errs) $ do
                         cmd <- lift $ readIDE autoCommand
                         liftIO . postGUISync $ reflectIDE cmd ideR
     )
