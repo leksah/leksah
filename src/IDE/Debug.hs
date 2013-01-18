@@ -74,7 +74,7 @@ import IDE.Pane.SourceBuffer
 import IDE.Metainfo.Provider (getActivePackageDescr)
 import Distribution.Text (display)
 import IDE.Pane.Log
-import Data.List (isSuffixOf)
+import Data.List (stripPrefix, isSuffixOf)
 import IDE.Utils.GUIUtils (getDebugToggled)
 import IDE.Package (debugStart, executeDebugCommand, tryDebug, printBindResultFlag,
         breakOnErrorFlag, breakOnExceptionFlag, printEvldWithShowFlag)
@@ -115,6 +115,17 @@ debugQuit = do
         Just debug -> runDebug (debugCommand ":quit" logOutputDefault) debug
         _          -> return ()
 
+-- | Remove haddock code prefix from selected text so it can be run
+-- in ghci
+--
+-- Press Ctrl + Enter on these to try it out...
+--
+-- > stripComments "-- > Wow this is meta"
+--
+-- > stripComments "-- This is still a comment"
+stripComments :: String -> String
+stripComments t = maybe t unlines . sequence . map (stripPrefix "-- >") $ lines t
+
 debugExecuteSelection :: IDEAction
 debugExecuteSelection = do
     maybeText   <- selectedTextOrCurrentLine
@@ -122,7 +133,7 @@ debugExecuteSelection = do
         Just text -> do
             let command = packageTry $ tryDebug $ do
                 debugSetLiberalScope
-                debugCommand text logOutputDefault
+                debugCommand (stripComments text) logOutputDefault
             modifyIDE_ $ \ide -> ide {autoCommand = command}
             command
         Nothing   -> ideMessage Normal "Please select some text in the editor to execute"
@@ -133,7 +144,7 @@ debugExecuteAndShowSelection = do
     case maybeText of
         Just text -> packageTry $ tryDebug $ do
             debugSetLiberalScope
-            debugCommand text $ do
+            debugCommand (stripComments text) $ do
                 (out, _) <- EL.zip (EL.fold buildOutputString "") logOutputDefault
                 lift $ insertTextAfterSelection $ " " ++ out
         Nothing   -> ideMessage Normal "Please select some text in the editor to execute"
@@ -211,7 +222,7 @@ debugForce :: IDEAction
 debugForce = do
     maybeText <- selectedTextOrCurrentLine
     case maybeText of
-        Just text -> packageTry $ tryDebug $ debugCommand (":force " ++ text) logOutputDefault
+        Just text -> packageTry $ tryDebug $ debugCommand (":force " ++ stripComments text) logOutputDefault
         Nothing   -> ideMessage Normal "Please select an expression in the editor"
 
 debugHistory :: IDEAction
@@ -221,14 +232,14 @@ debugPrint :: IDEAction
 debugPrint = do
     maybeText <- selectedTextOrCurrentLine
     case maybeText of
-        Just text -> packageTry $ tryDebug $ debugCommand (":print " ++ text) logOutputDefault
+        Just text -> packageTry $ tryDebug $ debugCommand (":print " ++ stripComments text) logOutputDefault
         Nothing   -> ideMessage Normal "Please select an name in the editor"
 
 debugSimplePrint :: IDEAction
 debugSimplePrint = do
     maybeText <- selectedTextOrCurrentLine
     case maybeText of
-        Just text -> packageTry $ tryDebug $ debugCommand (":force " ++ text) logOutputDefault
+        Just text -> packageTry $ tryDebug $ debugCommand (":force " ++ stripComments text) logOutputDefault
         Nothing   -> ideMessage Normal "Please select an name in the editor"
 
 debugStep :: IDEAction
@@ -251,7 +262,7 @@ debugStepExpr maybeText = do
     (debugPackage, _) <- ask
     rootPath <- lift $ activeProjectDir
     case maybeText of
-        Just text -> debugCommand (":step " ++ text) (logOutputForHistoricContextDefault debugPackage)
+        Just text -> debugCommand (":step " ++ stripComments text) (logOutputForHistoricContextDefault debugPackage)
         Nothing   -> lift $ ideMessage Normal "Please select an expression in the editor"
 
 debugStepLocal :: IDEAction
@@ -292,7 +303,7 @@ debugTraceExpr :: Maybe String -> DebugAction
 debugTraceExpr maybeText = do
     (debugPackage, _) <- ask
     case maybeText of
-        Just text -> debugCommand (":trace " ++ text) $ logTraceOutput debugPackage
+        Just text -> debugCommand (":trace " ++ stripComments text) $ logTraceOutput debugPackage
         Nothing   -> lift $ ideMessage Normal "Please select an expression in the editor"
 
 
@@ -338,7 +349,7 @@ debugInformation = do
     case maybeText of
         Just text -> packageTry $ tryDebug $ do
             debugSetLiberalScope
-            debugCommand (":info "++text) logOutputDefault
+            debugCommand (":info "++stripComments text) logOutputDefault
         Nothing   -> ideMessage Normal "Please select a name in the editor"
 
 debugKind :: IDEAction
@@ -347,7 +358,7 @@ debugKind = do
     case maybeText of
         Just text -> packageTry $ tryDebug $ do
             debugSetLiberalScope
-            debugCommand (":kind "++text) logOutputDefault
+            debugCommand (":kind "++stripComments text) logOutputDefault
         Nothing   -> ideMessage Normal "Please select a type in the editor"
 
 debugType :: IDEAction
@@ -356,7 +367,7 @@ debugType = do
     case maybeText of
         Just text -> packageTry $ tryDebug $ do
             debugSetLiberalScope
-            debugCommand (":type "++text) logOutputDefault
+            debugCommand (":type "++stripComments text) logOutputDefault
         Nothing   -> ideMessage Normal "Please select an expression in the editor"
 
 debugSetBreakpoint :: IDEAction
