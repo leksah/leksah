@@ -50,12 +50,13 @@ import Control.Monad.Trans.Reader (ask)
 data Locality = LocalityPackage  | LocalityWorkspace | LocalitySystem  -- in which category symbol is located
     deriving (Ord,Eq,Show)
 
-createHyperLinkSupport  ::
-        SourceView ->                     -- ^ source buffer view
-        ScrolledWindow ->               -- ^ container window
-        (Bool -> Bool -> TextIter -> IO (TextIter, TextIter)) ->     -- ^ identifiermapper (bools=control,shift)
-        (Bool -> Bool -> String -> IO ()) ->                            -- ^ click handler
-        IO [Connection]
+-- |
+createHyperLinkSupport
+    :: SourceView        -- ^ source buffer view
+    -> ScrolledWindow    -- ^ container window
+    -> (Bool -> Bool -> TextIter -> IO (TextIter, TextIter)) -- ^ identifiermapper (bools=control,shift)
+    -> (Bool -> Bool -> String -> IO ()) -- ^ click handler
+    -> IO [Connection]
 createHyperLinkSupport sv sw identifierMapper clickHandler = do
     let tv = castToTextView sv
     tvb <- castToTextBuffer <$> get tv textViewBuffer :: IO TextBuffer
