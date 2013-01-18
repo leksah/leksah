@@ -17,6 +17,7 @@ module IDE.ImportTool (
     resolveErrors
 ,   addOneImport
 ,   addResolveMenuItems
+,   parseHiddenModule
 ,   HiddenModuleResult(..)
 ) where
 
