@@ -260,9 +260,17 @@ fixColumn c = max 0 (c - 1)
 fixColumn = id
 #endif
 
+srcPathParser :: CharParser () FilePath
+srcPathParser = try (do
+        symbol "dist/build/tmp-" -- Support for cabal haddock
+        many digit
+        char '/'
+        many (noneOf ":"))
+    <|> many (noneOf ":")
+
 srcSpanParser :: CharParser () SrcSpan
 srcSpanParser = try (do
-        filePath <- many (noneOf ":")
+        filePath <- srcPathParser
         char ':'
         char '('
         beginLine <- int
@@ -277,7 +285,7 @@ srcSpanParser = try (do
         char ')'
         return $ SrcSpan filePath beginLine (fixColumn beginCol) endLine (fixColumn endCol))
     <|> try (do
-        filePath <- many (noneOf ":")
+        filePath <- srcPathParser
         char ':'
         line <- int
         char ':'
@@ -286,7 +294,7 @@ srcSpanParser = try (do
         endCol <- int
         return $ SrcSpan filePath line (fixColumn beginCol) line (fixColumn endCol))
     <|> try (do
-        filePath <- many (noneOf ":")
+        filePath <- srcPathParser
         char ':'
         line <- int
         char ':'
