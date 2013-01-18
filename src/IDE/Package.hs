@@ -21,6 +21,7 @@ module IDE.Package (
 ,   buildPackage
 
 ,   packageDoc
+,   packageDoc'
 ,   packageClean
 ,   packageClean'
 ,   packageCopy
@@ -273,16 +274,19 @@ buildPackage backgroundBuild jumpToWarnings withoutLinking package continuation 
 packageDoc :: PackageAction
 packageDoc = do
     package <- ask
-    logLaunch <- lift $ getDefaultLogLaunch
-    lift $ showDefaultLogLaunch'
+    lift $ packageDoc' False True package (\ _ -> return ())
 
-    lift $ catchIDE (do
+packageDoc' :: Bool -> Bool -> IDEPackage -> (Bool -> IDEAction) -> IDEAction
+packageDoc' backgroundBuild jumpToWarnings package continuation = do
+    logLaunch <- getDefaultLogLaunch
+    showDefaultLogLaunch'
+    catchIDE (do
         let dir = dropFileName (ipdCabalFile package)
-        runExternalTool' "Documenting"
-                        "cabal"
-                        (["haddock"] ++ (ipdHaddockFlags package))
-                        (Just dir)
-                        $ logOutput logLaunch)
+        runExternalTool' "Documenting" "cabal" (["haddock"]
+            ++ (ipdHaddockFlags package)) (Just dir) $ do
+                (mbLastOutput, _) <- EL.zip E.last $
+                    logOutputForBuild package backgroundBuild jumpToWarnings
+                lift $ continuation (mbLastOutput == Just (ToolExit ExitSuccess)))
         (\(e :: SomeException) -> putStrLn (show e))
 
 packageClean :: PackageAction

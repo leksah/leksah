@@ -36,7 +36,8 @@ import Data.List (delete, nub, (\\), find)
 import Distribution.Version (withinRange)
 import Data.Maybe (mapMaybe)
 import IDE.Package
-       (packageClean', packageCopy', packageRegister', buildPackage, packageConfig', packageTest')
+       (packageClean', packageCopy', packageRegister', buildPackage, packageConfig',
+        packageTest', packageDoc')
 import IDE.Core.Types
        (IDEEvent(..), Prefs(..), IDE(..), WorkspaceAction)
 import Distribution.Text (Text(..))
@@ -196,6 +197,8 @@ doBuildChain ms chain@Chain{mcAction = MoConfigure} =
 doBuildChain ms chain@Chain{mcAction = MoBuild} =
     buildPackage (msBackgroundBuild ms) (msJumpToWarnings ms) (not (msMakeMode ms) && msSingleBuildWithoutLinking ms)
         (mcEle chain) (constrCont ms (mcPos chain) (mcNeg chain))
+doBuildChain ms chain@Chain{mcAction = MoDocu} =
+    packageDoc' (msBackgroundBuild ms) (msJumpToWarnings ms) (mcEle chain) (constrCont ms (mcPos chain) (mcNeg chain))
 doBuildChain ms chain@Chain{mcAction = MoTest} =
     packageTest' (mcEle chain) (constrCont ms (mcPos chain) (mcNeg chain))
 doBuildChain ms chain@Chain{mcAction = MoCopy} =
