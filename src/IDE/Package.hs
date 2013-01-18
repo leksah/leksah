@@ -782,7 +782,7 @@ debugStart = do
                 -- Fork a thread to wait for the output from the process to close
                 liftIO $ forkIO $ do
                     readMVar (outputClosed ghci)
-                    postGUISync $ reflectIDE (do
+                    postGUISync . (`reflectIDE` ideRef) $ do
                         setDebugToggled False
                         modifyIDE_ (\ide -> ide {debugState = Nothing, autoCommand = return ()})
                         triggerEventIDE (Sensitivity [(SensitivityInterpreting, False)])
@@ -796,8 +796,8 @@ debugStart = do
                             -- Lets build to make sure the binaries are up to date
                             mbPackage   <- readIDE activePack
                             case mbPackage of
-                                Just package -> runCabalBuild True False True package True (\ _ -> return ())
-                                Nothing -> return ()) ideRef
+                                Just package -> runCabalBuild True False False package True (\ _ -> return ())
+                                Nothing -> return ()
                 return ()
             _ -> do
                 sysMessage Normal "Debugger already running"
