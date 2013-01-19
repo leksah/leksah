@@ -110,6 +110,7 @@ import Distribution.PackageDescription.PrettyPrintCopied
        (writeGenericPackageDescription)
 #endif
 import Debug.Trace (trace)
+import IDE.Pane.WebKit.Documentation (loadDoc, reloadDoc)
 
 moduleInfo :: (a -> BuildInfo) -> (a -> [ModuleName]) -> a -> [(ModuleName, BuildInfo)]
 moduleInfo bi mods a = map (\m -> (m, buildInfo)) $ mods a
@@ -268,6 +269,7 @@ buildPackage backgroundBuild jumpToWarnings withoutLinking package continuation 
                     unless (any isError $ errs) $ do
                         cmd <- lift $ readIDE autoCommand
                         liftIO . postGUISync $ reflectIDE cmd ideR
+                        lift $ continuation True
     )
     (\(e :: SomeException) -> sysMessage Normal (show e))
 
@@ -278,14 +280,13 @@ packageDoc = do
 
 packageDoc' :: Bool -> Bool -> IDEPackage -> (Bool -> IDEAction) -> IDEAction
 packageDoc' backgroundBuild jumpToWarnings package continuation = do
-    logLaunch <- getDefaultLogLaunch
-    showDefaultLogLaunch'
     catchIDE (do
         let dir = dropFileName (ipdCabalFile package)
         runExternalTool' "Documenting" "cabal" (["haddock"]
             ++ (ipdHaddockFlags package)) (Just dir) $ do
                 (mbLastOutput, _) <- EL.zip E.last $
                     logOutputForBuild package backgroundBuild jumpToWarnings
+                lift $ reloadDoc
                 lift $ continuation (mbLastOutput == Just (ToolExit ExitSuccess)))
         (\(e :: SomeException) -> putStrLn (show e))
 
@@ -451,14 +452,19 @@ packageOpenDoc = do
     logLaunch <- lift $ getDefaultLogLaunch
     lift $ showDefaultLogLaunch'
 
-    lift $ catchIDE (do
+    lift $ do
         prefs   <- readIDE prefs
         let path = dropFileName (ipdCabalFile package)
                         </> "dist/doc/html"
                         </> display (pkgName (ipdPackageId package))
                         </> "index.html"
             dir = dropFileName (ipdCabalFile package)
-        runExternalTool' "Opening Documentation" (browser prefs) [path] (Just dir) (logOutput logLaunch))
+#ifdef WEBKIT
+        loadDoc ("file://" ++ dir </> path)
+#else
+        runExternalTool' "Opening Documentation" (browser prefs) [path] (Just dir) (logOutput logLaunch)
+#endif
+      `catchIDE`
         (\(e :: SomeException) -> putStrLn (show e))
 
 runExternalTool' :: String
@@ -490,7 +496,6 @@ runExternalTool :: IDEM Bool
 runExternalTool runGuard pidHandler description executable args mbDir handleOutput  = do
         prefs <- readIDE prefs
         run <- runGuard
-        liftIO $ putStrLn $ "description" ++ description++ ", executable" ++executable
         when run $ do
             when (saveAllBeforeBuild prefs) (do fileSaveAll belongsToWorkspace; return ())
             triggerEventIDE (StatusbarChanged [CompartmentState description, CompartmentBuild True])

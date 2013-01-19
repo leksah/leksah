@@ -1,7 +1,7 @@
 language: haskell
 before_install:
   - sudo apt-get update -qq
-  - sudo apt-get --no-install-recommends install darcs libgtksourceview-3.0-dev
+  - sudo apt-get --no-install-recommends install darcs libgtksourceview-3.0-dev libwebkitgtk-3.0-dev
   - cabal install Cabal
   - mkdir vendor
   - cd vendor
@@ -15,7 +15,7 @@ before_install:
 install:
   - cabal install cabal-meta cabal-src
 script:
-  - cabal-meta install -fgtk3 --force-reinstalls
+  - cabal-meta install -fwebkit1-8 -fgtk3 --force-reinstalls || cabal-meta install -fwebkit1-8 -fgtk3 --force-reinstalls
 notifications:
   irc:
     channels: "irc.freenode.net#leksah"

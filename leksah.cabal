@@ -78,20 +78,24 @@ extra-source-files: Setup.lhs
 extra-tmp-files:
 
 flag yi
-    Default: False
     Description: Experimental Yi support
+    Default: False
 
 flag dyre
-    Default: True
     Description: Experimental Yi support
+    Default: True
 
 flag threaded
-    default: False
     description: Build with support for multithreaded execution
+    default: False
 
-Flag gtk3
-    Default: True
+flag gtk3
     Description: Use GTK3 rather than GTK2
+    Default: True
+
+flag webkit
+    Description: Use WebKitGTK+
+    Default: True
 
 library
     if os(windows)
@@ -116,6 +120,10 @@ library
 
     if flag(gtk3)
         cpp-options: -DGTK3
+
+    if flag(webkit)
+        cpp-options: -DWEBKITGTK
+        build-depends: webkit -any, webkit-javascriptcore -any, jsc -any
 
     hs-source-dirs: src
     default-language: Haskell98
@@ -159,6 +167,7 @@ library
         IDE.Command.VCS.Common.Helper
         IDE.Command.VCS.Types
         IDE.Command.Print
+        IDE.Pane.WebKit.Documentation
 
     if (impl(ghc > 7))
         other-modules:
@@ -228,6 +237,18 @@ Executable leksah
     ghc-prof-options: -auto-all -prof
     ghc-shared-options: -auto-all
     ghc-options:  -fwarn-missing-fields -fwarn-incomplete-patterns -ferror-spans
+
+ executable bewleksah
+    build-depends: leksah ==0.13.1.2, base >=4.0.0.0 && <=4.7,
+                   webkit -any, webkit-javascriptcore -any, jsc -any,
+                   gtk >=0.10 && <0.13, ghcjs-dom -any
+
+    if !flag(webkit)
+        buildable: False
+    main-is: Main.hs
+    buildable: True
+    default-language: Haskell2010
+    hs-source-dirs: bew
 
 test-suite tests
     default-language: Haskell2010

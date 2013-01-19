@@ -744,6 +744,7 @@ defaultPrefs = Prefs {
                                 ,   ("*Files","ToolCategory")
                                 ,   ("*Grep","ToolCategory")
                                 ,   ("*HLint","ToolCategory")
+                                ,   ("*Doc","ToolCategory")
                                 ,   ("*Info","ToolCategory")
                                 ,   ("*Log","LogCategory")
                                 ,   ("*Modules","ToolCategory")

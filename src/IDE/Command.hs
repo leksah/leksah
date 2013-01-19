@@ -104,6 +104,7 @@ import IDE.PaneGroups
 import IDE.Pane.Search (getSearch, IDESearch(..))
 import IDE.Pane.Grep (getGrep)
 import IDE.Pane.HLint (refreshHLint, getHLint)
+import IDE.Pane.WebKit.Documentation (getDocumentation)
 import IDE.Pane.Files (refreshFiles, getFiles)
 import Control.Monad.IO.Class (MonadIO(..))
 import Control.Monad (unless, when)
@@ -345,6 +346,8 @@ mkActions =
         (getGrep Nothing  >>= \ p -> displayPane p False) [] False
     ,AD "ShowHLint" "HLint" Nothing Nothing
         (getHLint Nothing  >>= \ p -> displayPane p False >> workspaceTry refreshHLint) [] False
+    ,AD "ShowDocumentation" "Docmentation" Nothing Nothing
+        (getDocumentation Nothing  >>= \ p -> displayPane p False) [] False
     ,AD "ShowErrors" "Errors" Nothing Nothing
         (getErrors Nothing  >>= \ p -> displayPane p False) [] False
     ,AD "ShowLog" "Log" Nothing Nothing

@@ -415,6 +415,15 @@ workspaceClean = do
         return (defaultMakeSettings prefs')
     makePackages settings (wsPackages ws) MoClean MoClean moNoOp
 
+buildSteps :: Bool -> IDEM [MakeOp]
+buildSteps runTests = do
+    debug <- isJust <$> readIDE debugState
+    return $ case (runTests, debug) of
+                (True, True)   -> [MoBuild,MoDocu]
+                (True, False)  -> [MoBuild,MoDocu,MoTest,MoCopy,MoRegister]
+                (False, True)  -> [MoBuild]
+                (False, False) -> [MoBuild,MoCopy,MoRegister]
+
 workspaceMake :: WorkspaceAction
 workspaceMake = do
     ws <- ask
@@ -423,16 +432,16 @@ workspaceMake = do
         return ((defaultMakeSettings prefs'){
                     msMakeMode           = True,
                     msBackgroundBuild    = False})
-    let steps = if msRunUnitTests settings
-                    then [MoConfigure,MoDocu,MoBuild,MoTest,MoCopy,MoRegister]
-                    else [MoConfigure,MoBuild,MoCopy,MoRegister]
-    makePackages settings (wsPackages ws) (MoComposed steps) (MoComposed steps) MoMetaInfo
+    build <- lift . buildSteps $ msRunUnitTests settings
+    let steps = MoComposed (MoConfigure : build)
+    makePackages settings (wsPackages ws) steps steps MoMetaInfo
 
 backgroundMake :: IDEAction
 backgroundMake = catchIDE (do
     ideR        <- ask
     prefs       <- readIDE prefs
     mbPackage   <- readIDE activePack
+    debug       <- isJust <$> readIDE debugState
     case mbPackage of
         Nothing         -> return ()
         Just package    -> do
@@ -442,13 +451,11 @@ backgroundMake = catchIDE (do
             let isModified = not (null modifiedPacks)
             when isModified $ do
                 let settings = defaultMakeSettings prefs
-                if msSingleBuildWithoutLinking settings &&  not (msMakeMode settings)
+                steps <- buildSteps $ msRunUnitTests settings
+                if debug || msSingleBuildWithoutLinking settings && not (msMakeMode settings)
                     then workspaceTryQuiet $
-                        makePackages settings modifiedPacks MoBuild (MoComposed []) moNoOp
+                        makePackages settings modifiedPacks (MoComposed steps) (MoComposed []) moNoOp
                     else do
-                        let steps = if msRunUnitTests settings
-                                        then [MoDocu,MoBuild,MoTest,MoCopy,MoRegister]
-                                        else [MoBuild,MoCopy,MoRegister]
                         workspaceTryQuiet $
                             makePackages settings modifiedPacks (MoComposed steps)
                                         (MoComposed (MoConfigure:steps)) MoMetaInfo
@@ -457,22 +464,20 @@ backgroundMake = catchIDE (do
 
 makePackage ::  PackageAction
 makePackage = do
-    p <- ask
-    (mbWs,settings) <- lift $ do
-        prefs' <- readIDE prefs
-        ws     <- readIDE workspace
-        let settings = (defaultMakeSettings prefs'){msBackgroundBuild = False}
-        return (ws,settings)
+  p <- ask
+  lift $ do
+    prefs' <- readIDE prefs
+    mbWs   <- readIDE workspace
+    let settings = (defaultMakeSettings prefs'){msBackgroundBuild = False}
     case mbWs of
         Nothing -> sysMessage Normal "No workspace for build."
-        Just ws -> lift $
-            if msSingleBuildWithoutLinking settings &&  not (msMakeMode settings)
+        Just ws -> do
+            debug <- isJust <$> readIDE debugState
+            steps <- buildSteps $ msRunUnitTests settings
+            if debug || msSingleBuildWithoutLinking settings && not (msMakeMode settings)
                 then runWorkspace
-                        (makePackages settings [p] MoBuild (MoComposed []) moNoOp) ws
+                        (makePackages settings [p] (MoComposed steps) (MoComposed []) moNoOp) ws
                 else do
-                    let steps = if msRunUnitTests settings
-                                    then [MoDocu,MoBuild,MoTest,MoCopy,MoRegister]
-                                    else [MoBuild,MoCopy,MoRegister]
                     runWorkspace
                         (makePackages settings [p]
                         (MoComposed steps)
