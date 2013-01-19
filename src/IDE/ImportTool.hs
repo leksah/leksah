@@ -452,7 +452,8 @@ parsePerhapsYouIntendedToUse =
   where
     parseLine line = catMaybes [
         stripPrefix "Perhaps you intended to use -X" line
-      , takeWhile (/=' ') <$> stripPrefix "Use -X" line]
+      , takeWhile (/=' ') <$> stripPrefix "Use -X" line
+      , takeWhile (/=' ') <$> stripPrefix "You need -X" line]
 
 addExtension :: LogRef -> (Bool -> IDEAction) -> IDEAction
 addExtension error continuation =
