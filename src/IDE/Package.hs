@@ -182,7 +182,7 @@ packageConfig = do
 packageConfig'  :: IDEPackage -> (Bool -> IDEAction) -> IDEAction
 packageConfig' package continuation = do
     let dir = dropFileName (ipdCabalFile package)
-    runExternalTool "Configuring" "cabal" (["configure"]
+    runExternalTool (__ "Configuring") "cabal" (["configure"]
                                     ++ (ipdConfigFlags package)) (Just dir) $ do
         (mbLastOutput, _) <- EL.zip E.last logOutput
         lift $ do
@@ -194,7 +194,7 @@ packageConfig' package continuation = do
                     continuation (mbLastOutput == Just (ToolExit ExitSuccess))
                     return ()
                 Nothing -> do
-                    ideMessage Normal "Can't read package file"
+                    ideMessage Normal (__ "Can't read package file")
                     continuation False
                     return()
 
@@ -207,7 +207,7 @@ runCabalBuild backgroundBuild jumpToWarnings withoutLinking package shallConfigu
                     then ["--with-ld=false"]
                     else []
                         ++ ipdBuildFlags package)
-    runExternalTool "Building" "cabal" args (Just dir) $ do
+    runExternalTool (__ "Building") "cabal" args (Just dir) $ do
         (mbLastOutput, isConfigErr, _) <- EL.zip3 E.last isConfigError $
             logOutputForBuild package backgroundBuild jumpToWarnings
         lift $ do
@@ -225,9 +225,9 @@ isConfigError = EL.foldM (\a b -> return $ a || isCErr b) False
     where
     isCErr (ToolError str) = str1 `isInfixOf` str || str2 `isInfixOf` str || str3 `isInfixOf` str
     isCErr _ = False
-    str1 = "Run the 'configure' command first"
-    str2 = "please re-configure"
-    str3 = "cannot satisfy -package-id"
+    str1 = (__ "Run the 'configure' command first")
+    str2 = (__ "please re-configure")
+    str3 = (__ "cannot satisfy -package-id")
 
 buildPackage :: Bool -> Bool -> Bool -> IDEPackage -> (Bool -> IDEAction) -> IDEAction
 buildPackage backgroundBuild jumpToWarnings withoutLinking package continuation = catchIDE (do
@@ -264,7 +264,7 @@ packageDoc = do
     package <- ask
     lift $ catchIDE (do
         let dir = dropFileName (ipdCabalFile package)
-        runExternalTool "Documenting" "cabal" (["haddock"]
+        runExternalTool (__ "Documenting") "cabal" (["haddock"]
                         ++ (ipdHaddockFlags package)) (Just dir) logOutput)
         (\(e :: SomeException) -> putStrLn (show e))
 
@@ -276,7 +276,7 @@ packageClean = do
 packageClean' :: IDEPackage -> (Bool -> IDEAction) -> IDEAction
 packageClean' package continuation = do
     let dir = dropFileName (ipdCabalFile package)
-    runExternalTool "Cleaning" "cabal" ["clean"] (Just dir) $ do
+    runExternalTool (__ "Cleaning") "cabal" ["clean"] (Just dir) $ do
         (mbLastOutput, _) <- EL.zip E.last logOutput
         lift $ continuation (mbLastOutput == Just (ToolExit ExitSuccess))
 
@@ -285,12 +285,12 @@ packageCopy = do
     package <- ask
     lift $ catchIDE (do
         window      <- getMainWindow
-        mbDir       <- liftIO $ chooseDir window "Select the target directory" Nothing
+        mbDir       <- liftIO $ chooseDir window (__ "Select the target directory") Nothing
         case mbDir of
             Nothing -> return ()
             Just fp -> do
                 let dir = dropFileName (ipdCabalFile package)
-                runExternalTool "Copying" "cabal" (["copy"]
+                runExternalTool (__ "Copying") "cabal" (["copy"]
                            ++ ["--destdir=" ++ fp]) (Just dir) logOutput)
         (\(e :: SomeException) -> putStrLn (show e))
 
@@ -299,7 +299,7 @@ packageInstallDependencies = do
     package <- ask
     lift $ catchIDE (do
         let dir = dropFileName (ipdCabalFile package)
-        runExternalTool "Installing" "cabal" (["install","--only-dependencies"]
+        runExternalTool (__ "Installing") "cabal" (["install","--only-dependencies"]
             ++ (ipdConfigFlags package)
             ++ (ipdInstallFlags package)) (Just dir) logOutput)
         (\(e :: SomeException) -> putStrLn (show e))
@@ -308,7 +308,7 @@ packageCopy' :: IDEPackage -> (Bool -> IDEAction) -> IDEAction
 packageCopy' package continuation = do
     catchIDE (do
         let dir = dropFileName (ipdCabalFile package)
-        runExternalTool "Copying" "cabal" (["copy"]
+        runExternalTool (__ "Copying") "cabal" (["copy"]
             ++ (ipdInstallFlags package)) (Just dir) $ do
                 (mbLastOutput, _) <- EL.zip E.last logOutput
                 lift $ continuation (mbLastOutput == Just (ToolExit ExitSuccess)))
@@ -327,9 +327,9 @@ packageRun = do
                     (Executable name _ _):_ -> do
                         let path = "dist/build" </> name </> name
                         let dir = dropFileName (ipdCabalFile package)
-                        runExternalTool ("Running " ++ name) path (ipdExeFlags package) (Just dir) logOutput
+                        runExternalTool ((__ "Running ") ++ name) path (ipdExeFlags package) (Just dir) logOutput
                     otherwise -> do
-                        sysMessage Normal "no executable in selected package"
+                        sysMessage Normal (__ "no executable in selected package")
                         return ()
             Just debug -> do
                 -- TODO check debug package matches active package
@@ -339,7 +339,7 @@ packageRun = do
                             executeDebugCommand (":module *" ++ (map (\c -> if c == '/' then '.' else c) (takeWhile (/= '.') mainFilePath))) logOutput
                             executeDebugCommand (":main " ++ (unwords (ipdExeFlags package))) logOutput) debug
                     otherwise -> do
-                        sysMessage Normal "no executable in selected package"
+                        sysMessage Normal (__ "no executable in selected package")
                         return ())
         (\(e :: SomeException) -> putStrLn (show e))
 
@@ -353,7 +353,7 @@ packageRegister' package continuation =
     if ipdHasLibs package
         then catchIDE (do
             let dir = dropFileName (ipdCabalFile package)
-            runExternalTool "Registering" "cabal" (["register"]
+            runExternalTool (__ "Registering") "cabal" (["register"]
                 ++ (ipdRegisterFlags package)) (Just dir) $ do
                     (mbLastOutput, _) <- EL.zip E.last logOutput
                     lift $ continuation (mbLastOutput == Just (ToolExit ExitSuccess)))
@@ -370,7 +370,7 @@ packageTest' package continuation =
     if "--enable-tests" `elem` ipdConfigFlags package
         then catchIDE (do
             let dir = dropFileName (ipdCabalFile package)
-            runExternalTool "Testing" "cabal" (["test"]
+            runExternalTool (__ "Testing") "cabal" (["test"]
                 ++ (ipdTestFlags package)) (Just dir) $ do
                     (mbLastOutput, _) <- EL.zip E.last logOutput
                     lift $ continuation (mbLastOutput == Just (ToolExit ExitSuccess)))
@@ -382,7 +382,7 @@ packageSdist = do
     package <- ask
     lift $ catchIDE (do
         let dir = dropFileName (ipdCabalFile package)
-        runExternalTool "Source Dist" "cabal" (["sdist"]
+        runExternalTool (__ "Source Dist") "cabal" (["sdist"]
                         ++ (ipdSdistFlags package)) (Just dir) logOutput)
         (\(e :: SomeException) -> putStrLn (show e))
 
@@ -397,7 +397,7 @@ packageOpenDoc = do
                         </> display (pkgName (ipdPackageId package))
                         </> "index.html"
             dir = dropFileName (ipdCabalFile package)
-        runExternalTool "Opening Documentation" (browser prefs) [path] (Just dir) logOutput)
+        runExternalTool (__ "Opening Documentation") (browser prefs) [path] (Just dir) logOutput)
         (\(e :: SomeException) -> putStrLn (show e))
 
 runExternalTool :: String -> FilePath -> [String] -> Maybe FilePath -> E.Iteratee ToolOutput IDEM () -> IDEAction
@@ -442,7 +442,7 @@ getPackageDescriptionAndPath = do
     active <- readIDE activePack
     case active of
         Nothing -> do
-            ideMessage Normal "No active package"
+            ideMessage Normal (__ "No active package")
             return Nothing
         Just p  -> do
             ideR <- ask
@@ -450,7 +450,7 @@ getPackageDescriptionAndPath = do
                 pd <- readPackageDescription normal (ipdCabalFile p)
                 return (Just (flattenPackageDescription pd,ipdCabalFile p)))
                     (\(e :: SomeException) -> do
-                        reflectIDE (ideMessage Normal ("Can't load package " ++(show e))) ideR
+                        reflectIDE (ideMessage Normal ((__ "Can't load package ") ++(show e))) ideR
                         return Nothing))
 
 getEmptyModuleTemplate :: PackageDescription -> String -> IO String
@@ -493,7 +493,7 @@ addModuleToPackageDescr moduleName isExposed = do
                                                 (condExecutables gpd)}
         writeGenericPackageDescription (ipdCabalFile p) npd)
            (\(e :: SomeException) -> do
-            reflectIDE (ideMessage Normal ("Can't update package " ++ show e)) ideR
+            reflectIDE (ideMessage Normal ((__ "Can't update package ") ++ show e)) ideR
             return ()))
 
 addModToLib :: ModuleName -> CondTree ConfVar [Dependency] Library ->
@@ -535,7 +535,7 @@ delModuleFromPackageDescr moduleName = trace ("addModule " ++ show moduleName) $
                                                 (condExecutables gpd)}
         writeGenericPackageDescription (ipdCabalFile p) npd)
            (\(e :: SomeException) -> do
-            reflectIDE (ideMessage Normal ("Can't update package " ++ show e)) ideR
+            reflectIDE (ideMessage Normal ((__ "Can't update package ") ++ show e)) ideR
             return ()))
 
 delModFromLib :: ModuleName -> CondTree ConfVar [Dependency] Library ->
@@ -569,7 +569,7 @@ addModuleToPackageDescr moduleName isExposed = do
         if hasConfigs gpd
             then do
                 reflectIDE (ideMessage High
-                    "Cabal file with configurations can't be automatically updated with the current version of Leksah") ideR
+                    (__ "Cabal file with configurations can't be automatically updated with the current version of Leksah")) ideR
             else
                 let pd = flattenPackageDescription gpd
                     npd = if isExposed && isJust (library pd)
@@ -584,7 +584,7 @@ addModuleToPackageDescr moduleName isExposed = do
                                             (executables npd1)}
                 in writePackageDescription (ipdCabalFile p) npd)
                    (\(e :: SomeException) -> do
-                    reflectIDE (ideMessage Normal ("Can't upade package " ++ show e)) ideR
+                    reflectIDE (ideMessage Normal ((__ "Can't upade package ") ++ show e)) ideR
                     return ()))
     where
     addModToBuildInfo :: BuildInfo -> ModuleName -> BuildInfo
@@ -599,7 +599,7 @@ delModuleFromPackageDescr moduleName = do
         if hasConfigs gpd
             then do
                 reflectIDE (ideMessage High
-                    "Cabal file with configurations can't be automatically updated with the current version of Leksah") ideR
+                    (__ "Cabal file with configurations can't be automatically updated with the current version of Leksah")) ideR
             else
                 let pd = flattenPackageDescription gpd
                     isExposedAndJust = isExposedModule pd moduleName
@@ -615,7 +615,7 @@ delModuleFromPackageDescr moduleName = do
                                             (executables npd1)}
                 in writePackageDescription (ipdCabalFile p) npd)
                    (\(e :: SomeException) -> do
-                    reflectIDE (ideMessage Normal ("Can't update package " ++ show e)) ideR
+                    reflectIDE (ideMessage Normal ((__ "Can't update package ") ++ show e)) ideR
                     return ()))
     where
     delModFromBuildInfo :: BuildInfo -> ModuleName -> BuildInfo
@@ -705,7 +705,7 @@ debugStart = do
                                 Nothing -> return ()) ideRef
                 return ()
             _ -> do
-                sysMessage Normal "Debugger already running"
+                sysMessage Normal (__ "Debugger already running")
                 return ())
             (\(e :: SomeException) -> putStrLn (show e))
 
@@ -720,8 +720,8 @@ tryDebug f = do
             window <- lift $ getMainWindow
             resp <- liftIO $ do
                 md <- messageDialogNew (Just window) [] MessageQuestion ButtonsCancel
-                        "GHCi debugger is not running."
-                dialogAddButton md "_Start GHCi" (ResponseUser 1)
+                        (__ "GHCi debugger is not running.")
+                dialogAddButton md (__ "_Start GHCi") (ResponseUser 1)
                 dialogSetDefaultResponse md (ResponseUser 1)
                 set md [ windowWindowPosition := WinPosCenterOnParent ]
                 resp <- dialogRun md
@@ -776,7 +776,7 @@ idePackageFromPath filePath = do
         pd <- readPackageDescription normal filePath
         return (Just (flattenPackageDescription pd)))
             (\ (e  :: SomeException) -> do
-                reflectIDE (ideMessage Normal ("Can't activate package " ++(show e))) ideR
+                reflectIDE (ideMessage Normal ((__ "Can't activate package ") ++(show e))) ideR
                 return Nothing))
     case mbPackageD of
         Nothing       -> return Nothing
