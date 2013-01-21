@@ -53,6 +53,7 @@ import Control.Monad.IO.Class (MonadIO(..))
 import Language.Haskell.HLint (hlint, Suggestion(..), suggestionLocation)
 import Language.Haskell.Exts (SrcLoc(..))
 import qualified Language.Haskell.HLint as H (hlint)
+import IDE.Utils.GUIUtils (__)
 
 data HLintRecord = HLintRecord {
             file        :: FilePath
@@ -97,7 +98,7 @@ instance RecoverablePane IDEHLint HLintState IDEM where
         renderer1    <- cellRendererTextNew
         renderer10   <- cellRendererPixbufNew
         col1         <- treeViewColumnNew
-        treeViewColumnSetTitle col1 "Context"
+        treeViewColumnSetTitle col1 (__ "Context")
         treeViewColumnSetSizing col1 TreeViewColumnAutosize
         treeViewColumnSetResizable col1 True
         treeViewColumnSetReorderable col1 True
@@ -134,7 +135,7 @@ instance RecoverablePane IDEHLint HLintState IDEM where
             record <- treeStoreGetValue hlintStore path
             case record of
                 HLintRecord { file = f, parDir = Nothing } -> refreshDir hlintStore iter f
-                _ -> reflectIDE (ideMessage Normal "Unexpected Expansion in HLint Pane") ideR
+                _ -> reflectIDE (ideMessage Normal (__ "Unexpected Expansion in HLint Pane")) ideR
         cid3 <- treeView `onRowActivated` \ path col -> do
             record <- treeStoreGetValue hlintStore path
             mbIter <- treeModelGetIter hlintStore path

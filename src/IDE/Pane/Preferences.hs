@@ -91,7 +91,7 @@ data PrefsState             =   PrefsState
 
 instance Pane IDEPrefs IDEM
     where
-    primPaneName _  =   "Prefs"
+    primPaneName _  =   (__ "Prefs")
     getAddedIndex _ =   0
     getTopWidget    =   castToWidget . prefsBox
     paneId b        =   "*Prefs"
@@ -171,7 +171,7 @@ instance RecoverablePane IDEPrefs PrefsState IDEM where
                         md <- messageDialogNew (Just windows) []
                             MessageQuestion
                             ButtonsYesNo
-                            "Unsaved changes. Close anyway?"
+                            (__ "Unsaved changes. Close anyway?")
                         set md [ windowWindowPosition := WinPosCenterOnParent ]
                         resp <- dialogRun md
                         widgetDestroy md
@@ -208,10 +208,10 @@ getPrefs (Just pp)  = forceGetPane (Left pp)
 
 prefsDescription :: FilePath -> [PackageIdentifier] -> FieldDescriptionPP Prefs IDEM
 prefsDescription configDir packages = NFDPP [
-    ("Editor", VFDPP emptyParams [
+    ((__ "Editor"), VFDPP emptyParams [
         mkFieldPP
-            (paraName <<<- ParaName "Version number of preferences file format"
-                $ paraSynopsis <<<- ParaSynopsis "Integer"
+            (paraName <<<- ParaName (__ "Version number of preferences file format")
+                $ paraSynopsis <<<- ParaSynopsis (__ "Integer")
                     $ paraShowLabel <<<- ParaShowLabel False $ emptyParams)
             (PP.text . show)
             intParser
@@ -220,7 +220,7 @@ prefsDescription configDir packages = NFDPP [
             (noEditor 0)
             (\b -> return ())
     ,   mkFieldPP
-            (paraName <<<- ParaName "Time of last storage"
+            (paraName <<<- ParaName (__ "Time of last storage")
                 $ paraShowLabel <<<- ParaShowLabel False $ emptyParams)
             (PP.text . show)
             stringParser
@@ -229,8 +229,8 @@ prefsDescription configDir packages = NFDPP [
             (noEditor "")
             (\b -> return ())
     ,   mkFieldPP
-            (paraName <<<- ParaName "Show line numbers"
-                $ paraSynopsis <<<- ParaSynopsis "(True/False)"
+            (paraName <<<- ParaName (__ "Show line numbers")
+                $ paraSynopsis <<<- ParaSynopsis (__ "(True/False)")
                     $ emptyParams)
             (PP.text . show)
             boolParser
@@ -241,7 +241,7 @@ prefsDescription configDir packages = NFDPP [
                 buffers <- allBuffers
                 mapM_ (\buf -> setShowLineNumbers (sourceView buf) b) buffers)
     ,   mkFieldPP
-            (paraName <<<- ParaName "TextView Font" $ emptyParams)
+            (paraName <<<- ParaName (__ "TextView Font") $ emptyParams)
             (\a -> PP.text (case a of Nothing -> show ""; Just s -> show s))
             (do str <- stringParser
                 return (if null str then Nothing else Just (str)))
@@ -252,16 +252,16 @@ prefsDescription configDir packages = NFDPP [
                 buffers <- allBuffers
                 mapM_ (\buf -> setFont (sourceView buf) mbs) buffers)
     ,   mkFieldPP
-            (paraName <<<- ParaName "Right margin"
-                $ paraSynopsis <<<- ParaSynopsis "Size or 0 for no right margin"
+            (paraName <<<- ParaName (__ "Right margin")
+                $ paraSynopsis <<<- ParaSynopsis (__ "Size or 0 for no right margin")
                     $ paraShadow <<<- ParaShadow ShadowIn $ emptyParams)
             (PP.text . show)
             readParser
             rightMargin
             (\b a -> a{rightMargin = b})
-            (disableEditor (intEditor (1.0, 200.0, 5.0), paraName <<<- ParaName "Position"
+            (disableEditor (intEditor (1.0, 200.0, 5.0), paraName <<<- ParaName (__ "Position")
                     $ emptyParams)
-                    True "Show it ?")
+                    True (__ "Show it ?"))
             (\b -> do
                 buffers <- allBuffers
                 mapM_ (\buf -> setRightMargin (sourceView buf)
@@ -269,7 +269,7 @@ prefsDescription configDir packages = NFDPP [
                                     (True,v) -> Just v
                                     (False,_) -> Nothing)) buffers)
     ,   mkFieldPP
-            (paraName <<<- ParaName "Tab width" $ emptyParams)
+            (paraName <<<- ParaName (__ "Tab width") $ emptyParams)
             (PP.text . show)
             intParser
             tabWidth
@@ -279,7 +279,7 @@ prefsDescription configDir packages = NFDPP [
                 buffers <- allBuffers
                 mapM_ (\buf -> setIndentWidth (sourceView buf) i) buffers)
     ,   mkFieldPP
-            (paraName <<<- ParaName "Wrap lines" $ emptyParams)
+            (paraName <<<- ParaName (__ "Wrap lines") $ emptyParams)
             (PP.text . show)
             boolParser
             wrapLines
@@ -289,7 +289,7 @@ prefsDescription configDir packages = NFDPP [
                 buffers <- allBuffers
                 mapM_ (\buf -> setWrapMode (sourceView buf) b) buffers)
     ,   mkFieldPP
-            (paraName <<<- ParaName "Use standard line ends even on windows" $ emptyParams)
+            (paraName <<<- ParaName (__ "Use standard line ends even on windows") $ emptyParams)
             (PP.text . show)
             boolParser
             forceLineEnds
@@ -297,7 +297,7 @@ prefsDescription configDir packages = NFDPP [
             boolEditor
             (\i -> return ())
     ,   mkFieldPP
-            (paraName <<<- ParaName "Remove trailing blanks when saving a file" $ emptyParams)
+            (paraName <<<- ParaName (__ "Remove trailing blanks when saving a file") $ emptyParams)
             (PP.text . show)
             boolParser
             removeTBlanks
@@ -305,17 +305,17 @@ prefsDescription configDir packages = NFDPP [
             boolEditor
             (\i -> return ())
     ,   mkFieldPP
-            (paraName <<<- ParaName "Source candy"
+            (paraName <<<- ParaName (__ "Source candy")
                 $ paraSynopsis <<<- ParaSynopsis
-                    "Empty for do not use or the name of a candy file in a config dir"
+                    (__ "Empty for do not use or the name of a candy file in a config dir")
                     $ paraShadow <<<- ParaShadow ShadowIn $ emptyParams)
             (PP.text . show)
             readParser
             sourceCandy (\b a -> a{sourceCandy = b})
             (disableEditor (stringEditor (\s -> not (null s)) True,
-                paraName <<<- ParaName "Candy specification"
+                paraName <<<- ParaName (__ "Candy specification")
                                     $ emptyParams)
-                    True "Use it ?")
+                    True (__ "Use it ?"))
             (\cs -> case cs of
                         (False,_) -> do
                             setCandyState False
@@ -324,10 +324,10 @@ prefsDescription configDir packages = NFDPP [
                             setCandyState True
                             editCandy)
     ,   mkFieldPP
-            (paraName <<<- ParaName "Editor Style" $ emptyParams)
+            (paraName <<<- ParaName (__ "Editor Style") $ emptyParams)
             (\a -> PP.text (case a of (False,_) -> show ""; (True, s) -> show s))
             (do str <- stringParser
-                return (if null str then (False,"classic") else (True,str)))
+                return (if null str then (False,(__ "classic")) else (True,str)))
             sourceStyle
             (\b a -> a{sourceStyle = b})
             styleEditor
@@ -339,7 +339,7 @@ prefsDescription configDir packages = NFDPP [
                                     (False,_) -> Nothing
                                     (True,s) -> Just s)) buffers)
     ,   mkFieldPP
-            (paraName <<<- ParaName "Found Text Background" $ emptyParams)
+            (paraName <<<- ParaName (__ "Found Text Background") $ emptyParams)
             (PP.text . show)
             colorParser
             foundBackground
@@ -355,7 +355,7 @@ prefsDescription configDir packages = NFDPP [
                         Just tag -> background tag c
                         Nothing  -> return ())
     ,   mkFieldPP
-            (paraName <<<- ParaName "Execution Context Text Background" $ emptyParams)
+            (paraName <<<- ParaName (__ "Execution Context Text Background") $ emptyParams)
             (PP.text . show)
             colorParser
             contextBackground
@@ -369,7 +369,7 @@ prefsDescription configDir packages = NFDPP [
                     --  TODO find and set the tag background
                     return ())
     ,   mkFieldPP
-            (paraName <<<- ParaName "Breakpoint Text Background" $ emptyParams)
+            (paraName <<<- ParaName (__ "Breakpoint Text Background") $ emptyParams)
             (PP.text . show)
             colorParser
             breakpointBackground
@@ -383,7 +383,7 @@ prefsDescription configDir packages = NFDPP [
                     --  TODO find and set the tag background
                     return ())
     ,   mkFieldPP
-            (paraName <<<- ParaName "Automatically load modified files modified outside of Leksah" $ emptyParams)
+            (paraName <<<- ParaName (__ "Automatically load modified files modified outside of Leksah") $ emptyParams)
             (PP.text . show)
             boolParser
             autoLoad
@@ -391,7 +391,7 @@ prefsDescription configDir packages = NFDPP [
             boolEditor
             (\i -> return ())
     ,   mkFieldPP
-            (paraName <<<- ParaName "Use Yi - Experimental feature (could wipe your files)" $ emptyParams)
+            (paraName <<<- ParaName (__ "Use Yi - Experimental feature (could wipe your files)") $ emptyParams)
             (PP.text . show)
             boolParser
             useYi
@@ -399,9 +399,9 @@ prefsDescription configDir packages = NFDPP [
             boolEditor
             (\i -> return ())
     ]),
-    ("GUI Options", VFDPP emptyParams [
+    ((__ "GUI Options"), VFDPP emptyParams [
         mkFieldPP
-            (paraName <<<- ParaName "LogView Font" $ emptyParams)
+            (paraName <<<- ParaName (__ "LogView Font") $ emptyParams)
             (\a -> PP.text (case a of Nothing -> show ""; Just s -> show s))
             (do str <- stringParser
                 return (if null str then Nothing else Just (str)))
@@ -413,9 +413,9 @@ prefsDescription configDir packages = NFDPP [
                 fdesc <- liftIO $fontDescriptionFromString (case mbs of Just str -> str; Nothing -> "")
                 liftIO $widgetModifyFont (castToWidget $textView buffer) (Just fdesc))
     ,   mkFieldPP
-            (paraName <<<- ParaName "Window default size"
+            (paraName <<<- ParaName (__ "Window default size")
                 $ paraSynopsis <<<- ParaSynopsis
-                    "Default size of the main ide window specified as pair (int,int)"
+                    (__ "Default size of the main ide window specified as pair (int,int)")
                     $ paraShadow <<<- ParaShadow ShadowIn $ emptyParams)
             (PP.text.show)
             (pairParser intParser)
@@ -426,7 +426,7 @@ prefsDescription configDir packages = NFDPP [
                             paraName <<<- ParaName "Y" $ emptyParams))
             (\a -> return ())
     ,   mkFieldPP
-            (paraName <<<- ParaName "Use ctrl Tab for Notebook flipper" $ emptyParams)
+            (paraName <<<- ParaName (__ "Use ctrl Tab for Notebook flipper") $ emptyParams)
             (PP.text . show)
             boolParser
             useCtrlTabFlipping
@@ -434,7 +434,7 @@ prefsDescription configDir packages = NFDPP [
             boolEditor
             (\i -> return ())
     ,   mkFieldPP
-            (paraName <<<- ParaName "Complete only on Hotkey" $ emptyParams)
+            (paraName <<<- ParaName (__ "Complete only on Hotkey") $ emptyParams)
             (PP.text . show)
             boolParser
             completeRestricted
@@ -442,9 +442,9 @@ prefsDescription configDir packages = NFDPP [
             boolEditor
             (\i -> return ())
     ,   mkFieldPP
-            (paraName <<<- ParaName "Name of the keymap"
+            (paraName <<<- ParaName (__ "Name of the keymap")
                 $ paraSynopsis <<<- ParaSynopsis
-                    "The name of a keymap file in a config dir"
+                    (__ "The name of a keymap file in a config dir")
                     $ paraDirection <<<- ParaDirection Horizontal $ emptyParams)
             PP.text
             identifier
@@ -453,10 +453,10 @@ prefsDescription configDir packages = NFDPP [
             (stringEditor (\s -> not (null s)) True)
             (\ a -> return ())
     ]),
-    ("Initial Pane positions", VFDPP emptyParams [
+    ((__ "Initial Pane positions"), VFDPP emptyParams [
         mkFieldPP
             (paraName <<<- ParaName
-                "Categories for panes"
+                (__ "Categories for panes")
                 $ paraShadow <<<- ParaShadow ShadowIn
                      $ paraDirection <<<- ParaDirection Vertical
                         $ paraMinSize <<<- ParaMinSize (-1,130)
@@ -466,8 +466,8 @@ prefsDescription configDir packages = NFDPP [
             categoryForPane
             (\b a -> a{categoryForPane = b})
             (multisetEditor
-                (ColumnDescr True [("Pane Id",\(n,_) -> [cellText := n])
-                                   ,("Pane Category",\(_,v) -> [cellText := v])])
+                (ColumnDescr True [((__ "Pane Id"),\(n,_) -> [cellText := n])
+                                   ,((__ "Pane Category"),\(_,v) -> [cellText := v])])
                 ((pairEditor
                     (stringEditor (\s -> not (null s)) True,emptyParams)
                     (stringEditor (\s -> not (null s)) True,emptyParams)),emptyParams)
@@ -476,7 +476,7 @@ prefsDescription configDir packages = NFDPP [
             (\i -> return ())
     ,   mkFieldPP
             (paraName <<<- ParaName
-                "Pane path for category"
+                (__ "Pane path for category")
                 $ paraShadow <<<- ParaShadow ShadowIn
                      $ paraDirection <<<- ParaDirection Vertical
                         $ paraMinSize <<<- ParaMinSize (-1,130)
@@ -486,8 +486,8 @@ prefsDescription configDir packages = NFDPP [
             pathForCategory
             (\b a -> a{pathForCategory = b})
             (multisetEditor
-                (ColumnDescr True [("Pane category",\(n,_) -> [cellText := n])
-                                   ,("Pane path",\(_,v) -> [cellText := show v])])
+                (ColumnDescr True [((__ "Pane category"),\(n,_) -> [cellText := n])
+                                   ,((__ "Pane path"),\(_,v) -> [cellText := show v])])
                 ((pairEditor
                     (stringEditor (\s -> not (null s)) True,emptyParams)
                     (genericEditor,emptyParams)),emptyParams)
@@ -495,7 +495,7 @@ prefsDescription configDir packages = NFDPP [
                 (Just (\(a,_) (a2,_) -> a == a2)))
             (\i -> return ())
     ,   mkFieldPP
-            (paraName <<<- ParaName "Default pane path" $ emptyParams)
+            (paraName <<<- ParaName (__ "Default pane path") $ emptyParams)
             (PP.text . show)
             readParser
             defaultPath
@@ -503,20 +503,20 @@ prefsDescription configDir packages = NFDPP [
             genericEditor
             (\i -> return ())
     ]),
-    ("Metadata", VFDPP emptyParams [
+    ((__ "Metadata"), VFDPP emptyParams [
         mkFieldPP
             (paraName <<<- ParaName
-                "Paths under which haskell sources for packages may be found"
+                (__ "Paths under which haskell sources for packages may be found")
                         $ paraMinSize <<<- ParaMinSize (-1,100)
                             $ emptyParams)
             (PP.text . show)
             readParser
             sourceDirectories
             (\b a -> a{sourceDirectories = b})
-            (filesEditor Nothing FileChooserActionSelectFolder "Select folder")
+            (filesEditor Nothing FileChooserActionSelectFolder (__ "Select folder"))
             (\i -> return ())
     ,   mkFieldPP
-            (paraName <<<- ParaName "Unpack source for cabal packages to" $ emptyParams)
+            (paraName <<<- ParaName (__ "Unpack source for cabal packages to") $ emptyParams)
             (PP.text . show)
             readParser
             unpackDirectory
@@ -524,7 +524,7 @@ prefsDescription configDir packages = NFDPP [
             (maybeEditor (stringEditor (\ _ -> True) True,emptyParams) True "")
             (\i -> return ())
     ,   mkFieldPP
-            (paraName <<<- ParaName "URL from which to download prebuilt metadata" $ emptyParams)
+            (paraName <<<- ParaName (__ "URL from which to download prebuilt metadata") $ emptyParams)
             (PP.text . show)
             stringParser
             retrieveURL
@@ -532,15 +532,15 @@ prefsDescription configDir packages = NFDPP [
             (stringEditor (const True) True)
             (\i -> return ())
     ,   mkFieldPP
-            (paraName <<<- ParaName "Strategy for downloading prebuilt metadata" $ emptyParams)
+            (paraName <<<- ParaName (__ "Strategy for downloading prebuilt metadata") $ emptyParams)
             (PP.text . show)
             readParser
             retrieveStrategy
             (\b a -> a{retrieveStrategy = b})
-            (enumEditor ["Try to download and then build locally if that fails","Try to build locally and then download if that fails","Never download (just try to build locally)"])
+            (enumEditor [(__ "Try to download and then build locally if that fails"),(__ "Try to build locally and then download if that fails"),(__ "Never download (just try to build locally)")])
             (\i -> return ())
     ,   mkFieldPP
-            (paraName <<<- ParaName "Update metadata at startup" $ emptyParams)
+            (paraName <<<- ParaName (__ "Update metadata at startup") $ emptyParams)
             (PP.text . show)
             boolParser
             collectAtStart
@@ -548,7 +548,7 @@ prefsDescription configDir packages = NFDPP [
             boolEditor
             (\i -> return ())
     ,   mkFieldPP
-            (paraName <<<- ParaName "Port number for leksah to comunicate with leksah-server" $ emptyParams)
+            (paraName <<<- ParaName (__ "Port number for leksah to comunicate with leksah-server") $ emptyParams)
             (PP.text . show)
             intParser
             serverPort
@@ -556,7 +556,7 @@ prefsDescription configDir packages = NFDPP [
             (intEditor (1.0, 65535.0, 1.0))
             (\i -> return ())
     ,   mkFieldPP
-            (paraName <<<- ParaName "IP address for leksah to comunicate with leksah-server" $ emptyParams)
+            (paraName <<<- ParaName (__ "IP address for leksah to comunicate with leksah-server") $ emptyParams)
             (PP.text . show)
             stringParser
             serverIP
@@ -564,7 +564,7 @@ prefsDescription configDir packages = NFDPP [
             (stringEditor (\ s -> not $ null s) True)
             (\i -> return ())
     ,   mkFieldPP
-            (paraName <<<- ParaName "Stop the leksah-server process when leksah disconnects" $ emptyParams)
+            (paraName <<<- ParaName (__ "Stop the leksah-server process when leksah disconnects") $ emptyParams)
             (PP.text . show)
             boolParser
             endWithLastConn
@@ -572,10 +572,10 @@ prefsDescription configDir packages = NFDPP [
             boolEditor
             (\i -> return ())
     ]),
-    ("Blacklist", VFDPP emptyParams [
+    ((__ "Blacklist"), VFDPP emptyParams [
         mkFieldPP
             (paraName <<<- ParaName
-                "Packages which are excluded from the modules pane"
+                (__ "Packages which are excluded from the modules pane")
                         $ paraMinSize <<<- ParaMinSize (-1,200)
                             $ emptyParams)
             (PP.text . show)
@@ -585,9 +585,9 @@ prefsDescription configDir packages = NFDPP [
             (dependenciesEditor packages)
             (\i -> return ())
     ]),
-    ("Build", VFDPP emptyParams [
+    ((__ "Build"), VFDPP emptyParams [
          mkFieldPP
-            (paraName <<<- ParaName "Automatically save all files before building" $ emptyParams)
+            (paraName <<<- ParaName (__ "Automatically save all files before building") $ emptyParams)
             (PP.text . show)
             boolParser
             saveAllBeforeBuild
@@ -595,7 +595,7 @@ prefsDescription configDir packages = NFDPP [
             boolEditor
             (\i -> return ())
          , mkFieldPP
-            (paraName <<<- ParaName "Select first warning if built without errors" $ emptyParams)
+            (paraName <<<- ParaName (__ "Select first warning if built without errors") $ emptyParams)
             (PP.text . show)
             boolParser
             jumpToWarnings
@@ -603,7 +603,7 @@ prefsDescription configDir packages = NFDPP [
             boolEditor
             (\i -> return ())
          , mkFieldPP
-            (paraName <<<- ParaName "Background build" $ emptyParams)
+            (paraName <<<- ParaName (__ "Background build") $ emptyParams)
             (PP.text . show)
             boolParser
             backgroundBuild
@@ -611,7 +611,7 @@ prefsDescription configDir packages = NFDPP [
             boolEditor
             (\i -> return ())
          , mkFieldPP
-            (paraName <<<- ParaName "Run unit tests when building" $ emptyParams)
+            (paraName <<<- ParaName (__ "Run unit tests when building") $ emptyParams)
             (PP.text . show)
             boolParser
             runUnitTests
@@ -619,16 +619,16 @@ prefsDescription configDir packages = NFDPP [
             boolEditor
             (\i -> return ())
          , mkFieldPP
-            (paraName <<<- ParaName "Make mode" $ emptyParams)
+            (paraName <<<- ParaName (__ "Make mode") $ emptyParams)
             (PP.text . show)
             boolParser
             makeMode
             (\b a -> a{makeMode = b})
-            (boolEditor2 "Single mode")
+            (boolEditor2 (__ "Single mode"))
             (\i -> return ())
 
          , mkFieldPP
-            (paraName <<<- ParaName "Single build without linking" $ emptyParams)
+            (paraName <<<- ParaName (__ "Single build without linking") $ emptyParams)
             (PP.text . show)
             boolParser
             singleBuildWithoutLinking
@@ -636,7 +636,7 @@ prefsDescription configDir packages = NFDPP [
             boolEditor
             (\i -> return ())
          , mkFieldPP
-            (paraName <<<- ParaName "Don't install last package" $ emptyParams)
+            (paraName <<<- ParaName (__ "Don't install last package") $ emptyParams)
             (PP.text . show)
             boolParser
             dontInstallLast
@@ -645,9 +645,9 @@ prefsDescription configDir packages = NFDPP [
             (\i -> return ())
 
     ]),
-    ("Debug", VFDPP emptyParams [
+    ((__ "Debug"), VFDPP emptyParams [
            mkFieldPP
-            (paraName <<<- ParaName "Enable usage of Show instances in :print" $ emptyParams)
+            (paraName <<<- ParaName (__ "Enable usage of Show instances in :print") $ emptyParams)
             (PP.text . show)
             boolParser
             printEvldWithShow
@@ -655,7 +655,7 @@ prefsDescription configDir packages = NFDPP [
             boolEditor
             debugSetPrintEvldWithShow
          , mkFieldPP
-            (paraName <<<- ParaName "Break on any exception thrown" $ emptyParams)
+            (paraName <<<- ParaName (__ "Break on any exception thrown") $ emptyParams)
             (PP.text . show)
             boolParser
             breakOnException
@@ -663,7 +663,7 @@ prefsDescription configDir packages = NFDPP [
             boolEditor
             debugSetBreakOnException
          , mkFieldPP
-            (paraName <<<- ParaName "Break on uncaught exceptions and errors" $ emptyParams)
+            (paraName <<<- ParaName (__ "Break on uncaught exceptions and errors") $ emptyParams)
             (PP.text . show)
             boolParser
             breakOnError
@@ -671,7 +671,7 @@ prefsDescription configDir packages = NFDPP [
             boolEditor
             debugSetBreakOnError
          , mkFieldPP
-            (paraName <<<- ParaName "Turn on printing of binding results in GHCi" $ emptyParams)
+            (paraName <<<- ParaName (__ "Turn on printing of binding results in GHCi") $ emptyParams)
             (PP.text . show)
             boolParser
             printBindResult
@@ -679,9 +679,9 @@ prefsDescription configDir packages = NFDPP [
             boolEditor
             debugSetPrintBindResult
     ]),
-    ("Help", VFDPP emptyParams [
+    ((__ "Help"), VFDPP emptyParams [
         mkFieldPP
-            (paraName <<<- ParaName "Browser" $ emptyParams)
+            (paraName <<<- ParaName (__ "Browser") $ emptyParams)
             (PP.text . show)
             stringParser
             browser
@@ -689,7 +689,7 @@ prefsDescription configDir packages = NFDPP [
             (stringEditor (\s -> not (null s)) True)
             (\i -> return ())
     ,   mkFieldPP
-            (paraName <<<- ParaName "URL for searching documentation" $
+            (paraName <<<- ParaName (__ "URL for searching documentation") $
                 paraSynopsis <<<- ParaSynopsis
                     ("e.g Hoogle: http://www.haskell.org/hoogle/?q= or " ++
                         "Hayoo: http://holumbus.fh-wedel.de/hayoo/hayoo.html?query=")
@@ -707,7 +707,7 @@ styleEditor :: Editor (Bool, String)
 styleEditor p n = do
     styleManager <- sourceStyleSchemeManagerNew
     ids          <- sourceStyleSchemeManagerGetSchemeIds styleManager
-    disableEditor (comboSelectionEditor ids id, p) True "Select a special style?" p n
+    disableEditor (comboSelectionEditor ids id, p) True (__ "Select a special style?") p n
 
 
 defaultPrefs = Prefs {

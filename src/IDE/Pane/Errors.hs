@@ -34,7 +34,7 @@ import IDE.ImportTool
 import Data.List (elemIndex)
 import IDE.LogRef (showSourceSpan)
 import Control.Monad.IO.Class (MonadIO(..))
-import IDE.Utils.GUIUtils (treeViewContextMenu)
+import IDE.Utils.GUIUtils (treeViewContextMenu, __)
 
 -- | A breakpoints pane description
 --
@@ -51,7 +51,7 @@ data ErrorsState    =   ErrorsState {
 
 instance Pane IDEErrors IDEM
     where
-    primPaneName _  =   "Errors"
+    primPaneName _  =   (__ "Errors")
     getTopWidget    =   castToWidget . scrolledView
     paneId b        =   "*Errors"
 
@@ -76,7 +76,7 @@ builder' pp nb windows = reifyIDE $ \ ideR -> do
 
     rendererA    <- cellRendererTextNew
     colA         <- treeViewColumnNew
-    treeViewColumnSetTitle colA "Location"
+    treeViewColumnSetTitle colA (__ "Location")
     treeViewColumnSetSizing colA TreeViewColumnAutosize
     treeViewColumnSetResizable colA True
     treeViewColumnSetReorderable colA True
@@ -89,7 +89,7 @@ builder' pp nb windows = reifyIDE $ \ ideR -> do
                                             else "red" ]
     rendererB    <- cellRendererTextNew
     colB         <- treeViewColumnNew
-    treeViewColumnSetTitle colB "Description"
+    treeViewColumnSetTitle colB (__ "Description")
     treeViewColumnSetSizing colB TreeViewColumnAutosize
     treeViewColumnSetResizable colB True
     treeViewColumnSetReorderable colB True
@@ -166,7 +166,7 @@ errorsContextMenu :: IDERef
                   -> IO ()
 errorsContextMenu ideR store treeView theMenu = do
     mbSel           <-  getSelectedError treeView store
-    item0           <-  menuItemNewWithLabel "Resolve Errors"
+    item0           <-  menuItemNewWithLabel (__ "Resolve Errors")
     item0 `on` menuItemActivate $ do
         reflectIDE resolveErrors ideR
     menuShellAppend theMenu item0
@@ -176,7 +176,7 @@ errorsContextMenu ideR store treeView theMenu = do
                 Nothing   -> do
                     return ()
                 Just _  -> do
-                    item1   <-  menuItemNewWithLabel "Add Import"
+                    item1   <-  menuItemNewWithLabel (__ "Add Import")
                     item1 `on` menuItemActivate $ do
                         reflectIDE (addImport sel [] (\ _ -> return ())) ideR
                     menuShellAppend theMenu item1
@@ -184,7 +184,7 @@ errorsContextMenu ideR store treeView theMenu = do
                 Nothing   -> do
                     return ()
                 Just _  -> do
-                    item1   <-  menuItemNewWithLabel "Add Package"
+                    item1   <-  menuItemNewWithLabel (__ "Add Package")
                     item1 `on` menuItemActivate $ do
                         reflectIDE (addPackage sel >> return ()) ideR
                     menuShellAppend theMenu item1

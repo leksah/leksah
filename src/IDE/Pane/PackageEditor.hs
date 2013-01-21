@@ -245,8 +245,8 @@ packageNew' mbDir activateAction = do
                         else liftIO $ do
                             md <- messageDialogNew (Just window) [] MessageQuestion ButtonsCancel
                                 $ (printf (__ 
-                                   "The path you have choosen %s is not an empty directory. Are you sure you want to make a new package here?" 
-                                  ) dirName)
+                                   "The path you have choosen %s is not an empty directory. Are you sure you want to make a new package here?") 
+                                  dirName)
                             dialogAddButton md (__ "_Make Package Here") (ResponseUser 1)
                             dialogSetDefaultResponse md (ResponseUser 1)
                             set md [ windowWindowPosition := WinPosCenterOnParent ]
@@ -1051,7 +1051,7 @@ testedWithEditor :: Editor [(CompilerFlavor, VersionRange)]
 testedWithEditor para = do
     multisetEditor
        (ColumnDescr True [((__ "Compiler Flavor"),\(cv,_) -> [cellText := show cv])
-                           ,((__"Version Range"),\(_,vr) -> [cellText := display vr])])
+                           ,((__ "Version Range"),\(_,vr) -> [cellText := display vr])])
        (pairEditor
             (compilerFlavorEditor, paraShadow <<<- (ParaShadow ShadowNone) $ emptyParams)
             (versionRangeEditor, paraShadow <<<- (ParaShadow ShadowNone) $ emptyParams),
@@ -1280,7 +1280,7 @@ executablesEditor fp modules countBuildInfo p =
         (ColumnDescr True [( (__ "Executable Name"),\(Executable' exeName _ _) -> [cellText := exeName])
                            ,( (__ "Module Path"),\(Executable'  _ mp _) -> [cellText := mp])
 
-                           ,( (__"Build info index"),\(Executable'  _ _ bii) -> [cellText := show (bii + 1)])])
+                           ,( (__ "Build info index"),\(Executable'  _ _ bii) -> [cellText := show (bii + 1)])])
         (executableEditor fp modules countBuildInfo,emptyParams)
         Nothing
         Nothing
@@ -1318,7 +1318,7 @@ testsEditor :: Maybe FilePath -> [ModuleName] -> Int -> Editor [Test']
 testsEditor fp modules countBuildInfo p =
     multisetEditor
         (ColumnDescr True [( (__ "Test Name"),\(Test' testName _ _) -> [cellText := testName])
-                           ,( (__"Interface"),\(Test'  _ i _) -> [cellText := interfaceName i])
+                           ,( (__ "Interface"),\(Test'  _ i _) -> [cellText := interfaceName i])
 
                            ,( (__ "Build info index"),\(Test'  _ _ bii) -> [cellText := show (bii + 1)])])
         (testEditor fp modules countBuildInfo,emptyParams)

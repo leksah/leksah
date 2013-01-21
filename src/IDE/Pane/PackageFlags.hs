@@ -42,6 +42,7 @@ import Graphics.UI.Editor.DescriptionPP
      mkFieldPP)
 import Text.ParserCombinators.Parsec hiding(Parser)
 import Debug.Trace (trace)
+import IDE.Utils.GUIUtils (__)
 
 data IDEFlags               =   IDEFlags {
     flagsBox                ::   VBox
@@ -52,7 +53,7 @@ data FlagsState             =   FlagsState
 
 instance Pane IDEFlags IDEM
     where
-    primPaneName _  =   "Package Flags"
+    primPaneName _  =   (__ "Package Flags")
     getAddedIndex _ =   0
     getTopWidget    =   castToWidget . flagsBox
     paneId b        =   "*Flags"
@@ -172,7 +173,7 @@ flatFlagsDescription = flattenFieldDescriptionPPToS flagsDescription
 flagsDescription :: FieldDescriptionPP IDEPackage IDEM
 flagsDescription = VFDPP emptyParams [
         mkFieldPP
-            (paraName <<<- ParaName "Config flags" $ emptyParams)
+            (paraName <<<- ParaName (__ "Config flags") $ emptyParams)
             (PP.text . show)
             readParser
             (\p -> unargs (ipdConfigFlags p))
@@ -180,7 +181,7 @@ flagsDescription = VFDPP emptyParams [
             (stringEditor (const True) True)
             (\ _ -> return ())
     ,   mkFieldPP
-            (paraName <<<- ParaName "Build flags" $ emptyParams)
+            (paraName <<<- ParaName (__ "Build flags") $ emptyParams)
             (PP.text . show)
             readParser
             (\p -> unargs (ipdBuildFlags p))
@@ -188,7 +189,7 @@ flagsDescription = VFDPP emptyParams [
             (stringEditor (const True) True)
             (\ _ ->  return ())
     ,   mkFieldPP
-            (paraName <<<- ParaName "Test flags" $ emptyParams)
+            (paraName <<<- ParaName (__ "Test flags") $ emptyParams)
             (PP.text . show)
             readParser
             (\p -> unargs (ipdTestFlags p))
@@ -196,7 +197,7 @@ flagsDescription = VFDPP emptyParams [
             (stringEditor (const True) True)
             (\ _ ->   return ())
     ,   mkFieldPP
-            (paraName <<<- ParaName "Haddock flags" $ emptyParams)
+            (paraName <<<- ParaName (__ "Haddock flags") $ emptyParams)
             (PP.text . show)
             readParser
             (\p -> unargs (ipdHaddockFlags p))
@@ -204,7 +205,7 @@ flagsDescription = VFDPP emptyParams [
             (stringEditor (const True) True)
             (\ _ ->   return ())
     ,   mkFieldPP
-            (paraName <<<- ParaName "Executable flags" $ emptyParams)
+            (paraName <<<- ParaName (__ "Executable flags") $ emptyParams)
             (PP.text . show)
             readParser
             (\p -> unargs (ipdExeFlags p))
@@ -212,7 +213,7 @@ flagsDescription = VFDPP emptyParams [
             (stringEditor (const True) True)
             (\ _ ->   return ())
     ,   mkFieldPP
-            (paraName <<<- ParaName "Install flags" $ emptyParams)
+            (paraName <<<- ParaName (__ "Install flags") $ emptyParams)
             (PP.text . show)
             readParser
             (\p -> unargs (ipdInstallFlags p))
@@ -220,7 +221,7 @@ flagsDescription = VFDPP emptyParams [
             (stringEditor (const True) True)
             (\ _ ->   return ())
     ,   mkFieldPP
-            (paraName <<<- ParaName "Register flags" $ emptyParams)
+            (paraName <<<- ParaName (__ "Register flags") $ emptyParams)
             (PP.text . show)
             readParser
             (\p -> unargs (ipdRegisterFlags p))
@@ -228,7 +229,7 @@ flagsDescription = VFDPP emptyParams [
             (stringEditor (const True) True)
             (\ _ ->   return ())
     ,   mkFieldPP
-            (paraName <<<- ParaName "Unregister flags" $ emptyParams)
+            (paraName <<<- ParaName (__ "Unregister flags") $ emptyParams)
             (PP.text . show)
             readParser
             (\p -> unargs (ipdUnregisterFlags p))
@@ -236,7 +237,7 @@ flagsDescription = VFDPP emptyParams [
             (stringEditor (const True) True)
             (\ _ ->   return ())
     ,   mkFieldPP
-            (paraName <<<- ParaName "Source Distribution flags" $ emptyParams)
+            (paraName <<<- ParaName (__ "Source Distribution flags") $ emptyParams)
             (PP.text . show)
             readParser
             (\p -> unargs (ipdSdistFlags p))

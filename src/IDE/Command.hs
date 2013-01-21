@@ -1,4 +1,5 @@
-{-# OPTIONS_GHC -XTypeSynonymInstances -XScopedTypeVariables #-}
+{- # LANGUAGE TypeSynonymInstances, ScopedTypeVariables -}
+--{-# OPTIONS_GHC -XTypeSynonymInstances -XScopedTypeVariables #-}
 {-# OPTIONS_GHC -fno-warn-incomplete-patterns #-}
 -----------------------------------------------------------------------------
 --
@@ -114,7 +115,7 @@ import Control.Monad.Trans.Reader (ask)
 --
 mkActions :: [ActionDescr IDERef]
 mkActions =
-    [AD "File" "_File" Nothing Nothing (return ()) [] False
+    [AD (__ "File") "_File" Nothing Nothing (return ()) [] False
     ,AD "FileNew" "_New Module..." Nothing (Just "gtk-new")
         (packageTry $ addModule []) [] False
     ,AD "FileNewTextFile" "_New Text File" Nothing Nothing
