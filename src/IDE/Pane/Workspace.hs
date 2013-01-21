@@ -34,7 +34,7 @@ import IDE.Pane.Files (refreshFiles)
 import IDE.Pane.HLint (refreshHLint)
 import Control.Monad (when)
 import Control.Monad.IO.Class (MonadIO(..))
-import IDE.Utils.GUIUtils (treeViewContextMenu)
+import IDE.Utils.GUIUtils (treeViewContextMenu, __)
 import System.Glib.Properties (newAttrFromMaybeStringProperty)
 
 -- | Workspace pane state
@@ -49,7 +49,7 @@ data IDEWorkspace   =   IDEWorkspace {
 
 instance Pane IDEWorkspace IDEM
     where
-    primPaneName _  =   "Workspace"
+    primPaneName _  =   (__ "Workspace")
     getAddedIndex _ =   0
     getTopWidget    =   castToWidget . topBox
     paneId b        =   "*Workspace"
@@ -75,7 +75,7 @@ instance RecoverablePane IDEWorkspace WorkspaceState IDEM where
 
         renderer0    <- cellRendererPixbufNew
         col0        <- treeViewColumnNew
-        treeViewColumnSetTitle col0 "Active"
+        treeViewColumnSetTitle col0 (__ "Active")
         treeViewColumnSetSizing col0 TreeViewColumnAutosize
         treeViewColumnSetResizable col0 True
         treeViewColumnSetReorderable col0 True
@@ -89,7 +89,7 @@ instance RecoverablePane IDEWorkspace WorkspaceState IDEM where
 
         renderer1   <- cellRendererTextNew
         col1        <- treeViewColumnNew
-        treeViewColumnSetTitle col1 "Package"
+        treeViewColumnSetTitle col1 (__ "Package")
         treeViewColumnSetSizing col1 TreeViewColumnAutosize
         treeViewColumnSetResizable col1 True
         treeViewColumnSetReorderable col1 True
@@ -100,7 +100,7 @@ instance RecoverablePane IDEWorkspace WorkspaceState IDEM where
 
         renderer2   <- cellRendererTextNew
         col2        <- treeViewColumnNew
-        treeViewColumnSetTitle col2 "File path"
+        treeViewColumnSetTitle col2 (__ "File path")
         treeViewColumnSetSizing col2 TreeViewColumnAutosize
         treeViewColumnSetResizable col2 True
         treeViewColumnSetReorderable col2 True
@@ -153,9 +153,9 @@ workspaceContextMenu :: IDERef
                      -> Menu
                      -> IO ()
 workspaceContextMenu ideR workspacePane theMenu = do
-    item1 <- menuItemNewWithLabel "Activate Package"
-    item2 <- menuItemNewWithLabel "Add Package"
-    item3 <- menuItemNewWithLabel "Remove Package"
+    item1 <- menuItemNewWithLabel (__ "Activate Package")
+    item2 <- menuItemNewWithLabel (__ "Add Package")
+    item3 <- menuItemNewWithLabel (__ "Remove Package")
     item1 `on` menuItemActivate $ do
         sel <- getSelectionTree (treeViewC workspacePane)
                                 (workspaceStore workspacePane)
@@ -182,7 +182,7 @@ workspaceSelect :: IDERef
 workspaceSelect ideR workspacePane [n] _ = do
     (_,ideP) <- listStoreGetValue (workspaceStore workspacePane) n
     reflectIDE (workspaceTry $ workspaceActivatePackage ideP) ideR
-workspaceSelect _ _ _ _ = liftIO $ sysMessage Normal "Workspace >> workspaceSelect: invalid path"
+workspaceSelect _ _ _ _ = liftIO $ sysMessage Normal (__ "Workspace >> workspaceSelect: invalid path")
 
 updateWorkspace :: Bool -> Bool -> IDEAction
 updateWorkspace showPane updateFileCache = do

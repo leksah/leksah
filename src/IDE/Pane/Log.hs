@@ -65,6 +65,8 @@ import Graphics.UI.Gtk
         TextWindowType(..), ShadowType(..), PolicyType(..),
         priorityDefaultIdle, idleAdd, menuItemActivate)
 import Control.Monad.IO.Class (MonadIO(..))
+import IDE.Utils.GUIUtils (__)
+import Text.Printf (printf)
 
 
 -------------------------------------------------------------------------------
@@ -87,7 +89,7 @@ data LogState               =   LogState
 
 instance Pane IDELog IDEM
     where
-    primPaneName  _ =   "Log"
+    primPaneName  _ =   (__ "Log")
     getAddedIndex _ =   0
     getTopWidget    =   castToWidget . scrolledWindowL
     paneId b        =   "*Log"
@@ -191,7 +193,7 @@ clicked _ _ = return ()
 populatePopupMenu :: IDELog -> IDERef -> Menu -> IO ()
 populatePopupMenu ideLog ideR menu = do
     items <- containerGetChildren menu
-    item0           <-  menuItemNewWithLabel "Resolve Errors"
+    item0           <-  menuItemNewWithLabel (__ "Resolve Errors")
     item0 `on` menuItemActivate $ do
         reflectIDE resolveErrors ideR
     menuShellAppend menu item0
@@ -210,7 +212,7 @@ populatePopupMenu ideLog ideR menu = do
                 Nothing   -> do
                     return ()
                 Just _  -> do
-                    item1   <-  menuItemNewWithLabel "Add Import"
+                    item1   <-  menuItemNewWithLabel (__ "Add Import")
                     item1 `on` menuItemActivate $ do
                         reflectIDE (addImport thisRef [] (\_ -> return ())) ideR
                     menuShellAppend menu item1
@@ -218,7 +220,7 @@ populatePopupMenu ideLog ideR menu = do
                 Nothing   -> do
                     return ()
                 Just _  -> do
-                    item2   <-  menuItemNewWithLabel "Add Package"
+                    item2   <-  menuItemNewWithLabel (__ "Add Package")
                     item2 `on` menuItemActivate $ do
                         reflectIDE (addPackage thisRef >> return ()) ideR
                     menuShellAppend menu item2
@@ -231,7 +233,7 @@ getLog :: IDEM IDELog
 getLog = do
     mbPane <- getOrBuildPane (Right "*Log")
     case mbPane of
-        Nothing ->  throwIDE "Can't init log"
+        Nothing ->  throwIDE (__ "Can't init log")
         Just p -> return p
 
 showLog :: IDEAction
@@ -334,9 +336,9 @@ readErr log hndl =
 
 runExternal :: FilePath -> [String] -> IO (Handle, Handle, Handle, ProcessHandle)
 runExternal path args = do
-    putStrLn $ "Run external called with args " ++ show args
+    putStrLn $ printf (__ "Run external called with args %s") ( show args )
     hndls@(inp, out, err, _) <- runInteractiveProcess path args Nothing Nothing
-    sysMessage Normal $ "Starting external tool: " ++ path ++ " with args " ++ (show args)
+    sysMessage Normal $ printf (__ "Starting external tool: %s with args %s") path (show args)
     hSetBuffering out NoBuffering
     hSetBuffering err NoBuffering
     hSetBuffering inp NoBuffering

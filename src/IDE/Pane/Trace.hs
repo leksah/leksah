@@ -51,6 +51,7 @@ import qualified Data.Enumerator.List as EL (consume)
 import Control.Monad.Trans.Class (MonadTrans(..))
 import Control.Monad.IO.Class (MonadIO(..))
 import IDE.Utils.GUIUtils (treeViewContextMenu, __)
+import Text.Printf (printf)
 
 -- | A debugger pane description
 --

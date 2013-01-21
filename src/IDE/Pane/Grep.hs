@@ -53,6 +53,7 @@ import Control.Monad (foldM, when)
 import Control.Monad.Trans.Reader (ask)
 import Control.Monad.Trans.Class (MonadTrans(..))
 import Control.Monad.IO.Class (MonadIO(..))
+import IDE.Utils.GUIUtils (__)
 
 data GrepRecord = GrepRecord {
             file        :: FilePath
@@ -80,7 +81,7 @@ data GrepState      =   GrepState
 
 instance Pane IDEGrep IDEM
     where
-    primPaneName _  =   "Grep"
+    primPaneName _  =   (__ "Grep")
     getAddedIndex _ =   0
     getTopWidget    =   castToWidget . scrolledView
     paneId b        =   "*Grep"
@@ -99,7 +100,7 @@ instance RecoverablePane IDEGrep GrepState IDEM where
         renderer1    <- cellRendererTextNew
         renderer10   <- cellRendererPixbufNew
         col1         <- treeViewColumnNew
-        treeViewColumnSetTitle col1 "File"
+        treeViewColumnSetTitle col1 (__ "File")
         treeViewColumnSetSizing col1 TreeViewColumnAutosize
         treeViewColumnSetResizable col1 True
         treeViewColumnSetReorderable col1 True
@@ -111,7 +112,7 @@ instance RecoverablePane IDEGrep GrepState IDEM where
 
         renderer2   <- cellRendererTextNew
         col2        <- treeViewColumnNew
-        treeViewColumnSetTitle col2 "Line"
+        treeViewColumnSetTitle col2 (__ "Line")
         treeViewColumnSetSizing col2 TreeViewColumnAutosize
         treeViewColumnSetResizable col2 True
         treeViewColumnSetReorderable col2 True
@@ -123,7 +124,7 @@ instance RecoverablePane IDEGrep GrepState IDEM where
         renderer3    <- cellRendererTextNew
         renderer30   <- cellRendererPixbufNew
         col3         <- treeViewColumnNew
-        treeViewColumnSetTitle col3 "Context"
+        treeViewColumnSetTitle col3 (__ "Context")
         treeViewColumnSetSizing col3 TreeViewColumnAutosize
         treeViewColumnSetResizable col3 True
         treeViewColumnSetReorderable col3 True
@@ -264,7 +265,7 @@ grepDirectories regexString caseSensitive dirs = do
                                         liftIO $ interruptProcessGroupOf pid
                                         liftIO $ postGUISync $ do
                                             nDir <- treeModelIterNChildren store Nothing
-                                            liftIO $ treeStoreChange store [nDir-1] (\r -> r{ context = "(Stoped Searching)" })
+                                            liftIO $ treeStoreChange store [nDir-1] (\r -> r{ context = (__ "(Stoped Searching)") })
                                             return ()
                                         EL.dropWhile (const True)
                                         return max
@@ -276,7 +277,7 @@ grepDirectories regexString caseSensitive dirs = do
             nooneWaiting <- isEmptyMVar (waitingGrep grep)
             when nooneWaiting $ postGUISync $ do
                 nDir <- treeModelIterNChildren store Nothing
-                treeStoreInsert store [] nDir $ GrepRecord "Search Complete" totalFound "" Nothing
+                treeStoreInsert store [] nDir $ GrepRecord (__ "Search Complete") totalFound "" Nothing
 
             takeMVar (activeGrep grep) >> return ()
     return ()

@@ -49,7 +49,7 @@ import IDE.Workspaces (packageTry, packageTryQuiet)
 import qualified Data.Enumerator.List as EL (consume)
 import Control.Monad.Trans.Class (MonadTrans(..))
 import Control.Monad.IO.Class (MonadIO(..))
-import IDE.Utils.GUIUtils (treeViewContextMenu)
+import IDE.Utils.GUIUtils (treeViewContextMenu, __)
 
 -- | A variables pane description
 --
@@ -69,7 +69,7 @@ data VariablesState  =   VariablesState {
 
 instance Pane IDEVariables IDEM
     where
-    primPaneName _  =   "Variables"
+    primPaneName _  =   (__ "Variables")
     getAddedIndex _ =   0
     getTopWidget    =   castToWidget . scrolledView
     paneId b        =   "*Variables"
@@ -94,7 +94,7 @@ builder' pp nb windows = reifyIDE $  \ideR -> do
 
     renderer1    <- cellRendererTextNew
     col1         <- treeViewColumnNew
-    treeViewColumnSetTitle col1 "Name"
+    treeViewColumnSetTitle col1 (__ "Name")
     treeViewColumnSetSizing col1 TreeViewColumnAutosize
     treeViewColumnSetResizable col1 True
     treeViewColumnSetReorderable col1 True
@@ -105,7 +105,7 @@ builder' pp nb windows = reifyIDE $  \ideR -> do
 
     renderer2    <- cellRendererTextNew
     col2         <- treeViewColumnNew
-    treeViewColumnSetTitle col2 "Type"
+    treeViewColumnSetTitle col2 (__ "Type")
     treeViewColumnSetSizing col2 TreeViewColumnAutosize
     treeViewColumnSetResizable col2 True
     treeViewColumnSetReorderable col2 True
@@ -116,7 +116,7 @@ builder' pp nb windows = reifyIDE $  \ideR -> do
 
     renderer3    <- cellRendererTextNew
     col3         <- treeViewColumnNew
-    treeViewColumnSetTitle col3 "Value"
+    treeViewColumnSetTitle col3 (__ "Value")
     treeViewColumnSetSizing col3 TreeViewColumnAutosize
     treeViewColumnSetResizable col3 True
     treeViewColumnSetReorderable col3 True
@@ -246,20 +246,20 @@ variablesContextMenu :: IDERef
                   -> Menu
                   -> IO ()
 variablesContextMenu ideR store treeView theMenu = do
-    item1           <-  menuItemNewWithLabel "Force"
+    item1           <-  menuItemNewWithLabel (__ "Force")
     item1 `on` menuItemActivate $ do
         mbSel  <-  getSelectedVariable treeView store
         case mbSel of
             Just (varDescr,path) -> reflectIDE (forceVariable varDescr path store) ideR
             otherwise     -> return ()
     sep1 <- separatorMenuItemNew
-    item2           <-  menuItemNewWithLabel "Print"
+    item2           <-  menuItemNewWithLabel (__ "Print")
     item2 `on` menuItemActivate $ do
         mbSel  <-  getSelectedVariable treeView store
         case mbSel of
             Just (varDescr,path) -> reflectIDE (printVariable varDescr path store) ideR
             otherwise     -> return ()
-    item3           <-  menuItemNewWithLabel "Update"
+    item3           <-  menuItemNewWithLabel (__ "Update")
     item3 `on` menuItemActivate $ postGUIAsync (reflectIDE fillVariablesList ideR)
     mapM_ (menuShellAppend theMenu) [castToMenuItem item1,
         castToMenuItem item2, castToMenuItem sep1, castToMenuItem item3]
