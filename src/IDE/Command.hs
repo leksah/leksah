@@ -109,6 +109,7 @@ import IDE.Pane.Files (refreshFiles, getFiles)
 import Control.Monad.IO.Class (MonadIO(..))
 import Control.Monad (unless, when)
 import Control.Monad.Trans.Reader (ask)
+import Text.Printf (printf)
 
 --
 -- | The Actions known to the system (they can be activated by keystrokes or menus)
@@ -116,10 +117,10 @@ import Control.Monad.Trans.Reader (ask)
 mkActions :: [ActionDescr IDERef]
 mkActions =
     [
-    AD "vcs" "Version Con_trol" Nothing Nothing (return ()) [] False
-    ,AD "FilePrint" "_Print File" Nothing Nothing (filePrint) [] False
-    ,AD "File" "_File" Nothing Nothing (return ()) [] False
-    ,AD "FileNew" "_New Module..." Nothing (Just "gtk-new")
+    AD "vcs" (__ "Version Con_trol") Nothing Nothing (return ()) [] False
+    ,AD "FilePrint" (__ "_Print File") Nothing Nothing (filePrint) [] False
+    ,AD "File" (__ "_File") Nothing Nothing (return ()) [] False
+    ,AD "FileNew" (__ "_New Module...") Nothing (Just "gtk-new")
         (packageTry $ addModule []) [] False
     ,AD "FileNewTextFile" (__ "_New Text File") Nothing Nothing
         fileNew [] False
@@ -275,7 +276,7 @@ mkActions =
         debugStepExpression [] False
     ,AD "DebugStepLocal" (__ "Step Local") (Just (__ "Single-step within the current top-level binding")) (Just "ide_local")
         debugStepLocal [] False
-    ,AD "DebugStepModule" (__ "Step Module") ((__ Just "Single-step restricted to the current module")) (Just "ide_module")
+    ,AD "DebugStepModule" (__ "Step Module") (Just (__ "Single-step restricted to the current module")) (Just "ide_module")
         debugStepModule [] False
 
     ,AD "DebugTrace" (__ "Trace") (Just (__ "Trace after stopping at a breakpoint")) Nothing
@@ -347,9 +348,9 @@ mkActions =
         (getGrep Nothing  >>= \ p -> displayPane p False) [] False
     ,AD "ShowHLint" (__ "HLint") Nothing Nothing
         (getHLint Nothing  >>= \ p -> displayPane p False >> workspaceTry refreshHLint) [] False
-    ,AD "ShowDocumentation" "Docmentation" Nothing Nothing
+    ,AD "ShowDocumentation" (__ "Documentation") Nothing Nothing
         (getDocumentation Nothing  >>= \ p -> displayPane p False) [] False
-    ,AD "ShowErrors" "Errors" Nothing Nothing
+    ,AD "ShowErrors" (__ "Errors") Nothing Nothing
         (getErrors Nothing  >>= \ p -> displayPane p False) [] False
     ,AD "ShowLog" (__ "Log") Nothing Nothing
         showLog [] False
@@ -526,11 +527,11 @@ getMenuAndToolbars uiManager = do
     mbMenu   <- uiManagerGetWidget uiManager "/ui/menubar"
     let menu = case mbMenu of
                     Just it -> castToMenuBar it
-                    Nothing -> throwIDE "Menu>>makeMenu: failed to create menubar"
+                    Nothing -> throwIDE (__ "Menu>>makeMenu: failed to create menubar")
     mbToolbar <- uiManagerGetWidget uiManager "/ui/toolbar"
     let toolbar = case mbToolbar of
                     Just it -> castToToolbar it
-                    Nothing -> throwIDE "Menu>>makeMenu: failed to create toolbar"
+                    Nothing -> throwIDE (__ "Menu>>makeMenu: failed to create toolbar")
     toolbarSetIconSize toolbar IconSizeSmallToolbar
     toolbarSetStyle toolbar ToolbarIcons
     widgetSetSizeRequest toolbar 700 (-1)
@@ -617,7 +618,7 @@ aboutDialog = do
     d <- aboutDialogNew
     aboutDialogSetName d "Leksah"
     aboutDialogSetVersion d (showVersion version)
-    aboutDialogSetCopyright d "Copyright 2007-2011 Jürgen Nicklisch-Franken, Hamish Mackenzie"
+    aboutDialogSetCopyright d (__ "Copyright 2007-2011 Jürgen Nicklisch-Franken, Hamish Mackenzie")
     aboutDialogSetComments d $ (__ "An integrated development environement (IDE) for the ") ++
                                (__ "programming language Haskell and the Glasgow Haskell Compiler")
     dd <- getDataDir
@@ -641,7 +642,7 @@ newIcons = catch (do
             "ide_debug", "ide_step", "ide_local", "ide_module", "ide_continue", "ide_rebuild_meta",
             "ide_empty","ide_source_local"]
         iconFactoryAddDefault iconFactory)
-    (\(e :: SomeException) -> getDataDir >>= \dataDir -> throwIDE ((__ "Can't load icons from ") ++ dataDir ++ " " ++ show e))
+    (\(e :: SomeException) -> getDataDir >>= \dataDir -> throwIDE (printf (__ "Can't load icons from %s %s") dataDir (show e)))
     where
     loadIcon dataDir iconFactory name = do
         pb      <-  pixbufNewFromFile $ dataDir </> "pics" </> (name ++ ".png")
@@ -682,7 +683,7 @@ getActionsFor' l = do
             uiManager' <- getUiManager
             actionGroups <- liftIO $ uiManagerGetActionGroups uiManager'
             res <- liftIO $ actionGroupGetAction (head actionGroups) string
-            when (isNothing res) $ ideMessage Normal $ (__ "Can't find UI Action ") ++ string
+            when (isNothing res) $ ideMessage Normal $ (printf (__ "Can't find UI Action %s") string)
             return res
 
 getAdditionalActionsFor :: SensitivityMask -> [Bool -> IDEAction]

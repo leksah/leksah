@@ -111,6 +111,7 @@ import Distribution.PackageDescription.PrettyPrintCopied
 #endif
 import Debug.Trace (trace)
 import IDE.Pane.WebKit.Documentation (loadDoc, reloadDoc)
+import Text.Printf (printf)
 
 moduleInfo :: (a -> BuildInfo) -> (a -> [ModuleName]) -> a -> [(ModuleName, BuildInfo)]
 moduleInfo bi mods a = map (\m -> (m, buildInfo)) $ mods a
@@ -189,7 +190,7 @@ packageConfig' package continuation = do
     logLaunch <- getDefaultLogLaunch
     showDefaultLogLaunch'
 
-    runExternalTool'        "Configuring"
+    runExternalTool'        (__ "Configuring")
                             "cabal"
                             (["configure"] ++ (ipdConfigFlags package))
                             (Just dir) $ do
@@ -216,7 +217,7 @@ runCabalBuild backgroundBuild jumpToWarnings withoutLinking package shallConfigu
                     then ["--with-ld=false"]
                     else []
                         ++ ipdBuildFlags package)
-    runExternalTool' "Building" "cabal" args (Just dir) $ do
+    runExternalTool' (__ "Building") "cabal" args (Just dir) $ do
         (mbLastOutput, isConfigErr, _) <- EL.zip3 E.last isConfigError $
             logOutputForBuild package backgroundBuild jumpToWarnings
         lift $ do
@@ -282,7 +283,7 @@ packageDoc' :: Bool -> Bool -> IDEPackage -> (Bool -> IDEAction) -> IDEAction
 packageDoc' backgroundBuild jumpToWarnings package continuation = do
     catchIDE (do
         let dir = dropFileName (ipdCabalFile package)
-        runExternalTool' "Documenting" "cabal" (["haddock"]
+        runExternalTool' (__ "Documenting") "cabal" (["haddock"]
             ++ (ipdHaddockFlags package)) (Just dir) $ do
                 (mbLastOutput, _) <- EL.zip E.last $
                     logOutputForBuild package backgroundBuild jumpToWarnings
@@ -301,7 +302,7 @@ packageClean' package continuation = do
     showDefaultLogLaunch'
 
     let dir = dropFileName (ipdCabalFile package)
-    runExternalTool' "Cleaning"
+    runExternalTool' (__ "Cleaning")
                     "cabal"
                     ["clean"]
                     (Just dir) $ do
@@ -321,7 +322,7 @@ packageCopy = do
             Nothing -> return ()
             Just fp -> do
                 let dir = dropFileName (ipdCabalFile package)
-                runExternalTool' "Copying"
+                runExternalTool' (__ "Copying")
                                 "cabal"
                                 (["copy"] ++ ["--destdir=" ++ fp])
                                 (Just dir)
@@ -336,7 +337,7 @@ packageInstallDependencies = do
 
     lift $ catchIDE (do
         let dir = dropFileName (ipdCabalFile package)
-        runExternalTool' "Installing" "cabal" (["install","--only-dependencies"]
+        runExternalTool' (__ "Installing") "cabal" (["install","--only-dependencies"]
             ++ (ipdConfigFlags package)
             ++ (ipdInstallFlags package)) (Just dir) (logOutput logLaunch))
         (\(e :: SomeException) -> putStrLn (show e))
@@ -348,7 +349,7 @@ packageCopy' package continuation = do
 
     catchIDE (do
         let dir = dropFileName (ipdCabalFile package)
-        runExternalTool' "Copying" "cabal" (["copy"]
+        runExternalTool' (__ "Copying") "cabal" (["copy"]
             ++ (ipdInstallFlags package)) (Just dir) $ do
                 (mbLastOutput, _) <- EL.zip E.last (logOutput logLaunch)
                 lift $ continuation (mbLastOutput == Just (ToolExit ExitSuccess)))
@@ -369,7 +370,7 @@ packageRun = do
                         let path = "dist/build" </> name </> name
                         let dir = dropFileName (ipdCabalFile package)
                         IDE.Package.runPackage (addLogLaunchData logName logLaunch)
-                                               ("Running " ++ name)
+                                               (printf (__ "Running %s") name)
                                                path
                                                (ipdExeFlags package)
                                                (Just dir)
@@ -406,7 +407,7 @@ packageRegister' package continuation =
           showDefaultLogLaunch'
           catchIDE (do
             let dir = dropFileName (ipdCabalFile package)
-            runExternalTool' "Registering" "cabal" (["register"]
+            runExternalTool' (__ "Registering") "cabal" (["register"]
                 ++ (ipdRegisterFlags package)) (Just dir) $ do
                     (mbLastOutput, _) <- EL.zip E.last (logOutput logLaunch)
                     lift $ continuation (mbLastOutput == Just (ToolExit ExitSuccess)))
@@ -426,7 +427,7 @@ packageTest' package continuation =
           showDefaultLogLaunch'
           catchIDE (do
             let dir = dropFileName (ipdCabalFile package)
-            runExternalTool' "Testing" "cabal" (["test"]
+            runExternalTool' (__ "Testing") "cabal" (["test"]
                 ++ (ipdTestFlags package)) (Just dir) $ do
                     (mbLastOutput, _) <- EL.zip E.last (logOutput logLaunch)
                     lift $ continuation (mbLastOutput == Just (ToolExit ExitSuccess)))
@@ -441,7 +442,7 @@ packageSdist = do
 
     lift $ catchIDE (do
         let dir = dropFileName (ipdCabalFile package)
-        runExternalTool' "Source Dist" "cabal" (["sdist"]
+        runExternalTool' (__ "Source Dist") "cabal" (["sdist"]
                         ++ (ipdSdistFlags package)) (Just dir) (logOutput logLaunch))
         (\(e :: SomeException) -> putStrLn (show e))
 
@@ -462,7 +463,7 @@ packageOpenDoc = do
 #ifdef WEBKIT
         loadDoc ("file://" ++ dir </> path)
 #else
-        runExternalTool' "Opening Documentation" (browser prefs) [path] (Just dir) (logOutput logLaunch)
+        runExternalTool' (__ "Opening Documentation") (browser prefs) [path] (Just dir) (logOutput logLaunch)
 #endif
       `catchIDE`
         (\(e :: SomeException) -> putStrLn (show e))
@@ -574,7 +575,7 @@ getModuleTemplate template pd modName exports body = catch (do
         ,   ("@ModuleName@"   , modName)
         ,   ("@ModuleExports@", exports)
         ,   ("@ModuleBody@"   , body)]))
-                    (\ (e :: SomeException) -> sysMessage Normal ("Couldn't read template file: " ++ show e) >> return "")
+                    (\ (e :: SomeException) -> sysMessage Normal (printf (__ "Couldn't read template file: %s") (show e)) >> return "")
 
 #if MIN_VERSION_Cabal(1,10,0)
 addModuleToPackageDescr :: ModuleName -> Bool -> PackageAction

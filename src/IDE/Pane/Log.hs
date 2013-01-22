@@ -313,9 +313,9 @@ builder' pp nb windows = do
         hBox <- hBoxNew False 0
         boxPackStart mainContainer hBox PackNatural 0
 
-        terminateBtn <- buttonNewWithLabel "Terminate process"
+        terminateBtn <- buttonNewWithLabel (__ "Terminate process")
         boxPackStart hBox terminateBtn PackNatural 0
-        removeBtn <- buttonNewWithLabel "Remove launch"
+        removeBtn <- buttonNewWithLabel (__ "Remove launch")
         boxPackStart hBox removeBtn PackNatural 0
         comboBox <- comboBoxNewText
         boxPackEnd hBox comboBox PackGrow 0

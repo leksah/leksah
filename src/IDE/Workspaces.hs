@@ -41,7 +41,7 @@ import Graphics.UI.Editor.Parameters
 import Control.Monad (forM_, unless, when, liftM)
 import Data.Maybe (isJust,fromJust )
 import IDE.Utils.GUIUtils
-    (chooseFile, chooseSaveFile)
+    (chooseFile, chooseSaveFile, __)
 import System.FilePath
        (takeFileName, (</>), isAbsolute, dropFileName, makeRelative,
         dropExtension, takeBaseName, addExtension, takeExtension,
@@ -92,6 +92,7 @@ import IDE.Command.VCS.Common.Workspaces as VCSWS
 import qualified VCSWrapper.Common as VCS
 import qualified VCSGui.Common as VCSGUI
 import qualified IDE.Workspaces.Writer as Writer
+import Text.Printf (printf)
 
 
 -- | Constructs a new workspace and makes it the current workspace
@@ -208,7 +209,7 @@ workspaceOpenThis askForSession mbFilePath =
                         Writer.setWorkspace (Just workspace {wsFile = filePath})
                         VCSWS.onWorkspaceOpen workspace)
                            (\ (e :: Exc.SomeException) -> reflectIDE
-                                (ideMessage Normal ("Can't load workspace file " ++ filePath ++ "\n" ++ show e)) ideR)
+                                (ideMessage Normal (printf (__ "Can't load workspace file %s\n%s") filePath (show e))) ideR)
 
 
 -- | Closes a workspace
@@ -470,7 +471,7 @@ makePackage = do
     mbWs   <- readIDE workspace
     let settings = (defaultMakeSettings prefs'){msBackgroundBuild = False}
     case mbWs of
-        Nothing -> sysMessage Normal "No workspace for build."
+        Nothing -> sysMessage Normal (__ "No workspace for build.")
         Just ws -> do
             debug <- isJust <$> readIDE debugState
             steps <- buildSteps $ msRunUnitTests settings
