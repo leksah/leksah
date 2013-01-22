@@ -1,5 +1,4 @@
-{-# OPTIONS_GHC -XTypeSynonymInstances -XScopedTypeVariables -XNoMonomorphismRestriction
-    -XFlexibleContexts  -XBangPatterns #-}
+{-# LANGUAGE ScopedTypeVariables #-}
 -----------------------------------------------------------------------------
 --
 -- Module      :  IDE.Metainfo.Provider

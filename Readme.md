@@ -1,6 +1,6 @@
 # Leksah, an Integrated Development Environment for Haskell
 
-[![Build Status](https://secure.travis-ci.org/leksah/leksah.png?branch=master)](http://travis-ci.org/leksah/leksah)
+[![Build Status](https://secure.travis-ci.org/leksah/leksah.png?branch=vcs)](http://travis-ci.org/leksah/leksah)
 
 This is [Leksah](http://leksah.org/), a hopefully practical tool to support the Haskell development process.
 

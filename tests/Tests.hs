@@ -27,7 +27,7 @@ testString =    "    Could not find module `Graphics.UI.Gtk':\n"
              ++ "      Perhaps you need to add `gtk' to the build-depends in your .cabal file.\n"
              ++ "      Use -v to see a list of the files searched for."
 
-prop_parseHiddenModule = parseHiddenModule testString == Just (HiddenModuleResult {hiddenModule = "Graphics.UI.Gtk", missingPackage = PackageIdentifier {pkgName = PackageName "gtk", pkgVersion = Version {versionBranch = [0,11,0], versionTags = []}}})
+prop_parseHiddenModule = parseHiddenModule testString == Just HiddenModuleResult {hiddenModule = "Graphics.UI.Gtk", missingPackage = PackageIdentifier {pkgName = PackageName "gtk", pkgVersion = Version {versionBranch = [0,11,0], versionTags = []}}}
 
 -- At some point the : was removed from this message...
 testString2 =   "    Could not find module `Data.Attoparsec.Lazy'\n"
@@ -35,7 +35,7 @@ testString2 =   "    Could not find module `Data.Attoparsec.Lazy'\n"
              ++ "    Perhaps you need to add `attoparsec' to the build-depends in your .cabal file.\n"
              ++ "    Use -v to see a list of the files searched for.\n"
 
-prop_parseHiddenModule2 = parseHiddenModule testString2 == Just (HiddenModuleResult {hiddenModule = "Data.Attoparsec.Lazy", missingPackage = PackageIdentifier {pkgName = PackageName "attoparsec", pkgVersion = Version {versionBranch = [0,10,2,0], versionTags = []}}})
+prop_parseHiddenModule2 = parseHiddenModule testString2 == Just HiddenModuleResult {hiddenModule = "Data.Attoparsec.Lazy", missingPackage = PackageIdentifier {pkgName = PackageName "attoparsec", pkgVersion = Version {versionBranch = [0,10,2,0], versionTags = []}}}
 
 main = do
     allPass <- $quickCheckAll -- Run QuickCheck on all prop_ functions

@@ -1,4 +1,4 @@
-{-# OPTIONS_GHC -XTypeSynonymInstances -XScopedTypeVariables #-}
+{-# LANGUAGE ScopedTypeVariables #-}
 {-# OPTIONS_GHC -fno-warn-incomplete-patterns #-}
 -----------------------------------------------------------------------------
 --
@@ -104,6 +104,7 @@ import IDE.PaneGroups
 import IDE.Pane.Search (getSearch, IDESearch(..))
 import IDE.Pane.Grep (getGrep)
 import IDE.Pane.HLint (refreshHLint, getHLint)
+import IDE.Pane.WebKit.Documentation (getDocumentation)
 import IDE.Pane.Files (refreshFiles, getFiles)
 import Control.Monad.IO.Class (MonadIO(..))
 import Control.Monad (unless, when)
@@ -114,8 +115,11 @@ import Control.Monad.Trans.Reader (ask)
 --
 mkActions :: [ActionDescr IDERef]
 mkActions =
-    [AD "File" (__ "_File") Nothing Nothing (return ()) [] False
-    ,AD "FileNew" (__ "_New Module...") Nothing (Just "gtk-new")
+    [
+    AD "vcs" "Version Con_trol" Nothing Nothing (return ()) [] False
+    ,AD "FilePrint" "_Print File" Nothing Nothing (filePrint) [] False
+    ,AD "File" "_File" Nothing Nothing (return ()) [] False
+    ,AD "FileNew" "_New Module..." Nothing (Just "gtk-new")
         (packageTry $ addModule []) [] False
     ,AD "FileNewTextFile" (__ "_New Text File") Nothing Nothing
         fileNew [] False
@@ -343,7 +347,9 @@ mkActions =
         (getGrep Nothing  >>= \ p -> displayPane p False) [] False
     ,AD "ShowHLint" (__ "HLint") Nothing Nothing
         (getHLint Nothing  >>= \ p -> displayPane p False >> workspaceTry refreshHLint) [] False
-    ,AD "ShowErrors" (__ "Errors") Nothing Nothing
+    ,AD "ShowDocumentation" "Docmentation" Nothing Nothing
+        (getDocumentation Nothing  >>= \ p -> displayPane p False) [] False
+    ,AD "ShowErrors" "Errors" Nothing Nothing
         (getErrors Nothing  >>= \ p -> displayPane p False) [] False
     ,AD "ShowLog" (__ "Log") Nothing Nothing
         showLog [] False
@@ -446,6 +452,8 @@ menuDescription = do
     prefsPath   <- getConfigFilePathForLoad "leksah.menu" Nothing dataDir
     res         <- readFile prefsPath
     return res
+
+
 
 updateRecentEntries :: IDEAction
 updateRecentEntries = do
@@ -813,9 +821,13 @@ setSymbol symbol openSource = do
 registerLeksahEvents :: IDEAction
 registerLeksahEvents =    do
     stRef   <-  ask
+    defaultLogLaunch <- getDefaultLogLaunch
     registerEvent stRef "LogMessage"
-        (\e@(LogMessage s t)      -> getLog >>= \(log :: IDELog) -> liftIO $ appendLog log s t
-                                                >> return e)
+        (\e@(LogMessage s t)      -> do
+                                    defaultLogLaunch <- getDefaultLogLaunch
+                                    log <- getLog
+                                    liftIO $ appendLog log defaultLogLaunch s t
+                                    return e)
     registerEvent stRef "SelectInfo"
         (\ e@(SelectInfo str gotoSource)     -> setSymbol str gotoSource >> return e)
     registerEvent stRef "SelectIdent"

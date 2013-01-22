@@ -67,7 +67,7 @@ changeStatusbar = mapM_ changeStatusbar'
         liftIO $ statusbarPush sb 1 ""
         return ()
     changeStatusbar' (CompartmentState string) =  do
-        let realStr = if '\n' `elem` string then (head $ lines string) ++ " ..." else string
+        let realStr = if '\n' `elem` string then head (lines string) ++ " ..." else string
         sb <- getSBErrors
         liftIO $ statusbarPop sb 1
         liftIO $ statusbarPush sb 1 realStr

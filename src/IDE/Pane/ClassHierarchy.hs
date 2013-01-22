@@ -1,5 +1,3 @@
-{-# OPTIONS_GHC -XDeriveDataTypeable -XMultiParamTypeClasses -XTypeSynonymInstances
-    -XScopedTypeVariables #-}
 -----------------------------------------------------------------------------
 --
 -- Module      :  IDE.Pane.ClassHierarchy

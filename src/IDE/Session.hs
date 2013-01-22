@@ -1,4 +1,4 @@
-{-# OPTIONS_GHC -XTypeSynonymInstances -XScopedTypeVariables #-}
+{-# LANGUAGE ScopedTypeVariables #-}
 -----------------------------------------------------------------------------
 --
 -- Module      :  IDE.Session
@@ -47,6 +47,7 @@ import IDE.Pane.PackageFlags
 import IDE.Pane.Search
 import IDE.Pane.Grep
 import IDE.Pane.HLint
+import IDE.Pane.WebKit.Documentation
 import IDE.Pane.Files
 import IDE.Pane.Breakpoints
 import IDE.Pane.Trace
@@ -83,6 +84,7 @@ data PaneState      =   BufferSt BufferState
                     |   FilesSt FilesState
                     |   GrepSt GrepState
                     |   HLintSt HLintState
+                    |   DocumentationSt DocumentationState
                     |   BreakpointsSt BreakpointsState
                     |   TraceSt TraceState
                     |   VariablesSt VariablesState
@@ -101,6 +103,7 @@ asPaneState s | isJust ((cast s) :: Maybe SearchState)      =   SearchSt (fromJu
 asPaneState s | isJust ((cast s) :: Maybe FilesState)       =   FilesSt (fromJust $ cast s)
 asPaneState s | isJust ((cast s) :: Maybe GrepState)        =   GrepSt (fromJust $ cast s)
 asPaneState s | isJust ((cast s) :: Maybe HLintState)       =   HLintSt (fromJust $ cast s)
+asPaneState s | isJust ((cast s) :: Maybe DocumentationState) = DocumentationSt (fromJust $ cast s)
 asPaneState s | isJust ((cast s) :: Maybe BreakpointsState) =   BreakpointsSt (fromJust $ cast s)
 asPaneState s | isJust ((cast s) :: Maybe TraceState)       =   TraceSt (fromJust $ cast s)
 asPaneState s | isJust ((cast s) :: Maybe VariablesState)   =   VariablesSt (fromJust $ cast s)
@@ -119,6 +122,7 @@ recover pp (SearchSt p)         =   recoverState pp p >> return ()
 recover pp (FilesSt p)          =   recoverState pp p >> return ()
 recover pp (GrepSt p)           =   recoverState pp p >> return ()
 recover pp (HLintSt p)          =   recoverState pp p >> return ()
+recover pp (DocumentationSt p)  =   recoverState pp p >> return ()
 recover pp (BreakpointsSt p)    =   recoverState pp p >> return ()
 recover pp (TraceSt p)          =   recoverState pp p >> return ()
 recover pp (VariablesSt p)      =   recoverState pp p >> return ()

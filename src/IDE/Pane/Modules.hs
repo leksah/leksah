@@ -50,7 +50,9 @@ import Distribution.PackageDescription (allBuildInfo,hsSourceDirs)
 import System.FilePath (takeBaseName, (</>),dropFileName)
 import System.Directory (doesFileExist,createDirectoryIfMissing, removeFile)
 import Graphics.UI.Editor.MakeEditor (buildEditor,FieldDescription(..),mkField)
-import Graphics.UI.Editor.Parameters (paraMultiSel,Parameter(..),emptyParams,(<<<-),paraName)
+import Graphics.UI.Editor.Parameters
+       (paraMinSize, paraMultiSel, Parameter(..), emptyParams, (<<<-),
+        paraName)
 import Graphics.UI.Editor.Simple (boolEditor,staticListEditor,stringEditor)
 import qualified System.IO.UTF8 as UTF8  (writeFile)
 import IDE.Utils.GUIUtils (stockIdFromType, __)
@@ -1136,7 +1138,8 @@ moduleFields list = VFD emptyParams [
         mkField
             (paraName <<<- ParaName ((__ "Root of the source path"))
                 $ paraMultiSel <<<- ParaMultiSel False
-                    $ emptyParams)
+                    $ paraMinSize <<<- ParaMinSize (-1, 120)
+                        $ emptyParams)
             (\a -> sourceRoot a)
             (\ a b -> b{sourceRoot = a})
             (staticListEditor list id),
