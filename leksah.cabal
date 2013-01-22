@@ -72,8 +72,11 @@ data-files: LICENSE
             pics/ide_rebuild_meta.png
             pics/ide_empty.png
 data-dir: ""
-extra-source-files: Setup.lhs
+extra-source-files: Setup.lhs, po/*.po po/*.pot
 extra-tmp-files:
+
+x-gettext-po-files:     po/*.po
+x-gettext-domain-name:  leksah
 
 flag yi
     Default: False
@@ -129,7 +132,7 @@ library
                        ghc >=6.10.1 && <7.7, strict >= 0.3.2 && <0.4, enumerator >=0.4.14 && <0.5, text >= 0.11.1.5 && < 0.12,
                        gio >=0.12.2 && <0.13, transformers >=0.2.2.0 && <0.4,
                        QuickCheck >=2.4.2 && <2.6, haskell-src-exts >=1.13.5 && <1.14,
-                       hlint >=1.8.39 && <1.9
+                       hlint >=1.8.39 && <1.9, setlocale, hgettext
 
     exposed-modules:
         IDE.Leksah IDE.Completion IDE.ImportTool
@@ -208,7 +211,7 @@ Executable leksah
                        hlint >=1.8.39 && <1.9
     else
         hs-source-dirs: main
-        build-depends: leksah ==0.13.1.2, base >=4.0.0.0 && <= 4.7
+        build-depends: leksah ==0.13.1.2, base >=4.0.0.0 && <= 4.7, setlocale, hgettext
 
     default-language: Haskell98
     main-is: Main.hs
