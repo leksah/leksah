@@ -288,7 +288,8 @@ workspaceAddPackage' fp = do
                 writeFile (dir </> "Setup.lhs") standardSetup
             unless (elem cfp (map ipdCabalFile (wsPackages ws))) $ lift $
                 Writer.writeWorkspace $ ws {wsPackages =  pack : wsPackages ws,
-                                     wsActivePackFile =  Just (ipdCabalFile pack)}
+                                     wsActivePackFile =  Just (ipdCabalFile pack),
+                                     wsActiveExe = Nothing}
             return (Just pack)
         Nothing -> return Nothing
 
@@ -332,12 +333,13 @@ workspaceRemovePackage pack = do
         Writer.writeWorkspace ws {wsPackages =  delete pack (wsPackages ws)}
     return ()
 
-workspaceActivatePackage :: IDEPackage -> WorkspaceAction
-workspaceActivatePackage pack = do
+workspaceActivatePackage :: IDEPackage -> Maybe String -> WorkspaceAction
+workspaceActivatePackage pack exe = do
     ws <- ask
-    lift $ activatePackage (Just pack)
+    lift $ activatePackage (Just (pack, exe))
     when (elem pack (wsPackages ws)) $ lift $ do
-        Writer.writeWorkspace ws {wsActivePackFile =  Just (ipdCabalFile pack)}
+        Writer.writeWorkspace ws {wsActivePackFile =  Just (ipdCabalFile pack)
+                                 ,wsActiveExe = exe}
         return ()
     return ()
 
@@ -346,7 +348,7 @@ workspaceActivatePackage pack = do
 readWorkspace :: FilePath -> IDEM Workspace
 readWorkspace fp = do
     ws <- liftIO $ readFields fp Writer.workspaceDescr emptyWorkspace
-    ws' <- liftIO $ makePathesAbsolute ws fp
+    ws' <- liftIO $ makePathsAbsolute ws fp
     packages <- mapM idePackageFromPath (wsPackagesFiles ws')
     --TODO set package vcs here
     return ws'{ wsPackages = map fromJust $ filter isJust $ packages}
@@ -354,8 +356,8 @@ readWorkspace fp = do
 
 
 
-makePathesAbsolute :: Workspace -> FilePath -> IO Workspace
-makePathesAbsolute ws bp = do
+makePathsAbsolute :: Workspace -> FilePath -> IO Workspace
+makePathsAbsolute ws bp = do
     wsFile'                     <-  myCanonicalizePath bp
     wsActivePackFile'           <-  case wsActivePackFile ws of
                                         Nothing -> return Nothing
@@ -378,6 +380,7 @@ emptyWorkspace =  Workspace {
 ,   wsPackages      =   []
 ,   wsPackagesFiles =   []
 ,   wsActivePackFile =   Nothing
+,   wsActiveExe     =   Nothing
 ,   wsNobuildPack   =   []
 ,   packageVcsConf  =   Map.empty
 }

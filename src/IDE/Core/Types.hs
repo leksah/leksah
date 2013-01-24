@@ -148,6 +148,7 @@ data IDE            =  IDE {
 ,   prefs           ::   Prefs                   -- ^ configuration preferences
 ,   workspace       ::   Maybe Workspace         -- ^ may be a workspace (set of packages)
 ,   activePack      ::   Maybe IDEPackage
+,   activeExe       ::   Maybe String
 ,   bufferProjCache ::   Map FilePath (Maybe IDEPackage)
 ,   allLogRefs      ::   [LogRef]
 ,   currentEBC      ::   (Maybe LogRef, Maybe LogRef, Maybe LogRef)
@@ -338,6 +339,7 @@ data IDEPackage     =   IDEPackage {
 ,   ipdDepends         ::   [Dependency]
 ,   ipdModules         ::   Map ModuleName BuildInfo
 ,   ipdHasLibs         ::   Bool
+,   ipdExes            ::   [String]
 ,   ipdTests           ::   [String]
 ,   ipdMain            ::   [(FilePath, BuildInfo, Bool)]
 ,   ipdExtraSrcs       ::   Set FilePath
@@ -372,6 +374,7 @@ data Workspace = Workspace {
 ,   wsPackages      ::   [IDEPackage]
 ,   wsPackagesFiles ::   [FilePath]
 ,   wsActivePackFile::   Maybe FilePath
+,   wsActiveExe     ::   Maybe String
 ,   wsNobuildPack   ::   [IDEPackage]
 ,   packageVcsConf  ::   Map FilePath VCSConf -- ^ (FilePath to package, Version-Control-System Configuration)
 } deriving Show

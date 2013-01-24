@@ -53,53 +53,57 @@ writeWorkspace ws = do
                          wsVersion = workspaceVersion,
                          wsPackagesFiles = map ipdCabalFile (wsPackages ws)}
     setWorkspace $ Just newWs
-    newWs' <- liftIO $ makePathesRelative newWs
+    newWs' <- liftIO $ makePathsRelative newWs
     liftIO $ writeFields (wsFile newWs') (newWs' {wsFile = ""}) workspaceDescr
 
-getPackage :: FilePath -> [IDEPackage] -> Maybe IDEPackage
-getPackage fp packages =
+getPackage :: FilePath -> Maybe String -> [IDEPackage] -> Maybe (IDEPackage, Maybe String)
+getPackage fp mbExe packages =
     case filter (\ p -> ipdCabalFile p == fp) packages of
-        [p] -> Just p
+        [p] -> Just (p, mbExe)
         l   -> Nothing
 
 -- ---------------------------------------------------------------------
 -- This needs to be incremented, when the workspace format changes
 --
 workspaceVersion :: Int
-workspaceVersion = 1
+workspaceVersion = 2
 
 setWorkspace :: Maybe Workspace -> IDEAction
 setWorkspace mbWs = do
     mbOldWs <- readIDE workspace
     modifyIDE_ (\ide -> ide{workspace = mbWs})
-    let packFile =  case mbWs of
-                    Nothing -> Nothing
-                    Just ws -> wsActivePackFile ws
-    let oldPackFile = case mbOldWs of
-                    Nothing -> Nothing
-                    Just ws -> wsActivePackFile ws
+    let packFileAndExe =  case mbWs of
+                            Nothing -> Nothing
+                            Just ws -> Just (wsActivePackFile ws, wsActiveExe ws)
+    let oldPackFileAndExe = case mbOldWs of
+                            Nothing -> Nothing
+                            Just ws -> Just (wsActivePackFile ws, wsActiveExe ws)
     let mbPackages =  case mbWs of
                         Nothing -> Nothing
                         Just ws -> Just (wsPackages ws)
-    when (packFile /= oldPackFile) $
-            case packFile of
-                Nothing -> deactivatePackage
-                Just p  -> activatePackage (getPackage p (fromJust mbPackages)) >> return ()
+    when (packFileAndExe /= oldPackFileAndExe) $
+            case packFileAndExe of
+                (Just (Just p, mbExe))  -> activatePackage (getPackage p mbExe (fromJust mbPackages)) >> return ()
+                _ -> deactivatePackage
     mbPack <- readIDE activePack
+    mbExe  <- readIDE activeExe
     let wsStr = case mbWs of
                     Nothing -> ""
                     Just ws -> wsName ws
-    let txt = wsStr ++ " > " ++
-                    (case mbPack of
-                            Nothing -> ""
-                            Just p  -> packageIdentifierToString (ipdPackageId p))
+    let txt = wsStr ++ " "
+                 ++ (case mbPack of
+                            Nothing  -> ""
+                            Just p   -> packageIdentifierToString (ipdPackageId p))
+                 ++ (case mbExe of
+                            Nothing  -> ""
+                            Just exe -> " " ++ exe)
     triggerEventIDE (StatusbarChanged [CompartmentPackage txt])
     triggerEventIDE (WorkspaceChanged True True)
     triggerEventIDE UpdateWorkspaceInfo
     return ()
 
-makePathesRelative :: Workspace -> IO Workspace
-makePathesRelative ws = do
+makePathsRelative :: Workspace -> IO Workspace
+makePathsRelative ws = do
     wsFile' <- myCanonicalizePath (wsFile ws)
     wsActivePackFile'           <-  case wsActivePackFile ws of
                                         Nothing -> return Nothing
@@ -142,6 +146,12 @@ workspaceDescr = [
             readParser
             wsActivePackFile
             (\fp a -> a{wsActivePackFile = fp})
+    ,   mkFieldS
+            (paraName <<<- ParaName "Maybe name of an active executable" $ emptyParams)
+            (PP.text . show)
+            readParser
+            wsActiveExe
+            (\fp a -> a{wsActiveExe = fp})
     ,   mkFieldS
             (paraName <<<- ParaName "Version Control System configurations for packages" $ emptyParams)
             (PP.text . show)

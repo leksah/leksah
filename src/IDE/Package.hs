@@ -126,32 +126,9 @@ myLibModules pd = moduleInfo libModules libBuildInfo pd
 myExeModules pd = moduleInfo exeModules buildInfo pd
 #endif
 
-
-packageOpen :: IDEAction
-packageOpen = packageOpenThis Nothing
-
-packageOpenThis :: Maybe FilePath -> IDEAction
-packageOpenThis mbFilePath = do
-    active <- readIDE activePack
-    case active of
-        Just p -> deactivatePackage
-        Nothing -> return ()
-    selectActivePackage mbFilePath
-    return ()
-
-selectActivePackage :: Maybe FilePath -> IDEM (Maybe IDEPackage)
-selectActivePackage mbFilePath' = do
-    window     <- getMainWindow
-    mbFilePath <- case mbFilePath' of
-                    Nothing -> liftIO $ choosePackageFile  window Nothing
-                    Just fp -> return (Just fp)
-    case mbFilePath of
-        Nothing -> return Nothing
-        Just filePath -> idePackageFromPath filePath >>= (\ p -> activatePackage p >> return p)
-
-activatePackage :: Maybe IDEPackage -> IDEM ()
-activatePackage mbPack@(Just pack) = do
-        modifyIDE_ (\ide -> ide{activePack = mbPack})
+activatePackage :: Maybe (IDEPackage, Maybe String) -> IDEM ()
+activatePackage (Just (pack, mbExe)) = do
+        modifyIDE_ (\ide -> ide{activePack = Just pack, activeExe = mbExe})
         liftIO $ setCurrentDirectory (dropFileName (ipdCabalFile pack))
         triggerEventIDE (Sensitivity [(SensitivityProjectActive,True)])
         mbWs <- readIDE workspace
@@ -166,7 +143,7 @@ activatePackage Nothing = return ()
 deactivatePackage :: IDEAction
 deactivatePackage = do
     oldActivePack <- readIDE activePack
-    modifyIDE_ (\ide -> ide{activePack = Nothing})
+    modifyIDE_ (\ide -> ide{activePack = Nothing, activeExe = Nothing})
     when (isJust oldActivePack) $ do
         triggerEventIDE (Sensitivity [(SensitivityProjectActive,False)])
         return ()
@@ -783,7 +760,9 @@ debugStart = do
         maybeDebug <- readIDE debugState
         case maybeDebug of
             Nothing -> do
-                ghci <- reifyIDE $ \ideR -> newGhci (ipdBuildFlags package) (interactiveFlags prefs')
+                let dir = dropFileName (ipdCabalFile package)
+                mbExe <- readIDE activeExe
+                ghci <- reifyIDE $ \ideR -> newGhci dir mbExe (ipdBuildFlags package) (interactiveFlags prefs')
                     $ reflectIDEI (logOutputForBuild package True False >> return ()) ideR
                 modifyIDE_ (\ide -> ide {debugState = Just (package, ghci)})
                 triggerEventIDE (Sensitivity [(SensitivityInterpreting, True)])
@@ -896,6 +875,8 @@ idePackageFromPath filePath = do
             let srcDirs = case (nub $ concatMap hsSourceDirs (allBuildInfo' packageD)) of
                                 [] -> [".","src"]
                                 l -> l
+            let exes      = [ exeName e | e <- executables packageD
+                                          , buildable (buildInfo e) ]
 #if MIN_VERSION_Cabal(1,10,0)
             let exts       = nub $ concatMap oldExtensions (allBuildInfo' packageD)
             let tests      = [ testName t | t <- testSuites packageD
@@ -911,6 +892,7 @@ idePackageFromPath filePath = do
                 ipdDepends = buildDepends packageD,
                 ipdModules = modules,
                 ipdHasLibs = hasLibs packageD,
+                ipdExes    = exes,
                 ipdTests   = tests,
                 ipdMain    = mainFiles,
                 ipdExtraSrcs =  files,
