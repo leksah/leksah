@@ -38,17 +38,29 @@ import Graphics.UI.Frame.ViewFrame (getNotebook)
 import IDE.Core.State (reifyIDE)
 import Graphics.UI.Gtk.General.Enums (PolicyType(..))
 
-#ifdef WEBKIT
+#ifdef WEBKITGTK
+import Graphics.UI.Gtk
+       (eventModifier, eventKeyName, keyPressEvent, afterFocusIn,
+        containerAdd, Modifier(..))
 import Graphics.UI.Gtk.WebKit.Types (WebView(..))
 import Graphics.UI.Gtk.WebKit.WebView
        (webViewUri, webViewGoBack, webViewZoomOut, webViewZoomIn,
         webViewZoomLevel, webViewReload, webViewLoadUri, webViewNew)
+import System.Glib.Attributes (AttrOp(..), set, get)
+import System.Glib.Signals (on)
+import IDE.Core.State (reflectIDE)
+import Graphics.UI.Editor.Basics (Connection(..))
+#else
+import Data.IORef (writeIORef, newIORef, readIORef, IORef)
+import Control.Applicative ((<$>))
 #endif
 
 data IDEDocumentation = IDEDocumentation {
     scrolledView :: ScrolledWindow
-#ifdef WEBKIT
+#ifdef WEBKITGTK
   , webView      :: WebView
+#else
+  , docState     :: IORef DocumentationState
 #endif
 } deriving Typeable
 
@@ -66,34 +78,40 @@ instance Pane IDEDocumentation IDEM
 
 instance RecoverablePane IDEDocumentation DocumentationState IDEM where
     saveState p     =   liftIO $ do
-#ifdef WEBKIT
+#ifdef WEBKITGTK
         zoom <- webView p `get` webViewZoomLevel
         uri  <- webView p `get` webViewUri
-#endif
         return (Just DocumentationState{..})
+#else
+        Just <$> readIORef (docState p)
+#endif
     recoverState pp DocumentationState {..} =   do
         nb      <-  getNotebook pp
         mbPane <- buildPane pp nb builder
-#ifdef WEBKIT
         case mbPane of
             Nothing -> return ()
             Just p  -> liftIO $ do
+#ifdef WEBKITGTK
                 webView p `set` [webViewZoomLevel := zoom]
                 maybe (return ()) (webViewLoadUri (webView p)) uri
+#else
+                writeIORef (docState p) DocumentationState {..}
 #endif
         return mbPane
     builder pp nb windows = reifyIDE $ \ ideR -> do
         scrolledView <- scrolledWindowNew Nothing Nothing
 
-#ifdef WEBKIT
+#ifdef WEBKITGTK
         webView <- webViewNew
         containerAdd scrolledView webView
+#else
+        docState <- newIORef DocumentationState {zoom = 1.0, uri = Nothing}
 #endif
 
         scrolledWindowSetPolicy scrolledView PolicyAutomatic PolicyAutomatic
         let docs = IDEDocumentation {..}
 
-#ifdef WEBKIT
+#ifdef WEBKITGTK
         cid1 <- webView `afterFocusIn`
             (\_ -> do reflectIDE (makeActive docs) ideR ; return True)
 
@@ -119,7 +137,7 @@ getDocumentation (Just pp)  = forceGetPane (Left pp)
 
 loadDoc :: String -> IDEAction
 loadDoc uri = do
-#ifdef WEBKIT
+#ifdef WEBKITGTK
     doc <- getDocumentation Nothing
     let view = webView doc
     liftIO $ webViewLoadUri view uri
@@ -129,7 +147,7 @@ loadDoc uri = do
 
 reloadDoc :: IDEAction
 reloadDoc = do
-#ifdef WEBKIT
+#ifdef WEBKITGTK
     doc <- getDocumentation Nothing
     let view = webView doc
     liftIO $ webViewReload view

@@ -211,6 +211,9 @@ Executable leksah
     if flag(gtk3)
         cpp-options: -DGTK3
 
+    if flag(webkit)
+        cpp-options: -DWEBKITGTK
+
     if impl(ghc < 7.0)
         hs-source-dirs: src, main
         build-depends: Cabal >=1.6.0.1 && <1.17, base >=4.0.0.0 && <4.7, binary >=0.5.0.0 && <0.6,

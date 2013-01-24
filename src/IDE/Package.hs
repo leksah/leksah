@@ -459,7 +459,7 @@ packageOpenDoc = do
                         </> display (pkgName (ipdPackageId package))
                         </> "index.html"
             dir = dropFileName (ipdCabalFile package)
-#ifdef WEBKIT
+#ifdef WEBKITGTK
         loadDoc ("file://" ++ dir </> path)
 #else
         runExternalTool' "Opening Documentation" (browser prefs) [path] (Just dir) (logOutput logLaunch)
