@@ -110,7 +110,8 @@ import Distribution.PackageDescription.PrettyPrintCopied
        (writeGenericPackageDescription)
 #endif
 import Debug.Trace (trace)
-import IDE.Pane.WebKit.Documentation (loadDoc, reloadDoc)
+import IDE.Pane.WebKit.Documentation
+       (getDocumentation, loadDoc, reloadDoc)
 
 moduleInfo :: (a -> BuildInfo) -> (a -> [ModuleName]) -> a -> [(ModuleName, BuildInfo)]
 moduleInfo bi mods a = map (\m -> (m, buildInfo)) $ mods a
@@ -437,7 +438,8 @@ packageOpenDoc = do
                         </> "index.html"
             dir = dropFileName (ipdCabalFile package)
 #ifdef WEBKITGTK
-        loadDoc ("file://" ++ dir </> path)
+        loadDoc ("file:///" ++ dir </> path)
+        getDocumentation Nothing  >>= \ p -> displayPane p False
 #else
         runExternalTool' "Opening Documentation" (browser prefs) [path] (Just dir) (logOutput logLaunch)
 #endif
