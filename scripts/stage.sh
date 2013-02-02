@@ -32,9 +32,13 @@ cabal install Cabal || true
 echo darcs:http://code.haskell.org/gtksourceview > sources.txt
 echo https://github.com/leksah/ltk >> sources.txt
 echo https://github.com/leksah/leksah-server >> sources.txt
-# echo https://github.com/leksah/haskellVCSWrapper.git >> sources.txt
-# echo https://github.com/leksah/haskellVCSGUI.git >> sources.txt
-echo ./vendor/gtk2hs >> sources.txt
+echo https://github.com/leksah/haskellVCSWrapper.git >> sources.txt
+echo https://github.com/leksah/haskellVCSGUI.git >> sources.txt
+echo darcs:http://patch-tag.com/r/hamish/webkit >> sources.txt
+echo git://github.com/ghcjs/webkit-javascriptcore.git >> sources.txt
+echo https://github.com/ghcjs/ghcjs-dom.git >> sources.txt
+echo https://github.com/ghcjs/jsc.git >> sources.txt
+# echo ./vendor/gtk2hs >> sources.txt
 echo ./ >> sources.txt
 
 if test "`uname`" = "Darwin"; then
@@ -43,7 +47,7 @@ else
     HPDIR=`which ghc` || exit
     HPDIR=`dirname "$HPDIR"` || exit
     HPDIR=`dirname "$HPDIR"` || exit
-    cabal-meta install --extra-lib-dirs="$HPDIR"/mingw/lib --extra-lib-dirs=/c/MinGWRPM/lib -flibcurl || exit
+    cabal-meta install --extra-lib-dirs="$HPDIR"/mingw/lib --extra-lib-dirs=/c/MinGWRPM/lib -flibcurl || cabal-meta install --extra-lib-dirs="$HPDIR"/mingw/lib --extra-lib-dirs=/c/MinGWRPM/lib -flibcurl || exit
 #  if [ "$GHC_VER" != "7.0.3" ] && [ "$GHC_VER" != "7.0.4" ] && [ "$GHC_VER" != "7.6.1" ]; then
 #    echo https://github.com/yi-editor/yi.git >> sources.txt
 #    export LEKSAH_CONFIG_ARGS="$LEKSAH_CONFIG_ARGS -fyi -f-vty -f-dyre -fpango"
