@@ -57,6 +57,7 @@ module IDE.Core.Types (
 ,   KeyString
 
 ,   Prefs(..)
+,   cabalCommand
 
 ,   LogRefType(..)
 ,   LogRef(..)
@@ -434,6 +435,7 @@ data Prefs = Prefs {
     ,   completeRestricted  ::   Bool
     ,   saveAllBeforeBuild  ::   Bool
     ,   jumpToWarnings      ::   Bool
+    ,   useCabalDev         ::   Bool
     ,   backgroundBuild     ::   Bool
     ,   runUnitTests        ::   Bool
     ,   makeMode            ::   Bool
@@ -452,6 +454,9 @@ data Prefs = Prefs {
     ,   retrieveStrategy    ::   RetrieveStrategy
     ,   endWithLastConn     ::   Bool
 } deriving(Eq,Show)
+
+cabalCommand :: Prefs -> String
+cabalCommand p = if useCabalDev p then "cabal-dev" else "cabal"
 
 data SearchHint = Forward | Backward | Insert | Delete | Initial
     deriving (Eq)
