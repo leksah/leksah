@@ -119,7 +119,6 @@ instance RecoverablePane IDEDocumentation DocumentationState IDEM where
         cid2 <- webView `on` keyPressEvent $ do
             key <- eventKeyName
             mod <- eventModifier
-            liftIO $ print (key, mod)
             liftIO $ case (key, mod) of
                 ("plus", [Shift,Control]) -> webViewZoomIn  webView >> return True
                 ("minus",[Control])       -> webViewZoomOut webView >> return True
