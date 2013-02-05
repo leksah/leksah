@@ -657,9 +657,13 @@ setModTime buf = do
     let name = paneName buf
     case fileName buf of
         Nothing -> return ()
-        Just fn -> liftIO $ do
-            nmt <- getModificationTime fn
-            writeIORef (modTime buf) (Just nmt)
+        Just fn -> liftIO $ catch
+            (do
+                nmt <- getModificationTime fn
+                writeIORef (modTime buf) (Just nmt))
+            (\e -> do
+                sysMessage Normal (show e)
+                return ())
 
 fileRevert :: IDEAction
 fileRevert = inActiveBufContext () $ \ _ _ currentBuffer _ -> do
