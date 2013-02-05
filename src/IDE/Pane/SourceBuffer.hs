@@ -734,11 +734,11 @@ setModTime buf = do
     let name = paneName buf
     case fileName buf of
         Nothing -> return ()
-        Just fn -> liftIO $ catch
+        Just fn -> liftIO $ E.catch
             (do
                 nmt <- getModificationTime fn
                 writeIORef (modTime buf) (Just nmt))
-            (\e -> do
+            (\(e::SomeException) -> do
                 sysMessage Normal (show e)
                 return ())
 
