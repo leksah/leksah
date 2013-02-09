@@ -58,7 +58,7 @@ import qualified Text.Regex.TDFA as Regex
 import System.IO.Unsafe (unsafePerformIO)
 import Text.Regex.TDFA.String (execute,compile)
 import Data.Binary.Shared (decodeSer)
-import Language.Haskell.Extension (knownExtensions)
+import Language.Haskell.Extension (KnownExtension)
 import Distribution.Text (display)
 import IDE.Core.Serializable ()
 import Data.Map (Map(..))
@@ -808,7 +808,7 @@ extensionDescrs =  map (\ext -> Real $ RealDescr
                                     Nothing
                                     (Just (BS.pack " Haskell language extension"))
                                     ExtensionDescr
-                                    True) knownExtensions
+                                    True) ([minBound..maxBound]::[KnownExtension])
 
 moduleNameDescrs :: PackageDescr -> [Descr]
 moduleNameDescrs pd = map (\md -> Real $ RealDescr
