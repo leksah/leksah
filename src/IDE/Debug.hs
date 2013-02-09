@@ -138,7 +138,7 @@ debugExecuteSelection = do
         Just text -> do
             let command = packageTry $ tryDebug $ do
                 debugSetLiberalScope
-                debugCommand (stripComments text) logOutputDefault
+                debugCommand (stripComments text) logOutputPane
             modifyIDE_ $ \ide -> ide {autoCommand = command}
             command
         Nothing   -> ideMessage Normal "Please select some text in the editor to execute"

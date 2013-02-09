@@ -100,6 +100,7 @@
        <menuitem name="_HLint" action="ShowHLint" />
        <menuitem name="_Documentation" action="ShowDocumentation" />
        <menuitem name="_Log" action="ShowLog" />
+       <menuitem name="_Output" action="ShowOutput" />
        <menuitem name="_Search" action="ShowSearch" />
        <menuitem name="_Workspace" action="ShowWorkspace" />
      </menu>
