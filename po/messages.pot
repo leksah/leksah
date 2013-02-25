@@ -1991,7 +1991,7 @@ msgid "Select a text first"
 msgstr ""
 
 #: src/IDE/Command.hs:0
-msgid "Copyright 2007-2011 J\u00fcrgen Nicklisch-Franken, Hamish Mackenzie"
+msgid "Copyright 2007-2011 Jürgen Nicklisch-Franken, Hamish Mackenzie"
 msgstr ""
 
 #: src/IDE/Command.hs:0
