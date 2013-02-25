@@ -1,0 +1,2258 @@
+# Translation file
+# Translators:
+# Francisco Miranda Soares da Silva Neto <xfrancisco.soares@gmail.com>, 2013.
+# thiago <tsilva.br@gmail.com>, 2013.
+msgid ""
+msgstr ""
+"Project-Id-Version: leksah\n"
+"Report-Msgid-Bugs-To: \n"
+"POT-Creation-Date: 2009-01-13 06:05-0800\n"
+"PO-Revision-Date: 2013-02-04 22:14+0000\n"
+"Last-Translator: tsilva <tsilva.br@gmail.com>\n"
+"Language-Team: Portuguese (Brazil) (http://www.transifex.com/projects/p/leksah/language/pt_BR/)\n"
+"MIME-Version: 1.0\n"
+"Content-Type: text/plain; charset=UTF-8\n"
+"Content-Transfer-Encoding: 8bit\n"
+"Language: pt_BR\n"
+"Plural-Forms: nplurals=2; plural=(n > 1);\n"
+
+#: src/IDE/Pane/Breakpoints.hs:0
+msgid "Breakpoints"
+msgstr "Breakpoints"
+
+#: src/IDE/Pane/Breakpoints.hs:0
+msgid "Location"
+msgstr "Localização"
+
+#: src/IDE/Pane/Breakpoints.hs:0
+msgid "Remove breakpoint"
+msgstr "Remover breakpoint"
+
+#: src/IDE/Pane/Breakpoints.hs:0
+msgid "Debugger>> breakpointViewPopup: no selection2"
+msgstr "breakpointViewPopup: não há selection2"
+
+#: src/IDE/Pane/Breakpoints.hs:0
+msgid "Remove all breakpoints"
+msgstr "Remover todos os breakpoints"
+
+#: src/IDE/Pane/Breakpoints.hs:0
+msgid "Update"
+msgstr "Atualizar"
+
+#: src/IDE/Pane/Breakpoints.hs:0
+msgid "Debugger>>deleteBreakpoint: Not a breakpoint"
+msgstr "Depurador>>deleteBreakpoint: Não é um breakpoint"
+
+#: src/IDE/Pane/Errors.hs:0
+msgid "Errors"
+msgstr "Erros"
+
+#: src/IDE/Pane/Errors.hs:0
+msgid "Description"
+msgstr "Descrição"
+
+#: src/IDE/Pane/Errors.hs:0
+msgid "Resolve Errors"
+msgstr "Resolver Erros"
+
+#: src/IDE/Pane/Files.hs:0
+msgid "Files"
+msgstr "Arquivos"
+
+#: src/IDE/Pane/Files.hs:0
+msgid "File"
+msgstr "Arquivo"
+
+#: src/IDE/Pane/Files.hs:0
+msgid "Unexpected Expansion in Files Pane"
+msgstr "Expansão inesperada no painel Arquivos"
+
+#: src/IDE/Pane/Files.hs:0
+msgid "Unexpected Activation in Files Pane"
+msgstr "Ativação inesperada no painel Arquivos"
+
+#: src/IDE/Pane/Files.hs:0
+msgid "Unexpected Selection in Files Pane"
+msgstr "Seleção inesperada no painel Arquivos"
+
+#: src/IDE/Pane/Grep.hs:0
+msgid "Grep"
+msgstr "Grep"
+
+#: src/IDE/Pane/Grep.hs:0
+msgid "Line"
+msgstr "Linha"
+
+#: src/IDE/Pane/Grep.hs:0
+msgid "Context"
+msgstr "Contexto"
+
+#: src/IDE/Pane/Grep.hs:0
+msgid "(Stoped Searching)"
+msgstr "(Busca parada)"
+
+#: src/IDE/Pane/Grep.hs:0
+msgid "Search Complete"
+msgstr "Busca Completada"
+
+#: src/IDE/Pane/HLint.hs:0
+msgid "Unexpected Expansion in HLint Pane"
+msgstr "Expansão inesperada no painel HLint"
+
+#: src/IDE/Pane/Info.hs:0
+msgid "Info"
+msgstr "Info"
+
+#: src/IDE/Pane/Info.hs:0
+msgid "Monospace"
+msgstr "Monospace"
+
+#: src/IDE/Pane/Info.hs:0
+msgid "Goto Definition"
+msgstr "Ir para definição"
+
+#: src/IDE/Pane/Info.hs:0
+msgid "Select Module"
+msgstr "Selecionar Módulo"
+
+#: src/IDE/Pane/Info.hs:0
+msgid "Open Documentation"
+msgstr "Abrir Documentação"
+
+#: src/IDE/Pane/Log.hs:0
+msgid "Log"
+msgstr "Log"
+
+#: src/IDE/Pane/Log.hs:0
+msgid "Terminate process"
+msgstr "Terminar processo"
+
+#: src/IDE/Pane/Log.hs:0
+msgid "Remove launch"
+msgstr "Remover lançamento"
+
+#: src/IDE/Pane/Log.hs:0
+msgid "Can't init log"
+msgstr "Não foi possível iniciar log"
+
+#: src/IDE/Pane/Log.hs:0
+msgid "Run external called with args %s"
+msgstr "Executar chamada externa com args %s"
+
+#: src/IDE/Pane/Log.hs:0
+msgid "Starting external tool: %s with args %s"
+msgstr "Inicializando ferramenta externa: %s com args %s"
+
+#: src/IDE/Pane/Modules.hs:0
+msgid "Modules"
+msgstr "Módulos"
+
+#: src/IDE/Pane/Modules.hs:0
+msgid "Module"
+msgstr "Módulo"
+
+#: src/IDE/Pane/Modules.hs:0
+msgid "Package"
+msgstr "Pacote"
+
+#: src/IDE/Pane/Modules.hs:0
+msgid "Interface"
+msgstr "Interface"
+
+#: src/IDE/Pane/Modules.hs:0
+msgid "Workspace"
+msgstr "Área de Trabalho"
+
+#: src/IDE/Pane/Modules.hs:0
+msgid "System"
+msgstr "Sistema"
+
+#: src/IDE/Pane/Modules.hs:0
+msgid "Imports"
+msgstr "Importa"
+
+#: src/IDE/Pane/Modules.hs:0
+msgid "Blacklist"
+msgstr "Lista negra"
+
+#: src/IDE/Pane/Modules.hs:0
+msgid "no path found"
+msgstr "caminho não encontrado"
+
+#: src/IDE/Pane/Modules.hs:0
+msgid "Modules>>insertNodesInTree: Should not happen2"
+msgstr "Modules>>insertNodesInTree: Não deveria acontecer happen2"
+
+#: src/IDE/Pane/Modules.hs:0
+msgid "Impossible in makeNodes"
+msgstr "Impossível em makeNodes"
+
+#: src/IDE/Pane/Modules.hs:0
+msgid "Edit source"
+msgstr "Editar fonte"
+
+#: src/IDE/Pane/Modules.hs:0
+msgid "Expand here"
+msgstr "Expandir aqui"
+
+#: src/IDE/Pane/Modules.hs:0
+msgid "Collapse here"
+msgstr "Colapsar aqui"
+
+#: src/IDE/Pane/Modules.hs:0
+msgid "Expand all"
+msgstr "Expandir todos"
+
+#: src/IDE/Pane/Modules.hs:0
+msgid "Collapse all"
+msgstr "Colapsar tudo"
+
+#: src/IDE/Pane/Modules.hs:0
+msgid "Add module"
+msgstr "Adicionar módulo"
+
+#: src/IDE/Pane/Modules.hs:0
+msgid "Delete module"
+msgstr "Remover módulo"
+
+#: src/IDE/Pane/Modules.hs:0
+msgid "Go to definition"
+msgstr "Ir para definição"
+
+#: src/IDE/Pane/Modules.hs:0
+msgid "Modules>> descrViewPopup: no selection"
+msgstr "Modules>> descrViewPopup: não há seleção"
+
+#: src/IDE/Pane/Modules.hs:0
+msgid "Insert in buffer"
+msgstr "Inserir no buffer"
+
+#: src/IDE/Pane/Modules.hs:0
+msgid ">>>Info Changed!!! "
+msgstr ">>>Informação Alterada!!!"
+
+#: src/IDE/Pane/Modules.hs:0
+msgid "categories: %s"
+msgstr "categorias: %s"
+
+#: src/IDE/Pane/Modules.hs:0
+msgid "This should never be shown!"
+msgstr "Isto nunca deveria ser mostrado!"
+
+#: src/IDE/Pane/Modules.hs:0
+msgid "Are you sure?"
+msgstr "Você tem certeza?"
+
+#: src/IDE/Pane/Modules.hs:0
+msgid "_Delete Module"
+msgstr "_Deletar Módulo"
+
+#: src/IDE/Pane/Modules.hs:0
+msgid "No package description"
+msgstr "Sem descrição de pacote"
+
+#: src/IDE/Pane/Modules.hs:0
+msgid "Not a valid module name : %s"
+msgstr "Nome de módulo inválido: %s"
+
+#: src/IDE/Pane/Modules.hs:0
+msgid "File already exists! Importing existing file %s.hs"
+msgstr "Arquivo já existe! Importando arquivo existente %s.hs"
+
+#: src/IDE/Pane/Modules.hs:0
+msgid "Construct new module"
+msgstr "Construir novo modulo"
+
+#: src/IDE/Pane/Modules.hs:0
+msgid "New module "
+msgstr "Novo módulo"
+
+#: src/IDE/Pane/Modules.hs:0
+msgid "Root of the source path"
+msgstr "Raiz do caminho de fontes"
+
+#: src/IDE/Pane/Modules.hs:0
+msgid "Is this an exposed library module"
+msgstr "Este módulo é uma biblioteca exposta?"
+
+#: src/IDE/Pane/PackageEditor.hs:0
+msgid "Select root folder for package"
+msgstr "Selecione o diretório raiz para pacote"
+
+#: src/IDE/Pane/PackageEditor.hs:0
+msgid "Select cabal package file (.cabal)"
+msgstr "Selecione o arquivo de pacote cabal (.cabal)"
+
+#: src/IDE/Pane/PackageEditor.hs:0
+msgid ""
+"Cabal file with configurations can't be edited with the current version of "
+"the editor"
+msgstr "Arquivo cabal com configurações não pode ser editado com a versão atual do editor"
+
+#: src/IDE/Pane/PackageEditor.hs:0
+msgid ""
+"Cabal file with tests of this type can't be edited with the current version "
+"of the editor"
+msgstr "Arquivos cabal com testes deste tipo não podem ser editados com a versão atual do editor"
+
+#: src/IDE/Pane/PackageEditor.hs:0
+msgid ""
+"There is already file %s in this directory. Would you like to add this "
+"package to the workspace?"
+msgstr "O arquivo %s já existe neste diretório. Você gostaria de adicionar este pacote à área de trabalho?"
+
+#: src/IDE/Pane/PackageEditor.hs:0
+msgid "_Add Package"
+msgstr "_Adicionar Pacote"
+
+#: src/IDE/Pane/PackageEditor.hs:0
+msgid ""
+"The path you have choosen %s is not an empty directory. Are you sure you "
+"want to make a new package here?"
+msgstr "O caminho escolhido %s não é um diretório vazio. Você tem certeza que deseja criar um novo pacote aqui?"
+
+#: src/IDE/Pane/PackageEditor.hs:0
+msgid "_Make Package Here"
+msgstr "_Criar Pacote Aqui"
+
+#: src/IDE/Pane/PackageEditor.hs:0
+msgid "Setup.(l)hs does not exist. Writing Standard"
+msgstr "Setup.(l)hs não existe. Escrevendo o Padrão"
+
+#: src/IDE/Pane/PackageEditor.hs:0
+msgid "Setup.(l)hs already exist"
+msgstr "Setup.(l)hs já existe!"
+
+#: src/IDE/Pane/PackageEditor.hs:0
+msgid "Add Build Info"
+msgstr "Adicionar Informação de Build"
+
+#: src/IDE/Pane/PackageEditor.hs:0
+msgid "Remove Build Info"
+msgstr "Remover Informação de Build"
+
+#: src/IDE/Pane/PackageEditor.hs:0
+msgid "Unnamed"
+msgstr "Sem nome"
+
+#: src/IDE/Pane/PackageEditor.hs:0
+msgid "Content doesn't validate"
+msgstr "Conteúdo não é válido"
+
+#: src/IDE/Pane/PackageEditor.hs:0
+msgid "Just one Build Info"
+msgstr "Apenas uma Informação de Build"
+
+#: src/IDE/Pane/PackageEditor.hs:0
+msgid "Unsaved changes. Close anyway?"
+msgstr "Há mudanças não salvas. Fechar assim mesmo?"
+
+#: src/IDE/Pane/PackageEditor.hs:0
+msgid "Synopsis"
+msgstr "Sinopse"
+
+#: src/IDE/Pane/PackageEditor.hs:0
+msgid "A one-line summary of this package"
+msgstr "Um resumo deste pacote em uma linha"
+
+#: src/IDE/Pane/PackageEditor.hs:0
+msgid "Package Identifier"
+msgstr "Identificador do Pacote"
+
+#: src/IDE/Pane/PackageEditor.hs:0
+msgid "A more verbose description of this package"
+msgstr "Uma descrição mais verbosa deste pacote"
+
+#: src/IDE/Pane/PackageEditor.hs:0
+msgid "Homepage"
+msgstr "Homepage"
+
+#: src/IDE/Pane/PackageEditor.hs:0
+msgid "Package URL"
+msgstr "URL do Pacote"
+
+#: src/IDE/Pane/PackageEditor.hs:0
+msgid "Category"
+msgstr "Categoria"
+
+#: src/IDE/Pane/PackageEditor.hs:0
+msgid "Stability"
+msgstr "Estabilidade"
+
+#: src/IDE/Pane/PackageEditor.hs:0
+msgid "License"
+msgstr "Licença"
+
+#: src/IDE/Pane/PackageEditor.hs:0
+msgid "License File"
+msgstr "Arquivo de Licença"
+
+#: src/IDE/Pane/PackageEditor.hs:0
+msgid "Select file"
+msgstr "Selecionar arquivo"
+
+#: src/IDE/Pane/PackageEditor.hs:0
+msgid "Copyright"
+msgstr "Copyright"
+
+#: src/IDE/Pane/PackageEditor.hs:0
+msgid "Author"
+msgstr "Autor"
+
+#: src/IDE/Pane/PackageEditor.hs:0
+msgid "Maintainer"
+msgstr "Mantenedor"
+
+#: src/IDE/Pane/PackageEditor.hs:0
+msgid "Bug Reports"
+msgstr "Relatórios de bugs"
+
+#: src/IDE/Pane/PackageEditor.hs:0
+msgid "Dependencies  "
+msgstr "Dependências"
+
+#: src/IDE/Pane/PackageEditor.hs:0
+msgid "Build Dependencies"
+msgstr "Dependências de construção"
+
+#: src/IDE/Pane/PackageEditor.hs:0
+msgid "Does this package depends on other packages?"
+msgstr "Este pacote depende de outros pacotes?"
+
+#: src/IDE/Pane/PackageEditor.hs:0
+msgid "Meta Dep."
+msgstr "Meta dep."
+
+#: src/IDE/Pane/PackageEditor.hs:0
+msgid "Cabal version"
+msgstr "Versão do Cabal"
+
+#: src/IDE/Pane/PackageEditor.hs:0
+msgid "Does this package depends on a specific version of Cabal?"
+msgstr "Este pacote depende de uma versão específica do Cabal?"
+
+#: src/IDE/Pane/PackageEditor.hs:0
+msgid "Tested with compiler"
+msgstr "Testado com compilador"
+
+#: src/IDE/Pane/PackageEditor.hs:0
+msgid "Data Files"
+msgstr "Arquivos de Dados"
+
+#: src/IDE/Pane/PackageEditor.hs:0
+msgid "A list of files to be installed for run-time use by the package."
+msgstr "Uma lista de arquivos a serem instalados para uso pelo pacote em tempo de execução"
+
+#: src/IDE/Pane/PackageEditor.hs:0
+msgid "Select File"
+msgstr "Selecione Arquivo"
+
+#: src/IDE/Pane/PackageEditor.hs:0
+msgid "Data directory"
+msgstr "Diretório de dados"
+
+#: src/IDE/Pane/PackageEditor.hs:0
+msgid "Extra Files"
+msgstr "Arquivos Extras"
+
+#: src/IDE/Pane/PackageEditor.hs:0
+msgid "Extra Source Files"
+msgstr "Arquivos-fonte Extras"
+
+#: src/IDE/Pane/PackageEditor.hs:0
+msgid "A list of additional files to be included in source distributions."
+msgstr "Uma lista de arquivos adicionais a serem incluídos na distribuição de fontes"
+
+#: src/IDE/Pane/PackageEditor.hs:0
+msgid "Extra Tmp Files"
+msgstr "Arquivos Temporários Extras"
+
+#: src/IDE/Pane/PackageEditor.hs:0
+msgid ""
+"A list of additional files or directories to be removed by setup clean."
+msgstr "Uma lista de arquivos ou diretórios adicionais a serem removidos pela limpeza de instalação."
+
+#: src/IDE/Pane/PackageEditor.hs:0
+msgid "Other"
+msgstr "Outro"
+
+#: src/IDE/Pane/PackageEditor.hs:0
+msgid "Build Type"
+msgstr "Tipo de Construção"
+
+#: src/IDE/Pane/PackageEditor.hs:0
+msgid "Describe executable programs contained in the package"
+msgstr "Descreva programas executáveis contidos no pacote"
+
+#: src/IDE/Pane/PackageEditor.hs:0
+msgid "Specify?"
+msgstr "Especificar?"
+
+#: src/IDE/Pane/PackageEditor.hs:0
+msgid "Custom Fields"
+msgstr "Campos Personalizados"
+
+#: src/IDE/Pane/PackageEditor.hs:0
+msgid "Name"
+msgstr "Nome"
+
+#: src/IDE/Pane/PackageEditor.hs:0
+msgid "Value"
+msgstr "Valor"
+
+#: src/IDE/Pane/PackageEditor.hs:0
+msgid "Executables"
+msgstr "Executáveis"
+
+#: src/IDE/Pane/PackageEditor.hs:0
+msgid "Tests"
+msgstr "Testes"
+
+#: src/IDE/Pane/PackageEditor.hs:0
+msgid "Describe tests contained in the package"
+msgstr "Descreva testes contidos no pacote"
+
+#: src/IDE/Pane/PackageEditor.hs:0
+msgid "Library"
+msgstr "Biblioteca"
+
+#: src/IDE/Pane/PackageEditor.hs:0
+msgid "If the package contains a library, specify the exported modules here"
+msgstr "Se o pacote contém uma biblioteca, especifique os módulos exportados aqui"
+
+#: src/IDE/Pane/PackageEditor.hs:0
+msgid "Specify exported modules"
+msgstr "Especifique módulos exportados"
+
+#: src/IDE/Pane/PackageEditor.hs:0
+msgid "Does this package contain a library?"
+msgstr "Este pacote contém uma biblioteca?"
+
+#: src/IDE/Pane/PackageEditor.hs:0
+msgid "%s Build Info"
+msgstr "%s Informação de Construção"
+
+#: src/IDE/Pane/PackageEditor.hs:0
+msgid "Component is buildable here"
+msgstr "Componente é construível aqui"
+
+#: src/IDE/Pane/PackageEditor.hs:0
+msgid "Where to look for the source hierarchy"
+msgstr "Onde procurar a hierarquia de arquivos-fonte"
+
+#: src/IDE/Pane/PackageEditor.hs:0
+msgid "Root directories for the source hierarchy."
+msgstr "Diretórios raiz para a hierarquia de fontes"
+
+#: src/IDE/Pane/PackageEditor.hs:0
+msgid "Select folder"
+msgstr "Selecione pasta"
+
+#: src/IDE/Pane/PackageEditor.hs:0
+msgid "Non-exposed or non-main modules"
+msgstr "Módulos não-expostos ou sem main"
+
+#: src/IDE/Pane/PackageEditor.hs:0
+msgid "A list of modules used by the component but not exposed to users."
+msgstr "Uma lista de módulos usados pelo componente mas não expostos para usuários"
+
+#: src/IDE/Pane/PackageEditor.hs:0
+msgid "%s Compiler "
+msgstr "%s Compilador"
+
+#: src/IDE/Pane/PackageEditor.hs:0
+msgid "Options for haskell compilers"
+msgstr "Opções para compiladores haskell"
+
+#: src/IDE/Pane/PackageEditor.hs:0
+msgid "Compiler Flavor"
+msgstr "Tipo de Compilador"
+
+#: src/IDE/Pane/PackageEditor.hs:0
+msgid "Options"
+msgstr "Opções"
+
+#: src/IDE/Pane/PackageEditor.hs:0
+msgid "Additional options for GHC when built with profiling"
+msgstr "Opções adicionais para o GHC quando constrúido com profiling"
+
+#: src/IDE/Pane/PackageEditor.hs:0
+msgid "Additional options for GHC when the package is built as shared library"
+msgstr "Opções adicionais para o GHC quando o pacote é construído como biblioteca compartilhada"
+
+#: src/IDE/Pane/PackageEditor.hs:0
+msgid "%s Extensions "
+msgstr "%s Extensões"
+
+#: src/IDE/Pane/PackageEditor.hs:0
+msgid "Extensions"
+msgstr "Extensões"
+
+#: src/IDE/Pane/PackageEditor.hs:0
+msgid "A list of Haskell extensions used by every module."
+msgstr "Uma lista de extensões de Haskell usadas por cada módulo"
+
+#: src/IDE/Pane/PackageEditor.hs:0
+msgid "%s Build Tools "
+msgstr "%s Ferramentas de construção"
+
+#: src/IDE/Pane/PackageEditor.hs:0
+msgid "Tools needed for a build"
+msgstr "Ferramentas necessárias para construção"
+
+#: src/IDE/Pane/PackageEditor.hs:0
+msgid "%s Pkg Config "
+msgstr "%s Pkg Config"
+
+#: src/IDE/Pane/PackageEditor.hs:0
+msgid "A list of pkg-config packages, needed to build this package"
+msgstr "Uma lista de pacotes pkg-config, necessários para construir este pacote"
+
+#: src/IDE/Pane/PackageEditor.hs:0
+msgid "%s Opts C -1-"
+msgstr "%s Opts C -1-"
+
+#: src/IDE/Pane/PackageEditor.hs:0
+msgid "Options for C compiler"
+msgstr "Opções para compilador C"
+
+#: src/IDE/Pane/PackageEditor.hs:0
+msgid "Options for linker"
+msgstr "Opções para ligador"
+
+#: src/IDE/Pane/PackageEditor.hs:0
+msgid "A list of header files to use when compiling"
+msgstr "Uma lista de arquivos de header usados quando compilando"
+
+#: src/IDE/Pane/PackageEditor.hs:0
+msgid "A list of header files to install"
+msgstr "Uma lista de arquivos de header para instalar"
+
+#: src/IDE/Pane/PackageEditor.hs:0
+msgid "%s Opts C -2-"
+msgstr "%s Opts C -2-"
+
+#: src/IDE/Pane/PackageEditor.hs:0
+msgid "A list of directories to search for header files"
+msgstr "Uma lista de diretórios para procurar por arquivos de header"
+
+#: src/IDE/Pane/PackageEditor.hs:0
+msgid "Select Folder"
+msgstr "Selecionar pasta"
+
+#: src/IDE/Pane/PackageEditor.hs:0
+msgid "A list of C source files to be compiled,linked with the Haskell files."
+msgstr "Uma lista de arquivos-fonte C a serem compilados e ligados com arquivos Haskell."
+
+#: src/IDE/Pane/PackageEditor.hs:0
+msgid "%s Opts Libs "
+msgstr "%s Opts Libs "
+
+#: src/IDE/Pane/PackageEditor.hs:0
+msgid "A list of extra libraries to link with"
+msgstr "Uma lista de bibliotecas extras para linkar com"
+
+#: src/IDE/Pane/PackageEditor.hs:0
+msgid "A list of directories to search for libraries."
+msgstr "Uma lista de diretórios para procurar por bibliotecas"
+
+#: src/IDE/Pane/PackageEditor.hs:0
+msgid "%s Other"
+msgstr "%s Outro"
+
+#: src/IDE/Pane/PackageEditor.hs:0
+msgid "Options for C preprocessor"
+msgstr "Opções para o pre-processador C"
+
+#: src/IDE/Pane/PackageEditor.hs:0
+msgid "Support frameworks for Mac OS X"
+msgstr "Frameworks de suporte para Mac OS X"
+
+#: src/IDE/Pane/PackageEditor.hs:0
+msgid "Custom fields build info"
+msgstr "Campos customizados"
+
+#: src/IDE/Pane/PackageEditor.hs:0
+msgid "Version"
+msgstr "Versão"
+
+#: src/IDE/Pane/PackageEditor.hs:0
+msgid "Version Range"
+msgstr "Conjunto de versões"
+
+#: src/IDE/Pane/PackageEditor.hs:0
+msgid "Select compiler"
+msgstr "Selecione compilador"
+
+#: src/IDE/Pane/PackageEditor.hs:0
+msgid "Specify compiler"
+msgstr "Especificar compilador"
+
+#: src/IDE/Pane/PackageEditor.hs:0
+msgid "Select"
+msgstr "Selecionar"
+
+#: src/IDE/Pane/PackageEditor.hs:0
+msgid "Unknown"
+msgstr "Desconhecido"
+
+#: src/IDE/Pane/PackageEditor.hs:0
+msgid "Exposed"
+msgstr "Exposto"
+
+#: src/IDE/Pane/PackageEditor.hs:0
+msgid "Is the lib to be exposed by default?"
+msgstr "Essa biblioteca deve ser exposta por padrão?"
+
+#: src/IDE/Pane/PackageEditor.hs:0
+msgid "Exposed Modules"
+msgstr "Módulos Expostos"
+
+#: src/IDE/Pane/PackageEditor.hs:0
+msgid "Build Info"
+msgstr "Informação de Construção"
+
+#: src/IDE/Pane/PackageEditor.hs:0
+msgid "Executable Name"
+msgstr "Nome do Executável"
+
+#: src/IDE/Pane/PackageEditor.hs:0
+msgid "Module Path"
+msgstr "Caminho do Módulo"
+
+#: src/IDE/Pane/PackageEditor.hs:0
+msgid "Build info index"
+msgstr "Índice de informação de construção"
+
+#: src/IDE/Pane/PackageEditor.hs:0
+msgid "File with main function"
+msgstr "Arquivo com função main"
+
+#: src/IDE/Pane/PackageEditor.hs:0
+msgid "Test Name"
+msgstr "Nome do Teste"
+
+#: src/IDE/Pane/PackageFlags.hs:0
+msgid "Package Flags"
+msgstr "Flags do Pacote"
+
+#: src/IDE/Pane/PackageFlags.hs:0
+msgid "Config flags"
+msgstr "Flags de configuração"
+
+#: src/IDE/Pane/PackageFlags.hs:0
+msgid "Build flags"
+msgstr "Flags de construção"
+
+#: src/IDE/Pane/PackageFlags.hs:0
+msgid "Test flags"
+msgstr "Flags de teste"
+
+#: src/IDE/Pane/PackageFlags.hs:0
+msgid "Haddock flags"
+msgstr "Flags do Haddock"
+
+#: src/IDE/Pane/PackageFlags.hs:0
+msgid "Executable flags"
+msgstr "Flags do executável"
+
+#: src/IDE/Pane/PackageFlags.hs:0
+msgid "Install flags"
+msgstr "Flags de instalação"
+
+#: src/IDE/Pane/PackageFlags.hs:0
+msgid "Register flags"
+msgstr "Registrar flags"
+
+#: src/IDE/Pane/PackageFlags.hs:0
+msgid "Unregister flags"
+msgstr "Remover flags"
+
+#: src/IDE/Pane/PackageFlags.hs:0
+msgid "Source Distribution flags"
+msgstr "Flags da distribuição do código fonte"
+
+#: src/IDE/Pane/Preferences.hs:0
+msgid "Prefs"
+msgstr "Preferências"
+
+#: src/IDE/Pane/Preferences.hs:0
+msgid "Editor"
+msgstr "Editor"
+
+#: src/IDE/Pane/Preferences.hs:0
+msgid "Version number of preferences file format"
+msgstr "Número de versão do formato de arquivo de preferências"
+
+#: src/IDE/Pane/Preferences.hs:0
+msgid "Integer"
+msgstr "Inteiro"
+
+#: src/IDE/Pane/Preferences.hs:0
+msgid "Time of last storage"
+msgstr "Hora do último armazenamento"
+
+#: src/IDE/Pane/Preferences.hs:0
+msgid "Show line numbers"
+msgstr "Mostrar números das linhas"
+
+#: src/IDE/Pane/Preferences.hs:0
+msgid "(True/False)"
+msgstr "(Verdadeiro/Falso)"
+
+#: src/IDE/Pane/Preferences.hs:0
+msgid "TextView Font"
+msgstr "Fonte do TextView"
+
+#: src/IDE/Pane/Preferences.hs:0
+msgid "Right margin"
+msgstr "Margem à direita"
+
+#: src/IDE/Pane/Preferences.hs:0
+msgid "Size or 0 for no right margin"
+msgstr "Tamanho ou 0 para nenhuma margem"
+
+#: src/IDE/Pane/Preferences.hs:0
+msgid "Position"
+msgstr "Posição"
+
+#: src/IDE/Pane/Preferences.hs:0
+msgid "Show it ?"
+msgstr "Mostrar?"
+
+#: src/IDE/Pane/Preferences.hs:0
+msgid "Tab width"
+msgstr "Comprimento da tabulação"
+
+#: src/IDE/Pane/Preferences.hs:0
+msgid "Wrap lines"
+msgstr "Quebrar linhas"
+
+#: src/IDE/Pane/Preferences.hs:0
+msgid "Use standard line ends even on windows"
+msgstr "Usar quebras de linha padrão mesmo no Windows"
+
+#: src/IDE/Pane/Preferences.hs:0
+msgid "Remove trailing blanks when saving a file"
+msgstr "Remover espaços em branco restantes quando salvar arquivo"
+
+#: src/IDE/Pane/Preferences.hs:0
+msgid "Source candy"
+msgstr "Código açucarado (candy)"
+
+#: src/IDE/Pane/Preferences.hs:0
+msgid "Empty for do not use or the name of a candy file in a config dir"
+msgstr "Vazio pois não utilize o nome de um arquivo candy em um diretório de configuração"
+
+#: src/IDE/Pane/Preferences.hs:0
+msgid "Candy specification"
+msgstr "Especificação de Candy"
+
+#: src/IDE/Pane/Preferences.hs:0
+msgid "Use it ?"
+msgstr "Usar?"
+
+#: src/IDE/Pane/Preferences.hs:0
+msgid "Editor Style"
+msgstr "Estilo do Editor"
+
+#: src/IDE/Pane/Preferences.hs:0
+msgid "classic"
+msgstr "clássico"
+
+#: src/IDE/Pane/Preferences.hs:0
+msgid "Found Text Background"
+msgstr "Área de fundo para texto encontrado"
+
+#: src/IDE/Pane/Preferences.hs:0
+msgid "Execution Context Text Background"
+msgstr "Área de fundo para contexto de execução"
+
+#: src/IDE/Pane/Preferences.hs:0
+msgid "Breakpoint Text Background"
+msgstr "Área de fundo para breakpoint"
+
+#: src/IDE/Pane/Preferences.hs:0
+msgid "Automatically load modified files modified outside of Leksah"
+msgstr "Carregar automaticamente arquivos modificados fora do Leksah"
+
+#: src/IDE/Pane/Preferences.hs:0
+msgid "Use Yi - Experimental feature (could wipe your files)"
+msgstr "Usar Yi - Funcionalidade experimental (pode destruir seus arquivos)"
+
+#: src/IDE/Pane/Preferences.hs:0
+msgid "GUI Options"
+msgstr "Opções de GUI"
+
+#: src/IDE/Pane/Preferences.hs:0
+msgid "LogView Font"
+msgstr "Fonte do LogView"
+
+#: src/IDE/Pane/Preferences.hs:0
+msgid "Window default size"
+msgstr "Tamanho padrão da janela"
+
+#: src/IDE/Pane/Preferences.hs:0
+msgid "Default size of the main ide window specified as pair (int,int)"
+msgstr "Tamanho padrão da janela principal da IDE, especificado como um par (Int,Int)"
+
+#: src/IDE/Pane/Preferences.hs:0
+msgid "Use ctrl Tab for Notebook flipper"
+msgstr "Use ctrl Tab para passar folhas."
+
+#: src/IDE/Pane/Preferences.hs:0
+msgid "Complete only on Hotkey"
+msgstr "Completar apenas com hotkey"
+
+#: src/IDE/Pane/Preferences.hs:0
+msgid "Name of the keymap"
+msgstr "Nome do mapa de teclado"
+
+#: src/IDE/Pane/Preferences.hs:0
+msgid "The name of a keymap file in a config dir"
+msgstr "O nome do arquivo de mapa de teclado em um diretório de configuração"
+
+#: src/IDE/Pane/Preferences.hs:0
+msgid "Initial Pane positions"
+msgstr "Posição inicial de painel"
+
+#: src/IDE/Pane/Preferences.hs:0
+msgid "Categories for panes"
+msgstr "Categorias para painéis"
+
+#: src/IDE/Pane/Preferences.hs:0
+msgid "Pane Id"
+msgstr "Id do Panel"
+
+#: src/IDE/Pane/Preferences.hs:0
+msgid "Pane Category"
+msgstr "Categoria do Painel"
+
+#: src/IDE/Pane/Preferences.hs:0
+msgid "Pane path for category"
+msgstr "Caminho do painel para categoria"
+
+#: src/IDE/Pane/Preferences.hs:0
+msgid "Pane category"
+msgstr "Categoria do painel"
+
+#: src/IDE/Pane/Preferences.hs:0
+msgid "Pane path"
+msgstr "Caminho do painel"
+
+#: src/IDE/Pane/Preferences.hs:0
+msgid "Default pane path"
+msgstr "Caminho de painel padrão"
+
+#: src/IDE/Pane/Preferences.hs:0
+msgid "Metadata"
+msgstr "Metadados"
+
+#: src/IDE/Pane/Preferences.hs:0
+msgid "Paths under which haskell sources for packages may be found"
+msgstr "Caminhos onde fontes haskell para pacotes podem ser encontrados"
+
+#: src/IDE/Pane/Preferences.hs:0
+msgid "Unpack source for cabal packages to"
+msgstr "Desempacotar arquivos-fonte de pacotes cabal para"
+
+#: src/IDE/Pane/Preferences.hs:0
+msgid "URL from which to download prebuilt metadata"
+msgstr "URL de onde se obtem metadados pré-construídos"
+
+#: src/IDE/Pane/Preferences.hs:0
+msgid "Strategy for downloading prebuilt metadata"
+msgstr "Estratégia para obter metadados pré-construídos"
+
+#: src/IDE/Pane/Preferences.hs:0
+msgid "Try to download and then build locally if that fails"
+msgstr "Tentar baixar e, então, construir localmente se isso falhar"
+
+#: src/IDE/Pane/Preferences.hs:0
+msgid "Try to build locally and then download if that fails"
+msgstr "Tentar construir localmente e, então, baixar se isso falhar"
+
+#: src/IDE/Pane/Preferences.hs:0
+msgid "Never download (just try to build locally)"
+msgstr "Nunca baixar (apenas tentar construir localmente)"
+
+#: src/IDE/Pane/Preferences.hs:0
+msgid "Update metadata at startup"
+msgstr "Atualizar metadados durante inicialização"
+
+#: src/IDE/Pane/Preferences.hs:0
+msgid "Port number for leksah to comunicate with leksah-server"
+msgstr "Número da porta para leksah se comunicar com leksah-server"
+
+#: src/IDE/Pane/Preferences.hs:0
+msgid "IP address for leksah to comunicate with leksah-server"
+msgstr "Enderço IP para leksah se comunicar com leksah-server"
+
+#: src/IDE/Pane/Preferences.hs:0
+msgid "Stop the leksah-server process when leksah disconnects"
+msgstr "Parar o processo leksah-server quando leksah desconectar"
+
+#: src/IDE/Pane/Preferences.hs:0
+msgid "Packages which are excluded from the modules pane"
+msgstr "Pacotes que estão excluídos do painel de módulos"
+
+#: src/IDE/Pane/Preferences.hs:0
+msgid "Build"
+msgstr "Construir"
+
+#: src/IDE/Pane/Preferences.hs:0
+msgid "Automatically save all files before building"
+msgstr "Salvar todos os arquivos automaticamente antes de construir"
+
+#: src/IDE/Pane/Preferences.hs:0
+msgid "Select first warning if built without errors"
+msgstr "Selecionar o primeiro aviso se construir sem erros"
+
+#: src/IDE/Pane/Preferences.hs:0
+msgid "Background build"
+msgstr "Construir em background"
+
+#: src/IDE/Pane/Preferences.hs:0
+msgid "Run unit tests when building"
+msgstr "Executar testes unitários quando construir"
+
+#: src/IDE/Pane/Preferences.hs:0
+msgid "Make mode"
+msgstr "Modo de Make"
+
+#: src/IDE/Pane/Preferences.hs:0
+msgid "Single mode"
+msgstr "Modo individual"
+
+#: src/IDE/Pane/Preferences.hs:0
+msgid "Single build without linking"
+msgstr "Construção individual sem linking"
+
+#: src/IDE/Pane/Preferences.hs:0
+msgid "Don't install last package"
+msgstr "Não instalar último pacote"
+
+#: src/IDE/Pane/Preferences.hs:0
+msgid "Debug"
+msgstr "Depurar"
+
+#: src/IDE/Pane/Preferences.hs:0
+msgid "Enable usage of Show instances in :print"
+msgstr "Habilitar uso de instâncias de Show em :print"
+
+#: src/IDE/Pane/Preferences.hs:0
+msgid "Break on any exception thrown"
+msgstr "Parar em qualquer excessão lançada"
+
+#: src/IDE/Pane/Preferences.hs:0
+msgid "Break on uncaught exceptions and errors"
+msgstr "Parar em excessões não tratadas e erros"
+
+#: src/IDE/Pane/Preferences.hs:0
+msgid "Turn on printing of binding results in GHCi"
+msgstr "Habilitar exibição de resultados de binding no GHCi"
+
+#: src/IDE/Pane/Preferences.hs:0
+msgid "Help"
+msgstr "Ajuda"
+
+#: src/IDE/Pane/Preferences.hs:0
+msgid "Browser"
+msgstr "Navegador"
+
+#: src/IDE/Pane/Preferences.hs:0
+msgid "URL for searching documentation"
+msgstr "URL para procurar documentação"
+
+#: src/IDE/Pane/Preferences.hs:0
+msgid "Select a special style?"
+msgstr "Selecionar um estilo especial?"
+
+#: src/IDE/Pane/Search.hs:0
+msgid "Search"
+msgstr "Buscar"
+
+#: src/IDE/Pane/Search.hs:0
+msgid "Exact"
+msgstr "Exato"
+
+#: src/IDE/Pane/Search.hs:0
+msgid "Prefix"
+msgstr "Prefixo"
+
+#: src/IDE/Pane/Search.hs:0
+msgid "Regex"
+msgstr "Regex"
+
+#: src/IDE/Pane/Search.hs:0
+msgid "Case sensitive"
+msgstr "Sensível a maiúsculas"
+
+#: src/IDE/Pane/Search.hs:0
+msgid "Symbol"
+msgstr "Símbolo"
+
+#: src/IDE/Pane/Search.hs:0
+msgid "Type/Kind"
+msgstr "Tipo/Espécie"
+
+#: src/IDE/Pane/Search.hs:0
+msgid "Search >> listViewPopup: no selection"
+msgstr "Busca>> listViewPopup: sem seleção"
+
+#: src/IDE/Pane/Search.hs:0
+msgid "Search >> selectDescr: invalid path"
+msgstr "Busca>> selectDescr: caminho inválido"
+
+#: src/IDE/Pane/SourceBuffer.hs:0
+msgid "File path not found "
+msgstr "Caminho de arquivo não encontrado"
+
+#: src/IDE/Pane/SourceBuffer.hs:0
+msgid "File does not exist "
+msgstr "Arquivo não existe"
+
+#: src/IDE/Pane/SourceBuffer.hs:0
+msgid "Auto Loading "
+msgstr "Carregar automaticamente"
+
+#: src/IDE/Pane/SourceBuffer.hs:0
+msgid "\" has changed on disk."
+msgstr "\" foi alterado no disco."
+
+#: src/IDE/Pane/SourceBuffer.hs:0
+msgid "_Load From Disk"
+msgstr "_Carregar do Disco"
+
+#: src/IDE/Pane/SourceBuffer.hs:0
+msgid "_Always Load From Disk"
+msgstr "_Sempre Carregar do Disco"
+
+#: src/IDE/Pane/SourceBuffer.hs:0
+msgid "_Don't Load"
+msgstr "_Não Carregar"
+
+#: src/IDE/Pane/SourceBuffer.hs:0
+msgid "fileSave: Page not found"
+msgstr "fileSave: Página não encontrada"
+
+#: src/IDE/Pane/SourceBuffer.hs:0
+msgid "Save File"
+msgstr "Salvar Arquivo"
+
+#: src/IDE/Pane/SourceBuffer.hs:0
+msgid "File already exist."
+msgstr "Arquivo já existe"
+
+#: src/IDE/Pane/SourceBuffer.hs:0
+msgid "_Overwrite"
+msgstr "_Sobreescrever"
+
+#: src/IDE/Pane/SourceBuffer.hs:0
+msgid "Save changes to document: "
+msgstr "Salvar mudanças para documento:"
+
+#: src/IDE/Pane/SourceBuffer.hs:0
+msgid "_Save"
+msgstr "_Salvar"
+
+#: src/IDE/Pane/SourceBuffer.hs:0
+msgid "_Don't Save"
+msgstr "_Não Salvar"
+
+#: src/IDE/Pane/SourceBuffer.hs:0
+msgid "notebook page not found: unexpected"
+msgstr "página de caderno não encontrada: inesperado"
+
+#: src/IDE/Pane/SourceBuffer.hs:0
+msgid "Open File"
+msgstr "Abrir Arquivo"
+
+#: src/IDE/Pane/SourceBuffer.hs:0
+msgid "Buffer already open."
+msgstr "Buffer já está aberto."
+
+#: src/IDE/Pane/SourceBuffer.hs:0
+msgid "Make _Active"
+msgstr "Tornar _Ativo"
+
+#: src/IDE/Pane/SourceBuffer.hs:0
+msgid "_Open Second"
+msgstr "_Abrir Segundo"
+
+#: src/IDE/Pane/Trace.hs:0
+msgid "Trace"
+msgstr "Trace"
+
+#: src/IDE/Pane/Trace.hs:0
+msgid "Index"
+msgstr "Índice"
+
+#: src/IDE/Pane/Trace.hs:0
+msgid "Function"
+msgstr "Função"
+
+#: src/IDE/Pane/Trace.hs:0
+msgid "trace parse error %s\\ninput: %s"
+msgstr "trace erros de parsing %s\\ninput: %s"
+
+#: src/IDE/Pane/Trace.hs:0
+msgid "Back"
+msgstr "Voltar"
+
+#: src/IDE/Pane/Trace.hs:0
+msgid "Forward"
+msgstr "Avançar"
+
+#: src/IDE/Pane/Trace.hs:0
+msgid "Empty history."
+msgstr "Histórico vazio."
+
+#: src/IDE/Pane/Trace.hs:0
+msgid "<end of history>"
+msgstr "<fim do histórico>"
+
+#: src/IDE/Pane/Trace.hs:0
+msgid "Not stopped at a breakpoint"
+msgstr "Não parou em um breakpoint"
+
+#: src/IDE/Pane/Trace.hs:0
+msgid "traces parser"
+msgstr "trace em parser"
+
+#: src/IDE/Pane/Trace.hs:0
+msgid "trace parser"
+msgstr "trace de parser"
+
+#: src/IDE/Pane/Variables.hs:0
+msgid "Variables"
+msgstr "Variáveis"
+
+#: src/IDE/Pane/Variables.hs:0
+msgid "Type"
+msgstr "Tipo"
+
+#: src/IDE/Pane/Variables.hs:0
+msgid "Force"
+msgstr "Forçar"
+
+#: src/IDE/Pane/Variables.hs:0
+msgid "Print"
+msgstr "Imprimir"
+
+#: src/IDE/Pane/Workspace.hs:0
+msgid "Active"
+msgstr "Ativo"
+
+#: src/IDE/Pane/Workspace.hs:0
+msgid "File path"
+msgstr "Caminho do arquivo"
+
+#: src/IDE/Pane/Workspace.hs:0
+msgid "Activate Package"
+msgstr "Pacote ativo"
+
+#: src/IDE/Pane/Workspace.hs:0
+msgid "Add Package"
+msgstr "Adicionar Pacote"
+
+#: src/IDE/Pane/Workspace.hs:0
+msgid "Remove Package"
+msgstr "Remover Pacote"
+
+#: src/IDE/Pane/Workspace.hs:0
+msgid "Workspace >> workspaceSelect: invalid path"
+msgstr "Workspace >> workspaceSelect: caminho invaálido"
+
+#: src/IDE/Command.hs:0
+msgid "Version Con_trol"
+msgstr "Con_trole de Versão"
+
+#: src/IDE/Command.hs:0
+msgid "_Print File"
+msgstr "_Imprimir Arquivo"
+
+#: src/IDE/Command.hs:0
+msgid "_File"
+msgstr "_Arquivo"
+
+#: src/IDE/Command.hs:0
+msgid "_New Module..."
+msgstr "_Novo Módulo..."
+
+#: src/IDE/Command.hs:0
+msgid "_New Text File"
+msgstr "_Novo Arquivo Texto"
+
+#: src/IDE/Command.hs:0
+msgid "_Open..."
+msgstr "_Abrir..."
+
+#: src/IDE/Command.hs:0
+msgid "Open _Recent"
+msgstr "Abrir _Recente"
+
+#: src/IDE/Command.hs:0
+msgid "_Revert"
+msgstr "_Reverter"
+
+#: src/IDE/Command.hs:0
+msgid "Save _As..."
+msgstr "Salvar _Como..."
+
+#: src/IDE/Command.hs:0
+msgid "Save A_ll"
+msgstr "Salvar _Todos"
+
+#: src/IDE/Command.hs:0
+msgid "_Close"
+msgstr "_Fechar"
+
+#: src/IDE/Command.hs:0
+msgid "Close All"
+msgstr "Fechar Todos"
+
+#: src/IDE/Command.hs:0
+msgid "Close All But Package"
+msgstr "Fechar Todos Exceto Pacote"
+
+#: src/IDE/Command.hs:0
+msgid "Close All But Workspace"
+msgstr "Fechar Todos Menos a Área de Trabalho"
+
+#: src/IDE/Command.hs:0
+msgid "_Quit"
+msgstr "_Sair"
+
+#: src/IDE/Command.hs:0
+msgid "_Edit"
+msgstr "_Editar"
+
+#: src/IDE/Command.hs:0
+msgid "_Undo"
+msgstr "_Desfazer"
+
+#: src/IDE/Command.hs:0
+msgid "_Redo"
+msgstr "_Refazer"
+
+#: src/IDE/Command.hs:0
+msgid "Cu_t"
+msgstr "Recor_tar"
+
+#: src/IDE/Command.hs:0
+msgid "_Copy"
+msgstr "_Copiar"
+
+#: src/IDE/Command.hs:0
+msgid "_Paste"
+msgstr "_Colar"
+
+#: src/IDE/Command.hs:0
+msgid "_Delete"
+msgstr "_Deletar"
+
+#: src/IDE/Command.hs:0
+msgid "Select_All"
+msgstr "Selecionar_Tudo"
+
+#: src/IDE/Command.hs:0
+msgid "Find"
+msgstr "Buscar"
+
+#: src/IDE/Command.hs:0
+msgid "Find _Next"
+msgstr "Buscar _Próximo"
+
+#: src/IDE/Command.hs:0
+msgid "Find _Previous"
+msgstr "Buscar _Anterior"
+
+#: src/IDE/Command.hs:0
+msgid "_Goto Line"
+msgstr "_Ir para a linha"
+
+#: src/IDE/Command.hs:0
+msgid "_Comment"
+msgstr "_Comentar"
+
+#: src/IDE/Command.hs:0
+msgid "_Uncomment"
+msgstr "_Descomentar"
+
+#: src/IDE/Command.hs:0
+msgid "Shift _Right"
+msgstr "Shift à _Direita"
+
+#: src/IDE/Command.hs:0
+msgid "Shift _Left"
+msgstr "Shift à _Esquerda"
+
+#: src/IDE/Command.hs:0
+msgid "Align _="
+msgstr "Alinhar _="
+
+#: src/IDE/Command.hs:0
+msgid "Align -_>"
+msgstr "Alinhar -_>"
+
+#: src/IDE/Command.hs:0
+msgid "Align _<-"
+msgstr "Alinhar _<-"
+
+#: src/IDE/Command.hs:0
+msgid "Align _::"
+msgstr "Alinhar _::"
+
+#: src/IDE/Command.hs:0
+msgid "_Workspace"
+msgstr "_Área de Trabalho"
+
+#: src/IDE/Command.hs:0
+msgid "_New..."
+msgstr "_Novo..."
+
+#: src/IDE/Command.hs:0
+msgid "Cl_ean"
+msgstr "_Limpar"
+
+#: src/IDE/Command.hs:0
+msgid "Cleans all packages"
+msgstr "Limpar todos os pacotes"
+
+#: src/IDE/Command.hs:0
+msgid "_Make"
+msgstr "_Make"
+
+#: src/IDE/Command.hs:0
+msgid "Makes all of this workspace"
+msgstr "Make em tudo nesta área de trabalho"
+
+#: src/IDE/Command.hs:0
+msgid "_Next Error"
+msgstr "_Próximo Erro"
+
+#: src/IDE/Command.hs:0
+msgid "Go to the next error"
+msgstr "Ir para o próximo erro"
+
+#: src/IDE/Command.hs:0
+msgid "_Previous Error"
+msgstr "_Erro Anterior"
+
+#: src/IDE/Command.hs:0
+msgid "Go to the previous error"
+msgstr "Ir para erro anterior"
+
+#: src/IDE/Command.hs:0
+msgid "_Package"
+msgstr "_Pacote"
+
+#: src/IDE/Command.hs:0
+msgid "_Add..."
+msgstr "_Adicionar..."
+
+#: src/IDE/Command.hs:0
+msgid "Edit Flags"
+msgstr "Editar Flags"
+
+#: src/IDE/Command.hs:0
+msgid "Edit the package flags"
+msgstr "Editar flags do pacote"
+
+#: src/IDE/Command.hs:0
+msgid "Cleans the package"
+msgstr "Limpa o pacote"
+
+#: src/IDE/Command.hs:0
+msgid "_Configure"
+msgstr "_Configurar"
+
+#: src/IDE/Command.hs:0
+msgid "Configures the package"
+msgstr "Configura o pacote"
+
+#: src/IDE/Command.hs:0
+msgid "_Build"
+msgstr "_Construir"
+
+#: src/IDE/Command.hs:0
+msgid "Builds the package"
+msgstr "Constrói o pacote"
+
+#: src/IDE/Command.hs:0
+msgid "_Build Documentation"
+msgstr "_Construir Documentação"
+
+#: src/IDE/Command.hs:0
+msgid "Builds the documentation"
+msgstr "Constrói a documentação"
+
+#: src/IDE/Command.hs:0
+msgid "Copies the package"
+msgstr "Copia o pacote"
+
+#: src/IDE/Command.hs:0
+msgid "_Run"
+msgstr "_Executar"
+
+#: src/IDE/Command.hs:0
+msgid "Runs the package"
+msgstr "Executa o pacote"
+
+#: src/IDE/Command.hs:0
+msgid "Resol_ve Errors"
+msgstr "Resol_ver Erros"
+
+#: src/IDE/Command.hs:0
+msgid ""
+"Resolve 'Hidden package' and 'Not in scope' errors by adding the necessary "
+"dependancies or imports"
+msgstr "Resolver erros de 'Pacote escondido' ou 'Fora de escopo' com adição das dependências ou importações necessárias"
+
+#: src/IDE/Command.hs:0
+msgid "_Install Dependencies"
+msgstr "_Instalar Dependências"
+
+#: src/IDE/Command.hs:0
+msgid "Install the package's dependencies from the hackage server"
+msgstr "Instalar dependências do pacote pelo servidor hackage"
+
+#: src/IDE/Command.hs:0
+msgid "_Register"
+msgstr "_Registrar"
+
+#: src/IDE/Command.hs:0
+msgid "Test"
+msgstr "Testar"
+
+#: src/IDE/Command.hs:0
+msgid "Source Dist"
+msgstr "Distribuição de Fontes"
+
+#: src/IDE/Command.hs:0
+msgid "_Open Doc"
+msgstr "_Abrir Documentação"
+
+#: src/IDE/Command.hs:0
+msgid "_Debug"
+msgstr "_Depurar"
+
+#: src/IDE/Command.hs:0
+msgid "_Start Debugger"
+msgstr "_Inicializar Depurador"
+
+#: src/IDE/Command.hs:0
+msgid "Starts using the GHCi debugger for build and run"
+msgstr "Passa a usar o depurador GHCi para construção e execução"
+
+#: src/IDE/Command.hs:0
+msgid "_Quit Debugger"
+msgstr "_Sair do Depurador"
+
+#: src/IDE/Command.hs:0
+msgid "Quit the GHCi debugger if it is running"
+msgstr "Sair do depurador GHCi se estiver em execução"
+
+#: src/IDE/Command.hs:0
+msgid "_Execute Selection"
+msgstr "_Executar Seleção"
+
+#: src/IDE/Command.hs:0
+msgid "Sends the selected text to the debugger"
+msgstr "Envia o texto selecionado para o depurador"
+
+#: src/IDE/Command.hs:0
+msgid "Set Breakpoint"
+msgstr "Criar breakpoint"
+
+#: src/IDE/Command.hs:0
+msgid "Set a breakpoint on the selected name or current line"
+msgstr "Criar breakpoint no nome selecionado ou na linha atual"
+
+#: src/IDE/Command.hs:0
+msgid "Show Next Breakpoint"
+msgstr "Mostrar Próximo Breakpoint"
+
+#: src/IDE/Command.hs:0
+msgid "Show the next breakpoint"
+msgstr "Mostrar o próximo breakpoint"
+
+#: src/IDE/Command.hs:0
+msgid "Show Previous Breakpoint"
+msgstr "Mostrar Breakpoint Anterior"
+
+#: src/IDE/Command.hs:0
+msgid "Show the previous breakpoint"
+msgstr "Mostrar o breakpoint anterior"
+
+#: src/IDE/Command.hs:0
+msgid "Delete All Breakpoints"
+msgstr "Remover Todos Breakpoints"
+
+#: src/IDE/Command.hs:0
+msgid "Continue"
+msgstr "Continuar"
+
+#: src/IDE/Command.hs:0
+msgid "Resume after a breakpoint"
+msgstr "Continuar após breakpoint"
+
+#: src/IDE/Command.hs:0
+msgid "Abandon"
+msgstr "Abandonar"
+
+#: src/IDE/Command.hs:0
+msgid "At a breakpoint, abandon current computation"
+msgstr "Em um breakpoint, abandonar a computação atual"
+
+#: src/IDE/Command.hs:0
+msgid "Stop"
+msgstr "Parar"
+
+#: src/IDE/Command.hs:0
+msgid "Interrupt the running operation."
+msgstr "Interromper a operação em execução"
+
+#: src/IDE/Command.hs:0
+msgid "Step"
+msgstr "Passo"
+
+#: src/IDE/Command.hs:0
+msgid "Single-step after stopping at a breakpoint"
+msgstr "Passo-simples após parar em breakpoint"
+
+#: src/IDE/Command.hs:0
+msgid "Step Expression"
+msgstr "Expressão de Passo"
+
+#: src/IDE/Command.hs:0
+msgid "Single-step into selected expression"
+msgstr "Passo-simples para a expressão selecionada"
+
+#: src/IDE/Command.hs:0
+msgid "Step Local"
+msgstr "Passo Local"
+
+#: src/IDE/Command.hs:0
+msgid "Single-step within the current top-level binding"
+msgstr "Passo-simples dentro dos bindings de maior nível atuais"
+
+#: src/IDE/Command.hs:0
+msgid "Step Module"
+msgstr "Passo de Módulo"
+
+#: src/IDE/Command.hs:0
+msgid "Single-step restricted to the current module"
+msgstr "Passo-simples restrito ao módulo atual"
+
+#: src/IDE/Command.hs:0
+msgid "Trace after stopping at a breakpoint"
+msgstr "Trace após interromper em um breakpoint"
+
+#: src/IDE/Command.hs:0
+msgid "Trace Expression"
+msgstr "Expressão de Trace"
+
+#: src/IDE/Command.hs:0
+msgid "Evaluate the selected expression with tracing on"
+msgstr "Avaliar a expressão selecionada com trace ativado"
+
+#: src/IDE/Command.hs:0
+msgid "History"
+msgstr "Histórico"
+
+#: src/IDE/Command.hs:0
+msgid "After 'Trace', show the execution history"
+msgstr "Após 'Trace', exibir histórico de execução"
+
+#: src/IDE/Command.hs:0
+msgid "Go back in the history (after 'Trace')"
+msgstr "Voltar no histórico (após 'Trace')"
+
+#: src/IDE/Command.hs:0
+msgid "Go forward in the history (after 'Back')"
+msgstr "Avançar no histórico (após 'Voltar')"
+
+#: src/IDE/Command.hs:0
+msgid "Print the selected expression, forcing unevaluated parts"
+msgstr "Imprime a expressão selecionada, forçando partes não ainda avaliadas"
+
+#: src/IDE/Command.hs:0
+msgid "Prints a value without forcing its computation"
+msgstr "Imprime um valor sem forçar sua computação"
+
+#: src/IDE/Command.hs:0
+msgid "SimplePrint"
+msgstr "Impressão Simples"
+
+#: src/IDE/Command.hs:0
+msgid "Simplifed version of Print"
+msgstr "Versão simplificada de Imprimir"
+
+#: src/IDE/Command.hs:0
+msgid "Show Bin_dings"
+msgstr "Exibir Bin_dings"
+
+#: src/IDE/Command.hs:0
+msgid "Show the current bindings"
+msgstr "Mostrar os bindings atuais"
+
+#: src/IDE/Command.hs:0
+msgid "Show _Breakpoints"
+msgstr "Exibir _Breakpoints"
+
+#: src/IDE/Command.hs:0
+msgid "Show the active breakpoints"
+msgstr "Exibir os breakpoints ativos"
+
+#: src/IDE/Command.hs:0
+msgid "Show _Context"
+msgstr "Exibir _Contexto"
+
+#: src/IDE/Command.hs:0
+msgid "Show the breakpoint context"
+msgstr "Exibe o contexto do breakpoint"
+
+#: src/IDE/Command.hs:0
+msgid "Show Loaded _Modules"
+msgstr "Exibir _Módulos Carregados"
+
+#: src/IDE/Command.hs:0
+msgid "Show the currently loaded modules"
+msgstr "Exibe os módulos carregados no momento"
+
+#: src/IDE/Command.hs:0
+msgid "Show _Packages"
+msgstr "Exibir _Pacotes"
+
+#: src/IDE/Command.hs:0
+msgid "Show the currently active packages"
+msgstr "Exibe os pacotes ativos no momento"
+
+#: src/IDE/Command.hs:0
+msgid "Show _Languages"
+msgstr "Exibir _Linguagens"
+
+#: src/IDE/Command.hs:0
+msgid "Show the currently active language"
+msgstr "Exibe as flags de linguagem ativas no momento"
+
+#: src/IDE/Command.hs:0
+msgid "Information"
+msgstr "Informação"
+
+#: src/IDE/Command.hs:0
+msgid "Display information about the selected name(s)"
+msgstr "Apresentar informação sobre o(s) nome(s) selecionado(s)"
+
+#: src/IDE/Command.hs:0
+msgid "Kind"
+msgstr "Espécie"
+
+#: src/IDE/Command.hs:0
+msgid "Show the kind of the selected type"
+msgstr "Mostrar a espécie do tipo selecionado"
+
+#: src/IDE/Command.hs:0
+msgid "Show the type of the selected expression"
+msgstr "Mostrar o tipo da expressão selecionada"
+
+#: src/IDE/Command.hs:0
+msgid "_Metadata"
+msgstr "_Metadados"
+
+#: src/IDE/Command.hs:0
+msgid "_Update workspace data"
+msgstr "_Atualizar dados da área de trabalho"
+
+#: src/IDE/Command.hs:0
+msgid "Updates data for the current workspace"
+msgstr "Atualiza dados para a área de trabalho atual"
+
+#: src/IDE/Command.hs:0
+msgid "_Rebuild workspace data"
+msgstr "_Reconstruir dados da área de trabalho"
+
+#: src/IDE/Command.hs:0
+msgid "Rebuilds data for the current workspace"
+msgstr "Reconstroi os dados da área de trabalho atual"
+
+#: src/IDE/Command.hs:0
+msgid "U_pdate system data"
+msgstr "A_tualizar dados do sistema"
+
+#: src/IDE/Command.hs:0
+msgid "R_ebuild system data"
+msgstr "R_econstruir dados do sistema"
+
+#: src/IDE/Command.hs:0
+msgid "_Session"
+msgstr "_Sessão"
+
+#: src/IDE/Command.hs:0
+msgid "_Save Session"
+msgstr "_Salvar Sessão"
+
+#: src/IDE/Command.hs:0
+msgid "_Load Session"
+msgstr "_Carregar Sessão"
+
+#: src/IDE/Command.hs:0
+msgid "_Forget Session"
+msgstr "_Esquecer Sessão"
+
+#: src/IDE/Command.hs:0
+msgid "_Panes"
+msgstr "_Painéis"
+
+#: src/IDE/Command.hs:0
+msgid "Debugger"
+msgstr "Depurador"
+
+#: src/IDE/Command.hs:0
+msgid "HLint"
+msgstr "HLint"
+
+#: src/IDE/Command.hs:0
+msgid "Documentation"
+msgstr "Documentação"
+
+#: src/IDE/Command.hs:0
+msgid "_View"
+msgstr "_Exibir"
+
+#: src/IDE/Command.hs:0
+msgid "Move _Left"
+msgstr "Mover para a _Esquerda"
+
+#: src/IDE/Command.hs:0
+msgid "Move _Right"
+msgstr "Mover para a _Direita"
+
+#: src/IDE/Command.hs:0
+msgid "Move _Up"
+msgstr "Mover para _Cima"
+
+#: src/IDE/Command.hs:0
+msgid "Move _Down"
+msgstr "Mover para _Baixo"
+
+#: src/IDE/Command.hs:0
+msgid "Split H_orizontal"
+msgstr "Dividir H_orizontalmente"
+
+#: src/IDE/Command.hs:0
+msgid "Split _Vertical"
+msgstr "Dividir _Verticalmente"
+
+#: src/IDE/Command.hs:0
+msgid "_Collapse"
+msgstr "_Colapsar"
+
+#: src/IDE/Command.hs:0
+msgid "_Group"
+msgstr "A_grupar"
+
+#: src/IDE/Command.hs:0
+msgid "_Detach"
+msgstr "_Destacar"
+
+#: src/IDE/Command.hs:0
+msgid "_Full Screen"
+msgstr "_Tela Cheia"
+
+#: src/IDE/Command.hs:0
+msgid "_Exit Full Screen"
+msgstr "_Sair de Tela Cheia"
+
+#: src/IDE/Command.hs:0
+msgid "Dark"
+msgstr "Escuro"
+
+#: src/IDE/Command.hs:0
+msgid "Light"
+msgstr "Claro"
+
+#: src/IDE/Command.hs:0
+msgid "Tabs Left"
+msgstr "Tabs à Esquerda"
+
+#: src/IDE/Command.hs:0
+msgid "Tabs Right"
+msgstr "Tabs à Direita"
+
+#: src/IDE/Command.hs:0
+msgid "Tabs Up"
+msgstr "Tabs acima"
+
+#: src/IDE/Command.hs:0
+msgid "Tabs Down"
+msgstr "Tabs abaixo"
+
+#: src/IDE/Command.hs:0
+msgid "Tabs On/Off"
+msgstr "Tabs ativado/desativado"
+
+#: src/IDE/Command.hs:0
+msgid "Close pane"
+msgstr "Fechar painel"
+
+#: src/IDE/Command.hs:0
+msgid "Flip down"
+msgstr "Flip abaixo"
+
+#: src/IDE/Command.hs:0
+msgid "Flip up"
+msgstr "Flip acima"
+
+#: src/IDE/Command.hs:0
+msgid "StartComplete"
+msgstr "Iniciar Preenchimento"
+
+#: src/IDE/Command.hs:0
+msgid "_Clear Log"
+msgstr "_Limpar Log"
+
+#: src/IDE/Command.hs:0
+msgid "Toggle Toolbar"
+msgstr "Acionar Toolbar"
+
+#: src/IDE/Command.hs:0
+msgid "_Configuration"
+msgstr "_Configuração"
+
+#: src/IDE/Command.hs:0
+msgid "_To Candy"
+msgstr "_Para Candy"
+
+#: src/IDE/Command.hs:0
+msgid "_Edit Prefs"
+msgstr "_Editar Preferências"
+
+#: src/IDE/Command.hs:0
+msgid "_Help"
+msgstr "_Ajuda"
+
+#: src/IDE/Command.hs:0
+msgid "Manual"
+msgstr "Manual"
+
+#: src/IDE/Command.hs:0
+msgid "About"
+msgstr "Sobre"
+
+#: src/IDE/Command.hs:0
+msgid "_BackgroundBuild"
+msgstr "_Construção em segundo plano"
+
+#: src/IDE/Command.hs:0
+msgid "Build in the background and report errors"
+msgstr "Construir em segundo plano e reportar erros"
+
+#: src/IDE/Command.hs:0
+msgid "_RunUnitTests"
+msgstr "_Rodar testes unitários"
+
+#: src/IDE/Command.hs:0
+msgid "_MakeMode"
+msgstr "_ModoMake"
+
+#: src/IDE/Command.hs:0
+msgid "Make dependent packages"
+msgstr "Make dependências de pacote"
+
+#: src/IDE/Command.hs:0
+msgid "Use GHCi debugger to build and run"
+msgstr "Usar depurador GHCi para construir e executar"
+
+#: src/IDE/Command.hs:0
+msgid "_OpenDocu"
+msgstr "_AbrirDocu"
+
+#: src/IDE/Command.hs:0
+msgid "Opens a browser for a search of the selected data"
+msgstr "Abre um navegador para uma busca dos dados selecionados."
+
+#: src/IDE/Command.hs:0
+msgid "Menu>>makeMenu: failed to create menubar"
+msgstr "Menu>>makeMenu: falha ao criar barra de menu"
+
+#: src/IDE/Command.hs:0
+msgid "Menu>>makeMenu: failed to create toolbar"
+msgstr "Menu>>makeMenu: falha ao criar barra de ferramentas"
+
+#: src/IDE/Command.hs:0
+msgid "Eval"
+msgstr "Avaliar"
+
+#: src/IDE/Command.hs:0
+msgid "Eval & Insert"
+msgstr "Avaliar & Inserir"
+
+#: src/IDE/Command.hs:0
+msgid "Find (text)"
+msgstr "Pesquisar (texto)"
+
+#: src/IDE/Command.hs:0
+msgid "Search (metadata)"
+msgstr "Buscar (metadados)"
+
+#: src/IDE/Command.hs:0
+msgid "Select a text first"
+msgstr "Selecione texto primeiro"
+
+#: src/IDE/Command.hs:0
+msgid "Copyright 2007-2011 Jürgen Nicklisch-Franken, Hamish Mackenzie"
+msgstr "Copyright 2007-2011 Jürgen Nicklisch-Franken, Hamish Mackenzie"
+
+#: src/IDE/Command.hs:0
+msgid "An integrated development environement (IDE) for the "
+msgstr "Um ambiente de desenvolvimento integrado (IDE) para a"
+
+#: src/IDE/Command.hs:0
+msgid "programming language Haskell and the Glasgow Haskell Compiler"
+msgstr "linguagem de programação Haskell e o compilador Glasgow"
+
+#: src/IDE/Command.hs:0
+msgid "LICENSE"
+msgstr "LICENSE"
+
+#: src/IDE/Command.hs:0
+msgid "Can't load icons from %s %s"
+msgstr "Não é possível carregar ícones de %s %s"
+
+#: src/IDE/Command.hs:0
+msgid "Can't find UI Action %s"
+msgstr "UI Action %s não encontrada"
+
+#: src/IDE/Package.hs:0
+msgid "Configuring"
+msgstr "Configurando"
+
+#: src/IDE/Package.hs:0
+msgid "Can't read package file"
+msgstr "Não é possível ler arquivo de pacote"
+
+#: src/IDE/Package.hs:0
+msgid "Building"
+msgstr "Construindo"
+
+#: src/IDE/Package.hs:0
+msgid "Run the 'configure' command first"
+msgstr "Execute o comando 'configure' primeiro"
+
+#: src/IDE/Package.hs:0
+msgid "please re-configure"
+msgstr "favor re-configurar"
+
+#: src/IDE/Package.hs:0
+msgid "cannot satisfy -package-id"
+msgstr "Não foi possível satisfazer -pacote-id"
+
+#: src/IDE/Package.hs:0
+msgid "Documenting"
+msgstr "Documentando"
+
+#: src/IDE/Package.hs:0
+msgid "Cleaning"
+msgstr "Limpando"
+
+#: src/IDE/Package.hs:0
+msgid "Select the target directory"
+msgstr "Selecione o diretório alvo"
+
+#: src/IDE/Package.hs:0
+msgid "Copying"
+msgstr "Copiando"
+
+#: src/IDE/Package.hs:0
+msgid "Installing"
+msgstr "Instalando"
+
+#: src/IDE/Package.hs:0
+msgid "Running %s"
+msgstr "Executando %s"
+
+#: src/IDE/Package.hs:0
+msgid "no executable in selected package"
+msgstr "nenhum executável no pacote selecionado"
+
+#: src/IDE/Package.hs:0
+msgid "Registering"
+msgstr "Registrando"
+
+#: src/IDE/Package.hs:0
+msgid "Testing"
+msgstr "Testando"
+
+#: src/IDE/Package.hs:0
+msgid "Opening Documentation"
+msgstr "Abrindo Documentação"
+
+#: src/IDE/Package.hs:0
+msgid "No active package"
+msgstr "Nenhum pacote ativo"
+
+#: src/IDE/Package.hs:0
+msgid "Can't load package "
+msgstr "Não foi possível carregar pacote"
+
+#: src/IDE/Package.hs:0
+msgid "Couldn't read template file: %s"
+msgstr "Não foi possível ler arquivo template: %s"
+
+#: src/IDE/Package.hs:0
+msgid "Can't update package "
+msgstr "Não foi possível atualizar pacote"
+
+#: src/IDE/Package.hs:0
+msgid ""
+"Cabal file with configurations can't be automatically updated with the "
+"current version of Leksah"
+msgstr "Arquivos cabal com configurações não podem ser atualizados automaticamente com a versão atual do Leksah"
+
+#: src/IDE/Package.hs:0
+msgid "Can't upade package "
+msgstr "Não foi possível atualizar pacote"
+
+#: src/IDE/Package.hs:0
+msgid "Debugger already running"
+msgstr "Depurador já está em execução"
+
+#: src/IDE/Package.hs:0
+msgid "GHCi debugger is not running."
+msgstr "Depurador GHCi não está em execução."
+
+#: src/IDE/Package.hs:0
+msgid "_Start GHCi"
+msgstr "_Iniciar GHCi"
+
+#: src/IDE/Package.hs:0
+msgid "Can't activate package "
+msgstr "Não foi possível ativar pacote"
+
+#: src/IDE/Session.hs:0
+msgid "Version of session file format"
+msgstr "Versão do formato de arquivo de sessão"
+
+#: src/IDE/Session.hs:0
+msgid "Time of storage"
+msgstr "Horário do armazenamento"
+
+#: src/IDE/Session.hs:0
+msgid "Layout"
+msgstr "Layout"
+
+#: src/IDE/Session.hs:0
+msgid "Population"
+msgstr "População"
+
+#: src/IDE/Session.hs:0
+msgid "Window size"
+msgstr "Tamanho da janela"
+
+#: src/IDE/Session.hs:0
+msgid "Completion size"
+msgstr "Tamanho do preenchimento"
+
+#: src/IDE/Session.hs:0
+msgid "Active pane"
+msgstr "Painel ativo"
+
+#: src/IDE/Session.hs:0
+msgid "Toolbar visible"
+msgstr "Barra de ferramentas visível"
+
+#: src/IDE/Session.hs:0
+msgid "FindbarState"
+msgstr "FindbarState"
+
+#: src/IDE/Session.hs:0
+msgid "Recently opened files"
+msgstr "Arquivos recentes"
+
+#: src/IDE/Session.hs:0
+msgid "Recently opened workspaces"
+msgstr "Áreas de trabalho recentes"
+
+#: src/IDE/Session.hs:0
+msgid "Forget this session"
+msgstr "Esquecer desta sessão"
+
+#: src/IDE/Session.hs:0
+msgid "Now saving session"
+msgstr "Salvando sessão agora"
+
+#: src/IDE/Session.hs:0
+msgid "Save Session as"
+msgstr "Salvar Sessão como"
+
+#: src/IDE/Session.hs:0
+msgid "Select session file"
+msgstr "Selecione arquivo de sessão"
+
+#: src/IDE/Session.hs:0
+msgid "apply Layout can only be allied to empty Layout"
+msgstr "aplicar Layout só pode ser usado com Layout vazio"
+
+#: src/IDE/Workspaces.hs:0
+msgid "New file for workspace"
+msgstr "Novo arquivo para área de trabalho"
+
+#: src/IDE/Workspaces.hs:0
+msgid "No workspace open"
+msgstr "Nenhuma área de trabalho aberta"
+
+#: src/IDE/Workspaces.hs:0
+msgid "You need to have a workspace open for this to work. "
+msgstr "É necessário uma área de trabalho aberta para isto funcionar. "
+
+#: src/IDE/Workspaces.hs:0
+msgid "Choose ~/leksah.lkshw to "
+msgstr "Escolha ~/leksah.lkshw para "
+
+#: src/IDE/Workspaces.hs:0
+msgid "open workspace "
+msgstr "abrir área de trabalho "
+
+#: src/IDE/Workspaces.hs:0
+msgid "create a workspace "
+msgstr "criar área de trabalho "
+
+#: src/IDE/Workspaces.hs:0
+msgid "_New Workspace"
+msgstr "_Nova Área de Trabalho"
+
+#: src/IDE/Workspaces.hs:0
+msgid "_Open Workspace"
+msgstr "_Abrir Área de Trabalho"
+
+#: src/IDE/Workspaces.hs:0
+msgid "Select leksah workspace file (.lkshw)"
+msgstr "Selecione arquivo de área de trabalho do leksah (.lkshw)"
+
+#: src/IDE/Workspaces.hs:0
+msgid "There are session settings stored with this workspace."
+msgstr "Há configurações de sessão armazenadas nesta área de trabalho"
+
+#: src/IDE/Workspaces.hs:0
+msgid "_Ignore Session"
+msgstr "_Ignorar Sessão"
+
+#: src/IDE/Workspaces.hs:0
+msgid "Can't load workspace file %s\\n%s"
+msgstr "Não é possível carregar arquivo de área de trabalho %s\\n%s"
+
+#: src/IDE/Workspaces.hs:0
+msgid "You need to have an active package for this to work."
+msgstr "Você precisa ter um pacote ativo para isto funcionar."
+
+#: src/IDE/Workspaces.hs:0
+msgid "_New Package"
+msgstr "_Novo Pacote"
+
+#: src/IDE/Workspaces.hs:0
+msgid "No workspace for build."
+msgstr "Não há área de trabalho para se construir."
