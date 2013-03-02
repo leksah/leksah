@@ -212,10 +212,12 @@ hlintDirectories :: [FilePath] -> IDEAction
 hlintDirectories dirs = do
     hlint <- getHLint Nothing
     let store = hlintStore hlint
-    liftIO . forM_ dirs $ \ dir -> do
-        nDir <- treeModelIterNChildren store Nothing
-        treeStoreInsert store [] nDir $ HLintRecord dir 0 dir Nothing
-        treeStoreInsert store [nDir] 0 $ HLintRecord dir 0 dir Nothing
+    liftIO $ do
+        treeStoreClear store
+        forM_ dirs $ \ dir -> do
+            nDir <- treeModelIterNChildren store Nothing
+            treeStoreInsert store [] nDir $ HLintRecord dir 0 dir Nothing
+            treeStoreInsert store [nDir] 0 $ HLintRecord dir 0 dir Nothing
 
 refreshDir :: TreeStore HLintRecord -> TreeIter -> FilePath -> IO ()
 refreshDir store iter dir = do
