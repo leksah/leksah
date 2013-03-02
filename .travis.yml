@@ -5,7 +5,7 @@ before_install:
   - cabal install Cabal
   - mkdir vendor
   - cd vendor
-  - darcs get --lazy http://patch-tag.com/r/hamish/gtk2hs
+  - darcs get --lazy http://code.haskell.org/gtk2hs/
   - cabal install ./gtk2hs/tools
   - darcs get --lazy http://code.haskell.org/gtksourceview
   - wget http://leksah.org/gtksourceview3.patches
@@ -15,7 +15,7 @@ before_install:
 install:
   - cabal install cabal-meta cabal-src
 script:
-  - cabal-meta install -fwebkit1-8 -fgtk3 --force-reinstalls || cabal-meta install -fwebkit1-8 -fgtk3 --force-reinstalls
+  - cabal-meta install --force-reinstalls || cabal-meta install --force-reinstalls
 notifications:
   irc:
     channels: "irc.freenode.net#leksah"
