@@ -187,73 +187,73 @@ defaultSession = SessionState {
 sessionDescr :: [FieldDescriptionS SessionState]
 sessionDescr = [
         mkFieldS
-            (paraName <<<- ParaName (__ "Version of session file format") $ emptyParams)
+            (paraName <<<- ParaName ( "Version of session file format") $ emptyParams)
             (PP.text . show)
             intParser
             sessionVersion
             (\ b a -> a{sessionVersion = b})
     ,   mkFieldS
-            (paraName <<<- ParaName (__ "Time of storage") $ emptyParams)
+            (paraName <<<- ParaName ( "Time of storage") $ emptyParams)
             (PP.text . show)
             stringParser
             saveTime
             (\ b a -> a{saveTime = b})
     ,   mkFieldS
-            (paraName <<<- ParaName (__ "Layout") $ emptyParams)
+            (paraName <<<- ParaName ( "Layout") $ emptyParams)
             (PP.text . show)
             readParser
             layoutS
             (\ b a -> a{layoutS = b})
     ,   mkFieldS
-            (paraName <<<- ParaName (__ "Population") $ emptyParams)
+            (paraName <<<- ParaName ( "Population") $ emptyParams)
             (PP.text . show)
             readParser
             population
             (\ b a -> a{population = b})
     ,   mkFieldS
-            (paraName <<<- ParaName (__ "Window size") $ emptyParams)
+            (paraName <<<- ParaName ( "Window size") $ emptyParams)
             (PP.text . show)
             (pairParser intParser)
             windowSize
             (\(c,d) a -> a{windowSize = (c,d)})
     ,   mkFieldS
-            (paraName <<<- ParaName (__ "Completion size") $ emptyParams)
+            (paraName <<<- ParaName ( "Completion size") $ emptyParams)
             (PP.text . show)
             (pairParser intParser)
             completionSize
             (\(c,d) a -> a{completionSize = (c,d)})
     ,   mkFieldS
-            (paraName <<<- ParaName (__ "Workspace") $ emptyParams)
+            (paraName <<<- ParaName ( "Workspace") $ emptyParams)
             (PP.text . show)
             readParser
             workspacePath
             (\fp a -> a{workspacePath = fp})
     ,   mkFieldS
-            (paraName <<<- ParaName (__ "Active pane") $ emptyParams)
+            (paraName <<<- ParaName ( "Active pane") $ emptyParams)
             (PP.text . show)
             readParser
             activePaneN
             (\fp a -> a{activePaneN = fp})
     ,   mkFieldS
-            (paraName <<<- ParaName (__ "Toolbar visible") $ emptyParams)
+            (paraName <<<- ParaName ( "Toolbar visible") $ emptyParams)
             (PP.text . show)
             readParser
             toolbarVisibleS
             (\fp a -> a{toolbarVisibleS = fp})
     ,   mkFieldS
-            (paraName <<<- ParaName (__ "FindbarState") $ emptyParams)
+            (paraName <<<- ParaName ( "FindbarState") $ emptyParams)
             (PP.text . show)
             readParser
             findbarState
             (\fp a -> a{findbarState = fp})
     ,   mkFieldS
-            (paraName <<<- ParaName (__ "Recently opened files") $ emptyParams)
+            (paraName <<<- ParaName ( "Recently opened files") $ emptyParams)
             (PP.text . show)
             readParser
             recentOpenedFiles
             (\fp a -> a{recentOpenedFiles = fp})
     ,   mkFieldS
-            (paraName <<<- ParaName (__ "Recently opened workspaces") $ emptyParams)
+            (paraName <<<- ParaName ( "Recently opened workspaces") $ emptyParams)
             (PP.text . show)
             readParser
             recentOpenedWorksp
