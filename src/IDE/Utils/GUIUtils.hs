@@ -63,6 +63,8 @@ import Graphics.UI.Gtk.Gdk.Enums (Modifier(..))
 #endif
 import Control.Monad.IO.Class (liftIO)
 import Control.Exception as E
+import Text.I18N.GetText
+import System.IO.Unsafe (unsafePerformIO)
 
 chooseDir :: Window -> String -> Maybe FilePath -> IO (Maybe FilePath)
 chooseDir window prompt mbFolder = do
@@ -288,4 +290,6 @@ treeViewContextMenu treeView populateMenu = do
         return True
 
 -- for i18n using hgettext
-__ = id
+--__ = id
+__ :: String -> String
+__ = unsafePerformIO . getText

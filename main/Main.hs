@@ -26,7 +26,7 @@ main :: IO ()
 main = do
     putStrLn "Using default Yi configuration"
     setLocale LC_ALL (Just "")
-    bindTextDomain "__MESSAGE_CATALOG_DOMAIN__" (Just "__MESSAGE_CATALOG_DIR__")
-    textDomain (Just "__MESSAGE_CATALOG_DOMAIN__")
+    bindTextDomain __MESSAGE_CATALOG_DOMAIN__ (Just __MESSAGE_CATALOG_DIR__)
+    textDomain (Just __MESSAGE_CATALOG_DOMAIN__)
     leksah defaultYiConfig
 
