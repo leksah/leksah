@@ -63,8 +63,13 @@ import Graphics.UI.Gtk.Gdk.Enums (Modifier(..))
 #endif
 import Control.Monad.IO.Class (liftIO)
 import Control.Exception as E
+
+#ifdef LOCALIZATION 
+
 import Text.I18N.GetText
 import System.IO.Unsafe (unsafePerformIO)
+
+#endif
 
 chooseDir :: Window -> String -> Maybe FilePath -> IO (Maybe FilePath)
 chooseDir window prompt mbFolder = do
