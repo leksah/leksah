@@ -289,7 +289,17 @@ treeViewContextMenu treeView populateMenu = do
         widgetShowAll theMenu
         return True
 
--- for i18n using hgettext
---__ = id
+#ifdef LOCALIZATION
+
+-- | For i18n using hgettext
 __ :: String -> String
 __ = unsafePerformIO . getText
+
+
+#else
+
+-- | For i18n support. Not included in this build.
+__ :: String -> String
+__ = id
+
+#endif
