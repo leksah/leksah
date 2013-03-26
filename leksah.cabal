@@ -74,7 +74,7 @@ data-files: LICENSE
             pics/ide_rebuild_meta.png
             pics/ide_empty.png
 data-dir: ""
-extra-source-files: Setup.lhs po/*.pot po/*.po
+extra-source-files: Setup.lhs SetupLocale.lhs po/*.pot po/*.po
 
 x-gettext-po-files:     po/*.po
 x-gettext-domain-name:  leksah
@@ -101,6 +101,11 @@ flag gtk3
 flag webkit
     Description: Use WebKitGTK+
     Default: True
+
+flag loc
+    Description: Experimental localization support
+    Default: False
+
 
 library
     if os(windows)
@@ -130,6 +135,10 @@ library
         cpp-options: -DWEBKITGTK
         build-depends: webkit -any, webkit-javascriptcore -any, jsc -any
 
+    if flag(loc) && os(linux)
+        cpp-options: -DLOCALIZATION
+        build-depends: hgettext, setlocale
+
     hs-source-dirs: src
     default-language: Haskell98
 
@@ -146,7 +155,7 @@ library
                        MissingH >=1.1.1.0 && <1.3,
                        vcsgui >=0.0.1 && < 0.1, vcswrapper >=0.0.1 && < 0.1,
                        QuickCheck >=2.4.2 && <2.6, haskell-src-exts >=1.13.5 && <1.14,
-                       hlint >=1.8.39 && <1.9, setlocale, hgettext
+                       hlint >=1.8.39 && <1.9
 
     exposed-modules:
         IDE.Leksah IDE.Completion IDE.ImportTool
@@ -216,6 +225,7 @@ Executable leksah
     if flag(gtk3)
         cpp-options: -DGTK3
 
+
     if impl(ghc < 7.0)
         hs-source-dirs: src, main
         build-depends: Cabal >=1.6.0.1 && <1.17, base >=4.0.0.0 && <4.7, binary >=0.5.0.0 && <0.6,
@@ -234,7 +244,12 @@ Executable leksah
                        hlint >=1.8.39 && <1.9
     else
         hs-source-dirs: main
-        build-depends: leksah ==0.13.1.2, base >=4.0.0.0 && <= 4.7, hgettext, setlocale
+        if os(linux) && flag(loc)
+            cpp-options: -DLOCALIZATION
+            build-depends: leksah == 0.13.1.2, base >= 4.0.0.0 && <=4.7, hgettext, setlocale
+        else
+            build-depends: leksah ==0.13.1.2, base >=4.0.0.0 && <= 4.7
+
 
     default-language: Haskell98
     main-is: Main.hs
