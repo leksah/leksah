@@ -29,6 +29,7 @@ module IDE.LogRef (
 ,   logOutputLines_Default
 ,   logOutput
 ,   logOutputDefault
+,   logOutputPane
 ,   logOutputForBuild
 ,   logOutputForBreakpoints
 ,   logOutputForSetBreakpoint
@@ -64,6 +65,7 @@ import IDE.Pane.Log (getDefaultLogLaunch, IDELog(..), getLog, showDefaultLogLaun
 import qualified Data.Enumerator as E
 import qualified Data.Enumerator.List as EL
 import Data.Enumerator ((=$))
+import IDE.Pane.WebKit.Output(setOutput)
 
 showSourceSpan :: LogRef -> String
 showSourceSpan = displaySrcSpan . logRefSrcSpan
@@ -398,6 +400,25 @@ defaultLineLogger' log logLaunch out = do
     where
         appendLog' = Log.appendLog log logLaunch
 
+paneLineLogger :: IDELog -> LogLaunch -> ToolOutput -> IDEM (Maybe String)
+paneLineLogger log logLaunch out = liftIO $ paneLineLogger' log logLaunch out
+
+paneLineLogger' :: IDELog -> LogLaunch -> ToolOutput -> IO (Maybe String)
+paneLineLogger' log logLaunch out = do
+    case out of
+        ToolInput  line            -> appendLog' (line ++ "\n") InputTag >> return Nothing
+        ToolOutput line            -> appendLog' (line ++ "\n") LogTag >> return (Just line)
+        ToolError  line            -> appendLog' (line ++ "\n") ErrorTag >> return Nothing
+        ToolPrompt line            -> do
+            unless (null line) $ appendLog' (line ++ "\n") LogTag >> return ()
+            appendLog' (concat (take 20 (repeat "- ")) ++ "-\n") FrameTag
+            return Nothing
+        ToolExit   ExitSuccess     -> appendLog' (take 41 (repeat '-') ++ "\n") FrameTag >> return Nothing
+        ToolExit   (ExitFailure 1) -> appendLog' (take 41 (repeat '=') ++ "\n") FrameTag >> return Nothing
+        ToolExit   (ExitFailure n) -> appendLog' (take 41 ("========== " ++ show n ++ " " ++ repeat '=') ++ "\n") FrameTag >> return Nothing
+    where
+        appendLog' = Log.appendLog log logLaunch
+
 logOutputLines :: LogLaunch -- ^ logLaunch
                -> (IDELog -> LogLaunch -> ToolOutput -> IDEM a)
                -> E.Iteratee ToolOutput IDEM [a]
@@ -435,6 +456,13 @@ logOutputDefault :: E.Iteratee ToolOutput IDEM ()
 logOutputDefault = do
     defaultLogLaunch <- lift $ getDefaultLogLaunch
     logOutput defaultLogLaunch
+
+logOutputPane :: E.Iteratee ToolOutput IDEM ()
+logOutputPane = do
+    defaultLogLaunch <- lift $ getDefaultLogLaunch
+    result <- logOutputLines defaultLogLaunch paneLineLogger
+    lift . setOutput . unlines $ catMaybes result
+    return ()
 
 logOutputForBuild :: IDEPackage
                   -> Bool

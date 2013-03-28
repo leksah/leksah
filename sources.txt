@@ -3,6 +3,7 @@ https://github.com/leksah/ltk
 https://github.com/leksah/leksah-server
 https://github.com/leksah/haskellVCSWrapper.git
 https://github.com/leksah/haskellVCSGUI.git
+https://github.com/leksah/pretty-show.git
 darcs:http://patch-tag.com/r/hamish/webkit
 git://github.com/ghcjs/webkit-javascriptcore.git
 https://github.com/ghcjs/ghcjs-dom.git

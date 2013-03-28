@@ -34,7 +34,8 @@ module IDE.Command (
 ) where
 
 import Graphics.UI.Gtk
-       (containerAdd, windowAddAccelGroup, onKeyPress, boxPackEnd,
+       (keyToChar, eventKeyVal, eventModifier, eventKeyName, EKey,
+        containerAdd, windowAddAccelGroup, onKeyPress, boxPackEnd,
         boxPackStart, widgetSetName, vBoxNew, windowSetIconFromFile,
         Widget, Window, actionGroupGetAction, uiManagerGetActionGroups,
         Action, actionSetSensitive, iconFactoryAdd, iconSetNewFromPixbuf,
@@ -42,18 +43,18 @@ import Graphics.UI.Gtk
         dialogRun, aboutDialogSetAuthors, aboutDialogSetWebsite,
         aboutDialogSetLicense, aboutDialogSetComments,
         aboutDialogSetCopyright, aboutDialogSetVersion, aboutDialogSetName,
-        aboutDialogNew, mainQuit, widgetHide, widgetShow,
-        castToWidget, separatorMenuItemNew,
-        containerGetChildren, Menu, widgetSetSizeRequest, toolbarSetStyle,
-        toolbarSetIconSize, castToToolbar, castToMenuBar,
-        uiManagerGetWidget, uiManagerGetAccelGroup, onActionActivate,
-        actionNew, actionGroupAddActionWithAccel, actionToggled,
-        toggleActionNew, uiManagerAddUiFromString,
-        uiManagerInsertActionGroup, actionGroupNew, UIManager,
-        widgetShowAll, menuItemSetSubmenu, widgetDestroy, widgetHide,
-        menuItemGetSubmenu, menuShellAppend, menuItemActivate,
-        menuItemNewWithLabel, menuNew, Packing(..), ToolbarStyle(..),
-        PositionType(..), on, IconSize(..))
+        aboutDialogNew, mainQuit, widgetHide, widgetShow, castToWidget,
+        separatorMenuItemNew, containerGetChildren, Menu,
+        widgetSetSizeRequest, toolbarSetStyle, toolbarSetIconSize,
+        castToToolbar, castToMenuBar, uiManagerGetWidget,
+        uiManagerGetAccelGroup, onActionActivate, actionNew,
+        actionGroupAddActionWithAccel, actionToggled, toggleActionNew,
+        uiManagerAddUiFromString, uiManagerInsertActionGroup,
+        actionGroupNew, UIManager, widgetShowAll, menuItemSetSubmenu,
+        widgetDestroy, menuItemGetSubmenu, menuShellAppend,
+        menuItemActivate, menuItemNewWithLabel, menuNew, Packing(..),
+        ToolbarStyle(..), PositionType(..), on, IconSize(..),
+        keyPressEvent, Modifier(..))
 import System.FilePath
 import Data.Version
 import Prelude hiding (catch)
@@ -86,10 +87,7 @@ import IDE.ImportTool (resolveErrors)
 import IDE.LogRef
 import IDE.Debug
 import System.Directory (doesFileExist)
-import qualified Graphics.UI.Gtk.Gdk.Events as GdkEvents
-import Graphics.UI.Gtk.Gdk.Events
-    (Modifier(..),
-     Event(..))
+import Graphics.UI.Gtk.Gdk.EventM (EventM)
 import qualified Data.Map as  Map (lookup)
 import Data.List (sort)
 import Control.Event (registerEvent)
@@ -105,6 +103,7 @@ import IDE.Pane.Search (getSearch, IDESearch(..))
 import IDE.Pane.Grep (getGrep)
 import IDE.Pane.HLint (refreshHLint, getHLint)
 import IDE.Pane.WebKit.Documentation (getDocumentation)
+import IDE.Pane.WebKit.Output (getOutputPane)
 import IDE.Pane.Files (refreshFiles, getFiles)
 import Control.Monad.IO.Class (MonadIO(..))
 import Control.Monad (unless, when)
@@ -350,6 +349,8 @@ mkActions =
         (getHLint Nothing  >>= \ p -> displayPane p False >> workspaceTry refreshHLint) [] False
     ,AD "ShowDocumentation" (__ "Documentation") Nothing Nothing
         (getDocumentation Nothing  >>= \ p -> displayPane p False) [] False
+    ,AD "ShowOutput" (__ "Output") Nothing Nothing
+        (getOutputPane Nothing  >>= \ p -> displayPane p False) [] False
     ,AD "ShowErrors" (__ "Errors") Nothing Nothing
         (getErrors Nothing  >>= \ p -> displayPane p False) [] False
     ,AD "ShowLog" (__ "Log") Nothing Nothing
@@ -722,7 +723,7 @@ instrumentWindow win prefs topWidget = do
         boxPackStart vb findbar PackNatural 0
         statusBar   <-  buildStatusbar
         boxPackEnd vb statusBar PackNatural 0
-        win `onKeyPress` (\ e -> reflectIDE (handleSpecialKeystrokes e) ideR)
+        win `on` keyPressEvent $ handleSpecialKeystrokes ideR
         windowAddAccelGroup win acc
         containerAdd win vb
         reflectIDE (do
@@ -744,15 +745,19 @@ instrumentSecWindow win = do
 
         (acc,_,_) <-  getMenuAndToolbars uiManager'
         windowAddAccelGroup win acc
-        win `onKeyPress` (\ e -> reflectIDE (handleSpecialKeystrokes e) ideR)
+        win `on` keyPressEvent $ handleSpecialKeystrokes ideR
         return ()
 
 --
 -- | Callback function for onKeyPress of the main window, so 'preprocess' any key
 --
-handleSpecialKeystrokes :: GdkEvents.Event -> IDEM Bool
-handleSpecialKeystrokes (Key { eventKeyName = name,  eventModifier = mods,
-                                eventKeyVal = keyVal, eventKeyChar = mbChar}) = do
+handleSpecialKeystrokes :: IDERef -> EventM EKey Bool
+handleSpecialKeystrokes ideR = do
+  name <- eventKeyName
+  mods <- eventModifier
+  keyVal <- eventKeyVal
+  let mbChar = keyToChar keyVal
+  liftIO $ (`reflectIDE` ideR) $ do
     prefs' <- readIDE prefs
     case (name, mods) of
         (tab, [Control]) | (tab == "Tab" || tab == "ISO_Left_Tab")
@@ -795,7 +800,6 @@ handleSpecialKeystrokes (Key { eventKeyName = name,  eventModifier = mods,
     printMods :: [Modifier] -> String
     printMods []    = ""
     printMods (m:r) = show m ++ printMods r
-handleSpecialKeystrokes _ = return True
 
 setSymbol :: String -> Bool -> IDEAction
 setSymbol symbol openSource = do

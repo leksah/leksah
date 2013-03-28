@@ -85,6 +85,7 @@ import qualified Data.Enumerator.List as EL
 import Control.Monad.Trans.Class (MonadTrans(..))
 import Control.Monad.Trans.Reader (ask)
 import Control.Monad.IO.Class (MonadIO(..))
+import Control.Applicative (Alternative(..))
 
 debugCommand :: String -> E.Iteratee ToolOutput IDEM () -> DebugAction
 debugCommand command handler = do
@@ -124,7 +125,11 @@ debugQuit = do
 --
 -- > stripComments "-- This is still a comment"
 stripComments :: String -> String
-stripComments t = maybe t unlines . sequence . map (stripPrefix "-- >") $ lines t
+stripComments t = maybe t unlines $
+        sequence (map (stripPrefix "-- >>>") lines')
+    <|> sequence (map (stripPrefix "-- >") lines')
+  where
+    lines' = lines t
 
 debugExecuteSelection :: IDEAction
 debugExecuteSelection = do
@@ -133,7 +138,7 @@ debugExecuteSelection = do
         Just text -> do
             let command = packageTry $ tryDebug $ do
                 debugSetLiberalScope
-                debugCommand (stripComments text) logOutputDefault
+                debugCommand (stripComments text) logOutputPane
             modifyIDE_ $ \ide -> ide {autoCommand = command}
             command
         Nothing   -> ideMessage Normal "Please select some text in the editor to execute"

@@ -1,12 +1,12 @@
-{-# LANGUAGE CPP #-}
+{-# LANGUAGE DeriveDataTypeable #-}
 {-# LANGUAGE MultiParamTypeClasses #-}
 {-# LANGUAGE FlexibleInstances #-}
 {-# LANGUAGE TypeSynonymInstances #-}
 {-# LANGUAGE RecordWildCards #-}
-{-# LANGUAGE DeriveDataTypeable #-}
+{-# LANGUAGE CPP #-}
 -----------------------------------------------------------------------------
 --
--- Module      :  IDE.Pane.WebKit.Documentation
+-- Module      :  IDE.Pane.WebKit.Output
 -- Copyright   :  2007-2011 Juergen Nicklisch-Franken, Hamish Mackenzie
 -- License     :  GPL
 --
@@ -18,12 +18,11 @@
 --
 -----------------------------------------------------------------------------
 
-module IDE.Pane.WebKit.Documentation (
-    IDEDocumentation(..)
-  , DocumentationState(..)
-  , getDocumentation
-  , loadDoc
-  , reloadDoc
+module IDE.Pane.WebKit.Output (
+    IDEOutput(..)
+  , OutputState(..)
+  , getOutputPane
+  , setOutput
 ) where
 
 import Graphics.UI.Frame.Panes
@@ -40,52 +39,59 @@ import Graphics.UI.Gtk.General.Enums (PolicyType(..))
 
 #ifdef WEBKITGTK
 import Graphics.UI.Gtk
-       (eventModifier, eventKeyName, keyPressEvent, afterFocusIn,
-        containerAdd, Modifier(..))
+       (toggleActionActive, castToMenuItem, actionCreateMenuItem,
+        toggleActionNew, menuShellAppend, toggleActionSetActive,
+        menuItemActivate, menuItemNewWithLabel, eventModifier,
+        eventKeyName, keyPressEvent, afterFocusIn, containerAdd,
+        Modifier(..))
 import Graphics.UI.Gtk.WebKit.Types (WebView(..))
 import Graphics.UI.Gtk.WebKit.WebView
-       (webViewUri, webViewGoBack, webViewZoomOut, webViewZoomIn,
-        webViewZoomLevel, webViewReload, webViewLoadUri, webViewNew)
+       (populatePopup, webViewGoBack, webViewZoomOut, webViewZoomIn,
+        webViewLoadString, webViewZoomLevel, webViewReload, webViewNew,
+        webViewLoadUri)
 import System.Glib.Attributes (AttrOp(..), set, get)
 import System.Glib.Signals (on)
 import IDE.Core.State (reflectIDE)
 import Graphics.UI.Editor.Basics (Connection(..))
-#else
+import Text.Show.Pretty
+       (HtmlOpts(..), defaultHtmlOpts, valToHtmlPage, parseValue, getDataDir)
+import System.FilePath ((</>))
+#endif
 import Data.IORef (writeIORef, newIORef, readIORef, IORef)
 import Control.Applicative ((<$>))
-#endif
 
-data IDEDocumentation = IDEDocumentation {
-    scrolledView :: ScrolledWindow
+data IDEOutput = IDEOutput {
+    scrolledView  :: ScrolledWindow
 #ifdef WEBKITGTK
-  , webView      :: WebView
+  , webView       :: WebView
+  , alwaysHtmlRef :: IORef Bool
 #else
-  , docState     :: IORef DocumentationState
+  , outState      :: IORef OutputState
 #endif
 } deriving Typeable
 
-data DocumentationState = DocumentationState {
+data OutputState = OutputState {
     zoom :: Float
-  , uri  :: Maybe String
+  , alwaysHtml :: Bool
 } deriving(Eq,Ord,Read,Show,Typeable)
 
-instance Pane IDEDocumentation IDEM
+instance Pane IDEOutput IDEM
     where
-    primPaneName _  =   "Doc"
+    primPaneName _  =   "Out"
     getAddedIndex _ =   0
     getTopWidget    =   castToWidget . scrolledView
-    paneId b        =   "*Doc"
+    paneId b        =   "*Out"
 
-instance RecoverablePane IDEDocumentation DocumentationState IDEM where
+instance RecoverablePane IDEOutput OutputState IDEM where
     saveState p     =   liftIO $ do
 #ifdef WEBKITGTK
         zoom <- webView p `get` webViewZoomLevel
-        uri  <- webView p `get` webViewUri
-        return (Just DocumentationState{..})
+        alwaysHtml <- readIORef $ alwaysHtmlRef p
+        return (Just OutputState{..})
 #else
-        Just <$> readIORef (docState p)
+        Just <$> readIORef (outState p)
 #endif
-    recoverState pp DocumentationState {..} =   do
+    recoverState pp OutputState {..} =   do
         nb      <-  getNotebook pp
         mbPane <- buildPane pp nb builder
         case mbPane of
@@ -93,9 +99,9 @@ instance RecoverablePane IDEDocumentation DocumentationState IDEM where
             Just p  -> liftIO $ do
 #ifdef WEBKITGTK
                 webView p `set` [webViewZoomLevel := zoom]
-                maybe (return ()) (webViewLoadUri (webView p)) uri
+                writeIORef (alwaysHtmlRef p) alwaysHtml
 #else
-                writeIORef (docState p) DocumentationState {..}
+                writeIORef (outState p) OutputState {..}
 #endif
         return mbPane
     builder pp nb windows = reifyIDE $ \ ideR -> do
@@ -103,17 +109,18 @@ instance RecoverablePane IDEDocumentation DocumentationState IDEM where
 
 #ifdef WEBKITGTK
         webView <- webViewNew
+        alwaysHtmlRef <- newIORef False
         containerAdd scrolledView webView
 #else
-        docState <- newIORef DocumentationState {zoom = 1.0, uri = Nothing}
+        outState <- newIORef OutputState {zoom = 1.0}
 #endif
 
         scrolledWindowSetPolicy scrolledView PolicyAutomatic PolicyAutomatic
-        let docs = IDEDocumentation {..}
+        let out = IDEOutput {..}
 
 #ifdef WEBKITGTK
         cid1 <- webView `afterFocusIn`
-            (\_ -> do reflectIDE (makeActive docs) ideR ; return True)
+            (\_ -> do reflectIDE (makeActive out) ideR ; return True)
 
         webView `set` [webViewZoomLevel := 2.0]
         cid2 <- webView `on` keyPressEvent $ do
@@ -124,32 +131,37 @@ instance RecoverablePane IDEDocumentation DocumentationState IDEM where
                 ("minus",[Control])       -> webViewZoomOut webView >> return True
                 ("BackSpace", [])         -> webViewGoBack  webView >> return True
                 _                         -> return False
-        return (Just docs, map ConnectC [cid1, cid2])
+
+        cid3 <- webView `on` populatePopup $ \ menu -> do
+            alwaysHtml <- readIORef alwaysHtmlRef
+            action <- toggleActionNew "AlwaysHTML" "Always HTML" Nothing Nothing
+            item <- castToMenuItem <$> actionCreateMenuItem action
+            item `on` menuItemActivate $ writeIORef alwaysHtmlRef $ not alwaysHtml
+            toggleActionSetActive action alwaysHtml
+            menuShellAppend menu item
+            return ()
+
+        return (Just out, map ConnectC [cid1, cid2, cid3])
 #else
-        return (Just docs, [])
+        return (Just out, [])
 #endif
 
 
-getDocumentation :: Maybe PanePath -> IDEM IDEDocumentation
-getDocumentation Nothing    = forceGetPane (Right "*Doc")
-getDocumentation (Just pp)  = forceGetPane (Left pp)
+getOutputPane :: Maybe PanePath -> IDEM IDEOutput
+getOutputPane Nothing    = forceGetPane (Right "*Out")
+getOutputPane (Just pp)  = forceGetPane (Left pp)
 
-loadDoc :: String -> IDEAction
-loadDoc uri = do
+setOutput :: String -> IDEAction
+setOutput str = do
 #ifdef WEBKITGTK
-    doc <- getDocumentation Nothing
-    let view = webView doc
-    liftIO $ webViewLoadUri view uri
-#else
-    return ()
-#endif
-
-reloadDoc :: IDEAction
-reloadDoc = do
-#ifdef WEBKITGTK
-    doc <- getDocumentation Nothing
-    let view = webView doc
-    liftIO $ webViewReload view
+    dataDir <- liftIO $ getDataDir
+    out <- getOutputPane Nothing
+    alwaysHtml <- liftIO . readIORef $ alwaysHtmlRef out
+    let view = webView out
+        html = case (alwaysHtml, parseValue str) of
+                    (False, Just value) -> valToHtmlPage defaultHtmlOpts value
+                    _                   -> str
+    liftIO $ webViewLoadString view html Nothing Nothing ("file://" ++ dataDir ++ "/value.html")
 #else
     return ()
 #endif

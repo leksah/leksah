@@ -57,6 +57,7 @@ module IDE.Core.Types (
 ,   KeyString
 
 ,   Prefs(..)
+,   cabalCommand
 
 ,   LogRefType(..)
 ,   LogRef(..)
@@ -148,6 +149,7 @@ data IDE            =  IDE {
 ,   prefs           ::   Prefs                   -- ^ configuration preferences
 ,   workspace       ::   Maybe Workspace         -- ^ may be a workspace (set of packages)
 ,   activePack      ::   Maybe IDEPackage
+,   activeExe       ::   Maybe String
 ,   bufferProjCache ::   Map FilePath (Maybe IDEPackage)
 ,   allLogRefs      ::   [LogRef]
 ,   currentEBC      ::   (Maybe LogRef, Maybe LogRef, Maybe LogRef)
@@ -338,6 +340,7 @@ data IDEPackage     =   IDEPackage {
 ,   ipdDepends         ::   [Dependency]
 ,   ipdModules         ::   Map ModuleName BuildInfo
 ,   ipdHasLibs         ::   Bool
+,   ipdExes            ::   [String]
 ,   ipdTests           ::   [String]
 ,   ipdMain            ::   [(FilePath, BuildInfo, Bool)]
 ,   ipdExtraSrcs       ::   Set FilePath
@@ -372,6 +375,7 @@ data Workspace = Workspace {
 ,   wsPackages      ::   [IDEPackage]
 ,   wsPackagesFiles ::   [FilePath]
 ,   wsActivePackFile::   Maybe FilePath
+,   wsActiveExe     ::   Maybe String
 ,   wsNobuildPack   ::   [IDEPackage]
 ,   packageVcsConf  ::   Map FilePath VCSConf -- ^ (FilePath to package, Version-Control-System Configuration)
 } deriving Show
@@ -431,6 +435,7 @@ data Prefs = Prefs {
     ,   completeRestricted  ::   Bool
     ,   saveAllBeforeBuild  ::   Bool
     ,   jumpToWarnings      ::   Bool
+    ,   useCabalDev         ::   Bool
     ,   backgroundBuild     ::   Bool
     ,   runUnitTests        ::   Bool
     ,   makeMode            ::   Bool
@@ -449,6 +454,9 @@ data Prefs = Prefs {
     ,   retrieveStrategy    ::   RetrieveStrategy
     ,   endWithLastConn     ::   Bool
 } deriving(Eq,Show)
+
+cabalCommand :: Prefs -> String
+cabalCommand p = if useCabalDev p then "cabal-dev" else "cabal"
 
 data SearchHint = Forward | Backward | Insert | Delete | Initial
     deriving (Eq)

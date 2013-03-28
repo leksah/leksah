@@ -36,6 +36,7 @@ import Control.Monad (when)
 import Control.Monad.IO.Class (MonadIO(..))
 import IDE.Utils.GUIUtils (treeViewContextMenu, __)
 import System.Glib.Properties (newAttrFromMaybeStringProperty)
+import Data.Tree (Tree(..))
 
 -- | Workspace pane state
 --
@@ -43,7 +44,7 @@ import System.Glib.Properties (newAttrFromMaybeStringProperty)
 data IDEWorkspace   =   IDEWorkspace {
     scrolledView        ::   ScrolledWindow
 ,   treeViewC           ::   TreeView
-,   workspaceStore      ::   ListStore (Bool,IDEPackage)
+,   workspaceStore      ::   TreeStore (Bool,IDEPackage,Maybe String)
 ,   topBox              ::   VBox
 } deriving Typeable
 
@@ -69,9 +70,9 @@ instance RecoverablePane IDEWorkspace WorkspaceState IDEM where
         when (isJust res) $ updateWorkspace True False
         return res
     builder pp nb windows = reifyIDE $ \ideR -> do
-        listStore   <-  listStoreNew []
+        treeStore   <-  treeStoreNew []
         treeView    <-  treeViewNew
-        treeViewSetModel treeView listStore
+        treeViewSetModel treeView treeStore
 
         renderer0    <- cellRendererPixbufNew
         col0        <- treeViewColumnNew
@@ -81,9 +82,9 @@ instance RecoverablePane IDEWorkspace WorkspaceState IDEM where
         treeViewColumnSetReorderable col0 True
         treeViewAppendColumn treeView col0
         cellLayoutPackStart col0 renderer0 True
-        cellLayoutSetAttributes col0 renderer0 listStore
+        cellLayoutSetAttributes col0 renderer0 treeStore
             $ \row -> [newAttrFromMaybeStringProperty "stock-id" :=
-                        if (\(b,_)-> b) row
+                        if (\(b,_,_)-> b) row
                             then Just stockYes
                             else Nothing]
 
@@ -95,8 +96,8 @@ instance RecoverablePane IDEWorkspace WorkspaceState IDEM where
         treeViewColumnSetReorderable col1 True
         treeViewAppendColumn treeView col1
         cellLayoutPackStart col1 renderer1 True
-        cellLayoutSetAttributes col1 renderer1 listStore
-            $ \row -> [ cellText := (\(_,pack)-> (packageIdentifierToString . ipdPackageId) pack) row ]
+        cellLayoutSetAttributes col1 renderer1 treeStore
+            $ \row -> [ cellText := name row ]
 
         renderer2   <- cellRendererTextNew
         col2        <- treeViewColumnNew
@@ -106,8 +107,8 @@ instance RecoverablePane IDEWorkspace WorkspaceState IDEM where
         treeViewColumnSetReorderable col2 True
         treeViewAppendColumn treeView col2
         cellLayoutPackStart col2 renderer2 True
-        cellLayoutSetAttributes col2 renderer2 listStore
-            $ \row -> [ cellText := (\(_,pack)-> ipdCabalFile pack) row ]
+        cellLayoutSetAttributes col2 renderer2 treeStore
+            $ \row -> [ cellText := file row ]
 
         treeViewSetHeadersVisible treeView True
         sel <- treeViewGetSelection treeView
@@ -118,7 +119,7 @@ instance RecoverablePane IDEWorkspace WorkspaceState IDEM where
         scrolledWindowSetPolicy sw PolicyAutomatic PolicyAutomatic
         box             <-  vBoxNew False 2
         boxPackEnd box sw PackGrow 0
-        let workspacePane = IDEWorkspace sw treeView listStore box
+        let workspacePane = IDEWorkspace sw treeView treeStore box
         widgetShowAll box
         cid1 <- treeView `after` focusInEvent $ do
             liftIO $ reflectIDE (makeActive workspacePane) ideR
@@ -126,7 +127,11 @@ instance RecoverablePane IDEWorkspace WorkspaceState IDEM where
         (cid2, cid3) <- treeViewContextMenu treeView $ workspaceContextMenu ideR workspacePane
         cid4 <- treeView `on` rowActivated $ workspaceSelect ideR workspacePane
         return (Just workspacePane, map ConnectC [cid1, cid2, cid3, cid4])
-
+      where
+        name (_, _, Just exe) = exe
+        name (_, pack, _) = packageIdentifierToString $ ipdPackageId pack
+        file (_, _, Just _) = ""
+        file (_, pack, _) = ipdCabalFile pack
 getWorkspace :: Maybe PanePath -> IDEM IDEWorkspace
 getWorkspace Nothing = forceGetPane (Right "*Workspace")
 getWorkspace (Just pp)  = forceGetPane (Left pp)
@@ -137,14 +142,14 @@ showWorkspace = do
     displayPane l False
 
 getSelectionTree ::  TreeView
-    -> ListStore (Bool, IDEPackage)
-    -> IO (Maybe (Bool, IDEPackage))
-getSelectionTree treeView listStore = do
-    treeSelection   <-  treeViewGetSelection treeView
-    rows           <-  treeSelectionGetSelectedRows treeSelection
+    -> TreeStore (Bool, IDEPackage, Maybe String)
+    -> IO (Maybe (Bool, IDEPackage, Maybe String))
+getSelectionTree treeView treeStore = do
+    treeSelection <- treeViewGetSelection treeView
+    rows          <- treeSelectionGetSelectedRows treeSelection
     case rows of
-        [[n]]   ->  do
-            val     <-  listStoreGetValue listStore n
+        [path]  ->  do
+            val     <-  treeStoreGetValue treeStore path
             return (Just val)
         _       ->  return Nothing
 
@@ -160,7 +165,7 @@ workspaceContextMenu ideR workspacePane theMenu = do
         sel <- getSelectionTree (treeViewC workspacePane)
                                 (workspaceStore workspacePane)
         case sel of
-            Just (_,ideP) -> reflectIDE (workspaceTry $ workspaceActivatePackage ideP) ideR
+            Just (_,ideP,mbExe) -> reflectIDE (workspaceTry $ workspaceActivatePackage ideP mbExe) ideR
 
             otherwise     -> return ()
     item2 `on` menuItemActivate $ reflectIDE (workspaceTry $ workspaceAddPackage) ideR
@@ -168,7 +173,7 @@ workspaceContextMenu ideR workspacePane theMenu = do
         sel <- getSelectionTree (treeViewC workspacePane)
                                 (workspaceStore workspacePane)
         case sel of
-            Just (_,ideP) -> reflectIDE (workspaceTry $ workspaceRemovePackage ideP) ideR
+            Just (_,ideP,_) -> reflectIDE (workspaceTry $ workspaceRemovePackage ideP) ideR
             otherwise     -> return ()
     menuShellAppend theMenu item1
     menuShellAppend theMenu item2
@@ -179,10 +184,9 @@ workspaceSelect :: IDERef
                 -> TreePath
                 -> TreeViewColumn
                 -> IO ()
-workspaceSelect ideR workspacePane [n] _ = do
-    (_,ideP) <- listStoreGetValue (workspaceStore workspacePane) n
-    reflectIDE (workspaceTry $ workspaceActivatePackage ideP) ideR
-workspaceSelect _ _ _ _ = liftIO $ sysMessage Normal (__ "Workspace >> workspaceSelect: invalid path")
+workspaceSelect ideR workspacePane path _ = do
+    (_,ideP,mbExe) <- treeStoreGetValue (workspaceStore workspacePane) path
+    reflectIDE (workspaceTry $ workspaceActivatePackage ideP mbExe) ideR
 
 updateWorkspace :: Bool -> Bool -> IDEAction
 updateWorkspace showPane updateFileCache = do
@@ -194,7 +198,7 @@ updateWorkspace showPane updateFileCache = do
             case mbMod of
                 Nothing -> return ()
                 Just (p :: IDEWorkspace)  -> do
-                    liftIO $ listStoreClear (workspaceStore p)
+                    liftIO $ treeStoreClear (workspaceStore p)
                     when showPane $ displayPane p False
         Just ws -> do
             when updateFileCache $ modifyIDE_ (\ide -> ide{bufferProjCache = Map.empty})
@@ -202,11 +206,16 @@ updateWorkspace showPane updateFileCache = do
             case mbMod of
                 Nothing -> return ()
                 Just (p :: IDEWorkspace)  -> do
-                    liftIO $ listStoreClear (workspaceStore p)
-                    let objs = map (\ ideP -> (Just (ipdCabalFile ideP) == wsActivePackFile ws, ideP))
-                                        (wsPackages ws)
-                    let sorted = sortBy (\ (_,f) (_,s) -> compare (ipdPackageId f) (ipdPackageId s)) objs
-                    liftIO $ mapM_ (listStoreAppend (workspaceStore p)) sorted
+                    liftIO $ treeStoreClear (workspaceStore p)
+                    let sorted = sortBy (\ f s -> compare (ipdPackageId f) (ipdPackageId s)) $ wsPackages ws
+                        forest = map (\ ideP ->
+                            Node (Just (ipdCabalFile ideP) == wsActivePackFile ws, ideP, Nothing)
+                                        (map (\ test -> Node (
+                                            Just (ipdCabalFile ideP) == wsActivePackFile ws &&
+                                            Just test == wsActiveExe ws, ideP, Just test) []) $
+                                                ipdExes ideP ++ ipdTests ideP))
+                                        sorted
+                    liftIO $ treeStoreInsertForest (workspaceStore p) [] 0 forest
                     when showPane $ displayPane p False
     refreshFiles
     workspaceTry refreshHLint

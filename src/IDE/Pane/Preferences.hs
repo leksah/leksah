@@ -644,6 +644,14 @@ prefsDescription configDir packages = NFDPP [
             boolEditor
             (\i -> return ())
 
+        , mkFieldPP
+            (paraName <<<- ParaName "Use cabal-dev" $ emptyParams)
+            (PP.text . show)
+            boolParser
+            useCabalDev
+            (\b a -> a{useCabalDev = b})
+            boolEditor
+            (\i -> return ())
     ]),
     ((__ "Debug"), VFDPP emptyParams [
            mkFieldPP
@@ -761,6 +769,7 @@ defaultPrefs = Prefs {
     ,   completeRestricted  =   False
     ,   saveAllBeforeBuild  =   True
     ,   jumpToWarnings      =   True
+    ,   useCabalDev         =   False
     ,   backgroundBuild     =   True
     ,   runUnitTests        =   False
     ,   makeMode            =   True

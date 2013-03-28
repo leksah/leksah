@@ -47,7 +47,7 @@ import IDE.Pane.SourceBuffer
 import Control.Applicative ((<$>))
 import System.FilePath ((</>), takeFileName, dropFileName)
 import Distribution.Package (PackageIdentifier(..))
-import System.Directory (doesDirectoryExist, getDirectoryContents)
+import System.Directory (doesDirectoryExist, getDirectoryContents, getPermissions, readable)
 import IDE.Core.CTypes
        (Location(..), packageIdentifierToString)
 import Graphics.UI.Frame.Panes
@@ -185,7 +185,8 @@ refreshDir store path dir = do
     mbIter <- treeModelGetIter store path
     when (isJust mbIter) $ do
         exists <- doesDirectoryExist dir
-        contents <- if exists
+        perm <- getPermissions dir
+        contents <- if exists && readable perm
             then filter ((/= '.').head) <$>
                 getDirectoryContents dir >>= mapM (\f -> do
                     let full = dir </> f

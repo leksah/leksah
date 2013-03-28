@@ -1,5 +1,5 @@
 name: leksah
-version: 0.13.1.2
+version: 0.13.2.0
 cabal-version: >=1.10
 build-type: Simple
 license: GPL
@@ -155,7 +155,7 @@ library
                        MissingH >=1.1.1.0 && <1.3,
                        vcsgui >=0.0.1 && < 0.1, vcswrapper >=0.0.1 && < 0.1,
                        QuickCheck >=2.4.2 && <2.6, haskell-src-exts >=1.13.5 && <1.14,
-                       hlint >=1.8.39 && <1.9
+                       hlint >=1.8.39 && <1.9, pretty-show >=1.5 && <1.6
 
     exposed-modules:
         IDE.Leksah IDE.Completion IDE.ImportTool
@@ -182,6 +182,7 @@ library
         IDE.Command.VCS.Types
         IDE.Command.Print
         IDE.Pane.WebKit.Documentation
+        IDE.Pane.WebKit.Output
 
     if (impl(ghc > 7))
         other-modules:
@@ -225,6 +226,8 @@ Executable leksah
     if flag(gtk3)
         cpp-options: -DGTK3
 
+    if flag(webkit)
+        cpp-options: -DWEBKITGTK
 
     if impl(ghc < 7.0)
         hs-source-dirs: src, main
@@ -246,9 +249,9 @@ Executable leksah
         hs-source-dirs: main
         if os(linux) && flag(loc)
             cpp-options: -DLOCALIZATION
-            build-depends: leksah == 0.13.1.2, base >= 4.0.0.0 && <=4.7, hgettext, setlocale
+            build-depends: leksah == 0.13.2.0, base >= 4.0.0.0 && <=4.7, hgettext, setlocale
         else
-            build-depends: leksah ==0.13.1.2, base >=4.0.0.0 && <= 4.7
+            build-depends: leksah ==0.13.2.0, base >=4.0.0.0 && <= 4.7
 
 
     default-language: Haskell98
@@ -259,7 +262,7 @@ Executable leksah
     ghc-options:  -fwarn-missing-fields -fwarn-incomplete-patterns -ferror-spans
 
  executable bewleksah
-    build-depends: leksah ==0.13.1.2, base >=4.0.0.0 && <=4.7,
+    build-depends: leksah ==0.13.2.0, base >=4.0.0.0 && <=4.7,
                    webkit -any, webkit-javascriptcore -any, jsc -any,
                    gtk >=0.10 && <0.13, ghcjs-dom -any
 
@@ -276,7 +279,7 @@ test-suite tests
     hs-source-dirs: tests
     main-is:    Tests.hs
     build-depends: base >= 4.0.0.0 && <4.7, Cabal >=1.6.0.1 && <1.17, QuickCheck >=2.4.2 && <2.6,
-                   leksah ==0.13.1.2
+                   leksah ==0.13.2.0
 
 
 
