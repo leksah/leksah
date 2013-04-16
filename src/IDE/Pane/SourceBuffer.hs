@@ -138,6 +138,7 @@ import Control.Monad.Trans.Reader (ask, runReaderT)
 import Control.Monad.IO.Class (MonadIO(..))
 import Control.Monad (foldM, forM, filterM, unless, when)
 import Control.Exception as E (catch, SomeException)
+import IDE.Utils.GUIUtils
 
 import qualified IDE.Command.Print as Print
 
@@ -235,7 +236,7 @@ selectSourceBuf fp = do
                     nbuf <- newTextBuffer pp (takeFileName fpc) (Just fpc)
                     return nbuf
                 else do
-                    ideMessage Normal ("File path not found " ++ fpc)
+                    ideMessage Normal ((__ "File path not found ") ++ fpc)
                     return Nothing
 
 goToDefinition :: Descr -> IDEAction
@@ -393,7 +394,7 @@ newTextBuffer panePath bn mbfn = do
             (ind,rbn) <- figureOutPaneName bn 0
             buildThisPane panePath nb (builder' bs mbfn ind bn rbn ct prefs)
         else do
-            ideMessage Normal ("File does not exist " ++ (fromJust mbfn))
+            ideMessage Normal ((__ "File does not exist ") ++ (fromJust mbfn))
             return Nothing
 
 data CharacterCategory = IdentifierCharacter | SpaceCharacter | SyntaxCharacter
@@ -693,7 +694,7 @@ checkModTime buf = do
                                         load <- readIDE (autoLoad . prefs)
                                         if load
                                             then do
-                                                ideMessage Normal $ "Auto Loading " ++ fn
+                                                ideMessage Normal $ (__ "Auto Loading ") ++ fn
                                                 revert buf
                                                 return (False, True)
                                             else do
@@ -703,10 +704,10 @@ checkModTime buf = do
                                                             (Just window) []
                                                             MessageQuestion
                                                             ButtonsNone
-                                                            ("File \"" ++ name ++ "\" has changed on disk.")
-                                                    dialogAddButton md "_Load From Disk" (ResponseUser 1)
-                                                    dialogAddButton md "_Always Load From Disk" (ResponseUser 2)
-                                                    dialogAddButton md "_Don't Load" (ResponseUser 3)
+                                                            ((__"File \"") ++ name ++ (__ "\" has changed on disk."))
+                                                    dialogAddButton md (__ "_Load From Disk") (ResponseUser 1)
+                                                    dialogAddButton md (__ "_Always Load From Disk") (ResponseUser 2)
+                                                    dialogAddButton md (__ "_Don't Load") (ResponseUser 3)
                                                     dialogSetDefaultResponse md (ResponseUser 1)
                                                     set md [ windowWindowPosition := WinPosCenterOnParent ]
                                                     resp <- dialogRun md
@@ -822,7 +823,7 @@ fileSaveBuffer query nb ebuf ideBuf i = do
     let mbfn = fileName ideBuf
     mbpage <- liftIO $ notebookGetNthPage nb i
     case mbpage of
-        Nothing     -> throwIDE "fileSave: Page not found"
+        Nothing     -> throwIDE (__ "fileSave: Page not found")
         Just page   ->
             if isJust mbfn && query == False
                 then do (modifiedOnDiskNotLoaded, modifiedOnDisk) <- checkModTime ideBuf -- The user is given option to reload
@@ -836,7 +837,7 @@ fileSaveBuffer query nb ebuf ideBuf i = do
                             else return modifiedOnDisk
                 else reifyIDE $ \ideR   ->  do
                     dialog <- fileChooserDialogNew
-                                    (Just $ "Save File")
+                                    (Just $ (__ "Save File"))
                                     (Just window)
                                 FileChooserActionSave
                                 [("gtk-cancel"     --buttons to display
@@ -862,8 +863,8 @@ fileSaveBuffer query nb ebuf ideBuf i = do
                                 then do md <- messageDialogNew (Just window) []
                                                 MessageQuestion
                                                 ButtonsCancel
-                                                "File already exist."
-                                        dialogAddButton md "_Overwrite" ResponseYes
+                                                (__ "File already exist.")
+                                        dialogAddButton md (__ "_Overwrite") ResponseYes
                                         dialogSetDefaultResponse md ResponseCancel
                                         set md [ windowWindowPosition := WinPosCenterOnParent ]
                                         resp <- dialogRun md
@@ -934,7 +935,7 @@ fileNew :: IDEAction
 fileNew = do
     prefs   <- readIDE prefs
     pp      <- getBestPathForId  "*Buffer"
-    newTextBuffer pp "Unnamed" Nothing
+    newTextBuffer pp (__ "Unnamed") Nothing
     return ()
 
 fileClose :: IDEM Bool
@@ -950,11 +951,11 @@ fileClose' nb ebuf currentBuffer i = do
                 md <- messageDialogNew (Just window) []
                                             MessageQuestion
                                             ButtonsCancel
-                                            ("Save changes to document: "
+                                            ((__ "Save changes to document: ")
                                                 ++ paneName currentBuffer
                                                 ++ "?")
-                dialogAddButton md "_Save" ResponseYes
-                dialogAddButton md "_Don't Save" ResponseNo
+                dialogAddButton md (__ "_Save") ResponseYes
+                dialogAddButton md (__ "_Don't Save") ResponseNo
                 set md [ windowWindowPosition := WinPosCenterOnParent ]
                 resp <- dialogRun md
                 widgetDestroy md
@@ -999,7 +1000,7 @@ fileCloseAllButPackage = do
             nb          <-  getNotebook pane
             mbI         <-  liftIO $notebookPageNum nb (scrolledWindow buf)
             case mbI of
-                Nothing ->  throwIDE "notebook page not found: unexpected"
+                Nothing ->  throwIDE (__ "notebook page not found: unexpected")
                 Just i  ->  do
                     ebuf <- getBuffer (sourceView buf)
                     let dir = dropFileName $ ipdCabalFile activePack
@@ -1020,7 +1021,7 @@ fileCloseAllButWorkspace = do
             nb          <-  getNotebook pane
             mbI         <-  liftIO $notebookPageNum nb (scrolledWindow buf)
             case mbI of
-                Nothing ->  throwIDE "notebook page not found: unexpected"
+                Nothing ->  throwIDE (__ "notebook page not found: unexpected")
                 Just i  ->  do
                     ebuf <- getBuffer (sourceView buf)
                     when (isJust (fileName buf)) $ do
@@ -1039,7 +1040,7 @@ fileOpen = do
     mbBuf <- maybeActiveBuf
     mbFileName <- liftIO $ do
         dialog <- fileChooserDialogNew
-                        (Just $ "Open File")
+                        (Just $ (__ "Open File"))
                         (Just window)
                     FileChooserActionOpen
                     [("gtk-cancel"
@@ -1084,9 +1085,9 @@ fileOpenThis fp =  do
                         (Just window) []
                         MessageQuestion
                         ButtonsNone
-                        "Buffer already open."
-                dialogAddButton md "Make _Active" (ResponseUser 1)
-                dialogAddButton md "_Open Second" (ResponseUser 2)
+                        (__ "Buffer already open.")
+                dialogAddButton md (__ "Make _Active") (ResponseUser 1)
+                dialogAddButton md (__ "_Open Second") (ResponseUser 2)
                 dialogSetDefaultResponse md (ResponseUser 1)
                 set md [ windowWindowPosition := WinPosCenterOnParent ]
                 resp <- dialogRun md

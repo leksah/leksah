@@ -55,7 +55,7 @@ import Graphics.UI.Editor.Parameters
         paraName)
 import Graphics.UI.Editor.Simple (boolEditor,staticListEditor,stringEditor)
 import qualified System.IO.UTF8 as UTF8  (writeFile)
-import IDE.Utils.GUIUtils (stockIdFromType)
+import IDE.Utils.GUIUtils (stockIdFromType, __)
 import IDE.Metainfo.Provider
        (getSystemInfo, getWorkspaceInfo, getPackageInfo)
 import System.Log.Logger (infoM)
@@ -67,6 +67,7 @@ import Control.Monad.Trans.Class (MonadTrans(..))
 import Control.Monad.Trans.Reader (ask)
 import IDE.Utils.GUIUtils (treeViewContextMenu)
 import System.Glib.Properties (newAttrFromMaybeStringProperty)
+import Text.Printf (printf)
 
 -- | A modules pane description
 --
@@ -116,7 +117,7 @@ data SelectionState = SelectionState {
 
 instance Pane IDEModules IDEM
     where
-    primPaneName _  =   "Modules"
+    primPaneName _  =   (__ "Modules")
     getAddedIndex _ =   0
     getTopWidget    =   castToWidget . outer
     paneId b        =   "*Modules"
@@ -172,7 +173,7 @@ instance RecoverablePane IDEModules ModulesState IDEM where
 
             renderer    <- cellRendererTextNew
             col         <- treeViewColumnNew
-            treeViewColumnSetTitle col "Module"
+            treeViewColumnSetTitle col (__ "Module")
             treeViewColumnSetSizing col TreeViewColumnAutosize
             treeViewColumnSetResizable col True
             treeViewColumnSetReorderable col True
@@ -192,7 +193,7 @@ instance RecoverablePane IDEModules ModulesState IDEM where
 
             renderer2   <- cellRendererTextNew
             col2        <- treeViewColumnNew
-            treeViewColumnSetTitle col2 "Package"
+            treeViewColumnSetTitle col2 (__ "Package")
             treeViewColumnSetSizing col2 TreeViewColumnAutosize
             treeViewColumnSetResizable col2 True
             treeViewColumnSetReorderable col2 True
@@ -217,7 +218,7 @@ instance RecoverablePane IDEModules ModulesState IDEM where
             renderer31    <- cellRendererPixbufNew
             renderer3   <- cellRendererTextNew
             col         <- treeViewColumnNew
-            treeViewColumnSetTitle col "Interface"
+            treeViewColumnSetTitle col (__ "Interface")
             --treeViewColumnSetSizing col TreeViewColumnAutosize
             treeViewAppendColumn descrView col
             cellLayoutPackStart col renderer30 False
@@ -253,12 +254,12 @@ instance RecoverablePane IDEModules ModulesState IDEM where
             (Rectangle _ _ x y) <- liftIO $ widgetGetAllocation nb
             panedSetPosition pane' (max 200 (x `quot` 2))
             box             <-  hBoxNew True 2
-            rb1             <-  radioButtonNewWithLabel "Package"
-            rb2             <-  radioButtonNewWithLabelFromWidget rb1 "Workspace"
-            rb3             <-  radioButtonNewWithLabelFromWidget rb1 "System"
+            rb1             <-  radioButtonNewWithLabel (__ "Package")
+            rb2             <-  radioButtonNewWithLabelFromWidget rb1 (__ "Workspace")
+            rb3             <-  radioButtonNewWithLabelFromWidget rb1 (__ "System")
             toggleButtonSetActive rb3 True
-            cb2             <-  checkButtonNewWithLabel "Imports"
-            cb              <-  checkButtonNewWithLabel "Blacklist"
+            cb2             <-  checkButtonNewWithLabel (__ "Imports")
+            cb              <-  checkButtonNewWithLabel (__ "Blacklist")
 
             boxPackStart box rb1 PackGrow 2
             boxPackStart box rb2 PackGrow 2
@@ -364,7 +365,7 @@ selectIdentifier'  moduleName symbol =
                 mbFacetTree <-  treeStoreGetTreeSave (descrStore mods) []
                 selF        <-  treeViewGetSelection (descrView mods)
                 case  findPathFor symbol mbFacetTree of
-                    Nothing     ->  sysMessage Normal "no path found"
+                    Nothing     ->  sysMessage Normal (__ "no path found")
                     Just path   ->  do
                         treeViewExpandToPath (descrView mods) path
                         treeSelectionSelectPath selF path
@@ -736,13 +737,13 @@ insertNodesInTree li@(hd@(str1,Nothing):tl) (Node p@(str2,mbPair) forest) =
         (found,rest)   -> Node p  (insertNodesInTree tl (head found) : tail found ++ rest)
 
 insertNodesInTree [] n = n
-insertNodesInTree _ _      =   error "Modules>>insertNodesInTree: Should not happen2"
+insertNodesInTree _ _      =   error (__ "Modules>>insertNodesInTree: Should not happen2")
 
 
 makeNodes :: [(String,Maybe (ModuleDescr,PackageDescr))] -> ModTree
 makeNodes [(str,mbPair)]    =   Node (str,mbPair) []
 makeNodes ((str,mbPair):tl) =   Node (str,mbPair) [makeNodes tl]
-makeNodes _                 =   throwIDE "Impossible in makeNodes"
+makeNodes _                 =   throwIDE (__ "Impossible in makeNodes")
 
 instance Ord a => Ord (Tree a) where
     compare (Node l1 _) (Node l2 _) =  compare l1 l2
@@ -756,7 +757,7 @@ modulesContextMenu :: IDERef
                    -> Menu
                    -> IO ()
 modulesContextMenu ideR store treeView theMenu = do
-    item1           <-  menuItemNewWithLabel "Edit source"
+    item1           <-  menuItemNewWithLabel (__ "Edit source")
     item1 `on` menuItemActivate $ do
         sel         <-  getSelectionTree treeView store
         case sel of
@@ -767,18 +768,18 @@ modulesContextMenu ideR store treeView theMenu = do
                                         return ()
             otherwise       ->  return ()
     sep1 <- separatorMenuItemNew
-    item2           <-  menuItemNewWithLabel "Expand here"
+    item2           <-  menuItemNewWithLabel (__ "Expand here")
     item2 `on` menuItemActivate $ expandHere treeView
-    item3           <-  menuItemNewWithLabel "Collapse here"
+    item3           <-  menuItemNewWithLabel (__ "Collapse here")
     item3 `on` menuItemActivate $ collapseHere treeView
-    item4           <-  menuItemNewWithLabel "Expand all"
+    item4           <-  menuItemNewWithLabel (__ "Expand all")
     item4 `on` menuItemActivate $ treeViewExpandAll treeView
-    item5           <-  menuItemNewWithLabel "Collapse all"
+    item5           <-  menuItemNewWithLabel (__ "Collapse all")
     item5 `on` menuItemActivate $ treeViewCollapseAll treeView
     sep2 <- separatorMenuItemNew
-    item6           <-  menuItemNewWithLabel "Add module"
+    item6           <-  menuItemNewWithLabel (__ "Add module")
     item6 `on` menuItemActivate $ reflectIDE (packageTry $ addModule' treeView store) ideR
-    item7           <-  menuItemNewWithLabel "Delete module"
+    item7           <-  menuItemNewWithLabel (__ "Delete module")
     item7 `on` menuItemActivate $ do
         sel         <-  getSelectionTree treeView store
         case sel of
@@ -832,18 +833,18 @@ descrViewContextMenu :: IDERef
                    -> Menu
                    -> IO ()
 descrViewContextMenu ideR store descrView theMenu = do
-    item1           <-  menuItemNewWithLabel "Go to definition"
+    item1           <-  menuItemNewWithLabel (__ "Go to definition")
     item1 `on` menuItemActivate $ do
         sel         <-  getSelectionDescr descrView store
         case sel of
             Just descr      ->  reflectIDE (goToDefinition descr) ideR
-            otherwise       ->  sysMessage Normal "Modules>> descrViewPopup: no selection"
-    item2           <-  menuItemNewWithLabel "Insert in buffer"
+            otherwise       ->  sysMessage Normal (__ "Modules>> descrViewPopup: no selection")
+    item2           <-  menuItemNewWithLabel (__ "Insert in buffer")
     item2 `on` menuItemActivate $ do
         sel         <-  getSelectionDescr descrView store
         case sel of
             Just descr      ->  reflectIDE (insertInBuffer descr) ideR
-            otherwise       ->  sysMessage Normal "Modules>> descrViewPopup: no selection"
+            otherwise       ->  sysMessage Normal (__ "Modules>> descrViewPopup: no selection")
     mapM_ (menuShellAppend theMenu) [item1, item2]
 
 descrViewSelect :: IDERef
@@ -955,7 +956,7 @@ selectNames (mbModuleName, mbIdName) = do
                                 mbDescrTree   <-  treeStoreGetTreeSave (descrStore mods) []
                                 selF          <-  treeViewGetSelection (descrView mods)
                                 case  findPathFor symbol mbDescrTree of
-                                    Nothing     ->  sysMessage Normal "no path found"
+                                    Nothing     ->  sysMessage Normal (__ "no path found")
                                     Just path   ->  do
                                         treeSelectionSelectPath selF path
                                         col     <-  treeViewGetColumn (descrView mods) 0
@@ -964,7 +965,7 @@ selectNames (mbModuleName, mbIdName) = do
 
 reloadKeepSelection :: Bool -> IDEAction
 reloadKeepSelection isInitial = do
-    liftIO $ infoM "leksah" (">>>Info Changed!!! " ++ show isInitial)
+    liftIO $ infoM "leksah" ((__ ">>>Info Changed!!! ") ++ show isInitial)
     mbMod <- getPane
     case mbMod of
         Nothing -> return ()
@@ -1027,11 +1028,11 @@ delModule treeview store = do
         (treePath:_) -> liftIO $ mapM (treeStoreGetValue store)
                                     $ map (\n -> take n treePath)  [1 .. length treePath]
 
-    lift $ ideMessage Normal ("categories: " ++ (show categories))
+    lift $ ideMessage Normal (printf (__ "categories: %s") (show categories))
 
     let modPacDescr = snd(last categories)
     case modPacDescr of
-        Nothing     ->   lift $ ideMessage Normal "This should never be shown!"
+        Nothing     ->   lift $ ideMessage Normal (__ "This should never be shown!")
         Just(md,_)  -> do
                          let modName = modu.mdModuleId $ md
                          lift $ ideMessage Normal ("modName: " ++ (show modName))
@@ -1041,8 +1042,8 @@ respDelModDialog :: IDEM (Bool)
 respDelModDialog = do
     window <- getMainWindow
     resp <- liftIO $ do
-        dia <- messageDialogNew (Just window) [] MessageQuestion ButtonsCancel "Are you sure?"
-        dialogAddButton dia "_Delete Module" (ResponseUser 1)
+        dia <- messageDialogNew (Just window) [] MessageQuestion ButtonsCancel (__ "Are you sure?")
+        dialogAddButton dia (__ "_Delete Module") (ResponseUser 1)
         dialogSetDefaultResponse dia ResponseCancel
         set dia [ windowWindowPosition := WinPosCenterOnParent ]
         resp <- dialogRun dia
@@ -1063,7 +1064,7 @@ addModule' treeView store = do
 addModule categories = do
     mbPD <- lift $ getPackageDescriptionAndPath
     case mbPD of
-        Nothing             -> lift $ ideMessage Normal "No package description"
+        Nothing             -> lift $ ideMessage Normal (__ "No package description")
         Just (pd,cabalPath) -> let srcPaths = nub $ concatMap hsSourceDirs $ allBuildInfo pd
                                    rootPath = dropFileName cabalPath
                                    modPath  = foldr (\a b -> a ++ "." ++ b) ""
@@ -1075,14 +1076,14 @@ addModule categories = do
                 Nothing                -> return ()
                 Just (AddModule modPath srcPath isExposed) ->
                     case simpleParse modPath of
-                        Nothing         -> lift $ ideMessage Normal ("Not a valid module name :" ++ modPath)
+                        Nothing         -> lift $ ideMessage Normal (printf (__ "Not a valid module name : %s") modPath)
                         Just moduleName -> do
                             let  target = srcPath </> toFilePath moduleName ++ ".hs"
                             liftIO $ createDirectoryIfMissing True (dropFileName target)
                             alreadyExists <- liftIO $ doesFileExist target
                             if alreadyExists
                                 then do
-                                    lift $ ideMessage Normal ("File already exists! Importing existing file " ++ takeBaseName target ++ ".hs")
+                                    lift $ ideMessage Normal (printf (__ "File already exists! Importing existing file %s.hs") (takeBaseName target))
                                     addModuleToPackageDescr moduleName isExposed
                                     packageConfig
                                 else do
@@ -1101,7 +1102,7 @@ addModuleDialog :: Window -> String -> [String] -> IO (Maybe AddModule)
 addModuleDialog parent modString sourceRoots = do
     dia                        <-   dialogNew
     windowSetTransientFor dia parent
-    windowSetTitle dia "Construct new module"
+    windowSetTitle dia (__ "Construct new module")
     upper                      <-   dialogGetContentArea dia
     lower                      <-   dialogGetActionArea dia
     (widget,inj,ext,_)         <-   buildEditor (moduleFields sourceRoots)
@@ -1129,13 +1130,13 @@ addModuleDialog parent modString sourceRoots = do
 moduleFields :: [FilePath] -> FieldDescription AddModule
 moduleFields list = VFD emptyParams [
         mkField
-            (paraName <<<- ParaName ("New module ")
+            (paraName <<<- ParaName ((__ "New module "))
                     $ emptyParams)
             moduleName
             (\ a b -> b{moduleName = a})
             (stringEditor (const True) True),
         mkField
-            (paraName <<<- ParaName ("Root of the source path")
+            (paraName <<<- ParaName ((__ "Root of the source path"))
                 $ paraMultiSel <<<- ParaMultiSel False
                     $ paraMinSize <<<- ParaMinSize (-1, 120)
                         $ emptyParams)
@@ -1143,7 +1144,7 @@ moduleFields list = VFD emptyParams [
             (\ a b -> b{sourceRoot = a})
             (staticListEditor list id),
         mkField
-            (paraName <<<- ParaName ("Is this an exposed library module")
+            (paraName <<<- ParaName ((__ "Is this an exposed library module"))
                     $ emptyParams)
             isExposed
             (\ a b -> b{isExposed = a})

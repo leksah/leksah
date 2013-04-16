@@ -42,6 +42,8 @@ module IDE.Utils.GUIUtils (
 ,   mapControlCommand
 ,   treeViewContextMenu
 
+,   __ 
+
 ) where
 
 import Graphics.UI.Gtk
@@ -61,6 +63,13 @@ import Graphics.UI.Gtk.Gdk.Enums (Modifier(..))
 #endif
 import Control.Monad.IO.Class (liftIO)
 import Control.Exception as E
+
+#ifdef LOCALIZATION 
+
+import Text.I18N.GetText
+import System.IO.Unsafe (unsafePerformIO)
+
+#endif
 
 chooseDir :: Window -> String -> Maybe FilePath -> IO (Maybe FilePath)
 chooseDir window prompt mbFolder = do
@@ -284,3 +293,18 @@ treeViewContextMenu treeView populateMenu = do
         menuPopup theMenu buttonEventDetails
         widgetShowAll theMenu
         return True
+
+#ifdef LOCALIZATION
+
+-- | For i18n using hgettext
+__ :: String -> String
+__ = unsafePerformIO . getText
+
+
+#else
+
+-- | For i18n support. Not included in this build.
+__ :: String -> String
+__ = id
+
+#endif

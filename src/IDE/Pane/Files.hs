@@ -58,6 +58,7 @@ import Graphics.UI.Gtk.General.Enums
        (PolicyType(..), SelectionMode(..), TreeViewColumnSizing(..))
 import System.Glib.Attributes (AttrOp(..))
 import Control.Monad.IO.Class (MonadIO(..))
+import IDE.Utils.GUIUtils (__)
 
 data FileRecord =
     FileRecord FilePath
@@ -85,7 +86,7 @@ data FilesState      =   FilesState
 
 instance Pane IDEFiles IDEM
     where
-    primPaneName _  =   "Files"
+    primPaneName _  =   (__ "Files")
     getAddedIndex _ =   0
     getTopWidget    =   castToWidget . scrolledView
     paneId b        =   "*Files"
@@ -104,7 +105,7 @@ instance RecoverablePane IDEFiles FilesState IDEM where
         renderer1    <- cellRendererTextNew
         renderer10   <- cellRendererPixbufNew
         col1         <- treeViewColumnNew
-        treeViewColumnSetTitle col1 "File"
+        treeViewColumnSetTitle col1 (__ "File")
         treeViewColumnSetSizing col1 TreeViewColumnAutosize
         treeViewColumnSetResizable col1 True
         treeViewColumnSetReorderable col1 True
@@ -132,7 +133,7 @@ instance RecoverablePane IDEFiles FilesState IDEM where
                 case record of
                     DirRecord f       -> liftIO $ refreshDir fileStore path f
                     PackageRecord _ f -> liftIO $ refreshDir fileStore path f
-                    _                 -> ideMessage Normal "Unexpected Expansion in Files Pane") ideR
+                    _                 -> ideMessage Normal (__ "Unexpected Expansion in Files Pane")) ideR
         treeView `onRowActivated` \ path col -> do
             record <- treeStoreGetValue fileStore path
             reflectIDE (do
@@ -140,7 +141,7 @@ instance RecoverablePane IDEFiles FilesState IDEM where
                     FileRecord f      -> (goToSourceDefinition f $ Just $ Location 1 0 1 0) >> return ()
                     DirRecord f       -> liftIO $ refreshDir fileStore path f
                     PackageRecord _ f -> liftIO $ refreshDir fileStore path f
-                    _                 -> ideMessage Normal "Unexpected Activation in Files Pane") ideR
+                    _                 -> ideMessage Normal (__ "Unexpected Activation in Files Pane")) ideR
         sel `onSelectionChanged` do
             paths <- treeSelectionGetSelectedRows sel
             forM_ paths $ \ path -> do
@@ -150,7 +151,7 @@ instance RecoverablePane IDEFiles FilesState IDEM where
                         FileRecord _      -> return ()
                         DirRecord f       -> liftIO $ refreshDir fileStore path f
                         PackageRecord _ f -> liftIO $ refreshDir fileStore path f
-                        _                 -> ideMessage Normal "Unexpected Selection in Files Pane") ideR
+                        _                 -> ideMessage Normal (__ "Unexpected Selection in Files Pane")) ideR
 
         return (Just files,[ConnectC cid1])
 

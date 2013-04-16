@@ -19,8 +19,27 @@ module Main (main) where
 import IDE.Leksah (leksah)
 import IDE.YiConfig (defaultYiConfig)
 
+#ifdef LOCALIZATION
+
+import Text.I18N.GetText
+import System.Locale.SetLocale
+
+-- | Support for localization
+initLocale = do
+    setLocale LC_ALL (Just "")
+    bindTextDomain __MESSAGE_CATALOG_DOMAIN__ (Just __MESSAGE_CATALOG_DIR__)
+    textDomain (Just __MESSAGE_CATALOG_DOMAIN__)
+   
+#else
+
+-- | no localization support
+initLocale = return ()
+
+#endif
+
 main :: IO ()
 main = do
     putStrLn "Using default Yi configuration"
+    initLocale
     leksah defaultYiConfig
 
