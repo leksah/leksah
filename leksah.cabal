@@ -74,7 +74,12 @@ data-files: LICENSE
             pics/ide_rebuild_meta.png
             pics/ide_empty.png
 data-dir: ""
-extra-source-files: Setup.lhs
+extra-source-files: Setup.lhs SetupLocale.lhs po/*.pot po/*.po
+
+x-gettext-po-files:     po/*.po
+x-gettext-domain-name:  leksah
+
+
 extra-tmp-files:
 
 flag yi
@@ -96,6 +101,11 @@ flag gtk3
 flag webkit
     Description: Use WebKitGTK+
     Default: True
+
+flag loc
+    Description: Experimental localization support
+    Default: False
+
 
 library
     if os(windows)
@@ -124,6 +134,10 @@ library
     if flag(webkit)
         cpp-options: -DWEBKITGTK
         build-depends: webkit -any, webkit-javascriptcore -any, jsc -any
+
+    if flag(loc) && os(linux)
+        cpp-options: -DLOCALIZATION
+        build-depends: hgettext, setlocale
 
     hs-source-dirs: src
     default-language: Haskell98
@@ -233,7 +247,12 @@ Executable leksah
                        hlint >=1.8.39 && <1.9
     else
         hs-source-dirs: main
-        build-depends: leksah ==0.13.2.0, base >=4.0.0.0 && <= 4.7
+        if os(linux) && flag(loc)
+            cpp-options: -DLOCALIZATION
+            build-depends: leksah == 0.13.2.0, base >= 4.0.0.0 && <=4.7, hgettext, setlocale
+        else
+            build-depends: leksah ==0.13.2.0, base >=4.0.0.0 && <= 4.7
+
 
     default-language: Haskell98
     main-is: Main.hs

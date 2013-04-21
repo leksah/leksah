@@ -86,6 +86,8 @@ import Data.Maybe
 import Distribution.Package
 import Data.List.Utils
 import Data.Char
+import IDE.Utils.GUIUtils (__)
+import Text.Printf (printf)
 
 -------------------------------------------------------------------------------
 --
@@ -241,7 +243,7 @@ data LogState               =   LogState
 
 instance Pane IDELog IDEM
     where
-    primPaneName  _ =   "Log"
+    primPaneName  _ =   (__ "Log")
     getAddedIndex _ =   0
     getTopWidget    =   castToWidget . logMainContainer
     paneId b        =   "*Log"
@@ -311,9 +313,9 @@ builder' pp nb windows = do
         hBox <- hBoxNew False 0
         boxPackStart mainContainer hBox PackNatural 0
 
-        terminateBtn <- buttonNewWithLabel "Terminate process"
+        terminateBtn <- buttonNewWithLabel (__ "Terminate process")
         boxPackStart hBox terminateBtn PackNatural 0
-        removeBtn <- buttonNewWithLabel "Remove launch"
+        removeBtn <- buttonNewWithLabel (__ "Remove launch")
         boxPackStart hBox removeBtn PackNatural 0
         comboBox <- comboBoxNewText
         boxPackEnd hBox comboBox PackGrow 0
@@ -433,7 +435,7 @@ clicked _ _ = return ()
 populatePopupMenu :: IDELog -> IDERef -> Menu -> IO ()
 populatePopupMenu log ideR menu = do
     items <- containerGetChildren menu
-    item0           <-  menuItemNewWithLabel "Resolve Errors"
+    item0           <-  menuItemNewWithLabel (__ "Resolve Errors")
     item0 `on` menuItemActivate $ do
         reflectIDE resolveErrors ideR
     menuShellAppend menu item0
@@ -461,7 +463,7 @@ getLog :: IDEM IDELog
 getLog = do
     mbPane <- getOrBuildPane (Right "*Log")
     case mbPane of
-        Nothing ->  throwIDE "Can't init log"
+        Nothing ->  throwIDE (__ "Can't init log")
         Just p -> return p
 
 showLog :: IDEAction
@@ -571,9 +573,9 @@ readErr log hndl = do
 
 runExternal :: FilePath -> [String] -> IO (Handle, Handle, Handle, ProcessHandle)
 runExternal path args = do
-    putStrLn $ "Run external called with args " ++ show args
+    putStrLn $ printf (__ "Run external called with args %s") ( show args )
     hndls@(inp, out, err, _) <- runInteractiveProcess path args Nothing Nothing
-    sysMessage Normal $ "Starting external tool: " ++ path ++ " with args " ++ (show args)
+    sysMessage Normal $ printf (__ "Starting external tool: %s with args %s") path (show args)
     hSetBuffering out NoBuffering
     hSetBuffering err NoBuffering
     hSetBuffering inp NoBuffering

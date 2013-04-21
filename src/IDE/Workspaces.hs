@@ -41,7 +41,7 @@ import Graphics.UI.Editor.Parameters
 import Control.Monad (forM_, unless, when, liftM)
 import Data.Maybe (isJust,fromJust )
 import IDE.Utils.GUIUtils
-    (chooseFile, chooseSaveFile)
+    (chooseFile, chooseSaveFile, __)
 import System.FilePath
        (takeFileName, (</>), isAbsolute, dropFileName, makeRelative,
         dropExtension, takeBaseName, addExtension, takeExtension,
@@ -92,6 +92,7 @@ import IDE.Command.VCS.Common.Workspaces as VCSWS
 import qualified VCSWrapper.Common as VCS
 import qualified VCSGui.Common as VCSGUI
 import qualified IDE.Workspaces.Writer as Writer
+import Text.Printf (printf)
 
 
 -- | Constructs a new workspace and makes it the current workspace
@@ -99,7 +100,7 @@ workspaceNew :: IDEAction
 workspaceNew = do
     window <- getMainWindow
     mbFile <- liftIO $ do
-        chooseSaveFile window "New file for workspace" Nothing
+        chooseSaveFile window (__ "New file for workspace") Nothing
     case mbFile of
         Nothing -> return ()
         Just filePath -> workspaceNewHere filePath
@@ -131,7 +132,7 @@ workspaceTryQuiet f = do
     maybeWorkspace <- readIDE workspace
     case maybeWorkspace of
         Just ws -> runWorkspace f ws
-        Nothing -> ideMessage Normal "No workspace open"
+        Nothing -> ideMessage Normal (__ "No workspace open")
 
 workspaceTry :: WorkspaceAction -> IDEAction
 workspaceTry f = do
@@ -144,12 +145,12 @@ workspaceTry f = do
             resp <- liftIO $ do
                 defaultExists <- doesFileExist defaultWorkspace
                 md <- messageDialogNew (Just mainWindow) [DialogModal] MessageQuestion ButtonsCancel (
-                        "You need to have a workspace open for this to work. "
-                     ++ "Choose ~/leksah.lkshw to "
-                     ++ (if defaultExists then "open workspace " else "create a workspace ")
+                        (__ "You need to have a workspace open for this to work. ")
+                     ++ (__ "Choose ~/leksah.lkshw to ")
+                     ++ (if defaultExists then (__ "open workspace ") else (__ "create a workspace "))
                      ++ defaultWorkspace)
-                dialogAddButton md "_New Workspace" (ResponseUser 1)
-                dialogAddButton md "_Open Workspace" (ResponseUser 2)
+                dialogAddButton md (__ "_New Workspace") (ResponseUser 1)
+                dialogAddButton md (__ "_Open Workspace") (ResponseUser 2)
                 dialogAddButton md "~/leksah.lkshw" (ResponseUser 3)
                 dialogSetDefaultResponse md (ResponseUser 3)
                 set md [ windowWindowPosition := WinPosCenterOnParent ]
@@ -172,7 +173,7 @@ workspaceTry f = do
                 _  -> return ()
 
 chooseWorkspaceFile :: Window -> IO (Maybe FilePath)
-chooseWorkspaceFile window = chooseFile window "Select leksah workspace file (.lkshw)" Nothing
+chooseWorkspaceFile window = chooseFile window (__ "Select leksah workspace file (.lkshw)") Nothing
 
 workspaceOpenThis :: Bool -> Maybe FilePath -> IDEAction
 workspaceOpenThis askForSession mbFilePath =
@@ -188,9 +189,9 @@ workspaceOpenThis askForSession mbFilePath =
                         window <- getMainWindow
                         liftIO $ do
                             md  <- messageDialogNew (Just window) [] MessageQuestion ButtonsNone
-                                    $ "There are session settings stored with this workspace."
-                            dialogAddButton md "_Ignore Session" ResponseCancel
-                            dialogAddButton md "_Load Session" ResponseYes
+                                    $ (__ "There are session settings stored with this workspace.")
+                            dialogAddButton md (__ "_Ignore Session") ResponseCancel
+                            dialogAddButton md (__ "_Load Session") ResponseYes
                             dialogSetDefaultResponse md ResponseYes
                             set md [ windowWindowPosition := WinPosCenterOnParent ]
                             rid <- dialogRun md
@@ -208,7 +209,7 @@ workspaceOpenThis askForSession mbFilePath =
                         Writer.setWorkspace (Just workspace {wsFile = filePath})
                         VCSWS.onWorkspaceOpen workspace)
                            (\ (e :: Exc.SomeException) -> reflectIDE
-                                (ideMessage Normal ("Can't load workspace file " ++ filePath ++ "\n" ++ show e)) ideR)
+                                (ideMessage Normal (printf (__ "Can't load workspace file %s\n%s") filePath (show e))) ideR)
 
 
 -- | Closes a workspace
@@ -259,7 +260,7 @@ constructAndOpenMainModule (Just idePackage) =
                             liftIO $ UTF8.writeFile (path </> target) template
                             fileOpenThis (path </> target)
                     _ -> return ()
-            Nothing     -> ideMessage Normal "No package description"
+            Nothing     -> ideMessage Normal (__ "No package description")
 
 workspaceAddPackage :: WorkspaceAction
 workspaceAddPackage = do
@@ -284,7 +285,7 @@ workspaceAddPackage' fp = do
             b1 <- liftIO $ doesFileExist (dir </> "Setup.hs")
             b2 <- liftIO $ doesFileExist (dir </> "Setup.lhs")
             unless (b1 || b2) $ liftIO $ do
-                sysMessage Normal "Setup.(l)hs does not exist. Writing Standard"
+                sysMessage Normal (__ "Setup.(l)hs does not exist. Writing Standard")
                 writeFile (dir </> "Setup.lhs") standardSetup
             unless (elem cfp (map ipdCabalFile (wsPackages ws))) $ lift $
                 Writer.writeWorkspace $ ws {wsPackages =  pack : wsPackages ws,
@@ -298,7 +299,7 @@ packageTryQuiet f = do
     maybePackage <- readIDE activePack
     case maybePackage of
         Just p  -> runPackage f p
-        Nothing -> ideMessage Normal "No active package"
+        Nothing -> ideMessage Normal (__ "No active package")
 
 packageTry :: PackageAction -> IDEAction
 packageTry f = workspaceTry $ do
@@ -309,9 +310,9 @@ packageTry f = workspaceTry $ do
                 window <- lift $ getMainWindow
                 resp <- liftIO $ do
                     md <- messageDialogNew (Just window) [] MessageQuestion ButtonsCancel
-                            "You need to have an active package for this to work."
-                    dialogAddButton md "_New Package" (ResponseUser 1)
-                    dialogAddButton md "_Add Package" (ResponseUser 2)
+                            (__ "You need to have an active package for this to work.")
+                    dialogAddButton md (__ "_New Package") (ResponseUser 1)
+                    dialogAddButton md (__ "_Add Package") (ResponseUser 2)
                     dialogSetDefaultResponse md (ResponseUser 2)
                     set md [ windowWindowPosition := WinPosCenterOnParent ]
                     resp <- dialogRun md
@@ -473,7 +474,7 @@ makePackage = do
     mbWs   <- readIDE workspace
     let settings = (defaultMakeSettings prefs'){msBackgroundBuild = False}
     case mbWs of
-        Nothing -> sysMessage Normal "No workspace for build."
+        Nothing -> sysMessage Normal (__ "No workspace for build.")
         Just ws -> do
             debug <- isJust <$> readIDE debugState
             steps <- buildSteps $ msRunUnitTests settings

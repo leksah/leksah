@@ -87,7 +87,7 @@ data SearchState    =   SearchState {
 
 instance Pane IDESearch IDEM
     where
-    primPaneName _  =   "Search"
+    primPaneName _  =   (__ "Search")
     getAddedIndex _ =   0
     getTopWidget    =   castToWidget . topBox
     paneId b        =   "*Search"
@@ -115,11 +115,11 @@ buildSearchPane =
     in reifyIDE $ \ ideR -> do
 
         scopebox        <-  hBoxNew True 2
-        rb1             <-  radioButtonNewWithLabel "Package"
-        rb2             <-  radioButtonNewWithLabelFromWidget rb1 "Workspace"
-        rb3             <-  radioButtonNewWithLabelFromWidget rb1 "System"
+        rb1             <-  radioButtonNewWithLabel (__ "Package")
+        rb2             <-  radioButtonNewWithLabelFromWidget rb1 (__ "Workspace")
+        rb3             <-  radioButtonNewWithLabelFromWidget rb1 (__ "System")
         toggleButtonSetActive rb3 True
-        cb2             <-  checkButtonNewWithLabel "Imports"
+        cb2             <-  checkButtonNewWithLabel (__ "Imports")
 
         boxPackStart scopebox rb1 PackGrow 2
         boxPackStart scopebox rb2 PackGrow 2
@@ -127,15 +127,15 @@ buildSearchPane =
         boxPackEnd scopebox cb2 PackNatural 2
 
         modebox         <-  hBoxNew True 2
-        mb1             <-  radioButtonNewWithLabel "Exact"
-        mb2             <-  radioButtonNewWithLabelFromWidget mb1 "Prefix"
-        mb3             <-  radioButtonNewWithLabelFromWidget mb1 "Regex"
+        mb1             <-  radioButtonNewWithLabel (__ "Exact")
+        mb2             <-  radioButtonNewWithLabelFromWidget mb1 (__ "Prefix")
+        mb3             <-  radioButtonNewWithLabelFromWidget mb1 (__ "Regex")
         toggleButtonSetActive
             (case mode of
                 Exact _  -> mb1
                 Prefix _ -> mb2
                 Regex _  -> mb3) True
-        mb4             <-  checkButtonNewWithLabel "Case sensitive"
+        mb4             <-  checkButtonNewWithLabel (__ "Case sensitive")
         toggleButtonSetActive mb4 (caseSense mode)
         boxPackStart modebox mb1 PackNatural 2
         boxPackStart modebox mb2 PackNatural 2
@@ -149,7 +149,7 @@ buildSearchPane =
         renderer3    <- cellRendererTextNew
         renderer30   <- cellRendererPixbufNew
         col3         <- treeViewColumnNew
-        treeViewColumnSetTitle col3 "Symbol"
+        treeViewColumnSetTitle col3 (__ "Symbol")
         treeViewColumnSetSizing col3 TreeViewColumnAutosize
         treeViewColumnSetResizable col3 True
         treeViewColumnSetReorderable col3 True
@@ -166,7 +166,7 @@ buildSearchPane =
         renderer1    <- cellRendererTextNew
         renderer10   <- cellRendererPixbufNew
         col1         <- treeViewColumnNew
-        treeViewColumnSetTitle col1 "Module"
+        treeViewColumnSetTitle col1 (__ "Module")
         treeViewColumnSetSizing col1 TreeViewColumnAutosize
         treeViewColumnSetResizable col1 True
         treeViewColumnSetReorderable col1 True
@@ -187,7 +187,7 @@ buildSearchPane =
 
         renderer2   <- cellRendererTextNew
         col2        <- treeViewColumnNew
-        treeViewColumnSetTitle col2 "Package"
+        treeViewColumnSetTitle col2 (__ "Package")
         treeViewColumnSetSizing col2 TreeViewColumnAutosize
         treeViewColumnSetResizable col2 True
         treeViewColumnSetReorderable col2 True
@@ -200,7 +200,7 @@ buildSearchPane =
 
         renderer3   <- cellRendererTextNew
         col3        <- treeViewColumnNew
-        treeViewColumnSetTitle col3 "Type/Kind"
+        treeViewColumnSetTitle col3 (__ "Type/Kind")
         treeViewColumnSetSizing col3 TreeViewColumnAutosize
         treeViewColumnSetResizable col3 True
         treeViewColumnSetReorderable col3 True
@@ -332,7 +332,7 @@ searchContextMenu :: IDERef
                   -> Menu
                   -> IO ()
 searchContextMenu ideR store descrView theMenu = do
-    item1           <-  menuItemNewWithLabel "Go to definition"
+    item1           <-  menuItemNewWithLabel (__ "Go to definition")
     item1 `on` menuItemActivate $ liftIO $ goToDef ideR store descrView
     menuShellAppend theMenu item1
 
@@ -341,14 +341,14 @@ goToDef ideR store descrView = do
     case sel of
         Just descr      ->  reflectIDE (triggerEvent ideR (GotoDefinition descr)) ideR >> return ()
                                 -- (goToDefinition descr) ideR
-        otherwise       ->  sysMessage Normal "Search >> listViewPopup: no selection"
+        otherwise       ->  sysMessage Normal (__ "Search >> listViewPopup: no selection")
 
 selectDescr ideR store [i] col = do
     descr <- listStoreGetValue store i
     liftIO $ reflectIDE (triggerEvent ideR (SelectIdent descr)) ideR
     return ()
 
-selectDescr _ _ _ _ = liftIO $ sysMessage Normal "Search >> selectDescr: invalid path"
+selectDescr _ _ _ _ = liftIO $ sysMessage Normal (__ "Search >> selectDescr: invalid path")
 
 getSelectionDescr ::  TreeView
     ->  ListStore Descr

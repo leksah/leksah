@@ -34,7 +34,7 @@ import IDE.Core.State
 import IDE.SymbolNavigation
 import IDE.Pane.SourceBuffer
 import IDE.TextEditor (EditorIter(..))
-import IDE.Utils.GUIUtils (openBrowser,controlIsPressed)
+import IDE.Utils.GUIUtils (openBrowser,controlIsPressed, __)
 import Graphics.UI.Gtk.SourceView
 import Control.Monad.IO.Class (MonadIO(..))
 
@@ -52,7 +52,7 @@ data InfoState              =   InfoState (Maybe Descr)
 
 instance Pane IDEInfo IDEM
     where
-    primPaneName _  =   "Info"
+    primPaneName _  =   (__ "Info")
     getAddedIndex _ =   0
     getTopWidget    =   castToWidget . sw
     paneId b        =   "*Info"
@@ -75,7 +75,7 @@ instance RecoverablePane IDEInfo InfoState IDEM where
                     fontDescriptionFromString str
                 Nothing -> do
                     f <- fontDescriptionNew
-                    fontDescriptionSetFamily f "Monospace"
+                    fontDescriptionSetFamily f (__ "Monospace")
                     return f
 
             descriptionView <- sourceViewNew
@@ -211,11 +211,11 @@ openDocu = do
 populatePopupMenu :: IDERef -> IORef (Maybe Descr) -> Menu -> IO ()
 populatePopupMenu ideR currentDescr' menu = do
     items <- containerGetChildren menu
-    item0 <- menuItemNewWithLabel "Goto Definition"
+    item0 <- menuItemNewWithLabel (__ "Goto Definition")
     item0 `on` menuItemActivate $ reflectIDE gotoSource ideR
-    item1 <- menuItemNewWithLabel "Select Module"
+    item1 <- menuItemNewWithLabel (__ "Select Module")
     item1 `on` menuItemActivate $ reflectIDE gotoModule' ideR
-    item2 <- menuItemNewWithLabel "Open Documentation"
+    item2 <- menuItemNewWithLabel (__ "Open Documentation")
     item2 `on` menuItemActivate $ reflectIDE openDocu ideR
     menuShellAppend menu item0
     menuShellAppend menu item1

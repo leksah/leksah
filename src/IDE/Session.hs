@@ -191,73 +191,73 @@ defaultSession = SessionState {
 sessionDescr :: [FieldDescriptionS SessionState]
 sessionDescr = [
         mkFieldS
-            (paraName <<<- ParaName "Version of session file format" $ emptyParams)
+            (paraName <<<- ParaName ( "Version of session file format") $ emptyParams)
             (PP.text . show)
             intParser
             sessionVersion
             (\ b a -> a{sessionVersion = b})
     ,   mkFieldS
-            (paraName <<<- ParaName "Time of storage" $ emptyParams)
+            (paraName <<<- ParaName ( "Time of storage") $ emptyParams)
             (PP.text . show)
             stringParser
             saveTime
             (\ b a -> a{saveTime = b})
     ,   mkFieldS
-            (paraName <<<- ParaName "Layout" $ emptyParams)
+            (paraName <<<- ParaName ( "Layout") $ emptyParams)
             (PP.text . show)
             readParser
             layoutS
             (\ b a -> a{layoutS = b})
     ,   mkFieldS
-            (paraName <<<- ParaName "Population" $ emptyParams)
+            (paraName <<<- ParaName ( "Population") $ emptyParams)
             (PP.text . show)
             readParser
             population
             (\ b a -> a{population = b})
     ,   mkFieldS
-            (paraName <<<- ParaName "Window size" $ emptyParams)
+            (paraName <<<- ParaName ( "Window size") $ emptyParams)
             (PP.text . show)
             (pairParser intParser)
             windowSize
             (\(c,d) a -> a{windowSize = (c,d)})
     ,   mkFieldS
-            (paraName <<<- ParaName "Completion size" $ emptyParams)
+            (paraName <<<- ParaName ( "Completion size") $ emptyParams)
             (PP.text . show)
             (pairParser intParser)
             completionSize
             (\(c,d) a -> a{completionSize = (c,d)})
     ,   mkFieldS
-            (paraName <<<- ParaName "Workspace" $ emptyParams)
+            (paraName <<<- ParaName ( "Workspace") $ emptyParams)
             (PP.text . show)
             readParser
             workspacePath
             (\fp a -> a{workspacePath = fp})
     ,   mkFieldS
-            (paraName <<<- ParaName "Active pane" $ emptyParams)
+            (paraName <<<- ParaName ( "Active pane") $ emptyParams)
             (PP.text . show)
             readParser
             activePaneN
             (\fp a -> a{activePaneN = fp})
     ,   mkFieldS
-            (paraName <<<- ParaName "Toolbar visible" $ emptyParams)
+            (paraName <<<- ParaName ( "Toolbar visible") $ emptyParams)
             (PP.text . show)
             readParser
             toolbarVisibleS
             (\fp a -> a{toolbarVisibleS = fp})
     ,   mkFieldS
-            (paraName <<<- ParaName "FindbarState" $ emptyParams)
+            (paraName <<<- ParaName ( "FindbarState") $ emptyParams)
             (PP.text . show)
             readParser
             findbarState
             (\fp a -> a{findbarState = fp})
     ,   mkFieldS
-            (paraName <<<- ParaName "Recently opened files" $ emptyParams)
+            (paraName <<<- ParaName ( "Recently opened files") $ emptyParams)
             (PP.text . show)
             readParser
             recentOpenedFiles
             (\fp a -> a{recentOpenedFiles = fp})
     ,   mkFieldS
-            (paraName <<<- ParaName "Recently opened workspaces" $ emptyParams)
+            (paraName <<<- ParaName ( "Recently opened workspaces") $ emptyParams)
             (PP.text . show)
             readParser
             recentOpenedWorksp
@@ -281,9 +281,9 @@ saveSessionAs :: FilePath -> Maybe FilePath ->  IDEAction
 saveSessionAs sessionPath mbSecondPath = do
     forget          <- getForgetSession
     if forget
-        then ideMessage Normal "Forget this session"
+        then ideMessage Normal (__ "Forget this session")
         else do
-            sysMessage Normal "Now saving session"
+            sysMessage Normal (__ "Now saving session")
             bufs <- allBuffers
             case filter (\b -> bufferName b == "_Eval.hs") bufs of
                 [buf] -> do
@@ -330,7 +330,7 @@ saveSessionAsPrompt = do
     window <- getMainWindow
     response <- liftIO $ do
         configFolder <- getConfigDir
-        chooseSaveFile window "Save Session as" (Just configFolder)
+        chooseSaveFile window (__ "Save Session as") (Just configFolder)
     case response of
         Just fn -> saveSessionAs (if takeExtension fn == leksahSessionFileExtension
                                     then fn
@@ -344,7 +344,7 @@ loadSessionPrompt = do
     response <- liftIO $ do
         configFolder <- getConfigDir
         dialog <- fileChooserDialogNew
-                  (Just $ "Select session file")
+                  (Just $ (__ "Select session file"))
                   (Just window')
     	      FileChooserActionOpen
     	      [("gtk-cancel"
@@ -503,7 +503,7 @@ applyLayout layoutS = do
     old <- getLayout
     case old of
         TerminalP {} ->   applyLayout' layoutS []
-        otherwise    ->   throwIDE "apply Layout can only be allied to empty Layout"
+        otherwise    ->   throwIDE (__ "apply Layout can only be allied to empty Layout")
     where
     applyLayout' (TerminalP groups mbTabPos _ mbDetachedId mbDetachedSize) pp = do
         forM_ (Map.keys groups) $ \group -> viewNest' pp group

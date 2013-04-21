@@ -34,7 +34,7 @@ import IDE.Debug
 import IDE.LogRef (showSourceSpan)
 import Data.List (elemIndex)
 import Control.Monad.IO.Class (MonadIO(..))
-import IDE.Utils.GUIUtils (treeViewContextMenu)
+import IDE.Utils.GUIUtils (treeViewContextMenu, __)
 
 
 -- | A breakpoints pane description
@@ -51,7 +51,7 @@ data BreakpointsState  =   BreakpointsState {
 
 instance Pane IDEBreakpoints IDEM
     where
-    primPaneName _  =   "Breakpoints"
+    primPaneName _  =   (__ "Breakpoints")
     getAddedIndex _ =   0
     getTopWidget    =   castToWidget . scrolledView
     paneId b        =   "*Breakpoints"
@@ -69,7 +69,7 @@ instance RecoverablePane IDEBreakpoints BreakpointsState IDEM where
 
         rendererA    <- cellRendererTextNew
         colA         <- treeViewColumnNew
-        treeViewColumnSetTitle colA "Location"
+        treeViewColumnSetTitle colA (__ "Location")
         treeViewColumnSetSizing colA TreeViewColumnAutosize
         treeViewColumnSetResizable colA True
         treeViewColumnSetReorderable colA True
@@ -80,7 +80,7 @@ instance RecoverablePane IDEBreakpoints BreakpointsState IDEM where
 
         rendererB    <- cellRendererTextNew
         colB         <- treeViewColumnNew
-        treeViewColumnSetTitle colB "Breakpoints"
+        treeViewColumnSetTitle colB (__ "Breakpoints")
         treeViewColumnSetSizing colB TreeViewColumnAutosize
         treeViewColumnSetResizable colB True
         treeViewColumnSetReorderable colB True
@@ -144,16 +144,16 @@ breakpointsContextMenu :: IDERef
                        -> Menu
                        -> IO ()
 breakpointsContextMenu ideR store treeView theMenu = do
-    item1           <-  menuItemNewWithLabel "Remove breakpoint"
+    item1           <-  menuItemNewWithLabel (__ "Remove breakpoint")
     item1 `on` menuItemActivate $ do
         sel         <-  getSelectedBreakpoint treeView store
         case sel of
             Just ref  -> reflectIDE (deleteBreakpoint ref) ideR
-            otherwise -> sysMessage Normal "Debugger>> breakpointViewPopup: no selection2"
+            otherwise -> sysMessage Normal (__ "Debugger>> breakpointViewPopup: no selection2")
     sep1 <- separatorMenuItemNew
-    item2           <-  menuItemNewWithLabel "Remove all breakpoints"
+    item2           <-  menuItemNewWithLabel (__ "Remove all breakpoints")
     item2 `on` menuItemActivate $ reflectIDE debugDeleteAllBreakpoints ideR
-    item3           <-  menuItemNewWithLabel "Update"
+    item3           <-  menuItemNewWithLabel (__ "Update")
     item3 `on` menuItemActivate $ reflectIDE debugShowBreakpoints ideR
     mapM_ (menuShellAppend theMenu) [castToMenuItem item1, castToMenuItem sep1,
         castToMenuItem item2, castToMenuItem item3]
@@ -173,7 +173,7 @@ deleteBreakpoint :: LogRef -> IDEAction
 deleteBreakpoint logRef =
     case logRefType logRef of
         BreakpointRef -> debugDeleteBreakpoint ((words (refDescription logRef)) !! 1) logRef
-        _   -> sysMessage Normal "Debugger>>deleteBreakpoint: Not a breakpoint"
+        _   -> sysMessage Normal (__ "Debugger>>deleteBreakpoint: Not a breakpoint")
 
 
 

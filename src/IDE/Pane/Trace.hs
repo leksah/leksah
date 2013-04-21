@@ -50,7 +50,8 @@ import IDE.Workspaces (packageTry)
 import qualified Data.Enumerator.List as EL (consume)
 import Control.Monad.Trans.Class (MonadTrans(..))
 import Control.Monad.IO.Class (MonadIO(..))
-import IDE.Utils.GUIUtils (treeViewContextMenu)
+import IDE.Utils.GUIUtils (treeViewContextMenu, __)
+import Text.Printf (printf)
 
 -- | A debugger pane description
 --
@@ -72,7 +73,7 @@ data TraceHist = TraceHist {
 
 instance Pane IDETrace IDEM
     where
-    primPaneName _  =   "Trace"
+    primPaneName _  =   (__ "Trace")
     getAddedIndex _ =   0
     getTopWidget    =   castToWidget . scrolledView
     paneId b        =   "*Trace"
@@ -107,7 +108,7 @@ builder' pp nb windows = reifyIDE $ \ ideR -> do
 
     renderer1    <- cellRendererTextNew
     col1         <- treeViewColumnNew
-    treeViewColumnSetTitle col1 "Index"
+    treeViewColumnSetTitle col1 (__ "Index")
     treeViewColumnSetSizing col1 TreeViewColumnAutosize
     treeViewColumnSetResizable col1 True
     treeViewColumnSetReorderable col1 True
@@ -118,7 +119,7 @@ builder' pp nb windows = reifyIDE $ \ ideR -> do
 
     renderer2    <- cellRendererTextNew
     col2         <- treeViewColumnNew
-    treeViewColumnSetTitle col2 "Function"
+    treeViewColumnSetTitle col2 (__ "Function")
     treeViewColumnSetSizing col2 TreeViewColumnAutosize
     treeViewColumnSetResizable col2 True
     treeViewColumnSetReorderable col2 True
@@ -129,7 +130,7 @@ builder' pp nb windows = reifyIDE $ \ ideR -> do
 
     renderer3    <- cellRendererTextNew
     col3         <- treeViewColumnNew
-    treeViewColumnSetTitle col3 "Position"
+    treeViewColumnSetTitle col3 (__ "Position")
     treeViewColumnSetSizing col3 TreeViewColumnAutosize
     treeViewColumnSetResizable col3 True
     treeViewColumnSetReorderable col3 True
@@ -170,7 +171,7 @@ fillTraceList = packageTry $ do
                 let parseRes = parse tracesParser "" (selectString to)
                 r <- case parseRes of
                         Left err     -> do
-                            debugM "leksah" ("trace parse error " ++ show err ++ "\ninput: " ++ selectString to)
+                            debugM "leksah" ((printf (__ "trace parse error %s\ninput: %s") (show err) (selectString to)))
                             return []
                         Right traces -> return traces
                 treeStoreClear (tracepoints tracePane)
@@ -210,12 +211,12 @@ traceContextMenu :: IDERef
                   -> Menu
                   -> IO ()
 traceContextMenu ideR store treeView theMenu = do
-    item1           <-  menuItemNewWithLabel "Back"
+    item1           <-  menuItemNewWithLabel (__ "Back")
     item1 `on` menuItemActivate $ reflectIDE debugBack ideR
     sep1 <- separatorMenuItemNew
-    item2           <-  menuItemNewWithLabel "Forward"
+    item2           <-  menuItemNewWithLabel (__ "Forward")
     item2 `on` menuItemActivate $ reflectIDE debugForward ideR
-    item3           <-  menuItemNewWithLabel "Update"
+    item3           <-  menuItemNewWithLabel (__ "Update")
     item3 `on` menuItemActivate $ reflectIDE fillTraceList ideR
     mapM_ (menuShellAppend theMenu) [castToMenuItem item1, castToMenuItem sep1,
         castToMenuItem item2, castToMenuItem item3]
@@ -223,24 +224,24 @@ traceContextMenu ideR store treeView theMenu = do
 tracesParser :: CharParser () [TraceHist]
 tracesParser = try (do
         whiteSpace
-        symbol "Empty history."
+        symbol (__ "Empty history.")
         skipMany anyChar
         eof
         return [])
     <|> do
         traces <- many (try traceParser)
         whiteSpace
-        symbol "<end of history>"
+        symbol (__ "<end of history>")
         eof
         return traces
     <|> do
         whiteSpace
-        symbol "Not stopped at a breakpoint"
+        symbol (__ "Not stopped at a breakpoint")
         skipMany anyChar
         eof
         return []
     <?>
-        "traces parser"
+        (__ "traces parser")
 
 traceParser :: CharParser () TraceHist
 traceParser = do
@@ -254,7 +255,7 @@ traceParser = do
     span     <- srcSpanParser
     symbol ")"
     return (TraceHist False index function span)
-    <?> "trace parser"
+    <?> (__ "trace parser")
 
 lexer  = P.makeTokenParser emptyDef
 colon  = P.colon lexer

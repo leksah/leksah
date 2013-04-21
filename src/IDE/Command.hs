@@ -108,6 +108,7 @@ import IDE.Pane.Files (refreshFiles, getFiles)
 import Control.Monad.IO.Class (MonadIO(..))
 import Control.Monad (unless, when)
 import Control.Monad.Trans.Reader (ask)
+import Text.Printf (printf)
 
 --
 -- | The Actions known to the system (they can be activated by keystrokes or menus)
@@ -115,331 +116,332 @@ import Control.Monad.Trans.Reader (ask)
 mkActions :: [ActionDescr IDERef]
 mkActions =
     [
-    AD "vcs" "Version Con_trol" Nothing Nothing (return ()) [] False
-    ,AD "FilePrint" "_Print File" Nothing Nothing (filePrint) [] False
-    ,AD "File" "_File" Nothing Nothing (return ()) [] False
-    ,AD "FileNew" "_New Module..." Nothing (Just "gtk-new")
+    AD "vcs" (__ "Version Con_trol") Nothing Nothing (return ()) [] False
+    ,AD "FilePrint" (__ "_Print File") Nothing Nothing (filePrint) [] False
+    ,AD "File" (__ "_File") Nothing Nothing (return ()) [] False
+    ,AD "FileNew" (__ "_New Module...") Nothing (Just "gtk-new")
         (packageTry $ addModule []) [] False
-    ,AD "FileNewTextFile" "_New Text File" Nothing Nothing
+    ,AD "FileNewTextFile" (__ "_New Text File") Nothing Nothing
         fileNew [] False
-    ,AD "FileOpen" "_Open..." Nothing (Just "gtk-open")
+    ,AD "FileOpen" (__ "_Open...") Nothing (Just "gtk-open")
         fileOpen [] False
-    ,AD "RecentFiles" "Open _Recent" Nothing Nothing (return ()) [] False
-    ,AD "FileRevert" "_Revert" Nothing Nothing
+    ,AD "RecentFiles" (__ "Open _Recent") Nothing Nothing (return ()) [] False
+    ,AD "FileRevert" (__ "_Revert") Nothing Nothing
         fileRevert [] False
-    ,AD "FileSave" "_Save" Nothing (Just "gtk-save")
+    ,AD "FileSave" (__ "_Save") Nothing (Just "gtk-save")
         (do fileSave False; return ()) [] False
-    ,AD "FileSaveAs" "Save _As..." Nothing (Just "gtk-save-as")
+    ,AD "FileSaveAs" (__ "Save _As...") Nothing (Just "gtk-save-as")
         (do fileSave True; return ()) [] False
-    ,AD "FileSaveAll" "Save A_ll" Nothing Nothing
+    ,AD "FileSaveAll" (__ "Save A_ll") Nothing Nothing
         (do fileSaveAll (\ b -> return (bufferName b /= "_Eval.hs")); return ()) [] False
-    ,AD "FileClose" "_Close" Nothing (Just "gtk-close")
+    ,AD "FileClose" (__ "_Close") Nothing (Just "gtk-close")
         (do fileClose; return ()) [] False
-    ,AD "FileCloseAll" "Close All" Nothing Nothing
+    ,AD "FileCloseAll" (__ "Close All") Nothing Nothing
         (do fileCloseAll (\ b -> return (bufferName b /= "_Eval.hs")); return ()) [] False
-    ,AD "FileCloseAllButPackage" "Close All But Package" Nothing Nothing
+    ,AD "FileCloseAllButPackage" (__ "Close All But Package") Nothing Nothing
         (do fileCloseAllButPackage; return ()) [] False
-    ,AD "FileCloseAllButWorkspace" "Close All But Workspace" Nothing Nothing
+    ,AD "FileCloseAllButWorkspace" (__ "Close All But Workspace") Nothing Nothing
         (do fileCloseAllButWorkspace; return ()) [] False
-    ,AD "Quit" "_Quit" Nothing (Just "gtk-quit")
+    ,AD "Quit" (__ "_Quit") Nothing (Just "gtk-quit")
         quit [] False
-    ,AD "Edit" "_Edit" Nothing Nothing (return ()) [] False
-    ,AD "EditUndo" "_Undo" Nothing (Just "gtk-undo")
+
+    ,AD "Edit" (__ "_Edit") Nothing Nothing (return ()) [] False
+    ,AD "EditUndo" (__ "_Undo") Nothing (Just "gtk-undo")
         editUndo [] False
-    ,AD "EditRedo" "_Redo" Nothing (Just "gtk-redo")
+    ,AD "EditRedo" (__ "_Redo") Nothing (Just "gtk-redo")
         editRedo [] False
-    ,AD "EditCut" "Cu_t" Nothing (Just "gtk-cut")
+    ,AD "EditCut" (__ "Cu_t") Nothing (Just "gtk-cut")
         editCut [] {--Just "<control>X"--} False
-    ,AD "EditCopy" "_Copy"  Nothing  (Just "gtk-copy")
+    ,AD "EditCopy" (__ "_Copy")  Nothing  (Just "gtk-copy")
         editCopy [] {--Just "<control>C"--} False
-    ,AD "EditPaste" "_Paste" Nothing (Just "gtk-paste")
+    ,AD "EditPaste" (__ "_Paste") Nothing (Just "gtk-paste")
         editPaste [] {--Just "<control>V"--} False
-    ,AD "EditDelete" "_Delete" Nothing (Just "gtk-delete")
+    ,AD "EditDelete" (__ "_Delete") Nothing (Just "gtk-delete")
         editDelete [] False
-    ,AD "EditSelectAll" "Select_All" Nothing (Just "gtk-select-all")
+    ,AD "EditSelectAll" (__ "Select_All") Nothing (Just "gtk-select-all")
         editSelectAll [] False
-    ,AD "EditFind" "Find" Nothing (Just "gtk-find")
+    ,AD "EditFind" (__ "Find") Nothing (Just "gtk-find")
         (editFindInc Initial) [] False
-    ,AD "EditFindNext" "Find _Next" Nothing (Just "gtk-find-next")
+    ,AD "EditFindNext" (__ "Find _Next") Nothing (Just "gtk-find-next")
         (editFindInc Forward) [] False
-    ,AD "EditFindPrevious" "Find _Previous" Nothing (Just "gtk-find-previous")
+    ,AD "EditFindPrevious" (__ "Find _Previous") Nothing (Just "gtk-find-previous")
         (editFindInc Backward) [] False
-    ,AD "EditGotoLine" "_Goto Line" Nothing (Just "gtk-jump")
+    ,AD "EditGotoLine" (__ "_Goto Line") Nothing (Just "gtk-jump")
         editGotoLine [] False
 
-    ,AD "EditComment" "_Comment" Nothing Nothing
+    ,AD "EditComment" (__ "_Comment") Nothing Nothing
         editComment [] False
-    ,AD "EditUncomment" "_Uncomment" Nothing Nothing
+    ,AD "EditUncomment" (__ "_Uncomment") Nothing Nothing
         editUncomment [] False
-    ,AD "EditShiftRight" "Shift _Right" Nothing Nothing
+    ,AD "EditShiftRight" (__ "Shift _Right") Nothing Nothing
         editShiftRight [] False
-    ,AD "EditShiftLeft" "Shift _Left" Nothing Nothing
+    ,AD "EditShiftLeft" (__ "Shift _Left") Nothing Nothing
         editShiftLeft [] False
 
     --,AD "Align" "_Align" Nothing Nothing (return ()) [] False
-    ,AD "EditAlignEqual" "Align _=" Nothing Nothing
+    ,AD "EditAlignEqual" (__ "Align _=") Nothing Nothing
         (align '=') [] False
-    ,AD "EditAlignRightArrow" "Align -_>" Nothing Nothing
+    ,AD "EditAlignRightArrow" (__ "Align -_>") Nothing Nothing
         (align '>') [] False
-    ,AD "EditAlignLeftArrow" "Align _<-" Nothing Nothing
+    ,AD "EditAlignLeftArrow" (__ "Align _<-") Nothing Nothing
         (align '<') [] False
-    ,AD "EditAlignTypeSig" "Align _::" Nothing Nothing
+    ,AD "EditAlignTypeSig" (__ "Align _::") Nothing Nothing
         (align ':') [] False
 
-    ,AD "Workspace" "_Workspace" Nothing Nothing (return ()) [] False
-    ,AD "NewWorkspace" "_New..." Nothing Nothing
+    ,AD "Workspace" (__ "_Workspace") Nothing Nothing (return ()) [] False
+    ,AD "NewWorkspace" (__ "_New...") Nothing Nothing
         (workspaceNew >> showWorkspace) [] False
-    ,AD "OpenWorkspace" "_Open..." Nothing Nothing
+    ,AD "OpenWorkspace" (__ "_Open...") Nothing Nothing
         (workspaceOpen >> showWorkspace) [] False
-    ,AD "RecentWorkspaces" "Open _Recent" Nothing Nothing (return ()) [] False
-    ,AD "CloseWorkspace" "_Close" Nothing Nothing
+    ,AD "RecentWorkspaces" (__ "Open _Recent") Nothing Nothing (return ()) [] False
+    ,AD "CloseWorkspace" (__ "_Close") Nothing Nothing
         workspaceClose [] False
 
-    ,AD "CleanWorkspace" "Cl_ean" (Just "Cleans all packages") (Just "ide_clean")
+    ,AD "CleanWorkspace" (__ "Cl_ean") (Just (__ "Cleans all packages")) (Just "ide_clean")
         (workspaceTry workspaceClean) [] False
-    ,AD "MakeWorkspace" "_Make" (Just "Makes all of this workspace") (Just "ide_configure")
+    ,AD "MakeWorkspace" (__ "_Make") (Just (__ "Makes all of this workspace")) (Just "ide_configure")
         (workspaceTry workspaceMake) [] False
-    ,AD "NextError" "_Next Error" (Just "Go to the next error") (Just "ide_error_next")
+    ,AD "NextError" (__ "_Next Error") (Just (__ "Go to the next error")) (Just "ide_error_next")
         nextError [] False
-    ,AD "PreviousError" "_Previous Error" (Just "Go to the previous error") (Just "ide_error_prev")
+    ,AD "PreviousError" (__ "_Previous Error") (Just (__ "Go to the previous error")) (Just "ide_error_prev")
         previousError [] False
 
-    ,AD "Package" "_Package" Nothing Nothing (return ()) [] False
-    ,AD "NewPackage" "_New..." Nothing Nothing
+    ,AD "Package" (__ "_Package") Nothing Nothing (return ()) [] False
+    ,AD "NewPackage" (__ "_New...") Nothing Nothing
         (showWorkspace >> workspaceTry workspacePackageNew) [] False
-    ,AD "AddPackage" "_Add..." Nothing Nothing
+    ,AD "AddPackage" (__ "_Add...") Nothing Nothing
         (showWorkspace >> workspaceTry workspaceAddPackage) [] False
 --    ,AD "RecentPackages" "_Recent Packages" Nothing Nothing (return ()) [] False
-    ,AD "EditPackage" "_Edit" Nothing Nothing
+    ,AD "EditPackage" (__ "_Edit") Nothing Nothing
         (packageTry packageEdit) [] False
 --    ,AD "RemovePackage" "_Close Package" Nothing Nothing
 --        removePackage [] False
 
-    ,AD "PackageFlags" "Edit Flags" (Just "Edit the package flags") Nothing
+    ,AD "PackageFlags" (__ "Edit Flags") (Just (__ "Edit the package flags")) Nothing
         (getFlags Nothing >>= \ p -> displayPane p False) [] False
-    ,AD "CleanPackage" "Cl_ean" (Just "Cleans the package") (Just "ide_clean")
+    ,AD "CleanPackage" (__ "Cl_ean") (Just (__ "Cleans the package")) (Just "ide_clean")
         (packageTry packageClean) [] False
-    ,AD "ConfigPackage" "_Configure" (Just "Configures the package") (Just "ide_configure")
+    ,AD "ConfigPackage" (__ "_Configure") (Just (__ "Configures the package")) (Just "ide_configure")
         (packageTry packageConfig) [] False
-    ,AD "BuildPackage" "_Build" (Just "Builds the package") (Just "ide_make")
+    ,AD "BuildPackage" (__ "_Build") (Just (__ "Builds the package")) (Just "ide_make")
         (packageTry makePackage) [] False
-    ,AD "DocPackage" "_Build Documentation" (Just "Builds the documentation") Nothing
+    ,AD "DocPackage" (__ "_Build Documentation") (Just (__ "Builds the documentation")) Nothing
         (packageTry packageDoc) [] False
-    ,AD "CopyPackage" "_Copy" (Just "Copies the package") Nothing
+    ,AD "CopyPackage" (__ "_Copy") (Just (__ "Copies the package")) Nothing
         (packageTry packageCopy) [] False
-    ,AD "RunPackage" "_Run" (Just "Runs the package") (Just "ide_run")
+    ,AD "RunPackage" (__ "_Run") (Just (__ "Runs the package")) (Just "ide_run")
         (packageTry packageRun) [] False
-    ,AD "ResolveErrors" "Resol_ve Errors" (Just "Resolve 'Hidden package' and 'Not in scope' errors by adding the necessary dependancies or imports") Nothing
+    ,AD "ResolveErrors" (__ "Resol_ve Errors") (Just (__ "Resolve 'Hidden package' and 'Not in scope' errors by adding the necessary dependancies or imports")) Nothing
         resolveErrors [] False
 
-    ,AD "InstallDependenciesPackage" "_Install Dependencies" (Just "Install the package's dependencies from the hackage server") Nothing
+    ,AD "InstallDependenciesPackage" (__ "_Install Dependencies") (Just (__ "Install the package's dependencies from the hackage server")) Nothing
         (packageTry packageInstallDependencies) [] False
-    ,AD "RegisterPackage" "_Register" Nothing Nothing
+    ,AD "RegisterPackage" (__ "_Register") Nothing Nothing
         (packageTry packageRegister) [] False
-    ,AD "TestPackage" "Test" Nothing Nothing
+    ,AD "TestPackage" (__ "Test") Nothing Nothing
         (packageTry packageTest) [] False
-    ,AD "SdistPackage" "Source Dist" Nothing Nothing
+    ,AD "SdistPackage" (__ "Source Dist") Nothing Nothing
         (packageTry packageSdist) [] False
-    ,AD "OpenDocPackage" "_Open Doc" Nothing Nothing
+    ,AD "OpenDocPackage" (__ "_Open Doc") Nothing Nothing
         (packageTry packageOpenDoc) [] False
 
-    ,AD "Debug" "_Debug" Nothing Nothing (return ()) [] False
-    ,AD "StartDebugger" "_Start Debugger" (Just "Starts using the GHCi debugger for build and run") Nothing
+    ,AD "Debug" (__ "_Debug") Nothing Nothing (return ()) [] False
+    ,AD "StartDebugger" (__ "_Start Debugger") (Just (__ "Starts using the GHCi debugger for build and run")) Nothing
         (packageTry debugStart) [] False
-    ,AD "QuitDebugger" "_Quit Debugger" (Just "Quit the GHCi debugger if it is running") Nothing
+    ,AD "QuitDebugger" (__ "_Quit Debugger") (Just (__ "Quit the GHCi debugger if it is running")) Nothing
         debugQuit [] False
-    ,AD "ExecuteSelection" "_Execute Selection" (Just "Sends the selected text to the debugger") Nothing
+    ,AD "ExecuteSelection" (__ "_Execute Selection") (Just (__ "Sends the selected text to the debugger")) Nothing
         debugExecuteSelection [] False
 
-    ,AD "DebugSetBreakpoint" "Set Breakpoint" (Just "Set a breakpoint on the selected name or current line") Nothing
+    ,AD "DebugSetBreakpoint" (__ "Set Breakpoint") (Just (__ "Set a breakpoint on the selected name or current line")) Nothing
         debugSetBreakpoint [] False
-    ,AD "ShowNextBreakpoint" "Show Next Breakpoint" (Just "Show the next breakpoint") Nothing
+    ,AD "ShowNextBreakpoint" (__ "Show Next Breakpoint") (Just (__ "Show the next breakpoint")) Nothing
         nextBreakpoint [] False
-    ,AD "ShowPreviousBreakpoint" "Show Previous Breakpoint" (Just "Show the previous breakpoint") Nothing
+    ,AD "ShowPreviousBreakpoint" (__ "Show Previous Breakpoint") (Just (__ "Show the previous breakpoint")) Nothing
         previousBreakpoint [] False
-    ,AD "DebugDeleteAllBreakpoints" "Delete All Breakpoints" (Just "") Nothing
+    ,AD "DebugDeleteAllBreakpoints" (__ "Delete All Breakpoints") (Just "") Nothing
         debugDeleteAllBreakpoints [] False
 
-    ,AD "DebugContinue" "Continue" (Just "Resume after a breakpoint") (Just "ide_continue")
+    ,AD "DebugContinue" (__ "Continue") (Just (__ "Resume after a breakpoint")) (Just "ide_continue")
         debugContinue [] False
-    ,AD "DebugAbandon" "Abandon" (Just "At a breakpoint, abandon current computation") Nothing
+    ,AD "DebugAbandon" (__ "Abandon") (Just (__ "At a breakpoint, abandon current computation")) Nothing
         debugAbandon [] False
-    ,AD "DebugStop" "Stop" (Just "Interrupt the running operation.") Nothing
+    ,AD "DebugStop" (__ "Stop") (Just (__ "Interrupt the running operation.")) Nothing
         debugStop [] False
 
-    ,AD "DebugStep" "Step" (Just "Single-step after stopping at a breakpoint") (Just "ide_step")
+    ,AD "DebugStep" (__ "Step") (Just (__ "Single-step after stopping at a breakpoint")) (Just "ide_step")
         debugStep [] False
-    ,AD "DebugStepExpression" "Step Expression" (Just "Single-step into selected expression") Nothing
+    ,AD "DebugStepExpression" (__ "Step Expression") (Just (__ "Single-step into selected expression")) Nothing
         debugStepExpression [] False
-    ,AD "DebugStepLocal" "Step Local" (Just "Single-step within the current top-level binding") (Just "ide_local")
+    ,AD "DebugStepLocal" (__ "Step Local") (Just (__ "Single-step within the current top-level binding")) (Just "ide_local")
         debugStepLocal [] False
-    ,AD "DebugStepModule" "Step Module" (Just "Single-step restricted to the current module") (Just "ide_module")
+    ,AD "DebugStepModule" (__ "Step Module") (Just (__ "Single-step restricted to the current module")) (Just "ide_module")
         debugStepModule [] False
 
-    ,AD "DebugTrace" "Trace" (Just "Trace after stopping at a breakpoint") Nothing
+    ,AD "DebugTrace" (__ "Trace") (Just (__ "Trace after stopping at a breakpoint")) Nothing
         debugTrace [] False
-    ,AD "DebugTraceExpression" "Trace Expression" (Just "Evaluate the selected expression with tracing on") Nothing
+    ,AD "DebugTraceExpression" (__ "Trace Expression") (Just (__ "Evaluate the selected expression with tracing on")) Nothing
         debugTraceExpression [] False
-    ,AD "DebugHistory" "History" (Just "After 'Trace', show the execution history") Nothing
+    ,AD "DebugHistory" (__ "History") (Just (__ "After 'Trace', show the execution history")) Nothing
         debugHistory [] False
-    ,AD "DebugBack" "Back" (Just "Go back in the history (after 'Trace')") Nothing
+    ,AD "DebugBack" (__ "Back") (Just (__ "Go back in the history (after 'Trace')")) Nothing
         debugBack [] False
-    ,AD "DebugForward" "Forward" (Just "Go forward in the history (after 'Back')") Nothing
+    ,AD "DebugForward" (__ "Forward") (Just (__ "Go forward in the history (after 'Back')")) Nothing
         debugForward [] False
 
-    ,AD "DebugForce" "Force" (Just "Print the selected expression, forcing unevaluated parts") Nothing
+    ,AD "DebugForce" (__ "Force") (Just (__ "Print the selected expression, forcing unevaluated parts")) Nothing
         debugForce [] False
-    ,AD "DebugPrint" "Print" (Just "Prints a value without forcing its computation") Nothing
+    ,AD "DebugPrint" (__ "Print") (Just (__ "Prints a value without forcing its computation")) Nothing
         debugPrint [] False
-    ,AD "DebugSimplePrint" "SimplePrint" (Just "Simplifed version of Print") Nothing
+    ,AD "DebugSimplePrint" (__ "SimplePrint") (Just (__ "Simplifed version of Print")) Nothing
         debugSimplePrint [] False
 
-    ,AD "ShowBindings" "Show Bin_dings" (Just "Show the current bindings") Nothing
+    ,AD "ShowBindings" (__ "Show Bin_dings") (Just (__ "Show the current bindings")) Nothing
         debugShowBindings [] False
-    ,AD "ShowBreakpoints" "Show _Breakpoints" (Just "Show the active breakpoints") Nothing
+    ,AD "ShowBreakpoints" (__ "Show _Breakpoints") (Just (__ "Show the active breakpoints")) Nothing
         debugShowBreakpoints [] False
-    ,AD "ShowContext" "Show _Context" (Just "Show the breakpoint context") Nothing
+    ,AD "ShowContext" (__ "Show _Context") (Just (__ "Show the breakpoint context")) Nothing
         debugShowContext [] False
-    ,AD "ShowLoadedModules" "Show Loaded _Modules" (Just "Show the currently loaded modules") Nothing
+    ,AD "ShowLoadedModules" (__ "Show Loaded _Modules") (Just (__ "Show the currently loaded modules")) Nothing
         debugShowModules [] False
-    ,AD "ShowPackages" "Show _Packages" (Just "Show the currently active packages") Nothing
+    ,AD "ShowPackages" (__ "Show _Packages") (Just (__ "Show the currently active packages")) Nothing
         debugShowPackages [] False
-    ,AD "ShowLanguages" "Show _Languages" (Just "Show the currently active language") Nothing
+    ,AD "ShowLanguages" (__ "Show _Languages") (Just (__ "Show the currently active language")) Nothing
         debugShowLanguages [] False
 
-    ,AD "DebugInformation" "Information" (Just "Display information about the selected name(s)") Nothing
+    ,AD "DebugInformation" (__ "Information") (Just (__ "Display information about the selected name(s)")) Nothing
         debugInformation [] False
-    ,AD "DebugKind" "Kind" (Just "Show the kind of the selected type") Nothing
+    ,AD "DebugKind" (__ "Kind") (Just (__ "Show the kind of the selected type")) Nothing
         debugKind [] False
-    ,AD "DebugType" "Type" (Just "Show the type of the selected expression") Nothing
+    ,AD "DebugType" (__ "Type") (Just (__ "Show the type of the selected expression")) Nothing
         debugType [] False
 
-    ,AD "Metadata" "_Metadata" Nothing Nothing (return ()) [] False
-    ,AD "UpdateMetadataCurrent" "_Update workspace data" (Just "Updates data for the current workspace")
+    ,AD "Metadata" (__ "_Metadata") Nothing Nothing (return ()) [] False
+    ,AD "UpdateMetadataCurrent" (__ "_Update workspace data") (Just (__ "Updates data for the current workspace"))
             (Just "ide_rebuild_meta") updateWorkspaceInfo [] False
-    ,AD "RebuildMetadataCurrent" "_Rebuild workspace data" (Just "Rebuilds data for the current workspace")
+    ,AD "RebuildMetadataCurrent" (__ "_Rebuild workspace data") (Just (__ "Rebuilds data for the current workspace"))
             Nothing rebuildWorkspaceInfo [] False
-    ,AD "UpdateMetadataLib" "U_pdate system data" Nothing Nothing
+    ,AD "UpdateMetadataLib" (__ "U_pdate system data") Nothing Nothing
         updateSystemInfo [] False
-    ,AD "RebuildMetadataLib" "R_ebuild system data" Nothing Nothing
+    ,AD "RebuildMetadataLib" (__ "R_ebuild system data") Nothing Nothing
         rebuildSystemInfo [] False
 
-    ,AD "Session" "_Session" Nothing Nothing (return ()) [] False
-    ,AD "SaveSession" "_Save Session" Nothing Nothing
+    ,AD "Session" (__ "_Session") Nothing Nothing (return ()) [] False
+    ,AD "SaveSession" (__ "_Save Session") Nothing Nothing
         saveSessionAsPrompt [] False
-    ,AD "LoadSession" "_Load Session" Nothing Nothing
+    ,AD "LoadSession" (__ "_Load Session") Nothing Nothing
         loadSessionPrompt [] False
-    ,AD "ForgetSession" "_Forget Session" Nothing Nothing
+    ,AD "ForgetSession" (__ "_Forget Session") Nothing Nothing
         (return ()) [] True
 
-    ,AD "Panes" "_Panes" Nothing Nothing (return ()) [] False
-    ,AD "ShowBrowser" "Browser" Nothing Nothing
+    ,AD "Panes" (__ "_Panes") Nothing Nothing (return ()) [] False
+    ,AD "ShowBrowser" (__ "Browser") Nothing Nothing
         showBrowser [] False
-    ,AD "ShowDebugger" "Debugger" Nothing Nothing
+    ,AD "ShowDebugger" (__ "Debugger") Nothing Nothing
         showDebugger [] False
-    ,AD "ShowSearch" "Search" Nothing Nothing
+    ,AD "ShowSearch" (__ "Search") Nothing Nothing
         (getSearch Nothing  >>= \ p -> displayPane p False) [] False
-    ,AD "ShowFiles" "Files" Nothing Nothing
+    ,AD "ShowFiles" (__ "Files") Nothing Nothing
         (getFiles Nothing  >>= \ p -> displayPane p False >> refreshFiles) [] False
-    ,AD "ShowGrep" "Grep" Nothing Nothing
+    ,AD "ShowGrep" (__ "Grep") Nothing Nothing
         (getGrep Nothing  >>= \ p -> displayPane p False) [] False
-    ,AD "ShowHLint" "HLint" Nothing Nothing
+    ,AD "ShowHLint" (__ "HLint") Nothing Nothing
         (getHLint Nothing  >>= \ p -> displayPane p False >> workspaceTry refreshHLint) [] False
-    ,AD "ShowDocumentation" "Docmentation" Nothing Nothing
+    ,AD "ShowDocumentation" (__ "Documentation") Nothing Nothing
         (getDocumentation Nothing  >>= \ p -> displayPane p False) [] False
-    ,AD "ShowOutput" "Output" Nothing Nothing
+    ,AD "ShowOutput" (__ "Output") Nothing Nothing
         (getOutputPane Nothing  >>= \ p -> displayPane p False) [] False
-    ,AD "ShowErrors" "Errors" Nothing Nothing
+    ,AD "ShowErrors" (__ "Errors") Nothing Nothing
         (getErrors Nothing  >>= \ p -> displayPane p False) [] False
-    ,AD "ShowLog" "Log" Nothing Nothing
+    ,AD "ShowLog" (__ "Log") Nothing Nothing
         showLog [] False
-    ,AD "ShowWorkspace" "Workspace" Nothing Nothing
+    ,AD "ShowWorkspace" (__ "Workspace") Nothing Nothing
         showWorkspace [] False
 
-    ,AD "View" "_View" Nothing Nothing (return ()) [] False
-    ,AD "ViewMoveLeft" "Move _Left" Nothing Nothing
+    ,AD "View" (__ "_View") Nothing Nothing (return ()) [] False
+    ,AD "ViewMoveLeft" (__ "Move _Left") Nothing Nothing
         (viewMove LeftP) [] False
-    ,AD "ViewMoveRight" "Move _Right" Nothing Nothing
+    ,AD "ViewMoveRight" (__ "Move _Right") Nothing Nothing
         (viewMove RightP) [] False
-    ,AD "ViewMoveUp" "Move _Up" Nothing Nothing
+    ,AD "ViewMoveUp" (__ "Move _Up") Nothing Nothing
         (viewMove TopP) [] False
-    ,AD "ViewMoveDown" "Move _Down" Nothing Nothing
+    ,AD "ViewMoveDown" (__ "Move _Down") Nothing Nothing
         (viewMove BottomP) [] False
-    ,AD "ViewSplitHorizontal" "Split H_orizontal" Nothing Nothing
+    ,AD "ViewSplitHorizontal" (__ "Split H_orizontal") Nothing Nothing
         viewSplitHorizontal [] False
-    ,AD "ViewSplitVertical" "Split _Vertical" Nothing Nothing
+    ,AD "ViewSplitVertical" (__ "Split _Vertical") Nothing Nothing
         viewSplitVertical [] False
-    ,AD "ViewCollapse" "_Collapse" Nothing Nothing
+    ,AD "ViewCollapse" (__ "_Collapse") Nothing Nothing
         viewCollapse [] False
-    ,AD "ViewNest" "_Group" Nothing Nothing
+    ,AD "ViewNest" (__ "_Group") Nothing Nothing
         (viewNewGroup) [] False
-    ,AD "ViewDetach" "_Detach" Nothing Nothing
+    ,AD "ViewDetach" (__ "_Detach") Nothing Nothing
         viewDetachInstrumented [] False
-    ,AD "ViewFullScreen" "_Full Screen" Nothing Nothing
+    ,AD "ViewFullScreen" (__ "_Full Screen") Nothing Nothing
         viewFullScreen [] False
-    ,AD "ViewExitFullScreen" "_Exit Full Screen" Nothing Nothing
+    ,AD "ViewExitFullScreen" (__ "_Exit Full Screen") Nothing Nothing
         viewExitFullScreen [] False
-    ,AD "ViewDark" "Dark" Nothing Nothing
+    ,AD "ViewDark" (__ "Dark") Nothing Nothing
         viewDark [] False
-    ,AD "ViewLight" "Light" Nothing Nothing
+    ,AD "ViewLight" (__ "Light") Nothing Nothing
         viewLight [] False
 
-    ,AD "ViewTabsLeft" "Tabs Left" Nothing Nothing
+    ,AD "ViewTabsLeft" (__ "Tabs Left") Nothing Nothing
         (viewTabsPos PosLeft) [] False
-    ,AD "ViewTabsRight" "Tabs Right" Nothing Nothing
+    ,AD "ViewTabsRight" (__ "Tabs Right") Nothing Nothing
         (viewTabsPos PosRight) [] False
-    ,AD "ViewTabsUp" "Tabs Up" Nothing Nothing
+    ,AD "ViewTabsUp" (__ "Tabs Up") Nothing Nothing
         (viewTabsPos PosTop) [] False
-    ,AD "ViewTabsDown" "Tabs Down" Nothing Nothing
+    ,AD "ViewTabsDown" (__ "Tabs Down") Nothing Nothing
         (viewTabsPos PosBottom) [] False
-    ,AD "ViewSwitchTabs" "Tabs On/Off" Nothing Nothing
+    ,AD "ViewSwitchTabs" (__ "Tabs On/Off") Nothing Nothing
         viewSwitchTabs [] False
 
-    ,AD "ViewClosePane" "Close pane" Nothing (Just "gtk-close")
+    ,AD "ViewClosePane" (__ "Close pane") Nothing (Just "gtk-close")
         sessionClosePane [] False
 
-    ,AD "FlipDown" "Flip down" Nothing Nothing
+    ,AD "FlipDown" (__ "Flip down") Nothing Nothing
         flipDown [] False
-    ,AD "FlipUp" "Flip up" Nothing Nothing
+    ,AD "FlipUp" (__ "Flip up") Nothing Nothing
         flipUp [] False
-    ,AD "StartComplete" "StartComplete" Nothing Nothing
+    ,AD "StartComplete" (__ "StartComplete") Nothing Nothing
         startComplete [] False
 
-    ,AD "ViewHistoryBack" "Back" Nothing (Just "gtk-go-back")
+    ,AD "ViewHistoryBack" (__ "Back") Nothing (Just "gtk-go-back")
         historyBack [] False
-    ,AD "ViewHistoryForth" "Forward" Nothing (Just "gtk-go-forward")
+    ,AD "ViewHistoryForth" (__ "Forward") Nothing (Just "gtk-go-forward")
         historyForward [] False
 
 
-    ,AD "ClearLog" "_Clear Log" Nothing Nothing
+    ,AD "ClearLog" (__ "_Clear Log") Nothing Nothing
         clearLog [] False
-    ,AD "ToggleToolbar" "Toggle Toolbar" Nothing Nothing
+    ,AD "ToggleToolbar" (__ "Toggle Toolbar") Nothing Nothing
         toggleToolbar [] False
 
-    ,AD "Configuration" "_Configuration" Nothing Nothing (return ()) [] False
-    ,AD "EditCandy" "_To Candy" Nothing Nothing
+    ,AD "Configuration" (__ "_Configuration") Nothing Nothing (return ()) [] False
+    ,AD "EditCandy" (__ "_To Candy") Nothing Nothing
         editCandy [] True
-    ,AD "PrefsEdit" "_Edit Prefs" Nothing Nothing
+    ,AD "PrefsEdit" (__ "_Edit Prefs") Nothing Nothing
         (getPrefs Nothing >>= \ p -> displayPane p False) [] False
 
-    ,AD "Help" "_Help" Nothing Nothing (return ()) [] False
-    ,AD "HelpDebug" "Debug" Nothing Nothing (do
+    ,AD "Help" (__ "_Help") Nothing Nothing (return ()) [] False
+    ,AD "HelpDebug" (__ "Debug") Nothing Nothing (do
             pack <- readIDE activePack
             ideMessage Normal (show pack)) [] False
 --    ,AD "HelpDebug2" "Debug2" (Just "<Ctrl>d") Nothing dbgInstalledPackageInfo [] False
-    ,AD "HelpManual" "Manual" Nothing Nothing (openBrowser "http://leksah.org/leksah_manual.pdf") [] False
-    ,AD "HelpHomepage" "Homepage" Nothing Nothing (openBrowser "http://leksah.org") [] False
-    ,AD "HelpAbout" "About" Nothing (Just "gtk-about") (liftIO aboutDialog) [] False
+    ,AD "HelpManual" (__ "Manual") Nothing Nothing (openBrowser "http://leksah.org/leksah_manual.pdf") [] False
+    ,AD "HelpHomepage" (__ "Homepage") Nothing Nothing (openBrowser "http://leksah.org") [] False
+    ,AD "HelpAbout" (__ "About") Nothing (Just "gtk-about") (liftIO aboutDialog) [] False
 
-    ,AD "BackgroundBuildToggled" "_BackgroundBuild" (Just "Build in the background and report errors") (Just "ide_build")
+    ,AD "BackgroundBuildToggled" (__ "_BackgroundBuild") (Just (__ "Build in the background and report errors")) (Just "ide_build")
         backgroundBuildToggled [] True
-    ,AD "RunUnitTestsToggled" "_RunUnitTests" (Just "Run unit tests when building") (Just "gtk-apply")
+    ,AD "RunUnitTestsToggled" (__ "_RunUnitTests") (Just (__ "Run unit tests when building")) (Just "gtk-apply")
         runUnitTestsToggled [] True
-    ,AD "MakeModeToggled" "_MakeMode" (Just "Make dependent packages") (Just "ide_make")
+    ,AD "MakeModeToggled" (__ "_MakeMode") (Just (__ "Make dependent packages")) (Just "ide_make")
         makeModeToggled [] True
-    ,AD "DebugToggled" "_Debug" (Just "Use GHCi debugger to build and run") (Just "ide_debug")
+    ,AD "DebugToggled" (__ "_Debug") (Just (__ "Use GHCi debugger to build and run")) (Just "ide_debug")
         debugToggled [] True
-    ,AD "OpenDocu" "_OpenDocu" (Just "Opens a browser for a search of the selected data") Nothing
+    ,AD "OpenDocu" (__ "_OpenDocu") (Just (__ "Opens a browser for a search of the selected data")) Nothing
         openDocu [] True
         ]
 
@@ -526,11 +528,11 @@ getMenuAndToolbars uiManager = do
     mbMenu   <- uiManagerGetWidget uiManager "/ui/menubar"
     let menu = case mbMenu of
                     Just it -> castToMenuBar it
-                    Nothing -> throwIDE "Menu>>makeMenu: failed to create menubar"
+                    Nothing -> throwIDE (__ "Menu>>makeMenu: failed to create menubar")
     mbToolbar <- uiManagerGetWidget uiManager "/ui/toolbar"
     let toolbar = case mbToolbar of
                     Just it -> castToToolbar it
-                    Nothing -> throwIDE "Menu>>makeMenu: failed to create toolbar"
+                    Nothing -> throwIDE (__ "Menu>>makeMenu: failed to create toolbar")
     toolbarSetIconSize toolbar IconSizeSmallToolbar
     toolbarSetStyle toolbar ToolbarIcons
     widgetSetSizeRequest toolbar 700 (-1)
@@ -540,44 +542,44 @@ textPopupMenu :: IDERef -> Menu -> IO ()
 textPopupMenu ideR menu = do
     let reflectIDE_ x = reflectIDE x ideR
     items <- containerGetChildren menu
-    mi1 <- menuItemNewWithLabel "Eval"
+    mi1 <- menuItemNewWithLabel (__ "Eval")
     mi1 `on` menuItemActivate $ reflectIDE_ debugExecuteSelection
     menuShellAppend menu mi1
-    mi11 <- menuItemNewWithLabel "Eval & Insert"
+    mi11 <- menuItemNewWithLabel (__ "Eval & Insert")
     mi11 `on` menuItemActivate $ reflectIDE_ debugExecuteAndShowSelection
     menuShellAppend menu mi11
-    mi12 <- menuItemNewWithLabel "Step"
+    mi12 <- menuItemNewWithLabel (__ "Step")
     mi12 `on` menuItemActivate $ reflectIDE_ debugStepExpression
     menuShellAppend menu mi12
-    mi13 <- menuItemNewWithLabel "Trace"
+    mi13 <- menuItemNewWithLabel (__ "Trace")
     mi13 `on` menuItemActivate $ reflectIDE_ debugTraceExpression
     menuShellAppend menu mi13
-    mi16 <- menuItemNewWithLabel "Set Breakpoint"
+    mi16 <- menuItemNewWithLabel (__ "Set Breakpoint")
     mi16 `on` menuItemActivate $ reflectIDE_ debugSetBreakpoint
     menuShellAppend menu mi16
     sep1 <- separatorMenuItemNew
     menuShellAppend menu sep1
-    mi14 <- menuItemNewWithLabel "Type"
+    mi14 <- menuItemNewWithLabel (__ "Type")
     mi14 `on` menuItemActivate $ reflectIDE_ debugType
     menuShellAppend menu mi14
-    mi141 <- menuItemNewWithLabel "Info"
+    mi141 <- menuItemNewWithLabel (__ "Info")
     mi141 `on` menuItemActivate $ reflectIDE_ debugInformation
     menuShellAppend menu mi141
-    mi15 <- menuItemNewWithLabel "Kind"
+    mi15 <- menuItemNewWithLabel (__ "Kind")
     mi15 `on` menuItemActivate $ reflectIDE_ debugKind
     menuShellAppend menu mi15
     sep2 <- separatorMenuItemNew
     menuShellAppend menu sep2
-    mi2 <- menuItemNewWithLabel "Find (text)"
+    mi2 <- menuItemNewWithLabel (__ "Find (text)")
     mi2 `on` menuItemActivate $ reflectIDE_ (editFindInc Initial)
     menuShellAppend menu mi2
-    mi3 <- menuItemNewWithLabel "Search (metadata)"
+    mi3 <- menuItemNewWithLabel (__ "Search (metadata)")
     mi3 `on` menuItemActivate $ (reflectIDE_ $
             getSearch Nothing >>= (\search -> do
                 mbtext <- selectedText
                 case mbtext of
                     Just t  ->  searchMetaGUI search t
-                    Nothing -> ideMessage  Normal "Select a text first"))
+                    Nothing -> ideMessage  Normal (__ "Select a text first")))
     menuShellAppend menu mi3
     let interpretingEntries = [castToWidget mi16]
     let interpretingSelEntries = [castToWidget mi1, castToWidget mi11, castToWidget mi12,
@@ -617,11 +619,11 @@ aboutDialog = do
     d <- aboutDialogNew
     aboutDialogSetName d "Leksah"
     aboutDialogSetVersion d (showVersion version)
-    aboutDialogSetCopyright d "Copyright 2007-2011 Jürgen Nicklisch-Franken, Hamish Mackenzie"
-    aboutDialogSetComments d $ "An integrated development environement (IDE) for the " ++
-                               "programming language Haskell and the Glasgow Haskell Compiler"
+    aboutDialogSetCopyright d (__ "Copyright 2007-2011 Jürgen Nicklisch-Franken, Hamish Mackenzie")
+    aboutDialogSetComments d $ (__ "An integrated development environement (IDE) for the ") ++
+                               (__ "programming language Haskell and the Glasgow Haskell Compiler")
     dd <- getDataDir
-    license <- catch (readFile $ dd </> "LICENSE") (\ (_ :: SomeException) -> return "")
+    license <- catch (readFile $ dd </> (__ "LICENSE")) (\ (_ :: SomeException) -> return "")
     aboutDialogSetLicense d $ Just license
     aboutDialogSetWebsite d "http://leksah.org/"
     aboutDialogSetAuthors d ["Jürgen Nicklisch-Franken","Hamish Mackenzie"]
@@ -641,7 +643,7 @@ newIcons = catch (do
             "ide_debug", "ide_step", "ide_local", "ide_module", "ide_continue", "ide_rebuild_meta",
             "ide_empty","ide_source_local"]
         iconFactoryAddDefault iconFactory)
-    (\(e :: SomeException) -> getDataDir >>= \dataDir -> throwIDE ("Can't load icons from " ++ dataDir ++ " " ++ show e))
+    (\(e :: SomeException) -> getDataDir >>= \dataDir -> throwIDE (printf (__ "Can't load icons from %s %s") dataDir (show e)))
     where
     loadIcon dataDir iconFactory name = do
         pb      <-  pixbufNewFromFile $ dataDir </> "pics" </> (name ++ ".png")
@@ -682,7 +684,7 @@ getActionsFor' l = do
             uiManager' <- getUiManager
             actionGroups <- liftIO $ uiManagerGetActionGroups uiManager'
             res <- liftIO $ actionGroupGetAction (head actionGroups) string
-            when (isNothing res) $ ideMessage Normal $ "Can't find UI Action " ++ string
+            when (isNothing res) $ ideMessage Normal $ (printf (__ "Can't find UI Action %s") string)
             return res
 
 getAdditionalActionsFor :: SensitivityMask -> [Bool -> IDEAction]
