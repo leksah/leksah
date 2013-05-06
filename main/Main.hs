@@ -29,7 +29,7 @@ initLocale = do
     setLocale LC_ALL (Just "")
     bindTextDomain __MESSAGE_CATALOG_DOMAIN__ (Just __MESSAGE_CATALOG_DIR__)
     textDomain (Just __MESSAGE_CATALOG_DOMAIN__)
-   
+
 #else
 
 -- | no localization support

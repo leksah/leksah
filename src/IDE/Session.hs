@@ -63,6 +63,7 @@ import IDE.Workspaces (workspaceOpenThis)
 import IDE.Completion (setCompletionSize)
 import Control.Monad.IO.Class (MonadIO(..))
 import Control.Monad (forM_, forM, when)
+import System.Log.Logger (debugM)
 
 
 -- ---------------------------------------------------------------------
@@ -286,8 +287,8 @@ saveSessionAs sessionPath mbSecondPath = do
             sysMessage Normal (__ "Now saving session")
             bufs <- allBuffers
             case filter (\b -> bufferName b == "_Eval.hs") bufs of
-                [buf] -> do
-                    ebuf <- getBuffer (sourceView buf)
+                [(IDEBuffer {sourceView = sv})] -> do
+                    ebuf <- getBuffer sv
                     setModified ebuf False
                 _     -> return ()
             wdw             <-  getMainWindow
@@ -368,6 +369,7 @@ loadSessionPrompt = do
 
 loadSession :: FilePath -> IDEAction
 loadSession sessionPath = do
+    liftIO $ debugM "leksah" "loadSession"
     saveSession :: IDEAction
     deactivatePackage
     recentFiles'      <- readIDE recentFiles
@@ -471,18 +473,22 @@ getActive = do
 
 recoverSession :: FilePath -> IDEM (Bool,Bool)
 recoverSession sessionPath = catchIDE (do
+        liftIO $ debugM "leksah" "recoverSession"
         wdw         <-  getMainWindow
         sessionSt    <- liftIO $ readFields sessionPath sessionDescr defaultSession
         liftIO $ windowSetDefaultSize wdw (fst (windowSize sessionSt))(snd (windowSize sessionSt))
         applyLayout (layoutS sessionSt)
         workspaceOpenThis False (workspacePath sessionSt)
+        liftIO $ debugM "leksah" "recoverSession calling populate"
         populate (population sessionSt)
+        liftIO $ debugM "leksah" "recoverSession calling setCurrentPages"
         setCurrentPages (layoutS sessionSt)
         when (isJust (activePaneN sessionSt)) $ do
             mbPane <- mbPaneFromName (fromJust (activePaneN sessionSt))
             case mbPane of
                 Nothing -> return ()
                 Just (PaneC p) -> makeActive p
+        liftIO $ debugM "leksah" "recoverSession setting up toolbars"
         setFindState ((snd . findbarState) sessionSt)
         if toolbarVisibleS sessionSt
             then showToolbar
@@ -493,6 +499,7 @@ recoverSession sessionPath = catchIDE (do
         setCompletionSize (completionSize sessionSt)
         modifyIDE_ (\ide -> ide{recentFiles = recentOpenedFiles sessionSt,
                                         recentWorkspaces = recentOpenedWorksp sessionSt})
+        liftIO $ debugM "leksah" "recoverSession done"
         return (toolbarVisibleS sessionSt, (fst . findbarState) sessionSt))
         (\ (e :: SomeException) -> do
             sysMessage Normal (show e)

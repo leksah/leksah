@@ -155,7 +155,7 @@ instance RecoverablePane IDEGrep GrepState IDEM where
                         case record of
                             GrepRecord {file=f, line=l, parDir=Just pp} ->
                                 (goToSourceDefinition (pp </> f) $ Just $ Location l 0 l 0)
-                                    ?>>= (\b -> when focus $ grabFocus (sourceView b))
+                                    ?>>= (\(IDEBuffer {sourceView = sv}) -> when focus $ grabFocus sv)
                             _ -> return ()) ideR
                     Nothing -> return ()
                 return True

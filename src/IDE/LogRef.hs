@@ -102,11 +102,9 @@ markLogRefs = do
 
 unmarkLogRefs :: IDEAction
 unmarkLogRefs = do
-    forOpenLogRefs $ \index logRef buf -> do
-            gtkbuf  <-  getBuffer (sourceView buf)
-            i1      <-  getStartIter gtkbuf
-            i2      <-  getEndIter gtkbuf
-            removeTagByName gtkbuf (show (logRefType logRef) ++ show index)  i1 i2
+    forOpenLogRefs $ \index logRef (IDEBuffer {sourceView = sv}) -> do
+            buf     <-  getBuffer sv
+            removeTagByName buf (show (logRefType logRef) ++ show index)
 
 setErrorList :: [LogRef] -> IDEAction
 setErrorList errs = do

@@ -211,7 +211,7 @@ addImport' nis filePath descr descrList continuation =  do
                     Just pm -> Just (modu pm)
     case (mbBuf,mbMod) of
         (Just buf,Just mod) -> do
-            inActiveBufContext () $ \ nb gtkbuf idebuf n -> do
+            inActiveBufContext () $ \ nb _ gtkbuf idebuf n -> do
                 ideMessage Normal $ "addImport " ++ show (dscName descr) ++ " from "
                     ++ (render $ disp $ mod)
                 doServerCommand (ParseHeaderCommand filePath)  $ \ res ->
@@ -453,6 +453,7 @@ parsePerhapsYouIntendedToUse =
     parseLine line = catMaybes [
         stripPrefix "Perhaps you intended to use -X" line
       , takeWhile (/=' ') <$> stripPrefix "Use -X" line
+      , takeWhile (/=' ') <$> stripPrefix "(Use -X" line
       , takeWhile (/=' ') <$> stripPrefix "You need -X" line]
 
 addExtension :: LogRef -> (Bool -> IDEAction) -> IDEAction
@@ -467,7 +468,7 @@ addExtension' ext filePath continuation =  do
     mbBuf  <- selectSourceBuf filePath
     case mbBuf of
         Just buf ->
-            inActiveBufContext () $ \ nb gtkbuf idebuf n -> do
+            inActiveBufContext () $ \ nb _ gtkbuf idebuf n -> do
                 ideMessage Normal $ "addExtension " ++ ext
                 i1 <- getIterAtLine gtkbuf 0
                 editInsertCode gtkbuf i1 $ "{-# LANGUAGE " ++ ext ++ " #-}\n"

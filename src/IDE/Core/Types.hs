@@ -31,6 +31,7 @@ module IDE.Core.Types (
 ,   IDEState(..)
 ,   IDERef
 ,   IDEM
+,   IDEEventM
 ,   IDEAction
 ,   IDEEvent(..)
 ,   liftIDE
@@ -132,6 +133,8 @@ import qualified VCSWrapper.Common as VCS
 import qualified VCSGui.Common as VCSGUI
 import qualified Data.Map as Map (Map)
 import Data.Typeable (Typeable)
+import Foreign (Ptr)
+import Control.Monad.Reader.Class (MonadReader(..))
 
 -- ---------------------------------------------------------------------
 -- IDE State
@@ -205,8 +208,11 @@ data IDEState =
     |   IsCompleting Connections
 
 
-liftIDE :: IDEM a -> WorkspaceM a
-liftIDE = lift
+class MonadIDE m where
+    liftIDE :: IDEM a -> m a
+
+instance MonadIDE WorkspaceM where
+    liftIDE = lift
 
 (?>>=) :: Monad m => (m (Maybe a)) -> (a -> m ()) -> m ()
 a ?>>= b = do
@@ -214,6 +220,16 @@ a ?>>= b = do
     case mA of
         Just v -> b v
         Nothing -> return ()
+
+-- ---------------------------------------------------------------------
+-- Monad for Gtk events (use onIDE instead of on)
+--
+type IDEEventM t = ReaderT IDERef (ReaderT (Ptr t) IO)
+
+instance MonadIDE (IDEEventM t) where
+    liftIDE f = do
+        ideR <- ask
+        liftIO $ runReaderT f ideR
 
 -- ---------------------------------------------------------------------
 -- Monad for functions that need an open workspace
@@ -418,10 +434,11 @@ data Prefs = Prefs {
     ,   textviewFont        ::   Maybe String
     ,   sourceStyle         ::   (Bool, String)
     ,   foundBackground     ::   Color
+    ,   matchBackground     ::   Color
     ,   contextBackground   ::   Color
     ,   breakpointBackground ::  Color
     ,   autoLoad            ::   Bool
-    ,   useYi               ::   Bool
+    ,   textEditor          ::   String
     ,   logviewFont         ::   Maybe String
     ,   defaultSize         ::   (Int,Int)
     ,   browser             ::   String

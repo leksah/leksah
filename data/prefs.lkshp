@@ -23,8 +23,7 @@ Execution Context Text Background:
                Color 65535 49152 49152
 Breakpoint Text Background:
                Color 65535 49152 32768
-Use Yi - Experimental feature (could wipe your files):
-               False
+Text Editor:   "GtkSourceView"
 LogView Font:  "Sans 12"
 Window default size:
                (1024,800)

@@ -358,8 +358,8 @@ constructFindReplace = reifyIDE $ \ ideR   -> do
                         liftIO . ctrl $ map toLower name
                 | otherwise                ->  return False
 
-    spinL `afterFocusIn` (\ _ -> (reflectIDE (inActiveBufContext True $ \_ gtkbuf currentBuffer _ -> do
-        max <- getLineCount gtkbuf
+    spinL `afterFocusIn` (\ _ -> (reflectIDE (inActiveBufContext True $ \_ _ ebuf _ _ -> do
+        max <- getLineCount ebuf
         liftIO $ spinButtonSetRange spinL 1.0 (fromIntegral max)
         return True) ideR))
 
@@ -376,11 +376,11 @@ constructFindReplace = reifyIDE $ \ ideR   -> do
             _        ->  return False
 
 
-    spinL `afterEntryActivate` (reflectIDE (inActiveBufContext () $ \_ gtkbuf currentBuffer _ -> do
+    spinL `afterEntryActivate` (reflectIDE (inActiveBufContext () $ \_ sv ebuf _ _ -> do
         line  <- liftIO $ spinButtonGetValueAsInt spinL
-        iter  <- getIterAtLine gtkbuf (line - 1)
-        placeCursor gtkbuf iter
-        scrollToIter (sourceView currentBuffer) iter 0.2 Nothing
+        iter  <- getIterAtLine ebuf (line - 1)
+        placeCursor ebuf iter
+        scrollToIter sv iter 0.2 Nothing
         liftIO $ getOut ideR
         return ()) ideR  )
 
@@ -508,52 +508,52 @@ editFind entireWord caseSensitive wrapAround regex search dummy hint = do
 
 editFind' :: Regex -> Int -> Bool -> String -> SearchHint -> IDEM Bool
 editFind' exp matchIndex wrapAround dummy hint =
-    inActiveBufContext False $ \_ gtkbuf currentBuffer _ -> do
-    i1 <- getStartIter gtkbuf
-    i2 <- getEndIter gtkbuf
-    text <- getText gtkbuf i1 i2 True
-    removeTagByName gtkbuf "found" i1 i2
-    startMark <- getInsertMark gtkbuf
-    st1 <- getIterAtMark gtkbuf startMark
+    inActiveBufContext False $ \_ sv ebuf _ _ -> do
+    i1 <- getStartIter ebuf
+    i2 <- getEndIter ebuf
+    text <- getText ebuf i1 i2 True
+    removeTagByName ebuf "found"
+    startMark <- getInsertMark ebuf
+    st1 <- getIterAtMark ebuf startMark
     mbsr2 <- do
         if hint == Backward
             then do
                 st2 <- backwardCharC st1
                 st3 <- backwardCharC st2
-                mbsr <- backSearch exp matchIndex gtkbuf text st3
+                mbsr <- backSearch exp matchIndex ebuf text st3
                 case mbsr of
                     Nothing ->
                         if wrapAround
-                            then do backSearch exp matchIndex gtkbuf text i2
+                            then do backSearch exp matchIndex ebuf text i2
                             else return Nothing
                     m -> return m
             else do
                 st2 <- if hint == Forward
                     then forwardCharC st1
                     else return st1
-                mbsr <- forwardSearch exp matchIndex gtkbuf text st2
+                mbsr <- forwardSearch exp matchIndex ebuf text st2
                 case mbsr of
                     Nothing ->
                         if wrapAround
-                            then do forwardSearch exp matchIndex gtkbuf text i1
+                            then do forwardSearch exp matchIndex ebuf text i1
                             else return Nothing
                     m -> return m
     case mbsr2 of
         Just (start,end,_) -> do --found
             --widgetGrabFocus sourceView
-            scrollToIter (sourceView currentBuffer) start 0.2 Nothing
-            applyTagByName gtkbuf "found" start end
-            placeCursor gtkbuf start
+            scrollToIter sv start 0.2 Nothing
+            applyTagByName ebuf "found" start end
+            placeCursor ebuf start
             return True
         Nothing -> return False
     where
-        backSearch exp matchIndex gtkbuf text iter = do
+        backSearch exp matchIndex ebuf text iter = do
             offset <- getOffset iter
-            findMatch exp matchIndex gtkbuf text (<= offset) True
+            findMatch exp matchIndex ebuf text (<= offset) True
 
-        forwardSearch exp matchIndex gtkbuf text iter = do
+        forwardSearch exp matchIndex ebuf text iter = do
             offset <- getOffset iter
-            findMatch exp matchIndex gtkbuf text (>= offset) False
+            findMatch exp matchIndex ebuf text (>= offset) False
 
 regexAndMatchIndex :: Bool -> Bool -> Bool -> String -> IO (Maybe (Regex, Int))
 regexAndMatchIndex caseSensitive entireWord regex string = do
@@ -578,7 +578,7 @@ regexStringAndMatchIndex entireWord regex string =
         then ("(^|[^a-zA-Z0-9])(" ++ regexString ++ ")($|[^a-zA-Z0-9])", 2)
         else (regexString, 0)
 
-findMatch :: Regex -> Int -> EditorBuffer -> String -> (Int -> Bool) -> Bool -> IDEM (Maybe (EditorIter, EditorIter, MatchArray))
+findMatch :: TextEditor editor => Regex -> Int -> EditorBuffer editor -> String -> (Int -> Bool) -> Bool -> IDEM (Maybe (EditorIter editor, EditorIter editor, MatchArray))
 findMatch exp matchIndex gtkbuf text offsetPred findLast = do
     let matches = (if findLast then reverse else id) (matchAll exp text)
     case find (offsetPred . fst . (!matchIndex)) matches of
@@ -595,24 +595,24 @@ editReplace entireWord caseSensitive wrapAround regex search replace hint =
 
 editReplace' :: Bool -> Bool -> Bool -> Bool -> String -> String -> SearchHint -> Bool -> IDEM Bool
 editReplace' entireWord caseSensitive wrapAround regex search replace hint mayRepeat =
-    inActiveBufContext False $ \_ gtkbuf currentBuffer _ -> do
-        insertMark <- getInsertMark gtkbuf
-        iter       <- getIterAtMark gtkbuf insertMark
+    inActiveBufContext False $ \_ _ ebuf _ _ -> do
+        insertMark <- getInsertMark ebuf
+        iter       <- getIterAtMark ebuf insertMark
         offset     <- getOffset iter
         mbExpAndMatchIndex <- liftIO $ regexAndMatchIndex caseSensitive entireWord regex search
         case mbExpAndMatchIndex of
             Just (exp, matchIndex) -> do
-                iStart <- getStartIter gtkbuf
-                iEnd   <- getEndIter gtkbuf
-                text   <- getText gtkbuf iStart iEnd True
-                match  <- findMatch exp matchIndex gtkbuf text (== offset) False
+                iStart <- getStartIter ebuf
+                iEnd   <- getEndIter ebuf
+                text   <- getText ebuf iStart iEnd True
+                match  <- findMatch exp matchIndex ebuf text (== offset) False
                 case match of
                     Just (iterStart, iterEnd, matches) -> do
                         mbText <- liftIO $ replacementText regex text matchIndex matches replace
                         case mbText of
                             Just text -> do
-                                delete gtkbuf iterStart iterEnd
-                                insert gtkbuf iterStart text
+                                delete ebuf iterStart iterEnd
+                                insert ebuf iterStart text
                             Nothing -> do
                                 sysMessage Normal
                                     "Should never happen. findMatch worked but repleacementText failed"
@@ -679,11 +679,11 @@ editFindInc hint = do
     ideR <- ask
     (fb,_) <- needFindbar
     case hint of
-        Initial -> inActiveBufContext () $ \_ gtkbuf currentBuffer _ -> do
-            hasSelection <- hasSelection gtkbuf
+        Initial -> inActiveBufContext () $ \_ _ ebuf _ _ -> do
+            hasSelection <- hasSelection ebuf
             when hasSelection $ do
-                (i1,i2)   <- getSelectionBounds gtkbuf
-                text      <- getText gtkbuf i1 i2 False
+                (i1,i2)   <- getSelectionBounds ebuf
+                text      <- getText ebuf i1 i2 False
                 findEntry <- liftIO $ getFindEntry fb
                 liftIO $ entrySetText (castToEntry findEntry) text
                 return ()

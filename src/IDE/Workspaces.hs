@@ -93,7 +93,7 @@ import qualified VCSWrapper.Common as VCS
 import qualified VCSGui.Common as VCSGUI
 import qualified IDE.Workspaces.Writer as Writer
 import Text.Printf (printf)
-
+import System.Log.Logger (debugM)
 
 -- | Constructs a new workspace and makes it the current workspace
 workspaceNew :: IDEAction
@@ -180,6 +180,7 @@ workspaceOpenThis askForSession mbFilePath =
     case mbFilePath of
         Nothing -> return ()
         Just filePath -> do
+            liftIO . debugM "leksah" $ "workspaceOpenThis " ++ show askForSession ++ " " ++ filePath
             let spath =  dropExtension filePath ++ leksahSessionFileExtension
             workspaceClose
             exists <- liftIO $ doesFileExist spath
@@ -215,6 +216,7 @@ workspaceOpenThis askForSession mbFilePath =
 -- | Closes a workspace
 workspaceClose :: IDEAction
 workspaceClose = do
+    liftIO $ debugM "leksah" "workspaceClose"
     oldWorkspace <- readIDE workspace
     case oldWorkspace of
         Nothing -> return ()
@@ -348,6 +350,7 @@ workspaceActivatePackage pack exe = do
 
 readWorkspace :: FilePath -> IDEM Workspace
 readWorkspace fp = do
+    liftIO $ debugM "leksah" "readWorkspace"
     ws <- liftIO $ readFields fp Writer.workspaceDescr emptyWorkspace
     ws' <- liftIO $ makePathsAbsolute ws fp
     packages <- mapM idePackageFromPath (wsPackagesFiles ws')

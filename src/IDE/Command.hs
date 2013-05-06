@@ -109,6 +109,7 @@ import Control.Monad.IO.Class (MonadIO(..))
 import Control.Monad (unless, when)
 import Control.Monad.Trans.Reader (ask)
 import Text.Printf (printf)
+import System.Log.Logger (debugM)
 
 --
 -- | The Actions known to the system (they can be activated by keystrokes or menus)
@@ -734,6 +735,7 @@ instrumentWindow win prefs topWidget = do
 
 instrumentSecWindow :: Window -> IDEAction
 instrumentSecWindow win = do
+    liftIO $ debugM "leksah" "instrumentSecWindow"
     ideR <- ask
     uiManager' <- getUiManager
     liftIO $ do
@@ -826,6 +828,7 @@ setSymbol symbol openSource = do
 registerLeksahEvents :: IDEAction
 registerLeksahEvents =    do
     stRef   <-  ask
+    liftIO $ debugM "leksah" "registerLeksahEvents"
     defaultLogLaunch <- getDefaultLogLaunch
     registerEvent stRef "LogMessage"
         (\e@(LogMessage s t)      -> do

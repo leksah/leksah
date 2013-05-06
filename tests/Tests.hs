@@ -21,6 +21,14 @@ import Control.Monad (unless)
 import Distribution.Package
        (PackageName(..), PackageIdentifier(..))
 import Distribution.Version (Version(..))
+import Graphics.UI.Gtk (timeoutAddFull, initGUI)
+import IDE.TextEditor.Tests (testEditors)
+import System.Log.Logger
+       (errorM, setLevel, rootLoggerName, updateGlobalLogger)
+import System.Log (Priority(..))
+import Control.Concurrent
+       (yield, takeMVar, putMVar, newEmptyMVar, threadDelay, forkIO)
+import System.Glib.MainLoop (priorityHigh)
 
 testString =    "    Could not find module `Graphics.UI.Gtk':\n"
              ++ "      It is a member of the hidden package `gtk-0.11.0'.\n"
@@ -38,5 +46,17 @@ testString2 =   "    Could not find module `Data.Attoparsec.Lazy'\n"
 prop_parseHiddenModule2 = parseHiddenModule testString2 == Just HiddenModuleResult {hiddenModule = "Data.Attoparsec.Lazy", missingPackage = PackageIdentifier {pkgName = PackageName "attoparsec", pkgVersion = Version {versionBranch = [0,10,2,0], versionTags = []}}}
 
 main = do
-    allPass <- $quickCheckAll -- Run QuickCheck on all prop_ functions
-    unless allPass exitFailure
+    result <- newEmptyMVar
+    forkIO $ do
+        updateGlobalLogger rootLoggerName (setLevel DEBUG)
+        allPass <- $quickCheckAll -- Run QuickCheck on all prop_ functions
+        initGUI
+        timeoutAddFull (yield >> return True) priorityHigh 10
+        editorsOk <- testEditors
+        putMVar result (allPass && editorsOk)
+    forkIO $ do
+        threadDelay 60000000
+        errorM "leksah tests" "Test took too long to run"
+        putMVar result False
+    r <- takeMVar result
+    unless r exitFailure

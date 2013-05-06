@@ -48,7 +48,7 @@ notBeforeOp     =   Set.fromList $['!','#','$','%','&','*','+','.','/','<','=','
                                     '^','|','-','~','\'','"']
 notAfterOp      =   notBeforeOp
 
-keystrokeCandy :: CandyTable -> Maybe Char -> EditorBuffer -> (String -> Bool) -> IDEM ()
+keystrokeCandy :: TextEditor editor => CandyTable -> Maybe Char -> EditorBuffer editor -> (String -> Bool) -> IDEM ()
 keystrokeCandy (CT(transformTable,_)) mbc ebuf editInCommentOrString = do
     cursorMark  <-  getInsertMark ebuf
     endIter     <-  getIterAtMark ebuf cursorMark
@@ -65,7 +65,7 @@ keystrokeCandy (CT(transformTable,_)) mbc ebuf editInCommentOrString = do
     unless block $
         replace mbc2 cursorMark slice offset transformTable
     where
-    replace ::  Maybe Char -> EditorMark -> String -> Int -> [(Bool,String,String)] -> IDEM ()
+    -- replace ::  Maybe Char -> m -> String -> Int -> [(Bool,String,String)] -> IDEM ()
     replace mbAfterChar cursorMark match offset list = replace' list
         where
         replace' [] = return ()
@@ -91,7 +91,7 @@ keystrokeCandy (CT(transformTable,_)) mbc ebuf editInCommentOrString = do
                     endNotUndoableAction ebuf
                 else replace mbAfterChar cursorMark match offset rest
 
-transformToCandy :: CandyTable -> EditorBuffer -> (String -> Bool) -> IDEM ()
+transformToCandy :: TextEditor editor => CandyTable -> EditorBuffer editor -> (String -> Bool) -> IDEM ()
 transformToCandy (CT(transformTable,_)) ebuf editInCommentOrString = do
     beginUserAction ebuf
     modified    <-  getModified ebuf
@@ -100,7 +100,7 @@ transformToCandy (CT(transformTable,_)) ebuf editInCommentOrString = do
     endUserAction ebuf
 
 
-replaceTo :: EditorBuffer -> (Bool,String,String) -> Int -> (String -> Bool) -> IDEM ()
+replaceTo :: TextEditor editor => EditorBuffer editor -> (Bool,String,String) -> Int -> (String -> Bool) -> IDEM ()
 replaceTo buf (isOp,from,to) offset editInCommentOrString = replaceTo' offset
     where
     replaceTo' offset = do
@@ -149,7 +149,7 @@ replaceTo buf (isOp,from,to) offset editInCommentOrString = replaceTo' offset
                         return ()
                 replaceTo' (stOff + 1)
 
-transformFromCandy :: CandyTable -> EditorBuffer -> IDEM ()
+transformFromCandy :: TextEditor editor => CandyTable -> EditorBuffer editor -> IDEM ()
 transformFromCandy (CT(_,transformTableBack)) ebuf = do
     beginUserAction ebuf
     modified    <-  getModified ebuf
@@ -157,7 +157,7 @@ transformFromCandy (CT(_,transformTableBack)) ebuf = do
     endUserAction ebuf
     setModified ebuf modified
 
-getCandylessText :: CandyTable -> EditorBuffer -> IDEM String
+getCandylessText :: TextEditor editor => CandyTable -> EditorBuffer editor -> IDEM String
 getCandylessText (CT(_,transformTableBack)) ebuf = do
     i1          <-  getStartIter ebuf
     i2          <-  getEndIter ebuf
@@ -169,7 +169,7 @@ getCandylessText (CT(_,transformTableBack)) ebuf = do
     text2       <-  getText workBuffer i1 i2 True
     return text2
 
-getCandylessPart :: CandyTable -> EditorBuffer -> EditorIter -> EditorIter -> IDEM String
+getCandylessPart :: TextEditor editor => CandyTable -> EditorBuffer editor -> EditorIter editor -> EditorIter editor -> IDEM String
 getCandylessPart (CT(_,transformTableBack)) ebuf i1 i2 = do
     text1       <-  getText ebuf i1 i2 True
     workBuffer  <-  simpleGtkBuffer text1
@@ -188,7 +188,7 @@ stringToCandy  candyTable text = do
     text2       <-  getText workBuffer i1 i2 True
     return text2
 
-positionFromCandy :: CandyTable -> EditorBuffer -> (Int,Int) -> IDEM (Int,Int)
+positionFromCandy :: TextEditor editor => CandyTable -> EditorBuffer editor -> (Int,Int) -> IDEM (Int,Int)
 positionFromCandy candyTable ebuf (line,column) = do
     i1          <- getIterAtLine ebuf (max 0 (line - 1))
     i2          <- forwardToLineEndC i1
@@ -201,7 +201,7 @@ positionFromCandy candyTable ebuf (line,column) = do
     columnNew   <- getLineOffset i4
     return (line,columnNew)
 
-positionToCandy :: CandyTable -> EditorBuffer -> (Int,Int) -> IDEM (Int,Int)
+positionToCandy :: TextEditor editor => CandyTable -> EditorBuffer editor -> (Int,Int) -> IDEM (Int,Int)
 positionToCandy candyTable ebuf (line,column) = do
     i1          <- getIterAtLine ebuf (max 0 (line - 1))
     i2          <- forwardToLineEndC i1
@@ -215,7 +215,7 @@ positionToCandy candyTable ebuf (line,column) = do
     columnNew   <- getLineOffset i4
     return (line,columnNew)
 
-replaceFrom :: EditorBuffer -> (String,String,Int) -> Int -> IDEM ()
+replaceFrom :: TextEditor editor => EditorBuffer editor -> (String,String,Int) -> Int -> IDEM ()
 replaceFrom buf (to,from,spaces) offset = replaceFrom' offset
     where
     replaceFrom' offset = do

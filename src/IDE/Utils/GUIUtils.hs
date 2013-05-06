@@ -36,14 +36,14 @@ module IDE.Utils.GUIUtils (
 ,   getRecentFiles
 ,   getRecentWorkspaces
 ,   getVCS
-,   controlIsPressed
 
 ,   stockIdFromType
 ,   mapControlCommand
 ,   treeViewContextMenu
 
-,   __ 
+,   __
 
+,   fontDescription
 ) where
 
 import Graphics.UI.Gtk
@@ -55,16 +55,10 @@ import IDE.Core.State
 --    (FileChooserAction(..))
 --import Graphics.UI.Gtk.General.Structs
 --    (ResponseId(..))
-import qualified Graphics.UI.Gtk.Gdk.Events as G (Event(..))
-#if MIN_VERSION_gtk(0,10,5)
-import Graphics.UI.Gtk.Gdk.EventM (Modifier(..))
-#else
-import Graphics.UI.Gtk.Gdk.Enums (Modifier(..))
-#endif
 import Control.Monad.IO.Class (liftIO)
 import Control.Exception as E
 
-#ifdef LOCALIZATION 
+#ifdef LOCALIZATION
 
 import Text.I18N.GetText
 import System.IO.Unsafe (unsafePerformIO)
@@ -238,10 +232,6 @@ getRecentWorkspaces = getMenuItem "ui/menubar/_Workspace/Open _Recent"
 getVCS = getMenuItem "ui/menubar/Version Con_trol" --this could fail, try returning Menu if it does
 -- (toolbar)
 
-controlIsPressed :: G.Event -> Bool
-controlIsPressed (G.Button _ _ _ _ _ mods _ _ _) | Control `elem` mods = True
-controlIsPressed _                                                   = False
-
 stockIdFromType :: DescrType -> StockId
 stockIdFromType Variable        =   "ide_function"
 stockIdFromType Newtype         =   "ide_newtype"
@@ -308,3 +298,14 @@ __ :: String -> String
 __ = id
 
 #endif
+
+fontDescription :: Maybe String -> IDEM FontDescription
+fontDescription mbFontString = liftIO $ do
+    case mbFontString of
+        Just str -> do
+            fontDescriptionFromString str
+        Nothing -> do
+            f <- fontDescriptionNew
+            fontDescriptionSetFamily f "Monospace"
+            return f
+

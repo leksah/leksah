@@ -112,8 +112,7 @@ import Graphics.UI.Gtk
         messageDialogNew, scrolledWindowSetShadowType,
         scrolledWindowSetPolicy, dialogSetDefaultResponse,
         fileChooserSetCurrentFolder, fileChooserSelectFilename,
-        textTagBackground, TextIter, textIterForwardSearch, TextSearchFlags(..),
-        textIterStartsWord, textIterEndsWord)
+        TextSearchFlags(..))
 import System.Glib.MainLoop (priorityDefaultIdle, idleAdd)
 import qualified Graphics.UI.Gtk as Gtk hiding (eventKeyName)
 import Graphics.UI.Gtk.Windows.Window
@@ -123,7 +122,8 @@ import Graphics.UI.Gtk.Windows.MessageDialog
        (ButtonsType(..), MessageType(..))
 #if MIN_VERSION_gtk(0,10,5)
 import Graphics.UI.Gtk.Windows.Dialog (ResponseId(..))
-import Graphics.UI.Gtk (Underline(..))
+import Graphics.UI.Gtk
+       (eventModifier, eventKeyName, eventKeyVal, Underline(..))
 #else
 import Graphics.UI.Gtk.General.Structs (ResponseId(..))
 import Graphics.UI.Gtk.Pango.Types (Underline(..))
@@ -131,22 +131,24 @@ import Graphics.UI.Gtk.Pango.Types (Underline(..))
 import Graphics.UI.Gtk.Selectors.FileChooser
        (FileChooserAction(..))
 import System.Glib.Attributes (AttrOp(..), set)
-import qualified Graphics.UI.Gtk.Gdk.Events as GtkOld
 
 import IDE.BufferMode
-import Control.Monad.Trans.Reader (ask, runReaderT)
+import Control.Monad.Trans.Reader (ask)
 import Control.Monad.IO.Class (MonadIO(..))
 import Control.Monad (foldM, forM, filterM, unless, when)
 import Control.Exception as E (catch, SomeException)
 import IDE.Utils.GUIUtils
 
 import qualified IDE.Command.Print as Print
+import Control.Monad.Trans.Class (MonadTrans(..))
+import System.Log.Logger (debugM)
 
 allBuffers :: IDEM [IDEBuffer]
 allBuffers = getPanes
 
 instance RecoverablePane IDEBuffer BufferState IDEM where
-    saveState p     =   do  buf    <- getBuffer (sourceView p)
+    saveState (p@IDEBuffer {sourceView=v}) = do
+                            buf    <- getBuffer v
                             ins    <- getInsertMark buf
                             iter   <- getIterAtMark buf ins
                             offset <- getOffset iter
@@ -159,38 +161,41 @@ instance RecoverablePane IDEBuffer BufferState IDEM where
     recoverState pp (BufferState n i) =   do
         mbbuf    <-  newTextBuffer pp (takeFileName n) (Just n)
         case mbbuf of
-            Just buf -> do
-                gtkBuf  <- getBuffer (sourceView buf)
-                iter    <- getIterAtOffset gtkBuf i
-                placeCursor gtkBuf iter
-                mark    <- getInsertMark gtkBuf
+            Just (IDEBuffer {sourceView=v}) -> do
                 ideR    <- ask
-                liftIO $ idleAdd (do
-                    reflectIDE (scrollToMark (sourceView buf) mark 0.0 (Just (0.3,0.3))) ideR
-                    return False) priorityDefaultIdle
-                return (Just buf)
+                liftIO . (`idleAdd` priorityDefaultIdle) . (`reflectIDE` ideR) $ do
+                    liftIO $ debugM "leksah" "SourceBuffer recoverState idle callback"
+                    gtkBuf  <- getBuffer v
+                    iter    <- getIterAtOffset gtkBuf i
+                    placeCursor gtkBuf iter
+                    mark    <- getInsertMark gtkBuf
+                    scrollToMark v mark 0.0 (Just (0.3,0.3))
+                    liftIO $ debugM "leksah" "SourceBuffer recoverState done"
+                    return False
+                return mbbuf
             Nothing -> return Nothing
     recoverState pp (BufferStateTrans bn text i) =   do
         mbbuf    <-  newTextBuffer pp bn Nothing
         case mbbuf of
-            Just buf -> do
-                useCandy <- useCandyFor buf
-                gtkBuf   <-  getBuffer (sourceView buf)
-                setText gtkBuf text
-                when useCandy $ modeTransformToCandy (mode buf)
-                                    (modeEditInCommentOrString (mode buf)) gtkBuf
-                iter     <-  getIterAtOffset gtkBuf i
-                placeCursor gtkBuf iter
-                mark     <-  getInsertMark gtkBuf
-                ideR     <- ask
-                liftIO $ idleAdd  (do
-                    reflectIDE (scrollToMark (sourceView buf) mark 0.0 (Just (0.3,0.3))) ideR
-                    return False) priorityDefaultIdle
+            Just (buf@IDEBuffer {sourceView=v}) -> do
+                ideR    <- ask
+                liftIO . (`idleAdd` priorityDefaultIdle) . (`reflectIDE` ideR) $ do
+                    liftIO $ debugM "leksah" "SourceBuffer recoverState idle callback"
+                    useCandy <- useCandyFor buf
+                    gtkBuf   <-  getBuffer v
+                    setText gtkBuf text
+                    when useCandy $ modeTransformToCandy (mode buf)
+                                        (modeEditInCommentOrString (mode buf)) gtkBuf
+                    iter     <-  getIterAtOffset gtkBuf i
+                    placeCursor gtkBuf iter
+                    mark     <-  getInsertMark gtkBuf
+                    scrollToMark v mark 0.0 (Just (0.3,0.3))
+                    liftIO $ debugM "leksah" "SourceBuffer recoverState done"
+                    return False
                 return (Just buf)
             Nothing -> return Nothing
-    makeActive actbuf = do
+    makeActive (actbuf@IDEBuffer {sourceView=sv}) = do
         ideR    <-  ask
-        let sv = sourceView actbuf
         eBuf    <- getBuffer sv
         writeCursorPositionInStatusbar sv
         writeOverwriteInStatusbar sv
@@ -214,7 +219,7 @@ startComplete = do
     currentState' <- readIDE currentState
     case mbBuf of
         Nothing     -> return ()
-        Just buf    -> complete (sourceView buf) True
+        Just (IDEBuffer {sourceView=v}) -> complete v True
 
 selectSourceBuf :: FilePath -> IDEM (Maybe IDEBuffer)
 selectSourceBuf fp = do
@@ -233,7 +238,9 @@ selectSourceBuf fp = do
                 then do
                     prefs <- readIDE prefs
                     pp      <- getBestPathForId  "*Buffer"
+                    liftIO $ debugM "lekash" "selectSourceBuf calling newTextBuffer"
                     nbuf <- newTextBuffer pp (takeFileName fpc) (Just fpc)
+                    liftIO $ debugM "lekash" "selectSourceBuf newTextBuffer returned"
                     return nbuf
                 else do
                     ideMessage Normal ((__ "File path not found ") ++ fpc)
@@ -272,8 +279,9 @@ goToSourceDefinition fp dscMbLocation = do
 --    liftIO $ putStrLn $ "goToSourceDefinition " ++ fp
     mbBuf     <- selectSourceBuf fp
     when (isJust mbBuf && isJust dscMbLocation) $
-        inActiveBufContext () $ \_ ebuf buf _ -> do
+        inActiveBufContext () $ \_ sv ebuf _ _ -> do
             let location    =   fromJust dscMbLocation
+            liftIO $ debugM "lekash" "goToSourceDefinition calculating range"
             lines           <-  getLineCount ebuf
             iterTemp        <-  getIterAtLine ebuf (max 0 (min (lines-1)
                                     ((locationSLine location) -1)))
@@ -283,14 +291,14 @@ goToSourceDefinition fp dscMbLocation = do
                                     ((locationELine location) -1)))
             chars2          <-  getCharsInLine iter2Temp
             iter2 <- atLineOffset iter2Temp (max 0 (min (chars2-1) (locationECol location)))
-            placeCursor ebuf iter
-            smark           <-  getSelectionBoundMark ebuf
-            moveMark ebuf smark iter2
             -- ### we had a problem before using this idleAdd thing
             ideR <- ask
-            liftIO $ idleAdd (do
-                reflectIDE (scrollToIter (sourceView buf) iter 0.0 (Just (0.3,0.3))) ideR
-                return False) priorityDefaultIdle
+            liftIO . (`idleAdd` priorityDefaultIdle) . (`reflectIDE` ideR) $ do
+                liftIO $ debugM "lekash" "goToSourceDefinition triggered selectRange"
+                selectRange ebuf iter iter2
+                liftIO $ debugM "lekash" "goToSourceDefinition triggered scrollToIter"
+                scrollToIter sv iter 0.0 (Just (0.3,0.3))
+                return False
             return ()
     return mbBuf
 
@@ -305,7 +313,7 @@ insertInBuffer idDescr = do
             case mbBuf of
                 Nothing -> return ()
                 Just buf ->
-                    inBufContext () buf $ \_ ebuf buf _ -> do
+                    inBufContext () buf $ \_ _ ebuf buf _ -> do
                         mark <- getInsertMark ebuf
                         iter <- getIterAtMark ebuf mark
                         insert ebuf iter (dscName idDescr)
@@ -316,15 +324,14 @@ markRefInSourceBuf index buf logRef scrollTo = do
     candy'      <- readIDE candy
     contextRefs <- readIDE contextRefs
     prefs       <- readIDE prefs
-    inBufContext () buf $ \_ ebuf buf _ -> do
+    inBufContext () buf $ \_ sv ebuf buf _ -> do
         let tagName = (show $ logRefType logRef) ++ show index
+        liftIO . debugM "lekash" $ "markRefInSourceBuf getting or creating tag " ++ tagName
         tagTable <- getTagTable ebuf
         mbTag <- lookupTag tagTable tagName
         case mbTag of
             Just existingTag -> do
-                i1 <- getStartIter ebuf
-                i2 <- getEndIter ebuf
-                removeTagByName ebuf tagName i1 i2
+                removeTagByName ebuf tagName
             Nothing -> do
                 errtag <- newTag tagTable tagName
                 case logRefType logRef of
@@ -337,6 +344,7 @@ markRefInSourceBuf index buf logRef scrollTo = do
                     ContextRef -> do
                         background errtag $ contextBackground prefs
 
+        liftIO $ debugM "lekash" "markRefInSourceBuf calculating range"
         let start' = (srcSpanStartLine (logRefSrcSpan logRef),
                         srcSpanStartColumn (logRefSrcSpan logRef))
         let end'   = (srcSpanEndLine (logRefSrcSpan logRef),
@@ -368,16 +376,19 @@ markRefInSourceBuf index buf logRef scrollTo = do
         let isOldContext = case (logRefType logRef, latest) of
                                 (ContextRef, Just ctx) | ctx /= logRef -> True
                                 _ -> False
-        unless isOldContext $ applyTagByName ebuf tagName iter iter2
-        when scrollTo $ placeCursor ebuf iter
-        mark <- getInsertMark ebuf
+        unless isOldContext $ do
+            liftIO $ debugM "lekash" "markRefInSourceBuf calling applyTagByName"
+            applyTagByName ebuf tagName iter iter2
         when scrollTo $ do
-            ideR <- ask
-            liftIO $ idleAdd (do
-                reflectIDE (do
-                    scrollToMark (sourceView buf) mark 0.3 Nothing
-                    when (isOldContext && scrollTo) $ selectRange ebuf iter iter2) ideR
-                return False) priorityDefaultIdle
+            ideR    <- ask
+            liftIO . (`idleAdd` priorityDefaultIdle) . (`reflectIDE` ideR) $ do
+                liftIO $ debugM "lekash" "markRefInSourceBuf triggered placeCursor"
+                placeCursor ebuf iter
+                mark <- getInsertMark ebuf
+                liftIO $ debugM "lekash" "markRefInSourceBuf trigged scrollToMark"
+                scrollToMark sv mark 0.3 Nothing
+                when isOldContext $ selectRange ebuf iter iter2
+                return False
             return ()
 
 newTextBuffer :: PanePath -> String -> Maybe FilePath -> IDEM (Maybe IDEBuffer)
@@ -418,7 +429,6 @@ builder' :: Bool ->
     Gtk.Window ->
     IDEM (Maybe IDEBuffer,Connections)
 builder' bs mbfn ind bn rbn ct prefs pp nb windows = do
-    ideR <- ask
     -- load up and display a file
     (fileContents,modTime) <- case mbfn of
         Just fn -> do
@@ -427,173 +437,172 @@ builder' bs mbfn ind bn rbn ct prefs pp nb windows = do
             return (fc,Just mt)
         Nothing -> return ("\n",Nothing)
 
-    buffer <- (if useYi prefs then newYiBuffer else newGtkBuffer) mbfn fileContents
-    tagTable <- getTagTable buffer
-    foundTag <- newTag tagTable "found"
-    background foundTag $ foundBackground prefs
+    case textEditor prefs  of
+        "GtkSourceView" -> newGtkBuffer mbfn fileContents >>= makeBuffer modTime
+        "Yi"            -> newYiBuffer mbfn fileContents >>= makeBuffer modTime
+        "CodeMirror"    -> newCMBuffer mbfn fileContents >>= makeBuffer modTime
+        _               -> newDefaultBuffer mbfn fileContents >>= makeBuffer modTime
 
-    beginNotUndoableAction buffer
-    let mod = modFromFileName mbfn
-    when (bs && isHaskellMode mod) $ modeTransformToCandy mod
-                                        (modeEditInCommentOrString mod) buffer
-    endNotUndoableAction buffer
-    setModified buffer False
-    siter <- getStartIter buffer
-    placeCursor buffer siter
-    iter <- getEndIter buffer
+  where
+    makeBuffer modTime buffer = do
+        ideR <- ask
 
-    -- create a new SourceView Widget
-    sv <- newView buffer (textviewFont prefs)
-    setShowLineNumbers sv $ showLineNumbers prefs
-    setRightMargin sv $ case rightMargin prefs of
+        tagTable <- getTagTable buffer
+        foundTag <- newTag tagTable "found"
+        background foundTag $ foundBackground prefs
+
+        beginNotUndoableAction buffer
+        let mod = modFromFileName mbfn
+        when (bs && isHaskellMode mod) $ modeTransformToCandy mod
+                                            (modeEditInCommentOrString mod) buffer
+        endNotUndoableAction buffer
+        setModified buffer False
+        siter <- getStartIter buffer
+        placeCursor buffer siter
+        iter <- getEndIter buffer
+
+        -- create a new SourceView Widget
+        sv <- newView buffer (textviewFont prefs)
+        setShowLineNumbers sv $ showLineNumbers prefs
+        setRightMargin sv $ case rightMargin prefs of
+                                (False,_) -> Nothing
+                                (True,v) -> Just v
+        setIndentWidth sv $ tabWidth prefs
+        setTabWidth sv $ 8 -- GHC treats tabs as 8 we should display them that way
+        drawTabs sv
+        setStyle buffer $ case sourceStyle prefs of
                             (False,_) -> Nothing
                             (True,v) -> Just v
-    setIndentWidth sv $ tabWidth prefs
-    setTabWidth sv $ 8 -- GHC treats tabs as 8 we should display them that way
-    drawTabs sv
-    setStyle buffer $ case sourceStyle prefs of
-                        (False,_) -> Nothing
-                        (True,v) -> Just v
 
-    -- put it in a scrolled window
-    sw <- getScrolledWindow sv
-    if wrapLines prefs
-        then liftIO $ scrolledWindowSetPolicy sw PolicyNever PolicyAutomatic
-        else liftIO $ scrolledWindowSetPolicy sw PolicyAutomatic PolicyAutomatic
-    liftIO $ scrolledWindowSetShadowType sw ShadowIn
-    modTimeRef <- liftIO $ newIORef modTime
-    let buf = IDEBuffer {
-        fileName =  mbfn,
-        bufferName = bn,
-        addedIndex = ind,
-        sourceView =sv,
-        scrolledWindow = sw,
-        modTime = modTimeRef,
-        mode = mod}
-    -- events
-    ids1 <- sv `afterFocusIn` makeActive buf
-    ids2 <- onCompletion sv (do
-            Completion.complete sv False) $ do
-                Completion.cancel
-    ids3 <- sv `onButtonPress`
-        \event -> do
-            liftIO $ reflectIDE (do
-                case GtkOld.eventClick event of
-                    GtkOld.DoubleClick -> do
-                        (start, end) <- getIdentifierUnderCursor buffer
-                        liftIO $ reflectIDE (selectRange buffer start end) ideR
-                        return True
-                    _ -> return False) ideR
+        -- put it in a scrolled window
+        sw <- getScrolledWindow sv
+        if wrapLines prefs
+            then liftIO $ scrolledWindowSetPolicy sw PolicyNever PolicyAutomatic
+            else liftIO $ scrolledWindowSetPolicy sw PolicyAutomatic PolicyAutomatic
+        liftIO $ scrolledWindowSetShadowType sw ShadowIn
+        modTimeRef <- liftIO $ newIORef modTime
+        let buf = IDEBuffer {
+            fileName =  mbfn,
+            bufferName = bn,
+            addedIndex = ind,
+            sourceView =sv,
+            scrolledWindow = sw,
+            modTime = modTimeRef,
+            mode = mod}
+        -- events
+        ids1 <- sv `afterFocusIn` makeActive buf
+        ids2 <- onCompletion sv (do
+                Completion.complete sv False) $ do
+                    Completion.cancel
+        ids3 <- onButtonPress sv $ do
+                click <- lift $ Gtk.eventClick
+                liftIDE $
+                    case click of
+                        Gtk.DoubleClick -> do
+                            (start, end) <- getIdentifierUnderCursor buffer
+                            selectRange buffer start end
+                            return True
+                        _ -> return False
 
-    (GetTextPopup mbTpm) <- triggerEvent ideR (GetTextPopup Nothing)
-    ids4 <- case mbTpm of
-        Just tpm    -> sv `onPopulatePopup` \menu -> liftIO $ (tpm ideR menu)
-        Nothing     -> do
-            sysMessage Normal "SourceBuffer>> no text popup"
-            return []
+        (GetTextPopup mbTpm) <- triggerEvent ideR (GetTextPopup Nothing)
+        ids4 <- case mbTpm of
+            Just tpm    -> sv `onPopulatePopup` \menu -> liftIO $ (tpm ideR menu)
+            Nothing     -> do
+                sysMessage Normal "SourceBuffer>> no text popup"
+                return []
 
-    --TODO refactor this
-    ids5 <- onMotionNotifyEvent sv $ \ideRef -> do
-                            mbSTxt <- liftIO $ runReaderT ( do
-                                candy' <- readIDE candy
-                                inActiveBufContext Nothing $ \_ ebuf currentBuffer _ -> do
-                                    let tagName = "gray_bg" -- TODO change color
-                                    tagTable <- getTagTable ebuf
-                                    mbTag <- lookupTag tagTable tagName
+        --TODO refactor this
+        ids5 <- onMotionNotifyEvent sv $ do
+            liftIDE $ do
+                candy' <- readIDE candy
+                inActiveBufContext () $ \_ _ ebuf currentBuffer _ -> do
+                    let tagName = "match"
+                    tagTable <- getTagTable ebuf
+                    mbTag <- lookupTag tagTable tagName
+                    case mbTag of
+                        Just existingTag -> do
+                            removeTagByName ebuf tagName
+                        Nothing -> do
+                            tag <- newTag tagTable tagName
+                            background tag $ matchBackground prefs
+
+                    hasSelection <- hasSelection ebuf
+                    when hasSelection $ do
+                            (si1,si2)   <- getSelectionBounds ebuf
+
+                            sTxt      <- getCandylessPart candy' ebuf si1 si2
+                            let strippedSTxt = strip' sTxt
+                            case strippedSTxt of
+                                [] -> return ()
+                                _  -> do
                                     bi1 <- getStartIter ebuf
                                     bi2 <- getEndIter ebuf
-                                    case mbTag of
-                                        Just existingTag -> do
-                                            removeTagByName ebuf tagName bi1 bi2
-                                        Nothing -> do
-                                            tag <- newTag tagTable tagName
-                                            case tag of --TODO change to casting
-                                                GtkEditorTag txtTag -> liftIO $ set txtTag [ textTagBackground := "grey"]
-                                            liftIO $ return()
+                                    forwardApplying bi1 strippedSTxt (Just si1) tagName ebuf
+                                    forwardApplying si2 strippedSTxt (Just bi2) tagName ebuf
+            return False
 
-                                    hasSelection <- hasSelection ebuf
-                                    if hasSelection
-                                        then do
-                                            (si1,si2)   <- getSelectionBounds ebuf
-
-                                            sTxt      <- getCandylessPart candy' ebuf si1 si2
-                                            let strippedSTxt = strip' sTxt
-                                            case strippedSTxt of
-                                                [] -> return Nothing
-                                                _  -> case (bi1,bi2, si1, si2) of --TODO change to casting
-                                                            (GtkEditorIter bti1, GtkEditorIter bti2, GtkEditorIter sti1, GtkEditorIter sti2) -> do
-                                                                forwardApplying bti1 strippedSTxt (Just sti1) tagName ebuf
-                                                                forwardApplying sti2 strippedSTxt (Just bti2) tagName ebuf
-                                                                return Nothing
-                                        else return Nothing
-                                ) ideRef
-                            return False
-
-    ids6 <- sv `onKeyPress`
-        \name modifier keyval -> do
-            liftIO $ reflectIDE (do
-                    let moveToNextWord iterOp sel  = do
-                        sel' <- iterOp sel
-                        rs <- isRangeStart sel'
-                        if rs then return sel' else moveToNextWord iterOp sel'
-                    let calculateNewPosition iterOp = getInsertIter buffer >>= moveToNextWord iterOp
-                    let continueSelection keepSelBound nsel = do
-                            im <- getInsertMark buffer
-                            moveMark buffer im nsel
-                            scrollToIter sv nsel 0 Nothing
-                            when (not keepSelBound) $ do
-                                sb <- getSelectionBoundMark buffer
-                                moveMark buffer sb nsel
-                    case (name, map mapControlCommand modifier, keyval) of
-                        ("Left",[GtkOld.Control],_) -> do
-                            calculateNewPosition backwardCharC >>= continueSelection False
-                            return True
-                        ("Left",[GtkOld.Shift, GtkOld.Control],_) -> do
-                            calculateNewPosition backwardCharC >>= continueSelection True
-                            return True
-                        ("Right",[GtkOld.Control],_) -> do
-                            calculateNewPosition forwardCharC >>= continueSelection False --placeCursor buffer
-                            return True
-                        ("Right",[GtkOld.Shift, GtkOld.Control],_) -> do
-                            calculateNewPosition forwardCharC >>= continueSelection True
-                            return True
-                        ("BackSpace",[GtkOld.Control],_) -> do              -- delete word
-                            here <- getInsertIter buffer
-                            there <- calculateNewPosition backwardCharC
-                            delete buffer here there
-                            return True
-                        ("underscore",[GtkOld.Shift, GtkOld.Control],_) -> do
-                            (start, end) <- getIdentifierUnderCursor buffer
-                            slice <- getSlice buffer start end True
-                            triggerEventIDE (SelectInfo slice False)
-                            return True
-                            -- Redundant should become a go to definition directly
-                        ("minus",[GtkOld.Control],_) -> do
-                            (start, end) <- getIdentifierUnderCursor buffer
-                            slice <- getSlice buffer start end True
-                            triggerEventIDE (SelectInfo slice True)
-                            return True
-                        _ -> do
-                            -- liftIO $ print ("sourcebuffer key:",name,modifier,keyval)
-                            return False
-                ) ideR
-    ids7 <- case sv of
-        GtkEditorView sv -> do
-            (liftIO $ createHyperLinkSupport sv sw (\ctrl shift iter -> do
-                            (GtkEditorIter beg,GtkEditorIter en) <- reflectIDE (getIdentifierUnderCursorFromIter (GtkEditorIter iter, GtkEditorIter iter)) ideR
-                            return (beg, if ctrl then en else beg)) (\_ shift' slice -> do
-                                        when (slice /= []) $ do
-                                            -- liftIO$ print ("slice",slice)
-                                            reflectIDE (triggerEventIDE
-                                                (SelectInfo slice shift')) ideR
-                                            return ()
-                                        ))
-
-#ifdef LEKSAH_WITH_YI
-        _ -> return []
-#endif
-    return (Just buf,concat [ids1, ids2, ids3, ids4, ids5, ids6, ids7])
-    where
+        ids6 <- onKeyPress sv $ do
+            keyval      <- lift eventKeyVal
+            name        <- lift eventKeyName
+            modifier    <- lift eventModifier
+            liftIDE $ do
+                let moveToNextWord iterOp sel  = do
+                    sel' <- iterOp sel
+                    rs <- isRangeStart sel'
+                    if rs then return sel' else moveToNextWord iterOp sel'
+                let calculateNewPosition iterOp = getInsertIter buffer >>= moveToNextWord iterOp
+                let continueSelection keepSelBound nsel = do
+                        if keepSelBound
+                            then do
+                                sb <- getSelectionBoundMark buffer >>= getIterAtMark buffer
+                                selectRange buffer nsel sb
+                            else
+                                placeCursor buffer nsel
+                        scrollToIter sv nsel 0 Nothing
+                case (name, map mapControlCommand modifier, keyval) of
+                    ("Left",[Gtk.Control],_) -> do
+                        calculateNewPosition backwardCharC >>= continueSelection False
+                        return True
+                    ("Left",[Gtk.Shift, Gtk.Control],_) -> do
+                        calculateNewPosition backwardCharC >>= continueSelection True
+                        return True
+                    ("Right",[Gtk.Control],_) -> do
+                        calculateNewPosition forwardCharC >>= continueSelection False --placeCursor buffer
+                        return True
+                    ("Right",[Gtk.Shift, Gtk.Control],_) -> do
+                        calculateNewPosition forwardCharC >>= continueSelection True
+                        return True
+                    ("BackSpace",[Gtk.Control],_) -> do              -- delete word
+                        here <- getInsertIter buffer
+                        there <- calculateNewPosition backwardCharC
+                        delete buffer here there
+                        return True
+                    ("underscore",[Gtk.Shift, Gtk.Control],_) -> do
+                        (start, end) <- getIdentifierUnderCursor buffer
+                        slice <- getSlice buffer start end True
+                        triggerEventIDE (SelectInfo slice False)
+                        return True
+                        -- Redundant should become a go to definition directly
+                    ("minus",[Gtk.Control],_) -> do
+                        (start, end) <- getIdentifierUnderCursor buffer
+                        slice <- getSlice buffer start end True
+                        triggerEventIDE (SelectInfo slice True)
+                        return True
+                    _ -> do
+                        -- liftIO $ print ("sourcebuffer key:",name,modifier,keyval)
+                        return False
+        ids7 <- do
+            ideR <- ask
+            sw <- getScrolledWindow sv
+            createHyperLinkSupport sv sw (\ctrl shift iter -> do
+                (beg, en) <- getIdentifierUnderCursorFromIter (iter, iter)
+                return (beg, if ctrl then en else beg)) (\_ shift' slice -> do
+                            when (slice /= []) $ do
+                                -- liftIO$ print ("slice",slice)
+                                triggerEventIDE (SelectInfo slice shift')
+                                return ()
+                            )
+        return (Just buf,concat [ids1, ids2, ids3, ids4, ids5, ids6, ids7])
     wschars' :: String
     wschars' = " \t\r\n"
 
@@ -608,20 +617,21 @@ builder' bs mbfn ind bn rbn ct prefs pp nb windows = do
                               else s
     rstrip' :: String -> String
     rstrip' = reverse . lstrip' . reverse
-    forwardApplying :: TextIter
+    forwardApplying :: TextEditor editor
+                    => EditorIter editor
                     -> String   -- txt
-                    -> Maybe TextIter
+                    -> Maybe (EditorIter editor)
                     -> String   -- tagname
-                    -> EditorBuffer
+                    -> EditorBuffer editor
                     -> IDEM ()
     forwardApplying tI txt mbTi tagName ebuf = do
-        mbFTxt <- liftIO $ textIterForwardSearch tI txt [TextSearchVisibleOnly, TextSearchTextOnly] mbTi
+        mbFTxt <- forwardSearch tI txt [TextSearchVisibleOnly, TextSearchTextOnly] mbTi
         case mbFTxt of
             Just (start, end) -> do
-                startsWord <- liftIO $ textIterStartsWord start
-                endsWord <- liftIO $ textIterEndsWord end
+                startsWord <- startsWord start
+                endsWord <- endsWord end
                 if (startsWord && endsWord)
-                    then applyTagByName ebuf tagName (GtkEditorIter start) (GtkEditorIter end)
+                    then applyTagByName ebuf tagName start end
                     else return ()
                 forwardApplying end txt mbTi tagName ebuf
             Nothing -> return()
@@ -634,12 +644,12 @@ isRangeStart sel = do                                   -- if char and previous 
     mbPrevCharCat <- getCharacterCategory <$> (backwardCharC sel >>= getChar)
     return $ currentChar == Nothing || currentChar == Just '\n' || mbStartCharCat /= mbPrevCharCat && (mbStartCharCat == SyntaxCharacter || mbStartCharCat == IdentifierCharacter)
 
-getIdentifierUnderCursor :: EditorBuffer -> IDEM (EditorIter, EditorIter)
+getIdentifierUnderCursor :: forall editor. TextEditor editor => EditorBuffer editor -> IDEM (EditorIter editor, EditorIter editor)
 getIdentifierUnderCursor buffer = do
     (startSel, endSel) <- getSelectionBounds buffer
     getIdentifierUnderCursorFromIter (startSel, endSel)
 
-getIdentifierUnderCursorFromIter :: (EditorIter, EditorIter) -> IDEM (EditorIter, EditorIter)
+getIdentifierUnderCursorFromIter :: TextEditor editor => (EditorIter editor, EditorIter editor) -> IDEM (EditorIter editor, EditorIter editor)
 getIdentifierUnderCursorFromIter (startSel, endSel) = do
     let isIdent a = isAlphaNum a || a == '\'' || a == '_'
     let isOp    a = isSymbol   a || a == ':'  || a == '\\' || a == '*' || a == '/' || a == '-'
@@ -744,18 +754,18 @@ setModTime buf = do
                 return ())
 
 fileRevert :: IDEAction
-fileRevert = inActiveBufContext () $ \ _ _ currentBuffer _ -> do
+fileRevert = inActiveBufContext () $ \ _ _ _ currentBuffer _ -> do
     revert currentBuffer
 
 revert :: IDEBuffer -> IDEAction
-revert buf = do
+revert (buf@IDEBuffer{sourceView = sv}) = do
     useCandy    <-  useCandyFor buf
     ct          <-  readIDE candy
     let name    =   paneName buf
     case fileName buf of
         Nothing -> return ()
         Just fn -> do
-            buffer <- getBuffer (sourceView buf)
+            buffer <- getBuffer sv
             fc <- liftIO $ UTF8.readFile fn
             mt <- liftIO $ getModificationTime fn
             beginNotUndoableAction buffer
@@ -769,7 +779,7 @@ revert buf = do
             return mt
             liftIO $ writeIORef (modTime buf) (Just mt)
 
-writeCursorPositionInStatusbar :: EditorView -> IDEAction
+writeCursorPositionInStatusbar :: TextEditor editor => EditorView editor -> IDEAction
 writeCursorPositionInStatusbar sv = do
     buf  <- getBuffer sv
     mark <- getInsertMark buf
@@ -779,13 +789,13 @@ writeCursorPositionInStatusbar sv = do
     triggerEventIDE (StatusbarChanged [CompartmentBufferPos (line,col)])
     return ()
 
-writeOverwriteInStatusbar :: EditorView -> IDEAction
+writeOverwriteInStatusbar :: TextEditor editor => EditorView editor -> IDEAction
 writeOverwriteInStatusbar sv = do
     mode <- getOverwrite sv
     triggerEventIDE (StatusbarChanged [CompartmentOverlay mode])
     return ()
 
-selectInfo :: EditorView -> IDEAction
+selectInfo :: TextEditor editor => EditorView editor -> IDEAction
 selectInfo sv = do
     ideR    <- ask
     buf     <- getBuffer sv
@@ -807,13 +817,13 @@ markActiveLabelAsChanged = do
               Just buf -> markLabelAsChanged nb buf
 
 markLabelAsChanged :: Notebook -> IDEBuffer -> IDEAction
-markLabelAsChanged nb buf = do
-    ebuf   <- getBuffer (sourceView buf)
+markLabelAsChanged nb (buf@IDEBuffer{sourceView = sv}) = do
+    ebuf   <- getBuffer sv
     modified <- getModified ebuf
     liftIO $ markLabel nb (getTopWidget buf) modified
 
-fileSaveBuffer :: Bool -> Notebook -> EditorBuffer -> IDEBuffer -> Int -> IDEM Bool
-fileSaveBuffer query nb ebuf ideBuf i = do
+fileSaveBuffer :: TextEditor editor => Bool -> Notebook -> EditorView editor -> EditorBuffer editor -> IDEBuffer -> Int -> IDEM Bool
+fileSaveBuffer query nb _ ebuf (ideBuf@IDEBuffer{sourceView = sv}) i = do
     ideR    <- ask
     window  <- getMainWindow
     prefs   <- readIDE prefs
@@ -885,7 +895,7 @@ fileSaveBuffer query nb ebuf ideBuf i = do
     where
         fileSave' :: Bool -> Bool -> Notebook -> IDEBuffer -> Bool -> CandyTable -> FilePath -> IDEAction
         fileSave' forceLineEnds removeTBlanks nb ideBuf useCandy candyTable fn = do
-            buf     <-   getBuffer $ sourceView ideBuf
+            buf     <-   getBuffer $ sv
             text    <-   getCandylessText candyTable buf
             let text' = if removeTBlanks
                             then unlines $ map removeTrailingBlanks $lines text
@@ -909,8 +919,8 @@ fileSaveAll filterFunc = do
     results  <- forM filtered (\buf -> inBufContext False buf (fileSaveBuffer False))
     return $ True `elem` results
 
-fileCheckBuffer :: Notebook -> EditorBuffer -> IDEBuffer -> Int -> IDEM Bool
-fileCheckBuffer nb ebuf ideBuf i = do
+fileCheckBuffer :: TextEditor editor => Notebook -> EditorView editor -> EditorBuffer editor -> IDEBuffer -> Int -> IDEM Bool
+fileCheckBuffer nb _ ebuf ideBuf i = do
     let mbfn = fileName ideBuf
     if isJust mbfn
         then do (_, modifiedOnDisk) <- checkModTime ideBuf -- The user is given option to reload
@@ -941,8 +951,8 @@ fileNew = do
 fileClose :: IDEM Bool
 fileClose = inActiveBufContext True $ fileClose'
 
-fileClose' :: Notebook -> EditorBuffer -> IDEBuffer -> Int  -> IDEM Bool
-fileClose' nb ebuf currentBuffer i = do
+fileClose' :: TextEditor editor => Notebook -> EditorView editor -> EditorBuffer editor -> IDEBuffer -> Int  -> IDEM Bool
+fileClose' nb _ ebuf currentBuffer i = do
     window  <- getMainWindow
     modified <- getModified ebuf
     cancel <- reifyIDE $ \ideR   ->  do
@@ -995,19 +1005,19 @@ fileCloseAllButPackage = do
     when (not (null bufs) && isJust mbActivePack) $ do
         mapM_ (close' (fromJust mbActivePack)) bufs
     where
-        close' activePack buf = do
+        close' activePack (buf@IDEBuffer {sourceView = sv}) = do
             (pane,_)    <-  guiPropertiesFromName (paneName buf)
             nb          <-  getNotebook pane
             mbI         <-  liftIO $notebookPageNum nb (scrolledWindow buf)
             case mbI of
                 Nothing ->  throwIDE (__ "notebook page not found: unexpected")
                 Just i  ->  do
-                    ebuf <- getBuffer (sourceView buf)
+                    ebuf <- getBuffer sv
                     let dir = dropFileName $ ipdCabalFile activePack
                     when (isJust (fileName buf)) $ do
                         modified <- getModified ebuf
                         when (not modified && not (isSubPath dir (fromJust (fileName buf))))
-                            $ do fileClose' nb ebuf buf i; return ()
+                            $ do fileClose' nb sv ebuf buf i; return ()
 
 fileCloseAllButWorkspace :: IDEAction
 fileCloseAllButWorkspace = do
@@ -1016,18 +1026,18 @@ fileCloseAllButWorkspace = do
     when (not (null bufs) && isJust mbWorkspace) $ do
         mapM_ (close' (fromJust mbWorkspace)) bufs
     where
-        close' workspace buf = do
+        close' workspace (buf@IDEBuffer {sourceView = sv}) = do
             (pane,_)    <-  guiPropertiesFromName (paneName buf)
             nb          <-  getNotebook pane
             mbI         <-  liftIO $notebookPageNum nb (scrolledWindow buf)
             case mbI of
                 Nothing ->  throwIDE (__ "notebook page not found: unexpected")
                 Just i  ->  do
-                    ebuf <- getBuffer (sourceView buf)
+                    ebuf <- getBuffer sv
                     when (isJust (fileName buf)) $ do
                         modified <- getModified ebuf
                         when (not modified && not (isSubPathOfAny workspace (fromJust (fileName buf))))
-                            $ do fileClose' nb ebuf buf i; return ()
+                            $ do fileClose' nb sv ebuf buf i; return ()
         isSubPathOfAny workspace fileName =
             let pathes = map (dropFileName . ipdCabalFile) (wsPackages workspace)
             in  or (map (\dir -> isSubPath dir fileName) pathes)
@@ -1071,6 +1081,7 @@ fileOpen = do
 
 fileOpenThis :: FilePath -> IDEAction
 fileOpenThis fp =  do
+    liftIO . debugM "leksah" $ "fileOpenThis " ++ fp
     prefs <- readIDE prefs
     fpc <-  liftIO $ myCanonicalizePath fp
     buffers <- allBuffers
@@ -1106,8 +1117,8 @@ fileOpenThis fp =  do
 filePrint :: IDEAction
 filePrint = inActiveBufContext () $ filePrint'
 
-filePrint' :: Notebook -> EditorBuffer -> IDEBuffer -> Int -> IDEM ()
-filePrint' nb ebuf currentBuffer _ = do
+filePrint' :: TextEditor editor => Notebook -> EditorView view -> EditorBuffer editor -> IDEBuffer -> Int -> IDEM ()
+filePrint' nb _ ebuf currentBuffer _ = do
     let pName = paneName currentBuffer
     window  <- getMainWindow
     print <- reifyIDE $ \ideR ->  do
@@ -1170,38 +1181,38 @@ filePrint' nb ebuf currentBuffer _ = do
                         Nothing   -> return ()
 
 editUndo :: IDEAction
-editUndo = inActiveBufContext () $ \_ buf _ _ -> do
+editUndo = inActiveBufContext () $ \_ _ buf _ _ -> do
     can <- canUndo buf
     when can $ undo buf
 
 editRedo :: IDEAction
-editRedo = inActiveBufContext () $ \_ buf _ _ -> do
+editRedo = inActiveBufContext () $ \_ _ buf _ _ -> do
     can <- canRedo buf
     when can $ redo buf
 
 editDelete :: IDEAction
-editDelete = inActiveBufContext ()  $ \_ ebuf _ _ ->  do
-    deleteSelection ebuf True True
+editDelete = inActiveBufContext ()  $ \_ _ ebuf _ _ ->  do
+    deleteSelection ebuf
     return ()
 
 editSelectAll :: IDEAction
-editSelectAll = inActiveBufContext () $ \_ ebuf _ _ -> do
+editSelectAll = inActiveBufContext () $ \_ _ ebuf _ _ -> do
     start <- getStartIter ebuf
     end   <- getEndIter ebuf
     selectRange ebuf start end
 
 editCut :: IDEAction
-editCut = inActiveBufContext () $ \_ ebuf _ _ -> do
+editCut = inActiveBufContext () $ \_ _ ebuf _ _ -> do
     clip <- liftIO $ clipboardGet selectionClipboard
     cutClipboard ebuf clip True
 
 editCopy :: IDEAction
-editCopy = inActiveBufContext () $ \_ ebuf _ _ -> do
+editCopy = inActiveBufContext () $ \_ _ ebuf _ _ -> do
     clip <- liftIO $ clipboardGet selectionClipboard
     copyClipboard ebuf clip
 
 editPaste :: IDEAction
-editPaste = inActiveBufContext () $ \_ ebuf _ _ -> do
+editPaste = inActiveBufContext () $ \_ _ ebuf _ _ -> do
     mark <- getInsertMark ebuf
     iter <- getIterAtMark ebuf mark
     clip <- liftIO $ clipboardGet selectionClipboard
@@ -1296,7 +1307,7 @@ removeRecentlyUsedFile fp = do
 selectedText :: IDEM (Maybe String)
 selectedText = do
     candy' <- readIDE candy
-    inActiveBufContext Nothing $ \_ ebuf currentBuffer _ -> do
+    inActiveBufContext Nothing $ \_ _ ebuf currentBuffer _ -> do
         hasSelection <- hasSelection ebuf
         if hasSelection
             then do
@@ -1308,7 +1319,7 @@ selectedText = do
 selectedTextOrCurrentLine :: IDEM (Maybe String)
 selectedTextOrCurrentLine = do
     candy' <- readIDE candy
-    inActiveBufContext Nothing $ \_ ebuf currentBuffer _ -> do
+    inActiveBufContext Nothing $ \_ _ ebuf currentBuffer _ -> do
         hasSelection <- hasSelection ebuf
         (i1, i2) <- if hasSelection
             then getSelectionBounds ebuf
@@ -1323,7 +1334,7 @@ selectedTextOrCurrentLine = do
 selectedLocation :: IDEM (Maybe (Int, Int))
 selectedLocation = do
     candy'      <- readIDE candy
-    inActiveBufContext Nothing $ \_ ebuf currentBuffer _ -> do
+    inActiveBufContext Nothing $ \_ _ ebuf currentBuffer _ -> do
         useCandy   <- useCandyFor currentBuffer
         (start, _) <- getSelectionBounds ebuf
         line       <- getLine start
@@ -1336,7 +1347,7 @@ selectedLocation = do
 insertTextAfterSelection :: String -> IDEAction
 insertTextAfterSelection str = do
     candy'       <- readIDE candy
-    inActiveBufContext () $ \_ ebuf currentBuffer _ -> do
+    inActiveBufContext () $ \_ _ ebuf currentBuffer _ -> do
         useCandy     <- useCandyFor currentBuffer
         hasSelection <- hasSelection ebuf
         when hasSelection $ do

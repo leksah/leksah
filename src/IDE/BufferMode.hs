@@ -1,4 +1,4 @@
-{-# LANGUAGE CPP, FlexibleInstances, DeriveDataTypeable, TypeSynonymInstances, MultiParamTypeClasses #-}
+{-# LANGUAGE CPP, FlexibleInstances, DeriveDataTypeable, TypeSynonymInstances, MultiParamTypeClasses, Rank2Types, GADTs, FlexibleContexts, ScopedTypeVariables #-}
 -----------------------------------------------------------------------------
 --
 -- Module      :  IDE.BufferMode
@@ -19,10 +19,11 @@ import Prelude hiding(getLine)
 import IDE.Core.State
 import Data.List (isPrefixOf, elemIndices, isInfixOf, isSuffixOf)
 import IDE.TextEditor
-       (EditorIter, getOffset, startsLine, getIterAtMark,
-        getSelectionBoundMark, getInsertMark, EditorBuffer, getBuffer,
-        EditorView, delete, getText, forwardCharsC, insert, getIterAtLine,
-        getLine)
+       (getOffset, startsLine, getIterAtMark, EditorView(..),
+        getSelectionBoundMark, getInsertMark, getBuffer,
+        delete, getText, forwardCharsC, insert, getIterAtLine,
+        getLine, TextEditor(..), EditorBuffer(..),
+        EditorIter(..))
 import Data.IORef (IORef)
 import System.Time (ClockTime)
 import Data.Typeable (cast, Typeable)
@@ -46,11 +47,11 @@ import Data.Time (UTCTime)
 --
 -- | A text editor pane description
 --
-data IDEBuffer      =   IDEBuffer {
+data IDEBuffer = forall editor. TextEditor editor => IDEBuffer {
     fileName        ::  Maybe FilePath
 ,   bufferName      ::  String
 ,   addedIndex      ::  Int
-,   sourceView      ::  EditorView
+,   sourceView      ::  EditorView editor
 ,   scrolledWindow  ::  ScrolledWindow
 #if MIN_VERSION_directory(1,2,0)
 ,   modTime         ::  IORef (Maybe (UTCTime))
@@ -95,7 +96,7 @@ recentSourceBuffers = do
     mbBufs       <- mapM mbPaneFromName recentPanes'
     return $ map paneName ((catMaybes $ map (\ (PaneC p) -> cast p) $ catMaybes mbBufs) :: [IDEBuffer])
 
-getStartAndEndLineOfSelection :: EditorBuffer -> IDEM (Int,Int)
+getStartAndEndLineOfSelection :: TextEditor editor => EditorBuffer editor -> IDEM (Int,Int)
 getStartAndEndLineOfSelection ebuf = do
     startMark   <- getInsertMark ebuf
     endMark     <- getSelectionBoundMark ebuf
@@ -110,8 +111,8 @@ getStartAndEndLineOfSelection ebuf = do
     let endLineReal = if b && endLine /= startLine then endLine' - 1 else endLine'
     return (startLine',endLineReal)
 
-inBufContext :: alpha -> IDEBuffer -> (Notebook -> EditorBuffer -> IDEBuffer -> Int -> IDEM alpha) -> IDEM alpha
-inBufContext def ideBuf f = do
+inBufContext :: alpha -> IDEBuffer -> (forall editor. TextEditor editor => Notebook -> EditorView editor -> EditorBuffer editor -> IDEBuffer -> Int -> IDEM alpha) -> IDEM alpha
+inBufContext def (ideBuf@IDEBuffer{sourceView = v}) f = do
     (pane,_)       <-  guiPropertiesFromName (paneName ideBuf)
     nb             <-  getNotebook pane
     mbI            <-  liftIO $notebookPageNum nb (scrolledWindow ideBuf)
@@ -120,20 +121,19 @@ inBufContext def ideBuf f = do
             sysMessage Normal $ bufferName ideBuf ++ " notebook page not found: unexpected"
             return def
         Just i  ->  do
-            ebuf <- getBuffer (sourceView ideBuf)
-            f nb ebuf ideBuf i
+            ebuf <- getBuffer v
+            f nb v ebuf ideBuf i
 
-inActiveBufContext :: alpha -> (Notebook -> EditorBuffer -> IDEBuffer -> Int -> IDEM alpha) -> IDEM alpha
+inActiveBufContext :: alpha -> (forall editor. TextEditor editor => Notebook -> EditorView editor -> EditorBuffer editor -> IDEBuffer -> Int -> IDEM alpha) -> IDEM alpha
 inActiveBufContext def f = do
-    mbBuf                  <- maybeActiveBuf
+    mbBuf <- maybeActiveBuf
     case mbBuf of
         Nothing         -> return def
         Just ideBuf -> do
             inBufContext def ideBuf f
 
-
-doForSelectedLines :: [a] -> (EditorBuffer -> Int -> IDEM a) -> IDEM [a]
-doForSelectedLines d f = inActiveBufContext d $ \_ ebuf currentBuffer _ -> do
+doForSelectedLines :: [a] -> (forall editor. TextEditor editor => EditorBuffer editor -> Int -> IDEM a) -> IDEM [a]
+doForSelectedLines d f = inActiveBufContext d $ \_ _ ebuf currentBuffer _ -> do
     (start,end) <- getStartAndEndLineOfSelection ebuf
     mapM (f ebuf) [start .. end]
 
@@ -145,10 +145,10 @@ data Mode = Mode {
     modeEditUncomment      :: IDEAction,
     modeSelectedModuleName :: IDEM (Maybe String),
     modeEditToCandy        :: (String -> Bool) -> IDEAction,
-    modeTransformToCandy   :: (String -> Bool) -> EditorBuffer -> IDEAction,
+    modeTransformToCandy   :: TextEditor editor => (String -> Bool) -> EditorBuffer editor -> IDEAction,
     modeEditFromCandy      :: IDEAction,
     modeEditKeystrokeCandy :: Maybe Char -> (String -> Bool) -> IDEAction,
-    modeEditInsertCode     :: String -> EditorIter -> EditorBuffer -> IDEAction,
+    modeEditInsertCode     :: TextEditor editor => String -> EditorIter editor -> EditorBuffer editor -> IDEAction,
     modeEditInCommentOrString :: String -> Bool
     }
 
@@ -178,7 +178,7 @@ haskellMode = Mode {
                 else return ()
         return (),
     modeSelectedModuleName = do
-        inActiveBufContext Nothing $ \_ ebuf currentBuffer _ -> do
+        inActiveBufContext Nothing $ \_ _ ebuf currentBuffer _ -> do
             case fileName currentBuffer of
                 Just filePath -> liftIO $ moduleNameFromFilePath filePath
                 Nothing       -> return Nothing,
@@ -187,15 +187,15 @@ haskellMode = Mode {
         transformToCandy ct ebuf inCommentOrString,
     modeEditToCandy = \ inCommentOrString -> do
         ct <- readIDE candy
-        inActiveBufContext () $ \_ ebuf _ _ -> do
+        inActiveBufContext () $ \_ _ ebuf _ _ -> do
             transformToCandy ct ebuf inCommentOrString,
     modeEditFromCandy = do
         ct      <-  readIDE candy
-        inActiveBufContext () $ \_ ebuf _ _ -> do
+        inActiveBufContext () $ \_ _ ebuf _ _ -> do
             transformFromCandy ct ebuf,
     modeEditKeystrokeCandy = \c inCommentOrString -> do
         ct <- readIDE candy
-        inActiveBufContext () $ \_ ebuf _ _ -> do
+        inActiveBufContext () $ \_ _ ebuf _ _ -> do
             keystrokeCandy ct c ebuf inCommentOrString,
     modeEditInsertCode = \ str iter buf ->
         insert buf iter str,
@@ -230,7 +230,7 @@ literalHaskellMode = Mode {
                 (insert ebuf sol ">")
         return (),
     modeSelectedModuleName = do
-        inActiveBufContext Nothing $ \_ ebuf currentBuffer _ -> do
+        inActiveBufContext Nothing $ \_ _ ebuf currentBuffer _ -> do
             case fileName currentBuffer of
                 Just filePath -> liftIO $ moduleNameFromFilePath filePath
                 Nothing       -> return Nothing,
@@ -239,15 +239,15 @@ literalHaskellMode = Mode {
         transformToCandy ct ebuf inCommentOrString,
     modeEditToCandy = \ inCommentOrString -> do
         ct <- readIDE candy
-        inActiveBufContext () $ \_ ebuf _ _ -> do
+        inActiveBufContext () $ \_ _ ebuf _ _ -> do
             transformToCandy ct ebuf inCommentOrString,
     modeEditFromCandy = do
         ct      <-  readIDE candy
-        inActiveBufContext () $ \_ ebuf _ _ -> do
+        inActiveBufContext () $ \_ _ ebuf _ _ -> do
             transformFromCandy ct ebuf,
     modeEditKeystrokeCandy = \c inCommentOrString -> do
         ct <- readIDE candy
-        inActiveBufContext () $ \_ ebuf _ _ -> do
+        inActiveBufContext () $ \_ _ ebuf _ _ -> do
             keystrokeCandy ct c ebuf inCommentOrString,
     modeEditInsertCode = \ str iter buf ->
         insert buf iter (unlines $ map (\ s -> "> " ++ s) $ lines str),
@@ -304,7 +304,7 @@ isHaskellMode mode = modeName mode == "Haskell" || modeName mode == "Literal Has
 
 withCurrentMode :: alpha -> (Mode -> IDEM alpha) -> IDEM alpha
 withCurrentMode def act = do
-    mbBuf           <- maybeActiveBuf
+    mbBuf <- maybeActiveBuf
     case mbBuf of
         Nothing     -> return def
         Just ideBuf -> act (mode ideBuf)
@@ -328,7 +328,7 @@ editKeystrokeCandy :: Maybe Char -> IDEAction
 editKeystrokeCandy c = withCurrentMode () (\m -> modeEditKeystrokeCandy m c
                             (modeEditInCommentOrString m))
 
-editInsertCode :: EditorBuffer -> EditorIter -> String -> IDEAction
+editInsertCode :: TextEditor editor => EditorBuffer editor -> EditorIter editor -> String -> IDEAction
 editInsertCode buffer iter str = withCurrentMode ()
                                             (\ m -> modeEditInsertCode m str iter buffer)
 

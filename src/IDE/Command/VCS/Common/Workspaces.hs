@@ -41,6 +41,7 @@ import Graphics.UI.Gtk (
 
 import Data.Maybe
 import Data.List
+import System.Log.Logger (debugM)
 
 onWorkspaceClose :: IDEAction
 onWorkspaceClose = do
@@ -49,6 +50,7 @@ onWorkspaceClose = do
 
 onWorkspaceOpen :: Workspace -> IDEAction
 onWorkspaceOpen ws = do
+        liftIO $ debugM "leksah" "onWorkspaceOpen"
         let mbPackages = wsPackages ws
         packages <- mapM (mapper ws)
                                  mbPackages

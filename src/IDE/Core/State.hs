@@ -50,6 +50,7 @@ module IDE.Core.State (
 ,   catchIDE
 ,   postSyncIDE
 ,   postAsyncIDE
+,   onIDE
 ,   forkIDE
 
 ,   sysMessage
@@ -320,6 +321,10 @@ postSyncIDE f = reifyIDE (\ideR -> postGUISync (reflectIDE f ideR))
 
 postAsyncIDE :: IDEM () -> IDEM ()
 postAsyncIDE f = reifyIDE (\ideR -> postGUIAsync (reflectIDE f ideR))
+
+onIDE obj signal callback = do
+    ideRef <- ask
+    liftIO $ obj `on` signal $ runReaderT callback ideRef
 
 -- ---------------------------------------------------------------------
 -- Convenience methods for accesing the IDE State

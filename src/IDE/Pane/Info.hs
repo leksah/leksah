@@ -1,5 +1,5 @@
 {-# LANGUAGE FlexibleInstances, DeriveDataTypeable, MultiParamTypeClasses,
-             CPP, ScopedTypeVariables, TypeSynonymInstances #-}
+             CPP, ScopedTypeVariables, TypeSynonymInstances, GADTs #-}
 {-# OPTIONS_GHC -fwarn-unused-imports #-}
 -----------------------------------------------------------------------------
 --
@@ -23,7 +23,6 @@ module IDE.Pane.Info (
 ,   openDocu
 ) where
 
-import Graphics.UI.Gtk hiding (afterToggleOverwrite)
 import Control.Monad
 import Data.IORef
 import Data.Typeable
@@ -33,18 +32,24 @@ import Network.URI (escapeURIString)
 import IDE.Core.State
 import IDE.SymbolNavigation
 import IDE.Pane.SourceBuffer
-import IDE.TextEditor (EditorIter(..))
-import IDE.Utils.GUIUtils (openBrowser,controlIsPressed, __)
-import Graphics.UI.Gtk.SourceView
+import IDE.TextEditor (newDefaultBuffer, TextEditor(..))
+import IDE.Utils.GUIUtils (openBrowser, __)
 import Control.Monad.IO.Class (MonadIO(..))
-
+import Control.Monad.Reader.Class (MonadReader(..))
+import Graphics.UI.Gtk
+       (widgetHide, widgetShowAll, menuShellAppend, menuItemActivate,
+        menuItemNewWithLabel, containerGetChildren, Menu,
+        boxPackStart, scrolledWindowSetPolicy,
+        vBoxNew, castToWidget, VBox)
+import Graphics.UI.Gtk.General.Enums (Packing(..), PolicyType(..))
+import System.Glib.Signals (on)
 
 -- | An info pane description
 --
-data IDEInfo        =   IDEInfo {
+data IDEInfo        =   forall editor. TextEditor editor => IDEInfo {
     sw              ::   VBox
 ,   currentDescr    ::   IORef (Maybe Descr)
-,   descriptionView ::   SourceView
+,   descriptionView ::   EditorView editor
 } deriving Typeable
 
 data InfoState              =   InfoState (Maybe Descr)
@@ -67,88 +72,38 @@ instance RecoverablePane IDEInfo InfoState IDEM where
     builder pp nb windows =
         let idDescr = Nothing in do
         prefs <- readIDE prefs
-        reifyIDE $ \ ideR -> do
-            ibox        <- vBoxNew False 0
-        -- Descr View
-            font <- case textviewFont prefs of
-                Just str -> do
-                    fontDescriptionFromString str
-                Nothing -> do
-                    f <- fontDescriptionNew
-                    fontDescriptionSetFamily f (__ "Monospace")
-                    return f
+        ibox              <- liftIO $ vBoxNew False 0
+        descriptionBuffer <- newDefaultBuffer Nothing ""
+        descriptionView   <- newView descriptionBuffer (textviewFont prefs)
 
-            descriptionView <- sourceViewNew
-            descriptionBuffer <- (get descriptionView textViewBuffer) >>= (return . castToSourceBuffer)
-            lm <- sourceLanguageManagerNew
-            mbLang <- sourceLanguageManagerGuessLanguage lm Nothing (Just "text/x-haskell")
-#if MIN_VERSION_gtksourceview2(0,12,0)
-            sourceBufferSetLanguage descriptionBuffer mbLang
-#else
-            case mbLang of
-                Nothing -> return ()
-                Just lang -> do sourceBufferSetLanguage descriptionBuffer lang
-#endif
-            -- This call is here because in the past I have had problems where the
-            -- language object became invalid if the manager was garbage collected
-            sourceLanguageManagerGetLanguageIds lm
+        setStyle descriptionBuffer $ case sourceStyle prefs of
+                                        (False,_) -> Nothing
+                                        (True,v) -> Just v
 
-            sourceBufferSetHighlightSyntax descriptionBuffer True
-            widgetModifyFont descriptionView (Just font)
+        sw <- getScrolledWindow descriptionView
 
-            case sourceStyle prefs of
-                (False,_)  -> return ()
-                (True,str) -> do
-                    styleManager <- sourceStyleSchemeManagerNew
-                    ids <- sourceStyleSchemeManagerGetSchemeIds styleManager
-                    when (elem str ids) $ do
-                        scheme <- sourceStyleSchemeManagerGetScheme styleManager str
-#if MIN_VERSION_gtksourceview2(0,12,0)
-                        sourceBufferSetStyleScheme descriptionBuffer $ Just scheme
-#else
-                        sourceBufferSetStyleScheme descriptionBuffer scheme
-#endif
+        createHyperLinkSupport descriptionView sw (\_ _ iter -> do
+                (beg, en) <- getIdentifierUnderCursorFromIter (iter, iter)
+                return (beg, en)) (\_ shift' slice -> do
+                                    when (slice /= []) $ do
+                                        -- liftIO$ print ("slice",slice)
+                                        triggerEventIDE (SelectInfo slice shift')
+                                        return ()
+                                    )
+
+        liftIO $ scrolledWindowSetPolicy sw PolicyAutomatic PolicyAutomatic
+
+        liftIO $ boxPackStart ibox sw PackGrow 10
 
 
-            sw <- scrolledWindowNew Nothing Nothing
-            containerAdd sw descriptionView
-
-
-            createHyperLinkSupport descriptionView sw (\_ _ iter -> do
-                    (GtkEditorIter beg,GtkEditorIter en) <- reflectIDE (getIdentifierUnderCursorFromIter (GtkEditorIter iter, GtkEditorIter iter)) ideR
-                    return (beg, en)) (\_ shift' slice -> do
-                                        when (slice /= []) $ do
-                                            -- liftIO$ print ("slice",slice)
-                                            reflectIDE (triggerEventIDE
-                                                (SelectInfo slice shift')) ideR
-                                            return ()
-                                        )
-
-            scrolledWindowSetPolicy sw PolicyAutomatic PolicyAutomatic
-
-            boxPackStart ibox sw PackGrow 10
-
-
-            --openType
-            currentDescr' <- newIORef idDescr
-#if MIN_VERSION_gtk(0,10,5)
-            cid         <- on descriptionView populatePopup (populatePopupMenu ideR currentDescr')
-#else
-            cid         <- descriptionView `onPopulatePopup` (populatePopupMenu ideR currentDescr')
-#endif
-            let info = IDEInfo ibox currentDescr' descriptionView
-            descriptionView `widgetAddEvents` [ButtonReleaseMask]
-            id5 <- descriptionView `onButtonRelease`
-                (\ e -> do
-                    buf     <-  textViewGetBuffer descriptionView
-                    (l,r)   <- textBufferGetSelectionBounds buf
-                    symbol  <- textBufferGetText buf l r True
-                    when (controlIsPressed e)
-                        (reflectIDE (do
-                            triggerEventIDE (SelectInfo symbol False)
-                            return ()) ideR)
-                    return False)
-            return (Just info,[ConnectC cid])
+        --openType
+        currentDescr' <- liftIO $ newIORef idDescr
+        cids <- onPopulatePopup descriptionView $ \ menu -> do
+            ideR <- ask
+            liftIO $ populatePopupMenu ideR currentDescr' menu
+        let info = IDEInfo ibox currentDescr' descriptionView
+        -- ids5 <- sv `onLookupInfo` selectInfo descriptionView       -- obsolete by hyperlinks
+        return (Just info, cids)
 
 gotoSource :: IDEAction
 gotoSource = do
@@ -169,12 +124,14 @@ gotoModule' = do
 setInfo :: Descr -> IDEAction
 setInfo identifierDescr = do
     info <-  forceGetPane (Right "*Info")
-    oldDescr <- liftIO $ readIORef (currentDescr info)
-    liftIO $ do
-        writeIORef (currentDescr info) (Just identifierDescr)
-        tb <- get (descriptionView info) textViewBuffer
-        textBufferSetText tb (show (Present identifierDescr) ++ "\n")   -- EOL for text iters to work
-    recordInfoHistory (Just identifierDescr) oldDescr
+    setInfo' info
+  where
+    setInfo' (info@IDEInfo{descriptionView = v}) = do
+        oldDescr <- liftIO $ readIORef (currentDescr info)
+        liftIO $ writeIORef (currentDescr info) (Just identifierDescr)
+        tb <- getBuffer v
+        setText tb (show (Present identifierDescr) ++ "\n")   -- EOL for text iters to work
+        recordInfoHistory (Just identifierDescr) oldDescr
 
 getInfoCont ::  IDEM (Maybe (Descr))
 getInfoCont = do

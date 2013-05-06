@@ -239,7 +239,7 @@ prefsDescription configDir packages = NFDPP [
             boolEditor
             (\b -> do
                 buffers <- allBuffers
-                mapM_ (\buf -> setShowLineNumbers (sourceView buf) b) buffers)
+                mapM_ (\(IDEBuffer {sourceView = sv}) -> setShowLineNumbers sv b) buffers)
     ,   mkFieldPP
             (paraName <<<- ParaName (__ "TextView Font") $ emptyParams)
             (\a -> PP.text (case a of Nothing -> show ""; Just s -> show s))
@@ -250,7 +250,7 @@ prefsDescription configDir packages = NFDPP [
             fontEditor
             (\mbs -> do
                 buffers <- allBuffers
-                mapM_ (\buf -> setFont (sourceView buf) mbs) buffers)
+                mapM_ (\(IDEBuffer {sourceView = sv}) -> setFont sv mbs) buffers)
     ,   mkFieldPP
             (paraName <<<- ParaName (__ "Right margin")
                 $ paraSynopsis <<<- ParaSynopsis (__ "Size or 0 for no right margin")
@@ -264,7 +264,7 @@ prefsDescription configDir packages = NFDPP [
                     True (__ "Show it ?"))
             (\b -> do
                 buffers <- allBuffers
-                mapM_ (\buf -> setRightMargin (sourceView buf)
+                mapM_ (\(IDEBuffer {sourceView = sv}) -> setRightMargin sv
                                 (case b of
                                     (True,v) -> Just v
                                     (False,_) -> Nothing)) buffers)
@@ -277,7 +277,7 @@ prefsDescription configDir packages = NFDPP [
             (intEditor (1.0, 20.0, 1.0))
             (\i -> do
                 buffers <- allBuffers
-                mapM_ (\buf -> setIndentWidth (sourceView buf) i) buffers)
+                mapM_ (\(IDEBuffer {sourceView = sv}) -> setIndentWidth sv i) buffers)
     ,   mkFieldPP
             (paraName <<<- ParaName (__ "Wrap lines") $ emptyParams)
             (PP.text . show)
@@ -287,7 +287,7 @@ prefsDescription configDir packages = NFDPP [
             boolEditor
             (\b -> do
                 buffers <- allBuffers
-                mapM_ (\buf -> setWrapMode (sourceView buf) b) buffers)
+                mapM_ (\(IDEBuffer {sourceView = sv}) -> setWrapMode sv b) buffers)
     ,   mkFieldPP
             (paraName <<<- ParaName (__ "Use standard line ends even on windows") $ emptyParams)
             (PP.text . show)
@@ -333,8 +333,8 @@ prefsDescription configDir packages = NFDPP [
             styleEditor
             (\mbs -> do
                 buffers <- allBuffers
-                mapM_ (\buf -> do
-                    ebuf <- getBuffer (sourceView buf)
+                mapM_ (\(IDEBuffer {sourceView = sv}) -> do
+                    ebuf <- getBuffer sv
                     setStyle ebuf (case mbs of
                                     (False,_) -> Nothing
                                     (True,s) -> Just s)) buffers)
@@ -347,10 +347,26 @@ prefsDescription configDir packages = NFDPP [
             colorEditor
             (\c -> do
                 buffers <- allBuffers
-                forM_ buffers $ \buf -> do
-                    ebuf     <- getBuffer (sourceView buf)
+                forM_ buffers $ \(IDEBuffer {sourceView = sv}) -> do
+                    ebuf     <- getBuffer sv
                     tagTable <- getTagTable ebuf
                     mbTag    <- lookupTag tagTable "found"
+                    case mbTag of
+                        Just tag -> background tag c
+                        Nothing  -> return ())
+    ,   mkFieldPP
+            (paraName <<<- ParaName (__ "Selection Match Text Background") $ emptyParams)
+            (PP.text . show)
+            colorParser
+            matchBackground
+            (\ b a -> a{matchBackground = b})
+            colorEditor
+            (\c -> do
+                buffers <- allBuffers
+                forM_ buffers $ \(IDEBuffer {sourceView = sv}) -> do
+                    ebuf     <- getBuffer sv
+                    tagTable <- getTagTable ebuf
+                    mbTag    <- lookupTag tagTable "match"
                     case mbTag of
                         Just tag -> background tag c
                         Nothing  -> return ())
@@ -363,8 +379,8 @@ prefsDescription configDir packages = NFDPP [
             colorEditor
             (\c -> do
                 buffers <- allBuffers
-                forM_ buffers $ \buf -> do
-                    ebuf     <- getBuffer (sourceView buf)
+                forM_ buffers $ \(IDEBuffer {sourceView = sv}) -> do
+                    ebuf     <- getBuffer sv
                     tagTable <- getTagTable ebuf
                     --  TODO find and set the tag background
                     return ())
@@ -377,8 +393,8 @@ prefsDescription configDir packages = NFDPP [
             colorEditor
             (\c -> do
                 buffers <- allBuffers
-                forM_ buffers $ \buf -> do
-                    ebuf     <- getBuffer (sourceView buf)
+                forM_ buffers $ \(IDEBuffer {sourceView = sv}) -> do
+                    ebuf     <- getBuffer sv
                     tagTable <- getTagTable ebuf
                     --  TODO find and set the tag background
                     return ())
@@ -391,12 +407,12 @@ prefsDescription configDir packages = NFDPP [
             boolEditor
             (\i -> return ())
     ,   mkFieldPP
-            (paraName <<<- ParaName (__ "Use Yi - Experimental feature (could wipe your files)") $ emptyParams)
+            (paraName <<<- ParaName (__ "Text Editor") $ emptyParams)
             (PP.text . show)
-            boolParser
-            useYi
-            (\b a -> a{useYi = b})
-            boolEditor
+            stringParser
+            textEditor
+            (\b a -> a{textEditor = b})
+            (comboSelectionEditor ["GtkSourceView", "Yi", "CodeMirror"] id)
             (\i -> return ())
     ]),
     ((__ "GUI Options"), VFDPP emptyParams [
@@ -732,9 +748,10 @@ defaultPrefs = Prefs {
     ,   textviewFont        =   Nothing
     ,   sourceStyle         =   (False,"classic")
     ,   foundBackground     =   Color 65535 65535 32768
+    ,   matchBackground     =   Color 32768 32768 32768
     ,   contextBackground   =   Color 65535 49152 49152
     ,   breakpointBackground =  Color 65535 49152 32768
-    ,   useYi               =   False
+    ,   textEditor          =   "GtkSourceView"
     ,   autoLoad            =   False
     ,   logviewFont         =   Nothing
     ,   defaultSize         =   (1024,800)

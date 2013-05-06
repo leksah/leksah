@@ -45,6 +45,7 @@ import System.FilePath
 import Graphics.UI.Editor.Parameters
     (Parameter(..), (<<<-), paraName, emptyParams)
 import qualified Text.PrettyPrint as  PP (text)
+import System.Log.Logger (debugM)
 
 writeWorkspace :: Workspace -> IDEAction
 writeWorkspace ws = do
@@ -70,6 +71,7 @@ workspaceVersion = 2
 
 setWorkspace :: Maybe Workspace -> IDEAction
 setWorkspace mbWs = do
+    liftIO $ debugM "leksah" "setWorkspace"
     mbOldWs <- readIDE workspace
     modifyIDE_ (\ide -> ide{workspace = mbWs})
     let packFileAndExe =  case mbWs of

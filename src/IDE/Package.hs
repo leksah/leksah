@@ -113,6 +113,7 @@ import Debug.Trace (trace)
 import IDE.Pane.WebKit.Documentation
        (getDocumentation, loadDoc, reloadDoc)
 import Text.Printf (printf)
+import System.Log.Logger (debugM)
 
 moduleInfo :: (a -> BuildInfo) -> (a -> [ModuleName]) -> a -> [(ModuleName, BuildInfo)]
 moduleInfo bi mods a = map (\m -> (m, buildInfo)) $ mods a
@@ -127,9 +128,13 @@ myExeModules pd = concatMap (moduleInfo buildInfo exeModules) (executables pd)
 myLibModules pd = moduleInfo libModules libBuildInfo pd
 myExeModules pd = moduleInfo exeModules buildInfo pd
 #endif
+#if MIN_VERSION_Cabal(1,10,0)
+myTestModules pd = concatMap (moduleInfo testBuildInfo (otherModules . testBuildInfo)) (testSuites pd)
+#endif
 
 activatePackage :: Maybe (IDEPackage, Maybe String) -> IDEM ()
 activatePackage (Just (pack, mbExe)) = do
+        liftIO $ debugM "leksah" "activatePackage"
         modifyIDE_ (\ide -> ide{activePack = Just pack, activeExe = mbExe})
         liftIO $ setCurrentDirectory (dropFileName (ipdCabalFile pack))
         triggerEventIDE (Sensitivity [(SensitivityProjectActive,True)])
@@ -144,6 +149,7 @@ activatePackage Nothing = return ()
 
 deactivatePackage :: IDEAction
 deactivatePackage = do
+    liftIO $ debugM "leksah" "deactivatePackage"
     oldActivePack <- readIDE activePack
     modifyIDE_ (\ide -> ide{activePack = Nothing, activeExe = Nothing})
     when (isJust oldActivePack) $ do
@@ -882,6 +888,9 @@ idePackageFromPath filePath = do
         Nothing       -> return Nothing
         Just packageD -> do
             let modules    = Map.fromList $ myLibModules packageD ++ myExeModules packageD
+#if MIN_VERSION_Cabal(1,10,0)
+                                 ++ myTestModules packageD
+#endif
             let mainFiles  = [ (modulePath exe, buildInfo exe, False) | exe <- executables packageD ]
 #if MIN_VERSION_Cabal(1,10,0)
                              ++ [ (f, bi, True) | TestSuite _ (TestSuiteExeV10 _ f) bi _ <- testSuites packageD ]

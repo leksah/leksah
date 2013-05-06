@@ -213,27 +213,32 @@ startGUI yiConfig sessionFP mbWorkspaceFP sourceFPs iprefs isFirstStart = do
     when rtsSupportsBoundThreads
         (sysMessage Normal "Linked with -threaded")
     timeoutAddFull (yield >> return True) priorityHigh 10
-    mapM_ (sysMessage Normal) st
-    initGtkRc
-    dataDir       <- getDataDir
-    mbStartupPrefs <- if not isFirstStart
-                                then return $ Just iprefs
-                                else do
-                                    firstStartOK <- firstStart iprefs
-                                    if not firstStartOK
-                                        then return Nothing
-                                        else do
-                                            prefsPath  <- getConfigFilePathForLoad standardPreferencesFilename Nothing dataDir
-                                            prefs <- readPrefs prefsPath
-                                            return $ Just prefs
-    case mbStartupPrefs of
-        Nothing           -> return ()
-        Just startupPrefs -> startMainWindow yiControl sessionFP mbWorkspaceFP sourceFPs
-                                startupPrefs isFirstStart
+    postGUIAsync $ do
+        mapM_ (sysMessage Normal) st
+        initGtkRc
+        dataDir       <- getDataDir
+        mbStartupPrefs <- if not isFirstStart
+                                    then return $ Just iprefs
+                                    else do
+                                        firstStartOK <- firstStart iprefs
+                                        if not firstStartOK
+                                            then return Nothing
+                                            else do
+                                                prefsPath  <- getConfigFilePathForLoad standardPreferencesFilename Nothing dataDir
+                                                prefs <- readPrefs prefsPath
+                                                return $ Just prefs
+        case mbStartupPrefs of
+            Nothing           -> return ()
+            Just startupPrefs -> startMainWindow yiControl sessionFP mbWorkspaceFP sourceFPs
+                                    startupPrefs isFirstStart
+    debugM "leksah" "starting mainGUI"
+    mainGUI
+    debugM "leksah" "finished mainGUI"
 
 startMainWindow :: Yi.Control -> FilePath -> Maybe FilePath -> [FilePath] ->
                         Prefs -> Bool -> IO ()
 startMainWindow yiControl sessionFP mbWorkspaceFP sourceFPs startupPrefs isFirstStart = do
+    debugM "leksah" "startMainWindow"
     osxApp <- OSX.applicationNew
     uiManager   <-  uiManagerNew
     newIcons
@@ -318,6 +323,8 @@ startMainWindow yiControl sessionFP mbWorkspaceFP sourceFPs startupPrefs isFirst
         mapM_ instrumentSecWindow (tail wins)
         return pair
         ) ideR
+
+    debugM "leksah" "Show main window"
     widgetShowAll win
 
     reflectIDE (do
@@ -358,7 +365,8 @@ startMainWindow yiControl sessionFP mbWorkspaceFP sourceFPs startupPrefs isFirst
             when (backgroundBuild currentPrefs) $ backgroundMake) ideR
         return True) priorityDefaultIdle 1000
     reflectIDE (triggerEvent ideR (Sensitivity [(SensitivityInterpreting, False)])) ideR
-    mainGUI
+    return ()
+--    mainGUI
 
 fDescription :: FilePath -> FieldDescription Prefs
 fDescription configPath = VFD emptyParams [
