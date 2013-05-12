@@ -17,8 +17,10 @@ export GTK_PREFIX=`pkg-config --libs-only-L gtk+-3.0 | sed 's|^-L||' | sed 's|/l
 echo Staging Leksah in $GTK_PREFIX
 
 # These don't like all the extra options we pass (CPPFLAGS and --extra-lib-dirs)
-cabal install uniplate || true
-cabal install network || true
+cabal install text || true
+cabal install parsec || true
+cabal install network --constraint='text>=0.11.3.1' --constraint='parsec>=3.1.3' || true
+cabal install uniplate --constraint='text>=0.11.3.1' --constraint='parsec>=3.1.3' || true
 
 # Needed for installing curl package on windows
 export CPPFLAGS=`pkg-config --cflags-only-I libcurl`
@@ -34,10 +36,14 @@ echo https://github.com/leksah/ltk >> sources.txt
 echo https://github.com/leksah/leksah-server >> sources.txt
 echo https://github.com/leksah/haskellVCSWrapper.git >> sources.txt
 echo https://github.com/leksah/haskellVCSGUI.git >> sources.txt
-echo darcs:http://patch-tag.com/r/hamish/webkit >> sources.txt
-echo git://github.com/ghcjs/webkit-javascriptcore.git >> sources.txt
-echo https://github.com/ghcjs/ghcjs-dom.git >> sources.txt
-echo https://github.com/ghcjs/jsc.git >> sources.txt
+if [ "$GHC_VER" != "7.0.3" ] && [ "$GHC_VER" != "7.0.4" ]; then
+    echo https://github.com/leksah/pretty-show.git >> sources.txt
+    echo darcs:http://patch-tag.com/r/hamish/webkit >> sources.txt
+    echo git://github.com/ghcjs/webkit-javascriptcore.git >> sources.txt
+    echo https://github.com/ghcjs/ghcjs-dom.git >> sources.txt
+    echo https://github.com/ghcjs/jsc.git >> sources.txt
+    echo https://github.com/ghcjs/CodeMirror.git >> sources.txt
+fi
 # echo ./vendor/gtk2hs >> sources.txt
 echo ./ >> sources.txt
 
@@ -47,7 +53,11 @@ else
     HPDIR=`which ghc` || exit
     HPDIR=`dirname "$HPDIR"` || exit
     HPDIR=`dirname "$HPDIR"` || exit
-    cabal-meta install --extra-lib-dirs="$HPDIR"/mingw/lib --extra-lib-dirs=/c/MinGWRPM/lib -flibcurl || cabal-meta install --extra-lib-dirs="$HPDIR"/mingw/lib --extra-lib-dirs=/c/MinGWRPM/lib -flibcurl || exit
+    if [ "$GHC_VER" != "7.0.3" ] && [ "$GHC_VER" != "7.0.4" ]; then
+        cabal-meta install --extra-lib-dirs="$HPDIR"/mingw/lib --extra-lib-dirs=/c/MinGWRPM/lib -flibcurl -fwebkit || cabal-meta install --extra-lib-dirs="$HPDIR"/mingw/lib --extra-lib-dirs=/c/MinGWRPM/lib -flibcurl -fwebkit || bash || exit
+    else
+        cabal-meta install --extra-lib-dirs="$HPDIR"/mingw/lib --extra-lib-dirs=/c/MinGWRPM/lib -flibcurl -f-webkit || cabal-meta install --extra-lib-dirs="$HPDIR"/mingw/lib --extra-lib-dirs=/c/MinGWRPM/lib -flibcurl -f-webkit || exit
+    fi
 #  if [ "$GHC_VER" != "7.0.3" ] && [ "$GHC_VER" != "7.0.4" ] && [ "$GHC_VER" != "7.6.1" ]; then
 #    echo https://github.com/yi-editor/yi.git >> sources.txt
 #    export LEKSAH_CONFIG_ARGS="$LEKSAH_CONFIG_ARGS -fyi -f-vty -f-dyre -fpango"

@@ -29,7 +29,7 @@ import Graphics.UI.Gtk
         eventTime, leaveNotifyEvent, ScrolledWindow, Modifier(..),
         Rectangle(..), EventMask(..), Underline(..))
 import System.Glib.Signals (on)
-import IDE.TextEditor (TextEditor(..))
+import IDE.TextEditor (TextEditor(..), EditorView(..), EditorIter(..))
 import IDE.Core.Types (IDEM)
 import Graphics.UI.Editor.Basics (Connection(..), Connection)
 import Control.Monad.IO.Class (MonadIO(..))

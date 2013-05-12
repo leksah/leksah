@@ -32,7 +32,7 @@ import Network.URI (escapeURIString)
 import IDE.Core.State
 import IDE.SymbolNavigation
 import IDE.Pane.SourceBuffer
-import IDE.TextEditor (newDefaultBuffer, TextEditor(..))
+import IDE.TextEditor (newDefaultBuffer, TextEditor(..), EditorView(..))
 import IDE.Utils.GUIUtils (openBrowser, __)
 import Control.Monad.IO.Class (MonadIO(..))
 import Control.Monad.Reader.Class (MonadReader(..))

@@ -133,7 +133,8 @@ library
 
     if flag(webkit)
         build-depends: webkit -any, webkit-javascriptcore -any, jsc -any,
-                       ghcjs-codemirror -any, hamlet -any, blaze-html -any, lens -any
+                       ghcjs-codemirror -any, hamlet -any, blaze-html -any,
+                       lens -any, pretty-show >=1.5 && <1.6
         cpp-options: -DWEBKITGTK -DLEKSAH_WITH_CODE_MIRROR
 
     if flag(loc) && os(linux)
@@ -156,8 +157,7 @@ library
                        MissingH >=1.1.1.0 && <1.3,
                        vcsgui >=0.0.1 && < 0.1, vcswrapper >=0.0.1 && < 0.1,
                        QuickCheck >=2.4.2 && <2.6, haskell-src-exts >=1.13.5 && <1.14,
-                       hlint >=1.8.39 && <1.9, pretty-show >=1.5 && <1.6
-
+                       hlint >=1.8.39 && <1.9
     exposed-modules:
         IDE.Leksah IDE.Completion IDE.ImportTool
         IDE.Find IDE.Session IDE.Command IDE.Keymap IDE.Utils.GUIUtils IDE.SymbolNavigation
@@ -265,12 +265,12 @@ Executable leksah
     ghc-options:  -fwarn-missing-fields -fwarn-incomplete-patterns -ferror-spans
 
 executable bewleksah
-    build-depends: leksah ==0.13.2.1, base >=4.0.0.0 && <=4.8,
-                   webkit -any, webkit-javascriptcore -any, jsc -any,
-                   gtk >=0.10 && <0.13, ghcjs-dom -any
-
     if !flag(webkit)
         buildable: False
+    else
+        build-depends: leksah ==0.13.2.1, base >=4.0.0.0 && <=4.8,
+                       webkit -any, webkit-javascriptcore -any, jsc -any,
+                       gtk >=0.10 && <0.13, ghcjs-dom -any
     main-is: Main.hs
     buildable: True
     default-language: Haskell2010

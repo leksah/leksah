@@ -2,7 +2,6 @@
 {-# LANGUAGE TypeFamilies #-}
 {-# LANGUAGE RecordWildCards #-}
 {-# LANGUAGE CPP #-}
-{-# LANGUAGE QuasiQuotes #-}
 {-# LANGUAGE RankNTypes #-}
 -----------------------------------------------------------------------------
 --
@@ -197,16 +196,16 @@ newCMBuffer mbFilename contents = do
                 liftIO $ debugM "leksah" "newCMBuffer loaded"
                 liftIO . putMVar s $ CodeMirrorState{..}
 
-        webViewLoadString cmWebView (renderHtml
-            [shamlet|$newline always
-                <html>
-                    <head>
-                        <script src="lib/codemirror.js">
-                        <link rel="stylesheet" href="lib/codemirror.css">
-                        <script src="mode/javascript/javascript.js">
-                        <script src="mode/haskell/haskell.js">
-                    <body style="margin:0;padding:0 auto;">
-            |]) Nothing Nothing ("file://" ++ dataDir ++ "/codemirror.html")
+        webViewLoadString cmWebView (
+                   "<html><head>"
+                ++ "<script src=\"lib/codemirror.js\">"
+                ++ "<link rel=\"stylesheet\" href=\"lib/codemirror.css\">"
+                ++ "<script src=\"mode/javascript/javascript.js\">"
+                ++ "<script src=\"mode/haskell/haskell.js\">"
+                ++ "</head>"
+                ++ "<body style=\"margin:0;padding:0 auto;\">"
+		++ "</body></html>"
+            ) Nothing Nothing ("file://" ++ dataDir ++ "/codemirror.html")
         debugM "leksah" "newCMBuffer loading"
         return $ CMBuffer (cmWebView, s)
 

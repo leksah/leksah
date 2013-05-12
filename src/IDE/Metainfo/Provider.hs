@@ -1,4 +1,4 @@
-{-# LANGUAGE ScopedTypeVariables #-}
+{-# LANGUAGE CPP, ScopedTypeVariables #-}
 -----------------------------------------------------------------------------
 --
 -- Module      :  IDE.Metainfo.Provider
@@ -58,7 +58,11 @@ import qualified Text.Regex.TDFA as Regex
 import System.IO.Unsafe (unsafePerformIO)
 import Text.Regex.TDFA.String (execute,compile)
 import Data.Binary.Shared (decodeSer)
+#if MIN_VERSION_Cabal(1,16,0)
 import Language.Haskell.Extension (KnownExtension)
+#else
+import Language.Haskell.Extension (knownExtensions)
+#endif
 import Distribution.Text (display)
 import IDE.Core.Serializable ()
 import Data.Map (Map(..))
@@ -808,7 +812,12 @@ extensionDescrs =  map (\ext -> Real $ RealDescr
                                     Nothing
                                     (Just (BS.pack " Haskell language extension"))
                                     ExtensionDescr
-                                    True) ([minBound..maxBound]::[KnownExtension])
+                                    True)
+#if MIN_VERSION_Cabal(1,16,0)
+                                ([minBound..maxBound]::[KnownExtension])
+#else
+                                knownExtensions
+#endif
 
 moduleNameDescrs :: PackageDescr -> [Descr]
 moduleNameDescrs pd = map (\md -> Real $ RealDescr
