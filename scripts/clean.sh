@@ -16,7 +16,9 @@ ghc-pkg unregister --force hlint || true
 rm -rf vendor/*/dist \
        vendor/gtk2hs/*/dist \
        vendor/yi/*/dist \
+       vendor/*/*/dist \
        vendor/*/vendor/*/dist \
+       vendor/*/vendor/*/*/dist \
        vendor/*/vendor/gtk2hs/*/dist || true
 
 cabal clean || exit

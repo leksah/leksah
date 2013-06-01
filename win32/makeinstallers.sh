@@ -28,9 +28,8 @@ ghc -V || exit
 scripts/clean.sh
 win32/makeinstaller.sh || exit
 
-export PATH='/c/ghc/ghc-7.6.1/bin':$PATH
+export PATH='/c/Program Files (x86)/Haskell Platform/2013.2.0.0/bin':$PATH
 ghc -V || exit
 scripts/clean.sh
 win32/makeinstaller.sh || exit
-
 
