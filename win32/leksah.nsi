@@ -47,6 +47,9 @@ Section "Leksah"
   SetOutPath $INSTDIR\hlint
   File "$%LEKSAH_PREFIX%\$%HLINT_X_X_X_X%\*"
 
+  SetOutPath $INSTDIR\pretty-show
+  File /r "$%LEKSAH_PREFIX%\$%PRETTY_SHOW_X_X%\style"
+
   SetOutPath $INSTDIR\etc\gtk-2.0
   File "gtkrc"
 

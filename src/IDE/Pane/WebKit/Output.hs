@@ -161,7 +161,11 @@ setOutput str = do
         html = case (alwaysHtml, parseValue str) of
                     (False, Just value) -> valToHtmlPage defaultHtmlOpts value
                     _                   -> str
-    liftIO $ webViewLoadString view html Nothing Nothing ("file://" ++ dataDir ++ "/value.html")
+    liftIO $ webViewLoadString view html Nothing Nothing ("file://"
+        ++ (case dataDir of
+                ('/':_) -> dataDir
+                _       -> '/':dataDir)
+        ++ "/value.html")
 #else
     return ()
 #endif

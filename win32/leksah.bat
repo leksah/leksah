@@ -22,6 +22,7 @@ set leksah_server_datadir=%~dp0leksah
 set leksah_server_libexecdir=%~dp0bin
 
 set hlint_datadir=%~dp0hlint
+set pretty_show_datadir=%~dp0pretty-show
 
 leksah.exe
 
