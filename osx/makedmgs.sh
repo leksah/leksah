@@ -12,7 +12,7 @@ osx/makedmg.sh
 export PATH=/Users/hamish/Library/Haskell/bin:/Library/Frameworks/GHC.framework/Versions/7.4.2-i386/usr/bin:$PATH
 scripts/clean.sh
 osx/makedmg.sh
-export PATH=/Users/hamish/Library/Haskell/bin:$HOME/ghc-7.6.1/bin:$PATH
+export PATH=/Users/hamish/Library/Haskell/bin:/Library/Frameworks/GHC.framework/Versions/7.6.3-i386/usr/bin:$PATH
 scripts/clean.sh
 osx/makedmg.sh
 
