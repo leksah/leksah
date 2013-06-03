@@ -107,6 +107,7 @@ Section "Leksah"
   File "$%GTK_PREFIX%\bin\libxml2-2.dll"
   File "$%GTK_PREFIX%\bin\libxslt-1.dll"
   File "$%GTK_PREFIX%\bin\libwebkitgtk-3.0-0.dll"
+  File "$%GTK_PREFIX%\bin\pthreadGC2.dll"
   File "$%GTK_PREFIX%\bin\zlib1.dll"
   
   SetOutPath $INSTDIR\share
