@@ -1,5 +1,5 @@
 {-# LANGUAGE FlexibleInstances, DeriveDataTypeable, MultiParamTypeClasses,
-             TypeSynonymInstances, RecordWildCards #-}
+             TypeSynonymInstances, RecordWildCards,  ScopedTypeVariables #-}
 -----------------------------------------------------------------------------
 --
 -- Module      :  IDE.Pane.Files
@@ -21,6 +21,7 @@ module IDE.Pane.Files (
 ,   refreshFiles
 ) where
 
+import Prelude hiding (catch)
 import Graphics.UI.Gtk
        (onSelectionChanged, treeStoreRemove, treeModelIterNext,
         treeModelGetRow, treeStoreInsert, treeModelIterNthChild,
@@ -59,6 +60,7 @@ import Graphics.UI.Gtk.General.Enums
 import System.Glib.Attributes (AttrOp(..))
 import Control.Monad.IO.Class (MonadIO(..))
 import IDE.Utils.GUIUtils (__)
+import Control.Exception (catch)
 
 data FileRecord =
     FileRecord FilePath
@@ -184,15 +186,13 @@ refreshDir :: TreeStore FileRecord -> TreePath -> FilePath -> IO ()
 refreshDir store path dir = do
     mbIter <- treeModelGetIter store path
     when (isJust mbIter) $ do
-        exists <- doesDirectoryExist dir
-        perm <- getPermissions dir
-        contents <- if exists && readable perm
-            then filter ((/= '.').head) <$>
-                getDirectoryContents dir >>= mapM (\f -> do
-                    let full = dir </> f
-                    isDir <- doesDirectoryExist full
-                    return $ if isDir then DirRecord full else FileRecord full)
-            else return []
+        contents <- do
+                filter ((/= '.').head) <$>
+                    getDirectoryContents dir >>= mapM (\f -> do
+                        let full = dir </> f
+                        isDir <- doesDirectoryExist full
+                        return $ if isDir then DirRecord full else FileRecord full)
+            `catch` \ (e :: IOError) -> return []
         setDirectories store mbIter contents
 
 setDirectories :: TreeStore FileRecord -> Maybe TreeIter -> [FileRecord] -> IO ()
