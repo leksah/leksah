@@ -1,5 +1,5 @@
 name: leksah
-version: 0.13.2.3
+version: 0.13.2.4
 cabal-version: >=1.10
 build-type: Simple
 license: GPL
@@ -252,7 +252,7 @@ Executable leksah
                        hlint >=1.8.39 && <1.9
     else
         hs-source-dirs: main
-        build-depends: leksah == 0.13.2.3, base >= 4.0.0.0 && <=4.8
+        build-depends: leksah == 0.13.2.4, base >= 4.0.0.0 && <=4.8
         if os(linux) && flag(loc)
             cpp-options: -DLOCALIZATION
             build-depends: hgettext, setlocale
@@ -268,7 +268,7 @@ executable bewleksah
     if !flag(webkit)
         buildable: False
     else
-        build-depends: leksah ==0.13.2.3, base >=4.0.0.0 && <=4.8,
+        build-depends: leksah ==0.13.2.4, base >=4.0.0.0 && <=4.8,
                        webkit -any, webkit-javascriptcore -any, jsc -any,
                        gtk >=0.10 && <0.13, ghcjs-dom -any
     main-is: Main.hs
@@ -278,7 +278,7 @@ executable bewleksah
 
 test-suite tests
     build-depends: base >=4.0.0.0 && <4.8, Cabal >=1.6.0.1 && <1.18,
-                   QuickCheck >=2.4.2 && <2.6, leksah ==0.13.2.3,
+                   QuickCheck >=2.4.2 && <2.6, leksah ==0.13.2.4,
                    containers, gtk, ltk, leksah-server, hslogger,
                    transformers, glib, monad-loops
     if flag(yi)
