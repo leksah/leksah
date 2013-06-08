@@ -34,6 +34,8 @@ data-files: LICENSE
             data/leksah-welcome/Setup.lhs
             data/leksah-welcome/leksah-welcome.cabal
             data/leksah-welcome/src/Main.hs
+            data/empty.lkshs
+            data/.gtkrc-2.0
 
             language-specs/haskell.lang
             language-specs/haskell-literate.lang
@@ -73,6 +75,88 @@ data-files: LICENSE
             pics/ide_link.png
             pics/ide_rebuild_meta.png
             pics/ide_empty.png
+
+            doc/Keybindings.svg
+            doc/leksah_manual.lyx
+            doc/screenshots2/screenshot_buffer_menu.png
+            doc/screenshots2/screenshot_completion.png
+            doc/screenshots2/screenshot_config_menu.png
+            doc/screenshots2/screenshot_construct_module.png
+            doc/screenshots2/screenshot_debug_menu.png
+            doc/screenshots2/screenshot_debug_pane.png
+            doc/screenshots2/screenshot_edit_menu.png
+            doc/screenshots2/screenshot_error_pane.png
+            doc/screenshots2/screenshot_file_menu.png
+            doc/screenshots2/screenshot_findbar.png
+            doc/screenshots2/screenshot_first_start.png
+            doc/screenshots2/screenshot_grep.png
+            doc/screenshots2/screenshot_help_menu.png
+            doc/screenshots2/screenshot_metadata_prefs.png
+            doc/screenshots2/screenshot_module_browser.png
+            doc/screenshots2/screenshot_package_editor_1.png
+            doc/screenshots2/screenshot_package_flags.png
+            doc/screenshots2/screenshot_package_menu.png
+            doc/screenshots2/screenshot_panes_menu.png
+            doc/screenshots2/screenshot_prefs_editor.png
+            doc/screenshots2/screenshot_serach_pane.png
+            doc/screenshots2/screenshot_source_candy.png
+            doc/screenshots2/screenshot_view_menu.png
+            doc/screenshots2/screenshot_welcome.png
+            doc/screenshots2/screenshot_workspace_menu.png
+
+            scripts/clean.sh
+            scripts/stage.sh
+            osx/bundle.sh
+            osx/gtk2.sh
+            osx/gtk.sh
+            osx/Info.plist
+            osx/launcher.sh
+            osx/leksah.bundle
+            osx/leksah.icns
+            osx/makedmg.sh
+            osx/makedmgs.sh
+            osx/osxkeymap.lkshk
+            osx/settings.ini
+            win32/gtk2hsall.sh
+            win32/gtkrc
+            win32/leksah.bat
+            win32/leksah.ico
+            win32/leksah.nsi
+            win32/leksah-rebuild-metadata.bat
+            win32/leksah-server.bat
+            win32/makeinstaller.sh
+            win32/makeinstallers.sh
+            win32/recache.sh
+            linux/applications/leksah.desktop
+            linux/applications/leksah.xml
+            linux/icons/hicolor/48x48/apps/leksah_48x48.png
+            linux/specfiles/fedora/12/ghc-binary-shared.spec
+            linux/specfiles/fedora/12/ghc-deepseq.spec
+            linux/specfiles/fedora/12/ghc-hslogger.spec
+            linux/specfiles/fedora/12/ghc-ltk.spec
+            linux/specfiles/fedora/12/ghc-process-leksah.spec
+            linux/specfiles/fedora/12/ghc-regex-base.spec
+            linux/specfiles/fedora/12/ghc-regex-tdfa.spec
+            linux/specfiles/fedora/12/leksah_server.spec
+            linux/specfiles/fedora/12/leksah.spec
+            linux/specfiles/fedora/13/ghc-binary-shared.spec
+            linux/specfiles/fedora/13/ghc-hslogger.spec
+            linux/specfiles/fedora/13/ghc-ltk.spec
+            linux/specfiles/fedora/13/ghc-process-leksah.spec
+            linux/specfiles/fedora/13/ghc-regex-tdfa.spec
+            linux/specfiles/fedora/13/haddock.spec
+            linux/specfiles/fedora/13/leksah-server.spec
+            linux/specfiles/fedora/13/leksah.spec
+            linux/specfiles/fedora/14/ghc-binary-shared.spec
+            linux/specfiles/fedora/14/ghc-haddock.spec
+            linux/specfiles/fedora/14/ghc-ltk.spec
+            linux/specfiles/fedora/14/ghc-process-leksah.spec
+            linux/specfiles/fedora/14/ghc-regex-tdfa.spec
+            linux/specfiles/fedora/14/leksah-server.spec
+            linux/specfiles/fedora/14/leksah.spec
+            linux/specfiles/fedora/14/leksah.spec-darcs-backup0
+            linux/specfiles/fedora/14/leksah.spec-darcs-backup1
+
 data-dir: ""
 extra-source-files: Setup.lhs SetupLocale.lhs po/*.pot po/*.po
 
