@@ -3,6 +3,7 @@
 ghc-pkg unregister --force leksah || true
 ghc-pkg unregister --force leksah-server || true
 ghc-pkg unregister --force ltk || true
+ghc-pkg unregister --force vado || true
 ghc-pkg unregister --force yi || true
 ghc-pkg unregister --force gtksourceview2 || true
 ghc-pkg unregister --force gtk-mac-integration || true

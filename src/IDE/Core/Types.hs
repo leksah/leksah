@@ -452,6 +452,7 @@ data Prefs = Prefs {
     ,   completeRestricted  ::   Bool
     ,   saveAllBeforeBuild  ::   Bool
     ,   jumpToWarnings      ::   Bool
+    ,   useVado             ::   Bool
     ,   useCabalDev         ::   Bool
     ,   backgroundBuild     ::   Bool
     ,   runUnitTests        ::   Bool

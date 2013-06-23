@@ -34,6 +34,7 @@ cabal install Cabal || true
 echo darcs:http://code.haskell.org/gtksourceview > sources.txt
 echo https://github.com/leksah/ltk >> sources.txt
 echo https://github.com/leksah/leksah-server >> sources.txt
+echo https://github.com/hamishmack/vado.git >> sources.txt
 echo https://github.com/leksah/haskellVCSWrapper.git >> sources.txt
 echo https://github.com/leksah/haskellVCSGUI.git >> sources.txt
 

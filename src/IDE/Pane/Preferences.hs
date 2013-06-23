@@ -661,7 +661,16 @@ prefsDescription configDir packages = NFDPP [
             (\i -> return ())
 
         , mkFieldPP
-            (paraName <<<- ParaName "Use cabal-dev" $ emptyParams)
+            (paraName <<<- ParaName (__ "Use vado to run commands on the remote machine") $ emptyParams)
+            (PP.text . show)
+            boolParser
+            useVado
+            (\b a -> a{useVado = b})
+            boolEditor
+            (\i -> return ())
+
+        , mkFieldPP
+            (paraName <<<- ParaName (__ "Use cabal-dev") $ emptyParams)
             (PP.text . show)
             boolParser
             useCabalDev
@@ -786,6 +795,7 @@ defaultPrefs = Prefs {
     ,   completeRestricted  =   False
     ,   saveAllBeforeBuild  =   True
     ,   jumpToWarnings      =   True
+    ,   useVado             =   False
     ,   useCabalDev         =   False
     ,   backgroundBuild     =   True
     ,   runUnitTests        =   False

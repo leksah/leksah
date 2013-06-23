@@ -114,6 +114,7 @@ import IDE.Pane.WebKit.Documentation
        (getDocumentation, loadDoc, reloadDoc)
 import Text.Printf (printf)
 import System.Log.Logger (debugM)
+import System.Process.Vado (getMountPoint, vado)
 
 moduleInfo :: (a -> BuildInfo) -> (a -> [ModuleName]) -> a -> [(ModuleName, BuildInfo)]
 moduleInfo bi mods a = map (\m -> (m, buildInfo)) $ mods a
@@ -178,7 +179,7 @@ packageConfig' package continuation = do
     runExternalTool'        (__ "Configuring")
                             (cabalCommand prefs)
                             (["configure"] ++ (ipdConfigFlags package))
-                            (Just dir) $ do
+                            dir $ do
         (mbLastOutput, _) <- EL.zip E.last (logOutput logLaunch)
         lift $ do
             mbPack <- idePackageFromPath (ipdCabalFile package)
@@ -202,7 +203,7 @@ runCabalBuild backgroundBuild jumpToWarnings withoutLinking package shallConfigu
                     then ["--with-ld=false"]
                     else []
                         ++ ipdBuildFlags package)
-    runExternalTool' (__ "Building") (cabalCommand prefs) args (Just dir) $ do
+    runExternalTool' (__ "Building") (cabalCommand prefs) args dir $ do
         (mbLastOutput, isConfigErr, _) <- EL.zip3 E.last isConfigError $
             logOutputForBuild package backgroundBuild jumpToWarnings
         lift $ do
@@ -270,7 +271,7 @@ packageDoc' backgroundBuild jumpToWarnings package continuation = do
     catchIDE (do
         let dir = dropFileName (ipdCabalFile package)
         runExternalTool' (__ "Documenting") (cabalCommand prefs) (["haddock"]
-            ++ (ipdHaddockFlags package)) (Just dir) $ do
+            ++ (ipdHaddockFlags package)) dir $ do
                 (mbLastOutput, _) <- EL.zip E.last $
                     logOutputForBuild package backgroundBuild jumpToWarnings
                 lift $ reloadDoc
@@ -292,7 +293,7 @@ packageClean' package continuation = do
     runExternalTool' (__ "Cleaning")
                     (cabalCommand prefs)
                     ["clean"]
-                    (Just dir) $ do
+                    dir $ do
         (mbLastOutput, _) <- EL.zip E.last (logOutput logLaunch)
         lift $ continuation (mbLastOutput == Just (ToolExit ExitSuccess))
 
@@ -313,7 +314,7 @@ packageCopy = do
                 runExternalTool' (__ "Copying")
                                 (cabalCommand prefs)
                                 (["copy"] ++ ["--destdir=" ++ fp])
-                                (Just dir)
+                                dir
                                 (logOutput logLaunch))
         (\(e :: SomeException) -> putStrLn (show e))
 
@@ -331,7 +332,7 @@ packageInstallDependencies = do
                     then ["install-deps"]
                     else ["install","--only-dependencies"])
             ++ (ipdConfigFlags package)
-            ++ (ipdInstallFlags package)) (Just dir) (logOutput logLaunch))
+            ++ (ipdInstallFlags package)) dir (logOutput logLaunch))
         (\(e :: SomeException) -> putStrLn (show e))
 
 packageCopy' :: IDEPackage -> (Bool -> IDEAction) -> IDEAction
@@ -343,7 +344,7 @@ packageCopy' package continuation = do
     catchIDE (do
         let dir = dropFileName (ipdCabalFile package)
         runExternalTool' (__ "Copying") (cabalCommand prefs) (["copy"]
-            ++ (ipdInstallFlags package)) (Just dir) $ do
+            ++ (ipdInstallFlags package)) dir $ do
                 (mbLastOutput, _) <- EL.zip E.last (logOutput logLaunch)
                 lift $ continuation (mbLastOutput == Just (ToolExit ExitSuccess)))
         (\(e :: SomeException) -> putStrLn (show e))
@@ -366,7 +367,7 @@ packageRun = do
                                                (printf (__ "Running %s") name)
                                                path
                                                (ipdExeFlags package)
-                                               (Just dir)
+                                               dir
                                                (logOutput logLaunch)
 
 
@@ -402,7 +403,7 @@ packageRegister' package continuation =
             prefs <- readIDE prefs
             let dir = dropFileName (ipdCabalFile package)
             runExternalTool' (__ "Registering") (cabalCommand prefs) (["register"]
-                ++ (ipdRegisterFlags package)) (Just dir) $ do
+                ++ (ipdRegisterFlags package)) dir $ do
                     (mbLastOutput, _) <- EL.zip E.last (logOutput logLaunch)
                     lift $ continuation (mbLastOutput == Just (ToolExit ExitSuccess)))
             (\(e :: SomeException) -> putStrLn (show e))
@@ -423,7 +424,7 @@ packageTest' package continuation =
             prefs <- readIDE prefs
             let dir = dropFileName (ipdCabalFile package)
             runExternalTool' (__ "Testing") (cabalCommand prefs) (["test"]
-                ++ (ipdTestFlags package)) (Just dir) $ do
+                ++ (ipdTestFlags package)) dir $ do
                     (mbLastOutput, _) <- EL.zip E.last (logOutput logLaunch)
                     lift $ continuation (mbLastOutput == Just (ToolExit ExitSuccess)))
             (\(e :: SomeException) -> putStrLn (show e))
@@ -439,7 +440,7 @@ packageSdist = do
         prefs <- readIDE prefs
         let dir = dropFileName (ipdCabalFile package)
         runExternalTool' (__ "Source Dist") (cabalCommand prefs) (["sdist"]
-                        ++ (ipdSdistFlags package)) (Just dir) (logOutput logLaunch))
+                        ++ (ipdSdistFlags package)) dir (logOutput logLaunch))
         (\(e :: SomeException) -> putStrLn (show e))
 
 
@@ -460,7 +461,7 @@ packageOpenDoc = do
         loadDoc ("file:///" ++ dir </> path)
         getDocumentation Nothing  >>= \ p -> displayPane p False
 #else
-        runExternalTool' (__ "Opening Documentation") (browser prefs) [path] (Just dir) (logOutput logLaunch)
+        openBrowser path
 #endif
       `catchIDE`
         (\(e :: SomeException) -> putStrLn (show e))
@@ -468,10 +469,10 @@ packageOpenDoc = do
 runExternalTool' :: String
                 -> FilePath
                 -> [String]
-                -> Maybe FilePath
+                -> FilePath
                 -> E.Iteratee ToolOutput IDEM ()
                 -> IDEAction
-runExternalTool' description executable args mbDir handleOutput = do
+runExternalTool' description executable args dir handleOutput = do
         runExternalTool (do
                             run <- isRunning
                             return (not run))
@@ -479,7 +480,7 @@ runExternalTool' description executable args mbDir handleOutput = do
                         description
                         executable
                         args
-                        mbDir
+                        dir
                         handleOutput
         return()
 
@@ -488,17 +489,26 @@ runExternalTool :: IDEM Bool
                 -> String
                 -> FilePath
                 -> [String]
-                -> Maybe FilePath
+                -> FilePath
                 -> E.Iteratee ToolOutput IDEM ()
                 -> IDEAction
-runExternalTool runGuard pidHandler description executable args mbDir handleOutput  = do
+runExternalTool runGuard pidHandler description executable args dir handleOutput  = do
         prefs <- readIDE prefs
         run <- runGuard
         when run $ do
             when (saveAllBeforeBuild prefs) (do fileSaveAll belongsToWorkspace; return ())
             triggerEventIDE (StatusbarChanged [CompartmentState description, CompartmentBuild True])
             reifyIDE $ \ideR -> forkIO $ do
-                (output, pid) <- runTool executable args mbDir
+                -- If vado is enabled then look up the mount point and transform
+                -- the execuatble to "ssh" and the arguments
+                mountPoint <- if useVado prefs then getMountPoint dir else return $ Right ""
+                (executable', args') <- case mountPoint of
+                                            Left mp -> do
+                                                a <- vado mp dir [] executable args
+                                                return ("ssh", a)
+                                            _ -> return (executable, args)
+                -- Run the tool
+                (output, pid) <- runTool executable' args' (Just dir)
                 reflectIDE (do
                     pidHandler pid
                     modifyIDE_ (\ide -> ide{runningTool = Just pid})
@@ -510,7 +520,7 @@ runPackage ::  (ProcessHandle -> IDEAction)
             -> String
             -> FilePath
             -> [String]
-            -> Maybe FilePath
+            -> FilePath
             -> E.Iteratee ToolOutput IDEM ()
             -> IDEAction
 runPackage = runExternalTool (return True) -- TODO here one could check if package to be run is building/configuring/etc atm
