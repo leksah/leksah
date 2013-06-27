@@ -114,7 +114,7 @@ import IDE.Pane.WebKit.Documentation
        (getDocumentation, loadDoc, reloadDoc)
 import Text.Printf (printf)
 import System.Log.Logger (debugM)
-import System.Process.Vado (getMountPoint, vado)
+import System.Process.Vado (getMountPoint, vado, readSettings)
 
 moduleInfo :: (a -> BuildInfo) -> (a -> [ModuleName]) -> a -> [(ModuleName, BuildInfo)]
 moduleInfo bi mods a = map (\m -> (m, buildInfo)) $ mods a
@@ -504,7 +504,8 @@ runExternalTool runGuard pidHandler description executable args dir handleOutput
                 mountPoint <- if useVado prefs then getMountPoint dir else return $ Right ""
                 (executable', args') <- case mountPoint of
                                             Left mp -> do
-                                                a <- vado mp dir [] executable args
+                                                s <- readSettings
+                                                a <- vado mp s dir ["-t"] executable args
                                                 return ("ssh", a)
                                             _ -> return (executable, args)
                 -- Run the tool
