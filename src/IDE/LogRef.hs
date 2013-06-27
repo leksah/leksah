@@ -470,7 +470,7 @@ logOutputForBuild package backgroundBuild jumpToWarnings = do
     log    <- lift getLog
     unless backgroundBuild $ liftIO $ postGUISync $ bringPaneToFront log
     logLaunch <- lift $ Log.getDefaultLogLaunch
-    lift $ showDefaultLogLaunch'
+    lift $ postSyncIDE $ showDefaultLogLaunch'
     (_, _, errs) <- EL.foldM (readAndShow logLaunch) (log, False, [])
     ideR <- lift ask
     liftIO $ postGUISync $ reflectIDE (do
