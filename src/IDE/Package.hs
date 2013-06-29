@@ -186,11 +186,11 @@ packageConfig' package continuation = do
             case mbPack of
                 Just pack -> do
                     changePackage pack
-                    triggerEventIDE (WorkspaceChanged False True)
+                    postSyncIDE . triggerEventIDE $ WorkspaceChanged False True
                     continuation (mbLastOutput == Just (ToolExit ExitSuccess))
                     return ()
                 Nothing -> do
-                    ideMessage Normal (__ "Can't read package file")
+                    postAsyncIDE $ ideMessage Normal (__ "Can't read package file")
                     continuation False
                     return()
 
@@ -505,7 +505,7 @@ runExternalTool runGuard pidHandler description executable args dir handleOutput
                 (executable', args') <- case mountPoint of
                                             Left mp -> do
                                                 s <- readSettings
-                                                a <- vado mp s dir ["-t"] executable args
+                                                a <- vado mp s dir [] executable args
                                                 return ("ssh", a)
                                             _ -> return (executable, args)
                 -- Run the tool

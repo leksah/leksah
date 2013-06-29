@@ -24,8 +24,8 @@ module IDE.Build (
 
 import Data.Map (Map)
 import IDE.Core.State
-       (triggerEventIDE, readIDE, IDEAction, Workspace(..), ipdPackageId,
-        ipdDepends, IDEPackage)
+       (postSyncIDE, triggerEventIDE, readIDE, IDEAction, Workspace(..),
+        ipdPackageId, ipdDepends, IDEPackage)
 import qualified Data.Map as Map
        (insert, empty, lookup, toList, fromList)
 import Data.Graph
@@ -208,7 +208,7 @@ doBuildChain ms chain@Chain{mcAction = MoRegister} =
 doBuildChain ms chain@Chain{mcAction = MoClean} =
     packageClean' (mcEle chain) (constrCont ms (mcPos chain) (mcNeg chain))
 doBuildChain ms chain@Chain{mcAction = MoMetaInfo} =
-    triggerEventIDE UpdateWorkspaceInfo >> return ()
+    postSyncIDE (triggerEventIDE UpdateWorkspaceInfo) >> return ()
 doBuildChain ms chain  = doBuildChain ms (mcPos chain)
 
 constrCont ms pos (Just neg) False = doBuildChain ms neg
