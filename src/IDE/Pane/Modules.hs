@@ -58,7 +58,7 @@ import qualified System.IO.UTF8 as UTF8  (writeFile)
 import IDE.Utils.GUIUtils (stockIdFromType, __)
 import IDE.Metainfo.Provider
        (getSystemInfo, getWorkspaceInfo, getPackageInfo)
-import System.Log.Logger (infoM)
+import System.Log.Logger (debugM)
 import Default (Default(..))
 import IDE.Workspaces (packageTry)
 import Control.Monad.IO.Class (MonadIO(..))
@@ -303,7 +303,7 @@ instance RecoverablePane IDEModules ModulesState IDEM where
 
 selectIdentifier :: Descr -> Bool -> IDEAction
 selectIdentifier idDescr openSource= do
-    liftIO $ infoM "leksah" "selectIdentifier"
+    liftIO $ debugM "leksah" "selectIdentifier"
     systemScope     <- getSystemInfo
     workspaceScope  <- getWorkspaceInfo
     packageScope    <- getPackageInfo
@@ -354,7 +354,7 @@ selectIdentifier' :: ModuleName -> String -> IDEAction
 selectIdentifier'  moduleName symbol =
     let nameArray = components moduleName
     in do
-        liftIO $ infoM "leksah" "selectIdentifier'"
+        liftIO $ debugM "leksah" "selectIdentifier'"
         mods            <- getModules Nothing
         mbTree          <-  liftIO $ treeStoreGetTreeSave (treeStore mods) []
         case treePathFromNameArray mbTree nameArray [] of
@@ -407,7 +407,7 @@ treeViewSearch :: TreeView
     -> TreeIter
     -> IO Bool
 treeViewSearch treeView treeStore string iter =  do
-    liftIO $ infoM "leksah" "treeViewSearch"
+    liftIO $ debugM "leksah" "treeViewSearch"
     path   <- treeModelGetPath treeStore iter
     val    <- treeStoreGetValue treeStore path
     mbTree <- treeStoreGetTreeSave treeStore path
@@ -440,7 +440,7 @@ descrViewSearch :: TreeView
     -> TreeIter
     -> IO Bool
 descrViewSearch descrView descrStore string iter = do
-    liftIO $ infoM "leksah" "descrViewSearch"
+    liftIO $ debugM "leksah" "descrViewSearch"
     path    <- treeModelGetPath descrStore iter
     val     <- treeStoreGetValue descrStore path
     tree <- treeStoreGetTree descrStore path
@@ -465,7 +465,7 @@ fillFacets :: TreeView
     -> TreeStore Descr
     -> IO ()
 fillFacets treeView treeStore descrView descrStore = do
-    liftIO $ infoM "leksah" "fillFacets"
+    liftIO $ debugM "leksah" "fillFacets"
     sel             <-  getSelectionTree treeView treeStore
     case sel of
         Just (_,Just (mod,package))
@@ -485,7 +485,7 @@ getSelectionTree ::  TreeView
     ->  TreeStore (String, Maybe (ModuleDescr,PackageDescr))
     -> IO (Maybe (String, Maybe (ModuleDescr,PackageDescr)))
 getSelectionTree treeView treeStore = do
-    liftIO $ infoM "leksah" "getSelectionTree"
+    liftIO $ debugM "leksah" "getSelectionTree"
     treeSelection   <-  treeViewGetSelection treeView
     paths           <-  treeSelectionGetSelectedRows treeSelection
     case paths of
@@ -498,7 +498,7 @@ getSelectionDescr ::  TreeView
     ->  TreeStore Descr
     -> IO (Maybe Descr)
 getSelectionDescr treeView treeStore = do
-    liftIO $ infoM "leksah" "getSelectionDescr"
+    liftIO $ debugM "leksah" "getSelectionDescr"
     treeSelection   <-  treeViewGetSelection treeView
     paths           <-  treeSelectionGetSelectedRows treeSelection
     case paths of
@@ -513,7 +513,7 @@ fillInfo :: TreeView
     -> IDERef
     -> IO ()
 fillInfo treeView lst ideR  = do
-    liftIO $ infoM "leksah" "fillInfo"
+    liftIO $ debugM "leksah" "fillInfo"
     treeSelection   <-  treeViewGetSelection treeView
     paths           <-  treeSelectionGetSelectedRows treeSelection
     case paths of
@@ -537,7 +537,7 @@ getEmptyDefaultScope = Map.empty
 
 fillModulesList :: (Scope,Bool) -> IDEAction
 fillModulesList (scope,useBlacklist) = do
-    liftIO $ infoM "leksah" "fillModulesList"
+    liftIO $ debugM "leksah" "fillModulesList"
     mods  <-  getModules Nothing
     prefs                       <-  readIDE prefs
     case scope of
@@ -766,7 +766,7 @@ modulesContextMenu :: IDERef
                    -> Menu
                    -> IO ()
 modulesContextMenu ideR store treeView theMenu = do
-    liftIO $ infoM "leksah" "modulesContextMenu"
+    liftIO $ debugM "leksah" "modulesContextMenu"
     item1           <-  menuItemNewWithLabel (__ "Edit source")
     item1 `on` menuItemActivate $ do
         sel         <-  getSelectionTree treeView store
@@ -828,7 +828,7 @@ modulesSelect :: IDERef
               -> TreeViewColumn
               -> IO ()
 modulesSelect ideR store treeView path _ = do
-    liftIO $ infoM "leksah" "modulesSelect"
+    liftIO $ debugM "leksah" "modulesSelect"
     treeViewExpandRow treeView path False
     sel <- treeStoreGetValue store path
     case sel of
@@ -844,7 +844,7 @@ descrViewContextMenu :: IDERef
                    -> Menu
                    -> IO ()
 descrViewContextMenu ideR store descrView theMenu = do
-    liftIO $ infoM "leksah" "descrViewContextMenu"
+    liftIO $ debugM "leksah" "descrViewContextMenu"
     item1           <-  menuItemNewWithLabel (__ "Go to definition")
     item1 `on` menuItemActivate $ do
         sel         <-  getSelectionDescr descrView store
@@ -865,13 +865,13 @@ descrViewSelect :: IDERef
               -> TreeViewColumn
               -> IO ()
 descrViewSelect ideR store path _ = do
-    liftIO $ infoM "leksah" "descrViewSelect"
+    liftIO $ debugM "leksah" "descrViewSelect"
     descr <- treeStoreGetValue store path
     reflectIDE (goToDefinition descr) ideR
 
 setScope :: (Scope,Bool) -> IDEAction
 setScope (sc,bl) = do
-    liftIO $ infoM "leksah" "setScope"
+    liftIO $ debugM "leksah" "setScope"
     mods  <-  getModules Nothing
     case sc of
         (PackageScope False) -> liftIO $ do
@@ -898,7 +898,7 @@ setScope (sc,bl) = do
 
 getScope :: IDEM (Scope,Bool)
 getScope = do
-    liftIO $ infoM "leksah" "getScope"
+    liftIO $ debugM "leksah" "getScope"
     mods  <-  getModules Nothing
     rb1s                <-  liftIO $ toggleButtonGetActive (packageScopeB mods)
     rb2s                <-  liftIO $ toggleButtonGetActive (workspaceScopeB mods)
@@ -914,14 +914,14 @@ getScope = do
 
 scopeSelection :: IDEAction
 scopeSelection = do
-    liftIO $ infoM "leksah" "scopeSelection"
+    liftIO $ debugM "leksah" "scopeSelection"
     (sc,bl) <- getScope
     setScope (sc,bl)
     selectScope (sc,bl)
 
 selectScope :: (Scope,Bool) -> IDEAction
 selectScope (sc,bl) = do
-    liftIO $ infoM "leksah" "selectScope"
+    liftIO $ debugM "leksah" "selectScope"
     recordExpanderState
     mods                <-  getModules Nothing
     mbTreeSelection     <-  liftIO $ getSelectionTree (treeView mods) (treeStore mods)
@@ -945,7 +945,7 @@ selectScope (sc,bl) = do
 
 selectNames :: (Maybe ModuleName, Maybe String) -> IDEAction
 selectNames (mbModuleName, mbIdName) = do
-    liftIO $ infoM "leksah" "selectIdentifier"
+    liftIO $ debugM "leksah" "selectIdentifier"
     mods <- getModules Nothing
     case mbModuleName of
         Nothing -> liftIO $ do
@@ -983,7 +983,7 @@ selectNames (mbModuleName, mbIdName) = do
 
 reloadKeepSelection :: Bool -> IDEAction
 reloadKeepSelection isInitial = do
-    liftIO $ infoM "leksah" ((__ ">>>Info Changed!!! ") ++ show isInitial)
+    liftIO $ debugM "leksah" ((__ ">>>Info Changed!!! ") ++ show isInitial)
     mbMod <- getPane
     case mbMod of
         Nothing -> return ()
@@ -1017,13 +1017,13 @@ reloadKeepSelection isInitial = do
 
 treeStoreGetTreeSave :: TreeStore a -> TreePath -> IO (Maybe (Tree a))
 treeStoreGetTreeSave treeStore treePath = catch (do
-    liftIO $ infoM "leksah" "treeStoreGetTreeSave"
+    liftIO $ debugM "leksah" "treeStoreGetTreeSave"
     res <- treeStoreGetTree treeStore treePath
     return (Just res)) (\ (_ :: SomeException) -> return Nothing)
 
 expandHere :: TreeView -> IO ()
 expandHere treeView = do
-    liftIO $ infoM "leksah" "expandHere"
+    liftIO $ debugM "leksah" "expandHere"
     sel   <- treeViewGetSelection treeView
     paths <- treeSelectionGetSelectedRows sel
     case paths of
@@ -1032,7 +1032,7 @@ expandHere treeView = do
 
 collapseHere :: TreeView -> IO ()
 collapseHere treeView = do
-    liftIO $ infoM "leksah" "collapseHere"
+    liftIO $ debugM "leksah" "collapseHere"
     sel   <- treeViewGetSelection treeView
     paths <- treeSelectionGetSelectedRows sel
     case paths of
@@ -1041,7 +1041,7 @@ collapseHere treeView = do
 
 delModule :: TreeView -> TreeStore (String, Maybe (ModuleDescr,PackageDescr)) -> PackageAction
 delModule treeview store = do
-    liftIO $ infoM "leksah" "delModule"
+    liftIO $ debugM "leksah" "delModule"
     window <- lift $ getMainWindow
     sel   <- liftIO $ treeViewGetSelection treeview
     paths <- liftIO $ treeSelectionGetSelectedRows sel
@@ -1062,7 +1062,7 @@ delModule treeview store = do
 
 respDelModDialog :: IDEM (Bool)
 respDelModDialog = do
-    liftIO $ infoM "leksah" "respDelModDialog"
+    liftIO $ debugM "leksah" "respDelModDialog"
     window <- getMainWindow
     resp <- liftIO $ do
         dia <- messageDialogNew (Just window) [] MessageQuestion ButtonsCancel (__ "Are you sure?")
@@ -1076,7 +1076,7 @@ respDelModDialog = do
 
 addModule' :: TreeView -> TreeStore (String, Maybe (ModuleDescr,PackageDescr)) -> PackageAction
 addModule' treeView store = do
-    liftIO $ infoM "leksah" "addModule'"
+    liftIO $ debugM "leksah" "addModule'"
     sel   <- liftIO $ treeViewGetSelection treeView
     paths <- liftIO $ treeSelectionGetSelectedRows sel
     categories <- case paths of
@@ -1086,7 +1086,7 @@ addModule' treeView store = do
     addModule categories
 
 addModule categories = do
-    liftIO $ infoM "leksah" "selectIdentifier"
+    liftIO $ debugM "leksah" "selectIdentifier"
     mbPD <- lift $ getPackageDescriptionAndPath
     case mbPD of
         Nothing             -> lift $ ideMessage Normal (__ "No package description")
@@ -1125,7 +1125,7 @@ data AddModule = AddModule {moduleName :: String, sourceRoot :: FilePath, isExpo
 
 addModuleDialog :: Window -> String -> [String] -> IO (Maybe AddModule)
 addModuleDialog parent modString sourceRoots = do
-    liftIO $ infoM "leksah" "addModuleDialog"
+    liftIO $ debugM "leksah" "addModuleDialog"
     dia                        <-   dialogNew
     windowSetTransientFor dia parent
     windowSetTitle dia (__ "Construct new module")
@@ -1182,7 +1182,7 @@ emptyExpansion      = ExpanderState  ([],[])  ([],[])  ([],[])  ([],[])  ([],[])
 
 recordExpanderState :: IDEAction
 recordExpanderState = do
-    liftIO $ infoM "leksah" "recordExpanderState"
+    liftIO $ debugM "leksah" "recordExpanderState"
     m       <- getModules Nothing
     liftIO $ do
         oldSel  <- readIORef (oldSelection m)
@@ -1209,7 +1209,7 @@ recordExpanderState = do
 
 getExpandedRows :: TreeView -> TreeStore alpha -> IO [TreePath]
 getExpandedRows view store = do
-    liftIO $ infoM "leksah" "getExpandedRows"
+    liftIO $ debugM "leksah" "getExpandedRows"
     mbIter <- treeModelGetIterFirst store
     case mbIter of
         Nothing   -> return []
@@ -1234,7 +1234,7 @@ getExpandedRows view store = do
 
 applyExpanderState :: IDEAction
 applyExpanderState = do
-    liftIO $ infoM "leksah" "applyExpanderState"
+    liftIO $ debugM "leksah" "applyExpanderState"
     m       <- getModules Nothing
     (sc,bl) <- getScope
     liftIO $ do
@@ -1257,7 +1257,7 @@ applyExpanderState = do
 
 recordSelHistory :: IDEAction
 recordSelHistory = do
-    liftIO $ infoM "leksah" "selectIdentifier"
+    liftIO $ debugM "leksah" "selectIdentifier"
     mods <- getModules Nothing
     ideR <- ask
     selTree <- liftIO $ getSelectionTree (treeView mods) (treeStore mods)
@@ -1276,7 +1276,7 @@ recordSelHistory = do
 
 replaySelHistory :: Maybe ModuleName -> Maybe String -> IDEAction
 replaySelHistory mbModName mbFacetName = do
-    liftIO $ infoM "leksah" "replaySelHistory"
+    liftIO $ debugM "leksah" "replaySelHistory"
     mods <- getModules Nothing
     selectNames (mbModName, mbFacetName)
     oldSel <- liftIO $ readIORef (oldSelection mods)
@@ -1285,7 +1285,7 @@ replaySelHistory mbModName mbFacetName = do
 
 recordScopeHistory :: IDEAction
 recordScopeHistory = do
-    liftIO $ infoM "leksah" "recordScopeHistory"
+    liftIO $ debugM "leksah" "recordScopeHistory"
     (sc,bl)                 <-  getScope
     ideR                    <-  ask
     mods                    <-  getModules Nothing
@@ -1297,7 +1297,7 @@ recordScopeHistory = do
 
 replayScopeHistory :: Scope -> Bool -> IDEAction
 replayScopeHistory sc bl = do
-    liftIO $ infoM "leksah" "selectIdentifier"
+    liftIO $ debugM "leksah" "selectIdentifier"
     mods <-  getModules Nothing
     liftIO $ do
         toggleButtonSetActive (blacklistB mods) bl

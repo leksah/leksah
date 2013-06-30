@@ -37,7 +37,7 @@ import Control.Monad.IO.Class (MonadIO(..))
 import IDE.Utils.GUIUtils (treeViewContextMenu, __)
 import System.Glib.Properties (newAttrFromMaybeStringProperty)
 import Data.Tree (Tree(..))
-import System.Log.Logger (infoM)
+import System.Log.Logger (debugM)
 
 -- | Workspace pane state
 --
@@ -146,7 +146,7 @@ getSelectionTree ::  TreeView
     -> TreeStore (Bool, IDEPackage, Maybe String)
     -> IO (Maybe (Bool, IDEPackage, Maybe String))
 getSelectionTree treeView treeStore = do
-    liftIO $ infoM "leksah" "getSelectionTree"
+    liftIO $ debugM "leksah" "getSelectionTree"
     treeSelection <- treeViewGetSelection treeView
     rows          <- treeSelectionGetSelectedRows treeSelection
     case rows of
@@ -187,13 +187,13 @@ workspaceSelect :: IDERef
                 -> TreeViewColumn
                 -> IO ()
 workspaceSelect ideR workspacePane path _ = do
-    liftIO $ infoM "leksah" "workspaceSelect"
+    liftIO $ debugM "leksah" "workspaceSelect"
     (_,ideP,mbExe) <- treeStoreGetValue (workspaceStore workspacePane) path
     reflectIDE (workspaceTry $ workspaceActivatePackage ideP mbExe) ideR
 
 updateWorkspace :: Bool -> Bool -> IDEAction
 updateWorkspace showPane updateFileCache = do
-    liftIO $ infoM "leksah" "updateWorkspace"
+    liftIO $ debugM "leksah" "updateWorkspace"
     mbWs <- readIDE workspace
     case mbWs of
         Nothing -> do
