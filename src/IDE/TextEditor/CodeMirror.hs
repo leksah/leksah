@@ -70,7 +70,7 @@ import Graphics.UI.Gtk
         EventMask(..), Modifier(..), ContainerClass, mainIteration,
         castToWidget)
 import Data.Maybe (fromJust)
-import IDE.Core.State (onIDE, reflectIDE)
+import IDE.Core.State (onIDE, reflectIDE, leksahOrPackageDir)
 import Graphics.UI.Editor.Basics (Connection(..))
 import System.Log.Logger (debugM)
 #endif
@@ -177,7 +177,7 @@ newCMBuffer mbFilename contents = do
         scrolledWindow <- scrolledWindowNew Nothing Nothing
         cmWebView <- webViewNew
         containerAdd scrolledWindow cmWebView
-        dataDir <- liftIO $ CM.getDataDir
+        dataDir <- liftIO $ leksahOrPackageDir "ghcjs-codemirror" CM.getDataDir
         s <- newEmptyMVar
         cmWebView `on` loadFinished $ \ _ -> do
             debugM "leksah" "newCMBuffer loadFinished"
@@ -204,7 +204,7 @@ newCMBuffer mbFilename contents = do
                 ++ "<script src=\"mode/haskell/haskell.js\">"
                 ++ "</head>"
                 ++ "<body style=\"margin:0;padding:0 auto;\">"
-		++ "</body></html>"
+                ++ "</body></html>"
             ) Nothing Nothing ("file://" ++ dataDir ++ "/codemirror.html")
         debugM "leksah" "newCMBuffer loading"
         return $ CMBuffer (cmWebView, s)

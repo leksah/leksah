@@ -77,7 +77,6 @@ import IDE.Find
 import IDE.Pane.Info
 import IDE.Utils.FileUtils
 import IDE.Utils.GUIUtils
-import Paths_leksah
 import IDE.GUIHistory
 import IDE.Metainfo.Provider
        (getWorkspaceInfo, getIdentifierDescr, updateWorkspaceInfo,

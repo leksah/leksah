@@ -76,7 +76,6 @@ import System.Directory (setCurrentDirectory, doesFileExist)
 import Prelude hiding (catch)
 import Data.Maybe (isNothing, isJust, fromJust)
 import Control.Exception (SomeException(..), catch)
-import Paths_leksah
 
 import IDE.Core.State
 import IDE.Utils.GUIUtils

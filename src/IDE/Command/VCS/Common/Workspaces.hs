@@ -31,7 +31,6 @@ import qualified VCSWrapper.Common as VCS
 import qualified VCSGui.Common as VCSGUI
 
 import Data.IORef(writeIORef, readIORef, IORef(..))
-import Paths_leksah(getDataDir)
 import Control.Monad.Reader(liftIO,ask,when)
 
 import Graphics.UI.Frame.Panes

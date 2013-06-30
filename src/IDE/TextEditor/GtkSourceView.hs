@@ -91,10 +91,9 @@ import Graphics.UI.Gtk.SourceView
         sourceLanguageManagerGuessLanguage,
         sourceLanguageManagerSetSearchPath,
         sourceLanguageManagerGetSearchPath, sourceLanguageManagerNew)
-import Paths_leksah (getDataDir)
 import System.FilePath ((</>))
 import System.GIO (contentTypeGuess)
-import IDE.Core.State (onIDE, reflectIDE, readIDE)
+import IDE.Core.State (onIDE, reflectIDE, readIDE, getDataDir)
 import Graphics.UI.Gtk.SourceView.Enums
        (SourceDrawSpacesFlags(..), SourceSmartHomeEndType(..))
 import Graphics.UI.Gtk.General.Enums

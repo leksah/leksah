@@ -50,7 +50,7 @@ import Control.Monad (forM_, foldM, when)
 import Control.Monad.Trans.Reader (ask)
 import Control.Monad.Trans.Class (MonadTrans(..))
 import Control.Monad.IO.Class (MonadIO(..))
-import Language.Haskell.HLint (hlint, Suggestion(..), suggestionLocation)
+import Language.Haskell.HLint (Suggestion(..), suggestionLocation)
 import Language.Haskell.Exts (SrcLoc(..))
 import qualified Language.Haskell.HLint as H (hlint)
 import IDE.Utils.GUIUtils (__)
@@ -222,7 +222,11 @@ hlintDirectories dirs = do
 
 refreshDir :: TreeStore HLintRecord -> TreeIter -> FilePath -> IO ()
 refreshDir store iter dir = do
-    suggestions <- take 1000 <$> H.hlint ("--quiet":[dir])
+    mbHlintDir <- leksahSubDir "hlint"
+    let datadirOpt = case mbHlintDir of
+                        Just d  -> "--datadir":[d]
+                        Nothing -> []
+    suggestions <- take 1000 <$> H.hlint ("--quiet":dir:datadirOpt)
     setHLintResults store iter dir suggestions
     return ()
 

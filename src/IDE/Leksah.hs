@@ -38,7 +38,6 @@ import Control.Applicative ((<$>))
 import qualified Config.Dyre as Dyre
 #endif
 
-import Paths_leksah
 import IDE.Session
 import IDE.Core.State
 import Control.Event

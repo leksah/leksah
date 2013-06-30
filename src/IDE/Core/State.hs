@@ -68,6 +68,11 @@ module IDE.Core.State (
 ,   liftYiControl
 ,   liftYi
 
+,   leksahSubDir
+,   leksahOrPackageDir
+,   getDataDir
+,   P.version
+
 ,   module IDE.Core.Types
 ,   module IDE.Core.CTypes
 ,   module IDE.Utils.Utils
@@ -89,7 +94,8 @@ import Graphics.UI.Frame.ViewFrame --hiding (notebookInsertOrdered)
 import Control.Event
 import System.IO
 import Data.Maybe (isJust)
-import System.FilePath (dropFileName)
+import System.FilePath
+       (dropFileName, takeDirectory, (</>), takeFileName)
 import IDE.Core.CTypes
 import Control.Concurrent (forkIO)
 import IDE.Utils.Utils
@@ -101,6 +107,9 @@ import qualified Data.Enumerator as E
        (returnI, Step(..), yield, continue)
 import Control.Monad (liftM, when)
 import Control.Monad.Trans.Reader (ask, ReaderT(..))
+import qualified Paths_leksah as P
+import System.Environment (getExecutablePath)
+import System.Directory (doesDirectoryExist)
 
 instance PaneMonad IDEM where
     getFrameState   =   readIDE frameState
@@ -424,5 +433,32 @@ changePackage ideP@IDEPackage{ipdCabalFile = file} = do
         exchange p | ipdCabalFile p == file = ideP
                    | otherwise              = p
 
+-- | Find a directory relative to the leksah install directory
+leksahSubDir :: FilePath    -- ^ Sub directory to look for
+             -> IO (Maybe FilePath)
+leksahSubDir subDir = do
+    exePath <- getExecutablePath
+    if takeFileName exePath == "leksah.exe"
+        then do
+            let dataDir = (takeDirectory $ takeDirectory exePath) </> subDir
+            exists <- doesDirectoryExist dataDir
+            if exists then return (Just dataDir) else return Nothing
+        else return Nothing
 
+-- | Get the leksah data dir based on the executable name or if that fails
+-- use the directroy for the package.  This is allows us to make binary packages
+-- where the data directory id relative to the leksah executable.
+-- This is important for Wind32 where setting environment variables for the
+-- locations in a launch script causes problems (you can't pin the exe).
+leksahOrPackageDir :: FilePath    -- ^ Sub directory to look for
+                   -> IO FilePath -- ^ Used to get the package dir if we can't find the leksah one
+                   -> IO FilePath
+leksahOrPackageDir subDir getPackageDir = do
+    mbResult <- leksahSubDir subDir
+    case mbResult of
+        Just result -> return result
+        Nothing     -> getPackageDir
+
+getDataDir :: IO FilePath
+getDataDir = leksahOrPackageDir "leksah" P.getDataDir
 

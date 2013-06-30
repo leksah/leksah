@@ -50,6 +50,12 @@ Section "Leksah"
   SetOutPath $INSTDIR\pretty-show
   File /r "$%LEKSAH_PREFIX%\$%PRETTY_SHOW_X_X%\style"
 
+  SetOutPath $INSTDIR\ghcjs-codemirror
+  File /r "$%LEKSAH_PREFIX%\$%GHCJS_CODEMIRROR_X_X_X_X%\mode"
+  File /r "$%LEKSAH_PREFIX%\$%GHCJS_CODEMIRROR_X_X_X_X%\lib"
+  File /r "$%LEKSAH_PREFIX%\$%GHCJS_CODEMIRROR_X_X_X_X%\keymap"
+  File /r "$%LEKSAH_PREFIX%\$%GHCJS_CODEMIRROR_X_X_X_X%\theme"
+
   SetOutPath $INSTDIR\etc\gtk-2.0
   File "gtkrc"
 
@@ -142,7 +148,7 @@ Section "Start Menu Shortcuts"
   CreateShortCut "$SMPROGRAMS\Leksah\Uninstall.lnk" "$INSTDIR\uninstall.exe" "" "$INSTDIR\uninstall.exe" 0
   CreateShortCut "$SMPROGRAMS\Leksah\Server.lnk" "$INSTDIR\leksah-server.bat" "" "$INSTDIR\leksah.ico" 0
   CreateShortCut "$SMPROGRAMS\Leksah\Rebuild Metadata.lnk" "$INSTDIR\leksah-rebuild-metadata.bat" "" "$INSTDIR\leksah.ico" 0
-  CreateShortCut "$SMPROGRAMS\Leksah\Leksah.lnk" "$INSTDIR\leksah.bat" "" "$INSTDIR\leksah.ico" 0 SW_SHOWMINIMIZED
+  CreateShortCut "$SMPROGRAMS\Leksah\Leksah.lnk" "$INSTDIR\bin\leksah.exe" "" "$INSTDIR\leksah.ico" 0 SW_SHOWMINIMIZED
   
 SectionEnd
 

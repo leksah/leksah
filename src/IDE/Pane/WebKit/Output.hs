@@ -28,13 +28,13 @@ module IDE.Pane.WebKit.Output (
 import Graphics.UI.Frame.Panes
        (RecoverablePane(..), PanePath, RecoverablePane, Pane(..))
 import Graphics.UI.Gtk
-       (scrolledWindowSetPolicy, scrolledWindowNew, castToWidget,
-        ScrolledWindow)
+       (postGUISync, scrolledWindowSetPolicy, scrolledWindowNew,
+        castToWidget, ScrolledWindow)
 import Data.Typeable (Typeable)
 import IDE.Core.Types (IDEAction, IDEM)
 import Control.Monad.IO.Class (MonadIO(..))
 import Graphics.UI.Frame.ViewFrame (getNotebook)
-import IDE.Core.State (reifyIDE)
+import IDE.Core.State (postSyncIDE, reifyIDE, leksahOrPackageDir)
 import Graphics.UI.Gtk.General.Enums (PolicyType(..))
 
 #ifdef WEBKITGTK
@@ -152,20 +152,21 @@ getOutputPane Nothing    = forceGetPane (Right "*Out")
 getOutputPane (Just pp)  = forceGetPane (Left pp)
 
 setOutput :: String -> IDEAction
-setOutput str = do
+setOutput str = postSyncIDE $ do
 #ifdef WEBKITGTK
-    dataDir <- liftIO $ getDataDir
     out <- getOutputPane Nothing
-    alwaysHtml <- liftIO . readIORef $ alwaysHtmlRef out
-    let view = webView out
-        html = case (alwaysHtml, parseValue str) of
-                    (False, Just value) -> valToHtmlPage defaultHtmlOpts value
-                    _                   -> str
-    liftIO $ webViewLoadString view html Nothing Nothing ("file://"
-        ++ (case dataDir of
-                ('/':_) -> dataDir
-                _       -> '/':dataDir)
-        ++ "/value.html")
+    liftIO $ do
+        dataDir <- leksahOrPackageDir "pretty-show" getDataDir
+        alwaysHtml <- readIORef $ alwaysHtmlRef out
+        let view = webView out
+            html = case (alwaysHtml, parseValue str) of
+                        (False, Just value) -> valToHtmlPage defaultHtmlOpts value
+                        _                   -> str
+        webViewLoadString view html Nothing Nothing ("file://"
+            ++ (case dataDir of
+                    ('/':_) -> dataDir
+                    _       -> '/':dataDir)
+            ++ "/value.html")
 #else
     return ()
 #endif

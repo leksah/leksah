@@ -32,7 +32,6 @@ import qualified Data.Map as Map (empty)
 import Graphics.UI.Frame.Panes
        (PaneLayout(..), FrameState(..))
 import IDE.SourceCandy (parseCandy)
-import Paths_leksah (getDataDir)
 import IDE.Utils.FileUtils (getConfigFilePathForLoad)
 import IDE.Utils.Utils
        (leksahKeymapFileExtension, leksahCandyFileExtension)
