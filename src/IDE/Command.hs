@@ -831,8 +831,8 @@ registerLeksahEvents =    do
     defaultLogLaunch <- getDefaultLogLaunch
     registerEvent stRef "LogMessage"
         (\e@(LogMessage s t)      -> do
-                                    defaultLogLaunch <- getDefaultLogLaunch
                                     log <- getLog
+                                    defaultLogLaunch <- getDefaultLogLaunch
                                     liftIO $ appendLog log defaultLogLaunch s t
                                     return e)
     registerEvent stRef "SelectInfo"
