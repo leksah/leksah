@@ -94,6 +94,7 @@ import qualified VCSGui.Common as VCSGUI
 import qualified IDE.Workspaces.Writer as Writer
 import Text.Printf (printf)
 import System.Log.Logger (debugM)
+import Data.Maybe (catMaybes)
 
 -- | Constructs a new workspace and makes it the current workspace
 workspaceNew :: IDEAction
@@ -355,7 +356,7 @@ readWorkspace fp = do
     ws' <- liftIO $ makePathsAbsolute ws fp
     packages <- mapM idePackageFromPath (wsPackagesFiles ws')
     --TODO set package vcs here
-    return ws'{ wsPackages = map fromJust $ filter isJust $ packages}
+    return ws'{ wsPackages = catMaybes packages}
 
 
 
