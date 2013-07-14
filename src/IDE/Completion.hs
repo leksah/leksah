@@ -25,7 +25,7 @@ import Graphics.UI.Gtk as Gtk
 import Graphics.UI.Gtk.Gdk.EventM as Gtk
 import IDE.Core.State
 import IDE.Metainfo.Provider(getDescription,getCompletionOptions)
-import IDE.TextEditor
+import IDE.TextEditor as TE
 import Control.Monad.IO.Class (MonadIO(..))
 import Control.Monad.Trans.Reader (ask)
 import qualified Control.Monad.Reader as Gtk (liftIO)
@@ -168,7 +168,7 @@ addEventHandling :: TextEditor editor => Window -> EditorView editor -> TreeView
                  -> (Char -> Bool) -> Bool -> IDEM Connections
 addEventHandling window sourceView tree store isWordChar always = do
     ideR      <- ask
-    cidsPress <- onKeyPress sourceView $ do
+    cidsPress <- TE.onKeyPress sourceView $ do
         keyVal      <- lift eventKeyVal
         name        <- lift eventKeyName
         modifier    <- lift eventModifier
@@ -244,7 +244,7 @@ addEventHandling window sourceView tree store isWordChar always = do
                 return False
                 )
 
-    cidsRelease <- onKeyRelease sourceView $ do
+    cidsRelease <- TE.onKeyRelease sourceView $ do
         name     <- lift eventKeyName
         modifier <- lift eventModifier
         case (name, modifier) of
