@@ -1,4 +1,4 @@
-{-# LANGUAGE ScopedTypeVariables #-}
+{-# LANGUAGE ScopedTypeVariables, ForeignFunctionInterface #-}
 {-# OPTIONS_GHC -fno-warn-incomplete-patterns #-}
 -----------------------------------------------------------------------------
 --
@@ -34,33 +34,31 @@ module IDE.Command (
 ) where
 
 import Graphics.UI.Gtk
-       (keyToChar, eventKeyVal, eventModifier, eventKeyName, EKey,
-        containerAdd, windowAddAccelGroup, keyPressEvent, boxPackEnd,
-        boxPackStart, widgetSetName, vBoxNew, windowSetIconFromFile,
-        Widget, Window, actionGroupGetAction, uiManagerGetActionGroups,
-        Action, actionSetSensitive, iconFactoryAdd, iconSetNewFromPixbuf,
+       (toToolbar, ToolbarClass, Toolbar(..), keyToChar, eventKeyVal,
+        eventModifier, eventKeyName, EKey, containerAdd,
+        windowAddAccelGroup, keyPressEvent, boxPackEnd, boxPackStart,
+        widgetSetName, vBoxNew, windowSetIconFromFile, Widget, Window,
+        actionGroupGetAction, uiManagerGetActionGroups, Action,
+        actionSetSensitive, iconFactoryAdd, iconSetNewFromPixbuf,
         pixbufNewFromFile, iconFactoryAddDefault, iconFactoryNew,
         dialogRun, aboutDialogAuthors, aboutDialogWebsite,
-        aboutDialogLicense, aboutDialogComments,
-        aboutDialogCopyright, aboutDialogVersion, aboutDialogName,
-        aboutDialogNew, mainQuit, widgetHide, widgetShow, castToWidget,
-        separatorMenuItemNew, containerGetChildren, Menu,
-        widgetSetSizeRequest, toolbarSetStyle, set, AttrOp(..),
-        castToToolbar, castToMenuBar, uiManagerGetWidget,
+        aboutDialogLicense, aboutDialogComments, aboutDialogCopyright,
+        aboutDialogVersion, aboutDialogName, aboutDialogNew, mainQuit,
+        widgetHide, widgetShow, castToWidget, separatorMenuItemNew,
+        containerGetChildren, Menu, widgetSetSizeRequest, toolbarSetStyle,
+        set, AttrOp(..), castToToolbar, castToMenuBar, uiManagerGetWidget,
         uiManagerGetAccelGroup, actionActivated, actionNew,
         actionGroupAddActionWithAccel, actionToggled, toggleActionNew,
         uiManagerAddUiFromString, uiManagerInsertActionGroup,
         actionGroupNew, UIManager, widgetShowAll, menuItemSetSubmenu,
         widgetDestroy, menuItemGetSubmenu, menuShellAppend,
         menuItemActivate, menuItemNewWithLabel, menuNew, Packing(..),
-        ToolbarStyle(..), PositionType(..), on, IconSize(..),
-        keyPressEvent, Modifier(..))
+        ToolbarStyle(..), PositionType(..), on, IconSize(..), Modifier(..))
 import System.FilePath
 import Data.Version
 import Prelude hiding (catch)
 import Control.Exception
 import Data.Maybe
-
 
 import IDE.Core.State
 import IDE.Pane.SourceBuffer
@@ -109,6 +107,18 @@ import Control.Monad (unless, when)
 import Control.Monad.Trans.Reader (ask)
 import Text.Printf (printf)
 import System.Log.Logger (debugM)
+import Foreign.C.Types (CInt(..))
+import Foreign.Ptr (Ptr(..))
+import Foreign.ForeignPtr (withForeignPtr)
+import Graphics.UI.GtkInternals (unToolbar)
+
+foreign import ccall safe "gtk_toolbar_set_icon_size"
+  gtk_toolbar_set_icon_size :: Ptr Toolbar -> CInt -> IO ()
+
+toolbarSetIconSize :: ToolbarClass self => self -> IconSize -> IO ()
+toolbarSetIconSize self iconSize =
+  withForeignPtr (unToolbar $ toToolbar self) $
+    \selfPtr ->gtk_toolbar_set_icon_size selfPtr (fromIntegral $ fromEnum iconSize)
 
 --
 -- | The Actions known to the system (they can be activated by keystrokes or menus)
@@ -534,6 +544,7 @@ getMenuAndToolbars uiManager = do
                     Just it -> castToToolbar it
                     Nothing -> throwIDE (__ "Menu>>makeMenu: failed to create toolbar")
     toolbarSetStyle toolbar ToolbarIcons
+    toolbarSetIconSize toolbar IconSizeSmallToolbar
     widgetSetSizeRequest toolbar 700 (-1)
     return (accGroup,menu,toolbar)
 

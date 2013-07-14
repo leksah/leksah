@@ -1,3 +1,4 @@
+{-# LANGUAGE ForeignFunctionInterface #-}
 -----------------------------------------------------------------------------
 --
 -- Module      :  IDE.Find
@@ -33,13 +34,13 @@ module IDE.Find (
 ) where
 
 import Graphics.UI.Gtk
-       (toggleToolButtonSetActive, castToToggleToolButton,
-        toggleToolButtonGetActive, castToBin, binGetChild, widgetGetName,
-        containerGetChildren, listStoreGetValue, treeModelGetPath,
-        TreeIter, ListStore, widgetModifyText, widgetModifyBase,
-        toolbarChildHomogeneous, after, entryActivate, spinButtonSetRange,
-        focusInEvent, entryActivate, keyPressEvent, deleteText,
-        insertText, treeModelGetValue, matchSelected,
+       (toToolbar, ToolbarClass, toggleToolButtonSetActive,
+        castToToggleToolButton, toggleToolButtonGetActive, castToBin,
+        binGetChild, widgetGetName, containerGetChildren,
+        listStoreGetValue, treeModelGetPath, TreeIter, ListStore,
+        widgetModifyText, widgetModifyBase, toolbarChildHomogeneous, after,
+        entryActivate, spinButtonSetRange, focusInEvent, keyPressEvent,
+        deleteText, insertText, treeModelGetValue, matchSelected,
         entryCompletionSetMatchFunc, cellText, cellLayoutSetAttributes,
         cellLayoutPackStart, cellRendererTextNew, entryCompletionModel,
         entrySetCompletion, entryCompletionNew, makeColumnIdString,
@@ -48,13 +49,12 @@ import Graphics.UI.Gtk
         onToolButtonClicked, Widget, toolButtonNew, separatorToolItemNew,
         labelNew, containerAdd, widgetSetName, spinButtonNewWithRange,
         toolItemNew, toolbarInsert, toolButtonNewFromStock,
-        toolbarSetStyle, toolbarNew, after,
-        Toolbar, widgetGrabFocus, widgetShowAll, widgetHide,
-        listStoreAppend, listStoreClear, entrySetText, spinButtonSetValue,
-        listStoreToList, castToEntry, entryGetText, castToSpinButton,
-        spinButtonGetValueAsInt, StateType(..), ToolbarStyle(..),
-        IconSize(..), AttrOp(..), set, on, Color(..), widgetTooltipText,
-        keyPressEvent)
+        toolbarSetStyle, toolbarNew, Toolbar, widgetGrabFocus,
+        widgetShowAll, widgetHide, listStoreAppend, listStoreClear,
+        entrySetText, spinButtonSetValue, listStoreToList, castToEntry,
+        entryGetText, castToSpinButton, spinButtonGetValueAsInt,
+        StateType(..), ToolbarStyle(..), IconSize(..), AttrOp(..), set, on,
+        Color(..), widgetTooltipText)
 import Graphics.UI.Gtk.Gdk.EventM
 import qualified Graphics.UI.Gtk as Gtk
 import Graphics.UI.Gtk.Buttons.ToggleButton
@@ -76,6 +76,18 @@ import Control.Monad.IO.Class (MonadIO(..))
 import Control.Monad.Trans.Reader (ask)
 import Control.Monad.Trans.Class (MonadTrans(..))
 import Control.Monad (liftM, filterM, when)
+import Foreign.C.Types (CInt(..))
+import Foreign.Ptr (Ptr(..))
+import Foreign.ForeignPtr (withForeignPtr)
+import Graphics.UI.GtkInternals (unToolbar)
+
+foreign import ccall safe "gtk_toolbar_set_icon_size"
+  gtk_toolbar_set_icon_size :: Ptr Toolbar -> CInt -> IO ()
+
+toolbarSetIconSize :: ToolbarClass self => self -> IconSize -> IO ()
+toolbarSetIconSize self iconSize =
+  withForeignPtr (unToolbar $ toToolbar self) $
+    \selfPtr ->gtk_toolbar_set_icon_size selfPtr (fromIntegral $ fromEnum iconSize)
 
 data FindState = FindState {
             entryStr        ::    String
@@ -185,6 +197,7 @@ constructFindReplace :: IDEM Toolbar
 constructFindReplace = reifyIDE $ \ ideR   -> do
     toolbar <- toolbarNew
     toolbarSetStyle toolbar ToolbarIcons
+    toolbarSetIconSize toolbar IconSizeSmallToolbar
     closeButton <- toolButtonNewFromStock "gtk-close"
     toolbarInsert toolbar closeButton 0
 
