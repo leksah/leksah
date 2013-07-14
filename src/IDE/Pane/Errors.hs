@@ -106,8 +106,9 @@ builder' pp nb windows = reifyIDE $ \ ideR -> do
     containerAdd scrolledView treeView
     scrolledWindowSetPolicy scrolledView PolicyAutomatic PolicyAutomatic
     let pane = IDEErrors scrolledView treeView errorStore
-    cid1 <- treeView `afterFocusIn`
-        (\_ -> do reflectIDE (makeActive pane) ideR ; return True)
+    cid1 <- after treeView focusInEvent $ do
+        liftIO $ reflectIDE (makeActive pane) ideR
+        return True
     (cid2, cid3) <- treeViewContextMenu treeView $ errorsContextMenu ideR errorStore treeView
     cid4 <- treeView `on` rowActivated $ errorsSelect ideR errorStore
     return (Just pane, map ConnectC [cid1, cid2, cid3, cid4])

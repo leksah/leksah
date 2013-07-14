@@ -35,19 +35,19 @@ module IDE.Command (
 
 import Graphics.UI.Gtk
        (keyToChar, eventKeyVal, eventModifier, eventKeyName, EKey,
-        containerAdd, windowAddAccelGroup, onKeyPress, boxPackEnd,
+        containerAdd, windowAddAccelGroup, keyPressEvent, boxPackEnd,
         boxPackStart, widgetSetName, vBoxNew, windowSetIconFromFile,
         Widget, Window, actionGroupGetAction, uiManagerGetActionGroups,
         Action, actionSetSensitive, iconFactoryAdd, iconSetNewFromPixbuf,
         pixbufNewFromFile, iconFactoryAddDefault, iconFactoryNew,
-        dialogRun, aboutDialogSetAuthors, aboutDialogSetWebsite,
-        aboutDialogSetLicense, aboutDialogSetComments,
-        aboutDialogSetCopyright, aboutDialogSetVersion, aboutDialogSetName,
+        dialogRun, aboutDialogAuthors, aboutDialogWebsite,
+        aboutDialogLicense, aboutDialogComments,
+        aboutDialogCopyright, aboutDialogVersion, aboutDialogName,
         aboutDialogNew, mainQuit, widgetHide, widgetShow, castToWidget,
         separatorMenuItemNew, containerGetChildren, Menu,
-        widgetSetSizeRequest, toolbarSetStyle, toolbarSetIconSize,
+        widgetSetSizeRequest, toolbarSetStyle, set, AttrOp(..),
         castToToolbar, castToMenuBar, uiManagerGetWidget,
-        uiManagerGetAccelGroup, onActionActivate, actionNew,
+        uiManagerGetAccelGroup, actionActivated, actionNew,
         actionGroupAddActionWithAccel, actionToggled, toggleActionNew,
         uiManagerAddUiFromString, uiManagerInsertActionGroup,
         actionGroupNew, UIManager, widgetShowAll, menuItemSetSubmenu,
@@ -510,11 +510,11 @@ makeMenu uiManager actions menuDescription = reifyIDE (\ideR -> do
             if isToggle
                 then do
                     act <- toggleActionNew name label tooltip stockId
-                    on act actionToggled (doAction ideAction ideR accString)
+                    on act actionToggled $ doAction ideAction ideR accString
                     actionGroupAddActionWithAccel ag act acc
                 else do
                     act <- actionNew name label tooltip stockId
-                    onActionActivate act (doAction ideAction ideR  accString)
+                    on act actionActivated $ doAction ideAction ideR accString
                     actionGroupAddActionWithAccel ag act acc
         doAction ideAction ideR accStr =
             (reflectIDE (do
@@ -533,7 +533,6 @@ getMenuAndToolbars uiManager = do
     let toolbar = case mbToolbar of
                     Just it -> castToToolbar it
                     Nothing -> throwIDE (__ "Menu>>makeMenu: failed to create toolbar")
-    toolbarSetIconSize toolbar IconSizeSmallToolbar
     toolbarSetStyle toolbar ToolbarIcons
     widgetSetSizeRequest toolbar 700 (-1)
     return (accGroup,menu,toolbar)
@@ -617,16 +616,16 @@ quit = do
 aboutDialog :: IO ()
 aboutDialog = do
     d <- aboutDialogNew
-    aboutDialogSetName d "Leksah"
-    aboutDialogSetVersion d (showVersion version)
-    aboutDialogSetCopyright d (__ "Copyright 2007-2011 Jürgen Nicklisch-Franken, Hamish Mackenzie")
-    aboutDialogSetComments d $ (__ "An integrated development environement (IDE) for the ") ++
-                               (__ "programming language Haskell and the Glasgow Haskell Compiler")
     dd <- getDataDir
     license <- catch (readFile $ dd </> (__ "LICENSE")) (\ (_ :: SomeException) -> return "")
-    aboutDialogSetLicense d $ Just license
-    aboutDialogSetWebsite d "http://leksah.org/"
-    aboutDialogSetAuthors d ["Jürgen Nicklisch-Franken","Hamish Mackenzie"]
+    set d [ aboutDialogName := "Leksah"
+          , aboutDialogVersion := showVersion version
+          , aboutDialogCopyright := (__ "Copyright 2007-2011 Jürgen Nicklisch-Franken, Hamish Mackenzie")
+          , aboutDialogComments := (__ "An integrated development environement (IDE) for the ") ++
+                               (__ "programming language Haskell and the Glasgow Haskell Compiler")
+          , aboutDialogLicense := Just license
+          , aboutDialogWebsite := "http://leksah.org/"
+          , aboutDialogAuthors := ["Jürgen Nicklisch-Franken","Hamish Mackenzie"] ]
     dialogRun d
     widgetDestroy d
     return ()

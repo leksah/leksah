@@ -40,8 +40,8 @@ import Graphics.UI.Gtk.General.Enums (PolicyType(..))
 
 #ifdef WEBKITGTK
 import Graphics.UI.Gtk
-       (eventModifier, eventKeyName, keyPressEvent, afterFocusIn,
-        containerAdd, Modifier(..))
+       (eventModifier, eventKeyName, keyPressEvent, focusInEvent,
+        containerAdd, Modifier(..), after)
 import Graphics.UI.Gtk.WebKit.Types (WebView(..))
 import Graphics.UI.Gtk.WebKit.WebView
        (webViewUri, webViewGoBack, webViewZoomOut, webViewZoomIn,
@@ -112,8 +112,9 @@ instance RecoverablePane IDEDocumentation DocumentationState IDEM where
         let docs = IDEDocumentation {..}
 
 #ifdef WEBKITGTK
-        cid1 <- webView `afterFocusIn`
-            (\_ -> do reflectIDE (makeActive docs) ideR ; return True)
+        cid1 <- after webView focusInEvent $ do
+            liftIO $ reflectIDE (makeActive docs) ideR
+            return True
 
         webView `set` [webViewZoomLevel := 2.0]
         cid2 <- webView `on` keyPressEvent $ do

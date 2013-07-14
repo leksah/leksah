@@ -42,8 +42,8 @@ import Graphics.UI.Gtk
        (toggleActionActive, castToMenuItem, actionCreateMenuItem,
         toggleActionNew, menuShellAppend, toggleActionSetActive,
         menuItemActivate, menuItemNewWithLabel, eventModifier,
-        eventKeyName, keyPressEvent, afterFocusIn, containerAdd,
-        Modifier(..))
+        eventKeyName, keyPressEvent, focusInEvent, containerAdd,
+        Modifier(..), after)
 import Graphics.UI.Gtk.WebKit.Types (WebView(..))
 import Graphics.UI.Gtk.WebKit.WebView
        (populatePopup, webViewGoBack, webViewZoomOut, webViewZoomIn,
@@ -119,8 +119,9 @@ instance RecoverablePane IDEOutput OutputState IDEM where
         let out = IDEOutput {..}
 
 #ifdef WEBKITGTK
-        cid1 <- webView `afterFocusIn`
-            (\_ -> do reflectIDE (makeActive out) ideR ; return True)
+        cid1 <- after webView focusInEvent $ do
+            liftIO $ reflectIDE (makeActive out) ideR
+            return True
 
         webView `set` [webViewZoomLevel := 2.0]
         cid2 <- webView `on` keyPressEvent $ do

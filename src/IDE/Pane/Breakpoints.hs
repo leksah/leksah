@@ -96,8 +96,9 @@ instance RecoverablePane IDEBreakpoints BreakpointsState IDEM where
         containerAdd scrolledView treeView
         scrolledWindowSetPolicy scrolledView PolicyAutomatic PolicyAutomatic
         let pane = IDEBreakpoints scrolledView treeView breakpoints
-        cid1 <- treeView `afterFocusIn`
-            (\_ -> do reflectIDE (makeActive pane) ideR ; return True)
+        cid1 <- after treeView focusInEvent $ do
+            liftIO $ reflectIDE (makeActive pane) ideR
+            return True
         (cid2, cid3) <- treeViewContextMenu treeView $ breakpointsContextMenu ideR breakpoints treeView
         cid4 <- treeView `on` rowActivated $ breakpointsSelect ideR breakpoints
         return (Just pane, map ConnectC [cid1, cid2, cid3, cid4])

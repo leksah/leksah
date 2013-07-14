@@ -159,15 +159,14 @@ instance RecoverablePane IDEGrep GrepState IDEM where
                             _ -> return ()) ideR
                     Nothing -> return ()
                 return True
-        cid1 <- treeView `afterFocusIn`
-            (\_ -> do reflectIDE (makeActive grep) ideR ; return True)
-        cid2 <- treeView `onKeyPress`
-            (\e ->
-                case e of
-                    k@(Gdk.Key _ _ _ _ _ _ _ _ _ _)
-                        | Gdk.eventKeyName k == "Return"  -> do
-                            gotoSource True
-                        | Gdk.eventKeyName k == "Escape"  -> do
+        cid1 <- after treeView focusInEvent $ do
+            liftIO $ reflectIDE (makeActive grep) ideR
+            return True
+        cid2 <- on treeView keyPressEvent $ do
+            name <- eventKeyName
+            liftIO $ case name of
+                        "Return" -> gotoSource True
+                        "Escape" -> do
                             reflectIDE (do
                                 lastActiveBufferPane ?>>= \paneName -> do
                                     (PaneC pane) <- paneFromName paneName
@@ -176,11 +175,8 @@ instance RecoverablePane IDEGrep GrepState IDEM where
                                 triggerEventIDE StartFindInitial) ideR
                             return True
                             -- gotoSource True
-                        | otherwise -> do
-                            return False
-                    _ -> return False
-             )
-        sel `onSelectionChanged` (gotoSource False >> return ())
+                        _ -> return False
+        on sel treeSelectionSelectionChanged (gotoSource False >> return ())
 
 
         return (Just grep,[ConnectC cid1])

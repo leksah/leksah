@@ -96,13 +96,13 @@ initCompletion sourceView always = do
             windows    <- getWindows
             prefs      <- readIDE prefs
             window     <- liftIO windowNewPopup
-            liftIO $ windowSetTransientFor window (head windows)
             liftIO $ set window [
                          windowTypeHint      := WindowTypeHintUtility,
                          windowDecorated     := False,
                          windowResizable     := True,
                          windowDefaultWidth  := width,
-                         windowDefaultHeight := height]
+                         windowDefaultHeight := height,
+                         windowTransientFor  := head windows]
             liftIO $ containerSetBorderWidth window 3
             paned      <- liftIO $ hPanedNew
             liftIO $ containerAdd window paned
@@ -145,8 +145,8 @@ initCompletion sourceView always = do
 
             treeSelection <- liftIO $ treeViewGetSelection tree
 
-            liftIO $ treeSelection `onSelectionChanged` (do
-                treeSelectionSelectedForeach treeSelection (\treePath -> (do
+            liftIO $ on treeSelection treeSelectionSelectionChanged $ do
+                treeSelectionSelectedForeach treeSelection $ \treePath -> do
                     rows <- treeSelectionGetSelectedRows treeSelection
                     case rows of
                         [treePath] -> reflectIDE (withWord store treePath (\name -> do
@@ -154,8 +154,6 @@ initCompletion sourceView always = do
                             setText descriptionBuffer description
                             )) ideR
                         _ -> return ()
-                    ))
-                )
 
             liftIO $ panedAdd1 paned nameScrolledWindow
             liftIO $ panedAdd2 paned descriptionScrolledWindow
@@ -297,9 +295,9 @@ addEventHandling window sourceView tree store isWordChar always = do
                 return True
             Nothing     -> return False
 
-    idSelected <- liftIO $ tree `onRowActivated` (\treePath column -> (do
+    idSelected <- liftIO $ on tree rowActivated $ \treePath column -> do
         reflectIDE (withWord store treePath (replaceWordStart sourceView isWordChar)) ideR
-        liftIO $ postGUIAsync $ reflectIDE cancel ideR))
+        liftIO $ postGUIAsync $ reflectIDE cancel ideR
 
     return $ concat [cidsPress, cidsRelease, [ConnectC idButtonPress, ConnectC idMotion, ConnectC idButtonRelease, ConnectC idSelected]]
 

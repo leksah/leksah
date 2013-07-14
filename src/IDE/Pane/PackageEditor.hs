@@ -439,7 +439,6 @@ initPackage packageDir packageD packageDescr panePath nb modules afterSaveAction
         Just (PackagePane{packageNotifer = pn}) -> do
             liftIO $ triggerEvent pn (GUIEvent {
                     selector = MayHaveChanged,
-                    gtkEvent = GTK.Event True,
                     eventText = "",
                     gtkReturn = True})
             return ()
@@ -480,7 +479,7 @@ builder' packageDir packageD packageDescr afterSaveAction initialPackagePath mod
     let fieldNames = map (\fd -> case getParameterPrim paraName (parameters fd) of
                                     Just s -> s
                                     Nothing -> (__ "Unnamed")) fields
-    addB `onClicked` (do
+    on addB buttonActivated $ do
         mbNewPackage' <- extract packageD [getExt]
         case mbNewPackage' of
             Nothing -> sysMessage Normal (__ "Content doesn't validate")
@@ -494,8 +493,8 @@ builder' packageDir packageD packageDescr afterSaveAction initialPackagePath mod
                             (length (bis pde) + 1)
                             (concatMap (buildInfoD (Just packageDir) modules)
                                 [0..length (bis pde)]))
-                        panePath nb modules afterSaveAction origPackageD) ideR)
-    removeB `onClicked` (do
+                        panePath nb modules afterSaveAction origPackageD) ideR
+    on removeB buttonActivated $ do
         mbNewPackage' <- extract packageD [getExt]
         case mbNewPackage' of
             Nothing -> sysMessage Normal (__ "Content doesn't validate")
@@ -510,8 +509,8 @@ builder' packageDir packageD packageDescr afterSaveAction initialPackagePath mod
                                 (length (bis pde) - 1)
                                 (concatMap (buildInfoD (Just packageDir) modules)
                                     [0..length (bis pde) - 2]))
-                            panePath nb modules afterSaveAction origPackageD) ideR)
-    closeB `onClicked` (do
+                            panePath nb modules afterSaveAction origPackageD) ideR
+    on closeB buttonActivated $ do
         mbP <- extract packageD [getExt]
         let hasChanged = case mbP of
                                 Nothing -> False
@@ -529,8 +528,8 @@ builder' packageDir packageD packageDescr afterSaveAction initialPackagePath mod
                 case resp of
                     ResponseYes ->   do
                         reflectIDE (closePane packagePane >> return ()) ideR
-                    _  ->   return ())
-    save `onClicked` (do
+                    _  ->   return ()
+    on save buttonActivated $ do
         mbNewPackage' <- extract packageD [getExt]
         case mbNewPackage' of
             Nothing -> return ()
@@ -545,7 +544,7 @@ builder' packageDir packageD packageDescr afterSaveAction initialPackagePath mod
                 reflectIDE (do
                     afterSaveAction packagePath
                     closePane packagePane
-                    return ()) ideR)
+                    return ()) ideR
     registerEvent notifier MayHaveChanged (\ e -> do
         mbP <- extract packageD [getExt]
         let hasChanged = case mbP of

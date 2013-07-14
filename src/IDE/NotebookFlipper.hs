@@ -27,7 +27,7 @@ import Graphics.UI.Gtk
         treeViewHeadersVisible, cellText, cellLayoutSetAttributes,
         treeViewColumnPackStart, cellRendererTextNew, treeViewAppendColumn,
         treeViewColumnNew, treeViewSetModel, listStoreNew, treeViewNew,
-        containerAdd, windowResizable, windowSetTransientFor,
+        containerAdd, windowResizable, windowTransientFor,
         windowNewPopup, TreeViewClass, WindowPosition(..),
         signalDisconnect, AttrOp(..), set, EventM, EKey, eventKeyName,
         windowGetSize, windowTypeHint, WindowTypeHint(..), windowDecorated,
@@ -96,14 +96,14 @@ initFlipper direction = do
     recentPanes' <-  recentSourceBuffers
     (tree', store') <- reifyIDE $ \ideR -> do
         window <- windowNewPopup
-        windowSetTransientFor window mainWindow
         (_, height) <- windowGetSize mainWindow
         set window [
             windowTypeHint      := WindowTypeHintUtility,
             windowDecorated     := False,
             windowResizable     := True,
             windowDefaultWidth  := 200,
-            windowDefaultHeight := height]
+            windowDefaultHeight := height,
+            windowTransientFor  := mainWindow]
 
         scrolledWindow <- scrolledWindowNew Nothing Nothing
         containerAdd window scrolledWindow

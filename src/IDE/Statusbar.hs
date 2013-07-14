@@ -23,7 +23,7 @@ import IDE.Core.State
      IDEAction(..),
      StatusbarCompartment(..))
 import Graphics.UI.Gtk
-    (windowSetTitle,
+    (windowTitle,
      castToStatusbar,
      Statusbar(..),
      boxPackStart,
@@ -41,7 +41,9 @@ import Graphics.UI.Gtk
      IconSize(..),
      Image,
      castToImage,
-     imageSetFromStock
+     imageSetFromStock,
+     set,
+     AttrOp(..)
      )
 import Graphics.UI.Frame.Panes (IDEPane(..), paneName)
 import Text.Printf (printf)
@@ -77,7 +79,7 @@ changeStatusbar = mapM_ changeStatusbar'
         window <- getMainWindow
         liftIO $ statusbarPop sb 1
         liftIO $ statusbarPush sb 1 string
-        liftIO $ windowSetTitle window $ "Leksah: " ++  string
+        liftIO $ set window [ windowTitle := "Leksah: " ++  string ]
         return ()
     changeStatusbar' (CompartmentBufferPos (line,col)) =  do
         sb <- getStatusbarLC

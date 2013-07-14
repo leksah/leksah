@@ -37,9 +37,9 @@ import Graphics.UI.Gtk
         toggleToolButtonGetActive, castToBin, binGetChild, widgetGetName,
         containerGetChildren, listStoreGetValue, treeModelGetPath,
         TreeIter, ListStore, widgetModifyText, widgetModifyBase,
-        toolbarChildHomogeneous, afterEntryActivate, spinButtonSetRange,
-        afterFocusIn, onEntryActivate, afterKeyPress, afterDeleteText,
-        afterInsertText, treeModelGetValue, matchSelected,
+        toolbarChildHomogeneous, after, entryActivate, spinButtonSetRange,
+        focusInEvent, entryActivate, keyPressEvent, deleteText,
+        insertText, treeModelGetValue, matchSelected,
         entryCompletionSetMatchFunc, cellText, cellLayoutSetAttributes,
         cellLayoutPackStart, cellRendererTextNew, entryCompletionModel,
         entrySetCompletion, entryCompletionNew, makeColumnIdString,
@@ -48,7 +48,7 @@ import Graphics.UI.Gtk
         onToolButtonClicked, Widget, toolButtonNew, separatorToolItemNew,
         labelNew, containerAdd, widgetSetName, spinButtonNewWithRange,
         toolItemNew, toolbarInsert, toolButtonNewFromStock,
-        toolbarSetIconSize, toolbarSetStyle, toolbarNew,
+        toolbarSetStyle, toolbarNew, after,
         Toolbar, widgetGrabFocus, widgetShowAll, widgetHide,
         listStoreAppend, listStoreClear, entrySetText, spinButtonSetValue,
         listStoreToList, castToEntry, entryGetText, castToSpinButton,
@@ -65,7 +65,7 @@ import IDE.Utils.GUIUtils
 import IDE.TextEditor hiding(afterFocusIn)
 import IDE.Pane.SourceBuffer
 import Data.Char (digitToInt, isDigit, toLower, isAlphaNum)
-import Text.Regex.TDFA hiding (caseSensitive)
+import Text.Regex.TDFA hiding (caseSensitive, after)
 import qualified Text.Regex.TDFA as Regex
 import Text.Regex.TDFA.String (compile)
 import Data.List (find, isPrefixOf)
@@ -185,7 +185,6 @@ constructFindReplace :: IDEM Toolbar
 constructFindReplace = reifyIDE $ \ ideR   -> do
     toolbar <- toolbarNew
     toolbarSetStyle toolbar ToolbarIcons
-    toolbarSetIconSize toolbar IconSizeSmallToolbar
     closeButton <- toolButtonNewFromStock "gtk-close"
     toolbarInsert toolbar closeButton 0
 
@@ -302,16 +301,17 @@ constructFindReplace = reifyIDE $ \ ideR   -> do
     containerAdd labelTool label
     toolbarInsert toolbar labelTool 0
 
-    entry `afterInsertText` (\t i -> do
+    after entry insertText (\t i -> do
         doSearch toolbar Insert ideR
         return i)
-    entry `afterDeleteText` (\ _ _ -> doSearch toolbar Delete ideR  )
+    after entry deleteText (\ _ _ -> doSearch toolbar Delete ideR  )
 
 
 
-    entry `onEntryActivate` doSearch toolbar Forward ideR
-    entry `Gtk.onFocusIn` \_ -> reflectIDE (triggerEventIDE (Sensitivity [(SensitivityEditor, False)]) >> return False) ideR
-
+    on entry entryActivate $ doSearch toolbar Forward ideR
+    on entry focusInEvent $ do
+        liftIO $ reflectIDE (triggerEventIDE (Sensitivity [(SensitivityEditor, False)])) ideR
+        return False
 
     replaceButton `onToolButtonClicked` replace toolbar Forward ideR
     let  performReplaceAll = replaceAll toolbar Forward ideR
@@ -358,10 +358,10 @@ constructFindReplace = reifyIDE $ \ ideR   -> do
                         liftIO . ctrl $ map toLower name
                 | otherwise                ->  return False
 
-    spinL `afterFocusIn` (\ _ -> (reflectIDE (inActiveBufContext True $ \_ _ ebuf _ _ -> do
+    after spinL focusInEvent . liftIO $ reflectIDE (inActiveBufContext True $ \_ _ ebuf _ _ -> do
         max <- getLineCount ebuf
         liftIO $ spinButtonSetRange spinL 1.0 (fromIntegral max)
-        return True) ideR))
+        return True) ideR
 
     spinL `on` keyPressEvent $ do
         name <- eventKeyName
@@ -376,13 +376,13 @@ constructFindReplace = reifyIDE $ \ ideR   -> do
             _        ->  return False
 
 
-    spinL `afterEntryActivate` (reflectIDE (inActiveBufContext () $ \_ sv ebuf _ _ -> do
+    after spinL entryActivate $ reflectIDE (inActiveBufContext () $ \_ sv ebuf _ _ -> do
         line  <- liftIO $ spinButtonGetValueAsInt spinL
         iter  <- getIterAtLine ebuf (line - 1)
         placeCursor ebuf iter
         scrollToIter sv iter 0.2 Nothing
         liftIO $ getOut ideR
-        return ()) ideR  )
+        return ()) ideR
 
     closeButton `onToolButtonClicked` do
         reflectIDE hideFindbar ideR

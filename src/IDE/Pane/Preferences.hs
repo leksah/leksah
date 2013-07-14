@@ -29,7 +29,7 @@ module IDE.Pane.Preferences (
 import Graphics.UI.Gtk
        (widgetDestroy, dialogRun, windowWindowPosition, dialogAddButton,
         messageDialogNew, labelSetMarkup, labelNew, widgetSetSensitive,
-        cellText, widgetModifyFont, onClicked, boxPackEnd, boxPackStart,
+        cellText, widgetModifyFont, on, buttonActivated, boxPackEnd, boxPackStart,
         buttonNewFromStock, hButtonBoxNew, vBoxNew, castToWidget, VBox,
         ShadowType(..), Packing(..), fontDescriptionFromString, AttrOp(..),
         FileChooserAction(..), Color(..), ResponseId(..))
@@ -124,15 +124,15 @@ instance RecoverablePane IDEPrefs PrefsState IDEM where
             boxPackStart vb label PackNatural 0
             boxPackEnd vb bb PackNatural 7
             let prefsPane = IDEPrefs vb
-            apply `onClicked` (do
+            on apply buttonActivated $ do
                 mbNewPrefs <- extract prefs [ext]
                 case mbNewPrefs of
                     Nothing -> return ()
                     Just newPrefs -> do
                         lastAppliedPrefs    <- readIORef lastAppliedPrefsRef
                         mapM_ (\f -> reflectIDE (applicator f newPrefs lastAppliedPrefs) ideR) flatPrefsDesc
-                        writeIORef lastAppliedPrefsRef newPrefs)
-            restore `onClicked` (do
+                        writeIORef lastAppliedPrefsRef newPrefs
+            on restore buttonActivated (do
                 lastAppliedPrefs <- readIORef lastAppliedPrefsRef
                 mapM_ (\f -> reflectIDE (applicator f prefs lastAppliedPrefs) ideR) flatPrefsDesc
                 injb prefs
@@ -140,7 +140,7 @@ instance RecoverablePane IDEPrefs PrefsState IDEM where
                 markLabel nb (getTopWidget prefsPane) False
                 widgetSetSensitive save False
                 )
-            save `onClicked` (do
+            on save buttonActivated $ do
                 lastAppliedPrefs <- readIORef lastAppliedPrefsRef
                 mbNewPrefs <- extract prefs [ext]
                 case mbNewPrefs of
@@ -158,8 +158,8 @@ instance RecoverablePane IDEPrefs PrefsState IDEM where
                                        SP.serverPort        = serverPort newPrefs,
                                        SP.endWithLastConn   = endWithLastConn newPrefs})
                         reflectIDE (modifyIDE_ (\ide -> ide{prefs = newPrefs})) ideR
-                        reflectIDE (closePane prefsPane >> return ()) ideR)
-            closeB `onClicked` do
+                        reflectIDE (closePane prefsPane >> return ()) ideR
+            on closeB buttonActivated $ do
                 mbP <- extract prefs [ext]
                 let hasChanged = case mbP of
                                         Nothing -> False

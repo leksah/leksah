@@ -97,17 +97,17 @@ builder' idePackage flagsDesc flatflagsDesc pp nb window ideR = do
     sw <- scrolledWindowNew Nothing Nothing
     scrolledWindowAddWithViewport sw widget
     scrolledWindowSetPolicy sw PolicyAutomatic PolicyAutomatic
-    saveB `onClicked` (do
+    on saveB buttonActivated (do
         mbPackWithNewFlags <- extract idePackage [ext]
         case mbPackWithNewFlags of
             Nothing -> return ()
             Just packWithNewFlags -> do
                 reflectIDE (do
-                	changePackage packWithNewFlags
-                	closePane flagsPane) ideR
+                        changePackage packWithNewFlags
+                        closePane flagsPane) ideR
                 writeFields ((dropExtension (ipdCabalFile packWithNewFlags)) ++ leksahFlagFileExtension)
                     packWithNewFlags flatFlagsDescription)
-    cancelB `onClicked` (reflectIDE (closePane flagsPane >> return ()) ideR)
+    on cancelB buttonActivated (reflectIDE (closePane flagsPane >> return ()) ideR)
     registerEvent notifier FocusIn (\e -> do
         reflectIDE (makeActive flagsPane) ideR
         return (e{gtkReturn=False}))

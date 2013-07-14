@@ -1,4 +1,4 @@
-{-# LANGUAGE CPP, FlexibleInstances, ScopedTypeVariables, DeriveDataTypeable,
+{-# LANGUAGE FlexibleInstances, ScopedTypeVariables, DeriveDataTypeable,
              MultiParamTypeClasses, TypeSynonymInstances, ParallelListComp #-}
 --
 -- Module      :  IDE.Pane.Log
@@ -41,7 +41,6 @@ module IDE.Pane.Log (
 import Data.Typeable (Typeable(..))
 import IDE.Core.State
 import IDE.Core.Types(LogLaunch)
-import Graphics.UI.Gtk.Gdk.Events
 import Control.Monad.Trans (liftIO)
 import Control.Monad.Reader
 import IDE.Pane.SourceBuffer (markRefInSourceBuf,selectSourceBuf)
@@ -61,14 +60,10 @@ import Graphics.UI.Gtk
         widgetHide, widgetShowAll, menuShellAppend,
         menuItemNewWithLabel, containerGetChildren, textIterGetLine,
         textViewGetLineAtY, textViewWindowToBufferCoords, widgetGetPointer,
-#if MIN_VERSION_gtk(0,10,5)
-        on, populatePopup,
-#else
-        onPopulatePopup,
-#endif
-        onButtonPress, afterFocusIn, textBufferNew,
+        on, populatePopup, eventCoordinates, eventClick, eventButton,
+        buttonPressEvent, focusInEvent, textBufferNew,
         scrolledWindowSetShadowType, scrolledWindowSetPolicy, containerAdd,
-        containerForeach, containerRemove, changed,
+        containerForeach, containerRemove, changed, Click(..), MouseButton(..),
         scrolledWindowNew, widgetModifyFont, fontDescriptionSetFamily,
         fontDescriptionNew, fontDescriptionFromString, textViewSetEditable,
         textTagBackground, textTagTableAdd, textTagForeground, textTagNew,
@@ -80,7 +75,7 @@ import Graphics.UI.Gtk
         comboBoxAppendText, comboBoxSetActive, comboBoxGetActiveText,
         priorityDefaultIdle, idleAdd,Frame, frameNew,buttonActivated,
         boxPackStart, boxPackEnd, Packing(..), comboBoxGetActive, comboBoxRemoveText,
-        comboBoxGetModelText, listStoreToList) --TODO remove import for logging only
+        comboBoxGetModelText, listStoreToList, after) --TODO remove import for logging only
 import qualified Data.Map as Map
 import Data.Maybe
 import Distribution.Package
@@ -389,15 +384,16 @@ builder' pp nb windows = do
 
 
         let buf = IDELog mainContainer tv hBox comboBox
-        cid1         <- tv `afterFocusIn`
-            (\_      -> do reflectIDE (makeActive buf) ideR ; return False)
-        cid2         <- tv `onButtonPress`
-                    (\ b     -> do reflectIDE (clicked b buf) ideR ; return False)
-#if MIN_VERSION_gtk(0,10,5)
-        cid3         <- tv `on` populatePopup $ populatePopupMenu buf ideR
-#else
-        cid3         <- tv `onPopulatePopup` (populatePopupMenu buf ideR)
-#endif
+        cid1 <- after tv focusInEvent $ do
+            liftIO $ reflectIDE (makeActive buf) ideR
+            return False
+        cid2 <- on tv buttonPressEvent $ do
+            click <- eventClick
+            button <- eventButton
+            (x, y) <- eventCoordinates
+            liftIO $ reflectIDE (clicked click button x y buf) ideR
+            return False
+        cid3 <- on tv populatePopup $ populatePopupMenu buf ideR
         return (Just buf, [ConnectC cid1, ConnectC cid2])
         where
         terminateLogLaunch title launches = do
@@ -407,8 +403,8 @@ builder' pp nb windows = do
                 Just ph -> liftIO $ terminateProcess ph
 
 
-clicked :: Event -> IDELog -> IDEAction
-clicked (Button _ SingleClick _ _ _ _ LeftButton x y) log = do
+clicked :: Click -> MouseButton -> Double -> Double -> IDELog -> IDEAction
+clicked SingleClick LeftButton x y log = do
     logRefs'     <-  readIDE allLogRefs
     log <- getLog
     line' <- liftIO $ do
@@ -430,7 +426,7 @@ clicked (Button _ SingleClick _ _ _ _ LeftButton x y) log = do
                 BreakpointRef -> setCurrentBreak (Just thisRef)
                 _             -> setCurrentError (Just thisRef)
         otherwise   -> return ()
-clicked _ _ = return ()
+clicked _ _ _ _ _ = return ()
 
 populatePopupMenu :: IDELog -> IDERef -> Menu -> IO ()
 populatePopupMenu log ideR menu = do

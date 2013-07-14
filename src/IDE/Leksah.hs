@@ -302,9 +302,9 @@ startMainWindow yiControl sessionFP mbWorkspaceFP sourceFPs startupPrefs isFirst
     menuDescription' <- menuDescription
     reflectIDE (makeMenu uiManager accelActions menuDescription') ideR
     nb               <-  reflectIDE (newNotebook []) ideR
-    afterSwitchPage nb (\i -> reflectIDE (handleNotebookSwitch nb i) ideR)
+    after nb switchPage (\i -> reflectIDE (handleNotebookSwitch nb i) ideR)
     widgetSetName nb $"root"
-    win `onDelete` (\ _ -> do reflectIDE quit ideR; return True)
+    on win deleteEvent . liftIO $ reflectIDE quit ideR >> return True
     reflectIDE (instrumentWindow win startupPrefs (castToWidget nb)) ideR
     reflectIDE (do
         setCandyState (fst (sourceCandy startupPrefs))

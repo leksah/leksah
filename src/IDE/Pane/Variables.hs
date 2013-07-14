@@ -134,10 +134,11 @@ builder' pp nb windows = reifyIDE $  \ideR -> do
     scrolledWindowSetPolicy scrolledView PolicyAutomatic PolicyAutomatic
 
     let pane = IDEVariables scrolledView treeView variables
-    cid1 <- treeView `afterFocusIn`
-        (\_ -> do reflectIDE (makeActive pane) ideR ; return True)
+    cid1 <- after treeView focusInEvent $ do
+        liftIO $ reflectIDE (makeActive pane) ideR
+        return True
     (cid2, cid3) <- treeViewContextMenu treeView $ variablesContextMenu ideR variables treeView
-    cid4 <- treeView `on` rowActivated $ variablesSelect ideR variables
+    cid4 <- on treeView rowActivated $ variablesSelect ideR variables
     return (Just pane, map ConnectC [cid1, cid2, cid3, cid4])
 
 

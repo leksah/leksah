@@ -5,13 +5,13 @@ before_install:
   - cabal install Cabal
   - mkdir vendor
   - cd vendor
-  - darcs get --lazy http://patch-tag.com/r/hamish/gtk2hs
+  - darcs get --lazy http://code.haskell.org/gtk2hs
   - cabal install ./gtk2hs/tools
   - cd ..
 install:
   - cabal install cabal-meta cabal-src
 script:
-  - cabal-meta install --force-reinstalls || cabal-meta install --force-reinstalls
+  - cabal-meta install --force-reinstalls
 notifications:
   irc:
     channels: "irc.freenode.net#leksah"

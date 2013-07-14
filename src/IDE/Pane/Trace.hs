@@ -149,10 +149,11 @@ builder' pp nb windows = reifyIDE $ \ ideR -> do
 
     let pane = IDETrace scrolledView treeView tracepoints
 
-    cid1 <- treeView `afterFocusIn`
-        (\_ -> do reflectIDE (makeActive pane) ideR ; return True)
+    cid1 <- after treeView focusInEvent $ do
+        liftIO $ reflectIDE (makeActive pane) ideR
+        return True
     (cid2, cid3) <- treeViewContextMenu treeView $ traceContextMenu ideR tracepoints treeView
-    sel `onSelectionChanged` do
+    on sel treeSelectionSelectionChanged $ do
         sel <- getSelectedTracepoint treeView tracepoints
         case sel of
             Just ref -> return () -- TODO reflectIDE (selectRef (Just ref)) ideR

@@ -129,26 +129,25 @@ instance RecoverablePane IDEHLint HLintState IDEM where
                             _ -> return ()) ideR
                     Nothing -> return ()
                 return True
-        cid1 <- treeView `afterFocusIn`
-            (\_ -> do reflectIDE (makeActive hlint) ideR ; return True)
-        cid2 <- treeView `onRowExpanded` \ iter path -> do
+        cid1 <- after treeView focusInEvent $ do
+            liftIO $ reflectIDE (makeActive hlint) ideR
+            return True
+        cid2 <- on treeView rowExpanded $ \ iter path -> do
             record <- treeStoreGetValue hlintStore path
             case record of
                 HLintRecord { file = f, parDir = Nothing } -> refreshDir hlintStore iter f
                 _ -> reflectIDE (ideMessage Normal (__ "Unexpected Expansion in HLint Pane")) ideR
-        cid3 <- treeView `onRowActivated` \ path col -> do
+        cid3 <- on treeView rowActivated $ \ path col -> do
             record <- treeStoreGetValue hlintStore path
             mbIter <- treeModelGetIter hlintStore path
             case (mbIter, record) of
                 (Just iter, HLintRecord { file = f, parDir = Nothing }) -> refreshDir hlintStore iter f
                 _ -> return ()
-        cid4 <- treeView `onKeyPress`
-            (\e ->
-                case e of
-                    k@(Gdk.Key _ _ _ _ _ _ _ _ _ _)
-                        | Gdk.eventKeyName k == "Return"  -> do
-                            gotoSource True
-                        | Gdk.eventKeyName k == "Escape"  -> do
+        cid4 <- on treeView keyPressEvent $ do
+            name <- eventKeyName
+            liftIO $ case name of
+                        "Return" -> gotoSource True
+                        "Escape" -> do
                             reflectIDE (do
                                 lastActiveBufferPane ?>>= \paneName -> do
                                     (PaneC pane) <- paneFromName paneName
@@ -157,11 +156,8 @@ instance RecoverablePane IDEHLint HLintState IDEM where
                                 triggerEventIDE StartFindInitial) ideR
                             return True
                             -- gotoSource True
-                        | otherwise -> do
-                            return False
-                    _ -> return False
-             )
-        sel `onSelectionChanged` (gotoSource False >> return ())
+                        _ -> return False
+        on sel treeSelectionSelectionChanged (gotoSource False >> return ())
 
         return (Just hlint,map ConnectC [cid1, cid2, cid3, cid4])
 

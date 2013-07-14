@@ -276,26 +276,28 @@ instance RecoverablePane IDEModules ModulesState IDEM where
             scopeRef <- newIORef (SystemScope,True)
             let modules = IDEModules boxOuter pane' treeView treeStore descrView descrStore
                                 rb1 rb2 rb3 cb2 cb oldState expanderState
-            cid1 <- treeView `afterFocusIn`
-                (\_ -> do reflectIDE (makeActive modules) ideR; return True)
-            cid2 <- descrView `afterFocusIn`
-                (\_ -> do reflectIDE (makeActive modules) ideR; return True)
+            cid1 <- after treeView focusInEvent $ do
+                liftIO $ reflectIDE (makeActive modules) ideR
+                return True
+            cid2 <- after descrView focusInEvent $ do
+                liftIO $ reflectIDE (makeActive modules) ideR
+                return True
             (cid3, cid4) <- treeViewContextMenu treeView $ modulesContextMenu ideR treeStore treeView
             cid5 <- treeView `on` rowActivated $ modulesSelect ideR treeStore treeView
             (cid6, cid7) <- treeViewContextMenu descrView $ descrViewContextMenu ideR descrStore descrView
             cid8 <- descrView `on` rowActivated $ descrViewSelect ideR descrStore
-            rb1 `onToggled` (reflectIDE scopeSelection ideR)
-            rb2 `onToggled` (reflectIDE scopeSelection ideR)
-            rb3 `onToggled` (reflectIDE scopeSelection ideR)
-            cb  `onToggled` (reflectIDE scopeSelection ideR)
-            cb2 `onToggled` (reflectIDE scopeSelection ideR)
+            on rb1 toggled (reflectIDE scopeSelection ideR)
+            on rb2 toggled (reflectIDE scopeSelection ideR)
+            on rb3 toggled (reflectIDE scopeSelection ideR)
+            on cb  toggled (reflectIDE scopeSelection ideR)
+            on cb2 toggled (reflectIDE scopeSelection ideR)
             sel     <-  treeViewGetSelection treeView
-            sel `onSelectionChanged` do
+            on sel treeSelectionSelectionChanged $ do
                 fillFacets treeView treeStore descrView descrStore
                 reflectIDE recordSelHistory ideR
                 return ()
             sel2    <-  treeViewGetSelection descrView
-            sel2 `onSelectionChanged` do
+            on sel2 treeSelectionSelectionChanged $ do
                 fillInfo descrView descrStore ideR
                 reflectIDE recordSelHistory ideR
                 return ()
@@ -1127,8 +1129,8 @@ addModuleDialog :: Window -> String -> [String] -> IO (Maybe AddModule)
 addModuleDialog parent modString sourceRoots = do
     liftIO $ debugM "leksah" "addModuleDialog"
     dia                        <-   dialogNew
-    windowSetTransientFor dia parent
-    windowSetTitle dia (__ "Construct new module")
+    set dia [ windowTransientFor := parent
+            , windowTitle := (__ "Construct new module") ]
     upper                      <-   dialogGetContentArea dia
     lower                      <-   dialogGetActionArea dia
     (widget,inj,ext,_)         <-   buildEditor (moduleFields sourceRoots)
@@ -1138,8 +1140,8 @@ addModuleDialog parent modString sourceRoots = do
     save    <-  buttonNewFromStock "gtk-ok"
     boxPackEnd bb closeB PackNatural 0
     boxPackEnd bb save PackNatural 0
-    save `onClicked` (dialogResponse dia ResponseOk)
-    closeB `onClicked` (dialogResponse dia ResponseCancel)
+    on save buttonActivated (dialogResponse dia ResponseOk)
+    on closeB buttonActivated (dialogResponse dia ResponseCancel)
     boxPackStart (castToBox upper) widget PackGrow 7
     boxPackStart (castToBox lower) bb PackNatural 7
     set save [widgetCanDefault := True]

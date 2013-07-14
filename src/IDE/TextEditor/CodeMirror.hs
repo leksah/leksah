@@ -62,7 +62,7 @@ import Text.Blaze.Html.Renderer.String (renderHtml)
 import Text.Hamlet (shamlet)
 import Graphics.UI.Gtk
        (ScrolledWindow, menuPopup, menuAttachToWidget, menuNew,
-        onPopupMenu, eventModifier, widgetAddEvents, keyReleaseEvent,
+        popupMenuSignal, eventModifier, widgetAddEvents, keyReleaseEvent,
         leaveNotifyEvent, motionNotifyEvent, keyPressEvent,
         buttonReleaseEvent, buttonPressEvent, focusInEvent,
         widgetGrabFocus, widgetGetParent, castToScrolledWindow,
@@ -504,11 +504,12 @@ instance TextEditor CodeMirror where
     onPopulatePopup (CMView (v, _)) f = do
         ideR <- ask
         liftIO $ do
-            id1 <- v `onPopupMenu` do
+            id1 <- on v popupMenuSignal $ do
                  menu <- menuNew
                  menuAttachToWidget menu v
                  reflectIDE (f menu) ideR
                  menuPopup menu Nothing
+                 return True
             return [ConnectC id1]
 #endif
 

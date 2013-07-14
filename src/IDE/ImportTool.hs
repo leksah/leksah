@@ -388,7 +388,7 @@ selectModuleDialog parentWindow list id mbQual mbDescr =
                                             Nothing -> id
                                             Just str -> str ++ "." ++ id
             dia               <- dialogNew
-            windowSetTransientFor dia parentWindow
+            set dia [ windowTransientFor := parentWindow ]
             upper             <- dialogGetContentArea dia
             okButton <- dialogAddButton dia "Ok" ResponseOk
             dialogAddButton dia "Cancel" ResponseCancel

@@ -46,9 +46,9 @@ import Graphics.UI.Gtk
         textIterBackwardWordStart, textIterBackwardFindChar,
         textIterBackwardChar, populatePopup, eventModifier,
         keyReleaseEvent, leaveNotifyEvent, motionNotifyEvent,
-        keyPressEvent, onFocusOut, textIterEqual, idleAdd,
-        afterBufferInsertText, buttonReleaseEvent, buttonPressEvent,
-        toggleOverwrite, afterEndUserAction, widgetAddEvents, moveCursor,
+        keyPressEvent, focusOutEvent, textIterEqual, idleAdd,
+        bufferInsertText, buttonReleaseEvent, buttonPressEvent,
+        toggleOverwrite, endUserAction, widgetAddEvents, moveCursor,
         scrolledWindowSetPolicy, textViewScrollToIter,
         textViewScrollToMark, widgetGrabFocus, widgetGetParent,
         castToScrolledWindow, textViewGetOverwrite,
@@ -70,7 +70,7 @@ import Graphics.UI.Gtk
         textBufferApplyTagByName, TextTag, TextTagTable, TextMark,
         textBufferSetText, textIterCopy, TextIter, Modifier(..),
         FontDescription, fontDescriptionFromString, fontDescriptionNew,
-        fontDescriptionSetFamily, EventMask(..))
+        fontDescriptionSetFamily, EventMask(..), after)
 import Data.Typeable (Typeable)
 import Control.Applicative ((<$>))
 import Graphics.UI.Gtk.SourceView
@@ -311,7 +311,7 @@ instance TextEditor GtkSourceView where
             -- its handler is stored here.
             -- Paste operation is example of such sequential events (each word!).
             lastHandler <- newIORef Nothing
-            id1 <- sb `afterBufferInsertText` \iter text -> do
+            id1 <- after sb bufferInsertText $ \iter text -> do
                 mapM_ idleRemove =<< maybeToList <$> readIORef lastHandler
                 writeIORef lastHandler =<< Just <$> do
                     (flip idleAdd) priorityDefault $ do
