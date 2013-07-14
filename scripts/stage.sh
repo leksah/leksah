@@ -46,7 +46,7 @@ if test "`uname`" = "Darwin"; then
 else
     if [ "$GHC_VER" != "7.0.3" ] && [ "$GHC_VER" != "7.0.4" ]; then
         echo https://github.com/leksah/pretty-show.git >> sources.txt
-        echo darcs:http://patch-tag.com/r/hamish/webkit >> sources.txt
+        echo darcs:http://code.haskell.org/r/hamish/webkit >> sources.txt
         echo git://github.com/ghcjs/webkit-javascriptcore.git >> sources.txt
         echo https://github.com/ghcjs/ghcjs-dom.git >> sources.txt
         echo https://github.com/ghcjs/jsc.git >> sources.txt

@@ -108,7 +108,7 @@ import qualified Data.Enumerator as E
 import Control.Monad (liftM, when)
 import Control.Monad.Trans.Reader (ask, ReaderT(..))
 import qualified Paths_leksah as P
-import System.Environment (getExecutablePath)
+import System.Environment.Executable (getExecutablePath)
 import System.Directory (doesDirectoryExist)
 
 instance PaneMonad IDEM where

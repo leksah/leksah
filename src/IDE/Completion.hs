@@ -21,7 +21,7 @@ import Data.List as List (stripPrefix, isPrefixOf, filter)
 import Data.Char
 import Data.IORef
 import Control.Monad
-import Graphics.UI.Gtk as Gtk hiding(onKeyPress, onKeyRelease)
+import Graphics.UI.Gtk as Gtk
 import Graphics.UI.Gtk.Gdk.EventM as Gtk
 import IDE.Core.State
 import IDE.Metainfo.Provider(getDescription,getCompletionOptions)
