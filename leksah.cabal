@@ -326,13 +326,14 @@ executable bewleksah
         buildable: False
     else
         build-depends: leksah ==0.13.2.5, base >=4.0.0.0 && <=4.8,
-                       webkit-javascriptcore -any, jsc -any,
-                       ghcjs-dom -any
+                       jsc -any, ghcjs-dom -any
         if flag(gtk3)
-          build-depends: gtk3 >=0.12.4.1 && <0.13, gtksourceview3 >=0.10.0 && <0.13, webkit3 -any
+          build-depends: gtk3 >=0.12.4.1 && <0.13, gtksourceview3 >=0.10.0 && <0.13,
+                         webkit3 -any, webkit3-javascriptcore -any
           cpp-options:   -DMIN_VERSION_gtk=MIN_VERSION_gtk3
         else
-          build-depends: gtk >=0.12.4.1 && <0.13, gtksourceview2 >=0.10.0 && <0.13, webkit -any
+          build-depends: gtk >=0.12.4.1 && <0.13, gtksourceview2 >=0.10.0 && <0.13,
+                         webkit -any, webkit-javascriptcore -any
 
     main-is: Main.hs
     buildable: True

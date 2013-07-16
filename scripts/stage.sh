@@ -46,7 +46,7 @@ if test "`uname`" = "Darwin"; then
 else
     if [ "$GHC_VER" != "7.0.3" ] && [ "$GHC_VER" != "7.0.4" ]; then
         echo https://github.com/leksah/pretty-show.git >> sources.txt
-        echo darcs:http://code.haskell.org/r/hamish/webkit >> sources.txt
+        echo darcs:http://code.haskell.org/webkit >> sources.txt
         echo git://github.com/ghcjs/webkit-javascriptcore.git >> sources.txt
         echo https://github.com/ghcjs/ghcjs-dom.git >> sources.txt
         echo https://github.com/ghcjs/jsc.git >> sources.txt
@@ -56,9 +56,9 @@ else
     HPDIR=`dirname "$HPDIR"` || exit
     HPDIR=`dirname "$HPDIR"` || exit
     if [ "$GHC_VER" != "7.0.3" ] && [ "$GHC_VER" != "7.0.4" ]; then
-        cabal-meta install --extra-lib-dirs="$HPDIR"/mingw/lib --extra-lib-dirs=/c/MinGWRPM/lib -flibcurl -fwebkit || cabal-meta install --extra-lib-dirs="$HPDIR"/mingw/lib --extra-lib-dirs=/c/MinGWRPM/lib -flibcurl -fwebkit || bash || exit
+        cabal-meta install --extra-lib-dirs="$HPDIR"/mingw/lib --extra-lib-dirs=/c/MinGWRPM/lib -flibcurl -fwebkit || bash || exit
     else
-        cabal-meta install --extra-lib-dirs="$HPDIR"/mingw/lib --extra-lib-dirs=/c/MinGWRPM/lib -flibcurl -f-webkit || cabal-meta install --extra-lib-dirs="$HPDIR"/mingw/lib --extra-lib-dirs=/c/MinGWRPM/lib -flibcurl -f-webkit || exit
+        cabal-meta install --extra-lib-dirs="$HPDIR"/mingw/lib --extra-lib-dirs=/c/MinGWRPM/lib -flibcurl -f-webkit || bash || exit
     fi
 #  if [ "$GHC_VER" != "7.0.3" ] && [ "$GHC_VER" != "7.0.4" ] && [ "$GHC_VER" != "7.6.1" ]; then
 #    echo https://github.com/yi-editor/yi.git >> sources.txt
