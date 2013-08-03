@@ -103,11 +103,7 @@ import Distribution.PackageDescription (BuildInfo)
 import Data.Map (Map(..))
 import Data.Set (Set(..))
 import Distribution.ModuleName (ModuleName(..))
-#if MIN_VERSION_gtk(0,10,5)
 import Graphics.UI.Gtk.Gdk.EventM (Modifier(..))
-#else
-import Graphics.UI.Gtk.Gdk.Enums (Modifier(..))
-#endif
 import Graphics.UI.Gtk.ActionMenuToolbar.UIManager(MergeId)
 import System.Time (ClockTime(..))
 import Distribution.Simple (Extension(..))

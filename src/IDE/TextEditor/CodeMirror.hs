@@ -66,9 +66,15 @@ import Graphics.UI.Gtk
         leaveNotifyEvent, motionNotifyEvent, keyPressEvent,
         buttonReleaseEvent, buttonPressEvent, focusInEvent,
         widgetGrabFocus, widgetGetParent, castToScrolledWindow,
-        widgetGetWindow, containerAdd, scrolledWindowNew, Rectangle(..),
+        containerAdd, scrolledWindowNew, Rectangle(..),
         EventMask(..), Modifier(..), ContainerClass, mainIteration,
-        castToWidget)
+        castToWidget,
+#if MIN_VERSION_gtk(0,13,0) || defined(MIN_VERSION_gtk3)
+        widgetGetWindow
+#else
+        widgetGetDrawWindow
+#endif
+        )
 import Data.Maybe (fromJust)
 import IDE.Core.State (onIDE, reflectIDE, leksahOrPackageDir)
 import Graphics.UI.Editor.Basics (Connection(..))
@@ -340,7 +346,11 @@ instance TextEditor CodeMirror where
     getBuffer (CMView cm) = return $ CMBuffer cm
     getWindow (CMView cm) = runCM cm $ do
         v <- webView
+#if MIN_VERSION_gtk(0,13,0) || defined(MIN_VERSION_gtk3)
         liftIO $ widgetGetWindow v
+#else
+        liftIO $ Just <$> widgetGetDrawWindow v
+#endif
     getIterAtLocation (CMView cm) x y = runCM cm $ do
         m <- codeMirror
         lift $ do

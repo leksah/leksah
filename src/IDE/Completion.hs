@@ -30,6 +30,7 @@ import Control.Monad.IO.Class (MonadIO(..))
 import Control.Monad.Trans.Reader (ask)
 import qualified Control.Monad.Reader as Gtk (liftIO)
 import Control.Monad.Trans.Class (MonadTrans(..))
+import Control.Applicative ((<$>))
 
 complete :: TextEditor editor => EditorView editor -> Bool -> IDEAction
 complete sourceView always = do
@@ -260,7 +261,11 @@ addEventHandling window sourceView tree store isWordChar always = do
         (x, y)     <- eventCoordinates
         time       <- eventTime
 
+#if MIN_VERSION_gtk(0,13,0) || defined(MIN_VERSION_gtk3)
         mbDrawWindow <- Gtk.liftIO $ widgetGetWindow window
+#else
+        mbDrawWindow <- Gtk.liftIO $ Just <$> widgetGetDrawWindow window
+#endif
         case mbDrawWindow of
             Just drawWindow -> do
                 status <- Gtk.liftIO $ pointerGrab

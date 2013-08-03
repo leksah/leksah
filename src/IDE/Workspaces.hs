@@ -69,11 +69,7 @@ import System.Directory
 import System.Time (getClockTime)
 import Graphics.UI.Gtk.Windows.MessageDialog
     (ButtonsType(..), MessageType(..))
-#if MIN_VERSION_gtk(0,10,5)
 import Graphics.UI.Gtk.Windows.Dialog (ResponseId(..))
-#else
-import Graphics.UI.Gtk.General.Structs (ResponseId(..))
-#endif
 import qualified Control.Exception as Exc (SomeException(..), throw, Exception)
 import qualified Data.Map as  Map (empty)
 import IDE.Pane.SourceBuffer (fileOpenThis, fileCheckAll, belongsToPackage)

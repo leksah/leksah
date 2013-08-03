@@ -409,7 +409,11 @@ firstStart prefs = do
         windowWindowPosition := WinPosCenter]
     dialogAddButton dialog "gtk-ok" ResponseOk
     dialogAddButton dialog "gtk-cancel" ResponseCancel
+#if MIN_VERSION_gtk(0,13,0) || defined(MIN_VERSION_gtk3)
     vb          <- dialogGetContentArea dialog
+#else
+    vb          <- dialogGetUpper dialog
+#endif
     label       <- labelNew (Just (
         "Before you start using Leksah it will collect and download metadata about your installed Haskell packages.\n" ++
         "You can add folders under which you have sources for Haskell packages not available from Hackage."))
@@ -463,7 +467,11 @@ firstBuild newPrefs = do
         windowTitle := "Leksah: Updating Metadata",
         windowWindowPosition := WinPosCenter,
         windowDeletable := False]
+#if MIN_VERSION_gtk(0,13,0) || defined(MIN_VERSION_gtk3)
     vb          <- dialogGetContentArea dialog
+#else
+    vb          <- dialogGetUpper dialog
+#endif
     progressBar <- progressBarNew
     progressBarSetText progressBar "Please wait while Leksah collects information about Haskell packages on your system"
     progressBarSetFraction progressBar 0.0

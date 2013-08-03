@@ -62,15 +62,20 @@ import Control.Monad.State.Class (gets)
 import Control.Monad (unless)
 import Control.Monad.IO.Class (MonadIO(..))
 import Data.Time (getCurrentTime)
-import qualified Graphics.UI.Gtk as Gtk (widgetGetWindow, Modifier(..))
+import qualified Graphics.UI.Gtk as Gtk (Modifier(..))
 import IDE.Utils.GUIUtils (fontDescription)
 import Graphics.UI.Gtk
        (popupMenuSignal, focusInEvent, menuPopup, menuAttachToWidget,
         menuNew, eventModifier, widgetAddEvents, keyReleaseEvent,
         leaveNotifyEvent, motionNotifyEvent, keyPressEvent,
         buttonReleaseEvent, buttonPressEvent, widgetGrabFocus,
-        widgetGetWindow, Rectangle(..), layoutSetFontDescription,
-        EventMask(..))
+        Rectangle(..), layoutSetFontDescription, EventMask(..),
+#if MIN_VERSION_gtk(0,13,0) || defined(MIN_VERSION_gtk3)
+        widgetGetWindow
+#else
+        widgetGetDrawWindow
+#endif
+        )
 import Control.Monad.Reader.Class (MonadReader(..))
 import Graphics.UI.Editor.Basics (Connection(..))
 import Control.Monad.Trans.Class (MonadTrans(..))
@@ -198,7 +203,11 @@ instance TextEditor Yi where
     bufferToWindowCoords (YiView v) point = return point -- TODO
     drawTabs (YiView _) = return () -- TODO
     getBuffer (YiView v) = return $ YiBuffer $ Yi.getBuffer v
+#if MIN_VERSION_gtk(0,13,0) || defined(MIN_VERSION_gtk3)
     getWindow (YiView v) = liftIO $ widgetGetWindow (drawArea v)
+#else
+    getWindow (YiView v) = liftIO $ Just <$> widgetGetDrawWindow (drawArea v)
+#endif
     getIterAtLocation (YiView View{viewFBufRef = b}) x y = return $ mkYiIter' b $ Point 0 -- TODO
     getIterLocation (YiView v) (YiIter i) = return $ Rectangle 0 0 0 0 -- TODO
     getOverwrite (YiView View{viewFBufRef = b}) = withYiBuffer' b $ not <$> getA insertingA

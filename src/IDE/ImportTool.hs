@@ -389,7 +389,11 @@ selectModuleDialog parentWindow list id mbQual mbDescr =
                                             Just str -> str ++ "." ++ id
             dia               <- dialogNew
             set dia [ windowTransientFor := parentWindow ]
+#if MIN_VERSION_gtk(0,13,0) || defined(MIN_VERSION_gtk3)
             upper             <- dialogGetContentArea dia
+#else
+            upper             <- dialogGetUpper dia
+#endif
             okButton <- dialogAddButton dia "Ok" ResponseOk
             dialogAddButton dia "Cancel" ResponseCancel
             (widget,inj,ext,_) <- buildEditor (moduleFields selectionList qualId) realSelectionString

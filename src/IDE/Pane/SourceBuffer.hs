@@ -120,14 +120,9 @@ import Graphics.UI.Gtk.General.Enums
        (ShadowType(..), PolicyType(..))
 import Graphics.UI.Gtk.Windows.MessageDialog
        (ButtonsType(..), MessageType(..))
-#if MIN_VERSION_gtk(0,10,5)
 import Graphics.UI.Gtk.Windows.Dialog (ResponseId(..))
 import Graphics.UI.Gtk
        (eventModifier, eventKeyName, eventKeyVal, Underline(..))
-#else
-import Graphics.UI.Gtk.General.Structs (ResponseId(..))
-import Graphics.UI.Gtk.Pango.Types (Underline(..))
-#endif
 import Graphics.UI.Gtk.Selectors.FileChooser
        (FileChooserAction(..))
 import System.Glib.Attributes (AttrOp(..), set)

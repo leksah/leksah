@@ -39,7 +39,7 @@ import Graphics.UI.Gtk
         checkButtonNewWithLabel, toggleButtonSetActive, ResponseId(..),
         dialogRun, radioButtonNewWithLabelFromWidget,
         radioButtonNewWithLabel, buttonNewFromStock, windowTransientFor,
-        hButtonBoxNew, dialogGetContentArea, dialogGetActionArea,
+        hButtonBoxNew, dialogGetActionArea,
         widgetGrabDefault, set, get, dialogNew, dialogResponse,
         widgetHide, buttonSetLabel, widgetCanDefault, hBoxNew,
         entryGetText, castToWidget, Entry, VBox, ListStore, TreeView,

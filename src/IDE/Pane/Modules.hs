@@ -1131,7 +1131,11 @@ addModuleDialog parent modString sourceRoots = do
     dia                        <-   dialogNew
     set dia [ windowTransientFor := parent
             , windowTitle := (__ "Construct new module") ]
+#if MIN_VERSION_gtk(0,13,0) || defined(MIN_VERSION_gtk3)
     upper                      <-   dialogGetContentArea dia
+#else
+    upper                      <-   dialogGetUpper dia
+#endif
     lower                      <-   dialogGetActionArea dia
     (widget,inj,ext,_)         <-   buildEditor (moduleFields sourceRoots)
                                         (AddModule modString (head sourceRoots) False)

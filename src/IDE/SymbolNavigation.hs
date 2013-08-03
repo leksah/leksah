@@ -23,11 +23,17 @@ import Graphics.UI.Gtk
        (cursorNew, eventRootCoordinates, widgetAddEvents,
         buttonPressEvent, eventIsHint, motionNotifyEvent, eventModifier,
         drawWindowGetPointer, eventCoordinates, EventM, DrawWindow,
-        pointerGrab, widgetGetWindow, screenGetDefault,
+        pointerGrab, screenGetDefault,
         widgetGetAllocation, scrolledWindowGetVAdjustment,
         adjustmentGetValue, scrolledWindowGetHAdjustment, pointerUngrab,
         eventTime, leaveNotifyEvent, ScrolledWindow, Modifier(..),
-        Rectangle(..), EventMask(..), Underline(..))
+        Rectangle(..), EventMask(..), Underline(..),
+#if MIN_VERSION_gtk(0,13,0) || defined(MIN_VERSION_gtk3)
+        widgetGetWindow
+#else
+        widgetGetDrawWindow
+#endif
+        )
 import System.Glib.Signals (on)
 import IDE.TextEditor (TextEditor(..), EditorView(..), EditorIter(..))
 import IDE.Core.Types (IDEM)
@@ -40,6 +46,7 @@ import Control.Monad (when)
 import Data.Maybe (fromJust, isJust)
 import Control.Monad.Reader.Class (MonadReader(..))
 import IDE.Core.State (reflectIDE)
+import Control.Applicative ((<$>))
 
 data Locality = LocalityPackage  | LocalityWorkspace | LocalitySystem  -- in which category symbol is located
     deriving (Ord,Eq,Show)
@@ -91,7 +98,11 @@ createHyperLinkSupport sv sw identifierMapper clickHandler = do
                     else do
                         applyTagByName tvb "link" beg en
                         Just screen <- liftIO $ screenGetDefault
+#if MIN_VERSION_gtk(0,13,0) || defined(MIN_VERSION_gtk3)
                         mbDW <- liftIO $ widgetGetWindow tv
+#else
+                        mbDW <- liftIO $ Just <$> widgetGetDrawWindow tv
+#endif
                         case mbDW of
                             Nothing -> return ()
                             Just dw -> do
