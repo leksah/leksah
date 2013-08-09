@@ -20,7 +20,7 @@ Leksah currently requires:
 * For more details see the leksah.cabal file
 
 To build the latest development version of Leksah follow the
-steps in the [.travis.yml](leksah/blob/master/.travis.yml) file.
+steps in the [.travis.yml](.travis.yml) file.
 
 If you are a user or just test Leksah, we would appreciate to hear from you.
 
