@@ -3,11 +3,7 @@ before_install:
   - sudo apt-get update -qq
   - sudo apt-get --no-install-recommends install darcs libgtksourceview-3.0-dev libwebkitgtk-3.0-dev
   - cabal install Cabal
-  - mkdir vendor
-  - cd vendor
-  - darcs get --lazy http://code.haskell.org/gtk2hs
-  - cabal install ./gtk2hs/tools
-  - cd ..
+  - cabal install gtk2hs-buildtools
 install:
   - cabal install cabal-meta cabal-src
 script:
