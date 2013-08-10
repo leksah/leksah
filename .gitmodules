@@ -1,33 +1,33 @@
 [submodule "vendor/CodeMirror"]
 	path = vendor/CodeMirror
-	url = git@github.com:ghcjs/CodeMirror.git
+	url = https://github.com/ghcjs/CodeMirror.git
 [submodule "vendor/ghcjs-dom"]
 	path = vendor/ghcjs-dom
-	url = git@github.com:ghcjs/ghcjs-dom.git
+	url = https://github.com/ghcjs/ghcjs-dom.git
 [submodule "vendor/haskellVCSGUI"]
 	path = vendor/haskellVCSGUI
-	url = git@github.com:leksah/haskellVCSGUI.git
+	url = https://github.com/leksah/haskellVCSGUI.git
 [submodule "vendor/haskellVCSWrapper"]
 	path = vendor/haskellVCSWrapper
-	url = git@github.com:leksah/haskellVCSWrapper.git
+	url = https://github.com/leksah/haskellVCSWrapper.git
 [submodule "vendor/jsc"]
 	path = vendor/jsc
-	url = git@github.com:ghcjs/jsc.git
+	url = https://github.com/ghcjs/jsc.git
 [submodule "vendor/leksah-server"]
 	path = vendor/leksah-server
-	url = git@github.com:leksah/leksah-server.git
+	url = https://github.com/leksah/leksah-server.git
 [submodule "vendor/ltk"]
 	path = vendor/ltk
-	url = git@github.com:leksah/ltk.git
+	url = https://github.com/leksah/ltk.git
 [submodule "vendor/pretty-show"]
 	path = vendor/pretty-show
-	url = git@github.com:leksah/pretty-show.git
+	url = https://github.com/leksah/pretty-show.git
 [submodule "vendor/vado"]
 	path = vendor/vado
-	url = git@github.com:hamishmack/vado.git
+	url = https://github.com/hamishmack/vado.git
 [submodule "vendor/webkit-javascriptcore"]
 	path = vendor/webkit-javascriptcore
-	url = git@github.com:ghcjs/webkit-javascriptcore.git
+	url = https://github.com/ghcjs/webkit-javascriptcore.git
 [submodule "vendor/yi"]
 	path = vendor/yi
-	url = git@github.com:leksah/yi.git
+	url = https://github.com/leksah/yi.git
