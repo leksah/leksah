@@ -5,7 +5,7 @@ before_install:
   - cabal install Cabal
   - cabal install gtk2hs-buildtools
 install:
-  - cabal install cabal-meta cabal-src
+  - travis_retry cabal install cabal-meta cabal-src
 script:
   - cabal-meta install --force-reinstalls
 notifications:
