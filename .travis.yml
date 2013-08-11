@@ -1,13 +1,13 @@
 language: haskell
 before_install:
-  - sudo apt-get update -qq
-  - sudo apt-get --no-install-recommends install darcs libgtksourceview-3.0-dev libwebkitgtk-3.0-dev
-  - cabal install Cabal
-  - cabal install gtk2hs-buildtools
+  - travis_retry sudo apt-get update -qq
+  - travis_retry sudo apt-get --no-install-recommends install darcs libgtksourceview-3.0-dev libwebkitgtk-3.0-dev
+  - travis_retry cabal install Cabal
+  - travis_retry cabal install gtk2hs-buildtools
 install:
   - travis_retry cabal install cabal-meta cabal-src
 script:
-  - cabal-meta install --force-reinstalls
+  - travis_retry cabal-meta install --force-reinstalls
 notifications:
   irc:
     channels: "irc.freenode.net#leksah"
