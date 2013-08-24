@@ -38,20 +38,25 @@ echo https://github.com/hamishmack/vado.git >> sources.txt
 echo https://github.com/leksah/haskellVCSWrapper.git >> sources.txt
 echo https://github.com/leksah/haskellVCSGUI.git >> sources.txt
 
-# echo ./vendor/gtk2hs >> sources.txt
-echo ./ >> sources.txt
-
-if test "`uname`" = "Darwin"; then
-    cabal-meta install -fhave-quartz-gtk -flibcurl -f-webkit || exit
-else
-    if [ "$GHC_VER" != "7.0.3" ] && [ "$GHC_VER" != "7.0.4" ]; then
+if [ "$GHC_VER" != "7.0.3" ] && [ "$GHC_VER" != "7.0.4" ]; then
         echo https://github.com/leksah/pretty-show.git >> sources.txt
         echo darcs:http://code.haskell.org/webkit >> sources.txt
         echo git://github.com/ghcjs/webkit-javascriptcore.git >> sources.txt
         echo https://github.com/ghcjs/ghcjs-dom.git >> sources.txt
         echo https://github.com/ghcjs/jsc.git >> sources.txt
         echo https://github.com/ghcjs/CodeMirror.git >> sources.txt
+fi
+
+# echo ./vendor/gtk2hs >> sources.txt
+echo ./ >> sources.txt
+
+if test "`uname`" = "Darwin"; then
+    if [ "$GHC_VER" != "7.0.3" ] && [ "$GHC_VER" != "7.0.4" ]; then
+        cabal-meta install -fhave-quartz-gtk -flibcurl -fwebkit || exit
+    else
+        cabal-meta install -fhave-quartz-gtk -flibcurl -f-webkit || exit
     fi
+else
     HPDIR=`which ghc` || exit
     HPDIR=`dirname "$HPDIR"` || exit
     HPDIR=`dirname "$HPDIR"` || exit

@@ -27,7 +27,7 @@ echo Bundle Leksah
 if test -e "Leksah"; then
     rm -rf "Leksah"
 fi
-DYLD_LIBRARY_PATH= jhbuild run ./bundle.sh || exit
+JHBUILD_PREFIX=/opt/local ./bundle.sh || exit
 
 echo Fixing library bindings
 mv Leksah/Leksah.app/Contents/MacOS/Leksah-bin Leksah/Leksah.app/Contents/Resources/bin/leksah || exit
