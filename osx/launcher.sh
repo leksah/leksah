@@ -39,6 +39,10 @@ export GDK_PIXBUF_MODULE_FILE="$bundle_etc/gtk-3.0/gdk-pixbuf.loaders"
 export PANGO_RC_FILE="$bundle_etc/pango/pangorc"
 export PANGO_LIBDIR="$bundle_lib"
 export PANGO_SYSCONFDIR="$bundle_etc"
+export GST_PLUGIN_SCANNER="$bundle_res"/libexec/gst-plugin-scanner
+export GST_PLUGIN_PATH="$bundle_res"/libexec/gstreamer-1.0
+export GST_PLUGIN_SYSTEM_PATH=
+export GIO_EXTRA_MODULES="$bundle_lib"/gio/modules
 
 export leksah_bindir="$bundle_bin"
 export leksah_libdir="$bundle_lib/leksah/ghc"

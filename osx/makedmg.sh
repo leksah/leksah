@@ -31,8 +31,12 @@ JHBUILD_PREFIX=/opt/local ./bundle.sh || exit
 
 echo Fixing library bindings
 mv Leksah/Leksah.app/Contents/MacOS/Leksah-bin Leksah/Leksah.app/Contents/Resources/bin/leksah || exit
-for f in `find Leksah/Leksah.app/Contents/Resources/lib -name '*.so' -o -name '*.dylib'` Leksah/Leksah.app/Contents/Resources/bin/*; do
+for f in `find Leksah/Leksah.app/Contents/Resources/lib -name '*.so' -o -name '*.dylib'` Leksah/Leksah.app/Contents/Resources/bin/* Leksah/Leksah.app/Contents/Resources/libexec/*; do
     otool -L $f | grep "$GTK_PREFIX/.*(" | sed -e "s|.*$GTK_PREFIX/\([^ ]*\).*|\1|" | xargs -I {} install_name_tool -change $GTK_PREFIX/{} @executable_path/../{} $f || exit
+done
+
+for f in Leksah/Leksah.app/Contents/Resources/libexec/gstreamer-1.0/*; do
+    otool -L $f | grep "$GTK_PREFIX/.*(" | sed -e "s|.*$GTK_PREFIX/\([^ ]*\).*|\1|" | xargs -I {} install_name_tool -change $GTK_PREFIX/{} @executable_path/../../{} $f || exit
 done
 
 echo Fixing pixbuf loader paths

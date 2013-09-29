@@ -85,6 +85,22 @@
     ${prefix}/lib/pango/${pkg:pango:pango_module_version}/modules/
   </binary>
 
+  <binary>
+    ${prefix}/lib/gio/modules/
+  </binary>
+
+  <binary>
+    ${prefix}/lib/enchant/*.so
+  </binary>
+
+  <binary>
+    ${prefix}/lib/gstreamer-1.0/*.so
+  </binary>
+
+  <binary dest="${bundle}/Contents/Resources/libexec">
+    ${prefix}/libexec/gstreamer-1.0/
+  </binary>
+
   <data>
     ${prefix}/etc/pango/
   </data>
@@ -123,6 +139,9 @@
   </data>
   <data>
     ${prefix}/share/glib-2.0
+  </data>
+  <data>
+    ${prefix}/share/mime
   </data>
 
   <!-- Copy icons. Note that the .icns file is an Apple format which

@@ -52,18 +52,18 @@ echo ./ >> sources.txt
 
 if test "`uname`" = "Darwin"; then
     if [ "$GHC_VER" != "7.0.3" ] && [ "$GHC_VER" != "7.0.4" ]; then
-        cabal-meta install -fhave-quartz-gtk -flibcurl -fwebkit || exit
+        cabal-meta install -fhave-quartz-gtk -flibcurl -fwebkit --force-reinstalls || exit
     else
-        cabal-meta install -fhave-quartz-gtk -flibcurl -f-webkit || exit
+        cabal-meta install -fhave-quartz-gtk -flibcurl -f-webkit --force-reinstalls || exit
     fi
 else
     HPDIR=`which ghc` || exit
     HPDIR=`dirname "$HPDIR"` || exit
     HPDIR=`dirname "$HPDIR"` || exit
     if [ "$GHC_VER" != "7.0.3" ] && [ "$GHC_VER" != "7.0.4" ]; then
-        cabal-meta install --extra-lib-dirs="$HPDIR"/mingw/lib --extra-lib-dirs=/c/MinGWRPM/lib -flibcurl -fwebkit || bash || exit
+        cabal-meta install --extra-lib-dirs="$HPDIR"/mingw/lib --extra-lib-dirs=/c/MinGWRPM/lib -flibcurl -fwebkit --force-reinstalls || bash || exit
     else
-        cabal-meta install --extra-lib-dirs="$HPDIR"/mingw/lib --extra-lib-dirs=/c/MinGWRPM/lib -flibcurl -f-webkit || bash || exit
+        cabal-meta install --extra-lib-dirs="$HPDIR"/mingw/lib --extra-lib-dirs=/c/MinGWRPM/lib -flibcurl -f-webkit --force-reinstalls || bash || exit
     fi
 #  if [ "$GHC_VER" != "7.0.3" ] && [ "$GHC_VER" != "7.0.4" ] && [ "$GHC_VER" != "7.6.1" ]; then
 #    echo https://github.com/yi-editor/yi.git >> sources.txt
