@@ -31,7 +31,7 @@ export CPPFLAGS=`pkg-config --cflags-only-I libcurl`
 # Gtk2Hs needs the latest Cabal to install properly
 cabal install Cabal || true
 
-echo darcs:http://code.haskell.org/gtksourceview > sources.txt
+echo https://github.com/gtk2hs/gtksourceview > sources.txt
 echo https://github.com/leksah/ltk >> sources.txt
 echo https://github.com/leksah/leksah-server >> sources.txt
 echo https://github.com/hamishmack/vado.git >> sources.txt
@@ -40,7 +40,7 @@ echo https://github.com/leksah/haskellVCSGUI.git >> sources.txt
 
 if [ "$GHC_VER" != "7.0.3" ] && [ "$GHC_VER" != "7.0.4" ]; then
         echo https://github.com/leksah/pretty-show.git >> sources.txt
-        echo darcs:http://code.haskell.org/webkit >> sources.txt
+        echo https://github.com/gtk2hs/webkit >> sources.txt
         echo git://github.com/ghcjs/webkit-javascriptcore.git >> sources.txt
         echo https://github.com/ghcjs/ghcjs-dom.git >> sources.txt
         echo https://github.com/ghcjs/jsc.git >> sources.txt
