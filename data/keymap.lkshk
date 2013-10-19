@@ -34,7 +34,7 @@
 <ctrl>z                    ->          EditUndo        "Undos the last user action"
 --<ctrl>x/u                ->          EditUndo        "Undos the last user action"
 
-<shift><ctrl>y             ->          EditRedo        "Redos the last user action"
+<shift><ctrl>z             ->          EditRedo        "Redos the last user action"
 --<ctrl>x/r                ->          EditRedo        "Redos the last user action"
 
 --<ctrl>x     ->          EditCut
