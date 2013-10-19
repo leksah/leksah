@@ -1,0 +1,59 @@
+--- themes/Adwaita/gtk-3.0/gtk-widgets.css.orig	2013-10-06 19:55:12.000000000 +1300
++++ themes/Adwaita/gtk-3.0/gtk-widgets.css	2013-10-06 19:57:34.000000000 +1300
+@@ -396,6 +396,7 @@
+     background-color: @theme_unfocused_bg_color;
+ }
+ 
++/*
+ .notebook .pane-separator,
+ .notebook .pane-separator:hover {
+     background-color: @theme_base_color;
+@@ -405,7 +406,7 @@
+ .notebook .pane-separator:hover:backdrop {
+     background-color: @theme_unfocused_base_color;
+ }
+-
++*/
+ /****************
+  * Text Entries *
+  ****************/
+@@ -1781,18 +1782,18 @@
+     border-width: 1px;
+ 
+     background-clip: border-box;
+-    background-color: @theme_base_color;
++    /* background-color: @theme_base_color; */
+ 
+     -GtkNotebook-tab-overlap: 8;
+     -GtkNotebook-tab-curvature: 6;
+     /* FIXME - the gap should be applied only to top or bottom tabs */
+     -GtkNotebook-initial-gap: 8;
+ }
+-
++/*
+ .notebook GtkViewport {
+     background-color: @theme_base_color;
+ }
+-
++*/
+ .notebook:backdrop,
+ .notebook GtkViewport:backdrop {
+     background-color: @theme_unfocused_base_color;
+@@ -1832,7 +1833,7 @@
+                                       @notebook_selected_tab_color,
+                                       @notebook_selected_tab_color 2px,
+                                       @button_gradient_color_a 3px, /* FIXME */
+-                                      @theme_base_color
++                                      @theme_bg_color
+                                       );
+ }
+ 
+@@ -1898,7 +1899,7 @@
+ .notebook tab.left:active,
+ .notebook tab.right:active {
+     background-image: none;
+-    background-color: @theme_base_color;
++/*    background-color: @theme_base_color;*/
+ }
+ 
+ .notebook tab.left:active:backdrop,

@@ -17,6 +17,7 @@
 module IDE.Pane.Breakpoints (
     IDEBreakpoints
 ,   BreakpointsState
+,   showBreakpoints
 ,   fillBreakpointList
 ,   selectBreak
 ) where
@@ -102,6 +103,14 @@ instance RecoverablePane IDEBreakpoints BreakpointsState IDEM where
         (cid2, cid3) <- treeViewContextMenu treeView $ breakpointsContextMenu ideR breakpoints treeView
         cid4 <- treeView `on` rowActivated $ breakpointsSelect ideR breakpoints
         return (Just pane, map ConnectC [cid1, cid2, cid3, cid4])
+
+getBreakpoints :: IDEM IDEBreakpoints
+getBreakpoints = forceGetPane (Right "*Breakpoints")
+
+showBreakpoints :: IDEAction
+showBreakpoints = do
+    pane <- getBreakpoints
+    displayPane pane False
 
 fillBreakpointList :: IDEAction
 fillBreakpointList = do

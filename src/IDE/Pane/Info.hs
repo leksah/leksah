@@ -18,6 +18,7 @@
 module IDE.Pane.Info (
     IDEInfo
 ,   InfoState
+,   showInfo
 ,   setInfo
 ,   replayInfoHistory
 ,   openDocu
@@ -37,17 +38,16 @@ import IDE.Utils.GUIUtils (openBrowser, __)
 import Control.Monad.IO.Class (MonadIO(..))
 import Control.Monad.Reader.Class (MonadReader(..))
 import Graphics.UI.Gtk
-       (widgetHide, widgetShowAll, menuShellAppend, menuItemActivate,
-        menuItemNewWithLabel, containerGetChildren, Menu,
-        boxPackStart, scrolledWindowSetPolicy,
-        vBoxNew, castToWidget, VBox)
-import Graphics.UI.Gtk.General.Enums (Packing(..), PolicyType(..))
+       (widgetHide, widgetShowAll, menuShellAppend,
+        menuItemActivate, menuItemNewWithLabel, containerGetChildren, Menu,
+        scrolledWindowSetPolicy, castToWidget, ScrolledWindow)
+import Graphics.UI.Gtk.General.Enums (PolicyType(..))
 import System.Glib.Signals (on)
 
 -- | An info pane description
 --
 data IDEInfo        =   forall editor. TextEditor editor => IDEInfo {
-    sw              ::   VBox
+    sw              ::   ScrolledWindow
 ,   currentDescr    ::   IORef (Maybe Descr)
 ,   descriptionView ::   EditorView editor
 } deriving Typeable
@@ -72,7 +72,7 @@ instance RecoverablePane IDEInfo InfoState IDEM where
     builder pp nb windows =
         let idDescr = Nothing in do
         prefs <- readIDE prefs
-        ibox              <- liftIO $ vBoxNew False 0
+        ideR <- ask
         descriptionBuffer <- newDefaultBuffer Nothing ""
         descriptionView   <- newView descriptionBuffer (textviewFont prefs)
 
@@ -93,17 +93,23 @@ instance RecoverablePane IDEInfo InfoState IDEM where
 
         liftIO $ scrolledWindowSetPolicy sw PolicyAutomatic PolicyAutomatic
 
-        liftIO $ boxPackStart ibox sw PackGrow 10
-
-
         --openType
         currentDescr' <- liftIO $ newIORef idDescr
-        cids <- onPopulatePopup descriptionView $ \ menu -> do
+        cids1 <- onPopulatePopup descriptionView $ \ menu -> do
             ideR <- ask
             liftIO $ populatePopupMenu ideR currentDescr' menu
-        let info = IDEInfo ibox currentDescr' descriptionView
+        let info = IDEInfo sw currentDescr' descriptionView
         -- ids5 <- sv `onLookupInfo` selectInfo descriptionView       -- obsolete by hyperlinks
-        return (Just info, cids)
+        cids2 <- descriptionView `afterFocusIn` makeActive info
+        return (Just info, concat [cids1, cids2])
+
+getInfo :: IDEM IDEInfo
+getInfo = forceGetPane (Right "*Info")
+
+showInfo :: IDEAction
+showInfo = do
+    pane <- getInfo
+    displayPane pane False
 
 gotoSource :: IDEAction
 gotoSource = do
@@ -123,8 +129,9 @@ gotoModule' = do
 
 setInfo :: Descr -> IDEAction
 setInfo identifierDescr = do
-    info <-  forceGetPane (Right "*Info")
+    info <-  getInfo
     setInfo' info
+    displayPane info False
   where
     setInfo' (info@IDEInfo{descriptionView = v}) = do
         oldDescr <- liftIO $ readIORef (currentDescr info)

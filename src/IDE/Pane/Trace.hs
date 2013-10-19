@@ -17,6 +17,7 @@
 module IDE.Pane.Trace (
     IDETrace
 ,   TraceState
+,   showTrace
 ,   fillTraceList
 ) where
 
@@ -85,6 +86,14 @@ instance RecoverablePane IDETrace TraceState IDEM where
         nb      <-  getNotebook pp
         buildPane pp nb builder
     builder = builder'
+
+getTrace :: IDEM IDETrace
+getTrace = forceGetPane (Right "*Trace")
+
+showTrace :: IDEAction
+showTrace = do
+    pane <- getTrace
+    displayPane pane False
 
 builder' :: PanePath ->
     Notebook ->

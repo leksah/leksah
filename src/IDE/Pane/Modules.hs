@@ -18,7 +18,7 @@
 module IDE.Pane.Modules (
     IDEModules(..)
 ,   ModulesState(..)
---,   showInterface
+,   showModules
 ,   selectIdentifier
 ,   reloadKeepSelection
 ,   replaySelHistory
@@ -127,6 +127,10 @@ getModules :: Maybe PanePath -> IDEM IDEModules
 getModules Nothing    = forceGetPane (Right "*Modules")
 getModules (Just pp)  = forceGetPane (Left pp)
 
+showModules :: IDEAction
+showModules = do
+    pane <- getModules Nothing
+    displayPane pane False
 
 instance RecoverablePane IDEModules ModulesState IDEM where
     saveState p     =   do

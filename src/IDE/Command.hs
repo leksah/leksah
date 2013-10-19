@@ -67,6 +67,10 @@ import IDE.Pane.PackageFlags
 import IDE.Pane.PackageEditor
 import IDE.Pane.Errors
 import IDE.Pane.Search
+import IDE.Pane.Info
+import IDE.Pane.Breakpoints
+import IDE.Pane.Trace
+import IDE.Pane.Variables
 import IDE.Package
 import IDE.Pane.Log
 import IDE.Session
@@ -111,6 +115,7 @@ import Foreign.C.Types (CInt(..))
 import Foreign.Ptr (Ptr(..))
 import Foreign.ForeignPtr (withForeignPtr)
 import Graphics.UI.GtkInternals (unToolbar)
+import IDE.Session (viewFullScreen, viewExitFullScreen, viewDark, viewLight)
 
 foreign import ccall safe "gtk_toolbar_set_icon_size"
   gtk_toolbar_set_icon_size :: Ptr Toolbar -> CInt -> IO ()
@@ -347,8 +352,18 @@ mkActions =
     ,AD "Panes" (__ "_Panes") Nothing Nothing (return ()) [] False
     ,AD "ShowBrowser" (__ "Browser") Nothing Nothing
         showBrowser [] False
+    ,AD "ShowModules" (__ "Modules") Nothing Nothing
+        showModules [] False
+    ,AD "ShowInfo" (__ "Info") Nothing Nothing
+        showInfo [] False
     ,AD "ShowDebugger" (__ "Debugger") Nothing Nothing
         showDebugger [] False
+    ,AD "ShowBreakpointsPane" (__ "Breakpoints") Nothing Nothing
+        showBreakpoints [] False
+    ,AD "ShowTrace" (__ "Trace") Nothing Nothing
+        showTrace [] False
+    ,AD "ShowVariables" (__ "Variables") Nothing Nothing
+        showVariables [] False
     ,AD "ShowSearch" (__ "Search") Nothing Nothing
         (getSearch Nothing  >>= \ p -> displayPane p False) [] False
     ,AD "ShowFiles" (__ "Files") Nothing Nothing

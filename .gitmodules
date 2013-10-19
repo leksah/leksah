@@ -27,7 +27,13 @@
 	url = https://github.com/hamishmack/vado.git
 [submodule "vendor/webkit-javascriptcore"]
 	path = vendor/webkit-javascriptcore
-	url = https://github.com/ghcjs/webkit-javascriptcore.git
+	url = https://github.com/gtk2hs/webkit-javascriptcore.git
 [submodule "vendor/yi"]
 	path = vendor/yi
 	url = https://github.com/leksah/yi.git
+[submodule "vendor/gtksourceview"]
+	path = vendor/gtksourceview
+	url = https://github.com/gtk2hs/gtksourceview.git
+[submodule "vendor/webkit"]
+	path = vendor/webkit
+	url = https://github.com/gtk2hs/webkit.git

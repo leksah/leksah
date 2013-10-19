@@ -17,6 +17,7 @@
 module IDE.Pane.Variables (
     IDEVariables
 ,   VariablesState
+,   showVariables
 ,   fillVariablesList
 ,   fillVariablesListQuiet
 ) where
@@ -82,6 +83,13 @@ instance RecoverablePane IDEVariables VariablesState IDEM where
         buildPane pp nb builder
     builder = builder'
 
+getVariables :: IDEM IDEVariables
+getVariables = forceGetPane (Right "*Variables")
+
+showVariables :: IDEAction
+showVariables = do
+    pane <- getVariables
+    displayPane pane False
 
 builder' :: PanePath ->
     Notebook ->

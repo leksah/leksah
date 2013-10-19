@@ -39,8 +39,8 @@
        <menuitem name="Shift Right" action="EditShiftRight" />
        <separator/>
        <menuitem name="Align ="  action="EditAlignEqual" />
-       <menuitem name="Align <-" action="EditAlignLeftArrow" />
-       <menuitem name="Align ->" action="EditAlignRightArrow" />
+       <menuitem name="Align &lt;-" action="EditAlignLeftArrow" />
+       <menuitem name="Align -&gt;" action="EditAlignRightArrow" />
        <menuitem name="Align ::" action="EditAlignTypeSig" />
      </menu>
     <menu name="_Workspace" action="Workspace">
@@ -93,7 +93,14 @@
      </menu>
     <menu name="_Panes" action="Panes">
        <menuitem name="_Browser" action="ShowBrowser" />
+       <menuitem name="_Modules" action="ShowModules" />
+       <menuitem name="_Info" action="ShowInfo" />
+       <separator/>
        <menuitem name="_Debugger" action="ShowDebugger" />
+       <menuitem name="_Breakpoints" action="ShowBreakpointsPane" />
+       <menuitem name="_Trace" action="ShowTrace" />
+       <menuitem name="_Variables" action="ShowVariables" />
+       <separator/>
        <menuitem name="_Errors" action="ShowErrors" />
        <menuitem name="_Files" action="ShowFiles" />
        <menuitem name="_Grep" action="ShowGrep" />

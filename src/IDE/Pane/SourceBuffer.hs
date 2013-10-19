@@ -90,7 +90,7 @@ import Data.Typeable
 import qualified Data.Set as Set
 
 import IDE.Core.State
-import IDE.Utils.GUIUtils(getCandyState,showDialog)
+import IDE.Utils.GUIUtils
 import IDE.Utils.FileUtils
 import IDE.SourceCandy
 import IDE.SymbolNavigation
@@ -132,7 +132,6 @@ import Control.Monad.Trans.Reader (ask)
 import Control.Monad.IO.Class (MonadIO(..))
 import Control.Monad (foldM, forM, filterM, unless, when)
 import Control.Exception as E (catch, SomeException)
-import IDE.Utils.GUIUtils
 
 import qualified IDE.Command.Print as Print
 import Control.Monad.Trans.Class (MonadTrans(..))

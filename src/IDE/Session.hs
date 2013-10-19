@@ -1,4 +1,4 @@
-{-# LANGUAGE ScopedTypeVariables #-}
+{-# LANGUAGE CPP, ScopedTypeVariables #-}
 -----------------------------------------------------------------------------
 --
 -- Module      :  IDE.Session
@@ -22,9 +22,18 @@ module IDE.Session (
 ,   sessionClosePane
 ,   loadSession
 ,   loadSessionPrompt
+,   viewFullScreen
+,   viewExitFullScreen
+,   viewDark
+,   viewLight
 ) where
 
 import Graphics.UI.Gtk hiding (showLayout)
+#ifdef MIN_VERSION_gtk3
+import Graphics.UI.Gtk.General.CssProvider (cssProviderNew, cssProviderLoadFromString)
+import Graphics.UI.Gtk.General.StyleContext (styleContextAddProvider)
+import Control.Applicative ((<$>))
+#endif
 import System.FilePath
 import qualified Data.Map as Map
 import Data.Maybe
@@ -156,6 +165,8 @@ data SessionState = SessionState {
     ,   layoutS             ::   PaneLayout
     ,   population          ::   [(Maybe PaneState,PanePath)]
     ,   windowSize          ::   (Int,Int)
+    ,   fullScreen          ::   Bool
+    ,   dark                ::   Bool
     ,   completionSize      ::   (Int,Int)
     ,   workspacePath       ::   Maybe FilePath
     ,   activePaneN         ::   Maybe String
@@ -171,6 +182,8 @@ defaultSession = SessionState {
     ,   layoutS             =   TerminalP Map.empty (Just TopP) (-1) Nothing Nothing
     ,   population          =   []
     ,   windowSize          =   (1024,768)
+    ,   fullScreen          =   True
+    ,   dark                =   True
     ,   completionSize      =   (750,400)
     ,   workspacePath       =   Nothing
     ,   activePaneN         =   Nothing
@@ -221,6 +234,18 @@ sessionDescr = [
             (pairParser intParser)
             windowSize
             (\(c,d) a -> a{windowSize = (c,d)})
+    ,   mkFieldS
+            (paraName <<<- ParaName ( "Full screen") $ emptyParams)
+            (PP.text . show)
+            readParser
+            fullScreen
+            (\b a -> a{fullScreen = b})
+    ,   mkFieldS
+            (paraName <<<- ParaName ( "Dark") $ emptyParams)
+            (PP.text . show)
+            readParser
+            dark
+            (\b a -> a{dark = b})
     ,   mkFieldS
             (paraName <<<- ParaName ( "Completion size") $ emptyParams)
             (PP.text . show)
@@ -295,6 +320,8 @@ saveSessionAs sessionPath mbSecondPath = do
             layout          <-  mkLayout
             population      <-  getPopulation
             size            <-  liftIO $ windowGetSize wdw
+            fullScreen      <-  readIDE isFullScreen
+            dark            <-  readIDE isDark
             (completionSize,_) <- readIDE completion
             mbWs            <-  readIDE workspace
             activePane'     <-  getActivePane
@@ -313,6 +340,8 @@ saveSessionAs sessionPath mbSecondPath = do
             ,   layoutS             =   layout
             ,   population          =   population
             ,   windowSize          =   size
+            ,   fullScreen          =   fullScreen
+            ,   dark                =   dark
             ,   completionSize      =   completionSize
             ,   workspacePath       =   case mbWs of
                                             Nothing -> Nothing
@@ -499,6 +528,10 @@ recoverSession sessionPath = catchIDE (do
         setCompletionSize (completionSize sessionSt)
         modifyIDE_ (\ide -> ide{recentFiles = recentOpenedFiles sessionSt,
                                         recentWorkspaces = recentOpenedWorksp sessionSt})
+        if (fullScreen sessionSt)
+            then viewFullScreen
+            else viewExitFullScreen
+        setDark (dark sessionSt)
         liftIO $ debugM "leksah" "recoverSession done"
         return (toolbarVisibleS sessionSt, (fst . findbarState) sessionSt))
         (\ (e :: SomeException) -> do
@@ -563,6 +596,52 @@ setCurrentPages layout = setCurrentPages' layout []
                                                         nb <- getNotebook (reverse p)
                                                         liftIO $ notebookSetCurrentPage nb ind
 
+viewFullScreen :: IDEAction
+viewFullScreen = do
+    modifyIDE_(\ide -> ide {isFullScreen = True})
+    mbWindow <- getActiveWindow
+    case mbWindow of
+        Nothing -> return ()
+        Just window -> liftIO $ windowFullscreen window
+
+viewExitFullScreen :: IDEAction
+viewExitFullScreen = do
+    modifyIDE_(\ide -> ide {isFullScreen = False})
+    mbWindow <- getActiveWindow
+    case mbWindow of
+        Nothing -> return ()
+        Just window -> liftIO $ windowUnfullscreen window
+
+viewDark :: IDEAction
+viewDark = setDark True
+
+viewLight :: IDEAction
+viewLight = setDark False
+
+#if MIN_VERSION_gtk(0,13,0) || defined(MIN_VERSION_gtk3)
+getActiveSettings :: PaneMonad alpha => alpha (Maybe Settings)
+getActiveSettings = do
+    mbScreen <- getActiveScreen
+    case mbScreen of
+        Nothing -> return Nothing
+        Just screen -> liftIO $ Just <$> settingsGetForScreen screen
+#endif
+
+setDark :: Bool -> IDEM ()
+setDark dark = do
+    modifyIDE_(\ide -> ide {isDark = dark})
+#if MIN_VERSION_gtk(0,13,0) || defined(MIN_VERSION_gtk3)
+    mbSettings <- getActiveSettings
+    case mbSettings of
+        Just settings -> liftIO $ settingsSetLongProperty
+                            settings
+                            "gtk-application-prefer-dark-theme"
+                            (if dark then 1 else 0)
+                            "Leksah"
+        Nothing -> return ()
+#else
+    return ()
+#endif
 
 
 
