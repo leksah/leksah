@@ -102,6 +102,10 @@
   </binary>
 
   <data>
+    ${prefix}/etc/fonts/
+  </data>
+
+  <data>
     ${prefix}/etc/pango/
   </data>
 
