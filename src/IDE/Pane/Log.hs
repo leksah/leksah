@@ -16,7 +16,7 @@
 
 module IDE.Pane.Log (
     IDELog(..)
-,   LogState
+,   LogState(..)
 ,   LogTag(..)
 ,   showLog
 ,   clearLog

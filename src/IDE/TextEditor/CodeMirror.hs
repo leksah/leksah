@@ -332,7 +332,7 @@ instance TextEditor CodeMirror where
     setModified (CMBuffer cm) modified = unless modified . runCM cm $ do
         m <- codeMirror
         lift $ m ^. markClean >> return ()
-    setStyle (CMBuffer cm) mbStyle = return () -- TODO
+    setStyle preferDark (CMBuffer cm) mbStyle = return () -- TODO
     setText (CMBuffer cm) text = runCM cm $ do
         m <- codeMirror
         lift $ m ^. setValue text

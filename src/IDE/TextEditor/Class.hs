@@ -95,7 +95,7 @@ class TextEditor editor where
                        -> IDEM ()
     selectRange :: EditorBuffer editor -> EditorIter editor -> EditorIter editor -> IDEM ()
     setModified :: EditorBuffer editor -> Bool -> IDEM ()
-    setStyle :: EditorBuffer editor -> Maybe String -> IDEM ()
+    setStyle :: Bool -> EditorBuffer editor -> Maybe String -> IDEM ()
     setText :: EditorBuffer editor -> String -> IDEM ()
     undo :: EditorBuffer editor -> IDEM ()
 

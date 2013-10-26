@@ -88,7 +88,7 @@ testIDE f = do
             ,   panes         =   Map.empty
             ,   activePane    =   Nothing
             ,   paneMap       =   Map.empty
-            ,   layout        =   (TerminalP Map.empty Nothing (-1) Nothing Nothing)
+            ,   layout        =   TerminalP Map.empty Nothing (-1) Nothing Nothing
             ,   panePathFromNB =  Map.empty
             }
         ide = IDE
@@ -149,7 +149,7 @@ allEditors test = allM id
 
 prop_test :: String -> Property
 prop_test s = monadicIO $ do
-    let input = filter (not . flip elem ['\NUL', '\r']) s
+    let input = filter (not . flip elem "\NUL\r") s
     result <- run $ allEditors (\buf -> do
         (win:_) <- getWindows
         buffer <- buf Nothing ""

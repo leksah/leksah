@@ -28,6 +28,7 @@ module IDE.Session (
 ,   viewLight
 ) where
 
+import Prelude hiding (catch)
 import Graphics.UI.Gtk hiding (showLayout)
 #ifdef MIN_VERSION_gtk3
 import Graphics.UI.Gtk.General.CssProvider (cssProviderNew, cssProviderLoadFromString)
@@ -49,8 +50,8 @@ import Graphics.UI.Editor.Parameters
 import IDE.TextEditor
 import IDE.Pane.Modules
 import IDE.Pane.SourceBuffer
-import IDE.Pane.Info
-import IDE.Pane.Log
+import IDE.Pane.Info (InfoState(..))
+import IDE.Pane.Log (LogState(..))
 import IDE.Pane.Preferences
 import IDE.Pane.PackageFlags
 import IDE.Pane.Search
@@ -66,14 +67,13 @@ import IDE.Find
 import System.Time (getClockTime)
 import IDE.Package (deactivatePackage)
 import IDE.Pane.Errors (ErrorsState(..))
-import Control.Exception (SomeException(..))
+import Control.Exception (catch, SomeException(..))
 import IDE.Pane.Workspace (WorkspaceState(..))
 import IDE.Workspaces (workspaceOpenThis)
 import IDE.Completion (setCompletionSize)
 import Control.Monad.IO.Class (MonadIO(..))
 import Control.Monad (forM_, forM, when)
 import System.Log.Logger (debugM)
-
 
 -- ---------------------------------------------------------------------
 -- This needs to be incremented, when the session format changes
@@ -179,8 +179,61 @@ data SessionState = SessionState {
 defaultSession = SessionState {
         sessionVersion      =   theSessionVersion
     ,   saveTime            =   ""
-    ,   layoutS             =   TerminalP Map.empty (Just TopP) (-1) Nothing Nothing
-    ,   population          =   []
+    ,   layoutS             =   VerticalP
+                                    (TerminalP {
+                                        paneGroups = Map.fromList []
+                                      , paneTabs = Just TopP
+                                      , currentPage = 1
+                                      , detachedId = Nothing
+                                      , detachedSize = Nothing})
+                                    (HorizontalP
+                                        (TerminalP {
+                                            paneGroups = Map.fromList [
+                                                ("Browser",TerminalP {
+                                                    paneGroups = Map.fromList []
+                                                  , paneTabs = Nothing
+                                                  , currentPage = 0
+                                                  , detachedId = Nothing
+                                                  , detachedSize = Nothing})
+                                              , ("Debug",HorizontalP
+                                                    (TerminalP {
+                                                        paneGroups = Map.fromList []
+                                                      , paneTabs = Nothing
+                                                      , currentPage = 0
+                                                      , detachedId = Nothing
+                                                      , detachedSize = Nothing})
+                                                    (TerminalP {
+                                                        paneGroups = Map.fromList []
+                                                      , paneTabs = Just TopP
+                                                      , currentPage = 1
+                                                      , detachedId = Nothing
+                                                      , detachedSize = Nothing}) 206)]
+                                          , paneTabs = Just TopP
+                                          , currentPage = 2
+                                          , detachedId = Nothing
+                                          , detachedSize = Nothing})
+                                        (TerminalP {
+                                            paneGroups = Map.fromList []
+                                          , paneTabs = Just TopP
+                                          , currentPage = 1
+                                          , detachedId = Nothing
+                                          , detachedSize = Nothing}) 547) 733
+    ,   population          =   [ (Just (InfoSt (InfoState Nothing)),[SplitP RightP,SplitP BottomP])
+                                , (Just (LogSt LogState),[SplitP RightP,SplitP BottomP])
+                                , (Just (ModulesSt
+                                    (ModulesState 286 (SystemScope,False) (Nothing,Nothing)
+                                        (ExpanderState {
+                                            packageExp = ([],[])
+                                          , packageExpNoBlack = ([],[])
+                                          , packageDExp = ([],[])
+                                          , packageDExpNoBlack = ([],[])
+                                          , workspaceExp = ([],[])
+                                          , workspaceExpNoBlack = ([],[])
+                                          , workspaceDExp = ([],[])
+                                          , workspaceDExpNoBlack = ([],[])
+                                          , systemExp = ([],[])
+                                          , systemExpNoBlack = ([],[])}))),[SplitP RightP,SplitP TopP,GroupP "Browser"])
+                                , (Just (WorkspaceSt WorkspaceState),[SplitP RightP,SplitP BottomP])]
     ,   windowSize          =   (1024,768)
     ,   fullScreen          =   True
     ,   dark                =   True
@@ -504,7 +557,9 @@ recoverSession :: FilePath -> IDEM (Bool,Bool)
 recoverSession sessionPath = catchIDE (do
         liftIO $ debugM "leksah" "recoverSession"
         wdw         <-  getMainWindow
-        sessionSt    <- liftIO $ readFields sessionPath sessionDescr defaultSession
+        sessionSt    <- liftIO $ catch
+                            (readFields sessionPath sessionDescr defaultSession)
+                            (\(_ :: SomeException) -> return defaultSession)
         liftIO $ windowSetDefaultSize wdw (fst (windowSize sessionSt))(snd (windowSize sessionSt))
         applyLayout (layoutS sessionSt)
         workspaceOpenThis False (workspacePath sessionSt)
@@ -630,6 +685,14 @@ getActiveSettings = do
 setDark :: Bool -> IDEM ()
 setDark dark = do
     modifyIDE_(\ide -> ide {isDark = dark})
+    prefs <- readIDE prefs
+    buffers <- allBuffers
+    preferDark <- readIDE isDark
+    mapM_ (\(IDEBuffer {sourceView = sv}) -> do
+        ebuf <- getBuffer sv
+        setStyle preferDark ebuf (case sourceStyle prefs of
+                        (False,_) -> Nothing
+                        (True,s) -> Just s)) buffers
 #if MIN_VERSION_gtk(0,13,0) || defined(MIN_VERSION_gtk3)
     mbSettings <- getActiveSettings
     case mbSettings of

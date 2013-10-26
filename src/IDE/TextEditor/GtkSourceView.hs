@@ -81,10 +81,10 @@ import Graphics.UI.Gtk
 import Data.Typeable (Typeable)
 import Control.Applicative ((<$>))
 import Graphics.UI.Gtk.SourceView
-       (sourceViewSetTabWidth, sourceViewSetShowLineNumbers,
-        sourceViewSetRightMarginPosition, sourceViewSetShowRightMargin,
-        sourceViewSetIndentWidth, castToSourceBuffer,
-        sourceViewSetDrawSpaces, sourceBufferUndo,
+       (sourceStyleSchemeManagerAppendSearchPath, sourceViewSetTabWidth,
+        sourceViewSetShowLineNumbers, sourceViewSetRightMarginPosition,
+        sourceViewSetShowRightMargin, sourceViewSetIndentWidth,
+        castToSourceBuffer, sourceViewSetDrawSpaces, sourceBufferUndo,
         sourceBufferSetStyleScheme, sourceStyleSchemeManagerGetScheme,
         sourceStyleSchemeManagerGetSchemeIds, sourceStyleSchemeManagerNew,
         sourceBufferRedo, sourceViewSetSmartHomeEnd,
@@ -105,7 +105,7 @@ import Graphics.UI.Gtk.SourceView.Enums
        (SourceDrawSpacesFlags(..), SourceSmartHomeEndType(..))
 import Graphics.UI.Gtk.General.Enums
        (PolicyType(..), TextWindowType(..), WrapMode(..))
-import Control.Monad (when)
+import Control.Monad (when, forM_)
 import Control.Monad.Reader.Class (MonadReader(..))
 import Graphics.UI.Editor.Basics (Connection(..))
 import Data.Maybe (maybeToList, fromJust)
@@ -230,14 +230,17 @@ instance TextEditor GtkSourceView where
     selectRange (GtkBuffer sb) (GtkIter first) (GtkIter last) = liftIO $
         textBufferSelectRange sb first last
     setModified (GtkBuffer sb) modified = liftIO $ textBufferSetModified sb modified >> return ()
-    setStyle (GtkBuffer sb) mbStyle = liftIO $ do
+    setStyle preferDark (GtkBuffer sb) mbStyle = liftIO $ do
         case mbStyle of
             Nothing  -> return ()
             Just str -> do
                 styleManager <- sourceStyleSchemeManagerNew
+                dataDir <- getDataDir
+                sourceStyleSchemeManagerAppendSearchPath styleManager $ dataDir </> "data/styles"
                 ids <- sourceStyleSchemeManagerGetSchemeIds styleManager
-                when (elem str ids) $ do
-                    scheme <- sourceStyleSchemeManagerGetScheme styleManager str
+                let preferedNames = if preferDark then [str++"-dark", str] else [str]
+                forM_ (take 1 $ filter (flip elem ids) preferedNames) $ \ name -> do
+                    scheme <- sourceStyleSchemeManagerGetScheme styleManager name
                     sourceBufferSetStyleScheme sb (Just scheme)
     setText (GtkBuffer sb) text = liftIO $ textBufferSetText sb text
     undo (GtkBuffer sb) = liftIO $ sourceBufferUndo sb

@@ -197,7 +197,7 @@ instance TextEditor Yi where
     setModified (YiBuffer b) modified = unless modified $ do
         now <- liftIO $ getCurrentTime
         withYiBuffer b $ markSavedB now
-    setStyle (YiBuffer b) mbStyle = return () -- TODO
+    setStyle preferDark (YiBuffer b) mbStyle = return () -- TODO
     setText (YiBuffer b) text = liftYiControl $ Yi.setText b text
     undo (YiBuffer b) =  withYiBuffer b undoB
     bufferToWindowCoords (YiView v) point = return point -- TODO

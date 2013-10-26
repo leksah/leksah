@@ -15,7 +15,7 @@
 -----------------------------------------------------------------------------
 
 module IDE.Pane.Workspace (
-    WorkspaceState
+    WorkspaceState(..)
 ,   IDEWorkspace
 ,   updateWorkspace
 ,   getWorkspace
@@ -204,6 +204,7 @@ updateWorkspace showPane updateFileCache = do
                 Just (p :: IDEWorkspace)  -> do
                     liftIO $ treeStoreClear (workspaceStore p)
                     when showPane $ displayPane p False
+            refreshFiles
         Just ws -> do
             when updateFileCache $ modifyIDE_ (\ide -> ide{bufferProjCache = Map.empty})
             mbMod <- getPane
@@ -221,6 +222,6 @@ updateWorkspace showPane updateFileCache = do
                                         sorted
                     liftIO $ treeStoreInsertForest (workspaceStore p) [] 0 forest
                     when showPane $ displayPane p False
-    refreshFiles
-    workspaceTry refreshHLint
+            refreshFiles
+            workspaceTry refreshHLint
 

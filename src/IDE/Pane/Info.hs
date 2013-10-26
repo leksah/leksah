@@ -17,7 +17,7 @@
 
 module IDE.Pane.Info (
     IDEInfo
-,   InfoState
+,   InfoState(..)
 ,   showInfo
 ,   setInfo
 ,   replayInfoHistory
@@ -76,7 +76,8 @@ instance RecoverablePane IDEInfo InfoState IDEM where
         descriptionBuffer <- newDefaultBuffer Nothing ""
         descriptionView   <- newView descriptionBuffer (textviewFont prefs)
 
-        setStyle descriptionBuffer $ case sourceStyle prefs of
+        preferDark <- readIDE isDark
+        setStyle preferDark descriptionBuffer $ case sourceStyle prefs of
                                         (False,_) -> Nothing
                                         (True,v) -> Just v
 

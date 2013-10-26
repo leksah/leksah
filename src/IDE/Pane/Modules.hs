@@ -18,6 +18,7 @@
 module IDE.Pane.Modules (
     IDEModules(..)
 ,   ModulesState(..)
+,   ExpanderState(..)
 ,   showModules
 ,   selectIdentifier
 ,   reloadKeepSelection

@@ -333,9 +333,10 @@ prefsDescription configDir packages = NFDPP [
             styleEditor
             (\mbs -> do
                 buffers <- allBuffers
+                preferDark <- readIDE isDark
                 mapM_ (\(IDEBuffer {sourceView = sv}) -> do
                     ebuf <- getBuffer sv
-                    setStyle ebuf (case mbs of
+                    setStyle preferDark ebuf (case mbs of
                                     (False,_) -> Nothing
                                     (True,s) -> Just s)) buffers)
     ,   mkFieldPP
