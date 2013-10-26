@@ -12,7 +12,7 @@ export LEKSAH_X_X=leksah-$SHORT_VERSION
 export GHC_VER=`ghc --numeric-version`
 export LEKSAH_X_X_X_X_GHC_X_X_X=leksah-$FULL_VERSION-ghc-$GHC_VER
 
-export GTK_PREFIX=`pkg-config --libs-only-L gtk+-3.0 | sed 's|^-L||' | sed 's|/lib *$||'`
+export GTK_PREFIX=`pkg-config --libs-only-L gtk+-3.0 | sed 's|^-L||' | sed 's|/lib *.*$||'`
 
 echo Staging Leksah in $GTK_PREFIX
 
@@ -41,7 +41,7 @@ echo https://github.com/leksah/haskellVCSGUI.git >> sources.txt
 if [ "$GHC_VER" != "7.0.3" ] && [ "$GHC_VER" != "7.0.4" ]; then
         echo https://github.com/leksah/pretty-show.git >> sources.txt
         echo https://github.com/gtk2hs/webkit >> sources.txt
-        echo git://github.com/ghcjs/webkit-javascriptcore.git >> sources.txt
+        echo https://github.com/ghcjs/webkit-javascriptcore.git >> sources.txt
         echo https://github.com/ghcjs/ghcjs-dom.git >> sources.txt
         echo https://github.com/ghcjs/jsc.git >> sources.txt
         echo https://github.com/ghcjs/CodeMirror.git >> sources.txt
