@@ -183,31 +183,25 @@ defaultSession = SessionState {
                                     (TerminalP {
                                         paneGroups = Map.fromList []
                                       , paneTabs = Just TopP
-                                      , currentPage = 1
+                                      , currentPage = -1
                                       , detachedId = Nothing
                                       , detachedSize = Nothing})
                                     (HorizontalP
                                         (TerminalP {
                                             paneGroups = Map.fromList [
-                                                ("Browser",TerminalP {
-                                                    paneGroups = Map.fromList []
-                                                  , paneTabs = Nothing
-                                                  , currentPage = 0
-                                                  , detachedId = Nothing
-                                                  , detachedSize = Nothing})
-                                              , ("Debug",HorizontalP
+                                                ("Debug",HorizontalP
                                                     (TerminalP {
                                                         paneGroups = Map.fromList []
                                                       , paneTabs = Nothing
-                                                      , currentPage = 0
+                                                      , currentPage = -1
                                                       , detachedId = Nothing
                                                       , detachedSize = Nothing})
                                                     (TerminalP {
                                                         paneGroups = Map.fromList []
                                                       , paneTabs = Just TopP
-                                                      , currentPage = 1
+                                                      , currentPage = -1
                                                       , detachedId = Nothing
-                                                      , detachedSize = Nothing}) 206)]
+                                                      , detachedSize = Nothing}) 167)]
                                           , paneTabs = Just TopP
                                           , currentPage = 2
                                           , detachedId = Nothing
@@ -217,11 +211,11 @@ defaultSession = SessionState {
                                           , paneTabs = Just TopP
                                           , currentPage = 1
                                           , detachedId = Nothing
-                                          , detachedSize = Nothing}) 547) 733
+                                          , detachedSize = Nothing}) 456) 693
     ,   population          =   [ (Just (InfoSt (InfoState Nothing)),[SplitP RightP,SplitP BottomP])
                                 , (Just (LogSt LogState),[SplitP RightP,SplitP BottomP])
                                 , (Just (ModulesSt
-                                    (ModulesState 286 (SystemScope,False) (Nothing,Nothing)
+                                    (ModulesState 200 (SystemScope,False) (Nothing,Nothing)
                                         (ExpanderState {
                                             packageExp = ([],[])
                                           , packageExpNoBlack = ([],[])
@@ -232,11 +226,11 @@ defaultSession = SessionState {
                                           , workspaceDExp = ([],[])
                                           , workspaceDExpNoBlack = ([],[])
                                           , systemExp = ([],[])
-                                          , systemExpNoBlack = ([],[])}))),[SplitP RightP,SplitP TopP,GroupP "Browser"])
+                                          , systemExpNoBlack = ([],[])}))),[SplitP RightP,SplitP TopP])
                                 , (Just (WorkspaceSt WorkspaceState),[SplitP RightP,SplitP BottomP])]
     ,   windowSize          =   (1024,768)
-    ,   fullScreen          =   True
-    ,   dark                =   True
+    ,   fullScreen          =   False
+    ,   dark                =   False
     ,   completionSize      =   (750,400)
     ,   workspacePath       =   Nothing
     ,   activePaneN         =   Nothing

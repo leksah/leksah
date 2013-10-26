@@ -38,7 +38,7 @@ Name of the keymap:
                keymap
      --The name of a keymap file in a config dir
 Categories for panes:
-               [("*Debug","ToolCategory"),("*Files","ToolCategory"),("*Grep","ToolCategory"),("*HLint","ToolCategory"),("*Doc","ToolCategory"),("*Out","ToolCategory"),("*Log","LogCategory"),("*Search","ToolCategory"),("*Browser","ToolCategory"),("*Package","EditorCategory"),("*Flags","EditorCategory"),("*References","LogCategory"),("*Workspace","LogCategory"),("*Errors","ToolCategory")]
+               [("*Breakpoints","LogCategory"),("*Browser","ToolCategory"),("*Debug","ToolCategory"),("*Errors","ToolCategory"),("*Files","ToolCategory"),("*Flags","ToolCategory"),("*Grep","ToolCategory"),("*HLint","ToolCategory"),("*Doc","ToolCategory"),("*Info","LogCategory"),("*Log","LogCategory"),("*Modules","ToolCategory"),("*Out","ToolCategory"),("*Package","EditorCategory"),("*Prefs","EditorCategory"),("*Search","ToolCategory"),("*Trace","LogCategory"),("*Variables","LogCategory"),("*Workspace","LogCategory")]
 Pane path for category:
                [("EditorCategory",[SplitP LeftP]),("ToolCategory",[SplitP RightP,SplitP TopP]),("LogCategory",[SplitP RightP,SplitP BottomP])]
 Default pane path:

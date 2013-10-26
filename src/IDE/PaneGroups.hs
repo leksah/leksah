@@ -47,6 +47,7 @@ import IDE.Pane.Variables (IDEVariables(..))
 import IDE.Pane.Trace (IDETrace(..))
 import IDE.Pane.Workspace (IDEWorkspace(..))
 import Control.Monad.IO.Class (MonadIO(..))
+import IDE.Pane.WebKit.Output (IDEOutput(..))
 
 showBrowser :: IDEAction
 showBrowser = do
@@ -89,6 +90,7 @@ setSensitivityDebugger sens = do
     mbBreakpoints :: Maybe IDEBreakpoints <- getPane
     mbVariables   :: Maybe IDEVariables   <- getPane
     mbTrace       :: Maybe IDETrace       <- getPane
+    mbOutput      :: Maybe IDEOutput      <- getPane
     liftIO $ do
         case mbBreakpoints of
             Nothing -> return ()
@@ -97,6 +99,9 @@ setSensitivityDebugger sens = do
             Nothing -> return ()
             Just idePane -> widgetSetSensitive (getTopWidget idePane) sens
         case mbTrace of
+            Nothing -> return ()
+            Just idePane -> widgetSetSensitive (getTopWidget idePane) sens
+        case mbOutput of
             Nothing -> return ()
             Just idePane -> widgetSetSensitive (getTopWidget idePane) sens
 
@@ -119,7 +124,8 @@ showDebugger = do
                 notebookSetShowTabs upper False
             getOrBuildPane (Left lowerP) :: IDEM (Maybe IDEBreakpoints)
             getOrBuildPane (Left lowerP) :: IDEM (Maybe IDEVariables)
-            getOrBuildPane (Left lowerP)  :: IDEM (Maybe IDETrace)
+            getOrBuildPane (Left lowerP) :: IDEM (Maybe IDETrace)
+            getOrBuildPane (Left lowerP) :: IDEM (Maybe IDEOutput)
             when (null $ filter (\b -> bufferName b == "_Eval.hs") bufs) $
                 newTextBuffer upperP "_Eval.hs" Nothing >> return ()
             return ()
@@ -128,7 +134,8 @@ showDebugger = do
             let upperP =  getBestPanePath (rpp ++ [SplitP TopP]) layout'
             getOrBuildPane (Left lowerP) :: IDEM (Maybe IDEBreakpoints)
             getOrBuildPane (Left lowerP) :: IDEM (Maybe IDEVariables)
-            getOrBuildPane (Left lowerP)  :: IDEM (Maybe IDETrace)
+            getOrBuildPane (Left lowerP) :: IDEM (Maybe IDETrace)
+            getOrBuildPane (Left lowerP) :: IDEM (Maybe IDEOutput)
             when (null $ filter (\b -> bufferName b == "_Eval.hs") bufs) $
                 newTextBuffer upperP "_Eval.hs" Nothing >> return ()
             return ()

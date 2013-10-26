@@ -779,19 +779,25 @@ defaultPrefs = Prefs {
                                 ]
     ,   defaultPath         =   [SplitP (LeftP)]
     ,   categoryForPane     =   [   ("*ClassHierarchy","ToolCategory")
+                                ,   ("*Breakpoints","LogCategory")
+                                ,   ("*Browser","ToolCategory")
                                 ,   ("*Debug","ToolCategory")
-                                ,   ("*Flags","ToolCategory")
+                                ,   ("*Errors","ToolCategory")
                                 ,   ("*Files","ToolCategory")
+                                ,   ("*Flags","ToolCategory")
                                 ,   ("*Grep","ToolCategory")
                                 ,   ("*HLint","ToolCategory")
                                 ,   ("*Doc","ToolCategory")
-                                ,   ("*Info","ToolCategory")
+                                ,   ("*Info","LogCategory")
                                 ,   ("*Log","LogCategory")
                                 ,   ("*Modules","ToolCategory")
-                                ,   ("*Package","ToolCategory")
-                                ,   ("*Prefs","ToolCategory")
-                                ,   ("*References","ToolCategory")
-                                ,   ("*Search","ToolCategory")]
+                                ,   ("*Out","ToolCategory")
+                                ,   ("*Package","EditorCategory")
+                                ,   ("*Prefs","EditorCategory")
+                                ,   ("*Search","ToolCategory")
+                                ,   ("*Trace","LogCategory")
+                                ,   ("*Variables","LogCategory")
+                                ,   ("*Workspace","LogCategory")]
     ,   collectAtStart      =   True
     ,   unpackDirectory     =   Nothing
     ,   retrieveURL         =   "http://www.leksah.org"
