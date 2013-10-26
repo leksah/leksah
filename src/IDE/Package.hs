@@ -793,7 +793,7 @@ debugStart = do
             Nothing -> do
                 let dir = dropFileName (ipdCabalFile package)
                 mbExe <- readIDE activeExe
-                ghci <- reifyIDE $ \ideR -> newGhci dir mbExe (ipdBuildFlags package) (interactiveFlags prefs')
+                ghci <- reifyIDE $ \ideR -> newGhci dir mbExe (interactiveFlags prefs')
                     $ reflectIDEI (logOutputForBuild package True False >> return ()) ideR
                 modifyIDE_ (\ide -> ide {debugState = Just (package, ghci)})
                 triggerEventIDE (Sensitivity [(SensitivityInterpreting, True)])
