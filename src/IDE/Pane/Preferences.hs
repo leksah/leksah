@@ -58,12 +58,13 @@ import IDE.Debug
      debugSetBreakOnException,
      debugSetPrintEvldWithShow)
 import Graphics.UI.Gtk.SourceView
-    (sourceStyleSchemeManagerGetSchemeIds, sourceStyleSchemeManagerNew)
+       (sourceStyleSchemeManagerAppendSearchPath,
+        sourceStyleSchemeManagerGetSchemeIds, sourceStyleSchemeManagerNew)
 import System.Time (getClockTime)
 import qualified IDE.StrippedPrefs as SP
 import Control.Exception(SomeException,catch)
 import Prelude hiding(catch)
-import Data.List (sortBy)
+import Data.List (isSuffixOf, sortBy)
 import Data.Maybe (isJust)
 import Graphics.UI.Gtk.Windows.MessageDialog
        (ButtonsType(..), MessageType(..))
@@ -71,6 +72,7 @@ import System.Glib.Attributes (set)
 import Graphics.UI.Gtk.General.Enums (WindowPosition(..))
 import Control.Monad.IO.Class (MonadIO(..))
 import Control.Monad (forM_, when)
+import System.FilePath ((</>))
 
 -- ---------------------------------------------------------------------
 -- This needs to be incremented, when the preferences format changes
@@ -740,8 +742,11 @@ prefsDescription configDir packages = NFDPP [
 styleEditor :: Editor (Bool, String)
 styleEditor p n = do
     styleManager <- sourceStyleSchemeManagerNew
+    dataDir <- getDataDir
+    sourceStyleSchemeManagerAppendSearchPath styleManager $ dataDir </> "data/styles"
     ids          <- sourceStyleSchemeManagerGetSchemeIds styleManager
-    disableEditor (comboSelectionEditor ids id, p) True (__ "Select a special style?") p n
+    let notDarkIds = filter (not . isSuffixOf "-dark") ids
+    disableEditor (comboSelectionEditor notDarkIds id, p) True (__ "Select a special style?") p n
 
 
 defaultPrefs = Prefs {
