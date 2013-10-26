@@ -239,20 +239,8 @@
       </include>
     </context>
 
-    <context id="char" style-ref="character" end-at-line-end="true">
-      <start>'</start>
-      <end>'</end>
-      <include>
-        <context style-ref="char-escape" once-only="true">
-          <match>\%{escaped-character}</match>
-        </context>
-        <context once-only="true" extend-parent="false">
-          <match>.</match>
-        </context>
-        <context style-ref="def:error" extend-parent="false">
-          <match>.</match>
-        </context>
-      </include>
+    <context id="char" style-ref="character">
+      <match extended="true">'\%{escaped-character}'|'.'</match>
     </context>
 
     <context id="float" style-ref="float">
