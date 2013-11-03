@@ -66,7 +66,7 @@ import qualified Data.Conduit as C
 import qualified Data.Conduit.List as CL
 import Data.Conduit ((=$))
 import IDE.Pane.WebKit.Output(setOutput)
-import Data.IORef (atomicModifyIORef', atomicModifyIORef, IORef)
+import Data.IORef (atomicModifyIORef, IORef)
 import Data.Text (Text)
 import Control.Applicative ((<$>))
 import qualified Data.Text as T (unpack, unlines, pack)
@@ -462,7 +462,7 @@ logOutputPane buffer = do
     defaultLogLaunch <- lift $ getDefaultLogLaunch
     result <- map T.pack . catMaybes <$> logOutputLines defaultLogLaunch paneLineLogger
     when (not $ null result) $ do
-        new <- liftIO . atomicModifyIORef' buffer $ \x -> let new = x <> (T.unlines result) in (new, new)
+        new <- liftIO . atomicModifyIORef buffer $ \x -> let new = x <> (T.unlines result) in (new, new)
         lift . setOutput $ T.unpack new
     return ()
 
