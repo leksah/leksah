@@ -39,13 +39,6 @@ import Control.Applicative ((<$>))
 import System.FilePath ((</>), dropFileName)
 import System.Exit (ExitCode(..))
 import IDE.Pane.Log (getLog)
-import Control.DeepSeq
-import qualified Data.Enumerator as E
-       (Step(..), run_, Iteratee(..), run)
-import qualified Data.Enumerator.List as EL
-       (foldM, head, dropWhile, isolate)
-import Data.Enumerator (($$), (>>==))
-import qualified Data.List as L ()
 import Control.Monad (forM_, foldM, when)
 import Control.Monad.Trans.Reader (ask)
 import Control.Monad.Trans.Class (MonadTrans(..))

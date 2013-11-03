@@ -50,7 +50,7 @@ import Graphics.UI.Editor.Parameters
 import IDE.TextEditor
 import IDE.Pane.Modules
 import IDE.Pane.SourceBuffer
-import IDE.Pane.Info (InfoState(..))
+import IDE.Pane.Info (InfoState(..), setInfoStyle)
 import IDE.Pane.Log (LogState(..))
 import IDE.Pane.Preferences
 import IDE.Pane.PackageFlags
@@ -679,12 +679,12 @@ getActiveSettings = do
 setDark :: Bool -> IDEM ()
 setDark dark = do
     modifyIDE_(\ide -> ide {isDark = dark})
+    setInfoStyle
     prefs <- readIDE prefs
     buffers <- allBuffers
-    preferDark <- readIDE isDark
     mapM_ (\(IDEBuffer {sourceView = sv}) -> do
         ebuf <- getBuffer sv
-        setStyle preferDark ebuf (case sourceStyle prefs of
+        setStyle dark ebuf (case sourceStyle prefs of
                         (False,_) -> Nothing
                         (True,s) -> Just s)) buffers
 #if MIN_VERSION_gtk(0,13,0) || defined(MIN_VERSION_gtk3)

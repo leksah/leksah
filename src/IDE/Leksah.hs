@@ -72,9 +72,9 @@ import System.Directory
        (doesDirectoryExist, copyFile, createDirectoryIfMissing,
         getHomeDirectory, doesFileExist)
 import System.FilePath (dropExtension, splitExtension, (</>))
-import qualified Data.Enumerator as E
-import qualified Data.Enumerator.List as EL
-import Data.Enumerator (($$))
+import qualified Data.Conduit as C
+import qualified Data.Conduit.List as CL
+import Data.Conduit (($$))
 import Control.Monad (when, unless, liftM)
 import Control.Monad.IO.Class (MonadIO(..))
 import Control.Applicative ((<$>))
@@ -484,7 +484,7 @@ firstBuild newPrefs = do
                                 Just level -> ["--verbosity=" ++ show level]
                                 Nothing    -> []
             (output, pid) <- runTool "leksah-server" (["-sbo", "+RTS", "-N2", "-RTS"] ++ verbosity) Nothing
-            E.run_ $ output $$ EL.mapM_ (update progressBar)
+            output $$ CL.mapM_ (update progressBar)
             waitForProcess pid
             postGUIAsync (dialogResponse dialog ResponseOk)
     widgetShowAll dialog

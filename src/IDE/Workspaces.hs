@@ -91,6 +91,7 @@ import qualified IDE.Workspaces.Writer as Writer
 import Text.Printf (printf)
 import System.Log.Logger (debugM)
 import Data.Maybe (catMaybes)
+import IDE.Pane.Log (showDefaultLogLaunch', getLog)
 
 -- | Constructs a new workspace and makes it the current workspace
 workspaceNew :: IDEAction
@@ -470,6 +471,8 @@ makePackage ::  PackageAction
 makePackage = do
   p <- ask
   lift $ do
+    getLog >>= liftIO . bringPaneToFront
+    showDefaultLogLaunch'
     prefs' <- readIDE prefs
     mbWs   <- readIDE workspace
     let settings = (defaultMakeSettings prefs'){msBackgroundBuild = False}

@@ -145,10 +145,13 @@ newGtkBuffer mbFilename contents = liftIO $ do
             guess <- contentTypeGuess filename contents (length contents)
             sourceLanguageManagerGuessLanguage lm (Just filename) $
                 case guess of
-                    (True, _)  -> Nothing
+                    (True, _)  -> Just "text/x-haskell"
                     (False, t) -> Just t
-        Nothing       -> sourceLanguageManagerGuessLanguage lm Nothing (Just "text/x-haskell")
-    buffer <- case mbLang of
+        Nothing -> sourceLanguageManagerGuessLanguage lm Nothing (Just "text/x-haskell")
+    mbLang2 <- case mbLang of
+                    Nothing -> sourceLanguageManagerGuessLanguage lm Nothing (Just "text/x-haskell")
+                    _ -> return mbLang
+    buffer <- case mbLang2 of
         Just sLang -> sourceBufferNewWithLanguage sLang
         Nothing -> sourceBufferNew Nothing
     sourceBufferSetMaxUndoLevels buffer (-1)

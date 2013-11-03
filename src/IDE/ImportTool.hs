@@ -24,7 +24,7 @@ module IDE.ImportTool (
 import IDE.Core.State
 import Data.Maybe (isNothing,isJust)
 import IDE.Metainfo.Provider
-       (getPackageImportInfo, getIdentifierDescr)
+       (getWorkspaceInfo, getPackageImportInfo, getIdentifierDescr)
 import Text.PrettyPrint (render)
 import Distribution.Text (simpleParse, display, disp)
 import IDE.Pane.SourceBuffer
@@ -129,19 +129,35 @@ addImport error descrList continuation =
         Nothing -> continuation (True,descrList)
         Just nis -> do
             currentInfo' <- getScopeForActiveBuffer
-            case currentInfo' of
-                Nothing -> continuation (True,descrList)
-                Just (GenScopeC(PackScope _ symbolTable1),GenScopeC(PackScope _ symbolTable2)) ->
+            wsInfo' <- getWorkspaceInfo
+            case (currentInfo', wsInfo') of
+                (Nothing, _) -> continuation (True,descrList)
+                (_, Nothing) -> continuation (True,descrList)
+                (Just (GenScopeC(PackScope _ symbolTable1),GenScopeC(PackScope _ symbolTable2)),
+                    Just (GenScopeC(PackScope _ symbolTable3),GenScopeC(PackScope _ symbolTable4))) ->
                     let list = getIdentifierDescr (id' nis) symbolTable1 symbolTable2
-                    in case list of
-                        []          ->  do
-                                            ideMessage Normal $ "Identifier " ++ (id' nis) ++
-                                                " not found in imported packages"
-                                            continuation (True, descrList)
-                        descr : []  ->  addImport' nis (logRefFullFilePath error) descr descrList continuation
-                        list        ->  do
+                        wslist = getIdentifierDescr (id' nis) symbolTable3 symbolTable4
+                    in case (list, wslist) of
+                        ([], []) ->  do
+                            ideMessage Normal $ "Identifier " ++ (id' nis) ++ " not found"
+                            continuation (True, descrList)
+                        ([], list) -> do
                             window' <- getMainWindow
                             mbDescr <-  liftIO $ selectModuleDialog window' list (id' nis) (mbQual' nis)
+                                            (if null descrList
+                                                then Nothing
+                                                else Just (head descrList))
+                            case mbDescr of
+                                Nothing     ->  continuation (False, [])
+                                Just descr  ->  if elem descr descrList
+                                                    then continuation (True,descrList)
+                                                    else addImport' nis (logRefFullFilePath error)
+                                                            descr descrList continuation
+                        (descr : [], _)  ->  addImport' nis (logRefFullFilePath error) descr descrList continuation
+                        _ ->  do
+                            let fullList = list ++ wslist
+                            window' <- getMainWindow
+                            mbDescr <-  liftIO $ selectModuleDialog window' fullList (id' nis) (mbQual' nis)
                                             (if null descrList
                                                 then Nothing
                                                 else Just (head descrList))
@@ -333,19 +349,35 @@ scopeParser = do
     symbol "Not in scope:"
     isSub   <- optionMaybe (try (choice [symbol "type constructor or class"
                     , symbol "data constructor"]))
-    symbol "`"
-    mbQual <- optionMaybe (try (do
-        q  <- lexeme conid
-        dot
-        return q))
-    id     <- optionMaybe (try identifier)
-    case id of
-        Just id -> return (NotInScopeParseResult mbQual
-                        (take (length id - 1) id)  (isJust isSub) False)
-        Nothing -> do
-            op <-   operator
-            symbol "'"
-            return (NotInScopeParseResult mbQual op (isJust isSub) True)
+    (   (do
+            char '`'
+            mbQual <- optionMaybe (try (do
+                q  <- lexeme conid
+                dot
+                return q))
+            id     <- optionMaybe (try identifier)
+            case id of
+                Just id -> return (NotInScopeParseResult mbQual
+                                (take (length id - 1) id)  (isJust isSub) False)
+                Nothing -> do
+                    op <-   operator
+                    char '\''
+                    return (NotInScopeParseResult mbQual op (isJust isSub) True))
+       <|> (do
+            char '‛'
+            mbQual <- optionMaybe (try (do
+                q  <- lexeme conid
+                dot
+                return q))
+            id     <- optionMaybe (try identifier)
+            result <- case id of
+                Just id -> return (NotInScopeParseResult mbQual
+                                (take (length id) id)  (isJust isSub) False)
+                Nothing -> do
+                    op <-   operator
+                    return (NotInScopeParseResult mbQual op (isJust isSub) True)
+            char '’'
+            return result))
     <?> "scopeParser"
 
 conid  = do
@@ -432,14 +464,17 @@ parseHiddenModule str =
 hiddenModuleParser :: CharParser () (String, String)
 hiddenModuleParser = do
     whiteSpace
-    symbol "Could not find module `"
-    mod    <- many (noneOf "'")
+    symbol "Could not find module "
+    (char '`' <|> char '‛')
+    mod    <- many (noneOf "'’")
     many (noneOf "\n")
     symbol "\n"
     whiteSpace
-    symbol "It is a member of the hidden package `"
-    pack   <- many (noneOf "'")
-    symbol "'.\n"
+    symbol "It is a member of the hidden package "
+    (char '`' <|> char '‛')
+    pack   <- many (noneOf "'’")
+    (char '\'' <|> char '’')
+    symbol ".\n"
     many anyChar
     return (mod, pack)
     <?> "hiddenModuleParser"

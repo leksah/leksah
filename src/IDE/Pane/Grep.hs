@@ -28,6 +28,7 @@ import Text.ParserCombinators.Parsec hiding(Parser)
 import qualified Text.ParserCombinators.Parsec.Token as P
 import Data.Maybe
 import Data.Typeable
+import Data.List (isPrefixOf)
 import IDE.Core.State
 import IDE.BufferMode
 import IDE.Utils.Tool (runTool, ToolOutput(..), getProcessExitCode, interruptProcessGroupOf)
@@ -43,17 +44,17 @@ import System.FilePath ((</>), dropFileName)
 import System.Exit (ExitCode(..))
 import IDE.Pane.Log (getLog, getDefaultLogLaunch)
 import Control.DeepSeq
-import qualified Data.Enumerator as E
-       (Step(..), run_, Iteratee(..), run)
-import qualified Data.Enumerator.List as EL
-       (foldM, head, dropWhile, isolate)
-import Data.Enumerator (($$), (>>==))
-import qualified Data.List as L ()
+import qualified Data.Conduit as C
+       (Sink)
+import qualified Data.Conduit.List as CL
+       (foldM, head, isolate, sinkNull)
+import Data.Conduit (($$), (=$))
 import Control.Monad (foldM, when)
 import Control.Monad.Trans.Reader (ask)
 import Control.Monad.Trans.Class (MonadTrans(..))
 import Control.Monad.IO.Class (MonadIO(..))
 import IDE.Utils.GUIUtils (__)
+import System.Directory (getDirectoryContents)
 
 data GrepRecord = GrepRecord {
             file        :: FilePath
@@ -225,9 +226,9 @@ grepWorkspace regexString caseSensitive = do
             Just active -> active : (filter (/= active) $ wsPackages ws)
             Nothing     -> wsPackages ws
     lift $ grepDirectories regexString caseSensitive $
-            map (\p -> (dropFileName (ipdCabalFile p), ipdSrcDirs p)) $ packages
+            map (\p -> (dropFileName $ ipdCabalFile p)) $ packages
 
-grepDirectories :: String -> Bool -> [(FilePath, [FilePath])] -> IDEAction
+grepDirectories :: String -> Bool -> [FilePath] -> IDEAction
 grepDirectories regexString caseSensitive dirs = do
     grep <- getGrep Nothing
     let store = grepStore grep
@@ -241,7 +242,10 @@ grepDirectories regexString caseSensitive dirs = do
 
             postGUISync $ treeStoreClear store
 
-            totalFound <- foldM (\a (dir, subDirs) -> do
+            totalFound <- foldM (\a dir -> do
+                subDirs <- filter (\f ->
+                       (not ("." `isPrefixOf` f))
+                    && (not (f `elem` ["_darcs", "dist", "vendor"]))) <$> getDirectoryContents dir
                 nooneWaiting <- isEmptyMVar (waitingGrep grep)
                 found <- if nooneWaiting
                     then do
@@ -254,20 +258,19 @@ grepDirectories regexString caseSensitive dirs = do
 #endif
                                 regexString] ++ subDirs) (Just dir)
                         reflectIDE (do
-                            E.run_ $ output $$ do
+                            output $$ do
                                 let max = 1000
-                                step <- EL.isolate (toInteger max) $$ setGrepResults dir
-                                case step of
-                                    E.Continue _ -> do
+                                n <- CL.isolate max =$ do
+                                    n <- setGrepResults dir
+                                    when (n >= max) $ do
                                         liftIO $ interruptProcessGroupOf pid
-                                        liftIO $ postGUISync $ do
-                                            nDir <- treeModelIterNChildren store Nothing
-                                            liftIO $ treeStoreChange store [nDir-1] (\r -> r{ context = (__ "(Stoped Searching)") })
-                                            return ()
-                                        EL.dropWhile (const True)
-                                        return max
-                                    E.Yield n _ -> return n
-                                    _           -> return 0) ideRef
+                                    CL.sinkNull
+                                    return n
+                                liftIO $ postGUISync $ do
+                                    nDir <- treeModelIterNChildren store Nothing
+                                    liftIO $ treeStoreChange store [nDir-1] (\r -> r{ context = (__ "(Stoped Searching)") })
+                                    return ()
+                                return n) ideRef
                     else return 0
                 return $ a + found) 0 dirs
 
@@ -279,7 +282,7 @@ grepDirectories regexString caseSensitive dirs = do
             takeMVar (activeGrep grep) >> return ()
     return ()
 
-setGrepResults :: FilePath -> E.Iteratee ToolOutput IDEM Int
+setGrepResults :: FilePath -> C.Sink ToolOutput IDEM Int
 setGrepResults dir = do
     ideRef <- lift ask
     grep <- lift $ getGrep Nothing
@@ -292,7 +295,7 @@ setGrepResults dir = do
         treeStoreInsert store [] nDir $ GrepRecord dir 0 "" Nothing
         when (nDir == 0) (widgetGrabFocus view >> return())
         return nDir
-    EL.foldM (\count line -> do
+    CL.foldM (\count line -> do
         if isError line
             then do
                 liftIO $ postGUISync $ reflectIDE (defaultLineLogger log defaultLogLaunch line >> return ()) ideRef

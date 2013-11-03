@@ -50,6 +50,7 @@ import Text.PrinterParser hiding (fieldParser,parameters)
 import IDE.TextEditor
 import IDE.Pane.SourceBuffer
 import IDE.Pane.Log
+import IDE.Pane.Info (setInfoStyle)
 import IDE.Utils.FileUtils
 import IDE.Utils.GUIUtils
 import IDE.Debug
@@ -334,6 +335,7 @@ prefsDescription configDir packages = NFDPP [
             (\b a -> a{sourceStyle = b})
             styleEditor
             (\mbs -> do
+                setInfoStyle
                 buffers <- allBuffers
                 preferDark <- readIDE isDark
                 mapM_ (\(IDEBuffer {sourceView = sv}) -> do

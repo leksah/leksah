@@ -102,9 +102,11 @@ import IDE.Utils.Utils
 import qualified Data.Map as Map (empty, lookup)
 import Data.Typeable(Typeable)
 import qualified IDE.YiConfig as Yi
-import Data.Enumerator (runIteratee, Iteratee(..))
-import qualified Data.Enumerator as E
-       (returnI, Step(..), yield, continue)
+import Data.Conduit (($$))
+import qualified Data.Conduit as C
+       (Sink, awaitForever, yield, leftover, ($$))
+import qualified Data.Conduit.List as CL
+       (sourceList)
 import Control.Monad (liftM, when)
 import Control.Monad.Trans.Reader (ask, ReaderT(..))
 import qualified Paths_leksah as P
@@ -302,14 +304,8 @@ reifyIDE = ReaderT
 reflectIDE :: IDEM a -> IDERef -> IO a
 reflectIDE c ideR = runReaderT c ideR
 
-reflectIDEI :: Iteratee a IDEM b -> IDERef -> Iteratee a IO b
-reflectIDEI c ideR = loop c where
-    loop x = do
-        s <- liftIO $ reflectIDE (runIteratee x) ideR
-        case s of
-            E.Continue f -> E.continue $ loop . f
-            E.Yield a b  -> E.yield a b
-            E.Error e    -> E.returnI $ E.Error e
+reflectIDEI :: C.Sink a IDEM () -> IDERef -> C.Sink a IO ()
+reflectIDEI c ideR = C.awaitForever $ \x -> liftIO $ reflectIDE (CL.sourceList [x] $$ c) ideR
 
 liftYiControl :: Yi.ControlM a -> IDEM a
 liftYiControl f = do

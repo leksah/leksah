@@ -48,7 +48,7 @@ import Graphics.UI.Gtk.Gdk.Events (Event(..))
 import Graphics.UI.Gtk.General.Enums (MouseButton(..))
 import System.Log.Logger (debugM)
 import IDE.Workspaces (packageTry)
-import qualified Data.Enumerator.List as EL (consume)
+import qualified Data.Conduit.List as CL (consume)
 import Control.Monad.Trans.Class (MonadTrans(..))
 import Control.Monad.IO.Class (MonadIO(..))
 import IDE.Utils.GUIUtils (treeViewContextMenu, __)
@@ -176,7 +176,7 @@ fillTraceList = packageTry $ do
     case mbTraces of
         Nothing -> return ()
         Just tracePane -> tryDebug $ debugCommand' ":history" $ do
-            to <- EL.consume
+            to <- CL.consume
             liftIO $ postGUIAsync $ do
                 let parseRes = parse tracesParser "" (selectString to)
                 r <- case parseRes of

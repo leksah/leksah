@@ -1,5 +1,5 @@
 {-# LANGUAGE FlexibleInstances, DeriveDataTypeable, MultiParamTypeClasses,
-             CPP, ScopedTypeVariables, TypeSynonymInstances, GADTs #-}
+             CPP, ScopedTypeVariables, TypeSynonymInstances, GADTs, RecordWildCards #-}
 {-# OPTIONS_GHC -fwarn-unused-imports #-}
 -----------------------------------------------------------------------------
 --
@@ -20,6 +20,7 @@ module IDE.Pane.Info (
 ,   InfoState(..)
 ,   showInfo
 ,   setInfo
+,   setInfoStyle
 ,   replayInfoHistory
 ,   openDocu
 ) where
@@ -140,6 +141,19 @@ setInfo identifierDescr = do
         tb <- getBuffer v
         setText tb (show (Present identifierDescr) ++ "\n")   -- EOL for text iters to work
         recordInfoHistory (Just identifierDescr) oldDescr
+
+setInfoStyle :: IDEAction
+setInfoStyle = getPane >>= setInfoStyle'
+  where
+    setInfoStyle' Nothing = return ()
+    setInfoStyle' (Just IDEInfo{..}) = do
+        prefs <- readIDE prefs
+        preferDark <- readIDE isDark
+        buffer <- getBuffer descriptionView
+        setStyle preferDark buffer $ case sourceStyle prefs of
+                                    (False,_) -> Nothing
+                                    (True,v) -> Just v
+
 
 getInfoCont ::  IDEM (Maybe (Descr))
 getInfoCont = do

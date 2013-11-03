@@ -47,7 +47,7 @@ import Graphics.UI.Gtk.Gdk.Events (Event(..))
 import Graphics.UI.Gtk.General.Enums
     (Click(..), MouseButton(..))
 import IDE.Workspaces (packageTry, packageTryQuiet)
-import qualified Data.Enumerator.List as EL (consume)
+import qualified Data.Conduit.List as CL (consume)
 import Control.Monad.Trans.Class (MonadTrans(..))
 import Control.Monad.IO.Class (MonadIO(..))
 import IDE.Utils.GUIUtils (treeViewContextMenu, __)
@@ -156,7 +156,7 @@ fillVariablesListQuiet = packageTryQuiet $ do
     case mbVariables of
         Nothing -> return ()
         Just var -> tryDebugQuiet $ debugCommand' ":show bindings" $ do
-            to <- EL.consume
+            to <- CL.consume
             liftIO $ postGUIAsync $ do
                 case parse variablesParser "" (selectString to) of
                     Left e -> sysMessage Normal (show e)
@@ -173,7 +173,7 @@ fillVariablesList = packageTry $ do
     case mbVariables of
         Nothing -> return ()
         Just var -> tryDebug $ debugCommand' ":show bindings" $ do
-            to <- EL.consume
+            to <- CL.consume
             liftIO $ postGUIAsync $ do
                 case parse variablesParser "" (selectString to) of
                     Left e -> sysMessage Normal (show e)
@@ -285,7 +285,7 @@ variablesSelect ideR store path _ = do
 forceVariable :: VarDescription -> TreePath -> TreeStore VarDescription -> IDEAction
 forceVariable varDescr path treeStore = packageTry $ tryDebug $ do
     debugCommand' (":force " ++ (varName varDescr)) $ do
-        to <- EL.consume
+        to <- CL.consume
         liftIO $ postGUIAsync $ do
             case parse valueParser "" (selectString to) of
                 Left e -> sysMessage Normal (show e)
@@ -293,7 +293,7 @@ forceVariable varDescr path treeStore = packageTry $ tryDebug $ do
                     var <- treeStoreGetValue treeStore path
                     treeStoreSetValue treeStore path var{varValue = value}
     debugCommand' (":type " ++ (varName varDescr)) $ do
-        to <- EL.consume
+        to <- CL.consume
         liftIO $ postGUIAsync $ do
             case parse typeParser "" (selectString to) of
                 Left e -> sysMessage Normal (show e)
@@ -304,7 +304,7 @@ forceVariable varDescr path treeStore = packageTry $ tryDebug $ do
 printVariable :: VarDescription -> TreePath -> TreeStore VarDescription -> IDEAction
 printVariable varDescr path treeStore = packageTry $ tryDebug $ do
     debugCommand' (":print " ++ (varName varDescr)) $ do
-        to <- EL.consume
+        to <- CL.consume
         liftIO $ postGUIAsync $ do
             case parse valueParser "" (selectString to) of
                 Left e -> sysMessage Normal (show e)
@@ -312,7 +312,7 @@ printVariable varDescr path treeStore = packageTry $ tryDebug $ do
                     var <- treeStoreGetValue treeStore path
                     treeStoreSetValue treeStore path var{varValue = value}
     debugCommand' (":type " ++ (varName varDescr)) $ do
-        to <- EL.consume
+        to <- CL.consume
         liftIO $ postGUIAsync $ do
             case parse typeParser "" (selectString to) of
                 Left e -> sysMessage Normal (show e)

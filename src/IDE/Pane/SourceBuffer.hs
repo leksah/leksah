@@ -1356,12 +1356,9 @@ insertTextAfterSelection str = do
 
 -- | Returns the package, to which this buffer belongs, if possible
 belongsToPackage :: IDEBuffer -> IDEM(Maybe IDEPackage)
-belongsToPackage ideBuf | fileName ideBuf == Nothing        = return Nothing
-                        | not (isHaskellMode (mode ideBuf))  = return Nothing
-                        | otherwise                        = do
+belongsToPackage IDEBuffer{fileName = Just fp}= do
     bufferToProject' <-  readIDE bufferProjCache
     ws               <-  readIDE workspace
-    let fp           =   fromJust (fileName ideBuf)
     case Map.lookup fp bufferToProject' of
         Just p  -> return p
         Nothing -> case ws of
@@ -1374,27 +1371,15 @@ belongsToPackage ideBuf | fileName ideBuf == Nothing        = return Nothing
                             let res = foldl (belongsToPackage' fp mbMn2) Nothing (wsPackages workspace)
                             modifyIDE_ (\ide -> ide{bufferProjCache = Map.insert fp res bufferToProject'})
                             return res
+belongsToPackage _ = return Nothing
 
 belongsToPackage' ::  FilePath -> Maybe ModuleName -> Maybe IDEPackage -> IDEPackage -> Maybe IDEPackage
 belongsToPackage' _ _ r@(Just pack) _ = r
 belongsToPackage' fp mbModuleName Nothing pack =
     let basePath =  dropFileName $ ipdCabalFile pack
     in if isSubPath basePath fp
-        then
-            let srcPaths = map (\srcP -> basePath </> srcP) (ipdSrcDirs pack)
-                relPaths = map (\p -> makeRelative p fp) srcPaths
-            in if or $
-                    (fp `elem` possibleMains basePath) :
-                    (map (\p -> Set.member p (ipdExtraSrcs pack)) relPaths)
-                then Just pack
-                else case mbModuleName of
-                        Nothing -> Nothing
-                        Just mn -> if Map.member mn (ipdModules pack)
-                                        then Just pack
-                                        else Nothing
+        then Just pack
         else Nothing
-  where
-    possibleMains basePath = concatMap (\(f, bi, isTest) -> map (\srcDir -> basePath </> srcDir </> f) $ hsSourceDirs bi) $ ipdMain pack
 
 belongsToWorkspace b =  belongsToPackage b >>= return . isJust
 

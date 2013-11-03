@@ -80,21 +80,23 @@ import IDE.Package (debugStart, executeDebugCommand, tryDebug, printBindResultFl
         breakOnErrorFlag, breakOnExceptionFlag, printEvldWithShowFlag)
 import IDE.Utils.Tool (ToolOutput(..), toolProcess, interruptProcessGroupOf)
 import IDE.Workspaces (packageTry)
-import qualified Data.Enumerator as E
-import qualified Data.Enumerator.List as EL
+import qualified Data.Conduit as C
+import qualified Data.Conduit.List as CL
+import qualified Data.Conduit.Util as CU
 import Control.Monad.Trans.Class (MonadTrans(..))
 import Control.Monad.Trans.Reader (ask)
 import Control.Monad.IO.Class (MonadIO(..))
 import Control.Applicative (Alternative(..))
+import Data.IORef (newIORef)
+import Data.Monoid (Monoid(..))
 
-debugCommand :: String -> E.Iteratee ToolOutput IDEM () -> DebugAction
+debugCommand :: String -> C.Sink ToolOutput IDEM () -> DebugAction
 debugCommand command handler = do
-    debugCommand' command $ do
-        handler
-        lift $ triggerEventIDE VariablesChanged
-        return ()
+    debugCommand' command handler
+    lift $ triggerEventIDE VariablesChanged
+    return ()
 
-debugCommand' :: String -> E.Iteratee ToolOutput IDEM () -> DebugAction
+debugCommand' :: String -> C.Sink ToolOutput IDEM () -> DebugAction
 debugCommand' command handler = do
     ghci <- ask
     lift $ catchIDE (runDebug (executeDebugCommand command handler) ghci)
@@ -138,7 +140,8 @@ debugExecuteSelection = do
         Just text -> do
             let command = packageTry $ tryDebug $ do
                 debugSetLiberalScope
-                debugCommand (stripComments text) logOutputPane
+                buffer <- liftIO $ newIORef mempty
+                debugCommand (stripComments text) $ logOutputPane buffer
             modifyIDE_ $ \ide -> ide {autoCommand = command}
             command
         Nothing   -> ideMessage Normal "Please select some text in the editor to execute"
@@ -150,7 +153,7 @@ debugExecuteAndShowSelection = do
         Just text -> packageTry $ tryDebug $ do
             debugSetLiberalScope
             debugCommand (stripComments text) $ do
-                (out, _) <- EL.zip (EL.fold buildOutputString "") logOutputDefault
+                (out, _) <- CU.zipSinks (CL.fold buildOutputString "") logOutputDefault
                 lift $ insertTextAfterSelection $ " " ++ out
         Nothing   -> ideMessage Normal "Please select some text in the editor to execute"
     where
