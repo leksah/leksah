@@ -411,7 +411,7 @@ firstStart prefs = do
         windowWindowPosition := WinPosCenter]
     dialogAddButton dialog "gtk-ok" ResponseOk
     dialogAddButton dialog "gtk-cancel" ResponseCancel
-#if MIN_VERSION_gtk(0,13,0) || defined(MIN_VERSION_gtk3)
+#ifdef MIN_VERSION_gtk3
     vb          <- dialogGetContentArea dialog
 #else
     vb          <- dialogGetUpper dialog
@@ -469,7 +469,7 @@ firstBuild newPrefs = do
         windowTitle := "Leksah: Updating Metadata",
         windowWindowPosition := WinPosCenter,
         windowDeletable := False]
-#if MIN_VERSION_gtk(0,13,0) || defined(MIN_VERSION_gtk3)
+#ifdef MIN_VERSION_gtk3
     vb          <- dialogGetContentArea dialog
 #else
     vb          <- dialogGetUpper dialog

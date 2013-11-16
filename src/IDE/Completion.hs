@@ -262,7 +262,7 @@ addEventHandling window sourceView tree store isWordChar always = do
         (x, y)     <- eventCoordinates
         time       <- eventTime
 
-#if MIN_VERSION_gtk(0,13,0) || defined(MIN_VERSION_gtk3)
+#ifdef MIN_VERSION_gtk3
         mbDrawWindow <- Gtk.liftIO $ widgetGetWindow window
 #else
         mbDrawWindow <- Gtk.liftIO $ Just <$> widgetGetDrawWindow window

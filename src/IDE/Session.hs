@@ -667,7 +667,7 @@ viewDark = setDark True
 viewLight :: IDEAction
 viewLight = setDark False
 
-#if MIN_VERSION_gtk(0,13,0) || defined(MIN_VERSION_gtk3)
+#ifdef MIN_VERSION_gtk3
 getActiveSettings :: PaneMonad alpha => alpha (Maybe Settings)
 getActiveSettings = do
     mbScreen <- getActiveScreen
@@ -687,7 +687,7 @@ setDark dark = do
         setStyle dark ebuf (case sourceStyle prefs of
                         (False,_) -> Nothing
                         (True,s) -> Just s)) buffers
-#if MIN_VERSION_gtk(0,13,0) || defined(MIN_VERSION_gtk3)
+#ifdef MIN_VERSION_gtk3
     mbSettings <- getActiveSettings
     case mbSettings of
         Just settings -> liftIO $ settingsSetLongProperty

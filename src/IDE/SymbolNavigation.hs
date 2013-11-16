@@ -28,7 +28,7 @@ import Graphics.UI.Gtk
         adjustmentGetValue, scrolledWindowGetHAdjustment, pointerUngrab,
         eventTime, leaveNotifyEvent, ScrolledWindow, Modifier(..),
         Rectangle(..), EventMask(..), Underline(..),
-#if MIN_VERSION_gtk(0,13,0) || defined(MIN_VERSION_gtk3)
+#ifdef MIN_VERSION_gtk3
         widgetGetWindow
 #else
         widgetGetDrawWindow
@@ -98,7 +98,7 @@ createHyperLinkSupport sv sw identifierMapper clickHandler = do
                     else do
                         applyTagByName tvb "link" beg en
                         Just screen <- liftIO $ screenGetDefault
-#if MIN_VERSION_gtk(0,13,0) || defined(MIN_VERSION_gtk3)
+#ifdef MIN_VERSION_gtk3
                         mbDW <- liftIO $ widgetGetWindow tv
 #else
                         mbDW <- liftIO $ Just <$> widgetGetDrawWindow tv

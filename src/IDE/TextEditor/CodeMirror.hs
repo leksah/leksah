@@ -69,7 +69,7 @@ import Graphics.UI.Gtk
         containerAdd, scrolledWindowNew, Rectangle(..),
         EventMask(..), Modifier(..), ContainerClass, mainIteration,
         castToWidget,
-#if MIN_VERSION_gtk(0,13,0) || defined(MIN_VERSION_gtk3)
+#ifdef MIN_VERSION_gtk3
         widgetGetWindow
 #else
         widgetGetDrawWindow
@@ -346,7 +346,7 @@ instance TextEditor CodeMirror where
     getBuffer (CMView cm) = return $ CMBuffer cm
     getWindow (CMView cm) = runCM cm $ do
         v <- webView
-#if MIN_VERSION_gtk(0,13,0) || defined(MIN_VERSION_gtk3)
+#ifdef MIN_VERSION_gtk3
         liftIO $ widgetGetWindow v
 #else
         liftIO $ Just <$> widgetGetDrawWindow v
