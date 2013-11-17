@@ -31,7 +31,7 @@
   <color name="magenta"    value="#1357AC"/>
   <color name="violet"     value="#5A4ABD"/>
   <color name="cyan"       value="#347A7C"/>
-  <color name="gray"       value="#555555"/>
+  <color name="gray"       value="#DDDDDD"/>
   <color name="green"      value="#3E8B47"/>
   <color name="statement"  value="#BC6723"/>
   <color name="red"        value="#EF0000"/>
