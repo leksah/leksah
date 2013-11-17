@@ -28,15 +28,15 @@
   <!-- Palette -->
   <color name="white"      value="#FFFFFF"/>
   <color name="comment"    value="#777777"/>
-  <color name="magenta"    value="#1357AC"/>
-  <color name="violet"     value="#5A4ABD"/>
-  <color name="cyan"       value="#347A7C"/>
+  <color name="magenta"    value="#0057DC"/>
+  <color name="violet"     value="#7A00CD"/>
+  <color name="cyan"       value="#008A8C"/>
   <color name="gray"       value="#DDDDDD"/>
-  <color name="green"      value="#3E8B47"/>
-  <color name="statement"  value="#BC6723"/>
+  <color name="green"      value="#1E9B27"/>
+  <color name="statement"  value="#CC6700"/>
   <color name="red"        value="#EF0000"/>
-  <color name="yellow"     value="#EFEF78"/>
-  <color name="preproc"    value="#850A1A"/>
+  <color name="yellow"     value="#EFEF00"/>
+  <color name="preproc"    value="#A50010"/>
 
   <!-- Global Settings -->
   <style name="current-line"                background="#EEEEEE"/>
