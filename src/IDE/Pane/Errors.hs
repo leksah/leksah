@@ -1,5 +1,5 @@
 {-# LANGUAGE FlexibleInstances, RecordWildCards, TypeSynonymInstances,
-             MultiParamTypeClasses, DeriveDataTypeable #-}
+             MultiParamTypeClasses, DeriveDataTypeable, OverloadedStrings #-}
 -----------------------------------------------------------------------------
 --
 -- Module      :  IDE.Pane.Errors
@@ -36,6 +36,8 @@ import Control.Monad.IO.Class (MonadIO(..))
 import IDE.Utils.GUIUtils (treeViewContextMenu, __)
 import Data.Maybe (isJust)
 import Control.Monad (when)
+import Data.Text (Text)
+import qualified Data.Text as T (unpack)
 
 -- | A breakpoints pane description
 --
@@ -45,7 +47,7 @@ data IDEErrors      =   IDEErrors {
 ,   errorStore      ::   TreeStore ErrColumn
 } deriving Typeable
 
-data ErrColumn = ErrColumn {logRef :: LogRef, string :: String, index :: Int}
+data ErrColumn = ErrColumn {logRef :: LogRef, text :: Text, index :: Int}
 
 data ErrorsState    =   ErrorsState {
 }   deriving(Eq,Ord,Read,Show,Typeable)
@@ -97,7 +99,7 @@ builder' pp nb windows = reifyIDE $ \ ideR -> do
     treeViewAppendColumn treeView colB
     cellLayoutPackStart colB rendererB False
     cellLayoutSetAttributes colB rendererB errorStore
-        $ \row -> [ cellText := string row]
+        $ \row -> [ cellText := T.unpack $ text row]
 
     treeViewSetHeadersVisible treeView True
     selB <- treeViewGetSelection treeView

@@ -116,6 +116,7 @@ import Foreign.Ptr (Ptr(..))
 import Foreign.ForeignPtr (withForeignPtr)
 import Graphics.UI.GtkInternals (unToolbar)
 import IDE.Session (viewFullScreen, viewExitFullScreen, viewDark, viewLight)
+import qualified Data.Text as T (pack)
 
 foreign import ccall safe "gtk_toolbar_set_icon_size"
   gtk_toolbar_set_icon_size :: Ptr Toolbar -> CInt -> IO ()
@@ -858,7 +859,7 @@ registerLeksahEvents =    do
         (\e@(LogMessage s t)      -> do
                                     log <- getLog
                                     defaultLogLaunch <- getDefaultLogLaunch
-                                    liftIO $ appendLog log defaultLogLaunch s t
+                                    liftIO $ appendLog log defaultLogLaunch (T.pack s) t
                                     return e)
     registerEvent stRef "SelectInfo"
         (\ e@(SelectInfo str gotoSource)     -> setSymbol str gotoSource >> return e)

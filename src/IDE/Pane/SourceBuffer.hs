@@ -87,7 +87,6 @@ import Data.List hiding(insert, delete)
 import Data.Maybe
 import Data.Char
 import Data.Typeable
-import qualified Data.Set as Set
 
 import IDE.Core.State
 import IDE.Utils.GUIUtils
@@ -98,13 +97,10 @@ import IDE.Completion as Completion (complete,cancel)
 import IDE.TextEditor
 import qualified System.IO.UTF8 as UTF8
 import Data.IORef (writeIORef,readIORef,newIORef)
--- import Data.Char (isAlphaNum, isSymbol)
 import Control.Event (triggerEvent)
 import IDE.Metainfo.Provider (getSystemInfo, getWorkspaceInfo)
 import Distribution.Text (simpleParse)
 import Distribution.ModuleName (ModuleName)
-import Distribution.PackageDescription (hsSourceDirs)
---import qualified Data.Set as Set (member)
 import Graphics.UI.Gtk
        (Notebook, clipboardGet, selectionClipboard, dialogAddButton, widgetDestroy,
         fileChooserGetFilename, widgetShow, fileChooserDialogNew,

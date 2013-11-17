@@ -1,4 +1,4 @@
-{-# LANGUAGE CPP, ScopedTypeVariables #-}
+{-# LANGUAGE CPP, ScopedTypeVariables, OverloadedStrings #-}
 -----------------------------------------------------------------------------
 --
 -- Module      :  IDE.LogRef
@@ -66,10 +66,10 @@ import qualified Data.Conduit as C
 import qualified Data.Conduit.List as CL
 import Data.Conduit ((=$))
 import IDE.Pane.WebKit.Output(setOutput)
-import Data.IORef (atomicModifyIORef, IORef)
+import Data.IORef (atomicModifyIORef, IORef, readIORef)
 import Data.Text (Text)
 import Control.Applicative ((<$>))
-import qualified Data.Text as T (unpack, unlines, pack)
+import qualified Data.Text as T (unpack, unlines, pack, null)
 import Data.Monoid ((<>))
 
 showSourceSpan :: LogRef -> String
@@ -391,34 +391,34 @@ defaultLineLogger log logLaunch out = liftIO $ defaultLineLogger' log logLaunch 
 defaultLineLogger' :: IDELog -> LogLaunch -> ToolOutput -> IO Int
 defaultLineLogger' log logLaunch out = do
     case out of
-        ToolInput  line            -> appendLog' (line ++ "\n") InputTag
-        ToolOutput line            -> appendLog' (line ++ "\n") LogTag
-        ToolError  line            -> appendLog' (line ++ "\n") ErrorTag
+        ToolInput  line            -> appendLog' (line <> "\n") InputTag
+        ToolOutput line            -> appendLog' (line <> "\n") LogTag
+        ToolError  line            -> appendLog' (line <> "\n") ErrorTag
         ToolPrompt line            -> do
-            unless (null line) $ appendLog' (line ++ "\n") LogTag >> return ()
-            appendLog' (concat (take 20 (repeat "- ")) ++ "-\n") FrameTag
-        ToolExit   ExitSuccess     -> appendLog' (take 41 (repeat '-') ++ "\n") FrameTag
-        ToolExit   (ExitFailure 1) -> appendLog' (take 41 (repeat '=') ++ "\n") FrameTag
-        ToolExit   (ExitFailure n) -> appendLog' (take 41 ("========== " ++ show n ++ " " ++ repeat '=') ++ "\n") FrameTag
+            unless (T.null line) $ appendLog' (line <> "\n") LogTag >> return ()
+            appendLog' (T.pack (concat (take 20 (repeat "- "))) <> "-\n") FrameTag
+        ToolExit   ExitSuccess     -> appendLog' (T.pack (take 41 (repeat '-')) <> "\n") FrameTag
+        ToolExit   (ExitFailure 1) -> appendLog' (T.pack (take 41 (repeat '=')) <> "\n") FrameTag
+        ToolExit   (ExitFailure n) -> appendLog' (T.pack (take 41 ("========== " ++ show n <> " " ++ repeat '=')) <> "\n") FrameTag
     where
         appendLog' = Log.appendLog log logLaunch
 
-paneLineLogger :: IDELog -> LogLaunch -> ToolOutput -> IDEM (Maybe String)
+paneLineLogger :: IDELog -> LogLaunch -> ToolOutput -> IDEM (Maybe Text)
 paneLineLogger log logLaunch out = liftIO $ paneLineLogger' log logLaunch out
 
-paneLineLogger' :: IDELog -> LogLaunch -> ToolOutput -> IO (Maybe String)
+paneLineLogger' :: IDELog -> LogLaunch -> ToolOutput -> IO (Maybe Text)
 paneLineLogger' log logLaunch out = do
     case out of
-        ToolInput  line            -> appendLog' (line ++ "\n") InputTag >> return Nothing
-        ToolOutput line            -> appendLog' (line ++ "\n") LogTag >> return (Just line)
-        ToolError  line            -> appendLog' (line ++ "\n") ErrorTag >> return Nothing
+        ToolInput  line            -> appendLog' (line <> "\n") InputTag >> return Nothing
+        ToolOutput line            -> appendLog' (line <> "\n") LogTag >> return (Just line)
+        ToolError  line            -> appendLog' (line <> "\n") ErrorTag >> return Nothing
         ToolPrompt line            -> do
-            unless (null line) $ appendLog' (line ++ "\n") LogTag >> return ()
-            appendLog' (concat (take 20 (repeat "- ")) ++ "-\n") FrameTag
+            unless (T.null line) $ appendLog' (line <> "\n") LogTag >> return ()
+            appendLog' (T.pack (concat (take 20 (repeat "- "))) <> "-\n") FrameTag
             return Nothing
-        ToolExit   ExitSuccess     -> appendLog' (take 41 (repeat '-') ++ "\n") FrameTag >> return Nothing
-        ToolExit   (ExitFailure 1) -> appendLog' (take 41 (repeat '=') ++ "\n") FrameTag >> return Nothing
-        ToolExit   (ExitFailure n) -> appendLog' (take 41 ("========== " ++ show n ++ " " ++ repeat '=') ++ "\n") FrameTag >> return Nothing
+        ToolExit   ExitSuccess     -> appendLog' (T.pack (take 41 (repeat '-')) <> "\n") FrameTag >> return Nothing
+        ToolExit   (ExitFailure 1) -> appendLog' (T.pack (take 41 (repeat '=')) <> "\n") FrameTag >> return Nothing
+        ToolExit   (ExitFailure n) -> appendLog' (T.pack (take 41 ("========== " ++ show n ++ " " ++ repeat '=')) <> "\n") FrameTag >> return Nothing
     where
         appendLog' = Log.appendLog log logLaunch
 
@@ -457,14 +457,13 @@ logOutputDefault = do
     defaultLogLaunch <- lift $ getDefaultLogLaunch
     logOutput defaultLogLaunch
 
-logOutputPane :: IORef Text -> C.Sink ToolOutput IDEM ()
+logOutputPane :: IORef [Text] -> C.Sink ToolOutput IDEM ()
 logOutputPane buffer = do
     defaultLogLaunch <- lift $ getDefaultLogLaunch
-    result <- map T.pack . catMaybes <$> logOutputLines defaultLogLaunch paneLineLogger
+    result <- catMaybes <$> logOutputLines defaultLogLaunch paneLineLogger
     when (not $ null result) $ do
-        new <- liftIO . atomicModifyIORef buffer $ \x -> let new = x <> (T.unlines result) in (new, new)
-        lift . setOutput $ T.unpack new
-    return ()
+        new <- liftIO . atomicModifyIORef buffer $ \x -> let new = x ++ result in (new, new)
+        lift . postSyncIDE . setOutput $ T.unpack $ T.unlines new
 
 logOutputForBuild :: IDEPackage
                   -> Bool
@@ -490,7 +489,7 @@ logOutputForBuild package backgroundBuild jumpToWarnings = do
         ideR <- ask
         liftIO $ postGUISync $ case output of
             ToolError line -> do
-                let parsed  =  parse buildLineParser "" line
+                let parsed  =  parse buildLineParser "" $ T.unpack line
                 let nonErrorPrefixes = ["Linking ", "ar:", "ld:", "ld warning:"]
                 tag <- case parsed of
                     Right BuildLine -> return InfoTag
@@ -503,45 +502,45 @@ logOutputForBuild package backgroundBuild jumpToWarnings = do
                     Right (OtherLine text) | any (`isPrefixOf` text) nonErrorPrefixes -> do
                         return InfoTag
                     _ -> return ErrorTag
-                lineNr <- Log.appendLog log logLaunch (line ++ "\n") tag
+                lineNr <- Log.appendLog log logLaunch (line <> "\n") tag
                 case (parsed, errs) of
                     (Left e,_) -> do
                         sysMessage Normal (show e)
                         return (log, False, errs)
                     (Right ne@(ErrorLine span refType str),_) ->
-                        return (log, True, ((LogRef span package str (lineNr,lineNr) refType):errs))
+                        return (log, True, ((LogRef span package (T.pack str) (lineNr,lineNr) refType):errs))
                     (Right (OtherLine str1),(LogRef span rootPath str (l1,l2) refType):tl) ->
                         if inError
                             then return (log, True, ((LogRef span
                                                     rootPath
-                                                    (if null str
+                                                    (if T.null str
                                                         then line
-                                                        else str ++ "\n" ++ line)
+                                                        else str <> "\n" <> line)
                                                     (l1,lineNr) refType) : tl))
                             else return (log, False, errs)
                     (Right (WarningLine str1),(LogRef span rootPath str (l1,l2) isError):tl) ->
                         if inError
                             then return (log, True, ((LogRef span
                                                     rootPath
-                                                    (if null str
+                                                    (if T.null str
                                                         then line
-                                                        else str ++ "\n" ++ line)
+                                                        else str <> "\n" <> line)
                                                     (l1,lineNr) WarningRef) : tl))
                             else return (log, False, errs)
                     otherwise -> return (log, False, errs)
             ToolOutput line -> do
-                Log.appendLog log logLaunch (line ++ "\n") LogTag
+                Log.appendLog log logLaunch (line <> "\n") LogTag
                 return (log, inError, errs)
             ToolInput line -> do
-                Log.appendLog log logLaunch (line ++ "\n") InputTag
+                Log.appendLog log logLaunch (line <> "\n") InputTag
                 return (log, inError, errs)
             ToolPrompt line -> do
-                unless (null line) $ Log.appendLog log logLaunch (line ++ "\n") LogTag >> return ()
+                unless (T.null line) $ Log.appendLog log logLaunch (line <> "\n") LogTag >> return ()
                 let errorNum    =   length (filter isError errs)
                 let warnNum     =   length errs - errorNum
                 case errs of
                     [] -> defaultLineLogger' log logLaunch output
-                    _ -> Log.appendLog log logLaunch ("- - - " ++ show errorNum ++ " errors - "
+                    _ -> Log.appendLog log logLaunch (T.pack $ "- - - " ++ show errorNum ++ " errors - "
                                             ++ show warnNum ++ " warnings - - -\n") FrameTag
                 return (log, inError, errs)
             ToolExit _ -> do
@@ -549,7 +548,7 @@ logOutputForBuild package backgroundBuild jumpToWarnings = do
                 let warnNum     =   length errs - errorNum
                 case errs of
                     [] -> defaultLineLogger' log logLaunch output
-                    _ -> Log.appendLog log logLaunch ("----- " ++ show errorNum ++ " errors -- "
+                    _ -> Log.appendLog log logLaunch (T.pack $ "----- " ++ show errorNum ++ " errors -- "
                                             ++ show warnNum ++ " warnings -----\n") FrameTag
                 return (log, inError, errs)
 
@@ -566,8 +565,8 @@ logOutputForBreakpoints package logLaunch = do
     breaks <- logOutputLines logLaunch (\log logLaunch out -> do
         case out of
             ToolOutput line -> do
-                logLineNumber <- liftIO $ Log.appendLog log logLaunch (line ++ "\n") LogTag
-                case parse breaksLineParser "" line of
+                logLineNumber <- liftIO $ Log.appendLog log logLaunch (line <> "\n") LogTag
+                case parse breaksLineParser "" $ T.unpack line of
                     Right (BreakpointDescription n span) ->
                         return $ Just $ LogRef span package line (logLineNumber, logLineNumber) BreakpointRef
                     _ -> return Nothing
@@ -583,8 +582,8 @@ logOutputForSetBreakpoint package logLaunch = do
     breaks <- logOutputLines logLaunch (\log logLaunch out -> do
         case out of
             ToolOutput line -> do
-                logLineNumber <- liftIO $ Log.appendLog log logLaunch (line ++ "\n") LogTag
-                case parse setBreakpointLineParser "" line of
+                logLineNumber <- liftIO $ Log.appendLog log logLaunch (line <> "\n") LogTag
+                case parse setBreakpointLineParser "" $ T.unpack line of
                     Right (BreakpointDescription n span) ->
                         return $ Just $ LogRef span package line (logLineNumber, logLineNumber) BreakpointRef
                     _ -> return Nothing
@@ -607,8 +606,8 @@ logOutputForContext package loglaunch getContexts = do
     refs <- fmap catMaybes $ logOutputLines loglaunch (\log logLaunch out -> do
         case out of
             ToolOutput line -> do
-                logLineNumber <- liftIO $ Log.appendLog log logLaunch (line ++ "\n") LogTag
-                let contexts = getContexts line
+                logLineNumber <- liftIO $ Log.appendLog log logLaunch (line <> "\n") LogTag
+                let contexts = getContexts $ T.unpack line
                 if null contexts
                     then return Nothing
                     else return $ Just $ LogRef (last contexts) package line (logLineNumber, logLineNumber) ContextRef

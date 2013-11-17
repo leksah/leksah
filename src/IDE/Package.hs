@@ -115,6 +115,7 @@ import IDE.Pane.WebKit.Documentation
 import Text.Printf (printf)
 import System.Log.Logger (debugM)
 import System.Process.Vado (getMountPoint, vado, readSettings)
+import qualified Data.Text as T (pack, isInfixOf)
 
 -- | Get the last item
 sinkLast = CL.fold (\_ a -> Just a) Nothing
@@ -222,11 +223,11 @@ runCabalBuild backgroundBuild jumpToWarnings withoutLinking package shallConfigu
 isConfigError :: Monad m => C.Sink ToolOutput m Bool
 isConfigError = CL.foldM (\a b -> return $ a || isCErr b) False
     where
-    isCErr (ToolError str) = str1 `isInfixOf` str || str2 `isInfixOf` str || str3 `isInfixOf` str
+    isCErr (ToolError str) = str1 `T.isInfixOf` str || str2 `T.isInfixOf` str || str3 `T.isInfixOf` str
     isCErr _ = False
-    str1 = (__ "Run the 'configure' command first")
-    str2 = (__ "please re-configure")
-    str3 = (__ "cannot satisfy -package-id")
+    str1 = T.pack (__ "Run the 'configure' command first")
+    str2 = T.pack (__ "please re-configure")
+    str3 = T.pack (__ "cannot satisfy -package-id")
 
 buildPackage :: Bool -> Bool -> Bool -> IDEPackage -> (Bool -> IDEAction) -> IDEAction
 buildPackage backgroundBuild jumpToWarnings withoutLinking package continuation = catchIDE (do
@@ -359,9 +360,11 @@ packageRun = do
         ideR        <- ask
         maybeDebug   <- readIDE debugState
         pd <- liftIO $ readPackageDescription normal (ipdCabalFile package) >>= return . flattenPackageDescription
+        mbExe <- readIDE activeExe
+        let exes = filter (isActiveExe mbExe) $ executables pd
         case maybeDebug of
             Nothing -> do
-                case executables pd of
+                case exes of
                     (Executable name _ _):_ -> do
                         (logLaunch,logName) <- buildLogLaunchByName name
                         let path = "dist/build" </> name </> name
@@ -379,7 +382,7 @@ packageRun = do
                         return ()
             Just debug -> do
                 -- TODO check debug package matches active package
-                case executables pd of
+                case exes of
                     (Executable name mainFilePath _):_ -> do
                         (logLaunch,logName) <- buildLogLaunchByName name
                         runDebug (do
@@ -390,6 +393,10 @@ packageRun = do
                         sysMessage Normal (__ "no executable in selected package")
                         return ())
         (\(e :: SomeException) -> putStrLn (show e))
+  where
+    isActiveExe Nothing _ = True
+    isActiveExe (Just selected) (Executable name _ _) = selected == name
+    isActiveExe _ _ = False
 
 packageRegister :: PackageAction
 packageRegister = do

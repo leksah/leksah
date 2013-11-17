@@ -73,6 +73,7 @@ import Distribution.PackageDescription.Parse
 import Distribution.PackageDescription
        (CondTree(..))
 #endif
+import qualified Data.Text as T (unpack)
 
 -- | Add all imports which gave error messages ...
 resolveErrors :: IDEAction
@@ -85,11 +86,11 @@ resolveErrors = do
     addPackageResults <- forM errors addPackage
     let notInScopes = [ y | (x,y) <-
             nubBy (\ (p1,_) (p2,_) -> p1 == p2)
-                $ [(x,y) |  (x,y) <- [((parseNotInScope . refDescription) e, e) | e <- errors]],
+                $ [(x,y) |  (x,y) <- [((parseNotInScope . T.unpack . refDescription) e, e) | e <- errors]],
                                 isJust x]
     let extensions = [ y | (x,y) <-
             nubBy (\ (p1,_) (p2,_) -> p1 == p2)
-                $ [(x,y) |  (x,y) <- [((parsePerhapsYouIntendedToUse . refDescription) e, e) | e <- errors]],
+                $ [(x,y) |  (x,y) <- [((parsePerhapsYouIntendedToUse . T.unpack . refDescription) e, e) | e <- errors]],
                                 length x == 1]
     when (not (or addPackageResults) && null notInScopes && null extensions) $ ideMessage Normal $ "No errors that can be auto resolved"
     addAll buildInBackground notInScopes extensions
@@ -125,7 +126,7 @@ addOneImport = do
 -- be used for default selection
 addImport :: LogRef -> [Descr] -> ((Bool,[Descr]) -> IDEAction) -> IDEAction
 addImport error descrList continuation =
-    case parseNotInScope (refDescription error) of
+    case parseNotInScope . T.unpack $ refDescription error of
         Nothing -> continuation (True,descrList)
         Just nis -> do
             currentInfo' <- getScopeForActiveBuffer
@@ -170,7 +171,7 @@ addImport error descrList continuation =
 
 addPackage :: LogRef -> IDEM Bool
 addPackage error = do
-    case parseHiddenModule (refDescription error) of
+    case parseHiddenModule . T.unpack $ refDescription error of
         Nothing -> return False
         Just (HiddenModuleResult mod pack) -> do
             let idePackage = logRefPackage error
@@ -497,7 +498,7 @@ parsePerhapsYouIntendedToUse =
 
 addExtension :: LogRef -> (Bool -> IDEAction) -> IDEAction
 addExtension error continuation =
-    case parsePerhapsYouIntendedToUse (refDescription error) of
+    case parsePerhapsYouIntendedToUse . T.unpack $ refDescription error of
         []    -> continuation True
         [ext] -> addExtension' ext (logRefFullFilePath error) continuation
         list  -> continuation True
@@ -517,7 +518,7 @@ addExtension' ext filePath continuation =  do
         _  -> return ()
 
 addResolveMenuItems ideR theMenu logRef = do
-    let msg = refDescription logRef
+    let msg = T.unpack $ refDescription logRef
     when (isJust $ parseNotInScope msg) $
         addFixMenuItem "Add Import"  $ addImport logRef [] (\ _ -> return ())
     when (isJust $ parseHiddenModule msg) $

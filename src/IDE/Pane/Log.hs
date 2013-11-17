@@ -32,10 +32,6 @@ module IDE.Pane.Log (
 ,   showLogLaunch
 ,   showDefaultLogLaunch
 ,   showDefaultLogLaunch'
-
-,   readOut
-,   readErr
---,   runExternal
 ) where
 
 import Data.Typeable (Typeable(..))
@@ -83,6 +79,9 @@ import Data.List.Utils
 import Data.Char
 import IDE.Utils.GUIUtils (__)
 import Text.Printf (printf)
+import Data.Text (Text)
+import qualified Data.Text as T (length, unpack)
+import Data.Monoid ((<>))
 
 -------------------------------------------------------------------------------
 --
@@ -470,14 +469,14 @@ showLog = do
 {- the workhorse for logging: appends given text with given tag to given loglaunch -}
 appendLog :: IDELog
           -> LogLaunch
-          -> String
+          -> Text
           -> LogTag
           -> IO Int
-appendLog log logLaunch string tag = do
+appendLog log logLaunch text tag = do
     let buf = logBuffer logLaunch
     iter  <- textBufferGetEndIter buf
     textBufferSelectRange buf iter iter
-    textBufferInsert buf iter string
+    textBufferInsert buf iter (T.unpack text)
     iter2 <- textBufferGetEndIter buf
     let tagName = case tag of
                     LogTag   -> Nothing
@@ -490,7 +489,7 @@ appendLog log logLaunch string tag = do
         Nothing   -> return ()
         Just name -> do
             len   <- textBufferGetCharCount buf
-            strti <- textBufferGetIterAtOffset buf (len - length string)
+            strti <- textBufferGetIterAtOffset buf (len - T.length text)
             textBufferApplyTagByName buf name iter2 strti
 
     textBufferMoveMarkByName buf "end" iter2
@@ -528,54 +527,4 @@ clearLog = do
 --    modifyIDE_ (\ide -> ide{allLogRefs = []})
 --    setCurrentError Nothing
 --    setCurrentBreak Nothing TODO: Check with Hamish
-
-
-
--- ---------------------------------------------------------------------
--- ** Spawning external processes
---
-
-readOut :: IDELog -> Handle -> IDEAction
-readOut log hndl = do
-     ideRef <- ask
-     log <- getLog
-     liftIO $ catch (readAndShow log ideRef)
-       (\(e :: SomeException) -> do
-        --appendLog log ("----------------------------------------\n") FrameTag
-        hClose hndl
-        return ())
-    where
-    readAndShow :: IDELog -> IDERef -> IO()
-    readAndShow log ideRef = do
-        line <- hGetLine hndl
-        defaultLogLaunch <- runReaderT getDefaultLogLaunch ideRef --TODO srp use default log here ?
-        appendLog log defaultLogLaunch (line ++ "\n") LogTag
-        readAndShow log ideRef
-
-readErr :: IDELog -> Handle -> IDEAction
-readErr log hndl = do
-    ideRef <- ask
-    log <- getLog
-    liftIO $ catch (readAndShow log ideRef)
-       (\(e :: SomeException) -> do
-        hClose hndl
-        return ())
-    where
-    readAndShow log ideRef = do
-        line <- hGetLine hndl
-        defaultLogLaunch <- runReaderT getDefaultLogLaunch ideRef --TODO srp use default log here ?
-        appendLog log defaultLogLaunch (line ++ "\n") LogTag
-        readAndShow log ideRef
-
-runExternal :: FilePath -> [String] -> IO (Handle, Handle, Handle, ProcessHandle)
-runExternal path args = do
-    putStrLn $ printf (__ "Run external called with args %s") ( show args )
-    hndls@(inp, out, err, _) <- runInteractiveProcess path args Nothing Nothing
-    sysMessage Normal $ printf (__ "Starting external tool: %s with args %s") path (show args)
-    hSetBuffering out NoBuffering
-    hSetBuffering err NoBuffering
-    hSetBuffering inp NoBuffering
-    hSetBinaryMode out True
-    hSetBinaryMode err True
-    return hndls
 

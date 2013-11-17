@@ -55,6 +55,7 @@ import Control.Monad.Trans.Class (MonadTrans(..))
 import Control.Monad.IO.Class (MonadIO(..))
 import IDE.Utils.GUIUtils (__)
 import System.Directory (getDirectoryContents)
+import qualified Data.Text as T (unpack)
 
 data GrepRecord = GrepRecord {
             file        :: FilePath
@@ -260,16 +261,14 @@ grepDirectories regexString caseSensitive dirs = do
                         reflectIDE (do
                             output $$ do
                                 let max = 1000
-                                n <- CL.isolate max =$ do
-                                    n <- setGrepResults dir
-                                    when (n >= max) $ do
-                                        liftIO $ interruptProcessGroupOf pid
-                                    CL.sinkNull
-                                    return n
-                                liftIO $ postGUISync $ do
-                                    nDir <- treeModelIterNChildren store Nothing
-                                    liftIO $ treeStoreChange store [nDir-1] (\r -> r{ context = (__ "(Stoped Searching)") })
-                                    return ()
+                                n <- CL.isolate max =$ setGrepResults dir
+                                when (n >= max) . liftIO $ do
+                                    interruptProcessGroupOf pid
+                                    postGUISync $ do
+                                        nDir <- treeModelIterNChildren store Nothing
+                                        treeStoreChange store [nDir-1] (\r -> r{ context = (__ "(Stoped Searching)") })
+                                        return ()
+                                CL.sinkNull
                                 return n) ideRef
                     else return 0
                 return $ a + found) 0 dirs
@@ -315,7 +314,7 @@ setGrepResults dir = do
                         return (count+1)) 0
     where
         process pp (ToolOutput line) =
-            case parse grepLineParser "" line of
+            case parse grepLineParser "" $ T.unpack line of
                 Right record -> Just record{parDir = Just pp}
                 _ -> Nothing
         process _ _ = Nothing

@@ -1,4 +1,4 @@
-{-# LANGUAGE CPP, ScopedTypeVariables #-}
+{-# LANGUAGE CPP, ScopedTypeVariables, OverloadedStrings #-}
 -----------------------------------------------------------------------------
 --
 -- Module      :  IDE.Leksah
@@ -78,6 +78,7 @@ import Data.Conduit (($$))
 import Control.Monad (when, unless, liftM)
 import Control.Monad.IO.Class (MonadIO(..))
 import Control.Applicative ((<$>))
+import qualified Data.Text as T (unpack, stripPrefix)
 
 -- --------------------------------------------------------------------
 -- Command line options
@@ -495,9 +496,9 @@ firstBuild newPrefs = do
     where
         update pb to = do
             let str = toolline to
-            case stripPrefix "update_toolbar " str of
-                Just rest -> postGUIAsync $ progressBarSetFraction pb (read rest)
-                Nothing   -> liftIO $ debugM "leksah" str
+            case T.stripPrefix "update_toolbar " str of
+                Just rest -> postGUIAsync $ progressBarSetFraction pb (read $ T.unpack rest)
+                Nothing   -> liftIO $ debugM "leksah" $ T.unpack str
 
 
 

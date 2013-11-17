@@ -59,6 +59,7 @@ import System.FilePath ((</>))
 #endif
 import Data.IORef (writeIORef, newIORef, readIORef, IORef)
 import Control.Applicative ((<$>))
+import System.Log.Logger (debugM)
 
 data IDEOutput = IDEOutput {
     scrolledView  :: ScrolledWindow
@@ -153,7 +154,7 @@ getOutputPane Nothing    = forceGetPane (Right "*Out")
 getOutputPane (Just pp)  = forceGetPane (Left pp)
 
 setOutput :: String -> IDEAction
-setOutput str = postSyncIDE $ do
+setOutput str = do
 #ifdef WEBKITGTK
     out <- getOutputPane Nothing
     liftIO $ do

@@ -131,6 +131,8 @@ import qualified Data.Map as Map (Map)
 import Data.Typeable (Typeable)
 import Foreign (Ptr)
 import Control.Monad.Reader.Class (MonadReader(..))
+import Data.Text (Text)
+import qualified Data.Text as T (unpack)
 
 -- ---------------------------------------------------------------------
 -- IDE State
@@ -503,13 +505,13 @@ data LogRefType = WarningRef | ErrorRef | BreakpointRef | ContextRef deriving (E
 data LogRef = LogRef {
     logRefSrcSpan       ::   SrcSpan
 ,   logRefPackage       ::   IDEPackage
-,   refDescription      ::   String
+,   refDescription      ::   Text
 ,   logLines            ::   (Int,Int)
 ,   logRefType          ::   LogRefType
 }   deriving (Eq)
 
 instance Show LogRef where
-    show lr =  refDescription lr ++ displaySrcSpan (logRefSrcSpan lr)
+    show lr =  (T.unpack $ refDescription lr) ++ displaySrcSpan (logRefSrcSpan lr)
 
 displaySrcSpan s = srcSpanFilename s ++ ":" ++
     if srcSpanStartLine s == srcSpanEndLine s

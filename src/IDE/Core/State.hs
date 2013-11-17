@@ -104,7 +104,7 @@ import Data.Typeable(Typeable)
 import qualified IDE.YiConfig as Yi
 import Data.Conduit (($$))
 import qualified Data.Conduit as C
-       (Sink, awaitForever, yield, leftover, ($$))
+       (transPipe, Sink, awaitForever, yield, leftover, ($$))
 import qualified Data.Conduit.List as CL
        (sourceList)
 import Control.Monad (liftM, when)
@@ -305,7 +305,7 @@ reflectIDE :: IDEM a -> IDERef -> IO a
 reflectIDE c ideR = runReaderT c ideR
 
 reflectIDEI :: C.Sink a IDEM () -> IDERef -> C.Sink a IO ()
-reflectIDEI c ideR = C.awaitForever $ \x -> liftIO $ reflectIDE (CL.sourceList [x] $$ c) ideR
+reflectIDEI c ideR = C.transPipe (`reflectIDE` ideR) c
 
 liftYiControl :: Yi.ControlM a -> IDEM a
 liftYiControl f = do

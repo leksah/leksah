@@ -1,5 +1,5 @@
 {-# LANGUAGE FlexibleInstances, RecordWildCards, TypeSynonymInstances,
-             MultiParamTypeClasses, DeriveDataTypeable #-}
+             MultiParamTypeClasses, DeriveDataTypeable, OverloadedStrings #-}
 -----------------------------------------------------------------------------
 --
 -- Module      :  IDE.Pane.Variables
@@ -51,6 +51,9 @@ import qualified Data.Conduit.List as CL (consume)
 import Control.Monad.Trans.Class (MonadTrans(..))
 import Control.Monad.IO.Class (MonadIO(..))
 import IDE.Utils.GUIUtils (treeViewContextMenu, __)
+import Data.Text (Text)
+import Data.Monoid ((<>))
+import qualified Data.Text as T (unpack)
 
 -- | A variables pane description
 --
@@ -158,7 +161,7 @@ fillVariablesListQuiet = packageTryQuiet $ do
         Just var -> tryDebugQuiet $ debugCommand' ":show bindings" $ do
             to <- CL.consume
             liftIO $ postGUIAsync $ do
-                case parse variablesParser "" (selectString to) of
+                case parse variablesParser "" . T.unpack $ selectString to of
                     Left e -> sysMessage Normal (show e)
                     Right triples -> do
                         treeStoreClear (variables var)
@@ -175,7 +178,7 @@ fillVariablesList = packageTry $ do
         Just var -> tryDebug $ debugCommand' ":show bindings" $ do
             to <- CL.consume
             liftIO $ postGUIAsync $ do
-                case parse variablesParser "" (selectString to) of
+                case parse variablesParser "" . T.unpack $ selectString to of
                     Left e -> sysMessage Normal (show e)
                     Right triples -> do
                         treeStoreClear (variables var)
@@ -184,8 +187,8 @@ fillVariablesList = packageTry $ do
   where
     insertBreak treeStore (v,index)  = treeStoreInsert treeStore [] index v
 
-selectString :: [ToolOutput] -> String
-selectString (ToolOutput str:r)  = '\n' : str ++ selectString r
+selectString :: [ToolOutput] -> Text
+selectString (ToolOutput str:r)  = "\n" <> str <> selectString r
 selectString (_:r)               = selectString r
 selectString []                  = ""
 
@@ -287,7 +290,7 @@ forceVariable varDescr path treeStore = packageTry $ tryDebug $ do
     debugCommand' (":force " ++ (varName varDescr)) $ do
         to <- CL.consume
         liftIO $ postGUIAsync $ do
-            case parse valueParser "" (selectString to) of
+            case parse valueParser "" . T.unpack $ selectString to of
                 Left e -> sysMessage Normal (show e)
                 Right value -> do
                     var <- treeStoreGetValue treeStore path
@@ -295,7 +298,7 @@ forceVariable varDescr path treeStore = packageTry $ tryDebug $ do
     debugCommand' (":type " ++ (varName varDescr)) $ do
         to <- CL.consume
         liftIO $ postGUIAsync $ do
-            case parse typeParser "" (selectString to) of
+            case parse typeParser "" . T.unpack $ selectString to of
                 Left e -> sysMessage Normal (show e)
                 Right typ -> do
                     var <- treeStoreGetValue treeStore path
@@ -306,7 +309,7 @@ printVariable varDescr path treeStore = packageTry $ tryDebug $ do
     debugCommand' (":print " ++ (varName varDescr)) $ do
         to <- CL.consume
         liftIO $ postGUIAsync $ do
-            case parse valueParser "" (selectString to) of
+            case parse valueParser "" . T.unpack $ selectString to of
                 Left e -> sysMessage Normal (show e)
                 Right value -> do
                     var <- treeStoreGetValue treeStore path
@@ -314,7 +317,7 @@ printVariable varDescr path treeStore = packageTry $ tryDebug $ do
     debugCommand' (":type " ++ (varName varDescr)) $ do
         to <- CL.consume
         liftIO $ postGUIAsync $ do
-            case parse typeParser "" (selectString to) of
+            case parse typeParser "" . T.unpack $ selectString to of
                 Left e -> sysMessage Normal (show e)
                 Right typ -> do
                     var <- treeStoreGetValue treeStore path

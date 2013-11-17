@@ -1,5 +1,5 @@
 {-# LANGUAGE FlexibleInstances, RecordWildCards, TypeSynonymInstances,
-             MultiParamTypeClasses, DeriveDataTypeable #-}
+             MultiParamTypeClasses, DeriveDataTypeable, OverloadedStrings #-}
 -----------------------------------------------------------------------------
 --
 -- Module      :  IDE.Pane.Trace
@@ -53,6 +53,9 @@ import Control.Monad.Trans.Class (MonadTrans(..))
 import Control.Monad.IO.Class (MonadIO(..))
 import IDE.Utils.GUIUtils (treeViewContextMenu, __)
 import Text.Printf (printf)
+import Data.Text (Text)
+import Data.Monoid ((<>))
+import qualified Data.Text as T (unpack)
 
 -- | A debugger pane description
 --
@@ -178,10 +181,10 @@ fillTraceList = packageTry $ do
         Just tracePane -> tryDebug $ debugCommand' ":history" $ do
             to <- CL.consume
             liftIO $ postGUIAsync $ do
-                let parseRes = parse tracesParser "" (selectString to)
+                let parseRes = parse tracesParser "" . T.unpack $ selectString to
                 r <- case parseRes of
                         Left err     -> do
-                            debugM "leksah" ((printf (__ "trace parse error %s\ninput: %s") (show err) (selectString to)))
+                            debugM "leksah" ((printf (__ "trace parse error %s\ninput: %s") (show err) (T.unpack $ selectString to)))
                             return []
                         Right traces -> return traces
                 treeStoreClear (tracepoints tracePane)
@@ -193,8 +196,8 @@ fillTraceList = packageTry $ do
   where
     insertTrace treeStore (tr,index)  = treeStoreInsert treeStore [] index tr
 
-selectString :: [ToolOutput] -> String
-selectString (ToolOutput str:r)  = '\n' : str ++ selectString r
+selectString :: [ToolOutput] -> Text
+selectString (ToolOutput str:r)  = "\n" <> str <> selectString r
 selectString (_:r)               = selectString r
 selectString []                  = ""
 
@@ -210,7 +213,7 @@ getSelectedTracepoint treeView treeStore = do
             return (Just val)
         _  ->  return Nothing
 
-selectStrings :: [ToolOutput] -> [String]
+selectStrings :: [ToolOutput] -> [Text]
 selectStrings (ToolOutput str:r)  = str : selectStrings r
 selectStrings (_:r)               = selectStrings r
 selectStrings []                  = []

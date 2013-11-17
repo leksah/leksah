@@ -36,6 +36,7 @@ import IDE.LogRef (showSourceSpan)
 import Data.List (elemIndex)
 import Control.Monad.IO.Class (MonadIO(..))
 import IDE.Utils.GUIUtils (treeViewContextMenu, __)
+import qualified Data.Text as T (unpack)
 
 
 -- | A breakpoints pane description
@@ -88,7 +89,7 @@ instance RecoverablePane IDEBreakpoints BreakpointsState IDEM where
         treeViewAppendColumn treeView colB
         cellLayoutPackStart colB rendererB False
         cellLayoutSetAttributes colB rendererB breakpoints
-            $ \row -> [ cellText := refDescription row]
+            $ \row -> [ cellText := T.unpack $ refDescription row]
 
         treeViewSetHeadersVisible treeView True
         selB <- treeViewGetSelection treeView
@@ -182,7 +183,7 @@ breakpointsSelect ideR store path _ = do
 deleteBreakpoint :: LogRef -> IDEAction
 deleteBreakpoint logRef =
     case logRefType logRef of
-        BreakpointRef -> debugDeleteBreakpoint ((words (refDescription logRef)) !! 1) logRef
+        BreakpointRef -> debugDeleteBreakpoint ((words (T.unpack $ refDescription logRef)) !! 1) logRef
         _   -> sysMessage Normal (__ "Debugger>>deleteBreakpoint: Not a breakpoint")
 
 

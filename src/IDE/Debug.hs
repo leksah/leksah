@@ -1,4 +1,4 @@
-{-# LANGUAGE ScopedTypeVariables #-}
+{-# LANGUAGE ScopedTypeVariables, OverloadedStrings #-}
 -----------------------------------------------------------------------------
 --
 -- Module      :  IDE.Debug
@@ -88,7 +88,9 @@ import Control.Monad.Trans.Reader (ask)
 import Control.Monad.IO.Class (MonadIO(..))
 import Control.Applicative (Alternative(..))
 import Data.IORef (newIORef)
-import Data.Monoid (Monoid(..))
+import Data.Monoid ((<>), Monoid(..))
+import Data.Text (Text)
+import qualified Data.Text as T (isSuffixOf, unpack)
 
 debugCommand :: String -> C.Sink ToolOutput IDEM () -> DebugAction
 debugCommand command handler = do
@@ -154,12 +156,12 @@ debugExecuteAndShowSelection = do
             debugSetLiberalScope
             debugCommand (stripComments text) $ do
                 (out, _) <- CU.zipSinks (CL.fold buildOutputString "") logOutputDefault
-                lift $ insertTextAfterSelection $ " " ++ out
+                lift . insertTextAfterSelection . T.unpack $ " " <> out
         Nothing   -> ideMessage Normal "Please select some text in the editor to execute"
     where
-    buildOutputString :: String -> ToolOutput -> String
+    buildOutputString :: Text -> ToolOutput -> Text
     buildOutputString "" (ToolOutput str) = str
-    buildOutputString s  (ToolOutput str) = s ++ "\n" ++ str
+    buildOutputString s  (ToolOutput str) = s <> "\n" <> str
     buildOutputString s  _                = s
 
 debugSetLiberalScope :: DebugAction
@@ -167,14 +169,14 @@ debugSetLiberalScope = do
     maybeModuleName <- lift selectedModuleName
     case maybeModuleName of
         Just moduleName -> do
-            debugCommand (":module *" ++ moduleName) (return ())
+            debugCommand (":module *" ++ moduleName) CL.sinkNull
         Nothing -> do
             mbPackage <- lift getActivePackageDescr
             case mbPackage of
                 Nothing -> return ()
                 Just p -> let packageNames = map (display . modu . mdModuleId) (pdModules p)
                     in debugCommand' (foldl (\a b -> a ++ " *" ++ b) ":module + " packageNames)
-                        (return ())
+                        CL.sinkNull
 
 debugAbandon :: IDEAction
 debugAbandon = do
@@ -336,11 +338,11 @@ debugShowModules :: IDEAction
 debugShowModules = packageTry $ tryDebug $ debugCommand ":show modules" $
     logOutputLines_Default $ \log logLaunch output -> liftIO $ do
         case output of
-            ToolInput  line -> appendLog log logLaunch (line ++ "\n") InputTag
-            ToolOutput line | ", interpreted )" `isSuffixOf` line
-                            -> appendLog log logLaunch (line ++ "\n") LogTag
-            ToolOutput line -> appendLog log logLaunch (line ++ "\n") InfoTag
-            ToolError  line -> appendLog log logLaunch (line ++ "\n") ErrorTag
+            ToolInput  line -> appendLog log logLaunch (line <> "\n") InputTag
+            ToolOutput line | ", interpreted )" `T.isSuffixOf` line
+                            -> appendLog log logLaunch (line <> "\n") LogTag
+            ToolOutput line -> appendLog log logLaunch (line <> "\n") InfoTag
+            ToolError  line -> appendLog log logLaunch (line <> "\n") ErrorTag
             ToolPrompt _    -> defaultLineLogger' log logLaunch output
             ToolExit _      -> appendLog log logLaunch "X--X--X ghci process exited unexpectedly X--X--X" FrameTag
         return ()
