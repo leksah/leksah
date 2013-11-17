@@ -70,7 +70,7 @@ import Graphics.UI.Gtk
         leaveNotifyEvent, motionNotifyEvent, keyPressEvent,
         buttonReleaseEvent, buttonPressEvent, widgetGrabFocus,
         Rectangle(..), layoutSetFontDescription, EventMask(..),
-#if MIN_VERSION_gtk(0,13,0) || defined(MIN_VERSION_gtk3)
+#ifdef MIN_VERSION_gtk3
         widgetGetWindow
 #else
         widgetGetDrawWindow
@@ -203,7 +203,7 @@ instance TextEditor Yi where
     bufferToWindowCoords (YiView v) point = return point -- TODO
     drawTabs (YiView _) = return () -- TODO
     getBuffer (YiView v) = return $ YiBuffer $ Yi.getBuffer v
-#if MIN_VERSION_gtk(0,13,0) || defined(MIN_VERSION_gtk3)
+#ifdef MIN_VERSION_gtk3
     getWindow (YiView v) = liftIO $ widgetGetWindow (drawArea v)
 #else
     getWindow (YiView v) = liftIO $ Just <$> widgetGetDrawWindow (drawArea v)

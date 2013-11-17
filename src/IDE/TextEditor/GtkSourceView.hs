@@ -72,7 +72,7 @@ import Graphics.UI.Gtk
         textBufferSetText, textIterCopy, TextIter, Modifier(..),
         FontDescription, fontDescriptionFromString, fontDescriptionNew,
         fontDescriptionSetFamily, EventMask(..), after,
-#if MIN_VERSION_gtk(0,13,0) || defined(MIN_VERSION_gtk3)
+#ifdef MIN_VERSION_gtk3
         widgetGetWindow
 #else
         widgetGetDrawWindow
@@ -258,7 +258,7 @@ instance TextEditor GtkSourceView where
     bufferToWindowCoords (GtkView sv) point = liftIO $ textViewBufferToWindowCoords sv TextWindowWidget point
     drawTabs (GtkView sv) = liftIO $ sourceViewSetDrawSpaces sv SourceDrawSpacesTab
     getBuffer (GtkView sv) = liftIO $ (GtkBuffer . castToSourceBuffer) <$> sv `get` textViewBuffer
-#if MIN_VERSION_gtk(0,13,0) || defined(MIN_VERSION_gtk3)
+#ifdef MIN_VERSION_gtk3
     getWindow (GtkView sv) = liftIO $ widgetGetWindow sv
 #else
     getWindow (GtkView sv) = liftIO $ Just <$> widgetGetDrawWindow sv
