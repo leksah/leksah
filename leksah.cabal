@@ -178,7 +178,7 @@ flag dyre
 
 flag threaded
     description: Build with support for multithreaded execution
-    default: False
+    default: True
 
 flag gtk3
     Description: Use GTK3 rather than GTK2
@@ -294,7 +294,7 @@ library
 
     ghc-prof-options: -auto-all -prof
     ghc-shared-options: -auto-all
-    ghc-options: -fwarn-missing-fields -fwarn-incomplete-patterns -ferror-spans
+    ghc-options: -O2 -fwarn-missing-fields -fwarn-incomplete-patterns -ferror-spans
 
 Executable leksah
     if os(windows)
@@ -321,7 +321,7 @@ Executable leksah
     buildable: True
     ghc-prof-options: -auto-all -prof
     ghc-shared-options: -auto-all
-    ghc-options:  -fwarn-missing-fields -fwarn-incomplete-patterns -ferror-spans
+    ghc-options: -rtsopts -O2 -fwarn-missing-fields -fwarn-incomplete-patterns -ferror-spans
 
 executable bewleksah
     if !flag(webkit)
