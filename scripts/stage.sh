@@ -1,15 +1,15 @@
 #!/bin/sh
 
-ghc-pkg unregister leksah || true
-ghc-pkg unregister leksah-server || true
-ghc-pkg unregister ltk || true
+ghc-pkg$GHCVERSION unregister leksah || true
+ghc-pkg$GHCVERSION unregister leksah-server || true
+ghc-pkg$GHCVERSION unregister ltk || true
 
 export FULL_VERSION=`grep '^version: ' leksah.cabal | sed 's|version: ||' | tr -d '\r'`
 export SHORT_VERSION=`echo $FULL_VERSION | sed 's|\.[0-9]*\.[0-9]*$||'`
 export LEKSAH_X_X_X_X=leksah-$FULL_VERSION
 export LEKSAH_X_X=leksah-$SHORT_VERSION
 
-export GHC_VER=`ghc --numeric-version`
+export GHC_VER=`ghc$GHCVERSION --numeric-version`
 export LEKSAH_X_X_X_X_GHC_X_X_X=leksah-$FULL_VERSION-ghc-$GHC_VER
 
 export GTK_PREFIX=`pkg-config --libs-only-L gtk+-3.0 | sed 's|^-L||' | sed 's|/lib *.*$||'`
@@ -17,10 +17,8 @@ export GTK_PREFIX=`pkg-config --libs-only-L gtk+-3.0 | sed 's|^-L||' | sed 's|/l
 echo Staging Leksah in $GTK_PREFIX
 
 # These don't like all the extra options we pass (CPPFLAGS and --extra-lib-dirs)
-cabal install text || true
-cabal install parsec || true
-cabal install network --constraint='text>=0.11.3.1' --constraint='parsec>=3.1.3' || true
-cabal install uniplate --constraint='text>=0.11.3.1' --constraint='parsec>=3.1.3' || true
+# Gtk2Hs needs the latest Cabal to install properly
+cabal install --with-ghc=ghc$GHCVERSION -j4 text parsec network uniplate Cabal --constraint='text>=0.11.3.1' --constraint='parsec>=3.1.3' || true
 
 # Needed for installing curl package on windows
 export CPPFLAGS=`pkg-config --cflags-only-I libcurl`
@@ -28,43 +26,29 @@ export CPPFLAGS=`pkg-config --cflags-only-I libcurl`
 # Only used by OS X
 # export DYLD_LIBRARY_PATH="/System/Library/Frameworks/ApplicationServices.framework/Versions/A/Frameworks/ImageIO.framework/Versions/A/Resources:$GTK_PREFIX/lib:$DYLD_LIBRARY_PATH"
 
-# Gtk2Hs needs the latest Cabal to install properly
-cabal install Cabal || true
-
 echo https://github.com/gtk2hs/gtksourceview > sources.txt
 echo https://github.com/leksah/ltk >> sources.txt
 echo https://github.com/leksah/leksah-server >> sources.txt
 echo https://github.com/hamishmack/vado.git >> sources.txt
 echo https://github.com/leksah/haskellVCSWrapper.git >> sources.txt
 echo https://github.com/leksah/haskellVCSGUI.git >> sources.txt
-
-if [ "$GHC_VER" != "7.0.3" ] && [ "$GHC_VER" != "7.0.4" ]; then
-        echo https://github.com/leksah/pretty-show.git >> sources.txt
-        echo https://github.com/gtk2hs/webkit >> sources.txt
-        echo https://github.com/ghcjs/webkit-javascriptcore.git >> sources.txt
-        echo https://github.com/ghcjs/ghcjs-dom.git >> sources.txt
-        echo https://github.com/ghcjs/jsc.git >> sources.txt
-        echo https://github.com/ghcjs/CodeMirror.git >> sources.txt
-fi
+echo https://github.com/leksah/pretty-show.git >> sources.txt
+echo https://github.com/gtk2hs/webkit >> sources.txt
+echo https://github.com/ghcjs/webkit-javascriptcore.git >> sources.txt
+echo https://github.com/ghcjs/ghcjs-dom.git >> sources.txt
+echo https://github.com/ghcjs/jsc.git >> sources.txt
+echo https://github.com/ghcjs/CodeMirror.git >> sources.txt
 
 # echo ./vendor/gtk2hs >> sources.txt
 echo ./ >> sources.txt
 
 if test "`uname`" = "Darwin"; then
-    if [ "$GHC_VER" != "7.0.3" ] && [ "$GHC_VER" != "7.0.4" ]; then
-        cabal-meta install -fhave-quartz-gtk -flibcurl -fwebkit --force-reinstalls || exit
-    else
-        cabal-meta install -fhave-quartz-gtk -flibcurl -f-webkit --force-reinstalls || exit
-    fi
+    cabal-meta install --with-ghc=ghc$GHCVERSION -j4 -fhave-quartz-gtk -flibcurl -fwebkit --with-gcc=gcc-mp-4.8 || exit
 else
     HPDIR=`which ghc` || exit
     HPDIR=`dirname "$HPDIR"` || exit
     HPDIR=`dirname "$HPDIR"` || exit
-    if [ "$GHC_VER" != "7.0.3" ] && [ "$GHC_VER" != "7.0.4" ]; then
-        cabal-meta install --extra-lib-dirs="$HPDIR"/mingw/lib --extra-lib-dirs=/c/MinGWRPM/lib -flibcurl -fwebkit --force-reinstalls || bash || exit
-    else
-        cabal-meta install --extra-lib-dirs="$HPDIR"/mingw/lib --extra-lib-dirs=/c/MinGWRPM/lib -flibcurl -f-webkit --force-reinstalls || bash || exit
-    fi
+    cabal-meta install --with-ghc=ghc$GHCVERSION -j4 --extra-lib-dirs="$HPDIR"/mingw/lib --extra-lib-dirs=/c/MinGWRPM/lib -flibcurl -fwebkit --force-reinstalls || bash || exit
 #  if [ "$GHC_VER" != "7.0.3" ] && [ "$GHC_VER" != "7.0.4" ] && [ "$GHC_VER" != "7.6.1" ]; then
 #    echo https://github.com/yi-editor/yi.git >> sources.txt
 #    export LEKSAH_CONFIG_ARGS="$LEKSAH_CONFIG_ARGS -fyi -f-vty -f-dyre -fpango"
