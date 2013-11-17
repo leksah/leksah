@@ -2,7 +2,7 @@ Name "Leksah"
 
 OutFile "$%LEKSAH_X_X_X_X_GHC_X_X_X%.exe"
 
-InstallDir $PROGRAMFILES\Leksah
+InstallDir C:\Leksah
 
 InstallDirRegKey HKLM "Software\Leksah" "Install_Dir"
 
@@ -116,17 +116,30 @@ Section "Leksah"
   File "$%GTK_PREFIX%\bin\zlib1.dll"
   
   SetOutPath $INSTDIR\share
-  ;File /r "$%GTK_PREFIX%\share\gtk-engines"
   File /r "$%GTK_PREFIX%\share\themes"
-  ; File /r "$%GTK_PREFIX%\share\icons"
   File /r "$%GTK_PREFIX%\share\glib-2.0"
   File /r "$%GTK_PREFIX%\share\gtksourceview-3.0"
 
- ; SetOutPath $INSTDIR\lib\gtk-2.0\2.10.0\engines
- ; File "$%GTK_PREFIX%\lib\gtk-2.0\2.10.0\engines\*.dll"
-
   SetOutPath $INSTDIR\lib
-  File /r "$%GTK_PREFIX%\lib\gtk-3.0"
+  ; File /r "$%GTK_PREFIX%\lib\gtk-3.0"
+  ; File /r "$%GTK_PREFIX%\lib\gdk-pixbuf-2.0"
+  ; File /r "$%GTK_PREFIX%\lib\pango"
+  ; File /r "$%GTK_PREFIX%\lib\enchant"
+  ; File /r "$%GTK_PREFIX%\lib\gstreamer-1.0"
+
+  SetOutPath $INSTDIR\libexec
+  File /r "$%GTK_PREFIX%\libexec\gstreamer-1.0"
+
+  ; Needed to build Gtk2Hs
+  SetOutPath $INSTDIR\bin
+  File "$%GTK_PREFIX%\bin\pkg-config.exe"
+
+  ; SetOutPath $INSTDIR\lib
+  ; File /r "$%GTK_PREFIX%\lib\pkgconfig"
+
+  SetOutPath $INSTDIR
+  File /r "$%GTK_PREFIX%\include"
+  File /r "$%GTK_PREFIX%\lib"
 
   ; Write the installation path into the registry
   WriteRegStr HKLM SOFTWARE\Leksah "Install_Dir" "$INSTDIR"
