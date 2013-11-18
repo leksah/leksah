@@ -316,6 +316,9 @@ Executable leksah
         cpp-options: -DLOCALIZATION
         build-depends: hgettext, setlocale
 
+    if os(osx)
+        ghc-options: -optl-headerpad_max_install_names
+
     default-language: Haskell98
     main-is: Main.hs
     buildable: True
