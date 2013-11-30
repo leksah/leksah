@@ -224,7 +224,7 @@ library
 
     if flag(webkit)
         if flag(gtk3)
-          build-depends: webkit3 -any, webkit3-javascriptcore -any
+          build-depends: webkitgtk3 -any, webkitgtk3-javascriptcore -any
         else
           build-depends: webkit -any, webkit-javascriptcore -any
         build-depends: jsc -any, ghcjs-codemirror -any, hamlet -any, blaze-html -any,
@@ -334,7 +334,7 @@ executable bewleksah
                        jsc -any, ghcjs-dom -any
         if flag(gtk3)
           build-depends: gtk3 >=0.12.4 && <0.13, gtksourceview3 >=0.10.0 && <0.13,
-                         webkit3 -any, webkit3-javascriptcore -any
+                         webkitgtk3 -any, webkitgtk3-javascriptcore -any
           cpp-options:   -DMIN_VERSION_gtk=MIN_VERSION_gtk3
         else
           build-depends: gtk >=0.12.4 && <0.13, gtksourceview2 >=0.10.0 && <0.13,
@@ -351,7 +351,7 @@ test-suite tests
                    containers, ltk, leksah-server, hslogger,
                    transformers, glib, monad-loops
     if flag(gtk3)
-        build-depends: gtk3 >=0.12.4 && <0.13, gtksourceview3 >=0.10.0 && <0.13, webkit3 -any
+        build-depends: gtk3 >=0.12.4 && <0.13, gtksourceview3 >=0.10.0 && <0.13, webkitgtk3 -any
         cpp-options:   -DMIN_VERSION_gtk=MIN_VERSION_gtk3
     else
         build-depends: gtk >=0.12.4 && <0.13, gtksourceview2 >=0.10.0 && <0.13, webkit -any
