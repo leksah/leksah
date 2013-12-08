@@ -74,6 +74,8 @@ import Distribution.PackageDescription
        (CondTree(..))
 #endif
 import qualified Data.Text as T (unpack)
+import Language.Haskell.Exts (KnownExtension)
+import Text.Read (readMaybe)
 
 -- | Add all imports which gave error messages ...
 resolveErrors :: IDEAction
@@ -485,22 +487,29 @@ hiddenModuleParser = do
 --
 -- > parsePerhapsExt "Error blah blah\n   Perhaps you intended to use -XNoBugsExt\n\n"
 --
+-- > parsePerhapsExt "Error blah blah\n   Perhaps you intended to use ScopedTypeVariables\n\n"
+--
 -- > parsePerhapsExt "Error blah blah\n   Use -XNoBugsExt\n\n"
-parsePerhapsYouIntendedToUse :: String -> [String]
+parsePerhapsYouIntendedToUse :: String -> [KnownExtension]
 parsePerhapsYouIntendedToUse =
     concatMap (parseLine . dropWhile (==' ')) . lines
   where
-    parseLine line = catMaybes [
+    parseLine :: String -> [KnownExtension]
+    parseLine line = take 1 . catMaybes . map readMaybe $ catMaybes [
         stripPrefix "Perhaps you intended to use -X" line
+      , stripPrefix "Perhaps you intended to use " line
       , takeWhile (/=' ') <$> stripPrefix "Use -X" line
+      , takeWhile (/=' ') <$> stripPrefix "Use " line
       , takeWhile (/=' ') <$> stripPrefix "(Use -X" line
-      , takeWhile (/=' ') <$> stripPrefix "You need -X" line]
+      , takeWhile (/=' ') <$> stripPrefix "(Use " line
+      , takeWhile (/=' ') <$> stripPrefix "You need -X" line
+      , takeWhile (/=' ') <$> stripPrefix "You need " line]
 
 addExtension :: LogRef -> (Bool -> IDEAction) -> IDEAction
 addExtension error continuation =
     case parsePerhapsYouIntendedToUse . T.unpack $ refDescription error of
         []    -> continuation True
-        [ext] -> addExtension' ext (logRefFullFilePath error) continuation
+        [ext] -> addExtension' (show ext) (logRefFullFilePath error) continuation
         list  -> continuation True
 
 addExtension' :: String -> FilePath -> (Bool -> IDEAction) -> IDEAction
