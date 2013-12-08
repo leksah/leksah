@@ -11,9 +11,9 @@ ghc-pkg$GHCVERSION unregister --force jsc || true
 ghc-pkg$GHCVERSION unregister --force gtksourceview2 || true
 ghc-pkg$GHCVERSION unregister --force gtksourceview3 || true
 ghc-pkg$GHCVERSION unregister --force webkit-javascriptcore || true
-ghc-pkg$GHCVERSION unregister --force webkit3-javascriptcore || true
+ghc-pkg$GHCVERSION unregister --force webkitgtk3-javascriptcore || true
 ghc-pkg$GHCVERSION unregister --force webkit || true
-ghc-pkg$GHCVERSION unregister --force webkit3 || true
+ghc-pkg$GHCVERSION unregister --force webkitgtk3 || true
 ghc-pkg$GHCVERSION unregister --force gtk-mac-integration || true
 ghc-pkg$GHCVERSION unregister --force gtk || true
 ghc-pkg$GHCVERSION unregister --force gtk3 || true

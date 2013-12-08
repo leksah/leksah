@@ -44,6 +44,10 @@ for f in Leksah/Leksah.app/Contents/Resources/libexec/gst-plugin-scanner; do
     chmod -w $f
 done
 
+echo Fixing immodules paths
+sed -i "" -e "s|/opt/local/|@executable_path/../|" Leksah/Leksah.app/Contents/Resources/etc/gtk-3.0/gtk.immodules || exit
+sed -i "" -e "s|@executable_path/../Resources/|@executable_path/../|" Leksah/Leksah.app/Contents/Resources/etc/gtk-3.0/gtk.immodules || exit
+
 echo Fixing pixbuf loader paths
 sed -i "" -e "s|@executable_path/../Resources/|@executable_path/../|" Leksah/Leksah.app/Contents/Resources/etc/gtk-3.0/gdk-pixbuf.loaders || exit
 

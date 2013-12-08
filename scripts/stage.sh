@@ -26,29 +26,25 @@ export CPPFLAGS=`pkg-config --cflags-only-I libcurl`
 # Only used by OS X
 # export DYLD_LIBRARY_PATH="/System/Library/Frameworks/ApplicationServices.framework/Versions/A/Frameworks/ImageIO.framework/Versions/A/Resources:$GTK_PREFIX/lib:$DYLD_LIBRARY_PATH"
 
-echo https://github.com/gtk2hs/gtksourceview > sources.txt
-echo https://github.com/leksah/ltk >> sources.txt
+echo https://github.com/leksah/ltk > sources.txt
 echo https://github.com/leksah/leksah-server >> sources.txt
 echo https://github.com/hamishmack/vado.git >> sources.txt
 echo https://github.com/leksah/haskellVCSWrapper.git >> sources.txt
 echo https://github.com/leksah/haskellVCSGUI.git >> sources.txt
 echo https://github.com/leksah/pretty-show.git >> sources.txt
-echo https://github.com/gtk2hs/webkit >> sources.txt
-echo https://github.com/ghcjs/webkit-javascriptcore.git >> sources.txt
-echo https://github.com/ghcjs/ghcjs-dom.git >> sources.txt
-echo https://github.com/ghcjs/jsc.git >> sources.txt
-echo https://github.com/ghcjs/CodeMirror.git >> sources.txt
 
 # echo ./vendor/gtk2hs >> sources.txt
 echo ./ >> sources.txt
 
 if test "`uname`" = "Darwin"; then
-    cabal-meta install --with-ghc=ghc$GHCVERSION -j4 -fhave-quartz-gtk -flibcurl -fwebkit --with-gcc=gcc-mp-4.8 || exit
+    cabal install gtk3 ghcjs-dom jsc --with-ghc=ghc$GHCVERSION -j4 -fhave-quartz-gtk -fwebkit --with-gcc=gcc-mp-4.8 || exit
+    cabal-meta install --with-ghc=ghc$GHCVERSION -j4 -flibcurl --with-gcc=gcc-mp-4.8 || exit
 else
     HPDIR=`which ghc` || exit
     HPDIR=`dirname "$HPDIR"` || exit
     HPDIR=`dirname "$HPDIR"` || exit
-    cabal-meta install --with-ghc=ghc$GHCVERSION -j4 --extra-lib-dirs="$HPDIR"/mingw/lib --extra-lib-dirs=/c/MinGWRPM/lib -flibcurl -fwebkit --force-reinstalls || bash || exit
+    cabal install gtk3 ghcjs-dom jsc --with-ghc=ghc$GHCVERSION -j4 --extra-lib-dirs="$HPDIR"/mingw/lib --extra-lib-dirs=/c/MinGWRPM/lib -fwebkit --force-reinstalls || bash || exit
+    cabal-meta install --with-ghc=ghc$GHCVERSION -j4 --extra-lib-dirs="$HPDIR"/mingw/lib --extra-lib-dirs=/c/MinGWRPM/lib -flibcurl --force-reinstalls || bash || exit
 #  if [ "$GHC_VER" != "7.0.3" ] && [ "$GHC_VER" != "7.0.4" ] && [ "$GHC_VER" != "7.6.1" ]; then
 #    echo https://github.com/yi-editor/yi.git >> sources.txt
 #    export LEKSAH_CONFIG_ARGS="$LEKSAH_CONFIG_ARGS -fyi -f-vty -f-dyre -fpango"

@@ -1,14 +1,7 @@
-https://github.com/gtk2hs/gtksourceview
 https://github.com/leksah/ltk
 https://github.com/leksah/leksah-server
 https://github.com/hamishmack/vado.git
 https://github.com/leksah/haskellVCSWrapper.git
 https://github.com/leksah/haskellVCSGUI.git
 https://github.com/leksah/pretty-show.git
--- https://github.com/leksah/yi.git
-https://github.com/gtk2hs/webkit
-https://github.com/ghcjs/webkit-javascriptcore.git
-https://github.com/ghcjs/ghcjs-dom.git
-https://github.com/ghcjs/jsc.git
-https://github.com/ghcjs/CodeMirror.git
 ./
