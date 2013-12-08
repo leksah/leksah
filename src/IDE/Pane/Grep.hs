@@ -1,5 +1,10 @@
-{-# LANGUAGE CPP, FlexibleInstances, DeriveDataTypeable, MultiParamTypeClasses,
-             TypeSynonymInstances, RecordWildCards #-}
+{-# LANGUAGE DeriveDataTypeable #-}
+{-# LANGUAGE MultiParamTypeClasses #-}
+{-# LANGUAGE FlexibleInstances #-}
+{-# LANGUAGE TypeSynonymInstances #-}
+{-# LANGUAGE ScopedTypeVariables #-}
+{-# LANGUAGE RecordWildCards #-}
+{-# LANGUAGE CPP #-}
 -----------------------------------------------------------------------------
 --
 -- Module      :  IDE.Pane.Grep
@@ -56,6 +61,8 @@ import Control.Monad.IO.Class (MonadIO(..))
 import IDE.Utils.GUIUtils (__)
 import System.Directory (getDirectoryContents)
 import qualified Data.Text as T (unpack)
+import System.Log.Logger (debugM)
+import Control.Exception (SomeException, catch)
 
 data GrepRecord = GrepRecord {
             file        :: FilePath
@@ -261,15 +268,18 @@ grepDirectories regexString caseSensitive dirs = do
                         reflectIDE (do
                             output $$ do
                                 let max = 1000
-                                n <- CL.isolate max =$ setGrepResults dir
-                                when (n >= max) . liftIO $ do
-                                    interruptProcessGroupOf pid
-                                    postGUISync $ do
-                                        nDir <- treeModelIterNChildren store Nothing
-                                        treeStoreChange store [nDir-1] (\r -> r{ context = (__ "(Stoped Searching)") })
-                                        return ()
-                                CL.sinkNull
-                                return n) ideRef
+                                CL.isolate max =$ do
+                                    n <- setGrepResults dir
+                                    when (n >= max) . liftIO $ do
+                                        debugM "leksah" $ "interrupting grep process"
+                                        interruptProcessGroupOf pid
+                                          `catch` \(_::SomeException) -> return ()
+                                        postGUISync $ do
+                                            nDir <- treeModelIterNChildren store Nothing
+                                            treeStoreChange store [nDir-1] (\r -> r{ context = (__ "(Stoped Searching)") })
+                                            return ()
+                                    CL.sinkNull
+                                    return n) ideRef
                     else return 0
                 return $ a + found) 0 dirs
 
