@@ -39,6 +39,7 @@ data-files: LICENSE
             data/styles/leksah.xml
             data/styles/leksah-dark.xml
 
+            language-specs/cabal.lang
             language-specs/haskell.lang
             language-specs/haskell-literate.lang
             language-specs/hamlet.lang

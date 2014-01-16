@@ -1,0 +1,300 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!--
+ Autor: Hamish Mackenzie <Hamish.K.Mackenzie@googlemail.com>
+ Copyright (C) 2014 Hamish Mackenzie <Hamish.K.Mackenzie@googlemail.com>
+
+ This library is free software; you can redistribute it and/or modify
+ it under the terms of the GNU General Public License as published by
+ the Free Software Foundation; either version 2 of the License, or
+ (at your option) any later version.
+
+ This program is distributed in the hope that it will be useful,
+ but WITHOUT ANY WARRANTY; without even the implied warranty of
+ MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+ GNU General Public License for more details.
+
+ You should have received a copy of the GNU General Public License
+ along with this program; if not, write to the Free Software
+ Foundation, Inc., 59 Temple Place, Suite 330, Boston, MA  02111-1307  USA
+-->
+<language id="cabal" _name="Cabal" version="2.0" _section="Others">
+  <metadata>
+    <property name="mimetypes">text/x-cabal</property>
+    <property name="globs">*.cabal</property>
+    <property name="line-comment-start">--</property>
+  </metadata>
+
+  <styles>
+    <style id="comment"    _name="Comment"   map-to="def:comment"/>
+    <style id="field-name" _name="FieldName" map-to="def:type"/>
+    <style id="keyword"    _name="Keyword"   map-to="def:keyword"/>
+  </styles>
+
+  <default-regex-options case-sensitive="false"/>
+
+  <definitions>
+    <context id="conditional" style-ref="keyword">
+      <prefix>^ *</prefix>
+      <keyword>if</keyword>
+      <keyword>else</keyword>
+    </context>
+
+    <context id="custom" style-ref="field-name">
+      <match>^ *x-[a-z0-9-]+ *:</match>
+    </context>
+
+    <context id="package-field-name" style-ref="field-name">
+      <prefix>^</prefix>
+      <suffix> *:</suffix>
+      <!-- putStrLn $ concatMap (\f -> "      <keyword>" ++ fieldName f ++ "</keyword>\n") pkgDescrFieldDescrs -->
+      <keyword>name</keyword>
+      <keyword>version</keyword>
+      <keyword>cabal-version</keyword>
+      <keyword>build-type</keyword>
+      <keyword>license</keyword>
+      <keyword>license-file</keyword>
+      <keyword>copyright</keyword>
+      <keyword>maintainer</keyword>
+      <keyword>build-depends</keyword>
+      <keyword>stability</keyword>
+      <keyword>homepage</keyword>
+      <keyword>package-url</keyword>
+      <keyword>bug-reports</keyword>
+      <keyword>synopsis</keyword>
+      <keyword>description</keyword>
+      <keyword>category</keyword>
+      <keyword>author</keyword>
+      <keyword>tested-with</keyword>
+      <keyword>data-files</keyword>
+      <keyword>data-dir</keyword>
+      <keyword>extra-source-files</keyword>
+      <keyword>extra-tmp-files</keyword>
+      <keyword>extra-doc-files</keyword>
+    </context>
+
+    <context id="source-repo-field-name" style-ref="field-name">
+      <prefix>^ +</prefix>
+      <suffix> *:</suffix>
+      <!-- putStrLn $ concatMap (\f -> "      <keyword>" ++ fieldName f ++ "</keyword>\n") sourceRepoFieldDescrs -->
+      <keyword>type</keyword>
+      <keyword>location</keyword>
+      <keyword>module</keyword>
+      <keyword>branch</keyword>
+      <keyword>tag</keyword>
+      <keyword>subdir</keyword>
+    </context>
+
+    <context id="source-repo" end-parent="true">
+      <start>^(source-repository+)( |$)</start>
+      <include>
+        <context sub-pattern="1" where="start" style-ref="keyword"/>
+        <context ref="line-comment"/>
+        <context ref="source-repo-field-name"/>
+        <context ref="source-repo"/>
+        <context ref="flag"/>
+        <context ref="lib"/>
+        <context ref="exe"/>
+        <context ref="test"/>
+        <context ref="custom"/>
+      </include>
+    </context>
+
+    <context id="flag-field-name" style-ref="field-name">
+      <prefix>^ +</prefix>
+      <suffix>:</suffix>
+      <!-- putStrLn $ concatMap (\f -> "      <keyword>" ++ fieldName f ++ "</keyword>\n") flagFieldDescrs -->
+      <keyword>description</keyword>
+      <keyword>default</keyword>
+      <keyword>manual</keyword>
+    </context>
+
+    <context id="flag" end-parent="true">
+      <start>^(flag) </start>
+      <include>
+        <context sub-pattern="1" where="start" style-ref="keyword"/>
+        <context ref="line-comment"/>
+        <context ref="flag-field-name"/>
+        <context ref="source-repo"/>
+        <context ref="flag"/>
+        <context ref="lib"/>
+        <context ref="exe"/>
+        <context ref="test"/>
+        <context ref="custom"/>
+      </include>
+    </context>
+
+    <context id="lib-field-name" style-ref="field-name">
+      <prefix>^ +</prefix>
+      <suffix>:</suffix>
+      <keyword>build-depends</keyword>
+      <!-- putStrLn $ concatMap (\f -> "      <keyword>" ++ fieldName f ++ "</keyword>\n") libFieldDescrs -->
+      <keyword>exposed-modules</keyword>
+      <keyword>exposed</keyword>
+      <keyword>buildable</keyword>
+      <keyword>build-tools</keyword>
+      <keyword>cpp-options</keyword>
+      <keyword>cc-options</keyword>
+      <keyword>ld-options</keyword>
+      <keyword>pkgconfig-depends</keyword>
+      <keyword>frameworks</keyword>
+      <keyword>c-sources</keyword>
+      <keyword>default-language</keyword>
+      <keyword>other-languages</keyword>
+      <keyword>default-extensions</keyword>
+      <keyword>other-extensions</keyword>
+      <keyword>extensions</keyword>
+      <keyword>extra-libraries</keyword>
+      <keyword>extra-lib-dirs</keyword>
+      <keyword>includes</keyword>
+      <keyword>install-includes</keyword>
+      <keyword>include-dirs</keyword>
+      <keyword>hs-source-dirs</keyword>
+      <keyword>other-modules</keyword>
+      <keyword>ghc-prof-options</keyword>
+      <keyword>ghc-shared-options</keyword>
+      <keyword>ghc-options</keyword>
+      <keyword>hugs-options</keyword>
+      <keyword>nhc98-options</keyword>
+      <keyword>jhc-options</keyword>
+    </context>
+
+    <context id="lib" end-parent="true">
+      <start>^(library)$</start>
+      <include>
+        <context sub-pattern="1" where="start" style-ref="keyword"/>
+        <context ref="line-comment"/>
+        <context ref="lib-field-name"/>
+        <context ref="source-repo"/>
+        <context ref="flag"/>
+        <context ref="exe"/>
+        <context ref="test"/>
+        <context ref="conditional"/>
+        <context ref="custom"/>
+      </include>
+    </context>
+
+    <context id="exe-field-name" style-ref="field-name">
+      <prefix>^ +</prefix>
+      <suffix>:</suffix>
+      <keyword>build-depends</keyword>
+      <!-- putStrLn $ concatMap (\f -> "      <keyword>" ++ fieldName f ++ "</keyword>\n") executableFieldDescrs -->
+      <keyword>executable</keyword>
+      <keyword>main-is</keyword>
+      <keyword>buildable</keyword>
+      <keyword>build-tools</keyword>
+      <keyword>cpp-options</keyword>
+      <keyword>cc-options</keyword>
+      <keyword>ld-options</keyword>
+      <keyword>pkgconfig-depends</keyword>
+      <keyword>frameworks</keyword>
+      <keyword>c-sources</keyword>
+      <keyword>default-language</keyword>
+      <keyword>other-languages</keyword>
+      <keyword>default-extensions</keyword>
+      <keyword>other-extensions</keyword>
+      <keyword>extensions</keyword>
+      <keyword>extra-libraries</keyword>
+      <keyword>extra-lib-dirs</keyword>
+      <keyword>includes</keyword>
+      <keyword>install-includes</keyword>
+      <keyword>include-dirs</keyword>
+      <keyword>hs-source-dirs</keyword>
+      <keyword>other-modules</keyword>
+      <keyword>ghc-prof-options</keyword>
+      <keyword>ghc-shared-options</keyword>
+      <keyword>ghc-options</keyword>
+      <keyword>hugs-options</keyword>
+      <keyword>nhc98-options</keyword>
+      <keyword>jhc-options</keyword>
+    </context>
+
+    <context id="exe" end-parent="true">
+      <start>^(executable) </start>
+      <include>
+        <context sub-pattern="1" where="start" style-ref="keyword"/>
+        <context ref="line-comment"/>
+        <context ref="exe-field-name"/>
+        <context ref="source-repo"/>
+        <context ref="flag"/>
+        <context ref="lib"/>
+        <context ref="exe"/>
+        <context ref="test"/>
+        <context ref="conditional"/>
+        <context ref="custom"/>
+      </include>
+    </context>
+
+    <context id="test-field-name" style-ref="field-name">
+      <prefix>^ +</prefix>
+      <suffix>:</suffix>
+      <keyword>build-depends</keyword>
+      <!-- putStrLn $ concatMap (\f -> "      <keyword>" ++ fieldName f ++ "</keyword>\n") testSuiteFieldDescrs -->
+      <keyword>type</keyword>
+      <keyword>main-is</keyword>
+      <keyword>test-module</keyword>
+      <keyword>buildable</keyword>
+      <keyword>build-tools</keyword>
+      <keyword>cpp-options</keyword>
+      <keyword>cc-options</keyword>
+      <keyword>ld-options</keyword>
+      <keyword>pkgconfig-depends</keyword>
+      <keyword>frameworks</keyword>
+      <keyword>c-sources</keyword>
+      <keyword>default-language</keyword>
+      <keyword>other-languages</keyword>
+      <keyword>default-extensions</keyword>
+      <keyword>other-extensions</keyword>
+      <keyword>extensions</keyword>
+      <keyword>extra-libraries</keyword>
+      <keyword>extra-lib-dirs</keyword>
+      <keyword>includes</keyword>
+      <keyword>install-includes</keyword>
+      <keyword>include-dirs</keyword>
+      <keyword>hs-source-dirs</keyword>
+      <keyword>other-modules</keyword>
+      <keyword>ghc-prof-options</keyword>
+      <keyword>ghc-shared-options</keyword>
+      <keyword>ghc-options</keyword>
+      <keyword>hugs-options</keyword>
+      <keyword>nhc98-options</keyword>
+      <keyword>jhc-options</keyword>
+    </context>
+
+    <context id="test" end-parent="true">
+      <start>^(test-suite) </start>
+      <include>
+        <context sub-pattern="1" where="start" style-ref="keyword"/>
+        <context ref="line-comment"/>
+        <context ref="test-field-name"/>
+        <context ref="source-repo"/>
+        <context ref="flag"/>
+        <context ref="lib"/>
+        <context ref="exe"/>
+        <context ref="test"/>
+        <context ref="conditional"/>
+        <context ref="custom"/>
+      </include>
+    </context>
+
+    <context id="line-comment" style-ref="comment" end-at-line-end="true">
+      <start>--</start>
+      <include>
+        <context ref="def:in-comment"/>
+      </include>
+    </context>
+
+    <context id="cabal">
+      <include>
+        <context ref="line-comment"/>
+        <context ref="package-field-name"/>
+        <context ref="source-repo"/>
+        <context ref="flag"/>
+        <context ref="lib"/>
+        <context ref="exe"/>
+        <context ref="test"/>
+        <context ref="custom"/>
+      </include>
+    </context>
+
+  </definitions>
+</language>
