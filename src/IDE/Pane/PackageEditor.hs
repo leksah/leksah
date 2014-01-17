@@ -1,3 +1,4 @@
+{-# LANGUAGE RecordWildCards #-}
 {-# LANGUAGE FlexibleInstances, ScopedTypeVariables, DeriveDataTypeable,
              CPP, MultiParamTypeClasses, TypeSynonymInstances #-}
 -----------------------------------------------------------------------------
@@ -17,7 +18,9 @@
 
 module IDE.Pane.PackageEditor (
     packageNew'
+,   packageClone
 ,   packageEdit
+,   packageEditText
 ,   choosePackageDir
 ,   choosePackageFile
 
@@ -95,7 +98,7 @@ import Distribution.License
 #endif
 
 import qualified Graphics.UI.Gtk.Gdk.Events as GTK (Event(..))
-import Data.List (sort,nub)
+import Data.List (isPrefixOf, sort, nub)
 import Control.Monad.Trans.Reader (ask)
 import Control.Monad.IO.Class (MonadIO(..))
 import Control.Monad.Trans.Class (lift)
@@ -110,6 +113,17 @@ import Distribution.PackageDescription.Parse
 import Distribution.Version (Version(..), orLaterVersion)
 
 import Text.Printf (printf)
+import Control.Applicative ((<*>), (<$>))
+import qualified Data.Conduit.Util as CU (zipSinks)
+import IDE.Utils.Tool (ToolOutput(..))
+import System.Exit (ExitCode(..))
+import qualified Data.Conduit.List as CL (fold)
+import qualified Data.Conduit as C (Sink)
+import IDE.Utils.ExternalTool (runExternalTool')
+
+-- | Get the last item
+sinkLast = CL.fold (\_ a -> Just a) Nothing
+
 --------------------------------------------------------------------------
 -- Handling of Generic Package Descriptions
 
@@ -185,6 +199,12 @@ packageEdit = do
             return ()
 #endif
 
+packageEditText :: PackageAction
+packageEditText = do
+    idePackage <- ask
+    lift $ fileOpenThis $ ipdCabalFile idePackage
+    return ()
+
 hasConfigs :: GenericPackageDescription -> Bool
 hasConfigs gpd =
     let libConds = case condLibrary gpd of
@@ -215,13 +235,74 @@ hasUnknownTestTypes pd =
     unknown _ = True
 #endif
 
-packageNew' :: Maybe FilePath -> (Bool -> FilePath -> IDEAction) -> IDEAction
-packageNew' mbDir activateAction = do
+data NewPackage = NewPackage {
+    newPackageName :: String,
+    newPackageParentDir :: FilePath,
+    templatePackage :: String}
+
+packageFields :: FilePath -> FieldDescription NewPackage
+packageFields workspaceDir = VFD emptyParams [
+        mkField
+            (paraName <<<- ParaName ((__ "New package name"))
+                    $ emptyParams)
+            newPackageName
+            (\ a b -> b{newPackageName = a})
+            (stringEditor (const True) True),
+        mkField
+            (paraName <<<- ParaName ((__ "Parent directory"))
+                $ paraMinSize <<<- ParaMinSize (-1, 120)
+                    $ emptyParams)
+            (\a -> newPackageParentDir a)
+            (\ a b -> b{newPackageParentDir = a})
+            (fileEditor (Just workspaceDir) FileChooserActionSelectFolder "Select"),
+        mkField
+            (paraName <<<- ParaName ((__ "Existing package to copy"))
+                    $ emptyParams)
+            templatePackage
+            (\ a b -> b{templatePackage = a})
+            (stringEditor (const True) True)]
+
+newPackageDialog :: Window -> FilePath -> IO (Maybe NewPackage)
+newPackageDialog parent workspaceDir = do
+    dia                        <-   dialogNew
+    set dia [ windowTransientFor := parent
+            , windowTitle := (__ "Create New Package") ]
+#ifdef MIN_VERSION_gtk3
+    upper                      <-   dialogGetContentArea dia
+#else
+    upper                      <-   dialogGetUpper dia
+#endif
+    lower                      <-   dialogGetActionArea dia
+    (widget,inj,ext,_)         <-   buildEditor (packageFields workspaceDir)
+                                        (NewPackage "" workspaceDir "hello")
+    bb      <-  hButtonBoxNew
+    closeB  <-  buttonNewFromStock "gtk-cancel"
+    save    <-  buttonNewFromStock "gtk-ok"
+    boxPackEnd bb closeB PackNatural 0
+    boxPackEnd bb save PackNatural 0
+    on save buttonActivated (dialogResponse dia ResponseOk)
+    on closeB buttonActivated (dialogResponse dia ResponseCancel)
+    boxPackStart (castToBox upper) widget PackGrow 7
+    boxPackStart (castToBox lower) bb PackNatural 7
+    set save [widgetCanDefault := True]
+    widgetGrabDefault save
+    widgetShowAll dia
+    resp  <- dialogRun dia
+    value <- ext (NewPackage "" workspaceDir "hello")
+    widgetDestroy dia
+    --find
+    case resp of
+        ResponseOk    -> return value
+        _             -> return Nothing
+
+packageNew' :: FilePath -> C.Sink ToolOutput IDEM () -> (Bool -> FilePath -> IDEAction) -> IDEAction
+packageNew' workspaceDir log activateAction = do
     windows  <- getWindows
-    mbDirName <- liftIO $ choosePackageDir (head windows) mbDir
-    case mbDirName of
+    mbNewPackage <- liftIO $ newPackageDialog (head windows) workspaceDir
+    case mbNewPackage of
         Nothing -> return ()
-        Just dirName -> do
+        Just NewPackage{..} | null templatePackage -> do
+            let dirName = newPackageParentDir </> newPackageName
             mbCabalFile <-  liftIO $ cabalFileName dirName
             window <- getMainWindow
             case mbCabalFile of
@@ -239,6 +320,7 @@ packageNew' mbDir activateAction = do
                         return $ rid == ResponseUser 1
                     when add $ activateAction False cfn
                 Nothing -> do
+                    liftIO $ createDirectoryIfMissing True dirName
                     isEmptyDir <- liftIO $ isEmptyDirectory dirName
                     make <- if isEmptyDir
                         then return True
@@ -254,18 +336,10 @@ packageNew' mbDir activateAction = do
                             widgetDestroy md
                             return $ rid == ResponseUser 1
                     when make $ do
-                        modules <- liftIO $ do
-                            b1 <- doesFileExist (dirName </> "Setup.hs")
-                            b2 <- doesFileExist (dirName </> "Setup.lhs")
-                            if  not (b1 || b2)
-                                then do
-                                    sysMessage Normal (__ "Setup.(l)hs does not exist. Writing Standard")
-                                    writeFile (dirName </> "Setup.lhs") standardSetup
-                                else sysMessage Normal (__ "Setup.(l)hs already exist")
-                            allModules dirName
+                        modules <- liftIO $ allModules dirName
                         let Just initialVersion = simpleParse "0.0.1"
                         editPackage emptyPackageDescription{
-                            package   = PackageIdentifier (PackageName $ takeBaseName dirName)
+                            package   = PackageIdentifier (PackageName newPackageName)
                                                           initialVersion,
                             buildType = Just Simple,
 #if MIN_VERSION_Cabal(1,10,0)
@@ -275,13 +349,13 @@ packageNew' mbDir activateAction = do
                                 Dependency (PackageName "base") anyVersion
                               , Dependency (PackageName "QuickCheck") anyVersion],
                             executables = [emptyExecutable {
-                                exeName    = (takeBaseName dirName)
+                                exeName    = newPackageName
                               , modulePath = "Main.hs"
                               , buildInfo  = emptyBuildInfo {
                                     hsSourceDirs = ["src"]}}]
 #if MIN_VERSION_Cabal(1,10,0)
                               , testSuites = [emptyTestSuite {
-                                    testName = "test-" ++ takeBaseName dirName
+                                    testName = "test-" ++ newPackageName
                                   , testInterface = (TestSuiteExeV10 (Version [1,0] []) "Main.hs")
                                   , testBuildInfo = emptyBuildInfo {
                                         hsSourceDirs = ["src"]
@@ -289,12 +363,117 @@ packageNew' mbDir activateAction = do
 #endif
                             } dirName modules (activateAction True)
                     return ()
+        Just NewPackage{..} -> cabalUnpack newPackageParentDir templatePackage False (Just newPackageName) log (activateAction False)
 
 standardSetup = "#!/usr/bin/runhaskell \n"
                     ++ "> module Main where\n"
                     ++ "> import Distribution.Simple\n"
                     ++ "> main :: IO ()\n"
                     ++ "> main = defaultMain\n\n"
+
+data ClonePackageSourceRepo = ClonePackageSourceRepo {
+    packageToClone :: String,
+    cloneParentDir :: FilePath}
+
+cloneFields :: FilePath -> FieldDescription ClonePackageSourceRepo
+cloneFields workspaceDir = VFD emptyParams [
+        mkField
+            (paraName <<<- ParaName ((__ "Existing package to clone source repository"))
+                    $ emptyParams)
+            packageToClone
+            (\ a b -> b{packageToClone = a})
+            (stringEditor (const True) True),
+        mkField
+            (paraName <<<- ParaName ((__ "Parent directory"))
+                $ paraMinSize <<<- ParaMinSize (-1, 120)
+                    $ emptyParams)
+            (\a -> cloneParentDir a)
+            (\ a b -> b{cloneParentDir = a})
+            (fileEditor (Just workspaceDir) FileChooserActionSelectFolder "Select")]
+
+clonePackageSourceDialog :: Window -> FilePath -> IO (Maybe ClonePackageSourceRepo)
+clonePackageSourceDialog parent workspaceDir = do
+    dia                        <-   dialogNew
+    set dia [ windowTransientFor := parent
+            , windowTitle := (__ "Clone Package") ]
+#ifdef MIN_VERSION_gtk3
+    upper                      <-   dialogGetContentArea dia
+#else
+    upper                      <-   dialogGetUpper dia
+#endif
+    lower                      <-   dialogGetActionArea dia
+    (widget,inj,ext,_)         <-   buildEditor (cloneFields workspaceDir)
+                                        (ClonePackageSourceRepo "" workspaceDir)
+    bb      <-  hButtonBoxNew
+    closeB  <-  buttonNewFromStock "gtk-cancel"
+    save    <-  buttonNewFromStock "gtk-ok"
+    boxPackEnd bb closeB PackNatural 0
+    boxPackEnd bb save PackNatural 0
+    on save buttonActivated (dialogResponse dia ResponseOk)
+    on closeB buttonActivated (dialogResponse dia ResponseCancel)
+    boxPackStart (castToBox upper) widget PackGrow 7
+    boxPackStart (castToBox lower) bb PackNatural 7
+    set save [widgetCanDefault := True]
+    widgetGrabDefault save
+    widgetShowAll dia
+    resp  <- dialogRun dia
+    value <- ext (ClonePackageSourceRepo "" workspaceDir)
+    widgetDestroy dia
+    --find
+    case resp of
+        ResponseOk    -> return value
+        _             -> return Nothing
+
+packageClone :: FilePath -> C.Sink ToolOutput IDEM () -> (FilePath -> IDEAction) -> IDEAction
+packageClone workspaceDir log activateAction = do
+    windows  <- getWindows
+    mbResult <- liftIO $ clonePackageSourceDialog (head windows) workspaceDir
+    case mbResult of
+        Nothing -> return ()
+        Just ClonePackageSourceRepo{..} -> cabalUnpack cloneParentDir packageToClone True Nothing log activateAction
+
+cabalUnpack :: FilePath -> String -> Bool -> Maybe String -> C.Sink ToolOutput IDEM () -> (FilePath -> IDEAction) -> IDEAction
+cabalUnpack parentDir packageToUnpack sourceRepo mbNewName log activateAction = do
+    let tempDir = parentDir </> (packageToUnpack ++ ".leksah.temp")
+    liftIO $ do
+        oldDirExists <- doesDirectoryExist tempDir
+        when oldDirExists $ removeDirectoryRecursive tempDir
+        createDirectory tempDir
+    runExternalTool' (__ "Unpacking") "cabal" (["unpack"]
+              ++ (if sourceRepo then ["--source-repository"] else [])
+              ++ ["--destdir=" ++ tempDir, packageToUnpack]) tempDir $ do
+        (mbLastOutput, _) <- CU.zipSinks sinkLast log
+        case mbLastOutput of
+            Just (ToolExit ExitSuccess) -> do
+                contents <- liftIO $ getDirectoryContents tempDir
+                case filter (not . isPrefixOf ".") contents of
+                    [] -> do
+                        liftIO $ removeDirectoryRecursive tempDir
+                        lift $ ideMessage High $ "Nothing found in " ++ tempDir ++ " after doing a cabal unpack."
+                    [repoName] -> do
+                        let destDir = parentDir </> (fromMaybe repoName mbNewName)
+                        exists <- liftIO $ (||) <$> doesDirectoryExist destDir <*> doesFileExist destDir
+                        if exists
+                            then lift $ ideMessage High $ destDir ++ " already exists"
+                            else do
+                                liftIO $ renameDirectory (tempDir </> repoName) destDir
+                                mbCabalFile <- liftIO $ cabalFileName destDir
+                                window <- lift $ getMainWindow
+                                lift $ case (mbCabalFile, mbNewName) of
+                                    (Just cfn, Just newName) -> do
+                                        let newCfn = takeDirectory cfn </> newName ++ ".cabal"
+                                        when (cfn /= newCfn) . liftIO $ renameFile cfn newCfn
+                                        activateAction newCfn
+                                    (Just cfn, _) -> activateAction cfn
+                                    _  -> ideMessage High $ "Unpacked source reposity to " ++ destDir ++ " but it does not contain a .cabal file in the root directory."
+                        liftIO $ removeDirectoryRecursive tempDir
+                    _ -> do
+                        liftIO $ removeDirectoryRecursive tempDir
+                        lift $ ideMessage High $ "More than one subdirectory found in " ++ tempDir ++ " after doing a cabal unpack."
+
+            _ -> do
+                liftIO $ removeDirectoryRecursive tempDir
+                lift $ ideMessage High $ "Failed to unpack source reposity to " ++ tempDir
 
 --  ---------------------------------------------------------------------
 --  | We do some twist for handling build infos seperately to edit them in one editor together

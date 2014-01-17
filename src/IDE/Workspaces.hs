@@ -26,6 +26,7 @@ module IDE.Workspaces (
 ,   workspaceAddPackage'
 ,   workspaceRemovePackage
 ,   workspacePackageNew
+,   workspacePackageClone
 ,   workspaceTryQuiet
 ,   workspaceNewHere
 ,   packageTry
@@ -59,7 +60,7 @@ import Graphics.UI.Gtk
        (dialogSetDefaultResponse, windowWindowPosition, widgetDestroy,
         dialogRun, messageDialogNew, dialogAddButton, Window(..),
         widgetHide, DialogFlags(..))
-import IDE.Pane.PackageEditor (packageNew', choosePackageFile, standardSetup)
+import IDE.Pane.PackageEditor (packageNew', packageClone, choosePackageFile, standardSetup)
 import Data.List (delete)
 import IDE.Package
        (getModuleTemplate, getPackageDescriptionAndPath, activatePackage,
@@ -92,6 +93,7 @@ import Text.Printf (printf)
 import System.Log.Logger (debugM)
 import Data.Maybe (catMaybes)
 import IDE.Pane.Log (showDefaultLogLaunch', getLog)
+import IDE.LogRef (logOutputDefault)
 
 -- | Constructs a new workspace and makes it the current workspace
 workspaceNew :: IDEAction
@@ -232,16 +234,26 @@ workspaceClose = do
             return ()
     return ()
 
+
 workspacePackageNew :: WorkspaceAction
 workspacePackageNew = do
     ws <- ask
     let path = dropFileName (wsFile ws)
-    lift $ packageNew' (Just path) (\isNew fp -> do
+    lift $ packageNew' path logOutputDefault (\isNew fp -> do
         window     <-  getMainWindow
         workspaceTry $ workspaceAddPackage' fp >> return ()
         when isNew $ do
             mbPack <- idePackageFromPath fp
             constructAndOpenMainModule mbPack
+        triggerEventIDE UpdateWorkspaceInfo >> return ())
+
+workspacePackageClone :: WorkspaceAction
+workspacePackageClone = do
+    ws <- ask
+    let path = dropFileName (wsFile ws)
+    lift $ packageClone path logOutputDefault (\fp -> do
+        window     <-  getMainWindow
+        workspaceTry $ workspaceAddPackage' fp >> return ()
         triggerEventIDE UpdateWorkspaceInfo >> return ())
 
 constructAndOpenMainModule :: Maybe IDEPackage -> IDEAction
@@ -281,12 +293,6 @@ workspaceAddPackage' fp = do
     mbPack <- lift $ idePackageFromPath cfp
     case mbPack of
         Just pack -> do
-            let dir = takeDirectory cfp
-            b1 <- liftIO $ doesFileExist (dir </> "Setup.hs")
-            b2 <- liftIO $ doesFileExist (dir </> "Setup.lhs")
-            unless (b1 || b2) $ liftIO $ do
-                sysMessage Normal (__ "Setup.(l)hs does not exist. Writing Standard")
-                writeFile (dir </> "Setup.lhs") standardSetup
             unless (elem cfp (map ipdCabalFile (wsPackages ws))) $ lift $
                 Writer.writeWorkspace $ ws {wsPackages =  pack : wsPackages ws,
                                      wsActivePackFile =  Just (ipdCabalFile pack),

@@ -59,8 +59,12 @@
     <menu name="_Package" action="Package">
        <menuitem name="_New..." action="NewPackage" />
        <menuitem name="_Add..." action="AddPackage" />
-       <menuitem name="_Edit" action="EditPackage" />
-       <menuitem name="Edit _Flags" action="PackageFlags" />
+       <menuitem name="_Add From Source Repository..." action="ClonePackage" />
+       <menu name="_Edit" action="PackageEdit">
+          <menuitem name="With _Package Editor" action="EditPackage" />
+          <menuitem name="With _Text Editor" action="EditPackageText" />
+          <menuitem name="Configuration _Flags" action="PackageFlags" />
+        </menu>
        <separator/>
        <menuitem name="Clea_n" action="CleanPackage" />
        <menuitem name="_Configure" action="ConfigPackage" />

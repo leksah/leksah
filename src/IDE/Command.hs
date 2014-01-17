@@ -227,13 +227,18 @@ mkActions =
         (showWorkspace >> workspaceTry workspacePackageNew) [] False
     ,AD "AddPackage" (__ "_Add...") Nothing Nothing
         (showWorkspace >> workspaceTry workspaceAddPackage) [] False
+    ,AD "ClonePackage" (__ "Add From Source _Repository...") Nothing Nothing
+        (showWorkspace >> workspaceTry workspacePackageClone) [] False
 --    ,AD "RecentPackages" "_Recent Packages" Nothing Nothing (return ()) [] False
-    ,AD "EditPackage" (__ "_Edit") Nothing Nothing
+    ,AD "PackageEdit" (__ "_Edit") Nothing Nothing (return ()) [] False
+    ,AD "EditPackage" (__ "With _Package Editor") Nothing Nothing
         (packageTry packageEdit) [] False
+    ,AD "EditPackageText" (__ "With _Text Editor") Nothing Nothing
+        (packageTry packageEditText) [] False
 --    ,AD "RemovePackage" "_Close Package" Nothing Nothing
 --        removePackage [] False
 
-    ,AD "PackageFlags" (__ "Edit Flags") (Just (__ "Edit the package flags")) Nothing
+    ,AD "PackageFlags" (__ "Configuration Flags") (Just (__ "Edit the package configuratin flags used")) Nothing
         (getFlags Nothing >>= \ p -> displayPane p False) [] False
     ,AD "CleanPackage" (__ "Cl_ean") (Just (__ "Cleans the package")) (Just "ide_clean")
         (packageTry packageClean) [] False

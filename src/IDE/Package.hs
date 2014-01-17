@@ -116,6 +116,7 @@ import Text.Printf (printf)
 import System.Log.Logger (debugM)
 import System.Process.Vado (getMountPoint, vado, readSettings)
 import qualified Data.Text as T (pack, isInfixOf)
+import IDE.Utils.ExternalTool (runExternalTool', runExternalTool, isRunning, interruptBuild)
 
 -- | Get the last item
 sinkLast = CL.fold (\_ a -> Just a) Nothing
@@ -190,7 +191,7 @@ packageConfig' package continuation = do
             case mbPack of
                 Just pack -> do
                     changePackage pack
-                    postSyncIDE . triggerEventIDE $ WorkspaceChanged False True
+                    triggerEventIDE $ WorkspaceChanged False True
                     continuation (mbLastOutput == Just (ToolExit ExitSuccess))
                     return ()
                 Nothing -> do
@@ -476,56 +477,6 @@ packageOpenDoc = do
       `catchIDE`
         (\(e :: SomeException) -> putStrLn (show e))
 
-runExternalTool' :: String
-                -> FilePath
-                -> [String]
-                -> FilePath
-                -> C.Sink ToolOutput IDEM ()
-                -> IDEAction
-runExternalTool' description executable args dir handleOutput = do
-        runExternalTool (do
-                            run <- isRunning
-                            return (not run))
-                        (\_ -> return ())
-                        description
-                        executable
-                        args
-                        dir
-                        handleOutput
-        return()
-
-runExternalTool :: IDEM Bool
-                -> (ProcessHandle -> IDEAction)
-                -> String
-                -> FilePath
-                -> [String]
-                -> FilePath
-                -> C.Sink ToolOutput IDEM ()
-                -> IDEAction
-runExternalTool runGuard pidHandler description executable args dir handleOutput  = do
-        prefs <- readIDE prefs
-        run <- runGuard
-        when run $ do
-            when (saveAllBeforeBuild prefs) (do fileSaveAll belongsToWorkspace; return ())
-            triggerEventIDE (StatusbarChanged [CompartmentState description, CompartmentBuild True])
-            reifyIDE $ \ideR -> forkIO $ do
-                -- If vado is enabled then look up the mount point and transform
-                -- the execuatble to "ssh" and the arguments
-                mountPoint <- if useVado prefs then getMountPoint dir else return $ Right ""
-                (executable', args') <- case mountPoint of
-                                            Left mp -> do
-                                                s <- readSettings
-                                                a <- vado mp s dir [] executable args
-                                                return ("ssh", a)
-                                            _ -> return (executable, args)
-                -- Run the tool
-                (output, pid) <- runTool executable' args' (Just dir)
-                reflectIDE (do
-                    pidHandler pid
-                    modifyIDE_ (\ide -> ide{runningTool = Just pid})
-                    output $$ handleOutput) ideR
-            return ()
-
 
 runPackage ::  (ProcessHandle -> IDEAction)
             -> String
@@ -536,25 +487,6 @@ runPackage ::  (ProcessHandle -> IDEAction)
             -> IDEAction
 runPackage = runExternalTool (return True) -- TODO here one could check if package to be run is building/configuring/etc atm
 
-
--- ---------------------------------------------------------------------
--- | Handling of Compiler errors
---
-isRunning :: IDEM Bool
-isRunning = do
-    maybeProcess <- readIDE runningTool
-    liftIO $ do
-        case maybeProcess of
-            Just process -> do
-                isNothing <$> getProcessExitCode process
-            Nothing -> return False
-
-interruptBuild :: IDEAction
-interruptBuild = do
-    maybeProcess <- readIDE runningTool
-    liftIO $ case maybeProcess of
-        Just h -> interruptProcessGroupOf h
-        _ -> return ()
 
 -- ---------------------------------------------------------------------
 -- | * Utility functions/procedures, that have to do with packages

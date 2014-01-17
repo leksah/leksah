@@ -4,7 +4,7 @@ cabal-version: >=1.10
 build-type: Simple
 license: GPL
 license-file: LICENSE
-copyright: 2007-2013 Juergen Nicklisch-Franken, Hamish Mackenzie
+copyright: 2007-2014 Juergen Nicklisch-Franken, Hamish Mackenzie
 maintainer: maintainer@leksah.org
 stability: provisional
 homepage: http://www.leksah.org
@@ -283,6 +283,7 @@ library
         IDE.TextEditor.CodeMirror
         IDE.TextEditor.Yi
         IDE.TextEditor.GtkSourceView
+        IDE.Utils.ExternalTool
 
     other-modules:
         Distribution.PackageDescription.PrettyPrintCopied
