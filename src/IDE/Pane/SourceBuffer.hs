@@ -460,7 +460,7 @@ builder' bs mbfn ind bn rbn ct prefs pp nb windows = do
         setIndentWidth sv $ tabWidth prefs
         setTabWidth sv $ 8 -- GHC treats tabs as 8 we should display them that way
         drawTabs sv
-        preferDark <- readIDE isDark
+        preferDark <- getDarkState
         setStyle preferDark buffer $ case sourceStyle prefs of
                             (False,_) -> Nothing
                             (True,v) -> Just v

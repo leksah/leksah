@@ -22,6 +22,10 @@ module IDE.Utils.GUIUtils (
 
 ,   getCandyState
 ,   setCandyState
+,   getFullScreenState
+,   setFullScreenState
+,   getDarkState
+,   setDarkState
 ,   getForgetSession
 
 ,   getBackgroundBuildToggled
@@ -171,6 +175,26 @@ getCandyState = do
 setCandyState :: PaneMonad alpha => Bool -> alpha ()
 setCandyState b = do
     ui <- getUIAction "ui/menubar/_Configuration/Source Candy" castToToggleAction
+    liftIO $toggleActionSetActive ui b
+
+getFullScreenState :: PaneMonad alpha => alpha Bool
+getFullScreenState = do
+    ui <- getUIAction "ui/menubar/_View/_Full Screen" castToToggleAction
+    liftIO $toggleActionGetActive ui
+
+setFullScreenState :: PaneMonad alpha => Bool -> alpha ()
+setFullScreenState b = do
+    ui <- getUIAction "ui/menubar/_View/_Full Screen" castToToggleAction
+    liftIO $toggleActionSetActive ui b
+
+getDarkState :: PaneMonad alpha => alpha Bool
+getDarkState = do
+    ui <- getUIAction "ui/menubar/_View/Dark" castToToggleAction
+    liftIO $toggleActionGetActive ui
+
+setDarkState :: PaneMonad alpha => Bool -> alpha ()
+setDarkState b = do
+    ui <- getUIAction "ui/menubar/_View/Dark" castToToggleAction
     liftIO $toggleActionSetActive ui b
 
 getForgetSession :: PaneMonad alpha => alpha  (Bool)

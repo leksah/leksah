@@ -31,6 +31,7 @@ import Control.Monad.Trans.Reader (ask)
 import qualified Control.Monad.Reader as Gtk (liftIO)
 import Control.Monad.Trans.Class (MonadTrans(..))
 import Control.Applicative ((<$>))
+import IDE.Utils.GUIUtils (getDarkState)
 
 complete :: TextEditor editor => EditorView editor -> Bool -> IDEAction
 complete sourceView always = do
@@ -136,7 +137,7 @@ initCompletion sourceView always = do
 
             descriptionBuffer <- newDefaultBuffer Nothing ""
             descriptionView   <- newView descriptionBuffer (textviewFont prefs)
-            preferDark <- readIDE isDark
+            preferDark <- getDarkState
             setStyle preferDark descriptionBuffer $ case sourceStyle prefs of
                                             (False,_) -> Nothing
                                             (True,v) -> Just v

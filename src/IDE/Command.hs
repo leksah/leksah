@@ -115,7 +115,7 @@ import Foreign.C.Types (CInt(..))
 import Foreign.Ptr (Ptr(..))
 import Foreign.ForeignPtr (withForeignPtr)
 import Graphics.UI.GtkInternals (unToolbar)
-import IDE.Session (viewFullScreen, viewExitFullScreen, viewDark, viewLight)
+import IDE.Session (viewFullScreen, viewDark)
 import qualified Data.Text as T (pack)
 
 foreign import ccall safe "gtk_toolbar_set_icon_size"
@@ -404,13 +404,9 @@ mkActions =
     ,AD "ViewDetach" (__ "_Detach") Nothing Nothing
         viewDetachInstrumented [] False
     ,AD "ViewFullScreen" (__ "_Full Screen") Nothing Nothing
-        viewFullScreen [] False
-    ,AD "ViewExitFullScreen" (__ "_Exit Full Screen") Nothing Nothing
-        viewExitFullScreen [] False
+        viewFullScreen [] True
     ,AD "ViewDark" (__ "Dark") Nothing Nothing
-        viewDark [] False
-    ,AD "ViewLight" (__ "Light") Nothing Nothing
-        viewLight [] False
+        viewDark [] True
 
     ,AD "ViewTabsLeft" (__ "Tabs Left") Nothing Nothing
         (viewTabsPos PosLeft) [] False

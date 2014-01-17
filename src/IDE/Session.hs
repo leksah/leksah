@@ -23,9 +23,7 @@ module IDE.Session (
 ,   loadSession
 ,   loadSessionPrompt
 ,   viewFullScreen
-,   viewExitFullScreen
 ,   viewDark
-,   viewLight
 ) where
 
 import Prelude hiding (catch)
@@ -367,8 +365,8 @@ saveSessionAs sessionPath mbSecondPath = do
             layout          <-  mkLayout
             population      <-  getPopulation
             size            <-  liftIO $ windowGetSize wdw
-            fullScreen      <-  readIDE isFullScreen
-            dark            <-  readIDE isDark
+            fullScreen      <-  getFullScreenState
+            dark            <-  getDarkState
             (completionSize,_) <- readIDE completion
             mbWs            <-  readIDE workspace
             activePane'     <-  getActivePane
@@ -577,10 +575,10 @@ recoverSession sessionPath = catchIDE (do
         setCompletionSize (completionSize sessionSt)
         modifyIDE_ (\ide -> ide{recentFiles = recentOpenedFiles sessionSt,
                                         recentWorkspaces = recentOpenedWorksp sessionSt})
-        if (fullScreen sessionSt)
-            then viewFullScreen
-            else viewExitFullScreen
-        setDark (dark sessionSt)
+        setFullScreenState (fullScreen sessionSt)
+        viewFullScreen
+        setDarkState (dark sessionSt)
+        viewDark
         liftIO $ debugM "leksah" "recoverSession done"
         return (toolbarVisibleS sessionSt, (fst . findbarState) sessionSt))
         (\ (e :: SomeException) -> do
@@ -647,25 +645,16 @@ setCurrentPages layout = setCurrentPages' layout []
 
 viewFullScreen :: IDEAction
 viewFullScreen = do
-    modifyIDE_(\ide -> ide {isFullScreen = True})
+    isFullScreen <- getFullScreenState
     mbWindow <- getActiveWindow
-    case mbWindow of
-        Nothing -> return ()
-        Just window -> liftIO $ windowFullscreen window
-
-viewExitFullScreen :: IDEAction
-viewExitFullScreen = do
-    modifyIDE_(\ide -> ide {isFullScreen = False})
-    mbWindow <- getActiveWindow
-    case mbWindow of
-        Nothing -> return ()
-        Just window -> liftIO $ windowUnfullscreen window
+    case (mbWindow, isFullScreen) of
+        (Nothing, _)         -> return ()
+        (Just window, True)  -> liftIO $ windowFullscreen window
+        (Just window, False) -> liftIO $ windowUnfullscreen window
 
 viewDark :: IDEAction
-viewDark = setDark True
-
-viewLight :: IDEAction
-viewLight = setDark False
+viewDark = do
+    getDarkState >>= setDark
 
 #ifdef MIN_VERSION_gtk3
 getActiveSettings :: PaneMonad alpha => alpha (Maybe Settings)
@@ -678,7 +667,6 @@ getActiveSettings = do
 
 setDark :: Bool -> IDEM ()
 setDark dark = do
-    modifyIDE_(\ide -> ide {isDark = dark})
     setInfoStyle
     prefs <- readIDE prefs
     buffers <- allBuffers

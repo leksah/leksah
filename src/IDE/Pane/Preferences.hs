@@ -337,7 +337,7 @@ prefsDescription configDir packages = NFDPP [
             (\mbs -> do
                 setInfoStyle
                 buffers <- allBuffers
-                preferDark <- readIDE isDark
+                preferDark <- getDarkState
                 mapM_ (\(IDEBuffer {sourceView = sv}) -> do
                     ebuf <- getBuffer sv
                     setStyle preferDark ebuf (case mbs of

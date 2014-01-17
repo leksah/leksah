@@ -72,6 +72,7 @@ F3                          ->          EditFindNext     "Find the next occurenc
                         ->          ViewTabsUp      "Shows the tabs of the current notebook on the top"
                         ->          ViewTabsDown    "Shows the tabs of the current notebook on the bottom"
                         ->          ViewSwitchTabs  "Switches if tabs for the current notebook are visible"
+<ctrl><shift>f          ->          ViewFullScreen  "Toggle fullscreen mode"
 <ctrl>t                 ->          ToggleToolbar
                         ->          HelpDebug
                         ->          HelpAbout

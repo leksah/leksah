@@ -35,7 +35,7 @@ import IDE.Core.State
 import IDE.SymbolNavigation
 import IDE.Pane.SourceBuffer
 import IDE.TextEditor (newDefaultBuffer, TextEditor(..), EditorView(..))
-import IDE.Utils.GUIUtils (openBrowser, __)
+import IDE.Utils.GUIUtils (getDarkState, openBrowser, __)
 import Control.Monad.IO.Class (MonadIO(..))
 import Control.Monad.Reader.Class (MonadReader(..))
 import Graphics.UI.Gtk
@@ -77,7 +77,7 @@ instance RecoverablePane IDEInfo InfoState IDEM where
         descriptionBuffer <- newDefaultBuffer Nothing ""
         descriptionView   <- newView descriptionBuffer (textviewFont prefs)
 
-        preferDark <- readIDE isDark
+        preferDark <- getDarkState
         setStyle preferDark descriptionBuffer $ case sourceStyle prefs of
                                         (False,_) -> Nothing
                                         (True,v) -> Just v
@@ -148,7 +148,7 @@ setInfoStyle = getPane >>= setInfoStyle'
     setInfoStyle' Nothing = return ()
     setInfoStyle' (Just IDEInfo{..}) = do
         prefs <- readIDE prefs
-        preferDark <- readIDE isDark
+        preferDark <- getDarkState
         buffer <- getBuffer descriptionView
         setStyle preferDark buffer $ case sourceStyle prefs of
                                     (False,_) -> Nothing
