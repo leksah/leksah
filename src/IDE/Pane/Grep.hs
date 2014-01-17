@@ -107,14 +107,12 @@ instance RecoverablePane IDEGrep GrepState IDEM where
         treeViewSetModel treeView grepStore
 
         renderer1    <- cellRendererTextNew
-        renderer10   <- cellRendererPixbufNew
         col1         <- treeViewColumnNew
         treeViewColumnSetTitle col1 (__ "File")
         treeViewColumnSetSizing col1 TreeViewColumnAutosize
         treeViewColumnSetResizable col1 True
         treeViewColumnSetReorderable col1 True
         treeViewAppendColumn treeView col1
-        cellLayoutPackStart col1 renderer10 False
         cellLayoutPackStart col1 renderer1 True
         cellLayoutSetAttributes col1 renderer1 grepStore
             $ \row -> [ cellText := file row]
@@ -131,14 +129,12 @@ instance RecoverablePane IDEGrep GrepState IDEM where
             $ \row -> [ cellText := show $ line row]
 
         renderer3    <- cellRendererTextNew
-        renderer30   <- cellRendererPixbufNew
         col3         <- treeViewColumnNew
         treeViewColumnSetTitle col3 (__ "Context")
         treeViewColumnSetSizing col3 TreeViewColumnAutosize
         treeViewColumnSetResizable col3 True
         treeViewColumnSetReorderable col3 True
         treeViewAppendColumn treeView col3
-        cellLayoutPackStart col3 renderer30 False
         cellLayoutPackStart col3 renderer3 True
         cellLayoutSetAttributes col3 renderer3 grepStore
             $ \row -> [ cellText := context row]
