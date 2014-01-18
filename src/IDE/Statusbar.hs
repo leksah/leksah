@@ -17,11 +17,8 @@ module IDE.Statusbar (
 ,   buildStatusbar
 ) where
 import IDE.Core.State
-    (getMainWindow,
-     widgetGet,
-     PaneMonad(..),
-     IDEAction(..),
-     StatusbarCompartment(..))
+       (postAsyncIDE, getMainWindow, widgetGet, PaneMonad(..),
+        IDEAction(..), StatusbarCompartment(..))
 import Graphics.UI.Gtk
     (windowTitle,
      castToStatusbar,
@@ -51,7 +48,7 @@ import Control.Monad.IO.Class (MonadIO(..))
 
 
 changeStatusbar :: [StatusbarCompartment] -> IDEAction
-changeStatusbar = mapM_ changeStatusbar'
+changeStatusbar = postAsyncIDE . mapM_ changeStatusbar'
     where
     changeStatusbar' (CompartmentCommand accStr) =  do
         sb <- getSBSpecialKeys

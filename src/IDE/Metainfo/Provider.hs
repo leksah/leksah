@@ -91,16 +91,13 @@ initInfo continuation = do
             callCollector False True True $ \ _ -> do
                 ideMessage Normal "Now loading metadata ..."
                 loadSystemInfo
-                ideMessage Normal "Now updating workspace metadata ..."
                 updateWorkspaceInfo' False $ \ _ -> do
-                    ideMessage Normal "Finished"
                     triggerEventIDE (InfoChanged True) >> return ()
 
                     trace "blah" $ continuation
         else do
             ideMessage Normal "Now loading metadata ..."
             loadSystemInfo
-            ideMessage Normal "Now updating workspace metadata ..."
             updateWorkspaceInfo' False $ \ _ -> do
                 ideMessage Normal "Finished"
                 triggerEventIDE (InfoChanged True) >> return ()
@@ -154,6 +151,7 @@ loadSystemInfo = do
 --
 updateSystemInfo' :: Bool -> (Bool -> IDEAction) -> IDEAction
 updateSystemInfo' rebuild continuation = do
+    ideMessage Normal "Now updating system metadata ..."
     wi              <-  getSystemInfo
     case wi of
         Nothing -> loadSystemInfo
@@ -178,6 +176,7 @@ updateSystemInfo' rebuild continuation = do
                                                 (Map.elems psmap3)
                         modifyIDE_ (\ide -> ide{systemInfo = Just (GenScopeC (addOtherToScope scope False))})
                         continuation True
+    ideMessage Normal "Finished updating system metadata"
 
 getEmptyDefaultScope :: Map String [Descr]
 getEmptyDefaultScope = symEmpty
@@ -197,6 +196,7 @@ rebuildSystemInfo' continuation = do
 
 updateWorkspaceInfo' :: Bool -> (Bool -> IDEAction) -> IDEAction
 updateWorkspaceInfo' rebuild continuation = do
+    postAsyncIDE $ ideMessage Normal "Now updating workspace metadata ..."
     mbWorkspace         <- readIDE workspace
     systemInfo'         <- getSystemInfo
     case mbWorkspace of
@@ -248,6 +248,7 @@ updateWorkspaceInfo' rebuild continuation = do
                                                             GenScopeC(addOtherToScope scope2 False))})
                             _    -> modifyIDE_ (\ide -> ide{packageInfo = Nothing})
                 continuation True
+    postAsyncIDE $ ideMessage Normal "Finished updating workspace metadata"
 
 updatePackageInfos :: Bool -> [IDEPackage] -> (Bool -> [PackageDescr] -> IDEAction) -> IDEAction
 updatePackageInfos rebuild packs conts = updatePackageInfos' [] rebuild packs conts

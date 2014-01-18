@@ -227,8 +227,9 @@ sysMessage ml str = liftIO $ do
 
 ideMessage :: MessageLevel -> String -> IDEAction
 ideMessage level str = do
-    triggerEventIDE (LogMessage (str ++ "\n") LogTag)
     liftIO $ sysMessage level str
+    triggerEventIDE (LogMessage (str ++ "\n") LogTag)
+    return ()
 
 logMessage :: String -> LogTag -> IDEAction
 logMessage str tag = do

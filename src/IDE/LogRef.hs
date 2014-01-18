@@ -428,9 +428,7 @@ logOutputLines :: LogLaunch -- ^ logLaunch
 logOutputLines logLaunch lineLogger = do
     log :: Log.IDELog <- lift $ postSyncIDE Log.getLog
     results <- (CL.mapM $ postSyncIDE . lineLogger log logLaunch) =$ CL.consume
-    lift . postAsyncIDE $ do
-        triggerEventIDE (StatusbarChanged [CompartmentState "", CompartmentBuild False])
-        return ()
+    lift $ triggerEventIDE (StatusbarChanged [CompartmentState "", CompartmentBuild False])
     return results
 
 logOutputLines_ :: LogLaunch
