@@ -238,7 +238,7 @@ mkActions =
 --    ,AD "RemovePackage" "_Close Package" Nothing Nothing
 --        removePackage [] False
 
-    ,AD "PackageFlags" (__ "Configuration Flags") (Just (__ "Edit the package configuratin flags used")) Nothing
+    ,AD "PackageFlags" (__ "Package Flags") (Just (__ "Edit the package flags used")) Nothing
         (getFlags Nothing >>= \ p -> displayPane p False) [] False
     ,AD "CleanPackage" (__ "Cl_ean") (Just (__ "Cleans the package")) (Just "ide_clean")
         (packageTry packageClean) [] False
@@ -858,10 +858,12 @@ registerLeksahEvents =    do
     defaultLogLaunch <- getDefaultLogLaunch
     registerEvent stRef "LogMessage"
         (\e@(LogMessage s t)      -> do
-                                    log <- getLog
-                                    defaultLogLaunch <- getDefaultLogLaunch
-                                    liftIO $ appendLog log defaultLogLaunch (T.pack s) t
-                                    return e)
+            postAsyncIDE $ do
+                log <- getLog
+                defaultLogLaunch <- getDefaultLogLaunch
+                liftIO $ appendLog log defaultLogLaunch (T.pack s) t
+                return ()
+            return e)
     registerEvent stRef "SelectInfo"
         (\ e@(SelectInfo str gotoSource)     -> setSymbol str gotoSource >> return e)
     registerEvent stRef "SelectIdent"
