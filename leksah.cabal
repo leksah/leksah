@@ -179,7 +179,7 @@ flag dyre
 
 flag threaded
     description: Build with support for multithreaded execution
-    default: True
+    default: False
 
 flag gtk3
     Description: Use GTK3 rather than GTK2
@@ -313,7 +313,7 @@ Executable leksah
         ghc-options: -threaded
 
     hs-source-dirs: main
-    build-depends: leksah == 0.13.2.8, base >= 4.0.0.0 && <=4.8
+    build-depends: leksah == 0.13.2.8, base >= 4.0.0.0 && <=4.8, gtk3 -any
     if os(linux) && flag(loc)
         cpp-options: -DLOCALIZATION
         build-depends: hgettext, setlocale

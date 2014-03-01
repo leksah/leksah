@@ -212,7 +212,6 @@ startGUI yiConfig sessionFP mbWorkspaceFP sourceFPs iprefs isFirstStart = do
     st          <-  unsafeInitGUIForThreadedRTS
     when rtsSupportsBoundThreads
         (sysMessage Normal "Linked with -threaded")
-    timeoutAddFull (yield >> return True) priorityHigh 10
     postGUIAsync $ do
         mapM_ (sysMessage Normal) st
         initGtkRc
@@ -231,9 +230,37 @@ startGUI yiConfig sessionFP mbWorkspaceFP sourceFPs iprefs isFirstStart = do
             Nothing           -> return ()
             Just startupPrefs -> startMainWindow yiControl sessionFP mbWorkspaceFP sourceFPs
                                     startupPrefs isFirstStart
+    unless rtsSupportsBoundThreads $ postGUIAsync mainLoop
     debugM "leksah" "starting mainGUI"
     mainGUI
     debugM "leksah" "finished mainGUI"
+
+mainLoop :: IO ()
+mainLoop = eventsPending >>= loop 50
+  where
+    loop :: Int -> Int -> IO ()
+    loop delay n = do
+        quit <- loopn (n+2)
+        if quit
+            then return ()
+            else do
+                yield
+                pending <- eventsPending
+                if pending > 0
+                    then do
+                        loop 50 pending
+                    else do
+                        threadDelay delay
+                        eventsPending >>= loop (if n > 0
+                                                    then 50
+                                                    else min (delay+delay) 5000)
+    loopn :: Int -> IO Bool
+    loopn 0 = return False
+    loopn n = do
+        quit <- mainIterationDo False
+        if quit
+            then return True
+            else loopn (n - 1)
 
 startMainWindow :: Yi.Control -> FilePath -> Maybe FilePath -> [FilePath] ->
                         Prefs -> Bool -> IO ()
