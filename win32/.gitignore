@@ -1,1 +1,6 @@
 /*.exe
+/SourceDir/
+/*.msi
+/*.wixobj
+/*.wixpdb
+/heat.wxs

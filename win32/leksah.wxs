@@ -1,0 +1,142 @@
+<?xml version="1.0" encoding="utf-8"?>
+<Wix xmlns="http://schemas.microsoft.com/wix/2006/wi">
+    <Product Name="Leksah $(env.FULL_VERSION)" Id="A986B242-8EEF-4953-9AEF-C62C60B60E6A" UpgradeCode="81E64826-0B59-4114-A23F-5143C95AC34E"
+        Language="1033" Version="$(env.FULL_VERSION)" Manufacturer="Leksah">
+
+        <Package InstallerVersion="100" Compressed="yes"/>
+        <Media Id="1" Cabinet="product.cab" EmbedCab="yes"/>
+
+        <Directory Id="TARGETDIR" Name="SourceDir">
+            <Directory Id="ProgramFilesFolder">
+                <Directory Id="INSTALLDIR" Name="Leksah">
+                    <Directory Id="BINDIR" Name="bin"/>
+                </Directory>
+            </Directory>
+            <Directory Id="ProgramMenuFolder">
+                <Directory Id="ApplicationProgramsFolder" Name="Leksah"/>
+            </Directory>
+            <Directory Id="FontsFolder" />
+        </Directory>
+
+        <DirectoryRef Id="ApplicationProgramsFolder">
+            <Component Id="ApplicationShortcut" Guid="503B656E-B240-441D-A7E5-82F5F5C9675D">
+                <Shortcut Id="ApplicationStartMenuShortcut"
+                      Name="Leksah"
+                      Description="Haskell IDE"
+                      Target="[#filFB91CCAFD8AE8BB4AAF6F21441DF39B0]"
+                      WorkingDirectory="BINDIR"
+                      Icon="leksah.ico"/>
+                <RemoveFolder Id="ApplicationProgramsFolder" On="uninstall"/>
+                <RegistryValue Root="HKCU" Key="Software\Leksah\Leksah" Name="installed" Type="integer" Value="1" KeyPath="yes"/>
+            </Component>
+        </DirectoryRef>
+        
+        <DirectoryRef Id="FontsFolder">
+            <Component Id="cmpA07D4D7013C154093786BCABE0A0EF33" Guid="{6DFBC8A0-B988-4A93-B95B-2C864E378DE3}">
+                <File Id="fil0EFB049678EE3D4A9A3887C4954FEE2A" KeyPath="yes" TrueType="yes" Source="C:\dejavu-fonts\ttf\DejaVuSans-Bold.ttf" />
+            </Component>
+            <Component Id="cmpB814902A71EE7AEDDCE9B0ABEFC61C66" Guid="{0BBAD8B0-67D4-4794-827C-417A7409786A}">
+                <File Id="filE245D0EC8E00923D8ED3F96E3493C384" KeyPath="yes" TrueType="yes" Source="C:\dejavu-fonts\ttf\DejaVuSans-BoldOblique.ttf" />
+            </Component>
+            <Component Id="cmpD2609DA11F23609B28A59CD9EC435733" Guid="{2290820D-4109-4646-96A1-EFECD27A77E0}">
+                <File Id="fil03C76BBA9B093708BDE014D3DEB522E4" KeyPath="yes" TrueType="yes" Source="C:\dejavu-fonts\ttf\DejaVuSans-ExtraLight.ttf" />
+            </Component>
+            <Component Id="cmp6D014775D535A8EFF6858C61C0FC481F" Guid="{AB856CF8-9A5B-43A7-9066-9BE6E561F041}">
+                <File Id="fil7ED3E23EFDE4B12578C1567BF8B93299" KeyPath="yes" TrueType="yes" Source="C:\dejavu-fonts\ttf\DejaVuSans-Oblique.ttf" />
+            </Component>
+            <Component Id="cmp3C549671AF76585EFA51BEE9F542FA9E" Guid="{EC688EA7-D924-450F-9BDE-D3EE3FC77D0F}">
+                <File Id="fil55448B315BAD869A7B2174BCA699E464" KeyPath="yes" TrueType="yes" Source="C:\dejavu-fonts\ttf\DejaVuSans.ttf" />
+            </Component>
+            <Component Id="cmp6D5BB256694F85EA72A8BABCB162F4A0" Guid="{981E9F41-528B-46CF-B5B6-B26768A2F88F}">
+                <File Id="fil90843BEA04A8CEE90642F41B3594A1D1" KeyPath="yes" TrueType="yes" Source="C:\dejavu-fonts\ttf\DejaVuSansCondensed-Bold.ttf" />
+            </Component>
+            <Component Id="cmpEF7A61E82BAB78FCC30B0429753DB475" Guid="{36A78AD4-A758-4022-B29B-F685795F09BE}">
+                <File Id="fil5C5BC5F91B63F019D23AA39BC0F4DB55" KeyPath="yes" TrueType="yes" Source="C:\dejavu-fonts\ttf\DejaVuSansCondensed-BoldOblique.ttf" />
+            </Component>
+            <Component Id="cmp963332B5A3CE812CD9552E64A569D36F" Guid="{C1F9483C-5E8E-4F36-B41B-6BCF4AC5521E}">
+                <File Id="filE8214E3890C49571445247C26969EF84" KeyPath="yes" TrueType="yes" Source="C:\dejavu-fonts\ttf\DejaVuSansCondensed-Oblique.ttf" />
+            </Component>
+            <Component Id="cmpED912B6CCEF966357D00BD13F0D5E66D" Guid="{0CFD5C75-B8B6-48FD-8D1A-EC7E7C299051}">
+                <File Id="fil28A9AF59B740A678FC4265ACD0EC6049" KeyPath="yes" TrueType="yes" Source="C:\dejavu-fonts\ttf\DejaVuSansCondensed.ttf" />
+            </Component>
+            <Component Id="cmp278599C85A8E095F62BE094F180537DD" Guid="{B6510CBD-F78B-414A-874D-AA72EFEB59B1}">
+                <File Id="fil68FDBFF562A145B585EDA198B80E8F3E" KeyPath="yes" TrueType="yes" Source="C:\dejavu-fonts\ttf\DejaVuSansMono-Bold.ttf" />
+            </Component>
+            <Component Id="cmp832ACDAE84991E1478EE8D2889803AAF" Guid="{5097039C-DB56-49AB-B515-A8C8E4F85B43}">
+                <File Id="filFB663BFDAA8123B38AE7FE210DA4FA08" KeyPath="yes" TrueType="yes" Source="C:\dejavu-fonts\ttf\DejaVuSansMono-BoldOblique.ttf" />
+            </Component>
+            <Component Id="cmp171B66DDCE9C4200420C135CF35C4AEB" Guid="{49B5CA21-6E3C-4F40-80C3-3CF9EC84A0A3}">
+                <File Id="fil172F9D110EEE7E29D72094B0B17B1D4D" KeyPath="yes" TrueType="yes" Source="C:\dejavu-fonts\ttf\DejaVuSansMono-Oblique.ttf" />
+            </Component>
+            <Component Id="cmpC4FBEE27F714F552EB2BFEB44CF33A6E" Guid="{2D19391B-6F00-415B-94B1-211646AE7F13}">
+                <File Id="fil93BF417A6B8DDBF06137C8DE162040FB" KeyPath="yes" TrueType="yes" Source="C:\dejavu-fonts\ttf\DejaVuSansMono.ttf" />
+            </Component>
+            <Component Id="cmpB84730D92D87EBA9918FCAC4C5DDB164" Guid="{B2323F07-7456-4C19-95A8-C5D067526669}">
+                <File Id="fil0011895615348B3FB8D4E7724874CF4B" KeyPath="yes" TrueType="yes" Source="C:\dejavu-fonts\ttf\DejaVuSerif-Bold.ttf" />
+            </Component>
+            <Component Id="cmp121322F4EF0DAEC3273F17B6DB51301F" Guid="{59FE6215-1769-4BEA-AD23-BC2B57797DFF}">
+                <File Id="fil9BD582AC71A09D223756516E4078AF8E" KeyPath="yes" TrueType="yes" Source="C:\dejavu-fonts\ttf\DejaVuSerif-BoldItalic.ttf" />
+            </Component>
+            <Component Id="cmp7AFCBFC41AB348E35B9E466FBD2BC3EF" Guid="{5EDD6331-4BC8-49DD-B4AA-88AA12DFADED}">
+                <File Id="fil7EB22B755E1CE12FE31BDE1A3A8082E4" KeyPath="yes" TrueType="yes" Source="C:\dejavu-fonts\ttf\DejaVuSerif-Italic.ttf" />
+            </Component>
+            <Component Id="cmpEC96881C376496C680E62C58CA548C20" Guid="{F65850B2-2CF5-4AE1-BABF-4199BBE42C68}">
+                <File Id="fil361422F7D5601E6012CC03A4C3650101" KeyPath="yes" TrueType="yes" Source="C:\dejavu-fonts\ttf\DejaVuSerif.ttf" />
+            </Component>
+            <Component Id="cmp2FAEE778E7BFEA05784ADBDF45488B84" Guid="{CAA7EC0B-5029-461D-BC98-7C17389DFFE0}">
+                <File Id="fil36AFC99AE7784666559AC41A0B8EEBA3" KeyPath="yes" TrueType="yes" Source="C:\dejavu-fonts\ttf\DejaVuSerifCondensed-Bold.ttf" />
+            </Component>
+            <Component Id="cmp3C3CD689C528E1B775D0F7DB9E50E1E9" Guid="{41AEF5B5-4FD9-4835-A84C-C0DE5F7E4C92}">
+                <File Id="filC1DAD48823F8ABA00F8D517911A5D311" KeyPath="yes" TrueType="yes" Source="C:\dejavu-fonts\ttf\DejaVuSerifCondensed-BoldItalic.ttf" />
+            </Component>
+            <Component Id="cmp816A89FF75E2004390E4844CE5189564" Guid="{315A5BD2-0861-40B5-B316-5CA6A8936FF3}">
+                <File Id="fil092DAAFBA3E6192040B25A708B1BBD1D" KeyPath="yes" TrueType="yes" Source="C:\dejavu-fonts\ttf\DejaVuSerifCondensed-Italic.ttf" />
+            </Component>
+            <Component Id="cmp2124FB8B9EAAE773B67FC55F6AE5DB70" Guid="{2E15154F-4CFE-49D6-AEC6-F38CA80D0125}">
+                <File Id="filD859571C1189493FF5E6EEF578F8C8BF" KeyPath="yes" TrueType="yes" Source="C:\dejavu-fonts\ttf\DejaVuSerifCondensed.ttf" />
+            </Component>
+        </DirectoryRef>
+
+        <ComponentGroup Id="DejaVuFonts">
+            <ComponentRef Id="cmpA07D4D7013C154093786BCABE0A0EF33" />
+            <ComponentRef Id="cmpB814902A71EE7AEDDCE9B0ABEFC61C66" />
+            <ComponentRef Id="cmpD2609DA11F23609B28A59CD9EC435733" />
+            <ComponentRef Id="cmp6D014775D535A8EFF6858C61C0FC481F" />
+            <ComponentRef Id="cmp3C549671AF76585EFA51BEE9F542FA9E" />
+            <ComponentRef Id="cmp6D5BB256694F85EA72A8BABCB162F4A0" />
+            <ComponentRef Id="cmpEF7A61E82BAB78FCC30B0429753DB475" />
+            <ComponentRef Id="cmp963332B5A3CE812CD9552E64A569D36F" />
+            <ComponentRef Id="cmpED912B6CCEF966357D00BD13F0D5E66D" />
+            <ComponentRef Id="cmp278599C85A8E095F62BE094F180537DD" />
+            <ComponentRef Id="cmp832ACDAE84991E1478EE8D2889803AAF" />
+            <ComponentRef Id="cmp171B66DDCE9C4200420C135CF35C4AEB" />
+            <ComponentRef Id="cmpC4FBEE27F714F552EB2BFEB44CF33A6E" />
+            <ComponentRef Id="cmpB84730D92D87EBA9918FCAC4C5DDB164" />
+            <ComponentRef Id="cmp121322F4EF0DAEC3273F17B6DB51301F" />
+            <ComponentRef Id="cmp7AFCBFC41AB348E35B9E466FBD2BC3EF" />
+            <ComponentRef Id="cmpEC96881C376496C680E62C58CA548C20" />
+            <ComponentRef Id="cmp2FAEE778E7BFEA05784ADBDF45488B84" />
+            <ComponentRef Id="cmp3C3CD689C528E1B775D0F7DB9E50E1E9" />
+            <ComponentRef Id="cmp816A89FF75E2004390E4844CE5189564" />
+            <ComponentRef Id="cmp2124FB8B9EAAE773B67FC55F6AE5DB70" />
+        </ComponentGroup>
+
+        <Icon Id="leksah.ico" SourceFile="leksah.ico"/>
+        <Property Id="ARPPRODUCTICON" Value="leksah.ico"/>
+
+        <SetDirectory Id="INSTALLDIR" Value="[WindowsVolume]Leksah"/>
+
+        <WixVariable Id="WixUILicenseRtf" Value="..\LICENSE.rtf"/>
+        <Property Id="WIXUI_INSTALLDIR" Value="INSTALLDIR"/>
+        <UIRef Id="WixUI_FeatureTree"/>
+        
+        <Feature Id="DefaultFeature" Level="1" ConfigurableDirectory="INSTALLDIR" Title="Leksah" Description="Leksah Haskell IDE">
+            <ComponentGroupRef Id="Leksah"/>
+            <ComponentRef Id="ApplicationShortcut"/>
+        </Feature>
+
+        <Feature Id="Fonts" Level="1" Title="Deja Vu Fonts" Description="Fonts suitable for Leksah">
+            <ComponentGroupRef Id="DejaVuFonts"/>
+        </Feature>
+    </Product>
+</Wix>
