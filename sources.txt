@@ -1,6 +1,5 @@
 https://github.com/leksah/ltk
 https://github.com/leksah/leksah-server
-https://github.com/hamishmack/vado.git
 https://github.com/leksah/haskellVCSWrapper.git
 https://github.com/leksah/haskellVCSGUI.git
 ./

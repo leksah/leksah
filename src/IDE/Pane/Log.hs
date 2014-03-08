@@ -75,13 +75,13 @@ import Graphics.UI.Gtk
 import qualified Data.Map as Map
 import Data.Maybe
 import Distribution.Package
-import Data.List.Utils
 import Data.Char
 import IDE.Utils.GUIUtils (__)
 import Text.Printf (printf)
 import Data.Text (Text)
 import qualified Data.Text as T (length, unpack)
 import Data.Monoid ((<>))
+import Data.List (isPrefixOf, isSuffixOf, findIndex)
 
 -------------------------------------------------------------------------------
 --
@@ -144,15 +144,15 @@ buildLogLaunchByName logName = do
                                     Nothing -> createNewName name 0
                                     Just (number,name) -> createNewName name number
         createNewName name number = concat [name, " (", show (number+1), ")"]
-        parseName name = if surroundedByParenth $ getLaunchString name then
-                                    if isNumberAndNotEmpty $ init $ tail $ getLaunchString name then -- check if
-                                        Just $ (read $ init $ tail $ getLaunchString name,
-                                                reverse $ drop 4 $ reverse name)
-                                                                                                  else
-                                        Nothing
-                                                                            else
-                                    Nothing
-        surroundedByParenth string = (startswith "(" string ) && (endswith ")" string) && (isNotBlank string)
+        parseName name = if surroundedByParenth $ getLaunchString name
+                                then
+                                    if isNumberAndNotEmpty $ init $ tail $ getLaunchString name
+                                        then -- check if
+                                            Just $ (read $ init $ tail $ getLaunchString name,
+                                                    reverse $ drop 4 $ reverse name)
+                                        else Nothing
+                                else Nothing
+        surroundedByParenth string = ("(" `isPrefixOf` string ) && (")" `isSuffixOf` string) && (isNotBlank string)
         isNumberAndNotEmpty string = (foldr ((&&) . isNumber) True $ string) && (isNotBlank string) -- check if
         getLaunchString name = reverse $ take 3 $ reverse name
         isNotBlank [] = False
@@ -223,7 +223,7 @@ showLogLaunch name = do
 
     model <- liftIO $ comboBoxGetModelText comboBox
     list <- liftIO $ listStoreToList model
-    let mbIndex = elemRIndex name list
+    let mbIndex = findIndex (==name) list
 
     liftIO $ putStrLn $ "showLogLaunch: mbIndex = " ++ show mbIndex
 
