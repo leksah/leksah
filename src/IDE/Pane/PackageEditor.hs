@@ -35,6 +35,8 @@ import Distribution.Verbosity
 import System.FilePath
 import Data.Maybe
 import System.Directory
+import System.IO (withFile, IOMode(..))
+import System.IO.Strict (hGetContents)
 
 import IDE.Core.State
 import IDE.Utils.FileUtils
@@ -120,6 +122,7 @@ import System.Exit (ExitCode(..))
 import qualified Data.Conduit.List as CL (fold)
 import qualified Data.Conduit as C (Sink)
 import IDE.Utils.ExternalTool (runExternalTool')
+import Data.Char (toLower)
 
 -- | Get the last item
 sinkLast = CL.fold (\_ a -> Just a) Nothing
@@ -178,7 +181,7 @@ packageEdit = do
     package <- liftIO $ readPackageDescription normal (ipdCabalFile idePackage)
     if hasConfigs package
         then do
-            lift $ ideMessage High 
+            lift $ ideMessage High
                 (__ "Cabal file with configurations can't be edited with the current version of the editor")
             lift $ fileOpenThis $ ipdCabalFile idePackage
             return ()
@@ -187,7 +190,7 @@ packageEdit = do
 #if MIN_VERSION_Cabal(1,10,0)
             if hasUnknownTestTypes flat
                 then do
-                    lift $ ideMessage High 
+                    lift $ ideMessage High
                         (__ "Cabal file with tests of this type can't be edited with the current version of the editor")
                     lift $ fileOpenThis $ ipdCabalFile idePackage
                     return ()
@@ -309,9 +312,9 @@ packageNew' workspaceDir log activateAction = do
                 Just cfn -> do
                     add <- liftIO $ do
                         md <- messageDialogNew (Just window) [] MessageQuestion ButtonsCancel
-                            $ (printf (__ 
-                              "There is already file %s in this directory. Would you like to add this package to the workspace?") 
-                              (takeFileName cfn) ) 
+                            $ (printf (__
+                              "There is already file %s in this directory. Would you like to add this package to the workspace?")
+                              (takeFileName cfn) )
                         dialogAddButton md (__ "_Add Package") (ResponseUser 1)
                         dialogSetDefaultResponse md (ResponseUser 1)
                         set md [ windowWindowPosition := WinPosCenterOnParent ]
@@ -326,8 +329,8 @@ packageNew' workspaceDir log activateAction = do
                         then return True
                         else liftIO $ do
                             md <- messageDialogNew (Just window) [] MessageQuestion ButtonsCancel
-                                $ (printf (__ 
-                                   "The path you have choosen %s is not an empty directory. Are you sure you want to make a new package here?") 
+                                $ (printf (__
+                                   "The path you have choosen %s is not an empty directory. Are you sure you want to make a new package here?")
                                   dirName)
                             dialogAddButton md (__ "_Make Package Here") (ResponseUser 1)
                             dialogSetDefaultResponse md (ResponseUser 1)
@@ -462,7 +465,10 @@ cabalUnpack parentDir packageToUnpack sourceRepo mbNewName log activateAction = 
                                 lift $ case (mbCabalFile, mbNewName) of
                                     (Just cfn, Just newName) -> do
                                         let newCfn = takeDirectory cfn </> newName ++ ".cabal"
-                                        when (cfn /= newCfn) . liftIO $ renameFile cfn newCfn
+                                        when (cfn /= newCfn) . liftIO $ do
+                                            s <- withFile cfn ReadMode $ hGetContents
+                                            writeFile newCfn $ renameCabalFile (takeBaseName cfn) newName s
+                                            removeFile cfn
                                         activateAction newCfn
                                     (Just cfn, _) -> activateAction cfn
                                     _  -> ideMessage High $ "Unpacked source reposity to " ++ destDir ++ " but it does not contain a .cabal file in the root directory."
@@ -474,6 +480,23 @@ cabalUnpack parentDir packageToUnpack sourceRepo mbNewName log activateAction = 
             _ -> do
                 liftIO $ removeDirectoryRecursive tempDir
                 lift $ ideMessage High $ "Failed to unpack source reposity to " ++ tempDir
+
+renameCabalFile :: String -> String -> String -> String
+renameCabalFile oldName newName = unlines . map renameLine . lines
+    where
+        prefixes = ["name:", "executable ", "test-suite "]
+        prefixesWithLength = zip prefixes $ map length prefixes
+        renameLine :: String -> String
+        renameLine line =
+            case catMaybes $ map (rename (line, map toLower line)) prefixesWithLength of
+                l:_ -> l
+                []  -> line
+        rename :: (String, String) -> (String, Int) -> Maybe String
+        rename (line, lcLine) (lcPrefix, pLen) | lcPrefix `isPrefixOf` lcLine =
+            let (prefix, rest) = splitAt pLen line
+                (spaces, value) = span (==' ') rest in
+            Just $ prefix ++ spaces ++ replace oldName newName value
+        rename _ _ = Nothing
 
 --  ---------------------------------------------------------------------
 --  | We do some twist for handling build infos seperately to edit them in one editor together
@@ -1005,7 +1028,7 @@ buildInfoD fp modules i = [
             (filesEditor fp FileChooserActionSelectFolder (__ "Select folder"))
     ,   mkField
             (paraName <<<- ParaName (__ "Non-exposed or non-main modules")
-            $ paraSynopsis <<<- ParaSynopsis 
+            $ paraSynopsis <<<- ParaSynopsis
                                        (__ "A list of modules used by the component but not exposed to users.")
                 $ paraShadow <<<- ParaShadow ShadowIn
                     $ paraDirection <<<- ParaDirection Vertical
@@ -1421,7 +1444,7 @@ instance Default Test'
 
 libraryEditor :: Maybe FilePath -> [ModuleName] -> Int -> Editor Library'
 libraryEditor fp modules numBuildInfos para noti = do
-    (wid,inj,ext) <- 
+    (wid,inj,ext) <-
         tupel3Editor
             (boolEditor,
             paraName <<<- ParaName (__ "Exposed")
