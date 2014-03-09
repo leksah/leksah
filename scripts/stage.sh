@@ -35,13 +35,13 @@ echo https://github.com/leksah/haskellVCSGUI.git >> sources.txt
 echo ./ >> sources.txt
 
 if test "`uname`" = "Darwin"; then
-    cabal install gtk3 ghcjs-dom jsc --with-ghc=ghc$GHCVERSION -j4 -fhave-quartz-gtk -fwebkit --with-gcc=gcc-mp-4.8 || exit
+    cabal install gtk3 ghcjs-dom jsaddle --with-ghc=ghc$GHCVERSION -j4 -fhave-quartz-gtk -fwebkit --with-gcc=gcc-mp-4.8 || exit
     cabal-meta install --with-ghc=ghc$GHCVERSION -j4 -flibcurl --with-gcc=gcc-mp-4.8 || exit
 else
     HPDIR=`which ghc` || exit
     HPDIR=`dirname "$HPDIR"` || exit
     HPDIR=`dirname "$HPDIR"` || exit
-    cabal install gtk3 ghcjs-dom jsc --with-ghc=ghc$GHCVERSION -j4 --extra-lib-dirs="$HPDIR"/mingw/lib --extra-lib-dirs=/c/MinGWRPM/lib -fwebkit --force-reinstalls || bash || exit
+    cabal install gtk3 ghcjs-dom jsaddle --with-ghc=ghc$GHCVERSION -j4 --extra-lib-dirs="$HPDIR"/mingw/lib --extra-lib-dirs=/c/MinGWRPM/lib -fwebkit --force-reinstalls || bash || exit
     cabal-meta install --with-ghc=ghc$GHCVERSION -j4 --extra-lib-dirs="$HPDIR"/mingw/lib --extra-lib-dirs=/c/MinGWRPM/lib -flibcurl --force-reinstalls || bash || exit
 #  if [ "$GHC_VER" != "7.0.3" ] && [ "$GHC_VER" != "7.0.4" ] && [ "$GHC_VER" != "7.6.1" ]; then
 #    echo https://github.com/yi-editor/yi.git >> sources.txt

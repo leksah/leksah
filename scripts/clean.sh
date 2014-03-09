@@ -7,7 +7,7 @@ ghc-pkg$GHCVERSION unregister --force vcsgui || true
 ghc-pkg$GHCVERSION unregister --force vado || true
 ghc-pkg$GHCVERSION unregister --force yi || true
 ghc-pkg$GHCVERSION unregister --force ghcjs-dom || true
-ghc-pkg$GHCVERSION unregister --force jsc || true
+ghc-pkg$GHCVERSION unregister --force jsaddle || true
 ghc-pkg$GHCVERSION unregister --force gtksourceview2 || true
 ghc-pkg$GHCVERSION unregister --force gtksourceview3 || true
 ghc-pkg$GHCVERSION unregister --force webkit-javascriptcore || true

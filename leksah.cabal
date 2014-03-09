@@ -228,7 +228,7 @@ library
           build-depends: webkitgtk3 -any, webkitgtk3-javascriptcore -any
         else
           build-depends: webkit -any, webkit-javascriptcore -any
-        build-depends: jsc -any, ghcjs-codemirror -any, hamlet -any, blaze-html -any,
+        build-depends: jsaddle -any, ghcjs-codemirror -any, hamlet -any, blaze-html -any,
                        lens -any, pretty-show >=1.6.3 && <1.7
         cpp-options: -DWEBKITGTK -DLEKSAH_WITH_CODE_MIRROR
 
@@ -333,7 +333,7 @@ executable bewleksah
         buildable: False
     else
         build-depends: leksah ==0.13.2.8, base >=4.0.0.0 && <=4.8,
-                       jsc -any, ghcjs-dom -any
+                       jsaddle -any, ghcjs-dom -any
         if flag(gtk3)
           build-depends: gtk3 >=0.12.4 && <0.13, gtksourceview3 >=0.10.0 && <0.13,
                          webkitgtk3 -any, webkitgtk3-javascriptcore -any

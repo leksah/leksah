@@ -40,9 +40,9 @@ import Data.Text (pack, unpack)
 import IDE.TextEditor.Class (TextEditor(..))
 import Graphics.UI.Gtk.WebKit.Types (WebView(..))
 import Control.Monad.Reader (ReaderT(..))
-import Language.Javascript.JSC
+import Language.Javascript.JSaddle
        (valToObject, (#), JSContextRef, JSObjectRef, jsg, (<#), obj, js2,
-        js, JSC, js1, valToText, valToStr, js3, js0, MakeValueRef(..), MakeStringRef(..),
+        js, JSM, js1, valToText, valToStr, js3, js0, MakeValueRef(..), MakeStringRef(..),
         JSStringRef, JSValueRef, valToBool, strToText, valToNumber, MakeObjectRef)
 import Control.Applicative ((<$>))
 import Control.Monad.Reader.Class (MonadReader(..))
@@ -88,7 +88,7 @@ data CodeMirror = CodeMirror deriving( Typeable, Show )
 data CodeMirrorState = CodeMirrorState {
     cmContext        :: JSContextRef
   , cmObject         :: JSObjectRef }
-type CM = ReaderT (WebView, CodeMirrorState) JSC
+type CM = ReaderT (WebView, CodeMirrorState) JSM
 webView :: CM WebView
 webView = fst <$> ask
 codeMirror :: CM JSObjectRef
@@ -138,7 +138,7 @@ setBookmark'      = js2 "setBookmark"
 insertLeft        = js  "insertLeft"
 find              = js0 "find"
 from              = js  "from"
-getCursor :: (MakeValueRef a0, MakeObjectRef o) => a0 -> IndexPreservingGetter o (JSC JSValueRef)
+getCursor :: (MakeValueRef a0, MakeObjectRef o) => a0 -> IndexPreservingGetter o (JSM JSValueRef)
 getCursor         = js1 "getCursor"
 isClean           = js0 "isClean"
 markText          = js3 "markText"
@@ -163,7 +163,7 @@ charCoords        = js2 "charCoords"
 scrollIntoView    = js2 "scrollIntoView"
 getAllMarks       = js0 "getAllMarks"
 indexFromPos      = js1 "indexFromPos"
-getLineText :: (MakeValueRef a0, MakeObjectRef o) => a0 -> IndexPreservingGetter o (JSC JSValueRef)
+getLineText :: (MakeValueRef a0, MakeObjectRef o) => a0 -> IndexPreservingGetter o (JSM JSValueRef)
 getLineText       = js1 "getLine"
 jsLength          = js  "length"
 
