@@ -353,21 +353,26 @@ scopeParser = do
     isSub   <- optionMaybe (try (choice [symbol "type constructor or class"
                     , symbol "data constructor"]))
     (   (do
-            char '`'
+            choice [char '`',char '‘']
             mbQual <- optionMaybe (try (do
                 q  <- lexeme conid
                 dot
                 return q))
             id     <- optionMaybe (try identifier)
             case id of
+#if MIN_VERSION_ghc(7,8,0)
+                Just id -> return (NotInScopeParseResult mbQual
+                                id  (isJust isSub) False)
+#else
                 Just id -> return (NotInScopeParseResult mbQual
                                 (take (length id - 1) id)  (isJust isSub) False)
+#endif
                 Nothing -> do
                     op <-   operator
                     char '\''
                     return (NotInScopeParseResult mbQual op (isJust isSub) True))
        <|> (do
-            char '‛'
+            choice [char '`',char '‘']
             mbQual <- optionMaybe (try (do
                 q  <- lexeme conid
                 dot
@@ -375,7 +380,7 @@ scopeParser = do
             id     <- optionMaybe (try identifier)
             result <- case id of
                 Just id -> return (NotInScopeParseResult mbQual
-                                (take (length id) id)  (isJust isSub) False)
+                                id  (isJust isSub) False)
                 Nothing -> do
                     op <-   operator
                     return (NotInScopeParseResult mbQual op (isJust isSub) True)
