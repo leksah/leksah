@@ -25,6 +25,7 @@ module IDE.Pane.SourceBuffer (
 ,   goToSourceDefinition
 ,   goToDefinition
 ,   insertInBuffer
+,   replaceHLintSource
 
 ,   fileNew
 ,   fileOpenThis
@@ -291,6 +292,30 @@ goToSourceDefinition fp dscMbLocation = do
                 return False
             return ()
     return mbBuf
+
+replaceHLintSource :: FilePath -> Int -> Int -> Int -> Int -> String -> IDEAction
+replaceHLintSource file lineS columnS lineE columnE to = do
+    mbBuf     <- selectSourceBuf file
+    case mbBuf of
+        Just buf -> inActiveBufContext () $ \_ sv ebuf _ _ -> do
+            useCandy    <- useCandyFor buf
+            candy'      <- readIDE candy
+            realString <-  if useCandy then stringToCandy candy' to else return to
+            (lineS', columnS', lineE', columnE') <- if useCandy
+                    then do
+                        (_,e1) <- positionToCandy candy' ebuf (lineS,columnS - 1)
+                        (_,e2) <- positionToCandy candy' ebuf (lineE,columnE - 1)
+                        return (lineS-1,e1,lineE-1,e2)
+                    else return (lineS-1, columnS-1, lineE-1, columnE-1)
+            i1  <- getIterAtLine ebuf (lineS')
+            i1' <- forwardCharsC i1 (columnS')
+            i2  <- getIterAtLine ebuf (lineE')
+            i2' <- forwardCharsC i2 (columnE')
+            delete ebuf i1' i2'
+            editInsertCode ebuf i1' realString
+            fileSave False
+            setModified ebuf True
+        _ -> return ()
 
 insertInBuffer :: Descr -> IDEAction
 insertInBuffer idDescr = do
@@ -740,7 +765,7 @@ setModTime buf = do
             (do
                 nmt <- getModificationTime fn
                 writeIORef (modTime buf) (Just nmt))
-            (\(e::SomeException) -> do
+            (\(e:: SomeException) -> do
                 sysMessage Normal (show e)
                 return ())
 
