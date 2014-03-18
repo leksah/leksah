@@ -517,7 +517,7 @@ getModuleTemplate template pd modName exports body = catch (do
     filePath <- getConfigFilePathForLoad (template ++ leksahTemplateFileExtension) Nothing dataDir
     template <- UTF8.readFile filePath
     return (foldl' (\ a (from, to) -> replace from to a) template
-        [   ("@License@"      , (show . license) pd)
+        [   ("@License@"      , (display . license) pd)
         ,   ("@Maintainer@"   , maintainer pd)
         ,   ("@Stability@"    , stability pd)
         ,   ("@Portability@"  , "")
