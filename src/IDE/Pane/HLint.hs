@@ -1,5 +1,5 @@
 {-# LANGUAGE ScopedTypeVariables #-}
-{-# LANGUAGE CPP, FlexibleInstances, DeriveDataTypeable, MultiParamTypeClasses,
+{-# LANGUAGE FlexibleInstances, DeriveDataTypeable, MultiParamTypeClasses,
              TypeSynonymInstances, RecordWildCards #-}
 -----------------------------------------------------------------------------
 --
@@ -48,11 +48,7 @@ import Language.Haskell.HLint (Suggestion(..), suggestionLocation)
 import Language.Haskell.Exts (SrcLoc(..))
 import Language.Haskell.Exts.SrcLoc (SrcSpan(..))
 
-#if MIN_VERSION_hlint(1,8,58)
 import qualified Language.Haskell.HLint2 as H
-#else
-import qualified Language.Haskell.HLint as H
-#endif
 import IDE.Utils.GUIUtils (__, treeViewContextMenu)
 import Data.List (isPrefixOf, findIndex)
 import Debug.Trace (trace)
@@ -62,22 +58,12 @@ import IDE.Metainfo.Provider (getWorkspaceInfo)
 import qualified Data.Map as Map (keys, lookup)
 import Distribution.Package (PackageIdentifier(..))
 
-#if !MIN_VERSION_hlint(1,8,58)
-data HLintRecord = HLintRecord {
-            file        :: FilePath
-        ,   line        :: Int
-        ,   column      :: Int
-        ,   context     :: String
-        ,   parDir      :: Maybe FilePath
-        } deriving (Eq)
-#else
 data HLintRecord = HLintRecord {
             condPackage :: Maybe IDEPackage
         ,   context     :: String
         ,   condIdea    :: Maybe H.Idea
         ,   parDir      :: Maybe FilePath
         } deriving (Eq)
-#endif
 
 isDir HLintRecord{parDir = Nothing}  = True
 isDir otherwies                     = False
@@ -137,21 +123,6 @@ instance RecoverablePane IDEHLint HLintState IDEM where
         cid1 <- after treeView focusInEvent $ do
             liftIO $ reflectIDE (makeActive hlint) ideR
             return True
-
-#if !MIN_VERSION_hlint(1,8,58)
-
-        cid2 <- on treeView rowExpanded $ \ iter path -> do
-            record <- treeStoreGetValue hlintStore path
-            case record of
-                HLintRecord { file = f, parDir = Nothing } -> refreshDir hlintStore iter f
-                _ -> reflectIDE (ideMessage Normal (__ "Unexpected Expansion in HLint Pane")) ideR
-        cid3 <- on treeView rowActivated $ \ path col -> do
-            record <- treeStoreGetValue hlintStore path
-            mbIter <- treeModelGetIter hlintStore path
-            case (mbIter, record) of
-                (Just iter, HLintRecord { file = f, parDir = Nothing }) -> refreshDir hlintStore iter f
-                _ -> return ()
-#else
         cid2 <- on treeView rowExpanded $ \ iter path -> do
             record <- treeStoreGetValue hlintStore path
             case record of
@@ -165,8 +136,6 @@ instance RecoverablePane IDEHLint HLintState IDEM where
                 (Just iter, HLintRecord { condPackage = Just p, parDir = Nothing }) ->
                     reflectIDE (refreshDir hlintStore iter p) ideR
                 _ -> return ()
-#endif
-
         cid4 <- on treeView keyPressEvent $ do
             name <- eventKeyName
             liftIO $ case name of
@@ -181,10 +150,8 @@ instance RecoverablePane IDEHLint HLintState IDEM where
                             return True
                             -- gotoSource True
                         _ -> return False
-#if MIN_VERSION_hlint(1,8,58)
         treeViewContextMenu treeView
             $ hlintContextMenu ideR hlintStore treeView
-#endif
         on sel treeSelectionSelectionChanged (reflectIDE (gotoSource False treeView hlintStore
             >> return ()) ideR)
 
@@ -242,82 +209,8 @@ refreshHLint = do
     let packages = case maybeActive of
             Just active -> active : (filter (/= active) $ wsPackages ws)
             Nothing     -> wsPackages ws
-#if !MIN_VERSION_hlint(1,8,58)
-    lift $ hlintDirectories $
-            concatMap (\p -> map (dropFileName (ipdCabalFile p) </>) $ ipdSrcDirs p) $ packages
-#else
     lift $ hlintDirectories2 packages
-#endif
 
-
-#if !MIN_VERSION_hlint(1,8,58)
-
-gotoSource :: Bool -> IDEM Bool
-gotoSource focus = do
-    sel <- liftIO $ getSelectionHLintRecord treeView hlintStore
-    case sel of
-        Just record -> do
-            case record of
-                HLintRecord {file=f, line=l, parDir=Just pp} ->
-                    (goToSourceDefinition (pp </> f) $ Just $ Location l 0 l 0)
-                        ?>>= (\(IDEBuffer {sourceView = sv}) -> when focus $ grabFocus sv)
-                _ -> return ())
-        Nothing -> return ()
-    return True
-
-hlintDirectories :: [FilePath] -> IDEAction
-hlintDirectories dirs = do
-    hlint <- getHLint Nothing
-    let store = hlintStore hlint
-    liftIO $ do
-        treeStoreClear store
-        forM_ dirs $ \ dir -> do
-            nDir <- treeModelIterNChildren store Nothing
-            treeStoreInsert store [] nDir $ HLintRecord dir 0 0 dir Nothing Nothing
-            treeStoreInsert store [nDir] 0 $ HLintRecord dir 0 0 dir Nothing Nothing
-
-hlintRecord dir suggestion = HLintRecord {
-    file = srcFilename loc,
-    line = srcLine loc,
-    column = srcColumn loc,
-    context = show suggestion,
-    parDir = Just dir}
-  where
-    loc = suggestionLocation suggestion
-
-setHLintResults :: TreeStore HLintRecord -> TreeIter -> FilePath -> [Suggestion] -> IO Int
-setHLintResults store parent dir suggestions = do
-    parentPath <- treeModelGetPath store parent
-    forM_ (zip [0..] records) $ \(n, record) -> do
-        mbChild <- treeModelIterNthChild store (Just parent) n
-        findResult <- find record store mbChild
-        case (mbChild, findResult) of
-            (_, WhereExpected _) -> return ()
-            (Just iter, Found _) -> do
-                path <- treeModelGetPath store iter
-                removeUntil record store path
-            _ -> do
-                treeStoreInsert store parentPath n $ record
-    removeRemaining store (parentPath++[nRecords])
-    return nRecords
-  where
-    records = map (hlintRecord dir) suggestions
-    nRecords = length records
-
-refreshDir :: TreeStore HLintRecord -> TreeIter -> FilePath -> IO ()
-refreshDir store iter dir = do
-    mbHlintDir <- leksahSubDir "hlint"
-    let datadirOpt = case mbHlintDir of
-                        Just d  -> "--datadir":[d]
-                        Nothing -> []
-    suggestions <- catch (take 1000 <$> H.hlint ("--quiet":dir:datadirOpt))
-                        (\(e :: SomeException) -> do
-                            sysMessage Normal (show e)
-                            return [])
-    setHLintResults store iter dir suggestions
-    return ()
-
-#else
 
 --gotoSource :: Bool -> IDEM Bool
 gotoSource focus treeView hlintStore = do
@@ -442,5 +335,3 @@ replaceHlint store treeView (Just sel) =
                                    source
         otherwise -> return ()
 replaceHlint _ _ Nothing    = return ()
-
-#endif
