@@ -35,8 +35,6 @@ import Distribution.Verbosity
 import System.FilePath
 import Data.Maybe
 import System.Directory
-import System.IO (withFile, IOMode(..))
-import System.IO.Strict (hGetContents)
 
 import IDE.Core.State
 import IDE.Utils.FileUtils
@@ -122,6 +120,7 @@ import System.Exit (ExitCode(..))
 import qualified Data.Conduit.List as CL (fold)
 import qualified Data.Conduit as C (Sink)
 import IDE.Utils.ExternalTool (runExternalTool')
+import qualified System.IO.Strict as S (readFile)
 import Data.Char (toLower)
 
 -- | Get the last item
@@ -466,7 +465,7 @@ cabalUnpack parentDir packageToUnpack sourceRepo mbNewName log activateAction = 
                                     (Just cfn, Just newName) -> do
                                         let newCfn = takeDirectory cfn </> newName ++ ".cabal"
                                         when (cfn /= newCfn) . liftIO $ do
-                                            s <- withFile cfn ReadMode $ hGetContents
+                                            s <- S.readFile cfn
                                             writeFile newCfn $ renameCabalFile (takeBaseName cfn) newName s
                                             removeFile cfn
                                         activateAction newCfn
