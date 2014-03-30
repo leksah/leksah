@@ -212,20 +212,20 @@ startGUI yiConfig sessionFP mbWorkspaceFP sourceFPs iprefs isFirstStart = do
     st          <-  unsafeInitGUIForThreadedRTS
     when rtsSupportsBoundThreads
         (sysMessage Normal "Linked with -threaded")
+    mapM_ (sysMessage Normal) st
+    initGtkRc
+    dataDir       <- getDataDir
+    mbStartupPrefs <- if not isFirstStart
+                                then return $ Just iprefs
+                                else do
+                                    firstStartOK <- firstStart iprefs
+                                    if not firstStartOK
+                                        then return Nothing
+                                        else do
+                                            prefsPath  <- getConfigFilePathForLoad standardPreferencesFilename Nothing dataDir
+                                            prefs <- readPrefs prefsPath
+                                            return $ Just prefs
     postGUIAsync $ do
-        mapM_ (sysMessage Normal) st
-        initGtkRc
-        dataDir       <- getDataDir
-        mbStartupPrefs <- if not isFirstStart
-                                    then return $ Just iprefs
-                                    else do
-                                        firstStartOK <- firstStart iprefs
-                                        if not firstStartOK
-                                            then return Nothing
-                                            else do
-                                                prefsPath  <- getConfigFilePathForLoad standardPreferencesFilename Nothing dataDir
-                                                prefs <- readPrefs prefsPath
-                                                return $ Just prefs
         case mbStartupPrefs of
             Nothing           -> return ()
             Just startupPrefs -> startMainWindow yiControl sessionFP mbWorkspaceFP sourceFPs
