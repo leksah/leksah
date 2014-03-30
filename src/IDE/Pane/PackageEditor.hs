@@ -74,13 +74,9 @@ import Graphics.UI.Editor.Parameters
      paraName,
      getParameterPrim)
 import Graphics.UI.Editor.Simple
-    (staticListMultiEditor,
-     intEditor,
-     boolEditor,
-     fileEditor,
-     comboSelectionEditor,
-     multilineStringEditor,
-     stringEditor)
+       (comboEntryEditor, staticListMultiEditor, intEditor, boolEditor,
+        fileEditor, comboSelectionEditor, multilineStringEditor,
+        stringEditor)
 import Graphics.UI.Editor.Basics
        (Notifier, Editor(..), GUIEventSelector(..), GUIEvent(..))
 import Distribution.Compiler
@@ -262,7 +258,9 @@ packageFields workspaceDir = VFD emptyParams [
                     $ emptyParams)
             templatePackage
             (\ a b -> b{templatePackage = a})
-            (stringEditor (const True) True)]
+            (comboEntryEditor examplePackages)]
+
+examplePackages = ["hello", "gtk2hs-hello"]
 
 newPackageDialog :: Window -> FilePath -> IO (Maybe NewPackage)
 newPackageDialog parent workspaceDir = do
@@ -277,17 +275,11 @@ newPackageDialog parent workspaceDir = do
     lower                      <-   dialogGetActionArea dia
     (widget,inj,ext,_)         <-   buildEditor (packageFields workspaceDir)
                                         (NewPackage "" workspaceDir "hello")
-    bb      <-  hButtonBoxNew
-    closeB  <-  buttonNewFromStock "gtk-cancel"
-    save    <-  buttonNewFromStock "gtk-ok"
-    boxPackEnd bb closeB PackNatural 0
-    boxPackEnd bb save PackNatural 0
-    on save buttonActivated (dialogResponse dia ResponseOk)
-    on closeB buttonActivated (dialogResponse dia ResponseCancel)
+    okButton <- dialogAddButton dia "Ok" ResponseOk
+    dialogAddButton dia "Cancel" ResponseCancel
     boxPackStart (castToBox upper) widget PackGrow 7
-    boxPackStart (castToBox lower) bb PackNatural 7
-    set save [widgetCanDefault := True]
-    widgetGrabDefault save
+    set okButton [widgetCanDefault := True]
+    widgetGrabDefault okButton
     widgetShowAll dia
     resp  <- dialogRun dia
     value <- ext (NewPackage "" workspaceDir "hello")
@@ -377,14 +369,14 @@ data ClonePackageSourceRepo = ClonePackageSourceRepo {
     packageToClone :: String,
     cloneParentDir :: FilePath}
 
-cloneFields :: FilePath -> FieldDescription ClonePackageSourceRepo
-cloneFields workspaceDir = VFD emptyParams [
+cloneFields :: [PackageId] -> FilePath -> FieldDescription ClonePackageSourceRepo
+cloneFields packages workspaceDir = VFD emptyParams [
         mkField
             (paraName <<<- ParaName ((__ "Existing package to clone source repository"))
                     $ emptyParams)
             packageToClone
             (\ a b -> b{packageToClone = a})
-            (stringEditor (const True) True),
+            (comboEntryEditor ((sort . nub) (map (display . pkgName) packages))),
         mkField
             (paraName <<<- ParaName ((__ "Parent directory"))
                 $ paraMinSize <<<- ParaMinSize (-1, 120)
@@ -395,6 +387,7 @@ cloneFields workspaceDir = VFD emptyParams [
 
 clonePackageSourceDialog :: Window -> FilePath -> IO (Maybe ClonePackageSourceRepo)
 clonePackageSourceDialog parent workspaceDir = do
+    packages                   <- getInstalledPackageIds
     dia                        <-   dialogNew
     set dia [ windowTransientFor := parent
             , windowTitle := (__ "Clone Package") ]
@@ -404,19 +397,13 @@ clonePackageSourceDialog parent workspaceDir = do
     upper                      <-   dialogGetUpper dia
 #endif
     lower                      <-   dialogGetActionArea dia
-    (widget,inj,ext,_)         <-   buildEditor (cloneFields workspaceDir)
+    (widget,inj,ext,_)         <-   buildEditor (cloneFields packages workspaceDir)
                                         (ClonePackageSourceRepo "" workspaceDir)
-    bb      <-  hButtonBoxNew
-    closeB  <-  buttonNewFromStock "gtk-cancel"
-    save    <-  buttonNewFromStock "gtk-ok"
-    boxPackEnd bb closeB PackNatural 0
-    boxPackEnd bb save PackNatural 0
-    on save buttonActivated (dialogResponse dia ResponseOk)
-    on closeB buttonActivated (dialogResponse dia ResponseCancel)
+    okButton <- dialogAddButton dia "Ok" ResponseOk
+    dialogAddButton dia "Cancel" ResponseCancel
     boxPackStart (castToBox upper) widget PackGrow 7
-    boxPackStart (castToBox lower) bb PackNatural 7
-    set save [widgetCanDefault := True]
-    widgetGrabDefault save
+    set okButton [widgetCanDefault := True]
+    widgetGrabDefault okButton
     widgetShowAll dia
     resp  <- dialogRun dia
     value <- ext (ClonePackageSourceRepo "" workspaceDir)
