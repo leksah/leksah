@@ -166,8 +166,11 @@ extra-source-files: Setup.lhs SetupLocale.lhs po/*.pot po/*.po
 x-gettext-po-files:     po/*.po
 x-gettext-domain-name:  leksah
 
-
 extra-tmp-files:
+
+source-repository head
+  type:     git
+  location: https://github.com/leksah/leksah
 
 flag yi
     Description: Experimental Yi support
