@@ -20,11 +20,12 @@ module IDE.Command.VCS.Types (
     ,reflectIDE'
 ) where
 import Control.Monad.Reader
+import Control.Applicative
 import IDE.Core.Types
 import IDE.Core.State
 
 newtype VCSAction a = VCSAction (ReaderT (VCSConf,FilePath) IDEM a)
-    deriving (Monad, MonadIO, MonadReader (VCSConf,FilePath))
+    deriving (Functor, Applicative, Monad, MonadIO, MonadReader (VCSConf,FilePath))
 
 askIDERef :: VCSAction IDERef
 askIDERef = VCSAction $ lift $ ask
