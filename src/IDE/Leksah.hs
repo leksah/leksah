@@ -212,6 +212,7 @@ startGUI yiConfig sessionFP mbWorkspaceFP sourceFPs iprefs isFirstStart = do
     st          <-  unsafeInitGUIForThreadedRTS
     when rtsSupportsBoundThreads
         (sysMessage Normal "Linked with -threaded")
+    timeout <- timeoutAddFull (yield >> return True) priorityHigh 10
     mapM_ (sysMessage Normal) st
     initGtkRc
     dataDir       <- getDataDir
@@ -225,6 +226,7 @@ startGUI yiConfig sessionFP mbWorkspaceFP sourceFPs iprefs isFirstStart = do
                                             prefsPath  <- getConfigFilePathForLoad standardPreferencesFilename Nothing dataDir
                                             prefs <- readPrefs prefsPath
                                             return $ Just prefs
+    timeoutRemove timeout
     postGUIAsync $ do
         case mbStartupPrefs of
             Nothing           -> return ()
@@ -240,7 +242,14 @@ mainLoop = eventsPending >>= loop 50
   where
     loop :: Int -> Int -> IO ()
     loop delay n = do
-        quit <- loopn (n+2)
+        quit <- if n > 0
+                    then do
+                        timeout <- timeoutAddFull (yield >> return True) priorityHigh 10
+                        quit <- loopn (n+2)
+                        timeoutRemove timeout
+                        return quit
+                    else
+                        loopn (n+2)
         if quit
             then return ()
             else do
@@ -253,7 +262,7 @@ mainLoop = eventsPending >>= loop 50
                         threadDelay delay
                         eventsPending >>= loop (if n > 0
                                                     then 50
-                                                    else min (delay+delay) 5000)
+                                                    else min (delay+delay) 50000)
     loopn :: Int -> IO Bool
     loopn 0 = return False
     loopn n = do
