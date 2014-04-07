@@ -73,11 +73,7 @@ module IDE.Core.State (
 ,   getDataDir
 ,   P.version
 
-,   module IDE.Core.Types
-,   module IDE.Core.CTypes
-,   module IDE.Utils.Utils
-,   module Graphics.UI.Frame.Panes
-,   module Graphics.UI.Frame.ViewFrame
+,   module Reexported
 
 ) where
 
@@ -88,17 +84,17 @@ import Data.IORef
 import Control.Exception
 import Prelude hiding (catch)
 import Control.Monad.IO.Class (MonadIO, liftIO)
-import IDE.Core.Types
-import Graphics.UI.Frame.Panes
-import Graphics.UI.Frame.ViewFrame --hiding (notebookInsertOrdered)
+import IDE.Core.Types as Reexported
+import Graphics.UI.Frame.Panes as Reexported
+import Graphics.UI.Frame.ViewFrame as Reexported --hiding (notebookInsertOrdered)
 import Control.Event
 import System.IO
 import Data.Maybe (isJust)
 import System.FilePath
        (dropFileName, takeDirectory, (</>), takeFileName)
-import IDE.Core.CTypes
+import IDE.Core.CTypes as Reexported
 import Control.Concurrent (forkIO)
-import IDE.Utils.Utils
+import IDE.Utils.Utils as Reexported
 import qualified Data.Map as Map (empty, lookup)
 import Data.Typeable(Typeable)
 import qualified IDE.YiConfig as Yi
@@ -107,7 +103,7 @@ import qualified Data.Conduit as C
        (transPipe, Sink, awaitForever, yield, leftover, ($$))
 import qualified Data.Conduit.List as CL
        (sourceList)
-import Control.Monad (liftM, when)
+import Control.Monad (void, liftM, when)
 import Control.Monad.Trans.Reader (ask, ReaderT(..))
 import qualified Paths_leksah as P
 import System.Environment.Executable (getExecutablePath)
@@ -119,8 +115,8 @@ instance PaneMonad IDEM where
     runInIO f       =   reifyIDE (\ideRef -> return (\v -> reflectIDE (f v) ideRef))
     panePathForGroup id =   do
         prefs  <- readIDE prefs
-        case id `lookup` (categoryForPane prefs) of
-            Just group -> case group `lookup`  (pathForCategory prefs) of
+        case id `lookup` categoryForPane prefs of
+            Just group -> case group `lookup` pathForCategory prefs of
                             Nothing -> return (defaultPath prefs)
                             Just p  -> return p
             Nothing    -> return (defaultPath prefs)
@@ -194,7 +190,7 @@ instance PaneMonad IDEM where
             updateRecent ide = ide{recentPanes = paneName pane : filter (/= paneName pane) (recentPanes ide)}
             trigger :: Maybe String -> Maybe String -> IDEAction
             trigger s1 s2 = do
-                triggerEventIDE (RecordHistory ((PaneSelected s1), PaneSelected s2))
+                triggerEventIDE (RecordHistory (PaneSelected s1, PaneSelected s2))
                 triggerEventIDE (Sensitivity [(SensitivityEditor, False)])
                 return ()
     --closeThisPane   ::  forall alpha beta . RecoverablePane alpha beta delta => alpha -> delta Bool
@@ -263,13 +259,14 @@ activeProjectDir = do
         Just pack -> return (dropFileName (ipdCabalFile pack))
 
 errorRefs :: IDE -> [LogRef]
-errorRefs = (filter ((\t -> t == ErrorRef || t == WarningRef) . logRefType)) . allLogRefs
+errorRefs = filter ((\ t -> t == ErrorRef || t == WarningRef) . logRefType) .
+               allLogRefs
 
 breakpointRefs :: IDE -> [LogRef]
-breakpointRefs = (filter ((== BreakpointRef) . logRefType)) . allLogRefs
+breakpointRefs = filter ((== BreakpointRef) . logRefType) . allLogRefs
 
 contextRefs :: IDE -> [LogRef]
-contextRefs = (filter ((== ContextRef) . logRefType)) . allLogRefs
+contextRefs = filter ((== ContextRef) . logRefType) . allLogRefs
 
 currentError     = (\(e,_,_)-> e) . currentEBC
 currentBreak     = (\(_,b,_)-> b) . currentEBC
@@ -277,10 +274,10 @@ currentContext   = (\(_,_,c)-> c) . currentEBC
 
 setCurrentError e = do
     modifyIDE_ (\ide -> ide{currentEBC = (e, currentBreak ide, currentContext ide)})
-    triggerEventIDE (CurrentErrorChanged e) >> return ()
+    triggerEventIDE_ (CurrentErrorChanged e)
 setCurrentBreak b = do
     modifyIDE_ (\ide -> ide{currentEBC = (currentError ide, b, currentContext ide)})
-    triggerEventIDE (CurrentBreakChanged b) >> return ()
+    triggerEventIDE_ (CurrentBreakChanged b)
 setCurrentContext c = modifyIDE_ (\ide -> ide{currentEBC = (currentError ide, currentBreak ide, c)})
 
 isStartingOrClosing ::  IDEState -> Bool
@@ -289,11 +286,14 @@ isStartingOrClosing IsShuttingDown  = True
 isStartingOrClosing _               = False
 
 isInterpreting :: IDEM Bool
-isInterpreting = do
+isInterpreting =
     readIDE debugState >>= \mb -> return (isJust mb)
 
 triggerEventIDE :: IDEEvent -> IDEM IDEEvent
 triggerEventIDE e = ask >>= \ideR -> triggerEvent ideR e
+
+triggerEventIDE_ :: IDEEvent -> IDEM ()
+triggerEventIDE_ = void . triggerEventIDE
 
 --
 -- | A reader monad for a mutable reference to the IDE state
@@ -303,7 +303,7 @@ reifyIDE :: (IDERef -> IO a) -> IDEM a
 reifyIDE = ReaderT
 
 reflectIDE :: IDEM a -> IDERef -> IO a
-reflectIDE c ideR = runReaderT c ideR
+reflectIDE = runReaderT
 
 reflectIDEI :: C.Sink a IDEM () -> IDERef -> C.Sink a IO ()
 reflectIDEI c ideR = C.transPipe (`reflectIDE` ideR) c
@@ -320,17 +320,17 @@ catchIDE :: Exception e	=> IDEM a -> (e -> IO a) -> IDEM a
 catchIDE block handler = reifyIDE (\ideR -> catch (reflectIDE block ideR) handler)
 
 forkIDE :: IDEAction  -> IDEAction
-forkIDE block  = reifyIDE (\ideR -> forkIO  (reflectIDE block ideR) >> return ())
+forkIDE block  = reifyIDE (void . forkIO . reflectIDE block)
 
 postSyncIDE :: IDEM a -> IDEM a
-postSyncIDE f = reifyIDE (\ideR -> postGUISync (reflectIDE f ideR))
+postSyncIDE f = reifyIDE (postGUISync . reflectIDE f)
 
 postAsyncIDE :: IDEM () -> IDEM ()
-postAsyncIDE f = reifyIDE (\ideR -> postGUIAsync (reflectIDE f ideR))
+postAsyncIDE f = reifyIDE (postGUIAsync . reflectIDE f)
 
 onIDE obj signal callback = do
     ideRef <- ask
-    liftIO $ obj `on` signal $ runReaderT callback ideRef
+    liftIO (obj `on` signal $ runReaderT callback ideRef)
 
 -- ---------------------------------------------------------------------
 -- Convenience methods for accesing the IDE State
@@ -359,11 +359,8 @@ withIDE f = do
     e <- ask
     liftIO $ f =<< readIORef e
 
-getIDE :: IDEM(IDE)
-getIDE = do
-    e <- ask
-    st <- liftIO $ readIORef e
-    return st
+getIDE :: IDEM IDE
+getIDE = ask >>= (liftIO . readIORef)
 
 withoutRecordingDo :: IDEAction -> IDEAction
 withoutRecordingDo act = do
@@ -408,9 +405,7 @@ deactivatePaneIfActive pane = do
     mbActive <- getActivePane
     case mbActive of
         Nothing -> return ()
-        Just (n,_) -> if n == paneName pane
-                        then deactivatePane
-                        else return ()
+        Just (n,_) -> when (n == paneName pane) deactivatePane
 
 changePackage :: IDEPackage -> IDEAction
 changePackage ideP@IDEPackage{ipdCabalFile = file} = do
@@ -437,9 +432,9 @@ leksahSubDir subDir = do
     exePath <- getExecutablePath
     if takeFileName exePath == "leksah.exe"
         then do
-            let dataDir = (takeDirectory $ takeDirectory exePath) </> subDir
+            let dataDir = takeDirectory (takeDirectory exePath) </> subDir
             exists <- doesDirectoryExist dataDir
-            if exists then return (Just dataDir) else return Nothing
+            return (if exists then Just dataDir else Nothing)
         else return Nothing
 
 -- | Get the leksah data dir based on the executable name or if that fails

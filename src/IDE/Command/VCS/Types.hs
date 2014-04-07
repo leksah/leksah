@@ -28,7 +28,7 @@ newtype VCSAction a = VCSAction (ReaderT (VCSConf,FilePath) IDEM a)
     deriving (Functor, Applicative, Monad, MonadIO, MonadReader (VCSConf,FilePath))
 
 askIDERef :: VCSAction IDERef
-askIDERef = VCSAction $ lift $ ask
+askIDERef = VCSAction $ lift ask
 
 --liftIDE :: ReaderT (VCSConf,FilePath) IDEM a
 --liftIDE = VCSAction $ lift
@@ -37,4 +37,4 @@ readIDE' :: (IDE -> a) -> VCSAction a
 readIDE' f = VCSAction $ lift $ readIDE f
 
 reflectIDE' :: IDEM a -> IDERef -> IO a
-reflectIDE' c ideR = reflectIDE c ideR
+reflectIDE' = reflectIDE

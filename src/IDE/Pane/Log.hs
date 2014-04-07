@@ -1,5 +1,5 @@
-{-# LANGUAGE FlexibleInstances, ScopedTypeVariables, DeriveDataTypeable,
-             MultiParamTypeClasses, TypeSynonymInstances, ParallelListComp #-}
+{-# LANGUAGE FlexibleInstances, ScopedTypeVariables,
+   DeriveDataTypeable, MultiParamTypeClasses, TypeSynonymInstances #-}
 --
 -- Module      :  IDE.Pane.Log
 -- Copyright   :  (c) Juergen Nicklisch-Franken, Hamish Mackenzie
@@ -38,7 +38,7 @@ import Data.Typeable (Typeable(..))
 import IDE.Core.State
 import IDE.Core.Types(LogLaunch)
 import Control.Monad.Trans (liftIO)
-import Control.Monad.Reader
+import Control.Monad.Reader (ask, unless)
 import IDE.Pane.SourceBuffer (markRefInSourceBuf,selectSourceBuf)
 import System.IO
 import Prelude hiding (catch)
@@ -81,7 +81,8 @@ import Text.Printf (printf)
 import Data.Text (Text)
 import qualified Data.Text as T (length, unpack)
 import Data.Monoid ((<>))
-import Data.List (isPrefixOf, isSuffixOf, findIndex)
+import Data.List (elemIndex, isPrefixOf, isSuffixOf, findIndex)
+import Data.Foldable (forM_)
 
 -------------------------------------------------------------------------------
 --
@@ -134,26 +135,24 @@ buildLogLaunchByName logName = do
         launches <- readIDE logLaunches
         let mbLogLaunch = Map.lookup logName launches
         let name = getNextFreeName logName launches
-        newLogLaunch <- liftIO $ createNewLogLaunch
+        newLogLaunch <- liftIO createNewLogLaunch
         return (newLogLaunch, name)
         where
-        getNextFreeName prevName launches = case (Map.lookup prevName launches) of
+        getNextFreeName prevName launches = case Map.lookup prevName launches of
                             Nothing -> prevName
                             Just _  -> getNextFreeName (incrementName prevName) launches
-        incrementName name = case (parseName name) of
+        incrementName name = case parseName name of
                                     Nothing -> createNewName name 0
                                     Just (number,name) -> createNewName name number
         createNewName name number = concat [name, " (", show (number+1), ")"]
-        parseName name = if surroundedByParenth $ getLaunchString name
-                                then
-                                    if isNumberAndNotEmpty $ init $ tail $ getLaunchString name
-                                        then -- check if
-                                            Just $ (read $ init $ tail $ getLaunchString name,
-                                                    reverse $ drop 4 $ reverse name)
-                                        else Nothing
-                                else Nothing
-        surroundedByParenth string = ("(" `isPrefixOf` string ) && (")" `isSuffixOf` string) && (isNotBlank string)
-        isNumberAndNotEmpty string = (foldr ((&&) . isNumber) True $ string) && (isNotBlank string) -- check if
+        parseName name = if surroundedByParenth (getLaunchString name) &&
+                               isNumberAndNotEmpty (init $ tail $ getLaunchString name)
+                            then Just
+                                    (read $ init $ tail $ getLaunchString name,
+                                     reverse $ drop 4 $ reverse name)
+                            else Nothing
+        surroundedByParenth string = ("(" `isPrefixOf` string ) && (")" `isSuffixOf` string) && isNotBlank string
+        isNumberAndNotEmpty string = all isNumber string && isNotBlank string -- check if
         getLaunchString name = reverse $ take 3 $ reverse name
         isNotBlank [] = False
         isNotBlank _  = True
@@ -223,21 +222,21 @@ showLogLaunch name = do
 
     model <- liftIO $ comboBoxGetModelText comboBox
     list <- liftIO $ listStoreToList model
-    let mbIndex = findIndex (==name) list
+    let mbIndex = elemIndex name list
 
     liftIO $ putStrLn $ "showLogLaunch: mbIndex = " ++ show mbIndex
 
     case mbIndex of
         Nothing -> return() -- TODO errorCalls
         Just index -> liftIO $ comboBoxSetActive comboBox index
-    liftIO $ putStrLn $ "switched to loglaunch"
+    liftIO $ putStrLn "switched to loglaunch"
 
 data LogState               =   LogState
     deriving(Eq,Ord,Read,Show,Typeable)
 
 instance Pane IDELog IDEM
     where
-    primPaneName  _ =   (__ "Log")
+    primPaneName  _ =   __ "Log"
     getAddedIndex _ =   0
     getTopWidget    =   castToWidget . logMainContainer
     paneId b        =   "*Log"
@@ -294,7 +293,7 @@ builder' :: PanePath ->
     IDEM (Maybe IDELog,Connections)
 builder' pp nb windows = do
     prefs <- readIDE prefs
-    newLogLaunch <- liftIO $ createNewLogLaunch
+    newLogLaunch <- liftIO createNewLogLaunch
     let emptyMap = Map.empty :: Map.Map String LogLaunchData
     let map = Map.insert defaultLogName (LogLaunchData newLogLaunch Nothing) emptyMap
     modifyIDE_ $ \ide -> ide { logLaunches = map}
@@ -318,8 +317,7 @@ builder' pp nb windows = do
         tv           <- textViewNew
         textViewSetEditable tv False
         fd           <- case logviewFont prefs of
-            Just str -> do
-                fontDescriptionFromString str
+            Just str ->  fontDescriptionFromString str
             Nothing  -> do
                 f    <- fontDescriptionNew
                 fontDescriptionSetFamily f "Sans"
@@ -368,18 +366,12 @@ builder' pp nb windows = do
                 mbTitle <- comboBoxGetActiveText comboBox
                 case mbTitle of
                     Nothing -> return()
-                    Just title -> if not $ title == defaultLogName then
-                                    reflectIDE (
-                                        do
-                                            launches <- readIDE logLaunches
-                                            removeActiveLogLaunchData
-                                            terminateLogLaunch title launches
-
-
-                                            )
-                                            ideR
-                                                                else
-                                    return ()
+                    Just title -> unless (title == defaultLogName) $
+                                     reflectIDE
+                                       (do launches <- readIDE logLaunches
+                                           removeActiveLogLaunchData
+                                           terminateLogLaunch title launches)
+                                       ideR
 
 
         let buf = IDELog mainContainer tv hBox comboBox
@@ -431,8 +423,7 @@ populatePopupMenu :: IDELog -> IDERef -> Menu -> IO ()
 populatePopupMenu log ideR menu = do
     items <- containerGetChildren menu
     item0           <-  menuItemNewWithLabel (__ "Resolve Errors")
-    item0 `on` menuItemActivate $ do
-        reflectIDE resolveErrors ideR
+    item0 `on` menuItemActivate $ reflectIDE resolveErrors ideR
     menuShellAppend menu item0
     res <- reflectIDE (do
         log <- getLog
@@ -495,9 +486,7 @@ appendLog log logLaunch text tag = do
     textBufferMoveMarkByName buf "end" iter2
     mbMark <- textBufferGetMark buf "end"
     line   <- textIterGetLine iter2
-    case mbMark of
-        Nothing   -> return ()
-        Just mark -> textViewScrollMarkOnscreen tv mark
+    forM_ mbMark (textViewScrollMarkOnscreen tv)
     return line
 
 markErrorInLog :: IDELog -> (Int,Int) -> IDEAction

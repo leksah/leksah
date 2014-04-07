@@ -43,6 +43,7 @@ import Graphics.UI.Editor.DescriptionPP
 import Text.ParserCombinators.Parsec hiding(Parser)
 import Debug.Trace (trace)
 import IDE.Utils.GUIUtils (__)
+import Control.Monad (void)
 
 data IDEFlags               =   IDEFlags {
     flagsBox                ::   VBox
@@ -53,7 +54,7 @@ data FlagsState             =   FlagsState
 
 instance Pane IDEFlags IDEM
     where
-    primPaneName _  =   (__ "Package Flags")
+    primPaneName _  =   __ "Package Flags"
     getAddedIndex _ =   0
     getTopWidget    =   castToWidget . flagsBox
     paneId b        =   "*Flags"
@@ -105,9 +106,10 @@ builder' idePackage flagsDesc flatflagsDesc pp nb window ideR = do
                 reflectIDE (do
                         changePackage packWithNewFlags
                         closePane flagsPane) ideR
-                writeFields ((dropExtension (ipdCabalFile packWithNewFlags)) ++ leksahFlagFileExtension)
+                writeFields (dropExtension (ipdCabalFile packWithNewFlags) ++
+                                leksahFlagFileExtension)
                     packWithNewFlags flatFlagsDescription)
-    on cancelB buttonActivated (reflectIDE (closePane flagsPane >> return ()) ideR)
+    on cancelB buttonActivated (reflectIDE (void (closePane flagsPane)) ideR)
     registerEvent notifier FocusIn (\e -> do
         reflectIDE (makeActive flagsPane) ideR
         return (e{gtkReturn=False}))
@@ -129,7 +131,7 @@ getFlags Nothing    = forceGetPane (Right "*Flags")
 getFlags (Just pp)  = forceGetPane (Left pp)
 
 quoteArg :: String -> String
-quoteArg s | ' ' `elem` s = "\"" ++ (escapeQuotes s) ++ "\""
+quoteArg s | ' ' `elem` s = "\"" ++ escapeQuotes s ++ "\""
 quoteArg s = s
 
 escapeQuotes = foldr (\c s -> if c == '"' then '\\':c:s else c:s) ""
@@ -138,7 +140,7 @@ quotedArgCharParser :: CharParser () Char
 quotedArgCharParser = try (do
         char '\\'
         anyChar)
-    <|> try (do
+    <|> try (
         noneOf "\"")
     <?> "argsParser"
 
@@ -148,19 +150,19 @@ argParser = try (do
         s <- many quotedArgCharParser
         char '"'
         return s)
-    <|> try (do
+    <|> try (
         many1 (noneOf " "))
     <?> "argParser"
 
 argsParser :: CharParser () [String]
-argsParser = try (do
+argsParser = try (
         many (do
             many (char ' ')
             argParser))
     <?> "argsParser"
 
 unargs :: [String] -> String
-unargs = unwords . (map quoteArg)
+unargs = unwords . map quoteArg
 
 args :: String -> [String]
 args s = case parse argsParser "" s of
@@ -176,7 +178,7 @@ flagsDescription = VFDPP emptyParams [
             (paraName <<<- ParaName (__ "Config flags") $ emptyParams)
             (PP.text . show)
             readParser
-            (\p -> unargs (ipdConfigFlags p))
+            (unargs . ipdConfigFlags)
             (\ b a -> a{ipdConfigFlags = args b})
             (stringEditor (const True) True)
             (\ _ -> return ())
@@ -184,7 +186,7 @@ flagsDescription = VFDPP emptyParams [
             (paraName <<<- ParaName (__ "Build flags") $ emptyParams)
             (PP.text . show)
             readParser
-            (\p -> unargs (ipdBuildFlags p))
+            (unargs . ipdBuildFlags)
             (\ b a -> a{ipdBuildFlags = args b})
             (stringEditor (const True) True)
             (\ _ ->  return ())
@@ -192,7 +194,7 @@ flagsDescription = VFDPP emptyParams [
             (paraName <<<- ParaName (__ "Test flags") $ emptyParams)
             (PP.text . show)
             readParser
-            (\p -> unargs (ipdTestFlags p))
+            (unargs . ipdTestFlags)
             (\ b a -> a{ipdTestFlags = args b})
             (stringEditor (const True) True)
             (\ _ ->   return ())
@@ -200,7 +202,7 @@ flagsDescription = VFDPP emptyParams [
             (paraName <<<- ParaName (__ "Haddock flags") $ emptyParams)
             (PP.text . show)
             readParser
-            (\p -> unargs (ipdHaddockFlags p))
+            (unargs . ipdHaddockFlags)
             (\ b a -> a{ipdHaddockFlags = args b})
             (stringEditor (const True) True)
             (\ _ ->   return ())
@@ -208,7 +210,7 @@ flagsDescription = VFDPP emptyParams [
             (paraName <<<- ParaName (__ "Executable flags") $ emptyParams)
             (PP.text . show)
             readParser
-            (\p -> unargs (ipdExeFlags p))
+            (unargs . ipdExeFlags)
             (\ b a -> a{ipdExeFlags = args b})
             (stringEditor (const True) True)
             (\ _ ->   return ())
@@ -216,7 +218,7 @@ flagsDescription = VFDPP emptyParams [
             (paraName <<<- ParaName (__ "Install flags") $ emptyParams)
             (PP.text . show)
             readParser
-            (\p -> unargs (ipdInstallFlags p))
+            (unargs . ipdInstallFlags)
             (\ b a -> a{ipdInstallFlags = args b})
             (stringEditor (const True) True)
             (\ _ ->   return ())
@@ -224,7 +226,7 @@ flagsDescription = VFDPP emptyParams [
             (paraName <<<- ParaName (__ "Register flags") $ emptyParams)
             (PP.text . show)
             readParser
-            (\p -> unargs (ipdRegisterFlags p))
+            (unargs . ipdRegisterFlags)
             (\ b a -> a{ipdRegisterFlags = args b})
             (stringEditor (const True) True)
             (\ _ ->   return ())
@@ -232,7 +234,7 @@ flagsDescription = VFDPP emptyParams [
             (paraName <<<- ParaName (__ "Unregister flags") $ emptyParams)
             (PP.text . show)
             readParser
-            (\p -> unargs (ipdUnregisterFlags p))
+            (unargs . ipdUnregisterFlags)
             (\ b a -> a{ipdUnregisterFlags = args b})
             (stringEditor (const True) True)
             (\ _ ->   return ())
@@ -240,7 +242,7 @@ flagsDescription = VFDPP emptyParams [
             (paraName <<<- ParaName (__ "Source Distribution flags") $ emptyParams)
             (PP.text . show)
             readParser
-            (\p -> unargs (ipdSdistFlags p))
+            (unargs . ipdSdistFlags)
             (\ b a -> a{ipdSdistFlags = args b})
             (stringEditor (const True) True)
             (\ _ -> return ())]
@@ -250,7 +252,7 @@ flagsDescription = VFDPP emptyParams [
 -- ------------------------------------------------------------
 
 readFlags :: FilePath -> IDEPackage -> IO IDEPackage
-readFlags fn pack = readFields fn flatFlagsDescription pack
+readFlags fn = readFields fn flatFlagsDescription
 
 -- ------------------------------------------------------------
 -- * Printing

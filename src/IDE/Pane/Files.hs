@@ -37,7 +37,7 @@ import Graphics.UI.Gtk
         treeViewNew, treeStoreNew, castToWidget, TreeStore, TreeView,
         ScrolledWindow)
 import Data.Maybe (isJust)
-import Control.Monad (forM_, when)
+import Control.Monad (void, forM_, when)
 import Data.Typeable (Typeable)
 import IDE.Core.State
        (MessageLevel(..), ipdCabalFile, ipdPackageId, wsPackages,
@@ -88,14 +88,13 @@ data FilesState      =   FilesState
 
 instance Pane IDEFiles IDEM
     where
-    primPaneName _  =   (__ "Files")
+    primPaneName _  =   __ "Files"
     getAddedIndex _ =   0
     getTopWidget    =   castToWidget . scrolledView
     paneId b        =   "*Files"
 
 instance RecoverablePane IDEFiles FilesState IDEM where
-    saveState p     =   do
-        return (Just FilesState)
+    saveState p     =   return (Just FilesState)
     recoverState pp FilesState =   do
         nb      <-  getNotebook pp
         buildPane pp nb builder
@@ -132,16 +131,16 @@ instance RecoverablePane IDEFiles FilesState IDEM where
             return True
         cid2 <- on treeView rowExpanded $ \ iter path -> do
             record <- treeStoreGetValue fileStore path
-            reflectIDE (do
+            reflectIDE (
                 case record of
                     DirRecord f       -> liftIO $ refreshDir fileStore path f
                     PackageRecord _ f -> liftIO $ refreshDir fileStore path f
                     _                 -> ideMessage Normal (__ "Unexpected Expansion in Files Pane")) ideR
         on treeView rowActivated $ \ path col -> do
             record <- treeStoreGetValue fileStore path
-            reflectIDE (do
+            reflectIDE (
                 case record of
-                    FileRecord f      -> (goToSourceDefinition f $ Just $ Location 1 0 1 0) >> return ()
+                    FileRecord f      -> void (goToSourceDefinition f (Just $ Location 1 0 1 0))
                     DirRecord f       -> liftIO $ refreshDir fileStore path f
                     PackageRecord _ f -> liftIO $ refreshDir fileStore path f
                     _                 -> ideMessage Normal (__ "Unexpected Activation in Files Pane")) ideR
@@ -149,7 +148,7 @@ instance RecoverablePane IDEFiles FilesState IDEM where
             paths <- treeSelectionGetSelectedRows sel
             forM_ paths $ \ path -> do
                 record <- treeStoreGetValue fileStore path
-                reflectIDE (do
+                reflectIDE (
                     case record of
                         FileRecord _      -> return ()
                         DirRecord f       -> liftIO $ refreshDir fileStore path f
@@ -187,13 +186,13 @@ refreshDir :: TreeStore FileRecord -> TreePath -> FilePath -> IO ()
 refreshDir store path dir = do
     mbIter <- treeModelGetIter store path
     when (isJust mbIter) $ do
-        contents <- do
-                filter ((/= '.').head) <$>
-                    getDirectoryContents dir >>= mapM (\f -> do
-                        let full = dir </> f
-                        isDir <- doesDirectoryExist full
-                        return $ if isDir then DirRecord full else FileRecord full)
-            `catch` \ (e :: IOError) -> return []
+        contents <- (filter ((/= '.') . head) <$> getDirectoryContents dir >>=
+                       mapM
+                         (\ f ->
+                            do let full = dir </> f
+                               isDir <- doesDirectoryExist full
+                               return $ if isDir then DirRecord full else FileRecord full))
+                     `catch` \ (e :: IOError) -> return []
         setDirectories store mbIter contents
 
 setDirectories :: TreeStore FileRecord -> Maybe TreeIter -> [FileRecord] -> IO ()
@@ -210,7 +209,7 @@ setDirectories store parent records = do
                 path <- treeModelGetPath store iter
                 removeUntil record store path
             _ -> do
-                treeStoreInsert store parentPath n $ record
+                treeStoreInsert store parentPath n record
                 case record of
                     DirRecord _       -> treeStoreInsert store (parentPath++[n]) 0 PlaceHolder
                     PackageRecord _ _ -> treeStoreInsert store (parentPath++[n]) 0 PlaceHolder

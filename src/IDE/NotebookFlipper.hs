@@ -161,7 +161,7 @@ initFlipper direction = do
         -- This is done after currentState is set so we know not to update the
         -- previous panes list
         n <- treeModelIterNChildren store' Nothing
-        treeViewSetCursor tree' [if direction then min 1 (n-1) else (n-1)] Nothing
+        treeViewSetCursor tree' [if direction then min 1 (n - 1) else n - 1] Nothing
     return ()
 
 handleKeyRelease :: TreeViewClass alpha => alpha -> IDERef -> EventM EKey Bool

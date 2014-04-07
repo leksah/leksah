@@ -93,9 +93,9 @@ runExternalTool runGuard pidHandler description executable args dir handleOutput
 isRunning :: IDEM Bool
 isRunning = do
     maybeProcess <- readIDE runningTool
-    liftIO $ do
+    liftIO $
         case maybeProcess of
-            Just process -> do
+            Just process ->
                 isNothing <$> getProcessExitCode process
             Nothing -> return False
 

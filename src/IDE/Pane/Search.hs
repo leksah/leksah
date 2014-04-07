@@ -48,8 +48,7 @@ import Graphics.UI.Gtk
         toggled, buttonPressEvent, keyPressEvent, keyReleaseEvent)
 import Graphics.UI.Gtk.Gdk.EventM
 import System.Glib.Signals (on, after)
-import Data.IORef (newIORef)
-import Data.IORef (writeIORef,readIORef,IORef(..))
+import Data.IORef (newIORef, writeIORef, readIORef, IORef(..))
 -- import IDE.Pane.SourceBuffer (goToDefinition)
 import IDE.Metainfo.Provider (searchMeta)
 import Data.Maybe
@@ -61,6 +60,7 @@ import Control.Event (triggerEvent)
 import Control.Monad.IO.Class (MonadIO(..))
 import qualified Data.ByteString.Char8 as BS (empty, unpack)
 import System.Glib.Properties (newAttrFromMaybeStringProperty)
+import Control.Monad (void)
 
 -- | A search pane description
 --
@@ -87,7 +87,7 @@ data SearchState    =   SearchState {
 
 instance Pane IDESearch IDEM
     where
-    primPaneName _  =   (__ "Search")
+    primPaneName _  =   __ "Search"
     getAddedIndex _ =   0
     getTopWidget    =   castToWidget . topBox
     paneId b        =   "*Search"
@@ -101,9 +101,9 @@ instance RecoverablePane IDESearch SearchState IDEM where
     recoverState pp (SearchState str scope mode) =   do
         nb      <-  getNotebook pp
         mbP@(Just search)     <-  buildPane pp nb builder
-        (scopeSelection search) scope
-        (modeSelection search) mode
-        (searchMetaGUI search) str
+        scopeSelection search scope
+        modeSelection search mode
+        searchMetaGUI search str
         return mbP
     builder pp nb windows = buildSearchPane
 
@@ -261,7 +261,7 @@ buildSearchPane =
                 text   <- liftIO $ entryGetText entry
                 searchMetaGUI_ text
             setChoices_ :: [Descr] -> IDEAction
-            setChoices_ descrs = do
+            setChoices_ descrs =
                 liftIO $ do
                     listStoreClear (searchStore search)
                     mapM_ (listStoreAppend (searchStore search)) descrs
@@ -276,11 +276,11 @@ buildSearchPane =
                     s1 <- toggleButtonGetActive rb1
                     s2 <- toggleButtonGetActive rb2
                     s3 <- toggleButtonGetActive rb3
-                    if s1
-                        then return (PackageScope withImports)
-                        else if s2
-                                then return (WorkspaceScope withImports)
-                                else return (SystemScope)
+                    return $ if s1
+                                then PackageScope withImports
+                                else if s2
+                                        then WorkspaceScope withImports
+                                        else SystemScope
                 scopeSelection_ scope
 
         cid1 <- treeView `after` focusInEvent $ liftIO $ do
@@ -293,18 +293,18 @@ buildSearchPane =
         mb1 `on` toggled $ liftIO $ do
             widgetSetSensitivity mb4 False
             active <- toggleButtonGetActive mb4
-            (reflectIDE (modeSelection_ (Exact active)) ideR )
+            reflectIDE (modeSelection_ (Exact active)) ideR
         mb2 `on` toggled $ liftIO $ do
             widgetSetSensitivity mb4 True
             active <- toggleButtonGetActive mb4
-            (reflectIDE (modeSelection_ (Prefix active)) ideR )
+            reflectIDE (modeSelection_ (Prefix active)) ideR
         mb3 `on` toggled $ liftIO $ do
             widgetSetSensitivity mb4 True
             active <- toggleButtonGetActive mb4
-            (reflectIDE (modeSelection_ (Regex active)) ideR )
+            reflectIDE (modeSelection_ (Regex active)) ideR
         mb4 `on` toggled $ liftIO $ do
             active <- toggleButtonGetActive mb4
-            (reflectIDE (modeSelectionCase active) ideR )
+            reflectIDE (modeSelectionCase active) ideR
         (cid2, cid3) <- treeViewContextMenu treeView $ searchContextMenu ideR listStore treeView
         cid4 <- treeView `on` rowActivated $ selectDescr ideR listStore
 --            sel `onSelectionChanged` do
@@ -339,7 +339,7 @@ searchContextMenu ideR store descrView theMenu = do
 goToDef ideR store descrView = do
     sel         <-  getSelectionDescr descrView store
     case sel of
-        Just descr      ->  reflectIDE (triggerEvent ideR (GotoDefinition descr)) ideR >> return ()
+        Just descr      ->  void (reflectIDE (triggerEvent ideR (GotoDefinition descr)) ideR)
                                 -- (goToDefinition descr) ideR
         otherwise       ->  sysMessage Normal (__ "Search >> listViewPopup: no selection")
 

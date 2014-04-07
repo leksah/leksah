@@ -46,14 +46,14 @@ setMenuForPackage vcsMenu cabalFp mbVCSConf = do
 
                     -- create or get packageItem and set it to ide to be able to get it later again
                     (oldMenuItems,pw) <- readIDE vcsData
-                    packageItem <- do
-                        case (Map.lookup cabalFp oldMenuItems) of
-                            Nothing -> liftIO $ Gtk.menuItemNewWithLabel cabalFp
-                            Just menuItem -> return menuItem
+                    packageItem <-
+                        case Map.lookup cabalFp oldMenuItems of
+                             Nothing -> liftIO $ Gtk.menuItemNewWithLabel cabalFp
+                             Just menuItem -> return menuItem
                     let newMenuItems = Map.insert cabalFp packageItem oldMenuItems
                     modifyIDE_ (\ide -> ide {vcsData = (newMenuItems,pw)})
 
-                    packageMenu <- liftIO $ Gtk.menuNew
+                    packageMenu <- liftIO Gtk.menuNew
 
                     -- build and set set-up repo action
                     setupActionItem <- liftIO $ Gtk.menuItemNewWithMnemonic "_Setup Repo"
@@ -76,13 +76,13 @@ setMenuForPackage vcsMenu cabalFp mbVCSConf = do
                     liftIO $ Gtk.widgetShowAll vcsMenu
                     return ()
                     where
-                    addActions cabalFp packageMenu ideR actions =  mapM_ (\(name,action) -> do
-                        -- for each operation add it to menu and connect action
-                        actionItem <- Gtk.menuItemNewWithMnemonic name
-                        actionItem `Gtk.on` Gtk.menuItemActivate $
-                            reflectIDE (runActionWithContext action cabalFp) ideR
-                        Gtk.menuShellAppend packageMenu actionItem
-                        ) actions
+                    addActions cabalFp packageMenu ideR
+                       = mapM_
+                           (\ (name, action) ->
+                              do actionItem <- Gtk.menuItemNewWithMnemonic name
+                                 actionItem `Gtk.on` Gtk.menuItemActivate $
+                                   reflectIDE (runActionWithContext action cabalFp) ideR
+                                 Gtk.menuShellAppend packageMenu actionItem)
                     mkVCSActions :: VCS.VCSType -> [(String, Types.VCSAction ())]
                     mkVCSActions VCS.SVN = SVN.mkSVNActions
                     mkVCSActions VCS.GIT = GIT.mkGITActions
@@ -100,7 +100,7 @@ runActionWithContext :: Types.VCSAction ()    -- ^ computation to execute, i.e. 
                      -> IDEAction
 runActionWithContext vcsAction packageFp = do
     config <- getVCSConf'' packageFp
-    runVcs config packageFp $ vcsAction
+    runVcs config packageFp vcsAction
     where
     runVcs :: VCSConf -> FilePath -> Types.VCSAction t -> IDEM t
     runVcs config cabalFp (Types.VCSAction a) = runReaderT a (config,cabalFp)
@@ -119,7 +119,7 @@ runSetupRepoActionWithContext packageFp = do
             liftIO $ VCSGUI.showSetupConfigGUI mbConfig (callback ide packageFp)
     where
     callback :: IDERef -> FilePath -> Maybe (VCS.VCSType, VCS.Config, Maybe VCSGUI.MergeTool) -> IO()
-    callback ideRef packageFp mbConfig  = do
+    callback ideRef packageFp mbConfig  =
             -- set config in workspace
             runReaderT (workspaceSetVCSConfig packageFp mbConfig) ideRef
 
@@ -156,7 +156,7 @@ getVCSConf :: FilePath -> IDEM (Either String (Maybe VCSConf))
 getVCSConf pathToPackage = do
     mbWorkspace <- readIDE workspace
     case mbWorkspace of
-        Nothing -> return $ Left $ "No open workspace. Open Workspace first."
+        Nothing -> return $ Left "No open workspace. Open Workspace first."
         Just workspace -> getVCSConf' workspace pathToPackage
 
 -- | vcs conf for given package in given workspace.
@@ -165,7 +165,7 @@ getVCSConf' workspace pathToPackage = do
             let mbConfig = Map.lookup pathToPackage $ packageVcsConf workspace
             case mbConfig of
             --Left $ "Could not find version-control-system configuration for package "++pathToPackage
-                Nothing -> return $ Right $ Nothing
+                Nothing -> return $ Right Nothing
                 Just conf -> return $ Right $ Just conf
 
 -- | vcs conf for given package in current workspace. Workspae and VCS conf must be set before.

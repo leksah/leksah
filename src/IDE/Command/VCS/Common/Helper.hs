@@ -40,7 +40,7 @@ createActionFromContext :: VCS.Ctx()    -- ^ computation to execute, i.e. showCo
                         -> Types.VCSAction ()
 createActionFromContext vcsAction = do
     ((_,conf,_),_) <- ask
-    liftIO $ VCSGUI.defaultVCSExceptionHandler $ VCS.runVcs conf $ vcsAction
+    liftIO $ VCSGUI.defaultVCSExceptionHandler $ VCS.runVcs conf vcsAction
 
 {- |
     Creates an 'eMergeToolSetter' (Either MergeTool or MT-Setter) from given parameters.
@@ -49,16 +49,16 @@ eMergeToolSetter :: IDERef
                 -> FilePath
                 -> Maybe VCSGUI.MergeTool
                 -> Either VCSGUI.MergeTool (VCSGUI.MergeTool -> IO())
-eMergeToolSetter ideRef cabalFp mbMergeTool = do
+eMergeToolSetter ideRef cabalFp mbMergeTool =
     case mbMergeTool of
-                            Nothing -> Right $ mergeToolSetter ideRef cabalFp
-                            Just mergeTool -> Left $ mergeTool
+        Nothing -> Right $ mergeToolSetter ideRef cabalFp
+        Just mergeTool -> Left mergeTool
 
 {- |
     Facility to set a mergetool for a given package.
 -}
 mergeToolSetter :: IDERef -> FilePath -> VCSGUI.MergeTool -> IO()
-mergeToolSetter ideRef cabalFp mergeTool = do
+mergeToolSetter ideRef cabalFp mergeTool =
     runReaderT (workspaceSetMergeTool cabalFp mergeTool) ideRef
 
 {- |
@@ -69,7 +69,7 @@ workspaceSetMergeTool pathToPackage mergeTool = do
     modifyIDE_ (\ide -> do
         let oldWs = fromJust (workspace ide)
         let oldMap = packageVcsConf oldWs
-        case (Map.lookup pathToPackage oldMap) of
+        case Map.lookup pathToPackage oldMap of
             Nothing -> ide --TODO error
             Just (vcsType,config,_) -> do
                 let vcsConf = (vcsType,config,Just mergeTool)

@@ -1,5 +1,5 @@
-{-# LANGUAGE FlexibleInstances, RecordWildCards, TypeSynonymInstances,
-             MultiParamTypeClasses, DeriveDataTypeable, OverloadedStrings #-}
+{-# LANGUAGE FlexibleInstances, TypeSynonymInstances,
+   MultiParamTypeClasses, DeriveDataTypeable, OverloadedStrings #-}
 -----------------------------------------------------------------------------
 --
 -- Module      :  IDE.Pane.Variables
@@ -73,14 +73,13 @@ data VariablesState  =   VariablesState {
 
 instance Pane IDEVariables IDEM
     where
-    primPaneName _  =   (__ "Variables")
+    primPaneName _  =   __ "Variables"
     getAddedIndex _ =   0
     getTopWidget    =   castToWidget . scrolledView
     paneId b        =   "*Variables"
 
 instance RecoverablePane IDEVariables VariablesState IDEM where
-    saveState p     =   do
-        return (Just VariablesState)
+    saveState p     =   return (Just VariablesState)
     recoverState pp VariablesState =   do
         nb      <-  getNotebook pp
         buildPane pp nb builder
@@ -160,7 +159,7 @@ fillVariablesListQuiet = packageTryQuiet $ do
         Nothing -> return ()
         Just var -> tryDebugQuiet $ debugCommand' ":show bindings" $ do
             to <- CL.consume
-            liftIO $ postGUIAsync $ do
+            liftIO $ postGUIAsync $
                 case parse variablesParser "" . T.unpack $ selectString to of
                     Left e -> sysMessage Normal (show e)
                     Right triples -> do
@@ -177,7 +176,7 @@ fillVariablesList = packageTry $ do
         Nothing -> return ()
         Just var -> tryDebug $ debugCommand' ":show bindings" $ do
             to <- CL.consume
-            liftIO $ postGUIAsync $ do
+            liftIO $ postGUIAsync $
                 case parse variablesParser "" . T.unpack $ selectString to of
                     Left e -> sysMessage Normal (show e)
                     Right triples -> do
@@ -218,7 +217,7 @@ variableParser = do
     symbol "::"
     typeStr  <- many (noneOf "=")
     char '='
-    value <- many (do
+    value <- many (
         noneOf "\n"
         <|> try (do
                 r <- char '\n'
@@ -233,8 +232,7 @@ valueParser = do
     whiteSpace
     many (noneOf "=")
     char '='
-    value <- many anyChar
-    return (value)
+    many anyChar
     <?> "valueParser"
 
 typeParser :: CharParser () String
@@ -242,8 +240,7 @@ typeParser = do
     whiteSpace
     many (noneOf ":")
     symbol "::"
-    typeStr  <- many anyChar
-    return typeStr
+    many anyChar
     <?> "typeParser"
 
 
@@ -287,17 +284,17 @@ variablesSelect ideR store path _ = do
 
 forceVariable :: VarDescription -> TreePath -> TreeStore VarDescription -> IDEAction
 forceVariable varDescr path treeStore = packageTry $ tryDebug $ do
-    debugCommand' (":force " ++ (varName varDescr)) $ do
+    debugCommand' (":force " ++ varName varDescr) $ do
         to <- CL.consume
-        liftIO $ postGUIAsync $ do
+        liftIO $ postGUIAsync $
             case parse valueParser "" . T.unpack $ selectString to of
                 Left e -> sysMessage Normal (show e)
                 Right value -> do
                     var <- treeStoreGetValue treeStore path
                     treeStoreSetValue treeStore path var{varValue = value}
-    debugCommand' (":type " ++ (varName varDescr)) $ do
+    debugCommand' (":type " ++ varName varDescr) $ do
         to <- CL.consume
-        liftIO $ postGUIAsync $ do
+        liftIO $ postGUIAsync $
             case parse typeParser "" . T.unpack $ selectString to of
                 Left e -> sysMessage Normal (show e)
                 Right typ -> do
@@ -306,17 +303,17 @@ forceVariable varDescr path treeStore = packageTry $ tryDebug $ do
 
 printVariable :: VarDescription -> TreePath -> TreeStore VarDescription -> IDEAction
 printVariable varDescr path treeStore = packageTry $ tryDebug $ do
-    debugCommand' (":print " ++ (varName varDescr)) $ do
+    debugCommand' (":print " ++ varName varDescr) $ do
         to <- CL.consume
-        liftIO $ postGUIAsync $ do
+        liftIO $ postGUIAsync $
             case parse valueParser "" . T.unpack $ selectString to of
                 Left e -> sysMessage Normal (show e)
                 Right value -> do
                     var <- treeStoreGetValue treeStore path
                     treeStoreSetValue treeStore path var{varValue = value}
-    debugCommand' (":type " ++ (varName varDescr)) $ do
+    debugCommand' (":type " ++ varName varDescr) $ do
         to <- CL.consume
-        liftIO $ postGUIAsync $ do
+        liftIO $ postGUIAsync $
             case parse typeParser "" . T.unpack $ selectString to of
                 Left e -> sysMessage Normal (show e)
                 Right typ -> do

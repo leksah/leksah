@@ -27,7 +27,7 @@ import IDE.Package
 import IDE.Utils.FileUtils(myCanonicalizePath)
 
 import Data.Maybe
-import Control.Monad (when)
+import Control.Monad (void, when)
 import Control.Monad.Trans (liftIO)
 import System.Time (getClockTime)
 import Text.PrinterParser
@@ -85,7 +85,7 @@ setWorkspace mbWs = do
                         Just ws -> Just (wsPackages ws)
     when (packFileAndExe /= oldPackFileAndExe) $
             case packFileAndExe of
-                (Just (Just p, mbExe))  -> activatePackage (getPackage p mbExe (fromJust mbPackages)) >> return ()
+                (Just (Just p, mbExe))  -> void (activatePackage (getPackage p mbExe (fromJust mbPackages)))
                 _ -> deactivatePackage
     mbPack <- readIDE activePack
     mbExe  <- readIDE activeExe
@@ -113,7 +113,7 @@ makePathsRelative ws = do
                                             nfp <- liftIO $ myCanonicalizePath fp
                                             return (Just (makeRelative (dropFileName wsFile') nfp))
     wsPackagesFiles'            <-  mapM myCanonicalizePath (wsPackagesFiles ws)
-    let relativePathes          =   map (\p -> makeRelative (dropFileName wsFile') p) wsPackagesFiles'
+    let relativePathes          =   map (makeRelative (dropFileName wsFile')) wsPackagesFiles'
     return ws {wsActivePackFile = wsActivePackFile', wsFile = wsFile', wsPackagesFiles = relativePathes}
 
 workspaceDescr :: [FieldDescriptionS Workspace]

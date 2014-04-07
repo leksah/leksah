@@ -72,11 +72,11 @@ createSVNActionFromContext action = do
             Just mb -> Helper.createActionFromContext $ action $ Right mb
     where
 --        passwordHandler :: IORef IDE-> Maybe MergeId -> ((Maybe (Bool, Maybe String)) -> Wrapper.Ctx ())
-        passwordHandler ide mbMergeInfo result = liftIO $ do
+        passwordHandler ide mbMergeInfo result = liftIO $
             case result of
                 Just (True, pw) -> modifyIDE_' ide (\ide -> ide {vcsData = (mbMergeInfo, Just pw) })
                 _               -> return ()
-        modifyIDE_' ide f = do
+        modifyIDE_' ide f =
                 liftIO (atomicModifyIORef ide f')
                 where
                     f' a  = (f a,())

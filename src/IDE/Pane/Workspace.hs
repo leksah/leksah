@@ -38,6 +38,7 @@ import IDE.Utils.GUIUtils (treeViewContextMenu, __)
 import System.Glib.Properties (newAttrFromMaybeStringProperty)
 import Data.Tree (Tree(..))
 import System.Log.Logger (debugM)
+import qualified Data.Function as F (on)
 
 -- | Workspace pane state
 --
@@ -51,7 +52,7 @@ data IDEWorkspace   =   IDEWorkspace {
 
 instance Pane IDEWorkspace IDEM
     where
-    primPaneName _  =   (__ "Workspace")
+    primPaneName _  =   __ "Workspace"
     getAddedIndex _ =   0
     getTopWidget    =   castToWidget . topBox
     paneId b        =   "*Workspace"
@@ -61,8 +62,7 @@ data WorkspaceState           =   WorkspaceState
     deriving(Eq,Ord,Read,Show,Typeable)
 
 instance RecoverablePane IDEWorkspace WorkspaceState IDEM where
-    saveState p     =   do
-        return (Just WorkspaceState)
+    saveState p     =   return (Just WorkspaceState)
     recoverState pp WorkspaceState =   do
         nb      <-  getNotebook pp
         buildPane pp nb builder
@@ -170,7 +170,7 @@ workspaceContextMenu ideR workspacePane theMenu = do
             Just (_,ideP,mbExe) -> reflectIDE (workspaceTry $ workspaceActivatePackage ideP mbExe) ideR
 
             otherwise     -> return ()
-    item2 `on` menuItemActivate $ reflectIDE (workspaceTry $ workspaceAddPackage) ideR
+    item2 `on` menuItemActivate $ reflectIDE (workspaceTry workspaceAddPackage) ideR
     item3 `on` menuItemActivate $ do
         sel <- getSelectionTree (treeViewC workspacePane)
                                 (workspaceStore workspacePane)
@@ -212,7 +212,7 @@ updateWorkspace showPane updateFileCache = do
                 Nothing -> return ()
                 Just (p :: IDEWorkspace)  -> do
                     liftIO $ treeStoreClear (workspaceStore p)
-                    let sorted = sortBy (\ f s -> compare (ipdPackageId f) (ipdPackageId s)) $ wsPackages ws
+                    let sorted = sortBy (compare `F.on` ipdPackageId) $ wsPackages ws
                         forest = map (\ ideP ->
                             Node (Just (ipdCabalFile ideP) == wsActivePackFile ws, ideP, Nothing)
                                         (map (\ test -> Node (

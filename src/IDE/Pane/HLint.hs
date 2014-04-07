@@ -40,7 +40,7 @@ import Control.Applicative ((<$>))
 import System.FilePath ((</>), dropFileName)
 import System.Exit (ExitCode(..))
 import IDE.Pane.Log (getLog)
-import Control.Monad (forM_, foldM, when)
+import Control.Monad (void, forM_, foldM, when)
 import Control.Monad.Trans.Reader (ask)
 import Control.Monad.Trans.Class (MonadTrans(..))
 import Control.Monad.IO.Class (MonadIO(..))
@@ -88,8 +88,7 @@ instance Pane IDEHLint IDEM
     paneId b        =   "*HLint"
 
 instance RecoverablePane IDEHLint HLintState IDEM where
-    saveState p     =   do
-        return (Just HLintState)
+    saveState p     =   return (Just HLintState)
     recoverState pp HLintState =   do
         nb      <-  getNotebook pp
         buildPane pp nb builder
@@ -152,8 +151,7 @@ instance RecoverablePane IDEHLint HLintState IDEM where
                         _ -> return False
         treeViewContextMenu treeView
             $ hlintContextMenu ideR hlintStore treeView
-        on sel treeSelectionSelectionChanged (reflectIDE (gotoSource False treeView hlintStore
-            >> return ()) ideR)
+        on sel treeSelectionSelectionChanged (reflectIDE (void $ gotoSource False treeView hlintStore) ideR)
 
         return (Just hlint,map ConnectC [cid1])
 
@@ -207,7 +205,7 @@ refreshHLint = do
     ws <- ask
     maybeActive <- lift $ readIDE activePack
     let packages = case maybeActive of
-            Just active -> active : (filter (/= active) $ wsPackages ws)
+            Just active -> active : filter (/= active) (wsPackages ws)
             Nothing     -> wsPackages ws
     lift $ hlintDirectories2 packages
 
@@ -216,14 +214,14 @@ refreshHLint = do
 gotoSource focus treeView hlintStore = do
     sel <- liftIO $ getSelectionHLintRecord treeView hlintStore
     case sel of
-        Just record -> do
+        Just record ->
             case record of
                 HLintRecord {condIdea = Just idea} ->
-                    (goToSourceDefinition (srcSpanFilename (H.ideaSpan idea))
+                    goToSourceDefinition (srcSpanFilename (H.ideaSpan idea))
                                         (Just $ Location (srcSpanStartLine (H.ideaSpan idea))
                                                          (srcSpanStartColumn (H.ideaSpan idea))
                                                          (srcSpanEndLine (H.ideaSpan idea))
-                                                         (srcSpanEndColumn (H.ideaSpan idea))))
+                                                         (srcSpanEndColumn (H.ideaSpan idea)))
                         ?>>= (\(IDEBuffer {sourceView = sv}) -> when focus $ grabFocus sv)
                 _ -> return ()
         Nothing -> return ()
@@ -247,7 +245,7 @@ refreshDir store iter package = do
     let datadirOpt = case mbHlintDir of
                         Just d  -> "--datadir":[d]
                         Nothing -> []
-    (flags, classify, hint) <- liftIO $ H.autoSettings
+    (flags, classify, hint) <- liftIO H.autoSettings
     let modules = Map.keys (ipdModules package)
     pathes <- getSourcePathes (ipdPackageId package) modules
     resL <- liftIO $ mapM (\dir -> H.parseModuleEx flags dir Nothing) pathes
@@ -295,8 +293,7 @@ setHLint2Results store parent dir ideas = do
             (Just iter, Found _) -> do
                 path <- treeModelGetPath store iter
                 removeUntil record store path
-            _ -> do
-                treeStoreInsert store parentPath n $ record
+            _ -> treeStoreInsert store parentPath n record
     removeRemaining store (parentPath++[nRecords])
     return nRecords
   where
@@ -311,8 +308,7 @@ hlintContextMenu :: IDERef
 hlintContextMenu ideR store treeView theMenu = do
     mbSel           <-  getSelectionHLintRecord treeView store
     item0           <-  menuItemNewWithLabel (__ "Replace")
-    item0 `on` menuItemActivate $ do
-        reflectIDE (replaceHlint store treeView mbSel) ideR
+    item0 `on` menuItemActivate $ reflectIDE (replaceHlint store treeView mbSel) ideR
     menuShellAppend theMenu item0
   where
     replaceableSelection Nothing = False
@@ -326,7 +322,7 @@ replaceHlint store treeView (Just sel) =
                 startColumn = srcSpanStartColumn (H.ideaSpan idea)
                 source = init $ unlines (head lined :
                                             map (\ s -> replicate startColumn ' ' ++ s) (tail lined))
-            in do
+            in
                 replaceHLintSource (srcSpanFilename (H.ideaSpan idea))
                                    (srcSpanStartLine (H.ideaSpan idea))
                                    startColumn

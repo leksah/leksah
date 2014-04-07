@@ -32,7 +32,7 @@ import Graphics.UI.Frame.Panes
      panePathForGroup)
 import Graphics.UI.Frame.ViewFrame
     (getBestPanePath, getNotebook, viewSplit', newGroupOrBringToFront)
-import Control.Monad (when, liftM)
+import Control.Monad (void, unless, when, liftM)
 import IDE.Core.Types (frameState)
 import Graphics.UI.Editor.Parameters (Direction(..))
 import Graphics.UI.Gtk
@@ -71,19 +71,19 @@ showBrowser = do
                 notebookSetShowTabs upper False
                 notebookSetShowTabs lower False
                 notebookSetShowTabs top False
-            getOrBuildPane (Left upperP) :: IDEM (Maybe IDEModules)
-            getOrBuildPane (Left lowerP) :: IDEM (Maybe IDEInfo)
-            getOrBuildPane (Left topP) :: IDEM (Maybe IDEWorkspace)
-            return ()
+            getOrBuildBrowserPanes upperP lowerP topP
         (Just rpp, False) -> do
             let lowerP  =  getBestPanePath (rpp ++  [SplitP BottomP, SplitP BottomP]) layout'
             let upperP  =  getBestPanePath (rpp ++ [SplitP BottomP, SplitP TopP]) layout'
             let topP    =  getBestPanePath (rpp ++ [SplitP TopP]) layout'
-            getOrBuildPane (Left upperP) :: IDEM (Maybe IDEModules)
-            getOrBuildPane (Left lowerP) :: IDEM (Maybe IDEInfo)
-            getOrBuildPane (Left topP) :: IDEM (Maybe IDEWorkspace)
-            return ()
+            getOrBuildBrowserPanes upperP lowerP topP
         _ -> return ()
+  where
+    getOrBuildBrowserPanes upperP lowerP topP = do
+        getOrBuildPane (Left upperP) :: IDEM (Maybe IDEModules)
+        getOrBuildPane (Left lowerP) :: IDEM (Maybe IDEInfo)
+        getOrBuildPane (Left topP) :: IDEM (Maybe IDEWorkspace)
+        return ()
 
 setSensitivityDebugger :: Bool -> IDEAction
 setSensitivityDebugger sens = do
@@ -122,23 +122,19 @@ showDebugger = do
                 notebookSetTabPos lower PosTop
                 notebookSetTabPos upper PosTop
                 notebookSetShowTabs upper False
-            getOrBuildPane (Left lowerP) :: IDEM (Maybe IDEBreakpoints)
-            getOrBuildPane (Left lowerP) :: IDEM (Maybe IDEVariables)
-            getOrBuildPane (Left lowerP) :: IDEM (Maybe IDETrace)
-            getOrBuildPane (Left lowerP) :: IDEM (Maybe IDEOutput)
-            when (null $ filter (\b -> bufferName b == "_Eval.hs") bufs) $
-                newTextBuffer upperP "_Eval.hs" Nothing >> return ()
-            return ()
+            getOrBuildDebugPanes upperP lowerP bufs
         (Just rpp, False) -> do
             let lowerP  =  getBestPanePath (rpp ++ [SplitP BottomP]) layout'
             let upperP =  getBestPanePath (rpp ++ [SplitP TopP]) layout'
-            getOrBuildPane (Left lowerP) :: IDEM (Maybe IDEBreakpoints)
-            getOrBuildPane (Left lowerP) :: IDEM (Maybe IDEVariables)
-            getOrBuildPane (Left lowerP) :: IDEM (Maybe IDETrace)
-            getOrBuildPane (Left lowerP) :: IDEM (Maybe IDEOutput)
-            when (null $ filter (\b -> bufferName b == "_Eval.hs") bufs) $
-                newTextBuffer upperP "_Eval.hs" Nothing >> return ()
-            return ()
+            getOrBuildDebugPanes upperP lowerP bufs
         _ -> return ()
-
+  where
+    getOrBuildDebugPanes upperP lowerP bufs = do
+        getOrBuildPane (Left lowerP) :: IDEM (Maybe IDEBreakpoints)
+        getOrBuildPane (Left lowerP) :: IDEM (Maybe IDEVariables)
+        getOrBuildPane (Left lowerP) :: IDEM (Maybe IDETrace)
+        getOrBuildPane (Left lowerP) :: IDEM (Maybe IDEOutput)
+        unless (any (\ b -> bufferName b == "_Eval.hs") bufs) $
+            void (newTextBuffer upperP "_Eval.hs" Nothing)
+        return ()
 

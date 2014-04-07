@@ -75,7 +75,7 @@ import IDE.Workspaces (workspaceTry, packageTry)
 import Control.Monad.IO.Class (MonadIO(..))
 import Control.Monad.Trans.Reader (ask)
 import Control.Monad.Trans.Class (MonadTrans(..))
-import Control.Monad (liftM, filterM, when)
+import Control.Monad (liftM, filterM, when, unless)
 import Foreign.C.Types (CInt(..))
 import Foreign.Ptr (Ptr(..))
 import Foreign.ForeignPtr (withForeignPtr)
@@ -105,9 +105,9 @@ getFindState :: IDEM FindState
 getFindState = do
     (fb,ls) <- needFindbar
     liftIO $ do
-        lineNr        <- getLineEntry fb >>= (\e -> spinButtonGetValueAsInt (castToSpinButton e))
-        replaceStr    <- getReplaceEntry fb >>= (\e -> entryGetText (castToEntry e))
-        entryStr      <- getFindEntry fb >>=  (\e -> entryGetText (castToEntry e))
+        lineNr        <- getLineEntry fb >>= (spinButtonGetValueAsInt . castToSpinButton)
+        replaceStr    <- getReplaceEntry fb >>= (entryGetText . castToEntry)
+        entryStr      <- getFindEntry fb >>=  (entryGetText . castToEntry)
         entryHist     <- listStoreToList ls
         entireWord    <- getEntireWord fb
         wrapAround    <- getWrapAround fb
@@ -132,7 +132,7 @@ setFindState fs = do
         getReplaceEntry fb >>= (\e -> entrySetText (castToEntry e) (replaceStr fs))
         getFindEntry fb >>=  (\e -> entrySetText (castToEntry e) (entryStr fs))
         listStoreClear ls
-        mapM_ (\s -> listStoreAppend ls s) (entryHist fs)
+        mapM_ (listStoreAppend ls) (entryHist fs)
         setEntireWord fb (entireWord fs)
         setWrapAround fb (wrapAround fs)
         setCaseSensitive fb (caseSensitive fs)
@@ -216,7 +216,7 @@ constructFindReplace = reifyIDE $ \ ideR   -> do
     sep1 <- separatorToolItemNew
     toolbarInsert toolbar sep1 0
 
-    let performGrep = (reflectIDE (packageTry $ doGrep toolbar) ideR)
+    let performGrep = reflectIDE (packageTry $ doGrep toolbar) ideR
     grepButton <- toolButtonNew (Nothing :: Maybe Widget) (Just "Grep")
     toolbarInsert toolbar grepButton 0
     grepButton `onToolButtonClicked` performGrep
@@ -249,7 +249,7 @@ constructFindReplace = reifyIDE $ \ ideR   -> do
     nextButton <- toolButtonNewFromStock "gtk-go-forward"
     toolbarInsert toolbar nextButton 0
     set nextButton [widgetTooltipText := Just "Search for the next match in the current file"]
-    nextButton `onToolButtonClicked` (doSearch toolbar Forward ideR  )
+    nextButton `onToolButtonClicked` doSearch toolbar Forward ideR
 
     wrapAroundButton <- toggleToolButtonNew
     toolButtonSetLabel wrapAroundButton (Just "Wrap")
@@ -260,7 +260,7 @@ constructFindReplace = reifyIDE $ \ ideR   -> do
     previousButton <- toolButtonNewFromStock "gtk-go-back"
     toolbarInsert toolbar previousButton 0
     set previousButton [widgetTooltipText := Just "Search for the previous match in the current file"]
-    previousButton `onToolButtonClicked` (doSearch toolbar Backward ideR  )
+    previousButton `onToolButtonClicked` doSearch toolbar Backward ideR
 
     entryTool <- toolItemNew
     entry <- entryNew
@@ -280,7 +280,7 @@ constructFindReplace = reifyIDE $ \ ideR   -> do
     cell <- cellRendererTextNew
     cellLayoutPackStart completion cell True
     cellLayoutSetAttributes completion cell store
-        (\cd -> [cellText := cd])
+        (\ cd -> [cellText := cd])
     entryCompletionSetMatchFunc completion (matchFunc store)
     on completion matchSelected $ \ model iter -> do
         txt <- treeModelGetValue model iter (makeColumnIdString 0)
@@ -292,21 +292,22 @@ constructFindReplace = reifyIDE $ \ ideR   -> do
     toolButtonSetLabel regexButton (Just "Regex")
     widgetSetName regexButton "regexButton"
     toolbarInsert toolbar regexButton 0
-    regexButton `onToolButtonClicked` (doSearch toolbar Insert ideR)
+    regexButton `onToolButtonClicked` doSearch toolbar Insert ideR
     set regexButton [widgetTooltipText := Just "When selected the search string is used as a regular expression"]
 
     entireWordButton <- toggleToolButtonNew
     toolButtonSetLabel entireWordButton (Just "Words")
     widgetSetName entireWordButton "entireWordButton"
     toolbarInsert toolbar entireWordButton 0
-    entireWordButton `onToolButtonClicked` (doSearch toolbar Insert ideR)
+    entireWordButton `onToolButtonClicked` doSearch toolbar Insert ideR
     set entireWordButton [widgetTooltipText := Just "When selected only entire words are matched"]
 
     caseSensitiveButton <- toggleToolButtonNew
     toolButtonSetLabel caseSensitiveButton (Just "Case")
     widgetSetName caseSensitiveButton "caseSensitiveButton"
     toolbarInsert toolbar caseSensitiveButton 0
-    caseSensitiveButton `onToolButtonClicked` (doSearch toolbar Insert ideR)
+    caseSensitiveButton `onToolButtonClicked`
+       doSearch toolbar Insert ideR
     set caseSensitiveButton [widgetTooltipText := Just "When selected the search is case sensitive"]
 
     labelTool <- toolItemNew
@@ -314,12 +315,10 @@ constructFindReplace = reifyIDE $ \ ideR   -> do
     containerAdd labelTool label
     toolbarInsert toolbar labelTool 0
 
-    after entry insertText (\t i -> do
+    after entry insertText (\ t i -> do
         doSearch toolbar Insert ideR
         return i)
-    after entry deleteText (\ _ _ -> doSearch toolbar Delete ideR  )
-
-
+    after entry deleteText (\ _ _ -> doSearch toolbar Delete ideR)
 
     on entry entryActivate $ doSearch toolbar Forward ideR
     on entry focusInEvent $ do
@@ -327,11 +326,10 @@ constructFindReplace = reifyIDE $ \ ideR   -> do
         return False
 
     replaceButton `onToolButtonClicked` replace toolbar Forward ideR
-    let  performReplaceAll = replaceAll toolbar Forward ideR
+    let performReplaceAll = replaceAll toolbar Forward ideR
     replaceAllButton `onToolButtonClicked` performReplaceAll
 
-    let
-        ctrl "c" = toggleToolButton caseSensitiveButton >> return True
+    let ctrl "c" = toggleToolButton caseSensitiveButton >> return True
         ctrl "e" = toggleToolButton regexButton >> return True
         ctrl "w" = toggleToolButton entireWordButton >> return True
         ctrl "p" = toggleToolButton wrapAroundButton >> return True
@@ -354,24 +352,22 @@ constructFindReplace = reifyIDE $ \ ideR   -> do
                 widgetGrabFocus re
                 --- widgetAc
                 return True
-            _ | (mapControlCommand Control) `elem` mods -> liftIO . ctrl $ map toLower name
-            _        ->  return False
-
+            _ | mapControlCommand Control `elem` mods -> liftIO . ctrl $ map toLower name
+            _        -> return False
 
     rentry `on` keyPressEvent $ do
         name <- eventKeyName
         mods <- eventModifier
         case () of
-            _
-                | name == "Tab" || name == "ISO_Left_Tab" -> liftIO $ do
+           _ | name == "Tab" || name == "ISO_Left_Tab" -> liftIO $ do
                     fe <- getFindEntry toolbar
                     widgetGrabFocus fe
                     return True
-                | (mapControlCommand Control) `elem` mods ->
+             | mapControlCommand Control `elem` mods ->
                         liftIO . ctrl $ map toLower name
-                | otherwise                ->  return False
+             | otherwise -> return False
 
-    after spinL focusInEvent . liftIO $ reflectIDE (inActiveBufContext True $ \_ _ ebuf _ _ -> do
+    after spinL focusInEvent . liftIO $ reflectIDE (inActiveBufContext True $ \ _ _ ebuf _ _ -> do
         max <- getLineCount ebuf
         liftIO $ spinButtonSetRange spinL 1.0 (fromIntegral max)
         return True) ideR
@@ -385,36 +381,35 @@ constructFindReplace = reifyIDE $ \ ideR   -> do
                 re <- getFindEntry toolbar
                 widgetGrabFocus re
                 return True
-            _ | (mapControlCommand Control) `elem` mods -> liftIO . ctrl $ map toLower name
-            _        ->  return False
+            _ | mapControlCommand Control `elem` mods -> liftIO . ctrl $ map toLower name
+            _ -> return False
 
-
-    after spinL entryActivate $ reflectIDE (inActiveBufContext () $ \_ sv ebuf _ _ -> do
-        line  <- liftIO $ spinButtonGetValueAsInt spinL
-        iter  <- getIterAtLine ebuf (line - 1)
+    after spinL entryActivate $ reflectIDE (inActiveBufContext () $ \ _ sv ebuf _ _ -> do
+        line <- liftIO $ spinButtonGetValueAsInt spinL
+        iter <- getIterAtLine ebuf (line - 1)
         placeCursor ebuf iter
         scrollToIter sv iter 0.2 Nothing
         liftIO $ getOut ideR
         return ()) ideR
 
-    closeButton `onToolButtonClicked` do
-        reflectIDE hideFindbar ideR
+    closeButton `onToolButtonClicked` reflectIDE hideFindbar ideR
 
-    set toolbar [ toolbarChildHomogeneous spinTool := False ]
-    set toolbar [ toolbarChildHomogeneous wrapAroundButton := False ]
-    set toolbar [ toolbarChildHomogeneous entireWordButton := False ]
-    set toolbar [ toolbarChildHomogeneous caseSensitiveButton := False ]
-    set toolbar [ toolbarChildHomogeneous regexButton := False ]
-    set toolbar [ toolbarChildHomogeneous replaceAllButton := False ]
-    set toolbar [ toolbarChildHomogeneous labelTool  := False ]
-    set toolbar [ toolbarChildHomogeneous labelTool2 := False ]
-    set toolbar [ toolbarChildHomogeneous labelTool3 := False ]
+    set toolbar [toolbarChildHomogeneous spinTool := False]
+    set toolbar [toolbarChildHomogeneous wrapAroundButton := False]
+    set toolbar [toolbarChildHomogeneous entireWordButton := False]
+    set toolbar [toolbarChildHomogeneous caseSensitiveButton := False]
+    set toolbar [toolbarChildHomogeneous regexButton := False]
+    set toolbar [toolbarChildHomogeneous replaceAllButton := False]
+    set toolbar [toolbarChildHomogeneous labelTool := False]
+    set toolbar [toolbarChildHomogeneous labelTool2 := False]
+    set toolbar [toolbarChildHomogeneous labelTool3 := False]
 
-    reflectIDE (modifyIDE_ (\ide -> ide{findbar = (False,Just (toolbar,store))})) ideR
+    reflectIDE (modifyIDE_ (\ ide -> ide{findbar = (False, Just (toolbar, store))})) ideR
     return toolbar
-        where getOut = reflectIDE $ do
-                            hideFindbar
-                            maybeActiveBuf ?>>= makeActive
+  where
+    getOut = reflectIDE $ do
+        hideFindbar
+        maybeActiveBuf ?>>= makeActive
 
 
 doSearch :: Toolbar -> SearchHint -> IDERef -> IO ()
@@ -436,7 +431,7 @@ doSearch fb hint ideR   = do
                 else do
                     widgetModifyBase entry StateNormal red
                     widgetModifyText entry StateNormal white
-        Nothing -> do
+        Nothing ->
             if null search
                 then do
                     widgetModifyBase entry StateNormal white
@@ -450,7 +445,7 @@ doSearch fb hint ideR   = do
 doGrep :: Toolbar -> PackageAction
 doGrep fb   = do
     package       <- ask
-    ideR          <- lift $ ask
+    ideR          <- lift ask
     entry         <- liftIO $ getFindEntry fb
     search        <- liftIO $ entryGetText (castToEntry entry)
     entireWord    <- liftIO $ getEntireWord fb
@@ -463,25 +458,23 @@ doGrep fb   = do
 matchFunc :: ListStore String -> String -> TreeIter -> IO Bool
 matchFunc model str iter = do
   tp <- treeModelGetPath model iter
-  r <- case tp of
+  case tp of
          (i:_) -> do row <- listStoreGetValue model i
                      return (isPrefixOf (map toLower str) (map toLower row) && length str < length row)
          otherwise -> return False
-  return r
 
 addToHist :: String -> IDEAction
 addToHist str =
-    if null str
-        then return ()
-        else do
-            (_,ls)      <- needFindbar
-            liftIO $ do
-                entryHist   <- listStoreToList ls
-                when (null (filter (\e -> (str `isPrefixOf` e)) entryHist)) $ do
-                    let newList = take 12 (str : filter (\e -> not (e `isPrefixOf` str)) entryHist)
+    unless (null str) $
+       do (_, ls) <- needFindbar
+          liftIO $
+            do entryHist <- listStoreToList ls
+               unless (any (str `isPrefixOf`) entryHist) $
+                 do let newList
+                          = take 12
+                              (str : filter (\ e -> not (e `isPrefixOf` str)) entryHist)
                     listStoreClear ls
-                    mapM_ (\s -> listStoreAppend ls s) newList
-
+                    mapM_ (listStoreAppend ls) newList
 
 replace :: Toolbar -> SearchHint -> IDERef -> IO ()
 replace fb hint ideR   =  do
@@ -528,7 +521,7 @@ editFind' exp matchIndex wrapAround dummy hint =
     removeTagByName ebuf "found"
     startMark <- getInsertMark ebuf
     st1 <- getIterAtMark ebuf startMark
-    mbsr2 <- do
+    mbsr2 <-
         if hint == Backward
             then do
                 st2 <- backwardCharC st1
@@ -537,7 +530,7 @@ editFind' exp matchIndex wrapAround dummy hint =
                 case mbsr of
                     Nothing ->
                         if wrapAround
-                            then do backSearch exp matchIndex ebuf text i2
+                            then backSearch exp matchIndex ebuf text i2
                             else return Nothing
                     m -> return m
             else do
@@ -548,7 +541,7 @@ editFind' exp matchIndex wrapAround dummy hint =
                 case mbsr of
                     Nothing ->
                         if wrapAround
-                            then do forwardSearch exp matchIndex ebuf text i1
+                            then forwardSearch exp matchIndex ebuf text i1
                             else return Nothing
                     m -> return m
     case mbsr2 of
@@ -569,7 +562,7 @@ editFind' exp matchIndex wrapAround dummy hint =
             findMatch exp matchIndex ebuf text (>= offset) False
 
 regexAndMatchIndex :: Bool -> Bool -> Bool -> String -> IO (Maybe (Regex, Int))
-regexAndMatchIndex caseSensitive entireWord regex string = do
+regexAndMatchIndex caseSensitive entireWord regex string =
     if null string
         then return Nothing
         else do
@@ -640,7 +633,7 @@ editReplace' entireWord caseSensitive wrapAround regex search replace hint mayRe
             Nothing -> return False
     where
         replacementText False _ _ _ replace = return $ Just replace
-        replacementText True text matchIndex matches replace = do
+        replacementText True text matchIndex matches replace =
             case compileRegex caseSensitive search of
                 Left err -> do
                     sysMessage Normal err
@@ -725,7 +718,7 @@ getFindEntry    = getWidget "searchEntryTool"
 getWidget :: String -> Toolbar -> IO Widget
 getWidget str tb = do
     widgets <- containerGetChildren tb
-    entryL <-  filterM (\w -> liftM  (== str) (widgetGetName w) ) widgets
+    entryL <-  filterM (liftM (== str) . widgetGetName) widgets
     case entryL of
         [w] -> do
             mbw <- binGetChild (castToBin w)
@@ -743,7 +736,7 @@ getRegex         = getSelection "regexButton"
 getSelection :: String -> Toolbar -> IO Bool
 getSelection str tb = do
     widgets <- containerGetChildren tb
-    entryL <-  filterM (\w -> liftM  (== str) (widgetGetName w) ) widgets
+    entryL <-  filterM (liftM (== str) . widgetGetName) widgets
     case entryL of
         [w] -> toggleToolButtonGetActive (castToToggleToolButton w)
         _   -> throwIDE "Find>>getIt widget not found"
@@ -757,7 +750,7 @@ setRegex         = setSelection "regexButton"
 setSelection :: String -> Toolbar -> Bool ->  IO ()
 setSelection str tb bool = do
     widgets <- containerGetChildren tb
-    entryL <-  filterM (\w -> liftM  (== str) (widgetGetName w) ) widgets
+    entryL <-  filterM (liftM (== str) . widgetGetName ) widgets
     case entryL of
         [w] -> toggleToolButtonSetActive (castToToggleToolButton w) bool
         _   -> throwIDE "Find>>getIt widget not found"

@@ -1,5 +1,5 @@
-{-# LANGUAGE FlexibleInstances, RecordWildCards, TypeSynonymInstances,
-             MultiParamTypeClasses, DeriveDataTypeable #-}
+{-# LANGUAGE FlexibleInstances, TypeSynonymInstances,
+   MultiParamTypeClasses, DeriveDataTypeable #-}
 -----------------------------------------------------------------------------
 --
 -- Module      :  IDE.Pane.Breakpoints
@@ -53,14 +53,13 @@ data BreakpointsState  =   BreakpointsState {
 
 instance Pane IDEBreakpoints IDEM
     where
-    primPaneName _  =   (__ "Breakpoints")
+    primPaneName _  =   __ "Breakpoints"
     getAddedIndex _ =   0
     getTopWidget    =   castToWidget . scrolledView
     paneId b        =   "*Breakpoints"
 
 instance RecoverablePane IDEBreakpoints BreakpointsState IDEM where
-    saveState p     =   do
-        return (Just BreakpointsState)
+    saveState p     =   return (Just BreakpointsState)
     recoverState pp BreakpointsState =   do
         nb      <-  getNotebook pp
         buildPane pp nb builder
@@ -183,7 +182,7 @@ breakpointsSelect ideR store path _ = do
 deleteBreakpoint :: LogRef -> IDEAction
 deleteBreakpoint logRef =
     case logRefType logRef of
-        BreakpointRef -> debugDeleteBreakpoint ((words (T.unpack $ refDescription logRef)) !! 1) logRef
+        BreakpointRef -> debugDeleteBreakpoint (words (T.unpack $ refDescription logRef) !! 1) logRef
         _   -> sysMessage Normal (__ "Debugger>>deleteBreakpoint: Not a breakpoint")
 
 

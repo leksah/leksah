@@ -1,5 +1,5 @@
-{-# LANGUAGE FlexibleInstances, RecordWildCards, TypeSynonymInstances,
-             MultiParamTypeClasses, DeriveDataTypeable, OverloadedStrings #-}
+{-# LANGUAGE FlexibleInstances, TypeSynonymInstances,
+   MultiParamTypeClasses, DeriveDataTypeable, OverloadedStrings #-}
 -----------------------------------------------------------------------------
 --
 -- Module      :  IDE.Pane.Trace
@@ -49,6 +49,7 @@ import Graphics.UI.Gtk.General.Enums (MouseButton(..))
 import System.Log.Logger (debugM)
 import IDE.Workspaces (packageTry)
 import qualified Data.Conduit.List as CL (consume)
+import Control.Applicative ((<$>))
 import Control.Monad.Trans.Class (MonadTrans(..))
 import Control.Monad.IO.Class (MonadIO(..))
 import IDE.Utils.GUIUtils (treeViewContextMenu, __)
@@ -77,14 +78,13 @@ data TraceHist = TraceHist {
 
 instance Pane IDETrace IDEM
     where
-    primPaneName _  =   (__ "Trace")
+    primPaneName _  =   __ "Trace"
     getAddedIndex _ =   0
     getTopWidget    =   castToWidget . scrolledView
     paneId b        =   "*Trace"
 
 instance RecoverablePane IDETrace TraceState IDEM where
-    saveState p     =   do
-        return (Just TraceState)
+    saveState p     =   return (Just TraceState)
     recoverState pp TraceState =   do
         nb      <-  getNotebook pp
         buildPane pp nb builder
@@ -184,7 +184,8 @@ fillTraceList = packageTry $ do
                 let parseRes = parse tracesParser "" . T.unpack $ selectString to
                 r <- case parseRes of
                         Left err     -> do
-                            debugM "leksah" ((printf (__ "trace parse error %s\ninput: %s") (show err) (T.unpack $ selectString to)))
+                            debugM "leksah" (printf (__ "trace parse error %s\ninput: %s") (show err)
+                                                (T.unpack $ selectString to))
                             return []
                         Right traces -> return traces
                 treeStoreClear (tracepoints tracePane)
@@ -254,7 +255,7 @@ tracesParser = try (do
         eof
         return []
     <?>
-        (__ "traces parser")
+        __ "traces parser"
 
 traceParser :: CharParser () TraceHist
 traceParser = do
@@ -268,13 +269,13 @@ traceParser = do
     span     <- srcSpanParser
     symbol ")"
     return (TraceHist False index function span)
-    <?> (__ "trace parser")
+    <?> __ "trace parser"
 
 lexer  = P.makeTokenParser emptyDef
 colon  = P.colon lexer
 symbol = P.symbol lexer
 whiteSpace = P.whiteSpace lexer
-int = fmap fromInteger $ P.integer lexer
+int = fromInteger <$> P.integer lexer
 
 
 

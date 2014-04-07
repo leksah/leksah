@@ -1,5 +1,5 @@
-{-# LANGUAGE FlexibleInstances, RecordWildCards, TypeSynonymInstances,
-             MultiParamTypeClasses, DeriveDataTypeable, OverloadedStrings #-}
+{-# LANGUAGE FlexibleInstances, TypeSynonymInstances,
+   MultiParamTypeClasses, DeriveDataTypeable, OverloadedStrings #-}
 -----------------------------------------------------------------------------
 --
 -- Module      :  IDE.Pane.Errors
@@ -54,13 +54,12 @@ data ErrorsState    =   ErrorsState {
 
 instance Pane IDEErrors IDEM
     where
-    primPaneName _  =   (__ "Errors")
+    primPaneName _  =   __ "Errors"
     getTopWidget    =   castToWidget . scrolledView
     paneId b        =   "*Errors"
 
 instance RecoverablePane IDEErrors ErrorsState IDEM where
-    saveState p     =   do
-        return (Just ErrorsState)
+    saveState p     =   return (Just ErrorsState)
     recoverState pp ErrorsState =   do
         nb      <-  getNotebook pp
         p <-    buildPane pp nb builder
@@ -87,7 +86,7 @@ builder' pp nb windows = reifyIDE $ \ ideR -> do
     cellLayoutPackStart colA rendererA False
     cellLayoutSetAttributes colA rendererA errorStore
         $ \row -> [cellText := if index row == 0 then showSourceSpan (logRef row) else "",
-                   cellTextForeground := if (logRefType (logRef row)) == WarningRef
+                   cellTextForeground := if logRefType (logRef row) == WarningRef
                                             then "green"
                                             else "red" ]
     rendererB    <- cellRendererTextNew
@@ -171,8 +170,7 @@ errorsContextMenu :: IDERef
 errorsContextMenu ideR store treeView theMenu = do
     mbSel           <-  getSelectedError treeView store
     item0           <-  menuItemNewWithLabel (__ "Resolve Errors")
-    item0 `on` menuItemActivate $ do
-        reflectIDE resolveErrors ideR
+    item0 `on` menuItemActivate $ reflectIDE resolveErrors ideR
     menuShellAppend theMenu item0
     case mbSel of
         Just sel -> addResolveMenuItems ideR theMenu sel

@@ -25,7 +25,6 @@ module IDE.Pane.Info (
 ,   openDocu
 ) where
 
-import Control.Monad
 import Data.IORef
 import Data.Typeable
 import Data.Char (isAlphaNum)
@@ -44,6 +43,8 @@ import Graphics.UI.Gtk
         scrolledWindowSetPolicy, castToWidget, ScrolledWindow)
 import Graphics.UI.Gtk.General.Enums (PolicyType(..))
 import System.Glib.Signals (on)
+import Control.Monad (void, when)
+import Data.Foldable (forM_)
 
 -- | An info pane description
 --
@@ -58,7 +59,7 @@ data InfoState              =   InfoState (Maybe Descr)
 
 instance Pane IDEInfo IDEM
     where
-    primPaneName _  =   (__ "Info")
+    primPaneName _  =   __ "Info"
     getAddedIndex _ =   0
     getTopWidget    =   castToWidget . sw
     paneId b        =   "*Info"
@@ -86,7 +87,7 @@ instance RecoverablePane IDEInfo InfoState IDEM where
 
         createHyperLinkSupport descriptionView sw (\_ _ iter -> do
                 (beg, en) <- getIdentifierUnderCursorFromIter (iter, iter)
-                return (beg, en)) (\_ shift' slice -> do
+                return (beg, en)) (\_ shift' slice ->
                                     when (slice /= []) $ do
                                         -- liftIO$ print ("slice",slice)
                                         triggerEventIDE (SelectInfo slice shift')
@@ -103,7 +104,7 @@ instance RecoverablePane IDEInfo InfoState IDEM where
         let info = IDEInfo sw currentDescr' descriptionView
         -- ids5 <- sv `onLookupInfo` selectInfo descriptionView       -- obsolete by hyperlinks
         cids2 <- descriptionView `afterFocusIn` makeActive info
-        return (Just info, concat [cids1, cids2])
+        return (Just info, cids1 ++ cids2)
 
 getInfo :: IDEM IDEInfo
 getInfo = forceGetPane (Right "*Info")
@@ -119,14 +120,14 @@ gotoSource = do
     case mbInfo of
         Nothing     ->  do  ideMessage Normal "gotoSource:noDefinition"
                             return ()
-        Just info   ->  goToDefinition info >> return ()
+        Just info   ->  void (goToDefinition info)
 
 gotoModule' :: IDEAction
 gotoModule' = do
     mbInfo  <-  getInfoCont
     case mbInfo of
         Nothing     ->  return ()
-        Just info   ->  triggerEventIDE (SelectIdent info) >> return ()
+        Just info   ->  void (triggerEventIDE (SelectIdent info))
 
 
 setInfo :: Descr -> IDEAction
@@ -155,7 +156,7 @@ setInfoStyle = getPane >>= setInfoStyle'
                                     (True,v) -> Just v
 
 
-getInfoCont ::  IDEM (Maybe (Descr))
+getInfoCont ::  IDEM (Maybe Descr)
 getInfoCont = do
     mbPane <- getPane
     case mbPane of
@@ -168,15 +169,11 @@ getInfoCont = do
 recordInfoHistory :: Maybe Descr -> Maybe Descr -> IDEAction
 recordInfoHistory  descr oldDescr = do
     triggerEventIDE (RecordHistory
-        ((InfoElementSelected descr),
-         (InfoElementSelected oldDescr)))
+        (InfoElementSelected descr, InfoElementSelected oldDescr))
     return ()
 
 replayInfoHistory :: Maybe Descr -> IDEAction
-replayInfoHistory mbDescr = do
-    case mbDescr of
-        Nothing    -> return ()
-        Just descr -> setInfo descr
+replayInfoHistory mbDescr = forM_ mbDescr setInfo
 
 openDocu :: IDEAction
 openDocu = do
@@ -185,7 +182,7 @@ openDocu = do
         Nothing -> return ()
         Just descr -> do
             prefs' <- readIDE prefs
-            openBrowser $ docuSearchURL prefs' ++ (escapeURIString isAlphaNum $ dscName descr)
+            openBrowser $ docuSearchURL prefs' ++ escapeURIString isAlphaNum (dscName descr)
 
 populatePopupMenu :: IDERef -> IORef (Maybe Descr) -> Menu -> IO ()
 populatePopupMenu ideR currentDescr' menu = do

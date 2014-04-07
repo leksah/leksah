@@ -34,7 +34,7 @@ import Data.Graph
 import Distribution.Package (pkgVersion, pkgName, Dependency(..))
 import Data.List (delete, nub, (\\), find)
 import Distribution.Version (withinRange)
-import Data.Maybe (mapMaybe)
+import Data.Maybe (fromMaybe, mapMaybe)
 import IDE.Package
        (packageClean', packageCopy', packageRegister', buildPackage, packageConfig',
         packageTest', packageDoc')
@@ -44,6 +44,8 @@ import Distribution.Text (Text(..))
 import Control.Event (EventSource(..))
 import Control.Monad.Trans.Reader (ask)
 import Control.Monad.Trans.Class (MonadTrans(..))
+import Control.Monad (void)
+import Control.Arrow ((***))
 
 -- import Debug.Trace (trace)
 trace a b = b
@@ -163,12 +165,12 @@ constrElem currentTargets tops  depGraph ms noBuilds
 -- finished traversing the topsorted deps or no targets
     | null currentTargets || null tops = EmptyChain
 -- operations have to be applied to current
-    | elem (head tops) currentTargets && not (elem (head tops) noBuilds) =
+    | elem (head tops) currentTargets && notElem (head tops) noBuilds =
         let current = head tops
-            dependents = case Map.lookup current depGraph of
-                            Nothing -> trace ("Build>>constrMakeChain: unknown package"
-                                                ++ show current) []
-                            Just deps -> deps
+            dependents = fromMaybe
+                            (trace ("Build>>constrMakeChain: unknown package" ++ show current)
+                               [])
+                            (Map.lookup current depGraph)
             withoutInstall = msDontInstallLast ms && null (delete current dependents)
             filteredOps = case firstOp of
                             MoComposed l -> MoComposed (filter (\e -> e /= MoCopy && e /= MoRegister) l)
@@ -208,7 +210,7 @@ doBuildChain ms chain@Chain{mcAction = MoRegister} =
 doBuildChain ms chain@Chain{mcAction = MoClean} =
     packageClean' (mcEle chain) (constrCont ms (mcPos chain) (mcNeg chain))
 doBuildChain ms chain@Chain{mcAction = MoMetaInfo} =
-    postSyncIDE (triggerEventIDE UpdateWorkspaceInfo) >> return ()
+    void (postSyncIDE (triggerEventIDE UpdateWorkspaceInfo))
 doBuildChain ms chain  = doBuildChain ms (mcPos chain)
 
 constrCont ms pos (Just neg) False = doBuildChain ms neg
@@ -232,7 +234,7 @@ constrDepGraph packages = trace ("depGraph : " ++ showGraph depGraph) depGraph
 showGraph :: MakeGraph -> String
 showGraph mg =
     show
-        $ map (\(k,v) -> (disp (ipdPackageId k), (map (disp . ipdPackageId) v)))
+        $ map (\(k,v) -> (disp (ipdPackageId k), map (disp . ipdPackageId) v))
             $ Map.toList mg
 
 showTopSorted :: [IDEPackage] -> String
@@ -277,7 +279,7 @@ toMyGraph graph lookup = foldr constr Map.empty myEdges
     constr (from,to) map = case Map.lookup from map of
                                 Nothing -> Map.insert from [to] map
                                 Just l -> Map.insert from (to : l) map
-    myEdges              = map (\(a,b) -> (lookItUp a, lookItUp b)) $ edges graph
+    myEdges              = map (lookItUp *** lookItUp) $ edges graph
     lookItUp             =  (\(_,e,_)-> e) . lookup
 
 

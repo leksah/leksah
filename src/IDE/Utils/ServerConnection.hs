@@ -30,6 +30,7 @@ import Graphics.UI.Gtk(postGUIAsync)
 import Control.Event(triggerEvent)
 import Control.Monad.IO.Class (MonadIO(..))
 import System.Log.Logger (getLevel, getRootLogger)
+import Control.Monad (void)
 
 doServerCommand :: ServerCommand -> (ServerAnswer -> IDEM alpha) -> IDEAction
 doServerCommand command cont = do
@@ -38,13 +39,13 @@ doServerCommand command cont = do
         Just handle -> do
             isOpen <- liftIO $ hIsOpen handle
             if isOpen
-                then doCommand handle >> return ()
+                then void (doCommand handle)
                 else do
                     modifyIDE_ (\ ide -> ide{server = Nothing})
                     doServerCommand command cont
         Nothing -> do
             prefs' <- readIDE prefs
-            handle <- reifyIDE $ \ideR -> do
+            handle <- reifyIDE $ \ideR ->
                 catch (connectTo (serverIP prefs') (PortNumber(PortNum (fromIntegral $ serverPort prefs'))))
                     (\(exc :: SomeException) -> do
                         catch (startServer (serverPort prefs'))
@@ -52,7 +53,7 @@ doServerCommand command cont = do
                         mbHandle <- waitForServer prefs' 100
                         case mbHandle of
                             Just handle ->  return handle
-                            Nothing     ->  throwIDE ("Can't connect to leksah-server"))
+                            Nothing     ->  throwIDE "Can't connect to leksah-server")
             modifyIDE_ (\ ide -> ide{server = Just handle})
             doCommand handle
             return ()
@@ -60,7 +61,7 @@ doServerCommand command cont = do
         doCommand handle = do
             triggerEventIDE (StatusbarChanged [CompartmentCollect True])
             reifyIDE $ \ideR -> forkIO $ do
-                hPutStrLn handle (show command)
+                hPrint handle command
                 hFlush handle
                 resp <- hGetLine handle
                 postGUIAsync (reflectIDE (do

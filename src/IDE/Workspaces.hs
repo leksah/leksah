@@ -12,7 +12,6 @@
 -- | Represents a workspace, a work unit, which can be composed of multiple packages
 --
 -----------------------------------------------------------------------------
-{-# LANGUAGE DeriveDataTypeable #-}
 module IDE.Workspaces (
     workspaceNew
 ,   workspaceOpen
@@ -39,8 +38,8 @@ module IDE.Workspaces (
 import IDE.Core.State
 import Graphics.UI.Editor.Parameters
     (Parameter(..), (<<<-), paraName, emptyParams)
-import Control.Monad (forM_, unless, when, liftM)
-import Data.Maybe (isJust,fromJust )
+import Control.Monad (void, unless, when, liftM)
+import Data.Maybe (isJust, fromJust, catMaybes)
 import IDE.Utils.GUIUtils
     (chooseFile, chooseSaveFile, __)
 import System.FilePath
@@ -91,19 +90,16 @@ import qualified VCSGui.Common as VCSGUI
 import qualified IDE.Workspaces.Writer as Writer
 import Text.Printf (printf)
 import System.Log.Logger (debugM)
-import Data.Maybe (catMaybes)
 import IDE.Pane.Log (showDefaultLogLaunch', getLog)
 import IDE.LogRef (logOutputDefault)
+import Data.Foldable (forM_)
 
 -- | Constructs a new workspace and makes it the current workspace
 workspaceNew :: IDEAction
 workspaceNew = do
     window <- getMainWindow
-    mbFile <- liftIO $ do
-        chooseSaveFile window (__ "New file for workspace") Nothing
-    case mbFile of
-        Nothing -> return ()
-        Just filePath -> workspaceNewHere filePath
+    mbFile <- liftIO $ chooseSaveFile window (__ "New file for workspace") Nothing
+    forM_ mbFile workspaceNewHere
 
 workspaceNewHere :: FilePath -> IDEAction
 workspaceNewHere filePath =
@@ -145,9 +141,9 @@ workspaceTry f = do
             resp <- liftIO $ do
                 defaultExists <- doesFileExist defaultWorkspace
                 md <- messageDialogNew (Just mainWindow) [DialogModal] MessageQuestion ButtonsCancel (
-                        (__ "You need to have a workspace open for this to work. ")
-                     ++ (__ "Choose ~/leksah.lkshw to ")
-                     ++ (if defaultExists then (__ "open workspace ") else (__ "create a workspace "))
+                        __ "You need to have a workspace open for this to work. "
+                     ++ __ "Choose ~/leksah.lkshw to "
+                     ++ __ (if defaultExists then "open workspace " else "create a workspace ")
                      ++ defaultWorkspace)
                 dialogAddButton md (__ "_New Workspace") (ResponseUser 1)
                 dialogAddButton md (__ "_Open Workspace") (ResponseUser 2)
@@ -190,7 +186,7 @@ workspaceOpenThis askForSession mbFilePath =
                         window <- getMainWindow
                         liftIO $ do
                             md  <- messageDialogNew (Just window) [] MessageQuestion ButtonsNone
-                                    $ (__ "There are session settings stored with this workspace.")
+                                    $ __ "There are session settings stored with this workspace."
                             dialogAddButton md (__ "_Ignore Session") ResponseCancel
                             dialogAddButton md (__ "_Load Session") ResponseYes
                             dialogSetDefaultResponse md ResponseYes
@@ -202,7 +198,7 @@ workspaceOpenThis askForSession mbFilePath =
                                 otherwise   ->  return False
                     else return False
             if wantToLoadSession
-                then triggerEventIDE (LoadSession spath) >> return ()
+                then void (triggerEventIDE (LoadSession spath))
                 else do
                     ideR <- ask
                     catchIDE (do
@@ -223,8 +219,7 @@ workspaceClose = do
         Just ws -> do
             VCSWS.onWorkspaceClose
             let oldActivePackFile = wsActivePackFile ws
-            triggerEventIDE (SaveSession ((dropExtension (wsFile ws))
-                                ++  leksahSessionFileExtension))
+            triggerEventIDE (SaveSession (dropExtension (wsFile ws) ++ leksahSessionFileExtension))
             addRecentlyUsedWorkspace (wsFile ws)
             Writer.setWorkspace Nothing
             when (isJust oldActivePackFile) $ do
@@ -241,11 +236,11 @@ workspacePackageNew = do
     let path = dropFileName (wsFile ws)
     lift $ packageNew' path logOutputDefault (\isNew fp -> do
         window     <-  getMainWindow
-        workspaceTry $ workspaceAddPackage' fp >> return ()
+        workspaceTry $ void (workspaceAddPackage' fp)
         when isNew $ do
             mbPack <- idePackageFromPath fp
             constructAndOpenMainModule mbPack
-        triggerEventIDE UpdateWorkspaceInfo >> return ())
+        void (triggerEventIDE UpdateWorkspaceInfo))
 
 workspacePackageClone :: WorkspaceAction
 workspacePackageClone = do
@@ -253,8 +248,8 @@ workspacePackageClone = do
     let path = dropFileName (wsFile ws)
     lift $ packageClone path logOutputDefault (\fp -> do
         window     <-  getMainWindow
-        workspaceTry $ workspaceAddPackage' fp >> return ()
-        triggerEventIDE UpdateWorkspaceInfo >> return ())
+        workspaceTry $ void (workspaceAddPackage' fp)
+        void (triggerEventIDE UpdateWorkspaceInfo))
 
 constructAndOpenMainModule :: Maybe IDEPackage -> IDEAction
 constructAndOpenMainModule Nothing = return ()
@@ -262,7 +257,7 @@ constructAndOpenMainModule (Just idePackage) =
     forM_ (ipdMain idePackage) $ \(target, bi, isTest) -> do
         mbPD <- getPackageDescriptionAndPath
         case mbPD of
-            Just (pd,_) -> do
+            Just (pd,_) ->
                 case hsSourceDirs bi of
                     path:_ -> do
                         liftIO $ createDirectoryIfMissing True path
@@ -283,8 +278,8 @@ workspaceAddPackage = do
     case mbFilePath of
         Nothing -> return ()
         Just fp -> do
-            workspaceAddPackage' fp >> return ()
-            lift $ triggerEventIDE UpdateWorkspaceInfo >> return ()
+            void (workspaceAddPackage' fp)
+            lift $ void (triggerEventIDE UpdateWorkspaceInfo)
 
 workspaceAddPackage' :: FilePath -> WorkspaceM (Maybe IDEPackage)
 workspaceAddPackage' fp = do
@@ -293,7 +288,7 @@ workspaceAddPackage' fp = do
     mbPack <- lift $ idePackageFromPath cfp
     case mbPack of
         Just pack -> do
-            unless (elem cfp (map ipdCabalFile (wsPackages ws))) $ lift $
+            unless (cfp `elem` map ipdCabalFile (wsPackages ws)) $ lift $
                 Writer.writeWorkspace $ ws {wsPackages =  pack : wsPackages ws,
                                      wsActivePackFile =  Just (ipdCabalFile pack),
                                      wsActiveExe = Nothing}
@@ -313,7 +308,7 @@ packageTry f = workspaceTry $ do
         case maybePackage of
             Just p  -> lift $ runPackage f p
             Nothing -> do
-                window <- lift $ getMainWindow
+                window <- lift getMainWindow
                 resp <- liftIO $ do
                     md <- messageDialogNew (Just window) [] MessageQuestion ButtonsCancel
                             (__ "You need to have an active package for this to work.")
@@ -336,7 +331,7 @@ packageTry f = workspaceTry $ do
 workspaceRemovePackage :: IDEPackage -> WorkspaceAction
 workspaceRemovePackage pack = do
     ws <- ask
-    when (elem pack (wsPackages ws)) $ lift $
+    when (pack `elem` wsPackages ws) $ lift $
         Writer.writeWorkspace ws {wsPackages =  delete pack (wsPackages ws)}
     return ()
 
@@ -344,7 +339,7 @@ workspaceActivatePackage :: IDEPackage -> Maybe String -> WorkspaceAction
 workspaceActivatePackage pack exe = do
     ws <- ask
     lift $ activatePackage (Just (pack, exe))
-    when (elem pack (wsPackages ws)) $ lift $ do
+    when (pack `elem` wsPackages ws) $ lift $ do
         Writer.writeWorkspace ws {wsActivePackFile =  Just (ipdCabalFile pack)
                                  ,wsActiveExe = exe}
         return ()
@@ -376,9 +371,10 @@ makePathsAbsolute ws bp = do
     return ws {wsActivePackFile = wsActivePackFile', wsFile = wsFile', wsPackagesFiles = wsPackagesFiles'}
     where
         makeAbsolute basePath relativePath  =
-            if isAbsolute relativePath
-                then myCanonicalizePath relativePath
-                else myCanonicalizePath (basePath </> relativePath)
+            myCanonicalizePath
+               (if isAbsolute relativePath
+                    then relativePath
+                    else basePath </> relativePath)
 
 emptyWorkspace =  Workspace {
     wsVersion       =   Writer.workspaceVersion
@@ -398,9 +394,9 @@ emptyWorkspace =  Workspace {
 addRecentlyUsedWorkspace :: FilePath -> IDEAction
 addRecentlyUsedWorkspace fp = do
     state <- readIDE currentState
-    when (not $ isStartingOrClosing state) $ do
+    unless (isStartingOrClosing state) $ do
         recentWorkspaces' <- readIDE recentWorkspaces
-        unless (elem fp recentWorkspaces') $
+        unless (fp `elem` recentWorkspaces') $
             modifyIDE_ (\ide -> ide{recentWorkspaces = take 12 (fp : recentWorkspaces')})
         triggerEventIDE UpdateRecent
         return ()
@@ -408,10 +404,10 @@ addRecentlyUsedWorkspace fp = do
 removeRecentlyUsedWorkspace :: FilePath -> IDEAction
 removeRecentlyUsedWorkspace fp = do
     state <- readIDE currentState
-    when (not $ isStartingOrClosing state) $ do
+    unless (isStartingOrClosing state) $ do
         recentWorkspaces' <- readIDE recentWorkspaces
-        when (elem fp recentWorkspaces') $
-            modifyIDE_ (\ide -> ide{recentWorkspaces = filter (\e -> e /= fp) recentWorkspaces'})
+        when (fp `elem` recentWorkspaces') $
+            modifyIDE_ (\ide -> ide{recentWorkspaces = filter (/= fp) recentWorkspaces'})
         triggerEventIDE UpdateRecent
         return ()
 
@@ -463,12 +459,9 @@ backgroundMake = catchIDE (do
             when isModified $ do
                 let settings = defaultMakeSettings prefs
                 steps <- buildSteps $ msRunUnitTests settings
-                if debug || msSingleBuildWithoutLinking settings && not (msMakeMode settings)
-                    then workspaceTryQuiet $
-                        makePackages settings modifiedPacks (MoComposed steps) (MoComposed []) moNoOp
-                    else do
-                        workspaceTryQuiet $
-                            makePackages settings modifiedPacks (MoComposed steps)
+                workspaceTryQuiet $ if debug || msSingleBuildWithoutLinking settings && not (msMakeMode settings)
+                    then makePackages settings modifiedPacks (MoComposed steps) (MoComposed []) moNoOp
+                    else makePackages settings modifiedPacks (MoComposed steps)
                                         (MoComposed (MoConfigure:steps)) MoMetaInfo
     )
     (\(e :: Exc.SomeException) -> sysMessage Normal (show e))
@@ -490,7 +483,7 @@ makePackage = do
             if debug || msSingleBuildWithoutLinking settings && not (msMakeMode settings)
                 then runWorkspace
                         (makePackages settings [p] (MoComposed steps) (MoComposed []) moNoOp) ws
-                else do
+                else
                     runWorkspace
                         (makePackages settings [p]
                         (MoComposed steps)

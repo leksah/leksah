@@ -54,7 +54,7 @@ onWorkspaceOpen ws = do
         packages <- mapM (mapper ws)
                                  mbPackages
         vcsItem <- GUIUtils.getVCS
-        vcsMenu <- liftIO $ menuNew
+        vcsMenu <- liftIO menuNew
 
         ideR <- ask
 
@@ -78,8 +78,9 @@ onWorkspaceOpen ws = do
                     return (p, Nothing)
                 Right mbConf -> case mbConf of
                                     Nothing -> do
-                                        liftIO $ putStrLn $ "Could not retrieve vcs-conf for active package. No vcs-conf set up."
+                                        liftIO $ putStrLn
+                                                    "Could not retrieve vcs-conf for active package. No vcs-conf set up."
                                         return (p, Nothing)
-                                    Just vcsConf -> return $ (p,  Just vcsConf)
+                                    Just vcsConf -> return (p,  Just vcsConf)
 
 

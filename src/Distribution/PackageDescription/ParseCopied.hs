@@ -175,7 +175,7 @@ pkgDescrFieldDescrs =
 --   a PackageDescription.  All other fields will generate a warning.
 storeXFieldsPD :: UnrecFieldParser PackageDescription
 storeXFieldsPD (f@('x':'-':_),val) pkg = Just pkg{ customFieldsPD =
-                                                        (customFieldsPD pkg) ++ [(f,val)]}
+                                                        customFieldsPD pkg ++ [(f, val)]}
 storeXFieldsPD _ _ = Nothing
 
 -- ---------------------------------------------------------------------------
@@ -193,7 +193,7 @@ libFieldDescrs =
 
 storeXFieldsLib :: UnrecFieldParser Library
 storeXFieldsLib (f@('x':'-':_), val) l@(Library { libBuildInfo = bi }) =
-    Just $ l {libBuildInfo = bi{ customFieldsBI = (customFieldsBI bi) ++ [(f,val)]}}
+    Just $ l {libBuildInfo = bi{ customFieldsBI = customFieldsBI bi ++ [(f, val)]}}
 storeXFieldsLib _ _ = Nothing
 
 -- ---------------------------------------------------------------------------
@@ -216,7 +216,7 @@ executableFieldDescrs =
 
 storeXFieldsExe :: UnrecFieldParser Executable
 storeXFieldsExe (f@('x':'-':_), val) e@(Executable { buildInfo = bi }) =
-    Just $ e {buildInfo = bi{ customFieldsBI = (f,val):(customFieldsBI bi)}}
+    Just $ e {buildInfo = bi{ customFieldsBI = (f, val) : customFieldsBI bi}}
 storeXFieldsExe _ _ = Nothing
 
 -- ---------------------------------------------------------------------------
@@ -253,7 +253,7 @@ testSuiteFieldDescrs =
 
 storeXFieldsTest :: UnrecFieldParser TestSuiteStanza
 storeXFieldsTest (f@('x':'-':_), val) t@(TestSuiteStanza { testStanzaBuildInfo = bi }) =
-    Just $ t {testStanzaBuildInfo = bi{ customFieldsBI = (f,val):(customFieldsBI bi)}}
+    Just $ t {testStanzaBuildInfo = bi{ customFieldsBI = (f, val) : customFieldsBI bi}}
 storeXFieldsTest _ _ = Nothing
 
 validateTestSuite :: LineNo -> TestSuiteStanza -> ParseResult TestSuite
@@ -462,7 +462,7 @@ binfoFieldDescrs =
  ]
 
 storeXFieldsBI :: UnrecFieldParser BuildInfo
-storeXFieldsBI (f@('x':'-':_),val) bi = Just bi{ customFieldsBI = (f,val):(customFieldsBI bi) }
+storeXFieldsBI (f@('x':'-':_),val) bi = Just bi{ customFieldsBI = (f, val) : customFieldsBI bi }
 storeXFieldsBI _ _ = Nothing
 
 ------------------------------------------------------------------------------
@@ -513,7 +513,7 @@ readAndParseFile :: (FilePath -> (String -> IO a) -> IO a)
                  -> FilePath -> IO a
 readAndParseFile withFileContents' parser verbosity fpath = do
   exists <- doesFileExist fpath
-  when (not exists) (die $ "Error Parsing: file \"" ++ fpath ++ "\" doesn't exist. Cannot continue.")
+  unless exists (die $ "Error Parsing: file \"" ++ fpath ++ "\" doesn't exist. Cannot continue.")
   withFileContents' fpath $ \str -> case parser str of
     ParseFailed e -> do
         let (line, message) = locatedErrorMsg e
@@ -546,9 +546,9 @@ isStanzaHeader _ = False
 
 mapSimpleFields :: (Field -> ParseResult Field) -> [Field]
                 -> ParseResult [Field]
-mapSimpleFields f fs = mapM walk fs
+mapSimpleFields f = mapM walk
   where
-    walk fld@(F _ _ _) = f fld
+    walk fld@F{} = f fld
     walk (IfBlock l c fs1 fs2) = do
       fs1' <- mapM walk fs1
       fs2' <- mapM walk fs2
@@ -611,7 +611,7 @@ lift :: Monad m => m a -> StT s m a
 lift m = StT $ \s -> m >>= \a -> return (a,s)
 
 evalStT :: Monad m => StT s m a -> s -> m a
-evalStT st s = runStT st s >>= return . fst
+evalStT st s = liftM fst (runStT st s)
 
 -- Our monad for parsing a list/tree of fields.
 --
@@ -622,7 +622,7 @@ type PM a = StT [Field] ParseResult a
 
 -- return look-ahead field or nothing if we're at the end of the file
 peekField :: PM (Maybe Field)
-peekField = get >>= return . listToMaybe
+peekField = liftM listToMaybe get
 
 -- Unconditionally discard the first field in our state.  Will error when it
 -- reaches end of file.  (Yes, that's evil.)

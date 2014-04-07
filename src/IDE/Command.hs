@@ -66,14 +66,8 @@ import IDE.Pane.Preferences
 import IDE.Pane.PackageFlags
 import IDE.Pane.PackageEditor
 import IDE.Pane.Errors
-import IDE.Pane.Search
-import IDE.Pane.Info
-import IDE.Pane.Breakpoints
-import IDE.Pane.Trace
-import IDE.Pane.Variables
 import IDE.Package
 import IDE.Pane.Log
-import IDE.Session
 import IDE.Pane.Modules
 import IDE.Find
 import IDE.Pane.Info
@@ -93,12 +87,12 @@ import qualified Data.Map as  Map (lookup)
 import Data.List (sort)
 import Control.Event (registerEvent)
 import IDE.Pane.Breakpoints
-    (fillBreakpointList, selectBreak)
+       (showBreakpoints, fillBreakpointList, selectBreak)
 import IDE.Workspaces
 import IDE.Statusbar
 import IDE.Pane.Workspace
-import IDE.Pane.Variables (fillVariablesListQuiet)
-import IDE.Pane.Trace (fillTraceList)
+import IDE.Pane.Variables (showVariables, fillVariablesListQuiet)
+import IDE.Pane.Trace (showTrace, fillTraceList)
 import IDE.PaneGroups
 import IDE.Pane.Search (getSearch, IDESearch(..))
 import IDE.Pane.Grep (getGrep)
@@ -115,7 +109,9 @@ import Foreign.C.Types (CInt(..))
 import Foreign.Ptr (Ptr(..))
 import Foreign.ForeignPtr (withForeignPtr)
 import Graphics.UI.GtkInternals (unToolbar)
-import IDE.Session (viewFullScreen, viewDark)
+import IDE.Session
+       (saveSessionAs, loadSession, saveSession, sessionClosePane,
+        loadSessionPrompt, saveSessionAsPrompt, viewFullScreen, viewDark)
 import qualified Data.Text as T (pack)
 
 foreign import ccall safe "gtk_toolbar_set_icon_size"
@@ -133,7 +129,7 @@ mkActions :: [ActionDescr IDERef]
 mkActions =
     [
     AD "vcs" (__ "Version Con_trol") Nothing Nothing (return ()) [] False
-    ,AD "FilePrint" (__ "_Print File") Nothing Nothing (filePrint) [] False
+    ,AD "FilePrint" (__ "_Print File") Nothing Nothing filePrint [] False
     ,AD "File" (__ "_File") Nothing Nothing (return ()) [] False
     ,AD "FileNew" (__ "_New Module...") Nothing (Just "gtk-new")
         (packageTry $ addModule []) [] False
@@ -405,7 +401,7 @@ mkActions =
     ,AD "ViewCollapse" (__ "_Collapse") Nothing Nothing
         viewCollapse [] False
     ,AD "ViewNest" (__ "_Group") Nothing Nothing
-        (viewNewGroup) [] False
+        viewNewGroup [] False
     ,AD "ViewDetach" (__ "_Detach") Nothing Nothing
         viewDetachInstrumented [] False
     ,AD "ViewFullScreen" (__ "_Full Screen") Nothing Nothing
@@ -479,10 +475,7 @@ menuDescription :: IO String
 menuDescription = do
     dataDir     <- getDataDir
     prefsPath   <- getConfigFilePathForLoad "leksah.menu" Nothing dataDir
-    res         <- readFile prefsPath
-    return res
-
-
+    readFile prefsPath
 
 updateRecentEntries :: IDEAction
 updateRecentEntries = do
@@ -532,8 +525,8 @@ makeMenu uiManager actions menuDescription = reifyIDE (\ideR -> do
     where
         actm ideR ag (AD name label tooltip stockId ideAction accs isToggle) = do
             let (acc,accString) = if null accs
-                                    then (Just "","=" ++ name)
-                                    else (Just (head accs),(head accs) ++ "=" ++ name)
+                                    then (Just "", "=" ++ name)
+                                    else (Just (head accs), head accs ++ "=" ++ name)
             if isToggle
                 then do
                     act <- toggleActionNew name label tooltip stockId
@@ -544,10 +537,10 @@ makeMenu uiManager actions menuDescription = reifyIDE (\ideR -> do
                     on act actionActivated $ doAction ideAction ideR accString
                     actionGroupAddActionWithAccel ag act acc
         doAction ideAction ideR accStr =
-            (reflectIDE (do
+            reflectIDE (do
                 ideAction
                 triggerEventIDE (StatusbarChanged [CompartmentCommand accStr])
-                return ()) ideR)
+                return ()) ideR
 
 -- getMenuAndToolbars :: UIManager -> IO (AccelGroup, MenuBar, Toolbar)
 getMenuAndToolbars uiManager = do
@@ -573,7 +566,8 @@ textPopupMenu ideR menu = do
     mi1 `on` menuItemActivate $ reflectIDE_ debugExecuteSelection
     menuShellAppend menu mi1
     mi11 <- menuItemNewWithLabel (__ "Eval & Insert")
-    mi11 `on` menuItemActivate $ reflectIDE_ debugExecuteAndShowSelection
+    mi11 `on` menuItemActivate $
+      reflectIDE_ debugExecuteAndShowSelection
     menuShellAppend menu mi11
     mi12 <- menuItemNewWithLabel (__ "Step")
     mi12 `on` menuItemActivate $ reflectIDE_ debugStepExpression
@@ -601,27 +595,31 @@ textPopupMenu ideR menu = do
     mi2 `on` menuItemActivate $ reflectIDE_ (editFindInc Initial)
     menuShellAppend menu mi2
     mi3 <- menuItemNewWithLabel (__ "Search (metadata)")
-    mi3 `on` menuItemActivate $ (reflectIDE_ $
-            getSearch Nothing >>= (\search -> do
-                mbtext <- selectedText
-                case mbtext of
-                    Just t  ->  searchMetaGUI search t
-                    Nothing -> ideMessage  Normal (__ "Select a text first")))
+    mi3 `on` menuItemActivate $
+      reflectIDE_ $
+         getSearch Nothing >>=
+           (\ search ->
+              do mbtext <- selectedText
+                 case mbtext of
+                     Just t -> searchMetaGUI search t
+                     Nothing -> ideMessage Normal (__ "Select a text first"))
     menuShellAppend menu mi3
     let interpretingEntries = [castToWidget mi16]
-    let interpretingSelEntries = [castToWidget mi1, castToWidget mi11, castToWidget mi12,
-                                castToWidget mi13, castToWidget mi14, castToWidget mi141,
-                                castToWidget mi15]
+    let interpretingSelEntries
+          = [castToWidget mi1, castToWidget mi11, castToWidget mi12,
+             castToWidget mi13, castToWidget mi14, castToWidget mi141,
+             castToWidget mi15]
     let otherEntries = [castToWidget mi2, castToWidget mi3]
     -- isInterpreting' <- (reflectIDE isInterpreting ideR)
-    selected <- (reflectIDE selectedText ideR)
+    selected <- reflectIDE selectedText ideR
 --    unless isInterpreting'
 --        $ mapM_ (\w -> widgetSetSensitive w False) (interpretingEntries ++ interpretingSelEntries)
 --    unless (isJust selected)
 --        $ mapM_ (\w -> widgetSetSensitive w False) (otherEntries ++ interpretingSelEntries)
     mapM_ widgetShow interpretingEntries
     mapM_ widgetShow interpretingSelEntries
-    mapM_ widgetShow (castToWidget sep1 : castToWidget sep2 : otherEntries)
+    mapM_ widgetShow
+      (castToWidget sep1 : castToWidget sep2 : otherEntries)
     mapM_ widgetHide $ take 2 (reverse items)
 
 canQuit :: IDEM Bool
@@ -645,12 +643,12 @@ aboutDialog :: IO ()
 aboutDialog = do
     d <- aboutDialogNew
     dd <- getDataDir
-    license <- catch (readFile $ dd </> (__ "LICENSE")) (\ (_ :: SomeException) -> return "")
+    license <- catch (readFile $ dd </> __ "LICENSE") (\ (_ :: SomeException) -> return "")
     set d [ aboutDialogName := "Leksah"
           , aboutDialogVersion := showVersion version
-          , aboutDialogCopyright := (__ "Copyright 2007-2011 Jürgen Nicklisch-Franken, Hamish Mackenzie")
-          , aboutDialogComments := (__ "An integrated development environement (IDE) for the ") ++
-                               (__ "programming language Haskell and the Glasgow Haskell Compiler")
+          , aboutDialogCopyright := __ "Copyright 2007-2011 Jürgen Nicklisch-Franken, Hamish Mackenzie"
+          , aboutDialogComments := __ "An integrated development environement (IDE) for the " ++
+                               __ "programming language Haskell and the Glasgow Haskell Compiler"
           , aboutDialogLicense := Just license
           , aboutDialogWebsite := "http://leksah.org/"
           , aboutDialogAuthors := ["Jürgen Nicklisch-Franken","Hamish Mackenzie"] ]
@@ -678,10 +676,10 @@ newIcons = catch (do
         iconFactoryAdd iconFactory name icon
 
 setSensitivity :: [(SensitivityMask, Bool)] -> IDEAction
-setSensitivity l = mapM_ setSensitivitySingle l
+setSensitivity = mapM_ setSensitivitySingle
     where   setSensitivitySingle (sens,bool) = do
                 actions <- getActionsFor sens
-                liftIO $ mapM_ (\a -> actionSetSensitive a bool) actions
+                liftIO $ mapM_ (`actionSetSensitive` bool) actions
                 let additionalActions = getAdditionalActionsFor sens
                 mapM_ (\a -> a bool) additionalActions
 
@@ -711,7 +709,7 @@ getActionsFor' l = do
             uiManager' <- getUiManager
             actionGroups <- liftIO $ uiManagerGetActionGroups uiManager'
             res <- liftIO $ actionGroupGetAction (head actionGroups) string
-            when (isNothing res) $ ideMessage Normal $ (printf (__ "Can't find UI Action %s") string)
+            when (isNothing res) $ ideMessage Normal $ printf (__ "Can't find UI Action %s") string
             return res
 
 getAdditionalActionsFor :: SensitivityMask -> [Bool -> IDEAction]
@@ -826,8 +824,7 @@ handleSpecialKeystrokes ideR = do
                         return True
     where
     printMods :: [Modifier] -> String
-    printMods []    = ""
-    printMods (m:r) = show m ++ printMods r
+    printMods = concatMap show
 
 setSymbol :: String -> Bool -> IDEAction
 setSymbol symbol openSource = do
@@ -835,7 +832,8 @@ setSymbol symbol openSource = do
     search <- getSearch Nothing
     case currentInfo' of
         Nothing -> return ()
-        Just ((GenScopeC (PackScope _ symbolTable1)),(GenScopeC (PackScope _ symbolTable2))) ->
+        Just (GenScopeC (PackScope _ symbolTable1),
+               GenScopeC (PackScope _ symbolTable2)) ->
             case filter (not . isReexported) (getIdentifierDescr symbol symbolTable1 symbolTable2) of
                 []     -> return ()
                 a:[]   -> selectIdentifier a openSource
@@ -880,9 +878,9 @@ registerLeksahEvents =    do
     registerEvent stRef "Sensitivity"
         (\ s@(Sensitivity h)      -> setSensitivity h >> return s)
     registerEvent stRef "SearchMeta"
-        (\ e@(SearchMeta string)  -> getSearch Nothing >>= (flip searchMetaGUI) string >> return e)
+        (\ e@(SearchMeta string)  -> getSearch Nothing >>= flip searchMetaGUI string >> return e)
     registerEvent stRef "StartFindInitial"
-        (\ e@(StartFindInitial)  -> editFindInc Initial >> return e)
+        (\ e@StartFindInitial  -> editFindInc Initial >> return e)
     registerEvent stRef "LoadSession"
         (\ e@(LoadSession fp)     -> loadSession fp >> return e)
     registerEvent stRef "SaveSession"

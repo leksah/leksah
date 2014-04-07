@@ -32,10 +32,10 @@ viewLogAction :: Types.VCSAction ()
 viewLogAction = Helper.createActionFromContext MercurialGUI.showLogGUI
 
 pushAction :: Types.VCSAction ()
-pushAction = Helper.createActionFromContext $ Mercurial.push
+pushAction = Helper.createActionFromContext Mercurial.push
 
 pullAction :: Types.VCSAction ()
-pullAction = Helper.createActionFromContext $ Mercurial.pull
+pullAction = Helper.createActionFromContext Mercurial.pull
 
 mkMercurialActions :: [(String, Types.VCSAction ())]
 mkMercurialActions = [

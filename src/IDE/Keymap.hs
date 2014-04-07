@@ -47,7 +47,7 @@ parseKeymap' fn = do
 -- | Sets the accelerators is the action descriptions from the keymap
 --
 setKeymap' :: KeymapI -> [ActionDescr IDERef] -> [ActionDescr IDERef]
-setKeymap' (KM keymap) actions  = map setAccel actions
+setKeymap' (KM keymap)  = map setAccel
     where setAccel act = case Map.lookup (name act) keymap of
                             Nothing -> act
                             Just [] -> act
@@ -68,8 +68,7 @@ buildSpecialKeys' (KM keymap) actions = do
     let map1 = Map.fromListWith (++) $concat pseudoTriples
     return (Map.map Map.fromList map1)
     where
-    build :: ActionDescr IDERef -> IO [((KeyVal,[Modifier]),[((KeyVal,[Modifier]),
-                (ActionDescr IDERef))])]
+    build :: ActionDescr IDERef -> IO [((KeyVal,[Modifier]),[((KeyVal, [Modifier]), ActionDescr IDERef)])]
     build act =
         case Map.lookup (name act) keymap of
             Nothing             ->  return []

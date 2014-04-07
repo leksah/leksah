@@ -93,13 +93,12 @@ ppPackageDescription pd                  =      ppFields pkgDescrFieldDescrs pd
                                                 $+$ ppSourceRepos (sourceRepos pd)
 
 ppSourceRepos :: [SourceRepo] -> Doc
-ppSourceRepos []                         = empty
-ppSourceRepos (hd:tl)                    = ppSourceRepo hd $+$ ppSourceRepos tl
+ppSourceRepos = foldr (($+$) . ppSourceRepo) empty
 
 ppSourceRepo :: SourceRepo -> Doc
 ppSourceRepo repo                        =
     emptyLine $ text "source-repository" <+> disp (repoKind repo) $+$
-        (nest indentWith (ppFields sourceRepoFieldDescrs' repo))
+                    nest indentWith (ppFields sourceRepoFieldDescrs' repo)
   where
     sourceRepoFieldDescrs' = [fd | fd <- sourceRepoFieldDescrs, fieldName fd /= "kind"]
 
@@ -130,13 +129,13 @@ ppGenPackageFlags flds                   = vcat [ppFlag f | f <- flds]
 ppFlag :: Flag -> Doc
 ppFlag (MkFlag name desc dflt manual)    =
     emptyLine $ text "flag" <+> ppFlagName name $+$
-            (nest indentWith ((if null desc
+            nest indentWith ((if null desc
                                 then empty
                                 else  text "Description: " <+> showFreeText desc) $+$
                      (if dflt then empty else text "Default: False") $+$
-                     (if manual then text "Manual: True" else empty)))
+                     (if manual then text "Manual: True" else empty))
 
-ppLibrary :: (Maybe (CondTree ConfVar [Dependency] Library)) -> Doc
+ppLibrary :: Maybe (CondTree ConfVar [Dependency] Library) -> Doc
 ppLibrary Nothing                        = empty
 ppLibrary (Just condTree)                =
     emptyLine $ text "library" $+$ nest indentWith (ppCondTree condTree Nothing ppLib)
@@ -193,7 +192,7 @@ ppTestSuites suites =
 ppCondition :: Condition ConfVar -> Doc
 ppCondition (Var x)                      = ppConfVar x
 ppCondition (Lit b)                      = text (show b)
-ppCondition (CNot c)                     = char '!' <> (ppCondition c)
+ppCondition (CNot c)                     = char '!' <> ppCondition c
 ppCondition (COr c1 c2)                  = parens (hsep [ppCondition c1, text "||"
                                                          <+> ppCondition c2])
 ppCondition (CAnd c1 c2)                 = parens (hsep [ppCondition c1, text "&&"
@@ -210,21 +209,21 @@ ppFlagName (FlagName name)               = text name
 ppCondTree :: CondTree ConfVar [Dependency] a -> Maybe a -> (a -> Maybe a -> Doc) ->  Doc
 ppCondTree ct@(CondNode it deps ifs) mbIt ppIt =
     let res = ppDeps deps
-                $+$ (vcat $ map ppIf ifs)
+                $+$ vcat (map ppIf ifs)
                 $+$ ppIt it mbIt
     in if isJust mbIt && isEmpty res
         then ppCondTree ct Nothing ppIt
         else res
   where
     ppIf (c,thenTree,mElseTree)          =
-        ((emptyLine $ text "if" <+> ppCondition c) $$
+        emptyLine $ text "if" <+> ppCondition c $$
           nest indentWith (ppCondTree thenTree
-                    (if simplifiedPrinting then (Just it) else Nothing) ppIt))
+                    (if simplifiedPrinting then Just it else Nothing) ppIt)
         $+$ (if isNothing mElseTree
                 then empty
                 else text "else"
                     $$ nest indentWith (ppCondTree (fromJust mElseTree)
-                        (if simplifiedPrinting then (Just it) else Nothing) ppIt))
+                        (if simplifiedPrinting then Just it else Nothing) ppIt))
 
 ppDeps :: [Dependency] -> Doc
 ppDeps []                                = empty
