@@ -20,7 +20,8 @@ data-files: LICENSE
 
             data/current.lkshs
             data/candy.lkshc
-            data/keymap.lkshk
+            data/candy-hasklig.lkshck
+            data/keymap.lksh            
             data/leksah.menu
             data/svn.menu
             data/git.menu
