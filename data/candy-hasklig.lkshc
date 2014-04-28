@@ -6,10 +6,10 @@
 "empty"     0x2205                  -- EMPTY SET
 
 -- Control.Arrow.Unicode
-">>>"       0x22D9                  -- VERY MUCH GREATER-THAN
-"<<<"       0x22D8                  -- VERY MUCH LESS-THAN
+--hasklig ">>>"       0x22D9                  -- VERY MUCH GREATER-THAN
+--hasklig "<<<"       0x22D8                  -- VERY MUCH LESS-THAN
 "***"       0x2042                  -- ASTERISM
-"+++"       0x29FB                  -- TRIPLE PLUS
+--hasklig "+++"       0x29FB                  -- TRIPLE PLUS
 "|||"       0x2AF4                  -- TRIPLE VERTICAL BAR BINARY RELATION
 
 -- Control.Category.Unicode
@@ -17,9 +17,9 @@
 " . "       0x2218                  --RING OPERATOR              .  -
 
 -- Control.Monad.Unicode
--- doesn't work yet? ">>="        0x226B                  -- MUCH GREATER-THAN) + (U+3D, EQUALS SIGN)
-">>"        0x226B                  -- MUCH GREATER-THAN
--- doesn't work yet?  "=<<"   (0x3D, EQUALS SIGN) + (0x226A, MUCH LESS-THAN)
+--hasklig  ">>="        0x226B                  -- MUCH GREATER-THAN) + (U+3D, EQUALS SIGN)
+--hasklig ">>"        0x226B                  -- MUCH GREATER-THAN
+--hasklig   "=<<"   (0x3D, EQUALS SIGN) + (0x226A, MUCH LESS-THAN)
 
 -- Data.Bool.Unicode
 "&&"        0x2227                  --LOGICAL AND               
@@ -27,8 +27,8 @@
 "not"       0x00ac                  --NOT SIGN
 
 -- Data.Eq.Unicode
-"=="        0x2261                  --IDENTICAL TO              
-"/="        0x2262                  --NOT IDENTICAL TO
+--hasklig "=="        0x2261                  --IDENTICAL TO              
+--hasklig "/="        0x2262                  --NOT IDENTICAL TO
 
 -- Data.Foldable.Unicode
 "elem"      0x2208                  -- ELEMENT OF
@@ -41,7 +41,7 @@
 -- repeated "."         0x2218                  -- RING OPERATOR
 
 -- Data.List.Unicode
-"++"        0x29FA                  -- DOUBLE PLUS
+--hasklig "++"        0x29FA                  -- DOUBLE PLUS
 "union"     0x222A                  -- UNION
 "\\"        0x2216                  -- SET MINUS
 "intersect" 0x2229                  -- INTERSECTION
@@ -63,18 +63,18 @@
 "Ratio Integer" 0x2124              -- DOUBLE-STRUCK CAPITAL Q
 
 -- Leksah specific?
-"->"        0x2192                  --RIGHTWARDS ARROW          
-"<-"        0x2190   Trimming       --LEFTWARDS ARROW           
-"=>"        0x21d2                  --RIGHTWARDS DOUBLE ARROW   
-"::"        0x2237 Trimming         --PROPORTION              
-".."        0x2025                  --TWO DOT LEADER            
+--hasklig "->"        0x2192                  --RIGHTWARDS ARROW          
+--hasklig "<-"        0x2190   Trimming       --LEFTWARDS ARROW           
+--hasklig "=>"        0x21d2                  --RIGHTWARDS DOUBLE ARROW   
+--hasklig "::"        0x2237 Trimming         --PROPORTION              
+--hasklig ".."        0x2025                  --TWO DOT LEADER            
 "^"         0x2191                  --UPWARDS ARROW             
 "\"         0x03bb                  --GREEK SMALL LETTER LAMBDA 
 "forall"    0x2200                  --FOR ALL
 "exist"     0x2203                  --THERE EXISTS
 
--- "=<<"       0x291e                  --                        =<< -
-">>="       0x21a0                  --                          >>= -
+--hasklig "=<<"       0x291e                  --                        =<< -
+--hasklig ">>="       0x21a0                  --                          >>= -
 
 -- Some greek Letter
 "alpha"     0x03b1                  --GREEK SMALL LETTER ALPHA
