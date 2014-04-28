@@ -468,13 +468,13 @@ hiddenModuleParser :: CharParser () (String, String)
 hiddenModuleParser = do
     whiteSpace
     symbol "Could not find module "
-    (char '`' <|> char '‛')
+    (char '`' <|> char '‛' <|> char '‘')
     mod    <- many (noneOf "'’")
     many (noneOf "\n")
     symbol "\n"
     whiteSpace
     symbol "It is a member of the hidden package "
-    (char '`' <|> char '‛')
+    (char '`' <|> char '‛' <|> char '‘')
     pack   <- many (noneOf "'’")
     (char '\'' <|> char '’')
     symbol ".\n"
