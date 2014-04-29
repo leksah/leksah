@@ -79,18 +79,7 @@ instance RecoverablePane IDEWorkspace WorkspaceState IDEM where
         treeViewSetModel treeView treeStore
 
         renderer0    <- cellRendererPixbufNew
-        col0        <- treeViewColumnNew
-        treeViewColumnSetTitle col0 (__ "Active")
-        treeViewColumnSetSizing col0 TreeViewColumnAutosize
-        treeViewColumnSetResizable col0 True
-        treeViewColumnSetReorderable col0 True
-        treeViewAppendColumn treeView col0
-        cellLayoutPackStart col0 renderer0 True
-        cellLayoutSetAttributes col0 renderer0 treeStore
-            $ \row -> [newAttrFromMaybeStringProperty "stock-id" :=
-                        if fst row
-                            then Just stockYes
-                            else Nothing]
+        set renderer0 [ newAttrFromMaybeStringProperty "stock-id"  := Nothing ]
 
         renderer1   <- cellRendererTextNew
         col1        <- treeViewColumnNew
@@ -99,7 +88,13 @@ instance RecoverablePane IDEWorkspace WorkspaceState IDEM where
         treeViewColumnSetResizable col1 True
         treeViewColumnSetReorderable col1 True
         treeViewAppendColumn treeView col1
+        cellLayoutPackStart col1 renderer0 False
         cellLayoutPackStart col1 renderer1 True
+        cellLayoutSetAttributes col1 renderer0 treeStore
+            $ \row -> [newAttrFromMaybeStringProperty "stock-id" :=
+                        if fst row
+                            then Just stockYes
+                            else Nothing]
         cellLayoutSetAttributes col1 renderer1 treeStore
             $ \row -> [ cellText := name row ]
 

@@ -824,7 +824,7 @@ idePackageFromPath log filePath = do
         Nothing -> return Nothing
         Just rootPackage -> do
             mvar <- liftIO newEmptyMVar
-            runExternalTool' (__ "Sandbox") "cabal" ["sandbox", "list-sources"] (takeDirectory filePath) $ do
+            runExternalTool' "" "cabal" ["sandbox", "list-sources"] (takeDirectory filePath) $ do
                 output <- CL.consume
                 liftIO . putMVar mvar $ case take 1 $ reverse output of
                     [ToolExit ExitSuccess] ->

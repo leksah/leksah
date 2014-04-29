@@ -27,7 +27,7 @@ import IDE.Core.State
        (runningTool, modifyIDE_, reflectIDE, useVado, reifyIDE,
         triggerEventIDE, saveAllBeforeBuild, prefs, readIDE, IDEAction,
         IDEM, MonadIDE(..))
-import Control.Monad (when)
+import Control.Monad (void, unless, when)
 import IDE.Pane.SourceBuffer (belongsToWorkspace, fileSaveAll)
 import IDE.Core.Types (StatusbarCompartment(..), IDEEvent(..))
 import Control.Concurrent (forkIO)
@@ -70,7 +70,8 @@ runExternalTool runGuard pidHandler description executable args dir handleOutput
         run <- runGuard
         when run $ do
             when (saveAllBeforeBuild prefs) (do fileSaveAll belongsToWorkspace; return ())
-            triggerEventIDE (StatusbarChanged [CompartmentState description, CompartmentBuild True])
+            unless (null description) . void $
+                triggerEventIDE (StatusbarChanged [CompartmentState description, CompartmentBuild True])
             reifyIDE $ \ideR -> forkIO $ do
                 -- If vado is enabled then look up the mount point and transform
                 -- the execuatble to "ssh" and the arguments
