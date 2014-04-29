@@ -453,7 +453,7 @@ doGrep fb   = do
     wrapAround    <- liftIO $ getWrapAround fb
     regex         <- liftIO $ getRegex fb
     let (regexString, _) = regexStringAndMatchIndex entireWord regex search
-    lift $ workspaceTry $ grepWorkspace regexString caseSensitive
+    liftIDE $ workspaceTry $ grepWorkspace regexString caseSensitive
 
 matchFunc :: ListStore String -> String -> TreeIter -> IO Bool
 matchFunc model str iter = do

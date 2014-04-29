@@ -32,6 +32,8 @@ import Graphics.UI.Gtk.Gdk.Events
 import Data.Maybe
 import qualified Data.Map as Map
 import Data.Map (Map)
+import qualified Data.Set as Set
+import Data.Set (Set)
 import Data.Tree
 import Data.List
 import Distribution.Package
@@ -46,8 +48,8 @@ import Distribution.ModuleName
 import Distribution.Text (simpleParse,display)
 import Data.Typeable (Typeable(..))
 import Control.Exception (SomeException(..),catch)
-import IDE.Package (packageConfig,addModuleToPackageDescr,delModuleFromPackageDescr,getEmptyModuleTemplate,getPackageDescriptionAndPath)
-import Distribution.PackageDescription (allBuildInfo,hsSourceDirs)
+import IDE.Package (packageConfig,addModuleToPackageDescr,delModuleFromPackageDescr,getEmptyModuleTemplate,getPackageDescriptionAndPath, ModuleLocation(..))
+import Distribution.PackageDescription (allBuildInfo,hsSourceDirs, hasLibs, executables, testSuites, exeName, testName)
 import System.FilePath (takeBaseName, (</>),dropFileName)
 import System.Directory (doesFileExist,createDirectoryIfMissing, removeFile)
 import Graphics.UI.Editor.MakeEditor (buildEditor,FieldDescription(..),mkField)
@@ -55,6 +57,7 @@ import Graphics.UI.Editor.Parameters
        (paraMinSize, paraMultiSel, Parameter(..), emptyParams, (<<<-),
         paraName)
 import Graphics.UI.Editor.Simple (boolEditor,staticListEditor,stringEditor)
+import Graphics.UI.Editor.Composite (maybeEditor)
 import qualified System.IO.UTF8 as UTF8  (writeFile)
 import IDE.Utils.GUIUtils (stockIdFromType, __)
 import IDE.Metainfo.Provider
@@ -1049,7 +1052,7 @@ collapseHere treeView = do
 delModule :: TreeView -> TreeStore (String, Maybe (ModuleDescr,PackageDescr)) -> PackageAction
 delModule treeview store = do
     liftIO $ debugM "leksah" "delModule"
-    window <- lift $ getMainWindow
+    window <- liftIDE $ getMainWindow
     sel   <- liftIO $ treeViewGetSelection treeview
     paths <- liftIO $ treeSelectionGetSelectedRows sel
     categories <- case paths of
@@ -1057,14 +1060,14 @@ delModule treeview store = do
         (treePath:_) -> liftIO $ mapM (treeStoreGetValue store)
                                     $ map (\n -> take n treePath)  [1 .. length treePath]
 
-    lift $ ideMessage Normal (printf (__ "categories: %s") (show categories))
+    liftIDE $ ideMessage Normal (printf (__ "categories: %s") (show categories))
 
     let modPacDescr = snd(last categories)
     case modPacDescr of
-        Nothing     ->   lift $ ideMessage Normal (__ "This should never be shown!")
+        Nothing     ->   liftIDE $ ideMessage Normal (__ "This should never be shown!")
         Just(md,_)  -> do
                          let modName = modu.mdModuleId $ md
-                         lift $ ideMessage Normal ("modName: " ++ (show modName))
+                         liftIDE $ ideMessage Normal ("modName: " ++ (show modName))
                          delModuleFromPackageDescr modName
 
 respDelModDialog :: IDEM (Bool)
@@ -1094,44 +1097,57 @@ addModule' treeView store = do
 
 addModule categories = do
     liftIO $ debugM "leksah" "selectIdentifier"
-    mbPD <- lift $ getPackageDescriptionAndPath
+    mbPD <- liftIDE $ getPackageDescriptionAndPath
     case mbPD of
-        Nothing             -> lift $ ideMessage Normal (__ "No package description")
+        Nothing             -> liftIDE $ ideMessage Normal (__ "No package description")
         Just (pd,cabalPath) -> let srcPaths = nub $ concatMap hsSourceDirs $ allBuildInfo pd
                                    rootPath = dropFileName cabalPath
                                    modPath  = foldr (\a b -> a ++ "." ++ b) ""
                                                 (map fst categories)
                                in do
-            window' <- lift getMainWindow
-            mbResp <- liftIO $ addModuleDialog window' modPath srcPaths
+            window' <- liftIDE getMainWindow
+            mbResp <- liftIO $ addModuleDialog window' modPath srcPaths (hasLibs pd) $
+                   map exeName (executables pd) ++ map testName (testSuites pd)
             case mbResp of
                 Nothing                -> return ()
-                Just (AddModule modPath srcPath isExposed) ->
+                Just addMod@(AddModule modPath srcPath libExposed exesAndTests) ->
                     case simpleParse modPath of
-                        Nothing         -> lift $ ideMessage Normal (printf (__ "Not a valid module name : %s") modPath)
+                        Nothing         -> liftIDE $ ideMessage Normal (printf (__ "Not a valid module name : %s") modPath)
                         Just moduleName -> do
                             let  target = srcPath </> toFilePath moduleName ++ ".hs"
                             liftIO $ createDirectoryIfMissing True (dropFileName target)
                             alreadyExists <- liftIO $ doesFileExist target
                             if alreadyExists
                                 then do
-                                    lift $ ideMessage Normal (printf (__ "File already exists! Importing existing file %s.hs") (takeBaseName target))
-                                    addModuleToPackageDescr moduleName isExposed
+                                    liftIDE $ ideMessage Normal (printf (__ "File already exists! Importing existing file %s.hs") (takeBaseName target))
+                                    addModuleToPackageDescr moduleName $ addModuleLocations addMod
                                     packageConfig
                                 else do
                                     template <- liftIO $ getEmptyModuleTemplate pd modPath
                                     liftIO $ UTF8.writeFile target template
-                                    addModuleToPackageDescr moduleName isExposed
+                                    addModuleToPackageDescr moduleName $ addModuleLocations addMod
                                     packageConfig
-                                    lift $ fileOpenThis target
+                                    liftIDE $ fileOpenThis target
 
 
 --  Yet another stupid little dialog
 
-data AddModule = AddModule {moduleName :: String, sourceRoot :: FilePath, isExposed :: Bool}
+data AddModule = AddModule {
+    moduleName   :: String,
+    sourceRoot   :: FilePath,
+    libExposed   :: Maybe Bool,
+    exesAndTests :: Set String}
 
-addModuleDialog :: Window -> String -> [String] -> IO (Maybe AddModule)
-addModuleDialog parent modString sourceRoots = do
+addModuleLocations :: AddModule -> [ModuleLocation]
+addModuleLocations addMod = lib (libExposed addMod)
+    ++ map ExeOrTestMod (Set.toList $ exesAndTests addMod)
+  where
+    lib (Just True) = [LibExposedMod]
+    lib (Just False) = [LibOtherMod]
+    lib Nothing = []
+
+addModuleDialog :: Window -> String -> [String] -> Bool -> [String] -> IO (Maybe AddModule)
+addModuleDialog parent modString sourceRoots hasLib exesTests = do
     liftIO $ debugM "leksah" "addModuleDialog"
     dia                        <-   dialogNew
     set dia [ windowTransientFor := parent
@@ -1142,8 +1158,8 @@ addModuleDialog parent modString sourceRoots = do
     upper                      <-   dialogGetUpper dia
 #endif
     lower                      <-   dialogGetActionArea dia
-    (widget,inj,ext,_)         <-   buildEditor (moduleFields sourceRoots)
-                                        (AddModule modString (head sourceRoots) False)
+    (widget,inj,ext,_)         <-   buildEditor (moduleFields sourceRoots hasLib exesTests)
+                                        (AddModule modString (head sourceRoots) (Just False) Set.empty)
     bb      <-  hButtonBoxNew
     closeB  <-  buttonNewFromStock "gtk-cancel"
     save    <-  buttonNewFromStock "gtk-ok"
@@ -1157,15 +1173,15 @@ addModuleDialog parent modString sourceRoots = do
     widgetGrabDefault save
     widgetShowAll dia
     resp  <- dialogRun dia
-    value <- ext (AddModule modString (head sourceRoots) False)
+    value <- ext (AddModule modString (head sourceRoots) (Just False) Set.empty)
     widgetDestroy dia
     --find
     case resp of
         ResponseOk    -> return value
         _             -> return Nothing
 
-moduleFields :: [FilePath] -> FieldDescription AddModule
-moduleFields list = VFD emptyParams [
+moduleFields :: [FilePath] -> Bool -> [String] -> FieldDescription AddModule
+moduleFields list hasLibs exesTests = VFD emptyParams $ [
         mkField
             (paraName <<<- ParaName ((__ "New module "))
                     $ emptyParams)
@@ -1179,13 +1195,23 @@ moduleFields list = VFD emptyParams [
                         $ emptyParams)
             (\a -> sourceRoot a)
             (\ a b -> b{sourceRoot = a})
-            (staticListEditor list id),
-        mkField
-            (paraName <<<- ParaName ((__ "Is this an exposed library module"))
-                    $ emptyParams)
-            isExposed
-            (\ a b -> b{isExposed = a})
-            boolEditor]
+            (staticListEditor list id)]
+        ++ (if hasLibs
+                then [
+                    mkField
+                        (paraName <<<- ParaName ((__ "Is this an exposed library module"))
+                                $ emptyParams)
+                        libExposed
+                        (\ a b -> b{libExposed = a})
+                        (maybeEditor (boolEditor, emptyParams) True (__ "Expose module"))]
+                else [])
+        ++ map (\ name ->
+            mkField
+                (paraName <<<- ParaName ((__ "Include in ") ++ name)
+                        $ emptyParams)
+                (Set.member name . exesAndTests)
+                (\ a b -> b{exesAndTests = (if a then Set.insert else Set.delete) name (exesAndTests b)})
+                boolEditor) exesTests
 
 -- * Expander State
 

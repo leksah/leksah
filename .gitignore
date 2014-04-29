@@ -7,3 +7,5 @@ leksah.lkshs
 leksah.lkshw
 *~
 /.shelly/
+/.cabal-sandbox/
+*.sandbox.config

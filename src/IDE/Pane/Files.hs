@@ -40,9 +40,9 @@ import Data.Maybe (isJust)
 import Control.Monad (void, forM_, when)
 import Data.Typeable (Typeable)
 import IDE.Core.State
-       (MessageLevel(..), ipdCabalFile, ipdPackageId, wsPackages,
+       (MessageLevel(..), ipdBuildDir, ipdPackageId, wsPackages,
         workspace, readIDE, IDEAction, ideMessage, reflectIDE, reifyIDE,
-        IDEM)
+        IDEM, IDEPackage, ipdSandboxSources)
 import IDE.Pane.SourceBuffer
     (goToSourceDefinition)
 import Control.Applicative ((<$>))
@@ -65,13 +65,13 @@ import Control.Exception (catch)
 data FileRecord =
     FileRecord FilePath
   | DirRecord FilePath
-  | PackageRecord PackageIdentifier FilePath
+  | PackageRecord IDEPackage
   | PlaceHolder deriving(Eq)
 
 file :: FileRecord -> String
 file (FileRecord f) = takeFileName f
 file (DirRecord f) = takeFileName f
-file (PackageRecord pid f) = packageIdentifierToString pid ++ " " ++ f
+file (PackageRecord p) = packageIdentifierToString (ipdPackageId p) ++ " " ++ ipdBuildDir p
 file PlaceHolder = ""
 
 -- | A files pane description
@@ -133,27 +133,27 @@ instance RecoverablePane IDEFiles FilesState IDEM where
             record <- treeStoreGetValue fileStore path
             reflectIDE (
                 case record of
-                    DirRecord f       -> liftIO $ refreshDir fileStore path f
-                    PackageRecord _ f -> liftIO $ refreshDir fileStore path f
-                    _                 -> ideMessage Normal (__ "Unexpected Expansion in Files Pane")) ideR
+                    DirRecord f     -> liftIO $ refreshDir fileStore path f
+                    PackageRecord p -> liftIO $ refreshPackage fileStore path p
+                    _               -> ideMessage Normal (__ "Unexpected Expansion in Files Pane")) ideR
         on treeView rowActivated $ \ path col -> do
             record <- treeStoreGetValue fileStore path
             reflectIDE (
                 case record of
-                    FileRecord f      -> void (goToSourceDefinition f (Just $ Location 1 0 1 0))
-                    DirRecord f       -> liftIO $ refreshDir fileStore path f
-                    PackageRecord _ f -> liftIO $ refreshDir fileStore path f
-                    _                 -> ideMessage Normal (__ "Unexpected Activation in Files Pane")) ideR
+                    FileRecord f    -> void (goToSourceDefinition f (Just $ Location 1 0 1 0))
+                    DirRecord f     -> liftIO $ refreshDir fileStore path f
+                    PackageRecord p -> liftIO $ refreshPackage fileStore path p
+                    _               -> ideMessage Normal (__ "Unexpected Activation in Files Pane")) ideR
         on sel treeSelectionSelectionChanged $ do
             paths <- treeSelectionGetSelectedRows sel
             forM_ paths $ \ path -> do
                 record <- treeStoreGetValue fileStore path
                 reflectIDE (
                     case record of
-                        FileRecord _      -> return ()
-                        DirRecord f       -> liftIO $ refreshDir fileStore path f
-                        PackageRecord _ f -> liftIO $ refreshDir fileStore path f
-                        _                 -> ideMessage Normal (__ "Unexpected Selection in Files Pane")) ideR
+                        FileRecord _    -> return ()
+                        DirRecord f     -> liftIO $ refreshDir fileStore path f
+                        PackageRecord p -> liftIO $ refreshPackage fileStore path p
+                        _               -> ideMessage Normal (__ "Unexpected Selection in Files Pane")) ideR
 
         return (Just files,[ConnectC cid1])
 
@@ -176,23 +176,31 @@ refreshFiles = do
     files <- getFiles Nothing
     let store = fileStore files
     mbWS <- readIDE workspace
-    liftIO $ setDirectories store Nothing $ map packageRecord $ maybe [] wsPackages mbWS
-  where
-    packageRecord package = PackageRecord
-        (ipdPackageId package)
-        (dropFileName $ ipdCabalFile package)
+    liftIO $ setDirectories store Nothing $ map PackageRecord $ maybe [] wsPackages mbWS
+
+dirContents :: FilePath -> IO [FileRecord]
+dirContents dir =
+   (filter ((/= '.') . head) <$> getDirectoryContents dir >>=
+               mapM
+                 (\ f ->
+                    do let full = dir </> f
+                       isDir <- doesDirectoryExist full
+                       return $ if isDir then DirRecord full else FileRecord full))
+             `catch` \ (e :: IOError) -> return []
+
+refreshPackage :: TreeStore FileRecord -> TreePath -> IDEPackage -> IO ()
+refreshPackage store path p = do
+    let dir = ipdBuildDir p
+    mbIter <- treeModelGetIter store path
+    when (isJust mbIter) $ do
+        contents <- dirContents dir
+        setDirectories store mbIter $ map PackageRecord (ipdSandboxSources p) ++ contents
 
 refreshDir :: TreeStore FileRecord -> TreePath -> FilePath -> IO ()
 refreshDir store path dir = do
     mbIter <- treeModelGetIter store path
     when (isJust mbIter) $ do
-        contents <- (filter ((/= '.') . head) <$> getDirectoryContents dir >>=
-                       mapM
-                         (\ f ->
-                            do let full = dir </> f
-                               isDir <- doesDirectoryExist full
-                               return $ if isDir then DirRecord full else FileRecord full))
-                     `catch` \ (e :: IOError) -> return []
+        contents <- dirContents dir
         setDirectories store mbIter contents
 
 setDirectories :: TreeStore FileRecord -> Maybe TreeIter -> [FileRecord] -> IO ()
@@ -211,9 +219,9 @@ setDirectories store parent records = do
             _ -> do
                 treeStoreInsert store parentPath n record
                 case record of
-                    DirRecord _       -> treeStoreInsert store (parentPath++[n]) 0 PlaceHolder
-                    PackageRecord _ _ -> treeStoreInsert store (parentPath++[n]) 0 PlaceHolder
-                    _                 -> return ()
+                    DirRecord _     -> treeStoreInsert store (parentPath++[n]) 0 PlaceHolder
+                    PackageRecord _ -> treeStoreInsert store (parentPath++[n]) 0 PlaceHolder
+                    _               -> return ()
     removeRemaining store (parentPath++[length records])
 
 data FindResult = WhereExpected TreeIter | Found TreeIter | NotFound

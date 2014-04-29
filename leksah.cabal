@@ -79,6 +79,7 @@ data-files: LICENSE
             pics/ide_link.png
             pics/ide_rebuild_meta.png
             pics/ide_empty.png
+            pics/ide_js.png
 
             doc/Keybindings.svg
             doc/leksah_manual.lyx
@@ -243,7 +244,7 @@ library
     hs-source-dirs: src
     default-language: Haskell98
 
-    build-depends: Cabal >=1.6.0.1 && <1.20, base >=4.0.0.0 && <4.8, binary >=0.5.0.0 && <0.8,
+    build-depends: Cabal >=1.10.2.0 && <1.22, base >=4.0.0.0 && <4.8, binary >=0.5.0.0 && <0.8,
                        bytestring >=0.9.0.1 && <0.11, containers >=0.2.0.0 && <0.6, directory >=1.0.0.2 && <3.1,
                        filepath >=1.1.0.1 && <1.4, glib >=0.10 && <0.13,
                        mtl >=1.1.0.2 && <2.2, old-time >=1.0.0.1 && <1.2,
@@ -254,47 +255,32 @@ library
                        ghc >=6.10.1 && <7.9, strict >= 0.3.2 && <0.4, conduit >= 1.0.8 && <1.1, text >= 0.11.1.5 && < 1.2,
                        gio >=0.12.2 && <0.13, transformers >=0.2.2.0 && <0.4,
                        executable-path >=0.0.3 && <0.1,
-                       vcsgui >=0.0.1 && < 0.1, vcswrapper >=0.0.1 && < 0.1,
+                       vcsgui >=0.0.4 && < 0.1, vcswrapper >=0.0.4 && < 0.1,
                        QuickCheck >=2.4.2 && <2.7, haskell-src-exts >=1.13.5 && <1.15,
-                       hlint >=1.8.59 && <1.9, vado >=0.0.1 && <0.1, shakespeare >=2.0.0.1 && <2.1 
-    exposed-modules:
-        IDE.Leksah IDE.Completion IDE.ImportTool
-        IDE.Find IDE.Session IDE.Command IDE.Keymap IDE.Utils.GUIUtils IDE.SymbolNavigation
-        IDE.Package IDE.YiConfig IDE.OSX
-        IDE.GUIHistory IDE.SourceCandy IDE.NotebookFlipper
-        IDE.Core.Types IDE.Core.State
-        IDE.Metainfo.Provider
-        IDE.Pane.Preferences IDE.Pane.PackageEditor
-        IDE.Pane.Info IDE.Pane.Log IDE.Pane.SourceBuffer IDE.Pane.Modules
-        IDE.Pane.Search IDE.Pane.PackageFlags
-        IDE.LogRef IDE.Debug IDE.Pane.Grep IDE.Pane.Files
-        IDE.Pane.HLint
-        IDE.Pane.Breakpoints IDE.Pane.Trace IDE.Pane.Variables
-        IDE.Pane.Errors IDE.TextEditor IDE.Workspaces IDE.Workspaces.Writer
-        IDE.Statusbar IDE.Pane.Workspace IDE.PaneGroups
-        IDE.Utils.ServerConnection
-        IDE.BufferMode
-        IDE.Build
-        IDE.Command.VCS IDE.Command.VCS.Common IDE.Command.VCS.SVN IDE.Command.VCS.GIT IDE.Command.VCS.Mercurial
-        IDE.Command.VCS.Common.Workspaces
-        IDE.Command.VCS.Common.GUI
-        IDE.Command.VCS.Common.Helper
-        IDE.Command.VCS.Types
-        IDE.Command.Print
-        IDE.Pane.WebKit.Documentation
-        IDE.Pane.WebKit.Output
-        IDE.TextEditor.Class
-        IDE.TextEditor.CodeMirror
-        IDE.TextEditor.Yi
-        IDE.TextEditor.GtkSourceView
-        IDE.Utils.ExternalTool
-
-    other-modules:
-        Distribution.PackageDescription.PrettyPrintCopied
-        Distribution.PackageDescription.ParseCopied
+                       hlint >=1.8.59 && <1.9, vado >=0.0.1 && <0.1, shakespeare >=2.0.0.1 && <2.1
+    exposed-modules: IDE.Leksah IDE.Completion IDE.ImportTool IDE.Find
+                     IDE.Sandbox IDE.Session IDE.Command IDE.Keymap IDE.Utils.GUIUtils
+                     IDE.SymbolNavigation IDE.Package IDE.YiConfig IDE.OSX
+                     IDE.GUIHistory IDE.SourceCandy IDE.NotebookFlipper IDE.Core.Types
+                     IDE.Core.State IDE.Metainfo.Provider IDE.Pane.Preferences
+                     IDE.Pane.PackageEditor IDE.Pane.Info IDE.Pane.Log
+                     IDE.Pane.SourceBuffer IDE.Pane.Modules IDE.Pane.Search
+                     IDE.Pane.PackageFlags IDE.LogRef IDE.Debug IDE.Pane.Grep
+                     IDE.Pane.Files IDE.Pane.HLint IDE.Pane.Breakpoints IDE.Pane.Trace
+                     IDE.Pane.Variables IDE.Pane.Errors IDE.TextEditor IDE.Workspaces
+                     IDE.Workspaces.Writer IDE.Statusbar IDE.Pane.Workspace
+                     IDE.PaneGroups IDE.Utils.ServerConnection IDE.BufferMode IDE.Build
+                     IDE.Command.VCS IDE.Command.VCS.Common IDE.Command.VCS.SVN
+                     IDE.Command.VCS.GIT IDE.Command.VCS.Mercurial
+                     IDE.Command.VCS.Common.Workspaces IDE.Command.VCS.Common.GUI
+                     IDE.Command.VCS.Common.Helper IDE.Command.VCS.Types
+                     IDE.Command.Print IDE.Pane.WebKit.Documentation
+                     IDE.Pane.WebKit.Output IDE.TextEditor.Class
+                     IDE.TextEditor.CodeMirror IDE.TextEditor.Yi
+                     IDE.TextEditor.GtkSourceView IDE.Utils.ExternalTool
 
     if (impl(ghc >= 7.2))
-        binary-shared >=0.8.2
+        build-depends: binary-shared >=0.8.2
 
     other-modules: Paths_leksah
 
@@ -352,7 +338,7 @@ executable bewleksah
     hs-source-dirs: bew
 
 test-suite tests
-    build-depends: base >=4.0.0.0 && <4.8, Cabal >=1.6.0.1 && <1.19,
+    build-depends: base >=4.0.0.0 && <4.8, Cabal >=1.10.2.0 && <1.22,
                    QuickCheck >=2.4.2 && <2.7, leksah ==0.13.4.2,
                    containers, ltk, leksah-server, hslogger,
                    transformers, glib, monad-loops

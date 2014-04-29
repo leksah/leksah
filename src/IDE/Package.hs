@@ -1,5 +1,7 @@
 {-# LANGUAGE CPP #-}
+{-# LANGUAGE RecordWildCards #-}
 {-# LANGUAGE ScopedTypeVariables #-}
+{-# LANGUAGE OverloadedStrings #-}
 -----------------------------------------------------------------------------
 --
 -- Module      :  IDE.Package
@@ -41,11 +43,13 @@ module IDE.Package (
 ,   getPackageDescriptionAndPath
 ,   getEmptyModuleTemplate
 ,   getModuleTemplate
+,   ModuleLocation(..)
 ,   addModuleToPackageDescr
 ,   delModuleFromPackageDescr
 
 ,   backgroundBuildToggled
 ,   runUnitTestsToggled
+,   javaScriptToggled
 ,   makeModeToggled
 
 ,   debugStart
@@ -61,6 +65,7 @@ module IDE.Package (
 ,   choosePackageFile
 
 ,   idePackageFromPath
+,   refreshPackage
 
 ) where
 
@@ -72,9 +77,10 @@ import Distribution.PackageDescription.Configuration
 import Distribution.Verbosity
 import System.FilePath
 import Control.Concurrent
-import System.Directory (setCurrentDirectory, doesFileExist)
+import System.Directory (setCurrentDirectory, doesFileExist, getDirectoryContents)
 import Prelude hiding (catch)
-import Data.Maybe (isNothing, isJust, fromJust)
+import Data.Maybe
+       (listToMaybe, fromMaybe, isNothing, isJust, fromJust, catMaybes)
 import Control.Exception (SomeException(..), catch)
 
 import IDE.Core.State
@@ -90,7 +96,7 @@ import MyMissing (replace)
 import Distribution.ModuleName (ModuleName(..))
 import Data.List (isInfixOf, nub, foldl', delete)
 import qualified System.IO.UTF8 as UTF8  (readFile)
-import IDE.Utils.Tool (ToolOutput(..), runTool, newGhci, ToolState(..))
+import IDE.Utils.Tool (ToolOutput(..), runTool, newGhci, ToolState(..), toolline)
 import qualified Data.Set as  Set (fromList)
 import qualified Data.Map as  Map (empty, fromList)
 import System.Exit (ExitCode(..))
@@ -98,24 +104,23 @@ import Control.Applicative ((<$>))
 import IDE.Utils.Tool (executeGhciCommand, getProcessExitCode, interruptProcessGroupOf,
     ProcessHandle)
 import qualified Data.Conduit as C (Sink)
-import qualified Data.Conduit.List as CL (foldM, fold)
+import qualified Data.Conduit.List as CL (foldM, fold, consume)
 import qualified Data.Conduit.Util as CU (zipSinks)
 import Data.Conduit (($$))
 import Control.Monad.Trans.Reader (ask)
 import Control.Monad.IO.Class (MonadIO(..))
 import Control.Monad.Trans.Class (lift)
-import Control.Monad (when, unless, liftM)
-#if MIN_VERSION_Cabal(1,10,0)
-import Distribution.PackageDescription.PrettyPrintCopied
+import Control.Monad (when, unless, liftM, forM, forM_)
+import Distribution.PackageDescription.PrettyPrint
        (writeGenericPackageDescription)
-#endif
 import Debug.Trace (trace)
 import IDE.Pane.WebKit.Documentation
        (getDocumentation, loadDoc, reloadDoc)
+import IDE.Pane.WebKit.Output (loadOutputUri, getOutputPane)
 import Text.Printf (printf)
 import System.Log.Logger (debugM)
 import System.Process.Vado (getMountPoint, vado, readSettings)
-import qualified Data.Text as T (pack, isInfixOf)
+import qualified Data.Text as T (pack, unpack, isInfixOf)
 import IDE.Utils.ExternalTool (runExternalTool', runExternalTool, isRunning, interruptBuild)
 
 -- | Get the last item
@@ -125,59 +130,46 @@ moduleInfo :: (a -> BuildInfo) -> (a -> [ModuleName]) -> a -> [(ModuleName, Buil
 moduleInfo bi mods a = map (\m -> (m, buildInfo)) $ mods a
     where buildInfo = bi a
 
-#if MIN_VERSION_Cabal(1,8,0)
 myLibModules pd = case library pd of
                     Nothing -> []
                     Just l -> moduleInfo libBuildInfo libModules l
 myExeModules pd = concatMap (moduleInfo buildInfo exeModules) (executables pd)
-#else
-myLibModules pd = moduleInfo libModules libBuildInfo pd
-myExeModules pd = moduleInfo exeModules buildInfo pd
-#endif
-#if MIN_VERSION_Cabal(1,10,0)
 myTestModules pd = concatMap (moduleInfo testBuildInfo (otherModules . testBuildInfo)) (testSuites pd)
-#endif
 
-activatePackage :: Maybe (IDEPackage, Maybe String) -> IDEM ()
-activatePackage (Just (pack, mbExe)) = do
-        liftIO $ debugM "leksah" "activatePackage"
-        modifyIDE_ (\ide -> ide{activePack = Just pack, activeExe = mbExe})
-        liftIO $ setCurrentDirectory (dropFileName (ipdCabalFile pack))
-        triggerEventIDE (Sensitivity [(SensitivityProjectActive,True)])
-        mbWs <- readIDE workspace
-        let wsStr = case mbWs of
-                Nothing -> ""
-                Just ws -> wsName ws
-        let txt = wsStr ++ " > " ++ packageIdentifierToString (ipdPackageId pack)
-        triggerEventIDE (StatusbarChanged [CompartmentPackage txt])
-        return ()
-activatePackage Nothing = return ()
-
-deactivatePackage :: IDEAction
-deactivatePackage = do
-    liftIO $ debugM "leksah" "deactivatePackage"
+activatePackage :: Maybe FilePath -> Maybe IDEPackage -> Maybe String -> IDEM ()
+activatePackage mbPath mbPack mbExe = do
+    liftIO $ debugM "leksah" "activatePackage"
     oldActivePack <- readIDE activePack
-    modifyIDE_ (\ide -> ide{activePack = Nothing, activeExe = Nothing})
-    when (isJust oldActivePack) $ do
-        triggerEventIDE (Sensitivity [(SensitivityProjectActive,False)])
+    modifyIDE_ (\ide -> ide{activePack = mbPack, activeExe = mbExe})
+    case mbPath of
+        Just p -> liftIO $ setCurrentDirectory (dropFileName p)
+        Nothing -> return ()
+    when (isJust mbPack || isJust oldActivePack) $ do
+        triggerEventIDE (Sensitivity [(SensitivityProjectActive,isJust mbPack)])
         return ()
     mbWs <- readIDE workspace
     let wsStr = case mbWs of
                     Nothing -> ""
                     Just ws -> wsName ws
-    let txt = wsStr ++ ":"
+        txt = case (mbPath, mbPack) of
+                    (_, Just pack) -> wsStr ++ " > " ++ packageIdentifierToString (ipdPackageId pack)
+                    (Just path, _) -> wsStr ++ " > " ++ takeFileName path
+                    _ -> wsStr ++ ":"
     triggerEventIDE (StatusbarChanged [CompartmentPackage txt])
     return ()
+
+deactivatePackage :: IDEAction
+deactivatePackage = activatePackage Nothing Nothing Nothing
 
 packageConfig :: PackageAction
 packageConfig = do
     package <- ask
-    lift $ packageConfig' package (\ _ -> return ())
+    liftIDE $ packageConfig' package (\ _ -> return ())
 
 packageConfig'  :: IDEPackage -> (Bool -> IDEAction) -> IDEAction
 packageConfig' package continuation = do
     prefs     <- readIDE prefs
-    let dir = dropFileName (ipdCabalFile package)
+    let dir = ipdBuildDir package
     logLaunch <- getDefaultLogLaunch
     showDefaultLogLaunch'
 
@@ -187,7 +179,7 @@ packageConfig' package continuation = do
                             dir $ do
         (mbLastOutput, _) <- CU.zipSinks sinkLast (logOutput logLaunch)
         lift $ do
-            mbPack <- idePackageFromPath (ipdCabalFile package)
+            mbPack <- idePackageFromPath (logOutput logLaunch) (ipdCabalFile package)
             case mbPack of
                 Just pack -> do
                     changePackage pack
@@ -202,7 +194,7 @@ packageConfig' package continuation = do
 runCabalBuild :: Bool -> Bool -> Bool -> IDEPackage -> Bool -> (Bool -> IDEAction) -> IDEAction
 runCabalBuild backgroundBuild jumpToWarnings withoutLinking package shallConfigure continuation = do
     prefs <- readIDE prefs
-    let dir =  dropFileName (ipdCabalFile package)
+    let dir =  ipdBuildDir package
     let args = (["build"] ++
                 if backgroundBuild && withoutLinking
                     then ["--with-ld=false"]
@@ -254,7 +246,7 @@ buildPackage backgroundBuild jumpToWarnings withoutLinking package continuation 
             -- TODO check debug package matches active package
             ready <- liftIO $ isEmptyMVar (currentToolCommand ghci)
             when ready $ do
-                let dir = dropFileName (ipdCabalFile package)
+                let dir = ipdBuildDir package
                 when (saveAllBeforeBuild prefs) (do fileSaveAll belongsToWorkspace; return ())
                 (`runDebug` debug) . executeDebugCommand ":reload" $ do
                     errs <- logOutputForBuild package backgroundBuild jumpToWarnings
@@ -268,13 +260,13 @@ buildPackage backgroundBuild jumpToWarnings withoutLinking package continuation 
 packageDoc :: PackageAction
 packageDoc = do
     package <- ask
-    lift $ packageDoc' False True package (\ _ -> return ())
+    liftIDE $ packageDoc' False True package (\ _ -> return ())
 
 packageDoc' :: Bool -> Bool -> IDEPackage -> (Bool -> IDEAction) -> IDEAction
 packageDoc' backgroundBuild jumpToWarnings package continuation = do
     prefs     <- readIDE prefs
     catchIDE (do
-        let dir = dropFileName (ipdCabalFile package)
+        let dir = ipdBuildDir package
         runExternalTool' (__ "Documenting") (cabalCommand prefs) (["haddock"]
             ++ (ipdHaddockFlags package)) dir $ do
                 (mbLastOutput, _) <- CU.zipSinks sinkLast $
@@ -286,7 +278,7 @@ packageDoc' backgroundBuild jumpToWarnings package continuation = do
 packageClean :: PackageAction
 packageClean = do
     package <- ask
-    lift $ packageClean' package (\ _ -> return ())
+    liftIDE $ packageClean' package (\ _ -> return ())
 
 packageClean' :: IDEPackage -> (Bool -> IDEAction) -> IDEAction
 packageClean' package continuation = do
@@ -294,7 +286,7 @@ packageClean' package continuation = do
     logLaunch <- getDefaultLogLaunch
     showDefaultLogLaunch'
 
-    let dir = dropFileName (ipdCabalFile package)
+    let dir = ipdBuildDir package
     runExternalTool' (__ "Cleaning")
                     (cabalCommand prefs)
                     ["clean"]
@@ -305,40 +297,42 @@ packageClean' package continuation = do
 packageCopy :: PackageAction
 packageCopy = do
     package <- ask
-    logLaunch <- lift $ getDefaultLogLaunch
-    lift $ showDefaultLogLaunch'
+    liftIDE $ do
+        logLaunch <- getDefaultLogLaunch
+        showDefaultLogLaunch'
 
-    lift $ catchIDE (do
-        prefs       <- readIDE prefs
-        window      <- getMainWindow
-        mbDir       <- liftIO $ chooseDir window (__ "Select the target directory") Nothing
-        case mbDir of
-            Nothing -> return ()
-            Just fp -> do
-                let dir = dropFileName (ipdCabalFile package)
-                runExternalTool' (__ "Copying")
-                                (cabalCommand prefs)
-                                (["copy"] ++ ["--destdir=" ++ fp])
-                                dir
-                                (logOutput logLaunch))
-        (\(e :: SomeException) -> putStrLn (show e))
+        catchIDE (do
+            prefs       <- readIDE prefs
+            window      <- getMainWindow
+            mbDir       <- liftIO $ chooseDir window (__ "Select the target directory") Nothing
+            case mbDir of
+                Nothing -> return ()
+                Just fp -> do
+                    let dir = ipdBuildDir package
+                    runExternalTool' (__ "Copying")
+                                    (cabalCommand prefs)
+                                    (["copy"] ++ ["--destdir=" ++ fp])
+                                    dir
+                                    (logOutput logLaunch))
+            (\(e :: SomeException) -> putStrLn (show e))
 
 packageInstallDependencies :: PackageAction
 packageInstallDependencies = do
     package <- ask
-    logLaunch <- lift $ getDefaultLogLaunch
-    lift $ showDefaultLogLaunch'
+    liftIDE $ do
+        logLaunch <- getDefaultLogLaunch
+        showDefaultLogLaunch'
 
-    lift $ catchIDE (do
-        prefs <- readIDE prefs
-        let dir = dropFileName (ipdCabalFile package)
-        runExternalTool' (__ "Installing") (cabalCommand prefs) (
-               (if useCabalDev prefs
-                    then ["install-deps"]
-                    else ["install","--only-dependencies"])
-            ++ (ipdConfigFlags package)
-            ++ (ipdInstallFlags package)) dir (logOutput logLaunch))
-        (\(e :: SomeException) -> putStrLn (show e))
+        catchIDE (do
+            prefs <- readIDE prefs
+            let dir = ipdBuildDir package
+            runExternalTool' (__ "Installing") (cabalCommand prefs) (
+                   (if useCabalDev prefs
+                        then ["install-deps"]
+                        else ["install","--only-dependencies"])
+                ++ (ipdConfigFlags package)
+                ++ (ipdInstallFlags package)) dir (logOutput logLaunch))
+            (\(e :: SomeException) -> putStrLn (show e))
 
 packageCopy' :: IDEPackage -> (Bool -> IDEAction) -> IDEAction
 packageCopy' package continuation = do
@@ -347,7 +341,7 @@ packageCopy' package continuation = do
     showDefaultLogLaunch'
 
     catchIDE (do
-        let dir = dropFileName (ipdCabalFile package)
+        let dir = ipdBuildDir package
         runExternalTool' (__ "Copying") (cabalCommand prefs) (["copy"]
             ++ (ipdInstallFlags package)) dir $ do
                 (mbLastOutput, _) <- CU.zipSinks sinkLast (logOutput logLaunch)
@@ -357,52 +351,59 @@ packageCopy' package continuation = do
 packageRun :: PackageAction
 packageRun = do
     package <- ask
-    lift $ catchIDE (do
+    liftIDE $ catchIDE (do
         ideR        <- ask
         maybeDebug   <- readIDE debugState
         pd <- liftIO $ readPackageDescription normal (ipdCabalFile package) >>= return . flattenPackageDescription
         mbExe <- readIDE activeExe
-        let exes = filter (isActiveExe mbExe) $ executables pd
+        let exe = take 1 . filter (isActiveExe mbExe) $ executables pd
+        let defaultLogName = display . pkgName $ ipdPackageId package
+            logName = fromMaybe defaultLogName . listToMaybe $ map exeName exe
+        (logLaunch,logName) <- buildLogLaunchByName logName
         case maybeDebug of
             Nothing -> do
-                case exes of
-                    (Executable name _ _):_ -> do
-                        (logLaunch,logName) <- buildLogLaunchByName name
-                        let path = "dist/build" </> name </> name
-                        let dir = dropFileName (ipdCabalFile package)
+                let dir = ipdBuildDir package
+                prefs <- readIDE prefs
+                case (runJavaScript prefs, exe ++ executables pd) of
+                    (True, [Executable name _ _]) -> liftIDE $ do
+                        let path = "dist/build" </> name </> name <.> "jsexe" </> "index.html"
+                            dir = ipdBuildDir package
+#ifdef WEBKITGTK
+                        loadOutputUri ("file:///" ++ dir </> path)
+                        getOutputPane Nothing  >>= \ p -> displayPane p False
+#else
+                        openBrowser path
+#endif
+                      `catchIDE`
+                        (\(e :: SomeException) -> putStrLn (show e))
+
+                    _ ->
                         IDE.Package.runPackage (addLogLaunchData logName logLaunch)
-                                               (printf (__ "Running %s") name)
-                                               path
-                                               (ipdExeFlags package)
+                                               (printf (__ "Running %s") logName)
+                                               "cabal"
+                                               (concat [["run"]
+                                                    , map exeName exe
+                                                    , ["--"]
+                                                    , ipdExeFlags package])
                                                dir
                                                (logOutput logLaunch)
-
-
-                    otherwise -> do
-                        sysMessage Normal (__ "no executable in selected package")
-                        return ()
             Just debug -> do
                 -- TODO check debug package matches active package
-                case exes of
-                    (Executable name mainFilePath _):_ -> do
-                        (logLaunch,logName) <- buildLogLaunchByName name
-                        runDebug (do
-                                    executeDebugCommand (":module *" ++ (map (\c -> if c == '/' then '.' else c) (takeWhile (/= '.') mainFilePath))) (logOutput logLaunch)
-                                    executeDebugCommand (":main " ++ (unwords (ipdExeFlags package))) (logOutput logLaunch))
-                                 debug
-                    otherwise -> do
-                        sysMessage Normal (__ "no executable in selected package")
-                        return ())
+                runDebug (do
+                    case exe of
+                        [Executable name mainFilePath _] -> do
+                            executeDebugCommand (":module *" ++ (map (\c -> if c == '/' then '.' else c) (takeWhile (/= '.') mainFilePath))) (logOutput logLaunch)
+                        _ -> return ()
+                    executeDebugCommand (":main " ++ (unwords (ipdExeFlags package))) (logOutput logLaunch))
+                    debug)
         (\(e :: SomeException) -> putStrLn (show e))
   where
-    isActiveExe Nothing _ = True
-    isActiveExe (Just selected) (Executable name _ _) = selected == name
-    isActiveExe _ _ = False
+    isActiveExe selected (Executable name _ _) = selected == Just name
 
 packageRegister :: PackageAction
 packageRegister = do
     package <- ask
-    lift $ packageRegister' package (\ _ -> return ())
+    liftIDE $ packageRegister' package (\ _ -> return ())
 
 packageRegister' :: IDEPackage -> (Bool -> IDEAction) -> IDEAction
 packageRegister' package continuation =
@@ -412,7 +413,7 @@ packageRegister' package continuation =
           showDefaultLogLaunch'
           catchIDE (do
             prefs <- readIDE prefs
-            let dir = dropFileName (ipdCabalFile package)
+            let dir = ipdBuildDir package
             runExternalTool' (__ "Registering") (cabalCommand prefs) (["register"]
                 ++ (ipdRegisterFlags package)) dir $ do
                     (mbLastOutput, _) <- CU.zipSinks sinkLast (logOutput logLaunch)
@@ -423,7 +424,7 @@ packageRegister' package continuation =
 packageTest :: PackageAction
 packageTest = do
     package <- ask
-    lift $ packageTest' package (\ _ -> return ())
+    liftIDE $ packageTest' package (\ _ -> return ())
 
 packageTest' :: IDEPackage -> (Bool -> IDEAction) -> IDEAction
 packageTest' package continuation =
@@ -433,7 +434,7 @@ packageTest' package continuation =
           showDefaultLogLaunch'
           catchIDE (do
             prefs <- readIDE prefs
-            let dir = dropFileName (ipdCabalFile package)
+            let dir = ipdBuildDir package
             runExternalTool' (__ "Testing") (cabalCommand prefs) (["test"]
                 ++ (ipdTestFlags package)) dir $ do
                     (mbLastOutput, _) <- CU.zipSinks sinkLast (logOutput logLaunch)
@@ -444,30 +445,29 @@ packageTest' package continuation =
 packageSdist :: PackageAction
 packageSdist = do
     package <- ask
-    logLaunch <- lift $ getDefaultLogLaunch
-    lift $ showDefaultLogLaunch'
+    liftIDE $ do
+        logLaunch <- getDefaultLogLaunch
+        showDefaultLogLaunch'
 
-    lift $ catchIDE (do
-        prefs <- readIDE prefs
-        let dir = dropFileName (ipdCabalFile package)
-        runExternalTool' (__ "Source Dist") (cabalCommand prefs) (["sdist"]
-                        ++ (ipdSdistFlags package)) dir (logOutput logLaunch))
-        (\(e :: SomeException) -> putStrLn (show e))
+        catchIDE (do
+            prefs <- readIDE prefs
+            let dir = ipdBuildDir package
+            runExternalTool' (__ "Source Dist") (cabalCommand prefs) (["sdist"]
+                            ++ (ipdSdistFlags package)) dir (logOutput logLaunch))
+            (\(e :: SomeException) -> putStrLn (show e))
 
 
 packageOpenDoc :: PackageAction
 packageOpenDoc = do
     package <- ask
-    logLaunch <- lift $ getDefaultLogLaunch
-    lift $ showDefaultLogLaunch'
 
-    lift $ do
+    liftIDE $ do
         prefs   <- readIDE prefs
-        let path = dropFileName (ipdCabalFile package)
+        let path = ipdBuildDir package
                         </> "dist/doc/html"
                         </> display (pkgName (ipdPackageId package))
                         </> "index.html"
-            dir = dropFileName (ipdCabalFile package)
+            dir = ipdBuildDir package
 #ifdef WEBKITGTK
         loadDoc ("file:///" ++ dir </> path)
         getDocumentation Nothing  >>= \ p -> displayPane p False
@@ -527,52 +527,62 @@ getModuleTemplate template pd modName exports body = catch (do
         ,   ("@ModuleBody@"   , body)]))
                     (\ (e :: SomeException) -> sysMessage Normal (printf (__ "Couldn't read template file: %s") (show e)) >> return "")
 
-#if MIN_VERSION_Cabal(1,10,0)
-addModuleToPackageDescr :: ModuleName -> Bool -> PackageAction
-addModuleToPackageDescr moduleName isExposed = do
+data ModuleLocation = LibExposedMod | LibOtherMod | ExeOrTestMod String
+
+addModuleToPackageDescr :: ModuleName -> [ModuleLocation] -> PackageAction
+addModuleToPackageDescr moduleName locations = do
     p    <- ask
-    lift $ reifyIDE (\ideR -> catch (do
+    liftIDE $ reifyIDE (\ideR -> catch (do
         gpd <- readPackageDescription normal (ipdCabalFile p)
-        let npd = if isExposed && isJust (condLibrary gpd)
-                then gpd{
-                    condLibrary = Just (addModToLib moduleName
-                                                (fromJust (condLibrary gpd))),
-                    condExecutables = map (addModToBuildInfoExe moduleName)
-                                            (condExecutables gpd)}
-                else gpd{
-                    condLibrary = case condLibrary gpd of
-                                    Nothing -> Nothing
-                                    Just lib -> Just (addModToBuildInfoLib moduleName
-                                                       (fromJust (condLibrary gpd))),
-                    condExecutables = map (addModToBuildInfoExe moduleName)
-                                                (condExecutables gpd)}
+        let npd = trace (show gpd) foldr addModule gpd locations
         writeGenericPackageDescription (ipdCabalFile p) npd)
            (\(e :: SomeException) -> do
             reflectIDE (ideMessage Normal ((__ "Can't update package ") ++ show e)) ideR
             return ()))
+  where
+    addModule LibExposedMod gpd@GenericPackageDescription{condLibrary = Just lib} =
+        gpd {condLibrary = Just (addModToLib moduleName lib)}
+    addModule LibOtherMod gpd@GenericPackageDescription{condLibrary = Just lib} =
+        gpd {condLibrary = Just (addModToBuildInfoLib moduleName lib)}
+    addModule (ExeOrTestMod name) gpd = gpd {
+          condExecutables = map (addModToBuildInfoExe  name moduleName) (condExecutables gpd)
+        , condTestSuites  = map (addModToBuildInfoTest name moduleName) (condTestSuites gpd)
+        }
+    addModule _ x = x
 
 addModToLib :: ModuleName -> CondTree ConfVar [Dependency] Library ->
     CondTree ConfVar [Dependency] Library
 addModToLib modName ct@CondNode{condTreeData = lib} =
-    ct{condTreeData = lib{exposedModules = modName : exposedModules lib}}
+    ct{condTreeData = lib{exposedModules = modName `inOrderAdd` exposedModules lib}}
 
 addModToBuildInfoLib :: ModuleName -> CondTree ConfVar [Dependency] Library ->
     CondTree ConfVar [Dependency] Library
 addModToBuildInfoLib modName ct@CondNode{condTreeData = lib} =
     ct{condTreeData = lib{libBuildInfo = (libBuildInfo lib){otherModules = modName
-        : otherModules (libBuildInfo lib)}}}
+        `inOrderAdd` otherModules (libBuildInfo lib)}}}
 
-addModToBuildInfoExe :: ModuleName -> (String, CondTree ConfVar [Dependency] Executable) ->
+addModToBuildInfoExe :: String -> ModuleName -> (String, CondTree ConfVar [Dependency] Executable) ->
     (String, CondTree ConfVar [Dependency] Executable)
-addModToBuildInfoExe modName (str,ct@CondNode{condTreeData = exe}) =
+addModToBuildInfoExe name modName (str,ct@CondNode{condTreeData = exe}) | str == name =
     (str, ct{condTreeData = exe{buildInfo = (buildInfo exe){otherModules = modName
-        : otherModules (buildInfo exe)}}})
+        `inOrderAdd` otherModules (buildInfo exe)}}})
+addModToBuildInfoExe name _ x = x
+
+addModToBuildInfoTest :: String -> ModuleName -> (String, CondTree ConfVar [Dependency] TestSuite) ->
+    (String, CondTree ConfVar [Dependency] TestSuite)
+addModToBuildInfoTest name modName (str,ct@CondNode{condTreeData = test}) | str == name =
+    (str, ct{condTreeData = test{testBuildInfo = (testBuildInfo test){otherModules = modName
+        `inOrderAdd` otherModules (testBuildInfo test)}}})
+addModToBuildInfoTest _ _ x = x
+
+inOrderAdd :: Ord a => a -> [a] -> [a]
+inOrderAdd a list = let (before, after) = span (< a) list in before ++ [a] ++ after
 
 --------------------------------------------------------------------------
 delModuleFromPackageDescr :: ModuleName -> PackageAction
-delModuleFromPackageDescr moduleName = trace ("addModule " ++ show moduleName) $ do
+delModuleFromPackageDescr moduleName = do
     p    <- ask
-    lift $ reifyIDE (\ideR -> catch (do
+    liftIDE $ reifyIDE (\ideR -> catch (do
         gpd <- readPackageDescription normal (ipdCabalFile p)
         let isExposedAndJust = isExposedModule moduleName (condLibrary gpd)
         let npd = if isExposedAndJust
@@ -614,76 +624,6 @@ isExposedModule :: ModuleName -> Maybe (CondTree ConfVar [Dependency] Library)  
 isExposedModule mn Nothing                             = False
 isExposedModule mn (Just CondNode{condTreeData = lib}) = elem mn (exposedModules lib)
 
-#else
--- Old version to support older Cabal
-addModuleToPackageDescr :: ModuleName -> Bool -> PackageAction
-addModuleToPackageDescr moduleName isExposed = do
-    p    <- ask
-    lift $ reifyIDE (\ideR -> catch (do
-        gpd <- readPackageDescription normal (ipdCabalFile p)
-        if hasConfigs gpd
-            then do
-                reflectIDE (ideMessage High
-                    (__ "Cabal file with configurations can't be automatically updated with the current version of Leksah")) ideR
-            else
-                let pd = flattenPackageDescription gpd
-                    npd = if isExposed && isJust (library pd)
-                            then pd{library = Just ((fromJust (library pd)){exposedModules =
-                                                            moduleName : exposedModules (fromJust $ library pd)})}
-                            else let npd1 = case library pd of
-                                               Nothing -> pd
-                                               Just lib -> pd{library = Just (lib{libBuildInfo =
-                                                        addModToBuildInfo (libBuildInfo lib) moduleName})}
-                               in npd1{executables = map
-                                        (\exe -> exe{buildInfo = addModToBuildInfo (buildInfo exe) moduleName})
-                                            (executables npd1)}
-                in writePackageDescription (ipdCabalFile p) npd)
-                   (\(e :: SomeException) -> do
-                    reflectIDE (ideMessage Normal ((__ "Can't upade package ") ++ show e)) ideR
-                    return ()))
-    where
-    addModToBuildInfo :: BuildInfo -> ModuleName -> BuildInfo
-    addModToBuildInfo bi mn = bi {otherModules = mn : otherModules bi}
-
--- Old version to support older Cabal
-delModuleFromPackageDescr :: ModuleName -> PackageAction
-delModuleFromPackageDescr moduleName = do
-    p    <- ask
-    lift $ reifyIDE (\ideR -> catch (do
-        gpd <- readPackageDescription normal (ipdCabalFile p)
-        if hasConfigs gpd
-            then do
-                reflectIDE (ideMessage High
-                    (__ "Cabal file with configurations can't be automatically updated with the current version of Leksah")) ideR
-            else
-                let pd = flattenPackageDescription gpd
-                    isExposedAndJust = isExposedModule pd moduleName
-                    npd = if isExposedAndJust
-                            then pd{library = Just ((fromJust (library pd)){exposedModules =
-                                                             delete moduleName (exposedModules (fromJust $ library pd))})}
-                            else let npd1 = case library pd of
-                                               Nothing -> pd
-                                               Just lib -> pd{library = Just (lib{libBuildInfo =
-                                                        delModFromBuildInfo (libBuildInfo lib) moduleName})}
-                               in npd1{executables = map
-                                        (\exe -> exe{buildInfo = delModFromBuildInfo (buildInfo exe) moduleName})
-                                            (executables npd1)}
-                in writePackageDescription (ipdCabalFile p) npd)
-                   (\(e :: SomeException) -> do
-                    reflectIDE (ideMessage Normal ((__ "Can't update package ") ++ show e)) ideR
-                    return ()))
-    where
-    delModFromBuildInfo :: BuildInfo -> ModuleName -> BuildInfo
-    delModFromBuildInfo bi mn = bi {otherModules = delete mn (otherModules bi)}
-
--- Old version to support older Cabal
-isExposedModule :: PackageDescription -> ModuleName -> Bool
-isExposedModule pd mn = do
-    if isJust (library pd)
-        then elem mn (exposedModules (fromJust $ library pd))
-        else False
-#endif
-
 backgroundBuildToggled :: IDEAction
 backgroundBuildToggled = do
     toggled <- getBackgroundBuildToggled
@@ -693,6 +633,11 @@ runUnitTestsToggled :: IDEAction
 runUnitTestsToggled = do
     toggled <- getRunUnitTests
     modifyIDE_ (\ide -> ide{prefs = (prefs ide){runUnitTests= toggled}})
+
+javaScriptToggled :: IDEAction
+javaScriptToggled = do
+    toggled <- getRunJavaScript
+    modifyIDE_ (\ide -> ide{prefs = (prefs ide){runJavaScript= toggled}})
 
 makeModeToggled :: IDEAction
 makeModeToggled = do
@@ -728,13 +673,13 @@ interactiveFlags prefs =
 debugStart :: PackageAction
 debugStart = do
     package   <- ask
-    lift $ catchIDE (do
+    liftIDE $ catchIDE (do
         ideRef     <- ask
         prefs'     <- readIDE prefs
         maybeDebug <- readIDE debugState
         case maybeDebug of
             Nothing -> do
-                let dir = dropFileName (ipdCabalFile package)
+                let dir = ipdBuildDir package
                 mbExe <- readIDE activeExe
                 ghci <- reifyIDE $ \ideR -> newGhci dir mbExe (interactiveFlags prefs')
                     $ reflectIDEI (logOutputForBuild package True False >> return ()) ideR
@@ -749,7 +694,7 @@ debugStart = do
                         modifyIDE_ (\ide -> ide {debugState = Nothing, autoCommand = return ()})
                         triggerEventIDE (Sensitivity [(SensitivityInterpreting, False)])
                         -- Kick of a build if one is not already due
-                        modifiedPacks <- fileCheckAll belongsToPackage
+                        modifiedPacks <- fileCheckAll belongsToPackages
                         let modified = not (null modifiedPacks)
                         prefs <- readIDE prefs
                         when ((not modified) && (backgroundBuild prefs)) $ do
@@ -768,13 +713,13 @@ debugStart = do
 
 tryDebug :: DebugAction -> PackageAction
 tryDebug f = do
-    maybeDebug <- lift $ readIDE debugState
+    maybeDebug <- liftIDE $ readIDE debugState
     case maybeDebug of
         Just debug -> do
             -- TODO check debug package matches active package
-            lift $ runDebug f debug
+            liftIDE $ runDebug f debug
         _ -> do
-            window <- lift $ getMainWindow
+            window <- liftIDE $ getMainWindow
             resp <- liftIO $ do
                 md <- messageDialogNew (Just window) [] MessageQuestion ButtonsCancel
                         (__ "GHCi debugger is not running.")
@@ -787,19 +732,19 @@ tryDebug f = do
             case resp of
                 ResponseUser 1 -> do
                     debugStart
-                    maybeDebug <- lift $ readIDE debugState
+                    maybeDebug <- liftIDE $ readIDE debugState
                     case maybeDebug of
-                        Just debug -> lift $ postAsyncIDE $ runDebug f debug
+                        Just debug -> liftIDE $ postAsyncIDE $ runDebug f debug
                         _ -> return ()
                 _  -> return ()
 
 tryDebugQuiet :: DebugAction -> PackageAction
 tryDebugQuiet f = do
-    maybeDebug <- lift $ readIDE debugState
+    maybeDebug <- liftIDE $ readIDE debugState
     case maybeDebug of
         Just debug -> do
             -- TODO check debug package matches active package
-            lift $ runDebug f debug
+            liftIDE $ runDebug f debug
         _ -> do
             return ()
 
@@ -819,20 +764,16 @@ executeDebugCommand command handler = do
                 return ()
 
 allBuildInfo' :: PackageDescription -> [BuildInfo]
-#if MIN_VERSION_Cabal(1,10,0)
 allBuildInfo' pkg_descr = [ libBuildInfo lib  | Just lib <- [library pkg_descr] ]
                        ++ [ buildInfo exe     | exe <- executables pkg_descr ]
                        ++ [ testBuildInfo tst | tst <- testSuites pkg_descr ]
 testMainPath (TestSuiteExeV10 _ f) = [f]
 testMainPath _ = []
-#else
-allBuildInfo' = allBuildInfo
-#endif
 
-idePackageFromPath :: FilePath -> IDEM (Maybe IDEPackage)
-idePackageFromPath filePath = do
+idePackageFromPath' :: FilePath -> IDEM (Maybe IDEPackage)
+idePackageFromPath' ipdCabalFile = do
     mbPackageD <- reifyIDE (\ideR -> catch (do
-        pd <- readPackageDescription normal filePath
+        pd <- readPackageDescription normal ipdCabalFile
         return (Just (flattenPackageDescription pd)))
             (\ (e  :: SomeException) -> do
                 reflectIDE (ideMessage Normal ((__ "Can't activate package ") ++(show e))) ideR
@@ -840,55 +781,73 @@ idePackageFromPath filePath = do
     case mbPackageD of
         Nothing       -> return Nothing
         Just packageD -> do
-            let modules    = Map.fromList $ myLibModules packageD ++ myExeModules packageD
-#if MIN_VERSION_Cabal(1,10,0)
-                                 ++ myTestModules packageD
-#endif
-            let mainFiles  = [ (modulePath exe, buildInfo exe, False) | exe <- executables packageD ]
-#if MIN_VERSION_Cabal(1,10,0)
-                             ++ [ (f, bi, True) | TestSuite _ (TestSuiteExeV10 _ f) bi _ <- testSuites packageD ]
-#endif
-            let files      = Set.fromList $ extraSrcFiles packageD
-            let srcDirs = case (nub $ concatMap hsSourceDirs (allBuildInfo' packageD)) of
-                                [] -> [".","src"]
-                                l -> l
-            let exes      = [ exeName e | e <- executables packageD
-                                          , buildable (buildInfo e) ]
-#if MIN_VERSION_Cabal(1,10,0)
-            let exts       = nub $ concatMap oldExtensions (allBuildInfo' packageD)
-            let tests      = [ testName t | t <- testSuites packageD
-                                          , buildable (testBuildInfo t) ]
-#else
-            let exts       = nub $ concatMap extensions (allBuildInfo' packageD)
-            let tests      = []
-#endif
 
-            let packp      = IDEPackage {
-                ipdPackageId = package packageD,
-                ipdCabalFile = filePath,
-                ipdDepends = buildDepends packageD,
-                ipdModules = modules,
-                ipdHasLibs = hasLibs packageD,
-                ipdExes    = exes,
-                ipdTests   = tests,
-                ipdMain    = mainFiles,
-                ipdExtraSrcs =  files,
-                ipdSrcDirs = srcDirs,
-                ipdExtensions =  exts,
-                ipdConfigFlags = ["--user", "--enable-tests"],
-                ipdBuildFlags = [],
-                ipdTestFlags = [],
-                ipdHaddockFlags = [],
-                ipdExeFlags = [],
-                ipdInstallFlags = [],
-                ipdRegisterFlags = [],
-                ipdUnregisterFlags = [],
-                ipdSdistFlags = []}
-            let pfile      = dropExtension filePath
+            let ipdModules          = Map.fromList $ myLibModules packageD ++ myExeModules packageD
+                                        ++ myTestModules packageD
+                ipdMain             = [ (modulePath exe, buildInfo exe, False) | exe <- executables packageD ]
+                                        ++ [ (f, bi, True) | TestSuite _ (TestSuiteExeV10 _ f) bi _ <- testSuites packageD ]
+                ipdExtraSrcs        = Set.fromList $ extraSrcFiles packageD
+                ipdSrcDirs          = case (nub $ concatMap hsSourceDirs (allBuildInfo' packageD)) of
+                                            [] -> [".","src"]
+                                            l -> l
+                ipdExes             = [ exeName e | e <- executables packageD
+                                          , buildable (buildInfo e) ]
+                ipdExtensions       = nub $ concatMap oldExtensions (allBuildInfo' packageD)
+                ipdTests            = [ testName t | t <- testSuites packageD
+                                          , buildable (testBuildInfo t) ]
+                ipdPackageId        = package packageD
+                ipdDepends          = buildDepends packageD
+                ipdHasLibs          = hasLibs packageD
+                ipdConfigFlags      = ["--user", "--enable-tests"]
+                ipdBuildFlags       = []
+                ipdTestFlags        = []
+                ipdHaddockFlags     = []
+                ipdExeFlags         = []
+                ipdInstallFlags     = []
+                ipdRegisterFlags    = []
+                ipdUnregisterFlags  = []
+                ipdSdistFlags       = []
+                ipdSandboxSources   = []
+                packp               = IDEPackage {..}
+                pfile               = dropExtension ipdCabalFile
             pack <- (do
                 flagFileExists <- liftIO $ doesFileExist (pfile ++ leksahFlagFileExtension)
                 if flagFileExists
                     then liftIO $ readFlags (pfile ++ leksahFlagFileExtension) packp
                     else return packp)
             return (Just pack)
+
+idePackageFromPath :: C.Sink ToolOutput IDEM () -> FilePath -> IDEM (Maybe IDEPackage)
+idePackageFromPath log filePath = do
+    mbRootPackage <- idePackageFromPath' filePath
+    case mbRootPackage of
+        Nothing -> return Nothing
+        Just rootPackage -> do
+            mvar <- liftIO newEmptyMVar
+            runExternalTool' (__ "Sandbox") "cabal" ["sandbox", "list-sources"] (takeDirectory filePath) $ do
+                output <- CL.consume
+                liftIO . putMVar mvar $ case take 1 $ reverse output of
+                    [ToolExit ExitSuccess] ->
+                        map (T.unpack . toolline) . takeWhile (/= ToolOutput "") . drop 1 $ dropWhile (/= ToolOutput "") output
+                    _ -> []
+            paths <- liftIO $ takeMVar mvar
+            sandboxSources <- concat <$> (forM paths $ \ path -> do
+                contents <- liftIO $ getDirectoryContents path
+                return . take 1 . map (path </>) $ filter ((== ".cabal") . takeExtension) contents)
+            s <- liftM catMaybes . mapM idePackageFromPath' $ nub sandboxSources
+            return . Just $ rootPackage {ipdSandboxSources = s}
+
+refreshPackage :: C.Sink ToolOutput IDEM () -> PackageM (Maybe IDEPackage)
+refreshPackage log = do
+    package <- ask
+    liftIDE $ do
+        mbUpdatedPack <- idePackageFromPath log (ipdCabalFile package)
+        case mbUpdatedPack of
+            Just updatedPack -> do
+                changePackage updatedPack
+                triggerEventIDE $ WorkspaceChanged False True
+                return mbUpdatedPack
+            Nothing -> do
+                postAsyncIDE $ ideMessage Normal (__ "Can't read package file")
+                return Nothing
 

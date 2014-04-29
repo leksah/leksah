@@ -204,7 +204,7 @@ updateWorkspaceInfo' rebuild continuation = do
             trace "no workspace" $ modifyIDE_ (\ide -> ide{workspaceInfo = Nothing, packageInfo = Nothing})
             continuation False
         Just ws -> do
-            updatePackageInfos rebuild (wsPackages ws) $ \ _ packDescrs -> do
+            updatePackageInfos rebuild (wsAllPackages ws) $ \ _ packDescrs -> do
                 let dependPackIds = (nub $ concatMap pdBuildDepends packDescrs)
                                         \\ map pdPackage packDescrs
                 let packDescrsI =   case systemInfo' of
@@ -231,7 +231,7 @@ updateWorkspaceInfo' rebuild continuation = do
                                                      catMaybes $ map (\ pid -> pid `Map.lookup` pdmap)
                                                         (pdBuildDepends pd)
                                         -- The imported from the workspace should be treated different
-                                        workspacePackageIds = map ipdPackageId (wsPackages ws)
+                                        workspacePackageIds = map ipdPackageId (wsAllPackages ws)
                                         impPackDescrs' = filter (\pd -> not (elem (pdPackage pd)
                                                                     workspacePackageIds)) impPackDescrs
                                         impPackDescrs'' = catMaybes $ map (\pd ->

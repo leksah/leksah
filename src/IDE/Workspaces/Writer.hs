@@ -57,10 +57,10 @@ writeWorkspace ws = do
     newWs' <- liftIO $ makePathsRelative newWs
     liftIO $ writeFields (wsFile newWs') (newWs' {wsFile = ""}) workspaceDescr
 
-getPackage :: FilePath -> Maybe String -> [IDEPackage] -> Maybe (IDEPackage, Maybe String)
-getPackage fp mbExe packages =
+getPackage :: FilePath -> [IDEPackage] -> Maybe IDEPackage
+getPackage fp packages =
     case filter (\ p -> ipdCabalFile p == fp) packages of
-        [p] -> Just (p, mbExe)
+        [p] -> Just p
         l   -> Nothing
 
 -- ---------------------------------------------------------------------
@@ -85,7 +85,7 @@ setWorkspace mbWs = do
                         Just ws -> Just (wsPackages ws)
     when (packFileAndExe /= oldPackFileAndExe) $
             case packFileAndExe of
-                (Just (Just p, mbExe))  -> void (activatePackage (getPackage p mbExe (fromJust mbPackages)))
+                (Just (Just p, mbExe))  -> void (activatePackage (Just p) (getPackage p (fromJust mbPackages)) mbExe)
                 _ -> deactivatePackage
     mbPack <- readIDE activePack
     mbExe  <- readIDE activeExe

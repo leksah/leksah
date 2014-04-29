@@ -34,6 +34,7 @@ module IDE.Core.Types (
 ,   IDEEventM
 ,   IDEAction
 ,   IDEEvent(..)
+,   MonadIDE
 ,   liftIDE
 ,   (?>>=)
 
@@ -50,7 +51,10 @@ module IDE.Core.Types (
 ,   runDebug
 
 ,   IDEPackage(..)
+,   ipdBuildDir
+,   ipdAllDirs
 ,   Workspace(..)
+,   wsAllPackages
 ,   VCSConf
 
 ,   ActionDescr(..)
@@ -102,6 +106,7 @@ import Distribution.Package
 import Distribution.PackageDescription (BuildInfo)
 import Data.Map (Map(..))
 import Data.Set (Set(..))
+import Data.List (nubBy)
 import Distribution.ModuleName (ModuleName(..))
 import Graphics.UI.Gtk.Gdk.EventM (Modifier(..))
 import Graphics.UI.Gtk.ActionMenuToolbar.UIManager(MergeId)
@@ -119,7 +124,7 @@ import System.IO (Handle)
 import Distribution.Text(disp)
 import Text.PrettyPrint (render)
 import Control.Monad.Trans.Class (lift)
-import Control.Monad.IO.Class (liftIO)
+import Control.Monad.IO.Class (liftIO, MonadIO)
 import Control.Monad.Trans.Reader (ReaderT(..))
 #if MIN_VERSION_directory(1,2,0)
 import Data.Time (UTCTime(..))
@@ -151,7 +156,7 @@ data IDE            =  IDE {
 ,   workspace       ::   Maybe Workspace         -- ^ may be a workspace (set of packages)
 ,   activePack      ::   Maybe IDEPackage
 ,   activeExe       ::   Maybe String
-,   bufferProjCache ::   Map FilePath (Maybe IDEPackage)
+,   bufferProjCache ::   Map FilePath [IDEPackage]
 ,   allLogRefs      ::   [LogRef]
 ,   currentEBC      ::   (Maybe LogRef, Maybe LogRef, Maybe LogRef)
 ,   currentHist     ::   Int
@@ -206,8 +211,11 @@ data IDEState =
     |   IsCompleting Connections
 
 
-class MonadIDE m where
+class (Functor m, Monad m, MonadIO m) => MonadIDE m where
     liftIDE :: IDEM a -> m a
+
+instance MonadIDE IDEM where
+    liftIDE = id
 
 instance MonadIDE WorkspaceM where
     liftIDE = lift
@@ -241,10 +249,13 @@ runWorkspace = runReaderT
 -- ---------------------------------------------------------------------
 -- Monad for functions that need an active package
 --
-type PackageM = ReaderT IDEPackage IDEM
+type PackageM = ReaderT IDEPackage WorkspaceM
 type PackageAction = PackageM ()
 
-runPackage :: PackageM a -> IDEPackage -> IDEM a
+instance MonadIDE PackageM where
+    liftIDE = lift . lift
+
+runPackage :: PackageM a -> IDEPackage -> WorkspaceM a
 runPackage = runReaderT
 
 -- ---------------------------------------------------------------------
@@ -369,6 +380,7 @@ data IDEPackage     =   IDEPackage {
 ,   ipdRegisterFlags   ::   [String]
 ,   ipdUnregisterFlags ::   [String]
 ,   ipdSdistFlags      ::   [String]
+,   ipdSandboxSources  ::   [IDEPackage]
 }
     deriving (Eq)
 
@@ -377,6 +389,12 @@ instance Show IDEPackage where
 
 instance Ord IDEPackage where
     compare x y     =   compare (ipdPackageId x) (ipdPackageId y)
+
+ipdBuildDir :: IDEPackage -> FilePath
+ipdBuildDir = dropFileName . ipdCabalFile
+
+ipdAllDirs :: IDEPackage -> [FilePath]
+ipdAllDirs p = ipdBuildDir p : (ipdSandboxSources p >>= ipdAllDirs)
 
 -- ---------------------------------------------------------------------
 -- Workspace
@@ -393,6 +411,10 @@ data Workspace = Workspace {
 ,   wsNobuildPack   ::   [IDEPackage]
 ,   packageVcsConf  ::   Map FilePath VCSConf -- ^ (FilePath to package, Version-Control-System Configuration)
 } deriving Show
+
+-- | Includes sandbox sources
+wsAllPackages :: Workspace -> [IDEPackage]
+wsAllPackages w = nubBy (\ a b -> ipdCabalFile a == ipdCabalFile b) $ wsPackages w ++ (wsPackages w >>= ipdSandboxSources)
 
 -- ---------------------------------------------------------------------
 -- Other data structures which are used in the state
@@ -454,6 +476,7 @@ data Prefs = Prefs {
     ,   useCabalDev         ::   Bool
     ,   backgroundBuild     ::   Bool
     ,   runUnitTests        ::   Bool
+    ,   runJavaScript       ::   Bool
     ,   makeMode            ::   Bool
     ,   singleBuildWithoutLinking :: Bool
     ,   dontInstallLast     ::   Bool
@@ -521,7 +544,7 @@ displaySrcSpan s = srcSpanFilename s ++ ":" ++
             show (srcSpanStartColumn s) ++ "-" ++ show (srcSpanEndColumn s)
 
 logRefRootPath :: LogRef -> FilePath
-logRefRootPath = dropFileName . ipdCabalFile . logRefPackage
+logRefRootPath = ipdBuildDir . logRefPackage
 
 logRefFilePath :: LogRef -> FilePath
 logRefFilePath = srcSpanFilename . logRefSrcSpan

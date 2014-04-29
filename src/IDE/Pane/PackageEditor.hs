@@ -89,9 +89,6 @@ import Default (Default(..))
 import IDE.Utils.GUIUtils
 import IDE.Pane.SourceBuffer (fileOpenThis)
 import Control.Event (EventSource(..))
-#if !MIN_VERSION_Cabal(1,8,0)
-import Distribution.License
-#endif
 
 import qualified Graphics.UI.Gtk.Gdk.Events as GTK (Event(..))
 import Data.List (isPrefixOf, sort, nub)
@@ -99,13 +96,8 @@ import Control.Monad.Trans.Reader (ask)
 import Control.Monad.IO.Class (MonadIO(..))
 import Control.Monad.Trans.Class (lift)
 import Control.Monad (when)
-#if MIN_VERSION_Cabal(1,10,0)
-import Distribution.PackageDescription.PrettyPrintCopied
+import Distribution.PackageDescription.PrettyPrint
        (writeGenericPackageDescription)
-#else
-import Distribution.PackageDescription.Parse
-       (writePackageDescription)
-#endif
 import Distribution.Version (Version(..), orLaterVersion)
 
 import Text.Printf (printf)
@@ -125,7 +117,6 @@ sinkLast = CL.fold (\_ a -> Just a) Nothing
 --------------------------------------------------------------------------
 -- Handling of Generic Package Descriptions
 
-#if MIN_VERSION_Cabal(1,10,0)
 toGenericPackageDescription :: PackageDescription -> GenericPackageDescription
 toGenericPackageDescription pd =
     GenericPackageDescription {
@@ -156,7 +147,6 @@ toGenericPackageDescription pd =
             condTreeData = test,
             condTreeConstraints = buildDepends pd,
             condTreeComponents = []})
-#endif
 
 -- ---------------------------------------------------------------------
 -- The exported stuff goes here
@@ -176,31 +166,26 @@ packageEdit = do
     package <- liftIO $ readPackageDescription normal (ipdCabalFile idePackage)
     if hasConfigs package
         then do
-            lift $ ideMessage High
+            liftIDE $ ideMessage High
                 (__ "Cabal file with configurations can't be edited with the current version of the editor")
-            lift $ fileOpenThis $ ipdCabalFile idePackage
+            liftIDE $ fileOpenThis $ ipdCabalFile idePackage
             return ()
         else do
             let flat = flattenPackageDescription package
-#if MIN_VERSION_Cabal(1,10,0)
             if hasUnknownTestTypes flat
                 then do
-                    lift $ ideMessage High
+                    liftIDE $ ideMessage High
                         (__ "Cabal file with tests of this type can't be edited with the current version of the editor")
-                    lift $ fileOpenThis $ ipdCabalFile idePackage
+                    liftIDE $ fileOpenThis $ ipdCabalFile idePackage
                     return ()
                 else do
-                    lift $ editPackage flat dirName  modules (\ _ -> return ())
+                    liftIDE $ editPackage flat dirName  modules (\ _ -> return ())
                     return ()
-#else
-            lift $ editPackage flat dirName  modules (\ _ -> return ())
-            return ()
-#endif
 
 packageEditText :: PackageAction
 packageEditText = do
     idePackage <- ask
-    lift $ fileOpenThis $ ipdCabalFile idePackage
+    liftIDE $ fileOpenThis $ ipdCabalFile idePackage
     return ()
 
 hasConfigs :: GenericPackageDescription -> Bool
@@ -213,25 +198,19 @@ hasConfigs gpd =
                                     then True
                                     else not (null (condTreeComponents condTree)))
                         False (condExecutables gpd)
-#if MIN_VERSION_Cabal(1,10,0)
         testConds = foldr (\ (_,condTree) hasConfigs ->
                                 if hasConfigs
                                     then True
                                     else not (null (condTreeComponents condTree)))
                         False (condTestSuites gpd)
     in libConds || exeConds || testConds
-#else
-    in libConds || exeConds
-#endif
 
-#if MIN_VERSION_Cabal(1,10,0)
 hasUnknownTestTypes :: PackageDescription -> Bool
 hasUnknownTestTypes pd =
     not . null . filter unknown $ testSuites pd
   where
     unknown (TestSuite _ (TestSuiteExeV10 _ _) _ _) = False
     unknown _ = True
-#endif
 
 data NewPackage = NewPackage {
     newPackageName :: String,
@@ -336,9 +315,7 @@ packageNew' workspaceDir log activateAction = do
                             package   = PackageIdentifier (PackageName newPackageName)
                                                           initialVersion,
                             buildType = Just Simple,
-#if MIN_VERSION_Cabal(1,10,0)
                             specVersionRaw = Right (orLaterVersion (Version [1,2] [])),
-#endif
                             buildDepends = [
                                 Dependency (PackageName "base") anyVersion
                               , Dependency (PackageName "QuickCheck") anyVersion],
@@ -347,14 +324,12 @@ packageNew' workspaceDir log activateAction = do
                               , modulePath = "Main.hs"
                               , buildInfo  = emptyBuildInfo {
                                     hsSourceDirs = ["src"]}}]
-#if MIN_VERSION_Cabal(1,10,0)
                               , testSuites = [emptyTestSuite {
                                     testName = "test-" ++ newPackageName
                                   , testInterface = (TestSuiteExeV10 (Version [1,0] []) "Main.hs")
                                   , testBuildInfo = emptyBuildInfo {
                                         hsSourceDirs = ["src"]
                                       , cppOptions = ["-DMAIN_FUNCTION=testMain"]}}]
-#endif
                             } dirName modules (activateAction True)
                     return ()
         Just NewPackage{..} -> cabalUnpack newPackageParentDir templatePackage False (Just newPackageName) log (activateAction False)
@@ -492,9 +467,7 @@ renameCabalFile oldName newName = unlines . map renameLine . lines
 data PackageDescriptionEd = PDE {
     pd           :: PackageDescription,
     exes         :: [Executable'],
-#if MIN_VERSION_Cabal(1,10,0)
     tests        :: [Test'],
-#endif
     mbLib        :: Maybe Library',
     bis          :: [BuildInfo]}
         deriving Eq
@@ -502,26 +475,20 @@ data PackageDescriptionEd = PDE {
 comparePDE a b = do
     when (pd a /= pd b) $ putStrLn  "pd"
     when (exes a /= exes b) $ putStrLn  "exes"
-#if MIN_VERSION_Cabal(1,10,0)
     when (tests a /= tests b) $ putStrLn  "tests"
-#endif
     when (mbLib a /= mbLib b) $ putStrLn  "mbLib"
     when (bis a /= bis b) $ putStrLn  "bis"
 
 fromEditor :: PackageDescriptionEd -> PackageDescription
 fromEditor (PDE pd exes'
-#if MIN_VERSION_Cabal(1,10,0)
         tests'
-#endif
         mbLib' buildInfos) =
     let     exes = map (\ (Executable' s fb bii) -> if bii + 1 > length buildInfos
                                         then Executable s fb (buildInfos !! (length buildInfos - 1))
                                         else Executable s fb (buildInfos !! bii)) exes'
-#if MIN_VERSION_Cabal(1,10,0)
             tests = map (\ (Test' s fb bii) -> if bii + 1 > length buildInfos
                                         then TestSuite s fb (buildInfos !! (length buildInfos - 1)) False
                                         else TestSuite s fb (buildInfos !! bii) False) tests'
-#endif
             mbLib = case mbLib' of
                     Nothing -> Nothing
                     Just (Library' mn b bii) -> if bii + 1 > length buildInfos
@@ -530,22 +497,16 @@ fromEditor (PDE pd exes'
     in pd {
         library = mbLib
       , executables = exes
-#if MIN_VERSION_Cabal(1,10,0)
       , testSuites = tests
-#endif
       }
 
 toEditor :: PackageDescription -> PackageDescriptionEd
 toEditor pd =
     let     (exes,exeBis) = unzip $ map (\((Executable s fb bi), i) -> ((Executable' s fb i), bi))
                             (zip (executables pd) [0..])
-#if MIN_VERSION_Cabal(1,10,0)
             (tests,testBis) = unzip $ map (\((TestSuite s fb bi _), i) -> ((Test' s fb i), bi))
                             (zip (testSuites pd) [length exeBis..])
-            bis = exeBis++testBis
-#else
-            bis = exeBis
-#endif
+            bis = exeBis ++ testBis
             (mbLib,bis2) = case library pd of
                     Nothing                -> (Nothing,bis)
                     Just (Library mn b bi) -> (Just (Library' (sort mn) b (length bis)), bis ++ [bi])
@@ -554,9 +515,7 @@ toEditor pd =
                         else bis2
     in PDE (pd {library = Nothing , executables = []})
         exes
-#if MIN_VERSION_Cabal(1,10,0)
         tests
-#endif
         mbLib
         bis3
 
@@ -724,11 +683,7 @@ builder' packageDir packageD packageDescr afterSaveAction initialPackagePath mod
             Just newPackage' -> let newPackage = fromEditor newPackage' in do
                 let packagePath = packageDir </> (display . pkgName . package . pd) newPackage'
                                                 ++ ".cabal"
-#if MIN_VERSION_Cabal(1,10,0)
                 writeGenericPackageDescription packagePath (toGenericPackageDescription newPackage)
-#else
-                writePackageDescription packagePath newPackage
-#endif
                 reflectIDE (do
                     afterSaveAction packagePath
                     closePane packagePane
@@ -804,15 +759,12 @@ packageDD packages fp modules numBuildInfos extras = NFD ([
             (stability . pd)
             (\ a b -> b{pd = (pd b){stability = a}})
             (stringEditor (const True) True)
-#if MIN_VERSION_Cabal(1,8,0)
-            -- TODO
-#else
-    ,   mkField
-            (paraName <<<- ParaName (__ "License") $ emptyParams)
-            (license . pd)
-            (\ a b -> b{pd = (pd b){license = a}})
-            (comboSelectionEditor [GPL, LGPL, BSD3, BSD4, PublicDomain, AllRightsReserved, OtherLicense] show)
-#endif
+            -- TODO Fix this up to work with current Cabal
+--    ,   mkField
+--            (paraName <<<- ParaName (__ "License") $ emptyParams)
+--            (license . pd)
+--            (\ a b -> b{pd = (pd b){license = a}})
+--            (comboSelectionEditor [GPL, LGPL, BSD3, BSD4, PublicDomain, AllRightsReserved, OtherLicense] show)
     ,   mkField
             (paraName <<<- ParaName (__ "License File") $ emptyParams)
             (licenseFile . pd)
@@ -863,11 +815,7 @@ packageDD packages fp modules numBuildInfos extras = NFD ([
                     (__ "Does this package depends on a specific version of Cabal?")
                     $ paraShadow <<<- ParaShadow ShadowIn $ emptyParams)
             (descCabalVersion . pd)
-#if MIN_VERSION_Cabal(1,10,0)
             (\ a b -> b{pd = (pd b){specVersionRaw = Right a}})
-#else
-            (\ a b -> b{pd = (pd b){descCabalVersion = a}})
-#endif
             versionRangeEditor
     ,   mkField
             (paraName <<<- ParaName (__ "Tested with compiler")
@@ -957,7 +905,6 @@ packageDD packages fp modules numBuildInfos extras = NFD ([
             (\ a b -> b{exes = a})
             (executablesEditor (Just fp) modules numBuildInfos)
     ]),
-#if MIN_VERSION_Cabal(1,10,0)
     ((__ "Tests"),VFD emptyParams  [
         mkField
             (paraName <<<- ParaName (__ "Tests")
@@ -968,7 +915,6 @@ packageDD packages fp modules numBuildInfos extras = NFD ([
             (\ a b -> b{tests = a})
             (testsEditor (Just fp) modules numBuildInfos)
     ]),
-#endif
     ((__ "Library"), VFD emptyParams [
         mkField
             (paraName <<<- ParaName (__ "Library")
@@ -1066,13 +1012,8 @@ buildInfoD fp modules i = [
                          $ paraMinSize <<<- ParaMinSize (-1,400)
                             $ paraPack <<<- ParaPack PackGrow
                                 $ emptyParams)
-#if MIN_VERSION_Cabal(1,10,0)
             (oldExtensions . (\a -> a !! i) . bis)
             (\ a b -> b{bis = update (bis b) i (\bi -> bi{oldExtensions = a})})
-#else
-            (extensions . (\a -> a !! i) . bis)
-            (\ a b -> b{bis = update (bis b) i (\bi -> bi{extensions = a})})
-#endif
             extensionsEditor
     ]),
     ((printf (__ "%s Build Tools ") (show (i + 1))), VFD emptyParams [
@@ -1409,13 +1350,11 @@ data Executable' = Executable'{
 ,   buildInfoIdx    :: Int}
     deriving (Show, Eq)
 
-#if MIN_VERSION_Cabal(1,10,0)
 data Test' = Test'{
     testName'        :: String
 ,   testInterface'   :: TestSuiteInterface
 ,   testBuildInfoIdx :: Int}
     deriving (Show, Eq)
-#endif
 
 instance Default Library'
     where getDefault =  Library' [] getDefault getDefault
@@ -1423,10 +1362,8 @@ instance Default Library'
 instance Default Executable'
     where getDefault = Executable' getDefault getDefault getDefault
 
-#if MIN_VERSION_Cabal(1,10,0)
 instance Default Test'
     where getDefault = Test' getDefault (TestSuiteExeV10 (Version [1,0] []) getDefault) getDefault
-#endif
 
 libraryEditor :: Maybe FilePath -> [ModuleName] -> Int -> Editor Library'
 libraryEditor fp modules numBuildInfos para noti = do
@@ -1500,7 +1437,6 @@ executableEditor fp modules countBuildInfo para noti = do
             Just (s,f,bi) -> return (Just $Executable' s f bi)
     return (wid,pinj,pext)
 
-#if MIN_VERSION_Cabal(1,10,0)
 testsEditor :: Maybe FilePath -> [ModuleName] -> Int -> Editor [Test']
 testsEditor fp modules countBuildInfo p =
     multisetEditor
@@ -1543,7 +1479,6 @@ testEditor fp modules countBuildInfo para noti = do
             Nothing -> return Nothing
             Just (s,f,bi) -> return (Just $Test' s (TestSuiteExeV10 (Version [1,0] []) f) bi)
     return (wid,pinj,pext)
-#endif
 
 buildInfoEditorP :: Int -> Editor Int
 buildInfoEditorP numberOfBuildInfos para noti = do

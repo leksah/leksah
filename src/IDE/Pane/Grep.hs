@@ -227,8 +227,8 @@ grepWorkspace regexString caseSensitive = do
     ws <- ask
     maybeActive <- lift $ readIDE activePack
     let packages = case maybeActive of
-            Just active -> active : (filter (/= active) $ wsPackages ws)
-            Nothing     -> wsPackages ws
+            Just active -> active : (filter (/= active) $ wsAllPackages ws)
+            Nothing     -> wsAllPackages ws
     lift $ grepDirectories regexString caseSensitive $
             map (\p -> (dropFileName $ ipdCabalFile p)) $ packages
 

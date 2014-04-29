@@ -111,7 +111,7 @@ getActiveOrDefaultLogLaunch = do
                             Nothing -> getDefaultLogLaunch
                             Just key -> return $ logLaunch $ launches Map.! key
 
-getDefaultLogLaunch :: IDEM LogLaunch
+getDefaultLogLaunch :: MonadIDE m => m LogLaunch
 getDefaultLogLaunch = do
     launches <- readIDE logLaunches
     return $ logLaunch $ launches Map.! defaultLogName

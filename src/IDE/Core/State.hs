@@ -1,3 +1,4 @@
+{-# LANGUAGE UndecidableInstances #-}
 {-# LANGUAGE FlexibleInstances, FlexibleContexts, TypeSynonymInstances,
              MultiParamTypeClasses, ScopedTypeVariables, CPP,
              DeriveDataTypeable #-}
@@ -62,7 +63,6 @@ module IDE.Core.State (
 --,   deactivatePane
 --,   deactivatePaneIfActive
 --,   closePane
-,   activeProjectDir
 ,   changePackage
 
 ,   liftYiControl
@@ -221,13 +221,13 @@ sysMessage ml str = liftIO $ do
     putStrLn str
     hFlush stdout
 
-ideMessage :: MessageLevel -> String -> IDEAction
+ideMessage :: MonadIDE m => MessageLevel -> String -> m ()
 ideMessage level str = do
     liftIO $ sysMessage level str
     triggerEventIDE (LogMessage (str ++ "\n") LogTag)
     return ()
 
-logMessage :: String -> LogTag -> IDEAction
+logMessage :: MonadIDE m => String -> LogTag -> m ()
 logMessage str tag = do
     triggerEventIDE (LogMessage (str ++ "\n") tag)
     return ()
@@ -250,13 +250,6 @@ throwIDE str = throw (IDEException str)
 
 -- Main window is always the first one in the list
 window = head . windows
-
-activeProjectDir :: IDEM FilePath
-activeProjectDir = do
-    activePack' <- readIDE activePack
-    case activePack' of
-        Nothing   -> return "."
-        Just pack -> return (dropFileName (ipdCabalFile pack))
 
 errorRefs :: IDE -> [LogRef]
 errorRefs = filter ((\ t -> t == ErrorRef || t == WarningRef) . logRefType) .
@@ -285,22 +278,22 @@ isStartingOrClosing IsStartingUp    = True
 isStartingOrClosing IsShuttingDown  = True
 isStartingOrClosing _               = False
 
-isInterpreting :: IDEM Bool
+isInterpreting :: MonadIDE m => m Bool
 isInterpreting =
     readIDE debugState >>= \mb -> return (isJust mb)
 
-triggerEventIDE :: IDEEvent -> IDEM IDEEvent
-triggerEventIDE e = ask >>= \ideR -> triggerEvent ideR e
+triggerEventIDE :: MonadIDE m => IDEEvent -> m IDEEvent
+triggerEventIDE e = liftIDE $ ask >>= \ideR -> triggerEvent ideR e
 
-triggerEventIDE_ :: IDEEvent -> IDEM ()
+triggerEventIDE_ :: MonadIDE m => IDEEvent -> m ()
 triggerEventIDE_ = void . triggerEventIDE
 
 --
 -- | A reader monad for a mutable reference to the IDE state
 --
 
-reifyIDE :: (IDERef -> IO a) -> IDEM a
-reifyIDE = ReaderT
+reifyIDE :: MonadIDE m => (IDERef -> IO a) -> m a
+reifyIDE = liftIDE . ReaderT
 
 reflectIDE :: IDEM a -> IDERef -> IO a
 reflectIDE = runReaderT
@@ -337,30 +330,30 @@ onIDE obj signal callback = do
 --
 
 -- | Read an attribute of the contents
-readIDE :: (IDE -> beta) -> IDEM beta
+readIDE :: MonadIDE m => (IDE -> beta) -> m beta
 readIDE f = do
-    e <- ask
+    e <- liftIDE ask
     liftIO $ liftM f (readIORef e)
 
 -- | Modify the contents, without returning a value
-modifyIDE_ :: (IDE -> IDE) -> IDEM ()
+modifyIDE_ :: MonadIDE m => (IDE -> IDE) -> m ()
 modifyIDE_ f = let f' a  = (f a,()) in do
-    e <- ask
+    e <- liftIDE ask
     liftIO (atomicModifyIORef e f')
 
 -- | Variation on modifyIDE_ that lets you return a value
-modifyIDE :: (IDE -> (IDE,beta)) -> IDEM beta
+modifyIDE :: MonadIDE m => (IDE -> (IDE,beta)) -> m beta
 modifyIDE f = do
-    e <- ask
+    e <- liftIDE ask
     liftIO (atomicModifyIORef e f)
 
-withIDE :: (IDE -> IO alpha) -> IDEM alpha
+withIDE :: MonadIDE m => (IDE -> IO alpha) -> m alpha
 withIDE f = do
-    e <- ask
+    e <- liftIDE ask
     liftIO $ f =<< readIORef e
 
-getIDE :: IDEM IDE
-getIDE = ask >>= (liftIO . readIORef)
+getIDE :: MonadIDE m => m IDE
+getIDE = liftIDE ask >>= (liftIO . readIORef)
 
 withoutRecordingDo :: IDEAction -> IDEAction
 withoutRecordingDo act = do
@@ -408,7 +401,7 @@ deactivatePaneIfActive pane = do
         Just (n,_) -> when (n == paneName pane) deactivatePane
 
 changePackage :: IDEPackage -> IDEAction
-changePackage ideP@IDEPackage{ipdCabalFile = file} = do
+changePackage ideP = do
     oldWorkspace <- readIDE workspace
     case oldWorkspace of
         Nothing -> return ()
@@ -418,12 +411,14 @@ changePackage ideP@IDEPackage{ipdCabalFile = file} = do
                                     bufferProjCache = Map.empty})
     mbActivePack <- readIDE activePack
     case mbActivePack of
-        Just activePack | ipdCabalFile ideP == ipdCabalFile activePack ->
+        Just activePack | key ideP == key activePack ->
             modifyIDE_ (\ide -> ide{activePack = Just ideP})
         _ -> return ()
     where
-        exchange p | ipdCabalFile p == file = ideP
-                   | otherwise              = p
+        key = ipdBuildDir
+        idePKey = key ideP
+        exchange p | key p == idePKey = ideP
+                   | otherwise        = p
 
 -- | Find a directory relative to the leksah install directory
 leksahSubDir :: FilePath    -- ^ Sub directory to look for

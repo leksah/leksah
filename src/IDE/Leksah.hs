@@ -347,6 +347,7 @@ startMainWindow yiControl sessionFP mbWorkspaceFP sourceFPs startupPrefs isFirst
         setCandyState (fst (sourceCandy startupPrefs))
         setBackgroundBuildToggled (backgroundBuild startupPrefs)
         setRunUnitTests (runUnitTests startupPrefs)
+        setRunJavaScript (runJavaScript startupPrefs)
         setMakeModeToggled (makeMode startupPrefs)) ideR
     let (x,y)   =   defaultSize startupPrefs
     windowSetDefaultSize win x y

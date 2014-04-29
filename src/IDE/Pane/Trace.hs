@@ -174,8 +174,8 @@ builder' pp nb windows = reifyIDE $ \ ideR -> do
 
 fillTraceList :: IDEAction
 fillTraceList = packageTry $ do
-    currentHist' <- lift $ readIDE currentHist
-    mbTraces     <- lift getPane
+    currentHist' <- readIDE currentHist
+    mbTraces     <- liftIDE getPane
     case mbTraces of
         Nothing -> return ()
         Just tracePane -> tryDebug $ debugCommand' ":history" $ do

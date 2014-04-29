@@ -814,6 +814,7 @@ defaultPrefs = Prefs {
     ,   useCabalDev         =   False
     ,   backgroundBuild     =   True
     ,   runUnitTests        =   False
+    ,   runJavaScript        =   False
     ,   makeMode            =   True
     ,   singleBuildWithoutLinking  = False
     ,   dontInstallLast     =   False

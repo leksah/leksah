@@ -63,7 +63,7 @@ import IDE.Pane.PackageEditor (packageNew', packageClone, choosePackageFile, sta
 import Data.List (delete)
 import IDE.Package
        (getModuleTemplate, getPackageDescriptionAndPath, activatePackage,
-        deactivatePackage, idePackageFromPath)
+        deactivatePackage, idePackageFromPath, idePackageFromPath)
 import System.Directory
        (getHomeDirectory, createDirectoryIfMissing, doesFileExist)
 import System.Time (getClockTime)
@@ -72,7 +72,7 @@ import Graphics.UI.Gtk.Windows.MessageDialog
 import Graphics.UI.Gtk.Windows.Dialog (ResponseId(..))
 import qualified Control.Exception as Exc (SomeException(..), throw, Exception)
 import qualified Data.Map as  Map (empty)
-import IDE.Pane.SourceBuffer (fileOpenThis, fileCheckAll, belongsToPackage)
+import IDE.Pane.SourceBuffer (fileOpenThis, fileCheckAll, belongsToPackages)
 import qualified System.IO.UTF8 as UTF8 (writeFile)
 import System.Glib.Attributes (AttrOp(..), set)
 import Graphics.UI.Gtk.General.Enums (WindowPosition(..))
@@ -238,7 +238,7 @@ workspacePackageNew = do
         window     <-  getMainWindow
         workspaceTry $ void (workspaceAddPackage' fp)
         when isNew $ do
-            mbPack <- idePackageFromPath fp
+            mbPack <- idePackageFromPath logOutputDefault fp
             constructAndOpenMainModule mbPack
         void (triggerEventIDE UpdateWorkspaceInfo))
 
@@ -285,7 +285,7 @@ workspaceAddPackage' :: FilePath -> WorkspaceM (Maybe IDEPackage)
 workspaceAddPackage' fp = do
     ws <- ask
     cfp <- liftIO $ myCanonicalizePath fp
-    mbPack <- lift $ idePackageFromPath cfp
+    mbPack <- lift $ idePackageFromPath logOutputDefault cfp
     case mbPack of
         Just pack -> do
             unless (cfp `elem` map ipdCabalFile (wsPackages ws)) $ lift $
@@ -299,14 +299,14 @@ packageTryQuiet :: PackageAction -> IDEAction
 packageTryQuiet f = do
     maybePackage <- readIDE activePack
     case maybePackage of
-        Just p  -> runPackage f p
+        Just p  -> workspaceTryQuiet $ runPackage f p
         Nothing -> ideMessage Normal (__ "No active package")
 
 packageTry :: PackageAction -> IDEAction
 packageTry f = workspaceTry $ do
         maybePackage <- lift $ readIDE activePack
         case maybePackage of
-            Just p  -> lift $ runPackage f p
+            Just p  -> runPackage f p
             Nothing -> do
                 window <- lift getMainWindow
                 resp <- liftIO $ do
@@ -338,7 +338,8 @@ workspaceRemovePackage pack = do
 workspaceActivatePackage :: IDEPackage -> Maybe String -> WorkspaceAction
 workspaceActivatePackage pack exe = do
     ws <- ask
-    lift $ activatePackage (Just (pack, exe))
+    let activePath = takeDirectory $ ipdCabalFile pack
+    lift $ activatePackage (Just activePath) (Just pack) exe
     when (pack `elem` wsPackages ws) $ lift $ do
         Writer.writeWorkspace ws {wsActivePackFile =  Just (ipdCabalFile pack)
                                  ,wsActiveExe = exe}
@@ -352,7 +353,7 @@ readWorkspace fp = do
     liftIO $ debugM "leksah" "readWorkspace"
     ws <- liftIO $ readFields fp Writer.workspaceDescr emptyWorkspace
     ws' <- liftIO $ makePathsAbsolute ws fp
-    packages <- mapM idePackageFromPath (wsPackagesFiles ws')
+    packages <- mapM (idePackageFromPath logOutputDefault) (wsPackagesFiles ws')
     --TODO set package vcs here
     return ws'{ wsPackages = catMaybes packages}
 
@@ -453,7 +454,7 @@ backgroundMake = catchIDE (do
         Nothing         -> return ()
         Just package    -> do
             modifiedPacks <- if saveAllBeforeBuild prefs
-                                then fileCheckAll belongsToPackage
+                                then fileCheckAll belongsToPackages
                                 else return []
             let isModified = not (null modifiedPacks)
             when isModified $ do
@@ -469,7 +470,7 @@ backgroundMake = catchIDE (do
 makePackage ::  PackageAction
 makePackage = do
   p <- ask
-  lift $ do
+  liftIDE $ do
     getLog >>= liftIO . bringPaneToFront
     showDefaultLogLaunch'
     prefs' <- readIDE prefs

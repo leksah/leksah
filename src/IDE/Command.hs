@@ -67,6 +67,7 @@ import IDE.Pane.PackageFlags
 import IDE.Pane.PackageEditor
 import IDE.Pane.Errors
 import IDE.Package
+import IDE.Sandbox
 import IDE.Pane.Log
 import IDE.Pane.Modules
 import IDE.Find
@@ -233,9 +234,21 @@ mkActions =
         (packageTry packageEditText) [] False
 --    ,AD "RemovePackage" "_Close Package" Nothing Nothing
 --        removePackage [] False
-
     ,AD "PackageFlags" (__ "Package Flags") (Just (__ "Edit the package flags used")) Nothing
         (getFlags Nothing >>= \ p -> displayPane p False) [] False
+
+    ,AD "PackageSandbox" (__ "_Sandbox") Nothing Nothing (return ()) [] False
+    ,AD "SandboxInit" (__ "_Init") (Just (__ "Initialise a cabal sandbox for the package")) Nothing
+        (packageTry sandboxInit) [] False
+    ,AD "SandboxInitShared" (__ "Init _Shared...") (Just (__ "Initialise or use a cabal sandbox in a selected directory")) Nothing
+        (packageTry sandboxInitShared) [] False
+    ,AD "SandboxDelete" (__ "_Delete") (Just (__ "Delete the cabal sandbox")) Nothing
+        (packageTry sandboxDelete) [] False
+    ,AD "SandboxAddSource" (__ "_Add Source...") (Just (__ "Add a source package into the sandbox")) Nothing
+        (packageTry (sandboxAddSource False)) [] False
+    ,AD "SandboxAddSourceSnapshot" (__ "Add Source S_napshot...") (Just (__ "Add a snapshot of a source package into the sandbox")) Nothing
+        (packageTry (sandboxAddSource True)) [] False
+
     ,AD "CleanPackage" (__ "Cl_ean") (Just (__ "Cleans the package")) (Just "ide_clean")
         (packageTry packageClean) [] False
     ,AD "ConfigPackage" (__ "_Configure") (Just (__ "Configures the package")) (Just "ide_configure")
@@ -460,6 +473,8 @@ mkActions =
         backgroundBuildToggled [] True
     ,AD "RunUnitTestsToggled" (__ "_RunUnitTests") (Just (__ "Run unit tests when building")) (Just "gtk-apply")
         runUnitTestsToggled [] True
+    ,AD "JavaScriptToggled" (__ "_JavaScript") (Just (__ "Use GHCJS to compile to JavaScript")) (Just "ide_js")
+        javaScriptToggled [] True
     ,AD "MakeModeToggled" (__ "_MakeMode") (Just (__ "Make dependent packages")) (Just "ide_make")
         makeModeToggled [] True
     ,AD "DebugToggled" (__ "_Debug") (Just (__ "Use GHCi debugger to build and run")) (Just "ide_debug")
@@ -666,7 +681,7 @@ newIcons = catch (do
             "ide_method","ide_newtype","ide_other","ide_rule","ide_run","ide_slot",
             "ide_source","ide_type","leksah", "ide_reexported", "ide_clean", "ide_link", "ide_build",
             "ide_debug", "ide_step", "ide_local", "ide_module", "ide_continue", "ide_rebuild_meta",
-            "ide_empty","ide_source_local"]
+            "ide_empty","ide_source_local", "ide_js"]
         iconFactoryAddDefault iconFactory)
     (\(e :: SomeException) -> getDataDir >>= \dataDir -> throwIDE (printf (__ "Can't load icons from %s %s") dataDir (show e)))
     where
@@ -755,6 +770,7 @@ instrumentWindow win prefs topWidget = do
             setCandyState (fst (sourceCandy prefs))
             setBackgroundBuildToggled (backgroundBuild prefs)
             setRunUnitTests (runUnitTests prefs)
+            setRunJavaScript (runJavaScript prefs)
             setMakeModeToggled (makeMode prefs)) ideR
 
 instrumentSecWindow :: Window -> IDEAction

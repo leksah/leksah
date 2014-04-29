@@ -111,17 +111,17 @@ getStartAndEndLineOfSelection ebuf = do
     let endLineReal = if b && endLine /= startLine then endLine' - 1 else endLine'
     return (startLine',endLineReal)
 
-inBufContext :: alpha -> IDEBuffer -> (forall editor. TextEditor editor => Notebook -> EditorView editor -> EditorBuffer editor -> IDEBuffer -> Int -> IDEM alpha) -> IDEM alpha
+inBufContext :: MonadIDE m => alpha -> IDEBuffer -> (forall editor. TextEditor editor => Notebook -> EditorView editor -> EditorBuffer editor -> IDEBuffer -> Int -> m alpha) -> m alpha
 inBufContext def (ideBuf@IDEBuffer{sourceView = v}) f = do
-    (pane,_)       <-  guiPropertiesFromName (paneName ideBuf)
-    nb             <-  getNotebook pane
-    mbI            <-  liftIO $notebookPageNum nb (scrolledWindow ideBuf)
+    (pane,_)       <-  liftIDE $ guiPropertiesFromName (paneName ideBuf)
+    nb             <-  liftIDE $ getNotebook pane
+    mbI            <-  liftIO $ notebookPageNum nb (scrolledWindow ideBuf)
     case mbI of
         Nothing ->  liftIO $ do
             sysMessage Normal $ bufferName ideBuf ++ " notebook page not found: unexpected"
             return def
         Just i  ->  do
-            ebuf <- getBuffer v
+            ebuf <- liftIDE $ getBuffer v
             f nb v ebuf ideBuf i
 
 inActiveBufContext :: alpha -> (forall editor. TextEditor editor => Notebook -> EditorView editor -> EditorBuffer editor -> IDEBuffer -> Int -> IDEM alpha) -> IDEM alpha

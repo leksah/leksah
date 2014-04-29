@@ -23,6 +23,7 @@ module IDE.Pane.WebKit.Output (
   , OutputState(..)
   , getOutputPane
   , setOutput
+  , loadOutputUri
 ) where
 
 import Graphics.UI.Frame.Panes
@@ -60,6 +61,7 @@ import System.FilePath ((</>))
 import Data.IORef (writeIORef, newIORef, readIORef, IORef)
 import Control.Applicative ((<$>))
 import System.Log.Logger (debugM)
+import Graphics.UI.Gtk.WebKit.WebView (webViewGetUri)
 
 data IDEOutput = IDEOutput {
     scrolledView  :: ScrolledWindow
@@ -169,6 +171,20 @@ setOutput str = do
                     ('/':_) -> dataDir
                     _       -> '/':dataDir)
             ++ "/value.html")
+#else
+    return ()
+#endif
+
+loadOutputUri :: FilePath -> IDEAction
+loadOutputUri uri = do
+#ifdef WEBKITGTK
+    doc <- getOutputPane Nothing
+    let view = webView doc
+    liftIO $ do
+        currentUri <- webViewGetUri view
+        if Just uri == currentUri
+            then webViewReload view
+            else webViewLoadUri view uri
 #else
     return ()
 #endif

@@ -28,8 +28,6 @@ export CPPFLAGS=`pkg-config --cflags-only-I libcurl`
 
 echo https://github.com/leksah/ltk > sources.txt
 echo https://github.com/leksah/leksah-server >> sources.txt
-echo https://github.com/leksah/haskellVCSWrapper.git >> sources.txt
-echo https://github.com/leksah/haskellVCSGUI.git >> sources.txt
 
 # echo ./vendor/gtk2hs >> sources.txt
 echo ./ >> sources.txt

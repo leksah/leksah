@@ -64,15 +64,8 @@ import Distribution.PackageDescription.Configuration
        (flattenPackageDescription)
 import IDE.BufferMode (editInsertCode)
 import Control.Monad.IO.Class (MonadIO(..))
-#if MIN_VERSION_Cabal(1,10,0)
-import Distribution.PackageDescription.PrettyPrintCopied
+import Distribution.PackageDescription.PrettyPrint
        (writeGenericPackageDescription)
-#else
-import Distribution.PackageDescription.Parse
-       (writePackageDescription)
-import Distribution.PackageDescription
-       (CondTree(..))
-#endif
 import qualified Data.Text as T (unpack)
 import Language.Haskell.Exts (KnownExtension)
 import Text.Read (readMaybe)
@@ -179,21 +172,11 @@ addPackage error = do
             let idePackage = logRefPackage error
             gpd <- liftIO $ readPackageDescription normal (ipdCabalFile $ idePackage)
             ideMessage Normal $ "addPackage " ++ (display $ pkgName pack)
-#if MIN_VERSION_Cabal(1,10,0)
             liftIO $ writeGenericPackageDescription (ipdCabalFile $ idePackage)
                 gpd { condLibrary     = addDepToLib pack (condLibrary gpd),
                       condExecutables = map (addDepToExe pack)
                                             (condExecutables gpd)}
             return True
-#else
-            if hasConfigs gpd
-                then return False
-                else do
-                    let flat = flattenPackageDescription gpd
-                    liftIO $ writePackageDescription (ipdCabalFile $ idePackage)
-                        flat { buildDepends = dep pack : buildDepends flat}
-                    return True
-#endif
   where
     addDepToLib _ Nothing = Nothing
     addDepToLib p (Just cn@CondNode{condTreeConstraints = deps}) =
@@ -217,10 +200,10 @@ getScopeForActiveBuffer = do
     case mbActiveBuf of
         Nothing -> return Nothing
         Just buf -> do
-            mbPackage <- belongsToPackage buf
-            case mbPackage of
-                Nothing -> return Nothing
-                Just pack -> getPackageImportInfo pack
+            packages <- belongsToPackages buf
+            case packages of
+                [] -> return Nothing
+                pack:_ -> getPackageImportInfo pack
 
 addImport' :: NotInScopeParseResult -> FilePath -> Descr -> [Descr] -> ((Bool,[Descr]) -> IDEAction) -> IDEAction
 addImport' nis filePath descr descrList continuation =  do

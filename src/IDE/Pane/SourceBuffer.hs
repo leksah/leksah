@@ -72,7 +72,7 @@ module IDE.Pane.SourceBuffer (
 ,   selectedLocation
 ,   recentSourceBuffers
 ,   newTextBuffer
-,   belongsToPackage
+,   belongsToPackages
 ,   belongsToWorkspace
 ,   getIdentifierUnderCursorFromIter
 
@@ -127,15 +127,15 @@ import System.Glib.Attributes (AttrOp(..), set)
 import IDE.BufferMode
 import Control.Monad.Trans.Reader (ask)
 import Control.Monad.IO.Class (MonadIO(..))
-import Control.Monad (foldM, forM, filterM, unless, when)
+import Control.Monad (forM, filterM, unless, when, liftM)
 import Control.Exception as E (catch, SomeException)
 
 import qualified IDE.Command.Print as Print
 import Control.Monad.Trans.Class (MonadTrans(..))
 import System.Log.Logger (debugM)
 
-allBuffers :: IDEM [IDEBuffer]
-allBuffers = getPanes
+allBuffers :: MonadIDE m => m [IDEBuffer]
+allBuffers = liftIDE getPanes
 
 instance RecoverablePane IDEBuffer BufferState IDEM where
     saveState (p@IDEBuffer {sourceView=v}) = do
@@ -693,7 +693,7 @@ getIdentifierUnderCursorFromIter (startSel, endSel) = do
         _ -> return endSel
     return (start, end)
 
-checkModTime :: IDEBuffer -> IDEM (Bool, Bool)
+checkModTime :: MonadIDE m => IDEBuffer -> m (Bool, Bool)
 checkModTime buf = do
     currentState' <- readIDE currentState
     case  currentState' of
@@ -724,7 +724,7 @@ checkModTime buf = do
                                                 revert buf
                                                 return (False, True)
                                             else do
-                                                window <- getMainWindow
+                                                window <- liftIDE getMainWindow
                                                 resp <- liftIO $ do
                                                     md <- messageDialogNew
                                                             (Just window) []
@@ -773,14 +773,14 @@ fileRevert :: IDEAction
 fileRevert = inActiveBufContext () $ \ _ _ _ currentBuffer _ -> do
     revert currentBuffer
 
-revert :: IDEBuffer -> IDEAction
+revert :: MonadIDE m => IDEBuffer -> m ()
 revert (buf@IDEBuffer{sourceView = sv}) = do
     useCandy    <-  useCandyFor buf
     ct          <-  readIDE candy
     let name    =   paneName buf
     case fileName buf of
         Nothing -> return ()
-        Just fn -> do
+        Just fn -> liftIDE $ do
             buffer <- getBuffer sv
             fc <- liftIO $ UTF8.readFile fn
             mt <- liftIO $ getModificationTime fn
@@ -838,8 +838,8 @@ markLabelAsChanged nb (buf@IDEBuffer{sourceView = sv}) = do
     modified <- getModified ebuf
     liftIO $ markLabel nb (getTopWidget buf) modified
 
-fileSaveBuffer :: TextEditor editor => Bool -> Notebook -> EditorView editor -> EditorBuffer editor -> IDEBuffer -> Int -> IDEM Bool
-fileSaveBuffer query nb _ ebuf (ideBuf@IDEBuffer{sourceView = sv}) i = do
+fileSaveBuffer :: MonadIDE m => TextEditor editor => Bool -> Notebook -> EditorView editor -> EditorBuffer editor -> IDEBuffer -> Int -> m Bool
+fileSaveBuffer query nb _ ebuf (ideBuf@IDEBuffer{sourceView = sv}) i = liftIDE $ do
     ideR    <- ask
     window  <- getMainWindow
     prefs   <- readIDE prefs
@@ -928,34 +928,34 @@ fileSaveBuffer query nb _ ebuf (ideBuf@IDEBuffer{sourceView = sv}) i = do
 fileSave :: Bool -> IDEM Bool
 fileSave query = inActiveBufContext False $ fileSaveBuffer query
 
-fileSaveAll :: (IDEBuffer -> IDEM Bool) -> IDEM Bool
+fileSaveAll :: MonadIDE m => (IDEBuffer -> m Bool) -> m Bool
 fileSaveAll filterFunc = do
     bufs     <- allBuffers
     filtered <- filterM filterFunc bufs
     results  <- forM filtered (\buf -> inBufContext False buf (fileSaveBuffer False))
     return $ True `elem` results
 
-fileCheckBuffer :: TextEditor editor => Notebook -> EditorView editor -> EditorBuffer editor -> IDEBuffer -> Int -> IDEM Bool
+fileCheckBuffer :: (MonadIDE m, TextEditor editor) => Notebook -> EditorView editor -> EditorBuffer editor -> IDEBuffer -> Int -> m Bool
 fileCheckBuffer nb _ ebuf ideBuf i = do
     let mbfn = fileName ideBuf
     if isJust mbfn
         then do (_, modifiedOnDisk) <- checkModTime ideBuf -- The user is given option to reload
-                modifiedInBuffer    <- getModified ebuf
+                modifiedInBuffer    <- liftIDE $ getModified ebuf
                 return (modifiedOnDisk || modifiedInBuffer)
         else return False
 
-fileCheckAll :: (IDEBuffer -> IDEM (Maybe alpha)) -> IDEM [alpha]
+fileCheckAll :: MonadIDE m => (IDEBuffer -> m [alpha]) -> m [alpha]
 fileCheckAll filterFunc = do
     bufs     <- allBuffers
-    foldM (\ packs buf -> do
-            mbFilt <- filterFunc buf
-            case mbFilt of
-                Nothing -> return packs
-                Just p  -> do
+    liftM concat . forM bufs $ \ buf -> do
+        ps <- filterFunc buf
+        case ps of
+            [] -> return []
+            _  -> do
                     modified <- inBufContext False buf fileCheckBuffer
                     if modified
-                        then return (p : packs)
-                        else return packs) [] bufs
+                        then return ps
+                        else return []
 
 fileNew :: IDEAction
 fileNew = do
@@ -1016,12 +1016,13 @@ fileCloseAll filterFunc = do
 
 fileCloseAllButPackage :: IDEAction
 fileCloseAllButPackage = do
-    mbActivePack    <-  readIDE activePack
+    mbActivePath    <-  (fmap ipdBuildDir) <$> readIDE activePack
     bufs            <-  allBuffers
-    when (not (null bufs) && isJust mbActivePack) $ do
-        mapM_ (close' (fromJust mbActivePack)) bufs
+    case mbActivePath of
+        Just p -> mapM_ (close' p) bufs
+        Nothing -> return ()
     where
-        close' activePack (buf@IDEBuffer {sourceView = sv}) = do
+        close' dir (buf@IDEBuffer {sourceView = sv}) = do
             (pane,_)    <-  guiPropertiesFromName (paneName buf)
             nb          <-  getNotebook pane
             mbI         <-  liftIO $notebookPageNum nb (scrolledWindow buf)
@@ -1029,7 +1030,6 @@ fileCloseAllButPackage = do
                 Nothing ->  throwIDE (__ "notebook page not found: unexpected")
                 Just i  ->  do
                     ebuf <- getBuffer sv
-                    let dir = dropFileName $ ipdCabalFile activePack
                     when (isJust (fileName buf)) $ do
                         modified <- getModified ebuf
                         when (not modified && not (isSubPath dir (fromJust (fileName buf))))
@@ -1055,8 +1055,8 @@ fileCloseAllButWorkspace = do
                         when (not modified && not (isSubPathOfAny workspace (fromJust (fileName buf))))
                             $ do fileClose' nb sv ebuf buf i; return ()
         isSubPathOfAny workspace fileName =
-            let pathes = map (dropFileName . ipdCabalFile) (wsPackages workspace)
-            in  or (map (\dir -> isSubPath dir fileName) pathes)
+            let paths = wsPackages workspace >>= ipdAllDirs
+            in  or (map (\dir -> isSubPath dir fileName) paths)
 
 
 fileOpen :: IDEAction
@@ -1376,41 +1376,37 @@ insertTextAfterSelection str = do
             selectRange ebuf i1 i2
 
 -- | Returns the package, to which this buffer belongs, if possible
-belongsToPackage :: IDEBuffer -> IDEM(Maybe IDEPackage)
-belongsToPackage IDEBuffer{fileName = Just fp}= do
+belongsToPackages :: MonadIDE m => IDEBuffer -> m [IDEPackage]
+belongsToPackages IDEBuffer{fileName = Just fp}= do
     bufferToProject' <-  readIDE bufferProjCache
     ws               <-  readIDE workspace
     case Map.lookup fp bufferToProject' of
         Just p  -> return p
         Nothing -> case ws of
-                        Nothing   -> return Nothing
+                        Nothing   -> return []
                         Just workspace -> do
-                            mbMn <- liftIO $ moduleNameFromFilePath fp
-                            let mbMn2 = case mbMn of
-                                            Nothing -> Nothing
-                                            Just mn -> simpleParse mn
-                            let res = foldl (belongsToPackage' fp mbMn2) Nothing (wsPackages workspace)
+--                            mbMn <- liftIO $ moduleNameFromFilePath fp
+--                            let mbMn2 = case mbMn of
+--                                            Nothing -> Nothing
+--                                            Just mn -> simpleParse mn
+                            let res = filter (belongsToPackage fp) (wsPackages workspace)
                             modifyIDE_ (\ide -> ide{bufferProjCache = Map.insert fp res bufferToProject'})
                             return res
-belongsToPackage _ = return Nothing
+belongsToPackages _ = return []
 
-belongsToPackage' ::  FilePath -> Maybe ModuleName -> Maybe IDEPackage -> IDEPackage -> Maybe IDEPackage
-belongsToPackage' _ _ r@(Just pack) _ = r
-belongsToPackage' fp mbModuleName Nothing pack =
-    let basePath =  dropFileName $ ipdCabalFile pack
-    in if isSubPath basePath fp
-        then Just pack
-        else Nothing
+-- | Including files in sandbox source dirs
+belongsToPackage :: FilePath -> IDEPackage -> Bool
+belongsToPackage f = any (`isSubPath` f) . ipdAllDirs
 
-belongsToWorkspace b =  belongsToPackage b >>= return . isJust
+belongsToWorkspace b =  belongsToPackages b >>= return . (not . null)
 
-useCandyFor :: IDEBuffer -> IDEM Bool
+useCandyFor :: MonadIDE m => IDEBuffer -> m Bool
 useCandyFor aBuffer = do
-    use <- getCandyState
+    use <- liftIDE getCandyState
     return (use && isHaskellMode (mode aBuffer))
 
 editCandy = do
-    use <- getCandyState
+    use <- liftIDE getCandyState
     buffers <- allBuffers
     if use
         then mapM_ (\b -> modeEditToCandy (mode b)

@@ -26,7 +26,7 @@ import IDE.Utils.Tool
 import IDE.Core.State
        (runningTool, modifyIDE_, reflectIDE, useVado, reifyIDE,
         triggerEventIDE, saveAllBeforeBuild, prefs, readIDE, IDEAction,
-        IDEM)
+        IDEM, MonadIDE(..))
 import Control.Monad (when)
 import IDE.Pane.SourceBuffer (belongsToWorkspace, fileSaveAll)
 import IDE.Core.Types (StatusbarCompartment(..), IDEEvent(..))
@@ -37,12 +37,13 @@ import Control.Monad.IO.Class (MonadIO(..))
 import Data.Maybe (isNothing)
 import Control.Applicative ((<$>))
 
-runExternalTool' :: String
+runExternalTool' :: MonadIDE m
+                => String
                 -> FilePath
                 -> [String]
                 -> FilePath
                 -> C.Sink ToolOutput IDEM ()
-                -> IDEAction
+                -> m ()
 runExternalTool' description executable args dir handleOutput = do
         runExternalTool (do
                             run <- isRunning
@@ -55,14 +56,15 @@ runExternalTool' description executable args dir handleOutput = do
                         handleOutput
         return()
 
-runExternalTool :: IDEM Bool
-                -> (ProcessHandle -> IDEAction)
+runExternalTool :: MonadIDE m
+                => m Bool
+                -> (ProcessHandle -> IDEM ())
                 -> String
                 -> FilePath
                 -> [String]
                 -> FilePath
                 -> C.Sink ToolOutput IDEM ()
-                -> IDEAction
+                -> m ()
 runExternalTool runGuard pidHandler description executable args dir handleOutput  = do
         prefs <- readIDE prefs
         run <- runGuard
@@ -90,7 +92,7 @@ runExternalTool runGuard pidHandler description executable args dir handleOutput
 -- ---------------------------------------------------------------------
 -- | Handling of Compiler errors
 --
-isRunning :: IDEM Bool
+isRunning :: MonadIDE m => m Bool
 isRunning = do
     maybeProcess <- readIDE runningTool
     liftIO $
@@ -99,7 +101,7 @@ isRunning = do
                 isNothing <$> getProcessExitCode process
             Nothing -> return False
 
-interruptBuild :: IDEAction
+interruptBuild :: MonadIDE m => m ()
 interruptBuild = do
     maybeProcess <- readIDE runningTool
     liftIO $ case maybeProcess of

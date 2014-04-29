@@ -44,43 +44,43 @@ import System.Log.Logger (debugM)
 
 onWorkspaceClose :: IDEAction
 onWorkspaceClose = do
-        vcsItem <- GUIUtils.getVCS
-        liftIO $ menuItemRemoveSubmenu vcsItem
+    vcsItem <- GUIUtils.getVCS
+    liftIO $ menuItemRemoveSubmenu vcsItem
 
 onWorkspaceOpen :: Workspace -> IDEAction
 onWorkspaceOpen ws = do
-        liftIO $ debugM "leksah" "onWorkspaceOpen"
-        let mbPackages = wsPackages ws
-        packages <- mapM (mapper ws)
-                                 mbPackages
-        vcsItem <- GUIUtils.getVCS
-        vcsMenu <- liftIO menuNew
+    liftIO $ debugM "leksah" "onWorkspaceOpen"
+    let mbPackages = wsAllPackages ws
+    packages <- mapM (mapper ws)
+                             mbPackages
+    vcsItem <- GUIUtils.getVCS
+    vcsMenu <- liftIO menuNew
 
-        ideR <- ask
+    ideR <- ask
 
-        --for each package add an extra menu containing vcs specific menuitems
-        mapM_ (\(p,mbVcsConf) -> do
-                    Common.setMenuForPackage vcsMenu (ipdCabalFile p) mbVcsConf
-                    liftIO $ menuItemSetSubmenu vcsItem vcsMenu
-                    )
-               packages
+    --for each package add an extra menu containing vcs specific menuitems
+    mapM_ (\(p,mbVcsConf) -> do
+                Common.setMenuForPackage vcsMenu (ipdCabalFile p) mbVcsConf
+                liftIO $ menuItemSetSubmenu vcsItem vcsMenu
+                )
+           packages
 
-        liftIO $ widgetShowAll vcsItem
-        return ()
-        where
-        mapper :: Workspace -> IDEPackage -> IDEM (IDEPackage, Maybe VCSConf)
-        mapper workspace p = do
-            let fp = ipdCabalFile p
-            eErrConf <- Common.getVCSConf' workspace fp
-            case eErrConf of
-                Left error -> do
-                    liftIO $ putStrLn $ "Could not retrieve vcs-conf due to '"++error++"'."
-                    return (p, Nothing)
-                Right mbConf -> case mbConf of
-                                    Nothing -> do
-                                        liftIO $ putStrLn
-                                                    "Could not retrieve vcs-conf for active package. No vcs-conf set up."
-                                        return (p, Nothing)
-                                    Just vcsConf -> return (p,  Just vcsConf)
+    liftIO $ widgetShowAll vcsItem
+    return ()
+    where
+    mapper :: Workspace -> IDEPackage -> IDEM (IDEPackage, Maybe VCSConf)
+    mapper workspace p = do
+        let fp = ipdCabalFile p
+        eErrConf <- Common.getVCSConf' workspace fp
+        case eErrConf of
+            Left error -> do
+                liftIO $ putStrLn $ "Could not retrieve vcs-conf due to '"++error++"'."
+                return (p, Nothing)
+            Right mbConf -> case mbConf of
+                                Nothing -> do
+                                    liftIO $ putStrLn
+                                                "Could not retrieve vcs-conf for active package. No vcs-conf set up."
+                                    return (p, Nothing)
+                                Just vcsConf -> return (p,  Just vcsConf)
 
 

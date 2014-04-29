@@ -154,7 +154,7 @@ builder' pp nb windows = reifyIDE $  \ideR -> do
 
 fillVariablesListQuiet :: IDEAction
 fillVariablesListQuiet = packageTryQuiet $ do
-    mbVariables <- lift getPane
+    mbVariables <- liftIDE getPane
     case mbVariables of
         Nothing -> return ()
         Just var -> tryDebugQuiet $ debugCommand' ":show bindings" $ do
@@ -171,7 +171,7 @@ fillVariablesListQuiet = packageTryQuiet $ do
 
 fillVariablesList :: IDEAction
 fillVariablesList = packageTry $ do
-    mbVariables <- lift getPane
+    mbVariables <- liftIDE getPane
     case mbVariables of
         Nothing -> return ()
         Just var -> tryDebug $ debugCommand' ":show bindings" $ do
