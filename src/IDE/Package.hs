@@ -29,6 +29,7 @@ module IDE.Package (
 ,   packageCopy
 ,   packageCopy'
 ,   packageRun
+,   packageRunJavaScript
 ,   activatePackage
 ,   deactivatePackage
 
@@ -49,7 +50,6 @@ module IDE.Package (
 
 ,   backgroundBuildToggled
 ,   runUnitTestsToggled
-,   javaScriptToggled
 ,   makeModeToggled
 
 ,   debugStart
@@ -363,30 +363,15 @@ packageRun = do
         case maybeDebug of
             Nothing -> do
                 let dir = ipdBuildDir package
-                prefs <- readIDE prefs
-                case (runJavaScript prefs, exe ++ executables pd) of
-                    (True, [Executable name _ _]) -> liftIDE $ do
-                        let path = "dist/build" </> name </> name <.> "jsexe" </> "index.html"
-                            dir = ipdBuildDir package
-#ifdef WEBKITGTK
-                        loadOutputUri ("file:///" ++ dir </> path)
-                        getOutputPane Nothing  >>= \ p -> displayPane p False
-#else
-                        openBrowser path
-#endif
-                      `catchIDE`
-                        (\(e :: SomeException) -> putStrLn (show e))
-
-                    _ ->
-                        IDE.Package.runPackage (addLogLaunchData logName logLaunch)
-                                               (printf (__ "Running %s") logName)
-                                               "cabal"
-                                               (concat [["run"]
-                                                    , map exeName exe
-                                                    , ["--"]
-                                                    , ipdExeFlags package])
-                                               dir
-                                               (logOutput logLaunch)
+                IDE.Package.runPackage (addLogLaunchData logName logLaunch)
+                                       (printf (__ "Running %s") logName)
+                                       "cabal"
+                                       (concat [["run"]
+                                            , map exeName exe
+                                            , ["--"]
+                                            , ipdExeFlags package])
+                                       dir
+                                       (logOutput logLaunch)
             Just debug -> do
                 -- TODO check debug package matches active package
                 runDebug (do
@@ -396,6 +381,38 @@ packageRun = do
                         _ -> return ()
                     executeDebugCommand (":main " ++ (unwords (ipdExeFlags package))) (logOutput logLaunch))
                     debug)
+        (\(e :: SomeException) -> putStrLn (show e))
+  where
+    isActiveExe selected (Executable name _ _) = selected == Just name
+
+packageRunJavaScript :: PackageAction
+packageRunJavaScript = do
+    package <- ask
+    liftIDE $ catchIDE (do
+        ideR        <- ask
+        maybeDebug   <- readIDE debugState
+        pd <- liftIO $ readPackageDescription normal (ipdCabalFile package) >>= return . flattenPackageDescription
+        mbExe <- readIDE activeExe
+        let exe = take 1 . filter (isActiveExe mbExe) $ executables pd
+        let defaultLogName = display . pkgName $ ipdPackageId package
+            logName = fromMaybe defaultLogName . listToMaybe $ map exeName exe
+        (logLaunch,logName) <- buildLogLaunchByName logName
+        let dir = ipdBuildDir package
+        prefs <- readIDE prefs
+        case exe ++ executables pd of
+            (Executable name _ _ : _) -> liftIDE $ do
+                let path = "dist/build" </> name </> name <.> "jsexe" </> "index.html"
+                    dir = ipdBuildDir package
+#ifdef WEBKITGTK
+                loadOutputUri ("file:///" ++ dir </> path)
+                getOutputPane Nothing  >>= \ p -> displayPane p False
+#else
+                openBrowser path
+#endif
+              `catchIDE`
+                (\(e :: SomeException) -> putStrLn (show e))
+
+            _ -> return ())
         (\(e :: SomeException) -> putStrLn (show e))
   where
     isActiveExe selected (Executable name _ _) = selected == Just name
@@ -633,11 +650,6 @@ runUnitTestsToggled :: IDEAction
 runUnitTestsToggled = do
     toggled <- getRunUnitTests
     modifyIDE_ (\ide -> ide{prefs = (prefs ide){runUnitTests= toggled}})
-
-javaScriptToggled :: IDEAction
-javaScriptToggled = do
-    toggled <- getRunJavaScript
-    modifyIDE_ (\ide -> ide{prefs = (prefs ide){runJavaScript= toggled}})
 
 makeModeToggled :: IDEAction
 makeModeToggled = do

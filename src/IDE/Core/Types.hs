@@ -476,7 +476,6 @@ data Prefs = Prefs {
     ,   useCabalDev         ::   Bool
     ,   backgroundBuild     ::   Bool
     ,   runUnitTests        ::   Bool
-    ,   runJavaScript       ::   Bool
     ,   makeMode            ::   Bool
     ,   singleBuildWithoutLinking :: Bool
     ,   dontInstallLast     ::   Bool

@@ -261,6 +261,8 @@ mkActions =
         (packageTry packageCopy) [] False
     ,AD "RunPackage" (__ "_Run") (Just (__ "Runs the package")) (Just "ide_run")
         (packageTry packageRun) [] False
+    ,AD "RunJavaScript" (__ "_Run JavaScript") (Just (__ "Run jsexe created by GHCJS")) (Just "ide_js")
+        (packageTry packageRunJavaScript) [] False
     ,AD "ResolveErrors" (__ "Resol_ve Errors") (Just (__ "Resolve 'Hidden package' and 'Not in scope' errors by adding the necessary dependancies or imports")) Nothing
         resolveErrors [] False
 
@@ -473,8 +475,6 @@ mkActions =
         backgroundBuildToggled [] True
     ,AD "RunUnitTestsToggled" (__ "_RunUnitTests") (Just (__ "Run unit tests when building")) (Just "gtk-apply")
         runUnitTestsToggled [] True
-    ,AD "JavaScriptToggled" (__ "_JavaScript") (Just (__ "Use GHCJS to compile to JavaScript")) (Just "ide_js")
-        javaScriptToggled [] True
     ,AD "MakeModeToggled" (__ "_MakeMode") (Just (__ "Make dependent packages")) (Just "ide_make")
         makeModeToggled [] True
     ,AD "DebugToggled" (__ "_Debug") (Just (__ "Use GHCi debugger to build and run")) (Just "ide_debug")
@@ -770,7 +770,6 @@ instrumentWindow win prefs topWidget = do
             setCandyState (fst (sourceCandy prefs))
             setBackgroundBuildToggled (backgroundBuild prefs)
             setRunUnitTests (runUnitTests prefs)
-            setRunJavaScript (runJavaScript prefs)
             setMakeModeToggled (makeMode prefs)) ideR
 
 instrumentSecWindow :: Window -> IDEAction
