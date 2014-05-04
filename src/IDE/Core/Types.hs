@@ -367,6 +367,7 @@ data IDEPackage     =   IDEPackage {
 ,   ipdHasLibs         ::   Bool
 ,   ipdExes            ::   [String]
 ,   ipdTests           ::   [String]
+,   ipdBenchmarks      ::   [String]
 ,   ipdMain            ::   [(FilePath, BuildInfo, Bool)]
 ,   ipdExtraSrcs       ::   Set FilePath
 ,   ipdSrcDirs         ::   [FilePath]

@@ -49,7 +49,9 @@ import Distribution.Text (simpleParse,display)
 import Data.Typeable (Typeable(..))
 import Control.Exception (SomeException(..),catch)
 import IDE.Package (packageConfig,addModuleToPackageDescr,delModuleFromPackageDescr,getEmptyModuleTemplate,getPackageDescriptionAndPath, ModuleLocation(..))
-import Distribution.PackageDescription (allBuildInfo,hsSourceDirs, hasLibs, executables, testSuites, exeName, testName)
+import Distribution.PackageDescription
+       (allBuildInfo, hsSourceDirs, hasLibs, executables, testSuites, exeName, testName,
+        benchmarks, benchmarkName)
 import System.FilePath (takeBaseName, (</>),dropFileName)
 import System.Directory (doesFileExist,createDirectoryIfMissing, removeFile)
 import Graphics.UI.Editor.MakeEditor (buildEditor,FieldDescription(..),mkField)
@@ -1107,7 +1109,7 @@ addModule categories = do
                                in do
             window' <- liftIDE getMainWindow
             mbResp <- liftIO $ addModuleDialog window' modPath srcPaths (hasLibs pd) $
-                   map exeName (executables pd) ++ map testName (testSuites pd)
+                   map exeName (executables pd) ++ map testName (testSuites pd) ++ map benchmarkName (benchmarks pd)
             case mbResp of
                 Nothing                -> return ()
                 Just addMod@(AddModule modPath srcPath libExposed exesAndTests) ->

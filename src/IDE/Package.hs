@@ -135,6 +135,7 @@ myLibModules pd = case library pd of
                     Just l -> moduleInfo libBuildInfo libModules l
 myExeModules pd = concatMap (moduleInfo buildInfo exeModules) (executables pd)
 myTestModules pd = concatMap (moduleInfo testBuildInfo (otherModules . testBuildInfo)) (testSuites pd)
+myBenchmarkModules pd = concatMap (moduleInfo benchmarkBuildInfo (otherModules . benchmarkBuildInfo)) (benchmarks pd)
 
 activatePackage :: Maybe FilePath -> Maybe IDEPackage -> Maybe String -> IDEM ()
 activatePackage mbPath mbPack mbExe = do
@@ -795,9 +796,10 @@ idePackageFromPath' ipdCabalFile = do
         Just packageD -> do
 
             let ipdModules          = Map.fromList $ myLibModules packageD ++ myExeModules packageD
-                                        ++ myTestModules packageD
+                                        ++ myTestModules packageD ++ myBenchmarkModules packageD
                 ipdMain             = [ (modulePath exe, buildInfo exe, False) | exe <- executables packageD ]
                                         ++ [ (f, bi, True) | TestSuite _ (TestSuiteExeV10 _ f) bi _ <- testSuites packageD ]
+                                        ++ [ (f, bi, True) | Benchmark _ (BenchmarkExeV10 _ f) bi _ <- benchmarks packageD ]
                 ipdExtraSrcs        = Set.fromList $ extraSrcFiles packageD
                 ipdSrcDirs          = case (nub $ concatMap hsSourceDirs (allBuildInfo' packageD)) of
                                             [] -> [".","src"]
@@ -807,6 +809,8 @@ idePackageFromPath' ipdCabalFile = do
                 ipdExtensions       = nub $ concatMap oldExtensions (allBuildInfo' packageD)
                 ipdTests            = [ testName t | t <- testSuites packageD
                                           , buildable (testBuildInfo t) ]
+                ipdBenchmarks       = [ benchmarkName b | b <- benchmarks packageD
+                                          , buildable (benchmarkBuildInfo b) ]
                 ipdPackageId        = package packageD
                 ipdDepends          = buildDepends packageD
                 ipdHasLibs          = hasLibs packageD

@@ -217,7 +217,7 @@ updateWorkspace showPane updateFileCache = do
                                          map (\ test -> Node (
                                             Just (ipdCabalFile ideP) == wsActivePackFile ws &&
                                             Just test == wsActiveExe ws, (ideP, Just test)) [])
-                                                (ipdExes ideP ++ ipdTests ideP)))
+                                                (ipdExes ideP ++ ipdTests ideP ++ ipdBenchmarks ideP)))
                                         sorted
                     liftIO $ treeStoreInsertForest (workspaceStore p) [] 0 forest
                     when showPane $ displayPane p False

@@ -124,13 +124,15 @@ toGenericPackageDescription pd =
             library = Nothing,
             executables = [],
             testSuites = [],
+            benchmarks = [],
             buildDepends = []},
         genPackageFlags = [],
         condLibrary = case library pd of
                             Nothing -> Nothing
                             Just lib -> Just (buildCondTreeLibrary lib),
         condExecutables = map buildCondTreeExe (executables pd),
-        condTestSuites =  map buildCondTreeTest (testSuites pd)}
+        condTestSuites =  map buildCondTreeTest (testSuites pd),
+        condBenchmarks =  map buildCondTreeBenchmark (benchmarks pd)}
   where
     buildCondTreeLibrary lib =
         CondNode {
@@ -145,6 +147,11 @@ toGenericPackageDescription pd =
     buildCondTreeTest test =
         (testName test, CondNode {
             condTreeData = test,
+            condTreeConstraints = buildDepends pd,
+            condTreeComponents = []})
+    buildCondTreeBenchmark bm =
+        (benchmarkName bm, CondNode {
+            condTreeData = bm,
             condTreeConstraints = buildDepends pd,
             condTreeComponents = []})
 
@@ -172,10 +179,10 @@ packageEdit = do
             return ()
         else do
             let flat = flattenPackageDescription package
-            if hasUnknownTestTypes flat
+            if hasUnknownTestTypes flat || hasUnknownBenchmarkTypes flat
                 then do
                     liftIDE $ ideMessage High
-                        (__ "Cabal file with tests of this type can't be edited with the current version of the editor")
+                        (__ "Cabal file with tests or benchmarks of this type can't be edited with the current version of the editor")
                     liftIDE $ fileOpenThis $ ipdCabalFile idePackage
                     return ()
                 else do
@@ -210,6 +217,13 @@ hasUnknownTestTypes pd =
     not . null . filter unknown $ testSuites pd
   where
     unknown (TestSuite _ (TestSuiteExeV10 _ _) _ _) = False
+    unknown _ = True
+
+hasUnknownBenchmarkTypes :: PackageDescription -> Bool
+hasUnknownBenchmarkTypes pd =
+    not . null . filter unknown $ benchmarks pd
+  where
+    unknown (Benchmark _ (BenchmarkExeV10 _ _) _ _) = False
     unknown _ = True
 
 data NewPackage = NewPackage {
@@ -311,26 +325,27 @@ packageNew' workspaceDir log activateAction = do
                     when make $ do
                         modules <- liftIO $ allModules dirName
                         let Just initialVersion = simpleParse "0.0.1"
-                        editPackage emptyPackageDescription{
+                        editPackage emptyPackageDescription {
                             package   = PackageIdentifier (PackageName newPackageName)
-                                                          initialVersion,
-                            buildType = Just Simple,
-                            specVersionRaw = Right (orLaterVersion (Version [1,2] [])),
-                            buildDepends = [
+                                                          initialVersion
+                          , buildType = Just Simple
+                          , specVersionRaw = Right (orLaterVersion (Version [1,2] []))
+                          , buildDepends = [
                                 Dependency (PackageName "base") anyVersion
-                              , Dependency (PackageName "QuickCheck") anyVersion],
-                            executables = [emptyExecutable {
+                              , Dependency (PackageName "QuickCheck") anyVersion]
+                          , executables = [emptyExecutable {
                                 exeName    = newPackageName
                               , modulePath = "Main.hs"
                               , buildInfo  = emptyBuildInfo {
                                     hsSourceDirs = ["src"]}}]
-                              , testSuites = [emptyTestSuite {
+                          , testSuites = [emptyTestSuite {
                                     testName = "test-" ++ newPackageName
                                   , testInterface = (TestSuiteExeV10 (Version [1,0] []) "Main.hs")
                                   , testBuildInfo = emptyBuildInfo {
                                         hsSourceDirs = ["src"]
                                       , cppOptions = ["-DMAIN_FUNCTION=testMain"]}}]
-                            } dirName modules (activateAction True)
+                          , benchmarks =  []
+                          } dirName modules (activateAction True)
                     return ()
         Just NewPackage{..} -> cabalUnpack newPackageParentDir templatePackage False (Just newPackageName) log (activateAction False)
 
@@ -468,6 +483,7 @@ data PackageDescriptionEd = PDE {
     pd           :: PackageDescription,
     exes         :: [Executable'],
     tests        :: [Test'],
+    bms          :: [Benchmark'],
     mbLib        :: Maybe Library',
     bis          :: [BuildInfo]}
         deriving Eq
@@ -482,6 +498,7 @@ comparePDE a b = do
 fromEditor :: PackageDescriptionEd -> PackageDescription
 fromEditor (PDE pd exes'
         tests'
+        benchmarks'
         mbLib' buildInfos) =
     let     exes = map (\ (Executable' s fb bii) -> if bii + 1 > length buildInfos
                                         then Executable s fb (buildInfos !! (length buildInfos - 1))
@@ -489,6 +506,9 @@ fromEditor (PDE pd exes'
             tests = map (\ (Test' s fb bii) -> if bii + 1 > length buildInfos
                                         then TestSuite s fb (buildInfos !! (length buildInfos - 1)) False
                                         else TestSuite s fb (buildInfos !! bii) False) tests'
+            bms = map (\ (Benchmark' s fb bii) -> if bii + 1 > length buildInfos
+                                        then Benchmark s fb (buildInfos !! (length buildInfos - 1)) False
+                                        else Benchmark s fb (buildInfos !! bii) False) benchmarks'
             mbLib = case mbLib' of
                     Nothing -> Nothing
                     Just (Library' mn b bii) -> if bii + 1 > length buildInfos
@@ -498,6 +518,7 @@ fromEditor (PDE pd exes'
         library = mbLib
       , executables = exes
       , testSuites = tests
+      , benchmarks = bms
       }
 
 toEditor :: PackageDescription -> PackageDescriptionEd
@@ -506,7 +527,9 @@ toEditor pd =
                             (zip (executables pd) [0..])
             (tests,testBis) = unzip $ map (\((TestSuite s fb bi _), i) -> ((Test' s fb i), bi))
                             (zip (testSuites pd) [length exeBis..])
-            bis = exeBis ++ testBis
+            (bms,benchmarkBis) = unzip $ map (\((Benchmark s fb bi _), i) -> ((Benchmark' s fb i), bi))
+                            (zip (benchmarks pd) [length testBis..])
+            bis = exeBis ++ testBis ++ benchmarkBis
             (mbLib,bis2) = case library pd of
                     Nothing                -> (Nothing,bis)
                     Just (Library mn b bi) -> (Just (Library' (sort mn) b (length bis)), bis ++ [bi])
@@ -516,6 +539,7 @@ toEditor pd =
     in PDE (pd {library = Nothing , executables = []})
         exes
         tests
+        bms
         mbLib
         bis3
 
@@ -914,6 +938,16 @@ packageDD packages fp modules numBuildInfos extras = NFD ([
             tests
             (\ a b -> b{tests = a})
             (testsEditor (Just fp) modules numBuildInfos)
+    ]),
+    ((__ "Benchmarks"),VFD emptyParams  [
+        mkField
+            (paraName <<<- ParaName (__ "Benchmarks")
+                $ paraSynopsis <<<- ParaSynopsis
+                (__ "Describe tests contained in the package")
+                    $ paraDirection <<<- ParaDirection Vertical $ emptyParams)
+            bms
+            (\ a b -> b{bms = a})
+            (benchmarksEditor (Just fp) modules numBuildInfos)
     ]),
     ((__ "Library"), VFD emptyParams [
         mkField
@@ -1356,6 +1390,12 @@ data Test' = Test'{
 ,   testBuildInfoIdx :: Int}
     deriving (Show, Eq)
 
+data Benchmark' = Benchmark'{
+    benchmarkName'        :: String
+,   benchmarkInterface'   :: BenchmarkInterface
+,   benchmarkBuildInfoIdx :: Int}
+    deriving (Show, Eq)
+
 instance Default Library'
     where getDefault =  Library' [] getDefault getDefault
 
@@ -1364,6 +1404,9 @@ instance Default Executable'
 
 instance Default Test'
     where getDefault = Test' getDefault (TestSuiteExeV10 (Version [1,0] []) getDefault) getDefault
+
+instance Default Benchmark'
+    where getDefault = Benchmark' getDefault (BenchmarkExeV10 (Version [1,0] []) getDefault) getDefault
 
 libraryEditor :: Maybe FilePath -> [ModuleName] -> Int -> Editor Library'
 libraryEditor fp modules numBuildInfos para noti = do
@@ -1442,7 +1485,6 @@ testsEditor fp modules countBuildInfo p =
     multisetEditor
         (ColumnDescr True [( (__ "Test Name"),\(Test' testName _ _) -> [cellText := testName])
                            ,( (__ "Interface"),\(Test'  _ i _) -> [cellText := interfaceName i])
-
                            ,( (__ "Build info index"),\(Test'  _ _ bii) -> [cellText := show (bii + 1)])])
         (testEditor fp modules countBuildInfo,emptyParams)
         Nothing
@@ -1478,6 +1520,48 @@ testEditor fp modules countBuildInfo para noti = do
         case mbp of
             Nothing -> return Nothing
             Just (s,f,bi) -> return (Just $Test' s (TestSuiteExeV10 (Version [1,0] []) f) bi)
+    return (wid,pinj,pext)
+
+benchmarksEditor :: Maybe FilePath -> [ModuleName] -> Int -> Editor [Benchmark']
+benchmarksEditor fp modules countBuildInfo p =
+    multisetEditor
+        (ColumnDescr True [( (__ "Benchmark Name"),\(Benchmark' benchmarkName _ _) -> [cellText := benchmarkName])
+                           ,( (__ "Interface"),\(Benchmark'  _ i _) -> [cellText := interfaceName i])
+                           ,( (__ "Build info index"),\(Benchmark'  _ _ bii) -> [cellText := show (bii + 1)])])
+        (benchmarkEditor fp modules countBuildInfo,emptyParams)
+        Nothing
+        Nothing
+        (paraShadow  <<<- ParaShadow ShadowIn
+            $ paraMinSize <<<- ParaMinSize (-1,200) $ p)
+  where
+    interfaceName (BenchmarkExeV10 _ f) = f
+    interfaceName i = show i
+
+benchmarkEditor :: Maybe FilePath -> [ModuleName] -> Int -> Editor Benchmark'
+benchmarkEditor fp modules countBuildInfo para noti = do
+    (wid,inj,ext) <- tupel3Editor
+        (stringEditor (\s -> not (null s)) True,
+            paraName <<<- ParaName (__ "Benchmark Name")
+            $ emptyParams)
+        (stringEditor (\s -> not (null s)) True,
+            paraDirection <<<- ParaDirection Vertical
+            $ paraName <<<- ParaName (__ "File with main function")
+            $ emptyParams)
+        (buildInfoEditorP countBuildInfo, paraName <<<- ParaName (__ "Build Info")
+            $ paraOuterAlignment <<<- ParaOuterAlignment  (0.0, 0.0, 0.0, 0.0)
+                $ paraOuterPadding <<<- ParaOuterPadding    (0, 0, 0, 0)
+                    $ paraInnerAlignment <<<- ParaInnerAlignment  (0.0, 0.0, 0.0, 0.0)
+                        $ paraInnerPadding <<<- ParaInnerPadding   (0, 0, 0, 0)
+                            $ emptyParams)
+        (paraDirection  <<<- ParaDirection Vertical $ para)
+        noti
+    let pinj (Benchmark' s (BenchmarkExeV10 (Version [1,0] []) f) bi) = inj (s,f,bi)
+        pinj _ = error "Unexpected Benchmark Interface"
+    let pext = do
+        mbp <- ext
+        case mbp of
+            Nothing -> return Nothing
+            Just (s,f,bi) -> return (Just $Benchmark' s (BenchmarkExeV10 (Version [1,0] []) f) bi)
     return (wid,pinj,pext)
 
 buildInfoEditorP :: Int -> Editor Int
