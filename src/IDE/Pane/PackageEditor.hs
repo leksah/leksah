@@ -253,7 +253,10 @@ packageFields workspaceDir = VFD emptyParams [
             (\ a b -> b{templatePackage = a})
             (comboEntryEditor examplePackages)]
 
-examplePackages = ["hello", "gtk2hs-hello", "ghcjs-dom-hello"]
+examplePackages = [ "hello"
+                  , "gtk2hs-hello"
+                  , "ghcjs-dom-hello"
+                  , "jsaddle-hello"]
 
 newPackageDialog :: Window -> FilePath -> IO (Maybe NewPackage)
 newPackageDialog parent workspaceDir = do
