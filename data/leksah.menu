@@ -89,6 +89,7 @@
        <menuitem name="Open Documentation" action="OpenDocPackage" />
      </menu>
     <menu name="_Debug" action="Debug">
+       <menuitem name="GHCi" action="DebugToggled" />
        <menuitem name="Continue" action="DebugContinue" />
        <menuitem name="Abandon" action="DebugAbandon" />
        <menuitem name="Stop" action="DebugStop" />

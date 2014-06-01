@@ -477,7 +477,7 @@ mkActions =
         runUnitTestsToggled [] True
     ,AD "MakeModeToggled" (__ "_MakeMode") (Just (__ "Make dependent packages")) (Just "ide_make")
         makeModeToggled [] True
-    ,AD "DebugToggled" (__ "_Debug") (Just (__ "Use GHCi debugger to build and run")) (Just "ide_debug")
+    ,AD "DebugToggled" "_GHCi" (Just (__ "Use GHCi debugger to build and run")) (Just "ide_debug")
         debugToggled [] True
     ,AD "OpenDocu" (__ "_OpenDocu") (Just (__ "Opens a browser for a search of the selected data")) Nothing
         openDocu [] True
