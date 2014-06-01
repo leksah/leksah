@@ -90,7 +90,6 @@ setSensitivityDebugger sens = do
     mbBreakpoints :: Maybe IDEBreakpoints <- getPane
     mbVariables   :: Maybe IDEVariables   <- getPane
     mbTrace       :: Maybe IDETrace       <- getPane
-    mbOutput      :: Maybe IDEOutput      <- getPane
     liftIO $ do
         case mbBreakpoints of
             Nothing -> return ()
@@ -99,9 +98,6 @@ setSensitivityDebugger sens = do
             Nothing -> return ()
             Just idePane -> widgetSetSensitive (getTopWidget idePane) sens
         case mbTrace of
-            Nothing -> return ()
-            Just idePane -> widgetSetSensitive (getTopWidget idePane) sens
-        case mbOutput of
             Nothing -> return ()
             Just idePane -> widgetSetSensitive (getTopWidget idePane) sens
 

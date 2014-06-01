@@ -91,6 +91,11 @@ import Data.IORef (newIORef)
 import Data.Monoid ((<>), Monoid(..))
 import Data.Text (Text)
 import qualified Data.Text as T (isSuffixOf, unpack)
+import System.Exit (ExitCode(..))
+import IDE.Pane.WebKit.Output (loadOutputUri)
+
+-- | Get the last item
+sinkLast = CL.fold (\_ a -> Just a) Nothing
 
 debugCommand :: String -> C.Sink ToolOutput IDEM () -> DebugAction
 debugCommand command handler = do
@@ -143,8 +148,13 @@ debugExecuteSelection = do
             let command = packageTry $ tryDebug $ do
                 debugSetLiberalScope
                 buffer <- liftIO $ newIORef mempty
-                debugCommand (stripComments text) $ logOutputPane buffer
-            modifyIDE_ $ \ide -> ide {autoCommand = command}
+                debugCommand (stripComments text) $ do
+                    (_, _) <- CU.zipSinks sinkLast (logOutputPane text buffer)
+                    mbURI <- lift $ readIDE autoURI
+                    case mbURI of
+                        Just uri -> lift . postSyncIDE $ loadOutputUri uri
+                        Nothing -> return ()
+            modifyIDE_ $ \ide -> ide {autoCommand = command, autoURI = Nothing}
             command
         Nothing   -> ideMessage Normal "Please select some text in the editor to execute"
 

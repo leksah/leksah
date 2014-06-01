@@ -242,7 +242,13 @@ buildPackage backgroundBuild jumpToWarnings withoutLinking package continuation 
                                 return False) ideR
                             return False) priorityDefaultIdle 1000
                         return ()
-                else runCabalBuild backgroundBuild jumpToWarnings withoutLinking package True continuation
+                else runCabalBuild backgroundBuild jumpToWarnings withoutLinking package True $ \f -> do
+                        when f $ do
+                            mbURI <- readIDE autoURI
+                            case mbURI of
+                                Just uri -> postSyncIDE $ loadOutputUri uri
+                                Nothing  -> return ()
+                        continuation f
         Just debug@(_, ghci) -> do
             -- TODO check debug package matches active package
             ready <- liftIO $ isEmptyMVar (currentToolCommand ghci)

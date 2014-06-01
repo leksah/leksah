@@ -29,14 +29,16 @@ module IDE.Pane.WebKit.Output (
 import Graphics.UI.Frame.Panes
        (RecoverablePane(..), PanePath, RecoverablePane, Pane(..))
 import Graphics.UI.Gtk
-       (postGUISync, scrolledWindowSetPolicy, scrolledWindowNew,
-        castToWidget, ScrolledWindow)
+       (entryGetText, entryActivated, boxPackStart, entrySetText, Entry,
+        VBox, entryNew, vBoxNew, postGUISync, scrolledWindowSetPolicy,
+        scrolledWindowNew, castToWidget, ScrolledWindow)
 import Data.Typeable (Typeable)
-import IDE.Core.Types (IDEAction, IDEM)
+import IDE.Core.Types (IDEAction, IDEM, IDE(..))
 import Control.Monad.IO.Class (MonadIO(..))
 import Graphics.UI.Frame.ViewFrame (getNotebook)
-import IDE.Core.State (postSyncIDE, reifyIDE, leksahOrPackageDir)
-import Graphics.UI.Gtk.General.Enums (PolicyType(..))
+import IDE.Core.State
+       (modifyIDE_, postSyncIDE, reifyIDE, leksahOrPackageDir)
+import Graphics.UI.Gtk.General.Enums (Packing(..), PolicyType(..))
 
 #ifdef WEBKITGTK
 import Graphics.UI.Gtk
@@ -61,10 +63,13 @@ import System.FilePath ((</>))
 import Data.IORef (writeIORef, newIORef, readIORef, IORef)
 import Control.Applicative ((<$>))
 import System.Log.Logger (debugM)
-import Graphics.UI.Gtk.WebKit.WebView (webViewGetUri)
+import Graphics.UI.Gtk.WebKit.WebView
+       (loadCommitted, webViewGetUri)
+import Graphics.UI.Gtk.WebKit.WebFrame (webFrameGetUri)
 
 data IDEOutput = IDEOutput {
-    scrolledView  :: ScrolledWindow
+    vbox          :: VBox
+  , uriEntry      :: Entry
 #ifdef WEBKITGTK
   , webView       :: WebView
   , alwaysHtmlRef :: IORef Bool
@@ -82,7 +87,7 @@ instance Pane IDEOutput IDEM
     where
     primPaneName _  =   "Out"
     getAddedIndex _ =   0
-    getTopWidget    =   castToWidget . scrolledView
+    getTopWidget    =   castToWidget . vbox
     paneId b        =   "*Out"
 
 instance RecoverablePane IDEOutput OutputState IDEM where
@@ -108,7 +113,12 @@ instance RecoverablePane IDEOutput OutputState IDEM where
 #endif
         return mbPane
     builder pp nb windows = reifyIDE $ \ ideR -> do
+        vbox <- vBoxNew False 0
+        uriEntry <- entryNew
+        entrySetText uriEntry "http://"
         scrolledView <- scrolledWindowNew Nothing Nothing
+        boxPackStart vbox uriEntry PackNatural 0
+        boxPackStart vbox scrolledView PackGrow 0
 
 #ifdef WEBKITGTK
         webView <- webViewNew
@@ -127,7 +137,7 @@ instance RecoverablePane IDEOutput OutputState IDEM where
             return True
 
         webView `set` [webViewZoomLevel := 2.0]
-        cid2 <- webView `on` keyPressEvent $ do
+        cid2 <- on webView keyPressEvent $ do
             key <- eventKeyName
             mod <- eventModifier
             liftIO $ case (key, mod) of
@@ -136,7 +146,7 @@ instance RecoverablePane IDEOutput OutputState IDEM where
                 ("BackSpace", [])         -> webViewGoBack  webView >> return True
                 _                         -> return False
 
-        cid3 <- webView `on` populatePopup $ \ menu -> do
+        cid3 <- on webView populatePopup $ \ menu -> do
             alwaysHtml <- readIORef alwaysHtmlRef
             action <- toggleActionNew "AlwaysHTML" "Always HTML" Nothing Nothing
             item <- castToMenuItem <$> actionCreateMenuItem action
@@ -145,7 +155,27 @@ instance RecoverablePane IDEOutput OutputState IDEM where
             menuShellAppend menu item
             return ()
 
-        return (Just out, map ConnectC [cid1, cid2, cid3])
+        cid4 <- on uriEntry entryActivated $ do
+            uri <- entryGetText uriEntry
+            webViewLoadUri webView uri
+            (`reflectIDE` ideR) $ modifyIDE_ (\ide -> ide {autoURI = Just uri})
+
+        cid5 <- on webView loadCommitted $ \ frame -> do
+            mbUri <- webFrameGetUri frame
+            valueUri <- getValueUri
+            case mbUri of
+                Just uri | uri /= valueUri -> do
+                    entrySetText uriEntry uri
+                    (`reflectIDE` ideR) $ modifyIDE_ (\ide -> ide {autoURI = Just uri})
+                Just _ -> do
+                    (`reflectIDE` ideR) $ modifyIDE_ (\ide -> ide {autoURI = Nothing})
+                Nothing  -> return ()
+
+        cid6 <- uriEntry `after` focusInEvent $ do
+            liftIO $ reflectIDE (makeActive out) ideR
+            return True
+
+        return (Just out, [ConnectC cid1, ConnectC cid2, ConnectC cid3, ConnectC cid4, ConnectC cid5, ConnectC cid6])
 #else
         return (Just out, [])
 #endif
@@ -155,22 +185,28 @@ getOutputPane :: Maybe PanePath -> IDEM IDEOutput
 getOutputPane Nothing    = forceGetPane (Right "*Out")
 getOutputPane (Just pp)  = forceGetPane (Left pp)
 
-setOutput :: String -> IDEAction
-setOutput str = do
+getValueUri :: IO String
+getValueUri = do
+    dataDir <- leksahOrPackageDir "pretty-show" getDataDir
+    return $ "file://"
+        ++ (case dataDir of
+                ('/':_) -> dataDir
+                _       -> '/':dataDir)
+        ++ "/value.html"
+
+setOutput :: String -> String -> IDEAction
+setOutput command str = do
 #ifdef WEBKITGTK
     out <- getOutputPane Nothing
     liftIO $ do
-        dataDir <- leksahOrPackageDir "pretty-show" getDataDir
+        entrySetText (uriEntry out) (show command)
+        uri <- getValueUri
         alwaysHtml <- readIORef $ alwaysHtmlRef out
         let view = webView out
             html = case (alwaysHtml, parseValue str) of
                         (False, Just value) -> valToHtmlPage defaultHtmlOpts value
                         _                   -> str
-        webViewLoadString view html Nothing Nothing ("file://"
-            ++ (case dataDir of
-                    ('/':_) -> dataDir
-                    _       -> '/':dataDir)
-            ++ "/value.html")
+        webViewLoadString view html Nothing Nothing uri
 #else
     return ()
 #endif
@@ -178,9 +214,10 @@ setOutput str = do
 loadOutputUri :: FilePath -> IDEAction
 loadOutputUri uri = do
 #ifdef WEBKITGTK
-    doc <- getOutputPane Nothing
-    let view = webView doc
+    out <- getOutputPane Nothing
+    let view = webView out
     liftIO $ do
+        entrySetText (uriEntry out) uri
         currentUri <- webViewGetUri view
         if Just uri == currentUri
             then webViewReload view

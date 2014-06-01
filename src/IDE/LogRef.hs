@@ -455,13 +455,14 @@ logOutputDefault = do
     defaultLogLaunch <- lift $ getDefaultLogLaunch
     logOutput defaultLogLaunch
 
-logOutputPane :: IORef [Text] -> C.Sink ToolOutput IDEM ()
-logOutputPane buffer = do
+logOutputPane :: String -> IORef [Text] -> C.Sink ToolOutput IDEM ()
+logOutputPane command buffer = do
     defaultLogLaunch <- lift $ getDefaultLogLaunch
     result <- catMaybes <$> logOutputLines defaultLogLaunch paneLineLogger
     when (not $ null result) $ do
         new <- liftIO . atomicModifyIORef buffer $ \x -> let new = x ++ result in (new, new)
-        lift . postSyncIDE . setOutput $ T.unpack $ T.unlines new
+        mbURI <- lift $ readIDE autoURI
+        unless (isJust mbURI) . lift . postSyncIDE . setOutput command $ T.unpack $ T.unlines new
 
 logOutputForBuild :: IDEPackage
                   -> Bool
