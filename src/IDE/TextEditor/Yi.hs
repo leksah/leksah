@@ -47,7 +47,7 @@ import Yi
        (moveToColB, gotoLn, atSol, atEof, atSof, curCol, curLn, readLnB,
         readCharB, nextWordB, moveToEol, rightB, rightN, nextPointB,
         unitWord, atBoundaryB, moveToSol, prevWordB, leftB, readB,
-        doUntilB_, prevPointB, Mode, modifyMode, insertingA, getA, undoB,
+        doUntilB_, prevPointB, Mode, modifyMode, insertingA, undoB,
         markSavedB, setSelectRegionB, redoB, setMarkPointB, insertNAt,
         regionIsEmpty, regionEnd, regionStart, selMark, isUnchangedBuffer,
         Point(..), MarkValue(..), lineOf, getMarkPointB, pointOfLineColB,
@@ -80,6 +80,7 @@ import Control.Monad.Reader.Class (MonadReader(..))
 import Graphics.UI.Editor.Basics (Connection(..))
 import Control.Monad.Trans.Class (MonadTrans(..))
 import System.Glib.Signals (on, after)
+import Control.Lens (use)
 #endif
 
 data Yi = Yi deriving( Typeable, Show )
@@ -210,7 +211,7 @@ instance TextEditor Yi where
 #endif
     getIterAtLocation (YiView View{viewFBufRef = b}) x y = return $ mkYiIter' b $ Point 0 -- TODO
     getIterLocation (YiView v) (YiIter i) = return $ Rectangle 0 0 0 0 -- TODO
-    getOverwrite (YiView View{viewFBufRef = b}) = withYiBuffer' b $ not <$> getA insertingA
+    getOverwrite (YiView View{viewFBufRef = b}) = withYiBuffer' b $ not <$> use insertingA
     getScrolledWindow (YiView v) = return $ scrollWin v
     getEditorWidget (YiView v) = return $ castToWidget $ drawArea v
     grabFocus (YiView View{drawArea = da}) = liftIO $ widgetGrabFocus da

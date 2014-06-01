@@ -20,8 +20,6 @@ module IDE.YiConfig (
 #ifdef LEKSAH_WITH_YI
 
 import Data.List (reverse, isPrefixOf)
-import Yi.Prelude
-import Prelude ()
 
 import Yi
 import Yi.Keymap.Vim
@@ -30,6 +28,7 @@ import qualified Yi.UI.Pango
 import Yi.UI.Pango.Control
 
 import Control.Monad (replicateM_)
+import Control.Applicative (Alternative(..))
 
 start yiConfig f =
     startControl yiConfig $ do
@@ -56,10 +55,7 @@ defaultYiConfig = defaultConfig
         startFrontEnd = Yi.UI.Pango.start,
         defaultKm = mkKeymap extendedVimKeymap,
         modeTable = fmap (onMode $ noHaskellAnnots . prefIndent) (modeTable defaultConfig),
-        configUI = (configUI defaultConfig)
-            {
-                configTheme = defaultLightTheme
-            }
+        configUI = configUI defaultConfig
     }
 
 extendedVimKeymap = defKeymap `override` \super self -> super
