@@ -137,7 +137,7 @@ instance RecoverablePane IDEGrep GrepState IDEM where
         treeViewAppendColumn treeView col3
         cellLayoutPackStart col3 renderer3 True
         cellLayoutSetAttributes col3 renderer3 grepStore
-            $ \row -> [ cellText := context row]
+            $ \row -> [ cellText := take 2048 $ context row]
 
 
         treeViewSetHeadersVisible treeView True
