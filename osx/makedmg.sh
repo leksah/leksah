@@ -58,5 +58,5 @@ LEKSAH_DMG="$LEKSAH_X_X_X_X_GHC_X_X_X.dmg"
 if test -e "$LEKSAH_DMG"; then
    rm "$LEKSAH_DMG"
 fi
-hdiutil create -size 300m -srcfolder "Leksah" "$LEKSAH_DMG" || exit
+hdiutil create -size 400m -srcfolder "Leksah" "$LEKSAH_DMG" || exit
 
