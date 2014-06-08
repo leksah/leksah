@@ -428,7 +428,7 @@ buildSteps runTests = do
     debug <- isJust <$> readIDE debugState
     return $ case (runTests, debug) of
                 (True, True)   -> [MoBuild,MoDocu]
-                (True, False)  -> [MoBuild,MoDocu,MoTest,MoCopy,MoRegister]
+                (True, False)  -> [MoBuild,MoDocu,MoCopy,MoRegister]
                 (False, True)  -> [MoBuild]
                 (False, False) -> [MoBuild,MoCopy,MoRegister]
 

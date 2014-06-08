@@ -88,7 +88,7 @@ import IDE.Utils.GUIUtils
 import IDE.Pane.Log
 import IDE.Pane.PackageEditor
 import IDE.Pane.SourceBuffer
-import IDE.Pane.PackageFlags (readFlags)
+import IDE.Pane.PackageFlags (writeFlags, readFlags)
 import Distribution.Text (display)
 import IDE.Utils.FileUtils(getConfigFilePathForLoad)
 import IDE.LogRef
@@ -122,6 +122,7 @@ import System.Log.Logger (debugM)
 import System.Process.Vado (getMountPoint, vado, readSettings)
 import qualified Data.Text as T (pack, unpack, isInfixOf)
 import IDE.Utils.ExternalTool (runExternalTool', runExternalTool, isRunning, interruptBuild)
+import Text.PrinterParser (writeFields)
 
 -- | Get the last item
 sinkLast = CL.fold (\_ a -> Just a) Nothing
@@ -192,15 +193,16 @@ packageConfig' package continuation = do
                     continuation False
                     return()
 
-runCabalBuild :: Bool -> Bool -> Bool -> IDEPackage -> Bool -> (Bool -> IDEAction) -> IDEAction
-runCabalBuild backgroundBuild jumpToWarnings withoutLinking package shallConfigure continuation = do
+runCabalBuild :: Bool -> Bool -> Bool -> Bool -> IDEPackage -> Bool -> (Bool -> IDEAction) -> IDEAction
+runCabalBuild backgroundBuild runTests jumpToWarnings withoutLinking package shallConfigure continuation = do
     prefs <- readIDE prefs
     let dir =  ipdBuildDir package
-    let args = (["build"] ++
-                if backgroundBuild && withoutLinking
+    let args = ([if runTests then "test" else "build"]
+                ++ (if backgroundBuild && withoutLinking
                     then ["--with-ld=false"]
-                    else []
-                        ++ ipdBuildFlags package)
+                    else [])
+                ++ ipdBuildFlags package
+                ++ (if runTests then ipdTestFlags package else []))
     runExternalTool' (__ "Building") (cabalCommand prefs) args dir $ do
         (mbLastOutput, (isConfigErr, _)) <- CU.zipSinks sinkLast $ CU.zipSinks isConfigError $
             logOutputForBuild package backgroundBuild jumpToWarnings
@@ -209,7 +211,7 @@ runCabalBuild backgroundBuild jumpToWarnings withoutLinking package shallConfigu
             if shallConfigure && isConfigErr
                 then
                     packageConfig' package (\ b ->
-                        when b $ runCabalBuild backgroundBuild jumpToWarnings withoutLinking package False continuation)
+                        when b $ runCabalBuild backgroundBuild runTests jumpToWarnings withoutLinking package False continuation)
                 else do
                     continuation (mbLastOutput == Just (ToolExit ExitSuccess))
                     return ()
@@ -223,8 +225,8 @@ isConfigError = CL.foldM (\a b -> return $ a || isCErr b) False
     str2 = T.pack (__ "please re-configure")
     str3 = T.pack (__ "cannot satisfy -package-id")
 
-buildPackage :: Bool -> Bool -> Bool -> IDEPackage -> (Bool -> IDEAction) -> IDEAction
-buildPackage backgroundBuild jumpToWarnings withoutLinking package continuation = catchIDE (do
+buildPackage :: Bool -> Bool -> Bool -> Bool -> IDEPackage -> (Bool -> IDEAction) -> IDEAction
+buildPackage backgroundBuild runTests jumpToWarnings withoutLinking package continuation = catchIDE (do
     ideR      <- ask
     prefs     <- readIDE prefs
     maybeDebug <- readIDE debugState
@@ -237,12 +239,12 @@ buildPackage backgroundBuild jumpToWarnings withoutLinking package continuation 
                     when (not backgroundBuild) $ liftIO $ do
                         timeoutAddFull (do
                             reflectIDE (do
-                                buildPackage backgroundBuild jumpToWarnings withoutLinking
+                                buildPackage backgroundBuild runTests jumpToWarnings withoutLinking
                                                 package continuation
                                 return False) ideR
                             return False) priorityDefaultIdle 1000
                         return ()
-                else runCabalBuild backgroundBuild jumpToWarnings withoutLinking package True $ \f -> do
+                else runCabalBuild backgroundBuild runTests jumpToWarnings withoutLinking package True $ \f -> do
                         when f $ do
                             mbURI <- readIDE autoURI
                             case mbURI of
@@ -356,71 +358,116 @@ packageCopy' package continuation = do
         (\(e :: SomeException) -> putStrLn (show e))
 
 packageRun :: PackageAction
-packageRun = do
-    package <- ask
-    liftIDE $ catchIDE (do
-        ideR        <- ask
-        maybeDebug   <- readIDE debugState
-        pd <- liftIO $ readPackageDescription normal (ipdCabalFile package) >>= return . flattenPackageDescription
-        mbExe <- readIDE activeExe
-        let exe = take 1 . filter (isActiveExe mbExe) $ executables pd
-        let defaultLogName = display . pkgName $ ipdPackageId package
-            logName = fromMaybe defaultLogName . listToMaybe $ map exeName exe
-        (logLaunch,logName) <- buildLogLaunchByName logName
-        case maybeDebug of
-            Nothing -> do
-                let dir = ipdBuildDir package
-                IDE.Package.runPackage (addLogLaunchData logName logLaunch)
-                                       (printf (__ "Running %s") logName)
-                                       "cabal"
-                                       (concat [["run"]
-                                            , map exeName exe
-                                            , ["--"]
-                                            , ipdExeFlags package])
-                                       dir
-                                       (logOutput logLaunch)
-            Just debug -> do
-                -- TODO check debug package matches active package
-                runDebug (do
-                    case exe of
-                        [Executable name mainFilePath _] -> do
-                            executeDebugCommand (":module *" ++ (map (\c -> if c == '/' then '.' else c) (takeWhile (/= '.') mainFilePath))) (logOutput logLaunch)
-                        _ -> return ()
-                    executeDebugCommand (":main " ++ (unwords (ipdExeFlags package))) (logOutput logLaunch))
-                    debug)
-        (\(e :: SomeException) -> putStrLn (show e))
+packageRun = ask >>= (liftIDE . packageRun' True)
+
+packageRun' :: Bool -> IDEPackage -> IDEAction
+packageRun' addFlagIfMissing package = do
+    if addFlagIfMissing && "--ghcjs" `elem` ipdConfigFlags package && not ("--ghcjs-option=--native-executables" `elem` ipdConfigFlags package)
+        then do
+            window <- liftIDE $ getMainWindow
+            resp <- liftIO $ do
+                md <- messageDialogNew (Just window) [] MessageQuestion ButtonsCancel
+                        (__ "Package is configured to use GHCJS.  Would you like to add --ghcjs-option=--native-executables to the configure flags and rebuild?")
+                dialogAddButton md (__ "Add _GHCJS Native Executables") (ResponseUser 1)
+                dialogSetDefaultResponse md (ResponseUser 1)
+                set md [ windowWindowPosition := WinPosCenterOnParent ]
+                resp <- dialogRun md
+                widgetDestroy md
+                return resp
+            case resp of
+                ResponseUser 1 -> do
+                    let packWithNewFlags = package { ipdConfigFlags = ["--ghcjs-option=--native-executables"] ++ ipdConfigFlags package }
+                    changePackage packWithNewFlags
+                    liftIO $ writeFlags (dropExtension (ipdCabalFile packWithNewFlags) ++ leksahFlagFileExtension) packWithNewFlags
+                    packageConfig' packWithNewFlags $ \ ok -> when ok $ do
+                        packageRun' False packWithNewFlags
+                _  -> return ()
+        else liftIDE $ catchIDE (do
+            ideR        <- ask
+            maybeDebug   <- readIDE debugState
+            pd <- liftIO $ readPackageDescription normal (ipdCabalFile package) >>= return . flattenPackageDescription
+            mbExe <- readIDE activeExe
+            let exe = take 1 . filter (isActiveExe mbExe) $ executables pd
+            let defaultLogName = display . pkgName $ ipdPackageId package
+                logName = fromMaybe defaultLogName . listToMaybe $ map exeName exe
+            (logLaunch,logName) <- buildLogLaunchByName logName
+            case maybeDebug of
+                Nothing -> do
+                    let dir = ipdBuildDir package
+                    IDE.Package.runPackage (addLogLaunchData logName logLaunch)
+                                           (printf (__ "Running %s") logName)
+                                           "cabal"
+                                           (concat [["run"]
+                                                , ipdBuildFlags package
+                                                , map exeName exe
+                                                , ["--"]
+                                                , ipdExeFlags package])
+                                           dir
+                                           (logOutput logLaunch)
+                Just debug -> do
+                    -- TODO check debug package matches active package
+                    runDebug (do
+                        case exe of
+                            [Executable name mainFilePath _] -> do
+                                executeDebugCommand (":module *" ++ (map (\c -> if c == '/' then '.' else c) (takeWhile (/= '.') mainFilePath))) (logOutput logLaunch)
+                            _ -> return ()
+                        executeDebugCommand (":main " ++ (unwords (ipdExeFlags package))) (logOutput logLaunch))
+                        debug)
+            (\(e :: SomeException) -> putStrLn (show e))
   where
     isActiveExe selected (Executable name _ _) = selected == Just name
 
 packageRunJavaScript :: PackageAction
-packageRunJavaScript = do
-    package <- ask
-    liftIDE $ catchIDE (do
-        ideR        <- ask
-        maybeDebug   <- readIDE debugState
-        pd <- liftIO $ readPackageDescription normal (ipdCabalFile package) >>= return . flattenPackageDescription
-        mbExe <- readIDE activeExe
-        let exe = take 1 . filter (isActiveExe mbExe) $ executables pd
-        let defaultLogName = display . pkgName $ ipdPackageId package
-            logName = fromMaybe defaultLogName . listToMaybe $ map exeName exe
-        (logLaunch,logName) <- buildLogLaunchByName logName
-        let dir = ipdBuildDir package
-        prefs <- readIDE prefs
-        case exe ++ executables pd of
-            (Executable name _ _ : _) -> liftIDE $ do
-                let path = "dist/build" </> name </> name <.> "jsexe" </> "index.html"
-                    dir = ipdBuildDir package
-#ifdef WEBKITGTK
-                loadOutputUri ("file:///" ++ dir </> path)
-                getOutputPane Nothing  >>= \ p -> displayPane p False
-#else
-                openBrowser path
-#endif
-              `catchIDE`
-                (\(e :: SomeException) -> putStrLn (show e))
+packageRunJavaScript = ask >>= (liftIDE . packageRunJavaScript' True)
 
-            _ -> return ())
-        (\(e :: SomeException) -> putStrLn (show e))
+packageRunJavaScript' :: Bool -> IDEPackage -> IDEAction
+packageRunJavaScript' addFlagIfMissing package = do
+    if addFlagIfMissing && not ("--ghcjs" `elem` ipdConfigFlags package)
+        then do
+            window <- liftIDE $ getMainWindow
+            resp <- liftIO $ do
+                md <- messageDialogNew (Just window) [] MessageQuestion ButtonsCancel
+                        (__ "Package is not configured to use GHCJS.  Would you like to add --ghcjs to the configure flags and rebuild?")
+                dialogAddButton md (__ "Use _GHCJS") (ResponseUser 1)
+                dialogSetDefaultResponse md (ResponseUser 1)
+                set md [ windowWindowPosition := WinPosCenterOnParent ]
+                resp <- dialogRun md
+                widgetDestroy md
+                return resp
+            case resp of
+                ResponseUser 1 -> do
+                    let packWithNewFlags = package { ipdConfigFlags = ["--ghcjs"] ++ ipdConfigFlags package }
+                    changePackage packWithNewFlags
+                    liftIO $ writeFlags (dropExtension (ipdCabalFile packWithNewFlags) ++ leksahFlagFileExtension) packWithNewFlags
+                    packageConfig' packWithNewFlags $ \ ok -> when ok $ do
+                        packageRunJavaScript' False packWithNewFlags
+                _  -> return ()
+        else liftIDE $ buildPackage False False True False package $ \ ok -> when ok $ liftIDE $ catchIDE (do
+                ideR        <- ask
+                maybeDebug   <- readIDE debugState
+                pd <- liftIO $ readPackageDescription normal (ipdCabalFile package) >>= return . flattenPackageDescription
+                mbExe <- readIDE activeExe
+                let exe = take 1 . filter (isActiveExe mbExe) $ executables pd
+                let defaultLogName = display . pkgName $ ipdPackageId package
+                    logName = fromMaybe defaultLogName . listToMaybe $ map exeName exe
+                (logLaunch,logName) <- buildLogLaunchByName logName
+                let dir = ipdBuildDir package
+                prefs <- readIDE prefs
+                case exe ++ executables pd of
+                    (Executable name _ _ : _) -> liftIDE $ do
+                        let path = "dist/build" </> name </> name <.> "jsexe" </> "index.html"
+                            dir = ipdBuildDir package
+#ifdef WEBKITGTK
+                        loadOutputUri ("file:///" ++ dir </> path)
+                        getOutputPane Nothing  >>= \ p -> displayPane p False
+#else
+                        openBrowser path
+#endif
+                      `catchIDE`
+                        (\(e :: SomeException) -> putStrLn (show e))
+
+                    _ -> return ())
+                (\(e :: SomeException) -> putStrLn (show e))
   where
     isActiveExe selected (Executable name _ _) = selected == Just name
 
@@ -448,10 +495,10 @@ packageRegister' package continuation =
 packageTest :: PackageAction
 packageTest = do
     package <- ask
-    liftIDE $ packageTest' package (\ _ -> return ())
+    liftIDE $ packageTest' package True (\ _ -> return ())
 
-packageTest' :: IDEPackage -> (Bool -> IDEAction) -> IDEAction
-packageTest' package continuation =
+packageTest' :: IDEPackage -> Bool -> (Bool -> IDEAction) -> IDEAction
+packageTest' package shallConfigure continuation =
     if "--enable-tests" `elem` ipdConfigFlags package
         then do
           logLaunch <- getDefaultLogLaunch
@@ -460,9 +507,18 @@ packageTest' package continuation =
             prefs <- readIDE prefs
             let dir = ipdBuildDir package
             runExternalTool' (__ "Testing") (cabalCommand prefs) (["test"]
-                ++ (ipdTestFlags package)) dir $ do
-                    (mbLastOutput, _) <- CU.zipSinks sinkLast (logOutput logLaunch)
-                    lift $ continuation (mbLastOutput == Just (ToolExit ExitSuccess)))
+                ++ ipdBuildFlags package ++ ipdTestFlags package) dir $ do
+                    (mbLastOutput, (isConfigErr, _)) <- CU.zipSinks sinkLast $ CU.zipSinks isConfigError $
+                        logOutputForBuild package False True
+                    lift $ do
+                        errs <- readIDE errorRefs
+                        if shallConfigure && isConfigErr
+                            then
+                                packageConfig' package (\ b ->
+                                    when b $ packageTest' package shallConfigure continuation)
+                            else do
+                                continuation (mbLastOutput == Just (ToolExit ExitSuccess))
+                                return ())
             (\(e :: SomeException) -> putStrLn (show e))
         else continuation True
 
@@ -722,7 +778,7 @@ debugStart = do
                             -- Lets build to make sure the binaries are up to date
                             mbPackage   <- readIDE activePack
                             case mbPackage of
-                                Just package -> runCabalBuild True False False package True (\ _ -> return ())
+                                Just package -> runCabalBuild True False False False package True (\ _ -> return ())
                                 Nothing -> return ()
                 return ()
             _ -> do
