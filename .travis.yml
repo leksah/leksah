@@ -7,7 +7,7 @@ env:
 before_install:
   - sudo add-apt-repository -y ppa:hvr/ghc
   - sudo apt-get update -qq
-  - sudo apt-get --no-install-recommends install libgtksourceview-3.0-dev
+  - sudo apt-get --no-install-recommends install libgtksourceview-3.0-dev libwebkitgtk-3.0-dev
   - sudo apt-get install cabal-install-1.20 ghc-$GHCVER
   - export PATH=$HOME/.cabal/bin:/opt/ghc/$GHCVER/bin:/opt/cabal/1.20/bin:$PATH
   - cabal update
