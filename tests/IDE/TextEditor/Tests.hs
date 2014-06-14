@@ -137,7 +137,9 @@ allEditors :: (forall editor. TextEditor editor
            -> IO Bool
 allEditors test = allM id
     [ doTest GtkSourceView
+#ifdef MIN_VERSION_yi
     , doTest Yi
+#endif
     , doTest CodeMirror]
   where
     doTest :: forall editor. (TextEditor editor, Show editor) => editor -> IO Bool
