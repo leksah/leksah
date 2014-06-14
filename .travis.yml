@@ -18,11 +18,6 @@ before_install:
     else
       sudo apt-get install happy alex
     fi
-  - mkdir vendor
-  - cd vendor
-  - git clone https://github.com/leksah/ltk.git
-  - git clone https://github.com/leksah/leksah-server.git
-  - cd ..
 
 install:
   - cabal install Cabal
