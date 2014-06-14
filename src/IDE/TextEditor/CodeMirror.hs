@@ -33,6 +33,8 @@ module IDE.TextEditor.CodeMirror (
 ) where
 
 import Data.Typeable (Typeable)
+import Graphics.UI.Gtk (scrolledWindowSetShadowType)
+import Graphics.UI.Gtk.General.Enums (ShadowType(..))
 
 #ifdef LEKSAH_WITH_CODE_MIRROR
 import Control.Monad (unless)
@@ -181,6 +183,7 @@ newCMBuffer mbFilename contents = do
     liftIO $ do
         debugM "leksah" "newCMBuffer"
         scrolledWindow <- scrolledWindowNew Nothing Nothing
+        scrolledWindowSetShadowType scrolledWindow ShadowIn
         cmWebView <- webViewNew
         containerAdd scrolledWindow cmWebView
         dataDir <- liftIO $ leksahOrPackageDir "ghcjs-codemirror" CM.getDataDir

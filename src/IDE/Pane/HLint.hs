@@ -115,6 +115,7 @@ instance RecoverablePane IDEHLint HLintState IDEM where
         treeSelectionSetMode sel SelectionSingle
 
         scrolledView <- scrolledWindowNew Nothing Nothing
+        scrolledWindowSetShadowType scrolledView ShadowIn
         containerAdd scrolledView treeView
         scrolledWindowSetPolicy scrolledView PolicyAutomatic PolicyAutomatic
 

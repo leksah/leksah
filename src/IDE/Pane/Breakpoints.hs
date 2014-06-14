@@ -94,6 +94,7 @@ instance RecoverablePane IDEBreakpoints BreakpointsState IDEM where
         selB <- treeViewGetSelection treeView
         treeSelectionSetMode selB SelectionSingle
         scrolledView <- scrolledWindowNew Nothing Nothing
+        scrolledWindowSetShadowType scrolledView ShadowIn
         containerAdd scrolledView treeView
         scrolledWindowSetPolicy scrolledView PolicyAutomatic PolicyAutomatic
         let pane = IDEBreakpoints scrolledView treeView breakpoints

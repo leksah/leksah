@@ -140,6 +140,7 @@ builder' pp nb windows = reifyIDE $  \ideR -> do
     treeSelectionSetMode sel SelectionSingle
 
     scrolledView <- scrolledWindowNew Nothing Nothing
+    scrolledWindowSetShadowType scrolledView ShadowIn
     containerAdd scrolledView treeView
     scrolledWindowSetPolicy scrolledView PolicyAutomatic PolicyAutomatic
 

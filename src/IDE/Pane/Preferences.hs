@@ -27,9 +27,10 @@ module IDE.Pane.Preferences (
 ) where
 
 import Graphics.UI.Gtk
-       (widgetDestroy, dialogRun, windowWindowPosition, dialogAddButton,
-        messageDialogNew, labelSetMarkup, labelNew, widgetSetSensitive,
-        cellText, widgetModifyFont, on, buttonActivated, boxPackEnd, boxPackStart,
+       (buttonBoxSetLayout, boxSetSpacing, widgetDestroy, dialogRun,
+        windowWindowPosition, dialogAddButton, messageDialogNew,
+        labelSetMarkup, labelNew, widgetSetSensitive, cellText,
+        widgetModifyFont, on, buttonActivated, boxPackEnd, boxPackStart,
         buttonNewFromStock, hButtonBoxNew, vBoxNew, castToWidget, VBox,
         ShadowType(..), Packing(..), fontDescriptionFromString, AttrOp(..),
         FileChooserAction(..), Color(..), ResponseId(..))
@@ -70,7 +71,8 @@ import Data.Maybe (fromMaybe, isJust)
 import Graphics.UI.Gtk.Windows.MessageDialog
        (ButtonsType(..), MessageType(..))
 import System.Glib.Attributes (set)
-import Graphics.UI.Gtk.General.Enums (WindowPosition(..))
+import Graphics.UI.Gtk.General.Enums
+       (ButtonBoxStyle(..), WindowPosition(..))
 import Control.Monad.IO.Class (MonadIO(..))
 import Control.Monad (void, forM_, when)
 import System.FilePath ((</>))
@@ -111,6 +113,8 @@ instance RecoverablePane IDEPrefs PrefsState IDEM where
         reifyIDE $  \ ideR -> do
             vb      <-  vBoxNew False 0
             bb      <-  hButtonBoxNew
+            boxSetSpacing bb 6
+            buttonBoxSetLayout bb ButtonboxSpread
             apply   <-  buttonNewFromStock "gtk-apply"
             restore <-  buttonNewFromStock "Restore"
             closeB  <-  buttonNewFromStock "gtk-cancel"
@@ -122,10 +126,10 @@ instance RecoverablePane IDEPrefs PrefsState IDEM where
             boxPackEnd bb save PackNatural 0
             (widget,injb,ext,notifier) <-  buildEditor
                                 (extractFieldDescription $ prefsDescription configDir packageInfos) prefs
-            boxPackStart vb widget PackGrow 7
+            boxPackStart vb widget PackGrow 0
             label   <-  labelNew Nothing
             boxPackStart vb label PackNatural 0
-            boxPackEnd vb bb PackNatural 7
+            boxPackEnd vb bb PackNatural 5
             let prefsPane = IDEPrefs vb
             on apply buttonActivated $ do
                 mbNewPrefs <- extract prefs [ext]

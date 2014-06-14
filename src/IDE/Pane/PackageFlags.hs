@@ -88,14 +88,17 @@ builder' idePackage flagsDesc flatflagsDesc pp nb window ideR = do
     vb                  <-  vBoxNew False 0
     let flagsPane = IDEFlags vb
     bb                  <-  hButtonBoxNew
+    boxSetSpacing bb 6
+    buttonBoxSetLayout bb ButtonboxSpread
     saveB               <-  buttonNewFromStock "gtk-save"
     widgetSetSensitive saveB False
     cancelB             <-  buttonNewFromStock "gtk-cancel"
-    boxPackStart bb cancelB PackGrow 0
-    boxPackStart bb saveB PackGrow 0
+    boxPackStart bb cancelB PackNatural 0
+    boxPackStart bb saveB PackNatural 0
     (widget,injb,ext,notifier)
                         <-  buildEditor flagsDesc idePackage
     sw <- scrolledWindowNew Nothing Nothing
+    scrolledWindowSetShadowType sw ShadowIn
     scrolledWindowAddWithViewport sw widget
     scrolledWindowSetPolicy sw PolicyAutomatic PolicyAutomatic
     on saveB buttonActivated (do
@@ -122,8 +125,8 @@ builder' idePackage flagsDesc flatflagsDesc pp nb window ideR = do
         widgetSetSensitive saveB hasChanged
         return (e{gtkReturn=False}))
 
-    boxPackStart vb sw PackGrow 7
-    boxPackEnd vb bb PackNatural 7
+    boxPackStart vb sw PackGrow 0
+    boxPackEnd vb bb PackNatural 6
     return (Just flagsPane,[])
 
 getFlags :: Maybe PanePath -> IDEM IDEFlags

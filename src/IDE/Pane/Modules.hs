@@ -254,16 +254,20 @@ instance RecoverablePane IDEModules ModulesState IDEM where
             treeViewSetSearchEqualFunc descrView (Just (descrViewSearch descrView descrStore))
             pane'           <-  hPanedNew
             sw              <-  scrolledWindowNew Nothing Nothing
+            scrolledWindowSetShadowType sw ShadowIn
             containerAdd sw treeView
             scrolledWindowSetPolicy sw PolicyAutomatic PolicyAutomatic
             sw2             <-  scrolledWindowNew Nothing Nothing
+            scrolledWindowSetShadowType sw2 ShadowIn
             containerAdd sw2 descrView
             scrolledWindowSetPolicy sw2 PolicyAutomatic PolicyAutomatic
             panedAdd1 pane' sw
             panedAdd2 pane' sw2
             (Rectangle _ _ x y) <- liftIO $ widgetGetAllocation nb
             panedSetPosition pane' (max 200 (x `quot` 2))
-            box             <-  hBoxNew True 2
+            box             <-  hButtonBoxNew
+            boxSetSpacing box 2
+            buttonBoxSetLayout box ButtonboxSpread
             rb1             <-  radioButtonNewWithLabel (__ "Package")
             rb2             <-  radioButtonNewWithLabelFromWidget rb1 (__ "Workspace")
             rb3             <-  radioButtonNewWithLabelFromWidget rb1 (__ "System")
@@ -271,16 +275,16 @@ instance RecoverablePane IDEModules ModulesState IDEM where
             cb2             <-  checkButtonNewWithLabel (__ "Imports")
             cb              <-  checkButtonNewWithLabel (__ "Blacklist")
 
-            boxPackStart box rb1 PackGrow 2
-            boxPackStart box rb2 PackGrow 2
-            boxPackStart box rb3 PackGrow 2
-            boxPackEnd box cb PackNatural 2
-            boxPackEnd box cb2 PackNatural 2
+            boxPackStart box rb1 PackGrow 0
+            boxPackStart box rb2 PackGrow 0
+            boxPackStart box rb3 PackGrow 0
+            boxPackEnd box cb PackNatural 0
+            boxPackEnd box cb2 PackNatural 0
 
 
-            boxOuter        <-  vBoxNew False 2
+            boxOuter        <-  vBoxNew False 0
             boxPackStart boxOuter box PackNatural 2
-            boxPackStart boxOuter pane' PackGrow 2
+            boxPackStart boxOuter pane' PackGrow 0
             oldState <- liftIO $ newIORef $ SelectionState Nothing Nothing SystemScope False
             expanderState <- liftIO $ newIORef emptyExpansion
             scopeRef <- newIORef (SystemScope,True)
@@ -1163,14 +1167,16 @@ addModuleDialog parent modString sourceRoots hasLib exesTests = do
     (widget,inj,ext,_)         <-   buildEditor (moduleFields sourceRoots hasLib exesTests)
                                         (AddModule modString (head sourceRoots) (Just False) Set.empty)
     bb      <-  hButtonBoxNew
+    boxSetSpacing bb 6
+    buttonBoxSetLayout bb ButtonboxSpread
     closeB  <-  buttonNewFromStock "gtk-cancel"
     save    <-  buttonNewFromStock "gtk-ok"
     boxPackEnd bb closeB PackNatural 0
     boxPackEnd bb save PackNatural 0
     on save buttonActivated (dialogResponse dia ResponseOk)
     on closeB buttonActivated (dialogResponse dia ResponseCancel)
-    boxPackStart (castToBox upper) widget PackGrow 7
-    boxPackStart (castToBox lower) bb PackNatural 7
+    boxPackStart (castToBox upper) widget PackGrow 0
+    boxPackStart (castToBox lower) bb PackNatural 5
     set save [widgetCanDefault := True]
     widgetGrabDefault save
     widgetShowAll dia

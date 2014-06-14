@@ -104,6 +104,7 @@ builder' pp nb windows = reifyIDE $ \ ideR -> do
     selB <- treeViewGetSelection treeView
     treeSelectionSetMode selB SelectionSingle
     scrolledView <- scrolledWindowNew Nothing Nothing
+    scrolledWindowSetShadowType scrolledView ShadowIn
     containerAdd scrolledView treeView
     scrolledWindowSetPolicy scrolledView PolicyAutomatic PolicyAutomatic
     let pane = IDEErrors scrolledView treeView errorStore

@@ -114,6 +114,7 @@ instance RecoverablePane IDEWorkspace WorkspaceState IDEM where
         treeSelectionSetMode sel SelectionSingle
 
         sw <- scrolledWindowNew Nothing Nothing
+        scrolledWindowSetShadowType sw ShadowIn
         containerAdd sw treeView
         scrolledWindowSetPolicy sw PolicyAutomatic PolicyAutomatic
         box             <-  vBoxNew False 2

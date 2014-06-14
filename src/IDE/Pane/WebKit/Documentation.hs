@@ -29,14 +29,15 @@ module IDE.Pane.WebKit.Documentation (
 import Graphics.UI.Frame.Panes
        (RecoverablePane(..), PanePath, RecoverablePane, Pane(..))
 import Graphics.UI.Gtk
-       (scrolledWindowSetPolicy, scrolledWindowNew, castToWidget,
-        ScrolledWindow)
+       (scrolledWindowSetShadowType, scrolledWindowSetPolicy,
+        scrolledWindowNew, castToWidget, ScrolledWindow)
 import Data.Typeable (Typeable)
 import IDE.Core.Types (IDEAction, IDEM)
 import Control.Monad.IO.Class (MonadIO(..))
 import Graphics.UI.Frame.ViewFrame (getNotebook)
 import IDE.Core.State (reifyIDE)
-import Graphics.UI.Gtk.General.Enums (PolicyType(..))
+import Graphics.UI.Gtk.General.Enums
+       (ShadowType(..), PolicyType(..))
 
 #ifdef WEBKITGTK
 import Graphics.UI.Gtk
@@ -100,6 +101,7 @@ instance RecoverablePane IDEDocumentation DocumentationState IDEM where
         return mbPane
     builder pp nb windows = reifyIDE $ \ ideR -> do
         scrolledView <- scrolledWindowNew Nothing Nothing
+        scrolledWindowSetShadowType scrolledView ShadowIn
 
 #ifdef WEBKITGTK
         webView <- webViewNew

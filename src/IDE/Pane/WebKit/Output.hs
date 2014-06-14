@@ -29,16 +29,18 @@ module IDE.Pane.WebKit.Output (
 import Graphics.UI.Frame.Panes
        (RecoverablePane(..), PanePath, RecoverablePane, Pane(..))
 import Graphics.UI.Gtk
-       (entryGetText, entryActivated, boxPackStart, entrySetText, Entry,
-        VBox, entryNew, vBoxNew, postGUISync, scrolledWindowSetPolicy,
-        scrolledWindowNew, castToWidget, ScrolledWindow)
+       (scrolledWindowSetShadowType, entryGetText, entryActivated,
+        boxPackStart, entrySetText, Entry, VBox, entryNew, vBoxNew,
+        postGUISync, scrolledWindowSetPolicy, scrolledWindowNew,
+        castToWidget, ScrolledWindow)
 import Data.Typeable (Typeable)
 import IDE.Core.Types (IDEAction, IDEM, IDE(..))
 import Control.Monad.IO.Class (MonadIO(..))
 import Graphics.UI.Frame.ViewFrame (getNotebook)
 import IDE.Core.State
        (modifyIDE_, postSyncIDE, reifyIDE, leksahOrPackageDir)
-import Graphics.UI.Gtk.General.Enums (Packing(..), PolicyType(..))
+import Graphics.UI.Gtk.General.Enums
+       (ShadowType(..), Packing(..), PolicyType(..))
 
 #ifdef WEBKITGTK
 import Graphics.UI.Gtk
@@ -117,6 +119,7 @@ instance RecoverablePane IDEOutput OutputState IDEM where
         uriEntry <- entryNew
         entrySetText uriEntry "http://"
         scrolledView <- scrolledWindowNew Nothing Nothing
+        scrolledWindowSetShadowType scrolledView ShadowIn
         boxPackStart vbox uriEntry PackNatural 0
         boxPackStart vbox scrolledView PackGrow 0
 

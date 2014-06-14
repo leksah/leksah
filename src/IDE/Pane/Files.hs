@@ -23,11 +23,12 @@ module IDE.Pane.Files (
 
 import Prelude hiding (catch)
 import Graphics.UI.Gtk
-       (treeSelectionSelectionChanged, treeStoreRemove, treeModelIterNext,
-        treeModelGetRow, treeStoreInsert, treeModelIterNthChild,
-        treeModelGetPath, TreeIter, treeModelGetIter, TreePath,
-        treeSelectionGetSelectedRows, rowActivated, treeStoreGetValue,
-        rowExpanded, on, after, focusInEvent, scrolledWindowSetPolicy, containerAdd,
+       (scrolledWindowSetShadowType, treeSelectionSelectionChanged,
+        treeStoreRemove, treeModelIterNext, treeModelGetRow,
+        treeStoreInsert, treeModelIterNthChild, treeModelGetPath, TreeIter,
+        treeModelGetIter, TreePath, treeSelectionGetSelectedRows,
+        rowActivated, treeStoreGetValue, rowExpanded, on, after,
+        focusInEvent, scrolledWindowSetPolicy, containerAdd,
         scrolledWindowNew, treeSelectionSetMode, treeViewGetSelection,
         treeViewSetHeadersVisible, cellText, cellLayoutSetAttributes,
         cellLayoutPackStart, treeViewAppendColumn,
@@ -56,7 +57,8 @@ import Graphics.UI.Frame.Panes
 import Graphics.UI.Frame.ViewFrame (getNotebook)
 import Graphics.UI.Editor.Basics (Connection(..))
 import Graphics.UI.Gtk.General.Enums
-       (PolicyType(..), SelectionMode(..), TreeViewColumnSizing(..))
+       (ShadowType(..), PolicyType(..), SelectionMode(..),
+        TreeViewColumnSizing(..))
 import System.Glib.Attributes (AttrOp(..))
 import Control.Monad.IO.Class (MonadIO(..))
 import IDE.Utils.GUIUtils (__)
@@ -121,6 +123,7 @@ instance RecoverablePane IDEFiles FilesState IDEM where
         treeSelectionSetMode sel SelectionSingle
 
         scrolledView <- scrolledWindowNew Nothing Nothing
+        scrolledWindowSetShadowType scrolledView ShadowIn
         containerAdd scrolledView treeView
         scrolledWindowSetPolicy scrolledView PolicyAutomatic PolicyAutomatic
 

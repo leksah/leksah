@@ -314,6 +314,7 @@ builder currentInfo pp nb windows ideR = do
 --}
     pane'           <-  hPanedNew
     sw              <-  scrolledWindowNew Nothing Nothing
+    scrolledWindowSetShadowType sw ShadowIn
     containerAdd sw treeView
     scrolledWindowSetPolicy sw PolicyAutomatic PolicyAutomatic
 

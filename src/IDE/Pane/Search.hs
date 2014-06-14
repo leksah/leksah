@@ -23,12 +23,13 @@ module IDE.Pane.Search (
 ) where
 
 import Graphics.UI.Gtk
-       (rowActivated, Menu, menuAttachToWidget, cellTextScaleSet,
-        cellTextScale, listStoreGetValue, treeSelectionGetSelectedRows,
-        widgetShowAll, menuPopup, menuShellAppend, menuItemActivate,
-        menuItemNewWithLabel, menuNew, listStoreAppend, listStoreClear,
-        entrySetText, toggleButtonGetActive, widgetSetSensitivity, vBoxNew,
-        entryNew, scrolledWindowSetPolicy, containerAdd, scrolledWindowNew,
+       (scrolledWindowSetShadowType, rowActivated, Menu,
+        menuAttachToWidget, cellTextScaleSet, cellTextScale,
+        listStoreGetValue, treeSelectionGetSelectedRows, widgetShowAll,
+        menuPopup, menuShellAppend, menuItemActivate, menuItemNewWithLabel,
+        menuNew, listStoreAppend, listStoreClear, entrySetText,
+        toggleButtonGetActive, widgetSetSensitivity, vBoxNew, entryNew,
+        scrolledWindowSetPolicy, containerAdd, scrolledWindowNew,
         treeSelectionSetMode, treeViewGetSelection,
         treeViewSetHeadersVisible, cellPixbufStockId, cellText,
         cellLayoutSetAttributes, cellLayoutPackStart, treeViewAppendColumn,
@@ -39,13 +40,13 @@ import Graphics.UI.Gtk
         checkButtonNewWithLabel, toggleButtonSetActive, ResponseId(..),
         dialogRun, radioButtonNewWithLabelFromWidget,
         radioButtonNewWithLabel, buttonNewFromStock, windowTransientFor,
-        hButtonBoxNew, dialogGetActionArea,
-        widgetGrabDefault, set, get, dialogNew, dialogResponse,
-        widgetHide, buttonSetLabel, widgetCanDefault, hBoxNew,
-        entryGetText, castToWidget, Entry, VBox, ListStore, TreeView,
-        ScrolledWindow, PolicyType(..), SelectionMode(..),
-        TreeViewColumnSizing(..), AttrOp(..), Packing(..), focusInEvent,
-        toggled, buttonPressEvent, keyPressEvent, keyReleaseEvent)
+        hButtonBoxNew, dialogGetActionArea, widgetGrabDefault, set, get,
+        dialogNew, dialogResponse, widgetHide, buttonSetLabel,
+        widgetCanDefault, hBoxNew, entryGetText, castToWidget, Entry, VBox,
+        ListStore, TreeView, ScrolledWindow, PolicyType(..),
+        SelectionMode(..), TreeViewColumnSizing(..), AttrOp(..),
+        Packing(..), focusInEvent, toggled, buttonPressEvent,
+        keyPressEvent, keyReleaseEvent)
 import Graphics.UI.Gtk.Gdk.EventM
 import System.Glib.Signals (on, after)
 import Data.IORef (newIORef, writeIORef, readIORef, IORef(..))
@@ -61,6 +62,7 @@ import Control.Monad.IO.Class (MonadIO(..))
 import qualified Data.ByteString.Char8 as BS (empty, unpack)
 import System.Glib.Properties (newAttrFromMaybeStringProperty)
 import Control.Monad (void)
+import Graphics.UI.Gtk.General.Enums (ShadowType(..))
 
 -- | A search pane description
 --
@@ -216,6 +218,7 @@ buildSearchPane =
         treeSelectionSetMode sel SelectionSingle
 
         sw <- scrolledWindowNew Nothing Nothing
+        scrolledWindowSetShadowType sw ShadowIn
         containerAdd sw treeView
         scrolledWindowSetPolicy sw PolicyAutomatic PolicyAutomatic
 
