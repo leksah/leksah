@@ -102,7 +102,7 @@ import Distribution.Version (Version(..), orLaterVersion)
 
 import Text.Printf (printf)
 import Control.Applicative ((<*>), (<$>))
-import qualified Data.Conduit.Util as CU (zipSinks)
+import qualified Data.Conduit.Internal as CU (zipSinks)
 import IDE.Utils.Tool (ToolOutput(..))
 import System.Exit (ExitCode(..))
 import qualified Data.Conduit.List as CL (fold)
