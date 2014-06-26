@@ -105,7 +105,7 @@ import IDE.Utils.Tool (executeGhciCommand, getProcessExitCode, interruptProcessG
     ProcessHandle)
 import qualified Data.Conduit as C (Sink)
 import qualified Data.Conduit.List as CL (foldM, fold, consume)
-import qualified Data.Conduit.Util as CU (zipSinks)
+import qualified Data.Conduit.Internal as CU (zipSinks)
 import Data.Conduit (($$))
 import Control.Monad.Trans.Reader (ask)
 import Control.Monad.IO.Class (MonadIO(..))
