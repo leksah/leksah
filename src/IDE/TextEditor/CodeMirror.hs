@@ -214,7 +214,7 @@ newCMBuffer mbFilename contents = do
                 ++ "</head>"
                 ++ "<body style=\"margin:0;padding:0 auto;\">"
                 ++ "</body></html>"
-            ) Nothing Nothing ("file://" ++ dataDir ++ "/codemirror.html")
+            ) Nothing ("file://" ++ dataDir ++ "/codemirror.html")
         debugM "leksah" "newCMBuffer loading"
         return $ CMBuffer (cmWebView, s)
 

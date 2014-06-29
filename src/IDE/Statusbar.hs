@@ -46,7 +46,6 @@ import Graphics.UI.Frame.Panes (IDEPane(..), paneName)
 import Text.Printf (printf)
 import Control.Monad.IO.Class (MonadIO(..))
 
-
 changeStatusbar :: [StatusbarCompartment] -> IDEAction
 changeStatusbar = postAsyncIDE . mapM_ changeStatusbar'
     where
@@ -81,7 +80,7 @@ changeStatusbar = postAsyncIDE . mapM_ changeStatusbar'
     changeStatusbar' (CompartmentBufferPos (line,col)) =  do
         sb <- getStatusbarLC
         liftIO $ statusbarPop sb 1
-        liftIO $ statusbarPush sb 1 $ printf "Ln %4d, Col %3d" (line + 1) (col + 1)
+        liftIO $ statusbarPush sb 1 (printf "Ln %4d, Col %3d" (line + 1) (col + 1)::String)
         return ()
     changeStatusbar' (CompartmentOverlay modi) =  do
         sb <- getStatusbarIO

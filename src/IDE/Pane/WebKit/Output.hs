@@ -209,7 +209,7 @@ setOutput command str = do
             html = case (alwaysHtml, parseValue str) of
                         (False, Just value) -> valToHtmlPage defaultHtmlOpts value
                         _                   -> str
-        webViewLoadString view html Nothing Nothing uri
+        webViewLoadString view html Nothing uri
 #else
     return ()
 #endif

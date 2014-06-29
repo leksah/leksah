@@ -48,6 +48,7 @@ import Distribution.ModuleName
 import Distribution.Text (simpleParse,display)
 import Data.Typeable (Typeable(..))
 import Control.Exception (SomeException(..),catch)
+import Control.Applicative ((<$>))
 import IDE.Package (packageConfig,addModuleToPackageDescr,delModuleFromPackageDescr,getEmptyModuleTemplate,getPackageDescriptionAndPath, ModuleLocation(..))
 import Distribution.PackageDescription
        (allBuildInfo, hsSourceDirs, hasLibs, executables, testSuites, exeName, testName,
@@ -68,7 +69,7 @@ import System.Log.Logger (debugM)
 import Default (Default(..))
 import IDE.Workspaces (packageTry)
 import Control.Monad.IO.Class (MonadIO(..))
-import Control.Monad (when)
+import Control.Monad (when, void)
 import Control.Monad.Trans.Class (MonadTrans(..))
 import Control.Monad.Trans.Reader (ask)
 import IDE.Utils.GUIUtils (treeViewContextMenu)
@@ -78,11 +79,13 @@ import Text.Printf (printf)
 -- | A modules pane description
 --
 
+type ModuleRecord = (String, Maybe (ModuleDescr,PackageDescr))
+
 data IDEModules     =   IDEModules {
     outer           ::   VBox
 ,   paned           ::   HPaned
 ,   treeView        ::   TreeView
-,   treeStore       ::   TreeStore (String, Maybe (ModuleDescr,PackageDescr))
+,   treeStore       ::   TreeStore ModuleRecord
 ,   descrView       ::   TreeView
 ,   descrStore      ::   TreeStore Descr
 ,   packageScopeB   ::   RadioButton
@@ -179,7 +182,7 @@ instance RecoverablePane IDEModules ModulesState IDEM where
             --treeViewSetRulesHint treeView True
 
             renderer0    <- cellRendererPixbufNew
-            set renderer0 [ newAttrFromMaybeStringProperty "stock-id"  := Nothing ]
+            set renderer0 [ newAttrFromMaybeStringProperty "stock-id"  := (Nothing::Maybe String) ]
 
             renderer    <- cellRendererTextNew
             col         <- treeViewColumnNew
@@ -418,7 +421,7 @@ treePathFromNameArray (Just tree) (h:t) accu   =
 treePathFromNameArray Nothing _ _  = Nothing
 
 treeViewSearch :: TreeView
-    -> TreeStore (String, Maybe (ModuleDescr,PackageDescr))
+    -> TreeStore ModuleRecord
     -> String
     -> TreeIter
     -> IO Bool
@@ -476,7 +479,7 @@ searchInFacetSubnodes tree str =
                 $ concatMap flatten (subForest tree)
 
 fillFacets :: TreeView
-    -> TreeStore (String, Maybe (ModuleDescr,PackageDescr))
+    -> TreeStore ModuleRecord
     -> TreeView
     -> TreeStore Descr
     -> IO ()
@@ -498,8 +501,8 @@ fillFacets treeView treeStore descrView descrStore = do
             ->  treeStoreClear descrStore
 
 getSelectionTree ::  TreeView
-    ->  TreeStore (String, Maybe (ModuleDescr,PackageDescr))
-    -> IO (Maybe (String, Maybe (ModuleDescr,PackageDescr)))
+    ->  TreeStore ModuleRecord
+    -> IO (Maybe ModuleRecord)
 getSelectionTree treeView treeStore = do
     liftIO $ debugM "leksah" "getSelectionTree"
     treeSelection   <-  treeViewGetSelection treeView
@@ -717,10 +720,10 @@ buildFacetForrest modDescr =
     matches _ node (forest,b)  = (node:forest,b)
 
 
-defaultRoot :: Tree (String, Maybe (ModuleDescr,PackageDescr))
+defaultRoot :: Tree ModuleRecord
 defaultRoot = Node ("",Just (getDefault,getDefault)) []
 
-type ModTree = Tree (String, Maybe (ModuleDescr,PackageDescr))
+type ModTree = Tree ModuleRecord
 --
 -- | Make a Tree with a module desription, package description pairs tree to display.
 --   Their are nodes with a label but without a module (like e.g. Data).
@@ -740,7 +743,7 @@ insertPairsInTree tree pair =
     in  insertNodesInTree pairedWith tree
 
 
-insertNodesInTree :: [(String, Maybe (ModuleDescr,PackageDescr))] -> ModTree -> ModTree
+insertNodesInTree :: [ModuleRecord] -> ModTree -> ModTree
 insertNodesInTree  [p1@(str1,Just pair)] (Node p2@(str2,mbPair) forest2) =
     case partition (\ (Node (s,_) _) -> s == str1) forest2 of
         ([found],rest) -> case found of
@@ -776,8 +779,17 @@ instance Ord a => Ord (Tree a) where
 sortTree :: Ord a => Tree a -> Tree a
 sortTree (Node l forest)    =   Node l (sort (map sortTree forest))
 
+getSelectedModuleFile :: Maybe ModuleRecord -> Maybe FilePath
+getSelectedModuleFile sel =
+    case sel of
+        Just (_,Just (m,p)) -> case (mdMbSourcePath m, pdMbSourcePath p) of
+                                (Just fp, Just pp) -> Just $ dropFileName pp </> fp
+                                (Just fp, Nothing) -> Just fp
+                                _     ->  Nothing
+        otherwise       ->  Nothing
+
 modulesContextMenu :: IDERef
-                   -> TreeStore (String, Maybe (ModuleDescr,PackageDescr))
+                   -> TreeStore ModuleRecord
                    -> TreeView
                    -> Menu
                    -> IO ()
@@ -785,14 +797,10 @@ modulesContextMenu ideR store treeView theMenu = do
     liftIO $ debugM "leksah" "modulesContextMenu"
     item1           <-  menuItemNewWithLabel (__ "Edit source")
     item1 `on` menuItemActivate $ do
-        sel         <-  getSelectionTree treeView store
-        case sel of
-            Just (_,Just (m,_)) -> case mdMbSourcePath m of
-                                    Nothing     ->  return ()
-                                    Just fp     ->  do
-                                        reflectIDE (selectSourceBuf fp) ideR
-                                        return ()
-            otherwise       ->  return ()
+        mbFile <- getSelectedModuleFile <$> getSelectionTree treeView store
+        case mbFile of
+            Nothing -> return ()
+            Just fp -> void $ reflectIDE (selectSourceBuf fp) ideR
     sep1 <- separatorMenuItemNew
     item2           <-  menuItemNewWithLabel (__ "Expand here")
     item2 `on` menuItemActivate $ expandHere treeView
@@ -807,24 +815,22 @@ modulesContextMenu ideR store treeView theMenu = do
     item6 `on` menuItemActivate $ reflectIDE (packageTry $ addModule' treeView store) ideR
     item7           <-  menuItemNewWithLabel (__ "Delete module")
     item7 `on` menuItemActivate $ do
-        sel         <-  getSelectionTree treeView store
-        case sel of
-            Just (_,Just (m,_)) -> case mdMbSourcePath m of
-                                    Nothing     ->  return ()
-                                    Just fp     ->  do
-                                        resp <- reflectIDE (respDelModDialog)ideR
-                                        if (resp == False) then return ()
-                                            else do
-                                                exists <- doesFileExist fp
-                                                if exists
-                                                   then do
-                                                     reflectIDE (liftIO $ removeFile fp) ideR
-                                                     reflectIDE (packageTry $ delModule treeView store)ideR
-                                                   else do
-                                                     reflectIDE (packageTry $ delModule treeView store)ideR
-                                                reflectIDE (packageTry packageConfig) ideR
-                                                return ()
-            otherwise       ->  return ()
+        mbFile <- getSelectedModuleFile <$> getSelectionTree treeView store
+        case mbFile of
+            Nothing     ->  return ()
+            Just fp     ->  do
+                resp <- reflectIDE (respDelModDialog)ideR
+                if (resp == False) then return ()
+                    else do
+                        exists <- doesFileExist fp
+                        if exists
+                           then do
+                             reflectIDE (liftIO $ removeFile fp) ideR
+                             reflectIDE (packageTry $ delModule treeView store)ideR
+                           else do
+                             reflectIDE (packageTry $ delModule treeView store)ideR
+                        reflectIDE (packageTry packageConfig) ideR
+                        return ()
     sel         <-  getSelectionTree treeView store
     case sel of
         Just (s, Nothing) -> do
@@ -838,7 +844,7 @@ modulesContextMenu ideR store treeView theMenu = do
         otherwise -> return ()
 
 modulesSelect :: IDERef
-              -> TreeStore (String, Maybe (ModuleDescr,PackageDescr))
+              -> TreeStore ModuleRecord
               -> TreeView
               -> TreePath
               -> TreeViewColumn
@@ -846,13 +852,10 @@ modulesSelect :: IDERef
 modulesSelect ideR store treeView path _ = do
     liftIO $ debugM "leksah" "modulesSelect"
     treeViewExpandRow treeView path False
-    sel <- treeStoreGetValue store path
-    case sel of
-        (_,Just (m,_)) -> do
-            case mdMbSourcePath m of
-                Nothing -> return ()
-                Just fp -> liftIO $ reflectIDE (selectSourceBuf fp) ideR >> return ()
-        _ -> return ()
+    mbFile <- getSelectedModuleFile <$> getSelectionTree treeView store
+    case mbFile of
+        Nothing -> return ()
+        Just fp -> liftIO $ reflectIDE (selectSourceBuf fp) ideR >> return ()
 
 descrViewContextMenu :: IDERef
                    -> TreeStore Descr
@@ -1055,7 +1058,7 @@ collapseHere treeView = do
         []     -> return ()
         (hd:_) -> treeViewCollapseRow treeView hd >> return ()
 
-delModule :: TreeView -> TreeStore (String, Maybe (ModuleDescr,PackageDescr)) -> PackageAction
+delModule :: TreeView -> TreeStore ModuleRecord -> PackageAction
 delModule treeview store = do
     liftIO $ debugM "leksah" "delModule"
     window <- liftIDE $ getMainWindow
@@ -1090,7 +1093,7 @@ respDelModDialog = do
         return resp
     return $ resp == ResponseUser 1
 
-addModule' :: TreeView -> TreeStore (String, Maybe (ModuleDescr,PackageDescr)) -> PackageAction
+addModule' :: TreeView -> TreeStore ModuleRecord -> PackageAction
 addModule' treeView store = do
     liftIO $ debugM "leksah" "addModule'"
     sel   <- liftIO $ treeViewGetSelection treeView

@@ -15,6 +15,7 @@ ghc-pkg$GHCVERSION unregister --force webkitgtk3-javascriptcore || true
 ghc-pkg$GHCVERSION unregister --force webkit || true
 ghc-pkg$GHCVERSION unregister --force webkitgtk3 || true
 ghc-pkg$GHCVERSION unregister --force gtk-mac-integration || true
+ghc-pkg$GHCVERSION unregister --force gtk3-mac-integration || true
 ghc-pkg$GHCVERSION unregister --force gtk || true
 ghc-pkg$GHCVERSION unregister --force gtk3 || true
 ghc-pkg$GHCVERSION unregister --force pango || true

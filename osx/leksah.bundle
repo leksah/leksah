@@ -13,8 +13,11 @@
          either define your own or just hardcode the path here.
     -->
     <prefix name="default">${env:JHBUILD_PREFIX}</prefix>
+    <prefix name="leksah-bin">${env:LEKSAH_BIN_DIR}</prefix>
     <prefix name="leksah">${env:LEKSAH_PREFIX}</prefix>
+    <prefix name="leksah-server-bin">${env:LEKSAH_SERVER_BIN_DIR}</prefix>
     <prefix name="leksah-server">${env:LEKSAH_SERVER_PREFIX}</prefix>
+    <prefix name="vcsgui-bin">${env:VCSGUI_BIN_DIR}</prefix>
     <prefix name="vcsgui">${env:VCSGUI_PREFIX}</prefix>
     <prefix name="hlint">${env:HLINT_PREFIX}</prefix>
 
@@ -54,12 +57,12 @@
   -->
   <plist>${project}/Info.plist</plist>
 
-  <main-binary>${prefix:leksah}/bin/leksah</main-binary>
+  <main-binary>${prefix:leksah-bin}/bin/leksah</main-binary>
 
-  <binary>${prefix:leksah-server}/bin/leksahecho</binary>
-  <binary>${prefix:leksah-server}/bin/leksah-server</binary>
-  <binary>${prefix:vcsgui}/bin/vcsgui</binary>
-  <binary>${prefix:vcsgui}/bin/vcsgui-askpass</binary>
+  <binary>${prefix:leksah-server-bin}/bin/leksahecho</binary>
+  <binary>${prefix:leksah-server-bin}/bin/leksah-server</binary>
+  <binary>${prefix:vcsgui-bin}/bin/vcsgui</binary>
+  <binary>${prefix:vcsgui-bin}/bin/vcsgui-askpass</binary>
 
   <!-- Copy in the input methods. Dunno if they actually work with
        OSX. Note the ${gtkdir} macro, which expands to the correct
@@ -132,11 +135,11 @@
   </data>
 
   <data dest="${bundle}/Contents/Resources/share/leksah">
-    ${prefix:leksah}/share
+    ${prefix:leksah}
   </data>
 
   <data dest="${bundle}/Contents/Resources/share/hlint">
-    ${prefix:hlint}/share
+    ${prefix:hlint}
   </data>
 
   <!-- Copy in the themes data. You may want to trim this to save space

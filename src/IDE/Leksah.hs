@@ -79,6 +79,8 @@ import Control.Monad (when, unless, liftM)
 import Control.Monad.IO.Class (MonadIO(..))
 import Control.Applicative ((<$>))
 import qualified Data.Text as T (unpack, stripPrefix)
+import Data.Text (Text)
+import Data.Monoid ((<>))
 
 -- --------------------------------------------------------------------
 -- Command line options
@@ -290,7 +292,7 @@ startMainWindow yiControl sessionFP mbWorkspaceFP sourceFPs startupPrefs isFirst
     specialKeys <-  buildSpecialKeys keyMap accelActions
 
     win         <-  windowNew
-    widgetSetName win "Leksah Main Window"
+    widgetSetName win ("Leksah Main Window"::Text)
     let fs = FrameState
             {   windows       =   [win]
             ,   uiManager     =   uiManager
@@ -341,7 +343,7 @@ startMainWindow yiControl sessionFP mbWorkspaceFP sourceFPs startupPrefs isFirst
     reflectIDE (makeMenu uiManager accelActions menuDescription') ideR
     nb               <-  reflectIDE (newNotebook []) ideR
     after nb switchPage (\i -> reflectIDE (handleNotebookSwitch nb i) ideR)
-    widgetSetName nb $"root"
+    widgetSetName nb ("root"::Text)
     on win deleteEvent . liftIO $ reflectIDE quit ideR >> return True
     reflectIDE (instrumentWindow win startupPrefs (castToWidget nb)) ideR
     reflectIDE (do
@@ -443,18 +445,18 @@ firstStart prefs = do
     dialog      <- dialogNew
     setLeksahIcon dialog
     set dialog [
-        windowTitle := "Welcome to Leksah, the Haskell IDE",
+        windowTitle := ("Welcome to Leksah, the Haskell IDE"::Text),
         windowWindowPosition := WinPosCenter]
-    dialogAddButton dialog "gtk-ok" ResponseOk
-    dialogAddButton dialog "gtk-cancel" ResponseCancel
+    dialogAddButton dialog ("gtk-ok"::Text) ResponseOk
+    dialogAddButton dialog ("gtk-cancel"::Text) ResponseCancel
 #ifdef MIN_VERSION_gtk3
     vb          <- dialogGetContentArea dialog
 #else
     vb          <- dialogGetUpper dialog
 #endif
     label       <- labelNew (Just (
-        "Before you start using Leksah it will collect and download metadata about your installed Haskell packages.\n" ++
-        "You can add folders under which you have sources for Haskell packages not available from Hackage."))
+        "Before you start using Leksah it will collect and download metadata about your installed Haskell packages.\n" <>
+        "You can add folders under which you have sources for Haskell packages not available from Hackage."::Text))
     (widget, setInj, getExt,notifier) <- buildEditor (fDescription configDir) prefs
     boxPackStart (castToBox vb) label PackNatural 7
     sw <- scrolledWindowNew Nothing Nothing
@@ -502,7 +504,7 @@ firstBuild newPrefs = do
     dialog      <- dialogNew
     setLeksahIcon dialog
     set dialog [
-        windowTitle := "Leksah: Updating Metadata",
+        windowTitle := ("Leksah: Updating Metadata"::Text),
         windowWindowPosition := WinPosCenter,
         windowDeletable := False]
 #ifdef MIN_VERSION_gtk3
@@ -511,7 +513,7 @@ firstBuild newPrefs = do
     vb          <- dialogGetUpper dialog
 #endif
     progressBar <- progressBarNew
-    progressBarSetText progressBar "Please wait while Leksah collects information about Haskell packages on your system"
+    progressBarSetText progressBar ("Please wait while Leksah collects information about Haskell packages on your system"::Text)
     progressBarSetFraction progressBar 0.0
     boxPackStart (castToBox vb) progressBar PackGrow 7
     forkIO $ do

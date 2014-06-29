@@ -92,6 +92,7 @@ import Control.Event (EventSource(..))
 
 import qualified Graphics.UI.Gtk.Gdk.Events as GTK (Event(..))
 import Data.List (isPrefixOf, sort, nub)
+import Data.Text (Text)
 import Control.Monad.Trans.Reader (ask)
 import Control.Monad.IO.Class (MonadIO(..))
 import Control.Monad.Trans.Class (lift)
@@ -299,9 +300,9 @@ packageNew' workspaceDir log activateAction = do
                 Just cfn -> do
                     add <- liftIO $ do
                         md <- messageDialogNew (Just window) [] MessageQuestion ButtonsCancel
-                            $ (printf (__
+                             (printf (__
                               "There is already file %s in this directory. Would you like to add this package to the workspace?")
-                              (takeFileName cfn) )
+                              (takeFileName cfn)::String)
                         dialogAddButton md (__ "_Add Package") (ResponseUser 1)
                         dialogSetDefaultResponse md (ResponseUser 1)
                         set md [ windowWindowPosition := WinPosCenterOnParent ]
@@ -316,9 +317,9 @@ packageNew' workspaceDir log activateAction = do
                         then return True
                         else liftIO $ do
                             md <- messageDialogNew (Just window) [] MessageQuestion ButtonsCancel
-                                $ (printf (__
-                                   "The path you have choosen %s is not an empty directory. Are you sure you want to make a new package here?")
-                                  dirName)
+                                 (printf (__
+                                  "The path you have choosen %s is not an empty directory. Are you sure you want to make a new package here?")
+                                  dirName::String)
                             dialogAddButton md (__ "_Make Package Here") (ResponseUser 1)
                             dialogSetDefaultResponse md (ResponseUser 1)
                             set md [ windowWindowPosition := WinPosCenterOnParent ]
@@ -639,7 +640,7 @@ builder' packageDir packageD packageDescr afterSaveAction initialPackagePath mod
     closeB  <- buttonNewFromStock "gtk-close"
     addB    <- buttonNewFromStock (__ "Add Build Info")
     removeB <- buttonNewFromStock (__ "Remove Build Info")
-    label   <-  labelNew Nothing
+    label   <-  labelNew (Nothing::Maybe Text)
     boxPackStart bb addB PackNatural 0
     boxPackStart bb removeB PackNatural 0
     boxPackEnd bb closeB PackNatural 0

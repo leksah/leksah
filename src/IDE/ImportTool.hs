@@ -292,7 +292,7 @@ addImport' nis filePath descr descrList continuation =  do
                                     impDecl{importSpecs = Just (ImportSpecList False (nub (newImportSpec : listIE)))}
                                 Nothing             ->
                                     impDecl{importSpecs = Just (ImportSpecList False [newImportSpec])}
-        noLocation  = Location 0 0 0 0
+        noLocation  = Location "" 0 0 0 0
 
 getRealId descr id = case descr of
     Reexported rdescr -> getRealId (dsrDescr rdescr) id

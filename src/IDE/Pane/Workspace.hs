@@ -40,6 +40,7 @@ import Data.Tree (Tree(..))
 import System.Log.Logger (debugM)
 import qualified Data.Function as F (on)
 import System.FilePath (takeDirectory, takeBaseName, takeFileName)
+import Data.Text (Text)
 
 -- | Workspace pane state
 --
@@ -79,7 +80,7 @@ instance RecoverablePane IDEWorkspace WorkspaceState IDEM where
         treeViewSetModel treeView treeStore
 
         renderer0    <- cellRendererPixbufNew
-        set renderer0 [ newAttrFromMaybeStringProperty "stock-id"  := Nothing ]
+        set renderer0 [ newAttrFromMaybeStringProperty "stock-id"  := (Nothing::Maybe Text) ]
 
         renderer1   <- cellRendererTextNew
         col1        <- treeViewColumnNew

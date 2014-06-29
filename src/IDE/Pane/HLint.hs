@@ -34,7 +34,7 @@ import IDE.Core.State hiding (SrcSpan(..))
 import IDE.BufferMode
 import IDE.LogRef (logOutput, defaultLineLogger)
 import IDE.Pane.SourceBuffer
-    (goToSourceDefinition, maybeActiveBuf, IDEBuffer(..), replaceHLintSource)
+    (goToSourceDefinition', maybeActiveBuf, IDEBuffer(..), replaceHLintSource)
 import IDE.TextEditor (grabFocus)
 import Control.Applicative ((<$>))
 import System.FilePath ((</>), dropFileName)
@@ -218,8 +218,8 @@ gotoSource focus treeView hlintStore = do
         Just record ->
             case record of
                 HLintRecord {condIdea = Just idea} ->
-                    goToSourceDefinition (srcSpanFilename (H.ideaSpan idea))
-                                        (Just $ Location (srcSpanStartLine (H.ideaSpan idea))
+                    goToSourceDefinition' (srcSpanFilename (H.ideaSpan idea))
+                                        (Location "" (srcSpanStartLine (H.ideaSpan idea))
                                                          (srcSpanStartColumn (H.ideaSpan idea))
                                                          (srcSpanEndLine (H.ideaSpan idea))
                                                          (srcSpanEndColumn (H.ideaSpan idea)))

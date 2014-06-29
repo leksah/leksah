@@ -72,8 +72,7 @@ import IDE.Utils.ServerConnection(doServerCommand)
 import Control.Monad.IO.Class (MonadIO(..))
 import Control.Monad.Trans.Class (MonadTrans(..))
 import Distribution.PackageDescription (hsSourceDirs)
-
-trace a b = b
+import System.Log.Logger (infoM)
 
 -- ---------------------------------------------------------------------
 -- Updating metadata
@@ -94,7 +93,8 @@ initInfo continuation = do
                 updateWorkspaceInfo' False $ \ _ -> do
                     triggerEventIDE (InfoChanged True) >> return ()
 
-                    trace "blah" $ continuation
+                    liftIO $ infoM "leksah" "initInfo continuing"
+                    continuation
         else do
             ideMessage Normal "Now loading metadata ..."
             loadSystemInfo
@@ -104,19 +104,22 @@ initInfo continuation = do
                 continuation
 
 updateSystemInfo :: IDEAction
-updateSystemInfo     = trace "update sys info called" $ do
+updateSystemInfo     = do
+    liftIO $ infoM "leksah" "update sys info called"
     updateSystemInfo' False $ \ _ ->
         updateWorkspaceInfo' False $ \ _ -> do
             triggerEventIDE (InfoChanged False) >> return ()
 
 rebuildSystemInfo :: IDEAction
-rebuildSystemInfo    =  trace "rebuild sys info called" $ do
+rebuildSystemInfo    = do
+    liftIO $ infoM "leksah" "rebuild sys info called"
     updateSystemInfo' True $ \ _ ->
         updateWorkspaceInfo' True $ \ _ ->
             triggerEventIDE (InfoChanged False) >> return ()
 
 updateWorkspaceInfo :: IDEAction
-updateWorkspaceInfo = trace "update workspace info called" $ do
+updateWorkspaceInfo = do
+    liftIO $ infoM "leksah" "update workspace info called"
     currentState' <- readIDE currentState
     case currentState' of
         IsStartingUp -> return ()
@@ -125,7 +128,8 @@ updateWorkspaceInfo = trace "update workspace info called" $ do
                 triggerEventIDE (InfoChanged False) >> return ()
 
 rebuildWorkspaceInfo :: IDEAction
-rebuildWorkspaceInfo = trace "rebuild workspace info called" $ do
+rebuildWorkspaceInfo = do
+    liftIO $ infoM "leksah" "rebuild workspace info called"
     updateWorkspaceInfo' True $ \ _ -> do
         triggerEventIDE (InfoChanged False) >> return ()
 
@@ -201,7 +205,8 @@ updateWorkspaceInfo' rebuild continuation = do
     systemInfo'         <- getSystemInfo
     case mbWorkspace of
         Nothing ->  do
-            trace "no workspace" $ modifyIDE_ (\ide -> ide{workspaceInfo = Nothing, packageInfo = Nothing})
+            liftIO $ infoM "leksah" "updateWorkspaceInfo' no workspace"
+            modifyIDE_ (\ide -> ide{workspaceInfo = Nothing, packageInfo = Nothing})
             continuation False
         Just ws -> do
             updatePackageInfos rebuild (wsAllPackages ws) $ \ _ packDescrs -> do
@@ -259,8 +264,8 @@ updatePackageInfos rebuild packs conts = updatePackageInfos' [] rebuild packs co
                 updatePackageInfos' (packDescr : collector) rebuild tail continuation
 
 updatePackageInfo :: Bool -> IDEPackage -> (Bool -> PackageDescr -> IDEAction) -> IDEAction
-updatePackageInfo rebuild idePack continuation =
-    trace ("updatePackageInfo " ++ show (ipdPackageId idePack)) $ do
+updatePackageInfo rebuild idePack continuation = do
+    liftIO $ infoM "leksah" ("updatePackageInfo " ++ show rebuild ++ " " ++ show (ipdPackageId idePack))
     workspInfoCache'     <- readIDE workspInfoCache
     let (packageMap, ic) =  case pi  `Map.lookup` workspInfoCache' of
                                 Nothing -> (Map.empty,True)
@@ -286,8 +291,8 @@ updatePackageInfo rebuild idePack continuation =
     modToUpdate <- if rebuild
                             then return modWithSources
                             else liftIO $ figureOutRealSources idePack modWithSources
-    trace ("updatePackageInfo modToUpdate " ++ show (map (display.fst) modToUpdate)) $
-     callCollectorWorkspace
+    liftIO . infoM "leksah" $ "updatePackageInfo modToUpdate " ++ show (map (display.fst) modToUpdate)
+    callCollectorWorkspace
         rebuild
         (dropFileName (ipdCabalFile idePack))
         (ipdPackageId idePack)
@@ -310,7 +315,7 @@ updatePackageInfo rebuild idePack continuation =
                 pdBuildDepends   = buildDepends}))
     where
         basePath =  normalise $ (takeDirectory (ipdCabalFile idePack))
-        srcDirs' bi =  map (basePath </>) (hsSourceDirs bi)
+        srcDirs' bi =  map (basePath </>) ("dist/build":(hsSourceDirs bi))
         pi = ipdPackageId idePack
 
 figureOutRealSources :: IDEPackage -> [(ModuleName,FilePath)] -> IO [(ModuleName,FilePath)]
@@ -348,8 +353,8 @@ getModuleDescr packageCollectorPath (modDescrs,packageMap,changed,problemMods) (
                     if modificationTime == eTime
                         then return (mdescr:modDescrs,packageMap,changed,problemMods)
                         else do
-                            mbNewDescr  <- trace ("loadInfo: " ++ display modName) $
-                                                loadInfosForModule moduleCollectorPath
+                            liftIO . infoM "leksah" $ "getModuleDescr loadInfo: " ++ display modName
+                            mbNewDescr <- loadInfosForModule moduleCollectorPath
                             case mbNewDescr of
                                 Just newDescr -> return (newDescr:modDescrs,
                                                     Map.insert modName (modificationTime,mbFilePath,newDescr) packageMap,
@@ -388,7 +393,7 @@ loadInfosForPackage dirPath pid = do
     if exists
         then catch (do
             file            <-  openBinaryFile filePath ReadMode
-            trace ("now loading metadata for package " ++ packageIdentifierToString pid) return ()
+            liftIO . infoM "leksah" $ "now loading metadata for package " ++ packageIdentifierToString pid
             bs              <-  BSL.hGetContents file
             let (metadataVersion'::Integer, packageInfo::PackageDescr) = decodeSer bs
             if metadataVersion /= metadataVersion'
@@ -539,18 +544,26 @@ getPackageImportInfo idePack = do
         then do
             packageInfo' <- getPackageInfo
             case packageInfo' of
-                Nothing -> trace "getPackageImportInfo: no package info" $ return Nothing
+                Nothing -> do
+                    liftIO $ infoM "leksah" "getPackageImportInfo: no package info"
+                    return Nothing
                 Just ((GenScopeC (PackScope pdmap _)),_) -> do
                      case Map.lookup (ipdPackageId idePack) pdmap of
-                        Nothing -> trace "getPackageImportInfo: package not found in package" $ return Nothing
+                        Nothing -> do
+                            liftIO $ infoM "leksah" "getPackageImportInfo: package not found in package"
+                            return Nothing
                         Just pd -> buildIt pd systemInfo'
         else do
             workspaceInfo <- getWorkspaceInfo
             case workspaceInfo of
-                Nothing -> trace "getPackageImportInfo: no workspace info" $ return Nothing
+                Nothing -> do
+                    liftIO $ infoM "leksah" "getPackageImportInfo: no workspace info"
+                    return Nothing
                 Just ((GenScopeC (PackScope pdmap _)),_) ->
                     case Map.lookup (ipdPackageId idePack) pdmap of
-                        Nothing -> trace "getPackageImportInfo: package not found in workspace" $ return Nothing
+                        Nothing -> do
+                            liftIO $ infoM "leksah" "getPackageImportInfo: package not found in workspace"
+                            return Nothing
                         Just pd -> buildIt pd systemInfo'
 
     where
@@ -558,7 +571,9 @@ getPackageImportInfo idePack = do
         filterPrivate md = md{mdIdDescriptions = filter dscExported (mdIdDescriptions md)}
         buildIt pd systemInfo' =
                 case systemInfo' of
-                    Nothing -> trace "getPackageImportInfo: no system info" $ return Nothing
+                    Nothing -> do
+                        liftIO $ infoM "leksah" "getPackageImportInfo: no system info"
+                        return Nothing
                     Just (GenScopeC (PackScope pdmap' _)) ->
                         let impPackDescrs = catMaybes $ map (\ pid -> pid `Map.lookup` pdmap')
                                                 (pdBuildDepends pd)
@@ -733,12 +748,19 @@ buildSymbolTable pDescr symbolTable =
 --
 
 callCollector :: Bool -> Bool -> Bool -> (Bool -> IDEAction) -> IDEAction
-callCollector rebuild sources extract cont = trace "callCollector" $ do
+callCollector rebuild sources extract cont = do
+    liftIO $ infoM "leksah" "callCollector"
     doServerCommand command $ \ res ->
         case res of
-            ServerOK         -> trace "callCollector finished" $ cont True
-            ServerFailed str -> trace str $ cont False
-            _                -> trace "impossible server answer" $ cont False
+            ServerOK         -> do
+                liftIO $ infoM "leksah" "callCollector finished"
+                cont True
+            ServerFailed str -> do
+                liftIO $ infoM "leksah" str
+                cont False
+            _                -> do
+                liftIO $ infoM "leksah" "impossible server answer"
+                cont False
     where command = SystemCommand {
             scRebuild = rebuild,
             scSources = sources,
@@ -746,20 +768,29 @@ callCollector rebuild sources extract cont = trace "callCollector" $ do
 
 callCollectorWorkspace :: Bool -> FilePath -> PackageIdentifier -> [(String,FilePath)] ->
     (Bool -> IDEAction) -> IDEAction
-callCollectorWorkspace rebuild fp  pi modList cont = trace "callCollectorWorkspace" $
+callCollectorWorkspace rebuild fp  pi modList cont = do
+    liftIO $ infoM "leksah" "callCollectorWorkspace"
     if null modList
-        then trace "callCollectorWorkspace: Nothing to do" $ cont True
+        then do
+            liftIO $ infoM "leksah" "callCollectorWorkspace: Nothing to do"
+            cont True
         else do
             doServerCommand command  $ \ res ->
                 case res of
-                    ServerOK         -> trace "callCollectorWorkspace finished" $ cont True
-                    ServerFailed str -> trace str $ cont False
-                    _                -> trace "impossible server answer" $ cont False
+                    ServerOK         -> do
+                        liftIO $ infoM "leksah" "callCollectorWorkspace finished"
+                        cont True
+                    ServerFailed str -> do
+                        liftIO $ infoM "leksah" str
+                        cont False
+                    _                -> do
+                        liftIO $ infoM "leksah" "impossible server answer"
+                        cont False
     where command = WorkspaceCommand {
-            wcRebuild = rebuild,
-            wcPackage = pi,
-            wcPath    = fp,
-            wcModList = modList}
+            wcRebuild     = rebuild,
+            wcPackage     = pi,
+            wcPath        = fp,
+            wcModList     = modList}
 
 -- ---------------------------------------------------------------------
 -- Additions for completion

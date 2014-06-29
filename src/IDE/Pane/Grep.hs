@@ -160,7 +160,7 @@ instance RecoverablePane IDEGrep GrepState IDEM where
                     Just record -> reflectIDE (do
                         case record of
                             GrepRecord {file=f, line=l, parDir=Just pp} ->
-                                (goToSourceDefinition (pp </> f) $ Just $ Location l 0 l 0)
+                                (goToSourceDefinition pp $ Location f l 0 l 0)
                                     ?>>= (\(IDEBuffer {sourceView = sv}) -> when focus $ grabFocus sv)
                             _ -> return ()) ideR
                     Nothing -> return ()

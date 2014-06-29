@@ -1,3 +1,4 @@
+{-# LANGUAGE ScopedTypeVariables #-}
 {-# LANGUAGE ForeignFunctionInterface #-}
 -----------------------------------------------------------------------------
 --
@@ -80,6 +81,7 @@ import Foreign.C.Types (CInt(..))
 import Foreign.Ptr (Ptr(..))
 import Foreign.ForeignPtr (withForeignPtr)
 import Graphics.UI.GtkInternals (unToolbar)
+import Data.Text (Text)
 
 foreign import ccall safe "gtk_toolbar_set_icon_size"
   gtk_toolbar_set_icon_size :: Ptr Toolbar -> CInt -> IO ()
@@ -270,8 +272,9 @@ constructFindReplace = reifyIDE $ \ ideR   -> do
     toolItemSetExpand entryTool True
     toolbarInsert toolbar entryTool 0
 
+    let column0 = makeColumnIdString 0
     store <- listStoreNew []
-    customStoreSetColumn store (makeColumnIdString 0) id
+    customStoreSetColumn store column0 id
 
     completion <- entryCompletionNew
     entrySetCompletion entry completion
@@ -283,7 +286,7 @@ constructFindReplace = reifyIDE $ \ ideR   -> do
         (\ cd -> [cellText := cd])
     entryCompletionSetMatchFunc completion (matchFunc store)
     on completion matchSelected $ \ model iter -> do
-        txt <- treeModelGetValue model iter (makeColumnIdString 0)
+        txt <- treeModelGetValue model iter column0
         entrySetText entry txt
         doSearch toolbar Forward ideR
         return True
@@ -315,7 +318,7 @@ constructFindReplace = reifyIDE $ \ ideR   -> do
     containerAdd labelTool label
     toolbarInsert toolbar labelTool 0
 
-    after entry insertText (\ t i -> do
+    after entry insertText (\ (t::Text) i -> do
         doSearch toolbar Insert ideR
         return i)
     after entry deleteText (\ _ _ -> doSearch toolbar Delete ideR)

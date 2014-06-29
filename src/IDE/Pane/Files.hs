@@ -45,7 +45,7 @@ import IDE.Core.State
         workspace, readIDE, IDEAction, ideMessage, reflectIDE, reifyIDE,
         IDEM, IDEPackage, ipdSandboxSources)
 import IDE.Pane.SourceBuffer
-    (goToSourceDefinition)
+    (goToSourceDefinition')
 import Control.Applicative ((<$>))
 import System.FilePath ((</>), takeFileName, dropFileName)
 import Distribution.Package (PackageIdentifier(..))
@@ -143,7 +143,7 @@ instance RecoverablePane IDEFiles FilesState IDEM where
             record <- treeStoreGetValue fileStore path
             reflectIDE (
                 case record of
-                    FileRecord f    -> void (goToSourceDefinition f (Just $ Location 1 0 1 0))
+                    FileRecord f    -> void (goToSourceDefinition' f (Location "" 1 0 1 0))
                     DirRecord f     -> liftIO $ refreshDir fileStore path f
                     PackageRecord p -> liftIO $ refreshPackage fileStore path p
                     _               -> ideMessage Normal (__ "Unexpected Activation in Files Pane")) ideR

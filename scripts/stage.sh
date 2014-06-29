@@ -16,9 +16,15 @@ export GTK_PREFIX=`pkg-config --libs-only-L gtk+-3.0 | sed 's|^-L||' | sed 's|/l
 
 echo Staging Leksah in $GTK_PREFIX
 
+# cabal sandbox init || true
+# (cd vendor/yi/yi && cabal sandbox init --sandbox=../../../.cabal-sandbox) || true
+# (cd vendor/ltk && cabal sandbox init --sandbox=../../.cabal-sandbox) || true
+# (cd vendor/leksah-server && cabal sandbox init --sandbox=../../.cabal-sandbox) || true
+# cabal sandbox add-source ./vendor/ltk ./vendor/leksah-server ./vendor/yi/yi || true
+
 # These don't like all the extra options we pass (CPPFLAGS and --extra-lib-dirs)
 # Gtk2Hs needs the latest Cabal to install properly
-cabal install --with-ghc=ghc$GHCVERSION -j4 text parsec network uniplate Cabal --constraint='text>=0.11.3.1' --constraint='parsec>=3.1.3' || true
+# cabal install --with-ghc=ghc$GHCVERSION -j4 text parsec network uniplate Cabal --constraint='text>=0.11.3.1' --constraint='parsec>=3.1.3' --constraint='ghc -any' || true
 
 # Needed for installing curl package on windows
 export CPPFLAGS=`pkg-config --cflags-only-I libcurl`
@@ -26,21 +32,13 @@ export CPPFLAGS=`pkg-config --cflags-only-I libcurl`
 # Only used by OS X
 # export DYLD_LIBRARY_PATH="/System/Library/Frameworks/ApplicationServices.framework/Versions/A/Frameworks/ImageIO.framework/Versions/A/Resources:$GTK_PREFIX/lib:$DYLD_LIBRARY_PATH"
 
-echo https://github.com/leksah/ltk > sources.txt
-echo https://github.com/leksah/leksah-server >> sources.txt
-
-# echo ./vendor/gtk2hs >> sources.txt
-echo ./ >> sources.txt
-
 if test "`uname`" = "Darwin"; then
-    cabal install gtk3 ghcjs-dom jsaddle --with-ghc=ghc$GHCVERSION -j4 -fhave-quartz-gtk -fwebkit --with-gcc=gcc-mp-4.8 || exit
-    cabal-meta install --with-ghc=ghc$GHCVERSION -j4 -flibcurl --with-gcc=gcc-mp-4.8 || exit
+    cabal install ./ ./vendor/ltk ./vendor/leksah-server ./vendor/yi/yi gtk3 ghcjs-dom jsaddle --with-ghc=ghc$GHCVERSION -j4 -fhave-quartz-gtk -fwebkit -flibcurl -fyi -fpango --with-gcc=gcc-mp-4.8 || exit
 else
     HPDIR=`which ghc` || exit
     HPDIR=`dirname "$HPDIR"` || exit
     HPDIR=`dirname "$HPDIR"` || exit
-    cabal install gtk3 ghcjs-dom jsaddle --with-ghc=ghc$GHCVERSION -j4 --extra-lib-dirs="$HPDIR"/mingw/lib --extra-lib-dirs=/c/MinGWRPM/lib -fwebkit --force-reinstalls || bash || exit
-    cabal-meta install --with-ghc=ghc$GHCVERSION -j4 --extra-lib-dirs="$HPDIR"/mingw/lib --extra-lib-dirs=/c/MinGWRPM/lib -flibcurl --force-reinstalls || bash || exit
+    cabal install install ./ ./vendor/ltk ./vendor/leksah-server ./vendor/yi/yi gtk3 ghcjs-dom jsaddle --with-ghc=ghc$GHCVERSION -j4 --extra-lib-dirs="$HPDIR"/mingw/lib --extra-lib-dirs=/c/MinGWRPM/lib -fwebkit -flibcurl --force-reinstalls || bash || exit
 #  if [ "$GHC_VER" != "7.0.3" ] && [ "$GHC_VER" != "7.0.4" ] && [ "$GHC_VER" != "7.6.1" ]; then
 #    echo https://github.com/yi-editor/yi.git >> sources.txt
 #    export LEKSAH_CONFIG_ARGS="$LEKSAH_CONFIG_ARGS -fyi -f-vty -f-dyre -fpango"

@@ -46,7 +46,7 @@ Default pane path:
 Paths under which haskell sources for packages may be found:
                []
 Unpack source for cabal packages to:
-               Just "~/.leksah-0.13/packageSources"
+               Just "~/.leksah-0.14/packageSources"
 URL from which to download prebuilt metadata:
                "http://www.leksah.org"
 Strategy for downloading prebuilt metadata:

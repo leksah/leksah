@@ -109,7 +109,7 @@ builder' pp nb windows = reifyIDE $ \ ideR -> do
 
     renderer0 <- cellRendererToggleNew
     col0         <- treeViewColumnNew
-    treeViewColumnSetTitle col0 ""
+    treeViewColumnSetTitle col0 (""::Text)
     treeViewColumnSetSizing col0 TreeViewColumnAutosize
     treeViewColumnSetResizable col0 False
     treeViewColumnSetReorderable col0 True

@@ -88,7 +88,7 @@ builder' pp nb windows = reifyIDE $ \ ideR -> do
         $ \row -> [cellText := if index row == 0 then showSourceSpan (logRef row) else "",
                    cellTextForeground := if logRefType (logRef row) == WarningRef
                                             then "green"
-                                            else "red" ]
+                                            else "red"::Text ]
     rendererB    <- cellRendererTextNew
     colB         <- treeViewColumnNew
     treeViewColumnSetTitle colB (__ "Description")

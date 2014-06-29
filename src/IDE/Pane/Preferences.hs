@@ -76,6 +76,7 @@ import Graphics.UI.Gtk.General.Enums
 import Control.Monad.IO.Class (MonadIO(..))
 import Control.Monad (void, forM_, when)
 import System.FilePath ((</>))
+import Data.Text (Text)
 
 -- ---------------------------------------------------------------------
 -- This needs to be incremented, when the preferences format changes
@@ -127,7 +128,7 @@ instance RecoverablePane IDEPrefs PrefsState IDEM where
             (widget,injb,ext,notifier) <-  buildEditor
                                 (extractFieldDescription $ prefsDescription configDir packageInfos) prefs
             boxPackStart vb widget PackGrow 0
-            label   <-  labelNew Nothing
+            label   <-  labelNew (Nothing::Maybe Text)
             boxPackStart vb label PackNatural 0
             boxPackEnd vb bb PackNatural 5
             let prefsPane = IDEPrefs vb

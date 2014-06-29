@@ -1,3 +1,4 @@
+{-# LANGUAGE RecordWildCards #-}
 {-# LANGUAGE FlexibleInstances, DeriveDataTypeable, MultiParamTypeClasses,
              CPP, TypeSynonymInstances, ScopedTypeVariables, RankNTypes #-}
 {-# OPTIONS_GHC -fwarn-unused-imports #-}
@@ -23,6 +24,7 @@ module IDE.Pane.SourceBuffer (
 ,   maybeActiveBuf
 ,   selectSourceBuf
 ,   goToSourceDefinition
+,   goToSourceDefinition'
 ,   goToDefinition
 ,   insertInBuffer
 ,   replaceHLintSource
@@ -100,8 +102,6 @@ import qualified System.IO.UTF8 as UTF8
 import Data.IORef (writeIORef,readIORef,newIORef)
 import Control.Event (triggerEvent)
 import IDE.Metainfo.Provider (getSystemInfo, getWorkspaceInfo)
-import Distribution.Text (simpleParse)
-import Distribution.ModuleName (ModuleName)
 import Graphics.UI.Gtk
        (Notebook, clipboardGet, selectionClipboard, dialogAddButton, widgetDestroy,
         fileChooserGetFilename, widgetShow, fileChooserDialogNew,
@@ -239,20 +239,29 @@ selectSourceBuf fp = do
 
 goToDefinition :: Descr -> IDEAction
 goToDefinition idDescr  = do
+
     mbWorkspaceInfo     <-  getWorkspaceInfo
     mbSystemInfo        <-  getSystemInfo
-    let mbSourcePath1   =   case mbWorkspaceInfo of
-                                    Nothing -> Nothing
-                                    Just (sc, _) -> sourcePathFromScope sc
-    let mbSourcePath2   =   case mbSourcePath1 of
-                                Just sp -> Just sp
-                                Nothing -> case mbSystemInfo of
-                                                Just si -> sourcePathFromScope si
-                                                Nothing -> Nothing
-    when (isJust mbSourcePath2) $
-        goToSourceDefinition (fromJust $ mbSourcePath2) (dscMbLocation idDescr) >> return ()
-    return ()
-    where
+    let mbPackagePath = (mbWorkspaceInfo >>= (packagePathFromScope . fst))
+                        <|> (mbSystemInfo >>= packagePathFromScope)
+        mbSourcePath = (mbWorkspaceInfo  >>= (sourcePathFromScope . fst))
+                        <|> (mbSystemInfo >>= sourcePathFromScope)
+
+    liftIO . debugM "leksah" $ show (mbPackagePath, dscMbLocation idDescr, mbSourcePath)
+    case (mbPackagePath, dscMbLocation idDescr, mbSourcePath) of
+        (Just packagePath, Just loc, _) -> goToSourceDefinition (dropFileName packagePath) loc >> return ()
+        (_, Just loc, Just sourcePath)  -> goToSourceDefinition' sourcePath loc >> return ()
+        (_, _, Just sp) -> selectSourceBuf sp >> return ()
+        _  -> return ()
+  where
+    packagePathFromScope :: GenScope -> Maybe FilePath
+    packagePathFromScope (GenScopeC (PackScope l _)) =
+        case dscMbModu idDescr of
+            Just mod -> case (pack mod) `Map.lookup` l of
+                            Just pack -> pdMbSourcePath pack
+                            Nothing   -> Nothing
+            Nothing -> Nothing
+
     sourcePathFromScope :: GenScope -> Maybe FilePath
     sourcePathFromScope (GenScopeC (PackScope l _)) =
         case dscMbModu idDescr of
@@ -265,32 +274,35 @@ goToDefinition idDescr  = do
                             Nothing -> Nothing
             Nothing -> Nothing
 
-goToSourceDefinition :: FilePath -> Maybe Location -> IDEM (Maybe IDEBuffer)
-goToSourceDefinition fp dscMbLocation = do
---    liftIO $ putStrLn $ "goToSourceDefinition " ++ fp
-    mbBuf     <- selectSourceBuf fp
-    when (isJust mbBuf && isJust dscMbLocation) $
-        inActiveBufContext () $ \_ sv ebuf _ _ -> do
-            let location    =   fromJust dscMbLocation
-            liftIO $ debugM "lekash" "goToSourceDefinition calculating range"
-            lines           <-  getLineCount ebuf
-            iterTemp        <-  getIterAtLine ebuf (max 0 (min (lines-1)
-                                    ((locationSLine location) -1)))
-            chars           <-  getCharsInLine iterTemp
-            iter <- atLineOffset iterTemp (max 0 (min (chars-1) (locationSCol location -1)))
-            iter2Temp       <-  getIterAtLine ebuf (max 0 (min (lines-1)
-                                    ((locationELine location) -1)))
-            chars2          <-  getCharsInLine iter2Temp
-            iter2 <- atLineOffset iter2Temp (max 0 (min (chars2-1) (locationECol location)))
-            -- ### we had a problem before using this idleAdd thing
-            ideR <- ask
-            liftIO . (`idleAdd` priorityDefaultIdle) . (`reflectIDE` ideR) $ do
-                liftIO $ debugM "lekash" "goToSourceDefinition triggered selectRange"
-                selectRange ebuf iter iter2
-                liftIO $ debugM "lekash" "goToSourceDefinition triggered scrollToIter"
-                scrollToIter sv iter 0.0 (Just (0.3,0.3))
-                return False
-            return ()
+goToSourceDefinition :: FilePath -> Location -> IDEM (Maybe IDEBuffer)
+goToSourceDefinition packagePath loc = do
+    goToSourceDefinition' (packagePath </> locationFile loc) loc
+
+goToSourceDefinition' :: FilePath -> Location -> IDEM (Maybe IDEBuffer)
+goToSourceDefinition' sourcePath Location{..} = do
+    mbBuf     <- selectSourceBuf sourcePath
+    case mbBuf of
+        Just buf -> do
+            inActiveBufContext () $ \_ sv ebuf _ _ -> do
+                liftIO $ debugM "lekash" "goToSourceDefinition calculating range"
+                lines           <-  getLineCount ebuf
+                iterTemp        <-  getIterAtLine ebuf (max 0 (min (lines-1)
+                                        (locationSLine -1)))
+                chars           <-  getCharsInLine iterTemp
+                iter <- atLineOffset iterTemp (max 0 (min (chars-1) (locationSCol -1)))
+                iter2Temp       <-  getIterAtLine ebuf (max 0 (min (lines-1) (locationELine -1)))
+                chars2          <-  getCharsInLine iter2Temp
+                iter2 <- atLineOffset iter2Temp (max 0 (min (chars2-1) locationECol))
+                -- ### we had a problem before using this idleAdd thing
+                ideR <- ask
+                liftIO . (`idleAdd` priorityDefaultIdle) . (`reflectIDE` ideR) $ do
+                    liftIO $ debugM "lekash" "goToSourceDefinition triggered selectRange"
+                    selectRange ebuf iter iter2
+                    liftIO $ debugM "lekash" "goToSourceDefinition triggered scrollToIter"
+                    scrollToIter sv iter 0.0 (Just (0.3,0.3))
+                    return False
+                return ()
+        Nothing -> return ()
     return mbBuf
 
 replaceHLintSource :: FilePath -> Int -> Int -> Int -> Int -> String -> IDEAction
