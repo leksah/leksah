@@ -28,7 +28,7 @@ before_install:
 install:
   - cabal install Cabal
   - cabal install gtk2hs/tools
-  - cabal install ./ vendor/ltk vendor/leksah-server gtk2hs/glib gtk2hs/gio gtk2hs/cairo gtk2hs/pango gtk2hs/gtk ./webkit ./gtksourceview ./webkit-javascriptcore ./ghcjs-dom ./jsaddle --enable-tests --only-dependencies
+  - cabal install ./ vendor/ltk vendor/leksah-server vendor/haskellVCSWrapper/vcswrapper vendor/haskellVCSGUI/vcsgui gtk2hs/glib gtk2hs/gio gtk2hs/cairo gtk2hs/pango gtk2hs/gtk ./webkit ./gtksourceview ./webkit-javascriptcore ./ghcjs-dom ./jsaddle --enable-tests --only-dependencies
   - cabal install vendor/ltk vendor/leksah-server
 
 script:
