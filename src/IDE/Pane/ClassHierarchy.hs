@@ -51,7 +51,7 @@ data IDEClassHierarchy     =   IDEClassHierarchy {
 } deriving Typeable
 
 data ClassHierarchyState =   ClassHierarchyState Int (Scope,Bool)
-                                    (Maybe String, Maybe String)
+                                    (Maybe Text, Maybe Text)
     deriving(Eq,Ord,Read,Show,Typeable)
 
 instance IDEObject IDEClassHierarchy
@@ -201,15 +201,15 @@ buildClassHierarchyTree ((_,sc1),(_,sc2)) =
                 then (newForest,rest)
                 else (newForest,(id,newSuperList,idDescr): rest)
 
-        insertInForest2 :: ClassWrapper -> (ClassHierarchy,[String]) -> String
-                                -> (ClassHierarchy,[String])
+        insertInForest2 :: ClassWrapper -> (ClassHierarchy,[Text]) -> Text
+                                -> (ClassHierarchy,[Text])
         insertInForest2 wrapper (forest,rest) super =
             let (newForest,success) =  foldl' (insertInTree wrapper super) ([],False) forest
             in if success
                     then (newForest,rest)
                     else (newForest, super : rest)
 
-        insertInTree :: ClassWrapper -> String -> (ClassHierarchy,Bool)
+        insertInTree :: ClassWrapper -> Text -> (ClassHierarchy,Bool)
             -> Tree ClassWrapper -> (ClassHierarchy,Bool)
         insertInTree wrapper superS (forest,bool) n@(Node w@(symbol,super,idDescr) subForest) =
             if superS == symbol
@@ -367,9 +367,9 @@ builder currentInfo pp nb windows ideR = do
 
 {--
 treeViewSearch :: TreeView
-    -> TreeStore (String, [(ModuleDescr,PackageDescr)])
+    -> TreeStore (Text, [(ModuleDescr,PackageDescr)])
     -> Int
-    -> String
+    -> Text
     -> TreeIter
     -> IO Bool
 treeViewSearch treeView treeStore _ string iter =  do
@@ -387,7 +387,7 @@ treeViewSearch treeView treeStore _ string iter =  do
                     (m,_):_ -> showPackModule (moduleIdMD m)
     return (isInfixOf (map toLower string) (map toLower str2))
 
-searchInModSubnodes :: ModTree -> String -> Bool
+searchInModSubnodes :: ModTree -> Text -> Bool
 searchInModSubnodes tree str =
     not $ null
         $ filter (\ val ->
@@ -400,7 +400,7 @@ searchInModSubnodes tree str =
 facetViewSearch :: TreeView
     -> TreeStore FacetWrapper
     -> Int
-    -> String
+    -> Text
     -> TreeIter
     -> IO Bool
 facetViewSearch facetView facetStore _ string iter = do
@@ -415,7 +415,7 @@ facetViewSearch facetView facetStore _ string iter = do
             return ()
     return (isInfixOf (map toLower string) (map toLower (facetTreeText val)))
 
-searchInFacetSubnodes :: FacetTree -> String -> Bool
+searchInFacetSubnodes :: FacetTree -> Text -> Bool
 searchInFacetSubnodes tree str =
     not $ null
         $ filter (\ val ->
@@ -425,7 +425,7 @@ searchInFacetSubnodes tree str =
 
 {--
 fillFacets :: TreeView
-    -> TreeStore (String, [(ModuleDescr,PackageDescr)])
+    -> TreeStore (Text, [(ModuleDescr,PackageDescr)])
     -> TreeView
     -> TreeStore FacetWrapper
     -> IO ()
@@ -454,8 +454,8 @@ fillFacets treeView treeStore facetView facetStore = do
 --}
 {--
 getSelectionTree ::  TreeView
-    ->  TreeStore (String, [(ModuleDescr,PackageDescr)])
-    -> IO (Maybe (String, [(ModuleDescr,PackageDescr)]))
+    ->  TreeStore (Text, [(ModuleDescr,PackageDescr)])
+    -> IO (Maybe (Text, [(ModuleDescr,PackageDescr)]))
 getSelectionTree treeView treeStore = do
     treeSelection   <-  treeViewGetSelection treeView
     paths           <-  treeSelectionGetSelectedRows treeSelection
@@ -559,7 +559,7 @@ type FacetForest = Forest FacetWrapper
 type FacetTree = Tree FacetWrapper
 
 
-facetTreeText :: FacetWrapper -> String
+facetTreeText :: FacetWrapper -> Text
 facetTreeText (Itself (SimpleDescr id FunctionS _ _ _ _))   =  {-- "function " ++ --} id
 facetTreeText (Itself (SimpleDescr id NewtypeS _ _ _ _))    =  {-- "newtype " ++ --} id
 facetTreeText (Itself (SimpleDescr id TypeS _ _ _ _))       =  {-- "type " ++ --} id
@@ -641,7 +641,7 @@ buildFacetForest modDescr =
 
 {--
 treeViewPopup :: IDERef
-    -> TreeStore (String, [(ModuleDescr,PackageDescr)])
+    -> TreeStore (Text, [(ModuleDescr,PackageDescr)])
     -> TreeView
     -> Event
     -> IO (Bool)
@@ -757,7 +757,7 @@ scopeSelection = do
     selectNames mbs
     liftIO $ bringPaneToFront mods
 
-selectNames :: (Maybe String, Maybe Symbol) -> IDEAction
+selectNames :: (Maybe Text, Maybe Symbol) -> IDEAction
 selectNames (mbModuleName, mbIdName) = do
     (IDEModules _ _ treeView treeStore facetView facetStore _ _ _ _)
                         <-  getModules
@@ -840,7 +840,7 @@ findPathFor symbol (Just (Node _ forest)) =
                             Nothing     [0 .. ((length sub) - 1)]
 findPathFor symbol Nothing = Nothing
 
-treePathFromNameArray :: Maybe ModTree -> [String] -> [Int] -> Maybe [Int]
+treePathFromNameArray :: Maybe ModTree -> [Text] -> [Int] -> Maybe [Int]
 treePathFromNameArray (Just tree) [] accu      =   Just (reverse accu)
 treePathFromNameArray (Just tree) (h:t) accu   =
     let names   =   map (\t -> fst $ rootLabel t) (subForest tree)
@@ -852,7 +852,7 @@ treePathFromNameArray Nothing _ _  = Nothing
 
 --}
 {--
-extractSuperclasses :: String -> [String]
+extractSuperclasses :: Text -> [Text]
 extractSuperclasses str =
     let parseRes = trace ("now extracting superclasses for " ++ show str)
                     parse superclassParser "" str
@@ -865,7 +865,7 @@ lexeme = P.lexeme lexer
 whiteSpace = P.whiteSpace lexer
 symbol = P.symbol lexer
 
-superclassParser :: CharParser () [String]
+superclassParser :: CharParser () [Text]
 superclassParser = do
     symbol "class"
     whiteSpace
@@ -882,7 +882,7 @@ superclassParser = do
     <|> return []
     <?> "superclasses"
 
-classDefParser :: CharParser () String
+classDefParser :: CharParser () Text
 classDefParser = do
     whiteSpace
     c <- oneOf['A'..'Z']
@@ -891,7 +891,7 @@ classDefParser = do
     return (c:cs)
     <?> "classDef"
 
-typeVarParser :: CharParser () String
+typeVarParser :: CharParser () Text
 typeVarParser = do
     whiteSpace
     c <- oneOf['a'..'z']

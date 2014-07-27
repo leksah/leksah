@@ -1,4 +1,6 @@
-{-# LANGUAGE CPP, ScopedTypeVariables #-}
+{-# LANGUAGE CPP #-}
+{-# LANGUAGE ScopedTypeVariables #-}
+{-# LANGUAGE OverloadedStrings #-}
 -----------------------------------------------------------------------------
 --
 -- Module      :  IDE.Session
@@ -72,6 +74,8 @@ import IDE.Completion (setCompletionSize)
 import Control.Monad.IO.Class (MonadIO(..))
 import Control.Monad (forM_, forM, when)
 import System.Log.Logger (debugM)
+import Data.Text (Text)
+import qualified Data.Text as T (pack)
 
 -- ---------------------------------------------------------------------
 -- This needs to be incremented, when the session format changes
@@ -159,7 +163,7 @@ sessionClosePane = do
 
 data SessionState = SessionState {
         sessionVersion      ::   Int
-    ,   saveTime            ::   String
+    ,   saveTime            ::   Text
     ,   layoutS             ::   PaneLayout
     ,   population          ::   [(Maybe PaneState,PanePath)]
     ,   windowSize          ::   (Int,Int)
@@ -167,7 +171,7 @@ data SessionState = SessionState {
     ,   dark                ::   Bool
     ,   completionSize      ::   (Int,Int)
     ,   workspacePath       ::   Maybe FilePath
-    ,   activePaneN         ::   Maybe String
+    ,   activePaneN         ::   Maybe Text
     ,   toolbarVisibleS     ::   Bool
     ,   findbarState        ::   (Bool,FindState)
     ,   recentOpenedFiles   ::   [FilePath]
@@ -381,7 +385,7 @@ saveSessionAs sessionPath mbSecondPath = do
             recentWorkspaces' <- readIDE recentWorkspaces
             let state = SessionState {
                 sessionVersion      =   theSessionVersion
-            ,   saveTime            =   show timeNow
+            ,   saveTime            =   T.pack $ show timeNow
             ,   layoutS             =   layout
             ,   population          =   population
             ,   windowSize          =   size
@@ -530,7 +534,7 @@ getPopulation = do
             Just st -> return (Just (asPaneState st), fst v))
                 $ Map.toList paneMap
 
-getActive :: IDEM(Maybe String)
+getActive :: IDEM(Maybe FilePath)
 getActive = do
     active <- readIDE activePack
     case active of
@@ -582,7 +586,7 @@ recoverSession sessionPath = catchIDE (do
         liftIO $ debugM "leksah" "recoverSession done"
         return (toolbarVisibleS sessionSt, (fst . findbarState) sessionSt))
         (\ (e :: SomeException) -> do
-            sysMessage Normal (show e)
+            sysMessage Normal (T.pack $ show e)
             return (True,True))
 
 applyLayout :: PaneLayout -> IDEAction
@@ -680,7 +684,7 @@ setDark dark = do
     case mbSettings of
         Just settings -> liftIO $ settingsSetLongProperty
                             settings
-                            "gtk-application-prefer-dark-theme"
+                            ("gtk-application-prefer-dark-theme" :: Text)
                             (if dark then 1 else 0)
                             "Leksah"
         Nothing -> return ()

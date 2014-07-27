@@ -1,5 +1,10 @@
-{-# LANGUAGE CPP, FlexibleInstances, DeriveDataTypeable, MultiParamTypeClasses,
-             ScopedTypeVariables, TypeSynonymInstances #-}
+{-# LANGUAGE CPP #-}
+{-# LANGUAGE DeriveDataTypeable #-}
+{-# LANGUAGE MultiParamTypeClasses #-}
+{-# LANGUAGE FlexibleInstances #-}
+{-# LANGUAGE TypeSynonymInstances #-}
+{-# LANGUAGE ScopedTypeVariables #-}
+{-# LANGUAGE OverloadedStrings #-}
 -----------------------------------------------------------------------------
 --
 -- Module      :  IDE.Pane.Modules
@@ -59,7 +64,8 @@ import Graphics.UI.Editor.MakeEditor (buildEditor,FieldDescription(..),mkField)
 import Graphics.UI.Editor.Parameters
        (paraMinSize, paraMultiSel, Parameter(..), emptyParams, (<<<-),
         paraName)
-import Graphics.UI.Editor.Simple (boolEditor,staticListEditor,stringEditor)
+import Graphics.UI.Editor.Simple
+       (textEditor, boolEditor, staticListEditor)
 import Graphics.UI.Editor.Composite (maybeEditor)
 import qualified System.IO.UTF8 as UTF8  (writeFile)
 import IDE.Utils.GUIUtils (stockIdFromType, __)
@@ -74,12 +80,20 @@ import Control.Monad.Trans.Class (MonadTrans(..))
 import Control.Monad.Trans.Reader (ask)
 import IDE.Utils.GUIUtils (treeViewContextMenu)
 import System.Glib.Properties (newAttrFromMaybeStringProperty)
-import Text.Printf (printf)
+import Data.Text (Text)
+import qualified Data.Text as T (unpack, isInfixOf, toLower, pack)
+import Data.Monoid ((<>))
+import qualified Text.Printf as S (printf)
+import Text.Printf (PrintfType)
+import qualified Data.Text.IO as T (writeFile)
+
+printf :: PrintfType r => Text -> r
+printf = S.printf . T.unpack
 
 -- | A modules pane description
 --
 
-type ModuleRecord = (String, Maybe (ModuleDescr,PackageDescr))
+type ModuleRecord = (Text, Maybe (ModuleDescr,PackageDescr))
 
 data IDEModules     =   IDEModules {
     outer           ::   VBox
@@ -99,7 +113,7 @@ data IDEModules     =   IDEModules {
 
 
 data ModulesState           =   ModulesState Int (Scope,Bool)
-                                    (Maybe ModuleName, Maybe String) ExpanderState
+                                    (Maybe ModuleName, Maybe Text) ExpanderState
     deriving(Eq,Ord,Read,Show,Typeable)
 
 data ExpanderState =  ExpanderState {
@@ -119,7 +133,7 @@ type ExpanderFacet      = ([TreePath], [TreePath])
 
 data SelectionState = SelectionState {
     moduleS'        ::   Maybe ModuleName
-,   facetS'         ::   Maybe String
+,   facetS'         ::   Maybe Text
 ,   scope'          ::   Scope
 ,   blacklist'      ::   Bool}
  deriving (Eq,Ord,Show)
@@ -182,7 +196,7 @@ instance RecoverablePane IDEModules ModulesState IDEM where
             --treeViewSetRulesHint treeView True
 
             renderer0    <- cellRendererPixbufNew
-            set renderer0 [ newAttrFromMaybeStringProperty "stock-id"  := (Nothing::Maybe String) ]
+            set renderer0 [ newAttrFromMaybeStringProperty "stock-id"  := (Nothing :: Maybe Text) ]
 
             renderer    <- cellRendererTextNew
             col         <- treeViewColumnNew
@@ -201,7 +215,7 @@ instance RecoverablePane IDEModules ModulesState IDEM where
                    case snd row of
                         Nothing -> Nothing
                         Just pair -> if isJust (mdMbSourcePath (fst pair))
-                                         then Just "ide_source"
+                                         then Just ("ide_source" :: Text)
                                          else Nothing]
 
             renderer2   <- cellRendererTextNew
@@ -216,7 +230,7 @@ instance RecoverablePane IDEModules ModulesState IDEM where
                 $ \row -> [
                     cellText := case snd row of
                                     Nothing -> ""
-                                    Just pair -> (display . pdPackage . snd) pair]
+                                    Just pair -> (T.pack . display . pdPackage . snd) pair]
 
             treeViewSetHeadersVisible treeView True
             treeViewSetEnableSearch treeView True
@@ -249,7 +263,7 @@ instance RecoverablePane IDEModules ModulesState IDEM where
                                             else if isJust (dscMbLocation row)
                                                 then
                                                     if dscExported row
-                                                        then "ide_source"
+                                                        then ("ide_source" :: Text)
                                                         else "ide_source_local"
                                                 else "ide_empty"]
             treeViewSetHeadersVisible descrView True
@@ -369,9 +383,9 @@ scopeForDescr pm packageScope workspaceScope systemScope =
                                                 else (False, False)
 
 
-selectIdentifier' :: ModuleName -> String -> IDEAction
+selectIdentifier' :: ModuleName -> Text -> IDEAction
 selectIdentifier'  moduleName symbol =
-    let nameArray = components moduleName
+    let nameArray = map T.pack $ components moduleName
     in do
         liftIO $ debugM "leksah" "selectIdentifier'"
         mods            <- getModules Nothing
@@ -395,7 +409,7 @@ selectIdentifier'  moduleName symbol =
                 bringPaneToFront mods
             Nothing         ->  return ()
 
-findPathFor :: String -> Maybe (Tree Descr) -> Maybe TreePath
+findPathFor :: Text -> Maybe (Tree Descr) -> Maybe TreePath
 findPathFor symbol (Just (Node _ forest)) =
     foldr ( \i mbTreePath -> findPathFor' [i] (forest !! i) mbTreePath)
                             Nothing  [0 .. ((length forest) - 1)]
@@ -410,7 +424,7 @@ findPathFor symbol (Just (Node _ forest)) =
                             Nothing     [0 .. ((length sub) - 1)]
 findPathFor symbol Nothing = Nothing
 
-treePathFromNameArray :: Maybe ModTree -> [String] -> [Int] -> Maybe [Int]
+treePathFromNameArray :: Maybe ModTree -> [Text] -> [Int] -> Maybe [Int]
 treePathFromNameArray (Just tree) [] accu      =   Just (reverse accu)
 treePathFromNameArray (Just tree) (h:t) accu   =
     let names   =   map (\t -> fst $ rootLabel t) (subForest tree)
@@ -422,7 +436,7 @@ treePathFromNameArray Nothing _ _  = Nothing
 
 treeViewSearch :: TreeView
     -> TreeStore ModuleRecord
-    -> String
+    -> Text
     -> TreeIter
     -> IO Bool
 treeViewSearch treeView treeStore string iter =  do
@@ -439,23 +453,23 @@ treeViewSearch treeView treeStore string iter =  do
     let str2      =  case snd val of
                         Just (mod,_) ->  showPackModule  (mdModuleId mod)
                         Nothing -> ""
-    let res       =  isInfixOf (map toLower string) (map toLower str2)
+    let res       =  T.isInfixOf (T.toLower string) (T.toLower str2)
     return res
 
-searchInModSubnodes :: ModTree -> String -> Bool
+searchInModSubnodes :: ModTree -> Text -> Bool
 searchInModSubnodes tree str =
     not $ null
         $ filter (\ (_,mbPair) ->
             case mbPair of
                 Nothing -> False
                 Just (mod,_) ->
-                    let cstr = show (Present (mdModuleId mod))
-                    in  isInfixOf (map toLower str) (map toLower cstr))
+                    let cstr = T.pack $ show (Present (mdModuleId mod))
+                    in  T.isInfixOf (T.toLower str) (T.toLower cstr))
                             $ concatMap flatten (subForest tree)
 
 descrViewSearch :: TreeView
     -> TreeStore Descr
-    -> String
+    -> Text
     -> TreeIter
     -> IO Bool
 descrViewSearch descrView descrStore string iter = do
@@ -469,13 +483,13 @@ descrViewSearch descrView descrStore string iter = do
         in when found $ do
             treeViewExpandRow descrView path False
             return ()
-    return (isInfixOf (map toLower string) (map toLower (descrTreeText val)))
+    return (T.isInfixOf (T.toLower string) (T.toLower (descrTreeText val)))
 
-searchInFacetSubnodes :: DescrTree -> String -> Bool
+searchInFacetSubnodes :: DescrTree -> Text -> Bool
 searchInFacetSubnodes tree str =
     not $ null
         $ filter (\ val ->
-            isInfixOf (map toLower str) (map toLower (descrTreeText val)))
+            T.isInfixOf (T.toLower str) (T.toLower (descrTreeText val)))
                 $ concatMap flatten (subForest tree)
 
 fillFacets :: TreeView
@@ -543,7 +557,7 @@ fillInfo treeView lst ideR  = do
             return ()
         _       ->  return ()
 
-findDescription :: SymbolTable alpha => PackModule -> alpha -> String -> Maybe (String,Descr)
+findDescription :: SymbolTable alpha => PackModule -> alpha -> Text -> Maybe (Text,Descr)
 findDescription md st s     =
     case filter (\id -> case dsMbModu id of
                             Nothing -> False
@@ -551,7 +565,7 @@ findDescription md st s     =
         [] -> Nothing
         l  -> Just (s,head l)
 
-getEmptyDefaultScope :: Map String [Descr]
+getEmptyDefaultScope :: Map Text [Descr]
 getEmptyDefaultScope = Map.empty
 
 fillModulesList :: (Scope,Bool) -> IDEAction
@@ -628,12 +642,12 @@ type DescrForest = Forest Descr
 type DescrTree = Tree Descr
 
 
-descrTreeText :: Descr -> String
-descrTreeText (Real (RealDescr id _ _ _ _ (InstanceDescr binds) _)) = id ++ " " ++ printBinds binds
+descrTreeText :: Descr -> Text
+descrTreeText (Real (RealDescr id _ _ _ _ (InstanceDescr binds) _)) = id <> " " <> printBinds binds
     where
         printBinds []       =   ""
         printBinds (a:[])   =   a
-        printBinds (a:b)    =   a ++ " " ++ printBinds b
+        printBinds (a:b)    =   a <> " " <> printBinds b
 descrTreeText d = dscName d
 
 descrIdType :: Descr -> DescrType
@@ -737,7 +751,7 @@ buildModulesTree (PackScope localMap _,PackScope otherMap _) =
 
 insertPairsInTree :: ModTree -> (ModuleDescr,PackageDescr) -> ModTree
 insertPairsInTree tree pair =
-    let nameArray           =   components $ modu $ mdModuleId $ fst pair
+    let nameArray           =   map T.pack . components . modu . mdModuleId $ fst pair
         (startArray,last)   =   splitAt (length nameArray - 1) nameArray
         pairedWith          =   (map (\n -> (n,Nothing)) startArray) ++ [(head last,Just pair)]
     in  insertNodesInTree pairedWith tree
@@ -765,10 +779,10 @@ insertNodesInTree li@(hd@(str1,Nothing):tl) (Node p@(str2,mbPair) forest) =
         (found,rest)   -> Node p  (insertNodesInTree tl (head found) : tail found ++ rest)
 
 insertNodesInTree [] n = n
-insertNodesInTree _ _      =   error (__ "Modules>>insertNodesInTree: Should not happen2")
+insertNodesInTree _ _      =   error (T.unpack $ __ "Modules>>insertNodesInTree: Should not happen2")
 
 
-makeNodes :: [(String,Maybe (ModuleDescr,PackageDescr))] -> ModTree
+makeNodes :: [(Text,Maybe (ModuleDescr,PackageDescr))] -> ModTree
 makeNodes [(str,mbPair)]    =   Node (str,mbPair) []
 makeNodes ((str,mbPair):tl) =   Node (str,mbPair) [makeNodes tl]
 makeNodes _                 =   throwIDE (__ "Impossible in makeNodes")
@@ -962,7 +976,7 @@ selectScope (sc,bl) = do
     applyExpanderState
     liftIO $ bringPaneToFront mods
 
-selectNames :: (Maybe ModuleName, Maybe String) -> IDEAction
+selectNames :: (Maybe ModuleName, Maybe Text) -> IDEAction
 selectNames (mbModuleName, mbIdName) = do
     liftIO $ debugM "leksah" "selectIdentifier"
     mods <- getModules Nothing
@@ -973,7 +987,7 @@ selectNames (mbModuleName, mbIdName) = do
             selF        <-  treeViewGetSelection (descrView mods)
             treeSelectionUnselectAll  selF
         Just moduleName ->
-            let nameArray = components moduleName
+            let nameArray = map T.pack $ components moduleName
             in do
                 mbTree              <-  liftIO $ treeStoreGetTreeSave (treeStore mods) []
                 case treePathFromNameArray mbTree nameArray [] of
@@ -1002,7 +1016,7 @@ selectNames (mbModuleName, mbIdName) = do
 
 reloadKeepSelection :: Bool -> IDEAction
 reloadKeepSelection isInitial = do
-    liftIO $ debugM "leksah" ((__ ">>>Info Changed!!! ") ++ show isInitial)
+    liftIO . debugM "leksah" $ (T.unpack $ __ ">>>Info Changed!!! ") ++ show isInitial
     mbMod <- getPane
     case mbMod of
         Nothing -> return ()
@@ -1069,14 +1083,14 @@ delModule treeview store = do
         (treePath:_) -> liftIO $ mapM (treeStoreGetValue store)
                                     $ map (\n -> take n treePath)  [1 .. length treePath]
 
-    liftIDE $ ideMessage Normal (printf (__ "categories: %s") (show categories))
+    liftIDE $ ideMessage Normal (T.pack $ printf (__ "categories: %s") (show categories))
 
     let modPacDescr = snd(last categories)
     case modPacDescr of
         Nothing     ->   liftIDE $ ideMessage Normal (__ "This should never be shown!")
         Just(md,_)  -> do
                          let modName = modu.mdModuleId $ md
-                         liftIDE $ ideMessage Normal ("modName: " ++ (show modName))
+                         liftIDE $ ideMessage Normal ("modName: " <> T.pack (show modName))
                          delModuleFromPackageDescr modName
 
 respDelModDialog :: IDEM (Bool)
@@ -1104,6 +1118,7 @@ addModule' treeView store = do
                                     $ map (\n -> take n treePath)  [1 .. length treePath]
     addModule categories
 
+addModule :: [ModuleRecord] -> PackageAction
 addModule categories = do
     liftIO $ debugM "leksah" "selectIdentifier"
     mbPD <- liftIDE $ getPackageDescriptionAndPath
@@ -1111,29 +1126,31 @@ addModule categories = do
         Nothing             -> liftIDE $ ideMessage Normal (__ "No package description")
         Just (pd,cabalPath) -> let srcPaths = nub $ concatMap hsSourceDirs $ allBuildInfo pd
                                    rootPath = dropFileName cabalPath
-                                   modPath  = foldr (\a b -> a ++ "." ++ b) ""
+                                   modPath  = foldr (\a b -> a <> "." <> b) ""
                                                 (map fst categories)
                                in do
             window' <- liftIDE getMainWindow
             mbResp <- liftIO $ addModuleDialog window' modPath srcPaths (hasLibs pd) $
-                   map exeName (executables pd) ++ map testName (testSuites pd) ++ map benchmarkName (benchmarks pd)
+                      map (T.pack . exeName)  (executables pd)
+                   ++ map (T.pack . testName) (testSuites pd)
+                   ++ map (T.pack . benchmarkName) (benchmarks pd)
             case mbResp of
                 Nothing                -> return ()
                 Just addMod@(AddModule modPath srcPath libExposed exesAndTests) ->
-                    case simpleParse modPath of
-                        Nothing         -> liftIDE $ ideMessage Normal (printf (__ "Not a valid module name : %s") modPath)
+                    case simpleParse $ T.unpack modPath of
+                        Nothing         -> liftIDE $ ideMessage Normal (T.pack $ printf (__ "Not a valid module name : %s") (T.unpack modPath))
                         Just moduleName -> do
                             let  target = srcPath </> toFilePath moduleName ++ ".hs"
                             liftIO $ createDirectoryIfMissing True (dropFileName target)
                             alreadyExists <- liftIO $ doesFileExist target
                             if alreadyExists
                                 then do
-                                    liftIDE $ ideMessage Normal (printf (__ "File already exists! Importing existing file %s.hs") (takeBaseName target))
+                                    liftIDE $ ideMessage Normal (T.pack $ printf (__ "File already exists! Importing existing file %s.hs") (takeBaseName target))
                                     addModuleToPackageDescr moduleName $ addModuleLocations addMod
                                     packageConfig
                                 else do
                                     template <- liftIO $ getEmptyModuleTemplate pd modPath
-                                    liftIO $ UTF8.writeFile target template
+                                    liftIO $ T.writeFile target template
                                     addModuleToPackageDescr moduleName $ addModuleLocations addMod
                                     packageConfig
                                     liftIDE $ fileOpenThis target
@@ -1142,10 +1159,10 @@ addModule categories = do
 --  Yet another stupid little dialog
 
 data AddModule = AddModule {
-    moduleName   :: String,
+    moduleName   :: Text,
     sourceRoot   :: FilePath,
     libExposed   :: Maybe Bool,
-    exesAndTests :: Set String}
+    exesAndTests :: Set Text}
 
 addModuleLocations :: AddModule -> [ModuleLocation]
 addModuleLocations addMod = lib (libExposed addMod)
@@ -1155,7 +1172,7 @@ addModuleLocations addMod = lib (libExposed addMod)
     lib (Just False) = [LibOtherMod]
     lib Nothing = []
 
-addModuleDialog :: Window -> String -> [String] -> Bool -> [String] -> IO (Maybe AddModule)
+addModuleDialog :: Window -> Text -> [FilePath] -> Bool -> [Text] -> IO (Maybe AddModule)
 addModuleDialog parent modString sourceRoots hasLib exesTests = do
     liftIO $ debugM "leksah" "addModuleDialog"
     dia                        <-   dialogNew
@@ -1191,22 +1208,22 @@ addModuleDialog parent modString sourceRoots hasLib exesTests = do
         ResponseOk    -> return value
         _             -> return Nothing
 
-moduleFields :: [FilePath] -> Bool -> [String] -> FieldDescription AddModule
+moduleFields :: [FilePath] -> Bool -> [Text] -> FieldDescription AddModule
 moduleFields list hasLibs exesTests = VFD emptyParams $ [
         mkField
             (paraName <<<- ParaName ((__ "New module "))
                     $ emptyParams)
             moduleName
             (\ a b -> b{moduleName = a})
-            (stringEditor (const True) True),
+            (textEditor (const True) True),
         mkField
             (paraName <<<- ParaName ((__ "Root of the source path"))
                 $ paraMultiSel <<<- ParaMultiSel False
                     $ paraMinSize <<<- ParaMinSize (-1, 120)
                         $ emptyParams)
-            (\a -> sourceRoot a)
-            (\ a b -> b{sourceRoot = a})
-            (staticListEditor list id)]
+            (\a -> T.pack $ sourceRoot a)
+            (\ a b -> b{sourceRoot = T.unpack a})
+            (staticListEditor (map T.pack list) id)]
         ++ (if hasLibs
                 then [
                     mkField
@@ -1218,7 +1235,7 @@ moduleFields list hasLibs exesTests = VFD emptyParams $ [
                 else [])
         ++ map (\ name ->
             mkField
-                (paraName <<<- ParaName ((__ "Include in ") ++ name)
+                (paraName <<<- ParaName ((__ "Include in ") <> name)
                         $ emptyParams)
                 (Set.member name . exesAndTests)
                 (\ a b -> b{exesAndTests = (if a then Set.insert else Set.delete) name (exesAndTests b)})
@@ -1322,7 +1339,7 @@ recordSelHistory = do
     liftIO $ writeIORef (oldSelection mods) (oldSel{moduleS'= selMod, facetS' = selFacet})
     return ()
 
-replaySelHistory :: Maybe ModuleName -> Maybe String -> IDEAction
+replaySelHistory :: Maybe ModuleName -> Maybe Text -> IDEAction
 replaySelHistory mbModName mbFacetName = do
     liftIO $ debugM "leksah" "replaySelHistory"
     mods <- getModules Nothing

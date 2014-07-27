@@ -1,4 +1,5 @@
 {-# LANGUAGE ScopedTypeVariables #-}
+{-# LANGUAGE OverloadedStrings #-}
 -----------------------------------------------------------------------------
 --
 -- Module      :  IDE.Utils.ServerConnection
@@ -31,6 +32,8 @@ import Control.Event(triggerEvent)
 import Control.Monad.IO.Class (MonadIO(..))
 import System.Log.Logger (getLevel, getRootLogger)
 import Control.Monad (void)
+import qualified Data.Text as T (pack, unpack)
+import Data.Monoid ((<>))
 
 doServerCommand :: ServerCommand -> (ServerAnswer -> IDEM alpha) -> IDEAction
 doServerCommand command cont = do
@@ -46,10 +49,10 @@ doServerCommand command cont = do
         Nothing -> do
             prefs' <- readIDE prefs
             handle <- reifyIDE $ \ideR ->
-                catch (connectTo (serverIP prefs') (PortNumber(PortNum (fromIntegral $ serverPort prefs'))))
+                catch (connectTo (T.unpack $ serverIP prefs') (PortNumber(PortNum (fromIntegral $ serverPort prefs'))))
                     (\(exc :: SomeException) -> do
                         catch (startServer (serverPort prefs'))
-                            (\(exc :: SomeException) -> throwIDE ("Can't start leksah-server" ++ show exc))
+                            (\(exc :: SomeException) -> throwIDE ("Can't start leksah-server" <> T.pack (show exc)))
                         mbHandle <- waitForServer prefs' 100
                         case mbHandle of
                             Just handle ->  return handle
@@ -86,7 +89,7 @@ waitForServer _ 0 = return Nothing
 waitForServer prefs s = do
     threadDelay 100000 -- 0.1 second
     catch (do
-        handle <- liftIO $ connectTo (serverIP prefs) (PortNumber(PortNum (fromIntegral $ serverPort prefs)))
+        handle <- liftIO $ connectTo (T.unpack $ serverIP prefs) (PortNumber(PortNum (fromIntegral $ serverPort prefs)))
         return (Just handle))
         (\(exc :: SomeException) -> waitForServer prefs (s-1))
 

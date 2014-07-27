@@ -1,3 +1,4 @@
+{-# LANGUAGE OverloadedStrings #-}
 -----------------------------------------------------------------------------
 --
 -- Module      :  IDE.Sandbox
@@ -39,6 +40,8 @@ import IDE.LogRef (logOutput)
 import IDE.Pane.PackageEditor (choosePackageFile)
 import IDE.Workspaces (workspaceTryQuiet)
 import IDE.Package (refreshPackage)
+import Data.Monoid ((<>))
+import qualified Data.Text as T (pack)
 
 -- | Get the last item
 sinkLast = CL.fold (\_ a -> Just a) Nothing
@@ -72,7 +75,7 @@ sandboxInitShared = do
         Just dir -> do
             logLaunch <- getDefaultLogLaunch
             runExternalTool' (__ "Sandbox Init")
-                "cabal" ["sandbox", "init", "--sandbox=" ++ dir]
+                "cabal" ["sandbox", "init", "--sandbox=" <> T.pack dir]
                 (ipdBuildDir package) (logSandbox package logLaunch)
 
 sandboxDelete :: PackageAction
@@ -98,6 +101,6 @@ sandboxAddSource snapshot = do
         Just fp -> do
             logLaunch <- getDefaultLogLaunch
             runExternalTool' (__ "Sandbox Add Source")
-                "cabal" (["sandbox", "add-source", fp] ++ ["--snapshot" | snapshot])
+                "cabal" (["sandbox", "add-source", T.pack fp] ++ ["--snapshot" | snapshot])
                 (ipdBuildDir package) (logSandbox package logLaunch)
 

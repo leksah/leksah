@@ -1,5 +1,6 @@
 {-# LANGUAGE CPP #-}
 {-# LANGUAGE TypeFamilies #-}
+{-# LANGUAGE OverloadedStrings #-}
 -----------------------------------------------------------------------------
 --
 -- Module      :  IDE.SymbolNavigation
@@ -47,6 +48,8 @@ import Data.Maybe (fromJust, isJust)
 import Control.Monad.Reader.Class (MonadReader(..))
 import IDE.Core.State (reflectIDE)
 import Control.Applicative ((<$>))
+import Data.Text (Text)
+import qualified Data.Text as T (length)
 
 data Locality = LocalityPackage  | LocalityWorkspace | LocalitySystem  -- in which category symbol is located
     deriving (Ord,Eq,Show)
@@ -57,7 +60,7 @@ createHyperLinkSupport
     => EditorView editor -- ^ source buffer view
     -> ScrolledWindow    -- ^ container window
     -> (Bool -> Bool -> EditorIter editor -> IDEM (EditorIter editor, EditorIter editor)) -- ^ identifiermapper (bools=control,shift)
-    -> (Bool -> Bool -> String -> IDEM ()) -- ^ click handler
+    -> (Bool -> Bool -> Text -> IDEM ()) -- ^ click handler
     -> IDEM [Connection]
 createHyperLinkSupport sv sw identifierMapper clickHandler = do
     tv <- getEditorWidget sv
@@ -91,7 +94,7 @@ createHyperLinkSupport sv sw identifierMapper clickHandler = do
             removeTagByName tvb "link"
             offs <- getLineOffset beg
             offsc <- getLineOffset iter
-            if (length slice > 1) then do
+            if (T.length slice > 1) then do
                 if (click) then do
                         liftIO $ pointerUngrab eventTime
                         clickHandler ctrlPressed shiftPressed slice

@@ -1,5 +1,10 @@
-{-# LANGUAGE FlexibleInstances, DeriveDataTypeable, MultiParamTypeClasses,
-             CPP, ScopedTypeVariables, TypeSynonymInstances, GADTs, RecordWildCards #-}
+{-# LANGUAGE DeriveDataTypeable #-}
+{-# LANGUAGE MultiParamTypeClasses #-}
+{-# LANGUAGE FlexibleInstances #-}
+{-# LANGUAGE TypeSynonymInstances #-}
+{-# LANGUAGE RecordWildCards #-}
+{-# LANGUAGE ExistentialQuantification #-}
+{-# LANGUAGE OverloadedStrings #-}
 {-# OPTIONS_GHC -fwarn-unused-imports #-}
 -----------------------------------------------------------------------------
 --
@@ -45,6 +50,8 @@ import Graphics.UI.Gtk.General.Enums (PolicyType(..))
 import System.Glib.Signals (on)
 import Control.Monad (void, when)
 import Data.Foldable (forM_)
+import qualified Data.Text as T (unpack, pack, null)
+import Data.Monoid ((<>))
 
 -- | An info pane description
 --
@@ -88,7 +95,7 @@ instance RecoverablePane IDEInfo InfoState IDEM where
         createHyperLinkSupport descriptionView sw (\_ _ iter -> do
                 (beg, en) <- getIdentifierUnderCursorFromIter (iter, iter)
                 return (beg, en)) (\_ shift' slice ->
-                                    when (slice /= []) $ do
+                                    when (not $ T.null slice) $ do
                                         -- liftIO$ print ("slice",slice)
                                         triggerEventIDE (SelectInfo slice shift')
                                         return ()
@@ -140,7 +147,7 @@ setInfo identifierDescr = do
         oldDescr <- liftIO $ readIORef (currentDescr info)
         liftIO $ writeIORef (currentDescr info) (Just identifierDescr)
         tb <- getBuffer v
-        setText tb (show (Present identifierDescr) ++ "\n")   -- EOL for text iters to work
+        setText tb (T.pack $ show (Present identifierDescr) ++ "\n")   -- EOL for text iters to work
         recordInfoHistory (Just identifierDescr) oldDescr
 
 setInfoStyle :: IDEAction
@@ -182,7 +189,7 @@ openDocu = do
         Nothing -> return ()
         Just descr -> do
             prefs' <- readIDE prefs
-            openBrowser $ docuSearchURL prefs' ++ escapeURIString isAlphaNum (dscName descr)
+            openBrowser $ docuSearchURL prefs' <> T.pack (escapeURIString isAlphaNum (T.unpack $ dscName descr))
 
 populatePopupMenu :: IDERef -> IORef (Maybe Descr) -> Menu -> IO ()
 populatePopupMenu ideR currentDescr' menu = do

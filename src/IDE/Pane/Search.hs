@@ -1,5 +1,8 @@
-{-# LANGUAGE FlexibleInstances, DeriveDataTypeable, MultiParamTypeClasses,
-             TypeSynonymInstances, ScopedTypeVariables #-}
+{-# LANGUAGE DeriveDataTypeable #-}
+{-# LANGUAGE MultiParamTypeClasses #-}
+{-# LANGUAGE FlexibleInstances #-}
+{-# LANGUAGE TypeSynonymInstances #-}
+{-# LANGUAGE OverloadedStrings #-}
 -----------------------------------------------------------------------------
 --
 -- Module      :  IDE.Pane.Search
@@ -63,6 +66,8 @@ import qualified Data.ByteString.Char8 as BS (empty, unpack)
 import System.Glib.Properties (newAttrFromMaybeStringProperty)
 import Control.Monad (void)
 import Graphics.UI.Gtk.General.Enums (ShadowType(..))
+import Data.Text (Text)
+import qualified Data.Text as T (pack, null)
 
 -- | A search pane description
 --
@@ -77,12 +82,12 @@ data IDESearch      =   IDESearch {
 ,   entry           ::   Entry
 ,   scopeSelection  ::   Scope -> IDEAction
 ,   modeSelection   ::   SearchMode -> IDEAction
-,   searchMetaGUI   ::   String -> IDEAction
+,   searchMetaGUI   ::   Text -> IDEAction
 ,   setChoices     ::   [Descr] -> IDEAction
 } deriving Typeable
 
 data SearchState    =   SearchState {
-    searchString    ::   String
+    searchString    ::   Text
 ,   searchScope     ::   Scope
 ,   searchMode      ::   SearchMode
 }   deriving(Eq,Ord,Read,Show,Typeable)
@@ -178,11 +183,11 @@ buildSearchPane =
         cellLayoutSetAttributes col1 renderer1 listStore
             $ \row -> [ cellText := case dsMbModu row of
                                         Nothing -> ""
-                                        Just pm -> display $ modu pm]
+                                        Just pm -> T.pack . display $ modu pm]
         cellLayoutSetAttributes col1 renderer10 listStore
             $ \row -> [newAttrFromMaybeStringProperty "stock-id"
                          := if isReexported row
-                                    then Just "ide_reexported"
+                                    then Just ("ide_reexported" :: Text)
                                         else if isJust (dscMbLocation row)
                                             then Just "ide_source"
                                             else Nothing]
@@ -198,7 +203,7 @@ buildSearchPane =
         cellLayoutSetAttributes col2 renderer2 listStore
             $ \row -> [ cellText := case dsMbModu row of
                                         Nothing -> ""
-                                        Just pm -> display $ pack pm]
+                                        Just pm -> T.pack . display $ pack pm]
 
         renderer3   <- cellRendererTextNew
         col3        <- treeViewColumnNew
@@ -209,7 +214,7 @@ buildSearchPane =
         treeViewAppendColumn treeView col3
         cellLayoutPackStart col3 renderer3 True
         cellLayoutSetAttributes col3 renderer3 listStore
-            $ \row -> [ cellText := BS.unpack $ fromMaybe BS.empty $
+            $ \row -> [ cellText := T.pack . BS.unpack . fromMaybe BS.empty $
                             dscMbTypeStr row,
                         cellTextScale := 0.8, cellTextScaleSet := True    ]
 
@@ -244,14 +249,14 @@ buildSearchPane =
                 liftIO $ writeIORef (searchModeRef search) mode
                 text   <- liftIO $ entryGetText entry
                 searchMetaGUI_ text
-            searchMetaGUI_ :: String -> IDEAction
+            searchMetaGUI_ :: Text -> IDEAction
             searchMetaGUI_ str = do
                 liftIO $ bringPaneToFront search
                 liftIO $ entrySetText entry str
                 scope  <- liftIO $ getScope search
                 mode   <- liftIO $ getMode search
             --    let mode' = if length str > 2 then mode else Exact (caseSense mode)
-                descrs <- if null str
+                descrs <- if T.null str
                             then return []
                             else searchMeta scope str mode
                 liftIO $ do
@@ -377,7 +382,7 @@ getSelectionDescr treeView listStore = do
 --        otherwise       ->  return ()
 
 {--
-launchSymbolNavigationDialog :: String -> (Descr -> IDEM ()) -> IDEM ()
+launchSymbolNavigationDialog :: Text -> (Descr -> IDEM ()) -> IDEM ()
 launchSymbolNavigationDialog txt act = do
     dia                        <-   liftIO $ dialogNew
     win <- getMainWindow

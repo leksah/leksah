@@ -1,4 +1,5 @@
 {-# LANGUAGE CPP #-}
+{-# LANGUAGE OverloadedStrings #-}
 -----------------------------------------------------------------------------
 --
 -- Module      :  IDE.OSX
@@ -29,24 +30,25 @@ import Control.Monad.Reader (liftIO)
 import Control.Monad.Reader.Class (ask)
 import Graphics.UI.Gtk.OSX
 import IDE.Command (canQuit)
+import Data.Text (Text)
 
 updateMenu :: Application -> UIManager -> IDEM ()
 updateMenu app uiManager = do
     ideR <- ask
     liftIO $ do
-        mbMenu   <- uiManagerGetWidget uiManager "/ui/menubar"
+        mbMenu   <- uiManagerGetWidget uiManager ("/ui/menubar" :: Text)
         case mbMenu of
             Just menu -> do
                 widgetHide menu
                 applicationSetMenuBar app (castToMenuShell menu)
             Nothing   -> return ()
 
-        mbQuit   <- uiManagerGetWidget uiManager "/ui/menubar/_File/_Quit"
+        mbQuit   <- uiManagerGetWidget uiManager ("/ui/menubar/_File/_Quit" :: Text)
         case mbQuit of
             Just quit -> widgetHide quit
             Nothing   -> return ()
 
-        mbAbout   <- uiManagerGetWidget uiManager "/ui/menubar/_Help/_About"
+        mbAbout   <- uiManagerGetWidget uiManager ("/ui/menubar/_Help/_About" :: Text)
         case mbAbout of
             Just about -> do
                 applicationInsertAppMenuItem app (castToMenuItem about) 0
@@ -54,7 +56,7 @@ updateMenu app uiManager = do
                 applicationInsertAppMenuItem app sep 1
             Nothing   -> return ()
 
-        mbPrefs   <- uiManagerGetWidget uiManager "/ui/menubar/_Configuration/Edit general Preferences"
+        mbPrefs   <- uiManagerGetWidget uiManager ("/ui/menubar/_Configuration/Edit general Preferences" :: Text)
         case mbPrefs of
             Just prefs -> do
                 applicationInsertAppMenuItem app (castToMenuItem prefs) 2

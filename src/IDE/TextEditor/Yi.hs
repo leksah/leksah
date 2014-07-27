@@ -33,6 +33,8 @@ module IDE.TextEditor.Yi (
 
 import Data.Typeable (Typeable)
 import Graphics.UI.Gtk (castToWidget)
+import Data.Text (Text)
+import qualified Data.Text as T (pack, unpack)
 
 #ifdef LEKSAH_WITH_YI
 import IDE.TextEditor.Class (TextEditor(..))
@@ -86,13 +88,13 @@ import Control.Lens (use)
 data Yi = Yi deriving( Typeable, Show )
 
 #ifdef LEKSAH_WITH_YI
-newYiBuffer :: Maybe FilePath -> String -> IDEM (EditorBuffer Yi)
+newYiBuffer :: Maybe FilePath -> Text -> IDEM (EditorBuffer Yi)
 newYiBuffer mbFilename contents = do
     liftYiControl $ do
         let (filename, id) = case mbFilename of
                                 Just fn -> (fn, Right fn)
                                 Nothing -> ("Unknown.hs", Left "*leksah*")
-        buffer <- Yi.newBuffer id contents
+        buffer <- Yi.newBuffer id (T.unpack contents)
         setBufferMode filename buffer
         return $ YiBuffer buffer
 
@@ -176,16 +178,16 @@ instance TextEditor Yi where
     getInsertIter (YiBuffer b) = withYiBuffer b $ do
         insertMark <- insMark <$> askMarks
         mkYiIter b <$> getMarkPointB insertMark
-    getSlice (YiBuffer b) (YiIter first) (YiIter last) includeHidenChars = liftYiControl $
+    getSlice (YiBuffer b) (YiIter first) (YiIter last) includeHidenChars = liftYiControl $ T.pack <$>
         Yi.getText b first last
     getStartIter (YiBuffer b) = return $ mkYiIter b $ Point 0
     getTagTable (YiBuffer b) = return YiTagTable -- TODO
-    getText (YiBuffer b) (YiIter first) (YiIter last) includeHidenChars = liftYiControl $
+    getText (YiBuffer b) (YiIter first) (YiIter last) includeHidenChars = liftYiControl $ T.pack <$>
         Yi.getText b first last
     hasSelection (YiBuffer b) = withYiBuffer b $ do
         region <- getRawestSelectRegionB
         return $ not $ regionIsEmpty region
-    insert (YiBuffer b) (YiIter (Iter _ p)) text = withYiBuffer b $ insertNAt text p
+    insert (YiBuffer b) (YiIter (Iter _ p)) text = withYiBuffer b $ insertNAt (T.unpack text) p
     newView (YiBuffer b) mbFontString = do
         fd <- fontDescription mbFontString
         liftYiControl $ fmap YiView $ Yi.newView b fd
@@ -199,7 +201,7 @@ instance TextEditor Yi where
         now <- liftIO $ getCurrentTime
         withYiBuffer b $ markSavedB now
     setStyle preferDark (YiBuffer b) mbStyle = return () -- TODO
-    setText (YiBuffer b) text = liftYiControl $ Yi.setText b text
+    setText (YiBuffer b) text = liftYiControl $ Yi.setText b (T.unpack text)
     undo (YiBuffer b) =  withYiBuffer b undoB
     bufferToWindowCoords (YiView v) point = return point -- TODO
     drawTabs (YiView _) = return () -- TODO

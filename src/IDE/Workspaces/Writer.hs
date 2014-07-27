@@ -1,3 +1,4 @@
+{-# LANGUAGE OverloadedStrings #-}
 -----------------------------------------------------------------------------
 --
 -- Module      :  IDE.Workspaces.Writer
@@ -46,11 +47,13 @@ import Graphics.UI.Editor.Parameters
     (Parameter(..), (<<<-), paraName, emptyParams)
 import qualified Text.PrettyPrint as  PP (text)
 import System.Log.Logger (debugM)
+import qualified Data.Text as T (pack)
+import Data.Monoid ((<>))
 
 writeWorkspace :: Workspace -> IDEAction
 writeWorkspace ws = do
     timeNow      <- liftIO getClockTime
-    let newWs    =  ws {wsSaveTime = show timeNow,
+    let newWs    =  ws {wsSaveTime = T.pack $ show timeNow,
                          wsVersion = workspaceVersion,
                          wsPackagesFiles = map ipdCabalFile (wsPackages ws)}
     setWorkspace $ Just newWs
@@ -92,13 +95,13 @@ setWorkspace mbWs = do
     let wsStr = case mbWs of
                     Nothing -> ""
                     Just ws -> wsName ws
-    let txt = wsStr ++ " "
-                 ++ (case mbPack of
+    let txt = wsStr <> " "
+                 <> (case mbPack of
                             Nothing  -> ""
                             Just p   -> packageIdentifierToString (ipdPackageId p))
-                 ++ (case mbExe of
+                 <> (case mbExe of
                             Nothing  -> ""
-                            Just exe -> " " ++ exe)
+                            Just exe -> " " <> exe)
     triggerEventIDE (StatusbarChanged [CompartmentPackage txt])
     triggerEventIDE (WorkspaceChanged True True)
     triggerEventIDE UpdateWorkspaceInfo

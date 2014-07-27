@@ -36,11 +36,13 @@ import Data.Conduit (($$))
 import Control.Monad.IO.Class (MonadIO(..))
 import Data.Maybe (isNothing)
 import Control.Applicative ((<$>))
+import Data.Text (Text)
+import qualified Data.Text as T (unpack, pack, null)
 
 runExternalTool' :: MonadIDE m
-                => String
+                => Text
                 -> FilePath
-                -> [String]
+                -> [Text]
                 -> FilePath
                 -> C.Sink ToolOutput IDEM ()
                 -> m ()
@@ -59,9 +61,9 @@ runExternalTool' description executable args dir handleOutput = do
 runExternalTool :: MonadIDE m
                 => m Bool
                 -> (ProcessHandle -> IDEM ())
-                -> String
+                -> Text
                 -> FilePath
-                -> [String]
+                -> [Text]
                 -> FilePath
                 -> C.Sink ToolOutput IDEM ()
                 -> m ()
@@ -70,7 +72,7 @@ runExternalTool runGuard pidHandler description executable args dir handleOutput
         run <- runGuard
         when run $ do
             when (saveAllBeforeBuild prefs) (do fileSaveAll belongsToWorkspace; return ())
-            unless (null description) . void $
+            unless (T.null description) . void $
                 triggerEventIDE (StatusbarChanged [CompartmentState description, CompartmentBuild True])
             reifyIDE $ \ideR -> forkIO $ do
                 -- If vado is enabled then look up the mount point and transform
@@ -79,8 +81,8 @@ runExternalTool runGuard pidHandler description executable args dir handleOutput
                 (executable', args') <- case mountPoint of
                                             Left mp -> do
                                                 s <- readSettings
-                                                a <- vado mp s dir [] executable args
-                                                return ("ssh", a)
+                                                a <- vado mp s dir [] executable (map T.unpack args)
+                                                return ("ssh", map T.pack a)
                                             _ -> return (executable, args)
                 -- Run the tool
                 (output, pid) <- runTool executable' args' (Just dir)

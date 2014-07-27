@@ -1,7 +1,7 @@
 {-# LANGUAGE UndecidableInstances #-}
 {-# LANGUAGE FlexibleInstances, FlexibleContexts, TypeSynonymInstances,
              MultiParamTypeClasses, ScopedTypeVariables, CPP,
-             DeriveDataTypeable #-}
+             DeriveDataTypeable, OverloadedStrings #-}
 -----------------------------------------------------------------------------
 --
 -- Module      :  IDE.Core.State
@@ -108,6 +108,9 @@ import Control.Monad.Trans.Reader (ask, ReaderT(..))
 import qualified Paths_leksah as P
 import System.Environment.Executable (getExecutablePath)
 import System.Directory (doesDirectoryExist)
+import Data.Text (Text)
+import qualified Data.Text as T (unpack)
+import Data.Monoid ((<>))
 
 instance PaneMonad IDEM where
     getFrameState   =   readIDE frameState
@@ -188,7 +191,7 @@ instance PaneMonad IDEM where
         where
             updateRecent (ide@IDE{currentState = IsFlipping _}) = ide
             updateRecent ide = ide{recentPanes = paneName pane : filter (/= paneName pane) (recentPanes ide)}
-            trigger :: Maybe String -> Maybe String -> IDEAction
+            trigger :: Maybe Text -> Maybe Text -> IDEAction
             trigger s1 s2 = do
                 triggerEventIDE (RecordHistory (PaneSelected s1, PaneSelected s2))
                 triggerEventIDE (Sensitivity [(SensitivityEditor, False)])
@@ -200,7 +203,7 @@ instance PaneMonad IDEM where
         mbI             <-  liftIO $notebookPageNum nb (getTopWidget pane)
         case mbI of
             Nothing ->  liftIO $ do
-                error ("notebook page not found: unexpected " ++ paneName pane ++ " " ++ show panePath)
+                error ("notebook page not found: unexpected " ++ T.unpack (paneName pane) ++ " " ++ show panePath)
                 return False
             Just i  ->  do
                 deactivatePaneIfActive pane
@@ -216,20 +219,20 @@ data MessageLevel = Silent | Normal | High
 
 
 -- Shall be replaced
-sysMessage :: MonadIO m =>  MessageLevel -> String -> m ()
+sysMessage :: MonadIO m =>  MessageLevel -> Text -> m ()
 sysMessage ml str = liftIO $ do
-    putStrLn str
+    putStrLn $ T.unpack str
     hFlush stdout
 
-ideMessage :: MonadIDE m => MessageLevel -> String -> m ()
+ideMessage :: MonadIDE m => MessageLevel -> Text -> m ()
 ideMessage level str = do
     liftIO $ sysMessage level str
-    triggerEventIDE (LogMessage (str ++ "\n") LogTag)
+    triggerEventIDE (LogMessage (str <> "\n") LogTag)
     return ()
 
-logMessage :: MonadIDE m => String -> LogTag -> m ()
+logMessage :: MonadIDE m => Text -> LogTag -> m ()
 logMessage str tag = do
-    triggerEventIDE (LogMessage (str ++ "\n") tag)
+    triggerEventIDE (LogMessage (str <> "\n") tag)
     return ()
 -- with hslogger
 
@@ -237,11 +240,11 @@ logMessage str tag = do
 ---- Exception handling
 ----
 
-data IDEException = IDEException String
+data IDEException = IDEException Text
     deriving Typeable
 
 instance Show IDEException where
-  show (IDEException str) = str
+  show (IDEException str) = T.unpack str
 
 instance Exception IDEException
 

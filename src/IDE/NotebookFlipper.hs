@@ -1,3 +1,4 @@
+{-# LANGUAGE OverloadedStrings #-}
 -----------------------------------------------------------------------------
 --
 -- Module      :  IDE.NotebookFlipper

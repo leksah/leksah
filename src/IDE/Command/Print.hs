@@ -23,10 +23,12 @@ import Prelude hiding (print)
 import IDE.Core.Types
 import IDE.Core.State
 import IDE.Utils.Tool (readProcessWithExitCode)
+import Data.Text (Text)
+import qualified Data.Text as T (pack)
 
 data PrintError = PrintError {
     exitCode :: Int
-    , stderr :: String
+    , stderr :: Text
     , printCmd :: FilePath
     } deriving (Read,Show)
 
@@ -37,10 +39,10 @@ printCommand = "print"
 printCommand = "lpr"
 #endif
 
-print :: FilePath -> IO (Either PrintError String)
+print :: FilePath -> IO (Either PrintError Text)
 print fileName = do
         (ec, out, err) <- readProcessWithExitCode printCommand [fileName] ""
         case ec of
-                ExitSuccess -> return $ Right out
-                ExitFailure i -> return $ Left $ PrintError i err printCommand
+                ExitSuccess   -> return $ Right (T.pack out)
+                ExitFailure i -> return $ Left $ PrintError i (T.pack err) printCommand
 

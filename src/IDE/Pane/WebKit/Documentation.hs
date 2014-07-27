@@ -4,6 +4,7 @@
 {-# LANGUAGE TypeSynonymInstances #-}
 {-# LANGUAGE RecordWildCards #-}
 {-# LANGUAGE DeriveDataTypeable #-}
+{-# LANGUAGE OverloadedStrings #-}
 -----------------------------------------------------------------------------
 --
 -- Module      :  IDE.Pane.WebKit.Documentation
@@ -32,6 +33,7 @@ import Graphics.UI.Gtk
        (scrolledWindowSetShadowType, scrolledWindowSetPolicy,
         scrolledWindowNew, castToWidget, ScrolledWindow)
 import Data.Typeable (Typeable)
+import Data.Text (Text)
 import IDE.Core.Types (IDEAction, IDEM)
 import Control.Monad.IO.Class (MonadIO(..))
 import Graphics.UI.Frame.ViewFrame (getNotebook)
@@ -67,7 +69,7 @@ data IDEDocumentation = IDEDocumentation {
 
 data DocumentationState = DocumentationState {
     zoom :: Float
-  , uri  :: Maybe String
+  , uri  :: Maybe Text
 } deriving(Eq,Ord,Read,Show,Typeable)
 
 instance Pane IDEDocumentation IDEM
@@ -137,7 +139,7 @@ getDocumentation :: Maybe PanePath -> IDEM IDEDocumentation
 getDocumentation Nothing    = forceGetPane (Right "*Doc")
 getDocumentation (Just pp)  = forceGetPane (Left pp)
 
-loadDoc :: String -> IDEAction
+loadDoc :: Text -> IDEAction
 loadDoc uri = do
 #ifdef WEBKITGTK
     doc <- getDocumentation Nothing

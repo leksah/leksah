@@ -1,5 +1,10 @@
-{-# LANGUAGE FlexibleInstances, DeriveDataTypeable, MultiParamTypeClasses,
-             TypeSynonymInstances, RecordWildCards,  ScopedTypeVariables #-}
+{-# LANGUAGE DeriveDataTypeable #-}
+{-# LANGUAGE MultiParamTypeClasses #-}
+{-# LANGUAGE FlexibleInstances #-}
+{-# LANGUAGE TypeSynonymInstances #-}
+{-# LANGUAGE ScopedTypeVariables #-}
+{-# LANGUAGE RecordWildCards #-}
+{-# LANGUAGE OverloadedStrings #-}
 -----------------------------------------------------------------------------
 --
 -- Module      :  IDE.Pane.Files
@@ -63,6 +68,9 @@ import System.Glib.Attributes (AttrOp(..))
 import Control.Monad.IO.Class (MonadIO(..))
 import IDE.Utils.GUIUtils (__)
 import Control.Exception (catch)
+import Data.Text (Text)
+import qualified Data.Text as T (pack)
+import Data.Monoid ((<>))
 
 data FileRecord =
     FileRecord FilePath
@@ -70,10 +78,10 @@ data FileRecord =
   | PackageRecord IDEPackage
   | PlaceHolder deriving(Eq)
 
-file :: FileRecord -> String
-file (FileRecord f) = takeFileName f
-file (DirRecord f) = takeFileName f
-file (PackageRecord p) = packageIdentifierToString (ipdPackageId p) ++ " " ++ ipdBuildDir p
+file :: FileRecord -> Text
+file (FileRecord f) = T.pack $ takeFileName f
+file (DirRecord f) = T.pack $ takeFileName f
+file (PackageRecord p) = packageIdentifierToString (ipdPackageId p) <> " " <> T.pack (ipdBuildDir p)
 file PlaceHolder = ""
 
 -- | A files pane description

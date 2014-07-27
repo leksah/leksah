@@ -98,7 +98,7 @@ builder' pp nb windows = reifyIDE $ \ ideR -> do
     treeViewAppendColumn treeView colB
     cellLayoutPackStart colB rendererB False
     cellLayoutSetAttributes colB rendererB errorStore
-        $ \row -> [ cellText := T.unpack $ text row]
+        $ \row -> [ cellText := text row]
 
     treeViewSetHeadersVisible treeView True
     selB <- treeViewGetSelection treeView

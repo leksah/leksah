@@ -1,9 +1,10 @@
+{-# LANGUAGE CPP #-}
 {-# LANGUAGE DeriveDataTypeable #-}
 {-# LANGUAGE MultiParamTypeClasses #-}
 {-# LANGUAGE FlexibleInstances #-}
 {-# LANGUAGE TypeSynonymInstances #-}
 {-# LANGUAGE RecordWildCards #-}
-{-# LANGUAGE CPP #-}
+{-# LANGUAGE OverloadedStrings #-}
 -----------------------------------------------------------------------------
 --
 -- Module      :  IDE.Pane.WebKit.Output
@@ -33,6 +34,7 @@ import Graphics.UI.Gtk
         boxPackStart, entrySetText, Entry, VBox, entryNew, vBoxNew,
         postGUISync, scrolledWindowSetPolicy, scrolledWindowNew,
         castToWidget, ScrolledWindow)
+import IDE.Utils.GUIUtils
 import Data.Typeable (Typeable)
 import IDE.Core.Types (IDEAction, IDEM, IDE(..))
 import Control.Monad.IO.Class (MonadIO(..))
@@ -68,6 +70,8 @@ import System.Log.Logger (debugM)
 import Graphics.UI.Gtk.WebKit.WebView
        (loadCommitted, webViewGetUri)
 import Graphics.UI.Gtk.WebKit.WebFrame (webFrameGetUri)
+import Data.Text (Text)
+import qualified Data.Text as T (unpack, pack)
 
 data IDEOutput = IDEOutput {
     vbox          :: VBox
@@ -117,7 +121,7 @@ instance RecoverablePane IDEOutput OutputState IDEM where
     builder pp nb windows = reifyIDE $ \ ideR -> do
         vbox <- vBoxNew False 0
         uriEntry <- entryNew
-        entrySetText uriEntry "http://"
+        entrySetText uriEntry ("http://" :: Text)
         scrolledView <- scrolledWindowNew Nothing Nothing
         scrolledWindowSetShadowType scrolledView ShadowIn
         boxPackStart vbox uriEntry PackNatural 0
@@ -151,7 +155,7 @@ instance RecoverablePane IDEOutput OutputState IDEM where
 
         cid3 <- on webView populatePopup $ \ menu -> do
             alwaysHtml <- readIORef alwaysHtmlRef
-            action <- toggleActionNew "AlwaysHTML" "Always HTML" Nothing Nothing
+            action <- toggleActionNew "AlwaysHTML" (__"Always HTML") Nothing Nothing
             item <- castToMenuItem <$> actionCreateMenuItem action
             item `on` menuItemActivate $ writeIORef alwaysHtmlRef $ not alwaysHtml
             toggleActionSetActive action alwaysHtml
@@ -188,26 +192,26 @@ getOutputPane :: Maybe PanePath -> IDEM IDEOutput
 getOutputPane Nothing    = forceGetPane (Right "*Out")
 getOutputPane (Just pp)  = forceGetPane (Left pp)
 
-getValueUri :: IO String
+getValueUri :: IO Text
 getValueUri = do
     dataDir <- leksahOrPackageDir "pretty-show" getDataDir
-    return $ "file://"
+    return . T.pack $ "file://"
         ++ (case dataDir of
                 ('/':_) -> dataDir
                 _       -> '/':dataDir)
         ++ "/value.html"
 
-setOutput :: String -> String -> IDEAction
+setOutput :: Text -> Text -> IDEAction
 setOutput command str = do
 #ifdef WEBKITGTK
     out <- getOutputPane Nothing
     liftIO $ do
-        entrySetText (uriEntry out) (show command)
+        entrySetText (uriEntry out) (T.pack $ show command)
         uri <- getValueUri
         alwaysHtml <- readIORef $ alwaysHtmlRef out
         let view = webView out
-            html = case (alwaysHtml, parseValue str) of
-                        (False, Just value) -> valToHtmlPage defaultHtmlOpts value
+            html = case (alwaysHtml, parseValue $ T.unpack str) of
+                        (False, Just value) -> T.pack $ valToHtmlPage defaultHtmlOpts value
                         _                   -> str
         webViewLoadString view html Nothing uri
 #else
@@ -220,11 +224,11 @@ loadOutputUri uri = do
     out <- getOutputPane Nothing
     let view = webView out
     liftIO $ do
-        entrySetText (uriEntry out) uri
+        entrySetText (uriEntry out) (T.pack uri)
         currentUri <- webViewGetUri view
-        if Just uri == currentUri
+        if Just (T.pack uri) == currentUri
             then webViewReload view
-            else webViewLoadUri view uri
+            else webViewLoadUri view (T.pack uri)
 #else
     return ()
 #endif

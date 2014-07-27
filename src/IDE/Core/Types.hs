@@ -1,15 +1,9 @@
-{-# LANGUAGE
-        CPP
-      , DisambiguateRecordFields
-      , ExistentialQuantification
-      , Rank2Types
-      , FlexibleInstances
-      , DeriveDataTypeable
-      , FlexibleContexts
-      , DeriveDataTypeable
-      , TypeSynonymInstances
-      , MultiParamTypeClasses #-}
-
+{-# LANGUAGE CPP #-}
+{-# LANGUAGE DeriveDataTypeable #-}
+{-# LANGUAGE FlexibleInstances #-}
+{-# LANGUAGE MultiParamTypeClasses #-}
+{-# LANGUAGE TypeSynonymInstances #-}
+{-# LANGUAGE OverloadedStrings #-}
 -----------------------------------------------------------------------------
 --
 -- Module      :  IDE.Core.Data
@@ -155,7 +149,7 @@ data IDE            =  IDE {
 ,   prefs           ::   Prefs                   -- ^ configuration preferences
 ,   workspace       ::   Maybe Workspace         -- ^ may be a workspace (set of packages)
 ,   activePack      ::   Maybe IDEPackage
-,   activeExe       ::   Maybe String
+,   activeExe       ::   Maybe Text
 ,   bufferProjCache ::   Map FilePath [IDEPackage]
 ,   allLogRefs      ::   [LogRef]
 ,   currentEBC      ::   (Maybe LogRef, Maybe LogRef, Maybe LogRef)
@@ -164,10 +158,10 @@ data IDE            =  IDE {
 ,   packageInfo     ::   (Maybe (GenScope, GenScope)) -- ^ the second are the imports
 ,   workspaceInfo   ::   (Maybe (GenScope, GenScope)) -- ^ the second are the imports
 ,   workspInfoCache ::   PackageDescrCache
-,   handlers        ::   Map String [(Unique, IDEEvent -> IDEM IDEEvent)] -- ^ event handling table
+,   handlers        ::   Map Text [(Unique, IDEEvent -> IDEM IDEEvent)] -- ^ event handling table
 ,   currentState    ::   IDEState
 ,   guiHistory      ::   (Bool,[GUIHistory],Int)
-,   findbar         ::   (Bool,Maybe (Toolbar,ListStore String))
+,   findbar         ::   (Bool,Maybe (Toolbar,ListStore Text))
 ,   toolbar         ::   (Bool,Maybe Toolbar)
 ,   recentFiles     ::   [FilePath]
 ,   recentWorkspaces ::  [FilePath]
@@ -176,10 +170,10 @@ data IDE            =  IDE {
 ,   completion      ::   ((Int, Int), Maybe CompletionWindow)
 ,   yiControl       ::   Yi.Control
 ,   server          ::   Maybe Handle
-,   vcsData         ::   (Map FilePath MenuItem, Maybe (Maybe String)) -- menus for packages, password
-,   logLaunches     ::   Map.Map String LogLaunchData
+,   vcsData         ::   (Map FilePath MenuItem, Maybe (Maybe Text)) -- menus for packages, password
+,   logLaunches     ::   Map.Map Text LogLaunchData
 ,   autoCommand     ::   IDEAction
-,   autoURI         ::   Maybe String
+,   autoURI         ::   Maybe Text
 } --deriving Show
 
 --
@@ -275,12 +269,12 @@ runDebug = runReaderT
 data IDEEvent  =
         InfoChanged Bool-- is it the initial = True else False
     |   UpdateWorkspaceInfo
-    |   SelectInfo String Bool -- navigate to source (== True)
+    |   SelectInfo Text Bool -- navigate to source (== True)
     |   SelectIdent Descr
-    |   LogMessage String LogTag
+    |   LogMessage Text LogTag
     |   RecordHistory GUIHistory
     |   Sensitivity [(SensitivityMask,Bool)]
-    |   SearchMeta String
+    |   SearchMeta Text
     |   StartFindInitial
     |   GotoDefinition Descr
     |   LoadSession FilePath
@@ -296,7 +290,7 @@ data IDEEvent  =
     |   StatusbarChanged [StatusbarCompartment]
     |   WorkspaceChanged Bool Bool -- ^ showPane updateFileCache
 
-instance Event IDEEvent String where
+instance Event IDEEvent Text where
     getSelector (InfoChanged _)         =   "InfoChanged"
     getSelector UpdateWorkspaceInfo     =   "UpdateWorkspaceInfo"
     getSelector (LogMessage _ _)        =   "LogMessage"
@@ -320,7 +314,7 @@ instance Event IDEEvent String where
     getSelector (StatusbarChanged _)    =   "StatusbarChanged"
     getSelector (WorkspaceChanged _ _)  =   "WorkspaceChanged"
 
-instance EventSource IDERef IDEEvent IDEM String where
+instance EventSource IDERef IDEEvent IDEM Text where
     canTriggerEvent _ "InfoChanged"         = True
     canTriggerEvent _ "UpdateWorkspaceInfo" = True
     canTriggerEvent _ "LogMessage"          = True
@@ -355,7 +349,7 @@ instance EventSource IDERef IDEEvent IDEM String where
     myUnique _ = do
         liftIO $ newUnique
 
-instance EventSelector String
+instance EventSelector Text
 
 -- ---------------------------------------------------------------------
 -- IDEPackages
@@ -366,22 +360,22 @@ data IDEPackage     =   IDEPackage {
 ,   ipdDepends         ::   [Dependency]
 ,   ipdModules         ::   Map ModuleName BuildInfo
 ,   ipdHasLibs         ::   Bool
-,   ipdExes            ::   [String]
-,   ipdTests           ::   [String]
-,   ipdBenchmarks      ::   [String]
+,   ipdExes            ::   [Text]
+,   ipdTests           ::   [Text]
+,   ipdBenchmarks      ::   [Text]
 ,   ipdMain            ::   [(FilePath, BuildInfo, Bool)]
 ,   ipdExtraSrcs       ::   Set FilePath
 ,   ipdSrcDirs         ::   [FilePath]
 ,   ipdExtensions      ::   [Extension]
-,   ipdConfigFlags     ::   [String]
-,   ipdBuildFlags      ::   [String]
-,   ipdTestFlags       ::   [String]
-,   ipdHaddockFlags    ::   [String]
-,   ipdExeFlags        ::   [String]
-,   ipdInstallFlags    ::   [String]
-,   ipdRegisterFlags   ::   [String]
-,   ipdUnregisterFlags ::   [String]
-,   ipdSdistFlags      ::   [String]
+,   ipdConfigFlags     ::   [Text]
+,   ipdBuildFlags      ::   [Text]
+,   ipdTestFlags       ::   [Text]
+,   ipdHaddockFlags    ::   [Text]
+,   ipdExeFlags        ::   [Text]
+,   ipdInstallFlags    ::   [Text]
+,   ipdRegisterFlags   ::   [Text]
+,   ipdUnregisterFlags ::   [Text]
+,   ipdSdistFlags      ::   [Text]
 ,   ipdSandboxSources  ::   [IDEPackage]
 }
     deriving (Eq)
@@ -403,13 +397,13 @@ ipdAllDirs p = ipdBuildDir p : (ipdSandboxSources p >>= ipdAllDirs)
 --
 data Workspace = Workspace {
     wsVersion       ::   Int
-,   wsSaveTime      ::   String
-,   wsName          ::   String
+,   wsSaveTime      ::   Text
+,   wsName          ::   Text
 ,   wsFile          ::   FilePath
 ,   wsPackages      ::   [IDEPackage]
 ,   wsPackagesFiles ::   [FilePath]
 ,   wsActivePackFile::   Maybe FilePath
-,   wsActiveExe     ::   Maybe String
+,   wsActiveExe     ::   Maybe Text
 ,   wsNobuildPack   ::   [IDEPackage]
 ,   packageVcsConf  ::   Map FilePath VCSConf -- ^ (FilePath to package, Version-Control-System Configuration)
 } deriving Show
@@ -428,49 +422,49 @@ wsAllPackages w = nubBy (\ a b -> ipdCabalFile a == ipdCabalFile b) $ wsPackages
 --
 data ActionDescr alpha = AD {
     name        ::   ActionString
-,   label       ::   String
-,   tooltip     ::   Maybe String
-,   stockID     ::   Maybe String
+,   label       ::   Text
+,   tooltip     ::   Maybe Text
+,   stockID     ::   Maybe Text
 ,   action      ::   ReaderT alpha IO ()
 ,   accelerator ::   [KeyString]
 ,   isToggle    ::   Bool
 }
 
-type ActionString = String
-type KeyString = String
+type ActionString = Text
+type KeyString = Text
 
 --
 -- | Preferences is a data structure to hold configuration data
 --
 data Prefs = Prefs {
         prefsFormat         ::   Int
-    ,   prefsSaveTime       ::   String
+    ,   prefsSaveTime       ::   Text
     ,   showLineNumbers     ::   Bool
     ,   rightMargin         ::   (Bool, Int)
     ,   tabWidth            ::   Int
     ,   wrapLines           ::   Bool
-    ,   sourceCandy         ::   (Bool,String)
-    ,   keymapName          ::   String
+    ,   sourceCandy         ::   (Bool,Text)
+    ,   keymapName          ::   Text
     ,   forceLineEnds       ::   Bool
     ,   removeTBlanks       ::   Bool
-    ,   textviewFont        ::   Maybe String
-    ,   sourceStyle         ::   (Bool, String)
+    ,   textviewFont        ::   Maybe Text
+    ,   sourceStyle         ::   (Bool, Text)
     ,   foundBackground     ::   Color
     ,   matchBackground     ::   Color
     ,   contextBackground   ::   Color
     ,   breakpointBackground ::  Color
     ,   autoLoad            ::   Bool
-    ,   textEditor          ::   String
-    ,   logviewFont         ::   Maybe String
+    ,   textEditorType      ::   Text
+    ,   logviewFont         ::   Maybe Text
     ,   defaultSize         ::   (Int,Int)
-    ,   browser             ::   String
-    ,   pathForCategory     ::   [(String, PanePath)]
+    ,   browser             ::   Text
+    ,   pathForCategory     ::   [(Text, PanePath)]
     ,   defaultPath         ::   PanePath
-    ,   categoryForPane     ::   [(String, String)]
+    ,   categoryForPane     ::   [(Text, Text)]
     ,   packageBlacklist    ::   [Dependency]
     ,   collectAtStart      ::   Bool
     ,   useCtrlTabFlipping  ::   Bool
-    ,   docuSearchURL       ::   String
+    ,   docuSearchURL       ::   Text
     ,   completeRestricted  ::   Bool
     ,   saveAllBeforeBuild  ::   Bool
     ,   jumpToWarnings      ::   Bool
@@ -485,17 +479,17 @@ data Prefs = Prefs {
     ,   breakOnException    ::   Bool
     ,   breakOnError        ::   Bool
     ,   printBindResult     ::   Bool
-    ,   serverIP            ::   String
+    ,   serverIP            ::   Text
             -- As well used by server
     ,   serverPort          ::   Int
     ,   sourceDirectories   ::   [FilePath]
     ,   unpackDirectory     ::   Maybe FilePath
-    ,   retrieveURL         ::   String
+    ,   retrieveURL         ::   Text
     ,   retrieveStrategy    ::   RetrieveStrategy
     ,   endWithLastConn     ::   Bool
 } deriving(Eq,Show)
 
-cabalCommand :: Prefs -> String
+cabalCommand :: Prefs -> FilePath
 cabalCommand p = if useCabalDev p then "cabal-dev" else "cabal"
 
 data SearchHint = Forward | Backward | Insert | Delete | Initial
@@ -572,16 +566,16 @@ colorHexString (Color r g b) = '#' : (pad $ showHex r "")
 
 newtype CandyTable      =   CT (CandyTableForth,CandyTableBack)
 
-type CandyTableForth    =   [(Bool,String,String)]
+type CandyTableForth    =   [(Bool,Text,Text)]
 
-type CandyTableBack     =   [(String,String,Int)]
+type CandyTableBack     =   [(Text,Text,Int)]
 
 newtype KeymapI         =   KM  (Map ActionString
-                                [(Maybe (Either KeyString (KeyString,KeyString)), Maybe String)])
+                                [(Maybe (Either KeyString (KeyString,KeyString)), Maybe Text)])
 
 type SpecialKeyTable alpha  =   Map (KeyVal,[Modifier]) (Map (KeyVal,[Modifier]) (ActionDescr alpha))
 
-type SpecialKeyCons  alpha  =   Maybe ((Map (KeyVal,[Modifier]) (ActionDescr alpha)),String)
+type SpecialKeyCons  alpha  =   Maybe ((Map (KeyVal,[Modifier]) (ActionDescr alpha)),Text)
 
 data LogTag = LogTag | ErrorTag | FrameTag | InputTag | InfoTag
 
@@ -591,14 +585,14 @@ type GUIHistory = (GUIHistory', GUIHistory')
 data GUIHistory' =
         ModuleSelected  {
             moduleS :: Maybe ModuleName
-        ,   facetS  :: Maybe String}
+        ,   facetS  :: Maybe Text}
     |   ScopeSelected {
             scope   :: Scope
         ,   blacklist :: Bool}
     |   InfoElementSelected {
             mbInfo  :: Maybe Descr}
     |   PaneSelected {
-            paneN   :: Maybe (String)}
+            paneN   :: Maybe (Text)}
    deriving (Eq, Ord, Show)
 
 data SensitivityMask =
@@ -619,13 +613,13 @@ data SearchMode = Exact {caseSense :: Bool} | Prefix {caseSense :: Bool}
 data CompletionWindow = CompletionWindow {
     cwWindow :: Window,
     cwTreeView :: TreeView,
-    cwListStore :: ListStore String}
+    cwListStore :: ListStore Text}
 
 data StatusbarCompartment =
-        CompartmentCommand String
+        CompartmentCommand Text
     |   CompartmentPane (Maybe (IDEPane IDEM))
-    |   CompartmentPackage String
-    |   CompartmentState String
+    |   CompartmentPackage Text
+    |   CompartmentState Text
     |   CompartmentOverlay Bool
     |   CompartmentBufferPos (Int,Int)
     |   CompartmentBuild Bool

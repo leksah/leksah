@@ -1,8 +1,10 @@
+{-# LANGUAGE FlexibleInstances #-}
 {-# LANGUAGE DeriveDataTypeable #-}
 {-# LANGUAGE TypeFamilies #-}
 {-# LANGUAGE RecordWildCards #-}
 {-# LANGUAGE CPP #-}
 {-# LANGUAGE RankNTypes #-}
+{-# LANGUAGE NoImplicitPrelude #-}
 -----------------------------------------------------------------------------
 --
 -- Module      :  IDE.TextEditor.CodeMirror
@@ -35,6 +37,21 @@ module IDE.TextEditor.CodeMirror (
 import Data.Typeable (Typeable)
 import Graphics.UI.Gtk (scrolledWindowSetShadowType)
 import Graphics.UI.Gtk.General.Enums (ShadowType(..))
+import Data.Text (Text)
+import Text.Show (Show)
+import Data.Tuple (snd, fst)
+import Data.Function (($), (.))
+import Data.Maybe (Maybe, Maybe(..))
+import GHC.Base (Functor(..), Monad(..))
+import Data.Int (Int)
+import System.IO (FilePath)
+import Data.List ((++))
+import Data.Bool (Bool(..), not)
+import GHC.Real (fromIntegral, RealFrac(..))
+import GHC.Num (Num(..))
+import Data.Eq (Eq(..))
+import GHC.Float (Double)
+import qualified Data.Text as T (pack)
 
 #ifdef LEKSAH_WITH_CODE_MIRROR
 import Control.Monad (unless)
@@ -60,7 +77,7 @@ import qualified GHCJS.CodeMirror as CM (getDataDir)
 import System.Glib.Signals (after, on)
 import Graphics.UI.Gtk.WebKit.JavaScriptCore.WebFrame
        (webFrameGetGlobalContext)
-import Text.Blaze.Html.Renderer.String (renderHtml)
+import Text.Blaze.Html.Renderer.Text (renderHtml)
 import Text.Hamlet (shamlet)
 import Graphics.UI.Gtk
        (ScrolledWindow, menuPopup, menuAttachToWidget, menuNew,
@@ -120,9 +137,12 @@ runCM (v, mvar) f = liftIO $ do
             Nothing    -> do
                 mainIteration
                 loop mvar
+
 type CodeMirrorRef = (WebView, MVar CodeMirrorState)
 
-body                  = js  "body"
+
+
+body              = js  "body"
 value             = js  "value"
 setSize           = js2 "setSize"
 mode              = js  "mode"
@@ -177,7 +197,7 @@ cmIter cm l c = do
         i ^. ch   <# (fromIntegral c :: Double)
         return $ CMIter cm i
 
-newCMBuffer :: Maybe FilePath -> String -> IDEM (EditorBuffer CodeMirror)
+newCMBuffer :: Maybe FilePath -> Text -> IDEM (EditorBuffer CodeMirror)
 newCMBuffer mbFilename contents = do
     ideR <- ask
     liftIO $ do
@@ -205,7 +225,7 @@ newCMBuffer mbFilename contents = do
                 liftIO $ debugM "leksah" "newCMBuffer loaded"
                 liftIO . putMVar s $ CodeMirrorState{..}
 
-        webViewLoadString cmWebView (
+        webViewLoadString cmWebView (T.pack $
                    "<html><head>"
                 ++ "<script src=\"lib/codemirror.js\">"
                 ++ "<link rel=\"stylesheet\" href=\"lib/codemirror.css\">"
@@ -214,7 +234,7 @@ newCMBuffer mbFilename contents = do
                 ++ "</head>"
                 ++ "<body style=\"margin:0;padding:0 auto;\">"
                 ++ "</body></html>"
-            ) Nothing ("file://" ++ dataDir ++ "/codemirror.html")
+            ) Nothing (T.pack $ "file://" ++ dataDir ++ "/codemirror.html")
         debugM "leksah" "newCMBuffer loading"
         return $ CMBuffer (cmWebView, s)
 
@@ -302,12 +322,12 @@ instance TextEditor CodeMirror where
         lift $ CMIter cm <$> (m ^. getCursor "head" >>= valToObject)
     getSlice (CMBuffer cm) (CMIter _ first) (CMIter _ last) includeHidenChars = runCM cm $ do
         m <- codeMirror
-        lift $ unpack <$> (m ^. getRange first last >>= valToText)
+        lift $ m ^. getRange first last >>= valToText
     getStartIter (CMBuffer cm) = runCM cm $ cmIter cm 0 0
     getTagTable (CMBuffer cm) = return $ CMTagTable cm
     getText (CMBuffer cm) (CMIter _ first) (CMIter _ last) includeHidenChars = runCM cm $ do
         m <- codeMirror
-        lift $ unpack <$> (m ^. getRange first last >>= valToText)
+        lift $ m ^. getRange first last >>= valToText
     hasSelection (CMBuffer cm) = runCM cm $ do
         m <- codeMirror
         lift $ (m ^. somethingSelected) >>= valToBool

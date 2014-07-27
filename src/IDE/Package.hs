@@ -92,7 +92,6 @@ import IDE.Pane.PackageFlags (writeFlags, readFlags)
 import Distribution.Text (display)
 import IDE.Utils.FileUtils(getConfigFilePathForLoad)
 import IDE.LogRef
-import MyMissing (replace)
 import Distribution.ModuleName (ModuleName(..))
 import Data.List (isInfixOf, nub, foldl', delete)
 import qualified System.IO.UTF8 as UTF8  (readFile)
@@ -117,12 +116,20 @@ import Debug.Trace (trace)
 import IDE.Pane.WebKit.Documentation
        (getDocumentation, loadDoc, reloadDoc)
 import IDE.Pane.WebKit.Output (loadOutputUri, getOutputPane)
-import Text.Printf (printf)
 import System.Log.Logger (debugM)
 import System.Process.Vado (getMountPoint, vado, readSettings)
-import qualified Data.Text as T (pack, unpack, isInfixOf)
+import qualified Data.Text as T
+       (replace, unwords, takeWhile, pack, unpack, isInfixOf)
 import IDE.Utils.ExternalTool (runExternalTool', runExternalTool, isRunning, interruptBuild)
 import Text.PrinterParser (writeFields)
+import Data.Text (Text)
+import Data.Monoid ((<>))
+import qualified Data.Text.IO as T (readFile)
+import qualified Text.Printf as S (printf)
+import Text.Printf (PrintfType)
+
+printf :: PrintfType r => Text -> r
+printf = S.printf . T.unpack
 
 -- | Get the last item
 sinkLast = CL.fold (\_ a -> Just a) Nothing
@@ -138,7 +145,7 @@ myExeModules pd = concatMap (moduleInfo buildInfo exeModules) (executables pd)
 myTestModules pd = concatMap (moduleInfo testBuildInfo (otherModules . testBuildInfo)) (testSuites pd)
 myBenchmarkModules pd = concatMap (moduleInfo benchmarkBuildInfo (otherModules . benchmarkBuildInfo)) (benchmarks pd)
 
-activatePackage :: Maybe FilePath -> Maybe IDEPackage -> Maybe String -> IDEM ()
+activatePackage :: Maybe FilePath -> Maybe IDEPackage -> Maybe Text -> IDEM ()
 activatePackage mbPath mbPack mbExe = do
     liftIO $ debugM "leksah" "activatePackage"
     oldActivePack <- readIDE activePack
@@ -154,9 +161,9 @@ activatePackage mbPath mbPack mbExe = do
                     Nothing -> ""
                     Just ws -> wsName ws
         txt = case (mbPath, mbPack) of
-                    (_, Just pack) -> wsStr ++ " > " ++ packageIdentifierToString (ipdPackageId pack)
-                    (Just path, _) -> wsStr ++ " > " ++ takeFileName path
-                    _ -> wsStr ++ ":"
+                    (_, Just pack) -> wsStr <> " > " <> packageIdentifierToString (ipdPackageId pack)
+                    (Just path, _) -> wsStr <> " > " <> T.pack (takeFileName path)
+                    _ -> wsStr <> ":"
     triggerEventIDE (StatusbarChanged [CompartmentPackage txt])
     return ()
 
@@ -221,9 +228,9 @@ isConfigError = CL.foldM (\a b -> return $ a || isCErr b) False
     where
     isCErr (ToolError str) = str1 `T.isInfixOf` str || str2 `T.isInfixOf` str || str3 `T.isInfixOf` str
     isCErr _ = False
-    str1 = T.pack (__ "Run the 'configure' command first")
-    str2 = T.pack (__ "please re-configure")
-    str3 = T.pack (__ "cannot satisfy -package-id")
+    str1 = __ "Run the 'configure' command first"
+    str2 = __ "please re-configure"
+    str3 = __ "cannot satisfy -package-id"
 
 buildPackage :: Bool -> Bool -> Bool -> Bool -> IDEPackage -> (Bool -> IDEAction) -> IDEAction
 buildPackage backgroundBuild runTests jumpToWarnings withoutLinking package continuation = catchIDE (do
@@ -248,7 +255,7 @@ buildPackage backgroundBuild runTests jumpToWarnings withoutLinking package cont
                         when f $ do
                             mbURI <- readIDE autoURI
                             case mbURI of
-                                Just uri -> postSyncIDE $ loadOutputUri uri
+                                Just uri -> postSyncIDE . loadOutputUri $ T.unpack uri
                                 Nothing  -> return ()
                         continuation f
         Just debug@(_, ghci) -> do
@@ -264,7 +271,7 @@ buildPackage backgroundBuild runTests jumpToWarnings withoutLinking package cont
                         liftIO . postGUISync $ reflectIDE cmd ideR
                         lift $ continuation True
     )
-    (\(e :: SomeException) -> sysMessage Normal (show e))
+    (\(e :: SomeException) -> sysMessage Normal (T.pack $ show e))
 
 packageDoc :: PackageAction
 packageDoc = do
@@ -320,7 +327,7 @@ packageCopy = do
                     let dir = ipdBuildDir package
                     runExternalTool' (__ "Copying")
                                     (cabalCommand prefs)
-                                    (["copy"] ++ ["--destdir=" ++ fp])
+                                    (["copy"] ++ ["--destdir=" <> T.pack fp])
                                     dir
                                     (logOutput logLaunch))
             (\(e :: SomeException) -> putStrLn (show e))
@@ -388,18 +395,18 @@ packageRun' addFlagIfMissing package = do
             pd <- liftIO $ readPackageDescription normal (ipdCabalFile package) >>= return . flattenPackageDescription
             mbExe <- readIDE activeExe
             let exe = take 1 . filter (isActiveExe mbExe) $ executables pd
-            let defaultLogName = display . pkgName $ ipdPackageId package
-                logName = fromMaybe defaultLogName . listToMaybe $ map exeName exe
+            let defaultLogName = T.pack . display . pkgName $ ipdPackageId package
+                logName = fromMaybe defaultLogName . listToMaybe $ map (T.pack . exeName) exe
             (logLaunch,logName) <- buildLogLaunchByName logName
             case maybeDebug of
                 Nothing -> do
                     let dir = ipdBuildDir package
                     IDE.Package.runPackage (addLogLaunchData logName logLaunch)
-                                           (printf (__ "Running %s") logName)
+                                           (T.pack $ printf (__ "Running %s") (T.unpack logName))
                                            "cabal"
                                            (concat [["run"]
                                                 , ipdBuildFlags package
-                                                , map exeName exe
+                                                , map (T.pack . exeName) exe
                                                 , ["--"]
                                                 , ipdExeFlags package])
                                            dir
@@ -409,13 +416,14 @@ packageRun' addFlagIfMissing package = do
                     runDebug (do
                         case exe of
                             [Executable name mainFilePath _] -> do
-                                executeDebugCommand (":module *" ++ (map (\c -> if c == '/' then '.' else c) (takeWhile (/= '.') mainFilePath))) (logOutput logLaunch)
+                                executeDebugCommand (":module *" <> T.pack (map (\c -> if c == '/' then '.' else c) (takeWhile (/= '.') mainFilePath)))
+                                                    (logOutput logLaunch)
                             _ -> return ()
-                        executeDebugCommand (":main " ++ (unwords (ipdExeFlags package))) (logOutput logLaunch))
+                        executeDebugCommand (":main " <> T.unwords (ipdExeFlags package)) (logOutput logLaunch))
                         debug)
             (\(e :: SomeException) -> putStrLn (show e))
   where
-    isActiveExe selected (Executable name _ _) = selected == Just name
+    isActiveExe selected (Executable name _ _) = selected == Just (T.pack name)
 
 packageRunJavaScript :: PackageAction
 packageRunJavaScript = ask >>= (liftIDE . packageRunJavaScript' True)
@@ -448,8 +456,8 @@ packageRunJavaScript' addFlagIfMissing package = do
                 pd <- liftIO $ readPackageDescription normal (ipdCabalFile package) >>= return . flattenPackageDescription
                 mbExe <- readIDE activeExe
                 let exe = take 1 . filter (isActiveExe mbExe) $ executables pd
-                let defaultLogName = display . pkgName $ ipdPackageId package
-                    logName = fromMaybe defaultLogName . listToMaybe $ map exeName exe
+                let defaultLogName = T.pack . display . pkgName $ ipdPackageId package
+                    logName = fromMaybe defaultLogName . listToMaybe $ map (T.pack . exeName) exe
                 (logLaunch,logName) <- buildLogLaunchByName logName
                 let dir = ipdBuildDir package
                 prefs <- readIDE prefs
@@ -469,7 +477,7 @@ packageRunJavaScript' addFlagIfMissing package = do
                     _ -> return ())
                 (\(e :: SomeException) -> putStrLn (show e))
   where
-    isActiveExe selected (Executable name _ _) = selected == Just name
+    isActiveExe selected (Executable name _ _) = selected == Just (T.pack name)
 
 packageRegister :: PackageAction
 packageRegister = do
@@ -549,19 +557,19 @@ packageOpenDoc = do
                         </> "index.html"
             dir = ipdBuildDir package
 #ifdef WEBKITGTK
-        loadDoc ("file:///" ++ dir </> path)
+        loadDoc . T.pack $ "file:///" ++ dir </> path
         getDocumentation Nothing  >>= \ p -> displayPane p False
 #else
-        openBrowser path
+        openBrowser $ T.pack path
 #endif
       `catchIDE`
         (\(e :: SomeException) -> putStrLn (show e))
 
 
 runPackage ::  (ProcessHandle -> IDEAction)
-            -> String
+            -> Text
             -> FilePath
-            -> [String]
+            -> [Text]
             -> FilePath
             -> C.Sink ToolOutput IDEM ()
             -> IDEAction
@@ -585,29 +593,31 @@ getPackageDescriptionAndPath = do
                 pd <- readPackageDescription normal (ipdCabalFile p)
                 return (Just (flattenPackageDescription pd,ipdCabalFile p)))
                     (\(e :: SomeException) -> do
-                        reflectIDE (ideMessage Normal ((__ "Can't load package ") ++(show e))) ideR
+                        reflectIDE (ideMessage Normal ((__ "Can't load package ") <> T.pack (show e))) ideR
                         return Nothing))
 
-getEmptyModuleTemplate :: PackageDescription -> String -> IO String
+getEmptyModuleTemplate :: PackageDescription -> Text -> IO Text
 getEmptyModuleTemplate pd modName = getModuleTemplate "module" pd modName "" ""
 
-getModuleTemplate :: String -> PackageDescription -> String -> String -> String -> IO String
-getModuleTemplate template pd modName exports body = catch (do
+getModuleTemplate :: FilePath -> PackageDescription -> Text -> Text -> Text -> IO Text
+getModuleTemplate templateName pd modName exports body = catch (do
     dataDir  <- getDataDir
-    filePath <- getConfigFilePathForLoad (template ++ leksahTemplateFileExtension) Nothing dataDir
-    template <- UTF8.readFile filePath
-    return (foldl' (\ a (from, to) -> replace from to a) template
-        [   ("@License@"      , (display . license) pd)
-        ,   ("@Maintainer@"   , maintainer pd)
-        ,   ("@Stability@"    , stability pd)
+    filePath <- getConfigFilePathForLoad (templateName <> leksahTemplateFileExtension) Nothing dataDir
+    template <- T.readFile filePath
+    return (foldl' (\ a (from, to) -> T.replace from to a) template
+        [   ("@License@"      , (T.pack . display . license) pd)
+        ,   ("@Maintainer@"   , T.pack $ maintainer pd)
+        ,   ("@Stability@"    , T.pack $ stability pd)
         ,   ("@Portability@"  , "")
-        ,   ("@Copyright@"    , copyright pd)
+        ,   ("@Copyright@"    , T.pack $ copyright pd)
         ,   ("@ModuleName@"   , modName)
         ,   ("@ModuleExports@", exports)
         ,   ("@ModuleBody@"   , body)]))
-                    (\ (e :: SomeException) -> sysMessage Normal (printf (__ "Couldn't read template file: %s") (show e)) >> return "")
+                    (\ (e :: SomeException) -> do
+                        sysMessage Normal . T.pack $ printf (__ "Couldn't read template file: %s") (show e)
+                        return "")
 
-data ModuleLocation = LibExposedMod | LibOtherMod | ExeOrTestMod String
+data ModuleLocation = LibExposedMod | LibOtherMod | ExeOrTestMod Text
 
 addModuleToPackageDescr :: ModuleName -> [ModuleLocation] -> PackageAction
 addModuleToPackageDescr moduleName locations = do
@@ -617,14 +627,14 @@ addModuleToPackageDescr moduleName locations = do
         let npd = trace (show gpd) foldr addModule gpd locations
         writeGenericPackageDescription (ipdCabalFile p) npd)
            (\(e :: SomeException) -> do
-            reflectIDE (ideMessage Normal ((__ "Can't update package ") ++ show e)) ideR
+            reflectIDE (ideMessage Normal ((__ "Can't update package ") <> T.pack (show e))) ideR
             return ()))
   where
     addModule LibExposedMod gpd@GenericPackageDescription{condLibrary = Just lib} =
         gpd {condLibrary = Just (addModToLib moduleName lib)}
     addModule LibOtherMod gpd@GenericPackageDescription{condLibrary = Just lib} =
         gpd {condLibrary = Just (addModToBuildInfoLib moduleName lib)}
-    addModule (ExeOrTestMod name) gpd = gpd {
+    addModule (ExeOrTestMod name') gpd = let name = T.unpack name' in gpd {
           condExecutables = map (addModToBuildInfoExe  name moduleName) (condExecutables gpd)
         , condTestSuites  = map (addModToBuildInfoTest name moduleName) (condTestSuites gpd)
         }
@@ -680,7 +690,7 @@ delModuleFromPackageDescr moduleName = do
                                                 (condExecutables gpd)}
         writeGenericPackageDescription (ipdCabalFile p) npd)
            (\(e :: SomeException) -> do
-            reflectIDE (ideMessage Normal ((__ "Can't update package ") ++ show e)) ideR
+            reflectIDE (ideMessage Normal ((__ "Can't update package ") <> T.pack (show e))) ideR
             return ()))
 
 delModFromLib :: ModuleName -> CondTree ConfVar [Dependency] Library ->
@@ -723,22 +733,22 @@ makeModeToggled = do
 -- | * Debug code that needs to use the package
 --
 
-interactiveFlag :: String -> Bool -> String
-interactiveFlag name f = (if f then "-f" else "-fno-") ++ name
+interactiveFlag :: Text -> Bool -> Text
+interactiveFlag name f = (if f then "-f" else "-fno-") <> name
 
-printEvldWithShowFlag :: Bool -> String
+printEvldWithShowFlag :: Bool -> Text
 printEvldWithShowFlag = interactiveFlag "print-evld-with-show"
 
-breakOnExceptionFlag :: Bool -> String
+breakOnExceptionFlag :: Bool -> Text
 breakOnExceptionFlag = interactiveFlag "break-on-exception"
 
-breakOnErrorFlag :: Bool -> String
+breakOnErrorFlag :: Bool -> Text
 breakOnErrorFlag = interactiveFlag "break-on-error"
 
-printBindResultFlag :: Bool -> String
+printBindResultFlag :: Bool -> Text
 printBindResultFlag = interactiveFlag "print-bind-result"
 
-interactiveFlags :: Prefs -> [String]
+interactiveFlags :: Prefs -> [Text]
 interactiveFlags prefs =
     (printEvldWithShowFlag $ printEvldWithShow prefs)
     : (breakOnExceptionFlag $ breakOnException prefs)
@@ -823,7 +833,7 @@ tryDebugQuiet f = do
         _ -> do
             return ()
 
-executeDebugCommand :: String -> (C.Sink ToolOutput IDEM ()) -> DebugAction
+executeDebugCommand :: Text -> (C.Sink ToolOutput IDEM ()) -> DebugAction
 executeDebugCommand command handler = do
     (_, ghci) <- ask
     lift $ do
@@ -851,7 +861,7 @@ idePackageFromPath' ipdCabalFile = do
         pd <- readPackageDescription normal ipdCabalFile
         return (Just (flattenPackageDescription pd)))
             (\ (e  :: SomeException) -> do
-                reflectIDE (ideMessage Normal ((__ "Can't activate package ") ++(show e))) ideR
+                reflectIDE (ideMessage Normal ((__ "Can't activate package ") <> T.pack (show e))) ideR
                 return Nothing))
     case mbPackageD of
         Nothing       -> return Nothing
@@ -866,12 +876,12 @@ idePackageFromPath' ipdCabalFile = do
                 ipdSrcDirs          = case (nub $ concatMap hsSourceDirs (allBuildInfo' packageD)) of
                                             [] -> [".","src"]
                                             l -> l
-                ipdExes             = [ exeName e | e <- executables packageD
+                ipdExes             = [ T.pack $ exeName e | e <- executables packageD
                                           , buildable (buildInfo e) ]
                 ipdExtensions       = nub $ concatMap oldExtensions (allBuildInfo' packageD)
-                ipdTests            = [ testName t | t <- testSuites packageD
+                ipdTests            = [ T.pack $ testName t | t <- testSuites packageD
                                           , buildable (testBuildInfo t) ]
-                ipdBenchmarks       = [ benchmarkName b | b <- benchmarks packageD
+                ipdBenchmarks       = [ T.pack $ benchmarkName b | b <- benchmarks packageD
                                           , buildable (benchmarkBuildInfo b) ]
                 ipdPackageId        = package packageD
                 ipdDepends          = buildDepends packageD

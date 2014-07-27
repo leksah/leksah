@@ -1,4 +1,11 @@
-{-# LANGUAGE CPP, FlexibleInstances, DeriveDataTypeable, TypeSynonymInstances, MultiParamTypeClasses, Rank2Types, GADTs, FlexibleContexts, ScopedTypeVariables #-}
+{-# LANGUAGE CPP #-}
+{-# LANGUAGE DeriveDataTypeable #-}
+{-# LANGUAGE MultiParamTypeClasses #-}
+{-# LANGUAGE FlexibleInstances #-}
+{-# LANGUAGE TypeSynonymInstances #-}
+{-# LANGUAGE ExistentialQuantification #-}
+{-# LANGUAGE Rank2Types #-}
+{-# LANGUAGE OverloadedStrings #-}
 -----------------------------------------------------------------------------
 --
 -- Module      :  IDE.BufferMode
@@ -40,7 +47,10 @@ import Control.Monad.IO.Class (MonadIO(..))
 #if MIN_VERSION_directory(1,2,0)
 import Data.Time (UTCTime)
 #endif
-
+import Data.Text (Text)
+import Data.Monoid ((<>))
+import qualified Data.Text as T
+       (isPrefixOf, lines, unlines, count, isInfixOf)
 
 -- * Buffer Basics
 
@@ -49,7 +59,7 @@ import Data.Time (UTCTime)
 --
 data IDEBuffer = forall editor. TextEditor editor => IDEBuffer {
     fileName        ::  Maybe FilePath
-,   bufferName      ::  String
+,   bufferName      ::  Text
 ,   addedIndex      ::  Int
 ,   sourceView      ::  EditorView editor
 ,   scrolledWindow  ::  ScrolledWindow
@@ -69,7 +79,7 @@ instance Pane IDEBuffer IDEM
     paneId b        =   ""
 
 data BufferState            =   BufferState FilePath Int
-                            |   BufferStateTrans String String Int
+                            |   BufferStateTrans Text Text Int
     deriving(Eq,Ord,Read,Show,Typeable)
 
 maybeActiveBuf :: IDEM (Maybe IDEBuffer)
@@ -118,7 +128,7 @@ inBufContext def (ideBuf@IDEBuffer{sourceView = v}) f = do
     mbI            <-  liftIO $ notebookPageNum nb (scrolledWindow ideBuf)
     case mbI of
         Nothing ->  liftIO $ do
-            sysMessage Normal $ bufferName ideBuf ++ " notebook page not found: unexpected"
+            sysMessage Normal $ bufferName ideBuf <> " notebook page not found: unexpected"
             return def
         Just i  ->  do
             ebuf <- liftIDE $ getBuffer v
@@ -140,16 +150,16 @@ doForSelectedLines d f = inActiveBufContext d $ \_ _ ebuf currentBuffer _ -> do
 -- * Buffer Modes
 
 data Mode = Mode {
-    modeName               :: String,
+    modeName               :: Text,
     modeEditComment        :: IDEAction,
     modeEditUncomment      :: IDEAction,
-    modeSelectedModuleName :: IDEM (Maybe String),
-    modeEditToCandy        :: (String -> Bool) -> IDEAction,
-    modeTransformToCandy   :: TextEditor editor => (String -> Bool) -> EditorBuffer editor -> IDEAction,
+    modeSelectedModuleName :: IDEM (Maybe Text),
+    modeEditToCandy        :: (Text -> Bool) -> IDEAction,
+    modeTransformToCandy   :: TextEditor editor => (Text -> Bool) -> EditorBuffer editor -> IDEAction,
     modeEditFromCandy      :: IDEAction,
-    modeEditKeystrokeCandy :: Maybe Char -> (String -> Bool) -> IDEAction,
-    modeEditInsertCode     :: TextEditor editor => String -> EditorIter editor -> EditorBuffer editor -> IDEAction,
-    modeEditInCommentOrString :: String -> Bool
+    modeEditKeystrokeCandy :: Maybe Char -> (Text -> Bool) -> IDEAction,
+    modeEditInsertCode     :: TextEditor editor => Text -> EditorIter editor -> EditorBuffer editor -> IDEAction,
+    modeEditInCommentOrString :: Text -> Bool
     }
 
 
@@ -199,16 +209,9 @@ haskellMode = Mode {
             keystrokeCandy ct c ebuf inCommentOrString,
     modeEditInsertCode = \ str iter buf ->
         insert buf iter str,
-    modeEditInCommentOrString = \ line ->
-            if isInfixOf "--" line
-                then True
-                else let indices = elemIndices '"' line
-                     in if length indices == 0
-                            then False
-                            else if even (length indices)
-                                then False
-                                else True
-}
+    modeEditInCommentOrString = \ line -> ("--" `T.isInfixOf` line)
+                                        || not (even $ T.count "\"" line)
+    }
 
 literalHaskellMode = Mode {
     modeName = "Literal Haskell",
@@ -250,16 +253,10 @@ literalHaskellMode = Mode {
         inActiveBufContext () $ \_ _ ebuf _ _ -> do
             keystrokeCandy ct c ebuf inCommentOrString,
     modeEditInsertCode = \ str iter buf ->
-        insert buf iter (unlines $ map (\ s -> "> " ++ s) $ lines str),
-    modeEditInCommentOrString = \ line ->
-            if not (isPrefixOf ">" line)
-                then True
-                else let indices = elemIndices '"' line
-                     in if length indices == 0
-                            then False
-                            else if even (length indices)
-                                then False
-                                else True  }
+        insert buf iter (T.unlines $ map (\ s -> "> " <> s) $ T.lines str),
+    modeEditInCommentOrString = \ line -> not (T.isPrefixOf ">" line)
+                                        || not (even $ T.count "\"" line)
+    }
 
 cabalMode = Mode {
     modeName                 = "Cabal",
@@ -283,7 +280,7 @@ cabalMode = Mode {
     modeEditFromCandy        = return (),
     modeEditKeystrokeCandy   = \ _ _ -> return (),
     modeEditInsertCode       = \ str iter buf -> insert buf iter str,
-    modeEditInCommentOrString = \ str -> isPrefixOf "--" str
+    modeEditInCommentOrString = \ str -> T.isPrefixOf "--" str
 
     }
 
@@ -315,7 +312,7 @@ editComment        = withCurrentMode () modeEditComment
 editUncomment :: IDEAction
 editUncomment      = withCurrentMode () modeEditUncomment
 
-selectedModuleName  :: IDEM (Maybe String)
+selectedModuleName  :: IDEM (Maybe Text)
 selectedModuleName = withCurrentMode Nothing modeSelectedModuleName
 
 editToCandy :: IDEAction
@@ -328,7 +325,7 @@ editKeystrokeCandy :: Maybe Char -> IDEAction
 editKeystrokeCandy c = withCurrentMode () (\m -> modeEditKeystrokeCandy m c
                             (modeEditInCommentOrString m))
 
-editInsertCode :: TextEditor editor => EditorBuffer editor -> EditorIter editor -> String -> IDEAction
+editInsertCode :: TextEditor editor => EditorBuffer editor -> EditorIter editor -> Text -> IDEAction
 editInsertCode buffer iter str = withCurrentMode ()
                                             (\ m -> modeEditInsertCode m str iter buffer)
 

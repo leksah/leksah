@@ -1,6 +1,7 @@
 {-# LANGUAGE CPP #-}
 {-# LANGUAGE DeriveDataTypeable #-}
 {-# LANGUAGE TypeFamilies #-}
+{-# LANGUAGE OverloadedStrings #-}
 -----------------------------------------------------------------------------
 --
 -- Module      :  IDE.TextEditor.GtkSourceView
@@ -117,6 +118,9 @@ import Control.Monad.Trans.Class (MonadTrans(..))
 import System.Glib.Attributes (get, AttrOp(..), set)
 import qualified Graphics.UI.Gtk as Gtk (endUserAction)
 import IDE.Utils.GUIUtils (fontDescription)
+import Data.Text (Text)
+import qualified Data.Text as T (all, length, pack)
+import Data.Monoid ((<>))
 
 transformGtkIter :: EditorIter GtkSourceView -> (TextIter -> IO a) -> IDEM (EditorIter GtkSourceView)
 transformGtkIter (GtkIter i) f = do
@@ -134,7 +138,7 @@ transformGtkIterMaybe (GtkIter i) f = do
 
 data GtkSourceView = GtkSourceView deriving( Typeable, Show )
 
-newGtkBuffer :: Maybe FilePath -> String -> IDEM (EditorBuffer GtkSourceView)
+newGtkBuffer :: Maybe FilePath -> Text -> IDEM (EditorBuffer GtkSourceView)
 newGtkBuffer mbFilename contents = liftIO $ do
     lm      <- sourceLanguageManagerNew
     dataDir <- getDataDir
@@ -142,14 +146,14 @@ newGtkBuffer mbFilename contents = liftIO $ do
     sourceLanguageManagerSetSearchPath lm (Just $ (dataDir </> "language-specs") : oldPath)
     mbLang  <- case mbFilename of
         Just filename -> do
-            guess <- contentTypeGuess filename contents (length contents)
+            guess <- contentTypeGuess filename contents (T.length contents)
             sourceLanguageManagerGuessLanguage lm (Just filename) $
                 case guess of
                     (True, _)  -> Just "text/x-haskell"
                     (False, t) -> Just t
-        Nothing -> sourceLanguageManagerGuessLanguage lm Nothing (Just "text/x-haskell")
+        Nothing -> sourceLanguageManagerGuessLanguage lm Nothing (Just ("text/x-haskell" :: Text))
     mbLang2 <- case mbLang of
-                    Nothing -> sourceLanguageManagerGuessLanguage lm Nothing (Just "text/x-haskell")
+                    Nothing -> sourceLanguageManagerGuessLanguage lm Nothing (Just ("text/x-haskell" :: Text))
                     _ -> return mbLang
     buffer <- case mbLang2 of
         Just sLang -> sourceBufferNewWithLanguage sLang
@@ -241,7 +245,7 @@ instance TextEditor GtkSourceView where
                 dataDir <- getDataDir
                 sourceStyleSchemeManagerAppendSearchPath styleManager $ dataDir </> "data/styles"
                 ids <- sourceStyleSchemeManagerGetSchemeIds styleManager
-                let preferedNames = if preferDark then [str++"-dark", str] else [str]
+                let preferedNames = if preferDark then [str<>"-dark", str] else [str]
                 forM_ (take 1 $ filter (flip elem ids) preferedNames) $ \ name -> do
                     scheme <- sourceStyleSchemeManagerGetScheme styleManager name
                     sourceBufferSetStyleScheme sb (Just scheme)
@@ -335,7 +339,7 @@ instance TextEditor GtkSourceView where
                         let isIdent a = isAlphaNum a || a == '\'' || a == '_' || a == '.'
                         let isOp    a = isSymbol   a || a == ':'  || a == '\\' || a == '*' || a == '/' || a == '-'
                                                      || a == '!'  || a == '@' || a == '%' || a == '&' || a == '?'
-                        if (all isIdent text) || (all isOp text)
+                        if (T.all isIdent text) || (T.all isOp text)
                             then do
                                 hasSel <- textBufferHasSelection sb
                                 if not hasSel
@@ -441,10 +445,10 @@ instance TextEditor GtkSourceView where
     lookupTag (GtkTagTable tt) name = liftIO $ fmap GtkTag <$> textTagTableLookup tt name
 
     -- Tag
-    background (GtkTag t) color = liftIO $ set t [textTagBackground := colorHexString color]
+    background (GtkTag t) color = liftIO $ set t [textTagBackground := T.pack $ colorHexString color]
     underline (GtkTag t) value = liftIO $ set t [textTagUnderline := value]
 
-simpleGtkBuffer :: String -> IDEM (EditorBuffer GtkSourceView)
+simpleGtkBuffer :: Text -> IDEM (EditorBuffer GtkSourceView)
 simpleGtkBuffer contents = liftIO $ GtkBuffer <$> do
     buffer <- sourceBufferNew Nothing
     textBufferSetText buffer contents

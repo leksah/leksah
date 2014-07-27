@@ -1,4 +1,4 @@
-{-# LANGUAGE CPP, ScopedTypeVariables #-}
+{-# LANGUAGE CPP, ScopedTypeVariables, OverloadedStrings #-}
 -----------------------------------------------------------------------------
 --
 -- Module      :  IDE.Utils.GUIUtils
@@ -61,6 +61,9 @@ import IDE.Core.State
 --    (ResponseId(..))
 import Control.Monad.IO.Class (liftIO)
 import Control.Exception as E
+import Data.Text (Text)
+import Data.Monoid ((<>))
+import qualified Data.Text as T (unpack)
 
 #ifdef LOCALIZATION
 
@@ -69,7 +72,7 @@ import System.IO.Unsafe (unsafePerformIO)
 
 #endif
 
-chooseDir :: Window -> String -> Maybe FilePath -> IO (Maybe FilePath)
+chooseDir :: Window -> Text -> Maybe FilePath -> IO (Maybe FilePath)
 chooseDir window prompt mbFolder = do
     dialog <- fileChooserDialogNew
                     (Just $ prompt)
@@ -95,7 +98,7 @@ chooseDir window prompt mbFolder = do
             return Nothing
         _                   -> return Nothing
 
-chooseFile :: Window -> String -> Maybe FilePath -> IO (Maybe FilePath)
+chooseFile :: Window -> Text -> Maybe FilePath -> IO (Maybe FilePath)
 chooseFile window prompt mbFolder = do
     dialog <- fileChooserDialogNew
                     (Just $ prompt)
@@ -121,7 +124,7 @@ chooseFile window prompt mbFolder = do
             return Nothing
         _                   -> return Nothing
 
-chooseSaveFile :: Window -> String -> Maybe FilePath -> IO (Maybe FilePath)
+chooseSaveFile :: Window -> Text -> Maybe FilePath -> IO (Maybe FilePath)
 chooseSaveFile window prompt mbFolder = do
     dialog <- fileChooserDialogNew
               (Just $ prompt)
@@ -145,24 +148,24 @@ chooseSaveFile window prompt mbFolder = do
 
 
 
-openBrowser :: String -> IDEAction
+openBrowser :: Text -> IDEAction
 openBrowser url = do
     prefs' <- readIDE prefs
     liftIO (E.catch (do
-                runProcess (browser prefs') [url] Nothing Nothing Nothing Nothing Nothing
+                runProcess (T.unpack $ browser prefs') [T.unpack url] Nothing Nothing Nothing Nothing Nothing
                 return ())
-            (\ (_ :: SomeException) -> sysMessage Normal ("Can't find browser executable " ++ browser prefs')))
+            (\ (_ :: SomeException) -> sysMessage Normal ("Can't find browser executable " <> browser prefs')))
     return ()
 
 
-showDialog :: String -> MessageType -> IO ()
+showDialog :: Text -> MessageType -> IO ()
 showDialog msg msgType = do
     dialog <- messageDialogNew Nothing [] msgType ButtonsOk msg
     _ <- dialogRun dialog
     widgetDestroy dialog
     return ()
 
-showErrorDialog :: String -> IO ()
+showErrorDialog :: Text -> IO ()
 showErrorDialog msg = showDialog msg MessageError
 
 -- get widget elements (menu & toolbar)
@@ -202,12 +205,12 @@ getForgetSession = do
     ui <- getUIAction "ui/menubar/_Configuration/Forget Session" castToToggleAction
     liftIO $toggleActionGetActive ui
 
-getMenuItem :: String -> IDEM MenuItem
+getMenuItem :: Text -> IDEM MenuItem
 getMenuItem path = do
     uiManager' <- getUiManager
     mbWidget   <- liftIO $ uiManagerGetWidget uiManager' path
     case mbWidget of
-        Nothing     -> throwIDE ("State.hs>>getMenuItem: Can't find ui path " ++ path)
+        Nothing     -> throwIDE ("State.hs>>getMenuItem: Can't find ui path " <> path)
         Just widget -> return (castToMenuItem widget)
 
 getBackgroundBuildToggled :: PaneMonad alpha => alpha  (Bool)
@@ -311,25 +314,25 @@ treeViewContextMenu treeView populateMenu = do
 #ifdef LOCALIZATION
 
 -- | For i18n using hgettext
-__ :: String -> String
-__ = unsafePerformIO . getText
+__ :: Text -> Text
+__ = T.pack . unsafePerformIO . getText . T.unpack
 
 
 #else
 
 -- | For i18n support. Not included in this build.
-__ :: String -> String
+__ :: Text -> Text
 __ = id
 
 #endif
 
-fontDescription :: Maybe String -> IDEM FontDescription
+fontDescription :: Maybe Text -> IDEM FontDescription
 fontDescription mbFontString = liftIO $ do
     case mbFontString of
         Just str -> do
             fontDescriptionFromString str
         Nothing -> do
             f <- fontDescriptionNew
-            fontDescriptionSetFamily f "Monospace"
+            fontDescriptionSetFamily f ("Monospace" :: Text)
             return f
 

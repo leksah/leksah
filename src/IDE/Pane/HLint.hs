@@ -1,6 +1,9 @@
-{-# LANGUAGE ScopedTypeVariables #-}
-{-# LANGUAGE FlexibleInstances, DeriveDataTypeable, MultiParamTypeClasses,
-             TypeSynonymInstances, RecordWildCards #-}
+{-# LANGUAGE DeriveDataTypeable #-}
+{-# LANGUAGE MultiParamTypeClasses #-}
+{-# LANGUAGE FlexibleInstances #-}
+{-# LANGUAGE TypeSynonymInstances #-}
+{-# LANGUAGE RecordWildCards #-}
+{-# LANGUAGE OverloadedStrings #-}
 -----------------------------------------------------------------------------
 --
 -- Module      :  IDE.Pane.HLint
@@ -57,10 +60,14 @@ import Distribution.ModuleName (ModuleName)
 import IDE.Metainfo.Provider (getWorkspaceInfo)
 import qualified Data.Map as Map (keys, lookup)
 import Distribution.Package (PackageIdentifier(..))
+import Data.Text (Text)
+import qualified Data.Text as T
+       (replicate, unlines, init, lines, pack, unpack)
+import Data.Monoid ((<>))
 
 data HLintRecord = HLintRecord {
             condPackage :: Maybe IDEPackage
-        ,   context     :: String
+        ,   context     :: Text
         ,   condIdea    :: Maybe H.Idea
         ,   parDir      :: Maybe FilePath
         } deriving (Eq)
@@ -255,7 +262,7 @@ refreshDir store iter package = do
                                         " location " ++ show H.parseErrorLocation) Nothing
                                     Right r -> Just r) resL
     let ideas = H.applyHints classify hint resOk
-    liftIO $ setHLint2Results store iter (packageIdentifierToString (ipdPackageId package)) ideas
+    liftIO $ setHLint2Results store iter (T.unpack $ packageIdentifierToString (ipdPackageId package)) ideas
     return ()
 
 
@@ -279,7 +286,7 @@ getSourcePathes packId names = do
 
 hlint2Record dir idea = HLintRecord {
     condPackage = Nothing,
-    context     = show idea,
+    context     = T.pack $ show idea,
     condIdea    = Just idea,
     parDir      = Just dir}
 
@@ -319,10 +326,10 @@ hlintContextMenu ideR store treeView theMenu = do
 replaceHlint store treeView (Just sel) =
     case condIdea sel of
         Just idea | isJust (H.ideaTo idea) ->
-            let lined = lines (fromJust (H.ideaTo idea))
+            let lined = T.lines (T.pack $ fromJust (H.ideaTo idea))
                 startColumn = srcSpanStartColumn (H.ideaSpan idea)
-                source = init $ unlines (head lined :
-                                            map (\ s -> replicate startColumn ' ' ++ s) (tail lined))
+                source = T.init $ T.unlines (head lined :
+                                            map (\ s -> T.replicate startColumn " " <> s) (tail lined))
             in
                 replaceHLintSource (srcSpanFilename (H.ideaSpan idea))
                                    (srcSpanStartLine (H.ideaSpan idea))

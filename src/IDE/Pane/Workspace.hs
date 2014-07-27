@@ -1,5 +1,9 @@
-{-# LANGUAGE FlexibleInstances, ScopedTypeVariables, TypeSynonymInstances,
-             MultiParamTypeClasses, DeriveDataTypeable #-}
+{-# LANGUAGE DeriveDataTypeable #-}
+{-# LANGUAGE MultiParamTypeClasses #-}
+{-# LANGUAGE FlexibleInstances #-}
+{-# LANGUAGE TypeSynonymInstances #-}
+{-# LANGUAGE ScopedTypeVariables #-}
+{-# LANGUAGE OverloadedStrings #-}
 -----------------------------------------------------------------------------
 --
 -- Module      :  IDE.Pane.Workspace
@@ -41,11 +45,12 @@ import System.Log.Logger (debugM)
 import qualified Data.Function as F (on)
 import System.FilePath (takeDirectory, takeBaseName, takeFileName)
 import Data.Text (Text)
+import qualified Data.Text as T (pack)
 
 -- | Workspace pane state
 --
 
-type WorkspaceRecord = (IDEPackage, Maybe String)
+type WorkspaceRecord = (IDEPackage, Maybe Text)
 
 data IDEWorkspace   =   IDEWorkspace {
     scrolledView        ::   ScrolledWindow
@@ -80,7 +85,7 @@ instance RecoverablePane IDEWorkspace WorkspaceState IDEM where
         treeViewSetModel treeView treeStore
 
         renderer0    <- cellRendererPixbufNew
-        set renderer0 [ newAttrFromMaybeStringProperty "stock-id"  := (Nothing::Maybe Text) ]
+        set renderer0 [ newAttrFromMaybeStringProperty "stock-id"  := (Nothing :: Maybe Text) ]
 
         renderer1   <- cellRendererTextNew
         col1        <- treeViewColumnNew
@@ -108,7 +113,7 @@ instance RecoverablePane IDEWorkspace WorkspaceState IDEM where
         treeViewAppendColumn treeView col2
         cellLayoutPackStart col2 renderer2 True
         cellLayoutSetAttributes col2 renderer2 treeStore
-            $ \row -> [ cellText := file row ]
+            $ \row -> [ cellText := T.pack $ file row ]
 
         treeViewSetHeadersVisible treeView True
         sel <- treeViewGetSelection treeView
@@ -145,7 +150,7 @@ showWorkspace = do
 
 getSelectionTree ::  TreeView
     -> TreeStore (Bool, WorkspaceRecord)
-    -> IO (Maybe (Bool, IDEPackage, Maybe String))
+    -> IO (Maybe (Bool, IDEPackage, Maybe Text))
 getSelectionTree treeView treeStore = do
     liftIO $ debugM "leksah" "getSelectionTree"
     treeSelection <- treeViewGetSelection treeView

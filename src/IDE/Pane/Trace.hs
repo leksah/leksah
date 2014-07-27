@@ -53,10 +53,14 @@ import Control.Applicative ((<$>))
 import Control.Monad.Trans.Class (MonadTrans(..))
 import Control.Monad.IO.Class (MonadIO(..))
 import IDE.Utils.GUIUtils (treeViewContextMenu, __)
-import Text.Printf (printf)
 import Data.Text (Text)
 import Data.Monoid ((<>))
-import qualified Data.Text as T (unpack)
+import qualified Data.Text as T (pack, unpack)
+import qualified Text.Printf as S (printf)
+import Text.Printf (PrintfType)
+
+printf :: PrintfType r => Text -> r
+printf = S.printf . T.unpack
 
 -- | A debugger pane description
 --
@@ -72,7 +76,7 @@ data TraceState  =   TraceState {
 data TraceHist = TraceHist {
     thSelected      ::  Bool,
     thIndex         ::  Int,
-    thFunction      ::  String,
+    thFunction      ::  Text,
     thPosition      ::  SrcSpan
     }
 
@@ -127,7 +131,7 @@ builder' pp nb windows = reifyIDE $ \ ideR -> do
     treeViewAppendColumn treeView col1
     cellLayoutPackStart col1 renderer1 False
     cellLayoutSetAttributes col1 renderer1 tracepoints
-        $ \row -> [ cellText := show (thIndex row)]
+        $ \row -> [ cellText := T.pack $ show (thIndex row)]
 
     renderer2    <- cellRendererTextNew
     col2         <- treeViewColumnNew
@@ -149,7 +153,7 @@ builder' pp nb windows = reifyIDE $ \ ideR -> do
     treeViewAppendColumn treeView col3
     cellLayoutPackStart col3 renderer3 False
     cellLayoutSetAttributes col3 renderer3 tracepoints
-        $ \row -> [ cellText := displaySrcSpan (thPosition row)]
+        $ \row -> [ cellText := T.pack $ displaySrcSpan (thPosition row)]
 
     treeViewSetHeadersVisible treeView True
     sel <- treeViewGetSelection treeView
@@ -239,24 +243,24 @@ traceContextMenu ideR store treeView theMenu = do
 tracesParser :: CharParser () [TraceHist]
 tracesParser = try (do
         whiteSpace
-        symbol (__ "Empty history.")
+        symbol (T.unpack $ __ "Empty history.")
         skipMany anyChar
         eof
         return [])
     <|> do
         traces <- many (try traceParser)
         whiteSpace
-        symbol (__ "<end of history>")
+        symbol (T.unpack $ __ "<end of history>")
         eof
         return traces
     <|> do
         whiteSpace
-        symbol (__ "Not stopped at a breakpoint")
+        symbol (T.unpack $ __ "Not stopped at a breakpoint")
         skipMany anyChar
         eof
         return []
     <?>
-        __ "traces parser"
+        (T.unpack $ __ "traces parser")
 
 traceParser :: CharParser () TraceHist
 traceParser = do
@@ -264,13 +268,13 @@ traceParser = do
     index    <- int
     colon
     optional (symbol "\ESC[1m")
-    function <- many (noneOf "(\ESC")
+    function <- T.pack <$> many (noneOf "(\ESC")
     optional (symbol "\ESC[0m")
     symbol "("
     span     <- srcSpanParser
     symbol ")"
     return (TraceHist False index function span)
-    <?> __ "trace parser"
+    <?> (T.unpack $ __ "trace parser")
 
 lexer  = P.makeTokenParser emptyDef
 colon  = P.colon lexer

@@ -1,3 +1,4 @@
+{-# LANGUAGE OverloadedStrings #-}
 -----------------------------------------------------------------------------
 --
 -- Module      :  IDE.Statusbar
@@ -45,6 +46,9 @@ import Graphics.UI.Gtk
 import Graphics.UI.Frame.Panes (IDEPane(..), paneName)
 import Text.Printf (printf)
 import Control.Monad.IO.Class (MonadIO(..))
+import Data.Text (Text)
+import qualified Data.Text as T (pack, lines, unpack)
+import Data.Monoid ((<>))
 
 changeStatusbar :: [StatusbarCompartment] -> IDEAction
 changeStatusbar = postAsyncIDE . mapM_ changeStatusbar'
@@ -62,10 +66,10 @@ changeStatusbar = postAsyncIDE . mapM_ changeStatusbar'
     changeStatusbar' (CompartmentPane Nothing) =  do
         sb <- getSBActivePane
         liftIO $ statusbarPop sb 1
-        liftIO $ statusbarPush sb 1 ""
+        liftIO $ statusbarPush sb 1 ("" :: Text)
         return ()
     changeStatusbar' (CompartmentState string) =  do
-        let realStr = if '\n' `elem` string then head (lines string) ++ " ..." else string
+        let realStr = if '\n' `elem` T.unpack string then head (T.lines string) <> " ..." else string
         sb <- getSBErrors
         liftIO $ statusbarPop sb 1
         liftIO $ statusbarPush sb 1 realStr
@@ -75,17 +79,17 @@ changeStatusbar = postAsyncIDE . mapM_ changeStatusbar'
         window <- getMainWindow
         liftIO $ statusbarPop sb 1
         liftIO $ statusbarPush sb 1 string
-        liftIO $ set window [ windowTitle := "Leksah: " ++  string ]
+        liftIO $ set window [ windowTitle := "Leksah: " <> string ]
         return ()
     changeStatusbar' (CompartmentBufferPos (line,col)) =  do
         sb <- getStatusbarLC
         liftIO $ statusbarPop sb 1
-        liftIO $ statusbarPush sb 1 (printf "Ln %4d, Col %3d" (line + 1) (col + 1)::String)
+        liftIO $ statusbarPush sb 1 (T.pack $ printf "Ln %4d, Col %3d" (line + 1) (col + 1))
         return ()
     changeStatusbar' (CompartmentOverlay modi) =  do
         sb <- getStatusbarIO
         liftIO $ statusbarPop sb 1
-        liftIO $ statusbarPush sb 1 $ if modi then "OVR" else "INS"
+        liftIO $ statusbarPush sb 1 $ if modi then "OVR" else ("INS" :: Text)
         return ()
     changeStatusbar' (CompartmentBuild bool) =  do
         im <- getImBuild
@@ -100,39 +104,39 @@ changeStatusbar = postAsyncIDE . mapM_ changeStatusbar'
 buildStatusbar :: IO HBox
 buildStatusbar = do
     sblk <- statusbarNew
-    widgetSetName sblk "statusBarSpecialKeys"
+    widgetSetName sblk ("statusBarSpecialKeys" :: Text)
     widgetSetSizeRequest sblk 150 (-1)
 
     sbap <- statusbarNew
-    widgetSetName sbap "statusBarActivePane"
+    widgetSetName sbap ("statusBarActivePane" :: Text)
     widgetSetSizeRequest sbap 150 (-1)
 
     sbapr <- statusbarNew
-    widgetSetName sbapr "statusBarActiveProject"
+    widgetSetName sbapr ("statusBarActiveProject" :: Text)
     widgetSetSizeRequest sbapr 150 (-1)
 
     sbe <- statusbarNew
-    widgetSetName sbe "statusBarErrors"
+    widgetSetName sbe ("statusBarErrors" :: Text)
     widgetSetSizeRequest sbe 150 (-1)
 
     sblc <- statusbarNew
-    widgetSetName sblc "statusBarLineColumn"
+    widgetSetName sblc ("statusBarLineColumn" :: Text)
     widgetSetSizeRequest sblc 150 (-1)
 
     sbio <- statusbarNew
-    widgetSetName sbio "statusBarInsertOverwrite"
+    widgetSetName sbio ("statusBarInsertOverwrite" :: Text)
     widgetSetSizeRequest sbio 60 (-1)
 
     buildImage <- imageNewFromStock "ide_empty" IconSizeMenu
-    widgetSetName buildImage "buildImage"
+    widgetSetName buildImage ("buildImage" :: Text)
     imageSetPixelSize buildImage 16
 
     collectImage <- imageNewFromStock "ide_empty" IconSizeMenu
-    widgetSetName collectImage "collectImage"
+    widgetSetName collectImage ("collectImage" :: Text)
     imageSetPixelSize collectImage 16
 
     hb <- hBoxNew False 1
-    widgetSetName hb "statusBox"
+    widgetSetName hb ("statusBox" :: Text)
     boxPackStart hb sblk PackGrow 0
     boxPackStart hb sbap PackGrow 0
     boxPackStart hb sbapr PackGrow 0

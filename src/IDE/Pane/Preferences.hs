@@ -1,5 +1,9 @@
-{-# LANGUAGE CPP, FlexibleInstances, ScopedTypeVariables, DeriveDataTypeable,
-             MultiParamTypeClasses, TypeSynonymInstances #-}
+{-# LANGUAGE DeriveDataTypeable #-}
+{-# LANGUAGE MultiParamTypeClasses #-}
+{-# LANGUAGE FlexibleInstances #-}
+{-# LANGUAGE TypeSynonymInstances #-}
+{-# LANGUAGE ScopedTypeVariables #-}
+{-# LANGUAGE OverloadedStrings #-}
 -----------------------------------------------------------------------------
 --
 -- Module      :  IDE.Pane.Preferences
@@ -77,6 +81,9 @@ import Control.Monad.IO.Class (MonadIO(..))
 import Control.Monad (void, forM_, when)
 import System.FilePath ((</>))
 import Data.Text (Text)
+import qualified Data.Text as T (isSuffixOf, unpack, pack, null)
+import Data.Monoid ((<>))
+import Control.Applicative ((<$>))
 
 -- ---------------------------------------------------------------------
 -- This needs to be incremented, when the preferences format changes
@@ -128,7 +135,7 @@ instance RecoverablePane IDEPrefs PrefsState IDEM where
             (widget,injb,ext,notifier) <-  buildEditor
                                 (extractFieldDescription $ prefsDescription configDir packageInfos) prefs
             boxPackStart vb widget PackGrow 0
-            label   <-  labelNew (Nothing::Maybe Text)
+            label   <-  labelNew (Nothing :: Maybe Text)
             boxPackStart vb label PackNatural 0
             boxPackEnd vb bb PackNatural 5
             let prefsPane = IDEPrefs vb
@@ -195,13 +202,13 @@ instance RecoverablePane IDEPrefs PrefsState IDEM where
                                         Nothing -> False
                                         Just p -> p{prefsFormat = 0, prefsSaveTime = ""} /=
                                                   prefs{prefsFormat = 0, prefsSaveTime = ""}
-                when (isJust mbP) $ labelSetMarkup label ""
+                when (isJust mbP) $ labelSetMarkup label ("" :: Text)
                 markLabel nb (getTopWidget prefsPane) hasChanged
                 widgetSetSensitive save hasChanged
                 return (e{gtkReturn=False}))
             registerEvent notifier ValidationError (\e -> do
                 labelSetMarkup label $ "<span foreground=\"red\" size=\"x-large\">The following fields have invalid values: "
-                    ++ eventText e ++ "</span>"
+                    <> eventText e <> "</span>"
                 return e)
             return (Just prefsPane,[])
 
@@ -251,7 +258,7 @@ prefsDescription configDir packages = NFDPP [
             (paraName <<<- ParaName (__ "TextView Font") $ emptyParams)
             (\a -> PP.text (case a of Nothing -> show ""; Just s -> show s))
             (do str <- stringParser
-                return (if null str then Nothing else Just str))
+                return (if T.null str then Nothing else Just str))
             textviewFont
             (\ b a -> a{textviewFont = b})
             fontEditor
@@ -319,7 +326,7 @@ prefsDescription configDir packages = NFDPP [
             (PP.text . show)
             readParser
             sourceCandy (\b a -> a{sourceCandy = b})
-            (disableEditor (stringEditor (not . null) True,
+            (disableEditor (textEditor (not . T.null) True,
                 paraName <<<- ParaName (__ "Candy specification")
                                     $ emptyParams)
                     True (__ "Use it ?"))
@@ -334,7 +341,7 @@ prefsDescription configDir packages = NFDPP [
             (paraName <<<- ParaName (__ "Editor Style") $ emptyParams)
             (\a -> PP.text (case a of (False,_) -> show ""; (True, s) -> show s))
             (do str <- stringParser
-                return (if null str then (False, __ "classic") else (True,str)))
+                return (if T.null str then (False, __ "classic") else (True,str)))
             sourceStyle
             (\b a -> a{sourceStyle = b})
             styleEditor
@@ -419,8 +426,8 @@ prefsDescription configDir packages = NFDPP [
             (paraName <<<- ParaName (__ "Text Editor") $ emptyParams)
             (PP.text . show)
             stringParser
-            textEditor
-            (\b a -> a{textEditor = b})
+            textEditorType
+            (\b a -> a{textEditorType = b})
             (comboSelectionEditor ["GtkSourceView", "Yi", "CodeMirror"] id)
             (\i -> return ())
     ]),
@@ -429,7 +436,7 @@ prefsDescription configDir packages = NFDPP [
             (paraName <<<- ParaName (__ "LogView Font") $ emptyParams)
             (\a -> PP.text (case a of Nothing -> show ""; Just s -> show s))
             (do str <- stringParser
-                return (if null str then Nothing else Just str))
+                return (if T.null str then Nothing else Just str))
             logviewFont
             (\ b a -> a{logviewFont = b})
             fontEditor
@@ -471,11 +478,11 @@ prefsDescription configDir packages = NFDPP [
                 $ paraSynopsis <<<- ParaSynopsis
                     (__ "The name of a keymap file in a config dir")
                     $ paraDirection <<<- ParaDirection Horizontal $ emptyParams)
-            PP.text
+            (PP.text . T.unpack)
             identifier
             keymapName
             (\b a -> a{keymapName = b})
-            (stringEditor (not . null) True)
+            (textEditor (not . T.null) True)
             (\ a -> return ())
     ]),
     (__ "Initial Pane positions", VFDPP emptyParams [
@@ -494,8 +501,8 @@ prefsDescription configDir packages = NFDPP [
                 (ColumnDescr True [(__ "Pane Id", \ (n, _) -> [cellText := n])
                                    ,(__ "Pane Category", \ (_, v) -> [cellText := v])])
                 (pairEditor
-                    (stringEditor (not . null) True, emptyParams)
-                    (stringEditor (not . null) True, emptyParams), emptyParams)
+                    (textEditor (not . T.null) True, emptyParams)
+                    (textEditor (not . T.null) True, emptyParams), emptyParams)
                 (Just (sortBy (\(a,_) (a2,_) -> compare a a2)))
                 (Just (\(a,_) (a2,_) -> a == a2)))
             (\i -> return ())
@@ -512,8 +519,8 @@ prefsDescription configDir packages = NFDPP [
             (\b a -> a{pathForCategory = b})
             (multisetEditor
                 (ColumnDescr True [(__ "Pane category", \ (n, _) -> [cellText := n])
-                                   ,(__ "Pane path", \ (_, v) -> [cellText := show v])])
-                (pairEditor (stringEditor (not . null) True, emptyParams)
+                                   ,(__ "Pane path", \ (_, v) -> [cellText := T.pack $ show v])])
+                (pairEditor (textEditor (not . T.null) True, emptyParams)
                     (genericEditor, emptyParams),
                   emptyParams)
                 (Just (sortBy (\(a,_) (a2,_) -> compare a a2)))
@@ -554,7 +561,7 @@ prefsDescription configDir packages = NFDPP [
             stringParser
             retrieveURL
             (\b a -> a{retrieveURL = b})
-            (stringEditor (const True) True)
+            (textEditor (const True) True)
             (\i -> return ())
     ,   mkFieldPP
             (paraName <<<- ParaName (__ "Strategy for downloading prebuilt metadata") $ emptyParams)
@@ -588,7 +595,7 @@ prefsDescription configDir packages = NFDPP [
             stringParser
             serverIP
             (\b a -> a{serverIP = b})
-            (stringEditor (not . null) True)
+            (textEditor (not . T.null) True)
             (\i -> return ())
     ,   mkFieldPP
             (paraName <<<- ParaName (__ "Stop the leksah-server process when leksah disconnects") $ emptyParams)
@@ -730,30 +737,30 @@ prefsDescription configDir packages = NFDPP [
             stringParser
             browser
             (\b a -> a{browser = b})
-            (stringEditor (not . null) True)
+            (textEditor (not . T.null) True)
             (\i -> return ())
     ,   mkFieldPP
             (paraName <<<- ParaName (__ "URL for searching documentation") $
                 paraSynopsis <<<- ParaSynopsis
-                    ("e.g Hoogle: http://www.haskell.org/hoogle/?q= or " ++
+                    ("e.g Hoogle: http://www.haskell.org/hoogle/?q= or " <>
                         "Hayoo: http://holumbus.fh-wedel.de/hayoo/hayoo.html?query=")
                         $ emptyParams)
             (PP.text . show)
             stringParser
             docuSearchURL
             (\b a -> a{docuSearchURL = b})
-            (stringEditor (not . null) True)
+            (textEditor (not . T.null) True)
             (\i -> return ())
     ])]
 
 
-styleEditor :: Editor (Bool, String)
+styleEditor :: Editor (Bool, Text)
 styleEditor p n = do
     styleManager <- sourceStyleSchemeManagerNew
     dataDir <- getDataDir
     sourceStyleSchemeManagerAppendSearchPath styleManager $ dataDir </> "data/styles"
     ids          <- sourceStyleSchemeManagerGetSchemeIds styleManager
-    let notDarkIds = filter (not . isSuffixOf "-dark") ids
+    let notDarkIds = filter (not . T.isSuffixOf "-dark") ids
     disableEditor (comboSelectionEditor notDarkIds id, p) True (__ "Select a special style?") p n
 
 
@@ -774,7 +781,7 @@ defaultPrefs = Prefs {
     ,   matchBackground     =   Color 32768 32768 32768
     ,   contextBackground   =   Color 65535 49152 49152
     ,   breakpointBackground =  Color 65535 49152 32768
-    ,   textEditor          =   "GtkSourceView"
+    ,   textEditorType      =   "GtkSourceView"
     ,   autoLoad            =   False
     ,   logviewFont         =   Nothing
     ,   defaultSize         =   (1024,800)
@@ -839,9 +846,9 @@ readPrefs :: FilePath -> IO Prefs
 readPrefs fn = catch (do
     configDir <- getConfigDir
     readFields fn (flattenFieldDescriptionPPToS (prefsDescription configDir [])) defaultPrefs)
-	(\ (e :: SomeException) -> do
-		sysMessage Normal (show e)
-		return defaultPrefs)
+        (\ (e :: SomeException) -> do
+            sysMessage Normal (T.pack $ show e)
+            return defaultPrefs)
 -- ------------------------------------------------------------
 -- * Printing
 -- ------------------------------------------------------------
@@ -850,7 +857,7 @@ writePrefs :: FilePath -> Prefs -> IO ()
 writePrefs fpath prefs = do
     timeNow         <- liftIO getClockTime
     configDir <- getConfigDir
-    let newPrefs    =   prefs {prefsSaveTime = show timeNow, prefsFormat = prefsVersion}
+    let newPrefs    =   prefs {prefsSaveTime = T.pack $ show timeNow, prefsFormat = prefsVersion}
     writeFields fpath newPrefs (flattenFieldDescriptionPPToS (prefsDescription configDir []))
 
 

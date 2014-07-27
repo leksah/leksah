@@ -1,10 +1,11 @@
+{-# LANGUAGE CPP #-}
 {-# LANGUAGE DeriveDataTypeable #-}
 {-# LANGUAGE MultiParamTypeClasses #-}
 {-# LANGUAGE FlexibleInstances #-}
 {-# LANGUAGE TypeSynonymInstances #-}
 {-# LANGUAGE ScopedTypeVariables #-}
 {-# LANGUAGE RecordWildCards #-}
-{-# LANGUAGE CPP #-}
+{-# LANGUAGE OverloadedStrings #-}
 -----------------------------------------------------------------------------
 --
 -- Module      :  IDE.Pane.Grep
@@ -60,14 +61,15 @@ import Control.Monad.Trans.Class (MonadTrans(..))
 import Control.Monad.IO.Class (MonadIO(..))
 import IDE.Utils.GUIUtils (__)
 import System.Directory (getDirectoryContents)
-import qualified Data.Text as T (unpack)
+import qualified Data.Text as T (pack, take, unpack)
 import System.Log.Logger (debugM)
 import Control.Exception (SomeException, catch)
+import Data.Text (Text)
 
 data GrepRecord = GrepRecord {
             file        :: FilePath
         ,   line        :: Int
-        ,   context     :: String
+        ,   context     :: Text
         ,   parDir      :: Maybe FilePath
         }
 
@@ -115,7 +117,7 @@ instance RecoverablePane IDEGrep GrepState IDEM where
         treeViewAppendColumn treeView col1
         cellLayoutPackStart col1 renderer1 True
         cellLayoutSetAttributes col1 renderer1 grepStore
-            $ \row -> [ cellText := file row]
+            $ \row -> [ cellText := T.pack $ file row]
 
         renderer2   <- cellRendererTextNew
         col2        <- treeViewColumnNew
@@ -126,7 +128,7 @@ instance RecoverablePane IDEGrep GrepState IDEM where
         treeViewAppendColumn treeView col2
         cellLayoutPackStart col2 renderer2 True
         cellLayoutSetAttributes col2 renderer2 grepStore
-            $ \row -> [ cellText := show $ line row]
+            $ \row -> [ cellText := T.pack $ show $ line row]
 
         renderer3    <- cellRendererTextNew
         col3         <- treeViewColumnNew
@@ -137,7 +139,7 @@ instance RecoverablePane IDEGrep GrepState IDEM where
         treeViewAppendColumn treeView col3
         cellLayoutPackStart col3 renderer3 True
         cellLayoutSetAttributes col3 renderer3 grepStore
-            $ \row -> [ cellText := take 2048 $ context row]
+            $ \row -> [ cellText := T.take 2048 $ context row]
 
 
         treeViewSetHeadersVisible treeView True
@@ -197,7 +199,7 @@ grepLineParser = try (do
         char ':'
         line <- int
         char ':'
-        context <- many anyChar
+        context <- T.pack <$> many anyChar
         let parDir = Nothing
         return $ GrepRecord {..}
     <?> "grepLineParser")
@@ -222,7 +224,7 @@ getSelectionGrepRecord treeView grepStore = do
         _   ->  return Nothing
 
 --TODO srp use default loglaunch probably
-grepWorkspace :: String -> Bool -> WorkspaceAction
+grepWorkspace :: Text -> Bool -> WorkspaceAction
 grepWorkspace "" caseSensitive = return ()
 grepWorkspace regexString caseSensitive = do
     ws <- ask
@@ -233,7 +235,7 @@ grepWorkspace regexString caseSensitive = do
     lift $ grepDirectories regexString caseSensitive $
             map (\p -> (dropFileName $ ipdCabalFile p)) $ packages
 
-grepDirectories :: String -> Bool -> [FilePath] -> IDEAction
+grepDirectories :: Text -> Bool -> [FilePath] -> IDEAction
 grepDirectories regexString caseSensitive dirs = do
     grep <- getGrep Nothing
     let store = grepStore grep
@@ -261,7 +263,7 @@ grepDirectories regexString caseSensitive dirs = do
                                 "--exclude-dir=_darcs",
                                 "--exclude-dir=.git",
 #endif
-                                regexString] ++ subDirs) (Just dir)
+                                regexString] ++ map T.pack subDirs) (Just dir)
                         reflectIDE (do
                             output $$ do
                                 let max = 1000
@@ -283,7 +285,7 @@ grepDirectories regexString caseSensitive dirs = do
             nooneWaiting <- isEmptyMVar (waitingGrep grep)
             when nooneWaiting $ postGUISync $ do
                 nDir <- treeModelIterNChildren store Nothing
-                treeStoreInsert store [] nDir $ GrepRecord (__ "Search Complete") totalFound "" Nothing
+                treeStoreInsert store [] nDir $ GrepRecord (T.unpack $ __ "Search Complete") totalFound "" Nothing
 
             takeMVar (activeGrep grep) >> return ()
     return ()

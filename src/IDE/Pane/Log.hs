@@ -1,5 +1,9 @@
-{-# LANGUAGE FlexibleInstances, ScopedTypeVariables,
-   DeriveDataTypeable, MultiParamTypeClasses, TypeSynonymInstances #-}
+{-# LANGUAGE DeriveDataTypeable #-}
+{-# LANGUAGE MultiParamTypeClasses #-}
+{-# LANGUAGE FlexibleInstances #-}
+{-# LANGUAGE TypeSynonymInstances #-}
+{-# LANGUAGE ScopedTypeVariables #-}
+{-# LANGUAGE OverloadedStrings #-}
 --
 -- Module      :  IDE.Pane.Log
 -- Copyright   :  (c) Juergen Nicklisch-Franken, Hamish Mackenzie
@@ -21,7 +25,7 @@ module IDE.Pane.Log (
 ,   showLog
 ,   clearLog
 ,   getLog          -- ::   beta alpha
-,   appendLog       -- ::   alpha  -> String -> LogTag -> IO Int
+,   appendLog       -- ::   alpha  -> Text -> LogTag -> IO Int
 ,   markErrorInLog  -- ::   alpha  -> (Int, Int) -> IO ()
 ,   getActiveOrDefaultLogLaunch
 ,   getDefaultLogLaunch
@@ -79,8 +83,10 @@ import Data.Char
 import IDE.Utils.GUIUtils (__)
 import Text.Printf (printf)
 import Data.Text (Text)
-import qualified Data.Text as T (length, unpack)
-import Data.Monoid ((<>))
+import qualified Data.Text as T
+       (null, all, drop, tail, init, take, reverse, isSuffixOf,
+        isPrefixOf, pack, length, unpack)
+import Data.Monoid (Monoid(..), (<>))
 import Data.List (elemIndex, isPrefixOf, isSuffixOf, findIndex)
 import Data.Foldable (forM_)
 
@@ -117,19 +123,19 @@ getDefaultLogLaunch = do
     return $ logLaunch $ launches Map.! defaultLogName
 
 buildLogLaunchByPackage :: IDEPackage
-                             -> IDEM (LogLaunch, String)
+                             -> IDEM (LogLaunch, Text)
 buildLogLaunchByPackage = buildLogLaunchByShownPackageId . getLogLaunchNameByPackage
 
 buildLogLaunchByPackageId :: PackageIdentifier
-                               -> IDEM (LogLaunch, String)
+                               -> IDEM (LogLaunch, Text)
 buildLogLaunchByPackageId = buildLogLaunchByShownPackageId . getLogLaunchNameByPackageId
 
-buildLogLaunchByShownPackageId :: String
-                               -> IDEM (LogLaunch, String)
+buildLogLaunchByShownPackageId :: Text
+                               -> IDEM (LogLaunch, Text)
 buildLogLaunchByShownPackageId = buildLogLaunchByName
 
-buildLogLaunchByName :: String
-                          -> IDEM (LogLaunch, String)
+buildLogLaunchByName :: Text
+                          -> IDEM (LogLaunch, Text)
 buildLogLaunchByName logName = do
         log <- getLog
         launches <- readIDE logLaunches
@@ -144,31 +150,29 @@ buildLogLaunchByName logName = do
         incrementName name = case parseName name of
                                     Nothing -> createNewName name 0
                                     Just (number,name) -> createNewName name number
-        createNewName name number = concat [name, " (", show (number+1), ")"]
+        createNewName name number = mconcat [name, " (", T.pack (show $ number+1), ")"]
         parseName name = if surroundedByParenth (getLaunchString name) &&
-                               isNumberAndNotEmpty (init $ tail $ getLaunchString name)
+                               isNumberAndNotEmpty (T.init $ T.tail $ getLaunchString name)
                             then Just
-                                    (read $ init $ tail $ getLaunchString name,
-                                     reverse $ drop 4 $ reverse name)
+                                    (read $ T.unpack $ T.init $ T.tail $ getLaunchString name,
+                                     T.reverse $ T.drop 4 $ T.reverse name)
                             else Nothing
-        surroundedByParenth string = ("(" `isPrefixOf` string ) && (")" `isSuffixOf` string) && isNotBlank string
-        isNumberAndNotEmpty string = all isNumber string && isNotBlank string -- check if
-        getLaunchString name = reverse $ take 3 $ reverse name
-        isNotBlank [] = False
-        isNotBlank _  = True
+        surroundedByParenth string = ("(" `T.isPrefixOf` string ) && (")" `T.isSuffixOf` string) && not (T.null string)
+        isNumberAndNotEmpty string = T.all isNumber string && not (T.null string) -- check if
+        getLaunchString name = T.reverse $ T.take 3 $ T.reverse name
 
 
-getLogLaunchNameByPackage :: IDEPackage -> String
+getLogLaunchNameByPackage :: IDEPackage -> Text
 getLogLaunchNameByPackage package = getLogLaunchNameByPackageId (ipdPackageId package)
 
-getLogLaunchNameByPackageId :: PackageIdentifier -> String
-getLogLaunchNameByPackageId (PackageIdentifier pkgName pkgVersion) = show pkgName ++ show pkgVersion
+getLogLaunchNameByPackageId :: PackageIdentifier -> Text
+getLogLaunchNameByPackageId (PackageIdentifier pkgName pkgVersion) = T.pack $ show pkgName ++ show pkgVersion
 
 defaultLogName = "default"
 
 -- ^ adds arguments to ide to process them later.
 -- ^ e.g. using processhandle to kill process and name to switch between view
-addLogLaunchData :: String -> LogLaunch -> ProcessHandle -> IDEM ()
+addLogLaunchData :: Text -> LogLaunch -> ProcessHandle -> IDEM ()
 addLogLaunchData name logLaunch pid = do
     log <- getLog
     let comboBox = logLaunchBox log
@@ -214,9 +218,9 @@ showDefaultLogLaunch' = do
 
         liftIO $ showDefaultLogLaunch comboBox
 
-showLogLaunch :: String -> IDEM ()
+showLogLaunch :: Text -> IDEM ()
 showLogLaunch name = do
-    liftIO $ putStrLn $ "showLogLaunch: name = " ++ name
+    liftIO $ putStrLn $ "showLogLaunch: name = " <> T.unpack name
     log <- getLog
     let comboBox = logLaunchBox log
 
@@ -266,23 +270,23 @@ createNewLogLaunch = do
     tags         <- textBufferGetTagTable buf
 
     errtag       <- textTagNew (Just "err")
-    set errtag[textTagForeground := "red"]
+    set errtag[textTagForeground := ("red" :: Text)]
     textTagTableAdd tags errtag
 
     frametag     <- textTagNew (Just "frame")
-    set frametag[textTagForeground := "dark green"]
+    set frametag[textTagForeground := ("dark green" :: Text)]
     textTagTableAdd tags frametag
 
     activeErrtag <- textTagNew (Just "activeErr")
-    set activeErrtag[textTagBackground := "yellow"]
+    set activeErrtag[textTagBackground := ("yellow" :: Text)]
     textTagTableAdd tags activeErrtag
 
     intputTag <- textTagNew (Just "input")
-    set intputTag[textTagForeground := "blue"]
+    set intputTag[textTagForeground := ("blue" :: Text)]
     textTagTableAdd tags intputTag
 
     infoTag <- textTagNew (Just "info")
-    set infoTag[textTagForeground := "grey"]
+    set infoTag[textTagForeground := ("grey" :: Text)]
     textTagTableAdd tags infoTag
 
     return $ LogLaunch buf
@@ -294,7 +298,7 @@ builder' :: PanePath ->
 builder' pp nb windows = do
     prefs <- readIDE prefs
     newLogLaunch <- liftIO createNewLogLaunch
-    let emptyMap = Map.empty :: Map.Map String LogLaunchData
+    let emptyMap = Map.empty :: Map.Map Text LogLaunchData
     let map = Map.insert defaultLogName (LogLaunchData newLogLaunch Nothing) emptyMap
     modifyIDE_ $ \ide -> ide { logLaunches = map}
 
@@ -320,7 +324,7 @@ builder' pp nb windows = do
             Just str ->  fontDescriptionFromString str
             Nothing  -> do
                 f    <- fontDescriptionNew
-                fontDescriptionSetFamily f "Sans"
+                fontDescriptionSetFamily f ("Sans" :: Text)
                 return f
         widgetModifyFont tv (Just fd)
         sw           <- scrolledWindowNew Nothing Nothing
@@ -467,7 +471,7 @@ appendLog log logLaunch text tag = do
     let buf = logBuffer logLaunch
     iter  <- textBufferGetEndIter buf
     textBufferSelectRange buf iter iter
-    textBufferInsert buf iter (T.unpack text)
+    textBufferInsert buf iter text
     iter2 <- textBufferGetEndIter buf
     let tagName = case tag of
                     LogTag   -> Nothing
@@ -512,7 +516,7 @@ clearLog :: IDEAction
 clearLog = do
     log <- getLog
     buf <- liftIO $ textViewGetBuffer $ logLaunchTextView log
-    liftIO $ textBufferSetText buf ""
+    liftIO $ textBufferSetText buf ("" :: Text)
 --    modifyIDE_ (\ide -> ide{allLogRefs = []})
 --    setCurrentError Nothing
 --    setCurrentBreak Nothing TODO: Check with Hamish

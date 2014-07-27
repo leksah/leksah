@@ -1,3 +1,4 @@
+{-# LANGUAGE OverloadedStrings #-}
 -----------------------------------------------------------------------------
 --
 -- Module      :  IDE.Command.VCS.GIT
@@ -28,6 +29,7 @@ import qualified IDE.Command.VCS.Types as Types
 
 import qualified VCSGui.Git as GitGUI
 import qualified VCSWrapper.Git as Git
+import Data.Text (Text)
 
 commitAction :: Types.VCSAction ()
 commitAction = Helper.createActionFromContext GitGUI.showCommitGUI
@@ -41,7 +43,7 @@ pushAction = Helper.createActionFromContext $ GitGUI.askPassWrapper Git.push
 pullAction :: Types.VCSAction ()
 pullAction = Helper.createActionFromContext $ GitGUI.askPassWrapper GitGUI.pull
 
-mkGITActions :: [(String, Types.VCSAction ())]
+mkGITActions :: [(Text, Types.VCSAction ())]
 mkGITActions = [
                 ("_Commit", commitAction)
                 ,("_View Log", viewLogAction)

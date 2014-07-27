@@ -1,4 +1,6 @@
-{-# LANGUAGE ScopedTypeVariables, ForeignFunctionInterface #-}
+{-# LANGUAGE ScopedTypeVariables #-}
+{-# LANGUAGE ForeignFunctionInterface #-}
+{-# LANGUAGE OverloadedStrings #-}
 {-# OPTIONS_GHC -fno-warn-incomplete-patterns #-}
 -----------------------------------------------------------------------------
 --
@@ -104,7 +106,6 @@ import IDE.Pane.Files (refreshFiles, getFiles)
 import Control.Monad.IO.Class (MonadIO(..))
 import Control.Monad (unless, when)
 import Control.Monad.Trans.Reader (ask)
-import Text.Printf (printf)
 import System.Log.Logger (debugM)
 import Foreign.C.Types (CInt(..))
 import Foreign.Ptr (Ptr(..))
@@ -113,7 +114,15 @@ import Graphics.UI.GtkInternals (unToolbar)
 import IDE.Session
        (saveSessionAs, loadSession, saveSession, sessionClosePane,
         loadSessionPrompt, saveSessionAsPrompt, viewFullScreen, viewDark)
-import qualified Data.Text as T (pack)
+import qualified Data.Text as T (unpack, pack)
+import Data.Text (Text)
+import qualified Data.Text.IO as T (readFile)
+import Data.Monoid (Monoid(..), (<>))
+import qualified Text.Printf as S (printf)
+import Text.Printf (PrintfType)
+
+printf :: PrintfType r => Text -> r
+printf = S.printf . T.unpack
 
 foreign import ccall safe "gtk_toolbar_set_icon_size"
   gtk_toolbar_set_icon_size :: Ptr Toolbar -> CInt -> IO ()
@@ -465,7 +474,7 @@ mkActions =
     ,AD "Help" (__ "_Help") Nothing Nothing (return ()) [] False
     ,AD "HelpDebug" (__ "Debug") Nothing Nothing (do
             pack <- readIDE activePack
-            ideMessage Normal (show pack)) [] False
+            ideMessage Normal (T.pack $ show pack)) [] False
 --    ,AD "HelpDebug2" "Debug2" (Just "<Ctrl>d") Nothing dbgInstalledPackageInfo [] False
     ,AD "HelpManual" (__ "Manual") Nothing Nothing (openBrowser "http://leksah.org/leksah_manual.pdf") [] False
     ,AD "HelpHomepage" (__ "Homepage") Nothing Nothing (openBrowser "http://leksah.org") [] False
@@ -486,11 +495,11 @@ mkActions =
 --
 -- | The menu description in XML Syntax as defined by GTK
 --
-menuDescription :: IO String
+menuDescription :: IO Text
 menuDescription = do
     dataDir     <- getDataDir
     prefsPath   <- getConfigFilePathForLoad "leksah.menu" Nothing dataDir
-    readFile prefsPath
+    T.readFile prefsPath
 
 updateRecentEntries :: IDEAction
 updateRecentEntries = do
@@ -503,7 +512,7 @@ updateRecentEntries = do
         mapM_ (\s -> do
             fe <- doesFileExist s
             when fe $ do
-                mi <- menuItemNewWithLabel s
+                mi <- menuItemNewWithLabel $ T.pack s
                 mi `on` menuItemActivate $ reflectIDE (fileOpenThis s) ideR
                 menuShellAppend recentFilesMenu mi) recentFiles'
         oldSubmenu <- menuItemGetSubmenu recentFilesItem
@@ -516,7 +525,7 @@ updateRecentEntries = do
         mapM_ (\s -> do
             fe <- doesFileExist s
             when fe $ do
-                mi <- menuItemNewWithLabel s
+                mi <- menuItemNewWithLabel $ T.pack s
                 mi `on` menuItemActivate $ reflectIDE (workspaceOpenThis True (Just s) >> showWorkspace) ideR
                 menuShellAppend recentWorkspacesMenu mi) recentWorkspaces'
         oldSubmenu <- menuItemGetSubmenu recentWorkspacesItem
@@ -530,9 +539,9 @@ updateRecentEntries = do
 --
 -- | Building the Menu
 --
-makeMenu :: UIManager -> [ActionDescr IDERef] -> String -> IDEAction
+makeMenu :: UIManager -> [ActionDescr IDERef] -> Text -> IDEAction
 makeMenu uiManager actions menuDescription = reifyIDE (\ideR -> do
-    actionGroupGlobal <- actionGroupNew "global"
+    actionGroupGlobal <- actionGroupNew ("global" :: Text)
     mapM_ (actm ideR actionGroupGlobal) actions
     uiManagerInsertActionGroup uiManager actionGroupGlobal 1
     uiManagerAddUiFromString uiManager menuDescription
@@ -540,8 +549,8 @@ makeMenu uiManager actions menuDescription = reifyIDE (\ideR -> do
     where
         actm ideR ag (AD name label tooltip stockId ideAction accs isToggle) = do
             let (acc,accString) = if null accs
-                                    then (Just "", "=" ++ name)
-                                    else (Just (head accs), head accs ++ "=" ++ name)
+                                    then (Just "", "=" <> name)
+                                    else (Just (head accs), head accs <> "=" <> name)
             if isToggle
                 then do
                     act <- toggleActionNew name label tooltip stockId
@@ -560,11 +569,11 @@ makeMenu uiManager actions menuDescription = reifyIDE (\ideR -> do
 -- getMenuAndToolbars :: UIManager -> IO (AccelGroup, MenuBar, Toolbar)
 getMenuAndToolbars uiManager = do
     accGroup <- uiManagerGetAccelGroup uiManager
-    mbMenu   <- uiManagerGetWidget uiManager "/ui/menubar"
+    mbMenu   <- uiManagerGetWidget uiManager ("/ui/menubar" :: Text)
     let menu = case mbMenu of
                     Just it -> castToMenuBar it
                     Nothing -> throwIDE (__ "Menu>>makeMenu: failed to create menubar")
-    mbToolbar <- uiManagerGetWidget uiManager "/ui/toolbar"
+    mbToolbar <- uiManagerGetWidget uiManager ("/ui/toolbar" :: Text)
     let toolbar = case mbToolbar of
                     Just it -> castToToolbar it
                     Nothing -> throwIDE (__ "Menu>>makeMenu: failed to create toolbar")
@@ -658,15 +667,15 @@ aboutDialog :: IO ()
 aboutDialog = do
     d <- aboutDialogNew
     dd <- getDataDir
-    license <- catch (readFile $ dd </> __ "LICENSE") (\ (_ :: SomeException) -> return "")
-    set d [ aboutDialogName := "Leksah"
-          , aboutDialogVersion := showVersion version
+    license <- catch (T.readFile $ dd </> T.unpack (__ "LICENSE")) (\ (_ :: SomeException) -> return "")
+    set d [ aboutDialogName := ("Leksah" :: Text)
+          , aboutDialogVersion := T.pack $ showVersion version
           , aboutDialogCopyright := __ "Copyright 2007-2011 Jürgen Nicklisch-Franken, Hamish Mackenzie"
-          , aboutDialogComments := __ "An integrated development environement (IDE) for the " ++
+          , aboutDialogComments := __ "An integrated development environement (IDE) for the " <>
                                __ "programming language Haskell and the Glasgow Haskell Compiler"
           , aboutDialogLicense := Just license
-          , aboutDialogWebsite := "http://leksah.org/"
-          , aboutDialogAuthors := ["Jürgen Nicklisch-Franken","Hamish Mackenzie"] ]
+          , aboutDialogWebsite := ("http://leksah.org/" :: Text)
+          , aboutDialogAuthors := ["Jürgen Nicklisch-Franken","Hamish Mackenzie" :: Text] ]
     dialogRun d
     widgetDestroy d
     return ()
@@ -683,12 +692,12 @@ newIcons = catch (do
             "ide_debug", "ide_step", "ide_local", "ide_module", "ide_continue", "ide_rebuild_meta",
             "ide_empty","ide_source_local", "ide_js"]
         iconFactoryAddDefault iconFactory)
-    (\(e :: SomeException) -> getDataDir >>= \dataDir -> throwIDE (printf (__ "Can't load icons from %s %s") dataDir (show e)))
+    (\(e :: SomeException) -> getDataDir >>= \dataDir -> throwIDE (T.pack $ printf (__ "Can't load icons from %s %s") dataDir (show e)))
     where
     loadIcon dataDir iconFactory name = do
-        pb      <-  pixbufNewFromFile $ dataDir </> "pics" </> (name ++ ".png")
+        pb      <-  pixbufNewFromFile $ dataDir </> "pics" </> (name <> ".png")
         icon    <-  iconSetNewFromPixbuf pb
-        iconFactoryAdd iconFactory name icon
+        iconFactoryAdd iconFactory (T.pack name) icon
 
 setSensitivity :: [(SensitivityMask, Bool)] -> IDEAction
 setSensitivity = mapM_ setSensitivitySingle
@@ -715,7 +724,7 @@ getActionsFor SensitivityEditor = getActionsFor' ["EditUndo", "EditRedo",
 getActionsFor SensitivityInterpreting = getActionsFor' ["QuitDebugger"]
 getActionsFor SensitivityWorkspaceOpen = return [] --TODO add here
 
-getActionsFor' :: [String] -> IDEM[Action]
+getActionsFor' :: [Text] -> IDEM[Action]
 getActionsFor' l = do
     r <- mapM getActionFor l
     return (catMaybes r)
@@ -724,7 +733,7 @@ getActionsFor' l = do
             uiManager' <- getUiManager
             actionGroups <- liftIO $ uiManagerGetActionGroups uiManager'
             res <- liftIO $ actionGroupGetAction (head actionGroups) string
-            when (isNothing res) $ ideMessage Normal $ printf (__ "Can't find UI Action %s") string
+            when (isNothing res) $ ideMessage Normal $ T.pack $ printf (__ "Can't find UI Action %s") (T.unpack string)
             return res
 
 getAdditionalActionsFor :: SensitivityMask -> [Bool -> IDEAction]
@@ -752,7 +761,7 @@ instrumentWindow win prefs topWidget = do
         when iconExists $
             windowSetIconFromFile win iconPath
         vb <- vBoxNew False 1  -- Top-level vbox
-        widgetSetName vb "topBox"
+        widgetSetName vb ("topBox" :: Text)
         (acc,menu,toolbar) <-  getMenuAndToolbars uiManager'
         boxPackStart vb menu PackNatural 0
         boxPackStart vb toolbar PackNatural 0
@@ -821,7 +830,7 @@ handleSpecialKeystrokes ideR = do
                                 triggerEventIDE (StatusbarChanged [CompartmentCommand ""])
                                 return False
                             Just map -> do
-                                let sym = printMods mods ++ name
+                                let sym = printMods mods <> name
                                 triggerEventIDE (StatusbarChanged [CompartmentCommand sym])
                                 modifyIDE_ (\ide -> ide{specialKey = Just (map,sym)})
                                 return True
@@ -829,19 +838,19 @@ handleSpecialKeystrokes ideR = do
                         case Map.lookup (keyVal,sort mods) map of
                             Nothing -> do
                                 triggerEventIDE (StatusbarChanged [CompartmentCommand
-                                    (sym ++ printMods mods ++ name ++ "?")])
+                                    (sym <> printMods mods <> name <> "?")])
                                 return ()
                             Just (AD actname _ _ _ ideAction _ _) -> do
                                 triggerEventIDE (StatusbarChanged [CompartmentCommand
-                                    (sym ++ " " ++ printMods mods ++ name ++ "=" ++ actname)])
+                                    (sym <> " " <> printMods mods <> name <> "=" <> actname)])
                                 ideAction
                         modifyIDE_ (\ide -> ide{specialKey = Nothing})
                         return True
     where
-    printMods :: [Modifier] -> String
-    printMods = concatMap show
+    printMods :: [Modifier] -> Text
+    printMods = mconcat . map (T.pack . show)
 
-setSymbol :: String -> Bool -> IDEAction
+setSymbol :: Text -> Bool -> IDEAction
 setSymbol symbol openSource = do
     currentInfo' <- getWorkspaceInfo
     search <- getSearch Nothing
@@ -874,7 +883,7 @@ registerLeksahEvents =    do
             postAsyncIDE $ do
                 log <- getLog
                 defaultLogLaunch <- getDefaultLogLaunch
-                liftIO $ appendLog log defaultLogLaunch (T.pack s) t
+                liftIO $ appendLog log defaultLogLaunch s t
                 return ()
             return e)
     registerEvent stRef "SelectInfo"

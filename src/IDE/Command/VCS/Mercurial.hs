@@ -1,3 +1,4 @@
+{-# LANGUAGE OverloadedStrings #-}
 -----------------------------------------------------------------------------
 --
 -- Module      :  IDE.Command.VCS.Mercurial
@@ -24,6 +25,7 @@ import qualified IDE.Command.VCS.Types as Types
 
 import qualified VCSGui.Mercurial as MercurialGUI
 import qualified VCSWrapper.Mercurial as Mercurial
+import Data.Text (Text)
 
 commitAction :: Types.VCSAction ()
 commitAction = Helper.createActionFromContext MercurialGUI.showCommitGUI
@@ -37,7 +39,7 @@ pushAction = Helper.createActionFromContext Mercurial.push
 pullAction :: Types.VCSAction ()
 pullAction = Helper.createActionFromContext Mercurial.pull
 
-mkMercurialActions :: [(String, Types.VCSAction ())]
+mkMercurialActions :: [(Text, Types.VCSAction ())]
 mkMercurialActions = [
                 ("_Commit", commitAction)
                 ,("_View Log", viewLogAction)

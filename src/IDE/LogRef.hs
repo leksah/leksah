@@ -69,11 +69,12 @@ import IDE.Pane.WebKit.Output(setOutput)
 import Data.IORef (atomicModifyIORef, IORef, readIORef)
 import Data.Text (Text)
 import Control.Applicative ((<$>))
-import qualified Data.Text as T (unpack, unlines, pack, null)
+import qualified Data.Text as T
+       (stripPrefix, isPrefixOf, unpack, unlines, pack, null)
 import Data.Monoid ((<>))
 
-showSourceSpan :: LogRef -> String
-showSourceSpan = displaySrcSpan . logRefSrcSpan
+showSourceSpan :: LogRef -> Text
+showSourceSpan = T.pack . displaySrcSpan . logRefSrcSpan
 
 selectRef :: Maybe LogRef -> IDEAction
 selectRef (Just ref) = do
@@ -109,7 +110,7 @@ unmarkLogRefs :: IDEAction
 unmarkLogRefs = do
     forOpenLogRefs $ \index logRef (IDEBuffer {sourceView = sv}) -> do
             buf     <-  getBuffer sv
-            removeTagByName buf (show (logRefType logRef) ++ show index)
+            removeTagByName buf (T.pack $ show (logRefType logRef) ++ show index)
 
 setErrorList :: [LogRef] -> IDEAction
 setErrorList errs = do
@@ -309,9 +310,9 @@ srcSpanParser = try (do
 
 data BuildError =   BuildLine
                 |   EmptyLine
-                |   ErrorLine SrcSpan LogRefType String
-                |   WarningLine String
-                |   OtherLine String
+                |   ErrorLine SrcSpan LogRefType Text
+                |   WarningLine Text
+                |   OtherLine Text
 
 buildLineParser :: CharParser () BuildError
 buildLineParser = try (do
@@ -331,7 +332,7 @@ buildLineParser = try (do
                 symbol "Warning:"
                 return WarningRef)
             <|> return ErrorRef
-        text <- many anyChar
+        text <- T.pack <$> many anyChar
         return (ErrorLine span refType text))
     <|> try (do
         whiteSpace
@@ -340,10 +341,10 @@ buildLineParser = try (do
     <|> try (do
         whiteSpace
         symbol "Warning:"
-        text <- many anyChar
-        return (WarningLine ("Warning:" ++ text)))
+        text <- T.pack <$> many anyChar
+        return (WarningLine ("Warning:" <> text)))
     <|> try (do
-        text <- many anyChar
+        text <- T.pack <$> many anyChar
         eof
         return (OtherLine text))
     <?> "buildLineParser"
@@ -455,14 +456,14 @@ logOutputDefault = do
     defaultLogLaunch <- lift $ getDefaultLogLaunch
     logOutput defaultLogLaunch
 
-logOutputPane :: String -> IORef [Text] -> C.Sink ToolOutput IDEM ()
+logOutputPane :: Text -> IORef [Text] -> C.Sink ToolOutput IDEM ()
 logOutputPane command buffer = do
     defaultLogLaunch <- lift $ getDefaultLogLaunch
     result <- catMaybes <$> logOutputLines defaultLogLaunch paneLineLogger
     when (not $ null result) $ do
         new <- liftIO . atomicModifyIORef buffer $ \x -> let new = x ++ result in (new, new)
         mbURI <- lift $ readIDE autoURI
-        unless (isJust mbURI) . lift . postSyncIDE . setOutput command $ T.unpack $ T.unlines new
+        unless (isJust mbURI) . lift . postSyncIDE . setOutput command $ T.unlines new
 
 logOutputForBuild :: IDEPackage
                   -> Bool
@@ -479,7 +480,7 @@ logOutputForBuild package backgroundBuild jumpToWarnings = do
         let errorNum    =   length (filter isError errs)
         let warnNum     =   length errs - errorNum
         triggerEventIDE (StatusbarChanged [CompartmentState
-            (show errorNum ++ " Errors, " ++ show warnNum ++ " Warnings"), CompartmentBuild False])
+            (T.pack $ show errorNum ++ " Errors, " ++ show warnNum ++ " Warnings"), CompartmentBuild False])
         unless (backgroundBuild || (not jumpToWarnings && errorNum == 0)) nextError
         return errs) ideR
   where
@@ -492,22 +493,22 @@ logOutputForBuild package backgroundBuild jumpToWarnings = do
                 let nonErrorPrefixes = ["Linking ", "ar:", "ld:", "ld warning:"]
                 tag <- case parsed of
                     Right BuildLine -> return InfoTag
-                    Right (OtherLine text) | "Linking " `isPrefixOf` text -> do
+                    Right (OtherLine text) | "Linking " `T.isPrefixOf` text -> do
                         -- when backgroundBuild $ lift interruptProcess
                         reflectIDE (do
                                 setErrorList $ reverse errs
                             ) ideR
                         return InfoTag
-                    Right (OtherLine text) | any (`isPrefixOf` text) nonErrorPrefixes -> do
+                    Right (OtherLine text) | any (`T.isPrefixOf` text) nonErrorPrefixes -> do
                         return InfoTag
                     _ -> return ErrorTag
                 lineNr <- Log.appendLog log logLaunch (line <> "\n") tag
                 case (parsed, errs) of
                     (Left e,_) -> do
-                        sysMessage Normal (show e)
+                        sysMessage Normal . T.pack $ show e
                         return (log, False, errs)
                     (Right ne@(ErrorLine span refType str),_) ->
-                        return (log, True, ((LogRef span package (T.pack str) (lineNr,lineNr) refType):errs))
+                        return (log, True, ((LogRef span package str (lineNr,lineNr) refType):errs))
                     (Right (OtherLine str1),(LogRef span rootPath str (l1,l2) refType):tl) ->
                         if inError
                             then return (log, True, ((LogRef span
@@ -552,7 +553,7 @@ logOutputForBuild package backgroundBuild jumpToWarnings = do
                 return (log, inError, errs)
 
 
---logOutputLines :: String -- ^ logLaunch
+--logOutputLines :: Text -- ^ logLaunch
 --               -> (LogLaunch -> ToolOutput -> IDEM a)
 --               -> [ToolOutput]
 --               -> IDEM [a]
@@ -599,14 +600,14 @@ logOutputForSetBreakpointDefault package = do
 
 logOutputForContext :: IDEPackage
                     -> LogLaunch                   -- ^ loglaunch
-                    -> (String -> [SrcSpan])
+                    -> (Text -> [SrcSpan])
                     -> C.Sink ToolOutput IDEM ()
 logOutputForContext package loglaunch getContexts = do
     refs <- fmap catMaybes $ logOutputLines loglaunch (\log logLaunch out -> do
         case out of
             ToolOutput line -> do
                 logLineNumber <- liftIO $ Log.appendLog log logLaunch (line <> "\n") LogTag
-                let contexts = getContexts $ T.unpack line
+                let contexts = getContexts line
                 if null contexts
                     then return Nothing
                     else return $ Just $ LogRef (last contexts) package line (logLineNumber, logLineNumber) ContextRef
@@ -620,7 +621,7 @@ logOutputForContext package loglaunch getContexts = do
 logOutputForLiveContext :: IDEPackage
                         -> LogLaunch           -- ^ loglaunch
                         -> C.Sink ToolOutput IDEM ()
-logOutputForLiveContext package logLaunch = logOutputForContext package logLaunch getContexts
+logOutputForLiveContext package logLaunch = logOutputForContext package logLaunch (getContexts . T.unpack)
     where
         getContexts [] = []
         getContexts line@(x:xs) = case stripPrefix "Stopped at " line of
@@ -641,8 +642,8 @@ logOutputForHistoricContext :: IDEPackage
                             -> C.Sink ToolOutput IDEM ()
 logOutputForHistoricContext package logLaunch = logOutputForContext package logLaunch getContexts
     where
-        getContexts line = case stripPrefix "Logged breakpoint at " line of
-            Just rest -> case parse srcSpanParser "" rest of
+        getContexts line = case T.stripPrefix "Logged breakpoint at " line of
+            Just rest -> case parse srcSpanParser "" $ T.unpack rest of
                 Right desc -> [desc]
                 _          -> []
             _ -> []

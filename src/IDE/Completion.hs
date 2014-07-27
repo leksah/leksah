@@ -1,4 +1,4 @@
-{-# LANGUAGE CPP, ScopedTypeVariables #-}
+{-# LANGUAGE CPP, ScopedTypeVariables, OverloadedStrings #-}
 -----------------------------------------------------------------------------
 --
 -- Module      :  IDE.Completion
@@ -32,6 +32,10 @@ import qualified Control.Monad.Reader as Gtk (liftIO)
 import Control.Monad.Trans.Class (MonadTrans(..))
 import Control.Applicative ((<$>))
 import IDE.Utils.GUIUtils (getDarkState)
+import Data.Text (Text)
+import qualified Data.Text as T
+       (empty, commonPrefixes, pack, unpack, null, stripPrefix,
+        isPrefixOf)
 
 complete :: TextEditor editor => EditorView editor -> Bool -> IDEAction
 complete sourceView always = do
@@ -73,7 +77,7 @@ getIsWordChar sourceView = do
     eol <- forwardToLineEndC end
     line <- getSlice buffer sol eol False
 
-    let isImport = "import " `isPrefixOf` line
+    let isImport = "import " `T.isPrefixOf` line
         isIdent a = isAlphaNum a || a == '\'' || a == '_'  || (isImport && a == '.')
         isOp    a = isSymbol   a || a == ':'  || a == '\\' || a == '*' || a == '/' || a == '-'
                                  || a == '!'  || a == '@'  || a == '%' || a == '&' || a == '?'
@@ -120,7 +124,7 @@ initCompletion sourceView always = do
                     fontDescriptionFromString str
                 Nothing -> do
                     f <- fontDescriptionNew
-                    fontDescriptionSetFamily f "Monospace"
+                    fontDescriptionSetFamily f ("Monospace" :: Text)
                     return f
             liftIO $ widgetModifyFont tree (Just font)
 
@@ -167,7 +171,7 @@ initCompletion sourceView always = do
                 completion = ((width, height), Just (CompletionWindow window tree store))})
             updateOptions window tree store sourceView cids isWordChar always
 
-addEventHandling :: TextEditor editor => Window -> EditorView editor -> TreeView -> ListStore String
+addEventHandling :: TextEditor editor => Window -> EditorView editor -> TreeView -> ListStore Text
                  -> (Char -> Bool) -> Bool -> IDEM Connections
 addEventHandling window sourceView tree store isWordChar always = do
     ideR      <- ask
@@ -308,7 +312,7 @@ addEventHandling window sourceView tree store isWordChar always = do
 
     return $ concat [cidsPress, cidsRelease, [ConnectC idButtonPress, ConnectC idMotion, ConnectC idButtonRelease, ConnectC idSelected]]
 
-withWord :: ListStore String -> TreePath -> (String -> IDEM ()) -> IDEM ()
+withWord :: ListStore Text -> TreePath -> (Text -> IDEM ()) -> IDEM ()
 withWord store treePath f = (do
    case treePath of
        [row] -> (do
@@ -318,41 +322,41 @@ withWord store treePath f = (do
        _ -> return ()
    )
 
-replaceWordStart :: TextEditor editor => EditorView editor -> (Char -> Bool) -> String -> IDEM ()
+replaceWordStart :: TextEditor editor => EditorView editor -> (Char -> Bool) -> Text -> IDEM ()
 replaceWordStart sourceView isWordChar name = do
     buffer <- getBuffer sourceView
     (selStart, selEnd) <- getSelectionBounds buffer
     start <- findWordStart selStart isWordChar
     wordStart <- getText buffer start selEnd True
-    case stripPrefix wordStart name of
+    case T.stripPrefix wordStart name of
         Just extra -> do
             end <- findWordEnd selEnd isWordChar
             wordFinish <- getText buffer selEnd end True
-            case (wordFinish, stripPrefix wordFinish extra) of
-                (_:_,Just extra2) -> do
+            case T.stripPrefix wordFinish extra of
+                Just extra2 | not (T.null wordFinish) -> do
                     selectRange buffer end end
                     insert buffer end extra2
-                _                 -> insert buffer selEnd extra
-        Nothing    -> return ()
+                _ -> insert buffer selEnd extra
+        Nothing -> return ()
 
-cancelCompletion :: Window -> TreeView -> ListStore String -> Connections -> IDEAction
+cancelCompletion :: Window -> TreeView -> ListStore Text -> Connections -> IDEAction
 cancelCompletion window tree store connections = do
     liftIO (do
-        listStoreClear (store :: ListStore String)
+        listStoreClear (store :: ListStore Text)
         signalDisconnectAll connections
         widgetHide window
         )
     modifyIDE_ (\ide -> ide{currentState = IsRunning})
 
-updateOptions :: forall editor. TextEditor editor => Window -> TreeView -> ListStore String -> EditorView editor -> Connections -> (Char -> Bool) -> Bool -> IDEAction
+updateOptions :: forall editor. TextEditor editor => Window -> TreeView -> ListStore Text -> EditorView editor -> Connections -> (Char -> Bool) -> Bool -> IDEAction
 updateOptions window tree store sourceView connections isWordChar always = do
     result <- tryToUpdateOptions window tree store sourceView False isWordChar always
     when (not result) $ cancelCompletion window tree store connections
 
-tryToUpdateOptions :: TextEditor editor => Window -> TreeView -> ListStore String -> EditorView editor -> Bool -> (Char -> Bool) -> Bool -> IDEM Bool
+tryToUpdateOptions :: TextEditor editor => Window -> TreeView -> ListStore Text -> EditorView editor -> Bool -> (Char -> Bool) -> Bool -> IDEM Bool
 tryToUpdateOptions window tree store sourceView selectLCP isWordChar always = do
     ideR <- ask
-    liftIO $ listStoreClear (store :: ListStore String)
+    liftIO $ listStoreClear (store :: ListStore Text)
     buffer <- getBuffer sourceView
     (selStart, end) <- getSelectionBounds buffer
     start <- findWordStart selStart isWordChar
@@ -382,10 +386,11 @@ findWordEnd iter isWordChar = do
         Nothing -> forwardToLineEndC iter
         Just we -> return we
 
-longestCommonPrefix (x:xs) (y:ys) | x == y = x : longestCommonPrefix xs ys
-longestCommonPrefix _ _ = []
+longestCommonPrefix a b = case T.commonPrefixes a b of
+                            Nothing        -> T.empty
+                            Just (p, _, _) -> p
 
-processResults :: TextEditor editor => Window -> TreeView -> ListStore String -> EditorView editor -> String -> [String]
+processResults :: TextEditor editor => Window -> TreeView -> ListStore Text -> EditorView editor -> Text -> [Text]
                -> Bool -> (Char -> Bool) -> Bool -> IDEAction
 processResults window tree store sourceView wordStart options selectLCP isWordChar always = do
     case options of
@@ -399,14 +404,13 @@ processResults window tree store sourceView wordStart options selectLCP isWordCh
             newWordStart <- do
                 if selectLCP && currentWordStart == wordStart && (not $ null options)
                     then do
-                        let lcp = foldl1 longestCommonPrefix options
-                        return lcp
+                        return $ foldl1 longestCommonPrefix options
                     else
                         return currentWordStart
 
-            when (isPrefixOf wordStart newWordStart) $ do
+            when (T.isPrefixOf wordStart newWordStart) $ do
                 liftIO $ listStoreClear store
-                let newOptions = List.filter (isPrefixOf newWordStart) options
+                let newOptions = List.filter (T.isPrefixOf newWordStart) options
                 liftIO $ forM_ (take 200 newOptions) (listStoreAppend store)
                 Rectangle startx starty width height <- getIterLocation sourceView start
                 (wWindow, hWindow)                   <- liftIO $ windowGetSize window

@@ -1,3 +1,4 @@
+{-# LANGUAGE OverloadedStrings #-}
 -----------------------------------------------------------------------------
 --
 -- Module      :  IDE.Command.VCS.SVN
@@ -36,6 +37,7 @@ import Graphics.UI.Gtk.ActionMenuToolbar.UIManager(MergeId)
 import Control.Monad.Reader(liftIO,ask,lift)
 import Data.IORef(atomicModifyIORef, IORef)
 import Data.Either
+import Data.Text (Text)
 
 commitAction :: Types.VCSAction ()
 commitAction = do
@@ -52,7 +54,7 @@ updateAction = do
 viewLogAction :: Types.VCSAction ()
 viewLogAction = createSVNActionFromContext GUISvn.showLogGUI
 
-mkSVNActions :: [(String, Types.VCSAction ())]
+mkSVNActions :: [(Text, Types.VCSAction ())]
 mkSVNActions = [
                 ("_Commit", commitAction)
                 ,("_View Log", viewLogAction)
@@ -61,7 +63,7 @@ mkSVNActions = [
 
 --HELPERS
 
-createSVNActionFromContext :: (Either GUISvn.Handler (Maybe String)
+createSVNActionFromContext :: (Either GUISvn.Handler (Maybe Text)
                                 -> Wrapper.Ctx())
                            -> Types.VCSAction ()
 createSVNActionFromContext action = do
@@ -71,7 +73,7 @@ createSVNActionFromContext action = do
             Nothing -> Helper.createActionFromContext $ action $ Left $ passwordHandler ide mergeInfo
             Just mb -> Helper.createActionFromContext $ action $ Right mb
     where
---        passwordHandler :: IORef IDE-> Maybe MergeId -> ((Maybe (Bool, Maybe String)) -> Wrapper.Ctx ())
+--        passwordHandler :: IORef IDE-> Maybe MergeId -> ((Maybe (Bool, Maybe Text)) -> Wrapper.Ctx ())
         passwordHandler ide mbMergeInfo result = liftIO $
             case result of
                 Just (True, pw) -> modifyIDE_' ide (\ide -> ide {vcsData = (mbMergeInfo, Just pw) })

@@ -28,6 +28,7 @@ import Foreign (Ptr)
 import Control.Monad.Reader.Class (MonadReader(..))
 import Control.Monad.IO.Class (MonadIO(..))
 import System.Glib.Signals (on)
+import Data.Text (Text)
 
 class TextEditor editor where
     data EditorBuffer editor
@@ -37,9 +38,9 @@ class TextEditor editor where
     data EditorTagTable editor
     data EditorTag editor
 
-    newBuffer :: Maybe FilePath -> String -> IDEM (EditorBuffer editor)
+    newBuffer :: Maybe FilePath -> Text -> IDEM (EditorBuffer editor)
     applyTagByName :: EditorBuffer editor
-                      -> String
+                      -> Text
                       -> EditorIter editor
                       -> EditorIter editor
                       -> IDEM ()
@@ -71,17 +72,17 @@ class TextEditor editor where
                 -> EditorIter editor
                 -> EditorIter editor
                 -> Bool
-                -> IDEM String
+                -> IDEM Text
     getStartIter :: EditorBuffer editor -> IDEM (EditorIter editor)
     getTagTable :: EditorBuffer editor -> IDEM (EditorTagTable editor)
     getText :: EditorBuffer editor
                -> EditorIter editor
                -> EditorIter editor
                -> Bool
-               -> IDEM String
+               -> IDEM Text
     hasSelection :: EditorBuffer editor -> IDEM Bool
-    insert :: EditorBuffer editor -> EditorIter editor -> String -> IDEM ()
-    newView :: EditorBuffer editor -> Maybe String -> IDEM (EditorView editor)
+    insert :: EditorBuffer editor -> EditorIter editor -> Text -> IDEM ()
+    newView :: EditorBuffer editor -> Maybe Text -> IDEM (EditorView editor)
     pasteClipboard :: EditorBuffer editor
                       -> Clipboard
                       -> EditorIter editor
@@ -90,12 +91,12 @@ class TextEditor editor where
     placeCursor :: EditorBuffer editor -> EditorIter editor -> IDEM ()
     redo :: EditorBuffer editor -> IDEM ()
     removeTagByName :: EditorBuffer editor
-                       -> String
+                       -> Text
                        -> IDEM ()
     selectRange :: EditorBuffer editor -> EditorIter editor -> EditorIter editor -> IDEM ()
     setModified :: EditorBuffer editor -> Bool -> IDEM ()
-    setStyle :: Bool -> EditorBuffer editor -> Maybe String -> IDEM ()
-    setText :: EditorBuffer editor -> String -> IDEM ()
+    setStyle :: Bool -> EditorBuffer editor -> Maybe Text -> IDEM ()
+    setText :: EditorBuffer editor -> Text -> IDEM ()
     undo :: EditorBuffer editor -> IDEM ()
 
     -- Events
@@ -122,7 +123,7 @@ class TextEditor editor where
                     -> Double
                     -> Maybe (Double, Double)
                     -> IDEM ()
-    setFont :: EditorView editor -> Maybe String -> IDEM ()
+    setFont :: EditorView editor -> Maybe Text -> IDEM ()
     setIndentWidth :: EditorView editor -> Int -> IDEM ()
     setWrapMode :: EditorView editor -> Bool -> IDEM ()
     setRightMargin :: EditorView editor -> Maybe Int -> IDEM ()
@@ -172,7 +173,7 @@ class TextEditor editor where
                        -> Maybe (EditorIter editor)
                        -> IDEM (Maybe (EditorIter editor))
     forwardSearch :: EditorIter editor
-                     -> String
+                     -> Text
                      -> [TextSearchFlags]
                      -> Maybe (EditorIter editor)
                      -> IDEM (Maybe (EditorIter editor, EditorIter editor))
@@ -195,8 +196,8 @@ class TextEditor editor where
     atStart :: EditorIter editor -> IDEM (EditorIter editor)
 
     -- Tag Table
-    newTag :: EditorTagTable editor -> String -> IDEM (EditorTag editor)
-    lookupTag :: EditorTagTable editor -> String -> IDEM (Maybe (EditorTag editor))
+    newTag :: EditorTagTable editor -> Text -> IDEM (EditorTag editor)
+    lookupTag :: EditorTagTable editor -> Text -> IDEM (Maybe (EditorTag editor))
 
     -- Tag
     background :: EditorTag editor -> Color -> IDEM ()

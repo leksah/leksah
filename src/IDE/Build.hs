@@ -1,3 +1,4 @@
+{-# LANGUAGE OverloadedStrings #-}
 {-# OPTIONS_GHC #-}
 -----------------------------------------------------------------------------
 --
@@ -40,12 +41,15 @@ import IDE.Package
         packageTest', packageDoc')
 import IDE.Core.Types
        (IDEEvent(..), Prefs(..), IDE(..), WorkspaceAction)
-import Distribution.Text (Text(..))
 import Control.Event (EventSource(..))
 import Control.Monad.Trans.Reader (ask)
 import Control.Monad.Trans.Class (MonadTrans(..))
 import Control.Monad (void)
 import Control.Arrow ((***))
+import Data.Text (Text)
+import Distribution.Text (disp)
+import Data.Monoid ((<>))
+import qualified Data.Text as T (pack, unpack)
 
 -- import Debug.Trace (trace)
 trace a b = b
@@ -80,7 +84,7 @@ data MakeOp =
     | MoRegister
     | MoClean
     | MoDocu
-    | MoOther String
+    | MoOther Text
     | MoMetaInfo -- rebuild meta info for workspace
     | MoComposed [MakeOp]
     deriving (Eq,Ord,Show)
@@ -130,7 +134,7 @@ constrMakeChain _ _ [] _ _ _ = EmptyChain
 constrMakeChain ms@MakeSettings{msMakeMode = makeMode}
                     Workspace{wsPackages = packages, wsNobuildPack = noBuilds}
                     targets firstOp restOp finishOp =
-    trace ("topsorted: " ++ showTopSorted topsorted)
+    trace (T.unpack $ "topsorted: " <> showTopSorted topsorted)
     constrElem targets topsorted depGraph ms noBuilds
                     firstOp restOp finishOp False
   where
@@ -216,7 +220,7 @@ constrCont ms pos _ _ = doBuildChain ms pos
 -- | Construct a dependency graph for a package
 -- pointing to the packages the subject package depends on
 constrParentGraph :: [IDEPackage] -> MakeGraph
-constrParentGraph targets = trace ("parentGraph : " ++ showGraph parGraph) parGraph
+constrParentGraph targets = trace (T.unpack $ "parentGraph : " <> showGraph parGraph) parGraph
   where
     parGraph = Map.fromList
         $ map (\ p -> (p,nub $ mapMaybe (depToTarget targets)(ipdDepends p))) targets
@@ -224,18 +228,18 @@ constrParentGraph targets = trace ("parentGraph : " ++ showGraph parGraph) parGr
 -- | Construct a dependency graph for a package
 -- pointing to the packages which depend on the subject package
 constrDepGraph :: [IDEPackage] -> MakeGraph
-constrDepGraph packages = trace ("depGraph : " ++ showGraph depGraph) depGraph
+constrDepGraph packages = trace (T.unpack $ "depGraph : " <> showGraph depGraph) depGraph
   where
     depGraph = reverseGraph (constrParentGraph packages)
 
-showGraph :: MakeGraph -> String
+showGraph :: MakeGraph -> Text
 showGraph mg =
-    show
+    T.pack $ show
         $ map (\(k,v) -> (disp (ipdPackageId k), map (disp . ipdPackageId) v))
             $ Map.toList mg
 
-showTopSorted :: [IDEPackage] -> String
-showTopSorted = show . map (disp .ipdPackageId)
+showTopSorted :: [IDEPackage] -> Text
+showTopSorted = T.pack . show . map (disp .ipdPackageId)
 
 
 -- | Calculates for every dependency a target (or not)

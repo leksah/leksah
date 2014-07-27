@@ -1,5 +1,9 @@
-{-# LANGUAGE FlexibleInstances, ScopedTypeVariables, DeriveDataTypeable,
-             MultiParamTypeClasses, TypeSynonymInstances, Rank2Types #-}
+{-# LANGUAGE DeriveDataTypeable #-}
+{-# LANGUAGE MultiParamTypeClasses #-}
+{-# LANGUAGE FlexibleInstances #-}
+{-# LANGUAGE TypeSynonymInstances #-}
+{-# LANGUAGE ScopedTypeVariables #-}
+{-# LANGUAGE OverloadedStrings #-}
 -----------------------------------------------------------------------------
 --
 -- Module      :  IDE.Pane.PackageFlags
@@ -44,6 +48,10 @@ import Text.ParserCombinators.Parsec hiding(Parser)
 import Debug.Trace (trace)
 import IDE.Utils.GUIUtils (__)
 import Control.Monad (void)
+import Data.Text (Text)
+import Data.Monoid ((<>))
+import qualified Data.Text as T (unwords, unpack, pack)
+import Control.Applicative ((<$>))
 
 data IDEFlags               =   IDEFlags {
     flagsBox                ::   VBox
@@ -134,7 +142,7 @@ getFlags Nothing    = forceGetPane (Right "*Flags")
 getFlags (Just pp)  = forceGetPane (Left pp)
 
 quoteArg :: String -> String
-quoteArg s | ' ' `elem` s = "\"" ++ escapeQuotes s ++ "\""
+quoteArg s | ' ' `elem` s = "\"" <> escapeQuotes s <> "\""
 quoteArg s = s
 
 escapeQuotes = foldr (\c s -> if c == '"' then '\\':c:s else c:s) ""
@@ -147,28 +155,28 @@ quotedArgCharParser = try (do
         noneOf "\"")
     <?> "argsParser"
 
-argParser :: CharParser () String
+argParser :: CharParser () Text
 argParser = try (do
         char '"'
         s <- many quotedArgCharParser
         char '"'
-        return s)
+        return $ T.pack s)
     <|> try (
-        many1 (noneOf " "))
+        T.pack <$> many1 (noneOf " "))
     <?> "argParser"
 
-argsParser :: CharParser () [String]
+argsParser :: CharParser () [Text]
 argsParser = try (
         many (do
             many (char ' ')
             argParser))
     <?> "argsParser"
 
-unargs :: [String] -> String
-unargs = unwords . map quoteArg
+unargs :: [Text] -> Text
+unargs = T.unwords . map (T.pack . quoteArg . T.unpack)
 
-args :: String -> [String]
-args s = case parse argsParser "" s of
+args :: Text -> [Text]
+args s = case parse argsParser "" $ T.unpack s of
             Right result -> result
             _ -> [s]
 
@@ -183,7 +191,7 @@ flagsDescription = VFDPP emptyParams [
             readParser
             (unargs . ipdConfigFlags)
             (\ b a -> a{ipdConfigFlags = args b})
-            (stringEditor (const True) True)
+            (textEditor (const True) True)
             (\ _ -> return ())
     ,   mkFieldPP
             (paraName <<<- ParaName (__ "Build flags") $ emptyParams)
@@ -191,7 +199,7 @@ flagsDescription = VFDPP emptyParams [
             readParser
             (unargs . ipdBuildFlags)
             (\ b a -> a{ipdBuildFlags = args b})
-            (stringEditor (const True) True)
+            (textEditor (const True) True)
             (\ _ ->  return ())
     ,   mkFieldPP
             (paraName <<<- ParaName (__ "Test flags") $ emptyParams)
@@ -199,7 +207,7 @@ flagsDescription = VFDPP emptyParams [
             readParser
             (unargs . ipdTestFlags)
             (\ b a -> a{ipdTestFlags = args b})
-            (stringEditor (const True) True)
+            (textEditor (const True) True)
             (\ _ ->   return ())
     ,   mkFieldPP
             (paraName <<<- ParaName (__ "Haddock flags") $ emptyParams)
@@ -207,7 +215,7 @@ flagsDescription = VFDPP emptyParams [
             readParser
             (unargs . ipdHaddockFlags)
             (\ b a -> a{ipdHaddockFlags = args b})
-            (stringEditor (const True) True)
+            (textEditor (const True) True)
             (\ _ ->   return ())
     ,   mkFieldPP
             (paraName <<<- ParaName (__ "Executable flags") $ emptyParams)
@@ -215,7 +223,7 @@ flagsDescription = VFDPP emptyParams [
             readParser
             (unargs . ipdExeFlags)
             (\ b a -> a{ipdExeFlags = args b})
-            (stringEditor (const True) True)
+            (textEditor (const True) True)
             (\ _ ->   return ())
     ,   mkFieldPP
             (paraName <<<- ParaName (__ "Install flags") $ emptyParams)
@@ -223,7 +231,7 @@ flagsDescription = VFDPP emptyParams [
             readParser
             (unargs . ipdInstallFlags)
             (\ b a -> a{ipdInstallFlags = args b})
-            (stringEditor (const True) True)
+            (textEditor (const True) True)
             (\ _ ->   return ())
     ,   mkFieldPP
             (paraName <<<- ParaName (__ "Register flags") $ emptyParams)
@@ -231,7 +239,7 @@ flagsDescription = VFDPP emptyParams [
             readParser
             (unargs . ipdRegisterFlags)
             (\ b a -> a{ipdRegisterFlags = args b})
-            (stringEditor (const True) True)
+            (textEditor (const True) True)
             (\ _ ->   return ())
     ,   mkFieldPP
             (paraName <<<- ParaName (__ "Unregister flags") $ emptyParams)
@@ -239,7 +247,7 @@ flagsDescription = VFDPP emptyParams [
             readParser
             (unargs . ipdUnregisterFlags)
             (\ b a -> a{ipdUnregisterFlags = args b})
-            (stringEditor (const True) True)
+            (textEditor (const True) True)
             (\ _ ->   return ())
     ,   mkFieldPP
             (paraName <<<- ParaName (__ "Source Distribution flags") $ emptyParams)
@@ -247,7 +255,7 @@ flagsDescription = VFDPP emptyParams [
             readParser
             (unargs . ipdSdistFlags)
             (\ b a -> a{ipdSdistFlags = args b})
-            (stringEditor (const True) True)
+            (textEditor (const True) True)
             (\ _ -> return ())]
 
 -- ------------------------------------------------------------

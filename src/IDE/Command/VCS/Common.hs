@@ -1,3 +1,4 @@
+{-# LANGUAGE OverloadedStrings #-}
 -----------------------------------------------------------------------------
 --
 -- Module      :  IDE.Command.VCS.Common
@@ -20,6 +21,7 @@ module IDE.Command.VCS.Common (
 
 import IDE.Core.Types
 import IDE.Core.State
+import IDE.Utils.GUIUtils
 import qualified IDE.Utils.GUIUtils as GUIUtils
 import qualified IDE.Workspaces.Writer as Writer
 import qualified IDE.Command.VCS.Types as Types
@@ -37,6 +39,8 @@ import Control.Monad.Trans(liftIO)
 import qualified Control.Exception as Exc
 import Data.Maybe
 import qualified Data.Map as Map
+import Data.Text (Text)
+import qualified Data.Text as T (pack)
 
 
 
@@ -48,7 +52,7 @@ setMenuForPackage vcsMenu cabalFp mbVCSConf = do
                     (oldMenuItems,pw) <- readIDE vcsData
                     packageItem <-
                         case Map.lookup cabalFp oldMenuItems of
-                             Nothing -> liftIO $ Gtk.menuItemNewWithLabel cabalFp
+                             Nothing -> liftIO . Gtk.menuItemNewWithLabel $ T.pack cabalFp
                              Just menuItem -> return menuItem
                     let newMenuItems = Map.insert cabalFp packageItem oldMenuItems
                     modifyIDE_ (\ide -> ide {vcsData = (newMenuItems,pw)})
@@ -56,7 +60,7 @@ setMenuForPackage vcsMenu cabalFp mbVCSConf = do
                     packageMenu <- liftIO Gtk.menuNew
 
                     -- build and set set-up repo action
-                    setupActionItem <- liftIO $ Gtk.menuItemNewWithMnemonic "_Setup Repo"
+                    setupActionItem <- liftIO $ Gtk.menuItemNewWithMnemonic (__"_Setup Repo")
                     liftIO $ setupActionItem `Gtk.on` Gtk.menuItemActivate $
                             reflectIDE (
                                     runSetupRepoActionWithContext cabalFp
@@ -83,7 +87,7 @@ setMenuForPackage vcsMenu cabalFp mbVCSConf = do
                                  actionItem `Gtk.on` Gtk.menuItemActivate $
                                    reflectIDE (runActionWithContext action cabalFp) ideR
                                  Gtk.menuShellAppend packageMenu actionItem)
-                    mkVCSActions :: VCS.VCSType -> [(String, Types.VCSAction ())]
+                    mkVCSActions :: VCS.VCSType -> [(Text, Types.VCSAction ())]
                     mkVCSActions VCS.SVN = SVN.mkSVNActions
                     mkVCSActions VCS.GIT = GIT.mkGITActions
                     mkVCSActions VCS.Mercurial = Mercurial.mkMercurialActions
@@ -152,7 +156,7 @@ workspaceSetVCSConfig pathToPackage mbVCSConf = do
 
 
 -- | vcs conf for given package in current workspace.
-getVCSConf :: FilePath -> IDEM (Either String (Maybe VCSConf))
+getVCSConf :: FilePath -> IDEM (Either Text (Maybe VCSConf))
 getVCSConf pathToPackage = do
     mbWorkspace <- readIDE workspace
     case mbWorkspace of
@@ -160,7 +164,7 @@ getVCSConf pathToPackage = do
         Just workspace -> getVCSConf' workspace pathToPackage
 
 -- | vcs conf for given package in given workspace.
-getVCSConf' :: Workspace -> FilePath -> IDEM (Either String (Maybe VCSConf))
+getVCSConf' :: Workspace -> FilePath -> IDEM (Either Text (Maybe VCSConf))
 getVCSConf' workspace pathToPackage = do
             let mbConfig = Map.lookup pathToPackage $ packageVcsConf workspace
             case mbConfig of

@@ -1,3 +1,4 @@
+{-# LANGUAGE OverloadedStrings #-}
 {-# LANGUAGE ScopedTypeVariables #-}
 {-# LANGUAGE ForeignFunctionInterface #-}
 -----------------------------------------------------------------------------
@@ -68,7 +69,7 @@ import IDE.Pane.SourceBuffer
 import Data.Char (digitToInt, isDigit, toLower, isAlphaNum)
 import Text.Regex.TDFA hiding (caseSensitive, after)
 import qualified Text.Regex.TDFA as Regex
-import Text.Regex.TDFA.String (compile)
+import Text.Regex.TDFA.Text (compile)
 import Data.List (find, isPrefixOf)
 import Data.Array (bounds, (!), inRange)
 import IDE.Pane.Grep (grepWorkspace)
@@ -82,6 +83,9 @@ import Foreign.Ptr (Ptr(..))
 import Foreign.ForeignPtr (withForeignPtr)
 import Graphics.UI.GtkInternals (unToolbar)
 import Data.Text (Text)
+import qualified Data.Text as T
+       (pack, unpack, singleton, isPrefixOf, length, null, toLower)
+import Data.Monoid ((<>))
 
 foreign import ccall safe "gtk_toolbar_set_icon_size"
   gtk_toolbar_set_icon_size :: Ptr Toolbar -> CInt -> IO ()
@@ -92,10 +96,10 @@ toolbarSetIconSize self iconSize =
     \selfPtr ->gtk_toolbar_set_icon_size selfPtr (fromIntegral $ fromEnum iconSize)
 
 data FindState = FindState {
-            entryStr        ::    String
-        ,   entryHist       ::    [String]
-        ,   replaceStr      ::    String
-        ,   replaceHist     ::    [String]
+            entryStr        ::    Text
+        ,   entryHist       ::    [Text]
+        ,   replaceStr      ::    Text
+        ,   replaceHist     ::    [Text]
         ,   caseSensitive   ::    Bool
         ,   entireWord      ::    Bool
         ,   wrapAround      ::    Bool
@@ -205,13 +209,13 @@ constructFindReplace = reifyIDE $ \ ideR   -> do
 
     spinTool <- toolItemNew
     spinL <- spinButtonNewWithRange 1.0 1000.0 10.0
-    widgetSetName spinL "gotoLineEntry"
+    widgetSetName spinL ("gotoLineEntry" :: Text)
     containerAdd spinTool spinL
-    widgetSetName spinTool "gotoLineEntryTool"
+    widgetSetName spinTool ("gotoLineEntryTool" :: Text)
     toolbarInsert toolbar spinTool 0
 
     labelTool3 <- toolItemNew
-    label3 <- labelNew (Just "Goto Line :")
+    label3 <- labelNew (Just (__"Goto Line :"))
     containerAdd labelTool3 label3
     toolbarInsert toolbar labelTool3 0
 
@@ -219,15 +223,15 @@ constructFindReplace = reifyIDE $ \ ideR   -> do
     toolbarInsert toolbar sep1 0
 
     let performGrep = reflectIDE (packageTry $ doGrep toolbar) ideR
-    grepButton <- toolButtonNew (Nothing :: Maybe Widget) (Just "Grep")
+    grepButton <- toolButtonNew (Nothing :: Maybe Widget) (Just (__"Grep"))
     toolbarInsert toolbar grepButton 0
     grepButton `onToolButtonClicked` performGrep
-    set grepButton [widgetTooltipText := Just "Search in multiple files"]
+    set grepButton [widgetTooltipText := Just (__"Search in multiple files")]
 
     sep1 <- separatorToolItemNew
     toolbarInsert toolbar sep1 0
 
-    replaceAllButton <- toolButtonNew (Nothing :: Maybe Widget) (Just "Replace All")
+    replaceAllButton <- toolButtonNew (Nothing :: Maybe Widget) (Just (__"Replace All"))
     toolbarInsert toolbar replaceAllButton 0
 
     replaceButton <- toolButtonNewFromStock "gtk-find-and-replace"
@@ -235,13 +239,13 @@ constructFindReplace = reifyIDE $ \ ideR   -> do
 
     replaceTool <- toolItemNew
     rentry <- entryNew
-    widgetSetName rentry "replaceEntry"
+    widgetSetName rentry ("replaceEntry" :: Text)
     containerAdd replaceTool rentry
-    widgetSetName replaceTool "replaceTool"
+    widgetSetName replaceTool ("replaceTool" :: Text)
     toolbarInsert toolbar replaceTool 0
 
     labelTool2 <- toolItemNew
-    label2 <- labelNew (Just "Replace: ")
+    label2 <- labelNew (Just (__"Replace: "))
     containerAdd labelTool2 label2
     toolbarInsert toolbar labelTool2 0
 
@@ -250,25 +254,25 @@ constructFindReplace = reifyIDE $ \ ideR   -> do
 
     nextButton <- toolButtonNewFromStock "gtk-go-forward"
     toolbarInsert toolbar nextButton 0
-    set nextButton [widgetTooltipText := Just "Search for the next match in the current file"]
+    set nextButton [widgetTooltipText := Just (__"Search for the next match in the current file")]
     nextButton `onToolButtonClicked` doSearch toolbar Forward ideR
 
     wrapAroundButton <- toggleToolButtonNew
-    toolButtonSetLabel wrapAroundButton (Just "Wrap")
-    widgetSetName wrapAroundButton "wrapAroundButton"
+    toolButtonSetLabel wrapAroundButton (Just (__"Wrap"))
+    widgetSetName wrapAroundButton ("wrapAroundButton" :: Text)
     toolbarInsert toolbar wrapAroundButton 0
-    set wrapAroundButton [widgetTooltipText := Just "When selected searching will continue from the top when no more matches are found"]
+    set wrapAroundButton [widgetTooltipText := Just (__"When selected searching will continue from the top when no more matches are found")]
 
     previousButton <- toolButtonNewFromStock "gtk-go-back"
     toolbarInsert toolbar previousButton 0
-    set previousButton [widgetTooltipText := Just "Search for the previous match in the current file"]
+    set previousButton [widgetTooltipText := Just (__"Search for the previous match in the current file")]
     previousButton `onToolButtonClicked` doSearch toolbar Backward ideR
 
     entryTool <- toolItemNew
     entry <- entryNew
-    widgetSetName entry "searchEntry"
+    widgetSetName entry ("searchEntry" :: Text)
     containerAdd entryTool entry
-    widgetSetName entryTool "searchEntryTool"
+    widgetSetName entryTool ("searchEntryTool" :: Text)
     toolItemSetExpand entryTool True
     toolbarInsert toolbar entryTool 0
 
@@ -292,29 +296,29 @@ constructFindReplace = reifyIDE $ \ ideR   -> do
         return True
 
     regexButton <- toggleToolButtonNew
-    toolButtonSetLabel regexButton (Just "Regex")
-    widgetSetName regexButton "regexButton"
+    toolButtonSetLabel regexButton (Just (__"Regex"))
+    widgetSetName regexButton ("regexButton" :: Text)
     toolbarInsert toolbar regexButton 0
     regexButton `onToolButtonClicked` doSearch toolbar Insert ideR
-    set regexButton [widgetTooltipText := Just "When selected the search string is used as a regular expression"]
+    set regexButton [widgetTooltipText := Just (__"When selected the search string is used as a regular expression")]
 
     entireWordButton <- toggleToolButtonNew
-    toolButtonSetLabel entireWordButton (Just "Words")
-    widgetSetName entireWordButton "entireWordButton"
+    toolButtonSetLabel entireWordButton (Just (__"Words"))
+    widgetSetName entireWordButton ("entireWordButton" :: Text)
     toolbarInsert toolbar entireWordButton 0
     entireWordButton `onToolButtonClicked` doSearch toolbar Insert ideR
-    set entireWordButton [widgetTooltipText := Just "When selected only entire words are matched"]
+    set entireWordButton [widgetTooltipText := Just (__"When selected only entire words are matched")]
 
     caseSensitiveButton <- toggleToolButtonNew
-    toolButtonSetLabel caseSensitiveButton (Just "Case")
-    widgetSetName caseSensitiveButton "caseSensitiveButton"
+    toolButtonSetLabel caseSensitiveButton (Just (__"Case"))
+    widgetSetName caseSensitiveButton ("caseSensitiveButton" :: Text)
     toolbarInsert toolbar caseSensitiveButton 0
     caseSensitiveButton `onToolButtonClicked`
        doSearch toolbar Insert ideR
-    set caseSensitiveButton [widgetTooltipText := Just "When selected the search is case sensitive"]
+    set caseSensitiveButton [widgetTooltipText := Just (__"When selected the search is case sensitive")]
 
     labelTool <- toolItemNew
-    label <- labelNew (Just "Find: ")
+    label <- labelNew (Just (__"Find: "))
     containerAdd labelTool label
     toolbarInsert toolbar labelTool 0
 
@@ -355,7 +359,7 @@ constructFindReplace = reifyIDE $ \ ideR   -> do
                 widgetGrabFocus re
                 --- widgetAc
                 return True
-            _ | mapControlCommand Control `elem` mods -> liftIO . ctrl $ map toLower name
+            _ | mapControlCommand Control `elem` mods -> liftIO . ctrl $ T.toLower name
             _        -> return False
 
     rentry `on` keyPressEvent $ do
@@ -367,7 +371,7 @@ constructFindReplace = reifyIDE $ \ ideR   -> do
                     widgetGrabFocus fe
                     return True
              | mapControlCommand Control `elem` mods ->
-                        liftIO . ctrl $ map toLower name
+                        liftIO . ctrl $ T.toLower name
              | otherwise -> return False
 
     after spinL focusInEvent . liftIO $ reflectIDE (inActiveBufContext True $ \ _ _ ebuf _ _ -> do
@@ -384,7 +388,7 @@ constructFindReplace = reifyIDE $ \ ideR   -> do
                 re <- getFindEntry toolbar
                 widgetGrabFocus re
                 return True
-            _ | mapControlCommand Control `elem` mods -> liftIO . ctrl $ map toLower name
+            _ | mapControlCommand Control `elem` mods -> liftIO . ctrl $ T.toLower name
             _ -> return False
 
     after spinL entryActivate $ reflectIDE (inActiveBufContext () $ \ _ sv ebuf _ _ -> do
@@ -427,7 +431,7 @@ doSearch fb hint ideR   = do
     case mbExpAndMatchIndex of
         Just (exp, matchIndex) -> do
             res           <- reflectIDE (editFind entireWord caseSensitive wrapAround regex search "" hint) ideR
-            if res || null search
+            if res || T.null search
                 then do
                     widgetModifyBase entry StateNormal white
                     widgetModifyText entry StateNormal black
@@ -435,7 +439,7 @@ doSearch fb hint ideR   = do
                     widgetModifyBase entry StateNormal red
                     widgetModifyText entry StateNormal white
         Nothing ->
-            if null search
+            if T.null search
                 then do
                     widgetModifyBase entry StateNormal white
                     widgetModifyText entry StateNormal black
@@ -458,24 +462,24 @@ doGrep fb   = do
     let (regexString, _) = regexStringAndMatchIndex entireWord regex search
     liftIDE $ workspaceTry $ grepWorkspace regexString caseSensitive
 
-matchFunc :: ListStore String -> String -> TreeIter -> IO Bool
+matchFunc :: ListStore Text -> Text -> TreeIter -> IO Bool
 matchFunc model str iter = do
   tp <- treeModelGetPath model iter
   case tp of
          (i:_) -> do row <- listStoreGetValue model i
-                     return (isPrefixOf (map toLower str) (map toLower row) && length str < length row)
+                     return (T.isPrefixOf (T.toLower str) (T.toLower row) && T.length str < T.length row)
          otherwise -> return False
 
-addToHist :: String -> IDEAction
+addToHist :: Text -> IDEAction
 addToHist str =
-    unless (null str) $
+    unless (T.null str) $
        do (_, ls) <- needFindbar
           liftIO $
             do entryHist <- listStoreToList ls
-               unless (any (str `isPrefixOf`) entryHist) $
+               unless (any (str `T.isPrefixOf`) entryHist) $
                  do let newList
                           = take 12
-                              (str : filter (\ e -> not (e `isPrefixOf` str)) entryHist)
+                              (str : filter (\ e -> not (e `T.isPrefixOf` str)) entryHist)
                     listStoreClear ls
                     mapM_ (listStoreAppend ls) newList
 
@@ -508,14 +512,14 @@ replaceAll fb hint ideR   =  do
                 ideR
     return ()
 
-editFind :: Bool -> Bool -> Bool -> Bool -> String -> String -> SearchHint -> IDEM Bool
+editFind :: Bool -> Bool -> Bool -> Bool -> Text -> Text -> SearchHint -> IDEM Bool
 editFind entireWord caseSensitive wrapAround regex search dummy hint = do
     mbExpAndMatchIndex <- liftIO $ regexAndMatchIndex caseSensitive entireWord regex search
     case mbExpAndMatchIndex of
         Nothing -> return False
         Just (exp, matchIndex) -> editFind' exp matchIndex wrapAround dummy hint
 
-editFind' :: Regex -> Int -> Bool -> String -> SearchHint -> IDEM Bool
+editFind' :: Regex -> Int -> Bool -> Text -> SearchHint -> IDEM Bool
 editFind' exp matchIndex wrapAround dummy hint =
     inActiveBufContext False $ \_ sv ebuf _ _ -> do
     i1 <- getStartIter ebuf
@@ -564,30 +568,30 @@ editFind' exp matchIndex wrapAround dummy hint =
             offset <- getOffset iter
             findMatch exp matchIndex ebuf text (>= offset) False
 
-regexAndMatchIndex :: Bool -> Bool -> Bool -> String -> IO (Maybe (Regex, Int))
+regexAndMatchIndex :: Bool -> Bool -> Bool -> Text -> IO (Maybe (Regex, Int))
 regexAndMatchIndex caseSensitive entireWord regex string =
-    if null string
+    if T.null string
         then return Nothing
         else do
             let (regexString, index) = regexStringAndMatchIndex entireWord regex string
             case compileRegex caseSensitive regexString of
                 Left err -> do
-                    sysMessage Normal err
+                    sysMessage Normal $ T.pack err
                     return Nothing
                 Right regex -> return $ Just (regex, index)
 
-regexStringAndMatchIndex :: Bool -> Bool -> String -> (String, Int)
+regexStringAndMatchIndex :: Bool -> Bool -> Text -> (Text, Int)
 regexStringAndMatchIndex entireWord regex string =
     -- Escape non regex string
     let regexString = if regex
                         then string
-                        else foldl (\s c -> s ++ if isAlphaNum c then [c] else ['\\', c]) "" string in
+                        else foldl (\s c -> s <> if isAlphaNum c then T.singleton c else "\\"<>T.singleton c) "" $ T.unpack string in
     -- Regular expression with word filter if needed
     if entireWord
-        then ("(^|[^a-zA-Z0-9])(" ++ regexString ++ ")($|[^a-zA-Z0-9])", 2)
+        then ("(^|[^a-zA-Z0-9])(" <> regexString <> ")($|[^a-zA-Z0-9])", 2)
         else (regexString, 0)
 
-findMatch :: TextEditor editor => Regex -> Int -> EditorBuffer editor -> String -> (Int -> Bool) -> Bool -> IDEM (Maybe (EditorIter editor, EditorIter editor, MatchArray))
+findMatch :: TextEditor editor => Regex -> Int -> EditorBuffer editor -> Text -> (Int -> Bool) -> Bool -> IDEM (Maybe (EditorIter editor, EditorIter editor, MatchArray))
 findMatch exp matchIndex gtkbuf text offsetPred findLast = do
     let matches = (if findLast then reverse else id) (matchAll exp text)
     case find (offsetPred . fst . (!matchIndex)) matches of
@@ -598,11 +602,11 @@ findMatch exp matchIndex gtkbuf text offsetPred findLast = do
             return $ Just (iter1, iter2, matches)
         Nothing -> return Nothing
 
-editReplace :: Bool -> Bool -> Bool -> Bool -> String -> String -> SearchHint -> IDEM Bool
+editReplace :: Bool -> Bool -> Bool -> Bool -> Text -> Text -> SearchHint -> IDEM Bool
 editReplace entireWord caseSensitive wrapAround regex search replace hint =
     editReplace' entireWord caseSensitive wrapAround regex search replace hint True
 
-editReplace' :: Bool -> Bool -> Bool -> Bool -> String -> String -> SearchHint -> Bool -> IDEM Bool
+editReplace' :: Bool -> Bool -> Bool -> Bool -> Text -> Text -> SearchHint -> Bool -> IDEM Bool
 editReplace' entireWord caseSensitive wrapAround regex search replace hint mayRepeat =
     inActiveBufContext False $ \_ _ ebuf _ _ -> do
         insertMark <- getInsertMark ebuf
@@ -617,11 +621,11 @@ editReplace' entireWord caseSensitive wrapAround regex search replace hint mayRe
                 match  <- findMatch exp matchIndex ebuf text (== offset) False
                 case match of
                     Just (iterStart, iterEnd, matches) -> do
-                        mbText <- liftIO $ replacementText regex text matchIndex matches replace
+                        mbText <- liftIO $ replacementText regex text matchIndex matches $ T.unpack replace
                         case mbText of
                             Just text -> do
                                 delete ebuf iterStart iterEnd
-                                insert ebuf iterStart text
+                                insert ebuf iterStart (T.pack text)
                             Nothing -> do
                                 sysMessage Normal
                                     "Should never happen. findMatch worked but repleacementText failed"
@@ -639,11 +643,11 @@ editReplace' entireWord caseSensitive wrapAround regex search replace hint mayRe
         replacementText True text matchIndex matches replace =
             case compileRegex caseSensitive search of
                 Left err -> do
-                    sysMessage Normal err
+                    sysMessage Normal $ T.pack err
                     return Nothing
                 Right exp -> return $ Just $ regexReplacement text matchIndex matches replace
 
-regexReplacement :: String -> Int -> MatchArray -> String -> String
+regexReplacement :: Text -> Int -> MatchArray -> String -> String
 regexReplacement _ _ _ [] = []
 regexReplacement text matchIndex matches ('\\' : '\\' : xs) = '\\' : regexReplacement text matchIndex matches xs
 regexReplacement text matchIndex matches ('\\' : n : xs) | isDigit n =
@@ -651,20 +655,20 @@ regexReplacement text matchIndex matches ('\\' : n : xs) | isDigit n =
         value    = if inRange (bounds matches) subIndex
                     then
                         let subExp = matches!(matchIndex + digitToInt n) in
-                        take (snd subExp) $ drop (fst subExp) text
+                        take (snd subExp) $ drop (fst subExp) $ T.unpack text
                     else ['\\', n] in
     value ++ regexReplacement text matchIndex matches xs
 
 regexReplacement text matchIndex matches (x : xs) = x : regexReplacement text matchIndex matches xs
 
-editReplaceAll :: Bool -> Bool -> Bool -> Bool -> String -> String -> SearchHint -> IDEM Bool
+editReplaceAll :: Bool -> Bool -> Bool -> Bool -> Text -> Text -> SearchHint -> IDEM Bool
 editReplaceAll entireWord caseSensitive wrapAround regex search replace hint = do
     res <- editReplace' entireWord caseSensitive False regex search replace hint True
     if res
         then editReplaceAll entireWord caseSensitive False regex search replace hint
         else return False
 
-compileRegex :: Bool -> String -> Either String Regex
+compileRegex :: Bool -> Text -> Either String Regex
 compileRegex caseSense searchString =
     let compOption = defaultCompOpt {
                             Regex.caseSensitive = caseSense
@@ -676,7 +680,7 @@ orange = Color 64000 48000 0
 white = Color 64000 64000 64000
 black = Color 0 0 0
 
-needFindbar :: IDEM (Toolbar,ListStore String)
+needFindbar :: IDEM (Toolbar,ListStore Text)
 needFindbar = do
     (_,mbfb) <- readIDE findbar
     case mbfb of
@@ -718,7 +722,7 @@ getLineEntry    = getWidget "gotoLineEntryTool"
 getReplaceEntry = getWidget "replaceTool"
 getFindEntry    = getWidget "searchEntryTool"
 
-getWidget :: String -> Toolbar -> IO Widget
+getWidget :: Text -> Toolbar -> IO Widget
 getWidget str tb = do
     widgets <- containerGetChildren tb
     entryL <-  filterM (liftM (== str) . widgetGetName) widgets
@@ -736,7 +740,7 @@ getWrapAround    = getSelection "wrapAroundButton"
 getCaseSensitive = getSelection "caseSensitiveButton"
 getRegex         = getSelection "regexButton"
 
-getSelection :: String -> Toolbar -> IO Bool
+getSelection :: Text -> Toolbar -> IO Bool
 getSelection str tb = do
     widgets <- containerGetChildren tb
     entryL <-  filterM (liftM (== str) . widgetGetName) widgets
@@ -750,7 +754,7 @@ setWrapAround    = setSelection "wrapAroundButton"
 setCaseSensitive = setSelection "caseSensitiveButton"
 setRegex         = setSelection "regexButton"
 
-setSelection :: String -> Toolbar -> Bool ->  IO ()
+setSelection :: Text -> Toolbar -> Bool ->  IO ()
 setSelection str tb bool = do
     widgets <- containerGetChildren tb
     entryL <-  filterM (liftM (== str) . widgetGetName ) widgets

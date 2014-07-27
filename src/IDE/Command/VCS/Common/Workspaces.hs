@@ -1,3 +1,4 @@
+{-# LANGUAGE OverloadedStrings #-}
 -----------------------------------------------------------------------------
 --
 -- Module      :  IDE.Command.VCS.Common.Workspaces
@@ -41,6 +42,8 @@ import Graphics.UI.Gtk (
 import Data.Maybe
 import Data.List
 import System.Log.Logger (debugM)
+import Data.Monoid ((<>))
+import qualified Data.Text as T (unpack, pack)
 
 onWorkspaceClose :: IDEAction
 onWorkspaceClose = do
@@ -74,7 +77,7 @@ onWorkspaceOpen ws = do
         eErrConf <- Common.getVCSConf' workspace fp
         case eErrConf of
             Left error -> do
-                liftIO $ putStrLn $ "Could not retrieve vcs-conf due to '"++error++"'."
+                liftIO . putStrLn . T.unpack $ "Could not retrieve vcs-conf due to '"<>error<>"'."
                 return (p, Nothing)
             Right mbConf -> case mbConf of
                                 Nothing -> do

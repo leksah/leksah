@@ -1,6 +1,11 @@
+{-# LANGUAGE CPP #-}
+{-# LANGUAGE MultiParamTypeClasses #-}
+{-# LANGUAGE FlexibleInstances #-}
+{-# LANGUAGE TypeSynonymInstances #-}
+{-# LANGUAGE ScopedTypeVariables #-}
 {-# LANGUAGE RecordWildCards #-}
-{-# LANGUAGE FlexibleInstances, DeriveDataTypeable, MultiParamTypeClasses,
-             CPP, TypeSynonymInstances, ScopedTypeVariables, RankNTypes #-}
+{-# LANGUAGE RankNTypes #-}
+{-# LANGUAGE OverloadedStrings #-}
 {-# OPTIONS_GHC -fwarn-unused-imports #-}
 -----------------------------------------------------------------------------
 --
@@ -133,6 +138,12 @@ import Control.Exception as E (catch, SomeException)
 import qualified IDE.Command.Print as Print
 import Control.Monad.Trans.Class (MonadTrans(..))
 import System.Log.Logger (debugM)
+import Data.Text (Text)
+import qualified Data.Text as T
+       (length, findIndex, replicate, lines, dropWhileEnd, unlines, strip,
+        null, pack, unpack)
+import Data.Monoid ((<>))
+import qualified Data.Text.IO as T (writeFile, readFile)
 
 allBuffers :: MonadIDE m => m [IDEBuffer]
 allBuffers = liftIDE getPanes
@@ -150,7 +161,7 @@ instance RecoverablePane IDEBuffer BufferState IDEM where
                                     return (Just (BufferStateTrans (bufferName p) text offset))
                                 Just fn ->  return (Just (BufferState fn offset))
     recoverState pp (BufferState n i) =   do
-        mbbuf    <-  newTextBuffer pp (takeFileName n) (Just n)
+        mbbuf    <-  newTextBuffer pp (T.pack $ takeFileName n) (Just n)
         case mbbuf of
             Just (IDEBuffer {sourceView=v}) -> do
                 ideR    <- ask
@@ -230,11 +241,11 @@ selectSourceBuf fp = do
                     prefs <- readIDE prefs
                     pp      <- getBestPathForId  "*Buffer"
                     liftIO $ debugM "lekash" "selectSourceBuf calling newTextBuffer"
-                    nbuf <- newTextBuffer pp (takeFileName fpc) (Just fpc)
+                    nbuf <- newTextBuffer pp (T.pack $ takeFileName fpc) (Just fpc)
                     liftIO $ debugM "lekash" "selectSourceBuf newTextBuffer returned"
                     return nbuf
                 else do
-                    ideMessage Normal ((__ "File path not found ") ++ fpc)
+                    ideMessage Normal ((__ "File path not found ") <> T.pack fpc)
                     return Nothing
 
 goToDefinition :: Descr -> IDEAction
@@ -305,7 +316,7 @@ goToSourceDefinition' sourcePath Location{..} = do
         Nothing -> return ()
     return mbBuf
 
-replaceHLintSource :: FilePath -> Int -> Int -> Int -> Int -> String -> IDEAction
+replaceHLintSource :: FilePath -> Int -> Int -> Int -> Int -> Text -> IDEAction
 replaceHLintSource file lineS columnS lineE columnE to = do
     mbBuf     <- selectSourceBuf file
     case mbBuf of
@@ -352,8 +363,8 @@ markRefInSourceBuf index buf logRef scrollTo = do
     contextRefs <- readIDE contextRefs
     prefs       <- readIDE prefs
     inBufContext () buf $ \_ sv ebuf buf _ -> do
-        let tagName = (show $ logRefType logRef) ++ show index
-        liftIO . debugM "lekash" $ "markRefInSourceBuf getting or creating tag " ++ tagName
+        let tagName = T.pack $ show (logRefType logRef) ++ show index
+        liftIO . debugM "lekash" . T.unpack $ "markRefInSourceBuf getting or creating tag " <> tagName
         tagTable <- getTagTable ebuf
         mbTag <- lookupTag tagTable tagName
         case mbTag of
@@ -418,7 +429,7 @@ markRefInSourceBuf index buf logRef scrollTo = do
                 return False
             return ()
 
-newTextBuffer :: PanePath -> String -> Maybe FilePath -> IDEM (Maybe IDEBuffer)
+newTextBuffer :: PanePath -> Text -> Maybe FilePath -> IDEM (Maybe IDEBuffer)
 newTextBuffer panePath bn mbfn = do
     cont <- case mbfn of
                 Nothing -> return True
@@ -432,7 +443,7 @@ newTextBuffer panePath bn mbfn = do
             (ind,rbn) <- figureOutPaneName bn 0
             buildThisPane panePath nb (builder' bs mbfn ind bn rbn ct prefs)
         else do
-            ideMessage Normal ((__ "File does not exist ") ++ (fromJust mbfn))
+            ideMessage Normal ((__ "File does not exist ") <> (T.pack $ fromJust mbfn))
             return Nothing
 
 data CharacterCategory = IdentifierCharacter | SpaceCharacter | SyntaxCharacter
@@ -447,8 +458,8 @@ getCharacterCategory (Just c)
 builder' :: Bool ->
     Maybe FilePath ->
     Int ->
-    String ->
-    String ->
+    Text ->
+    Text ->
     CandyTable ->
     Prefs ->
     PanePath ->
@@ -459,12 +470,12 @@ builder' bs mbfn ind bn rbn ct prefs pp nb windows = do
     -- load up and display a file
     (fileContents,modTime) <- case mbfn of
         Just fn -> do
-            fc <- liftIO $ UTF8.readFile fn
+            fc <- liftIO $ T.readFile fn
             mt <- liftIO $ getModificationTime fn
             return (fc,Just mt)
         Nothing -> return ("\n",Nothing)
 
-    case textEditor prefs  of
+    case textEditorType prefs of
         "GtkSourceView" -> newGtkBuffer mbfn fileContents >>= makeBuffer modTime
         "Yi"            -> newYiBuffer mbfn fileContents >>= makeBuffer modTime
         "CodeMirror"    -> newCMBuffer mbfn fileContents >>= makeBuffer modTime
@@ -559,10 +570,10 @@ builder' bs mbfn ind bn rbn ct prefs pp nb windows = do
                             (si1,si2)   <- getSelectionBounds ebuf
 
                             sTxt      <- getCandylessPart candy' ebuf si1 si2
-                            let strippedSTxt = strip' sTxt
-                            case strippedSTxt of
-                                [] -> return ()
-                                _  -> do
+                            let strippedSTxt = T.strip sTxt
+                            if T.null strippedSTxt
+                                then return ()
+                                else do
                                     bi1 <- getStartIter ebuf
                                     bi2 <- getEndIter ebuf
                                     forwardApplying bi1 strippedSTxt (Just si1) tagName ebuf
@@ -625,31 +636,18 @@ builder' bs mbfn ind bn rbn ct prefs pp nb windows = do
             createHyperLinkSupport sv sw (\ctrl shift iter -> do
                 (beg, en) <- getIdentifierUnderCursorFromIter (iter, iter)
                 return (beg, if ctrl then en else beg)) (\_ shift' slice -> do
-                            when (slice /= []) $ do
+                            unless (T.null slice) $ do
                                 -- liftIO$ print ("slice",slice)
                                 triggerEventIDE (SelectInfo slice shift')
                                 return ()
                             )
         return (Just buf,concat [ids1, ids2, ids3, ids4, ids5, ids6, ids7])
-    wschars' :: String
-    wschars' = " \t\r\n"
 
-    strip' :: String -> String
-    strip' = lstrip' . rstrip'
-
-    lstrip' :: String -> String
-    lstrip' s = case s of
-                    [] -> []
-                    (x:xs) -> if elem x wschars'
-                              then lstrip' xs
-                              else s
-    rstrip' :: String -> String
-    rstrip' = reverse . lstrip' . reverse
     forwardApplying :: TextEditor editor
                     => EditorIter editor
-                    -> String   -- txt
+                    -> Text   -- txt
                     -> Maybe (EditorIter editor)
-                    -> String   -- tagname
+                    -> Text   -- tagname
                     -> EditorBuffer editor
                     -> IDEM ()
     forwardApplying tI txt mbTi tagName ebuf = do
@@ -732,7 +730,7 @@ checkModTime buf = do
                                         load <- readIDE (autoLoad . prefs)
                                         if load
                                             then do
-                                                ideMessage Normal $ (__ "Auto Loading ") ++ fn
+                                                ideMessage Normal $ (__ "Auto Loading ") <> T.pack fn
                                                 revert buf
                                                 return (False, True)
                                             else do
@@ -742,7 +740,7 @@ checkModTime buf = do
                                                             (Just window) []
                                                             MessageQuestion
                                                             ButtonsNone
-                                                            ((__"File \"") ++ name ++ (__ "\" has changed on disk."))
+                                                            ((__"File \"") <> name <> (__ "\" has changed on disk."))
                                                     dialogAddButton md (__ "_Load From Disk") (ResponseUser 1)
                                                     dialogAddButton md (__ "_Always Load From Disk") (ResponseUser 2)
                                                     dialogAddButton md (__ "_Don't Load") (ResponseUser 3)
@@ -778,7 +776,7 @@ setModTime buf = do
                 nmt <- getModificationTime fn
                 writeIORef (modTime buf) (Just nmt))
             (\(e:: SomeException) -> do
-                sysMessage Normal (show e)
+                sysMessage Normal (T.pack $ show e)
                 return ())
 
 fileRevert :: IDEAction
@@ -797,7 +795,7 @@ revert (buf@IDEBuffer{sourceView = sv}) = do
             fc <- liftIO $ UTF8.readFile fn
             mt <- liftIO $ getModificationTime fn
             beginNotUndoableAction buffer
-            setText buffer fc
+            setText buffer $ T.pack fc
             if useCandy
                 then modeTransformToCandy (mode buf)
                          (modeEditInCommentOrString (mode buf)) buffer
@@ -916,7 +914,7 @@ fileSaveBuffer query nb _ ebuf (ideBuf@IDEBuffer{sourceView = sv}) i = liftIDE $
                                             nb ideBuf useCandy candy fn
                                         closePane ideBuf
                                         cfn <- liftIO $ myCanonicalizePath fn
-                                        newTextBuffer panePath (takeFileName cfn) (Just cfn)
+                                        newTextBuffer panePath (T.pack $ takeFileName cfn) (Just cfn)
                                         ) ideR
                                     return True
                                 _          -> return False
@@ -926,16 +924,14 @@ fileSaveBuffer query nb _ ebuf (ideBuf@IDEBuffer{sourceView = sv}) i = liftIDE $
             buf     <-   getBuffer $ sv
             text    <-   getCandylessText candyTable buf
             let text' = if removeTBlanks
-                            then unlines $ map removeTrailingBlanks $lines text
+                            then T.unlines $ map (T.dropWhileEnd $ \c -> c == ' ') $ T.lines text
                             else text
-            succ <- liftIO $ E.catch (do UTF8.writeFile fn text'; return True)
+            succ <- liftIO $ E.catch (do T.writeFile fn text'; return True)
                 (\(e :: SomeException) -> do
-                    sysMessage Normal (show e)
+                    sysMessage Normal . T.pack $ show e
                     return False)
             setModified buf (not succ)
             markLabelAsChanged nb ideBuf
-        removeTrailingBlanks :: String -> String
-        removeTrailingBlanks = reverse . dropWhile (\c -> c == ' ') . reverse
 
 fileSave :: Bool -> IDEM Bool
 fileSave query = inActiveBufContext False $ fileSaveBuffer query
@@ -990,8 +986,8 @@ fileClose' nb _ ebuf currentBuffer i = do
                                             MessageQuestion
                                             ButtonsCancel
                                             ((__ "Save changes to document: ")
-                                                ++ paneName currentBuffer
-                                                ++ "?")
+                                                <> paneName currentBuffer
+                                                <> "?")
                 dialogAddButton md (__ "_Save") ResponseYes
                 dialogAddButton md (__ "_Don't Save") ResponseNo
                 set md [ windowWindowPosition := WinPosCenterOnParent ]
@@ -1139,7 +1135,7 @@ fileOpenThis fp =  do
     where
         reallyOpen prefs fpc =   do
             pp <-  getBestPathForId "*Buffer"
-            newTextBuffer pp (takeFileName fpc) (Just fpc)
+            newTextBuffer pp (T.pack $ takeFileName fpc) (Just fpc)
             return ()
 
 filePrint :: IDEAction
@@ -1153,11 +1149,11 @@ filePrint' nb _ ebuf currentBuffer _ = do
                 md <- messageDialogNew (Just window) []
                                             MessageQuestion
                                             ButtonsNone
-                                            ("Print document: "
-                                                ++ pName
-                                                ++ "?")
-                dialogAddButton md "_Print" ResponseYes
-                dialogAddButton md "_Don't Print" ResponseNo
+                                            (__"Print document: "
+                                                <> pName
+                                                <> "?")
+                dialogAddButton md (__"_Print") ResponseYes
+                dialogAddButton md (__"_Don't Print") ResponseNo
                 set md [ windowWindowPosition := WinPosCenterOnParent ]
                 resp <- dialogRun md
                 widgetDestroy md
@@ -1178,12 +1174,12 @@ filePrint' nb _ ebuf currentBuffer _ = do
                         md <- messageDialogNew (Just window) []
                                                     MessageQuestion
                                                     ButtonsNone
-                                                    ("Save changes to document: "
-                                                        ++ pName
-                                                        ++ "?")
-                        dialogAddButton md "_Save" ResponseYes
-                        dialogAddButton md "_Don't Save" ResponseNo
-                        dialogAddButton md "_Cancel Printing" ResponseCancel
+                                                    (__"Save changes to document: "
+                                                        <> pName
+                                                        <> "?")
+                        dialogAddButton md (__"_Save") ResponseYes
+                        dialogAddButton md (__"_Don't Save") ResponseNo
+                        dialogAddButton md (__"_Cancel Printing") ResponseCancel
                         set md [ windowWindowPosition := WinPosCenterOnParent ]
                         resp <- dialogRun md
                         widgetDestroy md
@@ -1203,7 +1199,7 @@ filePrint' nb _ ebuf currentBuffer _ = do
                         Just name -> do
                                       status <- liftIO $ Print.print name
                                       case status of
-                                        Left error -> liftIO $ showDialog (show error) MessageError
+                                        Left error -> liftIO $ showDialog (T.pack $ show error) MessageError
                                         Right _ -> liftIO $ showDialog "Print job has been sent successfully" MessageInfo
                                       return ()
                         Nothing   -> return ()
@@ -1249,7 +1245,7 @@ editPaste = inActiveBufContext () $ \_ _ ebuf _ _ -> do
 editShiftLeft :: IDEAction
 editShiftLeft = do
     prefs <- readIDE prefs
-    let str = map (\_->' ') [1 .. (tabWidth prefs)]
+    let str = T.replicate (tabWidth prefs) " "
     b <- canShiftLeft str prefs
     if b
         then do
@@ -1272,7 +1268,7 @@ editShiftLeft = do
 editShiftRight :: IDEAction
 editShiftRight = do
     prefs <- readIDE prefs
-    let str = map (\_->' ') [1 .. (tabWidth prefs)]
+    let str = T.replicate (tabWidth prefs) " "
     doForSelectedLines [] $ \ebuf lineNr -> do
         sol <- getIterAtLine ebuf lineNr
         insert ebuf sol str
@@ -1291,7 +1287,7 @@ alignChar char = do
             sol <- getIterAtLine ebuf lineNr
             eol <- forwardToLineEndC sol
             line  <- getText ebuf sol eol True
-            return (lineNr, elemIndex char line)
+            return (lineNr, T.findIndex (==char) line)
     alignChar :: Map Int (Maybe Int) -> Int -> IDEM ()
     alignChar positions alignTo = do
             doForSelectedLines [] $ \ebuf lineNr -> do
@@ -1299,7 +1295,7 @@ alignChar char = do
                     Just (Just n)  ->  do
                         sol       <- getIterAtLine ebuf lineNr
                         insertLoc <- forwardCharsC sol n
-                        insert ebuf insertLoc (replicate (alignTo - n) ' ')
+                        insert ebuf insertLoc (T.replicate (alignTo - n) " ")
                     _              ->  return ()
             return ()
 
@@ -1332,7 +1328,7 @@ removeRecentlyUsedFile fp = do
         triggerEventIDE UpdateRecent
         return ()
 
-selectedText :: IDEM (Maybe String)
+selectedText :: IDEM (Maybe Text)
 selectedText = do
     candy' <- readIDE candy
     inActiveBufContext Nothing $ \_ _ ebuf currentBuffer _ -> do
@@ -1344,7 +1340,7 @@ selectedText = do
                 return $ Just text
             else return Nothing
 
-selectedTextOrCurrentLine :: IDEM (Maybe String)
+selectedTextOrCurrentLine :: IDEM (Maybe Text)
 selectedTextOrCurrentLine = do
     candy' <- readIDE candy
     inActiveBufContext Nothing $ \_ _ ebuf currentBuffer _ -> do
@@ -1372,7 +1368,7 @@ selectedLocation = do
             else return (line, lineOffset)
         return $ Just res
 
-insertTextAfterSelection :: String -> IDEAction
+insertTextAfterSelection :: Text -> IDEAction
 insertTextAfterSelection str = do
     candy'       <- readIDE candy
     inActiveBufContext () $ \_ _ ebuf currentBuffer _ -> do
@@ -1384,7 +1380,7 @@ insertTextAfterSelection str = do
             mark       <- createMark ebuf i True
             insert ebuf i realString
             i1         <- getIterAtMark ebuf mark
-            i2         <- forwardCharsC i1 (length str)
+            i2         <- forwardCharsC i1 (T.length str)
             selectRange ebuf i1 i2
 
 -- | Returns the package, to which this buffer belongs, if possible

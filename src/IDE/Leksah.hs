@@ -52,7 +52,7 @@ import IDE.Pane.SourceBuffer
 import IDE.Find
 import Graphics.UI.Editor.Composite (filesEditor, maybeEditor)
 import Graphics.UI.Editor.Simple
-       (enumEditor, stringEditor)
+       (stringEditor, enumEditor, textEditor)
 import IDE.Metainfo.Provider (initInfo)
 import IDE.Workspaces
        (workspaceAddPackage', workspaceTryQuiet, workspaceNewHere,
@@ -78,7 +78,7 @@ import Data.Conduit (($$))
 import Control.Monad (when, unless, liftM)
 import Control.Monad.IO.Class (MonadIO(..))
 import Control.Applicative ((<$>))
-import qualified Data.Text as T (unpack, stripPrefix)
+import qualified Data.Text as T (pack, unpack, stripPrefix)
 import Data.Text (Text)
 import Data.Monoid ((<>))
 
@@ -86,7 +86,7 @@ import Data.Monoid ((<>))
 -- Command line options
 --
 
-data Flag =  VersionF | SessionN String | EmptySession | DefaultSession | Help | Verbosity String
+data Flag =  VersionF | SessionN Text | EmptySession | DefaultSession | Help | Verbosity Text
        deriving (Show,Eq)
 
 options :: [OptDescr Flag]
@@ -94,7 +94,7 @@ options =   [Option ['e'] ["emptySession"] (NoArg EmptySession)
                 "Start with empty session"
          ,   Option ['d'] ["defaultSession"] (NoArg DefaultSession)
                 "Start with default session (can be used together with a source file)"
-         ,   Option ['l'] ["loadSession"] (ReqArg SessionN "NAME")
+         ,   Option ['l'] ["loadSession"] (ReqArg (SessionN . T.pack) "NAME")
                 "Load session"
 
          ,   Option ['h'] ["help"] (NoArg Help)
@@ -102,16 +102,16 @@ options =   [Option ['e'] ["emptySession"] (NoArg EmptySession)
          ,   Option ['v'] ["version"] (NoArg VersionF)
                 "Show the version number of ide"
 
-         ,   Option ['e'] ["verbosity"] (ReqArg Verbosity "Verbosity")
+         ,   Option ['e'] ["verbosity"] (ReqArg (Verbosity . T.pack) "Verbosity")
              "One of DEBUG, INFO, NOTICE, WARNING, ERROR, CRITICAL, ALERT, EMERGENCY"]
 
 
 header = "Usage: leksah [OPTION...] [file(.lkshs|.lkshw|.hs|.lhs)]"
 
-ideOpts :: [String] -> IO ([Flag], [String])
+ideOpts :: [Text] -> IO ([Flag], [Text])
 ideOpts argv =
-    case getOpt Permute options argv of
-          (o,n,[]  ) -> return (o,n)
+    case getOpt Permute options $ map T.unpack argv of
+          (o,n,[]  ) -> return (o,map T.pack n)
           (_,_,errs) -> ioError $ userError $ concat errs ++ usageInfo header options
 
 -- ---------------------------------------------------------------------
@@ -143,16 +143,16 @@ realMain yiConfig = do
     dataDir         <- getDataDir
     args            <-  getArgs
 
-    (o,files)       <-  ideOpts args
+    (o,files)       <-  ideOpts $ map T.pack args
     isFirstStart    <-  liftM not $ hasSavedConfigFile standardPreferencesFilename
     let sessions      =   catMaybes $ map (\x -> case x of
                                         SessionN s -> Just s
                                         _          -> Nothing) o
 
-    let sessionFPs    =   filter (\f -> snd (splitExtension f) == leksahSessionFileExtension) files
-    let workspaceFPs  =   filter (\f -> snd (splitExtension f) == leksahWorkspaceFileExtension) files
+    let sessionFPs    =   filter (\f -> snd (splitExtension f) == leksahSessionFileExtension) $ map T.unpack files
+    let workspaceFPs  =   filter (\f -> snd (splitExtension f) == leksahWorkspaceFileExtension) $ map T.unpack files
     let sourceFPs     =   filter (\f -> let (_,s) = splitExtension f
-                                        in s == ".hs" ||  s == ".lhs" || s == ".chs") files
+                                        in s == ".hs" ||  s == ".lhs" || s == ".chs") $ map T.unpack files
     let mbWorkspaceFP'=  case workspaceFPs of
                                 [] ->  Nothing
                                 w:_ -> Just w
@@ -166,7 +166,7 @@ realMain yiConfig = do
                                 then return (Just spath,Nothing)
                                 else return (Nothing,Just fp)
     let ssession =  case sessions of
-                        (s:_) -> s ++ leksahSessionFileExtension
+                        (s:_) -> T.unpack s <> leksahSessionFileExtension
                         _     -> if null sourceFPs
                                         then standardSessionFilename
                                         else emptySessionFilename
@@ -187,12 +187,12 @@ realMain yiConfig = do
                                     _           -> Nothing) o
     let verbosity       =  case verbosity' of
                                [] -> INFO
-                               h:_ -> read h
+                               h:_ -> read $ T.unpack h
     updateGlobalLogger rootLoggerName (\ l -> setLevel verbosity l)
     when (elem VersionF o)
-        (sysMessage Normal $ "Leksah the Haskell IDE, version " ++ showVersion version)
+        (sysMessage Normal $ "Leksah the Haskell IDE, version " <> T.pack (showVersion version))
     when (elem Help o)
-        (sysMessage Normal $ "Leksah the Haskell IDE " ++ usageInfo header options)
+        (sysMessage Normal $ "Leksah the Haskell IDE " <> T.pack (usageInfo header options))
 
     prefsPath       <- getConfigFilePathForLoad standardPreferencesFilename Nothing dataDir
     prefs           <- readPrefs prefsPath
@@ -201,7 +201,7 @@ realMain yiConfig = do
 
 handleExceptions inner =
   catch inner (\(exception :: SomeException) -> do
-    sysMessage Normal ("leksah: internal IDE error: " ++ show exception)
+    sysMessage Normal ("leksah: internal IDE error: " <> T.pack (show exception))
     exitFailure
   )
 
@@ -215,7 +215,7 @@ startGUI yiConfig sessionFP mbWorkspaceFP sourceFPs iprefs isFirstStart = do
     when rtsSupportsBoundThreads
         (sysMessage Normal "Linked with -threaded")
     timeout <- timeoutAddFull (yield >> return True) priorityHigh 10
-    mapM_ (sysMessage Normal) st
+    mapM_ (sysMessage Normal . T.pack) st
     initGtkRc
     dataDir       <- getDataDir
     mbStartupPrefs <- if not isFirstStart
@@ -283,10 +283,10 @@ startMainWindow yiControl sessionFP mbWorkspaceFP sourceFPs startupPrefs isFirst
     dataDir       <- getDataDir
     candyPath   <-  getConfigFilePathForLoad
                         (case sourceCandy startupPrefs of
-                            (_,name)   ->   name ++ leksahCandyFileExtension) Nothing dataDir
+                            (_,name)   ->   T.unpack name <> leksahCandyFileExtension) Nothing dataDir
     candySt     <-  parseCandy candyPath
     -- keystrokes
-    keysPath    <-  getConfigFilePathForLoad (keymapName startupPrefs ++ leksahKeymapFileExtension) Nothing dataDir
+    keysPath    <-  getConfigFilePathForLoad (T.unpack (keymapName startupPrefs) <> leksahKeymapFileExtension) Nothing dataDir
     keyMap      <-  parseKeymap keysPath
     let accelActions = setKeymap (keyMap :: KeymapI) mkActions
     specialKeys <-  buildSpecialKeys keyMap accelActions
@@ -426,7 +426,7 @@ fDescription configPath = VFD emptyParams [
             (paraName <<<- ParaName "URL from which to download prebuilt metadata" $ emptyParams)
             retrieveURL
             (\b a -> a{retrieveURL = b})
-            (stringEditor (\ _ -> True) True)
+            (textEditor (\ _ -> True) True)
     ,   mkField
             (paraName <<<- ParaName "Strategy for downloading prebuilt metadata" $ emptyParams)
             retrieveStrategy
@@ -519,7 +519,7 @@ firstBuild newPrefs = do
     forkIO $ do
             logger <- getRootLogger
             let verbosity = case getLevel logger of
-                                Just level -> ["--verbosity=" ++ show level]
+                                Just level -> ["--verbosity=" <> T.pack (show level)]
                                 Nothing    -> []
             (output, pid) <- runTool "leksah-server" (["-sbo", "+RTS", "-N2", "-RTS"] ++ verbosity) Nothing
             output $$ CL.mapM_ (update progressBar)

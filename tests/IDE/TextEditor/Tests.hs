@@ -131,7 +131,7 @@ testIDE f = do
 
 allEditors :: (forall editor. TextEditor editor
            => (   Maybe FilePath
-                    -> String
+                    -> Text
                     -> IDEM (EditorBuffer editor))
                -> IDEM Bool)
            -> IO Bool
@@ -147,9 +147,9 @@ allEditors test = allM id
         hFlush stdout
         hFlush stderr
         debugM "leksah" $ show editor
-        testIDE $ test (newBuffer :: Maybe FilePath -> String -> IDEM (EditorBuffer editor))
+        testIDE $ test (newBuffer :: Maybe FilePath -> Text -> IDEM (EditorBuffer editor))
 
-prop_test :: String -> Property
+prop_test :: Text -> Property
 prop_test s = monadicIO $ do
     let input = filter (not . flip elem "\NUL\r") s
     result <- run $ allEditors (\buf -> do

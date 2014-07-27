@@ -1,4 +1,5 @@
-{-# LANGUAGE CPP, ScopedTypeVariables #-}
+{-# LANGUAGE ScopedTypeVariables #-}
+{-# LANGUAGE OverloadedStrings #-}
 -----------------------------------------------------------------------------
 --
 -- Module      :  IDE.Workspace
@@ -88,11 +89,19 @@ import IDE.Command.VCS.Common.Workspaces as VCSWS
 import qualified VCSWrapper.Common as VCS
 import qualified VCSGui.Common as VCSGUI
 import qualified IDE.Workspaces.Writer as Writer
-import Text.Printf (printf)
 import System.Log.Logger (debugM)
 import IDE.Pane.Log (showDefaultLogLaunch', getLog)
 import IDE.LogRef (logOutputDefault)
 import Data.Foldable (forM_)
+import Data.Text (Text)
+import qualified Data.Text as T (unpack, pack)
+import Data.Monoid ((<>))
+import qualified Text.Printf as S (printf)
+import Text.Printf (PrintfType)
+import qualified Data.Text.IO as T (writeFile)
+
+printf :: PrintfType r => Text -> r
+printf = S.printf . T.unpack
 
 -- | Constructs a new workspace and makes it the current workspace
 workspaceNew :: IDEAction
@@ -110,7 +119,7 @@ workspaceNewHere filePath =
         dir <- liftIO $ myCanonicalizePath $ dropFileName realPath
         let cPath = dir </> takeFileName realPath
             newWorkspace = emptyWorkspace {
-                            wsName = takeBaseName cPath,
+                            wsName = T.pack $ takeBaseName cPath,
                             wsFile = cPath}
         liftIO $ writeFields cPath newWorkspace Writer.workspaceDescr
         workspaceOpenThis False (Just cPath)
@@ -142,12 +151,12 @@ workspaceTry f = do
                 defaultExists <- doesFileExist defaultWorkspace
                 md <- messageDialogNew (Just mainWindow) [DialogModal] MessageQuestion ButtonsCancel (
                         __ "You need to have a workspace open for this to work. "
-                     ++ __ "Choose ~/leksah.lkshw to "
-                     ++ __ (if defaultExists then "open workspace " else "create a workspace ")
-                     ++ defaultWorkspace)
+                     <> __ "Choose ~/leksah.lkshw to "
+                     <> __ (if defaultExists then "open workspace " else "create a workspace ")
+                     <> T.pack defaultWorkspace)
                 dialogAddButton md (__ "_New Workspace") (ResponseUser 1)
                 dialogAddButton md (__ "_Open Workspace") (ResponseUser 2)
-                dialogAddButton md "~/leksah.lkshw" (ResponseUser 3)
+                dialogAddButton md ("~/leksah.lkshw" :: Text) (ResponseUser 3)
                 dialogSetDefaultResponse md (ResponseUser 3)
                 set md [ windowWindowPosition := WinPosCenterOnParent ]
                 resp <- dialogRun md
@@ -206,7 +215,7 @@ workspaceOpenThis askForSession mbFilePath =
                         Writer.setWorkspace (Just workspace {wsFile = filePath})
                         VCSWS.onWorkspaceOpen workspace)
                            (\ (e :: Exc.SomeException) -> reflectIDE
-                                (ideMessage Normal (printf (__ "Can't load workspace file %s\n%s") filePath (show e))) ideR)
+                                (ideMessage Normal (T.pack $ printf (__ "Can't load workspace file %s\n%s") filePath (show e))) ideR)
 
 
 -- | Closes a workspace
@@ -264,7 +273,7 @@ constructAndOpenMainModule (Just idePackage) =
                         alreadyExists <- liftIO $ doesFileExist (path </> target)
                         unless alreadyExists $ do
                             template <- liftIO $ getModuleTemplate "main" pd "Main" "" ""
-                            liftIO $ UTF8.writeFile (path </> target) template
+                            liftIO $ T.writeFile (path </> target) template
                             fileOpenThis (path </> target)
                     _ -> return ()
             Nothing     -> ideMessage Normal (__ "No package description")
@@ -335,7 +344,7 @@ workspaceRemovePackage pack = do
         Writer.writeWorkspace ws {wsPackages =  delete pack (wsPackages ws)}
     return ()
 
-workspaceActivatePackage :: IDEPackage -> Maybe String -> WorkspaceAction
+workspaceActivatePackage :: IDEPackage -> Maybe Text -> WorkspaceAction
 workspaceActivatePackage pack exe = do
     ws <- ask
     let activePath = takeDirectory $ ipdCabalFile pack
@@ -465,7 +474,7 @@ backgroundMake = catchIDE (do
                     else makePackages settings modifiedPacks (MoComposed steps)
                                         (MoComposed (MoConfigure:steps)) MoMetaInfo
     )
-    (\(e :: Exc.SomeException) -> sysMessage Normal (show e))
+    (\(e :: Exc.SomeException) -> sysMessage Normal (T.pack $ show e))
 
 makePackage ::  PackageAction
 makePackage = do

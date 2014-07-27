@@ -1,3 +1,4 @@
+{-# LANGUAGE OverloadedStrings #-}
 -----------------------------------------------------------------------------
 --
 -- Module      :  IDE.SourceCandy
@@ -18,10 +19,10 @@ module IDE.SourceCandy (
 ,   transformToCandy    -- ::   TextBuffer -> IO ()
 ,   transformFromCandy  -- ::   TextBuffer -> IO ()
 ,   keystrokeCandy      -- ::   Maybe Char -> TextBuffer -> IO ()
-,   getCandylessText    -- ::   TextBuffer -> IO String
+,   getCandylessText    -- ::   TextBuffer -> IO Text
 
-,   getCandylessPart    -- ::   CandyTable -> TextBuffer -> TextIter -> TextIter -> IO String
-,   stringToCandy       -- ::   CandyTable -> String -> IO String
+,   getCandylessPart    -- ::   CandyTable -> TextBuffer -> TextIter -> TextIter -> IO Text
+,   stringToCandy       -- ::   CandyTable -> Text -> IO Text
 ,   positionToCandy     -- ::   CandyTable -> TextBuffer -> (Int,Int) -> IO (Int,Int)
 ,   positionFromCandy   -- ::   CandyTable -> TextBuffer -> (Int,Int) -> IO (Int,Int)
 ) where
@@ -38,6 +39,11 @@ import qualified Data.Set as Set
 import IDE.Core.State
 import IDE.TextEditor
 import Control.Monad (unless)
+import Data.Text (Text)
+import qualified Data.Text as T
+       (pack, singleton, replicate, head, takeWhile, isSuffixOf, length,
+        index)
+import Data.Monoid ((<>))
 
 ---------------------------------------------------------------------------------
 -- * Implementation
@@ -48,7 +54,7 @@ notBeforeOp     =   Set.fromList $['!','#','$','%','&','*','+','.','/','<','=','
                                     '^','|','-','~','\'','"']
 notAfterOp      =   notBeforeOp
 
-keystrokeCandy :: TextEditor editor => CandyTable -> Maybe Char -> EditorBuffer editor -> (String -> Bool) -> IDEM ()
+keystrokeCandy :: TextEditor editor => CandyTable -> Maybe Char -> EditorBuffer editor -> (Text -> Bool) -> IDEM ()
 keystrokeCandy (CT(transformTable,_)) mbc ebuf editInCommentOrString = do
     cursorMark  <-  getInsertMark ebuf
     endIter     <-  getIterAtMark ebuf cursorMark
@@ -65,12 +71,12 @@ keystrokeCandy (CT(transformTable,_)) mbc ebuf editInCommentOrString = do
     unless block $
         replace mbc2 cursorMark slice offset transformTable
     where
-    -- replace ::  Maybe Char -> m -> String -> Int -> [(Bool,String,String)] -> IDEM ()
+    -- replace ::  Maybe Char -> m -> Text -> Int -> [(Bool,Text,Text)] -> IDEM ()
     replace mbAfterChar cursorMark match offset list = replace' list
         where
         replace' [] = return ()
         replace' ((isOp,from,to):rest) =
-            let beforeChar  =  match !! (max 0 (length match - (length from + 1)))
+            let beforeChar  =  T.index match (max 0 (T.length match - (T.length from + 1)))
                 beforeOk    =  not $if isOp
                                     then Set.member beforeChar notBeforeOp
                                     else Set.member beforeChar notBeforeId
@@ -80,10 +86,10 @@ keystrokeCandy (CT(transformTable,_)) mbc ebuf editInCommentOrString = do
                                      not $if isOp
                                         then Set.member afterChar notAfterOp
                                         else Set.member afterChar notAfterId
-            in if isSuffixOf from match && beforeOk && afterOk
+            in if T.isSuffixOf from match && beforeOk && afterOk
                 then do
                     beginNotUndoableAction ebuf
-                    start   <-  getIterAtOffset ebuf (offset - (length from))
+                    start   <-  getIterAtOffset ebuf (offset - (T.length from))
                     end     <-  getIterAtOffset ebuf offset
                     delete ebuf start end
                     ins     <-   getIterAtMark ebuf cursorMark
@@ -91,7 +97,7 @@ keystrokeCandy (CT(transformTable,_)) mbc ebuf editInCommentOrString = do
                     endNotUndoableAction ebuf
                 else replace mbAfterChar cursorMark match offset rest
 
-transformToCandy :: TextEditor editor => CandyTable -> EditorBuffer editor -> (String -> Bool) -> IDEM ()
+transformToCandy :: TextEditor editor => CandyTable -> EditorBuffer editor -> (Text -> Bool) -> IDEM ()
 transformToCandy (CT(transformTable,_)) ebuf editInCommentOrString = do
     beginUserAction ebuf
     modified    <-  getModified ebuf
@@ -100,7 +106,7 @@ transformToCandy (CT(transformTable,_)) ebuf editInCommentOrString = do
     endUserAction ebuf
 
 
-replaceTo :: TextEditor editor => EditorBuffer editor -> (Bool,String,String) -> Int -> (String -> Bool) -> IDEM ()
+replaceTo :: TextEditor editor => EditorBuffer editor -> (Bool,Text,Text) -> Int -> (Text -> Bool) -> IDEM ()
 replaceTo buf (isOp,from,to) offset editInCommentOrString = replaceTo' offset
     where
     replaceTo' offset = do
@@ -157,7 +163,7 @@ transformFromCandy (CT(_,transformTableBack)) ebuf = do
     endUserAction ebuf
     setModified ebuf modified
 
-getCandylessText :: TextEditor editor => CandyTable -> EditorBuffer editor -> IDEM String
+getCandylessText :: TextEditor editor => CandyTable -> EditorBuffer editor -> IDEM Text
 getCandylessText (CT(_,transformTableBack)) ebuf = do
     i1          <-  getStartIter ebuf
     i2          <-  getEndIter ebuf
@@ -169,7 +175,7 @@ getCandylessText (CT(_,transformTableBack)) ebuf = do
     text2       <-  getText workBuffer i1 i2 True
     return text2
 
-getCandylessPart :: TextEditor editor => CandyTable -> EditorBuffer editor -> EditorIter editor -> EditorIter editor -> IDEM String
+getCandylessPart :: TextEditor editor => CandyTable -> EditorBuffer editor -> EditorIter editor -> EditorIter editor -> IDEM Text
 getCandylessPart (CT(_,transformTableBack)) ebuf i1 i2 = do
     text1       <-  getText ebuf i1 i2 True
     workBuffer  <-  simpleGtkBuffer text1
@@ -179,7 +185,7 @@ getCandylessPart (CT(_,transformTableBack)) ebuf i1 i2 = do
     text2       <-  getText workBuffer i1 i2 True
     return text2
 
-stringToCandy :: CandyTable -> String -> IDEM String
+stringToCandy :: CandyTable -> Text -> IDEM Text
 stringToCandy  candyTable text = do
     workBuffer  <-  simpleGtkBuffer text
     transformToCandy candyTable workBuffer (\ _ -> False)
@@ -215,7 +221,7 @@ positionToCandy candyTable ebuf (line,column) = do
     columnNew   <- getLineOffset i4
     return (line,columnNew)
 
-replaceFrom :: TextEditor editor => EditorBuffer editor -> (String,String,Int) -> Int -> IDEM ()
+replaceFrom :: TextEditor editor => EditorBuffer editor -> (Text,Text,Int) -> Int -> IDEM ()
 replaceFrom buf (to,from,spaces) offset = replaceFrom' offset
     where
     replaceFrom' offset = do
@@ -231,7 +237,7 @@ replaceFrom buf (to,from,spaces) offset = replaceFrom' offset
                         iter2 <-    getIterAtOffset buf offset
                         iter3 <-    getIterAtOffset buf (offset + spaces + 1)
                         slice <-    getSlice buf iter2 iter3 True
-                        let l = length (takeWhile (== ' ') slice)
+                        let l = T.length (T.takeWhile (== ' ') slice)
                         if l > 1
                             then do
                                 iter4 <- atOffset iter3 (offset + l - 1)
@@ -242,24 +248,24 @@ replaceFrom buf (to,from,spaces) offset = replaceFrom' offset
                 insert buf iter to
                 replaceFrom' offset
 
-type CandyTableI = [(String,Char,Bool)]
+type CandyTableI = [(Text,Char,Bool)]
 
 forthFromTable :: CandyTableI -> CandyTableForth
 forthFromTable table = map forthFrom table
     where
     forthFrom (str,chr,noTrimming) =
-        let isOp = not (Set.member (head str) notBeforeId)
+        let isOp = not (Set.member (T.head str) notBeforeId)
             from = str
-            trailingBlanks = replicate (if noTrimming then 0 else length str - 1) ' '
-            to = chr : trailingBlanks
+            trailingBlanks = T.replicate (if noTrimming then 0 else T.length str - 1) (T.singleton ' ')
+            to = T.singleton chr <> trailingBlanks
         in (isOp,from,to)
 
 backFromTable :: CandyTableI -> CandyTableBack
 backFromTable table = map backFrom table
     where
     backFrom (str,chr,noTrimming) =
-        let numTrailingBlanks = if noTrimming then 0 else length str - 1
-        in (str,[chr],numTrailingBlanks)
+        let numTrailingBlanks = if noTrimming then 0 else T.length str - 1
+        in (str,T.singleton chr,numTrailingBlanks)
 
 ---Candy Parser
 
@@ -280,7 +286,7 @@ parseCandy :: FilePath -> IO CandyTable
 parseCandy fn = do
     res     <-  parseFromFile candyParser fn
     case res of
-        Left pe ->  throwIDE $"Error reading candy file " ++ show fn ++ " " ++ show pe
+        Left pe ->  throwIDE $ "Error reading candy file " <> T.pack (show fn) <> " " <> T.pack (show pe)
         Right r ->  return (CT(forthFromTable r, backFromTable r))
 
 candyParser :: CharParser () CandyTableI
@@ -290,7 +296,7 @@ candyParser = do
     eof
     return ls
 
-oneCandyParser :: CharParser () (String,Char,Bool)
+oneCandyParser :: CharParser () (Text,Char,Bool)
 oneCandyParser = do
     toReplace   <-  toReplaceParser
     replaceWith <-  replaceWithParser
@@ -299,12 +305,12 @@ oneCandyParser = do
         return False)
     return (toReplace,replaceWith,nt)
 
-toReplaceParser :: CharParser () String
+toReplaceParser :: CharParser () Text
 toReplaceParser   = lexeme (do
     str         <-  between (char '"')
                         (char '"' <?> "end of string")
                         (many $noneOf "\"")
-    return str)
+    return $ T.pack str)
     <?> "to replace string"
 
 replaceWithParser :: CharParser () Char

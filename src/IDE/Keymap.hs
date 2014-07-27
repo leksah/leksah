@@ -19,6 +19,9 @@ import Data.Char(toLower)
 import IDE.Core.State
 import Control.Monad (foldM)
 import System.Log.Logger (infoM)
+import Data.Text (Text)
+import qualified Data.Text as T (toLower, unpack, pack)
+import Control.Applicative ((<$>))
 
 class Keymap alpha where
     parseKeymap         ::   FilePath -> IO alpha
@@ -40,7 +43,7 @@ parseKeymap' fn = do
     infoM "leksah" $ "Reading keymap from " ++ fn
     res <- parseFromFile keymapParser fn
     case res of
-        Left pe -> throwIDE $"Error reading keymap file " ++ show fn ++ " " ++ show pe
+        Left pe -> throwIDE . T.pack $ "Error reading keymap file " ++ show fn ++ " " ++ show pe
         Right r -> return r
 
 --
@@ -94,10 +97,10 @@ keymapStyle= emptyDef
                 }
 lexer = P.makeTokenParser keymapStyle
 lexeme = P.lexeme lexer
-identifier = P.identifier lexer
+identifier = T.pack <$> P.identifier lexer
 symbol =  P.symbol lexer
 whiteSpace = P.whiteSpace lexer
-stringLiteral = P.stringLiteral lexer
+stringLiteral = T.pack <$> P.stringLiteral lexer
 
 keymapParser :: CharParser () KeymapI
 keymapParser = do
@@ -107,7 +110,7 @@ keymapParser = do
     return (KM (Map.fromListWith (++) ls))
 
 lineparser :: CharParser () (ActionString, [(Maybe (Either KeyString
-                                (KeyString,KeyString)), Maybe String)])
+                                (KeyString,KeyString)), Maybe Text)])
 lineparser = do
     mb1 <- option Nothing (do
         keyDescr <- identifier
@@ -132,12 +135,12 @@ lineparser = do
 --------------------------------------------------
 -- Have to write this until gtk_accelerator_parse gets bound in gtk2hs
 --
-accParse :: String -> IO (KeyVal,[Modifier])
-accParse str = case parse accparser "accelerator" str of
+accParse :: Text -> IO (KeyVal,[Modifier])
+accParse str = case parse accparser "accelerator" (T.unpack str) of
     Right (ks,mods) -> do
-        key <- keyvalFromName (map toLower ks)
+        key <- keyvalFromName $ T.toLower ks
         return (key,sort mods)
-    Left e -> throwIDE $show e
+    Left e -> throwIDE . T.pack $ show e
 
 accStyle :: P.LanguageDef st
 accStyle= emptyDef{P.caseSensitive = False}
@@ -145,15 +148,15 @@ accStyle= emptyDef{P.caseSensitive = False}
 lexer2 = P.makeTokenParser accStyle
 lexeme2 = P.lexeme lexer2
 symbol2 =  P.symbol lexer2
-identifier2 =  P.identifier lexer2
+identifier2 = T.pack <$> P.identifier lexer2
 whiteSpace2 = P.whiteSpace lexer2
 
-accparser :: GenParser Char () (String,[Modifier])
+accparser :: GenParser Char () (Text,[Modifier])
 accparser = do
     whiteSpace2
     mods <- many modparser
     key <- identifier2
-    return (key,mods)
+    return (key, mods)
 
 modparser :: GenParser Char () Modifier
 modparser = do

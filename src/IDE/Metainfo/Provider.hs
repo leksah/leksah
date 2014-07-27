@@ -1,4 +1,5 @@
-{-# LANGUAGE CPP, ScopedTypeVariables #-}
+{-# LANGUAGE ScopedTypeVariables #-}
+{-# LANGUAGE OverloadedStrings #-}
 -----------------------------------------------------------------------------
 --
 -- Module      :  IDE.Metainfo.Provider
@@ -56,13 +57,9 @@ import Data.Char (toLower,isUpper,toUpper,isLower)
 import Text.Regex.TDFA
 import qualified Text.Regex.TDFA as Regex
 import System.IO.Unsafe (unsafePerformIO)
-import Text.Regex.TDFA.String (execute,compile)
+import Text.Regex.TDFA.Text (execute,compile)
 import Data.Binary.Shared (decodeSer)
-#if MIN_VERSION_Cabal(1,16,0)
 import Language.Haskell.Extension (KnownExtension)
-#else
-import Language.Haskell.Extension (knownExtensions)
-#endif
 import Distribution.Text (display)
 import IDE.Core.Serializable ()
 import Data.Map (Map(..))
@@ -73,6 +70,9 @@ import Control.Monad.IO.Class (MonadIO(..))
 import Control.Monad.Trans.Class (MonadTrans(..))
 import Distribution.PackageDescription (hsSourceDirs)
 import System.Log.Logger (infoM)
+import Data.Text (Text)
+import qualified Data.Text as T (null, isPrefixOf, unpack, pack)
+import Data.Monoid ((<>))
 
 -- ---------------------------------------------------------------------
 -- Updating metadata
@@ -175,14 +175,14 @@ updateSystemInfo' rebuild continuation = do
                                                     (map fromJust
                                                         $ filter isJust newPackageInfos)
                         let psmap3      =   foldr (\e m -> Map.delete e m) psmap2 trashPackages
-                        let scope :: PackScope (Map String [Descr])
+                        let scope :: PackScope (Map Text [Descr])
                                         =   foldr buildScope (PackScope Map.empty symEmpty)
                                                 (Map.elems psmap3)
                         modifyIDE_ (\ide -> ide{systemInfo = Just (GenScopeC (addOtherToScope scope False))})
                         continuation True
     ideMessage Normal "Finished updating system metadata"
 
-getEmptyDefaultScope :: Map String [Descr]
+getEmptyDefaultScope :: Map Text [Descr]
 getEmptyDefaultScope = symEmpty
 --
 -- | Rebuilds system info
@@ -216,9 +216,9 @@ updateWorkspaceInfo' rebuild continuation = do
                                         Nothing -> []
                                         Just (GenScopeC (PackScope pdmap _)) ->
                                             catMaybes $ map (\ pid -> pid `Map.lookup` pdmap)  dependPackIds
-                let scope1 :: PackScope (Map String [Descr])
+                let scope1 :: PackScope (Map Text [Descr])
                                 =   foldr buildScope (PackScope Map.empty symEmpty) packDescrs
-                let scope2 :: PackScope (Map String [Descr])
+                let scope2 :: PackScope (Map Text [Descr])
                                 =   foldr buildScope (PackScope Map.empty symEmpty) packDescrsI
                 modifyIDE_ (\ide -> ide{workspaceInfo = Just
                     (GenScopeC (addOtherToScope scope1 True), GenScopeC(addOtherToScope scope2 False))})
@@ -243,9 +243,9 @@ updateWorkspaceInfo' rebuild continuation = do
                                             if (elem (pdPackage pd) workspacePackageIds)
                                                 then find (\pd' -> pdPackage pd == pdPackage pd') packDescrs
                                                 else Nothing) impPackDescrs
-                                        scope1 :: PackScope (Map String [Descr])
+                                        scope1 :: PackScope (Map Text [Descr])
                                                 =   buildScope pd (PackScope Map.empty symEmpty)
-                                        scope2 :: PackScope (Map String [Descr])
+                                        scope2 :: PackScope (Map Text [Descr])
                                                 =   foldr buildScope (PackScope Map.empty symEmpty)
                                                         (impPackDescrs' ++ impPackDescrs'')
                                         in modifyIDE_ (\ide -> ide{packageInfo = Just
@@ -296,11 +296,11 @@ updatePackageInfo rebuild idePack continuation = do
         rebuild
         (dropFileName (ipdCabalFile idePack))
         (ipdPackageId idePack)
-        (map (\(x,y) -> (display x,y)) modToUpdate)
+        (map (\(x,y) -> (T.pack $ display x,y)) modToUpdate)
         (\ b -> do
             buildDepends         <- liftIO $ findFittingPackages (ipdDepends idePack)
             collectorPath        <- liftIO $ getCollectorPath
-            let packageCollectorPath = collectorPath </> packageIdentifierToString pi
+            let packageCollectorPath = collectorPath </> T.unpack (packageIdentifierToString pi)
             (moduleDescrs,packageMap, changed, modWithout)
                                  <- liftIO $ foldM
                                         (getModuleDescr packageCollectorPath)
@@ -321,7 +321,7 @@ updatePackageInfo rebuild idePack continuation = do
 figureOutRealSources :: IDEPackage -> [(ModuleName,FilePath)] -> IO [(ModuleName,FilePath)]
 figureOutRealSources idePack modWithSources = do
     collectorPath <- getCollectorPath
-    let packageCollectorPath = collectorPath </> packageIdentifierToString (ipdPackageId idePack)
+    let packageCollectorPath = collectorPath </> T.unpack (packageIdentifierToString $ ipdPackageId idePack)
     filterM (ff packageCollectorPath) modWithSources
     where
         ff packageCollectorPath (md ,fp) =  do
@@ -387,20 +387,20 @@ getModuleDescr packageCollectorPath (modDescrs,packageMap,changed,problemMods) (
 --
 loadInfosForPackage :: FilePath -> PackageIdentifier -> IO (Maybe PackageDescr)
 loadInfosForPackage dirPath pid = do
-    let filePath = dirPath </> packageIdentifierToString pid ++ leksahMetadataSystemFileExtension
-    let filePath2 = dirPath </> packageIdentifierToString pid ++ leksahMetadataPathFileExtension
+    let filePath = dirPath </> T.unpack (packageIdentifierToString pid) ++ leksahMetadataSystemFileExtension
+    let filePath2 = dirPath </> T.unpack (packageIdentifierToString pid) ++ leksahMetadataPathFileExtension
     exists <- doesFileExist filePath
     if exists
         then catch (do
             file            <-  openBinaryFile filePath ReadMode
-            liftIO . infoM "leksah" $ "now loading metadata for package " ++ packageIdentifierToString pid
+            liftIO . infoM "leksah" . T.unpack $ "now loading metadata for package " <> packageIdentifierToString pid
             bs              <-  BSL.hGetContents file
             let (metadataVersion'::Integer, packageInfo::PackageDescr) = decodeSer bs
             if metadataVersion /= metadataVersion'
                 then do
                     hClose file
                     throwIDE ("Metadata has a wrong version."
-                            ++  " Consider rebuilding metadata with: leksah-server -osb +RTS -N2 -RTS")
+                            <>  " Consider rebuilding metadata with: leksah-server -osb +RTS -N2 -RTS")
                 else do
                     packageInfo `deepseq` (hClose file)
                     exists'  <-  doesFileExist filePath2
@@ -411,10 +411,10 @@ loadInfosForPackage dirPath pid = do
                     return (Just packageInfo'))
             (\ (e :: SomeException) -> do
                 sysMessage Normal
-                    ("loadInfosForPackage: " ++ packageIdentifierToString pid ++ " Exception: " ++ show e)
+                    ("loadInfosForPackage: " <> packageIdentifierToString pid <> " Exception: " <> T.pack (show e))
                 return Nothing)
         else do
-            sysMessage Normal $"packageInfo not found for " ++ packageIdentifierToString pid
+            sysMessage Normal $"packageInfo not found for " <> packageIdentifierToString pid
             return Nothing
 
 injectSourceInPack :: Maybe FilePath -> PackageDescr -> PackageDescr
@@ -447,13 +447,13 @@ loadInfosForModule filePath  = do
                 then do
                     hClose file
                     throwIDE ("Metadata has a wrong version."
-                            ++  " Consider rebuilding metadata with -r option")
+                           <> " Consider rebuilding metadata with -r option")
                 else do
                     moduleInfo `deepseq` (hClose file)
                     return (Just moduleInfo))
-            (\ (e :: SomeException) -> do sysMessage Normal ("loadInfosForModule: " ++ show e); return Nothing)
+            (\ (e :: SomeException) -> do sysMessage Normal (T.pack $ "loadInfosForModule: " ++ show e); return Nothing)
         else do
-            sysMessage Normal $"moduleInfo not found for " ++ filePath
+            sysMessage Normal $ "moduleInfo not found for " <> T.pack filePath
             return Nothing
 
 findFittingPackages :: [Dependency] -> IO [PackageIdentifier]
@@ -488,7 +488,7 @@ getActivePackageDescr = do
 --
 -- | Lookup of an identifier description
 --
-getIdentifierDescr :: (SymbolTable alpha, SymbolTable beta)  => String -> alpha   -> beta   -> [Descr]
+getIdentifierDescr :: (SymbolTable alpha, SymbolTable beta)  => Text -> alpha   -> beta   -> [Descr]
 getIdentifierDescr str st1 st2 =
     let r1 = str `symLookup` st1
         r2 = str `symLookup` st2
@@ -497,9 +497,9 @@ getIdentifierDescr str st1 st2 =
 --
 -- | Lookup of an identifiers starting with the specified prefix and return a list.
 --
-getIdentifiersStartingWith :: (SymbolTable alpha , SymbolTable beta)  => String -> alpha   -> beta   -> [String]
+getIdentifiersStartingWith :: (SymbolTable alpha , SymbolTable beta)  => Text -> alpha   -> beta   -> [Text]
 getIdentifiersStartingWith prefix st1 st2 =
-    takeWhile (isPrefixOf prefix) $
+    takeWhile (T.isPrefixOf prefix) $
         if memberLocal || memberGlobal then
             prefix : Set.toAscList names
             else
@@ -509,7 +509,7 @@ getIdentifiersStartingWith prefix st1 st2 =
         (_, memberGlobal, globalNames) = Set.splitMember prefix (symbols st2)
         names = Set.union globalNames localNames
 
-getCompletionOptions :: String -> IDEM [String]
+getCompletionOptions :: Text -> IDEM [Text]
 getCompletionOptions prefix = do
     workspaceInfo' <- getWorkspaceInfo
     case workspaceInfo' of
@@ -517,13 +517,13 @@ getCompletionOptions prefix = do
         Just ((GenScopeC (PackScope _ symbolTable1)),(GenScopeC (PackScope _ symbolTable2))) ->
             return $ getIdentifiersStartingWith prefix symbolTable1 symbolTable2
 
-getDescription :: String -> IDEM String
+getDescription :: Text -> IDEM Text
 getDescription name = do
     workspaceInfo' <- getWorkspaceInfo
     case workspaceInfo' of
         Nothing -> return ""
         Just ((GenScopeC (PackScope _ symbolTable1)),(GenScopeC (PackScope _ symbolTable2))) ->
-            return ((foldr (\d f -> shows (Present d) .  showChar '\n' . f) id
+            return $ T.pack ((foldr (\d f -> shows (Present d) .  showChar '\n' . f) id
                 (getIdentifierDescr name symbolTable1 symbolTable2)) "")
 
 getPackageInfo :: IDEM (Maybe (GenScope, GenScope))
@@ -578,16 +578,16 @@ getPackageImportInfo idePack = do
                         let impPackDescrs = catMaybes $ map (\ pid -> pid `Map.lookup` pdmap')
                                                 (pdBuildDepends pd)
                             pd' = pd{pdModules = map filterPrivate (pdModules pd)}
-                            scope1 :: PackScope (Map String [Descr])
+                            scope1 :: PackScope (Map Text [Descr])
                                             =   buildScope pd (PackScope Map.empty symEmpty)
-                            scope2 :: PackScope (Map String [Descr])
+                            scope2 :: PackScope (Map Text [Descr])
                                 =   foldr buildScope (PackScope Map.empty symEmpty) impPackDescrs
                         in return (Just (GenScopeC scope1, GenScopeC scope2))
 --
 -- | Searching of metadata
 --
 
-searchMeta :: Scope -> String -> SearchMode -> IDEM [Descr]
+searchMeta :: Scope -> Text -> SearchMode -> IDEM [Descr]
 searchMeta _ "" _ = return []
 searchMeta (PackageScope False) searchString searchType = do
     packageInfo'    <- getPackageInfo
@@ -628,47 +628,49 @@ searchMeta SystemScope searchString searchType = do
                 Just ((GenScopeC (PackScope _ rl)),_) -> return (searchInScope searchType searchString rl
                                         ++  searchInScope searchType searchString s)
 
-searchInScope :: SymbolTable alpha =>  SearchMode -> String -> alpha  -> [Descr]
+searchInScope :: SymbolTable alpha =>  SearchMode -> Text -> alpha  -> [Descr]
 searchInScope (Exact _)  l st      = searchInScopeExact l st
 searchInScope (Prefix True) l st   = (concat . symElems) (searchInScopePrefix l st)
-searchInScope (Prefix False) [] _  = []
+searchInScope (Prefix False) l _ | T.null l = []
 searchInScope (Prefix False) l st  = (concat . symElems) (searchInScopeCaseIns l st "")
 searchInScope (Regex b) l st       = searchRegex l st b
 
 
-searchInScopeExact :: SymbolTable alpha =>  String -> alpha  -> [Descr]
+searchInScopeExact :: SymbolTable alpha =>  Text -> alpha  -> [Descr]
 searchInScopeExact = symLookup
 
-searchInScopePrefix :: SymbolTable alpha   =>  String -> alpha  -> alpha
+searchInScopePrefix :: SymbolTable alpha   =>  Text -> alpha  -> alpha
 searchInScopePrefix searchString symbolTable =
     let (_, exact, mapR)   = symSplitLookup searchString symbolTable
-        (mbL, _, _)        = symSplitLookup (searchString ++ "{") mapR
+        (mbL, _, _)        = symSplitLookup (searchString <> "{") mapR
     in case exact of
             Nothing -> mbL
             Just e  -> symInsert searchString e mbL
 
-searchInScopeCaseIns :: SymbolTable alpha => String -> alpha -> String -> alpha
-searchInScopeCaseIns [] st _                    =  st
-searchInScopeCaseIns (a:l)  st pre | isLower a  =
+searchInScopeCaseIns :: SymbolTable alpha => Text -> alpha -> Text -> alpha
+searchInScopeCaseIns a symbolTable b  = searchInScopeCaseIns' (T.unpack a) symbolTable (T.unpack b)
+  where
+  searchInScopeCaseIns' [] st _                    =  st
+  searchInScopeCaseIns' (a:l)  st pre | isLower a  =
     let s1 = pre ++ [a]
         s2 = pre ++ [toUpper a]
-    in  (symUnion (searchInScopeCaseIns l (searchInScopePrefix s1 st) s1)
-                   (searchInScopeCaseIns l (searchInScopePrefix s2 st) s2))
+    in  (symUnion (searchInScopeCaseIns' l (searchInScopePrefix (T.pack s1) st) s1)
+                   (searchInScopeCaseIns' l (searchInScopePrefix (T.pack s2) st) s2))
                                    | isUpper a  =
     let s1 = pre ++ [a]
         s2 = pre ++ [toLower a]
-    in  (symUnion (searchInScopeCaseIns l (searchInScopePrefix s1 st) s1)
-                   (searchInScopeCaseIns l (searchInScopePrefix s2 st) s2))
+    in  (symUnion (searchInScopeCaseIns' l (searchInScopePrefix (T.pack s1) st) s1)
+                   (searchInScopeCaseIns' l (searchInScopePrefix (T.pack s2) st) s2))
                                     | otherwise =
     let s =  pre ++ [a]
-    in searchInScopeCaseIns l (searchInScopePrefix s st) s
+    in searchInScopeCaseIns' l (searchInScopePrefix (T.pack s) st) s
 
 
-searchRegex :: SymbolTable alpha => String -> alpha  -> Bool -> [Descr]
+searchRegex :: SymbolTable alpha => Text -> alpha  -> Bool -> [Descr]
 searchRegex searchString st caseSense =
     case compileRegex caseSense searchString of
         Left err ->
-            unsafePerformIO $ sysMessage Normal (show err) >> return []
+            unsafePerformIO $ sysMessage Normal (T.pack $ show err) >> return []
         Right regex ->
             filter (\e -> do
                 case execute regex (dscName e) of
@@ -677,7 +679,7 @@ searchRegex searchString st caseSense =
                     _             -> True)
                         (concat (symElems st))
 
-compileRegex :: Bool -> String -> Either String Regex
+compileRegex :: Bool -> Text -> Either String Regex
 compileRegex caseSense searchString =
     let compOption = defaultCompOpt {
                             Regex.caseSensitive = caseSense
@@ -756,7 +758,7 @@ callCollector rebuild sources extract cont = do
                 liftIO $ infoM "leksah" "callCollector finished"
                 cont True
             ServerFailed str -> do
-                liftIO $ infoM "leksah" str
+                liftIO $ infoM "leksah" (T.unpack str)
                 cont False
             _                -> do
                 liftIO $ infoM "leksah" "impossible server answer"
@@ -766,7 +768,7 @@ callCollector rebuild sources extract cont = do
             scSources = sources,
             scExtract = extract}
 
-callCollectorWorkspace :: Bool -> FilePath -> PackageIdentifier -> [(String,FilePath)] ->
+callCollectorWorkspace :: Bool -> FilePath -> PackageIdentifier -> [(Text,FilePath)] ->
     (Bool -> IDEAction) -> IDEAction
 callCollectorWorkspace rebuild fp  pi modList cont = do
     liftIO $ infoM "leksah" "callCollectorWorkspace"
@@ -781,7 +783,7 @@ callCollectorWorkspace rebuild fp  pi modList cont = do
                         liftIO $ infoM "leksah" "callCollectorWorkspace finished"
                         cont True
                     ServerFailed str -> do
-                        liftIO $ infoM "leksah" str
+                        liftIO $ infoM "leksah" (T.unpack str)
                         cont False
                     _                -> do
                         liftIO $ infoM "leksah" "impossible server answer"
@@ -796,7 +798,7 @@ callCollectorWorkspace rebuild fp  pi modList cont = do
 -- Additions for completion
 --
 
-keywords :: [String]
+keywords :: [Text]
 keywords = [
         "as"
     ,   "case"
@@ -838,22 +840,18 @@ keywordDescrs = map (\s -> Real $ RealDescr
 
 extensionDescrs :: [Descr]
 extensionDescrs =  map (\ext -> Real $ RealDescr
-                                    ("X" ++ show ext)
+                                    (T.pack $ "X" ++ show ext)
                                     Nothing
                                     Nothing
                                     Nothing
                                     (Just (BS.pack " Haskell language extension"))
                                     ExtensionDescr
                                     True)
-#if MIN_VERSION_Cabal(1,16,0)
                                 ([minBound..maxBound]::[KnownExtension])
-#else
-                                knownExtensions
-#endif
 
 moduleNameDescrs :: PackageDescr -> [Descr]
 moduleNameDescrs pd = map (\md -> Real $ RealDescr
-                                    ((display . modu . mdModuleId) md)
+                                    (T.pack . display . modu $ mdModuleId md)
                                     Nothing
                                     (Just (mdModuleId md))
                                     Nothing
