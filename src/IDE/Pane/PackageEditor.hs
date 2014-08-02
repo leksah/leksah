@@ -97,11 +97,10 @@ import Distribution.PackageDescription.PrettyPrint
 import Distribution.Version (Version(..), orLaterVersion)
 
 import Control.Applicative ((<*>), (<$>))
-import qualified Data.Conduit.Util as CU (zipSinks)
 import IDE.Utils.Tool (ToolOutput(..))
 import System.Exit (ExitCode(..))
 import qualified Data.Conduit.List as CL (fold)
-import qualified Data.Conduit as C (Sink)
+import qualified Data.Conduit as C (Sink, ZipSink(..), getZipSink)
 import IDE.Utils.ExternalTool (runExternalTool')
 import qualified System.IO.Strict as S (readFile)
 import Data.Char (toLower)
@@ -431,7 +430,7 @@ cabalUnpack parentDir packageToUnpack sourceRepo mbNewName log activateAction = 
     runExternalTool' (__ "Unpacking") "cabal" (["unpack"]
               ++ (if sourceRepo then ["--source-repository"] else [])
               ++ ["--destdir=" <> T.pack tempDir, packageToUnpack]) tempDir $ do
-        (mbLastOutput, _) <- CU.zipSinks sinkLast log
+        mbLastOutput <- C.getZipSink $ const <$> C.ZipSink sinkLast <*> C.ZipSink log
         case mbLastOutput of
             Just (ToolExit ExitSuccess) -> do
                 contents <- liftIO $ getDirectoryContents tempDir

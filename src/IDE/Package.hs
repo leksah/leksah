@@ -99,12 +99,11 @@ import IDE.Utils.Tool (ToolOutput(..), runTool, newGhci, ToolState(..), toolline
 import qualified Data.Set as  Set (fromList)
 import qualified Data.Map as  Map (empty, fromList)
 import System.Exit (ExitCode(..))
-import Control.Applicative ((<$>))
+import Control.Applicative ((<$>), (<*>))
 import IDE.Utils.Tool (executeGhciCommand, getProcessExitCode, interruptProcessGroupOf,
     ProcessHandle)
-import qualified Data.Conduit as C (Sink)
+import qualified Data.Conduit as C (Sink, ZipSink(..), getZipSink)
 import qualified Data.Conduit.List as CL (foldM, fold, consume)
-import qualified Data.Conduit.Util as CU (zipSinks)
 import Data.Conduit (($$))
 import Control.Monad.Trans.Reader (ask)
 import Control.Monad.IO.Class (MonadIO(..))
@@ -186,7 +185,7 @@ packageConfig' package continuation = do
                             (cabalCommand prefs)
                             (["configure"] ++ (ipdConfigFlags package))
                             dir $ do
-        (mbLastOutput, _) <- CU.zipSinks sinkLast (logOutput logLaunch)
+        mbLastOutput <- C.getZipSink $ const <$> C.ZipSink sinkLast <*> C.ZipSink (logOutput logLaunch)
         lift $ do
             mbPack <- idePackageFromPath (logOutput logLaunch) (ipdCabalFile package)
             case mbPack of
@@ -211,8 +210,10 @@ runCabalBuild backgroundBuild runTests jumpToWarnings withoutLinking package sha
                 ++ ipdBuildFlags package
                 ++ (if runTests then ipdTestFlags package else []))
     runExternalTool' (__ "Building") (cabalCommand prefs) args dir $ do
-        (mbLastOutput, (isConfigErr, _)) <- CU.zipSinks sinkLast $ CU.zipSinks isConfigError $
-            logOutputForBuild package backgroundBuild jumpToWarnings
+        (mbLastOutput, isConfigErr, _) <- C.getZipSink $ (,,)
+            <$> C.ZipSink sinkLast
+            <*> C.ZipSink isConfigError
+            <*> (C.ZipSink $ logOutputForBuild package backgroundBuild jumpToWarnings)
         lift $ do
             errs <- readIDE errorRefs
             if shallConfigure && isConfigErr
@@ -285,8 +286,8 @@ packageDoc' backgroundBuild jumpToWarnings package continuation = do
         let dir = ipdBuildDir package
         runExternalTool' (__ "Documenting") (cabalCommand prefs) (["haddock"]
             ++ (ipdHaddockFlags package)) dir $ do
-                (mbLastOutput, _) <- CU.zipSinks sinkLast $
-                    logOutputForBuild package backgroundBuild jumpToWarnings
+                mbLastOutput <- C.getZipSink $ const <$> C.ZipSink sinkLast <*> (C.ZipSink $
+                    logOutputForBuild package backgroundBuild jumpToWarnings)
                 lift $ reloadDoc
                 lift $ continuation (mbLastOutput == Just (ToolExit ExitSuccess)))
         (\(e :: SomeException) -> putStrLn (show e))
@@ -307,7 +308,7 @@ packageClean' package continuation = do
                     (cabalCommand prefs)
                     ["clean"]
                     dir $ do
-        (mbLastOutput, _) <- CU.zipSinks sinkLast (logOutput logLaunch)
+        mbLastOutput <- C.getZipSink $ const <$> C.ZipSink sinkLast <*> C.ZipSink (logOutput logLaunch)
         lift $ continuation (mbLastOutput == Just (ToolExit ExitSuccess))
 
 packageCopy :: PackageAction
@@ -360,7 +361,7 @@ packageCopy' package continuation = do
         let dir = ipdBuildDir package
         runExternalTool' (__ "Copying") (cabalCommand prefs) (["copy"]
             ++ (ipdInstallFlags package)) dir $ do
-                (mbLastOutput, _) <- CU.zipSinks sinkLast (logOutput logLaunch)
+                mbLastOutput <- C.getZipSink $ (const <$> C.ZipSink sinkLast) <*> C.ZipSink (logOutput logLaunch)
                 lift $ continuation (mbLastOutput == Just (ToolExit ExitSuccess)))
         (\(e :: SomeException) -> putStrLn (show e))
 
@@ -368,14 +369,14 @@ packageRun :: PackageAction
 packageRun = ask >>= (liftIDE . packageRun' True)
 
 packageRun' :: Bool -> IDEPackage -> IDEAction
-packageRun' addFlagIfMissing package = do
-    if addFlagIfMissing && "--ghcjs" `elem` ipdConfigFlags package && not ("--ghcjs-option=--native-executables" `elem` ipdConfigFlags package)
+packageRun' removeGhcjsFlagIfPresent package = do
+    if removeGhcjsFlagIfPresent && "--ghcjs" `elem` ipdConfigFlags package
         then do
             window <- liftIDE $ getMainWindow
             resp <- liftIO $ do
                 md <- messageDialogNew (Just window) [] MessageQuestion ButtonsCancel
-                        (__ "Package is configured to use GHCJS.  Would you like to add --ghcjs-option=--native-executables to the configure flags and rebuild?")
-                dialogAddButton md (__ "Add _GHCJS Native Executables") (ResponseUser 1)
+                        (__ "Package is configured to use GHCJS.  Would you like to remove --ghcjs from the configure flags and rebuild?")
+                dialogAddButton md (__ "Use _GHC") (ResponseUser 1)
                 dialogSetDefaultResponse md (ResponseUser 1)
                 set md [ windowWindowPosition := WinPosCenterOnParent ]
                 resp <- dialogRun md
@@ -383,7 +384,7 @@ packageRun' addFlagIfMissing package = do
                 return resp
             case resp of
                 ResponseUser 1 -> do
-                    let packWithNewFlags = package { ipdConfigFlags = ["--ghcjs-option=--native-executables"] ++ ipdConfigFlags package }
+                    let packWithNewFlags = package { ipdConfigFlags = filter (/="--ghcjs") $ ipdConfigFlags package }
                     changePackage packWithNewFlags
                     liftIO $ writeFlags (dropExtension (ipdCabalFile packWithNewFlags) ++ leksahFlagFileExtension) packWithNewFlags
                     packageConfig' packWithNewFlags $ \ ok -> when ok $ do
@@ -495,7 +496,7 @@ packageRegister' package continuation =
             let dir = ipdBuildDir package
             runExternalTool' (__ "Registering") (cabalCommand prefs) (["register"]
                 ++ (ipdRegisterFlags package)) dir $ do
-                    (mbLastOutput, _) <- CU.zipSinks sinkLast (logOutput logLaunch)
+                    mbLastOutput <- C.getZipSink $ (const <$> C.ZipSink sinkLast) <*> C.ZipSink (logOutput logLaunch)
                     lift $ continuation (mbLastOutput == Just (ToolExit ExitSuccess)))
             (\(e :: SomeException) -> putStrLn (show e))
         else continuation True
@@ -516,8 +517,10 @@ packageTest' package shallConfigure continuation =
             let dir = ipdBuildDir package
             runExternalTool' (__ "Testing") (cabalCommand prefs) (["test"]
                 ++ ipdBuildFlags package ++ ipdTestFlags package) dir $ do
-                    (mbLastOutput, (isConfigErr, _)) <- CU.zipSinks sinkLast $ CU.zipSinks isConfigError $
-                        logOutputForBuild package False True
+                    (mbLastOutput, isConfigErr, _) <- C.getZipSink $ (,,)
+                        <$> C.ZipSink sinkLast
+                        <*> C.ZipSink isConfigError
+                        <*> (C.ZipSink $ logOutputForBuild package False True)
                     lift $ do
                         errs <- readIDE errorRefs
                         if shallConfigure && isConfigErr

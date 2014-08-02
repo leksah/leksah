@@ -82,11 +82,10 @@ import IDE.Utils.Tool (ToolOutput(..), toolProcess, interruptProcessGroupOf)
 import IDE.Workspaces (packageTry)
 import qualified Data.Conduit as C
 import qualified Data.Conduit.List as CL
-import qualified Data.Conduit.Util as CU
 import Control.Monad.Trans.Class (MonadTrans(..))
 import Control.Monad.Trans.Reader (ask)
 import Control.Monad.IO.Class (MonadIO(..))
-import Control.Applicative (Alternative(..))
+import Control.Applicative (Alternative(..), (<$>), (<*>))
 import Data.IORef (newIORef)
 import Data.Monoid ((<>), Monoid(..))
 import Data.Text (Text)
@@ -150,7 +149,9 @@ debugExecuteSelection = do
                 debugSetLiberalScope
                 buffer <- liftIO $ newIORef mempty
                 debugCommand (stripComments text) $ do
-                    (_, _) <- CU.zipSinks sinkLast (logOutputPane text buffer)
+                    _ <- C.getZipSink $ const
+                        <$> C.ZipSink sinkLast
+                        <*> C.ZipSink (logOutputPane text buffer)
                     mbURI <- lift $ readIDE autoURI
                     case mbURI of
                         Just uri -> lift . postSyncIDE . loadOutputUri $ T.unpack uri
@@ -166,7 +167,9 @@ debugExecuteAndShowSelection = do
         Just text -> packageTry $ tryDebug $ do
             debugSetLiberalScope
             debugCommand (stripComments text) $ do
-                (out, _) <- CU.zipSinks (CL.fold buildOutputString "") logOutputDefault
+                out <- C.getZipSink $ const
+                        <$> C.ZipSink (CL.fold buildOutputString "")
+                        <*> C.ZipSink logOutputDefault
                 lift . insertTextAfterSelection $ " " <> out
         Nothing   -> ideMessage Normal "Please select some text in the editor to execute"
     where

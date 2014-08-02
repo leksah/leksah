@@ -21,15 +21,15 @@ module IDE.Sandbox (
 ) where
 
 import Graphics.UI.Gtk (Window)
+import Control.Applicative ((<$>), (<*>))
 import Control.Monad (when, void)
 import Control.Monad.Trans.Class (lift)
 import Control.Monad.IO.Class (liftIO)
 import Control.Monad.Trans.Reader (ask)
 import System.Exit (ExitCode(..))
 import System.FilePath (dropFileName)
-import qualified Data.Conduit as C (Sink)
+import qualified Data.Conduit as C (Sink, ZipSink(..), getZipSink)
 import qualified Data.Conduit.List as CL (fold)
-import qualified Data.Conduit.Util as CU (zipSinks)
 import IDE.Utils.Tool (ToolOutput(..))
 import IDE.Utils.GUIUtils (__, chooseDir)
 import IDE.Core.State (PackageAction, readIDE, prefs, ipdBuildDir, getMainWindow,
@@ -49,7 +49,7 @@ sinkLast = CL.fold (\_ a -> Just a) Nothing
 logSandbox :: IDEPackage -> LogLaunch -> C.Sink ToolOutput IDEM ()
 logSandbox package logLaunch = do
     let log = logOutput logLaunch
-    (mbLastOutput, _) <- CU.zipSinks sinkLast log
+    mbLastOutput <- C.getZipSink $ const <$> C.ZipSink sinkLast <*> C.ZipSink log
     when (mbLastOutput == Just (ToolExit ExitSuccess)) .
         lift $ workspaceTryQuiet (runPackage (void $ refreshPackage log) package)
 
