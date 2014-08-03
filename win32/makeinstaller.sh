@@ -3,7 +3,7 @@
 . scripts/stage.sh || exit
 
 export CABAL_USER_BIN=$HOME/AppData/Roaming/cabal/bin
-export GHC_USER_PREFIX=$HOME/AppData/Roaming/cabal/i386-windows-ghc-`ghc$GHCVERSION --numeric-version`
+export GHC_USER_PREFIX=$HOME/AppData/Roaming/cabal/x86_64-windows-ghc-`ghc$GHCVERSION --numeric-version`
 export LEKSAH_PREFIX=$GHC_USER_PREFIX
 export LEKSAH_SERVER_PREFIX=$GHC_USER_PREFIX
 export HLINT_X_X_X_X=`ghc-pkg$GHCVERSION list |grep '^ *hlint-' | tail -n1 | tr -d ' \n'`

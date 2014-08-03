@@ -5,10 +5,23 @@ cd ../leksah || exit
 . scripts/stage.sh || exit
 
 export GHC_USER_PREFIX=$HOME/Library/Haskell/ghc-`ghc$GHCVERSION --numeric-version`/lib
-export LEKSAH_PREFIX=$GHC_USER_PREFIX/$LEKSAH_X_X_X_X
-export LEKSAH_SERVER_PREFIX=$GHC_USER_PREFIX/$LEKSAH_SERVER_X_X_X_X
-export VCSGUI_PREFIX=$GHC_USER_PREFIX/`ghc-pkg$GHCVERSION list |grep '^ *vcsgui-' | head -n1 | tr -d ' \n'`
+export LEKSAH_BIN_DIR=$GHC_USER_PREFIX/$LEKSAH_X_X_X_X
+export LEKSAH_PREFIX=$GHC_USER_PREFIX/$LEKSAH_X_X_X_X/share
+export LEKSAH_SERVER_BIN_DIR=$GHC_USER_PREFIX/$LEKSAH_SERVER_X_X_X_X
+export LEKSAH_SERVER_PREFIX=$GHC_USER_PREFIX/$LEKSAH_SERVER_X_X_X_X/share
+export VCSGUI_BIN_DIR=$GHC_USER_PREFIX/`ghc-pkg$GHCVERSION list |grep '^ *vcsgui-' | head -n1 | tr -d ' \n'`
+export VCSGUI_PREFIX=$GHC_USER_PREFIX/`ghc-pkg$GHCVERSION list |grep '^ *vcsgui-' | head -n1 | tr -d ' \n'`/share
 export HLINT_PREFIX=$GHC_USER_PREFIX/`ghc-pkg$GHCVERSION list |grep '^ *hlint-' | head -n1 | tr -d ' \n'`
+
+#export SANDBOX_BIN_DIR=$PWD/.cabal-sandbox
+#export SANDBOX_SHARE=$PWD/.cabal-sandbox/share/x86_64-osx-ghc-`ghc$GHCVERSION --numeric-version`
+#export LEKSAH_BIN_DIR=$SANDBOX_BIN_DIR
+#export LEKSAH_PREFIX=$SANDBOX_SHARE/$LEKSAH_X_X_X_X
+#export LEKSAH_SERVER_BIN_DIR=$SANDBOX_BIN_DIR
+#export LEKSAH_SERVER_PREFIX=$SANDBOX_SHARE/$LEKSAH_SERVER_X_X_X_X
+#export VCSGUI_BIN_DIR=$SANDBOX_BIN_DIR
+#export VCSGUI_PREFIX=$SANDBOX_SHARE/`ghc-pkg$GHCVERSION list |grep '^ *vcsgui-' | head -n1 | tr -d ' \n'`
+#export HLINT_PREFIX=$SANDBOX_SHARE/`ghc-pkg$GHCVERSION list |grep '^ *hlint-' | head -n1 | tr -d ' \n'`
 
 sed -e 's|TextView Font: *\"Monospace 10\"|TextView Font: "Monospace 14"|' -e 's|Browser: *\"firefox\"|Browser:       \"open\"|' <data/prefs.lkshp >osx/prefs.lkshp
 
@@ -58,5 +71,5 @@ LEKSAH_DMG="$LEKSAH_X_X_X_X_GHC_X_X_X.dmg"
 if test -e "$LEKSAH_DMG"; then
    rm "$LEKSAH_DMG"
 fi
-hdiutil create -size 400m -srcfolder "Leksah" "$LEKSAH_DMG" || exit
+hdiutil create -size 500m -srcfolder "Leksah" "$LEKSAH_DMG" || exit
 
