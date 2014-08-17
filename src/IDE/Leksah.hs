@@ -234,16 +234,58 @@ startGUI yiConfig sessionFP mbWorkspaceFP sourceFPs iprefs isFirstStart = do
             Nothing           -> return ()
             Just startupPrefs -> startMainWindow yiControl sessionFP mbWorkspaceFP sourceFPs
                                     startupPrefs isFirstStart
-    unless rtsSupportsBoundThreads $ postGUIAsync mainLoop
     debugM "leksah" "starting mainGUI"
     mainGUI
     debugM "leksah" "finished mainGUI"
 
-mainLoop :: IO ()
-mainLoop = eventsPending >>= loop 50
+mainLoop :: IO () -> IO ()
+mainLoop = if rtsSupportsBoundThreads then mainLoopThreaded else mainLoopSingleThread
+
+mainLoopThreaded :: IO () -> IO ()
+mainLoopThreaded onIdle = loop
+    where
+        loop = do
+            quit <- loopTillIdle
+            if quit
+                then return ()
+                else do
+                    active <- newEmptyMVar
+                    mvarSentIdleMessage <- newEmptyMVar
+                    idleThread <- forkIO $ do
+                        threadDelay 50000
+                        isActive <- isJust <$> tryTakeMVar active
+                        unless isActive $ do
+                            putMVar mvarSentIdleMessage ()
+                            postGUIAsync onIdle
+                    quit <- mainIteration
+                    putMVar active ()
+                    if quit
+                        then return ()
+                        else do
+                            -- If an idle message was sent then wait again
+                            sentIdleMessage <- isJust <$> tryTakeMVar mvarSentIdleMessage
+                            quit <- if sentIdleMessage
+                                then mainIteration
+                                else return False
+                            if quit
+                                then return ()
+                                else loop
+        loopTillIdle = do
+            pending <- eventsPending
+            if pending == 0
+                then return False
+                else do
+                    quit <- loopn (pending + 2)
+                    if quit
+                        then return True
+                        else loopTillIdle
+
+mainLoopSingleThread :: IO () -> IO ()
+mainLoopSingleThread onIdle = eventsPending >>= loop False 50
   where
-    loop :: Int -> Int -> IO ()
-    loop delay n = do
+    loop :: Bool -> Int -> Int -> IO ()
+    loop False delay 0 | delay > 2000 = onIdle >> loop True delay 0
+    loop isIdle delay n = do
         quit <- if n > 0
                     then do
                         timeout <- timeoutAddFull (yield >> return True) priorityHigh 10
@@ -259,23 +301,25 @@ mainLoop = eventsPending >>= loop 50
                 pending <- eventsPending
                 if pending > 0
                     then do
-                        loop 50 pending
+                        loop False 50 pending
                     else do
                         threadDelay delay
-                        eventsPending >>= loop (if n > 0
-                                                    then 50
-                                                    else min (delay+delay) 50000)
-    loopn :: Int -> IO Bool
-    loopn 0 = return False
-    loopn n = do
-        quit <- mainIterationDo False
-        if quit
-            then return True
-            else loopn (n - 1)
+                        eventsPending >>= loop isIdle (if n > 0
+                                                            then 50
+                                                            else min (delay+delay) 50000)
+
+loopn :: Int -> IO Bool
+loopn 0 = return False
+loopn n = do
+    quit <- mainIterationDo False
+    if quit
+        then return True
+        else loopn (n - 1)
 
 startMainWindow :: Yi.Control -> FilePath -> Maybe FilePath -> [FilePath] ->
                         Prefs -> Bool -> IO ()
 startMainWindow yiControl sessionFP mbWorkspaceFP sourceFPs startupPrefs isFirstStart = do
+    timeout <- timeoutAddFull (yield >> return True) priorityHigh 10
     debugM "leksah" "startMainWindow"
     osxApp <- OSX.applicationNew
     uiManager   <-  uiManagerNew
@@ -398,11 +442,16 @@ startMainWindow yiControl sessionFP mbWorkspaceFP sourceFPs startupPrefs isFirst
             workspaceTryQuiet $ workspaceAddPackage' welcomeCabal >> return ()
             fileOpenThis welcomeMain) ideR
     reflectIDE (initInfo (modifyIDE_ (\ide -> ide{currentState = IsRunning}))) ideR
-    timeoutAddFull (do
+    timeoutRemove timeout
+    postGUIAsync . mainLoop $
         reflectIDE (do
             currentPrefs <- readIDE prefs
             when (backgroundBuild currentPrefs) $ backgroundMake) ideR
-        return True) priorityDefaultIdle 1000
+--    timeoutAddFull (do
+--        reflectIDE (do
+--            currentPrefs <- readIDE prefs
+--            when (backgroundBuild currentPrefs) $ backgroundMake) ideR
+--        return True) priorityDefaultIdle 1000
     reflectIDE (triggerEvent ideR (Sensitivity [(SensitivityInterpreting, False)])) ideR
     return ()
 --    mainGUI
