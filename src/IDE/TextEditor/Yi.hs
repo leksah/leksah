@@ -50,9 +50,9 @@ import Yi
         readCharB, nextWordB, moveToEol, rightB, rightN, nextPointB,
         unitWord, atBoundaryB, moveToSol, prevWordB, leftB, readB,
         doUntilB_, prevPointB, Mode, modifyMode, insertingA, undoB,
-        markSavedB, setSelectRegionB, redoB, setMarkPointB, insertNAt,
+        markSavedB, setSelectRegionB, redoB, markPointA, insertNAt,
         regionIsEmpty, regionEnd, regionStart, selMark, isUnchangedBuffer,
-        Point(..), MarkValue(..), lineOf, getMarkPointB, pointOfLineColB,
+        Point(..), MarkValue(..), lineOf, pointOfLineColB,
         askMarks, insMark, sizeB, getRawestSelectRegionB, mkRegion,
         deleteRegionB, newMarkB, Mark, pointB, moveTo, savingPointB, Point,
         withGivenBuffer0, liftEditor, BufferM, BufferRef, Mode(..),
@@ -166,7 +166,7 @@ instance TextEditor Yi where
     getEndIter (YiBuffer b) = iterFromYiBuffer b sizeB
     getInsertMark (YiBuffer b) = YiMark <$> (withYiBuffer b $ insMark <$> askMarks)
     getIterAtLine (YiBuffer b) line = iterFromYiBuffer b $ pointOfLineColB line 1
-    getIterAtMark (YiBuffer b) (YiMark m) = iterFromYiBuffer b $ getMarkPointB m
+    getIterAtMark (YiBuffer b) (YiMark m) = iterFromYiBuffer b $ (use . markPointA) m
     getIterAtOffset (YiBuffer b) offset = return $ mkYiIter b $ Point offset
     getLineCount (YiBuffer b) = withYiBuffer b $ sizeB >>= lineOf
     getModified (YiBuffer b) = not <$> (withYiBuffer b $ gets isUnchangedBuffer)
@@ -177,7 +177,7 @@ instance TextEditor Yi where
                 mkYiIter b (regionEnd region))
     getInsertIter (YiBuffer b) = withYiBuffer b $ do
         insertMark <- insMark <$> askMarks
-        mkYiIter b <$> getMarkPointB insertMark
+        mkYiIter b <$> (use . markPointA) insertMark
     getSlice (YiBuffer b) (YiIter first) (YiIter last) includeHidenChars = liftYiControl $ T.pack <$>
         Yi.getText b first last
     getStartIter (YiBuffer b) = return $ mkYiIter b $ Point 0

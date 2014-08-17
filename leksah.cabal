@@ -212,7 +212,7 @@ library
           build-depends: gtk-mac-integration >= 0.3.0.0 && <0.4
 
     if flag(yi)
-        build-depends: yi >=0.8.1 && <0.9
+        build-depends: yi >=0.8.1 && <0.10
         cpp-options: -DLEKSAH_WITH_YI
 
     if flag(yi) && flag(dyre)
