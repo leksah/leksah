@@ -52,6 +52,9 @@ import Graphics.UI.Frame.ViewFrame (getWindows)
 import Test.QuickCheck (Property)
 import Control.Monad.Loops (allM)
 import System.IO (stderr, stdout, hFlush)
+import Data.Text (Text)
+import Data.Monoid ((<>))
+import qualified Data.Text as T (unpack, pack)
 
 testEditors :: IO Bool
 testEditors = do
@@ -67,13 +70,13 @@ testIDE f = do
   result <- newEmptyMVar
   Yi.start defaultYiConfig $ \yiControl -> do
     uiManager   <-  uiManagerNew
-    dataDir       <- getDataDir
+    dataDir     <-  getDataDir
     candyPath   <-  getConfigFilePathForLoad
                         (case sourceCandy defaultPrefs of
-                            (_,name)   ->   name ++ leksahCandyFileExtension) Nothing dataDir
+                            (_,name)   ->   T.unpack name <> leksahCandyFileExtension) Nothing dataDir
     candySt     <-  parseCandy candyPath
     -- keystrokes
-    keysPath    <-  getConfigFilePathForLoad (keymapName defaultPrefs ++ leksahKeymapFileExtension) Nothing dataDir
+    keysPath    <-  getConfigFilePathForLoad (T.unpack (keymapName defaultPrefs) <> leksahKeymapFileExtension) Nothing dataDir
     keyMap      <-  parseKeymap keysPath
     let accelActions = setKeymap (keyMap :: KeymapI) mkActions
     specialKeys <-  buildSpecialKeys keyMap accelActions
@@ -124,6 +127,7 @@ testIDE f = do
               ,   vcsData           =   (Map.empty, Nothing)
               ,   logLaunches       =   Map.empty
               ,   autoCommand       =   return ()
+              ,   autoURI           =   Nothing
               }
     ideR <- newIORef ide
     (`reflectIDE` ideR) f >>= putMVar result
@@ -149,19 +153,19 @@ allEditors test = allM id
         debugM "leksah" $ show editor
         testIDE $ test (newBuffer :: Maybe FilePath -> Text -> IDEM (EditorBuffer editor))
 
-prop_test :: Text -> Property
+prop_test :: String -> Property
 prop_test s = monadicIO $ do
     let input = filter (not . flip elem "\NUL\r") s
     result <- run $ allEditors (\buf -> do
         (win:_) <- getWindows
-        buffer <- buf Nothing ""
-        view <- newView buffer (Just "monospace")
+        buffer <- buf Nothing (T.pack "")
+        view <- newView buffer (Just $ T.pack "monospace")
         sw <- getScrolledWindow view
         liftIO $ containerAdd win sw
-        setText buffer input
+        setText buffer (T.pack input)
         first <- getStartIter buffer
         last <- getEndIter buffer
         out <- getText buffer first last True
-        return $ input == out)
+        return $ T.pack input == out)
     assert result
 

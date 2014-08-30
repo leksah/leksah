@@ -1,4 +1,4 @@
-{-# LANGUAGE TemplateHaskell #-}
+{-# LANGUAGE TemplateHaskell, OverloadedStrings #-}
 -----------------------------------------------------------------------------
 --
 -- Module      :  Tests
@@ -29,19 +29,20 @@ import System.Log (Priority(..))
 import Control.Concurrent
        (yield, takeMVar, putMVar, newEmptyMVar, threadDelay, forkIO)
 import System.Glib.MainLoop (priorityHigh)
+import Data.Monoid ((<>))
 
 testString =    "    Could not find module `Graphics.UI.Gtk':\n"
-             ++ "      It is a member of the hidden package `gtk-0.11.0'.\n"
-             ++ "      Perhaps you need to add `gtk' to the build-depends in your .cabal file.\n"
-             ++ "      Use -v to see a list of the files searched for."
+             <> "      It is a member of the hidden package `gtk-0.11.0'.\n"
+             <> "      Perhaps you need to add `gtk' to the build-depends in your .cabal file.\n"
+             <> "      Use -v to see a list of the files searched for."
 
 prop_parseHiddenModule = parseHiddenModule testString == Just HiddenModuleResult {hiddenModule = "Graphics.UI.Gtk", missingPackage = PackageIdentifier {pkgName = PackageName "gtk", pkgVersion = Version {versionBranch = [0,11,0], versionTags = []}}}
 
 -- At some point the : was removed from this message...
 testString2 =   "    Could not find module `Data.Attoparsec.Lazy'\n"
-             ++ "    It is a member of the hidden package `attoparsec-0.10.2.0'.\n"
-             ++ "    Perhaps you need to add `attoparsec' to the build-depends in your .cabal file.\n"
-             ++ "    Use -v to see a list of the files searched for.\n"
+             <> "    It is a member of the hidden package `attoparsec-0.10.2.0'.\n"
+             <> "    Perhaps you need to add `attoparsec' to the build-depends in your .cabal file.\n"
+             <> "    Use -v to see a list of the files searched for.\n"
 
 prop_parseHiddenModule2 = parseHiddenModule testString2 == Just HiddenModuleResult {hiddenModule = "Data.Attoparsec.Lazy", missingPackage = PackageIdentifier {pkgName = PackageName "attoparsec", pkgVersion = Version {versionBranch = [0,10,2,0], versionTags = []}}}
 

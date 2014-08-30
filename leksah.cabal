@@ -350,7 +350,7 @@ test-suite tests
     build-depends: base >=4.0.0.0 && <4.8, Cabal >=1.10.2.0 && <1.22,
                    QuickCheck >=2.4.2 && <2.8, leksah ==0.14.0.1,
                    containers, ltk, leksah-server, hslogger,
-                   transformers, glib, monad-loops
+                   transformers, glib, monad-loops, text
     if flag(gtk3)
         build-depends: gtk3 >=0.13.0.0 && <0.14, gtksourceview3 >=0.13.0.0 && <0.14, webkitgtk3 -any
         cpp-options:   -DMIN_VERSION_gtk=MIN_VERSION_gtk3
