@@ -35,7 +35,7 @@ export CPPFLAGS=`pkg-config --cflags-only-I libcurl`
 if test "`uname`" = "Darwin"; then
     cabal install ./ ./vendor/ltk ./vendor/leksah-server ./vendor/yi/yi gtk3 ghcjs-dom jsaddle vendor/haskellVCSWrapper/vcswrapper vendor/haskellVCSGUI/vcsgui --with-ghc=ghc$GHCVERSION -j4 -fhave-quartz-gtk -fwebkit -flibcurl -fyi -fpango --with-gcc=gcc-mp-4.8 || exit
 else
-    cabal install ./ ./vendor/ltk ./vendor/leksah-server ./vendor/yi/yi gtk3 ghcjs-dom jsaddle vendor/haskellVCSWrapper/vcswrapper vendor/haskellVCSGUI/vcsgui --with-ghc=ghc$GHCVERSION -j4 -fwebkit -flibcurl --force-reinstalls || bash || exit
+    cabal install ./ ./vendor/ltk ./vendor/leksah-server                gtk3 ghcjs-dom jsaddle vendor/haskellVCSWrapper/vcswrapper vendor/haskellVCSGUI/vcsgui --with-ghc=ghc$GHCVERSION -j4 -fwebkit -flibcurl -f-yi -fpango -f-vty --force-reinstalls --extra-lib-dirs=/c/MinGWRPM/lib || bash || exit
 #  if [ "$GHC_VER" != "7.0.3" ] && [ "$GHC_VER" != "7.0.4" ] && [ "$GHC_VER" != "7.6.1" ]; then
 #    echo https://github.com/yi-editor/yi.git >> sources.txt
 #    export LEKSAH_CONFIG_ARGS="$LEKSAH_CONFIG_ARGS -fyi -f-vty -f-dyre -fpango"

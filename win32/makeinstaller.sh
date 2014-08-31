@@ -32,7 +32,7 @@ cp -ru "$LEKSAH_PREFIX/$LEKSAH_X_X_X_X"/pics SourceDir/leksah
 cp -u  "$LEKSAH_PREFIX/$LEKSAH_X_X_X_X"/LICENSE SourceDir/leksah
 cp -u  "$LEKSAH_PREFIX/$LEKSAH_X_X_X_X"/Readme.md SourceDir/leksah
 mkdir -p SourceDir/hlint
-cp -u  "$LEKSAH_PREFIX/$HLINT_X_X_X_X"/* SourceDir/hlint
+cp -ru "$LEKSAH_PREFIX/$HLINT_X_X_X_X"/* SourceDir/hlint
 mkdir -p SourceDir/pretty-show
 cp -ru "$LEKSAH_PREFIX/$PRETTY_SHOW_X_X"/style SourceDir/pretty-show
 mkdir -p SourceDir/ghcjs-codemirror
