@@ -64,6 +64,7 @@ cp -u  "$GTK_PREFIX"/bin/libffi-6.dll SourceDir/bin
 cp -u  "$GTK_PREFIX"/bin/libfontconfig-1.dll SourceDir/bin
 cp -u  "$GTK_PREFIX"/bin/libfreetype-6.dll SourceDir/bin
 cp -u  "$GTK_PREFIX"/bin/libgailutil-3-0.dll SourceDir/bin
+cp -u  "$GTK_PREFIX"/bin/libgcc_s_seh-1.dll SourceDir/bin
 cp -u  "$GTK_PREFIX"/bin/libgcc_s_sjlj-1.dll SourceDir/bin
 cp -u  "$GTK_PREFIX"/bin/libgdk-3-0.dll SourceDir/bin
 cp -u  "$GTK_PREFIX"/bin/libgdk_pixbuf-2.0-0.dll SourceDir/bin
