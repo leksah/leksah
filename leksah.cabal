@@ -1,5 +1,5 @@
 name: leksah
-version: 0.14.0.1
+version: 0.14.0.3
 cabal-version: >=1.10
 build-type: Simple
 license: GPL
@@ -284,6 +284,7 @@ library
                      IDE.Command.VCS.Common.Workspaces IDE.Command.VCS.Common.GUI
                      IDE.Command.VCS.Common.Helper IDE.Command.VCS.Types
                      IDE.Command.Print IDE.Pane.WebKit.Documentation
+                     IDE.Pane.WebKit.Inspect
                      IDE.Pane.WebKit.Output IDE.TextEditor.Class
                      IDE.TextEditor.CodeMirror IDE.TextEditor.Yi
                      IDE.TextEditor.GtkSourceView IDE.Utils.ExternalTool
@@ -312,7 +313,7 @@ Executable leksah
         ghc-options: -threaded
 
     hs-source-dirs: main
-    build-depends: leksah == 0.14.0.1, base >= 4.0.0.0 && <=4.8, gtk3 -any
+    build-depends: leksah == 0.14.0.3, base >= 4.0.0.0 && <=4.8, gtk3 -any
     if os(linux) && flag(loc)
         cpp-options: -DLOCALIZATION
         build-depends: hgettext, setlocale
@@ -331,7 +332,7 @@ executable bewleksah
     if !flag(webkit)
         buildable: False
     else
-        build-depends: leksah ==0.14.0.1, base >=4.0.0.0 && <=4.8,
+        build-depends: leksah ==0.14.0.3, base >=4.0.0.0 && <=4.8,
                        jsaddle -any, ghcjs-dom -any
         if flag(gtk3)
           build-depends: gtk3 >=0.13.0.0 && <0.14, gtksourceview3 >=0.13.0.0 && <0.14,
@@ -348,7 +349,7 @@ executable bewleksah
 
 test-suite tests
     build-depends: base >=4.0.0.0 && <4.8, Cabal >=1.10.2.0 && <1.22,
-                   QuickCheck >=2.4.2 && <2.8, leksah ==0.14.0.1,
+                   QuickCheck >=2.4.2 && <2.8, leksah ==0.14.0.3,
                    containers, ltk, leksah-server, hslogger,
                    transformers, glib, monad-loops, text
     if flag(gtk3)

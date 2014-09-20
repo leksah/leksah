@@ -805,6 +805,7 @@ defaultPrefs = Prefs {
                                 ,   ("*Doc","ToolCategory")
                                 ,   ("*Info","LogCategory")
                                 ,   ("*Log","LogCategory")
+                                ,   ("*Inspect","LogCategory")
                                 ,   ("*Modules","ToolCategory")
                                 ,   ("*Out","ToolCategory")
                                 ,   ("*Package","EditorCategory")

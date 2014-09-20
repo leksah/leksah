@@ -102,6 +102,7 @@ import IDE.Pane.Grep (getGrep)
 import IDE.Pane.HLint (refreshHLint, getHLint)
 import IDE.Pane.WebKit.Documentation (getDocumentation)
 import IDE.Pane.WebKit.Output (getOutputPane)
+import IDE.Pane.WebKit.Inspect (getInspectPane)
 import IDE.Pane.Files (refreshFiles, getFiles)
 import Control.Monad.IO.Class (MonadIO(..))
 import Control.Monad (unless, when)
@@ -402,6 +403,8 @@ mkActions =
         (getDocumentation Nothing  >>= \ p -> displayPane p False) [] False
     ,AD "ShowOutput" (__ "Output") Nothing Nothing
         (getOutputPane Nothing  >>= \ p -> displayPane p False) [] False
+    ,AD "ShowInspect" (__ "Web Inspect") Nothing Nothing
+        (getInspectPane Nothing  >>= \ p -> displayPane p False) [] False
     ,AD "ShowErrors" (__ "Errors") Nothing Nothing
         (getErrors Nothing  >>= \ p -> displayPane p False) [] False
     ,AD "ShowLog" (__ "Log") Nothing Nothing

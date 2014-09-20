@@ -59,6 +59,7 @@ import IDE.Pane.Grep
 import IDE.Pane.HLint
 import IDE.Pane.WebKit.Documentation
 import IDE.Pane.WebKit.Output
+import IDE.Pane.WebKit.Inspect
 import IDE.Pane.Files
 import IDE.Pane.Breakpoints
 import IDE.Pane.Trace
@@ -99,6 +100,7 @@ data PaneState      =   BufferSt BufferState
                     |   HLintSt HLintState
                     |   DocumentationSt DocumentationState
                     |   OutputSt OutputState
+                    |   InspectSt InspectState
                     |   BreakpointsSt BreakpointsState
                     |   TraceSt TraceState
                     |   VariablesSt VariablesState
@@ -119,6 +121,7 @@ asPaneState s | isJust ((cast s) :: Maybe GrepState)        =   GrepSt (fromJust
 asPaneState s | isJust ((cast s) :: Maybe HLintState)       =   HLintSt (fromJust $ cast s)
 asPaneState s | isJust ((cast s) :: Maybe DocumentationState) = DocumentationSt (fromJust $ cast s)
 asPaneState s | isJust ((cast s) :: Maybe OutputState)      =   OutputSt (fromJust $ cast s)
+asPaneState s | isJust ((cast s) :: Maybe InspectState)     =   InspectSt (fromJust $ cast s)
 asPaneState s | isJust ((cast s) :: Maybe BreakpointsState) =   BreakpointsSt (fromJust $ cast s)
 asPaneState s | isJust ((cast s) :: Maybe TraceState)       =   TraceSt (fromJust $ cast s)
 asPaneState s | isJust ((cast s) :: Maybe VariablesState)   =   VariablesSt (fromJust $ cast s)

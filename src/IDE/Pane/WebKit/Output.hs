@@ -63,12 +63,17 @@ import Graphics.UI.Editor.Basics (Connection(..))
 import Text.Show.Pretty
        (HtmlOpts(..), defaultHtmlOpts, valToHtmlPage, parseValue, getDataDir)
 import System.FilePath ((</>))
+import IDE.Pane.WebKit.Inspect (getInspectPane, IDEInspect(..))
+import Graphics.UI.Gtk.WebKit.WebSettings
+       (webSettingsEnableDeveloperExtras)
+import Graphics.UI.Gtk.WebKit.WebInspector (inspectWebView)
 #endif
 import Data.IORef (writeIORef, newIORef, readIORef, IORef)
 import Control.Applicative ((<$>))
 import System.Log.Logger (debugM)
 import Graphics.UI.Gtk.WebKit.WebView
-       (loadCommitted, webViewGetUri)
+       (webViewSetWebSettings, webViewGetWebSettings, webViewGetInspector,
+        loadCommitted, webViewGetUri)
 import Graphics.UI.Gtk.WebKit.WebFrame (webFrameGetUri)
 import Data.Text (Text)
 import qualified Data.Text as T (unpack, pack)
@@ -181,6 +186,15 @@ instance RecoverablePane IDEOutput OutputState IDEM where
         cid6 <- uriEntry `after` focusInEvent $ do
             liftIO $ reflectIDE (makeActive out) ideR
             return True
+
+        settings <- webViewGetWebSettings webView
+        settings `set` [webSettingsEnableDeveloperExtras := True]
+        webViewSetWebSettings webView settings
+        inspector <- webViewGetInspector webView
+        cid7 <- on inspector inspectWebView $ \view -> (`reflectIDE` ideR) $ do
+            inspectPane <- getInspectPane Nothing
+            displayPane inspectPane False
+            return $ inspectView inspectPane
 
         return (Just out, [ConnectC cid1, ConnectC cid2, ConnectC cid3, ConnectC cid4, ConnectC cid5, ConnectC cid6])
 #else
