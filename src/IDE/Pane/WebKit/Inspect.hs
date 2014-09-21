@@ -66,10 +66,13 @@ import Data.IORef (writeIORef, newIORef, readIORef, IORef)
 import Control.Applicative ((<$>))
 import System.Log.Logger (debugM)
 import Graphics.UI.Gtk.WebKit.WebView
-       (loadCommitted, webViewGetUri)
+       (webViewSetWebSettings, webViewGetWebSettings, loadCommitted,
+        webViewGetUri)
 import Graphics.UI.Gtk.WebKit.WebFrame (webFrameGetUri)
 import Data.Text (Text)
 import qualified Data.Text as T (unpack, pack)
+import Graphics.UI.Gtk.WebKit.WebSettings
+       (webSettingsMonospaceFontFamily)
 
 data IDEInspect = IDEInspect {
     scrollWin     :: ScrolledWindow
@@ -115,6 +118,9 @@ instance RecoverablePane IDEInspect InspectState IDEM where
 
 #ifdef WEBKITGTK
         inspectView <- webViewNew
+        settings <- webViewGetWebSettings inspectView
+        settings `set` [webSettingsMonospaceFontFamily := ("Consolas" :: Text)]
+        webViewSetWebSettings inspectView settings
         alwaysHtmlRef <- newIORef False
         containerAdd scrollWin inspectView
 #else
