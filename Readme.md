@@ -22,7 +22,7 @@ Leksah currently requires:
 To build the latest development version of Leksah follow the
 steps in the [.travis.yml](.travis.yml) file.
 
-If you are a user and would simply like to test Leksah, we would highley appreciate your feedback.
+If you are a user and would simply like to test Leksah, we would highly appreciate your feedback.
 
 Please send questions and suggestions to
 the [Leksah group](https://groups.google.com/forum/#!forum/leksah)
