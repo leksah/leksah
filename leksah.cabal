@@ -1,6 +1,6 @@
 name: leksah
-version: 0.14.1.0
-cabal-version: >=1.10
+version: 0.14.1.1
+cabal-version: >=1.18
 build-type: Simple
 license: GPL
 license-file: LICENSE
@@ -227,10 +227,10 @@ library
         ghc-options: -threaded
 
     if flag(gtk3)
-      build-depends: gtk3 >=0.13.0.0 && <0.14, gtksourceview3 >=0.13.0.0 && <0.14
+      build-depends: gtk3 >=0.13.0.0 && <0.14, gtksourceview3 >=0.13.1.0 && <0.14
       cpp-options:   -DMIN_VERSION_gtk=MIN_VERSION_gtk3
     else
-      build-depends: gtk >=0.13.0.0 && <0.14, gtksourceview2 >=0.13.0.0 && <0.14
+      build-depends: gtk >=0.13.0.0 && <0.14, gtksourceview2 >=0.13.1.0 && <0.14
 
     if flag(webkit)
         if flag(gtk3)
@@ -313,7 +313,7 @@ Executable leksah
         ghc-options: -threaded
 
     hs-source-dirs: main
-    build-depends: leksah == 0.14.1.0, base >= 4.0.0.0 && <=4.8, gtk3 -any
+    build-depends: leksah == 0.14.1.1, base >= 4.0.0.0 && <=4.8, gtk3 -any
     if os(linux) && flag(loc)
         cpp-options: -DLOCALIZATION
         build-depends: hgettext, setlocale
@@ -332,14 +332,14 @@ executable bewleksah
     if !flag(webkit)
         buildable: False
     else
-        build-depends: leksah ==0.14.1.0, base >=4.0.0.0 && <=4.8,
+        build-depends: leksah ==0.14.1.1, base >=4.0.0.0 && <=4.8,
                        jsaddle -any, ghcjs-dom -any
         if flag(gtk3)
-          build-depends: gtk3 >=0.13.0.0 && <0.14, gtksourceview3 >=0.13.0.0 && <0.14,
+          build-depends: gtk3 >=0.13.0.0 && <0.14, gtksourceview3 >=0.13.1.0 && <0.14,
                          webkitgtk3 -any, webkitgtk3-javascriptcore -any
           cpp-options:   -DMIN_VERSION_gtk=MIN_VERSION_gtk3
         else
-          build-depends: gtk >=0.13.0.0 && <0.14, gtksourceview2 >=0.13.0.0 && <0.14,
+          build-depends: gtk >=0.13.0.0 && <0.14, gtksourceview2 >=0.13.1.0 && <0.14,
                          webkit -any, webkit-javascriptcore -any
 
     main-is: Main.hs
@@ -349,14 +349,14 @@ executable bewleksah
 
 test-suite tests
     build-depends: base >=4.0.0.0 && <4.8, Cabal >=1.10.2.0 && <1.22,
-                   QuickCheck >=2.4.2 && <2.8, leksah ==0.14.1.0,
+                   QuickCheck >=2.4.2 && <2.8, leksah ==0.14.1.1,
                    containers, ltk, leksah-server, hslogger,
                    transformers, glib, monad-loops, text
     if flag(gtk3)
-        build-depends: gtk3 >=0.13.0.0 && <0.14, gtksourceview3 >=0.13.0.0 && <0.14, webkitgtk3 -any
+        build-depends: gtk3 >=0.13.0.0 && <0.14, gtksourceview3 >=0.13.1.0 && <0.14, webkitgtk3 -any
         cpp-options:   -DMIN_VERSION_gtk=MIN_VERSION_gtk3
     else
-        build-depends: gtk >=0.13.0.0 && <0.14, gtksourceview2 >=0.13.0.0 && <0.14, webkit -any
+        build-depends: gtk >=0.13.0.0 && <0.14, gtksourceview2 >=0.13.1.0 && <0.14, webkit -any
     if flag(yi)
         build-depends: yi >=0.6.6.1 && <0.7
     type: exitcode-stdio-1.0

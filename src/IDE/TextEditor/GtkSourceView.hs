@@ -260,7 +260,7 @@ instance TextEditor GtkSourceView where
 
     -- View
     bufferToWindowCoords (GtkView sv) point = liftIO $ textViewBufferToWindowCoords sv TextWindowWidget point
-    drawTabs (GtkView sv) = liftIO $ sourceViewSetDrawSpaces sv SourceDrawSpacesTab
+    drawTabs (GtkView sv) = liftIO $ sourceViewSetDrawSpaces sv [SourceDrawSpacesTab, SourceDrawSpacesTrailing]
     getBuffer (GtkView sv) = liftIO $ (GtkBuffer . castToSourceBuffer) <$> sv `get` textViewBuffer
 #ifdef MIN_VERSION_gtk3
     getWindow (GtkView sv) = liftIO $ widgetGetWindow sv
