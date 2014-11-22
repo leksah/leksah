@@ -190,10 +190,6 @@ flag gtk3
     Description: Use GTK3 rather than GTK2
     Default: True
 
-flag webkit
-    Description: Use WebKitGTK+
-    Default: True
-
 flag loc
     Description: Experimental localization support
     Default: False
@@ -232,14 +228,13 @@ library
     else
       build-depends: gtk >=0.13.0.0 && <0.14, gtksourceview2 >=0.13.1.0 && <0.14
 
-    if flag(webkit)
-        if flag(gtk3)
-          build-depends: webkitgtk3 -any, webkitgtk3-javascriptcore -any
-        else
-          build-depends: webkit -any, webkit-javascriptcore -any
-        build-depends: jsaddle -any, ghcjs-codemirror -any, hamlet -any, blaze-html -any,
-                       lens -any, pretty-show >=1.6.3 && <1.7
-        cpp-options: -DWEBKITGTK -DLEKSAH_WITH_CODE_MIRROR
+    if flag(gtk3)
+      build-depends: webkitgtk3 -any, webkitgtk3-javascriptcore -any
+    else
+      build-depends: webkit -any, webkit-javascriptcore -any
+    build-depends: jsaddle -any, ghcjs-codemirror -any, hamlet -any, blaze-html -any,
+                   lens -any, pretty-show >=1.6.3 && <1.7
+    cpp-options: -DWEBKITGTK -DLEKSAH_WITH_CODE_MIRROR
 
     if flag(loc) && os(linux)
         cpp-options: -DLOCALIZATION
@@ -329,18 +324,15 @@ Executable leksah
     ghc-options: -rtsopts -O2 -fwarn-missing-fields -fwarn-incomplete-patterns -ferror-spans
 
 executable bewleksah
-    if !flag(webkit)
-        buildable: False
+    build-depends: leksah ==0.14.1.1, base >=4.0.0.0 && <=4.8,
+                   jsaddle -any, ghcjs-dom -any
+    if flag(gtk3)
+      build-depends: gtk3 >=0.13.0.0 && <0.14, gtksourceview3 >=0.13.1.0 && <0.14,
+                     webkitgtk3 -any, webkitgtk3-javascriptcore -any
+      cpp-options:   -DMIN_VERSION_gtk=MIN_VERSION_gtk3
     else
-        build-depends: leksah ==0.14.1.1, base >=4.0.0.0 && <=4.8,
-                       jsaddle -any, ghcjs-dom -any
-        if flag(gtk3)
-          build-depends: gtk3 >=0.13.0.0 && <0.14, gtksourceview3 >=0.13.1.0 && <0.14,
-                         webkitgtk3 -any, webkitgtk3-javascriptcore -any
-          cpp-options:   -DMIN_VERSION_gtk=MIN_VERSION_gtk3
-        else
-          build-depends: gtk >=0.13.0.0 && <0.14, gtksourceview2 >=0.13.1.0 && <0.14,
-                         webkit -any, webkit-javascriptcore -any
+      build-depends: gtk >=0.13.0.0 && <0.14, gtksourceview2 >=0.13.1.0 && <0.14,
+                     webkit -any, webkit-javascriptcore -any
 
     main-is: Main.hs
     buildable: True
@@ -358,7 +350,7 @@ test-suite tests
     else
         build-depends: gtk >=0.13.0.0 && <0.14, gtksourceview2 >=0.13.1.0 && <0.14, webkit -any
     if flag(yi)
-        build-depends: yi >=0.6.6.1 && <0.7
+        build-depends: yi
     type: exitcode-stdio-1.0
     main-is: Tests.hs
     other-modules: IDE.TextEditor.Tests
