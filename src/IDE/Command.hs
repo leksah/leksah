@@ -899,7 +899,7 @@ registerLeksahEvents =    do
         (\ e@UpdateWorkspaceInfo  -> updateWorkspaceInfo >> return e)
     registerEvent stRef "WorkspaceChanged"
         (\ e@(WorkspaceChanged showPane updateFileCache)
-                                        -> updateWorkspace showPane updateFileCache >> return e)
+                                  -> postAsyncIDE (updateWorkspace showPane updateFileCache) >> return e)
     registerEvent stRef "RecordHistory"
         (\ rh@(RecordHistory h)   -> recordHistory h >> return rh)
     registerEvent stRef "Sensitivity"

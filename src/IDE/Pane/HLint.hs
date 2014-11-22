@@ -64,6 +64,7 @@ import Data.Text (Text)
 import qualified Data.Text as T
        (replicate, unlines, init, lines, pack, unpack)
 import Data.Monoid ((<>))
+import qualified System.IO.Strict as S (readFile)
 
 data HLintRecord = HLintRecord {
             condPackage :: Maybe IDEPackage
@@ -255,8 +256,10 @@ refreshDir store iter package = do
                         Nothing -> []
     (flags, classify, hint) <- liftIO H.autoSettings
     let modules = Map.keys (ipdModules package)
-    pathes <- getSourcePathes (ipdPackageId package) modules
-    resL <- liftIO $ mapM (\dir -> H.parseModuleEx flags dir Nothing) pathes
+    paths <- getSourcePaths (ipdPackageId package) modules
+    resL <- liftIO $ mapM (\ file -> do
+        str <- S.readFile file
+        H.parseModuleEx flags file (Just str)) paths
     let resOk = mapMaybe (\ pr -> case pr of
                                     Left e -> trace ("can't parse: " ++ H.parseErrorContents e ++
                                         " location " ++ show H.parseErrorLocation) Nothing
@@ -266,8 +269,8 @@ refreshDir store iter package = do
     return ()
 
 
-getSourcePathes :: PackageIdentifier -> [ModuleName] -> IDEM [FilePath]
-getSourcePathes packId names = do
+getSourcePaths :: PackageIdentifier -> [ModuleName] -> IDEM [FilePath]
+getSourcePaths packId names = do
     mbWorkspaceInfo     <-  getWorkspaceInfo
     case mbWorkspaceInfo of
         Nothing -> return []

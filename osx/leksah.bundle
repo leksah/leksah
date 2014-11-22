@@ -139,7 +139,7 @@
   </data>
 
   <data dest="${bundle}/Contents/Resources/share/hlint">
-    ${prefix:hlint}
+    ${prefix:hlint}/share
   </data>
 
   <!-- Copy in the themes data. You may want to trim this to save space
