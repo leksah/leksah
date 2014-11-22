@@ -71,12 +71,6 @@
     ${prefix}/lib/${gtkdir}/${pkg:${gtk}:gtk_binary_version}/immodules/*.so
   </binary>
 
-  <!-- Copy in GTK+ theme engines.  -->
-  <binary>
-    ${prefix}/lib/${gtkdir}/${pkg:${gtk}:gtk_binary_version}/theming-engines/*.so
-  </binary>
-
-
 <!-- And the print backends -->
   <binary>
     ${prefix}/lib/${gtkdir}/${pkg:${gtk}:gtk_binary_version}/printbackends/*.so
@@ -186,7 +180,7 @@
        needed for the "hicolor" base theme.
   -->
   <icon-theme icons="all">
-    hicolor
+      Adwaita
   </icon-theme>
 
   <!-- Custom prefs for the Mac -->
