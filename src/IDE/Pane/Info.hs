@@ -48,7 +48,7 @@ import Graphics.UI.Gtk
         scrolledWindowSetPolicy, castToWidget, ScrolledWindow)
 import Graphics.UI.Gtk.General.Enums (PolicyType(..))
 import System.Glib.Signals (on)
-import Control.Monad (void, when)
+import Control.Monad (unless, void, when)
 import Data.Foldable (forM_)
 import qualified Data.Text as T (unpack, pack, null)
 import Data.Monoid ((<>))
@@ -95,7 +95,7 @@ instance RecoverablePane IDEInfo InfoState IDEM where
         createHyperLinkSupport descriptionView sw (\_ _ iter -> do
                 (beg, en) <- getIdentifierUnderCursorFromIter (iter, iter)
                 return (beg, en)) (\_ shift' slice ->
-                                    when (not $ T.null slice) $ do
+                                    unless (T.null slice) $ do
                                         -- liftIO$ print ("slice",slice)
                                         triggerEventIDE (SelectInfo slice shift')
                                         return ()

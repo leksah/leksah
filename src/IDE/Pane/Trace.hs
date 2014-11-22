@@ -260,7 +260,7 @@ tracesParser = try (do
         eof
         return []
     <?>
-        (T.unpack $ __ "traces parser")
+        T.unpack (__ "traces parser")
 
 traceParser :: CharParser () TraceHist
 traceParser = do
@@ -274,7 +274,7 @@ traceParser = do
     span     <- srcSpanParser
     symbol ")"
     return (TraceHist False index function span)
-    <?> (T.unpack $ __ "trace parser")
+    <?> T.unpack (__ "trace parser")
 
 lexer  = P.makeTokenParser emptyDef
 colon  = P.colon lexer

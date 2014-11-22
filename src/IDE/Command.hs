@@ -863,8 +863,8 @@ setSymbol symbol openSource = do
                GenScopeC (PackScope _ symbolTable2)) ->
             case filter (not . isReexported) (getIdentifierDescr symbol symbolTable1 symbolTable2) of
                 []     -> return ()
-                a:[]   -> selectIdentifier a openSource
-                a:b:[] -> if isJust (dscMbModu a) && dscMbModu a == dscMbModu b &&
+                [a]   -> selectIdentifier a openSource
+                [a, b] -> if isJust (dscMbModu a) && dscMbModu a == dscMbModu b &&
                             isNear (dscMbLocation a) (dscMbLocation b)
                                 then selectIdentifier a openSource
                                 else setChoices search [a,b]
@@ -890,7 +890,8 @@ registerLeksahEvents =    do
                 return ()
             return e)
     registerEvent stRef "SelectInfo"
-        (\ e@(SelectInfo str gotoSource)     -> setSymbol str gotoSource >> return e)
+        (\ e@(SelectInfo str gotoSource)
+                                  -> setSymbol str gotoSource >> return e)
     registerEvent stRef "SelectIdent"
         (\ e@(SelectIdent id)     -> selectIdentifier id False >> return e)
     registerEvent stRef "InfoChanged"
@@ -907,7 +908,7 @@ registerLeksahEvents =    do
     registerEvent stRef "SearchMeta"
         (\ e@(SearchMeta string)  -> getSearch Nothing >>= flip searchMetaGUI string >> return e)
     registerEvent stRef "StartFindInitial"
-        (\ e@StartFindInitial  -> editFindInc Initial >> return e)
+        (\ e@StartFindInitial     -> editFindInc Initial >> return e)
     registerEvent stRef "LoadSession"
         (\ e@(LoadSession fp)     -> loadSession fp >> return e)
     registerEvent stRef "SaveSession"

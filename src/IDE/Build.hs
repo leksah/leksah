@@ -146,7 +146,7 @@ constrMakeChain ms@MakeSettings{msMakeMode = makeMode}
 chainFor :: IDEPackage ->  MakeSettings -> MakeOp -> Chain MakeOp IDEPackage
                 -> Maybe (Chain MakeOp IDEPackage)
                 -> Chain MakeOp IDEPackage
-chainFor target settings (MoComposed (hdOp:[])) cont mbNegCont =
+chainFor target settings (MoComposed [hdOp]) cont mbNegCont =
     chainFor target settings hdOp cont mbNegCont
 chainFor target settings (MoComposed (hdOp:rest)) cont mbNegCont =
     chainFor target settings hdOp (chainFor target settings (MoComposed rest) cont mbNegCont)
