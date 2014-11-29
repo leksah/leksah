@@ -1,3 +1,4 @@
+{-# LANGUAGE CPP #-}
 {-# LANGUAGE DeriveDataTypeable #-}
 {-# LANGUAGE MultiParamTypeClasses #-}
 {-# LANGUAGE FlexibleInstances #-}
@@ -251,10 +252,14 @@ hlintDirectories2 packages = do
 refreshDir :: TreeStore HLintRecord -> TreeIter -> IDEPackage -> IDEM ()
 refreshDir store iter package = do
     mbHlintDir <- liftIO $ leksahSubDir "hlint"
-    let datadirOpt = case mbHlintDir of
-                        Just d  -> "--datadir":[d]
-                        Nothing -> []
-    (flags, classify, hint) <- liftIO H.autoSettings
+    (flags, classify, hint) <- liftIO $ case mbHlintDir of
+                                            Just d  ->
+#if MIN_VERSION_hlint(1, 9, 13)
+                                                H.autoSettings' d
+#else
+                                                H.autoSettings
+#endif
+                                            Nothing -> H.autoSettings
     let modules = Map.keys (ipdModules package)
     paths <- getSourcePaths (ipdPackageId package) modules
     resL <- liftIO $ mapM (\ file -> do
