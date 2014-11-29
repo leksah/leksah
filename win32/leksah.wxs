@@ -7,9 +7,14 @@
         <Media Id="1" Cabinet="product.cab" EmbedCab="yes"/>
 
         <Directory Id="TARGETDIR" Name="SourceDir">
-            <Directory Id="ProgramFilesFolder">
+            <Directory Id="WindowsVolume">
                 <Directory Id="INSTALLDIR" Name="Leksah">
-                    <Directory Id="BINDIR" Name="bin"/>
+                    <Directory Id="BINDIR" Name="bin">
+                        <Component Id="Path" Guid="{407F265F-2562-46DC-A088-73AD7CB82B38}">
+                            <CreateFolder />
+                            <Environment Id="PATH" Name="PATH" Value="[BINDIR]" Permanent="no" Part="first" Action="set" System="yes" />
+                        </Component>
+                    </Directory>
                 </Directory>
             </Directory>
             <Directory Id="ProgramMenuFolder">
@@ -30,7 +35,7 @@
                 <RegistryValue Root="HKCU" Key="Software\Leksah\Leksah" Name="installed" Type="integer" Value="1" KeyPath="yes"/>
             </Component>
         </DirectoryRef>
-        
+
         <DirectoryRef Id="FontsFolder">
             <Component Id="cmpA07D4D7013C154093786BCABE0A0EF33" Guid="{6DFBC8A0-B988-4A93-B95B-2C864E378DE3}">
                 <File Id="fil0EFB049678EE3D4A9A3887C4954FEE2A" KeyPath="yes" TrueType="yes" Source="C:\dejavu-fonts\ttf\DejaVuSans-Bold.ttf" />
@@ -124,15 +129,14 @@
         <Icon Id="leksah.ico" SourceFile="leksah.ico"/>
         <Property Id="ARPPRODUCTICON" Value="leksah.ico"/>
 
-        <SetDirectory Id="INSTALLDIR" Value="[WindowsVolume]Leksah"/>
-
         <WixVariable Id="WixUILicenseRtf" Value="..\LICENSE.rtf"/>
         <Property Id="WIXUI_INSTALLDIR" Value="INSTALLDIR"/>
         <UIRef Id="WixUI_FeatureTree"/>
-        
+
         <Feature Id="DefaultFeature" Level="1" ConfigurableDirectory="INSTALLDIR" Title="Leksah" Description="Leksah Haskell IDE">
             <ComponentGroupRef Id="Leksah"/>
             <ComponentRef Id="ApplicationShortcut"/>
+            <ComponentRef Id="Path"/>
         </Feature>
 
         <Feature Id="Fonts" Level="1" Title="Deja Vu Fonts" Description="Fonts suitable for Leksah">
