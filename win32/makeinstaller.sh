@@ -96,12 +96,14 @@ cp -u  "$GTK_PREFIX"/bin/libstdc++-6.dll SourceDir/bin
 cp -u  "$GTK_PREFIX"/bin/libxml2-2.dll SourceDir/bin
 cp -u  "$GTK_PREFIX"/bin/libxslt-1.dll SourceDir/bin
 cp -u  "$GTK_PREFIX"/bin/libwebkitgtk-3.0-0.dll SourceDir/bin
-cp -u  "$GTK_PREFIX"/bin/libwebp-4.dll SourceDir/bin
+cp -u  "$GTK_PREFIX"/bin/libwebp-5.dll SourceDir/bin
 cp -u  "$GTK_PREFIX"/bin/libwinpthread-1.dll SourceDir/bin
 cp -u  "$GTK_PREFIX"/bin/zlib1.dll SourceDir/bin
 cp -u  "$GTK_PREFIX"/bin/pkg-config.exe SourceDir/bin
+cp -u  "$GTK_PREFIX"/bin/grep.exe SourceDir/bin
 mkdir -p SourceDir/share
 cp -ru "$GTK_PREFIX"/share/themes SourceDir/share
+cp -ru "$GTK_PREFIX"/share/icons SourceDir/share
 cp -ru "$GTK_PREFIX"/share/glib-2.0 SourceDir/share
 cp -ru "$GTK_PREFIX"/share/gtksourceview-3.0 SourceDir/share
 mkdir -p SourceDir/libexec
