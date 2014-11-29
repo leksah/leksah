@@ -1,4 +1,3 @@
-{-# LANGUAGE CPP #-}
 {-# LANGUAGE DeriveDataTypeable #-}
 {-# LANGUAGE MultiParamTypeClasses #-}
 {-# LANGUAGE FlexibleInstances #-}
@@ -55,7 +54,7 @@ import qualified Data.Conduit as C
 import qualified Data.Conduit.List as CL
        (foldM, head, isolate, sinkNull)
 import Data.Conduit (($$), (=$))
-import Control.Monad (foldM, when)
+import Control.Monad (void, foldM, when)
 import Control.Monad.Trans.Reader (ask)
 import Control.Monad.Trans.Class (MonadTrans(..))
 import Control.Monad.IO.Class (MonadIO(..))
@@ -92,14 +91,13 @@ data GrepState      =   GrepState
 
 instance Pane IDEGrep IDEM
     where
-    primPaneName _  =   (__ "Grep")
+    primPaneName _  =   __ "Grep"
     getAddedIndex _ =   0
     getTopWidget    =   castToWidget . scrolledView
     paneId b        =   "*Grep"
 
 instance RecoverablePane IDEGrep GrepState IDEM where
-    saveState p     =   do
-        return (Just GrepState)
+    saveState p     =   return (Just GrepState)
     recoverState pp GrepState =   do
         nb      <-  getNotebook pp
         buildPane pp nb builder
@@ -159,11 +157,11 @@ instance RecoverablePane IDEGrep GrepState IDEM where
             gotoSource focus = do
                 sel <- getSelectionGrepRecord treeView grepStore
                 case sel of
-                    Just record -> reflectIDE (do
+                    Just record -> reflectIDE (
                         case record of
                             GrepRecord {file=f, line=l, parDir=Just pp} ->
-                                (goToSourceDefinition pp $ Location f l 0 l 0)
-                                    ?>>= (\(IDEBuffer {sourceView = sv}) -> when focus $ grabFocus sv)
+                                goToSourceDefinition pp (Location f l 0 l 0) ?>>=
+                                   (\ (IDEBuffer{sourceView = sv}) -> when focus $ grabFocus sv)
                             _ -> return ()) ideR
                     Nothing -> return ()
                 return True
@@ -184,7 +182,7 @@ instance RecoverablePane IDEGrep GrepState IDEM where
                             return True
                             -- gotoSource True
                         _ -> return False
-        on sel treeSelectionSelectionChanged (gotoSource False >> return ())
+        on sel treeSelectionSelectionChanged (void (gotoSource False))
 
 
         return (Just grep,[ConnectC cid1])
@@ -201,7 +199,7 @@ grepLineParser = try (do
         char ':'
         context <- T.pack <$> many anyChar
         let parDir = Nothing
-        return $ GrepRecord {..}
+        return GrepRecord {..}
     <?> "grepLineParser")
 
 lexer = P.makeTokenParser emptyDef
@@ -211,7 +209,7 @@ hexadecimal = P.hexadecimal lexer
 symbol = P.symbol lexer
 identifier = P.identifier lexer
 colon = P.colon lexer
-int = fmap fromInteger $ P.integer lexer
+int = fromInteger <$> P.integer lexer
 
 getSelectionGrepRecord ::  TreeView
     ->  TreeStore GrepRecord
@@ -230,10 +228,10 @@ grepWorkspace regexString caseSensitive = do
     ws <- ask
     maybeActive <- lift $ readIDE activePack
     let packages = case maybeActive of
-            Just active -> active : (filter (/= active) $ wsAllPackages ws)
+            Just active -> active : filter (/= active) (wsAllPackages ws)
             Nothing     -> wsAllPackages ws
     lift $ grepDirectories regexString caseSensitive $
-            map (\p -> (dropFileName $ ipdCabalFile p)) $ packages
+            map (dropFileName . ipdCabalFile) packages
 
 grepDirectories :: Text -> Bool -> [FilePath] -> IDEAction
 grepDirectories regexString caseSensitive dirs = do
@@ -251,31 +249,30 @@ grepDirectories regexString caseSensitive dirs = do
 
             totalFound <- foldM (\a dir -> do
                 subDirs <- filter (\f ->
-                       (not ("." `isPrefixOf` f))
-                    && (not (f `elem` ["_darcs", "dist", "vendor"]))) <$> getDirectoryContents dir
+                       not ("." `isPrefixOf` f)
+                    && f `notElem` ["_darcs", "dist", "vendor"]) <$> getDirectoryContents dir
                 nooneWaiting <- isEmptyMVar (waitingGrep grep)
                 found <- if nooneWaiting
                     then do
                         (output, pid) <- runTool "grep" ((if caseSensitive then [] else ["-i"])
-                            ++ ["-r", "-E", "-n", "-I", "--exclude=*~",
-#if !defined(darwin_HOST_OS)
+                            ++ ["-R", "-E", "-n", "-I",
+                                "--exclude=*~",
                                 "--exclude-dir=.svn",
                                 "--exclude-dir=_darcs",
                                 "--exclude-dir=.git",
-#endif
                                 regexString] ++ map T.pack subDirs) (Just dir)
-                        reflectIDE (do
+                        reflectIDE (
                             output $$ do
                                 let max = 1000
                                 CL.isolate max =$ do
                                     n <- setGrepResults dir
                                     when (n >= max) . liftIO $ do
-                                        debugM "leksah" $ "interrupting grep process"
+                                        debugM "leksah" "interrupting grep process"
                                         interruptProcessGroupOf pid
                                           `catch` \(_::SomeException) -> return ()
                                         postGUISync $ do
                                             nDir <- treeModelIterNChildren store Nothing
-                                            treeStoreChange store [nDir-1] (\r -> r{ context = (__ "(Stoped Searching)") })
+                                            treeStoreChange store [nDir-1] (\r -> r{ context = __ "(Stoped Searching)" })
                                             return ()
                                     CL.sinkNull
                                     return n) ideRef
@@ -287,28 +284,28 @@ grepDirectories regexString caseSensitive dirs = do
                 nDir <- treeModelIterNChildren store Nothing
                 treeStoreInsert store [] nDir $ GrepRecord (T.unpack $ __ "Search Complete") totalFound "" Nothing
 
-            takeMVar (activeGrep grep) >> return ()
+            void $ takeMVar (activeGrep grep)
     return ()
 
 setGrepResults :: FilePath -> C.Sink ToolOutput IDEM Int
 setGrepResults dir = do
     ideRef <- lift ask
     grep <- lift $ getGrep Nothing
-    log <- lift $ getLog
-    defaultLogLaunch <- lift $ getDefaultLogLaunch
+    log <- lift getLog
+    defaultLogLaunch <- lift getDefaultLogLaunch
     let store = grepStore grep
         view  = treeView grep
     nDir <- liftIO $ postGUISync $ do
         nDir <- treeModelIterNChildren store Nothing
         treeStoreInsert store [] nDir $ GrepRecord dir 0 "" Nothing
-        when (nDir == 0) (widgetGrabFocus view >> return())
+        when (nDir == 0) (void $ widgetGrabFocus view)
         return nDir
-    CL.foldM (\count line -> do
+    CL.foldM (\count line ->
         if isError line
             then do
-                liftIO $ postGUISync $ reflectIDE (defaultLineLogger log defaultLogLaunch line >> return ()) ideRef
+                liftIO $ postGUISync $ reflectIDE (void $ defaultLineLogger log defaultLogLaunch line) ideRef
                 return count
-            else do
+            else
                 case process dir line of
                     Nothing     -> return count
                     Just record -> liftIO $ do
