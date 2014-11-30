@@ -1,6 +1,7 @@
 {-# LANGUAGE CPP #-}
 {-# LANGUAGE DeriveDataTypeable #-}
 {-# LANGUAGE TypeFamilies #-}
+{-# LANGUAGE OverloadedStrings #-}
 -----------------------------------------------------------------------------
 --
 -- Module      :  IDE.TextEditor.Yi
@@ -55,8 +56,9 @@ import Yi
         Point(..), MarkValue(..), lineOf, pointOfLineColB,
         askMarks, insMark, sizeB, getRawestSelectRegionB, mkRegion,
         deleteRegionB, newMarkB, Mark, pointB, moveTo, savingPointB, Point,
-        withGivenBuffer0, liftEditor, BufferM, BufferRef, Mode(..),
-        IndentSettings(..))
+        withGivenBuffer, withEditor, BufferM, BufferRef, Mode(..),
+        IndentSettings(..), BufferId(..))
+import qualified Yi.Rope as Yi (length, fromText)
 import Control.Applicative ((<$>))
 import Yi.Keymap.Cua (paste, cut, copy)
 import Yi.Buffer.Basic (Direction(..))
@@ -92,14 +94,14 @@ newYiBuffer :: Maybe FilePath -> Text -> IDEM (EditorBuffer Yi)
 newYiBuffer mbFilename contents = do
     liftYiControl $ do
         let (filename, id) = case mbFilename of
-                                Just fn -> (fn, Right fn)
-                                Nothing -> ("Unknown.hs", Left "*leksah*")
-        buffer <- Yi.newBuffer id (T.unpack contents)
+                                Just fn -> (fn, FileBuffer fn)
+                                Nothing -> ("Unknown.hs", MemBuffer "*leksah*")
+        buffer <- Yi.newBuffer id $ Yi.fromText contents
         setBufferMode filename buffer
         return $ YiBuffer buffer
 
 withYiBuffer' :: BufferRef -> BufferM a -> IDEM a
-withYiBuffer' b f = liftYi $ liftEditor $ withGivenBuffer0 b f
+withYiBuffer' b f = liftYi $ withEditor $ withGivenBuffer b f
 
 withYiBuffer :: Buffer -> BufferM a -> IDEM a
 withYiBuffer b f = withYiBuffer' (fBufRef b) f
@@ -152,10 +154,10 @@ instance TextEditor Yi where
     beginUserAction (YiBuffer fb) = return () -- TODO
     canRedo (YiBuffer fb) = return True -- TODO
     canUndo (YiBuffer fb) = return True -- TODO
-    copyClipboard (YiBuffer fb) _ = liftYi $ liftEditor $ copy
+    copyClipboard (YiBuffer fb) _ = liftYi $ withEditor $ copy
     createMark (YiBuffer b) (YiIter (Iter _ p)) leftGravity = withYiBuffer b $
         YiMark <$> newMarkB (MarkValue p (if leftGravity then Backward else Forward))
-    cutClipboard (YiBuffer fb) clipboard defaultEditable = liftYi $ liftEditor $ cut
+    cutClipboard (YiBuffer fb) clipboard defaultEditable = liftYi $ withEditor $ cut
     delete (YiBuffer b) (YiIter (Iter _ first)) (YiIter (Iter _ last)) =
         withYiBuffer b $ deleteRegionB $ mkRegion first last
     deleteSelection (YiBuffer b) = withYiBuffer b $ do
@@ -178,20 +180,20 @@ instance TextEditor Yi where
     getInsertIter (YiBuffer b) = withYiBuffer b $ do
         insertMark <- insMark <$> askMarks
         mkYiIter b <$> (use . markPointA) insertMark
-    getSlice (YiBuffer b) (YiIter first) (YiIter last) includeHidenChars = liftYiControl $ T.pack <$>
+    getSlice (YiBuffer b) (YiIter first) (YiIter last) includeHidenChars = liftYiControl $
         Yi.getText b first last
     getStartIter (YiBuffer b) = return $ mkYiIter b $ Point 0
     getTagTable (YiBuffer b) = return YiTagTable -- TODO
-    getText (YiBuffer b) (YiIter first) (YiIter last) includeHidenChars = liftYiControl $ T.pack <$>
+    getText (YiBuffer b) (YiIter first) (YiIter last) includeHidenChars = liftYiControl $
         Yi.getText b first last
     hasSelection (YiBuffer b) = withYiBuffer b $ do
         region <- getRawestSelectRegionB
         return $ not $ regionIsEmpty region
-    insert (YiBuffer b) (YiIter (Iter _ p)) text = withYiBuffer b $ insertNAt (T.unpack text) p
+    insert (YiBuffer b) (YiIter (Iter _ p)) text = withYiBuffer b $ insertNAt (Yi.fromText text) p
     newView (YiBuffer b) mbFontString = do
         fd <- fontDescription mbFontString
         liftYiControl $ fmap YiView $ Yi.newView b fd
-    pasteClipboard (YiBuffer b) clipboard (YiIter (Iter _ p)) defaultEditable = liftYi $ liftEditor $ paste
+    pasteClipboard (YiBuffer b) clipboard (YiIter (Iter _ p)) defaultEditable = liftYi $ withEditor $ paste
     placeCursor (YiBuffer b) (YiIter (Iter _ p)) = withYiBuffer b $ moveTo p
     redo (YiBuffer b) = withYiBuffer b redoB
     removeTagByName (YiBuffer b) name = return () -- TODO
@@ -201,7 +203,7 @@ instance TextEditor Yi where
         now <- liftIO $ getCurrentTime
         withYiBuffer b $ markSavedB now
     setStyle preferDark (YiBuffer b) mbStyle = return () -- TODO
-    setText (YiBuffer b) text = liftYiControl $ Yi.setText b (T.unpack text)
+    setText (YiBuffer b) text = liftYiControl $ Yi.setText b (Yi.fromText text)
     undo (YiBuffer b) =  withYiBuffer b undoB
     bufferToWindowCoords (YiView v) point = return point -- TODO
     drawTabs (YiView _) = return () -- TODO
@@ -259,7 +261,7 @@ instance TextEditor Yi where
             then return Nothing
             else return . Just $ mkYiIter' b newPoint
     getChar (YiIter i) = withYiIter i readCharB
-    getCharsInLine (YiIter i) = withYiIter i $ length <$> readLnB
+    getCharsInLine (YiIter i) = withYiIter i $ Yi.length <$> readLnB
     getLine (YiIter i) = withYiIter i curLn
     getLineOffset (YiIter i) = withYiIter i curCol
     getOffset (YiIter (Iter _ (Point o))) = return o

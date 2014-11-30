@@ -1,10 +1,6 @@
 {-# LANGUAGE CPP #-}
-{- Based on example config Yi/Users/Corey.hs that uses the Vim keymap with these additions:
-    - Always uses the VTY UI by default.
-    - The color style is darkBlueTheme
-    - The insert mode of the Vim keymap has been extended with a few additions
-      I find useful.
- -}
+{-# LANGUAGE OverloadedStrings #-}
+{- Based on example config yi example-configs/yi-vim.hs -}
 
 module IDE.YiConfig (
     defaultYiConfig
@@ -33,6 +29,9 @@ import Yi.UI.Pango.Control
 
 import Control.Monad (replicateM_)
 import Control.Applicative (Alternative(..))
+import qualified Data.Text as T (singleton)
+import Data.Monoid ((<>))
+import qualified Yi.Rope as R (toText)
 
 start yiConfig f =
     startControl yiConfig $ do
@@ -49,10 +48,6 @@ prefIndent m = m {
                 tabSize = 4
             }}
 
-noHaskellAnnots m
-    | modeName m == "haskell" = m { modeGetAnnotations = modeGetAnnotations emptyMode }
-    | otherwise = m
-
 defaultYiConfig = defaultVimConfig {
     modeTable = myModes ++ modeTable defaultVimConfig,
     defaultKm = myKeymapSet,
@@ -62,7 +57,7 @@ defaultYiConfig = defaultVimConfig {
 defaultSearchKeymap :: Keymap
 defaultSearchKeymap = do
     Event (KASCII c) [] <- anyEvent
-    write (isearchAddE [c])
+    write (isearchAddE $ T.singleton c)
 
 myKeymapSet :: KeymapSet
 myKeymapSet = V2.mkKeymapSet $ V2.defVimConfig `override` \super this ->
@@ -76,10 +71,10 @@ myKeymapSet = V2.mkKeymapSet $ V2.defVimConfig `override` \super this ->
           -- whose prereq function returns WholeMatch,
           -- the first such binding is used.
           -- So it's important to have custom bindings first.
-          V2.vimBindings = myBindings eval ++ V2.vimBindings super
+          V2.vimBindings = myBindings eval <> V2.vimBindings super
         }
 
-myBindings :: (String -> EditorM ()) -> [V2.VimBinding]
+myBindings :: (V2.EventString -> EditorM ()) -> [V2.VimBinding]
 myBindings eval =
     let nmap x y = V2.mkStringBindingE V2.Normal V2.Drop (x, y, id)
         imap x y = V2.VimBindingE (\evs state -> case V2.vsMode state of
@@ -87,9 +82,7 @@ myBindings eval =
                                         fmap (const (y >> return V2.Continue))
                                              (evs `V2.matchesString` x)
                                     _ -> V2.NoMatch)
-    in [
-         -- Tab traversal
-         nmap "<C-h>" previousTabE
+    in [ nmap "<C-h>" previousTabE
        , nmap "<C-l>" nextTabE
        , nmap "<C-l>" nextTabE
 
@@ -99,19 +92,18 @@ myBindings eval =
          -- for times when you don't press shift hard enough
        , nmap ";" (eval ":")
 
-       , nmap "<F3>" (withBuffer0 deleteTrailingSpaceB)
-       , nmap "<F4>" (withBuffer0 moveToSol)
-       , nmap "<F1>" (withBuffer0 readCurrentWordB >>= printMsg)
-
-       , imap "<Home>" (withBuffer0 moveToSol)
-       , imap "<End>" (withBuffer0 moveToEol)
+       , nmap "<F3>" (withCurrentBuffer deleteTrailingSpaceB)
+       , nmap "<F4>" (withCurrentBuffer moveToSol)
+       , nmap "<F1>" (withCurrentBuffer readCurrentWordB >>= printMsg . R.toText)
+       , imap "<Home>" (withCurrentBuffer moveToSol)
+       , imap "<End>" (withCurrentBuffer moveToEol)
        ]
 
+myModes :: [AnyMode]
 myModes = [
          AnyMode Haskell.fastMode {
              -- Disable beautification
              modePrettify = const $ return ()
-           , modeGetAnnotations = (const . const) []
          }
     ]
 
