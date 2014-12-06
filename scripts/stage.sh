@@ -33,7 +33,7 @@ export CPPFLAGS=`pkg-config --cflags-only-I libcurl`
 # export DYLD_LIBRARY_PATH="/System/Library/Frameworks/ApplicationServices.framework/Versions/A/Frameworks/ImageIO.framework/Versions/A/Resources:$GTK_PREFIX/lib:$DYLD_LIBRARY_PATH"
 
 if test "`uname`" = "Darwin"; then
-    cabal install ./ ./vendor/ltk ./vendor/leksah-server ./vendor/yi gtk3 ghcjs-dom jsaddle vendor/haskellVCSWrapper/vcswrapper vendor/haskellVCSGUI/vcsgui --with-ghc=ghc$GHCVERSION -j4 -fhave-quartz-gtk -fwebkit -flibcurl -fyi -fpango --with-gcc=gcc-mp-4.8 || exit
+    cabal install ./ ./vendor/ltk ./vendor/leksah-server ./vendor/yi gtk3 ghcjs-dom jsaddle vendor/haskellVCSWrapper/vcswrapper vendor/haskellVCSGUI/vcsgui --with-ghc=ghc$GHCVERSION -j4 -fwebkit -flibcurl -fyi -fpango --with-gcc=gcc-mp-4.8 || exit
 else
     cabal install ./ ./vendor/ltk ./vendor/leksah-server                gtk3 ghcjs-dom jsaddle vendor/haskellVCSWrapper/vcswrapper vendor/haskellVCSGUI/vcsgui --with-ghc=ghc$GHCVERSION -j4 -fwebkit -flibcurl -f-yi -fpango -f-vty --force-reinstalls --extra-lib-dirs=/c/MinGWRPM/lib || bash || exit
 #  if [ "$GHC_VER" != "7.0.3" ] && [ "$GHC_VER" != "7.0.4" ] && [ "$GHC_VER" != "7.6.1" ]; then

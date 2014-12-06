@@ -396,7 +396,7 @@ selectIdentifier'  moduleName symbol =
                 sel         <-  treeViewGetSelection (treeView mods)
                 treeSelectionSelectPath sel treePath
                 col         <-  treeViewGetColumn (treeView mods) 0
-                treeViewScrollToCell (treeView mods) treePath (fromJust col) (Just (0.3,0.3))
+                treeViewScrollToCell (treeView mods) (Just treePath) col (Just (0.3,0.3))
                 mbFacetTree <-  treeStoreGetTreeSave (descrStore mods) []
                 selF        <-  treeViewGetSelection (descrView mods)
                 case  findPathFor symbol mbFacetTree of
@@ -405,7 +405,7 @@ selectIdentifier'  moduleName symbol =
                         treeViewExpandToPath (descrView mods) path
                         treeSelectionSelectPath selF path
                         col     <-  treeViewGetColumn (descrView mods) 0
-                        treeViewScrollToCell (descrView mods) path (fromJust col) (Just (0.3,0.3))
+                        treeViewScrollToCell (descrView mods) (Just path) col (Just (0.3,0.3))
                 bringPaneToFront mods
             Nothing         ->  return ()
 
@@ -997,7 +997,7 @@ selectNames (mbModuleName, mbIdName) = do
                         sel         <-  treeViewGetSelection (treeView mods)
                         treeSelectionSelectPath sel treePath
                         col         <-  treeViewGetColumn (treeView mods) 0
-                        treeViewScrollToCell (treeView mods) treePath (fromJust col)
+                        treeViewScrollToCell (treeView mods) (Just treePath) col
                             (Just (0.3,0.3))
                         case mbIdName of
                             Nothing -> do
@@ -1011,7 +1011,7 @@ selectNames (mbModuleName, mbIdName) = do
                                     Just path   ->  do
                                         treeSelectionSelectPath selF path
                                         col     <-  treeViewGetColumn (descrView mods) 0
-                                        treeViewScrollToCell (descrView mods) path (fromJust col)
+                                        treeViewScrollToCell (descrView mods) (Just path) col
                                             (Just (0.3,0.3))
 
 reloadKeepSelection :: Bool -> IDEAction

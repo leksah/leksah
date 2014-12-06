@@ -216,9 +216,7 @@ addEventHandling window sourceView tree store isWordChar always = do
                     let newRow = maybe 0 (\row -> row + 1) maybeRow
                     when (newRow < count) $ liftIO $ do
                         treeSelectionSelectPath selection [newRow]
-                        treeViewScrollToCell tree [newRow] column Nothing
-                        -- Crazy hack to avoid the horizontal scroll
-                        treeViewScrollToCell tree [newRow] column Nothing
+                        treeViewScrollToCell tree (Just [newRow]) Nothing Nothing
                     return True
                     )
                     else return False
@@ -230,9 +228,7 @@ addEventHandling window sourceView tree store isWordChar always = do
                     let newRow = maybe 0 (\row -> row - 1) maybeRow
                     when (newRow >= 0) $ liftIO $ do
                         treeSelectionSelectPath selection [newRow]
-                        treeViewScrollToCell tree [newRow] column Nothing
-                        -- Crazy hack to avoid the horizontal scroll
-                        treeViewScrollToCell tree [newRow] column Nothing
+                        treeViewScrollToCell tree (Just [newRow]) Nothing Nothing
                     return True
                     )
                     else return False
