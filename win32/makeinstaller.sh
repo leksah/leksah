@@ -14,7 +14,6 @@ sed 's|\<ctrl\>q|\<alt\>F4|' <data/keymap.lkshk >"$LEKSAH_PREFIX/$LEKSAH_X_X_X_X
 
 cd win32 || exit
 
-export CURL_PREFIX=`pkg-config --libs-only-L libcurl | sed 's|^-L||' | sed 's|/lib *$||'`
 export MINGW_BIN=`cmd //C echo \`dirname \\\`which gcc\\\`\``
 export PATH=$PATH:/c/Program\ Files\ \(x86\)/NSIS:/c/Program\ Files/NSIS
 #makensis leksah.nsi
@@ -57,7 +56,6 @@ cp -u  "$GTK_PREFIX"/bin/libbz2-1.dll SourceDir/bin
 cp -u  "$GTK_PREFIX"/bin/libcairo-2.dll SourceDir/bin
 cp -u  "$GTK_PREFIX"/bin/libcairo-gobject-2.dll SourceDir/bin
 cp -u  "$GTK_PREFIX"/bin/libcrypto-10.dll SourceDir/bin
-cp -u  "$GTK_PREFIX"/bin/libcurl-4.dll SourceDir/bin
 cp -u  "$GTK_PREFIX"/bin/libenchant.dll SourceDir/bin
 cp -u  "$GTK_PREFIX"/bin/libexpat-1.dll SourceDir/bin
 cp -u  "$GTK_PREFIX"/bin/libffi-6.dll SourceDir/bin

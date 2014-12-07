@@ -26,16 +26,13 @@ echo Staging Leksah in $GTK_PREFIX
 # Gtk2Hs needs the latest Cabal to install properly
 # cabal install --with-ghc=ghc$GHCVERSION -j4 text parsec network uniplate Cabal --constraint='text>=0.11.3.1' --constraint='parsec>=3.1.3' --constraint='ghc -any' || true
 
-# Needed for installing curl package on windows
-export CPPFLAGS=`pkg-config --cflags-only-I libcurl`
-
 # Only used by OS X
 # export DYLD_LIBRARY_PATH="/System/Library/Frameworks/ApplicationServices.framework/Versions/A/Frameworks/ImageIO.framework/Versions/A/Resources:$GTK_PREFIX/lib:$DYLD_LIBRARY_PATH"
 
 if test "`uname`" = "Darwin"; then
-    cabal install ./ ./vendor/ltk ./vendor/leksah-server ./vendor/yi gtk3 ghcjs-dom jsaddle vendor/haskellVCSWrapper/vcswrapper vendor/haskellVCSGUI/vcsgui --with-ghc=ghc$GHCVERSION -j4 -fwebkit -flibcurl -fyi -fpango --with-gcc=gcc-mp-4.8 || exit
+    cabal install ./ ./vendor/ltk ./vendor/leksah-server ./vendor/yi gtk3 ghcjs-dom jsaddle vendor/haskellVCSWrapper/vcswrapper vendor/haskellVCSGUI/vcsgui --with-ghc=ghc$GHCVERSION -j4 -fwebkit -fyi -fpango --with-gcc=gcc-mp-4.8 || exit
 else
-    cabal install ./ ./vendor/ltk ./vendor/leksah-server                gtk3 ghcjs-dom jsaddle vendor/haskellVCSWrapper/vcswrapper vendor/haskellVCSGUI/vcsgui --with-ghc=ghc$GHCVERSION -j4 -fwebkit -flibcurl -f-yi -fpango -f-vty --force-reinstalls --extra-lib-dirs=/c/MinGWRPM/lib || bash || exit
+    cabal install ./ ./vendor/ltk ./vendor/leksah-server                gtk3 ghcjs-dom jsaddle vendor/haskellVCSWrapper/vcswrapper vendor/haskellVCSGUI/vcsgui --with-ghc=ghc$GHCVERSION -j4 -fwebkit -f-yi -fpango -f-vty --force-reinstalls --extra-lib-dirs=/c/MinGWRPM/lib || bash || exit
 #  if [ "$GHC_VER" != "7.0.3" ] && [ "$GHC_VER" != "7.0.4" ] && [ "$GHC_VER" != "7.6.1" ]; then
 #    echo https://github.com/yi-editor/yi.git >> sources.txt
 #    export LEKSAH_CONFIG_ARGS="$LEKSAH_CONFIG_ARGS -fyi -f-vty -f-dyre -fpango"
