@@ -12,7 +12,7 @@
                     <Directory Id="BINDIR" Name="bin">
                         <Component Id="Path" Guid="{407F265F-2562-46DC-A088-73AD7CB82B38}">
                             <CreateFolder />
-                            <Environment Id="PATH" Name="PATH" Value="[BINDIR]" Permanent="no" Part="first" Action="set" System="yes" />
+                            <Environment Id="PATH" Name="PATH" Value="[BINDIR]" Permanent="no" Part="last" Action="set" System="yes" />
                         </Component>
                     </Directory>
                 </Directory>
