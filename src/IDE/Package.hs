@@ -467,8 +467,9 @@ packageRunJavaScript' addFlagIfMissing package = do
                         let path = "dist/build" </> name </> name <.> "jsexe" </> "index.html"
                             dir = ipdBuildDir package
 #ifdef WEBKITGTK
-                        loadOutputUri ("file:///" ++ dir </> path)
-                        getOutputPane Nothing  >>= \ p -> displayPane p False
+                        postAsyncIDE $ do
+                            loadOutputUri ("file:///" ++ dir </> path)
+                            getOutputPane Nothing  >>= \ p -> displayPane p False
 #else
                         openBrowser path
 #endif
@@ -889,7 +890,7 @@ idePackageFromPath' ipdCabalFile = do
                 ipdPackageId        = package packageD
                 ipdDepends          = buildDepends packageD
                 ipdHasLibs          = hasLibs packageD
-                ipdConfigFlags      = ["--user", "--enable-tests"]
+                ipdConfigFlags      = ["--enable-tests"]
                 ipdBuildFlags       = []
                 ipdTestFlags        = []
                 ipdHaddockFlags     = []
