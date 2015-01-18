@@ -30,7 +30,15 @@ echo Staging Leksah in $GTK_PREFIX
 # export DYLD_LIBRARY_PATH="/System/Library/Frameworks/ApplicationServices.framework/Versions/A/Frameworks/ImageIO.framework/Versions/A/Resources:$GTK_PREFIX/lib:$DYLD_LIBRARY_PATH"
 
 if test "`uname`" = "Darwin"; then
-    cabal install ./ ./vendor/ltk ./vendor/leksah-server ./vendor/yi gtk3 ghcjs-dom jsaddle vendor/haskellVCSWrapper/vcswrapper vendor/haskellVCSGUI/vcsgui --with-ghc=ghc$GHCVERSION -j4 -fwebkit -fyi -fpango --with-gcc=gcc-mp-4.8 || exit
+    cd ./vendor/ltk || exit
+    cabal install -j4 --with-ghc=ghc$GHCVERSION || exit
+    cd ../leksah-server || exit
+    cabal install --enable-tests -j4 --with-ghc=ghc$GHCVERSION || exit
+    cabal test || exit
+    cd ../yi || exit
+    cabal install -j4 -fpango --with-ghc=ghc$GHCVERSION || exit
+    cd ../.. || exit
+    cabal install -j4 -fwebkit -fyi --with-gcc=gcc-mp-4.8 --with-ghc=ghc$GHCVERSION || exit
 else
     cabal install ./ ./vendor/ltk ./vendor/leksah-server                gtk3 ghcjs-dom jsaddle vendor/haskellVCSWrapper/vcswrapper vendor/haskellVCSGUI/vcsgui --with-ghc=ghc$GHCVERSION -j4 -fwebkit -f-yi -fpango -f-vty --force-reinstalls --extra-lib-dirs=/c/MinGWRPM/lib || bash || exit
 #  if [ "$GHC_VER" != "7.0.3" ] && [ "$GHC_VER" != "7.0.4" ] && [ "$GHC_VER" != "7.6.1" ]; then
