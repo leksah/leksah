@@ -23,8 +23,8 @@ install:
  - cabal update
  - cabal install Cabal
  - cabal install gtk2hs-buildtools
- - cabal install ./ vendor/ltk --enable-tests --only-dependencies
- - cabal install vendor/ltk
+ - cabal install ./ vendor/ltk vendor/leksah-server vendor/haskellVCSWrapper/vcswrapper vendor/haskellVCSGUI/vcsgui --enable-tests --only-dependencies
+ - cabal install vendor/ltk vendor/leksah-server vendor/haskellVCSWrapper/vcswrapper vendor/haskellVCSGUI/vcsgui
 
 script:
  - cabal configure --enable-tests -v2
