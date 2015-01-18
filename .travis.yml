@@ -1,33 +1,36 @@
 env:
-  - GHCVER=7.6.3
-  - GHCVER=7.8.3
+ - CABALVER=1.22 GHCVER=7.6.3
+ - CABALVER=1.22 GHCVER=7.8.3
+ - CABALVER=1.22 GHCVER=7.8.4
 
 before_install:
-  - sudo add-apt-repository -y ppa:hvr/ghc
-  - sudo apt-get update -qq
-  - sudo apt-get --no-install-recommends install libgtksourceview-3.0-dev libwebkitgtk-3.0-dev
-  - sudo apt-get install cabal-install-1.20 ghc-$GHCVER
-  - export PATH=$HOME/.cabal/bin:/opt/ghc/$GHCVER/bin:/opt/cabal/1.20/bin:$PATH
-  - cabal update
-  - |
-    if [ $GHCVER = "head" ] || [ ${GHCVER%.*} = "7.8" ]; then
-      sudo apt-get install happy-1.19.3 alex-3.1.3
-      export PATH=/opt/alex/3.1.3/bin:/opt/happy/1.19.3/bin:$PATH
-    else
-      sudo apt-get install happy alex
-    fi
+ - travis_retry sudo add-apt-repository -y ppa:hvr/ghc
+ - travis_retry sudo apt-get update
+ - travis_retry sudo apt-get --no-install-recommends install libgtksourceview-3.0-dev libwebkitgtk-3.0-dev
+ - travis_retry sudo apt-get install cabal-install-$CABALVER ghc-$GHCVER
+ - export PATH=$HOME/.cabal/bin:/opt/ghc/$GHCVER/bin:/opt/cabal/$CABALVER/bin:$PATH
+ - |
+   if [ $GHCVER = "head" ] || [ ${GHCVER%.*} = "7.8" ] || [ ${GHCVER%.*} = "7.10" ]; then
+     travis_retry sudo apt-get install happy-1.19.4 alex-3.1.3
+     export PATH=/opt/alex/3.1.3/bin:/opt/happy/1.19.4/bin:$PATH
+   else
+     travis_retry sudo apt-get install happy alex
+   fi
 
 install:
-  - cabal install Cabal
-  - cabal install gtk2hs-buildtools
-  - cabal install ./ vendor/ltk vendor/leksah-server vendor/haskellVCSWrapper/vcswrapper vendor/haskellVCSGUI/vcsgui --enable-tests --only-dependencies
-  - cabal install vendor/ltk vendor/leksah-server vendor/haskellVCSWrapper/vcswrapper vendor/haskellVCSGUI/vcsgui
+ - cabal --version
+ - echo "$(ghc --version) [$(ghc --print-project-git-commit-id 2> /dev/null || echo '?')]"
+ - cabal update
+ - cabal install Cabal
+ - cabal install gtk2hs-buildtools
+ - cabal install ./ vendor/ltk --enable-tests --only-dependencies
+ - cabal install vendor/ltk
 
 script:
-  - cabal configure --enable-tests -v2
-  - cabal build
-  - cabal test
-  - cabal sdist
+ - cabal configure --enable-tests -v2
+ - cabal build
+ - cabal test
+ - cabal sdist
 
 notifications:
   irc:
