@@ -28,7 +28,7 @@ import System.Log.Logger
 import System.Log (Priority(..))
 import Control.Concurrent
        (yield, takeMVar, putMVar, newEmptyMVar, threadDelay, forkIO)
-import System.Glib.MainLoop (priorityHigh)
+import System.Glib.MainLoop (priorityLow)
 import Data.Monoid ((<>))
 
 testString =    "    Could not find module `Graphics.UI.Gtk':\n"
@@ -52,7 +52,7 @@ main = do
         updateGlobalLogger rootLoggerName (setLevel DEBUG)
         allPass <- $quickCheckAll -- Run QuickCheck on all prop_ functions
         initGUI
-        timeoutAddFull (yield >> return True) priorityHigh 10
+        timeoutAddFull (yield >> return True) priorityLow 10
         editorsOk <- testEditors
         putMVar result (allPass && editorsOk)
     forkIO $ do

@@ -214,7 +214,7 @@ startGUI yiConfig sessionFP mbWorkspaceFP sourceFPs iprefs isFirstStart = do
     st          <-  unsafeInitGUIForThreadedRTS
     when rtsSupportsBoundThreads
         (sysMessage Normal "Linked with -threaded")
-    timeout <- timeoutAddFull (yield >> return True) priorityHigh 10
+    timeout <- timeoutAddFull (yield >> return True) priorityLow 10
     mapM_ (sysMessage Normal . T.pack) st
     initGtkRc
     dataDir       <- getDataDir
@@ -288,7 +288,7 @@ mainLoopSingleThread onIdle = eventsPending >>= loop False 50
     loop isIdle delay n = do
         quit <- if n > 0
                     then do
-                        timeout <- timeoutAddFull (yield >> return True) priorityHigh 10
+                        timeout <- timeoutAddFull (yield >> return True) priorityLow 10
                         quit <- loopn (n+2)
                         timeoutRemove timeout
                         return quit
@@ -319,7 +319,7 @@ loopn n = do
 startMainWindow :: Yi.Control -> FilePath -> Maybe FilePath -> [FilePath] ->
                         Prefs -> Bool -> IO ()
 startMainWindow yiControl sessionFP mbWorkspaceFP sourceFPs startupPrefs isFirstStart = do
-    timeout <- timeoutAddFull (yield >> return True) priorityHigh 10
+    timeout <- timeoutAddFull (yield >> return True) priorityLow 10
     debugM "leksah" "startMainWindow"
     osxApp <- OSX.applicationNew
     uiManager   <-  uiManagerNew
