@@ -53,6 +53,7 @@
       <keyword>build-type</keyword>
       <keyword>license</keyword>
       <keyword>license-file</keyword>
+      <keyword>license-files</keyword>
       <keyword>copyright</keyword>
       <keyword>maintainer</keyword>
       <keyword>build-depends</keyword>
@@ -95,6 +96,7 @@
         <context ref="lib"/>
         <context ref="exe"/>
         <context ref="test"/>
+        <context ref="benchmark"/>
         <context ref="custom"/>
       </include>
     </context>
@@ -119,6 +121,7 @@
         <context ref="lib"/>
         <context ref="exe"/>
         <context ref="test"/>
+        <context ref="benchmark"/>
         <context ref="custom"/>
       </include>
     </context>
@@ -168,6 +171,7 @@
         <context ref="flag"/>
         <context ref="exe"/>
         <context ref="test"/>
+        <context ref="benchmark"/>
         <context ref="conditional"/>
         <context ref="custom"/>
       </include>
@@ -219,6 +223,7 @@
         <context ref="lib"/>
         <context ref="exe"/>
         <context ref="test"/>
+        <context ref="benchmark"/>
         <context ref="conditional"/>
         <context ref="custom"/>
       </include>
@@ -271,6 +276,59 @@
         <context ref="lib"/>
         <context ref="exe"/>
         <context ref="test"/>
+        <context ref="benchmark"/>
+        <context ref="conditional"/>
+        <context ref="custom"/>
+      </include>
+    </context>
+
+    <context id="benchmark-field-name" style-ref="field-name">
+      <prefix>^ +</prefix>
+      <suffix>:</suffix>
+      <keyword>build-depends</keyword>
+      <!-- putStrLn $ concatMap (\f -> "      <keyword>" ++ fieldName f ++ "</keyword>\n") testSuiteFieldDescrs -->
+      <keyword>type</keyword>
+      <keyword>main-is</keyword>
+      <keyword>buildable</keyword>
+      <keyword>build-tools</keyword>
+      <keyword>cpp-options</keyword>
+      <keyword>cc-options</keyword>
+      <keyword>ld-options</keyword>
+      <keyword>pkgconfig-depends</keyword>
+      <keyword>frameworks</keyword>
+      <keyword>c-sources</keyword>
+      <keyword>default-language</keyword>
+      <keyword>other-languages</keyword>
+      <keyword>default-extensions</keyword>
+      <keyword>other-extensions</keyword>
+      <keyword>extensions</keyword>
+      <keyword>extra-libraries</keyword>
+      <keyword>extra-lib-dirs</keyword>
+      <keyword>includes</keyword>
+      <keyword>install-includes</keyword>
+      <keyword>include-dirs</keyword>
+      <keyword>hs-source-dirs</keyword>
+      <keyword>other-modules</keyword>
+      <keyword>ghc-prof-options</keyword>
+      <keyword>ghc-shared-options</keyword>
+      <keyword>ghc-options</keyword>
+      <keyword>hugs-options</keyword>
+      <keyword>nhc98-options</keyword>
+      <keyword>jhc-options</keyword>
+    </context>
+
+    <context id="benchmark" end-parent="true">
+      <start>^(benchmark) </start>
+      <include>
+        <context sub-pattern="1" where="start" style-ref="keyword"/>
+        <context ref="line-comment"/>
+        <context ref="benchmark-field-name"/>
+        <context ref="source-repo"/>
+        <context ref="flag"/>
+        <context ref="lib"/>
+        <context ref="exe"/>
+        <context ref="test"/>
+        <context ref="benchmark"/>
         <context ref="conditional"/>
         <context ref="custom"/>
       </include>
@@ -292,6 +350,7 @@
         <context ref="lib"/>
         <context ref="exe"/>
         <context ref="test"/>
+        <context ref="benchmark"/>
         <context ref="custom"/>
       </include>
     </context>
