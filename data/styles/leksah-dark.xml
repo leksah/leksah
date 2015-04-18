@@ -75,7 +75,7 @@
   <style name="def:error"                   background="red" bold="true"/>
   <style name="def:warning"                 background="yellow"/>
   <style name="def:note"                    foreground="comment" background="yellow" bold="true"/>
-  <style name="def:underlined"              italic="true" underline="true"/>
+  <style name="def:underlined"              italic="true" underline="false"/>
 
   <!-- Language specific styles -->
   <style name="diff:added-line"             foreground="#008B8B"/>
