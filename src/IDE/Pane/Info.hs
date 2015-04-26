@@ -48,7 +48,7 @@ import Graphics.UI.Gtk
         scrolledWindowSetPolicy, castToWidget, ScrolledWindow)
 import Graphics.UI.Gtk.General.Enums (PolicyType(..))
 import System.Glib.Signals (on)
-import Control.Monad (unless, void, when)
+import Control.Monad (unless, void)
 import Data.Foldable (forM_)
 import qualified Data.Text as T (unpack, pack, null)
 import Data.Monoid ((<>))

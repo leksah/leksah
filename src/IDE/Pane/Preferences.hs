@@ -71,7 +71,7 @@ import qualified IDE.StrippedPrefs as SP
 import Control.Exception(SomeException,catch)
 import Prelude hiding(catch)
 import Data.List (isSuffixOf, sortBy)
-import Data.Maybe (fromMaybe, isJust)
+import Data.Maybe (catMaybes, fromMaybe, isJust)
 import Graphics.UI.Gtk.Windows.MessageDialog
        (ButtonsType(..), MessageType(..))
 import System.Glib.Attributes (set)
@@ -84,6 +84,7 @@ import Data.Text (Text)
 import qualified Data.Text as T (isSuffixOf, unpack, pack, null)
 import Data.Monoid ((<>))
 import Control.Applicative ((<$>))
+import Distribution.Text (display, simpleParse)
 
 -- ---------------------------------------------------------------------
 -- This needs to be incremented, when the preferences format changes
@@ -612,8 +613,8 @@ prefsDescription configDir packages = NFDPP [
                 (__ "Packages which are excluded from the modules pane")
                         $ paraMinSize <<<- ParaMinSize (-1,200)
                             $ emptyParams)
-            (PP.text . show)
-            readParser
+            (PP.text . show . map display)
+            (fmap (catMaybes . map simpleParse) readParser)
             packageBlacklist
             (\b a -> a{packageBlacklist = b})
             (dependenciesEditor packages)
@@ -815,7 +816,7 @@ defaultPrefs = Prefs {
                                 ,   ("*Variables","LogCategory")
                                 ,   ("*Workspace","LogCategory")]
     ,   collectAtStart      =   True
-    ,   unpackDirectory     =   Nothing
+    ,   unpackDirectory     =   Just ("~" </> configDirName </> "packageSources")
     ,   retrieveURL         =   "http://www.leksah.org"
     ,   retrieveStrategy    =   SP.RetrieveThenBuild
     ,   useCtrlTabFlipping  =   True

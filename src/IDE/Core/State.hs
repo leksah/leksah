@@ -312,7 +312,7 @@ liftYiControl f = do
 liftYi :: Yi.YiM a -> IDEM a
 liftYi = liftYiControl . Yi.liftYi
 
-catchIDE :: Exception e	=> IDEM a -> (e -> IO a) -> IDEM a
+catchIDE :: Exception e => IDEM a -> (e -> IO a) -> IDEM a
 catchIDE block handler = reifyIDE (\ideR -> catch (reflectIDE block ideR) handler)
 
 forkIDE :: IDEAction  -> IDEAction

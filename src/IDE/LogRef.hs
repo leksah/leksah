@@ -70,7 +70,7 @@ import Data.IORef (atomicModifyIORef, IORef, readIORef)
 import Data.Text (Text)
 import Control.Applicative ((<$>))
 import qualified Data.Text as T
-       (stripPrefix, isPrefixOf, unpack, unlines, pack, null)
+       (length, stripPrefix, isPrefixOf, unpack, unlines, pack, null)
 import Data.Monoid ((<>))
 
 showSourceSpan :: LogRef -> Text
@@ -306,7 +306,24 @@ srcSpanParser = try (do
         char ':'
         col <- int
         return $ SrcSpan filePath line (fixColumn col) line (fixColumn col))
-    <?> "srcLocParser"
+    <?> "srcSpanParser"
+
+docTestParser :: CharParser () (SrcSpan, Text)
+docTestParser = try (do
+        symbol "###"
+        whiteSpace
+        symbol "Failure"
+        whiteSpace
+        symbol "in"
+        whiteSpace
+        file <- many (noneOf ":")
+        char ':'
+        line <- int
+        char ':'
+        whiteSpace
+        text <- T.pack <$> many anyChar
+        return ((SrcSpan file line 7 line (T.length text - 7)), "Failure in " <> text))
+    <?> "docTestParser"
 
 data BuildError =   BuildLine
                 |   EmptyLine
@@ -470,9 +487,10 @@ logOutputForBuild :: IDEPackage
                   -> Bool
                   -> C.Sink ToolOutput IDEM [LogRef]
 logOutputForBuild package backgroundBuild jumpToWarnings = do
+    liftIO $ putStrLn $ "logOutputForBuild"
     log    <- lift getLog
     logLaunch <- lift $ Log.getDefaultLogLaunch
-    (_, _, errs) <- CL.foldM (readAndShow logLaunch) (log, False, [])
+    (_, _, _, errs) <- CL.foldM (readAndShow logLaunch) (log, False, False, [])
     ideR <- lift ask
     liftIO $ postGUISync $ reflectIDE (do
         setErrorList $ reverse errs
@@ -484,8 +502,8 @@ logOutputForBuild package backgroundBuild jumpToWarnings = do
         unless (backgroundBuild || (not jumpToWarnings && errorNum == 0)) nextError
         return errs) ideR
   where
-    readAndShow :: LogLaunch -> (IDELog, Bool, [LogRef]) -> ToolOutput -> IDEM (IDELog, Bool, [LogRef])
-    readAndShow logLaunch (log, inError, errs) output = do
+    readAndShow :: LogLaunch -> (IDELog, Bool, Bool, [LogRef]) -> ToolOutput -> IDEM (IDELog, Bool, Bool, [LogRef])
+    readAndShow logLaunch (log, inError, inDocTest, errs) output = do
         ideR <- ask
         liftIO $ postGUISync $ case output of
             ToolError line -> do
@@ -506,34 +524,48 @@ logOutputForBuild package backgroundBuild jumpToWarnings = do
                 case (parsed, errs) of
                     (Left e,_) -> do
                         sysMessage Normal . T.pack $ show e
-                        return (log, False, errs)
+                        return (log, False, False, errs)
                     (Right ne@(ErrorLine span refType str),_) ->
-                        return (log, True, ((LogRef span package str (lineNr,lineNr) refType):errs))
+                        return (log, True, False, ((LogRef span package str (lineNr,lineNr) refType):errs))
                     (Right (OtherLine str1),(LogRef span rootPath str (l1,l2) refType):tl) ->
                         if inError
-                            then return (log, True, ((LogRef span
+                            then return (log, True, False, ((LogRef span
                                                     rootPath
                                                     (if T.null str
                                                         then line
                                                         else str <> "\n" <> line)
                                                     (l1,lineNr) refType) : tl))
-                            else return (log, False, errs)
+                            else return (log, False, False, errs)
                     (Right (WarningLine str1),(LogRef span rootPath str (l1,l2) isError):tl) ->
                         if inError
-                            then return (log, True, ((LogRef span
+                            then return (log, True, False, ((LogRef span
                                                     rootPath
                                                     (if T.null str
                                                         then line
                                                         else str <> "\n" <> line)
                                                     (l1,lineNr) WarningRef) : tl))
-                            else return (log, False, errs)
-                    otherwise -> return (log, False, errs)
+                            else return (log, False, False, errs)
+                    otherwise -> return (log, False, False, errs)
             ToolOutput line -> do
-                Log.appendLog log logLaunch (line <> "\n") LogTag
-                return (log, inError, errs)
+                case (parse docTestParser "" $ T.unpack line, inDocTest, errs) of
+                    (Right (span, exp), _, _) -> do
+                        logLn <- Log.appendLog log logLaunch (line <> "\n") ErrorTag
+                        return (log, inError, True, LogRef span
+                                            package
+                                            exp
+                                            (logLn,logLn) ErrorRef : errs)
+                    (_, True, (LogRef span rootPath str (l1,l2) refType):tl) -> do
+                        logLn <- Log.appendLog log logLaunch (line <> "\n") ErrorTag
+                        return (log, inError, inDocTest, LogRef span
+                                            rootPath
+                                            (str <> "\n" <> line)
+                                            (l1,logLn) ErrorRef : tl)
+                    _ -> do
+                        Log.appendLog log logLaunch (line <> "\n") LogTag
+                        return (log, inError, False, errs)
             ToolInput line -> do
                 Log.appendLog log logLaunch (line <> "\n") InputTag
-                return (log, inError, errs)
+                return (log, inError, inDocTest, errs)
             ToolPrompt line -> do
                 unless (T.null line) $ Log.appendLog log logLaunch (line <> "\n") LogTag >> return ()
                 let errorNum    =   length (filter isError errs)
@@ -542,7 +574,7 @@ logOutputForBuild package backgroundBuild jumpToWarnings = do
                     [] -> defaultLineLogger' log logLaunch output
                     _ -> Log.appendLog log logLaunch (T.pack $ "- - - " ++ show errorNum ++ " errors - "
                                             ++ show warnNum ++ " warnings - - -\n") FrameTag
-                return (log, inError, errs)
+                return (log, inError, inDocTest, errs)
             ToolExit _ -> do
                 let errorNum    =   length (filter isError errs)
                 let warnNum     =   length errs - errorNum
@@ -550,7 +582,7 @@ logOutputForBuild package backgroundBuild jumpToWarnings = do
                     [] -> defaultLineLogger' log logLaunch output
                     _ -> Log.appendLog log logLaunch (T.pack $ "----- " ++ show errorNum ++ " errors -- "
                                             ++ show warnNum ++ " warnings -----\n") FrameTag
-                return (log, inError, errs)
+                return (log, inError, inDocTest, errs)
 
 
 --logOutputLines :: Text -- ^ logLaunch

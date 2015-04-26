@@ -429,11 +429,11 @@ loadSessionPrompt = do
         dialog <- fileChooserDialogNew
                   (Just $ (__ "Select session file"))
                   (Just window')
-    	      FileChooserActionOpen
-    	      [("gtk-cancel"
-    	       ,ResponseCancel)
-    	      ,("gtk-open"
-    	       , ResponseAccept)]
+              FileChooserActionOpen
+              [("gtk-cancel"
+               ,ResponseCancel)
+              ,("gtk-open"
+               , ResponseAccept)]
         fileChooserSetCurrentFolder dialog configFolder
         widgetShow dialog
         res <- dialogRun dialog

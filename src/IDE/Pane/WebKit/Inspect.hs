@@ -96,11 +96,11 @@ instance Pane IDEInspect IDEM
 instance RecoverablePane IDEInspect InspectState IDEM where
     saveState p     =   liftIO $ do
 #ifdef WEBKITGTK
-        return (Just InspectState{..})
+        return (Just InspectState{})
 #else
         Just <$> readIORef (inspectState p)
 #endif
-    recoverState pp InspectState {..} = do
+    recoverState pp InspectState {} = do
         nb      <-  getNotebook pp
         mbPane <- buildPane pp nb builder
         case mbPane of

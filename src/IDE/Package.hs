@@ -94,7 +94,6 @@ import IDE.Utils.FileUtils(getConfigFilePathForLoad)
 import IDE.LogRef
 import Distribution.ModuleName (ModuleName(..))
 import Data.List (isInfixOf, nub, foldl', delete)
-import qualified System.IO.UTF8 as UTF8  (readFile)
 import IDE.Utils.Tool (ToolOutput(..), runTool, newGhci, ToolState(..), toolline)
 import qualified Data.Set as  Set (fromList)
 import qualified Data.Map as  Map (empty, fromList)
@@ -199,16 +198,15 @@ packageConfig' package continuation = do
                     continuation False
                     return()
 
-runCabalBuild :: Bool -> Bool -> Bool -> Bool -> IDEPackage -> Bool -> (Bool -> IDEAction) -> IDEAction
-runCabalBuild backgroundBuild runTests jumpToWarnings withoutLinking package shallConfigure continuation = do
+runCabalBuild :: Bool -> Bool -> Bool -> IDEPackage -> Bool -> (Bool -> IDEAction) -> IDEAction
+runCabalBuild backgroundBuild jumpToWarnings withoutLinking package shallConfigure continuation = do
     prefs <- readIDE prefs
     let dir =  ipdBuildDir package
-    let args = ([if runTests then "test" else "build"]
+    let args = (["build"]
                 ++ (if backgroundBuild && withoutLinking
                     then ["--with-ld=false"]
                     else [])
-                ++ ipdBuildFlags package
-                ++ (if runTests then ipdTestFlags package else []))
+                ++ ipdBuildFlags package)
     runExternalTool' (__ "Building") (cabalCommand prefs) args dir $ do
         (mbLastOutput, isConfigErr, _) <- C.getZipSink $ (,,)
             <$> C.ZipSink sinkLast
@@ -219,7 +217,7 @@ runCabalBuild backgroundBuild runTests jumpToWarnings withoutLinking package sha
             if shallConfigure && isConfigErr
                 then
                     packageConfig' package (\ b ->
-                        when b $ runCabalBuild backgroundBuild runTests jumpToWarnings withoutLinking package False continuation)
+                        when b $ runCabalBuild backgroundBuild jumpToWarnings withoutLinking package False continuation)
                 else do
                     continuation (mbLastOutput == Just (ToolExit ExitSuccess))
                     return ()
@@ -233,8 +231,8 @@ isConfigError = CL.foldM (\a b -> return $ a || isCErr b) False
     str2 = __ "please re-configure"
     str3 = __ "cannot satisfy -package-id"
 
-buildPackage :: Bool -> Bool -> Bool -> Bool -> IDEPackage -> (Bool -> IDEAction) -> IDEAction
-buildPackage backgroundBuild runTests jumpToWarnings withoutLinking package continuation = catchIDE (do
+buildPackage :: Bool -> Bool -> Bool -> IDEPackage -> (Bool -> IDEAction) -> IDEAction
+buildPackage backgroundBuild jumpToWarnings withoutLinking package continuation = catchIDE (do
     ideR      <- ask
     prefs     <- readIDE prefs
     maybeDebug <- readIDE debugState
@@ -247,12 +245,12 @@ buildPackage backgroundBuild runTests jumpToWarnings withoutLinking package cont
                     when (not backgroundBuild) $ liftIO $ do
                         timeoutAddFull (do
                             reflectIDE (do
-                                buildPackage backgroundBuild runTests jumpToWarnings withoutLinking
+                                buildPackage backgroundBuild jumpToWarnings withoutLinking
                                                 package continuation
                                 return False) ideR
                             return False) priorityDefaultIdle 1000
                         return ()
-                else runCabalBuild backgroundBuild runTests jumpToWarnings withoutLinking package True $ \f -> do
+                else runCabalBuild backgroundBuild jumpToWarnings withoutLinking package True $ \f -> do
                         when f $ do
                             mbURI <- readIDE autoURI
                             case mbURI of
@@ -451,7 +449,7 @@ packageRunJavaScript' addFlagIfMissing package = do
                     packageConfig' packWithNewFlags $ \ ok -> when ok $ do
                         packageRunJavaScript' False packWithNewFlags
                 _  -> return ()
-        else liftIDE $ buildPackage False False True False package $ \ ok -> when ok $ liftIDE $ catchIDE (do
+        else liftIDE $ buildPackage False False True package $ \ ok -> when ok $ liftIDE $ catchIDE (do
                 ideR        <- ask
                 maybeDebug   <- readIDE debugState
                 pd <- liftIO $ readPackageDescription normal (ipdCabalFile package) >>= return . flattenPackageDescription
@@ -516,7 +514,7 @@ packageTest' package shallConfigure continuation =
           catchIDE (do
             prefs <- readIDE prefs
             let dir = ipdBuildDir package
-            runExternalTool' (__ "Testing") (cabalCommand prefs) (["test"]
+            runExternalTool' (__ "Testing") (cabalCommand prefs) (["test", "--with-ghc=leksahtrue"]
                 ++ ipdBuildFlags package ++ ipdTestFlags package) dir $ do
                     (mbLastOutput, isConfigErr, _) <- C.getZipSink $ (,,)
                         <$> C.ZipSink sinkLast
@@ -792,7 +790,7 @@ debugStart = do
                             -- Lets build to make sure the binaries are up to date
                             mbPackage   <- readIDE activePack
                             case mbPackage of
-                                Just package -> runCabalBuild True False False False package True (\ _ -> return ())
+                                Just package -> runCabalBuild True False False package True (\ _ -> return ())
                                 Nothing -> return ()
                 return ()
             _ -> do

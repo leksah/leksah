@@ -80,6 +80,7 @@ defaultMakeSettings prefs = MakeSettings  {
 data MakeOp =
     MoConfigure
     | MoBuild
+    | MoTest
     | MoCopy
     | MoRegister
     | MoClean
@@ -200,10 +201,12 @@ doBuildChain _ EmptyChain = return ()
 doBuildChain ms chain@Chain{mcAction = MoConfigure} =
     packageConfig' (mcEle chain) (constrCont ms (mcPos chain) (mcNeg chain))
 doBuildChain ms chain@Chain{mcAction = MoBuild} =
-    buildPackage (msBackgroundBuild ms) (msRunUnitTests ms) (msJumpToWarnings ms) (not (msMakeMode ms) && msSingleBuildWithoutLinking ms)
+    buildPackage (msBackgroundBuild ms) (msJumpToWarnings ms) (not (msMakeMode ms) && msSingleBuildWithoutLinking ms)
         (mcEle chain) (constrCont ms (mcPos chain) (mcNeg chain))
 doBuildChain ms chain@Chain{mcAction = MoDocu} =
     packageDoc' (msBackgroundBuild ms) (msJumpToWarnings ms) (mcEle chain) (constrCont ms (mcPos chain) (mcNeg chain))
+doBuildChain ms chain@Chain{mcAction = MoTest} =
+    packageTest' (mcEle chain) False (constrCont ms (mcPos chain) (mcNeg chain))
 doBuildChain ms chain@Chain{mcAction = MoCopy} =
     packageCopy' (mcEle chain) (constrCont ms (mcPos chain) (mcNeg chain))
 doBuildChain ms chain@Chain{mcAction = MoRegister} =

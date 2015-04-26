@@ -74,7 +74,6 @@ import Graphics.UI.Gtk.Windows.Dialog (ResponseId(..))
 import qualified Control.Exception as Exc (SomeException(..), throw, Exception)
 import qualified Data.Map as  Map (empty)
 import IDE.Pane.SourceBuffer (fileOpenThis, fileCheckAll, belongsToPackages)
-import qualified System.IO.UTF8 as UTF8 (writeFile)
 import System.Glib.Attributes (AttrOp(..), set)
 import Graphics.UI.Gtk.General.Enums (WindowPosition(..))
 import Control.Applicative ((<$>))
@@ -437,7 +436,7 @@ buildSteps runTests = do
     debug <- isJust <$> readIDE debugState
     return $ case (runTests, debug) of
                 (True, True)   -> [MoBuild,MoDocu]
-                (True, False)  -> [MoBuild,MoDocu,MoCopy,MoRegister]
+                (True, False)  -> [MoBuild,MoDocu,MoTest,MoCopy,MoRegister]
                 (False, True)  -> [MoBuild]
                 (False, False) -> [MoBuild,MoCopy,MoRegister]
 

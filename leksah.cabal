@@ -1,5 +1,5 @@
 name: leksah
-version: 0.14.4.0
+version: 0.15.0.0
 cabal-version: >=1.18
 build-type: Simple
 license: GPL
@@ -221,9 +221,6 @@ library
         build-depends: dyre >= 0.8.3 && <0.9
         cpp-options: -DLEKSAH_WITH_YI_DYRE
 
-    if flag(threaded)
-        ghc-options: -threaded
-
     if flag(gtk3)
       build-depends: gtk3 >=0.13.2 && <0.14, gtksourceview3 >=0.13.1.0 && <0.14
       cpp-options:   -DMIN_VERSION_gtk=MIN_VERSION_gtk3
@@ -250,19 +247,19 @@ library
     hs-source-dirs: src
     default-language: Haskell98
 
-    build-depends: Cabal >=1.10.2.0 && <1.22, base >=4.0.0.0 && <4.8, binary >=0.5.0.0 && <0.8,
+    build-depends: Cabal >=1.10.2.0 && <1.23, base >=4.0.0.0 && <4.9, binary >=0.5.0.0 && <0.8,
                        bytestring >=0.9.0.1 && <0.11, containers >=0.2.0.0 && <0.6, directory >=1.0.0.2 && <3.1,
-                       filepath >=1.1.0.1 && <1.4, glib >=0.13.0.0 && <0.14,
+                       filepath >=1.1.0.1 && <1.5, glib >=0.13.0.0 && <0.14,
                        mtl >=1.1.0.2 && <2.3, old-time >=1.0.0.1 && <1.2,
                        parsec >=2.1.0.1 && <3.2, pretty >=1.0.1.0 && <1.2,
-                       regex-tdfa >=1.1 && <1.3, regex-tdfa-text, regex-base ==0.93.*, utf8-string >=0.3.1.1 && <0.4, array >=0.2.0.0 && <0.6,
-                       time >=0.1 && <1.5, ltk >= 0.14.3.0 && <0.15, binary-shared >= 0.8 && <0.9, deepseq >= 1.1.0.0 && <1.4,
-                       hslogger >= 1.0.7 && <1.3, leksah-server >=0.14.3.1 && <0.15,
-                       ghc >=6.10.1 && <7.9, strict >= 0.3.2 && <0.4, conduit >= 1.0.8 && <1.3, text >= 0.11.1.5 && < 1.3,
+                       regex-tdfa >=1.1 && <1.3, regex-tdfa-text, regex-base ==0.93.*, utf8-string >=0.3.1.1 && <1.1, array >=0.2.0.0 && <0.6,
+                       time >=0.1 && <1.6, ltk >= 0.15.0.0 && <0.16, binary-shared >= 0.8 && <0.9, deepseq >= 1.1.0.0 && <1.5,
+                       hslogger >= 1.0.7 && <1.3, leksah-server >=0.15.0.0 && <0.16,
+                       ghc >=6.10.1 && <7.11, strict >= 0.3.2 && <0.4, conduit >= 1.0.8 && <1.3, text >= 0.11.1.5 && < 1.3,
                        gio >=0.13.0.0 && <0.14, transformers >=0.2.2.0 && <0.5,
                        executable-path >=0.0.3 && <0.1,
                        vcsgui >=0.1.0 && < 0.2, vcswrapper >=0.1.0 && < 0.2,
-                       QuickCheck >=2.4.2 && <2.8, haskell-src-exts >=1.13.5 && <1.17,
+                       QuickCheck >=2.4.2 && <2.9, haskell-src-exts >=1.13.5 && <1.17,
                        hlint >=1.8.59 && <1.10, vado >=0.0.1 && <0.1, shakespeare >=2.0.0.1 && <2.1
     exposed-modules: IDE.Leksah IDE.Completion IDE.ImportTool IDE.Find
                      IDE.Sandbox IDE.Session IDE.Command IDE.Keymap IDE.Utils.GUIUtils
@@ -290,10 +287,7 @@ library
         build-depends: binary-shared >=0.8.2
 
     other-modules: Paths_leksah
-
-    ghc-prof-options: -auto-all -prof
-    ghc-shared-options: -auto-all
-    ghc-options: -O2 -fwarn-missing-fields -fwarn-incomplete-patterns -ferror-spans
+    ghc-options: -fwarn-missing-fields -fwarn-incomplete-patterns -ferror-spans
 
 Executable leksah
     if os(windows)
@@ -310,7 +304,7 @@ Executable leksah
         ghc-options: -threaded
 
     hs-source-dirs: main
-    build-depends: leksah == 0.14.4.0, base >= 4.0.0.0 && <=4.8
+    build-depends: leksah == 0.15.0.0, base >= 4.0.0.0 && <=4.9
     if flag(gtk3)
         build-depends: gtk3 >=0.13.2 && <0.14
     else
@@ -325,12 +319,10 @@ Executable leksah
     default-language: Haskell98
     main-is: Main.hs
     buildable: True
-    ghc-prof-options: -auto-all -prof
-    ghc-shared-options: -auto-all
-    ghc-options: -rtsopts -O2 -fwarn-missing-fields -fwarn-incomplete-patterns -ferror-spans
+    ghc-options: -rtsopts -fwarn-missing-fields -fwarn-incomplete-patterns -ferror-spans
 
 executable bewleksah
-    build-depends: leksah ==0.14.4.0, base >=4.0.0.0 && <=4.8,
+    build-depends: leksah ==0.15.0.0, base >=4.0.0.0 && <=4.9,
                    jsaddle -any, ghcjs-dom -any
     if flag(gtk3)
       build-depends: gtk3 >=0.13.2 && <0.14, gtksourceview3 >=0.13.1.0 && <0.14,
@@ -346,8 +338,8 @@ executable bewleksah
     hs-source-dirs: bew
 
 test-suite tests
-    build-depends: base >=4.0.0.0 && <4.8, Cabal >=1.10.2.0 && <1.22,
-                   QuickCheck >=2.4.2 && <2.8, leksah ==0.14.4.0,
+    build-depends: base >=4.0.0.0 && <4.9, Cabal >=1.10.2.0 && <1.23,
+                   QuickCheck >=2.4.2 && <2.9, leksah ==0.15.0.0,
                    containers, ltk, leksah-server, hslogger,
                    transformers, glib, monad-loops, text
     if flag(gtk3)

@@ -103,7 +103,6 @@ import IDE.SourceCandy
 import IDE.SymbolNavigation
 import IDE.Completion as Completion (complete,cancel)
 import IDE.TextEditor
-import qualified System.IO.UTF8 as UTF8
 import Data.IORef (writeIORef,readIORef,newIORef)
 import Control.Event (triggerEvent)
 import IDE.Metainfo.Provider (getSystemInfo, getWorkspaceInfo)
@@ -792,7 +791,7 @@ revert (buf@IDEBuffer{sourceView = sv}) = do
         Nothing -> return ()
         Just fn -> liftIDE $ do
             buffer <- getBuffer sv
-            fc <- liftIO $ UTF8.readFile fn
+            fc <- liftIO $ readFile fn
             mt <- liftIO $ getModificationTime fn
             beginNotUndoableAction buffer
             setText buffer $ T.pack fc

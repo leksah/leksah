@@ -45,7 +45,6 @@ import Graphics.UI.Editor.DescriptionPP
      FieldDescriptionPP(..),
      mkFieldPP)
 import Text.ParserCombinators.Parsec hiding(Parser)
-import Debug.Trace (trace)
 import IDE.Utils.GUIUtils (__)
 import Control.Monad (void)
 import Data.Text (Text)

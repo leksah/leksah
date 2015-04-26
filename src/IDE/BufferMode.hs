@@ -155,10 +155,10 @@ data Mode = Mode {
     modeEditUncomment      :: IDEAction,
     modeSelectedModuleName :: IDEM (Maybe Text),
     modeEditToCandy        :: (Text -> Bool) -> IDEAction,
-    modeTransformToCandy   :: TextEditor editor => (Text -> Bool) -> EditorBuffer editor -> IDEAction,
+    modeTransformToCandy   :: forall editor . TextEditor editor => (Text -> Bool) -> EditorBuffer editor -> IDEAction,
     modeEditFromCandy      :: IDEAction,
     modeEditKeystrokeCandy :: Maybe Char -> (Text -> Bool) -> IDEAction,
-    modeEditInsertCode     :: TextEditor editor => Text -> EditorIter editor -> EditorBuffer editor -> IDEAction,
+    modeEditInsertCode     :: forall editor . TextEditor editor => Text -> EditorIter editor -> EditorBuffer editor -> IDEAction,
     modeEditInCommentOrString :: Text -> Bool
     }
 

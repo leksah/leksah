@@ -67,7 +67,6 @@ import Graphics.UI.Editor.Parameters
 import Graphics.UI.Editor.Simple
        (textEditor, boolEditor, staticListEditor)
 import Graphics.UI.Editor.Composite (maybeEditor)
-import qualified System.IO.UTF8 as UTF8  (writeFile)
 import IDE.Utils.GUIUtils (stockIdFromType, __)
 import IDE.Metainfo.Provider
        (getSystemInfo, getWorkspaceInfo, getPackageInfo)

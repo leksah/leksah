@@ -129,11 +129,9 @@ chooseSaveFile window prompt mbFolder = do
     dialog <- fileChooserDialogNew
               (Just $ prompt)
               (Just window)
-	      FileChooserActionSave
-	      [("gtk-cancel"
-	       ,ResponseCancel)
-	      ,("gtk-save"
-          , ResponseAccept)]
+              FileChooserActionSave
+              [("gtk-cancel", ResponseCancel)
+              ,("gtk-save",   ResponseAccept)]
     when (isJust mbFolder) $ fileChooserSetCurrentFolder dialog (fromJust mbFolder)  >> return ()
     widgetShow dialog
     res <- dialogRun dialog
