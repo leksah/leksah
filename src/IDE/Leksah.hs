@@ -376,6 +376,7 @@ startMainWindow yiControl sessionFP mbWorkspaceFP sourceFPs startupPrefs isFirst
           ,   debugState        =   Nothing
           ,   completion        =   ((750,400),Nothing)
           ,   yiControl         =   yiControl
+          ,   serverQueue       =   Nothing
           ,   server            =   Nothing
           ,   vcsData           =   (Map.empty, Nothing)
           ,   logLaunches       =   Map.empty

@@ -101,6 +101,7 @@ import Distribution.PackageDescription (BuildInfo)
 import Data.Map (Map(..))
 import Data.Set (Set(..))
 import Data.List (nubBy)
+import Control.Concurrent (MVar)
 import Distribution.ModuleName (ModuleName(..))
 import Graphics.UI.Gtk.Gdk.EventM (Modifier(..))
 import Graphics.UI.Gtk.ActionMenuToolbar.UIManager(MergeId)
@@ -169,6 +170,7 @@ data IDE            =  IDE {
 ,   debugState      ::   Maybe (IDEPackage, ToolState)
 ,   completion      ::   ((Int, Int), Maybe CompletionWindow)
 ,   yiControl       ::   Yi.Control
+,   serverQueue     ::   Maybe (MVar (ServerCommand, (ServerAnswer -> IDEM ())))
 ,   server          ::   Maybe Handle
 ,   vcsData         ::   (Map FilePath MenuItem, Maybe (Maybe Text)) -- menus for packages, password
 ,   logLaunches     ::   Map.Map Text LogLaunchData

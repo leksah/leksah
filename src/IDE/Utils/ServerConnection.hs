@@ -26,17 +26,37 @@ import GHC.Conc(threadDelay)
 import System.IO
 import Control.Exception (SomeException(..), catch)
 import Prelude hiding(catch)
-import Control.Concurrent(forkIO)
+import Control.Concurrent(forkIO, newEmptyMVar, putMVar, takeMVar, tryTakeMVar)
 import Graphics.UI.Gtk(postGUIAsync)
 import Control.Event(triggerEvent)
 import Control.Monad.IO.Class (MonadIO(..))
-import System.Log.Logger (getLevel, getRootLogger)
-import Control.Monad (void)
+import Control.Monad.Reader (ask)
+import System.Log.Logger (getLevel, getRootLogger, debugM)
+import Control.Monad (void, forever)
 import qualified Data.Text as T (pack, unpack)
 import Data.Monoid ((<>))
 
-doServerCommand :: ServerCommand -> (ServerAnswer -> IDEM alpha) -> IDEAction
+doServerCommand :: ServerCommand -> (ServerAnswer -> IDEM ()) -> IDEAction
 doServerCommand command cont = do
+    q' <- readIDE serverQueue
+    q <- case q' of
+        Just q -> return q
+        Nothing -> do
+            q <- liftIO $ newEmptyMVar
+            modifyIDE_ (\ ide -> ide{serverQueue = Just q})
+            ideR <- ask
+            liftIO . forkIO . forever $ do
+                debugM "leksah" $ "Ready for command"
+                (command, cont) <- takeMVar q
+                reflectIDE (doServerCommand' command cont) ideR
+            return q
+    liftIO $ do
+        tryTakeMVar q
+        debugM "leksah" $ "Queue new command " ++ show command
+        putMVar q (command, cont)
+
+doServerCommand' :: ServerCommand -> (ServerAnswer -> IDEM ()) -> IDEAction
+doServerCommand' command cont = do
     server' <- readIDE server
     case server' of
         Just handle -> do
@@ -62,15 +82,17 @@ doServerCommand command cont = do
             return ()
     where
         doCommand handle = do
-            triggerEventIDE (StatusbarChanged [CompartmentCollect True])
-            reifyIDE $ \ideR -> forkIO $ do
+            postAsyncIDE . void $ triggerEventIDE (StatusbarChanged [CompartmentCollect True])
+            resp <- liftIO $ do
+                debugM "leksah" $ "Sending server command " ++ show command
                 hPrint handle command
                 hFlush handle
-                resp <- hGetLine handle
-                postGUIAsync (reflectIDE (do
-                        triggerEvent ideR (StatusbarChanged [CompartmentCollect False])
-                        cont (read resp)
-                        return ()) ideR)
+                debugM "leksah" $ "Waiting on server command " ++ show command
+                hGetLine handle
+            liftIO . debugM "leksah" $ "Server result " ++ resp
+            postAsyncIDE $ do
+                triggerEventIDE (StatusbarChanged [CompartmentCollect False])
+                cont (read resp)
 
 startServer :: Int -> IO ()
 startServer port = do
