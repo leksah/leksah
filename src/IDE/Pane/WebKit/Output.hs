@@ -155,7 +155,7 @@ instance RecoverablePane IDEOutput OutputState IDEM where
             liftIO $ case (key, mod) of
                 ("plus", [Shift,Control]) -> webViewZoomIn  webView >> return True
                 ("minus",[Control])       -> webViewZoomOut webView >> return True
-                ("BackSpace", [])         -> webViewGoBack  webView >> return True
+                ("BackSpace", [Shift])    -> webViewGoBack  webView >> return True
                 _                         -> return False
 
         cid3 <- on webView populatePopup $ \ menu -> do
