@@ -81,6 +81,10 @@ import Control.Applicative ((<$>))
 import qualified Data.Text as T (pack, unpack, stripPrefix)
 import Data.Text (Text)
 import Data.Monoid ((<>))
+import Graphics.UI.Gtk.General.CssProvider
+       (cssProviderLoadFromString, cssProviderNew)
+import Graphics.UI.Gtk.General.StyleContext
+       (styleContextAddProviderForScreen)
 
 -- --------------------------------------------------------------------
 -- Command line options
@@ -215,6 +219,17 @@ startGUI yiConfig sessionFP mbWorkspaceFP sourceFPs iprefs isFirstStart = do
     when rtsSupportsBoundThreads
         (sysMessage Normal "Linked with -threaded")
     timeout <- timeoutAddFull (yield >> return True) priorityLow 10
+    mbScreen <- screenGetDefault
+    case mbScreen of
+        Just screen -> do
+            provider <- cssProviderNew
+            cssProviderLoadFromString provider (
+                ".window-frame,\n" <>
+                ".window-frame:backdrop {\n" <>
+                "  box-shadow: none;\n" <>
+                "  margin: 0;}\n" :: Text)
+            styleContextAddProviderForScreen screen provider 600
+        Nothing -> debugM "leksah" "Unable to add style provider for screen"
     mapM_ (sysMessage Normal . T.pack) st
     initGtkRc
     dataDir       <- getDataDir
