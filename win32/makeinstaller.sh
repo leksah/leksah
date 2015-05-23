@@ -46,6 +46,7 @@ cp -u  "$CABAL_USER_BIN"/vcsgui.exe SourceDir/bin
 cp -u  "$CABAL_USER_BIN"/vcsgui-askpass.exe SourceDir/bin
 cp -u  "$CABAL_USER_BIN"/leksah-server.exe SourceDir/bin
 cp -u  "$CABAL_USER_BIN"/leksahecho.exe SourceDir/bin
+cp -u  "$CABAL_USER_BIN"/leksahtrue.exe SourceDir/bin
 cp -u  "$GTK_PREFIX"/bin/iconv.dll SourceDir/bin
 cp -u  "$GTK_PREFIX"/bin/icudata50.dll SourceDir/bin
 cp -u  "$GTK_PREFIX"/bin/icui18n50.dll SourceDir/bin

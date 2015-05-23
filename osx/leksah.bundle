@@ -60,6 +60,7 @@
   <main-binary>${prefix:leksah-bin}/bin/leksah</main-binary>
 
   <binary>${prefix:leksah-server-bin}/bin/leksahecho</binary>
+  <binary>${prefix:leksah-server-bin}/bin/leksahtrue</binary>
   <binary>${prefix:leksah-server-bin}/bin/leksah-server</binary>
   <binary>${prefix:vcsgui-bin}/bin/vcsgui</binary>
   <binary>${prefix:vcsgui-bin}/bin/vcsgui-askpass</binary>
