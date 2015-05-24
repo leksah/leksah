@@ -1,18 +1,18 @@
 #!/bin/sh
 
-ghc-pkg$GHCVERSION unregister leksah || true
-ghc-pkg$GHCVERSION unregister leksah-server || true
-ghc-pkg$GHCVERSION unregister ltk || true
+$WINE ghc-pkg$GHCVERSION unregister leksah || true
+$WINE ghc-pkg$GHCVERSION unregister leksah-server || true
+$WINE ghc-pkg$GHCVERSION unregister ltk || true
 
 export FULL_VERSION=`grep '^version: ' leksah.cabal | sed 's|version: ||' | tr -d '\r'`
 export SHORT_VERSION=`echo $FULL_VERSION | sed 's|\.[0-9]*\.[0-9]*$||'`
 export LEKSAH_X_X_X_X=leksah-$FULL_VERSION
 export LEKSAH_X_X=leksah-$SHORT_VERSION
 
-export GHC_VER=`ghc$GHCVERSION --numeric-version`
+export GHC_VER=`$WINE ghc$GHCVERSION --numeric-version | tr -d '\r'`
 export LEKSAH_X_X_X_X_GHC_X_X_X=leksah-$FULL_VERSION-ghc-$GHC_VER
 
-export GTK_PREFIX=`pkg-config --libs-only-L gtk+-3.0 | sed 's|^-L||' | sed 's|/lib *.*$||'`
+export GTK_PREFIX=`$WINE pkg-config --libs-only-L gtk+-3.0 | sed 's|^-L||' | sed 's|/lib *.*$||'`
 
 echo Staging Leksah in $GTK_PREFIX
 
@@ -40,7 +40,7 @@ if test "`uname`" = "Darwin"; then
     cd ../.. || exit
     cabal install -j4 -fwebkit -fyi --with-gcc=gcc-mp-4.8 --with-ghc=ghc$GHCVERSION || exit
 else
-    cabal install ./ ./vendor/ltk ./vendor/leksah-server                gtk3 ghcjs-dom jsaddle vendor/haskellVCSWrapper/vcswrapper vendor/haskellVCSGUI/vcsgui --with-ghc=ghc$GHCVERSION -j4 -fwebkit -f-yi -fpango -f-vty --force-reinstalls --extra-lib-dirs=/c/MinGWRPM/lib || bash || exit
+    $WINE cabal install ./ ./vendor/ltk ./vendor/leksah-server                gtk3 ghcjs-dom jsaddle vendor/haskellVCSWrapper/vcswrapper vendor/haskellVCSGUI/vcsgui --with-ghc=ghc$GHCVERSION -j4 -fwebkit -f-yi -fpango -f-vty --force-reinstalls || exit
 #  if [ "$GHC_VER" != "7.0.3" ] && [ "$GHC_VER" != "7.0.4" ] && [ "$GHC_VER" != "7.6.1" ]; then
 #    echo https://github.com/yi-editor/yi.git >> sources.txt
 #    export LEKSAH_CONFIG_ARGS="$LEKSAH_CONFIG_ARGS -fyi -f-vty -f-dyre -fpango"

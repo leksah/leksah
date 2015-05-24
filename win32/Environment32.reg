@@ -1,0 +1,5 @@
+REGEDIT4
+
+[HKEY_CURRENT_USER\Environment]
+"Path"="C:\\users\\root\\Application Data\\cabal\\bin;C:\\ghc-7.10.1\\bin;C:\\bin;Z:\\usr\\i686-w64-mingw32\\sys-root\\mingw\\bin;%PATH%"
+
