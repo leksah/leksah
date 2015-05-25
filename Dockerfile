@@ -164,6 +164,7 @@ ADD win32 leksah/win32
 
 # Build leksah and make the MSI file:
 RUN wineserver -p1 && \
+    wine cabal install hscolour && \
     cd leksah && \
     ./win32/makeinstaller.sh && \
     wineserver -w
