@@ -1,10 +1,18 @@
 #!/bin/sh -ex
 
-. scripts/stage.sh || exit
+if ["$WINE" -eq ""]
+then
+  WINEPATH_U=echo
+  WINE_APPDATA=$APPDATA
+  LN='cp -uH'
+  LNDIR='cp -ruH'
+else
+  WINE_APPDATA=`$WINE cmd /C echo %APPDATA% | tr -d '\r\n'`
+  LN='ln -s'
+  LNDIR='ln -s'
+fi
 
-WINE_APPDATA=`wine cmd /C echo %APPDATA% | tr -d '\r\n'`
-LN='ln -s'
-LNDIR='ln -s'
+. scripts/stage.sh || exit
 
 export CABAL_USER_BIN=`$WINEPATH_U "$WINE_APPDATA"/cabal/bin`
 export GHC_USER_PREFIX=`$WINEPATH_U "$WINE_APPDATA"/cabal/x86_64-windows-ghc-\`$WINE ghc$GHCVERSION --numeric-version | tr -d '\r\n'\``
@@ -60,6 +68,7 @@ $LN  "$GTK_PREFIX_U"/bin/libcairo-gobject-2.dll SourceDir/bin
 $LN  "$GTK_PREFIX_U"/bin/libenchant.dll SourceDir/bin
 $LN  "$GTK_PREFIX_U"/bin/libepoxy-0.dll SourceDir/bin
 $LN  "$GTK_PREFIX_U"/bin/libexpat-1.dll SourceDir/bin
+$LN  "$GTK_PREFIX_U"/bin/libexslt-0.dll SourceDir/bin
 $LN  "$GTK_PREFIX_U"/bin/libffi-6.dll SourceDir/bin
 $LN  "$GTK_PREFIX_U"/bin/libfontconfig-1.dll SourceDir/bin
 $LN  "$GTK_PREFIX_U"/bin/libfreetype-6.dll SourceDir/bin
@@ -103,6 +112,7 @@ $LN  "$GTK_PREFIX_U"/bin/libwinpthread-1.dll SourceDir/bin
 $LN  "$GTK_PREFIX_U"/bin/zlib1.dll SourceDir/bin
 $LN  "$GTK_PREFIX_U"/bin/pkg-config.exe SourceDir/bin
 $LN  "$GTK_PREFIX_U"/bin/grep.exe SourceDir/bin
+$LN  "$GTK_PREFIX_U"/bin/xsltproc.exe SourceDir/bin
 mkdir -p SourceDir/share
 $LNDIR "$GTK_PREFIX_U"/share/themes SourceDir/share
 $LNDIR "$GTK_PREFIX_U"/share/icons SourceDir/share
@@ -118,8 +128,15 @@ $LNDIR "$GTK_PREFIX_U"/lib SourceDir
 # cp -ru /c/Windows/Fonts/DejaVuS*.ttf SourceDir
 export WINEPREFIX=~/.wine32
 export WINEARCH=win32
-find SourceDir -follow | wixl-heat -p SourceDir/ --component-group Leksah --directory-ref INSTALLDIR > heat.wxs || exit
-$WINE candle heat.wxs || exit
+if ["$WINE" -eq ""]
+then
+  heat dir SourceDir -srd -gg -sfrag -template fragment -out heat.wxs -cg Leksah -dr INSTALLDIR -sreg suppress registry harvesting || exit
+  LIGHT=light
+else
+  find SourceDir -follow | wixl-heat -p SourceDir/ --component-group Leksah --directory-ref INSTALLDIR > heat.wxs || exit
+  LIGHT=light -sval
+fi
+xsltproc heat.xslt heat.wxs > heatfixed.wxs
+$WINE candle heatfixed.wxs || exit
 $WINE candle leksah.wxs || exit
-$WINE light -sval -ext WixUIExtension heat.wixobj leksah.wixobj -out $LEKSAH_X_X_X_X_GHC_X_X_X.msi || exit
-
+$WINE $LIGHT -ext WixUIExtension heatfixed.wixobj leksah.wixobj -out $LEKSAH_X_X_X_X_GHC_X_X_X.msi || exit

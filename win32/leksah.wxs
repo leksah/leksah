@@ -28,7 +28,7 @@
                 <Shortcut Id="ApplicationStartMenuShortcut"
                       Name="Leksah"
                       Description="Haskell IDE"
-                      Target="[#filFB91CCAFD8AE8BB4AAF6F21441DF39B0]"
+                      Target="[#LeksahExe]"
                       WorkingDirectory="BINDIR"
                       Icon="leksah.ico"/>
                 <RemoveFolder Id="ApplicationProgramsFolder" On="uninstall"/>
