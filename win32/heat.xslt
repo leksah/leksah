@@ -15,7 +15,7 @@
     </xsl:copy>
   </xsl:template>
 
-  <xsl:template match='/wix:Wix/wix:Fragment/wix:DirectoryRef[@Id="INSTALLDIR"]/wix:Directory[@Name="bin"]/wix:Component/wix:File[@Source="SourceDir\bin\leksah.exe"]/@Id'>
+  <xsl:template match='/wix:Wix/wix:Fragment/wix:DirectoryRef[@Id="INSTALLDIR"]/wix:Directory[@Name="bin"]/wix:Component/wix:File[@Source="SourceDir\bin\leksah.exe" or @Source="SourceDir/bin/leksah.exe"]/@Id'>
     <xsl:attribute name="Id">
       <xsl:text>LeksahExe</xsl:text>
     </xsl:attribute>

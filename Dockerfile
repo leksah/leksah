@@ -23,7 +23,8 @@ RUN sudo dnf -y --enablerepo updates-testing install \
                            unzip \
                            cabal-install \
                            git \
-                           msitools && \
+                           msitools \
+                           libxslt && \
     sudo dnf clean all
 
 # Install pkg-config for using in Wine and Windows

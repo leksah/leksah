@@ -134,7 +134,7 @@ then
   LIGHT=light
 else
   find SourceDir -follow | wixl-heat -p SourceDir/ --component-group Leksah --directory-ref INSTALLDIR > heat.wxs || exit
-  LIGHT=light -sval
+  LIGHT='light -sval'
 fi
 xsltproc heat.xslt heat.wxs > heatfixed.wxs
 $WINE candle heatfixed.wxs || exit
