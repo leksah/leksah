@@ -24,13 +24,14 @@ Install the GtkSourceView and WebKitGtk development packages for your distributi
 
     sudo apt-get install libgtksourceview-3.0-dev libwebkitgtk-3.0-dev
 
-Make sure `$HOME/.cabal/bin` is in your `PATH`.
+Make sure `$HOME/.cabal/bin` is in your `PATH` then:
     
 	cabal update
 	cabal install Cabal cabal-install
     cabal install alex happy 
     cabal install gtk2hs-buildtools
     cabal install leksah
+    leksah
 
 ### Buildling on OS X
 
@@ -68,6 +69,7 @@ Install `gtk2hs-buildtools` and `leksah`:
     cabal install alex happy 
     cabal install gtk2hs-buildtools
     cabal install leksah
+    leksah
 
 ### Building on Windows
 
@@ -94,6 +96,7 @@ Make sure `C:\Leksah\bin` and `%APPDATA%\cabal\bin` are in your `PATH` and build
     cabal install alex happy 
     cabal install gtk2hs-buildtools
     cabal install leksah
+    leksah
    
 ### Building Leksah for Windows using Docker
 
@@ -101,7 +104,16 @@ It may seem crazy, but this is currently the best way to bootstrap Leksah for
 Windows from source.  This is mostly because Fedora and SUSE have a much
 more complete set of MinGW packages than any thing else (including Windows).
 
+Get the leksah source:
+
     git clone https://github.org/leksah/leksah
     cd leksah
+    git submodule update --init
+
+Build it using the Dockerfile:
+
     sudo docker build -t leksah/build .
-    sudo docker run --rm --volume $home/output:/output leksah/build cp /leksah/win32/leksah-0.15.0.0-ghc-7.10.1.msi /output
+
+Copy the resulting msi file out of the container (version number in the file name will match the one in the leksah.cabal file):
+
+    sudo docker run --rm --volume $HOME/output:/output leksah/build cp /leksah/win32/leksah-0.15.0.1-ghc-7.10.1.msi /output

@@ -127,7 +127,6 @@ ADD leksah.cabal LICENSE LICENSE.rtf Readme.md Setup.lhs SetupLocale.lhs sources
 ADD bew leksah/bew
 ADD data leksah/data
 ADD doc leksah/doc
-ADD gtk leksah/gtk
 ADD language-specs leksah/language-specs
 ADD linux leksah/linux
 ADD main leksah/main
