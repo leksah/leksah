@@ -76,3 +76,4 @@ win32/*.wixobj
 win32/*.wixpdb
 win32/heat.wxs
 win32/heatfixed.wxs
+xob/.vagrant/

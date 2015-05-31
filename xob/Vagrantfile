@@ -1,0 +1,22 @@
+# -*- mode: ruby -*-
+# vi: set ft=ruby :
+
+require './vagrant-provision-reboot-plugin'
+
+Vagrant.configure(2) do |config|
+
+  config.vm.box = "fedora-22"
+
+  config.vm.provider "virtualbox" do |vb|
+    vb.gui = true
+    vb.memory = "6000"
+    vb.cpus = 4
+    vb.customize ["modifyvm", :id, "--vram", "64"]
+    vb.customize ["modifyvm", :id, "--accelerate3d", "on"]
+  end
+
+  config.vm.provision "shell", path: "partition1.sh"
+  config.vm.provision :unix_reboot
+  config.vm.provision "shell", path: "partition2.sh"
+  config.vm.provision "shell", path: "setup.sh", privileged: false
+end
