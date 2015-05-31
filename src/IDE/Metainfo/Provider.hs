@@ -141,15 +141,18 @@ rebuildWorkspaceInfo = do
 loadSystemInfo :: IDEAction
 loadSystemInfo = do
     collectorPath   <-  liftIO getCollectorPath
-    packageIds      <-  liftM nub $ liftIO getInstalledPackageIds
-    packageList     <-  liftIO $ mapM (loadInfosForPackage collectorPath)
-                                                packageIds
-    let scope       =   foldr buildScope (PackScope Map.empty getEmptyDefaultScope)
-                            $ catMaybes packageList
---    liftIO performGC
-    modifyIDE_ (\ide -> ide{systemInfo = Just (GenScopeC (addOtherToScope scope False))})
+    mbPackageIds    <-  liftIO getInstalledPackageIds'
+    case mbPackageIds of
+        Left e -> logMessage ("Please check that ghc-pkg is in your PATH and restart leksah:\n    " <> e) ErrorTag
+        Right packageIds -> do
+            packageList     <-  liftIO $ mapM (loadInfosForPackage collectorPath)
+                                                        (nub packageIds)
+            let scope       =   foldr buildScope (PackScope Map.empty getEmptyDefaultScope)
+                                    $ catMaybes packageList
+        --    liftIO performGC
+            modifyIDE_ (\ide -> ide{systemInfo = Just (GenScopeC (addOtherToScope scope False))})
 
-    return ()
+            return ()
 
 --
 -- | Updates the system info
@@ -161,24 +164,27 @@ updateSystemInfo' rebuild continuation = do
     case wi of
         Nothing -> loadSystemInfo
         Just (GenScopeC (PackScope psmap psst)) -> do
-            packageIds          <-  liftIO getInstalledPackageIds
-            let newPackages     =   filter (`Map.member` psmap) packageIds
-            let trashPackages   =   filter (`notElem` packageIds) (Map.keys psmap)
-            if null newPackages && null trashPackages
-                then continuation True
-                else
-                    callCollector rebuild True True $ \ _ -> do
-                        collectorPath   <-  lift getCollectorPath
-                        newPackageInfos <-  liftIO $ mapM (loadInfosForPackage collectorPath)
-                                                            newPackages
-                        let psmap2      =   foldr ((\ e m -> Map.insert (pdPackage e) e m) . fromJust) psmap
-                                               (filter isJust newPackageInfos)
-                        let psmap3      =   foldr Map.delete psmap2 trashPackages
-                        let scope :: PackScope (Map Text [Descr])
-                                        =   foldr buildScope (PackScope Map.empty symEmpty)
-                                                (Map.elems psmap3)
-                        modifyIDE_ (\ide -> ide{systemInfo = Just (GenScopeC (addOtherToScope scope False))})
-                        continuation True
+            mbPackageIds    <-  liftIO getInstalledPackageIds'
+            case mbPackageIds of
+                Left e -> logMessage ("Please check that ghc-pkg is in your PATH and restart leksah:\n    " <> e) ErrorTag
+                Right packageIds -> do
+                    let newPackages     =   filter (`Map.member` psmap) packageIds
+                    let trashPackages   =   filter (`notElem` packageIds) (Map.keys psmap)
+                    if null newPackages && null trashPackages
+                        then continuation True
+                        else
+                            callCollector rebuild True True $ \ _ -> do
+                                collectorPath   <-  lift getCollectorPath
+                                newPackageInfos <-  liftIO $ mapM (loadInfosForPackage collectorPath)
+                                                                    newPackages
+                                let psmap2      =   foldr ((\ e m -> Map.insert (pdPackage e) e m) . fromJust) psmap
+                                                       (filter isJust newPackageInfos)
+                                let psmap3      =   foldr Map.delete psmap2 trashPackages
+                                let scope :: PackScope (Map Text [Descr])
+                                                =   foldr buildScope (PackScope Map.empty symEmpty)
+                                                        (Map.elems psmap3)
+                                modifyIDE_ (\ide -> ide{systemInfo = Just (GenScopeC (addOtherToScope scope False))})
+                                continuation True
     ideMessage Normal "Finished updating system metadata"
 
 getEmptyDefaultScope :: Map Text [Descr]
