@@ -176,6 +176,7 @@ then
 fi
 
 # Install 64bit Windows version of cabal-install:
+export WINEDEBUG=-all
 if [ ! -e ~/.wine32/drive_c/bin/cabal.exe ]
 then
     mkdir ~/.wine/drive_c/bin
