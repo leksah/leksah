@@ -17,7 +17,7 @@ A easy way to get up and running with:
 
 ## Setup
 
-Finished VM takes about 10GB or so of disk space.  Install VirtualBox 4.3.28 (edit
+Finished VM takes about 12GB or so of disk space.  Install VirtualBox 4.3.28 (edit
 the setup.sh if you choose a newer version) and Vagrant then run:
 
     vagrant box add -name fedora-22 http://download.fedoraproject.org/pub/fedora/linux/releases/22/Cloud/x86_64/Images/Fedora-Cloud-Base-Vagrant-22-20150521.x86_64.vagrant-virtualbox.box
