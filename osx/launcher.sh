@@ -52,6 +52,8 @@ export leksah_libexecdir="$bundle_res/libexec"
 
 export hlint_datadir="$bundle_data/hlint"
 
+export vcsgui_datadir="$bundle_data/vcsgui"
+
 APP=name
 I18NDIR="$bundle_data/locale"
 # Set the locale-related variables appropriately:

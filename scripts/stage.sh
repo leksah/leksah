@@ -35,10 +35,10 @@ if test "`uname`" = "Darwin"; then
     cd ../leksah-server || exit
     cabal install --enable-tests -j4 --with-ghc=ghc$GHCVERSION || exit
     cabal test || exit
-    cd ../yi || exit
-    cabal install -j4 -fpango --with-ghc=ghc$GHCVERSION || exit
+#    cd ../yi || exit
+#    cabal install -j4 -fpango --with-ghc=ghc$GHCVERSION || exit
     cd ../.. || exit
-    cabal install -j4 -fwebkit -fyi --with-gcc=gcc-mp-4.8 --with-ghc=ghc$GHCVERSION || exit
+    cabal install -j4 -fwebkit -f-yi --with-ghc=ghc$GHCVERSION || exit
 else
     $WINE cabal install ./ ./vendor/ltk ./vendor/leksah-server                gtk3 ghcjs-dom jsaddle vendor/haskellVCSWrapper/vcswrapper vendor/haskellVCSGUI/vcsgui --with-ghc=ghc$GHCVERSION -j4 -fwebkit -f-yi -fpango -f-vty --force-reinstalls || exit
 #  if [ "$GHC_VER" != "7.0.3" ] && [ "$GHC_VER" != "7.0.4" ] && [ "$GHC_VER" != "7.6.1" ]; then

@@ -137,6 +137,10 @@
     ${prefix:hlint}/share
   </data>
 
+  <data dest="${bundle}/Contents/Resources/share/vcsgui">
+    ${prefix:vcsgui}/share
+  </data>
+
   <!-- Copy in the themes data. You may want to trim this to save space
        in your bundle. -->
   <data>

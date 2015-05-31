@@ -10,7 +10,7 @@ export LEKSAH_PREFIX=$GHC_USER_PREFIX/$LEKSAH_X_X_X_X/share
 export LEKSAH_SERVER_BIN_DIR=$GHC_USER_PREFIX/$LEKSAH_SERVER_X_X_X_X
 export LEKSAH_SERVER_PREFIX=$GHC_USER_PREFIX/$LEKSAH_SERVER_X_X_X_X/share
 export VCSGUI_BIN_DIR=$GHC_USER_PREFIX/`ghc-pkg$GHCVERSION list |grep '^ *vcsgui-' | head -n1 | tr -d ' \n'`
-export VCSGUI_PREFIX=$GHC_USER_PREFIX/`ghc-pkg$GHCVERSION list |grep '^ *vcsgui-' | head -n1 | tr -d ' \n'`/share
+export VCSGUI_PREFIX=$GHC_USER_PREFIX/`ghc-pkg$GHCVERSION list |grep '^ *vcsgui-' | head -n1 | tr -d ' \n'`
 export HLINT_PREFIX=$GHC_USER_PREFIX/`ghc-pkg$GHCVERSION list |grep '^ *hlint-' | head -n1 | tr -d ' \n'`
 
 #export SANDBOX_BIN_DIR=$PWD/.cabal-sandbox
