@@ -1,5 +1,7 @@
 # Xob Leksah
 
+A Fedora 22 based Vagrant Box for Haskell development.
+
 ## Provides
 
 A easy way to get up and running with:
