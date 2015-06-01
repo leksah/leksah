@@ -34,7 +34,9 @@ Wait... a... long... time...
 
 ## Usage
 
-It should log in automatically to the GNOME Desktop as the user `vagrant`.
+It should log in automatically to the GNOME Desktop as the user `vagrant` (password `vagrant`).
+In the "Power" section of settings you can set "Blank screen" to "Never" (the code to
+do this in the `setup.sh` file does not work).
 To start Leksah run:
 
     leksah
