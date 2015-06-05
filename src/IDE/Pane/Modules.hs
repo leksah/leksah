@@ -1225,12 +1225,18 @@ moduleFields list hasLibs exesTests = VFD emptyParams $ [
             (staticListEditor (map T.pack list) id)]
         ++ (if hasLibs
                 then [
+--                    mkField
+--                        (paraName <<<- ParaName ((__ "Is this an exposed library module"))
+--                                $ emptyParams)
+--                        libExposed
+--                        (\ a b -> b{libExposed = a})
+--                        (maybeEditor (boolEditor, emptyParams) True (__ "Expose module"))]
                     mkField
-                        (paraName <<<- ParaName ((__ "Is this an exposed library module"))
+                        (paraName <<<- ParaName ((__ "Expose module"))
                                 $ emptyParams)
-                        libExposed
-                        (\ a b -> b{libExposed = a})
-                        (maybeEditor (boolEditor, emptyParams) True (__ "Expose module"))]
+                        (fromMaybe False . libExposed)
+                        (\ a b -> b{libExposed = Just a})
+                        boolEditor]
                 else [])
         ++ map (\ name ->
             mkField
