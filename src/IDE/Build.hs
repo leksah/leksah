@@ -206,7 +206,7 @@ doBuildChain ms chain@Chain{mcAction = MoBuild} =
 doBuildChain ms chain@Chain{mcAction = MoDocu} =
     packageDoc' (msBackgroundBuild ms) (msJumpToWarnings ms) (mcEle chain) (constrCont ms (mcPos chain) (mcNeg chain))
 doBuildChain ms chain@Chain{mcAction = MoTest} =
-    packageTest' (mcEle chain) False (constrCont ms (mcPos chain) (mcNeg chain))
+    packageTest' (msBackgroundBuild ms) (msJumpToWarnings ms) (mcEle chain) False (constrCont ms (mcPos chain) (mcNeg chain))
 doBuildChain ms chain@Chain{mcAction = MoCopy} =
     packageCopy' (mcEle chain) (constrCont ms (mcPos chain) (mcNeg chain))
 doBuildChain ms chain@Chain{mcAction = MoRegister} =

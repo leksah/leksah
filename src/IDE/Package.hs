@@ -503,10 +503,10 @@ packageRegister' package continuation =
 packageTest :: PackageAction
 packageTest = do
     package <- ask
-    liftIDE $ packageTest' package True (\ _ -> return ())
+    liftIDE $ packageTest' False True package True (\ _ -> return ())
 
-packageTest' :: IDEPackage -> Bool -> (Bool -> IDEAction) -> IDEAction
-packageTest' package shallConfigure continuation =
+packageTest' :: Bool -> Bool -> IDEPackage -> Bool -> (Bool -> IDEAction) -> IDEAction
+packageTest' backgroundBuild jumpToWarnings package shallConfigure continuation =
     if "--enable-tests" `elem` ipdConfigFlags package
         then do
           logLaunch <- getDefaultLogLaunch
@@ -519,13 +519,13 @@ packageTest' package shallConfigure continuation =
                     (mbLastOutput, isConfigErr, _) <- C.getZipSink $ (,,)
                         <$> C.ZipSink sinkLast
                         <*> C.ZipSink isConfigError
-                        <*> (C.ZipSink $ logOutputForBuild package False True)
+                        <*> (C.ZipSink $ logOutputForBuild package backgroundBuild jumpToWarnings)
                     lift $ do
                         errs <- readIDE errorRefs
                         if shallConfigure && isConfigErr
                             then
                                 packageConfig' package (\ b ->
-                                    when b $ packageTest' package shallConfigure continuation)
+                                    when b $ packageTest' backgroundBuild jumpToWarnings package shallConfigure continuation)
                             else do
                                 continuation (mbLastOutput == Just (ToolExit ExitSuccess))
                                 return ())
