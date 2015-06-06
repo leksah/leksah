@@ -56,8 +56,10 @@ import Control.Exception (SomeException(..),catch)
 import Control.Applicative ((<$>))
 import IDE.Package (packageConfig,addModuleToPackageDescr,delModuleFromPackageDescr,getEmptyModuleTemplate,getPackageDescriptionAndPath, ModuleLocation(..))
 import Distribution.PackageDescription
-       (allBuildInfo, hsSourceDirs, hasLibs, executables, testSuites, exeName, testName,
-        benchmarks, benchmarkName)
+       (PackageDescription, BuildInfo, hsSourceDirs,
+        hasLibs, executables, testSuites, exeName, testName, benchmarks,
+        benchmarkName, libBuildInfo, library, buildInfo, testBuildInfo,
+        benchmarkBuildInfo)
 import System.FilePath (takeBaseName, (</>),dropFileName)
 import System.Directory (doesFileExist,createDirectoryIfMissing, removeFile)
 import Graphics.UI.Editor.MakeEditor (buildEditor,FieldDescription(..),mkField)
@@ -1117,13 +1119,20 @@ addModule' treeView store = do
                                     $ map (\n -> take n treePath)  [1 .. length treePath]
     addModule categories
 
+-- Includes non buildable
+allBuildInfo' :: PackageDescription -> [BuildInfo]
+allBuildInfo' pkg_descr = [ libBuildInfo lib       | Just lib <- [library pkg_descr] ]
+                       ++ [ buildInfo exe          | exe <- executables pkg_descr ]
+                       ++ [ testBuildInfo tst      | tst <- testSuites pkg_descr ]
+                       ++ [ benchmarkBuildInfo tst | tst <- benchmarks pkg_descr ]
+
 addModule :: [ModuleRecord] -> PackageAction
 addModule categories = do
     liftIO $ debugM "leksah" "selectIdentifier"
     mbPD <- liftIDE $ getPackageDescriptionAndPath
     case mbPD of
         Nothing             -> liftIDE $ ideMessage Normal (__ "No package description")
-        Just (pd,cabalPath) -> let srcPaths = nub $ concatMap hsSourceDirs $ allBuildInfo pd
+        Just (pd,cabalPath) -> let srcPaths = nub $ concatMap hsSourceDirs $ allBuildInfo' pd
                                    rootPath = dropFileName cabalPath
                                    modPath  = foldr (\a b -> a <> "." <> b) ""
                                                 (map fst categories)

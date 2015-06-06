@@ -850,10 +850,12 @@ executeDebugCommand command handler = do
                     return ()) ideR
                 return ()
 
+-- Includes non buildable
 allBuildInfo' :: PackageDescription -> [BuildInfo]
-allBuildInfo' pkg_descr = [ libBuildInfo lib  | Just lib <- [library pkg_descr] ]
-                       ++ [ buildInfo exe     | exe <- executables pkg_descr ]
-                       ++ [ testBuildInfo tst | tst <- testSuites pkg_descr ]
+allBuildInfo' pkg_descr = [ libBuildInfo lib       | Just lib <- [library pkg_descr] ]
+                       ++ [ buildInfo exe          | exe <- executables pkg_descr ]
+                       ++ [ testBuildInfo tst      | tst <- testSuites pkg_descr ]
+                       ++ [ benchmarkBuildInfo tst | tst <- benchmarks pkg_descr ]
 testMainPath (TestSuiteExeV10 _ f) = [f]
 testMainPath _ = []
 
