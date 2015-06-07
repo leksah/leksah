@@ -1,5 +1,7 @@
 #!/bin/sh -ex
 
+export GHCVER=7.10.1
+
 sudo dnf -y update
 # Install GNOME desktop
 sudo dnf groupinstall -y "Fedora Workstation"
@@ -58,7 +60,7 @@ then
 fi
 
 # Install GHC
-sudo dnf copr -y enable petersen/ghc-7.10.1
+sudo dnf copr -y enable petersen/ghc-$GHCVER
 sudo dnf install -y ghc cabal-install
 
 # Add ~/.cabal/bin to PATH
@@ -92,7 +94,7 @@ then
     # Install Leksah
     cabal install gtk2hs-buildtools
     cabal install regex-tdfa-text --ghc-options=-XFlexibleContexts
-    cabal install
+    cabal install ./ ./vendor/ltk ./vendor/leksah-server
 fi
 
 # Install GHCJS
@@ -110,14 +112,14 @@ then
     cabal install --constraint='Cabal>=1.22.3.0'
 fi
 
-if [ ! -e ~/.ghcjs/x86_64-linux-0.1.0-7.10.1/ghcjs/ghcjs_boot.completed ]
+if [ ! -e ~/.ghcjs/x86_64-linux-*-$GHCVER/ghcjs/ghcjs_boot.completed ]
 then
     ghcjs-boot --dev --ghcjs-boot-dev-branch improved-base --shims-dev-branch improved-base
 fi
 
-if [ ! -e ~/.ghcjs/x86_64-linux-7.10.1 ]
+if [ ! -e ~/.ghcjs/x86_64-linux-$GHCVER ]
 then
-    ln -sf x86_64-linux-0.1.0-7.10.1 x86_64-linux-7.10.1
+    ln -sf x86_64-linux-*-$GHCVER x86_64-linux-$GHCVER
 fi
 
 # Install the latest webkitgtk3
@@ -168,8 +170,6 @@ then
     )
 fi
 
-export GHCVER=7.10.1
-
 # Install Windows version of GHC (but not the old mingw that comes with it):
 if [ ! -d ~/.wine/drive_c/ghc-$GHCVER ]
 then
@@ -216,7 +216,7 @@ then
     rm cabal-mingw64.7z
 fi
 
-if [ ! -e  ~/.wine/drive_c/users/vagrant/Application\ Data/ghc/x86_64-mingw32-7.10.1/package.conf.d/network-* ]
+if [ ! -e  ~/.wine/drive_c/users/vagrant/Application\ Data/ghc/x86_64-mingw32-$GHCVER/package.conf.d/network-* ]
 then
 # Run `cabal update` and install some packages we will need.
 # Some packages need us to run `mingw64-configure` manually (after `wine cabal configure` fails):
