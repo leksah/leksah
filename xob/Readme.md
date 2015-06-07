@@ -31,6 +31,15 @@ of CPUs, then run:
 
 Wait... a... long... time...
 
+If all goes well you will probably find it at the gnome lock screen when you return.
+Username is vagrant and password vagrant.  You can disable the lock screen in the
+system settings under **Power**.
+
+## Rerunning Setup
+
+If something goes wrong in` vagrant up` or you want to try to update the VM by rerunning
+the setup script you can use `vagrant provision` on the host machine to do this. First you
+will need to [enable SSH access](#using-ssh) in the Xob Leksah VM.
 
 ## Usage
 
@@ -54,6 +63,17 @@ To use Wine and MinGW to and run a Windows exe:
 The `WINEDEBUG=-all` turns off all the debug messages from Wine.
 
 
+## Using SSH
+
+You can use `vagrant ssh` to connect to the VM, but first you must run this on the VM:
+
+    sudo systemctl start sshd.service
+
+You can make it restart SSH when the VM is booted with:
+
+    sudo systemctl enable sshd.service
+
+    
 ## Warnings
 
 * This is brand spanking new (needs testing).
