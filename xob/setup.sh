@@ -71,8 +71,17 @@ export PATH=$HOME/.cabal/bin:$HOME/haskell/ghcjs/.cabal-sandbox/bin:$PATH
 
 cabal update
 
+mkdir -p ~/haskell
+
+if [ ! -d ~/haskell/leksah ]
+then
+    cd ~/haskell
+    git clone https://github.com/leksah/leksah.git
+fi
+
 if [ ! -e ~/.cabal/bin/leksah ]
 then
+    cd ~/haskell/leksah
     # Update Cabal and cabal-install
     cabal install Cabal cabal-install --constraint='Cabal>=1.22.3.0'
     hash -r
@@ -83,13 +92,12 @@ then
     # Install Leksah
     cabal install gtk2hs-buildtools
     cabal install regex-tdfa-text --ghc-options=-XFlexibleContexts
-    cabal install leksah
+    cabal install
 fi
 
 # Install GHCJS
 if [ ! -d ~/haskell/ghcjs ]
 then
-    mkdir ~/haskell || true
     cd ~/haskell
     git clone https://github.com/ghcjs/ghcjs.git
 fi
@@ -105,6 +113,28 @@ fi
 if [ ! -e ~/.ghcjs/x86_64-linux-0.1.0-7.10.1/ghcjs/ghcjs_boot.completed ]
 then
     ghcjs-boot --dev --ghcjs-boot-dev-branch improved-base --shims-dev-branch improved-base
+fi
+
+if [ ! -e ~/.ghcjs/x86_64-linux-7.10.1 ]
+then
+    ln -sf x86_64-linux-0.1.0-7.10.1 x86_64-linux-7.10.1
+fi
+
+# Install the latest webkitgtk3
+if [ ! -d ~/haskell/webkit ]
+then
+    cd ~/haskell
+    git clone https://github.com/gtk2hs/webkit.git
+    cabal install ./webkit
+fi
+
+# Install the latest ghcjs-dom (native and ghcjs)
+if [ ! -d ~/haskell/ghcjs-dom ]
+then
+    cd ~/haskell
+    git clone https://github.com/ghcjs/ghcjs-dom.git
+    cabal install ./ghcjs-dom
+    cabal install --ghcjs ./ghcjs-dom
 fi
 
 # Install pkg-config for Wine
@@ -186,6 +216,8 @@ then
     rm cabal-mingw64.7z
 fi
 
+if [ ! -e  ~/.wine/drive_c/users/vagrant/Application\ Data/ghc/x86_64-mingw32-7.10.1/package.conf.d/network-* ]
+then
 # Run `cabal update` and install some packages we will need.
 # Some packages need us to run `mingw64-configure` manually (after `wine cabal configure` fails):
     wineserver -p1 && \
@@ -214,5 +246,16 @@ fi
     wine cabal install regex-tdfa-text --ghc-options=-XFlexibleContexts && \
     wineserver -w && \
     rm -rf network-* old-time-*
+fi
 
-
+# Collect Leksah Metadata
+if [ ! -d ~/.leksah-0.15 ]
+then
+    mkdir ~/.leksah-0.15
+    cd ~/.leksah-0.15
+    wget https://raw.githubusercontent.com/leksah/leksah/master/data/prefscoll.lkshp
+    # Add ~/haskell to the list of directories checked for system package source
+    mv prefscoll.lkshp prefscoll.lkshp.orig
+    (head -n1 prefscoll.lkshp.orig && echo '               ["~/haskell"]' && tail -n+3 prefscoll.lkshp.orig) > prefscoll.lkshp
+    leksah-server -sob
+fi    
