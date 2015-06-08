@@ -79,6 +79,7 @@ if [ ! -d ~/haskell/leksah ]
 then
     cd ~/haskell
     git clone https://github.com/leksah/leksah.git
+    cd leksah
     git submodule update --init
 fi
 
