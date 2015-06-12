@@ -143,6 +143,7 @@ import qualified Data.Text as T
         null, pack, unpack)
 import Data.Monoid ((<>))
 import qualified Data.Text.IO as T (writeFile, readFile)
+import Data.Time (UTCTime(..))
 
 allBuffers :: MonadIDE m => m [IDEBuffer]
 allBuffers = liftIDE getPanes
@@ -428,22 +429,31 @@ markRefInSourceBuf index buf logRef scrollTo = do
                 return False
             return ()
 
+-- | Tries to create a new text buffer, fails when the given filepath
+-- does not exist or when it is not a text file.
 newTextBuffer :: PanePath -> Text -> Maybe FilePath -> IDEM (Maybe IDEBuffer)
 newTextBuffer panePath bn mbfn = do
-    cont <- case mbfn of
-                Nothing -> return True
-                Just fn -> liftIO $ doesFileExist fn
-    if cont
-        then do
+     case mbfn of
+            Nothing -> buildPane "" Nothing
+            Just fn ->
+                do eErrorContents <- liftIO $ do
+                                         catch (Right <$> T.readFile fn)
+                                               (\e -> return $ Left (show (e :: IOError)))
+                   case eErrorContents of
+                       Right contents -> do
+                           modTime  <- liftIO $ getModificationTime fn
+                           buildPane contents (Just modTime)
+                       Left err       -> do
+                           ideMessage Normal (__ "Error reading file " <> T.pack err)
+                           return Nothing
+
+    where buildPane contents mModTime = do
             nb      <-  getNotebook panePath
             prefs   <-  readIDE prefs
             bs      <-  getCandyState
             ct      <-  readIDE candy
             (ind,rbn) <- figureOutPaneName bn 0
-            buildThisPane panePath nb (builder' bs mbfn ind bn rbn ct prefs)
-        else do
-            ideMessage Normal ((__ "File does not exist ") <> (T.pack $ fromJust mbfn))
-            return Nothing
+            buildThisPane panePath nb (builder' bs mbfn ind bn rbn ct prefs contents mModTime)
 
 data CharacterCategory = IdentifierCharacter | SpaceCharacter | SyntaxCharacter
     deriving (Eq)
@@ -461,19 +471,14 @@ builder' :: Bool ->
     Text ->
     CandyTable ->
     Prefs ->
+    Text  ->
+    Maybe UTCTime ->
     PanePath ->
     Gtk.Notebook ->
     Gtk.Window ->
     IDEM (Maybe IDEBuffer,Connections)
-builder' bs mbfn ind bn rbn ct prefs pp nb windows = do
-    -- load up and display a file
-    (fileContents,modTime) <- case mbfn of
-        Just fn -> do
-            fc <- liftIO $ T.readFile fn
-            mt <- liftIO $ getModificationTime fn
-            return (fc,Just mt)
-        Nothing -> return ("\n",Nothing)
-
+builder' bs mbfn ind bn rbn ct prefs fileContents modTime pp nb windows = do
+    -- display a file
     case textEditorType prefs of
         "GtkSourceView" -> newGtkBuffer mbfn fileContents >>= makeBuffer modTime
         "Yi"            -> newYiBuffer mbfn fileContents >>= makeBuffer modTime
