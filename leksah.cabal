@@ -187,10 +187,6 @@ flag threaded
     description: Build with support for multithreaded execution
     default: False
 
-flag gtk3
-    Description: Use GTK3 rather than GTK2
-    Default: True
-
 flag loc
     Description: Experimental localization support
     Default: False
@@ -207,10 +203,7 @@ library
         build-depends: unix >=2.3.1.0 && <2.8
 
     if os(osx)
-        if flag(gtk3)
-          build-depends: gtk3-mac-integration >= 0.3.0.0 && <0.4
-        else
-          build-depends: gtk-mac-integration >= 0.3.0.0 && <0.4
+        build-depends: gtk3-mac-integration >= 0.3.0.0 && <0.4
 
     if flag(yi)
         build-depends: yi >=0.11.2 && <0.12,
@@ -222,16 +215,12 @@ library
         build-depends: dyre >= 0.8.3 && <0.9
         cpp-options: -DLEKSAH_WITH_YI_DYRE
 
-    if flag(gtk3)
-      build-depends: gtk3 >=0.13.2 && <0.14, gtksourceview3 >=0.13.1.0 && <0.14
-      cpp-options:   -DMIN_VERSION_gtk=MIN_VERSION_gtk3
-    else
-      build-depends: gtk >=0.13.2 && <0.14, gtksourceview2 >=0.13.1.0 && <0.14
+    build-depends: gtk3 >=0.13.2 && <0.14,
+                   gtksourceview3 >=0.13.1.0 && <0.14,
+                   webkitgtk3 >=0.13 && <0.14,
+                   webkitgtk3-javascriptcore -any
+    cpp-options:   -DMIN_VERSION_gtk=MIN_VERSION_gtk3
 
-    if flag(gtk3)
-      build-depends: webkitgtk3 -any, webkitgtk3-javascriptcore -any
-    else
-      build-depends: webkit -any, webkit-javascriptcore -any
     build-depends: jsaddle -any, ghcjs-codemirror -any, hamlet -any, blaze-html -any,
                    lens -any, pretty-show >=1.6.3 && <1.7
     cpp-options: -DWEBKITGTK -DLEKSAH_WITH_CODE_MIRROR
@@ -305,11 +294,9 @@ Executable leksah
         ghc-options: -threaded
 
     hs-source-dirs: main
-    build-depends: leksah == 0.15.0.2, base >= 4.0.0.0 && <=4.9
-    if flag(gtk3)
-        build-depends: gtk3 >=0.13.2 && <0.14
-    else
-        build-depends: gtk >=0.13.2 && <0.14
+    build-depends: leksah == 0.15.0.2,
+                   base >= 4.0.0.0 && <=4.9,
+                   gtk3 >=0.13.2 && <0.14
     if os(linux) && flag(loc)
         cpp-options: -DLOCALIZATION
         build-depends: hgettext, setlocale
@@ -323,15 +310,15 @@ Executable leksah
     ghc-options: -rtsopts -fwarn-missing-fields -fwarn-incomplete-patterns -ferror-spans
 
 executable bewleksah
-    build-depends: leksah ==0.15.0.2, base >=4.0.0.0 && <=4.9,
-                   jsaddle -any, ghcjs-dom -any
-    if flag(gtk3)
-      build-depends: gtk3 >=0.13.2 && <0.14, gtksourceview3 >=0.13.1.0 && <0.14,
-                     webkitgtk3 -any, webkitgtk3-javascriptcore -any
-      cpp-options:   -DMIN_VERSION_gtk=MIN_VERSION_gtk3
-    else
-      build-depends: gtk >=0.13.2 && <0.14, gtksourceview2 >=0.13.1.0 && <0.14,
-                     webkit -any, webkit-javascriptcore -any
+    build-depends: leksah ==0.15.0.2,
+                   base >=4.0.0.0 && <=4.9,
+                   jsaddle -any,
+                   ghcjs-dom -any,
+                   gtk3 >=0.13.2 && <0.14,
+                   gtksourceview3 >=0.13.1.0 && <0.14,
+                   webkitgtk3 >=0.13 && <0.14,
+                   webkitgtk3-javascriptcore -any
+    cpp-options:   -DMIN_VERSION_gtk=MIN_VERSION_gtk3
 
     main-is: Main.hs
     buildable: True
@@ -339,15 +326,22 @@ executable bewleksah
     hs-source-dirs: bew
 
 test-suite tests
-    build-depends: base >=4.0.0.0 && <4.9, Cabal >=1.10.2.0 && <1.23,
-                   QuickCheck >=2.4.2 && <2.9, leksah ==0.15.0.2,
-                   containers, ltk, leksah-server, hslogger,
-                   transformers, glib, monad-loops, text
-    if flag(gtk3)
-        build-depends: gtk3 >=0.13.2 && <0.14, gtksourceview3 >=0.13.1.0 && <0.14, webkitgtk3 -any
-        cpp-options:   -DMIN_VERSION_gtk=MIN_VERSION_gtk3
-    else
-        build-depends: gtk >=0.13.2 && <0.14, gtksourceview2 >=0.13.1.0 && <0.14, webkit -any
+    build-depends: base >=4.0.0.0 && <4.9,
+                   Cabal >=1.10.2.0 && <1.23,
+                   QuickCheck >=2.4.2 && <2.9,
+                   leksah ==0.15.0.2,
+                   containers,
+                   ltk,
+                   leksah-server,
+                   hslogger,
+                   transformers,
+                   glib,
+                   monad-loops,
+                   text,
+                   gtk3 >=0.13.2 && <0.14,
+                   gtksourceview3 >=0.13.1.0 && <0.14,
+                   webkitgtk3 -any
+    cpp-options:   -DMIN_VERSION_gtk=MIN_VERSION_gtk3
     if flag(yi)
         build-depends: yi
     type: exitcode-stdio-1.0
