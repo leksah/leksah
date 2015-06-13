@@ -1,26 +1,24 @@
 name: leksah-welcome
-version: 0.12.0.3
-cabal-version: >=1.2
+version: 0.15.0.0
+cabal-version: 1.2
 build-type: Simple
-license: AllRightsReserved
-license-file: ""
+license: MIT
+license-file: LICENSE
 description:
-             .
-             .
-             .
-             .
-data-dir: ""
+    Example package you can use to try out some of Leksah's features
 
 executable leksah-welcome
-    build-depends: QuickCheck -any, base -any
     main-is: Main.hs
-    buildable: True
+    build-depends:
+        QuickCheck -any,
+        base -any
     hs-source-dirs: src
 
 test-suite test-leksah-welcome
-    build-depends: QuickCheck -any, base -any
     type: exitcode-stdio-1.0
     main-is: Main.hs
-    buildable: True
-    cpp-options: -DMAIN_FUNCTION=testMain
-    hs-source-dirs: src
+    build-depends:
+        QuickCheck -any,
+        base -any,
+        doctest -any
+    hs-source-dirs: test

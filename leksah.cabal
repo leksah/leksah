@@ -35,6 +35,7 @@ data-files: LICENSE
             data/leksah-welcome/Setup.lhs
             data/leksah-welcome/leksah-welcome.cabal
             data/leksah-welcome/src/Main.hs
+            data/leksah-welcome/test/Main.hs
             data/empty.lkshs
             data/.gtkrc-2.0
             data/styles/leksah.xml
