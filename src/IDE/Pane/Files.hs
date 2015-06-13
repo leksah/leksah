@@ -43,7 +43,7 @@ import Graphics.UI.Gtk
         treeViewNew, treeStoreNew, castToWidget, TreeStore, TreeView,
         ScrolledWindow)
 import Data.Maybe (isJust)
-import Control.Monad (void, forM_, when)
+import Control.Monad (forM, void, forM_, when)
 import Data.Typeable (Typeable)
 import IDE.Core.State
        (MessageLevel(..), ipdBuildDir, ipdPackageId, wsPackages,
@@ -71,12 +71,23 @@ import Control.Exception (catch)
 import Data.Text (Text)
 import qualified Data.Text as T (pack)
 import Data.Monoid ((<>))
+import Data.List (sortBy, sort)
+import Data.Ord (comparing)
+import Data.Char (toLower)
 
 data FileRecord =
     FileRecord FilePath
   | DirRecord FilePath
   | PackageRecord IDEPackage
   | PlaceHolder deriving(Eq)
+
+instance Ord FileRecord where
+    -- | The ordering used for displaying the records in the filetree
+    compare (DirRecord _) (FileRecord _) = LT
+    compare (FileRecord _) (DirRecord _) = GT
+    compare (FileRecord p1) (FileRecord p2) = comparing (map toLower) p1 p2
+    compare (DirRecord p1) (DirRecord p2) = comparing (map toLower) p1 p2
+    compare _ _ = LT
 
 file :: FileRecord -> Text
 file (FileRecord f) = T.pack $ takeFileName f
@@ -190,14 +201,14 @@ refreshFiles = do
     liftIO $ setDirectories store Nothing $ map PackageRecord $ maybe [] wsPackages mbWS
 
 dirContents :: FilePath -> IO [FileRecord]
-dirContents dir =
-   (filter ((/= '.') . head) <$> getDirectoryContents dir >>=
-               mapM
-                 (\ f ->
-                    do let full = dir </> f
-                       isDir <- doesDirectoryExist full
-                       return $ if isDir then DirRecord full else FileRecord full))
-             `catch` \ (e :: IOError) -> return []
+dirContents dir = do
+   contents <- filter ((/= '.') . head) <$> getDirectoryContents dir
+                   `catch` \ (e :: IOError) -> return []
+   records <- forM contents $ \f -> do
+                  let full = dir </> f
+                  isDir <- doesDirectoryExist full
+                  return $ if isDir then DirRecord full else FileRecord full
+   return (sort records)
 
 refreshPackage :: TreeStore FileRecord -> TreePath -> IDEPackage -> IO ()
 refreshPackage store path p = do
