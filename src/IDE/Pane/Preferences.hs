@@ -743,8 +743,8 @@ prefsDescription configDir packages = NFDPP [
     ,   mkFieldPP
             (paraName <<<- ParaName (__ "URL for searching documentation") $
                 paraSynopsis <<<- ParaSynopsis
-                    ("e.g Hoogle: http://www.haskell.org/hoogle/?q= or " <>
-                        "Hayoo: http://holumbus.fh-wedel.de/hayoo/hayoo.html?query=")
+                    ("e.g https://www.haskell.org/hoogle/?q= or " <>
+                        "Hayoo: http://hayoo.fh-wedel.de/?query=")
                         $ emptyParams)
             (PP.text . show)
             stringParser
@@ -777,7 +777,7 @@ defaultPrefs = Prefs {
     ,   forceLineEnds       =   True
     ,   removeTBlanks       =   True
     ,   textviewFont        =   Nothing
-    ,   sourceStyle         =   (False,"classic")
+    ,   sourceStyle         =   (True,"leksah")
     ,   foundBackground     =   Color 65535 65535 32768
     ,   matchBackground     =   Color 32768 32768 32768
     ,   contextBackground   =   Color 65535 49152 49152
@@ -820,7 +820,7 @@ defaultPrefs = Prefs {
     ,   retrieveURL         =   "http://www.leksah.org"
     ,   retrieveStrategy    =   SP.RetrieveThenBuild
     ,   useCtrlTabFlipping  =   True
-    ,   docuSearchURL       =   "http://www.holumbus.org/hayoo/hayoo.html?query="
+    ,   docuSearchURL       =   "https://www.haskell.org/hoogle/?q="
     ,   completeRestricted  =   False
     ,   saveAllBeforeBuild  =   True
     ,   jumpToWarnings      =   True

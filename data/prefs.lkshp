@@ -83,5 +83,5 @@ Turn on printing of binding results in GHCi:
                False
 Browser:       "firefox"
 URL for searching documentation:
-               "http://www.holumbus.org/hayoo/hayoo.html?query="
-     --e.g Hoogle: http://www.haskell.org/hoogle/?q= or Hayoo: http://www.holumbus.org/hayoo/hayoo.html?query=
+               "https://www.haskell.org/hoogle/?q="
+     --e.g Hoogle: https://www.haskell.org/hoogle/?q= or Hayoo: http://hayoo.fh-wedel.de/?query=
