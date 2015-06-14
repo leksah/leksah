@@ -2,7 +2,6 @@
 
 export GHCVER=7.10.1
 
-sudo dnf -y update
 # Install GNOME desktop
 sudo dnf groupinstall -y "Fedora Workstation"
 # Install other useful things
@@ -26,6 +25,11 @@ sudo dnf -y install \
                            libxslt \
                            nodejs
 
+# Disable password authenticated SSH (key should be on there now) and enable sshd.
+# Run vagrant ssh to connect or vagrant ssh_config to find out the connection settings.
+sudo sed -i -e 's|^\(PasswordAuthentication *\)yes$|\1no|' /etc/ssh/sshd_config
+sudo systemctl enable sshd.service
+
 # Install VirtualBox Guest Additions
 sudo dnf install -y dkms kernel-devel wget make
 if [ ! -e ~/vbox/VBoxGuestAdditions_4.3.28.iso ]
@@ -45,8 +49,6 @@ sudo usermod -a -G wheel vagrant
 sudo sed -i -e 's|^# *WaylandEnable=false$|WaylandEnable=false\nAutomaticLoginEnable=True\nAutomaticLogin=vagrant|' /etc/gdm/custom.conf
 # Switch on GUI by default
 sudo systemctl set-default graphical.target
-# Disable sceen saver since this is a VM
-DISPLAY=:0 gsettings set org.gnome.desktop.session idle-delay 0
 
 # Install Hasklig fonts
 if [ ! -d ~/hasklig ]
@@ -121,6 +123,7 @@ fi
 
 if [ ! -e ~/.ghcjs/x86_64-linux-$GHCVER ]
 then
+	cd ~/.ghcjs
     ln -sf x86_64-linux-*-$GHCVER x86_64-linux-$GHCVER
 fi
 
@@ -186,12 +189,12 @@ fi
     ( echo 'REGEDIT4' && \
       echo && \
       echo '[HKEY_CURRENT_USER\Environment]' && \
-      echo '"Path"="C:\\users\\root\\Application Data\\cabal\\bin;C:\\ghc-'$GHCVER'\\bin;C:\\bin;Z:\\usr\\x86_64-w64-mingw32\\sys-root\\mingw\\bin;%PATH%"') > Environment.reg && \
+      echo '"Path"="C:\\users\\vagrant\\Application Data\\cabal\\bin;C:\\ghc-'$GHCVER'\\bin;C:\\bin;Z:\\usr\\x86_64-w64-mingw32\\sys-root\\mingw\\bin;%PATH%"') > Environment.reg && \
     wine regedit Environment.reg && \
     ( echo 'REGEDIT4' && \
       echo && \
       echo '[HKEY_CURRENT_USER\Environment]' && \
-      echo '"Path"="C:\\users\\root\\Application Data\\cabal\\bin;C:\\ghc-'$GHCVER'\\bin;C:\\bin;Z:\\usr\\i686-w64-mingw32\\sys-root\\mingw\\bin;%PATH%"') > Environment.reg && \
+      echo '"Path"="C:\\users\\vagrant\\Application Data\\cabal\\bin;C:\\ghc-'$GHCVER'\\bin;C:\\bin;Z:\\usr\\i686-w64-mingw32\\sys-root\\mingw\\bin;%PATH%"') > Environment.reg && \
     ( export WINEPREFIX=~/.wine32 && export WINEARCH=win32 && \
       wine regedit Environment.reg && wineserver -w \
     ) && \
@@ -209,7 +212,7 @@ fi
 
 # Install 64bit Windows version of cabal-install:
 export WINEDEBUG=-all
-if [ ! -e ~/.wine32/drive_c/bin/cabal.exe ]
+if [ ! -e ~/.wine/drive_c/bin/cabal.exe ]
 then
     mkdir ~/.wine/drive_c/bin
     cd ~/.wine/drive_c/bin
@@ -257,7 +260,32 @@ then
     cd ~/.leksah-0.15
     wget https://raw.githubusercontent.com/leksah/leksah/master/data/prefscoll.lkshp
     # Add ~/haskell to the list of directories checked for system package source
-    mv prefscoll.lkshp prefscoll.lkshp.orig
-    (head -n1 prefscoll.lkshp.orig && echo '               ["~/haskell"]' && tail -n+3 prefscoll.lkshp.orig) > prefscoll.lkshp
+    (head -n1 ~/.cabal/share/x86_64-linux-ghc-$GHCVER/leksah-server-*/data/prefscoll.lkshp &&
+     echo '               ["~/haskell"]' &&
+     tail -n+3 ~/.cabal/share/x86_64-linux-ghc-$GHCVER/leksah-server-*/data/prefscoll.lkshp) > prefs.lkshp
+    cp prefs.lkshp prefscoll.lkshp
+    echo 'TextView Font: "Hasklig Light 12"' >> prefs.lkshp
     leksah-server -sob
 fi    
+
+# Add Leksah application
+if [ ! -e /usr/share/applications/leksah.desktop ]
+then
+    sudo cp ~/haskell/leksah/linux/applications/leksah.desktop /usr/share/applications/leksah.desktop
+fi
+
+# Set Leksah to autostart
+if [ ! -e ~/.config/autostart/leksah.desktop ]
+then
+    mkdir -p ~/.config/autostart
+    cp ~/haskell/leksah/linux/applications/leksah.desktop ~/.config/autostart/leksah.desktop
+fi
+
+# Disable sceen saver since this is a VM
+if [ ! -e ~/.config/autostart/DisableScreenLock.desktop ]
+then
+    (echo '[Desktop Entry]' &&
+     echo 'Name=DisableScreenLock' &&
+     echo 'Type=Application' &&
+     echo 'Exec=sh -c "gsettings set org.gnome.desktop.session idle-delay 0 && rm ~/.config/autostart/DisableScreenLock.desktop"') > ~/.config/autostart/DisableScreenLock.desktop
+fi
