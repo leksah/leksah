@@ -247,7 +247,7 @@ workspacePackageNew = do
         workspaceTry $ void (workspaceAddPackage' fp)
         when isNew $ do
             mbPack <- idePackageFromPath logOutputDefault fp
-            constructAndOpenMainModule mbPack
+            constructAndOpenMainModules mbPack
         void (triggerEventIDE UpdateWorkspaceInfo))
 
 workspacePackageClone :: WorkspaceAction
@@ -259,9 +259,9 @@ workspacePackageClone = do
         workspaceTry $ void (workspaceAddPackage' fp)
         void (triggerEventIDE UpdateWorkspaceInfo))
 
-constructAndOpenMainModule :: Maybe IDEPackage -> IDEAction
-constructAndOpenMainModule Nothing = return ()
-constructAndOpenMainModule (Just idePackage) =
+constructAndOpenMainModules :: Maybe IDEPackage -> IDEAction
+constructAndOpenMainModules Nothing = return ()
+constructAndOpenMainModules (Just idePackage) =
     forM_ (ipdMain idePackage) $ \(target, bi, isTest) -> do
         mbPD <- getPackageDescriptionAndPath
         case mbPD of
@@ -271,7 +271,7 @@ constructAndOpenMainModule (Just idePackage) =
                         liftIO $ createDirectoryIfMissing True path
                         alreadyExists <- liftIO $ doesFileExist (path </> target)
                         unless alreadyExists $ do
-                            template <- liftIO $ getModuleTemplate "main" pd "Main" "" ""
+                            template <- liftIO $ getModuleTemplate (if isTest then "testmain" else "main") pd "Main" "" ""
                             liftIO $ T.writeFile (path </> target) template
                             fileOpenThis (path </> target)
                     _ -> return ()

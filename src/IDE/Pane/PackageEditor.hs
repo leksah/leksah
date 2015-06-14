@@ -112,6 +112,8 @@ import qualified Data.Text.IO as T (writeFile, readFile)
 import qualified Text.Printf as S (printf)
 import Text.Printf (PrintfType)
 import MyMissing (forceJust)
+import Language.Haskell.Extension (Language(..))
+import Distribution.License (License(..))
 
 printf :: PrintfType r => Text -> r
 printf = S.printf . T.unpack
@@ -234,7 +236,7 @@ hasUnknownBenchmarkTypes pd =
 data NewPackage = NewPackage {
     newPackageName :: Text,
     newPackageParentDir :: FilePath,
-    templatePackage :: Text}
+    templatePackage :: Maybe Text}
 
 packageFields :: FilePath -> FieldDescription NewPackage
 packageFields workspaceDir = VFD emptyParams [
@@ -252,11 +254,11 @@ packageFields workspaceDir = VFD emptyParams [
             (\ a b -> b{newPackageParentDir = a})
             (fileEditor (Just workspaceDir) FileChooserActionSelectFolder "Select"),
         mkField
-            (paraName <<<- ParaName ((__ "Existing package to copy"))
+            (paraName <<<- ParaName ((__ "Copy existing package"))
                     $ emptyParams)
             templatePackage
             (\ a b -> b{templatePackage = a})
-            (comboEntryEditor examplePackages)]
+            (maybeEditor (comboEntryEditor examplePackages, emptyParams) True "")]
 
 examplePackages = [ "hello"
                   , "gtk2hs-hello"
@@ -275,7 +277,7 @@ newPackageDialog parent workspaceDir = do
 #endif
     lower                      <-   dialogGetActionArea dia
     (widget,inj,ext,_)         <-   buildEditor (packageFields workspaceDir)
-                                        (NewPackage "" workspaceDir "hello")
+                                        (NewPackage "" workspaceDir Nothing)
     okButton <- dialogAddButton dia (__"Create Package") ResponseOk
     dialogAddButton dia (__"Cancel") ResponseCancel
     boxPackStart (castToBox upper) widget PackGrow 7
@@ -283,7 +285,7 @@ newPackageDialog parent workspaceDir = do
     widgetGrabDefault okButton
     widgetShowAll dia
     resp  <- dialogRun dia
-    value <- ext (NewPackage "" workspaceDir "hello")
+    value <- ext (NewPackage "" workspaceDir Nothing)
     widgetDestroy dia
     --find
     case resp of
@@ -296,7 +298,7 @@ packageNew' workspaceDir log activateAction = do
     mbNewPackage <- liftIO $ newPackageDialog (head windows) workspaceDir
     case mbNewPackage of
         Nothing -> return ()
-        Just NewPackage{..} | T.null templatePackage -> do
+        Just NewPackage{..} | templatePackage == Nothing -> do
             let dirName = newPackageParentDir </> T.unpack newPackageName
             mbCabalFile <-  liftIO $ cabalFileName dirName
             window <- getMainWindow
@@ -337,25 +339,29 @@ packageNew' workspaceDir log activateAction = do
                             package   = PackageIdentifier (PackageName $ T.unpack newPackageName)
                                                           initialVersion
                           , buildType = Just Simple
-                          , specVersionRaw = Right (orLaterVersion (Version [1,2] []))
-                          , buildDepends = [
-                                Dependency (PackageName "base") anyVersion
-                              , Dependency (PackageName "QuickCheck") anyVersion]
+                          , specVersionRaw = Right (orLaterVersion (Version [1,12] []))
+                          , license = AllRightsReserved
                           , executables = [emptyExecutable {
                                 exeName    = T.unpack newPackageName
                               , modulePath = "Main.hs"
                               , buildInfo  = emptyBuildInfo {
-                                    hsSourceDirs = ["src"]}}]
+                                    hsSourceDirs    = ["src"]
+                                  , targetBuildDepends = [Dependency (PackageName "base") anyVersion]
+                                  , defaultLanguage = Just Haskell2010}}]
                           , testSuites = [emptyTestSuite {
                                     testName = "test-" ++ T.unpack newPackageName
                                   , testInterface = (TestSuiteExeV10 (Version [1,0] []) "Main.hs")
                                   , testBuildInfo = emptyBuildInfo {
-                                        hsSourceDirs = ["src"]
-                                      , cppOptions = ["-DMAIN_FUNCTION=testMain"]}}]
+                                        hsSourceDirs    = ["test"]
+                                      , targetBuildDepends = [
+                                            Dependency (PackageName "base") anyVersion
+                                          , Dependency (PackageName "QuickCheck") anyVersion
+                                          , Dependency (PackageName "doctest") anyVersion]
+                                      , defaultLanguage = Just Haskell2010}}]
                           , benchmarks =  []
                           } dirName modules (activateAction True)
                     return ()
-        Just NewPackage{..} -> cabalUnpack newPackageParentDir templatePackage False (Just newPackageName) log (activateAction False)
+        Just NewPackage{..} -> cabalUnpack newPackageParentDir (fromJust templatePackage) False (Just newPackageName) log (activateAction False)
 
 standardSetup :: Text
 standardSetup = "#!/usr/bin/runhaskell \n"

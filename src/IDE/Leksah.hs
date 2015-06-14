@@ -448,7 +448,9 @@ startMainWindow yiControl sessionFP mbWorkspaceFP sourceFPs startupPrefs isFirst
         createDirectoryIfMissing True $ welcomePath</>"src"
         copyFile (welcomeSource</>"Setup.lhs")            (welcomePath</>"Setup.lhs")
         copyFile (welcomeSource</>"leksah-welcome.cabal") (welcomeCabal)
+        copyFile (welcomeSource</>"LICENSE")              (welcomePath</>"LICENSE")
         copyFile (welcomeSource</>"src"</>"Main.hs")      (welcomeMain)
+        copyFile (welcomeSource</>"test"</>"Main.hs")     (welcomePath</>"test"</>"Main.hs")
         defaultWorkspace <- liftIO $ (</> "leksah.lkshw") <$> getHomeDirectory
         defaultExists <- liftIO $ doesFileExist defaultWorkspace
         reflectIDE (do

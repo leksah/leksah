@@ -16,12 +16,8 @@ module @ModuleName@ (
     main
 ) where
 
-import Data.List (stripPrefix)
+import Test.DocTest
 
--- | Simple function to create a hello message.
--- prop> stripPrefix "Hello " (hello s) == Just s
-hello s = "Hello " ++ s
+main = doctest ["-isrc", "src/Main.hs"]
 
-main = do
-    putStrLn (hello "World")
 

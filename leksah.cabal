@@ -30,10 +30,12 @@ data-files: LICENSE
             data/emacs.lkshk
             data/LICENSE
             data/main.lksht
+            data/testmain.lksht
             data/module.lksht
             data/welcome.txt
             data/leksah-welcome/Setup.lhs
             data/leksah-welcome/leksah-welcome.cabal
+            data/leksah-welcome/LICENSE
             data/leksah-welcome/src/Main.hs
             data/leksah-welcome/test/Main.hs
             data/empty.lkshs
