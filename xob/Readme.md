@@ -17,7 +17,7 @@ An easy way to get up and running with:
 
 ## Setup
 
-Finished VM takes about 14GB or so of disk space.  Install VirtualBox 4.3.28 (edit
+Finished VM takes about 16GB or so of disk space.  Install VirtualBox 4.3.28 (edit
 the setup.sh if you choose a newer version) and Vagrant then run:
 
     vagrant box add -name fedora-22 http://download.fedoraproject.org/pub/fedora/linux/releases/22/Cloud/x86_64/Images/Fedora-Cloud-Base-Vagrant-22-20150521.x86_64.vagrant-virtualbox.box
@@ -38,17 +38,12 @@ system settings under **Power**.
 ## Rerunning Setup
 
 If something goes wrong in` vagrant up` or you want to try to update the VM by rerunning
-the setup script you can use `vagrant provision` on the host machine to do this. First you
-will need to [enable SSH access](#using-ssh) in the Xob Leksah VM.
+the setup script you can use `vagrant provision` on the host machine to do this.
 
 ## Usage
 
-The VM should log in automatically to the GNOME Desktop as the user `vagrant` (password `vagrant`).
-In the "Power" section of settings you can set "Blank screen" to "Never" (the code to
-do this in the `setup.sh` file does not work).
-To start Leksah run:
-
-    leksah
+The VM should log in automatically as the user `vagrant` (password `vagrant`)
+and run Leksah.
 
 To build a GHCJS package use the `JS` button in Leksah or run
 
@@ -63,21 +58,11 @@ To use Wine and MinGW to and run a Windows exe:
 The `WINEDEBUG=-all` turns off all the debug messages from Wine.
 
 
-## Using SSH
-
-You can use `vagrant ssh` to connect to the VM, but first you must run this on the VM:
-
-    sudo systemctl start sshd.service
-
-You can make it restart SSH when the VM is booted with:
-
-    sudo systemctl enable sshd.service
-
-    
 ## Warnings
 
 * This is brand spanking new (needs testing).
-
+* There is some kind of input latency issue that affects Leksah as well as
+  gedit (not sure what it is).
 * GHCJS is the new “improved-base” branch and not the master branch so
   you may find some examples do not work.  Expect problems and make sure you
   mention that you are using “improved-base” when reporting them.
