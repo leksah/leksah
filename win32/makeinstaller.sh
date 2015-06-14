@@ -41,8 +41,11 @@ $LN  "$LEKSAH_PREFIX/$LEKSAH_X_X_X_X"/LICENSE SourceDir/leksah
 $LN  "$LEKSAH_PREFIX/$LEKSAH_X_X_X_X"/Readme.md SourceDir/leksah
 mkdir -p SourceDir/hlint
 $LNDIR "$LEKSAH_PREFIX/$HLINT_X_X_X_X"/* SourceDir/hlint
-mkdir -p SourceDir/pretty-show
-$LNDIR "$LEKSAH_PREFIX/$PRETTY_SHOW_X_X"/style SourceDir/pretty-show
+# TODO put this back once JavaScriptCore works win mingw webkitgtk
+# mkdir -p SourceDir/pretty-show
+# $LNDIR "$LEKSAH_PREFIX/$PRETTY_SHOW_X_X"/style SourceDir/pretty-show
+mkdir -p SourceDir/pretty-show/style
+$LN "$LEKSAH_PREFIX/$PRETTY_SHOW_X_X"/style/pretty-show.css SourceDir/pretty-show/style
 mkdir -p SourceDir/ghcjs-codemirror
 $LNDIR "$LEKSAH_PREFIX/$GHCJS_CODEMIRROR_X_X_X_X"/mode SourceDir/ghcjs-codemirror
 $LNDIR "$LEKSAH_PREFIX/$GHCJS_CODEMIRROR_X_X_X_X"/lib SourceDir/ghcjs-codemirror
