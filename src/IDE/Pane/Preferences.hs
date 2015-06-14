@@ -91,7 +91,7 @@ import IDE.Pane.Files (refreshFiles)
 -- This needs to be incremented, when the preferences format changes
 --
 prefsVersion :: Int
-prefsVersion = 2
+prefsVersion = 3
 
 --
 -- | The Preferences Pane
