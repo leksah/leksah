@@ -482,6 +482,7 @@ data Prefs = Prefs {
     ,   breakOnError        ::   Bool
     ,   printBindResult     ::   Bool
     ,   serverIP            ::   Text
+    ,   showHiddenFiles     ::   Bool
             -- As well used by server
     ,   serverPort          ::   Int
     ,   sourceDirectories   ::   [FilePath]

@@ -85,6 +85,7 @@ import qualified Data.Text as T (isSuffixOf, unpack, pack, null)
 import Data.Monoid ((<>))
 import Control.Applicative ((<$>))
 import Distribution.Text (display, simpleParse)
+import IDE.Pane.Files (refreshFiles)
 
 -- ---------------------------------------------------------------------
 -- This needs to be incremented, when the preferences format changes
@@ -148,6 +149,7 @@ instance RecoverablePane IDEPrefs PrefsState IDEM where
                         lastAppliedPrefs    <- readIORef lastAppliedPrefsRef
                         mapM_ (\f -> reflectIDE (applicator f newPrefs lastAppliedPrefs) ideR) flatPrefsDesc
                         writeIORef lastAppliedPrefsRef newPrefs
+
             on restore buttonActivated (do
                 lastAppliedPrefs <- readIORef lastAppliedPrefsRef
                 mapM_ (\f -> reflectIDE (applicator f prefs lastAppliedPrefs) ideR) flatPrefsDesc
@@ -458,6 +460,14 @@ prefsDescription configDir packages = NFDPP [
                         (intEditor (0.0, 3000.0, 25.0),
                             paraName <<<- ParaName "Y" $ emptyParams))
             (\a -> return ())
+    ,   mkFieldPP
+            (paraName <<<- ParaName (__ "Show hidden files in file tree") $ emptyParams)
+            (PP.text . show)
+            boolParser
+            showHiddenFiles
+            (\b a -> a {showHiddenFiles = b})
+            boolEditor
+            (\b -> return ())
     ,   mkFieldPP
             (paraName <<<- ParaName (__ "Use ctrl Tab for Notebook flipper") $ emptyParams)
             (PP.text . show)
@@ -838,6 +848,7 @@ defaultPrefs = Prefs {
     ,   serverPort          =   11111
     ,   serverIP            =   "127.0.0.1"
     ,   endWithLastConn     =   True
+    ,   showHiddenFiles     =   False
     }
 
 -- ------------------------------------------------------------
