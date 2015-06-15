@@ -85,6 +85,7 @@ import qualified Data.Text as T (isSuffixOf, unpack, pack, null)
 import Data.Monoid ((<>))
 import Control.Applicative ((<$>))
 import Distribution.Text (display, simpleParse)
+import IDE.Pane.Files (refreshFiles)
 
 -- ---------------------------------------------------------------------
 -- This needs to be incremented, when the preferences format changes
@@ -114,9 +115,9 @@ instance RecoverablePane IDEPrefs PrefsState IDEM where
     saveState p     =   return Nothing
     recoverState pp st  =  return Nothing
     builder pp nb windows = do
-        prefs <- readIDE prefs
+        initialPrefs <- readIDE prefs
         configDir <- liftIO getConfigDir
-        lastAppliedPrefsRef <- liftIO $ newIORef prefs
+        lastAppliedPrefsRef <- liftIO $ newIORef initialPrefs
         packageInfos <- liftIO getInstalledPackageIds
         let flatPrefsDesc = flattenFieldDescriptionPP (prefsDescription configDir packageInfos)
         reifyIDE $  \ ideR -> do
@@ -124,45 +125,52 @@ instance RecoverablePane IDEPrefs PrefsState IDEM where
             bb      <-  hButtonBoxNew
             boxSetSpacing bb 6
             buttonBoxSetLayout bb ButtonboxSpread
-            apply   <-  buttonNewFromStock "gtk-apply"
+            preview   <-  buttonNewFromStock "Preview"
             restore <-  buttonNewFromStock "Restore"
             closeB  <-  buttonNewFromStock "gtk-cancel"
             save    <-  buttonNewFromStock "gtk-save"
             widgetSetSensitive save False
-            boxPackStart bb apply PackNatural 0
+            boxPackStart bb preview PackNatural 0
             boxPackStart bb restore PackNatural 0
             boxPackEnd bb closeB PackNatural 0
             boxPackEnd bb save PackNatural 0
             (widget,injb,ext,notifier) <-  buildEditor
-                                (extractFieldDescription $ prefsDescription configDir packageInfos) prefs
+                                (extractFieldDescription $ prefsDescription configDir packageInfos) initialPrefs
             boxPackStart vb widget PackGrow 0
             label   <-  labelNew (Nothing :: Maybe Text)
             boxPackStart vb label PackNatural 0
             boxPackEnd vb bb PackNatural 5
             let prefsPane = IDEPrefs vb
-            on apply buttonActivated $ do
-                mbNewPrefs <- extract prefs [ext]
+
+            let applyPrefs newPrefs = do
+                lastAppliedPrefs    <- readIORef lastAppliedPrefsRef
+                reflectIDE (modifyIDE_ (\ide -> ide{prefs = newPrefs})) ideR
+                mapM_ (\f -> reflectIDE (applicator f newPrefs lastAppliedPrefs) ideR) flatPrefsDesc
+                writeIORef lastAppliedPrefsRef newPrefs
+
+            on preview buttonActivated $ do
+                mbNewPrefs <- extract initialPrefs [ext]
                 case mbNewPrefs of
                     Nothing -> return ()
-                    Just newPrefs -> do
-                        lastAppliedPrefs    <- readIORef lastAppliedPrefsRef
-                        mapM_ (\f -> reflectIDE (applicator f newPrefs lastAppliedPrefs) ideR) flatPrefsDesc
-                        writeIORef lastAppliedPrefsRef newPrefs
-            on restore buttonActivated (do
-                lastAppliedPrefs <- readIORef lastAppliedPrefsRef
-                mapM_ (\f -> reflectIDE (applicator f prefs lastAppliedPrefs) ideR) flatPrefsDesc
-                injb prefs
-                writeIORef lastAppliedPrefsRef prefs
+                    Just newPrefs -> applyPrefs newPrefs
+
+            on restore buttonActivated $ do
+                applyPrefs initialPrefs
+
+                -- update the UI
+                injb initialPrefs
                 markLabel nb (getTopWidget prefsPane) False
                 widgetSetSensitive save False
-                )
+
+
             on save buttonActivated $ do
-                lastAppliedPrefs <- readIORef lastAppliedPrefsRef
-                mbNewPrefs <- extract prefs [ext]
+                mbNewPrefs <- extract initialPrefs [ext]
                 case mbNewPrefs of
                     Nothing -> return ()
                     Just newPrefs -> do
-                        mapM_ (\f -> reflectIDE (applicator f newPrefs lastAppliedPrefs) ideR ) flatPrefsDesc
+                        applyPrefs newPrefs
+
+                        -- save preferences to disk
                         fp   <- getConfigFilePathForSave standardPreferencesFilename
                         writePrefs fp newPrefs
                         fp2  <-  getConfigFilePathForSave strippedPreferencesFilename
@@ -173,14 +181,16 @@ instance RecoverablePane IDEPrefs PrefsState IDEM where
                                        SP.retrieveStrategy  = retrieveStrategy newPrefs,
                                        SP.serverPort        = serverPort newPrefs,
                                        SP.endWithLastConn   = endWithLastConn newPrefs}
-                        reflectIDE (modifyIDE_ (\ide -> ide{prefs = newPrefs})) ideR
+
+                        -- close the UI
                         reflectIDE (void (closePane prefsPane)) ideR
+
             on closeB buttonActivated $ do
-                mbP <- extract prefs [ext]
+                mbP <- extract initialPrefs [ext]
                 let hasChanged = case mbP of
                                         Nothing -> False
                                         Just p -> p{prefsFormat = 0, prefsSaveTime = ""} /=
-                                                  prefs{prefsFormat = 0, prefsSaveTime = ""}
+                                                  initialPrefs{prefsFormat = 0, prefsSaveTime = ""}
                 if not hasChanged
                     then reflectIDE (void (closePane prefsPane)) ideR
                     else do
@@ -192,17 +202,19 @@ instance RecoverablePane IDEPrefs PrefsState IDEM where
                         resp <- dialogRun md
                         widgetDestroy md
                         case resp of
-                            ResponseYes ->   reflectIDE (void (closePane prefsPane)) ideR
+                            ResponseYes -> do
+                                applyPrefs initialPrefs
+                                reflectIDE (void (closePane prefsPane)) ideR
                             _  ->   return ()
             registerEvent notifier FocusIn (\e -> do
                 reflectIDE (makeActive prefsPane) ideR
                 return (e{gtkReturn=False}))
             registerEvent notifier MayHaveChanged (\ e -> do
-                mbP <- extract prefs [ext]
+                mbP <- extract initialPrefs [ext]
                 let hasChanged = case mbP of
                                         Nothing -> False
                                         Just p -> p{prefsFormat = 0, prefsSaveTime = ""} /=
-                                                  prefs{prefsFormat = 0, prefsSaveTime = ""}
+                                                  initialPrefs{prefsFormat = 0, prefsSaveTime = ""}
                 when (isJust mbP) $ labelSetMarkup label ("" :: Text)
                 markLabel nb (getTopWidget prefsPane) hasChanged
                 widgetSetSensitive save hasChanged
