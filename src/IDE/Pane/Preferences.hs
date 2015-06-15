@@ -85,7 +85,6 @@ import qualified Data.Text as T (isSuffixOf, unpack, pack, null)
 import Data.Monoid ((<>))
 import Control.Applicative ((<$>))
 import Distribution.Text (display, simpleParse)
-import IDE.Pane.Files (refreshFiles)
 
 -- ---------------------------------------------------------------------
 -- This needs to be incremented, when the preferences format changes
