@@ -69,7 +69,7 @@ doServerCommand' command cont = do
         Nothing -> do
             prefs' <- readIDE prefs
             handle <- reifyIDE $ \ideR ->
-                catch (connectTo (T.unpack $ serverIP prefs') (PortNumber(PortNum (fromIntegral $ serverPort prefs'))))
+                catch (connectTo (T.unpack $ serverIP prefs') (PortNumber (fromIntegral $ serverPort prefs')))
                     (\(exc :: SomeException) -> do
                         catch (startServer (serverPort prefs'))
                             (\(exc :: SomeException) -> throwIDE ("Can't start leksah-server" <> T.pack (show exc)))
@@ -111,7 +111,7 @@ waitForServer _ 0 = return Nothing
 waitForServer prefs s = do
     threadDelay 100000 -- 0.1 second
     catch (do
-        handle <- liftIO $ connectTo (T.unpack $ serverIP prefs) (PortNumber(PortNum (fromIntegral $ serverPort prefs)))
+        handle <- liftIO $ connectTo (T.unpack $ serverIP prefs) (PortNumber (fromIntegral $ serverPort prefs))
         return (Just handle))
         (\(exc :: SomeException) -> waitForServer prefs (s-1))
 
