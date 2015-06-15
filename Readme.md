@@ -106,7 +106,7 @@ more complete set of MinGW packages than any thing else (including Windows).
 
 Get the leksah source:
 
-    git clone https://github.org/leksah/leksah
+    git clone https://github.com/leksah/leksah
     cd leksah
     git submodule update --init
 
