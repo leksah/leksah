@@ -41,7 +41,7 @@ import Graphics.UI.Gtk
         treeViewColumnSetSizing, treeViewColumnSetTitle, treeViewColumnNew,
         cellRendererPixbufNew, cellRendererTextNew, treeViewSetModel,
         treeViewNew, treeStoreNew, castToWidget, TreeStore, TreeView,
-        ScrolledWindow)
+        ScrolledWindow, treeViewRowExpanded, treeStoreGetTree)
 import Data.Maybe (isJust)
 import Control.Monad (forM, void, forM_, when)
 import Data.Typeable (Typeable)
@@ -74,6 +74,8 @@ import Data.Monoid ((<>))
 import Data.List (sortBy, sort)
 import Data.Ord (comparing)
 import Data.Char (toLower)
+import IDE.Core.Types (IDE(..), Prefs (..))
+import Data.Tree (Tree(..))
 
 data FileRecord =
     FileRecord FilePath
@@ -155,16 +157,16 @@ instance RecoverablePane IDEFiles FilesState IDEM where
             record <- treeStoreGetValue fileStore path
             reflectIDE (
                 case record of
-                    DirRecord f     -> liftIO $ refreshDir fileStore path f
-                    PackageRecord p -> liftIO $ refreshPackage fileStore path p
+                    DirRecord f     -> refreshDir fileStore path f
+                    PackageRecord p -> refreshPackage fileStore path p
                     _               -> ideMessage Normal (__ "Unexpected Expansion in Files Pane")) ideR
         on treeView rowActivated $ \ path col -> do
             record <- treeStoreGetValue fileStore path
             reflectIDE (
                 case record of
                     FileRecord f    -> void (goToSourceDefinition' f (Location "" 1 0 1 0))
-                    DirRecord f     -> liftIO $ refreshDir fileStore path f
-                    PackageRecord p -> liftIO $ refreshPackage fileStore path p
+                    DirRecord f     -> refreshDir fileStore path f
+                    PackageRecord p -> refreshPackage fileStore path p
                     _               -> ideMessage Normal (__ "Unexpected Activation in Files Pane")) ideR
         on sel treeSelectionSelectionChanged $ do
             paths <- treeSelectionGetSelectedRows sel
@@ -173,8 +175,8 @@ instance RecoverablePane IDEFiles FilesState IDEM where
                 reflectIDE (
                     case record of
                         FileRecord _    -> return ()
-                        DirRecord f     -> liftIO $ refreshDir fileStore path f
-                        PackageRecord p -> liftIO $ refreshPackage fileStore path p
+                        DirRecord f     -> refreshDir fileStore path f
+                        PackageRecord p -> refreshPackage fileStore path p
                         _               -> ideMessage Normal (__ "Unexpected Selection in Files Pane")) ideR
 
         return (Just files,[ConnectC cid1])
@@ -183,6 +185,7 @@ getFiles :: Maybe PanePath -> IDEM IDEFiles
 getFiles Nothing    = forceGetPane (Right "*Files")
 getFiles (Just pp)  = forceGetPane (Left pp)
 
+-- | Tries to get the 'FileRecord' of the selected node in the 'TreeView'
 getSelectionFileRecord ::  TreeView
     ->  TreeStore FileRecord
     -> IO (Maybe FileRecord)
@@ -193,40 +196,81 @@ getSelectionFileRecord treeView fileStore = do
         p:_ ->  Just <$> treeStoreGetValue fileStore p
         _   ->  return Nothing
 
+
+-- | Refreshes the Files pane, lists all package directories and synchronizes the expanded
+-- folders with the file system
 refreshFiles :: IDEAction
 refreshFiles = do
     files <- getFiles Nothing
     let store = fileStore files
+    let view  = treeView files
     mbWS <- readIDE workspace
-    liftIO $ setDirectories store Nothing $ map PackageRecord $ maybe [] wsPackages mbWS
+    let packages = maybe [] wsPackages mbWS
+    setDirectories store Nothing $ map PackageRecord packages
 
-dirContents :: FilePath -> IO [FileRecord]
+    forM_ (zip [0..] packages) $ \(n, package) -> do
+         refreshRecursively store [n] view
+
+-- | Returns the 'FileRecord's at the given 'FilePath'.
+dirContents :: FilePath -> IDEM [FileRecord]
 dirContents dir = do
-   contents <- filter ((/= '.') . head) <$> getDirectoryContents dir
-                   `catch` \ (e :: IOError) -> return []
-   records <- forM contents $ \f -> do
+   prefs <- readIDE prefs
+   contents <- liftIO $ getDirectoryContents dir
+                            `catch` \ (e :: IOError) -> return []
+   let filtered = if showHiddenFiles prefs
+                      then filter (`notElem` [".", ".."]) contents
+                      else filter ((/= '.') . head) contents
+   records <- forM filtered $ \f -> do
                   let full = dir </> f
-                  isDir <- doesDirectoryExist full
+                  isDir <- liftIO $ doesDirectoryExist full
                   return $ if isDir then DirRecord full else FileRecord full
    return (sort records)
 
-refreshPackage :: TreeStore FileRecord -> TreePath -> IDEPackage -> IO ()
+
+-- | Recursively refreshes the file tree with the given TreePath as root. Only refreshes contents
+-- of expanded folders.
+refreshRecursively :: TreeStore FileRecord -> TreePath -> TreeView -> IDEAction
+refreshRecursively store path view = do
+    isExpanded <- liftIO $ treeViewRowExpanded view path
+    record     <- liftIO $ treeStoreGetValue store path
+
+    when isExpanded $ do
+        case record of
+            DirRecord dir -> do
+                refreshDir store path dir
+                nChildren  <- length . subForest <$> liftIO (treeStoreGetTree store path)
+                forM_ [0..nChildren-1] (\n -> refreshRecursively store (path ++ [n]) view)
+
+            PackageRecord package -> do
+                refreshPackage store path package
+                nChildren  <- length . subForest <$> liftIO (treeStoreGetTree store path)
+                forM_ [0..nChildren-1] (\n -> refreshRecursively store (path ++ [n]) view)
+
+            _ -> return ()
+
+-- | Refreshes the child nodes of the package node at the given 'TreePath'. Also adds sandbox
+-- add-source dependencies as a 'PackageRecord'.
+refreshPackage :: TreeStore FileRecord -> TreePath -> IDEPackage -> IDEAction
 refreshPackage store path p = do
     let dir = ipdBuildDir p
-    mbIter <- treeModelGetIter store path
+    mbIter <- liftIO $ treeModelGetIter store path
     when (isJust mbIter) $ do
         contents <- dirContents dir
         setDirectories store mbIter $ map PackageRecord (ipdSandboxSources p) ++ contents
 
-refreshDir :: TreeStore FileRecord -> TreePath -> FilePath -> IO ()
-refreshDir store path dir = do
-    mbIter <- treeModelGetIter store path
+
+-- | Refreshes the child nodes of the node at the given 'TreePath'.
+refreshDir :: TreeStore FileRecord -> TreePath -> FilePath -> IDEAction
+refreshDir store path dir =  do
+    mbIter <- liftIO $ treeModelGetIter store path
     when (isJust mbIter) $ do
         contents <- dirContents dir
         setDirectories store mbIter contents
 
-setDirectories :: TreeStore FileRecord -> Maybe TreeIter -> [FileRecord] -> IO ()
-setDirectories store parent records = do
+-- | Sets the child nodes of the given 'TreeIter' to the provided list of 'FileRecord's. If a record
+-- is already present, it is kept in the same (expanded) state.
+setDirectories :: TreeStore FileRecord -> Maybe TreeIter -> [FileRecord] -> IDEAction
+setDirectories store parent records = liftIO $ do
     parentPath <- case parent of
                 Just i -> treeModelGetPath store i
                 _      -> return []
@@ -240,6 +284,9 @@ setDirectories store parent records = do
                 removeUntil record store path
             _ -> do
                 treeStoreInsert store parentPath n record
+
+                -- Insert placeholder children for dirs and packages so they can
+                -- be expanded on clicking, and have the contents loaded "lazily".
                 case record of
                     DirRecord _     -> treeStoreInsert store (parentPath++[n]) 0 PlaceHolder
                     PackageRecord _ -> treeStoreInsert store (parentPath++[n]) 0 PlaceHolder
@@ -248,6 +295,11 @@ setDirectories store parent records = do
 
 data FindResult = WhereExpected TreeIter | Found TreeIter | NotFound
 
+-- | Tries to find the given value in the 'TreeStore'. Only looks at the given 'TreeIter' and its
+-- sibling nodes to the right.
+-- Returns @WhereExpected iter@ if the records is found at the provided 'TreeIter'
+-- Returns @Found iter@ if the record is found at a sibling iter
+-- Returns @NotFound@ otherwise
 find :: Eq a => a -> TreeStore a -> Maybe TreeIter -> IO FindResult
 find _ _ Nothing = return NotFound
 find a store (Just iter) = do
@@ -264,6 +316,9 @@ find a store (Just iter) = do
             then return $ Found iter
             else treeModelIterNext store iter >>= find'
 
+
+-- | Starting at the node at the given 'TreePath', removes all sibling nodes to the right
+--   until the given value is found.
 removeUntil :: Eq a => a -> TreeStore a -> TreePath -> IO ()
 removeUntil a store path = do
     row <- treeStoreGetValue store path
@@ -271,6 +326,8 @@ removeUntil a store path = do
         found <- treeStoreRemove store path
         when found $ removeUntil a store path
 
+
+-- | Starting at the node at the given 'TreePath', removes all sibling nodes to the right
 removeRemaining :: TreeStore a -> TreePath -> IO ()
 removeRemaining store path = do
     found <- treeStoreRemove store path
