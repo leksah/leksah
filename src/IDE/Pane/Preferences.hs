@@ -467,7 +467,7 @@ prefsDescription configDir packages = NFDPP [
             showHiddenFiles
             (\b a -> a {showHiddenFiles = b})
             boolEditor
-            (\b -> return ())
+            (\b -> refreshFiles)
     ,   mkFieldPP
             (paraName <<<- ParaName (__ "Use ctrl Tab for Notebook flipper") $ emptyParams)
             (PP.text . show)
