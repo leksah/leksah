@@ -60,8 +60,9 @@ import Distribution.Version
        (anyVersion, orLaterVersion, intersectVersionRanges,
         earlierVersion, Version(..))
 import Distribution.PackageDescription
-       (CondTree(..), condExecutables, condLibrary, packageDescription,
-        buildDepends)
+       (GenericPackageDescription(..), Benchmark(..), TestSuite(..),
+        Executable(..), BuildInfo(..), Library(..), CondTree(..),
+        condExecutables, condLibrary, packageDescription, buildDepends)
 import Distribution.PackageDescription.Configuration
        (flattenPackageDescription)
 import IDE.BufferMode (editInsertCode)
@@ -185,14 +186,34 @@ addPackage error = do
             liftIO $ writeGenericPackageDescription (ipdCabalFile $ idePackage)
                 gpd { condLibrary     = addDepToLib pack (condLibrary gpd),
                       condExecutables = map (addDepToExe pack)
-                                            (condExecutables gpd)}
+                                            (condExecutables gpd),
+                      condTestSuites  = map (addDepToTest pack)
+                                            (condTestSuites gpd),
+                      condBenchmarks  = map (addDepToBenchmark pack)
+                                            (condBenchmarks gpd)}
             return True
   where
     addDepToLib _ Nothing = Nothing
-    addDepToLib p (Just cn@CondNode{condTreeConstraints = deps}) =
-        Just (cn{condTreeConstraints = dep p : deps})
-    addDepToExe p (str,cn@CondNode{condTreeConstraints = deps}) =
-        (str,cn{condTreeConstraints = dep p : deps})
+    addDepToLib p (Just cn@CondNode{
+        condTreeConstraints = deps,
+        condTreeData        = lib@Library{libBuildInfo = bi}}) = Just (cn{
+            condTreeConstraints = deps <> [dep p],
+            condTreeData        = lib {libBuildInfo = bi {targetBuildDepends = targetBuildDepends bi <> [dep p]}}})
+    addDepToExe p (str,cn@CondNode{
+        condTreeConstraints = deps,
+        condTreeData        = exe@Executable{buildInfo = bi}}) = (str,cn{
+                condTreeConstraints = deps <> [dep p],
+                condTreeData        = exe { buildInfo = bi {targetBuildDepends = targetBuildDepends bi <> [dep p]}}})
+    addDepToTest p (str,cn@CondNode{
+        condTreeConstraints = deps,
+        condTreeData        = test@TestSuite{testBuildInfo = bi}}) = (str,cn{
+                condTreeConstraints = deps <> [dep p],
+                condTreeData        = test { testBuildInfo = bi {targetBuildDepends = targetBuildDepends bi <> [dep p]}}})
+    addDepToBenchmark p (str,cn@CondNode{
+        condTreeConstraints = deps,
+        condTreeData        = bm@Benchmark{benchmarkBuildInfo = bi}}) = (str,cn{
+                condTreeConstraints = deps <> [dep p],
+                condTreeData        = bm { benchmarkBuildInfo = bi {targetBuildDepends = targetBuildDepends bi <> [dep p]}}})
     -- Empty version is probably only going to happen for ghc-prim
     dep p | null . versionBranch $ packageVersion p = Dependency (packageName p) (anyVersion)
     dep p = Dependency (packageName p) (
@@ -468,7 +489,8 @@ hiddenModuleParser = do
     whiteSpace
     symbol "It is a member of the hidden package "
     (char '`' <|> char '‛' <|> char '‘')
-    pack   <- T.pack <$> many (noneOf "'’")
+    pack   <- T.pack <$> many (noneOf "'’@")
+    many (noneOf "'’")
     (char '\'' <|> char '’')
     symbol ".\n"
     many anyChar

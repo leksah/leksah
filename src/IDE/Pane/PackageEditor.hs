@@ -143,22 +143,22 @@ toGenericPackageDescription pd =
   where
     buildCondTreeLibrary lib =
         CondNode {
-            condTreeData = lib,
+            condTreeData = lib { libBuildInfo = (libBuildInfo lib) { targetBuildDepends = buildDepends pd } },
             condTreeConstraints = buildDepends pd,
             condTreeComponents = []}
     buildCondTreeExe exe =
         (exeName exe, CondNode {
-            condTreeData = exe,
+            condTreeData = exe { buildInfo = (buildInfo exe) { targetBuildDepends = buildDepends pd } },
             condTreeConstraints = buildDepends pd,
             condTreeComponents = []})
     buildCondTreeTest test =
         (testName test, CondNode {
-            condTreeData = test,
+            condTreeData = test { testBuildInfo = (testBuildInfo test) { targetBuildDepends = buildDepends pd } },
             condTreeConstraints = buildDepends pd,
             condTreeComponents = []})
     buildCondTreeBenchmark bm =
         (benchmarkName bm, CondNode {
-            condTreeData = bm,
+            condTreeData = bm { benchmarkBuildInfo = (benchmarkBuildInfo bm) { targetBuildDepends = buildDepends pd } },
             condTreeConstraints = buildDepends pd,
             condTreeComponents = []})
 
