@@ -78,7 +78,7 @@ import Data.Conduit (($$))
 import Control.Monad (when, unless, liftM)
 import Control.Monad.IO.Class (MonadIO(..))
 import Control.Applicative ((<$>))
-import qualified Data.Text as T (pack, unpack, stripPrefix)
+import qualified Data.Text as T (pack, unpack, stripPrefix, unlines)
 import Data.Text (Text)
 import Data.Monoid ((<>))
 import Graphics.UI.Gtk.General.CssProvider
@@ -223,11 +223,18 @@ startGUI yiConfig sessionFP mbWorkspaceFP sourceFPs iprefs isFirstStart = do
     case mbScreen of
         Just screen -> do
             provider <- cssProviderNew
-            cssProviderLoadFromString provider (
-                ".window-frame,\n" <>
-                ".window-frame:backdrop {\n" <>
-                "  box-shadow: none;\n" <>
-                "  margin: 0;}\n" :: Text)
+            cssProviderLoadFromString provider $
+                T.unlines [ ".window-frame,"
+                          , ".window-frame:backdrop {"
+                          , "  box-shadow: none;"
+                          , "  margin: 0;}"
+                          , "#errorLabel {"
+                          , "  padding: 10px;"
+                          , "  background: #F2DEDE;"
+                          , "  color: #A94442;"
+                          , "  border: 1px solid #EBCCD1;"
+                          , "  border-radius: 5px;}"
+                          ]
             styleContextAddProviderForScreen screen provider 600
         Nothing -> debugM "leksah" "Unable to add style provider for screen"
     mapM_ (sysMessage Normal . T.pack) st

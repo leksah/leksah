@@ -1186,27 +1186,47 @@ addModuleDialog parent modString sourceRoots hasLib exesTests = do
     dia                        <-   dialogNew
     set dia [ windowTransientFor := parent
             , windowTitle := (__ "Construct new module") ]
+    windowSetDefaultSize dia 400 100
 #ifdef MIN_VERSION_gtk3
     upper                      <-   dialogGetContentArea dia
 #else
     upper                      <-   dialogGetUpper dia
 #endif
     lower                      <-   dialogGetActionArea dia
-    (widget,inj,ext,_)         <-   buildEditor (moduleFields sourceRoots hasLib exesTests)
+    (widget,inj,ext,_)  <-   buildEditor (moduleFields sourceRoots hasLib exesTests)
                                         (AddModule modString (head sourceRoots) (Just False) Set.empty)
     bb      <-  hButtonBoxNew
     boxSetSpacing bb 6
     buttonBoxSetLayout bb ButtonboxSpread
-    closeB  <-  buttonNewFromStock "gtk-cancel"
-    save    <-  buttonNewFromStock "gtk-ok"
-    boxPackEnd bb closeB PackNatural 0
-    boxPackEnd bb save PackNatural 0
-    on save buttonActivated (dialogResponse dia ResponseOk)
-    on closeB buttonActivated (dialogResponse dia ResponseCancel)
+    cancel  <-  buttonNewFromStock "gtk-cancel"
+    ok      <-  buttonNewFromStock "gtk-ok"
+    boxPackEnd bb cancel PackNatural 0
+    boxPackEnd bb ok PackNatural 0
+
+    errorLabel <-  labelNew (Nothing :: Maybe String)
+    labelSetLineWrap errorLabel True
+    widgetSetName errorLabel ("errorLabel" :: String)
+
+    on ok buttonActivated $ do
+        mbAddModule <- ext (AddModule modString (head sourceRoots) (Just False) Set.empty)
+        case mbAddModule of
+            Nothing -> return ()
+            Just am -> do
+                let mbModName = simpleParse $ T.unpack (moduleName am) :: Maybe ModuleName
+                case mbModName of
+                    Just _  -> dialogResponse dia ResponseOk
+                    Nothing -> do
+                        boxPackStart (castToBox upper) errorLabel PackNatural 0
+                        boxReorderChild (castToBox upper) errorLabel 0
+                        labelSetText errorLabel ("Invalid module name, use uppercase identifiers seperated by dots. For example Some.New.Module" :: String)
+                        widgetShow errorLabel
+
+
+    on cancel buttonActivated (dialogResponse dia ResponseCancel)
     boxPackStart (castToBox upper) widget PackGrow 0
-    boxPackStart (castToBox lower) bb PackNatural 5
-    set save [widgetCanDefault := True]
-    widgetGrabDefault save
+    boxPackEnd (castToBox lower) bb PackNatural 5
+    set ok [widgetCanDefault := True]
+    widgetGrabDefault ok
     widgetShowAll dia
     resp  <- dialogRun dia
     value <- ext (AddModule modString (head sourceRoots) (Just False) Set.empty)
