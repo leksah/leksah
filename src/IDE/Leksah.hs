@@ -453,6 +453,7 @@ startMainWindow yiControl sessionFP mbWorkspaceFP sourceFPs startupPrefs isFirst
             welcomeCabal = welcomePath</>"leksah-welcome.cabal"
             welcomeMain  = welcomePath</>"src"</>"Main.hs"
         createDirectoryIfMissing True $ welcomePath</>"src"
+        createDirectoryIfMissing True $ welcomePath</>"test"
         copyFile (welcomeSource</>"Setup.lhs")            (welcomePath</>"Setup.lhs")
         copyFile (welcomeSource</>"leksah-welcome.cabal") (welcomeCabal)
         copyFile (welcomeSource</>"LICENSE")              (welcomePath</>"LICENSE")
