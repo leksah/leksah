@@ -112,6 +112,8 @@ Get the leksah source:
 
 Build it using the Dockerfile:
 
+    wget http://dl.fedoraproject.org/pub/fedora/linux/releases/test/22_Beta/Docker/x86_64/Fedora-Docker-Base-22_Beta-20150415.x86_64.tar.xz
+    docker load -i Fedora-Docker-Base-22_Beta-20150415.x86_64.tar.xz
     sudo docker build -t leksah/build .
 
 Copy the resulting msi file out of the container (version number in the file name will match the one in the leksah.cabal file):
