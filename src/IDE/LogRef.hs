@@ -650,17 +650,23 @@ logOutputForContext package loglaunch getContexts = do
         addLogRefs [last refs]
         lastContext
 
+contextParser :: CharParser () SrcSpan
+contextParser = try (do
+        whiteSpace
+        (symbol "Logged breakpoint at" <|> symbol "Stopped at")
+        whiteSpace
+        srcSpanParser)
+    <?> "historicContextParser"
+
 logOutputForLiveContext :: IDEPackage
                         -> LogLaunch           -- ^ loglaunch
                         -> C.Sink ToolOutput IDEM ()
 logOutputForLiveContext package logLaunch = logOutputForContext package logLaunch (getContexts . T.unpack)
     where
         getContexts [] = []
-        getContexts line@(x:xs) = case stripPrefix "Stopped at " line of
-            Just rest -> case parse srcSpanParser "" rest of
-                Right desc -> desc : getContexts xs
-                _          -> getContexts xs
-            _ -> getContexts xs
+        getContexts line@(x:xs) = case parse contextParser "" line of
+                                    Right desc -> desc : getContexts xs
+                                    _          -> getContexts xs
 
 logOutputForLiveContextDefault :: IDEPackage
                                -> C.Sink ToolOutput IDEM ()
@@ -674,11 +680,9 @@ logOutputForHistoricContext :: IDEPackage
                             -> C.Sink ToolOutput IDEM ()
 logOutputForHistoricContext package logLaunch = logOutputForContext package logLaunch getContexts
     where
-        getContexts line = case T.stripPrefix "Logged breakpoint at " line of
-            Just rest -> case parse srcSpanParser "" $ T.unpack rest of
-                Right desc -> [desc]
-                _          -> []
-            _ -> []
+        getContexts line = case parse contextParser "" $ T.unpack line of
+                                Right desc -> [desc]
+                                _          -> []
 
 logOutputForHistoricContextDefault :: IDEPackage
                                    -> C.Sink ToolOutput IDEM ()
