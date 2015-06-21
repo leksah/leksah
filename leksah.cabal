@@ -217,8 +217,8 @@ library
         build-depends: dyre >= 0.8.3 && <0.9
         cpp-options: -DLEKSAH_WITH_YI_DYRE
 
-    build-depends: gtk3 >=0.13.2 && <0.14,
-                   gtksourceview3 >=0.13.1.0 && <0.14,
+    build-depends: gtk3 >=0.13.8 && <0.14,
+                   gtksourceview3 >=0.13.1.5 && <0.14,
                    webkitgtk3 >=0.13 && <0.14,
                    webkitgtk3-javascriptcore -any
     cpp-options:   -DMIN_VERSION_gtk=MIN_VERSION_gtk3
@@ -316,8 +316,8 @@ executable bewleksah
                    base >=4.0.0.0 && <=4.9,
                    jsaddle -any,
                    ghcjs-dom -any,
-                   gtk3 >=0.13.2 && <0.14,
-                   gtksourceview3 >=0.13.1.0 && <0.14,
+                   gtk3 >=0.13.8 && <0.14,
+                   gtksourceview3 >=0.13.1.5 && <0.14,
                    webkitgtk3 >=0.13 && <0.14,
                    webkitgtk3-javascriptcore -any
     cpp-options:   -DMIN_VERSION_gtk=MIN_VERSION_gtk3
@@ -340,8 +340,8 @@ test-suite tests
                    glib,
                    monad-loops,
                    text,
-                   gtk3 >=0.13.2 && <0.14,
-                   gtksourceview3 >=0.13.1.0 && <0.14,
+                   gtk3 >=0.13.8 && <0.14,
+                   gtksourceview3 >=0.13.1.5 && <0.14,
                    webkitgtk3 -any
     cpp-options:   -DMIN_VERSION_gtk=MIN_VERSION_gtk3
     if flag(yi)
