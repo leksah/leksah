@@ -155,9 +155,7 @@ bottom            = js  "bottom"
 lastLine          = js0 "lastLine"
 getRange          = js2 "getRange"
 setValue          = js1 "setValue"
-setBookmark       = js1 "setBookmark"
 setBookmark'      = js2 "setBookmark"
-insertLeft        = js  "insertLeft"
 find              = js0 "find"
 from              = js  "from"
 getCursor :: (MakeValueRef a0, MakeObjectRef o) => a0 -> IndexPreservingGetter o (JSM JSValueRef)
@@ -263,15 +261,11 @@ instance TextEditor CodeMirror where
         m <- codeMirror
         lift $ (m ^. historySize ^. undo') >>= valToBool
     copyClipboard (CMBuffer cm) _ = return () -- TODO
-    createMark (CMBuffer cm) (CMIter _ i) leftGravity = runCM cm $ do
+    createMark (CMView cm) _name (CMIter _ i) _icon _tooltip = runCM cm $ do
         m <- codeMirror
-        lift $ do
-            CMMark <$> if leftGravity
-                            then m ^. setBookmark i
-                            else do
-                                o <- obj
-                                o ^. insertLeft <# True
-                                m ^. setBookmark' i o
+        lift $ CMMark <$> do
+                o <- obj
+                m ^. setBookmark' i o
     cutClipboard (CMBuffer cm) _ _ = return () -- TODO
     delete (CMBuffer cm) (CMIter _ first) (CMIter _ last) = runCM cm $ do
         m <- codeMirror

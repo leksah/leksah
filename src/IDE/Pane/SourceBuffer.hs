@@ -416,6 +416,13 @@ markRefInSourceBuf index buf logRef scrollTo = do
                                 _ -> False
         unless isOldContext $ do
             liftIO $ debugM "lekash" "markRefInSourceBuf calling applyTagByName"
+            lineStart <- backwardToLineStartC iter
+            createMark sv tagName lineStart (
+                case logRefType logRef of
+                    ErrorRef      -> "dialog-error"
+                    WarningRef    -> "dialog-warning"
+                    BreakpointRef -> "media-playback-pause"
+                    ContextRef    -> "media-playback-start") $ refDescription logRef
             applyTagByName ebuf tagName iter iter2
         when scrollTo $ do
             ideR    <- ask
@@ -1381,10 +1388,9 @@ insertTextAfterSelection str = do
         when hasSelection $ do
             realString <-  if useCandy then stringToCandy candy' str else return str
             (_,i)      <- getSelectionBounds ebuf
-            mark       <- createMark ebuf i True
             insert ebuf i realString
-            i1         <- getIterAtMark ebuf mark
-            i2         <- forwardCharsC i1 (T.length str)
+            (_,i1)     <- getSelectionBounds ebuf
+            i2         <- forwardCharsC i1 (T.length realString)
             selectRange ebuf i1 i2
 
 -- | Returns the package, to which this buffer belongs, if possible

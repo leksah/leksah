@@ -49,9 +49,11 @@ class TextEditor editor where
     canRedo :: EditorBuffer editor -> IDEM Bool
     canUndo :: EditorBuffer editor -> IDEM Bool
     copyClipboard :: EditorBuffer editor -> Clipboard -> IDEM ()
-    createMark :: EditorBuffer editor
+    createMark :: EditorView editor
+                  -> Text
                   -> EditorIter editor
-                  -> Bool
+                  -> Text
+                  -> Text
                   -> IDEM (EditorMark editor)
     cutClipboard :: EditorBuffer editor -> Clipboard -> Bool -> IDEM ()
     delete :: EditorBuffer editor -> EditorIter editor -> EditorIter editor -> IDEM ()

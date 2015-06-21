@@ -44,6 +44,10 @@ import qualified Data.Text as T
        (pack, singleton, replicate, head, takeWhile, isSuffixOf, length,
         index)
 import Data.Monoid ((<>))
+import Control.Monad.IO.Class (MonadIO(..))
+import Graphics.UI.Gtk.SourceView (sourceBufferNew)
+import Graphics.UI.Gtk.Multiline.TextBuffer
+       (textBufferGetIterAtMark, textBufferCreateMark, textBufferSetText)
 
 ---------------------------------------------------------------------------------
 -- * Implementation
@@ -163,6 +167,12 @@ transformFromCandy (CT(_,transformTableBack)) ebuf = do
     endUserAction ebuf
     setModified ebuf modified
 
+simpleGtkBuffer :: Text -> IDEM (EditorBuffer GtkSourceView)
+simpleGtkBuffer contents = liftIO $ GtkBuffer <$> do
+    buffer <- sourceBufferNew Nothing
+    textBufferSetText buffer contents
+    return buffer
+
 getCandylessText :: TextEditor editor => CandyTable -> EditorBuffer editor -> IDEM Text
 getCandylessText (CT(_,transformTableBack)) ebuf = do
     i1          <-  getStartIter ebuf
@@ -194,6 +204,10 @@ stringToCandy  candyTable text = do
     text2       <-  getText workBuffer i1 i2 True
     return text2
 
+-- We only need a TextMark here not a SourceMark
+createTextMark (GtkBuffer sb) (GtkIter i) leftGravity = liftIO $  textBufferCreateMark sb Nothing i leftGravity
+getIterAtTextMark (GtkBuffer sb) m = liftIO $ GtkIter <$> textBufferGetIterAtMark sb m
+
 positionFromCandy :: TextEditor editor => CandyTable -> EditorBuffer editor -> (Int,Int) -> IDEM (Int,Int)
 positionFromCandy candyTable ebuf (line,column) = do
     i1          <- getIterAtLine ebuf (max 0 (line - 1))
@@ -201,9 +215,9 @@ positionFromCandy candyTable ebuf (line,column) = do
     text        <-  getText ebuf i1 i2 True
     workBuffer  <-  simpleGtkBuffer text
     i3          <- getIterAtOffset workBuffer column
-    mark        <- createMark workBuffer i3 True
+    mark        <- createTextMark workBuffer i3 True
     transformFromCandy candyTable workBuffer
-    i4          <- getIterAtMark workBuffer mark
+    i4          <- getIterAtTextMark workBuffer mark
     columnNew   <- getLineOffset i4
     return (line,columnNew)
 
@@ -215,9 +229,9 @@ positionToCandy candyTable ebuf (line,column) = do
     workBuffer  <-  simpleGtkBuffer text
     transformFromCandy candyTable workBuffer
     i3          <- getIterAtOffset workBuffer column
-    mark        <- createMark workBuffer i3 True
+    mark        <- createTextMark workBuffer i3 True
     transformToCandy candyTable workBuffer (\ _ -> False)
-    i4          <- getIterAtMark workBuffer mark
+    i4          <- getIterAtTextMark workBuffer mark
     columnNew   <- getLineOffset i4
     return (line,columnNew)
 

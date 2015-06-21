@@ -155,8 +155,8 @@ instance TextEditor Yi where
     canRedo (YiBuffer fb) = return True -- TODO
     canUndo (YiBuffer fb) = return True -- TODO
     copyClipboard (YiBuffer fb) _ = liftYi $ withEditor $ copy
-    createMark (YiBuffer b) (YiIter (Iter _ p)) leftGravity = withYiBuffer b $
-        YiMark <$> newMarkB (MarkValue p (if leftGravity then Backward else Forward))
+    createMark (YiView b) _name (YiIter (Iter _ p)) _icon _description = withYiBuffer b $
+        YiMark <$> newMarkB (MarkValue p Backward)
     cutClipboard (YiBuffer fb) clipboard defaultEditable = liftYi $ withEditor $ cut
     delete (YiBuffer b) (YiIter (Iter _ first)) (YiIter (Iter _ last)) =
         withYiBuffer b $ deleteRegionB $ mkRegion first last

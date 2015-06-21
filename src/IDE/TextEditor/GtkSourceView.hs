@@ -27,7 +27,6 @@ module IDE.TextEditor.GtkSourceView (
 
   , GtkSourceView(..)
   , newGtkBuffer
-  , simpleGtkBuffer
 
 ) where
 
@@ -82,7 +81,9 @@ import Graphics.UI.Gtk
 import Data.Typeable (Typeable)
 import Control.Applicative ((<$>))
 import Graphics.UI.Gtk.SourceView
-       (sourceStyleSchemeManagerAppendSearchPath, sourceViewSetTabWidth,
+       (sourceBufferCreateSourceMark, SourceMark,
+        sourceViewSetShowLineMarks,
+        sourceStyleSchemeManagerAppendSearchPath, sourceViewSetTabWidth,
         sourceViewSetShowLineNumbers, sourceViewSetRightMarginPosition,
         sourceViewSetShowRightMargin, sourceViewSetIndentWidth,
         castToSourceBuffer, sourceViewSetDrawSpaces, sourceBufferUndo,
@@ -121,6 +122,14 @@ import IDE.Utils.GUIUtils (fontDescription)
 import Data.Text (Text)
 import qualified Data.Text as T (all, length, pack)
 import Data.Monoid ((<>))
+import Graphics.UI.Gtk.Multiline.TextBuffer
+       (textBufferDeleteMark, textBufferGetMark)
+import Graphics.UI.Gtk.SourceView.SourceMarkAttributes
+       (queryTooltipText, sourceMarkAttributesSetIconName,
+        sourceMarkAttributesNew)
+import Graphics.UI.Gtk.SourceView.SourceView
+       (sourceViewSetMarkAttributes)
+import Graphics.UI.Gtk.Multiline.TextMark (toTextMark)
 
 transformGtkIter :: EditorIter GtkSourceView -> (TextIter -> IO a) -> IDEM (EditorIter GtkSourceView)
 transformGtkIter (GtkIter i) f = do
@@ -180,7 +189,13 @@ instance TextEditor GtkSourceView where
     canRedo (GtkBuffer sb) = liftIO $ sourceBufferGetCanRedo sb
     canUndo (GtkBuffer sb) = liftIO $ sourceBufferGetCanUndo sb
     copyClipboard (GtkBuffer sb) clipboard = liftIO $ textBufferCopyClipboard sb clipboard
-    createMark (GtkBuffer sb) (GtkIter i) leftGravity = liftIO $ GtkMark <$> textBufferCreateMark sb Nothing i leftGravity
+    createMark (GtkView sv) name (GtkIter i) icon tooltip = liftIO $ do
+        attributes <- sourceMarkAttributesNew
+        sourceMarkAttributesSetIconName attributes (Just icon)
+        on attributes queryTooltipText $ \ mark -> return tooltip
+        sourceViewSetMarkAttributes sv name (Just attributes) 1
+        sb <- castToSourceBuffer <$> get sv textViewBuffer
+        GtkMark . toTextMark <$> sourceBufferCreateSourceMark sb (Just name) name i
     cutClipboard (GtkBuffer sb) clipboard defaultEditable = liftIO $ textBufferCutClipboard sb clipboard defaultEditable
     delete (GtkBuffer sb) (GtkIter first) (GtkIter last) = liftIO $
         textBufferDelete sb first last
@@ -219,6 +234,7 @@ instance TextEditor GtkSourceView where
             sourceViewSetIndentOnTab sv True
             sourceViewSetAutoIndent sv True
             sourceViewSetSmartHomeEnd sv SourceSmartHomeEndBefore
+            sourceViewSetShowLineMarks sv True
             if wrapLines prefs
                 then textViewSetWrapMode sv WrapWord
                 else textViewSetWrapMode sv WrapNone
@@ -234,6 +250,10 @@ instance TextEditor GtkSourceView where
         first <- textBufferGetStartIter sb
         last <- textBufferGetEndIter sb
         textBufferRemoveTagByName sb name first last
+        mbMark <- textBufferGetMark sb name
+        case mbMark of
+            Just mark -> textBufferDeleteMark sb mark
+            Nothing   -> return ()
     selectRange (GtkBuffer sb) (GtkIter first) (GtkIter last) = liftIO $
         textBufferSelectRange sb first last
     setModified (GtkBuffer sb) modified = liftIO $ textBufferSetModified sb modified >> return ()
@@ -447,11 +467,4 @@ instance TextEditor GtkSourceView where
     -- Tag
     background (GtkTag t) color = liftIO $ set t [textTagBackground := T.pack $ colorHexString color]
     underline (GtkTag t) value = liftIO $ set t [textTagUnderline := value]
-
-simpleGtkBuffer :: Text -> IDEM (EditorBuffer GtkSourceView)
-simpleGtkBuffer contents = liftIO $ GtkBuffer <$> do
-    buffer <- sourceBufferNew Nothing
-    textBufferSetText buffer contents
-    return buffer
-
 
