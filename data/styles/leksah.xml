@@ -32,7 +32,7 @@
   <color name="violet"     value="#7A00CD"/>
   <color name="cyan"       value="#008A8C"/>
   <color name="gray"       value="#DDDDDD"/>
-  <color name="green"      value="#1E9B27"/>
+  <color name="green"      value="#409B48"/>
   <color name="statement"  value="#CC6700"/>
   <color name="red"        value="#EF0000"/>
   <color name="yellow"     value="#EFEF00"/>
@@ -41,6 +41,10 @@
   <!-- Global Settings -->
   <style name="current-line"                background="#EEEEEE"/>
   <style name="draw-spaces"                 foreground="#aaada6"/>
+  <style name="line-numbers"                background="#E8E8E8"/>
+  <style name="text"                        background="#FFFFFF"/>
+  <style name="selection"                   background="#FFFFC0" foreground="#000000"/>
+  <style name="selection-unfocused"         background="#FFFFD0" foreground="#000000"/>
 
   <!-- Bracket Matching -->
   <style name="bracket-match"               foreground="white" background="gray" bold="true"/>
@@ -54,7 +58,7 @@
 
   <!-- Comments -->
   <style name="def:comment"                 foreground="comment"/>
-  <style name="def:shebang"                 foreground="comment" bold="true"/>
+  <style name="def:shebang"                 foreground="comment"/>
   <style name="def:doc-comment-element"     italic="true"/>
 
   <!-- Constants -->
@@ -65,10 +69,10 @@
   <style name="def:identifier"              foreground="cyan"/>
 
   <!-- Statements -->
-  <style name="def:statement"               foreground="statement" bold="true"/>
+  <style name="def:statement"               foreground="statement"/>
 
   <!-- Types -->
-  <style name="def:type"                    foreground="green" bold="true"/>
+  <style name="def:type"                    foreground="green"/>
 
   <!-- Others -->
   <style name="def:preprocessor"            foreground="preproc"/>

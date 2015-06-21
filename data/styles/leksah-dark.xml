@@ -32,10 +32,10 @@
   <color name="violet"     value="#6A5ACD"/>
   <color name="cyan"       value="#448A8C"/>
   <color name="gray"       value="#444444"/>
-  <color name="green"      value="#4EAB57"/>
+  <color name="green"      value="#80AB80"/>
   <color name="statement"  value="#CC7733"/>
   <color name="red"        value="#FF0000"/>
-  <color name="yellow"     value="#FFFF88"/>
+  <color name="yellow"     value="#FFFFC0"/>
   <color name="preproc"    value="#B54A6A"/>
 
   <!-- Global Settings -->
@@ -65,10 +65,10 @@
   <style name="def:identifier"              foreground="cyan"/>
 
   <!-- Statements -->
-  <style name="def:statement"               foreground="statement" bold="true"/>
+  <style name="def:statement"               foreground="statement"/>
 
   <!-- Types -->
-  <style name="def:type"                    foreground="green" bold="true"/>
+  <style name="def:type"                    foreground="green"/>
 
   <!-- Others -->
   <style name="def:preprocessor"            foreground="preproc"/>
