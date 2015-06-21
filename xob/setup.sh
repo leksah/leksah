@@ -1,5 +1,7 @@
 #!/bin/sh -ex
 
+# export VBOXVER=5.0.0_RC1
+export VBOXVER=4.3.28
 export GHCVER=7.10.1
 
 # Install GNOME desktop
@@ -32,14 +34,14 @@ sudo systemctl enable sshd.service
 
 # Install VirtualBox Guest Additions
 sudo dnf install -y dkms kernel-devel wget make
-if [ ! -e ~/vbox/VBoxGuestAdditions_4.3.28.iso ]
+if [ ! -e ~/vbox/VBoxGuestAdditions_$VBOXVER.iso ]
 then
     mkdir ~/vbox || true
     cd ~/vbox
-    wget --no-verbose http://download.virtualbox.org/virtualbox/4.3.28/VBoxGuestAdditions_4.3.28.iso
+    wget --no-verbose http://download.virtualbox.org/virtualbox/$VBOXVER/VBoxGuestAdditions_$VBOXVER.iso
 fi
 sudo mkdir /media/VBoxGuestAdditions || true
-sudo mount -o loop,ro ~/vbox/VBoxGuestAdditions_4.3.28.iso /media/VBoxGuestAdditions
+sudo mount -o loop,ro ~/vbox/VBoxGuestAdditions_$VBOXVER.iso /media/VBoxGuestAdditions
 sudo sh /media/VBoxGuestAdditions/VBoxLinuxAdditions.run || true
 sudo umount /media/VBoxGuestAdditions
 sudo rmdir /media/VBoxGuestAdditions
