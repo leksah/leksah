@@ -27,11 +27,12 @@ module IDE.SourceCandy (
 ,   positionFromCandy   -- ::   CandyTable -> TextBuffer -> (Int,Int) -> IO (Int,Int)
 ) where
 
+import Control.Applicative
 import Prelude hiding(getChar, getLine)
 
 import Data.Char(chr)
 import Data.List (elemIndices, isInfixOf, isSuffixOf)
-import Text.ParserCombinators.Parsec
+import Text.ParserCombinators.Parsec as P
 import qualified Text.ParserCombinators.Parsec.Token as P
 import Text.ParserCombinators.Parsec.Language(emptyDef)
 import qualified Data.Set as Set
@@ -306,7 +307,7 @@ parseCandy fn = do
 candyParser :: CharParser () CandyTableI
 candyParser = do
     whiteSpace
-    ls  <-  many oneCandyParser
+    ls  <-  P.many oneCandyParser
     eof
     return ls
 
@@ -323,7 +324,7 @@ toReplaceParser :: CharParser () Text
 toReplaceParser   = lexeme (do
     str         <-  between (char '"')
                         (char '"' <?> "end of string")
-                        (many $noneOf "\"")
+                        (P.many $noneOf "\"")
     return $ T.pack str)
     <?> "to replace string"
 

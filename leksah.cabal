@@ -1,5 +1,5 @@
 name: leksah
-version: 0.15.0.4
+version: 0.15.0.5
 cabal-version: >=1.18
 build-type: Simple
 license: GPL
@@ -296,7 +296,7 @@ Executable leksah
         ghc-options: -threaded
 
     hs-source-dirs: main
-    build-depends: leksah == 0.15.0.4,
+    build-depends: leksah == 0.15.0.5,
                    base >= 4.0.0.0 && <=4.9,
                    gtk3 >=0.13.2 && <0.14
     if os(linux) && flag(loc)
@@ -312,7 +312,7 @@ Executable leksah
     ghc-options: -rtsopts -fwarn-missing-fields -fwarn-incomplete-patterns -ferror-spans
 
 executable bewleksah
-    build-depends: leksah ==0.15.0.4,
+    build-depends: leksah ==0.15.0.5,
                    base >=4.0.0.0 && <=4.9,
                    jsaddle -any,
                    ghcjs-dom -any,
@@ -331,7 +331,7 @@ test-suite tests
     build-depends: base >=4.0.0.0 && <4.9,
                    Cabal >=1.10.2.0 && <1.23,
                    QuickCheck >=2.4.2 && <2.9,
-                   leksah ==0.15.0.4,
+                   leksah ==0.15.0.5,
                    containers,
                    ltk,
                    leksah-server,
