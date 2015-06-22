@@ -81,7 +81,7 @@ RUN cd ~/.wine/drive_c/ghc-$GHCVER && \
 # Install WiX Toolset:
 RUN mkdir ~/.wine32/drive_c/bin && \
     cd ~/.wine32/drive_c/bin && \
-    wget -O wix.zip 'http://download-codeplex.sec.s-msft.com/Download/Release?ProjectName=wix&DownloadId=1421697&FileTime=130661188723230000&Build=20999' && \
+    wget -O wix.zip --content-disposition http://wix.codeplex.com/downloads/get/1421697 && \
     unzip wix.zip && \
     rm wix.zip
 
