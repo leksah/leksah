@@ -1,4 +1,4 @@
-# Xob Leksah
+# Xobl Leksah
 
 A Fedora 22 based Vagrant Box for Haskell development.
 
@@ -7,13 +7,9 @@ A Fedora 22 based Vagrant Box for Haskell development.
 An easy way to get up and running with:
 
 * Leksah
-
 * GHC 7.10.1
-
 * GHCJS (new "imporved-base" branch)
-
 * GHC 7.10.1 running on Wine
-
 
 ## Setup
 
@@ -22,7 +18,7 @@ the setup.sh if you choose a newer version) and Vagrant then run:
 
     vagrant box add -name fedora-22 http://download.fedoraproject.org/pub/fedora/linux/releases/22/Cloud/x86_64/Images/Fedora-Cloud-Base-Vagrant-22-20150521.x86_64.vagrant-virtualbox.box
     git clone https://github.com/leksah/leksah
-    cd leksah/xob
+    cd leksah/xobl
 
 Modify the Vagrantfile if you want to reduce or increase memory or the number
 of CPUs, then run:
@@ -39,6 +35,13 @@ system settings under **Power**.
 
 If something goes wrong in` vagrant up` or you want to try to update the VM by rerunning
 the setup script you can use `vagrant provision` on the host machine to do this.
+
+## Using VirtualBox 5 RC 1 (needed for HiDPI screens)
+
+If you have a HiDPI display you will get input latency if you do not use VirtualBox 5:
+
+* Change VBOXVER in setup.sh
+* [Update vagrant to work with VirutalBox 5](https://github.com/mitchellh/vagrant/issues/5572#issuecomment-93250550)
 
 ## Usage
 
@@ -61,8 +64,6 @@ The `WINEDEBUG=-all` turns off all the debug messages from Wine.
 ## Warnings
 
 * This is brand spanking new (needs testing).
-* There is some kind of input latency issue that affects Leksah as well as
-  gedit (not sure what it is).
 * GHCJS is the new “improved-base” branch and not the master branch so
   you may find some examples do not work.  Expect problems and make sure you
   mention that you are using “improved-base” when reporting them.
