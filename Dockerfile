@@ -47,7 +47,7 @@ RUN wineboot && wine cmd /C echo "Wine OK" && wineserver -w && \
       wineboot && wine cmd /C echo "Wine 32 OK" && wineserver -w \
     )
 
-ENV GHCVER=7.10.1
+ENV GHCVER 7.10.1
 
 # Install Windows version of GHC (but not the old mingw that comes with it):
 RUN cd ~/.wine/drive_c && \
