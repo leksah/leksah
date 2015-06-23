@@ -90,18 +90,15 @@ initInfo continuation = do
         then do
             ideMessage Normal "Now updating system metadata ..."
             callCollector False True True $ \ _ -> do
-                ideMessage Normal "Now loading metadata ..."
-                loadSystemInfo
-                updateWorkspaceInfo' False $ \ _ -> do
-                    void (triggerEventIDE (InfoChanged True))
-
-                    liftIO $ infoM "leksah" "initInfo continuing"
-                    continuation
-        else do
+                ideMessage Normal "Finished updating system metadata"
+                doLoad
+        else doLoad
+    where
+      doLoad = do
             ideMessage Normal "Now loading metadata ..."
             loadSystemInfo
+            ideMessage Normal "Finished loading metadata"
             updateWorkspaceInfo' False $ \ _ -> do
-                ideMessage Normal "Finished"
                 void (triggerEventIDE (InfoChanged True))
                 continuation
 
