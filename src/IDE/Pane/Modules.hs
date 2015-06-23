@@ -81,7 +81,7 @@ import Control.Monad.Trans.Class (MonadTrans(..))
 import Control.Monad.Trans.Reader (ask)
 import IDE.Utils.GUIUtils (treeViewContextMenu)
 import System.Glib.Properties (newAttrFromMaybeStringProperty)
-import Data.Text (Text)
+import Data.Text (Text, toCaseFold)
 import qualified Data.Text as T (unpack, isInfixOf, toLower, pack)
 import Data.Monoid ((<>))
 import qualified Text.Printf as S (printf)
@@ -97,19 +97,20 @@ printf = S.printf . T.unpack
 type ModuleRecord = (Text, Maybe (ModuleDescr,PackageDescr))
 
 data IDEModules     =   IDEModules {
-    outer           ::   VBox
-,   paned           ::   HPaned
-,   treeView        ::   TreeView
-,   treeStore       ::   TreeStore ModuleRecord
-,   descrView       ::   TreeView
-,   descrStore      ::   TreeStore Descr
-,   packageScopeB   ::   RadioButton
-,   workspaceScopeB ::   RadioButton
-,   systemScopeB    ::   RadioButton
-,   dependsB        ::   CheckButton
-,   blacklistB      ::   CheckButton
-,   oldSelection    ::   IORef SelectionState
-,   expanderState   ::   IORef ExpanderState
+    outer            ::   VBox
+,   paned            ::   HPaned
+,   treeView         ::   TreeView
+,   treeStore        ::   TreeStore ModuleRecord
+,   descrView        ::   TreeView
+,   descrStore       ::   TreeStore Descr
+,   descrSortedStore ::   TypedTreeModelSort Descr -- ^ The sorted model for descrs
+,   packageScopeB    ::   RadioButton
+,   workspaceScopeB  ::   RadioButton
+,   systemScopeB     ::   RadioButton
+,   dependsB         ::   CheckButton
+,   blacklistB       ::   CheckButton
+,   oldSelection     ::   IORef SelectionState
+,   expanderState    ::   IORef ExpanderState
 } deriving Typeable
 
 
@@ -168,7 +169,7 @@ instance RecoverablePane IDEModules ModulesState IDEM where
             Just p  ->  liftIO $ do
                 i   <-  panedGetPosition (paned p)
                 mbTreeSelection     <-  getSelectionTree (treeView m) (treeStore m)
-                mbFacetSelection    <-  getSelectionDescr (descrView m) (descrStore m)
+                mbFacetSelection    <-  getSelectionDescr (descrView m) (descrStore m) (descrSortedStore m)
                 let mbs = (case mbTreeSelection of
                             Just (_,Just (md,_)) -> Just (modu $ mdModuleId md)
                             otherwise            -> Nothing,
@@ -241,7 +242,9 @@ instance RecoverablePane IDEModules ModulesState IDEM where
 
             descrView   <-  treeViewNew
             descrStore  <-  treeStoreNew []
-            treeViewSetModel descrView descrStore
+            -- sorted model
+            descrSortedStore <- treeModelSortNewWithModel descrStore
+            treeViewSetModel descrView descrSortedStore
             renderer30    <- cellRendererPixbufNew
             renderer31    <- cellRendererPixbufNew
             renderer3   <- cellRendererTextNew
@@ -267,6 +270,14 @@ instance RecoverablePane IDEModules ModulesState IDEM where
                                                         then ("ide_source" :: Text)
                                                         else "ide_source_local"
                                                 else "ide_empty"]
+            -- sort definitions on name, ignoring case
+            treeSortableSetSortFunc descrSortedStore 2 $ \iter1 iter2 -> do
+                d1 <- treeModelGetRow descrStore iter1
+                d2 <- treeModelGetRow descrStore iter2
+                let cafName = toCaseFold . descrTreeText
+                return (compare (cafName d1) (cafName d2))
+            treeViewColumnSetSortColumnId col 2
+            treeSortableSetSortColumnId descrSortedStore 2 SortAscending
             treeViewSetHeadersVisible descrView True
             treeViewSetEnableSearch descrView True
             treeViewSetSearchEqualFunc descrView (Just (descrViewSearch descrView descrStore))
@@ -306,7 +317,7 @@ instance RecoverablePane IDEModules ModulesState IDEM where
             oldState <- liftIO $ newIORef $ SelectionState Nothing Nothing SystemScope False
             expanderState <- liftIO $ newIORef emptyExpansion
             scopeRef <- newIORef (SystemScope,True)
-            let modules = IDEModules boxOuter pane' treeView treeStore descrView descrStore
+            let modules = IDEModules boxOuter pane' treeView treeStore descrView descrStore descrSortedStore
                                 rb1 rb2 rb3 cb2 cb oldState expanderState
             cid1 <- after treeView focusInEvent $ do
                 liftIO $ reflectIDE (makeActive modules) ideR
@@ -316,8 +327,8 @@ instance RecoverablePane IDEModules ModulesState IDEM where
                 return True
             (cid3, cid4) <- treeViewContextMenu treeView $ modulesContextMenu ideR treeStore treeView
             cid5 <- treeView `on` rowActivated $ modulesSelect ideR treeStore treeView
-            (cid6, cid7) <- treeViewContextMenu descrView $ descrViewContextMenu ideR descrStore descrView
-            cid8 <- descrView `on` rowActivated $ descrViewSelect ideR descrStore
+            (cid6, cid7) <- treeViewContextMenu descrView $ descrViewContextMenu ideR descrStore descrSortedStore descrView
+            cid8 <- descrView `on` rowActivated $ descrViewSelect ideR descrStore descrSortedStore
             on rb1 toggled (reflectIDE scopeSelection ideR)
             on rb2 toggled (reflectIDE scopeSelection ideR)
             on rb3 toggled (reflectIDE scopeSelection ideR)
@@ -325,12 +336,12 @@ instance RecoverablePane IDEModules ModulesState IDEM where
             on cb2 toggled (reflectIDE scopeSelection ideR)
             sel     <-  treeViewGetSelection treeView
             on sel treeSelectionSelectionChanged $ do
-                fillFacets treeView treeStore descrView descrStore
+                fillFacets treeView treeStore descrView descrStore descrSortedStore
                 reflectIDE recordSelHistory ideR
                 return ()
             sel2    <-  treeViewGetSelection descrView
             on sel2 treeSelectionSelectionChanged $ do
-                fillInfo descrView descrStore ideR
+                fillInfo descrView descrStore descrSortedStore ideR
                 reflectIDE recordSelHistory ideR
                 return ()
             return (Just modules,map ConnectC [cid1, cid2, cid3, cid4, cid5, cid6, cid7, cid8])
@@ -493,12 +504,14 @@ searchInFacetSubnodes tree str =
             T.isInfixOf (T.toLower str) (T.toLower (descrTreeText val)))
                 $ concatMap flatten (subForest tree)
 
+-- | Fill facet view with descrs from selected module
 fillFacets :: TreeView
     -> TreeStore ModuleRecord
     -> TreeView
     -> TreeStore Descr
+    -> TypedTreeModelSort Descr
     -> IO ()
-fillFacets treeView treeStore descrView descrStore = do
+fillFacets treeView treeStore descrView descrStore descrSortedStore = do
     liftIO $ debugM "leksah" "fillFacets"
     sel             <-  getSelectionTree treeView treeStore
     case sel of
@@ -509,10 +522,10 @@ fillFacets treeView treeStore descrView descrStore = do
                         treeStoreClear descrStore
                         mapM_ (\(e,i) -> treeStoreInsertTree descrStore [] i e)
                                     $ zip forest [0 .. length forest]
-                        treeViewSetModel descrView descrStore
+                        treeViewSetModel descrView descrSortedStore
                         treeViewSetEnableSearch descrView True
                         treeViewSetSearchEqualFunc descrView (Just (descrViewSearch descrView descrStore))
-        otheriwse
+        _
             ->  treeStoreClear descrStore
 
 getSelectionTree ::  TreeView
@@ -528,32 +541,37 @@ getSelectionTree treeView treeStore = do
             val     <-  treeStoreGetValue treeStore a
             return (Just val)
 
+-- | Get selected Descr, if any
 getSelectionDescr ::  TreeView
     ->  TreeStore Descr
+    -> TypedTreeModelSort Descr
     -> IO (Maybe Descr)
-getSelectionDescr treeView treeStore = do
+getSelectionDescr treeView treeStore descrSortedStore = do
     liftIO $ debugM "leksah" "getSelectionDescr"
     treeSelection   <-  treeViewGetSelection treeView
     paths           <-  treeSelectionGetSelectedRows treeSelection
     case paths of
-        a:r ->  do
-            val     <-  treeStoreGetValue treeStore a
+        a:_ ->  do
+            unsorteda <- treeModelSortConvertPathToChildPath descrSortedStore a
+            val     <-  treeStoreGetValue treeStore unsorteda
             return (Just val)
         _  ->  return Nothing
 
-
+-- | Fill info pane with selected Descr if any
 fillInfo :: TreeView
     -> TreeStore Descr
+    -> TypedTreeModelSort Descr
     -> IDERef
     -> IO ()
-fillInfo treeView lst ideR  = do
+fillInfo treeView lst descrSortedStore ideR  = do
     liftIO $ debugM "leksah" "fillInfo"
     treeSelection   <-  treeViewGetSelection treeView
     paths           <-  treeSelectionGetSelectedRows treeSelection
     case paths of
         []      ->  return ()
         [a]     ->  do
-            descr    <-  treeStoreGetValue lst a
+            unsorteda <- treeModelSortConvertPathToChildPath descrSortedStore a
+            descr    <-  treeStoreGetValue lst unsorteda
             reflectIDE (setInfo descr) ideR
             return ()
         _       ->  return ()
@@ -872,35 +890,40 @@ modulesSelect ideR store treeView path _ = do
         Nothing -> return ()
         Just fp -> liftIO $ reflectIDE (selectSourceBuf fp) ideR >> return ()
 
+-- | Build contextual menu on selected Descr
 descrViewContextMenu :: IDERef
                    -> TreeStore Descr
+                   -> TypedTreeModelSort Descr
                    -> TreeView
                    -> Menu
                    -> IO ()
-descrViewContextMenu ideR store descrView theMenu = do
+descrViewContextMenu ideR store descrSortedStore descrView theMenu = do
     liftIO $ debugM "leksah" "descrViewContextMenu"
     item1           <-  menuItemNewWithLabel (__ "Go to definition")
     item1 `on` menuItemActivate $ do
-        sel         <-  getSelectionDescr descrView store
+        sel         <-  getSelectionDescr descrView store descrSortedStore
         case sel of
             Just descr      ->  reflectIDE (goToDefinition descr) ideR
             otherwise       ->  sysMessage Normal (__ "Modules>> descrViewPopup: no selection")
     item2           <-  menuItemNewWithLabel (__ "Insert in buffer")
     item2 `on` menuItemActivate $ do
-        sel         <-  getSelectionDescr descrView store
+        sel         <-  getSelectionDescr descrView store descrSortedStore
         case sel of
             Just descr      ->  reflectIDE (insertInBuffer descr) ideR
             otherwise       ->  sysMessage Normal (__ "Modules>> descrViewPopup: no selection")
     mapM_ (menuShellAppend theMenu) [item1, item2]
 
+-- | Selects the Descr referenced by the path
 descrViewSelect :: IDERef
               -> TreeStore Descr
+              -> TypedTreeModelSort Descr
               -> TreePath
               -> TreeViewColumn
               -> IO ()
-descrViewSelect ideR store path _ = do
+descrViewSelect ideR store descrSortedStore path _ = do
     liftIO $ debugM "leksah" "descrViewSelect"
-    descr <- treeStoreGetValue store path
+    unsortedp <- treeModelSortConvertPathToChildPath descrSortedStore path
+    descr <- treeStoreGetValue store unsortedp
     reflectIDE (goToDefinition descr) ideR
 
 setScope :: (Scope,Bool) -> IDEAction
@@ -959,7 +982,7 @@ selectScope (sc,bl) = do
     recordExpanderState
     mods                <-  getModules Nothing
     mbTreeSelection     <-  liftIO $ getSelectionTree (treeView mods) (treeStore mods)
-    mbDescrSelection    <-  liftIO $ getSelectionDescr (descrView mods) (descrStore mods)
+    mbDescrSelection    <-  liftIO $ getSelectionDescr (descrView mods) (descrStore mods) (descrSortedStore mods)
 
     ts                  <-  liftIO $ treeViewGetSelection (treeView mods)
     withoutRecordingDo $ do
@@ -1026,7 +1049,7 @@ reloadKeepSelection isInitial = do
             if not $ isStartingOrClosing state
                 then do
                     mbTreeSelection     <-  liftIO $ getSelectionTree (treeView mods) (treeStore mods)
-                    mbDescrSelection    <-  liftIO $ getSelectionDescr (descrView mods) (descrStore mods)
+                    mbDescrSelection    <-  liftIO $ getSelectionDescr (descrView mods) (descrStore mods) (descrSortedStore mods)
                     sc                  <-  getScope
                     recordExpanderState
                     fillModulesList sc
@@ -1354,7 +1377,7 @@ recordSelHistory = do
     mods <- getModules Nothing
     ideR <- ask
     selTree <- liftIO $ getSelectionTree (treeView mods) (treeStore mods)
-    selDescr <- liftIO $ getSelectionDescr (descrView mods) (descrStore mods)
+    selDescr <- liftIO $ getSelectionDescr (descrView mods) (descrStore mods) (descrSortedStore mods)
     let selMod = case selTree of
                         Just (_,Just (md,_)) -> Just (modu $ mdModuleId md)
                         otherwise -> Nothing
