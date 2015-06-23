@@ -27,14 +27,10 @@ of CPUs, then run:
 
 Wait... a... long... time...
 
-If all goes well you will probably find it at the gnome lock screen when you return.
-Username is vagrant and password vagrant.  You can disable the lock screen in the
-system settings under **Power**.
+If something goes wrong in` vagrant up` or run the setup script again
+with `vagrant provision` on the host machine.
 
-## Rerunning Setup
-
-If something goes wrong in` vagrant up` or you want to try to update the VM by rerunning
-the setup script you can use `vagrant provision` on the host machine to do this.
+Username is vagrant and password vagrant.
 
 ## Using VirtualBox 5 RC 1 (needed for HiDPI screens)
 
@@ -42,6 +38,11 @@ If you have a HiDPI display you will get input latency if you do not use Virtual
 
 * Change VBOXVER in setup.sh
 * [Update vagrant to work with VirutalBox 5](https://github.com/mitchellh/vagrant/issues/5572#issuecomment-93250550)
+
+Once you have built the VM you can make it fast and sharp looking:
+
+* Run `gsettings set org.gnome.desktop.interface scaling-factor 2` in the VM
+* In VirtualBox check the Machine -> Settings -> Display -> Screen -> Use Unscaled HiDPI Output
 
 ## Usage
 
