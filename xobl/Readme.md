@@ -1,15 +1,13 @@
 # Xobl Leksah
 
-A Fedora 22 based Vagrant Box for Haskell development.
+A [Fedora](http://fedoraproject.org/) Linux 22 based [Vagrant](https://www.vagrantup.com/)
+Box for Haskell development.  This provides an easy way to set up a
+[VirtualBox](https://www.virtualbox.org/) Virtual Machine with with:
 
-## Provides
-
-An easy way to get up and running with:
-
-* Leksah
-* GHC 7.10.1
-* GHCJS (new "imporved-base" branch)
-* GHC 7.10.1 running on Wine
+* [Leksah](http://leksah.org/) (Haskell IDE)
+* [GHC](https://www.haskell.org/ghc/) 7.10.1 (Haskell Compiler)
+* [GHCJS](https://github.com/ghcjs/ghcjs) (Haskell to JavaScript Compiler)
+* GHC 7.10.1 running on [Wine](https://www.winehq.org/) (so you can build Windows binaries too)
 
 ## Setup
 
