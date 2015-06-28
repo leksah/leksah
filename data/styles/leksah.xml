@@ -43,8 +43,8 @@
   <style name="draw-spaces"                 foreground="#aaada6"/>
   <style name="line-numbers"                background="#E8E8E8"/>
   <style name="text"                        background="#FFFFFF"/>
-  <style name="selection"                   background="#FFFFC0" foreground="#000000"/>
-  <style name="selection-unfocused"         background="#FFFFD0" foreground="#000000"/>
+  <style name="selection"                   background="#4A90D9" foreground="#FFFFFF"/>
+  <style name="selection-unfocused"         background="#4A90D9" foreground="#FFFFFF"/>
 
   <!-- Bracket Matching -->
   <style name="bracket-match"               foreground="white" background="gray" bold="true"/>

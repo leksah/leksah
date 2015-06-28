@@ -41,6 +41,9 @@
   <!-- Global Settings -->
   <style name="current-line"                background="#000000"/>
   <style name="draw-spaces"                 foreground="#babdb6"/>
+  <style name="text"                        background="#000000"/>
+  <style name="selection"                   background="#3B73AE" foreground="#FFFFFF"/>
+  <style name="selection-unfocused"         background="#3B73AE" foreground="#FFFFFF"/>
 
   <!-- Bracket Matching -->
   <style name="bracket-match"               foreground="white" background="gray" bold="true"/>
