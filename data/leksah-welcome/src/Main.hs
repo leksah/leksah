@@ -18,7 +18,13 @@
 -- Next we are importing some things from other modules.
 -- Leksah can normally addd these imports for you, just
 -- press Ctrl+R (OS X Command+R)
-import Data.List (stripPrefix)
+
+import Data.Monoid ((<>))
+
+-- This strang looking comment adds code only needed when running the
+-- doctest tests embedded in the comments
+-- $setup
+-- >>> import Data.List (stripPrefix)
 
 -- | Simple function to create a hello message.
 --
@@ -35,7 +41,8 @@ import Data.List (stripPrefix)
 -- The code that runs the tests is in the file test/Main.hs.
 --
 -- prop> stripPrefix "Hello " (hello s) == Just s
-hello s = "Hello " ++ s
+-- hello :: String -> String
+hello s = "Hello " <> s
 
 -- | Executable Entry Point
 --
