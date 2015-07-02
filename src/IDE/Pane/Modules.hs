@@ -413,7 +413,8 @@ selectIdentifier'  moduleName symbol =
                 selF        <-  treeViewGetSelection (descrView mods)
                 case  findPathFor symbol mbFacetTree of
                     Nothing     ->  sysMessage Normal (__ "no path found")
-                    Just path   ->  do
+                    Just childPath   ->  do
+                        path    <- treeModelSortConvertChildPathToPath (descrSortedStore mods) childPath
                         treeViewExpandToPath (descrView mods) path
                         treeSelectionSelectPath selF path
                         col     <-  treeViewGetColumn (descrView mods) 0
@@ -1032,7 +1033,8 @@ selectNames (mbModuleName, mbIdName) = do
                                 selF          <-  treeViewGetSelection (descrView mods)
                                 case  findPathFor symbol mbDescrTree of
                                     Nothing     ->  sysMessage Normal (__ "no path found")
-                                    Just path   ->  do
+                                    Just childPath   ->  do
+                                        path    <- treeModelSortConvertChildPathToPath (descrSortedStore mods) childPath
                                         treeSelectionSelectPath selF path
                                         col     <-  treeViewGetColumn (descrView mods) 0
                                         treeViewScrollToCell (descrView mods) (Just path) col
