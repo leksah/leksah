@@ -3,7 +3,7 @@
 [![Build Status](https://secure.travis-ci.org/leksah/leksah.png?branch=vcs)](http://travis-ci.org/leksah/leksah)
 
 [Leksah](http://leksah.org/) aims to integrate various Haskell development
-tools to provide a practical and plesant development environment.
+tools to provide a practical and pleasant development environment.
 The user interface is a mix of GTK+ and WebKit based components.
 
 Documentation can be found on [leksah.org](http://leksah.org/).
