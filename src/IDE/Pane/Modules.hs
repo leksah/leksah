@@ -399,7 +399,7 @@ selectIdentifier' :: ModuleName -> Text -> IDEAction
 selectIdentifier'  moduleName symbol =
     let nameArray = map T.pack $ components moduleName
     in do
-        liftIO $ debugM "leksah" "selectIdentifier'"
+        liftIO $ debugM "leksah" $ "selectIdentifier' " <> show moduleName <> " " <> T.unpack symbol
         mods            <- getModules Nothing
         mbTree          <-  liftIO $ treeStoreGetTreeSave (treeStore mods) []
         case treePathFromNameArray mbTree nameArray [] of
@@ -514,20 +514,19 @@ fillFacets :: TreeView
     -> IO ()
 fillFacets treeView treeStore descrView descrStore descrSortedStore = do
     liftIO $ debugM "leksah" "fillFacets"
-    sel             <-  getSelectionTree treeView treeStore
+    sel        <- getSelectionTree treeView treeStore
+    emptyModel <- treeStoreNew []
+    treeViewSetModel descrView emptyModel
+    treeStoreClear descrStore
     case sel of
         Just (_,Just (mod,package))
-            ->  let forest = buildFacetForrest mod in do
-                        emptyModel <- treeStoreNew []
-                        treeViewSetModel descrView emptyModel
-                        treeStoreClear descrStore
-                        mapM_ (\(e,i) -> treeStoreInsertTree descrStore [] i e)
-                                    $ zip forest [0 .. length forest]
-                        treeViewSetModel descrView descrSortedStore
-                        treeViewSetEnableSearch descrView True
-                        treeViewSetSearchEqualFunc descrView (Just (descrViewSearch descrView descrStore))
-        _
-            ->  treeStoreClear descrStore
+            ->  mapM_ (\(e,i) -> treeStoreInsertTree descrStore [] i e)
+                                    $ zip (buildFacetForrest mod) [0 ..]
+        _   ->  return ()
+    treeViewSetModel descrView descrSortedStore
+    treeViewSetEnableSearch descrView True
+    treeViewSetSearchEqualFunc descrView (Just (descrViewSearch descrView descrStore))
+    liftIO $ debugM "leksah" "fillFacets done"
 
 getSelectionTree ::  TreeView
     ->  TreeStore ModuleRecord
