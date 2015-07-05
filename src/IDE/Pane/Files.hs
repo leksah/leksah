@@ -74,8 +74,9 @@ import Data.Monoid ((<>))
 import Data.List (sortBy, sort)
 import Data.Ord (comparing)
 import Data.Char (toLower)
-import IDE.Core.Types (IDE(..), Prefs (..))
+import IDE.Core.Types (IDEPackage(..), IDE(..), Prefs(..))
 import Data.Tree (Tree(..))
+import System.Log.Logger (debugM)
 
 data FileRecord =
     FileRecord FilePath
@@ -252,6 +253,7 @@ refreshRecursively store path view = do
 -- add-source dependencies as a 'PackageRecord'.
 refreshPackage :: TreeStore FileRecord -> TreePath -> IDEPackage -> IDEAction
 refreshPackage store path p = do
+    liftIO $ debugM "leksah" $ "refreshPackage " <> ipdCabalFile p
     let dir = ipdBuildDir p
     mbIter <- liftIO $ treeModelGetIter store path
     when (isJust mbIter) $ do
@@ -262,6 +264,7 @@ refreshPackage store path p = do
 -- | Refreshes the child nodes of the node at the given 'TreePath'.
 refreshDir :: TreeStore FileRecord -> TreePath -> FilePath -> IDEAction
 refreshDir store path dir =  do
+    liftIO $ debugM "leksah" $ "refreshPackage " <> dir
     mbIter <- liftIO $ treeModelGetIter store path
     when (isJust mbIter) $ do
         contents <- dirContents dir
