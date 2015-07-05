@@ -624,8 +624,10 @@ editReplace' entireWord caseSensitive wrapAround regex search replace hint mayRe
                         mbText <- liftIO $ replacementText regex text matchIndex matches $ T.unpack replace
                         case mbText of
                             Just text -> do
+                                beginUserAction ebuf
                                 delete ebuf iterStart iterEnd
                                 insert ebuf iterStart (T.pack text)
+                                endUserAction ebuf
                             Nothing -> do
                                 sysMessage Normal
                                     "Should never happen. findMatch worked but repleacementText failed"
