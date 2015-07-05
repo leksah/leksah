@@ -408,12 +408,11 @@ clicked SingleClick LeftButton x y log = do
         (_,y')      <-  textViewWindowToBufferCoords tv TextWindowWidget (x,y)
         (iter,_)    <-  textViewGetLineAtY tv y'
         textIterGetLine iter
-    case filter (\(es,_) -> fst (logLines es) <= (line'+1) && snd (logLines es) >= (line'+1))
-            (zip logRefs' [0..(length logRefs')]) of
-        [(thisRef,n)] -> do
+    case filter (\es -> fst (logLines es) <= (line'+1) && snd (logLines es) >= (line'+1)) logRefs' of
+        [thisRef] -> do
             mbBuf <- selectSourceBuf (logRefFullFilePath thisRef)
             case mbBuf of
-                Just buf -> markRefInSourceBuf n buf thisRef True
+                Just buf -> markRefInSourceBuf buf thisRef True
                 Nothing -> return ()
             log :: IDELog <- getLog
             markErrorInLog log (logLines thisRef)

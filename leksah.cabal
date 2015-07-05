@@ -252,7 +252,8 @@ library
                        executable-path >=0.0.3 && <0.1,
                        vcsgui >=0.1.0 && < 0.2, vcswrapper >=0.1.0 && < 0.2,
                        QuickCheck >=2.4.2 && <2.9, haskell-src-exts >=1.13.5 && <1.17,
-                       hlint >=1.8.59 && <1.10, vado >=0.0.1 && <0.1, shakespeare >=2.0.0.1 && <2.1
+                       hlint >=1.9.21 && <1.10, vado >=0.0.1 && <0.1, shakespeare >=2.0.0.1 && <2.1,
+                       cpphs >=1.19 && <1.20
     exposed-modules: IDE.Leksah IDE.Completion IDE.ImportTool IDE.Find
                      IDE.Sandbox IDE.Session IDE.Command IDE.Keymap IDE.Utils.GUIUtils
                      IDE.SymbolNavigation IDE.Package IDE.YiConfig IDE.OSX

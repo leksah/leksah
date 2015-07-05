@@ -361,12 +361,7 @@ prefsDescription configDir packages = NFDPP [
             (\mbs -> do
                 setInfoStyle
                 buffers <- allBuffers
-                preferDark <- getDarkState
-                mapM_ (\(IDEBuffer {sourceView = sv}) -> do
-                    ebuf <- getBuffer sv
-                    setStyle preferDark ebuf (case mbs of
-                                    (False,_) -> Nothing
-                                    (True,s) -> Just s)) buffers)
+                mapM_ updateStyle' buffers)
     ,   mkFieldPP
             (paraName <<<- ParaName (__ "Found Text Background") $ emptyParams)
             (PP.text . show)

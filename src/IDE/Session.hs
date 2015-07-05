@@ -678,11 +678,7 @@ setDark dark = do
     setInfoStyle
     prefs <- readIDE prefs
     buffers <- allBuffers
-    mapM_ (\(IDEBuffer {sourceView = sv}) -> do
-        ebuf <- getBuffer sv
-        setStyle dark ebuf (case sourceStyle prefs of
-                        (False,_) -> Nothing
-                        (True,s) -> Just s)) buffers
+    mapM_ updateStyle' buffers
 #ifdef MIN_VERSION_gtk3
     mbSettings <- getActiveSettings
     case mbSettings of

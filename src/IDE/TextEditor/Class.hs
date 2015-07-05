@@ -15,9 +15,13 @@
 
 module IDE.TextEditor.Class (
     TextEditor(..)
+  , EditorStyle(..)
+  , updateStyle
 ) where
 
-import IDE.Core.Types (IDERef, IDEM, IDEEventM)
+import IDE.Core.Types
+       (LogRefType, IDE(..), IDERef, IDEM, IDEEventM, EditorStyle(..),
+        IDEAction(..), editorStyle)
 import Graphics.UI.Editor.Basics (Connection)
 import Control.Monad.Reader (ReaderT(..))
 import Graphics.UI.Gtk
@@ -29,6 +33,14 @@ import Control.Monad.Reader.Class (MonadReader(..))
 import Control.Monad.IO.Class (MonadIO(..))
 import System.Glib.Signals (on)
 import Data.Text (Text)
+import IDE.Core.State (readIDE)
+import IDE.Utils.GUIUtils (getDarkState)
+
+updateStyle :: TextEditor editor => EditorBuffer editor -> IDEAction
+updateStyle ebuf = do
+    prefs <- readIDE prefs
+    preferDark <- getDarkState
+    setStyle ebuf $ editorStyle preferDark prefs
 
 class TextEditor editor where
     data EditorBuffer editor
@@ -50,9 +62,8 @@ class TextEditor editor where
     canUndo :: EditorBuffer editor -> IDEM Bool
     copyClipboard :: EditorBuffer editor -> Clipboard -> IDEM ()
     createMark :: EditorView editor
-                  -> Text
+                  -> LogRefType
                   -> EditorIter editor
-                  -> Text
                   -> Text
                   -> IDEM (EditorMark editor)
     cutClipboard :: EditorBuffer editor -> Clipboard -> Bool -> IDEM ()
@@ -97,7 +108,7 @@ class TextEditor editor where
                        -> IDEM ()
     selectRange :: EditorBuffer editor -> EditorIter editor -> EditorIter editor -> IDEM ()
     setModified :: EditorBuffer editor -> Bool -> IDEM ()
-    setStyle :: Bool -> EditorBuffer editor -> Maybe Text -> IDEM ()
+    setStyle :: EditorBuffer editor -> EditorStyle -> IDEM ()
     setText :: EditorBuffer editor -> Text -> IDEM ()
     undo :: EditorBuffer editor -> IDEM ()
 

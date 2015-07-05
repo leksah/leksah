@@ -1,4 +1,5 @@
 {-# LANGUAGE CPP #-}
+{-# LANGUAGE RecordWildCards #-}
 {-# LANGUAGE DeriveDataTypeable #-}
 {-# LANGUAGE TypeFamilies #-}
 {-# LANGUAGE OverloadedStrings #-}
@@ -30,8 +31,10 @@ module IDE.TextEditor.GtkSourceView (
 
 ) where
 
-import IDE.TextEditor.Class (TextEditor(..))
-import IDE.Core.Types (colorHexString, Prefs(..), IDE(..), IDEM)
+import IDE.TextEditor.Class (TextEditor(..), EditorStyle(..))
+import IDE.Core.Types
+       (LogRefType(..), LogRef(..), LogRefType, colorHexString, Prefs(..),
+        IDE(..), IDEM)
 import Control.Monad.IO.Class (MonadIO(..))
 import Graphics.UI.Gtk
        (castToWidget, textViewGetIterAtLocation, focusOutEvent,
@@ -71,7 +74,8 @@ import Graphics.UI.Gtk
         textBufferApplyTagByName, TextTag, TextTagTable, TextMark,
         textBufferSetText, textIterCopy, TextIter, Modifier(..),
         FontDescription, fontDescriptionFromString, fontDescriptionNew,
-        fontDescriptionSetFamily, EventMask(..), after,
+        fontDescriptionSetFamily, EventMask(..), after, Underline(..),
+        Color(..),
 #ifdef MIN_VERSION_gtk3
         widgetGetWindow
 #else
@@ -81,7 +85,8 @@ import Graphics.UI.Gtk
 import Data.Typeable (Typeable)
 import Control.Applicative ((<$>))
 import Graphics.UI.Gtk.SourceView
-       (sourceBufferCreateSourceMark, SourceMark,
+       (sourceBufferRemoveSourceMarks, sourceViewGetMarkAttributes,
+        sourceBufferCreateSourceMark, SourceMark,
         sourceViewSetShowLineMarks,
         sourceStyleSchemeManagerAppendSearchPath, sourceViewSetTabWidth,
         sourceViewSetShowLineNumbers, sourceViewSetRightMarginPosition,
@@ -110,26 +115,29 @@ import Graphics.UI.Gtk.General.Enums
 import Control.Monad (when, forM_)
 import Control.Monad.Reader.Class (MonadReader(..))
 import Graphics.UI.Editor.Basics (Connection(..))
-import Data.Maybe (maybeToList, fromJust)
+import Data.Maybe (isNothing, maybeToList, fromJust)
 import Data.IORef (writeIORef, readIORef, newIORef)
 import System.Glib.MainLoop (priorityDefault, idleRemove)
-import Data.Char (isSymbol, isAlphaNum)
+import Data.Char (isDigit, isSymbol, isAlphaNum)
 import System.Glib.Signals (after, on)
 import Control.Monad.Trans.Class (MonadTrans(..))
 import System.Glib.Attributes (get, AttrOp(..), set)
 import qualified Graphics.UI.Gtk as Gtk (endUserAction)
 import IDE.Utils.GUIUtils (fontDescription)
 import Data.Text (Text)
-import qualified Data.Text as T (all, length, pack)
+import qualified Data.Text as T
+       (drop, dropWhile, all, length, pack)
 import Data.Monoid ((<>))
 import Graphics.UI.Gtk.Multiline.TextBuffer
-       (textBufferDeleteMark, textBufferGetMark)
+       (textBufferDeleteMarkByName, textBufferDeleteMark,
+        textBufferGetMark)
 import Graphics.UI.Gtk.SourceView.SourceMarkAttributes
        (queryTooltipText, sourceMarkAttributesSetIconName,
         sourceMarkAttributesNew)
 import Graphics.UI.Gtk.SourceView.SourceView
        (sourceViewSetMarkAttributes)
-import Graphics.UI.Gtk.Multiline.TextMark (toTextMark)
+import Graphics.UI.Gtk.Multiline.TextMark
+       (textMarkGetName, toTextMark)
 
 transformGtkIter :: EditorIter GtkSourceView -> (TextIter -> IO a) -> IDEM (EditorIter GtkSourceView)
 transformGtkIter (GtkIter i) f = do
@@ -171,6 +179,9 @@ newGtkBuffer mbFilename contents = liftIO $ do
     sourceBufferBeginNotUndoableAction buffer
     textBufferSetText buffer contents
     sourceBufferEndNotUndoableAction buffer
+    tagTable <- textBufferGetTagTable buffer
+    forM_ [minBound .. maxBound :: LogRefType] $ \ refType ->
+        textTagNew (Just . T.pack $ show refType) >>= textTagTableAdd tagTable
     return $ GtkBuffer buffer
 
 instance TextEditor GtkSourceView where
@@ -189,13 +200,11 @@ instance TextEditor GtkSourceView where
     canRedo (GtkBuffer sb) = liftIO $ sourceBufferGetCanRedo sb
     canUndo (GtkBuffer sb) = liftIO $ sourceBufferGetCanUndo sb
     copyClipboard (GtkBuffer sb) clipboard = liftIO $ textBufferCopyClipboard sb clipboard
-    createMark (GtkView sv) name (GtkIter i) icon tooltip = liftIO $ do
-        attributes <- sourceMarkAttributesNew
-        sourceMarkAttributesSetIconName attributes (Just icon)
-        on attributes queryTooltipText $ \ mark -> return tooltip
-        sourceViewSetMarkAttributes sv name (Just attributes) 1
+    createMark (GtkView sv) refType (GtkIter i) tooltip = liftIO $ do
+        let cat = T.pack $ show refType
         sb <- castToSourceBuffer <$> get sv textViewBuffer
-        GtkMark . toTextMark <$> sourceBufferCreateSourceMark sb (Just name) name i
+        n <- textIterGetLine i
+        GtkMark . toTextMark <$> sourceBufferCreateSourceMark sb (Just $ T.pack (show n) <> " " <> tooltip) cat i
     cutClipboard (GtkBuffer sb) clipboard defaultEditable = liftIO $ textBufferCutClipboard sb clipboard defaultEditable
     delete (GtkBuffer sb) (GtkIter first) (GtkIter last) = liftIO $
         textBufferDelete sb first last
@@ -235,6 +244,19 @@ instance TextEditor GtkSourceView where
             sourceViewSetAutoIndent sv True
             sourceViewSetSmartHomeEnd sv SourceSmartHomeEndBefore
             sourceViewSetShowLineMarks sv True
+            forM_ [minBound..maxBound] $ \ refType -> do
+                let cat = T.pack $ show refType
+                    icon = case refType of
+                            ErrorRef       -> "dialog-error"
+                            WarningRef     -> "dialog-warning"
+                            TestFailureRef -> "software-update-urgent"
+                            LintRef        -> "emblem-generic"
+                            BreakpointRef  -> "media-playback-pause"
+                            ContextRef     -> "media-playback-start"
+                attributes <- sourceMarkAttributesNew
+                sourceMarkAttributesSetIconName attributes (Just (icon :: Text))
+                on attributes queryTooltipText $ \ mark -> maybe "" (T.drop 1 . T.dropWhile isDigit) <$> textMarkGetName mark
+                sourceViewSetMarkAttributes sv cat (Just attributes) (1 + fromEnum(maxBound :: LogRefType) - fromEnum refType)
             if wrapLines prefs
                 then textViewSetWrapMode sv WrapWord
                 else textViewSetWrapMode sv WrapNone
@@ -250,25 +272,38 @@ instance TextEditor GtkSourceView where
         first <- textBufferGetStartIter sb
         last <- textBufferGetEndIter sb
         textBufferRemoveTagByName sb name first last
-        mbMark <- textBufferGetMark sb name
-        case mbMark of
-            Just mark -> textBufferDeleteMark sb mark
-            Nothing   -> return ()
+        sourceBufferRemoveSourceMarks sb first last name
     selectRange (GtkBuffer sb) (GtkIter first) (GtkIter last) = liftIO $
         textBufferSelectRange sb first last
     setModified (GtkBuffer sb) modified = liftIO $ textBufferSetModified sb modified >> return ()
-    setStyle preferDark (GtkBuffer sb) mbStyle = liftIO $ do
-        case mbStyle of
+    setStyle (GtkBuffer sb) EditorStyle {..} = do
+        case styleName of
             Nothing  -> return ()
             Just str -> do
-                styleManager <- sourceStyleSchemeManagerNew
-                dataDir <- getDataDir
-                sourceStyleSchemeManagerAppendSearchPath styleManager $ dataDir </> "data/styles"
-                ids <- sourceStyleSchemeManagerGetSchemeIds styleManager
+                styleManager <- liftIO $ sourceStyleSchemeManagerNew
+                dataDir <- liftIO getDataDir
+                liftIO $ sourceStyleSchemeManagerAppendSearchPath styleManager $ dataDir </> "data/styles"
+                ids <- liftIO $ sourceStyleSchemeManagerGetSchemeIds styleManager
                 let preferedNames = if preferDark then [str<>"-dark", str] else [str]
                 forM_ (take 1 $ filter (flip elem ids) preferedNames) $ \ name -> do
-                    scheme <- sourceStyleSchemeManagerGetScheme styleManager name
-                    sourceBufferSetStyleScheme sb (Just scheme)
+                    liftIO $ do
+                        scheme <- sourceStyleSchemeManagerGetScheme styleManager name
+                        sourceBufferSetStyleScheme sb (Just scheme)
+                    tagTable <- getTagTable (GtkBuffer sb)
+                    let isDark = name `elem` ["leksah-dark", "oblivion", "cobalt"]
+                    forM_ [minBound .. maxBound] $ \ refType -> do
+                        mbTag <- lookupTag tagTable (T.pack $ show refType)
+                        case mbTag of
+                            Nothing  -> return ()
+                            Just tag ->
+                                case refType of
+                                    ErrorRef            -> underline tag UnderlineError
+                                    WarningRef          -> underline tag UnderlineError
+                                    TestFailureRef      -> underline tag UnderlineError
+                                    LintRef | isDark    -> background tag $ Color 0 15000 0
+                                            | otherwise -> background tag $ Color 60000 65535 60000
+                                    BreakpointRef       -> background tag $ breakpointBG
+                                    ContextRef          -> background tag $ contextBG
     setText (GtkBuffer sb) text = liftIO $ textBufferSetText sb text
     undo (GtkBuffer sb) = liftIO $ sourceBufferUndo sb
 

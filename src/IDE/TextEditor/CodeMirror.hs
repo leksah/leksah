@@ -261,7 +261,7 @@ instance TextEditor CodeMirror where
         m <- codeMirror
         lift $ (m ^. historySize ^. undo') >>= valToBool
     copyClipboard (CMBuffer cm) _ = return () -- TODO
-    createMark (CMView cm) _name (CMIter _ i) _icon _tooltip = runCM cm $ do
+    createMark (CMView cm) _refType (CMIter _ i) _tooltip = runCM cm $ do
         m <- codeMirror
         lift $ CMMark <$> do
                 o <- obj
@@ -349,7 +349,7 @@ instance TextEditor CodeMirror where
     setModified (CMBuffer cm) modified = unless modified . runCM cm $ do
         m <- codeMirror
         lift $ m ^. markClean >> return ()
-    setStyle preferDark (CMBuffer cm) mbStyle = return () -- TODO
+    setStyle (CMBuffer cm) _style = return () -- TODO
     setText (CMBuffer cm) text = runCM cm $ do
         m <- codeMirror
         lift $ m ^. setValue text

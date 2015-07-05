@@ -86,9 +86,10 @@ builder' pp nb windows = reifyIDE $ \ ideR -> do
     cellLayoutPackStart colA rendererA False
     cellLayoutSetAttributes colA rendererA errorStore
         $ \row -> [cellText := if index row == 0 then showSourceSpan (logRef row) else "",
-                   cellTextForeground := if logRefType (logRef row) == WarningRef
-                                            then "green"
-                                            else "red"::Text ]
+                   cellTextForeground := case logRefType (logRef row) of
+                                            WarningRef -> "orange" :: Text
+                                            LintRef    -> "green"
+                                            _          -> "red" ]
     rendererB    <- cellRendererTextNew
     colB         <- treeViewColumnNew
     treeViewColumnSetTitle colB (__ "Description")

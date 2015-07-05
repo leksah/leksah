@@ -57,9 +57,12 @@ module IDE.Core.Types (
 
 ,   Prefs(..)
 ,   cabalCommand
+,   EditorStyle(..)
+,   editorStyle
 
 ,   LogRefType(..)
 ,   LogRef(..)
+,   logRefRootPath
 ,   logRefFilePath
 ,   logRefFullFilePath
 ,   isError
@@ -133,6 +136,7 @@ import Foreign (Ptr)
 import Control.Monad.Reader.Class (MonadReader(..))
 import Data.Text (Text)
 import qualified Data.Text as T (unpack)
+import Language.Haskell.HLint3 (Idea(..))
 
 -- ---------------------------------------------------------------------
 -- IDE State
@@ -495,6 +499,21 @@ data Prefs = Prefs {
 cabalCommand :: Prefs -> FilePath
 cabalCommand p = if useCabalDev p then "cabal-dev" else "cabal"
 
+data EditorStyle = EditorStyle { styleName    :: Maybe Text
+                               , preferDark   :: Bool
+                               , breakpointBG :: Color
+                               , contextBG    :: Color
+                               }
+
+editorStyle :: Bool -> Prefs -> EditorStyle
+editorStyle preferDark prefs = EditorStyle { styleName = case sourceStyle prefs of
+                                                        (False,_) -> Nothing
+                                                        (True,v)  -> Just v
+                                           , preferDark = preferDark
+                                           , breakpointBG = breakpointBackground prefs
+                                           , contextBG = contextBackground prefs
+                                           }
+
 data SearchHint = Forward | Backward | Insert | Delete | Initial
     deriving (Eq)
 
@@ -519,12 +538,15 @@ data LogLaunch = LogLaunch {
     logBuffer   :: TextBuffer
 } deriving Typeable
 
-data LogRefType = WarningRef | ErrorRef | BreakpointRef | ContextRef deriving (Eq, Show)
+-- Order determines priority of the icons in the gutter
+data LogRefType = ContextRef | BreakpointRef | ErrorRef | TestFailureRef | WarningRef | LintRef
+    deriving (Eq, Show, Enum, Bounded)
 
 data LogRef = LogRef {
     logRefSrcSpan       ::   SrcSpan
 ,   logRefPackage       ::   IDEPackage
 ,   refDescription      ::   Text
+,   logRefIdea          ::   Maybe (Text, Idea)
 ,   logLines            ::   (Int,Int)
 ,   logRefType          ::   LogRefType
 }   deriving (Eq)

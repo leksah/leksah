@@ -1,4 +1,4 @@
-{-# LANGUAGE CPP, ScopedTypeVariables, OverloadedStrings #-}
+{-# LANGUAGE RecordWildCards, ScopedTypeVariables, OverloadedStrings #-}
 -----------------------------------------------------------------------------
 --
 -- Module      :  IDE.LogRef
@@ -56,7 +56,7 @@ import IDE.Pane.SourceBuffer
 import qualified IDE.Pane.Log as Log
 import IDE.Utils.Tool
 import System.FilePath (equalFilePath)
-import Data.List (stripPrefix, elemIndex, isPrefixOf)
+import Data.List (partition, stripPrefix, elemIndex, isPrefixOf)
 import Data.Maybe (catMaybes, isJust)
 import System.Exit (ExitCode(..))
 import System.Log.Logger (debugM)
@@ -72,6 +72,9 @@ import Control.Applicative ((<$>))
 import qualified Data.Text as T
        (length, stripPrefix, isPrefixOf, unpack, unlines, pack, null)
 import Data.Monoid ((<>))
+import qualified Data.Set as S (member, insert, empty)
+import Data.Set (Set)
+import System.FilePath.Windows ((</>))
 
 showSourceSpan :: LogRef -> Text
 showSourceSpan = T.pack . displaySrcSpan . logRefSrcSpan
@@ -84,33 +87,32 @@ selectRef (Just ref) = do
         Just index -> do
             mbBuf         <- selectSourceBuf (logRefFullFilePath ref)
             case mbBuf of
-                Just buf  -> markRefInSourceBuf index buf ref True
+                Just buf  -> markRefInSourceBuf buf ref True
                 Nothing   -> liftIO $ debugM "leksah" "no buf" >> return ()
             log :: Log.IDELog <- Log.getLog
             Log.markErrorInLog log (logLines ref)
 selectRef Nothing = return ()
 
-forOpenLogRefs :: (Int -> LogRef -> IDEBuffer -> IDEAction) -> IDEAction
+forOpenLogRefs :: (LogRef -> IDEBuffer -> IDEAction) -> IDEAction
 forOpenLogRefs f = do
     logRefs <- readIDE allLogRefs
     allBufs <- allBuffers
-    forM_ [0 .. ((length logRefs)-1)] (\index -> do
-        let ref = logRefs !! index
-            fp = logRefFullFilePath ref
+    forM_ logRefs $ \ref -> do
+        let fp = logRefFullFilePath ref
         fpc <- liftIO $ myCanonicalizePath fp
         forM_ (filter (\buf -> case (fileName buf) of
                 Just fn -> equalFilePath fpc fn
-                Nothing -> False) allBufs) (f index ref))
+                Nothing -> False) allBufs) (f ref)
 
 markLogRefs :: IDEAction
 markLogRefs = do
-    forOpenLogRefs $ \index logRef buf -> markRefInSourceBuf index buf logRef False
+    forOpenLogRefs $ \logRef buf -> markRefInSourceBuf buf logRef False
 
 unmarkLogRefs :: IDEAction
 unmarkLogRefs = do
-    forOpenLogRefs $ \index logRef (IDEBuffer {sourceView = sv}) -> do
+    forOpenLogRefs $ \logRef (IDEBuffer {sourceView = sv}) -> do
             buf     <-  getBuffer sv
-            removeTagByName buf (T.pack $ show (logRefType logRef) ++ show index)
+            removeTagByName buf (T.pack $ show (logRefType logRef))
 
 setErrorList :: [LogRef] -> IDEAction
 setErrorList errs = do
@@ -253,18 +255,12 @@ lastContext :: IDEAction
 lastContext = do
     contexts <- readIDE contextRefs
     currentContext <- readIDE currentContext
-    if null contexts
-        then return ()
-        else do
-            let new = (last contexts)
-            setCurrentContext (Just new)
-            selectRef $ Just new
+    unless (null contexts) $ do
+        let new = last contexts
+        setCurrentContext (Just new)
+        selectRef $ Just new
 
-#if MIN_VERSION_ghc(7,0,1)
 fixColumn c = max 0 (c - 1)
-#else
-fixColumn = id
-#endif
 
 srcPathParser :: CharParser () FilePath
 srcPathParser = try (do
@@ -308,8 +304,28 @@ srcSpanParser = try (do
         return $ SrcSpan filePath line (fixColumn col) line (fixColumn col))
     <?> "srcSpanParser"
 
-docTestParser :: CharParser () (SrcSpan, Text)
-docTestParser = try (do
+data BuildOutput = BuildProgress Int Int FilePath
+                 | DocTestFailure SrcSpan Text
+
+buildOutputParser :: CharParser () BuildOutput
+buildOutputParser = try (do
+        char '['
+        n <- int
+        whiteSpace
+        symbol "of"
+        whiteSpace
+        total <- int
+        char ']'
+        whiteSpace
+        symbol "Compiling"
+        many (noneOf "(")
+        char '('
+        whiteSpace
+        file <- many (noneOf ",")
+        char ','
+        many (anyChar)
+        return $ BuildProgress n total file)
+    <|> try (do
         symbol "###"
         whiteSpace
         symbol "Failure"
@@ -322,8 +338,8 @@ docTestParser = try (do
         char ':'
         whiteSpace
         text <- T.pack <$> many anyChar
-        return ((SrcSpan file line 7 line (T.length text - 7)), "Failure in " <> text))
-    <?> "docTestParser"
+        return $ DocTestFailure (SrcSpan file line 7 line (T.length text - 7)) $ "Failure in " <> text)
+    <?> "buildOutputParser"
 
 data BuildError =   BuildLine
                 |   EmptyLine
@@ -331,8 +347,8 @@ data BuildError =   BuildLine
                 |   WarningLine Text
                 |   OtherLine Text
 
-buildLineParser :: CharParser () BuildError
-buildLineParser = try (do
+buildErrorParser :: CharParser () BuildError
+buildErrorParser = try (do
         char '['
         int
         symbol "of"
@@ -378,7 +394,7 @@ breaksLineParser = try (do
         whiteSpace
         span <- srcSpanParser
         return (BreakpointDescription n span))
-    <?> "buildLineParser"
+    <?> "breaksLineParser"
 
 setBreakpointLineParser :: CharParser () BreakpointDescription
 setBreakpointLineParser = try (do
@@ -482,18 +498,29 @@ logOutputPane command buffer = do
         mbURI <- lift $ readIDE autoURI
         unless (isJust mbURI) . lift . postSyncIDE . setOutput command $ T.unlines new
 
+data BuildOutputState = BuildOutputState { log           :: IDELog
+                                         , inError       :: Bool
+                                         , inDocTest     :: Bool
+                                         , errs          :: [LogRef]
+                                         , testFails     :: [LogRef]
+                                         , filesCompiled :: Set FilePath
+                                         }
+
+-- Not quite a Monoid
+initialState :: IDELog -> BuildOutputState
+initialState log = BuildOutputState log False False [] [] S.empty
+
 logOutputForBuild :: IDEPackage
                   -> Bool
                   -> Bool
                   -> C.Sink ToolOutput IDEM [LogRef]
 logOutputForBuild package backgroundBuild jumpToWarnings = do
-    liftIO $ putStrLn $ "logOutputForBuild"
+    liftIO $ putStrLn "logOutputForBuild"
     log    <- lift getLog
-    logLaunch <- lift $ Log.getDefaultLogLaunch
-    (_, _, _, errs) <- CL.foldM (readAndShow logLaunch) (log, False, False, [])
+    logLaunch <- lift Log.getDefaultLogLaunch
+    BuildOutputState {..} <- CL.foldM (readAndShow logLaunch) $ initialState log
     ideR <- lift ask
     liftIO $ postGUISync $ reflectIDE (do
-        setErrorList $ reverse errs
         triggerEventIDE (Sensitivity [(SensitivityError,not (null errs))])
         let errorNum    =   length (filter isError errs)
         let warnNum     =   length errs - errorNum
@@ -502,88 +529,121 @@ logOutputForBuild package backgroundBuild jumpToWarnings = do
         unless (backgroundBuild || (not jumpToWarnings && errorNum == 0)) nextError
         return errs) ideR
   where
-    readAndShow :: LogLaunch -> (IDELog, Bool, Bool, [LogRef]) -> ToolOutput -> IDEM (IDELog, Bool, Bool, [LogRef])
-    readAndShow logLaunch (log, inError, inDocTest, errs) output = do
+    readAndShow :: LogLaunch -> BuildOutputState -> ToolOutput -> IDEM BuildOutputState
+    readAndShow logLaunch state@BuildOutputState {..} output = do
         ideR <- ask
+        let logPrevious (previous:_) = reflectIDE (addLogRef previous) ideR
+            logPrevious _ = return ()
+
         liftIO $ postGUISync $ case output of
             ToolError line -> do
-                let parsed  =  parse buildLineParser "" $ T.unpack line
+                let parsed  =  parse buildErrorParser "" $ T.unpack line
                 let nonErrorPrefixes = ["Linking ", "ar:", "ld:", "ld warning:"]
                 tag <- case parsed of
                     Right BuildLine -> return InfoTag
-                    Right (OtherLine text) | "Linking " `T.isPrefixOf` text -> do
+                    Right (OtherLine text) | "Linking " `T.isPrefixOf` text ->
                         -- when backgroundBuild $ lift interruptProcess
-                        reflectIDE (do
-                                setErrorList $ reverse errs
-                            ) ideR
                         return InfoTag
-                    Right (OtherLine text) | any (`T.isPrefixOf` text) nonErrorPrefixes -> do
+                    Right (OtherLine text) | any (`T.isPrefixOf` text) nonErrorPrefixes ->
                         return InfoTag
                     _ -> return ErrorTag
                 lineNr <- Log.appendLog log logLaunch (line <> "\n") tag
                 case (parsed, errs) of
                     (Left e,_) -> do
                         sysMessage Normal . T.pack $ show e
-                        return (log, False, False, errs)
-                    (Right ne@(ErrorLine span refType str),_) ->
-                        return (log, True, False, ((LogRef span package str (lineNr,lineNr) refType):errs))
-                    (Right (OtherLine str1),(LogRef span rootPath str (l1,l2) refType):tl) ->
+                        return state { inError = False }
+                    (Right ne@(ErrorLine span refType str),_) -> do
+                        let ref  = LogRef span package str Nothing (lineNr,lineNr) refType
+                            root = logRefRootPath ref
+                            file = logRefFilePath ref
+                            fullFilePath = logRefFullFilePath ref
+                        unless (fullFilePath `S.member` filesCompiled) $
+                            reflectIDE (removeBuildLogRefs root file) ideR
+                        when inError $ logPrevious errs
+                        return state { inError = True
+                                     , errs = ref:errs
+                                     , filesCompiled = S.insert fullFilePath filesCompiled
+                                     }
+                    (Right (OtherLine str1), ref@(LogRef span rootPath str Nothing (l1,l2) refType):tl) ->
                         if inError
-                            then return (log, True, False, ((LogRef span
-                                                    rootPath
-                                                    (if T.null str
-                                                        then line
-                                                        else str <> "\n" <> line)
-                                                    (l1,lineNr) refType) : tl))
-                            else return (log, False, False, errs)
-                    (Right (WarningLine str1),(LogRef span rootPath str (l1,l2) isError):tl) ->
+                            then return state { errs = LogRef span rootPath
+                                                         (if T.null str then line else str <> "\n" <> line)
+                                                         Nothing
+                                                         (l1, lineNr)
+                                                         refType
+                                                         : tl
+                                              }
+                            else return state
+                    (Right (WarningLine str1),LogRef span rootPath str Nothing (l1, l2) isError : tl) ->
                         if inError
-                            then return (log, True, False, ((LogRef span
-                                                    rootPath
-                                                    (if T.null str
-                                                        then line
-                                                        else str <> "\n" <> line)
-                                                    (l1,lineNr) WarningRef) : tl))
-                            else return (log, False, False, errs)
-                    otherwise -> return (log, False, False, errs)
-            ToolOutput line -> do
-                case (parse docTestParser "" $ T.unpack line, inDocTest, errs) of
-                    (Right (span, exp), _, _) -> do
+                            then return state { errs = LogRef span rootPath
+                                                         (if T.null str then line else str <> "\n" <> line)
+                                                         Nothing
+                                                         (l1, lineNr)
+                                                         WarningRef
+                                                         : tl
+                                              }
+                            else return state
+                    _ -> do
+                        when inError $ logPrevious errs
+                        return state { inError = False }
+            ToolOutput line ->
+                case (parse buildOutputParser "" $ T.unpack line, inDocTest, testFails) of
+                    (Right (BuildProgress n total file), _, _) -> do
+                        logLn <- Log.appendLog log logLaunch (line <> "\n") LogTag
+                        reflectIDE (triggerEventIDE (StatusbarChanged [CompartmentState
+                            (T.pack $ "Compiling " ++ show n ++ " of " ++ show total), CompartmentBuild False])) ideR
+                        let root = ipdBuildDir package
+                            fullFilePath = root </> file
+                        unless (fullFilePath `S.member` filesCompiled) $
+                            reflectIDE (removeBuildLogRefs root file) ideR
+                        when inDocTest $ logPrevious testFails
+                        return state { inDocTest = False }
+                    (Right (DocTestFailure span exp), _, _) -> do
                         logLn <- Log.appendLog log logLaunch (line <> "\n") ErrorTag
-                        return (log, inError, True, LogRef span
+                        when inDocTest $ logPrevious testFails
+                        return state { inDocTest = True
+                                     , testFails = LogRef span
                                             package
                                             exp
-                                            (logLn,logLn) ErrorRef : errs)
-                    (_, True, (LogRef span rootPath str (l1,l2) refType):tl) -> do
+                                            Nothing (logLn,logLn) TestFailureRef : testFails
+                                     }
+                    (_, True, LogRef span rootPath str Nothing (l1, l2) refType : tl) -> do
                         logLn <- Log.appendLog log logLaunch (line <> "\n") ErrorTag
-                        return (log, inError, inDocTest, LogRef span
+                        return state { testFails = LogRef span
                                             rootPath
                                             (str <> "\n" <> line)
-                                            (l1,logLn) ErrorRef : tl)
+                                            Nothing (l1,logLn) TestFailureRef : tl
+                                     }
                     _ -> do
                         Log.appendLog log logLaunch (line <> "\n") LogTag
-                        return (log, inError, False, errs)
+                        when inDocTest $ logPrevious testFails
+                        return state { inDocTest = False }
             ToolInput line -> do
                 Log.appendLog log logLaunch (line <> "\n") InputTag
-                return (log, inError, inDocTest, errs)
+                return state
             ToolPrompt line -> do
                 unless (T.null line) $ Log.appendLog log logLaunch (line <> "\n") LogTag >> return ()
+                when inError $ logPrevious errs
+                when inDocTest $ logPrevious testFails
                 let errorNum    =   length (filter isError errs)
                 let warnNum     =   length errs - errorNum
                 case errs of
                     [] -> defaultLineLogger' log logLaunch output
                     _ -> Log.appendLog log logLaunch (T.pack $ "- - - " ++ show errorNum ++ " errors - "
                                             ++ show warnNum ++ " warnings - - -\n") FrameTag
-                return (log, inError, inDocTest, errs)
+                return state { inError = False, inDocTest = False }
             ToolExit _ -> do
                 let errorNum    =   length (filter isError errs)
-                let warnNum     =   length errs - errorNum
-                case errs of
-                    [] -> defaultLineLogger' log logLaunch output
+                    warnNum     =   length errs - errorNum
+                when inError $ logPrevious errs
+                when inDocTest $ logPrevious testFails
+                case (errs, testFails) of
+                    ([], []) -> defaultLineLogger' log logLaunch output
                     _ -> Log.appendLog log logLaunch (T.pack $ "----- " ++ show errorNum ++ " errors -- "
-                                            ++ show warnNum ++ " warnings -----\n") FrameTag
-                return (log, inError, inDocTest, errs)
-
+                                            ++ show warnNum ++ " warnings -- "
+                                            ++ show (length testFails) ++ " doctest failures -----\n") FrameTag
+                return state { inError = False, inDocTest = False }
 
 --logOutputLines :: Text -- ^ logLaunch
 --               -> (LogLaunch -> ToolOutput -> IDEM a)
@@ -594,13 +654,13 @@ logOutputForBreakpoints :: IDEPackage
                         -> LogLaunch           -- ^ loglaunch
                         -> C.Sink ToolOutput IDEM ()
 logOutputForBreakpoints package logLaunch = do
-    breaks <- logOutputLines logLaunch (\log logLaunch out -> do
+    breaks <- logOutputLines logLaunch (\log logLaunch out ->
         case out of
             ToolOutput line -> do
                 logLineNumber <- liftIO $ Log.appendLog log logLaunch (line <> "\n") LogTag
                 case parse breaksLineParser "" $ T.unpack line of
                     Right (BreakpointDescription n span) ->
-                        return $ Just $ LogRef span package line (logLineNumber, logLineNumber) BreakpointRef
+                        return $ Just $ LogRef span package line Nothing (logLineNumber, logLineNumber) BreakpointRef
                     _ -> return Nothing
             _ -> do
                 defaultLineLogger log logLaunch out
@@ -611,13 +671,13 @@ logOutputForSetBreakpoint :: IDEPackage
                         -> LogLaunch           -- ^ loglaunch
                         -> C.Sink ToolOutput IDEM ()
 logOutputForSetBreakpoint package logLaunch = do
-    breaks <- logOutputLines logLaunch (\log logLaunch out -> do
+    breaks <- logOutputLines logLaunch (\log logLaunch out ->
         case out of
             ToolOutput line -> do
                 logLineNumber <- liftIO $ Log.appendLog log logLaunch (line <> "\n") LogTag
                 case parse setBreakpointLineParser "" $ T.unpack line of
                     Right (BreakpointDescription n span) ->
-                        return $ Just $ LogRef span package line (logLineNumber, logLineNumber) BreakpointRef
+                        return $ Just $ LogRef span package line Nothing (logLineNumber, logLineNumber) BreakpointRef
                     _ -> return Nothing
             _ -> do
                 defaultLineLogger log logLaunch out
@@ -627,7 +687,7 @@ logOutputForSetBreakpoint package logLaunch = do
 logOutputForSetBreakpointDefault :: IDEPackage
                                  -> C.Sink ToolOutput IDEM ()
 logOutputForSetBreakpointDefault package = do
-    defaultLogLaunch <- lift $ getDefaultLogLaunch
+    defaultLogLaunch <- lift getDefaultLogLaunch
     logOutputForSetBreakpoint package defaultLogLaunch
 
 logOutputForContext :: IDEPackage
@@ -635,14 +695,14 @@ logOutputForContext :: IDEPackage
                     -> (Text -> [SrcSpan])
                     -> C.Sink ToolOutput IDEM ()
 logOutputForContext package loglaunch getContexts = do
-    refs <- fmap catMaybes $ logOutputLines loglaunch (\log logLaunch out -> do
+    refs <- catMaybes <$> logOutputLines loglaunch (\log logLaunch out ->
         case out of
             ToolOutput line -> do
                 logLineNumber <- liftIO $ Log.appendLog log logLaunch (line <> "\n") LogTag
                 let contexts = getContexts line
                 if null contexts
                     then return Nothing
-                    else return $ Just $ LogRef (last contexts) package line (logLineNumber, logLineNumber) ContextRef
+                    else return $ Just $ LogRef (last contexts) package line Nothing (logLineNumber, logLineNumber) ContextRef
             _ -> do
                 defaultLineLogger log logLaunch out
                 return Nothing)
@@ -653,7 +713,7 @@ logOutputForContext package loglaunch getContexts = do
 contextParser :: CharParser () SrcSpan
 contextParser = try (do
         whiteSpace
-        (symbol "Logged breakpoint at" <|> symbol "Stopped at")
+        symbol "Logged breakpoint at" <|> symbol "Stopped at"
         whiteSpace
         srcSpanParser)
     <?> "historicContextParser"
@@ -671,7 +731,7 @@ logOutputForLiveContext package logLaunch = logOutputForContext package logLaunc
 logOutputForLiveContextDefault :: IDEPackage
                                -> C.Sink ToolOutput IDEM ()
 logOutputForLiveContextDefault package = do
-    defaultLogLaunch <- lift $ getDefaultLogLaunch
+    defaultLogLaunch <- lift getDefaultLogLaunch
     logOutputForLiveContext package defaultLogLaunch
 
 
@@ -687,5 +747,5 @@ logOutputForHistoricContext package logLaunch = logOutputForContext package logL
 logOutputForHistoricContextDefault :: IDEPackage
                                    -> C.Sink ToolOutput IDEM ()
 logOutputForHistoricContextDefault package = do
-    defaultLogLaunch <- lift $ getDefaultLogLaunch
+    defaultLogLaunch <- lift getDefaultLogLaunch
     logOutputForHistoricContext package defaultLogLaunch

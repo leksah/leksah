@@ -41,7 +41,7 @@ import Data.Maybe (catMaybes, fromJust)
 import Text.ParserCombinators.Parsec hiding (parse)
 import qualified Text.ParserCombinators.Parsec as Parsec (parse)
 import Graphics.UI.Editor.Simple (staticListEditor)
-import Control.Monad (forM, when)
+import Control.Monad (unless, forM, when)
 import Control.Applicative ((<$>))
 import Data.List (stripPrefix, sort, nub, nubBy)
 import IDE.Utils.ServerConnection
@@ -98,7 +98,9 @@ resolveErrors = do
             nubBy (\ (p1,_) (p2,_) -> p1 == p2)
                 $ [(x,y) |  (x,y) <- [((parsePerhapsYouIntendedToUse . refDescription) e, e) | e <- errors]],
                                 length x == 1]
-    when (not (or addPackageResults) && null notInScopes && null extensions) $ ideMessage Normal $ "No errors that can be auto resolved"
+    when (not (or addPackageResults) && null notInScopes && null extensions) $ do
+        hlintResolved <- resolveActiveHLint
+        unless hlintResolved $ ideMessage Normal $ "No errors, warnings or selected hlints that can be auto resolved"
     addAll buildInBackground notInScopes extensions
   where
     addAll buildInBackground notInScopes extensions = addAllImports notInScopes (True,[])

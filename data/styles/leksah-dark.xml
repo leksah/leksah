@@ -41,7 +41,7 @@
   <!-- Global Settings -->
   <style name="current-line"                background="#000000"/>
   <style name="draw-spaces"                 foreground="#babdb6"/>
-  <style name="text"                        background="#000000"/>
+  <style name="text"                        background="#202020"/>
   <style name="selection"                   background="#3B73AE" foreground="#FFFFFF"/>
   <style name="selection-unfocused"         background="#3B73AE" foreground="#FFFFFF"/>
 

@@ -65,6 +65,11 @@ module IDE.Pane.SourceBuffer (
 ,   editKeystrokeCandy
 ,   editCandy
 
+,   updateStyle
+,   updateStyle'
+,   addLogRef
+,   removeBuildLogRefs
+,   resolveActiveHLint
 ,   markRefInSourceBuf
 ,   inBufContext
 ,   inActiveBufContext
@@ -123,7 +128,7 @@ import Graphics.UI.Gtk.Windows.MessageDialog
        (ButtonsType(..), MessageType(..))
 import Graphics.UI.Gtk.Windows.Dialog (ResponseId(..))
 import Graphics.UI.Gtk
-       (eventModifier, eventKeyName, eventKeyVal, Underline(..))
+       (eventModifier, eventKeyName, eventKeyVal)
 import Graphics.UI.Gtk.Selectors.FileChooser
        (FileChooserAction(..))
 import System.Glib.Attributes (AttrOp(..), set)
@@ -131,7 +136,8 @@ import System.Glib.Attributes (AttrOp(..), set)
 import IDE.BufferMode
 import Control.Monad.Trans.Reader (ask)
 import Control.Monad.IO.Class (MonadIO(..))
-import Control.Monad (forM, filterM, unless, when, liftM)
+import Control.Monad
+       (foldM, void, forM_, forM, filterM, unless, when, liftM)
 import Control.Exception as E (catch, SomeException)
 
 import qualified IDE.Command.Print as Print
@@ -139,11 +145,19 @@ import Control.Monad.Trans.Class (MonadTrans(..))
 import System.Log.Logger (debugM)
 import Data.Text (Text)
 import qualified Data.Text as T
-       (length, findIndex, replicate, lines, dropWhileEnd, unlines, strip,
-        null, pack, unpack)
+       (reverse, take, drop, init, length, findIndex, replicate, lines,
+        dropWhileEnd, unlines, strip, null, pack, unpack)
 import Data.Monoid ((<>))
 import qualified Data.Text.IO as T (writeFile, readFile)
 import Data.Time (UTCTime(..))
+import Control.Concurrent (forkIO)
+import Language.Haskell.HLint3
+       (ParseError(..), Idea(..), Severity(..), parseFlagsAddFixities,
+        resolveHints, readSettingsFile, findSettings, applyHints,
+        defaultParseFlags, parseModuleEx, ParseFlags(..), CppFlags(..))
+import qualified Language.Haskell.Exts.SrcLoc as HSE (SrcSpan(..))
+import Language.Preprocessor.Cpphs
+       (defaultCpphsOptions)
 
 allBuffers :: MonadIDE m => m [IDEBuffer]
 allBuffers = liftIDE getPanes
@@ -316,29 +330,46 @@ goToSourceDefinition' sourcePath Location{..} = do
         Nothing -> return ()
     return mbBuf
 
-replaceHLintSource :: FilePath -> Int -> Int -> Int -> Int -> Text -> IDEAction
-replaceHLintSource file lineS columnS lineE columnE to = do
-    mbBuf     <- selectSourceBuf file
+indentHLintText :: Int -> Text -> Text
+indentHLintText startColumn text =
+    T.init $ T.unlines (take 1 lines <> drop 1 (map (indent <>) lines))
+  where
+    lines = T.lines text
+    indent = T.replicate startColumn " "
+
+replaceHLintSource :: (Bool, Int) -> (Text, Idea) -> IDEM (Bool, Int)
+replaceHLintSource (changed, delta) (from, Idea{ideaSpan = ideaSpan, ideaTo = Just ideaTo}) = do
+    let HSE.SrcSpan{..} = ideaSpan
+        to = indentHLintText (srcSpanStartColumn-1) (T.pack ideaTo)
+    liftIO . debugM "leksah" $ "replaceHLintSource From: " <> show from <> "\nreplaceHLintSource To:   " <> show to
+    mbBuf <- selectSourceBuf srcSpanFilename
     case mbBuf of
-        Just buf -> inActiveBufContext () $ \_ sv ebuf _ _ -> do
-            useCandy    <- useCandyFor buf
-            candy'      <- readIDE candy
-            realString <-  if useCandy then stringToCandy candy' to else return to
+        Just buf -> inActiveBufContext (changed, delta) $ \_ sv ebuf _ _ -> do
+            useCandy   <- useCandyFor buf
+            candy'     <- readIDE candy
+            realString <- if useCandy then stringToCandy candy' to else return to
             (lineS', columnS', lineE', columnE') <- if useCandy
                     then do
-                        (_,e1) <- positionToCandy candy' ebuf (lineS,columnS - 1)
-                        (_,e2) <- positionToCandy candy' ebuf (lineE,columnE - 1)
-                        return (lineS-1,e1,lineE-1,e2)
-                    else return (lineS-1, columnS-1, lineE-1, columnE-1)
+                        (_,e1) <- positionToCandy candy' ebuf (srcSpanStartLine + delta, srcSpanStartColumn - 1)
+                        (_,e2) <- positionToCandy candy' ebuf (srcSpanEndLine + delta, srcSpanEndColumn - 1)
+                        return (srcSpanStartLine-1 + delta,e1,srcSpanEndLine-1 + delta,e2)
+                    else return (srcSpanStartLine-1 + delta,srcSpanStartColumn-1,srcSpanEndLine-1 + delta,srcSpanEndColumn-1)
             i1  <- getIterAtLine ebuf (lineS')
             i1' <- forwardCharsC i1 (columnS')
             i2  <- getIterAtLine ebuf (lineE')
             i2' <- forwardCharsC i2 (columnE')
-            delete ebuf i1' i2'
-            editInsertCode ebuf i1' realString
-            fileSave False
-            setModified ebuf True
-        _ -> return ()
+            candy <- readIDE candy
+            check <- getCandylessPart candy ebuf i1' i2'
+            if check == from
+                then do
+                    beginUserAction ebuf
+                    delete ebuf i1' i2'
+                    editInsertCode ebuf i1' realString
+                    endUserAction ebuf
+                    return (True, delta + (length $ T.lines to) - (length $ T.lines from))
+                else return (changed, delta)
+        _ -> return (changed, delta)
+replaceHLintSource x _ = return x
 
 insertInBuffer :: Descr -> IDEAction
 insertInBuffer idDescr = do
@@ -356,31 +387,49 @@ insertInBuffer idDescr = do
                         iter <- getIterAtMark ebuf mark
                         insert ebuf iter (dscName idDescr)
 
-markRefInSourceBuf :: Int -> IDEBuffer -> LogRef -> Bool -> IDEAction
-markRefInSourceBuf index buf logRef scrollTo = do
+updateStyle' :: IDEBuffer -> IDEAction
+updateStyle' IDEBuffer {sourceView = sv} = getBuffer sv >>= updateStyle
+
+removeLogRefs :: [LogRefType] -> FilePath -> FilePath -> IDEAction
+removeLogRefs types root file = do
+    modifyIDE_ (\ide -> ide{allLogRefs = filter keep $ allLogRefs ide})
+
+    buffers <- allBuffers
+    let matchingBufs = filter (maybe False (equalFilePath (root </> file)) . fileName) buffers
+    forM_ matchingBufs $ \ (IDEBuffer {sourceView = sv}) -> do
+        buf <- getBuffer sv
+        forM_ types $ removeTagByName buf . T.pack . show
+
+    triggerEventIDE ErrorChanged
+    return ()
+  where
+    keep ref = logRefRootPath ref /= root
+            || logRefFilePath ref /= file
+            || logRefType ref `notElem` types
+
+removeBuildLogRefs :: FilePath -> FilePath -> IDEAction
+removeBuildLogRefs = removeLogRefs [ErrorRef, WarningRef, TestFailureRef]
+
+addLogRef :: LogRef -> IDEAction
+addLogRef ref = do
+    modifyIDE_ (\ide -> ide{allLogRefs = allLogRefs ide <> [ref]})
+
+    buffers <- allBuffers
+    let matchingBufs = filter (maybe False (equalFilePath (logRefFullFilePath ref)) . fileName) buffers
+    forM_ matchingBufs $ \ buf -> markRefInSourceBuf buf ref False
+
+    triggerEventIDE ErrorChanged
+    return ()
+
+markRefInSourceBuf :: IDEBuffer -> LogRef -> Bool -> IDEAction
+markRefInSourceBuf buf logRef scrollTo = do
     useCandy    <- useCandyFor buf
     candy'      <- readIDE candy
     contextRefs <- readIDE contextRefs
     prefs       <- readIDE prefs
     inBufContext () buf $ \_ sv ebuf buf _ -> do
-        let tagName = T.pack $ show (logRefType logRef) ++ show index
+        let tagName = T.pack $ show (logRefType logRef)
         liftIO . debugM "lekash" . T.unpack $ "markRefInSourceBuf getting or creating tag " <> tagName
-        tagTable <- getTagTable ebuf
-        mbTag <- lookupTag tagTable tagName
-        case mbTag of
-            Just existingTag -> do
-                removeTagByName ebuf tagName
-            Nothing -> do
-                errtag <- newTag tagTable tagName
-                case logRefType logRef of
-                    ErrorRef -> do
-                        underline errtag UnderlineError
-                    WarningRef -> do
-                        underline errtag UnderlineError
-                    BreakpointRef -> do
-                        background errtag $ breakpointBackground prefs
-                    ContextRef -> do
-                        background errtag $ contextBackground prefs
 
         liftIO $ debugM "lekash" "markRefInSourceBuf calculating range"
         let start' = (srcSpanStartLine (logRefSrcSpan logRef),
@@ -417,12 +466,7 @@ markRefInSourceBuf index buf logRef scrollTo = do
         unless isOldContext $ do
             liftIO $ debugM "lekash" "markRefInSourceBuf calling applyTagByName"
             lineStart <- backwardToLineStartC iter
-            createMark sv tagName lineStart (
-                case logRefType logRef of
-                    ErrorRef      -> "dialog-error"
-                    WarningRef    -> "dialog-warning"
-                    BreakpointRef -> "media-playback-pause"
-                    ContextRef    -> "media-playback-start") $ refDescription logRef
+            createMark sv (logRefType logRef) lineStart $ refDescription logRef
             applyTagByName ebuf tagName iter iter2
         when scrollTo $ do
             ideR    <- ask
@@ -519,10 +563,7 @@ builder' bs mbfn ind bn rbn ct prefs fileContents modTime pp nb windows = do
         setIndentWidth sv $ tabWidth prefs
         setTabWidth sv $ 8 -- GHC treats tabs as 8 we should display them that way
         drawTabs sv
-        preferDark <- getDarkState
-        setStyle preferDark buffer $ case sourceStyle prefs of
-                            (False,_) -> Nothing
-                            (True,v) -> Just v
+        updateStyle buffer
 
         -- put it in a scrolled window
         sw <- getScrolledWindow sv
@@ -943,6 +984,73 @@ fileSaveBuffer query nb _ ebuf (ideBuf@IDEBuffer{sourceView = sv}) i = liftIDE $
                     return False)
             setModified buf (not succ)
             markLabelAsChanged nb ideBuf
+            hlintBuffer ideBuf (Just fn) text'
+
+hlintBuffer :: IDEBuffer -> Maybe FilePath -> Text -> IDEAction
+hlintBuffer ideBuf mbfn text =
+    case maybe (fileName ideBuf) Just mbfn of
+        Nothing -> return ()
+        Just fn -> do
+            packs <- belongsToPackages ideBuf
+            ideR <- ask
+            case packs of
+                (package:_) -> do
+                    let file = makeRelative (ipdBuildDir package) fn
+                    removeLogRefs [LintRef] (ipdBuildDir package) file
+                    liftIO . void . forkIO $ do
+                        mbHlintDir <- liftIO $ leksahSubDir "hlint"
+                        (fixities, classify, hints) <- findSettings (readSettingsFile mbHlintDir) Nothing
+                        let hint = resolveHints hints
+                            flags = parseFlagsAddFixities fixities defaultParseFlags{ cppFlags = Cpphs defaultCpphsOptions }
+                        parseResult <- parseModuleEx flags fn (Just $ T.unpack text)
+                        case parseResult of
+                            (Right m) -> do
+                                let allIdeas = applyHints classify hint [m]
+                                    ideas = filter (\Idea{..} -> ideaSeverity /= Ignore
+                                                                 && equalFilePath (HSE.srcSpanFilename ideaSpan) fn) allIdeas
+                                forM_ ideas $ \ idea@Idea{..} -> do
+                                    let fixColumn c = max 0 (c - 1)
+                                        srcSpan = SrcSpan file
+                                                          (HSE.srcSpanStartLine ideaSpan)
+                                                          (HSE.srcSpanStartColumn ideaSpan - 1)
+                                                          (HSE.srcSpanEndLine ideaSpan)
+                                                          (HSE.srcSpanEndColumn ideaSpan - 1)
+                                        fromLines = drop (HSE.srcSpanStartLine ideaSpan - 1)
+                                                  . take (HSE.srcSpanEndLine ideaSpan) $ T.lines text
+                                        fixHead [] = []
+                                        fixHead (x:xs) = T.drop (HSE.srcSpanStartColumn ideaSpan - 1) x : xs
+                                        fixTail [] = []
+                                        fixTail (x:xs) = T.take (HSE.srcSpanEndColumn ideaSpan - 1) x : xs
+                                        from = T.reverse . T.drop 1 . T.reverse
+                                             . T.unlines . fixHead . reverse . fixTail $ reverse fromLines
+                                    reflectIDE (postAsyncIDE $ addLogRef
+                                        (LogRef srcSpan package (T.pack ideaHint <> maybe "" (("\n" <>) . T.pack) ideaTo)
+                                                (Just (from, idea)) (0, 0) LintRef)) ideR
+                            Left error -> liftIO . debugM "leksah" $ "hlintBuffer parse error " <> show (parseErrorLocation error, parseErrorMessage error)
+                _ -> liftIO . debugM "leksah" $ "hlintBuffer package not found for " <> fn
+
+resolveActiveHLint :: IDEM Bool
+resolveActiveHLint = inActiveBufContext False  $ \_ _ ebuf _ _ -> do
+    allLogRefs <- readIDE allLogRefs
+    (iStart, iEnd) <- getSelectionBounds ebuf
+    lStart <- getLine iStart
+    cStart <- getLineOffset iStart
+    lEnd <- getLine iEnd
+    cEnd <- getLineOffset iEnd
+    let selectedRefs = filter (\ LogRef{..} -> logRefType == LintRef
+                         && (lStart+1, cStart) <= (srcSpanEndLine logRefSrcSpan, srcSpanEndColumn logRefSrcSpan)
+                         && (lEnd+1, cEnd) >= (srcSpanStartLine logRefSrcSpan, srcSpanStartColumn logRefSrcSpan)) allLogRefs
+        safeRefs = takeWhileNotOverlapping selectedRefs
+    (changed, _) <- foldM replaceHLintSource (False, 0) . catMaybes $ map logRefIdea safeRefs
+    prefs <- readIDE prefs
+    when (changed && not (backgroundBuild prefs)) . void $ fileSave False
+    return changed
+  where
+    takeWhileNotOverlapping = takeWhileNotOverlapping' (-1)
+    takeWhileNotOverlapping' _ [] = []
+    takeWhileNotOverlapping' line (ref:refs)
+        | srcSpanEndLine (logRefSrcSpan ref) > line = ref : takeWhileNotOverlapping' (srcSpanEndLine $ logRefSrcSpan ref) refs
+        | otherwise = takeWhileNotOverlapping' line refs
 
 fileSave :: Bool -> IDEM Bool
 fileSave query = inActiveBufContext False $ fileSaveBuffer query

@@ -141,10 +141,7 @@ initCompletion sourceView always = do
 
             descriptionBuffer <- newDefaultBuffer Nothing ""
             descriptionView   <- newView descriptionBuffer (textviewFont prefs)
-            preferDark <- getDarkState
-            setStyle preferDark descriptionBuffer $ case sourceStyle prefs of
-                                            (False,_) -> Nothing
-                                            (True,v) -> Just v
+            updateStyle descriptionBuffer
             descriptionScrolledWindow <- getScrolledWindow descriptionView
 
             visible    <- liftIO $ newIORef False

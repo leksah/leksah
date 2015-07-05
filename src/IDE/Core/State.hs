@@ -255,7 +255,7 @@ throwIDE str = throw (IDEException str)
 window = head . windows
 
 errorRefs :: IDE -> [LogRef]
-errorRefs = filter ((\ t -> t == ErrorRef || t == WarningRef) . logRefType) .
+errorRefs = filter ((\ t -> t == ErrorRef || t == WarningRef || t == LintRef || t == TestFailureRef) . logRefType) .
                allLogRefs
 
 breakpointRefs :: IDE -> [LogRef]

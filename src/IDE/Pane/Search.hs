@@ -67,7 +67,9 @@ import System.Glib.Properties (newAttrFromMaybeStringProperty)
 import Control.Monad (void)
 import Graphics.UI.Gtk.General.Enums (ShadowType(..))
 import Data.Text (Text)
-import qualified Data.Text as T (pack, null)
+import qualified Data.Text as T (unpack, pack, null)
+import System.Log.Logger (debugM)
+import Data.Monoid ((<>))
 
 -- | A search pane description
 --
@@ -251,6 +253,7 @@ buildSearchPane =
                 searchMetaGUI_ text
             searchMetaGUI_ :: Text -> IDEAction
             searchMetaGUI_ str = do
+                liftIO $ debugM "leksah" $ "searchMetGUI_ " <> T.unpack str
                 liftIO $ bringPaneToFront search
                 liftIO $ entrySetText entry str
                 scope  <- liftIO $ getScope search

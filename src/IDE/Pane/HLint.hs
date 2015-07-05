@@ -38,13 +38,14 @@ import IDE.Core.State hiding (SrcSpan(..))
 import IDE.BufferMode
 import IDE.LogRef (logOutput, defaultLineLogger)
 import IDE.Pane.SourceBuffer
-    (goToSourceDefinition', maybeActiveBuf, IDEBuffer(..), replaceHLintSource)
-import IDE.TextEditor (grabFocus)
+       (fileSave, goToSourceDefinition', maybeActiveBuf, IDEBuffer(..),
+        replaceHLintSource)
+import IDE.TextEditor (TextEditor(..), grabFocus)
 import Control.Applicative ((<$>))
 import System.FilePath ((</>), dropFileName)
 import System.Exit (ExitCode(..))
 import IDE.Pane.Log (getLog)
-import Control.Monad (void, forM_, foldM, when)
+import Control.Monad (unless, void, forM_, foldM, when)
 import Control.Monad.Trans.Reader (ask)
 import Control.Monad.Trans.Class (MonadTrans(..))
 import Control.Monad.IO.Class (MonadIO(..))
@@ -52,7 +53,7 @@ import Language.Haskell.HLint (Suggestion(..), suggestionLocation)
 import Language.Haskell.Exts (SrcLoc(..))
 import Language.Haskell.Exts.SrcLoc (SrcSpan(..))
 
-import qualified Language.Haskell.HLint2 as H
+import qualified Language.Haskell.HLint3 as H
 import IDE.Utils.GUIUtils (__, treeViewContextMenu)
 import Data.List (isPrefixOf, findIndex)
 import Debug.Trace (trace)
@@ -66,6 +67,10 @@ import qualified Data.Text as T
        (replicate, unlines, init, lines, pack, unpack)
 import Data.Monoid ((<>))
 import qualified System.IO.Strict as S (readFile)
+import Language.Haskell.HLint3
+       (CppFlags(..), defaultParseFlags, parseFlagsAddFixities,
+        resolveHints, readSettingsFile, findSettings, ParseFlags(..))
+import Language.Preprocessor.Cpphs (defaultCpphsOptions)
 
 data HLintRecord = HLintRecord {
             condPackage :: Maybe IDEPackage
@@ -159,8 +164,6 @@ instance RecoverablePane IDEHLint HLintState IDEM where
                             return True
                             -- gotoSource True
                         _ -> return False
-        treeViewContextMenu treeView
-            $ hlintContextMenu ideR hlintStore treeView
         on sel treeSelectionSelectionChanged (reflectIDE (void $ gotoSource False treeView hlintStore) ideR)
 
         return (Just hlint,map ConnectC [cid1])
@@ -252,14 +255,9 @@ hlintDirectories2 packages = do
 refreshDir :: TreeStore HLintRecord -> TreeIter -> IDEPackage -> IDEM ()
 refreshDir store iter package = do
     mbHlintDir <- liftIO $ leksahSubDir "hlint"
-    (flags, classify, hint) <- liftIO $ case mbHlintDir of
-                                            Just d  ->
-#if MIN_VERSION_hlint(1, 9, 13)
-                                                H.autoSettings' d
-#else
-                                                H.autoSettings
-#endif
-                                            Nothing -> H.autoSettings
+    (fixities, classify, hints) <- liftIO $ findSettings (readSettingsFile mbHlintDir) Nothing
+    let hint = resolveHints hints
+        flags = parseFlagsAddFixities fixities defaultParseFlags{ cppFlags = Cpphs defaultCpphsOptions }
     let modules = Map.keys (ipdModules package)
     paths <- getSourcePaths (ipdPackageId package) modules
     resL <- liftIO $ mapM (\ file -> do
@@ -316,34 +314,3 @@ setHLint2Results store parent dir ideas = do
     records = map (hlint2Record dir) ideas
     nRecords = length records
 
-hlintContextMenu :: IDERef
-                  -> TreeStore HLintRecord
-                  -> TreeView
-                  -> Menu
-                  -> IO ()
-hlintContextMenu ideR store treeView theMenu = do
-    mbSel           <-  getSelectionHLintRecord treeView store
-    item0           <-  menuItemNewWithLabel (__ "Replace")
-    item0 `on` menuItemActivate $ reflectIDE (replaceHlint store treeView mbSel) ideR
-    menuShellAppend theMenu item0
-  where
-    replaceableSelection Nothing = False
-    replaceableSelection (Just s) | isNothing (parDir s) = True
-                                  | otherwise = False
-
-replaceHlint store treeView (Just sel) =
-    case condIdea sel of
-        Just idea | isJust (H.ideaTo idea) ->
-            let lined = T.lines (T.pack $ fromJust (H.ideaTo idea))
-                startColumn = srcSpanStartColumn (H.ideaSpan idea)
-                source = T.init $ T.unlines (head lined :
-                                            map (\ s -> T.replicate startColumn " " <> s) (tail lined))
-            in
-                replaceHLintSource (srcSpanFilename (H.ideaSpan idea))
-                                   (srcSpanStartLine (H.ideaSpan idea))
-                                   startColumn
-                                   (srcSpanEndLine (H.ideaSpan idea))
-                                   (srcSpanEndColumn (H.ideaSpan idea))
-                                   source
-        otherwise -> return ()
-replaceHlint _ _ Nothing    = return ()
