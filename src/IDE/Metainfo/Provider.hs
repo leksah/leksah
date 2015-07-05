@@ -831,9 +831,22 @@ keywordDescrs = map (\s -> Real $ RealDescr
                                 Nothing
                                 Nothing
                                 Nothing
-                                (Just (BS.pack " Haskell keyword"))
+                                (Just (BS.pack "Haskell keyword"))
                                 KeywordDescr
                                 True) keywords
+
+misc :: [(Text, String)]
+misc = [("--", "Haskell comment"), ("=", "Haskell definition")]
+
+miscDescrs :: [Descr]
+miscDescrs = map (\(s, d) -> Real $ RealDescr
+                                s
+                                Nothing
+                                Nothing
+                                Nothing
+                                (Just (BS.pack d))
+                                KeywordDescr
+                                True) misc
 
 extensionDescrs :: [Descr]
 extensionDescrs =  map (\ext -> Real $ RealDescr
@@ -841,7 +854,7 @@ extensionDescrs =  map (\ext -> Real $ RealDescr
                                     Nothing
                                     Nothing
                                     Nothing
-                                    (Just (BS.pack " Haskell language extension"))
+                                    (Just (BS.pack "Haskell language extension"))
                                     ExtensionDescr
                                     True)
                                 ([minBound..maxBound]::[KnownExtension])
@@ -852,7 +865,7 @@ moduleNameDescrs pd = map (\md -> Real $ RealDescr
                                     Nothing
                                     (Just (mdModuleId md))
                                     Nothing
-                                    (Just (BS.pack " Module name"))
+                                    (Just (BS.pack "Module name"))
                                     ModNameDescr
                                     True) (pdModules pd)
 
@@ -860,7 +873,7 @@ addOtherToScope ::  SymbolTable alpha  =>  PackScope alpha -> Bool -> PackScope 
 addOtherToScope (PackScope packageMap symbolTable) addAll = PackScope packageMap newSymbolTable
     where newSymbolTable = foldl' (\ map descr -> symInsert (dscName descr) [descr] map)
                         symbolTable (if addAll
-                                        then keywordDescrs ++ extensionDescrs ++ modNameDescrs
+                                        then keywordDescrs ++ extensionDescrs ++ modNameDescrs ++ miscDescrs
                                         else modNameDescrs)
           modNameDescrs = concatMap moduleNameDescrs (Map.elems packageMap)
 
