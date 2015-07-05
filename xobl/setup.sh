@@ -25,7 +25,8 @@ sudo dnf -y install \
                            git \
                            msitools \
                            libxslt \
-                           nodejs
+                           nodejs \
+                           npm
 
 # Disable password authenticated SSH (key should be on there now) and enable sshd.
 # Run vagrant ssh to connect or vagrant ssh_config to find out the connection settings.
@@ -71,7 +72,9 @@ sudo dnf install -y ghc cabal-install
 if [ ! -e ~/.profile ]
 then
     echo 'export PATH=$HOME/.cabal/bin:$HOME/haskell/ghcjs/.cabal-sandbox/bin:$PATH' >> ~/.profile
+    echo 'export WINEDEBUG=-all' >> ~/.profile
     sed -i -e 's|^export PATH$|export PATH=$HOME/.cabal/bin:$HOME/haskell/ghcjs/.cabal-sandbox/bin:$PATH\n\0|' ~/.bash_profile
+    echo 'export WINEDEBUG=-all' >> ~/.bash_profile
 fi
 export PATH=$HOME/.cabal/bin:$HOME/haskell/ghcjs/.cabal-sandbox/bin:$PATH
 
@@ -101,6 +104,12 @@ then
     cabal install gtk2hs-buildtools
     cabal install regex-tdfa-text --ghc-options=-XFlexibleContexts
     cabal install ./ ./vendor/ltk ./vendor/leksah-server
+fi
+
+# Install socket.io (needed for GHCJSi)
+if [ ! -d /lib/node_modules/socket.io ]
+then
+    sudo npm install -g socket.io
 fi
 
 # Install GHCJS
