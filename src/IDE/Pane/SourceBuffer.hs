@@ -1075,7 +1075,9 @@ resolveActiveHLint = inActiveBufContext False  $ \_ _ ebuf _ _ -> do
         safeRefs = takeWhileNotOverlapping selectedRefs
     (changed, _) <- foldM replaceHLintSource (False, 0) . catMaybes $ map logRefIdea safeRefs
     prefs <- readIDE prefs
-    when (changed && not (backgroundBuild prefs)) . void $ fileSave False
+    when changed $ if backgroundBuild prefs
+                        then setModified ebuf True
+                        else void $ fileSave False
     return changed
   where
     takeWhileNotOverlapping = takeWhileNotOverlapping' (-1)
