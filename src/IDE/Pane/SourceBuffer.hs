@@ -136,8 +136,7 @@ import System.Glib.Attributes (AttrOp(..), set)
 import IDE.BufferMode
 import Control.Monad.Trans.Reader (ask)
 import Control.Monad.IO.Class (MonadIO(..))
-import Control.Monad
-       (foldM, void, forM_, forM, filterM, unless, when, liftM)
+import Control.Monad (filterM, foldM, void, unless, when, liftM)
 import Control.Exception as E (catch, SomeException)
 
 import qualified IDE.Command.Print as Print
@@ -163,6 +162,8 @@ import Language.Preprocessor.Cpphs as Cpphs
 import qualified System.IO.Strict as S (readFile)
 import Graphics.UI.Gtk.Gdk.EventM
        (eventModifier, eventKeyName, eventKeyVal)
+import Data.Foldable (forM_)
+import Data.Traversable (forM)
 
 allBuffers :: MonadIDE m => m [IDEBuffer]
 allBuffers = liftIDE getPanes

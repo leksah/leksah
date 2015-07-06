@@ -78,7 +78,7 @@ import System.Glib.Attributes (set)
 import Graphics.UI.Gtk.General.Enums
        (ButtonBoxStyle(..), WindowPosition(..))
 import Control.Monad.IO.Class (MonadIO(..))
-import Control.Monad (void, forM_, when)
+import Control.Monad (void, when)
 import System.FilePath ((</>))
 import Data.Text (Text)
 import qualified Data.Text as T (isSuffixOf, unpack, pack, null)
@@ -86,6 +86,7 @@ import Data.Monoid ((<>))
 import Control.Applicative ((<$>))
 import Distribution.Text (display, simpleParse)
 import IDE.Pane.Files (refreshFiles)
+import Data.Foldable (forM_)
 
 -- ---------------------------------------------------------------------
 -- This needs to be incremented, when the preferences format changes

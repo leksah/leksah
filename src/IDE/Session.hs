@@ -73,10 +73,12 @@ import IDE.Pane.Workspace (WorkspaceState(..))
 import IDE.Workspaces (workspaceOpenThis)
 import IDE.Completion (setCompletionSize)
 import Control.Monad.IO.Class (MonadIO(..))
-import Control.Monad (void, forM_, forM, when)
+import Control.Monad (void, when)
 import System.Log.Logger (debugM)
 import Data.Text (Text)
 import qualified Data.Text as T (pack)
+import Data.Traversable (forM)
+import Data.Foldable (forM_)
 
 -- ---------------------------------------------------------------------
 -- This needs to be incremented, when the session format changes
