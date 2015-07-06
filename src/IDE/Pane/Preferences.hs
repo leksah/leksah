@@ -150,9 +150,7 @@ instance RecoverablePane IDEPrefs PrefsState IDEM where
 
             on preview buttonActivated $ do
                 mbNewPrefs <- extract initialPrefs [ext]
-                case mbNewPrefs of
-                    Nothing -> return ()
-                    Just newPrefs -> applyPrefs newPrefs
+                forM_ mbNewPrefs applyPrefs
 
             on restore buttonActivated $ do
                 applyPrefs initialPrefs
@@ -472,7 +470,7 @@ prefsDescription configDir packages = NFDPP [
             showHiddenFiles
             (\b a -> a {showHiddenFiles = b})
             boolEditor
-            (\b -> refreshFiles)
+            (const refreshFiles)
     ,   mkFieldPP
             (paraName <<<- ParaName (__ "Use ctrl Tab for Notebook flipper") $ emptyParams)
             (PP.text . show)

@@ -209,7 +209,7 @@ refreshFiles = do
     let packages = maybe [] wsPackages mbWS
     setDirectories store Nothing $ map PackageRecord packages
 
-    forM_ (zip [0..] packages) $ \(n, package) -> do
+    forM_ (zip [0..] packages) $ \(n, package) ->
          refreshRecursively store [n] view
 
 -- | Returns the 'FileRecord's at the given 'FilePath'.
@@ -235,7 +235,7 @@ refreshRecursively store path view = do
     isExpanded <- liftIO $ treeViewRowExpanded view path
     record     <- liftIO $ treeStoreGetValue store path
 
-    when isExpanded $ do
+    when isExpanded $
         case record of
             DirRecord dir -> do
                 refreshDir store path dir

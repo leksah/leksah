@@ -26,7 +26,7 @@ module IDE.LogRef (
 ,   defaultLineLogger'
 ,   logOutputLines
 ,   logOutputLines_
-,   logOutputLines_Default
+,   logOutputLinesDefault_
 ,   logOutput
 ,   logOutputDefault
 ,   logOutputPane
@@ -83,12 +83,12 @@ selectRef :: Maybe LogRef -> IDEAction
 selectRef (Just ref) = do
     logRefs <- readIDE allLogRefs
     case elemIndex ref logRefs of
-        Nothing    -> liftIO $ debugM "leksah" "no index" >> return ()
+        Nothing    -> liftIO . void $ debugM "leksah" "no index"
         Just index -> do
             mbBuf         <- selectSourceBuf (logRefFullFilePath ref)
             case mbBuf of
                 Just buf  -> markRefInSourceBuf buf ref True
-                Nothing   -> liftIO $ debugM "leksah" "no buf" >> return ()
+                Nothing   -> liftIO . void $ debugM "leksah" "no buf"
             log :: Log.IDELog <- Log.getLog
             Log.markErrorInLog log (logLines ref)
 selectRef Nothing = return ()
@@ -100,16 +100,16 @@ forOpenLogRefs f = do
     forM_ logRefs $ \ref -> do
         let fp = logRefFullFilePath ref
         fpc <- liftIO $ myCanonicalizePath fp
-        forM_ (filter (\buf -> case (fileName buf) of
+        forM_ (filter (\buf -> case fileName buf of
                 Just fn -> equalFilePath fpc fn
                 Nothing -> False) allBufs) (f ref)
 
 markLogRefs :: IDEAction
-markLogRefs = do
+markLogRefs =
     forOpenLogRefs $ \logRef buf -> markRefInSourceBuf buf logRef False
 
 unmarkLogRefs :: IDEAction
-unmarkLogRefs = do
+unmarkLogRefs =
     forOpenLogRefs $ \logRef (IDEBuffer {sourceView = sv}) -> do
             buf     <-  getBuffer sv
             removeTagByName buf (T.pack $ show (logRefType logRef))
@@ -141,7 +141,7 @@ addLogRefs :: [LogRef] -> IDEAction
 addLogRefs refs = do
     ideR <- ask
     unmarkLogRefs
-    modifyIDE_ (\ide -> ide{allLogRefs = (allLogRefs ide) ++ refs})
+    modifyIDE_ (\ide -> ide{allLogRefs = allLogRefs ide ++ refs})
     setCurrentError Nothing
     markLogRefs
     triggerEventIDE ErrorChanged
@@ -153,103 +153,91 @@ nextError :: IDEAction
 nextError = do
     errs <- readIDE errorRefs
     currentError <- readIDE currentError
-    if null errs
-        then return ()
-        else do
-            let new = case currentError of
-                        Nothing -> 0
-                        Just ref ->
-                            case elemIndex ref errs of
-                                Nothing -> 0
-                                Just n | (n + 1) < length errs -> (n + 1)
-                                Just n -> n
-            setCurrentError (Just $ errs!!new)
-            selectRef $ Just (errs!!new)
+    unless (null errs) $
+      do let new
+               = case currentError of
+                     Nothing -> 0
+                     Just ref -> case elemIndex ref errs of
+                                     Nothing -> 0
+                                     Just n | (n + 1) < length errs -> n + 1
+                                     Just n -> n
+         setCurrentError (Just $ errs !! new)
+         selectRef $ Just (errs !! new)
 
 previousError :: IDEAction
 previousError = do
     errs <- readIDE errorRefs
     currentError <- readIDE currentError
-    if null errs
-        then return ()
-        else do
-            let new = case currentError of
-                        Nothing -> (length errs - 1)
-                        Just ref ->
-                            case elemIndex ref errs of
-                                Nothing -> (length errs - 1)
-                                Just n | n > 0 -> (n - 1)
-                                Just n -> 0
-            setCurrentError (Just $ errs!!new)
-            selectRef $ Just (errs!!new)
+    unless (null errs) $
+      do let new
+               = case currentError of
+                     Nothing -> length errs - 1
+                     Just ref -> case elemIndex ref errs of
+                                     Nothing -> length errs - 1
+                                     Just n | n > 0 -> n - 1
+                                     Just n -> 0
+         setCurrentError (Just $ errs !! new)
+         selectRef $ Just (errs !! new)
 
 nextBreakpoint :: IDEAction
 nextBreakpoint = do
     breaks <- readIDE breakpointRefs
     currentBreak <- readIDE currentBreak
-    if null breaks
-        then return ()
-        else do
-            let new = case currentBreak of
-                        Nothing -> 0
-                        Just ref ->
-                            case elemIndex ref breaks of
-                                Nothing -> 0
-                                Just n | (n + 1) < length breaks -> (n + 1)
-                                Just n -> n
-            setCurrentBreak (Just $ breaks!!new)
-            selectRef $ Just (breaks!!new)
+    unless (null breaks) $
+      do let new
+               = case currentBreak of
+                     Nothing -> 0
+                     Just ref -> case elemIndex ref breaks of
+                                     Nothing -> 0
+                                     Just n | (n + 1) < length breaks -> n + 1
+                                     Just n -> n
+         setCurrentBreak (Just $ breaks !! new)
+         selectRef $ Just (breaks !! new)
 
 previousBreakpoint :: IDEAction
 previousBreakpoint = do
     breaks <- readIDE breakpointRefs
     currentBreak <- readIDE currentBreak
-    if null breaks
-        then return ()
-        else do
-            let new = case currentBreak of
-                        Nothing -> (length breaks - 1)
-                        Just ref ->
-                            case elemIndex ref breaks of
-                                Nothing -> (length breaks - 1)
-                                Just n | n > 0 -> (n - 1)
-                                Just n -> 0
-            setCurrentBreak (Just $ breaks!!new)
-            selectRef $ Just (breaks!!new)
+    unless (null breaks) $
+      do let new
+               = case currentBreak of
+                     Nothing -> length breaks - 1
+                     Just ref -> case elemIndex ref breaks of
+                                     Nothing -> length breaks - 1
+                                     Just n | n > 0 -> n - 1
+                                     Just n -> 0
+         setCurrentBreak (Just $ breaks !! new)
+         selectRef $ Just (breaks !! new)
 
 nextContext :: IDEAction
 nextContext = do
     contexts <- readIDE contextRefs
     currentContext <- readIDE currentContext
-    if null contexts
-        then return ()
-        else do
-            let new = case currentContext of
-                        Nothing -> 0
-                        Just ref ->
-                            case elemIndex ref contexts of
-                                Nothing -> 0
-                                Just n | (n + 1) < length contexts -> (n + 1)
-                                Just n -> n
-            setCurrentContext (Just $ contexts!!new)
-            selectRef $ Just (contexts!!new)
+    unless (null contexts) $
+      do let new
+               = case currentContext of
+                     Nothing -> 0
+                     Just ref -> case elemIndex ref contexts of
+                                     Nothing -> 0
+                                     Just n | (n + 1) < length contexts -> n + 1
+                                     Just n -> n
+         setCurrentContext (Just $ contexts !! new)
+         selectRef $ Just (contexts !! new)
 
 previousContext :: IDEAction
 previousContext = do
     contexts <- readIDE contextRefs
     currentContext <- readIDE currentContext
-    if null contexts
-        then return ()
-        else do
-            let new = case currentContext of
-                        Nothing -> (length contexts - 1)
-                        Just ref ->
-                            case elemIndex ref contexts of
-                                Nothing -> (length contexts - 1)
-                                Just n | n > 0 -> (n - 1)
-                                Just n -> 0
-            setCurrentContext (Just $ contexts!!new)
-            selectRef $ Just (contexts!!new)
+    unless (null contexts) $
+      do let new
+               = case currentContext of
+                     Nothing -> length contexts - 1
+                     Just ref -> case elemIndex ref contexts of
+                                     Nothing -> length contexts - 1
+                                     Just n | n > 0 -> n - 1
+                                     Just n -> 0
+         setCurrentContext (Just $ contexts !! new)
+         selectRef $ Just (contexts !! new)
 
 lastContext :: IDEAction
 lastContext = do
@@ -323,7 +311,7 @@ buildOutputParser = try (do
         whiteSpace
         file <- many (noneOf ",")
         char ','
-        many (anyChar)
+        many anyChar
         return $ BuildProgress n total file)
     <|> try (do
         symbol "###"
@@ -354,7 +342,7 @@ buildErrorParser = try (do
         symbol "of"
         int
         char ']'
-        many (anyChar)
+        many anyChar
         return BuildLine)
     <|> try (do
         whiteSpace
@@ -417,22 +405,22 @@ hexadecimal = P.hexadecimal lexer
 symbol = P.symbol lexer
 identifier = P.identifier lexer
 colon = P.colon lexer
-int = fmap fromInteger $ P.integer lexer
+int = fromInteger <$> P.integer lexer
 
 defaultLineLogger :: IDELog -> LogLaunch -> ToolOutput -> IDEM Int
 defaultLineLogger log logLaunch out = liftIO $ defaultLineLogger' log logLaunch out
 
 defaultLineLogger' :: IDELog -> LogLaunch -> ToolOutput -> IO Int
-defaultLineLogger' log logLaunch out = do
+defaultLineLogger' log logLaunch out =
     case out of
         ToolInput  line            -> appendLog' (line <> "\n") InputTag
         ToolOutput line            -> appendLog' (line <> "\n") LogTag
         ToolError  line            -> appendLog' (line <> "\n") ErrorTag
         ToolPrompt line            -> do
-            unless (T.null line) $ appendLog' (line <> "\n") LogTag >> return ()
-            appendLog' (T.pack (concat (take 20 (repeat "- "))) <> "-\n") FrameTag
-        ToolExit   ExitSuccess     -> appendLog' (T.pack (take 41 (repeat '-')) <> "\n") FrameTag
-        ToolExit   (ExitFailure 1) -> appendLog' (T.pack (take 41 (repeat '=')) <> "\n") FrameTag
+            unless (T.null line) $ void (appendLog' (line <> "\n") LogTag)
+            appendLog' (T.pack (concat (replicate 20 "- ")) <> "-\n") FrameTag
+        ToolExit   ExitSuccess     -> appendLog' (T.pack (replicate 41 '-') <> "\n") FrameTag
+        ToolExit   (ExitFailure 1) -> appendLog' (T.pack (replicate 41 '=') <> "\n") FrameTag
         ToolExit   (ExitFailure n) -> appendLog' (T.pack (take 41 ("========== " ++ show n <> " " ++ repeat '=')) <> "\n") FrameTag
     where
         appendLog' = Log.appendLog log logLaunch
@@ -441,17 +429,17 @@ paneLineLogger :: IDELog -> LogLaunch -> ToolOutput -> IDEM (Maybe Text)
 paneLineLogger log logLaunch out = liftIO $ paneLineLogger' log logLaunch out
 
 paneLineLogger' :: IDELog -> LogLaunch -> ToolOutput -> IO (Maybe Text)
-paneLineLogger' log logLaunch out = do
+paneLineLogger' log logLaunch out =
     case out of
         ToolInput  line            -> appendLog' (line <> "\n") InputTag >> return Nothing
         ToolOutput line            -> appendLog' (line <> "\n") LogTag >> return (Just line)
         ToolError  line            -> appendLog' (line <> "\n") ErrorTag >> return Nothing
         ToolPrompt line            -> do
-            unless (T.null line) $ appendLog' (line <> "\n") LogTag >> return ()
-            appendLog' (T.pack (concat (take 20 (repeat "- "))) <> "-\n") FrameTag
+            unless (T.null line) $ void (appendLog' (line <> "\n") LogTag)
+            appendLog' (T.pack (concat (replicate 20 "- ")) <> "-\n") FrameTag
             return Nothing
-        ToolExit   ExitSuccess     -> appendLog' (T.pack (take 41 (repeat '-')) <> "\n") FrameTag >> return Nothing
-        ToolExit   (ExitFailure 1) -> appendLog' (T.pack (take 41 (repeat '=')) <> "\n") FrameTag >> return Nothing
+        ToolExit   ExitSuccess     -> appendLog' (T.pack (replicate 41 '-') <> "\n") FrameTag >> return Nothing
+        ToolExit   (ExitFailure 1) -> appendLog' (T.pack (replicate 41 '=') <> "\n") FrameTag >> return Nothing
         ToolExit   (ExitFailure n) -> appendLog' (T.pack (take 41 ("========== " ++ show n ++ " " ++ repeat '=')) <> "\n") FrameTag >> return Nothing
     where
         appendLog' = Log.appendLog log logLaunch
@@ -461,7 +449,7 @@ logOutputLines :: LogLaunch -- ^ logLaunch
                -> C.Sink ToolOutput IDEM [a]
 logOutputLines logLaunch lineLogger = do
     log :: Log.IDELog <- lift $ postSyncIDE Log.getLog
-    results <- (CL.mapM $ postSyncIDE . lineLogger log logLaunch) =$ CL.consume
+    results <- CL.mapM (postSyncIDE . lineLogger log logLaunch) =$ CL.consume
     lift $ triggerEventIDE (StatusbarChanged [CompartmentState "", CompartmentBuild False])
     return results
 
@@ -472,10 +460,10 @@ logOutputLines_ logLaunch lineLogger = do
     logOutputLines logLaunch lineLogger
     return ()
 
-logOutputLines_Default :: (IDELog -> LogLaunch -> ToolOutput -> IDEM a)
+logOutputLinesDefault_ :: (IDELog -> LogLaunch -> ToolOutput -> IDEM a)
                        -> C.Sink ToolOutput IDEM ()
-logOutputLines_Default lineLogger = do
-    defaultLogLaunch <- lift $ getDefaultLogLaunch
+logOutputLinesDefault_ lineLogger = do
+    defaultLogLaunch <- lift getDefaultLogLaunch
     logOutputLines_  defaultLogLaunch lineLogger
 
 logOutput :: LogLaunch
@@ -486,14 +474,14 @@ logOutput logLaunch = do
 
 logOutputDefault :: C.Sink ToolOutput IDEM ()
 logOutputDefault = do
-    defaultLogLaunch <- lift $ getDefaultLogLaunch
+    defaultLogLaunch <- lift getDefaultLogLaunch
     logOutput defaultLogLaunch
 
 logOutputPane :: Text -> IORef [Text] -> C.Sink ToolOutput IDEM ()
 logOutputPane command buffer = do
-    defaultLogLaunch <- lift $ getDefaultLogLaunch
+    defaultLogLaunch <- lift getDefaultLogLaunch
     result <- catMaybes <$> logOutputLines defaultLogLaunch paneLineLogger
-    when (not $ null result) $ do
+    unless (null result) $ do
         new <- liftIO . atomicModifyIORef buffer $ \x -> let new = x ++ result in (new, new)
         mbURI <- lift $ readIDE autoURI
         unless (isJust mbURI) . lift . postSyncIDE . setOutput command $ T.unlines new
@@ -623,7 +611,7 @@ logOutputForBuild package backgroundBuild jumpToWarnings = do
                 Log.appendLog log logLaunch (line <> "\n") InputTag
                 return state
             ToolPrompt line -> do
-                unless (T.null line) $ Log.appendLog log logLaunch (line <> "\n") LogTag >> return ()
+                unless (T.null line) . void $ Log.appendLog log logLaunch (line <> "\n") LogTag
                 when inError $ logPrevious errs
                 when inDocTest $ logPrevious testFails
                 let errorNum    =   length (filter isError errs)
