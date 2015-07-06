@@ -1,5 +1,5 @@
 name: leksah
-version: 0.15.0.5
+version: 0.15.0.6
 cabal-version: >=1.18
 build-type: Simple
 license: GPL
@@ -246,7 +246,7 @@ library
                        parsec >=2.1.0.1 && <3.2, pretty >=1.0.1.0 && <1.2,
                        regex-tdfa >=1.1 && <1.3, regex-tdfa-text, regex-base ==0.93.*, utf8-string >=0.3.1.1 && <1.1, array >=0.2.0.0 && <0.6,
                        time >=0.1 && <1.6, ltk >= 0.15.0.1 && <0.16, binary-shared >= 0.8 && <0.9, deepseq >= 1.1.0.0 && <1.5,
-                       hslogger >= 1.0.7 && <1.3, leksah-server >=0.15.0.3 && <0.16,
+                       hslogger >= 1.0.7 && <1.3, leksah-server >=0.15.0.4 && <0.16,
                        ghc >=6.10.1 && <7.11, strict >= 0.3.2 && <0.4, conduit >= 1.0.8 && <1.3, text >= 0.11.1.5 && < 1.3,
                        gio >=0.13.0.0 && <0.14, transformers >=0.2.2.0 && <0.5,
                        executable-path >=0.0.3 && <0.1,
@@ -297,7 +297,7 @@ Executable leksah
         ghc-options: -threaded
 
     hs-source-dirs: main
-    build-depends: leksah == 0.15.0.5,
+    build-depends: leksah == 0.15.0.6,
                    base >= 4.0.0.0 && <=4.9,
                    gtk3 >=0.13.2 && <0.14
     if os(linux) && flag(loc)
@@ -313,7 +313,7 @@ Executable leksah
     ghc-options: -rtsopts -fwarn-missing-fields -fwarn-incomplete-patterns -ferror-spans
 
 executable bewleksah
-    build-depends: leksah ==0.15.0.5,
+    build-depends: leksah ==0.15.0.6,
                    base >=4.0.0.0 && <=4.9,
                    jsaddle -any,
                    ghcjs-dom -any,
@@ -332,7 +332,7 @@ test-suite tests
     build-depends: base >=4.0.0.0 && <4.9,
                    Cabal >=1.10.2.0 && <1.23,
                    QuickCheck >=2.4.2 && <2.9,
-                   leksah ==0.15.0.5,
+                   leksah ==0.15.0.6,
                    containers,
                    ltk,
                    leksah-server,
