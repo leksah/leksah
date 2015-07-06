@@ -75,14 +75,14 @@ import System.IO.Unsafe (unsafePerformIO)
 chooseDir :: Window -> Text -> Maybe FilePath -> IO (Maybe FilePath)
 chooseDir window prompt mbFolder = do
     dialog <- fileChooserDialogNew
-                    (Just $ prompt)
+                    (Just prompt)
                     (Just window)
                 FileChooserActionSelectFolder
                 [("gtk-cancel"
                 ,ResponseCancel)
                 ,("gtk-open"
                 ,ResponseAccept)]
-    when (isJust mbFolder) $ fileChooserSetCurrentFolder dialog (fromJust mbFolder) >> return ()
+    when (isJust mbFolder) . void $ fileChooserSetCurrentFolder dialog (fromJust mbFolder)
     widgetShow dialog
     response <- dialogRun dialog
     case response of
@@ -101,14 +101,14 @@ chooseDir window prompt mbFolder = do
 chooseFile :: Window -> Text -> Maybe FilePath -> IO (Maybe FilePath)
 chooseFile window prompt mbFolder = do
     dialog <- fileChooserDialogNew
-                    (Just $ prompt)
+                    (Just prompt)
                     (Just window)
                 FileChooserActionOpen
                 [("gtk-cancel"
                 ,ResponseCancel)
                 ,("gtk-open"
                 ,ResponseAccept)]
-    when (isJust mbFolder) $ fileChooserSetCurrentFolder dialog (fromJust mbFolder)  >> return ()
+    when (isJust mbFolder) $ void (fileChooserSetCurrentFolder dialog (fromJust mbFolder))
     widgetShow dialog
     response <- dialogRun dialog
     case response of
@@ -127,12 +127,12 @@ chooseFile window prompt mbFolder = do
 chooseSaveFile :: Window -> Text -> Maybe FilePath -> IO (Maybe FilePath)
 chooseSaveFile window prompt mbFolder = do
     dialog <- fileChooserDialogNew
-              (Just $ prompt)
+              (Just prompt)
               (Just window)
               FileChooserActionSave
               [("gtk-cancel", ResponseCancel)
               ,("gtk-save",   ResponseAccept)]
-    when (isJust mbFolder) $ fileChooserSetCurrentFolder dialog (fromJust mbFolder)  >> return ()
+    when (isJust mbFolder) $ void (fileChooserSetCurrentFolder dialog (fromJust mbFolder))
     widgetShow dialog
     res <- dialogRun dialog
     case res of
@@ -198,7 +198,7 @@ setDarkState b = do
     ui <- getUIAction "ui/menubar/_View/Dark" castToToggleAction
     liftIO $toggleActionSetActive ui b
 
-getForgetSession :: PaneMonad alpha => alpha  (Bool)
+getForgetSession :: PaneMonad alpha => alpha Bool
 getForgetSession = do
     ui <- getUIAction "ui/menubar/_Configuration/Forget Session" castToToggleAction
     liftIO $toggleActionGetActive ui
@@ -211,7 +211,7 @@ getMenuItem path = do
         Nothing     -> throwIDE ("State.hs>>getMenuItem: Can't find ui path " <> path)
         Just widget -> return (castToMenuItem widget)
 
-getBackgroundBuildToggled :: PaneMonad alpha => alpha  (Bool)
+getBackgroundBuildToggled :: PaneMonad alpha => alpha Bool
 getBackgroundBuildToggled = do
     ui <- getUIAction "ui/toolbar/BuildToolItems/BackgroundBuild" castToToggleAction
     liftIO $ toggleActionGetActive ui
@@ -221,7 +221,7 @@ setBackgroundBuildToggled b = do
     ui <- getUIAction "ui/toolbar/BuildToolItems/BackgroundBuild" castToToggleAction
     liftIO $ toggleActionSetActive ui b
 
-getRunUnitTests :: PaneMonad alpha => alpha  (Bool)
+getRunUnitTests :: PaneMonad alpha => alpha Bool
 getRunUnitTests = do
     ui <- getUIAction "ui/toolbar/BuildToolItems/RunUnitTests" castToToggleAction
     liftIO $ toggleActionGetActive ui
@@ -231,7 +231,7 @@ setRunUnitTests b = do
     ui <- getUIAction "ui/toolbar/BuildToolItems/RunUnitTests" castToToggleAction
     liftIO $ toggleActionSetActive ui b
 
-getMakeModeToggled :: PaneMonad alpha => alpha  (Bool)
+getMakeModeToggled :: PaneMonad alpha => alpha Bool
 getMakeModeToggled = do
     ui <- getUIAction "ui/toolbar/BuildToolItems/MakeMode" castToToggleAction
     liftIO $ toggleActionGetActive ui
@@ -241,7 +241,7 @@ setMakeModeToggled b = do
     ui <- getUIAction "ui/toolbar/BuildToolItems/MakeMode" castToToggleAction
     liftIO $ toggleActionSetActive ui b
 
-getDebugToggled :: PaneMonad alpha => alpha  (Bool)
+getDebugToggled :: PaneMonad alpha => alpha Bool
 getDebugToggled = do
     ui <- getUIAction "ui/toolbar/BuildToolItems/Debug" castToToggleAction
     liftIO $ toggleActionGetActive ui
@@ -325,9 +325,9 @@ __ = id
 #endif
 
 fontDescription :: Maybe Text -> IDEM FontDescription
-fontDescription mbFontString = liftIO $ do
+fontDescription mbFontString = liftIO $
     case mbFontString of
-        Just str -> do
+        Just str ->
             fontDescriptionFromString str
         Nothing -> do
             f <- fontDescriptionNew

@@ -1,8 +1,10 @@
+{-# LANGUAGE CPP #-}
 {-# LANGUAGE FlexibleInstances #-}
 {-# LANGUAGE DeriveDataTypeable #-}
 {-# LANGUAGE TypeFamilies #-}
+#ifdef LEKSAH_WITH_CODE_MIRROR
 {-# LANGUAGE RecordWildCards #-}
-{-# LANGUAGE CPP #-}
+#endif
 {-# LANGUAGE RankNTypes #-}
 {-# LANGUAGE NoImplicitPrelude #-}
 -----------------------------------------------------------------------------

@@ -39,7 +39,7 @@ import qualified Data.Set as Set
 
 import IDE.Core.State
 import IDE.TextEditor
-import Control.Monad (unless)
+import Control.Monad (when, unless)
 import Data.Text (Text)
 import qualified Data.Text as T
        (pack, singleton, replicate, head, takeWhile, isSuffixOf, length,
@@ -53,10 +53,9 @@ import Graphics.UI.Gtk.Multiline.TextBuffer
 ---------------------------------------------------------------------------------
 -- * Implementation
 
-notBeforeId     =   Set.fromList $['a'..'z'] ++ ['A'..'Z'] ++ ['_']
-notAfterId      =   Set.fromList $['a'..'z'] ++ ['A'..'Z'] ++ ['0'..'9'] ++ ['_']
-notBeforeOp     =   Set.fromList $['!','#','$','%','&','*','+','.','/','<','=','>','?','@','\\',
-                                    '^','|','-','~','\'','"']
+notBeforeId     =   Set.fromList $['a'..'z'] ++ ['A'..'Z'] ++ "_"
+notAfterId      =   Set.fromList $['a'..'z'] ++ ['A'..'Z'] ++ ['0'..'9'] ++ "_"
+notBeforeOp     =   Set.fromList "!#$%&*+./<=>?@\\^|-~'\""
 notAfterOp      =   notBeforeOp
 
 keystrokeCandy :: TextEditor editor => CandyTable -> Maybe Char -> EditorBuffer editor -> (Text -> Bool) -> IDEM ()
@@ -69,15 +68,14 @@ keystrokeCandy (CT(transformTable,_)) mbc ebuf editInCommentOrString = do
     startIter   <-  backwardToLineStartC endIter
     slice       <-  getSlice ebuf startIter endIter True
     mbc2        <-  case mbc of
-                        Just c -> return (Just c)
-                        Nothing -> do
-                            getChar endIter
+                        Just c  -> return (Just c)
+                        Nothing -> getChar endIter
     let block   =  editInCommentOrString slice
     unless block $
         replace mbc2 cursorMark slice offset transformTable
     where
     -- replace ::  Maybe Char -> m -> Text -> Int -> [(Bool,Text,Text)] -> IDEM ()
-    replace mbAfterChar cursorMark match offset list = replace' list
+    replace mbAfterChar cursorMark match offset = replace'
         where
         replace' [] = return ()
         replace' ((isOp,from,to):rest) =
@@ -94,7 +92,7 @@ keystrokeCandy (CT(transformTable,_)) mbc ebuf editInCommentOrString = do
             in if T.isSuffixOf from match && beforeOk && afterOk
                 then do
                     beginNotUndoableAction ebuf
-                    start   <-  getIterAtOffset ebuf (offset - (T.length from))
+                    start   <-  getIterAtOffset ebuf (offset - T.length from)
                     end     <-  getIterAtOffset ebuf offset
                     delete ebuf start end
                     ins     <-   getIterAtMark ebuf cursorMark
@@ -138,26 +136,20 @@ replaceTo buf (isOp,from,to) offset editInCommentOrString = replaceTo' offset
                                     Just char   ->  return (not $ if isOp
                                                                     then Set.member char notBeforeOp
                                                                     else Set.member char notBeforeId)
-                    if beforeOk
-                        then do
-                            afterOk <-  do
-                                endOff  <-  getOffset end
-                                iter    <-  getIterAtOffset buf endOff
-                                mbChar  <-  getChar iter
-                                case mbChar of
-                                    Nothing     ->  return True
-                                    Just char   ->  return (not $ if isOp
-                                                                    then Set.member char notAfterOp
-                                                                    else Set.member char notAfterId)
-                            if afterOk
-                                then do
-                                    delete buf st end
-                                    insert buf st to
-                                    return ()
-                                else do
-                                    return ()
-                        else do
-                        return ()
+                    when beforeOk $ do
+                        afterOk <-  do
+                            endOff  <-  getOffset end
+                            iter    <-  getIterAtOffset buf endOff
+                            mbChar  <-  getChar iter
+                            case mbChar of
+                                Nothing     ->  return True
+                                Just char   ->  return (not $ if isOp
+                                                                then Set.member char notAfterOp
+                                                                else Set.member char notAfterId)
+                        when afterOk $ do
+                            delete buf st end
+                            insert buf st to
+                            return ()
                 replaceTo' (stOff + 1)
 
 transformFromCandy :: TextEditor editor => CandyTable -> EditorBuffer editor -> IDEM ()
@@ -183,8 +175,7 @@ getCandylessText (CT(_,transformTableBack)) ebuf = do
     mapM_ (\tbl ->  replaceFrom workBuffer tbl 0) transformTableBack
     i1          <-  getStartIter workBuffer
     i2          <-  getEndIter workBuffer
-    text2       <-  getText workBuffer i1 i2 True
-    return text2
+    getText workBuffer i1 i2 True
 
 getCandylessPart :: TextEditor editor => CandyTable -> EditorBuffer editor -> EditorIter editor -> EditorIter editor -> IDEM Text
 getCandylessPart (CT(_,transformTableBack)) ebuf i1 i2 = do
@@ -193,17 +184,15 @@ getCandylessPart (CT(_,transformTableBack)) ebuf i1 i2 = do
     mapM_ (\tbl ->  replaceFrom workBuffer tbl 0) transformTableBack
     i1          <-  getStartIter workBuffer
     i2          <-  getEndIter workBuffer
-    text2       <-  getText workBuffer i1 i2 True
-    return text2
+    getText workBuffer i1 i2 True
 
 stringToCandy :: CandyTable -> Text -> IDEM Text
 stringToCandy  candyTable text = do
     workBuffer  <-  simpleGtkBuffer text
-    transformToCandy candyTable workBuffer (\ _ -> False)
+    transformToCandy candyTable workBuffer (const False)
     i1          <-  getStartIter workBuffer
     i2          <-  getEndIter workBuffer
-    text2       <-  getText workBuffer i1 i2 True
-    return text2
+    getText workBuffer i1 i2 True
 
 -- We only need a TextMark here not a SourceMark
 createTextMark (GtkBuffer sb) (GtkIter i) leftGravity = liftIO $  textBufferCreateMark sb Nothing i leftGravity
@@ -231,13 +220,13 @@ positionToCandy candyTable ebuf (line,column) = do
     transformFromCandy candyTable workBuffer
     i3          <- getIterAtOffset workBuffer column
     mark        <- createTextMark workBuffer i3 True
-    transformToCandy candyTable workBuffer (\ _ -> False)
+    transformToCandy candyTable workBuffer (const False)
     i4          <- getIterAtTextMark workBuffer mark
     columnNew   <- getLineOffset i4
     return (line,columnNew)
 
 replaceFrom :: TextEditor editor => EditorBuffer editor -> (Text,Text,Int) -> Int -> IDEM ()
-replaceFrom buf (to,from,spaces) offset = replaceFrom' offset
+replaceFrom buf (to,from,spaces) = replaceFrom'
     where
     replaceFrom' offset = do
         iter        <-  getIterAtOffset buf offset
@@ -247,18 +236,14 @@ replaceFrom buf (to,from,spaces) offset = replaceFrom' offset
             Just (st,end)   ->  do
                 offset  <-  getOffset st
                 delete buf st end
-                if spaces > 0
-                    then do
-                        iter2 <-    getIterAtOffset buf offset
-                        iter3 <-    getIterAtOffset buf (offset + spaces + 1)
-                        slice <-    getSlice buf iter2 iter3 True
-                        let l = T.length (T.takeWhile (== ' ') slice)
-                        if l > 1
-                            then do
-                                iter4 <- atOffset iter3 (offset + l - 1)
-                                delete buf iter2 iter4
-                            else return ()
-                    else return ()
+                when (spaces > 0) $ do
+                    iter2 <-    getIterAtOffset buf offset
+                    iter3 <-    getIterAtOffset buf (offset + spaces + 1)
+                    slice <-    getSlice buf iter2 iter3 True
+                    let l = T.length (T.takeWhile (== ' ') slice)
+                    when (l > 1) $ do
+                        iter4 <- atOffset iter3 (offset + l - 1)
+                        delete buf iter2 iter4
                 iter    <-  getIterAtOffset buf offset
                 insert buf iter to
                 replaceFrom' offset
@@ -266,7 +251,7 @@ replaceFrom buf (to,from,spaces) offset = replaceFrom' offset
 type CandyTableI = [(Text,Char,Bool)]
 
 forthFromTable :: CandyTableI -> CandyTableForth
-forthFromTable table = map forthFrom table
+forthFromTable = map forthFrom
     where
     forthFrom (str,chr,noTrimming) =
         let isOp = not (Set.member (T.head str) notBeforeId)
@@ -276,7 +261,7 @@ forthFromTable table = map forthFrom table
         in (isOp,from,to)
 
 backFromTable :: CandyTableI -> CandyTableBack
-backFromTable table = map backFrom table
+backFromTable = map backFrom
     where
     backFrom (str,chr,noTrimming) =
         let numTrailingBlanks = if noTrimming then 0 else T.length str - 1

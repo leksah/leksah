@@ -14,10 +14,7 @@
 -----------------------------------------------------------------------------
 
 module IDE.TextEditor (
-    module IDE.TextEditor.Class
-  , module IDE.TextEditor.GtkSourceView
-  , module IDE.TextEditor.Yi
-  , module IDE.TextEditor.CodeMirror
+    module Exported
 
   , TextEditor(..)
   , EditorBuffer(..)
@@ -36,10 +33,10 @@ module IDE.TextEditor (
 #endif
 ) where
 
-import IDE.TextEditor.Class
-import IDE.TextEditor.GtkSourceView
-import IDE.TextEditor.Yi
-import IDE.TextEditor.CodeMirror
+import IDE.TextEditor.Class as Exported
+import IDE.TextEditor.GtkSourceView as Exported
+import IDE.TextEditor.Yi as Exported
+import IDE.TextEditor.CodeMirror as Exported
 
 newDefaultBuffer = newGtkBuffer
 

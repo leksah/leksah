@@ -73,7 +73,7 @@ import IDE.Pane.Workspace (WorkspaceState(..))
 import IDE.Workspaces (workspaceOpenThis)
 import IDE.Completion (setCompletionSize)
 import Control.Monad.IO.Class (MonadIO(..))
-import Control.Monad (forM_, forM, when)
+import Control.Monad (void, forM_, forM, when)
 import System.Log.Logger (debugM)
 import Data.Text (Text)
 import qualified Data.Text as T (pack)
@@ -109,45 +109,45 @@ data PaneState      =   BufferSt BufferState
     deriving(Eq,Ord,Read,Show)
 
 asPaneState :: RecoverablePane alpha beta gamma => beta -> PaneState
-asPaneState s | isJust ((cast s) :: Maybe BufferState)      =   BufferSt (fromJust $ cast s)
-asPaneState s | isJust ((cast s) :: Maybe LogState)         =   LogSt (fromJust $ cast s)
-asPaneState s | isJust ((cast s) :: Maybe InfoState)        =   InfoSt (fromJust $ cast s)
-asPaneState s | isJust ((cast s) :: Maybe ModulesState)     =   ModulesSt (fromJust $ cast s)
-asPaneState s | isJust ((cast s) :: Maybe PrefsState)       =   PrefsSt (fromJust $ cast s)
-asPaneState s | isJust ((cast s) :: Maybe FlagsState)       =   FlagsSt (fromJust $ cast s)
-asPaneState s | isJust ((cast s) :: Maybe SearchState)      =   SearchSt (fromJust $ cast s)
-asPaneState s | isJust ((cast s) :: Maybe FilesState)       =   FilesSt (fromJust $ cast s)
-asPaneState s | isJust ((cast s) :: Maybe GrepState)        =   GrepSt (fromJust $ cast s)
-asPaneState s | isJust ((cast s) :: Maybe HLintState)       =   HLintSt (fromJust $ cast s)
-asPaneState s | isJust ((cast s) :: Maybe DocumentationState) = DocumentationSt (fromJust $ cast s)
-asPaneState s | isJust ((cast s) :: Maybe OutputState)      =   OutputSt (fromJust $ cast s)
-asPaneState s | isJust ((cast s) :: Maybe InspectState)     =   InspectSt (fromJust $ cast s)
-asPaneState s | isJust ((cast s) :: Maybe BreakpointsState) =   BreakpointsSt (fromJust $ cast s)
-asPaneState s | isJust ((cast s) :: Maybe TraceState)       =   TraceSt (fromJust $ cast s)
-asPaneState s | isJust ((cast s) :: Maybe VariablesState)   =   VariablesSt (fromJust $ cast s)
-asPaneState s | isJust ((cast s) :: Maybe ErrorsState)      =   ErrorsSt (fromJust $ cast s)
-asPaneState s | isJust ((cast s) :: Maybe WorkspaceState)   =   WorkspaceSt (fromJust $ cast s)
+asPaneState s | isJust (cast s :: Maybe BufferState)      =   BufferSt (fromJust $ cast s)
+asPaneState s | isJust (cast s :: Maybe LogState)         =   LogSt (fromJust $ cast s)
+asPaneState s | isJust (cast s :: Maybe InfoState)        =   InfoSt (fromJust $ cast s)
+asPaneState s | isJust (cast s :: Maybe ModulesState)     =   ModulesSt (fromJust $ cast s)
+asPaneState s | isJust (cast s :: Maybe PrefsState)       =   PrefsSt (fromJust $ cast s)
+asPaneState s | isJust (cast s :: Maybe FlagsState)       =   FlagsSt (fromJust $ cast s)
+asPaneState s | isJust (cast s :: Maybe SearchState)      =   SearchSt (fromJust $ cast s)
+asPaneState s | isJust (cast s :: Maybe FilesState)       =   FilesSt (fromJust $ cast s)
+asPaneState s | isJust (cast s :: Maybe GrepState)        =   GrepSt (fromJust $ cast s)
+asPaneState s | isJust (cast s :: Maybe HLintState)       =   HLintSt (fromJust $ cast s)
+asPaneState s | isJust (cast s :: Maybe DocumentationState) = DocumentationSt (fromJust $ cast s)
+asPaneState s | isJust (cast s :: Maybe OutputState)      =   OutputSt (fromJust $ cast s)
+asPaneState s | isJust (cast s :: Maybe InspectState)     =   InspectSt (fromJust $ cast s)
+asPaneState s | isJust (cast s :: Maybe BreakpointsState) =   BreakpointsSt (fromJust $ cast s)
+asPaneState s | isJust (cast s :: Maybe TraceState)       =   TraceSt (fromJust $ cast s)
+asPaneState s | isJust (cast s :: Maybe VariablesState)   =   VariablesSt (fromJust $ cast s)
+asPaneState s | isJust (cast s :: Maybe ErrorsState)      =   ErrorsSt (fromJust $ cast s)
+asPaneState s | isJust (cast s :: Maybe WorkspaceState)   =   WorkspaceSt (fromJust $ cast s)
 asPaneState s                                               =   error "SaveSession>>asPaneState incomplete cast"
 
 recover :: PanePath -> PaneState -> IDEAction
-recover pp (BufferSt p)         =   recoverState pp p >> return ()
-recover pp (LogSt p)            =   recoverState pp p >> return ()
-recover pp (InfoSt p)           =   recoverState pp p >> return ()
-recover pp (ModulesSt p)        =   recoverState pp p >> return ()
-recover pp (PrefsSt p)          =   recoverState pp p >> return ()
-recover pp (FlagsSt p)          =   recoverState pp p >> return ()
-recover pp (SearchSt p)         =   recoverState pp p >> return ()
-recover pp (FilesSt p)          =   recoverState pp p >> return ()
-recover pp (GrepSt p)           =   recoverState pp p >> return ()
-recover pp (HLintSt p)          =   recoverState pp p >> return ()
-recover pp (DocumentationSt p)  =   recoverState pp p >> return ()
-recover pp (OutputSt p)         =   recoverState pp p >> return ()
-recover pp (InspectSt p)        =   recoverState pp p >> return ()
-recover pp (BreakpointsSt p)    =   recoverState pp p >> return ()
-recover pp (TraceSt p)          =   recoverState pp p >> return ()
-recover pp (VariablesSt p)      =   recoverState pp p >> return ()
-recover pp (ErrorsSt p)         =   recoverState pp p >> return ()
-recover pp (WorkspaceSt p)      =   recoverState pp p >> return ()
+recover pp (BufferSt p)         =   void (recoverState pp p)
+recover pp (LogSt p)            =   void (recoverState pp p)
+recover pp (InfoSt p)           =   void (recoverState pp p)
+recover pp (ModulesSt p)        =   void (recoverState pp p)
+recover pp (PrefsSt p)          =   void (recoverState pp p)
+recover pp (FlagsSt p)          =   void (recoverState pp p)
+recover pp (SearchSt p)         =   void (recoverState pp p)
+recover pp (FilesSt p)          =   void (recoverState pp p)
+recover pp (GrepSt p)           =   void (recoverState pp p)
+recover pp (HLintSt p)          =   void (recoverState pp p)
+recover pp (DocumentationSt p)  =   void (recoverState pp p)
+recover pp (OutputSt p)         =   void (recoverState pp p)
+recover pp (InspectSt p)        =   void (recoverState pp p)
+recover pp (BreakpointsSt p)    =   void (recoverState pp p)
+recover pp (TraceSt p)          =   void (recoverState pp p)
+recover pp (VariablesSt p)      =   void (recoverState pp p)
+recover pp (ErrorsSt p)         =   void (recoverState pp p)
+recover pp (WorkspaceSt p)      =   void (recoverState pp p)
 
 -- ---------------------------------------------------------------------
 
@@ -186,43 +186,43 @@ defaultSession = SessionState {
         sessionVersion      =   theSessionVersion
     ,   saveTime            =   ""
     ,   layoutS             =   VerticalP
-                                    (TerminalP {
+                                    TerminalP {
                                         paneGroups = Map.fromList []
                                       , paneTabs = Just TopP
                                       , currentPage = -1
                                       , detachedId = Nothing
-                                      , detachedSize = Nothing})
+                                      , detachedSize = Nothing}
                                     (HorizontalP
-                                        (TerminalP {
+                                        TerminalP {
                                             paneGroups = Map.fromList [
                                                 ("Debug",HorizontalP
-                                                    (TerminalP {
+                                                    TerminalP {
                                                         paneGroups = Map.fromList []
                                                       , paneTabs = Nothing
                                                       , currentPage = -1
                                                       , detachedId = Nothing
-                                                      , detachedSize = Nothing})
-                                                    (TerminalP {
+                                                      , detachedSize = Nothing}
+                                                    TerminalP {
                                                         paneGroups = Map.fromList []
                                                       , paneTabs = Just TopP
                                                       , currentPage = -1
                                                       , detachedId = Nothing
-                                                      , detachedSize = Nothing}) 167)]
+                                                      , detachedSize = Nothing} 167)]
                                           , paneTabs = Just TopP
                                           , currentPage = 2
                                           , detachedId = Nothing
-                                          , detachedSize = Nothing})
-                                        (TerminalP {
+                                          , detachedSize = Nothing}
+                                        TerminalP {
                                             paneGroups = Map.fromList []
                                           , paneTabs = Just TopP
                                           , currentPage = 1
                                           , detachedId = Nothing
-                                          , detachedSize = Nothing}) 456) 693
+                                          , detachedSize = Nothing} 456) 693
     ,   population          =   [ (Just (InfoSt (InfoState Nothing)),[SplitP RightP,SplitP BottomP])
                                 , (Just (LogSt LogState),[SplitP RightP,SplitP BottomP])
                                 , (Just (ModulesSt
                                     (ModulesState 200 (SystemScope,False) (Nothing,Nothing)
-                                        (ExpanderState {
+                                        ExpanderState {
                                             packageExp = ([],[])
                                           , packageExpNoBlack = ([],[])
                                           , packageDExp = ([],[])
@@ -232,7 +232,7 @@ defaultSession = SessionState {
                                           , workspaceDExp = ([],[])
                                           , workspaceDExpNoBlack = ([],[])
                                           , systemExp = ([],[])
-                                          , systemExpNoBlack = ([],[])}))),[SplitP RightP,SplitP TopP])
+                                          , systemExpNoBlack = ([],[])})),[SplitP RightP,SplitP TopP])
                                 , (Just (WorkspaceSt WorkspaceState),[SplitP RightP,SplitP BottomP])]
     ,   windowSize          =   (1024,768)
     ,   fullScreen          =   False
@@ -258,85 +258,85 @@ defaultSession = SessionState {
 sessionDescr :: [FieldDescriptionS SessionState]
 sessionDescr = [
         mkFieldS
-            (paraName <<<- ParaName ( "Version of session file format") $ emptyParams)
+            (paraName <<<- ParaName "Version of session file format" $ emptyParams)
             (PP.text . show)
             intParser
             sessionVersion
             (\ b a -> a{sessionVersion = b})
     ,   mkFieldS
-            (paraName <<<- ParaName ( "Time of storage") $ emptyParams)
+            (paraName <<<- ParaName "Time of storage" $ emptyParams)
             (PP.text . show)
             stringParser
             saveTime
             (\ b a -> a{saveTime = b})
     ,   mkFieldS
-            (paraName <<<- ParaName ( "Layout") $ emptyParams)
+            (paraName <<<- ParaName "Layout" $ emptyParams)
             (PP.text . show)
             readParser
             layoutS
             (\ b a -> a{layoutS = b})
     ,   mkFieldS
-            (paraName <<<- ParaName ( "Population") $ emptyParams)
+            (paraName <<<- ParaName "Population" $ emptyParams)
             (PP.text . show)
             readParser
             population
             (\ b a -> a{population = b})
     ,   mkFieldS
-            (paraName <<<- ParaName ( "Window size") $ emptyParams)
+            (paraName <<<- ParaName "Window size" $ emptyParams)
             (PP.text . show)
             (pairParser intParser)
             windowSize
             (\(c,d) a -> a{windowSize = (c,d)})
     ,   mkFieldS
-            (paraName <<<- ParaName ( "Full screen") $ emptyParams)
+            (paraName <<<- ParaName "Full screen" $ emptyParams)
             (PP.text . show)
             readParser
             fullScreen
             (\b a -> a{fullScreen = b})
     ,   mkFieldS
-            (paraName <<<- ParaName ( "Dark") $ emptyParams)
+            (paraName <<<- ParaName "Dark" $ emptyParams)
             (PP.text . show)
             readParser
             dark
             (\b a -> a{dark = b})
     ,   mkFieldS
-            (paraName <<<- ParaName ( "Completion size") $ emptyParams)
+            (paraName <<<- ParaName "Completion size" $ emptyParams)
             (PP.text . show)
             (pairParser intParser)
             completionSize
             (\(c,d) a -> a{completionSize = (c,d)})
     ,   mkFieldS
-            (paraName <<<- ParaName ( "Workspace") $ emptyParams)
+            (paraName <<<- ParaName "Workspace" $ emptyParams)
             (PP.text . show)
             readParser
             workspacePath
             (\fp a -> a{workspacePath = fp})
     ,   mkFieldS
-            (paraName <<<- ParaName ( "Active pane") $ emptyParams)
+            (paraName <<<- ParaName "Active pane" $ emptyParams)
             (PP.text . show)
             readParser
             activePaneN
             (\fp a -> a{activePaneN = fp})
     ,   mkFieldS
-            (paraName <<<- ParaName ( "Toolbar visible") $ emptyParams)
+            (paraName <<<- ParaName "Toolbar visible" $ emptyParams)
             (PP.text . show)
             readParser
             toolbarVisibleS
             (\fp a -> a{toolbarVisibleS = fp})
     ,   mkFieldS
-            (paraName <<<- ParaName ( "FindbarState") $ emptyParams)
+            (paraName <<<- ParaName "FindbarState" $ emptyParams)
             (PP.text . show)
             readParser
             findbarState
             (\fp a -> a{findbarState = fp})
     ,   mkFieldS
-            (paraName <<<- ParaName ( "Recently opened files") $ emptyParams)
+            (paraName <<<- ParaName "Recently opened files" $ emptyParams)
             (PP.text . show)
             readParser
             recentOpenedFiles
             (\fp a -> a{recentOpenedFiles = fp})
     ,   mkFieldS
-            (paraName <<<- ParaName ( "Recently opened workspaces") $ emptyParams)
+            (paraName <<<- ParaName "Recently opened workspaces" $ emptyParams)
             (PP.text . show)
             readParser
             recentOpenedWorksp
@@ -365,7 +365,7 @@ saveSessionAs sessionPath mbSecondPath = do
             sysMessage Normal (__ "Now saving session")
             bufs <- allBuffers
             case filter (\b -> bufferName b == "_Eval.hs") bufs of
-                [(IDEBuffer {sourceView = sv})] -> do
+                [IDEBuffer{sourceView = sv}] -> do
                     ebuf <- getBuffer sv
                     setModified ebuf False
                 _     -> return ()
@@ -427,7 +427,7 @@ loadSessionPrompt = do
     response <- liftIO $ do
         configFolder <- getConfigDir
         dialog <- fileChooserDialogNew
-                  (Just $ (__ "Select session file"))
+                  (Just $ __ "Select session file")
                   (Just window')
               FileChooserActionOpen
               [("gtk-cancel"
@@ -457,16 +457,15 @@ loadSession sessionPath = do
     recentFiles'      <- readIDE recentFiles
     recentWorkspaces' <- readIDE recentWorkspaces
     b <- fileCloseAll (\_ -> return True)
-    if b
-        then do
-            detachedCloseAll
-            paneCloseAll
-            groupsCloseAll
-            viewCollapseAll
-            recoverSession sessionPath
-            modifyIDE_ (\ide -> ide{recentFiles = recentFiles', recentWorkspaces = recentWorkspaces'})
-            return ()
-        else return ()
+    when b $ do
+        detachedCloseAll
+        paneCloseAll
+        groupsCloseAll
+        viewCollapseAll
+        recoverSession sessionPath
+        modifyIDE_ (\ ide -> ide{ recentFiles      = recentFiles'
+                                , recentWorkspaces = recentWorkspaces'})
+        return ()
 
 detachedCloseAll :: IDEAction
 detachedCloseAll = do
@@ -487,11 +486,11 @@ viewCollapseAll :: IDEAction
 viewCollapseAll = do
     layout' <- getLayout
     case layout' of
-        TerminalP {}      -> return ()
-        VerticalP _ _ _   -> viewCollapse' [SplitP LeftP]
-        HorizontalP _ _ _ -> viewCollapse' [SplitP TopP]
+        TerminalP {}   -> return ()
+        VerticalP {}   -> viewCollapse' [SplitP LeftP]
+        HorizontalP {} -> viewCollapse' [SplitP TopP]
 
-mkLayout :: IDEM(PaneLayout)
+mkLayout :: IDEM PaneLayout
 mkLayout = do
     rawLayout <- getLayout
     getLayout' rawLayout []
@@ -519,7 +518,7 @@ mkLayout = do
         size <- case detachedId raw of
             Just _  -> do
                 Just parent <- liftIO $ widgetGetParent nb
-                liftIO $ fmap Just $ windowGetSize (castToWindow parent)
+                liftIO (Just <$> windowGetSize (castToWindow parent))
             Nothing -> return $ detachedSize raw
         return raw {
                 paneGroups   = Map.fromAscList groups2
@@ -560,7 +559,7 @@ recoverSession sessionPath = catchIDE (do
         sessionSt    <- liftIO $ catch
                             (readFields sessionPath sessionDescr defaultSession)
                             (\(_ :: SomeException) -> return defaultSession)
-        liftIO $ windowSetDefaultSize wdw (fst (windowSize sessionSt))(snd (windowSize sessionSt))
+        liftIO $ uncurry (windowSetDefaultSize wdw) (windowSize sessionSt)
         applyLayout (layoutS sessionSt)
         workspaceOpenThis False (workspacePath sessionSt)
         liftIO $ debugM "leksah" "recoverSession calling populate"
@@ -616,7 +615,7 @@ applyLayout layoutS = do
         case mbTabPos of
             Just p -> liftIO $notebookSetTabPos nb (paneDirectionToPosType p)
             _      -> return ()
-        forM_ (Map.toAscList groups) $ \(group, g) -> do
+        forM_ (Map.toAscList groups) $ \(group, g) ->
             applyLayout' g (pp ++ [GroupP group])
     applyLayout' (VerticalP l r pos) pp = do
         viewSplit' pp Vertical
@@ -632,10 +631,7 @@ applyLayout layoutS = do
         applyLayout' b (pp ++ [SplitP BottomP])
 
 populate :: [(Maybe PaneState,PanePath)] -> IDEAction
-populate = mapM_ (\ (mbPs,pp) ->
-            case mbPs of
-                Nothing -> return ()
-                Just s ->  recover pp s)
+populate = mapM_ (\ (mbPs,pp) -> forM_ mbPs (recover pp))
 
 setCurrentPages :: PaneLayout -> IDEAction
 setCurrentPages layout = setCurrentPages' layout []
@@ -645,7 +641,7 @@ setCurrentPages layout = setCurrentPages' layout []
     setCurrentPages' (VerticalP l r _) p    =   do  setCurrentPages' l (SplitP LeftP : p)
                                                     setCurrentPages' r (SplitP RightP : p)
     setCurrentPages' (TerminalP groups _ ind _ _) p  =  do
-                                                    forM_ (Map.toAscList groups) $ \(group, g) -> do
+                                                    forM_ (Map.toAscList groups) $ \(group, g) ->
                                                         setCurrentPages' g (GroupP group : p)
                                                     when (ind >=  0) $ do
                                                         nb <- getNotebook (reverse p)
@@ -661,8 +657,7 @@ viewFullScreen = do
         (Just window, False) -> liftIO $ windowUnfullscreen window
 
 viewDark :: IDEAction
-viewDark = do
-    getDarkState >>= setDark
+viewDark = getDarkState >>= setDark
 
 #ifdef MIN_VERSION_gtk3
 getActiveSettings :: PaneMonad alpha => alpha (Maybe Settings)

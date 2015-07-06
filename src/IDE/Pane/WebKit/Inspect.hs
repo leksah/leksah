@@ -94,7 +94,7 @@ instance Pane IDEInspect IDEM
     paneId b        =   "*Inspect"
 
 instance RecoverablePane IDEInspect InspectState IDEM where
-    saveState p     =   liftIO $ do
+    saveState p     =   liftIO $
 #ifdef WEBKITGTK
         return (Just InspectState{})
 #else
@@ -105,7 +105,7 @@ instance RecoverablePane IDEInspect InspectState IDEM where
         mbPane <- buildPane pp nb builder
         case mbPane of
             Nothing -> return ()
-            Just p  -> liftIO $ do
+            Just p  -> liftIO $
 #ifdef WEBKITGTK
                 return ()
 #else

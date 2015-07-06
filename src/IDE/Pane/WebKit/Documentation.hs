@@ -80,25 +80,25 @@ instance Pane IDEDocumentation IDEM
     paneId b        =   "*Doc"
 
 instance RecoverablePane IDEDocumentation DocumentationState IDEM where
-    saveState p     =   liftIO $ do
+    saveState p     =   liftIO $
 #ifdef WEBKITGTK
-        zoom <- webView p `get` webViewZoomLevel
-        uri  <- webView p `get` webViewUri
-        return (Just DocumentationState{..})
+         do zoom <- webView p `get` webViewZoomLevel
+            uri  <- webView p `get` webViewUri
+            return (Just DocumentationState{..})
 #else
-        Just <$> readIORef (docState p)
+            Just <$> readIORef (docState p)
 #endif
     recoverState pp DocumentationState {..} =   do
         nb      <-  getNotebook pp
         mbPane <- buildPane pp nb builder
         case mbPane of
             Nothing -> return ()
-            Just p  -> liftIO $ do
+            Just p  -> liftIO $
 #ifdef WEBKITGTK
-                webView p `set` [webViewZoomLevel := zoom]
-                maybe (return ()) (webViewLoadUri (webView p)) uri
+                 do webView p `set` [webViewZoomLevel := zoom]
+                    maybe (return ()) (webViewLoadUri (webView p)) uri
 #else
-                writeIORef (docState p) DocumentationState {..}
+                    writeIORef (docState p) DocumentationState {..}
 #endif
         return mbPane
     builder pp nb windows = reifyIDE $ \ ideR -> do
@@ -140,22 +140,22 @@ getDocumentation Nothing    = forceGetPane (Right "*Doc")
 getDocumentation (Just pp)  = forceGetPane (Left pp)
 
 loadDoc :: Text -> IDEAction
-loadDoc uri = do
+loadDoc uri =
 #ifdef WEBKITGTK
-    doc <- getDocumentation Nothing
-    let view = webView doc
-    liftIO $ webViewLoadUri view uri
+     do doc <- getDocumentation Nothing
+        let view = webView doc
+        liftIO $ webViewLoadUri view uri
 #else
-    return ()
+        return ()
 #endif
 
 reloadDoc :: IDEAction
-reloadDoc = do
+reloadDoc =
 #ifdef WEBKITGTK
-    doc <- getDocumentation Nothing
-    let view = webView doc
-    liftIO $ webViewReload view
+     do doc <- getDocumentation Nothing
+        let view = webView doc
+        liftIO $ webViewReload view
 #else
-    return ()
+        return ()
 #endif
 

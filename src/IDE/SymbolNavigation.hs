@@ -70,9 +70,9 @@ createHyperLinkSupport sv sw identifierMapper clickHandler = do
     underline linkTag UnderlineSingle
     cursor <- liftIO $ cursorNew Hand2
 
-    id1 <- liftIO $ sw `on` leaveNotifyEvent $ do
+    id1 <- liftIO (sw `on` leaveNotifyEvent $ do
         eventTime >>= (liftIO . pointerUngrab)
-        return True
+        return True)
 
     let moveOrClick eventX eventY mods eventTime click = do
         sx <- liftIO $ scrolledWindowGetHAdjustment sw >>= adjustmentGetValue
@@ -80,7 +80,7 @@ createHyperLinkSupport sv sw identifierMapper clickHandler = do
 
         let ex = eventX + sx
             ey = eventY + sy
-            ctrlPressed = (mapControlCommand Control) `elem` mods
+            ctrlPressed = mapControlCommand Control `elem` mods
             shiftPressed = Shift `elem` mods
         iter <- getIterAtLocation sv (round ex) (round ey)
         (Rectangle _ _ szx szy) <- liftIO $ widgetGetAllocation sw
@@ -94,13 +94,13 @@ createHyperLinkSupport sv sw identifierMapper clickHandler = do
             removeTagByName tvb "link"
             offs <- getLineOffset beg
             offsc <- getLineOffset iter
-            if (T.length slice > 1) then do
-                if (click) then do
+            if T.length slice > 1 then
+                if click then do
                         liftIO $ pointerUngrab eventTime
                         clickHandler ctrlPressed shiftPressed slice
                     else do
                         applyTagByName tvb "link" beg en
-                        Just screen <- liftIO $ screenGetDefault
+                        Just screen <- liftIO screenGetDefault
 #ifdef MIN_VERSION_gtk3
                         mbDW <- liftIO $ widgetGetWindow tv
 #else
@@ -117,42 +117,43 @@ createHyperLinkSupport sv sw identifierMapper clickHandler = do
             return True
     lineNumberBugFix <- liftIO $ newIORef Nothing
     let fixBugWithX mods isHint (eventX, eventY) ptrx = do
-            let hasNoControlModifier = not $ (mapControlCommand Control) `elem` mods
+            let hasNoControlModifier = mapControlCommand Control `notElem` mods
             lnbf <- readIORef lineNumberBugFix
             -- print ("ishint?, adjusted, event.x, ptr.x, adjustment,hasControl?",isHint,ptrx - fromMaybe (-1000) lnbf , eventX, ptrx, lnbf, hasNoControlModifier)
-            when (isHint && hasNoControlModifier) $ do
+            when (isHint && hasNoControlModifier) $
                 -- get difference between event X and pointer x
                 -- event X is in coordinates of sourceView text
                 -- pointer X is in coordinates of window (remember "show line numbers" ?)
                 liftIO $ writeIORef lineNumberBugFix $ Just (ptrx - eventX)   -- captured difference
             -- When control key is pressed, mostly NON-HINT events come,
             -- GTK gives (mistakenly?) X in window coordinates in such cases
-            let nx = if (isJust lnbf && not isHint)
+            let nx = if isJust lnbf && not isHint
                         then ptrx - fromJust lnbf    -- translate X back
                         else eventX
             return (nx, eventY)
     ideR <- ask
-    id2 <- liftIO $ sw `on` motionNotifyEvent $ do
-        isHint <- eventIsHint
-        eventTime <- eventTime
-        mods <- eventModifier
-        (oldX, oldY) <- eventCoordinates
-        (rootX, _) <- eventRootCoordinates
-        (eventX, eventY) <- liftIO $ fixBugWithX mods isHint (oldX, oldY) rootX
-        liftIO $ do
-            -- print ("move adjustment: isHint, old, new root", isHint, eventX, oldX, rootX)
-            (`reflectIDE` ideR) $ moveOrClick eventX eventY mods eventTime False
-        return True
-    id3 <- liftIO $ sw `on` buttonPressEvent $ do
-        eventTime <- eventTime
-        mods <- eventModifier
-        -- liftIO $ print ("button press")
-        (oldX, oldY) <- eventCoordinates
-        (rootX, _) <- eventRootCoordinates
-        (eventX, eventY) <- liftIO $ fixBugWithX mods False (oldX, oldY) rootX
-        -- liftIO $ print ("click adjustment: old, new", eventX, oldX)
-        liftIO $ (`reflectIDE` ideR) $ moveOrClick eventX eventY mods eventTime True
+    liftIO $ do
+        id2 <- sw `on` motionNotifyEvent $ do
+            isHint <- eventIsHint
+            eventTime <- eventTime
+            mods <- eventModifier
+            (oldX, oldY) <- eventCoordinates
+            (rootX, _) <- eventRootCoordinates
+            (eventX, eventY) <- liftIO $ fixBugWithX mods isHint (oldX, oldY) rootX
+            liftIO $
+                -- print ("move adjustment: isHint, old, new root", isHint, eventX, oldX, rootX)
+                (`reflectIDE` ideR) $ moveOrClick eventX eventY mods eventTime False
+            return True
+        id3 <- sw `on` buttonPressEvent $ do
+            eventTime <- eventTime
+            mods <- eventModifier
+            -- liftIO $ print ("button press")
+            (oldX, oldY) <- eventCoordinates
+            (rootX, _) <- eventRootCoordinates
+            (eventX, eventY) <- liftIO $ fixBugWithX mods False (oldX, oldY) rootX
+            -- liftIO $ print ("click adjustment: old, new", eventX, oldX)
+            liftIO $ (`reflectIDE` ideR) $ moveOrClick eventX eventY mods eventTime True
 
-    return $ [ConnectC id1, ConnectC id2, ConnectC id3]
+        return [ConnectC id1, ConnectC id2, ConnectC id3]
 
 

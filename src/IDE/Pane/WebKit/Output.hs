@@ -102,25 +102,25 @@ instance Pane IDEOutput IDEM
     paneId b        =   "*Out"
 
 instance RecoverablePane IDEOutput OutputState IDEM where
-    saveState p     =   liftIO $ do
+    saveState p     =   liftIO $
 #ifdef WEBKITGTK
-        zoom <- webView p `get` webViewZoomLevel
-        alwaysHtml <- readIORef $ alwaysHtmlRef p
-        return (Just OutputState{..})
+         do zoom <- webView p `get` webViewZoomLevel
+            alwaysHtml <- readIORef $ alwaysHtmlRef p
+            return (Just OutputState{..})
 #else
-        Just <$> readIORef (outState p)
+            Just <$> readIORef (outState p)
 #endif
     recoverState pp OutputState {..} =   do
         nb      <-  getNotebook pp
         mbPane <- buildPane pp nb builder
         case mbPane of
             Nothing -> return ()
-            Just p  -> liftIO $ do
+            Just p  -> liftIO $
 #ifdef WEBKITGTK
-                webView p `set` [webViewZoomLevel := zoom]
-                writeIORef (alwaysHtmlRef p) alwaysHtml
+                 do webView p `set` [webViewZoomLevel := zoom]
+                    writeIORef (alwaysHtmlRef p) alwaysHtml
 #else
-                writeIORef (outState p) OutputState {..}
+                   writeIORef (outState p) OutputState {..}
 #endif
         return mbPane
     builder pp nb windows = reifyIDE $ \ ideR -> do
@@ -216,34 +216,34 @@ getValueUri = do
         ++ "/value.html"
 
 setOutput :: Text -> Text -> IDEAction
-setOutput command str = do
+setOutput command str =
 #ifdef WEBKITGTK
-    out <- getOutputPane Nothing
-    liftIO $ do
-        entrySetText (uriEntry out) (T.pack $ show command)
-        uri <- getValueUri
-        alwaysHtml <- readIORef $ alwaysHtmlRef out
-        let view = webView out
-            html = case (alwaysHtml, parseValue $ T.unpack str) of
-                        (False, Just value) -> T.pack $ valToHtmlPage defaultHtmlOpts value
-                        _                   -> str
-        webViewLoadString view html Nothing uri
+     do out <- getOutputPane Nothing
+        liftIO $ do
+            entrySetText (uriEntry out) (T.pack $ show command)
+            uri <- getValueUri
+            alwaysHtml <- readIORef $ alwaysHtmlRef out
+            let view = webView out
+                html = case (alwaysHtml, parseValue $ T.unpack str) of
+                            (False, Just value) -> T.pack $ valToHtmlPage defaultHtmlOpts value
+                            _                   -> str
+            webViewLoadString view html Nothing uri
 #else
-    return ()
+        return ()
 #endif
 
 loadOutputUri :: FilePath -> IDEAction
-loadOutputUri uri = do
+loadOutputUri uri =
 #ifdef WEBKITGTK
-    out <- getOutputPane Nothing
-    let view = webView out
-    liftIO $ do
-        entrySetText (uriEntry out) (T.pack uri)
-        currentUri <- webViewGetUri view
-        if Just (T.pack uri) == currentUri
-            then webViewReload view
-            else webViewLoadUri view (T.pack uri)
+     do out <- getOutputPane Nothing
+        let view = webView out
+        liftIO $ do
+            entrySetText (uriEntry out) (T.pack uri)
+            currentUri <- webViewGetUri view
+            if Just (T.pack uri) == currentUri
+                then webViewReload view
+                else webViewLoadUri view (T.pack uri)
 #else
-    return ()
+        return ()
 #endif
 

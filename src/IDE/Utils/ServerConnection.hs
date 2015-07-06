@@ -42,11 +42,11 @@ doServerCommand command cont = do
     q <- case q' of
         Just q -> return q
         Nothing -> do
-            q <- liftIO $ newEmptyMVar
+            q <- liftIO newEmptyMVar
             modifyIDE_ (\ ide -> ide{serverQueue = Just q})
             ideR <- ask
             liftIO . forkIO . forever $ do
-                debugM "leksah" $ "Ready for command"
+                debugM "leksah" "Ready for command"
                 (command, cont) <- takeMVar q
                 reflectIDE (doServerCommand' command cont) ideR
             return q

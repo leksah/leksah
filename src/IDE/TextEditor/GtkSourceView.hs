@@ -112,7 +112,7 @@ import Graphics.UI.Gtk.SourceView.Enums
        (SourceDrawSpacesFlags(..), SourceSmartHomeEndType(..))
 import Graphics.UI.Gtk.General.Enums
        (PolicyType(..), TextWindowType(..), WrapMode(..))
-import Control.Monad (when, forM_)
+import Control.Monad (void, when, forM_)
 import Control.Monad.Reader.Class (MonadReader(..))
 import Graphics.UI.Editor.Basics (Connection(..))
 import Data.Maybe (isNothing, maybeToList, fromJust)
@@ -138,6 +138,7 @@ import Graphics.UI.Gtk.SourceView.SourceView
        (sourceViewSetMarkAttributes)
 import Graphics.UI.Gtk.Multiline.TextMark
        (textMarkGetName, toTextMark)
+import Control.Arrow (Arrow(..))
 
 transformGtkIter :: EditorIter GtkSourceView -> (TextIter -> IO a) -> IDEM (EditorIter GtkSourceView)
 transformGtkIter (GtkIter i) f = do
@@ -208,8 +209,7 @@ instance TextEditor GtkSourceView where
     cutClipboard (GtkBuffer sb) clipboard defaultEditable = liftIO $ textBufferCutClipboard sb clipboard defaultEditable
     delete (GtkBuffer sb) (GtkIter first) (GtkIter last) = liftIO $
         textBufferDelete sb first last
-    deleteSelection (GtkBuffer sb) = liftIO $
-        textBufferDeleteSelection sb  True True >> return ()
+    deleteSelection (GtkBuffer sb) = liftIO . void $ textBufferDeleteSelection sb True True
     endNotUndoableAction (GtkBuffer sb) = liftIO $ sourceBufferEndNotUndoableAction sb
     endUserAction (GtkBuffer sb) = liftIO $ textBufferEndUserAction sb
     getEndIter (GtkBuffer sb) = liftIO $ GtkIter <$> textBufferGetEndIter sb
@@ -220,7 +220,7 @@ instance TextEditor GtkSourceView where
     getLineCount (GtkBuffer sb) = liftIO $ textBufferGetLineCount sb
     getModified (GtkBuffer sb) = liftIO $ textBufferGetModified sb
     getSelectionBoundMark (GtkBuffer sb) = liftIO $ GtkMark <$> textBufferGetSelectionBound sb
-    getSelectionBounds (GtkBuffer sb) = liftIO $ (\(a, b) -> (GtkIter a, GtkIter b)) <$>
+    getSelectionBounds (GtkBuffer sb) = liftIO $ (GtkIter *** GtkIter) <$>
         textBufferGetSelectionBounds sb
     getInsertIter (GtkBuffer sb) = liftIO $ GtkIter <$> do
         insertMark <- textBufferGetInsert sb
@@ -275,17 +275,17 @@ instance TextEditor GtkSourceView where
         sourceBufferRemoveSourceMarks sb first last name
     selectRange (GtkBuffer sb) (GtkIter first) (GtkIter last) = liftIO $
         textBufferSelectRange sb first last
-    setModified (GtkBuffer sb) modified = liftIO $ textBufferSetModified sb modified >> return ()
-    setStyle (GtkBuffer sb) EditorStyle {..} = do
+    setModified (GtkBuffer sb) modified = liftIO . void $ textBufferSetModified sb modified
+    setStyle (GtkBuffer sb) EditorStyle {..} =
         case styleName of
             Nothing  -> return ()
             Just str -> do
-                styleManager <- liftIO $ sourceStyleSchemeManagerNew
+                styleManager <- liftIO sourceStyleSchemeManagerNew
                 dataDir <- liftIO getDataDir
                 liftIO $ sourceStyleSchemeManagerAppendSearchPath styleManager $ dataDir </> "data/styles"
                 ids <- liftIO $ sourceStyleSchemeManagerGetSchemeIds styleManager
                 let preferedNames = if preferDark then [str<>"-dark", str] else [str]
-                forM_ (take 1 $ filter (flip elem ids) preferedNames) $ \ name -> do
+                forM_ (take 1 $ filter (`elem` ids) preferedNames) $ \ name -> do
                     liftIO $ do
                         scheme <- sourceStyleSchemeManagerGetScheme styleManager name
                         sourceBufferSetStyleScheme sb (Just scheme)
@@ -302,8 +302,8 @@ instance TextEditor GtkSourceView where
                                     TestFailureRef      -> underline tag UnderlineError
                                     LintRef | isDark    -> background tag $ Color 0 15000 0
                                             | otherwise -> background tag $ Color 60000 65535 60000
-                                    BreakpointRef       -> background tag $ breakpointBG
-                                    ContextRef          -> background tag $ contextBG
+                                    BreakpointRef       -> background tag breakpointBG
+                                    ContextRef          -> background tag contextBG
     setText (GtkBuffer sb) text = liftIO $ textBufferSetText sb text
     undo (GtkBuffer sb) = liftIO $ sourceBufferUndo sb
 
@@ -325,11 +325,11 @@ instance TextEditor GtkSourceView where
     getIterAtLocation (GtkView sv) x y = liftIO $ GtkIter <$> textViewGetIterAtLocation sv x y
     getIterLocation (GtkView sv) (GtkIter i) = liftIO $ textViewGetIterLocation sv i
     getOverwrite (GtkView sv) = liftIO $ textViewGetOverwrite sv
-    getScrolledWindow (GtkView sv) = liftIO $ fmap (castToScrolledWindow . fromJust) $ widgetGetParent sv
+    getScrolledWindow (GtkView sv) = liftIO $ (castToScrolledWindow . fromJust) <$> widgetGetParent sv
     getEditorWidget (GtkView sv) = return $ castToWidget sv
     grabFocus (GtkView sv) = liftIO $ widgetGrabFocus sv
     scrollToMark (GtkView sv) (GtkMark m) withMargin mbAlign = liftIO $ textViewScrollToMark sv m withMargin mbAlign
-    scrollToIter (GtkView sv) (GtkIter i) withMargin mbAlign = liftIO $ textViewScrollToIter sv i withMargin mbAlign >> return ()
+    scrollToIter (GtkView sv) (GtkIter i) withMargin mbAlign = liftIO . void $ textViewScrollToIter sv i withMargin mbAlign
     setFont (GtkView sv) mbFontString = do
         fd <- fontDescription mbFontString
         liftIO $ widgetModifyFont sv (Just fd)
@@ -343,7 +343,7 @@ instance TextEditor GtkSourceView where
             else liftIO $ do
                 textViewSetWrapMode sv WrapNone
                 scrolledWindowSetPolicy sw PolicyAutomatic PolicyAutomatic
-    setRightMargin (GtkView sv) mbRightMargin = liftIO $ do
+    setRightMargin (GtkView sv) mbRightMargin = liftIO $
         case mbRightMargin of
             Just n -> do
                 sourceViewSetShowRightMargin sv True
@@ -389,26 +389,26 @@ instance TextEditor GtkSourceView where
             lastHandler <- newIORef Nothing
             id1 <- after sb bufferInsertText $ \iter text -> do
                 mapM_ idleRemove =<< maybeToList <$> readIORef lastHandler
-                writeIORef lastHandler =<< Just <$> do
-                    (flip idleAdd) priorityDefault $ do
-                        let isIdent a = isAlphaNum a || a == '\'' || a == '_' || a == '.'
-                        let isOp    a = isSymbol   a || a == ':'  || a == '\\' || a == '*' || a == '/' || a == '-'
-                                                     || a == '!'  || a == '@' || a == '%' || a == '&' || a == '?'
-                        if (T.all isIdent text) || (T.all isOp text)
-                            then do
-                                hasSel <- textBufferHasSelection sb
-                                if not hasSel
-                                    then do
-                                        (iterC, _) <- textBufferGetSelectionBounds sb
-                                        atC <- textIterEqual iter iterC
-                                        when atC $ reflectIDE start ideR
-                                        return False
-                                    else do
-                                        reflectIDE cancel ideR
-                                        return False
-                            else do
-                                reflectIDE cancel ideR
-                                return False
+                h <- flip idleAdd priorityDefault $ do
+                    let isIdent a = isAlphaNum a || a == '\'' || a == '_' || a == '.'
+                    let isOp    a = isSymbol   a || a == ':'  || a == '\\' || a == '*' || a == '/' || a == '-'
+                                                 || a == '!'  || a == '@' || a == '%' || a == '&' || a == '?'
+                    if T.all isIdent text || T.all isOp text
+                        then do
+                            hasSel <- textBufferHasSelection sb
+                            if not hasSel
+                                then do
+                                    (iterC, _) <- textBufferGetSelectionBounds sb
+                                    atC <- textIterEqual iter iterC
+                                    when atC $ reflectIDE start ideR
+                                    return False
+                                else do
+                                    reflectIDE cancel ideR
+                                    return False
+                        else do
+                            reflectIDE cancel ideR
+                            return False
+                writeIORef lastHandler (Just h)
                 return ()
             id2 <- sv `on` moveCursor $ \_ _ _ -> reflectIDE cancel ideR
             id3 <- sv `on` buttonPressEvent $ lift $ reflectIDE cancel ideR >> return False
@@ -429,7 +429,7 @@ instance TextEditor GtkSourceView where
     onLookupInfo (GtkView sv) f = do
         liftIO $ sv `widgetAddEvents` [ButtonReleaseMask]
         id1 <- sv `onIDE` buttonReleaseEvent $ do
-            mod <- lift $ eventModifier
+            mod <- lift eventModifier
             case mod of
                 [Control] -> f >> return True
                 _             -> return False
@@ -465,7 +465,7 @@ instance TextEditor GtkSourceView where
             case mbLimit of
                 Just (GtkIter limit) -> Just limit
                 Nothing              -> Nothing
-    forwardSearch (GtkIter i) str flags mbLimit = liftIO $ fmap (fmap (\(a, b) -> (GtkIter a, GtkIter b))) $
+    forwardSearch (GtkIter i) str flags mbLimit = liftIO $ fmap (fmap (GtkIter *** GtkIter)) $
         textIterForwardSearch i str flags $
             case mbLimit of
                 Just (GtkIter limit) -> Just limit
