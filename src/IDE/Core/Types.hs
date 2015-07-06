@@ -124,9 +124,7 @@ import Text.PrettyPrint (render)
 import Control.Monad.Trans.Class (lift)
 import Control.Monad.IO.Class (liftIO, MonadIO)
 import Control.Monad.Trans.Reader (ReaderT(..))
-#if MIN_VERSION_directory(1,2,0)
 import Data.Time (UTCTime(..))
-#endif
 
 import qualified VCSWrapper.Common as VCS
 import qualified VCSGui.Common as VCSGUI
@@ -137,6 +135,7 @@ import Control.Monad.Reader.Class (MonadReader(..))
 import Data.Text (Text)
 import qualified Data.Text as T (unpack)
 import Language.Haskell.HLint3 (Idea(..))
+import Data.Function (on)
 
 -- ---------------------------------------------------------------------
 -- IDE State
@@ -159,9 +158,9 @@ data IDE            =  IDE {
 ,   allLogRefs      ::   [LogRef]
 ,   currentEBC      ::   (Maybe LogRef, Maybe LogRef, Maybe LogRef)
 ,   currentHist     ::   Int
-,   systemInfo      ::   (Maybe GenScope)              -- ^ the system scope
-,   packageInfo     ::   (Maybe (GenScope, GenScope)) -- ^ the second are the imports
-,   workspaceInfo   ::   (Maybe (GenScope, GenScope)) -- ^ the second are the imports
+,   systemInfo      ::   Maybe GenScope              -- ^ the system scope
+,   packageInfo     ::   Maybe (GenScope, GenScope) -- ^ the second are the imports
+,   workspaceInfo   ::   Maybe (GenScope, GenScope) -- ^ the second are the imports
 ,   workspInfoCache ::   PackageDescrCache
 ,   handlers        ::   Map Text [(Unique, IDEEvent -> IDEM IDEEvent)] -- ^ event handling table
 ,   currentState    ::   IDEState
@@ -174,7 +173,7 @@ data IDE            =  IDE {
 ,   debugState      ::   Maybe (IDEPackage, ToolState)
 ,   completion      ::   ((Int, Int), Maybe CompletionWindow)
 ,   yiControl       ::   Yi.Control
-,   serverQueue     ::   Maybe (MVar (ServerCommand, (ServerAnswer -> IDEM ())))
+,   serverQueue     ::   Maybe (MVar (ServerCommand, ServerAnswer -> IDEM ()))
 ,   server          ::   Maybe Handle
 ,   vcsData         ::   (Map FilePath MenuItem, Maybe (Maybe Text)) -- menus for packages, password
 ,   logLaunches     ::   Map.Map Text LogLaunchData
@@ -221,7 +220,7 @@ instance MonadIDE IDEM where
 instance MonadIDE WorkspaceM where
     liftIDE = lift
 
-(?>>=) :: Monad m => (m (Maybe a)) -> (a -> m ()) -> m ()
+(?>>=) :: Monad m => m (Maybe a) -> (a -> m ()) -> m ()
 a ?>>= b = do
     mA <- a
     case mA of
@@ -352,8 +351,8 @@ instance EventSource IDERef IDEEvent IDEM Text where
     setHandlers ideRef nh = do
         ide <- liftIO $ readIORef ideRef
         liftIO $ writeIORef ideRef (ide {handlers= nh})
-    myUnique _ = do
-        liftIO $ newUnique
+    myUnique _ =
+        liftIO newUnique
 
 instance EventSelector Text
 
@@ -416,7 +415,7 @@ data Workspace = Workspace {
 
 -- | Includes sandbox sources
 wsAllPackages :: Workspace -> [IDEPackage]
-wsAllPackages w = nubBy (\ a b -> ipdCabalFile a == ipdCabalFile b) $ wsPackages w ++ (wsPackages w >>= ipdSandboxSources)
+wsAllPackages w = nubBy ((==) `on` ipdCabalFile) $ wsPackages w ++ (wsPackages w >>= ipdSandboxSources)
 
 -- ---------------------------------------------------------------------
 -- Other data structures which are used in the state
@@ -552,7 +551,7 @@ data LogRef = LogRef {
 }   deriving (Eq)
 
 instance Show LogRef where
-    show lr =  (T.unpack $ refDescription lr) ++ displaySrcSpan (logRefSrcSpan lr)
+    show lr = T.unpack (refDescription lr) ++ displaySrcSpan (logRefSrcSpan lr)
 
 displaySrcSpan s = srcSpanFilename s ++ ":" ++
     if srcSpanStartLine s == srcSpanEndLine s
@@ -583,9 +582,9 @@ isContext :: LogRef -> Bool
 isContext = (== ContextRef) . logRefType
 
 -- This should probably be in Gtk2Hs allong with a suitable parser
-colorHexString (Color r g b) = '#' : (pad $ showHex r "")
-                                  ++ (pad $ showHex g "")
-                                  ++ (pad $ showHex b "")
+colorHexString (Color r g b) = '#' : pad (showHex r "")
+                                  ++ pad (showHex g "")
+                                  ++ pad (showHex b "")
     where pad s = replicate (4 - length s) '0' ++ s
 
 
@@ -600,7 +599,7 @@ newtype KeymapI         =   KM  (Map ActionString
 
 type SpecialKeyTable alpha  =   Map (KeyVal,[Modifier]) (Map (KeyVal,[Modifier]) (ActionDescr alpha))
 
-type SpecialKeyCons  alpha  =   Maybe ((Map (KeyVal,[Modifier]) (ActionDescr alpha)),Text)
+type SpecialKeyCons  alpha  =   Maybe (Map (KeyVal, [Modifier]) (ActionDescr alpha), Text)
 
 data LogTag = LogTag | ErrorTag | FrameTag | InputTag | InfoTag
 
@@ -617,7 +616,7 @@ data GUIHistory' =
     |   InfoElementSelected {
             mbInfo  :: Maybe Descr}
     |   PaneSelected {
-            paneN   :: Maybe (Text)}
+            paneN   :: Maybe Text}
    deriving (Eq, Ord, Show)
 
 data SensitivityMask =
@@ -651,8 +650,4 @@ data StatusbarCompartment =
     |   CompartmentCollect Bool
 
 type PackageDescrCache = Map PackageIdentifier ModuleDescrCache
-#if MIN_VERSION_directory(1,2,0)
 type ModuleDescrCache = Map ModuleName (UTCTime, Maybe FilePath, ModuleDescr)
-#else
-type ModuleDescrCache = Map ModuleName (ClockTime, Maybe FilePath, ModuleDescr)
-#endif

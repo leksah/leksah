@@ -94,20 +94,18 @@ import IDE.Utils.FileUtils(getConfigFilePathForLoad)
 import IDE.LogRef
 import Distribution.ModuleName (ModuleName(..))
 import Data.List (isInfixOf, nub, foldl', delete)
-import IDE.Utils.Tool (ToolOutput(..), runTool, newGhci, ToolState(..), toolline)
+import IDE.Utils.Tool (ToolOutput(..), runTool, newGhci, ToolState(..), toolline, ProcessHandle, executeGhciCommand)
 import qualified Data.Set as  Set (fromList)
 import qualified Data.Map as  Map (empty, fromList)
 import System.Exit (ExitCode(..))
 import Control.Applicative ((<$>), (<*>))
-import IDE.Utils.Tool (executeGhciCommand, getProcessExitCode, interruptProcessGroupOf,
-    ProcessHandle)
 import qualified Data.Conduit as C (Sink, ZipSink(..), getZipSink)
 import qualified Data.Conduit.List as CL (foldM, fold, consume)
 import Data.Conduit (($$))
 import Control.Monad.Trans.Reader (ask)
 import Control.Monad.IO.Class (MonadIO(..))
 import Control.Monad.Trans.Class (lift)
-import Control.Monad (when, unless, liftM, forM, forM_)
+import Control.Monad (void, when, unless, liftM, forM, forM_)
 import Distribution.PackageDescription.PrettyPrint
        (writeGenericPackageDescription)
 import Debug.Trace (trace)
@@ -182,7 +180,7 @@ packageConfig' package continuation = do
 
     runExternalTool'        (__ "Configuring")
                             (cabalCommand prefs)
-                            (["configure"] ++ (ipdConfigFlags package))
+                            ("configure" : ipdConfigFlags package)
                             dir $ do
         mbLastOutput <- C.getZipSink $ const <$> C.ZipSink sinkLast <*> C.ZipSink (logOutput logLaunch)
         lift $ do
@@ -202,11 +200,9 @@ runCabalBuild :: Bool -> Bool -> Bool -> IDEPackage -> Bool -> (Bool -> IDEActio
 runCabalBuild backgroundBuild jumpToWarnings withoutLinking package shallConfigure continuation = do
     prefs <- readIDE prefs
     let dir =  ipdBuildDir package
-    let args = (["build"]
-                ++ (if backgroundBuild && withoutLinking
-                    then ["--with-ld=false"]
-                    else [])
-                ++ ipdBuildFlags package)
+    let args = ["build"]
+                ++ ["--with-ld=false" | backgroundBuild && withoutLinking]
+                ++ ipdBuildFlags package
     runExternalTool' (__ "Building") (cabalCommand prefs) args dir $ do
         (mbLastOutput, isConfigErr, _) <- C.getZipSink $ (,,)
             <$> C.ZipSink sinkLast
@@ -242,7 +238,7 @@ buildPackage backgroundBuild jumpToWarnings withoutLinking package continuation 
             if alreadyRunning
                 then do
                     interruptBuild
-                    when (not backgroundBuild) $ liftIO $ do
+                    unless backgroundBuild . liftIO $ do
                         timeoutAddFull (do
                             reflectIDE (do
                                 buildPackage backgroundBuild jumpToWarnings withoutLinking
@@ -265,7 +261,7 @@ buildPackage backgroundBuild jumpToWarnings withoutLinking package continuation 
                 when (saveAllBeforeBuild prefs) (do fileSaveAll belongsToWorkspace; return ())
                 (`runDebug` debug) . executeDebugCommand ":reload" $ do
                     errs <- logOutputForBuild package backgroundBuild jumpToWarnings
-                    unless (any isError $ errs) $ do
+                    unless (any isError errs) $ do
                         cmd <- lift $ readIDE autoCommand
                         liftIO . postGUISync $ reflectIDE cmd ideR
                         lift $ continuation True
@@ -282,13 +278,12 @@ packageDoc' backgroundBuild jumpToWarnings package continuation = do
     prefs     <- readIDE prefs
     catchIDE (do
         let dir = ipdBuildDir package
-        runExternalTool' (__ "Documenting") (cabalCommand prefs) (["haddock"]
-            ++ (ipdHaddockFlags package)) dir $ do
+        runExternalTool' (__ "Documenting") (cabalCommand prefs) ("haddock" : ipdHaddockFlags package) dir $ do
                 mbLastOutput <- C.getZipSink $ const <$> C.ZipSink sinkLast <*> (C.ZipSink $
                     logOutputForBuild package backgroundBuild jumpToWarnings)
-                lift $ reloadDoc
+                lift reloadDoc
                 lift $ continuation (mbLastOutput == Just (ToolExit ExitSuccess)))
-        (\(e :: SomeException) -> putStrLn (show e))
+        (\(e :: SomeException) -> print e)
 
 packageClean :: PackageAction
 packageClean = do
@@ -326,10 +321,10 @@ packageCopy = do
                     let dir = ipdBuildDir package
                     runExternalTool' (__ "Copying")
                                     (cabalCommand prefs)
-                                    (["copy"] ++ ["--destdir=" <> T.pack fp])
+                                    ("copy" : ["--destdir=" <> T.pack fp])
                                     dir
                                     (logOutput logLaunch))
-            (\(e :: SomeException) -> putStrLn (show e))
+            (\(e :: SomeException) -> print e)
 
 packageInstallDependencies :: PackageAction
 packageInstallDependencies = do
@@ -345,9 +340,9 @@ packageInstallDependencies = do
                    (if useCabalDev prefs
                         then ["install-deps"]
                         else ["install","--only-dependencies"])
-                ++ (ipdConfigFlags package)
-                ++ (ipdInstallFlags package)) dir (logOutput logLaunch))
-            (\(e :: SomeException) -> putStrLn (show e))
+                ++ ipdConfigFlags package
+                ++ ipdInstallFlags package) dir (logOutput logLaunch))
+            (\(e :: SomeException) -> print e)
 
 packageCopy' :: IDEPackage -> (Bool -> IDEAction) -> IDEAction
 packageCopy' package continuation = do
@@ -357,20 +352,19 @@ packageCopy' package continuation = do
 
     catchIDE (do
         let dir = ipdBuildDir package
-        runExternalTool' (__ "Copying") (cabalCommand prefs) (["copy"]
-            ++ (ipdInstallFlags package)) dir $ do
+        runExternalTool' (__ "Copying") (cabalCommand prefs) ("copy" : ipdInstallFlags package) dir $ do
                 mbLastOutput <- C.getZipSink $ (const <$> C.ZipSink sinkLast) <*> C.ZipSink (logOutput logLaunch)
                 lift $ continuation (mbLastOutput == Just (ToolExit ExitSuccess)))
-        (\(e :: SomeException) -> putStrLn (show e))
+        (\(e :: SomeException) -> print e)
 
 packageRun :: PackageAction
 packageRun = ask >>= (liftIDE . packageRun' True)
 
 packageRun' :: Bool -> IDEPackage -> IDEAction
-packageRun' removeGhcjsFlagIfPresent package = do
+packageRun' removeGhcjsFlagIfPresent package =
     if removeGhcjsFlagIfPresent && "--ghcjs" `elem` ipdConfigFlags package
         then do
-            window <- liftIDE $ getMainWindow
+            window <- liftIDE getMainWindow
             resp <- liftIO $ do
                 md <- messageDialogNew (Just window) [] MessageQuestion ButtonsCancel
                         (__ "Package is configured to use GHCJS.  Would you like to remove --ghcjs from the configure flags and rebuild?")
@@ -385,13 +379,14 @@ packageRun' removeGhcjsFlagIfPresent package = do
                     let packWithNewFlags = package { ipdConfigFlags = filter (/="--ghcjs") $ ipdConfigFlags package }
                     changePackage packWithNewFlags
                     liftIO $ writeFlags (dropExtension (ipdCabalFile packWithNewFlags) ++ leksahFlagFileExtension) packWithNewFlags
-                    packageConfig' packWithNewFlags $ \ ok -> when ok $ do
+                    packageConfig' packWithNewFlags $ \ ok -> when ok $
                         packageRun' False packWithNewFlags
                 _  -> return ()
         else liftIDE $ catchIDE (do
             ideR        <- ask
             maybeDebug   <- readIDE debugState
-            pd <- liftIO $ readPackageDescription normal (ipdCabalFile package) >>= return . flattenPackageDescription
+            pd <- liftIO $ liftM flattenPackageDescription
+                             (readPackageDescription normal (ipdCabalFile package))
             mbExe <- readIDE activeExe
             let exe = take 1 . filter (isActiveExe mbExe) $ executables pd
             let defaultLogName = T.pack . display . pkgName $ ipdPackageId package
@@ -410,17 +405,17 @@ packageRun' removeGhcjsFlagIfPresent package = do
                                                 , ipdExeFlags package])
                                            dir
                                            (logOutput logLaunch)
-                Just debug -> do
+                Just debug ->
                     -- TODO check debug package matches active package
                     runDebug (do
                         case exe of
-                            [Executable name mainFilePath _] -> do
+                            [Executable name mainFilePath _] ->
                                 executeDebugCommand (":module *" <> T.pack (map (\c -> if c == '/' then '.' else c) (takeWhile (/= '.') mainFilePath)))
                                                     (logOutput logLaunch)
                             _ -> return ()
                         executeDebugCommand (":main " <> T.unwords (ipdExeFlags package)) (logOutput logLaunch))
                         debug)
-            (\(e :: SomeException) -> putStrLn (show e))
+            (\(e :: SomeException) -> print e)
   where
     isActiveExe selected (Executable name _ _) = selected == Just (T.pack name)
 
@@ -428,10 +423,10 @@ packageRunJavaScript :: PackageAction
 packageRunJavaScript = ask >>= (liftIDE . packageRunJavaScript' True)
 
 packageRunJavaScript' :: Bool -> IDEPackage -> IDEAction
-packageRunJavaScript' addFlagIfMissing package = do
-    if addFlagIfMissing && not ("--ghcjs" `elem` ipdConfigFlags package)
+packageRunJavaScript' addFlagIfMissing package =
+    if addFlagIfMissing && ("--ghcjs" `notElem` ipdConfigFlags package)
         then do
-            window <- liftIDE $ getMainWindow
+            window <- liftIDE getMainWindow
             resp <- liftIO $ do
                 md <- messageDialogNew (Just window) [] MessageQuestion ButtonsCancel
                         (__ "Package is not configured to use GHCJS.  Would you like to add --ghcjs to the configure flags and rebuild?")
@@ -443,16 +438,17 @@ packageRunJavaScript' addFlagIfMissing package = do
                 return resp
             case resp of
                 ResponseUser 1 -> do
-                    let packWithNewFlags = package { ipdConfigFlags = ["--ghcjs"] ++ ipdConfigFlags package }
+                    let packWithNewFlags = package { ipdConfigFlags = "--ghcjs" : ipdConfigFlags package }
                     changePackage packWithNewFlags
                     liftIO $ writeFlags (dropExtension (ipdCabalFile packWithNewFlags) ++ leksahFlagFileExtension) packWithNewFlags
-                    packageConfig' packWithNewFlags $ \ ok -> when ok $ do
+                    packageConfig' packWithNewFlags $ \ ok -> when ok $
                         packageRunJavaScript' False packWithNewFlags
                 _  -> return ()
         else liftIDE $ buildPackage False False True package $ \ ok -> when ok $ liftIDE $ catchIDE (do
                 ideR        <- ask
                 maybeDebug   <- readIDE debugState
-                pd <- liftIO $ readPackageDescription normal (ipdCabalFile package) >>= return . flattenPackageDescription
+                pd <- liftIO $ liftM flattenPackageDescription
+                                 (readPackageDescription normal (ipdCabalFile package))
                 mbExe <- readIDE activeExe
                 let exe = take 1 . filter (isActiveExe mbExe) $ executables pd
                 let defaultLogName = T.pack . display . pkgName $ ipdPackageId package
@@ -472,10 +468,10 @@ packageRunJavaScript' addFlagIfMissing package = do
                         openBrowser path
 #endif
                       `catchIDE`
-                        (\(e :: SomeException) -> putStrLn (show e))
+                        (\(e :: SomeException) -> print e)
 
                     _ -> return ())
-                (\(e :: SomeException) -> putStrLn (show e))
+                (\(e :: SomeException) -> print e)
   where
     isActiveExe selected (Executable name _ _) = selected == Just (T.pack name)
 
@@ -493,11 +489,10 @@ packageRegister' package continuation =
           catchIDE (do
             prefs <- readIDE prefs
             let dir = ipdBuildDir package
-            runExternalTool' (__ "Registering") (cabalCommand prefs) (["register"]
-                ++ (ipdRegisterFlags package)) dir $ do
+            runExternalTool' (__ "Registering") (cabalCommand prefs) ("register" : ipdRegisterFlags package) dir $ do
                     mbLastOutput <- C.getZipSink $ (const <$> C.ZipSink sinkLast) <*> C.ZipSink (logOutput logLaunch)
                     lift $ continuation (mbLastOutput == Just (ToolExit ExitSuccess)))
-            (\(e :: SomeException) -> putStrLn (show e))
+            (\(e :: SomeException) -> print e)
         else continuation True
 
 packageTest :: PackageAction
@@ -529,7 +524,7 @@ packageTest' backgroundBuild jumpToWarnings package shallConfigure continuation 
                             else do
                                 continuation (mbLastOutput == Just (ToolExit ExitSuccess))
                                 return ())
-            (\(e :: SomeException) -> putStrLn (show e))
+            (\(e :: SomeException) -> print e)
         else continuation True
 
 packageSdist :: PackageAction
@@ -542,9 +537,8 @@ packageSdist = do
         catchIDE (do
             prefs <- readIDE prefs
             let dir = ipdBuildDir package
-            runExternalTool' (__ "Source Dist") (cabalCommand prefs) (["sdist"]
-                            ++ (ipdSdistFlags package)) dir (logOutput logLaunch))
-            (\(e :: SomeException) -> putStrLn (show e))
+            runExternalTool' (__ "Source Dist") (cabalCommand prefs) ("sdist" : ipdSdistFlags package) dir (logOutput logLaunch))
+            (\(e :: SomeException) -> print e)
 
 
 packageOpenDoc :: PackageAction
@@ -565,7 +559,7 @@ packageOpenDoc = do
         openBrowser $ T.pack path
 #endif
       `catchIDE`
-        (\(e :: SomeException) -> putStrLn (show e))
+        (\(e :: SomeException) -> print e)
 
 
 runPackage ::  (ProcessHandle -> IDEAction)
@@ -595,7 +589,7 @@ getPackageDescriptionAndPath = do
                 pd <- readPackageDescription normal (ipdCabalFile p)
                 return (Just (flattenPackageDescription pd,ipdCabalFile p)))
                     (\(e :: SomeException) -> do
-                        reflectIDE (ideMessage Normal ((__ "Can't load package ") <> T.pack (show e))) ideR
+                        reflectIDE (ideMessage Normal (__ "Can't load package " <> T.pack (show e))) ideR
                         return Nothing))
 
 getEmptyModuleTemplate :: PackageDescription -> Text -> IO Text
@@ -629,7 +623,7 @@ addModuleToPackageDescr moduleName locations = do
         let npd = trace (show gpd) foldr addModule gpd locations
         writeGenericPackageDescription (ipdCabalFile p) npd)
            (\(e :: SomeException) -> do
-            reflectIDE (ideMessage Normal ((__ "Can't update package ") <> T.pack (show e))) ideR
+            reflectIDE (ideMessage Normal (__ "Can't update package " <> T.pack (show e))) ideR
             return ()))
   where
     addModule LibExposedMod gpd@GenericPackageDescription{condLibrary = Just lib} =
@@ -692,7 +686,7 @@ delModuleFromPackageDescr moduleName = do
                                                 (condExecutables gpd)}
         writeGenericPackageDescription (ipdCabalFile p) npd)
            (\(e :: SomeException) -> do
-            reflectIDE (ideMessage Normal ((__ "Can't update package ") <> T.pack (show e))) ideR
+            reflectIDE (ideMessage Normal (__ "Can't update package " <> T.pack (show e))) ideR
             return ()))
 
 delModFromLib :: ModuleName -> CondTree ConfVar [Dependency] Library ->
@@ -714,7 +708,7 @@ delModFromBuildInfoExe modName (str,ct@CondNode{condTreeData = exe}) =
 
 isExposedModule :: ModuleName -> Maybe (CondTree ConfVar [Dependency] Library)  -> Bool
 isExposedModule mn Nothing                             = False
-isExposedModule mn (Just CondNode{condTreeData = lib}) = elem mn (exposedModules lib)
+isExposedModule mn (Just CondNode{condTreeData = lib}) = mn `elem` exposedModules lib
 
 backgroundBuildToggled :: IDEAction
 backgroundBuildToggled = do
@@ -752,10 +746,10 @@ printBindResultFlag = interactiveFlag "print-bind-result"
 
 interactiveFlags :: Prefs -> [Text]
 interactiveFlags prefs =
-    (printEvldWithShowFlag $ printEvldWithShow prefs)
-    : (breakOnExceptionFlag $ breakOnException prefs)
-    : (breakOnErrorFlag $ breakOnError prefs)
-    : [printBindResultFlag $ printBindResult prefs]
+    printEvldWithShowFlag (printEvldWithShow prefs)
+  : breakOnExceptionFlag (breakOnException prefs)
+  : breakOnErrorFlag (breakOnError prefs)
+  : [printBindResultFlag $ printBindResult prefs]
 
 debugStart :: PackageAction
 debugStart = do
@@ -769,7 +763,7 @@ debugStart = do
                 let dir = ipdBuildDir package
                 mbExe <- readIDE activeExe
                 ghci <- reifyIDE $ \ideR -> newGhci dir mbExe (interactiveFlags prefs')
-                    $ reflectIDEI (logOutputForBuild package True False >> return ()) ideR
+                    $ reflectIDEI (void (logOutputForBuild package True False)) ideR
                 modifyIDE_ (\ide -> ide {debugState = Just (package, ghci)})
                 triggerEventIDE (Sensitivity [(SensitivityInterpreting, True)])
                 setDebugToggled True
@@ -784,7 +778,7 @@ debugStart = do
                         modifiedPacks <- fileCheckAll belongsToPackages
                         let modified = not (null modifiedPacks)
                         prefs <- readIDE prefs
-                        when ((not modified) && (backgroundBuild prefs)) $ do
+                        when (not modified && backgroundBuild prefs) $ do
                             -- So although none of the pakages are modified,
                             -- they may have been modified in ghci mode.
                             -- Lets build to make sure the binaries are up to date
@@ -796,17 +790,17 @@ debugStart = do
             _ -> do
                 sysMessage Normal (__ "Debugger already running")
                 return ())
-            (\(e :: SomeException) -> putStrLn (show e))
+            (\(e :: SomeException) -> print e)
 
 tryDebug :: DebugAction -> PackageAction
 tryDebug f = do
     maybeDebug <- liftIDE $ readIDE debugState
     case maybeDebug of
-        Just debug -> do
+        Just debug ->
             -- TODO check debug package matches active package
             liftIDE $ runDebug f debug
         _ -> do
-            window <- liftIDE $ getMainWindow
+            window <- liftIDE getMainWindow
             resp <- liftIO $ do
                 md <- messageDialogNew (Just window) [] MessageQuestion ButtonsCancel
                         (__ "GHCi debugger is not running.")
@@ -829,16 +823,16 @@ tryDebugQuiet :: DebugAction -> PackageAction
 tryDebugQuiet f = do
     maybeDebug <- liftIDE $ readIDE debugState
     case maybeDebug of
-        Just debug -> do
+        Just debug ->
             -- TODO check debug package matches active package
             liftIDE $ runDebug f debug
-        _ -> do
+        _ ->
             return ()
 
-executeDebugCommand :: Text -> (C.Sink ToolOutput IDEM ()) -> DebugAction
+executeDebugCommand :: Text -> C.Sink ToolOutput IDEM () -> DebugAction
 executeDebugCommand command handler = do
     (_, ghci) <- ask
-    lift $ do
+    lift $
         reifyIDE $ \ideR -> do
             liftIO $ postGUIAsync $ reflectIDE (do
                 triggerEventIDE (StatusbarChanged [CompartmentState command, CompartmentBuild True])
@@ -865,7 +859,7 @@ idePackageFromPath' ipdCabalFile = do
         pd <- readPackageDescription normal ipdCabalFile
         return (Just (flattenPackageDescription pd)))
             (\ (e  :: SomeException) -> do
-                reflectIDE (ideMessage Normal ((__ "Can't activate package ") <> T.pack (show e))) ideR
+                reflectIDE (ideMessage Normal (__ "Can't activate package " <> T.pack (show e))) ideR
                 return Nothing))
     case mbPackageD of
         Nothing       -> return Nothing
@@ -877,7 +871,7 @@ idePackageFromPath' ipdCabalFile = do
                                         ++ [ (f, bi, True) | TestSuite _ (TestSuiteExeV10 _ f) bi _ <- testSuites packageD ]
                                         ++ [ (f, bi, True) | Benchmark _ (BenchmarkExeV10 _ f) bi _ <- benchmarks packageD ]
                 ipdExtraSrcs        = Set.fromList $ extraSrcFiles packageD
-                ipdSrcDirs          = case (nub $ concatMap hsSourceDirs (allBuildInfo' packageD)) of
+                ipdSrcDirs          = case nub $ concatMap hsSourceDirs (allBuildInfo' packageD) of
                                             [] -> [".","src"]
                                             l -> l
                 ipdExes             = [ T.pack $ exeName e | e <- executables packageD
@@ -902,11 +896,11 @@ idePackageFromPath' ipdCabalFile = do
                 ipdSandboxSources   = []
                 packp               = IDEPackage {..}
                 pfile               = dropExtension ipdCabalFile
-            pack <- (do
+            pack <- do
                 flagFileExists <- liftIO $ doesFileExist (pfile ++ leksahFlagFileExtension)
                 if flagFileExists
                     then liftIO $ readFlags (pfile ++ leksahFlagFileExtension) packp
-                    else return packp)
+                    else return packp
             return (Just pack)
 
 idePackageFromPath :: C.Sink ToolOutput IDEM () -> FilePath -> IDEM (Maybe IDEPackage)
@@ -923,7 +917,7 @@ idePackageFromPath log filePath = do
                         map (T.unpack . toolline) . takeWhile (/= ToolOutput "") . drop 1 $ dropWhile (/= ToolOutput "") output
                     _ -> []
             paths <- liftIO $ takeMVar mvar
-            sandboxSources <- concat <$> (forM paths $ \ path -> do
+            sandboxSources <- concat <$> forM paths (\ path -> do
                 contents <- liftIO $ getDirectoryContents path
                 return . take 1 . map (path </>) $ filter ((== ".cabal") . takeExtension) contents)
             s <- liftM catMaybes . mapM idePackageFromPath' $ nub sandboxSources

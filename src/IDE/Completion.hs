@@ -55,7 +55,7 @@ cancel = do
     currentState'    <- readIDE currentState
     (_, completion') <- readIDE completion
     case (currentState',completion') of
-        (IsCompleting conn , Just (CompletionWindow window tv st)) -> do
+        (IsCompleting conn , Just (CompletionWindow window tv st)) ->
             cancelCompletion window tv st conn
         _            -> return ()
 
@@ -110,17 +110,17 @@ initCompletion sourceView always = do
                          windowDefaultHeight := height,
                          windowTransientFor  := head windows]
             liftIO $ containerSetBorderWidth window 3
-            paned      <- liftIO $ hPanedNew
+            paned      <- liftIO hPanedNew
             liftIO $ containerAdd window paned
             nameScrolledWindow <- liftIO $ scrolledWindowNew Nothing Nothing
             liftIO $ widgetSetSizeRequest nameScrolledWindow 250 40
-            tree       <- liftIO $ treeViewNew
+            tree       <- liftIO treeViewNew
             liftIO $ containerAdd nameScrolledWindow tree
             store      <- liftIO $ listStoreNew []
             liftIO $ treeViewSetModel tree store
 
             font <- liftIO $ case textviewFont prefs of
-                Just str -> do
+                Just str ->
                     fontDescriptionFromString str
                 Nothing -> do
                     f <- fontDescriptionNew
@@ -128,12 +128,12 @@ initCompletion sourceView always = do
                     return f
             liftIO $ widgetModifyFont tree (Just font)
 
-            column   <- liftIO $ treeViewColumnNew
+            column   <- liftIO treeViewColumnNew
             liftIO $ set column [
                 treeViewColumnSizing   := TreeViewColumnFixed,
                 treeViewColumnMinWidth := 800] -- OSX does not like it if there is no hscroll
             liftIO $ treeViewAppendColumn tree column
-            renderer <- liftIO $ cellRendererTextNew
+            renderer <- liftIO cellRendererTextNew
             liftIO $ treeViewColumnPackStart column renderer True
             liftIO $ cellLayoutSetAttributes column renderer store (\name -> [ cellText := name ])
 
@@ -149,7 +149,7 @@ initCompletion sourceView always = do
 
             treeSelection <- liftIO $ treeViewGetSelection tree
 
-            liftIO $ on treeSelection treeSelectionSelectionChanged $ do
+            liftIO $ on treeSelection treeSelectionSelectionChanged $
                 treeSelectionSelectedForeach treeSelection $ \treePath -> do
                     rows <- treeSelectionGetSelectedRows treeSelection
                     case rows of
@@ -182,67 +182,48 @@ addEventHandling window sourceView tree store isWordChar always = do
         count       <- liftIO $ treeModelIterNChildren model Nothing
         Just column <- liftIO $ treeViewGetColumn tree 0
         case (name, modifier, char) of
-            ("Tab", _, _) -> (do
-                visible <- liftIO $ get tree widgetVisible
-                if visible then (do
-                    liftIDE $ tryToUpdateOptions window tree store sourceView True isWordChar always
-                    return True
-                    )
-                    else return False
-                )
-            ("Return", _, _) -> (do
-                visible <- liftIO $ get tree widgetVisible
-                if visible then (do
-                    maybeRow <- liftIO $ getRow tree
-                    case maybeRow of
-                        Just row -> (do
-                            liftIO $ treeViewRowActivated tree [row] column
-                            return True
-                            )
-                        Nothing -> (do
-                            liftIDE cancel
+            ("Tab", _, _) -> do visible <- liftIO $ get tree widgetVisible
+                                if visible then
+                                  (do liftIDE $
+                                        tryToUpdateOptions window tree store sourceView True isWordChar
+                                          always
+                                      return True)
+                                  else return False
+            ("Return", _, _) -> do visible <- liftIO $ get tree widgetVisible
+                                   if visible then
+                                     (do maybeRow <- liftIO $ getRow tree
+                                         case maybeRow of
+                                             Just row -> do liftIO $ treeViewRowActivated tree [row] column
+                                                            return True
+                                             Nothing -> do liftIDE cancel
+                                                           return False)
+                                     else return False
+            ("Down", _, _) -> do visible <- liftIO $ get tree widgetVisible
+                                 if visible then
+                                   (do maybeRow <- liftIO $ getRow tree
+                                       let newRow = maybe 0 (+ 1) maybeRow
+                                       when (newRow < count) $
+                                         liftIO $
+                                           do treeSelectionSelectPath selection [newRow]
+                                              treeViewScrollToCell tree (Just [newRow]) Nothing Nothing
+                                       return True)
+                                   else return False
+            ("Up", _, _) -> do visible <- liftIO $ get tree widgetVisible
+                               if visible then
+                                 (do maybeRow <- liftIO $ getRow tree
+                                     let newRow = maybe 0 (\ row -> row - 1) maybeRow
+                                     when (newRow >= 0) $
+                                       liftIO $
+                                         do treeSelectionSelectPath selection [newRow]
+                                            treeViewScrollToCell tree (Just [newRow]) Nothing Nothing
+                                     return True)
+                                 else return False
+            (_, _, Just c) | isWordChar c -> return False
+            ("BackSpace", _, _) -> return False
+            (shift, _, _) | (shift == "Shift_L") || (shift == "Shift_R") ->
                             return False
-                            )
-                    )
-                    else return False
-                )
-            ("Down", _, _) -> (do
-                visible <- liftIO $ get tree widgetVisible
-                if visible then (do
-                    maybeRow <- liftIO $ getRow tree
-                    let newRow = maybe 0 (\row -> row + 1) maybeRow
-                    when (newRow < count) $ liftIO $ do
-                        treeSelectionSelectPath selection [newRow]
-                        treeViewScrollToCell tree (Just [newRow]) Nothing Nothing
-                    return True
-                    )
-                    else return False
-                )
-            ("Up", _, _) -> (do
-                visible <- liftIO $ get tree widgetVisible
-                if visible then (do
-                    maybeRow <- liftIO $ getRow tree
-                    let newRow = maybe 0 (\row -> row - 1) maybeRow
-                    when (newRow >= 0) $ liftIO $ do
-                        treeSelectionSelectPath selection [newRow]
-                        treeViewScrollToCell tree (Just [newRow]) Nothing Nothing
-                    return True
-                    )
-                    else return False
-                )
-            (_, _, Just c) | isWordChar c -> (do
-                return False
-                )
-            ("BackSpace", _, _) -> (do
-                return False
-                )
-            (shift, _, _) | (shift == "Shift_L") || (shift == "Shift_R") -> (do
-                return False
-                )
-            _ -> (do
-                liftIDE cancel
-                return False
-                )
+            _ -> do liftIDE cancel
+                    return False
 
     cidsRelease <- TE.onKeyRelease sourceView $ do
         name     <- lift eventKeyName
@@ -253,67 +234,66 @@ addEventHandling window sourceView tree store isWordChar always = do
                 return False
             _ -> return False
 
-    resizeHandler <- liftIO $ newIORef Nothing
+    liftIO $ do
+        resizeHandler <- newIORef Nothing
 
-    idButtonPress <- liftIO $ window `on` buttonPressEvent $ do
-        button     <- eventButton
-        (x, y)     <- eventCoordinates
-        time       <- eventTime
+        idButtonPress <- window `on` buttonPressEvent $ do
+            button     <- eventButton
+            (x, y)     <- eventCoordinates
+            time       <- eventTime
 
 #ifdef MIN_VERSION_gtk3
-        mbDrawWindow <- Gtk.liftIO $ widgetGetWindow window
+            mbDrawWindow <- Gtk.liftIO $ widgetGetWindow window
 #else
-        mbDrawWindow <- Gtk.liftIO $ Just <$> widgetGetDrawWindow window
+            mbDrawWindow <- Gtk.liftIO $ Just <$> widgetGetDrawWindow window
 #endif
-        case mbDrawWindow of
-            Just drawWindow -> do
-                status <- Gtk.liftIO $ pointerGrab
-                    drawWindow
-                    False
-                    [PointerMotionMask, ButtonReleaseMask]
-                    (Nothing:: Maybe DrawWindow)
-                    Nothing
-                    time
-                when (status == GrabSuccess) $ Gtk.liftIO $ do
-                    (width, height) <- windowGetSize window
-                    writeIORef resizeHandler $ Just $ \(newX, newY) -> do
-                        reflectIDE (
-                            setCompletionSize ((width + (floor (newX - x))), (height + (floor (newY - y))))) ideR
-            Nothing -> return ()
+            case mbDrawWindow of
+                Just drawWindow -> do
+                    status <- Gtk.liftIO $ pointerGrab
+                        drawWindow
+                        False
+                        [PointerMotionMask, ButtonReleaseMask]
+                        (Nothing:: Maybe DrawWindow)
+                        Nothing
+                        time
+                    when (status == GrabSuccess) $ Gtk.liftIO $ do
+                        (width, height) <- windowGetSize window
+                        writeIORef resizeHandler $ Just $ \(newX, newY) ->
+                            reflectIDE (
+                                setCompletionSize (width + floor (newX - x), height + floor (newY - y))) ideR
+                Nothing -> return ()
 
-        return True
+            return True
 
-    idMotion <- liftIO $ window `on` motionNotifyEvent $ do
-        mbResize <- Gtk.liftIO $ readIORef resizeHandler
-        case mbResize of
-            Just resize -> eventCoordinates >>= (Gtk.liftIO . resize) >> return True
-            Nothing     -> return False
+        idMotion <- window `on` motionNotifyEvent $ do
+            mbResize <- Gtk.liftIO $ readIORef resizeHandler
+            case mbResize of
+                Just resize -> eventCoordinates >>= (Gtk.liftIO . resize) >> return True
+                Nothing     -> return False
 
-    idButtonRelease <- liftIO $ window `on` buttonReleaseEvent $ do
-        mbResize <- Gtk.liftIO $ readIORef resizeHandler
-        case mbResize of
-            Just resize -> do
-                eventCoordinates >>= (Gtk.liftIO . resize)
-                eventTime >>= (Gtk.liftIO . pointerUngrab)
-                Gtk.liftIO $ writeIORef resizeHandler Nothing
-                return True
-            Nothing     -> return False
+        idButtonRelease <- window `on` buttonReleaseEvent $ do
+            mbResize <- Gtk.liftIO $ readIORef resizeHandler
+            case mbResize of
+                Just resize -> do
+                    eventCoordinates >>= (Gtk.liftIO . resize)
+                    eventTime >>= (Gtk.liftIO . pointerUngrab)
+                    Gtk.liftIO $ writeIORef resizeHandler Nothing
+                    return True
+                Nothing     -> return False
 
-    idSelected <- liftIO $ on tree rowActivated $ \treePath column -> do
-        reflectIDE (withWord store treePath (replaceWordStart sourceView isWordChar)) ideR
-        liftIO $ postGUIAsync $ reflectIDE cancel ideR
+        idSelected <- on tree rowActivated $ \treePath column -> do
+            reflectIDE (withWord store treePath (replaceWordStart sourceView isWordChar)) ideR
+            liftIO $ postGUIAsync $ reflectIDE cancel ideR
 
-    return $ concat [cidsPress, cidsRelease, [ConnectC idButtonPress, ConnectC idMotion, ConnectC idButtonRelease, ConnectC idSelected]]
+        return $ concat [cidsPress, cidsRelease, [ConnectC idButtonPress, ConnectC idMotion, ConnectC idButtonRelease, ConnectC idSelected]]
 
 withWord :: ListStore Text -> TreePath -> (Text -> IDEM ()) -> IDEM ()
-withWord store treePath f = (do
+withWord store treePath f =
    case treePath of
-       [row] -> (do
+       [row] -> do
             value <- liftIO $ listStoreGetValue store row
             f value
-            )
        _ -> return ()
-   )
 
 replaceWordStart :: TextEditor editor => EditorView editor -> (Char -> Bool) -> Text -> IDEM ()
 replaceWordStart sourceView isWordChar name = do
@@ -344,7 +324,7 @@ cancelCompletion window tree store connections = do
 updateOptions :: forall editor. TextEditor editor => Window -> TreeView -> ListStore Text -> EditorView editor -> Connections -> (Char -> Bool) -> Bool -> IDEAction
 updateOptions window tree store sourceView connections isWordChar always = do
     result <- tryToUpdateOptions window tree store sourceView False isWordChar always
-    when (not result) $ cancelCompletion window tree store connections
+    unless result $ cancelCompletion window tree store connections
 
 tryToUpdateOptions :: TextEditor editor => Window -> TreeView -> ListStore Text -> EditorView editor -> Bool -> (Char -> Bool) -> Bool -> IDEM Bool
 tryToUpdateOptions window tree store sourceView selectLCP isWordChar always = do
@@ -385,7 +365,7 @@ longestCommonPrefix a b = case T.commonPrefixes a b of
 
 processResults :: TextEditor editor => Window -> TreeView -> ListStore Text -> EditorView editor -> Text -> [Text]
                -> Bool -> (Char -> Bool) -> Bool -> IDEAction
-processResults window tree store sourceView wordStart options selectLCP isWordChar always = do
+processResults window tree store sourceView wordStart options selectLCP isWordChar always =
     case options of
         [] -> cancel
         _ | not always && (not . null $ drop 200 options) -> cancel
@@ -394,12 +374,9 @@ processResults window tree store sourceView wordStart options selectLCP isWordCh
             (selStart, end) <- getSelectionBounds buffer
             start <- findWordStart selStart isWordChar
             currentWordStart <- getText buffer start end True
-            newWordStart <- do
-                if selectLCP && currentWordStart == wordStart && (not $ null options)
-                    then do
-                        return $ foldl1 longestCommonPrefix options
-                    else
-                        return currentWordStart
+            let newWordStart = if selectLCP && currentWordStart == wordStart && not (null options)
+                                    then foldl1 longestCommonPrefix options
+                                    else currentWordStart
 
             when (T.isPrefixOf wordStart newWordStart) $ do
                 liftIO $ listStoreClear store
@@ -447,7 +424,7 @@ processResults window tree store sourceView wordStart options selectLCP isWordCh
                             panedAdd1 (castToPaned paned) second
                             panedAdd2 (castToPaned paned) first
                             panedSetPosition (castToPaned paned) (wWindow-pos)
-                        when (not $ null newOptions) $ liftIO $ treeViewSetCursor tree [0] Nothing
+                        unless (null newOptions) $ liftIO $ treeViewSetCursor tree [0] Nothing
                         liftIO $ widgetShowAll window
 
             when (newWordStart /= currentWordStart) $
@@ -458,8 +435,6 @@ getRow tree = do
     selection <- treeViewGetSelection tree
     maybeIter <- treeSelectionGetSelected selection
     case maybeIter of
-        Just iter -> (do
-            [row] <- treeModelGetPath model iter
-            return $ Just row
-            )
-        Nothing -> return Nothing
+        Just iter -> do [row] <- treeModelGetPath model iter
+                        return $ Just row
+        Nothing   -> return Nothing

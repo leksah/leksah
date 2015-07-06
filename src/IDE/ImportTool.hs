@@ -23,7 +23,8 @@ module IDE.ImportTool (
 ) where
 
 import IDE.Core.State
-import Data.Maybe (isNothing,isJust)
+import Data.Maybe
+       (mapMaybe, fromMaybe, catMaybes, fromJust, isNothing, isJust)
 import IDE.Metainfo.Provider
        (getWorkspaceInfo, getPackageImportInfo, getIdentifierDescr)
 import Text.PrettyPrint (render)
@@ -37,11 +38,10 @@ import Graphics.UI.Editor.MakeEditor
 import Graphics.UI.Editor.Parameters
        ((<<<-), paraMinSize, emptyParams, Parameter(..), paraMultiSel,
         paraName)
-import Data.Maybe (catMaybes, fromJust)
 import Text.ParserCombinators.Parsec hiding (parse)
 import qualified Text.ParserCombinators.Parsec as Parsec (parse)
 import Graphics.UI.Editor.Simple (staticListEditor)
-import Control.Monad (unless, forM, when)
+import Control.Monad (void, MonadPlus(..), unless, forM, when)
 import Control.Applicative ((<$>))
 import Data.List (stripPrefix, sort, nub, nubBy)
 import IDE.Utils.ServerConnection
@@ -92,15 +92,15 @@ resolveErrors = do
     addPackageResults <- forM errors addPackage
     let notInScopes = [ y | (x,y) <-
             nubBy (\ (p1,_) (p2,_) -> p1 == p2)
-                $ [(x,y) |  (x,y) <- [((parseNotInScope . refDescription) e, e) | e <- errors]],
+                  [(x,y) |  (x,y) <- [((parseNotInScope . refDescription) e, e) | e <- errors]],
                                 isJust x]
     let extensions = [ y | (x,y) <-
             nubBy (\ (p1,_) (p2,_) -> p1 == p2)
-                $ [(x,y) |  (x,y) <- [((parsePerhapsYouIntendedToUse . refDescription) e, e) | e <- errors]],
+                  [(x,y) |  (x,y) <- [((parsePerhapsYouIntendedToUse . refDescription) e, e) | e <- errors]],
                                 length x == 1]
     when (not (or addPackageResults) && null notInScopes && null extensions) $ do
         hlintResolved <- resolveActiveHLint
-        unless hlintResolved $ ideMessage Normal $ "No errors, warnings or selected hlints that can be auto resolved"
+        unless hlintResolved $ ideMessage Normal "No errors, warnings or selected hlints that can be auto resolved"
     addAll buildInBackground notInScopes extensions
   where
     addAll buildInBackground notInScopes extensions = addAllImports notInScopes (True,[])
@@ -124,7 +124,7 @@ addOneImport = do
     currentErr' <- readIDE currentError
     case currentErr' of
         Nothing -> do
-            ideMessage Normal $ "No error selected"
+            ideMessage Normal "No error selected"
             return ()
         Just ref -> addImport ref [] (\ _ -> return ())
 
@@ -148,7 +148,7 @@ addImport error descrList continuation =
                         wslist = getIdentifierDescr (id' nis) symbolTable3 symbolTable4
                     in case (list, wslist) of
                         ([], []) ->  do
-                            ideMessage Normal $ "Identifier " <> (id' nis) <> " not found"
+                            ideMessage Normal $ "Identifier " <> id' nis <> " not found"
                             continuation (True, descrList)
                         ([], list) -> do
                             window' <- getMainWindow
@@ -158,11 +158,11 @@ addImport error descrList continuation =
                                                 else Just (head descrList))
                             case mbDescr of
                                 Nothing     ->  continuation (False, [])
-                                Just descr  ->  if elem descr descrList
+                                Just descr  ->  if descr `elem` descrList
                                                     then continuation (True,descrList)
                                                     else addImport' nis (logRefFullFilePath error)
                                                             descr descrList continuation
-                        (descr : [], _)  ->  addImport' nis (logRefFullFilePath error) descr descrList continuation
+                        ([descr], _)  ->  addImport' nis (logRefFullFilePath error) descr descrList continuation
                         _ ->  do
                             let fullList = list ++ wslist
                             window' <- getMainWindow
@@ -172,20 +172,20 @@ addImport error descrList continuation =
                                                 else Just (head descrList))
                             case mbDescr of
                                 Nothing     ->  continuation (False, [])
-                                Just descr  ->  if elem descr descrList
+                                Just descr  ->  if descr `elem` descrList
                                                     then continuation (True,descrList)
                                                     else addImport' nis (logRefFullFilePath error)
                                                             descr descrList continuation
 
 addPackage :: LogRef -> IDEM Bool
-addPackage error = do
+addPackage error =
     case parseHiddenModule $ refDescription error of
         Nothing -> return False
         Just (HiddenModuleResult mod pack) -> do
             let idePackage = logRefPackage error
-            gpd <- liftIO $ readPackageDescription normal (ipdCabalFile $ idePackage)
+            gpd <- liftIO $ readPackageDescription normal (ipdCabalFile idePackage)
             ideMessage Normal $ "addPackage " <> (T.pack . display $ pkgName pack)
-            liftIO $ writeGenericPackageDescription (ipdCabalFile $ idePackage)
+            liftIO $ writeGenericPackageDescription (ipdCabalFile idePackage)
                 gpd { condLibrary     = addDepToLib pack (condLibrary gpd),
                       condExecutables = map (addDepToExe pack)
                                             (condExecutables gpd),
@@ -217,7 +217,7 @@ addPackage error = do
                 condTreeConstraints = deps <> [dep p],
                 condTreeData        = bm { benchmarkBuildInfo = bi {targetBuildDepends = targetBuildDepends bi <> [dep p]}}})
     -- Empty version is probably only going to happen for ghc-prim
-    dep p | null . versionBranch $ packageVersion p = Dependency (packageName p) (anyVersion)
+    dep p | null . versionBranch $ packageVersion p = Dependency (packageName p) anyVersion
     dep p = Dependency (packageName p) (
         intersectVersionRanges (orLaterVersion (packageVersion p))
                                (earlierVersion (majorAndMinor (packageVersion p))))
@@ -245,7 +245,7 @@ addImport' nis filePath descr descrList continuation =  do
                     Nothing -> Nothing
                     Just pm -> Just (modu pm)
     case (mbBuf,mbMod) of
-        (Just buf,Just mod) -> do
+        (Just buf,Just mod) ->
             inActiveBufContext () $ \ nb _ gtkbuf idebuf n -> do
                 ideMessage Normal $ "addImport " <> T.pack (show $ dscName descr) <> " from "
                     <> T.pack (render $ disp mod)
@@ -254,13 +254,13 @@ addImport' nis filePath descr descrList continuation =  do
                          ServerHeader (Left imports) ->
                             case filter (qualifyAsImportStatement mod) imports of
                                 []     ->   let newLine  =  prettyPrint (newImpDecl mod) <> "\n"
-                                                lastLine = foldr max 0 (map (locationELine . importLoc) imports)
+                                                lastLine = foldr (max . locationELine . importLoc) 0 imports
                                             in do
                                                 i1 <- getIterAtLine gtkbuf lastLine
                                                 editInsertCode gtkbuf i1 newLine
                                                 fileSave False
                                                 setModified gtkbuf True
-                                                continuation (True,(descr : descrList))
+                                                continuation (True, descr : descrList)
                                 l@(impDecl:_) ->
                                                 let newDecl     =  addToDecl impDecl
                                                     newLine     =  prettyPrint newDecl <> "\n"
@@ -269,12 +269,12 @@ addImport' nis filePath descr descrList continuation =  do
                                                     lineEnd     =  locationELine myLoc
                                                 in do
                                                     i1 <- getIterAtLine gtkbuf (lineStart - 1)
-                                                    i2 <- getIterAtLine gtkbuf (lineEnd)
+                                                    i2 <- getIterAtLine gtkbuf lineEnd
                                                     delete gtkbuf i1 i2
                                                     editInsertCode gtkbuf i1 newLine
                                                     fileSave False
                                                     setModified gtkbuf True
-                                                    continuation (True,(descr : descrList))
+                                                    continuation (True, descr : descrList)
                          ServerHeader (Right lastLine) ->
                                             let newLine  =  prettyPrint (newImpDecl mod) <> "\n"
                                             in do
@@ -282,13 +282,13 @@ addImport' nis filePath descr descrList continuation =  do
                                                 editInsertCode gtkbuf i1 newLine
                                                 fileSave False
                                                 setModified gtkbuf True
-                                                continuation (True,(descr : descrList))
+                                                continuation (True, descr : descrList)
                          ServerFailed string -> do
                             ideMessage Normal ("Can't parse module header " <> T.pack filePath <>
                                     " failed with: " <> string)
                             continuation (False,[])
                          _ ->    do
-                            ideMessage Normal ("ImportTool>>addImport: Impossible server answer")
+                            ideMessage Normal "ImportTool>>addImport: Impossible server answer"
                             continuation (False,[])
         _  -> return ()
     where
@@ -308,10 +308,8 @@ addImport' nis filePath descr descrList continuation =  do
                         importQualified = isJust (mbQual' nis),
                         importSrc       = False,
                         importPkg       = Nothing,
-                        importAs        = if isJust (mbQual' nis)
-                                            then Just (fromJust (mbQual' nis))
-                                            else Nothing,
-                        importSpecs = (Just (ImportSpecList False [newImportSpec]))}
+                        importAs        = mplus (mbQual' nis) Nothing,
+                        importSpecs = Just (ImportSpecList False [newImportSpec])}
         newImportSpec :: ImportSpec
         newImportSpec =  getRealId descr (id' nis)
         addToDecl :: ImportDecl -> ImportDecl
@@ -333,9 +331,7 @@ getRealId descr id = case descr of
         getReal _ = IVar id
 
 qualString ::  ImportDecl -> Text
-qualString impDecl = case importAs impDecl of
-                        Nothing -> ""
-                        Just modName -> modName
+qualString impDecl = fromMaybe "" (importAs impDecl)
 
 -- | The import data
 
@@ -356,47 +352,49 @@ identifier = T.pack <$> P.identifier lexer
 dot        = P.dot lexer
 operator   = T.pack <$> P.operator lexer
 
-parseNotInScope :: Text -> (Maybe NotInScopeParseResult)
+parseNotInScope :: Text -> Maybe NotInScopeParseResult
 parseNotInScope str =
     case Parsec.parse scopeParser "" $ T.unpack str of
         Left e   -> Nothing
         Right r  -> Just r
 
 scopeParser :: CharParser () NotInScopeParseResult
-scopeParser = do
-    whiteSpace
-    symbol "Not in scope:"
-    isSub   <- optionMaybe (try (choice [symbol "type constructor or class"
-                    , symbol "data constructor"]))
-    (   (do
-            char '`'
-            mbQual <- optionMaybe (try (do
-                q  <- lexeme conid
-                dot
-                return q))
-            id     <- optionMaybe (try identifier)
-            case id of
-                Just id -> return (NotInScopeParseResult mbQual
-                                (T.take (T.length id - 1) id)  (isJust isSub) False)
-                Nothing -> do
-                    op <-   operator
-                    char '\''
-                    return (NotInScopeParseResult mbQual op (isJust isSub) True))
-       <|> (do
-            choice [char '‛', char '‘']
-            mbQual <- optionMaybe (try (do
-                q  <- lexeme conid
-                dot
-                return q))
-            id     <- optionMaybe (try identifier)
-            result <- case id of
-                Just id -> return (NotInScopeParseResult mbQual
-                                id  (isJust isSub) False)
-                Nothing -> do
-                    op <-   operator
-                    return (NotInScopeParseResult mbQual op (isJust isSub) True)
-            char '’'
-            return result))
+scopeParser = do whiteSpace
+                 symbol "Not in scope:"
+                 isSub <- optionMaybe
+                            (try
+                               (choice
+                                  [symbol "type constructor or class", symbol "data constructor"]))
+                 (do char '`'
+                     mbQual <- optionMaybe
+                                 (try
+                                    (do q <- lexeme conid
+                                        dot
+                                        return q))
+                     id <- optionMaybe (try identifier)
+                     case id of
+                         Just id -> return
+                                      (NotInScopeParseResult mbQual (T.take (T.length id - 1) id)
+                                         (isJust isSub)
+                                         False)
+                         Nothing -> do op <- operator
+                                       char '\''
+                                       return (NotInScopeParseResult mbQual op (isJust isSub) True))
+                   <|>
+                   (do choice [char '\8219', char '\8216']
+                       mbQual <- optionMaybe
+                                   (try
+                                      (do q <- lexeme conid
+                                          dot
+                                          return q))
+                       id <- optionMaybe (try identifier)
+                       result <- case id of
+                                     Just id -> return
+                                                  (NotInScopeParseResult mbQual id (isJust isSub) False)
+                                     Nothing -> do op <- operator
+                                                   return (NotInScopeParseResult mbQual op (isJust isSub) True)
+                       char '\8217'
+                       return result)
     <?> "scopeParser"
 
 conid  = do
@@ -415,9 +413,9 @@ moduleFields list ident =
                 $ paraMultiSel <<<- ParaMultiSel False
                     $ paraMinSize <<<- ParaMinSize (300,400)
                         $ emptyParams)
-            (\ a -> a)
-            (\ a b -> a)
-            (staticListEditor ( list) id)
+            id
+            const
+            (staticListEditor list id)
 
 selectModuleDialog :: Window -> [Descr] -> Text -> Maybe Text -> Maybe Descr -> IO (Maybe Descr)
 selectModuleDialog parentWindow list id mbQual mbDescr =
@@ -432,7 +430,7 @@ selectModuleDialog parentWindow list id mbQual mbDescr =
                                                             Just pm -> Just ((T.pack . render . disp . modu) pm)
             let realSelectionString =  case mbSelectedString of
                                             Nothing -> head selectionList
-                                            Just str -> if elem str selectionList
+                                            Just str -> if str `elem` selectionList
                                                             then str
                                                             else head selectionList
             let qualId             =  case mbQual of
@@ -455,7 +453,7 @@ selectModuleDialog parentWindow list id mbQual mbDescr =
             set okButton [widgetCanDefault := True]
             widgetGrabDefault okButton
             resp <- dialogRun dia
-            value                      <- ext (T.empty)
+            value                      <- ext T.empty
             widgetHide dia
             widgetDestroy dia
             --find
@@ -471,7 +469,7 @@ data HiddenModuleResult = HiddenModuleResult {
     ,   missingPackage    :: PackageId}
     deriving (Eq, Show)
 
-parseHiddenModule :: Text -> (Maybe HiddenModuleResult)
+parseHiddenModule :: Text -> Maybe HiddenModuleResult
 parseHiddenModule str =
     case Parsec.parse hiddenModuleParser "" $ T.unpack str of
         Left e             -> Nothing
@@ -484,16 +482,16 @@ hiddenModuleParser :: CharParser () (Text, Text)
 hiddenModuleParser = do
     whiteSpace
     symbol "Could not find module "
-    (char '`' <|> char '‛' <|> char '‘')
+    char '`' <|> char '‛' <|> char '‘'
     mod    <- T.pack <$> many (noneOf "'’")
     many (noneOf "\n")
     symbol "\n"
     whiteSpace
     symbol "It is a member of the hidden package "
-    (char '`' <|> char '‛' <|> char '‘')
+    char '`' <|> char '‛' <|> char '‘'
     pack   <- T.pack <$> many (noneOf "'’@")
     many (noneOf "'’")
-    (char '\'' <|> char '’')
+    char '\'' <|> char '’'
     symbol ".\n"
     many anyChar
     return (mod, pack)
@@ -512,7 +510,7 @@ parsePerhapsYouIntendedToUse =
     concatMap (parseLine . T.dropWhile (==' ')) . T.lines
   where
     parseLine :: Text -> [KnownExtension]
-    parseLine line = take 1 . catMaybes . map readMaybe $ catMaybes [
+    parseLine line = take 1 . mapMaybe readMaybe $ catMaybes [
         T.stripPrefix "Perhaps you intended to use -X" line
       , T.stripPrefix "Perhaps you intended to use " line
       , T.takeWhile (/=' ') <$> T.stripPrefix "Use -X" line
@@ -549,12 +547,11 @@ addResolveMenuItems ideR theMenu logRef = do
         addFixMenuItem (__"Add Import")  $ addImport logRef [] (\ _ -> return ())
     when (isJust $ parseHiddenModule msg) $
         addFixMenuItem (__"Add Package") $ addPackage logRef
-    when ((length $ parsePerhapsYouIntendedToUse msg) == 1) $
+    when (length (parsePerhapsYouIntendedToUse msg) == 1) $
         addFixMenuItem (__"Add Extension") $ addExtension logRef (\ _ -> return ())
   where
     addFixMenuItem name fix = do
         item <- menuItemNewWithLabel name
-        item `on` menuItemActivate $ do
-            reflectIDE (fix >> return ()) ideR
+        item `on` menuItemActivate $ reflectIDE (void fix) ideR
         menuShellAppend theMenu item
 

@@ -1,4 +1,4 @@
-{-# LANGUAGE CPP, ScopedTypeVariables, OverloadedStrings #-}
+{-# LANGUAGE CPP, ScopedTypeVariables, OverloadedStrings, LambdaCase #-}
 -----------------------------------------------------------------------------
 --
 -- Module      :  IDE.Leksah
@@ -75,7 +75,7 @@ import System.FilePath (dropExtension, splitExtension, (</>))
 import qualified Data.Conduit as C
 import qualified Data.Conduit.List as CL
 import Data.Conduit (($$))
-import Control.Monad (when, unless, liftM)
+import Control.Monad (void, when, unless, liftM)
 import Control.Monad.IO.Class (MonadIO(..))
 import Control.Applicative ((<$>))
 import qualified Data.Text as T (pack, unpack, stripPrefix, unlines)
@@ -94,19 +94,19 @@ data Flag =  VersionF | SessionN Text | EmptySession | DefaultSession | Help | V
        deriving (Show,Eq)
 
 options :: [OptDescr Flag]
-options =   [Option ['e'] ["emptySession"] (NoArg EmptySession)
+options =   [Option "e" ["emptySession"] (NoArg EmptySession)
                 "Start with empty session"
-         ,   Option ['d'] ["defaultSession"] (NoArg DefaultSession)
+         ,   Option "d" ["defaultSession"] (NoArg DefaultSession)
                 "Start with default session (can be used together with a source file)"
-         ,   Option ['l'] ["loadSession"] (ReqArg (SessionN . T.pack) "NAME")
+         ,   Option "l" ["loadSession"] (ReqArg (SessionN . T.pack) "NAME")
                 "Load session"
 
-         ,   Option ['h'] ["help"] (NoArg Help)
+         ,   Option "h" ["help"] (NoArg Help)
                 "Display command line options"
-         ,   Option ['v'] ["version"] (NoArg VersionF)
+         ,   Option "v" ["version"] (NoArg VersionF)
                 "Show the version number of ide"
 
-         ,   Option ['e'] ["verbosity"] (ReqArg (Verbosity . T.pack) "Verbosity")
+         ,   Option "e" ["verbosity"] (ReqArg (Verbosity . T.pack) "Verbosity")
              "One of DEBUG, INFO, NOTICE, WARNING, ERROR, CRITICAL, ALERT, EMERGENCY"]
 
 
@@ -142,14 +142,14 @@ leksah yiConfig = leksahDriver (yiConfig, Nothing)
 leksah = realMain
 #endif
 
-realMain yiConfig = do
+realMain yiConfig =
   withSocketsDo $ handleExceptions $ do
     dataDir         <- getDataDir
     args            <-  getArgs
 
     (o,files)       <-  ideOpts $ map T.pack args
     isFirstStart    <-  liftM not $ hasSavedConfigFile standardPreferencesFilename
-    let sessions      =   catMaybes $ map (\x -> case x of
+    let sessions      =   mapMaybe (\case
                                         SessionN s -> Just s
                                         _          -> Nothing) o
 
@@ -175,32 +175,31 @@ realMain yiConfig = do
                                         then standardSessionFilename
                                         else emptySessionFilename
 
-    sessionFP    <-  if  elem EmptySession o
+    sessionFP    <-  if  EmptySession `elem` o
                                 then getConfigFilePathForLoad
                                                         emptySessionFilename Nothing dataDir
-                                else if elem DefaultSession o
+                                else if DefaultSession `elem` o
                                         then getConfigFilePathForLoad
                                                         standardSessionFilename Nothing dataDir
                                         else case mbWSessionFP of
                                                 Just fp -> return fp
                                                 Nothing -> getConfigFilePathForLoad
                                                                     ssession Nothing dataDir
-    let verbosity'      =  catMaybes $
-                                map (\x -> case x of
-                                    Verbosity s -> Just s
-                                    _           -> Nothing) o
+    let verbosity'      =  mapMaybe (\case
+                                        Verbosity s -> Just s
+                                        _           -> Nothing) o
     let verbosity       =  case verbosity' of
                                [] -> INFO
                                h:_ -> read $ T.unpack h
-    updateGlobalLogger rootLoggerName (\ l -> setLevel verbosity l)
-    when (elem VersionF o)
+    updateGlobalLogger rootLoggerName (setLevel verbosity)
+    when (VersionF `elem` o)
         (sysMessage Normal $ "Leksah the Haskell IDE, version " <> T.pack (showVersion version))
-    when (elem Help o)
+    when (Help `elem` o)
         (sysMessage Normal $ "Leksah the Haskell IDE " <> T.pack (usageInfo header options))
 
     prefsPath       <- getConfigFilePathForLoad standardPreferencesFilename Nothing dataDir
     prefs           <- readPrefs prefsPath
-    when (not (elem VersionF o) && not (elem Help o))
+    when (notElem VersionF o && notElem Help o)
         (startGUI yiConfig sessionFP mbWorkspaceFP sourceFPs  prefs isFirstStart)
 
 handleExceptions inner =
@@ -213,7 +212,7 @@ handleExceptions inner =
 -- | Start the GUI
 
 startGUI :: Yi.Config -> FilePath -> Maybe FilePath -> [FilePath] -> Prefs -> Bool -> IO ()
-startGUI yiConfig sessionFP mbWorkspaceFP sourceFPs iprefs isFirstStart = do
+startGUI yiConfig sessionFP mbWorkspaceFP sourceFPs iprefs isFirstStart =
   Yi.start yiConfig $ \yiControl -> do
     st          <-  unsafeInitGUIForThreadedRTS
     when rtsSupportsBoundThreads
@@ -251,7 +250,7 @@ startGUI yiConfig sessionFP mbWorkspaceFP sourceFPs iprefs isFirstStart = do
                                             prefs <- readPrefs prefsPath
                                             return $ Just prefs
     timeoutRemove timeout
-    postGUIAsync $ do
+    postGUIAsync $
         case mbStartupPrefs of
             Nothing           -> return ()
             Just startupPrefs -> startMainWindow yiControl sessionFP mbWorkspaceFP sourceFPs
@@ -268,9 +267,7 @@ mainLoopThreaded onIdle = loop
     where
         loop = do
             quit <- loopTillIdle
-            if quit
-                then return ()
-                else do
+            unless quit $ do
                     active <- newEmptyMVar
                     mvarSentIdleMessage <- newEmptyMVar
                     idleThread <- forkIO $ do
@@ -281,17 +278,13 @@ mainLoopThreaded onIdle = loop
                             postGUIAsync onIdle
                     quit <- mainIteration
                     putMVar active ()
-                    if quit
-                        then return ()
-                        else do
+                    unless quit $ do
                             -- If an idle message was sent then wait again
                             sentIdleMessage <- isJust <$> tryTakeMVar mvarSentIdleMessage
                             quit <- if sentIdleMessage
                                 then mainIteration
                                 else return False
-                            if quit
-                                then return ()
-                                else loop
+                            unless quit loop
         loopTillIdle = do
             pending <- eventsPending
             if pending == 0
@@ -316,14 +309,11 @@ mainLoopSingleThread onIdle = eventsPending >>= loop False 50
                         return quit
                     else
                         loopn (n+2)
-        if quit
-            then return ()
-            else do
+        unless quit $ do
                 yield
                 pending <- eventsPending
                 if pending > 0
-                    then do
-                        loop False 50 pending
+                    then loop False 50 pending
                     else do
                         threadDelay delay
                         eventsPending >>= loop isIdle (if n > 0
@@ -365,7 +355,7 @@ startMainWindow yiControl sessionFP mbWorkspaceFP sourceFPs startupPrefs isFirst
             ,   panes         =   Map.empty
             ,   activePane    =   Nothing
             ,   paneMap       =   Map.empty
-            ,   layout        =   (TerminalP Map.empty Nothing (-1) Nothing Nothing)
+            ,   layout        =   TerminalP Map.empty Nothing (-1) Nothing Nothing
             ,   panePathFromNB =  Map.empty
             }
 
@@ -424,7 +414,7 @@ startMainWindow yiControl sessionFP mbWorkspaceFP sourceFPs startupPrefs isFirst
         registerLeksahEvents
         pair <- recoverSession sessionFP
         workspaceOpenThis False  mbWorkspaceFP
-        mapM fileOpenThis sourceFPs
+        mapM_ fileOpenThis sourceFPs
         wins <- getWindows
         mapM_ instrumentSecWindow (tail wins)
         return pair
@@ -455,9 +445,9 @@ startMainWindow yiControl sessionFP mbWorkspaceFP sourceFPs startupPrefs isFirst
         createDirectoryIfMissing True $ welcomePath</>"src"
         createDirectoryIfMissing True $ welcomePath</>"test"
         copyFile (welcomeSource</>"Setup.lhs")            (welcomePath</>"Setup.lhs")
-        copyFile (welcomeSource</>"leksah-welcome.cabal") (welcomeCabal)
+        copyFile (welcomeSource</>"leksah-welcome.cabal") welcomeCabal
         copyFile (welcomeSource</>"LICENSE")              (welcomePath</>"LICENSE")
-        copyFile (welcomeSource</>"src"</>"Main.hs")      (welcomeMain)
+        copyFile (welcomeSource</>"src"</>"Main.hs")      welcomeMain
         copyFile (welcomeSource</>"test"</>"Main.hs")     (welcomePath</>"test"</>"Main.hs")
         defaultWorkspace <- liftIO $ (</> "leksah.lkshw") <$> getHomeDirectory
         defaultExists <- liftIO $ doesFileExist defaultWorkspace
@@ -465,14 +455,14 @@ startMainWindow yiControl sessionFP mbWorkspaceFP sourceFPs startupPrefs isFirst
             if defaultExists
                 then workspaceOpenThis False (Just defaultWorkspace)
                 else workspaceNewHere defaultWorkspace
-            workspaceTryQuiet $ workspaceAddPackage' welcomeCabal >> return ()
+            workspaceTryQuiet $ void (workspaceAddPackage' welcomeCabal)
             fileOpenThis welcomeMain) ideR
     reflectIDE (initInfo (modifyIDE_ (\ide -> ide{currentState = IsRunning}))) ideR
     timeoutRemove timeout
     postGUIAsync . mainLoop $
         reflectIDE (do
             currentPrefs <- readIDE prefs
-            when (backgroundBuild currentPrefs) $ backgroundMake) ideR
+            when (backgroundBuild currentPrefs) backgroundMake) ideR
 --    timeoutAddFull (do
 --        reflectIDE (do
 --            currentPrefs <- readIDE prefs
@@ -501,7 +491,7 @@ fDescription configPath = VFD emptyParams [
             (paraName <<<- ParaName "URL from which to download prebuilt metadata" $ emptyParams)
             retrieveURL
             (\b a -> a{retrieveURL = b})
-            (textEditor (\ _ -> True) True)
+            (textEditor (const True) True)
     ,   mkField
             (paraName <<<- ParaName "Strategy for downloading prebuilt metadata" $ emptyParams)
             retrieveStrategy
@@ -555,12 +545,12 @@ firstStart prefs = do
                     writePrefs fp newPrefs
                     fp2  <-  getConfigFilePathForSave strippedPreferencesFilename
                     SP.writeStrippedPrefs fp2
-                            (SP.Prefs {SP.sourceDirectories = sourceDirectories newPrefs,
+                            SP.Prefs {SP.sourceDirectories = sourceDirectories newPrefs,
                                        SP.unpackDirectory   = unpackDirectory newPrefs,
                                        SP.retrieveURL       = retrieveURL newPrefs,
                                        SP.retrieveStrategy  = retrieveStrategy newPrefs,
                                        SP.serverPort        = serverPort newPrefs,
-                                       SP.endWithLastConn   = endWithLastConn newPrefs})
+                                       SP.endWithLastConn   = endWithLastConn newPrefs}
                     firstBuild newPrefs
                     return True
         _ -> do

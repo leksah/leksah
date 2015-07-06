@@ -71,7 +71,7 @@ import qualified IDE.StrippedPrefs as SP
 import Control.Exception(SomeException,catch)
 import Prelude hiding(catch)
 import Data.List (isSuffixOf, sortBy)
-import Data.Maybe (catMaybes, fromMaybe, isJust)
+import Data.Maybe (mapMaybe, catMaybes, fromMaybe, isJust)
 import Graphics.UI.Gtk.Windows.MessageDialog
        (ButtonsType(..), MessageType(..))
 import System.Glib.Attributes (set)
@@ -627,7 +627,7 @@ prefsDescription configDir packages = NFDPP [
                         $ paraMinSize <<<- ParaMinSize (-1,200)
                             $ emptyParams)
             (PP.text . show . map display)
-            (fmap (catMaybes . map simpleParse) readParser)
+            (fmap (mapMaybe simpleParse) readParser)
             packageBlacklist
             (\b a -> a{packageBlacklist = b})
             (dependenciesEditor packages)

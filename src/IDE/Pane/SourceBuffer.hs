@@ -129,8 +129,6 @@ import Graphics.UI.Gtk.General.Enums
 import Graphics.UI.Gtk.Windows.MessageDialog
        (ButtonsType(..), MessageType(..))
 import Graphics.UI.Gtk.Windows.Dialog (ResponseId(..))
-import Graphics.UI.Gtk
-       (eventModifier, eventKeyName, eventKeyVal)
 import Graphics.UI.Gtk.Selectors.FileChooser
        (FileChooserAction(..))
 import System.Glib.Attributes (AttrOp(..), set)
@@ -163,6 +161,8 @@ import qualified Language.Haskell.Exts.SrcLoc as HSE
 import Language.Preprocessor.Cpphs as Cpphs
        (runCpphsReturningSymTab, defaultCpphsOptions, CpphsOptions(..))
 import qualified System.IO.Strict as S (readFile)
+import Graphics.UI.Gtk.Gdk.EventM
+       (eventModifier, eventKeyName, eventKeyVal)
 
 allBuffers :: MonadIDE m => m [IDEBuffer]
 allBuffers = liftIDE getPanes
@@ -264,7 +264,7 @@ selectSourceBuf fp = do
                     liftIO $ debugM "lekash" "selectSourceBuf newTextBuffer returned"
                     return nbuf
                 else do
-                    ideMessage Normal ((__ "File path not found ") <> T.pack fpc)
+                    ideMessage Normal (__ "File path not found " <> T.pack fpc)
                     return Nothing
 
 goToDefinition :: Descr -> IDEAction
@@ -279,15 +279,15 @@ goToDefinition idDescr  = do
 
     liftIO . debugM "leksah" $ show (mbPackagePath, dscMbLocation idDescr, mbSourcePath)
     case (mbPackagePath, dscMbLocation idDescr, mbSourcePath) of
-        (Just packagePath, Just loc, _) -> goToSourceDefinition (dropFileName packagePath) loc >> return ()
-        (_, Just loc, Just sourcePath)  -> goToSourceDefinition' sourcePath loc >> return ()
-        (_, _, Just sp) -> selectSourceBuf sp >> return ()
+        (Just packagePath, Just loc, _) -> void (goToSourceDefinition (dropFileName packagePath) loc)
+        (_, Just loc, Just sourcePath)  -> void (goToSourceDefinition' sourcePath loc)
+        (_, _, Just sp) -> void (selectSourceBuf sp)
         _  -> return ()
   where
     packagePathFromScope :: GenScope -> Maybe FilePath
     packagePathFromScope (GenScopeC (PackScope l _)) =
         case dscMbModu idDescr of
-            Just mod -> case (pack mod) `Map.lookup` l of
+            Just mod -> case pack mod `Map.lookup` l of
                             Just pack -> pdMbSourcePath pack
                             Nothing   -> Nothing
             Nothing -> Nothing
@@ -295,7 +295,7 @@ goToDefinition idDescr  = do
     sourcePathFromScope :: GenScope -> Maybe FilePath
     sourcePathFromScope (GenScopeC (PackScope l _)) =
         case dscMbModu idDescr of
-            Just mod -> case (pack mod) `Map.lookup` l of
+            Just mod -> case pack mod `Map.lookup` l of
                             Just pack ->
                                 case filter (\md -> mdModuleId md == fromJust (dscMbModu idDescr))
                                                     (pdModules pack) of
@@ -305,14 +305,14 @@ goToDefinition idDescr  = do
             Nothing -> Nothing
 
 goToSourceDefinition :: FilePath -> Location -> IDEM (Maybe IDEBuffer)
-goToSourceDefinition packagePath loc = do
+goToSourceDefinition packagePath loc =
     goToSourceDefinition' (packagePath </> locationFile loc) loc
 
 goToSourceDefinition' :: FilePath -> Location -> IDEM (Maybe IDEBuffer)
 goToSourceDefinition' sourcePath Location{..} = do
     mbBuf     <- selectSourceBuf sourcePath
     case mbBuf of
-        Just buf -> do
+        Just buf ->
             inActiveBufContext () $ \_ sv ebuf _ _ -> do
                 liftIO $ debugM "lekash" "goToSourceDefinition calculating range"
                 lines           <-  getLineCount ebuf
@@ -359,10 +359,10 @@ replaceHLintSource (changed, delta) (from, Idea{ideaSpan = ideaSpan, ideaTo = Ju
                         (_,e2) <- positionToCandy candy' ebuf (srcSpanEndLine + delta, srcSpanEndColumn - 1)
                         return (srcSpanStartLine-1 + delta,e1,srcSpanEndLine-1 + delta,e2)
                     else return (srcSpanStartLine-1 + delta,srcSpanStartColumn-1,srcSpanEndLine-1 + delta,srcSpanEndColumn-1)
-            i1  <- getIterAtLine ebuf (lineS')
-            i1' <- forwardCharsC i1 (columnS')
-            i2  <- getIterAtLine ebuf (lineE')
-            i2' <- forwardCharsC i2 (columnE')
+            i1  <- getIterAtLine ebuf lineS'
+            i1' <- forwardCharsC i1 columnS'
+            i2  <- getIterAtLine ebuf lineE'
+            i2' <- forwardCharsC i2 columnE'
             candy <- readIDE candy
             check <- getCandylessPart candy ebuf i1' i2'
             if check == from
@@ -371,7 +371,7 @@ replaceHLintSource (changed, delta) (from, Idea{ideaSpan = ideaSpan, ideaTo = Ju
                     delete ebuf i1' i2'
                     editInsertCode ebuf i1' realString
                     endUserAction ebuf
-                    return (True, delta + (length $ T.lines to) - (length $ T.lines from))
+                    return (True, delta + length (T.lines to) - length (T.lines from))
                 else return (changed, delta)
         _ -> return (changed, delta)
 replaceHLintSource x _ = return x
@@ -448,7 +448,7 @@ markRefInSourceBuf buf logRef scrollTo = do
                     then positionToCandy candy' ebuf end'
                     else return end'
         lines   <-  getLineCount ebuf
-        iterTmp <-  getIterAtLine ebuf (max 0 (min (lines-1) ((fst start)-1)))
+        iterTmp <-  getIterAtLine ebuf (max 0 (min (lines-1) (fst start - 1)))
         chars   <-  getCharsInLine iterTmp
         iter    <- atLineOffset iterTmp (max 0 (min (chars-1) (snd start)))
 
@@ -459,7 +459,7 @@ markRefInSourceBuf buf logRef scrollTo = do
                     Nothing -> atEnd iter
                     Just we -> return we
             else do
-                newTmp  <- getIterAtLine ebuf (max 0 (min (lines-1) ((fst end)-1)))
+                newTmp  <- getIterAtLine ebuf (max 0 (min (lines-1) (fst end - 1)))
                 chars   <- getCharsInLine newTmp
                 new     <- atLineOffset newTmp (max 0 (min (chars-1) (snd end)))
                 forwardCharC new
@@ -488,11 +488,11 @@ markRefInSourceBuf buf logRef scrollTo = do
 -- | Tries to create a new text buffer, fails when the given filepath
 -- does not exist or when it is not a text file.
 newTextBuffer :: PanePath -> Text -> Maybe FilePath -> IDEM (Maybe IDEBuffer)
-newTextBuffer panePath bn mbfn = do
+newTextBuffer panePath bn mbfn =
      case mbfn of
             Nothing -> buildPane "" Nothing
             Just fn ->
-                do eErrorContents <- liftIO $ do
+                do eErrorContents <- liftIO $
                                          catch (Right <$> T.readFile fn)
                                                (\e -> return $ Left (show (e :: IOError)))
                    case eErrorContents of
@@ -533,7 +533,7 @@ builder' :: Bool ->
     Gtk.Notebook ->
     Gtk.Window ->
     IDEM (Maybe IDEBuffer,Connections)
-builder' bs mbfn ind bn rbn ct prefs fileContents modTime pp nb windows = do
+builder' bs mbfn ind bn rbn ct prefs fileContents modTime pp nb windows =
     -- display a file
     case textEditorType prefs of
         "GtkSourceView" -> newGtkBuffer mbfn fileContents >>= makeBuffer modTime
@@ -566,7 +566,7 @@ builder' bs mbfn ind bn rbn ct prefs fileContents modTime pp nb windows = do
                                 (False,_) -> Nothing
                                 (True,v) -> Just v
         setIndentWidth sv $ tabWidth prefs
-        setTabWidth sv $ 8 -- GHC treats tabs as 8 we should display them that way
+        setTabWidth sv 8 -- GHC treats tabs as 8 we should display them that way
         drawTabs sv
         updateStyle buffer
 
@@ -587,11 +587,9 @@ builder' bs mbfn ind bn rbn ct prefs fileContents modTime pp nb windows = do
             mode = mod}
         -- events
         ids1 <- sv `afterFocusIn` makeActive buf
-        ids2 <- onCompletion sv (do
-                Completion.complete sv False) $ do
-                    Completion.cancel
+        ids2 <- onCompletion sv (Completion.complete sv False) Completion.cancel
         ids3 <- onButtonPress sv $ do
-                click <- lift $ Gtk.eventClick
+                click <- lift Gtk.eventClick
                 liftIDE $
                     case click of
                         Gtk.DoubleClick -> do
@@ -602,7 +600,7 @@ builder' bs mbfn ind bn rbn ct prefs fileContents modTime pp nb windows = do
 
         (GetTextPopup mbTpm) <- triggerEvent ideR (GetTextPopup Nothing)
         ids4 <- case mbTpm of
-            Just tpm    -> sv `onPopulatePopup` \menu -> liftIO $ (tpm ideR menu)
+            Just tpm    -> sv `onPopulatePopup` \menu -> liftIO $ tpm ideR menu
             Nothing     -> do
                 sysMessage Normal "SourceBuffer>> no text popup"
                 return []
@@ -616,8 +614,7 @@ builder' bs mbfn ind bn rbn ct prefs fileContents modTime pp nb windows = do
                     tagTable <- getTagTable ebuf
                     mbTag <- lookupTag tagTable tagName
                     case mbTag of
-                        Just existingTag -> do
-                            removeTagByName ebuf tagName
+                        Just existingTag -> removeTagByName ebuf tagName
                         Nothing -> do
                             tag <- newTag tagTable tagName
                             background tag $ matchBackground prefs
@@ -628,13 +625,11 @@ builder' bs mbfn ind bn rbn ct prefs fileContents modTime pp nb windows = do
 
                             sTxt      <- getCandylessPart candy' ebuf si1 si2
                             let strippedSTxt = T.strip sTxt
-                            if T.null strippedSTxt
-                                then return ()
-                                else do
-                                    bi1 <- getStartIter ebuf
-                                    bi2 <- getEndIter ebuf
-                                    forwardApplying bi1 strippedSTxt (Just si1) tagName ebuf
-                                    forwardApplying si2 strippedSTxt (Just bi2) tagName ebuf
+                            unless (T.null strippedSTxt) $
+                              do bi1 <- getStartIter ebuf
+                                 bi2 <- getEndIter ebuf
+                                 forwardApplying bi1 strippedSTxt (Just si1) tagName ebuf
+                                 forwardApplying si2 strippedSTxt (Just bi2) tagName ebuf
             return False
 
         ids6 <- onKeyPress sv $ do
@@ -684,7 +679,7 @@ builder' bs mbfn ind bn rbn ct prefs fileContents modTime pp nb windows = do
                         slice <- getSlice buffer start end True
                         triggerEventIDE (SelectInfo slice True)
                         return True
-                    _ -> do
+                    _ ->
                         -- liftIO $ print ("sourcebuffer key:",name,modifier,keyval)
                         return False
         ids7 <- do
@@ -692,7 +687,7 @@ builder' bs mbfn ind bn rbn ct prefs fileContents modTime pp nb windows = do
             sw <- getScrolledWindow sv
             createHyperLinkSupport sv sw (\ctrl shift iter -> do
                 (beg, en) <- getIdentifierUnderCursorFromIter (iter, iter)
-                return (beg, if ctrl then en else beg)) (\_ shift' slice -> do
+                return (beg, if ctrl then en else beg)) (\_ shift' slice ->
                             unless (T.null slice) $ do
                                 -- liftIO$ print ("slice",slice)
                                 triggerEventIDE (SelectInfo slice shift')
@@ -713,9 +708,8 @@ builder' bs mbfn ind bn rbn ct prefs fileContents modTime pp nb windows = do
             Just (start, end) -> do
                 startsWord <- startsWord start
                 endsWord <- endsWord end
-                if (startsWord && endsWord)
-                    then applyTagByName ebuf tagName start end
-                    else return ()
+                when (startsWord && endsWord) $
+                    applyTagByName ebuf tagName start end
                 forwardApplying end txt mbTi tagName ebuf
             Nothing -> return()
 
@@ -725,7 +719,7 @@ isRangeStart sel = do                                   -- if char and previous 
     currentChar <- getChar sel
     let mbStartCharCat = getCharacterCategory currentChar
     mbPrevCharCat <- getCharacterCategory <$> (backwardCharC sel >>= getChar)
-    return $ currentChar == Nothing || currentChar == Just '\n' || mbStartCharCat /= mbPrevCharCat && (mbStartCharCat == SyntaxCharacter || mbStartCharCat == IdentifierCharacter)
+    return $ isNothing currentChar || currentChar == Just '\n' || mbStartCharCat /= mbPrevCharCat && (mbStartCharCat == SyntaxCharacter || mbStartCharCat == IdentifierCharacter)
 
 getIdentifierUnderCursor :: forall editor. TextEditor editor => EditorBuffer editor -> IDEM (EditorIter editor, EditorIter editor)
 getIdentifierUnderCursor buffer = do
@@ -787,7 +781,7 @@ checkModTime buf = do
                                         load <- readIDE (autoLoad . prefs)
                                         if load
                                             then do
-                                                ideMessage Normal $ (__ "Auto Loading ") <> T.pack fn
+                                                ideMessage Normal $ __ "Auto Loading " <> T.pack fn
                                                 revert buf
                                                 return (False, True)
                                             else do
@@ -797,7 +791,7 @@ checkModTime buf = do
                                                             (Just window) []
                                                             MessageQuestion
                                                             ButtonsNone
-                                                            ((__"File \"") <> name <> (__ "\" has changed on disk."))
+                                                            (__ "File \"" <> name <> __ "\" has changed on disk.")
                                                     dialogAddButton md (__ "_Load From Disk") (ResponseUser 1)
                                                     dialogAddButton md (__ "_Always Load From Disk") (ResponseUser 2)
                                                     dialogAddButton md (__ "_Don't Load") (ResponseUser 3)
@@ -818,7 +812,7 @@ checkModTime buf = do
                                                         nmt2 <- liftIO $ getModificationTime fn
                                                         liftIO $ writeIORef (modTime buf) (Just nmt2)
                                                         return (True, True)
-                                                    _           ->  do return (False, False)
+                                                    _              -> return (False, False)
                                     else return (False, False)
                         else return (False, False)
                 Nothing -> return (False, False)
@@ -837,7 +831,7 @@ setModTime buf = do
                 return ())
 
 fileRevert :: IDEAction
-fileRevert = inActiveBufContext () $ \ _ _ _ currentBuffer _ -> do
+fileRevert = inActiveBufContext () $ \ _ _ _ currentBuffer _ ->
     revert currentBuffer
 
 revert :: MonadIDE m => IDEBuffer -> m ()
@@ -853,10 +847,10 @@ revert (buf@IDEBuffer{sourceView = sv}) = do
             mt <- liftIO $ getModificationTime fn
             beginNotUndoableAction buffer
             setText buffer $ T.pack fc
-            if useCandy
-                then modeTransformToCandy (mode buf)
-                         (modeEditInCommentOrString (mode buf)) buffer
-                else return ()
+            when useCandy $
+                modeTransformToCandy (mode buf)
+                    (modeEditInCommentOrString (mode buf))
+                    buffer
             endNotUndoableAction buffer
             setModified buffer False
             return mt
@@ -895,9 +889,7 @@ markActiveLabelAsChanged = do
         Just path -> do
           nb <- getNotebook path
           mbBS <- maybeActiveBuf
-          case mbBS of
-              Nothing -> return ()
-              Just buf -> markLabelAsChanged nb buf
+          forM_ mbBS (markLabelAsChanged nb)
 
 markLabelAsChanged :: Notebook -> IDEBuffer -> IDEAction
 markLabelAsChanged nb (buf@IDEBuffer{sourceView = sv}) = do
@@ -918,10 +910,10 @@ fileSaveBuffer query nb _ ebuf (ideBuf@IDEBuffer{sourceView = sv}) i = liftIDE $
     case mbpage of
         Nothing     -> throwIDE (__ "fileSave: Page not found")
         Just page   ->
-            if isJust mbfn && query == False
+            if isJust mbfn && not query
                 then do (modifiedOnDiskNotLoaded, modifiedOnDisk) <- checkModTime ideBuf -- The user is given option to reload
                         modifiedInBuffer <- getModified ebuf
-                        if (modifiedOnDiskNotLoaded || modifiedInBuffer)
+                        if modifiedOnDiskNotLoaded || modifiedInBuffer
                             then do
                                 fileSave' (forceLineEnds prefs) (removeTBlanks prefs) nb ideBuf
                                     useCandy candy $fromJust mbfn
@@ -930,7 +922,7 @@ fileSaveBuffer query nb _ ebuf (ideBuf@IDEBuffer{sourceView = sv}) i = liftIDE $
                             else return modifiedOnDisk
                 else reifyIDE $ \ideR   ->  do
                     dialog <- fileChooserDialogNew
-                                    (Just $ (__ "Save File"))
+                                    (Just $ __ "Save File")
                                     (Just window)
                                 FileChooserActionSave
                                 [("gtk-cancel"     --buttons to display
@@ -938,7 +930,7 @@ fileSaveBuffer query nb _ ebuf (ideBuf@IDEBuffer{sourceView = sv}) i = liftIDE $
                                 ,("gtk-save"
                                 , ResponseAccept)]
                     case mbfn of
-                        Just fn -> fileChooserSelectFilename dialog fn >> return ()
+                        Just fn -> void (fileChooserSelectFilename dialog fn)
                         Nothing -> return ()
                     widgetShow dialog
                     response <- dialogRun dialog
@@ -978,7 +970,7 @@ fileSaveBuffer query nb _ ebuf (ideBuf@IDEBuffer{sourceView = sv}) i = liftIDE $
     where
         fileSave' :: Bool -> Bool -> Notebook -> IDEBuffer -> Bool -> CandyTable -> FilePath -> IDEAction
         fileSave' forceLineEnds removeTBlanks nb ideBuf useCandy candyTable fn = do
-            buf     <-   getBuffer $ sv
+            buf     <-   getBuffer sv
             text    <-   getCandylessText candyTable buf
             let text' = if removeTBlanks
                             then T.unlines $ map (T.dropWhileEnd $ \c -> c == ' ') $ T.lines text
@@ -1126,19 +1118,19 @@ fileNew = do
     return ()
 
 fileClose :: IDEM Bool
-fileClose = inActiveBufContext True $ fileClose'
+fileClose = inActiveBufContext True fileClose'
 
 fileClose' :: TextEditor editor => Notebook -> EditorView editor -> EditorBuffer editor -> IDEBuffer -> Int  -> IDEM Bool
 fileClose' nb _ ebuf currentBuffer i = do
     window  <- getMainWindow
     modified <- getModified ebuf
-    cancel <- reifyIDE $ \ideR   ->  do
+    cancel <- reifyIDE $ \ideR   ->
         if modified
             then do
                 md <- messageDialogNew (Just window) []
                                             MessageQuestion
                                             ButtonsCancel
-                                            ((__ "Save changes to document: ")
+                                            (__ "Save changes to document: "
                                                 <> paneName currentBuffer
                                                 <> "?")
                 dialogAddButton md (__ "_Save") ResponseYes
@@ -1158,8 +1150,7 @@ fileClose' nb _ ebuf currentBuffer i = do
         then return False
         else do
             closeThisPane currentBuffer
-            when (isJust $ fileName currentBuffer)
-                (addRecentlyUsedFile (fromJust $ fileName currentBuffer))
+            forM_ (fileName currentBuffer) addRecentlyUsedFile
             return True
 
 fileCloseAll :: (IDEBuffer -> IDEM Bool)  -> IDEM Bool
@@ -1177,7 +1168,7 @@ fileCloseAll filterFunc = do
 
 fileCloseAllButPackage :: IDEAction
 fileCloseAllButPackage = do
-    mbActivePath    <-  (fmap ipdBuildDir) <$> readIDE activePack
+    mbActivePath    <-  fmap ipdBuildDir <$> readIDE activePack
     bufs            <-  allBuffers
     case mbActivePath of
         Just p -> mapM_ (close' p) bufs
@@ -1200,7 +1191,7 @@ fileCloseAllButWorkspace :: IDEAction
 fileCloseAllButWorkspace = do
     mbWorkspace     <-  readIDE workspace
     bufs            <-  allBuffers
-    when (not (null bufs) && isJust mbWorkspace) $ do
+    when (not (null bufs) && isJust mbWorkspace) $
         mapM_ (close' (fromJust mbWorkspace)) bufs
     where
         close' workspace (buf@IDEBuffer {sourceView = sv}) = do
@@ -1217,7 +1208,7 @@ fileCloseAllButWorkspace = do
                             $ do fileClose' nb sv ebuf buf i; return ()
         isSubPathOfAny workspace fileName =
             let paths = wsPackages workspace >>= ipdAllDirs
-            in  or (map (\dir -> isSubPath dir fileName) paths)
+            in  any (`isSubPath` fileName) paths
 
 
 fileOpen :: IDEAction
@@ -1227,7 +1218,7 @@ fileOpen = do
     mbBuf <- maybeActiveBuf
     mbFileName <- liftIO $ do
         dialog <- fileChooserDialogNew
-                        (Just $ (__ "Open File"))
+                        (Just $ __ "Open File")
                         (Just window)
                     FileChooserActionOpen
                     [("gtk-cancel"
@@ -1235,7 +1226,7 @@ fileOpen = do
                     ,("gtk-open"
                     ,ResponseAccept)]
         case mbBuf >>= fileName of
-            Just fn -> fileChooserSetCurrentFolder dialog (dropFileName $ fn) >> return ()
+            Just fn -> void (fileChooserSetCurrentFolder dialog (dropFileName fn))
             Nothing -> return ()
         widgetShow dialog
         response <- dialogRun dialog
@@ -1251,9 +1242,7 @@ fileOpen = do
                 widgetDestroy dialog
                 return Nothing
             _ -> return Nothing
-    case mbFileName of
-        Nothing -> return ()
-        Just fp -> fileOpenThis fp
+    forM_ mbFileName fileOpenThis
 
 
 fileOpenThis :: FilePath -> IDEAction
@@ -1292,70 +1281,65 @@ fileOpenThis fp =  do
             return ()
 
 filePrint :: IDEAction
-filePrint = inActiveBufContext () $ filePrint'
+filePrint = inActiveBufContext () filePrint'
 
 filePrint' :: TextEditor editor => Notebook -> EditorView view -> EditorBuffer editor -> IDEBuffer -> Int -> IDEM ()
 filePrint' nb _ ebuf currentBuffer _ = do
     let pName = paneName currentBuffer
     window  <- getMainWindow
     print <- reifyIDE $ \ideR ->  do
-                md <- messageDialogNew (Just window) []
-                                            MessageQuestion
-                                            ButtonsNone
-                                            (__"Print document: "
-                                                <> pName
-                                                <> "?")
-                dialogAddButton md (__"_Print") ResponseYes
-                dialogAddButton md (__"_Don't Print") ResponseNo
-                set md [ windowWindowPosition := WinPosCenterOnParent ]
-                resp <- dialogRun md
-                widgetDestroy md
-                case resp of
-                    ResponseYes ->   do
-                        return True
-                    ResponseCancel  ->   return False
-                    ResponseNo      ->   return False
-                    _               ->   return False
-    if not print
-        then return ()
-        else do
-            --real code
-            modified <- getModified ebuf
-            cancel <- reifyIDE $ \ideR ->  do
-                if modified
-                    then do
-                        md <- messageDialogNew (Just window) []
-                                                    MessageQuestion
-                                                    ButtonsNone
-                                                    (__"Save changes to document: "
-                                                        <> pName
-                                                        <> "?")
-                        dialogAddButton md (__"_Save") ResponseYes
-                        dialogAddButton md (__"_Don't Save") ResponseNo
-                        dialogAddButton md (__"_Cancel Printing") ResponseCancel
-                        set md [ windowWindowPosition := WinPosCenterOnParent ]
-                        resp <- dialogRun md
-                        widgetDestroy md
-                        case resp of
-                            ResponseYes ->   do
-                                reflectIDE (fileSave False) ideR
-                                return False
-                            ResponseCancel  ->   return True
-                            ResponseNo      ->   return False
-                            _               ->   return False
-                    else
-                        return False
-            if cancel
-                then return ()
-                else do
-                    case fileName currentBuffer of
-                        Just name -> do
-                                      status <- liftIO $ Print.print name
-                                      case status of
-                                        Left error -> liftIO $ showDialog (T.pack $ show error) MessageError
-                                        Right _ -> liftIO $ showDialog "Print job has been sent successfully" MessageInfo
-                                      return ()
-                        Nothing   -> return ()
+        md <- messageDialogNew (Just window) []
+                                    MessageQuestion
+                                    ButtonsNone
+                                    (__"Print document: "
+                                        <> pName
+                                        <> "?")
+        dialogAddButton md (__"_Print") ResponseYes
+        dialogAddButton md (__"_Don't Print") ResponseNo
+        set md [ windowWindowPosition := WinPosCenterOnParent ]
+        resp <- dialogRun md
+        widgetDestroy md
+        case resp of
+            ResponseYes     ->   return True
+            ResponseCancel  ->   return False
+            ResponseNo      ->   return False
+            _               ->   return False
+    when print $ do
+        --real code
+        modified <- getModified ebuf
+        cancel <- reifyIDE $ \ideR ->
+            if modified
+                then do
+                    md <- messageDialogNew (Just window) []
+                                                MessageQuestion
+                                                ButtonsNone
+                                                (__"Save changes to document: "
+                                                    <> pName
+                                                    <> "?")
+                    dialogAddButton md (__"_Save") ResponseYes
+                    dialogAddButton md (__"_Don't Save") ResponseNo
+                    dialogAddButton md (__"_Cancel Printing") ResponseCancel
+                    set md [ windowWindowPosition := WinPosCenterOnParent ]
+                    resp <- dialogRun md
+                    widgetDestroy md
+                    case resp of
+                        ResponseYes ->   do
+                            reflectIDE (fileSave False) ideR
+                            return False
+                        ResponseCancel  ->   return True
+                        ResponseNo      ->   return False
+                        _               ->   return False
+                else
+                    return False
+        unless cancel $
+            case fileName currentBuffer of
+                Just name -> do
+                              status <- liftIO $ Print.print name
+                              case status of
+                                Left error -> liftIO $ showDialog (T.pack $ show error) MessageError
+                                Right _ -> liftIO $ showDialog "Print job has been sent successfully" MessageInfo
+                              return ()
+                Nothing   -> return ()
 
 editUndo :: IDEAction
 editUndo = inActiveBufContext () $ \_ _ buf _ _ -> do
@@ -1400,14 +1384,12 @@ editShiftLeft = do
     prefs <- readIDE prefs
     let str = T.replicate (tabWidth prefs) " "
     b <- canShiftLeft str prefs
-    if b
-        then do
-            doForSelectedLines [] $ \ebuf lineNr -> do
-                sol <- getIterAtLine ebuf lineNr
-                sol2 <- forwardCharsC sol (tabWidth prefs)
-                delete ebuf sol sol2
-            return ()
-        else return ()
+    when b $ do
+        doForSelectedLines [] $ \ebuf lineNr -> do
+            sol <- getIterAtLine ebuf lineNr
+            sol2 <- forwardCharsC sol (tabWidth prefs)
+            delete ebuf sol sol2
+        return ()
     where
     canShiftLeft str prefs = do
         boolList <- doForSelectedLines [] $ \ebuf lineNr -> do
@@ -1430,12 +1412,10 @@ editShiftRight = do
 alignChar :: Char -> IDEAction
 alignChar char = do
     positions     <- positionsOfChar
-    let alignTo = foldl' max 0 (catMaybes (map snd positions))
-    if (alignTo > 0)
-        then alignChar (Map.fromList positions) alignTo
-        else return ()
+    let alignTo = foldl' max 0 (mapMaybe snd positions)
+    when (alignTo > 0) $ alignChar (Map.fromList positions) alignTo
     where
-    positionsOfChar :: IDEM ([(Int, Maybe Int)])
+    positionsOfChar :: IDEM [(Int, Maybe Int)]
     positionsOfChar = doForSelectedLines [] $ \ebuf lineNr -> do
             sol <- getIterAtLine ebuf lineNr
             eol <- forwardToLineEndC sol
@@ -1443,7 +1423,7 @@ alignChar char = do
             return (lineNr, T.findIndex (==char) line)
     alignChar :: Map Int (Maybe Int) -> Int -> IDEM ()
     alignChar positions alignTo = do
-            doForSelectedLines [] $ \ebuf lineNr -> do
+            doForSelectedLines [] $ \ebuf lineNr ->
                 case lineNr `Map.lookup` positions of
                     Just (Just n)  ->  do
                         sol       <- getIterAtLine ebuf lineNr
@@ -1464,9 +1444,9 @@ align = alignChar . transChar
 addRecentlyUsedFile :: FilePath -> IDEAction
 addRecentlyUsedFile fp = do
     state <- readIDE currentState
-    when (not $ isStartingOrClosing state) $ do
+    unless (isStartingOrClosing state) $ do
         recentFiles' <- readIDE recentFiles
-        unless (elem fp recentFiles') $
+        unless (fp `elem` recentFiles') $
             modifyIDE_ (\ide -> ide{recentFiles = take 12 (fp : recentFiles')})
         triggerEventIDE UpdateRecent
         return ()
@@ -1474,10 +1454,10 @@ addRecentlyUsedFile fp = do
 removeRecentlyUsedFile :: FilePath -> IDEAction
 removeRecentlyUsedFile fp = do
     state <- readIDE currentState
-    when (not $ isStartingOrClosing state) $ do
+    unless (isStartingOrClosing state) $ do
         recentFiles' <- readIDE recentFiles
-        when (elem fp recentFiles') $
-            modifyIDE_ (\ide -> ide{recentFiles = filter (\e -> e /= fp) recentFiles'})
+        when (fp `elem` recentFiles') $
+            modifyIDE_ (\ide -> ide{recentFiles = filter (/= fp) recentFiles'})
         triggerEventIDE UpdateRecent
         return ()
 
@@ -1506,7 +1486,7 @@ selectedTextOrCurrentLine = do
                 iStart <- getIterAtLine ebuf line
                 iEnd <- forwardToLineEndC iStart
                 return (iStart, iEnd)
-        fmap Just $ getCandylessPart candy' ebuf i1 i2
+        Just <$> getCandylessPart candy' ebuf i1 i2
 
 selectedLocation :: IDEM (Maybe (Int, Int))
 selectedLocation = do
@@ -1558,7 +1538,7 @@ belongsToPackages _ = return []
 belongsToPackage :: FilePath -> IDEPackage -> Bool
 belongsToPackage f = any (`isSubPath` f) . ipdAllDirs
 
-belongsToWorkspace b =  belongsToPackages b >>= return . (not . null)
+belongsToWorkspace b =  liftM (not . null) (belongsToPackages b)
 
 useCandyFor :: MonadIDE m => IDEBuffer -> m Bool
 useCandyFor aBuffer = do

@@ -1,4 +1,3 @@
-{-# LANGUAGE CPP #-}
 {-# LANGUAGE DeriveDataTypeable #-}
 {-# LANGUAGE MultiParamTypeClasses #-}
 {-# LANGUAGE FlexibleInstances #-}
@@ -39,14 +38,12 @@ import IDE.SourceCandy
         transformToCandy)
 import IDE.Utils.GUIUtils (getCandyState)
 import Control.Monad (when)
-import Data.Maybe (catMaybes)
+import Data.Maybe (mapMaybe, catMaybes)
 import IDE.Utils.FileUtils
 import Graphics.UI.Gtk
        (Notebook, castToWidget, notebookPageNum, ScrolledWindow)
 import Control.Monad.IO.Class (MonadIO(..))
-#if MIN_VERSION_directory(1,2,0)
 import Data.Time (UTCTime)
-#endif
 import Data.Text (Text)
 import Data.Monoid ((<>))
 import qualified Data.Text as T
@@ -63,11 +60,7 @@ data IDEBuffer = forall editor. TextEditor editor => IDEBuffer {
 ,   addedIndex      ::  Int
 ,   sourceView      ::  EditorView editor
 ,   scrolledWindow  ::  ScrolledWindow
-#if MIN_VERSION_directory(1,2,0)
-,   modTime         ::  IORef (Maybe (UTCTime))
-#else
-,   modTime         ::  IORef (Maybe (ClockTime))
-#endif
+,   modTime         ::  IORef (Maybe UTCTime)
 ,   mode            ::  Mode
 } deriving (Typeable)
 
@@ -104,7 +97,7 @@ recentSourceBuffers :: IDEM [PaneName]
 recentSourceBuffers = do
     recentPanes' <- readIDE recentPanes
     mbBufs       <- mapM mbPaneFromName recentPanes'
-    return $ map paneName ((catMaybes $ map (\ (PaneC p) -> cast p) $ catMaybes mbBufs) :: [IDEBuffer])
+    return $ map paneName (mapMaybe (\ (PaneC p) -> cast p) (catMaybes mbBufs) :: [IDEBuffer])
 
 getStartAndEndLineOfSelection :: TextEditor editor => EditorBuffer editor -> IDEM (Int,Int)
 getStartAndEndLineOfSelection ebuf = do
@@ -139,7 +132,7 @@ inActiveBufContext def f = do
     mbBuf <- maybeActiveBuf
     case mbBuf of
         Nothing         -> return def
-        Just ideBuf -> do
+        Just ideBuf ->
             inBufContext def ideBuf f
 
 doForSelectedLines :: [a] -> (forall editor. TextEditor editor => EditorBuffer editor -> Int -> IDEM a) -> IDEM [a]
@@ -166,10 +159,10 @@ data Mode = Mode {
 -- | Assumes
 modFromFileName :: Maybe FilePath -> Mode
 modFromFileName Nothing = haskellMode
-modFromFileName (Just fn) | isSuffixOf ".hs" fn    = haskellMode
-                          | isSuffixOf ".lhs" fn   = literalHaskellMode
-                          | isSuffixOf ".cabal" fn = cabalMode
-                          | otherwise              = otherMode
+modFromFileName (Just fn) | ".hs"    `isSuffixOf` fn = haskellMode
+                          | ".lhs"   `isSuffixOf` fn = literalHaskellMode
+                          | ".cabal" `isSuffixOf` fn = cabalMode
+                          | otherwise                = otherMode
 
 haskellMode = Mode {
     modeName = "Haskell",
@@ -183,12 +176,10 @@ haskellMode = Mode {
             sol <- getIterAtLine ebuf lineNr
             sol2 <- forwardCharsC sol 2
             str   <- getText ebuf sol sol2 True
-            if str == "--"
-                then do delete ebuf sol sol2
-                else return ()
+            when (str == "--") $ delete ebuf sol sol2
         return (),
-    modeSelectedModuleName = do
-        inActiveBufContext Nothing $ \_ _ ebuf currentBuffer _ -> do
+    modeSelectedModuleName =
+        inActiveBufContext Nothing $ \_ _ ebuf currentBuffer _ ->
             case fileName currentBuffer of
                 Just filePath -> liftIO $ moduleNameFromFilePath filePath
                 Nothing       -> return Nothing,
@@ -197,20 +188,20 @@ haskellMode = Mode {
         transformToCandy ct ebuf inCommentOrString,
     modeEditToCandy = \ inCommentOrString -> do
         ct <- readIDE candy
-        inActiveBufContext () $ \_ _ ebuf _ _ -> do
+        inActiveBufContext () $ \_ _ ebuf _ _ ->
             transformToCandy ct ebuf inCommentOrString,
     modeEditFromCandy = do
         ct      <-  readIDE candy
-        inActiveBufContext () $ \_ _ ebuf _ _ -> do
+        inActiveBufContext () $ \_ _ ebuf _ _ ->
             transformFromCandy ct ebuf,
     modeEditKeystrokeCandy = \c inCommentOrString -> do
         ct <- readIDE candy
-        inActiveBufContext () $ \_ _ ebuf _ _ -> do
+        inActiveBufContext () $ \_ _ ebuf _ _ ->
             keystrokeCandy ct c ebuf inCommentOrString,
     modeEditInsertCode = \ str iter buf ->
         insert buf iter str,
     modeEditInCommentOrString = \ line -> ("--" `T.isInfixOf` line)
-                                        || not (even $ T.count "\"" line)
+                                        || odd (T.count "\"" line)
     }
 
 literalHaskellMode = Mode {
@@ -232,8 +223,8 @@ literalHaskellMode = Mode {
             when (str /= ">")
                 (insert ebuf sol ">")
         return (),
-    modeSelectedModuleName = do
-        inActiveBufContext Nothing $ \_ _ ebuf currentBuffer _ -> do
+    modeSelectedModuleName =
+        inActiveBufContext Nothing $ \_ _ ebuf currentBuffer _ ->
             case fileName currentBuffer of
                 Just filePath -> liftIO $ moduleNameFromFilePath filePath
                 Nothing       -> return Nothing,
@@ -242,20 +233,20 @@ literalHaskellMode = Mode {
         transformToCandy ct ebuf inCommentOrString,
     modeEditToCandy = \ inCommentOrString -> do
         ct <- readIDE candy
-        inActiveBufContext () $ \_ _ ebuf _ _ -> do
+        inActiveBufContext () $ \_ _ ebuf _ _ ->
             transformToCandy ct ebuf inCommentOrString,
     modeEditFromCandy = do
         ct      <-  readIDE candy
-        inActiveBufContext () $ \_ _ ebuf _ _ -> do
+        inActiveBufContext () $ \_ _ ebuf _ _ ->
             transformFromCandy ct ebuf,
     modeEditKeystrokeCandy = \c inCommentOrString -> do
         ct <- readIDE candy
-        inActiveBufContext () $ \_ _ ebuf _ _ -> do
+        inActiveBufContext () $ \_ _ ebuf _ _ ->
             keystrokeCandy ct c ebuf inCommentOrString,
     modeEditInsertCode = \ str iter buf ->
         insert buf iter (T.unlines $ map (\ s -> "> " <> s) $ T.lines str),
     modeEditInCommentOrString = \ line -> not (T.isPrefixOf ">" line)
-                                        || not (even $ T.count "\"" line)
+                                        || odd (T.count "\"" line)
     }
 
 cabalMode = Mode {
@@ -270,9 +261,7 @@ cabalMode = Mode {
             sol <- getIterAtLine ebuf lineNr
             sol2 <- forwardCharsC sol 2
             str   <- getText ebuf sol sol2 True
-            if str == "--"
-                then do delete ebuf sol sol2
-                else return ()
+            when (str == "--") $ delete ebuf sol sol2
         return (),
     modeSelectedModuleName   = return Nothing,
     modeTransformToCandy     = \ _ _ -> return (),
@@ -280,7 +269,7 @@ cabalMode = Mode {
     modeEditFromCandy        = return (),
     modeEditKeystrokeCandy   = \ _ _ -> return (),
     modeEditInsertCode       = \ str iter buf -> insert buf iter str,
-    modeEditInCommentOrString = \ str -> T.isPrefixOf "--" str
+    modeEditInCommentOrString = T.isPrefixOf "--"
 
     }
 
@@ -294,7 +283,7 @@ otherMode = Mode {
     modeEditFromCandy        = return (),
     modeEditKeystrokeCandy   = \_ _ -> return (),
     modeEditInsertCode       = \str iter buf -> insert buf iter str,
-    modeEditInCommentOrString = \ _ -> False
+    modeEditInCommentOrString = const False
     }
 
 isHaskellMode mode = modeName mode == "Haskell" || modeName mode == "Literal Haskell"
