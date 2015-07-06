@@ -70,6 +70,8 @@ module IDE.Pane.SourceBuffer (
 ,   addLogRef
 ,   removeBuildLogRefs
 ,   resolveActiveHLint
+,   hlintSettings
+,   hlintBuffer
 ,   markRefInSourceBuf
 ,   inBufContext
 ,   inActiveBufContext
@@ -152,12 +154,15 @@ import qualified Data.Text.IO as T (writeFile, readFile)
 import Data.Time (UTCTime(..))
 import Control.Concurrent (forkIO)
 import Language.Haskell.HLint3
-       (ParseError(..), Idea(..), Severity(..), parseFlagsAddFixities,
-        resolveHints, readSettingsFile, findSettings, applyHints,
-        defaultParseFlags, parseModuleEx, ParseFlags(..), CppFlags(..))
-import qualified Language.Haskell.Exts.SrcLoc as HSE (SrcSpan(..))
-import Language.Preprocessor.Cpphs
-       (defaultCpphsOptions)
+       (Hint(..), Classify(..), ParseError(..), Idea(..), Severity(..),
+        parseFlagsAddFixities, resolveHints, readSettingsFile,
+        findSettings, applyHints, defaultParseFlags, parseModuleEx,
+        ParseFlags(..), CppFlags(..))
+import qualified Language.Haskell.Exts.SrcLoc as HSE
+       (SrcLoc(..), SrcSpan(..))
+import Language.Preprocessor.Cpphs as Cpphs
+       (runCpphsReturningSymTab, defaultCpphsOptions, CpphsOptions(..))
+import qualified System.IO.Strict as S (readFile)
 
 allBuffers :: MonadIDE m => m [IDEBuffer]
 allBuffers = liftIDE getPanes
@@ -984,50 +989,77 @@ fileSaveBuffer query nb _ ebuf (ideBuf@IDEBuffer{sourceView = sv}) i = liftIDE $
                     return False)
             setModified buf (not succ)
             markLabelAsChanged nb ideBuf
-            hlintBuffer ideBuf (Just fn) text'
+            hlintBuffer' ideBuf text' fn
 
-hlintBuffer :: IDEBuffer -> Maybe FilePath -> Text -> IDEAction
-hlintBuffer ideBuf mbfn text =
-    case maybe (fileName ideBuf) Just mbfn of
-        Nothing -> return ()
-        Just fn -> do
-            packs <- belongsToPackages ideBuf
-            ideR <- ask
-            case packs of
-                (package:_) -> do
-                    let file = makeRelative (ipdBuildDir package) fn
-                    removeLogRefs [LintRef] (ipdBuildDir package) file
-                    liftIO . void . forkIO $ do
-                        mbHlintDir <- liftIO $ leksahSubDir "hlint"
-                        (fixities, classify, hints) <- findSettings (readSettingsFile mbHlintDir) Nothing
-                        let hint = resolveHints hints
-                            flags = parseFlagsAddFixities fixities defaultParseFlags{ cppFlags = Cpphs defaultCpphsOptions }
-                        parseResult <- parseModuleEx flags fn (Just $ T.unpack text)
-                        case parseResult of
-                            (Right m) -> do
-                                let allIdeas = applyHints classify hint [m]
-                                    ideas = filter (\Idea{..} -> ideaSeverity /= Ignore
-                                                                 && equalFilePath (HSE.srcSpanFilename ideaSpan) fn) allIdeas
-                                forM_ ideas $ \ idea@Idea{..} -> do
-                                    let fixColumn c = max 0 (c - 1)
-                                        srcSpan = SrcSpan file
-                                                          (HSE.srcSpanStartLine ideaSpan)
-                                                          (HSE.srcSpanStartColumn ideaSpan - 1)
-                                                          (HSE.srcSpanEndLine ideaSpan)
-                                                          (HSE.srcSpanEndColumn ideaSpan - 1)
-                                        fromLines = drop (HSE.srcSpanStartLine ideaSpan - 1)
-                                                  . take (HSE.srcSpanEndLine ideaSpan) $ T.lines text
-                                        fixHead [] = []
-                                        fixHead (x:xs) = T.drop (HSE.srcSpanStartColumn ideaSpan - 1) x : xs
-                                        fixTail [] = []
-                                        fixTail (x:xs) = T.take (HSE.srcSpanEndColumn ideaSpan - 1) x : xs
-                                        from = T.reverse . T.drop 1 . T.reverse
-                                             . T.unlines . fixHead . reverse . fixTail $ reverse fromLines
-                                    reflectIDE (postAsyncIDE $ addLogRef
-                                        (LogRef srcSpan package (T.pack ideaHint <> maybe "" (("\n" <>) . T.pack) ideaTo)
-                                                (Just (from, idea)) (0, 0) LintRef)) ideR
-                            Left error -> liftIO . debugM "leksah" $ "hlintBuffer parse error " <> show (parseErrorLocation error, parseErrorMessage error)
-                _ -> liftIO . debugM "leksah" $ "hlintBuffer package not found for " <> fn
+hlintSettings :: IDEPackage -> IDEM (ParseFlags, [Classify], Hint)
+hlintSettings package = do
+    mbHlintDir <- liftIO $ leksahSubDir "hlint"
+    let cabalMacros = ipdBuildDir package </> "dist/build/autogen/cabal_macros.h"
+    cabalMacrosExist <- liftIO $ doesFileExist cabalMacros
+    defines <- liftIO $ if cabalMacrosExist
+                            then do
+                                raw <- S.readFile cabalMacros
+                                map (\(a, b) -> (a, concat (lines b))) . snd <$> runCpphsReturningSymTab defaultCpphsOptions cabalMacros raw
+                            else return []
+    (fixities, classify, hints) <- liftIO $ findSettings (readSettingsFile mbHlintDir) Nothing
+    let hint = resolveHints hints
+        flags = parseFlagsAddFixities fixities defaultParseFlags{ cppFlags = Cpphs defaultCpphsOptions
+            { defines = defines } }
+    liftIO . debugM "leksah" $ "hlintSettings defines = " <> show defines
+    return (flags, classify, hint)
+
+hlintBuffer :: IDEBuffer -> IDEAction
+hlintBuffer ideBuf@IDEBuffer{..} = do
+    buf   <- getBuffer sourceView
+    candy <- readIDE candy
+    text  <- getCandylessText candy buf
+    maybe (return ()) (hlintBuffer' ideBuf text) fileName
+
+hlintBuffer' :: IDEBuffer -> Text -> FilePath -> IDEAction
+hlintBuffer' ideBuf text fn = do
+    packs <- belongsToPackages ideBuf
+    ideR <- ask
+    case packs of
+        (package:_) -> do
+            let file = makeRelative (ipdBuildDir package) fn
+            removeLogRefs [LintRef] (ipdBuildDir package) file
+            liftIO . void . forkIO $ do
+                (flags, classify, hint) <- reflectIDE (hlintSettings package) ideR
+                parseResult <- parseModuleEx flags fn (Just $ T.unpack text)
+                case parseResult of
+                    (Right m) -> do
+                        let allIdeas = applyHints classify hint [m]
+                            ideas = filter (\Idea{..} -> ideaSeverity /= Ignore
+                                                         && equalFilePath (HSE.srcSpanFilename ideaSpan) fn) allIdeas
+                        forM_ ideas $ \ idea@Idea{..} -> do
+                            let fixColumn c = max 0 (c - 1)
+                                srcSpan = SrcSpan file
+                                                  (HSE.srcSpanStartLine ideaSpan)
+                                                  (HSE.srcSpanStartColumn ideaSpan - 1)
+                                                  (HSE.srcSpanEndLine ideaSpan)
+                                                  (HSE.srcSpanEndColumn ideaSpan - 1)
+                                fromLines = drop (HSE.srcSpanStartLine ideaSpan - 1)
+                                          . take (HSE.srcSpanEndLine ideaSpan) $ T.lines text
+                                fixHead [] = []
+                                fixHead (x:xs) = T.drop (HSE.srcSpanStartColumn ideaSpan - 1) x : xs
+                                fixTail [] = []
+                                fixTail (x:xs) = T.take (HSE.srcSpanEndColumn ideaSpan - 1) x : xs
+                                from = T.reverse . T.drop 1 . T.reverse
+                                     . T.unlines . fixHead . reverse . fixTail $ reverse fromLines
+                            reflectIDE (postAsyncIDE $ addLogRef
+                                (LogRef srcSpan package (T.pack ideaHint <> maybe "" (("\n" <>) . T.pack) ideaTo)
+                                        (Just (from, idea)) (0, 0) LintRef)) ideR
+                    Left error -> do
+                            let loc = parseErrorLocation error
+                                srcSpan = SrcSpan file
+                                                  (HSE.srcLine loc)
+                                                  (HSE.srcColumn loc - 1)
+                                                  (HSE.srcLine loc)
+                                                  (HSE.srcColumn loc - 1)
+                            reflectIDE (postAsyncIDE $ addLogRef
+                                (LogRef srcSpan package ("Hlint Parse Error: " <> T.pack (parseErrorMessage error))
+                                        Nothing (0, 0) LintRef)) ideR
+        _ -> liftIO . debugM "leksah" $ "hlintBuffer package not found for " <> fn
 
 resolveActiveHLint :: IDEM Bool
 resolveActiveHLint = inActiveBufContext False  $ \_ _ ebuf _ _ -> do

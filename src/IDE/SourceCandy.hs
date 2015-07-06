@@ -82,15 +82,15 @@ keystrokeCandy (CT(transformTable,_)) mbc ebuf editInCommentOrString = do
         replace' [] = return ()
         replace' ((isOp,from,to):rest) =
             let beforeChar  =  T.index match (max 0 (T.length match - (T.length from + 1)))
-                beforeOk    =  not $if isOp
-                                    then Set.member beforeChar notBeforeOp
-                                    else Set.member beforeChar notBeforeId
+                beforeOk    =  not $ if isOp
+                                        then Set.member beforeChar notBeforeOp
+                                        else Set.member beforeChar notBeforeId
                 afterOk     =  case mbAfterChar of
                                 Nothing -> True
                                 Just afterChar ->
-                                     not $if isOp
-                                        then Set.member afterChar notAfterOp
-                                        else Set.member afterChar notAfterId
+                                     not $ if isOp
+                                                then Set.member afterChar notAfterOp
+                                                else Set.member afterChar notAfterId
             in if T.isSuffixOf from match && beforeOk && afterOk
                 then do
                     beginNotUndoableAction ebuf
@@ -135,7 +135,7 @@ replaceTo buf (isOp,from,to) offset editInCommentOrString = replaceTo' offset
                                 mbChar <- getChar iter
                                 case mbChar of
                                     Nothing     ->  return True
-                                    Just char   ->  return (not $if isOp
+                                    Just char   ->  return (not $ if isOp
                                                                     then Set.member char notBeforeOp
                                                                     else Set.member char notBeforeId)
                     if beforeOk
@@ -146,7 +146,7 @@ replaceTo buf (isOp,from,to) offset editInCommentOrString = replaceTo' offset
                                 mbChar  <-  getChar iter
                                 case mbChar of
                                     Nothing     ->  return True
-                                    Just char   ->  return (not $if isOp
+                                    Just char   ->  return (not $ if isOp
                                                                     then Set.member char notAfterOp
                                                                     else Set.member char notAfterId)
                             if afterOk

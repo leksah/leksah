@@ -1,4 +1,5 @@
 {-# LANGUAGE CPP #-}
+{-# LANGUAGE ScopedTypeVariables #-}
 {-# LANGUAGE DeriveDataTypeable #-}
 {-# LANGUAGE MultiParamTypeClasses #-}
 {-# LANGUAGE FlexibleInstances #-}
@@ -38,18 +39,17 @@ import IDE.Core.State hiding (SrcSpan(..))
 import IDE.BufferMode
 import IDE.LogRef (logOutput, defaultLineLogger)
 import IDE.Pane.SourceBuffer
-       (fileSave, goToSourceDefinition', maybeActiveBuf, IDEBuffer(..),
-        replaceHLintSource)
+       (hlintSettings, hlintBuffer, fileSave, goToSourceDefinition',
+        maybeActiveBuf, IDEBuffer(..), replaceHLintSource)
 import IDE.TextEditor (TextEditor(..), grabFocus)
 import Control.Applicative ((<$>))
 import System.FilePath ((</>), dropFileName)
 import System.Exit (ExitCode(..))
 import IDE.Pane.Log (getLog)
-import Control.Monad (unless, void, forM_, foldM, when)
+import Control.Monad (forM, unless, void, forM_, foldM, when)
 import Control.Monad.Trans.Reader (ask)
 import Control.Monad.Trans.Class (MonadTrans(..))
 import Control.Monad.IO.Class (MonadIO(..))
-import Language.Haskell.HLint (Suggestion(..), suggestionLocation)
 import Language.Haskell.Exts (SrcLoc(..))
 import Language.Haskell.Exts.SrcLoc (SrcSpan(..))
 
@@ -70,7 +70,12 @@ import qualified System.IO.Strict as S (readFile)
 import Language.Haskell.HLint3
        (CppFlags(..), defaultParseFlags, parseFlagsAddFixities,
         resolveHints, readSettingsFile, findSettings, ParseFlags(..))
-import Language.Preprocessor.Cpphs (defaultCpphsOptions)
+import Language.Preprocessor.Cpphs
+       (runCpphsReturningSymTab, defaultCpphsOptions, CpphsOptions(..))
+import System.Log.Logger (debugM)
+import System.Directory (doesFileExist)
+import qualified System.IO as S (writeFile)
+import System.Glib.GTypeConstants (flags)
 
 data HLintRecord = HLintRecord {
             condPackage :: Maybe IDEPackage
@@ -235,7 +240,9 @@ gotoSource focus treeView hlintStore = do
                                                          (srcSpanStartColumn (H.ideaSpan idea))
                                                          (srcSpanEndLine (H.ideaSpan idea))
                                                          (srcSpanEndColumn (H.ideaSpan idea)))
-                        ?>>= (\(IDEBuffer {sourceView = sv}) -> when focus $ grabFocus sv)
+                        ?>>= (\buf@IDEBuffer {sourceView = sv} -> do
+                            hlintBuffer buf
+                            when focus $ grabFocus sv)
                 _ -> return ()
         Nothing -> return ()
     return True
@@ -254,20 +261,27 @@ hlintDirectories2 packages = do
 
 refreshDir :: TreeStore HLintRecord -> TreeIter -> IDEPackage -> IDEM ()
 refreshDir store iter package = do
-    mbHlintDir <- liftIO $ leksahSubDir "hlint"
-    (fixities, classify, hints) <- liftIO $ findSettings (readSettingsFile mbHlintDir) Nothing
-    let hint = resolveHints hints
-        flags = parseFlagsAddFixities fixities defaultParseFlags{ cppFlags = Cpphs defaultCpphsOptions }
+    ideR <- ask
+    (flags, classify, hint) <- hlintSettings package
     let modules = Map.keys (ipdModules package)
     paths <- getSourcePaths (ipdPackageId package) modules
-    resL <- liftIO $ mapM (\ file -> do
-        str <- S.readFile file
-        H.parseModuleEx flags file (Just str)) paths
-    let resOk = mapMaybe (\ pr -> case pr of
-                                    Left e -> trace ("can't parse: " ++ H.parseErrorContents e ++
-                                        " location " ++ show H.parseErrorLocation) Nothing
-                                    Right r -> Just r) resL
-    let ideas = H.applyHints classify hint resOk
+    res <- forM paths $ \ file -> do
+        str <- liftIO $ S.readFile file
+        liftIO . debugM "leksah" $ "refreshDir hlint parsing " <> file
+        do result <- liftIO $ H.parseModuleEx flags file (Just str)
+           case result of
+                Left e -> do ideMessage Normal . T.pack $
+                               "can't parse: " <> H.parseErrorContents e <> " location " <>
+                                 show (H.parseErrorLocation e)
+                             return Nothing
+                Right r -> do liftIO . debugM "leksah" $
+                                "refreshDir hlint parsed " <> file
+                              return $ Just r
+        `catchIDE` (\(e :: SomeException) -> do
+                            reflectIDE (ideMessage Normal . T.pack $ show e) ideR
+                            return Nothing)
+    liftIO $ debugM "leksah" "refreshDir hlint parse complete"
+    let ideas = H.applyHints classify hint (catMaybes res)
     liftIO $ setHLint2Results store iter (T.unpack $ packageIdentifierToString (ipdPackageId package)) ideas
     return ()
 
@@ -298,6 +312,7 @@ hlint2Record dir idea = HLintRecord {
 
 setHLint2Results :: TreeStore HLintRecord -> TreeIter -> FilePath -> [H.Idea] -> IO Int
 setHLint2Results store parent dir ideas = do
+    liftIO $ debugM "leksah" "setHLint2Results"
     parentPath <- treeModelGetPath store parent
     forM_ (zip [0..] records) $ \(n, record) -> do
         mbChild <- treeModelIterNthChild store (Just parent) n
@@ -308,6 +323,7 @@ setHLint2Results store parent dir ideas = do
                 path <- treeModelGetPath store iter
                 removeUntil record store path
             _ -> treeStoreInsert store parentPath n record
+    liftIO $ debugM "leksah" "setHLint2Results removing remaining records"
     removeRemaining store (parentPath++[nRecords])
     return nRecords
   where
