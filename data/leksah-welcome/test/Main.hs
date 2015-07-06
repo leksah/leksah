@@ -7,4 +7,5 @@ import Test.DocTest
 -- To run these tests
 --   * Select Leksah menu item Package -> Test
 --   * Select the tick icon on the Leksah toolbar (to enable "cabal test" during builds)
+main :: IO ()
 main = doctest ["-isrc", "src/Main.hs"]

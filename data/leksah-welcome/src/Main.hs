@@ -41,7 +41,7 @@ import Data.Monoid ((<>))
 -- The code that runs the tests is in the file test/Main.hs.
 --
 -- prop> stripPrefix "Hello " (hello s) == Just s
--- hello :: String -> String
+hello :: String -> String
 hello s = "Hello " <> s
 
 -- | Executable Entry Point
@@ -52,6 +52,6 @@ hello s = "Hello " <> s
 --   * Select Leksah menu item Package -> Run (or the cogs on the toolbar)
 --   * Select "exeMain" and press Ctrl+Enter to run them in ghci
 --   * Run "leksah-wellcome" from the command line
-main = do
-    putStrLn (hello "World")
+main :: IO ()
+main = putStrLn (hello "World")
 
