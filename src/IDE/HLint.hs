@@ -29,7 +29,7 @@ import IDE.Core.Types
         IDEM, IDEAction, IDE(..), IDEPackage(..), PackageAction)
 import Control.Monad.Reader (asks, MonadReader(..))
 import IDE.Core.State
-       (postAsyncIDE, catchIDE, MessageLevel(..), ideMessage,
+       (postSyncIDE, catchIDE, MessageLevel(..), ideMessage,
         leksahSubDir, reflectIDE, modifyIDE_, readIDE)
 import Control.Concurrent.STM.TVar
        (newTVarIO, writeTVar, readTVar)
@@ -129,7 +129,7 @@ runHLint' package mbSourceFile = do
                     Nothing -> getSourcePaths (ipdPackageId package) modules
     res <- forM paths $ \ full -> do
         let file = makeRelative (ipdBuildDir package) full
-        removeLogRefs [LintRef] (ipdBuildDir package) file
+        postSyncIDE $ removeLogRefs [LintRef] (ipdBuildDir package) file
         text <- liftIO $ T.readFile full
         liftIO . debugM "leksah" $ "runHLint parsing " <> full
         do result <- liftIO $ parseModuleEx flags full (Just (T.unpack text))
@@ -204,7 +204,7 @@ logHLintResult package allIdeas getText = do
                  . T.unlines . fixHead . reverse . fixTail $ reverse fromLines
             ref = LogRef srcSpan package (T.pack $ showHLint idea)
                     (Just (from, idea)) Nothing LintRef
-        postAsyncIDE $ addLogRef ref
+        postSyncIDE $ addLogRef ref
     return ()
 
 logHLintError :: IDEPackage -> ParseError -> IDEAction
@@ -216,7 +216,7 @@ logHLintError package error = do
                           (HSE.srcLine loc)
                           (HSE.srcColumn loc - 1)
         ref = LogRef srcSpan package ("Hlint Parse Error: " <> T.pack (parseErrorMessage error)) Nothing Nothing LintRef
-    postAsyncIDE $ addLogRef ref
+    postSyncIDE $ addLogRef ref
 
 -- Cut down version of showEx from HLint
 showHLint :: Idea -> String
