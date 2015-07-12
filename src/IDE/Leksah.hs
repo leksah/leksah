@@ -215,8 +215,9 @@ startGUI :: Yi.Config -> FilePath -> Maybe FilePath -> [FilePath] -> Prefs -> Bo
 startGUI yiConfig sessionFP mbWorkspaceFP sourceFPs iprefs isFirstStart =
   Yi.start yiConfig $ \yiControl -> do
     st          <-  unsafeInitGUIForThreadedRTS
-    when rtsSupportsBoundThreads
-        (sysMessage Normal "Linked with -threaded")
+    when rtsSupportsBoundThreads $ do
+        setNumCapabilities 2
+        sysMessage Normal "Linked with -threaded"
     timeout <- timeoutAddFull (yield >> return True) priorityLow 10
     mbScreen <- screenGetDefault
     case mbScreen of
@@ -390,6 +391,7 @@ startMainWindow yiControl sessionFP mbWorkspaceFP sourceFPs startupPrefs isFirst
           ,   yiControl         =   yiControl
           ,   serverQueue       =   Nothing
           ,   server            =   Nothing
+          ,   hlintQueue        =   Nothing
           ,   vcsData           =   (Map.empty, Nothing)
           ,   logLaunches       =   Map.empty
           ,   autoCommand       =   return ()

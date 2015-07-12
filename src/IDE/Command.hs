@@ -69,6 +69,7 @@ import IDE.Pane.PackageFlags
 import IDE.Pane.PackageEditor
 import IDE.Pane.Errors
 import IDE.Package
+import IDE.HLint
 import IDE.Sandbox
 import IDE.Pane.Log
 import IDE.Pane.Modules
@@ -99,7 +100,6 @@ import IDE.Pane.Trace (showTrace, fillTraceList)
 import IDE.PaneGroups
 import IDE.Pane.Search (getSearch, IDESearch(..))
 import IDE.Pane.Grep (getGrep)
-import IDE.Pane.HLint (refreshHLint, getHLint)
 import IDE.Pane.WebKit.Documentation (getDocumentation)
 import IDE.Pane.WebKit.Output (getOutputPane)
 import IDE.Pane.WebKit.Inspect (getInspectPane)
@@ -280,6 +280,8 @@ mkActions =
         (packageTry packageInstallDependencies) [] False
     ,AD "RegisterPackage" (__ "_Register") Nothing Nothing
         (packageTry packageRegister) [] False
+    ,AD "HLintPackage" (__ "_HLint") Nothing Nothing
+        (packageTry packageHLint) [] False
     ,AD "TestPackage" (__ "Test") Nothing Nothing
         (packageTry packageTest) [] False
     ,AD "SdistPackage" (__ "Source Dist") Nothing Nothing
@@ -397,8 +399,6 @@ mkActions =
         (getFiles Nothing  >>= \ p -> displayPane p False >> refreshFiles) [] False
     ,AD "ShowGrep" (__ "Grep") Nothing Nothing
         (getGrep Nothing  >>= \ p -> displayPane p False) [] False
-    ,AD "ShowHLint" (__ "HLint") Nothing Nothing
-        (getHLint Nothing  >>= \ p -> displayPane p False >> workspaceTry refreshHLint) [] False
     ,AD "ShowDocumentation" (__ "Documentation") Nothing Nothing
         (getDocumentation Nothing  >>= \ p -> displayPane p False) [] False
     ,AD "ShowOutput" (__ "Output") Nothing Nothing
@@ -937,6 +937,10 @@ registerLeksahEvents =    do
         (\ e@(GetTextPopup _)     -> return (GetTextPopup (Just textPopupMenu)))
     registerEvent stRef "StatusbarChanged"
         (\ e@(StatusbarChanged args) -> changeStatusbar args >> return e)
+    registerEvent stRef "SelectSrcSpan"
+        (\ e@(SelectSrcSpan mbSpan) -> selectMatchingErrors mbSpan >> return e)
+    registerEvent stRef "SavedFile"
+        (\ e@(SavedFile file) -> scheduleHLint (Right file) >> return e)
     return ()
 
 

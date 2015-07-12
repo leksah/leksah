@@ -82,6 +82,7 @@
        <menuitem name="_Install Dependencies" action="InstallDependenciesPackage" />
        <menuitem name="C_opy" action="CopyPackage" />
        <menuitem name="Re_gister" action="RegisterPackage" />
+       <menuitem name="_HLint" action="HLintPackage" />
        <menuitem name="Test" action="TestPackage" />
        <menuitem name="SDist" action="SdistPackage" />
        <menuitem name="_Build Documentation" action="DocPackage" />
@@ -119,7 +120,6 @@
        <menuitem name="_Errors" action="ShowErrors" />
        <menuitem name="_Files" action="ShowFiles" />
        <menuitem name="_Grep" action="ShowGrep" />
-       <menuitem name="_HLint" action="ShowHLint" />
        <menuitem name="_Documentation" action="ShowDocumentation" />
        <menuitem name="_Log" action="ShowLog" />
        <menuitem name="_Search" action="ShowSearch" />

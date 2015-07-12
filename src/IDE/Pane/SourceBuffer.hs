@@ -32,7 +32,6 @@ module IDE.Pane.SourceBuffer (
 ,   goToSourceDefinition'
 ,   goToDefinition
 ,   insertInBuffer
-,   replaceHLintSource
 
 ,   fileNew
 ,   fileOpenThis
@@ -68,10 +67,8 @@ module IDE.Pane.SourceBuffer (
 ,   updateStyle
 ,   updateStyle'
 ,   addLogRef
+,   removeLogRefs
 ,   removeBuildLogRefs
-,   resolveActiveHLint
-,   hlintSettings
-,   hlintBuffer
 ,   markRefInSourceBuf
 ,   inBufContext
 ,   inActiveBufContext
@@ -87,8 +84,10 @@ module IDE.Pane.SourceBuffer (
 ,   recentSourceBuffers
 ,   newTextBuffer
 ,   belongsToPackages
+,   belongsToPackage
 ,   belongsToWorkspace
 ,   getIdentifierUnderCursorFromIter
+,   useCandyFor
 
 ) where
 
@@ -136,7 +135,7 @@ import System.Glib.Attributes (AttrOp(..), set)
 import IDE.BufferMode
 import Control.Monad.Trans.Reader (ask)
 import Control.Monad.IO.Class (MonadIO(..))
-import Control.Monad (filterM, foldM, void, unless, when, liftM)
+import Control.Monad (filterM, void, unless, when, liftM)
 import Control.Exception as E (catch, SomeException)
 
 import qualified IDE.Command.Print as Print
@@ -144,22 +143,11 @@ import Control.Monad.Trans.Class (MonadTrans(..))
 import System.Log.Logger (debugM)
 import Data.Text (Text)
 import qualified Data.Text as T
-       (reverse, take, drop, init, length, findIndex, replicate, lines,
+       (length, findIndex, replicate, lines,
         dropWhileEnd, unlines, strip, null, pack, unpack)
 import Data.Monoid ((<>))
 import qualified Data.Text.IO as T (writeFile, readFile)
 import Data.Time (UTCTime(..))
-import Control.Concurrent (forkIO)
-import Language.Haskell.HLint3
-       (Hint(..), Classify(..), ParseError(..), Idea(..), Severity(..),
-        parseFlagsAddFixities, resolveHints, readSettingsFile,
-        findSettings, applyHints, defaultParseFlags, parseModuleEx,
-        ParseFlags(..), CppFlags(..))
-import qualified Language.Haskell.Exts.SrcLoc as HSE
-       (SrcLoc(..), SrcSpan(..))
-import Language.Preprocessor.Cpphs as Cpphs
-       (runCpphsReturningSymTab, defaultCpphsOptions, CpphsOptions(..))
-import qualified System.IO.Strict as S (readFile)
 import Graphics.UI.Gtk.Gdk.EventM
        (eventModifier, eventKeyName, eventKeyVal)
 import Data.Foldable (forM_)
@@ -235,7 +223,7 @@ instance RecoverablePane IDEBuffer BufferState IDEM where
     buildPane panePath notebook builder = return Nothing
     builder pp nb w =    return (Nothing,[])
 
-startComplete :: IDEAction
+-- startComplete :: IDEAction
 startComplete = do
     mbBuf <- maybeActiveBuf
     currentState' <- readIDE currentState
@@ -243,7 +231,7 @@ startComplete = do
         Nothing     -> return ()
         Just (IDEBuffer {sourceView=v}) -> complete v True
 
-selectSourceBuf :: FilePath -> IDEM (Maybe IDEBuffer)
+-- selectSourceBuf :: FilePath -> IDEM (Maybe IDEBuffer)
 selectSourceBuf fp = do
     fpc <- liftIO $ myCanonicalizePath fp
     buffers <- allBuffers
@@ -336,47 +324,6 @@ goToSourceDefinition' sourcePath Location{..} = do
         Nothing -> return ()
     return mbBuf
 
-indentHLintText :: Int -> Text -> Text
-indentHLintText startColumn text =
-    T.init $ T.unlines (take 1 lines <> drop 1 (map (indent <>) lines))
-  where
-    lines = T.lines text
-    indent = T.replicate startColumn " "
-
-replaceHLintSource :: (Bool, Int) -> (Text, Idea) -> IDEM (Bool, Int)
-replaceHLintSource (changed, delta) (from, Idea{ideaSpan = ideaSpan, ideaTo = Just ideaTo}) = do
-    let HSE.SrcSpan{..} = ideaSpan
-        to = indentHLintText (srcSpanStartColumn-1) (T.pack ideaTo)
-    liftIO . debugM "leksah" $ "replaceHLintSource From: " <> show from <> "\nreplaceHLintSource To:   " <> show to
-    mbBuf <- selectSourceBuf srcSpanFilename
-    case mbBuf of
-        Just buf -> inActiveBufContext (changed, delta) $ \_ sv ebuf _ _ -> do
-            useCandy   <- useCandyFor buf
-            candy'     <- readIDE candy
-            realString <- if useCandy then stringToCandy candy' to else return to
-            (lineS', columnS', lineE', columnE') <- if useCandy
-                    then do
-                        (_,e1) <- positionToCandy candy' ebuf (srcSpanStartLine + delta, srcSpanStartColumn - 1)
-                        (_,e2) <- positionToCandy candy' ebuf (srcSpanEndLine + delta, srcSpanEndColumn - 1)
-                        return (srcSpanStartLine-1 + delta,e1,srcSpanEndLine-1 + delta,e2)
-                    else return (srcSpanStartLine-1 + delta,srcSpanStartColumn-1,srcSpanEndLine-1 + delta,srcSpanEndColumn-1)
-            i1  <- getIterAtLine ebuf lineS'
-            i1' <- forwardCharsC i1 columnS'
-            i2  <- getIterAtLine ebuf lineE'
-            i2' <- forwardCharsC i2 columnE'
-            candy <- readIDE candy
-            check <- getCandylessPart candy ebuf i1' i2'
-            if check == from
-                then do
-                    beginUserAction ebuf
-                    delete ebuf i1' i2'
-                    editInsertCode ebuf i1' realString
-                    endUserAction ebuf
-                    return (True, delta + length (T.lines to) - length (T.lines from))
-                else return (changed, delta)
-        _ -> return (changed, delta)
-replaceHLintSource x _ = return x
-
 insertInBuffer :: Descr -> IDEAction
 insertInBuffer idDescr = do
     mbPaneName <- lastActiveBufferPane
@@ -416,9 +363,28 @@ removeLogRefs types root file = do
 removeBuildLogRefs :: FilePath -> FilePath -> IDEAction
 removeBuildLogRefs = removeLogRefs [ErrorRef, WarningRef, TestFailureRef]
 
+-- | Test failures have the same imporance as errors so should be
+-- sorted the same
+importance :: LogRef -> LogRefType
+importance LogRef{ logRefType = TestFailureRef } = ErrorRef
+importance ref = logRefType ref
+
 addLogRef :: LogRef -> IDEAction
 addLogRef ref = do
-    modifyIDE_ (\ide -> ide{allLogRefs = allLogRefs ide <> [ref]})
+    -- Put most important errors first.
+    -- If the importance of two errors is the same then
+    -- then the older one might be stale (unless it is in the same file)
+    modifyIDE_ $ \ ide ->
+        let (moreImportant, rest) =
+                partition (\old -> importance old < importance ref -- Note: a low LogRefType is more important
+                               || (importance old == importance ref
+                                            && logRefFullFilePath old == logRefFullFilePath ref)) (allLogRefs ide)
+            currErr = if currentError ide `elem` map Just moreImportant
+                                then currentError ide
+                                else Nothing in
+        ide{ allLogRefs = moreImportant <> [ref] <> rest
+           , currentEBC = (currErr, currentBreak ide, currentContext ide)
+           }
 
     buffers <- allBuffers
     let matchingBufs = filter (maybe False (equalFilePath (logRefFullFilePath ref)) . fileName) buffers
@@ -543,12 +509,9 @@ builder' bs mbfn ind bn rbn ct prefs fileContents modTime pp nb windows =
         _               -> newDefaultBuffer mbfn fileContents >>= makeBuffer modTime
 
   where
+    makeBuffer :: TextEditor editor => Maybe UTCTime -> EditorBuffer editor -> IDEM (Maybe IDEBuffer,Connections)
     makeBuffer modTime buffer = do
         ideR <- ask
-
-        tagTable <- getTagTable buffer
-        foundTag <- newTag tagTable "found"
-        background foundTag $ foundBackground prefs
 
         beginNotUndoableAction buffer
         let mod = modFromFileName mbfn
@@ -606,32 +569,37 @@ builder' bs mbfn ind bn rbn ct prefs fileContents modTime pp nb windows =
                 sysMessage Normal "SourceBuffer>> no text popup"
                 return []
 
-        --TODO refactor this
-        ids5 <- onMotionNotifyEvent sv $ do
-            liftIDE $ do
-                candy' <- readIDE candy
-                inActiveBufContext () $ \_ _ ebuf currentBuffer _ -> do
-                    let tagName = "match"
-                    tagTable <- getTagTable ebuf
-                    mbTag <- lookupTag tagTable tagName
-                    case mbTag of
-                        Just existingTag -> removeTagByName ebuf tagName
-                        Nothing -> do
-                            tag <- newTag tagTable tagName
-                            background tag $ matchBackground prefs
-
-                    hasSelection <- hasSelection ebuf
-                    when hasSelection $ do
-                            (si1,si2)   <- getSelectionBounds ebuf
-
-                            sTxt      <- getCandylessPart candy' ebuf si1 si2
-                            let strippedSTxt = T.strip sTxt
-                            unless (T.null strippedSTxt) $
-                              do bi1 <- getStartIter ebuf
-                                 bi2 <- getEndIter ebuf
-                                 forwardApplying bi1 strippedSTxt (Just si1) tagName ebuf
-                                 forwardApplying si2 strippedSTxt (Just bi2) tagName ebuf
-            return False
+        hasMatch <- liftIO $ newIORef False
+        ids5 <- onSelectionChanged buffer $ do
+            (iStart, iEnd) <- getSelectionBounds buffer
+            lStart <- (+1) <$> getLine iStart
+            cStart <- getLineOffset iStart
+            lEnd <- (+1) <$> getLine iEnd
+            cEnd <- getLineOffset iEnd
+            triggerEventIDE_ . SelectSrcSpan $
+                case mbfn of
+                    Just fn -> Just (SrcSpan fn lStart cStart lEnd cEnd)
+                    Nothing -> Nothing
+            let tagName = "match"
+            hasSelection <- hasSelection buffer
+            m <- liftIO $ readIORef hasMatch
+            when m $ removeTagByName buffer tagName
+            r <- if hasSelection
+                    then do
+                        candy'    <- readIDE candy
+                        sTxt      <- getCandylessPart candy' buffer iStart iEnd
+                        let strippedSTxt = T.strip sTxt
+                        if T.null strippedSTxt
+                            then return False
+                            else do
+                                bi1 <- getStartIter buffer
+                                bi2 <- getEndIter buffer
+                                r1 <- forwardApplying bi1 strippedSTxt (Just iStart) tagName buffer
+                                r2 <- forwardApplying iEnd strippedSTxt (Just bi2) tagName buffer
+                                return (r1 || r2)
+                    else return False
+            liftIO $ writeIORef hasMatch r
+            return ()
 
         ids6 <- onKeyPress sv $ do
             keyval      <- lift eventKeyVal
@@ -702,7 +670,7 @@ builder' bs mbfn ind bn rbn ct prefs fileContents modTime pp nb windows =
                     -> Maybe (EditorIter editor)
                     -> Text   -- tagname
                     -> EditorBuffer editor
-                    -> IDEM ()
+                    -> IDEM Bool
     forwardApplying tI txt mbTi tagName ebuf = do
         mbFTxt <- forwardSearch tI txt [TextSearchVisibleOnly, TextSearchTextOnly] mbTi
         case mbFTxt of
@@ -711,8 +679,8 @@ builder' bs mbfn ind bn rbn ct prefs fileContents modTime pp nb windows =
                 endsWord <- endsWord end
                 when (startsWord && endsWord) $
                     applyTagByName ebuf tagName start end
-                forwardApplying end txt mbTi tagName ebuf
-            Nothing -> return()
+                (|| (startsWord && endsWord)) <$> forwardApplying end txt mbTi tagName ebuf
+            Nothing -> return False
 
 isIdent a = isAlphaNum a || a == '\'' || a == '_'       -- parts of haskell identifiers
 
@@ -982,102 +950,7 @@ fileSaveBuffer query nb _ ebuf (ideBuf@IDEBuffer{sourceView = sv}) i = liftIDE $
                     return False)
             setModified buf (not succ)
             markLabelAsChanged nb ideBuf
-            hlintBuffer' ideBuf text' fn
-
-hlintSettings :: IDEPackage -> IDEM (ParseFlags, [Classify], Hint)
-hlintSettings package = do
-    mbHlintDir <- liftIO $ leksahSubDir "hlint"
-    let cabalMacros = ipdBuildDir package </> "dist/build/autogen/cabal_macros.h"
-    cabalMacrosExist <- liftIO $ doesFileExist cabalMacros
-    defines <- liftIO $ if cabalMacrosExist
-                            then do
-                                raw <- S.readFile cabalMacros
-                                map (\(a, b) -> (a, concat (lines b))) . snd <$> runCpphsReturningSymTab defaultCpphsOptions cabalMacros raw
-                            else return []
-    (fixities, classify, hints) <- liftIO $ findSettings (readSettingsFile mbHlintDir) Nothing
-    let hint = resolveHints hints
-        flags = parseFlagsAddFixities fixities defaultParseFlags{ cppFlags = Cpphs defaultCpphsOptions
-            { defines = defines } }
-    liftIO . debugM "leksah" $ "hlintSettings defines = " <> show defines
-    return (flags, classify, hint)
-
-hlintBuffer :: IDEBuffer -> IDEAction
-hlintBuffer ideBuf@IDEBuffer{..} = do
-    buf   <- getBuffer sourceView
-    candy <- readIDE candy
-    text  <- getCandylessText candy buf
-    maybe (return ()) (hlintBuffer' ideBuf text) fileName
-
-hlintBuffer' :: IDEBuffer -> Text -> FilePath -> IDEAction
-hlintBuffer' ideBuf text fn = do
-    packs <- belongsToPackages ideBuf
-    ideR <- ask
-    case packs of
-        (package:_) -> do
-            let file = makeRelative (ipdBuildDir package) fn
-            removeLogRefs [LintRef] (ipdBuildDir package) file
-            liftIO . void . forkIO $ do
-                (flags, classify, hint) <- reflectIDE (hlintSettings package) ideR
-                parseResult <- parseModuleEx flags fn (Just $ T.unpack text)
-                case parseResult of
-                    (Right m) -> do
-                        let allIdeas = applyHints classify hint [m]
-                            ideas = filter (\Idea{..} -> ideaSeverity /= Ignore
-                                                         && equalFilePath (HSE.srcSpanFilename ideaSpan) fn) allIdeas
-                        forM_ ideas $ \ idea@Idea{..} -> do
-                            let fixColumn c = max 0 (c - 1)
-                                srcSpan = SrcSpan file
-                                                  (HSE.srcSpanStartLine ideaSpan)
-                                                  (HSE.srcSpanStartColumn ideaSpan - 1)
-                                                  (HSE.srcSpanEndLine ideaSpan)
-                                                  (HSE.srcSpanEndColumn ideaSpan - 1)
-                                fromLines = drop (HSE.srcSpanStartLine ideaSpan - 1)
-                                          . take (HSE.srcSpanEndLine ideaSpan) $ T.lines text
-                                fixHead [] = []
-                                fixHead (x:xs) = T.drop (HSE.srcSpanStartColumn ideaSpan - 1) x : xs
-                                fixTail [] = []
-                                fixTail (x:xs) = T.take (HSE.srcSpanEndColumn ideaSpan - 1) x : xs
-                                from = T.reverse . T.drop 1 . T.reverse
-                                     . T.unlines . fixHead . reverse . fixTail $ reverse fromLines
-                            reflectIDE (postAsyncIDE $ addLogRef
-                                (LogRef srcSpan package (T.pack ideaHint <> maybe "" (("\n" <>) . T.pack) ideaTo)
-                                        (Just (from, idea)) (0, 0) LintRef)) ideR
-                    Left error -> do
-                            let loc = parseErrorLocation error
-                                srcSpan = SrcSpan file
-                                                  (HSE.srcLine loc)
-                                                  (HSE.srcColumn loc - 1)
-                                                  (HSE.srcLine loc)
-                                                  (HSE.srcColumn loc - 1)
-                            reflectIDE (postAsyncIDE $ addLogRef
-                                (LogRef srcSpan package ("Hlint Parse Error: " <> T.pack (parseErrorMessage error))
-                                        Nothing (0, 0) LintRef)) ideR
-        _ -> liftIO . debugM "leksah" $ "hlintBuffer package not found for " <> fn
-
-resolveActiveHLint :: IDEM Bool
-resolveActiveHLint = inActiveBufContext False  $ \_ _ ebuf _ _ -> do
-    allLogRefs <- readIDE allLogRefs
-    (iStart, iEnd) <- getSelectionBounds ebuf
-    lStart <- getLine iStart
-    cStart <- getLineOffset iStart
-    lEnd <- getLine iEnd
-    cEnd <- getLineOffset iEnd
-    let selectedRefs = filter (\ LogRef{..} -> logRefType == LintRef
-                         && (lStart+1, cStart) <= (srcSpanEndLine logRefSrcSpan, srcSpanEndColumn logRefSrcSpan)
-                         && (lEnd+1, cEnd) >= (srcSpanStartLine logRefSrcSpan, srcSpanStartColumn logRefSrcSpan)) allLogRefs
-        safeRefs = takeWhileNotOverlapping selectedRefs
-    (changed, _) <- foldM replaceHLintSource (False, 0) . catMaybes $ map logRefIdea safeRefs
-    prefs <- readIDE prefs
-    when changed $ if backgroundBuild prefs
-                        then setModified ebuf True
-                        else void $ fileSave False
-    return changed
-  where
-    takeWhileNotOverlapping = takeWhileNotOverlapping' (-1)
-    takeWhileNotOverlapping' _ [] = []
-    takeWhileNotOverlapping' line (ref:refs)
-        | srcSpanEndLine (logRefSrcSpan ref) > line = ref : takeWhileNotOverlapping' (srcSpanEndLine $ logRefSrcSpan ref) refs
-        | otherwise = takeWhileNotOverlapping' line refs
+            triggerEventIDE_ $ SavedFile fn
 
 fileSave :: Bool -> IDEM Bool
 fileSave query = inActiveBufContext False $ fileSaveBuffer query

@@ -365,62 +365,102 @@ prefsDescription configDir packages = NFDPP [
             (paraName <<<- ParaName (__ "Found Text Background") $ emptyParams)
             (PP.text . show)
             colorParser
-            foundBackground
-            (\ b a -> a{foundBackground = b})
+            foundBackgroundLight
+            (\ b a -> a{foundBackgroundLight = b})
             colorEditor
             (\c -> do
                 buffers <- allBuffers
-                forM_ buffers $ \(IDEBuffer {sourceView = sv}) -> do
-                    ebuf     <- getBuffer sv
-                    tagTable <- getTagTable ebuf
-                    mbTag    <- lookupTag tagTable "found"
-                    case mbTag of
-                        Just tag -> background tag c
-                        Nothing  -> return ())
+                mapM_ updateStyle' buffers)
     ,   mkFieldPP
             (paraName <<<- ParaName (__ "Selection Match Text Background") $ emptyParams)
             (PP.text . show)
             colorParser
-            matchBackground
-            (\ b a -> a{matchBackground = b})
+            matchBackgroundLight
+            (\ b a -> a{matchBackgroundLight = b})
             colorEditor
             (\c -> do
                 buffers <- allBuffers
-                forM_ buffers $ \(IDEBuffer {sourceView = sv}) -> do
-                    ebuf     <- getBuffer sv
-                    tagTable <- getTagTable ebuf
-                    mbTag    <- lookupTag tagTable "match"
-                    case mbTag of
-                        Just tag -> background tag c
-                        Nothing  -> return ())
+                mapM_ updateStyle' buffers)
     ,   mkFieldPP
             (paraName <<<- ParaName (__ "Execution Context Text Background") $ emptyParams)
             (PP.text . show)
             colorParser
-            contextBackground
-            (\ b a -> a{contextBackground = b})
+            contextBackgroundLight
+            (\ b a -> a{contextBackgroundLight = b})
             colorEditor
             (\c -> do
                 buffers <- allBuffers
-                forM_ buffers $ \(IDEBuffer {sourceView = sv}) -> do
-                    ebuf     <- getBuffer sv
-                    tagTable <- getTagTable ebuf
-                    --  TODO find and set the tag background
-                    return ())
+                mapM_ updateStyle' buffers)
     ,   mkFieldPP
             (paraName <<<- ParaName (__ "Breakpoint Text Background") $ emptyParams)
             (PP.text . show)
             colorParser
-            breakpointBackground
-            (\ b a -> a{breakpointBackground = b})
+            breakpointBackgroundLight
+            (\ b a -> a{breakpointBackgroundLight = b})
             colorEditor
             (\c -> do
                 buffers <- allBuffers
-                forM_ buffers $ \(IDEBuffer {sourceView = sv}) -> do
-                    ebuf     <- getBuffer sv
-                    tagTable <- getTagTable ebuf
-                    --  TODO find and set the tag background
-                    return ())
+                mapM_ updateStyle' buffers)
+    ,   mkFieldPP
+            (paraName <<<- ParaName (__ "Lint Text Background") $ emptyParams)
+            (PP.text . show)
+            colorParser
+            lintBackgroundLight
+            (\ b a -> a{lintBackgroundLight = b})
+            colorEditor
+            (\c -> do
+                buffers <- allBuffers
+                mapM_ updateStyle' buffers)
+    ,   mkFieldPP
+            (paraName <<<- ParaName (__ "Found Text Dark Background") $ emptyParams)
+            (PP.text . show)
+            colorParser
+            foundBackgroundDark
+            (\ b a -> a{foundBackgroundDark = b})
+            colorEditor
+            (\c -> do
+                buffers <- allBuffers
+                mapM_ updateStyle' buffers)
+    ,   mkFieldPP
+            (paraName <<<- ParaName (__ "Selection Match Text Dark Background") $ emptyParams)
+            (PP.text . show)
+            colorParser
+            matchBackgroundDark
+            (\ b a -> a{matchBackgroundDark = b})
+            colorEditor
+            (\c -> do
+                buffers <- allBuffers
+                mapM_ updateStyle' buffers)
+    ,   mkFieldPP
+            (paraName <<<- ParaName (__ "Execution Context Text Dark Background") $ emptyParams)
+            (PP.text . show)
+            colorParser
+            contextBackgroundDark
+            (\ b a -> a{contextBackgroundDark = b})
+            colorEditor
+            (\c -> do
+                buffers <- allBuffers
+                mapM_ updateStyle' buffers)
+    ,   mkFieldPP
+            (paraName <<<- ParaName (__ "Breakpoint Text Dark Background") $ emptyParams)
+            (PP.text . show)
+            colorParser
+            breakpointBackgroundDark
+            (\ b a -> a{breakpointBackgroundDark = b})
+            colorEditor
+            (\c -> do
+                buffers <- allBuffers
+                mapM_ updateStyle' buffers)
+    ,   mkFieldPP
+            (paraName <<<- ParaName (__ "Lint Text Dark Background") $ emptyParams)
+            (PP.text . show)
+            colorParser
+            lintBackgroundDark
+            (\ b a -> a{lintBackgroundDark = b})
+            colorEditor
+            (\c -> do
+                buffers <- allBuffers
+                mapM_ updateStyle' buffers)
     ,   mkFieldPP
             (paraName <<<- ParaName (__ "Automatically load modified files modified outside of Leksah") $ emptyParams)
             (PP.text . show)
@@ -792,10 +832,16 @@ defaultPrefs = Prefs {
     ,   removeTBlanks       =   True
     ,   textviewFont        =   Nothing
     ,   sourceStyle         =   (True,"leksah")
-    ,   foundBackground     =   Color 65535 65535 32768
-    ,   matchBackground     =   Color 32768 32768 32768
-    ,   contextBackground   =   Color 65535 49152 49152
-    ,   breakpointBackground =  Color 65535 49152 32768
+    ,   foundBackgroundLight      = Color 65535 65535 32768
+    ,   matchBackgroundLight      = Color 42064 55923 28520
+    ,   contextBackgroundLight    = Color 65535 46529 46529
+    ,   breakpointBackgroundLight = Color 64879 51921 28114
+    ,   lintBackgroundLight       = Color 60000 65535 60000
+    ,   foundBackgroundDark       = Color 30364 29149     0
+    ,   matchBackgroundDark       = Color 18021 29927  6384
+    ,   contextBackgroundDark     = Color 20000 16000 16000
+    ,   breakpointBackgroundDark  = Color 15000  5000  5000
+    ,   lintBackgroundDark        = Color     0 15000     0
     ,   textEditorType      =   "GtkSourceView"
     ,   autoLoad            =   False
     ,   logviewFont         =   Nothing

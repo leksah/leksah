@@ -34,6 +34,7 @@ module IDE.Core.State (
 ,   isStartingOrClosing
 
 ,   triggerEventIDE
+,   triggerEventIDE_
 
 ,   deactivatePane
 
@@ -255,7 +256,7 @@ throwIDE str = throw (IDEException str)
 window = head . windows
 
 errorRefs :: IDE -> [LogRef]
-errorRefs = filter ((\ t -> t == ErrorRef || t == WarningRef || t == LintRef || t == TestFailureRef) . logRefType) .
+errorRefs = filter ((`elem` [ErrorRef, WarningRef, LintRef, TestFailureRef]) . logRefType) .
                allLogRefs
 
 breakpointRefs :: IDE -> [LogRef]

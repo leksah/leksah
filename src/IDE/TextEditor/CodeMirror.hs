@@ -540,5 +540,6 @@ instance TextEditor CodeMirror where
                  menuPopup menu Nothing
                  return True
             return [ConnectC id1]
+    onSelectionChanged (CMBuffer cm) f = return [] -- TODO
 #endif
 

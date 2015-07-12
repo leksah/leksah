@@ -136,6 +136,7 @@ import Data.Text (Text)
 import qualified Data.Text as T (unpack)
 import Language.Haskell.HLint3 (Idea(..))
 import Data.Function (on)
+import Control.Concurrent.STM.TVar (TVar)
 
 -- ---------------------------------------------------------------------
 -- IDE State
@@ -175,6 +176,7 @@ data IDE            =  IDE {
 ,   yiControl       ::   Yi.Control
 ,   serverQueue     ::   Maybe (MVar (ServerCommand, ServerAnswer -> IDEM ()))
 ,   server          ::   Maybe Handle
+,   hlintQueue      ::   Maybe (TVar [Either FilePath FilePath])
 ,   vcsData         ::   (Map FilePath MenuItem, Maybe (Maybe Text)) -- menus for packages, password
 ,   logLaunches     ::   Map.Map Text LogLaunchData
 ,   autoCommand     ::   IDEAction
@@ -294,6 +296,8 @@ data IDEEvent  =
     |   GetTextPopup (Maybe (IDERef -> Menu -> IO ()))
     |   StatusbarChanged [StatusbarCompartment]
     |   WorkspaceChanged Bool Bool -- ^ showPane updateFileCache
+    |   SelectSrcSpan (Maybe SrcSpan)
+    |   SavedFile FilePath
 
 instance Event IDEEvent Text where
     getSelector (InfoChanged _)         =   "InfoChanged"
@@ -318,6 +322,8 @@ instance Event IDEEvent Text where
     getSelector (GetTextPopup _)        =   "GetTextPopup"
     getSelector (StatusbarChanged _)    =   "StatusbarChanged"
     getSelector (WorkspaceChanged _ _)  =   "WorkspaceChanged"
+    getSelector (SelectSrcSpan _)       =   "SelectSrcSpan"
+    getSelector (SavedFile _)           =   "SavedFile"
 
 instance EventSource IDERef IDEEvent IDEM Text where
     canTriggerEvent _ "InfoChanged"         = True
@@ -344,6 +350,8 @@ instance EventSource IDERef IDEEvent IDEM Text where
     canTriggerEvent _ "GetTextPopup"        = True
     canTriggerEvent _ "StatusbarChanged"    = True
     canTriggerEvent _ "WorkspaceChanged"    = True
+    canTriggerEvent _ "SelectSrcSpan"       = True
+    canTriggerEvent _ "SavedFile"           = True
     canTriggerEvent _ _                   = False
     getHandlers ideRef = do
         ide <- liftIO $ readIORef ideRef
@@ -454,10 +462,16 @@ data Prefs = Prefs {
     ,   removeTBlanks       ::   Bool
     ,   textviewFont        ::   Maybe Text
     ,   sourceStyle         ::   (Bool, Text)
-    ,   foundBackground     ::   Color
-    ,   matchBackground     ::   Color
-    ,   contextBackground   ::   Color
-    ,   breakpointBackground ::  Color
+    ,   foundBackgroundLight      ::   Color
+    ,   matchBackgroundLight      ::   Color
+    ,   contextBackgroundLight    ::   Color
+    ,   breakpointBackgroundLight ::   Color
+    ,   lintBackgroundLight       ::   Color
+    ,   foundBackgroundDark       ::   Color
+    ,   matchBackgroundDark       ::   Color
+    ,   contextBackgroundDark     ::   Color
+    ,   breakpointBackgroundDark  ::   Color
+    ,   lintBackgroundDark        ::   Color
     ,   autoLoad            ::   Bool
     ,   textEditorType      ::   Text
     ,   logviewFont         ::   Maybe Text
@@ -500,8 +514,11 @@ cabalCommand p = if useCabalDev p then "cabal-dev" else "cabal"
 
 data EditorStyle = EditorStyle { styleName    :: Maybe Text
                                , preferDark   :: Bool
-                               , breakpointBG :: Color
-                               , contextBG    :: Color
+                               , foundBG      :: (Color, Color)
+                               , matchBG      :: (Color, Color)
+                               , contextBG    :: (Color, Color)
+                               , breakpointBG :: (Color, Color)
+                               , lintBG       :: (Color, Color)
                                }
 
 editorStyle :: Bool -> Prefs -> EditorStyle
@@ -509,8 +526,11 @@ editorStyle preferDark prefs = EditorStyle { styleName = case sourceStyle prefs 
                                                         (False,_) -> Nothing
                                                         (True,v)  -> Just v
                                            , preferDark = preferDark
-                                           , breakpointBG = breakpointBackground prefs
-                                           , contextBG = contextBackground prefs
+                                           , foundBG      = (foundBackgroundDark      prefs, foundBackgroundLight      prefs)
+                                           , matchBG      = (matchBackgroundDark      prefs, matchBackgroundLight      prefs)
+                                           , contextBG    = (contextBackgroundDark    prefs, contextBackgroundLight    prefs)
+                                           , breakpointBG = (breakpointBackgroundDark prefs, breakpointBackgroundLight prefs)
+                                           , lintBG       = (lintBackgroundDark       prefs, lintBackgroundLight       prefs)
                                            }
 
 data SearchHint = Forward | Backward | Insert | Delete | Initial
@@ -539,14 +559,14 @@ data LogLaunch = LogLaunch {
 
 -- Order determines priority of the icons in the gutter
 data LogRefType = ContextRef | BreakpointRef | ErrorRef | TestFailureRef | WarningRef | LintRef
-    deriving (Eq, Show, Enum, Bounded)
+    deriving (Eq, Ord, Show, Enum, Bounded)
 
 data LogRef = LogRef {
     logRefSrcSpan       ::   SrcSpan
 ,   logRefPackage       ::   IDEPackage
 ,   refDescription      ::   Text
 ,   logRefIdea          ::   Maybe (Text, Idea)
-,   logLines            ::   (Int,Int)
+,   logLines            ::   Maybe (Int, Int)
 ,   logRefType          ::   LogRefType
 }   deriving (Eq)
 

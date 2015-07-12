@@ -129,7 +129,7 @@ import qualified Data.Text as T
        (drop, dropWhile, all, length, pack)
 import Data.Monoid ((<>))
 import Graphics.UI.Gtk.Multiline.TextBuffer
-       (textBufferDeleteMarkByName, textBufferDeleteMark,
+       (markSet, textBufferDeleteMarkByName, textBufferDeleteMark,
         textBufferGetMark)
 import Graphics.UI.Gtk.SourceView.SourceMarkAttributes
        (queryTooltipText, sourceMarkAttributesSetIconName,
@@ -139,6 +139,7 @@ import Graphics.UI.Gtk.SourceView.SourceView
 import Graphics.UI.Gtk.Multiline.TextMark
        (textMarkGetName, toTextMark)
 import Control.Arrow (Arrow(..))
+import System.Log.Logger (debugM)
 
 transformGtkIter :: EditorIter GtkSourceView -> (TextIter -> IO a) -> IDEM (EditorIter GtkSourceView)
 transformGtkIter (GtkIter i) f = do
@@ -181,6 +182,10 @@ newGtkBuffer mbFilename contents = liftIO $ do
     textBufferSetText buffer contents
     sourceBufferEndNotUndoableAction buffer
     tagTable <- textBufferGetTagTable buffer
+    textTagNew (Just "found") >>= textTagTableAdd tagTable
+    textTagNew (Just "match") >>= textTagTableAdd tagTable
+    textTagNew (Just "context") >>= textTagTableAdd tagTable
+    textTagNew (Just "breakpoint") >>= textTagTableAdd tagTable
     forM_ [minBound .. maxBound :: LogRefType] $ \ refType ->
         textTagNew (Just . T.pack $ show refType) >>= textTagTableAdd tagTable
     return $ GtkBuffer buffer
@@ -291,19 +296,17 @@ instance TextEditor GtkSourceView where
                         sourceBufferSetStyleScheme sb (Just scheme)
                     tagTable <- getTagTable (GtkBuffer sb)
                     let isDark = name `elem` ["leksah-dark", "oblivion", "cobalt"]
-                    forM_ [minBound .. maxBound] $ \ refType -> do
-                        mbTag <- lookupTag tagTable (T.pack $ show refType)
-                        case mbTag of
-                            Nothing  -> return ()
-                            Just tag ->
-                                case refType of
-                                    ErrorRef            -> underline tag UnderlineError
-                                    WarningRef          -> underline tag UnderlineError
-                                    TestFailureRef      -> underline tag UnderlineError
-                                    LintRef | isDark    -> background tag $ Color 0 15000 0
-                                            | otherwise -> background tag $ Color 60000 65535 60000
-                                    BreakpointRef       -> background tag breakpointBG
-                                    ContextRef          -> background tag contextBG
+                        setBG (dark, light) (Just tag) = background tag (if isDark then dark else light)
+                        setBG _             Nothing    = return ()
+                        setUnderline = maybe (return ()) (`underline` UnderlineError)
+                    lookupTag tagTable "match" >>= setBG matchBG
+                    lookupTag tagTable "found" >>= setBG foundBG
+                    lookupTag tagTable (T.pack $ show ErrorRef      ) >>= setUnderline
+                    lookupTag tagTable (T.pack $ show WarningRef    ) >>= setUnderline
+                    lookupTag tagTable (T.pack $ show TestFailureRef) >>= setUnderline
+                    lookupTag tagTable (T.pack $ show LintRef       ) >>= setBG lintBG
+                    lookupTag tagTable (T.pack $ show BreakpointRef ) >>= setBG breakpointBG
+                    lookupTag tagTable (T.pack $ show ContextRef    ) >>= setBG contextBG
     setText (GtkBuffer sb) text = liftIO $ textBufferSetText sb text
     undo (GtkBuffer sb) = liftIO $ sourceBufferUndo sb
 
@@ -388,8 +391,11 @@ instance TextEditor GtkSourceView where
             -- Paste operation is example of such sequential events (each word!).
             lastHandler <- newIORef Nothing
             id1 <- after sb bufferInsertText $ \iter text -> do
-                mapM_ idleRemove =<< maybeToList <$> readIORef lastHandler
+                lh <- readIORef lastHandler
+                debugM "leksah" $ "Removing " <> show lh
+                mapM_ idleRemove $ maybeToList lh
                 h <- flip idleAdd priorityDefault $ do
+                    writeIORef lastHandler Nothing
                     let isIdent a = isAlphaNum a || a == '\'' || a == '_' || a == '.'
                     let isOp    a = isSymbol   a || a == ':'  || a == '\\' || a == '*' || a == '/' || a == '-'
                                                  || a == '!'  || a == '@' || a == '%' || a == '&' || a == '?'
@@ -443,6 +449,13 @@ instance TextEditor GtkSourceView where
         ideR <- ask
         liftIO $ do
             id1 <- sv `on` populatePopup $ \menu -> reflectIDE (f menu) ideR
+            return [ConnectC id1]
+    onSelectionChanged (GtkBuffer sb) handler = do
+        ideR <- ask
+        liftIO $ do
+            id1 <- sb `on` markSet $ \ _ mark -> do
+                name <- textMarkGetName mark
+                when (name == Just "insert") $ reflectIDE handler ideR
             return [ConnectC id1]
 
     -- Iter

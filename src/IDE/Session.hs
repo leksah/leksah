@@ -67,7 +67,7 @@ import IDE.Pane.Variables
 import IDE.Find
 import System.Time (getClockTime)
 import IDE.Package (deactivatePackage)
-import IDE.Pane.Errors (ErrorsState(..))
+import IDE.Pane.Errors (fillErrorList, ErrorsState(..))
 import Control.Exception (catch, SomeException(..))
 import IDE.Pane.Workspace (WorkspaceState(..))
 import IDE.Workspaces (workspaceOpenThis)
@@ -673,6 +673,7 @@ getActiveSettings = do
 setDark :: Bool -> IDEM ()
 setDark dark = do
     setInfoStyle
+    fillErrorList
     prefs <- readIDE prefs
     buffers <- allBuffers
     mapM_ updateStyle' buffers

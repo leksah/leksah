@@ -30,6 +30,7 @@ import IDE.Metainfo.Provider
 import Text.PrettyPrint (render)
 import Distribution.Text (simpleParse, display, disp)
 import IDE.Pane.SourceBuffer
+import IDE.HLint (resolveActiveHLint)
 import Graphics.UI.Gtk
 import IDE.Utils.GUIUtils
 import Text.ParserCombinators.Parsec.Language (haskellStyle)

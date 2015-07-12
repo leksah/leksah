@@ -35,7 +35,6 @@ import IDE.Workspaces
 import qualified Data.Map as Map (empty)
 import Data.List (sortBy)
 import IDE.Pane.Files (refreshFiles)
-import IDE.Pane.HLint (refreshHLint)
 import Control.Monad (when)
 import Control.Monad.IO.Class (MonadIO(..))
 import IDE.Utils.GUIUtils (treeViewContextMenu, __)
@@ -229,5 +228,4 @@ updateWorkspace showPane updateFileCache = do
                     liftIO $ treeStoreInsertForest (workspaceStore p) [] 0 forest
                     when showPane $ displayPane p False
             refreshFiles
-            workspaceTry refreshHLint
 

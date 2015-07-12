@@ -169,6 +169,7 @@ class TextEditor editor where
     onLookupInfo :: EditorView editor -> IDEEventM EButton Bool -> IDEM [Connection]
     onMotionNotifyEvent :: EditorView editor -> IDEEventM EMotion Bool -> IDEM [Connection]
     onPopulatePopup :: EditorView editor -> (Menu -> IDEM ()) -> IDEM [Connection]
+    onSelectionChanged :: EditorBuffer editor -> IDEM () -> IDEM [Connection]
 
     -- Iter
     backwardCharC :: EditorIter editor -> IDEM (EditorIter editor)

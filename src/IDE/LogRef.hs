@@ -72,7 +72,7 @@ import Control.Applicative ((<$>))
 import qualified Data.Text as T
        (length, stripPrefix, isPrefixOf, unpack, unlines, pack, null)
 import Data.Monoid ((<>))
-import qualified Data.Set as S (member, insert, empty)
+import qualified Data.Set as S (notMember, member, insert, empty)
 import Data.Set (Set)
 import System.FilePath.Windows ((</>))
 
@@ -81,16 +81,12 @@ showSourceSpan = T.pack . displaySrcSpan . logRefSrcSpan
 
 selectRef :: Maybe LogRef -> IDEAction
 selectRef (Just ref) = do
-    logRefs <- readIDE allLogRefs
-    case elemIndex ref logRefs of
-        Nothing    -> liftIO . void $ debugM "leksah" "no index"
-        Just index -> do
-            mbBuf         <- selectSourceBuf (logRefFullFilePath ref)
-            case mbBuf of
-                Just buf  -> markRefInSourceBuf buf ref True
-                Nothing   -> liftIO . void $ debugM "leksah" "no buf"
-            log :: Log.IDELog <- Log.getLog
-            Log.markErrorInLog log (logLines ref)
+    mbBuf         <- selectSourceBuf (logRefFullFilePath ref)
+    case mbBuf of
+        Just buf  -> markRefInSourceBuf buf ref True
+        Nothing   -> liftIO . void $ debugM "leksah" "no buf"
+    log :: Log.IDELog <- Log.getLog
+    maybe (return ()) (Log.markErrorInLog log) (logLines ref)
 selectRef Nothing = return ()
 
 forOpenLogRefs :: (LogRef -> IDEBuffer -> IDEAction) -> IDEAction
@@ -113,17 +109,6 @@ unmarkLogRefs =
     forOpenLogRefs $ \logRef (IDEBuffer {sourceView = sv}) -> do
             buf     <-  getBuffer sv
             removeTagByName buf (T.pack $ show (logRefType logRef))
-
-setErrorList :: [LogRef] -> IDEAction
-setErrorList errs = do
-    unmarkLogRefs
-    breaks <- readIDE breakpointRefs
-    contexts <- readIDE contextRefs
-    modifyIDE_ (\ide -> ide{allLogRefs = errs ++ breaks ++ contexts})
-    setCurrentError Nothing
-    markLogRefs
-    triggerEventIDE ErrorChanged
-    return ()
 
 setBreakpointList :: [LogRef] -> IDEAction
 setBreakpointList breaks = do
@@ -149,104 +134,47 @@ addLogRefs refs = do
     triggerEventIDE TraceChanged
     return ()
 
+next :: (IDE -> [LogRef])
+     -> (IDE -> Maybe LogRef)
+     -> (Maybe LogRef -> IDEAction)
+     -> IDEAction
+next all current set = do
+    all <- readIDE all
+    current <- readIDE current
+    let isCurrent = (== current) . Just
+    case dropWhile isCurrent (dropWhile (not . isCurrent) all) <> all of
+        (n:_) -> do
+            set (Just n)
+            selectRef (Just n)
+        _ -> return ()
+
 nextError :: IDEAction
-nextError = do
-    errs <- readIDE errorRefs
-    currentError <- readIDE currentError
-    unless (null errs) $
-      do let new
-               = case currentError of
-                     Nothing -> 0
-                     Just ref -> case elemIndex ref errs of
-                                     Nothing -> 0
-                                     Just n | (n + 1) < length errs -> n + 1
-                                     Just n -> n
-         setCurrentError (Just $ errs !! new)
-         selectRef $ Just (errs !! new)
+nextError = next errorRefs currentError setCurrentError
 
 previousError :: IDEAction
-previousError = do
-    errs <- readIDE errorRefs
-    currentError <- readIDE currentError
-    unless (null errs) $
-      do let new
-               = case currentError of
-                     Nothing -> length errs - 1
-                     Just ref -> case elemIndex ref errs of
-                                     Nothing -> length errs - 1
-                                     Just n | n > 0 -> n - 1
-                                     Just n -> 0
-         setCurrentError (Just $ errs !! new)
-         selectRef $ Just (errs !! new)
+previousError = next (reverse . errorRefs) currentError setCurrentError
 
 nextBreakpoint :: IDEAction
-nextBreakpoint = do
-    breaks <- readIDE breakpointRefs
-    currentBreak <- readIDE currentBreak
-    unless (null breaks) $
-      do let new
-               = case currentBreak of
-                     Nothing -> 0
-                     Just ref -> case elemIndex ref breaks of
-                                     Nothing -> 0
-                                     Just n | (n + 1) < length breaks -> n + 1
-                                     Just n -> n
-         setCurrentBreak (Just $ breaks !! new)
-         selectRef $ Just (breaks !! new)
+nextBreakpoint = next breakpointRefs currentBreak setCurrentBreak
 
 previousBreakpoint :: IDEAction
-previousBreakpoint = do
-    breaks <- readIDE breakpointRefs
-    currentBreak <- readIDE currentBreak
-    unless (null breaks) $
-      do let new
-               = case currentBreak of
-                     Nothing -> length breaks - 1
-                     Just ref -> case elemIndex ref breaks of
-                                     Nothing -> length breaks - 1
-                                     Just n | n > 0 -> n - 1
-                                     Just n -> 0
-         setCurrentBreak (Just $ breaks !! new)
-         selectRef $ Just (breaks !! new)
+previousBreakpoint = next (reverse . breakpointRefs) currentBreak setCurrentBreak
 
 nextContext :: IDEAction
-nextContext = do
-    contexts <- readIDE contextRefs
-    currentContext <- readIDE currentContext
-    unless (null contexts) $
-      do let new
-               = case currentContext of
-                     Nothing -> 0
-                     Just ref -> case elemIndex ref contexts of
-                                     Nothing -> 0
-                                     Just n | (n + 1) < length contexts -> n + 1
-                                     Just n -> n
-         setCurrentContext (Just $ contexts !! new)
-         selectRef $ Just (contexts !! new)
+nextContext = next contextRefs currentContext setCurrentContext
 
 previousContext :: IDEAction
-previousContext = do
-    contexts <- readIDE contextRefs
-    currentContext <- readIDE currentContext
-    unless (null contexts) $
-      do let new
-               = case currentContext of
-                     Nothing -> length contexts - 1
-                     Just ref -> case elemIndex ref contexts of
-                                     Nothing -> length contexts - 1
-                                     Just n | n > 0 -> n - 1
-                                     Just n -> 0
-         setCurrentContext (Just $ contexts !! new)
-         selectRef $ Just (contexts !! new)
+previousContext = next (reverse . contextRefs) currentContext setCurrentContext
 
 lastContext :: IDEAction
 lastContext = do
     contexts <- readIDE contextRefs
     currentContext <- readIDE currentContext
-    unless (null contexts) $ do
-        let new = last contexts
-        setCurrentContext (Just new)
-        selectRef $ Just new
+    case reverse contexts of
+        (l:_) -> do
+            setCurrentContext $ Just l
+            selectRef $ Just l
+        _ -> return ()
 
 fixColumn c = max 0 (c - 1)
 
@@ -503,7 +431,7 @@ logOutputForBuild :: IDEPackage
                   -> Bool
                   -> C.Sink ToolOutput IDEM [LogRef]
 logOutputForBuild package backgroundBuild jumpToWarnings = do
-    liftIO $ putStrLn "logOutputForBuild"
+    liftIO $ debugM "leksah" "logOutputForBuild"
     log    <- lift getLog
     logLaunch <- lift Log.getDefaultLogLaunch
     BuildOutputState {..} <- CL.foldM (readAndShow logLaunch) $ initialState log
@@ -541,7 +469,7 @@ logOutputForBuild package backgroundBuild jumpToWarnings = do
                         sysMessage Normal . T.pack $ show e
                         return state { inError = False }
                     (Right ne@(ErrorLine span refType str),_) -> do
-                        let ref  = LogRef span package str Nothing (lineNr,lineNr) refType
+                        let ref  = LogRef span package str Nothing (Just (lineNr,lineNr)) refType
                             root = logRefRootPath ref
                             file = logRefFilePath ref
                             fullFilePath = logRefFullFilePath ref
@@ -552,22 +480,22 @@ logOutputForBuild package backgroundBuild jumpToWarnings = do
                                      , errs = ref:errs
                                      , filesCompiled = S.insert fullFilePath filesCompiled
                                      }
-                    (Right (OtherLine str1), ref@(LogRef span rootPath str Nothing (l1,l2) refType):tl) ->
+                    (Right (OtherLine str1), ref@(LogRef span rootPath str Nothing (Just (l1,l2)) refType):tl) ->
                         if inError
                             then return state { errs = LogRef span rootPath
                                                          (if T.null str then line else str <> "\n" <> line)
                                                          Nothing
-                                                         (l1, lineNr)
+                                                         (Just (l1, lineNr))
                                                          refType
                                                          : tl
                                               }
                             else return state
-                    (Right (WarningLine str1),LogRef span rootPath str Nothing (l1, l2) isError : tl) ->
+                    (Right (WarningLine str1),LogRef span rootPath str Nothing (Just (l1, l2)) isError : tl) ->
                         if inError
                             then return state { errs = LogRef span rootPath
                                                          (if T.null str then line else str <> "\n" <> line)
                                                          Nothing
-                                                         (l1, lineNr)
+                                                         (Just (l1, lineNr))
                                                          WarningRef
                                                          : tl
                                               }
@@ -594,14 +522,14 @@ logOutputForBuild package backgroundBuild jumpToWarnings = do
                                      , testFails = LogRef span
                                             package
                                             exp
-                                            Nothing (logLn,logLn) TestFailureRef : testFails
+                                            Nothing (Just (logLn,logLn)) TestFailureRef : testFails
                                      }
-                    (_, True, LogRef span rootPath str Nothing (l1, l2) refType : tl) -> do
+                    (_, True, LogRef span rootPath str Nothing (Just (l1, l2)) refType : tl) -> do
                         logLn <- Log.appendLog log logLaunch (line <> "\n") ErrorTag
                         return state { testFails = LogRef span
                                             rootPath
                                             (str <> "\n" <> line)
-                                            Nothing (l1,logLn) TestFailureRef : tl
+                                            Nothing (Just (l1,logLn)) TestFailureRef : tl
                                      }
                     _ -> do
                         Log.appendLog log logLaunch (line <> "\n") LogTag
@@ -648,7 +576,7 @@ logOutputForBreakpoints package logLaunch = do
                 logLineNumber <- liftIO $ Log.appendLog log logLaunch (line <> "\n") LogTag
                 case parse breaksLineParser "" $ T.unpack line of
                     Right (BreakpointDescription n span) ->
-                        return $ Just $ LogRef span package line Nothing (logLineNumber, logLineNumber) BreakpointRef
+                        return $ Just $ LogRef span package line Nothing (Just (logLineNumber, logLineNumber)) BreakpointRef
                     _ -> return Nothing
             _ -> do
                 defaultLineLogger log logLaunch out
@@ -665,7 +593,7 @@ logOutputForSetBreakpoint package logLaunch = do
                 logLineNumber <- liftIO $ Log.appendLog log logLaunch (line <> "\n") LogTag
                 case parse setBreakpointLineParser "" $ T.unpack line of
                     Right (BreakpointDescription n span) ->
-                        return $ Just $ LogRef span package line Nothing (logLineNumber, logLineNumber) BreakpointRef
+                        return $ Just $ LogRef span package line Nothing (Just (logLineNumber, logLineNumber)) BreakpointRef
                     _ -> return Nothing
             _ -> do
                 defaultLineLogger log logLaunch out
@@ -690,7 +618,7 @@ logOutputForContext package loglaunch getContexts = do
                 let contexts = getContexts line
                 if null contexts
                     then return Nothing
-                    else return $ Just $ LogRef (last contexts) package line Nothing (logLineNumber, logLineNumber) ContextRef
+                    else return $ Just $ LogRef (last contexts) package line Nothing (Just (logLineNumber, logLineNumber)) ContextRef
             _ -> do
                 defaultLineLogger log logLaunch out
                 return Nothing)

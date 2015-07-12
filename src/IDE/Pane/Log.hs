@@ -408,18 +408,18 @@ clicked SingleClick LeftButton x y log = do
         (_,y')      <-  textViewWindowToBufferCoords tv TextWindowWidget (x,y)
         (iter,_)    <-  textViewGetLineAtY tv y'
         textIterGetLine iter
-    case filter (\es -> fst (logLines es) <= (line'+1) && snd (logLines es) >= (line'+1)) logRefs' of
-        [thisRef] -> do
+    case [(s,e,es) | es@LogRef{logLines = Just (s, e)} <- logRefs', s <= (line'+1) && e >= (line'+1)] of
+        [(s,e,thisRef)] -> do
             mbBuf <- selectSourceBuf (logRefFullFilePath thisRef)
             case mbBuf of
                 Just buf -> markRefInSourceBuf buf thisRef True
                 Nothing -> return ()
             log :: IDELog <- getLog
-            markErrorInLog log (logLines thisRef)
+            markErrorInLog log (s, e)
             case logRefType thisRef of
                 BreakpointRef -> setCurrentBreak (Just thisRef)
                 _             -> setCurrentError (Just thisRef)
-        otherwise   -> return ()
+        _ -> return ()
 clicked _ _ _ _ _ = return ()
 
 populatePopupMenu :: IDELog -> IDERef -> Menu -> IO ()
@@ -438,10 +438,9 @@ populatePopupMenu log ideR menu = do
             (_,y')      <-  textViewWindowToBufferCoords tv TextWindowWidget (x,y)
             (iter,_)    <-  textViewGetLineAtY tv y'
             textIterGetLine iter
-        return $ filter (\(es,_) -> fst (logLines es) <= (line'+1) && snd (logLines es) >= (line'+1))
-                (zip logRefs' [0..(length logRefs')])) ideR
+        return [es | es@LogRef{logLines = Just (s, e)} <- logRefs', s <= (line'+1) && e >= (line'+1)]) ideR
     case res of
-        [(thisRef,n)] -> do
+        [thisRef] -> do
             addResolveMenuItems ideR menu thisRef
             widgetShowAll menu
             return ()
@@ -516,7 +515,8 @@ clearLog = do
     log <- getLog
     buf <- liftIO $ textViewGetBuffer $ logLaunchTextView log
     liftIO $ textBufferSetText buf ("" :: Text)
---    modifyIDE_ (\ide -> ide{allLogRefs = []})
---    setCurrentError Nothing
---    setCurrentBreak Nothing TODO: Check with Hamish
+    modifyIDE_ (\ide -> ide{allLogRefs = []})
+    setCurrentError Nothing
+    setCurrentBreak Nothing
+
 
