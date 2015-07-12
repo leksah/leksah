@@ -1,7 +1,6 @@
 #!/bin/sh -ex
 
-# export VBOXVER=5.0.0_RC1
-export VBOXVER=4.3.28
+export VBOXVER=5.0.0
 export GHCVER=7.10.1
 
 # Install GNOME desktop
