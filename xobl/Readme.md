@@ -11,7 +11,7 @@ Box for Haskell development.  This provides an easy way to set up a
 
 ## Setup
 
-Finished VM takes about 16GB or so of disk space.  Install VirtualBox 4.3.28 (edit
+Finished VM takes about 16GB or so of disk space.  Install VirtualBox 5.0.0 (edit
 the setup.sh if you choose a newer version) and Vagrant then run:
 
     vagrant box add -name fedora-22 http://download.fedoraproject.org/pub/fedora/linux/releases/22/Cloud/x86_64/Images/Fedora-Cloud-Base-Vagrant-22-20150521.x86_64.vagrant-virtualbox.box
@@ -30,12 +30,7 @@ with `vagrant provision` on the host machine.
 
 Username is vagrant and password vagrant.
 
-## Using VirtualBox 5 RC 1 (needed for HiDPI screens)
-
-If you have a HiDPI display you will get input latency if you do not use VirtualBox 5:
-
-* Change VBOXVER in setup.sh
-* [Update vagrant to work with VirutalBox 5](https://github.com/mitchellh/vagrant/issues/5572#issuecomment-93250550)
+## Using HiDPI screens
 
 Once you have built the VM you can make it fast and sharp looking:
 
