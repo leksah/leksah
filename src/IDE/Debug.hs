@@ -74,7 +74,7 @@ import IDE.Pane.SourceBuffer
 import IDE.Metainfo.Provider (getActivePackageDescr)
 import Distribution.Text (display)
 import IDE.Pane.Log
-import Data.List (stripPrefix, isSuffixOf)
+import Data.List (intersperse, stripPrefix, isSuffixOf)
 import IDE.Utils.GUIUtils (getDebugToggled)
 import IDE.Package (debugStart, executeDebugCommand, tryDebug, printBindResultFlag,
         breakOnErrorFlag, breakOnExceptionFlag, printEvldWithShowFlag)
@@ -90,7 +90,8 @@ import Data.IORef (newIORef)
 import Data.Monoid ((<>), Monoid(..))
 import Data.Text (Text)
 import qualified Data.Text as T
-       (pack, lines, stripPrefix, unlines, isSuffixOf, unpack)
+       (concat, intersperse, pack, lines, stripPrefix, unlines,
+        isSuffixOf, unpack)
 import System.Exit (ExitCode(..))
 import IDE.Pane.WebKit.Output (loadOutputUri)
 
@@ -134,7 +135,7 @@ debugQuit = do
 --
 -- > stripComments "-- This is still a comment"
 stripComments :: Text -> Text
-stripComments t = maybe t T.unlines $
+stripComments t = maybe t (T.concat . intersperse "\n") $
         mapM (T.stripPrefix "-- >>>") lines'
     <|> mapM (T.stripPrefix "-- >") lines'
   where
