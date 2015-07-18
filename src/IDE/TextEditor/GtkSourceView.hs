@@ -207,10 +207,13 @@ instance TextEditor GtkSourceView where
     canUndo (GtkBuffer sb) = liftIO $ sourceBufferGetCanUndo sb
     copyClipboard (GtkBuffer sb) clipboard = liftIO $ textBufferCopyClipboard sb clipboard
     createMark (GtkView sv) refType (GtkIter i) tooltip = liftIO $ do
-        let cat = T.pack $ show refType
         sb <- castToSourceBuffer <$> get sv textViewBuffer
         n <- textIterGetLine i
-        GtkMark . toTextMark <$> sourceBufferCreateSourceMark sb (Just $ T.pack (show n) <> " " <> tooltip) cat i
+        let cat  = T.pack $ show refType
+            name = T.pack (show n) <> " " <> tooltip
+        mark <- textBufferGetMark sb name
+        when (isNothing mark) . void $
+            sourceBufferCreateSourceMark sb (Just name) cat i
     cutClipboard (GtkBuffer sb) clipboard defaultEditable = liftIO $ textBufferCutClipboard sb clipboard defaultEditable
     delete (GtkBuffer sb) (GtkIter first) (GtkIter last) = liftIO $
         textBufferDelete sb first last

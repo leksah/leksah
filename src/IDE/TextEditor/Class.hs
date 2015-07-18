@@ -65,7 +65,7 @@ class TextEditor editor where
                   -> LogRefType
                   -> EditorIter editor
                   -> Text
-                  -> IDEM (EditorMark editor)
+                  -> IDEM ()
     cutClipboard :: EditorBuffer editor -> Clipboard -> Bool -> IDEM ()
     delete :: EditorBuffer editor -> EditorIter editor -> EditorIter editor -> IDEM ()
     deleteSelection :: EditorBuffer editor -> IDEM ()

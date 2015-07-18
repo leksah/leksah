@@ -265,9 +265,10 @@ instance TextEditor CodeMirror where
     copyClipboard (CMBuffer cm) _ = return () -- TODO
     createMark (CMView cm) _refType (CMIter _ i) _tooltip = runCM cm $ do
         m <- codeMirror
-        lift $ CMMark <$> do
+        lift $ do
                 o <- obj
                 m ^. setBookmark' i o
+                return ()
     cutClipboard (CMBuffer cm) _ _ = return () -- TODO
     delete (CMBuffer cm) (CMIter _ first) (CMIter _ last) = runCM cm $ do
         m <- codeMirror
