@@ -19,6 +19,7 @@ module IDE.OSX (
     applicationNew
 ,   updateMenu
 ,   applicationReady
+,   allowFullscreen
 ) where
 
 import Graphics.UI.Gtk
@@ -75,5 +76,7 @@ updateMenu :: Application -> UIManager -> IDEM ()
 updateMenu _ _ = return ()
 applicationReady :: Application -> IO ()
 applicationReady _ = return ()
+allowFullscreen :: DrawWindowClass window => window -> IO ()
+allowFullscreen _ = return ()
 
 #endif

@@ -208,7 +208,7 @@ library
 
     if os(osx)
         build-depends:
-            gtk3-mac-integration >=0.3.0.0 && <0.4
+            gtk3-mac-integration >=0.3.1.0 && <0.4
 
     if flag(yi)
         build-depends:

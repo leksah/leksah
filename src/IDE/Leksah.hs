@@ -422,6 +422,8 @@ startMainWindow yiControl sessionFP mbWorkspaceFP sourceFPs startupPrefs isFirst
         return pair
         ) ideR
 
+    on win realize $ widgetGetWindow win >>= maybe (return ()) allowFullscreen
+
     debugM "leksah" "Show main window"
     widgetShowAll win
 
