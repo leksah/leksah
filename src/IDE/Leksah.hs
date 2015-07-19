@@ -214,11 +214,13 @@ handleExceptions inner =
 startGUI :: Yi.Config -> FilePath -> Maybe FilePath -> [FilePath] -> Prefs -> Bool -> IO ()
 startGUI yiConfig sessionFP mbWorkspaceFP sourceFPs iprefs isFirstStart =
   Yi.start yiConfig $ \yiControl -> do
-    st          <-  unsafeInitGUIForThreadedRTS
-    when rtsSupportsBoundThreads $ do
-        setNumCapabilities 2
-        sysMessage Normal "Linked with -threaded"
-    timeout <- timeoutAddFull (yield >> return True) priorityLow 10
+    st       <- unsafeInitGUIForThreadedRTS
+    timeout  <- if rtsSupportsBoundThreads
+                    then do
+                        setNumCapabilities 2
+                        sysMessage Normal "Linked with -threaded"
+                        return Nothing
+                    else Just <$> timeoutAddFull (yield >> return True) priorityLow 10
     mbScreen <- screenGetDefault
     case mbScreen of
         Just screen -> do
@@ -250,7 +252,7 @@ startGUI yiConfig sessionFP mbWorkspaceFP sourceFPs iprefs isFirstStart =
                                             prefsPath  <- getConfigFilePathForLoad standardPreferencesFilename Nothing dataDir
                                             prefs <- readPrefs prefsPath
                                             return $ Just prefs
-    timeoutRemove timeout
+    maybe (return ()) timeoutRemove timeout
     postGUIAsync $
         case mbStartupPrefs of
             Nothing           -> return ()
@@ -332,7 +334,9 @@ loopn n = do
 startMainWindow :: Yi.Control -> FilePath -> Maybe FilePath -> [FilePath] ->
                         Prefs -> Bool -> IO ()
 startMainWindow yiControl sessionFP mbWorkspaceFP sourceFPs startupPrefs isFirstStart = do
-    timeout <- timeoutAddFull (yield >> return True) priorityLow 10
+    timeout  <- if rtsSupportsBoundThreads
+                    then return Nothing
+                    else Just <$> timeoutAddFull (yield >> return True) priorityLow 10
     debugM "leksah" "startMainWindow"
     osxApp <- OSX.applicationNew
     uiManager   <-  uiManagerNew
@@ -462,7 +466,7 @@ startMainWindow yiControl sessionFP mbWorkspaceFP sourceFPs startupPrefs isFirst
             workspaceTryQuiet $ void (workspaceAddPackage' welcomeCabal)
             fileOpenThis welcomeMain) ideR
     reflectIDE (initInfo (modifyIDE_ (\ide -> ide{currentState = IsRunning}))) ideR
-    timeoutRemove timeout
+    maybe (return ()) timeoutRemove timeout
     postGUIAsync . mainLoop $
         reflectIDE (do
             currentPrefs <- readIDE prefs
