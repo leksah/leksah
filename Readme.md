@@ -50,7 +50,7 @@ activated so if you do them first it might help):
 
 Use MacPorts to install GHC and the C libraries needed by Leksah (this will take a long time):
      
-    sudo port install ghc gtk3 webkit-gtk3 gtksourceview3 gtk-osx-application adwaita-icon-theme
+    sudo port install ghc gtk3 webkit-gtk3 gtksourceview3 gtk-osx-application-gtk3 adwaita-icon-theme
 
 Update Cabal and cabal-install
 
