@@ -51,7 +51,7 @@ import Language.Preprocessor.Cpphs
        (defaultCpphsOptions, runCpphsReturningSymTab, CpphsOptions(..))
 import System.Log.Logger (debugM)
 import Data.Monoid ((<>))
-import Data.List (sortOn, intercalate, find)
+import Data.List (sortBy, intercalate, find)
 import qualified Data.Map as M (keys, lookup)
 import qualified Data.Text as T
        (replicate, init, unlines, reverse, take, drop, lines, unpack,
@@ -75,6 +75,7 @@ import IDE.TextEditor (TextEditor(..))
 import IDE.SourceCandy
        (getCandylessPart, positionToCandy, stringToCandy)
 import IDE.BufferMode (editInsertCode)
+import Data.Ord (comparing)
 
 packageHLint :: PackageAction
 packageHLint = asks ipdCabalFile >>= (lift . lift . scheduleHLint . Left)
@@ -108,7 +109,7 @@ runHLint :: Either FilePath FilePath -> IDEAction
 runHLint (Right sourceFile) = do
     liftIO . debugM "leksah" $ "runHLint"
     packages <- maybe [] wsAllPackages <$> readIDE workspace
-    case reverse . sortOn (length . ipdBuildDir) $ filter (belongsToPackage sourceFile) packages of
+    case reverse . (sortBy $ comparing (length . ipdBuildDir)) $ filter (belongsToPackage sourceFile) packages of
         (package:_) -> runHLint' package (Just sourceFile)
         _ -> liftIO . debugM "leksah" $ "runHLint package not found for " <> sourceFile
 runHLint (Left cabalFile) = do
