@@ -422,7 +422,7 @@ startMainWindow yiControl sessionFP mbWorkspaceFP sourceFPs startupPrefs isFirst
         return pair
         ) ideR
 
-    on win realize $ widgetGetWindow win >>= maybe (return ()) allowFullscreen
+    on win realize $ widgetGetWindow win >>= maybe (return ()) OSX.allowFullscreen
 
     debugM "leksah" "Show main window"
     widgetShowAll win
