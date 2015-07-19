@@ -313,16 +313,16 @@ liftYiControl f = do
 liftYi :: Yi.YiM a -> IDEM a
 liftYi = liftYiControl . Yi.liftYi
 
-catchIDE :: Exception e => IDEM a -> (e -> IO a) -> IDEM a
+catchIDE :: (MonadIDE m, Exception e) => IDEM a -> (e -> IO a) -> m a
 catchIDE block handler = reifyIDE (\ideR -> catch (reflectIDE block ideR) handler)
 
-forkIDE :: IDEAction  -> IDEAction
+forkIDE :: MonadIDE m => IDEAction  -> m ()
 forkIDE block  = reifyIDE (void . forkIO . reflectIDE block)
 
-postSyncIDE :: IDEM a -> IDEM a
+postSyncIDE :: MonadIDE m => IDEM a -> m a
 postSyncIDE f = reifyIDE (postGUISync . reflectIDE f)
 
-postAsyncIDE :: IDEM () -> IDEM ()
+postAsyncIDE :: MonadIDE m => IDEM () -> m ()
 postAsyncIDE f = reifyIDE (postGUIAsync . reflectIDE f)
 
 onIDE obj signal callback = do
