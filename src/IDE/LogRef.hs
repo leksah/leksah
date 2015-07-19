@@ -437,7 +437,8 @@ logOutputForBuild package backgroundBuild jumpToWarnings = do
     BuildOutputState {..} <- CL.foldM (readAndShow logLaunch) $ initialState log
     ideR <- lift ask
     liftIO $ postGUISync $ reflectIDE (do
-        triggerEventIDE (Sensitivity [(SensitivityError,not (null errs))])
+        allErrorLikeRefs <- readIDE errorRefs
+        triggerEventIDE (Sensitivity [(SensitivityError,not (null allErrorLikeRefs))])
         let errorNum    =   length (filter isError errs)
         let warnNum     =   length errs - errorNum
         triggerEventIDE (StatusbarChanged [CompartmentState
