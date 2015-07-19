@@ -166,10 +166,31 @@ activatePackage mbPath mbPack mbExe = do
 deactivatePackage :: IDEAction
 deactivatePackage = activatePackage Nothing Nothing Nothing
 
+interruptSaveAndRun :: MonadIDE m => IDEAction -> m ()
+interruptSaveAndRun action = do
+    ideR <- liftIDE ask
+    alreadyRunning <- isRunning
+    if alreadyRunning
+        then do
+            liftIO $ debugM "leksah" "interruptSaveAndRun"
+            interruptBuild
+            liftIO $ timeoutAddFull (do
+                reflectIDE (do
+                    interruptSaveAndRun action
+                    return False) ideR
+                return False) priorityDefaultIdle 200
+            return ()
+        else liftIDE run
+  where
+    run = do
+        prefs <- readIDE prefs
+        when (saveAllBeforeBuild prefs) . liftIDE . void $ fileSaveAll belongsToWorkspace
+        action
+
 packageConfig :: PackageAction
 packageConfig = do
     package <- ask
-    liftIDE $ packageConfig' package (\ _ -> return ())
+    interruptSaveAndRun $ packageConfig' package (\ _ -> return ())
 
 packageConfig'  :: IDEPackage -> (Bool -> IDEAction) -> IDEAction
 packageConfig' package continuation = do
@@ -237,6 +258,7 @@ buildPackage backgroundBuild jumpToWarnings withoutLinking package continuation 
             alreadyRunning <- isRunning
             if alreadyRunning
                 then do
+                    liftIO $ debugM "leksah" "buildPackage interruptBuild"
                     interruptBuild
                     unless backgroundBuild . liftIO $ do
                         timeoutAddFull (do
@@ -244,9 +266,11 @@ buildPackage backgroundBuild jumpToWarnings withoutLinking package continuation 
                                 buildPackage backgroundBuild jumpToWarnings withoutLinking
                                                 package continuation
                                 return False) ideR
-                            return False) priorityDefaultIdle 1000
+                            return False) priorityDefaultIdle 100
                         return ()
-                else runCabalBuild backgroundBuild jumpToWarnings withoutLinking package True $ \f -> do
+                else do
+                    when (saveAllBeforeBuild prefs) . liftIDE . void $ fileSaveAll belongsToWorkspace
+                    runCabalBuild backgroundBuild jumpToWarnings withoutLinking package True $ \f -> do
                         when f $ do
                             mbURI <- readIDE autoURI
                             case mbURI of
@@ -271,7 +295,7 @@ buildPackage backgroundBuild jumpToWarnings withoutLinking package continuation 
 packageDoc :: PackageAction
 packageDoc = do
     package <- ask
-    liftIDE $ packageDoc' False True package (\ _ -> return ())
+    interruptSaveAndRun $ packageDoc' False True package (\ _ -> return ())
 
 packageDoc' :: Bool -> Bool -> IDEPackage -> (Bool -> IDEAction) -> IDEAction
 packageDoc' backgroundBuild jumpToWarnings package continuation = do
@@ -288,7 +312,7 @@ packageDoc' backgroundBuild jumpToWarnings package continuation = do
 packageClean :: PackageAction
 packageClean = do
     package <- ask
-    liftIDE $ packageClean' package (\ _ -> return ())
+    interruptSaveAndRun $ packageClean' package (\ _ -> return ())
 
 packageClean' :: IDEPackage -> (Bool -> IDEAction) -> IDEAction
 packageClean' package continuation = do
@@ -307,7 +331,7 @@ packageClean' package continuation = do
 packageCopy :: PackageAction
 packageCopy = do
     package <- ask
-    liftIDE $ do
+    interruptSaveAndRun $ do
         logLaunch <- getDefaultLogLaunch
         showDefaultLogLaunch'
 
@@ -329,7 +353,7 @@ packageCopy = do
 packageInstallDependencies :: PackageAction
 packageInstallDependencies = do
     package <- ask
-    liftIDE $ do
+    interruptSaveAndRun $ do
         logLaunch <- getDefaultLogLaunch
         showDefaultLogLaunch'
 
@@ -358,7 +382,7 @@ packageCopy' package continuation = do
         (\(e :: SomeException) -> print e)
 
 packageRun :: PackageAction
-packageRun = ask >>= (liftIDE . packageRun' True)
+packageRun = ask >>= (interruptSaveAndRun . packageRun' True)
 
 packageRun' :: Bool -> IDEPackage -> IDEAction
 packageRun' removeGhcjsFlagIfPresent package =
@@ -420,7 +444,7 @@ packageRun' removeGhcjsFlagIfPresent package =
     isActiveExe selected (Executable name _ _) = selected == Just (T.pack name)
 
 packageRunJavaScript :: PackageAction
-packageRunJavaScript = ask >>= (liftIDE . packageRunJavaScript' True)
+packageRunJavaScript = ask >>= (interruptSaveAndRun . packageRunJavaScript' True)
 
 packageRunJavaScript' :: Bool -> IDEPackage -> IDEAction
 packageRunJavaScript' addFlagIfMissing package =
@@ -478,7 +502,7 @@ packageRunJavaScript' addFlagIfMissing package =
 packageRegister :: PackageAction
 packageRegister = do
     package <- ask
-    liftIDE $ packageRegister' package (\ _ -> return ())
+    interruptSaveAndRun $ packageRegister' package (\ _ -> return ())
 
 packageRegister' :: IDEPackage -> (Bool -> IDEAction) -> IDEAction
 packageRegister' package continuation =
@@ -498,7 +522,7 @@ packageRegister' package continuation =
 packageTest :: PackageAction
 packageTest = do
     package <- ask
-    liftIDE $ packageTest' False True package True (\ _ -> return ())
+    interruptSaveAndRun $ packageTest' False True package True (\ _ -> return ())
 
 packageTest' :: Bool -> Bool -> IDEPackage -> Bool -> (Bool -> IDEAction) -> IDEAction
 packageTest' backgroundBuild jumpToWarnings package shallConfigure continuation =
@@ -509,6 +533,7 @@ packageTest' backgroundBuild jumpToWarnings package shallConfigure continuation 
           catchIDE (do
             prefs <- readIDE prefs
             let dir = ipdBuildDir package
+            removeTestLogRefs dir
             runExternalTool' (__ "Testing") (cabalCommand prefs) (["test", "--with-ghc=leksahtrue"]
                 ++ ipdBuildFlags package ++ ipdTestFlags package) dir $ do
                     (mbLastOutput, isConfigErr, _) <- C.getZipSink $ (,,)
@@ -530,7 +555,7 @@ packageTest' backgroundBuild jumpToWarnings package shallConfigure continuation 
 packageSdist :: PackageAction
 packageSdist = do
     package <- ask
-    liftIDE $ do
+    interruptSaveAndRun $ do
         logLaunch <- getDefaultLogLaunch
         showDefaultLogLaunch'
 

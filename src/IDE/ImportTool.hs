@@ -76,6 +76,7 @@ import qualified Data.Text as T
 import Language.Haskell.Exts (KnownExtension)
 import Data.Text (Text)
 import Data.Monoid ((<>))
+import System.Log.Logger (debugM)
 
 readMaybe :: Read a => Text -> Maybe a
 readMaybe s = case reads $ T.unpack s of
@@ -85,6 +86,7 @@ readMaybe s = case reads $ T.unpack s of
 -- | Add all imports which gave error messages ...
 resolveErrors :: IDEAction
 resolveErrors = do
+    liftIO $ debugM "leksah" "resolveErrors"
     prefs' <- readIDE prefs
     let buildInBackground = backgroundBuild prefs'
     when buildInBackground $
@@ -99,12 +101,9 @@ resolveErrors = do
             nubBy (\ (p1,_) (p2,_) -> p1 == p2)
                   [(x,y) |  (x,y) <- [((parsePerhapsYouIntendedToUse . refDescription) e, e) | e <- errors]],
                                 length x == 1]
-    when (not (or addPackageResults) && null notInScopes && null extensions) $ do
-        hlintResolved <- resolveActiveHLint
-        unless hlintResolved $ ideMessage Normal "No errors, warnings or selected hlints that can be auto resolved"
-    addAll buildInBackground notInScopes extensions
+    addAll addPackageResults buildInBackground notInScopes extensions
   where
-    addAll buildInBackground notInScopes extensions = addAllImports notInScopes (True,[])
+    addAll addPackageResults buildInBackground notInScopes extensions = addAllImports notInScopes (True,[])
       where
         addAllImports :: [LogRef] -> (Bool,[Descr]) -> IDEM ()
         addAllImports (errorSpec:rest) (True,descrList)  =  addImport errorSpec descrList (addAllImports rest)
@@ -114,9 +113,13 @@ resolveErrors = do
         addAllExtensions (errorSpec:rest) True =  addExtension errorSpec (addAllExtensions rest)
         addAllExtensions _ _                   =  finally
 
-        finally = when buildInBackground $ do
-            prefs' <- readIDE prefs
-            modifyIDE_ (\ide -> ide{prefs = prefs'{backgroundBuild = True}})
+        finally = do
+            when buildInBackground $ do
+                prefs' <- readIDE prefs
+                modifyIDE_ (\ide -> ide{prefs = prefs'{backgroundBuild = True}})
+            when (not (or addPackageResults) && null notInScopes && null extensions) $ do
+                hlintResolved <- resolveActiveHLint
+                unless hlintResolved $ ideMessage Normal "No errors, warnings or selected hlints that can be auto resolved"
 
 -- | Add import for current error ...
 addOneImport :: IDEAction

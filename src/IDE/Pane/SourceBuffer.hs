@@ -69,6 +69,8 @@ module IDE.Pane.SourceBuffer (
 ,   addLogRef
 ,   removeLogRefs
 ,   removeBuildLogRefs
+,   removeTestLogRefs
+,   removeLintLogRefs
 ,   markRefInSourceBuf
 ,   inBufContext
 ,   inActiveBufContext
@@ -152,6 +154,7 @@ import Graphics.UI.Gtk.Gdk.EventM
        (eventModifier, eventKeyName, eventKeyVal)
 import Data.Foldable (forM_)
 import Data.Traversable (forM)
+import Language.Haskell.HLint3 (Idea(..))
 
 allBuffers :: MonadIDE m => m [IDEBuffer]
 allBuffers = liftIDE getPanes
@@ -343,45 +346,83 @@ insertInBuffer idDescr = do
 updateStyle' :: IDEBuffer -> IDEAction
 updateStyle' IDEBuffer {sourceView = sv} = getBuffer sv >>= updateStyle
 
-removeLogRefs :: [LogRefType] -> FilePath -> FilePath -> IDEAction
-removeLogRefs types root file = do
-    modifyIDE_ (\ide -> ide{allLogRefs = filter keep $ allLogRefs ide})
+removeLogRefs :: (FilePath -> FilePath -> Bool) -> [LogRefType] -> IDEAction
+removeLogRefs toRemove' types = do
+    (remove, keep) <- partition toRemove <$> readIDE allLogRefs
+    let removeDetails = Map.fromListWith (<>) . nub $ map (\ref ->
+                            (logRefRootPath ref </> logRefFilePath ref,
+                            [logRefType ref])) remove
+    modifyIDE_ (\ide -> ide{allLogRefs = keep})
 
     buffers <- allBuffers
-    let matchingBufs = filter (maybe False (equalFilePath (root </> file)) . fileName) buffers
-    forM_ matchingBufs $ \ (IDEBuffer {sourceView = sv}) -> do
-        buf <- getBuffer sv
-        forM_ types $ removeTagByName buf . T.pack . show
+    let matchingBufs = filter (maybe False (`Map.member` removeDetails) . fileName) buffers
+    forM_ matchingBufs $ \ (IDEBuffer {..}) -> do
+        buf <- getBuffer sourceView
+        forM_ (maybe [] (fromMaybe [] . (`Map.lookup` removeDetails)) fileName) $
+            removeTagByName buf . T.pack . show
 
-    triggerEventIDE ErrorChanged
+    triggerEventIDE (ErrorChanged False)
     return ()
   where
-    keep ref = logRefRootPath ref /= root
-            || logRefFilePath ref /= file
-            || logRefType ref `notElem` types
+    toRemove ref = toRemove' (logRefRootPath ref) (logRefFilePath ref)
+                && logRefType ref `elem` types
+
+removeFileLogRefs :: FilePath -> FilePath -> [LogRefType] -> IDEAction
+removeFileLogRefs root file types = do
+    liftIO . debugM "leksah" $ "removeFileLogRefs " <> root <> " " <> file <> " " <> show types
+    removeLogRefs (\r f -> r == root && f == file) types
+
+removePackageLogRefs :: FilePath -> [LogRefType] -> IDEAction
+removePackageLogRefs root types = do
+    liftIO . debugM "leksah" $ "removePackageLogRefs " <> root <> " " <> show types
+    removeLogRefs (\r _ -> r == root) types
 
 removeBuildLogRefs :: FilePath -> FilePath -> IDEAction
-removeBuildLogRefs = removeLogRefs [ErrorRef, WarningRef, TestFailureRef]
+removeBuildLogRefs root file = removeFileLogRefs root file [ErrorRef, WarningRef]
 
--- | Test failures have the same imporance as errors so should be
--- sorted the same
-importance :: LogRef -> LogRefType
-importance LogRef{ logRefType = TestFailureRef } = ErrorRef
-importance ref = logRefType ref
+removeTestLogRefs :: FilePath -> IDEAction
+removeTestLogRefs root = removePackageLogRefs root [TestFailureRef]
 
-addLogRef :: LogRef -> IDEAction
-addLogRef ref = do
+removeLintLogRefs :: FilePath -> FilePath -> IDEAction
+removeLintLogRefs root file = removeFileLogRefs root file [LintRef]
+
+canResolve :: LogRef -> Bool
+canResolve LogRef { logRefIdea = Just (_, Idea{..}) }
+    = ideaHint /= "Reduce duplication" && isJust ideaTo
+canResolve _ = False
+
+addLogRef :: Bool -> Bool -> LogRef -> IDEAction
+addLogRef hlintFileScope backgroundBuild ref = do
+    liftIO . debugM "leksah" $ "addLogRef " <> show hlintFileScope <> " " <> show (logRefType ref) <> " " <> logRefFullFilePath ref
     -- Put most important errors first.
     -- If the importance of two errors is the same then
     -- then the older one might be stale (unless it is in the same file)
+    allLogRefs   <- readIDE allLogRefs
+    currentError <- readIDE currentError
+    let (moreImportant, rest) =
+            span (\old ->
+                let samePackage = logRefRootPath old     == logRefRootPath ref
+                    sameFile    = logRefFullFilePath old == logRefFullFilePath ref in
+                -- Work out when the old ref is more important than the new
+                case (logRefType ref, logRefType old) of
+                    (ErrorRef      , ErrorRef      ) -> sameFile
+                    (ErrorRef      , _             ) -> False
+                    (WarningRef    , ErrorRef      ) -> samePackage
+                    (WarningRef    , WarningRef    ) -> samePackage
+                    (WarningRef    , _             ) -> False
+                    (TestFailureRef, ErrorRef      ) -> samePackage  -- Probably should never be True
+                    (TestFailureRef, TestFailureRef) -> samePackage
+                    (TestFailureRef, _             ) -> False
+                    (LintRef       , LintRef       ) -> (if hlintFileScope then sameFile else samePackage)
+                                                            && (canResolve old
+                                                               || not (canResolve ref))
+                    (LintRef       , _             ) -> samePackage
+                    (ContextRef    , _             ) -> False
+                    (BreakpointRef , _             ) -> False) allLogRefs
+        currErr = if currentError `elem` map Just moreImportant
+                        then currentError
+                        else Nothing
     modifyIDE_ $ \ ide ->
-        let (moreImportant, rest) =
-                partition (\old -> importance old < importance ref -- Note: a low LogRefType is more important
-                               || (importance old == importance ref
-                                            && logRefFullFilePath old == logRefFullFilePath ref)) (allLogRefs ide)
-            currErr = if currentError ide `elem` map Just moreImportant
-                                then currentError ide
-                                else Nothing in
         ide{ allLogRefs = moreImportant <> [ref] <> rest
            , currentEBC = (currErr, currentBreak ide, currentContext ide)
            }
@@ -390,7 +431,7 @@ addLogRef ref = do
     let matchingBufs = filter (maybe False (equalFilePath (logRefFullFilePath ref)) . fileName) buffers
     forM_ matchingBufs $ \ buf -> markRefInSourceBuf buf ref False
 
-    triggerEventIDE ErrorChanged
+    triggerEventIDE . ErrorChanged $ not backgroundBuild && null moreImportant
     return ()
 
 markRefInSourceBuf :: IDEBuffer -> LogRef -> Bool -> IDEAction

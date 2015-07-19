@@ -673,7 +673,7 @@ getActiveSettings = do
 setDark :: Bool -> IDEM ()
 setDark dark = do
     setInfoStyle
-    fillErrorList
+    fillErrorList False
     prefs <- readIDE prefs
     buffers <- allBuffers
     mapM_ updateStyle' buffers

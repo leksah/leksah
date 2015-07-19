@@ -129,7 +129,7 @@ addLogRefs refs = do
     modifyIDE_ (\ide -> ide{allLogRefs = allLogRefs ide ++ refs})
     setCurrentError Nothing
     markLogRefs
-    triggerEventIDE ErrorChanged
+    triggerEventIDE (ErrorChanged False)
     triggerEventIDE BreakpointChanged
     triggerEventIDE TraceChanged
     return ()
@@ -443,13 +443,12 @@ logOutputForBuild package backgroundBuild jumpToWarnings = do
         let warnNum     =   length errs - errorNum
         triggerEventIDE (StatusbarChanged [CompartmentState
             (T.pack $ show errorNum ++ " Errors, " ++ show warnNum ++ " Warnings"), CompartmentBuild False])
-        unless (backgroundBuild || (not jumpToWarnings && errorNum == 0)) nextError
         return errs) ideR
   where
     readAndShow :: LogLaunch -> BuildOutputState -> ToolOutput -> IDEM BuildOutputState
     readAndShow logLaunch state@BuildOutputState {..} output = do
         ideR <- ask
-        let logPrevious (previous:_) = reflectIDE (addLogRef previous) ideR
+        let logPrevious (previous:_) = reflectIDE (addLogRef False backgroundBuild previous) ideR
             logPrevious _ = return ()
 
         liftIO $ postGUISync $ case output of

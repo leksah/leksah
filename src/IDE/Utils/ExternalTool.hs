@@ -1,3 +1,4 @@
+{-# LANGUAGE LambdaCase #-}
 -----------------------------------------------------------------------------
 --
 -- Module      :  IDE.Utils.Tools
@@ -17,6 +18,7 @@ module IDE.Utils.ExternalTool (
   , runExternalTool
   , isRunning
   , interruptBuild
+  , showProcessHandle
 ) where
 
 import qualified Data.Conduit as C (Sink)
@@ -24,9 +26,9 @@ import IDE.Utils.Tool
        (interruptProcessGroupOf, getProcessExitCode, runTool,
         ProcessHandle, ToolOutput(..))
 import IDE.Core.State
-       (runningTool, modifyIDE_, reflectIDE, useVado, reifyIDE,
-        triggerEventIDE, saveAllBeforeBuild, prefs, readIDE, IDEAction,
-        IDEM, MonadIDE(..))
+       (postSyncIDE, runningTool, modifyIDE_, reflectIDE, useVado,
+        reifyIDE, triggerEventIDE, saveAllBeforeBuild, prefs, readIDE,
+        IDEAction, IDEM, MonadIDE(..))
 import Control.Monad (void, unless, when)
 import IDE.Pane.SourceBuffer (belongsToWorkspace, fileSaveAll)
 import IDE.Core.Types (StatusbarCompartment(..), IDEEvent(..))
@@ -38,6 +40,30 @@ import Data.Maybe (isNothing)
 import Control.Applicative ((<$>))
 import Data.Text (Text)
 import qualified Data.Text as T (unpack, pack, null)
+import System.Log.Logger (debugM)
+import Data.Monoid ((<>))
+import System.Posix.Types (CPid(..))
+import System.Exit (ExitCode)
+import Control.Concurrent.MVar (withMVar, MVar)
+import Unsafe.Coerce (unsafeCoerce)
+import System.Posix.Process (getProcessGroupIDOf)
+
+type PHANDLE = CPid
+data ProcessHandle__ = OpenHandle PHANDLE | ClosedHandle ExitCode
+data ProcessHandleLike = ProcessHandleLike !(MVar ProcessHandle__) !Bool
+
+withProcessHandle
+        :: ProcessHandleLike
+        -> (ProcessHandle__ -> IO a)
+        -> IO a
+withProcessHandle (ProcessHandleLike m _) = withMVar m
+
+showProcessHandle :: ProcessHandle -> IO String
+showProcessHandle h = withProcessHandle (unsafeCoerce h) $ \case
+        (OpenHandle (CPid pid)) -> do
+            CPid gid <- getProcessGroupIDOf (CPid pid)
+            return $ "pid " <> show pid <> " gid " <> show gid
+        (ClosedHandle _)        -> return "closed handle"
 
 runExternalTool' :: MonadIDE m
                 => Text
@@ -71,24 +97,27 @@ runExternalTool runGuard pidHandler description executable args dir handleOutput
         prefs <- readIDE prefs
         run <- runGuard
         when run $ do
-            when (saveAllBeforeBuild prefs) (do fileSaveAll belongsToWorkspace; return ())
             unless (T.null description) . void $
                 triggerEventIDE (StatusbarChanged [CompartmentState description, CompartmentBuild True])
-            reifyIDE $ \ideR -> forkIO $ do
-                -- If vado is enabled then look up the mount point and transform
-                -- the execuatble to "ssh" and the arguments
-                mountPoint <- if useVado prefs then getMountPoint dir else return $ Right ""
-                (executable', args') <- case mountPoint of
-                                            Left mp -> do
-                                                s <- readSettings
-                                                a <- vado mp s dir [] executable (map T.unpack args)
-                                                return ("ssh", map T.pack a)
-                                            _ -> return (executable, args)
-                -- Run the tool
-                (output, pid) <- runTool executable' args' (Just dir)
+            -- If vado is enabled then look up the mount point and transform
+            -- the execuatble to "ssh" and the arguments
+            mountPoint <- if useVado prefs then liftIO $ getMountPoint dir else return $ Right ""
+            (executable', args') <- case mountPoint of
+                                        Left mp -> do
+                                            s <- liftIO readSettings
+                                            a <- liftIO $ vado mp s dir [] executable (map T.unpack args)
+                                            return ("ssh", map T.pack a)
+                                        _ -> return (executable, args)
+            -- Run the tool
+            (output, pid) <- liftIO $ runTool executable' args' (Just dir)
+            modifyIDE_ (\ide -> ide{runningTool = Just pid})
+            reifyIDE $ \ideR -> forkIO $
                 reflectIDE (do
                     pidHandler pid
-                    modifyIDE_ (\ide -> ide{runningTool = Just pid})
+                    liftIO $ do
+                        s <- showProcessHandle pid
+                        debugM "leksah" $ "runExternalTool " <> s <> " " <>
+                                            unwords (executable' : map T.unpack args')
                     output $$ handleOutput) ideR
             return ()
 
@@ -108,7 +137,10 @@ interruptBuild :: MonadIDE m => m ()
 interruptBuild = do
     maybeProcess <- readIDE runningTool
     liftIO $ case maybeProcess of
-        Just h -> interruptProcessGroupOf h
-        _ -> return ()
+            Just h -> do
+                pid <- showProcessHandle h
+                debugM "leksah" $ "interruptBuild " <> pid
+                interruptProcessGroupOf h
+            _ -> debugM "leksah" "interruptBuild Nothing"
 
 

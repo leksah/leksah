@@ -240,7 +240,6 @@ startGUI yiConfig sessionFP mbWorkspaceFP sourceFPs iprefs isFirstStart =
             styleContextAddProviderForScreen screen provider 600
         Nothing -> debugM "leksah" "Unable to add style provider for screen"
     mapM_ (sysMessage Normal . T.pack) st
-    initGtkRc
     dataDir       <- getDataDir
     mbStartupPrefs <- if not isFirstStart
                                 then return $ Just iprefs
@@ -274,7 +273,7 @@ mainLoopThreaded onIdle = loop
                     active <- newEmptyMVar
                     mvarSentIdleMessage <- newEmptyMVar
                     idleThread <- forkIO $ do
-                        threadDelay 50000
+                        threadDelay 200000
                         isActive <- isJust <$> tryTakeMVar active
                         unless isActive $ do
                             putMVar mvarSentIdleMessage ()

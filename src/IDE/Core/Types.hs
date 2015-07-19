@@ -288,7 +288,7 @@ data IDEEvent  =
     |   SaveSession FilePath
     |   UpdateRecent
     |   VariablesChanged
-    |   ErrorChanged
+    |   ErrorChanged Bool
     |   CurrentErrorChanged (Maybe LogRef)
     |   BreakpointChanged
     |   CurrentBreakChanged (Maybe LogRef)
@@ -314,7 +314,7 @@ instance Event IDEEvent Text where
     getSelector (SaveSession _)         =   "SaveSession"
     getSelector UpdateRecent            =   "UpdateRecent"
     getSelector VariablesChanged        =   "VariablesChanged"
-    getSelector ErrorChanged            =   "ErrorChanged"
+    getSelector (ErrorChanged _)        =   "ErrorChanged"
     getSelector (CurrentErrorChanged _) =   "CurrentErrorChanged"
     getSelector BreakpointChanged       =   "BreakpointChanged"
     getSelector (CurrentBreakChanged _) =   "CurrentBreakChanged"

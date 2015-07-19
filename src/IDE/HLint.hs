@@ -51,13 +51,13 @@ import Language.Preprocessor.Cpphs
        (defaultCpphsOptions, runCpphsReturningSymTab, CpphsOptions(..))
 import System.Log.Logger (debugM)
 import Data.Monoid ((<>))
-import Data.List (intercalate, find)
+import Data.List (sortOn, intercalate, find)
 import qualified Data.Map as M (keys, lookup)
 import qualified Data.Text as T
        (replicate, init, unlines, reverse, take, drop, lines, unpack,
         pack)
 import Control.Exception (SomeException(..))
-import Data.Maybe (mapMaybe, catMaybes)
+import Data.Maybe (isJust, mapMaybe, catMaybes)
 import Distribution.Package (PackageIdentifier(..))
 import Distribution.ModuleName (ModuleName)
 import IDE.Core.CTypes
@@ -68,7 +68,7 @@ import qualified Language.Haskell.Exts.SrcLoc as HSE
        (SrcLoc(..), SrcSpan(..))
 import IDE.Pane.SourceBuffer
        (useCandyFor, selectSourceBuf, fileSave, inActiveBufContext,
-        addLogRef, belongsToPackage, removeLogRefs)
+        addLogRef, belongsToPackage, removeLintLogRefs)
 import qualified Data.Text.IO as T (readFile)
 import Data.Text (Text)
 import IDE.TextEditor (TextEditor(..))
@@ -108,8 +108,8 @@ runHLint :: Either FilePath FilePath -> IDEAction
 runHLint (Right sourceFile) = do
     liftIO . debugM "leksah" $ "runHLint"
     packages <- maybe [] wsAllPackages <$> readIDE workspace
-    case find (belongsToPackage sourceFile) packages of
-        Just package -> runHLint' package (Just sourceFile)
+    case reverse . sortOn (length . ipdBuildDir) $ filter (belongsToPackage sourceFile) packages of
+        (package:_) -> runHLint' package (Just sourceFile)
         _ -> liftIO . debugM "leksah" $ "runHLint package not found for " <> sourceFile
 runHLint (Left cabalFile) = do
     liftIO . debugM "leksah" $ "runHLint"
@@ -129,12 +129,12 @@ runHLint' package mbSourceFile = do
                     Nothing -> getSourcePaths (ipdPackageId package) modules
     res <- forM paths $ \ full -> do
         let file = makeRelative (ipdBuildDir package) full
-        postSyncIDE $ removeLogRefs [LintRef] (ipdBuildDir package) file
+        postSyncIDE $ removeLintLogRefs (ipdBuildDir package) file
         text <- liftIO $ T.readFile full
         liftIO . debugM "leksah" $ "runHLint parsing " <> full
         do result <- liftIO $ parseModuleEx flags full (Just (T.unpack text))
            case result of
-                Left e -> logHLintError package e >> return Nothing
+                Left e -> logHLintError (isJust mbSourceFile) package e >> return Nothing
                 Right r -> do
                     liftIO . debugM "leksah" $ "runHLint parsed " <> full
                     return $ Just (r, (full, text))
@@ -146,7 +146,7 @@ runHLint' package mbSourceFile = do
         ideas = map fst results
         texts = map snd results
         getText f = maybe "" snd $ find (equalFilePath f . fst) texts
-    logHLintResult package (applyHints classify hint ideas) getText
+    logHLintResult (isJust mbSourceFile) package (applyHints classify hint ideas) getText
 
 
 getSourcePaths :: PackageIdentifier -> [ModuleName] -> IDEM [FilePath]
@@ -183,8 +183,8 @@ hlintSettings package = do
     liftIO . debugM "leksah" $ "hlintSettings defines = " <> show defines
     return (flags, classify, hint)
 
-logHLintResult :: IDEPackage -> [Idea] -> (FilePath -> Text) -> IDEAction
-logHLintResult package allIdeas getText = do
+logHLintResult :: Bool -> IDEPackage -> [Idea] -> (FilePath -> Text) -> IDEAction
+logHLintResult fileScope package allIdeas getText = do
     let ideas = filter (\Idea{..} -> ideaSeverity /= Ignore) allIdeas
     forM_ ideas $ \ idea@Idea{..} -> do
         let text = getText (HSE.srcSpanFilename ideaSpan)
@@ -204,11 +204,11 @@ logHLintResult package allIdeas getText = do
                  . T.unlines . fixHead . reverse . fixTail $ reverse fromLines
             ref = LogRef srcSpan package (T.pack $ showHLint idea)
                     (Just (from, idea)) Nothing LintRef
-        postSyncIDE $ addLogRef ref
+        postSyncIDE $ addLogRef fileScope fileScope ref
     return ()
 
-logHLintError :: IDEPackage -> ParseError -> IDEAction
-logHLintError package error = do
+logHLintError :: Bool -> IDEPackage -> ParseError -> IDEAction
+logHLintError fileScope package error = do
     let loc = parseErrorLocation error
         srcSpan = SrcSpan (makeRelative (ipdBuildDir package) $ HSE.srcFilename loc)
                           (HSE.srcLine loc)
@@ -216,7 +216,7 @@ logHLintError package error = do
                           (HSE.srcLine loc)
                           (HSE.srcColumn loc - 1)
         ref = LogRef srcSpan package ("Hlint Parse Error: " <> T.pack (parseErrorMessage error)) Nothing Nothing LintRef
-    postSyncIDE $ addLogRef ref
+    postSyncIDE $ addLogRef fileScope fileScope ref
 
 -- Cut down version of showEx from HLint
 showHLint :: Idea -> String
@@ -236,6 +236,7 @@ showHLint Idea{..} = intercalate "\n" $
 
 resolveActiveHLint :: IDEM Bool
 resolveActiveHLint = inActiveBufContext False  $ \_ _ ebuf _ _ -> do
+    liftIO $ debugM "leksah" "resolveActiveHLint"
     allLogRefs <- readIDE allLogRefs
     (iStart, iEnd) <- getSelectionBounds ebuf
     lStart <- getLine iStart

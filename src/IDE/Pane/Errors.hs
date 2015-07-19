@@ -35,7 +35,7 @@ import IDE.LogRef (showSourceSpan)
 import Control.Monad.IO.Class (MonadIO(..))
 import IDE.Utils.GUIUtils (getDarkState, treeViewContextMenu, __)
 import Data.Text (Text)
-import Control.Monad (void, when, forM_)
+import Control.Monad (foldM_, unless, void, when, forM_)
 import qualified Data.Text as T
        (intercalate, lines, takeWhile, length, drop)
 import Data.IORef (writeIORef, readIORef, newIORef, IORef)
@@ -126,8 +126,9 @@ getErrors :: Maybe PanePath -> IDEM IDEErrors
 getErrors Nothing    = forceGetPane (Right "*Errors")
 getErrors (Just pp)  = forceGetPane (Left pp)
 
-fillErrorList :: IDEAction
-fillErrorList = getPane >>= maybe (return ()) fillErrorList'
+fillErrorList :: Bool -> IDEAction
+fillErrorList False = getPane >>= maybe (return ()) fillErrorList'
+fillErrorList True = getErrors Nothing  >>= \ p -> fillErrorList' p >> displayPane p False
 
 fillErrorList' :: IDEErrors -> IDEAction
 fillErrorList' pane = do
@@ -170,10 +171,16 @@ selectError mbLogRef = do
     liftIO $ do
         selection <- treeViewGetSelection (treeView errors)
         case mbLogRef of
-            Nothing -> treeSelectionUnselectAll selection
+            Nothing -> do
+                size <- listStoreGetSize (errorStore errors)
+                unless (size == 0) $
+                    treeViewScrollToCell (treeView errors) (Just [0]) Nothing Nothing
+                treeSelectionUnselectAll selection
             Just lr -> case lr `elemIndex` errorRefs' of
                         Nothing  -> return ()
-                        Just ind -> treeSelectionSelectPath selection [ind]
+                        Just ind -> do
+                            treeViewScrollToCell (treeView errors) (Just [ind]) Nothing Nothing
+                            treeSelectionSelectPath selection [ind]
 
 errorsContextMenu :: IDERef
                   -> ListStore ErrColumn
@@ -211,10 +218,10 @@ selectMatchingErrors mbSpan = do
                     Nothing -> treeSelectionUnselectAll treeSel
                     Just (SrcSpan file lStart cStart lEnd cEnd) -> do
                         size <- listStoreGetSize (errorStore pane)
-                        forM_ (take size [0..]) $ \ n -> do
+                        foldM_ (\ haveScrolled n -> do
                             mbIter <- treeModelGetIter (errorStore pane) [n]
                             case mbIter of
-                                Nothing -> return ()
+                                Nothing -> return False
                                 Just iter -> do
                                     ErrColumn {logRef = ref@LogRef{..}} <- listStoreGetValue (errorStore pane) n
                                     isSelected <- treeSelectionIterIsSelected treeSel iter
@@ -224,6 +231,10 @@ selectMatchingErrors mbSpan = do
                                                      && (lEnd, cEnd)     >= (srcSpanStartLine   logRefSrcSpan,
                                                                                srcSpanStartColumn logRefSrcSpan)
                                     when (isSelected && not shouldBeSel) $ treeSelectionUnselectIter treeSel iter
-                                    when (not isSelected && shouldBeSel) $ treeSelectionSelectIter treeSel iter
+                                    when (not isSelected && shouldBeSel) $ do
+                                        unless haveScrolled $ treeViewScrollToCell (treeView pane) (Just [n]) Nothing Nothing
+                                        treeSelectionSelectIter treeSel iter
+                                    return $ haveScrolled || shouldBeSel)
+                            False (take size [0..])
 
 
