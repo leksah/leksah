@@ -1,3 +1,4 @@
+{-# LANGUAGE CPP #-}
 {-# LANGUAGE LambdaCase #-}
 -----------------------------------------------------------------------------
 --
@@ -42,12 +43,16 @@ import Data.Text (Text)
 import qualified Data.Text as T (unpack, pack, null)
 import System.Log.Logger (debugM)
 import Data.Monoid ((<>))
+
+#if !defined(mingw32_HOST_OS) && !defined(__MINGW32__)
 import System.Posix.Types (CPid(..))
 import System.Exit (ExitCode)
 import Control.Concurrent.MVar (withMVar, MVar)
 import Unsafe.Coerce (unsafeCoerce)
 import System.Posix.Process (getProcessGroupIDOf)
+#endif
 
+#if !defined(mingw32_HOST_OS) && !defined(__MINGW32__)
 type PHANDLE = CPid
 data ProcessHandle__ = OpenHandle PHANDLE | ClosedHandle ExitCode
 data ProcessHandleLike = ProcessHandleLike !(MVar ProcessHandle__) !Bool
@@ -64,6 +69,10 @@ showProcessHandle h = withProcessHandle (unsafeCoerce h) $ \case
             CPid gid <- getProcessGroupIDOf (CPid pid)
             return $ "pid " <> show pid <> " gid " <> show gid
         (ClosedHandle _)        -> return "closed handle"
+#else
+showProcessHandle :: ProcessHandle -> IO String
+showProcessHandle _ = return ""
+#endif
 
 runExternalTool' :: MonadIDE m
                 => Text
