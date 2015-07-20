@@ -305,7 +305,7 @@ packageDoc' backgroundBuild jumpToWarnings package continuation = do
         runExternalTool' (__ "Documenting") (cabalCommand prefs) ("haddock" : ipdHaddockFlags package) dir $ do
                 mbLastOutput <- C.getZipSink $ const <$> C.ZipSink sinkLast <*> (C.ZipSink $
                     logOutputForBuild package backgroundBuild jumpToWarnings)
-                lift reloadDoc
+                lift $ postAsyncIDE reloadDoc
                 lift $ continuation (mbLastOutput == Just (ToolExit ExitSuccess)))
         (\(e :: SomeException) -> print e)
 
