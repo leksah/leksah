@@ -9,7 +9,7 @@ maintainer: maintainer@leksah.org
 stability: provisional
 homepage: http://www.leksah.org
 package-url: http://code.haskell.org/leksah
-bug-reports: http://code.google.com/p/leksah/issues/list
+bug-reports: https://github.com/leksah/leksah/issues
 synopsis: Haskell IDE written in Haskell
 description:
     An Integrated Development Environment for Haskell written in Haskell.
