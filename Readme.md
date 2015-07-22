@@ -67,7 +67,8 @@ Check that the versions match the ones you just installed (if not check the symb
 
 Install `gtk2hs-buildtools` and `leksah`:
 
-    cabal install alex happy 
+    cabal install regex-tdfa-text --ghc-options=-XFlexibleContexts
+    cabal install alex happy
     cabal install gtk2hs-buildtools
     cabal install leksah
     leksah
@@ -92,9 +93,10 @@ Leksah using the MSI files.  They include pkg-config and all the C libraries nee
 
 Make sure `C:\Leksah\bin` and `%APPDATA%\cabal\bin` are in your `PATH` and build:
 
-	cabal update
-	cabal install Cabal
-    cabal install alex happy 
+    cabal update
+    cabal install Cabal
+    cabal install regex-tdfa-text --ghc-options=-XFlexibleContexts
+    cabal install alex happy
     cabal install gtk2hs-buildtools
     cabal install leksah
     leksah
