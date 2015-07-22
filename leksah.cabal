@@ -311,7 +311,6 @@ library
         webkitgtk3-javascriptcore -any,
         jsaddle -any,
         ghcjs-codemirror -any,
-        hamlet -any,
         blaze-html -any,
         lens -any,
         pretty-show >=1.6.3 && <1.7,
