@@ -103,7 +103,7 @@ import Graphics.UI.Gtk.SourceView
         sourceBufferBeginNotUndoableAction, sourceBufferSetMaxUndoLevels,
         sourceBufferNew, sourceBufferNewWithLanguage,
         sourceLanguageManagerGuessLanguage,
-        sourceLanguageManagerSetSearchPath,
+        sourceLanguageManagerSetSearchPath, gTypeSourceBuffer,
         sourceLanguageManagerGetSearchPath, sourceLanguageManagerNew)
 import System.FilePath ((</>))
 import System.GIO (contentTypeGuess)
@@ -119,7 +119,8 @@ import Data.Maybe (isNothing, maybeToList, fromJust)
 import Data.IORef (writeIORef, readIORef, newIORef)
 import System.Glib.MainLoop (priorityDefault, idleRemove)
 import Data.Char (isDigit, isSymbol, isAlphaNum)
-import System.Glib.Signals (after, on)
+import System.Glib.Signals
+       (GSignalMatchType(..), signalBlockMatched, after, on)
 import Control.Monad.Trans.Class (MonadTrans(..))
 import System.Glib.Attributes (get, AttrOp(..), set)
 import qualified Graphics.UI.Gtk as Gtk (endUserAction)
@@ -140,6 +141,9 @@ import Graphics.UI.Gtk.Multiline.TextMark
        (textMarkGetName, toTextMark)
 import Control.Arrow (Arrow(..))
 import System.Log.Logger (debugM)
+import Foreign.ForeignPtr (withForeignPtr)
+import System.Glib.GObject (GObjectClass(..), unGObject)
+import Foreign.Ptr (castPtr)
 
 transformGtkIter :: EditorIter GtkSourceView -> (TextIter -> IO a) -> IDEM (EditorIter GtkSourceView)
 transformGtkIter (GtkIter i) f = do
@@ -246,6 +250,13 @@ instance TextEditor GtkSourceView where
         fd <- fontDescription mbFontString
         liftIO $ GtkView <$> do
             sv <- sourceViewNewWithBuffer sb
+
+            -- Disable source_mark_updated handler in sv because it schedules a full redraw
+            -- that turns out to be unnecessary and very costly in Leksah
+            withForeignPtr (unGObject $ toGObject sv) $ \svPtr -> void $
+                signalBlockMatched sb [SignalMatchId, SignalMatchData]
+                    "source_mark_updated" gTypeSourceBuffer 0 Nothing Nothing (Just (castPtr svPtr))
+
             sourceViewSetHighlightCurrentLine sv True
             sourceViewSetInsertSpacesInsteadOfTabs sv True
             sourceViewSetIndentOnTab sv True
