@@ -25,8 +25,8 @@ module IDE.Build (
 
 import Data.Map (Map)
 import IDE.Core.State
-       (postSyncIDE, triggerEventIDE, readIDE, IDEAction, Workspace(..),
-        ipdPackageId, ipdDepends, IDEPackage)
+       (postAsyncIDE, postSyncIDE, triggerEventIDE, readIDE, IDEAction,
+        Workspace(..), ipdPackageId, ipdDepends, IDEPackage)
 import qualified Data.Map as Map
        (insert, empty, lookup, toList, fromList)
 import Data.Graph
@@ -199,22 +199,22 @@ constrElem currentTargets tops  depGraph ms noBuilds
 doBuildChain :: MakeSettings -> Chain MakeOp IDEPackage -> IDEAction
 doBuildChain _ EmptyChain = return ()
 doBuildChain ms chain@Chain{mcAction = MoConfigure} =
-    packageConfig' (mcEle chain) (constrCont ms (mcPos chain) (mcNeg chain))
+    postAsyncIDE $ packageConfig' (mcEle chain) (constrCont ms (mcPos chain) (mcNeg chain))
 doBuildChain ms chain@Chain{mcAction = MoBuild} =
-    buildPackage (msBackgroundBuild ms) (msJumpToWarnings ms) (not (msMakeMode ms) && msSingleBuildWithoutLinking ms)
+    postAsyncIDE $ buildPackage (msBackgroundBuild ms) (msJumpToWarnings ms) (not (msMakeMode ms) && msSingleBuildWithoutLinking ms)
         (mcEle chain) (constrCont ms (mcPos chain) (mcNeg chain))
 doBuildChain ms chain@Chain{mcAction = MoDocu} =
-    packageDoc' (msBackgroundBuild ms) (msJumpToWarnings ms) (mcEle chain) (constrCont ms (mcPos chain) (mcNeg chain))
+    postAsyncIDE $ packageDoc' (msBackgroundBuild ms) (msJumpToWarnings ms) (mcEle chain) (constrCont ms (mcPos chain) (mcNeg chain))
 doBuildChain ms chain@Chain{mcAction = MoTest} =
-    packageTest' (msBackgroundBuild ms) (msJumpToWarnings ms) (mcEle chain) False (constrCont ms (mcPos chain) (mcNeg chain))
+    postAsyncIDE $ packageTest' (msBackgroundBuild ms) (msJumpToWarnings ms) (mcEle chain) False (constrCont ms (mcPos chain) (mcNeg chain))
 doBuildChain ms chain@Chain{mcAction = MoCopy} =
-    packageCopy' (mcEle chain) (constrCont ms (mcPos chain) (mcNeg chain))
+    postAsyncIDE $ packageCopy' (mcEle chain) (constrCont ms (mcPos chain) (mcNeg chain))
 doBuildChain ms chain@Chain{mcAction = MoRegister} =
-    packageRegister' (mcEle chain) (constrCont ms (mcPos chain) (mcNeg chain))
+    postAsyncIDE $ packageRegister' (mcEle chain) (constrCont ms (mcPos chain) (mcNeg chain))
 doBuildChain ms chain@Chain{mcAction = MoClean} =
-    packageClean' (mcEle chain) (constrCont ms (mcPos chain) (mcNeg chain))
+    postAsyncIDE $ packageClean' (mcEle chain) (constrCont ms (mcPos chain) (mcNeg chain))
 doBuildChain ms chain@Chain{mcAction = MoMetaInfo} =
-    void (postSyncIDE (triggerEventIDE UpdateWorkspaceInfo))
+    postAsyncIDE . void $ triggerEventIDE UpdateWorkspaceInfo
 doBuildChain ms chain  = doBuildChain ms (mcPos chain)
 
 constrCont ms pos (Just neg) False = doBuildChain ms neg
