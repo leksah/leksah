@@ -178,7 +178,7 @@ interruptSaveAndRun action = do
                 reflectIDE (do
                     interruptSaveAndRun action
                     return False) ideR
-                return False) priorityDefaultIdle 200
+                return False) priorityDefault 200
             return ()
         else liftIDE run
   where
@@ -266,7 +266,7 @@ buildPackage backgroundBuild jumpToWarnings withoutLinking package continuation 
                                 buildPackage backgroundBuild jumpToWarnings withoutLinking
                                                 package continuation
                                 return False) ideR
-                            return False) priorityDefaultIdle 100
+                            return False) priorityDefault 100
                         return ()
                 else do
                     when (saveAllBeforeBuild prefs) . liftIDE . void $ fileSaveAll belongsToWorkspace
