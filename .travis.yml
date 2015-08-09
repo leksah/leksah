@@ -30,8 +30,7 @@ install:
   - cabal --version
   - cabal install -j4 gtk2hs-buildtools
   - cabal install -j4 regex-tdfa-text --ghc-options=-XFlexibleContexts
-  - cabal install -j4 ghcjs-dom -fold-webkit
-  - cabal install -j4 ./ vendor/ltk vendor/leksah-server vendor/haskellVCSWrapper/vcswrapper vendor/haskellVCSGUI/vcsgui --enable-tests --only-dependencies --force-reinstalls
+  - cabal install -j4 ./ vendor/ltk vendor/leksah-server vendor/haskellVCSWrapper/vcswrapper vendor/haskellVCSGUI/vcsgui ghcjs-dom -fold-webkit --enable-tests --only-dependencies --force-reinstalls
   - cabal install vendor/ltk vendor/leksah-server vendor/haskellVCSWrapper/vcswrapper vendor/haskellVCSGUI/vcsgui
 
 script:
