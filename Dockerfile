@@ -81,11 +81,7 @@ RUN cd ~/.wine/drive_c/ghc-$GHCVER && \
 
 # Install WiX Toolset:
 # You will need to download this manually as there is no wget compatible URL that keeps working
-ADD wix39-binaries.zip
-RUN mkdir ~/.wine32/drive_c/bin && \
-    cd ~/.wine32/drive_c/bin && \
-    unzip ~/wix39-binaries.zip && \
-    rm ~/wix39-binaries.zip
+ADD wix39-binaries.zip /root/.wine32/drive_c/bin/
 
 # Install 64bit Windows version of cabal-install:
 RUN mkdir ~/.wine/drive_c/bin && \
