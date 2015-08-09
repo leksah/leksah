@@ -1,4 +1,3 @@
-{-# LANGUAGE CPP #-}
 {-# LANGUAGE TypeFamilies #-}
 {-# LANGUAGE OverloadedStrings #-}
 -----------------------------------------------------------------------------
@@ -29,11 +28,7 @@ import Graphics.UI.Gtk
         adjustmentGetValue, scrolledWindowGetHAdjustment, pointerUngrab,
         eventTime, leaveNotifyEvent, ScrolledWindow, Modifier(..),
         Rectangle(..), EventMask(..), Underline(..),
-#ifdef MIN_VERSION_gtk3
         widgetGetWindow
-#else
-        widgetGetDrawWindow
-#endif
         )
 import System.Glib.Signals (on)
 import IDE.TextEditor (TextEditor(..), EditorView(..), EditorIter(..))
@@ -75,46 +70,42 @@ createHyperLinkSupport sv sw identifierMapper clickHandler = do
         return True)
 
     let moveOrClick eventX eventY mods eventTime click = do
-        sx <- liftIO $ scrolledWindowGetHAdjustment sw >>= adjustmentGetValue
-        sy <- liftIO $ scrolledWindowGetVAdjustment sw >>= adjustmentGetValue
+            sx <- liftIO $ scrolledWindowGetHAdjustment sw >>= adjustmentGetValue
+            sy <- liftIO $ scrolledWindowGetVAdjustment sw >>= adjustmentGetValue
 
-        let ex = eventX + sx
-            ey = eventY + sy
-            ctrlPressed = mapControlCommand Control `elem` mods
-            shiftPressed = Shift `elem` mods
-        iter <- getIterAtLocation sv (round ex) (round ey)
-        (Rectangle _ _ szx szy) <- liftIO $ widgetGetAllocation sw
-        if eventX < 0 || eventY < 0
-            || round eventX > szx || round eventY > szy then do
-                liftIO $ pointerUngrab eventTime
-                return True
-          else do
-            (beg, en) <- identifierMapper ctrlPressed shiftPressed iter
-            slice <- getSlice tvb beg en True
-            removeTagByName tvb "link"
-            offs <- getLineOffset beg
-            offsc <- getLineOffset iter
-            if T.length slice > 1 then
-                if click then do
-                        liftIO $ pointerUngrab eventTime
-                        clickHandler ctrlPressed shiftPressed slice
-                    else do
-                        applyTagByName tvb "link" beg en
-                        Just screen <- liftIO screenGetDefault
-#ifdef MIN_VERSION_gtk3
-                        mbDW <- liftIO $ widgetGetWindow tv
-#else
-                        mbDW <- liftIO $ Just <$> widgetGetDrawWindow tv
-#endif
-                        case mbDW of
-                            Nothing -> return ()
-                            Just dw -> do
-                                liftIO $ pointerGrab dw False [PointerMotionMask,ButtonPressMask,LeaveNotifyMask] (Nothing  :: Maybe DrawWindow) (Just cursor) eventTime
-                                return ()
+            let ex = eventX + sx
+                ey = eventY + sy
+                ctrlPressed = mapControlCommand Control `elem` mods
+                shiftPressed = Shift `elem` mods
+            iter <- getIterAtLocation sv (round ex) (round ey)
+            (Rectangle _ _ szx szy) <- liftIO $ widgetGetAllocation sw
+            if eventX < 0 || eventY < 0
+                || round eventX > szx || round eventY > szy then do
+                    liftIO $ pointerUngrab eventTime
+                    return True
               else do
-                liftIO $ pointerUngrab eventTime
-                return ()
-            return True
+                (beg, en) <- identifierMapper ctrlPressed shiftPressed iter
+                slice <- getSlice tvb beg en True
+                removeTagByName tvb "link"
+                offs <- getLineOffset beg
+                offsc <- getLineOffset iter
+                if T.length slice > 1 then
+                    if click then do
+                            liftIO $ pointerUngrab eventTime
+                            clickHandler ctrlPressed shiftPressed slice
+                        else do
+                            applyTagByName tvb "link" beg en
+                            Just screen <- liftIO screenGetDefault
+                            mbDW <- liftIO $ widgetGetWindow tv
+                            case mbDW of
+                                Nothing -> return ()
+                                Just dw -> do
+                                    liftIO $ pointerGrab dw False [PointerMotionMask,ButtonPressMask,LeaveNotifyMask] (Nothing  :: Maybe DrawWindow) (Just cursor) eventTime
+                                    return ()
+                  else do
+                    liftIO $ pointerUngrab eventTime
+                    return ()
+                return True
     lineNumberBugFix <- liftIO $ newIORef Nothing
     let fixBugWithX mods isHint (eventX, eventY) ptrx = do
             let hasNoControlModifier = mapControlCommand Control `notElem` mods

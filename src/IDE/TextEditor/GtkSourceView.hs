@@ -76,11 +76,7 @@ import Graphics.UI.Gtk
         FontDescription, fontDescriptionFromString, fontDescriptionNew,
         fontDescriptionSetFamily, EventMask(..), after, Underline(..),
         Color(..),
-#ifdef MIN_VERSION_gtk3
         widgetGetWindow
-#else
-        widgetGetDrawWindow
-#endif
         )
 import Data.Typeable (Typeable)
 import Control.Applicative ((<$>))
@@ -334,11 +330,7 @@ instance TextEditor GtkSourceView where
     bufferToWindowCoords (GtkView sv) point = liftIO $ textViewBufferToWindowCoords sv TextWindowWidget point
     drawTabs (GtkView sv) = liftIO $ sourceViewSetDrawSpaces sv [SourceDrawSpacesTab, SourceDrawSpacesSpace, SourceDrawSpacesTrailing]
     getBuffer (GtkView sv) = liftIO $ (GtkBuffer . castToSourceBuffer) <$> sv `get` textViewBuffer
-#ifdef MIN_VERSION_gtk3
     getWindow (GtkView sv) = liftIO $ widgetGetWindow sv
-#else
-    getWindow (GtkView sv) = liftIO $ Just <$> widgetGetDrawWindow sv
-#endif
     getIterAtLocation (GtkView sv) x y = liftIO $ GtkIter <$> textViewGetIterAtLocation sv x y
     getIterLocation (GtkView sv) (GtkIter i) = liftIO $ textViewGetIterLocation sv i
     getOverwrite (GtkView sv) = liftIO $ textViewGetOverwrite sv

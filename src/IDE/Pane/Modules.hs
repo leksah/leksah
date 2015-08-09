@@ -1,4 +1,3 @@
-{-# LANGUAGE CPP #-}
 {-# LANGUAGE DeriveDataTypeable #-}
 {-# LANGUAGE MultiParamTypeClasses #-}
 {-# LANGUAGE FlexibleInstances #-}
@@ -1221,11 +1220,7 @@ addModuleDialog parent modString sourceRoots hasLib exesTests = do
     set dia [ windowTransientFor := parent
             , windowTitle := __ "Construct new module" ]
     windowSetDefaultSize dia 400 100
-#ifdef MIN_VERSION_gtk3
     upper                      <-   dialogGetContentArea dia
-#else
-    upper                      <-   dialogGetUpper dia
-#endif
     lower                      <-   dialogGetActionArea dia
     (widget,inj,ext,_)  <-   buildEditor (moduleFields sourceRoots hasLib exesTests)
                                         (AddModule modString (head sourceRoots) (Just False) Set.empty)

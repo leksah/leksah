@@ -74,11 +74,7 @@ import Graphics.UI.Gtk
         leaveNotifyEvent, motionNotifyEvent, keyPressEvent,
         buttonReleaseEvent, buttonPressEvent, widgetGrabFocus,
         Rectangle(..), layoutSetFontDescription, EventMask(..),
-#ifdef MIN_VERSION_gtk3
         widgetGetWindow
-#else
-        widgetGetDrawWindow
-#endif
         )
 import Control.Monad.Reader.Class (MonadReader(..))
 import Graphics.UI.Editor.Basics (Connection(..))
@@ -208,11 +204,7 @@ instance TextEditor Yi where
     bufferToWindowCoords (YiView v) point = return point -- TODO
     drawTabs (YiView _) = return () -- TODO
     getBuffer (YiView v) = return $ YiBuffer $ Yi.getBuffer v
-#ifdef MIN_VERSION_gtk3
     getWindow (YiView v) = liftIO $ widgetGetWindow (drawArea v)
-#else
-    getWindow (YiView v) = liftIO $ Just <$> widgetGetDrawWindow (drawArea v)
-#endif
     getIterAtLocation (YiView View{viewFBufRef = b}) x y = return $ mkYiIter' b $ Point 0 -- TODO
     getIterLocation (YiView v) (YiIter i) = return $ Rectangle 0 0 0 0 -- TODO
     getOverwrite (YiView View{viewFBufRef = b}) = withYiBuffer' b $ not <$> use insertingA

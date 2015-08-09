@@ -144,10 +144,10 @@ instance RecoverablePane IDEPrefs PrefsState IDEM where
             let prefsPane = IDEPrefs vb
 
             let applyPrefs newPrefs = do
-                lastAppliedPrefs    <- readIORef lastAppliedPrefsRef
-                reflectIDE (modifyIDE_ (\ide -> ide{prefs = newPrefs})) ideR
-                mapM_ (\f -> reflectIDE (applicator f newPrefs lastAppliedPrefs) ideR) flatPrefsDesc
-                writeIORef lastAppliedPrefsRef newPrefs
+                    lastAppliedPrefs    <- readIORef lastAppliedPrefsRef
+                    reflectIDE (modifyIDE_ (\ide -> ide{prefs = newPrefs})) ideR
+                    mapM_ (\f -> reflectIDE (applicator f newPrefs lastAppliedPrefs) ideR) flatPrefsDesc
+                    writeIORef lastAppliedPrefsRef newPrefs
 
             on preview buttonActivated $ do
                 mbNewPrefs <- extract initialPrefs [ext]

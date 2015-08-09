@@ -1,4 +1,4 @@
-{-# LANGUAGE CPP, ScopedTypeVariables, OverloadedStrings #-}
+{-# LANGUAGE ScopedTypeVariables, OverloadedStrings #-}
 -----------------------------------------------------------------------------
 --
 -- Module      :  IDE.Completion
@@ -242,11 +242,7 @@ addEventHandling window sourceView tree store isWordChar always = do
             (x, y)     <- eventCoordinates
             time       <- eventTime
 
-#ifdef MIN_VERSION_gtk3
             mbDrawWindow <- Gtk.liftIO $ widgetGetWindow window
-#else
-            mbDrawWindow <- Gtk.liftIO $ Just <$> widgetGetDrawWindow window
-#endif
             case mbDrawWindow of
                 Just drawWindow -> do
                     status <- Gtk.liftIO $ pointerGrab

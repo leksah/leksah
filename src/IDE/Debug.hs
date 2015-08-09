@@ -147,16 +147,16 @@ debugExecuteSelection = do
     case maybeText of
         Just text -> do
             let command = packageTry $ tryDebug $ do
-                debugSetLiberalScope
-                buffer <- liftIO $ newIORef mempty
-                debugCommand (stripComments text) $ do
-                    _ <- C.getZipSink $ const
-                        <$> C.ZipSink sinkLast
-                        <*> C.ZipSink (logOutputPane text buffer)
-                    mbURI <- lift $ readIDE autoURI
-                    case mbURI of
-                        Just uri -> lift . postSyncIDE . loadOutputUri $ T.unpack uri
-                        Nothing -> return ()
+                    debugSetLiberalScope
+                    buffer <- liftIO $ newIORef mempty
+                    debugCommand (stripComments text) $ do
+                        _ <- C.getZipSink $ const
+                            <$> C.ZipSink sinkLast
+                            <*> C.ZipSink (logOutputPane text buffer)
+                        mbURI <- lift $ readIDE autoURI
+                        case mbURI of
+                            Just uri -> lift . postSyncIDE . loadOutputUri $ T.unpack uri
+                            Nothing -> return ()
             modifyIDE_ $ \ide -> ide {autoCommand = command, autoURI = Nothing}
             command
         Nothing   -> ideMessage Normal "Please select some text in the editor to execute"

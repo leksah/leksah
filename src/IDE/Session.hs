@@ -1,4 +1,3 @@
-{-# LANGUAGE CPP #-}
 {-# LANGUAGE ScopedTypeVariables #-}
 {-# LANGUAGE OverloadedStrings #-}
 -----------------------------------------------------------------------------
@@ -30,11 +29,9 @@ module IDE.Session (
 
 import Prelude hiding (catch)
 import Graphics.UI.Gtk hiding (showLayout)
-#ifdef MIN_VERSION_gtk3
 import Graphics.UI.Gtk.General.CssProvider (cssProviderNew, cssProviderLoadFromString)
 import Graphics.UI.Gtk.General.StyleContext (styleContextAddProvider)
 import Control.Applicative ((<$>))
-#endif
 import System.FilePath
 import qualified Data.Map as Map
 import Data.Maybe
@@ -661,14 +658,12 @@ viewFullScreen = do
 viewDark :: IDEAction
 viewDark = getDarkState >>= setDark
 
-#ifdef MIN_VERSION_gtk3
 getActiveSettings :: PaneMonad alpha => alpha (Maybe Settings)
 getActiveSettings = do
     mbScreen <- getActiveScreen
     case mbScreen of
         Nothing -> return Nothing
         Just screen -> liftIO $ Just <$> settingsGetForScreen screen
-#endif
 
 setDark :: Bool -> IDEM ()
 setDark dark = do
@@ -677,7 +672,6 @@ setDark dark = do
     prefs <- readIDE prefs
     buffers <- allBuffers
     mapM_ updateStyle' buffers
-#ifdef MIN_VERSION_gtk3
     mbSettings <- getActiveSettings
     case mbSettings of
         Just settings -> liftIO $ settingsSetLongProperty
@@ -686,9 +680,5 @@ setDark dark = do
                             (if dark then 1 else 0)
                             "Leksah"
         Nothing -> return ()
-#else
-    return ()
-#endif
-
 
 

@@ -1,4 +1,3 @@
-{-# LANGUAGE CPP #-}
 {-# LANGUAGE OverloadedStrings #-}
 -----------------------------------------------------------------------------
 --
@@ -442,11 +441,7 @@ selectModuleDialog parentWindow list id mbQual mbDescr =
                                             Just str -> str <> "." <> id
             dia               <- dialogNew
             set dia [ windowTransientFor := parentWindow ]
-#ifdef MIN_VERSION_gtk3
             upper             <- dialogGetContentArea dia
-#else
-            upper             <- dialogGetUpper dia
-#endif
             okButton <- dialogAddButton dia (__"Add Import") ResponseOk
             dialogAddButton dia (__"Cancel") ResponseCancel
             (widget,inj,ext,_) <- buildEditor (moduleFields selectionList qualId) realSelectionString

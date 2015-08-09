@@ -90,11 +90,7 @@ import Graphics.UI.Gtk
         containerAdd, scrolledWindowNew, Rectangle(..),
         EventMask(..), Modifier(..), ContainerClass, mainIteration,
         castToWidget,
-#ifdef MIN_VERSION_gtk3
         widgetGetWindow
-#else
-        widgetGetDrawWindow
-#endif
         )
 import Data.Maybe (fromJust)
 import IDE.Core.State (onIDE, reflectIDE, leksahOrPackageDir)
@@ -366,11 +362,7 @@ instance TextEditor CodeMirror where
     getBuffer (CMView cm) = return $ CMBuffer cm
     getWindow (CMView cm) = runCM cm $ do
         v <- webView
-#ifdef MIN_VERSION_gtk3
         liftIO $ widgetGetWindow v
-#else
-        liftIO $ Just <$> widgetGetDrawWindow v
-#endif
     getIterAtLocation (CMView cm) x y = runCM cm $ do
         m <- codeMirror
         lift $ do

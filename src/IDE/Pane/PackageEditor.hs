@@ -267,11 +267,7 @@ newPackageDialog parent workspaceDir = do
     dia                        <-   dialogNew
     set dia [ windowTransientFor := parent
             , windowTitle := __ "Create New Package" ]
-#ifdef MIN_VERSION_gtk3
     upper                      <-   dialogGetContentArea dia
-#else
-    upper                      <-   dialogGetUpper dia
-#endif
     lower                      <-   dialogGetActionArea dia
     (widget,inj,ext,_)         <-   buildEditor (packageFields workspaceDir)
                                         (NewPackage "" workspaceDir Nothing)
@@ -393,11 +389,7 @@ clonePackageSourceDialog parent workspaceDir = do
     dia                        <-   dialogNew
     set dia [ windowTransientFor := parent
             , windowTitle := __ "Clone Package" ]
-#ifdef MIN_VERSION_gtk3
     upper                      <-   dialogGetContentArea dia
-#else
-    upper                      <-   dialogGetUpper dia
-#endif
     lower                      <-   dialogGetActionArea dia
     (widget,inj,ext,_)         <-   buildEditor (cloneFields packages workspaceDir)
                                         (ClonePackageSourceRepo "" workspaceDir)
@@ -1271,13 +1263,13 @@ packageEditor para noti = do
                 $ para) noti
     let pinj (PackageIdentifier (PackageName n) v) = inj (n,v)
     let pext = do
-        mbp <- ext
-        case mbp of
-            Nothing -> return Nothing
-            Just (n,v) -> return $
-                if null n
-                    then Nothing
-                    else Just $ PackageIdentifier (PackageName n) v
+            mbp <- ext
+            case mbp of
+                Nothing -> return Nothing
+                Just (n,v) -> return $
+                    if null n
+                        then Nothing
+                        else Just $ PackageIdentifier (PackageName n) v
     return (wid,pinj,pext)
 
 testedWithEditor :: Editor [(CompilerFlavor, VersionRange)]
@@ -1306,11 +1298,11 @@ compilerFlavorEditor para noti = do
                         (OtherCompiler str) -> inj (Right $ T.pack str)
                         other               -> inj (Left other)
     let cfext = do
-        mbp <- ext
-        case mbp of
-            Nothing -> return Nothing
-            Just (Right s) -> return (Just . OtherCompiler $ T.unpack s)
-            Just (Left other) -> return (Just other)
+            mbp <- ext
+            case mbp of
+                Nothing -> return Nothing
+                Just (Right s) -> return (Just . OtherCompiler $ T.unpack s)
+                Just (Left other) -> return (Just other)
     return (wid,cfinj,cfext)
         where
         flavors = [GHC, NHC, Hugs, HBC, Helium, JHC]
@@ -1327,11 +1319,11 @@ buildTypeEditor para noti = do
                         (UnknownBuildType str) -> inj (Right $ T.pack str)
                         other               -> inj (Left other)
     let cfext = do
-        mbp <- ext
-        case mbp of
-            Nothing -> return Nothing
-            Just (Right s) -> return (Just . UnknownBuildType $ T.unpack s)
-            Just (Left other) -> return (Just other)
+            mbp <- ext
+            case mbp of
+                Nothing -> return Nothing
+                Just (Right s) -> return (Just . UnknownBuildType $ T.unpack s)
+                Just (Left other) -> return (Just other)
     return (wid,cfinj,cfext)
         where
         flavors = [Simple, Configure, Make, Custom]
@@ -1601,10 +1593,10 @@ executableEditor fp modules countBuildInfo para noti = do
         noti
     let pinj (Executable' s f bi) = inj (s,f,bi)
     let pext = do
-        mbp <- ext
-        case mbp of
-            Nothing -> return Nothing
-            Just (s,f,bi) -> return (Just $Executable' s f bi)
+            mbp <- ext
+            case mbp of
+                Nothing -> return Nothing
+                Just (s,f,bi) -> return (Just $Executable' s f bi)
     return (wid,pinj,pext)
 
 testsEditor :: Maybe FilePath -> [ModuleName] -> Int -> Editor [Test']
@@ -1643,10 +1635,10 @@ testEditor fp modules countBuildInfo para noti = do
     let pinj (Test' s (TestSuiteExeV10 (Version [1,0] []) f) bi) = inj (s,f,bi)
         pinj _ = error "Unexpected Test Interface"
     let pext = do
-        mbp <- ext
-        case mbp of
-            Nothing -> return Nothing
-            Just (s,f,bi) -> return (Just $Test' s (TestSuiteExeV10 (Version [1,0] []) f) bi)
+            mbp <- ext
+            case mbp of
+                Nothing -> return Nothing
+                Just (s,f,bi) -> return (Just $Test' s (TestSuiteExeV10 (Version [1,0] []) f) bi)
     return (wid,pinj,pext)
 
 benchmarksEditor :: Maybe FilePath -> [ModuleName] -> Int -> Editor [Benchmark']
@@ -1685,10 +1677,10 @@ benchmarkEditor fp modules countBuildInfo para noti = do
     let pinj (Benchmark' s (BenchmarkExeV10 (Version [1,0] []) f) bi) = inj (s,f,bi)
         pinj _ = error "Unexpected Benchmark Interface"
     let pext = do
-        mbp <- ext
-        case mbp of
-            Nothing -> return Nothing
-            Just (s,f,bi) -> return (Just $Benchmark' s (BenchmarkExeV10 (Version [1,0] []) f) bi)
+            mbp <- ext
+            case mbp of
+                Nothing -> return Nothing
+                Just (s,f,bi) -> return (Just $Benchmark' s (BenchmarkExeV10 (Version [1,0] []) f) bi)
     return (wid,pinj,pext)
 
 buildInfoEditorP :: Int -> Editor Int
@@ -1696,11 +1688,11 @@ buildInfoEditorP numberOfBuildInfos para noti = do
     (wid,inj,ext) <- intEditor (1.0,fromIntegral numberOfBuildInfos,1.0)
         (paraName <<<- ParaName (__ "Build Info") $para) noti
     let pinj i = inj (i + 1)
-    let pext =   do
-        mbV <- ext
-        case mbV of
-            Nothing -> return Nothing
-            Just i  -> return (Just (i - 1))
+    let pext = do
+            mbV <- ext
+            case mbV of
+                Nothing -> return Nothing
+                Just i  -> return (Just (i - 1))
     return (wid,pinj,pext)
 
 -- ------------------------------------------------------------
