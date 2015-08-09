@@ -247,7 +247,7 @@ resolveActiveHLint = inActiveBufContext False  $ \_ _ ebuf ideBuf _ -> do
     lEnd <- getLine iEnd
     cEnd <- getLineOffset iEnd
     let fn = fileName ideBuf
-    let selectedRefs = [ref | ref@LogRef{..} <- allLogRefs,
+    let selectedRefs = [ref | ref@LogRef{..} <- toList allLogRefs,
                             logRefType == LintRef
                          && fn == Just (logRefFullFilePath ref)
                          && maybe "" (ideaHint . snd) logRefIdea /= "Reduce duplication"

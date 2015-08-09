@@ -20,6 +20,7 @@ module IDE.Pane.Errors (
     IDEErrors
 ,   ErrorsState
 ,   fillErrorList
+,   addErrorToList
 ,   selectError
 ,   getErrors
 ,   selectMatchingErrors
@@ -40,6 +41,8 @@ import qualified Data.Text as T
        (intercalate, lines, takeWhile, length, drop)
 import Data.IORef (writeIORef, readIORef, newIORef, IORef)
 import Data.Maybe (isNothing)
+import Data.Foldable (Foldable(..))
+import qualified Data.Sequence as Seq (elemIndexL)
 
 -- | A breakpoints pane description
 --
@@ -139,8 +142,30 @@ fillErrorList' pane = do
     liftIO $ do
         let store = errorStore pane
         listStoreClear store
-        forM_ (zip refs [0..]) $ \ (lr, index) ->
+        forM_ (zip (toList refs) [0..]) $ \ (lr, index) ->
             listStoreInsert store index $ ErrColumn lr (
+                (if even index then fst else snd) $
+                (if isDark then fst else snd) $
+                    case logRefType lr of
+                        WarningRef -> (("#282000", "#201900"), ("#FFF1DE", "#FFF5E8"))
+                        LintRef    -> (("#003000", "#002800"), ("#DBFFDB", "#EDFFED"))
+                        _          -> (("#380000", "#280000"), ("#FFDEDE", "#FFEBEB")))
+
+addErrorToList :: Bool -> Int -> LogRef -> IDEAction
+addErrorToList False index lr = getPane >>= maybe (return ()) (addErrorToList' index lr)
+addErrorToList True  index lr = getErrors Nothing  >>= \ p -> addErrorToList' index lr p >> displayPane p False
+
+addErrorToList' :: Int -> LogRef -> IDEErrors -> IDEAction
+addErrorToList' index lr pane = do
+--    refs <- readIDE errorRefs
+    ac   <- liftIO $ readIORef (autoClose pane)
+--    when (null refs && ac) . void $ closePane pane
+    isDark <- getDarkState
+    liftIO $ do
+        let store = errorStore pane
+--        listStoreClear store
+--        forM_ (zip (toList refs) [0..]) $ \ (lr, index) ->
+        listStoreInsert store index $ ErrColumn lr (
                 (if even index then fst else snd) $
                 (if isDark then fst else snd) $
                     case logRefType lr of
@@ -176,7 +201,7 @@ selectError mbLogRef = do
                 unless (size == 0) $
                     treeViewScrollToCell (treeView errors) (Just [0]) Nothing Nothing
                 treeSelectionUnselectAll selection
-            Just lr -> case lr `elemIndex` errorRefs' of
+            Just lr -> case lr `Seq.elemIndexL` errorRefs' of
                         Nothing  -> return ()
                         Just ind -> do
                             treeViewScrollToCell (treeView errors) (Just [ind]) Nothing Nothing

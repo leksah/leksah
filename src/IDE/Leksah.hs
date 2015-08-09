@@ -85,6 +85,7 @@ import Graphics.UI.Gtk.General.CssProvider
        (cssProviderLoadFromString, cssProviderNew)
 import Graphics.UI.Gtk.General.StyleContext
        (styleContextAddProviderForScreen)
+import qualified Data.Sequence as Seq (empty)
 
 -- --------------------------------------------------------------------
 -- Command line options
@@ -374,7 +375,7 @@ startMainWindow yiControl sessionFP mbWorkspaceFP sourceFPs startupPrefs isFirst
           ,   activePack        =   Nothing
           ,   activeExe         =   Nothing
           ,   bufferProjCache   =   Map.empty
-          ,   allLogRefs        =   []
+          ,   allLogRefs        =   Seq.empty
           ,   currentHist       =   0
           ,   currentEBC        =   (Nothing, Nothing, Nothing)
           ,   systemInfo        =   Nothing

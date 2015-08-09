@@ -919,6 +919,8 @@ registerLeksahEvents =    do
         (\ e@VariablesChanged     -> fillVariablesListQuiet >> return e)
     registerEvent stRef "ErrorChanged"
         (\ e@(ErrorChanged show') -> postAsyncIDE (fillErrorList show') >> return e)
+    registerEvent stRef "ErrorAdded"
+        (\ e@(ErrorAdded show' i ref) -> postAsyncIDE (addErrorToList show' i ref) >> return e)
     registerEvent stRef "CurrentErrorChanged"
         (\ e@(CurrentErrorChanged mbLogRef) -> postAsyncIDE (do
             selectRef mbLogRef

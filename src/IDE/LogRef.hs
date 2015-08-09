@@ -1,3 +1,4 @@
+{-# LANGUAGE ViewPatterns #-}
 {-# LANGUAGE RecordWildCards, ScopedTypeVariables, OverloadedStrings #-}
 -----------------------------------------------------------------------------
 --
@@ -75,6 +76,10 @@ import Data.Monoid ((<>))
 import qualified Data.Set as S (notMember, member, insert, empty)
 import Data.Set (Set)
 import System.FilePath.Windows ((</>))
+import Data.Sequence (ViewR(..), Seq)
+import Data.Foldable (Foldable(..))
+import qualified Data.Sequence as Seq
+       (singleton, viewr, reverse, fromList)
 
 showSourceSpan :: LogRef -> Text
 showSourceSpan = T.pack . displaySrcSpan . logRefSrcSpan
@@ -110,23 +115,23 @@ unmarkLogRefs =
             buf     <-  getBuffer sv
             removeTagByName buf (T.pack $ show (logRefType logRef))
 
-setBreakpointList :: [LogRef] -> IDEAction
+setBreakpointList :: Seq LogRef -> IDEAction
 setBreakpointList breaks = do
     ideR <- ask
     unmarkLogRefs
     errs <- readIDE errorRefs
     contexts <- readIDE contextRefs
-    modifyIDE_ (\ide -> ide{allLogRefs = errs ++ breaks ++ contexts})
+    modifyIDE_ (\ide -> ide{allLogRefs = errs <> breaks <> contexts})
     setCurrentBreak Nothing
     markLogRefs
     triggerEventIDE BreakpointChanged
     return ()
 
-addLogRefs :: [LogRef] -> IDEAction
+addLogRefs :: Seq LogRef -> IDEAction
 addLogRefs refs = do
     ideR <- ask
     unmarkLogRefs
-    modifyIDE_ (\ide -> ide{allLogRefs = allLogRefs ide ++ refs})
+    modifyIDE_ (\ide -> ide{allLogRefs = allLogRefs ide <> refs})
     setCurrentError Nothing
     markLogRefs
     triggerEventIDE (ErrorChanged False)
@@ -134,12 +139,12 @@ addLogRefs refs = do
     triggerEventIDE TraceChanged
     return ()
 
-next :: (IDE -> [LogRef])
+next :: (IDE -> Seq LogRef)
      -> (IDE -> Maybe LogRef)
      -> (Maybe LogRef -> IDEAction)
      -> IDEAction
 next all current set = do
-    all <- readIDE all
+    all <- toList <$> readIDE all
     current <- readIDE current
     let isCurrent = (== current) . Just
     case dropWhile isCurrent (dropWhile (not . isCurrent) all) <> all of
@@ -152,26 +157,26 @@ nextError :: IDEAction
 nextError = next errorRefs currentError setCurrentError
 
 previousError :: IDEAction
-previousError = next (reverse . errorRefs) currentError setCurrentError
+previousError = next (Seq.reverse . errorRefs) currentError setCurrentError
 
 nextBreakpoint :: IDEAction
 nextBreakpoint = next breakpointRefs currentBreak setCurrentBreak
 
 previousBreakpoint :: IDEAction
-previousBreakpoint = next (reverse . breakpointRefs) currentBreak setCurrentBreak
+previousBreakpoint = next (Seq.reverse . breakpointRefs) currentBreak setCurrentBreak
 
 nextContext :: IDEAction
 nextContext = next contextRefs currentContext setCurrentContext
 
 previousContext :: IDEAction
-previousContext = next (reverse . contextRefs) currentContext setCurrentContext
+previousContext = next (Seq.reverse . contextRefs) currentContext setCurrentContext
 
 lastContext :: IDEAction
 lastContext = do
     contexts <- readIDE contextRefs
     currentContext <- readIDE currentContext
-    case reverse contexts of
-        (l:_) -> do
+    case contexts of
+        (Seq.viewr -> _ :> l) -> do
             setCurrentContext $ Just l
             selectRef $ Just l
         _ -> return ()
@@ -511,8 +516,7 @@ logOutputForBuild package backgroundBuild jumpToWarnings = do
                             (T.pack $ "Compiling " ++ show n ++ " of " ++ show total), CompartmentBuild False])) ideR
                         let root = ipdBuildDir package
                             fullFilePath = root </> file
-                        unless (fullFilePath `S.member` filesCompiled) $
-                            reflectIDE (removeBuildLogRefs root file) ideR
+                        reflectIDE (removeBuildLogRefs root file) ideR
                         when inDocTest $ logPrevious testFails
                         return state { inDocTest = False }
                     (Right (DocTestFailure span exp), _, _) -> do
@@ -581,7 +585,7 @@ logOutputForBreakpoints package logLaunch = do
             _ -> do
                 defaultLineLogger log logLaunch out
                 return Nothing)
-    lift $ setBreakpointList $ catMaybes breaks
+    lift . setBreakpointList . Seq.fromList $ catMaybes breaks
 
 logOutputForSetBreakpoint :: IDEPackage
                         -> LogLaunch           -- ^ loglaunch
@@ -598,7 +602,7 @@ logOutputForSetBreakpoint package logLaunch = do
             _ -> do
                 defaultLineLogger log logLaunch out
                 return Nothing)
-    lift $ addLogRefs $ catMaybes breaks
+    lift . addLogRefs . Seq.fromList $ catMaybes breaks
 
 logOutputForSetBreakpointDefault :: IDEPackage
                                  -> C.Sink ToolOutput IDEM ()
@@ -623,7 +627,7 @@ logOutputForContext package loglaunch getContexts = do
                 defaultLineLogger log logLaunch out
                 return Nothing)
     lift $ unless (null refs) $ do
-        addLogRefs [last refs]
+        addLogRefs . Seq.singleton $ last refs
         lastContext
 
 contextParser :: CharParser () SrcSpan

@@ -1,4 +1,5 @@
 {-# LANGUAGE CPP #-}
+{-# LANGUAGE ViewPatterns #-}
 {-# LANGUAGE MultiParamTypeClasses #-}
 {-# LANGUAGE FlexibleInstances #-}
 {-# LANGUAGE TypeSynonymInstances #-}
@@ -122,7 +123,6 @@ import Graphics.UI.Gtk
         scrolledWindowSetPolicy, dialogSetDefaultResponse,
         fileChooserSetCurrentFolder, fileChooserSelectFilename,
         TextSearchFlags(..))
-import System.Glib.MainLoop (priorityDefaultIdle, idleAdd)
 import qualified Graphics.UI.Gtk as Gtk hiding (eventKeyName)
 import Graphics.UI.Gtk.Windows.Window
 import Graphics.UI.Gtk.General.Enums
@@ -152,9 +152,11 @@ import qualified Data.Text.IO as T (writeFile, readFile)
 import Data.Time (UTCTime(..))
 import Graphics.UI.Gtk.Gdk.EventM
        (eventModifier, eventKeyName, eventKeyVal)
-import Data.Foldable (forM_)
+import Data.Foldable (Foldable(..), forM_)
 import Data.Traversable (forM)
 import Language.Haskell.HLint3 (Idea(..))
+import qualified Data.Sequence as Seq
+import Data.Sequence (ViewR(..), (|>))
 
 allBuffers :: MonadIDE m => m [IDEBuffer]
 allBuffers = liftIDE getPanes
@@ -175,8 +177,7 @@ instance RecoverablePane IDEBuffer BufferState IDEM where
         mbbuf    <-  newTextBuffer pp (T.pack $ takeFileName n) (Just n)
         case mbbuf of
             Just (IDEBuffer {sourceView=v}) -> do
-                ideR    <- ask
-                liftIO . (`idleAdd` priorityDefaultIdle) . (`reflectIDE` ideR) $ do
+                postAsyncIDEIdle $ do
                     liftIO $ debugM "leksah" "SourceBuffer recoverState idle callback"
                     gtkBuf  <- getBuffer v
                     iter    <- getIterAtOffset gtkBuf i
@@ -184,15 +185,13 @@ instance RecoverablePane IDEBuffer BufferState IDEM where
                     mark    <- getInsertMark gtkBuf
                     scrollToMark v mark 0.0 (Just (0.3,0.3))
                     liftIO $ debugM "leksah" "SourceBuffer recoverState done"
-                    return False
                 return mbbuf
             Nothing -> return Nothing
     recoverState pp (BufferStateTrans bn text i) =   do
         mbbuf    <-  newTextBuffer pp bn Nothing
         case mbbuf of
             Just (buf@IDEBuffer {sourceView=v}) -> do
-                ideR    <- ask
-                liftIO . (`idleAdd` priorityDefaultIdle) . (`reflectIDE` ideR) $ do
+                postAsyncIDEIdle $ do
                     liftIO $ debugM "leksah" "SourceBuffer recoverState idle callback"
                     useCandy <- useCandyFor buf
                     gtkBuf   <-  getBuffer v
@@ -204,7 +203,6 @@ instance RecoverablePane IDEBuffer BufferState IDEM where
                     mark     <-  getInsertMark gtkBuf
                     scrollToMark v mark 0.0 (Just (0.3,0.3))
                     liftIO $ debugM "leksah" "SourceBuffer recoverState done"
-                    return False
                 return (Just buf)
             Nothing -> return Nothing
     makeActive (actbuf@IDEBuffer {sourceView=sv}) = do
@@ -315,14 +313,12 @@ goToSourceDefinition' sourcePath Location{..} = do
                 iter2Temp       <-  getIterAtLine ebuf (max 0 (min (lines-1) (locationELine -1)))
                 chars2          <-  getCharsInLine iter2Temp
                 iter2 <- atLineOffset iter2Temp (max 0 (min (chars2-1) locationECol))
-                -- ### we had a problem before using this idleAdd thing
-                ideR <- ask
-                liftIO . (`idleAdd` priorityDefaultIdle) . (`reflectIDE` ideR) $ do
+                -- ### we had a problem before using postAsyncIDEIdle
+                postAsyncIDEIdle $ do
                     liftIO $ debugM "lekash" "goToSourceDefinition triggered selectRange"
                     selectRange ebuf iter iter2
                     liftIO $ debugM "lekash" "goToSourceDefinition triggered scrollToIter"
                     scrollToIter sv iter 0.0 (Just (0.3,0.3))
-                    return False
                 return ()
         Nothing -> return ()
     return mbBuf
@@ -348,10 +344,10 @@ updateStyle' IDEBuffer {sourceView = sv} = getBuffer sv >>= updateStyle
 
 removeLogRefs :: (FilePath -> FilePath -> Bool) -> [LogRefType] -> IDEAction
 removeLogRefs toRemove' types = do
-    (remove, keep) <- partition toRemove <$> readIDE allLogRefs
+    (remove, keep) <- Seq.partition toRemove <$> readIDE allLogRefs
     let removeDetails = Map.fromListWith (<>) . nub $ map (\ref ->
                             (logRefRootPath ref </> logRefFilePath ref,
-                            [logRefType ref])) remove
+                            [logRefType ref])) $ toList remove
     modifyIDE_ (\ide -> ide{allLogRefs = keep})
 
     buffers <- allBuffers
@@ -400,7 +396,7 @@ addLogRef hlintFileScope backgroundBuild ref = do
     allLogRefs   <- readIDE allLogRefs
     currentError <- readIDE currentError
     let (moreImportant, rest) =
-            span (\old ->
+           Seq.spanl (\old ->
                 let samePackage = logRefRootPath old     == logRefRootPath ref
                     sameFile    = logRefFullFilePath old == logRefFullFilePath ref in
                 -- Work out when the old ref is more important than the new
@@ -419,11 +415,11 @@ addLogRef hlintFileScope backgroundBuild ref = do
                     (LintRef       , _             ) -> samePackage
                     (ContextRef    , _             ) -> False
                     (BreakpointRef , _             ) -> False) allLogRefs
-        currErr = if currentError `elem` map Just moreImportant
+        currErr = if currentError `elem` map Just (toList moreImportant)
                         then currentError
                         else Nothing
     modifyIDE_ $ \ ide ->
-        ide{ allLogRefs = moreImportant <> [ref] <> rest
+        ide{ allLogRefs = (moreImportant |> ref) <> rest
            , currentEBC = (currErr, currentBreak ide, currentContext ide)
            }
 
@@ -431,7 +427,8 @@ addLogRef hlintFileScope backgroundBuild ref = do
     let matchingBufs = filter (maybe False (equalFilePath (logRefFullFilePath ref)) . fileName) buffers
     forM_ matchingBufs $ \ buf -> markRefInSourceBuf buf ref False
 
-    triggerEventIDE . ErrorChanged $ not backgroundBuild && null moreImportant
+    triggerEventIDE $ ErrorAdded
+    	(not backgroundBuild && null moreImportant) (length moreImportant) ref
     return ()
 
 markRefInSourceBuf :: IDEBuffer -> LogRef -> Bool -> IDEAction
@@ -472,8 +469,11 @@ markRefInSourceBuf buf logRef scrollTo = do
                 new     <- atLineOffset newTmp (max 0 (min (chars-1) (snd end)))
                 forwardCharC new
 
-        let latest = if null contextRefs then Nothing else Just $ last contextRefs
-        let isOldContext = case (logRefType logRef, latest) of
+        let last (Seq.viewr -> EmptyR)  = Nothing
+            last (Seq.viewr -> xs :> x) = Just x
+            last _                      = Nothing
+            latest = last contextRefs
+            isOldContext = case (logRefType logRef, latest) of
                                 (ContextRef, Just ctx) | ctx /= logRef -> True
                                 _ -> False
         unless isOldContext $ do
@@ -481,17 +481,13 @@ markRefInSourceBuf buf logRef scrollTo = do
             lineStart <- backwardToLineStartC iter
             createMark sv (logRefType logRef) lineStart $ refDescription logRef
             applyTagByName ebuf tagName iter iter2
-        when scrollTo $ do
-            ideR    <- ask
-            liftIO . (`idleAdd` priorityDefaultIdle) . (`reflectIDE` ideR) $ do
-                liftIO $ debugM "lekash" "markRefInSourceBuf triggered placeCursor"
-                placeCursor ebuf iter
-                mark <- getInsertMark ebuf
-                liftIO $ debugM "lekash" "markRefInSourceBuf trigged scrollToMark"
-                scrollToMark sv mark 0.3 Nothing
-                when isOldContext $ selectRange ebuf iter iter2
-                return False
-            return ()
+        when scrollTo . postAsyncIDE $ do
+            liftIO $ debugM "lekash" "markRefInSourceBuf triggered placeCursor"
+            placeCursor ebuf iter
+            mark <- getInsertMark ebuf
+            liftIO $ debugM "lekash" "markRefInSourceBuf trigged scrollToMark"
+            scrollToMark sv mark 0.3 Nothing
+            when isOldContext $ selectRange ebuf iter iter2
 
 -- | Tries to create a new text buffer, fails when the given filepath
 -- does not exist or when it is not a text file.
@@ -648,9 +644,9 @@ builder' bs mbfn ind bn rbn ct prefs fileContents modTime pp nb windows =
             modifier    <- lift eventModifier
             liftIDE $ do
                 let moveToNextWord iterOp sel  = do
-                    sel' <- iterOp sel
-                    rs <- isRangeStart sel'
-                    if rs then return sel' else moveToNextWord iterOp sel'
+                        sel' <- iterOp sel
+                        rs <- isRangeStart sel'
+                        if rs then return sel' else moveToNextWord iterOp sel'
                 let calculateNewPosition iterOp = getInsertIter buffer >>= moveToNextWord iterOp
                 let continueSelection keepSelBound nsel = do
                         if keepSelBound

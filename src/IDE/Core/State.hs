@@ -50,8 +50,12 @@ module IDE.Core.State (
 ,   reflectIDE
 ,   reflectIDEI
 ,   catchIDE
+,   postSyncIDE'
+,   postAsyncIDE'
 ,   postSyncIDE
 ,   postAsyncIDE
+,   postSyncIDEIdle
+,   postAsyncIDEIdle
 ,   onIDE
 ,   forkIDE
 
@@ -112,6 +116,9 @@ import System.Directory (doesDirectoryExist)
 import Data.Text (Text)
 import qualified Data.Text as T (unpack)
 import Data.Monoid ((<>))
+import Control.Concurrent.MVar (takeMVar, putMVar, newEmptyMVar)
+import qualified Data.Sequence as Seq (filter)
+import Data.Sequence (Seq)
 
 instance PaneMonad IDEM where
     getFrameState   =   readIDE frameState
@@ -255,15 +262,15 @@ throwIDE str = throw (IDEException str)
 -- Main window is always the first one in the list
 window = head . windows
 
-errorRefs :: IDE -> [LogRef]
-errorRefs = filter ((`elem` [ErrorRef, WarningRef, LintRef, TestFailureRef]) . logRefType) .
+errorRefs :: IDE -> Seq LogRef
+errorRefs = Seq.filter ((`elem` [ErrorRef, WarningRef, LintRef, TestFailureRef]) . logRefType) .
                allLogRefs
 
-breakpointRefs :: IDE -> [LogRef]
-breakpointRefs = filter ((== BreakpointRef) . logRefType) . allLogRefs
+breakpointRefs :: IDE -> Seq LogRef
+breakpointRefs = Seq.filter ((== BreakpointRef) . logRefType) . allLogRefs
 
-contextRefs :: IDE -> [LogRef]
-contextRefs = filter ((== ContextRef) . logRefType) . allLogRefs
+contextRefs :: IDE -> Seq LogRef
+contextRefs = Seq.filter ((== ContextRef) . logRefType) . allLogRefs
 
 currentError     = (\(e,_,_)-> e) . currentEBC
 currentBreak     = (\(_,b,_)-> b) . currentEBC
@@ -317,13 +324,29 @@ catchIDE :: (MonadIDE m, Exception e) => IDEM a -> (e -> IO a) -> m a
 catchIDE block handler = reifyIDE (\ideR -> catch (reflectIDE block ideR) handler)
 
 forkIDE :: MonadIDE m => IDEAction  -> m ()
-forkIDE block  = reifyIDE (void . forkIO . reflectIDE block)
+forkIDE block = reifyIDE (void . forkIO . reflectIDE block)
+
+postSyncIDE' :: MonadIDE m => Priority -> IDEM a -> m a
+postSyncIDE' priority f = reifyIDE $ \ideR -> do
+    resultVar <- newEmptyMVar
+    idleAdd (reflectIDE f ideR >>= putMVar resultVar >> return False) priority
+    takeMVar resultVar
 
 postSyncIDE :: MonadIDE m => IDEM a -> m a
-postSyncIDE f = reifyIDE (postGUISync . reflectIDE f)
+postSyncIDE = postSyncIDE' priorityDefault
+
+postSyncIDEIdle :: MonadIDE m => IDEM a -> m a
+postSyncIDEIdle = postSyncIDE' priorityDefault
+
+postAsyncIDE' :: MonadIDE m => Priority -> IDEM () -> m ()
+postAsyncIDE' priority f = reifyIDE $ \ideR ->
+    void $ idleAdd (reflectIDE f ideR >> return False) priority
 
 postAsyncIDE :: MonadIDE m => IDEM () -> m ()
-postAsyncIDE f = reifyIDE (postGUIAsync . reflectIDE f)
+postAsyncIDE = postAsyncIDE' priorityDefault
+
+postAsyncIDEIdle :: MonadIDE m => IDEM () -> m ()
+postAsyncIDEIdle = postAsyncIDE' priorityDefault
 
 onIDE obj signal callback = do
     ideRef <- ask

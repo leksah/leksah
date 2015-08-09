@@ -73,7 +73,7 @@ import Graphics.UI.Gtk
         TextWindowType(..), ShadowType(..), PolicyType(..), hBoxNew, buttonNewWithLabel,
         vBoxNew, comboBoxNewText, menuItemActivate,
         comboBoxAppendText, comboBoxSetActive, comboBoxGetActiveText,
-        priorityDefaultIdle, idleAdd,Frame, frameNew,buttonActivated,
+        priorityDefault, idleAdd,Frame, frameNew,buttonActivated,
         boxPackStart, boxPackEnd, Packing(..), comboBoxGetActive, comboBoxRemoveText,
         comboBoxGetModelText, listStoreToList, after) --TODO remove import for logging only
 import qualified Data.Map as Map
@@ -88,7 +88,8 @@ import qualified Data.Text as T
         isPrefixOf, pack, length, unpack)
 import Data.Monoid (Monoid(..), (<>))
 import Data.List (elemIndex, isPrefixOf, isSuffixOf, findIndex)
-import Data.Foldable (forM_)
+import Data.Foldable (Foldable(..), forM_)
+import qualified Data.Sequence as Seq (empty)
 
 -------------------------------------------------------------------------------
 --
@@ -408,7 +409,7 @@ clicked SingleClick LeftButton x y log = do
         (_,y')      <-  textViewWindowToBufferCoords tv TextWindowWidget (x,y)
         (iter,_)    <-  textViewGetLineAtY tv y'
         textIterGetLine iter
-    case [(s,e,es) | es@LogRef{logLines = Just (s, e)} <- logRefs', s <= (line'+1) && e >= (line'+1)] of
+    case [(s,e,es) | es@LogRef{logLines = Just (s, e)} <- toList logRefs', s <= (line'+1) && e >= (line'+1)] of
         [(s,e,thisRef)] -> do
             mbBuf <- selectSourceBuf (logRefFullFilePath thisRef)
             case mbBuf of
@@ -438,7 +439,7 @@ populatePopupMenu log ideR menu = do
             (_,y')      <-  textViewWindowToBufferCoords tv TextWindowWidget (x,y)
             (iter,_)    <-  textViewGetLineAtY tv y'
             textIterGetLine iter
-        return [es | es@LogRef{logLines = Just (s, e)} <- logRefs', s <= (line'+1) && e >= (line'+1)]) ideR
+        return [es | es@LogRef{logLines = Just (s, e)} <- toList logRefs', s <= (line'+1) && e >= (line'+1)]) ideR
     case res of
         [thisRef] -> do
             addResolveMenuItems ideR menu thisRef
@@ -506,7 +507,7 @@ markErrorInLog log (l1,l2) = do
             Just mark ->  do
                     textViewScrollToMark tv  mark 0.0 (Just (0.3,0.3))
                     return ()
-        return False) priorityDefaultIdle
+        return False) priorityDefault
     return ()
 
 
@@ -515,7 +516,7 @@ clearLog = do
     log <- getLog
     buf <- liftIO $ textViewGetBuffer $ logLaunchTextView log
     liftIO $ textBufferSetText buf ("" :: Text)
-    modifyIDE_ (\ide -> ide{allLogRefs = []})
+    modifyIDE_ (\ide -> ide{allLogRefs = Seq.empty})
     setCurrentError Nothing
     setCurrentBreak Nothing
 

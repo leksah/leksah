@@ -94,6 +94,7 @@ import qualified Data.Text as T
         isSuffixOf, unpack)
 import System.Exit (ExitCode(..))
 import IDE.Pane.WebKit.Output (loadOutputUri)
+import qualified Data.Sequence as Seq (filter, empty)
 
 -- | Get the last item
 sinkLast = CL.fold (\_ a -> Just a) Nothing
@@ -228,13 +229,13 @@ debugContinue = packageTry $ tryDebug $ do
 debugDeleteAllBreakpoints :: IDEAction
 debugDeleteAllBreakpoints = do
     packageTry $ tryDebug $ debugCommand ":delete *" logOutputDefault
-    setBreakpointList []
+    setBreakpointList Seq.empty
 
 debugDeleteBreakpoint :: Text -> LogRef -> IDEAction
 debugDeleteBreakpoint indexString lr = do
     packageTry $ tryDebug $ debugCommand (":delete " <> indexString) logOutputDefault
     bl <- readIDE breakpointRefs
-    setBreakpointList $ filter (/= lr) bl
+    setBreakpointList $ Seq.filter (/= lr) bl
     ideR <- ask
     return ()
 

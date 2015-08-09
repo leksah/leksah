@@ -137,6 +137,7 @@ import qualified Data.Text as T (unpack)
 import Language.Haskell.HLint3 (Idea(..))
 import Data.Function (on)
 import Control.Concurrent.STM.TVar (TVar)
+import Data.Sequence (Seq)
 
 -- ---------------------------------------------------------------------
 -- IDE State
@@ -156,7 +157,7 @@ data IDE            =  IDE {
 ,   activePack      ::   Maybe IDEPackage
 ,   activeExe       ::   Maybe Text
 ,   bufferProjCache ::   Map FilePath [IDEPackage]
-,   allLogRefs      ::   [LogRef]
+,   allLogRefs      ::   Seq LogRef
 ,   currentEBC      ::   (Maybe LogRef, Maybe LogRef, Maybe LogRef)
 ,   currentHist     ::   Int
 ,   systemInfo      ::   Maybe GenScope              -- ^ the system scope
@@ -289,6 +290,7 @@ data IDEEvent  =
     |   UpdateRecent
     |   VariablesChanged
     |   ErrorChanged Bool
+    |   ErrorAdded Bool Int LogRef
     |   CurrentErrorChanged (Maybe LogRef)
     |   BreakpointChanged
     |   CurrentBreakChanged (Maybe LogRef)
@@ -315,6 +317,7 @@ instance Event IDEEvent Text where
     getSelector UpdateRecent            =   "UpdateRecent"
     getSelector VariablesChanged        =   "VariablesChanged"
     getSelector (ErrorChanged _)        =   "ErrorChanged"
+    getSelector (ErrorAdded _ _ _)      =   "ErrorAdded"
     getSelector (CurrentErrorChanged _) =   "CurrentErrorChanged"
     getSelector BreakpointChanged       =   "BreakpointChanged"
     getSelector (CurrentBreakChanged _) =   "CurrentBreakChanged"
@@ -343,6 +346,7 @@ instance EventSource IDERef IDEEvent IDEM Text where
     canTriggerEvent _ "UpdateRecent"        = True
     canTriggerEvent _ "VariablesChanged"    = True
     canTriggerEvent _ "ErrorChanged"        = True
+    canTriggerEvent _ "ErrorAdded"          = True
     canTriggerEvent _ "CurrentErrorChanged" = True
     canTriggerEvent _ "BreakpointChanged"   = True
     canTriggerEvent _ "CurrentBreakChanged" = True

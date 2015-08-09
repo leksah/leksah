@@ -40,6 +40,8 @@ import Data.List (elemIndex)
 import Control.Monad.IO.Class (MonadIO(..))
 import IDE.Utils.GUIUtils (treeViewContextMenu, __)
 import qualified Data.Text as T (words, unpack)
+import Data.Foldable (Foldable(..))
+import qualified Data.Sequence as Seq (elemIndexL)
 
 
 -- | A breakpoints pane description
@@ -126,7 +128,7 @@ fillBreakpointList = do
             liftIO $ do
                 treeStoreClear (breakpoints b)
                 mapM_ (\ (lr,index) -> treeStoreInsert (breakpoints b) [] index lr)
-                    (zip refs [0..length refs])
+                    (zip (toList refs) [0..])
 
 getSelectedBreakpoint ::  TreeView
     -> TreeStore LogRef
@@ -148,7 +150,7 @@ selectBreak mbLogRef = do
         selection <- treeViewGetSelection (treeView breaks)
         case mbLogRef of
             Nothing -> treeSelectionUnselectAll selection
-            Just lr -> case lr `elemIndex` breakRefs' of
+            Just lr -> case lr `Seq.elemIndexL` breakRefs' of
                         Nothing  -> return ()
                         Just ind -> treeSelectionSelectPath selection [ind]
 

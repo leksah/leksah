@@ -76,6 +76,7 @@ import Language.Haskell.Exts (KnownExtension)
 import Data.Text (Text)
 import Data.Monoid ((<>))
 import System.Log.Logger (debugM)
+import Data.Foldable (Foldable(..))
 
 readMaybe :: Read a => Text -> Maybe a
 readMaybe s = case reads $ T.unpack s of
@@ -94,11 +95,11 @@ resolveErrors = do
     addPackageResults <- forM errors addPackage
     let notInScopes = [ y | (x,y) <-
             nubBy (\ (p1,_) (p2,_) -> p1 == p2)
-                  [(x,y) |  (x,y) <- [((parseNotInScope . refDescription) e, e) | e <- errors]],
+                  [(x,y) |  (x,y) <- [((parseNotInScope . refDescription) e, e) | e <- toList errors]],
                                 isJust x]
     let extensions = [ y | (x,y) <-
             nubBy (\ (p1,_) (p2,_) -> p1 == p2)
-                  [(x,y) |  (x,y) <- [((parsePerhapsYouIntendedToUse . refDescription) e, e) | e <- errors]],
+                  [(x,y) |  (x,y) <- [((parsePerhapsYouIntendedToUse . refDescription) e, e) | e <- toList errors]],
                                 length x == 1]
     addAll addPackageResults buildInBackground notInScopes extensions
   where
