@@ -165,7 +165,7 @@ RUN wineserver -p1 && \
     wineserver -w
 
 RUN wineserver -p1 && \
-    wine cabal install shakespeare lens hlint hscolour
+    wine cabal install shakespeare lens hlint hscolour && \
     wineserver -w
 
 # Build leksah and make the MSI file:
