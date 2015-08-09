@@ -113,10 +113,16 @@ Get the leksah source:
     cd leksah
     git submodule update --init
 
-Build it using the Dockerfile:
+Download wix39-binaries.zip from [wixtoolset.org](http://wixtoolset.org/) and
+put it in the same directory.
 
-    wget http://dl.fedoraproject.org/pub/fedora/linux/releases/test/22_Beta/Docker/x86_64/Fedora-Docker-Base-22_Beta-20150415.x86_64.tar.xz
-    docker load -i Fedora-Docker-Base-22_Beta-20150415.x86_64.tar.xz
+Get the Fedora 22 docker image and load it:
+
+    wget http://dl.fedoraproject.org/pub/fedora/linux/releases/22/Docker/x86_64/Fedora-Docker-Base-22-20150521.x86_64.tar.xz
+    sudo docker load -i Fedora-Docker-Base-22-20150521.x86_64.tar.xz
+
+Build Leksah using the Dockerfile:
+
     sudo docker build -t leksah/build .
 
 Copy the resulting msi file out of the container (version number in the file name will match the one in the leksah.cabal file):
