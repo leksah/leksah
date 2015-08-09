@@ -79,11 +79,12 @@ RUN cd ~/.wine/drive_c/ghc-$GHCVER && \
     rm -rf x86_64-4.9.2-release-posix-seh-rt_v4-rev2.7z
 
 # Install WiX Toolset:
+# You will need to download this manually as there is no wget compatible URL that keeps working
+ADD wix.zip
 RUN mkdir ~/.wine32/drive_c/bin && \
     cd ~/.wine32/drive_c/bin && \
-    wget --trust-server-names -O wix.zip 'http://download-codeplex.sec.s-msft.com/Download/Release?ProjectName=wix&DownloadId=1421697&FileTime=130661188723230000&Build=21018' && \
-    unzip wix.zip && \
-    rm wix.zip
+    unzip ~/wix.zip && \
+    rm ~/wix.zip
 
 # Install 64bit Windows version of cabal-install:
 RUN mkdir ~/.wine/drive_c/bin && \
@@ -162,9 +163,16 @@ RUN mkdir grep && \
 # Add the remaining Leksah files to Docker:
 ADD win32 leksah/win32
 
+RUN wineserver -p1 && \
+    wine cabal update && \
+    wineserver -w
+
+RUN wineserver -p1 && \
+    wine cabal install shakespeare lens hlint hscolour
+    wineserver -w
+
 # Build leksah and make the MSI file:
 RUN wineserver -p1 && \
-    wine cabal install hscolour && \
     cd leksah && \
     ./win32/makeinstaller.sh && \
     wineserver -w
