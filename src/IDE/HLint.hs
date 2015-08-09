@@ -25,8 +25,9 @@ module IDE.HLint (
 import Control.Applicative
 import Prelude hiding(getChar, getLine)
 import IDE.Core.Types
-       (Prefs(..), LogRef(..), LogRefType(..), wsAllPackages, ipdBuildDir,
-        IDEM, IDEAction, IDE(..), IDEPackage(..), PackageAction)
+       (logRefFullFilePath, Prefs(..), LogRef(..), LogRefType(..),
+        wsAllPackages, ipdBuildDir, IDEM, IDEAction, IDE(..),
+        IDEPackage(..), PackageAction)
 import Control.Monad.Reader (asks, MonadReader(..))
 import IDE.Core.State
        (postSyncIDE, catchIDE, MessageLevel(..), ideMessage,
@@ -74,8 +75,9 @@ import Data.Text (Text)
 import IDE.TextEditor (TextEditor(..))
 import IDE.SourceCandy
        (getCandylessPart, positionToCandy, stringToCandy)
-import IDE.BufferMode (editInsertCode)
+import IDE.BufferMode (IDEBuffer(..), editInsertCode)
 import Data.Ord (comparing)
+import Data.Foldable (Foldable(..))
 
 packageHLint :: PackageAction
 packageHLint = asks ipdCabalFile >>= (lift . lift . scheduleHLint . Left)
@@ -109,7 +111,7 @@ runHLint :: Either FilePath FilePath -> IDEAction
 runHLint (Right sourceFile) = do
     liftIO . debugM "leksah" $ "runHLint"
     packages <- maybe [] wsAllPackages <$> readIDE workspace
-    case reverse . (sortBy $ comparing (length . ipdBuildDir)) $ filter (belongsToPackage sourceFile) packages of
+    case sortBy (flip (comparing (length . ipdBuildDir))) $ filter (belongsToPackage sourceFile) packages of
         (package:_) -> runHLint' package (Just sourceFile)
         _ -> liftIO . debugM "leksah" $ "runHLint package not found for " <> sourceFile
 runHLint (Left cabalFile) = do
@@ -236,7 +238,7 @@ showHLint Idea{..} = intercalate "\n" $
                   use _ = True
 
 resolveActiveHLint :: IDEM Bool
-resolveActiveHLint = inActiveBufContext False  $ \_ _ ebuf _ _ -> do
+resolveActiveHLint = inActiveBufContext False  $ \_ _ ebuf ideBuf _ -> do
     liftIO $ debugM "leksah" "resolveActiveHLint"
     allLogRefs <- readIDE allLogRefs
     (iStart, iEnd) <- getSelectionBounds ebuf
@@ -244,8 +246,10 @@ resolveActiveHLint = inActiveBufContext False  $ \_ _ ebuf _ _ -> do
     cStart <- getLineOffset iStart
     lEnd <- getLine iEnd
     cEnd <- getLineOffset iEnd
+    let fn = fileName ideBuf
     let selectedRefs = [ref | ref@LogRef{..} <- allLogRefs,
                             logRefType == LintRef
+                         && fn == Just (logRefFullFilePath ref)
                          && maybe "" (ideaHint . snd) logRefIdea /= "Reduce duplication"
                          && (lStart+1, cStart) <= (srcSpanEndLine   logRefSrcSpan,
                                                    srcSpanEndColumn logRefSrcSpan)
