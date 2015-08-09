@@ -50,6 +50,7 @@ import System.Exit (ExitCode)
 import Control.Concurrent.MVar (withMVar, MVar)
 import Unsafe.Coerce (unsafeCoerce)
 import System.Posix.Process (getProcessGroupIDOf)
+import System.Posix.Signals (inSignalSet, sigINT, getSignalMask)
 #endif
 
 #if !defined(mingw32_HOST_OS) && !defined(__MINGW32__)
@@ -69,9 +70,12 @@ showProcessHandle h = withProcessHandle (unsafeCoerce h) $ \case
             CPid gid <- getProcessGroupIDOf (CPid pid)
             return $ "pid " <> show pid <> " gid " <> show gid
         (ClosedHandle _)        -> return "closed handle"
+
+showSignalMask = ("mask INT "<>) . show . (sigINT `inSignalSet`) <$> getSignalMask
 #else
 showProcessHandle :: ProcessHandle -> IO String
 showProcessHandle _ = return ""
+showSignalMask = return ""
 #endif
 
 runExternalTool' :: MonadIDE m
@@ -125,7 +129,8 @@ runExternalTool runGuard pidHandler description executable args dir handleOutput
                     pidHandler pid
                     liftIO $ do
                         s <- showProcessHandle pid
-                        debugM "leksah" $ "runExternalTool " <> s <> " " <>
+                        m <- showSignalMask
+                        debugM "leksah" $ "runExternalTool " <> m <> " " <> s <> " " <>
                                             unwords (executable' : map T.unpack args')
                     output $$ handleOutput) ideR
             return ()
