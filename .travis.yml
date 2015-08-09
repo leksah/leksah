@@ -25,11 +25,12 @@ install:
   - cabal --version
   - echo "$(ghc --version) [$(ghc --print-project-git-commit-id 2> /dev/null || echo '?')]"
   - cabal update
-  - cabal install Cabal cabal-install
+  - cabal install -j4 Cabal cabal-install
   - hash -r
   - cabal --version
-  - cabal install gtk2hs-buildtools
-  - cabal install ./ vendor/ltk vendor/leksah-server vendor/haskellVCSWrapper/vcswrapper vendor/haskellVCSGUI/vcsgui --enable-tests --only-dependencies --force-reinstalls
+  - cabal install -j4 gtk2hs-buildtools
+  - cabal install -j4 ghcjs-dom -fold-webkit
+  - cabal install -j4 ./ vendor/ltk vendor/leksah-server vendor/haskellVCSWrapper/vcswrapper vendor/haskellVCSGUI/vcsgui --enable-tests --only-dependencies --force-reinstalls
   - cabal install vendor/ltk vendor/leksah-server vendor/haskellVCSWrapper/vcswrapper vendor/haskellVCSGUI/vcsgui
 
 script:

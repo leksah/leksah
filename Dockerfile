@@ -18,6 +18,7 @@ RUN sudo dnf -y --enablerepo updates-testing install \
                            mingw32-winpthreads \
                            wget \
                            tar \
+                           xz \
                            make \
                            p7zip \
                            unzip \
