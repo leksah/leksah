@@ -26,6 +26,7 @@ RUN sudo dnf -y --enablerepo updates-testing install \
                            git \
                            msitools \
                            mono-core \
+                           mono-locale-extras \
                            libxslt && \
     sudo dnf clean all
 
