@@ -129,17 +129,17 @@ $LNDIR "$GTK_PREFIX_U"/lib SourceDir
 
 # mkdir -p SourceDir/fonts
 # cp -ru /c/Windows/Fonts/DejaVuS*.ttf SourceDir
-export WINEPREFIX=~/.wine32
-export WINEARCH=win32
 if ["$WINE" -eq ""]
 then
   heat dir SourceDir -srd -gg -sfrag -template fragment -out heat.wxs -cg Leksah -dr INSTALLDIR -sreg suppress registry harvesting || exit
-  LIGHT=light
+  xsltproc heat.xslt heat.wxs > heatfixed.wxs
+  candle heatfixed.wxs || exit
+  candle leksah.wxs || exit
+  light -ext WixUIExtension heatfixed.wixobj leksah.wixobj -out $LEKSAH_X_X_X_X_GHC_X_X_X.msi || exit
 else
   find SourceDir -follow | wixl-heat -p SourceDir/ --component-group Leksah --directory-ref INSTALLDIR > heat.wxs || exit
-  LIGHT='light -sval'
+  xsltproc heat.xslt heat.wxs > heatfixed.wxs
+  mono ~/.wine32/drive_c/bin/candle heatfixed.wxs || exit
+  mono ~/.wine32/drive_c/bin/candle leksah.wxs || exit
+  mono ~/.wine32/drive_c/bin/light -sval -ext WixUIExtension heatfixed.wixobj leksah.wixobj -out $LEKSAH_X_X_X_X_GHC_X_X_X.msi || exit
 fi
-xsltproc heat.xslt heat.wxs > heatfixed.wxs
-$WINE candle heatfixed.wxs || exit
-$WINE candle leksah.wxs || exit
-$WINE $LIGHT -ext WixUIExtension heatfixed.wixobj leksah.wixobj -out $LEKSAH_X_X_X_X_GHC_X_X_X.msi || exit

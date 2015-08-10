@@ -25,6 +25,7 @@ RUN sudo dnf -y --enablerepo updates-testing install \
                            cabal-install \
                            git \
                            msitools \
+                           mono-core \
                            libxslt && \
     sudo dnf clean all
 
