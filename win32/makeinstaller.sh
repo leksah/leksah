@@ -139,7 +139,7 @@ then
 else
   find SourceDir -follow | wixl-heat -p SourceDir/ --component-group Leksah --directory-ref INSTALLDIR > heat.wxs || exit
   xsltproc heat.xslt heat.wxs > heatfixed.wxs
-  mono ~/.wine32/drive_c/bin/candle heatfixed.wxs || exit
-  mono ~/.wine32/drive_c/bin/candle leksah.wxs || exit
-  mono ~/.wine32/drive_c/bin/light -sval -ext WixUIExtension heatfixed.wixobj leksah.wixobj -out $LEKSAH_X_X_X_X_GHC_X_X_X.msi || exit
+  mono ~/.wine32/drive_c/bin/candle.exe heatfixed.wxs || exit
+  mono ~/.wine32/drive_c/bin/candle.exe leksah.wxs || exit
+  mono ~/.wine32/drive_c/bin/light.exe -sval -ext WixUIExtension heatfixed.wixobj leksah.wixobj -out $LEKSAH_X_X_X_X_GHC_X_X_X.msi || exit
 fi
