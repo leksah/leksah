@@ -129,7 +129,7 @@
         <Icon Id="leksah.ico" SourceFile="leksah.ico"/>
         <Property Id="ARPPRODUCTICON" Value="leksah.ico"/>
 
-        <WixVariable Id="WixUILicenseRtf" Value="..\LICENSE.rtf"/>
+        <WixVariable Id="WixUILicenseRtf" Value="../LICENSE.rtf"/>
         <Property Id="WIXUI_INSTALLDIR" Value="INSTALLDIR"/>
         <UIRef Id="WixUI_FeatureTree"/>
 
