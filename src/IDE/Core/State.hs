@@ -336,7 +336,7 @@ postSyncIDE :: MonadIDE m => IDEM a -> m a
 postSyncIDE = postSyncIDE' priorityDefault
 
 postSyncIDEIdle :: MonadIDE m => IDEM a -> m a
-postSyncIDEIdle = postSyncIDE' priorityDefault
+postSyncIDEIdle = postSyncIDE' priorityDefaultIdle
 
 postAsyncIDE' :: MonadIDE m => Priority -> IDEM () -> m ()
 postAsyncIDE' priority f = reifyIDE $ \ideR ->
@@ -346,7 +346,7 @@ postAsyncIDE :: MonadIDE m => IDEM () -> m ()
 postAsyncIDE = postAsyncIDE' priorityDefault
 
 postAsyncIDEIdle :: MonadIDE m => IDEM () -> m ()
-postAsyncIDEIdle = postAsyncIDE' priorityDefault
+postAsyncIDEIdle = postAsyncIDE' priorityDefaultIdle
 
 onIDE obj signal callback = do
     ideRef <- ask
