@@ -208,12 +208,15 @@ getOutputPane (Just pp)  = forceGetPane (Left pp)
 
 getValueUri :: IO Text
 getValueUri = do
-    dataDir <- leksahOrPackageDir "pretty-show" getDataDir
+    dataDir <- map fixSep <$> leksahOrPackageDir "pretty-show" getDataDir
     return . T.pack $ "file://"
         ++ (case dataDir of
                 ('/':_) -> dataDir
                 _       -> '/':dataDir)
         ++ "/value.html"
+  where
+    fixSep '\\' = '/'
+    fixSep x = x
 
 setOutput :: Text -> Text -> IDEAction
 setOutput command str =
