@@ -41,8 +41,8 @@ import qualified Data.Text as T
        (intercalate, lines, takeWhile, length, drop)
 import Data.IORef (writeIORef, readIORef, newIORef, IORef)
 import Data.Maybe (isNothing)
-import Data.Foldable (Foldable(..))
-import qualified Data.Sequence as Seq (elemIndexL)
+import qualified Data.Foldable as F (toList)
+import qualified Data.Sequence as Seq (null, elemIndexL)
 
 -- | A breakpoints pane description
 --
@@ -137,12 +137,12 @@ fillErrorList' :: IDEErrors -> IDEAction
 fillErrorList' pane = do
     refs <- readIDE errorRefs
     ac   <- liftIO $ readIORef (autoClose pane)
-    when (null refs && ac) . void $ closePane pane
+    when (Seq.null refs && ac) . void $ closePane pane
     isDark <- getDarkState
     liftIO $ do
         let store = errorStore pane
         listStoreClear store
-        forM_ (zip (toList refs) [0..]) $ \ (lr, index) ->
+        forM_ (zip (F.toList refs) [0..]) $ \ (lr, index) ->
             listStoreInsert store index $ ErrColumn lr (
                 (if even index then fst else snd) $
                 (if isDark then fst else snd) $

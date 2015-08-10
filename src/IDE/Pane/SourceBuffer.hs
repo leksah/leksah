@@ -152,11 +152,21 @@ import qualified Data.Text.IO as T (writeFile, readFile)
 import Data.Time (UTCTime(..))
 import Graphics.UI.Gtk.Gdk.EventM
        (eventModifier, eventKeyName, eventKeyVal)
-import Data.Foldable (Foldable(..), forM_)
+import qualified Data.Foldable as F (Foldable(..), forM_, toList)
 import Data.Traversable (forM)
 import Language.Haskell.HLint3 (Idea(..))
+-- import Data.Time.Clock.POSIX (getPOSIXTime)
 import qualified Data.Sequence as Seq
 import Data.Sequence (ViewR(..), (|>))
+
+--time :: MonadIO m => String -> m a -> m a
+--time name action = do
+--  liftIO . debugM "leksah" $ name <> " start"
+--  start <- liftIO $ realToFrac <$> getPOSIXTime
+--  result <- action
+--  end <- liftIO $ realToFrac <$> getPOSIXTime
+--  liftIO . debugM "leksah" $ name <> " took " <> show ((end - start) * 1000000) <> "us"
+--  return result
 
 allBuffers :: MonadIDE m => m [IDEBuffer]
 allBuffers = liftIDE getPanes
@@ -347,14 +357,14 @@ removeLogRefs toRemove' types = do
     (remove, keep) <- Seq.partition toRemove <$> readIDE allLogRefs
     let removeDetails = Map.fromListWith (<>) . nub $ map (\ref ->
                             (logRefRootPath ref </> logRefFilePath ref,
-                            [logRefType ref])) $ toList remove
+                            [logRefType ref])) $ F.toList remove
     modifyIDE_ (\ide -> ide{allLogRefs = keep})
 
     buffers <- allBuffers
     let matchingBufs = filter (maybe False (`Map.member` removeDetails) . fileName) buffers
-    forM_ matchingBufs $ \ (IDEBuffer {..}) -> do
+    F.forM_ matchingBufs $ \ (IDEBuffer {..}) -> do
         buf <- getBuffer sourceView
-        forM_ (maybe [] (fromMaybe [] . (`Map.lookup` removeDetails)) fileName) $
+        F.forM_ (maybe [] (fromMaybe [] . (`Map.lookup` removeDetails)) fileName) $
             removeTagByName buf . T.pack . show
 
     triggerEventIDE (ErrorChanged False)
@@ -415,7 +425,7 @@ addLogRef hlintFileScope backgroundBuild ref = do
                     (LintRef       , _             ) -> samePackage
                     (ContextRef    , _             ) -> False
                     (BreakpointRef , _             ) -> False) allLogRefs
-        currErr = if currentError `elem` map Just (toList moreImportant)
+        currErr = if currentError `elem` map Just (F.toList moreImportant)
                         then currentError
                         else Nothing
     modifyIDE_ $ \ ide ->
@@ -425,10 +435,10 @@ addLogRef hlintFileScope backgroundBuild ref = do
 
     buffers <- allBuffers
     let matchingBufs = filter (maybe False (equalFilePath (logRefFullFilePath ref)) . fileName) buffers
-    forM_ matchingBufs $ \ buf -> markRefInSourceBuf buf ref False
+    F.forM_ matchingBufs $ \ buf -> markRefInSourceBuf buf ref False
 
     triggerEventIDE $ ErrorAdded
-    	(not backgroundBuild && null moreImportant) (length moreImportant) ref
+    	(not backgroundBuild && Seq.null moreImportant) (Seq.length moreImportant) ref
     return ()
 
 markRefInSourceBuf :: IDEBuffer -> LogRef -> Bool -> IDEAction
@@ -895,7 +905,7 @@ markActiveLabelAsChanged = do
         Just path -> do
           nb <- getNotebook path
           mbBS <- maybeActiveBuf
-          forM_ mbBS (markLabelAsChanged nb)
+          F.forM_ mbBS (markLabelAsChanged nb)
 
 markLabelAsChanged :: Notebook -> IDEBuffer -> IDEAction
 markLabelAsChanged nb (buf@IDEBuffer{sourceView = sv}) = do
@@ -1061,7 +1071,7 @@ fileClose' nb _ ebuf currentBuffer i = do
         then return False
         else do
             closeThisPane currentBuffer
-            forM_ (fileName currentBuffer) addRecentlyUsedFile
+            F.forM_ (fileName currentBuffer) addRecentlyUsedFile
             return True
 
 fileCloseAll :: (IDEBuffer -> IDEM Bool)  -> IDEM Bool
@@ -1153,7 +1163,7 @@ fileOpen = do
                 widgetDestroy dialog
                 return Nothing
             _ -> return Nothing
-    forM_ mbFileName fileOpenThis
+    F.forM_ mbFileName fileOpenThis
 
 
 fileOpenThis :: FilePath -> IDEAction
@@ -1308,7 +1318,7 @@ editShiftLeft = do
             sol2 <- forwardCharsC sol (tabWidth prefs)
             str1 <- getText ebuf sol sol2 True
             return (str1 == str)
-        return (foldl' (&&) True boolList)
+        return (F.foldl' (&&) True boolList)
 
 
 editShiftRight :: IDEAction
@@ -1323,7 +1333,7 @@ editShiftRight = do
 alignChar :: Char -> IDEAction
 alignChar char = do
     positions     <- positionsOfChar
-    let alignTo = foldl' max 0 (mapMaybe snd positions)
+    let alignTo = F.foldl' max 0 (mapMaybe snd positions)
     when (alignTo > 0) $ alignChar (Map.fromList positions) alignTo
     where
     positionsOfChar :: IDEM [(Int, Maybe Int)]

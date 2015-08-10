@@ -1550,11 +1550,11 @@ libraryEditor fp modules numBuildInfos para noti = do
             noti
     let pinj (Library' em exp bi) = inj (exp, map (T.pack . display) em,bi)
     let pext = do
-        mbp <- ext
-        case mbp of
-            Nothing -> return Nothing
-            Just (exp,em,bi) -> return (Just $ Library' (map (\s -> forceJust (simpleParse $ T.unpack s)
-                "SpecialEditor >> libraryEditor: no parse for moduile name") em) exp bi)
+            mbp <- ext
+            case mbp of
+                Nothing -> return Nothing
+                Just (exp,em,bi) -> return (Just $ Library' (map (\s -> forceJust (simpleParse $ T.unpack s)
+                    "SpecialEditor >> libraryEditor: no parse for moduile name") em) exp bi)
     return (wid,pinj,pext)
 #endif
 

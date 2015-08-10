@@ -77,9 +77,9 @@ import qualified Data.Set as S (notMember, member, insert, empty)
 import Data.Set (Set)
 import System.FilePath.Windows ((</>))
 import Data.Sequence (ViewR(..), Seq)
-import Data.Foldable (Foldable(..))
+import qualified Data.Foldable as F (toList, forM_)
 import qualified Data.Sequence as Seq
-       (singleton, viewr, reverse, fromList)
+       (null, singleton, viewr, reverse, fromList)
 
 showSourceSpan :: LogRef -> Text
 showSourceSpan = T.pack . displaySrcSpan . logRefSrcSpan
@@ -98,7 +98,7 @@ forOpenLogRefs :: (LogRef -> IDEBuffer -> IDEAction) -> IDEAction
 forOpenLogRefs f = do
     logRefs <- readIDE allLogRefs
     allBufs <- allBuffers
-    forM_ logRefs $ \ref -> do
+    F.forM_ logRefs $ \ref -> do
         let fp = logRefFullFilePath ref
         fpc <- liftIO $ myCanonicalizePath fp
         forM_ (filter (\buf -> case fileName buf of
@@ -144,7 +144,7 @@ next :: (IDE -> Seq LogRef)
      -> (Maybe LogRef -> IDEAction)
      -> IDEAction
 next all current set = do
-    all <- toList <$> readIDE all
+    all <- F.toList <$> readIDE all
     current <- readIDE current
     let isCurrent = (== current) . Just
     case dropWhile isCurrent (dropWhile (not . isCurrent) all) <> all of
@@ -443,7 +443,7 @@ logOutputForBuild package backgroundBuild jumpToWarnings = do
     ideR <- lift ask
     liftIO $ postGUISync $ reflectIDE (do
         allErrorLikeRefs <- readIDE errorRefs
-        triggerEventIDE (Sensitivity [(SensitivityError,not (null allErrorLikeRefs))])
+        triggerEventIDE (Sensitivity [(SensitivityError,not (Seq.null allErrorLikeRefs))])
         let errorNum    =   length (filter isError errs)
         let warnNum     =   length errs - errorNum
         triggerEventIDE (StatusbarChanged [CompartmentState

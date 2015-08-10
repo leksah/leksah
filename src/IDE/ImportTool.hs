@@ -76,7 +76,8 @@ import Language.Haskell.Exts (KnownExtension)
 import Data.Text (Text)
 import Data.Monoid ((<>))
 import System.Log.Logger (debugM)
-import Data.Foldable (Foldable(..))
+import qualified Data.Traversable as Tr (forM)
+import qualified Data.Foldable as F (toList, foldr, or)
 
 readMaybe :: Read a => Text -> Maybe a
 readMaybe s = case reads $ T.unpack s of
@@ -92,14 +93,14 @@ resolveErrors = do
     when buildInBackground $
         modifyIDE_ (\ide -> ide{prefs = prefs'{backgroundBuild = False}})
     errors <- readIDE errorRefs
-    addPackageResults <- forM errors addPackage
+    addPackageResults <- Tr.forM errors addPackage
     let notInScopes = [ y | (x,y) <-
             nubBy (\ (p1,_) (p2,_) -> p1 == p2)
-                  [(x,y) |  (x,y) <- [((parseNotInScope . refDescription) e, e) | e <- toList errors]],
+                  [(x,y) |  (x,y) <- [((parseNotInScope . refDescription) e, e) | e <- F.toList errors]],
                                 isJust x]
     let extensions = [ y | (x,y) <-
             nubBy (\ (p1,_) (p2,_) -> p1 == p2)
-                  [(x,y) |  (x,y) <- [((parsePerhapsYouIntendedToUse . refDescription) e, e) | e <- toList errors]],
+                  [(x,y) |  (x,y) <- [((parsePerhapsYouIntendedToUse . refDescription) e, e) | e <- F.toList errors]],
                                 length x == 1]
     addAll addPackageResults buildInBackground notInScopes extensions
   where
@@ -117,7 +118,7 @@ resolveErrors = do
             when buildInBackground $ do
                 prefs' <- readIDE prefs
                 modifyIDE_ (\ide -> ide{prefs = prefs'{backgroundBuild = True}})
-            when (not (or addPackageResults) && null notInScopes && null extensions) $ do
+            when (not (F.or addPackageResults) && null notInScopes && null extensions) $ do
                 hlintResolved <- resolveActiveHLint
                 unless hlintResolved $ ideMessage Normal "No errors, warnings or selected hlints that can be auto resolved"
 
@@ -258,7 +259,7 @@ addImport' nis filePath descr descrList continuation =  do
                          ServerHeader (Left imports) ->
                             case filter (qualifyAsImportStatement mod) imports of
                                 []     ->   let newLine  =  prettyPrint (newImpDecl mod) <> "\n"
-                                                lastLine = foldr (max . locationELine . importLoc) 0 imports
+                                                lastLine = F.foldr (max . locationELine . importLoc) 0 imports
                                             in do
                                                 i1 <- getIterAtLine gtkbuf lastLine
                                                 editInsertCode gtkbuf i1 newLine

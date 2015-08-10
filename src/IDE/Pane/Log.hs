@@ -88,7 +88,7 @@ import qualified Data.Text as T
         isPrefixOf, pack, length, unpack)
 import Data.Monoid (Monoid(..), (<>))
 import Data.List (elemIndex, isPrefixOf, isSuffixOf, findIndex)
-import Data.Foldable (Foldable(..), forM_)
+import qualified Data.Foldable as F (toList, forM_)
 import qualified Data.Sequence as Seq (empty)
 
 -------------------------------------------------------------------------------
@@ -409,7 +409,7 @@ clicked SingleClick LeftButton x y log = do
         (_,y')      <-  textViewWindowToBufferCoords tv TextWindowWidget (x,y)
         (iter,_)    <-  textViewGetLineAtY tv y'
         textIterGetLine iter
-    case [(s,e,es) | es@LogRef{logLines = Just (s, e)} <- toList logRefs', s <= (line'+1) && e >= (line'+1)] of
+    case [(s,e,es) | es@LogRef{logLines = Just (s, e)} <- F.toList logRefs', s <= (line'+1) && e >= (line'+1)] of
         [(s,e,thisRef)] -> do
             mbBuf <- selectSourceBuf (logRefFullFilePath thisRef)
             case mbBuf of
@@ -439,7 +439,7 @@ populatePopupMenu log ideR menu = do
             (_,y')      <-  textViewWindowToBufferCoords tv TextWindowWidget (x,y)
             (iter,_)    <-  textViewGetLineAtY tv y'
             textIterGetLine iter
-        return [es | es@LogRef{logLines = Just (s, e)} <- toList logRefs', s <= (line'+1) && e >= (line'+1)]) ideR
+        return [es | es@LogRef{logLines = Just (s, e)} <- F.toList logRefs', s <= (line'+1) && e >= (line'+1)]) ideR
     case res of
         [thisRef] -> do
             addResolveMenuItems ideR menu thisRef
@@ -489,7 +489,7 @@ appendLog log logLaunch text tag = do
     textBufferMoveMarkByName buf "end" iter2
     mbMark <- textBufferGetMark buf "end"
     line   <- textIterGetLine iter2
-    forM_ mbMark (textViewScrollMarkOnscreen tv)
+    F.forM_ mbMark (textViewScrollMarkOnscreen tv)
     return line
 
 markErrorInLog :: IDELog -> (Int,Int) -> IDEAction

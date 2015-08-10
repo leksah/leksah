@@ -77,7 +77,7 @@ import IDE.SourceCandy
        (getCandylessPart, positionToCandy, stringToCandy)
 import IDE.BufferMode (IDEBuffer(..), editInsertCode)
 import Data.Ord (comparing)
-import Data.Foldable (Foldable(..))
+import qualified Data.Foldable as F (toList)
 
 packageHLint :: PackageAction
 packageHLint = asks ipdCabalFile >>= (lift . lift . scheduleHLint . Left)
@@ -247,7 +247,7 @@ resolveActiveHLint = inActiveBufContext False  $ \_ _ ebuf ideBuf _ -> do
     lEnd <- getLine iEnd
     cEnd <- getLineOffset iEnd
     let fn = fileName ideBuf
-    let selectedRefs = [ref | ref@LogRef{..} <- toList allLogRefs,
+    let selectedRefs = [ref | ref@LogRef{..} <- F.toList allLogRefs,
                             logRefType == LintRef
                          && fn == Just (logRefFullFilePath ref)
                          && maybe "" (ideaHint . snd) logRefIdea /= "Reduce duplication"

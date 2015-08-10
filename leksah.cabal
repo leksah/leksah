@@ -360,7 +360,7 @@ library
     hs-source-dirs: src
     other-modules:
         Paths_leksah
-    ghc-options: -fwarn-missing-fields -fwarn-incomplete-patterns -ferror-spans -fwarn-unused-imports
+    ghc-options: -fwarn-missing-fields -fwarn-incomplete-patterns -ferror-spans
 
 executable leksah
 
