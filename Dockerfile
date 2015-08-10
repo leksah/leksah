@@ -119,24 +119,6 @@ RUN wineserver -p1 && \
     wineserver -w && \
     rm -rf network-* old-time-*
 
-# Add Leksah files to Docker:
-ADD leksah.cabal LICENSE LICENSE.rtf Readme.md Setup.lhs SetupLocale.lhs sources.txt leksah/
-
-# Docker has no way to COPY or ADD two directories at once!?!?
-ADD bew leksah/bew
-ADD data leksah/data
-ADD doc leksah/doc
-ADD language-specs leksah/language-specs
-ADD linux leksah/linux
-ADD main leksah/main
-ADD osx leksah/osx
-ADD pics leksah/pics
-ADD po leksah/po
-ADD scripts leksah/scripts
-ADD src leksah/src
-ADD tests leksah/tests
-ADD vendor leksah/vendor
-
 # Install fonts to bundle with Leksah
 RUN sudo dnf -y install \
                    dejavu-sans-fonts \
@@ -157,9 +139,6 @@ RUN mkdir grep && \
     sudo cp bin/*grep.exe /usr/x86_64-w64-mingw32/sys-root/mingw/bin && \
     rm grep-2.5.4-2-msys-1.0.13-bin.tar.lzma
 
-# Add the remaining Leksah files to Docker:
-ADD win32 leksah/win32
-
 RUN wineserver -p1 && \
     wine cabal update && \
     wineserver -w
@@ -167,6 +146,29 @@ RUN wineserver -p1 && \
 RUN wineserver -p1 && \
     wine cabal install shakespeare lens hlint hscolour && \
     wineserver -w
+
+RUN wineserver -p1 && \
+    wine cabal install ghcjs-dom -fold-webkit && \
+    wineserver -w
+
+# Add Leksah files to Docker:
+ADD leksah.cabal LICENSE LICENSE.rtf Readme.md Setup.lhs SetupLocale.lhs sources.txt leksah/
+
+# Docker has no way to COPY or ADD two directories at once!?!?
+ADD bew leksah/bew
+ADD data leksah/data
+ADD doc leksah/doc
+ADD language-specs leksah/language-specs
+ADD linux leksah/linux
+ADD main leksah/main
+ADD osx leksah/osx
+ADD pics leksah/pics
+ADD po leksah/po
+ADD scripts leksah/scripts
+ADD src leksah/src
+ADD tests leksah/tests
+ADD vendor leksah/vendor
+ADD win32 leksah/win32
 
 # Build leksah and make the MSI file:
 RUN wineserver -p1 && \
