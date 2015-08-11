@@ -113,9 +113,6 @@ Get the leksah source:
     cd leksah
     git submodule update --init
 
-Download wix39-binaries.zip from [wixtoolset.org](http://wixtoolset.org/) and
-put it in the same directory.
-
 Get the Fedora 22 docker image and load it:
 
     wget http://dl.fedoraproject.org/pub/fedora/linux/releases/22/Docker/x86_64/Fedora-Docker-Base-22-20150521.x86_64.tar.xz
