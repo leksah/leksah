@@ -82,10 +82,14 @@ RUN cd ~/.wine/drive_c/ghc-$GHCVER && \
     rm -rf x86_64-4.9.2-release-posix-seh-rt_v4-rev2.7z
 
 # Install WiX Toolset:
-# You will need to download this manually as there is no wget compatible URL that keeps working
 ADD wix39-binaries.zip /root/
 RUN mkdir ~/.wine32/drive_c/bin && \
     cd ~/.wine32/drive_c/bin && \
+    curl --header 'Host: download-codeplex.sec.s-msft.com' \
+    --header 'Referer: http://wix.codeplex.com/releases/view/610859' --header 'DNT:1' \
+    --header 'Connection: keep-alive' \
+    'http://download-codeplex.sec.s-msft.com/Download/Release?ProjectName=wix&DownloadId=1421697&FileTime=130661188723230000&Build=21029' \
+    -o '~/wix39-binaries.zip' -L && \
     unzip ~/wix39-binaries.zip && \
     rm ~/wix39-binaries.zip
 
