@@ -142,5 +142,5 @@ else
   mono ~/.wine32/drive_c/bin/candle.exe heatfixed.wxs || exit
   sed -i.back -e 's|C:\\dejavu-fonts\\ttf\\|/root/.wine32/drive_c/dejavu-fonts/ttf/|' leksah.wxs || exit
   mono ~/.wine32/drive_c/bin/candle.exe leksah.wxs || exit
-  mono ~/.wine32/drive_c/bin/light.exe -sval -ext WixUIExtension heatfixed.wixobj leksah.wixobj -out $LEKSAH_X_X_X_X_GHC_X_X_X.msi || exit
+#  mono ~/.wine32/drive_c/bin/light.exe -sval -ext WixUIExtension heatfixed.wixobj leksah.wixobj -out $LEKSAH_X_X_X_X_GHC_X_X_X.msi || exit
 fi
