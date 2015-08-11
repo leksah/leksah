@@ -63,8 +63,11 @@ import Control.Monad.IO.Class (liftIO)
 import Control.Exception as E
 import Data.Text (Text)
 import Data.Monoid ((<>))
-import qualified Data.Text as T (unpack)
-
+import qualified Data.Text as T (unpack
+#ifdef LOCALIZATION
+                               , pack
+#endif
+                                )
 #ifdef LOCALIZATION
 
 import Text.I18N.GetText
