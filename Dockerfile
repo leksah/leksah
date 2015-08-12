@@ -89,7 +89,6 @@ RUN cd ~/.wine/drive_c/ghc-$GHCVER && \
     rm -rf x86_64-4.9.2-release-posix-seh-rt_v4-rev2.7z
 
 # Install WiX Toolset:
-ADD wix39-binaries.zip /root/
 RUN mkdir ~/.wine32/drive_c/bin && \
     cd ~/.wine32/drive_c/bin && \
     curl --header 'Host: download-codeplex.sec.s-msft.com' \
