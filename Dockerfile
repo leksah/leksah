@@ -95,7 +95,7 @@ RUN mkdir ~/.wine32/drive_c/bin && \
     --header 'Referer: http://wix.codeplex.com/releases/view/610859' --header 'DNT:1' \
     --header 'Connection: keep-alive' \
     'http://download-codeplex.sec.s-msft.com/Download/Release?ProjectName=wix&DownloadId=1421697&FileTime=130661188723230000&Build=21029' \
-    -o '~/wix39-binaries.zip' -L && \
+    -o ~/wix39-binaries.zip -L && \
     unzip ~/wix39-binaries.zip && \
     rm ~/wix39-binaries.zip
 
