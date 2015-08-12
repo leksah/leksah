@@ -22,13 +22,20 @@ RUN sudo dnf -y --enablerepo updates-testing install \
                            make \
                            p7zip \
                            unzip \
+                           cabextract \
                            cabal-install \
                            git \
                            msitools \
+                           Xvfb \
+                           which \
                            mono-core \
                            mono-locale-extras \
                            libxslt && \
     sudo dnf clean all
+
+RUN wget http://winetricks.org/winetricks && \
+    sudo cp winetricks /usr/bin && \
+    sudo chmod +x /usr/bin/winetricks
 
 # Install pkg-config for using in Wine and Windows
 RUN wget http://pkgconfig.freedesktop.org/releases/pkg-config-0.28.tar.gz && \
@@ -47,7 +54,7 @@ RUN grep -lZ '^Cflags:.*-I/usr/x86_64-w64-mingw32/sys-root/mingw' /usr/x86_64-w6
 # Initialize Wine:
 RUN wineboot && wine cmd /C echo "Wine OK" && wineserver -w && \
     ( export WINEPREFIX=~/.wine32 && export WINEARCH=win32 && \
-      wineboot && wine cmd /C echo "Wine 32 OK" && wineserver -w \
+      wineboot && wine cmd /C echo "Wine 32 OK" && xvfb-run winetricks --unattended dotnet40 corefonts && wineserver -w \
     )
 
 ENV GHCVER 7.10.1
