@@ -263,7 +263,7 @@ startGUI yiConfig sessionFP mbWorkspaceFP sourceFPs iprefs isFirstStart =
     debugM "leksah" "finished mainGUI"
 
 mainLoop :: IO () -> IO ()
-mainLoop = if rtsSupportsBoundThreads then mainLoopThreaded else mainLoopSingleThread
+mainLoop = mainLoopSingleThread
 
 mainLoopThreaded :: IO () -> IO ()
 mainLoopThreaded onIdle = loop
