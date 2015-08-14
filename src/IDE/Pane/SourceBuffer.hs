@@ -1,4 +1,3 @@
-{-# LANGUAGE CPP #-}
 {-# LANGUAGE ViewPatterns #-}
 {-# LANGUAGE MultiParamTypeClasses #-}
 {-# LANGUAGE FlexibleInstances #-}
@@ -787,12 +786,8 @@ checkModTime buf = do
                             case modTime' of
                                 Nothing ->  error $"checkModTime: time not set " ++ show (fileName buf)
                                 Just mt ->
-#if defined(mingw32_HOST_OS) || defined(__MINGW32__)
-                                    if False
-#else
                                     if nmt /= mt -- Fonts get messed up under windows when adding this line.
                                                   -- Praises to whoever finds out what happens and how to fix this
-#endif
                                     then do
                                         load <- readIDE (autoLoad . prefs)
                                         if load
