@@ -1436,7 +1436,8 @@ insertTextAfterSelection str = do
             i2         <- forwardCharsC i1 (T.length realString)
             selectRange ebuf i1 i2
 
--- | Returns the package, to which this buffer belongs, if possible
+-- | Returns the packages to which this buffer belongs
+--   uses the 'bufferProjCache' and might extend it
 belongsToPackages :: MonadIDE m => IDEBuffer -> m [IDEPackage]
 belongsToPackages IDEBuffer{fileName = Just fp}= do
     bufferToProject' <-  readIDE bufferProjCache
@@ -1446,19 +1447,18 @@ belongsToPackages IDEBuffer{fileName = Just fp}= do
         Nothing -> case ws of
                         Nothing   -> return []
                         Just workspace -> do
---                            mbMn <- liftIO $ moduleNameFromFilePath fp
---                            let mbMn2 = case mbMn of
---                                            Nothing -> Nothing
---                                            Just mn -> simpleParse mn
                             let res = filter (belongsToPackage fp) (wsPackages workspace)
                             modifyIDE_ (\ide -> ide{bufferProjCache = Map.insert fp res bufferToProject'})
                             return res
 belongsToPackages _ = return []
 
--- | Including files in sandbox source dirs
+-- | Checks whether a file belongs to a package (includes files in 
+-- sandbox source dirs)
 belongsToPackage :: FilePath -> IDEPackage -> Bool
 belongsToPackage f = any (`isSubPath` f) . ipdAllDirs
 
+-- | Checks whether a file belongs to the workspace
+belongsToWorkspace :: MonadIDE m => IDEBuffer -> m Bool
 belongsToWorkspace b =  liftM (not . null) (belongsToPackages b)
 
 useCandyFor :: MonadIDE m => IDEBuffer -> m Bool

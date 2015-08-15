@@ -156,7 +156,7 @@ data IDE            =  IDE {
 ,   workspace       ::   Maybe Workspace         -- ^ may be a workspace (set of packages)
 ,   activePack      ::   Maybe IDEPackage
 ,   activeExe       ::   Maybe Text
-,   bufferProjCache ::   Map FilePath [IDEPackage]
+,   bufferProjCache ::   Map FilePath [IDEPackage] -- ^ cache the associated packages for a file
 ,   allLogRefs      ::   Seq LogRef
 ,   currentEBC      ::   (Maybe LogRef, Maybe LogRef, Maybe LogRef)
 ,   currentHist     ::   Int

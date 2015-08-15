@@ -14,7 +14,8 @@
 -- Stability   :  provisional
 -- Portability :
 --
--- |
+-- | The pane of the IDE that shows the cabal packages in the workspace
+--   and their build targets
 --
 -----------------------------------------------------------------------------
 
@@ -49,8 +50,13 @@ import qualified Data.Text as T (pack)
 -- | Workspace pane state
 --
 
+-- | The data in a row displays a package or an
+--   executable of that package (in the first case
+--   the path to the package is also stored)
 type WorkspaceRecord = (IDEPackage, Maybe Text)
 
+
+-- | The representation of the workspace pane
 data IDEWorkspace   =   IDEWorkspace {
     scrolledView        ::   ScrolledWindow
 ,   treeViewC           ::   TreeView
@@ -65,7 +71,8 @@ instance Pane IDEWorkspace IDEM
     getTopWidget    =   castToWidget . topBox
     paneId b        =   "*Workspace"
 
--- | Nothing to remember here, everything comes from the IDE state
+-- | The additional state used when recovering the pane
+--   (none, the packages and their targets come from the IDE state)
 data WorkspaceState           =   WorkspaceState
     deriving(Eq,Ord,Read,Show,Typeable)
 
@@ -138,15 +145,19 @@ instance RecoverablePane IDEWorkspace WorkspaceState IDEM where
         file (_, (_, Just _)) = ""
         file (_, (pack, _)) = ipdCabalFile pack
 
+-- | Get the workspace pane
 getWorkspace :: Maybe PanePath -> IDEM IDEWorkspace
 getWorkspace Nothing = forceGetPane (Right "*Workspace")
 getWorkspace (Just pp)  = forceGetPane (Left pp)
 
+-- | Show the workspace pane
 showWorkspace :: IDEAction
 showWorkspace = do
     l <- getWorkspace Nothing
     displayPane l False
 
+-- | Try to get the current selected record and whether
+--   it is selected
 getSelectionTree ::  TreeView
     -> TreeStore (Bool, WorkspaceRecord)
     -> IO (Maybe (Bool, IDEPackage, Maybe Text))
@@ -161,6 +172,8 @@ getSelectionTree treeView treeStore = do
                 (active, (p, exe)) -> return $ Just (active, p, exe)
         _       ->  return Nothing
 
+
+-- | Construct the context menu for the pane
 workspaceContextMenu :: IDERef
                      -> IDEWorkspace
                      -> Menu
@@ -186,6 +199,9 @@ workspaceContextMenu ideR workspacePane theMenu = do
     menuShellAppend theMenu item2
     menuShellAppend theMenu item3
 
+
+-- | Try to activate the package pointed to by the given 'TreePath'
+--   by modifying the given IDE state
 workspaceSelect :: IDERef
                 -> IDEWorkspace
                 -> TreePath
@@ -196,7 +212,12 @@ workspaceSelect ideR workspacePane path _ = do
     (_,(ideP,mbExe)) <- treeStoreGetValue (workspaceStore workspacePane) path
     reflectIDE (workspaceTry $ workspaceActivatePackage ideP mbExe) ideR
 
-updateWorkspace :: Bool -> Bool -> IDEAction
+
+-- | Repopulates the workspace pane with the current packages 
+--   (if the pane is open)
+updateWorkspace :: Bool -- ^ Show the pane if it is open and a workspace is loaded
+                -> Bool -- ^ Empty the 'bufferProjCache'
+                -> IDEAction
 updateWorkspace showPane updateFileCache = do
     liftIO $ debugM "leksah" "updateWorkspace"
     mbWs <- readIDE workspace
@@ -214,18 +235,27 @@ updateWorkspace showPane updateFileCache = do
             case mbMod of
                 Nothing -> return ()
                 Just (p :: IDEWorkspace) -> do
-                    liftIO $ treeStoreClear (workspaceStore p)
-                    let sorted = sortBy (compare `F.on` ipdPackageId) $ wsPackages ws
-                        forest = map (\ ideP -> Node (
-                                                Just (ipdCabalFile ideP) == wsActivePackFile ws,
-                                                (ideP, Nothing))
-                                        (map (\ pack -> Node (False, (pack, Nothing)) []) (ipdSandboxSources ideP) ++
-                                         map (\ test -> Node (
-                                            Just (ipdCabalFile ideP) == wsActivePackFile ws &&
-                                            Just test == wsActiveExe ws, (ideP, Just test)) [])
-                                                (ipdExes ideP ++ ipdTests ideP ++ ipdBenchmarks ideP)))
-                                        sorted
-                    liftIO $ treeStoreInsertForest (workspaceStore p) [] 0 forest
+                    liftIO $ do
+                        treeStoreClear (workspaceStore p)
+                        treeStoreInsertForest (workspaceStore p) [] 0 (buildForest ws)
                     when showPane $ displayPane p False
             refreshFiles
+    where
+        -- | Given a workspace, constructs the forest of
+        --   packages and their targets
+        buildForest ws = 
+            let sorted = sortBy (compare `F.on` ipdPackageId) $ wsPackages ws
+            in  map buildPackageTree sorted
 
+        -- | Given an ide package, constructs the tree with the
+        --   package as root node, and its targets as children
+        buildPackageTree ideP = 
+            let isActive = Just (ipdCabalFile ideP) == wsActivePackFile ws
+                sandboxChildren = map (\pack -> Node (False, (pack, Nothing)) []) 
+                                      (ipdSandboxSources ideP)
+                targetsChildren = map (\test -> Node (
+                                           Just (ipdCabalFile ideP) == wsActivePackFile ws &&
+                                           Just test == wsActiveExe ws, (ideP, Just test)) [])
+                                      (ipdExes ideP ++ ipdTests ideP ++ ipdBenchmarks ideP)
+            in  Node (isActive, (ideP, Nothing))
+                     (sandboxChildren ++ targetsChildren)
