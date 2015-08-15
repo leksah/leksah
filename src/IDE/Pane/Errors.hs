@@ -44,21 +44,23 @@ import Data.Maybe (isNothing)
 import qualified Data.Foldable as F (toList)
 import qualified Data.Sequence as Seq (null, elemIndexL)
 
--- | A breakpoints pane description
---
+-- | The representation of the Errors pane
 data IDEErrors      =   IDEErrors {
     scrolledView    ::   ScrolledWindow
 ,   treeView        ::   TreeView
 ,   errorStore      ::   ListStore ErrColumn
-,   autoClose       ::   IORef Bool -- If the pane was only displayed to show current error
+,   autoClose       ::   IORef Bool -- ^ If the pane was only displayed to show current error
 } deriving Typeable
 
+-- | The data for a single row in the Errors pane
 data ErrColumn = ErrColumn {
     logRef     :: LogRef,
     background :: Text}
 
-data ErrorsState    =   ErrorsState {
-}   deriving(Eq,Ord,Read,Show,Typeable)
+-- | The additional state used when recovering the pane
+data ErrorsState    =   ErrorsState
+   deriving (Eq,Ord,Read,Show,Typeable)
+
 
 instance Pane IDEErrors IDEM
     where
@@ -66,12 +68,15 @@ instance Pane IDEErrors IDEM
     getTopWidget    =   castToWidget . scrolledView
     paneId _b       =   "*Errors"
 
+
 instance RecoverablePane IDEErrors ErrorsState IDEM where
     saveState _p     =   return (Just ErrorsState)
     recoverState pp ErrorsState = do nb <- getNotebook pp
                                      buildPane pp nb builder
     builder = builder'
 
+-- | Builds an 'IDEErrors' pane together with a list of
+--   event 'Connections'
 builder' :: PanePath ->
     Notebook ->
     Window ->
@@ -120,19 +125,29 @@ builder' _pp _nb _windows = reifyIDE $ \ ideR -> do
     reflectIDE (fillErrorList' pane) ideR
     return (Just pane, map ConnectC [cid1, cid2, cid3, cid4])
 
+
+-- | Removes the unnecessary indentation
+removeIndentation :: Text -> Text
 removeIndentation t = T.intercalate "\n" $ map (T.drop minIndent) l
   where
     l = T.lines t
     minIndent = minimum $ map (T.length . T.takeWhile (== ' ')) l
 
+
+-- | Display the Errors pane, even if it is was closed
 getErrors :: Maybe PanePath -> IDEM IDEErrors
 getErrors Nothing    = forceGetPane (Right "*Errors")
 getErrors (Just pp)  = forceGetPane (Left pp)
 
-fillErrorList :: Bool -> IDEAction
+
+-- | Repopulates the Errors pane
+fillErrorList :: Bool -- ^ Whether to display the Errors pane
+              -> IDEAction
 fillErrorList False = getPane >>= maybe (return ()) fillErrorList'
 fillErrorList True = getErrors Nothing  >>= \ p -> fillErrorList' p >> displayPane p False
 
+
+-- | Fills the pane with the error list from the IDE state
 fillErrorList' :: IDEErrors -> IDEAction
 fillErrorList' pane = do
     refs <- readIDE errorRefs
@@ -151,10 +166,17 @@ fillErrorList' pane = do
                         LintRef    -> (("#003000", "#002800"), ("#DBFFDB", "#EDFFED"))
                         _          -> (("#380000", "#280000"), ("#FFDEDE", "#FFEBEB")))
 
-addErrorToList :: Bool -> Int -> LogRef -> IDEAction
+
+-- | Add any LogRef to the Errors pane at a given index
+addErrorToList :: Bool -- ^ Whether to display the pane
+               -> Int  -- ^ The index to insert at
+               -> LogRef 
+               -> IDEAction
 addErrorToList False index lr = getPane >>= maybe (return ()) (addErrorToList' index lr)
 addErrorToList True  index lr = getErrors Nothing  >>= \ p -> addErrorToList' index lr p >> displayPane p False
 
+
+-- | Add a 'LogRef' at a specific index to the Errors pane
 addErrorToList' :: Int -> LogRef -> IDEErrors -> IDEAction
 addErrorToList' index lr pane = do
 --    refs <- readIDE errorRefs
@@ -173,6 +195,8 @@ addErrorToList' index lr pane = do
                         LintRef    -> (("#003000", "#002800"), ("#DBFFDB", "#EDFFED"))
                         _          -> (("#380000", "#280000"), ("#FFDEDE", "#FFEBEB")))
 
+
+-- | Get the currently selected error
 getSelectedError ::  TreeView
     -> ListStore ErrColumn
     -> IO (Maybe LogRef)
@@ -185,7 +209,9 @@ getSelectedError treeView store = do
             return (Just (logRef val))
         _  ->  return Nothing
 
-selectError :: Maybe LogRef -> IDEAction
+-- | Select an error in the Errors pane
+selectError :: Maybe LogRef -- ^ When @Nothing@, the first error in the list is selected
+            -> IDEAction
 selectError mbLogRef = do
     (mbPane :: Maybe IDEErrors) <- getPane
     errorRefs' <- readIDE errorRefs
@@ -207,6 +233,8 @@ selectError mbLogRef = do
                             treeViewScrollToCell (treeView errors) (Just [ind]) Nothing Nothing
                             treeSelectionSelectPath selection [ind]
 
+
+-- | Constructs the context menu for the Errors pane
 errorsContextMenu :: IDERef
                   -> ListStore ErrColumn
                   -> TreeView
@@ -221,6 +249,8 @@ errorsContextMenu ideR store treeView theMenu = do
         Just sel -> addResolveMenuItems ideR theMenu sel
         Nothing -> return ()
 
+
+-- | Highlight an error refered to by the 'TreePath' in the given 'TreeViewColumn'
 errorsSelect :: IDERef
                 -> ListStore ErrColumn
                 -> TreePath
@@ -231,7 +261,11 @@ errorsSelect ideR store [index] _ = do
     reflectIDE (setCurrentError (Just (logRef ref))) ideR
 errorsSelect _ _ _ _ = return ()
 
-selectMatchingErrors :: Maybe SrcSpan -> IDEM ()
+
+-- | Select the matching errors for a 'SrcSpan' in the Errors 
+--   pane, or none at all
+selectMatchingErrors :: Maybe SrcSpan -- ^ When @Nothing@, unselects any errors in the pane 
+                     -> IDEM ()
 selectMatchingErrors mbSpan = do
     mbErrors <- getPane
     case mbErrors of

@@ -565,6 +565,7 @@ data LogLaunch = LogLaunch {
 data LogRefType = ContextRef | BreakpointRef | ErrorRef | TestFailureRef | WarningRef | LintRef
     deriving (Eq, Ord, Show, Enum, Bounded)
 
+-- | Represents a message about a part of the source code
 data LogRef = LogRef {
     logRefSrcSpan       ::   SrcSpan
 ,   logRefPackage       ::   IDEPackage
