@@ -16,7 +16,7 @@
 -- Stability   :  provisional
 -- Portability :  portable
 --
--- | The GUI stuff for infos
+-- | The info Pane to show symbol information
 --
 -------------------------------------------------------------------------------
 
@@ -53,16 +53,19 @@ import Data.Foldable (forM_)
 import qualified Data.Text as T (unpack, pack, null)
 import Data.Monoid ((<>))
 
--- | An info pane description
---
+
+-- | Represents the Info pane
 data IDEInfo        =   forall editor. TextEditor editor => IDEInfo {
     sw              ::   ScrolledWindow
 ,   currentDescr    ::   IORef (Maybe Descr)
 ,   descriptionView ::   EditorView editor
 } deriving Typeable
 
+
+-- | The additional state used when recovering the pane
 data InfoState              =   InfoState (Maybe Descr)
     deriving(Eq,Ord,Read,Show,Typeable)
+
 
 instance Pane IDEInfo IDEM
     where
@@ -70,6 +73,7 @@ instance Pane IDEInfo IDEM
     getAddedIndex _ =   0
     getTopWidget    =   castToWidget . sw
     paneId b        =   "*Info"
+
 
 instance RecoverablePane IDEInfo InfoState IDEM where
     saveState p     =   do
@@ -110,14 +114,20 @@ instance RecoverablePane IDEInfo InfoState IDEM where
         cids2 <- descriptionView `afterFocusIn` makeActive info
         return (Just info, cids1 ++ cids2)
 
+
+-- | Get the Info pane
 getInfo :: IDEM IDEInfo
 getInfo = forceGetPane (Right "*Info")
 
+
+-- | Display the Info pane
 showInfo :: IDEAction
 showInfo = do
     pane <- getInfo
     displayPane pane False
 
+
+-- | Open the source of the current symbol description
 gotoSource :: IDEAction
 gotoSource = do
     mbInfo <- getInfoCont
@@ -126,6 +136,8 @@ gotoSource = do
                             return ()
         Just info   ->  void (goToDefinition info)
 
+
+-- | Select the symbol description in the module pane
 gotoModule' :: IDEAction
 gotoModule' = do
     mbInfo  <-  getInfoCont
@@ -134,6 +146,7 @@ gotoModule' = do
         Just info   ->  void (triggerEventIDE (SelectIdent info))
 
 
+-- | Replaces the symbol description and displays the info pane
 setInfo :: Descr -> IDEAction
 setInfo identifierDescr = do
     info <-  getInfo
@@ -147,12 +160,16 @@ setInfo identifierDescr = do
         setText tb (T.pack $ show (Present identifierDescr) ++ "\n")   -- EOL for text iters to work
         recordInfoHistory (Just identifierDescr) oldDescr
 
+
+-- | Updates the style of the text buffer if it is opened
 setInfoStyle :: IDEAction
 setInfoStyle = getPane >>= setInfoStyle'
   where
     setInfoStyle' Nothing = return ()
     setInfoStyle' (Just IDEInfo{..}) = getBuffer descriptionView >>= updateStyle
 
+
+-- | Try to get the symbol description of the Info pane
 getInfoCont ::  IDEM (Maybe Descr)
 getInfoCont = do
     mbPane <- getPane
@@ -163,15 +180,24 @@ getInfoCont = do
 
 -- * GUI History
 
-recordInfoHistory :: Maybe Descr -> Maybe Descr -> IDEAction
+
+-- | Record the transition to the new description from the old
+recordInfoHistory :: Maybe Descr -- ^ The new description
+                  -> Maybe Descr -- ^ The old description
+                  -> IDEAction
 recordInfoHistory  descr oldDescr = do
     triggerEventIDE (RecordHistory
         (InfoElementSelected descr, InfoElementSelected oldDescr))
     return ()
 
-replayInfoHistory :: Maybe Descr -> IDEAction
+
+-- | Replace the symbol description
+replayInfoHistory :: Maybe Descr -- ^ If @Nothing@, the description is not replaced
+                  -> IDEAction
 replayInfoHistory mbDescr = forM_ mbDescr setInfo
 
+
+-- | Open the documentation for the current symbol description
 openDocu :: IDEAction
 openDocu = do
     mbDescr <- getInfoCont
@@ -181,6 +207,8 @@ openDocu = do
             prefs' <- readIDE prefs
             openBrowser $ docuSearchURL prefs' <> T.pack (escapeURIString isAlphaNum (T.unpack $ dscName descr))
 
+
+-- | Builds the context menu of the Info pane
 populatePopupMenu :: IDERef -> IORef (Maybe Descr) -> Menu -> IO ()
 populatePopupMenu ideR currentDescr' menu = do
     items <- containerGetChildren menu

@@ -94,16 +94,17 @@ import Data.Foldable (forM_)
 prefsVersion :: Int
 prefsVersion = 3
 
---
--- | The Preferences Pane
---
 
+-- | Represents the Preferences pane
 data IDEPrefs               =   IDEPrefs {
     prefsBox                ::   VBox
 } deriving Typeable
 
+
+-- | The additional state used when recovering the pane
 data PrefsState             =   PrefsState
     deriving(Eq,Ord,Read,Show,Typeable)
+
 
 instance Pane IDEPrefs IDEM
     where
@@ -111,6 +112,7 @@ instance Pane IDEPrefs IDEM
     getAddedIndex _ =   0
     getTopWidget    =   castToWidget . prefsBox
     paneId b        =   "*Prefs"
+
 
 instance RecoverablePane IDEPrefs PrefsState IDEM where
     saveState p     =   return Nothing
@@ -224,14 +226,19 @@ instance RecoverablePane IDEPrefs PrefsState IDEM where
                 return e)
             return (Just prefsPane,[])
 
+
+-- | Get the Preferences pane
 getPrefs :: Maybe PanePath -> IDEM IDEPrefs
 getPrefs Nothing    = forceGetPane (Right "*Prefs")
 getPrefs (Just pp)  = forceGetPane (Left pp)
+
+
 
 -- ------------------------------------------------------------
 -- * Dialog definition
 -- ------------------------------------------------------------
 
+-- | Description of the preference options
 prefsDescription :: FilePath -> [PackageIdentifier] -> FieldDescriptionPP Prefs IDEM
 prefsDescription configDir packages = NFDPP [
     (__ "Editor", VFDPP emptyParams [
@@ -808,7 +815,7 @@ prefsDescription configDir packages = NFDPP [
             (\i -> return ())
     ])]
 
-
+--| Editor for enabling a different syntax stylesheet
 styleEditor :: Editor (Bool, Text)
 styleEditor p n = do
     styleManager <- sourceStyleSchemeManagerNew
@@ -819,6 +826,7 @@ styleEditor p n = do
     disableEditor (comboSelectionEditor notDarkIds id, p) True (__ "Select a special style?") p n
 
 
+-- | The default preferences
 defaultPrefs = Prefs {
         prefsFormat         =   prefsVersion
     ,   prefsSaveTime       =   ""
@@ -905,6 +913,7 @@ defaultPrefs = Prefs {
 -- * Parsing
 -- ------------------------------------------------------------
 
+-- | Read the preference file
 readPrefs :: FilePath -> IO Prefs
 readPrefs fn = catch (do
     configDir <- getConfigDir
@@ -916,6 +925,7 @@ readPrefs fn = catch (do
 -- * Printing
 -- ------------------------------------------------------------
 
+-- | Write the preference file
 writePrefs :: FilePath -> Prefs -> IO ()
 writePrefs fpath prefs = do
     timeNow         <- liftIO getClockTime

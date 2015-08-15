@@ -194,7 +194,7 @@ instance RecoverablePane IDEGrep GrepState IDEM where
 
         return (Just grep,[ConnectC cid1])
 
--- | Display the Grep panel
+-- | Get the Grep panel
 getGrep :: Maybe PanePath -> IDEM IDEGrep
 getGrep Nothing    = forceGetPane (Right "*Grep")
 getGrep (Just pp)  = forceGetPane (Left pp)

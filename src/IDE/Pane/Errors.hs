@@ -44,6 +44,7 @@ import Data.Maybe (isNothing)
 import qualified Data.Foldable as F (toList)
 import qualified Data.Sequence as Seq (null, elemIndexL)
 
+
 -- | The representation of the Errors pane
 data IDEErrors      =   IDEErrors {
     scrolledView    ::   ScrolledWindow
@@ -52,10 +53,12 @@ data IDEErrors      =   IDEErrors {
 ,   autoClose       ::   IORef Bool -- ^ If the pane was only displayed to show current error
 } deriving Typeable
 
+
 -- | The data for a single row in the Errors pane
 data ErrColumn = ErrColumn {
     logRef     :: LogRef,
     background :: Text}
+
 
 -- | The additional state used when recovering the pane
 data ErrorsState    =   ErrorsState
@@ -134,7 +137,7 @@ removeIndentation t = T.intercalate "\n" $ map (T.drop minIndent) l
     minIndent = minimum $ map (T.length . T.takeWhile (== ' ')) l
 
 
--- | Display the Errors pane
+-- | Get the Errors pane
 getErrors :: Maybe PanePath -> IDEM IDEErrors
 getErrors Nothing    = forceGetPane (Right "*Errors")
 getErrors (Just pp)  = forceGetPane (Left pp)

@@ -13,7 +13,7 @@
 -- Stability   :  provisional
 -- Portability :
 --
--- |
+-- | A pane to display the set breakpoints
 --
 -----------------------------------------------------------------------------
 
@@ -44,16 +44,17 @@ import qualified Data.Foldable as F (toList)
 import qualified Data.Sequence as Seq (elemIndexL)
 
 
--- | A breakpoints pane description
---
+-- | Represents the Breakpoints pane
 data IDEBreakpoints    =   IDEBreakpoints {
     scrolledView    ::   ScrolledWindow
 ,   treeView        ::   TreeView
 ,   breakpoints     ::   TreeStore LogRef
 } deriving Typeable
 
-data BreakpointsState  =   BreakpointsState {
-}   deriving(Eq,Ord,Read,Show,Typeable)
+
+-- | The additional state used when recovering the pane
+data BreakpointsState  =   BreakpointsState
+    deriving(Eq,Ord,Read,Show,Typeable)
 
 
 instance Pane IDEBreakpoints IDEM
@@ -62,6 +63,7 @@ instance Pane IDEBreakpoints IDEM
     getAddedIndex _ =   0
     getTopWidget    =   castToWidget . scrolledView
     paneId b        =   "*Breakpoints"
+
 
 instance RecoverablePane IDEBreakpoints BreakpointsState IDEM where
     saveState p     =   return (Just BreakpointsState)
@@ -110,14 +112,20 @@ instance RecoverablePane IDEBreakpoints BreakpointsState IDEM where
         cid4 <- treeView `on` rowActivated $ breakpointsSelect ideR breakpoints
         return (Just pane, map ConnectC [cid1, cid2, cid3, cid4])
 
+
+-- | Get the Breakpoints pane
 getBreakpoints :: IDEM IDEBreakpoints
 getBreakpoints = forceGetPane (Right "*Breakpoints")
 
+
+-- | Display the Breakpoints pane
 showBreakpoints :: IDEAction
 showBreakpoints = do
     pane <- getBreakpoints
     displayPane pane False
 
+
+-- | Fill the pane with the breakpoint 'LogRef's from the IDE state
 fillBreakpointList :: IDEAction
 fillBreakpointList = do
     mbBreakpoints <- getPane
@@ -130,6 +138,8 @@ fillBreakpointList = do
                 mapM_ (\ (lr,index) -> treeStoreInsert (breakpoints b) [] index lr)
                     (zip (F.toList refs) [0..])
 
+
+-- | Try to get the currently selected breakpoint
 getSelectedBreakpoint ::  TreeView
     -> TreeStore LogRef
     -> IO (Maybe LogRef)
@@ -142,7 +152,10 @@ getSelectedBreakpoint treeView treeStore = do
             return (Just val)
         _  ->  return Nothing
 
-selectBreak :: Maybe LogRef -> IDEAction
+
+-- | Select a specific 'LogRef' or none at all
+selectBreak :: Maybe LogRef  -- If @Nothing@, no breakpoints are selected
+            -> IDEAction
 selectBreak mbLogRef = do
     breakRefs' <- readIDE breakpointRefs
     breaks     <- forceGetPane (Right "*Breakpoints")
@@ -154,6 +167,8 @@ selectBreak mbLogRef = do
                         Nothing  -> return ()
                         Just ind -> treeSelectionSelectPath selection [ind]
 
+
+-- | Constructs the context menu for the breakpoint
 breakpointsContextMenu :: IDERef
                        -> TreeStore LogRef
                        -> TreeView
@@ -175,6 +190,8 @@ breakpointsContextMenu ideR store treeView theMenu = do
         castToMenuItem item2, castToMenuItem item3]
 
 
+-- | Set the current breakpoint to a specific entry
+--   pointed to by the supplied 'TreePath'
 breakpointsSelect :: IDERef
                   -> TreeStore LogRef
                   -> TreePath
@@ -185,6 +202,7 @@ breakpointsSelect ideR store path _ = do
     reflectIDE (setCurrentBreak (Just ref)) ideR
 
 
+-- | Remove a breakpoint from the pane
 deleteBreakpoint :: LogRef -> IDEAction
 deleteBreakpoint logRef =
     case logRefType logRef of

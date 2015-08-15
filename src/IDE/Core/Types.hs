@@ -561,9 +561,11 @@ data LogLaunch = LogLaunch {
     logBuffer   :: TextBuffer
 } deriving Typeable
 
+
 -- Order determines priority of the icons in the gutter
 data LogRefType = ContextRef | BreakpointRef | ErrorRef | TestFailureRef | WarningRef | LintRef
     deriving (Eq, Ord, Show, Enum, Bounded)
+
 
 -- | Represents a message about a part of the source code
 data LogRef = LogRef {
