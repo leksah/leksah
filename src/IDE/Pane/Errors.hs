@@ -134,7 +134,7 @@ removeIndentation t = T.intercalate "\n" $ map (T.drop minIndent) l
     minIndent = minimum $ map (T.length . T.takeWhile (== ' ')) l
 
 
--- | Display the Errors pane, even if it is was closed
+-- | Display the Errors pane
 getErrors :: Maybe PanePath -> IDEM IDEErrors
 getErrors Nothing    = forceGetPane (Right "*Errors")
 getErrors (Just pp)  = forceGetPane (Left pp)
