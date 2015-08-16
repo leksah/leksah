@@ -9,3 +9,4 @@ leksah.lkshw
 /.shelly/
 /.cabal-sandbox/
 *.sandbox.config
+/.stack-work/

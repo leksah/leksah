@@ -1,26 +1,23 @@
-flags:
-  ghcjs-dom:
-    ghcjs: false
-  jsaddle:
-    ghcjs: false
+flags: {}
+ghc-options:
+  regex-tdfa-text: -XFlexibleContexts
 packages:
 - '.'
 extra-deps:
 - attoparsec-conduit-1.1.0
 - binary-shared-0.8.3
 - ghcjs-codemirror-0.0.0.1
-- ghcjs-dom-0.1.1.3
-- gtk3-0.13.8
-- gtksourceview3-0.13.1.5
-- hamlet-1.2.0
-- jsaddle-0.2.0.5
-- leksah-server-0.15.0.3
-- ltk-0.15.0.1
+- ghcjs-dom-0.2.1.0
+- gtk3-mac-integration-0.3.2.0
+- gtksourceview3-0.13.2.0
+- jsaddle-0.2.1.0
+- leksah-server-0.15.0.7
+- ltk-0.15.0.3
 - regex-tdfa-text-1.0.0.2
 - vado-0.0.5
-- vcsgui-0.1.2.0
+- vcsgui-0.1.3.0
 - vcswrapper-0.1.2
-- webkitgtk3-0.13.1.3
-- webkitgtk3-javascriptcore-0.13.0.4
+- webkitgtk3-0.14.1.0
+- webkitgtk3-javascriptcore-0.13.1.0
 - gtk2hs-buildtools-0.13.0.4
-resolver: lts-2.9
+resolver: lts-3.0
