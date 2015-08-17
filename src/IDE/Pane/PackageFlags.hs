@@ -15,7 +15,8 @@
 -- Portability :  portable
 --
 --
--- | Module for saving, restoring and editing projectFlags
+-- | Pane for saving, restoring and editing flags for specific cabal
+-- commands.
 --
 ---------------------------------------------------------------------------------
 
@@ -91,6 +92,8 @@ instance RecoverablePane IDEFlags FlagsState IDEM where
                     Nothing -> return (Nothing,[])
                     Just p  -> reifyIDE $ \ideR -> builder' p flagsDesc flatflagsDesc  pp nb window ideR
 
+
+-- | Builds the Flags pane
 builder' idePackage flagsDesc flatflagsDesc pp nb window ideR = do
     vb                  <-  vBoxNew False 0
     let flagsPane = IDEFlags vb
@@ -136,16 +139,23 @@ builder' idePackage flagsDesc flatflagsDesc pp nb window ideR = do
     boxPackEnd vb bb PackNatural 6
     return (Just flagsPane,[])
 
+
+-- | Gets the Flags pane
 getFlags :: Maybe PanePath -> IDEM IDEFlags
 getFlags Nothing    = forceGetPane (Right "*Flags")
 getFlags (Just pp)  = forceGetPane (Left pp)
 
+
+-- | Quote the string if it contains spaces and escape
+-- any other quotes.
 quoteArg :: String -> String
 quoteArg s | ' ' `elem` s = "\"" <> escapeQuotes s <> "\""
 quoteArg s = s
 
 escapeQuotes = foldr (\c s -> if c == '"' then '\\':c:s else c:s) ""
 
+
+-- | Parse any (escaped) character (ignoring a prefixed @\@)
 quotedArgCharParser :: CharParser () Char
 quotedArgCharParser = try (do
         char '\\'
@@ -154,6 +164,9 @@ quotedArgCharParser = try (do
         noneOf "\"")
     <?> "argsParser"
 
+
+-- | Parse an argument that is either quoted or does not
+-- contain spaces
 argParser :: CharParser () Text
 argParser = try (do
         char '"'
@@ -164,6 +177,8 @@ argParser = try (do
         T.pack <$> many1 (noneOf " "))
     <?> "argParser"
 
+
+-- | Parse many arguments, possibly seperated by spaces
 argsParser :: CharParser () [Text]
 argsParser = try (
         many (do
@@ -171,17 +186,25 @@ argsParser = try (
             argParser))
     <?> "argsParser"
 
+
+-- | Quote all arguments and concatenate them
 unargs :: [Text] -> Text
 unargs = T.unwords . map (T.pack . quoteArg . T.unpack)
 
+
+-- | Parse a list of arguments from a given string
 args :: Text -> [Text]
 args s = case parse argsParser "" $ T.unpack s of
             Right result -> result
             _ -> [s]
 
+
+-- | The flattened description of the fields in the pane
 flatFlagsDescription :: [FieldDescriptionS IDEPackage]
 flatFlagsDescription = flattenFieldDescriptionPPToS flagsDescription
 
+
+-- | The description of the fields in the pane
 flagsDescription :: FieldDescriptionPP IDEPackage IDEM
 flagsDescription = VFDPP emptyParams [
         mkFieldPP
@@ -261,6 +284,7 @@ flagsDescription = VFDPP emptyParams [
 -- * Parsing
 -- ------------------------------------------------------------
 
+-- | Read all the field values from the given 'FilePath'
 readFlags :: FilePath -> IDEPackage -> IO IDEPackage
 readFlags fn = readFields fn flatFlagsDescription
 
@@ -268,6 +292,7 @@ readFlags fn = readFields fn flatFlagsDescription
 -- * Printing
 -- ------------------------------------------------------------
 
+-- | Write all field values to the given 'FilePath'
 writeFlags :: FilePath -> IDEPackage -> IO ()
 writeFlags fpath flags = writeFields fpath flags flatFlagsDescription
 
