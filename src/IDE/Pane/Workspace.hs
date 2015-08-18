@@ -213,7 +213,7 @@ workspaceSelect ideR workspacePane path _ = do
     reflectIDE (workspaceTry $ workspaceActivatePackage ideP mbExe) ideR
 
 
--- | Repopulates the workspace pane with the current packages 
+-- | Repopulates the workspace pane with the current packages
 --   (if the pane is open)
 updateWorkspace :: Bool -- ^ Show the pane if it is open and a workspace is loaded
                 -> Bool -- ^ Empty the 'bufferProjCache'
@@ -243,15 +243,15 @@ updateWorkspace showPane updateFileCache = do
     where
         -- | Given a workspace, constructs the forest of
         --   packages and their targets
-        buildForest ws = 
+        buildForest ws =
             let sorted = sortBy (compare `F.on` ipdPackageId) $ wsPackages ws
-            in  map buildPackageTree sorted
+            in  map (buildPackageTree ws) sorted
 
         -- | Given an ide package, constructs the tree with the
         --   package as root node, and its targets as children
-        buildPackageTree ideP = 
+        buildPackageTree ws ideP =
             let isActive = Just (ipdCabalFile ideP) == wsActivePackFile ws
-                sandboxChildren = map (\pack -> Node (False, (pack, Nothing)) []) 
+                sandboxChildren = map (\pack -> Node (False, (pack, Nothing)) [])
                                       (ipdSandboxSources ideP)
                 targetsChildren = map (\test -> Node (
                                            Just (ipdCabalFile ideP) == wsActivePackFile ws &&

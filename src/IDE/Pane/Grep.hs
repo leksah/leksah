@@ -200,7 +200,7 @@ getGrep Nothing    = forceGetPane (Right "*Grep")
 getGrep (Just pp)  = forceGetPane (Left pp)
 
 
---| Parses a result line of grep output into a 'GrepRecord'
+-- | Parses a result line of grep output into a 'GrepRecord'
 grepLineParser :: CharParser () GrepRecord
 grepLineParser = try (do
         file <- many (noneOf ":")
@@ -253,7 +253,7 @@ grepWorkspace regexString caseSensitive = do
 -- | Greps a list of directories
 grepDirectories :: Text -- ^ The regex string
                 -> Bool -- ^ Case sensitive
-                -> [FilePath] 
+                -> [FilePath]
                 -> IDEAction
 grepDirectories regexString caseSensitive dirs = do
     grep <- getGrep Nothing

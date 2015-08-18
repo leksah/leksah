@@ -815,7 +815,7 @@ prefsDescription configDir packages = NFDPP [
             (\i -> return ())
     ])]
 
---| Editor for enabling a different syntax stylesheet
+-- | Editor for enabling a different syntax stylesheet
 styleEditor :: Editor (Bool, Text)
 styleEditor p n = do
     styleManager <- sourceStyleSchemeManagerNew
