@@ -15,7 +15,7 @@
 -- Stability   :  provisional
 -- Portability  :  portable
 --
--- | The pane of ide where grep results are displayed
+-- | The pane of the ide where grep results are displayed
 --
 -------------------------------------------------------------------------------
 
@@ -65,6 +65,7 @@ import System.Log.Logger (debugM)
 import Control.Exception (SomeException, catch)
 import Data.Text (Text)
 
+-- | Represents a single search result
 data GrepRecord = GrepRecord {
             file        :: FilePath
         ,   line        :: Int
@@ -72,12 +73,14 @@ data GrepRecord = GrepRecord {
         ,   parDir      :: Maybe FilePath
         }
 
+
+-- | Determines whether a 'GrepRecord' is a directory
+isDir :: GrepRecord -> Bool
 isDir GrepRecord{parDir = Nothing}  = True
 isDir otherwies                     = False
 
--- | A grep pane description
---
 
+-- | The representation of the Grep result pane
 data IDEGrep        =   IDEGrep {
     scrolledView    ::   ScrolledWindow
 ,   treeView        ::   TreeView
@@ -86,8 +89,11 @@ data IDEGrep        =   IDEGrep {
 ,   activeGrep      ::   MVar Bool
 } deriving Typeable
 
+
+-- | The additional state used when recovering the pane
 data GrepState      =   GrepState
     deriving(Eq,Ord,Read,Show,Typeable)
+
 
 instance Pane IDEGrep IDEM
     where
@@ -95,6 +101,7 @@ instance Pane IDEGrep IDEM
     getAddedIndex _ =   0
     getTopWidget    =   castToWidget . scrolledView
     paneId b        =   "*Grep"
+
 
 instance RecoverablePane IDEGrep GrepState IDEM where
     saveState p     =   return (Just GrepState)
@@ -187,10 +194,13 @@ instance RecoverablePane IDEGrep GrepState IDEM where
 
         return (Just grep,[ConnectC cid1])
 
+-- | Get the Grep panel
 getGrep :: Maybe PanePath -> IDEM IDEGrep
 getGrep Nothing    = forceGetPane (Right "*Grep")
 getGrep (Just pp)  = forceGetPane (Left pp)
 
+
+-- | Parses a result line of grep output into a 'GrepRecord'
 grepLineParser :: CharParser () GrepRecord
 grepLineParser = try (do
         file <- many (noneOf ":")
@@ -211,6 +221,8 @@ identifier = P.identifier lexer
 colon = P.colon lexer
 int = fromInteger <$> P.integer lexer
 
+
+-- | Tries to get the currently selected record in the pane
 getSelectionGrepRecord ::  TreeView
     ->  TreeStore GrepRecord
     -> IO (Maybe GrepRecord)
@@ -221,8 +233,12 @@ getSelectionGrepRecord treeView grepStore = do
         p:_ ->  Just <$> treeStoreGetValue grepStore p
         _   ->  return Nothing
 
+
 --TODO srp use default loglaunch probably
-grepWorkspace :: Text -> Bool -> WorkspaceAction
+-- | Greps the current workspace
+grepWorkspace :: Text -- ^ The regex string
+              -> Bool -- ^ Case sensitive
+              -> WorkspaceAction
 grepWorkspace "" caseSensitive = return ()
 grepWorkspace regexString caseSensitive = do
     ws <- ask
@@ -233,7 +249,12 @@ grepWorkspace regexString caseSensitive = do
     lift $ grepDirectories regexString caseSensitive $
             map (dropFileName . ipdCabalFile) packages
 
-grepDirectories :: Text -> Bool -> [FilePath] -> IDEAction
+
+-- | Greps a list of directories
+grepDirectories :: Text -- ^ The regex string
+                -> Bool -- ^ Case sensitive
+                -> [FilePath]
+                -> IDEAction
 grepDirectories regexString caseSensitive dirs = do
     grep <- getGrep Nothing
     let store = grepStore grep
@@ -287,6 +308,8 @@ grepDirectories regexString caseSensitive dirs = do
             void $ takeMVar (activeGrep grep)
     return ()
 
+
+-- | A Sink for processing lines of grep output and counting them
 setGrepResults :: FilePath -> C.Sink ToolOutput IDEM Int
 setGrepResults dir = do
     ideRef <- lift ask

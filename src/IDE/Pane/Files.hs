@@ -78,11 +78,19 @@ import IDE.Core.Types (IDEPackage(..), IDE(..), Prefs(..))
 import Data.Tree (Tree(..))
 import System.Log.Logger (debugM)
 
+
+
+-- * A record in the Files Pane
+
+-- | The data for a single cell in the file tree
 data FileRecord =
     FileRecord FilePath
   | DirRecord FilePath
   | PackageRecord IDEPackage
-  | PlaceHolder deriving(Eq)
+  | PlaceHolder -- ^ Used as child node of directories that are not yet expanded,
+                --   so that the expansion arrow becomes visible
+  deriving (Eq)
+
 
 instance Ord FileRecord where
     -- | The ordering used for displaying the records in the filetree
@@ -92,26 +100,32 @@ instance Ord FileRecord where
     compare (DirRecord p1) (DirRecord p2) = comparing (map toLower) p1 p2
     compare _ _ = LT
 
-file :: FileRecord -> Text
-file (FileRecord f) = T.pack $ takeFileName f
-file (DirRecord f) = T.pack $ takeFileName f
-file (PackageRecord p) = packageIdentifierToString (ipdPackageId p) <> " " <> T.pack (ipdBuildDir p)
-file PlaceHolder = ""
+-- | The text to show in the file tree for a file record
+displayText :: FileRecord -> Text
+displayText (FileRecord f) = T.pack $ takeFileName f
+displayText (DirRecord f) = T.pack $ takeFileName f
+displayText (PackageRecord p) = packageIdentifierToString (ipdPackageId p) <> " " <> T.pack (ipdBuildDir p)
+displayText PlaceHolder = ""
 
--- | A files pane description
---
 
+
+
+-- * The Files pane
+
+-- | The representation of the Files pane
 data IDEFiles        =   IDEFiles {
     scrolledView    ::   ScrolledWindow
 ,   treeView        ::   TreeView
 ,   fileStore       ::   TreeStore FileRecord
 } deriving Typeable
 
+
+-- | The additional state used when recovering the pane
+--   (none, the package directories come from the IDE state)
 data FilesState      =   FilesState
     deriving(Eq,Ord,Read,Show,Typeable)
 
-instance Pane IDEFiles IDEM
-    where
+instance Pane IDEFiles IDEM where
     primPaneName _  =   __ "Files"
     getAddedIndex _ =   0
     getTopWidget    =   castToWidget . scrolledView
@@ -138,7 +152,7 @@ instance RecoverablePane IDEFiles FilesState IDEM where
         cellLayoutPackStart col1 renderer10 False
         cellLayoutPackStart col1 renderer1 True
         cellLayoutSetAttributes col1 renderer1 fileStore
-            $ \row -> [ cellText := file row]
+            $ \row -> [ cellText := displayText row]
 
         treeViewSetHeadersVisible treeView False
         sel <- treeViewGetSelection treeView
@@ -182,20 +196,10 @@ instance RecoverablePane IDEFiles FilesState IDEM where
 
         return (Just files,[ConnectC cid1])
 
+-- | Get the Files pane
 getFiles :: Maybe PanePath -> IDEM IDEFiles
 getFiles Nothing    = forceGetPane (Right "*Files")
 getFiles (Just pp)  = forceGetPane (Left pp)
-
--- | Tries to get the 'FileRecord' of the selected node in the 'TreeView'
-getSelectionFileRecord ::  TreeView
-    ->  TreeStore FileRecord
-    -> IO (Maybe FileRecord)
-getSelectionFileRecord treeView fileStore = do
-    treeSelection   <-  treeViewGetSelection treeView
-    paths           <-  treeSelectionGetSelectedRows treeSelection
-    case paths of
-        p:_ ->  Just <$> treeStoreGetValue fileStore p
-        _   ->  return Nothing
 
 
 -- | Refreshes the Files pane, lists all package directories and synchronizes the expanded

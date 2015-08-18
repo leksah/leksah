@@ -427,6 +427,9 @@ deactivatePaneIfActive pane = do
         Nothing -> return ()
         Just (n,_) -> when (n == paneName pane) deactivatePane
 
+-- | Replaces an 'IDEPackage' in the workspace by the given 'IDEPackage' and
+-- replaces the current package if it matches.
+--  Comparison is done based on the package's build directory.
 changePackage :: IDEPackage -> IDEAction
 changePackage ideP = do
     oldWorkspace <- readIDE workspace

@@ -156,7 +156,7 @@ data IDE            =  IDE {
 ,   workspace       ::   Maybe Workspace         -- ^ may be a workspace (set of packages)
 ,   activePack      ::   Maybe IDEPackage
 ,   activeExe       ::   Maybe Text
-,   bufferProjCache ::   Map FilePath [IDEPackage]
+,   bufferProjCache ::   Map FilePath [IDEPackage] -- ^ cache the associated packages for a file
 ,   allLogRefs      ::   Seq LogRef
 ,   currentEBC      ::   (Maybe LogRef, Maybe LogRef, Maybe LogRef)
 ,   currentHist     ::   Int
@@ -561,10 +561,13 @@ data LogLaunch = LogLaunch {
     logBuffer   :: TextBuffer
 } deriving Typeable
 
+
 -- Order determines priority of the icons in the gutter
 data LogRefType = ContextRef | BreakpointRef | ErrorRef | TestFailureRef | WarningRef | LintRef
     deriving (Eq, Ord, Show, Enum, Bounded)
 
+
+-- | Represents a message about a part of the source code
 data LogRef = LogRef {
     logRefSrcSpan       ::   SrcSpan
 ,   logRefPackage       ::   IDEPackage

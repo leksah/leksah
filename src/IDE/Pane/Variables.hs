@@ -56,21 +56,25 @@ import Data.Monoid ((<>))
 import qualified Data.Text as T (pack, unpack)
 import Control.Applicative ((<$>))
 
--- | A variables pane description
---
+-- | Represents the Variables pane
 data IDEVariables    =   IDEVariables {
     scrolledView    ::   ScrolledWindow
 ,   treeView        ::   TreeView
 ,   variables       ::   TreeStore VarDescription
 } deriving Typeable
 
+
+-- | The data for a single entry in the pane
 data VarDescription = VarDescription {
     varName         ::  Text
 ,   varType         ::  Text
 ,   varValue        ::  Text}
 
-data VariablesState  =   VariablesState {
-}   deriving(Eq,Ord,Read,Show,Typeable)
+
+-- | The additional state used when recovering the pane
+data VariablesState  =   VariablesState
+    deriving(Eq,Ord,Read,Show,Typeable)
+
 
 instance Pane IDEVariables IDEM
     where
@@ -79,6 +83,7 @@ instance Pane IDEVariables IDEM
     getTopWidget    =   castToWidget . scrolledView
     paneId b        =   "*Variables"
 
+
 instance RecoverablePane IDEVariables VariablesState IDEM where
     saveState p     =   return (Just VariablesState)
     recoverState pp VariablesState =   do
@@ -86,14 +91,21 @@ instance RecoverablePane IDEVariables VariablesState IDEM where
         buildPane pp nb builder
     builder = builder'
 
+
+-- | Get the Variables pane
 getVariables :: IDEM IDEVariables
 getVariables = forceGetPane (Right "*Variables")
 
+
+-- | Display the Variables pane
 showVariables :: IDEAction
 showVariables = do
     pane <- getVariables
     displayPane pane False
 
+
+-- | Builds the Variables pane, together with a list
+--   of connections of events
 builder' :: PanePath ->
     Notebook ->
     Window ->
@@ -154,6 +166,7 @@ builder' pp nb windows = reifyIDE $  \ideR -> do
     return (Just pane, map ConnectC [cid1, cid2, cid3, cid4])
 
 
+-- | Quietly list the variable bindings of the current debug session
 fillVariablesListQuiet :: IDEAction
 fillVariablesListQuiet = packageTryQuiet $ do
     mbVariables <- liftIDE getPane
@@ -171,6 +184,8 @@ fillVariablesListQuiet = packageTryQuiet $ do
   where
     insertBreak treeStore (v,index)  = treeStoreInsert treeStore [] index v
 
+
+-- | List the variable bindings of the current debug session
 fillVariablesList :: IDEAction
 fillVariablesList = packageTry $ do
     mbVariables <- liftIDE getPane
@@ -188,11 +203,16 @@ fillVariablesList = packageTry $ do
   where
     insertBreak treeStore (v,index)  = treeStoreInsert treeStore [] index v
 
+
+-- | Concatenates the tool output lines with newlines
 selectString :: [ToolOutput] -> Text
 selectString (ToolOutput str:r)  = "\n" <> str <> selectString r
 selectString (_:r)               = selectString r
 selectString []                  = ""
 
+
+-- | Tries to get the selected variable in the Pane,
+--  together with the 'TreePath'
 getSelectedVariable ::  TreeView
     -> TreeStore VarDescription
     -> IO (Maybe (VarDescription,TreePath))
@@ -205,6 +225,8 @@ getSelectedVariable treeView treeStore = do
             return (Just (val,a))
         _  ->  return Nothing
 
+
+-- | Parses multiple 'VarDescription's
 variablesParser :: CharParser () [VarDescription]
 variablesParser = do
     whiteSpace
@@ -212,6 +234,8 @@ variablesParser = do
     eof
     return r
 
+
+-- | Parses a 'VarDescription' from a line of ghci output
 variableParser :: CharParser () VarDescription
 variableParser = do
     whiteSpace
@@ -229,6 +253,9 @@ variableParser = do
     return (VarDescription varName typeStr value)
     <?> "variableParser"
 
+
+-- | Parses only the value of a variable binding from a line of
+-- ghci output
 valueParser :: CharParser () Text
 valueParser = do
     whiteSpace
@@ -237,6 +264,8 @@ valueParser = do
     T.pack <$> many anyChar
     <?> "valueParser"
 
+-- | Parses only the type of a variable binding from a line of
+-- ghci output
 typeParser :: CharParser () Text
 typeParser = do
     whiteSpace
@@ -251,6 +280,7 @@ symbol = P.symbol lexer
 whiteSpace = P.whiteSpace lexer
 
 
+-- | Constructs the context menu of the Variables pane
 variablesContextMenu :: IDERef
                   -> TreeStore VarDescription
                   -> TreeView
@@ -275,6 +305,9 @@ variablesContextMenu ideR store treeView theMenu = do
     mapM_ (menuShellAppend theMenu) [castToMenuItem item1,
         castToMenuItem item2, castToMenuItem sep1, castToMenuItem item3]
 
+
+-- | Called when a variable is selected in the Variables pane.
+-- Forces the variable and updates the entry in the pane,
 variablesSelect :: IDERef
                 -> TreeStore VarDescription
                 -> TreePath
@@ -284,6 +317,9 @@ variablesSelect ideR store path _ = do
     varDescr <- treeStoreGetValue store path
     reflectIDE (forceVariable varDescr path store) ideR
 
+
+-- | Force the value of the given 'VarDescription', retrieve its type
+-- and update the appropriate entry in the Variables pane
 forceVariable :: VarDescription -> TreePath -> TreeStore VarDescription -> IDEAction
 forceVariable varDescr path treeStore = packageTry $ tryDebug $ do
     debugCommand' (":force " <> varName varDescr) $ do
@@ -303,6 +339,9 @@ forceVariable varDescr path treeStore = packageTry $ tryDebug $ do
                     var <- treeStoreGetValue treeStore path
                     treeStoreSetValue treeStore path var{varType = typ}
 
+
+-- | Print the value of the given 'VarDescription', retrieve its type
+-- and update the appropriate entry in the Variables pane
 printVariable :: VarDescription -> TreePath -> TreeStore VarDescription -> IDEAction
 printVariable varDescr path treeStore = packageTry $ tryDebug $ do
     debugCommand' (":print " <> varName varDescr) $ do
