@@ -334,6 +334,10 @@ packageNew' workspaceDir log activateAction = do
                           , buildType = Just Simple
                           , specVersionRaw = Right (orLaterVersion (Version [1,12] []))
                           , license = AllRightsReserved
+                          , buildDepends = [
+                                Dependency (PackageName "base") anyVersion
+                              , Dependency (PackageName "QuickCheck") anyVersion
+                              , Dependency (PackageName "doctest") anyVersion]
                           , executables = [emptyExecutable {
                                 exeName    = T.unpack newPackageName
                               , modulePath = "Main.hs"
