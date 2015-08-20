@@ -721,7 +721,7 @@ getActionsFor SensitivityProjectActive = getActionsFor'
 getActionsFor SensitivityError = getActionsFor' ["NextError", "PreviousError"]
 getActionsFor SensitivityEditor = getActionsFor' ["EditUndo", "EditRedo",
         "EditGotoLine","EditComment", "EditUncomment",
-        "EditShiftLeft", "EditShiftRight","FileClose","ResolveErrors",
+        "EditShiftLeft", "EditShiftRight","FileClose",
         "OpenDocu"
         ]
 getActionsFor SensitivityInterpreting = getActionsFor' ["QuitDebugger"]

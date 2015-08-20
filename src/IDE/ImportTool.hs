@@ -41,7 +41,8 @@ import Graphics.UI.Editor.Parameters
 import Text.ParserCombinators.Parsec hiding (parse)
 import qualified Text.ParserCombinators.Parsec as Parsec (parse)
 import Graphics.UI.Editor.Simple (staticListEditor)
-import Control.Monad (void, MonadPlus(..), unless, forM, when)
+import Control.Monad
+       (forM_, void, MonadPlus(..), unless, forM, when)
 import Control.Applicative ((<$>))
 import Data.List (stripPrefix, sort, nub, nubBy)
 import IDE.Utils.ServerConnection
@@ -92,19 +93,19 @@ resolveErrors = do
     let buildInBackground = backgroundBuild prefs'
     when buildInBackground $
         modifyIDE_ (\ide -> ide{prefs = prefs'{backgroundBuild = False}})
-    errors <- readIDE errorRefs
-    addPackageResults <- Tr.forM errors addPackage
+    errors <- F.toList <$> readIDE errorRefs
+    addPackageResult <- addPackages errors
     let notInScopes = [ y | (x,y) <-
             nubBy (\ (p1,_) (p2,_) -> p1 == p2)
-                  [(x,y) |  (x,y) <- [((parseNotInScope . refDescription) e, e) | e <- F.toList errors]],
+                  [(x,y) |  (x,y) <- [((parseNotInScope . refDescription) e, e) | e <- errors]],
                                 isJust x]
     let extensions = [ y | (x,y) <-
             nubBy (\ (p1,_) (p2,_) -> p1 == p2)
-                  [(x,y) |  (x,y) <- [((parsePerhapsYouIntendedToUse . refDescription) e, e) | e <- F.toList errors]],
+                  [(x,y) |  (x,y) <- [((parsePerhapsYouIntendedToUse . refDescription) e, e) | e <- errors]],
                                 length x == 1]
-    addAll addPackageResults buildInBackground notInScopes extensions
+    addAll addPackageResult buildInBackground notInScopes extensions
   where
-    addAll addPackageResults buildInBackground notInScopes extensions = addAllImports notInScopes (True,[])
+    addAll addPackageResult buildInBackground notInScopes extensions = addAllImports notInScopes (True,[])
       where
         addAllImports :: [LogRef] -> (Bool,[Descr]) -> IDEM ()
         addAllImports (errorSpec:rest) (True,descrList)  =  addImport errorSpec descrList (addAllImports rest)
@@ -118,7 +119,7 @@ resolveErrors = do
             when buildInBackground $ do
                 prefs' <- readIDE prefs
                 modifyIDE_ (\ide -> ide{prefs = prefs'{backgroundBuild = True}})
-            when (not (F.or addPackageResults) && null notInScopes && null extensions) $ do
+            when (not addPackageResult && null notInScopes && null extensions) $ do
                 hlintResolved <- resolveActiveHLint
                 unless hlintResolved $ ideMessage Normal "No errors, warnings or selected hlints that can be auto resolved"
 
@@ -182,45 +183,49 @@ addImport error descrList continuation =
                                                     else addImport' nis (logRefFullFilePath error)
                                                             descr descrList continuation
 
-addPackage :: LogRef -> IDEM Bool
-addPackage error =
-    case parseHiddenModule $ refDescription error of
-        Nothing -> return False
-        Just (HiddenModuleResult mod pack) -> do
-            let idePackage = logRefPackage error
-            gpd <- liftIO $ readPackageDescription normal (ipdCabalFile idePackage)
-            ideMessage Normal $ "addPackage " <> (T.pack . display $ pkgName pack)
-            liftIO $ writeGenericPackageDescription (ipdCabalFile idePackage)
-                gpd { condLibrary     = addDepToLib pack (condLibrary gpd),
-                      condExecutables = map (addDepToExe pack)
-                                            (condExecutables gpd),
-                      condTestSuites  = map (addDepToTest pack)
-                                            (condTestSuites gpd),
-                      condBenchmarks  = map (addDepToBenchmark pack)
-                                            (condBenchmarks gpd)}
-            return True
+addPackages :: [LogRef] -> IDEM Bool
+addPackages errors = do
+    let packs = nub $ mapMaybe (\error ->
+                    case parseHiddenModule $ refDescription error of
+                        Nothing -> Nothing
+                        Just (HiddenModuleResult _ pack) -> Just (ipdCabalFile (logRefPackage error), dep pack)) errors
+
+    forM_ packs $ \(cabalFile, d) -> do
+        gpd <- liftIO $ readPackageDescription normal cabalFile
+        ideMessage Normal $ "Adding build-depends " <> T.pack (display d <> " to " <> cabalFile)
+        liftIO $ writeGenericPackageDescription cabalFile
+            gpd { condLibrary     = addDepToLib d (condLibrary gpd),
+                  condExecutables = map (addDepToExe d)
+                                        (condExecutables gpd),
+                  condTestSuites  = map (addDepToTest d)
+                                        (condTestSuites gpd),
+                  condBenchmarks  = map (addDepToBenchmark d)
+                                        (condBenchmarks gpd)}
+        return True
+
+    return . not $ null packs
   where
     addDepToLib _ Nothing = Nothing
-    addDepToLib p (Just cn@CondNode{
+    addDepToLib d (Just cn@CondNode{
         condTreeConstraints = deps,
         condTreeData        = lib@Library{libBuildInfo = bi}}) = Just (cn{
-            condTreeConstraints = deps <> [dep p],
-            condTreeData        = lib {libBuildInfo = bi {targetBuildDepends = targetBuildDepends bi <> [dep p]}}})
-    addDepToExe p (str,cn@CondNode{
+            condTreeConstraints = deps <> [d],
+            condTreeData        = lib {libBuildInfo = bi {targetBuildDepends = targetBuildDepends bi <> [d]}}})
+    addDepToExe d (str,cn@CondNode{
         condTreeConstraints = deps,
         condTreeData        = exe@Executable{buildInfo = bi}}) = (str,cn{
-                condTreeConstraints = deps <> [dep p],
-                condTreeData        = exe { buildInfo = bi {targetBuildDepends = targetBuildDepends bi <> [dep p]}}})
-    addDepToTest p (str,cn@CondNode{
+                condTreeConstraints = deps <> [d],
+                condTreeData        = exe { buildInfo = bi {targetBuildDepends = targetBuildDepends bi <> [d]}}})
+    addDepToTest d (str,cn@CondNode{
         condTreeConstraints = deps,
         condTreeData        = test@TestSuite{testBuildInfo = bi}}) = (str,cn{
-                condTreeConstraints = deps <> [dep p],
-                condTreeData        = test { testBuildInfo = bi {targetBuildDepends = targetBuildDepends bi <> [dep p]}}})
-    addDepToBenchmark p (str,cn@CondNode{
+                condTreeConstraints = deps <> [d],
+                condTreeData        = test { testBuildInfo = bi {targetBuildDepends = targetBuildDepends bi <> [d]}}})
+    addDepToBenchmark d (str,cn@CondNode{
         condTreeConstraints = deps,
         condTreeData        = bm@Benchmark{benchmarkBuildInfo = bi}}) = (str,cn{
-                condTreeConstraints = deps <> [dep p],
-                condTreeData        = bm { benchmarkBuildInfo = bi {targetBuildDepends = targetBuildDepends bi <> [dep p]}}})
+                condTreeConstraints = deps <> [d],
+                condTreeData        = bm { benchmarkBuildInfo = bi {targetBuildDepends = targetBuildDepends bi <> [d]}}})
     -- Empty version is probably only going to happen for ghc-prim
     dep p | null . versionBranch $ packageVersion p = Dependency (packageName p) anyVersion
     dep p = Dependency (packageName p) (
@@ -547,7 +552,7 @@ addResolveMenuItems ideR theMenu logRef = do
     when (isJust $ parseNotInScope msg) $
         addFixMenuItem (__"Add Import")  $ addImport logRef [] (\ _ -> return ())
     when (isJust $ parseHiddenModule msg) $
-        addFixMenuItem (__"Add Package") $ addPackage logRef
+        addFixMenuItem (__"Add Package") $ addPackages [logRef]
     when (length (parsePerhapsYouIntendedToUse msg) == 1) $
         addFixMenuItem (__"Add Extension") $ addExtension logRef (\ _ -> return ())
   where
