@@ -86,6 +86,7 @@ import Data.Text (Text)
 import qualified Data.Text as T
        (pack, unpack, singleton, isPrefixOf, length, null, toLower)
 import Data.Monoid ((<>))
+import Graphics.UI.Gtk.Entry.Entry (entrySetPlaceholderText)
 
 foreign import ccall safe "gtk_toolbar_set_icon_size"
   gtk_toolbar_set_icon_size :: Ptr Toolbar -> CInt -> IO ()
@@ -240,14 +241,10 @@ constructFindReplace = reifyIDE $ \ ideR   -> do
     replaceTool <- toolItemNew
     rentry <- entryNew
     widgetSetName rentry ("replaceEntry" :: Text)
+    entrySetPlaceholderText rentry $ Just ("Replace with" :: Text)
     containerAdd replaceTool rentry
     widgetSetName replaceTool ("replaceTool" :: Text)
     toolbarInsert toolbar replaceTool 0
-
-    labelTool2 <- toolItemNew
-    label2 <- labelNew (Just (__"Replace: "))
-    containerAdd labelTool2 label2
-    toolbarInsert toolbar labelTool2 0
 
     sep2 <- separatorToolItemNew
     toolbarInsert toolbar sep2 0
@@ -271,6 +268,7 @@ constructFindReplace = reifyIDE $ \ ideR   -> do
     entryTool <- toolItemNew
     entry <- entryNew
     widgetSetName entry ("searchEntry" :: Text)
+    entrySetPlaceholderText entry $ Just ("Find" :: Text)
     containerAdd entryTool entry
     widgetSetName entryTool ("searchEntryTool" :: Text)
     toolItemSetExpand entryTool True
@@ -316,11 +314,6 @@ constructFindReplace = reifyIDE $ \ ideR   -> do
     caseSensitiveButton `onToolButtonClicked`
        doSearch toolbar Insert ideR
     set caseSensitiveButton [widgetTooltipText := Just (__"When selected the search is case sensitive")]
-
-    labelTool <- toolItemNew
-    label <- labelNew (Just (__"Find: "))
-    containerAdd labelTool label
-    toolbarInsert toolbar labelTool 0
 
     after entry insertText (\ (t::Text) i -> do
         doSearch toolbar Insert ideR
@@ -407,8 +400,6 @@ constructFindReplace = reifyIDE $ \ ideR   -> do
     set toolbar [toolbarChildHomogeneous caseSensitiveButton := False]
     set toolbar [toolbarChildHomogeneous regexButton := False]
     set toolbar [toolbarChildHomogeneous replaceAllButton := False]
-    set toolbar [toolbarChildHomogeneous labelTool := False]
-    set toolbar [toolbarChildHomogeneous labelTool2 := False]
     set toolbar [toolbarChildHomogeneous labelTool3 := False]
 
     reflectIDE (modifyIDE_ (\ ide -> ide{findbar = (False, Just (toolbar, store))})) ideR
