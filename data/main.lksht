@@ -16,12 +16,16 @@ module @ModuleName@ (
     main
 ) where
 
-import Data.List (stripPrefix)
+-- This strang looking comment adds code only needed when running the
+-- doctest tests embedded in the comments
+-- $setup
+-- >>> import Data.List (stripPrefix)
 
 -- | Simple function to create a hello message.
 -- prop> stripPrefix "Hello " (hello s) == Just s
+hello :: String -> String
 hello s = "Hello " ++ s
 
-main = do
-    putStrLn (hello "World")
+main :: IO ()
+main = putStrLn (hello "World")
 

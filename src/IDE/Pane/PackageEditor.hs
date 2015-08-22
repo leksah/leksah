@@ -342,9 +342,10 @@ packageNew' workspaceDir log activateAction = do
                                 exeName    = T.unpack newPackageName
                               , modulePath = "Main.hs"
                               , buildInfo  = emptyBuildInfo {
-                                    hsSourceDirs    = ["src"]
+                                    hsSourceDirs       = ["src"]
                                   , targetBuildDepends = [Dependency (PackageName "base") anyVersion]
-                                  , defaultLanguage = Just Haskell2010}}]
+                                  , options            = [(GHC, ["-ferror-spans"])]
+                                  , defaultLanguage    = Just Haskell2010}}]
                           , testSuites = [emptyTestSuite {
                                     testName = "test-" ++ T.unpack newPackageName
                                   , testInterface = TestSuiteExeV10 (Version [1,0] []) "Main.hs"
@@ -354,6 +355,7 @@ packageNew' workspaceDir log activateAction = do
                                             Dependency (PackageName "base") anyVersion
                                           , Dependency (PackageName "QuickCheck") anyVersion
                                           , Dependency (PackageName "doctest") anyVersion]
+                                      , options            = [(GHC, ["-ferror-spans"])]
                                       , defaultLanguage = Just Haskell2010}}]
                           , benchmarks =  []
                           } dirName modules (activateAction True)
