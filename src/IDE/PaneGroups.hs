@@ -1,5 +1,6 @@
 {-# LANGUAGE ScopedTypeVariables #-}
 {-# LANGUAGE OverloadedStrings #-}
+{-# LANGUAGE LambdaCase #-}
 -----------------------------------------------------------------------------
 --
 -- Module      :  IDE.PaneGroups
@@ -24,15 +25,11 @@ module IDE.PaneGroups (
 
 import IDE.Core.State (IDEM(..), readIDE, IDEAction(..))
 import Graphics.UI.Frame.Panes
-    (getTopWidget,
-     getPane,
-     getOrBuildPane,
-     PaneDirection(..),
-     PanePathElement(..),
-     layout,
-     panePathForGroup)
+       (RecoverablePane, PanePath, getTopWidget, getPane, getOrBuildPane,
+        PaneDirection(..), PanePathElement(..), layout, panePathForGroup)
 import Graphics.UI.Frame.ViewFrame
-    (getBestPanePath, getNotebook, viewSplit', newGroupOrBringToFront)
+       (viewMoveTo, getBestPanePath, getNotebook, viewSplit',
+        newGroupOrBringToFront)
 import Control.Monad (void, unless, when, liftM)
 import IDE.Core.Types (frameState)
 import Graphics.UI.Editor.Parameters (Direction(..))
@@ -49,6 +46,14 @@ import IDE.Pane.Trace (IDETrace(..))
 import IDE.Pane.Workspace (IDEWorkspace(..))
 import Control.Monad.IO.Class (MonadIO(..))
 import IDE.Pane.WebKit.Output (IDEOutput(..))
+
+moveOrBuildPane :: RecoverablePane alpha beta delta => PanePath -> delta (Maybe alpha)
+moveOrBuildPane path = do
+    mbPane <- getOrBuildPane (Left path)
+    case mbPane of
+        Just pane -> viewMoveTo path pane
+        Nothing   -> return ()
+    return mbPane
 
 showBrowser :: IDEAction
 showBrowser = do
@@ -81,9 +86,9 @@ showBrowser = do
         _ -> return ()
   where
     getOrBuildBrowserPanes upperP lowerP topP = do
-        getOrBuildPane (Left upperP) :: IDEM (Maybe IDEModules)
-        getOrBuildPane (Left lowerP) :: IDEM (Maybe IDEInfo)
-        getOrBuildPane (Left topP) :: IDEM (Maybe IDEWorkspace)
+        moveOrBuildPane upperP :: IDEM (Maybe IDEModules)
+        moveOrBuildPane lowerP :: IDEM (Maybe IDEInfo)
+        moveOrBuildPane topP :: IDEM (Maybe IDEWorkspace)
         return ()
 
 setSensitivityDebugger :: Bool -> IDEAction
@@ -127,11 +132,13 @@ showDebugger = do
         _ -> return ()
   where
     getOrBuildDebugPanes upperP lowerP bufs = do
-        getOrBuildPane (Left lowerP) :: IDEM (Maybe IDEBreakpoints)
-        getOrBuildPane (Left lowerP) :: IDEM (Maybe IDEVariables)
-        getOrBuildPane (Left lowerP) :: IDEM (Maybe IDETrace)
-        getOrBuildPane (Left lowerP) :: IDEM (Maybe IDEOutput)
+        moveOrBuildPane lowerP :: IDEM (Maybe IDEBreakpoints)
+        moveOrBuildPane lowerP :: IDEM (Maybe IDEVariables)
+        moveOrBuildPane lowerP :: IDEM (Maybe IDETrace)
+        moveOrBuildPane lowerP :: IDEM (Maybe IDEOutput)
         unless (any (\ b -> bufferName b == "_Eval.hs") bufs) $
-            void (newTextBuffer upperP "_Eval.hs" Nothing)
+            newTextBuffer upperP "_Eval.hs" Nothing >>= \case
+                Nothing   -> return ()
+                Just pane -> viewMoveTo upperP pane
         return ()
 
