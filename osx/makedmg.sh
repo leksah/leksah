@@ -27,9 +27,7 @@ sed -e 's|TextView Font: *\"Monospace 10\"|TextView Font: "Monospace 14"|' -e 's
 
 sed -e 's|\<ctrl\>|\<meta\>|' \
     -e 's|\<alt\>|\<control\>|' \
-    -e 's|^--\<meta\>x |\<meta\>x |' \
-    -e 's|^--\<meta\>c |\<meta\>c |' \
-    -e 's|^--\<meta\>v |\<meta\>v |' \
+    -e 's|^\<meta\>q |--\<meta\>q |' \
     <data/keymap.lkshk >osx/keymap.lkshk
 cat osx/osxkeymap.lkshk >>osx/keymap.lkshk
 
