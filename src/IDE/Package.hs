@@ -416,6 +416,7 @@ packageRun' removeGhcjsFlagIfPresent package =
             let defaultLogName = T.pack . display . pkgName $ ipdPackageId package
                 logName = fromMaybe defaultLogName . listToMaybe $ map (T.pack . exeName) exe
             (logLaunch,logName) <- buildLogLaunchByName logName
+            showLog
             case maybeDebug of
                 Nothing -> do
                     let dir = ipdBuildDir package
