@@ -184,7 +184,7 @@ interruptSaveAndRun action = do
   where
     run = do
         prefs <- readIDE prefs
-        when (saveAllBeforeBuild prefs) . liftIDE . void $ fileSaveAll belongsToWorkspace
+        when (saveAllBeforeBuild prefs) . liftIDE . void $ fileSaveAll belongsToWorkspace'
         action
 
 packageConfig :: PackageAction
@@ -269,7 +269,7 @@ buildPackage backgroundBuild jumpToWarnings withoutLinking package continuation 
                             return False) priorityDefault 100
                         return ()
                 else do
-                    when (saveAllBeforeBuild prefs) . liftIDE . void $ fileSaveAll belongsToWorkspace
+                    when (saveAllBeforeBuild prefs) . liftIDE . void $ fileSaveAll belongsToWorkspace'
                     runCabalBuild backgroundBuild jumpToWarnings withoutLinking package True $ \f -> do
                         when f $ do
                             mbURI <- readIDE autoURI
@@ -282,7 +282,7 @@ buildPackage backgroundBuild jumpToWarnings withoutLinking package continuation 
             ready <- liftIO $ isEmptyMVar (currentToolCommand ghci)
             when ready $ do
                 let dir = ipdBuildDir package
-                when (saveAllBeforeBuild prefs) (do fileSaveAll belongsToWorkspace; return ())
+                when (saveAllBeforeBuild prefs) (do fileSaveAll belongsToWorkspace'; return ())
                 (`runDebug` debug) . executeDebugCommand ":reload" $ do
                     errs <- logOutputForBuild package backgroundBuild jumpToWarnings
                     unless (any isError errs) $ do
@@ -801,7 +801,7 @@ debugStart = do
                         modifyIDE_ (\ide -> ide {debugState = Nothing, autoCommand = return ()})
                         triggerEventIDE (Sensitivity [(SensitivityInterpreting, False)])
                         -- Kick of a build if one is not already due
-                        modifiedPacks <- fileCheckAll belongsToPackages
+                        modifiedPacks <- fileCheckAll belongsToPackages'
                         let modified = not (null modifiedPacks)
                         prefs <- readIDE prefs
                         when (not modified && backgroundBuild prefs) $ do

@@ -516,7 +516,7 @@ updateRecentEntries = do
             fe <- doesFileExist s
             when fe $ do
                 mi <- menuItemNewWithLabel $ T.pack s
-                mi `on` menuItemActivate $ reflectIDE (fileOpenThis s) ideR
+                mi `on` menuItemActivate $ reflectIDE (fileOpen' s) ideR
                 menuShellAppend recentFilesMenu mi) recentFiles'
         oldSubmenu <- menuItemGetSubmenu recentFilesItem
         when (isJust oldSubmenu) $ do

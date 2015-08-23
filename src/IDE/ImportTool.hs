@@ -243,7 +243,7 @@ getScopeForActiveBuffer = do
     case mbActiveBuf of
         Nothing -> return Nothing
         Just buf -> do
-            packages <- belongsToPackages buf
+            packages <- belongsToPackages' buf
             case packages of
                 [] -> return Nothing
                 pack:_ -> getPackageImportInfo pack

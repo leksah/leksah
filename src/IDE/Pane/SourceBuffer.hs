@@ -35,7 +35,6 @@ module IDE.Pane.SourceBuffer (
 
 ,   fileNew
 ,   fileOpenThis
-,   fileOpen
 ,   filePrint
 ,   fileRevert
 ,   fileClose
@@ -86,8 +85,10 @@ module IDE.Pane.SourceBuffer (
 ,   recentSourceBuffers
 ,   newTextBuffer
 ,   belongsToPackages
+,   belongsToPackages'
 ,   belongsToPackage
 ,   belongsToWorkspace
+,   belongsToWorkspace'
 ,   getIdentifierUnderCursorFromIter
 ,   useCandyFor
 
@@ -120,7 +121,7 @@ import Graphics.UI.Gtk
         notebookGetNthPage, notebookPageNum, widgetHide, dialogRun,
         messageDialogNew, scrolledWindowSetShadowType,
         scrolledWindowSetPolicy, dialogSetDefaultResponse,
-        fileChooserSetCurrentFolder, fileChooserSelectFilename,
+        fileChooserSelectFilename,
         TextSearchFlags(..))
 import qualified Graphics.UI.Gtk as Gtk hiding (eventKeyName)
 import Graphics.UI.Gtk.Windows.Window
@@ -1127,40 +1128,6 @@ fileCloseAllButWorkspace = do
             in  any (`isSubPath` fileName) paths
 
 
-fileOpen :: IDEAction
-fileOpen = do
-    window <- getMainWindow
-    prefs <- readIDE prefs
-    mbBuf <- maybeActiveBuf
-    mbFileName <- liftIO $ do
-        dialog <- fileChooserDialogNew
-                        (Just $ __ "Open File")
-                        (Just window)
-                    FileChooserActionOpen
-                    [("gtk-cancel"
-                    ,ResponseCancel)
-                    ,("gtk-open"
-                    ,ResponseAccept)]
-        case mbBuf >>= fileName of
-            Just fn -> void (fileChooserSetCurrentFolder dialog (dropFileName fn))
-            Nothing -> return ()
-        widgetShow dialog
-        response <- dialogRun dialog
-        case response of
-            ResponseAccept -> do
-                f <- fileChooserGetFilename dialog
-                widgetDestroy dialog
-                return f
-            ResponseCancel -> do
-                widgetDestroy dialog
-                return Nothing
-            ResponseDeleteEvent-> do
-                widgetDestroy dialog
-                return Nothing
-            _ -> return Nothing
-    F.forM_ mbFileName fileOpenThis
-
-
 fileOpenThis :: FilePath -> IDEAction
 fileOpenThis fp =  do
     liftIO . debugM "leksah" $ "fileOpenThis " ++ fp
@@ -1431,10 +1398,10 @@ insertTextAfterSelection str = do
             i2         <- forwardCharsC i1 (T.length realString)
             selectRange ebuf i1 i2
 
--- | Returns the packages to which this buffer belongs
+-- | Returns the packages to which this file belongs
 --   uses the 'bufferProjCache' and might extend it
-belongsToPackages :: MonadIDE m => IDEBuffer -> m [IDEPackage]
-belongsToPackages IDEBuffer{fileName = Just fp}= do
+belongsToPackages :: MonadIDE m => FilePath -> m [IDEPackage]
+belongsToPackages fp = do
     bufferToProject' <-  readIDE bufferProjCache
     ws               <-  readIDE workspace
     case Map.lookup fp bufferToProject' of
@@ -1445,16 +1412,24 @@ belongsToPackages IDEBuffer{fileName = Just fp}= do
                             let res = filter (belongsToPackage fp) (wsPackages workspace)
                             modifyIDE_ (\ide -> ide{bufferProjCache = Map.insert fp res bufferToProject'})
                             return res
-belongsToPackages _ = return []
 
--- | Checks whether a file belongs to a package (includes files in 
+-- | Returns the packages to which this buffer belongs
+--   uses the 'bufferProjCache' and might extend it
+belongsToPackages' :: MonadIDE m => IDEBuffer -> m [IDEPackage]
+belongsToPackages' = maybe (return []) belongsToPackages . fileName
+
+-- | Checks whether a file belongs to a package (includes files in
 -- sandbox source dirs)
 belongsToPackage :: FilePath -> IDEPackage -> Bool
 belongsToPackage f = any (`isSubPath` f) . ipdAllDirs
 
 -- | Checks whether a file belongs to the workspace
-belongsToWorkspace :: MonadIDE m => IDEBuffer -> m Bool
-belongsToWorkspace b =  liftM (not . null) (belongsToPackages b)
+belongsToWorkspace :: MonadIDE m => FilePath -> m Bool
+belongsToWorkspace fp = liftM (not . null) (belongsToPackages fp)
+
+-- | Checks whether a file belongs to the workspace
+belongsToWorkspace' :: MonadIDE m => IDEBuffer -> m Bool
+belongsToWorkspace' = maybe (return False) belongsToWorkspace . fileName
 
 useCandyFor :: MonadIDE m => IDEBuffer -> m Bool
 useCandyFor aBuffer = do

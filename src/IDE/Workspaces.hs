@@ -1,5 +1,6 @@
 {-# LANGUAGE ScopedTypeVariables #-}
 {-# LANGUAGE OverloadedStrings #-}
+{-# LANGUAGE LambdaCase #-}
 -----------------------------------------------------------------------------
 --
 -- Module      :  IDE.Workspace
@@ -34,6 +35,8 @@ module IDE.Workspaces (
 
 ,   backgroundMake
 ,   makePackage
+,   fileOpen
+,   fileOpen'
 ) where
 
 import IDE.Core.State
@@ -66,14 +69,17 @@ import IDE.Package
        (getModuleTemplate, getPackageDescriptionAndPath, activatePackage,
         deactivatePackage, idePackageFromPath, idePackageFromPath)
 import System.Directory
-       (getHomeDirectory, createDirectoryIfMissing, doesFileExist)
+       (getDirectoryContents, getHomeDirectory, createDirectoryIfMissing,
+        doesFileExist)
 import System.Time (getClockTime)
 import Graphics.UI.Gtk.Windows.MessageDialog
     (ButtonsType(..), MessageType(..))
 import Graphics.UI.Gtk.Windows.Dialog (ResponseId(..))
 import qualified Control.Exception as Exc (SomeException(..), throw, Exception)
 import qualified Data.Map as  Map (empty)
-import IDE.Pane.SourceBuffer (fileOpenThis, fileCheckAll, belongsToPackages)
+import IDE.Pane.SourceBuffer
+       (belongsToWorkspace, IDEBuffer(..), maybeActiveBuf, fileOpenThis,
+        fileCheckAll, belongsToPackages')
 import System.Glib.Attributes (AttrOp(..), set)
 import Graphics.UI.Gtk.General.Enums (WindowPosition(..))
 import Control.Applicative ((<$>))
@@ -98,6 +104,13 @@ import Data.Monoid ((<>))
 import qualified Text.Printf as S (printf)
 import Text.Printf (PrintfType)
 import qualified Data.Text.IO as T (writeFile)
+import Graphics.UI.Gtk.Selectors.FileChooserDialog
+       (fileChooserDialogNew)
+import Graphics.UI.Gtk.Selectors.FileChooser
+       (fileChooserGetFilename, fileChooserSetCurrentFolder,
+        FileChooserAction(..))
+import Graphics.UI.Gtk.Abstract.Widget (widgetShow)
+import Control.Exception (SomeException(..), catch)
 
 printf :: PrintfType r => Text -> r
 printf = S.printf . T.unpack
@@ -494,3 +507,96 @@ makePackage = do
                         (MoComposed steps)
                         (MoComposed (MoConfigure:steps))
                         MoMetaInfo) ws
+
+fileOpen :: IDEAction
+fileOpen = do
+    window <- getMainWindow
+    prefs <- readIDE prefs
+    mbBuf <- maybeActiveBuf
+    mbFileName <- liftIO $ do
+        dialog <- fileChooserDialogNew
+                        (Just $ __ "Open File")
+                        (Just window)
+                    FileChooserActionOpen
+                    [("gtk-cancel"
+                    ,ResponseCancel)
+                    ,("gtk-open"
+                    ,ResponseAccept)]
+        case mbBuf >>= fileName of
+            Just fn -> void (fileChooserSetCurrentFolder dialog (dropFileName fn))
+            Nothing -> return ()
+        widgetShow dialog
+        response <- dialogRun dialog
+        case response of
+            ResponseAccept -> do
+                f <- fileChooserGetFilename dialog
+                widgetDestroy dialog
+                return f
+            ResponseCancel -> do
+                widgetDestroy dialog
+                return Nothing
+            ResponseDeleteEvent-> do
+                widgetDestroy dialog
+                return Nothing
+            _ -> return Nothing
+    forM_ mbFileName fileOpen'
+
+fileOpen' :: FilePath -> IDEAction
+fileOpen' fp = do
+    window <- getMainWindow
+    knownFile <- belongsToWorkspace fp
+    unless knownFile $
+        if takeExtension fp == ".cabal"
+            then do
+                resp <- liftIO $ do
+                    md <- messageDialogNew
+                        (Just window) []
+                        MessageQuestion
+                        ButtonsNone
+                        (__ "Would you like to add the package " <> T.pack fp
+                            <> __ " to the workspace so that it can be built by Leksah?")
+                    dialogAddButton md (__ "_Add " <> T.pack (takeFileName fp)) (ResponseUser 1)
+                    dialogAddButton md (__ "Just _open " <> T.pack (takeFileName fp)) (ResponseUser 2)
+                    dialogSetDefaultResponse md (ResponseUser 1)
+                    resp <- dialogRun md
+                    widgetDestroy md
+                    return resp
+                case resp of
+                    ResponseUser 1 -> workspaceTry $ do
+                        workspaceAddPackage' fp
+                        return ()
+                    _ -> return ()
+            else liftIO (findCabalFile fp) >>= \case
+                Nothing -> return ()
+                Just cabalFile -> do
+                    resp <- liftIO $ do
+                        md <- messageDialogNew
+                            (Just window) []
+                            MessageQuestion
+                            ButtonsNone
+                            (__ "The file " <> T.pack fp
+                                <> __ " seems to belong to the package " <> T.pack cabalFile
+                                <> __ " would you like to add " <> T.pack (takeFileName cabalFile)
+                                <> __ " to your workspace?")
+                        dialogAddButton md (__ "_Add " <> T.pack (takeFileName cabalFile)) (ResponseUser 1)
+                        dialogAddButton md (__ "Just _open " <> T.pack (takeFileName fp)) (ResponseUser 2)
+                        dialogSetDefaultResponse md (ResponseUser 1)
+                        resp <- dialogRun md
+                        widgetDestroy md
+                        return resp
+                    case resp of
+                        ResponseUser 1 -> workspaceTry $ do
+                            workspaceAddPackage' cabalFile
+                            return ()
+                        _ -> return ()
+    fileOpenThis fp
+  where
+    findCabalFile :: FilePath -> IO (Maybe FilePath)
+    findCabalFile fp = (do
+            let dir = takeDirectory fp
+            cabal <- filter ((== ".cabal") . takeExtension) <$> getDirectoryContents dir
+            case cabal of
+                (c:_) -> return . Just $ dir </> c
+                _ | fp == dir -> return Nothing
+                  | otherwise -> findCabalFile dir
+        ) `catch` (\(_ :: SomeException) -> return Nothing)
