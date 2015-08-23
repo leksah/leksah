@@ -1,4 +1,4 @@
-{-# LANGUAGE ScopedTypeVariables, OverloadedStrings #-}
+{-# LANGUAGE ScopedTypeVariables, OverloadedStrings, LambdaCase #-}
 -----------------------------------------------------------------------------
 --
 -- Module      :  IDE.Completion
@@ -36,6 +36,7 @@ import Data.Text (Text)
 import qualified Data.Text as T
        (empty, commonPrefixes, pack, unpack, null, stripPrefix,
         isPrefixOf)
+import System.Log.Logger (debugM)
 
 complete :: TextEditor editor => EditorView editor -> Bool -> IDEAction
 complete sourceView always = do
@@ -181,47 +182,47 @@ addEventHandling window sourceView tree store isWordChar always = do
         selection   <- liftIO $ treeViewGetSelection tree
         count       <- liftIO $ treeModelIterNChildren model Nothing
         Just column <- liftIO $ treeViewGetColumn tree 0
+        let whenVisible f = liftIO (get tree widgetVisible) >>= \case
+                                True  -> f
+                                False -> return False
+            down = whenVisible $ do
+                maybeRow <- liftIO $ getRow tree
+                let newRow = maybe 0 (+ 1) maybeRow
+                when (newRow < count) . liftIO $ do
+                    treeSelectionSelectPath selection [newRow]
+                    treeViewScrollToCell tree (Just [newRow]) Nothing Nothing
+                return True
+            up = whenVisible $ do
+                maybeRow <- liftIO $ getRow tree
+                let newRow = maybe 0 (\ row -> row - 1) maybeRow
+                when (newRow >= 0) . liftIO $ do
+                    treeSelectionSelectPath selection [newRow]
+                    treeViewScrollToCell tree (Just [newRow]) Nothing Nothing
+                return True
         case (name, modifier, char) of
-            ("Tab", _, _) -> do visible <- liftIO $ get tree widgetVisible
-                                if visible then
-                                  (do liftIDE $
-                                        tryToUpdateOptions window tree store sourceView True isWordChar
-                                          always
-                                      return True)
-                                  else return False
-            ("Return", _, _) -> do visible <- liftIO $ get tree widgetVisible
-                                   if visible then
-                                     (do maybeRow <- liftIO $ getRow tree
-                                         case maybeRow of
-                                             Just row -> do liftIO $ treeViewRowActivated tree [row] column
-                                                            return True
-                                             Nothing -> do liftIDE cancel
-                                                           return False)
-                                     else return False
-            ("Down", _, _) -> do visible <- liftIO $ get tree widgetVisible
-                                 if visible then
-                                   (do maybeRow <- liftIO $ getRow tree
-                                       let newRow = maybe 0 (+ 1) maybeRow
-                                       when (newRow < count) $
-                                         liftIO $
-                                           do treeSelectionSelectPath selection [newRow]
-                                              treeViewScrollToCell tree (Just [newRow]) Nothing Nothing
-                                       return True)
-                                   else return False
-            ("Up", _, _) -> do visible <- liftIO $ get tree widgetVisible
-                               if visible then
-                                 (do maybeRow <- liftIO $ getRow tree
-                                     let newRow = maybe 0 (\ row -> row - 1) maybeRow
-                                     when (newRow >= 0) $
-                                       liftIO $
-                                         do treeSelectionSelectPath selection [newRow]
-                                            treeViewScrollToCell tree (Just [newRow]) Nothing Nothing
-                                     return True)
-                                 else return False
+            ("Tab", _, _) -> whenVisible . liftIDE $ do
+                tryToUpdateOptions window tree store sourceView True isWordChar always
+                return True
+            ("Return", _, _) -> whenVisible $ do
+                maybeRow <- liftIO $ getRow tree
+                case maybeRow of
+                    Just row -> do
+                        liftIO $ treeViewRowActivated tree [row] column
+                        return True
+                    Nothing -> do
+                        liftIDE cancel
+                        return False
+            ("Down", _, _) -> down
+            ("Up", _, _) -> up
+            (super, _, Just 'a') | super `elem` ["Super_L", "Super_R"] -> do
+                liftIO $ debugM "leksah" "Completion - Super 'a' key press"
+                down
+            (super, _, Just 'l') | super `elem` ["Super_L", "Super_R"] -> do
+                liftIO $ debugM "leksah" "Completion - Super 'l' key press"
+                up
             (_, _, Just c) | isWordChar c -> return False
             ("BackSpace", _, _) -> return False
-            (shift, _, _) | (shift == "Shift_L") || (shift == "Shift_R") ->
-                            return False
+            (key, _, _) | key `elem` ["Shift_L", "Shift_R", "Super_L", "Super_R"] -> return False
             _ -> do liftIDE cancel
                     return False
 
