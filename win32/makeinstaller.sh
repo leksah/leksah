@@ -83,7 +83,7 @@ $LN  "$GTK_PREFIX_U"/bin/libgio-2.0-0.dll SourceDir/bin
 $LN  "$GTK_PREFIX_U"/bin/libglib-2.0-0.dll SourceDir/bin
 $LN  "$GTK_PREFIX_U"/bin/libgmodule-2.0-0.dll SourceDir/bin
 $LN  "$GTK_PREFIX_U"/bin/libgmp-10.dll SourceDir/bin
-$LN  "$GTK_PREFIX_U"/bin/libgnutls-28.dll SourceDir/bin
+$LN  "$GTK_PREFIX_U"/bin/libgnutls-*.dll SourceDir/bin
 $LN  "$GTK_PREFIX_U"/bin/libgobject-2.0-0.dll SourceDir/bin
 $LN  "$GTK_PREFIX_U"/bin/libgst*-1.0-0.dll SourceDir/bin
 $LN  "$GTK_PREFIX_U"/bin/libgthread-2.0-0.dll SourceDir/bin
@@ -91,11 +91,11 @@ $LN  "$GTK_PREFIX_U"/bin/libgtk-3-0.dll SourceDir/bin
 $LN  "$GTK_PREFIX_U"/bin/libgtksourceview-3.0-1.dll SourceDir/bin
 $LN  "$GTK_PREFIX_U"/bin/libharfbuzz-0.dll SourceDir/bin
 $LN  "$GTK_PREFIX_U"/bin/libharfbuzz-icu-0.dll SourceDir/bin
-$LN  "$GTK_PREFIX_U"/bin/libhogweed-2-5.dll SourceDir/bin
+$LN  "$GTK_PREFIX_U"/bin/libhogweed-*.dll SourceDir/bin
 $LN  "$GTK_PREFIX_U"/bin/libintl-8.dll SourceDir/bin
 $LN  "$GTK_PREFIX_U"/bin/libjavascriptcoregtk-3.0-0.dll SourceDir/bin
 $LN  "$GTK_PREFIX_U"/bin/libjpeg-62.dll SourceDir/bin
-$LN  "$GTK_PREFIX_U"/bin/libnettle-4-7.dll SourceDir/bin
+$LN  "$GTK_PREFIX_U"/bin/libnettle-*.dll SourceDir/bin
 $LN  "$GTK_PREFIX_U"/bin/libp11-kit-0.dll SourceDir/bin
 $LN  "$GTK_PREFIX_U"/bin/libpango-1.0-0.dll SourceDir/bin
 $LN  "$GTK_PREFIX_U"/bin/libpangocairo-1.0-0.dll SourceDir/bin
