@@ -456,22 +456,18 @@ backgroundMake :: IDEAction
 backgroundMake = catchIDE (do
     ideR        <- ask
     prefs       <- readIDE prefs
-    mbPackage   <- readIDE activePack
     debug       <- isJust <$> readIDE debugState
-    case mbPackage of
-        Nothing         -> return ()
-        Just package    -> do
-            modifiedPacks <- if saveAllBeforeBuild prefs
-                                then fileCheckAll belongsToPackages
-                                else return []
-            let isModified = not (null modifiedPacks)
-            when isModified $ do
-                let settings = defaultMakeSettings prefs
-                steps <- buildSteps $ msRunUnitTests settings
-                workspaceTryQuiet $ if debug || msSingleBuildWithoutLinking settings && not (msMakeMode settings)
-                    then makePackages settings modifiedPacks (MoComposed steps) (MoComposed []) moNoOp
-                    else makePackages settings modifiedPacks (MoComposed steps)
-                                        (MoComposed (MoConfigure:steps)) MoMetaInfo
+    modifiedPacks <- if saveAllBeforeBuild prefs
+                        then fileCheckAll belongsToPackages'
+                        else return []
+    let isModified = not (null modifiedPacks)
+    when isModified $ do
+        let settings = defaultMakeSettings prefs
+        steps <- buildSteps $ msRunUnitTests settings
+        workspaceTryQuiet $ if debug || msSingleBuildWithoutLinking settings && not (msMakeMode settings)
+            then makePackages settings modifiedPacks (MoComposed steps) (MoComposed []) moNoOp
+            else makePackages settings modifiedPacks (MoComposed steps)
+                                (MoComposed (MoConfigure:steps)) MoMetaInfo
     )
     (\(e :: Exc.SomeException) -> sysMessage Normal (T.pack $ show e))
 
