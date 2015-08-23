@@ -720,7 +720,7 @@ getActionsFor SensitivityProjectActive = getActionsFor'
     ,"OpenDocPackage","FileCloseAll"]
 getActionsFor SensitivityError = getActionsFor' ["NextError", "PreviousError"]
 getActionsFor SensitivityEditor = getActionsFor' ["EditUndo", "EditRedo",
-        "EditGotoLine","EditComment", "EditUncomment",
+        "EditGotoLine","EditComment", "EditUncomment", "EditSelectAll",
         "EditShiftLeft", "EditShiftRight","FileClose",
         "OpenDocu"
         ]
