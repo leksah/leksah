@@ -1,4 +1,4 @@
-#!/bin/sh
+#!/bin/bash
 
 if test -e ~/.bash_profile; then
     . ~/.bash_profile
