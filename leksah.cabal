@@ -360,7 +360,7 @@ library
     hs-source-dirs: src
     other-modules:
         Paths_leksah
-    ghc-options: -O -fwarn-missing-fields -fwarn-incomplete-patterns -ferror-spans
+    ghc-options: -fwarn-missing-fields -fwarn-incomplete-patterns -ferror-spans
 
 executable leksah
 
@@ -395,7 +395,7 @@ executable leksah
         stm >=2.4.4 && <2.5
     default-language: Haskell2010
     hs-source-dirs: main
-    ghc-options: -O -rtsopts -fwarn-missing-fields -fwarn-incomplete-patterns -ferror-spans
+    ghc-options: -rtsopts -fwarn-missing-fields -fwarn-incomplete-patterns -ferror-spans
 
 executable bewleksah
     main-is: Main.hs
