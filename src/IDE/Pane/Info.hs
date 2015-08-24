@@ -69,7 +69,7 @@ data InfoState              =   InfoState (Maybe Descr)
 
 instance Pane IDEInfo IDEM
     where
-    primPaneName _  =   __ "Info"
+    primPaneName _  =   __ "Symbol Info"
     getAddedIndex _ =   0
     getTopWidget    =   castToWidget . sw
     paneId b        =   "*Info"

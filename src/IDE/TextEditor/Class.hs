@@ -21,7 +21,7 @@ module IDE.TextEditor.Class (
 
 import IDE.Core.Types
        (LogRefType, IDE(..), IDERef, IDEM, IDEEventM, EditorStyle(..),
-        IDEAction(..), editorStyle)
+        IDEAction(..), Prefs (..), editorStyle)
 import Graphics.UI.Editor.Basics (Connection)
 import Control.Monad.Reader (ReaderT(..))
 import Graphics.UI.Gtk
@@ -34,13 +34,11 @@ import Control.Monad.IO.Class (MonadIO(..))
 import System.Glib.Signals (on)
 import Data.Text (Text)
 import IDE.Core.State (readIDE)
-import IDE.Utils.GUIUtils (getDarkState)
 
 updateStyle :: TextEditor editor => EditorBuffer editor -> IDEAction
 updateStyle ebuf = do
     prefs <- readIDE prefs
-    preferDark <- getDarkState
-    setStyle ebuf $ editorStyle preferDark prefs
+    setStyle ebuf $ editorStyle (darkUserInterface prefs) prefs
 
 class TextEditor editor where
     data EditorBuffer editor

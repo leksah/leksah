@@ -410,7 +410,6 @@ startMainWindow yiControl sessionFP mbWorkspaceFP sourceFPs startupPrefs isFirst
     on win deleteEvent . liftIO $ reflectIDE quit ideR >> return True
     reflectIDE (instrumentWindow win startupPrefs (castToWidget nb)) ideR
     reflectIDE (do
-        setCandyState (fst (sourceCandy startupPrefs))
         setBackgroundBuildToggled (backgroundBuild startupPrefs)
         setRunUnitTests (runUnitTests startupPrefs)
         setMakeModeToggled (makeMode startupPrefs)) ideR

@@ -55,7 +55,8 @@ import Graphics.UI.Gtk
         actionGroupNew, UIManager, widgetShowAll, menuItemSetSubmenu,
         widgetDestroy, menuItemGetSubmenu, menuShellAppend,
         menuItemActivate, menuItemNewWithLabel, menuNew, Packing(..),
-        ToolbarStyle(..), PositionType(..), on, IconSize(..), Modifier(..))
+        ToolbarStyle(..), PositionType(..), on, IconSize(..), Modifier(..),
+        widgetSetSensitive)
 import System.FilePath
 import Data.Version
 import Prelude hiding (catch)
@@ -105,7 +106,7 @@ import IDE.Pane.WebKit.Output (getOutputPane)
 import IDE.Pane.WebKit.Inspect (getInspectPane)
 import IDE.Pane.Files (refreshFiles, getFiles)
 import Control.Monad.IO.Class (MonadIO(..))
-import Control.Monad (unless, when)
+import Control.Monad (unless, when, forM_, filterM)
 import Control.Monad.Trans.Reader (ask)
 import System.Log.Logger (debugM)
 import Foreign.C.Types (CInt(..))
@@ -114,7 +115,7 @@ import Foreign.ForeignPtr (withForeignPtr)
 import Graphics.UI.GtkInternals (unToolbar)
 import IDE.Session
        (saveSessionAs, loadSession, saveSession, sessionClosePane,
-        loadSessionPrompt, saveSessionAsPrompt, viewFullScreen, viewDark)
+        loadSessionPrompt, saveSessionAsPrompt, viewFullScreen)
 import qualified Data.Text as T (unpack, pack)
 import Data.Text (Text)
 import qualified Data.Text.IO as T (readFile)
@@ -142,15 +143,24 @@ mkActions =
     AD "vcs" (__ "Version Con_trol") Nothing Nothing (return ()) [] False
     ,AD "FilePrint" (__ "_Print File") Nothing Nothing filePrint [] False
     ,AD "File" (__ "_File") Nothing Nothing (return ()) [] False
-    ,AD "FileNew" (__ "_New Module...") Nothing (Just "gtk-new")
+    ,AD "FileNew" (__ "_New") Nothing Nothing (return ()) [] False
+    ,AD "FileNewWorkspace" (__ "_Workspace...") Nothing Nothing
+        (workspaceNew >> showWorkspace) [] False
+    ,AD "FileNewPackage" (__ "_Package...") Nothing Nothing
+        (showWorkspace >> workspaceTry workspacePackageNew) [] False
+    ,AD "FileNewModule" (__ "_Module...") Nothing (Just "gtk-new")
         (packageTry $ addModule []) [] False
-    ,AD "FileNewTextFile" (__ "_New Text File") Nothing Nothing
+    ,AD "FileNewTextFile" (__ "_Text File...") Nothing Nothing
         fileNew [] False
-    ,AD "FileOpen" (__ "_Open...") Nothing (Just "gtk-open")
+    ,AD "FileOpen" (__ "_Open") Nothing Nothing (return ()) [] False
+    ,AD "FileOpenWorkspace" (__ "_Workspace...") Nothing Nothing
+        (workspaceOpen >> showWorkspace) [] False
+    ,AD "FileOpenPackage" (__ "_Package...") Nothing Nothing
+        (showWorkspace >> workspaceTry workspaceAddPackage) [] False
+    ,AD "FileOpenFile" (__ "_File...") Nothing (Just "gtk-open")
         fileOpen [] False
-    ,AD "RecentFiles" (__ "Open _Recent") Nothing Nothing (return ()) [] False
-    ,AD "FileRevert" (__ "_Revert") Nothing Nothing
-        fileRevert [] False
+    ,AD "FileRecentFiles" (__ "Recent Files") Nothing Nothing (return ()) [] False
+    ,AD "FileRecentWorkspaces" (__ "Recent Workspaces") Nothing Nothing (return ()) [] False
     ,AD "FileSave" (__ "_Save") Nothing (Just "gtk-save")
         (do fileSave False; return ()) [] False
     ,AD "FileSaveAs" (__ "Save _As...") Nothing (Just "gtk-save-as")
@@ -159,6 +169,8 @@ mkActions =
         (do fileSaveAll (\ b -> return (bufferName b /= "_Eval.hs")); return ()) [] False
     ,AD "FileClose" (__ "_Close") Nothing (Just "gtk-close")
         (do fileClose; return ()) [] False
+    ,AD "FileCloseWorkspace" (__ "Close Workspace") Nothing Nothing
+        workspaceClose [] False
     ,AD "FileCloseAll" (__ "Close All") Nothing Nothing
         (do fileCloseAll (\ b -> return (bufferName b /= "_Eval.hs")); return ()) [] False
     ,AD "FileCloseAllButPackage" (__ "Close All But Package") Nothing Nothing
@@ -212,17 +224,11 @@ mkActions =
         (align ':') [] False
 
     ,AD "Workspace" (__ "_Workspace") Nothing Nothing (return ()) [] False
-    ,AD "NewWorkspace" (__ "_New...") Nothing Nothing
-        (workspaceNew >> showWorkspace) [] False
-    ,AD "OpenWorkspace" (__ "_Open...") Nothing Nothing
-        (workspaceOpen >> showWorkspace) [] False
-    ,AD "RecentWorkspaces" (__ "Open _Recent") Nothing Nothing (return ()) [] False
-    ,AD "CloseWorkspace" (__ "_Close") Nothing Nothing
-        workspaceClose [] False
-
-    ,AD "CleanWorkspace" (__ "Cl_ean") (Just (__ "Cleans all packages")) (Just "ide_clean")
+    ,AD "WorkspaceAddPackage" (__ "_Add Package...") Nothing Nothing
+        (showWorkspace >> workspaceTry workspaceAddPackage) [] False
+    ,AD "CleanWorkspace" (__ "Cl_ean all packages") (Just (__ "Cleans all packages in the workspace")) (Just "ide_clean")
         (workspaceTry workspaceClean) [] False
-    ,AD "MakeWorkspace" (__ "_Make") (Just (__ "Makes all of this workspace")) (Just "ide_configure")
+    ,AD "MakeWorkspace" (__ "_Build all packages") (Just (__ "Builds all of the packages in the workspace")) (Just "ide_configure")
         (workspaceTry workspaceMake) [] False
     ,AD "NextError" (__ "_Next Error") (Just (__ "Go to the next error")) (Just "ide_error_next")
         nextError [] False
@@ -230,11 +236,7 @@ mkActions =
         previousError [] False
 
     ,AD "Package" (__ "_Package") Nothing Nothing (return ()) [] False
-    ,AD "NewPackage" (__ "_New...") Nothing Nothing
-        (showWorkspace >> workspaceTry workspacePackageNew) [] False
-    ,AD "AddPackage" (__ "_Add...") Nothing Nothing
-        (showWorkspace >> workspaceTry workspaceAddPackage) [] False
-    ,AD "ClonePackage" (__ "Add From Source _Repository...") Nothing Nothing
+    ,AD "ClonePackage" (__ "Add Package From Source _Repository...") Nothing Nothing
         (showWorkspace >> workspaceTry workspacePackageClone) [] False
 --    ,AD "RecentPackages" "_Recent Packages" Nothing Nothing (return ()) [] False
     ,AD "PackageEdit" (__ "_Edit") Nothing Nothing (return ()) [] False
@@ -286,7 +288,7 @@ mkActions =
         (packageTry packageTest) [] False
     ,AD "SdistPackage" (__ "Source Dist") Nothing Nothing
         (packageTry packageSdist) [] False
-    ,AD "OpenDocPackage" (__ "_Open Doc") Nothing Nothing
+    ,AD "OpenDocPackage" (__ "_Open Documentation") Nothing Nothing
         (packageTry packageOpenDoc) [] False
 
     ,AD "Debug" (__ "_Debug") Nothing Nothing (return ()) [] False
@@ -371,19 +373,17 @@ mkActions =
         rebuildSystemInfo [] False
 
     ,AD "Session" (__ "_Session") Nothing Nothing (return ()) [] False
-    ,AD "SaveSession" (__ "_Save Session") Nothing Nothing
+    ,AD "SaveSession" (__ "_Save Session As...") Nothing Nothing
         saveSessionAsPrompt [] False
     ,AD "LoadSession" (__ "_Load Session") Nothing Nothing
         loadSessionPrompt [] False
-    ,AD "ForgetSession" (__ "_Forget Session") Nothing Nothing
-        (return ()) [] True
 
     ,AD "Panes" (__ "_Panes") Nothing Nothing (return ()) [] False
     ,AD "ShowBrowser" (__ "Browser") Nothing Nothing
         showBrowser [] False
     ,AD "ShowModules" (__ "Modules") Nothing Nothing
         showModules [] False
-    ,AD "ShowInfo" (__ "Info") Nothing Nothing
+    ,AD "ShowInfo" (__ "Symbol _Info") Nothing Nothing
         showInfo [] False
     ,AD "ShowDebugger" (__ "Debugger") Nothing Nothing
         showDebugger [] False
@@ -433,8 +433,6 @@ mkActions =
         viewDetachInstrumented [] False
     ,AD "ViewFullScreen" (__ "_Full Screen") Nothing Nothing
         viewFullScreen [] True
-    ,AD "ViewDark" (__ "Dark") Nothing Nothing
-        viewDark [] True
 
     ,AD "ViewTabsLeft" (__ "Tabs Left") Nothing Nothing
         (viewTabsPos PosLeft) [] False
@@ -468,10 +466,8 @@ mkActions =
     ,AD "ToggleToolbar" (__ "Toggle Toolbar") Nothing Nothing
         toggleToolbar [] False
 
-    ,AD "Configuration" (__ "_Configuration") Nothing Nothing (return ()) [] False
-    ,AD "EditCandy" (__ "_To Candy") Nothing Nothing
-        editCandy [] True
-    ,AD "PrefsEdit" (__ "_Edit Prefs") Nothing Nothing
+    ,AD "Tools" (__ "_Tools") Nothing Nothing (return ()) [] False
+    ,AD "PrefsEdit" (__ "_Preferences") Nothing Nothing
         (getPrefs Nothing >>= \ p -> displayPane p False) [] False
 
     ,AD "Help" (__ "_Help") Nothing Nothing (return ()) [] False
@@ -489,7 +485,7 @@ mkActions =
         runUnitTestsToggled [] True
     ,AD "MakeModeToggled" (__ "_MakeMode") (Just (__ "Make dependent packages")) (Just "ide_make")
         makeModeToggled [] True
-    ,AD "DebugToggled" "_GHCi" (Just (__ "Use GHCi debugger to build and run")) (Just "ide_debug")
+    ,AD "DebugToggled" "_Enable GHCi" (Just (__ "Use GHCi debugger to build and run")) (Just "ide_debug")
         debugToggled [] True
     ,AD "OpenDocu" (__ "_OpenDocu") (Just (__ "Opens a browser for a search of the selected data")) Nothing
         openDocu [] True
@@ -509,28 +505,40 @@ updateRecentEntries = do
     recentFiles'       <-  readIDE recentFiles
     recentWorkspaces'  <-  readIDE recentWorkspaces
     recentFilesItem    <-  getRecentFiles
-    recentWorkspacesItem <-  getRecentWorkspaces
+    recentWorkspacesItem <- getRecentWorkspaces
     reifyIDE (\ ideR -> do
         recentFilesMenu    <-  menuNew
-        mapM_ (\s -> do
-            fe <- doesFileExist s
-            when fe $ do
-                mi <- menuItemNewWithLabel $ T.pack s
-                mi `on` menuItemActivate $ reflectIDE (fileOpen' s) ideR
-                menuShellAppend recentFilesMenu mi) recentFiles'
+        existingRecentFiles <- filterM doesFileExist recentFiles'
+        if null existingRecentFiles
+            then do
+                mi <- menuItemNewWithLabel (T.pack "No recently opened files")
+                widgetSetSensitive mi False
+                menuShellAppend recentFilesMenu mi
+            else
+                forM_ recentFiles' $ \s -> do
+                    mi <- menuItemNewWithLabel $ T.pack s
+                    mi `on` menuItemActivate $ reflectIDE (fileOpen' s) ideR
+                    menuShellAppend recentFilesMenu mi
         oldSubmenu <- menuItemGetSubmenu recentFilesItem
         when (isJust oldSubmenu) $ do
             widgetHide (fromJust oldSubmenu)
             widgetDestroy (fromJust oldSubmenu)
         menuItemSetSubmenu recentFilesItem recentFilesMenu
         widgetShowAll recentFilesMenu
+
         recentWorkspacesMenu    <-  menuNew
-        mapM_ (\s -> do
-            fe <- doesFileExist s
-            when fe $ do
-                mi <- menuItemNewWithLabel $ T.pack s
-                mi `on` menuItemActivate $ reflectIDE (workspaceOpenThis True (Just s) >> showWorkspace) ideR
-                menuShellAppend recentWorkspacesMenu mi) recentWorkspaces'
+        existingRecentWorkspaces <- filterM doesFileExist recentWorkspaces'
+        if null existingRecentWorkspaces
+            then do
+                mi <- menuItemNewWithLabel (T.pack "No recently opened workspaces")
+                widgetSetSensitive mi False
+                menuShellAppend recentWorkspacesMenu mi
+            else
+                forM_ existingRecentWorkspaces $ \s -> do
+                    mi <- menuItemNewWithLabel $ T.pack s
+                    mi `on` menuItemActivate $ reflectIDE (workspaceOpenThis True (Just s) >> showWorkspace) ideR
+                    menuShellAppend recentWorkspacesMenu mi
+
         oldSubmenu <- menuItemGetSubmenu recentWorkspacesItem
         when (isJust oldSubmenu) $ do
             widgetHide (fromJust oldSubmenu)
@@ -652,7 +660,9 @@ textPopupMenu ideR menu = do
 canQuit :: IDEM Bool
 canQuit = do
     modifyIDE_ (\ide -> ide{currentState = IsShuttingDown})
-    saveSession :: IDEAction
+    prefs <- readIDE prefs
+    when (saveSessionOnClose prefs) $
+        saveSession
     can <- fileCloseAll (\_ -> return True)
     unless can $ modifyIDE_ (\ide -> ide{currentState = IsRunning})
     return can
@@ -779,7 +789,6 @@ instrumentWindow win prefs topWidget = do
         windowAddAccelGroup win acc
         containerAdd win vb
         reflectIDE (do
-            setCandyState (fst (sourceCandy prefs))
             setBackgroundBuildToggled (backgroundBuild prefs)
             setRunUnitTests (runUnitTests prefs)
             setMakeModeToggled (makeMode prefs)) ideR
@@ -822,8 +831,7 @@ handleSpecialKeystrokes ideR = do
             flipUp
             return True
         _                                                            -> do
-                bs <- getCandyState
-                when bs (editKeystrokeCandy mbChar)
+                when (candyState prefs') (editKeystrokeCandy mbChar)
                 sk  <- readIDE specialKey
                 sks <- readIDE specialKeys
                 case sk of

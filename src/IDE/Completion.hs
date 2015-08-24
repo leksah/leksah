@@ -31,7 +31,6 @@ import Control.Monad.Trans.Reader (ask)
 import qualified Control.Monad.Reader as Gtk (liftIO)
 import Control.Monad.Trans.Class (MonadTrans(..))
 import Control.Applicative ((<$>))
-import IDE.Utils.GUIUtils (getDarkState)
 import Data.Text (Text)
 import qualified Data.Text as T
        (empty, commonPrefixes, pack, unpack, null, stripPrefix,

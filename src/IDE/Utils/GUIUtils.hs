@@ -20,13 +20,8 @@ module IDE.Utils.GUIUtils (
 ,   showDialog
 ,   showErrorDialog
 
-,   getCandyState
-,   setCandyState
 ,   getFullScreenState
 ,   setFullScreenState
-,   getDarkState
-,   setDarkState
-,   getForgetSession
 
 ,   getBackgroundBuildToggled
 ,   setBackgroundBuildToggled
@@ -169,17 +164,12 @@ showDialog msg msgType = do
 showErrorDialog :: Text -> IO ()
 showErrorDialog msg = showDialog msg MessageError
 
+
+
+
+
 -- get widget elements (menu & toolbar)
 
-getCandyState :: PaneMonad alpha => alpha Bool
-getCandyState = do
-    ui <- getUIAction "ui/menubar/_Configuration/Source Candy" castToToggleAction
-    liftIO $toggleActionGetActive ui
-
-setCandyState :: PaneMonad alpha => Bool -> alpha ()
-setCandyState b = do
-    ui <- getUIAction "ui/menubar/_Configuration/Source Candy" castToToggleAction
-    liftIO $toggleActionSetActive ui b
 
 getFullScreenState :: PaneMonad alpha => alpha Bool
 getFullScreenState = do
@@ -190,21 +180,6 @@ setFullScreenState :: PaneMonad alpha => Bool -> alpha ()
 setFullScreenState b = do
     ui <- getUIAction "ui/menubar/_View/_Full Screen" castToToggleAction
     liftIO $toggleActionSetActive ui b
-
-getDarkState :: PaneMonad alpha => alpha Bool
-getDarkState = do
-    ui <- getUIAction "ui/menubar/_View/Dark" castToToggleAction
-    liftIO $toggleActionGetActive ui
-
-setDarkState :: PaneMonad alpha => Bool -> alpha ()
-setDarkState b = do
-    ui <- getUIAction "ui/menubar/_View/Dark" castToToggleAction
-    liftIO $toggleActionSetActive ui b
-
-getForgetSession :: PaneMonad alpha => alpha Bool
-getForgetSession = do
-    ui <- getUIAction "ui/menubar/_Configuration/Forget Session" castToToggleAction
-    liftIO $toggleActionGetActive ui
 
 getMenuItem :: Text -> IDEM MenuItem
 getMenuItem path = do
@@ -255,8 +230,10 @@ setDebugToggled b = do
     liftIO $ toggleActionSetActive ui b
 
 getRecentFiles , getRecentWorkspaces, getVCS :: IDEM MenuItem
-getRecentFiles    = getMenuItem "ui/menubar/_File/Open _Recent"
-getRecentWorkspaces = getMenuItem "ui/menubar/_Workspace/Open _Recent"
+getRecentFiles    = getMenuItem "ui/menubar/_File/Recent Files"
+
+
+getRecentWorkspaces = getMenuItem "ui/menubar/_File/Recent Workspaces"
 getVCS = getMenuItem "ui/menubar/Version Con_trol" --this could fail, try returning Menu if it does
 -- (toolbar)
 

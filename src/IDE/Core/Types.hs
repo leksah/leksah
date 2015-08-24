@@ -56,6 +56,7 @@ module IDE.Core.Types (
 ,   KeyString
 
 ,   Prefs(..)
+,   candyState
 ,   cabalCommand
 ,   EditorStyle(..)
 ,   editorStyle
@@ -461,6 +462,8 @@ data Prefs = Prefs {
     ,   tabWidth            ::   Int
     ,   wrapLines           ::   Bool
     ,   sourceCandy         ::   (Bool,Text)
+    ,   darkUserInterface   ::   Bool
+    ,   saveSessionOnClose  ::   Bool
     ,   keymapName          ::   Text
     ,   forceLineEnds       ::   Bool
     ,   removeTBlanks       ::   Bool
@@ -515,6 +518,9 @@ data Prefs = Prefs {
 
 cabalCommand :: Prefs -> FilePath
 cabalCommand p = if useCabalDev p then "cabal-dev" else "cabal"
+
+candyState :: Prefs -> Bool
+candyState = fst . sourceCandy
 
 data EditorStyle = EditorStyle { styleName    :: Maybe Text
                                , preferDark   :: Bool
