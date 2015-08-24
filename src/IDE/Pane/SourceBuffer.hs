@@ -137,7 +137,7 @@ import System.Glib.Attributes (AttrOp(..), set)
 import IDE.BufferMode
 import Control.Monad.Trans.Reader (ask)
 import Control.Monad.IO.Class (MonadIO(..))
-import Control.Monad (filterM, void, unless, when, liftM)
+import Control.Monad (filterM, void, unless, when, liftM, forM_)
 import Control.Exception as E (catch, SomeException)
 
 import qualified IDE.Command.Print as Print
@@ -1439,9 +1439,10 @@ useCandyFor aBuffer = do
 editCandy = do
     use <- liftIDE getCandyState
     buffers <- allBuffers
-    if use
-        then mapM_ (\b -> modeEditToCandy (mode b)
-            (modeEditInCommentOrString (mode b))) buffers
-        else mapM_ (modeEditFromCandy . mode) buffers
+    forM_ buffers $ \b@IDEBuffer{sourceView=sv} -> do
+        buf <- getBuffer sv
+        if use
+            then modeTransformToCandy (mode b) (modeEditInCommentOrString (mode b)) buf
+            else modeTransformFromCandy (mode b) buf
 
 

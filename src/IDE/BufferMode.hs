@@ -152,6 +152,7 @@ data Mode = Mode {
     modeSelectedModuleName :: IDEM (Maybe Text),
     modeEditToCandy        :: (Text -> Bool) -> IDEAction,
     modeTransformToCandy   :: forall editor . TextEditor editor => (Text -> Bool) -> EditorBuffer editor -> IDEAction,
+    modeTransformFromCandy   :: forall editor . TextEditor editor => EditorBuffer editor -> IDEAction,
     modeEditFromCandy      :: IDEAction,
     modeEditKeystrokeCandy :: Maybe Char -> (Text -> Bool) -> IDEAction,
     modeEditInsertCode     :: forall editor . TextEditor editor => Text -> EditorIter editor -> EditorBuffer editor -> IDEAction,
@@ -189,6 +190,9 @@ haskellMode = Mode {
     modeTransformToCandy = \ inCommentOrString ebuf -> do
         ct <- readIDE candy
         transformToCandy ct ebuf inCommentOrString,
+    modeTransformFromCandy = \buf -> do
+        ct <- readIDE candy
+        transformFromCandy ct buf,
     modeEditToCandy = \ inCommentOrString -> do
         ct <- readIDE candy
         inActiveBufContext () $ \_ _ ebuf _ _ ->
@@ -234,6 +238,9 @@ literalHaskellMode = Mode {
     modeTransformToCandy = \ inCommentOrString ebuf -> do
         ct <- readIDE candy
         transformToCandy ct ebuf inCommentOrString,
+    modeTransformFromCandy = \buf -> do
+        ct <- readIDE candy
+        transformFromCandy ct buf,
     modeEditToCandy = \ inCommentOrString -> do
         ct <- readIDE candy
         inActiveBufContext () $ \_ _ ebuf _ _ ->
@@ -268,6 +275,7 @@ cabalMode = Mode {
         return (),
     modeSelectedModuleName   = return Nothing,
     modeTransformToCandy     = \ _ _ -> return (),
+    modeTransformFromCandy   = \_ -> return (),
     modeEditToCandy          = \ _ -> return (),
     modeEditFromCandy        = return (),
     modeEditKeystrokeCandy   = \ _ _ -> return (),
@@ -282,6 +290,7 @@ otherMode = Mode {
     modeEditUncomment        = return (),
     modeSelectedModuleName   = return Nothing,
     modeTransformToCandy     = \ _ _ -> return (),
+    modeTransformFromCandy   = \_ -> return (),
     modeEditToCandy          = \ _ -> return (),
     modeEditFromCandy        = return (),
     modeEditKeystrokeCandy   = \_ _ -> return (),
