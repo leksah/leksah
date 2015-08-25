@@ -51,6 +51,10 @@ data-files:
     language-specs/lucius.lang
     language-specs/julius.lang
     language-specs/jmacro.lang
+    pics/ide_folder.png
+    pics/ide_source_folder.png
+    pics/ide_package.png
+    pics/ide_cabal_file.png
     pics/ide_class.png
     pics/ide_configure.png
     pics/ide_data.png
@@ -260,7 +264,6 @@ library
         IDE.Core.Types
         IDE.Core.State
         IDE.Metainfo.Provider
-        IDE.Pane.Preferences
         IDE.Pane.PackageEditor
         IDE.Pane.HLint
         IDE.Pane.Info

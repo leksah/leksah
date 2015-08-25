@@ -65,12 +65,11 @@ import Data.Maybe
 
 import IDE.Core.State
 import IDE.Pane.SourceBuffer
-import IDE.Pane.Preferences
 import IDE.Pane.PackageFlags
 import IDE.Pane.PackageEditor
 import IDE.Pane.Errors
 import IDE.Package
-import IDE.Preferences
+import IDE.Preferences (runPreferencesDialog, applyInterfaceTheme)
 import IDE.HLint
 import IDE.Sandbox
 import IDE.Pane.Log
@@ -705,7 +704,8 @@ newIcons = catch (do
             "ide_method","ide_newtype","ide_other","ide_rule","ide_run","ide_slot",
             "ide_source","ide_type","leksah", "ide_reexported", "ide_clean", "ide_link", "ide_build",
             "ide_debug", "ide_step", "ide_local", "ide_module", "ide_continue", "ide_rebuild_meta",
-            "ide_empty","ide_source_local", "ide_js"]
+            "ide_empty","ide_source_local", "ide_js", "ide_folder", "ide_source_folder",
+            "ide_cabal_file", "ide_package"]
         iconFactoryAddDefault iconFactory)
     (\(e :: SomeException) -> getDataDir >>= \dataDir -> throwIDE (T.pack $ printf (__ "Can't load icons from %s %s") dataDir (show e)))
     where

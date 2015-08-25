@@ -20,7 +20,10 @@
 
 
 module IDE.Preferences (
-runPreferencesDialog
+  runPreferencesDialog
+, applyInterfaceTheme
+, readPrefs
+, writePrefs
 ) where
 
 import Graphics.UI.Gtk
@@ -72,7 +75,7 @@ import qualified Data.Text as T (isSuffixOf, unpack, pack, null)
 import Data.Monoid ((<>))
 import Control.Applicative ((<$>))
 import Distribution.Text (display, simpleParse)
-import IDE.Pane.Files (refreshFiles)
+import IDE.Pane.Files (IDEFiles(..), refreshFiles, rebuildFilesPane)
 import Data.Foldable (forM_)
 import IDE.Pane.Errors (fillErrorList)
 import GHC.IO (evaluate)
@@ -185,7 +188,7 @@ runPreferencesDialog = reifyIDE $ \ideR -> do
 
 -- | This needs to be incremented when the preferences format changes
 prefsVersion :: Int
-prefsVersion = 4
+prefsVersion = 5
 
 
 -- | Represents the Preferences dialog
@@ -482,6 +485,14 @@ prefsDescription configDir packages = NFDPP [
             (\b a -> a {showHiddenFiles = b})
             boolEditor
             (const refreshFiles)
+    ,   mkFieldPP
+            (paraName <<<- ParaName (__ "Show icons in the file tree") $ emptyParams)
+            (PP.text . show)
+            boolParser
+            showFileIcons
+            (\b a -> a {showFileIcons = b})
+            boolEditor
+            (\_ -> rebuildFilesPane)
     ,   mkFieldPP
             (paraName <<<- ParaName (__ "Use ctrl Tab for Notebook flipper") $ emptyParams)
             (PP.text . show)
@@ -908,6 +919,7 @@ defaultPrefs = Prefs {
     ,   serverIP            =   "127.0.0.1"
     ,   endWithLastConn     =   True
     ,   showHiddenFiles     =   False
+    ,   showFileIcons       =   True
     }
 
 -- ------------------------------------------------------------

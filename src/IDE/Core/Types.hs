@@ -507,6 +507,7 @@ data Prefs = Prefs {
     ,   printBindResult     ::   Bool
     ,   serverIP            ::   Text
     ,   showHiddenFiles     ::   Bool
+    ,   showFileIcons       ::   Bool
             -- As well used by server
     ,   serverPort          ::   Int
     ,   sourceDirectories   ::   [FilePath]

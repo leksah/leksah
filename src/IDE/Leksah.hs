@@ -46,7 +46,7 @@ import IDE.Utils.FileUtils
 import Graphics.UI.Editor.MakeEditor
 import Graphics.UI.Editor.Parameters
 import IDE.Command
-import IDE.Pane.Preferences
+import IDE.Preferences
 import IDE.Keymap
 import IDE.Pane.SourceBuffer
 import IDE.Find
