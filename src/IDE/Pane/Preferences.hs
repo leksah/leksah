@@ -28,6 +28,7 @@ module IDE.Pane.Preferences (
 ,   defaultPrefs
 ,   prefsDescription
 ,   getPrefs
+,   applyInterfaceTheme
 ) where
 
 import Graphics.UI.Gtk
@@ -38,6 +39,7 @@ import Graphics.UI.Gtk
         buttonNewFromStock, hButtonBoxNew, vBoxNew, castToWidget, VBox,
         ShadowType(..), Packing(..), fontDescriptionFromString, AttrOp(..),
         FileChooserAction(..), Color(..), ResponseId(..))
+import Graphics.UI.Gtk.General.Settings
 import qualified Text.PrettyPrint.HughesPJ as PP
 import Distribution.Package
 import Data.IORef
@@ -87,12 +89,13 @@ import Control.Applicative ((<$>))
 import Distribution.Text (display, simpleParse)
 import IDE.Pane.Files (refreshFiles)
 import Data.Foldable (forM_)
+import IDE.Pane.Errors (fillErrorList)
 
 -- ---------------------------------------------------------------------
 -- This needs to be incremented, when the preferences format changes
 --
 prefsVersion :: Int
-prefsVersion = 3
+prefsVersion = 4
 
 
 -- | Represents the Preferences pane
@@ -108,7 +111,7 @@ data PrefsState             =   PrefsState
 
 instance Pane IDEPrefs IDEM
     where
-    primPaneName _  =   __ "Prefs"
+    primPaneName _  =   __ "Preferences"
     getAddedIndex _ =   0
     getTopWidget    =   castToWidget . prefsBox
     paneId b        =   "*Prefs"
@@ -349,13 +352,7 @@ prefsDescription configDir packages = NFDPP [
                 paraName <<<- ParaName (__ "Candy specification")
                                     $ emptyParams)
                     True (__ "Use it ?"))
-            (\cs -> case cs of
-                        (False,_) -> do
-                            setCandyState False
-                            editCandy
-                        (True,name) -> do
-                            setCandyState True
-                            editCandy)
+            (\_ -> switchBuffersCandy)
     ,   mkFieldPP
             (paraName <<<- ParaName (__ "Editor Style") $ emptyParams)
             (\a -> PP.text (case a of (False,_) -> show ""; (True, s) -> show s))
@@ -485,8 +482,17 @@ prefsDescription configDir packages = NFDPP [
             (comboSelectionEditor ["GtkSourceView", "Yi", "CodeMirror"] id)
             (\i -> return ())
     ]),
-    (__ "GUI Options", VFDPP emptyParams [
+    (__ "User Interface", VFDPP emptyParams [
         mkFieldPP
+            -- TODO: be able to load different gtk themes
+            (paraName <<<- ParaName (__ "User interface theme") $ emptyParams)
+            (PP.text . show)
+            stringParser
+            (\prefs -> if darkUserInterface prefs then "Dark" else "Light")
+            (\str a -> a {darkUserInterface = str == "Dark"})
+            (comboSelectionEditor ["Dark", "Light"] id)
+            (\_ -> applyInterfaceTheme)
+    ,   mkFieldPP
             (paraName <<<- ParaName (__ "LogView Font") $ emptyParams)
             (\a -> PP.text (case a of Nothing -> show ""; Just s -> show s))
             (do str <- stringParser
@@ -501,8 +507,8 @@ prefsDescription configDir packages = NFDPP [
     ,   mkFieldPP
             (paraName <<<- ParaName (__ "Window default size")
                 $ paraSynopsis <<<- ParaSynopsis
-                    (__ "Default size of the main ide window specified as pair (int,int)")
-                    $ paraShadow <<<- ParaShadow ShadowIn $ emptyParams)
+                    (__ "Default size of the main ide window specified as pair")
+                $ paraShadow <<<- ParaShadow ShadowIn $ emptyParams)
             (PP.text.show)
             (pairParser intParser)
             defaultSize (\(c,d) a -> a{defaultSize = (c,d)})
@@ -546,6 +552,19 @@ prefsDescription configDir packages = NFDPP [
             (\b a -> a{keymapName = b})
             (textEditor (not . T.null) True)
             (\ a -> return ())
+    ]),
+    (__ "Sessions", VFDPP emptyParams [
+         mkFieldPP
+            (paraName <<<- ParaName (__ "Save the session (open files, pane positioning and sizing, etc) before closing a workspace") $
+                paraSynopsis <<<- ParaSynopsis
+                    (__ "Save the session (open files, pane positioning and sizing, etc) before closing a workspace")
+                    $ paraShadow <<<- ParaShadow ShadowIn  $ emptyParams)
+            (PP.text . show)
+            boolParser
+            saveSessionOnClose
+            (\b a -> a{saveSessionOnClose = b})
+            boolEditor
+            (\_ -> return ())
     ]),
     (__ "Initial Pane positions", VFDPP emptyParams [
         mkFieldPP
@@ -815,6 +834,29 @@ prefsDescription configDir packages = NFDPP [
             (\i -> return ())
     ])]
 
+getActiveSettings :: PaneMonad alpha => alpha (Maybe Settings)
+getActiveSettings = do
+    mbScreen <- getActiveScreen
+    case mbScreen of
+        Nothing -> return Nothing
+        Just screen -> liftIO $ Just <$> settingsGetForScreen screen
+
+applyInterfaceTheme :: IDEAction
+applyInterfaceTheme = do
+    setInfoStyle
+    fillErrorList False
+    prefs <- readIDE prefs
+    buffers <- allBuffers
+    mapM_ updateStyle' buffers
+    mbSettings <- getActiveSettings
+    case mbSettings of
+        Just settings -> liftIO $ settingsSetLongProperty
+                            settings
+                            ("gtk-application-prefer-dark-theme" :: Text)
+                            (if darkUserInterface prefs then 1 else 0)
+                            "Leksah"
+        Nothing -> return ()
+
 -- | Editor for enabling a different syntax stylesheet
 styleEditor :: Editor (Bool, Text)
 styleEditor p n = do
@@ -835,6 +877,8 @@ defaultPrefs = Prefs {
     ,   tabWidth            =   4
     ,   wrapLines           =   False
     ,   sourceCandy         =   (False,"candy")
+    ,   darkUserInterface   = False
+    ,   saveSessionOnClose  = True
     ,   keymapName          =   "keymap"
     ,   forceLineEnds       =   True
     ,   removeTBlanks       =   True

@@ -24,7 +24,6 @@ module IDE.Session (
 ,   loadSession
 ,   loadSessionPrompt
 ,   viewFullScreen
-,   viewDark
 ) where
 
 import Prelude hiding (catch)
@@ -81,7 +80,7 @@ import Data.Foldable (forM_)
 -- This needs to be incremented, when the session format changes
 --
 theSessionVersion :: Int
-theSessionVersion = 1
+theSessionVersion = 2
 
 -- ---------------------------------------------------------------------
 -- All pane types must be in here !
@@ -171,7 +170,6 @@ data SessionState = SessionState {
     ,   population          ::   [(Maybe PaneState,PanePath)]
     ,   windowSize          ::   (Int,Int)
     ,   fullScreen          ::   Bool
-    ,   dark                ::   Bool
     ,   completionSize      ::   (Int,Int)
     ,   workspacePath       ::   Maybe FilePath
     ,   activePaneN         ::   Maybe Text
@@ -235,7 +233,6 @@ defaultSession = SessionState {
                                 , (Just (WorkspaceSt WorkspaceState),[SplitP RightP,SplitP BottomP])]
     ,   windowSize          =   (1024,768)
     ,   fullScreen          =   False
-    ,   dark                =   False
     ,   completionSize      =   (750,400)
     ,   workspacePath       =   Nothing
     ,   activePaneN         =   Nothing
@@ -292,12 +289,6 @@ sessionDescr = [
             readParser
             fullScreen
             (\b a -> a{fullScreen = b})
-    ,   mkFieldS
-            (paraName <<<- ParaName "Dark" $ emptyParams)
-            (PP.text . show)
-            readParser
-            dark
-            (\b a -> a{dark = b})
     ,   mkFieldS
             (paraName <<<- ParaName "Completion size" $ emptyParams)
             (PP.text . show)
@@ -357,55 +348,50 @@ saveSession = do
 
 saveSessionAs :: FilePath -> Maybe FilePath ->  IDEAction
 saveSessionAs sessionPath mbSecondPath = do
-    forget          <- getForgetSession
-    if forget
-        then ideMessage Normal (__ "Forget this session")
-        else do
-            sysMessage Normal (__ "Now saving session")
-            bufs <- allBuffers
-            case filter (\b -> bufferName b == "_Eval.hs") bufs of
-                [IDEBuffer{sourceView = sv}] -> do
-                    ebuf <- getBuffer sv
-                    setModified ebuf False
-                _     -> return ()
-            wdw             <-  getMainWindow
-            layout          <-  mkLayout
-            population      <-  getPopulation
-            size            <-  liftIO $ windowGetSize wdw
-            fullScreen      <-  getFullScreenState
-            dark            <-  getDarkState
-            (completionSize,_) <- readIDE completion
-            mbWs            <-  readIDE workspace
-            activePane'     <-  getActivePane
-            let activeP =   case activePane' of
-                                Nothing -> Nothing
-                                Just (s,_) -> Just s
-            (toolbarVisible,_)  <- readIDE toolbar
-            findState       <- getFindState
-            (findbarVisible,_)  <- readIDE findbar
-            timeNow         <- liftIO getClockTime
-            recentFiles'      <- readIDE recentFiles
-            recentWorkspaces' <- readIDE recentWorkspaces
-            let state = SessionState {
-                sessionVersion      =   theSessionVersion
-            ,   saveTime            =   T.pack $ show timeNow
-            ,   layoutS             =   layout
-            ,   population          =   population
-            ,   windowSize          =   size
-            ,   fullScreen          =   fullScreen
-            ,   dark                =   dark
-            ,   completionSize      =   completionSize
-            ,   workspacePath       =   case mbWs of
-                                            Nothing -> Nothing
-                                            Just ws -> Just (wsFile ws)
-            ,   activePaneN         =   activeP
-            ,   toolbarVisibleS     =   toolbarVisible
-            ,   findbarState        =   (findbarVisible,findState)
-            ,   recentOpenedFiles   =   recentFiles'
-            ,   recentOpenedWorksp  =   recentWorkspaces'}
-            liftIO $ writeFields sessionPath state sessionDescr
-            when (isJust mbSecondPath) $
-                liftIO $ writeFields (fromJust mbSecondPath) state sessionDescr
+    sysMessage Normal (__ "Now saving session")
+    bufs <- allBuffers
+    case filter (\b -> bufferName b == "_Eval.hs") bufs of
+        [IDEBuffer{sourceView = sv}] -> do
+            ebuf <- getBuffer sv
+            setModified ebuf False
+        _     -> return ()
+    wdw             <-  getMainWindow
+    layout          <-  mkLayout
+    population      <-  getPopulation
+    size            <-  liftIO $ windowGetSize wdw
+    fullScreen      <-  getFullScreenState
+    dark            <-  darkUserInterface <$> readIDE prefs
+    (completionSize,_) <- readIDE completion
+    mbWs            <-  readIDE workspace
+    activePane'     <-  getActivePane
+    let activeP =   case activePane' of
+                        Nothing -> Nothing
+                        Just (s,_) -> Just s
+    (toolbarVisible,_)  <- readIDE toolbar
+    findState       <- getFindState
+    (findbarVisible,_)  <- readIDE findbar
+    timeNow         <- liftIO getClockTime
+    recentFiles'      <- readIDE recentFiles
+    recentWorkspaces' <- readIDE recentWorkspaces
+    let state = SessionState {
+        sessionVersion      =   theSessionVersion
+    ,   saveTime            =   T.pack $ show timeNow
+    ,   layoutS             =   layout
+    ,   population          =   population
+    ,   windowSize          =   size
+    ,   fullScreen          =   fullScreen
+    ,   completionSize      =   completionSize
+    ,   workspacePath       =   case mbWs of
+                                    Nothing -> Nothing
+                                    Just ws -> Just (wsFile ws)
+    ,   activePaneN         =   activeP
+    ,   toolbarVisibleS     =   toolbarVisible
+    ,   findbarState        =   (findbarVisible,findState)
+    ,   recentOpenedFiles   =   recentFiles'
+    ,   recentOpenedWorksp  =   recentWorkspaces'}
+    liftIO $ writeFields sessionPath state sessionDescr
+    when (isJust mbSecondPath) $
+        liftIO $ writeFields (fromJust mbSecondPath) state sessionDescr
 
 saveSessionAsPrompt :: IDEAction
 saveSessionAsPrompt = do
@@ -583,8 +569,6 @@ recoverSession sessionPath = catchIDE (do
                                         recentWorkspaces = recentOpenedWorksp sessionSt})
         setFullScreenState (fullScreen sessionSt)
         viewFullScreen
-        setDarkState (dark sessionSt)
-        viewDark
         liftIO $ debugM "leksah" "recoverSession done"
         return (toolbarVisibleS sessionSt, (fst . findbarState) sessionSt))
         (\ (e :: SomeException) -> do
@@ -654,31 +638,4 @@ viewFullScreen = do
         (Nothing, _)         -> return ()
         (Just window, True)  -> liftIO $ windowFullscreen window
         (Just window, False) -> liftIO $ windowUnfullscreen window
-
-viewDark :: IDEAction
-viewDark = getDarkState >>= setDark
-
-getActiveSettings :: PaneMonad alpha => alpha (Maybe Settings)
-getActiveSettings = do
-    mbScreen <- getActiveScreen
-    case mbScreen of
-        Nothing -> return Nothing
-        Just screen -> liftIO $ Just <$> settingsGetForScreen screen
-
-setDark :: Bool -> IDEM ()
-setDark dark = do
-    setInfoStyle
-    fillErrorList False
-    prefs <- readIDE prefs
-    buffers <- allBuffers
-    mapM_ updateStyle' buffers
-    mbSettings <- getActiveSettings
-    case mbSettings of
-        Just settings -> liftIO $ settingsSetLongProperty
-                            settings
-                            ("gtk-application-prefer-dark-theme" :: Text)
-                            (if dark then 1 else 0)
-                            "Leksah"
-        Nothing -> return ()
-
 

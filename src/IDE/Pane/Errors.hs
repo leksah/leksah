@@ -34,7 +34,7 @@ import IDE.ImportTool
 import Data.List (elemIndex)
 import IDE.LogRef (showSourceSpan)
 import Control.Monad.IO.Class (MonadIO(..))
-import IDE.Utils.GUIUtils (getDarkState, treeViewContextMenu, __)
+import IDE.Utils.GUIUtils (treeViewContextMenu, __)
 import Data.Text (Text)
 import Control.Monad (foldM_, unless, void, when, forM_)
 import qualified Data.Text as T
@@ -156,7 +156,7 @@ fillErrorList' pane = do
     refs <- readIDE errorRefs
     ac   <- liftIO $ readIORef (autoClose pane)
     when (Seq.null refs && ac) . void $ closePane pane
-    isDark <- getDarkState
+    isDark <- darkUserInterface <$> readIDE prefs
     liftIO $ do
         let store = errorStore pane
         listStoreClear store
@@ -173,7 +173,7 @@ fillErrorList' pane = do
 -- | Add any LogRef to the Errors pane at a given index
 addErrorToList :: Bool -- ^ Whether to display the pane
                -> Int  -- ^ The index to insert at
-               -> LogRef 
+               -> LogRef
                -> IDEAction
 addErrorToList False index lr = getPane >>= maybe (return ()) (addErrorToList' index lr)
 addErrorToList True  index lr = getErrors Nothing  >>= \ p -> addErrorToList' index lr p >> displayPane p False
@@ -185,7 +185,7 @@ addErrorToList' index lr pane = do
 --    refs <- readIDE errorRefs
     ac   <- liftIO $ readIORef (autoClose pane)
 --    when (null refs && ac) . void $ closePane pane
-    isDark <- getDarkState
+    isDark <- darkUserInterface <$> readIDE prefs
     liftIO $ do
         let store = errorStore pane
 --        listStoreClear store
@@ -265,9 +265,9 @@ errorsSelect ideR store [index] _ = do
 errorsSelect _ _ _ _ = return ()
 
 
--- | Select the matching errors for a 'SrcSpan' in the Errors 
+-- | Select the matching errors for a 'SrcSpan' in the Errors
 --   pane, or none at all
-selectMatchingErrors :: Maybe SrcSpan -- ^ When @Nothing@, unselects any errors in the pane 
+selectMatchingErrors :: Maybe SrcSpan -- ^ When @Nothing@, unselects any errors in the pane
                      -> IDEM ()
 selectMatchingErrors mbSpan = do
     mbErrors <- getPane

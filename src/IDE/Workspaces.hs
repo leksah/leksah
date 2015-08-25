@@ -240,7 +240,9 @@ workspaceClose = do
         Just ws -> do
             VCSWS.onWorkspaceClose
             let oldActivePackFile = wsActivePackFile ws
-            triggerEventIDE (SaveSession (dropExtension (wsFile ws) ++ leksahSessionFileExtension))
+            prefs <- readIDE prefs
+            when (saveSessionOnClose prefs) $
+                triggerEventIDE_ (SaveSession (dropExtension (wsFile ws) ++ leksahSessionFileExtension))
             addRecentlyUsedWorkspace (wsFile ws)
             Writer.setWorkspace Nothing
             when (isJust oldActivePackFile) $ do

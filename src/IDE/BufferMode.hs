@@ -36,7 +36,6 @@ import Data.Typeable (cast, Typeable)
 import IDE.SourceCandy
        (getCandylessText, keystrokeCandy, transformFromCandy,
         transformToCandy)
-import IDE.Utils.GUIUtils (getCandyState)
 import Control.Monad (when)
 import Data.Maybe (mapMaybe, catMaybes)
 import IDE.Utils.FileUtils

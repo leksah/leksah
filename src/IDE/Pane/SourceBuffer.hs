@@ -61,7 +61,7 @@ module IDE.Pane.SourceBuffer (
 ,   editToCandy
 ,   editFromCandy
 ,   editKeystrokeCandy
-,   editCandy
+,   switchBuffersCandy
 
 ,   updateStyle
 ,   updateStyle'
@@ -520,7 +520,7 @@ newTextBuffer panePath bn mbfn =
     where buildPane contents mModTime = do
             nb      <-  getNotebook panePath
             prefs   <-  readIDE prefs
-            bs      <-  getCandyState
+            let bs = candyState prefs
             ct      <-  readIDE candy
             (ind,rbn) <- figureOutPaneName bn 0
             buildThisPane panePath nb (builder' bs mbfn ind bn rbn ct prefs contents mModTime)
@@ -1433,15 +1433,16 @@ belongsToWorkspace' = maybe (return False) belongsToWorkspace . fileName
 
 useCandyFor :: MonadIDE m => IDEBuffer -> m Bool
 useCandyFor aBuffer = do
-    use <- liftIDE getCandyState
-    return (use && isHaskellMode (mode aBuffer))
+    prefs <- readIDE prefs
+    return (candyState prefs && isHaskellMode (mode aBuffer))
 
-editCandy = do
-    use <- liftIDE getCandyState
+switchBuffersCandy :: IDEAction
+switchBuffersCandy = do
+    prefs <- readIDE prefs
     buffers <- allBuffers
     forM_ buffers $ \b@IDEBuffer{sourceView=sv} -> do
         buf <- getBuffer sv
-        if use
+        if candyState prefs
             then modeTransformToCandy (mode b) (modeEditInCommentOrString (mode b)) buf
             else modeTransformFromCandy (mode b) buf
 

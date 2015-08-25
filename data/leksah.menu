@@ -1,17 +1,30 @@
    <ui>
     <menubar>
       <menu name="_File" action="File">
-       <menuitem name="_New Module..." action="FileNew" />
-       <menuitem name="New _Text File" action="FileNewTextFile" />
-       <menuitem name="_Open..." action="FileOpen" />
-       <menuitem name="Open _Recent" action="RecentFiles"/>
+       <menu name="_New" action="FileNew">
+           <menuitem name="_Workspace..." action="FileNewWorkspace" />
+           <menuitem name="_Package..." action="FileNewPackage" />
+           <menuitem name="_Module..." action="FileNewModule" />
+           <menuitem name="_Text File..." action="FileNewTextFile" />
+       </menu>
+       <menu name="_Open" action="FileOpen">
+           <menuitem name="_Workspace..." action="FileOpenWorkspace" />
+           <menuitem name="_Package..." action="FileOpenPackage" />
+           <menuitem name="_File..." action="FileOpenFile" />
+       </menu>
+       <separator />
        <menuitem name="_Save" action="FileSave" />
        <menuitem name="Save _As..." action="FileSaveAs" />
        <menuitem name="Save _All" action="FileSaveAll" />
-       <menuitem name="_Revert" action="FileRevert" />
        <menuitem name="_Close" action="FileClose" />
        <menuitem name="_Print File" action="FilePrint" />
        <separator/>
+       <menu name="Recent Files" action="FileRecentFiles">
+       </menu>
+       <menu name="Recent Workspaces" action="FileRecentWorkspaces">
+       </menu>
+       <separator/>
+       <menuitem name="Close Workspace" action="FileCloseWorkspace" />
        <menuitem name="Close All" action="FileCloseAll" />
        <menuitem name="Close All but Package" action="FileCloseAllButPackage" />
        <menuitem name="Close All but Workspace" action="FileCloseAllButWorkspace" />
@@ -44,22 +57,17 @@
        <menuitem name="Align ::" action="EditAlignTypeSig" />
      </menu>
     <menu name="_Workspace" action="Workspace">
-       <menuitem name="_New..." action="NewWorkspace" />
-       <menuitem name="_Open..." action="OpenWorkspace" />
-       <menuitem name="Open _Recent" action="RecentWorkspaces"/>
-       <menuitem name="_Close" action="CloseWorkspace" />
-       <separator/>
-       <menuitem name="_Clean" action="CleanWorkspace" />
-       <menuitem name="_Make" action="MakeWorkspace" />
+       <menuitem name="_Add Package" action="WorkspaceAddPackage" />
+       <menuitem name="_Add Package From Source Repository..." action="ClonePackage" />
+       <separator />
+       <menuitem name="Cl_ean all packages" action="CleanWorkspace" />
+       <menuitem name="_Build all packages" action="MakeWorkspace" />
        <separator/>
        <menuitem name="_Next Error" action="NextError" />
        <menuitem name="_Previous Error" action="PreviousError" />
        <menuitem name="Resol_ve Errors" action="ResolveErrors" />
      </menu>
     <menu name="_Package" action="Package">
-       <menuitem name="_New..." action="NewPackage" />
-       <menuitem name="_Add..." action="AddPackage" />
-       <menuitem name="_Add From Source Repository..." action="ClonePackage" />
        <menu name="_Edit" action="PackageEdit">
           <menuitem name="With _Package Editor" action="EditPackage" />
           <menuitem name="With _Text Editor" action="EditPackageText" />
@@ -87,10 +95,10 @@
        <menuitem name="SDist" action="SdistPackage" />
        <menuitem name="_Build Documentation" action="DocPackage" />
        <separator/>
-       <menuitem name="Open Documentation" action="OpenDocPackage" />
+       <menuitem name="_Open Documentation" action="OpenDocPackage" />
      </menu>
     <menu name="_Debug" action="Debug">
-       <menuitem name="GHCi" action="DebugToggled" />
+       <menuitem name="_Enable GHCi" action="DebugToggled" />
        <menuitem name="Continue" action="DebugContinue" />
        <menuitem name="Abandon" action="DebugAbandon" />
        <menuitem name="Stop" action="DebugStop" />
@@ -108,7 +116,7 @@
     <menu name="_Panes" action="Panes">
        <menuitem name="_Browser" action="ShowBrowser" />
        <menuitem name="_Modules" action="ShowModules" />
-       <menuitem name="_Info" action="ShowInfo" />
+       <menuitem name="Symbol _Info" action="ShowInfo" />
        <separator/>
        <menuitem name="_Debugger" action="ShowDebugger" />
        <menuitem name="_Breakpoints" action="ShowBreakpointsPane" />
@@ -134,7 +142,7 @@
        <menuitem name="_Group" action="ViewNest" />
        <menuitem name="_Detach" action="ViewDetach" />
        <menuitem name="_Full Screen" action="ViewFullScreen" />
-       <menuitem name="Dark" action="ViewDark" />
+       <menuitem name="_Use Dark Interface" action="UseDarkInterface" />
        <separator/>
        <menuitem name="Move _Left" action="ViewMoveLeft" />
        <menuitem name="Move _Right" action="ViewMoveRight" />
@@ -150,18 +158,17 @@
        <menuitem name="Clear Log" action="ClearLog" />
        <menuitem name="Toggle Toolbar" action="ToggleToolbar" />
      </menu>
-    <menu name="_Configuration" action="Configuration">
-       <menuitem name="Source Candy" action="EditCandy" />
-       <menuitem name="Edit general Preferences" action="PrefsEdit" />
-       <separator/>
+    <menu name="_Tools" action="Tools">
        <menuitem name="Update workspace data" action="UpdateMetadataCurrent" />
        <menuitem name="Rebuild workspace data" action="RebuildMetadataCurrent" />
        <menuitem name="Update system data" action="UpdateMetadataLib" />
        <menuitem name="Rebuild system data" action="RebuildMetadataLib" />
        <separator/>
-       <menuitem name="Save Session" action="SaveSession" />
+       <menuitem name="Save Session As..." action="SaveSession" />
        <menuitem name="Load Session" action="LoadSession" />
-       <menuitem name="Forget Session" action="ForgetSession" />
+       <separator/>
+       <menuitem name="_Preferences" action="PrefsEdit" />
+       <separator/>
     </menu>
     <menu name="Version Con_trol" action="vcs">
     </menu>
@@ -174,8 +181,8 @@
     <toolbar name="toolbar">
      <placeholder name="FileToolItems">
        <separator/>
-       <toolitem name="New" action="FileNew"/>
-       <toolitem name="Open" action="FileOpen"/>
+       <toolitem name="New Module" action="FileNewModule"/>
+       <toolitem name="Open" action="FileOpenFile"/>
        <toolitem name="Save" action="FileSave"/>
        <toolitem name="Close" action="ViewClosePane"/>
        <separator/>
