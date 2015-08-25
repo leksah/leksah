@@ -433,7 +433,8 @@ mkActions =
         viewDetachInstrumented [] False
     ,AD "ViewFullScreen" (__ "_Full Screen") Nothing Nothing
         viewFullScreen [] True
-
+    ,AD "UseDarkInterface" (__ "_Use Dark Interface") Nothing Nothing
+        viewUseDarkInterface [] True
     ,AD "ViewTabsLeft" (__ "Tabs Left") Nothing Nothing
         (viewTabsPos PosLeft) [] False
     ,AD "ViewTabsRight" (__ "Tabs Right") Nothing Nothing
@@ -761,6 +762,14 @@ viewDetachInstrumented = do
         Just (win,wid) -> do
             instrumentSecWindow win
             liftIO $ widgetShowAll win
+
+viewUseDarkInterface :: IDEAction
+viewUseDarkInterface = do
+    prefs <- readIDE prefs
+    let useDark = darkUserInterface prefs
+    let prefs' = prefs {darkUserInterface = not useDark}
+    modifyIDE_ (\ide -> ide {prefs = prefs'})
+    applyInterfaceTheme
 
 instrumentWindow :: Window -> Prefs -> Widget -> IDEAction
 instrumentWindow win prefs topWidget = do

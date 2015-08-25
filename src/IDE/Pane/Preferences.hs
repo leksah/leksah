@@ -28,6 +28,7 @@ module IDE.Pane.Preferences (
 ,   defaultPrefs
 ,   prefsDescription
 ,   getPrefs
+,   applyInterfaceTheme
 ) where
 
 import Graphics.UI.Gtk
@@ -481,7 +482,7 @@ prefsDescription configDir packages = NFDPP [
             (comboSelectionEditor ["GtkSourceView", "Yi", "CodeMirror"] id)
             (\i -> return ())
     ]),
-    (__ "GUI Options", VFDPP emptyParams [
+    (__ "User Interface", VFDPP emptyParams [
         mkFieldPP
             -- TODO: be able to load different gtk themes
             (paraName <<<- ParaName (__ "User interface theme") $ emptyParams)
@@ -490,7 +491,7 @@ prefsDescription configDir packages = NFDPP [
             (\prefs -> if darkUserInterface prefs then "Dark" else "Light")
             (\str a -> a {darkUserInterface = str == "Dark"})
             (comboSelectionEditor ["Dark", "Light"] id)
-            (\str -> setDark (str == "Dark"))
+            (\_ -> applyInterfaceTheme)
     ,   mkFieldPP
             (paraName <<<- ParaName (__ "LogView Font") $ emptyParams)
             (\a -> PP.text (case a of Nothing -> show ""; Just s -> show s))
@@ -840,9 +841,8 @@ getActiveSettings = do
         Nothing -> return Nothing
         Just screen -> liftIO $ Just <$> settingsGetForScreen screen
 
-
-setDark :: Bool -> IDEM ()
-setDark dark = do
+applyInterfaceTheme :: IDEAction
+applyInterfaceTheme = do
     setInfoStyle
     fillErrorList False
     prefs <- readIDE prefs
@@ -853,7 +853,7 @@ setDark dark = do
         Just settings -> liftIO $ settingsSetLongProperty
                             settings
                             ("gtk-application-prefer-dark-theme" :: Text)
-                            (if dark then 1 else 0)
+                            (if darkUserInterface prefs then 1 else 0)
                             "Leksah"
         Nothing -> return ()
 

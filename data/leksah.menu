@@ -142,6 +142,7 @@
        <menuitem name="_Group" action="ViewNest" />
        <menuitem name="_Detach" action="ViewDetach" />
        <menuitem name="_Full Screen" action="ViewFullScreen" />
+       <menuitem name="_Use Dark Interface" action="UseDarkInterface" />
        <separator/>
        <menuitem name="Move _Left" action="ViewMoveLeft" />
        <menuitem name="Move _Right" action="ViewMoveRight" />
