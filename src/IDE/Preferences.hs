@@ -6,39 +6,24 @@
 {-# LANGUAGE OverloadedStrings #-}
 -----------------------------------------------------------------------------
 --
--- Module      :  IDE.Pane.Preferences
--- Copyright   :  (c) Juergen Nicklisch-Franken, Hamish Mackenzie
--- License     :  GNU-GPL
+-- Module      :  IDE.Preferences
+-- Copyright   :  2007-2014 Juergen Nicklisch-Franken, Hamish Mackenzie
+-- License     :  GPL
 --
--- Maintainer  :  <maintainer at leksah.org>
+-- Maintainer  :  maintainer@leksah.org
 -- Stability   :  provisional
--- Portability :  portable
+-- Portability :  Definition of the Preferences dialog
 --
+-- |
 --
--- | Module for saving, restoring and editing preferences
---
----------------------------------------------------------------------------------
+-----------------------------------------------------------------------------
 
 
-module IDE.Pane.Preferences (
-    IDEPrefs(..)
-,   PrefsState
-,   readPrefs
-,   writePrefs
-,   defaultPrefs
-,   prefsDescription
-,   getPrefs
-,   applyInterfaceTheme
+module IDE.Preferences (
+runPreferencesDialog
 ) where
 
 import Graphics.UI.Gtk
-       (buttonBoxSetLayout, boxSetSpacing, widgetDestroy, dialogRun,
-        windowWindowPosition, dialogAddButton, messageDialogNew,
-        labelSetMarkup, labelNew, widgetSetSensitive, cellText,
-        widgetModifyFont, on, buttonActivated, boxPackEnd, boxPackStart,
-        buttonNewFromStock, hButtonBoxNew, vBoxNew, castToWidget, VBox,
-        ShadowType(..), Packing(..), fontDescriptionFromString, AttrOp(..),
-        FileChooserAction(..), Color(..), ResponseId(..))
 import Graphics.UI.Gtk.General.Settings
 import qualified Text.PrettyPrint.HughesPJ as PP
 import Distribution.Package
@@ -90,151 +75,123 @@ import Distribution.Text (display, simpleParse)
 import IDE.Pane.Files (refreshFiles)
 import Data.Foldable (forM_)
 import IDE.Pane.Errors (fillErrorList)
+import GHC.IO (evaluate)
 
--- ---------------------------------------------------------------------
--- This needs to be incremented, when the preferences format changes
---
+runPreferencesDialog :: IDEAction
+runPreferencesDialog = reifyIDE $ \ideR -> do
+    parent <- reflectIDE getMainWindow ideR
+    dialog <-   dialogNew
+    set dialog [ windowTransientFor := parent
+            , windowTitle := __ "Preferences" ]
+    windowSetDefaultSize dialog 800 500
+
+    configDir    <- getConfigDir
+    packageInfos <- getInstalledPackageIds
+    initialPrefs <- reflectIDE (readIDE prefs) ideR
+    (widget, inj, ext, notifier) <- buildEditor (extractFieldDescription $ prefsDescription configDir packageInfos) initialPrefs
+
+    bb      <-  hButtonBoxNew
+    boxSetSpacing bb 6
+    buttonBoxSetLayout bb ButtonboxSpread
+    load    <-  buttonNewWithLabel (__ "Load")
+    save    <-  buttonNewWithLabel (__ "Save")
+    preview <-  buttonNewWithLabel (__ "Preview")
+    cancel  <-  buttonNewFromStock "gtk-cancel"
+    apply      <-  buttonNewFromStock "gtk-apply"
+    forM_ [preview, cancel, apply] $ \but ->
+        boxPackEnd bb but PackNatural 0
+
+
+
+    upper <-   dialogGetContentArea dialog
+    boxPackStart (castToBox upper) widget PackGrow 0
+    errorLabel <-  labelNew (Nothing :: Maybe Text)
+    boxPackStart (castToBox upper) errorLabel PackNatural 0
+    lower <-   dialogGetActionArea dialog
+    boxPackEnd (castToBox lower) bb PackNatural 5
+
+    -- Keep an IO ref to the last applied preferences
+    -- so it can be restored
+    lastAppliedPrefsRef <- liftIO $ newIORef initialPrefs
+    let flatPrefsDesc = flattenFieldDescriptionPP (prefsDescription configDir packageInfos)
+    let applyPrefs newPrefs = do
+            lastAppliedPrefs <- readIORef lastAppliedPrefsRef
+            reflectIDE (modifyIDE_ (\ide -> ide{prefs = newPrefs})) ideR
+            mapM_ (\f -> reflectIDE (applicator f newPrefs lastAppliedPrefs) ideR) flatPrefsDesc
+            writeIORef lastAppliedPrefsRef newPrefs
+
+
+    on preview buttonActivated $ do
+            mbNewPrefs <- extract initialPrefs [ext]
+            forM_ mbNewPrefs applyPrefs
+
+
+    on apply buttonActivated $ do
+        mbNewPrefs <- extract initialPrefs [ext]
+        forM_ mbNewPrefs $ \newPrefs -> do
+            applyPrefs newPrefs
+
+            -- save preferences to disk
+            fp   <- getConfigFilePathForSave standardPreferencesFilename
+            writePrefs fp newPrefs
+            fp2  <-  getConfigFilePathForSave strippedPreferencesFilename
+            SP.writeStrippedPrefs fp2
+                SP.Prefs {SP.sourceDirectories = sourceDirectories newPrefs,
+                           SP.unpackDirectory   = unpackDirectory newPrefs,
+                           SP.retrieveURL       = retrieveURL newPrefs,
+                           SP.retrieveStrategy  = retrieveStrategy newPrefs,
+                           SP.serverPort        = serverPort newPrefs,
+                           SP.endWithLastConn   = endWithLastConn newPrefs}
+
+        dialogResponse dialog ResponseOk
+
+    let onClose = do
+            mbP <- extract initialPrefs [ext]
+            let hasChanged = case mbP of
+                                    Nothing -> False
+                                    Just p -> p{prefsFormat = 0, prefsSaveTime = ""} /=
+                                              initialPrefs{prefsFormat = 0, prefsSaveTime = ""}
+            when hasChanged (applyPrefs initialPrefs)
+            dialogResponse dialog ResponseCancel
+
+    on cancel buttonActivated onClose
+    on dialog response $ \resp -> do
+        case resp of
+            ResponseDeleteEvent -> onClose
+            _ -> return ()
+
+    registerEvent notifier MayHaveChanged (\ e -> do
+        mbP <- extract initialPrefs [ext]
+        let hasChanged = case mbP of
+                                Nothing -> False
+                                Just p -> p{prefsFormat = 0, prefsSaveTime = ""} /=
+                                          initialPrefs{prefsFormat = 0, prefsSaveTime = ""}
+        when (isJust mbP) $ labelSetMarkup errorLabel ("" :: Text)
+        return (e{gtkReturn=False}))
+
+    registerEvent notifier ValidationError $ \e -> do
+        labelSetMarkup errorLabel $ "<span foreground=\"red\" size=\"x-large\">The following fields have invalid values: "
+            <> eventText e <> "</span>"
+        widgetSetSensitive apply False
+        return e
+
+
+    set apply [widgetCanDefault := True]
+    widgetGrabDefault apply
+    widgetShowAll dialog
+    resp  <- dialogRun dialog
+    widgetDestroy dialog
+    return ()
+
+-- | This needs to be incremented when the preferences format changes
 prefsVersion :: Int
 prefsVersion = 4
 
 
--- | Represents the Preferences pane
-data IDEPrefs               =   IDEPrefs {
-    prefsBox                ::   VBox
+-- | Represents the Preferences dialog
+data PreferencesDialog = PreferencesDialog {
+    editorsBox ::   VBox
 } deriving Typeable
-
-
--- | The additional state used when recovering the pane
-data PrefsState             =   PrefsState
-    deriving(Eq,Ord,Read,Show,Typeable)
-
-
-instance Pane IDEPrefs IDEM
-    where
-    primPaneName _  =   __ "Preferences"
-    getAddedIndex _ =   0
-    getTopWidget    =   castToWidget . prefsBox
-    paneId b        =   "*Prefs"
-
-
-instance RecoverablePane IDEPrefs PrefsState IDEM where
-    saveState p     =   return Nothing
-    recoverState pp st  =  return Nothing
-    builder pp nb windows = do
-        initialPrefs <- readIDE prefs
-        configDir <- liftIO getConfigDir
-        lastAppliedPrefsRef <- liftIO $ newIORef initialPrefs
-        packageInfos <- liftIO getInstalledPackageIds
-        let flatPrefsDesc = flattenFieldDescriptionPP (prefsDescription configDir packageInfos)
-        reifyIDE $  \ ideR -> do
-            vb      <-  vBoxNew False 0
-            bb      <-  hButtonBoxNew
-            boxSetSpacing bb 6
-            buttonBoxSetLayout bb ButtonboxSpread
-            preview   <-  buttonNewFromStock "Preview"
-            restore <-  buttonNewFromStock "Restore"
-            closeB  <-  buttonNewFromStock "gtk-cancel"
-            save    <-  buttonNewFromStock "gtk-save"
-            widgetSetSensitive save False
-            boxPackStart bb preview PackNatural 0
-            boxPackStart bb restore PackNatural 0
-            boxPackEnd bb closeB PackNatural 0
-            boxPackEnd bb save PackNatural 0
-            (widget,injb,ext,notifier) <-  buildEditor
-                                (extractFieldDescription $ prefsDescription configDir packageInfos) initialPrefs
-            boxPackStart vb widget PackGrow 0
-            label   <-  labelNew (Nothing :: Maybe Text)
-            boxPackStart vb label PackNatural 0
-            boxPackEnd vb bb PackNatural 5
-            let prefsPane = IDEPrefs vb
-
-            let applyPrefs newPrefs = do
-                    lastAppliedPrefs    <- readIORef lastAppliedPrefsRef
-                    reflectIDE (modifyIDE_ (\ide -> ide{prefs = newPrefs})) ideR
-                    mapM_ (\f -> reflectIDE (applicator f newPrefs lastAppliedPrefs) ideR) flatPrefsDesc
-                    writeIORef lastAppliedPrefsRef newPrefs
-
-            on preview buttonActivated $ do
-                mbNewPrefs <- extract initialPrefs [ext]
-                forM_ mbNewPrefs applyPrefs
-
-            on restore buttonActivated $ do
-                applyPrefs initialPrefs
-
-                -- update the UI
-                injb initialPrefs
-                markLabel nb (getTopWidget prefsPane) False
-                widgetSetSensitive save False
-
-
-            on save buttonActivated $ do
-                mbNewPrefs <- extract initialPrefs [ext]
-                case mbNewPrefs of
-                    Nothing -> return ()
-                    Just newPrefs -> do
-                        applyPrefs newPrefs
-
-                        -- save preferences to disk
-                        fp   <- getConfigFilePathForSave standardPreferencesFilename
-                        writePrefs fp newPrefs
-                        fp2  <-  getConfigFilePathForSave strippedPreferencesFilename
-                        SP.writeStrippedPrefs fp2
-                            SP.Prefs {SP.sourceDirectories = sourceDirectories newPrefs,
-                                       SP.unpackDirectory   = unpackDirectory newPrefs,
-                                       SP.retrieveURL       = retrieveURL newPrefs,
-                                       SP.retrieveStrategy  = retrieveStrategy newPrefs,
-                                       SP.serverPort        = serverPort newPrefs,
-                                       SP.endWithLastConn   = endWithLastConn newPrefs}
-
-                        -- close the UI
-                        reflectIDE (void (closePane prefsPane)) ideR
-
-            on closeB buttonActivated $ do
-                mbP <- extract initialPrefs [ext]
-                let hasChanged = case mbP of
-                                        Nothing -> False
-                                        Just p -> p{prefsFormat = 0, prefsSaveTime = ""} /=
-                                                  initialPrefs{prefsFormat = 0, prefsSaveTime = ""}
-                if not hasChanged
-                    then reflectIDE (void (closePane prefsPane)) ideR
-                    else do
-                        md <- messageDialogNew (Just windows) []
-                            MessageQuestion
-                            ButtonsYesNo
-                            (__ "Unsaved changes. Close anyway?")
-                        set md [ windowWindowPosition := WinPosCenterOnParent ]
-                        resp <- dialogRun md
-                        widgetDestroy md
-                        case resp of
-                            ResponseYes -> do
-                                applyPrefs initialPrefs
-                                reflectIDE (void (closePane prefsPane)) ideR
-                            _  ->   return ()
-            registerEvent notifier FocusIn (\e -> do
-                reflectIDE (makeActive prefsPane) ideR
-                return (e{gtkReturn=False}))
-            registerEvent notifier MayHaveChanged (\ e -> do
-                mbP <- extract initialPrefs [ext]
-                let hasChanged = case mbP of
-                                        Nothing -> False
-                                        Just p -> p{prefsFormat = 0, prefsSaveTime = ""} /=
-                                                  initialPrefs{prefsFormat = 0, prefsSaveTime = ""}
-                when (isJust mbP) $ labelSetMarkup label ("" :: Text)
-                markLabel nb (getTopWidget prefsPane) hasChanged
-                widgetSetSensitive save hasChanged
-                return (e{gtkReturn=False}))
-            registerEvent notifier ValidationError (\e -> do
-                labelSetMarkup label $ "<span foreground=\"red\" size=\"x-large\">The following fields have invalid values: "
-                    <> eventText e <> "</span>"
-                return e)
-            return (Just prefsPane,[])
-
-
--- | Get the Preferences pane
-getPrefs :: Maybe PanePath -> IDEM IDEPrefs
-getPrefs Nothing    = forceGetPane (Right "*Prefs")
-getPrefs (Just pp)  = forceGetPane (Left pp)
-
 
 
 -- ------------------------------------------------------------

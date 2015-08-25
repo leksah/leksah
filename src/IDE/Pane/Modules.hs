@@ -1197,8 +1197,7 @@ addModule categories = do
                                     liftIDE $ fileOpenThis target
 
 
---  Yet another stupid little dialog
-
+-- | The dialog for adding a new module
 data AddModule = AddModule {
     moduleName   :: Text,
     sourceRoot   :: FilePath,
@@ -1213,7 +1212,13 @@ addModuleLocations addMod = lib (libExposed addMod)
     lib (Just False) = [LibOtherMod]
     lib Nothing = []
 
-addModuleDialog :: Window -> Text -> [FilePath] -> Bool -> [Text] -> IO (Maybe AddModule)
+-- | Creates and runs a "new module" dialog
+addModuleDialog :: Window -- ^ The parent window
+                -> Text   -- ^ Will be set as default value for the module name
+                -> [FilePath] -- ^ Possible source directories to add it to
+                -> Bool       -- ^ Whether the active package has a library
+                -> [Text]     -- ^ The components of the active package
+                -> IO (Maybe AddModule)
 addModuleDialog parent modString sourceRoots hasLib exesTests = do
     liftIO $ debugM "leksah" "addModuleDialog"
     dia                        <-   dialogNew

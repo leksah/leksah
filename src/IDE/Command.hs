@@ -70,6 +70,7 @@ import IDE.Pane.PackageFlags
 import IDE.Pane.PackageEditor
 import IDE.Pane.Errors
 import IDE.Package
+import IDE.Preferences
 import IDE.HLint
 import IDE.Sandbox
 import IDE.Pane.Log
@@ -469,7 +470,7 @@ mkActions =
 
     ,AD "Tools" (__ "_Tools") Nothing Nothing (return ()) [] False
     ,AD "PrefsEdit" (__ "_Preferences") Nothing Nothing
-        (getPrefs Nothing >>= \ p -> displayPane p False) [] False
+        runPreferencesDialog [] False
 
     ,AD "Help" (__ "_Help") Nothing Nothing (return ()) [] False
     ,AD "HelpDebug" (__ "Debug") Nothing Nothing (do
