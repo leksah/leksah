@@ -17,6 +17,7 @@ module IDE.TextEditor.Class (
     TextEditor(..)
   , EditorStyle(..)
   , updateStyle
+  , scrollToCursor
 ) where
 
 import IDE.Core.Types
@@ -39,6 +40,13 @@ updateStyle :: TextEditor editor => EditorBuffer editor -> IDEAction
 updateStyle ebuf = do
     prefs <- readIDE prefs
     setStyle ebuf $ editorStyle (darkUserInterface prefs) prefs
+
+-- | Scrolls the editor to the cursor if necessary
+scrollToCursor :: TextEditor editor => EditorView editor -> IDEAction
+scrollToCursor view = do
+    buf  <- getBuffer view
+    iter <- getInsertIter buf
+    scrollToIter view iter 0.0 Nothing
 
 class TextEditor editor where
     data EditorBuffer editor
@@ -129,11 +137,12 @@ class TextEditor editor where
                     -> Double
                     -> Maybe (Double, Double)
                     -> IDEM ()
-    scrollToIter :: EditorView editor
-                    -> EditorIter editor
-                    -> Double
-                    -> Maybe (Double, Double)
-                    -> IDEM ()
+    -- | Scrolls the editor to the given `EditorIter`
+    scrollToIter :: EditorView editor -- ^ The editor view
+                 -> EditorIter editor -- ^ The iter
+                 -> Double            -- ^ Margin
+                 -> Maybe (Double, Double) -- ^ Alignment of the iter, @Just (0,0) is left-top, Just (1.0, 1.0) is right-bottom
+                 -> IDEM ()
     setFont :: EditorView editor -> Maybe Text -> IDEM ()
     setIndentWidth :: EditorView editor -> Int -> IDEM ()
     setWrapMode :: EditorView editor -> Bool -> IDEM ()

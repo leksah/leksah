@@ -1225,19 +1225,22 @@ filePrint' nb _ ebuf currentBuffer _ = do
                 Nothing   -> return ()
 
 editUndo :: IDEAction
-editUndo = inActiveBufContext () $ \_ _ buf _ _ -> do
+editUndo = inActiveBufContext () $ \_ view buf _ _ -> do
     can <- canUndo buf
-    when can $ undo buf
+    when can $ do
+        undo buf
+        scrollToCursor view
 
 editRedo :: IDEAction
-editRedo = inActiveBufContext () $ \_ _ buf _ _ -> do
+editRedo = inActiveBufContext () $ \_ view buf _ _ -> do
     can <- canRedo buf
     when can $ redo buf
+    scrollToCursor view
 
 editDelete :: IDEAction
-editDelete = inActiveBufContext ()  $ \_ _ ebuf _ _ ->  do
+editDelete = inActiveBufContext ()  $ \_ view ebuf _ _ ->  do
     deleteSelection ebuf
-    return ()
+    scrollToCursor view
 
 editSelectAll :: IDEAction
 editSelectAll = inActiveBufContext () $ \_ _ ebuf _ _ -> do
@@ -1251,9 +1254,10 @@ editCut = inActiveBufContext () $ \_ _ ebuf _ _ -> do
     cutClipboard ebuf clip True
 
 editCopy :: IDEAction
-editCopy = inActiveBufContext () $ \_ _ ebuf _ _ -> do
+editCopy = inActiveBufContext () $ \_ view ebuf _ _ -> do
     clip <- liftIO $ clipboardGet selectionClipboard
     copyClipboard ebuf clip
+    scrollToCursor view
 
 editPaste :: IDEAction
 editPaste = inActiveBufContext () $ \_ _ ebuf _ _ -> do
