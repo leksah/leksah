@@ -42,7 +42,7 @@ module IDE.Workspaces (
 import IDE.Core.State
 import Graphics.UI.Editor.Parameters
     (Parameter(..), (<<<-), paraName, emptyParams)
-import Control.Monad (void, unless, when, liftM)
+import Control.Monad (filterM, void, unless, when, liftM)
 import Data.Maybe (isJust, fromJust, catMaybes)
 import IDE.Utils.GUIUtils
     (chooseFile, chooseSaveFile, __)
@@ -69,8 +69,8 @@ import IDE.Package
        (getModuleTemplate, getPackageDescriptionAndPath, activatePackage,
         deactivatePackage, idePackageFromPath, idePackageFromPath)
 import System.Directory
-       (getDirectoryContents, getHomeDirectory, createDirectoryIfMissing,
-        doesFileExist)
+       (doesDirectoryExist, getDirectoryContents, getHomeDirectory,
+        createDirectoryIfMissing, doesFileExist)
 import System.Time (getClockTime)
 import Graphics.UI.Gtk.Windows.MessageDialog
     (ButtonsType(..), MessageType(..))
@@ -596,7 +596,9 @@ fileOpen' fp = do
     findCabalFile :: FilePath -> IO (Maybe FilePath)
     findCabalFile fp = (do
             let dir = takeDirectory fp
-            cabal <- filter ((== ".cabal") . takeExtension) <$> getDirectoryContents dir
+            contents <- getDirectoryContents dir
+            files    <- filterM (\f -> not <$> doesDirectoryExist (dir </> f)) contents
+            let cabal = filter ((== ".cabal") . takeExtension) files
             case cabal of
                 (c:_) -> return . Just $ dir </> c
                 _ | fp == dir -> return Nothing
