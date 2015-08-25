@@ -8,7 +8,7 @@
 --<compose> is often labelled Alt Gr.
 --
 --The defined values for the keys can can be found at
--- http://gitweb.freedesktop.org/?p=xorg/proto/x11proto.git;a=blob_plain;f=keysymdef.h.
+-- http://www.cl.cam.ac.uk/%7Emgk25/ucs/keysymdef.h
 -- The names of the keys are the names of the macros without the prefix.
 
 
