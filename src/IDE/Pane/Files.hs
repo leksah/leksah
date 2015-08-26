@@ -29,7 +29,9 @@ module IDE.Pane.Files (
 
 import Prelude hiding (catch)
 import Graphics.UI.Gtk
-       (cellLayoutPackEnd, cellTextMarkup, cellPixbufStockId,
+       (treeViewLevelIndentation, treeViewShowExpanders,
+        treeViewCollapseRow, treeViewExpandRow, treeSelectionUnselectAll,
+        cellLayoutPackEnd, cellTextMarkup, cellPixbufStockId,
         scrolledWindowSetShadowType, treeSelectionSelectionChanged,
         treeStoreRemove, treeModelIterNext, treeModelGetRow,
         treeStoreInsert, treeModelIterNthChild, treeModelGetPath, TreeIter,
@@ -168,7 +170,6 @@ instance RecoverablePane IDEFiles FilesState IDEM where
         treeViewAppendColumn treeView col1
 
 
-
         prefs <- reflectIDE (readIDE prefs) ideR
         when (showFileIcons prefs) $ do
             renderer2    <- cellRendererPixbufNew
@@ -227,21 +228,27 @@ instance RecoverablePane IDEFiles FilesState IDEM where
                     PackageRecord p _ -> workspaceTryQuiet $
                                              runPackage (refreshPackage fileStore path) p
                     _                  -> ideMessage Normal (__ "Unexpected Activation in Files Pane")) ideR
+
         on sel treeSelectionSelectionChanged $ do
             paths <- treeSelectionGetSelectedRows sel
             forM_ paths $ \ path -> do
                 record <- treeStoreGetValue fileStore path
                 reflectIDE (
                     case record of
-                        FileRecord _      -> return ()
+                        FileRecord f      -> void (goToSourceDefinition' f (Location "" 1 0 1 0))
                         DirRecord f _     -> workspaceTryQuiet $ do
                             mbPkg <- fileGetPackage f
                             forM_ mbPkg $ \package ->
                                  runPackage (refreshDir fileStore path f) package
-                        PackageRecord p _ -> workspaceTryQuiet $
-                                             runPackage (refreshPackage fileStore path) p
-                        _                 -> ideMessage Normal (__ "Unexpected Selection in Files Pane")) ideR
+                            liftIO $ treeViewToggleRow treeView path
+                            liftIO $ treeSelectionUnselectAll sel
+                        PackageRecord p _ -> do
+                            workspaceTryQuiet $
+                                runPackage (refreshPackage fileStore path) p
+                            liftIO $ treeViewToggleRow treeView path
+                            liftIO $ treeSelectionUnselectAll sel
 
+                        _                 -> ideMessage Normal (__ "Unexpected Selection in Files Pane")) ideR
         return (Just files,[ConnectC cid1])
 
 -- | Get the Files pane
@@ -249,6 +256,16 @@ getFiles :: Maybe PanePath -> IDEM IDEFiles
 getFiles Nothing    = forceGetPane (Right "*Files")
 getFiles (Just pp)  = forceGetPane (Left pp)
 
+
+-- | Toggles a row in a `TreeView`
+treeViewToggleRow treeView path = do
+    expanded <- treeViewRowExpanded treeView path
+    if expanded
+        then treeViewCollapseRow treeView path
+        else treeViewExpandRow   treeView path False
+
+
+-- | Deletes the filepane and rebuilds it
 rebuildFilesPane :: IDEAction
 rebuildFilesPane = do
     mbFilePane <- getPane :: IDEM (Maybe IDEFiles)
@@ -257,6 +274,8 @@ rebuildFilesPane = do
     refreshFiles
     return ()
 
+
+-- | Searches the workspace packages if it is part of any
 fileGetPackage :: FilePath -> WorkspaceM (Maybe IDEPackage)
 fileGetPackage path = do
     packages <- wsAllPackages <$> ask
