@@ -1151,7 +1151,7 @@ addModule' treeView store = do
         []     -> return []
         (treePath:_) -> liftIO $ mapM (treeStoreGetValue store . (`take` treePath))
                                    [1 .. length treePath]
-    addModule categories
+    addModule (map fst categories)
 
 -- Includes non buildable
 allBuildInfo' :: PackageDescription -> [BuildInfo]
@@ -1160,15 +1160,16 @@ allBuildInfo' pkg_descr = [ libBuildInfo lib       | Just lib <- [library pkg_de
                        ++ [ testBuildInfo tst      | tst <- testSuites pkg_descr ]
                        ++ [ benchmarkBuildInfo tst | tst <- benchmarks pkg_descr ]
 
-addModule :: [ModuleRecord] -> PackageAction
-addModule categories = do
+addModule :: [Text] -> PackageAction
+addModule modulePrefix = do
     liftIO $ debugM "leksah" "selectIdentifier"
     mbPD <- liftIDE getPackageDescriptionAndPath
     case mbPD of
         Nothing             -> liftIDE $ ideMessage Normal (__ "No package description")
         Just (pd,cabalPath) -> let srcPaths = nub $ concatMap hsSourceDirs $ allBuildInfo' pd
                                    rootPath = dropFileName cabalPath
-                                   modPath  = foldr ((\ a b -> a <> "." <> b) . fst) "" categories
+                                   modPath  = foldr (\a b -> a <> "." <> b) ""
+                                                    modulePrefix
                                in do
             window' <- liftIDE getMainWindow
             mbResp <- liftIO $ addModuleDialog window' modPath srcPaths (hasLibs pd) $

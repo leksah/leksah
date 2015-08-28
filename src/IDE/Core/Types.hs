@@ -383,7 +383,7 @@ data IDEPackage     =   IDEPackage {
 ,   ipdBenchmarks      ::   [Text]
 ,   ipdMain            ::   [(FilePath, BuildInfo, Bool)]
 ,   ipdExtraSrcs       ::   Set FilePath
-,   ipdSrcDirs         ::   [FilePath]
+,   ipdSrcDirs         ::   [FilePath] -- ^ Relative paths to the source directories
 ,   ipdExtensions      ::   [Extension]
 ,   ipdConfigFlags     ::   [Text]
 ,   ipdBuildFlags      ::   [Text]

@@ -35,7 +35,7 @@ import IDE.SourceCandy (parseCandy)
 import IDE.Utils.FileUtils (getConfigFilePathForLoad)
 import IDE.Utils.Utils
        (leksahKeymapFileExtension, leksahCandyFileExtension)
-import IDE.Pane.Preferences (defaultPrefs)
+import IDE.Preferences (defaultPrefs)
 import IDE.Keymap (Keymap(..))
 import IDE.Command (mkActions)
 import qualified IDE.YiConfig as Yi (start)
