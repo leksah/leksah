@@ -55,15 +55,8 @@ import System.IO (stderr, stdout, hFlush)
 import Data.Text (Text)
 import Data.Monoid ((<>))
 import qualified Data.Text as T (unpack, pack)
+import Data.Sequence (empty)
 
-testEditors :: IO Bool
-testEditors = do
-    result <- newEmptyMVar
-    postGUIAsync $ do
-        $quickCheckAll >>= putMVar result
-        mainQuit
-    mainGUI
-    takeMVar result
 
 testIDE :: IDEM Bool -> IO Bool
 testIDE f = do
@@ -105,7 +98,7 @@ testIDE f = do
               ,   activePack        =   Nothing
               ,   activeExe         =   Nothing
               ,   bufferProjCache   =   Map.empty
-              ,   allLogRefs        =   []
+              ,   allLogRefs        =   empty
               ,   currentHist       =   0
               ,   currentEBC        =   (Nothing, Nothing, Nothing)
               ,   systemInfo        =   Nothing
@@ -128,6 +121,8 @@ testIDE f = do
               ,   logLaunches       =   Map.empty
               ,   autoCommand       =   return ()
               ,   autoURI           =   Nothing
+              ,   hlintQueue        =   Nothing
+              ,   serverQueue       =   Nothing
               }
     ideR <- newIORef ide
     (`reflectIDE` ideR) f >>= putMVar result
@@ -168,4 +163,17 @@ prop_test s = monadicIO $ do
         out <- getText buffer first last True
         return $ T.pack input == out)
     assert result
+
+-- workaround for issue with $quickcheckall
+-- see https://hackage.haskell.org/package/QuickCheck-2.4.2/docs/Test-QuickCheck-All.html
+return []
+
+testEditors :: IO Bool
+testEditors = do
+    result <- newEmptyMVar
+    postGUIAsync $ do
+        $quickCheckAll >>= putMVar result
+        mainQuit
+    mainGUI
+    takeMVar result
 
