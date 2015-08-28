@@ -113,6 +113,7 @@ import Text.Printf (PrintfType)
 import MyMissing (forceJust)
 import Language.Haskell.Extension (Language(..))
 import Distribution.License (License(..))
+import Control.Exception (SomeException(..))
 
 printf :: PrintfType r => Text -> r
 printf = S.printf . T.unpack
@@ -414,7 +415,7 @@ clonePackageSourceDialog parent workspaceDir = do
         _             -> return Nothing
 
 packageClone :: FilePath -> C.Sink ToolOutput IDEM () -> (FilePath -> IDEAction) -> IDEAction
-packageClone workspaceDir log activateAction = do
+packageClone workspaceDir log activateAction = flip catchIDE (\(e :: SomeException) -> print e) $ do
     windows  <- getWindows
     mbResult <- liftIO $ clonePackageSourceDialog (head windows) workspaceDir
     case mbResult of
