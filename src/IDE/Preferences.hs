@@ -24,6 +24,7 @@ module IDE.Preferences (
 , applyInterfaceTheme
 , readPrefs
 , writePrefs
+, defaultPrefs
 ) where
 
 import Graphics.UI.Gtk

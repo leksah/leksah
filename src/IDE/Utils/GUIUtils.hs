@@ -19,6 +19,8 @@ module IDE.Utils.GUIUtils (
 ,   openBrowser
 ,   showDialog
 ,   showErrorDialog
+,   showDialogOptions
+,   showInputDialog
 
 ,   getFullScreenState
 ,   setFullScreenState
@@ -39,6 +41,7 @@ module IDE.Utils.GUIUtils (
 ,   stockIdFromType
 ,   mapControlCommand
 ,   treeViewContextMenu
+,   treeViewContextMenu'
 
 ,   __
 
@@ -47,7 +50,7 @@ module IDE.Utils.GUIUtils (
 
 import Graphics.UI.Gtk
 import IDE.Utils.Tool (runProcess)
-import Data.Maybe (fromJust, isJust)
+import Data.Maybe (fromMaybe, catMaybes, fromJust, isJust)
 import Control.Monad
 import IDE.Core.State
 --import Graphics.UI.Gtk.Selectors.FileChooser
@@ -63,6 +66,8 @@ import qualified Data.Text as T (unpack
                                , pack
 #endif
                                 )
+import Control.Applicative ((<$>))
+
 #ifdef LOCALIZATION
 
 import Text.I18N.GetText
@@ -153,7 +158,7 @@ openBrowser url = do
             (\ (_ :: SomeException) -> sysMessage Normal ("Can't find browser executable " <> browser prefs')))
     return ()
 
-
+-- | Show a text dialog with an Ok button and a specific messagetype
 showDialog :: Text -> MessageType -> IO ()
 showDialog msg msgType = do
     dialog <- messageDialogNew Nothing [] msgType ButtonsOk msg
@@ -161,9 +166,52 @@ showDialog msg msgType = do
     widgetDestroy dialog
     return ()
 
+
+-- | Show an error dialog with an Ok button
 showErrorDialog :: Text -> IO ()
 showErrorDialog msg = showDialog msg MessageError
 
+
+-- | Show a dialog with custom buttons and callbacks
+showDialogOptions :: Text             -- ^ the message
+                  -> MessageType      -- ^ type of dialog
+                  -> [(Text, IO ())]  -- ^ button text and corresponding actions
+                  -> Maybe Int        -- ^ index of button that has default focus (0-based)
+                  -> IO ()
+showDialogOptions msg msgType buttons mbIndex = do
+    dialog <- messageDialogNew Nothing [] msgType ButtonsNone msg
+
+    forM_ (zip [0..] buttons) $ \(n,(text, _)) -> do
+        dialogAddButton dialog text (ResponseUser n)
+
+    dialogSetDefaultResponse dialog (ResponseUser (fromMaybe 0 mbIndex))
+    set dialog [ windowWindowPosition := WinPosCenterOnParent ]
+    res <- dialogRun dialog
+    widgetHide dialog
+    case res of
+        ResponseUser n | n >= 0 && n < length buttons -> map snd buttons !! n
+        _ -> return ()
+
+
+-- | Show a simple dialog that asks the user for some text
+showInputDialog :: Text -- ^ The message text
+                -> Text -- ^ The default value
+                -> IO (Maybe Text)
+showInputDialog msg def = do
+    dialog <- messageDialogNew Nothing [] MessageQuestion ButtonsOkCancel msg
+    vbox <- get dialog messageDialogMessageArea
+    entry <- entryNew
+    set entry [entryText := def]
+    boxPackEnd vbox entry PackNatural 0
+    widgetShowAll vbox
+
+    res <- dialogRun dialog
+
+    case res of
+        ResponseOk -> do
+            text <- get entry entryText
+            return (Just text)
+        _ -> return Nothing
 
 
 
@@ -254,6 +302,47 @@ stockIdFromType _               =   "ide_other"
 mapControlCommand Alt = Control
 #endif
 mapControlCommand a = a
+
+-- | Sets the context menu for a treeView widget
+treeViewContextMenu' :: TreeViewClass treeView
+                     => treeView                 -- ^ The view
+                     -> TreeStore a              -- ^ The model
+                     -> ([(a, TreePath)] -> IDEM [MenuItem]) -- ^ Produces the menu items for the selected values when right clicking
+                     -> IDEM (ConnectId treeView, ConnectId treeView)
+treeViewContextMenu' view store menuItems = reifyIDE $ \ide -> do
+    cid1 <- view `on` popupMenuSignal $ do
+        showMenu Nothing ide
+    cid2 <- view `on` buttonPressEvent $ do
+        button    <- eventButton
+        click     <- eventClick
+        timestamp <- eventTime
+        (x, y)    <- eventCoordinates
+        case (button, click) of
+            (RightButton, SingleClick) -> liftIO $ do
+                sel <- treeViewGetSelection view
+                selCount <- treeSelectionCountSelectedRows sel
+                when (selCount <= 1) $ do
+                    pathInfo <- treeViewGetPathAtPos view (floor x, floor y)
+                    case pathInfo of
+                        Just (path, _, _) -> do
+                            treeSelectionUnselectAll sel
+                            treeSelectionSelectPath sel path
+                        _ -> return ()
+                showMenu (Just (button, timestamp)) ide
+            _ -> return False
+    return (cid1, cid2)
+  where
+    showMenu buttonEventDetails ide = do
+
+        selPaths  <- treeViewGetSelection view >>= treeSelectionGetSelectedRows
+        selValues <- mapM (treeStoreGetValue store) selPaths
+        theMenu   <- menuNew
+        menuAttachToWidget theMenu view
+        items    <- reflectIDE (menuItems (zip selValues selPaths)) ide
+        mapM (menuShellAppend theMenu) items
+        menuPopup theMenu buttonEventDetails
+        widgetShowAll theMenu
+        return True
 
 treeViewContextMenu :: TreeViewClass treeView
                     => treeView
