@@ -195,7 +195,7 @@ packageConfig = do
 packageConfig'  :: IDEPackage -> (Bool -> IDEAction) -> IDEAction
 packageConfig' package continuation = do
     prefs     <- readIDE prefs
-    let dir = ipdBuildDir package
+    let dir = ipdPackageDir package
     logLaunch <- getDefaultLogLaunch
     showDefaultLogLaunch'
 
@@ -220,7 +220,7 @@ packageConfig' package continuation = do
 runCabalBuild :: Bool -> Bool -> Bool -> IDEPackage -> Bool -> (Bool -> IDEAction) -> IDEAction
 runCabalBuild backgroundBuild jumpToWarnings withoutLinking package shallConfigure continuation = do
     prefs <- readIDE prefs
-    let dir =  ipdBuildDir package
+    let dir =  ipdPackageDir package
     let args = ["build"]
                 ++ ["--with-ld=false" | backgroundBuild && withoutLinking]
                 ++ ipdBuildFlags package
@@ -281,7 +281,7 @@ buildPackage backgroundBuild jumpToWarnings withoutLinking package continuation 
             -- TODO check debug package matches active package
             ready <- liftIO $ isEmptyMVar (currentToolCommand ghci)
             when ready $ do
-                let dir = ipdBuildDir package
+                let dir = ipdPackageDir package
                 when (saveAllBeforeBuild prefs) (do fileSaveAll belongsToWorkspace'; return ())
                 (`runDebug` debug) . executeDebugCommand ":reload" $ do
                     errs <- logOutputForBuild package backgroundBuild jumpToWarnings
@@ -301,7 +301,7 @@ packageDoc' :: Bool -> Bool -> IDEPackage -> (Bool -> IDEAction) -> IDEAction
 packageDoc' backgroundBuild jumpToWarnings package continuation = do
     prefs     <- readIDE prefs
     catchIDE (do
-        let dir = ipdBuildDir package
+        let dir = ipdPackageDir package
         runExternalTool' (__ "Documenting") (cabalCommand prefs) ("haddock" : ipdHaddockFlags package) dir $ do
                 mbLastOutput <- C.getZipSink $ const <$> C.ZipSink sinkLast <*> (C.ZipSink $
                     logOutputForBuild package backgroundBuild jumpToWarnings)
@@ -320,7 +320,7 @@ packageClean' package continuation = do
     logLaunch <- getDefaultLogLaunch
     showDefaultLogLaunch'
 
-    let dir = ipdBuildDir package
+    let dir = ipdPackageDir package
     runExternalTool' (__ "Cleaning")
                     (cabalCommand prefs)
                     ["clean"]
@@ -342,7 +342,7 @@ packageCopy = do
             case mbDir of
                 Nothing -> return ()
                 Just fp -> do
-                    let dir = ipdBuildDir package
+                    let dir = ipdPackageDir package
                     runExternalTool' (__ "Copying")
                                     (cabalCommand prefs)
                                     ("copy" : ["--destdir=" <> T.pack fp])
@@ -359,7 +359,7 @@ packageInstallDependencies = do
 
         catchIDE (do
             prefs <- readIDE prefs
-            let dir = ipdBuildDir package
+            let dir = ipdPackageDir package
             runExternalTool' (__ "Installing") (cabalCommand prefs) (
                    (if useCabalDev prefs
                         then ["install-deps"]
@@ -375,7 +375,7 @@ packageCopy' package continuation = do
     showDefaultLogLaunch'
 
     catchIDE (do
-        let dir = ipdBuildDir package
+        let dir = ipdPackageDir package
         runExternalTool' (__ "Copying") (cabalCommand prefs) ("copy" : ipdInstallFlags package) dir $ do
                 mbLastOutput <- C.getZipSink $ (const <$> C.ZipSink sinkLast) <*> C.ZipSink (logOutput logLaunch)
                 lift $ continuation (mbLastOutput == Just (ToolExit ExitSuccess)))
@@ -419,7 +419,7 @@ packageRun' removeGhcjsFlagIfPresent package =
             showLog
             case maybeDebug of
                 Nothing -> do
-                    let dir = ipdBuildDir package
+                    let dir = ipdPackageDir package
                     IDE.Package.runPackage (addLogLaunchData logName logLaunch)
                                            (T.pack $ printf (__ "Running %s") (T.unpack logName))
                                            "cabal"
@@ -479,12 +479,12 @@ packageRunJavaScript' addFlagIfMissing package =
                 let defaultLogName = T.pack . display . pkgName $ ipdPackageId package
                     logName = fromMaybe defaultLogName . listToMaybe $ map (T.pack . exeName) exe
                 (logLaunch,logName) <- buildLogLaunchByName logName
-                let dir = ipdBuildDir package
+                let dir = ipdPackageDir package
                 prefs <- readIDE prefs
                 case exe ++ executables pd of
                     (Executable name _ _ : _) -> liftIDE $ do
                         let path = "dist/build" </> name </> name <.> "jsexe" </> "index.html"
-                            dir = ipdBuildDir package
+                            dir = ipdPackageDir package
 #ifdef WEBKITGTK
                         postAsyncIDE $ do
                             loadOutputUri ("file:///" ++ dir </> path)
@@ -513,7 +513,7 @@ packageRegister' package continuation =
           showDefaultLogLaunch'
           catchIDE (do
             prefs <- readIDE prefs
-            let dir = ipdBuildDir package
+            let dir = ipdPackageDir package
             runExternalTool' (__ "Registering") (cabalCommand prefs) ("register" : ipdRegisterFlags package) dir $ do
                     mbLastOutput <- C.getZipSink $ (const <$> C.ZipSink sinkLast) <*> C.ZipSink (logOutput logLaunch)
                     lift $ continuation (mbLastOutput == Just (ToolExit ExitSuccess)))
@@ -533,7 +533,7 @@ packageTest' backgroundBuild jumpToWarnings package shallConfigure continuation 
           showDefaultLogLaunch'
           catchIDE (do
             prefs <- readIDE prefs
-            let dir = ipdBuildDir package
+            let dir = ipdPackageDir package
             removeTestLogRefs dir
             runExternalTool' (__ "Testing") (cabalCommand prefs) (["test", "--with-ghc=leksahtrue"]
                 ++ ipdBuildFlags package ++ ipdTestFlags package) dir $ do
@@ -562,7 +562,7 @@ packageSdist = do
 
         catchIDE (do
             prefs <- readIDE prefs
-            let dir = ipdBuildDir package
+            let dir = ipdPackageDir package
             runExternalTool' (__ "Source Dist") (cabalCommand prefs) ("sdist" : ipdSdistFlags package) dir (logOutput logLaunch))
             (\(e :: SomeException) -> print e)
 
@@ -573,11 +573,11 @@ packageOpenDoc = do
 
     liftIDE $ do
         prefs   <- readIDE prefs
-        let path = ipdBuildDir package
+        let path = ipdPackageDir package
                         </> "dist/doc/html"
                         </> display (pkgName (ipdPackageId package))
                         </> "index.html"
-            dir = ipdBuildDir package
+            dir = ipdPackageDir package
 #ifdef WEBKITGTK
         loadDoc . T.pack $ "file:///" ++ dir </> path
         getDocumentation Nothing  >>= \ p -> displayPane p False
@@ -786,7 +786,7 @@ debugStart = do
         maybeDebug <- readIDE debugState
         case maybeDebug of
             Nothing -> do
-                let dir = ipdBuildDir package
+                let dir = ipdPackageDir package
                 mbExe <- readIDE activeExe
                 ghci <- reifyIDE $ \ideR -> newGhci dir mbExe (interactiveFlags prefs')
                     $ reflectIDEI (void (logOutputForBuild package True False)) ideR

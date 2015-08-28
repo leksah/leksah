@@ -45,8 +45,10 @@ module IDE.Core.Types (
 ,   runDebug
 
 ,   IDEPackage(..)
-,   ipdBuildDir
+,   ipdPackageDir
 ,   ipdAllDirs
+,   ipdLib
+,   ipdPackageName
 ,   Workspace(..)
 ,   wsAllPackages
 ,   VCSConf
@@ -100,7 +102,7 @@ import Graphics.UI.Gtk
 import Data.Unique (newUnique, Unique(..))
 import Graphics.UI.Frame.Panes
 import Distribution.Package
-    (PackageIdentifier(..), Dependency(..))
+       (PackageName(..), PackageIdentifier(..), Dependency(..))
 import Distribution.PackageDescription (BuildInfo)
 import Data.Map (Map(..))
 import Data.Set (Set(..))
@@ -120,7 +122,7 @@ import System.FilePath (dropFileName, (</>))
 import IDE.Core.CTypes
 import IDE.StrippedPrefs(RetrieveStrategy)
 import System.IO (Handle)
-import Distribution.Text(disp)
+import Distribution.Text (display, disp)
 import Text.PrettyPrint (render)
 import Control.Monad.Trans.Class (lift)
 import Control.Monad.IO.Class (liftIO, MonadIO)
@@ -134,11 +136,12 @@ import Data.Typeable (Typeable)
 import Foreign (Ptr)
 import Control.Monad.Reader.Class (MonadReader(..))
 import Data.Text (Text)
-import qualified Data.Text as T (unpack)
+import qualified Data.Text as T (pack, unpack)
 import Language.Haskell.HLint3 (Idea(..))
 import Data.Function (on)
 import Control.Concurrent.STM.TVar (TVar)
 import Data.Sequence (Seq)
+import Data.Maybe (maybeToList)
 
 -- ---------------------------------------------------------------------
 -- IDE State
@@ -404,11 +407,21 @@ instance Show IDEPackage where
 instance Ord IDEPackage where
     compare x y     =   compare (ipdPackageId x) (ipdPackageId y)
 
-ipdBuildDir :: IDEPackage -> FilePath
-ipdBuildDir = dropFileName . ipdCabalFile
+-- | The directory of the cabal file
+ipdPackageDir :: IDEPackage -> FilePath
+ipdPackageDir = dropFileName . ipdCabalFile
 
+-- | Gets the package name
+ipdPackageName :: IDEPackage -> Text
+ipdPackageName = T.pack . unPackageName . pkgName . ipdPackageId
+
+-- | Gets the library name if the package has a library component
+ipdLib :: IDEPackage -> Maybe Text
+ipdLib pkg = if ipdHasLibs pkg then Just (ipdPackageName pkg) else Nothing
+
+-- | All directory of the package and those of all its source dependencies
 ipdAllDirs :: IDEPackage -> [FilePath]
-ipdAllDirs p = ipdBuildDir p : (ipdSandboxSources p >>= ipdAllDirs)
+ipdAllDirs p = ipdPackageDir p : (ipdSandboxSources p >>= ipdAllDirs)
 
 -- ---------------------------------------------------------------------
 -- Workspace
@@ -597,7 +610,7 @@ displaySrcSpan s = srcSpanFilename s ++ ":" ++
             show (srcSpanStartColumn s) ++ "-" ++ show (srcSpanEndColumn s)
 
 logRefRootPath :: LogRef -> FilePath
-logRefRootPath = ipdBuildDir . logRefPackage
+logRefRootPath = ipdPackageDir . logRefPackage
 
 logRefFilePath :: LogRef -> FilePath
 logRefFilePath = srcSpanFilename . logRefSrcSpan

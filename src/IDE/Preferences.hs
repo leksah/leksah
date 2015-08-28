@@ -485,7 +485,7 @@ prefsDescription configDir packages = NFDPP [
             showHiddenFiles
             (\b a -> a {showHiddenFiles = b})
             boolEditor
-            (const refreshFiles)
+            (\_ -> refreshFiles)
     ,   mkFieldPP
             (paraName <<<- ParaName (__ "Show icons in the file tree") $ emptyParams)
             (PP.text . show)

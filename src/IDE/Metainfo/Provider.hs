@@ -294,7 +294,7 @@ updatePackageInfo rebuild idePack continuation = do
     liftIO . infoM "leksah" $ "updatePackageInfo modToUpdate " ++ show (map (display.fst) modToUpdate)
     callCollectorWorkspace
         rebuild
-        (dropFileName (ipdCabalFile idePack))
+        (ipdPackageDir idePack)
         (ipdPackageId idePack)
         (map (\(x,y) -> (T.pack $ display x,y)) modToUpdate)
         (\ b -> do

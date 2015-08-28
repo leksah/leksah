@@ -49,11 +49,11 @@ import Graphics.UI.Gtk
         treeViewNew, treeStoreNew, castToWidget, TreeStore, TreeView,
         ScrolledWindow, treeViewRowExpanded, treeStoreGetTree, Menu(..),
         MenuItem(..))
-import Data.Maybe (listToMaybe, isJust)
+import Data.Maybe (maybeToList, listToMaybe, isJust)
 import Control.Monad (forM, void, forM_, when)
 import Data.Typeable (Typeable)
 import IDE.Core.State
-       (window, getIDE, MessageLevel(..), ipdBuildDir, ipdPackageId,
+       (window, getIDE, MessageLevel(..), ipdPackageId,
         wsPackages, workspace, readIDE, IDEAction, ideMessage, reflectIDE,
         reifyIDE, IDEM, IDEPackage, ipdSandboxSources)
 import IDE.Pane.SourceBuffer (fileNew, goToSourceDefinition')
@@ -79,19 +79,23 @@ import IDE.Utils.GUIUtils
         showDialogOptions)
 import Control.Exception (catch)
 import Data.Text (Text)
-import qualified Data.Text as T (unpack, pack)
+import qualified Data.Text as T
+       (isPrefixOf, words, isSuffixOf, unpack, pack)
 import Data.Monoid ((<>))
 import IDE.Core.Types
-       (WorkspaceAction, Workspace(..), wsAllPackages, WorkspaceM,
+       (ipdLib, WorkspaceAction, Workspace(..), wsAllPackages, WorkspaceM,
         runPackage, runWorkspace, PackageAction, PackageM, IDEPackage(..),
-        IDE(..), Prefs(..), MonadIDE(..))
+        IDE(..), Prefs(..), MonadIDE(..), ipdPackageDir)
 import System.Glib.Properties (newAttrFromMaybeStringProperty)
 import System.FilePath
        (addTrailingPathSeparator, takeDirectory, takeExtension,
        makeRelative, splitDirectories)
 import Control.Monad.Reader.Class (MonadReader(..))
-import IDE.Workspaces (workspaceTry, workspaceTryQuiet, packageTry)
-import Data.List (find, stripPrefix, isPrefixOf, sortBy, sort)
+import IDE.Workspaces
+       (workspaceActivatePackage, workspaceTry, workspaceTryQuiet,
+        packageTry)
+import Data.List
+       (isSuffixOf, find, stripPrefix, isPrefixOf, sortBy, sort)
 import Data.Ord (comparing)
 import Data.Char (toLower)
 import System.Log.Logger (debugM)
@@ -120,6 +124,7 @@ data FileRecord =
   | AddSourceRecord IDEPackage
   | ComponentsRecord IDEPackage-- the package this node belongs to
   | ComponentRecord Text
+                    IDEPackage
                     Bool -- Whether the component is active
   | FilesRecord IDEPackage -- the package this node belongs to
   | PlaceHolder -- ^ Used as child node of directories that are not yet expanded,
@@ -132,6 +137,9 @@ instance Ord FileRecord where
     compare (FileRecord _) (DirRecord _ _) = GT
     compare (FileRecord p1) (FileRecord p2) = comparing (map toLower) p1 p2
     compare (DirRecord p1 _) (DirRecord p2 _) = comparing (map toLower) p1 p2
+    compare (PackageRecord p1 _) (PackageRecord p2 _) = comparing (map toLower . ipdPackageDir) p1 p2
+    compare (AddSourceRecord p1) (AddSourceRecord p2) = comparing (map toLower . ipdPackageDir) p1 p2
+    compare (ComponentRecord t1 _ _) (ComponentRecord t2 _ _) = comparing (map toLower . T.unpack) t1 t2
     compare _ _ = LT
 
 
@@ -155,11 +163,11 @@ toMarkup record = size $ case record of
      AddSourcesRecord _ -> "Source Dependencies"
      (AddSourceRecord pkg) ->
         let pkgText = packageIdentifierToString (ipdPackageId pkg)
-            dirText = gray (T.pack (ipdBuildDir pkg))
+            dirText = gray (T.pack (ipdPackageDir pkg))
         in pkgText <> " " <> dirText
      ComponentsRecord _ -> "Components"
-     (ComponentRecord str active) -> (if active then bold else id) str
-     (FilesRecord pkg) -> "Files " <> gray (T.pack (ipdBuildDir pkg))
+     (ComponentRecord str _ active) -> (if active then bold else id) str
+     (FilesRecord pkg) -> "Files " <> gray (T.pack (ipdPackageDir pkg))
      PlaceHolder -> "Placeholder"
 
 
@@ -190,7 +198,8 @@ canExpand (WorkspaceRecord _) = do
         Just ws -> return (not . null $ wsPackages ws)
 canExpand (PackageRecord _ _) = return True
 canExpand (DirRecord _ _) = return True
-canExpand (ComponentsRecord pkg) = return (not . null $ ipdExes pkg)
+canExpand (ComponentsRecord pkg) = return (not . null $ components)
+    where components = maybeToList (ipdLib pkg) ++ ipdExes pkg ++ ipdTests pkg ++ ipdBenchmarks pkg
 canExpand (AddSourcesRecord pkg) = return (not . null $ ipdSandboxSources pkg)
 canExpand (AddSourceRecord _) = return True
 canExpand (FilesRecord _) = return True
@@ -284,7 +293,7 @@ instance RecoverablePane IDEFiles FilesState IDEM where
                         runPackage (refreshPackageTreeFrom fileStore treeView path) pkg
                     ComponentsRecord pkg -> workspaceTryQuiet $
                         runPackage (refreshPackageTreeFrom fileStore treeView path) pkg
-                    ComponentRecord _ _ -> return ()
+                    ComponentRecord _ _ _ -> return ()
                     AddSourceRecord pkg -> do
                         workspaceTryQuiet $ do
                             runPackage (refreshPackageTreeFrom fileStore treeView path) pkg
@@ -299,9 +308,13 @@ instance RecoverablePane IDEFiles FilesState IDEM where
             expandable <- reflectIDE (canExpand record) ideR
             case record of
                     FileRecord f  -> void . flip reflectIDE ideR $
-                                       goToSourceDefinition' f (Location "" 1 0 1 0)
-                    _ -> do
-                        void $ treeViewToggleRow treeView path
+                                         goToSourceDefinition' f (Location "" 1 0 1 0)
+                    ComponentRecord name pkg b -> flip reflectIDE ideR $ workspaceTryQuiet $
+                                                      if any (`T.isPrefixOf` name) ["exe:", "test:", "bench:"]
+                                                          then workspaceActivatePackage pkg (Just (head (T.words name)))
+                                                          else workspaceActivatePackage pkg Nothing
+                    _ -> when expandable $ do
+                             void $ treeViewToggleRow treeView path
 
 
 
@@ -369,6 +382,7 @@ refreshFiles = do
         -- project is expanded
         refreshFromWorkspace store view True
 
+
 -- | Refreshes the subtrees (the packages) from the root, does
 -- not refresh the root node itself.
 refreshFromWorkspace :: TreeStore FileRecord -- ^ The 'TreeStore' with the data
@@ -376,7 +390,7 @@ refreshFromWorkspace :: TreeStore FileRecord -- ^ The 'TreeStore' with the data
                      -> Bool                 -- ^ Whether to expand the active package
                      -> WorkspaceAction
 refreshFromWorkspace store view expandActivePackage = do
-    packages <- wsPackages <$> ask
+    packages <- sort . wsPackages <$> ask
 
     activePackage <- readIDE activePack
     let forest = map (\pkg -> leaf $ PackageRecord pkg (activePackage == Just pkg)) packages
@@ -450,7 +464,7 @@ subTrees record = case record of
 addSourcesRecords :: PackageM [FileRecord]
 addSourcesRecords = do
     pkg <- ask
-    return $ map AddSourceRecord (ipdSandboxSources pkg)
+    return $ sort $ map AddSourceRecord (ipdSandboxSources pkg)
 
 -- | Returns the direct child records for the package, this includes
 -- an 'AddSourcesRecord' and 'ComponentsRecord'
@@ -458,7 +472,7 @@ packageRecords :: PackageM (Forest FileRecord)
 packageRecords = do
     p <- ask
     liftIO $ debugM "leksah" $ "packageRecords" <> ipdCabalFile p
-    let dir = ipdBuildDir p
+    let dir = ipdPackageDir p
 
     componentsNode <- Node (ComponentsRecord p) . map leaf <$> componentsRecords
     addSourcesNode <- Node (AddSourcesRecord p) . map leaf <$> addSourcesRecords
@@ -502,9 +516,16 @@ componentsRecords = do
     mbActivePackage <- readIDE activePack
     activeComponent <- readIDE activeExe
 
-    let isActive component = Just package == mbActivePackage && Just component == activeComponent
-    return $ map (\comp -> ComponentRecord comp (isActive comp)) (ipdExes package)
+    let isActive component = Just package == mbActivePackage
+                          && (Just component == activeComponent
+                                 || activeComponent == Nothing && "lib:" `T.isPrefixOf` component) -- library
+    return $ sort $ map (\comp -> ComponentRecord comp package (isActive comp)) (components package)
 
+    where
+        components package = map ("lib:" <>) (maybeToList (ipdLib package))
+                          ++ map ("exe:" <>) (ipdExes package)
+                          ++ map ("test:" <>) (ipdTests package)
+                          ++ map ("bench:" <>)  (ipdBenchmarks package)
 
 
 -- * Context menu
@@ -523,7 +544,7 @@ contextMenuItems selectedFiles = reifyIDE $ \ide -> do
                 showDialogOptions
                     ("Are you sure you want to delete " <> T.pack (takeFileName fp))
                     MessageQuestion
-                    [ ("Delete file", removeFile fp >> reflectIDE refreshFiles ide)
+                    [ ("Delete file", removeFile fp >> reflectIDE (refreshFiles) ide)
                     , ("Cancel", return ())
                     ]
                     (Just 0)
@@ -574,7 +595,7 @@ dirToModulePath fp = do
      mbWorkspace <- readIDE workspace
      return $ do
         ws     <- mbWorkspace
-        let srcDirs = concatMap (\pkg -> map (ipdBuildDir pkg </>) (ipdSrcDirs pkg))
+        let srcDirs = concatMap (\pkg -> map (ipdPackageDir pkg </>) (ipdSrcDirs pkg))
                                 (wsAllPackages ws)
         srcDir <- find (`isPrefixOf` fp) srcDirs
         let suffix = makeRelative srcDir fp

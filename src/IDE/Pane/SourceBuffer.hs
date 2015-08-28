@@ -158,6 +158,7 @@ import Language.Haskell.HLint3 (Idea(..))
 -- import Data.Time.Clock.POSIX (getPOSIXTime)
 import qualified Data.Sequence as Seq
 import Data.Sequence (ViewR(..), (|>))
+import IDE.Core.Types (ipdPackageDir)
 
 --time :: MonadIO m => String -> m a -> m a
 --time name action = do
@@ -1085,7 +1086,7 @@ fileCloseAll filterFunc = do
 
 fileCloseAllButPackage :: IDEAction
 fileCloseAllButPackage = do
-    mbActivePath    <-  fmap ipdBuildDir <$> readIDE activePack
+    mbActivePath    <-  fmap ipdPackageDir <$> readIDE activePack
     bufs            <-  allBuffers
     case mbActivePath of
         Just p -> mapM_ (close' p) bufs

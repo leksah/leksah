@@ -177,7 +177,7 @@ choosePackageFile window
 packageEdit :: PackageAction
 packageEdit = do
     idePackage <- ask
-    let dirName = dropFileName (ipdCabalFile idePackage)
+    let dirName = ipdPackageDir idePackage
     modules <- liftIO $ allModules dirName
     package <- liftIO $ readPackageDescription normal (ipdCabalFile idePackage)
     if hasConfigs package

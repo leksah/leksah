@@ -32,7 +32,7 @@ import qualified Data.Conduit as C (Sink, ZipSink(..), getZipSink)
 import qualified Data.Conduit.List as CL (fold)
 import IDE.Utils.Tool (ToolOutput(..))
 import IDE.Utils.GUIUtils (__, chooseDir)
-import IDE.Core.State (PackageAction, readIDE, prefs, ipdBuildDir, getMainWindow,
+import IDE.Core.State (PackageAction, readIDE, prefs, ipdPackageDir, getMainWindow,
             Workspace, wsFile, liftIDE, IDEPackage, IDEM, runPackage, LogLaunch)
 import IDE.Pane.Log (getDefaultLogLaunch)
 import IDE.Utils.ExternalTool (runExternalTool')
@@ -59,7 +59,7 @@ sandboxInit = do
     logLaunch <- getDefaultLogLaunch
     runExternalTool' (__ "Sandbox Init")
         "cabal" ["sandbox", "init"]
-        (ipdBuildDir package) (logSandbox package logLaunch)
+        (ipdPackageDir package) (logSandbox package logLaunch)
 
 chooseSandboxDir :: Window -> Maybe FilePath -> IO (Maybe FilePath)
 chooseSandboxDir window = chooseDir window (__ "Select sandbox folder")
@@ -76,7 +76,7 @@ sandboxInitShared = do
             logLaunch <- getDefaultLogLaunch
             runExternalTool' (__ "Sandbox Init")
                 "cabal" ["sandbox", "init", "--sandbox=" <> T.pack dir]
-                (ipdBuildDir package) (logSandbox package logLaunch)
+                (ipdPackageDir package) (logSandbox package logLaunch)
 
 sandboxDelete :: PackageAction
 sandboxDelete = do
@@ -84,7 +84,7 @@ sandboxDelete = do
     logLaunch <- getDefaultLogLaunch
     runExternalTool' (__ "Sandbox Delete")
         "cabal" ["sandbox", "delete"]
-        (ipdBuildDir package) (logSandbox package logLaunch)
+        (ipdPackageDir package) (logSandbox package logLaunch)
 
 chooseSandboxSourceDir :: Window -> Maybe FilePath -> IO (Maybe FilePath)
 chooseSandboxSourceDir window = chooseDir window (__ "Select source folder")
@@ -102,5 +102,5 @@ sandboxAddSource snapshot = do
             logLaunch <- getDefaultLogLaunch
             runExternalTool' (__ "Sandbox Add Source")
                 "cabal" (["sandbox", "add-source", T.pack fp] ++ ["--snapshot" | snapshot])
-                (ipdBuildDir package) (logSandbox package logLaunch)
+                (ipdPackageDir package) (logSandbox package logLaunch)
 
