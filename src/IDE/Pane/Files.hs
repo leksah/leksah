@@ -30,19 +30,19 @@ module IDE.Pane.Files (
 
 import Prelude hiding (catch)
 import Graphics.UI.Gtk
-       (treeViewRowActivated, treeStoreClear, treeModelGetIterFirst,
-        treeViewLevelIndentation, treeViewShowExpanders,
-        treeViewCollapseRow, treeViewExpandRow, treeSelectionUnselectAll,
-        cellLayoutPackEnd, cellTextMarkup, cellPixbufStockId,
-        scrolledWindowSetShadowType, treeSelectionSelectionChanged,
-        treeStoreRemove, treeModelIterNext, treeModelGetRow,
-        treeStoreInsert, treeModelIterNthChild, treeModelGetPath, TreeIter,
-        treeModelGetIter, TreePath, treeSelectionGetSelectedRows,
-        rowActivated, treeStoreGetValue, rowExpanded, on, after,
-        focusInEvent, scrolledWindowSetPolicy, containerAdd,
-        scrolledWindowNew, treeSelectionSetMode, treeViewGetSelection,
-        treeViewSetHeadersVisible, cellText, cellLayoutSetAttributes,
-        cellLayoutPackStart, treeViewAppendColumn,
+       (treeStoreLookup, cellLayoutSetAttributeFunc, treeViewRowActivated,
+        treeStoreClear, treeModelGetIterFirst, treeViewLevelIndentation,
+        treeViewShowExpanders, treeViewCollapseRow, treeViewExpandRow,
+        treeSelectionUnselectAll, cellLayoutPackEnd, cellTextMarkup,
+        cellPixbufStockId, scrolledWindowSetShadowType,
+        treeSelectionSelectionChanged, treeStoreRemove, treeModelIterNext,
+        treeModelGetRow, treeStoreInsert, treeModelIterNthChild,
+        treeModelGetPath, TreeIter, treeModelGetIter, TreePath,
+        treeSelectionGetSelectedRows, rowActivated, treeStoreGetValue,
+        rowExpanded, on, after, focusInEvent, scrolledWindowSetPolicy,
+        containerAdd, scrolledWindowNew, treeSelectionSetMode,
+        treeViewGetSelection, treeViewSetHeadersVisible, cellText,
+        cellLayoutSetAttributes, cellLayoutPackStart, treeViewAppendColumn,
         treeViewColumnSetReorderable, treeViewColumnSetResizable,
         treeViewColumnSetSizing, treeViewColumnSetTitle, treeViewColumnNew,
         cellRendererPixbufNew, cellRendererTextNew, treeViewSetModel,
@@ -112,21 +112,17 @@ import Graphics.UI.Gtk.ModelView.CellRenderer
 
 -- * A record in the Files Pane
 
--- | The data for a single cell in the file tree
+-- | The data for a single cell in the file tree.
 data FileRecord =
     FileRecord FilePath
   | DirRecord FilePath
               Bool -- Whether it is a source directory
-  | PackageRecord IDEPackage
-                  Bool -- Whether the package is active
-  | WorkspaceRecord Text
-  | AddSourcesRecord IDEPackage -- the package this node belongs to
+  | PackageRecord IDEPackage Bool
+  | AddSourcesRecord
   | AddSourceRecord IDEPackage
-  | ComponentsRecord IDEPackage-- the package this node belongs to
+  | ComponentsRecord
   | ComponentRecord Text
-                    IDEPackage
-                    Bool -- Whether the component is active
-  | FilesRecord IDEPackage -- the package this node belongs to
+  | FilesRecord
   | PlaceHolder -- ^ Used as child node of directories that are not yet expanded,
                 --   so that the expansion arrow becomes visible
     deriving (Eq)
@@ -139,7 +135,7 @@ instance Ord FileRecord where
     compare (DirRecord p1 _) (DirRecord p2 _) = comparing (map toLower) p1 p2
     compare (PackageRecord p1 _) (PackageRecord p2 _) = comparing (map toLower . ipdPackageDir) p1 p2
     compare (AddSourceRecord p1) (AddSourceRecord p2) = comparing (map toLower . ipdPackageDir) p1 p2
-    compare (ComponentRecord t1 _ _) (ComponentRecord t2 _ _) = comparing (map toLower . T.unpack) t1 t2
+    compare (ComponentRecord t1) (ComponentRecord t2) = comparing (map toLower . T.unpack) t1 t2
     compare _ _ = LT
 
 
@@ -149,27 +145,28 @@ gray str = "<span foreground=\"#999999\">" <> str <> "</span>"
 size str = "<span font=\"9\">" <> str <> "</span>"
 
 
--- | The markup to show in the file tree for a file record
-toMarkup :: FileRecord -> Text
-toMarkup record = size $ case record of
-     (PackageRecord p active) ->
+-- | The markup to show in the file tree for a record
+toMarkup :: FileRecord
+         -> IDEPackage
+         -> Bool
+         -> Text
+toMarkup record pkg active = size $ case record of
+     (PackageRecord p _) ->
         let pkgText = (if active then bold else id)
                           (packageIdentifierToString (ipdPackageId p))
             componentText = "" -- TODO: enter when every package has an active component
         in pkgText <> " " <> componentText
      (FileRecord f)   -> T.pack $ takeFileName f
      (DirRecord f _)  -> T.pack $ takeFileName f
-     (WorkspaceRecord name) -> italic $ "Workspace \"" <> name <> "\""
-     AddSourcesRecord _ -> "Source Dependencies"
-     (AddSourceRecord pkg) ->
+     AddSourcesRecord -> "Source Dependencies"
+     (AddSourceRecord _) ->
         let pkgText = packageIdentifierToString (ipdPackageId pkg)
             dirText = gray (T.pack (ipdPackageDir pkg))
         in pkgText <> " " <> dirText
-     ComponentsRecord _ -> "Components"
-     (ComponentRecord str _ active) -> (if active then bold else id) str
-     (FilesRecord pkg) -> "Files " <> gray (T.pack (ipdPackageDir pkg))
+     ComponentsRecord -> "Components"
+     (ComponentRecord str) -> (if active then bold else id) str
+     (FilesRecord) -> "Files " <> gray (T.pack (ipdPackageDir pkg))
      PlaceHolder -> "Placeholder"
-
 
 -- | The icon to show for a record in the file tree
 toIcon :: FileRecord -> Maybe Text
@@ -181,29 +178,46 @@ toIcon record = case record of
         | isSrc     -> Just "ide_source_folder"
         | otherwise -> Just "ide_folder"
     PackageRecord _ _ -> Just "ide_package"
-    ComponentsRecord _ -> Just "ide_component"
-    AddSourcesRecord _ -> Just "ide_source_dependency"
+    ComponentsRecord -> Just "ide_component"
+    AddSourcesRecord -> Just "ide_source_dependency"
     AddSourceRecord _ -> Just "ide_package"
-    FilesRecord _ ->  Just "ide_folder"
+    FilesRecord ->  Just "ide_folder"
     _ -> Nothing
+
+
+-- | Gets the package to which a node in the tree belongs
+iterToPackage :: TreeStore FileRecord -> TreeIter -> IDEM (Maybe IDEPackage)
+iterToPackage store iter = do
+    path <- liftIO $ treeModelGetPath store iter
+    treePathToPackage store path
+
+-- | Gets the package to which a node in the tree belongs
+treePathToPackage :: TreeStore FileRecord -> TreePath -> IDEM (Maybe IDEPackage)
+treePathToPackage store (n:_) = do
+    record <- liftIO $ treeStoreGetValue store [n]
+    case record of
+        (PackageRecord pkg _) -> return (Just pkg)
+        _                     -> do
+            ideMessage Normal "treePathToPackage: Unexpected entry at root forest"
+            return Nothing
+treePathToPackage _ _ = do
+    ideMessage Normal "treePathToPackage is called with empty path"
+    return Nothing
 
 
 -- | Determines whether the 'FileRecord' can expand, i.e. whether
 -- it should get an expander.
-canExpand :: FileRecord -> IDEM Bool
-canExpand (WorkspaceRecord _) = do
-    mbWs <- readIDE workspace
-    case mbWs of
-        Nothing -> return False
-        Just ws -> return (not . null $ wsPackages ws)
-canExpand (PackageRecord _ _) = return True
-canExpand (DirRecord _ _) = return True
-canExpand (ComponentsRecord pkg) = return (not . null $ components)
+canExpand :: FileRecord -> IDEPackage -> Bool
+canExpand record pkg = case record of
+    (PackageRecord _ _) -> True
+    (DirRecord _ _)     -> True
+    ComponentsRecord    -> not . null $ components
+    AddSourcesRecord    -> not . null $ ipdSandboxSources pkg
+    (AddSourceRecord _) -> True
+    FilesRecord         -> True
+    _                   -> False
+
     where components = maybeToList (ipdLib pkg) ++ ipdExes pkg ++ ipdTests pkg ++ ipdBenchmarks pkg
-canExpand (AddSourcesRecord pkg) = return (not . null $ ipdSandboxSources pkg)
-canExpand (AddSourceRecord _) = return True
-canExpand (FilesRecord _) = return True
-canExpand _ = return False
 
 -- * The Files pane
 
@@ -256,8 +270,24 @@ instance RecoverablePane IDEFiles FilesState IDEM where
 
         renderer1    <- cellRendererTextNew
         cellLayoutPackStart col1 renderer1 True
-        cellLayoutSetAttributes col1 renderer1 fileStore
-            $ \record -> [ cellTextMarkup := Just (toMarkup record)]
+        cellLayoutSetAttributeFunc col1 renderer1 fileStore $ \iter -> do
+            record            <- treeModelGetRow fileStore iter
+            mbActivePackage   <- flip reflectIDE ideR $ readIDE activePack
+            mbActiveComponent <- flip reflectIDE ideR $ readIDE activeExe
+            mbPkg               <- flip reflectIDE ideR $ iterToPackage fileStore iter
+            forM_ mbPkg $ \pkg -> do
+                let active = case record of
+                        (PackageRecord pkg _)  -> Just pkg == mbActivePackage
+                        (ComponentRecord comp) -> Just pkg == mbActivePackage &&
+                                                         (mbActiveComponent == Nothing &&
+                                                         "lib:" `T.isPrefixOf` comp
+                                                            ||
+                                                         Just comp == mbActiveComponent)
+                        _ -> False
+
+                -- The cellrenderer is stateful, so it
+                -- knows which cell this markup will be for (the cell at iter):
+                forM_ mbPkg $ \pkg -> set renderer1 [ cellTextMarkup := Just (toMarkup record pkg active)]
 
         treeViewSetHeadersVisible treeView False
         sel <- treeViewGetSelection treeView
@@ -277,44 +307,46 @@ instance RecoverablePane IDEFiles FilesState IDEM where
 --        on sel treeSelectionSelectionChanged $ do
         on treeView rowExpanded $ \iter path -> do
             record <- treeStoreGetValue fileStore path
-            flip reflectIDE ideR $ do
-                case record of
-                    DirRecord f _ -> workspaceTryQuiet $ do
-                        mbPkg <- fileGetPackage f
-                        forM_ mbPkg $ \package ->
-                             runPackage (refreshPackageTreeFrom fileStore treeView path) package
-                    PackageRecord pkg _ -> workspaceTryQuiet $
-                            flip runPackage pkg $ do
-                                records <- packageRecords
-                                liftIDE $ setEntries fileStore path records
-                    WorkspaceRecord ws -> do
-                        workspaceTryQuiet (refreshFromWorkspace fileStore treeView False)
-                    AddSourcesRecord pkg -> workspaceTryQuiet $
-                        runPackage (refreshPackageTreeFrom fileStore treeView path) pkg
-                    ComponentsRecord pkg -> workspaceTryQuiet $
-                        runPackage (refreshPackageTreeFrom fileStore treeView path) pkg
-                    ComponentRecord _ _ _ -> return ()
-                    AddSourceRecord pkg -> do
-                        workspaceTryQuiet $ do
+            mbPkg    <- flip reflectIDE ideR $ iterToPackage fileStore iter
+            forM_ mbPkg $ \pkg -> do
+                flip reflectIDE ideR $ do
+                    case record of
+                        DirRecord f _ -> workspaceTryQuiet $ do
+                            mbPkg <- fileGetPackage f
+                            forM_ mbPkg $ \package ->
+                                 runPackage (refreshPackageTreeFrom fileStore treeView path) package
+                        PackageRecord pkg _ -> workspaceTryQuiet $
+                                flip runPackage pkg $ do
+                                    records <- packageRecords
+                                    liftIDE $ setEntries fileStore path records
+                        AddSourcesRecord -> workspaceTryQuiet $
                             runPackage (refreshPackageTreeFrom fileStore treeView path) pkg
-                    FilesRecord pkg -> do
-                        workspaceTryQuiet $ do
+                        ComponentsRecord -> workspaceTryQuiet $
                             runPackage (refreshPackageTreeFrom fileStore treeView path) pkg
-                    PlaceHolder -> ideMessage Normal (__ "Unexpected Selection in Files Pane")
-                    _ -> return ()
+                        ComponentRecord _ -> return ()
+                        AddSourceRecord pkg -> do
+                            workspaceTryQuiet $ do
+                                runPackage (refreshPackageTreeFrom fileStore treeView path) pkg
+                        FilesRecord -> do
+                            workspaceTryQuiet $ do
+                                runPackage (refreshPackageTreeFrom fileStore treeView path) pkg
+                        PlaceHolder -> ideMessage Normal (__ "Unexpected Selection in Files Pane")
+                        _ -> return ()
 
         on treeView rowActivated $ \path col -> do
             record <- treeStoreGetValue fileStore path
-            expandable <- reflectIDE (canExpand record) ideR
-            case record of
-                    FileRecord f  -> void . flip reflectIDE ideR $
-                                         goToSourceDefinition' f (Location "" 1 0 1 0)
-                    ComponentRecord name pkg b -> flip reflectIDE ideR $ workspaceTryQuiet $
-                                                      if any (`T.isPrefixOf` name) ["exe:", "test:", "bench:"]
-                                                          then workspaceActivatePackage pkg (Just (head (T.words name)))
-                                                          else workspaceActivatePackage pkg Nothing
-                    _ -> when expandable $ do
-                             void $ treeViewToggleRow treeView path
+            mbPkg    <- flip reflectIDE ideR $ treePathToPackage fileStore path
+            forM_ mbPkg $ \pkg -> do
+                let expandable = canExpand record pkg
+                case record of
+                        FileRecord f  -> void . flip reflectIDE ideR $
+                                             goToSourceDefinition' f (Location "" 1 0 1 0)
+                        ComponentRecord name -> flip reflectIDE ideR $ workspaceTryQuiet $
+                                                          if any (`T.isPrefixOf` name) ["exe:", "test:", "bench:"]
+                                                              then workspaceActivatePackage pkg (Just (head (T.words name)))
+                                                              else workspaceActivatePackage pkg Nothing
+                        _ -> when expandable $ do
+                                 void $ treeViewToggleRow treeView path
 
 
 
@@ -361,7 +393,7 @@ fileGetPackage path = do
 
 
 -- | Refreshes the Files pane, lists all packages and synchronizes the expanded
--- folders with the file system
+-- nodes with the file system and workspace
 refreshFiles :: IDEAction
 refreshFiles = do
     files <- getFiles Nothing
@@ -369,41 +401,22 @@ refreshFiles = do
     let view  = treeView files
 
     workspaceTryQuiet $ do
-        workspace <- ask
+            packages <- sort . wsPackages <$> ask
 
-        -- replace the root node
-        liftIO $ treeStoreClear store
-        liftIDE $ setEntries store [] [Node (WorkspaceRecord (wsName workspace))
-                                            [leaf $ PlaceHolder]]
+            activePackage <- readIDE activePack
+            let forest = map (\pkg -> leaf $ PackageRecord pkg (activePackage == Just pkg)) packages
+            liftIDE $ setEntries store [] forest
 
-        liftIO . void $ treeViewToggleRow view [0]
-        -- this is an extra call to refreshFromWorkspace (aside from the
-        -- one triggered by 'treeViewToggle' to make sure the active
-        -- project is expanded
-        refreshFromWorkspace store view True
-
-
--- | Refreshes the subtrees (the packages) from the root, does
--- not refresh the root node itself.
-refreshFromWorkspace :: TreeStore FileRecord -- ^ The 'TreeStore' with the data
-                     -> TreeView             -- ^ The 'TreeView' to refresh
-                     -> Bool                 -- ^ Whether to expand the active package
-                     -> WorkspaceAction
-refreshFromWorkspace store view expandActivePackage = do
-    packages <- sort . wsPackages <$> ask
-
-    activePackage <- readIDE activePack
-    let forest = map (\pkg -> leaf $ PackageRecord pkg (activePackage == Just pkg)) packages
-    liftIDE $ setEntries store [0] forest
-
-    forM_ (zip [0..] packages) $ \(n, pkg) -> do
-        runPackage (refreshPackageTreeFrom store view [0, n]) pkg
-        when (expandActivePackage && Just pkg == activePackage) $ do
-                liftIO . void $ treeViewExpandRow view [0,n] False
+            forM_ (zip [0..] packages) $ \(n, pkg) -> do
+                records <- runPackage packageRecords pkg
+                liftIDE $ setEntries store [n] records
+                forM_ (zip [0..] records) $ \(m, _) -> do
+                    runPackage (refreshPackageTreeFrom store view [n, m]) pkg
 
 
 -- | Recursively mutates the 'TreeStore' with the given TreePath as root to attach new
--- entries to. Only refreshes content of expanded folders.
+-- entries to. Expects a 'TreePath' that is non-empty (thus points into a package).
+-- Only refreshes content of expanded folders.
 refreshPackageTreeFrom :: TreeStore FileRecord -> TreeView -> TreePath -> PackageAction
 refreshPackageTreeFrom store view path = do
     isExpanded <- liftIO $ treeViewRowExpanded view path
@@ -415,49 +428,21 @@ refreshPackageTreeFrom store view path = do
     forM_ [0..length forest-1] $ \n -> do
         refreshPackageTreeFrom store view (path ++ [n])
 
--- | Sets the subtrees of the given 'TreePath' to the provided tree of 'FileRecord's. If a record
--- is already present, it is kept in the same (expanded) state.
-setEntries :: TreeStore FileRecord -> TreePath -> Forest FileRecord -> IDEAction
-setEntries store parentPath records = reifyIDE $ \ideR -> do
-    forM_ (zip [0..] (map rootLabel records)) $ \(n, record) -> do
-        mbParentIter <- treeModelGetIter store parentPath
-        mbChildIter <- treeModelIterNthChild store mbParentIter n
-        findResult <- searchToRight record store mbChildIter
-        case (mbChildIter, findResult) of
-            (_, WhereExpected _) -> return () -- it's already there
-            (Just iter, Found _) -> do -- it's already there at a later sibling
-                path <- treeModelGetPath store iter
-                removeUntil record store path
-            _ -> do
-                treeStoreInsert store parentPath n record
-
-                -- Insert placeholder children for dirs and packages so they can
-                -- be expanded on clicking, and have the contents loaded "lazily".
-                expandable <- reflectIDE (canExpand record) ideR
-                when expandable $
-                    liftIO $ treeStoreInsert store (parentPath++[n]) 0 PlaceHolder
-
-    -- Recursively set the subforests
-    forM_ (zip [0..] (map subForest records)) $ \(n, forest) -> do
-        reflectIDE (setEntries store (parentPath ++ [n]) forest) ideR
-
-    when (not (null records)) $
-        void $ removeRemaining store (parentPath++[length records])
-
 
 -- | Returns the subtrees of the 'FileRecord'. Non-expanded
 -- folders do not have their contents as subtrees but a
 -- dummy 'PlaceHolder' entry instead.
 subTrees :: FileRecord -> PackageM (Forest FileRecord)
 subTrees record = case record of
-    DirRecord dir _        -> map leaf <$> dirRecords dir
-    ComponentsRecord _     -> map leaf <$> componentsRecords
-    AddSourcesRecord _     -> map leaf <$> addSourcesRecords
-    AddSourceRecord pkg    -> local (\_ -> pkg) packageRecords
-    FilesRecord pkg        -> map leaf <$> dirRecords (takeDirectory . ipdCabalFile $ pkg)
-    PackageRecord pkg _    -> ideMessage Normal "Unexpected package node in file tree" >> return []
-    WorkspaceRecord _      -> ideMessage Normal "Unexpected workspace node in file tree" >> return []
-    _                      -> return []
+    DirRecord dir _     -> map leaf <$> dirRecords dir
+    ComponentsRecord    -> map leaf <$> componentsRecords
+    AddSourcesRecord    -> map leaf <$> addSourcesRecords
+    AddSourceRecord pkg -> local (\_ -> pkg) packageRecords
+    FilesRecord         -> do
+        pkg <- ask
+        map leaf <$> dirRecords (ipdPackageDir pkg)
+    PackageRecord pkg _ -> ideMessage Normal "Unexpected package node in file tree" >> return []
+    _                   -> return []
 
 
 -- | Returns the direct children, the add source dependencies
@@ -473,11 +458,9 @@ packageRecords = do
     p <- ask
     liftIO $ debugM "leksah" $ "packageRecords" <> ipdCabalFile p
     let dir = ipdPackageDir p
-
-    componentsNode <- Node (ComponentsRecord p) . map leaf <$> componentsRecords
-    addSourcesNode <- Node (AddSourcesRecord p) . map leaf <$> addSourcesRecords
-    filesNodes     <- Node (FilesRecord      p) . map leaf <$> dirRecords dir
-    return $ [componentsNode, addSourcesNode, filesNodes]
+    return [ Node ComponentsRecord []
+           , Node AddSourcesRecord []
+           , Node FilesRecord      []]
 
 
 -- | Returns the contents at the given 'FilePath' as 'FileRecord's.
@@ -516,16 +499,46 @@ componentsRecords = do
     mbActivePackage <- readIDE activePack
     activeComponent <- readIDE activeExe
 
-    let isActive component = Just package == mbActivePackage
-                          && (Just component == activeComponent
-                                 || activeComponent == Nothing && "lib:" `T.isPrefixOf` component) -- library
-    return $ sort $ map (\comp -> ComponentRecord comp package (isActive comp)) (components package)
+    return $ sort $ map (\comp -> ComponentRecord comp) (components package)
 
     where
         components package = map ("lib:" <>) (maybeToList (ipdLib package))
                           ++ map ("exe:" <>) (ipdExes package)
                           ++ map ("test:" <>) (ipdTests package)
                           ++ map ("bench:" <>)  (ipdBenchmarks package)
+
+
+-- | Sets the subtrees of the given 'TreePath' to the provided tree of 'FileRecord's. If a record
+-- is already present, it is kept in the same (expanded) state.
+setEntries :: TreeStore FileRecord -> TreePath -> Forest FileRecord -> IDEAction
+setEntries store parentPath records = reifyIDE $ \ideR -> do
+    forM_ (zip [0..] (map rootLabel records)) $ \(n, record) -> do
+        mbParentIter <- treeModelGetIter store parentPath
+        mbChildIter <- treeModelIterNthChild store mbParentIter n
+        findResult <- searchToRight record store mbChildIter
+        case (mbChildIter, findResult) of
+            (_, WhereExpected _) -> return () -- it's already there
+            (Just iter, Found _) -> do -- it's already there at a later sibling
+                path <- treeModelGetPath store iter
+                removeUntil record store path
+            _ -> do
+                treeStoreInsert store parentPath n record
+
+                -- Insert placeholder children for dirs and packages so they can
+                -- be expanded on clicking, and have the contents loaded "lazily".
+                mbPkg <- flip reflectIDE ideR $ treePathToPackage store (parentPath ++ [n])
+                forM_ mbPkg $ \pkg -> do
+                    let expandable = canExpand record pkg
+                    when expandable $
+                        liftIO $ treeStoreInsert store (parentPath++[n]) 0 PlaceHolder
+
+    -- Recursively set the subforests
+    forM_ (zip [0..] (map subForest records)) $ \(n, forest) -> do
+        reflectIDE (setEntries store (parentPath ++ [n]) forest) ideR
+
+    when (not (null records)) $
+        void $ removeRemaining store (parentPath++[length records])
+
 
 
 -- * Context menu
@@ -657,18 +670,3 @@ removeRemaining :: TreeStore a -> TreePath -> IO ()
 removeRemaining store path = do
     found <- treeStoreRemove store path
     when found $ removeRemaining store path
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
