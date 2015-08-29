@@ -57,7 +57,7 @@ updateMenu app uiManager = do
                 applicationInsertAppMenuItem app sep 1
             Nothing   -> return ()
 
-        mbPrefs   <- uiManagerGetWidget uiManager ("/ui/menubar/_Configuration/Edit general Preferences" :: Text)
+        mbPrefs   <- uiManagerGetWidget uiManager ("/ui/menubar/_Tools/_Preferences" :: Text)
         case mbPrefs of
             Just prefs -> do
                 applicationInsertAppMenuItem app (castToMenuItem prefs) 2
