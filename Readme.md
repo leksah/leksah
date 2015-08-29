@@ -95,7 +95,6 @@ Make sure `C:\Leksah\bin` and `%APPDATA%\cabal\bin` are in your `PATH` and build
 
     cabal update
     cabal install Cabal
-    cabal install regex-tdfa-text --ghc-options=-XFlexibleContexts
     cabal install alex happy
     cabal install gtk2hs-buildtools
     cabal install leksah

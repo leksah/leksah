@@ -101,7 +101,6 @@ then
 
     # Install Leksah
     cabal install gtk2hs-buildtools
-    cabal install regex-tdfa-text --ghc-options=-XFlexibleContexts
     cabal install ./ ./vendor/ltk ./vendor/leksah-server
 fi
 
@@ -258,7 +257,6 @@ then
     cd .. && \
     wine cabal install alex happy && \
     wine cabal install gtk2hs-buildtools && \
-    wine cabal install regex-tdfa-text --ghc-options=-XFlexibleContexts && \
     wineserver -w && \
     rm -rf network-* old-time-*
 fi

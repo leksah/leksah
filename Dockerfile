@@ -131,7 +131,6 @@ RUN wineserver -p1 && \
     cd .. && \
     wine cabal install alex happy && \
     wine cabal install gtk2hs-buildtools && \
-    wine cabal install regex-tdfa-text --ghc-options=-XFlexibleContexts && \
     wineserver -w && \
     rm -rf network-* old-time-*
 
