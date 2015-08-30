@@ -49,7 +49,7 @@ import Graphics.UI.Gtk
         treeViewNew, treeStoreNew, castToWidget, TreeStore, TreeView,
         ScrolledWindow, treeViewRowExpanded, treeStoreGetTree, Menu(..),
         MenuItem(..))
-import Data.Maybe (maybeToList, listToMaybe, isJust)
+import Data.Maybe (fromMaybe, maybeToList, listToMaybe, isJust)
 import Control.Monad (forM, void, forM_, when)
 import Data.Typeable (Typeable)
 import IDE.Core.State
@@ -61,7 +61,8 @@ import Control.Applicative ((<$>))
 import System.FilePath ((</>), takeFileName, dropFileName)
 import Distribution.Package (PackageIdentifier(..))
 import System.Directory
-       (doesFileExist, removeFile, doesDirectoryExist,
+       (removeDirectoryRecursive, removeDirectory, createDirectory,
+        doesFileExist, removeFile, doesDirectoryExist,
         getDirectoryContents, getPermissions, readable)
 import IDE.Core.CTypes
        (Location(..), packageIdentifierToString)
@@ -92,8 +93,8 @@ import System.FilePath
        makeRelative, splitDirectories)
 import Control.Monad.Reader.Class (MonadReader(..))
 import IDE.Workspaces
-       (workspaceActivatePackage, workspaceTry, workspaceTryQuiet,
-        packageTry)
+       (workspaceRemovePackage, workspaceActivatePackage, workspaceTry,
+        workspaceTryQuiet, packageTry)
 import Data.List
        (isSuffixOf, find, stripPrefix, isPrefixOf, sortBy, sort)
 import Data.Ord (comparing)
@@ -107,6 +108,7 @@ import Graphics.UI.Gtk.Windows.MessageDialog
        (ButtonsType(..), MessageType(..), messageDialogNew)
 import Graphics.UI.Gtk.ModelView.CellRenderer
        (CellRendererMode(..), cellMode)
+import IDE.Pane.PackageEditor (packageEditText)
 
 
 
@@ -122,7 +124,6 @@ data FileRecord =
   | AddSourceRecord IDEPackage
   | ComponentsRecord
   | ComponentRecord Text
-  | FilesRecord
   | PlaceHolder -- ^ Used as child node of directories that are not yet expanded,
                 --   so that the expansion arrow becomes visible
     deriving (Eq)
@@ -148,24 +149,39 @@ size str = "<span font=\"9\">" <> str <> "</span>"
 -- | The markup to show in the file tree for a record
 toMarkup :: FileRecord
          -> IDEPackage
-         -> Bool
-         -> Text
-toMarkup record pkg active = size $ case record of
+         -> IDEM Text
+toMarkup record pkg = do
+    mbActivePackage   <- readIDE activePack
+    mbActiveComponent <- readIDE activeExe
+
+    return . size $ case record of
      (PackageRecord p _) ->
-        let pkgText = (if active then bold else id)
+        let active = Just pkg == mbActivePackage
+            pkgText = (if active then bold else id)
                           (packageIdentifierToString (ipdPackageId p))
-            componentText = "" -- TODO: enter when every package has an active component
-        in pkgText <> " " <> componentText
-     (FileRecord f)   -> T.pack $ takeFileName f
-     (DirRecord f _)  -> T.pack $ takeFileName f
+            mbLib   = ipdLib p
+            componentText = if active
+                                then maybe ("(" <> "lib:" <> fromMaybe "" mbLib <> ")")
+                                           (\comp -> "(" <> comp <> ")") mbActiveComponent
+                                else ""
+            pkgDir = gray . T.pack $ ipdPackageDir p
+        in (pkgText <> " " <> componentText <> " " <> pkgDir)
+     (FileRecord f) -> T.pack $ takeFileName f
+     (DirRecord f _) | ipdPackageDir pkg == f -> "Files"
+                     | otherwise -> T.pack $ last (splitDirectories f)
      AddSourcesRecord -> "Source Dependencies"
-     (AddSourceRecord _) ->
-        let pkgText = packageIdentifierToString (ipdPackageId pkg)
-            dirText = gray (T.pack (ipdPackageDir pkg))
-        in pkgText <> " " <> dirText
+     (AddSourceRecord p) -> do
+        let pkgText = packageIdentifierToString (ipdPackageId p)
+            dirText = gray (T.pack (ipdPackageDir p))
+        pkgText <> " " <> dirText
      ComponentsRecord -> "Components"
-     (ComponentRecord str) -> (if active then bold else id) str
-     (FilesRecord) -> "Files " <> gray (T.pack (ipdPackageDir pkg))
+     (ComponentRecord comp) -> do
+        let active = Just pkg == mbActivePackage &&
+                         (mbActiveComponent == Nothing &&
+                         "lib:" `T.isPrefixOf` comp
+                            ||
+                                 Just comp == mbActiveComponent)
+        (if active then bold else id) comp
      PlaceHolder -> "Placeholder"
 
 -- | The icon to show for a record in the file tree
@@ -181,7 +197,6 @@ toIcon record = case record of
     ComponentsRecord -> Just "ide_component"
     AddSourcesRecord -> Just "ide_source_dependency"
     AddSourceRecord _ -> Just "ide_package"
-    FilesRecord ->  Just "ide_folder"
     _ -> Nothing
 
 
@@ -207,15 +222,18 @@ treePathToPackage _ _ = do
 
 -- | Determines whether the 'FileRecord' can expand, i.e. whether
 -- it should get an expander.
-canExpand :: FileRecord -> IDEPackage -> Bool
+canExpand :: FileRecord -> IDEPackage -> IDEM Bool
 canExpand record pkg = case record of
-    (PackageRecord _ _) -> True
-    (DirRecord _ _)     -> True
-    ComponentsRecord    -> not . null $ components
-    AddSourcesRecord    -> not . null $ ipdSandboxSources pkg
-    (AddSourceRecord _) -> True
-    FilesRecord         -> True
-    _                   -> False
+    (PackageRecord _ _) -> return True
+    (DirRecord fp _)     -> do
+        mbWs <- readIDE workspace
+        case mbWs of
+            Just ws -> not . null <$> (flip runWorkspace ws . flip runPackage pkg $ dirRecords fp)
+            Nothing -> return False
+    ComponentsRecord    -> return . not . null $ components
+    AddSourcesRecord    -> return . not . null $ ipdSandboxSources pkg
+    (AddSourceRecord _) -> return True
+    _                   -> return False
 
     where components = maybeToList (ipdLib pkg) ++ ipdExes pkg ++ ipdTests pkg ++ ipdBenchmarks pkg
 
@@ -271,23 +289,12 @@ instance RecoverablePane IDEFiles FilesState IDEM where
         renderer1    <- cellRendererTextNew
         cellLayoutPackStart col1 renderer1 True
         cellLayoutSetAttributeFunc col1 renderer1 fileStore $ \iter -> do
-            record            <- treeModelGetRow fileStore iter
-            mbActivePackage   <- flip reflectIDE ideR $ readIDE activePack
-            mbActiveComponent <- flip reflectIDE ideR $ readIDE activeExe
-            mbPkg               <- flip reflectIDE ideR $ iterToPackage fileStore iter
+            record <- treeModelGetRow fileStore iter
+            mbPkg  <- flip reflectIDE ideR $ iterToPackage fileStore iter
             forM_ mbPkg $ \pkg -> do
-                let active = case record of
-                        (PackageRecord pkg _)  -> Just pkg == mbActivePackage
-                        (ComponentRecord comp) -> Just pkg == mbActivePackage &&
-                                                         (mbActiveComponent == Nothing &&
-                                                         "lib:" `T.isPrefixOf` comp
-                                                            ||
-                                                         Just comp == mbActiveComponent)
-                        _ -> False
-
-                -- The cellrenderer is stateful, so it
-                -- knows which cell this markup will be for (the cell at iter):
-                forM_ mbPkg $ \pkg -> set renderer1 [ cellTextMarkup := Just (toMarkup record pkg active)]
+                -- The cellrenderer is stateful, so it knows which cell this markup will be for (the cell at iter)
+                markup <- flip reflectIDE ideR $ toMarkup record pkg
+                forM_ mbPkg $ \pkg -> set renderer1 [ cellTextMarkup := Just markup]
 
         treeViewSetHeadersVisible treeView False
         sel <- treeViewGetSelection treeView
@@ -312,22 +319,16 @@ instance RecoverablePane IDEFiles FilesState IDEM where
                 flip reflectIDE ideR $ do
                     case record of
                         DirRecord f _ -> workspaceTryQuiet $ do
-                            mbPkg <- fileGetPackage f
-                            forM_ mbPkg $ \package ->
-                                 runPackage (refreshPackageTreeFrom fileStore treeView path) package
-                        PackageRecord pkg _ -> workspaceTryQuiet $
-                                flip runPackage pkg $ do
-                                    records <- packageRecords
-                                    liftIDE $ setEntries fileStore path records
+                            runPackage (refreshPackageTreeFrom fileStore treeView path) pkg
+                        PackageRecord _ _ -> workspaceTryQuiet . flip runPackage pkg $ do
+                                records <- packageRecords
+                                liftIDE $ setEntries fileStore path records
                         AddSourcesRecord -> workspaceTryQuiet $
                             runPackage (refreshPackageTreeFrom fileStore treeView path) pkg
                         ComponentsRecord -> workspaceTryQuiet $
                             runPackage (refreshPackageTreeFrom fileStore treeView path) pkg
                         ComponentRecord _ -> return ()
                         AddSourceRecord pkg -> do
-                            workspaceTryQuiet $ do
-                                runPackage (refreshPackageTreeFrom fileStore treeView path) pkg
-                        FilesRecord -> do
                             workspaceTryQuiet $ do
                                 runPackage (refreshPackageTreeFrom fileStore treeView path) pkg
                         PlaceHolder -> ideMessage Normal (__ "Unexpected Selection in Files Pane")
@@ -337,13 +338,13 @@ instance RecoverablePane IDEFiles FilesState IDEM where
             record <- treeStoreGetValue fileStore path
             mbPkg    <- flip reflectIDE ideR $ treePathToPackage fileStore path
             forM_ mbPkg $ \pkg -> do
-                let expandable = canExpand record pkg
+                expandable <- flip reflectIDE ideR $ canExpand record pkg
                 case record of
                         FileRecord f  -> void . flip reflectIDE ideR $
                                              goToSourceDefinition' f (Location "" 1 0 1 0)
                         ComponentRecord name -> flip reflectIDE ideR $ workspaceTryQuiet $
                                                           if any (`T.isPrefixOf` name) ["exe:", "test:", "bench:"]
-                                                              then workspaceActivatePackage pkg (Just (head (T.words name)))
+                                                              then workspaceActivatePackage pkg (Just name)
                                                               else workspaceActivatePackage pkg Nothing
                         _ -> when expandable $ do
                                  void $ treeViewToggleRow treeView path
@@ -422,7 +423,18 @@ refreshPackageTreeFrom store view path = do
     isExpanded <- liftIO $ treeViewRowExpanded view path
     record     <- liftIO $ treeStoreGetValue store path
 
-    forest <- if isExpanded then subTrees record else return []
+    Just pkg <- liftIDE $ treePathToPackage store path
+    expandable <- liftIDE $ canExpand record pkg
+    forest <- if isExpanded
+                  then do
+                      forest <- subTrees record
+                      when (null forest) $ do
+                          -- it has no children, collapse it
+                          liftIO $ treeViewCollapseRow view path
+                          liftIO $ treeStoreRemoveChildren store path
+                      return forest
+                  else return $ if expandable then [leaf PlaceHolder] else []
+
 
     liftIDE $ setEntries store path forest
     forM_ [0..length forest-1] $ \n -> do
@@ -438,9 +450,6 @@ subTrees record = case record of
     ComponentsRecord    -> map leaf <$> componentsRecords
     AddSourcesRecord    -> map leaf <$> addSourcesRecords
     AddSourceRecord pkg -> local (\_ -> pkg) packageRecords
-    FilesRecord         -> do
-        pkg <- ask
-        map leaf <$> dirRecords (ipdPackageDir pkg)
     PackageRecord pkg _ -> ideMessage Normal "Unexpected package node in file tree" >> return []
     _                   -> return []
 
@@ -460,7 +469,7 @@ packageRecords = do
     let dir = ipdPackageDir p
     return [ Node ComponentsRecord []
            , Node AddSourcesRecord []
-           , Node FilesRecord      []]
+           , Node (DirRecord dir False)  []]
 
 
 -- | Returns the contents at the given 'FilePath' as 'FileRecord's.
@@ -524,14 +533,6 @@ setEntries store parentPath records = reifyIDE $ \ideR -> do
             _ -> do
                 treeStoreInsert store parentPath n record
 
-                -- Insert placeholder children for dirs and packages so they can
-                -- be expanded on clicking, and have the contents loaded "lazily".
-                mbPkg <- flip reflectIDE ideR $ treePathToPackage store (parentPath ++ [n])
-                forM_ mbPkg $ \pkg -> do
-                    let expandable = canExpand record pkg
-                    when expandable $
-                        liftIO $ treeStoreInsert store (parentPath++[n]) 0 PlaceHolder
-
     -- Recursively set the subforests
     forM_ (zip [0..] (map subForest records)) $ \(n, forest) -> do
         reflectIDE (setEntries store (parentPath ++ [n]) forest) ideR
@@ -543,63 +544,91 @@ setEntries store parentPath records = reifyIDE $ \ideR -> do
 
 -- * Context menu
 
+contextMenuItems :: FileRecord -> TreePath -> TreeStore FileRecord -> IDEM [(Text, IDEAction)]
+contextMenuItems record path store = do
+    case record of
+        (FileRecord fp) -> do
+            let onDeleteFile = reifyIDE $ \ideRef -> do
+                    showDialogOptions
+                        ("Are you sure you want to delete " <> T.pack (takeFileName fp) <> "?")
+                        MessageQuestion
+                        [ ("Delete File", removeFile fp >> reflectIDE refreshFiles ideRef)
+                        , ("Cancel", return ())
+                        ]
+                        (Just 0)
+            return [("Delete File", onDeleteFile)]
 
+        DirRecord fp _ -> do
 
--- | Returns the relevant menu items for the context menu, assumes a
---   selection of one item in the view (which is enforced by the treeview)
-contextMenuItems :: [(FileRecord, TreePath)] -> IDEM [MenuItem]
-contextMenuItems selectedFiles = reifyIDE $ \ide -> do
-    case selectedFiles of
-        ((FileRecord fp, _) : _) -> do
-            deleteFile <- menuItemNewWithLabel (__ "Delete File")
+            let onNewModule = do
+                    mbModulePath <- dirToModulePath fp
+                    let modulePrefix = fromMaybe [] mbModulePath
+                    packageTry $ addModule modulePrefix
+                    refreshFiles
 
-            deleteFile `on` menuItemActivate $ do
-                showDialogOptions
-                    ("Are you sure you want to delete " <> T.pack (takeFileName fp))
-                    MessageQuestion
-                    [ ("Delete file", removeFile fp >> reflectIDE (refreshFiles) ide)
-                    , ("Cancel", return ())
-                    ]
-                    (Just 0)
+            let onNewTextFile = reifyIDE $ \ideRef -> do
+                    mbText <- showInputDialog "File name:" ""
+                    case mbText of
+                        Just t  -> do
+                            let path = fp </> T.unpack t
+                            exists <- doesFileExist path
+                            if exists
+                                then showErrorDialog "File already exists"
+                                else do
+                                    writeFile path ""
+                                    void $ reflectIDE (refreshFiles >> goToSourceDefinition' path (Location "" 1 0 1 0)) ideRef
+                        Nothing -> return ()
 
-            return [deleteFile]
+            let onNewDir = reifyIDE $ \ideRef -> do
+                    mbText <- showInputDialog "Directory name:" ""
+                    case mbText of
+                        Just t  -> do
+                            let path = fp </> T.unpack t
+                            exists <- doesDirectoryExist path
+                            if exists
+                                then showErrorDialog "Directory already exists"
+                                else do
+                                    createDirectory path
+                                    void $ reflectIDE refreshFiles ideRef
+                        Nothing -> return ()
 
-        ((DirRecord fp _, path)  : _) -> do
-            newModule   <- menuItemNewWithLabel (__ "New Module")
-            newTextFile <- menuItemNewWithLabel (__ "New Text File")
-            newFolder   <- menuItemNewWithLabel (__ "New Folder")
+            let onDeleteDir = reifyIDE $ \ideRef -> do
+                    showDialogOptions
+                        ("Are you sure you want to delete " <> T.pack (takeFileName fp) <> "?")
+                        MessageQuestion
+                        [ ("Delete directory", removeDirectoryRecursive fp >> reflectIDE refreshFiles ideRef)
+                        , ("Cancel", return ())
+                        ]
+                        (Just 0)
 
-            newModule `on` menuItemActivate $ do
-                mbModulePath <- reflectIDE (dirToModulePath fp) ide
-                let modulePrefix = maybe [] id mbModulePath
-                reflectIDE (packageTry $ addModule modulePrefix) ide
+            return [ ("New Module", onNewModule)
+                   , ("New Text File", onNewTextFile)
+                   , ("New Directory", onNewDir)
+                   , ("Delete Directory", onDeleteDir)]
 
-            newTextFile `on` menuItemActivate $ do
-                mbText <- showInputDialog "File name:" ""
-                case mbText of
-                    Just t  -> do
-                        let path = fp </> T.unpack t
-                        exists <- doesFileExist path
-                        if exists
-                            then showErrorDialog "File already exists"
-                            else do
-                                writeFile path ""
-                                void $ reflectIDE (goToSourceDefinition' path (Location "" 1 0 1 0)) ide
-                    Nothing -> return ()
+        PackageRecord p _ -> do
 
+            let onSetActive = workspaceTryQuiet $ workspaceActivatePackage p Nothing
+                onAddModule = workspaceTryQuiet $ runPackage (addModule []) p
+                onOpenCabalFile = workspaceTryQuiet $ runPackage packageEditText p
+                onRemoveFromWs = workspaceTryQuiet $ do
+                    workspaceRemovePackage p
+                    liftIDE refreshFiles
 
+            return [ ("Set As Active Package", onSetActive)
+                   , ("Add Module", onAddModule)
+                   , ("Open .cabal File", onOpenCabalFile)
+                   , ("Remove From Workspace", onRemoveFromWs)]
+        ComponentRecord comp -> do
+            Just pkg <- treePathToPackage store path
+            let onSetActive = workspaceTryQuiet $
+                                  if any (`T.isPrefixOf` comp) ["exe:", "test:", "bench:"]
+                                      then workspaceActivatePackage pkg (Just comp)
+                                      else workspaceActivatePackage pkg Nothing
+            return [ ("Activate component", onSetActive) ]
 
-
-            return [newModule, newTextFile]
-
-        ((PackageRecord p _, _) : _) -> do
-            newModule   <- menuItemNewWithLabel (__ "New Module")
-
-            newModule `on` menuItemActivate $ do
-                reflectIDE (packageTry $ addModule []) ide
-
-            return [newModule]
         _ -> return []
+
 
 -- | Searches the source folders too determine what the corresponding
 --   module path is

@@ -50,7 +50,8 @@ module IDE.Utils.GUIUtils (
 
 import Graphics.UI.Gtk
 import IDE.Utils.Tool (runProcess)
-import Data.Maybe (fromMaybe, catMaybes, fromJust, isJust)
+import Data.Maybe
+       (listToMaybe, fromMaybe, catMaybes, fromJust, isJust)
 import Control.Monad
 import IDE.Core.State
 --import Graphics.UI.Gtk.Selectors.FileChooser
@@ -198,20 +199,29 @@ showInputDialog :: Text -- ^ The message text
                 -> Text -- ^ The default value
                 -> IO (Maybe Text)
 showInputDialog msg def = do
-    dialog <- messageDialogNew Nothing [] MessageQuestion ButtonsOkCancel msg
-    vbox <- get dialog messageDialogMessageArea
+    dialog <- dialogNew -- Nothing [] MessageQuestion ButtonsOkCancel msg
+    vbox   <- castToBox <$> dialogGetContentArea dialog
+    label <- labelNew (Just msg)
     entry <- entryNew
     set entry [entryText := def]
-    boxPackEnd vbox entry PackNatural 0
+    boxPackStart vbox label PackNatural 0
+    boxPackStart vbox entry PackNatural 0
     widgetShowAll vbox
 
+    -- Can't use messageDialog because of https://github.com/gtk2hs/gtk2hs/issues/114
+    dialogAddButton dialog ("Cancel" :: Text) ResponseCancel
+    dialogAddButton dialog ("Ok" :: Text) ResponseOk
+    dialogSetDefaultResponse dialog ResponseOk
+
     res <- dialogRun dialog
+    widgetHide dialog
 
     case res of
         ResponseOk -> do
             text <- get entry entryText
+            widgetDestroy dialog
             return (Just text)
-        _ -> return Nothing
+        _ -> widgetDestroy dialog >> return Nothing
 
 
 
@@ -307,11 +317,11 @@ mapControlCommand a = a
 treeViewContextMenu' :: TreeViewClass treeView
                      => treeView                 -- ^ The view
                      -> TreeStore a              -- ^ The model
-                     -> ([(a, TreePath)] -> IDEM [MenuItem]) -- ^ Produces the menu items for the selected values when right clicking
+                     -> (a -> TreePath -> TreeStore a -> IDEM [(Text, IDEAction)]) -- ^ Produces the menu items for the selected values when right clicking
                      -> IDEM (ConnectId treeView, ConnectId treeView)
-treeViewContextMenu' view store menuItems = reifyIDE $ \ide -> do
+treeViewContextMenu' view store itemsFor = reifyIDE $ \ideRef -> do
     cid1 <- view `on` popupMenuSignal $ do
-        showMenu Nothing ide
+        showMenu Nothing ideRef
     cid2 <- view `on` buttonPressEvent $ do
         button    <- eventButton
         click     <- eventClick
@@ -328,20 +338,27 @@ treeViewContextMenu' view store menuItems = reifyIDE $ \ide -> do
                             treeSelectionUnselectAll sel
                             treeSelectionSelectPath sel path
                         _ -> return ()
-                showMenu (Just (button, timestamp)) ide
+                showMenu (Just (button, timestamp)) ideRef
             _ -> return False
     return (cid1, cid2)
   where
-    showMenu buttonEventDetails ide = do
+    showMenu buttonEventDetails ideRef = do
 
         selPaths  <- treeViewGetSelection view >>= treeSelectionGetSelectedRows
         selValues <- mapM (treeStoreGetValue store) selPaths
         theMenu   <- menuNew
         menuAttachToWidget theMenu view
-        items    <- reflectIDE (menuItems (zip selValues selPaths)) ide
-        mapM (menuShellAppend theMenu) items
-        menuPopup theMenu buttonEventDetails
-        widgetShowAll theMenu
+        forM_ (listToMaybe $ zip selValues selPaths) $ \(val, path) -> do
+            items     <- flip reflectIDE ideRef $ itemsFor val path store
+            menuItems <- mapM (liftIO . menuItemNewWithLabel . fst) items
+
+            forM_ (zip items menuItems) $ \((_, onActivated), m) -> do
+                m `on` menuItemActivated $ reflectIDE onActivated ideRef
+
+            unless (null items) $ do
+                mapM (menuShellAppend theMenu) menuItems
+                menuPopup theMenu buttonEventDetails
+                widgetShowAll theMenu
         return True
 
 treeViewContextMenu :: TreeViewClass treeView
