@@ -127,8 +127,6 @@ data FileRecord =
   | AddSourceRecord IDEPackage
   | ComponentsRecord
   | ComponentRecord Text
-  | PlaceHolder -- ^ Used as child node of directories that are not yet expanded,
-                --   so that the expansion arrow becomes visible
 
 -- Custom Eq instance, so 'PackageRecord's are considered the same
 -- when their cabal files match (this avoids unnecessary filetree collapsing: when 'setEntries'
@@ -144,7 +142,6 @@ instance Eq FileRecord where
     AddSourceRecord p1 == AddSourceRecord p2 = ipdCabalFile p1 == ipdCabalFile p2
     ComponentsRecord == ComponentsRecord = True
     ComponentRecord t1 == ComponentRecord t2 = t1 == t2
-    PlaceHolder == PlaceHolder = True
     _ == _ = False
 
 instance Ord FileRecord where
@@ -201,7 +198,6 @@ toMarkup record pkg = do
                             ||
                                  Just comp == mbActiveComponent)
         (if active then bold else id) comp
-     PlaceHolder -> "Placeholder"
 
 -- | The icon to show for a record in the file tree
 toIcon :: FileRecord -> Maybe Text
@@ -350,7 +346,6 @@ instance RecoverablePane IDEFiles FilesState IDEM where
                         AddSourceRecord pkg -> do
                             workspaceTryQuiet $ do
                                 runPackage (refreshPackageTreeFrom fileStore treeView path) pkg
-                        PlaceHolder -> ideMessage Normal (__ "Unexpected Selection in Files Pane")
                         _ -> return ()
 
         on treeView rowActivated $ \path col -> do
@@ -439,36 +434,40 @@ refreshFiles = do
 -- Only refreshes content of expanded folders.
 refreshPackageTreeFrom :: TreeStore FileRecord -> TreeView -> TreePath -> PackageAction
 refreshPackageTreeFrom store view path = do
-    isExpanded <- liftIO $ treeViewRowExpanded view path
     record     <- liftIO $ treeStoreGetValue store path
-
-    Just pkg <- liftIDE $ treePathToPackage store path
+    Just pkg   <- liftIDE $ treePathToPackage store path
     expandable <- liftIDE $ canExpand record pkg
-    forest <- if isExpanded
-                  then do
-                      forest <- subTrees record
-                      when (null forest) $ do
-                          -- it has no children, collapse it
-                          liftIO $ treeViewCollapseRow view path
-                          liftIO $ treeStoreRemoveChildren store path
-                      return forest
-                  else return $ if expandable then [leaf PlaceHolder] else []
+
+    forest     <- subTrees record
+    if null forest then do
+        -- it has no children, collapse it and remove previous children
+        -- liftIO $ treeViewCollapseRow view path
+        liftIO $ treeStoreRemoveChildren store path
+    else do
+        liftIDE $ setEntries store path forest
+--
+--    isExpanded <- liftIO $ treeViewRowExpanded view path
+--    when isExpanded $
+        --forM_ [0..length forest-1] $ \n -> do
+        --    refreshPackageTreeFrom store view (path ++ [n])
 
 
-    liftIDE $ setEntries store path forest
-    forM_ [0..length forest-1] $ \n -> do
-        refreshPackageTreeFrom store view (path ++ [n])
 
 
--- | Returns the subtrees of the 'FileRecord'. Non-expanded
--- folders do not have their contents as subtrees but a
--- dummy 'PlaceHolder' entry instead.
+
+-- | Returns the subtrees of the 'FileRecord'.
 subTrees :: FileRecord -> PackageM (Forest FileRecord)
 subTrees record = case record of
-    DirRecord dir _     -> map leaf <$> dirRecords dir
-    ComponentsRecord    -> map leaf <$> componentsRecords
-    AddSourcesRecord    -> map leaf <$> addSourcesRecords
-    AddSourceRecord pkg -> local (\_ -> pkg) packageRecords
+    DirRecord dir _     -> do
+        records <- dirRecords dir
+        mapM (\r -> Node r <$> subTrees r) records
+    ComponentsRecord    -> do
+        records <- componentsRecords
+        mapM (\r -> Node r <$> subTrees r) records
+    AddSourcesRecord    -> do
+        records <- addSourcesRecords
+        mapM (\r -> Node r <$> subTrees r) records
+    AddSourceRecord pkg -> return []
     PackageRecord pkg   -> ideMessage Normal "Unexpected package node in file tree" >> return []
     _                   -> return []
 
@@ -489,7 +488,6 @@ packageRecords = do
     return [ Node ComponentsRecord []
            , Node AddSourcesRecord []
            , Node (DirRecord dir False)  []]
-
 
 -- | Returns the contents at the given 'FilePath' as 'FileRecord's.
 -- Runs in the PackageM monad to determine if directories are
