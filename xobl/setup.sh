@@ -1,7 +1,7 @@
 #!/bin/sh -ex
 
 export VBOXVER=5.0.0
-export GHCVER=7.10.1
+export GHCVER=7.10.2
 
 # Install GNOME desktop
 sudo dnf groupinstall -y "Fedora Workstation"
@@ -16,13 +16,19 @@ sudo dnf -y install \
                            mingw32-winpthreads \
                            wget \
                            tar \
+                           xz \
                            make \
                            autoconf \
                            automake \
                            p7zip \
                            unzip \
+                           cabextract \
                            git \
                            msitools \
+                           Xvfb \
+                           which \
+                           mono-core \
+                           mono-locale-extras \
                            libxslt \
                            nodejs \
                            npm
@@ -92,16 +98,13 @@ fi
 if [ ! -e ~/.cabal/bin/leksah ]
 then
     cd ~/haskell/leksah
-    # Update Cabal and cabal-install
-    cabal install Cabal cabal-install --constraint='Cabal>=1.22.3.0'
-    hash -r
 
     # Update alex and happy
     cabal install alex happy
 
     # Install Leksah
     cabal install gtk2hs-buildtools
-    cabal install ./ ./vendor/ltk ./vendor/leksah-server
+    cabal install ./ ./vendor/ltk ./vendor/leksah-server --force-reinstalls
 fi
 
 # Install socket.io (needed for GHCJSi)
@@ -136,21 +139,14 @@ then
     ln -sf x86_64-linux-*-$GHCVER x86_64-linux-$GHCVER
 fi
 
-# Install the latest webkitgtk3
-if [ ! -d ~/haskell/webkit ]
+# Install Wine Tricks
+if [ ! -e /usr/bin/winetricks ]
 then
-    cd ~/haskell
-    git clone https://github.com/gtk2hs/webkit.git
-    cabal install ./webkit
-fi
-
-# Install the latest ghcjs-dom (native and ghcjs)
-if [ ! -d ~/haskell/ghcjs-dom ]
-then
-    cd ~/haskell
-    git clone https://github.com/ghcjs/ghcjs-dom.git
-    cabal install ./ghcjs-dom
-    cabal install --ghcjs ./ghcjs-dom
+    cd ~
+    wget http://winetricks.org/winetricks
+    sudo cp winetricks /usr/bin
+    sudo chmod +x /usr/bin/winetricks
+    rm winetricks
 fi
 
 # Install pkg-config for Wine
@@ -172,7 +168,7 @@ fi
 ( grep -lZ '^Cflags:.*-I/usr/x86_64-w64-mingw32/sys-root/mingw' /usr/x86_64-w64-mingw32/sys-root/mingw/lib/pkgconfig/*.pc \
     | xargs -0 -l sudo sed -i.bak -e '/^Cflags:/ s|-I/usr/x86_64-w64-mingw32/sys-root/mingw|-I${prefix}|g' ) || true
 
-# Initialize Wine:
+# Initialize Wine and 32bit dotnet40:
 if [ ! -e ~/.wine ]
 then
     wineboot && wine cmd /C echo "Wine OK" && wineserver -w
@@ -180,7 +176,7 @@ fi
 if [ ! -e ~/.wine32 ]
 then
     ( export WINEPREFIX=~/.wine32 && export WINEARCH=win32 &&
-      wineboot && wine cmd /C echo "Wine 32 OK" && wineserver -w
+      wineboot && wine cmd /C echo "Wine 32 OK" && xvfb-run winetricks --unattended dotnet40 corefonts && wineserver -w && wineserver -w
     )
 fi
 
