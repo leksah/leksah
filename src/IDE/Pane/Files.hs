@@ -30,8 +30,9 @@ module IDE.Pane.Files (
 
 import Prelude hiding (catch)
 import Graphics.UI.Gtk
-       (treeStoreLookup, cellLayoutSetAttributeFunc, treeViewRowActivated,
-        treeStoreClear, treeModelGetIterFirst, treeViewLevelIndentation,
+       (treeSelectionSelectIter, treeStoreLookup,
+        cellLayoutSetAttributeFunc, treeViewRowActivated, treeStoreClear,
+        treeModelGetIterFirst, treeViewLevelIndentation,
         treeViewShowExpanders, treeViewCollapseRow, treeViewExpandRow,
         treeSelectionUnselectAll, cellLayoutPackEnd, cellTextMarkup,
         cellPixbufStockId, scrolledWindowSetShadowType,
@@ -53,10 +54,11 @@ import Data.Maybe (fromMaybe, maybeToList, listToMaybe, isJust)
 import Control.Monad (forM, void, forM_, when)
 import Data.Typeable (Typeable)
 import IDE.Core.State
-       (window, getIDE, MessageLevel(..), ipdPackageId,
+       (catchIDE, window, getIDE, MessageLevel(..), ipdPackageId,
         wsPackages, workspace, readIDE, IDEAction, ideMessage, reflectIDE,
         reifyIDE, IDEM, IDEPackage, ipdSandboxSources)
 import IDE.Pane.SourceBuffer (fileNew, goToSourceDefinition')
+import IDE.Sandbox
 import Control.Applicative ((<$>))
 import System.FilePath ((</>), takeFileName, dropFileName)
 import Distribution.Package (PackageIdentifier(..))
@@ -78,7 +80,7 @@ import Control.Monad.IO.Class (MonadIO(..))
 import IDE.Utils.GUIUtils
        (showErrorDialog, showInputDialog, treeViewContextMenu', __,
         showDialogOptions)
-import Control.Exception (catch)
+import Control.Exception (SomeException(..), catch)
 import Data.Text (Text)
 import qualified Data.Text as T
        (isPrefixOf, words, isSuffixOf, unpack, pack)
@@ -93,8 +95,9 @@ import System.FilePath
        makeRelative, splitDirectories)
 import Control.Monad.Reader.Class (MonadReader(..))
 import IDE.Workspaces
-       (workspaceRemovePackage, workspaceActivatePackage, workspaceTry,
-        workspaceTryQuiet, packageTry)
+       (workspaceAddPackage', workspaceRemovePackage,
+        workspaceActivatePackage, workspaceTry, workspaceTryQuiet,
+        packageTry)
 import Data.List
        (isSuffixOf, find, stripPrefix, isPrefixOf, sortBy, sort)
 import Data.Ord (comparing)
@@ -109,7 +112,7 @@ import Graphics.UI.Gtk.Windows.MessageDialog
 import Graphics.UI.Gtk.ModelView.CellRenderer
        (CellRendererMode(..), cellMode)
 import IDE.Pane.PackageEditor (packageEditText)
-
+import IDE.Utils.GtkBindings (treeViewSetActiveOnSingleClick)
 
 
 -- * A record in the Files Pane
@@ -119,14 +122,30 @@ data FileRecord =
     FileRecord FilePath
   | DirRecord FilePath
               Bool -- Whether it is a source directory
-  | PackageRecord IDEPackage Bool
+  | PackageRecord IDEPackage
   | AddSourcesRecord
   | AddSourceRecord IDEPackage
   | ComponentsRecord
   | ComponentRecord Text
   | PlaceHolder -- ^ Used as child node of directories that are not yet expanded,
                 --   so that the expansion arrow becomes visible
-    deriving (Eq)
+
+-- Custom Eq instance, so 'PackageRecord's are considered the same
+-- when their cabal files match (this avoids unnecessary filetree collapsing: when 'setEntries'
+-- has to set a row that is already there (decides it using Eq), it just leaves it there. Deleting
+-- it and replacing it would cause the filetree to collapse. For example, changing the active
+-- component changes the IDEPackage value, when refreshing the packagerecord is seen as
+-- a completely new node)
+instance Eq FileRecord where
+    FileRecord fp == FileRecord fp2 = fp == fp2
+    DirRecord fp b == DirRecord fp2 b2 = fp == fp2 && b == b2
+    PackageRecord p1 == PackageRecord p2 = ipdCabalFile p1 == ipdCabalFile p2
+    AddSourcesRecord == AddSourcesRecord = True
+    AddSourceRecord p1 == AddSourceRecord p2 = ipdCabalFile p1 == ipdCabalFile p2
+    ComponentsRecord == ComponentsRecord = True
+    ComponentRecord t1 == ComponentRecord t2 = t1 == t2
+    PlaceHolder == PlaceHolder = True
+    _ == _ = False
 
 instance Ord FileRecord where
     -- | The ordering used for displaying the records in the filetree
@@ -134,7 +153,7 @@ instance Ord FileRecord where
     compare (FileRecord _) (DirRecord _ _) = GT
     compare (FileRecord p1) (FileRecord p2) = comparing (map toLower) p1 p2
     compare (DirRecord p1 _) (DirRecord p2 _) = comparing (map toLower) p1 p2
-    compare (PackageRecord p1 _) (PackageRecord p2 _) = comparing (map toLower . ipdPackageDir) p1 p2
+    compare (PackageRecord p1) (PackageRecord p2) = comparing (map toLower . ipdPackageDir) p1 p2
     compare (AddSourceRecord p1) (AddSourceRecord p2) = comparing (map toLower . ipdPackageDir) p1 p2
     compare (ComponentRecord t1) (ComponentRecord t2) = comparing (map toLower . T.unpack) t1 t2
     compare _ _ = LT
@@ -155,7 +174,7 @@ toMarkup record pkg = do
     mbActiveComponent <- readIDE activeExe
 
     return . size $ case record of
-     (PackageRecord p _) ->
+     (PackageRecord p) ->
         let active = Just pkg == mbActivePackage
             pkgText = (if active then bold else id)
                           (packageIdentifierToString (ipdPackageId p))
@@ -193,7 +212,7 @@ toIcon record = case record of
     DirRecord p isSrc
         | isSrc     -> Just "ide_source_folder"
         | otherwise -> Just "ide_folder"
-    PackageRecord _ _ -> Just "ide_package"
+    PackageRecord _ -> Just "ide_package"
     ComponentsRecord -> Just "ide_component"
     AddSourcesRecord -> Just "ide_source_dependency"
     AddSourceRecord _ -> Just "ide_package"
@@ -211,7 +230,7 @@ treePathToPackage :: TreeStore FileRecord -> TreePath -> IDEM (Maybe IDEPackage)
 treePathToPackage store (n:_) = do
     record <- liftIO $ treeStoreGetValue store [n]
     case record of
-        (PackageRecord pkg _) -> return (Just pkg)
+        (PackageRecord pkg) -> return (Just pkg)
         _                     -> do
             ideMessage Normal "treePathToPackage: Unexpected entry at root forest"
             return Nothing
@@ -224,7 +243,7 @@ treePathToPackage _ _ = do
 -- it should get an expander.
 canExpand :: FileRecord -> IDEPackage -> IDEM Bool
 canExpand record pkg = case record of
-    (PackageRecord _ _) -> return True
+    (PackageRecord _) -> return True
     (DirRecord fp _)     -> do
         mbWs <- readIDE workspace
         case mbWs of
@@ -296,9 +315,10 @@ instance RecoverablePane IDEFiles FilesState IDEM where
                 markup <- flip reflectIDE ideR $ toMarkup record pkg
                 forM_ mbPkg $ \pkg -> set renderer1 [ cellTextMarkup := Just markup]
 
+        -- treeViewSetActiveOnSingleClick treeView True
         treeViewSetHeadersVisible treeView False
         sel <- treeViewGetSelection treeView
-        treeSelectionSetMode sel SelectionSingle
+        -- treeSelectionSetMode sel SelectionSingle
 
         scrolledView <- scrolledWindowNew Nothing Nothing
         scrolledWindowSetShadowType scrolledView ShadowIn
@@ -311,7 +331,6 @@ instance RecoverablePane IDEFiles FilesState IDEM where
             liftIO $ reflectIDE (makeActive files) ideR
             return True
 
---        on sel treeSelectionSelectionChanged $ do
         on treeView rowExpanded $ \iter path -> do
             record <- treeStoreGetValue fileStore path
             mbPkg    <- flip reflectIDE ideR $ iterToPackage fileStore iter
@@ -320,7 +339,7 @@ instance RecoverablePane IDEFiles FilesState IDEM where
                     case record of
                         DirRecord f _ -> workspaceTryQuiet $ do
                             runPackage (refreshPackageTreeFrom fileStore treeView path) pkg
-                        PackageRecord _ _ -> workspaceTryQuiet . flip runPackage pkg $ do
+                        PackageRecord _ -> workspaceTryQuiet . flip runPackage pkg $ do
                                 records <- packageRecords
                                 liftIDE $ setEntries fileStore path records
                         AddSourcesRecord -> workspaceTryQuiet $
@@ -405,7 +424,7 @@ refreshFiles = do
             packages <- sort . wsPackages <$> ask
 
             activePackage <- readIDE activePack
-            let forest = map (\pkg -> leaf $ PackageRecord pkg (activePackage == Just pkg)) packages
+            let forest = map (\pkg -> leaf $ PackageRecord pkg) packages
             liftIDE $ setEntries store [] forest
 
             forM_ (zip [0..] packages) $ \(n, pkg) -> do
@@ -450,7 +469,7 @@ subTrees record = case record of
     ComponentsRecord    -> map leaf <$> componentsRecords
     AddSourcesRecord    -> map leaf <$> addSourcesRecords
     AddSourceRecord pkg -> local (\_ -> pkg) packageRecords
-    PackageRecord pkg _ -> ideMessage Normal "Unexpected package node in file tree" >> return []
+    PackageRecord pkg   -> ideMessage Normal "Unexpected package node in file tree" >> return []
     _                   -> return []
 
 
@@ -495,7 +514,7 @@ dirRecords dir = do
                                   srcDirs <- ipdSrcDirs <$> ask
                                   return $ DirRecord full (relativeToPackage `elem` srcDirs)
                               Nothing -> do
-                                  ideMessage Normal ("Could not compare file " <> T.pack full <> " with its package directory " <> T.pack pkgDir)
+                                  -- It's not a descendant of the package directory (e.g. in a source dependency)
                                   return $ DirRecord full False
                       else return $ FileRecord full
    return (sort records)
@@ -544,11 +563,11 @@ setEntries store parentPath records = reifyIDE $ \ideR -> do
 
 -- * Context menu
 
-contextMenuItems :: FileRecord -> TreePath -> TreeStore FileRecord -> IDEM [(Text, IDEAction)]
+contextMenuItems :: FileRecord -> TreePath -> TreeStore FileRecord -> IDEM [[(Text, IDEAction)]]
 contextMenuItems record path store = do
     case record of
         (FileRecord fp) -> do
-            let onDeleteFile = reifyIDE $ \ideRef -> do
+            let onDeleteFile = flip catchIDE (\(e :: SomeException) -> print e) $ reifyIDE $ \ideRef -> do
                     showDialogOptions
                         ("Are you sure you want to delete " <> T.pack (takeFileName fp) <> "?")
                         MessageQuestion
@@ -556,17 +575,18 @@ contextMenuItems record path store = do
                         , ("Cancel", return ())
                         ]
                         (Just 0)
-            return [("Delete File", onDeleteFile)]
+            return [[("Open File", void $ goToSourceDefinition' fp (Location "" 1 0 1 0))]
+                   ,[("Delete File", onDeleteFile)]]
 
         DirRecord fp _ -> do
 
-            let onNewModule = do
+            let onNewModule = flip catchIDE (\(e :: SomeException) -> print e) $ do
                     mbModulePath <- dirToModulePath fp
                     let modulePrefix = fromMaybe [] mbModulePath
                     packageTry $ addModule modulePrefix
                     refreshFiles
 
-            let onNewTextFile = reifyIDE $ \ideRef -> do
+            let onNewTextFile = flip catchIDE (\(e :: SomeException) -> print e) $ reifyIDE $ \ideRef -> do
                     mbText <- showInputDialog "File name:" ""
                     case mbText of
                         Just t  -> do
@@ -579,7 +599,7 @@ contextMenuItems record path store = do
                                     void $ reflectIDE (refreshFiles >> goToSourceDefinition' path (Location "" 1 0 1 0)) ideRef
                         Nothing -> return ()
 
-            let onNewDir = reifyIDE $ \ideRef -> do
+            let onNewDir = flip catchIDE (\(e :: SomeException) -> print e) $ reifyIDE $ \ideRef -> do
                     mbText <- showInputDialog "Directory name:" ""
                     case mbText of
                         Just t  -> do
@@ -592,7 +612,7 @@ contextMenuItems record path store = do
                                     void $ reflectIDE refreshFiles ideRef
                         Nothing -> return ()
 
-            let onDeleteDir = reifyIDE $ \ideRef -> do
+            let onDeleteDir = flip catchIDE (\(e :: SomeException) -> print e) $ reifyIDE $ \ideRef -> do
                     showDialogOptions
                         ("Are you sure you want to delete " <> T.pack (takeFileName fp) <> "?")
                         MessageQuestion
@@ -601,12 +621,15 @@ contextMenuItems record path store = do
                         ]
                         (Just 0)
 
-            return [ ("New Module", onNewModule)
-                   , ("New Text File", onNewTextFile)
-                   , ("New Directory", onNewDir)
-                   , ("Delete Directory", onDeleteDir)]
+            return [ [ ("New Module", onNewModule)
+                     , ("New Text File", onNewTextFile)
+                     , ("New Directory", onNewDir)
+                     ]
+                   , [ ("Delete Directory", onDeleteDir)
+                     ]
+                   ]
 
-        PackageRecord p _ -> do
+        PackageRecord p -> do
 
             let onSetActive = workspaceTryQuiet $ workspaceActivatePackage p Nothing
                 onAddModule = workspaceTryQuiet $ runPackage (addModule []) p
@@ -615,18 +638,44 @@ contextMenuItems record path store = do
                     workspaceRemovePackage p
                     liftIDE refreshFiles
 
-            return [ ("Set As Active Package", onSetActive)
-                   , ("Add Module", onAddModule)
-                   , ("Open .cabal File", onOpenCabalFile)
-                   , ("Remove From Workspace", onRemoveFromWs)]
+            return [ [ ("Set As Active Package", onSetActive)
+                     , ("Add Module", onAddModule)
+                     , ("Open .cabal File", onOpenCabalFile)
+                     ]
+                   , [
+                     ("Remove From Workspace", onRemoveFromWs)
+                     ]
+                   ]
+
         ComponentRecord comp -> do
             Just pkg <- treePathToPackage store path
             let onSetActive = workspaceTryQuiet $
                                   if any (`T.isPrefixOf` comp) ["exe:", "test:", "bench:"]
                                       then workspaceActivatePackage pkg (Just comp)
                                       else workspaceActivatePackage pkg Nothing
-            return [ ("Activate component", onSetActive) ]
+            return [[ ("Activate component", onSetActive) ]]
 
+        AddSourcesRecord -> do
+            Just pkg <- treePathToPackage store path
+            let onAddSource snapshot = workspaceTryQuiet $ flip runPackage pkg (sandboxAddSource snapshot)
+            return [ [ ("Add Source Dependency", onAddSource False >> refreshFiles)
+                     , ("Add Source Dependency Snapshot", onAddSource True >> refreshFiles)
+                     ]
+                   ]
+
+
+        AddSourceRecord p -> do
+            Just pkg <- treePathToPackage store path
+            let onRemoveSourceDependency  = do
+                    workspaceTryQuiet $ flip runPackage pkg (sandboxDeleteSource (ipdPackageDir p))
+                onAddSourceDependencyToWs = workspaceTryQuiet . void $
+                    workspaceAddPackage' (ipdCabalFile p)
+
+            return [ [ ("Add Package To Workspace", onAddSourceDependencyToWs >> refreshFiles)
+                     ]
+                   , [ ("Delete Source Dependency", onRemoveSourceDependency >> refreshFiles)
+                     ]
+                   ]
         _ -> return []
 
 

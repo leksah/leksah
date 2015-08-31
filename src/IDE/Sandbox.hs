@@ -18,6 +18,7 @@ module IDE.Sandbox (
 , sandboxInitShared
 , sandboxDelete
 , sandboxAddSource
+, sandboxDeleteSource
 ) where
 
 import Graphics.UI.Gtk (Window)
@@ -103,4 +104,12 @@ sandboxAddSource snapshot = do
             runExternalTool' (__ "Sandbox Add Source")
                 "cabal" (["sandbox", "add-source", T.pack fp] ++ ["--snapshot" | snapshot])
                 (ipdPackageDir package) (logSandbox package logLaunch)
+
+sandboxDeleteSource :: FilePath -> PackageAction
+sandboxDeleteSource dir = do
+    package <- ask
+    logLaunch <- getDefaultLogLaunch
+    runExternalTool' (__ "Sandbox Delete Source")
+        "cabal" ["sandbox", "delete-source", T.pack dir]
+        (ipdPackageDir package) (logSandbox package logLaunch)
 

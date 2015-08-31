@@ -1182,7 +1182,8 @@ addModule modulePrefix = do
                     case simpleParse $ T.unpack modPath of
                         Nothing         -> liftIDE $ ideMessage Normal (T.pack $ printf (__ "Not a valid module name : %s") (T.unpack modPath))
                         Just moduleName -> do
-                            let  target = srcPath </> toFilePath moduleName ++ ".hs"
+                            package <- ask
+                            let  target = ipdPackageDir package </> srcPath </> toFilePath moduleName ++ ".hs"
                             liftIO $ createDirectoryIfMissing True (dropFileName target)
                             alreadyExists <- liftIO $ doesFileExist target
                             if alreadyExists

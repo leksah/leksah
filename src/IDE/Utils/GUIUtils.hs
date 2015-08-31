@@ -68,6 +68,7 @@ import qualified Data.Text as T (unpack
 #endif
                                 )
 import Control.Applicative ((<$>))
+import Data.List (intercalate)
 
 #ifdef LOCALIZATION
 
@@ -317,7 +318,8 @@ mapControlCommand a = a
 treeViewContextMenu' :: TreeViewClass treeView
                      => treeView                 -- ^ The view
                      -> TreeStore a              -- ^ The model
-                     -> (a -> TreePath -> TreeStore a -> IDEM [(Text, IDEAction)]) -- ^ Produces the menu items for the selected values when right clicking
+                     -> (a -> TreePath -> TreeStore a -> IDEM [[(Text, IDEAction)]]) -- ^ Produces the menu items for the selected values when right clicking
+                                                                                     -- The lists are seperated by a seperator
                      -> IDEM (ConnectId treeView, ConnectId treeView)
 treeViewContextMenu' view store itemsFor = reifyIDE $ \ideRef -> do
     cid1 <- view `on` popupMenuSignal $ do
@@ -349,14 +351,19 @@ treeViewContextMenu' view store itemsFor = reifyIDE $ \ideRef -> do
         theMenu   <- menuNew
         menuAttachToWidget theMenu view
         forM_ (listToMaybe $ zip selValues selPaths) $ \(val, path) -> do
-            items     <- flip reflectIDE ideRef $ itemsFor val path store
-            menuItems <- mapM (liftIO . menuItemNewWithLabel . fst) items
+            itemsPerSection     <- flip reflectIDE ideRef $ itemsFor val path store
+            menuItemsPerSection <- mapM (mapM (liftIO . menuItemNewWithLabel . fst)) itemsPerSection
 
-            forM_ (zip items menuItems) $ \((_, onActivated), m) -> do
-                m `on` menuItemActivated $ reflectIDE onActivated ideRef
 
-            unless (null items) $ do
-                mapM (menuShellAppend theMenu) menuItems
+            forM_ (zip itemsPerSection menuItemsPerSection) $ \(section, itemsSection) -> do
+                forM_ (zip section itemsSection) $ \((_, onActivated), m) -> do
+                    m `on` menuItemActivated $ reflectIDE onActivated ideRef
+
+            unless (null itemsPerSection) $ do
+                itemsAndSeparators <- sequence $
+                    intercalate [fmap castToMenuItem separatorMenuItemNew]
+                                (map (map (return . castToMenuItem)) menuItemsPerSection)
+                mapM_ (menuShellAppend theMenu) itemsAndSeparators
                 menuPopup theMenu buttonEventDetails
                 widgetShowAll theMenu
         return True
