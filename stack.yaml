@@ -1,6 +1,4 @@
 flags: {}
-ghc-options:
-  regex-tdfa-text: -XFlexibleContexts
 packages:
 - '.'
 extra-deps:
@@ -11,7 +9,7 @@ extra-deps:
 - gtk3-mac-integration-0.3.2.0
 - gtksourceview3-0.13.2.0
 - jsaddle-0.2.1.0
-- regex-tdfa-text-1.0.0.2
+- regex-tdfa-text-1.0.0.3
 - leksah-server-0.15.0.8
 - ltk-0.15.0.4
 - vado-0.0.5
