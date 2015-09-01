@@ -1,4 +1,4 @@
-FROM Fedora-Docker-Base-23_Alpha-20150805.x86_64
+FROM Fedora-Docker-Base-22-20150521.x86_64
 MAINTAINER Hamish.K.Mackenzie@gmail.com
 
 RUN dnf -y install sudo && dnf clean all
