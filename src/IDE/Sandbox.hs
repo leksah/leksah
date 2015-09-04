@@ -32,9 +32,11 @@ import System.FilePath (dropFileName)
 import qualified Data.Conduit as C (Sink, ZipSink(..), getZipSink)
 import qualified Data.Conduit.List as CL (fold)
 import IDE.Utils.Tool (ToolOutput(..))
-import IDE.Utils.GUIUtils (__, chooseDir)
-import IDE.Core.State (PackageAction, readIDE, prefs, ipdPackageDir, getMainWindow,
-            Workspace, wsFile, liftIDE, IDEPackage, IDEM, runPackage, LogLaunch)
+import IDE.Utils.GUIUtils (showDialogOptions, __, chooseDir)
+import IDE.Core.State
+       (reflectIDE, reifyIDE, PackageAction, readIDE, prefs,
+        ipdPackageDir, getMainWindow, Workspace, wsFile, liftIDE,
+        IDEPackage, IDEM, runPackage, LogLaunch)
 import IDE.Pane.Log (getDefaultLogLaunch)
 import IDE.Utils.ExternalTool (runExternalTool')
 import IDE.LogRef (logOutput)
@@ -43,9 +45,34 @@ import IDE.Workspaces (workspaceTryQuiet)
 import IDE.Package (refreshPackage)
 import Data.Monoid ((<>))
 import qualified Data.Text as T (pack)
+import IDE.Core.Types (runWorkspace, IDE(..), PackageM)
+import System.Directory (doesFileExist)
+import System.FilePath.Windows ((</>))
+import Graphics.UI.Gtk.Windows.MessageDialog (MessageType(..))
 
 -- | Get the last item
 sinkLast = CL.fold (\_ a -> Just a) Nothing
+
+sandboxTry :: PackageAction -> PackageAction
+sandboxTry action = do
+    sandbox <- hasSandbox
+    pkg <- ask
+    if sandbox then action else do
+        reifyIDE $ \ideRef -> do
+            Just ws <- reflectIDE (readIDE workspace) ideRef
+            let packageToIO = flip reflectIDE ideRef . flip runWorkspace ws . flip runPackage pkg
+            showDialogOptions
+                "This action requires a sandboxed package database. Would you like to initialize a sandbox for this package?"
+                MessageQuestion
+                [ ("Initialize New Sandbox", packageToIO $ sandboxInit >> action)
+                , ("Use Existing Sandbox", packageToIO $ sandboxInitShared >> action)
+                , ("Cancel", return ())]
+                (Just 0)
+
+hasSandbox :: PackageM Bool
+hasSandbox = do
+    pkg <- ask
+    liftIO $ doesFileExist (ipdPackageDir pkg </> "cabal.sandbox.config")
 
 logSandbox :: IDEPackage -> LogLaunch -> C.Sink ToolOutput IDEM ()
 logSandbox package logLaunch = do
@@ -80,7 +107,7 @@ sandboxInitShared = do
                 (ipdPackageDir package) (logSandbox package logLaunch)
 
 sandboxDelete :: PackageAction
-sandboxDelete = do
+sandboxDelete = sandboxTry $  do
     package <- ask
     logLaunch <- getDefaultLogLaunch
     runExternalTool' (__ "Sandbox Delete")
@@ -91,7 +118,7 @@ chooseSandboxSourceDir :: Window -> Maybe FilePath -> IO (Maybe FilePath)
 chooseSandboxSourceDir window = chooseDir window (__ "Select source folder")
 
 sandboxAddSource :: Bool -> PackageAction
-sandboxAddSource snapshot = do
+sandboxAddSource snapshot = sandboxTry $ do
     package <- ask
     ws <- lift ask
     let path = dropFileName (wsFile ws)
@@ -106,7 +133,7 @@ sandboxAddSource snapshot = do
                 (ipdPackageDir package) (logSandbox package logLaunch)
 
 sandboxDeleteSource :: FilePath -> PackageAction
-sandboxDeleteSource dir = do
+sandboxDeleteSource dir = sandboxTry $ do
     package <- ask
     logLaunch <- getDefaultLogLaunch
     runExternalTool' (__ "Sandbox Delete Source")
