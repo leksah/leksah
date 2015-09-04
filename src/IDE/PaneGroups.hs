@@ -43,7 +43,7 @@ import IDE.Pane.SourceBuffer
 import IDE.Pane.Breakpoints (IDEBreakpoints(..))
 import IDE.Pane.Variables (IDEVariables(..))
 import IDE.Pane.Trace (IDETrace(..))
-import IDE.Pane.Workspace (IDEWorkspace(..))
+import IDE.Pane.Workspace (WorkspacePane(..))
 import Control.Monad.IO.Class (MonadIO(..))
 import IDE.Pane.WebKit.Output (IDEOutput(..))
 
@@ -88,7 +88,7 @@ showBrowser = do
     getOrBuildBrowserPanes upperP lowerP topP = do
         moveOrBuildPane upperP :: IDEM (Maybe IDEModules)
         moveOrBuildPane lowerP :: IDEM (Maybe IDEInfo)
-        moveOrBuildPane topP :: IDEM (Maybe IDEWorkspace)
+        moveOrBuildPane topP :: IDEM (Maybe WorkspacePane)
         return ()
 
 setSensitivityDebugger :: Bool -> IDEAction

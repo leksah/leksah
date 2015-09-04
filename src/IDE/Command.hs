@@ -88,7 +88,7 @@ import IDE.LogRef
 import IDE.Debug
 import System.Directory (doesFileExist)
 import Graphics.UI.Gtk.Gdk.EventM (EventM)
-import qualified Data.Map as  Map (lookup)
+import qualified Data.Map as  Map (lookup, empty)
 import Data.List (sort)
 import Control.Event (registerEvent)
 import IDE.Pane.Breakpoints
@@ -104,7 +104,6 @@ import IDE.Pane.Grep (getGrep)
 import IDE.Pane.WebKit.Documentation (getDocumentation)
 import IDE.Pane.WebKit.Output (getOutputPane)
 import IDE.Pane.WebKit.Inspect (getInspectPane)
-import IDE.Pane.Files (refreshFiles, getFiles)
 import Control.Monad.IO.Class (MonadIO(..))
 import Control.Monad (unless, when, forM_, filterM)
 import Control.Monad.Trans.Reader (ask)
@@ -145,18 +144,18 @@ mkActions =
     ,AD "File" (__ "_File") Nothing Nothing (return ()) [] False
     ,AD "FileNew" (__ "_New") Nothing Nothing (return ()) [] False
     ,AD "FileNewWorkspace" (__ "_Workspace...") Nothing Nothing
-        (workspaceNew >> showWorkspace) [] False
+        (workspaceNew >> showWorkspacePane) [] False
     ,AD "FileNewPackage" (__ "_Package...") Nothing Nothing
-        (showWorkspace >> workspaceTry workspacePackageNew) [] False
+        (showWorkspacePane >> workspaceTry workspacePackageNew) [] False
     ,AD "FileNewModule" (__ "_Module...") Nothing (Just "gtk-new")
         (packageTry $ addModule []) [] False
     ,AD "FileNewTextFile" (__ "_Text File...") Nothing Nothing
         fileNew [] False
     ,AD "FileOpen" (__ "_Open") Nothing Nothing (return ()) [] False
     ,AD "FileOpenWorkspace" (__ "_Workspace...") Nothing Nothing
-        (workspaceOpen >> showWorkspace) [] False
+        (workspaceOpen >> showWorkspacePane) [] False
     ,AD "FileOpenPackage" (__ "_Package...") Nothing Nothing
-        (showWorkspace >> workspaceTry workspaceAddPackage) [] False
+        (showWorkspacePane >> workspaceTry workspaceAddPackage) [] False
     ,AD "FileOpenFile" (__ "_File...") Nothing (Just "gtk-open")
         fileOpen [] False
     ,AD "FileRecentFiles" (__ "Recent Files") Nothing Nothing (return ()) [] False
@@ -225,7 +224,7 @@ mkActions =
 
     ,AD "Workspace" (__ "_Workspace") Nothing Nothing (return ()) [] False
     ,AD "WorkspaceAddPackage" (__ "_Add Package...") Nothing Nothing
-        (showWorkspace >> workspaceTry workspaceAddPackage) [] False
+        (showWorkspacePane >> workspaceTry workspaceAddPackage) [] False
     ,AD "CleanWorkspace" (__ "Cl_ean all packages") (Just (__ "Cleans all packages in the workspace")) (Just "ide_clean")
         (workspaceTry workspaceClean) [] False
     ,AD "MakeWorkspace" (__ "_Build all packages") (Just (__ "Builds all of the packages in the workspace")) (Just "ide_configure")
@@ -237,7 +236,7 @@ mkActions =
 
     ,AD "Package" (__ "_Package") Nothing Nothing (return ()) [] False
     ,AD "ClonePackage" (__ "Add Package From Source _Repository...") Nothing Nothing
-        (showWorkspace >> workspaceTry workspacePackageClone) [] False
+        (showWorkspacePane >> workspaceTry workspacePackageClone) [] False
 --    ,AD "RecentPackages" "_Recent Packages" Nothing Nothing (return ()) [] False
     ,AD "PackageEdit" (__ "_Edit") Nothing Nothing (return ()) [] False
     ,AD "EditPackage" (__ "With _Package Editor") Nothing Nothing
@@ -395,8 +394,6 @@ mkActions =
         showVariables [] False
     ,AD "ShowSearch" (__ "Search") Nothing Nothing
         (getSearch Nothing  >>= \ p -> displayPane p False) [] False
-    ,AD "ShowFiles" (__ "Files") Nothing Nothing
-        (getFiles Nothing  >>= \ p -> displayPane p False >> refreshFiles) [] False
     ,AD "ShowGrep" (__ "Grep") Nothing Nothing
         (getGrep Nothing  >>= \ p -> displayPane p False) [] False
     ,AD "ShowDocumentation" (__ "Documentation") Nothing Nothing
@@ -410,7 +407,7 @@ mkActions =
     ,AD "ShowLog" (__ "Log") Nothing Nothing
         showLog [] False
     ,AD "ShowWorkspace" (__ "Workspace") Nothing Nothing
-        showWorkspace [] False
+        showWorkspacePane [] False
 
     ,AD "View" (__ "_View") Nothing Nothing (return ()) [] False
     ,AD "ViewMoveLeft" (__ "Move _Left") Nothing Nothing
@@ -537,7 +534,7 @@ updateRecentEntries = do
             else
                 forM_ existingRecentWorkspaces $ \s -> do
                     mi <- menuItemNewWithLabel $ T.pack s
-                    mi `on` menuItemActivate $ reflectIDE (workspaceOpenThis True (Just s) >> showWorkspace) ideR
+                    mi `on` menuItemActivate $ reflectIDE (workspaceOpenThis True (Just s) >> showWorkspacePane) ideR
                     menuShellAppend recentWorkspacesMenu mi
 
         oldSubmenu <- menuItemGetSubmenu recentWorkspacesItem
@@ -917,8 +914,14 @@ registerLeksahEvents =    do
     registerEvent stRef "UpdateWorkspaceInfo"
         (\ e@UpdateWorkspaceInfo  -> updateWorkspaceInfo >> return e)
     registerEvent stRef "WorkspaceChanged"
-        (\ e@(WorkspaceChanged showPane updateFileCache)
-                                  -> postAsyncIDE (updateWorkspace showPane updateFileCache) >> return e)
+        (\ e@(WorkspaceChanged showPane updateFileCache) -> do
+                                     postAsyncIDE $ do
+                                         refreshWorkspacePane
+                                         when showPane
+                                            showWorkspacePane
+                                         when updateFileCache $
+                                            modifyIDE_ (\ide -> ide{bufferProjCache = Map.empty})
+                                     return e)
     registerEvent stRef "RecordHistory"
         (\ rh@(RecordHistory h)   -> recordHistory h >> return rh)
     registerEvent stRef "Sensitivity"

@@ -158,7 +158,6 @@ import Language.Haskell.HLint3 (Idea(..))
 -- import Data.Time.Clock.POSIX (getPOSIXTime)
 import qualified Data.Sequence as Seq
 import Data.Sequence (ViewR(..), (|>))
-import IDE.Core.Types (ipdPackageDir)
 
 --time :: MonadIO m => String -> m a -> m a
 --time name action = do

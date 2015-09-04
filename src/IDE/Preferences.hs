@@ -49,6 +49,7 @@ import IDE.Pane.Log
 import IDE.Pane.Info (setInfoStyle)
 import IDE.Utils.FileUtils
 import IDE.Utils.GUIUtils
+import IDE.Pane.Workspace
 import IDE.Debug
     (debugSetPrintBindResult,
      debugSetBreakOnError,
@@ -76,7 +77,6 @@ import qualified Data.Text as T (isSuffixOf, unpack, pack, null)
 import Data.Monoid ((<>))
 import Control.Applicative ((<$>))
 import Distribution.Text (display, simpleParse)
-import IDE.Pane.Files (IDEFiles(..), refreshFiles, rebuildFilesPane)
 import Data.Foldable (forM_)
 import IDE.Pane.Errors (fillErrorList)
 import GHC.IO (evaluate)
@@ -479,13 +479,13 @@ prefsDescription configDir packages = NFDPP [
                             paraName <<<- ParaName "Y" $ emptyParams))
             (\a -> return ())
     ,   mkFieldPP
-            (paraName <<<- ParaName (__ "Show hidden files in file tree") $ emptyParams)
+            (paraName <<<- ParaName (__ "Show hidden files in workspace") $ emptyParams)
             (PP.text . show)
             boolParser
             showHiddenFiles
             (\b a -> a {showHiddenFiles = b})
             boolEditor
-            (\_ -> refreshFiles)
+            (\_ -> refreshWorkspacePane)
     ,   mkFieldPP
             (paraName <<<- ParaName (__ "Show icons in the file tree") $ emptyParams)
             (PP.text . show)
@@ -493,7 +493,7 @@ prefsDescription configDir packages = NFDPP [
             showFileIcons
             (\b a -> a {showFileIcons = b})
             boolEditor
-            (\_ -> rebuildFilesPane)
+            (\_ -> rebuildWorkspacePane)
     ,   mkFieldPP
             (paraName <<<- ParaName (__ "Use ctrl Tab for Notebook flipper") $ emptyParams)
             (PP.text . show)

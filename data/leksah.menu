@@ -126,7 +126,6 @@
        <menuitem name="_Web Inspector" action="ShowInspect" />
        <separator/>
        <menuitem name="_Errors" action="ShowErrors" />
-       <menuitem name="_Files" action="ShowFiles" />
        <menuitem name="_Grep" action="ShowGrep" />
        <menuitem name="_Documentation" action="ShowDocumentation" />
        <menuitem name="_Log" action="ShowLog" />
