@@ -51,6 +51,12 @@ data-files:
     language-specs/lucius.lang
     language-specs/julius.lang
     language-specs/jmacro.lang
+    pics/ide_folder.png
+    pics/ide_source_folder.png
+    pics/ide_component.png
+    pics/ide_source_dependency.png
+    pics/ide_package.png
+    pics/ide_cabal_file.png
     pics/ide_class.png
     pics/ide_configure.png
     pics/ide_data.png
@@ -260,7 +266,6 @@ library
         IDE.Core.Types
         IDE.Core.State
         IDE.Metainfo.Provider
-        IDE.Pane.Preferences
         IDE.Pane.PackageEditor
         IDE.Pane.HLint
         IDE.Pane.Info
@@ -305,6 +310,7 @@ library
         IDE.TextEditor.Yi
         IDE.TextEditor.GtkSourceView
         IDE.Utils.ExternalTool
+        IDE.Utils.GtkBindings
     build-depends:
         gtk3 >=0.14.1 && <0.15,
         gtksourceview3 >=0.13.1.5 && <0.14,
@@ -354,8 +360,7 @@ library
         shakespeare >=2.0.0.1 && <2.1,
         cpphs >=1.19 && <1.20,
         stm >=2.4.4 && <2.5
-    cpp-options: -DWEBKITGTK
-                 -DLEKSAH_WITH_CODE_MIRROR
+    cpp-options: -DWEBKITGTK -DLEKSAH_WITH_CODE_MIRROR
     default-language: Haskell2010
     default-extensions: ViewPatterns
     hs-source-dirs: src

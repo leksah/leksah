@@ -445,7 +445,7 @@ changePackage ideP = do
             modifyIDE_ (\ide -> ide{activePack = Just ideP})
         _ -> return ()
     where
-        key = ipdBuildDir
+        key = ipdPackageDir
         idePKey = key ideP
         exchange p | key p == idePKey = ideP
                    | otherwise        = p

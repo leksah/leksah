@@ -46,6 +46,9 @@ testString2 =   "    Could not find module `Data.Attoparsec.Lazy'\n"
 
 prop_parseHiddenModule2 = parseHiddenModule testString2 == Just HiddenModuleResult {hiddenModule = "Data.Attoparsec.Lazy", missingPackage = PackageIdentifier {pkgName = PackageName "attoparsec", pkgVersion = Version {versionBranch = [0,10,2,0], versionTags = []}}}
 
+-- workaround for issue with $quickcheckall
+-- see https://hackage.haskell.org/package/QuickCheck-2.4.2/docs/Test-QuickCheck-All.html
+return []
 main = do
     result <- newEmptyMVar
     forkIO $ do

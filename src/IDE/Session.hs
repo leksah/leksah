@@ -48,7 +48,6 @@ import IDE.Pane.Modules
 import IDE.Pane.SourceBuffer
 import IDE.Pane.Info (InfoState(..), setInfoStyle)
 import IDE.Pane.Log (LogState(..))
-import IDE.Pane.Preferences
 import IDE.Pane.PackageFlags
 import IDE.Pane.Search
 import IDE.Pane.Grep
@@ -90,7 +89,6 @@ data PaneState      =   BufferSt BufferState
                     |   LogSt LogState
                     |   InfoSt InfoState
                     |   ModulesSt ModulesState
-                    |   PrefsSt PrefsState
                     |   FlagsSt FlagsState
                     |   SearchSt SearchState
                     |   FilesSt FilesState
@@ -111,7 +109,6 @@ asPaneState s | isJust (cast s :: Maybe BufferState)      =   BufferSt (fromJust
 asPaneState s | isJust (cast s :: Maybe LogState)         =   LogSt (fromJust $ cast s)
 asPaneState s | isJust (cast s :: Maybe InfoState)        =   InfoSt (fromJust $ cast s)
 asPaneState s | isJust (cast s :: Maybe ModulesState)     =   ModulesSt (fromJust $ cast s)
-asPaneState s | isJust (cast s :: Maybe PrefsState)       =   PrefsSt (fromJust $ cast s)
 asPaneState s | isJust (cast s :: Maybe FlagsState)       =   FlagsSt (fromJust $ cast s)
 asPaneState s | isJust (cast s :: Maybe SearchState)      =   SearchSt (fromJust $ cast s)
 asPaneState s | isJust (cast s :: Maybe FilesState)       =   FilesSt (fromJust $ cast s)
@@ -132,7 +129,6 @@ recover pp (BufferSt p)         =   void (recoverState pp p)
 recover pp (LogSt p)            =   void (recoverState pp p)
 recover pp (InfoSt p)           =   void (recoverState pp p)
 recover pp (ModulesSt p)        =   void (recoverState pp p)
-recover pp (PrefsSt p)          =   void (recoverState pp p)
 recover pp (FlagsSt p)          =   void (recoverState pp p)
 recover pp (SearchSt p)         =   void (recoverState pp p)
 recover pp (FilesSt p)          =   void (recoverState pp p)

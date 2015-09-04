@@ -26,7 +26,7 @@ import Control.Applicative
 import Prelude hiding(getChar, getLine)
 import IDE.Core.Types
        (logRefFullFilePath, Prefs(..), LogRef(..), LogRefType(..),
-        wsAllPackages, ipdBuildDir, IDEM, IDEAction, IDE(..),
+        wsAllPackages, ipdPackageDir, IDEM, IDEAction, IDE(..),
         IDEPackage(..), PackageAction)
 import Control.Monad.Reader (asks, MonadReader(..))
 import IDE.Core.State
@@ -111,7 +111,7 @@ runHLint :: Either FilePath FilePath -> IDEAction
 runHLint (Right sourceFile) = do
     liftIO . debugM "leksah" $ "runHLint"
     packages <- maybe [] wsAllPackages <$> readIDE workspace
-    case sortBy (flip (comparing (length . ipdBuildDir))) $ filter (belongsToPackage sourceFile) packages of
+    case sortBy (flip (comparing (length . ipdPackageDir))) $ filter (belongsToPackage sourceFile) packages of
         (package:_) -> runHLint' package (Just sourceFile)
         _ -> liftIO . debugM "leksah" $ "runHLint package not found for " <> sourceFile
 runHLint (Left cabalFile) = do
@@ -131,8 +131,8 @@ runHLint' package mbSourceFile = do
                     Just f  -> return [f]
                     Nothing -> getSourcePaths (ipdPackageId package) modules
     res <- forM paths $ \ full -> do
-        let file = makeRelative (ipdBuildDir package) full
-        postSyncIDE $ removeLintLogRefs (ipdBuildDir package) file
+        let file = makeRelative (ipdPackageDir package) full
+        postSyncIDE $ removeLintLogRefs (ipdPackageDir package) file
         text <- liftIO $ T.readFile full
         liftIO . debugM "leksah" $ "runHLint parsing " <> full
         do result <- liftIO $ parseModuleEx flags full (Just (T.unpack text))
@@ -172,7 +172,7 @@ getSourcePaths packId names = do
 hlintSettings :: IDEPackage -> IDEM (ParseFlags, [Classify], Hint)
 hlintSettings package = do
     mbHlintDir <- liftIO $ leksahSubDir "hlint"
-    let cabalMacros = ipdBuildDir package </> "dist/build/autogen/cabal_macros.h"
+    let cabalMacros = ipdPackageDir package </> "dist/build/autogen/cabal_macros.h"
     cabalMacrosExist <- liftIO $ doesFileExist cabalMacros
     defines <- liftIO $ if cabalMacrosExist
                             then do
@@ -192,7 +192,7 @@ logHLintResult fileScope package allIdeas getText = do
     forM_ ideas $ \ idea@Idea{..} -> do
         let text = getText (HSE.srcSpanFilename ideaSpan)
             fixColumn c = max 0 (c - 1)
-            srcSpan = SrcSpan (makeRelative (ipdBuildDir package) $ HSE.srcSpanFilename ideaSpan)
+            srcSpan = SrcSpan (makeRelative (ipdPackageDir package) $ HSE.srcSpanFilename ideaSpan)
                               (HSE.srcSpanStartLine ideaSpan)
                               (HSE.srcSpanStartColumn ideaSpan - 1)
                               (HSE.srcSpanEndLine ideaSpan)
@@ -213,7 +213,7 @@ logHLintResult fileScope package allIdeas getText = do
 logHLintError :: Bool -> IDEPackage -> ParseError -> IDEAction
 logHLintError fileScope package error = do
     let loc = parseErrorLocation error
-        srcSpan = SrcSpan (makeRelative (ipdBuildDir package) $ HSE.srcFilename loc)
+        srcSpan = SrcSpan (makeRelative (ipdPackageDir package) $ HSE.srcFilename loc)
                           (HSE.srcLine loc)
                           (HSE.srcColumn loc - 1)
                           (HSE.srcLine loc)

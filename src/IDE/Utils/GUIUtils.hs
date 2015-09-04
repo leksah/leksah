@@ -19,6 +19,8 @@ module IDE.Utils.GUIUtils (
 ,   openBrowser
 ,   showDialog
 ,   showErrorDialog
+,   showDialogOptions
+,   showInputDialog
 
 ,   getFullScreenState
 ,   setFullScreenState
@@ -39,6 +41,7 @@ module IDE.Utils.GUIUtils (
 ,   stockIdFromType
 ,   mapControlCommand
 ,   treeViewContextMenu
+,   treeViewContextMenu'
 
 ,   __
 
@@ -47,7 +50,8 @@ module IDE.Utils.GUIUtils (
 
 import Graphics.UI.Gtk
 import IDE.Utils.Tool (runProcess)
-import Data.Maybe (fromJust, isJust)
+import Data.Maybe
+       (listToMaybe, fromMaybe, catMaybes, fromJust, isJust)
 import Control.Monad
 import IDE.Core.State
 --import Graphics.UI.Gtk.Selectors.FileChooser
@@ -63,6 +67,9 @@ import qualified Data.Text as T (unpack
                                , pack
 #endif
                                 )
+import Control.Applicative ((<$>))
+import Data.List (intercalate)
+
 #ifdef LOCALIZATION
 
 import Text.I18N.GetText
@@ -153,7 +160,7 @@ openBrowser url = do
             (\ (_ :: SomeException) -> sysMessage Normal ("Can't find browser executable " <> browser prefs')))
     return ()
 
-
+-- | Show a text dialog with an Ok button and a specific messagetype
 showDialog :: Text -> MessageType -> IO ()
 showDialog msg msgType = do
     dialog <- messageDialogNew Nothing [] msgType ButtonsOk msg
@@ -161,9 +168,61 @@ showDialog msg msgType = do
     widgetDestroy dialog
     return ()
 
+
+-- | Show an error dialog with an Ok button
 showErrorDialog :: Text -> IO ()
 showErrorDialog msg = showDialog msg MessageError
 
+
+-- | Show a dialog with custom buttons and callbacks
+showDialogOptions :: Text             -- ^ the message
+                  -> MessageType      -- ^ type of dialog
+                  -> [(Text, IO ())]  -- ^ button text and corresponding actions
+                  -> Maybe Int        -- ^ index of button that has default focus (0-based)
+                  -> IO ()
+showDialogOptions msg msgType buttons mbIndex = do
+    dialog <- messageDialogNew Nothing [] msgType ButtonsNone msg
+
+    forM_ (zip [0..] buttons) $ \(n,(text, _)) -> do
+        dialogAddButton dialog text (ResponseUser n)
+
+    dialogSetDefaultResponse dialog (ResponseUser (fromMaybe 0 mbIndex))
+    set dialog [ windowWindowPosition := WinPosCenterOnParent ]
+    res <- dialogRun dialog
+    widgetHide dialog
+    case res of
+        ResponseUser n | n >= 0 && n < length buttons -> map snd buttons !! n
+        _ -> return ()
+
+
+-- | Show a simple dialog that asks the user for some text
+showInputDialog :: Text -- ^ The message text
+                -> Text -- ^ The default value
+                -> IO (Maybe Text)
+showInputDialog msg def = do
+    dialog <- dialogNew -- Nothing [] MessageQuestion ButtonsOkCancel msg
+    vbox   <- castToBox <$> dialogGetContentArea dialog
+    label <- labelNew (Just msg)
+    entry <- entryNew
+    set entry [entryText := def]
+    boxPackStart vbox label PackNatural 0
+    boxPackStart vbox entry PackNatural 0
+    widgetShowAll vbox
+
+    -- Can't use messageDialog because of https://github.com/gtk2hs/gtk2hs/issues/114
+    dialogAddButton dialog ("Cancel" :: Text) ResponseCancel
+    dialogAddButton dialog ("Ok" :: Text) ResponseOk
+    dialogSetDefaultResponse dialog ResponseOk
+
+    res <- dialogRun dialog
+    widgetHide dialog
+
+    case res of
+        ResponseOk -> do
+            text <- get entry entryText
+            widgetDestroy dialog
+            return (Just text)
+        _ -> widgetDestroy dialog >> return Nothing
 
 
 
@@ -254,6 +313,60 @@ stockIdFromType _               =   "ide_other"
 mapControlCommand Alt = Control
 #endif
 mapControlCommand a = a
+
+-- | Sets the context menu for a treeView widget
+treeViewContextMenu' :: TreeViewClass treeView
+                     => treeView                 -- ^ The view
+                     -> TreeStore a              -- ^ The model
+                     -> (a -> TreePath -> TreeStore a -> IDEM [[(Text, IDEAction)]]) -- ^ Produces the menu items for the selected values when right clicking
+                                                                                     -- The lists are seperated by a seperator
+                     -> IDEM (ConnectId treeView, ConnectId treeView)
+treeViewContextMenu' view store itemsFor = reifyIDE $ \ideRef -> do
+    cid1 <- view `on` popupMenuSignal $ do
+        showMenu Nothing ideRef
+    cid2 <- view `on` buttonPressEvent $ do
+        button    <- eventButton
+        click     <- eventClick
+        timestamp <- eventTime
+        (x, y)    <- eventCoordinates
+        case (button, click) of
+            (RightButton, SingleClick) -> liftIO $ do
+                sel <- treeViewGetSelection view
+                selCount <- treeSelectionCountSelectedRows sel
+                when (selCount <= 1) $ do
+                    pathInfo <- treeViewGetPathAtPos view (floor x, floor y)
+                    case pathInfo of
+                        Just (path, _, _) -> do
+                            treeSelectionUnselectAll sel
+                            treeSelectionSelectPath sel path
+                        _ -> return ()
+                showMenu (Just (button, timestamp)) ideRef
+            _ -> return False
+    return (cid1, cid2)
+  where
+    showMenu buttonEventDetails ideRef = do
+
+        selPaths  <- treeViewGetSelection view >>= treeSelectionGetSelectedRows
+        selValues <- mapM (treeStoreGetValue store) selPaths
+        theMenu   <- menuNew
+        menuAttachToWidget theMenu view
+        forM_ (listToMaybe $ zip selValues selPaths) $ \(val, path) -> do
+            itemsPerSection     <- flip reflectIDE ideRef $ itemsFor val path store
+            menuItemsPerSection <- mapM (mapM (liftIO . menuItemNewWithLabel . fst)) itemsPerSection
+
+
+            forM_ (zip itemsPerSection menuItemsPerSection) $ \(section, itemsSection) -> do
+                forM_ (zip section itemsSection) $ \((_, onActivated), m) -> do
+                    m `on` menuItemActivated $ reflectIDE onActivated ideRef
+
+            unless (null itemsPerSection) $ do
+                itemsAndSeparators <- sequence $
+                    intercalate [fmap castToMenuItem separatorMenuItemNew]
+                                (map (map (return . castToMenuItem)) menuItemsPerSection)
+                mapM_ (menuShellAppend theMenu) itemsAndSeparators
+                menuPopup theMenu buttonEventDetails
+                widgetShowAll theMenu
+        return True
 
 treeViewContextMenu :: TreeViewClass treeView
                     => treeView

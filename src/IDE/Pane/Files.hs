@@ -6,7 +6,7 @@
 {-# LANGUAGE RecordWildCards #-}
 {-# LANGUAGE OverloadedStrings #-}
 -----------------------------------------------------------------------------
---
+--f
 -- Module      :  IDE.Pane.Files
 -- Copyright   :  (c) Juergen Nicklisch-Franken, Hamish Mackenzie
 -- License     :  GNU-GPL
@@ -22,101 +22,81 @@
 module IDE.Pane.Files (
     IDEFiles(..)
 ,   FilesState(..)
-,   getFiles
-,   refreshFiles
 ) where
 
 import Prelude hiding (catch)
 import Graphics.UI.Gtk
-       (scrolledWindowSetShadowType, treeSelectionSelectionChanged,
-        treeStoreRemove, treeModelIterNext, treeModelGetRow,
-        treeStoreInsert, treeModelIterNthChild, treeModelGetPath, TreeIter,
-        treeModelGetIter, TreePath, treeSelectionGetSelectedRows,
-        rowActivated, treeStoreGetValue, rowExpanded, on, after,
-        focusInEvent, scrolledWindowSetPolicy, containerAdd,
-        scrolledWindowNew, treeSelectionSetMode, treeViewGetSelection,
-        treeViewSetHeadersVisible, cellText, cellLayoutSetAttributes,
-        cellLayoutPackStart, treeViewAppendColumn,
-        treeViewColumnSetReorderable, treeViewColumnSetResizable,
-        treeViewColumnSetSizing, treeViewColumnSetTitle, treeViewColumnNew,
-        cellRendererPixbufNew, cellRendererTextNew, treeViewSetModel,
-        treeViewNew, treeStoreNew, castToWidget, TreeStore, TreeView,
-        ScrolledWindow, treeViewRowExpanded, treeStoreGetTree)
-import Data.Maybe (isJust)
+import Data.Maybe (fromMaybe, maybeToList, listToMaybe, isJust)
 import Control.Monad (forM, void, forM_, when)
 import Data.Typeable (Typeable)
 import IDE.Core.State
-       (MessageLevel(..), ipdBuildDir, ipdPackageId, wsPackages,
-        workspace, readIDE, IDEAction, ideMessage, reflectIDE, reifyIDE,
-        IDEM, IDEPackage, ipdSandboxSources)
-import IDE.Pane.SourceBuffer
-    (goToSourceDefinition')
+       (catchIDE, window, getIDE, MessageLevel(..), ipdPackageId,
+        wsPackages, workspace, readIDE, IDEAction, ideMessage, reflectIDE,
+        reifyIDE, IDEM, IDEPackage, ipdSandboxSources)
+import IDE.Pane.SourceBuffer (fileNew, goToSourceDefinition')
+import IDE.Sandbox
 import Control.Applicative ((<$>))
 import System.FilePath ((</>), takeFileName, dropFileName)
 import Distribution.Package (PackageIdentifier(..))
-import System.Directory (doesDirectoryExist, getDirectoryContents, getPermissions, readable)
+import System.Directory
+       (removeDirectoryRecursive, removeDirectory, createDirectory,
+        doesFileExist, removeFile, doesDirectoryExist,
+        getDirectoryContents, getPermissions, readable)
 import IDE.Core.CTypes
        (Location(..), packageIdentifierToString)
 import Graphics.UI.Frame.Panes
        (RecoverablePane(..), PanePath, RecoverablePane, Pane(..))
-import Graphics.UI.Frame.ViewFrame (getNotebook)
+import Graphics.UI.Frame.ViewFrame (getMainWindow, getNotebook)
 import Graphics.UI.Editor.Basics (Connection(..))
 import Graphics.UI.Gtk.General.Enums
        (ShadowType(..), PolicyType(..), SelectionMode(..),
         TreeViewColumnSizing(..))
-import System.Glib.Attributes (AttrOp(..))
+import System.Glib.Attributes (set, AttrOp(..))
 import Control.Monad.IO.Class (MonadIO(..))
-import IDE.Utils.GUIUtils (__)
-import Control.Exception (catch)
+import IDE.Utils.GUIUtils
+       (showErrorDialog, showInputDialog, treeViewContextMenu', __,
+        showDialogOptions)
+import Control.Exception (SomeException(..), catch)
 import Data.Text (Text)
-import qualified Data.Text as T (pack)
+import qualified Data.Text as T
+       (isPrefixOf, words, isSuffixOf, unpack, pack)
 import Data.Monoid ((<>))
-import Data.List (sortBy, sort)
+import IDE.Core.Types
+       (ipdLib, WorkspaceAction, Workspace(..), wsAllPackages, WorkspaceM,
+        runPackage, runWorkspace, PackageAction, PackageM, IDEPackage(..),
+        IDE(..), Prefs(..), MonadIDE(..), ipdPackageDir)
+import System.Glib.Properties (newAttrFromMaybeStringProperty)
+import System.FilePath
+       (addTrailingPathSeparator, takeDirectory, takeExtension,
+       makeRelative, splitDirectories)
+import Control.Monad.Reader.Class (MonadReader(..))
+import IDE.Workspaces
+       (makePackage, workspaceAddPackage', workspaceRemovePackage,
+        workspaceActivatePackage, workspaceTry, workspaceTryQuiet,
+        packageTry)
+import Data.List
+       (isSuffixOf, find, stripPrefix, isPrefixOf, sortBy, sort)
 import Data.Ord (comparing)
-import Data.Char (toLower)
-import IDE.Core.Types (IDEPackage(..), IDE(..), Prefs(..))
-import Data.Tree (Tree(..))
+import Data.Char (toUpper, toLower)
 import System.Log.Logger (debugM)
-
-
-
--- * A record in the Files Pane
-
--- | The data for a single cell in the file tree
-data FileRecord =
-    FileRecord FilePath
-  | DirRecord FilePath
-  | PackageRecord IDEPackage
-  | PlaceHolder -- ^ Used as child node of directories that are not yet expanded,
-                --   so that the expansion arrow becomes visible
-  deriving (Eq)
-
-
-instance Ord FileRecord where
-    -- | The ordering used for displaying the records in the filetree
-    compare (DirRecord _) (FileRecord _) = LT
-    compare (FileRecord _) (DirRecord _) = GT
-    compare (FileRecord p1) (FileRecord p2) = comparing (map toLower) p1 p2
-    compare (DirRecord p1) (DirRecord p2) = comparing (map toLower) p1 p2
-    compare _ _ = LT
-
--- | The text to show in the file tree for a file record
-displayText :: FileRecord -> Text
-displayText (FileRecord f) = T.pack $ takeFileName f
-displayText (DirRecord f) = T.pack $ takeFileName f
-displayText (PackageRecord p) = packageIdentifierToString (ipdPackageId p) <> " " <> T.pack (ipdBuildDir p)
-displayText PlaceHolder = ""
-
-
+import Data.Tree (Forest, Tree(..))
+import Graphics.UI.Gtk.MenuComboToolbar.MenuItem
+       (menuItemActivate, menuItemNewWithLabel)
+import IDE.Pane.Modules (addModule)
+import Graphics.UI.Gtk.Windows.MessageDialog
+       (ButtonsType(..), MessageType(..), messageDialogNew)
+import Graphics.UI.Gtk.ModelView.CellRenderer
+       (CellRendererMode(..), cellMode)
+import IDE.Pane.PackageEditor (packageEditText)
+import IDE.Utils.GtkBindings (treeViewSetActiveOnSingleClick)
+import IDE.Package (packageTest, packageRun, packageClean)
 
 
 -- * The Files pane
 
 -- | The representation of the Files pane
 data IDEFiles        =   IDEFiles {
-    scrolledView    ::   ScrolledWindow
-,   treeView        ::   TreeView
-,   fileStore       ::   TreeStore FileRecord
+    deprecatedLabel :: Label
 } deriving Typeable
 
 
@@ -128,7 +108,7 @@ data FilesState      =   FilesState
 instance Pane IDEFiles IDEM where
     primPaneName _  =   __ "Files"
     getAddedIndex _ =   0
-    getTopWidget    =   castToWidget . scrolledView
+    getTopWidget    =   castToWidget . deprecatedLabel
     paneId b        =   "*Files"
 
 instance RecoverablePane IDEFiles FilesState IDEM where
@@ -137,222 +117,5 @@ instance RecoverablePane IDEFiles FilesState IDEM where
         nb      <-  getNotebook pp
         buildPane pp nb builder
     builder pp nb windows = reifyIDE $ \ ideR -> do
-        fileStore   <-  treeStoreNew []
-        treeView    <-  treeViewNew
-        treeViewSetModel treeView fileStore
-
-        renderer1    <- cellRendererTextNew
-        renderer10   <- cellRendererPixbufNew
-        col1         <- treeViewColumnNew
-        treeViewColumnSetTitle col1 (__ "File")
-        treeViewColumnSetSizing col1 TreeViewColumnAutosize
-        treeViewColumnSetResizable col1 True
-        treeViewColumnSetReorderable col1 True
-        treeViewAppendColumn treeView col1
-        cellLayoutPackStart col1 renderer10 False
-        cellLayoutPackStart col1 renderer1 True
-        cellLayoutSetAttributes col1 renderer1 fileStore
-            $ \row -> [ cellText := displayText row]
-
-        treeViewSetHeadersVisible treeView False
-        sel <- treeViewGetSelection treeView
-        treeSelectionSetMode sel SelectionSingle
-
-        scrolledView <- scrolledWindowNew Nothing Nothing
-        scrolledWindowSetShadowType scrolledView ShadowIn
-        containerAdd scrolledView treeView
-        scrolledWindowSetPolicy scrolledView PolicyAutomatic PolicyAutomatic
-
-        let files = IDEFiles {..}
-
-        cid1 <- after treeView focusInEvent $ do
-            liftIO $ reflectIDE (makeActive files) ideR
-            return True
-        cid2 <- on treeView rowExpanded $ \ iter path -> do
-            record <- treeStoreGetValue fileStore path
-            reflectIDE (
-                case record of
-                    DirRecord f     -> refreshDir fileStore path f
-                    PackageRecord p -> refreshPackage fileStore path p
-                    _               -> ideMessage Normal (__ "Unexpected Expansion in Files Pane")) ideR
-        on treeView rowActivated $ \ path col -> do
-            record <- treeStoreGetValue fileStore path
-            reflectIDE (
-                case record of
-                    FileRecord f    -> void (goToSourceDefinition' f (Location "" 1 0 1 0))
-                    DirRecord f     -> refreshDir fileStore path f
-                    PackageRecord p -> refreshPackage fileStore path p
-                    _               -> ideMessage Normal (__ "Unexpected Activation in Files Pane")) ideR
-        on sel treeSelectionSelectionChanged $ do
-            paths <- treeSelectionGetSelectedRows sel
-            forM_ paths $ \ path -> do
-                record <- treeStoreGetValue fileStore path
-                reflectIDE (
-                    case record of
-                        FileRecord _    -> return ()
-                        DirRecord f     -> refreshDir fileStore path f
-                        PackageRecord p -> refreshPackage fileStore path p
-                        _               -> ideMessage Normal (__ "Unexpected Selection in Files Pane")) ideR
-
-        return (Just files,[ConnectC cid1])
-
--- | Get the Files pane
-getFiles :: Maybe PanePath -> IDEM IDEFiles
-getFiles Nothing    = forceGetPane (Right "*Files")
-getFiles (Just pp)  = forceGetPane (Left pp)
-
-
--- | Refreshes the Files pane, lists all package directories and synchronizes the expanded
--- folders with the file system
-refreshFiles :: IDEAction
-refreshFiles = do
-    files <- getFiles Nothing
-    let store = fileStore files
-    let view  = treeView files
-    mbWS <- readIDE workspace
-    let packages = maybe [] wsPackages mbWS
-    setDirectories store Nothing $ map PackageRecord packages
-
-    forM_ (zip [0..] packages) $ \(n, package) ->
-         refreshRecursively store [n] view
-
--- | Returns the 'FileRecord's at the given 'FilePath'.
-dirContents :: FilePath -> IDEM [FileRecord]
-dirContents dir = do
-   prefs <- readIDE prefs
-   contents <- liftIO $ getDirectoryContents dir
-                            `catch` \ (e :: IOError) -> return []
-   let filtered = if showHiddenFiles prefs
-                      then filter (`notElem` [".", ".."]) contents
-                      else filter ((/= '.') . head) contents
-   records <- forM filtered $ \f -> do
-                  let full = dir </> f
-                  isDir <- liftIO $ doesDirectoryExist full
-                  return $ if isDir then DirRecord full else FileRecord full
-   return (sort records)
-
-
--- | Recursively refreshes the file tree with the given TreePath as root. Only refreshes contents
--- of expanded folders.
-refreshRecursively :: TreeStore FileRecord -> TreePath -> TreeView -> IDEAction
-refreshRecursively store path view = do
-    isExpanded <- liftIO $ treeViewRowExpanded view path
-    record     <- liftIO $ treeStoreGetValue store path
-
-    when isExpanded $
-        case record of
-            DirRecord dir -> do
-                refreshDir store path dir
-                nChildren  <- length . subForest <$> liftIO (treeStoreGetTree store path)
-                forM_ [0..nChildren-1] (\n -> refreshRecursively store (path ++ [n]) view)
-
-            PackageRecord package -> do
-                refreshPackage store path package
-                nChildren  <- length . subForest <$> liftIO (treeStoreGetTree store path)
-                forM_ [0..nChildren-1] (\n -> refreshRecursively store (path ++ [n]) view)
-
-            _ -> return ()
-
--- | Refreshes the child nodes of the package node at the given 'TreePath'. Also adds sandbox
--- add-source dependencies as a 'PackageRecord'.
-refreshPackage :: TreeStore FileRecord -> TreePath -> IDEPackage -> IDEAction
-refreshPackage store path p = do
-    liftIO $ debugM "leksah" $ "refreshPackage " <> ipdCabalFile p
-    let dir = ipdBuildDir p
-    mbIter <- liftIO $ treeModelGetIter store path
-    when (isJust mbIter) $ do
-        contents <- dirContents dir
-        setDirectories store mbIter $ map PackageRecord (ipdSandboxSources p) ++ contents
-
-
--- | Refreshes the child nodes of the node at the given 'TreePath'.
-refreshDir :: TreeStore FileRecord -> TreePath -> FilePath -> IDEAction
-refreshDir store path dir =  do
-    liftIO $ debugM "leksah" $ "refreshPackage " <> dir
-    mbIter <- liftIO $ treeModelGetIter store path
-    when (isJust mbIter) $ do
-        contents <- dirContents dir
-        setDirectories store mbIter contents
-
--- | Sets the child nodes of the given 'TreeIter' to the provided list of 'FileRecord's. If a record
--- is already present, it is kept in the same (expanded) state.
-setDirectories :: TreeStore FileRecord -> Maybe TreeIter -> [FileRecord] -> IDEAction
-setDirectories store parent records = liftIO $ do
-    parentPath <- case parent of
-                Just i -> treeModelGetPath store i
-                _      -> return []
-    forM_ (zip [0..] records) $ \(n, record) -> do
-        mbChild <- treeModelIterNthChild store parent n
-        findResult <- find record store mbChild
-        case (mbChild, findResult) of
-            (_, WhereExpected _) -> return ()
-            (Just iter, Found _) -> do
-                path <- treeModelGetPath store iter
-                removeUntil record store path
-            _ -> do
-                treeStoreInsert store parentPath n record
-
-                -- Insert placeholder children for dirs and packages so they can
-                -- be expanded on clicking, and have the contents loaded "lazily".
-                case record of
-                    DirRecord _     -> treeStoreInsert store (parentPath++[n]) 0 PlaceHolder
-                    PackageRecord _ -> treeStoreInsert store (parentPath++[n]) 0 PlaceHolder
-                    _               -> return ()
-    removeRemaining store (parentPath++[length records])
-
-data FindResult = WhereExpected TreeIter | Found TreeIter | NotFound
-
--- | Tries to find the given value in the 'TreeStore'. Only looks at the given 'TreeIter' and its
--- sibling nodes to the right.
--- Returns @WhereExpected iter@ if the records is found at the provided 'TreeIter'
--- Returns @Found iter@ if the record is found at a sibling iter
--- Returns @NotFound@ otherwise
-find :: Eq a => a -> TreeStore a -> Maybe TreeIter -> IO FindResult
-find _ _ Nothing = return NotFound
-find a store (Just iter) = do
-    row <- treeModelGetRow store iter
-    if row == a
-        then return $ WhereExpected iter
-        else treeModelIterNext store iter >>= find'
-  where
-    find' :: Maybe TreeIter -> IO FindResult
-    find' Nothing = return NotFound
-    find' (Just iter) = do
-        row <- treeModelGetRow store iter
-        if row == a
-            then return $ Found iter
-            else treeModelIterNext store iter >>= find'
-
-
--- | Starting at the node at the given 'TreePath', removes all sibling nodes to the right
---   until the given value is found.
-removeUntil :: Eq a => a -> TreeStore a -> TreePath -> IO ()
-removeUntil a store path = do
-    row <- treeStoreGetValue store path
-    when (row /= a) $ do
-        found <- treeStoreRemove store path
-        when found $ removeUntil a store path
-
-
--- | Starting at the node at the given 'TreePath', removes all sibling nodes to the right
-removeRemaining :: TreeStore a -> TreePath -> IO ()
-removeRemaining store path = do
-    found <- treeStoreRemove store path
-    when found $ removeRemaining store path
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
+        deprecatedLabel <- labelNew $ Just ("The Files pane is deprecated and has been combined with the Workspace pane"::Text)
+        return (Just IDEFiles {..}, [])

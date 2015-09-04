@@ -514,7 +514,7 @@ logOutputForBuild package backgroundBuild jumpToWarnings = do
                         logLn <- Log.appendLog log logLaunch (line <> "\n") LogTag
                         reflectIDE (triggerEventIDE (StatusbarChanged [CompartmentState
                             (T.pack $ "Compiling " ++ show n ++ " of " ++ show total), CompartmentBuild False])) ideR
-                        let root = ipdBuildDir package
+                        let root = ipdPackageDir package
                             fullFilePath = root </> file
                         reflectIDE (removeBuildLogRefs root file) ideR
                         when inDocTest $ logPrevious testFails

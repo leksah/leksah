@@ -1085,7 +1085,7 @@ fileCloseAll filterFunc = do
 
 fileCloseAllButPackage :: IDEAction
 fileCloseAllButPackage = do
-    mbActivePath    <-  fmap ipdBuildDir <$> readIDE activePack
+    mbActivePath    <-  fmap ipdPackageDir <$> readIDE activePack
     bufs            <-  allBuffers
     case mbActivePath of
         Just p -> mapM_ (close' p) bufs

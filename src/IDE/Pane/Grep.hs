@@ -247,7 +247,7 @@ grepWorkspace regexString caseSensitive = do
             Just active -> active : filter (/= active) (wsAllPackages ws)
             Nothing     -> wsAllPackages ws
     lift $ grepDirectories regexString caseSensitive $
-            map (dropFileName . ipdCabalFile) packages
+            map ipdPackageDir packages
 
 
 -- | Greps a list of directories
