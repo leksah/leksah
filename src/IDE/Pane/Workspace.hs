@@ -333,10 +333,8 @@ instance RecoverablePane WorkspacePane WorkspaceState IDEM where
                         _ -> when expandable $ do
                                  void $ treeViewToggleRow treeView path
 
-
-
-        return (Just files,[ConnectC cid1])
         (cid3, cid4) <- reflectIDE (treeViewContextMenu' treeView fileStore contextMenuItems) ideR
+        reflectIDE (refresh files) ideR
 
         return (Just files, map ConnectC [cid1, cid3, cid4])
 
@@ -367,7 +365,6 @@ rebuildWorkspacePane = do
     mbFilePane <- getPane :: IDEM (Maybe WorkspacePane)
     forM_ mbFilePane closePane
     getOrBuildPane (Right "*Workspace") :: IDEM (Maybe WorkspacePane)
-    refreshWorkspacePane
     return ()
 
 
@@ -389,9 +386,15 @@ fileGetPackage path = do
 refreshWorkspacePane :: IDEAction
 refreshWorkspacePane = do
     liftIO $ debugM "leksah" "refreshWorkspacePane"
-    files <- getWorkspacePane
-    let store = fileStore files
-    let view  = treeView files
+    workspace <- getWorkspacePane
+    refresh workspace
+
+-- | Needed when building the pane, since getWorkspacePane does not
+-- work before the building is finished
+refresh :: WorkspacePane -> IDEAction
+refresh pane = do
+    let store = fileStore pane
+    let view  = treeView pane
 
     workspaceTryQuiet $ do
         packages <- sort . wsPackages <$> ask
@@ -403,7 +406,6 @@ refreshWorkspacePane = do
             return (Node record subForest)
 
         liftIDE $ setEntries store [] forest
-
 
 
 -- | Mutates the 'TreeStore' with the given TreePath as root to attach new
