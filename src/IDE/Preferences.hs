@@ -487,11 +487,11 @@ prefsDescription configDir packages = NFDPP [
             boolEditor
             (\_ -> refreshWorkspacePane)
     ,   mkFieldPP
-            (paraName <<<- ParaName (__ "Show icons in the file tree") $ emptyParams)
+            (paraName <<<- ParaName (__ "Show icons in the Workspace pane") $ emptyParams)
             (PP.text . show)
             boolParser
-            showFileIcons
-            (\b a -> a {showFileIcons = b})
+            showWorkspaceIcons
+            (\b a -> a {showWorkspaceIcons = b})
             boolEditor
             (\_ -> rebuildWorkspacePane)
     ,   mkFieldPP
@@ -920,7 +920,7 @@ defaultPrefs = Prefs {
     ,   serverIP            =   "127.0.0.1"
     ,   endWithLastConn     =   True
     ,   showHiddenFiles     =   False
-    ,   showFileIcons       =   True
+    ,   showWorkspaceIcons       =   True
     }
 
 -- ------------------------------------------------------------

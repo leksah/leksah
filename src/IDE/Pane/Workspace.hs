@@ -117,9 +117,7 @@ import IDE.Utils.GtkBindings (treeViewSetActiveOnSingleClick)
 import IDE.Package (packageTest, packageRun, packageClean)
 
 
--- * A record in the Files Pane
-
--- | The data for a single cell in the file tree.
+-- | The data for a single record in the Workspace Pane
 data WorkspaceRecord =
     FileRecord FilePath
   | DirRecord FilePath
@@ -132,7 +130,7 @@ data WorkspaceRecord =
   deriving (Eq)
 
 instance Ord WorkspaceRecord where
-    -- | The ordering used for displaying the records in the filetree
+    -- | The ordering used for displaying the records
     compare (DirRecord _ _) (FileRecord _) = LT
     compare (FileRecord _) (DirRecord _ _) = GT
     compare (FileRecord p1) (FileRecord p2) = comparing (map toLower) p1 p2
@@ -143,7 +141,7 @@ instance Ord WorkspaceRecord where
     compare _ _ = LT
 
 
--- | The markup to show in the file tree for a record
+-- | The markup to show for a record
 toMarkup :: WorkspaceRecord
          -> IDEPackage
          -> IDEM Text
@@ -185,7 +183,7 @@ toMarkup record pkg = do
         size str = "<span font=\"9\">" <> str <> "</span>"
 
 
--- | The icon to show for a record in the file tree
+-- | The icon to show for a record
 toIcon :: WorkspaceRecord -> Maybe Text
 toIcon record = case record of
     FileRecord path
@@ -238,13 +236,13 @@ canExpand record pkg = case record of
 
     where components = maybeToList (ipdLib pkg) ++ ipdExes pkg ++ ipdTests pkg ++ ipdBenchmarks pkg
 
--- * The Files pane
+-- * The Workspace pane
 
--- | The representation of the Files pane
+-- | The representation of the Workspace pane
 data WorkspacePane        =   WorkspacePane {
     scrolledView    ::   ScrolledWindow
 ,   treeView        ::   TreeView
-,   fileStore       ::   TreeStore WorkspaceRecord
+,   recordStore     ::   TreeStore WorkspaceRecord
 } deriving Typeable
 
 
@@ -265,9 +263,9 @@ instance RecoverablePane WorkspacePane WorkspaceState IDEM where
         nb      <-  getNotebook pp
         buildPane pp nb builder
     builder pp nb windows = reifyIDE $ \ ideR -> do
-        fileStore   <-  treeStoreNew []
+        recordStore   <-  treeStoreNew []
         treeView    <-  treeViewNew
-        treeViewSetModel treeView fileStore
+        treeViewSetModel treeView recordStore
 
 
 
@@ -279,18 +277,18 @@ instance RecoverablePane WorkspacePane WorkspaceState IDEM where
 
 
         prefs <- reflectIDE (readIDE prefs) ideR
-        when (showFileIcons prefs) $ do
+        when (showWorkspaceIcons prefs) $ do
             renderer2    <- cellRendererPixbufNew
             cellLayoutPackStart col1 renderer2 False
             set renderer2 [ newAttrFromMaybeStringProperty "stock-id"  := (Nothing :: Maybe Text) ]
-            cellLayoutSetAttributes col1 renderer2 fileStore
+            cellLayoutSetAttributes col1 renderer2 recordStore
                 $ \record -> [ newAttrFromMaybeStringProperty "stock-id" := toIcon record]
 
         renderer1    <- cellRendererTextNew
         cellLayoutPackStart col1 renderer1 True
-        cellLayoutSetAttributeFunc col1 renderer1 fileStore $ \iter -> do
-            record <- treeModelGetRow fileStore iter
-            mbPkg  <- flip reflectIDE ideR $ iterToPackage fileStore iter
+        cellLayoutSetAttributeFunc col1 renderer1 recordStore $ \iter -> do
+            record <- treeModelGetRow recordStore iter
+            mbPkg  <- flip reflectIDE ideR $ iterToPackage recordStore iter
             forM_ mbPkg $ \pkg -> do
                 -- The cellrenderer is stateful, so it knows which cell this markup will be for (the cell at iter)
                 markup <- flip reflectIDE ideR $ toMarkup record pkg
@@ -306,23 +304,23 @@ instance RecoverablePane WorkspacePane WorkspaceState IDEM where
         containerAdd scrolledView treeView
         scrolledWindowSetPolicy scrolledView PolicyAutomatic PolicyAutomatic
 
-        let files = WorkspacePane {..}
+        let wsPane = WorkspacePane {..}
 
         cid1 <- after treeView focusInEvent $ do
-            liftIO $ reflectIDE (makeActive files) ideR
+            liftIO $ reflectIDE (makeActive wsPane) ideR
             return True
 
         on treeView rowExpanded $ \iter path -> do
-            record <- treeStoreGetValue fileStore path
-            mbPkg  <- flip reflectIDE ideR $ iterToPackage fileStore iter
+            record <- treeStoreGetValue recordStore path
+            mbPkg  <- flip reflectIDE ideR $ iterToPackage recordStore iter
             forM_ mbPkg $ \pkg -> do
                 flip reflectIDE ideR $ do
                     workspaceTryQuiet $ do
-                        runPackage (refreshPackageTreeFrom fileStore treeView path) pkg
+                        runPackage (refreshPackageTreeFrom recordStore treeView path) pkg
 
         on treeView rowActivated $ \path col -> do
-            record <- treeStoreGetValue fileStore path
-            mbPkg    <- flip reflectIDE ideR $ treePathToPackage fileStore path
+            record <- treeStoreGetValue recordStore path
+            mbPkg    <- flip reflectIDE ideR $ treePathToPackage recordStore path
             forM_ mbPkg $ \pkg -> do
                 expandable <- flip reflectIDE ideR $ canExpand record pkg
                 case record of
@@ -333,17 +331,17 @@ instance RecoverablePane WorkspacePane WorkspaceState IDEM where
                         _ -> when expandable $ do
                                  void $ treeViewToggleRow treeView path
 
-        (cid3, cid4) <- reflectIDE (treeViewContextMenu' treeView fileStore contextMenuItems) ideR
-        reflectIDE (refresh files) ideR
+        (cid3, cid4) <- reflectIDE (treeViewContextMenu' treeView recordStore contextMenuItems) ideR
+        reflectIDE (refresh wsPane) ideR
 
-        return (Just files, map ConnectC [cid1, cid3, cid4])
+        return (Just wsPane, map ConnectC [cid1, cid3, cid4])
 
--- | Get the Files pane
+-- | Get the Workspace pane
 getWorkspacePane :: IDEM WorkspacePane
 getWorkspacePane = forceGetPane (Right "*Workspace")
 
 
--- | Show the workspace pane
+-- | Show the Workspace pane
 showWorkspacePane :: IDEAction
 showWorkspacePane = do
     l <- getWorkspacePane
@@ -358,17 +356,17 @@ treeViewToggleRow treeView path = do
         else treeViewExpandRow   treeView path False
 
 
--- | Deletes the filepane and rebuilds it (used when enabling/disabling
--- icons in the pane, since it requires another cellrenderer)
+-- | Deletes the Workspace pane and rebuilds it (used when enabling/disabling
+-- icons, since it requires extra/fewer cellrenderers)
 rebuildWorkspacePane :: IDEAction
 rebuildWorkspacePane = do
-    mbFilePane <- getPane :: IDEM (Maybe WorkspacePane)
-    forM_ mbFilePane closePane
+    mbWsPane <- getPane :: IDEM (Maybe WorkspacePane)
+    forM_ mbWsPane closePane
     getOrBuildPane (Right "*Workspace") :: IDEM (Maybe WorkspacePane)
     return ()
 
 
--- | Searches the workspace packages if it is part of any
+-- | Searches the workspace packages if it is part of any of them
 fileGetPackage :: FilePath -> WorkspaceM (Maybe IDEPackage)
 fileGetPackage path = do
     packages <- wsAllPackages <$> ask
@@ -377,11 +375,11 @@ fileGetPackage path = do
 
 
 
--- * Actions for refreshing the Files pane
+-- * Actions for refreshing the Workspace pane
 
 
 
--- | Refreshes the Files pane, lists all packages and synchronizes the expanded
+-- | Refreshes the Workspace pane, lists all packages and synchronizes the expanded
 -- nodes with the file system and workspace
 refreshWorkspacePane :: IDEAction
 refreshWorkspacePane = do
@@ -393,7 +391,7 @@ refreshWorkspacePane = do
 -- work before the building is finished
 refresh :: WorkspacePane -> IDEAction
 refresh pane = do
-    let store = fileStore pane
+    let store = recordStore pane
     let view  = treeView pane
 
     workspaceTryQuiet $ do
@@ -449,7 +447,7 @@ subTrees record = case record of
     _                   -> return []
 
 
--- | Returns the direct children, the add source dependencies
+-- | Gets the direct children, the add source dependencies
 addSourcesRecords :: PackageM [WorkspaceRecord]
 addSourcesRecords = do
     pkg <- ask
@@ -485,7 +483,7 @@ dirRecords dir = do
    return (sort records)
 
 
--- | Refreshes the components for a specific package
+-- | Get the components for a specific package
 componentsRecords :: PackageM [WorkspaceRecord]
 componentsRecords = do
     package         <- ask
