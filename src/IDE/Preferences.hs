@@ -189,7 +189,7 @@ runPreferencesDialog = reifyIDE $ \ideR -> do
 
 -- | This needs to be incremented when the preferences format changes
 prefsVersion :: Int
-prefsVersion = 5
+prefsVersion = 6
 
 
 -- | Represents the Preferences dialog
